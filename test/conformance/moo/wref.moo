@@ -135,6 +135,55 @@ return function(ctx: any): { [string]: Surface }
 					holder[key] = ser.Uint64.new(lo, hi)
 				end
 			end
+		elseif (what == "count" or what == "elems") and (tonumber(text) :: number) < 0 then
+			-- A NEGATIVE COUNT (SF-28): a counted array's count slot holds it;
+			-- an array with no count slot is a plain list, and the number
+			-- itself, a value that is no list, is handed to the writer
+			if owner[fd.slot .. "Count"] ~= nil then
+				owner[fd.slot .. "Count"] = tonumber(text) :: number
+			else
+				holder[key] = tonumber(text) :: number
+			end
+		elseif what == "elems" then
+			-- a fixed [N]T or keyed [E]T is a plain list: more elements are
+			-- copies of element 1, fewer drop the tail
+			local n = tonumber(text) :: number
+			local arr = holder[key]
+			if type(arr) ~= "table" then error("driver: " .. path .. ": elems on a field that is no list", 0) end
+			for i = #arr + 1, n do
+				arr[i] = deepCopy(arr[1])
+			end
+			for i = #arr, n + 1, -1 do
+				arr[i] = nil
+			end
+		elseif what == "mask" then
+			-- a flags value is its raw bits, in the field's own storage class
+			local n = tonumber(text) :: number
+			if d.cls == "U64" then
+				local ser: any = ctx.module(unitKey, "serialize")
+				holder[key] = ser.Uint64.fromNumber(n)
+			else
+				holder[key] = n
+			end
+		elseif what == "dupkey" then
+			-- A MOO MAP IS A LIST OF ENTRIES, so one key held twice is a copy
+			-- of the first entry appended; `dupkey 0` leaves the map as loaded
+			if fd.s ~= "map" then error("driver: " .. path .. ": dupkey on a field that is no map", 0) end
+			if text == "1" then
+				local entries = holder[key]
+				entries[#entries + 1] = deepCopy(entries[1])
+			elseif text ~= "0" then
+				error("driver: " .. path .. ": dupkey takes 0 or 1, not " .. text, 0)
+			end
+		elseif what == "point" then
+			-- the pointer at `path` is set to the node the pointer at path
+			-- `text` points at: the same table, so a node enclosing `path` is
+			-- a cycle
+			local towner, tfd, tidx = wrefWalk(St, root, v, text)
+			local target = towner[tfd.slot]
+			if tidx ~= nil then target = target[tidx] end
+			if type(target) ~= "table" then error("driver: " .. path .. ": the pointer at " .. text .. " points at no node", 0) end
+			holder[key] = target
 		elseif what == "count" then
 			local n = tonumber(text) :: number
 			local arr = holder[key]
@@ -172,6 +221,39 @@ return function(ctx: any): { [string]: Surface }
 		end
 	end
 
+	-- a table value shaped as the block reader answers it: each field of the
+	-- block info by its schema name from the value's slot, a nested record and
+	-- every row of a record list likewise; a field with no descriptor mate is
+	-- the driver's failure, never the writer's refusal
+	local blockShape: any
+	blockShape = function(St: any, d: any, info: any, value: any): any
+		local out: any = {}
+		for _, bf in info.fields do
+			local fd: any = nil
+			for _, f in d.fields do
+				if f.name == bf.name then fd = f; break end
+			end
+			if fd == nil then error("driver: block field " .. bf.name .. " has no field in " .. d.name, 0) end
+			local val = value[fd.slot]
+			if bf.element ~= nil and val ~= nil then
+				local ed: any = St.lookup(bf.element.name)
+				if ed == nil then error("driver: no table " .. bf.element.name, 0) end
+				if bf.isArray or bf.outOfLine then
+					local rows = {}
+					for i, row in val do
+						rows[i] = blockShape(St, ed, bf.element, row)
+					end
+					out[bf.name] = rows
+				else
+					out[bf.name] = blockShape(St, ed, bf.element, val)
+				end
+			else
+				out[bf.name] = val
+			end
+		end
+		return out
+	end
+
 	local function runSurface(kindName: string)
 		local connections: { [string]: { string } } = {}
 		for _, c in ctx.kind("connection") do
@@ -196,13 +278,66 @@ return function(ctx: any): { [string]: Surface }
 				ctx.say(name, nil)
 				continue
 			end
-			local v = ctx.read(key, root, ctx.inputs(wire))
-			if v == nil then
-				error("driver: " .. name .. ": load refused " .. wire, 0)
+			local v: any
+			if wire == "-" then
+				-- THE ROOT'S FRESH VALUE (SF-05, SF-06): a root with no file form
+				v = d.new()
+			else
+				v = ctx.read(key, root, ctx.inputs(wire))
+				if v == nil then
+					error("driver: " .. name .. ": load refused " .. wire, 0)
+				end
 			end
 			wrefSet(key, St, root, v, path, what, text)
 			local answer = "refused\n"
-			if kindName == "write-refusal" or kindName == "write-refusal-fixed" then
+			if kindName == "write-refusal-cook" then
+				-- THE COOK WRITER (SPEC-TABLES §7.6): measure, then cook in
+				-- little-endian order into exactly the measure
+				local W: any = ctx.module(key, "table_cookwrite")
+				if W == nil then
+					ctx.say(name, nil)
+					continue
+				end
+				local okm, size = pcall(W.measure, root, v)
+				if okm and size ~= nil and size >= 1 then
+					local okc, out = pcall(W.cook, root, v, false)
+					if okc and out ~= nil then
+						answer = if buffer.len(out) == size then "wrote\n" else "wrote " .. buffer.len(out) .. " bytes against a measure of " .. size .. "\n"
+					end
+				end
+			elseif kindName == "write-refusal-block" then
+				-- THE BLOCK BUILDER (SPEC-TABLES §19.1): table_block's Begin with
+				-- the value's count of every out-of-line array, then Write of the
+				-- value shaped as the block reader answers it (each field by its
+				-- schema name, a record's fields likewise, a list one row each)
+				local B: any = ctx.module(key, "table_block")
+				local info: any = nil
+				for _, mod in ctx.tableList(key) do
+					local m: any = ctx.module(key, mod)
+					if m ~= nil and m[root .. "BlockInfo"] ~= nil then
+						info = m[root .. "BlockInfo"]
+					end
+				end
+				if B == nil or info == nil then
+					ctx.say(name, nil)
+					continue
+				end
+				local shaped = blockShape(St, d, info, v)
+				local counts: { [string]: number } = {}
+				for _, bf in info.fields do
+					if bf.outOfLine then
+						local rows = shaped[bf.name]
+						counts[bf.name] = if type(rows) == "table" then #rows else rows
+					end
+				end
+				local okb, block = pcall(B.Begin, info, counts, {})
+				if okb and block ~= nil then
+					local okw, why = pcall(B.Write, block, shaped)
+					if okw and why == nil then
+						answer = "wrote\n"
+					end
+				end
+			elseif kindName == "write-refusal" or kindName == "write-refusal-fixed" then
 				if kindName == "write-refusal-fixed" and not d.fixed then
 					error("driver: " .. name .. ": " .. root .. " has no fixed form", 0)
 				end
@@ -252,7 +387,7 @@ return function(ctx: any): { [string]: Surface }
 	end
 
 	local surfaces: { [string]: Surface } = {}
-	for _, s in { "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json" } do
+	for _, s in { "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json", "write-refusal-cook", "write-refusal-block" } do
 		surfaces[s] = {
 			carried = carried,
 			run = function()

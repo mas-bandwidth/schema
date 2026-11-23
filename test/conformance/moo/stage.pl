@@ -95,6 +95,11 @@ my %kinds = (
 	"write-refusal-fixed" => ["write-refusal-fixed"],
 	"write-refusal-message" => ["connection", "write-refusal-message"],
 	"write-refusal-json" => ["write-refusal-json"],
+	"write-refusal-cook" => ["write-refusal-cook"],
+	"write-refusal-block" => ["write-refusal-block"],
+	"announce" => ["announce"],
+	"read-into" => ["read-into"],
+	"json-write-into" => ["json-write-into"],
 );
 my %want = map { $_ => 1 } @{ $kinds{$surface} || [] };
 
