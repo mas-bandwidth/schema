@@ -305,8 +305,8 @@ static SCHEMA_UNUSED int table_announce_once(TableVocabulary * v,const uint8_t *
  }
  if(seen_version!=1||seen_words!=1||r.offset!=r.size||next_ref-1!=r.id_count)goto damaged;
  /* "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3): refused by
-    name, the peer's build version kept, no vocabulary set, never damage. The
-    report carries both versions, the peer's (remote) and this unit's (own). */
+    name, the writer's build version kept, no vocabulary set, never damage. The
+    report carries both versions, the writer's (remote) and this unit's (own). */
  if(v->strict && v->build_version!=@BUILD_VERSION@){
   report->refused=1;report->reason=SCHEMA_TABLE_BUILD_VERSION_MISMATCH;
   report->build_version_remote=v->build_version;report->build_version_own=@BUILD_VERSION@;return 0;

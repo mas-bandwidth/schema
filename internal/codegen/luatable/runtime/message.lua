@@ -1610,7 +1610,7 @@ end
 -- STRICT MODE IS OPT-IN (docs/SPEC-TABLES.md §3.3): with vocab.strict set
 -- before the first announcement, one whose build version is not the unit's
 -- own is refused `build_version_mismatch`, sets no vocabulary, keeps the
--- peer's build version and names both versions in report.remote and
+-- writer's build version and names both versions in report.remote and
 -- report.own; unset, the read tolerates the difference as the wire does.
 function M.announceRead(T, vocab, data, report, maxBytes, maxEntries)
   report = report or {}

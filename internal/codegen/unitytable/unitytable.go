@@ -470,7 +470,7 @@ public struct TableReport
     public string ReasonText;
     public string NonFiniteField;
     // THE STRICT ANNOUNCEMENT'S TWO BUILD VERSIONS (docs/SPEC-TABLES.md §3.3):
-    // on Reason BuildVersionMismatch, the peer's announced build version and
+    // on Reason BuildVersionMismatch, the writer's announced build version and
     // this unit's own. Zero on every other path.
     public ulong BuildVersionRemote;
     public ulong BuildVersionOwn;

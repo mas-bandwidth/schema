@@ -51,7 +51,7 @@ namespace Bench
         // field whose kind changed, counted once per endpoint while a lineage
         // plan is compiled — never a read counter on a returned load
         // THE STRICT ANNOUNCEMENT'S TWO BUILD VERSIONS (docs/SPEC-TABLES.md
-        // §3.3): on Reason "build_version_mismatch", the peer's announced build
+        // §3.3): on Reason "build_version_mismatch", the writer's announced build
         // version and this unit's own. Zero on every other path.
         public ulong BuildVersionRemote, BuildVersionOwn;
         // LayoutHash is THE FILE'S hash, and it is LAST on the report (§5.9 #15) —
@@ -4656,7 +4656,7 @@ namespace Bench
                 }
                 if (!terminated || versions != 1 || vocabularies != 1) { Damage(report); return Finish(report, Verdict.Damaged); }
                 // "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3): refused
-                // by name, the peer's build version kept, no vocabulary set, never damage.
+                // by name, the writer's build version kept, no vocabulary set, never damage.
                 if (v.Strict && v.BuildVersion != tableOwnVocabulary.BuildVersion)
                 {
                     report.BuildVersionRemote = v.BuildVersion; report.BuildVersionOwn = tableOwnVocabulary.BuildVersion;
