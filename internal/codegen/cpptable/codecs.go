@@ -886,6 +886,15 @@ func (g *tableGen) storageAssert(ind, expr string, bound int64) {
 // declared [Min, Max], checked before the elision test (docs/SPEC.md §5.1 row
 // 3), so a count under a positive minimum is a caller error the debug build
 // stops on. Write checks on this leg are debug asserts only.
+func (g *tableGen) storageAssertMin(ind, expr string, min, bound int64) {
+	if min <= 0 {
+		g.storageAssert(ind, expr, bound)
+		return
+	}
+	g.storageAsserts = true
+	g.pf("%sschema_assert( %s >= %d && %s <= %d ); // the declared [%d..%d] holds, debug only (§5.1)\n", ind, expr, min, expr, bound, min, bound)
+}
+
 func (g *tableGen) countAssert(ind string, f *ir.Field) {
 	if f.ArrayMin <= 0 {
 		g.storageAssert(ind, "value."+f.Name+"_count", f.ArrayBound)

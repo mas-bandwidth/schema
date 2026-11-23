@@ -14794,6 +14794,7 @@ inline int64_t BenchMixedMeasureMessageBody( int64_t at, const BenchMixed & valu
     if ( rides_entities )
     {
         bits += kTableMessageRefBitsHere;
+        if ( ( value.entities_count ) < 1 ) { return -1; } // below the declared [1..8] (R10)
         bits += 3;
         for ( int32_t i = 0; i < value.entities_count; i++ )
         {
@@ -15014,6 +15015,7 @@ inline bool BenchMixedSaveMessageBody( TableBitWriter & w, const BenchMixed & va
     if ( rides_entities )
     {
         w.put( 10, kTableMessageRefBitsHere );
+        if ( ( value.entities_count ) < 1 ) { return false; } // below the declared [1..8] (R10)
         w.put( (uint64_t) ( value.entities_count ) - 1, 3 );
         for ( int32_t i = 0; i < value.entities_count; i++ )
         {
@@ -17456,7 +17458,7 @@ inline void BenchMixedFixedWriteBody( uint8_t * b, const BenchMixed & value )
     TableFixedPut64( b + 32, (uint64_t) value.world_time );
     TableFixedPut64( b + 40, (uint64_t) value.frame_tick );
     TableFixedPut32( b + 48, (uint32_t) value.server_time );
-    schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // the declared count is the bound (§3.4)
+    schema_assert( value.entities_count >= 1 && value.entities_count <= 8 ); // the declared [1..8] is the bound (§3.4)
     TableFixedPut32( b + 52, (uint32_t) value.entities_count );
     for ( int64_t i = 0; i < (int64_t) value.entities_count; ++i )
     {
@@ -18240,7 +18242,7 @@ inline bool BenchMixedCookBody( uint8_t * at, const BenchMixed & value, TableByt
     table_cook_put( at + 48, (uint64_t) value.frame_tick, 8, order );
     table_cook_put( at + 56, (uint64_t) value.server_time, 4, order );
     // 8 slots of storage, value.entities_count live: a slot past the count keeps the extent's zero (§7.2)
-    schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // storage invariant, debug only (§5.1)
+    schema_assert( value.entities_count >= 1 && value.entities_count <= 8 ); // the declared [1..8] holds, debug only (§5.1)
     for ( int32_t i = 0; i < value.entities_count; i++ )
     {
         if ( !MixedEntityCookBody( at + 64 + i * 64, value.entities[i], order ) ) { return false; }

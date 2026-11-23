@@ -664,7 +664,7 @@ inline int64_t TableLebBytes( uint64_t v )
 // nothing rides.
 struct TableIds
 {
-    static const int32_t kCapacity = 167;
+    static const int32_t kCapacity = 171;
     static const int32_t kBuckets = 512;
     // THE WRITER'S MAXIMUM (docs/SPEC-TABLES.md §3): no reader accepts an id
     // table past kTableProbeBound entries, so the 4097th id overflows.
@@ -1221,6 +1221,41 @@ inline bool TableKindWidens( uint8_t kind, uint8_t declared )
         case 11: return kind == 10;
     }
     return false;
+}
+
+// a fixed-width kind's payload width, for the one place the width is a
+// runtime fact: an arm whose kind byte the reader widens, whose L must be the
+// wire kind's own width (§3)
+inline int64_t TableKindWidth( uint8_t kind )
+{
+    switch ( kind )
+    {
+        case 1:
+        case 2:
+        case 6:
+        case 20:
+        case 25: return 1;
+        case 3:
+        case 7:
+        case 21:
+        case 26: return 2;
+        case 4:
+        case 8:
+        case 10:
+        case 22:
+        case 27: return 4;
+        case 5:
+        case 9:
+        case 11:
+        case 23:
+        case 28:
+        case 36: return 8; // 36 is the timestamp, the i64 payload (§2.11)
+        case 18:
+        case 19:
+        case 24:
+        case 29: return 16;
+    }
+    return 0;
 }
 
 // the payload of a kind on the SIGNED ladder (2 to 5), sign-extended to
@@ -1847,7 +1882,7 @@ static const int64_t kTableMessageRefBitsHere = 8;
 // build announces exactly this many entries; a receiver that means to meet
 // OTHER builds declares more, and an announcement above whatever it declared
 // is refused as vocabulary_too_large.
-static const int64_t kTableMessageEntriesHere = 131;
+static const int64_t kTableMessageEntriesHere = 134;
 
 // THE BIT STREAM the bodies ride on (§3.3). It is the packet wire's own
 // layout, bit i of the stream in byte i/8 at bit position i%8 low bit first,
@@ -2454,7 +2489,7 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
     return -1;
 }
 
-// THE UNIT'S ANNOUNCEMENT, byte for byte: 131 entries and 1553 bytes. It is an
+// THE UNIT'S ANNOUNCEMENT, byte for byte: 134 entries and 1585 bytes. It is an
 // ordinary form 1 FILE: the form byte, a body carrying the BUILD VERSION under
 // the reserved id at kind 9 and the VOCABULARY under the reserved id at kind 14
 // over element kind 6, and a trailer of those two reserved ids.
@@ -2472,7 +2507,7 @@ inline int64_t TableMessageValueBits( uint8_t kind, uint8_t packing, int64_t val
 // the projection's sorted record order. The tail is UNCONDITIONAL, so an
 // ordinary edit only ever grows it at its end and never moves a slot a
 // generated field header carries as a literal.
-static const int64_t kTableAnnounceBytes = 1553;
+static const int64_t kTableAnnounceBytes = 1585;
 // INLINE, not static: this blob is odr-used by the inline Announce()
 // below, and a static array in a header is a DIFFERENT entity in every
 // unit that includes it, which is the ODR violation [basic.def.odr] forbids
@@ -2485,21 +2520,21 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x01,
     0x01,
     0x09,
-    0xe1,
-    0x0c,
-    0x2b,
-    0x2b,
-    0xa5,
-    0xaf,
-    0xaf,
-    0x50,
+    0xdf,
+    0xa9,
+    0x3c,
+    0x11,
+    0x9e,
+    0xa7,
+    0xf8,
+    0x74,
     0x02,
     0x0e,
-    0xe9,
-    0x0b,
+    0x89,
+    0x0c,
     0x06,
-    0xe6,
-    0x0b,
+    0x86,
+    0x0c,
     0xc5,
     0x67,
     0xc4,
@@ -2813,6 +2848,28 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0x00,
     0x08,
     0x0d,
+    0xd8,
+    0xbb,
+    0x13,
+    0xc5,
+    0x0d,
+    0xc4,
+    0x0b,
+    0xbf,
+    0x0f,
+    0x19,
+    0x8c,
+    0xea,
+    0xfe,
+    0x18,
+    0x7d,
+    0xc6,
+    0xdc,
+    0x0e,
+    0x02,
+    0x04,
+    0x08,
+    0x00,
     0xbe,
     0x77,
     0x38,
@@ -4010,6 +4067,16 @@ inline const uint8_t kTableAnnounce[kTableAnnounceBytes] = {
     0xcd,
     0x13,
     0x0d,
+    0x55,
+    0x2a,
+    0x56,
+    0xc2,
+    0x61,
+    0xad,
+    0x24,
+    0x0a,
+    0x04,
+    0x00,
     0x00,
     0xfe,
     0xff,
@@ -4284,12 +4351,12 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
     // by name, the writer's build version kept, no vocabulary set, never damage.
     // The unit's own build version is spelled here as the literal BuildVersion
     // holds, because the cook runtime that declares BuildVersion follows this one.
-    if ( vocabulary.strict && version != 0x50afafa52b2b0ce1ull )
+    if ( vocabulary.strict && version != 0x74f8a79e113ca9dfull )
     {
         to->refused = true;
         to->reason = build_version_mismatch;
         to->build_version_remote = version;
-        to->build_version_own = 0x50afafa52b2b0ce1ull;
+        to->build_version_own = 0x74f8a79e113ca9dfull;
         return false;
     }
 
@@ -9353,7 +9420,7 @@ inline bool TableRetainRecordHere( const TableRetain & retain, const uint8_t * r
 // derived from. An id inside a retained record takes its trailer entry from
 // the GENERATED table when it is here and from the CALLER's list otherwise, so
 // no retained id ever enters the generated table and no id is written twice.
-static const int32_t kTableRetainKnownIds = 167;
+static const int32_t kTableRetainKnownIds = 171;
 // INLINE, not static: TableRetainNameable below is an inline function
 // and odr-uses this array, so it must name ONE entity across every unit
 // that includes this header rather than a per-unit copy - the same rule
@@ -9367,6 +9434,7 @@ inline const uint64_t kTableRetainKnown[kTableRetainKnownIds] = {
     0x065ee827cf99fbb4ull,
     0x08a60c07b54d8dc7ull,
     0x09ae5613b0051271ull,
+    0x0a24ad61c2562a55ull,
     0x0d5cfaa2c43877beull,
     0x0f8897557f37c021ull,
     0x10bda981fe095518ull,
@@ -9477,6 +9545,7 @@ inline const uint64_t kTableRetainKnown[kTableRetainKnownIds] = {
     0xbb62c62c9808ea37ull,
     0xbca0dab1c7a00ccfull,
     0xbeecef11dbdf8973ull,
+    0xbf0bc40dc513bbd8ull,
     0xbf31137ff783e939ull,
     0xbf59694e9e4f5ed7ull,
     0xc341febe5aae51e5ull,
@@ -9506,6 +9575,7 @@ inline const uint64_t kTableRetainKnown[kTableRetainKnownIds] = {
     0xddfc86d2b1251528ull,
     0xde28f0f5118acc24ull,
     0xdfa47a9ce9ac16d6ull,
+    0xe2f227393c6b20a2ull,
     0xe3b1ca6a3b48dddcull,
     0xe693bd88532c91d6ull,
     0xe8ddc90a9d7c709dull,
@@ -9516,6 +9586,7 @@ inline const uint64_t kTableRetainKnown[kTableRetainKnownIds] = {
     0xf10fad739a0e1660ull,
     0xf252136836b04cb2ull,
     0xf2b45af3b50689dbull,
+    0xf5b735fce4011ff4ull,
     0xf901aa0340249a41ull,
     0xfc9697d1196e6ba6ull,
     0xff8b681912a535a1ull,
@@ -10661,7 +10732,7 @@ namespace tabledemo {
 // PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
 // what everything cooked or blocked is keyed by. A table edit moves this and
 // never the protocol id; a type edit moves both.
-static const uint64_t BuildVersion = 0x50afafa52b2b0ce1ull;
+static const uint64_t BuildVersion = 0x74f8a79e113ca9dfull;
 
 } // namespace tabledemo
 
@@ -11023,18 +11094,18 @@ inline int64_t WideBlobMeasureBody( TableIds & ids, const WideBlob & value )
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.label_length >= 0 && value.label_length <= 70000 ); // storage invariant, debug only (§5.1)
     if ( !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
-    if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 41, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
+    if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 42, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
     schema_assert( value.payload_length >= 0 && value.payload_length <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.payload_length > 0 )
     {
         const int64_t body_payload = 1 + TableLebBytes( (uint64_t) value.payload_length ) + value.payload_length;
-        bytes += TableLebBytes( ids.ref_at( 130, 0xcfb8a9d063b5e9e5ull ) ) + 1 + TableLebBytes( (uint64_t) ( body_payload ) ) + ( body_payload ); // payload
+        bytes += TableLebBytes( ids.ref_at( 132, 0xcfb8a9d063b5e9e5ull ) ) + 1 + TableLebBytes( (uint64_t) ( body_payload ) ) + ( body_payload ); // payload
     }
     schema_assert( value.samples_count >= 0 && value.samples_count <= 70000 ); // storage invariant, debug only (§5.1)
     bool rides_samples = value.samples_count > 0;
     if ( rides_samples )
     {
-        const uint64_t ref_samples = ids.ref_at( 147, 0xe3b1ca6a3b48dddcull );
+        const uint64_t ref_samples = ids.ref_at( 150, 0xe3b1ca6a3b48dddcull );
         int64_t body_samples = 0;
         body_samples += 1 + TableLebBytes( (uint64_t) ( value.samples_count ) ); // the element kind byte and the count
         body_samples += (int64_t) ( value.samples_count ) * 2;
@@ -11057,7 +11128,7 @@ TABLEDEMO_TABLE_INLINE bool WideBlobSaveBody( TableWriter & w, TableIds & ids, c
     if ( !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) ) { return false; }
     if ( value.label_length > 0 )
     {
-        w.header( ids.ref_at( 41, 0x39f7fcec8fcb623dull ), 12 ); // label
+        w.header( ids.ref_at( 42, 0x39f7fcec8fcb623dull ), 12 ); // label
         w.putleb( (uint64_t) value.label_length );
         w.raw( value.label, value.label_length );
     }
@@ -11065,7 +11136,7 @@ TABLEDEMO_TABLE_INLINE bool WideBlobSaveBody( TableWriter & w, TableIds & ids, c
     if ( value.payload_length > 0 )
     {
         const int64_t body_payload = 1 + TableLebBytes( (uint64_t) value.payload_length ) + value.payload_length;
-        w.header( ids.ref_at( 130, 0xcfb8a9d063b5e9e5ull ), 14 ); // payload
+        w.header( ids.ref_at( 132, 0xcfb8a9d063b5e9e5ull ), 14 ); // payload
         w.putleb( (uint64_t) body_payload );
         w.put8( 6 );
         w.putleb( (uint64_t) value.payload_length );
@@ -11075,7 +11146,7 @@ TABLEDEMO_TABLE_INLINE bool WideBlobSaveBody( TableWriter & w, TableIds & ids, c
     bool rides_samples = value.samples_count > 0;
     if ( rides_samples )
     {
-        const uint64_t ref_samples = ids.ref_at( 147, 0xe3b1ca6a3b48dddcull );
+        const uint64_t ref_samples = ids.ref_at( 150, 0xe3b1ca6a3b48dddcull );
         int64_t body_samples = 0;
         body_samples += 1 + TableLebBytes( (uint64_t) ( value.samples_count ) ); // the element kind byte and the count
         body_samples += (int64_t) ( value.samples_count ) * 2;
@@ -11550,7 +11621,7 @@ inline bool WideBlobSaveMessageBody( TableBitWriter & w, const WideBlob & value 
     schema_assert( value.label_length >= 0 && value.label_length <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.label_length > 0 )
     {
-        w.put( 106, kTableMessageRefBitsHere );
+        w.put( 108, kTableMessageRefBitsHere );
         w.put( (uint64_t) value.label_length, 17 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.label, value.label_length );
@@ -11558,7 +11629,7 @@ inline bool WideBlobSaveMessageBody( TableBitWriter & w, const WideBlob & value 
     schema_assert( value.payload_length >= 0 && value.payload_length <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.payload_length > 0 )
     {
-        w.put( 107, kTableMessageRefBitsHere );
+        w.put( 109, kTableMessageRefBitsHere );
         w.put( (uint64_t) value.payload_length, 17 );
         w.align(); // a string or a bytes ALIGNS before its bytes
         w.putbytes( (const uint8_t *) value.payload, value.payload_length );
@@ -11567,7 +11638,7 @@ inline bool WideBlobSaveMessageBody( TableBitWriter & w, const WideBlob & value 
     bool rides_samples = value.samples_count > 0;
     if ( rides_samples )
     {
-        w.put( 108, kTableMessageRefBitsHere );
+        w.put( 110, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.samples_count ) - 0, 17 );
         for ( int32_t i = 0; i < value.samples_count; i++ )
         {
@@ -12005,18 +12076,18 @@ inline int64_t WideBlobMeasureBodyRetain( TableRetainIds & ids, const WideBlob &
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.label_length >= 0 && value.label_length <= 70000 ); // storage invariant, debug only (§5.1)
     if ( !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
-    if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 41, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
+    if ( value.label_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 42, 0x39f7fcec8fcb623dull ) ) + 1 + TableLebBytes( (uint64_t) ( value.label_length ) ) + ( value.label_length ); } // label
     schema_assert( value.payload_length >= 0 && value.payload_length <= 70000 ); // storage invariant, debug only (§5.1)
     if ( value.payload_length > 0 )
     {
         const int64_t body_payload = 1 + TableLebBytes( (uint64_t) value.payload_length ) + value.payload_length;
-        bytes += TableLebBytes( ids.ref_at( 130, 0xcfb8a9d063b5e9e5ull ) ) + 1 + TableLebBytes( (uint64_t) ( body_payload ) ) + ( body_payload ); // payload
+        bytes += TableLebBytes( ids.ref_at( 132, 0xcfb8a9d063b5e9e5ull ) ) + 1 + TableLebBytes( (uint64_t) ( body_payload ) ) + ( body_payload ); // payload
     }
     schema_assert( value.samples_count >= 0 && value.samples_count <= 70000 ); // storage invariant, debug only (§5.1)
     bool rides_samples = value.samples_count > 0;
     if ( rides_samples )
     {
-        const uint64_t ref_samples = ids.ref_at( 147, 0xe3b1ca6a3b48dddcull );
+        const uint64_t ref_samples = ids.ref_at( 150, 0xe3b1ca6a3b48dddcull );
         int64_t body_samples = 0;
         body_samples += 1 + TableLebBytes( (uint64_t) ( value.samples_count ) ); // the element kind byte and the count
         body_samples += (int64_t) ( value.samples_count ) * 2;
@@ -12032,7 +12103,7 @@ TABLEDEMO_TABLE_INLINE bool WideBlobSaveBodyRetain( TableWriter & w, TableRetain
     if ( !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) ) { return false; }
     if ( value.label_length > 0 )
     {
-        w.header( ids.ref_at( 41, 0x39f7fcec8fcb623dull ), 12 ); // label
+        w.header( ids.ref_at( 42, 0x39f7fcec8fcb623dull ), 12 ); // label
         w.putleb( (uint64_t) value.label_length );
         w.raw( value.label, value.label_length );
     }
@@ -12040,7 +12111,7 @@ TABLEDEMO_TABLE_INLINE bool WideBlobSaveBodyRetain( TableWriter & w, TableRetain
     if ( value.payload_length > 0 )
     {
         const int64_t body_payload = 1 + TableLebBytes( (uint64_t) value.payload_length ) + value.payload_length;
-        w.header( ids.ref_at( 130, 0xcfb8a9d063b5e9e5ull ), 14 ); // payload
+        w.header( ids.ref_at( 132, 0xcfb8a9d063b5e9e5ull ), 14 ); // payload
         w.putleb( (uint64_t) body_payload );
         w.put8( 6 );
         w.putleb( (uint64_t) value.payload_length );
@@ -12050,7 +12121,7 @@ TABLEDEMO_TABLE_INLINE bool WideBlobSaveBodyRetain( TableWriter & w, TableRetain
     bool rides_samples = value.samples_count > 0;
     if ( rides_samples )
     {
-        const uint64_t ref_samples = ids.ref_at( 147, 0xe3b1ca6a3b48dddcull );
+        const uint64_t ref_samples = ids.ref_at( 150, 0xe3b1ca6a3b48dddcull );
         int64_t body_samples = 0;
         body_samples += 1 + TableLebBytes( (uint64_t) ( value.samples_count ) ); // the element kind byte and the count
         body_samples += (int64_t) ( value.samples_count ) * 2;
