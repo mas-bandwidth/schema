@@ -73,8 +73,34 @@ conformance-rows-java: toolchain-java bin/schema
 # rows so their toolchain compiles do not extend the conformance jobs.
 .PHONY: appendix-java-announcement-budgets appendix-go-fixed appendix-python-fixed
 appendix-java-announcement-budgets:
-	sh test/slowgate/proof $@ 'TestAnnouncementBudgetsJava' \
-		-count=1 ./internal/codegen/javatable -run '^TestAnnouncementBudgetsJava$$'
+	sh test/slowgate/proof $@ 'TestAnnouncementBudgetsJava TestAnnouncementEntryBudgetJava' \
+		-count=1 ./internal/codegen/javatable -run '^Test(AnnouncementBudgetsJava|AnnouncementEntryBudgetJava)$$'
+
+.PHONY: announcement-entry-budget-cs announcement-entry-budget-unity \
+	announcement-entry-budget-lua announcement-entry-budget-luau announcement-entry-budget-moo announcement-entry-budget-squirrel
+announcement-entry-budget-cs: toolchain-cs
+	sh test/slowgate/proof $@ 'TestAnnouncementEntryBudgetCSharp' \
+		-count=1 ./internal/codegen/cstable -run '^TestAnnouncementEntryBudgetCSharp$$'
+
+announcement-entry-budget-unity: toolchain-unity
+	sh test/slowgate/proof $@ 'TestAnnouncementEntryBudgetUnity' \
+		-count=1 ./internal/codegen/unitytable -run '^TestAnnouncementEntryBudgetUnity$$'
+
+announcement-entry-budget-lua: verify-toolchain-lua
+	sh test/slowgate/proof $@ 'TestAnnouncementEntryBudget' \
+		-count=1 ./internal/codegen/luatable -run '^TestAnnouncementEntryBudget$$'
+
+announcement-entry-budget-luau: verify-toolchain-luau
+	sh test/slowgate/proof $@ 'TestAnnouncementEntryBudget' \
+		-count=1 ./internal/codegen/luautable -run '^TestAnnouncementEntryBudget$$'
+
+announcement-entry-budget-moo: verify-toolchain-moo
+	sh test/slowgate/proof $@ 'TestAnnouncementEntryBudget' \
+		-count=1 ./internal/codegen/mootable -run '^TestAnnouncementEntryBudget$$'
+
+announcement-entry-budget-squirrel: verify-toolchain-squirrel
+	sh test/slowgate/proof $@ 'TestAnnouncementEntryBudget' \
+		-count=1 ./internal/codegen/squirreltable -run '^TestAnnouncementEntryBudget$$'
 
 appendix-go-fixed:
 	sh test/slowgate/proof $@ 'TestGoFixedLoadCapacityWitness TestDeclaredDeprecatedEnumCook' \
