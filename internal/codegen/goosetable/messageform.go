@@ -269,6 +269,14 @@ func (e *msgEmit) putScalar(ind int, f *ir.Field, kind uint8, shape ir.TableMess
 	for _, b := range scalarBounds(f) {
 		e.p(ind, "if %s { return schema_rt::msg_refuse(w, schema_rt::MsgRefuseInvalidValue); }", b.over(expr))
 	}
+	// A flags mask rides at its declared width W (§3.3), narrower than its
+	// u64 storage: a held bit at or above W is outside the message domain and
+	// is refused, never masked off by msg_put (docs/SPEC-TABLES.md §3.3,
+	// docs/rulings.json message-flags-width-is-caller-error). The fixed form
+	// keeps such a bit (§4.1); only this form refuses it.
+	if fl, ok := f.Type.Ref.(*ir.Flags); f.Type.Kind == ir.TNamed && ok && fl.WireBits < 64 {
+		e.p(ind, "if (%s >> %d) != 0 { return schema_rt::msg_refuse(w, schema_rt::MsgRefuseInvalidValue); }", expr, fl.WireBits)
+	}
 	bits := ir.TableMessageValueBits(kind, shape)
 	if e.fx.kindOf(f) == kInt128 {
 		// a 128-bit value is its two lanes, low first, as the wire's

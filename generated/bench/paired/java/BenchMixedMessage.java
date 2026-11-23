@@ -365,6 +365,15 @@ public final class BenchMixedMessage {
         assert v.playerNameLength < 0
                 || v.playerNameLength > 15
                 || TableMessage.utf8Valid(v.playerName, 0, v.playerNameLength);
+        assert !java.lang.Float.isFinite(v.aimX)
+                || (v.aimX >= java.lang.Float.intBitsToFloat(0xbf800000)
+                        && v.aimX <= java.lang.Float.intBitsToFloat(0x3f800000));
+        assert !java.lang.Float.isFinite(v.aimY)
+                || (v.aimY >= java.lang.Float.intBitsToFloat(0xbf800000)
+                        && v.aimY <= java.lang.Float.intBitsToFloat(0x3f800000));
+        assert !java.lang.Float.isFinite(v.aimZ)
+                || (v.aimZ >= java.lang.Float.intBitsToFloat(0xbf800000)
+                        && v.aimZ <= java.lang.Float.intBitsToFloat(0x3f800000));
         assert TableMessage.compareSigned128(v.flux.lo, v.flux.hi, 0L, 0xfffffff000000000L) >= 0;
         assert TableMessage.compareSigned128(v.flux.lo, v.flux.hi, 0L, 0x1000000000L) <= 0;
         assert java.lang.Long.compareUnsigned((v.ping) & 0xffffL, 0L) >= 0;
