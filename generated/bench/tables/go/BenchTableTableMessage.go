@@ -416,9 +416,14 @@ func tableMessageNameSlot(id uint64) uint64 {
 	}
 	return 0
 }
-func AnnounceMeasure() int64 { return int64(len(tableAnnouncement)) }
+func AnnounceMeasure() int64 {
+	if TableMessageEntriesHere > 4096 {
+		return -1
+	}
+	return int64(len(tableAnnouncement))
+}
 func Announce(buffer []byte) int64 {
-	if len(buffer) < len(tableAnnouncement) {
+	if TableMessageEntriesHere > 4096 || len(buffer) < len(tableAnnouncement) {
 		return -1
 	}
 	copy(buffer, tableAnnouncement[:])

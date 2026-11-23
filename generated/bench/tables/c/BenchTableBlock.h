@@ -451,7 +451,14 @@ static SCHEMA_UNUSED int benchtable_table_entity_block_begin( benchtable_table_e
 static SCHEMA_UNUSED int64_t benchtable_table_entity_block_bytes( const benchtable_table_entity_block_t * block )
 {
     int64_t used = 88;
-    (void) block; /* no out-of-line array: the extent is the projection's own */
+    if ( block == NULL || block->projection == NULL ) { return -1; }
+    if ( (int64_t) block->projection->pos_x < -16383ll || (int64_t) block->projection->pos_x > 16383ll ) { return -1; }
+    if ( (int64_t) block->projection->pos_y < -16383ll || (int64_t) block->projection->pos_y > 16383ll ) { return -1; }
+    if ( (int64_t) block->projection->pos_z < -16383ll || (int64_t) block->projection->pos_z > 16383ll ) { return -1; }
+    if ( (int64_t) block->projection->vel_x < -2048ll || (int64_t) block->projection->vel_x > 2047ll ) { return -1; }
+    if ( (int64_t) block->projection->vel_y < -2048ll || (int64_t) block->projection->vel_y > 2047ll ) { return -1; }
+    if ( (int64_t) block->projection->vel_z < -2048ll || (int64_t) block->projection->vel_z > 2047ll ) { return -1; }
+    if ( (int64_t) block->projection->health < 0ll || (int64_t) block->projection->health > 1000ll ) { return -1; }
     return benchtable_table_block_align( used, 64 );
 }
 
@@ -635,7 +642,8 @@ static SCHEMA_UNUSED int benchtable_table_stat_block_begin( benchtable_table_sta
 static SCHEMA_UNUSED int64_t benchtable_table_stat_block_bytes( const benchtable_table_stat_block_t * block )
 {
     int64_t used = 32;
-    (void) block; /* no out-of-line array: the extent is the projection's own */
+    if ( block == NULL || block->projection == NULL ) { return -1; }
+    if ( (int64_t) block->projection->delta < -512ll || (int64_t) block->projection->delta > 511ll ) { return -1; }
     return benchtable_table_block_align( used, 64 );
 }
 

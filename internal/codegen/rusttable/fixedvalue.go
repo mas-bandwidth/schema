@@ -284,9 +284,15 @@ func emitFixedValueStore(b *strings.Builder, f *ir.Field, dst, src, ind string) 
 		return
 	}
 	if f.KeyEnum != "" || f.Array != ir.ArrayNone {
-		fmt.Fprintf(b, "%sdebug_assert!(%s.len() <= %d);\n", ind, src, f.ArrayBound)
 		if f.Array == ir.ArrayCounted && f.KeyEnum == "" {
+			if f.ArrayMin > 0 {
+				fmt.Fprintf(b, "%sdebug_assert!(%s.len() >= %d && %s.len() <= %d);\n", ind, src, f.ArrayMin, src, f.ArrayBound)
+			} else {
+				fmt.Fprintf(b, "%sdebug_assert!(%s.len() <= %d);\n", ind, src, f.ArrayBound)
+			}
 			fmt.Fprintf(b, "%s%s_count = %s.len() as i32;\n", ind, dst, src)
+		} else {
+			fmt.Fprintf(b, "%sdebug_assert!(%s.len() == %d);\n", ind, src, f.ArrayBound)
 		}
 		e := *f
 		e.Array, e.KeyEnum = ir.ArrayNone, ""

@@ -34,8 +34,57 @@ import (
 // writes into the projection, with no call that checks them. There is no Go
 // call that builds a root's block FROM A VALUE, so there is no runtime answer
 // to report for a used length or a fixed array's count past its maximum.
-const blockBuilderAbsent = "write-refusal-block: the Go runtime has no block build from a value " +
-	"(<Root>BlockBegin takes <Root>Counts only; rows are raw projection writes)"
+func writeRefusalBlock(root string, value any) (bool, error) {
+	switch root {
+	case "StorePurchase":
+		v, ok := value.(*backenddemo.StorePurchase)
+		if !ok {
+			return false, fmt.Errorf("unexpected StorePurchase type %T", value)
+		}
+		var storage backenddemo.StorePurchaseBlockStorage
+		if !storage.Create(backenddemo.TableBlockDefaultAllocator()) {
+			return false, fmt.Errorf("StorePurchase block storage create failed")
+		}
+		defer storage.Destroy()
+		var block backenddemo.StorePurchaseBlock
+		var refusal backenddemo.TableBlockRefusal
+		if !backenddemo.StorePurchaseBlockBegin(&block, &storage, backenddemo.StorePurchaseCounts{}, &refusal) {
+			return false, nil
+		}
+		block.Projection.PlayerID = v.PlayerID
+		copy(block.Projection.Sku[:], v.Sku[:])
+		block.Projection.SkuLength = v.SkuLength
+		block.Projection.Quantity = v.Quantity
+		block.Projection.PriceMinor = v.PriceMinor
+		block.Projection.Currency = v.Currency
+		return backenddemo.StorePurchaseBlockBytes(&block) >= 0, nil
+	case "MatchResult":
+		v, ok := value.(*backenddemo.MatchResult)
+		if !ok {
+			return false, fmt.Errorf("unexpected MatchResult type %T", value)
+		}
+		var storage backenddemo.MatchResultBlockStorage
+		if !storage.Create(backenddemo.TableBlockDefaultAllocator()) {
+			return false, fmt.Errorf("MatchResult block storage create failed")
+		}
+		defer storage.Destroy()
+		var block backenddemo.MatchResultBlock
+		var refusal backenddemo.TableBlockRefusal
+		if !backenddemo.MatchResultBlockBegin(&block, &storage, backenddemo.MatchResultCounts{}, &refusal) {
+			return false, nil
+		}
+		block.Projection.MatchID = v.MatchID
+		for i := range v.Players {
+			block.Projection.Players[i] = backenddemo.PlayerRowRow{
+				PlayerID:  v.Players[i].PlayerID,
+				Score:     v.Players[i].Score,
+				Placement: v.Players[i].Placement,
+			}
+		}
+		return backenddemo.MatchResultBlockBytes(&block) >= 0, nil
+	}
+	return false, fmt.Errorf("write-refusal-block: unsupported root %q", root)
+}
 
 // ---------------------------------------------------------------------------
 // announce

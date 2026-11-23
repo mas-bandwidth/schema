@@ -119,6 +119,14 @@ func surfaceWriteRefusal(surface string, lines []line, out string) error {
 			if n := c.cookMeasure(value); n < 1 || !c.cook(value, make([]byte, n), false) {
 				answer = "refused"
 			}
+		case "write-refusal-block":
+			ok, err := writeRefusalBlock(root, value)
+			if err != nil {
+				return fmt.Errorf("%s: %w", name, err)
+			}
+			if !ok {
+				answer = "refused"
+			}
 		case "write-refusal-json":
 			if n := c.toJsonMeasure(value); n < 0 {
 				answer = "refused"

@@ -508,6 +508,41 @@ func tableMapStoreKey(p unsafe.Pointer, f *TableFieldInfo, k tableMapKey) {
 		tableJSONSetRaw(unsafe.Add(p, f.Offset), f.ElemSize, k.raw)
 	}
 }
+func tableMapKeyOrder(a, b tableMapKey, f *TableFieldInfo) int {
+	if f.Kind == 12 {
+		for i := 0; i < len(a.text) && i < len(b.text); i++ {
+			if a.text[i] < b.text[i] {
+				return -1
+			}
+			if a.text[i] > b.text[i] {
+				return 1
+			}
+		}
+		if len(a.text) < len(b.text) {
+			return -1
+		}
+		if len(a.text) > len(b.text) {
+			return 1
+		}
+		return 0
+	}
+	if f.Kind >= 2 && f.Kind <= 5 {
+		if int64(a.raw) < int64(b.raw) {
+			return -1
+		}
+		if int64(a.raw) > int64(b.raw) {
+			return 1
+		}
+		return 0
+	}
+	if a.raw < b.raw {
+		return -1
+	}
+	if a.raw > b.raw {
+		return 1
+	}
+	return 0
+}
 
 // A guarded group rides only when its guard reads true — the wire's own elision
 // (§4), carried into the text so a text and a wire written from one instance

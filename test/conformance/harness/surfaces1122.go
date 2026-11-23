@@ -230,7 +230,7 @@ func commaLocale(work string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("json-write-into: listing the host's locales: %w", err)
 	}
-	for _, l := range strings.Fields(string(out)) {
+	for l := range strings.FieldsSeq(string(out)) {
 		if l == "de_DE.utf8" || l == name {
 			return []string{CommaLocaleEnv + "=" + name}, nil
 		}
@@ -244,7 +244,7 @@ func commaLocale(work string) ([]string, error) {
 		// localedef exits 1 for warnings and still writes the locale; the
 		// locale existing afterwards is the test
 		if _, serr := os.Stat(filepath.Join(dir, name, "LC_NUMERIC")); serr != nil {
-			return nil, fmt.Errorf("json-write-into: the host has no %s and localedef could not build one: %v\n%s", name, err, msg)
+			return nil, fmt.Errorf("json-write-into: the host has no %s and localedef could not build one: %w\n%s", name, err, msg)
 		}
 	}
 	return []string{CommaLocaleEnv + "=" + name, "LOCPATH=" + dir}, nil
@@ -303,7 +303,7 @@ func generate1122(u *units, m *Manifest) error {
 				}
 				var rep tabletext.Report
 				if ok, err := strictDecode(model, value, wire, &rep); !ok {
-					return fmt.Errorf("announce %s: the engine refuses the row's wire: %v", a.Name, err)
+					return fmt.Errorf("announce %s: the engine refuses the row's wire: %w", a.Name, err)
 				}
 			}
 			saved, err := tablewire.EncodeMessages(model, []*tabletext.Instance{value})
