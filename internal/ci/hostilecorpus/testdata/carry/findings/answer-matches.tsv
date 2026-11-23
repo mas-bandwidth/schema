@@ -1,0 +1,2 @@
+# control: the finding records the answer the port gives (its true digest), so it is carried and the run passes
+wire-valid	carry-control	inputs/wire-valid.bin	accept c319fe4163a51643f37f62a2cc18dd6c3bfea204a6e2f3313de8cc9dc0a37a30	carry control: the answer this port gives

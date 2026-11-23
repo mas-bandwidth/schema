@@ -193,7 +193,6 @@ func init() {
 		Name{Name: "tableArenaSegments", What: "the canonical region and graph text runtime"},
 		Name{Name: "tableArenaSlabBytes", What: "the canonical region and graph text runtime"},
 		Name{Name: "tableBytesTypeID", What: "the canonical region and graph text runtime"},
-		Name{Name: "tableJSONDropLabel", What: "the canonical region and graph text runtime"},
 		Name{Name: "tableJSONGraph", What: "the canonical region and graph text runtime"},
 		Name{Name: "tableJSONGraphNode", What: "the canonical region and graph text runtime"},
 		Name{Name: "tableJSONLabel", What: "the canonical region and graph text runtime"},

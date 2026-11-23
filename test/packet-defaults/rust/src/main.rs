@@ -1,8 +1,15 @@
 // Independent values and C++ byte/bit pins, including reused-storage tails.
 use packetdefaults as d;
 use packetplain as p;
+// Both constant-default schemas declare package arithmetic: one crate each.
+use packetconstant_hexadecimal_addition as hexadecimal_addition;
+use packetconstant_unsigned_subtraction as unsigned_subtraction;
 use serialize::{ReadStream, Stream, WriteStream};
 use std::fmt::Debug;
+use std::sync::Mutex;
+
+// Every pin golden reads is recorded; main fails on a .bin never read.
+static PINS_READ: Mutex<Vec<String>> = Mutex::new(Vec::new());
 
 fn sample() -> d::Sample {
     d::Sample {
@@ -49,30 +56,35 @@ fn write<T, E: Debug>(
     stream.flush();
     (stream.data().to_vec(), bits)
 }
-fn read<T: PartialEq + Debug>(
+fn read<T: PartialEq + Debug, E: Debug>(
     bytes: &[u8],
     bits: u64,
     mut initial: T,
     want: T,
-    decode: impl Fn(&mut ReadStream, &mut T) -> d::Result,
+    decode: impl Fn(&mut ReadStream, &mut T) -> Result<(), E>,
 ) {
     // The runtime reads words; physical padding is distinct from logical size.
     let mut buffer = vec![0u8; (bytes.len() + 3) & !3];
     buffer[..bytes.len()].copy_from_slice(bytes);
     let mut stream = ReadStream::new(&buffer, bytes.len());
     decode(&mut stream, &mut initial).expect("read");
-    assert_eq!(stream.bits_processed(), (bits + 7) & !7, "read consumed bits");
+    assert_eq!(
+        stream.bits_processed(),
+        (bits + 7) & !7,
+        "read consumed bits"
+    );
     assert_eq!(initial, want, "read values and backing storage");
 }
-fn golden<T: PartialEq + Debug>(
+fn golden<T: PartialEq + Debug, E: Debug>(
     dir: &str,
     name: &str,
     value: &T,
     initial: T,
     want: T,
-    encode: impl Fn(&mut WriteStream, &T) -> d::Result,
-    decode: impl Fn(&mut ReadStream, &mut T) -> d::Result,
+    encode: impl Fn(&mut WriteStream, &T) -> Result<(), E>,
+    decode: impl Fn(&mut ReadStream, &mut T) -> Result<(), E>,
 ) {
+    PINS_READ.lock().unwrap().push(name.to_string());
     let bytes = std::fs::read(format!("{dir}/{name}.bin")).unwrap();
     let bits: u64 = std::fs::read_to_string(format!("{dir}/{name}.bits"))
         .unwrap()
@@ -347,5 +359,39 @@ fn main() {
             d::read_choice,
         );
     }
-    println!("packet defaults Rust: constructors, eight C++ goldens and reused storage OK");
+    // The constant-default pins: a fresh Value (defaults from constants) writes
+    // the pinned bytes and bits; the pin reads back over zeroed storage.
+    golden(
+        &dir,
+        "hexadecimal-addition",
+        &hexadecimal_addition::Value::new(),
+        hexadecimal_addition::Value::default(),
+        hexadecimal_addition::Value::new(),
+        hexadecimal_addition::write_value,
+        hexadecimal_addition::read_value,
+    );
+    golden(
+        &dir,
+        "unsigned-subtraction",
+        &unsigned_subtraction::Value::new(),
+        unsigned_subtraction::Value::default(),
+        unsigned_subtraction::Value::new(),
+        unsigned_subtraction::write_value,
+        unsigned_subtraction::read_value,
+    );
+    let read = PINS_READ.lock().unwrap();
+    let mut pins = 0;
+    for entry in std::fs::read_dir(&dir).unwrap() {
+        let file = entry.unwrap().file_name().into_string().unwrap();
+        if let Some(pin) = file.strip_suffix(".bin") {
+            pins += 1;
+            assert!(read.iter().any(|r| r == pin), "pin {pin} was never read");
+        }
+    }
+    assert!(
+        pins == 10 && read.len() == pins,
+        "ten pins read, read {} of {pins}",
+        read.len()
+    );
+    println!("packet defaults Rust: constructors, ten C++ goldens and reused storage OK");
 }

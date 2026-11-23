@@ -29,6 +29,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime/debug"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -1171,5 +1172,38 @@ func readWireVectors(path string) ([]wireVector, error) {
 		}
 		out = append(out, wireVector{name: f[0], unit: f[1], root: f[2], file: f[3], message: message})
 	}
+	if err := checkWireVectorIndex(path, out); err != nil {
+		return nil, err
+	}
 	return out, nil
+}
+
+// checkWireVectorIndex holds the index and the vector directory beside it to
+// one another, both ways, and is loud about either gap: a *.bin on disk that
+// no entry names is a vector nothing runs, and an entry whose file is missing
+// is a vector that cannot run.
+func checkWireVectorIndex(path string, vecs []wireVector) error {
+	listed := map[string]bool{}
+	for _, v := range vecs {
+		if _, err := os.Stat(v.file); err != nil {
+			return fmt.Errorf("%s: vector %s names %s, which cannot be read: %w", path, v.name, v.file, err)
+		}
+		listed[filepath.Clean(v.file)] = true
+	}
+	dir := filepath.Dir(path)
+	files, err := filepath.Glob(filepath.Join(dir, "*.bin"))
+	if err != nil {
+		return err
+	}
+	var unlisted []string
+	for _, f := range files {
+		if !listed[filepath.Clean(f)] {
+			unlisted = append(unlisted, filepath.Base(f))
+		}
+	}
+	if len(unlisted) > 0 {
+		sort.Strings(unlisted)
+		return fmt.Errorf("%s: %d vector file(s) on disk are not in the index, so nothing runs them: %s", path, len(unlisted), strings.Join(unlisted, ", "))
+	}
+	return nil
 }

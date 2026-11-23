@@ -966,7 +966,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
         return false;
     }
     // "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3): refused
-    // by name, the peer's build version kept, no vocabulary set, never damage.
+    // by name, the writer's build version kept, no vocabulary set, never damage.
     // The unit's own build version is spelled here as the literal BuildVersion
     // holds, because the cook runtime that declares BuildVersion follows this one.
     if ( vocabulary.strict && version != @BUILD_VERSION@ )

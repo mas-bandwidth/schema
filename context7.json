@@ -4,6 +4,7 @@
   "excludeFiles": [
     "BASE-REDS.md",
     "CARDS.md",
+    "CI-TIERS.md",
     "CLI.md",
     "COMPARISON-TABLES.md",
     "COMPARISON.md",
@@ -31,6 +32,8 @@
     "PORT-SQUIRREL.md",
     "PORTING.md",
     "SECURITY.md",
+    "SPEC-CONFORMANCE.md",
+    "SPEC-INDEX.md",
     "SPEC-TABLES.md",
     "UNITY.md",
     "VERSIONING.md"
