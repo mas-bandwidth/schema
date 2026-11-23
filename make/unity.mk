@@ -232,17 +232,27 @@ test-unity: unity-vt
 # (test/conformance/unity/unit/schemaunit.csproj: C# 9, netstandard2.1,
 # AllowUnsafeBlocks=false, Debug so §5.1 write assertions trap), hosted by
 # build/conformance-unity/driver/unityconformance.dll.
-build/conformance-unity/.stamp: bin/schema testdata/conformance/tables/MANIFEST.txt tables/cards/Card.schema make/unity.mk $(CONFORMANCE_UNIT_SCHEMAS) test/conformance/unity/unityconformance.csproj test/conformance/unity/unit/schemaunit.csproj test/conformance/unity/src/Driver.cs test/conformance/unity/src/Surfaces.cs test/unity/HostDialect.props test/unity/UnityDialect.props .github/dotnet-version
+build/conformance-unity/.stamp: bin/schema testdata/conformance/tables/MANIFEST.txt testdata/conformance/table-write-bounds/TableWriteBounds.schema tables/cards/Card.schema make/unity.mk $(CONFORMANCE_UNIT_SCHEMAS) test/conformance/unity/unityconformance.csproj test/conformance/unity/unit/schemaunit.csproj test/conformance/unity/src/Driver.cs test/conformance/unity/src/Surfaces.cs test/unity/HostDialect.props test/unity/UnityDialect.props .github/dotnet-version
 	@rm -rf build/conformance-unity && mkdir -p build/conformance-unity
 	$(DOTNET) build test/conformance/unity/unityconformance.csproj -c Release \
 		-p:ArtifactsPath="$(CURDIR)/build/conformance-unity/_art_driver" \
 		-o build/conformance-unity/driver --nologo -v quiet
 	$(DOTNET) restore test/conformance/unity/unit/schemaunit.csproj \
 		-p:ArtifactsPath="$(CURDIR)/build/conformance-unity/_art_restore" --nologo -v quiet
-	@python3 -c 'import concurrent.futures,os,subprocess,sys; dotnet,cur=sys.argv[1],sys.argv[2]; units=[(p[1],p[2:]) for l in open("testdata/conformance/tables/MANIFEST.txt") for p in [l.split()] if p and p[0]=="unit"]+[("cards",["tables/cards"])]; run=lambda u:(os.makedirs(f"build/conformance-unity/_gen/{u[0]}",exist_ok=True),subprocess.run(["./bin/schema","generate","--lang","unity","--out",f"build/conformance-unity/_gen/{u[0]}",*u[1]],check=True),subprocess.run([dotnet,"build","test/conformance/unity/unit/schemaunit.csproj","-c","Debug",f"-p:UnityUnitDir={cur}/build/conformance-unity/_gen/{u[0]}",f"-p:ArtifactsPath={cur}/build/conformance-unity/_art/{u[0]}","-o",f"build/conformance-unity/{u[0]}","--nologo","-v","quiet"],check=True,stdout=subprocess.DEVNULL)); list(concurrent.futures.ThreadPoolExecutor(max_workers=8).map(run,units))' "$(DOTNET)" "$(CURDIR)"
+	@python3 -c 'import concurrent.futures,os,subprocess,sys; dotnet,cur=sys.argv[1],sys.argv[2]; units=[(p[1],p[2:]) for l in open("testdata/conformance/tables/MANIFEST.txt") for p in [l.split()] if p and p[0]=="unit"]+[("cards",["tables/cards"]),("writebounds",["testdata/conformance/table-write-bounds/TableWriteBounds.schema"])]; run=lambda u:(os.makedirs(f"build/conformance-unity/_gen/{u[0]}",exist_ok=True),subprocess.run(["./bin/schema","generate","--lang","unity","--out",f"build/conformance-unity/_gen/{u[0]}",*u[1]],check=True),subprocess.run([dotnet,"build","test/conformance/unity/unit/schemaunit.csproj","-c","Debug",f"-p:UnityUnitDir={cur}/build/conformance-unity/_gen/{u[0]}",f"-p:ArtifactsPath={cur}/build/conformance-unity/_art/{u[0]}","-o",f"build/conformance-unity/{u[0]}","--nologo","-v","quiet"],check=True,stdout=subprocess.DEVNULL)); list(concurrent.futures.ThreadPoolExecutor(max_workers=8).map(run,units))' "$(DOTNET)" "$(CURDIR)"
 	@touch $@
 
 CONFORMANCE_LEGS   += $(call unless_skipped,unity,build/conformance-unity/.stamp)
+
+.PHONY: table-write-bounds-unity
+table-write-bounds-unity: build/conformance-harness build/conformance-unity/.stamp
+	./build/conformance-harness run --only unity --surfaces write-refusal --complete \
+		--manifest testdata/conformance/table-write-bounds/WRITE-BOUNDS.txt \
+		--json testdata/conformance/table-write-bounds \
+		--work build/conformance-write-bounds-unity
+
+test-unity: table-write-bounds-unity
+
 
 # THE WRITE CONTRACT's controls (docs/SPEC.md §5.1), on the C# leg's pattern
 # (make/cs.mk): write checks are Debug.Assert, so the Debug unit is rebuilt
