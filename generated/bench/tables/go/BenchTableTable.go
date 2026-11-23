@@ -3321,7 +3321,11 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			tableFixedPush(c, e)
 			return
 		}
-		c.unlawful = 3 - 2*int8(min(1, te.Kind^35)) // 3 when the writer carried ?T
+		if te.Kind == 35 {
+			c.unlawful = 3 // the writer carried ?T
+		} else {
+			c.unlawful = 1
+		}
 		return
 	}
 	// T INTO ?T (§5.2 EMIT, bill §12.8): the reader wrapped a value the writer
