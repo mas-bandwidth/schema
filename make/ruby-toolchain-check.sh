@@ -16,7 +16,7 @@
 #
 # Every interpreter runs isolated (--disable-gems): no gem environment, no
 # RUBYOPT, no user gem directory.
-set -u
+set -eu -o pipefail
 root=${1:-.}
 lock=${RUBY_GEMS_LOCK:-$root/make/ruby-gems.lock}
 fail=0
@@ -45,7 +45,9 @@ analyzer_version() {
 }
 
 lock_version() {
-	sed -n "s/^$1==\([^ ]*\) .*/\1/p" "$lock" 2>/dev/null | sed -n '1p'
+	# a missing lock is refused by name below; it has no version to read
+	[ -f "$lock" ] || return 0
+	sed -n "s/^$1==\([^ ]*\) .*/\1/p" "$lock" | sed -n '1p'
 }
 
 if [ ! -f "$lock" ]; then
@@ -60,7 +62,7 @@ fi
 
 check_interpreter() {
 	pin=$1 path=$2 want=$3
-	got=$(interpreter_version "$path")
+	if ! got=$(interpreter_version "$path"); then got=; fi
 	if [ "$got" != "$want" ]; then
 		refuse "the ruby leg's pinned $pin is Ruby ${got:-<no answer>}, the pin is $want"
 		echo "  $pin = $path"
@@ -70,7 +72,7 @@ check_interpreter() {
 
 check_analyzer() {
 	pin=$1 path=$2 name=$3 want=$4
-	got=$(analyzer_version "$name" "$path")
+	if ! got=$(analyzer_version "$name" "$path"); then got=; fi
 	if [ "$got" != "$want" ]; then
 		refuse "the ruby leg's pinned $pin reports \"${got:-<no answer>}\", the lock is $name $want"
 		echo "  $pin = $path"
@@ -93,7 +95,7 @@ for interp in RUBY RUBY_FLOOR; do
 	bindir=$(dirname "$ipath")
 	for a in rubocop steep rbs; do
 		want=$(lock_version "$a")
-		got=$(analyzer_version "$a" "$bindir/$a")
+		if ! got=$(analyzer_version "$a" "$bindir/$a"); then got=; fi
 		if [ "$got" != "$want" ]; then
 			refuse "the ruby leg's $a beside $interp reports \"${got:-<no answer>}\", the lock is $a $want"
 			echo "  $interp = $ipath"
@@ -106,25 +108,26 @@ done
 # line that names the pinned path (dist/ruby-4.0.9/bin/ruby) is no PATH
 # lookup; the patterns below match a command word, not a path component.
 files=$(cd "$root" && {
-	find make -maxdepth 1 -type f \( -name 'ruby*.mk' -o -name 'ruby*.sh' \) 2>/dev/null
+	find make -maxdepth 1 -type f \( -name 'ruby*.mk' -o -name 'ruby*.sh' \)
 	for d in internal/codegen/ruby internal/codegen/rubytable test/conformance/ruby; do
-		[ -d "$d" ] && find "$d" -type f 2>/dev/null
+		if [ -d "$d" ]; then find "$d" -type f; fi
 	done
-	find compiler -maxdepth 1 -type f -name '*ruby*' 2>/dev/null
-	[ -f .github/workflows/ruby-leg.yml ] && echo .github/workflows/ruby-leg.yml
-	[ -d .github/actions/ruby ] && find .github/actions/ruby -type f 2>/dev/null
+	if [ -d compiler ]; then find compiler -maxdepth 1 -type f -name '*ruby*'; fi
+	if [ -f .github/workflows/ruby-leg.yml ]; then echo .github/workflows/ruby-leg.yml; fi
+	if [ -d .github/actions/ruby ]; then find .github/actions/ruby -type f; fi
 } | sort)
 if [ -z "$files" ]; then
 	refuse "found none of the leg's files under $root; the gate would have checked nothing"
 fi
 for f in $files; do
 	[ "$f" = make/ruby-toolchain-check.sh ] && continue
-	hits=$(cd "$root" && grep -nE \
+	# grep's 1 is "no line runs ruby from PATH"; its 2 is an error and stays red
+	hits=$(cd "$root" && { grep -nE \
 		-e '(^|[;&|(])ruby([[:space:]]|$)' \
 		-e '^[[:space:]]+ruby([[:space:]]|$)' \
 		-e '/usr/bin/env[[:space:]]+ruby' \
 		-e '(Command|LookPath)\("ruby' \
-		"$f" | grep -vE '^[0-9]+:[[:space:]]*(#|//)')
+		"$f" || [ $? -eq 1 ]; } | sed -E '/^[0-9]+:[[:space:]]*(#|\/\/)/d')
 	if [ -n "$hits" ]; then
 		refuse "$f runs an interpreter from PATH, not a pin:"
 		echo "$hits" | sed 's/^/  /'
