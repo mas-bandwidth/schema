@@ -202,9 +202,7 @@ func CheckCounted(root string) ([]Problem, Counts, error) {
 	next := make(chan int)
 	var wg sync.WaitGroup
 	for w := 0; w < runtime.GOMAXPROCS(0); w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for i := range next {
 				rel := files[i]
 				data, err := os.ReadFile(filepath.Join(root, rel))
@@ -225,7 +223,7 @@ func CheckCounted(root string) ([]Problem, Counts, error) {
 				results[i].problems = append(results[i].problems, found...)
 				results[i].cites = n
 			}
-		}()
+		})
 	}
 	for i := range files {
 		next <- i

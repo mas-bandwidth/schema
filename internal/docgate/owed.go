@@ -154,7 +154,7 @@ func ParseOwed(text string) ([]OwedEntry, error) {
 		for _, m := range owedPRRe.FindAllStringSubmatch(c[4], -1) {
 			n, err := strconv.Atoi(m[1])
 			if err != nil {
-				return nil, fmt.Errorf("%s:%d: PR %q: %v", OwedPage, i+1, m[0], err)
+				return nil, fmt.Errorf("%s:%d: PR %q: %w", OwedPage, i+1, m[0], err)
 			}
 			e.PRs = append(e.PRs, n)
 		}
@@ -278,7 +278,7 @@ func OpenTree(root, ref string) (*Tree, error) {
 		return nil, fmt.Errorf("listing the tree %q: %w", ref, err)
 	}
 	t := &Tree{Root: root, Ref: ref, paths: map[string]bool{}, dirs: map[string]bool{}}
-	for _, p := range strings.Split(strings.TrimSpace(out), "\n") {
+	for p := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
 		if p == "" {
 			continue
 		}
@@ -375,10 +375,10 @@ func (t *Tree) TestFuncs(names []string) (map[string]bool, error) {
 	args = append(args, "--", "*_test.go")
 	b, err := exec.Command("git", args...).Output()
 	var ee *exec.ExitError
-	if err != nil && !(errors.As(err, &ee) && ee.ExitCode() == 1) {
+	if err != nil && (!errors.As(err, &ee) || ee.ExitCode() != 1) {
 		return nil, fmt.Errorf("git grep for Test funcs: %w", err)
 	}
-	for _, m := range strings.Split(string(b), "\n") {
+	for m := range strings.SplitSeq(string(b), "\n") {
 		m = strings.TrimSuffix(strings.TrimPrefix(m, "func "), "(")
 		if m != "" {
 			out[m] = true
