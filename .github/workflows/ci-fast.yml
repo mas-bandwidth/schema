@@ -1660,6 +1660,7 @@ jobs:
             js)     vars=(NODE=node) ;;
             elixir) vars=("BEAM_PATH=$(dirname "$(command -v erl)"):$(dirname "$(command -v elixir)")") ;;
           esac
+          rm -rf build
           "$RUNNER_TEMP/inputaccount" -family "$FAMILY" -leg "$LEG" "${vars[@]}"
           "$RUNNER_TEMP/inputaccount" -family "$FAMILY" -leg "$LEG" -canary extra "${vars[@]}"
           "$RUNNER_TEMP/inputaccount" -family "$FAMILY" -leg "$LEG" -canary wrong "${vars[@]}"
