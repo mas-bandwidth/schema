@@ -47,7 +47,12 @@ def run(manifest, outdir):
             if refusal is not None:
                 write_bytes(outdir, case, b"refused\n")
                 continue
-            write_bytes(outdir, case, bytes(package.ANNOUNCEMENT))
+            try:
+                raw = package.announce()
+            except package.Refused:
+                write_bytes(outdir, case, b"refused\n")
+            else:
+                write_bytes(outdir, case, bytes(raw))
         elif mode in ("strict", "lenient"):
             package = unit_package(unit)
             vocab = package.MessageVocabulary(strict=(mode == "strict"))

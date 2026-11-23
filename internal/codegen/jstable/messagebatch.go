@@ -541,10 +541,10 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 	g.needHome("TableMessageBatchMax", "TableBitWriter",
 		"TableMessageResetReport", "TableMessageRefuse",
 		"tableMessageBatchOpen", "tableMessageBatchClose",
-		st.Name+"SaveMessageBody", st.Name+"LoadMessageBody")
+		st.Name+"SaveMessageBody", st.Name+"LoadMessageBody",
+		"Init"+st.Name)
 	if fixedStructNeedsValueCheck(st) {
-		g.needHome(st.Name + "FixedCheckBody")
-		g.needHome(st.Name + "FixedFromText")
+		g.needHome(st.Name, st.Name+"FixedCheckBody", st.Name+"FixedFromText")
 	}
 
 	g.emitMessageVerbs(st)

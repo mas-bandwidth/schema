@@ -9,7 +9,7 @@ from _mutate import UNREPRESENTABLE, apply, fresh_or_load
 def _convert_fixed(field, previous, rule, token, default):
     if rule in ("int", "ordinal"):
         return int(token)
-    if rule == "float":
+    if rule in ("float", "real"):
         return float(token)
     if rule == "count":
         count = int(token)
