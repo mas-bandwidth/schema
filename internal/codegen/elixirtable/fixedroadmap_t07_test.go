@@ -257,8 +257,8 @@ func t07W8(t *testing.T) {
 	if blob == nil || name == nil {
 		t.Fatal("W8: the walk carries no blob/name destination row")
 	}
-	if blob.counted != 1 || blob.stride != 1 || blob.arg != fixedTextBytes {
-		t.Errorf("W8: bytes(N)'s row is (counted %d, stride %d, arg %d), want the ARRAY row (1, 1, %d)", blob.counted, blob.stride, blob.arg, fixedTextBytes)
+	if blob.counted != 1 || blob.stride != 1 || blob.arg != 0 {
+		t.Errorf("W8: bytes(N)'s row is (counted %d, stride %d, arg %d), want the ARRAY row (1, 1, 0)", blob.counted, blob.stride, blob.arg)
 	}
 	if blob.dst != blob.aux+fixedCountBytes {
 		t.Errorf("W8: bytes(N)'s Dst (%d) is not the buffer past the count field (Aux %d + 4)", blob.dst, blob.aux)

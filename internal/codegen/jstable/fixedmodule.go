@@ -30,7 +30,7 @@ func generateFixedFiles(u *ir.Unit, wide []string, lineage map[string][]FixedLin
 			any = true
 		}
 	}
-	if !any {
+	if !any && len(jsMessageUnitRoots(u)) == 0 {
 		return out, nil
 	}
 	home := runtimeHome(u)
@@ -135,7 +135,14 @@ func (g *fixedModule) emit(closure []*ir.Struct, roots []*ir.Struct, tables []*i
 		// A TABLE gets its storage class here; a `type` already has one, from
 		// internal/codegen/js, and is imported rather than emitted twice.
 		inClosure := map[string]bool{}
+		closureSet := map[string]bool{}
 		for _, st := range closure {
+			closureSet[st.Name] = true
+			if st.IsTable {
+				inClosure[st.Name] = true
+			}
+		}
+		for _, st := range g.messageClosure {
 			if st.IsTable {
 				inClosure[st.Name] = true
 			}
@@ -165,12 +172,22 @@ func (g *fixedModule) emit(closure []*ir.Struct, roots []*ir.Struct, tables []*i
 				g.gen.emitTableClass(st)
 			}
 		}
+		for _, st := range g.messageClosure {
+			if !closureSet[st.Name] && st.IsTable {
+				g.gen.emitTableClass(st)
+			}
+		}
 		for _, st := range closure {
 			g.gen.emitWriteBody(st)
 			g.gen.emitCheckBody(st)
 			g.gen.emitDecodeBody(st)
 			g.gen.emitReadCheckBody(st)
 			g.gen.emitDeadCheckBody(st)
+		}
+		for _, st := range g.messageClosure {
+			if !closureSet[st.Name] {
+				g.gen.emitCheckBody(st)
+			}
 		}
 		g.gen.emitFromTextEnums(g.messageClosure)
 		for _, st := range g.messageClosure {
@@ -196,9 +213,16 @@ func (g *fixedModule) emit(closure []*ir.Struct, roots []*ir.Struct, tables []*i
 			g.pf("// Its form-1 surface is unaffected; nothing about form 1 moves (docs/SPEC-TABLES.md §3.4).\n\n")
 		}
 	}
+	rootSet := map[string]bool{}
 	for _, st := range roots {
+		rootSet[st.Name] = true
 		g.emitRoot(st)
 		if st.FixedDeclared {
+			g.emitMessageBatch(st)
+		}
+	}
+	for _, st := range tables {
+		if !rootSet[st.Name] && st.IsTable && !st.IsMapEntry() && st.FixedDeclared && ir.TableFixedSupported(st, 0) {
 			g.emitMessageBatch(st)
 		}
 	}

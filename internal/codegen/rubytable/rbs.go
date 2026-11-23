@@ -281,6 +281,8 @@ func emitRBS(u *ir.Unit, mod string, plans []*filePlan, surfaces Surfaces, hasMe
 
 	if hasMessage {
 		b.WriteString("\n  ANNOUNCEMENT: String\n")
+		b.WriteString("  ANNOUNCE_ENTRIES: Integer\n")
+		b.WriteString("  ANNOUNCE_TOO_LARGE: bool\n")
 		b.WriteString("  class MessageVocabulary < SchemaTable::MessageVocabulary\n")
 		b.WriteString("    def initialize: (?strict: bool) -> void\n")
 		b.WriteString("  end\n")

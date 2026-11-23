@@ -64,7 +64,7 @@ def _convert(value, path, kind, token):
         converted = u
     elif kind == "length":
         converted = "x" * int(token) if isinstance(current, str) else bytes(int(token))
-    elif kind == "float":
+    elif kind in ("float", "real"):
         converted = float(token)
     elif kind == "bytes":
         raw = bytes.fromhex(token)

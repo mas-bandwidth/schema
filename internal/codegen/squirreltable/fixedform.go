@@ -337,22 +337,6 @@ func emitFixedWrite(m *Module, st *ir.Struct, w *fixedWalk) {
 // null out (a caller error) has nothing to reset.
 func emitFixedRead(m *Module, st *ir.Struct) {
 	m.Printf("_M.%sFixedLoad <- function(b, out, cap) {\n", st.Name)
-	m.Printf("  local resetOut = function() {\n")
-	m.Printf("    if (out == null) return -1;\n")
-	m.Printf("    local lim = (cap != null && cap < out.len()) ? cap : out.len();\n")
-	m.Printf("    for (local k = 0; k < lim; k++) {\n")
-	m.Printf("      if (out[k] == null) continue;\n")
-	m.Printf("      local def = _M.%s();\n", st.Name)
-	for _, f := range st.Fields {
-		mem := squirrel.Member(f)
-		m.Printf("      out[k].%s = def.%s;\n", mem, mem)
-		if f.Type.Optional {
-			m.Printf("      out[k].%sPresent = def.%sPresent;\n", mem, mem)
-		}
-	}
-	m.Printf("    }\n")
-	m.Printf("    return -1;\n")
-	m.Printf("  };\n")
 	m.Printf("  _M.FixedReason <- null;\n")
 	m.Printf("  _M.FixedField <- null;\n")
 	m.Printf("  _M.FixedWidened <- 0;\n")
@@ -372,10 +356,10 @@ func emitFixedRead(m *Module, st *ir.Struct) {
 	// reasons answer the Go fixed reader's in its order — the form byte and the
 	// file's length each get their own name (§5.3), then the integrity trailer,
 	// then the layout.
-	m.Printf("  if (b.len() < 1) { _M.FixedReason = \"truncated\"; return resetOut(); }\n")
-	m.Printf("  if (b[0] == 1) { _M.FixedReason = \"previous_form\"; return resetOut(); }\n")
-	m.Printf("  if (b[0] == 2) { _M.FixedReason = \"message_form_as_file\"; return resetOut(); }\n")
-	m.Printf("  if (b[0] != 3) { _M.FixedReason = \"newer_form\"; return resetOut(); }\n")
+	m.Printf("  if (b.len() < 1) { _M.FixedReason = \"truncated\"; return -1; }\n")
+	m.Printf("  if (b[0] == 1) { _M.FixedReason = \"previous_form\"; return -1; }\n")
+	m.Printf("  if (b[0] == 2) { _M.FixedReason = \"message_form_as_file\"; return -1; }\n")
+	m.Printf("  if (b[0] != 3) { _M.FixedReason = \"newer_form\"; return -1; }\n")
 	if st.Integrity != "" {
 		// THE INTEGRITY TRAILER (docs/SPEC-TABLES.md §2.14, §3.4 THE FRAMING):
 		// checked after the form byte and BEFORE the layout or any record; a
@@ -383,38 +367,38 @@ func emitFixedRead(m *Module, st *ir.Struct) {
 		// is read without the trailer.
 		emitFixedCRC32C(m)
 		m.Printf("  if (b.len() < 5 || _rt_fixed.u32le(b, b.len() - 4) != crc32c(b, b.len() - 4)) {\n")
-		m.Printf("    _M.FixedReason = \"integrity_mismatch\"; return resetOut();\n")
+		m.Printf("    _M.FixedReason = \"integrity_mismatch\"; return -1;\n")
 		m.Printf("  }\n")
 		m.Printf("  local len = b.len() - 4;\n")
 	} else {
 		m.Printf("  local len = b.len();\n")
 	}
-	m.Printf("  if (len < 20) { _M.FixedReason = \"truncated\"; return resetOut(); }\n")
-	m.Printf("  for (local i = 1; i < 8; i++) if (b[i] != 0) { _M.FixedReason = \"reserved_not_zero\"; return resetOut(); }\n")
+	m.Printf("  if (len < 20) { _M.FixedReason = \"truncated\"; return -1; }\n")
+	m.Printf("  for (local i = 1; i < 8; i++) if (b[i] != 0) { _M.FixedReason = \"reserved_not_zero\"; return -1; }\n")
 	m.Printf("  local L = _rt_fixed.u32le(b, 16);\n")
-	m.Printf("  if (L < 21 || 20 + L > len) { _M.FixedReason = \"layout_malformed\"; return resetOut(); }\n")
+	m.Printf("  if (L < 21 || 20 + L > len) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
 	// SELECT BY HASH, never by parsing a stranger's layout (§5.3 steps 4-8).
 	m.Printf("  local h = _rt_fixed.u64le(b, 8);\n")
 	m.Printf("  local pick = -1;\n")
 	m.Printf("  for (local i = 0; i < _M.%sFixedLineage.len(); i++)\n", st.Name)
 	m.Printf("    if (_M.%sFixedLineage[i].hash == h) { pick = i; break; }\n", st.Name)
-	m.Printf("  if (pick < 0) { _M.FixedReason = (_M.%sFixedLineage.len() == 0 ? \"layout_unsupported\" : \"layout_unknown\"); return resetOut(); }\n", st.Name)
-	m.Printf("  if (pick < _M.%sFixedFloor) { _M.FixedReason = \"layout_unsupported\"; return resetOut(); }\n", st.Name)
+	m.Printf("  if (pick < 0) { _M.FixedReason = (_M.%sFixedLineage.len() == 0 ? \"layout_unsupported\" : \"layout_unknown\"); return -1; }\n", st.Name)
+	m.Printf("  if (pick < _M.%sFixedFloor) { _M.FixedReason = \"layout_unsupported\"; return -1; }\n", st.Name)
 	m.Printf("  local e = _M.%sFixedLineage[pick];\n", st.Name)
-	m.Printf("  if (L * 2 != e.layoutHex.len()) { _M.FixedReason = \"layout_malformed\"; return resetOut(); }\n")
+	m.Printf("  if (L * 2 != e.layoutHex.len()) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
 	m.Printf("  if (e.layout == null) e.layout = _rt_fixed.blobOfHex(e.layoutHex);\n")
-	m.Printf("  for (local i = 0; i < L; i++) if (b[20 + i] != e.layout[i]) { _M.FixedReason = \"layout_malformed\"; return resetOut(); }\n")
-	m.Printf("  if (e.refuse != \"\") { _M.FixedReason = e.refuse; return resetOut(); }\n")
+	m.Printf("  for (local i = 0; i < L; i++) if (b[20 + i] != e.layout[i]) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
+	m.Printf("  if (e.refuse != \"\") { _M.FixedReason = e.refuse; return -1; }\n")
 	m.Printf("  local rb = e.record;\n")
-	m.Printf("  if (rb <= 8 || rb > 8 + %d) { _M.FixedReason = \"layout_record_too_large\"; return resetOut(); }\n", ir.TableFixedRecordMaxBytes)
+	m.Printf("  if (rb <= 8 || rb > 8 + %d) { _M.FixedReason = \"layout_record_too_large\"; return -1; }\n", ir.TableFixedRecordMaxBytes)
 	m.Printf("  local rest = len - 20 - L;\n")
 	// A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD (docs/SPEC-TABLES.md §22.6):
 	// a header and a layout followed by no record is refused, never read as a
 	// batch of zero.
-	m.Printf("  if (rest == 0 || rest %% rb != 0) { _M.FixedReason = \"truncated\"; return resetOut(); }\n")
+	m.Printf("  if (rest == 0 || rest %% rb != 0) { _M.FixedReason = \"truncated\"; return -1; }\n")
 	m.Printf("  local count = rest / rb;\n")
-	m.Printf("  if (cap != null && count > cap) { _M.FixedReason = \"plan_too_large\"; return resetOut(); }\n")
-	m.Printf("  if (count > out.len()) { _M.FixedReason = \"batch_too_large\"; return resetOut(); }\n")
+	m.Printf("  if (cap != null && count > cap) { _M.FixedReason = \"plan_too_large\"; return -1; }\n")
+	m.Printf("  if (count > out.len()) { _M.FixedReason = \"batch_too_large\"; return -1; }\n")
 	// TOTAL OVER THE BATCH (docs/FIXED-FORM-ALGORITHM.md §5.3; tla/FixedBatch):
 	// every record's hash is checked, and the record decoded and checked
 	// (live counts, lengths, text, bool and present bytes, floats, this
@@ -430,10 +414,10 @@ func emitFixedRead(m *Module, st *ir.Struct) {
 	m.Printf("  local d = e.decode;\n")
 	m.Printf("  local s = array(count);\n")
 	m.Printf("  for (local k = 0, at = 20 + L; k < count; k++, at += rb) {\n")
-	m.Printf("    if (_rt_fixed.u64le(b, at) != h) { _M.FixedReason = \"no_layout\"; return resetOut(); }\n")
+	m.Printf("    if (_rt_fixed.u64le(b, at) != h) { _M.FixedReason = \"no_layout\"; return -1; }\n")
 	m.Printf("    local v = _M.%s();\n", st.Name)
 	m.Printf("    local why = d(v, b, at + 8, at + rb);\n")
-	m.Printf("    if (why != null) { _M.FixedReason = why; _M.FixedWidened <- 0; return resetOut(); }\n")
+	m.Printf("    if (why != null) { _M.FixedReason = why; _M.FixedWidened <- 0; return -1; }\n")
 	m.Printf("    s[k] = v;\n")
 	m.Printf("  }\n")
 	// The commit lands each scratch row INTO the caller's row, member by

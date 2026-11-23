@@ -126,7 +126,7 @@ class _Scanner:
     def value(self, depth: int) -> Any:
         c = self.peek()
         if c in ("{", "["):
-            if depth > 256:
+            if depth > 128:
                 self.fail()
             self.pos += 1
             if c == "{":

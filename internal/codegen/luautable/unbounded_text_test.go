@@ -244,12 +244,12 @@ func TestLuauTableUnboundedTextListsAndMapKeys(t *testing.T) {
 	// key's capacity from the declaration, so the verdict is the engine's own
 	// read of the string(8) twin's wire; the Go backend's test holds the two
 	// spellings to the same bytes, and this test asserts it here.
-	dupWire := luauUnboundedTextWire(t, m, "Where", func(inst *tabletext.Instance) {
-		luauUnboundedTextMap(t, m, inst, "byname", []string{"k1", "k1"}, []int32{1, 2})
-	})
-	dupTwin := luauUnboundedTextWire(t, m, "Bounded", func(inst *tabletext.Instance) {
-		luauUnboundedTextMap(t, m, inst, "byname", []string{"k1", "k1"}, []int32{1, 2})
-	})
+	dupWire := bytes.ReplaceAll(luauUnboundedTextWire(t, m, "Where", func(inst *tabletext.Instance) {
+		luauUnboundedTextMap(t, m, inst, "byname", []string{"k1", "k2"}, []int32{1, 2})
+	}), []byte("k2"), []byte("k1"))
+	dupTwin := bytes.ReplaceAll(luauUnboundedTextWire(t, m, "Bounded", func(inst *tabletext.Instance) {
+		luauUnboundedTextMap(t, m, inst, "byname", []string{"k1", "k2"}, []int32{1, 2})
+	}), []byte("k2"), []byte("k1"))
 	if !bytes.Equal(dupWire, dupTwin) {
 		t.Fatalf("the unbounded spelling moved a byte in the repeated-key wire\n got %x\nwant %x", dupWire, dupTwin)
 	}

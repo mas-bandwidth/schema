@@ -829,7 +829,13 @@ defmodule Driver do
         {key, {unit, announcement}}
       end)
 
-    each_case("message-prior", rows(rows, "prior-message"), fn [name, connection, root, _file, batch | _] ->
+    each_case("message-prior", rows(rows, "prior-message"), fn [
+                                                                 name,
+                                                                 connection,
+                                                                 root,
+                                                                 _file,
+                                                                 batch | _
+                                                               ] ->
       case message_answer(Map.get(connections, connection), root, batch) do
         {:refused, why} ->
           write(outdir, "#{name}.refused", "#{why}\n")
@@ -859,7 +865,12 @@ defmodule Driver do
   #   anything else is a DRIVER ERROR: the case and the error go to stderr, the
   #     remaining cases still run, and the surface exits non-zero at its end.
   defp run(surface, rows, outdir)
-       when surface in ["write-refusal", "write-refusal-fixed", "write-refusal-json", "write-refusal-cook"] do
+       when surface in [
+              "write-refusal",
+              "write-refusal-fixed",
+              "write-refusal-json",
+              "write-refusal-cook"
+            ] do
     each_case(surface, rows(rows, surface), fn [name, unit, root, wire, path, kind, text | _] ->
       mod = codec(unit, root)
 
@@ -929,6 +940,7 @@ defmodule Driver do
         else
           {:ok, announced} = mod.announce_read(File.read!(announcement))
           {:ok, vocab} = mod.for_root(announced, root)
+
           body =
             case {wire, Map.get(batches, {connection, wire})} do
               {"-", _} ->
@@ -982,26 +994,32 @@ defmodule Driver do
   # `elems` of an inline array) answers `unrepresentable` (the shared ruling of
   # 2026-11-22); a count of an out-of-line array runs the builder.
   defp run("write-refusal-block", rows, outdir) do
-    for [name, unit, root, _wire, path, kind, text | _] <- rows(rows, "write-refusal-block") do
-      {mod, begin} = accessor(unit, root, "block_begin", 1)
-      info = apply(mod, String.to_atom("block_info_" <> Macro.underscore(root)), [])
-      f = Enum.find(info.fields, &(&1.name == path))
+    for [name, unit, root, wire, path, kind, text | _] <- rows(rows, "write-refusal-block") do
+      table = table_module(unit)
+      {mod, build} = accessor(unit, root, "block_build", 1)
+
+      value =
+        if wire == "-" do
+          %{}
+        else
+          {:ok, value, _report} = table.load(root, File.read!(wire))
+          value
+        end
+
+      ctx = %{mod: table, ns: namespace(unit_package(unit)), descs: table.descriptors()}
 
       answer =
-        cond do
-          f == nil ->
-            raise "write-refusal-block #{name}: #{root} has no block field #{path}"
+        case WriteRefusal.set(ctx, root, value, path, kind, text) do
+          :unrepresentable ->
+            "unrepresentable"
 
-          kind in ["count", "elems"] and f.out_of_line ->
+          {:ok, changed} ->
             raised(fn ->
-              case apply(mod, begin, [%{path => String.to_integer(text)}]) do
+              case apply(mod, build, [changed]) do
                 {:ok, _block} -> "wrote"
                 {:error, _refusal} -> "refused"
               end
             end)
-
-          true ->
-            "unrepresentable"
         end
 
       write(outdir, name, answer <> "\n")
@@ -1018,18 +1036,34 @@ defmodule Driver do
   # connection the batch goes out on.
   defp run("announce", rows, outdir) do
     for [name, unit, root, mode, input] <- rows(rows, "announce") do
-      mod = message_module(unit) || raise "announce #{name}: unit #{unit} has no TableMessage module"
+      mod =
+        message_module(unit) || raise "announce #{name}: unit #{unit} has no TableMessage module"
 
       answer =
         case mode do
           "write" ->
-            bytes = mod.announce()
             measure = mod.announce_measure()
 
-            if byte_size(bytes) != measure,
-              do: raise("announce #{name}: the measure #{measure} is not the announcement's #{byte_size(bytes)} bytes")
+            case mod.announce() do
+              {:error, _reason} ->
+                if measure >= 0,
+                  do: raise("announce #{name}: refused announcement returned measure #{measure}")
 
-            bytes
+                "refused\n"
+
+              bytes when is_binary(bytes) ->
+                if measure < 0 or bytes == <<>> do
+                  "refused\n"
+                else
+                  if byte_size(bytes) != measure,
+                    do:
+                      raise(
+                        "announce #{name}: the measure #{measure} is not the announcement's #{byte_size(bytes)} bytes"
+                      )
+
+                  bytes
+                end
+            end
 
           m when m in ["strict", "lenient"] ->
             fresh = if m == "strict", do: %{mod.new() | strict: true}, else: mod.new()
@@ -1040,7 +1074,9 @@ defmodule Driver do
             end
 
           "send" ->
-            table = table_module(unit) || raise "announce #{name}: unit #{unit} has no Table module"
+            table =
+              table_module(unit) || raise "announce #{name}: unit #{unit} has no Table module"
+
             {:ok, own} = mod.announce_read(mod.announce())
             {:ok, own} = mod.for_root(own, root)
 
@@ -1093,7 +1129,8 @@ defmodule Driver do
     end
 
     for [name, unit, root, wire] <- rows(rows, "json-write-into") do
-      mod = table_module(unit) || raise "json-write-into #{name}: unit #{unit} has no Table module"
+      mod =
+        table_module(unit) || raise "json-write-into #{name}: unit #{unit} has no Table module"
 
       answer =
         case mod.load(root, File.read!(wire)) do
@@ -1153,7 +1190,6 @@ defmodule Driver do
     true
   end
 
-
   # A writer that RAISES where it should refuse is a defect the row names: the
   # answer is `raised <exception>`, which scores red against both verdicts and
   # leaves the rest of the surface running. ArgumentError is the fixed writer's
@@ -1185,7 +1221,7 @@ defmodule Driver do
       try do
         case read.(File.read!(path)) do
           {:ok, values} -> {"read\n", values}
-          :refused -> {"refused\n", held}
+          :refused -> {"refused\n", List.duplicate(%{}, n)}
         end
       rescue
         _ -> {"threw\n", held}
@@ -1228,8 +1264,11 @@ defmodule Driver do
 
     read = fn data ->
       case load.(data, batch_capacity: n) do
-        {:ok, values, report} -> clean(report, Enum.map(values, &fixed_to_table(table, unit, root, &1)))
-        {:error, _reason, _report} -> :refused
+        {:ok, values, report} ->
+          clean(report, Enum.map(values, &fixed_to_table(table, unit, root, &1)))
+
+        {:error, _reason, _report} ->
+          :refused
       end
     end
 
@@ -1240,14 +1279,22 @@ defmodule Driver do
     mod = message_module(unit) || raise "read-into: unit #{unit} has no TableMessage module"
     {:ok, announced} = mod.announce_read(File.read!(announcement))
     {:ok, vocab} = mod.for_root(announced, root)
-    unions = if function_exported?(table, :union_descriptors, 0), do: table.union_descriptors(), else: %{}
+
+    unions =
+      if function_exported?(table, :union_descriptors, 0),
+        do: table.union_descriptors(),
+        else: %{}
+
     tables = Map.put(table.descriptors(), {:unions}, unions)
     desc = Map.fetch!(tables, root)
 
     read = fn data ->
       case mod.load_messages(vocab, data, n) do
-        {:ok, bodies} -> {:ok, Enum.map(bodies, &WriteRefusal.body_table(vocab, tables, desc, &1))}
-        _ -> :refused
+        {:ok, bodies} ->
+          {:ok, Enum.map(bodies, &WriteRefusal.body_table(vocab, tables, desc, &1))}
+
+        _ ->
+          :refused
       end
     end
 
@@ -1297,7 +1344,6 @@ defmodule Driver do
 
     fn data, opts -> apply(mod, fun, [data, opts]) end
   end
-
 
   # ---- the VARIABLE FORM's surfaces (docs/SPEC-TABLES.md §3, §16) ----
 
@@ -1389,8 +1435,11 @@ defmodule Driver do
     loaded =
       if capacity == "short" do
         case mod.load_retain(root, data, fresh.(roomy), empty) do
-          {:ok, _v, _r, probe} -> mod.load_retain(root, data, fresh.(max(probe.used - 1, 0)), empty)
-          err -> err
+          {:ok, _v, _r, probe} ->
+            mod.load_retain(root, data, fresh.(max(probe.used - 1, 0)), empty)
+
+          err ->
+            err
         end
       else
         mod.load_retain(root, data, fresh.(roomy), empty)
@@ -1848,6 +1897,7 @@ defmodule WriteRefusal do
       cond do
         f.t == :keyed and rest == [] and index != nil ->
           kname = element!(f.key_names, index, seg)
+
           with {:ok, v} <- leaf(ctx, f.item, Map.get(current, kname), kind, text),
                do: {:ok, Map.put(current, kname, v)}
 
@@ -1867,7 +1917,13 @@ defmodule WriteRefusal do
 
         f.t == :union and index == nil and length(rest) == 1 ->
           arm_name = hd(rest)
-          cur_p = case current do {^arm_name, p} -> p; _ -> nil end
+
+          cur_p =
+            case current do
+              {^arm_name, p} -> p
+              _ -> nil
+            end
+
           with {:ok, new_p} <- scalar(cur_p, kind, text),
                do: {:ok, {arm_name, new_p}}
 
@@ -1888,6 +1944,7 @@ defmodule WriteRefusal do
 
         Map.get(f, :text_list, false) and rest == [] and index != nil ->
           elem_map = element!(current, index, seg)
+
           with {:ok, new_s} <- scalar(Map.get(elem_map, "value"), kind, text),
                do: {:ok, List.replace_at(current, index, Map.put(elem_map, "value", new_s))}
 
@@ -1905,7 +1962,14 @@ defmodule WriteRefusal do
 
             {_, i} ->
               with {:ok, v} <-
-                     set_in(ctx, Map.fetch!(ctx.descs, f.elem), element!(current, i, seg), rest, kind, text),
+                     set_in(
+                       ctx,
+                       Map.fetch!(ctx.descs, f.elem),
+                       element!(current, i, seg),
+                       rest,
+                       kind,
+                       text
+                     ),
                    do: {:ok, List.replace_at(current, i, v)}
           end
       end
@@ -2130,7 +2194,9 @@ defmodule WriteRefusal do
   end
 
   defp table_value(vocab, _descs, %{t: :keyed} = f, pairs) when is_list(pairs) do
-    Map.new(pairs, fn {ref, v} -> {Map.fetch!(f.key_by_id, Enum.at(vocab.entries, ref - 1).id), v} end)
+    Map.new(pairs, fn {ref, v} ->
+      {Map.fetch!(f.key_by_id, Enum.at(vocab.entries, ref - 1).id), v}
+    end)
   end
 
   defp table_value(vocab, descs, %{t: :list, elem_kind: 13} = f, v),
@@ -2161,6 +2227,7 @@ defmodule WriteRefusal do
       cond do
         f.t == :union and index == nil and length(rest) == 1 ->
           {arm_ref, arm_val} = current
+
           with {:ok, new_v} <- scalar(arm_val, kind, text),
                do: {:ok, {arm_ref, new_v}}
 
@@ -2301,6 +2368,14 @@ defmodule WriteRefusal do
     end
 
     {:ok, resize(current || [], String.to_integer(text), default)}
+  end
+
+  # TableMessage holds a keyed [E]T as a sparse list of non-default {key_ref, value}
+  # pairs (missing keys mean default and are required to be omitted), so fewer than |E|
+  # slots cannot represent a missing slot.
+  defp message_leaf(_ctx, %{t: :keyed} = f, current, "elems", text) do
+    n = String.to_integer(text)
+    if n < length(f.key_names), do: :unrepresentable, else: scalar(current, "elems", text)
   end
 
   defp message_leaf(_ctx, _f, current, kind, text), do: scalar(current, kind, text)
@@ -2768,13 +2843,13 @@ defmodule WireFuzz do
         answer_message_framed(r, wire)
 
       true ->
-      mod = file_codec(r.unit, r.root)
+        mod = file_codec(r.unit, r.root)
 
-      if r.retain == 1 do
-        answer_retain(mod, r, wire)
-      else
-        answer_plain(mod, r, wire)
-      end
+        if r.retain == 1 do
+          answer_retain(mod, r, wire)
+        else
+          answer_plain(mod, r, wire)
+        end
     end
   end
 
@@ -2796,7 +2871,11 @@ defmodule WireFuzz do
                 end) do
           case mod.load_messages(read_vocab, batch) do
             {:ok, bodies} ->
-              unions = if function_exported?(tmod, :union_descriptors, 0), do: tmod.union_descriptors(), else: %{}
+              unions =
+                if function_exported?(tmod, :union_descriptors, 0),
+                  do: tmod.union_descriptors(),
+                  else: %{}
+
               tables = Map.put(tmod.descriptors(), {:unions}, unions)
               desc = Map.fetch!(tables, r.root)
               message_decode_and_reply_cross(mod, read_vocab, own_vocab, tables, desc, bodies)
@@ -2876,7 +2955,11 @@ defmodule WireFuzz do
          {:ok, vocab} <- mod.for_root(announced, r.root) do
       case mod.load_messages(vocab, wire) do
         {:ok, bodies} ->
-          unions = if function_exported?(tmod, :union_descriptors, 0), do: tmod.union_descriptors(), else: %{}
+          unions =
+            if function_exported?(tmod, :union_descriptors, 0),
+              do: tmod.union_descriptors(),
+              else: %{}
+
           tables = Map.put(tmod.descriptors(), {:unions}, unions)
           desc = Map.fetch!(tables, r.root)
           message_decode_and_reply(mod, vocab, tables, desc, bodies)
@@ -2924,7 +3007,10 @@ defmodule WireFuzz do
   # message surface's.
   def message_batch_decoded_count(unit, root, vocab, bodies) do
     tmod = file_codec(unit, root)
-    unions = if function_exported?(tmod, :union_descriptors, 0), do: tmod.union_descriptors(), else: %{}
+
+    unions =
+      if function_exported?(tmod, :union_descriptors, 0), do: tmod.union_descriptors(), else: %{}
+
     tables = Map.put(tmod.descriptors(), {:unions}, unions)
     desc = Map.fetch!(tables, root)
 
@@ -3056,15 +3142,15 @@ defmodule WireFuzz do
           {f.min, f.max}
 
         Map.has_key?(f, :bit_width) ->
-          {0, (Bitwise.bsl(1, f.bit_width)) - 1}
+          {0, Bitwise.bsl(1, f.bit_width) - 1}
 
         Map.get(f, :signed, false) ->
           bits = Map.get(f, :width, 8) * 8
-          {-(Bitwise.bsl(1, bits - 1)), (Bitwise.bsl(1, bits - 1)) - 1}
+          {-Bitwise.bsl(1, bits - 1), Bitwise.bsl(1, bits - 1) - 1}
 
         true ->
           bits = Map.get(f, :width, 8) * 8
-          {0, (Bitwise.bsl(1, bits)) - 1}
+          {0, Bitwise.bsl(1, bits) - 1}
       end
 
     if val < lo or val > hi do
@@ -3121,7 +3207,11 @@ defmodule WireFuzz do
   end
 
   defp msg_decode_field(vocab, tables, %{t: :list, elem_kind: 13} = f, raw_elems, rep) do
-    min_c = if Map.get(f, :array) == :counted or Map.get(f, :shape) == :counted, do: Map.get(f, :min_count, 0), else: 0
+    min_c =
+      if Map.get(f, :array) == :counted or Map.get(f, :shape) == :counted,
+        do: Map.get(f, :min_count, 0),
+        else: 0
+
     bound = Map.get(f, :max_count, Map.get(f, :array_bound, length(raw_elems)))
     elem_desc = Map.fetch!(tables, f.elem)
 
@@ -3143,13 +3233,18 @@ defmodule WireFuzz do
     end
   end
 
-  defp msg_decode_field(vocab, tables, %{t: :keyed, elem_kind: 13} = f, raw_pairs, rep) when is_list(raw_pairs) do
+  defp msg_decode_field(vocab, tables, %{t: :keyed, elem_kind: 13} = f, raw_pairs, rep)
+       when is_list(raw_pairs) do
     elem_desc = Map.fetch!(tables, Map.get(f, :type_name) || f.item.elem)
     by_id = Map.get(f, :by_id, %{})
 
     case Enum.reduce_while(raw_pairs, {:ok, [], rep}, fn {kref, raw_elem}, {:ok, acc, r} ->
            ke = Enum.at(vocab.entries, kref - 1)
-           r_key = if ke != nil and Map.has_key?(by_id, ke.id), do: r, else: %{r | unknown: r.unknown + 1}
+
+           r_key =
+             if ke != nil and Map.has_key?(by_id, ke.id),
+               do: r,
+               else: %{r | unknown: r.unknown + 1}
 
            case msg_decode_body(vocab, tables, elem_desc, raw_elem, r_key) do
              {:ok, v, r2} -> {:cont, {:ok, [v | acc], r2}}
@@ -3189,8 +3284,13 @@ defmodule WireFuzz do
     msg_decode_field(vocab, tables, Map.put(f, :item, base_item), raw_elems, rep)
   end
 
-  defp msg_decode_field(vocab, tables, %{t: :list, item: item} = f, raw_elems, rep) when is_list(raw_elems) do
-    min_c = if Map.get(f, :array) == :counted or Map.get(f, :shape) == :counted, do: Map.get(f, :min_count, 0), else: 0
+  defp msg_decode_field(vocab, tables, %{t: :list, item: item} = f, raw_elems, rep)
+       when is_list(raw_elems) do
+    min_c =
+      if Map.get(f, :array) == :counted or Map.get(f, :shape) == :counted,
+        do: Map.get(f, :min_count, 0),
+        else: 0
+
     bound = Map.get(f, :max_count, Map.get(f, :array_bound, length(raw_elems)))
 
     if length(raw_elems) < min_c or length(raw_elems) > bound do
@@ -3208,7 +3308,8 @@ defmodule WireFuzz do
     end
   end
 
-  defp msg_decode_field(vocab, tables, %{t: :keyed, item: item} = f, raw_pairs, rep) when is_list(raw_pairs) do
+  defp msg_decode_field(vocab, tables, %{t: :keyed, item: item} = f, raw_pairs, rep)
+       when is_list(raw_pairs) do
     by_id = Map.get(f, :by_id, %{})
 
     case Enum.reduce_while(raw_pairs, {:ok, [], rep}, fn {kref, raw_elem}, {:ok, acc, r} ->
@@ -3263,7 +3364,10 @@ defmodule WireFuzz do
                 msg_decode_field(vocab, tables, arm_decl, arm_raw, rep)
 
               msg_widens?(arm_entry.kind, theirs_elem, arm_decl.arm_kind, mine_elem) ->
-                msg_decode_field(vocab, tables, arm_decl, arm_raw, %{rep | widened: rep.widened + 1})
+                msg_decode_field(vocab, tables, arm_decl, arm_raw, %{
+                  rep
+                  | widened: rep.widened + 1
+                })
 
               true ->
                 {:malformed, rep}
