@@ -1459,7 +1459,9 @@ function TableVariableEnumRead(e, r, table, report, retain, st) {
   if (ref > table.length) { report.damaged = true; return undefined; }
   TableVariableIntroduce(st, ref);
   const id = table[ref - 1];
-  for (const [name, vid] of e.vs) { if (vid === id) { return name; } }
+  for (const [name, vid] of e.vs) {
+    if (vid === id) { return e.dp.includes(name) ? (e.el ? null : e.def) : name; }
+  }
   report.unknown++;
   if (retain !== null) { report.retainLost++; }
   return null;
@@ -2269,7 +2271,9 @@ function TableVariableJsonScalar(d, val, depth, g, out) {
     case "union": return TableVariableJsonUnion(d.u, val, depth, g, out);
     case "enum":
       if (val === null || val === "None") { out.push("\"None\""); return true; }
-      for (const [name] of d.vs) { if (name === val) { out.push(TableVariableJsonString(name)); return true; } }
+      // a DEPRECATED variant is never written (§2.15): it reads as the default, so
+      // the text writer refuses it, as every writer does
+      for (const [name] of d.vs) { if (name === val) { if (d.dp !== undefined && d.dp.includes(name)) { return false; } out.push(TableVariableJsonString(name)); return true; } }
       return false;
     case "flags": {
       // the save's own test: a BigInt mask inside the unsigned width, never a Number
@@ -2874,9 +2878,19 @@ function TableVariableTextArray(fd, inp, v, depth, graph, report) {
   v[fd.n] = out;
   const bound = fd.list ? 0x7fffffff : fd.bound;
   let placed = 0;
+  // a counted array below its minimum A refuses on read, in the text form as in
+  // the wire (docs/SPEC.md section 4.6): a refusal is an answer, never a throw
+  const below = () => {
+    if (fd.min > 0 && placed < fd.min) {
+      report.refused = 1;
+      if (!report.reason) { report.reason = "count_over_bound: " + fd.n; }
+      return true;
+    }
+    return false;
+  };
   for (;;) {
     let ch = inp.peek();
-    if (ch === "]") { inp.p++; return true; }
+    if (ch === "]") { inp.p++; return !below(); }
     if (ch === "") { inp.bad = true; return false; }
     const shape = inp.shape();
     if (placed >= bound) {
@@ -2896,7 +2910,7 @@ function TableVariableTextArray(fd, inp, v, depth, graph, report) {
     }
     ch = inp.peek();
     if (ch === ",") { inp.p++; continue; }
-    if (ch === "]") { inp.p++; return true; }
+    if (ch === "]") { inp.p++; return !below(); }
     inp.bad = true;
     return false;
   }
@@ -2962,7 +2976,12 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
       const s = inp.name();
       if (s === null) { return false; }
       if (s === "None") { holder[key] = null; return true; }
-      for (const [name] of d.vs) { if (name === s) { holder[key] = name; return true; } }
+      for (const [name] of d.vs) {
+        if (name !== s) { continue; }
+        // A DEPRECATED VARIANT READS AS THE FIELD'S DEFAULT, an element as None (§2.15)
+        holder[key] = d.dp.includes(name) ? (d.el ? null : d.def) : name;
+        return true;
+      }
       // a name this build cannot name reads None and counts unknown (§4)
       holder[key] = null;
       report.unknown++;

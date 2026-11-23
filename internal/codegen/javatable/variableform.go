@@ -4607,6 +4607,11 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct, fixed fixedClosure) (strin
 		if enum, ok := f.Type.Ref.(*ir.Enum); ok {
 			fmt.Fprintf(&b, "    private static int %sEnum(long vid, TableVariable.Report report) {\n", varMember(f))
 			for i := range enum.Variants {
+				if variantDeprecated(enum, i) {
+					// §2.15: a deprecated variant reads as the default, uncounted
+					fmt.Fprintf(&b, "        if (vid == 0x%016xL) { return %s; }\n", ir.TableWireId(enum.VariantWireName(i)), deprecatedLanding(f))
+					continue
+				}
 				fmt.Fprintf(&b, "        if (vid == 0x%016xL) { return %d; }\n", ir.TableWireId(enum.VariantWireName(i)), i+1)
 			}
 			b.WriteString("        report.unknown++;\n        return 0;\n    }\n\n")
@@ -5579,6 +5584,11 @@ func writeJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 			case *ir.Enum:
 				fmt.Fprintf(b, "                switch (v.%s.get(i)) {\n", m)
 				for j := range ref.Variants {
+					if variantDeprecated(ref, j) {
+						// §2.15: a deprecated variant is never written (a debug assert in Java, SPEC.md §5.1)
+						fmt.Fprintf(b, "                    case %d: assert false : \"deprecated variant is never written\"; TableJson.esc(b, %q); break;\n", j+1, ref.Variants[j])
+						continue
+					}
 					fmt.Fprintf(b, "                    case %d: TableJson.esc(b, %q); break;\n", j+1, ref.Variants[j])
 				}
 				fmt.Fprintf(b, "                    default: assert v.%s.get(i) == 0 : \"enum value names no variant\"; TableJson.esc(b, \"None\"); break;\n                }\n", m)
@@ -5676,7 +5686,11 @@ func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 				b.WriteString("                            java.lang.String s = in.scanVariantName();\n")
 				b.WriteString("                            if(\"None\".equals(s)){v." + m + ".add(0);}else ")
 				for j := range ref.Variants {
-					fmt.Fprintf(b, "                            if (%q.equals(s)) { v.%s.add(%d); }\n", ref.Variants[j], m, j+1)
+					land := fmt.Sprintf("%d", j+1)
+					if variantDeprecated(ref, j) {
+						land = "0" // §2.15: an element naming a deprecated variant reads as the element default
+					}
+					fmt.Fprintf(b, "                            if (%q.equals(s)) { v.%s.add(%s); }\n", ref.Variants[j], m, land)
 					b.WriteString("                            else ")
 				}
 				fmt.Fprintf(b, "{ v.%s.add(0); in.rep.unknown++; }\n", m)
@@ -5916,6 +5930,11 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 		if enum, ok := f.Type.Ref.(*ir.Enum); ok {
 			fmt.Fprintf(b, "        switch (v.%s) {\n", m)
 			for i := range enum.Variants {
+				if variantDeprecated(enum, i) {
+					// §2.15: a deprecated variant is never written (a debug assert in Java, SPEC.md §5.1)
+					fmt.Fprintf(b, "            case %d: assert false : \"deprecated variant is never written\"; TableJson.esc(b, %q); break;\n", i+1, enum.Variants[i])
+					continue
+				}
 				fmt.Fprintf(b, "            case %d: TableJson.esc(b, %q); break;\n", i+1, enum.Variants[i])
 			}
 			fmt.Fprintf(b, "            default: assert v.%s == 0 : \"enum value names no variant\"; TableJson.esc(b, \"None\"); break;\n        }\n", m)
@@ -6167,7 +6186,11 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 			b.WriteString("                    java.lang.String s = in.scanVariantName();\n")
 			fmt.Fprintf(b, "                    if(\"None\".equals(s)){v.%s=0;}else ", m)
 			for i := range enum.Variants {
-				fmt.Fprintf(b, "                    if (%q.equals(s)) { v.%s = %d; }\n", enum.Variants[i], m, i+1)
+				land := fmt.Sprintf("%d", i+1)
+				if variantDeprecated(enum, i) {
+					land = deprecatedLanding(f) // §2.15: the field's declared default
+				}
+				fmt.Fprintf(b, "                    if (%q.equals(s)) { v.%s = %s; }\n", enum.Variants[i], m, land)
 				b.WriteString("                    else ")
 			}
 			fmt.Fprintf(b, "{ v.%s = 0; in.rep.unknown++; }\n", m)
@@ -7242,4 +7265,27 @@ func shiftLines(s string, n int) string {
 		lines[i] = l[cut:]
 	}
 	return strings.Join(lines, "")
+}
+
+// variantDeprecated reports whether variant i of e is marked `| deprecated`
+// (docs/SPEC-TABLES.md §2.15).
+func variantDeprecated(e *ir.Enum, i int) bool {
+	return i < len(e.VariantDeprecated) && e.VariantDeprecated[i]
+}
+
+// deprecatedLanding is the ordinal a deprecated variant reads as (§2.15): an
+// array, list or map element lands the ELEMENT default None (0); a scalar
+// enum field lands the FIELD's declared default.
+func deprecatedLanding(f *ir.Field) string {
+	if f.Array != ir.ArrayNone || f.KeyEnum != "" || f.IsMap() || f.IsList() {
+		return "0"
+	}
+	if en, ok := f.Type.Ref.(*ir.Enum); ok && f.HasDefault && f.DefVariant != "" {
+		for i, v := range en.Variants {
+			if v == f.DefVariant {
+				return fmt.Sprintf("%d", i+1)
+			}
+		}
+	}
+	return "0"
 }

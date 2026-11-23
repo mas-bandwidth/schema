@@ -238,6 +238,17 @@ typedef struct example_table_field_info_t
     uint8_t text_list; /* 0 none, 1 string(M) elements, 2 ?string(M) elements (SPEC-TABLES 2.13) */
     int64_t text_total; /* | total = N byte cap across text-list elements, or 0 (SPEC-TABLES 2.13) */
     void * (*place)(void * worker,void * slot,const char * key,int32_t length,int64_t number);
+    /* A COUNTED ARRAY'S MINIMUM (docs/SPEC.md §5.1, docs/SPEC-TABLES.md §16.2):
+       the A of [A..B]T, 0 on every other field. A text read that places
+       fewer elements refuses, as the wire read does. */
+    int32_t array_min;
+    /* A DEPRECATED VARIANT (docs/SPEC-TABLES.md §2.15): enum_deprecated is one
+       flag per value in [0, enum_max], 1 where the variant is marked
+       "| deprecated", NULL when the enum carries none. A read naming one
+       stores enum_default instead — the field's declared default, None for
+       an element — and is never counted unknown. */
+    uint64_t enum_default;
+    const uint8_t * enum_deprecated;
 } example_table_field_info_t;
 
 typedef struct example_table_type_info_t

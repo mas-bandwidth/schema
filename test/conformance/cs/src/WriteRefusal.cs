@@ -168,6 +168,21 @@ static partial class Program
                         case "grade ordinal": loadout.Grade = (Tabledemo.Grade)checked((byte)ulong.Parse(text, CultureInfo.InvariantCulture)); return true;
                     }
                     break;
+                case Tabledemo.Moods moods:
+                    switch (path + " " + kind)
+                    {
+                        case "row[0] ordinal":
+                            if (moods.RowCount < 1) { return false; }
+                            moods.Row[0] = (Tabledemo.Mood)checked((byte)ulong.Parse(text, CultureInfo.InvariantCulture));
+                            return true;
+                    }
+                    break;
+                case Tabledemo.MoodField moodField:
+                    switch (path + " " + kind)
+                    {
+                        case "mood ordinal": moodField.Mood = (Tabledemo.Mood)checked((byte)ulong.Parse(text, CultureInfo.InvariantCulture)); return true;
+                    }
+                    break;
                 case Backenddemo.StorePurchase purchase:
                     switch (path + " " + kind)
                     {

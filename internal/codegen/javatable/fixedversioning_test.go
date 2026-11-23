@@ -298,6 +298,9 @@ func corpusDir(t *testing.T) string {
 func versioningSchemaUnit(t *testing.T, name string) *ir.Unit {
 	t.Helper()
 	path := filepath.Join("..", "..", "..", "test", "tables", name)
+	if strings.HasPrefix(name, "testdata/") {
+		path = name
+	}
 	src, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read %s: %v", name, err)
@@ -306,7 +309,7 @@ func versioningSchemaUnit(t *testing.T, name string) *ir.Unit {
 	if len(perrs) > 0 {
 		t.Fatalf("parse %s: %v", name, perrs[0])
 	}
-	base := strings.TrimSuffix(name, ".schema")
+	base := strings.TrimSuffix(filepath.Base(name), ".schema")
 	u, cerrs := check.Unit([]check.SourceFile{{Path: name, Name: name, Base: base, Bytes: src, AST: f}})
 	if len(cerrs) > 0 {
 		t.Fatalf("check %s: %v", name, cerrs[0])

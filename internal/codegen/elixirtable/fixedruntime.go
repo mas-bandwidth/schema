@@ -1052,7 +1052,7 @@ const fixedRuntimeBody = `  @moduledoc """
   defp src_end({:widen, at, _dst, size, _my_size, _signed}), do: at + size
   defp src_end({:widenf, at, _dst}), do: at + 4
   defp src_end({:text, at, _dst, _aux, units, _meta}), do: at + 4 + units
-  defp src_end({:count, at, _aux, _n}), do: at + 4
+  defp src_end({:count, at, _aux, _n, _min}), do: at + 4
   defp src_end({:ordinal, at, _dst, their_size, _my_size, _remap}), do: at + their_size
   defp src_end({:remap_too_large, _variants}), do: 0
   defp src_end({:tagcount, at, tag, _arms}), do: at + tag
@@ -1419,7 +1419,7 @@ const fixedRuntimeBody = `  @moduledoc """
         # so a count forged past what the writer could have written clamps and
         # counts. Holding it to MY bound lets a count between their_n and my_n
         # through untouched, and every slot behind it reads as live.
-        guarded(acc, guard, tag, {:count, their_at, aux_at, their_n})
+        guarded(acc, guard, tag, {:count, their_at, aux_at, their_n, elem(row, 4)})
       else
         acc
       end
@@ -1959,10 +1959,10 @@ const fixedRuntimeBody = `  @moduledoc """
     end
   end
 
-  defp step([{:count, src, dst, max} | rest], body, writes, report) do
+  defp step([{:count, src, dst, max, min} | rest], body, writes, report) do
     case body do
       <<_::binary-size(^src), raw::little-signed-32, _::binary>> ->
-        {v, report} = clamp_count(raw, max, report)
+        {v, report} = clamp_count(raw, min, max, report)
         step(rest, body, [{dst, <<v::little-signed-32>>} | writes], report)
 
       _ ->
@@ -1975,7 +1975,7 @@ const fixedRuntimeBody = `  @moduledoc """
 
     case body do
       <<_::binary-size(^src), raw::little-signed-32, take::binary-size(^size), _::binary>> ->
-        {v, report} = clamp_count(raw, cap, report)
+        {v, report} = clamp_count(raw, 0, cap, report)
 
         # THE ONE CONTENT RULE THE WIRE HAS (§3, §4), over the USED UNITS and
         # over nothing else: the slack carries no meaning, and reading a whole
@@ -2146,9 +2146,10 @@ const fixedRuntimeBody = `  @moduledoc """
       else: {0, mark_forged(report)}
   end
 
-  defp clamp_count(raw, max, report) do
+  defp clamp_count(raw, min, max, report) do
     cond do
       raw < 0 -> throw({:refuse, :count_over_bound})
+      raw < min -> throw({:refuse, :count_over_bound})
       raw > max -> throw({:refuse, :count_over_bound})
       true -> {raw, report}
     end

@@ -356,6 +356,10 @@ static const Codec codecs[] = {
     CODEC( "tabledemo", tabledemo, ArchiveConfig ),
     CODEC( "tabledemo", tabledemo, KeyedConfig ),
     CODEC( "tabledemo", tabledemo, PackConfig ),
+    CODEC( "tabledemo", tabledemo, CountedMin ),
+    CODEC( "tabledemo", tabledemo, FloatBound ),
+    CODEC( "tabledemo", tabledemo, Moods ),
+    CODEC( "tabledemo", tabledemo, MoodField ),
     CODEC( "tblv1", tblv1, Cfg ),
     CODEC( "tblv2", tblv2, Cfg ),
     CODEC( "tblp1", tblp1, Chain ),
@@ -2120,6 +2124,16 @@ static bool write_refusal_set( const std::string & root, void * value, const std
     {
         tabledemo::LoadoutConfig & v = *(tabledemo::LoadoutConfig *) value;
         if ( path == "grade" && kind == "ordinal" ) { v.grade = (tabledemo::Grade) n; return true; }
+    }
+    if ( root == "Moods" )
+    {
+        tabledemo::Moods & v = *(tabledemo::Moods *) value;
+        if ( path == "row[0]" && kind == "ordinal" && v.row_count >= 1 ) { v.row[0] = (tabledemo::Mood) n; return true; }
+    }
+    if ( root == "MoodField" )
+    {
+        tabledemo::MoodField & v = *(tabledemo::MoodField *) value;
+        if ( path == "mood" && kind == "ordinal" ) { v.mood = (tabledemo::Mood) n; return true; }
     }
     if ( root == "SimState" )
     {

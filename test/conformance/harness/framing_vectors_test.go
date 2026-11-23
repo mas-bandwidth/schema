@@ -745,6 +745,10 @@ var framingVectors = []framingVector{
 	{name: "varevo_cycle_known_via_unknown", unit: "tblvarevo1", root: "EvoDoc", raw: mustHex("01011102020c100303040411030005040611020003010000030c9a5fcc128f0affffffffffffffff4c03cd851ab6f419839352074c926a68b66db6f626693c5bc9cf6e5bf865746c0600000000000000")},
 	{name: "varevo_cycle_unknown_self", unit: "tblvarevo1", root: "EvoDoc", raw: mustHex("01011102020c0a0203040411020003010000a49527e2779733f8ffffffffffffffffb66db6f626693c5b1be0af1522764f9f0400000000000000")},
 	{name: "varevo_cycle_two_unknowns", unit: "tblvarevo1", root: "EvoDoc", raw: mustHex("01011102020c100303040411030005040611010007010000a49527e2779733f8ffffffffffffffffb66db6f626693c5bb91f2e39efc68730036cb6f626683c5be9ea58f7272ee6e9032b199c12a611ed0700000000000000")},
+	// Counted-array minimum refusal framing vectors (form 3 and form 1).
+	{name: "sp_count_min_below_form1", unit: "tabledemo", root: "CountedMin", raw: mustHex("01010e0608010700000000198ceafe187dc6dc0100000000000000")},
+	{name: "sp_count_min_zero_form1", unit: "tabledemo", root: "CountedMin", raw: mustHex("01010e02080000198ceafe187dc6dc0100000000000000")},
+	{name: "twin_count_min_at_form1", unit: "tabledemo", root: "CountedMin", raw: mustHex("01010e0a0802070000000800000000198ceafe187dc6dc0100000000000000")},
 }
 
 // counting is n distinct raw entries, 1..n: ids no Cfg declares, so each is an

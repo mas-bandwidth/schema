@@ -775,6 +775,7 @@ pub fn bench_mixed_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u6
                                 if !table_array_element_kind_allowed(ek) || ek != 13 { report.damaged = true; }
                                 else {
                                     if let Some(ret) = retain.as_deref_mut() { retain_discard(ret, path, 9); }
+                                    if count < 1 { return nodes.refuse_count(report); }
                                     v.entities.clear();
                                     if count < 1 { report.damaged = true; }
                                     let keep = if count > 8 { report.damaged = true; 8 } else { count };

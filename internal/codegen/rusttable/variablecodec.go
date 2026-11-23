@@ -1469,6 +1469,10 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	if cls == vTable || cls == vUnion {
 		fmt.Fprintf(b, "%sif let Some(ret) = retain.as_deref_mut() { retain_discard(ret, path, %d); }\n", i4, ordinal)
 	}
+	if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+		// a present array below its minimum refuses the load (SPEC §4.6)
+		fmt.Fprintf(b, "%sif count < %d { return nodes.refuse_count(report); }\n", i4, f.ArrayMin)
+	}
 	if f.Array == ir.ArrayFixed {
 		fmt.Fprintf(b, "%slet prior = %s.clone();\n", i4, field)
 	}

@@ -17,6 +17,10 @@ SCHEMA_CONFORMANCE_CODEC_NOFORM( WideBlob, wide_blob ) /* past the ceiling: no f
 SCHEMA_CONFORMANCE_CODEC( ArchiveConfig, archive_config )
 SCHEMA_CONFORMANCE_CODEC( KeyedConfig, keyed_config )
 SCHEMA_CONFORMANCE_CODEC( PackConfig, pack_config )
+SCHEMA_CONFORMANCE_CODEC( CountedMin, counted_min )
+SCHEMA_CONFORMANCE_CODEC( FloatBound, float_bound )
+SCHEMA_CONFORMANCE_CODEC( Moods, moods )
+SCHEMA_CONFORMANCE_CODEC( MoodField, mood_field )
 
 static const ConformanceCodec codecs[] = {
     SCHEMA_CONFORMANCE_ROW( tabledemo, RootConfig ),
@@ -25,7 +29,11 @@ static const ConformanceCodec codecs[] = {
     SCHEMA_CONFORMANCE_ROW( tabledemo, WideBlob ),
     SCHEMA_CONFORMANCE_ROW( tabledemo, ArchiveConfig ),
     SCHEMA_CONFORMANCE_ROW( tabledemo, KeyedConfig ),
-    SCHEMA_CONFORMANCE_ROW( tabledemo, PackConfig )
+    SCHEMA_CONFORMANCE_ROW( tabledemo, PackConfig ),
+    SCHEMA_CONFORMANCE_ROW( tabledemo, CountedMin ),
+    SCHEMA_CONFORMANCE_ROW( tabledemo, FloatBound ),
+    SCHEMA_CONFORMANCE_ROW( tabledemo, Moods ),
+    SCHEMA_CONFORMANCE_ROW( tabledemo, MoodField )
 };
 
 /* Sets the one field a `write-refusal` row names. The set is EXACTLY the rows'
@@ -98,6 +106,16 @@ int conformance_write_refusal_set_tabledemo( const char * root, void * value, co
     {
         tabledemo_loadout_config_t * v = (tabledemo_loadout_config_t *) value;
         if ( strcmp( path, "grade" ) == 0 && strcmp( kind, "ordinal" ) == 0 ) { v->grade = (tabledemo_grade_t) n; return 1; }
+    }
+    if ( strcmp( root, "Moods" ) == 0 )
+    {
+        tabledemo_moods_t * v = (tabledemo_moods_t *) value;
+        if ( strcmp( path, "row[0]" ) == 0 && strcmp( kind, "ordinal" ) == 0 && v->row_count >= 1 ) { v->row[0] = (tabledemo_mood_t) n; return 1; }
+    }
+    if ( strcmp( root, "MoodField" ) == 0 )
+    {
+        tabledemo_mood_field_t * v = (tabledemo_mood_field_t *) value;
+        if ( strcmp( path, "mood" ) == 0 && strcmp( kind, "ordinal" ) == 0 ) { v->mood = (tabledemo_mood_t) n; return 1; }
     }
     return 0;
 }
