@@ -238,12 +238,8 @@ still owes part of it, takes its own number and its own ids off the entry.
 
 | entry | rule (spec) | held by, as decided | not on main yet | PR | state |
 |---|---|---|---|---|---|
-| FL-05 | enum `null` and `"None"` are one value (SPEC-TABLES §16.2 (enum row)) | `sp-enum-none-name` | `sp-enum-none-name` | #4688 | owed |
-| FL-09 | map key bounded by its own `string(N)` (SPEC-TABLES §16.2 (A SCHEMA-NAME STRING IS CAPPED AT 255 BYTES; map row)) | `sp-map-key-256-wide`, `sp-map-key-300-wide`, `sp-map-key-301-wide` | `TestTextMapKeyAboveNameCapReadsUnderItsOwnBound`, `sp-map-key-256-wide`, `sp-map-key-300-wide`, `sp-map-key-301-wide` | #4688 | owed |
-| FL-12 | the read depth cap counts every container (SPEC-TABLES §16.2) | `rr-depth-placed-union-map-128`, `rr-depth-placed-union-map-129`, `rr-depth-placed-keyed-map-128`, `rr-depth-placed-keyed-map-129`, `sp-skip-depth-129`, `sp-skip-depth-130`, **ADDED** `rr-depth-skipped-union-arm-128`, `-129`, `rr-depth-skipped-keyed-slot-128`, `-129` (a skipped value under an unknown union arm or enum key), **ADDED** `rr-depth-placed-table-map`, `rr-depth-placed-array-map`, `rr-depth-placed-list-map`, `rr-depth-placed-pointer-chain`, `rr-depth-placed-pointer-array`, `rr-depth-skipped-table-key-array`, `rr-depth-skipped-table-key-object` (each `-128` reads, `-129` refuses); every kind of container counts: a by-value table, an array, a list, a map, an enum-keyed object, a union, a pointer and an array of pointers, and a value skipped under an unknown table key, enum key or union arm. A flags array or text list is a container too, but has NO row yet: no registered root nests one 128 deep, so it needs a recursive root registered in every driver | `sp-skip-depth-129`, `sp-skip-depth-130` | #4688, #4751, #4752, #4754, #4757 | owed |
 | FL-19 | deprecated enum variant (owned by #4689) (SPEC-TABLES §2.15) | `sp-enum-elem-deprecated-array` | `sp-enum-elem-deprecated-array` | #4689, #4753 | owed |
 | FL-25 | counted arrays born at their minimum (#4689; R10 inside a union arm, owned elsewhere) (SPEC-TABLES §22.2, §2.13) | `test/verify-tablegen` op 7; `feature-witnesses/counted-minimum-message`; `sp-count-min-*` | `sp-count-min-at`, `sp-count-min-below`, `sp-count-min-empty`, `sp-count-min-max`, `sp-count-min-over` | #4689, #4753 | owed |
-| FL-27 | non-canonical base64 refuses (SPEC-TABLES §16.8, §16.2) | `base64-padding-*`, `base64-unpadded`, `sp-b64-escaped-noncanonical` | `sp-b64-escaped-noncanonical` | #4688 | owed |
 | FL-31 | names some target cannot build are refused at check (SPEC.md §4.6) | `internal/check` buildable-names cases | `internal/check/buildable_names_test.go` | #4691 | owed |
 | FL-33, FL-34, FL-35 | R2, R5, R9 (SPEC-TABLES §3.4 (the presence entry)) | `internal/ci` `TestRulingsR2R5R9PortRows` | `TestFixedLineageOptionalIntoBareRefusesKindMismatch`, `TestRulingsR2R5R9PortRows` | #4680 | owed |
 | FL-37 | R7 labels in a skipped value (SPEC-TABLES §16.7) | `skipped-label-*` | `skipped-label-fraction`, `skipped-label-misspelled`, `skipped-label-not-first` | #4501, #4636, #4764, #4769, #4773 | owed |
@@ -323,6 +319,10 @@ row and test named on main, so they owe nothing:
 | GAP-20 | A union and its structural payload are two levels (SPEC-TABLES §4); gaps Zig5, Hs8, Li4 | `rr-depth-placed-union-map-128`, `-129` (#4706) |
 | GAP-26 | A float literal is a float64 first, then the field's width (SPEC.md §4.2); gaps Hs4 | `testdata/conformance/frontend/vector.txt` (`TestFrontEndVector`) (#4757) |
 | GAP-27 | Names are ASCII; a `was` alias hashes its UTF-8 bytes (SPEC.md §4.2); gaps Li1 | `testdata/conformance/frontend/vector.txt` (#4757) |
+| FL-05 | enum `null` and `"None"` are one value (SPEC-TABLES §16.2 (enum row)) | `sp-enum-none-name` (#4688) |
+| FL-09 | map key length uses its own `string(N)` bound, not `kTableJsonMaxKey` (SPEC-TABLES §16.2) | `TestTextMapKeyAboveNameCapReadsUnderItsOwnBound`, `sp-map-key-256-wide`, `sp-map-key-300-wide`, `sp-map-key-301-wide` (#4688) |
+| FL-27 | non-canonical base64 refuses (SPEC-TABLES §16.8, §16.2) | `base64-padding-*`, `base64-unpadded`, `sp-b64-escaped-noncanonical` (#4688) |
+| FL-12 | the read depth cap counts every container (SPEC-TABLES §16.2) | `rr-depth-*`, `sp-skip-depth-129`, `sp-skip-depth-130` (#4706, #4688) |
 
 `GAP-26` and `GAP-27` are a FRONT-END vector, as `GAP-12`'s digest is: both rules
 bind what a port resolves from schema text (a default's bits, a wire id), so a

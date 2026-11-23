@@ -663,7 +663,7 @@ List<T> _jsonMap<T>(dynamic val, TableTextReport r, Object Function(T) keyOf, in
 String? _jsonStringKey(String k, int bound, TableTextReport r) {
   k = _jsonText(k);
   final len = utf8.encode(k).length;
-  if (bound >= 0 && (len > bound || len > 255)) {
+  if (bound >= 0 && len > bound) {
     r.refuse('length_over_bound');
     return null;
   }

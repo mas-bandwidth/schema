@@ -461,25 +461,31 @@ static SCHEMA_UNUSED int table_json_read_map(TableJsonIn * in,void * storage,con
         char c=table_json_peek(in),token[kTableJsonMaxKey]; int32_t length=0,before; int64_t number=0; int place=1; void * entry;
         TableReport scratch={0}; TableJsonIn scan=*in; scan.report=&scratch;
         if(c=='}') { in->pos++; return 1; } if(c==0) { in->bad=1; return 0; }
-#ifdef SCHEMA_TABLE_UNBOUNDED_TEXT_RUNTIME
-        if(key->kind==12 && !key->counted) {
+        if(key->kind==12 && (!key->counted || key->array_bound>=kTableJsonMaxKey)) {
             int64_t mark=in->pos; char * dyn=NULL; const char * kptr=token;
             if(!table_json_scan_text(&scan,NULL,INT32_MAX,&length)) { in->pos=scan.pos; in->bad=1; return 0; }
-            if(length>=kTableJsonMaxKey) {
-                dyn=(char *)table_allocate(graph->labels.allocator,(int64_t)length+1);
-                if(dyn==NULL) { in->bad=1; return 0; }
-                kptr=dyn;
+            if(key->counted && length>key->array_bound) {
+                in->pos=scan.pos;
+                if(table_json_peek(in)!=':') { in->bad=1; return 0; }
+                in->pos++;
+                in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE;
+                before=map->count; entry=NULL;
+            } else {
+                if(length>=kTableJsonMaxKey) {
+                    dyn=(char *)table_allocate(graph->labels.allocator,(int64_t)length+1);
+                    if(dyn==NULL) { in->bad=1; return 0; }
+                    kptr=dyn;
+                }
+                scan=*in; scan.report=&scratch; scan.pos=mark;
+                if(!table_json_scan_text(&scan,(char *)kptr,length,&length)) { table_release(graph->labels.allocator,dyn); in->pos=scan.pos; in->bad=1; return 0; }
+                ((char *)kptr)[length]=0; in->pos=scan.pos;
+                if(table_json_peek(in)!=':') { table_release(graph->labels.allocator,dyn); in->bad=1; return 0; }
+                in->pos++;
+                before=map->count; entry=f->place(graph->worker,map,kptr,length,0);
+                table_release(graph->labels.allocator,dyn);
+                if(entry==NULL) { in->bad=1; return 0; }
             }
-            scan=*in; scan.report=&scratch; scan.pos=mark;
-            if(!table_json_scan_text(&scan,(char *)kptr,length,&length)) { table_release(graph->labels.allocator,dyn); in->pos=scan.pos; in->bad=1; return 0; }
-            ((char *)kptr)[length]=0; in->pos=scan.pos;
-            if(table_json_peek(in)!=':') { table_release(graph->labels.allocator,dyn); in->bad=1; return 0; }
-            in->pos++;
-            before=map->count; entry=f->place(graph->worker,map,kptr,length,0);
-            table_release(graph->labels.allocator,dyn);
-            if(entry==NULL) { in->bad=1; return 0; }
         } else
-#endif
         {
             if(!table_json_scan_text(&scan,token,kTableJsonMaxKey-1,&length)) { in->pos=scan.pos; in->bad=1; return 0; }
             in->pos=scan.pos; token[length]=0;
