@@ -116,9 +116,9 @@ int main( void )
     {
         int64_t i;
         int off = 0;
-        Root defaults;
+        tblk1_root_t defaults;
         memset( &defaults, 0x5A, sizeof( defaults ) );
-        root_reset( &defaults );
+        tblk1_root_reset( &defaults );
         for ( i = 0; i < (int64_t) sizeof( back ); ++i )
         {
             if ( ( (const uint8_t *) &back )[i] != ( (const uint8_t *) &defaults )[i] ) { off = 1; break; }
