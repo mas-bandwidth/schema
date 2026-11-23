@@ -1442,6 +1442,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:go-fixed-corpus",
 		"ci-fast.yml:go-test-touched",
 		"ci-fast.yml:golangci-lint-fast",
+		"ci-fast.yml:input-family",
 		"ci-fast.yml:lang-clean",
 		"ci-fast.yml:lang-lint",
 		"ci-fast.yml:leg-gate",
