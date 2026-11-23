@@ -92,4 +92,3 @@ func digestHasRow(d []byte, tag byte) bool {
 	}
 	return false
 }
-

@@ -1,5 +1,5 @@
 // EVERY FIELD-TYPE SPELLING OF THE GRAMMAR (SPEC.md §4.2, Type and Scalar;
-// docs/SPEC-CONFORMANCE.md §8, gap 1): the optional prefix, every bound form,
+// docs/SPEC-CONFORMANCE.md §7, gap 1): the optional prefix, every bound form,
 // the unbounded `[]`, an optional element after a bound, a map with an
 // optional value, a bare `string`, the blob slots `*bytes` and `*string`, a
 // pointer, `fixed table`, and `was` on a table, a field and an arm.

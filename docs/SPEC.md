@@ -497,10 +497,16 @@ from this projection rather than carried in it.
   documentation. **Elixir carries the descriptor column alone for a field and
   for a variant** — a struct field and an enum variant have no attribute to
   hang a doc on — and emits `@moduledoc` for a declaration. A `///` line is
-  refused by name when its last byte, after trailing spaces, tabs and a CRLF's
-  carriage return are dropped, is a backslash: in C-family compilers a line
-  comment ending in a backslash continues onto the next line and hides the
-  declaration under it.
+  refused by name when its last byte, after trailing spaces, tabs, form
+  feeds, vertical tabs and a CRLF's carriage return are dropped, is a
+  backslash: in C-family compilers a line comment ending in a backslash
+  continues onto the next line and hides the declaration under it, and GCC
+  and Clang still splice the line with a form feed or vertical tab between the
+  backslash and the newline. A `///` line is refused by name, too, when it
+  holds a character some target compiler takes as a line end — a carriage
+  return not followed by a newline, U+2028, U+2029 or U+0085 (C# ends a line
+  at all four) — or when it is not well-formed UTF-8, because the text reaches
+  generated sources that must be.
 - **A doc comment moves nothing.** It is excluded from the wire shape
   projection (§3.1) and from the cook projection (SPEC-TABLES.md §20.2), so
   it moves neither the protocol id nor the build version; it enters no
@@ -601,7 +607,7 @@ exchanged — so a port parses it with these productions, the lexical rules of
 internal and is never an interchange format. A spelling the parser of the
 reference compiler (`internal/parser`) accepts and these productions do not,
 or the reverse, is a defect in one of them, and the grammar corpus
-(`testdata/conformance/grammar`, docs/SPEC-CONFORMANCE.md §8) holds both.
+(`testdata/conformance/grammar`, docs/SPEC-CONFORMANCE.md §7) holds both.
 **The checker's refusals (§4.6, SPEC-TABLES.md §11) are `schema check`'s**:
 every unit the conformance corpus names is one the checker accepts, so a
 runtime port may take its input as checked and apply only the runtime rules.
@@ -619,13 +625,13 @@ Block` below also reads `AttrSection Block`:
 File        = { Declaration } .
 Declaration = Package | Const | Enum | Flags | TypeDecl | TableDecl | Union .
 Flags       = "flags" ident ( VariantList
-            | AttrSection NL VariantList ) NL .                // "flags" contextual, §4.2;
+            | AttrSection [ NL ] VariantList ) NL .            // "flags" contextual, §4.2;
                                                                    // a qualified declaration's
                                                                    // body opens on the NEXT line
                                                                    // in canonical form, or after
                                                                    // the section on its own line
 Union       = "union" ident ( UnionBlock
-            | AttrSection NL UnionBlock ) NL .                     // "union" contextual, §4.8;
+            | AttrSection [ NL ] UnionBlock ) NL .                 // "union" contextual, §4.8;
                                                                    // the qualification carries TAGS
                                                                    // and nothing else (§4.2)
 UnionBlock  = "{" { UnionVariant } "}" .
@@ -650,7 +656,7 @@ Const       = "const" ident [ ConstType ] "=" ConstExpr [ AttrSection ] NL .
 ConstType   = IntType | "float32" | "float64" .
 ConstExpr   = IntExpr | FloatExpr .
 Enum        = "enum" ident ( VariantList
-            | AttrSection NL VariantList ) NL .
+            | AttrSection [ NL ] VariantList ) NL .
 VariantList = "{" [ Variant { VariantSep Variant } [ VariantSep ] ] "}" .
 Variant     = ident [ AttrSection ] .                              // the qualification carries TAGS,
                                                                     // and on an enum variant `was`,
@@ -665,13 +671,13 @@ VariantSep  = "," | NL .                                           // a comma, o
                                                                    // ends a qualified variant's line;
                                                                    // a trailing separator is OK
 TypeDecl    = "type" ident ( Block
-            | AttrSection NL Block ) NL .               // qualifiers = the type TAG and the
+            | AttrSection [ NL ] Block ) NL .           // qualifiers = the type TAG and the
                                                         // cpp_* pair, §4.2
 TableDecl   = [ "fixed" ] "table" ident ( Block               // `fixed table` declares the fixed
                                                         // class (SPEC-TABLES.md §2.2); `fixed`
                                                         // here is the declaration's class
                                                         // keyword, never the fixed(I, F) scalar
-            | AttrSection NL Block ) NL .               // the TABLE wire, SPEC-TABLES.md —
+            | AttrSection [ NL ] Block ) NL .           // the TABLE wire, SPEC-TABLES.md —
                                                         // a type body, plus pointers and `was`.
                                                         // A table declaration's qualification
                                                         // carries TAGS, `was` and `forms`
@@ -790,7 +796,7 @@ resolution is that float64 rounded once more to float32 (ties to even): `x
 float32 = 0.1` holds `float32(float64(0.1))`. The two roundings are the rule, not
 an approximation of a single one; a port that rounds the exact decimal once to
 float32 differs on literals within half a float64 ulp of a float32 tie, and is
-wrong there (docs/SPEC-CONFORMANCE.md §8).
+wrong there (docs/SPEC-CONFORMANCE.md §7).
 
 **A NAME IS ASCII; A `was` STRING IS UTF-8.** An identifier is `[A-Za-z_][A-Za-z0-9_]*`
 and nothing else (§4.1), so every wire id of a declared name is fnv1a64 over ASCII
@@ -815,7 +821,13 @@ UTF-8 bytes exactly as written, with no normalization.
   languages get it from their own rules, stated so no target can silently be
   the odd one out). A field may override its zero with `= value` after the
   type — the default DEFINES the fresh value, so it precedes any `|`
-  qualification: `active bool = true`. Defaults cover bool
+  qualification: `active bool = true`. **A field never shadows a constant:**
+  a default (or any bound) that names a `const` means that constant in every
+  target, even when a field of the type body has the same name in the
+  target's spelling (`const Half = 0` beside `half int64 = Half`); a target
+  whose class scope would resolve the bare name to the field (Dart) emits the
+  constant's value instead, and a generated default never refers to the field
+  it initializes. Defaults cover bool
   (`true`/`false`), integer and float fields (constant expressions,
   fit-checked like any use site), enum fields (a variant name), the 128-bit
   integers, `fixed` (§4.6), `string(N)` and `bytes(N)` fields (a quoted
@@ -950,19 +962,17 @@ UTF-8 bytes exactly as written, with no normalization.
     file scope otherwise begin with reserved words, so one token of lookahead
     disambiguates.
 
-    **The full width is a VERSIONING decision, and the reason is worth
-    stating rather than reading as a convenience.** A mask rides on the table
-    wire as a raw `uint64`, kind `9` (SPEC-TABLES.md §3), so a build that
-    appended variants sends bits an older build has no name for. Full-width
-    storage is what lets that older build LOAD those bits, hold them, and
-    write them back on its next save unchanged: appended bits survive a read
-    and a rewrite. Storage derived from the declared variant count, the way
-    an `enum`'s is, would drop every bit above the older build's own last one
-    on the way in, and nothing could report it, because a mask is the wire's
-    one positional vocabulary and no counter can see a bit that is not there
-    (SPEC-TABLES.md §4.1). The cost is fifty-six bits of storage nobody uses
-    in a three-variant declaration, and it buys the one property the
-    append-at-the-end law is worth having.
+    **The `uint64` storage is the 64-variant CEILING, not a versioning
+    device.** One bit per variant and sixty-four at most, so every
+    declaration's mask fits one type in every target, and that type is the
+    API. A mask rides on the table wire as a raw `uint64`, kind `9`
+    (SPEC-TABLES.md §3), and every table read holds it to the reader's own W:
+    **a bit at or above W refuses the whole load `out_of_range`**, and
+    every table writer refuses to write one (SPEC-TABLES.md §4, A TABLE LOAD
+    HOLDS A MASK TO ITS WIDTH). The newer reader reads old data, and never the
+    other way (R17, 2026-11-22): flags append at the end and a spent bit stays
+    spent, so old data never carries a bit past a newer reader's W, and an
+    old reader that meets new data refuses it by name.
   - **The derived-range rule:** a field that indexes a declared set derives
     its range from the set, never restates it — both wires derive from the
     declaration; `min`/`max` are not valid on enum-family fields.
@@ -1211,6 +1221,7 @@ type Vector3 | vec3, cpp_native = Vector3, cpp_include = "core_vector.h"
 { ... }
 ```
 
+<!-- example: fragment -->
 ```cpp
 // core_vector.h, hand-written:
 struct Vector3 : public space::Vector3 { /* operators, length(), ... */ };
@@ -2456,9 +2467,15 @@ a caller can hold that the declaration does not admit:
 | 6 | a union tag outside its arm set | refused |
 | 7 | a NaN or an infinity in a plain float (SPEC-TABLES §3.3) | refused |
 | 8 | ill-formed text: a `string` that is not UTF-8 or holds a zero byte | refused |
-| 9 | a `flags` value with a bit no variant names | a FILE read KEEPS the bit (SPEC-TABLES §4.1); the text writer refuses it, and the message form refuses it above its declared width |
+| 9 | a `flags` value with a bit no variant names | refused: every table read refuses a bit at or above the reader's W `out_of_range` (SPEC-TABLES §4); the file writers refuse one at or above W, and the text and message writers refuse a bit no variant names |
 | 10 | a compressed or ranged float off its range | refused (recommended name `invalid_value` on write; `out_of_range` on read) |
 | 11 | a bare `intN`/`uintN` value outside its declared `N`-bit width: signed below −2^(N−1) or above 2^(N−1)−1, unsigned above 2^N−1 | not on the wire to refuse: the writer puts `N` bits, so the reader lands the low `N` bits and reads a different value. The writer's check is the only guard; a conforming writer never sends one. **The writer checks it** like rows 1–10, by the leg's mechanism, wherever the value can be held: in a language whose storage for the field is exactly `N` bits (C, C++, C#, Go and Rust store `int8`…`uint64` natively) the row is unrepresentable and there is nothing to check; where the storage is wider (Java's `int` for a `uint8`, a JavaScript, Lua or Python number, a Dart or Elixir integer) the write checks it |
+
+**A writer refuses in EVERY form it writes.** The binary save, the text
+(JSON) writer and the cook each hold rows 1-10 (a counted array below its `Min`
+included, in the text writer as much as in the binary save). A field that
+holds a value of the wrong kind (a list field holding a number) is refused,
+never written as an empty list or a default.
 
 **The mechanism is the language's own, and it decides the build.** A language
 whose established idiom is a debug-only assert checks in its debug build and
@@ -2519,21 +2536,21 @@ Each leg's variable `Save` and its `Measure`:
 
 - **C++**: 1–2 and 8 debug; 3–7 every build (8 too for optional text and text-list elements); 9 unchecked; 10 every build
 
-- **C**: 1–4 and 8 debug; 5–7 every build; 9 unchecked; 10 every build
+- **C**: 1–4, 8 and 10 debug, on every field, element and arm payload (1, 2 and 10 also every build for a `required` field); 5–7 every build; 9 unchecked
 
 - **C#**: 1–8 and 10 debug, the region `Save` and the managed cook included; 9 unchecked
 
-- **Rust**: 1–2 and 4 debug; 3 and 7 every build; 5–6 and 8 unrepresentable (native enums, a Rust `String`); 9 unchecked; 10 every build
+- **Rust**: 1–4 debug wherever the value rides (a field, an optional, an array element or count, a `bytes(N)` length, a union arm's payload, a keyed slot), a count past `Max` clamped for the storage in every build; 8 debug for a `string(N)`'s zero byte (unbounded text refuses it every build; ill-formed UTF-8 is unrepresentable in a Rust `String`); 7 every build; 5–6 unrepresentable (native enums); 9 unchecked; 10 every build
 
 - **Java**: 1–5 and 8 debug; 6–7 every build; 9 unchecked; 10 every build
 
-- **Dart**: 1–5 and 8 debug; 6–7 every build; 10 every build for `required` fields only; 9 unchecked
+- **Dart**: 1–5, 8 and 10 debug, on every field, element and arm payload (1 and 10 also every build for a `required` field); 6–7 every build; 9 unchecked
 
 - **Go**: 1–8 and 10 every build; 9 unchecked
 
 - **JavaScript**: 1–8 and 10 every build; 9 not audited
 
-- **Elixir**: 1–6 and 8 every build; 7 unrepresentable (a BEAM float holds no NaN or infinity); 9 unchecked; 10 every build
+- **Elixir**: 1–6 and 8 every build, on every field, union arm payload and array element, `required` or not; 7 unrepresentable (a BEAM float holds no NaN or infinity); 9 unchecked; 10 and 11 every build
 
 - **Lua**: 1–8 every build, `SaveRetain` included; 9 not audited; 10 every build
 
@@ -2545,7 +2562,7 @@ Each leg's variable `Save` and its `Measure`:
 
 - **Goose**: 1–8 and 10 every build; 9 not audited
 
-- **Lobster**: 1–8 and 10 every build (`save_reasoned`'s `invalid_value`; 7 its `non_finite_float`), and a map key held twice, at every record the save graph reaches; 9 unchecked
+- **Lobster**: 1–8 and 10 every build (`save_reasoned`'s `invalid_value`; 7 its `non_finite_float`), a map key held twice and a deprecated enum variant (SPEC-TABLES §2.15), at every record the save graph reaches; `<Name>Cook` and `<Name>CookMeasure` run the same walk (`""` and `-1`, SPEC-TABLES §7.6); 9 unchecked
 
 The other writers, over rows 1–8 and 10 (row 9 is not audited there: a file
 read KEEPS an appended mask bit, the text writer refuses a bit it cannot name,
@@ -2568,6 +2585,10 @@ a deprecated variant.
 would index past the storage it describes is a write check like any other: a
 debug assert in an assert leg, a refusal in every build elsewhere. No release
 build of an assert leg is required to refuse it, and no gate may require one.
+A fixed-length array `[N]T` or an enum-keyed array `[E]T` handed to a
+writer holds exactly N values: a writer checks any other length like a count
+past its storage, and never cuts or pads it to N (SF-20,
+docs/silent-failure-audit-1122.md).
 `FixedSave`'s row 8 includes a zero byte or a zero unit, because the fixed
 reader refuses one as `text_ill_formed`: in the build where its check is
 active, a writer never produces bytes its own reader refuses.
@@ -2612,7 +2633,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `FixedSave`: 1–6, 8 and 10 debug; 7 every build
 
-  - `SaveMessages`: 1–2 and 8 debug; 3–7 every build
+  - `SaveMessages`: 1–2, 8 and 10 debug; 3–7 every build
 
   - packet `Write`: 1–8 and 10 debug; 11 debug for an unsigned width whose Java storage is wider (`checkWrite`'s `assert value.<field> <= 2^N−1`); unrepresentable for a signed width and a `byte`-stored one, whose storage is exactly `N` bits
 
@@ -2634,9 +2655,9 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
 - **JavaScript**
 
-  - `FixedSave`: 1–8 every build
+  - `FixedSave`: 1–8 every build; a `[N]T` or enum-keyed array whose length is not exactly `N` is refused, never cut at `N`, and row 3 holds the count to its `Min`
 
-  - `SaveMessages`: 1–8 every build
+  - `SaveMessages`: 1–9 every build (9: a `flags` value that is negative or holds a bit at or above its declared width, `invalid_value`); a `[N]T` or enum-keyed array whose length is not exactly `N` is refused, never cut at `N`
 
   - packet `Write`: the flat tier 1–7 every build, whatever `NODE_ENV` says; 8, 10 and 11 every build on the flat and the runtime tier
 
@@ -2684,7 +2705,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `FixedSave`: 1–8 every build
 
-  - `SaveMessages`: 1–8 every build
+  - `SaveMessages`: 1–9 every build (9: a `flags` bit at or above its declared width, `MsgRefuseInvalidValue`)
 
   - packet `Write`: 1–8 and 10 every build, each returning a `SERIALIZE_ERROR_*` kind (value out of range, invalid UTF-8 or embedded NUL), not `SaveRefuseInvalidValue`, which is the file save's name; 11 unrepresentable (the storage is `iN`/`uN`)
 

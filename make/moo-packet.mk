@@ -43,15 +43,15 @@ endef
 # PACKET DEFAULTS (test/packet-defaults/README.md): constructors, in-place
 # Init and the distinct Zero form, explicit-empty and short literals, the
 # unsigned 33/64-bit masks, the defaultless twin, counted backing storage,
-# reused prefixes and repeated union selection, and the eight C++ byte and bit
+# reused prefixes and repeated union selection, and the ten C++ byte and bit
 # pins read back at their consumed bits. The control drops only the
 # constructor's byte copy and must fail the constructor-bytes marker.
-MOO_PACKET_DEFAULTS_RUN = -analyze -schema test/packet-defaults/Defaults.schema -schema test/packet-defaults/Plain.schema \
+MOO_PACKET_DEFAULTS_RUN = -analyze -schema test/packet-defaults/Defaults.schema -schema test/packet-defaults/Plain.schema 	-schema-in constant-hexadecimal-addition=test/conformance/packet/testdata/constant-defaults/hexadecimal-addition/Defaults.schema 	-schema-in constant-unsigned-subtraction=test/conformance/packet/testdata/constant-defaults/unsigned-subtraction/Defaults.schema \
 	-inputs testdata/wire/packet-defaults -main test/packet-defaults/moo/main.moo
 
 .PHONY: packet-defaults-moo packet-defaults-moo-negative-control
 packet-defaults-moo: toolchain-moo moo-packet-driver packet-defaults-cpp build/mustrun
-	$(MUSTRUN) -name packet-defaults-moo -count 129 -- $(MOO_PACKET_DRIVER) $(MOO_PACKET_DEFAULTS_RUN)
+	$(MUSTRUN) -name packet-defaults-moo -count 167 -- $(MOO_PACKET_DRIVER) $(MOO_PACKET_DEFAULTS_RUN)
 
 packet-defaults-moo-negative-control: packet-defaults-moo
 	$(call moo-packet-sabotaged-driver,build/packet-defaults/moo-negative,packet-defaults-moo-constructor-bytes,moo.go)
