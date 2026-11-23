@@ -1633,9 +1633,8 @@ jobs:
           go run ./tools/gotestreport -slowest 0 -skips .github/skip-ledger.txt \
             -provides "platform tool:make tool:git tool:sh tool:elixir" "$PGROUP_GO_TEST_JSON"
 
-  # Use the existing Dart verify conformance job as the producer. When
-  # accounting is selected, the consumer runs the identical claims in full
-  # and the producer retains the packet checks.
+  # The producer builds the Dart driver and runs the selected packet checks.
+  # The consumer runs the full claims, with input accounting when selected.
   verify-dart-conformance:
     needs: plan
     if: startsWith(github.head_ref, 'sprint/') == false && ((contains(needs.plan.outputs.verify_legs, '"dart"') || needs.plan.outputs.dart_corpus_account == 'true') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
@@ -1667,22 +1666,16 @@ jobs:
           cd ..
           rm -rf serialize
           git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
-      - name: verify Dart conformance or build the accounting driver
+      - name: build the Dart claims driver and run selected packet checks
         env:
-          ACCOUNT: ${{ needs.plan.outputs.dart_corpus_account }}
           VERIFY: ${{ contains(needs.plan.outputs.verify_legs, '"dart"') }}
         run: |
           set -euo pipefail
           if [ -f /opt/nova/sdk/env.sh ]; then . /opt/nova/sdk/env.sh; fi
-          if [ "$ACCOUNT" = true ]; then
-            options=()
-            if [ "$VERIFY" = true ]; then options+=(--verify-packets); fi
-            python3 make/dart-aot-handoff.py produce "$RUNNER_TEMP/dart-conformance.tar.gz" "${options[@]}"
-          else
-            make verify-dart-conformance DART=dart
-          fi
+          options=()
+          if [ "$VERIFY" = true ]; then options+=(--verify-packets); fi
+          python3 make/dart-aot-handoff.py produce "$RUNNER_TEMP/dart-conformance.tar.gz" "${options[@]}"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: needs.plan.outputs.dart_corpus_account == 'true'
         with:
           name: dart-conformance-aot
           path: ${{ runner.temp }}/dart-conformance.tar.gz
@@ -1698,8 +1691,8 @@ jobs:
 
   input-family-dart-conformance:
     needs: [plan, verify-dart-conformance]
-    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.dart_corpus_account == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
-    name: input-family (conformance-corpus, dart)
+    if: startsWith(github.head_ref, 'sprint/') == false && ((contains(needs.plan.outputs.verify_legs, '"dart"') || needs.plan.outputs.dart_corpus_account == 'true') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    name: ${{ needs.plan.outputs.dart_corpus_account == 'true' && 'input-family (conformance-corpus, dart)' || 'verify-leg (dart, claims)' }}
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
     permissions:
@@ -1734,11 +1727,17 @@ jobs:
           run-id: ${{ github.run_id }}
           path: ${{ env.DART_CONFORMANCE_ARTIFACTS }}
           digest-mismatch: error
-      - name: verify the same-run Dart build and account for conformance inputs
+      - name: verify the same-run Dart build and run the conformance claims
+        env:
+          ACCOUNT: ${{ needs.plan.outputs.dart_corpus_account }}
         run: |
           set -euo pipefail
           if [ -f /opt/nova/sdk/env.sh ]; then . /opt/nova/sdk/env.sh; fi
           python3 make/dart-aot-handoff.py consume "${DART_CONFORMANCE_ARTIFACTS:?missing artifact directory}/dart-conformance.tar.gz"
+          if [ "$ACCOUNT" != true ]; then
+            make -j"$(nproc)" -o build/conformance-dart _conformance-corpus-dart DART=dart
+            exit 0
+          fi
           go build -o "$RUNNER_TEMP/inputaccount" ./tools/inputaccount
           # -o on the outer make is lost in recipes invoking $(MAKE).
           vars=(DART=dart "VERIFY_JFLAG=-j4 -o build/conformance-dart")
@@ -2891,8 +2890,7 @@ jobs:
               nightly-fast) [ "$(out nightly_rows)" = '[]' ] ;;
               verify-leg) [ "$(out verify_legs)" = '[]' ] ;;
               verify-elixir-conformance) ! grep -qF '"elixir"' <<<"$(out verify_legs)" ;;
-              verify-dart-conformance) [ "$(out dart_corpus_account)" != true ] && ! grep -qF '"dart"' <<<"$(out verify_legs)" ;;
-              input-family-dart-conformance) [ "$(out dart_corpus_account)" != true ] ;;
+              verify-dart-conformance|input-family-dart-conformance) [ "$(out dart_corpus_account)" != true ] && ! grep -qF '"dart"' <<<"$(out verify_legs)" ;;
               input-family) [ "$(out input_rows)" = '[]' ] ;;
               go-fixed-corpus) ! grep -qF '"make":"tables-go-fixedform"' <<<"$(out rows)" ;;
               go-test-touched) [ -z "$(out packages)" ] ;;
