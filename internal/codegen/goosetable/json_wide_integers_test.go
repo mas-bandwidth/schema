@@ -82,6 +82,13 @@ table Sites
     bykey map[uint64]int64
     keyed [Key]int64
 }
+
+table Typed128
+{
+    few    [2]uint128
+    whole  int128 | min = -170141183460469231731687303715884105728, max = 170141183460469231731687303715884105727
+    ranged int128 | min = -5, max = 5
+}
 `
 
 type jsonIntegerRow struct {
@@ -167,6 +174,20 @@ var jsonIntegerSiteRows = []struct {
 	{name: "variable-arm-string-neg-zero", root: "Sites", class: "variable", text: `{"pick":{"wide":"-0"}}`},
 	{name: "variable-map-value-fraction", root: "Sites", class: "variable", text: `{"bykey":{"1":"2.0"}}`},
 	{name: "variable-map-key-fraction", root: "Sites", class: "variable", text: `{"bykey":{"1.0":2}}`},
+	// the typed walk carries 128-bit integers (verify-tablegen pin:*128 and
+	// pin:*wrec fix_json): digits inside a string, exact over all 128 bits,
+	// a bare number kind_mismatch, a value past the kind or its range refused
+	{
+		name: "typed128-sites", root: "Typed128", class: "typed",
+		text: `{"few":["18446744073709551616","1"],"whole":"-170141183460469231731687303715884105728","ranged":"-5"}`,
+		want: "{\n  \"few\": [\n    \"18446744073709551616\",\n    \"1\"\n  ],\n  \"whole\": \"-170141183460469231731687303715884105728\",\n  \"ranged\": \"-5\"\n}\n",
+	},
+	{name: "typed128-array-number", root: "Typed128", class: "typed", text: `{"few":[7]}`},
+	{name: "typed128-one-past", root: "Typed128", class: "typed", text: `{"few":["340282366920938463463374607431768211456"]}`},
+	{name: "typed128-negative-unsigned", root: "Typed128", class: "typed", text: `{"few":["-1"]}`},
+	{name: "typed128-signed-one-below", root: "Typed128", class: "typed", text: `{"whole":"-170141183460469231731687303715884105729"}`},
+	{name: "typed128-off-range", root: "Typed128", class: "typed", text: `{"ranged":"6"}`},
+	{name: "typed128-neg-zero", root: "Typed128", class: "typed", text: `{"whole":"-0"}`},
 	{name: "variable-array-one-past", root: "Sites", class: "variable", text: `{"nums":["9223372036854775808"]}`},
 }
 
@@ -246,6 +267,19 @@ fn typed(name: const u8[:]) {
     hex(out);
 }
 
+fn typed128(name: const u8[:]) {
+    var text: u8[>..] = [];
+    if !read_file(name, text) { print("read-failed"); return; }
+    var v = NS::NewTyped128();
+    var report = schema_rt::json_report();
+    if !NS::Typed128FromJson(v, text, report) || report.damaged { if report.mismatch > 0 { print("refused_mismatch"); } else { print("refused"); } return; }
+    let m = NS::Typed128ToJsonMeasure(v);
+    var out: u8[>..] = [];
+    let n = NS::Typed128ToJson(v, out);
+    if m < 0 || n < 0 || m != n || n != (out.len as! i64) { print("short"); return; }
+    hex(out);
+}
+
 fn main() {
 `, "NS", ns))
 
@@ -283,7 +317,9 @@ fn main() {
 			p.want = []byte(row.want)
 		}
 		probes = append(probes, p)
-		if row.class == "typed" {
+		if row.root == "Typed128" {
+			fmt.Fprintf(&b, "    typed128(%q);\n", name)
+		} else if row.class == "typed" {
 			fmt.Fprintf(&b, "    typed(%q);\n", name)
 		} else {
 			fmt.Fprintf(&b, "    variable(%q, %q);\n", name, row.root)

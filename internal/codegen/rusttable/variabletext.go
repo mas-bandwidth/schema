@@ -1418,7 +1418,7 @@ func (g *gen) emitTextWriteOne(b *strings.Builder, f *ir.Field, x, d, ind string
 		}
 		switch f.Type.Kind {
 		case ir.TBool:
-			fmt.Fprintf(b, "%sw.out.push_str(if %s { \"true\" } else { \"false\" });\n", ind, x)
+			fmt.Fprintf(b, "%sw.out.push_str(if %s { \"true\" } else { \"false\" });\n", ind, cookVal(x))
 		case ir.TFloat32:
 			// a float32 range is compared at float32 (docs/SPEC.md §4.6), and a
 			// compressed float's -0 is written as +0
