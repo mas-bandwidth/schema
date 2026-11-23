@@ -87,9 +87,9 @@ println!("case %s ok");
 let mut report=TableReport::default();
 report.missing_required=7;
 assert!(required_value_from_json("{}", &mut report).is_none());
-assert_eq!(report.missing_required,8);
+assert_eq!(report.missing_required,1);
 assert!(required_value_from_json("{\"a\":0,\"b\":0}",&mut report).is_some());
-assert_eq!(report.missing_required,8);
+assert_eq!(report.missing_required,0);
 assert!(!report.refused && report.missing_required_fields.is_empty() && report.reason==TableReason::None);
 for text in ["null","42","[]","\"x\""] {
  assert!(required_value_from_json(text,&mut TableReport::default()).is_none(),"wrong root {}",text);

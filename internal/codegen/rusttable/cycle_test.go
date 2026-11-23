@@ -133,13 +133,13 @@ func runRustCycleProbe(t *testing.T, edit func(string) string) (string, error) {
         check(r.damaged && r.cycle_on_save && v.is_none(), &format!("{row}: load did not refuse cycle as damage"));
         let v_after = list_node_load(&CHAIN_TWO_WIRE, &mut r);
         check(
-            r.damaged && r.cycle_on_save && v_after.as_ref().is_some_and(|n| n.next.is_some()),
+            !r.damaged && !r.cycle_on_save && v_after.as_ref().is_some_and(|n| n.next.is_some()),
             &format!("{row}: reused report after cycle refusal poisoned subsequent valid CHAIN_TWO_WIRE load"),
         );
         let mut r_clean = TableReport { cycle_on_save: true, ..TableReport::default() };
         let v_clean = list_node_load(&CHAIN_TWO_WIRE, &mut r_clean);
         check(
-            !r_clean.damaged && r_clean.cycle_on_save && v_clean.as_ref().is_some_and(|n| n.next.is_some()),
+            !r_clean.damaged && !r_clean.cycle_on_save && v_clean.as_ref().is_some_and(|n| n.next.is_some()),
             &format!("{row}: prior cycle_on_save with malformed=false poisoned subsequent valid CHAIN_TWO_WIRE load"),
         );
 
@@ -150,7 +150,7 @@ func runRustCycleProbe(t *testing.T, edit func(string) string) (string, error) {
         check(store.bytes.is_empty() && store.ids.is_empty(), &format!("{row}: retaining store was not cleared on cycle refusal"));
         let rv_after = list_node_load_retain(&CHAIN_TWO_WIRE, &mut store, &mut rr);
         check(
-            rr.damaged && rr.cycle_on_save && rv_after.as_ref().is_some_and(|n| n.next.is_some()),
+            !rr.damaged && !rr.cycle_on_save && rv_after.as_ref().is_some_and(|n| n.next.is_some()),
             &format!("{row}: reused report after retaining cycle refusal poisoned subsequent valid CHAIN_TWO_WIRE load"),
         );
     }
