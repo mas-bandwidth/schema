@@ -38,7 +38,7 @@ def self.assign_fixed(pkg, root_val, spec, path, rule, token)
     previous = owner[idx]
     assigned = case rule
                when 'int', 'ordinal' then Integer(token, 10)
-               when 'float' then RubyConformance.parse_float_token(token)
+               when 'float', 'real' then RubyConformance.parse_float_token(token)
                when 'length' then field['shape'] == 'string' ? ('x' * Integer(token, 10)) : ("\x00".b * Integer(token, 10))
                when 'bytes'
                  raw = [token].pack('H*')
@@ -53,7 +53,7 @@ def self.assign_fixed(pkg, root_val, spec, path, rule, token)
   case rule
   when 'int', 'ordinal'
     assigned = Integer(token, 10)
-  when 'float'
+  when 'float', 'real'
     assigned = RubyConformance.parse_float_token(token)
   when 'tag'
     previous.type = Integer(token, 10)
@@ -75,12 +75,12 @@ def self.assign_fixed(pkg, root_val, spec, path, rule, token)
 end
 
 def self.run(manifest, outdir)
-  RubyConformance.entries(manifest, 'write-refusal-fixed').each do |row|
+  RubyConformance.cases(manifest, 'write-refusal-fixed') do |row|
     case_name, unit, root, wire, path, rule, token = row[1, 7]
     pkg = RubyConformance.unit_package(unit)
     cls = RubyConformance.root_class(unit, root)
     if pkg.nil? || cls.nil? || !cls.respond_to?(:fixed_save) || !pkg.respond_to?(:_s_fixed_roots)
-      RubyConformance.absent(outdir, case_name, 'fixed root not generated for ruby')
+      RubyConformance.no_codec(outdir, case_name)
       next
     end
     # A committed wire the reader refuses is a reader failure, never a missing

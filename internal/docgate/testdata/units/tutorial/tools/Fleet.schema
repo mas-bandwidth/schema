@@ -1,0 +1,12 @@
+package starlighttools
+
+table ShipTuning
+{
+    max_health float32 = 100.0
+}
+
+table Fleet
+{
+    ships map[string(32)]ShipTuning
+    tiers map[int16]int32
+}

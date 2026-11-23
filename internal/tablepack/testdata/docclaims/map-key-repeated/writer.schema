@@ -1,0 +1,12 @@
+package claims
+
+table Pair
+{
+    key   int32
+    value int32
+}
+
+table Ledger
+{
+    pairs [..4]Pair
+}

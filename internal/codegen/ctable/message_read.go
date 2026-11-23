@@ -53,14 +53,74 @@ static SCHEMA_UNUSED int table_message_skip_run(TableMessageReader * r,uint64_t 
  if(count>(uint64_t)(INT64_MAX/width))return 0;
  return table_bit_skip(&r->bits,(int64_t)(count*(uint64_t)width));
 }
+/* THE COUNT'S BITS CAN SPELL ABOVE THE ANNOUNCED MAX (§3.3): a count past it
+   is damage at a named field as it is on the skip path. */
 static SCHEMA_UNUSED int table_message_count(TableMessageReader * r,const TableMessageEntry * e,uint64_t * n)
 {
  uint64_t raw;
  if(!table_bit_get(&r->bits,&raw,table_bits_required(e->min,e->max)))return 0;
  *n=raw+(uint64_t)e->min;
+ if(*n>(uint64_t)e->max)return 0;
  return !(e->kind==14 && e->elem_kind==6) || table_bit_align_read(&r->bits);
 }
+static SCHEMA_UNUSED int table_message_signed_kind(uint8_t kind)
+{
+ return (kind>=2 && kind<=5) || kind==18 || (kind>=20 && kind<=24);
+}
+/* A RANGED VALUE IS HELD TO ITS ANNOUNCED KIND'S STORAGE DOMAIN (§3.3): the
+   offset's bits can spell a value past the sender's range, and base plus
+   offset is never wrapped. The arithmetic is on 64-bit words; no base lies
+   outside its own domain, because the announcement read held it there. */
+static SCHEMA_UNUSED int table_message_ranged_holds(uint8_t kind,uint64_t lo,uint64_t hi,int64_t base_lo,int64_t base_hi)
+{
+ int64_t domain=table_message_kind_bits(kind);
+ int is_signed=table_message_signed_kind(kind);
+ if(domain==128) {
+  uint64_t top_hi=is_signed ? (uint64_t)INT64_MAX : UINT64_MAX;
+  uint64_t room_lo=UINT64_MAX-(uint64_t)base_lo,room_hi=top_hi-(uint64_t)base_hi;
+  return hi<room_hi || (hi==room_hi && lo<=room_lo);
+ }
+ if(hi!=0)return 0;
+ if(!is_signed) {
+  uint64_t top=domain==64 ? UINT64_MAX : (UINT64_C(1)<<domain)-1;
+  return (uint64_t)base_lo<=top && lo<=top-(uint64_t)base_lo;
+ }
+ {
+  int64_t top=domain==64 ? INT64_MAX : (int64_t)((UINT64_C(1)<<(domain-1))-1);
+  int64_t bottom=-top-1;
+  if(base_lo>top || lo>(uint64_t)top-(uint64_t)base_lo)return 0;
+  return base_lo>=bottom;
+ }
+}
+static SCHEMA_UNUSED int table_message_number(TableMessageReader * r,const TableMessageEntry * e,uint64_t * lo,uint64_t * hi)
+{
+ int64_t width=e->value_bits;uint64_t before;
+ *lo=*hi=0;
+ if(width<0 || width>128 || !table_bit_get(&r->bits,lo,width<64?width:64))return 0;
+ if(width>64 && !table_bit_get(&r->bits,hi,width-64))return 0;
+ if(e->packing==1) {
+  if(!table_message_ranged_holds(e->kind,*lo,*hi,e->base_lo,e->base_hi))return 0;
+  before=*lo;*lo+=(uint64_t)e->base_lo;
+  if(table_message_kind_bits(e->kind)>64)*hi+=(uint64_t)e->base_hi+(*lo<before);
+ } else if(((e->kind>=2 && e->kind<=5)||(e->kind>=20 && e->kind<=23)) && width>0 && width<64 && (*lo&(UINT64_C(1)<<(width-1)))) {
+  *lo|=UINT64_MAX<<width;
+ }
+ if((e->kind>=2 && e->kind<=5)||(e->kind>=20 && e->kind<=23))*hi=(int64_t)*lo<0?UINT64_MAX:0;
+ return 1;
+}
 static SCHEMA_UNUSED int table_message_skip(TableMessageReader *,const TableMessageEntry *);
+/* A message field cannot be required, so a union FIELD at None is elided at
+   every build: an arm reference 0 stored for one is refused on the skip path
+   as on a read (§3.3(c)). An array element and an arm's own value keep their
+   positional None, so they skip through table_message_skip. */
+static SCHEMA_UNUSED int table_message_skip_field(TableMessageReader * r,const TableMessageEntry * e)
+{
+ if(e->kind==15) {
+  TableBitReader peek=r->bits;uint64_t arm=0;
+  if(!table_bit_get(&peek,&arm,r->vocabulary->ref_bits)||arm==0)return 0;
+ }
+ return table_message_skip(r,e);
+}
 /* skip_depth is one counter for the unknown-skip walk (docs/SPEC-TABLES.md
    message_skip_depth). table_message_open zeroes it, so every external caller
    starts at 0. A nested body, a union arm and a walked element each enter the
@@ -78,13 +138,32 @@ static SCHEMA_UNUSED int table_message_skip_body(TableMessageReader * r)
   /* A FIELD ID TWICE IN ONE BODY IS DAMAGE (§3.3), named or skipped, through
      one slot or two. */
   if(!table_message_seen_once(seen,r->vocabulary,entry))return 0;
-  if(!table_message_skip(r,entry))return 0;
+  if(!table_message_skip_field(r,entry))return 0;
  }
 }
 static SCHEMA_UNUSED int table_message_skip_deeper(TableMessageReader * r,const TableMessageEntry * e)
 {
  int saved=r->skip_depth,ok;
  r->skip_depth=saved+1;ok=table_message_skip(r,e);r->skip_depth=saved;return ok;
+}
+/* A KEYED ARRAY'S KEY NAMES A DECLARED NO-PAYLOAD ENTRY AND NO KEY REPEATS
+   (§3.2, §3.3): the name reference and the bitset hold it. The walk has its
+   own frame, so the bitset rides only where a keyed array is skipped. */
+static SCHEMA_UNUSED int table_message_skip_keyed(TableMessageReader * r,const TableMessageEntry * elem,uint64_t n)
+{
+ uint8_t seen[kTableMessageSeenRefs/8];uint64_t i;const TableMessageEntry * key;int64_t before;
+ memset(seen,0,sizeof(seen));
+ for(i=0;i<n;i++) {
+  if(!table_message_ref(r,&key,1)||key==NULL||!table_message_seen_once(seen,r->vocabulary,key))return 0;
+  before=r->bits.offset;
+  if(elem->value_bits>=0 || elem->kind==0 || elem->kind==32) {
+   if(!table_message_skip(r,elem))return 0;
+  } else if(!table_message_skip_deeper(r,elem))return 0;
+  /* A WALKED ELEMENT THAT CONSUMES NO BITS IS DAMAGE (§3.3); a scalar or a
+     no-payload slot rides its key reference as its payload. */
+  if(r->bits.offset==before && elem->value_bits<0 && elem->kind!=0 && elem->kind!=32)return 0;
+ }
+ return 1;
 }
 static SCHEMA_UNUSED int table_message_skip(TableMessageReader * r,const TableMessageEntry * e)
 {
@@ -122,27 +201,25 @@ static SCHEMA_UNUSED int table_message_skip(TableMessageReader * r,const TableMe
   return table_bits_finite64(n);
  case 14:case 16: {
   TableMessageEntry elem=table_message_element(e);
+  /* THE COUNT'S BITS CAN SPELL ABOVE THE ANNOUNCED MAX (§3.3):
+     table_message_count refuses it. */
   if(!table_message_count(r,e,&n))return 0;
-  /* THE COUNT'S BITS CAN SPELL ABOVE THE ANNOUNCED MAX (§3.3). */
-  if(n>(uint64_t)e->max)return 0;
-  /* A RUN OF FIXED-WIDTH ELEMENTS IS ARITHMETIC (§3.3). A float, a ranged or
-     a quantized element carries a value condition, so it is walked; a keyed
-     entry carries a key reference, so it is walked too. */
+  /* A RUN OF FIXED-WIDTH ELEMENTS IS ARITHMETIC (§3.3), and it has to be: a
+     ranged element whose min equals its max rides no bits at all, so a count
+     of 2^32 over one would otherwise buy 2^32 loop turns for a few bytes of
+     wire. Its one value is its base, which the announcement read already held
+     to the kind. A float, a ranged or a quantized element of non-zero width
+     carries a value condition, so it is walked; a keyed entry carries a key
+     reference, so it is walked too. */
   if(e->kind==14 && elem.kind!=13 && elem.kind!=15 && elem.kind!=17 && elem.kind!=30) {
-   if(elem.kind==0||elem.kind==32)return 1;
+   if(elem.kind==0||elem.kind==32||elem.value_bits==0)return 1;
    if(elem.value_bits>0 && elem.kind!=10 && elem.kind!=11 && elem.packing!=1 && elem.packing!=2)
     return table_message_skip_run(r,n,(int64_t)elem.value_bits);
   }
+  if(e->kind==16)return table_message_skip_keyed(r,&elem,n);
   {
-   uint8_t seen[kTableMessageSeenRefs/8];int64_t before;
-   /* A KEYED ARRAY'S KEY NAMES A DECLARED NO-PAYLOAD ENTRY AND NO KEY
-      REPEATS (§3.2, §3.3): the name reference and the bitset hold it. */
-   if(e->kind==16)memset(seen,0,sizeof(seen));
+   int64_t before;
    for(i=0;i<n;i++) {
-    if(e->kind==16) {
-     if(!table_message_ref(r,&entry,1)||entry==NULL)return 0;
-     if(!table_message_seen_once(seen,r->vocabulary,entry))return 0;
-    }
     before=r->bits.offset;
     /* A SCALAR ELEMENT IS NOT A STRUCTURAL PAYLOAD (§3.3), so it is held to
        its own value conditions at the array body's level; only a string, a
@@ -151,31 +228,21 @@ static SCHEMA_UNUSED int table_message_skip(TableMessageReader * r,const TableMe
     if(elem.value_bits>=0 || elem.kind==0 || elem.kind==32) {
      if(!table_message_skip(r,&elem))return 0;
     } else if(!table_message_skip_deeper(r,&elem))return 0;
-    /* A WALKED ELEMENT THAT CONSUMES NO BITS IS DAMAGE (§3.3). A keyed
-       scalar or no-payload element rides no element bits; its key reference
-       is the payload, and the reference reader's arithmetic run counts it. */
+    /* A WALKED ELEMENT THAT CONSUMES NO BITS IS DAMAGE (§3.3). */
     if(r->bits.offset==before && elem.value_bits<0 && elem.kind!=0 && elem.kind!=32)return 0;
    }
    return 1;
   }
  }
- default:return e->value_bits>=0 && table_bit_skip(&r->bits,e->value_bits);
+ default:
+  /* SKIPPED IS NOT UNREAD (§3.3): a ranged integer's base plus offset is
+     held to its announced kind, as a named read holds it. */
+  if(e->packing==1 && (table_message_integer_kind(e->kind)||table_message_fixed_kind(e->kind))) {
+   uint64_t lo,hi;
+   return table_message_number(r,e,&lo,&hi);
+  }
+  return e->value_bits>=0 && table_bit_skip(&r->bits,e->value_bits);
  }
-}
-static SCHEMA_UNUSED int table_message_number(TableMessageReader * r,const TableMessageEntry * e,uint64_t * lo,uint64_t * hi)
-{
- int64_t width=e->value_bits;uint64_t before;
- *lo=*hi=0;
- if(width<0 || width>128 || !table_bit_get(&r->bits,lo,width<64?width:64))return 0;
- if(width>64 && !table_bit_get(&r->bits,hi,width-64))return 0;
- if(e->packing==1) {
-  before=*lo;*lo+=(uint64_t)e->base_lo;
-  if(table_message_kind_bits(e->kind)>64)*hi+=(uint64_t)e->base_hi+(*lo<before);
- } else if(((e->kind>=2 && e->kind<=5)||(e->kind>=20 && e->kind<=23)) && width>0 && width<64 && (*lo&(UINT64_C(1)<<(width-1)))) {
-  *lo|=UINT64_MAX<<width;
- }
- if((e->kind>=2 && e->kind<=5)||(e->kind>=20 && e->kind<=23))*hi=(int64_t)*lo<0?UINT64_MAX:0;
- return 1;
 }
 /* 1 is a value, 0 damage, and 2 a float whose raw bits are a NaN or an
    infinity (docs/SPEC-TABLES.md §3.3): refused as non_finite_float before the
@@ -243,6 +310,8 @@ func (g *tableGen) messageReadScalar(f *ir.Field, dst, e, ind string) {
 		g.pf("%s if(finite){", ind)
 		if f.HasFloatRange {
 			g.pf("if(decoded<%s){decoded=%s;r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE;}else if(decoded>%s){decoded=%s;r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE;}", formatFloat(f.FMin, kind == tkF32), formatFloat(f.FMin, kind == tkF32), formatFloat(f.FMax, kind == tkF32), formatFloat(f.FMax, kind == tkF32))
+			// a compressed float's -0 lands as +0 (docs/SPEC-TABLES.md §3.3)
+			g.pf("decoded=decoded+0;")
 		}
 		g.pf("%s=decoded;} }\n", dst)
 		return
@@ -330,6 +399,13 @@ func (g *tableGen) messageReadValue(f *ir.Field, dst, count, e, ind string) {
 			width = "table_bits_required(" + e + "->min," + e + "->max)"
 		}
 		g.pf("%s{uint64_t n,kept;if(!table_bit_get(&r->bits,&n,%s))goto damaged;\n", ind, width)
+		if f.Type.Kind == ir.TBytes {
+			// bytes(N) AND [..N]uint8 ARE THE SAME KIND (docs/SPEC-TABLES.md
+			// §3.3): the count rides as count - min, as an array's does.
+			g.pf("%s n+=(uint64_t)%s->min;\n", ind, e)
+		}
+		// A LENGTH PAST THE ANNOUNCED MAX IS DAMAGE (§3.3), named or skipped.
+		g.pf("%s if(n>(uint64_t)%s->max)goto damaged;\n", ind, e)
 		if bits == 8 {
 			g.pf("%s if(!table_bit_align_read(&r->bits))goto damaged;\n", ind)
 		}
@@ -376,6 +452,11 @@ func (g *tableGen) messageReadValue(f *ir.Field, dst, count, e, ind string) {
 	case f.Array != ir.ArrayNone:
 		g.pf("%s{uint64_t n,kept,walk,i;TableMessageEntry element_shape=table_message_element(%s);const TableMessageEntry * element_entry=&element_shape;(void)element_entry;\n", ind, e)
 		g.pf("%s if(!table_message_count(r,%s,&n))goto damaged;kept=n>%d?%d:n;if(kept<n)r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE;\n", ind, e, f.ArrayBound, f.ArrayBound)
+		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+			// A COUNT BELOW THE DECLARED MIN IS REFUSED (docs/SPEC.md §5.1
+			// row 3): zero is outside a [A..B] count's own range.
+			g.pf("%s if(n<%d)r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE;\n", ind, f.ArrayMin)
+		}
 		g.pf("%s walk=element_entry->value_bits>=0?kept:n;for(i=0;i<walk;i++){%s scratch; %s * item=i<kept ? &%s[i] : &scratch;\n", ind, g.sequenceType(f), g.sequenceType(f), dst)
 		g.messageReadElement(f, "(*item)", "element_entry", ind+" ")
 		g.pf("%s }if(walk<n && !table_message_skip_run(r,n-walk,element_entry->value_bits))goto damaged;\n", ind)
@@ -390,7 +471,13 @@ func (g *tableGen) messageReadValue(f *ir.Field, dst, count, e, ind string) {
 
 // A sender's shape may change while its kind remains compatible. The decode
 // always uses that shape, then applies this declaration's bounds.
-func (g *tableGen) messageAccept(f *ir.Field, e ir.TableVocabularyEntry, ind string) {
+// A FIELD's mismatched payload skips as a field, so a union field at arm 0 is
+// refused there too (§3.3(c)); an arm's payload keeps its positional None.
+func (g *tableGen) messageAccept(f *ir.Field, e ir.TableVocabularyEntry, ind string, field bool) {
+	skip := "table_message_skip"
+	if field {
+		skip = "table_message_skip_field"
+	}
 	condition := fmt.Sprintf("entry->kind==%d && entry->elem_kind==%d", e.Kind, e.Shape.Elem)
 	widen := "0"
 	if f != nil {
@@ -400,7 +487,7 @@ func (g *tableGen) messageAccept(f *ir.Field, e ir.TableVocabularyEntry, ind str
 			widen = fmt.Sprintf("entry->elem_kind==0 && table_kind_widens(entry->kind,%d)", e.Kind)
 		}
 	}
-	g.pf("%sif(!(%s)){if(%s){r->report->widened++;}else{r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH;if(!table_message_skip(r,entry))goto damaged;break;}}\n", ind, condition, widen)
+	g.pf("%sif(!(%s)){if(%s){r->report->widened++;}else{r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH;if(!%s(r,entry))goto damaged;break;}}\n", ind, condition, widen, skip)
 }
 
 func (g *tableGen) emitMessageReadDeclarations(members []*ir.Struct, unions []*ir.Union) {
@@ -416,7 +503,7 @@ func (g *tableGen) emitMessageUnionRead(un *ir.Union) {
 	g.pf("static SCHEMA_UNUSED int %s(TableMessageReader * r,%s * value)\n{\n const TableMessageEntry * entry;\n if(!table_message_ref(r,&entry,0))goto damaged;value->type=0;if(entry==NULL)return 1;if(entry->id>=UINT64_C(0xfffffffffffffffd)||entry->kind==0)goto damaged;\n switch(entry->id){\n", g.unionWireName(un, "message_load"), un.Name)
 	for _, v := range un.Variants {
 		g.pf(" case UINT64_C(0x%016x): {\n", ir.TableWireId(v.WireName()))
-		g.messageAccept(v.F, ir.TableArmEntry(v), " ")
+		g.messageAccept(v.F, ir.TableArmEntry(v), " ", false)
 		if !v.Void() {
 			dst := armValue("(*value)", v)
 			count := dst + "_count"
@@ -449,7 +536,7 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 				g.pf(" TableBitReader original=r->bits;uint64_t original_count=0;if(same_shape){if(!table_bit_get(&original,&original_count,table_bits_required(entry->min,entry->max)))goto damaged;original_count+=(uint64_t)entry->min;}\n")
 			}
 		}
-		g.messageAccept(f, ir.TableFieldEntry(f), " ")
+		g.messageAccept(f, ir.TableFieldEntry(f), " ", true)
 		if ir.TableWireScalarKind(f) == tkUnion && f.Array == ir.ArrayNone && f.KeyEnum == "" && !st.IsMapEntry() {
 			// §3.3(c): a writer elides a union FIELD at None at every build, so
 			// arm reference 0 stored at one is refused whatever build announced
@@ -476,7 +563,11 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 			case kind == tkTable && f.Array != ir.ArrayNone:
 				// Fixed table positions always ride. For counted/keyed table
 				// arrays retain the raw count-zero witness, not projected slots.
-				if f.Array == ir.ArrayCounted || f.KeyEnum != "" {
+				if f.Array == ir.ArrayCounted && f.BornCount() > 0 {
+					// BORN AT A (docs/SPEC.md §4.2): the writer elides A empty
+					// bodies, and A empty bodies are A zero references in a row.
+					g.pf(" if(same_shape && original_count==%d){int32_t bi;int empty=1;for(bi=0;bi<%d;bi++){uint64_t first=0;if(!table_bit_get(&original,&first,r->vocabulary->ref_bits))goto damaged;if(first!=0){empty=0;break;}}if(empty)goto damaged;}\n", f.BornCount(), f.BornCount())
+				} else if f.Array == ir.ArrayCounted || f.KeyEnum != "" {
 					g.pf(" if(same_shape && original_count==0)goto damaged;\n")
 				}
 			default:
@@ -490,7 +581,7 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 		}
 		g.pf(" break;}\n")
 	}
-	g.pf("%s", " default:if(same_build)goto damaged;r->report->unknown++;if(!table_message_skip(r,entry))goto damaged;break;\n } }\n damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;return 0;\n}\n")
+	g.pf("%s", " default:if(same_build)goto damaged;r->report->unknown++;if(!table_message_skip_field(r,entry))goto damaged;break;\n } }\n damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;return 0;\n}\n")
 	g.emitFixedMessageRead(st)
 }
 

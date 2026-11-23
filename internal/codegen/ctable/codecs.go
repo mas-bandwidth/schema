@@ -317,7 +317,8 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 		} else {
 			g.pf("    memset(value->%s,0,sizeof(value->%s));\n", f.Name, f.Name)
 			if f.Array == ir.ArrayCounted {
-				g.pf("    value->%s_count=0;\n", f.Name)
+				// BORN AT A, its declared minimum (docs/SPEC.md §4.2)
+				g.pf("    value->%s_count=%d;\n", f.Name, f.BornCount())
 			}
 		}
 		return
@@ -339,8 +340,8 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 		g.emitTableResetArray("value->"+f.Name, strconv.FormatInt(f.ArrayBound, 10), typ, selfInit, f)
 	case f.Array == ir.ArrayCounted:
 		g.emitTableResetArray("value->"+f.Name, strconv.FormatInt(f.ArrayBound, 10), typ, selfInit, f)
-		// a [Min..N]T is BORN at Min default elements (docs/SPEC.md §4.2,
-		// ir.Field.BornCount), and the slots above already hold them
+		// A [A..B]T COUNT IS BORN AT A, its declared minimum, in every target
+		// (docs/SPEC.md §4.2): zero is outside that count's own wire range.
 		g.pf("    value->%s_count = %d;\n", f.Name, f.BornCount())
 	case selfInit:
 		g.emitTableResetOne("value->"+f.Name, typ, f)
@@ -502,6 +503,8 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string
 		g.pf("%sif ( !table_double_finite( %s ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */\n", ind, expr)
 		if f.Required && f.HasFloatRange {
 			g.pf("%sif ( %s < %s || %s > %s ) { return 0; }\n", ind, expr, formatFloat(f.FMin, false), expr, formatFloat(f.FMax, false))
+		} else if f.HasFloatRange {
+			g.pf("%sschema_assert( %s >= %s && %s <= %s ); /* a compressed float inside its range (§5.1 row 10) */\n", ind, expr, formatFloat(f.FMin, false), expr, formatFloat(f.FMax, false))
 		}
 		g.pf("%stable_writer_put64( w, %s( %s ) );\n", ind, storedFloatBits(f, true), expr)
 	default:
@@ -569,6 +572,10 @@ func (g *tableGen) emitTableReadScalarFrom(f *ir.Field, kind int, lvalue, ind, r
 			g.pf("%s        float decoded_f = table_bits_to_float( decoded_bits );\n", ind)
 			g.pf("%s        if ( decoded_f < %s ) { decoded_f = %s; r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }\n", ind, formatFloat(f.FMin, true), formatFloat(f.FMin, true))
 			g.pf("%s        else if ( decoded_f > %s ) { decoded_f = %s; r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }\n", ind, formatFloat(f.FMax, true), formatFloat(f.FMax, true))
+			// A COMPRESSED FLOAT'S -0 LANDS AS +0 (docs/SPEC-TABLES.md §3.3,
+			// "-0 IS +0"; ruling fixed-compressed-negzero), the value the
+			// fixed form and the Go engine land for the same bytes.
+			g.pf("%s        decoded_f = decoded_f + 0.0f; /* -0 + +0 is +0 */\n", ind)
 			g.pf("%s        %s = decoded_f;\n%s    }\n", ind, lvalue, ind)
 		} else {
 			g.pf("%s    else { %s = table_bits_to_float( decoded_bits ); }\n", ind, lvalue)
@@ -995,13 +1002,13 @@ func (g *tableGen) emitFieldDescriptorAt(st *ir.Struct, f *ir.Field, guard, memb
 	if g.anyVariable {
 		pointerColumn = fmt.Sprintf("%s, ", boolC(f.Type.Pointer))
 	}
-	g.pf("    { \"%s\", %s, \"%s\", 0x%016xull, %d, %s, %s%s, %s, %s, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, \"%s\", %s, %d, %d, %d, %s },\n",
+	g.pf("    { \"%s\", %s, \"%s\", 0x%016xull, %d, %s, %s%s, %s, %s, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, \"%s\", %s, %d, %d, %d, %s, %d },\n",
 		f.Name, g.descriptorJSON(f), tableFieldTypeName(f), g.descriptorID(id), kind, boolC(isArray), pointerColumn,
 		boolC(counted), boolC(f.Type.Optional), boolC(f.Required), bound,
 		st.Name, member, elemSize, countOffset, presentOffset, table,
 		hasRange, rangeMin, fmt.Sprintf("%s, %s, %d", rangeMax, wide, frac), enumMax, variants, hasIds,
 		keyTypeName, keys, keyMax, arms, guard,
-		annotationColumns(f.Doc, f.Tags, g.vocabularySymbol(st.Name, f.Name, "tags")), sequence, textList, f.TextTotal, place)
+		annotationColumns(f.Doc, f.Tags, g.vocabularySymbol(st.Name, f.Name, "tags")), sequence, textList, f.TextTotal, place, f.BornCount())
 }
 
 func boolC(v bool) string {

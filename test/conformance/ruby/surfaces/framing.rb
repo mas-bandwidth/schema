@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 def self.run(manifest, outdir)
-  RubyConformance.entries(manifest, 'framing').each do |row|
+  RubyConformance.cases(manifest, 'framing') do |row|
     case_name, unit, root, wire = row[1, 4]
     is_fixed_twin = (unit == 'tblr1' && root == 'Cfg') || (unit == 'listdemo' && root == 'Bounded')
     tree = if unit == 'tblr1' && root == 'Cfg'
@@ -12,7 +12,7 @@ def self.run(manifest, outdir)
     pkg = RubyConformance.unit_package(unit, tree)
     cls = RubyConformance.root_class(unit, root, tree)
     if pkg.nil? || cls.nil? || !RubyConformance.fixed_carried?(pkg, cls)
-      RubyConformance.absent(outdir, case_name, 'unit not generated for ruby')
+      RubyConformance.no_codec(outdir, case_name)
       next
     end
     begin
@@ -27,7 +27,7 @@ def self.run(manifest, outdir)
       fixed_pkg = RubyConformance.unit_package(unit)
       fixed_cls = RubyConformance.root_class(unit, root)
       if fixed_pkg.nil? || fixed_cls.nil? || !RubyConformance.fixed_carried?(fixed_pkg, fixed_cls)
-        RubyConformance.absent(outdir, case_name, 'fixed unit not generated for ruby')
+        RubyConformance.no_codec(outdir, case_name)
         next
       end
       saved = fixed_cls.from_json(text).save

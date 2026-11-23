@@ -330,6 +330,10 @@ func (g *tableGen) wireReadFieldPayload(f *ir.Field, kind int, dst, bounded stri
 		g.pf("%s            if ( !(%s) ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH; break; }\n%s            r->report->widened++;\n%s        }\n", ind, wireElementWidenTest(f, kind, "elem_kind"), ind, ind)
 		g.retainReplace(f, ind+"        ")
 		g.pf("%s        kept = count; if ( kept > %d ) { kept = %d; r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }\n", ind, bound, bound)
+		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+			// A COUNT BELOW ITS DECLARED MIN IS REFUSED (docs/SPEC.md §5.1 row 3)
+			g.pf("%s        if ( count < %d ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }\n", ind, f.ArrayMin)
+		}
 		if f.Array == ir.ArrayCounted {
 			g.pf("%s        int32_t previous_count = %s_count;\n", ind, dst)
 		}

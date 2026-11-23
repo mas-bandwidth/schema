@@ -19,6 +19,7 @@ import (
 	"mapdemo"
 	"messagedemo"
 	"scalardemo"
+	"shapes"
 	"streamdemo"
 	"tblfixedevo"
 	tblscalars2 "tblscalars2"
@@ -841,6 +842,24 @@ var codecTable = []codec{
 	}, cooktorturewide.TortureWideCookToJSONMeasure, cooktorturewide.TortureWideCookToJSON, cooktorturewide.TortureWideCookCookMeasure, cooktorturewide.TortureWideCookCookFrom, func(r *cooktorturewide.TableReport) report {
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
+	// the SHAPES unit (test/tables/shapes), opted in by `list` (main.go)
+	regionRow("shapes", "Bounds", shapes.BoundsLoadMeasure, shapes.BoundsLoad, shapes.BoundsMeasure, shapes.BoundsSave, func(text []byte, r *shapes.TableReport) (*shapes.Bounds, []byte, bool) {
+		var b shapes.BoundsBuilder
+		if !b.Init() {
+			return nil, nil, false
+		}
+		defer b.Shutdown()
+		ok := shapes.BoundsFromJSON(&b, text, r)
+		if !b.Lock() {
+			return nil, nil, false
+		}
+		return b.AsConst(), b.Region(), ok
+	}, shapes.BoundsToJSONMeasure, shapes.BoundsToJSON, shapes.BoundsCookMeasure, shapes.BoundsCookFrom, func(r *shapes.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
+	row("shapes", "FixedBounds", shapes.FixedBoundsReset, shapes.FixedBoundsLoad, shapes.FixedBoundsMeasure, shapes.FixedBoundsSave, shapes.FixedBoundsFromJSON, shapes.FixedBoundsToJSONMeasure, shapes.FixedBoundsToJSON, shapes.FixedBoundsCookMeasure, shapes.FixedBoundsCookFrom, func(r *shapes.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
 
 	row("tblm1", "Msg", tblm1.MsgReset, tblm1.MsgLoad, tblm1.MsgMeasure, tblm1.MsgSave, tblm1.MsgFromJSON, tblm1.MsgToJSONMeasure, tblm1.MsgToJSON, tblm1.MsgCookMeasure, tblm1.MsgCookFrom, func(r *tblm1.TableReport) report {
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
@@ -904,5 +923,5 @@ var codecTable = []codec{
 // surfaces is what this backend implements. A surface not listed prints as
 // ABSENT in the matrix, which is a missing FEATURE and not a failing test.
 func surfaces() []string {
-	return []string{"wire", "message", "report", "framing", "json-read", "json-write", "json-hostile", "cook-write", "retain", "retain-save", "cook", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery", "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json"}
+	return []string{"wire", "message", "message-prior", "report", "framing", "json-read", "json-write", "json-hostile", "cook-write", "retain", "retain-save", "cook", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery", "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json"}
 }

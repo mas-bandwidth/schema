@@ -12,7 +12,9 @@ import (
 func TestWireBlobSharedRefusalIsAnAnsweredCase(t *testing.T) {
 	t.Parallel()
 	for _, lang := range []string{"go", "cpp", "js", "unported"} {
-		for _, diagnostic := range []string{"", "blob_shared", "different local diagnostic"} {
+		// an EMPTY .absent is a missing codec, not the refusal
+		// (TestEmptyAbsentOnARefusalRowIsMissingNotPass)
+		for _, diagnostic := range []string{"blob_shared", "different local diagnostic"} {
 			t.Run(lang+"/"+diagnostic, func(t *testing.T) {
 				out := t.TempDir()
 				if err := os.WriteFile(filepath.Join(out, "blob_shared.absent"), []byte(diagnostic), 0600); err != nil {
@@ -49,7 +51,7 @@ func TestWireBlobSharedRefusalIsAnAnsweredCase(t *testing.T) {
 		}
 		scoreAnswer("go", "wire", out, expectation{name: name, want: want}, Instance{}, r)
 	}
-	if err := os.WriteFile(filepath.Join(out, "blob_shared.absent"), nil, 0600); err != nil {
+	if err := os.WriteFile(filepath.Join(out, "blob_shared.absent"), []byte("blob_shared"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	scoreAnswer("go", "wire", out, expectation{name: "blob_shared"}, Instance{WireRefused: true}, r)

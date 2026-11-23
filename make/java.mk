@@ -212,6 +212,8 @@ build/tables-generated-java/.stamp: bin/schema make/java.mk $(wildcard testdata/
 	rm -rf build/tables-generated-java/backend && ./bin/schema generate --lang java --out build/tables-generated-java/backend tables/backend
 	rm -rf build/tables-generated-java/vocab && ./bin/schema generate --lang java --out build/tables-generated-java/vocab tables/vocab
 	rm -rf build/tables-generated-java/vocab9 && ./bin/schema generate --lang java --out build/tables-generated-java/vocab9 tables/vocab9
+	rm -rf build/tables-generated-java/prior && ./bin/schema generate --lang java --out build/tables-generated-java/prior test/tables/prior/PriorNarrow.schema
+	rm -rf build/tables-generated-java/shapes && ./bin/schema generate --lang java --out build/tables-generated-java/shapes test/tables/shapes/Shapes.schema
 	@touch $@
 
 # THE GENERATED TREE IS FRESH (a stale file is not the emitter's output). Every
@@ -1716,6 +1718,7 @@ build/conformance-java/.stamp: build/tables-generated-java/.stamp test/conforman
 		build/tables-generated-java/k1/*.java build/tables-generated-java/k2/*.java \
 		build/tables-generated-java/backend/*.java build/tables-generated-java/vocab/*.java \
 		build/tables-generated-java/vocab9/*.java \
+		build/tables-generated-java/prior/*.java build/tables-generated-java/shapes/*.java \
 		$(if $(wildcard testdata/conformance/feature-witnesses/full/Features.schema),build/tables-generated-java/featurewitnesses/*.java) \
 		test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
 	@touch $@
@@ -2399,13 +2402,19 @@ tables-java-view: bin/schema test/java-view/View.java
 		set -e; dir=$${entry%%:*}; pkg=$${entry##*:}; \
 		source=tables/$$dir; \
 		./bin/schema generate --lang java --out build/java-view/generated/$$dir $$source > build/java-view/$$pkg.generate.log 2>&1 || { cat build/java-view/$$pkg.generate.log; exit 1; }; \
-		mkdir -p build/java-view/src-$$pkg build/java-view/classes-$$pkg; \
-		sed "s/^import tabledemo\.\*; \/\/ UNIT$$/import $$pkg.*; \/\/ UNIT/" test/java-view/View.java > build/java-view/src-$$pkg/View.java; \
-		grep -q "^import $$pkg\.\*; // UNIT$$" build/java-view/src-$$pkg/View.java || { echo "tables-java-view: the unit import was not rewritten for $$pkg"; exit 1; }; \
-		$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-view/classes-$$pkg \
-			build/java-view/generated/$$dir/*.java build/java-view/src-$$pkg/View.java; \
-		$(JAVA) -cp build/java-view/classes-$$pkg View > build/java-view/$$pkg.listing \
+		mkdir -p build/java-view/src-$$pkg; \
+		{ echo "package view_$$pkg;"; sed "s/^import tabledemo\.\*; \/\/ UNIT$$/import $$pkg.*; \/\/ UNIT/" test/java-view/View.java; } > build/java-view/src-$$pkg/View.java; \
+		grep -q "^import $$pkg\.\*; // UNIT$$" build/java-view/src-$$pkg/View.java || { echo "tables-java-view: the unit import was not rewritten for $$pkg"; exit 1; } \
 	) & pids="$$pids $$!"; done; for pid in $$pids; do wait $$pid; done
+	@# ONE javac for every unit (each unit's package is its own, and each View
+	@# copy sits in a package of its own, view_<unit>): fourteen JVMs compiling
+	@# side by side were most of this gate's time on a four-core slot.
+	@mkdir -p build/java-view/classes
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-view/classes \
+		$(foreach entry,$(VIEW_CORPUS),build/java-view/generated/$(firstword $(subst :, ,$(entry)))/*.java build/java-view/src-$(lastword $(subst :, ,$(entry)))/View.java)
+	@set -e; pids=""; for entry in $(VIEW_CORPUS); do pkg=$${entry##*:}; \
+		$(JAVA) -cp build/java-view/classes view_$$pkg.View > build/java-view/$$pkg.listing & pids="$$pids $$!"; \
+	done; for pid in $$pids; do wait $$pid; done
 	SCHEMA_VIEW_LISTING_DIR="$(CURDIR)/build/java-view" go test -count=1 -timeout 600s ./internal/viewlisting -run TestUnitViewListingMatchesTheIR
 	@mkdir -p build/java-view/negative
 	@awk '!done && / doc=[^ ]/ { sub(/ doc=/, " doc=X"); done = 1 } { print }' build/java-view/tabledemo.listing > build/java-view/negative/tabledemo.listing

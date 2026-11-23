@@ -391,7 +391,10 @@ final class TableFixedLayout {
     _f32[0] = value;
     // a float32 past float32 range is refused by every writer (FL-23,
     // docs/SPEC-TABLES.md §16.3): a debug assert, as the ranged checks are
-    assert((_f32Words[0] & 0x7f800000) != 0x7f800000, 'a float32 past float32 range');
+    assert(
+      (_f32Words[0] & 0x7f800000) != 0x7f800000,
+      'a float32 past float32 range',
+    );
     return _f32Words[0];
   }
 

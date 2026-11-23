@@ -105,8 +105,10 @@ end
 // inner '=', a space and a byte outside the alphabet are damaged; and a cut
 // length is damaged. For every instance row the canonical SaveText reads back
 // clean and SaveText re-encodes to the same canonical text, except a
-// blob_shared row (go-refusal=blob_shared), whose canonical wire the strict read refuses by name
-// (docs/SPEC-TABLES.md §2.5, §6.5).
+// wire-refused row (testdata/conformance/tables/FORMAT.md: a blob_shared row,
+// docs/SPEC-TABLES.md §2.5, or a shapes row past its bounds), whose canonical
+// wire the strict read refuses (§6.5); the verdict is the contract and no
+// reason is compared (docs/rulings.json refusal-verdict-only).
 func TestLuauLoadTextRefusesNonCanonicalBase64(t *testing.T) {
 	t.Parallel()
 	units, _ := readManifest(t)
@@ -178,13 +180,15 @@ func TestLuauLoadTextRefusesNonCanonicalBase64(t *testing.T) {
 				t.Fatalf("instance %s (%s/%s): first line %q", row.caseName, key, row.root, lines[0])
 			}
 			if row.blobShared {
-				// LoadText IS the strict read (§6.5), and one blob named from
-				// two slots is refused by name (docs/SPEC-TABLES.md §2.5): the
-				// canonical text is a readable wire whose strict read refuses
-				// blob_shared, so there is no value to SaveText. The damaged
-				// and non-canonical texts still name their carrier refusals.
-				if len(fields) != 3 || fields[1] != "REFUSED" || fields[2] != "blob_shared" {
-					t.Fatalf("instance %s (%s/%s): the canonical blob_shared text did not refuse blob_shared: %q", row.caseName, key, row.root, lines[0])
+				// LoadText IS the strict read (§6.5), and a wire-refused row's
+				// wire is one every reader refuses (one blob named from two
+				// slots, docs/SPEC-TABLES.md §2.5, or a value past its
+				// bounds): the canonical text is a readable carrier whose
+				// strict read refuses, so there is no value to SaveText. The
+				// damaged and non-canonical texts still name their carrier
+				// refusals.
+				if len(fields) != 3 || fields[1] != "REFUSED" {
+					t.Fatalf("instance %s (%s/%s): the canonical text of a wire-refused row did not refuse: %q", row.caseName, key, row.root, lines[0])
 				}
 			} else {
 				if len(fields) < 2 || fields[1] != "SAVED" || len(fields) != 4 {

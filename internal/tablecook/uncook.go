@@ -299,6 +299,11 @@ func (r *regionReader) ref(at int64, f *ir.Field, cell *tabletext.Cell) error {
 		cell.Blob = nil
 		return nil
 	}
+	// the delta is a word from the file: bounded against the region before it
+	// is added, so `at + delta` cannot wrap
+	if delta < -at || delta >= int64(len(r.buf))-at {
+		return fmt.Errorf("field %s: the reference's delta %d from offset %d leaves the region of %d bytes", f.Name, delta, at, len(r.buf))
+	}
 	target := at + delta
 	slot := r.entryAt(target)
 	if slot < 0 {

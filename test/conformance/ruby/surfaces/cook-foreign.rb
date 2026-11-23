@@ -4,11 +4,11 @@ require_relative '_blocks'
 require_relative '_cooks'
 
 def self.run(manifest, outdir)
-  RubyConformance.entries(manifest, 'cook').each do |row|
+  RubyConformance.cases(manifest, 'cook') do |row|
     name, unit, root, path = row[1, 4]
     pkg = RubyConformance.unit_package(unit)
     if pkg.nil?
-      RubyConformance.absent(outdir, name, 'unit not generated for ruby')
+      RubyConformance.no_codec(outdir, name)
       next
     end
     handle = RubyConformanceCooks.open_cook(pkg, root, RubyConformanceBlocks.foreign(RubyConformance.read_bytes(path)))

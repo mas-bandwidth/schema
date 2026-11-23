@@ -190,7 +190,7 @@ func t06R17(t *testing.T) {
 func t06C1(t *testing.T) {
 	module, runtime := t06Emit(t)
 	t06Has(t, module, "min(max(n_vals, 0), 8)", "C1 a negative count floors to zero")
-	t06Has(t, module, "c = R.clamps(c, n_vals, 0, 8)", "C1 a negative count counts one clamp")
+	t06Has(t, module, "c = R.clamps(c, n_vals, 1, 8)", "C1 a negative count counts one clamp")
 	t06Has(t, runtime, "raw < 0 -> throw({:refuse, :count_over_bound})", "C1 the negative end of the count clamp")
 }
 
@@ -202,7 +202,7 @@ func t06C1(t *testing.T) {
 func t06C2(t *testing.T) {
 	module, runtime := t06Emit(t)
 	t06Has(t, module, "min(max(n_vals, 0), 8)", "C2 a count past Max lands the bound")
-	t06Has(t, module, "c = R.clamps(c, n_vals, 0, 8)", "C2 a count past Max counts one clamp")
+	t06Has(t, module, "c = R.clamps(c, n_vals, 1, 8)", "C2 a count past Max counts one clamp")
 	t06Has(t, runtime, "raw > max -> throw({:refuse, :count_over_bound})", "C2 the past-Max end of the count clamp")
 }
 

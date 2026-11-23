@@ -126,9 +126,26 @@ the program never started, which is a failure).
 
 An expected semantic refusal scores PASS. **A refusal is spelled `refused` and
 a newline, in the file named by the case, on every read surface, the `wire`
-surface's `wire-refused` rows included.** A historical `.absent` file may
-still transport that refusal; the feature-absence rules below apply only when
-the case requires an accepted value.
+surface's `wire-refused` rows included.** A historical `.absent` file that
+names a reason may still transport that refusal (the reason's text is not
+compared). An EMPTY `.absent` is the per-case absence below, a leg with no
+codec for the root: on a row that expects a refusal it counts absent, never
+PASS, so a leg that cannot read a root cannot pass the must-refuse rows on it.
+The other way round holds too: a `.absent` that names a reason is a refusal
+wherever it stands, so on a row that owes an answer (bytes, a golden, a
+verdict) it FAILS and never counts absent. A driver therefore tells a case's
+three endings apart by mechanism: no codec is the empty `.absent`; a present
+codec's public refusal is the refusal answer; anything else is a driver error,
+which names its case on stderr, lets the remaining cases run, and exits the
+surface non-zero.
+
+**A refusal row and its accepted twin are one claim** (`harness/twins.go`).
+Per leg and per surface, when one half of a pair passes and the leg did not
+answer the other (absent at either grain), the passing half counts absent
+too, and the harness prints a `conformance TWIN` line naming it. An answer
+that fails counts as answered. The twin is found by name: `<case>_ok`, a
+bound's `past`/`at` sides, `illformed`/`wellformed`, or `<prefix>_ok` for a
+shorter prefix of the refusal's name.
 
 **A CASE may be absent too, and it is said the same way.** A driver that
 cannot answer one case of a surface it otherwise implements writes
@@ -257,6 +274,7 @@ One process per surface, so a runtime starts once rather than once per case.
 |---|---|---|---|
 | `wire` | `instance` | Load the wire file, Save, the bytes | the wire golden |
 | `message` | `message` | AnnounceRead the connection, LoadMessages the entire batch, then SaveMessages of every accepted body; an explicit refusal for a row whose message wire is `-` | the complete message golden, or refusal |
+| `message-prior` | `message-prior` | AnnounceRead the prior writer's `prior-connection`, LoadMessages its `prior-message` batch, then SaveMessages; a read the public API refuses is answered `<case>.refused`, its contents never compared | the re-saved batch, or refusal |
 | `report` | `report` | `read\n` and the complete ToJson value in `<case>`, plus the canonical write-back wire in `<case>.wire`, or `refused\n` alone | `reports.txt`, then `report-values/<case>.json` and `save-wire/<case>.bin` for accepted reads |
 | `framing` | `framing` | the same verdict and value in `<case>`, and the wire in `<case>.wire` | the hand-authored verdict and value file, and `save-wire/<case>.bin` |
 | `retain` | `retain` | LoadRetain at the row's capacities, then `read\n` and the complete known ToJson value, or `refused\n` | `retain-values/<case>.json` after acceptance |
@@ -963,7 +981,7 @@ counters. Native resource and allocator tests remain separate gates.
 
 The `wire-refused` instance marker specifies refusal for every port. Legacy
 `go-refusal=<reason>` and `refused-by=<ports>` spellings are accepted as
-compatibility metadata; they do not select a language or a shared reason. Drivers emit `<case>` holding `refused` and a newline, or the historical `<case>.absent` file; the
-`.absent` file's diagnostic text is ignored, and a `<case>` file holding anything but `refused` and a newline is value bytes and fails. This expected semantic refusal scores PASS.
+compatibility metadata; they do not select a language or a shared reason. Drivers emit `<case>` holding `refused` and a newline, or the historical `<case>.absent` file naming a reason; the
+`.absent` file's diagnostic text is ignored, and a `<case>` file holding anything but `refused` and a newline is value bytes and fails. This expected semantic refusal scores PASS. An empty `<case>.absent` is a missing codec and counts absent.
 Emitting value bytes, or emitting nothing at all, fails. An ordinary absence
 for a missing codec remains incomplete coverage.

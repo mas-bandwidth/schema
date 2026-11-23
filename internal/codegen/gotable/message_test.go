@@ -220,7 +220,7 @@ fixed table Root {
 	if strings.Contains(text, "v.Entries[i]==e") {
 		t.Fatal("the emitted duplicate scan still compares resolved entries, not declared byte extents")
 	}
-	if !strings.Contains(text, "if o.Max-o.Min==src.Offset-began") || !strings.Contains(text, "words[j]!=words[began+j-o.Min]") {
+	if !strings.Contains(text, "slices.Compare(words[a.Shape.Min:a.Shape.Max],words[b.Shape.Min:b.Shape.Max])") || !strings.Contains(text, "slices.Equal(words[s[i-1].Shape.Min:s[i-1].Shape.Max],words[s[i].Shape.Min:s[i].Shape.Max])") {
 		t.Fatal("the emitted duplicate scan does not compare the entries' declared byte extents")
 	}
 	if !strings.Contains(text, "e.Shape.Min=began;e.Shape.Max=src.Offset") {

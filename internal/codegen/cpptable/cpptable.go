@@ -795,8 +795,10 @@ func tablePrimitives(pkg string, anyVariable bool, anyKeyed bool, anyExtent bool
 			"    // in as the bytes and the length, an integer key as the value, and NULL\n" +
 			"    // is NOT INSERTED: a key past the bound, or an arena that could not carve\n" +
 			"    // another segment. A LIST ignores the key and APPENDS, NULL at the arena\n" +
-			"    // or the int32 cap. NULL on every field that is neither.\n" +
-			"    void * ( *place )( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t key_value );"
+			"    // or the int32 cap. NULL on every field that is neither. FRESH says the\n" +
+			"    // caller already knows no entry holds this key (the text read keeps a\n" +
+			"    // set of the keys it placed), so a map skips its linear find.\n" +
+			"    void * ( *place )( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t key_value, bool fresh );"
 	}
 	pointerFieldMember, pointerTypeMember, pointerForward := "", "", ""
 	if anyVariable {
@@ -1120,6 +1122,10 @@ inline const char TableDocNone[1] = "";
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
+    // a [A..B]T count's declared minimum A (docs/SPEC.md §4.2, §5.1 row 3):
+    // the count it is born at and the least a read accepts; 0 on every other
+    // field
+    int32_t array_min;
 };
 
 struct TableTypeInfo
@@ -1641,6 +1647,12 @@ struct TableReader
         return false;
     }
 
+    // EVERY STRUCTURAL CONTENT IS A LEVEL, A UNION AMONG THEM (§4): a union
+    // whose arm is a union nests exactly as a table in a table does, so the
+    // cap below counts it, at the strict walk's own bound. A chain of unions
+    // costs five bytes a level, and an uncounted one is a recursion as deep as
+    // the input is long, which overflows the stack before the strict walk,
+    // which does count it, ever runs.
     bool badElementKindContent( uint8_t kind, const uint8_t * b, int64_t n, int depth )
     {
         if ( depth >= 128 ) return false;
@@ -1652,7 +1664,7 @@ struct TableReader
             case 15:
             {
                 TableReader r( b, n, report, ids );
-                return badElementKindUnion( r, depth );
+                return badElementKindUnion( r, depth + 1 );
             }
         }
         return false;

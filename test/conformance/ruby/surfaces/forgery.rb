@@ -4,17 +4,17 @@ require_relative '_blocks'
 
 def self.run(manifest, outdir)
   roots = {}
-  RubyConformance.entries(manifest, 'block').each do |row|
+  RubyConformance.cases(manifest, 'block') do |row|
     roots[row[1]] = [row[2], RubyConformanceBlocks.block_root(row[1])]
   end
-  RubyConformance.entries(manifest, 'forgery').each do |row|
+  RubyConformance.cases(manifest, 'forgery') do |row|
     name, kind, subject = row[1], row[2], row[3]
     next unless kind == 'block'
 
     unit, root = roots[subject]
     pkg = RubyConformance.unit_package(unit)
     if pkg.nil?
-      RubyConformance.absent(outdir, name, 'unit not generated for ruby')
+      RubyConformance.no_codec(outdir, name)
       next
     end
     data = RubyConformance.read_bytes(row[4])

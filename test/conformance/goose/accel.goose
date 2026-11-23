@@ -575,8 +575,8 @@ fn surface_cook_write(lines: const u8[:][:], unit: const u8[:]) {
                 exit(1);
             }
             if need == -2 {
-                absent_answer(c[1], "no-cook-writer");
-                absent_answer(str(c[1], "-be"), "no-cook-writer");
+                absent_answer(c[1], "");
+                absent_answer(str(c[1], "-be"), "");
                 break;
             }
             if need < 0 {

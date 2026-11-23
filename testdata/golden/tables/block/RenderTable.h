@@ -458,6 +458,10 @@ struct TableFieldInfo
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
+    // a [A..B]T count's declared minimum A (docs/SPEC.md §4.2, §5.1 row 3):
+    // the count it is born at and the least a read accepts; 0 on every other
+    // field
+    int32_t array_min;
 };
 
 struct TableTypeInfo
@@ -979,6 +983,12 @@ struct TableReader
         return false;
     }
 
+    // EVERY STRUCTURAL CONTENT IS A LEVEL, A UNION AMONG THEM (§4): a union
+    // whose arm is a union nests exactly as a table in a table does, so the
+    // cap below counts it, at the strict walk's own bound. A chain of unions
+    // costs five bytes a level, and an uncounted one is a recursion as deep as
+    // the input is long, which overflows the stack before the strict walk,
+    // which does count it, ever runs.
     bool badElementKindContent( uint8_t kind, const uint8_t * b, int64_t n, int depth )
     {
         if ( depth >= 128 ) return false;
@@ -990,7 +1000,7 @@ struct TableReader
             case 15:
             {
                 TableReader r( b, n, report, ids );
-                return badElementKindUnion( r, depth );
+                return badElementKindUnion( r, depth + 1 );
             }
         }
         return false;
@@ -2072,6 +2082,14 @@ inline int64_t TableBitsRequired( int64_t min, int64_t max )
 // that rule CONSUMES are locals of the parse. The widths are int16 because a
 // width is bounded by the kind it came under and no kind holds more than 128
 // bits.
+// THE REPEAT CHECK's DEPTH (§3.3): one level per body open on the read's path,
+// named or skipped, and one per keyed array's key set. The skip walk's own
+// bound is 128 levels below the body that met the unknown entry, so this
+// leaves the named nesting above it the same room again; a read deeper than
+// this is damage, never silently untracked.
+static const int32_t kTableMessageSeenLevels = 256;
+static const int32_t kTableMessageSeenWords = kTableMessageSeenLevels / 64;
+
 struct TableMessageEntry
 {
     uint64_t id = 0;
@@ -2098,6 +2116,18 @@ struct TableMessageEntry
     uint8_t packing = 0;
     uint8_t elem_kind = 0;
     uint8_t elem_packing = 0;
+    // THE REPEAT CHECK's STATE (§3.3), kept in the caller's storage beside the
+    // shape so a body costs nothing to open and a frame carries no set: the
+    // slot of this id's FIRST entry (0 when it is this one), resolved once at
+    // AnnounceRead, because an ID is the wire's name and one name may be
+    // announced at two shapes; the read clock's tick at the last naming above
+    // nine bits holding that body's level; and one bit for each shallower
+    // level whose open body had named it before a deeper body named it again
+    // (TableMessageSeenOnce). Only the first entry of an id carries the last
+    // two.
+    uint32_t seen_first = 0;
+    uint64_t seen_at = 0;
+    uint64_t seen_below[kTableMessageSeenWords] = {};
 };
 
 // TableMessageKindBits is the widest RANGED value a kind can carry, its own
@@ -3289,6 +3319,14 @@ struct TableVocabulary
     // announcement after it is refused as second_announcement
     bool refused = false;
     int64_t max_bytes = kDefaultMaxBytes;
+    // THE REPEAT CHECK's CLOCK (§3.3, TableMessageSeenOnce): every body a read
+    // opens takes the next tick and keeps it at its level until it closes. A
+    // read moves these through the const reference it is handed, as it moves
+    // the entries' own marks, so one vocabulary is read by one thread at a
+    // time, which is what one direction of one connection is.
+    mutable uint64_t seen_clock = 0;
+    mutable int32_t seen_depth = 0;
+    mutable uint64_t seen_starts[kTableMessageSeenLevels] = {};
     // STRICT MODE IS OPT-IN (§3.3): false when the vocabulary is made, read
     // once by the FIRST AnnounceRead and never after. Set, an announcement
     // whose build version is not this unit's own is refused as
@@ -3557,7 +3595,12 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
         // scan is quadratic in the entry count, and the entry count is bounded
         // above at 4096, so it is at most eight million compares on a path
         // that runs ONCE a connection and never again.
+        //
+        // The same scan finds the slot of each id's FIRST entry, which the
+        // repeat check keys on (TableMessageSeenOnce), so a body never scans
+        // the vocabulary for it.
         const int64_t length = at - began;
+        uint32_t first = 0;
         for ( int64_t seen = 0; seen < count; seen++ )
         {
             const TableMessageEntry & other = vocabulary.entries[seen];
@@ -3566,20 +3609,24 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
                 to->damaged = true;
                 return false;
             }
+            if ( first == 0 && other.id == parsed.id ) { first = (uint32_t) ( seen + 1 ); }
         }
         parsed.min = began;
         parsed.max = at;
+        parsed.seen_first = first;
         count++;
     }
     // THE ENTRIES RESOLVED, over bytes the first pass already accepted
     at = 0;
     for ( int64_t slot = 0; slot < count; slot++ )
     {
+        const uint32_t first = vocabulary.entries[slot].seen_first;
         if ( !TableMessageEntryRead( words, words_bytes, at, vocabulary.entries[slot] ) )
         {
             to->damaged = true;
             return false;
         }
+        vocabulary.entries[slot].seen_first = first;
     }
     vocabulary.count = count;
     vocabulary.ref_bits = TableBitsRequired( 0, count );
@@ -3647,6 +3694,8 @@ inline bool TableMessageSkipVariant( TableBitReader & r, const TableVocabulary &
 // element pass depth + 1. depth > 128 is malformed; 128 itself still skips.
 inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int depth = 0 );
 inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry, int depth = 0 );
+inline bool TableMessageSkipKeyed( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry, uint64_t n, int depth );
+inline bool TableMessageSkipField( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry, int depth = 0 );
 
 // TableMessageSkipElement steps over ONE element of an array or keyed entry
 // by the element's own announced shape: a nested body to its zero reference,
@@ -3698,15 +3747,18 @@ inline bool TableMessageSignedKind( uint8_t kind )
     return ( kind >= 2 && kind <= 5 ) || kind == 18 || ( kind >= 20 && kind <= 24 );
 }
 
-// TableMessageSkipRanged steps over a RANGED value and holds base plus offset
-// to the kind's own domain, the bound a named read holds it to: the offset's
-// bits can spell a value past the sender's range (§3.3). The base and the
-// offset are added exactly as the named read adds them. The arithmetic is on
-// 64-bit words, since this runtime carries no 128-bit type of its own.
-inline bool TableMessageSkipRanged( TableBitReader & r, uint8_t kind, int64_t width, int64_t base_lo, int64_t base_hi )
+// TableMessageRangedHolds is THE ANNOUNCED KIND'S DOMAIN for a RANGED value
+// (§3.3): the offset's bits can spell a value past the sender's range and past
+// the kind itself, and base plus offset is held to the kind's own storage
+// domain, exactly, with no wraparound, before anything else reads it. It is
+// the ONE test the skip path (TableMessageSkipRanged) and every named read
+// take, so the two cannot drift: a named read that added the base modulo 2^64
+// landed a sum past the domain wrapped back into range where the skip of the
+// same bytes refused. lo and hi are the offset's two words, hi zero at 64 bits
+// or fewer. The arithmetic is on 64-bit words, since this runtime carries no
+// 128-bit type of its own.
+inline bool TableMessageRangedHolds( uint8_t kind, uint64_t lo, uint64_t hi, int64_t base_lo, int64_t base_hi )
 {
-    uint64_t lo = 0, hi = 0;
-    if ( width < 0 || !r.get( lo, width < 64 ? width : 64 ) || ( width > 64 && !r.get( hi, width - 64 ) ) ) { return false; }
     const bool is_signed = TableMessageSignedKind( kind );
     const int64_t domain = TableMessageKindBits( kind );
     if ( domain == 128 )
@@ -3720,6 +3772,7 @@ inline bool TableMessageSkipRanged( TableBitReader & r, uint8_t kind, int64_t wi
     }
     // AT SIXTY-FOUR BITS OR FEWER the offset is one word and so is the base,
     // sign-extended for a signed kind, and the sum is held to both ends
+    if ( hi != 0 ) { return false; }
     if ( !is_signed )
     {
         const uint64_t top = domain == 64 ? UINT64_MAX : ( uint64_t( 1 ) << domain ) - 1;
@@ -3732,28 +3785,95 @@ inline bool TableMessageSkipRanged( TableBitReader & r, uint8_t kind, int64_t wi
     return base_lo >= bottom || lo >= (uint64_t) bottom - (uint64_t) base_lo;
 }
 
-// THE SKIP PATH'S SEEN SET is a fixed bitmap over an id's FIRST vocabulary
-// slot, so a skip allocates nothing and the depth cap bounds the walk. An ID
-// is the wire's own name (§3.2, §3.3), not the slot that happened to carry
-// it: one name may be announced at two shapes, and naming it twice is a
-// repeat whichever slot it rode. The bitmap covers every slot a 64 KiB
-// announcement can carry; a slot past it is damage, never silently untracked.
-static const int64_t kTableMessageSeenBits = 65536;
-
-// TableMessageSeenOnce records one id of a body or one key of a keyed array
-// and answers false on a repeat, whether or not this reader can name the field
-// (§3.2, §3.3).
-inline bool TableMessageSeenOnce( uint64_t * seen, const TableVocabulary & vocabulary, uint64_t ref, uint64_t id )
+// TableMessageSkipRanged steps over a RANGED value and holds base plus offset
+// to the kind's own domain, the bound a named read holds it to (§3.3).
+inline bool TableMessageSkipRanged( TableBitReader & r, uint8_t kind, int64_t width, int64_t base_lo, int64_t base_hi )
 {
-    uint64_t slot = ref;
-    for ( uint64_t i = 1; i < ref; i++ )
+    uint64_t lo = 0, hi = 0;
+    if ( width < 0 || !r.get( lo, width < 64 ? width : 64 ) || ( width > 64 && !r.get( hi, width - 64 ) ) ) { return false; }
+    return TableMessageRangedHolds( kind, lo, hi, base_lo, base_hi );
+}
+
+// THE SEEN SET OF ONE BODY (§3.2, §3.3): a FIELD ID TWICE IN ONE BODY, and one
+// KEY twice in one keyed array, is damage, named or skipped. An ID is the
+// wire's own name, not the slot that happened to carry it: one name may be
+// announced at two shapes, and naming it twice is a repeat whichever slot it
+// rode, so the check keys on the id's FIRST slot, which AnnounceRead resolved.
+//
+// THE SET IS NOT ON THE FRAME. A bitmap per body, sized for every slot an
+// announcement can carry, was 8 KiB of every level of a walk the input nests
+// 128 deep, a megabyte of stack for a twenty-byte batch, and 8 KiB zeroed for
+// every empty body a count can claim. The marks live in the entries instead,
+// as the Go leg keeps them (gotable's tableMessageSeenRepeat): opening a body
+// takes the next tick of the vocabulary's clock and keeps it at the body's
+// level, and naming an id records the tick and the level in the id's first
+// entry. A body's own earlier naming still stands when a deeper body named the
+// id since, because that naming left a bit for each shallower level whose open
+// body had named it; a level's bit stands only while that level's body is the
+// one open at the last naming, and the levels opened since are cleared as the
+// id is named again. Opening a body is one store, a naming is a constant
+// number of word operations and at most a binary search over the open levels,
+// and nothing is zeroed, so the work is linear in the batch.
+struct TableMessageSeenBody
+{
+    const TableVocabulary & vocabulary;
+    int32_t level;
+    explicit TableMessageSeenBody( const TableVocabulary & owner ) : vocabulary( owner ), level( owner.seen_depth )
     {
-        if ( TableVocabularyEntryAt( vocabulary, i ).id == id ) { slot = i; break; }
+        if ( level < kTableMessageSeenLevels ) { owner.seen_starts[level] = ++owner.seen_clock; }
+        owner.seen_depth = level + 1;
     }
-    if ( slot >= (uint64_t) kTableMessageSeenBits ) { return false; }
-    const uint64_t bit = uint64_t( 1 ) << ( slot & 63 );
-    if ( ( seen[slot >> 6] & bit ) != 0 ) { return false; }
-    seen[slot >> 6] |= bit;
+    ~TableMessageSeenBody() { vocabulary.seen_depth = level; }
+    TableMessageSeenBody( const TableMessageSeenBody & ) = delete;
+    TableMessageSeenBody & operator=( const TableMessageSeenBody & ) = delete;
+};
+
+// keeps the marks of the levels below level and clears the rest
+inline void TableMessageSeenKeepBelow( TableMessageEntry & entry, int32_t level )
+{
+    for ( int32_t w = 0; w < kTableMessageSeenWords; w++ )
+    {
+        const int32_t low = w * 64;
+        if ( level <= low ) { entry.seen_below[w] = 0; }
+        else if ( level < low + 64 ) { entry.seen_below[w] &= ( uint64_t( 1 ) << ( level - low ) ) - 1; }
+    }
+}
+
+// TableMessageSeenOnce records one id of the open body (or one key of the
+// open keyed array) through the reference that named it, and answers false on
+// a repeat, whether or not this reader can name the field, and past the level
+// bound. ref is a slot the caller already held to [1, count].
+inline bool TableMessageSeenOnce( const TableMessageSeenBody & body, uint64_t ref )
+{
+    const int32_t level = body.level;
+    if ( level >= kTableMessageSeenLevels ) { return false; }
+    const TableVocabulary & vocabulary = body.vocabulary;
+    TableMessageEntry * entry = &vocabulary.entries[ref - 1];
+    if ( entry->seen_first != 0 ) { entry = &vocabulary.entries[entry->seen_first - 1]; }
+    const uint64_t at = entry->seen_at >> 9;
+    const int32_t last = (int32_t) ( entry->seen_at & 511 );
+    if ( vocabulary.seen_starts[level] <= at )
+    {
+        // this body was open at the last naming, so that naming was this
+        // body's or a deeper one's, and every deeper body has closed since
+        if ( last == level || ( ( entry->seen_below[level >> 6] >> ( level & 63 ) ) & 1 ) != 0 ) { return false; }
+        TableMessageSeenKeepBelow( *entry, level );
+    }
+    else
+    {
+        // this body opened after the last naming: the levels still open
+        // since then are the ones whose start is no later than it
+        int32_t kept = 0, high = level;
+        while ( kept < high )
+        {
+            const int32_t mid = ( kept + high ) / 2;
+            if ( vocabulary.seen_starts[mid] <= at ) { kept = mid + 1; }
+            else { high = mid; }
+        }
+        if ( last < kept ) { entry->seen_below[last >> 6] |= uint64_t( 1 ) << ( last & 63 ); }
+        TableMessageSeenKeepBelow( *entry, kept );
+    }
+    entry->seen_at = ( vocabulary.seen_clock << 9 ) | (uint64_t) level;
     return true;
 }
 
@@ -3824,6 +3944,9 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
         {
             uint64_t n = 0;
             if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() ) { return false; }
+            // a length above the ANNOUNCED max, which its bits can spell and
+            // no conforming writer emits, refuses as at a named field (§3.3)
+            if ( n > (uint64_t) entry.max ) { return false; }
             if ( n > (uint64_t) ( ( r.bits - r.offset ) / 8 ) ) { return false; }
             const uint8_t * text = r.buffer + ( r.offset >> 3 );
             if ( !TableUtf8Valid( text, n ) ) { return false; }
@@ -3878,17 +4001,9 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
             // does not, so the depth cap counts what §4 says it counts.
             const bool nested = entry.elem_kind == 13 || entry.elem_kind == 14 || entry.elem_kind == 15 ||
                 entry.elem_kind == 16 || entry.elem_kind == 17 || entry.elem_kind == 30;
-            uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+            if ( entry.kind == 16 ) { return TableMessageSkipKeyed( r, vocabulary, index_bits, entry, n, nested ? depth + 1 : depth ); }
             for ( uint64_t i = 0; i < n; i++ )
             {
-                if ( entry.kind == 16 )
-                {
-                    uint64_t key_ref = 0;
-                    TableMessageEntry key_entry;
-                    if ( !r.get( key_ref, vocabulary.ref_bits ) ) { return false; }
-                    if ( !TableMessageNameEntry( vocabulary, key_ref, key_entry ) ) { return false; }
-                    if ( !TableMessageSeenOnce( seen, vocabulary, key_ref, key_entry.id ) ) { return false; } // one key twice
-                }
                 if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry, nested ? depth + 1 : depth ) ) { return false; }
             }
             return true;
@@ -3902,10 +4017,28 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
     return width >= 0 && r.skip( width );
 }
 
+// TableMessageSkipKeyed walks a skipped keyed array's n (key, element) pairs:
+// the keys are their own seen set, one level of the repeat check's own, so a
+// frame of the skip walk carries none.
+inline bool TableMessageSkipKeyed( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry, uint64_t n, int depth )
+{
+    const TableMessageSeenBody keys( vocabulary );
+    for ( uint64_t i = 0; i < n; i++ )
+    {
+        uint64_t key_ref = 0;
+        TableMessageEntry key_entry;
+        if ( !r.get( key_ref, vocabulary.ref_bits ) ) { return false; }
+        if ( !TableMessageNameEntry( vocabulary, key_ref, key_entry ) ) { return false; }
+        if ( !TableMessageSeenOnce( keys, key_ref ) ) { return false; } // one key twice
+        if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry, depth ) ) { return false; }
+    }
+    return true;
+}
+
 inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int depth )
 {
     if ( depth > 128 ) { return false; }
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const TableMessageSeenBody seen( vocabulary );
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -3914,15 +4047,25 @@ inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vo
         if ( ref > (uint64_t) vocabulary.count ) { return false; }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         if ( TableMessageReserved( entry.id ) ) { return false; }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) ) { return false; } // one id twice
-        if ( entry.kind == 15 )
-        {
-            TableBitReader peek = r;
-            uint64_t arm = 0;
-            if ( !peek.get( arm, vocabulary.ref_bits ) || arm == 0 ) { return false; }
-        }
-        if ( !TableMessageSkip( r, vocabulary, index_bits, entry, depth ) ) { return false; }
+        if ( !TableMessageSeenOnce( seen, ref ) ) { return false; } // one id twice
+        if ( !TableMessageSkipField( r, vocabulary, index_bits, entry, depth ) ) { return false; }
     }
+}
+
+// TableMessageSkipField skips one FIELD's payload: a union FIELD names an arm,
+// because a conforming writer elides an empty union (§3.3, §22.2), so an
+// explicit arm 0 at a field is not the one encoding and is damage, in a root
+// body and in a nested one alike. A union ELEMENT is not elided and its arm 0
+// is the empty arm, which is why TableMessageSkip itself admits it.
+inline bool TableMessageSkipField( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry, int depth )
+{
+    if ( entry.kind == 15 )
+    {
+        TableBitReader peek = r;
+        uint64_t arm = 0;
+        if ( !peek.get( arm, vocabulary.ref_bits ) || arm == 0 ) { return false; }
+    }
+    return TableMessageSkip( r, vocabulary, index_bits, entry, depth );
 }
 
 // AnnounceMeasure is the announcement's byte count, which is a constant of the
@@ -7659,47 +7802,47 @@ inline void RenderFrameReset( RenderFrame & value )
 {
     value.version = 0;
     RenderCameraReset( value.cameras[0] );
-    value.cameras_count = 0; // born at Min (docs/SPEC.md §4.2)
+    value.cameras_count = 0;
     for ( int32_t i = 0; i < 4096; i++ )
     {
         RenderShipReset( value.ships[i] );
     }
-    value.ships_count = 0; // born at Min (docs/SPEC.md §4.2)
+    value.ships_count = 0;
     for ( int32_t i = 0; i < 1024; i++ )
     {
         RenderTurretReset( value.turrets[i] );
     }
-    value.turrets_count = 0; // born at Min (docs/SPEC.md §4.2)
+    value.turrets_count = 0;
     for ( int32_t i = 0; i < 4096; i++ )
     {
         RenderMissileReset( value.missiles[i] );
     }
-    value.missiles_count = 0; // born at Min (docs/SPEC.md §4.2)
+    value.missiles_count = 0;
     for ( int32_t i = 0; i < 4096; i++ )
     {
         RenderDynamicPropReset( value.dynamic_props[i] );
     }
-    value.dynamic_props_count = 0; // born at Min (docs/SPEC.md §4.2)
+    value.dynamic_props_count = 0;
     for ( int32_t i = 0; i < 20000; i++ )
     {
         RenderStaticPropReset( value.static_props[i] );
     }
-    value.static_props_count = 0; // born at Min (docs/SPEC.md §4.2)
+    value.static_props_count = 0;
     for ( int32_t i = 0; i < 8192; i++ )
     {
         RenderCosmeticPropReset( value.cosmetic_props[i] );
     }
-    value.cosmetic_props_count = 0; // born at Min (docs/SPEC.md §4.2)
+    value.cosmetic_props_count = 0;
     for ( int32_t i = 0; i < 32000; i++ )
     {
         RenderLaserReset( value.lasers[i] );
     }
-    value.lasers_count = 0; // born at Min (docs/SPEC.md §4.2)
+    value.lasers_count = 0;
     for ( int32_t i = 0; i < 32000; i++ )
     {
         RenderExplosionReset( value.explosions[i] );
     }
-    value.explosions_count = 0; // born at Min (docs/SPEC.md §4.2)
+    value.explosions_count = 0;
 }
 
 inline void RenderVector3Reset( RenderVector3 & value )
@@ -8373,7 +8516,7 @@ inline bool RenderCameraSaveMessageBody( TableBitWriter & w, const RenderCamera 
 inline bool RenderCameraLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderCamera & value )
 {
     RenderCameraReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const TableMessageSeenBody seen( vocabulary );
     const bool same_build = vocabulary.build_version == BuildVersion;
     int32_t last_field_ord = 0;
     for ( ;; )
@@ -8404,7 +8547,7 @@ inline bool RenderCameraLoadMessageBody( TableBitReader & r, const TableVocabula
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        if ( !TableMessageSeenOnce( seen, ref ) )
         {
             report->damaged = true;
             return false;
@@ -8427,7 +8570,7 @@ inline bool RenderCameraLoadMessageBody( TableBitReader & r, const TableVocabula
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -8463,7 +8606,7 @@ inline bool RenderCameraLoadMessageBody( TableBitReader & r, const TableVocabula
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -8507,8 +8650,14 @@ inline bool RenderCameraLoadMessageBody( TableBitReader & r, const TableVocabula
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             if ( (uint64_t) decoded_wide > 4294967295ull )
                             {
                                 decoded_wide = (int64_t) 4294967295ull;
@@ -8523,7 +8672,7 @@ inline bool RenderCameraLoadMessageBody( TableBitReader & r, const TableVocabula
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -8538,8 +8687,14 @@ inline bool RenderCameraLoadMessageBody( TableBitReader & r, const TableVocabula
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 4294967295ull )
                     {
@@ -8548,7 +8703,7 @@ inline bool RenderCameraLoadMessageBody( TableBitReader & r, const TableVocabula
                         report->refuse_reason = out_of_range;
                     }
                     uint32_t decoded_v = (uint32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -8581,8 +8736,14 @@ inline bool RenderCameraLoadMessageBody( TableBitReader & r, const TableVocabula
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             if ( (uint64_t) decoded_wide > 4294967295ull )
                             {
                                 decoded_wide = (int64_t) 4294967295ull;
@@ -8597,7 +8758,7 @@ inline bool RenderCameraLoadMessageBody( TableBitReader & r, const TableVocabula
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -8612,8 +8773,14 @@ inline bool RenderCameraLoadMessageBody( TableBitReader & r, const TableVocabula
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 4294967295ull )
                     {
@@ -8622,7 +8789,7 @@ inline bool RenderCameraLoadMessageBody( TableBitReader & r, const TableVocabula
                         report->refuse_reason = out_of_range;
                     }
                     uint32_t decoded_v = (uint32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -8655,8 +8822,14 @@ inline bool RenderCameraLoadMessageBody( TableBitReader & r, const TableVocabula
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             if ( (uint64_t) decoded_wide > 4294967295ull )
                             {
                                 decoded_wide = (int64_t) 4294967295ull;
@@ -8671,7 +8844,7 @@ inline bool RenderCameraLoadMessageBody( TableBitReader & r, const TableVocabula
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -8686,8 +8859,14 @@ inline bool RenderCameraLoadMessageBody( TableBitReader & r, const TableVocabula
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 4294967295ull )
                     {
@@ -8696,7 +8875,7 @@ inline bool RenderCameraLoadMessageBody( TableBitReader & r, const TableVocabula
                         report->refuse_reason = out_of_range;
                     }
                     uint32_t decoded_v = (uint32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -8721,7 +8900,7 @@ inline bool RenderCameraLoadMessageBody( TableBitReader & r, const TableVocabula
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -8772,7 +8951,7 @@ inline bool RenderCameraLoadMessageBody( TableBitReader & r, const TableVocabula
             default:
                 if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
                     report->damaged = true;
                     return false;
@@ -9704,7 +9883,7 @@ inline bool RenderShipSaveMessageBody( TableBitWriter & w, const RenderShip & va
 inline bool RenderShipLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderShip & value )
 {
     RenderShipReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const TableMessageSeenBody seen( vocabulary );
     const bool same_build = vocabulary.build_version == BuildVersion;
     int32_t last_field_ord = 0;
     for ( ;; )
@@ -9735,7 +9914,7 @@ inline bool RenderShipLoadMessageBody( TableBitReader & r, const TableVocabulary
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        if ( !TableMessageSeenOnce( seen, ref ) )
         {
             report->damaged = true;
             return false;
@@ -9758,7 +9937,7 @@ inline bool RenderShipLoadMessageBody( TableBitReader & r, const TableVocabulary
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -9794,7 +9973,7 @@ inline bool RenderShipLoadMessageBody( TableBitReader & r, const TableVocabulary
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -9838,8 +10017,14 @@ inline bool RenderShipLoadMessageBody( TableBitReader & r, const TableVocabulary
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             uint64_t decoded_v = (uint64_t) decoded_wide;
                             value.flags = decoded_v;
                         }
@@ -9848,7 +10033,7 @@ inline bool RenderShipLoadMessageBody( TableBitReader & r, const TableVocabulary
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -9863,11 +10048,17 @@ inline bool RenderShipLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     uint64_t decoded_v = (uint64_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -9900,8 +10091,14 @@ inline bool RenderShipLoadMessageBody( TableBitReader & r, const TableVocabulary
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             if ( (uint64_t) decoded_wide > 4294967295ull )
                             {
                                 decoded_wide = (int64_t) 4294967295ull;
@@ -9916,7 +10113,7 @@ inline bool RenderShipLoadMessageBody( TableBitReader & r, const TableVocabulary
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -9931,8 +10128,14 @@ inline bool RenderShipLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 4294967295ull )
                     {
@@ -9941,7 +10144,7 @@ inline bool RenderShipLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->refuse_reason = out_of_range;
                     }
                     uint32_t decoded_v = (uint32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -9974,8 +10177,14 @@ inline bool RenderShipLoadMessageBody( TableBitReader & r, const TableVocabulary
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             if ( (uint64_t) decoded_wide > 4294967295ull )
                             {
                                 decoded_wide = (int64_t) 4294967295ull;
@@ -9990,7 +10199,7 @@ inline bool RenderShipLoadMessageBody( TableBitReader & r, const TableVocabulary
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -10005,8 +10214,14 @@ inline bool RenderShipLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 4294967295ull )
                     {
@@ -10015,7 +10230,7 @@ inline bool RenderShipLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->refuse_reason = out_of_range;
                     }
                     uint32_t decoded_v = (uint32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -10040,7 +10255,7 @@ inline bool RenderShipLoadMessageBody( TableBitReader & r, const TableVocabulary
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -10104,7 +10319,7 @@ inline bool RenderShipLoadMessageBody( TableBitReader & r, const TableVocabulary
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -10119,8 +10334,14 @@ inline bool RenderShipLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 255ull )
                     {
@@ -10129,7 +10350,7 @@ inline bool RenderShipLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->refuse_reason = out_of_range;
                     }
                     uint8_t decoded_v = (uint8_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -10154,7 +10375,7 @@ inline bool RenderShipLoadMessageBody( TableBitReader & r, const TableVocabulary
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -10210,7 +10431,7 @@ inline bool RenderShipLoadMessageBody( TableBitReader & r, const TableVocabulary
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -10266,7 +10487,7 @@ inline bool RenderShipLoadMessageBody( TableBitReader & r, const TableVocabulary
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -10297,7 +10518,7 @@ inline bool RenderShipLoadMessageBody( TableBitReader & r, const TableVocabulary
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -10315,7 +10536,7 @@ inline bool RenderShipLoadMessageBody( TableBitReader & r, const TableVocabulary
             default:
                 if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
                     report->damaged = true;
                     return false;
@@ -11132,7 +11353,7 @@ inline bool RenderTurretSaveMessageBody( TableBitWriter & w, const RenderTurret 
 inline bool RenderTurretLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderTurret & value )
 {
     RenderTurretReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const TableMessageSeenBody seen( vocabulary );
     const bool same_build = vocabulary.build_version == BuildVersion;
     int32_t last_field_ord = 0;
     for ( ;; )
@@ -11163,7 +11384,7 @@ inline bool RenderTurretLoadMessageBody( TableBitReader & r, const TableVocabula
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        if ( !TableMessageSeenOnce( seen, ref ) )
         {
             report->damaged = true;
             return false;
@@ -11186,7 +11407,7 @@ inline bool RenderTurretLoadMessageBody( TableBitReader & r, const TableVocabula
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -11230,8 +11451,14 @@ inline bool RenderTurretLoadMessageBody( TableBitReader & r, const TableVocabula
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             uint64_t decoded_v = (uint64_t) decoded_wide;
                             value.flags = decoded_v;
                         }
@@ -11240,7 +11467,7 @@ inline bool RenderTurretLoadMessageBody( TableBitReader & r, const TableVocabula
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -11255,11 +11482,17 @@ inline bool RenderTurretLoadMessageBody( TableBitReader & r, const TableVocabula
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     uint64_t decoded_v = (uint64_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -11292,8 +11525,14 @@ inline bool RenderTurretLoadMessageBody( TableBitReader & r, const TableVocabula
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             if ( (uint64_t) decoded_wide > 4294967295ull )
                             {
                                 decoded_wide = (int64_t) 4294967295ull;
@@ -11308,7 +11547,7 @@ inline bool RenderTurretLoadMessageBody( TableBitReader & r, const TableVocabula
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -11323,8 +11562,14 @@ inline bool RenderTurretLoadMessageBody( TableBitReader & r, const TableVocabula
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 4294967295ull )
                     {
@@ -11333,7 +11578,7 @@ inline bool RenderTurretLoadMessageBody( TableBitReader & r, const TableVocabula
                         report->refuse_reason = out_of_range;
                     }
                     uint32_t decoded_v = (uint32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -11366,8 +11611,14 @@ inline bool RenderTurretLoadMessageBody( TableBitReader & r, const TableVocabula
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             if ( (uint64_t) decoded_wide > 4294967295ull )
                             {
                                 decoded_wide = (int64_t) 4294967295ull;
@@ -11382,7 +11633,7 @@ inline bool RenderTurretLoadMessageBody( TableBitReader & r, const TableVocabula
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -11397,8 +11648,14 @@ inline bool RenderTurretLoadMessageBody( TableBitReader & r, const TableVocabula
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 4294967295ull )
                     {
@@ -11407,7 +11664,7 @@ inline bool RenderTurretLoadMessageBody( TableBitReader & r, const TableVocabula
                         report->refuse_reason = out_of_range;
                     }
                     uint32_t decoded_v = (uint32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -11440,8 +11697,14 @@ inline bool RenderTurretLoadMessageBody( TableBitReader & r, const TableVocabula
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             if ( (uint64_t) decoded_wide > 4294967295ull )
                             {
                                 decoded_wide = (int64_t) 4294967295ull;
@@ -11456,7 +11719,7 @@ inline bool RenderTurretLoadMessageBody( TableBitReader & r, const TableVocabula
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -11471,8 +11734,14 @@ inline bool RenderTurretLoadMessageBody( TableBitReader & r, const TableVocabula
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 4294967295ull )
                     {
@@ -11481,7 +11750,7 @@ inline bool RenderTurretLoadMessageBody( TableBitReader & r, const TableVocabula
                         report->refuse_reason = out_of_range;
                     }
                     uint32_t decoded_v = (uint32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -11514,8 +11783,14 @@ inline bool RenderTurretLoadMessageBody( TableBitReader & r, const TableVocabula
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             if ( (uint64_t) decoded_wide > 4294967295ull )
                             {
                                 decoded_wide = (int64_t) 4294967295ull;
@@ -11530,7 +11805,7 @@ inline bool RenderTurretLoadMessageBody( TableBitReader & r, const TableVocabula
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -11545,8 +11820,14 @@ inline bool RenderTurretLoadMessageBody( TableBitReader & r, const TableVocabula
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 4294967295ull )
                     {
@@ -11555,7 +11836,7 @@ inline bool RenderTurretLoadMessageBody( TableBitReader & r, const TableVocabula
                         report->refuse_reason = out_of_range;
                     }
                     uint32_t decoded_v = (uint32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -11580,7 +11861,7 @@ inline bool RenderTurretLoadMessageBody( TableBitReader & r, const TableVocabula
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -11595,8 +11876,14 @@ inline bool RenderTurretLoadMessageBody( TableBitReader & r, const TableVocabula
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 255ull )
                     {
@@ -11605,7 +11892,7 @@ inline bool RenderTurretLoadMessageBody( TableBitReader & r, const TableVocabula
                         report->refuse_reason = out_of_range;
                     }
                     uint8_t decoded_v = (uint8_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -11630,7 +11917,7 @@ inline bool RenderTurretLoadMessageBody( TableBitReader & r, const TableVocabula
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -11686,7 +11973,7 @@ inline bool RenderTurretLoadMessageBody( TableBitReader & r, const TableVocabula
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -11704,7 +11991,7 @@ inline bool RenderTurretLoadMessageBody( TableBitReader & r, const TableVocabula
             default:
                 if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
                     report->damaged = true;
                     return false;
@@ -12445,7 +12732,7 @@ inline bool RenderMissileSaveMessageBody( TableBitWriter & w, const RenderMissil
 inline bool RenderMissileLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderMissile & value )
 {
     RenderMissileReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const TableMessageSeenBody seen( vocabulary );
     const bool same_build = vocabulary.build_version == BuildVersion;
     int32_t last_field_ord = 0;
     for ( ;; )
@@ -12476,7 +12763,7 @@ inline bool RenderMissileLoadMessageBody( TableBitReader & r, const TableVocabul
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        if ( !TableMessageSeenOnce( seen, ref ) )
         {
             report->damaged = true;
             return false;
@@ -12499,7 +12786,7 @@ inline bool RenderMissileLoadMessageBody( TableBitReader & r, const TableVocabul
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -12535,7 +12822,7 @@ inline bool RenderMissileLoadMessageBody( TableBitReader & r, const TableVocabul
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -12579,8 +12866,14 @@ inline bool RenderMissileLoadMessageBody( TableBitReader & r, const TableVocabul
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             uint64_t decoded_v = (uint64_t) decoded_wide;
                             value.flags = decoded_v;
                         }
@@ -12589,7 +12882,7 @@ inline bool RenderMissileLoadMessageBody( TableBitReader & r, const TableVocabul
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -12604,11 +12897,17 @@ inline bool RenderMissileLoadMessageBody( TableBitReader & r, const TableVocabul
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     uint64_t decoded_v = (uint64_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -12641,8 +12940,14 @@ inline bool RenderMissileLoadMessageBody( TableBitReader & r, const TableVocabul
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             if ( (uint64_t) decoded_wide > 4294967295ull )
                             {
                                 decoded_wide = (int64_t) 4294967295ull;
@@ -12657,7 +12962,7 @@ inline bool RenderMissileLoadMessageBody( TableBitReader & r, const TableVocabul
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -12672,8 +12977,14 @@ inline bool RenderMissileLoadMessageBody( TableBitReader & r, const TableVocabul
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 4294967295ull )
                     {
@@ -12682,7 +12993,7 @@ inline bool RenderMissileLoadMessageBody( TableBitReader & r, const TableVocabul
                         report->refuse_reason = out_of_range;
                     }
                     uint32_t decoded_v = (uint32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -12707,7 +13018,7 @@ inline bool RenderMissileLoadMessageBody( TableBitReader & r, const TableVocabul
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -12722,8 +13033,14 @@ inline bool RenderMissileLoadMessageBody( TableBitReader & r, const TableVocabul
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 255ull )
                     {
@@ -12732,7 +13049,7 @@ inline bool RenderMissileLoadMessageBody( TableBitReader & r, const TableVocabul
                         report->refuse_reason = out_of_range;
                     }
                     uint8_t decoded_v = (uint8_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -12757,7 +13074,7 @@ inline bool RenderMissileLoadMessageBody( TableBitReader & r, const TableVocabul
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -12813,7 +13130,7 @@ inline bool RenderMissileLoadMessageBody( TableBitReader & r, const TableVocabul
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -12856,7 +13173,7 @@ inline bool RenderMissileLoadMessageBody( TableBitReader & r, const TableVocabul
             default:
                 if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
                     report->damaged = true;
                     return false;
@@ -13597,7 +13914,7 @@ inline bool RenderDynamicPropSaveMessageBody( TableBitWriter & w, const RenderDy
 inline bool RenderDynamicPropLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderDynamicProp & value )
 {
     RenderDynamicPropReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const TableMessageSeenBody seen( vocabulary );
     const bool same_build = vocabulary.build_version == BuildVersion;
     int32_t last_field_ord = 0;
     for ( ;; )
@@ -13628,7 +13945,7 @@ inline bool RenderDynamicPropLoadMessageBody( TableBitReader & r, const TableVoc
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        if ( !TableMessageSeenOnce( seen, ref ) )
         {
             report->damaged = true;
             return false;
@@ -13651,7 +13968,7 @@ inline bool RenderDynamicPropLoadMessageBody( TableBitReader & r, const TableVoc
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13687,7 +14004,7 @@ inline bool RenderDynamicPropLoadMessageBody( TableBitReader & r, const TableVoc
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13731,8 +14048,14 @@ inline bool RenderDynamicPropLoadMessageBody( TableBitReader & r, const TableVoc
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             uint64_t decoded_v = (uint64_t) decoded_wide;
                             value.flags = decoded_v;
                         }
@@ -13741,7 +14064,7 @@ inline bool RenderDynamicPropLoadMessageBody( TableBitReader & r, const TableVoc
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13756,11 +14079,17 @@ inline bool RenderDynamicPropLoadMessageBody( TableBitReader & r, const TableVoc
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     uint64_t decoded_v = (uint64_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13793,8 +14122,14 @@ inline bool RenderDynamicPropLoadMessageBody( TableBitReader & r, const TableVoc
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             if ( (uint64_t) decoded_wide > 4294967295ull )
                             {
                                 decoded_wide = (int64_t) 4294967295ull;
@@ -13809,7 +14144,7 @@ inline bool RenderDynamicPropLoadMessageBody( TableBitReader & r, const TableVoc
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13824,8 +14159,14 @@ inline bool RenderDynamicPropLoadMessageBody( TableBitReader & r, const TableVoc
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 4294967295ull )
                     {
@@ -13834,7 +14175,7 @@ inline bool RenderDynamicPropLoadMessageBody( TableBitReader & r, const TableVoc
                         report->refuse_reason = out_of_range;
                     }
                     uint32_t decoded_v = (uint32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13859,7 +14200,7 @@ inline bool RenderDynamicPropLoadMessageBody( TableBitReader & r, const TableVoc
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13874,8 +14215,14 @@ inline bool RenderDynamicPropLoadMessageBody( TableBitReader & r, const TableVoc
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 255ull )
                     {
@@ -13884,7 +14231,7 @@ inline bool RenderDynamicPropLoadMessageBody( TableBitReader & r, const TableVoc
                         report->refuse_reason = out_of_range;
                     }
                     uint8_t decoded_v = (uint8_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13909,7 +14256,7 @@ inline bool RenderDynamicPropLoadMessageBody( TableBitReader & r, const TableVoc
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13965,7 +14312,7 @@ inline bool RenderDynamicPropLoadMessageBody( TableBitReader & r, const TableVoc
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -14008,7 +14355,7 @@ inline bool RenderDynamicPropLoadMessageBody( TableBitReader & r, const TableVoc
             default:
                 if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
                     report->damaged = true;
                     return false;
@@ -14773,7 +15120,7 @@ inline bool RenderStaticPropSaveMessageBody( TableBitWriter & w, const RenderSta
 inline bool RenderStaticPropLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderStaticProp & value )
 {
     RenderStaticPropReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const TableMessageSeenBody seen( vocabulary );
     const bool same_build = vocabulary.build_version == BuildVersion;
     int32_t last_field_ord = 0;
     for ( ;; )
@@ -14804,7 +15151,7 @@ inline bool RenderStaticPropLoadMessageBody( TableBitReader & r, const TableVoca
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        if ( !TableMessageSeenOnce( seen, ref ) )
         {
             report->damaged = true;
             return false;
@@ -14827,7 +15174,7 @@ inline bool RenderStaticPropLoadMessageBody( TableBitReader & r, const TableVoca
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -14863,7 +15210,7 @@ inline bool RenderStaticPropLoadMessageBody( TableBitReader & r, const TableVoca
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -14936,7 +15283,7 @@ inline bool RenderStaticPropLoadMessageBody( TableBitReader & r, const TableVoca
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -14975,8 +15322,14 @@ inline bool RenderStaticPropLoadMessageBody( TableBitReader & r, const TableVoca
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             uint64_t decoded_v = (uint64_t) decoded_wide;
                             value.flags = decoded_v;
                         }
@@ -14985,7 +15338,7 @@ inline bool RenderStaticPropLoadMessageBody( TableBitReader & r, const TableVoca
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -15000,11 +15353,17 @@ inline bool RenderStaticPropLoadMessageBody( TableBitReader & r, const TableVoca
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     uint64_t decoded_v = (uint64_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -15037,8 +15396,14 @@ inline bool RenderStaticPropLoadMessageBody( TableBitReader & r, const TableVoca
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             if ( (uint64_t) decoded_wide > 4294967295ull )
                             {
                                 decoded_wide = (int64_t) 4294967295ull;
@@ -15053,7 +15418,7 @@ inline bool RenderStaticPropLoadMessageBody( TableBitReader & r, const TableVoca
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -15068,8 +15433,14 @@ inline bool RenderStaticPropLoadMessageBody( TableBitReader & r, const TableVoca
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 4294967295ull )
                     {
@@ -15078,7 +15449,7 @@ inline bool RenderStaticPropLoadMessageBody( TableBitReader & r, const TableVoca
                         report->refuse_reason = out_of_range;
                     }
                     uint32_t decoded_v = (uint32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -15103,7 +15474,7 @@ inline bool RenderStaticPropLoadMessageBody( TableBitReader & r, const TableVoca
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -15159,7 +15530,7 @@ inline bool RenderStaticPropLoadMessageBody( TableBitReader & r, const TableVoca
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -15202,7 +15573,7 @@ inline bool RenderStaticPropLoadMessageBody( TableBitReader & r, const TableVoca
             default:
                 if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
                     report->damaged = true;
                     return false;
@@ -16007,7 +16378,7 @@ inline bool RenderCosmeticPropSaveMessageBody( TableBitWriter & w, const RenderC
 inline bool RenderCosmeticPropLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderCosmeticProp & value )
 {
     RenderCosmeticPropReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const TableMessageSeenBody seen( vocabulary );
     const bool same_build = vocabulary.build_version == BuildVersion;
     int32_t last_field_ord = 0;
     for ( ;; )
@@ -16038,7 +16409,7 @@ inline bool RenderCosmeticPropLoadMessageBody( TableBitReader & r, const TableVo
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        if ( !TableMessageSeenOnce( seen, ref ) )
         {
             report->damaged = true;
             return false;
@@ -16061,7 +16432,7 @@ inline bool RenderCosmeticPropLoadMessageBody( TableBitReader & r, const TableVo
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -16097,7 +16468,7 @@ inline bool RenderCosmeticPropLoadMessageBody( TableBitReader & r, const TableVo
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -16170,7 +16541,7 @@ inline bool RenderCosmeticPropLoadMessageBody( TableBitReader & r, const TableVo
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -16209,8 +16580,14 @@ inline bool RenderCosmeticPropLoadMessageBody( TableBitReader & r, const TableVo
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             uint64_t decoded_v = (uint64_t) decoded_wide;
                             value.flags = decoded_v;
                         }
@@ -16219,7 +16596,7 @@ inline bool RenderCosmeticPropLoadMessageBody( TableBitReader & r, const TableVo
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -16234,11 +16611,17 @@ inline bool RenderCosmeticPropLoadMessageBody( TableBitReader & r, const TableVo
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     uint64_t decoded_v = (uint64_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -16271,8 +16654,14 @@ inline bool RenderCosmeticPropLoadMessageBody( TableBitReader & r, const TableVo
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             if ( (uint64_t) decoded_wide > 4294967295ull )
                             {
                                 decoded_wide = (int64_t) 4294967295ull;
@@ -16287,7 +16676,7 @@ inline bool RenderCosmeticPropLoadMessageBody( TableBitReader & r, const TableVo
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -16302,8 +16691,14 @@ inline bool RenderCosmeticPropLoadMessageBody( TableBitReader & r, const TableVo
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 4294967295ull )
                     {
@@ -16312,7 +16707,7 @@ inline bool RenderCosmeticPropLoadMessageBody( TableBitReader & r, const TableVo
                         report->refuse_reason = out_of_range;
                     }
                     uint32_t decoded_v = (uint32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -16337,7 +16732,7 @@ inline bool RenderCosmeticPropLoadMessageBody( TableBitReader & r, const TableVo
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -16352,8 +16747,14 @@ inline bool RenderCosmeticPropLoadMessageBody( TableBitReader & r, const TableVo
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 255ull )
                     {
@@ -16362,7 +16763,7 @@ inline bool RenderCosmeticPropLoadMessageBody( TableBitReader & r, const TableVo
                         report->refuse_reason = out_of_range;
                     }
                     uint8_t decoded_v = (uint8_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -16387,7 +16788,7 @@ inline bool RenderCosmeticPropLoadMessageBody( TableBitReader & r, const TableVo
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -16443,7 +16844,7 @@ inline bool RenderCosmeticPropLoadMessageBody( TableBitReader & r, const TableVo
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -16486,7 +16887,7 @@ inline bool RenderCosmeticPropLoadMessageBody( TableBitReader & r, const TableVo
             default:
                 if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
                     report->damaged = true;
                     return false;
@@ -17196,7 +17597,7 @@ inline bool RenderLaserSaveMessageBody( TableBitWriter & w, const RenderLaser & 
 inline bool RenderLaserLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderLaser & value )
 {
     RenderLaserReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const TableMessageSeenBody seen( vocabulary );
     const bool same_build = vocabulary.build_version == BuildVersion;
     int32_t last_field_ord = 0;
     for ( ;; )
@@ -17227,7 +17628,7 @@ inline bool RenderLaserLoadMessageBody( TableBitReader & r, const TableVocabular
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        if ( !TableMessageSeenOnce( seen, ref ) )
         {
             report->damaged = true;
             return false;
@@ -17250,7 +17651,7 @@ inline bool RenderLaserLoadMessageBody( TableBitReader & r, const TableVocabular
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -17286,7 +17687,7 @@ inline bool RenderLaserLoadMessageBody( TableBitReader & r, const TableVocabular
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -17359,7 +17760,7 @@ inline bool RenderLaserLoadMessageBody( TableBitReader & r, const TableVocabular
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -17398,8 +17799,14 @@ inline bool RenderLaserLoadMessageBody( TableBitReader & r, const TableVocabular
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             if ( (uint64_t) decoded_wide > 4294967295ull )
                             {
                                 decoded_wide = (int64_t) 4294967295ull;
@@ -17414,7 +17821,7 @@ inline bool RenderLaserLoadMessageBody( TableBitReader & r, const TableVocabular
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -17429,8 +17836,14 @@ inline bool RenderLaserLoadMessageBody( TableBitReader & r, const TableVocabular
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 4294967295ull )
                     {
@@ -17439,7 +17852,7 @@ inline bool RenderLaserLoadMessageBody( TableBitReader & r, const TableVocabular
                         report->refuse_reason = out_of_range;
                     }
                     uint32_t decoded_v = (uint32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -17464,7 +17877,7 @@ inline bool RenderLaserLoadMessageBody( TableBitReader & r, const TableVocabular
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -17520,7 +17933,7 @@ inline bool RenderLaserLoadMessageBody( TableBitReader & r, const TableVocabular
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -17563,7 +17976,7 @@ inline bool RenderLaserLoadMessageBody( TableBitReader & r, const TableVocabular
             default:
                 if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
                     report->damaged = true;
                     return false;
@@ -18328,7 +18741,7 @@ inline bool RenderExplosionSaveMessageBody( TableBitWriter & w, const RenderExpl
 inline bool RenderExplosionLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderExplosion & value )
 {
     RenderExplosionReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const TableMessageSeenBody seen( vocabulary );
     const bool same_build = vocabulary.build_version == BuildVersion;
     int32_t last_field_ord = 0;
     for ( ;; )
@@ -18359,7 +18772,7 @@ inline bool RenderExplosionLoadMessageBody( TableBitReader & r, const TableVocab
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        if ( !TableMessageSeenOnce( seen, ref ) )
         {
             report->damaged = true;
             return false;
@@ -18382,7 +18795,7 @@ inline bool RenderExplosionLoadMessageBody( TableBitReader & r, const TableVocab
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -18418,7 +18831,7 @@ inline bool RenderExplosionLoadMessageBody( TableBitReader & r, const TableVocab
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -18491,7 +18904,7 @@ inline bool RenderExplosionLoadMessageBody( TableBitReader & r, const TableVocab
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -18530,8 +18943,14 @@ inline bool RenderExplosionLoadMessageBody( TableBitReader & r, const TableVocab
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             if ( (uint64_t) decoded_wide > 4294967295ull )
                             {
                                 decoded_wide = (int64_t) 4294967295ull;
@@ -18546,7 +18965,7 @@ inline bool RenderExplosionLoadMessageBody( TableBitReader & r, const TableVocab
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -18561,8 +18980,14 @@ inline bool RenderExplosionLoadMessageBody( TableBitReader & r, const TableVocab
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 4294967295ull )
                     {
@@ -18571,7 +18996,7 @@ inline bool RenderExplosionLoadMessageBody( TableBitReader & r, const TableVocab
                         report->refuse_reason = out_of_range;
                     }
                     uint32_t decoded_v = (uint32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -18604,8 +19029,14 @@ inline bool RenderExplosionLoadMessageBody( TableBitReader & r, const TableVocab
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             if ( (uint64_t) decoded_wide > 4294967295ull )
                             {
                                 decoded_wide = (int64_t) 4294967295ull;
@@ -18620,7 +19051,7 @@ inline bool RenderExplosionLoadMessageBody( TableBitReader & r, const TableVocab
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -18635,8 +19066,14 @@ inline bool RenderExplosionLoadMessageBody( TableBitReader & r, const TableVocab
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 4294967295ull )
                     {
@@ -18645,7 +19082,7 @@ inline bool RenderExplosionLoadMessageBody( TableBitReader & r, const TableVocab
                         report->refuse_reason = out_of_range;
                     }
                     uint32_t decoded_v = (uint32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -18670,7 +19107,7 @@ inline bool RenderExplosionLoadMessageBody( TableBitReader & r, const TableVocab
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -18726,7 +19163,7 @@ inline bool RenderExplosionLoadMessageBody( TableBitReader & r, const TableVocab
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -18769,7 +19206,7 @@ inline bool RenderExplosionLoadMessageBody( TableBitReader & r, const TableVocab
             default:
                 if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
                     report->damaged = true;
                     return false;
@@ -18878,8 +19315,7 @@ inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.version != 0 ) { bytes += TableLebBytes( ids.ref_at( 59, 0xbb62c62c9808ea37ull ) ) + 1 + 8; } // version
     schema_assert( value.cameras_count >= 0 && value.cameras_count <= 1 ); // storage invariant, debug only (§5.1)
-    bool rides_cameras = value.cameras_count > 0;
-    if ( rides_cameras )
+    if ( value.cameras_count > 0 )
     {
         const uint64_t ref_cameras = ids.ref_at( 4, 0x0f9222d2ba7aa2a7ull );
         int64_t body_cameras = 0;
@@ -18893,8 +19329,7 @@ inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value
         bytes += TableLebBytes( ref_cameras ) + 1 + TableLebBytes( (uint64_t) ( body_cameras ) ) + ( body_cameras ); // cameras
     }
     schema_assert( value.ships_count >= 0 && value.ships_count <= 4096 ); // storage invariant, debug only (§5.1)
-    bool rides_ships = value.ships_count > 0;
-    if ( rides_ships )
+    if ( value.ships_count > 0 )
     {
         const uint64_t ref_ships = ids.ref_at( 12, 0x294a5c4913e1ad44ull );
         int64_t body_ships = 0;
@@ -18908,8 +19343,7 @@ inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value
         bytes += TableLebBytes( ref_ships ) + 1 + TableLebBytes( (uint64_t) ( body_ships ) ) + ( body_ships ); // ships
     }
     schema_assert( value.turrets_count >= 0 && value.turrets_count <= 1024 ); // storage invariant, debug only (§5.1)
-    bool rides_turrets = value.turrets_count > 0;
-    if ( rides_turrets )
+    if ( value.turrets_count > 0 )
     {
         const uint64_t ref_turrets = ids.ref_at( 38, 0x84f8260bc283608cull );
         int64_t body_turrets = 0;
@@ -18923,8 +19357,7 @@ inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value
         bytes += TableLebBytes( ref_turrets ) + 1 + TableLebBytes( (uint64_t) ( body_turrets ) ) + ( body_turrets ); // turrets
     }
     schema_assert( value.missiles_count >= 0 && value.missiles_count <= 4096 ); // storage invariant, debug only (§5.1)
-    bool rides_missiles = value.missiles_count > 0;
-    if ( rides_missiles )
+    if ( value.missiles_count > 0 )
     {
         const uint64_t ref_missiles = ids.ref_at( 9, 0x1c3027194b1ba4d0ull );
         int64_t body_missiles = 0;
@@ -18938,8 +19371,7 @@ inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value
         bytes += TableLebBytes( ref_missiles ) + 1 + TableLebBytes( (uint64_t) ( body_missiles ) ) + ( body_missiles ); // missiles
     }
     schema_assert( value.dynamic_props_count >= 0 && value.dynamic_props_count <= 4096 ); // storage invariant, debug only (§5.1)
-    bool rides_dynamic_props = value.dynamic_props_count > 0;
-    if ( rides_dynamic_props )
+    if ( value.dynamic_props_count > 0 )
     {
         const uint64_t ref_dynamic_props = ids.ref_at( 19, 0x43125398a9903d27ull );
         int64_t body_dynamic_props = 0;
@@ -18953,8 +19385,7 @@ inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value
         bytes += TableLebBytes( ref_dynamic_props ) + 1 + TableLebBytes( (uint64_t) ( body_dynamic_props ) ) + ( body_dynamic_props ); // dynamic_props
     }
     schema_assert( value.static_props_count >= 0 && value.static_props_count <= 20000 ); // storage invariant, debug only (§5.1)
-    bool rides_static_props = value.static_props_count > 0;
-    if ( rides_static_props )
+    if ( value.static_props_count > 0 )
     {
         const uint64_t ref_static_props = ids.ref_at( 62, 0xc1f8d7edff7fcfd2ull );
         int64_t body_static_props = 0;
@@ -18968,8 +19399,7 @@ inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value
         bytes += TableLebBytes( ref_static_props ) + 1 + TableLebBytes( (uint64_t) ( body_static_props ) ) + ( body_static_props ); // static_props
     }
     schema_assert( value.cosmetic_props_count >= 0 && value.cosmetic_props_count <= 8192 ); // storage invariant, debug only (§5.1)
-    bool rides_cosmetic_props = value.cosmetic_props_count > 0;
-    if ( rides_cosmetic_props )
+    if ( value.cosmetic_props_count > 0 )
     {
         const uint64_t ref_cosmetic_props = ids.ref_at( 14, 0x33408e39f5f480ffull );
         int64_t body_cosmetic_props = 0;
@@ -18983,8 +19413,7 @@ inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value
         bytes += TableLebBytes( ref_cosmetic_props ) + 1 + TableLebBytes( (uint64_t) ( body_cosmetic_props ) ) + ( body_cosmetic_props ); // cosmetic_props
     }
     schema_assert( value.lasers_count >= 0 && value.lasers_count <= 32000 ); // storage invariant, debug only (§5.1)
-    bool rides_lasers = value.lasers_count > 0;
-    if ( rides_lasers )
+    if ( value.lasers_count > 0 )
     {
         const uint64_t ref_lasers = ids.ref_at( 74, 0xd982b77b3e92d16dull );
         int64_t body_lasers = 0;
@@ -18998,8 +19427,7 @@ inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value
         bytes += TableLebBytes( ref_lasers ) + 1 + TableLebBytes( (uint64_t) ( body_lasers ) ) + ( body_lasers ); // lasers
     }
     schema_assert( value.explosions_count >= 0 && value.explosions_count <= 32000 ); // storage invariant, debug only (§5.1)
-    bool rides_explosions = value.explosions_count > 0;
-    if ( rides_explosions )
+    if ( value.explosions_count > 0 )
     {
         const uint64_t ref_explosions = ids.ref_at( 39, 0x876a8c1a85806a69ull );
         int64_t body_explosions = 0;
@@ -19031,8 +19459,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
         w.put64( uint64_t( value.version ) );
     }
     schema_assert( value.cameras_count >= 0 && value.cameras_count <= 1 ); // storage invariant, debug only (§5.1)
-    bool rides_cameras = value.cameras_count > 0;
-    if ( rides_cameras )
+    if ( value.cameras_count > 0 )
     {
         const uint64_t ref_cameras = ids.ref_at( 4, 0x0f9222d2ba7aa2a7ull );
         int64_t body_cameras = 0;
@@ -19063,8 +19490,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
         }
     }
     schema_assert( value.ships_count >= 0 && value.ships_count <= 4096 ); // storage invariant, debug only (§5.1)
-    bool rides_ships = value.ships_count > 0;
-    if ( rides_ships )
+    if ( value.ships_count > 0 )
     {
         const uint64_t ref_ships = ids.ref_at( 12, 0x294a5c4913e1ad44ull );
         int64_t body_ships = 0;
@@ -19095,8 +19521,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
         }
     }
     schema_assert( value.turrets_count >= 0 && value.turrets_count <= 1024 ); // storage invariant, debug only (§5.1)
-    bool rides_turrets = value.turrets_count > 0;
-    if ( rides_turrets )
+    if ( value.turrets_count > 0 )
     {
         const uint64_t ref_turrets = ids.ref_at( 38, 0x84f8260bc283608cull );
         int64_t body_turrets = 0;
@@ -19127,8 +19552,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
         }
     }
     schema_assert( value.missiles_count >= 0 && value.missiles_count <= 4096 ); // storage invariant, debug only (§5.1)
-    bool rides_missiles = value.missiles_count > 0;
-    if ( rides_missiles )
+    if ( value.missiles_count > 0 )
     {
         const uint64_t ref_missiles = ids.ref_at( 9, 0x1c3027194b1ba4d0ull );
         int64_t body_missiles = 0;
@@ -19159,8 +19583,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
         }
     }
     schema_assert( value.dynamic_props_count >= 0 && value.dynamic_props_count <= 4096 ); // storage invariant, debug only (§5.1)
-    bool rides_dynamic_props = value.dynamic_props_count > 0;
-    if ( rides_dynamic_props )
+    if ( value.dynamic_props_count > 0 )
     {
         const uint64_t ref_dynamic_props = ids.ref_at( 19, 0x43125398a9903d27ull );
         int64_t body_dynamic_props = 0;
@@ -19191,8 +19614,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
         }
     }
     schema_assert( value.static_props_count >= 0 && value.static_props_count <= 20000 ); // storage invariant, debug only (§5.1)
-    bool rides_static_props = value.static_props_count > 0;
-    if ( rides_static_props )
+    if ( value.static_props_count > 0 )
     {
         const uint64_t ref_static_props = ids.ref_at( 62, 0xc1f8d7edff7fcfd2ull );
         int64_t body_static_props = 0;
@@ -19223,8 +19645,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
         }
     }
     schema_assert( value.cosmetic_props_count >= 0 && value.cosmetic_props_count <= 8192 ); // storage invariant, debug only (§5.1)
-    bool rides_cosmetic_props = value.cosmetic_props_count > 0;
-    if ( rides_cosmetic_props )
+    if ( value.cosmetic_props_count > 0 )
     {
         const uint64_t ref_cosmetic_props = ids.ref_at( 14, 0x33408e39f5f480ffull );
         int64_t body_cosmetic_props = 0;
@@ -19255,8 +19676,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
         }
     }
     schema_assert( value.lasers_count >= 0 && value.lasers_count <= 32000 ); // storage invariant, debug only (§5.1)
-    bool rides_lasers = value.lasers_count > 0;
-    if ( rides_lasers )
+    if ( value.lasers_count > 0 )
     {
         const uint64_t ref_lasers = ids.ref_at( 74, 0xd982b77b3e92d16dull );
         int64_t body_lasers = 0;
@@ -19287,8 +19707,7 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
         }
     }
     schema_assert( value.explosions_count >= 0 && value.explosions_count <= 32000 ); // storage invariant, debug only (§5.1)
-    bool rides_explosions = value.explosions_count > 0;
-    if ( rides_explosions )
+    if ( value.explosions_count > 0 )
     {
         const uint64_t ref_explosions = ids.ref_at( 39, 0x876a8c1a85806a69ull );
         int64_t body_explosions = 0;
@@ -20402,8 +20821,7 @@ inline int64_t RenderFrameMeasureMessageBody( int64_t at, const RenderFrame & va
         bits += 64;
     }
     schema_assert( value.cameras_count >= 0 && value.cameras_count <= 1 ); // storage invariant, debug only (§5.1)
-    bool rides_cameras = value.cameras_count > 0;
-    if ( rides_cameras )
+    if ( value.cameras_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
         bits += 1;
@@ -20415,8 +20833,7 @@ inline int64_t RenderFrameMeasureMessageBody( int64_t at, const RenderFrame & va
         }
     }
     schema_assert( value.ships_count >= 0 && value.ships_count <= 4096 ); // storage invariant, debug only (§5.1)
-    bool rides_ships = value.ships_count > 0;
-    if ( rides_ships )
+    if ( value.ships_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
         bits += 13;
@@ -20428,8 +20845,7 @@ inline int64_t RenderFrameMeasureMessageBody( int64_t at, const RenderFrame & va
         }
     }
     schema_assert( value.turrets_count >= 0 && value.turrets_count <= 1024 ); // storage invariant, debug only (§5.1)
-    bool rides_turrets = value.turrets_count > 0;
-    if ( rides_turrets )
+    if ( value.turrets_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
         bits += 11;
@@ -20441,8 +20857,7 @@ inline int64_t RenderFrameMeasureMessageBody( int64_t at, const RenderFrame & va
         }
     }
     schema_assert( value.missiles_count >= 0 && value.missiles_count <= 4096 ); // storage invariant, debug only (§5.1)
-    bool rides_missiles = value.missiles_count > 0;
-    if ( rides_missiles )
+    if ( value.missiles_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
         bits += 13;
@@ -20454,8 +20869,7 @@ inline int64_t RenderFrameMeasureMessageBody( int64_t at, const RenderFrame & va
         }
     }
     schema_assert( value.dynamic_props_count >= 0 && value.dynamic_props_count <= 4096 ); // storage invariant, debug only (§5.1)
-    bool rides_dynamic_props = value.dynamic_props_count > 0;
-    if ( rides_dynamic_props )
+    if ( value.dynamic_props_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
         bits += 13;
@@ -20467,8 +20881,7 @@ inline int64_t RenderFrameMeasureMessageBody( int64_t at, const RenderFrame & va
         }
     }
     schema_assert( value.static_props_count >= 0 && value.static_props_count <= 20000 ); // storage invariant, debug only (§5.1)
-    bool rides_static_props = value.static_props_count > 0;
-    if ( rides_static_props )
+    if ( value.static_props_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
         bits += 15;
@@ -20480,8 +20893,7 @@ inline int64_t RenderFrameMeasureMessageBody( int64_t at, const RenderFrame & va
         }
     }
     schema_assert( value.cosmetic_props_count >= 0 && value.cosmetic_props_count <= 8192 ); // storage invariant, debug only (§5.1)
-    bool rides_cosmetic_props = value.cosmetic_props_count > 0;
-    if ( rides_cosmetic_props )
+    if ( value.cosmetic_props_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
         bits += 14;
@@ -20493,8 +20905,7 @@ inline int64_t RenderFrameMeasureMessageBody( int64_t at, const RenderFrame & va
         }
     }
     schema_assert( value.lasers_count >= 0 && value.lasers_count <= 32000 ); // storage invariant, debug only (§5.1)
-    bool rides_lasers = value.lasers_count > 0;
-    if ( rides_lasers )
+    if ( value.lasers_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
         bits += 15;
@@ -20506,8 +20917,7 @@ inline int64_t RenderFrameMeasureMessageBody( int64_t at, const RenderFrame & va
         }
     }
     schema_assert( value.explosions_count >= 0 && value.explosions_count <= 32000 ); // storage invariant, debug only (§5.1)
-    bool rides_explosions = value.explosions_count > 0;
-    if ( rides_explosions )
+    if ( value.explosions_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
         bits += 15;
@@ -20534,8 +20944,7 @@ inline bool RenderFrameSaveMessageBody( TableBitWriter & w, const RenderFrame & 
         w.put( (uint64_t) ( value.version ), 64 );
     }
     schema_assert( value.cameras_count >= 0 && value.cameras_count <= 1 ); // storage invariant, debug only (§5.1)
-    bool rides_cameras = value.cameras_count > 0;
-    if ( rides_cameras )
+    if ( value.cameras_count > 0 )
     {
         w.put( 32, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.cameras_count ) - 0, 1 );
@@ -20545,8 +20954,7 @@ inline bool RenderFrameSaveMessageBody( TableBitWriter & w, const RenderFrame & 
         }
     }
     schema_assert( value.ships_count >= 0 && value.ships_count <= 4096 ); // storage invariant, debug only (§5.1)
-    bool rides_ships = value.ships_count > 0;
-    if ( rides_ships )
+    if ( value.ships_count > 0 )
     {
         w.put( 33, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.ships_count ) - 0, 13 );
@@ -20556,8 +20964,7 @@ inline bool RenderFrameSaveMessageBody( TableBitWriter & w, const RenderFrame & 
         }
     }
     schema_assert( value.turrets_count >= 0 && value.turrets_count <= 1024 ); // storage invariant, debug only (§5.1)
-    bool rides_turrets = value.turrets_count > 0;
-    if ( rides_turrets )
+    if ( value.turrets_count > 0 )
     {
         w.put( 34, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.turrets_count ) - 0, 11 );
@@ -20567,8 +20974,7 @@ inline bool RenderFrameSaveMessageBody( TableBitWriter & w, const RenderFrame & 
         }
     }
     schema_assert( value.missiles_count >= 0 && value.missiles_count <= 4096 ); // storage invariant, debug only (§5.1)
-    bool rides_missiles = value.missiles_count > 0;
-    if ( rides_missiles )
+    if ( value.missiles_count > 0 )
     {
         w.put( 35, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.missiles_count ) - 0, 13 );
@@ -20578,8 +20984,7 @@ inline bool RenderFrameSaveMessageBody( TableBitWriter & w, const RenderFrame & 
         }
     }
     schema_assert( value.dynamic_props_count >= 0 && value.dynamic_props_count <= 4096 ); // storage invariant, debug only (§5.1)
-    bool rides_dynamic_props = value.dynamic_props_count > 0;
-    if ( rides_dynamic_props )
+    if ( value.dynamic_props_count > 0 )
     {
         w.put( 36, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.dynamic_props_count ) - 0, 13 );
@@ -20589,8 +20994,7 @@ inline bool RenderFrameSaveMessageBody( TableBitWriter & w, const RenderFrame & 
         }
     }
     schema_assert( value.static_props_count >= 0 && value.static_props_count <= 20000 ); // storage invariant, debug only (§5.1)
-    bool rides_static_props = value.static_props_count > 0;
-    if ( rides_static_props )
+    if ( value.static_props_count > 0 )
     {
         w.put( 37, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.static_props_count ) - 0, 15 );
@@ -20600,8 +21004,7 @@ inline bool RenderFrameSaveMessageBody( TableBitWriter & w, const RenderFrame & 
         }
     }
     schema_assert( value.cosmetic_props_count >= 0 && value.cosmetic_props_count <= 8192 ); // storage invariant, debug only (§5.1)
-    bool rides_cosmetic_props = value.cosmetic_props_count > 0;
-    if ( rides_cosmetic_props )
+    if ( value.cosmetic_props_count > 0 )
     {
         w.put( 38, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.cosmetic_props_count ) - 0, 14 );
@@ -20611,8 +21014,7 @@ inline bool RenderFrameSaveMessageBody( TableBitWriter & w, const RenderFrame & 
         }
     }
     schema_assert( value.lasers_count >= 0 && value.lasers_count <= 32000 ); // storage invariant, debug only (§5.1)
-    bool rides_lasers = value.lasers_count > 0;
-    if ( rides_lasers )
+    if ( value.lasers_count > 0 )
     {
         w.put( 39, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.lasers_count ) - 0, 15 );
@@ -20622,8 +21024,7 @@ inline bool RenderFrameSaveMessageBody( TableBitWriter & w, const RenderFrame & 
         }
     }
     schema_assert( value.explosions_count >= 0 && value.explosions_count <= 32000 ); // storage invariant, debug only (§5.1)
-    bool rides_explosions = value.explosions_count > 0;
-    if ( rides_explosions )
+    if ( value.explosions_count > 0 )
     {
         w.put( 40, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.explosions_count ) - 0, 15 );
@@ -20643,7 +21044,7 @@ inline bool RenderFrameSaveMessageBody( TableBitWriter & w, const RenderFrame & 
 inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderFrame & value )
 {
     RenderFrameReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const TableMessageSeenBody seen( vocabulary );
     const bool same_build = vocabulary.build_version == BuildVersion;
     int32_t last_field_ord = 0;
     for ( ;; )
@@ -20674,7 +21075,7 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        if ( !TableMessageSeenOnce( seen, ref ) )
         {
             report->damaged = true;
             return false;
@@ -20705,8 +21106,14 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             uint64_t decoded_v = (uint64_t) decoded_wide;
                             value.version = decoded_v;
                         }
@@ -20715,7 +21122,7 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -20730,11 +21137,17 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     uint64_t decoded_v = (uint64_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -20759,7 +21172,7 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -20821,7 +21234,7 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -20883,7 +21296,7 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -20945,7 +21358,7 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -21007,7 +21420,7 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -21069,7 +21482,7 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -21131,7 +21544,7 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -21193,7 +21606,7 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -21255,7 +21668,7 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -21304,7 +21717,7 @@ inline bool RenderFrameLoadMessageBody( TableBitReader & r, const TableVocabular
             default:
                 if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
                     report->damaged = true;
                     return false;
@@ -21819,7 +22232,7 @@ inline bool RenderVector3SaveMessageBody( TableBitWriter & w, const RenderVector
 inline bool RenderVector3LoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderVector3 & value )
 {
     RenderVector3Reset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const TableMessageSeenBody seen( vocabulary );
     const bool same_build = vocabulary.build_version == BuildVersion;
     int32_t last_field_ord = 0;
     for ( ;; )
@@ -21850,7 +22263,7 @@ inline bool RenderVector3LoadMessageBody( TableBitReader & r, const TableVocabul
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        if ( !TableMessageSeenOnce( seen, ref ) )
         {
             report->damaged = true;
             return false;
@@ -21910,7 +22323,7 @@ inline bool RenderVector3LoadMessageBody( TableBitReader & r, const TableVocabul
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -21978,7 +22391,7 @@ inline bool RenderVector3LoadMessageBody( TableBitReader & r, const TableVocabul
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -22046,7 +22459,7 @@ inline bool RenderVector3LoadMessageBody( TableBitReader & r, const TableVocabul
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -22064,7 +22477,7 @@ inline bool RenderVector3LoadMessageBody( TableBitReader & r, const TableVocabul
             default:
                 if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
                     report->damaged = true;
                     return false;
@@ -22643,7 +23056,7 @@ inline bool RenderQuaternionSaveMessageBody( TableBitWriter & w, const RenderQua
 inline bool RenderQuaternionLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RenderQuaternion & value )
 {
     RenderQuaternionReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const TableMessageSeenBody seen( vocabulary );
     const bool same_build = vocabulary.build_version == BuildVersion;
     int32_t last_field_ord = 0;
     for ( ;; )
@@ -22674,7 +23087,7 @@ inline bool RenderQuaternionLoadMessageBody( TableBitReader & r, const TableVoca
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        if ( !TableMessageSeenOnce( seen, ref ) )
         {
             report->damaged = true;
             return false;
@@ -22734,7 +23147,7 @@ inline bool RenderQuaternionLoadMessageBody( TableBitReader & r, const TableVoca
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -22802,7 +23215,7 @@ inline bool RenderQuaternionLoadMessageBody( TableBitReader & r, const TableVoca
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -22870,7 +23283,7 @@ inline bool RenderQuaternionLoadMessageBody( TableBitReader & r, const TableVoca
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -22938,7 +23351,7 @@ inline bool RenderQuaternionLoadMessageBody( TableBitReader & r, const TableVoca
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -22956,7 +23369,7 @@ inline bool RenderQuaternionLoadMessageBody( TableBitReader & r, const TableVoca
             default:
                 if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
                     report->damaged = true;
                     return false;
@@ -30853,12 +31266,12 @@ inline const TableTypeInfo * RenderQuaternionTableType();
 inline const TableTypeInfo * RenderCameraTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (uint32_t) offsetof( RenderCamera, position ), (uint32_t) sizeof( RenderCamera::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderCamera, rotation ), (uint32_t) sizeof( RenderCamera::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "camera_id", "camera_id", "uint32", 0x9f61700f084ab92eull, 8, false, false, false, 0, (uint32_t) offsetof( RenderCamera, camera_id ), (uint32_t) sizeof( RenderCamera::camera_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "camera_type", "camera_type", "uint32", 0x336d3dc7fffd0c9bull, 8, false, false, false, 0, (uint32_t) offsetof( RenderCamera, camera_type ), (uint32_t) sizeof( RenderCamera::camera_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "target_object_id", "target_object_id", "uint32", 0x6a0c6a156952b9c2ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderCamera, target_object_id ), (uint32_t) sizeof( RenderCamera::target_object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "fov", "fov", "float32", 0xdcb27c18fed9e15cull, 10, false, false, false, 0, (uint32_t) offsetof( RenderCamera, fov ), (uint32_t) sizeof( RenderCamera::fov ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (uint32_t) offsetof( RenderCamera, position ), (uint32_t) sizeof( RenderCamera::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderCamera, rotation ), (uint32_t) sizeof( RenderCamera::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "camera_id", "camera_id", "uint32", 0x9f61700f084ab92eull, 8, false, false, false, 0, (uint32_t) offsetof( RenderCamera, camera_id ), (uint32_t) sizeof( RenderCamera::camera_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "camera_type", "camera_type", "uint32", 0x336d3dc7fffd0c9bull, 8, false, false, false, 0, (uint32_t) offsetof( RenderCamera, camera_type ), (uint32_t) sizeof( RenderCamera::camera_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "target_object_id", "target_object_id", "uint32", 0x6a0c6a156952b9c2ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderCamera, target_object_id ), (uint32_t) sizeof( RenderCamera::target_object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "fov", "fov", "float32", 0xdcb27c18fed9e15cull, 10, false, false, false, 0, (uint32_t) offsetof( RenderCamera, fov ), (uint32_t) sizeof( RenderCamera::fov ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
     };
     static const TableTypeInfo info = { "RenderCamera", (uint32_t) sizeof( RenderCamera ), 6, fields, +[]( void * p ) { RenderCameraReset( *(RenderCamera *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
@@ -30867,17 +31280,17 @@ inline const TableTypeInfo * RenderCameraTableType()
 inline const TableTypeInfo * RenderShipTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (uint32_t) offsetof( RenderShip, position ), (uint32_t) sizeof( RenderShip::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderShip, rotation ), (uint32_t) sizeof( RenderShip::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "flags", "flags", "ShipFlags", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (uint32_t) offsetof( RenderShip, flags ), (uint32_t) sizeof( RenderShip::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return FlagNameShipFlags( (int) v ); }, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderShip, object_id ), (uint32_t) sizeof( RenderShip::object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "target_object_id", "target_object_id", "uint32", 0x6a0c6a156952b9c2ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderShip, target_object_id ), (uint32_t) sizeof( RenderShip::target_object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "thrust", "thrust", "float32", 0xcfd587cb3100cd73ull, 10, false, false, false, 0, (uint32_t) offsetof( RenderShip, thrust ), (uint32_t) sizeof( RenderShip::thrust ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, false, false, false, 0, (uint32_t) offsetof( RenderShip, object_sequence ), (uint32_t) sizeof( RenderShip::object_sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "ship_type", "ship_type", "ShipType", 0x1f7d2e86a2e77268ull, 30, false, false, false, 0, (uint32_t) offsetof( RenderShip, ship_type ), (uint32_t) sizeof( RenderShip::ship_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( ShipType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( ShipType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderShip, team ), (uint32_t) sizeof( RenderShip::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "has_target_lock", "has_target_lock", "bool", 0x1554fa45a1220171ull, 1, false, false, false, 0, (uint32_t) offsetof( RenderShip, has_target_lock ), (uint32_t) sizeof( RenderShip::has_target_lock ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "predicted_explode", "predicted_explode", "bool", 0x4d5be97ba1b9cb81ull, 1, false, false, false, 0, (uint32_t) offsetof( RenderShip, predicted_explode ), (uint32_t) sizeof( RenderShip::predicted_explode ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (uint32_t) offsetof( RenderShip, position ), (uint32_t) sizeof( RenderShip::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderShip, rotation ), (uint32_t) sizeof( RenderShip::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "flags", "flags", "ShipFlags", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (uint32_t) offsetof( RenderShip, flags ), (uint32_t) sizeof( RenderShip::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return FlagNameShipFlags( (int) v ); }, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderShip, object_id ), (uint32_t) sizeof( RenderShip::object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "target_object_id", "target_object_id", "uint32", 0x6a0c6a156952b9c2ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderShip, target_object_id ), (uint32_t) sizeof( RenderShip::target_object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "thrust", "thrust", "float32", 0xcfd587cb3100cd73ull, 10, false, false, false, 0, (uint32_t) offsetof( RenderShip, thrust ), (uint32_t) sizeof( RenderShip::thrust ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, false, false, false, 0, (uint32_t) offsetof( RenderShip, object_sequence ), (uint32_t) sizeof( RenderShip::object_sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "ship_type", "ship_type", "ShipType", 0x1f7d2e86a2e77268ull, 30, false, false, false, 0, (uint32_t) offsetof( RenderShip, ship_type ), (uint32_t) sizeof( RenderShip::ship_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( ShipType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( ShipType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderShip, team ), (uint32_t) sizeof( RenderShip::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "has_target_lock", "has_target_lock", "bool", 0x1554fa45a1220171ull, 1, false, false, false, 0, (uint32_t) offsetof( RenderShip, has_target_lock ), (uint32_t) sizeof( RenderShip::has_target_lock ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "predicted_explode", "predicted_explode", "bool", 0x4d5be97ba1b9cb81ull, 1, false, false, false, 0, (uint32_t) offsetof( RenderShip, predicted_explode ), (uint32_t) sizeof( RenderShip::predicted_explode ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
     };
     static const TableTypeInfo info = { "RenderShip", (uint32_t) sizeof( RenderShip ), 11, fields, +[]( void * p ) { RenderShipReset( *(RenderShip *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
@@ -30886,15 +31299,15 @@ inline const TableTypeInfo * RenderShipTableType()
 inline const TableTypeInfo * RenderTurretTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderTurret, rotation ), (uint32_t) sizeof( RenderTurret::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (uint32_t) offsetof( RenderTurret, flags ), (uint32_t) sizeof( RenderTurret::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderTurret, object_id ), (uint32_t) sizeof( RenderTurret::object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "parent_object_id", "parent_object_id", "uint32", 0x0bee7b3cb4046c93ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderTurret, parent_object_id ), (uint32_t) sizeof( RenderTurret::parent_object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "turret_index", "turret_index", "uint32", 0x88a11a6aed541f54ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderTurret, turret_index ), (uint32_t) sizeof( RenderTurret::turret_index ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "target_object_id", "target_object_id", "uint32", 0x6a0c6a156952b9c2ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderTurret, target_object_id ), (uint32_t) sizeof( RenderTurret::target_object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, false, false, false, 0, (uint32_t) offsetof( RenderTurret, object_sequence ), (uint32_t) sizeof( RenderTurret::object_sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderTurret, team ), (uint32_t) sizeof( RenderTurret::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "has_target_lock", "has_target_lock", "bool", 0x1554fa45a1220171ull, 1, false, false, false, 0, (uint32_t) offsetof( RenderTurret, has_target_lock ), (uint32_t) sizeof( RenderTurret::has_target_lock ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderTurret, rotation ), (uint32_t) sizeof( RenderTurret::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (uint32_t) offsetof( RenderTurret, flags ), (uint32_t) sizeof( RenderTurret::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderTurret, object_id ), (uint32_t) sizeof( RenderTurret::object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "parent_object_id", "parent_object_id", "uint32", 0x0bee7b3cb4046c93ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderTurret, parent_object_id ), (uint32_t) sizeof( RenderTurret::parent_object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "turret_index", "turret_index", "uint32", 0x88a11a6aed541f54ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderTurret, turret_index ), (uint32_t) sizeof( RenderTurret::turret_index ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "target_object_id", "target_object_id", "uint32", 0x6a0c6a156952b9c2ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderTurret, target_object_id ), (uint32_t) sizeof( RenderTurret::target_object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, false, false, false, 0, (uint32_t) offsetof( RenderTurret, object_sequence ), (uint32_t) sizeof( RenderTurret::object_sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderTurret, team ), (uint32_t) sizeof( RenderTurret::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "has_target_lock", "has_target_lock", "bool", 0x1554fa45a1220171ull, 1, false, false, false, 0, (uint32_t) offsetof( RenderTurret, has_target_lock ), (uint32_t) sizeof( RenderTurret::has_target_lock ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
     };
     static const TableTypeInfo info = { "RenderTurret", (uint32_t) sizeof( RenderTurret ), 9, fields, +[]( void * p ) { RenderTurretReset( *(RenderTurret *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
@@ -30903,13 +31316,13 @@ inline const TableTypeInfo * RenderTurretTableType()
 inline const TableTypeInfo * RenderMissileTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (uint32_t) offsetof( RenderMissile, position ), (uint32_t) sizeof( RenderMissile::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderMissile, rotation ), (uint32_t) sizeof( RenderMissile::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (uint32_t) offsetof( RenderMissile, flags ), (uint32_t) sizeof( RenderMissile::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderMissile, object_id ), (uint32_t) sizeof( RenderMissile::object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, false, false, false, 0, (uint32_t) offsetof( RenderMissile, object_sequence ), (uint32_t) sizeof( RenderMissile::object_sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "missile_type", "missile_type", "MissileType", 0x151b2a0e2c07b4bcull, 30, false, false, false, 0, (uint32_t) offsetof( RenderMissile, missile_type ), (uint32_t) sizeof( RenderMissile::missile_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( MissileType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( MissileType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderMissile, team ), (uint32_t) sizeof( RenderMissile::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (uint32_t) offsetof( RenderMissile, position ), (uint32_t) sizeof( RenderMissile::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderMissile, rotation ), (uint32_t) sizeof( RenderMissile::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (uint32_t) offsetof( RenderMissile, flags ), (uint32_t) sizeof( RenderMissile::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderMissile, object_id ), (uint32_t) sizeof( RenderMissile::object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, false, false, false, 0, (uint32_t) offsetof( RenderMissile, object_sequence ), (uint32_t) sizeof( RenderMissile::object_sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "missile_type", "missile_type", "MissileType", 0x151b2a0e2c07b4bcull, 30, false, false, false, 0, (uint32_t) offsetof( RenderMissile, missile_type ), (uint32_t) sizeof( RenderMissile::missile_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( MissileType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( MissileType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderMissile, team ), (uint32_t) sizeof( RenderMissile::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
     };
     static const TableTypeInfo info = { "RenderMissile", (uint32_t) sizeof( RenderMissile ), 7, fields, +[]( void * p ) { RenderMissileReset( *(RenderMissile *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
@@ -30918,13 +31331,13 @@ inline const TableTypeInfo * RenderMissileTableType()
 inline const TableTypeInfo * RenderDynamicPropTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, position ), (uint32_t) sizeof( RenderDynamicProp::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, rotation ), (uint32_t) sizeof( RenderDynamicProp::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, flags ), (uint32_t) sizeof( RenderDynamicProp::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, object_id ), (uint32_t) sizeof( RenderDynamicProp::object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, object_sequence ), (uint32_t) sizeof( RenderDynamicProp::object_sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "prop_type", "prop_type", "PropType", 0xe5626f155e4c5dadull, 30, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, prop_type ), (uint32_t) sizeof( RenderDynamicProp::prop_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( PropType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( PropType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, team ), (uint32_t) sizeof( RenderDynamicProp::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, position ), (uint32_t) sizeof( RenderDynamicProp::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, rotation ), (uint32_t) sizeof( RenderDynamicProp::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, flags ), (uint32_t) sizeof( RenderDynamicProp::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "object_id", "object_id", "uint32", 0x0bdab42c07f19812ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, object_id ), (uint32_t) sizeof( RenderDynamicProp::object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "object_sequence", "object_sequence", "uint8", 0x5de0015285763c46ull, 6, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, object_sequence ), (uint32_t) sizeof( RenderDynamicProp::object_sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "prop_type", "prop_type", "PropType", 0xe5626f155e4c5dadull, 30, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, prop_type ), (uint32_t) sizeof( RenderDynamicProp::prop_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( PropType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( PropType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderDynamicProp, team ), (uint32_t) sizeof( RenderDynamicProp::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
     };
     static const TableTypeInfo info = { "RenderDynamicProp", (uint32_t) sizeof( RenderDynamicProp ), 7, fields, +[]( void * p ) { RenderDynamicPropReset( *(RenderDynamicProp *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
@@ -30933,13 +31346,13 @@ inline const TableTypeInfo * RenderDynamicPropTableType()
 inline const TableTypeInfo * RenderStaticPropTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, position ), (uint32_t) sizeof( RenderStaticProp::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, rotation ), (uint32_t) sizeof( RenderStaticProp::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "scale", "scale", "float64", 0x6aacb9fbb71a1d91ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, scale ), (uint32_t) sizeof( RenderStaticProp::scale ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, flags ), (uint32_t) sizeof( RenderStaticProp::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "static_prop_id", "static_prop_id", "uint32", 0xd23da7ab574b95c3ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, static_prop_id ), (uint32_t) sizeof( RenderStaticProp::static_prop_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "prop_type", "prop_type", "PropType", 0xe5626f155e4c5dadull, 30, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, prop_type ), (uint32_t) sizeof( RenderStaticProp::prop_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( PropType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( PropType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, team ), (uint32_t) sizeof( RenderStaticProp::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, position ), (uint32_t) sizeof( RenderStaticProp::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, rotation ), (uint32_t) sizeof( RenderStaticProp::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "scale", "scale", "float64", 0x6aacb9fbb71a1d91ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, scale ), (uint32_t) sizeof( RenderStaticProp::scale ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, flags ), (uint32_t) sizeof( RenderStaticProp::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "static_prop_id", "static_prop_id", "uint32", 0xd23da7ab574b95c3ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, static_prop_id ), (uint32_t) sizeof( RenderStaticProp::static_prop_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "prop_type", "prop_type", "PropType", 0xe5626f155e4c5dadull, 30, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, prop_type ), (uint32_t) sizeof( RenderStaticProp::prop_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( PropType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( PropType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderStaticProp, team ), (uint32_t) sizeof( RenderStaticProp::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
     };
     static const TableTypeInfo info = { "RenderStaticProp", (uint32_t) sizeof( RenderStaticProp ), 7, fields, +[]( void * p ) { RenderStaticPropReset( *(RenderStaticProp *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
@@ -30948,14 +31361,14 @@ inline const TableTypeInfo * RenderStaticPropTableType()
 inline const TableTypeInfo * RenderCosmeticPropTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, position ), (uint32_t) sizeof( RenderCosmeticProp::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, rotation ), (uint32_t) sizeof( RenderCosmeticProp::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "scale", "scale", "float64", 0x6aacb9fbb71a1d91ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, scale ), (uint32_t) sizeof( RenderCosmeticProp::scale ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, flags ), (uint32_t) sizeof( RenderCosmeticProp::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "cosmetic_prop_id", "cosmetic_prop_id", "uint32", 0xb66e4449e56b2e26ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, cosmetic_prop_id ), (uint32_t) sizeof( RenderCosmeticProp::cosmetic_prop_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "prop_sequence", "prop_sequence", "uint8", 0x4d7bf73bcbddc228ull, 6, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, prop_sequence ), (uint32_t) sizeof( RenderCosmeticProp::prop_sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "prop_type", "prop_type", "PropType", 0xe5626f155e4c5dadull, 30, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, prop_type ), (uint32_t) sizeof( RenderCosmeticProp::prop_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( PropType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( PropType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, team ), (uint32_t) sizeof( RenderCosmeticProp::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, position ), (uint32_t) sizeof( RenderCosmeticProp::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, rotation ), (uint32_t) sizeof( RenderCosmeticProp::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "scale", "scale", "float64", 0x6aacb9fbb71a1d91ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, scale ), (uint32_t) sizeof( RenderCosmeticProp::scale ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "flags", "flags", "uint64", 0x17a3a1a985f75aecull, 9, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, flags ), (uint32_t) sizeof( RenderCosmeticProp::flags ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "cosmetic_prop_id", "cosmetic_prop_id", "uint32", 0xb66e4449e56b2e26ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, cosmetic_prop_id ), (uint32_t) sizeof( RenderCosmeticProp::cosmetic_prop_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "prop_sequence", "prop_sequence", "uint8", 0x4d7bf73bcbddc228ull, 6, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, prop_sequence ), (uint32_t) sizeof( RenderCosmeticProp::prop_sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "prop_type", "prop_type", "PropType", 0xe5626f155e4c5dadull, 30, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, prop_type ), (uint32_t) sizeof( RenderCosmeticProp::prop_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( PropType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( PropType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderCosmeticProp, team ), (uint32_t) sizeof( RenderCosmeticProp::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
     };
     static const TableTypeInfo info = { "RenderCosmeticProp", (uint32_t) sizeof( RenderCosmeticProp ), 8, fields, +[]( void * p ) { RenderCosmeticPropReset( *(RenderCosmeticProp *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
@@ -30964,12 +31377,12 @@ inline const TableTypeInfo * RenderCosmeticPropTableType()
 inline const TableTypeInfo * RenderLaserTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "start", "start", "RenderVector3", 0xee5d97ad45ad251full, 13, false, false, false, 0, (uint32_t) offsetof( RenderLaser, start ), (uint32_t) sizeof( RenderLaser::start ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "finish", "finish", "RenderVector3", 0x6917a5bab91540f2ull, 13, false, false, false, 0, (uint32_t) offsetof( RenderLaser, finish ), (uint32_t) sizeof( RenderLaser::finish ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "t", "t", "float64", 0xaf63e94c860202a3ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderLaser, t ), (uint32_t) sizeof( RenderLaser::t ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "laser_id", "laser_id", "uint32", 0xcd29c05f390294ecull, 8, false, false, false, 0, (uint32_t) offsetof( RenderLaser, laser_id ), (uint32_t) sizeof( RenderLaser::laser_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "laser_type", "laser_type", "LaserType", 0x96b593c242133841ull, 30, false, false, false, 0, (uint32_t) offsetof( RenderLaser, laser_type ), (uint32_t) sizeof( RenderLaser::laser_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( LaserType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( LaserType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderLaser, team ), (uint32_t) sizeof( RenderLaser::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "start", "start", "RenderVector3", 0xee5d97ad45ad251full, 13, false, false, false, 0, (uint32_t) offsetof( RenderLaser, start ), (uint32_t) sizeof( RenderLaser::start ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "finish", "finish", "RenderVector3", 0x6917a5bab91540f2ull, 13, false, false, false, 0, (uint32_t) offsetof( RenderLaser, finish ), (uint32_t) sizeof( RenderLaser::finish ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "t", "t", "float64", 0xaf63e94c860202a3ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderLaser, t ), (uint32_t) sizeof( RenderLaser::t ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "laser_id", "laser_id", "uint32", 0xcd29c05f390294ecull, 8, false, false, false, 0, (uint32_t) offsetof( RenderLaser, laser_id ), (uint32_t) sizeof( RenderLaser::laser_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "laser_type", "laser_type", "LaserType", 0x96b593c242133841ull, 30, false, false, false, 0, (uint32_t) offsetof( RenderLaser, laser_type ), (uint32_t) sizeof( RenderLaser::laser_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( LaserType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( LaserType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderLaser, team ), (uint32_t) sizeof( RenderLaser::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
     };
     static const TableTypeInfo info = { "RenderLaser", (uint32_t) sizeof( RenderLaser ), 6, fields, +[]( void * p ) { RenderLaserReset( *(RenderLaser *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
@@ -30978,13 +31391,13 @@ inline const TableTypeInfo * RenderLaserTableType()
 inline const TableTypeInfo * RenderExplosionTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, position ), (uint32_t) sizeof( RenderExplosion::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, rotation ), (uint32_t) sizeof( RenderExplosion::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "t", "t", "float64", 0xaf63e94c860202a3ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, t ), (uint32_t) sizeof( RenderExplosion::t ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "explosion_id", "explosion_id", "uint32", 0xfd7f3fa0b16ed778ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, explosion_id ), (uint32_t) sizeof( RenderExplosion::explosion_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "parent_object_id", "parent_object_id", "uint32", 0x0bee7b3cb4046c93ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, parent_object_id ), (uint32_t) sizeof( RenderExplosion::parent_object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "explosion_type", "explosion_type", "ExplosionType", 0xdc89eb9cd3393be5ull, 30, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, explosion_type ), (uint32_t) sizeof( RenderExplosion::explosion_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( ExplosionType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( ExplosionType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, team ), (uint32_t) sizeof( RenderExplosion::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "position", "position", "RenderVector3", 0x4cbf3a26fca1d74aull, 13, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, position ), (uint32_t) sizeof( RenderExplosion::position ), 0xffffffffu, 0xffffffffu, RenderVector3TableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "rotation", "rotation", "RenderQuaternion", 0xb51afb05cd34709full, 13, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, rotation ), (uint32_t) sizeof( RenderExplosion::rotation ), 0xffffffffu, 0xffffffffu, RenderQuaternionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "t", "t", "float64", 0xaf63e94c860202a3ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, t ), (uint32_t) sizeof( RenderExplosion::t ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "explosion_id", "explosion_id", "uint32", 0xfd7f3fa0b16ed778ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, explosion_id ), (uint32_t) sizeof( RenderExplosion::explosion_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "parent_object_id", "parent_object_id", "uint32", 0x0bee7b3cb4046c93ull, 8, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, parent_object_id ), (uint32_t) sizeof( RenderExplosion::parent_object_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "explosion_type", "explosion_type", "ExplosionType", 0xdc89eb9cd3393be5ull, 30, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, explosion_type ), (uint32_t) sizeof( RenderExplosion::explosion_type ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( ExplosionType( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( ExplosionType( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "team", "team", "Team", 0xfa23d9ef19afc32cull, 30, false, false, false, 0, (uint32_t) offsetof( RenderExplosion, team ), (uint32_t) sizeof( RenderExplosion::team ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
     };
     static const TableTypeInfo info = { "RenderExplosion", (uint32_t) sizeof( RenderExplosion ), 7, fields, +[]( void * p ) { RenderExplosionReset( *(RenderExplosion *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
@@ -30993,16 +31406,16 @@ inline const TableTypeInfo * RenderExplosionTableType()
 inline const TableTypeInfo * RenderFrameTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "version", "version", "uint64", 0xbb62c62c9808ea37ull, 9, false, false, false, 0, (uint32_t) offsetof( RenderFrame, version ), (uint32_t) sizeof( RenderFrame::version ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "cameras", "cameras", "RenderCamera", 0x0f9222d2ba7aa2a7ull, 13, true, true, false, 1, (uint32_t) offsetof( RenderFrame, cameras ), (uint32_t) sizeof( RenderFrame::cameras[0] ), (uint32_t) offsetof( RenderFrame, cameras_count ), 0xffffffffu, RenderCameraTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "ships", "ships", "RenderShip", 0x294a5c4913e1ad44ull, 13, true, true, false, 4096, (uint32_t) offsetof( RenderFrame, ships ), (uint32_t) sizeof( RenderFrame::ships[0] ), (uint32_t) offsetof( RenderFrame, ships_count ), 0xffffffffu, RenderShipTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "turrets", "turrets", "RenderTurret", 0x84f8260bc283608cull, 13, true, true, false, 1024, (uint32_t) offsetof( RenderFrame, turrets ), (uint32_t) sizeof( RenderFrame::turrets[0] ), (uint32_t) offsetof( RenderFrame, turrets_count ), 0xffffffffu, RenderTurretTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "missiles", "missiles", "RenderMissile", 0x1c3027194b1ba4d0ull, 13, true, true, false, 4096, (uint32_t) offsetof( RenderFrame, missiles ), (uint32_t) sizeof( RenderFrame::missiles[0] ), (uint32_t) offsetof( RenderFrame, missiles_count ), 0xffffffffu, RenderMissileTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "dynamic_props", "dynamic_props", "RenderDynamicProp", 0x43125398a9903d27ull, 13, true, true, false, 4096, (uint32_t) offsetof( RenderFrame, dynamic_props ), (uint32_t) sizeof( RenderFrame::dynamic_props[0] ), (uint32_t) offsetof( RenderFrame, dynamic_props_count ), 0xffffffffu, RenderDynamicPropTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "static_props", "static_props", "RenderStaticProp", 0xc1f8d7edff7fcfd2ull, 13, true, true, false, 20000, (uint32_t) offsetof( RenderFrame, static_props ), (uint32_t) sizeof( RenderFrame::static_props[0] ), (uint32_t) offsetof( RenderFrame, static_props_count ), 0xffffffffu, RenderStaticPropTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "cosmetic_props", "cosmetic_props", "RenderCosmeticProp", 0x33408e39f5f480ffull, 13, true, true, false, 8192, (uint32_t) offsetof( RenderFrame, cosmetic_props ), (uint32_t) sizeof( RenderFrame::cosmetic_props[0] ), (uint32_t) offsetof( RenderFrame, cosmetic_props_count ), 0xffffffffu, RenderCosmeticPropTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "lasers", "lasers", "RenderLaser", 0xd982b77b3e92d16dull, 13, true, true, false, 32000, (uint32_t) offsetof( RenderFrame, lasers ), (uint32_t) sizeof( RenderFrame::lasers[0] ), (uint32_t) offsetof( RenderFrame, lasers_count ), 0xffffffffu, RenderLaserTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "explosions", "explosions", "RenderExplosion", 0x876a8c1a85806a69ull, 13, true, true, false, 32000, (uint32_t) offsetof( RenderFrame, explosions ), (uint32_t) sizeof( RenderFrame::explosions[0] ), (uint32_t) offsetof( RenderFrame, explosions_count ), 0xffffffffu, RenderExplosionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "version", "version", "uint64", 0xbb62c62c9808ea37ull, 9, false, false, false, 0, (uint32_t) offsetof( RenderFrame, version ), (uint32_t) sizeof( RenderFrame::version ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "cameras", "cameras", "RenderCamera", 0x0f9222d2ba7aa2a7ull, 13, true, true, false, 1, (uint32_t) offsetof( RenderFrame, cameras ), (uint32_t) sizeof( RenderFrame::cameras[0] ), (uint32_t) offsetof( RenderFrame, cameras_count ), 0xffffffffu, RenderCameraTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "ships", "ships", "RenderShip", 0x294a5c4913e1ad44ull, 13, true, true, false, 4096, (uint32_t) offsetof( RenderFrame, ships ), (uint32_t) sizeof( RenderFrame::ships[0] ), (uint32_t) offsetof( RenderFrame, ships_count ), 0xffffffffu, RenderShipTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "turrets", "turrets", "RenderTurret", 0x84f8260bc283608cull, 13, true, true, false, 1024, (uint32_t) offsetof( RenderFrame, turrets ), (uint32_t) sizeof( RenderFrame::turrets[0] ), (uint32_t) offsetof( RenderFrame, turrets_count ), 0xffffffffu, RenderTurretTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "missiles", "missiles", "RenderMissile", 0x1c3027194b1ba4d0ull, 13, true, true, false, 4096, (uint32_t) offsetof( RenderFrame, missiles ), (uint32_t) sizeof( RenderFrame::missiles[0] ), (uint32_t) offsetof( RenderFrame, missiles_count ), 0xffffffffu, RenderMissileTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "dynamic_props", "dynamic_props", "RenderDynamicProp", 0x43125398a9903d27ull, 13, true, true, false, 4096, (uint32_t) offsetof( RenderFrame, dynamic_props ), (uint32_t) sizeof( RenderFrame::dynamic_props[0] ), (uint32_t) offsetof( RenderFrame, dynamic_props_count ), 0xffffffffu, RenderDynamicPropTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "static_props", "static_props", "RenderStaticProp", 0xc1f8d7edff7fcfd2ull, 13, true, true, false, 20000, (uint32_t) offsetof( RenderFrame, static_props ), (uint32_t) sizeof( RenderFrame::static_props[0] ), (uint32_t) offsetof( RenderFrame, static_props_count ), 0xffffffffu, RenderStaticPropTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "cosmetic_props", "cosmetic_props", "RenderCosmeticProp", 0x33408e39f5f480ffull, 13, true, true, false, 8192, (uint32_t) offsetof( RenderFrame, cosmetic_props ), (uint32_t) sizeof( RenderFrame::cosmetic_props[0] ), (uint32_t) offsetof( RenderFrame, cosmetic_props_count ), 0xffffffffu, RenderCosmeticPropTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "lasers", "lasers", "RenderLaser", 0xd982b77b3e92d16dull, 13, true, true, false, 32000, (uint32_t) offsetof( RenderFrame, lasers ), (uint32_t) sizeof( RenderFrame::lasers[0] ), (uint32_t) offsetof( RenderFrame, lasers_count ), 0xffffffffu, RenderLaserTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "explosions", "explosions", "RenderExplosion", 0x876a8c1a85806a69ull, 13, true, true, false, 32000, (uint32_t) offsetof( RenderFrame, explosions ), (uint32_t) sizeof( RenderFrame::explosions[0] ), (uint32_t) offsetof( RenderFrame, explosions_count ), 0xffffffffu, RenderExplosionTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
     };
     static const TableTypeInfo info = { "RenderFrame", (uint32_t) sizeof( RenderFrame ), 10, fields, +[]( void * p ) { RenderFrameReset( *(RenderFrame *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
@@ -31011,9 +31424,9 @@ inline const TableTypeInfo * RenderFrameTableType()
 inline const TableTypeInfo * RenderVector3TableType()
 {
     static const TableFieldInfo fields[] = {
-        { "x", "x", "float64", 0xaf63f54c86021707ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderVector3, x ), (uint32_t) sizeof( RenderVector3::x ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "y", "y", "float64", 0xaf63f44c86021554ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderVector3, y ), (uint32_t) sizeof( RenderVector3::y ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "z", "z", "float64", 0xaf63f74c86021a6dull, 11, false, false, false, 0, (uint32_t) offsetof( RenderVector3, z ), (uint32_t) sizeof( RenderVector3::z ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "x", "x", "float64", 0xaf63f54c86021707ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderVector3, x ), (uint32_t) sizeof( RenderVector3::x ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "y", "y", "float64", 0xaf63f44c86021554ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderVector3, y ), (uint32_t) sizeof( RenderVector3::y ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "z", "z", "float64", 0xaf63f74c86021a6dull, 11, false, false, false, 0, (uint32_t) offsetof( RenderVector3, z ), (uint32_t) sizeof( RenderVector3::z ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
     };
     static const TableTypeInfo info = { "RenderVector3", (uint32_t) sizeof( RenderVector3 ), 3, fields, +[]( void * p ) { RenderVector3Reset( *(RenderVector3 *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
@@ -31022,10 +31435,10 @@ inline const TableTypeInfo * RenderVector3TableType()
 inline const TableTypeInfo * RenderQuaternionTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "x", "x", "float64", 0xaf63f54c86021707ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderQuaternion, x ), (uint32_t) sizeof( RenderQuaternion::x ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "y", "y", "float64", 0xaf63f44c86021554ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderQuaternion, y ), (uint32_t) sizeof( RenderQuaternion::y ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "z", "z", "float64", 0xaf63f74c86021a6dull, 11, false, false, false, 0, (uint32_t) offsetof( RenderQuaternion, z ), (uint32_t) sizeof( RenderQuaternion::z ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "w", "w", "float64", 0xaf63ea4c86020456ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderQuaternion, w ), (uint32_t) sizeof( RenderQuaternion::w ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "x", "x", "float64", 0xaf63f54c86021707ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderQuaternion, x ), (uint32_t) sizeof( RenderQuaternion::x ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "y", "y", "float64", 0xaf63f44c86021554ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderQuaternion, y ), (uint32_t) sizeof( RenderQuaternion::y ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "z", "z", "float64", 0xaf63f74c86021a6dull, 11, false, false, false, 0, (uint32_t) offsetof( RenderQuaternion, z ), (uint32_t) sizeof( RenderQuaternion::z ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "w", "w", "float64", 0xaf63ea4c86020456ull, 11, false, false, false, 0, (uint32_t) offsetof( RenderQuaternion, w ), (uint32_t) sizeof( RenderQuaternion::w ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
     };
     static const TableTypeInfo info = { "RenderQuaternion", (uint32_t) sizeof( RenderQuaternion ), 4, fields, +[]( void * p ) { RenderQuaternionReset( *(RenderQuaternion *) p ); }, TableDocNone, 0, NULL, false };
     return &info;

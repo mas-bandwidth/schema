@@ -18,7 +18,15 @@
 // docs/SPEC-TABLES.md §3.4) goes through that root's own <Root>FixedLoad, picked
 // by the form byte (conformance_fixed, glued by make/goose-hostile.sh), as the
 // C++ runner does; any other form byte goes through the variable read, which
-// names it. A case whose carrier the port
+// names it. A `message` case reads the unit's own announcement (the engine's,
+// written beside the unit by make/goose-hostile.sh) into a fresh vocabulary,
+// then the batch at capacity 1 through the root's <Root>LoadMessages
+// (conformance_message): the message form's own refusals by name
+// (newer_form, no_vocabulary, second_announcement, vocabulary_too_large,
+// message_form_as_file, batch_too_large, as the engine's MessageReason names
+// them), and `damaged` for every other, a bound's included: conformance
+// compares the verdict, never a bound's own name (docs/rulings.json
+// refusal-verdict-only). A case whose carrier the port
 // does not read yet is `<name> absent <carrier>`. The make target holds the
 // lines to the manifest.
 import os;
@@ -26,6 +34,7 @@ import .conformance_unit;
 import .wire_load;
 import .wire_save;
 import .json_value;
+import .message;
 
 fn hex(out: u8[>..]&, b: const u8[:]) {
     let digits = "0123456789abcdef";
@@ -37,8 +46,8 @@ fn hex(out: u8[>..]&, b: const u8[:]) {
 
 fn main() {
     let argv = args();
-    if argv.len != 3 {
-        write_stderr("usage: runner.goose <corpus dir> <schema path>\n");
+    if argv.len != 4 {
+        write_stderr("usage: runner.goose <corpus dir> <schema path> <announcement>\n");
         exit(1);
     }
     let unit = conformance_unit();
@@ -47,13 +56,18 @@ fn main() {
         write_stderr("runner: cannot read the corpus manifest\n");
         exit(1);
     }
+    var announce: u8[>..] = [];
+    if !read_file(argv[3], announce) {
+        write_stderr("runner: cannot read the unit's announcement\n");
+        exit(1);
+    }
     var out: u8[>..] = [];
     for line in split(text, '\n') {
         if line.len == 0 || line[0] == '#' { continue; }
         let f = split(line, '\t');
         if f.len < 9 || f[2] != argv[2] { continue; }
         out.append(f[0]);
-        if f[1] != "wire" {
+        if f[1] != "wire" && f[1] != "message" {
             out.append(" absent ");
             out.append(f[1]);
             out.push('\n');
@@ -63,6 +77,36 @@ fn main() {
         if !read_file(str(argv[1], "/", f[4]), data) {
             write_stderr(str("runner: cannot read ", f[4], "\n"));
             exit(1);
+        }
+        if f[1] == "message" {
+            var msaved: u8[>..] = [];
+            var mtext: u8[>..] = [];
+            let mr = conformance_message(f[3], announce, data, msaved, mtext);
+            if mr == -1 {
+                out.append(" absent message-root\n");
+                continue;
+            }
+            if mr == -2 {
+                write_stderr(str("runner: the unit's own announcement was refused at ", f[0], "\n"));
+                exit(1);
+            }
+            if mr == 0 {
+                out.append(" accept ");
+                hex(out, msaved);
+                if mtext.len > 0 {
+                    out.push(' ');
+                    hex(out, mtext[0..mtext.len - 1]);
+                } else {
+                    out.append(" -");
+                }
+            } else if mr == schema_rt::MsgRefuseNewerForm || mr == schema_rt::MsgRefuseNoVocabulary || mr == schema_rt::MsgRefuseSecondAnnouncement || mr == schema_rt::MsgRefuseVocabularyTooLarge || mr == schema_rt::MsgRefuseMessageFormAsFile || mr == schema_rt::MsgRefuseBatchTooLarge {
+                out.append(" refuse ");
+                out.append(schema_rt::msg_reason_name(mr));
+            } else {
+                out.append(" refuse damaged");
+            }
+            out.push('\n');
+            continue;
         }
         if data.len > 0 && data[0] == 3 {
             var fsaved: u8[>..] = [];

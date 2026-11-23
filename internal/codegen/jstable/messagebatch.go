@@ -233,8 +233,12 @@ function tableMessageSkipRanged(r, kind, s, width) {
 // THE SKIP WALK: a reader that cannot name a field still steps over it exactly,
 // by the announced shape, so the position after it is known (§3.3). SKIPPED IS
 // NOT UNREAD (§4): every condition the wire and the announcement decide is held
-// here as a read of a named field of the same shape holds it.
-export function tableMessageSkip(r, v, indexBits, e, depth) {
+// here as a read of a named field of the same shape holds it. atField is true
+// where the skipped value is a body FIELD (an unknown field, a kind mismatch,
+// a field of a skipped body): a conforming writer elides an empty union
+// there, so arm reference 0 at a field is damage, as the named read holds
+// it; an array element and an arm payload keep their positional None.
+export function tableMessageSkip(r, v, indexBits, e, depth, atField = false) {
   if (depth > 128) { return false; }
   const s = e.Shape;
   switch (s.Kind) {
@@ -249,7 +253,7 @@ export function tableMessageSkip(r, v, indexBits, e, depth) {
     case 17: return indexBits > 0 && r.Skip(indexBits);
     case 15: {
       const [ref, ok] = r.Get(v.RefBits);
-      if (!ok || ref === 0n) { return ok; }
+      if (!ok || ref === 0n) { return ok && !atField; }
       const arm = tableMessageEntry(v, ref);
       if (arm === null || arm.Id >= 0xfffffffffffffffdn || arm.Shape.Kind === 0) { return false; }
       const structural = arm.Shape.Kind === 13 || arm.Shape.Kind === 14 ||
@@ -258,7 +262,9 @@ export function tableMessageSkip(r, v, indexBits, e, depth) {
     }
     case 12: {
       const [n, ok] = tableMessageCount(r, s);
-      if (!ok) { return false; }
+      // a length above the ANNOUNCED max, which its bits can spell and no
+      // conforming writer emits, refuses as at a named field (§3.3)
+      if (!ok || n > globalThis.BigInt(s.Max)) { return false; }
       if (!r.Align()) { return false; }
       // A SKIPPED STRING IS HELD TO THE TEXT RULE (§3.3, §4): bytes this
       // reader does not keep are still damage when ill-formed.
@@ -322,13 +328,13 @@ export function tableMessageSkipBody(r, v, indexBits, depth) {
     const e = tableMessageEntry(v, ref);
     if (e === null || e.Id >= 0xfffffffffffffffdn || seen.has(e.Id)) { return false; }
     seen.add(e.Id);
-    if (!tableMessageSkip(r, v, indexBits, e, depth)) { return false; }
+    if (!tableMessageSkip(r, v, indexBits, e, depth, true)) { return false; }
   }
 }
 // A scalar reconstructs at the announced storage width. A ranged value is the
 // offset plus the base, in unsigned 64-bit arithmetic so a negative base wraps
-// as it does in the reference; the caller then narrows to its own declared
-// width and clamps.
+// as it does in the reference; the caller then holds the value to its own
+// declared range, refusing out_of_range past it (§3.3, §4).
 export function tableMessageKindWidens(from, to) {
   return (from >= 2 && from <= 5 && ((to > from && to <= 5) || to === 18)) ||
          (from >= 6 && from <= 9 && ((to > from && to <= 9) || to === 19)) ||
@@ -366,6 +372,36 @@ export function tableMessageReadScalar(r, s) {
     }
   }
   return [[lo, hi], true];
+}
+// AN INTEGER BY NAME RECONSTRUCTS WHOLE, never masked or wrapped (§3.3, §4):
+// a ranged value is its offset plus the announced base, added without a
+// width; a raw value is its bits, two's complement where the announced kind
+// is signed. holds is false where a ranged value lands outside the announced
+// kind's storage domain; the caller then holds the value to its own kind and
+// its own declared range, refusing out_of_range without clamping.
+export function tableMessageReadInteger(r, s) {
+  let value = 0n;
+  if (s.Bits <= 64) {
+    const [v, ok] = r.Get(s.Bits);
+    if (!ok) { return [0n, false, false]; }
+    value = v;
+  } else {
+    const [lo, ok] = r.Get(64);
+    if (!ok) { return [0n, false, false]; }
+    const [hi, ok2] = r.Get(s.Bits - 64);
+    if (!ok2) { return [0n, false, false]; }
+    value = lo | (hi << 64n);
+  }
+  if (s.Packing === 1) {
+    const wide = s.Kind >= 18 && s.Kind <= 29;
+    const rawBase = wide ? (s.Base[0] | (s.Base[1] << 64n)) : s.Base[0];
+    const bits = wide ? 128 : 64;
+    const base = tableMessageKindSigned(s.Kind) ? globalThis.BigInt.asIntN(bits, rawBase) : globalThis.BigInt.asUintN(bits, rawBase);
+    value += base;
+    return [value, true, tableMessageKindHolds(s.Kind, value)];
+  }
+  if ((tableMessageKindSigned(s.Kind) || s.Kind === 36) && s.Bits > 0) { value = globalThis.BigInt.asIntN(s.Bits, value); }
+  return [value, true, true];
 }
 export function tableMessageWriteScalar(w, s, lo, hi) {
   if (s.Packing === 1) {
@@ -484,9 +520,9 @@ func baseBigLit(base *big.Int) string {
 // gates only the batch verbs on FixedDeclared).
 func (g *fixedModule) emitMessageBody(st *ir.Struct) {
 	g.needHome("TableBitWriter", "TableMessageRefBitsHere", "tableMessageEntry",
-		"tableMessageUtf8Valid", "tableMessageUtf8Clamp",
+		"tableMessageUtf8Valid", "tableMessageUtf8Clamp", "TableMessageRefuse",
 		"tableMessageCount", "tableMessageSkip", "tableMessageSkipBody",
-		"tableMessageKindWidens", "tableMessageReadScalar", "tableMessageWriteScalar",
+		"tableMessageKindWidens", "tableMessageReadScalar", "tableMessageReadInteger", "tableMessageWriteScalar",
 		"TableMessageFloat32Bits", "TableMessageFloat32FromBits",
 		"TableMessageFloat64Bits", "TableMessageFloat64FromBits")
 
@@ -777,7 +813,14 @@ func (g *fixedModule) messageRides(f *ir.Field, mem, ind string) string {
 // fixed-compressed-negzero), so it compares by value: a -0 under a +0 default
 // elides exactly as +0 does.
 func messageDiffers(f *ir.Field, lhs, def string) string {
+	if f.Type.Kind == ir.TFloat32 {
+		// a float32 compares at float32, as its default is spelled and as the
+		// reference compares it (tablewire cellIsDefault)
+		lhs = "globalThis.Math.fround(" + lhs + ")"
+	}
 	if fixedIsFloat(f.Type) && f.HasFloatRange {
+		// a COMPRESSED float's -0 IS +0 (§3.3, ruling fixed-compressed-negzero):
+		// it compares by value, so a -0 under a +0 default elides
 		return lhs + " !== " + def
 	}
 	if fixedIsFloat(f.Type) {
@@ -988,7 +1031,7 @@ func (g *fixedModule) emitMessageLoadBody(st *ir.Struct) {
 		g.emitMessageReadField(f, mine, "        ")
 		g.pf("        break;\n      }\n")
 	}
-	g.pf("      default: { if (r.Vocabulary.BuildVersion === %s) { r.Report.Damaged = true; return false; } r.Report.Unknown++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } }\n", jsId(ir.BuildVersion(g.unit)))
+	g.pf("      default: { if (r.Vocabulary.BuildVersion === %s) { r.Report.Damaged = true; return false; } r.Report.Unknown++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0, true)) { r.Report.Damaged = true; return false; } }\n", jsId(ir.BuildVersion(g.unit)))
 	g.pf("    }\n  }\n}\n\n")
 }
 
@@ -1011,9 +1054,9 @@ func (g *fixedModule) emitMessageReadField(f *ir.Field, mine ir.TableVocabularyE
 	compat := messageCompatibilityCond(f, mine, "entry")
 	g.pf("%slet widened = false;\n", ind)
 	if compat != "" {
-		g.pf("%sif (entry.Shape.Kind !== %d || entry.Element.Kind !== %d) { if (%s) { widened = true; } else { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; } }\n", ind, mine.Kind, mine.Shape.Elem, compat)
+		g.pf("%sif (entry.Shape.Kind !== %d || entry.Element.Kind !== %d) { if (%s) { widened = true; } else { %s; } }\n", ind, mine.Kind, mine.Shape.Elem, compat, messageKindMismatch)
 	} else {
-		g.pf("%sif (entry.Shape.Kind !== %d || entry.Element.Kind !== %d) { r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, entry, 0)) { r.Report.Damaged = true; return false; } break; }\n", ind, mine.Kind, mine.Shape.Elem)
+		g.pf("%sif (entry.Shape.Kind !== %d || entry.Element.Kind !== %d) { %s; }\n", ind, mine.Kind, mine.Shape.Elem, messageKindMismatch)
 	}
 	atField := !f.Type.Optional && !f.Required
 	cond := ""
@@ -1070,6 +1113,7 @@ func messageStoredDefaultCond(f *ir.Field, mem string) string {
 	if fixedIsFloat(f.Type) {
 		return "globalThis.Object.is(" + mem + ", " + def + ")"
 	}
+	// a compressed float's -0 IS +0 (§3.3): it compares by value
 	return mem + " === " + def
 }
 
@@ -1085,8 +1129,11 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, mem, ind, shape string, 
 		g.pf("%s  if (!r.Bits.Skip(globalThis.Number(n) * 8)) { r.Report.Damaged = true; return false; }\n", ind)
 		g.pf("%s  const rawLen = globalThis.Number(n);\n", ind)
 		g.pf("%s  if (!tableMessageUtf8Valid(r.Bits.Buffer, start, rawLen)) { r.Report.Damaged = true; return false; }\n", ind)
-		g.pf("%s  let kept = rawLen;\n", ind)
-		g.pf("%s  if (kept > %d) { kept = tableMessageUtf8Clamp(r.Bits.Buffer, start, %d); r.Report.Oor++; }\n", ind, f.Type.Size, f.Type.Size)
+		// A STRING LONGER THAN THIS READER'S BOUND, OR THAN THE ANNOUNCED max
+		// its length's bits can spell past, REFUSES length_over_bound: nothing
+		// is cut (docs/SPEC-TABLES.md §3.3, §4; the engine's text read)
+		g.pf("%s  if (rawLen > %d || n > globalThis.BigInt(%s.Max)) { TableMessageRefuse(r.Report, \"length_over_bound\"); return false; }\n", ind, f.Type.Size, shape)
+		g.pf("%s  const kept = rawLen;\n", ind)
 		iv := g.nextIdxVar()
 		g.pf("%s  %s.fill(0);\n", ind, mem)
 		g.pf("%s  for (let %s = 0; %s < kept; %s++) { %s[%s] = r.Bits.Buffer[start + %s]; }\n", ind, iv, iv, iv, mem, iv, iv)
@@ -1094,10 +1141,14 @@ func (g *fixedModule) emitMessageReadValue(f *ir.Field, mem, ind, shape string, 
 	case f.Type.Kind == ir.TBytes:
 		iv := g.nextIdxVar()
 		g.pf("%s{ const [n, ok] = tableMessageCount(r.Bits, %s); if (!ok || !r.Bits.Align()) { r.Report.Damaged = true; return false; }\n", ind, shape)
+		// a bytes count past the ANNOUNCED max refuses count_over_bound before
+		// any byte is walked; past this reader's bound, length_over_bound.
+		// Nothing is cut (§3.3, §4; the engine's text read)
+		g.pf("%s  if (n > globalThis.BigInt(%s.Max)) { TableMessageRefuse(r.Report, \"count_over_bound\"); return false; }\n", ind, shape)
 		g.pf("%s  const start = r.Bits.Offset >> 3;\n", ind)
 		g.pf("%s  if (!r.Bits.Skip(globalThis.Number(n) * 8)) { r.Report.Damaged = true; return false; }\n", ind)
-		g.pf("%s  let kept = globalThis.Number(n);\n", ind)
-		g.pf("%s  if (kept > %d) { kept = %d; r.Report.Oor++; }\n", ind, f.Type.Size, f.Type.Size)
+		g.pf("%s  const kept = globalThis.Number(n);\n", ind)
+		g.pf("%s  if (kept > %d) { TableMessageRefuse(r.Report, \"length_over_bound\"); return false; }\n", ind, f.Type.Size)
 		g.pf("%s  %s.fill(0);\n", ind, mem)
 		g.pf("%s  for (let %s = 0; %s < kept; %s++) { %s[%s] = r.Bits.Buffer[start + %s]; }\n", ind, iv, iv, iv, mem, iv, iv)
 		g.pf("%s  %sLength = kept;\n%s}\n", ind, mem, ind)
@@ -1130,15 +1181,31 @@ func (g *fixedModule) emitMessageReadArray(f *ir.Field, mem, ind, shape string, 
 		bound = f.Type.Size
 		companion = mem + "Length"
 	}
+	over := "TableMessageRefuse(r.Report, \"count_over_bound\"); return false"
 	g.pf("%s{ const [n, ok] = tableMessageCount(r.Bits, %s); if (!ok) { %s; }\n", ind, shape, bad)
-	if f.KeyEnum == "" {
+	// THE COUNT'S BITS CAN SPELL MORE THAN THE ANNOUNCED max, which no
+	// conforming writer emits: a count past it refuses count_over_bound
+	// before this reader's own bound is consulted (§3.3; the engine's array
+	// and keyed reads)
+	g.pf("%s  if (n > globalThis.BigInt(%s.Max)) { %s; }\n", ind, shape, over)
+	if f.KeyEnum == "" { // a keyed array walks n itself and keeps no count
 		g.pf("%s  if (%s.Kind === 6 && !r.Bits.Align()) { %s; }\n", ind, elemExpr, bad)
+		g.pf("%s  const keep = globalThis.Number(n);\n", ind)
 	}
-	g.pf("%s  let keep = globalThis.Number(n);\n", ind)
 	if elideEmpty {
 		g.pf("%s  if (n === 0n && r.Vocabulary.BuildVersion === %s) { r.Report.Damaged = true; return false; }\n", ind, jsId(ir.BuildVersion(g.unit)))
 	}
-	g.pf("%s  if (keep > %d) { keep = %d; r.Report.Oor++; }\n", ind, bound, bound)
+	if f.KeyEnum == "" {
+		// AN ARRAY LONGER THAN THIS READER'S BOUND, or a counted array below
+		// its declared min, REFUSES count_over_bound: nothing is cut and no
+		// surplus is walked (§3.3, §4; the engine's array read). A keyed
+		// array's slots this reader cannot name are unknowns, not surplus.
+		cond := fmt.Sprintf("keep > %d", bound)
+		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+			cond += fmt.Sprintf(" || keep < %d", f.ArrayMin)
+		}
+		g.pf("%s  if (%s) { %s; }\n", ind, cond, over)
+	}
 	e := messageElementField(f)
 	if f.KeyEnum != "" {
 		g.pf("%s  const seenKeys = [];\n", ind)
@@ -1177,18 +1244,8 @@ func (g *fixedModule) emitMessageReadArray(f *ir.Field, mem, ind, shape string, 
 			g.pf("%s  %s = 0;\n", ind, companion)
 		}
 	} else {
-		g.pf("%s  for (let %s = 0n; %s < n; %s++) {\n", ind, iv, iv, iv)
-		g.pf("%s    const p = %s < globalThis.BigInt(keep) ? %s[globalThis.Number(%s)] : null;\n", ind, iv, mem, iv)
-		g.pf("%s    if (p === null) {\n", ind)
-		g.pf("%s      if (%s.Bits >= 0 || %s.Kind === 0 || %s.Kind === 32) {\n", ind, elemExpr, elemExpr, elemExpr)
-		g.pf("%s        if (!r.Bits.Skip(globalThis.Number(n - %s) * globalThis.Math.max(0, %s.Bits))) { %s; }\n", ind, iv, elemExpr, bad)
-		g.pf("%s        break;\n", ind)
-		g.pf("%s      }\n", ind)
-		g.pf("%s      const before = r.Bits.Offset;\n", ind)
-		g.pf("%s      if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, { Shape: %s }, 0) || r.Bits.Offset === before) { %s; }\n", ind, elemExpr, bad)
-		g.pf("%s    } else {\n", ind)
-		g.emitMessageReadElement(e, mem+"[globalThis.Number("+iv+")]", ind+"      ", elemExpr)
-		g.pf("%s    }\n", ind)
+		g.pf("%s  for (let %s = 0; %s < keep; %s++) {\n", ind, iv, iv, iv)
+		g.emitMessageReadElement(e, mem+"["+iv+"]", ind+"    ", elemExpr)
 		g.pf("%s  }\n", ind)
 		if counted {
 			g.pf("%s  %s = keep;\n", ind, companion)
@@ -1242,23 +1299,62 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, mem, ind, shape string)
 			g.pf("%s    x = TableMessageFloat64FromBits(v[0]);\n", ind)
 			g.pf("%s  }\n", ind)
 		}
-		g.emitMessageFloatClamp(f, "x", ind+"  ")
+		g.emitMessageFloatRange(f, "x", ind+"  ")
 		g.pf("%s  %s = x;\n%s}\n", ind, mem, ind)
 		return
 	case ir.TBits:
-		g.pf("%s{ const [v, ok] = tableMessageReadScalar(r.Bits, %s); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];\n", ind, shape)
-		g.pf("%s  x = globalThis.BigInt.asUintN(%d, x);\n", ind, width)
-		g.pf("%s  if (x > %dn) { x = %dn; r.Report.Oor++; }\n", ind, (uint64(1)<<uint(f.Type.Width))-1, (uint64(1)<<uint(f.Type.Width))-1)
+		// the value whole, never masked to the field's width before the test
+		// (SPEC-TABLES §3.3: never masked or wrapped)
+		lo, hi := messageIntDomain(f.Type.Width, false)
+		g.pf("%s{ const [v, ok, holds] = tableMessageReadInteger(r.Bits, %s); if (!ok) { r.Report.Damaged = true; return false; } let x = v;\n", ind, shape)
+		g.emitMessageDomainHold("x", lo, hi, ind+"  ")
 		g.pf("%s  %s = %s;\n%s}\n", ind, mem, numOrBig("x", big), ind)
 		return
 	}
-	g.pf("%s{ const [v, ok] = tableMessageReadScalar(r.Bits, %s); if (!ok) { r.Report.Damaged = true; return false; } let x = v[0];\n", ind, shape)
-	if width == 128 {
-		g.pf("%s  x = x | (v[1] << 64n);\n", ind)
+	g.pf("%s{ const [v, ok, holds] = tableMessageReadInteger(r.Bits, %s); if (!ok) { r.Report.Damaged = true; return false; } let x = v;\n", ind, shape)
+	if f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed {
+		// AN INTEGER THAT LANDS OUTSIDE THE ANNOUNCED KIND OR THE READER'S
+		// OWN KIND REFUSES out_of_range and is never masked or wrapped
+		// (SPEC-TABLES §3.3): the value is tested whole, then the declared
+		// range below
+		lo, hi := messageIntDomain(width, signed)
+		g.emitMessageDomainHold("x", lo, hi, ind+"  ")
+	} else {
+		g.pf("%s  if (!holds) { %s; }\n", ind, messageOutOfRange)
+		g.pf("%s  x = %s;\n", ind, narrowInt("x", signed, int64(width)))
 	}
-	g.pf("%s  x = %s;\n", ind, narrowInt("x", signed, int64(width)))
-	g.emitMessageIntClamp(f, "x", ind+"  ")
+	g.emitMessageIntRange(f, "x", ind+"  ")
 	g.pf("%s  %s = %s;\n%s}\n", ind, mem, numOrBig("x", big), ind)
+}
+
+// messageIntDomain is the storage domain of a width-bit integer, as BigInt
+// literals.
+func messageIntDomain(width int, signed bool) (string, string) {
+	one := big.NewInt(1)
+	if signed {
+		half := new(big.Int).Lsh(one, uint(width-1))
+		return new(big.Int).Neg(half).String() + "n", new(big.Int).Sub(half, one).String() + "n"
+	}
+	return "0n", new(big.Int).Sub(new(big.Int).Lsh(one, uint(width)), one).String() + "n"
+}
+
+// messageOutOfRange is the message read's refusal of a value past this
+// reader's declaration: the batch refuses out_of_range, as the engine's
+// message read does, and nothing is clamped or counted (docs/SPEC-TABLES.md
+// §3.3, §4).
+const messageOutOfRange = "TableMessageRefuse(r.Report, \"out_of_range\"); return false"
+
+// messageKindMismatch is the message read's refusal of a field or union arm
+// whose ANNOUNCED kind is not this reader's and does not widen into it: the
+// batch refuses kind_mismatch, as the engine's message read does. Nothing is
+// skipped, defaulted and counted (docs/SPEC-TABLES.md §3.3, §4).
+const messageKindMismatch = "TableMessageRefuse(r.Report, \"kind_mismatch\"); return false"
+
+// emitMessageDomainHold refuses out_of_range a reconstructed integer outside
+// the announced kind's domain (holds) or outside [lo, hi], the reader's own
+// kind.
+func (g *fixedModule) emitMessageDomainHold(x, lo, hi, ind string) {
+	g.pf("%sif (!holds || %s < %s || %s > %s) { %s; }\n", ind, x, lo, x, hi, messageOutOfRange)
 }
 
 func narrowInt(x string, signed bool, width int64) string {
@@ -1275,22 +1371,25 @@ func numOrBig(x string, big bool) string {
 	return "globalThis.Number(" + x + ")"
 }
 
-func (g *fixedModule) emitMessageIntClamp(f *ir.Field, x, ind string) {
+func (g *fixedModule) emitMessageIntRange(f *ir.Field, x, ind string) {
 	rlo, rhi, ok := ir.TableRawRange(f)
 	if !ok {
 		return
 	}
 	asBig := fixedIsBig(f.Type)
 	lo, hi := jsIntLit(rlo, asBig), jsIntLit(rhi, asBig)
-	g.pf("%sif (%s < %s) { %s = %s; r.Report.Oor++; } else if (%s > %s) { %s = %s; r.Report.Oor++; }\n", ind, x, lo, x, lo, x, hi, x, hi)
+	// a value past the declared range refuses out_of_range (§3.3)
+	g.pf("%sif (%s < %s || %s > %s) { %s; }\n", ind, x, lo, x, hi, messageOutOfRange)
 }
 
-func (g *fixedModule) emitMessageFloatClamp(f *ir.Field, x, ind string) {
+func (g *fixedModule) emitMessageFloatRange(f *ir.Field, x, ind string) {
 	lo, hi, ok := fixedFloatClampEnds(f)
 	if !ok {
 		return
 	}
-	g.pf("%sif (%s < %s) { %s = %s; r.Report.Oor++; } else if (%s > %s) { %s = %s; r.Report.Oor++; }\n", ind, x, lo, x, lo, x, hi, x, hi)
+	// a value past the declared range refuses out_of_range, and a compressed
+	// float's -0 lands as +0 (docs/SPEC-TABLES.md §3.3)
+	g.pf("%sif (%s < %s || %s > %s) { %s; } else if (%s === 0) { %s = 0; }\n", ind, x, lo, x, hi, messageOutOfRange, x, x)
 }
 
 func (g *fixedModule) emitMessageReadEnum(f *ir.Field, mem, ind string, atField bool) {
@@ -1335,9 +1434,9 @@ func (g *fixedModule) emitMessageReadUnion(f *ir.Field, mem, ind string, atField
 		g.pf("%s      case 0x%016xn: {\n", ind, arm.Id)
 		g.pf("%s        let armWidened = false;\n", ind)
 		if compat != "" {
-			g.pf("%s        if (arm.Shape.Kind !== %d || arm.Element.Kind !== %d) { if (%s) { armWidened = true; } else { %s.type = 0; r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, arm, 0)) { r.Report.Damaged = true; return false; } break; } }\n", ind, arm.Kind, arm.Shape.Elem, compat, mem)
+			g.pf("%s        if (arm.Shape.Kind !== %d || arm.Element.Kind !== %d) { if (%s) { armWidened = true; } else { %s; } }\n", ind, arm.Kind, arm.Shape.Elem, compat, messageKindMismatch)
 		} else {
-			g.pf("%s        if (arm.Shape.Kind !== %d || arm.Element.Kind !== %d) { %s.type = 0; r.Report.Mismatch++; if (!tableMessageSkip(r.Bits, r.Vocabulary, r.IndexBits, arm, 0)) { r.Report.Damaged = true; return false; } break; }\n", ind, arm.Kind, arm.Shape.Elem, mem)
+			g.pf("%s        if (arm.Shape.Kind !== %d || arm.Element.Kind !== %d) { %s; }\n", ind, arm.Kind, arm.Shape.Elem, messageKindMismatch)
 		}
 		g.pf("%s        %s.type = %d;\n", ind, mem, i+1)
 		if !v.Void() {
@@ -1466,6 +1565,12 @@ func (g *fixedModule) emitMessageVerbs(st *ir.Struct) {
 	g.pf("      if (report.NonFiniteFloat) {\n")
 	g.pf("        TableMessageRefuse(report, \"non_finite_float: \" + report.NonFiniteFloat);\n")
 	g.pf("        return refuse();\n")
+	g.pf("      }\n")
+	g.pf("      // A REFUSAL IN ANY BODY (a length or count past a bound, §3.3) refuses\n")
+	g.pf("      // the batch with its reason; no body of it is delivered.\n")
+	g.pf("      if (report.Reason) {\n")
+	g.pf("        for (let j = 0; j <= i; j++) { Init%s(values[j]); }\n", n)
+	g.pf("        return 0;\n")
 	g.pf("      }\n")
 	g.pf("      // DAMAGE ANYWHERE IN THE BATCH DELIVERS NO BODY (docs/SPEC-TABLES.md §4):\n")
 	g.pf("      // the count says 0 and every body the walk touched goes back to its\n")

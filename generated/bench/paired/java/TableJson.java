@@ -1148,6 +1148,10 @@ public final class TableJson {
                         }
                         LabelEntry entry = labels.get(labelId);
                         c = peek();
+                        if (c != ',' && c != closing) {
+                            bad = true;
+                            return;
+                        }
                         if (c == ',') {
                             p++;
                             c = peek();
@@ -1162,6 +1166,9 @@ public final class TableJson {
                         }
                         if (bare) {
                             p++;
+                            if (entry == null || entry.open) {
+                                bad = true;
+                            }
                             return;
                         }
                         labels.put(labelId, new LabelEntry(null, 0L, true));
@@ -1187,6 +1194,14 @@ public final class TableJson {
                 }
                 bad = true;
                 return;
+            }
+        }
+
+        // closeSkipped closes the label a skipped object's definition opened:
+        // a reference after it reads null (§16.7).
+        private void closeSkipped(long opened) {
+            if (opened != 0) {
+                labels.put(opened, new LabelEntry(null, 0L, false));
             }
         }
     }

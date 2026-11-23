@@ -569,6 +569,10 @@ defmodule Example.Wire do
     v = 171
     scratch = v
 
+    if not is_integer(value_version) do
+      raise ArgumentError, "value.version is not an integer"
+    end
+
     if value_version < 0 do
       raise ArgumentError, "value.version is below the wire minimum"
     end
@@ -714,6 +718,10 @@ defmodule Example.Wire do
       nonce: value_nonce
     } = value
 
+    if not is_integer(value_small) do
+      raise ArgumentError, "value.small is not an integer"
+    end
+
     if value_small < 0 do
       raise ArgumentError, "value.small is below the wire minimum"
     end
@@ -724,6 +732,10 @@ defmodule Example.Wire do
 
     v = value_small &&& 0x1FF
     scratch = v
+
+    if not is_integer(value_boundary) do
+      raise ArgumentError, "value.boundary is not an integer"
+    end
 
     if value_boundary < 0 do
       raise ArgumentError, "value.boundary is below the wire minimum"
@@ -737,6 +749,10 @@ defmodule Example.Wire do
     scratch = scratch ||| v <<< 9
     v = value_boundary >>> 32 &&& 0x1
     scratch = scratch ||| v <<< 41
+
+    if not is_integer(value_wide) do
+      raise ArgumentError, "value.wide is not an integer"
+    end
 
     if value_wide < 0 do
       raise ArgumentError, "value.wide is below the wire minimum"
@@ -755,6 +771,10 @@ defmodule Example.Wire do
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 2
 
+    if not is_integer(value_sensor) do
+      raise ArgumentError, "value.sensor is not an integer"
+    end
+
     if value_sensor < 0 do
       raise ArgumentError, "value.sensor is below the wire minimum"
     end
@@ -767,6 +787,10 @@ defmodule Example.Wire do
     sc2 = scratch
     scratch = scratch >>> 32
     scratch = scratch ||| v <<< 2
+
+    if not is_integer(value_nonce) do
+      raise ArgumentError, "value.nonce is not an integer"
+    end
 
     if value_nonce < 0 do
       raise ArgumentError, "value.nonce is below the wire minimum"
@@ -1325,6 +1349,10 @@ defmodule Example.Wire do
   def write_probe_slab!(value) do
     %{width: value_width, height: value_height} = value
 
+    if not is_integer(value_width) do
+      raise ArgumentError, "value.width is not an integer"
+    end
+
     if value_width < 0 do
       raise ArgumentError, "value.width is below the wire minimum"
     end
@@ -1500,6 +1528,10 @@ defmodule Example.Wire do
 
         {:slab, value_slab} ->
           %{width: value_slab_width, height: value_slab_height} = value_slab
+
+          if not is_integer(value_slab_width) do
+            raise ArgumentError, "value.slab.width is not an integer"
+          end
 
           if value_slab_width < 0 do
             raise ArgumentError, "value.slab.width is below the wire minimum"
@@ -1721,6 +1753,10 @@ defmodule Example.Wire do
         {:slab, value_shape_slab} ->
           %{width: value_shape_slab_width, height: value_shape_slab_height} = value_shape_slab
 
+          if not is_integer(value_shape_slab_width) do
+            raise ArgumentError, "value.shape.slab.width is not an integer"
+          end
+
           if value_shape_slab_width < 0 do
             raise ArgumentError, "value.shape.slab.width is below the wire minimum"
           end
@@ -1806,6 +1842,10 @@ defmodule Example.Wire do
 
         {:slab, value_backup_slab} ->
           %{width: value_backup_slab_width, height: value_backup_slab_height} = value_backup_slab
+
+          if not is_integer(value_backup_slab_width) do
+            raise ArgumentError, "value.backup.slab.width is not an integer"
+          end
 
           if value_backup_slab_width < 0 do
             raise ArgumentError, "value.backup.slab.width is below the wire minimum"
@@ -2401,6 +2441,10 @@ defmodule Example.Wire do
     v = value_test_a &&& 0xFFFF
     scratch = v
 
+    if not is_integer(value_test_b) do
+      raise ArgumentError, "value.test_b is not an integer"
+    end
+
     if value_test_b < 0 do
       raise ArgumentError, "value.test_b is below the wire minimum"
     end
@@ -2412,6 +2456,10 @@ defmodule Example.Wire do
     v = value_test_b
     scratch = scratch ||| v <<< 16
 
+    if not is_integer(value_test_c) do
+      raise ArgumentError, "value.test_c is not an integer"
+    end
+
     if value_test_c < 0 do
       raise ArgumentError, "value.test_c is below the wire minimum"
     end
@@ -2422,6 +2470,10 @@ defmodule Example.Wire do
 
     v = value_test_c
     scratch = scratch ||| v <<< 26
+
+    if not is_integer(value_test_d) do
+      raise ArgumentError, "value.test_d is not an integer"
+    end
 
     if value_test_d < 0 do
       raise ArgumentError, "value.test_d is below the wire minimum"
@@ -2782,6 +2834,10 @@ defmodule Example.Wire do
     v = 171
     scratch = v
 
+    if not is_integer(value_header_version) do
+      raise ArgumentError, "value.header.version is not an integer"
+    end
+
     if value_header_version < 0 do
       raise ArgumentError, "value.header.version is below the wire minimum"
     end
@@ -2847,6 +2903,10 @@ defmodule Example.Wire do
     sc1 = scratch
     scratch = v
 
+    if not is_integer(value_echo_test_b) do
+      raise ArgumentError, "value.echo.test_b is not an integer"
+    end
+
     if value_echo_test_b < 0 do
       raise ArgumentError, "value.echo.test_b is below the wire minimum"
     end
@@ -2858,6 +2918,10 @@ defmodule Example.Wire do
     v = value_echo_test_b
     scratch = scratch ||| v <<< 16
 
+    if not is_integer(value_echo_test_c) do
+      raise ArgumentError, "value.echo.test_c is not an integer"
+    end
+
     if value_echo_test_c < 0 do
       raise ArgumentError, "value.echo.test_c is below the wire minimum"
     end
@@ -2868,6 +2932,10 @@ defmodule Example.Wire do
 
     v = value_echo_test_c
     scratch = scratch ||| v <<< 26
+
+    if not is_integer(value_echo_test_d) do
+      raise ArgumentError, "value.echo.test_d is not an integer"
+    end
 
     if value_echo_test_d < 0 do
       raise ArgumentError, "value.echo.test_d is below the wire minimum"
@@ -3065,6 +3133,10 @@ defmodule Example.Wire do
       text: value_text
     } = value
 
+    if not is_integer(value_a) do
+      raise ArgumentError, "value.a is not an integer"
+    end
+
     if value_a < -100 do
       raise ArgumentError, "value.a is below the wire minimum"
     end
@@ -3075,6 +3147,10 @@ defmodule Example.Wire do
 
     v = value_a + 100
     scratch = v
+
+    if not is_integer(value_b) do
+      raise ArgumentError, "value.b is not an integer"
+    end
 
     if value_b < -100 do
       raise ArgumentError, "value.b is below the wire minimum"
@@ -3087,6 +3163,10 @@ defmodule Example.Wire do
     v = value_b + 100
     scratch = scratch ||| v <<< 8
 
+    if not is_integer(value_c) do
+      raise ArgumentError, "value.c is not an integer"
+    end
+
     if value_c < -100 do
       raise ArgumentError, "value.c is below the wire minimum"
     end
@@ -3097,6 +3177,10 @@ defmodule Example.Wire do
 
     v = value_c + 100
     scratch = scratch ||| v <<< 16
+
+    if not is_integer(value_d) do
+      raise ArgumentError, "value.d is not an integer"
+    end
 
     if value_d < 0 do
       raise ArgumentError, "value.d is below the wire minimum"
@@ -3109,6 +3193,10 @@ defmodule Example.Wire do
     v = value_d &&& 0xFF
     scratch = scratch ||| v <<< 24
 
+    if not is_integer(value_e) do
+      raise ArgumentError, "value.e is not an integer"
+    end
+
     if value_e < 0 do
       raise ArgumentError, "value.e is below the wire minimum"
     end
@@ -3119,6 +3207,10 @@ defmodule Example.Wire do
 
     v = value_e &&& 0xFF
     scratch = scratch ||| v <<< 32
+
+    if not is_integer(value_f) do
+      raise ArgumentError, "value.f is not an integer"
+    end
 
     if value_f < 0 do
       raise ArgumentError, "value.f is below the wire minimum"
@@ -3317,6 +3409,10 @@ defmodule Example.Wire do
     scratch_bits = scratch_bits &&& 7
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 32
+
+    if not is_integer(value_int64_range) do
+      raise ArgumentError, "value.int64_range is not an integer"
+    end
 
     if value_int64_range < -1_000_000_000_000 do
       raise ArgumentError, "value.int64_range is below the wire minimum"
@@ -3968,6 +4064,10 @@ defmodule Example.Wire do
         {:slab, e_slab} ->
           %{width: e_slab_width, height: e_slab_height} = e_slab
 
+          if not is_integer(e_slab_width) do
+            raise ArgumentError, "e.slab.width is not an integer"
+          end
+
           if e_slab_width < 0 do
             raise ArgumentError, "e.slab.width is below the wire minimum"
           end
@@ -4298,6 +4398,10 @@ defmodule Example.Wire do
   defp wZtest_dataZitems([], data, scratch, scratch_bits), do: {data, scratch, scratch_bits}
 
   defp wZtest_dataZitems([e1, e2, e3, e4 | rest], data, scratch, scratch_bits) do
+    if not is_integer(e1) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e1 < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -4309,6 +4413,10 @@ defmodule Example.Wire do
     v = e1
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
+
+    if not is_integer(e2) do
+      raise ArgumentError, "e is not an integer"
+    end
 
     if e2 < 0 do
       raise ArgumentError, "e is below the wire minimum"
@@ -4322,6 +4430,10 @@ defmodule Example.Wire do
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
 
+    if not is_integer(e3) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e3 < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end
@@ -4333,6 +4445,10 @@ defmodule Example.Wire do
     v = e3
     scratch = scratch ||| v <<< scratch_bits
     scratch_bits = scratch_bits + 8
+
+    if not is_integer(e4) do
+      raise ArgumentError, "e is not an integer"
+    end
 
     if e4 < 0 do
       raise ArgumentError, "e is below the wire minimum"
@@ -4353,6 +4469,10 @@ defmodule Example.Wire do
   end
 
   defp wZtest_dataZitems([e | rest], data, scratch, scratch_bits) do
+    if not is_integer(e) do
+      raise ArgumentError, "e is not an integer"
+    end
+
     if e < 0 do
       raise ArgumentError, "e is below the wire minimum"
     end

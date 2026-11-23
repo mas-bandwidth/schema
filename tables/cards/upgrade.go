@@ -4,9 +4,9 @@
 // (docs/SPEC-TABLES.md §6.6): CardLoadRetain keeps every field the current
 // declaration cannot name, and CardSaveRetain writes them back at the end of
 // their own body. It is pure and byte-idempotent after the first save, and it
-// never mutates the input wire. ReadStrict is the strict half of the tolerant
-// read (§4): it loads through the ordinary path and refuses any data the
-// current declaration cannot support.
+// never mutates the input wire. ReadStrict is the strict load with unknown
+// fields refused too (§4): it loads through the ordinary path and refuses any
+// data the current declaration cannot support.
 package cards
 
 import (

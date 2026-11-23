@@ -3,14 +3,14 @@
 def self.run(manifest, outdir)
   connections = {}
   RubyConformance.entries(manifest, 'connection').each { |row| connections[row[1]] = row }
-  RubyConformance.entries(manifest, 'write-refusal-message').each do |row|
+  RubyConformance.cases(manifest, 'write-refusal-message') do |row|
     case_name, connection, root, wire, path, kind, token = row[1, 7]
     unit = connections[connection][2]
     pkg = RubyConformance.unit_package(unit)
     cls = RubyConformance.root_class(unit, root)
     has_msg = !pkg.nil? && pkg.respond_to?(:save_messages) && pkg.respond_to?(:measure_messages)
     if pkg.nil? || cls.nil? || !has_msg || !RubyConformance.fixed_carried?(pkg, cls)
-      RubyConformance.absent(outdir, case_name, 'message form is not emitted for this root')
+      RubyConformance.no_codec(outdir, case_name)
       next
     end
     value = cls.load(RubyConformance.read_bytes(wire))

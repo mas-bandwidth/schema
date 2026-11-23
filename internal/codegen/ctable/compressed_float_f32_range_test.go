@@ -62,11 +62,11 @@ fixed table Cell
 	}
 	// the fixed write check FixedSave and SaveMessages assert, on a finite
 	// value (a NaN or an infinity is row 7's)
-	if !strings.Contains(src, "(*out_of_range) += (int) ( table_float_finite( value->c ) && ( value->c < -0.3f || value->c > 0.1f ) );") {
+	if !strings.Contains(src, "( *out_of_range ) += (int) ( table_float_finite( value->c ) && ( value->c < -0.3f || value->c > 0.1f ) );") {
 		t.Error("the fixed write check does not hold the compressed float's float32 range")
 	}
 	// the fixed read's bounds pass
-	if !strings.Contains(src, "(*out_of_range) += (int) ( value->c < -0.3f ) | (int) ( value->c > 0.1f );") {
+	if !strings.Contains(src, "( *out_of_range ) += (int) ( value->c < -0.3f ) | (int) ( value->c > 0.1f );") {
 		t.Error("the fixed read does not hold the compressed float's float32 range")
 	}
 	if strings.Contains(src, "value->p < ") || strings.Contains(src, "value->p > ") {

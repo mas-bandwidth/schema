@@ -9,6 +9,8 @@
 #   <case> <hex>              the answer's bytes, lowercase hex (possibly empty)
 #   <case> absent [<reason>]  the case is ABSENT; the reason, if any, is the
 #                             bytes of <case>.absent
+#   <case> refused [<reason>] the read ran and refused; the reason, if any, is
+#                             the bytes of <case>.refused
 #
 # <case> is [A-Za-z0-9_.-]+ and is neither `.` nor `..`; <hex> is an even run
 # of [0-9a-f]. Each answered case becomes the file <outdir>/<case>. A repeated
@@ -32,19 +34,26 @@ while (my $line = <>) {
 	chomp $line;
 	next if $line eq "";
 	my ($case, $rest) = $line =~ /\A([A-Za-z0-9_.-]+)(?: (.*))?\z/s;
-	my ($reason, $hex);
+	my ($reason, $refused, $hex);
 	if (defined $case && $case ne "." && $case ne "..") {
 		if (!defined $rest) { $hex = ""; }    # the bare case name: an empty answer
 		elsif ($rest =~ /\Aabsent(?: (.+))?\z/s) { $reason = defined $1 ? $1 : ""; }
+		elsif ($rest =~ /\Arefused(?: (.+))?\z/s) { $refused = defined $1 ? $1 : ""; }
 		elsif ($rest =~ /\A(?:[0-9a-f]{2})*\z/) { $hex = $rest; }
 	}
-	if (!defined $reason && !defined $hex) {
+	if (!defined $reason && !defined $refused && !defined $hex) {
 		print STDERR "driver printed non-protocol line: $line\n";
 		exit 1;
 	}
 	if (defined $reason) {
 		open(my $f, ">", "$outdir/$case.absent") or die "answer-lines.pl: $case: $!\n";
 		print $f $reason;
+		close $f or die "answer-lines.pl: $case: $!\n";
+		next;
+	}
+	if (defined $refused) {
+		open(my $f, ">", "$outdir/$case.refused") or die "answer-lines.pl: $case: $!\n";
+		print $f $refused;
 		close $f or die "answer-lines.pl: $case: $!\n";
 		next;
 	}

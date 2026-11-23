@@ -188,6 +188,7 @@ Each table class also carries its **descriptor**, the table as data
 
 ## ERRORS
 
+<!-- example: compile -->
 ```python
 p = Snapshot.read(data)        # a packet: the value, or raises Refused
 data = p.write()               # the bytes, or raises InvalidValue

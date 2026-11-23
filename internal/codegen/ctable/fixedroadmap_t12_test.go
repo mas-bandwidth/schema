@@ -125,7 +125,7 @@ func cT12Write(t *testing.T, src string) string {
 func cT12F4(t *testing.T) {
 	load := cT12Load(t, cT12UnitSrc)
 	cT04Has(t, load,
-		"if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes ) { report->refused = 1; report->reason = SCHEMA_TABLE_LAYOUT_MALFORMED; return -1; }",
+		"if ( (int64_t) layout_bytes + kTableFixedHeaderBytes + 4 > bytes )\n    {\n        report->refused = 1;\n        report->reason = SCHEMA_TABLE_LAYOUT_MALFORMED;\n        return -1;\n    }",
 		"F4 an announced layout running past the file is layout_malformed")
 	cT04Has(t, load,
 		"memcmp( layout, lineage_fixed_known[pick].layout, (size_t) layout_bytes )",
@@ -146,10 +146,10 @@ func cT12F4(t *testing.T) {
 func cT12F7(t *testing.T) {
 	load := cT12Load(t, cT12UnitSrc)
 	cT04Has(t, load,
-		"if ( values == NULL || data == NULL || bytes < 1 ) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return -1; }",
+		"if ( values == NULL || data == NULL || bytes < 1 )\n    {\n        report->refused = 1, report->refuse_reason = SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;\n        return -1;\n    }",
 		"F7 a file of no bytes at all")
 	cT04Has(t, load,
-		"if ( bytes < kTableFixedHeaderBytes + 4 ) { report->refused=1, report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; return -1; }",
+		"if ( bytes < kTableFixedHeaderBytes + 4 )\n    {\n        report->refused = 1, report->refuse_reason = SCHEMA_TABLE_REFUSE_WIRE_DAMAGED;\n        return -1;\n    }",
 		"F7 a file shorter than the twenty-byte header is refused")
 }
 

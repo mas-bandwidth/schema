@@ -33,8 +33,44 @@ enum
 {
     kWroteExit = 10,
     kRefusedExit = 11,
-    kNoSetterExit = 12
+    kNoSetterExit = 12,
+    kUnrepresentableExit = 13
 };
+
+int conformance_write_refusal_integer( const char * text, int is_signed, size_t bytes, void * storage )
+{
+    const char * p = text;
+    const int negative = *p == '-';
+    const int bits = (int) bytes * 8;
+    uint64_t magnitude = 0, most = 0;
+    int past = 0;
+    if ( *p == '-' || *p == '+' ) { p++; }
+    if ( *p == 0 ) { past = 1; }
+    for ( ; *p != 0; p++ )
+    {
+        const uint64_t digit = (uint64_t) ( *p - '0' );
+        if ( *p < '0' || *p > '9' || magnitude > ( UINT64_MAX - digit ) / 10 ) { past = 1; break; }
+        magnitude = magnitude * 10 + digit;
+    }
+    if ( bytes != 1 && bytes != 2 && bytes != 4 && bytes != 8 ) { past = 1; }
+    else if ( !is_signed ) { most = bits == 64 ? UINT64_MAX : ( (uint64_t) 1 << bits ) - 1; if ( negative && magnitude != 0 ) { past = 1; } }
+    else { most = ( (uint64_t) 1 << ( bits - 1 ) ) - ( negative ? 0 : 1 ); }
+    if ( past || magnitude > most ) { _exit( kUnrepresentableExit ); }
+    /* two's complement of the magnitude is the negative value at any width */
+    if ( negative ) { magnitude = (uint64_t) 0 - magnitude; }
+    if ( bytes == 1 ) { const uint8_t v = (uint8_t) magnitude; memcpy( storage, &v, 1 ); }
+    else if ( bytes == 2 ) { const uint16_t v = (uint16_t) magnitude; memcpy( storage, &v, 2 ); }
+    else if ( bytes == 4 ) { const uint32_t v = (uint32_t) magnitude; memcpy( storage, &v, 4 ); }
+    else { memcpy( storage, &magnitude, 8 ); }
+    return 1;
+}
+
+int32_t conformance_write_refusal_count( const char * text )
+{
+    int32_t n = 0;
+    CONFORMANCE_WREF_SIGNED( n, text );
+    return n;
+}
 
 #ifndef CONFORMANCE_NO_WREF_CASE
 /* the units the rows name, each with its setter and its writer */
@@ -50,6 +86,9 @@ static const struct
     { "scalars", conformance_write_refusal_set_scalars, conformance_write_refusal_write_scalars },
     { "cooktorture", conformance_write_refusal_set_cooktorture, conformance_write_refusal_write_cooktorture },
     { "tblvarevo3", conformance_write_refusal_set_tblvarevo3, conformance_write_refusal_write_tblvarevo3 },
+    { "graphdemo", conformance_write_refusal_set_graphdemo, conformance_write_refusal_write_graphdemo },
+    { "listdemo", conformance_write_refusal_set_listdemo, conformance_write_refusal_write_listdemo },
+    { "shapes", conformance_write_refusal_set_shapes, conformance_write_refusal_write_shapes },
 };
 #endif
 
@@ -81,7 +120,7 @@ int conformance_write_refusal_text( char * storage, int32_t capacity, int32_t * 
     {
         /* past storage only the length moves, and the writer must refuse
            before it reads past the array */
-        n = (int32_t) strtoll( text, NULL, 10 );
+        n = conformance_write_refusal_count( text );
         for ( i = 0; i < n && i < capacity; i++ ) { storage[i] = 'a'; }
         *length = n;
         return 1;
@@ -102,7 +141,7 @@ int conformance_write_refusal_bytes( uint8_t * storage, int32_t capacity, int32_
     uint32_t bytes[64];
     if ( strcmp( kind, "length" ) == 0 )
     {
-        n = (int32_t) strtoll( text, NULL, 10 );
+        n = conformance_write_refusal_count( text );
         for ( i = 0; i < n && i < capacity; i++ ) { storage[i] = 0xAA; }
         *length = n;
         return 1;
@@ -193,6 +232,7 @@ int conformance_write_refusal_case( int surface, const ConformanceCodec * codec,
     if ( WIFEXITED( status ) && WEXITSTATUS( status ) == kRefusedExit ) { return CONFORMANCE_REFUSED; }
     if ( WIFEXITED( status ) && WEXITSTATUS( status ) == kWroteExit ) { return CONFORMANCE_WROTE; }
     if ( WIFEXITED( status ) && WEXITSTATUS( status ) == kNoSetterExit ) { return CONFORMANCE_NO_SETTER; }
+    if ( WIFEXITED( status ) && WEXITSTATUS( status ) == kUnrepresentableExit ) { return CONFORMANCE_UNREPRESENTABLE; }
     return CONFORMANCE_BROKEN;
 }
 #endif

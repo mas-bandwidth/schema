@@ -904,11 +904,17 @@ impl<'a> Jr<'a> {
         while p < b.len() && b[p].is_ascii_digit() {
             p += 1;
         }
-        if p < b.len() && !matches!(b[p], b' ' | b'\t' | b'\n' | b'\r' | b',' | b'}' | b'/') {
+        let v = std::str::from_utf8(&b[s..p]).ok()?.parse::<u64>().ok()?;
+        let at = self.p;
+        self.p = p;
+        // the label is followed by its object's , or } and nothing else
+        // (§16.7; RFC 8259's value-separator): a second key with no comma
+        // before it is not JSON, and neither is a fraction or an exponent
+        // after the digits
+        if !matches!(self.peek(), b',' | b'}') {
+            self.p = at;
             return None;
         }
-        let v = std::str::from_utf8(&b[s..p]).ok()?.parse::<u64>().ok()?;
-        self.p = p;
         Some(v)
     }
     /// A REFERENCE (docs/SPEC-TABLES.md §16.7): a label the text has defined,
@@ -1498,6 +1504,8 @@ func emitTextScalarRangeRefuse(f *ir.Field, x, ind string) string {
 	ux := unparen(x)
 	canLow, canHigh := rlo.Cmp(localMin) > 0, rhi.Cmp(localMax) < 0
 	switch {
+	case canLow && canHigh && rlo.Cmp(rhi) == 0:
+		return fmt.Sprintf("%sif %s != %s%s { w.refused = true; }\n", ind, ux, rlo.String(), t)
 	case canLow && canHigh:
 		if !strings.ContainsAny(ux, ".[*") {
 			return fmt.Sprintf("%sif !(%s%s..=%s%s).contains(&%s) { w.refused = true; }\n", ind, rlo.String(), t, rhi.String(), t, ux)
@@ -1652,6 +1660,8 @@ func (g *gen) emitTextReadPointer(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "                b'}' => { jr.p += 1; jr.refer::<%s>(label) }\n", st.Name)
 	fmt.Fprintf(b, "                b',' => {\n")
 	fmt.Fprintf(b, "                    jr.p += 1;\n")
+	fmt.Fprintf(b, "                    // a label alone with a trailing comma is still a REFERENCE (§16.7)\n")
+	fmt.Fprintf(b, "                    if jr.peek() == b'}' { jr.p += 1; return jr.refer::<%s>(label); }\n", st.Name)
 	fmt.Fprintf(b, "                    // a label already defined, or still open, takes no second definition\n")
 	fmt.Fprintf(b, "                    if jr.labels.contains_key(&label) { jr.damaged = true; return None; }\n")
 	fmt.Fprintf(b, "                    jr.labels.insert(label, JsonLabel::Open);\n")
@@ -1970,7 +1980,11 @@ func (g *gen) emitTextReadScalar(b *strings.Builder, f *ir.Field, dst, in string
 			lo, hi := textIntRange(f)
 			fmt.Fprintf(b, "%sif let Some(n) = jr.read_int(%v) {\n", in, wideJSONInteger(f))
 			fmt.Fprintf(b, "%s    let mut x = n;\n", in)
-			fmt.Fprintf(b, "%s    if x < %si128 { x = %si128; jr.damaged = true; } else if x > %si128 { x = %si128; jr.damaged = true; }\n", in, lo, lo, hi, hi)
+			if lo == hi {
+				fmt.Fprintf(b, "%s    if x != %si128 { x = %si128; jr.damaged = true; }\n", in, lo, lo)
+			} else {
+				fmt.Fprintf(b, "%s    if x < %si128 { x = %si128; jr.damaged = true; } else if x > %si128 { x = %si128; jr.damaged = true; }\n", in, lo, lo, hi, hi)
+			}
 			fmt.Fprintf(b, "%s    %s = x as %s;\n", in, dst, scalarRust(f))
 			fmt.Fprintf(b, "%s}\n", in)
 		}
@@ -2098,11 +2112,15 @@ func emitTextReadWide(b *strings.Builder, f *ir.Field, dst, in string) {
 	// comparison (absurd_extreme_comparisons): it is elided
 	wmin, wmax := textStorageRange(&ir.Field{Type: ir.FieldType{Width: 128, Signed: f.Type.Signed}})
 	var clamps []string
-	if lo.Cmp(wmin) > 0 {
-		clamps = append(clamps, fmt.Sprintf("if x < %s%s { x = %s%s; jr.damaged = true; }", lo, wide, lo, wide))
-	}
-	if hi.Cmp(wmax) < 0 {
-		clamps = append(clamps, fmt.Sprintf("if x > %s%s { x = %s%s; jr.damaged = true; }", hi, wide, hi, wide))
+	if lo.Cmp(wmin) > 0 && hi.Cmp(wmax) < 0 && lo.Cmp(hi) == 0 {
+		clamps = append(clamps, fmt.Sprintf("if x != %s%s { x = %s%s; jr.damaged = true; }", lo, wide, lo, wide))
+	} else {
+		if lo.Cmp(wmin) > 0 {
+			clamps = append(clamps, fmt.Sprintf("if x < %s%s { x = %s%s; jr.damaged = true; }", lo, wide, lo, wide))
+		}
+		if hi.Cmp(wmax) < 0 {
+			clamps = append(clamps, fmt.Sprintf("if x > %s%s { x = %s%s; jr.damaged = true; }", hi, wide, hi, wide))
+		}
 	}
 	if len(clamps) == 0 {
 		fmt.Fprintf(b, "%s    %s = %s;\n", in, dst, rustCastStmt("raw", "u128", t))

@@ -1,0 +1,3 @@
+# schema shared hostile-input corpus — line-oriented manifest
+# name	carrier	schema	table	input	provenance	verdict	reason	digest
+announce-newer-form	announce	tables/examples	PackConfig	inputs/announcement-newer-form.bin	bound: a form byte above the one this reader carries, on the announcement path	refuse	newer_form	-

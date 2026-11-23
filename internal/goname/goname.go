@@ -3,11 +3,13 @@
 // so `object_id` is the Go field ObjectID rather than ObjectId.
 //
 // It is Go-only by design. The other ports that borrow the PascalCase mapping
-// (C#, JavaScript) keep ir.GoExportName unchanged, and so does every
-// top-level name: a declaration is spelled by its author and named the same
-// way in all nine ports. The checker and the Go emitter both call Member, so
-// a collision the Go spelling creates (`object_id` beside `object_i_d`) is
-// refused rather than emitted.
+// (C#, JavaScript) keep ir.GoExportName unchanged. In Go every identifier of
+// the generated files, top-level names included, is respelled with the same
+// initialisms after emission (RespellFiles, RespellSource), so `ProbeId` is
+// the Go symbol ProbeID. The checker and the Go emitter both call Member, and
+// the checker claims every top-level name under its Initialisms spelling, so
+// a collision the Go spelling creates (`object_id` beside `object_i_d`, or
+// ProbeId beside ProbeID) is refused rather than emitted.
 package goname
 
 import "github.com/mas-bandwidth/schema/v2/ir"

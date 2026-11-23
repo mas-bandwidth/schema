@@ -11,13 +11,12 @@ static const ConformanceCodec codecs[] = {
 int conformance_write_refusal_set_scalars( const char * root, void * value, const char * path,
                                            const char * kind, const char * text )
 {
-    const long long n = strtoll( text, NULL, 10 );
     if ( strcmp( root, "SimState" ) == 0 && strcmp( kind, "int" ) == 0 )
     {
         scalardemo_sim_state_t * v = (scalardemo_sim_state_t *) value;
-        if ( strcmp( path, "ticks" ) == 0 ) { v->ticks = (int32_t) n; return 1; }
-        if ( strcmp( path, "angle" ) == 0 ) { v->angle = (int32_t) n; return 1; }
-        if ( strcmp( path, "speed" ) == 0 ) { v->speed = (uint32_t) n; return 1; }
+        if ( strcmp( path, "ticks" ) == 0 ) { return CONFORMANCE_WREF_SIGNED( v->ticks, text ); }
+        if ( strcmp( path, "angle" ) == 0 ) { return CONFORMANCE_WREF_SIGNED( v->angle, text ); }
+        if ( strcmp( path, "speed" ) == 0 ) { return CONFORMANCE_WREF_UNSIGNED( v->speed, text ); }
     }
     return 0;
 }

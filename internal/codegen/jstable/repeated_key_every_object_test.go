@@ -16,7 +16,8 @@ import (
 // A repeated key refuses the read in every object the text walks, whether the
 // key names a field, names no field, or sits inside a value the reader only
 // skips (docs/SPEC-TABLES.md §16.2, §16.12). The verdict is the contract; the
-// JavaScript leg and the engine must agree on it row by row.
+// JavaScript leg and the engine must agree on it row by row, and a read the
+// leg refuses answers a reason from report.err(), never null.
 func TestJavaScriptTextRepeatedKeyEveryObject(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "node")
@@ -75,7 +76,7 @@ const rows = JSON.parse(readFileSync("cases.json", "utf8"));
 for (const row of rows) {
   const report = new TableVariableReport();
   const value = RootFromJson(row.input, report);
-  console.log(JSON.stringify({ OK: value !== null }));
+  console.log(JSON.stringify({ OK: value !== null, Err: report.err() }));
 }
 `
 	if err := os.WriteFile(filepath.Join(dir, "repeat.mjs"), []byte(probe), 0o600); err != nil {
@@ -94,13 +95,20 @@ for (const row of rows) {
 	for i, c := range cases {
 		t.Run(c.Name, func(t *testing.T) {
 			var got struct {
-				OK bool
+				OK  bool
+				Err *string
 			}
 			if err := json.Unmarshal([]byte(lines[i]), &got); err != nil {
 				t.Fatal(err)
 			}
 			if got.OK != expected[i] {
 				t.Errorf("input %s\nnative: %v\nGo:     %v", c.Input, got.OK, expected[i])
+			}
+			if !got.OK && got.Err == nil {
+				t.Errorf("input %s: the read refused, and report.err() answers null", c.Input)
+			}
+			if got.OK && got.Err != nil {
+				t.Errorf("input %s: the read accepted, and report.err() answers %q", c.Input, *got.Err)
 			}
 		})
 	}

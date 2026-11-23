@@ -1,0 +1,16 @@
+package starlight
+
+table Waypoint
+{
+    name string(24)
+    x    float32
+    y    float32
+    next *Waypoint
+}
+
+table Route
+{
+    head  *Waypoint
+    stops [..4]*Waypoint
+    loops bool
+}

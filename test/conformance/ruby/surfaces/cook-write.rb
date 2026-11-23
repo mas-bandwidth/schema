@@ -3,14 +3,14 @@
 def self.run(manifest, outdir)
   instances = {}
   RubyConformance.entries(manifest, 'instance').each { |row| instances[row[1]] = row }
-  RubyConformance.entries(manifest, 'cook-write').each do |row|
+  RubyConformance.cases(manifest, 'cook-write') do |row|
     name, text, source, alias_name = row[1, 4]
     instance = instances[name]
     pkg = RubyConformance.unit_package(instance[2])
     cls = RubyConformance.root_class(instance[2], instance[3])
     if pkg.nil? || cls.nil? || !RubyConformance.fixed_carried?(pkg, cls)
-      RubyConformance.absent(outdir, name, 'unit not generated for ruby')
-      RubyConformance.absent(outdir, "#{name}-be", 'unit not generated for ruby')
+      RubyConformance.no_codec(outdir, name)
+      RubyConformance.no_codec(outdir, "#{name}-be")
       next
     end
     value = if text == '-'

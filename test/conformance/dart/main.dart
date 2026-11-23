@@ -149,6 +149,12 @@ import '../../../build/tables-generated-dart/cooktorture/CookTortureFixed.dart' 
 import '../../../build/tables-generated-dart/cooktorture/CookTortureCook.dart' as cooktorturecook;
 import '../../../build/tables-generated-dart-scalars/cooktorturewide/CookTortureWideWire.dart' as cooktorturewide;
 import '../../../build/tables-generated-dart-scalars/cooktorturewide/CookTortureWideCook.dart' as cooktorturewidecook;
+import '../../../build/tables-generated-dart/prior/TblpriorFixed.dart' as tblprior_fixed;
+import '../../../build/tables-generated-dart/prior/PriorNarrowFixed.dart' as prior_fixed;
+import '../../../build/tables-generated-dart-scalars/shapes/ShapesWire.dart' as shapes;
+import '../../../build/tables-generated-dart-scalars/shapes/ShapesFixed.dart' as shapes_fixed;
+import '../../../build/tables-generated-dart-scalars/shapes/Shapes.dart' as shapes_pkt;
+import '../../../build/tables-generated-dart-scalars/shapes/Int128.dart' as shapes_i128;
 
 // Decode JSON bytes before entering a generated String reader. The generated
 // reader owns the one leading byte-order mark skip (docs/SPEC-TABLES.md §16.2,
@@ -933,6 +939,67 @@ fixedevo_i128.UInt128 _w2fFixedEvoUInt128(BigInt b) {
 BigInt _f2wFixedEvoUInt128(fixedevo_i128.UInt128 x) =>
     (BigInt.from(x.hi).toUnsigned(64) << 64) | BigInt.from(x.lo).toUnsigned(64);
 
+shapes_i128.Int128 _w2fShapesInt128(BigInt b) {
+  final u = b.toUnsigned(128);
+  return shapes_i128.Int128((u >> 64).toSigned(64).toInt(), u.toSigned(64).toInt());
+}
+
+BigInt _f2wShapesInt128(shapes_i128.Int128 x) =>
+    ((BigInt.from(x.hi).toUnsigned(64) << 64) | BigInt.from(x.lo).toUnsigned(64)).toSigned(128);
+
+void _w2f_shapes_FixedBounds(shapes.FixedBounds w, shapes_fixed.FixedBounds f) {
+  f.tenth = w.tenth;
+  f.seventh = w.seventh;
+  f.ranged = w.ranged;
+  f.zero = w.zero;
+  f.nonzero = w.nonzero;
+  f.plain = w.plain;
+  f.wide = w.wide;
+  f.pinned = _w2fShapesInt128(w.pinned);
+  f.octetsCount = w.octets.length;
+  for (var i = 0; i < w.octets.length && i < f.octets.length; i++) f.octets[i] = w.octets[i];
+  f.shortsCount = w.shorts.length;
+  for (var i = 0; i < w.shorts.length && i < f.shorts.length; i++) f.shorts[i] = w.shorts[i];
+  f.recsCount = w.recs.length;
+  for (var i = 0; i < w.recs.length && i < f.recs.length; i++) {
+    f.recs[i].a = w.recs[i].a;
+    f.recs[i].b = w.recs[i].b;
+  }
+  f.pick.type = w.pick.armTag;
+  f.pick.small = w.pick.small;
+  f.pick.ratio = w.pick.ratio;
+  f.pick.on = w.pick.on;
+  f.tonesCount = w.tones.length;
+  for (var i = 0; i < w.tones.length && i < f.tones.length; i++) f.tones[i] = w.tones[i];
+  f.marksCount = w.marks.length;
+  for (var i = 0; i < w.marks.length && i < f.marks.length; i++) f.marks[i] = w.marks[i];
+}
+
+void _f2w_shapes_FixedBounds(shapes_fixed.FixedBounds f, shapes.FixedBounds w) {
+  w.tenth = f.tenth;
+  w.seventh = f.seventh;
+  w.ranged = f.ranged;
+  w.zero = f.zero;
+  w.nonzero = f.nonzero;
+  w.plain = f.plain;
+  w.wide = f.wide;
+  w.pinned = _f2wShapesInt128(f.pinned);
+  w.octets = List<int>.generate(f.octetsCount, (i) => f.octets[i]);
+  w.shorts = List<int>.generate(f.shortsCount, (i) => f.shorts[i]);
+  w.recs = List<shapes.Rec>.generate(f.recsCount, (i) {
+    final r = shapes.Rec();
+    r.a = f.recs[i].a;
+    r.b = f.recs[i].b;
+    return r;
+  });
+  w.pick.armTag = f.pick.type;
+  w.pick.small = f.pick.small;
+  w.pick.ratio = f.pick.ratio;
+  w.pick.on = f.pick.on;
+  w.tones = List<shapes_pkt.Tone>.generate(f.tonesCount, (i) => shapes_pkt.Tone(f.tones[i]));
+  w.marks = List<int>.generate(f.marksCount, (i) => f.marks[i]);
+}
+
 void _w2f_fixedevo_EvoSub(tblfixedevo.EvoSub w, tblfixedevo_fixed.EvoSub f) {
   f.x = w.x;
   _w2fUtf8(w.note, f.note, (n) => f.noteLength = n);
@@ -1227,10 +1294,10 @@ Uint8List? _fixedResave<T, P, R>(
   final values = <T>[create()];
   final report = newReport();
   if (load(values, 1, wire, wire.length, newPlan(), report) != 1 || refused(report)) {
-    return null;
+    throw StateError('refused');
   }
   final out = Uint8List(measure(1));
-  if (save(values, 1, out) < 0) return null;
+  if (save(values, 1, out) < 0) throw StateError('refused');
   return out;
 }
 
@@ -1287,10 +1354,7 @@ Uint8List? _wireResaveOne<T, R>(
   final v = load(wire, r);
   final (refused, refusal) = status(r);
   if (refused) {
-    if (refusal.startsWith('blob_shared')) {
-      throw StateError(refusal);
-    }
-    return null;
+    throw StateError(refusal.isEmpty ? 'refused' : refusal);
   }
   return save(v);
 }
@@ -2380,6 +2444,18 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
       return _fixedResave(wire, cooktorture_fixed.TortureFixedWref.new, cooktorture_fixed.tortureFixedWrefFixedNewPlan, cooktorture_fixed.TableFixedReport.new, (rep) => rep.refused != 0, cooktorture_fixed.tortureFixedWrefFixedLoad, cooktorture_fixed.tortureFixedWrefFixedMeasure, cooktorture_fixed.tortureFixedWrefFixedSave);
     case 'cooktorturewide TortureWideCook':
       return _wireResaveOne(wire, cooktorturewide.TableWireReport.new, (rep) => (rep.refused, rep.refusal), cooktorturewide.tortureWideCookWireLoad, cooktorturewide.tortureWideCookWireSave);
+    case 'shapes Bounds':
+      return _wireResaveOne(wire, shapes.TableWireReport.new, (rep) => (rep.refused, rep.refusal), shapes.boundsWireLoad, shapes.boundsWireSave);
+    case 'shapes FixedBounds':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = shapes.TableWireReport();
+        final w = shapes.fixedBoundsWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = shapes_fixed.FixedBounds();
+        _w2f_shapes_FixedBounds(w, f);
+        return _fixedSaveOne(f, shapes_fixed.fixedBoundsFixedMeasure, shapes_fixed.fixedBoundsFixedSave);
+      }
+      return _fixedResave(wire, shapes_fixed.FixedBounds.new, shapes_fixed.fixedBoundsFixedNewPlan, shapes_fixed.TableFixedReport.new, (rep) => rep.refused != 0, shapes_fixed.fixedBoundsFixedLoad, shapes_fixed.fixedBoundsFixedMeasure, shapes_fixed.fixedBoundsFixedSave);
     case 'listdemo Army':
       return _wireResaveOne(wire, listdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), listdemo.armyWireLoad, listdemo.armyWireSave);
     case 'listdemo Mixed':
@@ -2762,6 +2838,11 @@ Uint8List? jsonReadSave(String unit, String root, String text) {
       final v = mapdemo.docsFromJson(text, rep);
       if (rep.refused) return null;
       return mapdemo.docsWireSave(v);
+    case 'mapdemo EdgeRow':
+      final rep = mapdemo.TableTextReport();
+      final v = mapdemo.edgeRowFromJson(text, rep);
+      if (rep.refused) return null;
+      return mapdemo.edgeRowWireSave(v);
     case 'mapdemo Fleet':
       final rep = mapdemo.TableTextReport();
       final v = mapdemo.fleetFromJson(text, rep);
@@ -2834,6 +2915,18 @@ Uint8List? jsonReadSave(String unit, String root, String text) {
       final v = cooktorturewide.tortureWideCookFromJson(text, rep);
       if (rep.refused) return null;
       return cooktorturewide.tortureWideCookWireSave(v);
+    case 'shapes Bounds':
+      final rep = shapes.TableTextReport();
+      final v = shapes.boundsFromJson(text, rep);
+      if (rep.refused) return null;
+      return shapes.boundsWireSave(v);
+    case 'shapes FixedBounds':
+      final rep = shapes.TableTextReport();
+      final w = shapes.fixedBoundsFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = shapes_fixed.FixedBounds();
+      _w2f_shapes_FixedBounds(w, f);
+      return _fixedSaveOne(f, shapes_fixed.fixedBoundsFixedMeasure, shapes_fixed.fixedBoundsFixedSave);
     case 'listdemo Army':
       final rep = listdemo.TableTextReport();
       final v = listdemo.armyFromJson(text, rep);
@@ -3152,6 +3245,11 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
       final v = mapdemo.docsWireLoad(wire, rep);
       if (rep.refused) return null;
       return mapdemo.docsToJson(v);
+    case 'mapdemo EdgeRow':
+      final rep = mapdemo.TableWireReport();
+      final v = mapdemo.edgeRowWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return mapdemo.edgeRowToJson(v);
     case 'mapdemo Fleet':
       final rep = mapdemo.TableWireReport();
       final v = mapdemo.fleetWireLoad(wire, rep);
@@ -3229,6 +3327,23 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
       final v = cooktorturewide.tortureWideCookWireLoad(wire, rep);
       if (rep.refused) return null;
       return cooktorturewide.tortureWideCookToJson(v);
+    case 'shapes Bounds':
+      final rep = shapes.TableWireReport();
+      final v = shapes.boundsWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return shapes.boundsToJson(v);
+    case 'shapes FixedBounds':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = shapes.TableWireReport();
+        final w = shapes.fixedBoundsWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return shapes.fixedBoundsToJson(w);
+      }
+      final f = _fixedLoadOne(wire, shapes_fixed.FixedBounds.new, shapes_fixed.fixedBoundsFixedNewPlan, shapes_fixed.TableFixedReport.new, (rep) => rep.refused != 0, shapes_fixed.fixedBoundsFixedLoad);
+      if (f == null) return null;
+      final w = shapes.FixedBounds();
+      _f2w_shapes_FixedBounds(f, w);
+      return shapes.fixedBoundsToJson(w);
     case 'listdemo Army':
       final rep = listdemo.TableWireReport();
       final v = listdemo.armyWireLoad(wire, rep);
@@ -4442,10 +4557,10 @@ int surfaceWire(String outDir) {
     try {
       saved = wireResave(f[2], f[3], File(f[4]).readAsBytesSync());
     } on StateError catch (e) {
-      // a blob two slots name is refused by every writer
-      // (docs/SPEC-TABLES.md §2.5): the case's answer is that refusal
-      if (!e.message.startsWith('blob_shared')) rethrow;
-      File('$outDir/${f[1]}.absent').writeAsStringSync('blob_shared');
+      // a wire load or save refusal writes a non-empty .absent naming the
+      // reason (empty .absent is reserved for a missing codec)
+      final reason = e.message.isEmpty ? 'refused' : e.message;
+      File('$outDir/${f[1]}.absent').writeAsStringSync(reason);
       continue;
     }
     if (saved == null) {
@@ -4571,6 +4686,21 @@ String? jsonHostileReport(String unit, String root, String text) {
         r = mapdemo.TableTextReport();
         final v = mapdemo.depthFromJson(text, r);
         encode = () => mapdemo.depthToJson(v);
+        break;
+      case 'mapdemo EdgeRow':
+        r = mapdemo.TableTextReport();
+        final v = mapdemo.edgeRowFromJson(text, r);
+        encode = () => mapdemo.edgeRowToJson(v);
+        break;
+      case 'shapes Bounds':
+        r = shapes.TableTextReport();
+        final v = shapes.boundsFromJson(text, r);
+        encode = () => shapes.boundsToJson(v);
+        break;
+      case 'shapes FixedBounds':
+        r = shapes.TableTextReport();
+        final v = shapes.fixedBoundsFromJson(text, r);
+        encode = () => shapes.fixedBoundsToJson(v);
         break;
       case 'listdemo Army':
         r = listdemo.TableTextReport();
@@ -5274,6 +5404,18 @@ final Map<String, MessageCodec> messageRuns = {
     save: messages_fixed.toolMessageSaveMessages,
     damaged: (r) => r.refused,
   ),
+  'tblprior Prior': _messageRow<tblprior_fixed.Prior, tblprior_fixed.TableVocabulary, tblprior_fixed.TableReport>(
+    fresh: tblprior_fixed.Prior.new,
+    init: tblprior_fixed.initPrior,
+    vocabulary: () => tblprior_fixed.TableVocabulary(entries: _entries(() => tblprior_fixed.TableMessageEntry(0, 0))),
+    report: tblprior_fixed.TableReport.new,
+    own: () => _ownAnnouncement(tblprior_fixed.announceMeasure, tblprior_fixed.announce),
+    announceRead: tblprior_fixed.announceRead,
+    load: prior_fixed.priorLoadMessages,
+    measure: prior_fixed.priorMeasureMessages,
+    save: prior_fixed.priorSaveMessages,
+    damaged: (r) => r.refused,
+  ),
 };
 
 final Map<String, MessageCodec> messageFuzzRuns = {
@@ -5514,6 +5656,34 @@ int surfaceMessage(String outDir) {
   return 0;
 }
 
+int surfaceMessagePrior(String outDir) {
+  for (final f in kind('prior-message')) {
+    List<String>? conn;
+    for (final c in kind('prior-connection')) {
+      if (c[1] == f[2]) {
+        conn = c;
+        break;
+      }
+    }
+    if (conn == null) {
+      stderr.writeln('message-prior ${f[1]}: no prior-connection row ${f[2]}');
+      return 1;
+    }
+    final run = messageRuns['${conn[2]} ${f[3]}'];
+    if (run == null) {
+      File('$outDir/${f[1]}.absent').writeAsStringSync('');
+      continue;
+    }
+    final answer = run.batch(File(conn[4]).readAsBytesSync(), File(f[5]).readAsBytesSync());
+    if (answer == null) {
+      File('$outDir/${f[1]}.refused').writeAsStringSync('refused\n');
+      continue;
+    }
+    File('$outDir/${f[1]}').writeAsBytesSync(answer);
+  }
+  return 0;
+}
+
 const String surfaces =
     // wire, json-read, json-write and report answer the variable class for
     // graphdemo, blobdemo and listdemo (docs/SPEC-TABLES.md §3, §16.7), and
@@ -5523,10 +5693,11 @@ const String surfaces =
     // block-reason name each forgery's first failing clause (§7, §19.2). The
     // wire fuzzer's roots are another card's.
     ''
-    'wire\nmessage\nretain\nretain-save\njson-read\njson-write\njson-hostile\nreport\nframing\n'
+    'wire\nmessage\nmessage-prior\nretain\nretain-save\njson-read\njson-write\njson-hostile\nreport\nframing\n'
     'cook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\n'
     'forgery\ncook-forgery\ncook-reason\nblock-reason\n'
-    'write-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n';
+    'write-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n'
+    'unit shapes\n';
 
 void main(List<String> args) {
   if (args.isNotEmpty && args[0] == 'wire-fuzz') {
@@ -6080,6 +6251,8 @@ int run(List<String> args) {
       return surfaceWire(out);
     case 'message':
       return surfaceMessage(out);
+    case 'message-prior':
+      return surfaceMessagePrior(out);
     case 'retain':
       return surfaceRetain(out, false);
     case 'retain-save':
@@ -6299,10 +6472,43 @@ bool _mutateTortureCookWire(cooktorture.TortureCook w, String path, String vkind
     case 'str_arr[0] length':
       w.strArr[0].value = 'a' * int.parse(text);
       return true;
-    // SILENT-FAILURE ROWS: the variable Save's bits(N) width on every carrier
     case 'b_bits13 int':
       w.bBits13 = int.parse(text);
       return true;
+    case 'b_bits37 int':
+      w.bBits37 = int.parse(text);
+      return true;
+    case 'b_i32 int':
+      w.bI32 = int.parse(text);
+      return true;
+    case 'b_u8 int':
+      w.bU8 = int.parse(text);
+      return true;
+    case 'b_u64 int':
+      final big = BigInt.parse(text);
+      if (big < BigInt.zero || big > BigInt.parse('18446744073709551615')) return false;
+      w.bU64 = big.toSigned(64).toInt();
+      return true;
+    case 'bounded_steps count':
+      final n = int.parse(text);
+      while (w.boundedSteps.length < n) {
+        w.boundedSteps.add(cooktorture.StepAction());
+      }
+      if (w.boundedSteps.length > n) {
+        w.boundedSteps = w.boundedSteps.sublist(0, n);
+      }
+      return true;
+    case 'bounded_steps[0] tag':
+      w.boundedSteps[0].armTag = int.parse(text);
+      return true;
+    case 'bounded_steps[3].label length':
+      while (w.boundedSteps.length <= 3) {
+        w.boundedSteps.add(cooktorture.StepAction());
+      }
+      w.boundedSteps[3].armTag = 4;
+      w.boundedSteps[3].label = 'a' * int.parse(text);
+      return true;
+    // SILENT-FAILURE ROWS: the variable Save's bits(N) width on every carrier
     case 'opt_bits int':
       w.optBits = int.parse(text);
       w.hasOptBits = true;
@@ -6312,6 +6518,119 @@ bool _mutateTortureCookWire(cooktorture.TortureCook w, String path, String vkind
       return true;
     default:
       throw StateError('unsupported TortureCook mutation $path $vkind');
+  }
+}
+
+bool _mutateSceneWire(graphdemo.Scene w, String path, String vkind, String text) {
+  switch ('$path $vkind') {
+    case 'version int':
+      w.version = int.parse(text);
+      return true;
+    case 'ground.depth int':
+      w.ground.depth = int.parse(text);
+      return true;
+    case 'layers count':
+      final n = int.parse(text);
+      while (w.layers.length < n) {
+        w.layers.add(graphdemo.Layer());
+      }
+      if (w.layers.length > n) {
+        w.layers = w.layers.sublist(0, n);
+      }
+      return true;
+    case 'name length':
+      w.name = 'a' * int.parse(text);
+      return true;
+    default:
+      throw StateError('unsupported Scene mutation $path $vkind');
+  }
+}
+
+bool _mutateMixedWire(listdemo.Mixed w, String path, String vkind, String text) {
+  switch ('$path $vkind') {
+    case 'bounds[1] int':
+      w.bounds[1] = int.parse(text);
+      return true;
+    case 'grades[0] ordinal':
+      w.grades[0] = (int.parse(text) as dynamic);
+      return true;
+    case 'hits[0] tag':
+      w.hits[0].armTag = int.parse(text);
+      return true;
+    default:
+      throw StateError('unsupported Mixed mutation $path $vkind');
+  }
+}
+
+bool _mutateShapesBoundsWire(shapes.Bounds w, String path, String vkind, String text) {
+  switch ('$path $vkind') {
+    case 'tenth real':
+      w.tenth = _parseRefusalFloat(text);
+      return true;
+    case 'seventh real':
+      w.seventh = _parseRefusalFloat(text);
+      return true;
+    case 'ranged real':
+      w.ranged = _parseRefusalFloat(text);
+      return true;
+    case 'zero float':
+    case 'zero real':
+      w.zero = _parseRefusalFloat(text);
+      return true;
+    case 'octets count':
+      final n = int.parse(text);
+      while (w.octets.length < n) {
+        w.octets.add(0);
+      }
+      if (w.octets.length > n) {
+        w.octets = w.octets.sublist(0, n);
+      }
+      return true;
+    case 'recs count':
+      final n = int.parse(text);
+      while (w.recs.length < n) {
+        w.recs.add(shapes.Rec());
+      }
+      if (w.recs.length > n) {
+        w.recs = w.recs.sublist(0, n);
+      }
+      return true;
+    case 'tones[0] ordinal':
+      if (w.tones.isEmpty) w.tones.add(shapes_pkt.Tone.none);
+      w.tones[0] = shapes_pkt.Tone(int.parse(text));
+      return true;
+    case 'pick tag':
+      w.pick.armTag = int.parse(text);
+      return true;
+    default:
+      throw StateError('unsupported shapes.Bounds mutation $path $vkind');
+  }
+}
+
+void _mutateShapesFixedBoundsFixed(shapes_fixed.FixedBounds fx, String path, String vkind, String text) {
+  switch ('$path $vkind') {
+    case 'tenth real':
+      fx.tenth = _parseRefusalFloat(text);
+      break;
+    case 'seventh real':
+      fx.seventh = _parseRefusalFloat(text);
+      break;
+    case 'plain float':
+    case 'plain real':
+      fx.plain = _parseRefusalFloat(text);
+      break;
+    case 'octets count':
+      fx.octetsCount = int.parse(text);
+      break;
+    case 'recs count':
+      fx.recsCount = int.parse(text);
+      break;
+    case 'tones[0] ordinal':
+      if (fx.tonesCount < 1) fx.tonesCount = 1;
+      fx.tones[0] = int.parse(text);
+      break;
+    default:
+      throw StateError('unsupported shapes.FixedBounds fixed mutation $path $vkind');
   }
 }
 
@@ -6500,6 +6819,36 @@ int surfaceWriteRefusal(String outDir, String surface) {
             answer = _catchWrite(() => cooktorture.tortureFixedWrefToJson(w).isEmpty ? -1 : 0);
           }
           break;
+        case 'graphdemo Scene':
+          final rep = graphdemo.TableWireReport();
+          final w = graphdemo.sceneWireLoad(wire, rep);
+          if (rep.refused) return 1;
+          if (!_mutateSceneWire(w, path, vkind, text)) {
+            answer = 'unrepresentable';
+          } else {
+            answer = _catchWrite(() => graphdemo.sceneToJson(w).isEmpty ? -1 : 0);
+          }
+          break;
+        case 'listdemo Mixed':
+          final rep = listdemo.TableWireReport();
+          final w = listdemo.mixedWireLoad(wire, rep);
+          if (rep.refused) return 1;
+          if (!_mutateMixedWire(w, path, vkind, text)) {
+            answer = 'unrepresentable';
+          } else {
+            answer = _catchWrite(() => listdemo.mixedToJson(w).isEmpty ? -1 : 0);
+          }
+          break;
+        case 'shapes Bounds':
+          final rep = shapes.TableWireReport();
+          final w = shapes.boundsWireLoad(wire, rep);
+          if (rep.refused) return 1;
+          if (!_mutateShapesBoundsWire(w, path, vkind, text)) {
+            answer = 'unrepresentable';
+          } else {
+            answer = _catchWrite(() => shapes.boundsToJson(w).isEmpty ? -1 : 0);
+          }
+          break;
         default:
           stderr.writeln('$surface $name: unsupported $unit.$root');
           return 1;
@@ -6596,6 +6945,51 @@ int surfaceWriteRefusal(String outDir, String surface) {
           return cooktorture_fixed.tortureFixedWrefFixedSave(<cooktorture_fixed.TortureFixedWref>[fx], 1, out) == n ? 0 : -1;
         });
       }
+    } else if ('$unit $root' == 'graphdemo Scene') {
+      final rep = graphdemo.TableWireReport();
+      final w = graphdemo.sceneWireLoad(wire, rep);
+      if (rep.refused) return 1;
+      if (!_mutateSceneWire(w, path, vkind, text)) {
+        answer = 'unrepresentable';
+      } else {
+        answer = _catchWrite(() {
+          graphdemo.sceneWireSave(w);
+          return 0;
+        });
+      }
+    } else if ('$unit $root' == 'listdemo Mixed') {
+      final rep = listdemo.TableWireReport();
+      final w = listdemo.mixedWireLoad(wire, rep);
+      if (rep.refused) return 1;
+      if (!_mutateMixedWire(w, path, vkind, text)) {
+        answer = 'unrepresentable';
+      } else {
+        answer = _catchWrite(() {
+          listdemo.mixedWireSave(w);
+          return 0;
+        });
+      }
+    } else if ('$unit $root' == 'shapes Bounds') {
+      final rep = shapes.TableWireReport();
+      final w = shapes.boundsWireLoad(wire, rep);
+      if (rep.refused) return 1;
+      if (!_mutateShapesBoundsWire(w, path, vkind, text)) {
+        answer = 'unrepresentable';
+      } else {
+        answer = _catchWrite(() {
+          shapes.boundsWireSave(w);
+          return 0;
+        });
+      }
+    } else if ('$unit $root' == 'shapes FixedBounds') {
+      final fx = _fixedLoadOne(wire, shapes_fixed.FixedBounds.new, shapes_fixed.fixedBoundsFixedNewPlan, shapes_fixed.TableFixedReport.new, (rep) => rep.refused != 0, shapes_fixed.fixedBoundsFixedLoad);
+      if (fx == null) return 1;
+      _mutateShapesFixedBoundsFixed(fx, path, vkind, text);
+      answer = _catchWrite(() {
+        final n = shapes_fixed.fixedBoundsFixedMeasure(1);
+        final out = Uint8List(n);
+        return shapes_fixed.fixedBoundsFixedSave(<shapes_fixed.FixedBounds>[fx], 1, out) == n ? 0 : -1;
+      });
     } else if ('$unit $root' == 'backenddemo StorePurchase') {
       final fx = _fixedLoadOne(wire, backenddemo_fixed.StorePurchase.new, backend.storePurchaseFixedNewPlan, backenddemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, backend.storePurchaseFixedLoad);
       if (fx == null) return 1;

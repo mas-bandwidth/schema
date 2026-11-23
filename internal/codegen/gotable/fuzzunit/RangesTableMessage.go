@@ -1216,6 +1216,10 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
+					if tableMessageOverMax(n, entry.Shape) {
+						r.Report.Refuse(TableRefuseCountOverBound, "RangedSigned.edges")
+						return false
+					}
 					if entry.Element.Kind == 6 && !r.Bits.Align() {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
@@ -1277,7 +1281,7 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 				return false
 			}
 			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
+			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0, true) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -2519,6 +2523,10 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
+					if tableMessageOverMax(n, entry.Shape) {
+						r.Report.Refuse(TableRefuseCountOverBound, "RangedUnsigned.counts")
+						return false
+					}
 					if entry.Element.Kind == 6 && !r.Bits.Align() {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
@@ -2580,7 +2588,7 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 				return false
 			}
 			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
+			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0, true) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -3108,7 +3116,7 @@ func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, st
 				return false
 			}
 			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
+			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0, true) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}

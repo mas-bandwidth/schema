@@ -202,7 +202,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
       end)
 
     rec
-    |> Enum.flat_map(fn {fid, {decl_idx, raw, rule, sub}} ->
+    |> Enum.flat_map(fn {fid, {decl_idx, raw, rule, sub, _range}} ->
       case Map.get(to_lookup.by_raw, raw) do
         {to_ref, te} ->
           case Map.fetch(present, fid) do
@@ -581,7 +581,10 @@ const messageBatchRuntimeBody = `  @batch_max 256
       # DAMAGE ANYWHERE IN THE BATCH DISCARDS THE WHOLE BATCH
       # (docs/SPEC-TABLES.md §3.3, §4): no body is delivered and the count is
       # zero, for damage inside a body and for "BYTES AFTER THE PAD" alike.
-      r = {bytes_to_int(rest), 0, bit_size(rest)}
+      # THE READER READS THE BINARY AT A MOVING BIT OFFSET: it never turns the
+      # batch into one integer, so a read costs the bits it reads and a
+      # hostile batch's trailing bytes cost nothing (ELIXIR-5).
+      r = {rest, 0, bit_size(rest)}
 
       case read_bodies(vocab, r, count, [], own_record(vocab)) do
         {:ok, bodies, r} ->
@@ -1002,7 +1005,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
   # align that precedes a string or a bytes array guarantees.
   defp put_bytes({acc, nbits}, bytes) do
     n = byte_size(bytes)
-    {acc ||| bytes_to_int(bytes) <<< nbits, nbits + n * 8}
+    {acc ||| :binary.decode_unsigned(bytes, :little) <<< nbits, nbits + n * 8}
   end
 
   # ---------------------------------------------------------------------------
@@ -1075,7 +1078,8 @@ const messageBatchRuntimeBody = `  @batch_max 256
                            sub_of(decl)
                          ),
                        false <- entry.kind == 15 and value == :none,
-                       false <- stored_at_default?(vocab, decl, value) do
+                       false <- stored_at_default?(vocab, decl, value),
+                       true <- held?(rec, entry.id, value) do
                     seen = MapSet.put(seen, entry.id)
                     last = next_last(decl, last)
 
@@ -1117,7 +1121,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
       nil ->
         if own_build?(vocab), do: :undeclared, else: :skip
 
-      {index, raw, rule, sub} ->
+      {index, raw, rule, sub, _range} ->
         if own_build?(vocab) do
           exact = raw == Map.get(entry, :raw)
 
@@ -1125,8 +1129,49 @@ const messageBatchRuntimeBody = `  @batch_max 256
             do: :out_of_order,
             else: {:ok, {index, exact, rule, sub}}
         else
-          {:ok, {index, false, rule, sub}}
+          if peer_kind_compatible?(entry.kind, raw) do
+            {:ok, {index, false, rule, sub}}
+          else
+            :kind_mismatch
+          end
         end
+    end
+  end
+
+  defp peer_kind_compatible?(from, raw) do
+    case :binary.encode_unsigned(raw) do
+      <<1, _id::little-unsigned-64, to, _::binary>> ->
+        from == to or
+          (from >= 2 and from <= 5 and ((to > from and to <= 5) or to == 18)) or
+          (from >= 6 and from <= 9 and ((to > from and to <= 9) or to == 19)) or
+          (from >= 20 and from <= 24 and to > from and to <= 24) or
+          (from >= 25 and from <= 29 and to > from and to <= 29) or
+          (from == 10 and to == 11)
+
+      _ ->
+        true
+    end
+  end
+
+  # THE READ HOLDS THIS READER'S OWN DECLARED RANGE (docs/SPEC-TABLES.md §3.3,
+  # §4). A ranged integer rides as its offset from the announced base in the
+  # announced bits, and those bits can spell a value past the bound this
+  # record declares: "min = 1, max = 9" rides in four bits, which spell 1..16.
+  # A value its own declaration does not admit refuses the batch, at any
+  # depth and whatever the record holding this one declares, as it does on a
+  # file (the Go engine's messagedecode.go holds the same; test/tables/inner,
+  # the inner-message-*-range-past-max rows). An integer array's elements are
+  # held the same way.
+  defp held?(rec, id, value) do
+    case Map.get(rec, id) do
+      {_index, _raw, _rule, _sub, {:each, lo, hi}} ->
+        is_list(value) and Enum.all?(value, &(is_integer(&1) and &1 >= lo and &1 <= hi))
+
+      {_index, _raw, _rule, _sub, {lo, hi}} ->
+        is_integer(value) and value >= lo and value <= hi
+
+      _ ->
+        true
     end
   end
 
@@ -1548,8 +1593,8 @@ const messageBatchRuntimeBody = `  @batch_max 256
     end
   end
 
-  defp bits_left({_int, off, total}) when total > off, do: total - off
-  defp bits_left({_int, _off, _total}), do: 0
+  defp bits_left({_bin, off, total}) when total > off, do: total - off
+  defp bits_left({_bin, _off, _total}), do: 0
 
   defp read_union(vocab, r, depth, sub) do
     case get_bits(r, vocab.ref_bits) do
@@ -1648,21 +1693,36 @@ const messageBatchRuntimeBody = `  @batch_max 256
   defp bit_mask(0), do: 0
   defp bit_mask(n), do: (1 <<< n) - 1
 
-  defp get_bits({int, off, total}, n) do
+  # THE READER'S STATE is {batch, bit offset, bit count}: the batch binary
+  # itself, never an integer made of it. Bit i of the stream is bit i rem 8 of
+  # byte i div 8 (low bit first, docs/SPEC-TABLES.md §3.3), so n bits at off
+  # are the little-endian integer of the bytes they span, shifted down by
+  # off rem 8: a sub-binary match and a decode of those bytes alone.
+  defp get_bits({bin, off, total}, n) do
     if off + n > total do
       :error
     else
-      {:ok, int >>> off &&& bit_mask(n), {int, off + n, total}}
+      {:ok, peek_bits(bin, off, n), {bin, off + n, total}}
     end
   end
 
-  defp align({int, off, total}) do
+  defp peek_bits(_bin, _off, 0), do: 0
+
+  defp peek_bits(bin, off, n) do
+    first = div(off, 8)
+    shift = rem(off, 8)
+    span = div(shift + n + 7, 8)
+    <<_::binary-size(^first), window::binary-size(^span), _::binary>> = bin
+    :binary.decode_unsigned(window, :little) >>> shift &&& bit_mask(n)
+  end
+
+  defp align({bin, off, total}) do
     pad = rem(8 - rem(off, 8), 8)
 
-    if off + pad > total or (int >>> off &&& bit_mask(pad)) != 0 do
+    if off + pad > total or peek_bits(bin, off, pad) != 0 do
       :error
     else
-      {:ok, {int, off + pad, total}}
+      {:ok, {bin, off + pad, total}}
     end
   end
 
@@ -1671,16 +1731,18 @@ const messageBatchRuntimeBody = `  @batch_max 256
   # 0..(n - 1) with no step is the descending range 0..-1 when n is 0, and that
   # range walks two bytes. Positive lengths step //1. A run past the batch
   # stays :error.
-  defp take_bytes({_int, _off, _total} = r, 0), do: {:ok, <<>>, r}
+  defp take_bytes({_bin, _off, _total} = r, 0), do: {:ok, <<>>, r}
 
-  defp take_bytes({int, off, total}, n) when is_integer(n) and n > 0 do
+  # The bytes are copied out of the batch, so a delivered text never holds
+  # the whole batch alive.
+  defp take_bytes({bin, off, total}, n) when is_integer(n) and n > 0 do
     need = n * 8
 
     if off + need > total do
       :error
     else
-      bytes = for i <- 0..(n - 1)//1, into: <<>>, do: <<int >>> (off + 8 * i) &&& 0xFF>>
-      {:ok, bytes, {int, off + need, total}}
+      bytes = :binary.copy(binary_part(bin, div(off, 8), n))
+      {:ok, bytes, {bin, off + need, total}}
     end
   end
 
@@ -1694,9 +1756,9 @@ const messageBatchRuntimeBody = `  @batch_max 256
 
   # The batch ends at the pad to the byte boundary: no more than seven bits left,
   # and all of them zero (docs/SPEC-TABLES.md §3.3).
-  defp batch_ends_clean?({int, off, total}) do
+  defp batch_ends_clean?({bin, off, total}) do
     rem_bits = total - off
-    rem_bits < 8 and (rem_bits == 0 or (int >>> off &&& bit_mask(rem_bits)) == 0)
+    rem_bits < 8 and peek_bits(bin, off, rem_bits) == 0
   end
 
   defp int_to_bytes(_int, 0), do: <<>>
@@ -1704,12 +1766,6 @@ const messageBatchRuntimeBody = `  @batch_max 256
   defp int_to_bytes(int, nbytes) do
     for i <- 0..(nbytes - 1), into: <<>>, do: <<int >>> (8 * i) &&& 0xFF>>
   end
-
-  defp bytes_to_int(bin), do: bytes_to_int(bin, 0, 0)
-  defp bytes_to_int(<<>>, _i, acc), do: acc
-
-  defp bytes_to_int(<<b, rest::binary>>, i, acc),
-    do: bytes_to_int(rest, i + 1, acc ||| b <<< (8 * i))
 
   defp bit_length(0), do: 0
   defp bit_length(n), do: bit_length(n, 0)
@@ -2538,6 +2594,9 @@ const messageRuntimeBody = `  defstruct announced: false,
 //	{:counted, born, e}   no element, or the born count all at e
 //	{:fixed, e}           every element at e
 //	:zero_ref             an enum or a union element at reference 0
+//
+// A field's entry is {index, raw, rule, sub, range}; range is the declared
+// integer range the read holds the field's value to (messageReadRange), or nil.
 func messageRecords(u *ir.Unit) (string, bool) {
 	closure := tablewire.MessageClosure(u)
 	names := make([]string, 0, len(closure))
@@ -2559,7 +2618,7 @@ func messageRecords(u *ir.Unit) (string, bool) {
 		for i, f := range st.Fields {
 			e := ir.TableFieldEntry(f)
 			// the entry's bytes behind a leading 1, as one integer (entry/1's :raw)
-			fields = append(fields, fmt.Sprintf("0x%016X => {%d, 0x01%X, %s, %s}", e.Id, i, e.Encode(nil), messageFieldRule(f), messageSub(f, unions)))
+			fields = append(fields, fmt.Sprintf("0x%016X => {%d, 0x01%X, %s, %s, %s}", e.Id, i, e.Encode(nil), messageFieldRule(f), messageSub(f, unions), messageReadRange(f)))
 		}
 		records = append(records, fmt.Sprintf("%q => %%{%s}", name, strings.Join(fields, ", ")))
 	}
@@ -2607,6 +2666,25 @@ func messageRecords(u *ir.Unit) (string, bool) {
 const messageArmSubUnion = "  defp arm_sub({:union, name}, id) do\n    case @message_unions |> Map.get(name, %{}) |> Map.get(id) do\n      {_raw, sub} -> sub\n      _ -> nil\n    end\n  end\n\n"
 const messageArmRawUnion = "  defp arm_raw({:union, name}, id) do\n    case @message_unions |> Map.get(name, %{}) |> Map.get(id) do\n      {raw, _sub} -> raw\n      _ -> nil\n    end\n  end\n\n"
 const messageArmKnownUnion = "  defp arm_known?({:union, name}, id),\n    do: @message_unions |> Map.get(name, %{}) |> Map.has_key?(id)\n\n"
+
+// messageReadRange is the declared integer range a message read holds field
+// f's value to (held?/3): `{lo, hi}` on the raw scale for a ranged integer,
+// bits(N) or fixed-point leaf, `{:each, lo, hi}` for a counted or fixed array
+// of them, and nil for every other field, an enum-keyed array included. Only a
+// DECLARED range is held here, as the Go engine's message read holds it.
+func messageReadRange(f *ir.Field) string {
+	if !f.HasIntRange || f.IsMap() || f.Type.Pointer || f.KeyEnum != "" {
+		return "nil"
+	}
+	lo, hi, ok := messageIntBounds(f)
+	if !ok {
+		return "nil"
+	}
+	if f.Array != ir.ArrayNone {
+		return fmt.Sprintf("{:each, %s, %s}", lo.String(), hi.String())
+	}
+	return fmt.Sprintf("{%s, %s}", lo.String(), hi.String())
+}
 
 // messageSub is what a body under field f is read against: a record's name, a
 // union's arms by name, or nil.

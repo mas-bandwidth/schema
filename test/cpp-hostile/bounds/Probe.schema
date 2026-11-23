@@ -1,0 +1,21 @@
+package boundsprobe
+
+// The FOREIGN BUILD the C++ resource-bounds test reads with tables/scalars'
+// reader (make/cpp-hostile-bounds.mk). Its announcement is lawful and carries
+// what the scalardemo reader does not name: a nested table (kind 13) and an
+// array of them with a large max, so a batch can nest unknown bodies to the
+// skip walk's depth bound and skip a million empty element bodies. Its
+// `position` shares SimState's field id at kind 23, so the test can patch the
+// announced width and base to aim a ranged read past the kind's domain.
+
+type Inner
+{
+    v int32 | min = 0, max = 10
+}
+
+fixed table Root
+{
+    inner    Inner
+    items    [..1048576]Inner
+    position fixed(48, 16) | min = 0, max = 1
+}

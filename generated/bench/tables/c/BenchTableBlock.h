@@ -53,33 +53,42 @@ extern "C" {
 #define SCHEMA_BENCHTABLE_TABLE_ALLOCATOR_RUNTIME
 #ifndef schema_allocate
 #include <stdlib.h>
-#define schema_allocate(bytes) calloc(1,(size_t)(bytes))
+#define schema_allocate( bytes ) calloc( 1, (size_t) ( bytes ) )
 #endif
 #ifndef schema_release
 #include <stdlib.h>
-#define schema_release(pointer) free(pointer)
+#define schema_release( pointer ) free( pointer )
 #endif
 typedef struct benchtable_table_allocator_t
 {
-    void * (*alloc)(void * context,int64_t bytes);
-    void (*free)(void * context,void * pointer);
+    void * ( *alloc )( void * context, int64_t bytes );
+    void ( *free )( void * context, void * pointer );
     void * context;
 } benchtable_table_allocator_t;
-static SCHEMA_UNUSED void * benchtable_table_default_allocate(void * context,int64_t bytes)
-{ (void)context; return bytes>0 && (uint64_t)bytes<=SIZE_MAX ? schema_allocate(bytes) : NULL; }
-static SCHEMA_UNUSED void benchtable_table_default_release(void * context,void * pointer)
-{ (void)context; schema_release(pointer); }
-static SCHEMA_UNUSED benchtable_table_allocator_t benchtable_table_default_allocator(void)
+static SCHEMA_UNUSED void * benchtable_table_default_allocate( void * context, int64_t bytes )
 {
-    benchtable_table_allocator_t allocator={benchtable_table_default_allocate,benchtable_table_default_release,NULL}; return allocator;
+    (void) context;
+    return bytes > 0 && (uint64_t) bytes <= SIZE_MAX ? schema_allocate( bytes ) : NULL;
 }
-static SCHEMA_UNUSED void * benchtable_table_allocate(benchtable_table_allocator_t allocator,int64_t bytes)
+static SCHEMA_UNUSED void benchtable_table_default_release( void * context, void * pointer )
 {
-    if(allocator.alloc==NULL || allocator.free==NULL || bytes<=0 || (uint64_t)bytes>SIZE_MAX) { return NULL; }
-    return allocator.alloc(allocator.context,bytes);
+    (void) context;
+    schema_release( pointer );
 }
-static SCHEMA_UNUSED void benchtable_table_release(benchtable_table_allocator_t allocator,void * pointer)
-{ if(allocator.free!=NULL) { allocator.free(allocator.context,pointer); } }
+static SCHEMA_UNUSED benchtable_table_allocator_t benchtable_table_default_allocator( void )
+{
+    benchtable_table_allocator_t allocator = { benchtable_table_default_allocate, benchtable_table_default_release, NULL };
+    return allocator;
+}
+static SCHEMA_UNUSED void * benchtable_table_allocate( benchtable_table_allocator_t allocator, int64_t bytes )
+{
+    if ( allocator.alloc == NULL || allocator.free == NULL || bytes <= 0 || (uint64_t) bytes > SIZE_MAX ) { return NULL; }
+    return allocator.alloc( allocator.context, bytes );
+}
+static SCHEMA_UNUSED void benchtable_table_release( benchtable_table_allocator_t allocator, void * pointer )
+{
+    if ( allocator.free != NULL ) { allocator.free( allocator.context, pointer ); }
+}
 #endif
 #ifndef SCHEMA_BENCHTABLE_BLOCK_PRIMITIVES
 #define SCHEMA_BENCHTABLE_BLOCK_PRIMITIVES
@@ -109,8 +118,16 @@ typedef benchtable_table_allocator_t benchtable_table_block_allocator_t;
 
 /* The default triple, for a caller that has no allocator of its own to hand
    in. Nothing in the generated surface reaches for it: a caller names it. */
-static SCHEMA_UNUSED void * benchtable_table_block_default_alloc( void * context, int64_t bytes ) { (void) context; return bytes>0 && (uint64_t)bytes<=SIZE_MAX ? schema_allocate(bytes) : NULL; }
-static SCHEMA_UNUSED void benchtable_table_block_default_free( void * context, void * pointer ) { (void) context; schema_release( pointer ); }
+static SCHEMA_UNUSED void * benchtable_table_block_default_alloc( void * context, int64_t bytes )
+{
+    (void) context;
+    return bytes > 0 && (uint64_t) bytes <= SIZE_MAX ? schema_allocate( bytes ) : NULL;
+}
+static SCHEMA_UNUSED void benchtable_table_block_default_free( void * context, void * pointer )
+{
+    (void) context;
+    schema_release( pointer );
+}
 
 static SCHEMA_UNUSED benchtable_table_block_allocator_t benchtable_table_block_default_allocator( void )
 {
@@ -159,9 +176,13 @@ static SCHEMA_UNUSED void * benchtable_table_block_row_at( const benchtable_tabl
     return (void *) ( rows->base + (ptrdiff_t) index * rows->stride );
 }
 
-typedef struct benchtable_table_block_const_rows_t { const uint8_t * base; int32_t count, stride; } benchtable_table_block_const_rows_t;
-static SCHEMA_UNUSED const void * benchtable_table_block_row_at_const(const benchtable_table_block_const_rows_t * rows,int32_t index)
-{ return rows->base+(ptrdiff_t)index*rows->stride; }
+typedef struct benchtable_table_block_const_rows_t
+{
+    const uint8_t * base;
+    int32_t count, stride;
+} benchtable_table_block_const_rows_t;
+static SCHEMA_UNUSED const void * benchtable_table_block_row_at_const( const benchtable_table_block_const_rows_t * rows, int32_t index )
+{ return rows->base + (ptrdiff_t) index * rows->stride; }
 
 /* ---- reflection over a block (docs/SPEC-TABLES.md §8, §19.2) ----
 
@@ -229,9 +250,7 @@ static SCHEMA_UNUSED const uint64_t benchtable_table_block_magic = 0x4b4c42414d4
 
 static SCHEMA_UNUSED uint64_t benchtable_table_block_byteswap64( uint64_t v )
 {
-    return ( v >> 56 ) | ( ( v >> 40 ) & 0xff00ull ) | ( ( v >> 24 ) & 0xff0000ull ) | ( ( v >> 8 ) & 0xff000000ull )
-         | ( ( v << 8 ) & 0xff00000000ull ) | ( ( v << 24 ) & 0xff0000000000ull ) | ( ( v << 40 ) & 0xff000000000000ull )
-         | ( v << 56 );
+    return ( v >> 56 ) | ( ( v >> 40 ) & 0xff00ull ) | ( ( v >> 24 ) & 0xff0000ull ) | ( ( v >> 8 ) & 0xff000000ull ) | ( ( v << 8 ) & 0xff00000000ull ) | ( ( v << 24 ) & 0xff0000000000ull ) | ( ( v << 40 ) & 0xff000000000000ull ) | ( v << 56 );
 }
 
 /* the prologue read BYTEWISE: the magic is the one field read without assuming
@@ -243,8 +262,12 @@ static SCHEMA_UNUSED uint64_t benchtable_table_block_read64( const uint8_t * p )
     return v;
 }
 
-static SCHEMA_UNUSED uint32_t benchtable_table_block_read32(const uint8_t * p)
-{ uint32_t value; memcpy(&value,p,4); return value; }
+static SCHEMA_UNUSED uint32_t benchtable_table_block_read32( const uint8_t * p )
+{
+    uint32_t value;
+    memcpy( &value, p, 4 );
+    return value;
+}
 
 static SCHEMA_UNUSED int64_t benchtable_table_block_align( int64_t offset, int64_t alignment )
 {
@@ -290,7 +313,11 @@ static SCHEMA_UNUSED int benchtable_table_entity_block_storage_create( benchtabl
     uintptr_t raw;
     storage->allocator = *from;
     storage->allocation = storage->allocator.alloc( storage->allocator.context, SCHEMA_BENCHTABLE_TABLE_ENTITY_BLOCK_MAX_BYTES + 63 );
-    if ( storage->allocation == NULL ) { storage->base = NULL; return 0; }
+    if ( storage->allocation == NULL )
+    {
+        storage->base = NULL;
+        return 0;
+    }
     raw = (uintptr_t) storage->allocation;
     storage->base = (uint8_t *) ( ( raw + 63 ) & ~(uintptr_t) 63 );
     return 1;
@@ -342,8 +369,13 @@ typedef struct benchtable_table_entity_block_t
     int64_t bytes;                     /* the extent in use */
 } benchtable_table_entity_block_t;
 
-typedef struct benchtable_table_entity_block_const_t { const uint8_t * base; const benchtable_table_entity_block_projection_t * projection; int64_t bytes; } benchtable_table_entity_block_const_t;
-static SCHEMA_UNUSED int64_t benchtable_table_entity_block_bytes_const(const benchtable_table_entity_block_const_t * block) { return block->bytes; }
+typedef struct benchtable_table_entity_block_const_t
+{
+    const uint8_t * base;
+    const benchtable_table_entity_block_projection_t * projection;
+    int64_t bytes;
+} benchtable_table_entity_block_const_t;
+static SCHEMA_UNUSED int64_t benchtable_table_entity_block_bytes_const( const benchtable_table_entity_block_const_t * block ) { return block->bytes; }
 /* this table's block descriptors (docs/SPEC-TABLES.md §8, §19.2): constant
    data, defined in the .c beside this header. A consumer holding this reads
    the triples out of an instance and points at rows, with no hand-written
@@ -397,7 +429,8 @@ SCHEMA_TABLE_STATIC_ASSERT( benchtable_TableEntity_projection_firing, offsetof( 
 static SCHEMA_UNUSED int benchtable_table_entity_block_begin( benchtable_table_entity_block_t * block, benchtable_table_entity_block_storage_t * storage, const benchtable_table_entity_counts_t * counts, benchtable_table_block_refusal_t * refusal )
 {
     int64_t offset;
-    (void) counts; (void) refusal; /* no out-of-line array: no count to refuse */
+    (void) counts;
+    (void) refusal; /* no out-of-line array: no count to refuse */
     if ( storage->base == NULL ) { return 0; } /* Create was not called, or the allocator refused */
     block->base = storage->base;
     block->projection = (benchtable_table_entity_block_projection_t *) (void *) storage->base;
@@ -445,14 +478,14 @@ static SCHEMA_UNUSED int benchtable_table_entity_block_open( benchtable_table_en
     return schema_benchtable_table_entity_block_open_( block, base, bytes );
 }
 
-int schema_benchtable_table_entity_block_open_ex_(benchtable_table_entity_block_t * block,void * base,int64_t bytes,benchtable_table_refuse_reason_t * reason);
-static SCHEMA_UNUSED int benchtable_table_entity_block_open_ex(benchtable_table_entity_block_t * block,void * base,int64_t bytes,benchtable_table_refuse_reason_t * reason)
-{ return schema_benchtable_table_entity_block_open_ex_(block,base,bytes,reason); }
-int schema_benchtable_table_entity_block_open_const_ex_(benchtable_table_entity_block_const_t * block,const void * base,int64_t bytes,benchtable_table_refuse_reason_t * reason);
-static SCHEMA_UNUSED int benchtable_table_entity_block_open_const_ex(benchtable_table_entity_block_const_t * block,const void * base,int64_t bytes,benchtable_table_refuse_reason_t * reason)
-{ return schema_benchtable_table_entity_block_open_const_ex_(block,base,bytes,reason); }
-static SCHEMA_UNUSED int benchtable_table_entity_block_open_const(benchtable_table_entity_block_const_t * block,const void * base,int64_t bytes)
-{ return schema_benchtable_table_entity_block_open_const_ex_(block,base,bytes,NULL); }
+int schema_benchtable_table_entity_block_open_ex_( benchtable_table_entity_block_t * block, void * base, int64_t bytes, benchtable_table_refuse_reason_t * reason );
+static SCHEMA_UNUSED int benchtable_table_entity_block_open_ex( benchtable_table_entity_block_t * block, void * base, int64_t bytes, benchtable_table_refuse_reason_t * reason )
+{ return schema_benchtable_table_entity_block_open_ex_( block, base, bytes, reason ); }
+int schema_benchtable_table_entity_block_open_const_ex_( benchtable_table_entity_block_const_t * block, const void * base, int64_t bytes, benchtable_table_refuse_reason_t * reason );
+static SCHEMA_UNUSED int benchtable_table_entity_block_open_const_ex( benchtable_table_entity_block_const_t * block, const void * base, int64_t bytes, benchtable_table_refuse_reason_t * reason )
+{ return schema_benchtable_table_entity_block_open_const_ex_( block, base, bytes, reason ); }
+static SCHEMA_UNUSED int benchtable_table_entity_block_open_const( benchtable_table_entity_block_const_t * block, const void * base, int64_t bytes )
+{ return schema_benchtable_table_entity_block_open_const_ex_( block, base, bytes, NULL ); }
 /* ---- the block form of table TableEntity: end ---- */
 
 /* ---- the block form of table TableStat (docs/SPEC-TABLES.md §19): begin ---- */
@@ -488,7 +521,11 @@ static SCHEMA_UNUSED int benchtable_table_stat_block_storage_create( benchtable_
     uintptr_t raw;
     storage->allocator = *from;
     storage->allocation = storage->allocator.alloc( storage->allocator.context, SCHEMA_BENCHTABLE_TABLE_STAT_BLOCK_MAX_BYTES + 63 );
-    if ( storage->allocation == NULL ) { storage->base = NULL; return 0; }
+    if ( storage->allocation == NULL )
+    {
+        storage->base = NULL;
+        return 0;
+    }
     raw = (uintptr_t) storage->allocation;
     storage->base = (uint8_t *) ( ( raw + 63 ) & ~(uintptr_t) 63 );
     return 1;
@@ -528,8 +565,13 @@ typedef struct benchtable_table_stat_block_t
     int64_t bytes;                     /* the extent in use */
 } benchtable_table_stat_block_t;
 
-typedef struct benchtable_table_stat_block_const_t { const uint8_t * base; const benchtable_table_stat_block_projection_t * projection; int64_t bytes; } benchtable_table_stat_block_const_t;
-static SCHEMA_UNUSED int64_t benchtable_table_stat_block_bytes_const(const benchtable_table_stat_block_const_t * block) { return block->bytes; }
+typedef struct benchtable_table_stat_block_const_t
+{
+    const uint8_t * base;
+    const benchtable_table_stat_block_projection_t * projection;
+    int64_t bytes;
+} benchtable_table_stat_block_const_t;
+static SCHEMA_UNUSED int64_t benchtable_table_stat_block_bytes_const( const benchtable_table_stat_block_const_t * block ) { return block->bytes; }
 /* this table's block descriptors (docs/SPEC-TABLES.md §8, §19.2): constant
    data, defined in the .c beside this header. A consumer holding this reads
    the triples out of an instance and points at rows, with no hand-written
@@ -571,7 +613,8 @@ SCHEMA_TABLE_STATIC_ASSERT( benchtable_TableStat_projection_delta, offsetof( ben
 static SCHEMA_UNUSED int benchtable_table_stat_block_begin( benchtable_table_stat_block_t * block, benchtable_table_stat_block_storage_t * storage, const benchtable_table_stat_counts_t * counts, benchtable_table_block_refusal_t * refusal )
 {
     int64_t offset;
-    (void) counts; (void) refusal; /* no out-of-line array: no count to refuse */
+    (void) counts;
+    (void) refusal; /* no out-of-line array: no count to refuse */
     if ( storage->base == NULL ) { return 0; } /* Create was not called, or the allocator refused */
     block->base = storage->base;
     block->projection = (benchtable_table_stat_block_projection_t *) (void *) storage->base;
@@ -619,14 +662,14 @@ static SCHEMA_UNUSED int benchtable_table_stat_block_open( benchtable_table_stat
     return schema_benchtable_table_stat_block_open_( block, base, bytes );
 }
 
-int schema_benchtable_table_stat_block_open_ex_(benchtable_table_stat_block_t * block,void * base,int64_t bytes,benchtable_table_refuse_reason_t * reason);
-static SCHEMA_UNUSED int benchtable_table_stat_block_open_ex(benchtable_table_stat_block_t * block,void * base,int64_t bytes,benchtable_table_refuse_reason_t * reason)
-{ return schema_benchtable_table_stat_block_open_ex_(block,base,bytes,reason); }
-int schema_benchtable_table_stat_block_open_const_ex_(benchtable_table_stat_block_const_t * block,const void * base,int64_t bytes,benchtable_table_refuse_reason_t * reason);
-static SCHEMA_UNUSED int benchtable_table_stat_block_open_const_ex(benchtable_table_stat_block_const_t * block,const void * base,int64_t bytes,benchtable_table_refuse_reason_t * reason)
-{ return schema_benchtable_table_stat_block_open_const_ex_(block,base,bytes,reason); }
-static SCHEMA_UNUSED int benchtable_table_stat_block_open_const(benchtable_table_stat_block_const_t * block,const void * base,int64_t bytes)
-{ return schema_benchtable_table_stat_block_open_const_ex_(block,base,bytes,NULL); }
+int schema_benchtable_table_stat_block_open_ex_( benchtable_table_stat_block_t * block, void * base, int64_t bytes, benchtable_table_refuse_reason_t * reason );
+static SCHEMA_UNUSED int benchtable_table_stat_block_open_ex( benchtable_table_stat_block_t * block, void * base, int64_t bytes, benchtable_table_refuse_reason_t * reason )
+{ return schema_benchtable_table_stat_block_open_ex_( block, base, bytes, reason ); }
+int schema_benchtable_table_stat_block_open_const_ex_( benchtable_table_stat_block_const_t * block, const void * base, int64_t bytes, benchtable_table_refuse_reason_t * reason );
+static SCHEMA_UNUSED int benchtable_table_stat_block_open_const_ex( benchtable_table_stat_block_const_t * block, const void * base, int64_t bytes, benchtable_table_refuse_reason_t * reason )
+{ return schema_benchtable_table_stat_block_open_const_ex_( block, base, bytes, reason ); }
+static SCHEMA_UNUSED int benchtable_table_stat_block_open_const( benchtable_table_stat_block_const_t * block, const void * base, int64_t bytes )
+{ return schema_benchtable_table_stat_block_open_const_ex_( block, base, bytes, NULL ); }
 /* ---- the block form of table TableStat: end ---- */
 
 

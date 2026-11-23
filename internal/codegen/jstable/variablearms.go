@@ -149,11 +149,14 @@ const jsVariableArmsRuntime = `
 // all see the same entry (§3.1)
 let TableVariableEntryCache = null;
 
-function TableVariableUtf8Compare(a, b) {
-  const x = TableVariableUtf8Encode(a), y = TableVariableUtf8Encode(b);
+function TableVariableBytesCompare(x, y) {
   const n = globalThis.Math.min(x.length, y.length);
   for (let i = 0; i < n; i++) { if (x[i] !== y[i]) { return x[i] < y[i] ? -1 : 1; } }
   return x.length === y.length ? 0 : (x.length < y.length ? -1 : 1);
+}
+
+function TableVariableUtf8Compare(a, b) {
+  return TableVariableBytesCompare(TableVariableUtf8Encode(a), TableVariableUtf8Encode(b));
 }
 
 // THE KEY ORDER (internal/tabletext MapKeyOrder): byte-wise over the UTF-8 for
@@ -161,6 +164,18 @@ function TableVariableUtf8Compare(a, b) {
 function TableVariableKeyOrder(fd, a, b) {
   if (fd.ks) { return TableVariableUtf8Compare(a, b); }
   return a < b ? -1 : (a > b ? 1 : 0);
+}
+
+// THE ENTRY SORT, in the key order: a string key is encoded to UTF-8 once
+// per entry, not twice per compare
+function TableVariableSortEntries(fd, ents) {
+  if (!fd.ks) {
+    ents.sort((a, b) => (a.key < b.key ? -1 : (a.key > b.key ? 1 : 0)));
+    return;
+  }
+  const keyed = ents.map((e) => ({ b: TableVariableUtf8Encode(e.key), e }));
+  keyed.sort((x, y) => TableVariableBytesCompare(x.b, y.b));
+  for (let i = 0; i < keyed.length; i++) { ents[i] = keyed[i].e; }
 }
 
 function TableVariableMapEntries(fd, m) {
@@ -175,7 +190,7 @@ function TableVariableMapEntries(fd, m) {
     e.value = val;
     out.push(e);
   }
-  out.sort((a, b) => TableVariableKeyOrder(fd, a.key, b.key));
+  TableVariableSortEntries(fd, out);
   if (TableVariableEntryCache !== null) { TableVariableEntryCache.set(m, out); }
   return out;
 }
@@ -891,6 +906,11 @@ function TableVariableTextMap(fd, inp, v, depth, graph, report) {
   inp.p++;
   const kd = fd.c.fields[0], vd = fd.c.fields[1];
   const ents = [];
+  // THE REPEAT TEST IS ONE KEYED LOOKUP, never a scan of the landed entries
+  // (linear work in the entry count): a string key is equal exactly when its
+  // UTF-8 is, and an integer key (Number or BigInt) by value, which is Map's
+  // own key equality
+  const at = new globalThis.Map();
   const mapField = inp.field;
   v[fd.n] = new globalThis.Map();
   for (;;) {
@@ -913,15 +933,16 @@ function TableVariableTextMap(fd, inp, v, depth, graph, report) {
       report.mismatch++;
       if (!inp.skip(depth + 2, graph, report)) { return false; }
     } else if (fd.ks && fd.kb >= 0 && TableVariableUtf8Encode(key).length > fd.kb) {
-      // KEYS NEVER CLAMP: the entry drops whole (§2.8)
+      // KEYS NEVER CLAMP: the count refuses the whole read (§2.8, the strict mark)
       report.oor++;
       if (!inp.skip(depth + 2, graph, report)) { return false; }
     } else {
       const entry = fd.c.make();
       entry.key = key;
+      // the map object is a level (§16.2): its value is read one below it
       if (!TableVariableTextValue(vd, inp, entry, depth + 1, graph, report)) { return false; }
-      const at = ents.findIndex((e) => TableVariableKeyOrder(fd, e.key, key) === 0);
-      if (at >= 0) { report.repeated++; ents[at] = entry; } else { ents.push(entry); }
+      const i = at.get(key);
+      if (i !== undefined) { report.repeated++; ents[i] = entry; } else { at.set(key, ents.length); ents.push(entry); }
     }
     ch = inp.peek();
     if (ch === ",") { inp.p++; continue; }
@@ -929,7 +950,7 @@ function TableVariableTextMap(fd, inp, v, depth, graph, report) {
     inp.bad = true;
     return false;
   }
-  ents.sort((a, b) => TableVariableKeyOrder(fd, a.key, b.key));
+  TableVariableSortEntries(fd, ents);
   for (const e of ents) { v[fd.n].set(e.key, e.value); }
   return true;
 }
@@ -987,6 +1008,10 @@ function TableVariableTextUnion(d, inp, holder, key, depth, graph, report) {
   if (inp.peek() !== ":") { inp.bad = true; return false; }
   inp.p++;
   const arm = d.u.byName.get(k);
+  // DEPTH (§16.2): the union's holder is at depth, the union object at
+  // depth+1, and the arm's value at depth+2, where it is read or skipped; a
+  // field arm reads through TextField(depth+1), whose own walk adds the
+  // level, as a by-value field's does
   if (arm === undefined) {
     report.unknown++;
     if (!inp.skip(depth + 2, graph, report)) { return false; }

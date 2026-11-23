@@ -2544,9 +2544,23 @@ func wireFloatRides(f *ir.Field, expr, lit string) string {
 		if f.HasDefault {
 			def = float32(f.DefFloat)
 		}
-		return fmt.Sprintf("_f32Bits(%s) != %d", expr, math.Float32bits(def))
+		if f.HasFloatRange && def == 0 {
+			def = 0 // a compressed float's -0 default is +0 (§3.3)
+		}
+		return fmt.Sprintf("_f32Bits(%s) != %d", cfloatStored(f, expr), math.Float32bits(def))
 	}
 	return floatRides(f, expr, lit)
+}
+
+// cfloatStored is the value a writer stores for a float field: a COMPRESSED
+// float's -0 is stored as +0, the same bits it stores for +0, so it elides
+// wherever +0 elides (docs/SPEC-TABLES.md §3.3; ruling
+// fixed-compressed-negzero). A plain float rides bit for bit.
+func cfloatStored(f *ir.Field, expr string) string {
+	if f.HasFloatRange {
+		return "(" + expr + " == 0 ? 0.0 : " + expr + ")"
+	}
+	return expr
 }
 
 func (g *wireGen) floatDefault(f *ir.Field) string {
@@ -2780,7 +2794,8 @@ func (g *wireGen) emitSaveByValue(f *ir.Field, expr, ind string, id uint64) {
 // the count the value decides, then one node index a slot, and a null slot
 // rides as 0. The field id is interned before the body.
 func (g *wireGen) emitSavePointerList(f *ir.Field, expr, ind string, id uint64) {
-	g.pf("%s", rideOpen(ind, f, g.countedRides(f, expr)))
+	rides := g.countedRides(f, expr, ind, 0)
+	g.pf("%s", rideOpen(ind, f, rides))
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal s = w.sub();\n", ind)
 	g.pf("%s\ts.putByte(%d);\n", ind, wireKindPtr)
@@ -2800,15 +2815,8 @@ func (g *wireGen) emitSavePointerList(f *ir.Field, expr, ind string, id uint64) 
 // field's reference is interned BEFORE the element bodies so the id table
 // stays in first-use order (§3).
 func (g *wireGen) emitSaveTableList(f *ir.Field, expr, ind string, id uint64, ordinal int) {
-	g.pf("%s", rideOpen(ind, f, expr+".isNotEmpty"))
-	// THE BIRTH VALUE ELIDES (docs/SPEC-TABLES.md §22.2; the engine's
-	// encodeArray `allBirth`): M element bodies that are each their terminator
-	// alone (a retained tail is not) roll the field's ids back, unwritten.
-	born := wireBornElides(f)
-	if born {
-		g.pf("%s\tfinal bornMark = w.state.mark();\n", ind)
-		g.pf("%s\tvar born = %s.length == %d;\n", ind, expr, wireBornCount(f))
-	}
+	rides := g.countedRides(f, expr, ind, ordinal)
+	g.pf("%s", rideOpen(ind, f, rides))
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal s = w.sub();\n", ind)
 	g.pf("%s\ts.putByte(%d);\n", ind, wireKindTable)
@@ -2818,26 +2826,13 @@ func (g *wireGen) emitSaveTableList(f *ir.Field, expr, ind string, id uint64, or
 	g.pf("%s\t\tfinal b = s.sub();\n", ind)
 	g.pf("%s\t\tb.path = [...w.path, %d, i];\n", ind, ordinal)
 	g.pf("%s\t\t%s(b, e);\n", ind, dartName(f.Type.Name)+"WireSaveBody")
-	if born {
-		g.pf("%s\t\tif (b.buf.length > 1) born = false;\n", ind)
-	}
 	g.pf("%s\t\ts.putLeb(b.buf.length);\n", ind)
 	g.pf("%s\t\ts.putBytes(b.buf);\n", ind)
 	g.pf("%s\t}\n", ind)
-	inner := ind
-	if born {
-		g.pf("%s\tif (born) {\n", ind)
-		g.pf("%s\t\tw.state.rollback(bornMark);\n", ind)
-		g.pf("%s\t} else {\n", ind)
-		inner = ind + "\t"
-	}
-	g.pf("%s\tw.putLeb(ref);\n", inner)
-	g.pf("%s\tw.putByte(%d);\n", inner, wireKindArray)
-	g.pf("%s\tw.putLeb(s.buf.length);\n", inner)
-	g.pf("%s\tw.putBytes(s.buf);\n", inner)
-	if born {
-		g.pf("%s\t}\n", ind)
-	}
+	g.pf("%s\tw.putLeb(ref);\n", ind)
+	g.pf("%s\tw.putByte(%d);\n", ind, wireKindArray)
+	g.pf("%s\tw.putLeb(s.buf.length);\n", ind)
+	g.pf("%s\tw.putBytes(s.buf);\n", ind)
 	g.pf("%s}\n", ind)
 }
 
@@ -2847,7 +2842,8 @@ func (g *wireGen) emitSaveTableList(f *ir.Field, expr, ind string, id uint64, or
 // its variant id's reference. The count the value decides, then the payloads.
 func (g *wireGen) emitSaveScalarList(f *ir.Field, expr, ind string, id uint64) {
 	elemKind := listElementKind(f)
-	g.pf("%s", rideOpen(ind, f, g.countedRides(f, expr)))
+	rides := g.countedRides(f, expr, ind, 0)
+	g.pf("%s", rideOpen(ind, f, rides))
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal s = w.sub();\n", ind)
 	g.pf("%s\ts.putByte(%d);\n", ind, elemKind)
@@ -3154,7 +3150,9 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 		loop := "count"
 		if f.Array == ir.ArrayCounted {
 			g.pf("%s\t\tvar keep = count;\n", ind)
-			g.pf("%s\t\tif (keep < 0 || keep > %d) { r.report.refuse('count_over_bound'); return; }\n", ind, f.ArrayBound)
+			// A COUNT BELOW ITS DECLARED MIN IS REFUSED as one past its Max
+			// is (docs/SPEC.md §5.1 row 3; internal/tablewire arrayBody)
+			g.pf("%s\t\tif (keep < %d || keep > %d) { r.report.refuse('count_over_bound'); return; }\n", ind, max(f.ArrayMin, 0), f.ArrayBound)
 			loop = "keep"
 		} else {
 			g.pf("%s\t\tif (count < 0 || count > 0x7FFFFFFF) throw const _TableWireCountRefusal();\n", ind)
@@ -4293,6 +4291,17 @@ func (g *wireGen) emitWireWriteAssert(f *ir.Field, expr, ind string) {
 			}
 		default:
 			g.pf("%sassert(%s >= %s && %s <= %s);\n", ind, expr, lo.String(), expr, hi.String())
+		}
+	} else if f.Type.Kind == ir.TInt && f.Type.Width < 64 {
+		// Row 11 (docs/SPEC.md §5.1): Dart's int is 64-bit, so a bare narrow
+		// integer past its declared width is refused by debug assert.
+		if f.Type.Signed {
+			lo := -(int64(1) << uint(f.Type.Width-1))
+			hi := (int64(1) << uint(f.Type.Width-1)) - 1
+			g.pf("%sassert(%s >= %d && %s <= %d);\n", ind, expr, lo, expr, hi)
+		} else {
+			hi := (int64(1) << uint(f.Type.Width)) - 1
+			g.pf("%sassert(%s >= 0 && %s <= %d);\n", ind, expr, expr, hi)
 		}
 	}
 	if f.Type.Kind == ir.TBits && f.Type.Width < 64 {

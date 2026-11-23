@@ -117,7 +117,7 @@ func checkJsVtCellsStrict(loadBody, markBody, armBody string) []string {
 // text and cook surfaces those cells carry.
 func TestJsVariableConformanceCellsStrict(t *testing.T) {
 	t.Parallel()
-	u := loadSchemaString(t, "vtcells-strict.schema", jsVtCellsProbeSrc)
+	u := loadSchemaString(t, "vtcells_strict.schema", jsVtCellsProbeSrc)
 	files, err := generateVariableFiles(u, nil)
 	if err != nil {
 		t.Fatalf("generateVariableFiles: %v", err)
@@ -169,7 +169,7 @@ func TestJsVariableConformanceCellsStrict(t *testing.T) {
 func TestJsVariableConformanceCellsStrictNegativeControl(t *testing.T) {
 	t.Parallel()
 
-	u := loadSchemaString(t, "vtcells-strict.schema", jsVtCellsProbeSrc)
+	u := loadSchemaString(t, "vtcells_strict.schema", jsVtCellsProbeSrc)
 	files, err := generateVariableFiles(u, nil)
 	if err != nil {
 		t.Fatalf("generateVariableFiles: %v", err)

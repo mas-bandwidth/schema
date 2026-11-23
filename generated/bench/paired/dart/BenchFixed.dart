@@ -396,7 +396,10 @@ final class TableFixedLayout {
     _f32[0] = value;
     // a float32 past float32 range is refused by every writer (FL-23,
     // docs/SPEC-TABLES.md §16.3): a debug assert, as the ranged checks are
-    assert((_f32Words[0] & 0x7f800000) != 0x7f800000, 'a float32 past float32 range');
+    assert(
+      (_f32Words[0] & 0x7f800000) != 0x7f800000,
+      'a float32 past float32 range',
+    );
     return _f32Words[0];
   }
 
@@ -3230,11 +3233,15 @@ bool tableMessageBatchClose(TableMessageReader r) {
 /// [depth] is the unknown-skip walk (docs/SPEC-TABLES.md message_skip_depth):
 /// callers that omit it start at 0, and a nested body, a union arm or a
 /// walked element passes depth + 1. depth > 128 is malformed; 128 still skips.
-bool tableMessageSkipEntry(TableMessageReader r, TableMessageEntry e, [int depth = 0]) {
+/// [field] is true where the entry is a body FIELD (the reference's
+/// skipField): a conforming writer elides a None union field, so an explicit
+/// arm reference 0 there is damage; an element or an arm payload keeps its
+/// positional None.
+bool tableMessageSkipEntry(TableMessageReader r, TableMessageEntry e, [int depth = 0, bool field = false]) {
   if (depth > 128) return false;
   final shape = e.shape;
   if (shape == null) return false;
-  return tableMessageSkip(r, e.kind, shape, depth);
+  return tableMessageSkip(r, e.kind, shape, depth, field);
 }
 
 /// The widening ladder of §4 (ir.TableKindWidens): an integer kind into a
@@ -3267,11 +3274,11 @@ bool tableMessageSkipBody(TableMessageReader r, int depth) {
     final entry = r.vocabulary.entries[ref - 1];
     if (tableMessageReservedId(entry.id)) return false;
     if (!seen.add(entry.id)) return false;
-    if (!tableMessageSkipEntry(r, entry, depth)) return false;
+    if (!tableMessageSkipEntry(r, entry, depth, true)) return false;
   }
 }
 
-bool tableMessageSkip(TableMessageReader r, int kind, TableMessageShape s, [int depth = 0]) {
+bool tableMessageSkip(TableMessageReader r, int kind, TableMessageShape s, [int depth = 0, bool field = false]) {
   if (depth > 128) return false;
   switch (kind) {
     case 0:
@@ -3288,7 +3295,7 @@ bool tableMessageSkip(TableMessageReader r, int kind, TableMessageShape s, [int 
     case 15:
       final ref = r.bits.get(r.vocabulary.refBits);
       if (r.bits.failed) return false;
-      if (ref == 0) return true;
+      if (ref == 0) return !field;
       if (ref > r.vocabulary.count) return false;
       final arm = r.vocabulary.entries[ref - 1];
       // bitDecoder.arm: a reserved id or a kind-0 entry is damage
@@ -3365,9 +3372,10 @@ bool tableMessageSkip(TableMessageReader r, int kind, TableMessageShape s, [int 
         }
       }
       // THE COUNT'S BITS CAN SPELL MORE THAN max - min, so a count above the
-      // announced maximum is damage here as it is at a named field
-      // (docs/SPEC-TABLES.md §3.3, §4).
-      if (n > s.max) return false;
+      // announced maximum refuses count_over_bound here as it does at a named
+      // field, before any element (docs/SPEC-TABLES.md §3.3, §4; the
+      // reference's skip, internal/tablewire/messagedecode.go).
+      if (n > s.max) return r.report.Refuse('count_over_bound');
       if (kind == 14 && s.elem == 6 && !r.bits.align()) return false;
       final inner = s.inner ?? TableMessageShape();
       // elementRunBits + skipRun (internal/tablewire/messagedecode.go): a
@@ -3458,12 +3466,27 @@ bool tableMessageSkipRanged(
   if (r.bits.failed) return false;
   final offset = (BigInt.from(hi).toUnsigned(64) << 64) |
       BigInt.from(lo).toUnsigned(64);
+  if (!tableMessageRangedFits(kind, s, offset)) {
+    r.report.Refuse('out_of_range');
+    return false;
+  }
+  return true;
+}
+
+/// THE ONE RECONSTRUCTION a ranged integer gets, named or skipped (the
+/// reference's rangedValue and kindHolds, internal/tablewire/messagedecode.go;
+/// docs/SPEC-TABLES.md §3.3): the sender's base plus the offset, EXACTLY, and
+/// whether the announced kind can hold the sum. Never wrapped.
+bool tableMessageRangedFits(int kind, TableMessageShape s, BigInt offset) {
   // The base as ir.DecodeShape holds it: a 16-byte two's complement for the
   // 128-bit and fixed-point kinds, a zigzag for a signed integer, and an
-  // unsigned 64-bit value otherwise.
+  // unsigned 64-bit value otherwise. An unsigned kind's 16-byte base is read
+  // unsigned: a uint128 base at or above 2^127 is never negative.
+  final signed = (kind >= 2 && kind <= 5) || kind == 18 || (kind >= 20 && kind <= 24);
   BigInt base;
   if (kind >= 18) {
     base = (BigInt.from(s.baseHi) << 64) | BigInt.from(s.baseLo).toUnsigned(64);
+    if (!signed) base = base.toUnsigned(128);
   } else if (kind >= 2 && kind <= 5) {
     base = BigInt.from(s.base);
   } else {
@@ -3472,20 +3495,34 @@ bool tableMessageSkipRanged(
   final value = offset + base;
   final bits = tableMessageKindWidth(kind) * 8;
   if (bits == 0) return true;
-  final signed = (kind >= 2 && kind <= 5) || kind == 18 || (kind >= 20 && kind <= 24);
   if (signed) {
     final top = BigInt.one << (bits - 1);
-    if (value < -top || value >= top) {
-      r.report.Refuse('out_of_range');
-      return false;
+    return value >= -top && value < top;
+  }
+  return !value.isNegative && value < (BigInt.one << bits);
+}
+
+/// THE NAMED READ'S HOLD on a ranged integer of an announced kind no wider
+/// than 64 bits, the verdict tableMessageRangedFits gives the same bits
+/// without a BigInt: value is base plus the offset in a Dart int, which wraps
+/// at 2^64, and the answer is whether the EXACT sum is in the announced
+/// kind's domain. Below 64 bits the sum cannot wrap. At 64 bits the offset is
+/// unsigned, so the exact sum left the domain exactly when the wrapped one
+/// fell below the base, or (a signed kind, an offset of 2^63 or more) did not
+/// pass it.
+bool tableMessageRangedHolds(int kind, int base, int value) {
+  final bytes = tableMessageKindWidth(kind);
+  if (bytes == 0) return true;
+  final signed = (kind >= 2 && kind <= 5) || (kind >= 20 && kind <= 24);
+  if (bytes >= 8) {
+    if (!signed) {
+      return (value ^ 0x8000000000000000) >= (base ^ 0x8000000000000000);
     }
-    return true;
+    return value - base >= 0 ? value >= base : value > base;
   }
-  if (value.isNegative || value >= (BigInt.one << bits)) {
-    r.report.Refuse('out_of_range');
-    return false;
-  }
-  return true;
+  final bits = bytes * 8;
+  if (signed) return value >= -(1 << (bits - 1)) && value < (1 << (bits - 1));
+  return value >= 0 && value < (1 << bits);
 }
 
 /// A string(N) payload must be well-formed UTF-8 with no zero byte among its
@@ -3687,7 +3724,10 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
           final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.entityId = v;
-          if (shape.packing == 1) { value.entityId += shape.base; }
+          if (shape.packing == 1) {
+            value.entityId += shape.base;
+            if (!tableMessageRangedHolds(entry.kind, shape.base, value.entityId)) { r.report.Refuse('out_of_range'); return false; }
+          }
         }
         if ((value.entityId ^ 0x8000000000000000) > (65535 ^ 0x8000000000000000)) { r.report.Refuse('out_of_range'); return false; }
         if (value.entityId > 4095) { r.report.Refuse('out_of_range'); return false; }
@@ -3707,7 +3747,10 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
           final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.posX = v;
-          if (shape.packing == 1) { value.posX += shape.base; }
+          if (shape.packing == 1) {
+            value.posX += shape.base;
+            if (!tableMessageRangedHolds(entry.kind, shape.base, value.posX)) { r.report.Refuse('out_of_range'); return false; }
+          }
           if (shape.packing == 0) { value.posX = value.posX.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.posX < -2147483648 || value.posX > 2147483647) { r.report.Refuse('out_of_range'); return false; }
@@ -3728,7 +3771,10 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
           final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.posY = v;
-          if (shape.packing == 1) { value.posY += shape.base; }
+          if (shape.packing == 1) {
+            value.posY += shape.base;
+            if (!tableMessageRangedHolds(entry.kind, shape.base, value.posY)) { r.report.Refuse('out_of_range'); return false; }
+          }
           if (shape.packing == 0) { value.posY = value.posY.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.posY < -2147483648 || value.posY > 2147483647) { r.report.Refuse('out_of_range'); return false; }
@@ -3749,7 +3795,10 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
           final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.posZ = v;
-          if (shape.packing == 1) { value.posZ += shape.base; }
+          if (shape.packing == 1) {
+            value.posZ += shape.base;
+            if (!tableMessageRangedHolds(entry.kind, shape.base, value.posZ)) { r.report.Refuse('out_of_range'); return false; }
+          }
           if (shape.packing == 0) { value.posZ = value.posZ.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.posZ < -2147483648 || value.posZ > 2147483647) { r.report.Refuse('out_of_range'); return false; }
@@ -3770,7 +3819,10 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
           final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.yaw = v;
-          if (shape.packing == 1) { value.yaw += shape.base; }
+          if (shape.packing == 1) {
+            value.yaw += shape.base;
+            if (!tableMessageRangedHolds(entry.kind, shape.base, value.yaw)) { r.report.Refuse('out_of_range'); return false; }
+          }
         }
         if ((value.yaw ^ 0x8000000000000000) > (65535 ^ 0x8000000000000000)) { r.report.Refuse('out_of_range'); return false; }
         if (value.yaw > 511) { r.report.Refuse('out_of_range'); return false; }
@@ -3790,7 +3842,10 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
           final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.pitch = v;
-          if (shape.packing == 1) { value.pitch += shape.base; }
+          if (shape.packing == 1) {
+            value.pitch += shape.base;
+            if (!tableMessageRangedHolds(entry.kind, shape.base, value.pitch)) { r.report.Refuse('out_of_range'); return false; }
+          }
         }
         if ((value.pitch ^ 0x8000000000000000) > (65535 ^ 0x8000000000000000)) { r.report.Refuse('out_of_range'); return false; }
         if (value.pitch > 511) { r.report.Refuse('out_of_range'); return false; }
@@ -3810,7 +3865,10 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
           final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.velX = v;
-          if (shape.packing == 1) { value.velX += shape.base; }
+          if (shape.packing == 1) {
+            value.velX += shape.base;
+            if (!tableMessageRangedHolds(entry.kind, shape.base, value.velX)) { r.report.Refuse('out_of_range'); return false; }
+          }
           if (shape.packing == 0) { value.velX = value.velX.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.velX < -2147483648 || value.velX > 2147483647) { r.report.Refuse('out_of_range'); return false; }
@@ -3831,7 +3889,10 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
           final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.velY = v;
-          if (shape.packing == 1) { value.velY += shape.base; }
+          if (shape.packing == 1) {
+            value.velY += shape.base;
+            if (!tableMessageRangedHolds(entry.kind, shape.base, value.velY)) { r.report.Refuse('out_of_range'); return false; }
+          }
           if (shape.packing == 0) { value.velY = value.velY.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.velY < -2147483648 || value.velY > 2147483647) { r.report.Refuse('out_of_range'); return false; }
@@ -3852,7 +3913,10 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
           final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.velZ = v;
-          if (shape.packing == 1) { value.velZ += shape.base; }
+          if (shape.packing == 1) {
+            value.velZ += shape.base;
+            if (!tableMessageRangedHolds(entry.kind, shape.base, value.velZ)) { r.report.Refuse('out_of_range'); return false; }
+          }
           if (shape.packing == 0) { value.velZ = value.velZ.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.velZ < -2147483648 || value.velZ > 2147483647) { r.report.Refuse('out_of_range'); return false; }
@@ -3873,7 +3937,10 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
           final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.health = v;
-          if (shape.packing == 1) { value.health += shape.base; }
+          if (shape.packing == 1) {
+            value.health += shape.base;
+            if (!tableMessageRangedHolds(entry.kind, shape.base, value.health)) { r.report.Refuse('out_of_range'); return false; }
+          }
           if (shape.packing == 0) { value.health = value.health.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.health < -2147483648 || value.health > 2147483647) { r.report.Refuse('out_of_range'); return false; }
@@ -3933,7 +4000,10 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
           final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.damage = v;
-          if (shape.packing == 1) { value.damage += shape.base; }
+          if (shape.packing == 1) {
+            value.damage += shape.base;
+            if (!tableMessageRangedHolds(entry.kind, shape.base, value.damage)) { r.report.Refuse('out_of_range'); return false; }
+          }
         }
         if (exact && !(value.damage != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
@@ -3973,8 +4043,8 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
       default:
         if (sameBuild) { r.report.Damage(); return false; } // a field the record does not declare (§3.3)
         r.report.unknown++;
-        if (!tableMessageSkipEntry(r, entry)) {
-          r.report.Damage();
+        if (!tableMessageSkipEntry(r, entry, 0, true)) {
+          if (!r.report.refused) r.report.Damage();
           return false;
         }
         break;
@@ -4031,7 +4101,10 @@ bool mixedStatLoadMessageBody(TableMessageReader r, MixedStat value) {
           final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.statId = v;
-          if (shape.packing == 1) { value.statId += shape.base; }
+          if (shape.packing == 1) {
+            value.statId += shape.base;
+            if (!tableMessageRangedHolds(entry.kind, shape.base, value.statId)) { r.report.Refuse('out_of_range'); return false; }
+          }
         }
         if ((value.statId ^ 0x8000000000000000) > (255 ^ 0x8000000000000000)) { r.report.Refuse('out_of_range'); return false; }
         if (value.statId > 255) { r.report.Refuse('out_of_range'); return false; }
@@ -4051,7 +4124,10 @@ bool mixedStatLoadMessageBody(TableMessageReader r, MixedStat value) {
           final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.delta = v;
-          if (shape.packing == 1) { value.delta += shape.base; }
+          if (shape.packing == 1) {
+            value.delta += shape.base;
+            if (!tableMessageRangedHolds(entry.kind, shape.base, value.delta)) { r.report.Refuse('out_of_range'); return false; }
+          }
           if (shape.packing == 0) { value.delta = value.delta.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.delta < -2147483648 || value.delta > 2147483647) { r.report.Refuse('out_of_range'); return false; }
@@ -4062,8 +4138,8 @@ bool mixedStatLoadMessageBody(TableMessageReader r, MixedStat value) {
       default:
         if (sameBuild) { r.report.Damage(); return false; } // a field the record does not declare (§3.3)
         r.report.unknown++;
-        if (!tableMessageSkipEntry(r, entry)) {
-          r.report.Damage();
+        if (!tableMessageSkipEntry(r, entry, 0, true)) {
+          if (!r.report.refused) r.report.Damage();
           return false;
         }
         break;
@@ -4133,7 +4209,10 @@ bool mixedHitEventLoadMessageBody(TableMessageReader r, MixedHitEvent value) {
           final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.targetId = v;
-          if (shape.packing == 1) { value.targetId += shape.base; }
+          if (shape.packing == 1) {
+            value.targetId += shape.base;
+            if (!tableMessageRangedHolds(entry.kind, shape.base, value.targetId)) { r.report.Refuse('out_of_range'); return false; }
+          }
         }
         if ((value.targetId ^ 0x8000000000000000) > (65535 ^ 0x8000000000000000)) { r.report.Refuse('out_of_range'); return false; }
         if (value.targetId > 4095) { r.report.Refuse('out_of_range'); return false; }
@@ -4153,7 +4232,10 @@ bool mixedHitEventLoadMessageBody(TableMessageReader r, MixedHitEvent value) {
           final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.damage = v;
-          if (shape.packing == 1) { value.damage += shape.base; }
+          if (shape.packing == 1) {
+            value.damage += shape.base;
+            if (!tableMessageRangedHolds(entry.kind, shape.base, value.damage)) { r.report.Refuse('out_of_range'); return false; }
+          }
           if (shape.packing == 0) { value.damage = value.damage.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.damage < -2147483648 || value.damage > 2147483647) { r.report.Refuse('out_of_range'); return false; }
@@ -4174,7 +4256,10 @@ bool mixedHitEventLoadMessageBody(TableMessageReader r, MixedHitEvent value) {
           final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.hitKind = v;
-          if (shape.packing == 1) { value.hitKind += shape.base; }
+          if (shape.packing == 1) {
+            value.hitKind += shape.base;
+            if (!tableMessageRangedHolds(entry.kind, shape.base, value.hitKind)) { r.report.Refuse('out_of_range'); return false; }
+          }
           if (shape.packing == 0) { value.hitKind = value.hitKind.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.hitKind < -2147483648 || value.hitKind > 2147483647) { r.report.Refuse('out_of_range'); return false; }
@@ -4201,8 +4286,8 @@ bool mixedHitEventLoadMessageBody(TableMessageReader r, MixedHitEvent value) {
       default:
         if (sameBuild) { r.report.Damage(); return false; } // a field the record does not declare (§3.3)
         r.report.unknown++;
-        if (!tableMessageSkipEntry(r, entry)) {
-          r.report.Damage();
+        if (!tableMessageSkipEntry(r, entry, 0, true)) {
+          if (!r.report.refused) r.report.Damage();
           return false;
         }
         break;
@@ -4259,7 +4344,10 @@ bool mixedChatEventLoadMessageBody(TableMessageReader r, MixedChatEvent value) {
           final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.channel = v;
-          if (shape.packing == 1) { value.channel += shape.base; }
+          if (shape.packing == 1) {
+            value.channel += shape.base;
+            if (!tableMessageRangedHolds(entry.kind, shape.base, value.channel)) { r.report.Refuse('out_of_range'); return false; }
+          }
           if (shape.packing == 0) { value.channel = value.channel.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.channel < -2147483648 || value.channel > 2147483647) { r.report.Refuse('out_of_range'); return false; }
@@ -4280,7 +4368,10 @@ bool mixedChatEventLoadMessageBody(TableMessageReader r, MixedChatEvent value) {
           final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.speaker = v;
-          if (shape.packing == 1) { value.speaker += shape.base; }
+          if (shape.packing == 1) {
+            value.speaker += shape.base;
+            if (!tableMessageRangedHolds(entry.kind, shape.base, value.speaker)) { r.report.Refuse('out_of_range'); return false; }
+          }
         }
         if ((value.speaker ^ 0x8000000000000000) > (65535 ^ 0x8000000000000000)) { r.report.Refuse('out_of_range'); return false; }
         if (value.speaker > 4095) { r.report.Refuse('out_of_range'); return false; }
@@ -4290,8 +4381,8 @@ bool mixedChatEventLoadMessageBody(TableMessageReader r, MixedChatEvent value) {
       default:
         if (sameBuild) { r.report.Damage(); return false; } // a field the record does not declare (§3.3)
         r.report.unknown++;
-        if (!tableMessageSkipEntry(r, entry)) {
-          r.report.Damage();
+        if (!tableMessageSkipEntry(r, entry, 0, true)) {
+          if (!r.report.refused) r.report.Damage();
           return false;
         }
         break;
@@ -4351,7 +4442,10 @@ bool mixedPickupEventLoadMessageBody(
           final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.itemId = v;
-          if (shape.packing == 1) { value.itemId += shape.base; }
+          if (shape.packing == 1) {
+            value.itemId += shape.base;
+            if (!tableMessageRangedHolds(entry.kind, shape.base, value.itemId)) { r.report.Refuse('out_of_range'); return false; }
+          }
         }
         if ((value.itemId ^ 0x8000000000000000) > (65535 ^ 0x8000000000000000)) { r.report.Refuse('out_of_range'); return false; }
         if (value.itemId > 1023) { r.report.Refuse('out_of_range'); return false; }
@@ -4371,7 +4465,10 @@ bool mixedPickupEventLoadMessageBody(
           final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.amount = v;
-          if (shape.packing == 1) { value.amount += shape.base; }
+          if (shape.packing == 1) {
+            value.amount += shape.base;
+            if (!tableMessageRangedHolds(entry.kind, shape.base, value.amount)) { r.report.Refuse('out_of_range'); return false; }
+          }
           if (shape.packing == 0) { value.amount = value.amount.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.amount < -2147483648 || value.amount > 2147483647) { r.report.Refuse('out_of_range'); return false; }
@@ -4382,8 +4479,8 @@ bool mixedPickupEventLoadMessageBody(
       default:
         if (sameBuild) { r.report.Damage(); return false; } // a field the record does not declare (§3.3)
         r.report.unknown++;
-        if (!tableMessageSkipEntry(r, entry)) {
-          r.report.Damage();
+        if (!tableMessageSkipEntry(r, entry, 0, true)) {
+          if (!r.report.refused) r.report.Damage();
           return false;
         }
         break;
@@ -4625,7 +4722,10 @@ bool benchMixedSaveMessageBody(TableBitWriter w, BenchMixed value) {
         final f = value.recoil;
         if (!f.isFinite) return false;
         TableBitWriter._float32Cell[0] = f;
-        if ((TableBitWriter._float32Words[0] & 0x7f800000) == 0x7f800000) return false; // past float32 range (FL-23)
+        // past float32 range (FL-23)
+        if ((TableBitWriter._float32Words[0] & 0x7f800000) == 0x7f800000) {
+          return false;
+        }
         w.put(TableBitWriter._float32Words[0], 32);
       }
     }
@@ -4733,7 +4833,10 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.sequence = v;
-          if (shape.packing == 1) { value.sequence += shape.base; }
+          if (shape.packing == 1) {
+            value.sequence += shape.base;
+            if (!tableMessageRangedHolds(entry.kind, shape.base, value.sequence)) { r.report.Refuse('out_of_range'); return false; }
+          }
         }
         if ((value.sequence ^ 0x8000000000000000) > (65535 ^ 0x8000000000000000)) { r.report.Refuse('out_of_range'); return false; }
         if (value.sequence > 65535) { r.report.Refuse('out_of_range'); return false; }
@@ -4753,7 +4856,10 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.ackSequence = v;
-          if (shape.packing == 1) { value.ackSequence += shape.base; }
+          if (shape.packing == 1) {
+            value.ackSequence += shape.base;
+            if (!tableMessageRangedHolds(entry.kind, shape.base, value.ackSequence)) { r.report.Refuse('out_of_range'); return false; }
+          }
           if (shape.packing == 0) { value.ackSequence = value.ackSequence.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.ackSequence < -2147483648 || value.ackSequence > 2147483647) { r.report.Refuse('out_of_range'); return false; }
@@ -4774,7 +4880,10 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.ackBits = v;
-          if (shape.packing == 1) { value.ackBits += shape.base; }
+          if (shape.packing == 1) {
+            value.ackBits += shape.base;
+            if (!tableMessageRangedHolds(entry.kind, shape.base, value.ackBits)) { r.report.Refuse('out_of_range'); return false; }
+          }
         }
         if ((value.ackBits ^ 0x8000000000000000) > (4294967295 ^ 0x8000000000000000)) { r.report.Refuse('out_of_range'); return false; }
         if (value.ackBits > 4294967295) { r.report.Refuse('out_of_range'); return false; }
@@ -4794,7 +4903,10 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.sessionId = v;
-          if (shape.packing == 1) { value.sessionId += shape.base; }
+          if (shape.packing == 1) {
+            value.sessionId += shape.base;
+            if (!tableMessageRangedHolds(entry.kind, shape.base, value.sessionId)) { r.report.Refuse('out_of_range'); return false; }
+          }
         }
         if (exact && !(value.sessionId != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
@@ -4812,7 +4924,10 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.clientId = v;
-          if (shape.packing == 1) { value.clientId += shape.base; }
+          if (shape.packing == 1) {
+            value.clientId += shape.base;
+            if (!tableMessageRangedHolds(entry.kind, shape.base, value.clientId)) { r.report.Refuse('out_of_range'); return false; }
+          }
         }
         if ((value.clientId ^ 0x8000000000000000) > (4294967295 ^ 0x8000000000000000)) { r.report.Refuse('out_of_range'); return false; }
         if (exact && !(value.clientId != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
@@ -4831,7 +4946,10 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.nonce = v;
-          if (shape.packing == 1) { value.nonce += shape.base; }
+          if (shape.packing == 1) {
+            value.nonce += shape.base;
+            if (!tableMessageRangedHolds(entry.kind, shape.base, value.nonce)) { r.report.Refuse('out_of_range'); return false; }
+          }
         }
         if ((value.nonce ^ 0x8000000000000000) < 0x8000000000000000 || (value.nonce ^ 0x8000000000000000) > 9223372036854775807) { r.report.Refuse('out_of_range'); return false; }
         if (exact && !(value.nonce != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
@@ -4850,7 +4968,10 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.worldTime = v;
-          if (shape.packing == 1) { value.worldTime += shape.base; }
+          if (shape.packing == 1) {
+            value.worldTime += shape.base;
+            if (!tableMessageRangedHolds(entry.kind, shape.base, value.worldTime)) { r.report.Refuse('out_of_range'); return false; }
+          }
           if (shape.packing == 0) { value.worldTime = value.worldTime.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.worldTime < -1000000000000 || value.worldTime > 1000000000000) { r.report.Refuse('out_of_range'); return false; }
@@ -4870,7 +4991,10 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.frameTick = v;
-          if (shape.packing == 1) { value.frameTick += shape.base; }
+          if (shape.packing == 1) {
+            value.frameTick += shape.base;
+            if (!tableMessageRangedHolds(entry.kind, shape.base, value.frameTick)) { r.report.Refuse('out_of_range'); return false; }
+          }
         }
         if ((value.frameTick ^ 0x8000000000000000) > 0x8000ffffffffffff) { r.report.Refuse('out_of_range'); return false; }
         if (exact && !(value.frameTick != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
@@ -4889,7 +5013,10 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.serverTime = v;
-          if (shape.packing == 1) { value.serverTime += shape.base; }
+          if (shape.packing == 1) {
+            value.serverTime += shape.base;
+            if (!tableMessageRangedHolds(entry.kind, shape.base, value.serverTime)) { r.report.Refuse('out_of_range'); return false; }
+          }
           if (shape.packing == 0) { value.serverTime = value.serverTime.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.serverTime < -2147483648 || value.serverTime > 2147483647) { r.report.Refuse('out_of_range'); return false; }
@@ -4914,7 +5041,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
             if (r.bits.failed) { r.report.Damage(); return false; }
             n = raw + shape.min;
           }
-          if (n > shape.max) { r.report.Damage(); return false; }
+          if (n > shape.max) { r.report.Refuse('count_over_bound'); return false; }
           if (entry.kind == 14 && shape.elem == 6 && !r.bits.align()) { r.report.Damage(); return false; }
           if (n < 1 || n > 8) { r.report.Refuse('count_over_bound'); return false; }
           for (var i4 = 0; i4 < n; i4++) {
@@ -4955,7 +5082,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
             if (r.bits.failed) { r.report.Damage(); return false; }
             n = raw + shape.min;
           }
-          if (n > shape.max) { r.report.Damage(); return false; }
+          if (n > shape.max) { r.report.Refuse('count_over_bound'); return false; }
           if (entry.kind == 14 && shape.elem == 6 && !r.bits.align()) { r.report.Damage(); return false; }
           if (n > 80) { r.report.Refuse('count_over_bound'); return false; }
           for (var i5 = 0; i5 < n; i5++) {
@@ -4983,6 +5110,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
         {
           final ref = r.bits.get(r.vocabulary.refBits);
           if (r.bits.failed) { r.report.Damage(); return false; }
+          if (ref == 0) { r.report.Damage(); return false; }
           if (ref == 0) { value.gameEvent.type = MixedEventType.none; } else {
             if (ref > r.vocabulary.count) { r.report.Damage(); return false; }
             final arm = r.vocabulary.entries[ref - 1];
@@ -5035,7 +5163,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
               default:
                 value.gameEvent.type = MixedEventType.none; r.report.unknown++;
                 if (!tableMessageSkipEntry(r, arm)) {
-                  r.report.Damage();
+                  if (!r.report.refused) r.report.Damage();
                   return false;
                 }
                 break;
@@ -5061,7 +5189,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
             if (r.bits.failed) { r.report.Damage(); return false; }
             n = raw + shape.min;
           }
-          if (n > shape.max) { r.report.Damage(); return false; }
+          if (n > shape.max) { r.report.Refuse('count_over_bound'); return false; }
           if (entry.kind == 14 && shape.elem == 6 && !r.bits.align()) { r.report.Damage(); return false; }
           if (n > 4) { r.report.Refuse('count_over_bound'); return false; }
           for (var i6 = 0; i6 < n; i6++) {
@@ -5070,7 +5198,10 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
               final v = r.bits.get(bits);
               if (r.bits.failed) { r.report.Damage(); return false; }
               value.loadout[i6] = v;
-              if (shape.inner!.packing == 1) { value.loadout[i6] += shape.inner!.base; }
+              if (shape.inner!.packing == 1) {
+                value.loadout[i6] += shape.inner!.base;
+                if (!tableMessageRangedHolds(shape.elem, shape.inner!.base, value.loadout[i6])) { r.report.Refuse('out_of_range'); return false; }
+              }
             }
             if ((value.loadout[i6] ^ 0x8000000000000000) > (255 ^ 0x8000000000000000)) { r.report.Refuse('out_of_range'); return false; }
           }
@@ -5113,8 +5244,10 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           return false;
         }
         {
-          final n = r.bits.get(TableMessageShape.bitsRequired(shape.min, shape.max));
+          final low = r.bits.get(TableMessageShape.bitsRequired(shape.min, shape.max));
           if (r.bits.failed || !r.bits.align()) { r.report.Damage(); return false; }
+          final n = low + shape.min;
+          if (n > shape.max) { r.report.Refuse('count_over_bound'); return false; }
           final start = r.bits.offset >> 3;
           if (!r.bits.skip(n * 8)) { r.report.Damage(); return false; }
           var kept = n;
@@ -5336,6 +5469,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           var hi = highBits > 0 ? r.bits.get(highBits) : 0;
           if (r.bits.failed) { r.report.Damage(); return false; }
           if (shape.packing == 1) {
+            if (!tableMessageRangedFits(entry.kind, shape, (BigInt.from(hi).toUnsigned(64) << 64) | BigInt.from(lo).toUnsigned(64))) { r.report.Refuse('out_of_range'); return false; }
             final sumLo = lo + shape.baseLo;
             final carry = (sumLo ^ 0x8000000000000000) < (lo ^ 0x8000000000000000) ? 1 : 0;
             hi = hi + shape.baseHi + carry;
@@ -5364,6 +5498,7 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           if (r.bits.failed) { r.report.Damage(); return false; }
           if (shape.packing == 0 && lowBits < 64 && lowBits > 0 && ((lo >> (lowBits - 1)) & 1) != 0) { hi = -1; }
           if (shape.packing == 1) {
+            if (!tableMessageRangedFits(entry.kind, shape, (BigInt.from(hi).toUnsigned(64) << 64) | BigInt.from(lo).toUnsigned(64))) { r.report.Refuse('out_of_range'); return false; }
             final sumLo = lo + shape.baseLo;
             final carry = (sumLo ^ 0x8000000000000000) < (lo ^ 0x8000000000000000) ? 1 : 0;
             hi = hi + shape.baseHi + carry;
@@ -5388,7 +5523,10 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.ping = v;
-          if (shape.packing == 1) { value.ping += shape.base; }
+          if (shape.packing == 1) {
+            value.ping += shape.base;
+            if (!tableMessageRangedHolds(entry.kind, shape.base, value.ping)) { r.report.Refuse('out_of_range'); return false; }
+          }
         }
         if ((value.ping ^ 0x8000000000000000) > (65535 ^ 0x8000000000000000)) { r.report.Refuse('out_of_range'); return false; }
         if (value.ping < 0 || value.ping > 64000) { r.report.Refuse('out_of_range'); return false; }
@@ -5408,7 +5546,10 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.crcHint = v;
-          if (shape.packing == 1) { value.crcHint += shape.base; }
+          if (shape.packing == 1) {
+            value.crcHint += shape.base;
+            if (!tableMessageRangedHolds(entry.kind, shape.base, value.crcHint)) { r.report.Refuse('out_of_range'); return false; }
+          }
         }
         if ((value.crcHint ^ 0x8000000000000000) > (4294967295 ^ 0x8000000000000000)) { r.report.Refuse('out_of_range'); return false; }
         if (value.crcHint > 16777215) { r.report.Refuse('out_of_range'); return false; }
@@ -5444,7 +5585,10 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.extra = v;
-          if (shape.packing == 1) { value.extra += shape.base; }
+          if (shape.packing == 1) {
+            value.extra += shape.base;
+            if (!tableMessageRangedHolds(entry.kind, shape.base, value.extra)) { r.report.Refuse('out_of_range'); return false; }
+          }
           if (shape.packing == 0) { value.extra = value.extra.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.extra < -2147483648 || value.extra > 2147483647) { r.report.Refuse('out_of_range'); return false; }
@@ -5465,7 +5609,10 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
           final v = r.bits.get(bits);
           if (r.bits.failed) { r.report.Damage(); return false; }
           value.idleTicks = v;
-          if (shape.packing == 1) { value.idleTicks += shape.base; }
+          if (shape.packing == 1) {
+            value.idleTicks += shape.base;
+            if (!tableMessageRangedHolds(entry.kind, shape.base, value.idleTicks)) { r.report.Refuse('out_of_range'); return false; }
+          }
           if (shape.packing == 0) { value.idleTicks = value.idleTicks.toSigned(TableMessageShape.valueBits(entry.kind, shape)); }
         }
         if (value.idleTicks < -2147483648 || value.idleTicks > 2147483647) { r.report.Refuse('out_of_range'); return false; }
@@ -5476,8 +5623,8 @@ bool benchMixedLoadMessageBody(TableMessageReader r, BenchMixed value) {
       default:
         if (sameBuild) { r.report.Damage(); return false; } // a field the record does not declare (§3.3)
         r.report.unknown++;
-        if (!tableMessageSkipEntry(r, entry)) {
-          r.report.Damage();
+        if (!tableMessageSkipEntry(r, entry, 0, true)) {
+          if (!r.report.refused) r.report.Damage();
           return false;
         }
         break;
@@ -5537,8 +5684,8 @@ bool fixedTableLoadMessageBody(TableMessageReader r, FixedTable value) {
       default:
         if (sameBuild) { r.report.Damage(); return false; } // a field the record does not declare (§3.3)
         r.report.unknown++;
-        if (!tableMessageSkipEntry(r, entry)) {
-          r.report.Damage();
+        if (!tableMessageSkipEntry(r, entry, 0, true)) {
+          if (!r.report.refused) r.report.Damage();
           return false;
         }
         break;
@@ -6092,6 +6239,9 @@ void benchMixedFixedDecode(
     report.refused = TableFixedRefusal.outOfRange;
   }
   value.entitiesCount = view.getInt32(at + 52, Endian.little);
+  if (value.entitiesCount < 1) {
+    report.refused = TableFixedRefusal.countOverBound;
+  }
   for (var i = 0; i < value.entitiesCount; i++) {
     mixedEntityFixedDecode(
       value.entities[i],

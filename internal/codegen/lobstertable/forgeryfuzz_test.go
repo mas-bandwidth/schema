@@ -317,7 +317,10 @@ func lobsterForgeryImages(t *testing.T) (blocks, cooks []*lobsterForgeryImage) {
 		}
 		cook, err := tablecook.Cook(m, inst, tablecook.Options{})
 		if err != nil {
-			continue // a value the cook refuses (a shared blob) has no cook to forge
+			// the strict read accepted this instance (a shared blob left at
+			// the decode above), so it has a cook: an error here is a
+			// failure, never a row to pass over
+			t.Fatalf("the tool wrote no cook for %s, which the strict read accepts: %v", row.name, err)
 		}
 		h, err := tablecook.ReadHeader(cook, ir.BuildVersion(u))
 		if err != nil {

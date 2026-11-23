@@ -218,13 +218,17 @@ local writeReadBack = function(T, root, v, cname) {
     writeText(outdir + "/" + cname, "refused\n");
     return;
   }
-  local json = T[root + "ToJson"](v);
-  if (json == null) throw cname + ": ToJson refused the value";
-  local n = T[root + "Measure"](v);
-  local out = T[root + "Save"](v);
-  if (n < 0 || out == null || out.len() != n) throw cname + ": the write-back wire does not match the measure";
-  writeBytes(outdir + "/" + cname + ".wire", out);
-  writeText(outdir + "/" + cname, "read\n" + json);
+  // THE READ ACCEPTED: that is the verdict, whatever the writers make of the
+  // value afterwards. A writer that refuses it (a tree past the depth cap the
+  // reader let through) leaves its half out, and the harness fails the case by
+  // name, by verdict or by the missing value or wire; the surface goes on to
+  // the next case rather than dying here.
+  local json = null;
+  try { json = T[root + "ToJson"](v); } catch (e) { json = null; }
+  local n = -1, out = null;
+  try { n = T[root + "Measure"](v); out = T[root + "Save"](v); } catch (e) { out = null; }
+  if (n >= 0 && out != null && out.len() == n) writeBytes(outdir + "/" + cname + ".wire", out);
+  writeText(outdir + "/" + cname, "read\n" + (json == null ? "" : json));
 };
 
 
@@ -255,8 +259,8 @@ if (mode == "list") {
   foreach (name in ["wire", "report", "framing", "json-read", "json-write", "json-hostile",
                      "cook", "cook-foreign", "block", "block-foreign", "block-dump",
                      "forgery", "cook-forgery", "cook-reason", "block-reason",
-                     "cook-write", "message", "retain", "retain-save",
-                     "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json"]) print(name + "\n");
+                     "cook-write", "message", "message-prior", "retain", "retain-save",
+                     "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json", "unit shapes"]) print(name + "\n");
   return;
 }
 
@@ -304,7 +308,8 @@ if (mode == "wire") {
         writeText(outdir + "/" + cname + ".absent", "blob_shared");
         continue;
       }
-      throw cname + ": load refused " + wirepath;
+      writeText(outdir + "/" + cname + ".absent", report.reason != null ? report.reason : "refused");
+      continue;
     }
     local out = S.save(T, root, v);
     if (out == null) {
@@ -795,6 +800,51 @@ if (mode == "message") {
   return;
 }
 
+// THE PRIOR WRITER (testdata/conformance/tables/FORMAT.md, `message-prior`): the same
+// read of a prior writer's batch, handed on its own keywords (prior-connection,
+// prior-message). A row may owe a refusal, so the answer is what the public
+// read returned: the batch re-saved, or <case>.refused holding this leg's own
+// reason, which the harness never compares (docs/rulings.json
+// refusal-verdict-only).
+if (mode == "message-prior") {
+  local connections = {};
+  foreach (ln in lines) {
+    local f = splitFields(ln);
+    if (f.len() >= 5 && f[0] == "prior-connection") connections[f[1]] <- { unit = f[2], file = f[4] };
+  }
+  foreach (ln in lines) {
+    local f = splitFields(ln);
+    if (f.len() < 6 || f[0] != "prior-message") continue;
+    local name = f[1]; local root = f[3];
+    if (!(f[2] in connections)) throw name + ": no prior-connection " + f[2];
+    local conn = connections[f[2]];
+    if (!generated(conn.unit)) { writeAbsent(name); continue; }
+    local T = openUnit(conn.unit)[1];
+    if (!T.Descriptors[root].fixed) {
+      writeText(outdir + "/" + name + ".absent", "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)");
+      continue;
+    }
+    local v = {};
+    local ar = {};
+    if (!T.AnnounceRead(v, readBytes(conn.file), ar)) throw name + ": AnnounceRead refused: " + (("reason" in ar) ? ar.reason : "?");
+    local storage = array(T.TableMessageBatchMax);
+    for (local i = 0; i < storage.len(); i++) storage[i] = T[root]();
+    local lr = {};
+    local count = T[root + "LoadMessages"](storage, v, readBytes(f[5]), lr);
+    if (count < 1 || (("bodyDamaged" in lr) && lr.bodyDamaged) || (("refused" in lr) && lr.refused)) {
+      writeText(outdir + "/" + name + ".refused", ("reason" in lr) ? ("" + lr.reason) : "refused");
+      continue;
+    }
+    local values = storage.slice(0, count);
+    local size = T[root + "MeasureMessages"](values, {});
+    if (size < 0) throw name + ": MeasureMessages refused";
+    local out = blob(size);
+    if (T[root + "SaveMessages"](values, out, {}) != size) throw name + ": SaveMessages did not write the measure";
+    writeBytes(outdir + "/" + name, out);
+  }
+  return;
+}
+
 // RETAIN-UNKNOWN (§6.6): LoadRetain the wire at the row's two capacities,
 // MeasureRetain, SaveRetain. `retain` prints the one read's verdict and the
 // §16 text of the known value (`read`), or `refused`. `retain-save` writes
@@ -905,6 +955,45 @@ if (mode == "write-refusal" || mode == "write-refusal-fixed" || mode == "write-r
     }
     return dst;
   };
+  local u64lt = function(a, b) {
+    if ((a < 0) != (b < 0)) return b < 0;
+    return a < b;
+  };
+  local wrefInteger = function(text, u64) {
+    if (text.len() == 0) return null;
+    local neg = false;
+    local i = 0;
+    if (text[0] == '-') {
+      if (u64) return null;
+      neg = true;
+      i = 1;
+    }
+    if (i >= text.len()) return null;
+    local acc = 0;
+    for (; i < text.len(); i++) {
+      local ch = text[i];
+      if (ch < '0' || ch > '9') return null;
+      local dig = ch - '0';
+      if (u64) {
+        if (u64lt(0x1999999999999999, acc)) return null;
+        local t = acc * 10;
+        local nv = t + dig;
+        if (u64lt(nv, t)) return null;
+        acc = nv;
+      } else if (neg) {
+        if (acc < -922337203685477580) return null;
+        local t = acc * 10;
+        if (acc == -922337203685477580 && dig > 8) return null;
+        acc = t - dig;
+      } else {
+        if (acc > 922337203685477580) return null;
+        local t = acc * 10;
+        if (acc == 922337203685477580 && dig > 7) return null;
+        acc = t + dig;
+      }
+    }
+    return acc;
+  };
   local wrefSet = function(T, root, v, path, what, text) {
     local segments = [];
     local start = 0;
@@ -926,12 +1015,20 @@ if (mode == "write-refusal" || mode == "write-refusal-fixed" || mode == "write-r
       if (fd == null) throw path + ": no field " + fname + " in " + tname;
       if (si < segments.len() - 1) {
         local child = owner[fd.member];
-        if (fd.shape == "union" && idx == null && si == segments.len() - 2) {
-          local ud = T[fd.table + "Descriptor"];
+        // a union's arm, held by the field itself or by one element of an
+        // array of unions (bounded_steps[3].label): the element IS the union
+        // value, never a table to look up by the union's name
+        local unionName = null;
+        if (fd.shape == "union" && idx == null) unionName = fd.table;
+        if (fd.shape == "arr" && idx != null && fd.elem != null && fd.elem.shape == "union") unionName = fd.elem.table;
+        if (unionName != null && si == segments.len() - 2) {
+          if (idx != null) child = child[idx];
+          if (child == null) throw path + ": " + seg + " holds no union";
+          local ud = T[unionName + "Descriptor"];
           local armName = segments[si + 1];
           local arm = null;
           foreach (a in ud.arms) { if (a.name == armName) { arm = a; break; } }
-          if (arm == null) throw path + ": no arm " + armName + " in " + fd.table;
+          if (arm == null) throw path + ": no arm " + armName + " in " + unionName;
           local holder = child;
           local key = arm.member;
           local d = arm.payload;
@@ -957,12 +1054,15 @@ if (mode == "write-refusal" || mode == "write-refusal-fixed" || mode == "write-r
         d = ed;
       }
       if (what == "int") {
-        holder[key] = text.tointeger();
+        local u64 = (d != null && d.shape == "int" && !d.signed && d.width == 8);
+        local n = wrefInteger(text, u64);
+        if (n == null) return "unrepresentable\n";
+        holder[key] = n;
       } else if (what == "ordinal") {
         local n = text.tointeger();
         if (d.variants != null && n >= 1 && n <= d.variants.len()) holder[key] = d.variants[n - 1][0];
         else holder[key] = n;
-      } else if (what == "float") {
+      } else if (what == "float" || what == "real") {
         holder[key] = wrefFloat(text);
       } else if (what == "count") {
         local n = text.tointeger();
@@ -1012,7 +1112,8 @@ if (mode == "write-refusal" || mode == "write-refusal-fixed" || mode == "write-r
     local got = strictLoad(opened, root, readBytes(wirepath));
     local v = got[0];
     if (v == null) throw cname + ": strictLoad refused " + wirepath;
-    wrefSet(T, root, v, path, what, text);
+    local setRes = wrefSet(T, root, v, path, what, text);
+    if (setRes != null) { writeText(outdir + "/" + cname, setRes); continue; }
     local answer = "refused\n";
     try {
       if (mode == "write-refusal" || mode == "write-refusal-fixed") {

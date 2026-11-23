@@ -44,7 +44,7 @@ func caseRows(surface, class string) []string {
 		return byClass("fixed-class", "variable-class")
 	case "json-read", "json-write", "json-hostile", "write-refusal-json":
 		return byClass("text-form", "text-form-variable")
-	case "message", "write-refusal-message":
+	case "message", "message-prior", "write-refusal-message":
 		return []string{"variable-tables/message-form"}
 	case "report":
 		return []string{"variable-tables/widening"}

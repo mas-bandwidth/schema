@@ -115,7 +115,7 @@ function hasNul(s) {
 // ---- the owning facade (tables/cards/cards.go) ------------------------------
 
 // Load reads wire into a Record using the generated load (docs/SPEC-TABLES.md
-// §6.2). Failures and malformed wire are errors; tolerant events ride in the
+// §6.2). Failures and malformed wire are errors; evolution events ride in the
 // returned report. The ORIGINAL wire is copied, never rewritten, so an old
 // input is preserved byte for byte.
 export function Load(wire) {

@@ -416,6 +416,10 @@ local parseWide = function(tok, kind, frac) {
     return [lim[1], true, true];
   }
   if (point < -40) return [null, false, false];
+  // With trailing zeros stripped (decimalOf), a dyadic fraction of F bits has
+  // at most F fractional decimal digits; refusing a longer fraction here keeps
+  // a hostile token out of the quadratic limb conversion below (TABLETEXT-5).
+  if (digits.len() - point > frac) return [null, false, false];
   local m = [];
   foreach (c in digits) m = bnMulSmall(m, 10, c - '0');
   local scale = point - digits.len();
@@ -2136,6 +2140,7 @@ readKeyed = function(T, c, fd, r, v, depth) {
 // last-wins and counted. The entries are sorted into ASCENDING KEY ORDER, the
 // order the wire and the writer hold (§2.8).
 readMap = function(T, c, fd, r, v, depth) {
+  if (depth + 1 > MAX_DEPTH) { r.bad = true; return false; }
   if (peek(r) != '{') { r.bad = true; return false; }
   if (depth + 1 > MAX_DEPTH) { r.bad = true; return false; } // THE READ CAP COUNTS EVERY CONTAINER, placed or skipped (§16.2)
   r.p++;
@@ -2257,6 +2262,7 @@ readPointerCell = function(T, c, r, holder, key, depth) {
   if (label == null) return false;
   local defined = label in r.graph;
   ch = peek(r);
+  if (ch != ',' && ch != '}') { r.bad = true; return false; }
   if (ch == ',') { r.p++; ch = peek(r); }
   local bare = ch == '}';
   if (bare != defined) { r.bad = true; return false; }
@@ -2571,6 +2577,7 @@ readScalar = function(T, d, r, holder, key, depth, where) {
 // is None; two keys is malformed. The arm's value takes the arm's own row;
 // a value of the wrong shape is a kind mismatch and the union reads None.
 readUnion = function(T, u, r, holder, key, depth) {
+  if (depth + 1 > MAX_DEPTH) { r.bad = true; return false; }
   if (peek(r) != '{') { r.bad = true; return false; }
   if (depth + 1 > MAX_DEPTH) { r.bad = true; return false; } // THE READ CAP COUNTS EVERY CONTAINER, placed or skipped (§16.2)
   r.p++;

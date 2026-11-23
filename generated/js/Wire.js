@@ -317,7 +317,7 @@ export function WriteProbeBits(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  if (value.nonce < 0n || value.nonce > 18446744073709551615n) {
+  if (typeof value.nonce !== "bigint" || value.nonce < 0n || value.nonce > 18446744073709551615n) {
     return false;
   }
   BIGINT_SCRATCH.value = globalThis.BigInt.asUintN(64, value.nonce);
@@ -1433,7 +1433,7 @@ export function WriteTestData(stream, value) {
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (value.int64Range < -1000000000000n || value.int64Range > 1000000000000n) {
+  if (typeof value.int64Range !== "bigint" || value.int64Range < -1000000000000n || value.int64Range > 1000000000000n) {
     return false;
   }
   BIGINT_SCRATCH.value = globalThis.BigInt.asUintN(64, value.int64Range - -1000000000000n);

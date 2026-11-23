@@ -216,6 +216,7 @@ Each table class also carries its **descriptor**, the table as data
 
 ## ERRORS
 
+<!-- example: compile -->
 ```ruby
 p = Snapshot.read(data)        # a packet: the value, or raises Refused
 p, bits = Snapshot.read_bits(data, bit_offset: 0) # also reports bits consumed

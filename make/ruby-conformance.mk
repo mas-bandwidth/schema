@@ -42,3 +42,40 @@ conformance-negative-control-ruby-walk: ruby-toolchain-check build/conformance-h
 	@echo 'conformance-negative-control-ruby-walk: sabotaged JSON bool reader caught on json-read while wire stayed green'
 
 test-ruby: conformance-ruby conformance-negative-control-ruby conformance-negative-control-ruby-walk
+
+# THE DRIVER'S CASE OUTCOMES (review F-086, F-088, F-089; the fixture and its
+# answers are test/conformance/case-outcomes). On both pins, over the real
+# generated tree: an absent codec is an EMPTY <case>.absent, a present codec's
+# refusal is the surface's refusal answer, a driver error names its case and
+# reds the surface after the rest have run. Over an EMPTY tree, the same rows
+# all answer absent and no surface aborts, the must-refuse rows among them.
+.PHONY: conformance-ruby-case-outcomes conformance-ruby-empty-tree
+conformance-ruby-case-outcomes: ruby-toolchain-check build/conformance-ruby
+	@mkdir -p build/conformance-ruby-empty-gen
+	@test -z "$$(ls -A build/conformance-ruby-empty-gen)" || { echo 'build/conformance-ruby-empty-gen is not empty'; exit 1; }
+	@for ruby in $(RUBY) $(RUBY_FLOOR); do \
+		RUBY=$$ruby sh test/conformance/case-outcomes/check.sh test/conformance/ruby/driver \
+			test/conformance/case-outcomes/manifest.txt test/conformance/case-outcomes/expected.txt \
+			build/conformance-ruby-case-outcomes || exit 1; \
+		RUBY=$$ruby RUBY_CONFORMANCE_GENERATED=build/conformance-ruby-empty-gen sh test/conformance/case-outcomes/check.sh \
+			test/conformance/ruby/driver test/conformance/case-outcomes/manifest.txt \
+			test/conformance/case-outcomes/expected-empty.txt build/conformance-ruby-case-outcomes-empty || exit 1; \
+	done
+
+# THE WHOLE CORPUS OVER AN EMPTY TREE (review F-086): every surface, every
+# row, through the harness, with no Ruby codec at all. The run is green (a
+# missing codec is absence, never a failure or a pass) and every answer the
+# driver leaves is an EMPTY <case>.absent.
+conformance-ruby-empty-tree: ruby-toolchain-check build/conformance-harness build/conformance-cpp build/schema_test_cook
+	@mkdir -p build/conformance-ruby-empty-gen
+	@test -z "$$(ls -A build/conformance-ruby-empty-gen)" || { echo 'build/conformance-ruby-empty-gen is not empty'; exit 1; }
+	@RUBY=$(RUBY) RUBY_CONFORMANCE_GENERATED=build/conformance-ruby-empty-gen \
+		./build/conformance-harness run --only ruby --work build/conformance-ruby-empty > build/conformance-ruby-empty.log 2>&1 || \
+		{ echo 'conformance-ruby-empty-tree: the run over an empty tree is not green'; tail -40 build/conformance-ruby-empty.log; exit 1; }
+	@answers=$$(find build/conformance-ruby-empty/out/ruby -type f | wc -l | tr -d ' '); \
+	stray=$$(find build/conformance-ruby-empty/out/ruby -type f \( ! -name '*.absent' -o -size +0 \) | head -5); \
+	test "$$answers" -gt 0 || { echo 'conformance-ruby-empty-tree: the driver answered nothing'; exit 1; }; \
+	test -z "$$stray" || { echo "conformance-ruby-empty-tree: answers beside a missing codec that are not an EMPTY .absent: $$stray"; exit 1; }; \
+	echo "conformance-ruby-empty-tree: $$answers cases, every one an EMPTY .absent, run green"
+
+test-ruby: conformance-ruby-case-outcomes conformance-ruby-empty-tree

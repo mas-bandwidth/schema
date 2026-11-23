@@ -580,6 +580,7 @@ const messageRows = [
   ["vocab9demo", "Wide00", "vocab9/Vocab9demoTable.js", "vocab9/Vocab9Table.js"],
   ["tblvarevo1", "EvoMsg", "varevo1/Tblvarevo1Table.js", "varevo1/VarEvo1Table.js"],
   ["tblvarevo3", "EvoMsg", "varevo3/Tblvarevo3Table.js", "varevo3/VarEvo3Table.js"],
+  ["tblprior", "Prior", "prior/TblpriorTable.js", "prior/PriorNarrowTable.js"],
   ["messagedemo", "ToolMessage", "messages/MessagedemoTable.js", "messages/MessagesTable.js"],
 ];
 
@@ -626,9 +627,16 @@ function messageAbsent(outDir, name, reason) {
   writeFileSync(join(outDir, name + ".absent"), reason);
 }
 
-async function surfaceMessage(lines, outDir) {
-  const connections = kind(lines, "connection");
-  for (const f of kind(lines, "message")) {
+// surfaceMessage answers the `message` surface, and with prior set the
+// `message-prior` surface (testdata/conformance/tables/FORMAT.md): the same
+// read of a batch against a peer's announcement, handed on its own keywords.
+// A prior-writer row may owe a refusal, so there the answer is what the public
+// read returned: the re-saved batch, or `<case>.refused` beside where it would
+// go, holding this leg's own reason (a diagnostic the harness never compares:
+// docs/rulings.json `refusal-verdict-only`).
+async function surfaceMessage(lines, outDir, prior) {
+  const connections = kind(lines, prior ? "prior-connection" : "connection");
+  for (const f of kind(lines, prior ? "prior-message" : "message")) {
     // message <name> <connection> <root> <file-form wire> <message-form wire>
     const conn = connections.find((c) => c[1] === f[2]);
     if (conn === undefined) { fail("message " + f[1] + " names no connection " + f[2]); }
@@ -660,7 +668,15 @@ async function surfaceMessage(lines, outDir) {
     }
     const values = Array.from({ length: runtime.TableMessageBatchMax }, () => new runtime[f[3]]());
     const count = loadMessages(values, vocabulary, new Uint8Array(readFileSync(f[5])), report);
-    if (count < 1) { fail(f[1] + ": message load " + JSON.stringify(report)); }
+    // THE ANSWER IS WHAT THE PUBLIC READ RETURNED. A prior-writer batch the
+    // read refuses delivers no body: the row is answered refused, with the
+    // read's own reason, and nothing is saved. Whether the row owed a refusal
+    // is the harness's to say. Every `message` row owes bytes.
+    if (count < 1) {
+      if (!prior) { fail(f[1] + ": message load " + JSON.stringify(report)); }
+      writeFileSync(join(outDir, f[1] + ".refused"), report.Reason || (report.Damaged ? "malformed" : "no body"));
+      continue;
+    }
     const body = values.slice(0, count);
     const size = measureMessages(body, report);
     if (size < 0) { fail(f[1] + ": message measure " + JSON.stringify(report)); }
@@ -670,7 +686,9 @@ async function surfaceMessage(lines, outDir) {
   }
   // message-batch <case> <connection> <root> <wire>: load with room for every
   // body and answer the count LoadMessages returned (docs/SPEC-TABLES.md §3.3;
-  // FORMAT.md, `message-batch`).
+  // FORMAT.md, `message-batch`). Only on the `message` surface; `message-prior`
+  // reads only `prior-connection` and `prior-message`.
+  if (prior) { return; }
   for (const f of kind(lines, "message-batch")) {
     const conn = connections.find((c) => c[1] === f[2]);
     if (conn === undefined) { fail("message-batch " + f[1] + " names no connection " + f[2]); }
@@ -804,6 +822,11 @@ const wireRows = [
   // a pointer under a false guard and inside an absent optional over a
   // variable closure is no edge (§2.3, §3.1)
   ["tblg1", "Guarded", "g1/Tblg1Variable.js"],
+  // the SHAPES unit (test/tables/shapes), opted in by `list` below: float32
+  // bounds float32 cannot spell, -0, counted arrays whose Min is above 0, on a
+  // variable table and a fixed one
+  ["shapes", "Bounds", "shapes/ShapesVariable.js"],
+  ["shapes", "FixedBounds", "shapes/ShapesVariable.js"],
 ];
 
 // fuzzUnits binds the roster units no text surface names (tbla2, tblk1,
@@ -979,7 +1002,22 @@ const textUnits = {
   tblm1: "m1/Tblm1Variable.js", tblm2: "m2/Tblm2Variable.js",
   listdemo: "lists/ListdemoVariable.js",
   widelist: "widelist/WidelistdemoVariable.js",
+  shapes: "shapes/ShapesVariable.js",
 };
+
+// unitView binds a unit's variable module and its View (<Pkg>View.js beside
+// it, docs/SPEC-TABLES.md §8): the write-refusal rows read an enum's names, a
+// union's arms and a new element's class from the declaration. null when this
+// leg generates no View for the unit.
+async function unitView(unit) {
+  const path = textUnits[unit] ?? wireRows.find((r) => r[0] === unit)?.[2];
+  if (path === undefined) { return null; }
+  const viewPath = path.replace(/Variable\.js$/, "View.js");
+  if (!existsSync(resolve(generated, path)) || !existsSync(resolve(generated, viewPath))) { return null; }
+  const m = await load(path);
+  const v = await load(viewPath);
+  return { m, view: v.UnitView() };
+}
 
 async function textCodec(unit, root) {
   const path = textUnits[unit];
@@ -1014,6 +1052,12 @@ async function surfaceWire(lines, outDir) {
       // by its own name, which is the wire refusal the harness holds a
       // wire-refused instance to.
       if (r.sharedBlob > 0) { writeFileSync(join(outDir, f[1] + ".absent"), "blob_shared"); continue; }
+      // A WIRE-REFUSED INSTANCE (FORMAT.md): every port refuses its bytes, and
+      // the answer is the read's own reason; any other refused load is a red
+      if (f.includes("wire-refused")) {
+        writeFileSync(join(outDir, f[1] + ".absent"), (r.reason || "refused") + "\n");
+        continue;
+      }
       fail(f[1] + ": load refused " + f[4]);
     }
     const saved = codec.save(v);
@@ -1648,7 +1692,9 @@ if (surface === "list") {
   // counts rather than reading as a feature the leg lacks. The retain surfaces
   // answer every row whose unit this leg generates, and name the reason beside
   // a row it cannot reach.
-  process.stdout.write("wire\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\nmessage\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n");
+  process.stdout.write("wire\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\nmessage\nmessage-prior\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n");
+  // the opt-in units this leg answers (MANIFEST.txt `opt-in`)
+  process.stdout.write("unit shapes\n");
   process.exit(0);
 }
 if (surface === "block-lead") {
@@ -1669,7 +1715,8 @@ switch (surface) {
   case "json-read": await surfaceJsonRead(lines, outDir); break;
   case "json-write": await surfaceJsonWrite(lines, outDir); break;
   case "json-hostile": await surfaceJsonHostile(lines, outDir); break;
-  case "message": await surfaceMessage(lines, outDir); break;
+  case "message": await surfaceMessage(lines, outDir, false); break;
+  case "message-prior": await surfaceMessage(lines, outDir, true); break;
   case "cook": surfaceCook(lines, outDir); break;
   case "cook-write": await surfaceCookWrite(lines, outDir); break;
   case "cook-foreign": surfaceCookForeign(lines, outDir); break;
@@ -1684,7 +1731,7 @@ switch (surface) {
   case "write-refusal-fixed":
   case "write-refusal-message":
   case "write-refusal-json":
-    await surfaceWriteRefusal(surface, lines, outDir, textCodec, messageVerbs);
+    await surfaceWriteRefusal(surface, lines, outDir, textCodec, messageVerbs, unitView);
     break;
   default: process.exit(2);
 }

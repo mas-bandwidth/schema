@@ -646,7 +646,9 @@ func TestLuauCookCheckWholeCorpus(t *testing.T) {
 			}
 			cooked, err := tablecook.Cook(cu.m, inst, tablecook.Options{})
 			if err != nil {
-				t.Skipf("reference has no cook: %v", err)
+				// the reference accepted the wire, so it has a cook: an
+				// error here is a failure, never a row to skip
+				t.Fatalf("the reference wrote no cook for %s, which it reads: %v", row.caseName, err)
 			}
 			if _, err = tablecook.Check(cu.m, cooked); err != nil {
 				t.Fatalf("reference rejected its cook: %v", err)

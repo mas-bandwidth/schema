@@ -741,12 +741,12 @@ payload is exactly the bytes a field puts after its own framing prefix, with
 the arm's `L` standing in for the field's own length where that kind has one
 and framing the fixed width where it does not. **AN ARM HEADER IS A FIELD
 HEADER** (M20): the arm id reference, the arm's own KIND byte, `L`, then the
-payload — so a retyped arm is an ordinary KIND MISMATCH, counted, the union
-left `None` and the parent reading on past `L`, exactly as a retyped field
-is. What the length then checks is framing alone: a fixed-width arm whose `L`
-is not its kind's width, and a length-shaped arm whose payload is damaged
-inside its own `L`, are each `malformed` with that same outcome, and an arm
-whose payload is a body ends at its terminator or it is damage. An arm with
+payload — so a retyped arm is an ordinary KIND MISMATCH, and the whole load
+refuses `kind_mismatch`, exactly as a retyped field does. What the length then
+checks is framing alone: a fixed-width arm whose `L` is not its kind's width,
+and a length-shaped arm whose payload is damaged inside its own `L`, are each
+damage, and the whole load refuses `wire_damaged`; an arm whose payload is a
+body ends at its terminator or it is damage (docs/SPEC-TABLES.md §4). An arm with
 NO PAYLOAD takes no storage: the tag alone is the value, kind `32` with
 `L = 0` on the wire, `null` in the
 text. Arm storage sits at offsets from the union's own storage base with the
@@ -814,12 +814,11 @@ refusal §7.6 gives a pointer there. The WRITER holds the sort — `Measure`, `S
 and nothing passes between them, so `measure == save` over a map is a real
 check on two sorts agreeing. The READER trusts nothing and spends one compare
 per entry: the key is read by a SCAN of the entry's field headers before the
-slot is chosen, ascending against the key of the last entry that LANDED, a
-duplicate resets the slot it took so last wins WHOLE, a descending key is
-damage, `malformed` set and the whole load discarded (docs/SPEC-TABLES.md §2.8,
-§4, DAMAGE DISCARDS THE WHOLE LOAD), a key past the bound is skipped by its `L`
-and counted `clamped`, and a key kind the reader does not declare empties the
-map for ONE `kind_mismatch`. The shape to refuse is closed addressing: a node
+slot is chosen, strictly ascending against the key of the entry before it: a
+repeated key and a descending key are each damage, and the whole load refuses
+`wire_damaged` (docs/SPEC-TABLES.md §2.8, §4); a key past the bound refuses
+`length_over_bound`, and a key kind the reader does not declare refuses
+`kind_mismatch`. The shape to refuse is closed addressing: a node
 per entry is an allocation per entry on the authoring side, a directory entry
 per entry in every cook and a pointer chase per probe on the read side.
 
@@ -870,7 +869,7 @@ dropped, which must turn the map's test red beside the list's, and the KEYS'
 ascending test dropped, which is the map's alone and would go untested under a
 shared control.
 
-**Targets:** maps, json-map-walk, maps-sort-negative-control, maps-dead-entry-negative-control, maps-ascending-negative-control, maps-duplicate-negative-control, maps-key-kind-negative-control, maps-clamp-negative-control, maps-fit-negative-control, maps-depth-negative-control, maps-text-order-negative-control, maps-unreached-negative-control, maps-cook-check-negative-control
+**Targets:** maps, json-map-walk, maps-sort-negative-control, maps-dead-entry-negative-control, maps-ascending-negative-control, maps-repeated-key-negative-control, maps-key-kind-negative-control, maps-key-over-bound-negative-control, maps-fit-negative-control, maps-depth-negative-control, maps-text-order-negative-control, maps-unreached-negative-control, maps-cook-check-negative-control
 
 | cpp | c | rust | go | cs | java | js | dart | elixir | goose | moo | lobster | squirrel | luau | lua | python | ruby | unity |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|

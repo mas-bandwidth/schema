@@ -251,7 +251,7 @@ func cT06CompressedFloat(t *testing.T) {
 	if !strings.Contains(h, "table_fixed_put32( b + 4, table_stored_float_bits( value->aim ) )") {
 		t.Fatal("R30: the fixed form's write body no longer stores aim's float32 bits")
 	}
-	if !strings.Contains(h, "table_message_quantize(value->aim") {
+	if !strings.Contains(h, "table_message_quantize( value->aim") {
 		t.Fatal("R30: the contrast is gone — the variable form no longer quantizes aim, so 'rides as the float' is untestable")
 	}
 	// min, max and resolution are DEFINITIONS: the step is in the digest under

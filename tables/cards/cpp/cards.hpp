@@ -30,13 +30,13 @@ struct Record {
 };
 
 // Load reads wire into a Record using the generated measured/aligned region
-// load (§6.2). Failures and malformed wire are errors; tolerant events ride in
-// the returned report. The ORIGINAL wire is copied, never rewritten.
+// load (§6.2). Failures and malformed wire are errors; evolution events
+// (unknown, widened) ride in the returned report. The ORIGINAL wire is copied, never rewritten.
 bool CardLoad(const uint8_t * wire, size_t len, Record & out, TableReport & report);
 
 // FromJSON builds a Record from JSON text through the generated CardBuilder and
-// CardFromJson (§16), then the generated save. Unknown, mismatched, clamped and
-// malformed inputs are refused, as are the customer bounds. Bytes are published
+// CardFromJson (§16), then the generated save. Unknown, mismatched, out of
+// range and malformed inputs are refused, as are the customer bounds. Bytes are published
 // only on complete success; a refused write mutates nothing.
 bool CardFromJSON(const char * text, size_t len, Record & out, TableReport & report);
 

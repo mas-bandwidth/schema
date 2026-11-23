@@ -1,12 +1,12 @@
 # frozen_string_literal: true
 
 def self.run(manifest, outdir)
-  RubyConformance.entries(manifest, 'json-hostile').each do |row|
+  RubyConformance.cases(manifest, 'json-hostile') do |row|
     case_name, unit, root, tree = row[1, 4]
     pkg = RubyConformance.unit_package(unit)
     cls = RubyConformance.root_class(unit, root)
     if pkg.nil? || cls.nil? || !RubyConformance.fixed_carried?(pkg, cls)
-      RubyConformance.absent(outdir, case_name, 'unit not generated for ruby')
+      RubyConformance.no_codec(outdir, case_name)
       next
     end
     begin

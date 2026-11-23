@@ -331,8 +331,12 @@ end
 
 local skip_value: (Input, number, any, boolean?) -> boolean
 
--- a skipped OBJECT may still be a pointer's: `&node` opening it takes its
--- label with no node, so a later reference reads null (§16.7). text says the
+-- a skipped OBJECT may still be a pointer's, and the label rules hold in it as
+-- they do for a placed pointer (§16.7): `{"&node": N}` alone REFERS, so N must
+-- be defined earlier in the text and closed; `&node` opening an object with
+-- fields DEFINES, so N must be new to the whole text, and it stays open until
+-- the skipped object closes. A defined label has no node, so a later reference
+-- reads null. text says the
 -- walk is the TABLE walk, where a skipped string or object key is held to the
 -- text rules of a placed one (docs/SPEC-TABLES.md §16.3); the JSON layer's
 -- own grammar probe passes it false.
@@ -1159,7 +1163,13 @@ local function read_pointer(T: any, d: any, inp: Input, holder: any, key: any, d
   if label == nil then return false end
   local entry = graph[label]
   c = peek(inp)
-  if c == ',' then inp.p = inp.p + 1; c = peek(inp) end
+  -- the label is a member like any other: a comma or the object's close
+  -- follows it, never the next key (§16.2)
+  if c == ',' then
+    inp.p = inp.p + 1; c = peek(inp)
+  elseif c ~= '}' then
+    inp.bad = true; return false
+  end
   local bare = c == '}'
   if bare ~= (entry ~= nil) then inp.bad = true; return false end
   if bare then
@@ -3068,6 +3078,14 @@ local function conv_to_lua(fd: any, x: any, A: any, memo: any): any
   return x
 end
 
+-- A [Min..Max] COUNT BELOW ITS MIN is one the writer refuses, as one past its
+-- Max (docs/SPEC.md §5.1 row 3): what a writer accepts is what a read
+-- accepts (§16.3), and the strict read refuses it. A byte array held as one
+-- buffer is held to it as a table of elements is.
+local function below_min(fd: any, n: number): boolean
+  return not fd.fixed and not fd.list and fd.keyed == nil and n < (fd.min or 0)
+end
+
 local function conv_from_lua(fd: any, x: any, A: any, memo: any): any
   memo.count = memo.count or {}
   memo.len = memo.len or {}
@@ -3129,6 +3147,7 @@ local function conv_from_lua(fd: any, x: any, A: any, memo: any): any
       local out = {}
       local n = memo.count[x]
       if n == nil then n = buffer.len(x) end
+      if below_min(fd, n) then memo.invalid = true; refuse_reason = "out_of_range" end
       if n > buffer.len(x) then n = buffer.len(x) end
       for i = 1, n do out[i] = buffer.readu8(x, i - 1) end
       return out
@@ -3140,6 +3159,7 @@ local function conv_from_lua(fd: any, x: any, A: any, memo: any): any
     -- the walk records the value as unwritable rather than truncating it here
     if n < 0 then memo.invalid = true; refuse_reason = "out_of_range"; n = 0 end
     if (fd.bound or 0) > 0 and n > fd.bound then memo.invalid = true; refuse_reason = "out_of_range"; n = fd.bound end
+    if below_min(fd, n) then memo.invalid = true; refuse_reason = "out_of_range" end
     if fd.elem.shape == "pointer" then
       -- a null element is nil in the Luau storage and false in the walk's
       -- array, so a null past the last live one still counts (§2.5, §16.2)

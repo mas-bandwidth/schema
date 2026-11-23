@@ -272,12 +272,14 @@ func (v *Vocabulary) announceRead(data []byte, report *tabletext.Report) error {
 	if !read {
 		return damage("an announcement without its build version and vocabulary")
 	}
-	entries, good := decodeVocabulary(vocabulary)
+	// THE ENTRY BOUND REFUSES AT THE ENTRY THAT PASSES IT (§3.3): the decode
+	// stops there, so no entry past the capacity is read or compared
+	entries, good, tooLarge := decodeVocabulary(vocabulary, v.bound(), nil)
+	if tooLarge {
+		return &MessageRefusal{Reason: ReasonVocabularyTooLarge, BuildVersion: version}
+	}
 	if !good {
 		return damage("a vocabulary that cannot be read whole")
-	}
-	if len(entries) > v.bound() {
-		return &MessageRefusal{Reason: ReasonVocabularyTooLarge, BuildVersion: version}
 	}
 	v.entries = entries
 	v.announced = true
@@ -351,48 +353,63 @@ func announcementFields(body []byte, ids []uint64, byteBound int, report *tablet
 // vocabulary from a build that still announced it), so a vocabulary carrying
 // 0xFFFFFFFFFFFFFFFE, 0xFFFFFFFFFFFFFFFD or a SECOND 0xFFFFFFFFFFFFFFFF is
 // malformed whole and sets nothing.
-func decodeVocabulary(in []byte) ([]ir.TableVocabularyEntry, bool) {
+//
+// THE ENTRY BOUND IS APPLIED AS THE ENTRIES ARE READ: once `bound` entries
+// are placed, another entry starting is vocabulary_too_large (tooLarge), and
+// it is neither decoded nor compared. ops, when set, counts the duplicate
+// test's probes; it is a test's instrument and nil on every real read, so the
+// test's work is pinned by a count, never a clock.
+func decodeVocabulary(in []byte, bound int, ops *int) (entries []ir.TableVocabularyEntry, good, tooLarge bool) {
 	var out []ir.TableVocabularyEntry
+	// placed holds every entry's complete encoding, computed ONCE per entry,
+	// so the duplicate test is one probe an entry and the decode is linear in
+	// the vocabulary's length
+	placed := map[string]struct{}{}
 	nodeTable := 0
 	for at := 0; at < len(in); {
+		if len(out) >= bound {
+			return nil, false, true
+		}
 		if at+9 > len(in) {
-			return nil, false
+			return nil, false, false
 		}
 		e := ir.TableVocabularyEntry{Id: binary.LittleEndian.Uint64(in[at:]), Kind: in[at+8]}
 		at += 9
 		switch e.Id {
 		case ir.TableBuildVersionWireId, ir.TableMessageVocabularyWireId:
-			return nil, false
+			return nil, false, false
 		case ir.TableNodeWireId:
 			nodeTable++
 			if nodeTable > 1 {
-				return nil, false
+				return nil, false, false
 			}
 		}
 		if !ir.TableMessageKnownKind(e.Kind) {
-			return nil, false
+			return nil, false, false
 		}
 		shape, n, ok := ir.DecodeShape(in[at:], e.Kind)
 		if !ok {
-			return nil, false
+			return nil, false, false
 		}
 		e.Shape = shape
 		// A TRIPLE ALREADY PLACED IS NEVER PLACED TWICE, so two entries that
 		// agree on the id, the kind and every fact of the shape are malformed
 		// (§3.3): no writer this wire has produces one, and a reader that took
-		// it would carry two slots that name one thing. The scan is quadratic
-		// in the entry count, and the entry count is bounded above at 4096, so
-		// it is at most eight million compares on a path that runs ONCE a
-		// connection and never again.
-		for _, seen := range out {
-			if seen.Id == e.Id && seen.Kind == e.Kind && seen.Key() == e.Key() {
-				return nil, false
-			}
+		// it would carry two slots that name one thing. The key is the
+		// entry's whole canonical encoding, so key equality is exactly that
+		// agreement, and one probe of the set decides it.
+		key := e.Key()
+		if ops != nil {
+			*ops++
 		}
+		if _, dup := placed[key]; dup {
+			return nil, false, false
+		}
+		placed[key] = struct{}{}
 		at += n
 		out = append(out, e)
 	}
-	return out, true
+	return out, true, false
 }
 
 // Refused reports whether an error from [Decode], [DecodeMessages] or

@@ -541,6 +541,9 @@ export function WriteRealPacket(stream, value) {
     if (!stream.serializeBits(NUMBER_SCRATCH, 6)) {
       return false;
     }
+    if (!globalThis.Number.isInteger(value.f016Fixed) || value.f016Fixed < -37748736 || value.f016Fixed > 37748736) {
+      return false;
+    }
     NUMBER_SCRATCH.value = value.f016Fixed;
     if (!stream.serializeFixed(NUMBER_SCRATCH, 12, 20, -36, 36)) {
       return false;
@@ -574,6 +577,9 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
     return false;
   }
+  if (!globalThis.Number.isInteger(value.f021Ufixed) || value.f021Ufixed < 0 || value.f021Ufixed > 102977536) {
+    return false;
+  }
   NUMBER_SCRATCH.value = value.f021Ufixed;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 20, 12, 0, 25141)) {
     return false;
@@ -597,6 +603,9 @@ export function WriteRealPacket(stream, value) {
   }
   NUMBER_SCRATCH.value = value.f024F32;
   if (!stream.serializeFloat(NUMBER_SCRATCH)) {
+    return false;
+  }
+  if (!globalThis.Number.isInteger(value.f025Fixed) || value.f025Fixed < -30464 || value.f025Fixed > 30464) {
     return false;
   }
   NUMBER_SCRATCH.value = value.f025Fixed;
@@ -698,6 +707,9 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 19)) {
     return false;
   }
+  if (!globalThis.Number.isInteger(value.f040Fixed) || value.f040Fixed < -20480 || value.f040Fixed > 20480) {
+    return false;
+  }
   NUMBER_SCRATCH.value = value.f040Fixed;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 4, 12, -5, 5)) {
     return false;
@@ -755,6 +767,9 @@ export function WriteRealPacket(stream, value) {
   }
   NUMBER_SCRATCH.value = value.f048F64;
   if (!stream.serializeDouble(NUMBER_SCRATCH)) {
+    return false;
+  }
+  if (!globalThis.Number.isInteger(value.f049Ufixed) || value.f049Ufixed < 0 || value.f049Ufixed > 49152) {
     return false;
   }
   NUMBER_SCRATCH.value = value.f049Ufixed;
@@ -870,6 +885,9 @@ export function WriteRealPacket(stream, value) {
   }
   NUMBER_SCRATCH.value = value.f065Cf32;
   if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 30.0, 0.5)) {
+    return false;
+  }
+  if (!globalThis.Number.isInteger(value.f066Ufixed) || value.f066Ufixed < 0 || value.f066Ufixed > 32768) {
     return false;
   }
   NUMBER_SCRATCH.value = value.f066Ufixed;
@@ -1003,6 +1021,9 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
+  if (!globalThis.Number.isInteger(value.f084Ufixed) || value.f084Ufixed < 0 || value.f084Ufixed > 128) {
+    return false;
+  }
   NUMBER_SCRATCH.value = value.f084Ufixed;
   if (!stream.serializeFixed(NUMBER_SCRATCH, 1, 7, 0, 1)) {
     return false;
@@ -1072,6 +1093,9 @@ export function WriteRealPacket(stream, value) {
   }
   BOOL_SCRATCH.value = value.f094Bool;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
+    return false;
+  }
+  if (!globalThis.Number.isInteger(value.f095Fixed) || value.f095Fixed < -103350272 || value.f095Fixed > 103350272) {
     return false;
   }
   NUMBER_SCRATCH.value = value.f095Fixed;

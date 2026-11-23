@@ -362,6 +362,10 @@ defmodule Benchtable.BenchTable do
       crit: value_crit
     } = value
 
+    if not is_integer(value_target_id) do
+      raise ArgumentError, "value.target_id is not an integer"
+    end
+
     if value_target_id < 0 do
       raise ArgumentError, "value.target_id is below the wire minimum"
     end
@@ -373,6 +377,10 @@ defmodule Benchtable.BenchTable do
     v = value_target_id &&& 0xFFF
     scratch = v
 
+    if not is_integer(value_damage) do
+      raise ArgumentError, "value.damage is not an integer"
+    end
+
     if value_damage < 0 do
       raise ArgumentError, "value.damage is below the wire minimum"
     end
@@ -383,6 +391,10 @@ defmodule Benchtable.BenchTable do
 
     v = value_damage
     scratch = scratch ||| v <<< 12
+
+    if not is_integer(value_hit_kind) do
+      raise ArgumentError, "value.hit_kind is not an integer"
+    end
 
     if value_hit_kind < 0 do
       raise ArgumentError, "value.hit_kind is below the wire minimum"
@@ -505,6 +517,10 @@ defmodule Benchtable.BenchTable do
   def write_table_chat_event!(value) do
     %{channel: value_channel, speaker: value_speaker} = value
 
+    if not is_integer(value_channel) do
+      raise ArgumentError, "value.channel is not an integer"
+    end
+
     if value_channel < 0 do
       raise ArgumentError, "value.channel is below the wire minimum"
     end
@@ -515,6 +531,10 @@ defmodule Benchtable.BenchTable do
 
     v = value_channel
     scratch = v
+
+    if not is_integer(value_speaker) do
+      raise ArgumentError, "value.speaker is not an integer"
+    end
 
     if value_speaker < 0 do
       raise ArgumentError, "value.speaker is below the wire minimum"
@@ -624,6 +644,10 @@ defmodule Benchtable.BenchTable do
   def write_table_pickup_event!(value) do
     %{item_id: value_item_id, amount: value_amount} = value
 
+    if not is_integer(value_item_id) do
+      raise ArgumentError, "value.item_id is not an integer"
+    end
+
     if value_item_id < 0 do
       raise ArgumentError, "value.item_id is below the wire minimum"
     end
@@ -634,6 +658,10 @@ defmodule Benchtable.BenchTable do
 
     v = value_item_id &&& 0x3FF
     scratch = v
+
+    if not is_integer(value_amount) do
+      raise ArgumentError, "value.amount is not an integer"
+    end
 
     if value_amount < 0 do
       raise ArgumentError, "value.amount is below the wire minimum"
@@ -787,6 +815,10 @@ defmodule Benchtable.BenchTable do
             crit: value_hit_crit
           } = value_hit
 
+          if not is_integer(value_hit_target_id) do
+            raise ArgumentError, "value.hit.target_id is not an integer"
+          end
+
           if value_hit_target_id < 0 do
             raise ArgumentError, "value.hit.target_id is below the wire minimum"
           end
@@ -798,6 +830,10 @@ defmodule Benchtable.BenchTable do
           v = value_hit_target_id &&& 0xFFF
           scratch = scratch ||| v <<< 2
 
+          if not is_integer(value_hit_damage) do
+            raise ArgumentError, "value.hit.damage is not an integer"
+          end
+
           if value_hit_damage < 0 do
             raise ArgumentError, "value.hit.damage is below the wire minimum"
           end
@@ -808,6 +844,10 @@ defmodule Benchtable.BenchTable do
 
           v = value_hit_damage
           scratch = scratch ||| v <<< 14
+
+          if not is_integer(value_hit_hit_kind) do
+            raise ArgumentError, "value.hit.hit_kind is not an integer"
+          end
 
           if value_hit_hit_kind < 0 do
             raise ArgumentError, "value.hit.hit_kind is below the wire minimum"
@@ -829,6 +869,10 @@ defmodule Benchtable.BenchTable do
         {:chat, value_chat} ->
           %{channel: value_chat_channel, speaker: value_chat_speaker} = value_chat
 
+          if not is_integer(value_chat_channel) do
+            raise ArgumentError, "value.chat.channel is not an integer"
+          end
+
           if value_chat_channel < 0 do
             raise ArgumentError, "value.chat.channel is below the wire minimum"
           end
@@ -839,6 +883,10 @@ defmodule Benchtable.BenchTable do
 
           v = value_chat_channel
           scratch = scratch ||| v <<< 2
+
+          if not is_integer(value_chat_speaker) do
+            raise ArgumentError, "value.chat.speaker is not an integer"
+          end
 
           if value_chat_speaker < 0 do
             raise ArgumentError, "value.chat.speaker is below the wire minimum"
@@ -858,6 +906,10 @@ defmodule Benchtable.BenchTable do
         {:pickup, value_pickup} ->
           %{item_id: value_pickup_item_id, amount: value_pickup_amount} = value_pickup
 
+          if not is_integer(value_pickup_item_id) do
+            raise ArgumentError, "value.pickup.item_id is not an integer"
+          end
+
           if value_pickup_item_id < 0 do
             raise ArgumentError, "value.pickup.item_id is below the wire minimum"
           end
@@ -868,6 +920,10 @@ defmodule Benchtable.BenchTable do
 
           v = value_pickup_item_id &&& 0x3FF
           scratch = scratch ||| v <<< 2
+
+          if not is_integer(value_pickup_amount) do
+            raise ArgumentError, "value.pickup.amount is not an integer"
+          end
 
           if value_pickup_amount < 0 do
             raise ArgumentError, "value.pickup.amount is below the wire minimum"

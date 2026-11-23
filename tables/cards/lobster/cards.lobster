@@ -370,7 +370,7 @@ def read_wire(wire:string) -> schema_rt.Record?, CardError?, schema_rt.LoadRepor
     return root, nil, report
 
 // Load reads wire into a CardRecord (docs/SPEC-TABLES.md §6.2). Refusals and
-// malformed wire are errors; tolerant events ride in the record's report. The
+// malformed wire are errors; evolution events ride in the record's report. The
 // ORIGINAL wire is kept, never rewritten, so an old input is preserved byte
 // for byte.
 def Load(wire:string) -> CardRecord?, CardError?:

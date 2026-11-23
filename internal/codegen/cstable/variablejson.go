@@ -19,6 +19,17 @@ const tableVariableJsonSource = `
         }
         return true;
     }
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    static bool ScanPointerKey(ReadOnlySpan<byte> text, ref In input, out bool isNode)
+    {
+        isNode = false;
+        Span<byte> key = stackalloc byte[MaxName];
+        if (!ScanString(text, ref input, key, true, out int used, stored: true)) { return false; }
+        if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
+        input.Pos++;
+        isNode = Same(key.Slice(0, used), "&node");
+        return true;
+    }
     static bool ReadPointer(ReadOnlySpan<byte> text, ref In input, object owner, TableFieldInfo f, int index, int depth)
     {
         if (Peek(text, ref input) == 'n')
@@ -32,11 +43,8 @@ const tableVariableJsonSource = `
             object empty = f.Table.Create(); f.SetChild(owner, index, empty);
             return ReadTable(text, ref input, empty, f.Table, depth + 1);
         }
-        Span<byte> key = input.KeyBuf;
-        if (!ScanString(text, ref input, key, true, out int used, stored: true)) { return false; }
-        if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
-        input.Pos++;
-        if (!Same(key.Slice(0, used), "&node"))
+        if (!ScanPointerKey(text, ref input, out bool isNode)) { return false; }
+        if (!isNode)
         {
             input.Pos = start;
             object single = f.Table.Create(); f.SetChild(owner, index, single);
@@ -45,6 +53,7 @@ const tableVariableJsonSource = `
         if (!ScanLabel(text, ref input, out ulong id)) { return false; }
         bool defined = input.Labels.TryGetValue(id, out Label label);
         byte c = Peek(text, ref input);
+        if (c != ',' && c != '}') { input.Bad = true; return false; }
         if (c == ',') { input.Pos++; c = Peek(text, ref input); }
         bool bare = c == '}';
         if (bare != defined) { input.Bad = true; return false; }

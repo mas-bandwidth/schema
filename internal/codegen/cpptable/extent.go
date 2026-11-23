@@ -1124,13 +1124,13 @@ func (g *tableGen) placeColumn(f *ir.Field) string {
 	// read the way its list, blob and pointer neighbors do (§2.8, §16.1).
 	var insert string
 	if mapKeyIsString(f) {
-		insert = fmt.Sprintf("[]( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * "+
+		insert = fmt.Sprintf("[]( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t, bool fresh ) -> void * "+
 			"{ if ( key == NULL ) { return NULL; } "+
-			"return (void *) TableMapPlace( worker, *(%s *) slot, TableMapKeyRef{ key, key_length } ); }", hold)
+			"return (void *) TableMapPlace( worker, *(%s *) slot, TableMapKeyRef{ key, key_length }, fresh ); }", hold)
 	} else {
 		typ, _ := g.cppFieldType(ir.MapKeyField(f).Type)
-		insert = fmt.Sprintf("[]( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * "+
-			"{ return (void *) TableMapPlace( worker, *(%s *) slot, (%s) key_value ); }", hold, typ)
+		insert = fmt.Sprintf("[]( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value, bool fresh ) -> void * "+
+			"{ return (void *) TableMapPlace( worker, *(%s *) slot, (%s) key_value, fresh ); }", hold, typ)
 	}
 	return insert + ", "
 }

@@ -1019,6 +1019,14 @@ public final class MixedHitEventVariable {
         long labelId = in.scanLabel();
         if (in.bad || labelId <= 0) return null;
         int c = in.peek();
+        if (c != '}' && c != ',') {
+            in.bad = true;
+            return null;
+        }
+        if (c == ',') {
+            in.p++;
+            c = in.peek();
+        }
         if (c == '}') {
             in.p++;
             TableJson.LabelEntry entry = in.labels.get(labelId);
@@ -1034,12 +1042,7 @@ public final class MixedHitEventVariable {
                 return null;
             }
             return (Value) entry.value;
-        } else if (c == ',') {
-            in.p++;
-            if (in.peek() == '}') {
-                in.bad = true;
-                return null;
-            }
+        } else {
             if (in.labels.containsKey(labelId)) {
                 in.bad = true;
                 return null;
@@ -1050,9 +1053,6 @@ public final class MixedHitEventVariable {
             jsonReadFieldsBody(in, child, depth + 1);
             entry.open = false;
             return child;
-        } else {
-            in.bad = true;
-            return null;
         }
     }
 

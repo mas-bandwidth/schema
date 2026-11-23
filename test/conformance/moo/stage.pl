@@ -81,6 +81,7 @@ my %kinds = (
 	"retain"        => ["retain"],
 	"retain-save"   => ["retain"],
 	"message"       => ["connection", "message", "message-batch"],
+	"message-prior" => ["prior-connection", "prior-message"],
 	"json-hostile"  => ["json-hostile"],
 	"cook"          => ["cook"],
 	"cook-foreign"  => ["cook"],

@@ -1,0 +1,73 @@
+package starlight
+
+type Contact
+{
+    on_radar bool
+    if on_radar
+    {
+        bearing  bits(9)
+        distance ufixed(24, 8) | min = 0, max = 60000
+    }
+    else
+    {
+        last_seen uint32
+    }
+}
+
+type LaserFire
+{
+    target_id uint16
+    power     float32 | min = 0, max = 1, resolution = 0.01
+}
+
+type MissileFire
+{
+    target_id uint16
+    count     int32 = 1 | min = 1, max = 4
+}
+
+union WeaponFire
+{
+    laser   LaserFire
+    missile MissileFire
+}
+
+type FireCommand
+{
+    ship_id uint16
+    fire    WeaponFire
+}
+
+type ChatLine
+{
+    speaker uint16
+    text    string(MaxChatText)
+}
+
+type Snapshot
+{
+    tick  uint32
+    ships [..MaxShipsPerSnapshot]ShipState
+}
+
+union Payload
+{
+    fire     FireCommand
+    chat     ChatLine
+    snapshot Snapshot
+}
+
+type Packet
+{
+    sequence uint16
+    payloads [..MaxPayloadsPerPacket]Payload
+}
+
+type PacketHeader
+{
+    const(0xC7, 8)
+    version bits(3)
+    reserved(5)
+    align
+    sequence uint16
+}

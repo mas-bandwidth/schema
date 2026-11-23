@@ -69,7 +69,7 @@ var (
 	reTrailingComma   = regexp.MustCompile(`,(\s*})`)
 	reEnumTyped       = regexp.MustCompile(`enum\s*:\s*uint8_t`)
 	reConstexpr       = regexp.MustCompile(`constexpr\s+\w+\s+(\w+)\s*=\s*([^;]+);`)
-	reEnumSingle      = regexp.MustCompile(`enum\s*\{\s*(\w+)\s*=\s*([^,}]+)\s*\}\s*;`)
+	reEnumSingle      = regexp.MustCompile(`enum\s*\{\s*(\w+)\s*=\s*([^,}]+?)\s*\}\s*;`)
 	reTypedefStruct   = regexp.MustCompile(`typedef struct (\w+)\s*\{`)
 	reStructClose     = regexp.MustCompile(`\}\s*(TableFixed\w+)\s*;`)
 	reFieldDefault    = regexp.MustCompile(`(?m)^(\s*(?:u?int(?:8|16|32|64)_t|bool)\s+\w+)\s*=\s*(?:0u?|1u?|false|true|kTableFixedNoGuard|layout_malformed)\s*;`)
@@ -81,8 +81,8 @@ var (
 	reForU32k         = regexp.MustCompile(`\buint32_t k;\s*for \( k =`)
 	reForU32j         = regexp.MustCompile(`\buint32_t j;\s*for \( j =`)
 	reForDeclJK       = regexp.MustCompile(`\buint32_t j, k;\s*`)
-	reStarClamped     = regexp.MustCompile(`\(\*(clamped|widened)\)\+\+`)
-	reStarClampedAdd  = regexp.MustCompile(`\(\*(clamped|widened)\)\s*\+=`)
+	reStarClamped     = regexp.MustCompile(`\(\s*\*(clamped|widened)\s*\)\+\+`)
+	reStarClampedAdd  = regexp.MustCompile(`\(\s*\*(clamped|widened)\s*\)\s*\+=`)
 	reSkipBraceOpen   = regexp.MustCompile(`n = their_n < my_n \? their_n : my_n;\s*\{`)
 	reSkipBraceClose  = regexp.MustCompile(`c\.skip_clamp = prev_skip;\s*\}\s*break;`)
 	reCLayBoundsPtr   = regexp.MustCompile(`uint8_t \* at;\s*`)
@@ -852,7 +852,7 @@ func strictCountTextScan(fn string) bool {
 // stores C++ spells as two statements.
 var (
 	reCCounterParam = regexp.MustCompile(`int32_t \* out_of_range,\s*int32_t \* widened`)
-	reCCounterInc   = regexp.MustCompile(`\(\*out_of_range\)\+\+`)
+	reCCounterInc   = regexp.MustCompile(`\(\s*\*out_of_range\s*\)\+\+`)
 	reCCounterArgs  = regexp.MustCompile(`&out_of_range,\s*&widened(\s*[,)])`)
 	reCCounterLocal = regexp.MustCompile(`int32_t out_of_range = 0;`)
 	reCCounterTest  = regexp.MustCompile(`\(\s*out_of_range != 0\s*\)`)
@@ -1089,6 +1089,13 @@ func extractRuntime(src string) (string, error) {
 	}
 	if nl := strings.LastIndex(src[:start], "\n"); nl >= 0 {
 		start = nl + 1
+	}
+	// The C leg's house layout opens the enum on the two lines above its
+	// enumerator: `enum`, then `{`. The runtime starts at the keyword.
+	if head := strings.TrimRight(src[:start], " \t\n"); strings.HasSuffix(head, "{") {
+		if e := strings.LastIndex(head, "enum"); e >= 0 && strings.TrimSpace(head[e+len("enum"):len(head)-1]) == "" {
+			start = e
+		}
 	}
 	body := src[start:]
 	// C++ appends a separate tableIntegrityRuntime after tableFixedRuntime128.

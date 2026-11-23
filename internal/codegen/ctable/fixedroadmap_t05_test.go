@@ -171,9 +171,9 @@ func TestFixedRoadmapCT05Evolution(t *testing.T) {
 	t.Run("c/R18", func(t *testing.T) {
 		t.Parallel()
 		full := t05All(generate(t, "package probe\nfixed table Wide { a int32 | min = -2147483648, max = 2147483647 }\n"))
-		t05WantNot(t, full, "(*out_of_range) +=")
+		t05WantNot(t, full, "( *out_of_range ) +=")
 		narrow := t05All(generate(t, "package probe\nfixed table Pipe { a int32 | min = 0, max = 100 }\n"))
-		t05Want(t, narrow, "(*out_of_range) +=")
+		t05Want(t, narrow, "( *out_of_range ) +=")
 		t05Want(t, narrow, "value->a > 100")
 	})
 
@@ -294,8 +294,8 @@ int main(void)
 		t.Parallel()
 		body := t05All(generate(t, "package probe\nfixed table Texty { s string(8) }\n"))
 		t05Want(t, body, "SCHEMA_TABLE_TEXT_ILL_FORMED")
-		t05Want(t, body, "report->refused = 1; report->reason = SCHEMA_TABLE_TEXT_ILL_FORMED")
-		t05WantNot(t, body, "damaged != 0 ) { report->malformed = 1")
+		t05Want(t, body, "report->refused = 1;\n        report->reason = SCHEMA_TABLE_TEXT_ILL_FORMED")
+		t05WantNot(t, strings.Join(strings.Fields(body), " "), "damaged != 0 ) { report->malformed = 1")
 		runCGenerated(t, "package probe\nfixed table Texty { s string(8) }\n", `
 #include "ProbeTable.h"
 #include <stdio.h>

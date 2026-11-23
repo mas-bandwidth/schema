@@ -329,7 +329,7 @@ export function WriteW52(stream, value) {
     return false;
   }
   for (let i = 0; i < value.itemsCount; i++) {
-    if (value.items[i] < 0n || value.items[i] > 4503599627370495n) {
+    if (typeof value.items[i] !== "bigint" || value.items[i] < 0n || value.items[i] > 4503599627370495n) {
       return false;
     }
     BIGINT_SCRATCH.value = globalThis.BigInt.asUintN(64, value.items[i]);
@@ -388,7 +388,7 @@ export function WriteW50(stream, value) {
     return false;
   }
   for (let i = 0; i < value.itemsCount; i++) {
-    if (value.items[i] < 0n || value.items[i] > 1125899906842623n) {
+    if (typeof value.items[i] !== "bigint" || value.items[i] < 0n || value.items[i] > 1125899906842623n) {
       return false;
     }
     BIGINT_SCRATCH.value = globalThis.BigInt.asUintN(64, value.items[i]);

@@ -1,0 +1,6 @@
+package claims
+
+table Ledger
+{
+    pairs map[int32]int32
+}

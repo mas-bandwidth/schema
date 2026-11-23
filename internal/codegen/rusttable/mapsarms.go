@@ -505,7 +505,15 @@ func (g *gen) emitArmPayload(b *strings.Builder, v ir.UnionVariant, arm string, 
 		}
 		fmt.Fprintf(b, "%sleb_write(&mut payload, index);\n", ind)
 	case f.Type.Kind == ir.TString && f.Array == ir.ArrayNone:
-		b.WriteString(rustBoundedTextAsserts(f, arm, ind))
+		// an arm's string(N) is held as a field's is (docs/SPEC.md §5.1,
+		// rows 4 and 8): a length past N or a zero byte refuses in the
+		// debug build, and unbounded text refuses in every build
+		if f.Type.TextUnbounded() {
+			fmt.Fprintf(b, "%sif %s.as_bytes().contains(&0) || %s.len() as u64 > 0xffffffff { ids.refused=Some(String::from(\"invalid_value: unbounded text\")); return; }\n", ind, arm, arm)
+		} else {
+			fmt.Fprintf(b, "%sdebug_assert!(%s.len() <= %d, \"%s length past %d\");\n", ind, arm, rustTextBound(f), f.Name, rustTextBound(f))
+			fmt.Fprintf(b, "%sdebug_assert!(!%s.as_bytes().contains(&0), \"%s holds a zero byte\");\n", ind, arm, f.Name)
+		}
 		fmt.Fprintf(b, "%spayload.extend_from_slice(%s.as_bytes());\n", ind, arm)
 	case classOf(f) == vUnion && f.Array == ir.ArrayNone:
 		g.emitUnionElement(b, f, arm, "payload", ordinal, ind)
@@ -833,8 +841,8 @@ func (g *gen) emitKeyedLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 }
 
 // emitMapLoad reads a map as an array of entry tables, scanning each entry's
-// key first, keeping an ascending prefix and counting a repeated
-// (docs/SPEC-TABLES.md §2.8, §4).
+// key first; a key out of ascending order or repeated refuses the whole load,
+// keeping no prefix (docs/SPEC-TABLES.md §2.8, §4).
 func (g *gen) emitMapLoad(b *strings.Builder, f *ir.Field, ordinal int, field, in string) {
 	key := ir.RustSnake(ir.MapKeyFieldName)
 	keyField := ir.MapKeyField(f)
@@ -1381,9 +1389,10 @@ func (g *gen) emitUnionText(b *strings.Builder, names []string) {
 			fmt.Fprintf(b, "        }\n")
 		}
 		fmt.Fprintf(b, "        _ => {\n")
-		fmt.Fprintf(b, "            if key.starts_with('&') { jr.damaged = true; return; }\n")
-		fmt.Fprintf(b, "            jr.unknown += 1;\n")
-		fmt.Fprintf(b, "            jr.skip_value();\n")
+		fmt.Fprintf(b, "            if key.starts_with('&') { jr.damaged = true; } else {\n")
+		fmt.Fprintf(b, "                jr.unknown += 1;\n")
+		fmt.Fprintf(b, "                jr.skip_value();\n")
+		fmt.Fprintf(b, "            }\n")
 		fmt.Fprintf(b, "        }\n")
 		fmt.Fprintf(b, "    }\n")
 		fmt.Fprintf(b, "}\n\n")
@@ -1419,6 +1428,19 @@ func (g *gen) emitMapTextWrite(b *strings.Builder, f *ir.Field, x, d, ind string
 	fmt.Fprintf(b, "%s}\n", ind)
 }
 
+// mapKeyHashed reports a map key the text read indexes by hash: text and
+// integer keys, whose Rust storage is Hash + Eq. An enum key keeps the find.
+func mapKeyHashed(f *ir.Field) bool {
+	key := ir.MapKeyField(f)
+	switch classOf(key) {
+	case vString:
+		return true
+	case vScalar:
+		return isFlags(key) == nil && key.Type.Kind != ir.TFloat32 && key.Type.Kind != ir.TFloat64 && key.Type.Kind != ir.TBool
+	}
+	return false
+}
+
 // emitMapTextRead reads a JSON object into sorted entries (docs/SPEC-TABLES.md §16.2, §2.8).
 func (g *gen) emitMapTextRead(b *strings.Builder, f *ir.Field, field, ind string) {
 	key := ir.MapKeyField(f)
@@ -1434,6 +1456,9 @@ func (g *gen) emitMapTextRead(b *strings.Builder, f *ir.Field, field, ind string
 	// level down, docs/SPEC-TABLES.md §16.2), counted against the depth cap
 	fmt.Fprintf(b, "%sjr.depth += 1;\n", in)
 	fmt.Fprintf(b, "%s%s.clear();\n", in, field)
+	if mapKeyHashed(f) {
+		fmt.Fprintf(b, "%slet mut key_index = std::collections::HashSet::new();\n", in)
+	}
 	fmt.Fprintf(b, "%sloop {\n", in)
 	fmt.Fprintf(b, "%s    if jr.peek() == b'}' { jr.p += 1; break; }\n", in)
 	// a map key is bound for storage whatever its kind, so a U+0000 in it
@@ -1465,7 +1490,19 @@ func (g *gen) emitMapTextRead(b *strings.Builder, f *ir.Field, field, ind string
 	}
 	g.emitTextReadValue(b, val, ent+"."+valName, in+"    ")
 	fmt.Fprintf(b, "%s    if jr.damaged || jr.missing_required != 0 { break; }\n", in)
-	fmt.Fprintf(b, "%s    if let Some(pos) = %s.iter().position(|x| x.%s == %s.%s) { jr.damaged = true; %s[pos] = %s; } else { %s.push(%s); }\n", in, field, keyName, ent, keyName, field, ent, field, ent)
+	if mapKeyHashed(f) {
+		// THE KEYS PLACED SO FAR, hashed: a key new to the map appends
+		// without a linear find, so a map of n keys reads in O(n) in any key
+		// order; a repeat is damage (§16.2)
+		clone := ""
+		if classOf(ir.MapKeyField(f)) == vString {
+			clone = ".clone()"
+		}
+		fmt.Fprintf(b, "%s    if !key_index.insert(%s.%s%s) { jr.damaged = true; break; }\n", in, ent, keyName, clone)
+		fmt.Fprintf(b, "%s    %s.push(%s);\n", in, field, ent)
+	} else {
+		fmt.Fprintf(b, "%s    if let Some(pos) = %s.iter().position(|x| x.%s == %s.%s) { jr.damaged = true; %s[pos] = %s; } else { %s.push(%s); }\n", in, field, keyName, ent, keyName, field, ent, field, ent)
+	}
 	fmt.Fprintf(b, "%s    let c = jr.peek();\n", in)
 	fmt.Fprintf(b, "%s    if c == b',' { jr.p += 1; continue; }\n", in)
 	fmt.Fprintf(b, "%s    if c == b'}' { jr.p += 1; break; }\n", in)
@@ -1508,19 +1545,4 @@ func rustBoundedLenAssert(f *ir.Field, x, ind string) string {
 		return ""
 	}
 	return fmt.Sprintf("%sdebug_assert!(%s.len() <= %d, \"%s length past %d\");\n", ind, x, f.Type.Size, f.Name, f.Type.Size)
-}
-
-// rustBoundedTextAsserts is what a bounded string(N) owes on write wherever it
-// rides (a field, an optional, a keyed slot, a union arm): a length past N and
-// a zero byte are debug asserts (docs/SPEC.md §5.1, rows 4 and 8), exactly as
-// the plain field's save emits them.
-func rustBoundedTextAsserts(f *ir.Field, x, ind string) string {
-	if f.Type.Kind != ir.TString {
-		return ""
-	}
-	a := rustBoundedLenAssert(f, x, ind)
-	if a == "" {
-		return ""
-	}
-	return a + fmt.Sprintf("%sdebug_assert!(!%s.as_bytes().contains(&0), \"%s holds a zero byte\");\n", ind, x, f.Name)
 }

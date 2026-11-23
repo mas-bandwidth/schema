@@ -180,7 +180,10 @@ final class TableCookWriteReport {
     _cookFloat32[0] = value;
     // a float32 past float32 range is refused by every writer (FL-23,
     // docs/SPEC-TABLES.md §16.3): a debug assert, as the ranged checks are
-    assert((_cook32Words[0] & 0x7f800000) != 0x7f800000, 'a float32 past float32 range');
+    assert(
+      (_cook32Words[0] & 0x7f800000) != 0x7f800000,
+      'a float32 past float32 range',
+    );
     return _cook32Words[0];
   }
 }
@@ -2736,7 +2739,9 @@ final class TableMixedCookWire {
     if (out != null) {
       out.setUint32(
         at + 56,
-        TableCookWriteReport.float32Bits((value.serverTime == 0 ? 0.0 : value.serverTime)),
+        TableCookWriteReport.float32Bits(
+          (value.serverTime == 0 ? 0.0 : value.serverTime),
+        ),
         order,
       );
     }

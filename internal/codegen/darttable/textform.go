@@ -1200,6 +1200,11 @@ func (g *wireGen) emitTextFromJsonField(f *ir.Field) {
 			}
 		}
 		g.pf("\t\t\t\t}\n")
+		if n := f.BornCount(); n > 0 {
+			// A COUNT BELOW ITS DECLARED MIN IS REFUSED, in the text form as
+			// on the wire (docs/SPEC.md §5.1 row 3; internal/tabletext read)
+			g.pf("\t\t\t\tif (v.%s.length < %d) { r.refuse('count_over_bound'); }\n", name, n)
+		}
 		g.pf("\t\t\t\tbreak;\n")
 	case f.Type.Kind == ir.TBool:
 		g.pf("\t\t\t\tif (val is bool) { v.%s = val; } else { r.refuse('kind_mismatch'); }\n", name)

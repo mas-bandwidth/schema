@@ -390,7 +390,7 @@ static SCHEMA_UNUSED int table_json_count_in_contract( const void * base, const 
         return 1;
     }
     memcpy( &count, (const uint8_t *) base + f->count_offset, sizeof( count ) );
-    return count >= 0 && count <= f->array_bound;
+    return count >= f->array_min && count <= f->array_bound;
 }
 
 static SCHEMA_UNUSED int table_json_wide_in_contract( const void * storage, const TableFieldInfo * f )
@@ -1888,8 +1888,9 @@ static SCHEMA_UNUSED void table_json_skipped_close( TableJsonIn * in, uint64_t l
    object of a few keys and on the heap past that, so the set is as large as
    the object's own keys and never limited by the table's width. Two keys are
    the same key when their DECODED bytes are, so an escape spells the same key
-   as the character it names. */
-#define kTableJsonKeysLocal 64
+   as the character it names. The stack set is small (eight keys at half
+   load) because one lives in every frame of a text nested to the depth cap. */
+#define kTableJsonKeysLocal 16
 
 #ifndef schema_allocate
 #define schema_allocate(bytes) calloc(1,(size_t)(bytes))
@@ -1995,10 +1996,10 @@ static SCHEMA_UNUSED int table_json_skip_members( TableJsonIn * in, char close, 
     in->pos++; /* the opening bracket */
     for ( ;; )
     {
+        int consumed = 0;
         char c = table_json_peek( in );
         if ( c == close ) { in->pos++; if ( opened != 0 ) { table_json_skipped_close( in, opened ); } return 1; }
         if ( c == 0 ) { in->bad = 1; return 0; }
-        int consumed = 0;
         if ( close == '}' )
         {
             char * key = in->key_buf;
@@ -2532,17 +2533,25 @@ static SCHEMA_UNUSED int schema_table_json_text_total_keep_( TableJsonIn * in, v
     return 0;
 }
 
-#ifndef SCHEMA_NOINLINE
+/* THE NESTING WALK'S FRAMES STAY SMALL. A text nested to the depth cap
+   (kTableJsonMaxDepth) recurses read_scalar -> read_pointer or read_union ->
+   read_table -> read_field once per level, and the 512 KiB stack a case thread
+   has must hold all of them, sanitizers included. So the recursive dispatch
+   keeps no buffer of its own: a union's key, a leaf's spelling, a keyed array's
+   tracking each live in a reader of their own, kept out of line, whose frame
+   exists only while that one value is read. */
+#ifndef SCHEMA_JSON_NOINLINE
 #if defined(__GNUC__) || defined(__clang__)
-#define SCHEMA_NOINLINE __attribute__((noinline))
+#define SCHEMA_JSON_NOINLINE __attribute__((noinline))
 #elif defined(_MSC_VER)
-#define SCHEMA_NOINLINE __declspec(noinline)
+#define SCHEMA_JSON_NOINLINE __declspec(noinline)
 #else
-#define SCHEMA_NOINLINE
+#define SCHEMA_JSON_NOINLINE
 #endif
 #endif
 
-static SCHEMA_NOINLINE SCHEMA_UNUSED int table_json_read_scalar_leaf( TableJsonIn * in, void * storage, const TableFieldInfo * f, int32_t depth );
+static SCHEMA_UNUSED SCHEMA_JSON_NOINLINE int table_json_read_union( TableJsonIn * in, void * storage, const TableFieldInfo * f, int32_t depth );
+static SCHEMA_UNUSED SCHEMA_JSON_NOINLINE int table_json_read_leaf( TableJsonIn * in, void * storage, const TableFieldInfo * f, int32_t depth );
 
 static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storage, const TableFieldInfo * f, int32_t depth )
 {
@@ -2552,7 +2561,17 @@ static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storag
         if ( table_json_value_shape(in) == 'z' ) { table_json_set_raw(storage,f->elem_size,0); return table_json_literal(in,"null"); }
         return table_json_read_pointer(in,storage,f,depth);
     }
-    if ( f->arms != NULL )
+    if ( f->arms != NULL ) { return table_json_read_union( in, storage, f, depth ); }
+    if ( f->kind == 13 )
+    {
+        f->table->reset( storage );
+        return table_json_read_table( in, storage, f->table, depth + 1 );
+    }
+    return table_json_read_leaf( in, storage, f, depth );
+}
+
+static SCHEMA_UNUSED SCHEMA_JSON_NOINLINE int table_json_read_union( TableJsonIn * in, void * storage, const TableFieldInfo * f, int32_t depth )
+{
     {
         /* a union is an object with ONE key, the arm's name; {} is None, and
            two keys is a text this walk will not guess at */
@@ -2577,6 +2596,10 @@ static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storag
             const char * name = table_json_variant_name( f, (uint64_t) t );
             if ( name != NULL && strcmp( name, key ) == 0 ) { tag = t; break; }
         }
+        /* DEPTH (§16.2): the union's holder is at depth, the union object at
+           depth+1, and the arm's value at depth+2, where it is read or
+           skipped; a field arm reads through read_field(depth+1), whose own
+           scalar walk adds the level, as a by-value field's does */
         if ( tag == 0 )
         {
             in->report->unknown++;
@@ -2607,21 +2630,16 @@ static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storag
         in->bad = 1; /* a second key: a one-of with two arms is not a value */
         return 0;
     }
-    if ( f->kind == 13 )
-    {
-        f->table->reset( storage );
-        return table_json_read_table( in, storage, f->table, depth + 1 );
-    }
-    return table_json_read_scalar_leaf( in, storage, f, depth );
 }
 
-static SCHEMA_NOINLINE SCHEMA_UNUSED int table_json_read_scalar_leaf( TableJsonIn * in, void * storage, const TableFieldInfo * f, int32_t depth )
+/* every value that holds no nested value: an enum, flags, a bool, a
+   timestamp, a number */
+static SCHEMA_UNUSED SCHEMA_JSON_NOINLINE int table_json_read_leaf( TableJsonIn * in, void * storage, const TableFieldInfo * f, int32_t depth )
 {
     const char * token = NULL;
     int64_t length = 0;
     int integral = 0;
     char textbuf[192]; /* a wide fixed's string spelling: 128 fraction digits, a whole part, a sign and a point */
-    (void) depth;
     if ( table_json_is_enum( f ) )
     {
         char name[kTableJsonMaxKey];
@@ -2744,10 +2762,25 @@ static SCHEMA_NOINLINE SCHEMA_UNUSED int table_json_read_scalar_leaf( TableJsonI
             in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH;
             return 1;
         }
-        if ( f->has_range )
+        /* A float32 field's range is held at float32, the bounds as every
+           runtime holds them (SPEC.md §4.6 "every runtime evaluates the
+           triple" at float32; SPEC-TABLES §3.3 "a decoded value never leaves
+           [min, max]"), so the text "0.1" that the JSON writer emits for 0.1f
+           under max = 0.1 reads back. A compressed float's -0 lands as +0
+           (§3.3, the special values). */
+        if ( f->has_range && single )
+        {
+            float nv = (float) fvalue;
+            if ( nv < (float) f->range_min ) { nv = (float) f->range_min; in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }
+            else if ( nv > (float) f->range_max ) { nv = (float) f->range_max; in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }
+            nv = nv + 0.0f; /* -0 + +0 is +0 */
+            fvalue = (double) nv;
+        }
+        else if ( f->has_range )
         {
             if ( fvalue < f->range_min ) { fvalue = f->range_min; in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }
             else if ( fvalue > f->range_max ) { fvalue = f->range_max; in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }
+            fvalue = fvalue + 0.0;
         }
         if ( single )
         {
@@ -2810,6 +2843,9 @@ static SCHEMA_NOINLINE SCHEMA_UNUSED int table_json_read_scalar_leaf( TableJsonI
     return 1;
 }
 
+static SCHEMA_UNUSED SCHEMA_JSON_NOINLINE int table_json_read_keyed( TableJsonIn * in, uint8_t * storage, const TableFieldInfo * f, int32_t depth );
+static SCHEMA_UNUSED SCHEMA_JSON_NOINLINE int table_json_read_array( TableJsonIn * in, void * base, uint8_t * storage, const TableFieldInfo * f, int32_t depth );
+
 static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, const TableFieldInfo * f, int32_t depth )
 {
     uint8_t * storage = (uint8_t *) base + f->offset;
@@ -2857,7 +2893,13 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
         table_json_set_count( base, f, (int32_t) length );
         return 1;
     }
-    if ( table_json_is_keyed( f ) )
+    if ( table_json_is_keyed( f ) ) { return table_json_read_keyed( in, storage, f, depth ); }
+    if ( f->is_array ) { return table_json_read_array( in, base, storage, f, depth ); }
+    return table_json_read_scalar( in, storage, f, depth );
+}
+
+static SCHEMA_UNUSED SCHEMA_JSON_NOINLINE int table_json_read_keyed( TableJsonIn * in, uint8_t * storage, const TableFieldInfo * f, int32_t depth )
+{
     {
         /* every slot back to its declared defaults first, so a key the text
            omits keeps them and a repeated field key cannot leave an earlier
@@ -2945,7 +2987,10 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
         }
         return 1;
     }
-    if ( f->is_array )
+}
+
+static SCHEMA_UNUSED SCHEMA_JSON_NOINLINE int table_json_read_array( TableJsonIn * in, void * base, uint8_t * storage, const TableFieldInfo * f, int32_t depth )
+{
     {
         /* LAST WINS has to be true of a repeated ARRAY key too, and it is
            wire-visible: a fixed array writes every slot, so a second, shorter
@@ -3020,12 +3065,14 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
             in->bad = 1;
             return 0;
         }
+        /* A COUNT BELOW ITS DECLARED MIN IS REFUSED (docs/SPEC.md §5.1 row 3),
+           in the text form as on the wire */
+        if ( f->array_min > 0 && placed < f->array_min ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }
         /* a fixed array's tail keeps the defaults the prefill left there,
            exactly as a short wire count does */
         table_json_set_count( base, f, placed );
         return 1;
     }
-    return table_json_read_scalar( in, storage, f, depth );
 }
 
 /* ONE table object: keys are field keys, unknown ones are skipped and

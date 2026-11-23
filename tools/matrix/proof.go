@@ -64,7 +64,7 @@ const (
 // Surfaces is the harness's surface list, in its order
 // (test/conformance/harness/run.go). LoadResults refuses a results file
 // whose surfaces differ, so the two cannot drift apart silently.
-var Surfaces = []string{"wire", "message", "report", "framing", "retain", "retain-save", "json-read", "json-write", "json-hostile",
+var Surfaces = []string{"wire", "message", "message-prior", "report", "framing", "retain", "retain-save", "json-read", "json-write", "json-hostile",
 	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery",
 	"write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json"}
 

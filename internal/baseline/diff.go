@@ -1303,6 +1303,108 @@ func findEnum(u *Unit, name string) *Enum {
 	return nil
 }
 
+// Scope splits a ledger entry's name into the declaration it was retired
+// from — a table's wire name, an enum's or a union's name — and the member's
+// own name. A member name never carries a dot, so the last one separates them.
+func (r Retired) Scope() (scope, member string, ok bool) {
+	i := strings.LastIndex(r.Name, ".")
+	if i <= 0 || i == len(r.Name)-1 {
+		return "", "", false
+	}
+	return r.Name[:i], r.Name[i+1:], true
+}
+
+// Names reports whether a member of declaration `scope` is the one a ledger
+// entry retired (issue #441): the SAME declaration, and the member's name, its
+// `was` alias or its wire id. The id half catches a collision under a new
+// spelling. The scope half is what keeps the id honest: a field's, a
+// variant's and an arm's wire id is the hash of its BARE name, so the same id
+// rides in every declaration with a member of that name, and it identifies a
+// member only within one body — the refusal is of a name reused "in the same
+// scope" (docs/SPEC-TABLES.md §18.4). This is the one statement of the match:
+// the baseline check and internal/check's retired-name refusal both call it.
+func (r Retired) Names(scope, name, was string, id uint64) bool {
+	s, m, ok := r.Scope()
+	if !ok || s != scope {
+		return false
+	}
+	return m == name || (was != "" && m == was) || r.Id == id
+}
+
+// Table finds a closure member by its wire name, or by the declared name a
+// `was` rename recorded beside it.
+func (u *Unit) Table(name string) *Table {
+	for i := range u.Tables {
+		t := &u.Tables[i]
+		if t.Name == name || (t.Declared != "" && t.Declared == name) {
+			return t
+		}
+	}
+	return nil
+}
+
+// RetiredField is the field of the entry's own table that the entry names,
+// or nil when that table carries none.
+func (u *Unit) RetiredField(r Retired) *Field {
+	scope, _, ok := r.Scope()
+	if !ok {
+		return nil
+	}
+	t := u.Table(scope)
+	if t == nil {
+		return nil
+	}
+	for i := range t.Fields {
+		f := &t.Fields[i]
+		was, _ := f.Get("was")
+		if r.Names(scope, f.Name, was, f.Id) {
+			return f
+		}
+	}
+	return nil
+}
+
+// RetiredVariant is the variant of the entry's own enum that the entry
+// names, or nil when that enum carries none.
+func (u *Unit) RetiredVariant(r Retired) *Variant {
+	scope, _, ok := r.Scope()
+	if !ok {
+		return nil
+	}
+	e := findEnum(u, scope)
+	if e == nil {
+		return nil
+	}
+	for i := range e.Variants {
+		v := &e.Variants[i]
+		if r.Names(scope, v.Name, v.Was, v.Id) {
+			return v
+		}
+	}
+	return nil
+}
+
+// RetiredArm is the arm of the entry's own union that the entry names, or
+// nil when that union carries none.
+func (u *Unit) RetiredArm(r Retired) *Field {
+	scope, _, ok := r.Scope()
+	if !ok {
+		return nil
+	}
+	un := findUnion(u, scope)
+	if un == nil {
+		return nil
+	}
+	for i := range un.Arms {
+		a := &un.Arms[i]
+		was, _ := a.Get("was")
+		if r.Names(scope, a.Name, was, a.Id) {
+			return a
+		}
+	}
+	return nil
+}
+
 // retiredOwner splits a ledger entry's qualified name into the declaration
 // that owned the member and the member. A declared name carries no dot, so
 // the last one separates them.

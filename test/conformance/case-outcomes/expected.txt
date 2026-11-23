@@ -1,0 +1,26 @@
+# <surface> <case> <answer> for manifest.txt over the leg's real generated
+# tree (answers: test/conformance/case-outcomes/check.sh)
+message msg_read bytes
+message msg_inapplicable reason
+message msg_error error
+message msg_no_unit absent
+message msg_inapplicable_no_unit absent
+message msg_no_root absent
+wire wire_refused reason
+wire wire_error error
+wire wire_fixed_read bytes
+wire wire_fixed_refused reason
+wire wire_blob_read bytes
+wire wire_blob_shared reason
+wire wire_no_unit absent
+wire wire_no_root absent
+write-refusal wr_ord_1 =wrote
+write-refusal wr_ord_256 =refused
+write-refusal wr_ord_2p32 =refused
+write-refusal wr_error error
+write-refusal wr_tag_1 =wrote
+write-refusal wr_tag_256 =refused
+write-refusal wr_tag_2p32 =refused
+write-refusal wr_count_ok =wrote
+write-refusal wr_count_past =refused
+write-refusal wr_no_unit absent

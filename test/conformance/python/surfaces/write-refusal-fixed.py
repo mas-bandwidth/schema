@@ -2,13 +2,13 @@
 
 import importlib
 
-from _common import absent, entries, read_bytes, root_class, write_bytes
+from _common import answering, no_codec, entries, read_bytes, root_class, write_bytes
 
 
 def _convert_fixed(field, previous, rule, token, default):
     if rule in ("int", "ordinal"):
         return int(token)
-    if rule == "float":
+    if rule in ("float", "real"):
         return float(token)
     if rule == "count":
         count = int(token)
@@ -57,19 +57,20 @@ def _assign(value, spec, path, rule, token, default):
 
 def run(manifest, outdir):
     for row in entries(manifest, "write-refusal-fixed"):
-        case, unit, root, wire, path, rule, token = row[1:8]
-        cls = root_class(unit, root)
-        if cls is None or not hasattr(cls, "fixed_save"):
-            absent(outdir, case, "fixed root not generated for python")
-            continue
-        runtime = importlib.import_module(cls.__module__.split(".")[0] + "._schema.fixedform")
-        # A committed wire the reader refuses is a reader failure, never a
-        # missing feature: let it raise, so the surface is red and not absent.
-        value = cls.load(read_bytes(wire))
-        _assign(value, runtime._ROOTS[root]["spec"], path, rule, token, runtime._default)
-        try:
-            cls.fixed_save([value])
-        except ValueError:
-            write_bytes(outdir, case, b"refused\n")
-        else:
-            write_bytes(outdir, case, b"wrote\n")
+        with answering(row[1]):
+            case, unit, root, wire, path, rule, token = row[1:8]
+            cls = root_class(unit, root)
+            if cls is None or not hasattr(cls, "fixed_save"):
+                no_codec(outdir, case)
+                continue
+            runtime = importlib.import_module(cls.__module__.split(".")[0] + "._schema.fixedform")
+            # the base wire is the driver's own input: a refusal there is a
+            # driver error (answering), never this row's answer
+            value = cls.load(read_bytes(wire))
+            _assign(value, runtime._ROOTS[root]["spec"], path, rule, token, runtime._default)
+            try:
+                cls.fixed_save([value])
+            except ValueError:
+                write_bytes(outdir, case, b"refused\n")
+            else:
+                write_bytes(outdir, case, b"wrote\n")

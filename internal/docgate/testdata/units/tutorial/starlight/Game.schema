@@ -1,0 +1,5 @@
+// The part of the tutorial's Game.schema that Config.schema names
+// (docs/TUTORIAL.md Part 2, as the unit stands in Part 6).
+package starlight
+
+enum ShipType { Fighter, Freighter, Corvette }

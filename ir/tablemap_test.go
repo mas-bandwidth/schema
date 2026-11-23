@@ -99,16 +99,25 @@ func TestAMapEntryHasNoBlockForm(t *testing.T) {
 }
 
 // TestNoBlockFormReasonNamesTheEdgeItFound: a table has no block form because
-// of something, and the reason says WHICH something. A map and a pointer are
-// two different edges, and a sentence that says "a pointer" over a table whose
-// only variable edge is a map sends its reader looking for a pointer that is
-// not there.
+// of something, and the reason says WHICH something. The class is declared
+// (docs/SPEC-TABLES.md §2.2), so the first reason is always the declaration:
+// a plain `table` is the variable class whatever its fields are, and `Plain`
+// below has no variable edge at all — a sentence about a pointer or a map
+// over it sends its reader looking for one that is not there. Where the
+// closure does hold an edge, the reason names it too, because that edge is
+// why `fixed` would be refused: a map and a pointer are two different edges.
 func TestNoBlockFormReasonNamesTheEdgeItFound(t *testing.T) {
 	const src = `package fleet
 
 fixed table ShipConfig { hull int32 }
 
 fixed table Item { count int32 }
+
+table Plain
+{
+    hull int32
+    crew [..8]Item
+}
 
 table Mapped
 {
@@ -126,17 +135,23 @@ table Nested
 }
 `
 	b := ir.Blocks(unitFrom(t, src))
-	for _, tc := range []struct{ table, want string }{
-		{"Mapped", "Mapped.ships is a map"},
-		{"Pointered", "Pointered.next is a pointer"},
-		{"Nested", "Mapped.ships is a map"},
+	const declared = "declared a plain `table`"
+	for _, tc := range []struct{ table, want, not string }{
+		{"Plain", declared, "pointer"},
+		{"Mapped", "Mapped.ships is a map", ""},
+		{"Pointered", "Pointered.next is a pointer", ""},
+		{"Nested", "Mapped.ships is a map", ""},
 	} {
 		if b.IsBlock(tc.table) {
-			t.Errorf("%s has a block form — its closure holds a variable edge", tc.table)
+			t.Errorf("%s has a block form — it is declared a plain table", tc.table)
 			continue
 		}
-		if why := b.SkippedReason(tc.table); !strings.Contains(why, tc.want) {
-			t.Errorf("%s: the reason is %q, want one naming %q", tc.table, why, tc.want)
+		why := b.SkippedReason(tc.table)
+		if !strings.Contains(why, declared) || !strings.Contains(why, tc.want) {
+			t.Errorf("%s: the reason is %q, want one saying %q and naming %q", tc.table, why, declared, tc.want)
+		}
+		if tc.not != "" && strings.Contains(why, tc.not) {
+			t.Errorf("%s: the reason is %q, and %s has no %s", tc.table, why, tc.table, tc.not)
 		}
 	}
 }

@@ -1,0 +1,26 @@
+// Probe.schema — a counted array with a positive minimum whose elements are a
+// UNION or a POINTER, in the variable table form (docs/SPEC-TABLES.md §3's
+// elision table, the [Min..N]T row; §4; SPEC §4.6). Each field is born at Min
+// elements at their zero (a union element at the zero reference, a pointer
+// element at null) and elides there; any other count rides; a count under Min
+// refuses on the wire and in text. Text and bytes elements are the checker's
+// refusal and have no row here. cases.tsv beside it names the rows.
+package countedminshapes
+
+table Leaf
+{
+    a int32
+}
+
+union U
+{
+    n int32
+    s string(4)
+}
+
+table R
+{
+    arms [2..3]U
+    ptrs [2..3]*Leaf
+    tail int32
+}

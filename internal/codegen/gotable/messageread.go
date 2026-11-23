@@ -52,7 +52,7 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 		}
 		g.pf("}\n")
 	}
-	g.pf("default:if ownBuild{r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};r.Report.Unknown++;if !tableMessageSkip(&r.Bits,r.Vocabulary,r.IndexBits,entry,0){r.Report.Refuse(TableRefuseWireDamaged,\"\");return false}\n}}}\n")
+	g.pf("default:if ownBuild{r.Report.Refuse(TableRefuseWireDamaged,\"\");return false};r.Report.Unknown++;if !tableMessageSkip(&r.Bits,r.Vocabulary,r.IndexBits,entry,0,true){r.Report.Refuse(TableRefuseWireDamaged,\"\");return false}\n}}}\n")
 	// THE MESSAGE FORM IS FIXED TABLES ONLY (docs/SPEC-TABLES.md §3.3): the
 	// batch is a fixed root's, and a variable table has no message form.
 	if !st.IsTable || !st.FixedDeclared || st.IsMapEntry() {
@@ -99,9 +99,16 @@ func (g *tableGen) emitMessageReadValue(f *ir.Field, expr, entry, ind string, el
 	elide, sink := g.takeElides(), g.takeSink()
 	switch {
 	case f.Type.Kind == ir.TString:
-		g.pf("%s{n,ok:=tableMessageCount(&r.Bits,%s.Shape);if !ok||!r.Bits.Align(){%s};start:=r.Bits.Offset/8;if !r.Bits.Skip(int64(n)*8){%s};text:=r.Bits.Buffer[start:start+int64(n)];if !tableUTF8Valid(text){%s};if n>%d{%s};clear(%s[:]);copy(%s[:],text);%sLength=int32(n)}\n", ind, entry, bad, bad, bad, f.Type.Size, refuse("TableRefuseLengthOverBound", g.floatOwner(f), "return false"), expr, expr, expr)
+		// a length past this reader's bound, or past the ANNOUNCED max its
+		// bits can spell beyond, refuses length_over_bound, as the engine's
+		// named read and the skip path hold it (docs/SPEC-TABLES.md §3.3)
+		g.pf("%s{n,ok:=tableMessageCount(&r.Bits,%s.Shape);if !ok||!r.Bits.Align(){%s};start:=r.Bits.Offset/8;if !r.Bits.Skip(int64(n)*8){%s};text:=r.Bits.Buffer[start:start+int64(n)];if !tableUTF8Valid(text){%s};if n>%d||tableMessageOverMax(n,%s.Shape){%s};clear(%s[:]);copy(%s[:],text);%sLength=int32(n)}\n", ind, entry, bad, bad, bad, f.Type.Size, entry, refuse("TableRefuseLengthOverBound", g.floatOwner(f), "return false"), expr, expr, expr)
 	case f.Type.Kind == ir.TBytes:
-		g.pf("%s{n,ok:=tableMessageCount(&r.Bits,%s.Shape);if !ok||!r.Bits.Align(){%s};start:=r.Bits.Offset/8;if !r.Bits.Skip(int64(n)*8){%s};if n>%d{%s};clear(%s[:]);copy(%s[:],r.Bits.Buffer[start:start+int64(n)]);%sLength=int32(n)}\n", ind, entry, bad, bad, f.Type.Size, refuse("TableRefuseLengthOverBound", g.floatOwner(f), "return false"), expr, expr, expr)
+		// a bytes count past the ANNOUNCED max its bits can spell beyond
+		// refuses count_over_bound before any byte is walked, as the engine's
+		// named read and the skip path hold it; past this reader's own bound
+		// it refuses length_over_bound (docs/SPEC-TABLES.md §3.3)
+		g.pf("%s{n,ok:=tableMessageCount(&r.Bits,%s.Shape);if !ok||!r.Bits.Align(){%s};if tableMessageOverMax(n,%s.Shape){%s};start:=r.Bits.Offset/8;if !r.Bits.Skip(int64(n)*8){%s};if n>%d{%s};clear(%s[:]);copy(%s[:],r.Bits.Buffer[start:start+int64(n)]);%sLength=int32(n)}\n", ind, entry, bad, entry, refuse("TableRefuseCountOverBound", g.floatOwner(f), "return false"), bad, f.Type.Size, refuse("TableRefuseLengthOverBound", g.floatOwner(f), "return false"), expr, expr, expr)
 	case f.KeyEnum != "" || f.Array != ir.ArrayNone || f.Type.Kind == ir.TBytes:
 		g.elides = elide
 		g.emitMessageReadArray(f, expr, entry, ind)
@@ -136,7 +143,7 @@ func (g *tableGen) emitMessageReadValue(f *ir.Field, expr, entry, ind string, el
 			}
 			g.pf("if widened {r.Report.Widened++}\n}\n")
 		}
-		g.pf("default:%s.Type=%sTypeNone;r.Report.Unknown++;if !tableMessageSkip(&r.Bits,r.Vocabulary,r.IndexBits,%s,0){%s}\n}}}\n", expr, un.Name, arm, bad)
+		g.pf("default:%s.Type=%sTypeNone;r.Report.Unknown++;if !tableMessageSkip(&r.Bits,r.Vocabulary,r.IndexBits,%s,0,false){%s}\n}}}\n", expr, un.Name, arm, bad)
 		g.pf("}\n")
 	case enumRef(f) != nil:
 		def := fieldDefaultExpr(f)
@@ -225,7 +232,11 @@ func (g *tableGen) emitMessageReadArray(f *ir.Field, expr, entry, ind string) {
 		companion = expr + "Length"
 	}
 	elide := g.takeElides()
-	g.pf("%s{base:=&%s;n,ok:=tableMessageCount(&r.Bits,%s.Shape);if !ok{%s};", ind, expr, entry, bad)
+	// THE COUNT'S BITS CAN SPELL MORE THAN THE ANNOUNCED max, which no
+	// conforming writer emits: an array's or a keyed array's count past it
+	// refuses count_over_bound before this reader's own bound is consulted,
+	// as the engine's named read and the skip path hold it (§3.3)
+	g.pf("%s{base:=&%s;n,ok:=tableMessageCount(&r.Bits,%s.Shape);if !ok{%s};if tableMessageOverMax(n,%s.Shape){%s};", ind, expr, entry, bad, entry, refuse("TableRefuseCountOverBound", g.floatOwner(f), "return false"))
 	if elide && f.KeyEnum != "" {
 		// a keyed array with no slot riding is elided by its writer (§3.3)
 		g.pf("if exact&&n==0{%s};", bad)
@@ -247,9 +258,11 @@ func (g *tableGen) emitMessageReadArray(f *ir.Field, expr, entry, ind string) {
 	}
 	g.pf("element:=TableMessageEntry{Shape:%s.Element};_ = element;\n", entry)
 	if f.KeyEnum != "" {
-		// A KEYED SLOT TWICE IN ONE ARRAY IS DAMAGE (docs/SPEC-TABLES.md §3.2, §3.3)
-		g.pf("var seenKeys [64]uint64;seenKey:=seenKeys[:0];lastKey:=0\n")
-		g.pf("for range n {ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok{%s};id,ok:=r.Vocabulary.Name(ref);if !ok{%s};if slices.Contains(seenKey,id){%s};seenKey=append(seenKey,id);var key %s;known:=key.TableEnumValue(id);var scratch %s;p:=&scratch;if known {p=&base[int(key)-1];if exact&&int(key)<=lastKey{%s};lastKey=int(key)}else{r.Report.Unknown++}\n", bad, bad, bad, f.KeyEnum, g.storageElementName(f), bad)
+		// A KEYED SLOT TWICE IN ONE ARRAY IS DAMAGE (docs/SPEC-TABLES.md §3.2,
+		// §3.3): the array is a set on the vocabulary's stack, and each key is
+		// one look at its entry (tableMessageSetRepeat), never a scan
+		g.pf("keys:=tableMessageSetOpen(r.Vocabulary);if keys<0{%s};lastKey:=0\n", bad)
+		g.pf("for range n {ref,ok:=r.Bits.Get(r.Vocabulary.RefBits);if !ok{%s};id,ok:=r.Vocabulary.Name(ref);if !ok{%s};if tableMessageSetRepeat(r.Vocabulary,keys,ref){%s};var key %s;known:=key.TableEnumValue(id);var scratch %s;p:=&scratch;if known {p=&base[int(key)-1];if exact&&int(key)<=lastKey{%s};lastKey=int(key)}else{r.Report.Unknown++}\n", bad, bad, bad, f.KeyEnum, g.storageElementName(f), bad)
 		if sink != "" {
 			g.pf("%s:=true\n", sink)
 		}
@@ -258,7 +271,7 @@ func (g *tableGen) emitMessageReadArray(f *ir.Field, expr, entry, ind string) {
 		if sink != "" {
 			g.pf("if exact&&known&&%s{%s}\n", sink, bad)
 		}
-		g.pf("}\n")
+		g.pf("};tableMessageSetClose(r.Vocabulary)\n")
 	} else {
 		over := "TableRefuseCountOverBound"
 		if f.Type.Kind == ir.TBytes {

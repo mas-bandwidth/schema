@@ -1182,15 +1182,17 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
         break
       end
       if kf.shape == "string" and kf.bound ~= nil and #key > kf.bound then
-        -- KEYS NEVER CLAMP: the entry is dropped whole and counted. An
-        -- unbounded key carries no bound, so it is never dropped for its
+        -- KEYS NEVER CLAMP: the count refuses the whole load as
+        -- out_of_range (strict_refusal); nothing of the map is kept. An
+        -- unbounded key carries no bound, so it is never refused for its
         -- length (docs/SPEC-TABLES.md §2.13.1).
         report.outOfRange = report.outOfRange + 1
       else
         local order = -1
         if landed then order = key_order(kf, last, key) end
         if order > 0 then
-          -- DESCENDING: the map keeps the ascending prefix it has
+          -- DESCENDING: damage, and the whole load refuses (§2.8, §4);
+          -- no ascending prefix is kept
           report.damaged = true
           break
         end
@@ -1202,7 +1204,10 @@ array_elements = function(T, ctx, fd, sub, ek, count, prior, reuse, crossed)
         restore(sub, at, n, elim, ebad)
         local dkey = inst[keyname]
         if order == 0 then
-          -- EQUAL: a DUPLICATE, and last wins WHOLE. The replaced entry's
+          -- EQUAL: a REPEATED KEY, which refuses the whole load as malformed
+          -- (strict_refusal; docs/plans/strict-only.md decision 5): no last
+          -- wins reaches a caller. The walk goes on only to finish the
+          -- entry's framing; the replaced entry's
           -- queued slots go to the sink: they land nowhere, but each one still
           -- resolves and counts, as the engine resolves every slot while it
           -- reads the entry (decodenodes.go resolveCell), so an index past

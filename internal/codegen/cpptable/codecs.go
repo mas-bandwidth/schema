@@ -153,7 +153,28 @@ func (g *tableGen) fieldDiffers(f *ir.Field, expr string) string {
 			return fmt.Sprintf("table_double_to_bits( %s ) != table_double_to_bits( %s )", expr, g.fieldDefaultExpr(f))
 		}
 	}
+	if g.floatDefaultOrdered(f) {
+		// the same truth table as !=, a NaN included (it differs), spelled
+		// with the ordered comparisons: clang reds a float != against a
+		// literal that is not exact (-Wfloat-equal), and 0.7f is not
+		d := g.fieldDefaultExpr(f)
+		return fmt.Sprintf("!( %s >= %s && %s <= %s )", expr, d, expr, d)
+	}
 	return fmt.Sprintf("%s != %s", expr, g.fieldDefaultExpr(f))
+}
+
+// floatDefaultOrdered is whether a field's default test is spelled with the
+// ordered comparisons: a compressed float whose default is not zero. Zero is
+// an exact literal and keeps the != every other kind has.
+func (g *tableGen) floatDefaultOrdered(f *ir.Field) bool {
+	if !f.HasFloatRange || f.Type.Pointer {
+		return false
+	}
+	if f.Type.Kind != ir.TFloat32 && f.Type.Kind != ir.TFloat64 {
+		return false
+	}
+	d := g.fieldDefaultExpr(f)
+	return d != "0.0f" && d != "0.0"
 }
 
 // storedFloatBits names the function whose bits a float store writes: a
@@ -172,6 +193,10 @@ func storedFloatBits(f *ir.Field, plain string) string {
 // fieldIsDefault is fieldDiffers' complement, spelled as an equality: the
 // condition under which a slot elides.
 func (g *tableGen) fieldIsDefault(f *ir.Field, expr string) string {
+	if g.floatDefaultOrdered(f) {
+		d := g.fieldDefaultExpr(f)
+		return fmt.Sprintf("( %s >= %s && %s <= %s )", expr, d, expr, d)
+	}
 	return strings.Replace(g.fieldDiffers(f, expr), " != ", " == ", 1)
 }
 
@@ -303,7 +328,7 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 			g.pf("    TableRef %s[%d]; // [%d]*%s — every slot null until assigned\n", f.Name, f.ArrayBound, f.ArrayBound, f.Type.Name)
 		case ir.ArrayCounted:
 			g.pf("    TableRef %s[%d]; // [..%d]*%s — used count beside it; every slot null until assigned\n", f.Name, f.ArrayBound, f.ArrayBound, f.Type.Name)
-			g.pf("    int32_t %s_count = 0;\n", f.Name)
+			g.pf("    int32_t %s_count = %s\n", f.Name, bornCount(f))
 		default:
 			g.pf("    TableRef %s; // *%s — null until assigned\n", f.Name, f.Type.Name)
 		}
@@ -355,10 +380,8 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 	case f.Array == ir.ArrayFixed:
 		g.pf("    %s%s %s[%d]%s;\n", align16, typ, f.Name, f.ArrayBound, tableArrayInit(selfInit))
 	case f.Array == ir.ArrayCounted:
-		// a [Min..N]T is BORN at Min default elements (docs/SPEC.md §4.2,
-		// ir.Field.BornCount): the slots already hold their defaults
-		g.pf("    %s%s %s[%d]%s; // used count beside it; count in [%d, %d]\n", align16, typ, f.Name, f.ArrayBound, tableArrayInit(selfInit), f.ArrayMin, f.ArrayBound)
-		g.pf("    int32_t %s_count = %d;\n", f.Name, f.BornCount())
+		g.pf("    %s%s %s[%d]%s; // used count beside it; count in [%d, %d]\n", align16, typ, f.Name, f.ArrayBound, tableArrayInit(selfInit), f.BornCount(), f.ArrayBound)
+		g.pf("    int32_t %s_count = %s\n", f.Name, bornCount(f))
 	default:
 		init := ""
 		if !selfInit {
@@ -465,7 +488,7 @@ func (g *tableGen) emitTableResetAt(expr string, f *ir.Field) {
 			index := resetIndex(expr)
 			g.pf("    for ( int32_t %s = 0; %s < %d; %s++ ) { %s[%s].value = 0; } // [%d]*%s — every slot null\n", index, index, f.ArrayBound, index, expr, index, f.ArrayBound, f.Type.Name)
 			if f.Array == ir.ArrayCounted {
-				g.pf("    %s_count = 0;\n", expr)
+				g.pf("    %s_count = %s\n", expr, bornCount(f))
 			}
 		}
 		return
@@ -496,7 +519,7 @@ func (g *tableGen) emitTableResetAt(expr string, f *ir.Field) {
 		g.emitTableResetArray(expr, f.ArrayBound, typ, selfInit, f)
 	case f.Array == ir.ArrayCounted:
 		g.emitTableResetArray(expr, f.ArrayBound, typ, selfInit, f)
-		g.pf("    %s_count = %d; // born at Min (docs/SPEC.md §4.2)\n", expr, f.BornCount())
+		g.pf("    %s_count = %s\n", expr, bornCount(f))
 	case selfInit:
 		g.emitTableResetOne(expr, typ, f)
 	default:
@@ -881,19 +904,6 @@ func (g *tableGen) storageAssert(ind, expr string, bound int64) {
 	g.pf("%sschema_assert( %s >= 0 && %s <= %d ); // storage invariant, debug only (§5.1)\n", ind, expr, expr, bound)
 }
 
-// countAssert is a counted array's write check: the live count lies in the
-// declared [Min, Max], checked before the elision test (docs/SPEC.md §5.1 row
-// 3), so a count under a positive minimum is a caller error the debug build
-// stops on. Write checks on this leg are debug asserts only.
-func (g *tableGen) countAssert(ind string, f *ir.Field) {
-	if f.ArrayMin <= 0 {
-		g.storageAssert(ind, "value."+f.Name+"_count", f.ArrayBound)
-		return
-	}
-	g.storageAsserts = true
-	g.pf("%sschema_assert( value.%s_count >= %d && value.%s_count <= %d ); // the declared count, debug only (§5.1)\n", ind, f.Name, f.ArrayMin, f.Name, f.ArrayBound)
-}
-
 // emitCountedRides declares rides_<name>: whether a counted array rides. An
 // empty one elides, and so does a [Min..N]T holding its BIRTH VALUE — exactly
 // Min elements, each at its default (docs/SPEC-TABLES.md §22.2; the reference
@@ -924,18 +934,6 @@ func (g *tableGen) emitCountedRides(f *ir.Field, ind string, tableAtDefault func
 		g.pf("%s        if ( %s ) { rides_%s = true; }\n", ind, g.fieldDiffers(f, elem), f.Name)
 	}
 	g.pf("%s    }\n%s}\n", ind, ind)
-}
-
-// variableTableAtDefault is the variable form's element probe: the element's
-// body measured and the ids it interned rolled back, a body of one byte (the
-// zero reference) being the default one.
-func (g *tableGen) variableTableAtDefault(f *ir.Field) func(expr, ind string) {
-	return func(expr, ind string) {
-		g.pf("%sconst int32_t birth_mark = ids.count;\n", ind)
-		g.pf("%sconst int64_t birth_bytes = %s;\n", ind, g.measureCall(f, f.Type.Name, expr))
-		g.pf("%sids.truncate( birth_mark );\n", ind)
-		g.pf("%sconst bool birth_default = birth_bytes == 1; // a refused body rides, and the write refuses it\n", ind)
-	}
 }
 
 func (g *tableGen) emitTableMeasure(st *ir.Struct) {
@@ -1093,10 +1091,8 @@ func (g *tableGen) emitFloatCheck(kind int, expr, ind, onBad string) {
 // fixed/ufixed raw value off its min/max; ROW 2, a bits(N) value wider than N;
 // ROW 10, a compressed float off its float32 ends (docs/SPEC-TABLES.md §3.3).
 func (g *tableGen) emitRequiredRangeCheck(f *ir.Field, expr, ind, onBad string) {
-	if !f.Required && f.HasFloatRange && f.Type.Kind == ir.TFloat32 {
-		g.storageAsserts = true // the header takes the schema_assert hook
-		g.pf("%sschema_assert( !( %s < %s ) && !( %s > %s ) ); // a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10)\n",
-			ind, expr, formatFloat(f.FMin, true), expr, formatFloat(f.FMax, true))
+	if !f.Required {
+		g.emitWriteContractAssert(f, expr, ind)
 		return
 	}
 	if f.HasFloatRange {
@@ -1140,6 +1136,46 @@ func (g *tableGen) emitRequiredRangeCheck(f *ir.Field, expr, ind, onBad string) 
 				ind, expr, maxv, f.Type.Width, f.Type.Width)
 		}
 	}
+}
+
+// emitWriteContractAssert is THE WRITE CONTRACT on a field that is not
+// `required` (docs/SPEC.md §5.1 rows 1 and 2): a ranged integer outside its
+// declared range and a bits(N) value past its width are the caller's bug,
+// held by a DEBUG-ONLY assert exactly as the fixed-form and packet writers
+// hold them, and gone under NDEBUG. Every build's refusal stays the `required`
+// field's (emitRequiredRangeCheck). A FLOAT'S RANGE IS ROW 10 and is held the
+// same way on every writer (no writer quantizes or clamps an off-range float
+// in the build where its check is active), a float32's ends compared at
+// float32. The test is spelled so a NaN passes it and reaches the finite
+// rule's refusal (§3.3), which every build makes.
+func (g *tableGen) emitWriteContractAssert(f *ir.Field, expr, ind string) {
+	if f.HasFloatRange {
+		g.emitFloatRangeAssert(f, expr, ind)
+		return
+	}
+	kind := tableScalarKind(f)
+	width := tableKindWidth(kind)
+	signed := ir.TableKindSigned(kind) || (f.Type.Kind == ir.TInt && f.Type.Timestamp)
+	if rlo, rhi, ok := ir.TableRawRange(f); ok {
+		low, high := tableClampEnds(f, width)
+		if low {
+			g.pf("%sschema_assert( %s >= %s ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)\n", ind, expr, tableIntLit(rlo, signed, width))
+		}
+		if high {
+			g.pf("%sschema_assert( %s <= %s ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)\n", ind, expr, tableIntLit(rhi, signed, width))
+		}
+	}
+	if f.Type.Kind == ir.TBits && f.Type.Width < width*8 {
+		g.pf("%sschema_assert( %s <= %dull ); // the write contract, debug only (docs/SPEC.md §5.1 row 2, bits(%d))\n", ind, expr, (uint64(1)<<f.Type.Width)-1, f.Type.Width)
+	}
+}
+
+// emitFloatRangeAssert is row 10 of the write contract (docs/SPEC.md §5.1) on
+// one ranged float: a debug-only schema_assert, C++ being an assert leg.
+func (g *tableGen) emitFloatRangeAssert(f *ir.Field, expr, ind string) {
+	isF32 := f.Type.Kind == ir.TFloat32
+	g.pf("%sschema_assert( !( %s < %s ) && !( %s > %s ) ); // the write contract, debug only (docs/SPEC.md §5.1 row 10)\n",
+		ind, expr, formatFloat(f.FMin, isF32), expr, formatFloat(f.FMax, isF32))
 }
 
 // emitFloatElementCheckAt is that rule over a float ARRAY's elements, the twin
@@ -1211,6 +1247,7 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 			count := strconv.FormatInt(f.ArrayBound, 10)
 			if f.Array == ir.ArrayCounted {
 				g.storageAssert("        ", "value."+f.Name+"_count", f.ArrayBound)
+				g.countMinAssert("        ", f)
 				count = fmt.Sprintf("value.%s_count", f.Name)
 			}
 			g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
@@ -1277,10 +1314,11 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		// kind 17, N, then N node indices. CONTENT decides, as for any by-value
 		// array: an empty one elides, and a live slot rides as its index, null as 0.
 		g.storageAssert("    ", "value."+f.Name+"_count", f.ArrayBound)
+		g.countMinAssert("    ", f)
 		if f.Required {
 			g.pf("    if ( true ) // | required: the field always rides (§2.3)\n    {\n")
 		} else {
-			g.pf("    if ( value.%s_count > 0 )\n    {\n", f.Name)
+			g.pf("    if ( %s )\n    {\n", g.countedRidesTest(f, "    ", "return -1;"))
 		}
 		g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 		g.pf("        int64_t body_%s = 0;\n", f.Name)
@@ -1368,12 +1406,12 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("        bytes += %s + %s; // %s\n", g.hdrBytes(id), framed("body_"+f.Name), f.Name)
 		g.pf("    }\n")
 	case f.Array == ir.ArrayCounted:
-		g.countAssert("    ", f)
+		g.storageAssert("    ", "value."+f.Name+"_count", f.ArrayBound)
+		g.countMinAssert("    ", f)
 		if f.Required {
 			g.pf("    if ( true ) // | required: the field always rides (§2.3)\n    {\n")
 		} else {
-			g.emitCountedRides(f, "    ", g.variableTableAtDefault(f))
-			g.pf("    if ( rides_%s )\n    {\n", f.Name)
+			g.pf("    if ( %s )\n    {\n", g.countedRidesTest(f, "    ", "return -1;"))
 		}
 		g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 		g.pf("        int64_t body_%s = 0;\n", f.Name)
@@ -1775,6 +1813,7 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 			count := strconv.FormatInt(f.ArrayBound, 10)
 			if f.Array == ir.ArrayCounted {
 				g.storageAssert("        ", "value."+f.Name+"_count", f.ArrayBound)
+				g.countMinAssert("        ", f)
 				count = fmt.Sprintf("value.%s_count", f.Name)
 			}
 			g.emitArrayField(f, id, elemKind, count, "value."+f.Name+"[%s]", "        ")
@@ -1872,10 +1911,11 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		if f.Array == ir.ArrayCounted {
 			count = fmt.Sprintf("value.%s_count", f.Name)
 			g.storageAssert("    ", "value."+f.Name+"_count", f.ArrayBound)
+			g.countMinAssert("    ", f)
 			if f.Required {
 				g.pf("    if ( true ) // | required: the field always rides (§2.3)\n    {\n")
 			} else {
-				g.pf("    if ( value.%s_count > 0 )\n    {\n", f.Name)
+				g.pf("    if ( %s )\n    {\n", g.countedRidesTest(f, "    ", "return false;"))
 			}
 		} else {
 			g.pf("    {\n")
@@ -1957,12 +1997,12 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("        w.put8( %[1]d );\n        w.putleb( (uint64_t) value.%[2]s_length );\n", tkU8, f.Name)
 		g.pf("        w.raw( value.%s, value.%s_length );\n    }\n", f.Name, f.Name)
 	case f.Array == ir.ArrayCounted:
-		g.countAssert("    ", f)
+		g.storageAssert("    ", "value."+f.Name+"_count", f.ArrayBound)
+		g.countMinAssert("    ", f)
 		if f.Required {
 			g.pf("    if ( true ) // | required: the field always rides (§2.3)\n    {\n")
 		} else {
-			g.emitCountedRides(f, "    ", g.variableTableAtDefault(f))
-			g.pf("    if ( rides_%s )\n    {\n", f.Name)
+			g.pf("    if ( %s )\n    {\n", g.countedRidesTest(f, "    ", "return false;"))
 		}
 		g.emitArrayField(f, id, elemKind, fmt.Sprintf("value.%s_count", f.Name), "value."+f.Name+"[%s]", "        ")
 		g.pf("    }\n")
@@ -2680,6 +2720,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 			g.emitRetainReplaced(f, ind+"        ")
 			g.pf("%s        uint64_t widened_keep = count;\n", ind)
 			g.pf("%[1]s        if ( widened_keep > %[2]d )\n%[1]s        {\n%[1]s            widened_keep = %[3]d;\n%[1]s            r.report->refused = true;\n%[1]s            r.report->refuse_reason = out_of_range;\n%[1]s        }\n", ind, bound, bound)
+			g.emitCountBelowMin(f, "count", ind+"        ")
 			g.pf("%s        TableReader widened_sub( r.buffer + r.offset, body_end - r.offset, r.report, r.ids );\n", ind)
 			countLvalue := ""
 			if f.Array == ir.ArrayCounted {
@@ -2699,6 +2740,7 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.emitRetainReplaced(f, ind+"    ")
 		g.pf("%s    uint64_t keep = count;\n", ind)
 		g.pf("%[1]s    if ( keep > %[2]d )\n%[1]s    {\n%[1]s        keep = %[3]d;\n%[1]s        r.report->refused = true;\n%[1]s        r.report->refuse_reason = out_of_range;\n%[1]s    }\n", ind, bound, bound)
+		g.emitCountBelowMin(f, "count", ind+"    ")
 		g.pf("%s    // elements are BOUNDED by the field body: a count the length\n", ind)
 		g.pf("%s    // cannot cover is damage, which discards the whole load (§4), and\n", ind)
 		g.pf("%s    // the following fields' bytes are never fabricated into\n", ind)
@@ -2958,6 +3000,11 @@ func (g *tableGen) emitTableReadScalarFromChecked(f *ir.Field, kind int, lvalue,
 			if f.HasFloatRange {
 				g.pf("%[1]s        if ( decoded_f < %[2]s )\n%[1]s        {\n%[1]s            decoded_f = %[3]s;\n%[1]s            r.report->refused = true;\n%[1]s            r.report->refuse_reason = out_of_range;\n%[1]s        }\n", ind, formatFloat(f.FMin, true), formatFloat(f.FMin, true))
 				g.pf("%[1]s        else if ( decoded_f > %[2]s )\n%[1]s        {\n%[1]s            decoded_f = %[3]s;\n%[1]s            r.report->refused = true;\n%[1]s            r.report->refuse_reason = out_of_range;\n%[1]s        }\n", ind, formatFloat(f.FMax, true), formatFloat(f.FMax, true))
+				// A COMPRESSED FLOAT'S -0 IS +0 (docs/SPEC-TABLES.md §3.3; ruling
+				// fixed-compressed-negzero): it lands as the value 0, uncounted,
+				// as the fixed form's fixedNegZero lands it. Neither below nor
+				// above zero is zero, and spells no float ==.
+				g.pf("%[1]s        if ( !( decoded_f < 0.0f ) && !( decoded_f > 0.0f ) ) { decoded_f = 0.0f; } // -0 lands as +0\n", ind)
 			}
 			g.pf("%s        %s = decoded_f;\n", ind, lvalue)
 		} else {
@@ -3616,11 +3663,11 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 			textList = 1
 		}
 	}
-	g.pf("%s    { \"%s\", %s, \"%s\", 0x%016xull, %d, %v, %s%v, %v, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s\"%s\", %s, %v, %v, %d, %d, %v },\n",
+	g.pf("%s    { \"%s\", %s, \"%s\", 0x%016xull, %d, %v, %s%v, %v, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s\"%s\", %s, %v, %v, %d, %d, %v, %d },\n",
 		sp.indent, f.Name, jsonKey, tableFieldTypeName(f), id, kind, isArray, pointerColumn, counted, f.Type.Optional, bound,
 		sp.owner, sp.member, elemSize, countOffset, presentOffset, table,
 		hasRange, rangeMin, rangeMax, rangeIntMin, rangeIntMax, rangeUintMin, rangeUintMax, fracBits, wide, enumMax, enumName, variantId,
-		keyTypeName, keyName, keyId, arms, g.placeColumn(f), sp.guard, annotationColumns(f.Doc, f.Tags, sp.tagsName(f)), unboundedContainer, f.Required, textList, f.TextTotal, f.Type.TextUnbounded())
+		keyTypeName, keyName, keyId, arms, g.placeColumn(f), sp.guard, annotationColumns(f.Doc, f.Tags, sp.tagsName(f)), unboundedContainer, f.Required, textList, f.TextTotal, f.Type.TextUnbounded(), f.BornCount())
 }
 
 // ---- string, bytes and flags defaults (SPEC §4.2) ----
@@ -3716,4 +3763,97 @@ func (g *tableGen) unitHasRequired() bool {
 		}
 	}
 	return false
+}
+
+// bornCount is a counted array's count at birth and at reset: A, the declared
+// minimum of a [A..B]T count (docs/SPEC.md §4.2), since zero is outside that
+// count's own range. A [..B]T count is born at 0.
+func bornCount(f *ir.Field) string {
+	if f.BornCount() > 0 {
+		return fmt.Sprintf("%d; // born at its declared minimum (docs/SPEC.md §4.2)", f.BornCount())
+	}
+	return "0;"
+}
+
+// emitCountBelowMin is the read side of row 3's lower half (docs/SPEC.md
+// §5.1): a counted array's count below its declared Min is refused, on every
+// read the count arrives through.
+func (g *tableGen) emitCountBelowMin(f *ir.Field, count, ind string) {
+	if f.Array != ir.ArrayCounted || f.ArrayMin <= 0 {
+		return
+	}
+	g.pf("%sif ( %s < %d ) // a count below the declared Min (§5.1 row 3)\n%s{\n", ind, count, f.ArrayMin, ind)
+	g.pf("%s    r.report->refused = true;\n%s    r.report->refuse_reason = out_of_range;\n%s}\n", ind, ind, ind)
+}
+
+// countedBirthRides is the elision test of a [A..B]T field with A above zero,
+// which is BORN AT A (docs/SPEC.md §4.2): it rides unless its count is A and
+// each of those A elements is the element's default, the value a fresh one
+// carries (internal/tablewire encodeArray's allBirth, gotable's
+// emitCountedBirthRides). It emits the test into a local and answers that
+// local's name, or "" for a field it does not apply to, whose test stays a
+// count above zero. message picks the message form's measure for a table
+// element; onBad is the statement a refused element measure runs.
+func (g *tableGen) countedBirthRides(f *ir.Field, ind, onBad string, message bool, pass messagePass) string {
+	born := f.BornCount()
+	if f.Array != ir.ArrayCounted || born <= 0 || f.Required || f.Type.Optional {
+		return ""
+	}
+	rides := "birth_rides_" + f.Name
+	el := "value." + f.Name + "[bi]"
+	was := g.elemIndex
+	g.elemIndex = "bi"
+	defer func() { g.elemIndex = was }()
+	g.pf("%sbool %s = value.%s_count != %d; // born at %d: the birth value elides (§4.2)\n", ind, rides, f.Name, born, born)
+	g.pf("%sfor ( int32_t bi = 0; !%s && bi < %d; bi++ )\n%s{\n", ind, rides, born, ind)
+	in := ind + "    "
+	switch {
+	case f.Type.Pointer:
+		g.pf("%sif ( %s.value != 0 ) { %s = true; } // null is a pointer slot's only default (§2.1)\n", in, el, rides)
+	case f.IsTextList():
+		switch {
+		case ir.TextListOptional(f):
+			g.pf("%sif ( %s.value_present ) { %s = true; }\n", in, el, rides)
+		case ir.TextListUnbounded(f):
+			g.pf("%sif ( %s.value.value != 0 ) { %s = true; }\n", in, el, rides)
+		default:
+			g.pf("%sif ( %s.value_length != 0 ) { %s = true; }\n", in, el, rides)
+		}
+	case tableScalarKind(f) == tkTable && message:
+		g.pf("%sconst int64_t birth_bits = %s;\n", in, g.msgMeasureCall(f.Type.Name, g.msgAt(pass), el))
+		g.pf("%sif ( birth_bits < 0 ) { return %s; }\n", in, messageBad(pass))
+		g.pf("%sif ( birth_bits > %s ) { %s = true; }\n", in, msgRefBits, rides)
+	case tableScalarKind(f) == tkTable:
+		g.pf("%sconst int32_t birth_mark = ids.count;\n", in)
+		g.pf("%sconst int64_t birth_bytes = %s;\n", in, g.measureCall(f, f.Type.Name, el))
+		g.pf("%sif ( birth_bytes < 0 ) { %s }\n", in, onBad)
+		g.pf("%sids.truncate( birth_mark );\n", in)
+		g.pf("%sif ( birth_bytes > 1 ) { %s = true; }\n", in, rides)
+	case tableScalarKind(f) == tkUnion:
+		g.pf("%sif ( %s.type != %sType::None ) { %s = true; }\n", in, el, f.Type.Name, rides)
+	default:
+		g.pf("%sif ( %s ) { %s = true; }\n", in, g.fieldDiffers(f, el), rides)
+	}
+	g.pf("%s}\n", ind)
+	return rides
+}
+
+// countedRidesTest is a counted array's elision test on the file form: a
+// count above zero, or the birth test of a [A..B]T field born at A.
+func (g *tableGen) countedRidesTest(f *ir.Field, ind, onBad string) string {
+	if rides := g.countedBirthRides(f, ind, onBad, false, messagePassSave); rides != "" {
+		return rides
+	}
+	return fmt.Sprintf("value.%s_count > 0", f.Name)
+}
+
+// countMinAssert is row 3's lower half of the write contract (docs/SPEC.md
+// §5.1): a counted array's count below its declared Min. C++ is an assert
+// leg, so it is a debug-only schema_assert, as the storage bound beside it is.
+func (g *tableGen) countMinAssert(ind string, f *ir.Field) {
+	if f.Array != ir.ArrayCounted || f.ArrayMin <= 0 {
+		return
+	}
+	g.storageAsserts = true
+	g.pf("%sschema_assert( value.%s_count >= %d ); // a count below the declared Min, debug only (§5.1 row 3)\n", ind, f.Name, f.ArrayMin)
 }

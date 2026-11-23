@@ -44,11 +44,7 @@ func textListWriteCheck(f *ir.Field, expr, ind, prefix, refusal string) string {
 }
 
 func (g *wireGen) emitSavePlainTextList(f *ir.Field, expr, ind string, id uint64) {
-	rides := expr + ".isNotEmpty"
-	if wireBornElides(f) && !ir.TextListOptional(f) {
-		// the birth value elides: M elements, each the empty text (§22.2)
-		rides = fmt.Sprintf("%s && !(%s.length == %d && %s.every((e) => e.value.isEmpty))", rides, expr, wireBornCount(f), expr)
-	}
+	rides := g.countedRides(f, expr, ind, 0)
 	g.pf("%sif (%s) {\n", ind, rides)
 	g.pf("%s  final ref=w.refFor(%s);final s=w.sub();s.putByte(12);s.putLeb(%s.length);\n", ind, dartU64Literal(id), expr)
 	g.pf("%s  for(final e in %s){final text=utf8.encode(e.value);s.putLeb(text.length);s.putBytes(text);}\n", ind, expr)

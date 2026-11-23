@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -47,12 +48,37 @@ func TestRustDriverAnswersWriteRefusal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	driver := filepath.Join(root, "test", "conformance", "rust", "driver")
+	driverPath := filepath.Join(root, "test", "conformance", "rust", "driver")
+	// THE DRIVER IS HANDED WHAT THE HARNESS HANDS IT: rows on an opt-in unit
+	// the leg's `list` does not name are not asked (optin.go), and are not
+	// owed here either.
+	list := exec.Command(driverPath, manifest, "list")
+	list.Dir = root
+	listOut, err := list.Output()
+	if err != nil {
+		t.Fatalf("the driver's list: %v", err)
+	}
+	listed := map[string]bool{}
+	for line := range strings.SplitSeq(string(listOut), "\n") {
+		if s := strings.TrimSpace(line); s != "" {
+			listed[s] = true
+		}
+	}
+	// the derived manifest, as `harness run` hands it: the opt-in filter
+	// reads the derived line kinds and refuses any other (optin.go)
+	derived := filepath.Join(t.TempDir(), "manifest.txt")
+	if err := deriveManifest(m, derived); err != nil {
+		t.Fatal(err)
+	}
+	legManifestPath, notAsked, _, err := legManifest(m, derived, "rust", listed)
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, surface := range []string{"write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json"} {
 		t.Run(surface, func(t *testing.T) {
 			var rows []WriteRefusal
 			for _, wr := range m.WriteRefusals {
-				if wr.Surface() == surface {
+				if wr.Surface() == surface && !notAsked.has(surface, wr.Name) {
 					rows = append(rows, wr)
 				}
 			}
@@ -60,7 +86,7 @@ func TestRustDriverAnswersWriteRefusal(t *testing.T) {
 				t.Fatalf("the manifest carries no %s rows", surface)
 			}
 			out := t.TempDir()
-			run := exec.Command(driver, manifest, surface, out)
+			run := exec.Command(driverPath, legManifestPath, surface, out)
 			run.Dir = root
 			if got, err := run.CombinedOutput(); err != nil {
 				t.Fatalf("the driver refused the %s surface: %v\n%s", surface, err, got)

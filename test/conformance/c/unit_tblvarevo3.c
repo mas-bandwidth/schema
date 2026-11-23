@@ -12,7 +12,6 @@ static const ConformanceCodec codecs[] = {
 int conformance_write_refusal_set_tblvarevo3( const char * root, void * value, const char * path,
                                               const char * kind, const char * text )
 {
-    const long long n = strtoll( text, NULL, 10 );
     if ( strcmp( root, "EvoMsg" ) == 0 )
     {
         tblvarevo3_evo_msg_t * v = (tblvarevo3_evo_msg_t *) value;
@@ -22,8 +21,7 @@ int conformance_write_refusal_set_tblvarevo3( const char * root, void * value, c
         }
         if ( strcmp( path, "payload" ) == 0 && strcmp( kind, "tag" ) == 0 )
         {
-            v->payload.type = (tblvarevo3_evo_payload_type_t) n;
-            return 1;
+            return CONFORMANCE_WREF_UNSIGNED( v->payload.type, text );
         }
     }
     return 0;

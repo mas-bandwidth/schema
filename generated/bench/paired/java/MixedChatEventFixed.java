@@ -95,6 +95,6 @@ public final class MixedChatEventFixed {
             if (live) {
                 r.refuse(TableFixed.Reason.outOfRange);
             }
-        } // bits(12) clamps to 2^N - 1
+        } // bits(12) past 2^N - 1 refuses
     }
 }

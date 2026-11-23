@@ -1563,7 +1563,25 @@ public static class TableJson
         return text.SequenceEqual(encoded.Slice(0, n));
     }
 
-    // place one scalar at one storage slot
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    static bool ScanUnionKey(ReadOnlySpan<byte> text, ref In input, TableFieldInfo f, out int tag)
+    {
+        tag = 0;
+        Span<byte> key = stackalloc byte[MaxName];
+        int keyLength;
+        if (!ScanString(text, ref input, key, true, out keyLength, stored: true)) { return false; }
+        if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
+        input.Pos++;
+        for (int t = 1; t <= f.EnumMax; t++)
+        {
+            if (Same(key.Slice(0, keyLength), f.EnumName((ulong)t))) { tag = t; break; }
+        }
+        return true;
+    }
+
+    // place one scalar at one storage slot (thin recursive dispatcher; leaf
+    // stackalloc buffers stay in NoInlining helpers so depth-128 recursion fits
+    // easily on a 512 KiB stack)
     static bool ReadScalar(ReadOnlySpan<byte> text, ref In input, object owner, TableFieldInfo f, int index, int depth)
     {
         if (f.TextList)
@@ -1577,6 +1595,7 @@ public static class TableJson
         if (f.Kind == 17) { return ReadPointer(text, ref input, owner, f, index, depth); }
         if (f.Arms != null)
         {
+            if (depth + 1 > MaxDepth) { input.Bad = true; return false; }
             // a union is an object with ONE key, the arm's name; {} is None,
             // and two keys is a text this walk will not guess at
             object union = f.GetChild(owner, index);
@@ -1584,16 +1603,7 @@ public static class TableJson
             input.Pos++;
             f.Arms.SetTag(union, 0);
             if (Peek(text, ref input) == '}') { input.Pos++; return true; }
-            Span<byte> key = input.KeyBuf;
-            int keyLength;
-            if (!ScanString(text, ref input, key, true, out keyLength, stored: true)) { return false; }
-            if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
-            input.Pos++;
-            int tag = 0;
-            for (int t = 1; t <= f.EnumMax; t++)
-            {
-                if (Same(key.Slice(0, keyLength), f.EnumName((ulong)t))) { tag = t; break; }
-            }
+            if (!ScanUnionKey(text, ref input, f, out int tag)) { return false; }
             if (tag == 0)
             {
                 input.Report.Unknown++;
@@ -1972,79 +1982,11 @@ public static class TableJson
             PutCount(value, f, placed);
             return true;
         }
-        if (IsKeyed(f))
-        {
-            if (Peek(text, ref input) != '{' || depth + 1 > MaxDepth) { input.Bad = true; return false; } // THE READ CAP COUNTS EVERY CONTAINER, placed or skipped (docs/SPEC-TABLES.md 16.2)
-            input.Pos++;
-            // every slot back to its declared defaults first, so a key the text
-            // omits keeps them and a repeated field key cannot leave an earlier
-            // occurrence's slots standing
-            ResetSlots(value, f);
-            char shape = ElementShape(f);
-            // A KEYED OBJECT'S KEYS ARE KEYS: a key named twice is a
-            // repeated key like any other, and damage.
-            // The schema fixes the vocabulary size. Small schemas use the
-            // stack; larger ones still count every duplicate exactly.
-            int words = (f.ArrayBound + 63) / 64;
-            ulong seen0 = 0;
-            ulong[] seenBig = words > 1 ? new ulong[words] : null;
-            Span<byte> key = input.KeyBuf;
-            System.Collections.Generic.HashSet<string> unplaced = null;
-            for (; ; )
-            {
-                byte c = Peek(text, ref input);
-                if (c == '}') { input.Pos++; break; }
-                if (c == 0) { input.Bad = true; return false; }
-                int keyLength;
-                if (!ScanString(text, ref input, key, true, out keyLength, stored: true)) { return false; }
-                if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
-                input.Pos++;
-                int slot = -1;
-                for (int v = 0; v < f.ArrayBound; v++)
-                {
-                    // nothing is stored for None, so "None" finds no slot and
-                    // is an unknown key like any other name this reader cannot
-                    // place
-                    if (!KeyedSlotValid(f, v)) { continue; }
-                    if (Same(key.Slice(0, keyLength), f.KeyName(KeyedSlotKey(v)))) { slot = v; break; }
-                }
-                if (slot >= 0)
-                {
-                    ulong bit = 1ul << (slot & 63);
-                    if (seenBig == null) { if ((seen0 & bit) != 0) { return RefuseText(ref input, "duplicate"); } seen0 |= bit; }
-                    else { if ((seenBig[slot >> 6] & bit) != 0) { return RefuseText(ref input, "duplicate"); } seenBig[slot >> 6] |= bit; }
-                }
-                if (slot < 0)
-                {
-                    // a key this reader cannot place (None, or a name outside
-                    // the key vocabulary) is still a key: spelling it twice is
-                    // a repeated key, damage like a placed one.
-                    // Compared on the decoded bytes, so an
-                    // escaped spelling of the same name is the same key.
-                    unplaced ??= new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
-                    if (!unplaced.Add(System.Text.Encoding.UTF8.GetString(key.Slice(0, keyLength)))) { return RefuseText(ref input, "duplicate"); }
-                    input.Report.Unknown++;
-                    if (!SkipValue(text, ref input, depth + 2)) { return false; }
-                }
-                else if (!TableShapeMatches(shape, ValueShape(text, ref input)))
-                {
-                    return RefuseText(ref input, "kind_mismatch");
-                }
-                else if (!ReadScalar(text, ref input, value, f, slot, depth + 1))
-                {
-                    return false;
-                }
-                c = Peek(text, ref input);
-                if (c == ',') { input.Pos++; continue; } // a trailing comma is accepted
-                if (c == '}') { input.Pos++; break; }
-                input.Bad = true;
-                return false;
-            }
-            return true;
-        }
+        if (IsKeyed(f)) { return ReadKeyed(text, ref input, value, f, depth); }
         if (f.IsArray)
         {
-            if (Peek(text, ref input) != '[' || depth + 1 > MaxDepth) { input.Bad = true; return false; } // THE READ CAP COUNTS EVERY CONTAINER, placed or skipped (docs/SPEC-TABLES.md 16.2)
+            if (depth + 1 > MaxDepth) { input.Bad = true; return false; }
+            if (Peek(text, ref input) != '[') { input.Bad = true; return false; }
             input.Pos++;
             // LAST WINS has to be true of a repeated ARRAY key too, and it is
             // wire-visible: a fixed array writes every slot, so a second,
@@ -2097,18 +2039,112 @@ public static class TableJson
         return ReadScalar(text, ref input, value, f, 0, depth);
     }
 
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    static bool ReadKeyed(ReadOnlySpan<byte> text, ref In input, object value, TableFieldInfo f, int depth)
+    {
+        if (depth + 1 > MaxDepth) { input.Bad = true; return false; }
+        if (Peek(text, ref input) != '{') { input.Bad = true; return false; }
+        input.Pos++;
+        // every slot back to its declared defaults first, so a key the text
+        // omits keeps them and a repeated field key cannot leave an earlier
+        // occurrence's slots standing
+        ResetSlots(value, f);
+        char shape = ElementShape(f);
+        // A KEYED OBJECT'S KEYS ARE KEYS: a key named twice is a
+        // repeated key like any other, and damage.
+        // The schema fixes the vocabulary size. Small schemas use the
+        // stack; larger ones still count every duplicate exactly.
+        int words = (f.ArrayBound + 63) / 64;
+        Span<ulong> seen = words <= 8 ? stackalloc ulong[words] : new ulong[words];
+        seen.Clear();
+        Span<byte> key = stackalloc byte[MaxName];
+        System.Collections.Generic.HashSet<string> unplaced = null;
+        for (; ; )
+        {
+            byte c = Peek(text, ref input);
+            if (c == '}') { input.Pos++; break; }
+            if (c == 0) { input.Bad = true; return false; }
+            int keyLength;
+            if (!ScanString(text, ref input, key, true, out keyLength, stored: true)) { return false; }
+            if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
+            input.Pos++;
+            int slot = -1;
+            for (int v = 0; v < f.ArrayBound; v++)
+            {
+                // nothing is stored for None, so "None" finds no slot and
+                // is an unknown key like any other name this reader cannot
+                // place
+                if (!KeyedSlotValid(f, v)) { continue; }
+                if (Same(key.Slice(0, keyLength), f.KeyName(KeyedSlotKey(v)))) { slot = v; break; }
+            }
+            if (slot >= 0)
+            {
+                ulong bit = 1ul << (slot & 63);
+                if ((seen[slot >> 6] & bit) != 0) { return RefuseText(ref input, "duplicate"); }
+                seen[slot >> 6] |= bit;
+            }
+            if (slot < 0)
+            {
+                // a key this reader cannot place (None, or a name outside
+                // the key vocabulary) is still a key: spelling it twice is
+                // a repeated key, damage like a placed one.
+                // Compared on the decoded bytes, so an
+                // escaped spelling of the same name is the same key.
+                unplaced ??= new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
+                if (!unplaced.Add(System.Text.Encoding.UTF8.GetString(key.Slice(0, keyLength)))) { return RefuseText(ref input, "duplicate"); }
+                input.Report.Unknown++;
+                if (!SkipValue(text, ref input, depth + 2)) { return false; }
+            }
+            else if (!TableShapeMatches(shape, ValueShape(text, ref input)))
+            {
+                return RefuseText(ref input, "kind_mismatch");
+            }
+            else if (!ReadScalar(text, ref input, value, f, slot, depth + 1))
+            {
+                return false;
+            }
+            c = Peek(text, ref input);
+            if (c == ',') { input.Pos++; continue; } // a trailing comma is accepted
+            if (c == '}') { input.Pos++; break; }
+            input.Bad = true;
+            return false;
+        }
+        return true;
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    static bool ScanTableKey(ReadOnlySpan<byte> text, ref In input, TableTypeInfo info, out int index, out bool isAmp, out string unknownKey)
+    {
+        index = -1; isAmp = false; unknownKey = null;
+        Span<byte> key = stackalloc byte[MaxName];
+        int keyLength;
+        if (!ScanString(text, ref input, key, true, out keyLength, stored: true)) { return false; }
+        if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
+        input.Pos++;
+        if (keyLength > 0 && key[0] == (byte)'&') { isAmp = true; return true; }
+        for (int i = 0; i < info.NumFields; i++)
+        {
+            if (Same(key.Slice(0, keyLength), info.Fields[i].Json)) { index = i; return true; }
+        }
+        unknownKey = System.Text.Encoding.UTF8.GetString(key.Slice(0, keyLength));
+        return true;
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    static bool RequireSeenSmall(object value, TableTypeInfo info, ulong seen0, ulong[] seenWide, TableReport report)
+    {
+        if (seenWide != null) { return TableWire.RequireSeen(value, info, seenWide, report); }
+        if (!info.HasRequired) { return !report.Refused; }
+        Span<ulong> s = stackalloc ulong[1];
+        s[0] = seen0;
+        return TableWire.RequireSeen(value, info, s, report);
+    }
+
     // ONE table object: keys are field keys, unknown ones are skipped and
     // counted, a repeated key (known or unknown) is damage. The instance is already
     // at its declared defaults when this is entered, so a key the text never
     // mentions keeps the default an absent field takes on the wire (§4).
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-    static bool RequireSeenMask(object value, TableTypeInfo info, ulong seen0, ulong[] seenBig, TableReport report)
-    {
-        if (seenBig != null) { return TableWire.RequireSeen(value, info, seenBig, report); }
-        Span<ulong> s = stackalloc ulong[1];
-        s[0] = seen0;
-        return TableWire.RequireSeen(value, info, s, report);
-    }
 
     static bool ReadTable(ReadOnlySpan<byte> text, ref In input, object value, TableTypeInfo info, int depth, bool opened = false)
     {
@@ -2123,28 +2159,18 @@ public static class TableJson
             return ReadField(text, ref input, value, info.Fields[0], depth);
         }
         if (!opened) { if (Peek(text, ref input) != '{') { input.Bad = true; return false; } input.Pos++; }
-        // The descriptor fixes this size; input cannot grow it. Keep common
-        // tables on the stack, and track every field even beyond 512.
-        int words = (info.NumFields + 63) / 64;
+        // Keep common tables (<= 64 fields) stackalloc-free in a single register
+        // word so depth-128 recursion fits easily on a 512 KiB stack.
         ulong seen0 = 0;
-        ulong[] seenBig = words > 1 ? new ulong[words] : null;
-        Span<byte> key = input.KeyBuf;
+        ulong[] seenWide = info.NumFields > 64 ? new ulong[(info.NumFields + 63) / 64] : null;
         System.Collections.Generic.HashSet<string> unknown = null;
         for (; ; )
         {
             byte c = Peek(text, ref input);
-            if (c == '}') { input.Pos++; return RequireSeenMask(value, info, seen0, seenBig, input.Report); }
+            if (c == '}') { input.Pos++; return RequireSeenSmall(value, info, seen0, seenWide, input.Report); }
             if (c == 0) { input.Bad = true; return false; }
-            int keyLength;
-            if (!ScanString(text, ref input, key, true, out keyLength, stored: true)) { return false; }
-            if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
-            input.Pos++;
-            int index = -1;
-            for (int i = 0; i < info.NumFields; i++)
-            {
-                if (Same(key.Slice(0, keyLength), info.Fields[i].Json)) { index = i; break; }
-            }
-            if (keyLength > 0 && key[0] == (byte)'&')
+            if (!ScanTableKey(text, ref input, info, out int index, out bool isAmp, out string unknownKey)) { return false; }
+            if (isAmp)
             {
                 // THE AMPERSAND PREFIX IS RESERVED TO THE FORM (docs/SPEC-TABLES.md
                 // 16.7): never a field this build lacks, always a construct it
@@ -2158,7 +2184,7 @@ public static class TableJson
                 // an unknown key is still a key: spelling it twice is a
                 // repeated JSON key, damage
                 unknown ??= new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
-                if (!unknown.Add(System.Text.Encoding.UTF8.GetString(key.Slice(0, keyLength)))) { return RefuseText(ref input, "duplicate"); }
+                if (!unknown.Add(unknownKey)) { return RefuseText(ref input, "duplicate"); }
                 input.Report.Unknown++;
                 if (!SkipValue(text, ref input, depth + 1)) { return false; }
             }
@@ -2169,8 +2195,16 @@ public static class TableJson
                 if (index < info.NumFields)
                 {
                     ulong bit = 1ul << (index & 63);
-                    if (seenBig == null) { if ((seen0 & bit) != 0) { return RefuseText(ref input, "duplicate"); } seen0 |= bit; }
-                    else { if ((seenBig[index >> 6] & bit) != 0) { return RefuseText(ref input, "duplicate"); } seenBig[index >> 6] |= bit; }
+                    if (seenWide == null)
+                    {
+                        if ((seen0 & bit) != 0) { return RefuseText(ref input, "duplicate"); }
+                        seen0 |= bit;
+                    }
+                    else
+                    {
+                        if ((seenWide[index >> 6] & bit) != 0) { return RefuseText(ref input, "duplicate"); }
+                        seenWide[index >> 6] |= bit;
+                    }
                 }
                 // PRESENCE OF THE KEY IS THE PRESENCE (§16.2): reaching this
                 // line is the key being present, so an optional is set present
@@ -2206,7 +2240,7 @@ public static class TableJson
             }
             c = Peek(text, ref input);
             if (c == ',') { input.Pos++; continue; } // a trailing comma is accepted
-            if (c == '}') { input.Pos++; return RequireSeenMask(value, info, seen0, seenBig, input.Report); }
+            if (c == '}') { input.Pos++; return RequireSeenSmall(value, info, seen0, seenWide, input.Report); }
             input.Bad = true;
             return false;
         }

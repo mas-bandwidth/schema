@@ -289,7 +289,7 @@ fn save(r: Record&, why: u8[>..]&) -> bool {
 // ---- the owning facade (cards.go) ----
 
 // Load reads wire into a Record (docs/SPEC-TABLES.md §6.2): a malformed wire
-// refuses; tolerant events ride in r.report. The ORIGINAL wire is kept, never
+// refuses; evolution events ride in r.report. The ORIGINAL wire is kept, never
 // rewritten.
 fn Load(r: Record&, wire: const u8[:], why: u8[>..]&) -> bool {
     r.wire.append(wire);

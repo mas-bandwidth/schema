@@ -1,0 +1,53 @@
+# THE THREE WAYS AN ELIXIR CASE ENDS (test/conformance/elixir/driver_impl.ex,
+# each_case/3 and codec/2), held by make's elixir-case-outcomes gate beside
+# expected.txt. The rows are in the DERIVED manifest's shape the driver reads
+# (testdata/conformance/tables/FORMAT.md): an `instance` line keeps its
+# markers, and a write-refusal line carries no verdict.
+#
+#   a codec ABSENT for the case (no unit module, or no such root in its
+#     descriptors): an EMPTY <case>.absent;
+#   a REFUSAL of a present codec: that surface's refusal answer, which on the
+#     wire surface is <case>.absent HOLDING THE READ'S REASON (review F-174:
+#     the shapes loaders refuse octets below their minimum, and an empty
+#     .absent spelled that refusal as a missing codec);
+#   a DRIVER ERROR (here a wire file that does not exist, a path naming no
+#     field): no answer, the case named on stderr, the cases after it still
+#     answered, and the surface's exit status non-zero.
+#
+# Every refused row sits beside a legal control on the same root, and every
+# out-of-width token (an ordinal or a tag of 256 or 2^32 against a one-byte
+# enum or union tag) beside an in-range one: the driver hands the BEAM integer
+# through unnarrowed, and the codec, not the driver, refuses it.
+
+instance case_read            shapes     Bounds      testdata/wire/tables/shapes/bounds_octets_at_min.bin
+instance case_refused         shapes     Bounds      testdata/wire/tables/shapes/bounds_octets_below_min.bin no-text wire-refused
+instance case_error           shapes     Bounds      test/conformance/elixir/case-outcomes/no-such-file.bin
+instance case_fixed_read      shapes     FixedBounds testdata/wire/tables/shapes/fixed_octets_three.bin
+instance case_fixed_refused   shapes     FixedBounds testdata/wire/tables/shapes/fixed_octets_below_min.bin no-text wire-refused
+instance case_no_unit         nosuchunit Bounds      testdata/wire/tables/shapes/bounds_octets_at_min.bin
+instance case_no_root         shapes     NoSuchRoot  testdata/wire/tables/shapes/bounds_octets_at_min.bin
+
+write-refusal wr_tag_ok        shapes     Bounds testdata/wire/tables/shapes/bounds_ends.bin pick     tag     3
+write-refusal wr_tag_256       shapes     Bounds testdata/wire/tables/shapes/bounds_ends.bin pick     tag     256
+write-refusal wr_tag_2p32      shapes     Bounds testdata/wire/tables/shapes/bounds_ends.bin pick     tag     4294967296
+write-refusal wr_ord_ok        shapes     Bounds testdata/wire/tables/shapes/bounds_ends.bin tones[0] ordinal 3
+write-refusal wr_error         shapes     Bounds testdata/wire/tables/shapes/bounds_ends.bin nosuchfield int 1
+write-refusal wr_ord_256       shapes     Bounds testdata/wire/tables/shapes/bounds_ends.bin tones[0] ordinal 256
+write-refusal wr_ord_2p32      shapes     Bounds testdata/wire/tables/shapes/bounds_ends.bin tones[0] ordinal 4294967296
+write-refusal wr_no_unit       nosuchunit Bounds testdata/wire/tables/shapes/bounds_ends.bin pick     tag     3
+
+write-refusal-fixed fr_tag_ok   shapes     FixedBounds testdata/wire/tables/shapes/fixed_ends.bin pick     tag     3
+write-refusal-fixed fr_tag_256  shapes     FixedBounds testdata/wire/tables/shapes/fixed_ends.bin pick     tag     256
+write-refusal-fixed fr_tag_2p32 shapes     FixedBounds testdata/wire/tables/shapes/fixed_ends.bin pick     tag     4294967296
+write-refusal-fixed fr_ord_ok   shapes     FixedBounds testdata/wire/tables/shapes/fixed_ends.bin tones[0] ordinal 3
+write-refusal-fixed fr_error    shapes     FixedBounds testdata/wire/tables/shapes/fixed_ends.bin nosuchfield int 1
+write-refusal-fixed fr_ord_256  shapes     FixedBounds testdata/wire/tables/shapes/fixed_ends.bin tones[0] ordinal 256
+write-refusal-fixed fr_ord_2p32 shapes     FixedBounds testdata/wire/tables/shapes/fixed_ends.bin tones[0] ordinal 4294967296
+write-refusal-fixed fr_no_root  shapes     NoSuchRoot  testdata/wire/tables/shapes/fixed_ends.bin pick     tag     3
+
+write-refusal-json jr_tag_ok    shapes     Bounds testdata/wire/tables/shapes/bounds_ends.bin pick     tag     3
+write-refusal-json jr_tag_256   shapes     Bounds testdata/wire/tables/shapes/bounds_ends.bin pick     tag     256
+write-refusal-json jr_ord_ok    shapes     Bounds testdata/wire/tables/shapes/bounds_ends.bin tones[0] ordinal 3
+write-refusal-json jr_error     shapes     Bounds testdata/wire/tables/shapes/bounds_ends.bin nosuchfield int 1
+write-refusal-json jr_ord_256   shapes     Bounds testdata/wire/tables/shapes/bounds_ends.bin tones[0] ordinal 256
+write-refusal-json jr_no_unit   nosuchunit Bounds testdata/wire/tables/shapes/bounds_ends.bin pick     tag     3

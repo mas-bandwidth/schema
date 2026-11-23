@@ -350,6 +350,16 @@ defmodule Bench.FixedRuntime do
   def fclamps(acc, _v, _lo, _hi), do: acc
 
   @doc """
+  A COMPRESSED FLOAT'S -0 IS WRITTEN AS +0, the bits of +0
+  (docs/SPEC-TABLES.md §3.3, docs/rulings.json fixed-compressed-negzero): the
+  read lands it as +0 ('fclamp/3'), and the writer stores what the read lands.
+  Exact equality tells -0.0 from 0.0 on OTP 27 and later; anything else passes
+  through to the float writer, which refuses what is not a float.
+  """
+  def cfloat_zero(v) when v === -0.0, do: 0.0
+  def cfloat_zero(v), do: v
+
+  @doc """
   The count moved by an ORDINAL past the last variant the reader declares: an
   enum value, or a union tag, that names nothing lands None and counts one.
   """

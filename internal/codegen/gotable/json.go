@@ -1576,7 +1576,11 @@ func (in *tableJSONIn) scanText(out []byte, zero bool) (int32, bool) {
             }
             in.pos += n
 		}
-        if out==nil { placed+=unitLength;continue }
+        // A MEASURED LENGTH SATURATES at the int32 top rather than wrapping
+        // negative: a string of 2 GiB or more is then longer than every
+        // bound a caller holds it to (the 255-byte name cap, a scratch
+        // buffer), and never a negative length a slice would panic on
+        if out==nil { if placed>0x7fffffff-unitLength {placed=0x7fffffff} else {placed+=unitLength};continue }
 		if !clamped && placed+unitLength <= int32(len(out)) {
 			copy(out[placed:], unit[:unitLength])
 			placed += unitLength
@@ -2058,6 +2062,9 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 				break
 			}
 		}
+		// DEPTH (docs/SPEC-TABLES.md §16.2): the holder is at depth, the
+		// union object at depth+1 and the arm's value at depth+2, where an
+		// unknown or mismatched arm's value is skipped
 		if tag == 0 {
 			in.report.Unknown++
 			if !in.skipValue(depth + 2) {
@@ -2068,7 +2075,7 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
             want := byte('z'); if !arm.Void { want = tableJSONShape(&arm.Field) }
             if !tableJSONShapeMatches(want, in.valueShape()) && !(arm.Field.Pointer && !arm.Field.IsArray && in.valueShape()=='z') {
                 in.report.Refuse(TableRefuseKindMismatch, "")
-                if !in.skipValue(depth+1) { return false }
+                if !in.skipValue(depth+2) { return false }
             } else {
                 if arm.Void { if !in.literal("null") { return false } } else {
                     arm.Reset(storage)

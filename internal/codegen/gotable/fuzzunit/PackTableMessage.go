@@ -14,7 +14,6 @@ package tabledemo
 import (
 	"encoding/binary"
 	"math"
-	"slices"
 	"unsafe"
 )
 
@@ -310,7 +309,7 @@ func tableMessageBodyGunnerSettings(r *TableMessageReader, value *GunnerSettings
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
-					if n > 24 {
+					if n > 24 || tableMessageOverMax(n, entry.Shape) {
 						r.Report.Refuse(TableRefuseLengthOverBound, "GunnerSettings.callsign")
 						return false
 					}
@@ -332,7 +331,7 @@ func tableMessageBodyGunnerSettings(r *TableMessageReader, value *GunnerSettings
 				return false
 			}
 			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
+			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0, true) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -590,7 +589,7 @@ func tableMessageBodyShipEntry(r *TableMessageReader, value *ShipEntry, starts [
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
-					if n > 32 {
+					if n > 32 || tableMessageOverMax(n, entry.Shape) {
 						r.Report.Refuse(TableRefuseLengthOverBound, "ShipEntry.display_name")
 						return false
 					}
@@ -742,6 +741,10 @@ func tableMessageBodyShipEntry(r *TableMessageReader, value *ShipEntry, starts [
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
+					if tableMessageOverMax(n, entry.Shape) {
+						r.Report.Refuse(TableRefuseCountOverBound, "ShipEntry.hardpoints")
+						return false
+					}
 					if entry.Element.Kind == 6 && !r.Bits.Align() {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
@@ -830,7 +833,7 @@ func tableMessageBodyShipEntry(r *TableMessageReader, value *ShipEntry, starts [
 				return false
 			}
 			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
+			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0, true) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -1189,7 +1192,7 @@ func tableMessageBodyGlobalSettings(r *TableMessageReader, value *GlobalSettings
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
-					if n > 48 {
+					if n > 48 || tableMessageOverMax(n, entry.Shape) {
 						r.Report.Refuse(TableRefuseLengthOverBound, "GlobalSettings.build_note")
 						return false
 					}
@@ -1229,6 +1232,10 @@ func tableMessageBodyGlobalSettings(r *TableMessageReader, value *GlobalSettings
 					n, ok := tableMessageCount(&r.Bits, entry.Shape)
 					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if tableMessageOverMax(n, entry.Shape) {
+						r.Report.Refuse(TableRefuseCountOverBound, "GlobalSettings.spawn_delays")
 						return false
 					}
 					if entry.Element.Kind == 6 && !r.Bits.Align() {
@@ -1294,7 +1301,7 @@ func tableMessageBodyGlobalSettings(r *TableMessageReader, value *GlobalSettings
 				return false
 			}
 			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
+			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0, true) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
@@ -1658,14 +1665,21 @@ func tableMessageBodyPackConfig(r *TableMessageReader, value *PackConfig, starts
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
+					if tableMessageOverMax(n, entry.Shape) {
+						r.Report.Refuse(TableRefuseCountOverBound, "PackConfig.ships")
+						return false
+					}
 					if exact && n == 0 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
-					var seenKeys [64]uint64
-					seenKey := seenKeys[:0]
+					keys := tableMessageSetOpen(r.Vocabulary)
+					if keys < 0 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 					lastKey := 0
 					for range n {
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -1678,11 +1692,10 @@ func tableMessageBodyPackConfig(r *TableMessageReader, value *PackConfig, starts
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						if slices.Contains(seenKey, id) {
+						if tableMessageSetRepeat(r.Vocabulary, keys, ref) {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						seenKey = append(seenKey, id)
 						var key ShipType
 						known := key.TableEnumValue(id)
 						var scratch ShipEntry
@@ -1712,6 +1725,7 @@ func tableMessageBodyPackConfig(r *TableMessageReader, value *PackConfig, starts
 							return false
 						}
 					}
+					tableMessageSetClose(r.Vocabulary)
 				}
 				if widened {
 					r.Report.Widened++
@@ -1743,14 +1757,21 @@ func tableMessageBodyPackConfig(r *TableMessageReader, value *PackConfig, starts
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
+					if tableMessageOverMax(n, entry.Shape) {
+						r.Report.Refuse(TableRefuseCountOverBound, "PackConfig.thresholds")
+						return false
+					}
 					if exact && n == 0 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
 						return false
 					}
 					element := TableMessageEntry{Shape: entry.Element}
 					_ = element
-					var seenKeys [64]uint64
-					seenKey := seenKeys[:0]
+					keys := tableMessageSetOpen(r.Vocabulary)
+					if keys < 0 {
+						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
 					lastKey := 0
 					for range n {
 						ref, ok := r.Bits.Get(r.Vocabulary.RefBits)
@@ -1763,11 +1784,10 @@ func tableMessageBodyPackConfig(r *TableMessageReader, value *PackConfig, starts
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						if slices.Contains(seenKey, id) {
+						if tableMessageSetRepeat(r.Vocabulary, keys, ref) {
 							r.Report.Refuse(TableRefuseWireDamaged, "")
 							return false
 						}
-						seenKey = append(seenKey, id)
 						var key Difficulty
 						known := key.TableEnumValue(id)
 						var scratch int32
@@ -1823,6 +1843,7 @@ func tableMessageBodyPackConfig(r *TableMessageReader, value *PackConfig, starts
 							return false
 						}
 					}
+					tableMessageSetClose(r.Vocabulary)
 				}
 				if widened {
 					r.Report.Widened++
@@ -1852,6 +1873,10 @@ func tableMessageBodyPackConfig(r *TableMessageReader, value *PackConfig, starts
 					n, ok := tableMessageCount(&r.Bits, entry.Shape)
 					if !ok {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
+						return false
+					}
+					if tableMessageOverMax(n, entry.Shape) {
+						r.Report.Refuse(TableRefuseCountOverBound, "PackConfig.reserves")
 						return false
 					}
 					if entry.Element.Kind == 6 && !r.Bits.Align() {
@@ -1886,7 +1911,7 @@ func tableMessageBodyPackConfig(r *TableMessageReader, value *PackConfig, starts
 				return false
 			}
 			r.Report.Unknown++
-			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0) {
+			if !tableMessageSkip(&r.Bits, r.Vocabulary, r.IndexBits, entry, 0, true) {
 				r.Report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}

@@ -946,6 +946,8 @@ namespace SchemaUnityConformance
                     SpillAbsent(outDir, f[1], "root not carried on wire");
                     continue;
                 }
+                bool wireRefused = false;
+                for (int mi = 5; mi < f.Length; mi++) { if (f[mi] == "wire-refused") { wireRefused = true; } }
                 byte[] wire = File.ReadAllBytes(f[4]);
                 var rep = new DriverReport();
                 object value = codec.Load(wire, rep);
@@ -956,12 +958,22 @@ namespace SchemaUnityConformance
                         File.WriteAllText(Path.Combine(outDir, f[1] + ".absent"), "blob_shared");
                         continue;
                     }
+                    if (wireRefused)
+                    {
+                        File.WriteAllText(Path.Combine(outDir, f[1] + ".absent"), string.IsNullOrEmpty(rep.ReasonText) ? "refused" : rep.ReasonText);
+                        continue;
+                    }
                     Console.Error.WriteLine("driver: " + f[1] + " does not load (" + rep.ReasonText + ")");
                     return 1;
                 }
                 long size = codec.Measure(value);
                 if (size < 0)
                 {
+                    if (wireRefused)
+                    {
+                        File.WriteAllText(Path.Combine(outDir, f[1] + ".absent"), "refused");
+                        continue;
+                    }
                     Console.Error.WriteLine("driver: " + f[1] + " measure refused the value");
                     return 1;
                 }
@@ -976,12 +988,14 @@ namespace SchemaUnityConformance
             return 0;
         }
 
-        private static int SurfaceMessage(string outDir)
+        private static int SurfaceMessage(string outDir, bool prior)
         {
+            string connKind = prior ? "prior-connection" : "connection";
+            string msgKind = prior ? "prior-message" : "message";
             Directory.CreateDirectory(outDir);
-            foreach (string[] f in Kind("message"))
+            foreach (string[] f in Kind(msgKind))
             {
-                string[] conn = FindLine(c => c[0] == "connection" && c[1] == f[2]);
+                string[] conn = FindLine(c => c[0] == connKind && c[1] == f[2]);
                 ICodec codec = FindCodec(conn[2], f[3]);
                 if (f[5] == "-" || (codec != null && !codec.HasMessage))
                 {
@@ -997,24 +1011,40 @@ namespace SchemaUnityConformance
                 object value = codec.MessageLoad(File.ReadAllBytes(conn[4]), File.ReadAllBytes(f[5]), rep);
                 if (StrictRefused(value, rep))
                 {
+                    if (prior)
+                    {
+                        File.WriteAllText(Path.Combine(outDir, f[1] + ".refused"), "refused");
+                        continue;
+                    }
                     Console.Error.WriteLine("message read failed: " + f[1] + " (" + rep.ReasonText + ")");
                     return 1;
                 }
                 long size = codec.MessageMeasure(value);
-                if (size < 0) { return 1; }
+                if (size < 0)
+                {
+                    if (prior) { File.WriteAllText(Path.Combine(outDir, f[1] + ".refused"), "refused"); continue; }
+                    return 1;
+                }
                 byte[] bytes = new byte[checked((int)size)];
-                if (codec.MessageSave(value, bytes) != size) { return 1; }
+                if (codec.MessageSave(value, bytes) != size)
+                {
+                    if (prior) { File.WriteAllText(Path.Combine(outDir, f[1] + ".refused"), "refused"); continue; }
+                    return 1;
+                }
                 File.WriteAllBytes(Path.Combine(outDir, f[1]), bytes);
             }
-            // message-batch <case> <connection> <root> <wire>: the count
-            // LoadMessages returned with room for every body (FORMAT.md)
-            foreach (string[] f in Kind("message-batch"))
+            if (!prior)
             {
-                string[] conn = FindLine(c => c[0] == "connection" && c[1] == f[2]);
-                ICodec codec = FindCodec(conn[2], f[3]);
-                if (codec == null || !codec.HasMessage) { Console.Error.WriteLine("driver: no message codec for " + conn[2] + "." + f[3]); return 1; }
-                int count = codec.MessageBatchCount(File.ReadAllBytes(conn[4]), File.ReadAllBytes(f[4]));
-                File.WriteAllText(Path.Combine(outDir, f[1]), "count " + count + "\n");
+                // message-batch <case> <connection> <root> <wire>: the count
+                // LoadMessages returned with room for every body (FORMAT.md)
+                foreach (string[] f in Kind("message-batch"))
+                {
+                    string[] conn = FindLine(c => c[0] == "connection" && c[1] == f[2]);
+                    ICodec codec = FindCodec(conn[2], f[3]);
+                    if (codec == null || !codec.HasMessage) { Console.Error.WriteLine("driver: no message codec for " + conn[2] + "." + f[3]); return 1; }
+                    int count = codec.MessageBatchCount(File.ReadAllBytes(conn[4]), File.ReadAllBytes(f[4]));
+                    File.WriteAllText(Path.Combine(outDir, f[1]), "count " + count + "\n");
+                }
             }
             return 0;
         }
@@ -1304,12 +1334,12 @@ namespace SchemaUnityConformance
         }
 
         private const string AllSurfaces =
-            "wire\nmessage\nreport\nframing\nretain\nretain-save\n" +
+            "wire\nmessage\nmessage-prior\nreport\nframing\nretain\nretain-save\n" +
             "json-read\njson-write\njson-hostile\n" +
             "cook\ncook-write\ncook-foreign\n" +
             "block\nblock-foreign\nblock-dump\n" +
             "forgery\ncook-forgery\n" +
-            "write-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n";
+            "write-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nunit shapes\n";
 
         private static int Main(string[] args)
         {
@@ -1341,7 +1371,8 @@ namespace SchemaUnityConformance
             switch (surface)
             {
                 case "wire": return SurfaceWire(outDir);
-                case "message": return SurfaceMessage(outDir);
+                case "message": return SurfaceMessage(outDir, false);
+                case "message-prior": return SurfaceMessage(outDir, true);
                 case "report": return SurfaceReport(outDir);
                 case "framing": return SurfaceFraming(outDir);
                 case "retain": return SurfaceRetain(outDir, false);

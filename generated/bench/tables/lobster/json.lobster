@@ -20,7 +20,12 @@ import .descriptors
 
 namespace schema_rt
 
-// The caps the generated walk carries (Go's maxJsonDepth, maxJsonKey).
+// The caps the generated walk carries (Go's maxJsonDepth, maxJsonKey). THE
+// DEPTH CAP (§16.2) counts every container, placed or skipped, the root at depth
+// 0: 128 reads, 129 refuses. A read function handed `depth` is handed its
+// HOLDER's depth, so the array, map, union or flags it opens sits at depth + 1
+// and that container's values at depth + 2; j_skip_value and j_read_table are
+// handed the depth of the value itself.
 let json_max_depth = 128
 let json_max_key = 255
 
@@ -1496,7 +1501,7 @@ def j_read_table(r:JsonReader, rec:Record, depth:int) -> bool:
                 r.report.reason = "json_root_not_array: " + rec.d.name
             r.bad = true
             return false
-        if not j_read_field(r, rec.fields[0], depth):
+        if not j_read_field(r, rec.fields[0], depth - 1):
             j_name_zero(r, rec.d.name, rec.fields[0])
             return false
         return true
@@ -1572,7 +1577,7 @@ def j_read_table_keys(r:JsonReader, rec:Record, depth:int, first_key:string, has
 def j_read_field(r:JsonReader, sl:Slot, depth:int) -> bool:
     let f = sl.fd
     let s = f.s
-    if depth > json_max_depth and (s == "arr" or s == "map" or s == "union" or s == "tab" or s == "ptr"):
+    if depth + 1 > json_max_depth and (s == "arr" or s == "map" or s == "union" or s == "tab" or s == "ptr"):
         return j_refuse(r, "depth_over_bound")
     if s == "sblob" or s == "bblob":
         return j_read_blob(r, sl)
@@ -1676,6 +1681,8 @@ def j_read_base64(r:JsonReader, sl:Slot, bound:int) -> bool:
     return true
 
 def j_read_array(r:JsonReader, sl:Slot, depth:int) -> bool:
+    if depth + 1 > json_max_depth:
+        return j_refuse(r, "depth_over_bound")
     let f = sl.fd
     let e = elem_of(f)
     if j_peek(r) != '[':
@@ -1735,6 +1742,8 @@ def j_read_array(r:JsonReader, sl:Slot, depth:int) -> bool:
 
 // Text-list count, element width and total budget all bound the whole read.
 def j_read_text_list(r:JsonReader, sl:Slot, depth:int) -> bool:
+    if depth + 1 > json_max_depth:
+        return j_refuse(r, "depth_over_bound")
     let f = sl.fd
     if j_peek(r) != '[':
         return j_refuse(r, "kind_mismatch")
@@ -1800,6 +1809,8 @@ def j_read_text_list(r:JsonReader, sl:Slot, depth:int) -> bool:
 
 
 def j_read_keyed(r:JsonReader, sl:Slot, depth:int) -> bool:
+    if depth + 1 > json_max_depth:
+        return j_refuse(r, "depth_over_bound")
     let f = sl.fd
     let e = elem_of(f)
     if j_peek(r) != '{':
@@ -2193,6 +2204,8 @@ def j_place_wide(r:JsonReader, cell:Value, f:FieldDescriptor, token:string, kind
 
 
 def j_read_union(r:JsonReader, cell:Value, un:UnionDescriptor, depth:int) -> bool:
+    if depth + 1 > json_max_depth:
+        return j_refuse(r, "depth_over_bound")
     if j_peek(r) != '{':
         r.bad = true
         return false
@@ -2266,6 +2279,8 @@ def j_read_union(r:JsonReader, cell:Value, un:UnionDescriptor, depth:int) -> boo
     return false
 
 def j_read_flags(r:JsonReader, cell:Value, names:[string], depth:int) -> bool:
+    if depth + 1 > json_max_depth:
+        return j_refuse(r, "depth_over_bound")
     if j_peek(r) != '[':
         r.bad = true
         return false
@@ -2352,9 +2367,14 @@ def j_read_pointer_cell(r:JsonReader, cell:Value, tname:string, depth:int) -> bo
         return false
     let entry = j_find_label(r, label)
     c = j_peek(r)
+    // the label is a member like any other: a comma or the object's close
+    // follows it, never the next key (§16.2)
     if c == ',':
         r.pos++
         c = j_peek(r)
+    elif c != '}':
+        r.bad = true
+        return false
     let bare = c == '}'
     var defined = false
     if entry:
@@ -2390,6 +2410,8 @@ def j_read_pointer_cell(r:JsonReader, cell:Value, tname:string, depth:int) -> bo
 // is the verdict (Go's readMap); accepted entries are ordered canonically
 // before publication (§2.8, §16).
 def j_read_map(r:JsonReader, sl:Slot, depth:int) -> bool:
+    if depth + 1 > json_max_depth:
+        return j_refuse(r, "depth_over_bound")
     if j_peek(r) != '{':
         return j_refuse(r, "kind_mismatch")
     if depth + 1 > json_max_depth:

@@ -2137,14 +2137,17 @@ func TableFixedJSRefusal(st *Struct) string {
 }
 
 // TableFixedJSRoots is every table of tables the fixed form is emitted for in
-// JavaScript.
+// JavaScript. The selection reads the KEYWORD, as [TableFixedRoots] does: a
+// variable table encodes as form 1, always (docs/SPEC-TABLES.md §3.4), so it
+// gets no form-3 surface however well its closure would fit the layout.
+// JavaScript differs from [TableFixedEmitted] only in having no leaf cap.
 func TableFixedJSRoots(u *Unit, tables []*Struct) []*Struct {
+	variable := VariableTables(u)
 	var out []*Struct
 	for _, st := range tables {
-		if !st.IsTable || st.IsMapEntry() || TableFixedJSRefusal(st) != "" {
+		if !st.IsTable || st.IsMapEntry() || variable[st.Name] || TableFixedJSRefusal(st) != "" {
 			continue
 		}
-		_ = u
 		out = append(out, st)
 	}
 	return out

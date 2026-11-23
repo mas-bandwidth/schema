@@ -60,7 +60,7 @@ func cppRuntimeNames() []Name {
 			"kTableFixedNoGuard",
 		}},
 		{what: "a named constant of the message form (docs/SPEC-TABLES.md §3.3)", names: []string{
-			"kTableMessageSeenBits",
+			"kTableMessageSeenLevels", "kTableMessageSeenWords",
 			"kTableMessageListMax", "kTableMessageVocabularyFieldId",
 		}},
 		{what: "a shared runtime helper or constant of the table wire (docs/SPEC-TABLES.md §3, §6)", names: []string{
@@ -107,7 +107,7 @@ func cppRuntimeNames() []Name {
 			"kTableMapSegmentEntries",
 		}},
 		{what: "the message form's runtime: batches, entries, quantization and the skip walk (docs/SPEC-TABLES.md §3.3)", names: []string{
-			"TableMessageSeenOnce", "TableMessageSignedKind",
+			"TableMessageRangedHolds", "TableMessageSeenBody", "TableMessageSeenKeepBelow", "TableMessageSeenOnce", "TableMessageSignedKind", "TableMessageSkipKeyed", "TableMessageSkipField",
 			"TableMessageArmEntry", "TableMessageBatch", "TableMessageBatchBegin", "TableMessageBatchBytes",
 			"TableMessageBatchCheckIntegrity", "TableMessageBatchOpenSealed", "TableMessageBatchSeal",
 			"TableMessageBatchEnd", "TableMessageDequantize", "TableMessageElementRunBits", "TableMessageFixedKind",
@@ -166,7 +166,7 @@ func cppRuntimeNames() []Name {
 		}},
 		{what: "the text form's JSON reader and writer walk (§16)", names: []string{
 			"TableJsonElementShapeFits", "TableJsonFieldShapeFits", "TableJsonIntegerTokenOnly", "TableJsonKeyEquals",
-			"TableJsonKeyScope", "TableJsonKeyTrack", "TableJsonKeysGrow", "TableJsonKeysInit", "TableJsonKeysShutdown",
+			"TableJsonKeyHash", "TableJsonKeyIndexPlace", "TableJsonKeyScope", "TableJsonKeyTrack", "TableJsonKeysCut", "TableJsonKeysGrow", "TableJsonKeysInit", "TableJsonKeysShutdown",
 			"TableJsonKindInteger", "TableJsonKindWideText", "TableJsonScanWideString",
 			"TableJsonRead", "TableJsonReadBlob", "TableJsonReadField", "TableJsonReadGraph", "TableJsonReadList",
 			"TableJsonReadMap", "TableJsonReadPointer", "TableJsonReadScalar", "TableJsonReadTable",
@@ -185,7 +185,7 @@ func cppRuntimeNames() []Name {
 			"TableJsonBase64Alphabet", "TableJsonBase64Value",
 		}},
 		{what: "the text form's map key and value access (§16.8)", names: []string{
-			"TableJsonMapKeyField", "TableJsonMapKeyIsString", "TableJsonMapKeySigned", "TableJsonMapKeyValue",
+			"TableJsonMapKeyField", "TableJsonMapKeyIsString", "TableJsonMapKeySigned", "TableJsonMapKeyValue", "TableJsonMapKeys", "TableJsonMapKeysAdd",
 			"TableJsonMapValueField",
 		}},
 		{what: "the text form's unbounded-array extent access (§16.8)", names: []string{

@@ -1,0 +1,43 @@
+package starlighttools
+
+table OpenDocument
+{
+    path string(256)
+    line uint32
+}
+
+table SaveDocument
+{
+    path  string(256)
+    force bool
+}
+
+union ToolBody
+{
+    open OpenDocument
+    save SaveDocument
+    ping uint32
+    close
+}
+
+table ToolMessage
+{
+    sequence uint32
+    body     ToolBody
+}
+
+table ToolLog
+{
+    events [..8]ToolBody
+}
+
+table Attachment
+{
+    label *string
+    data  *bytes
+}
+
+table AttachmentSet
+{
+    items [..4]Attachment
+}

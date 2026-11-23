@@ -1,0 +1,6 @@
+package claims
+
+table Profile
+{
+    name string(16)
+}

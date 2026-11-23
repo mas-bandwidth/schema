@@ -29,6 +29,12 @@ func Parse(path string, src []byte) (*ast.File, []error) {
 
 const maxNestingDepth = 64
 
+// maxExprOperators bounds the binary operators in one expression. The
+// nesting bound above counts parentheses and unary minus; a flat `a + b + ...`
+// chain builds a left-deep tree that every later pass recurses through, so it
+// is bounded too, by count.
+const maxExprOperators = 4096
+
 type parser struct {
 	toks       []scanner.Token
 	i          int
@@ -36,6 +42,7 @@ type parser struct {
 	errs       []error
 	blockDepth int
 	exprDepth  int
+	exprOps    int // binary operators in the outermost expression being parsed
 	mapDepth   int
 }
 
@@ -410,6 +417,12 @@ func (p *parser) parseVariantList(what string) []ast.Name {
 	var names []ast.Name
 	p.skipNewlineBeforeBrace()
 	p.expect(scanner.LBrace, "{")
+	// a brace that closes a qualification line (`enum E | tag {`) keeps
+	// the newline after it — no suppression right of | — so it is skipped
+	// here, as a type, table or union body skips it as a blank item line
+	for p.kind() == scanner.Newline {
+		p.advance()
+	}
 	for p.kind() != scanner.RBrace && p.kind() != scanner.EOF {
 		doc, docPos, hasDoc := p.takeDoc()
 		if hasDoc && (p.kind() == scanner.RBrace || p.kind() == scanner.EOF) {
@@ -1064,12 +1077,35 @@ func (p *parser) parseBracketAttrs() []ast.Attr {
 // Expressions — precedence climbing: unary minus binds tightest, then * / %,
 // then + - (SPEC §4.2 IntExpr/FloatExpr).
 
-func (p *parser) parseExpr() ast.Expr { return p.parseAdd() }
+func (p *parser) parseExpr() ast.Expr {
+	if p.exprDepth == 0 {
+		p.exprOps = 0
+	}
+	return p.parseAdd()
+}
+
+// countOperator charges one binary operator to the expression and reports
+// whether the bound still holds; past it the rest of the expression is
+// skipped with one diagnostic.
+func (p *parser) countOperator(op scanner.Token) bool {
+	p.exprOps++
+	if p.exprOps == maxExprOperators+1 {
+		p.errf(op.Pos, "expression has more than %d operators", maxExprOperators)
+	}
+	if p.exprOps > maxExprOperators {
+		p.skipExpr()
+		return false
+	}
+	return true
+}
 
 func (p *parser) parseAdd() ast.Expr {
 	x := p.parseMul()
 	for p.kind() == scanner.Plus || p.kind() == scanner.Minus {
 		op := p.advance()
+		if !p.countOperator(op) {
+			return x
+		}
 		y := p.parseMul()
 		x = &ast.BinaryExpr{Pos: op.Pos, Op: op.Text, X: x, Y: y}
 	}
@@ -1080,6 +1116,9 @@ func (p *parser) parseMul() ast.Expr {
 	x := p.parseUnary()
 	for p.kind() == scanner.Star || p.kind() == scanner.Slash || p.kind() == scanner.Percent {
 		op := p.advance()
+		if !p.countOperator(op) {
+			return x
+		}
 		y := p.parseUnary()
 		x = &ast.BinaryExpr{Pos: op.Pos, Op: op.Text, X: x, Y: y}
 	}

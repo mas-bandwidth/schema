@@ -497,9 +497,9 @@
     {
       "name": "base-maps-d",
       "when": "pull-request",
-      "why": "slice 4 of 4 of base-maps, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-maps-clamp-negative-control 5 s, tables-maps-cook-check-negative-control 7 s, tables-maps-dead-entry-negative-control 4 s.",
+      "why": "slice 4 of 4 of base-maps, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 160: tables-maps-key-over-bound-negative-control 5 s, tables-maps-cook-check-negative-control 7 s, tables-maps-dead-entry-negative-control 4 s.",
       "targets": [
-        "tables-maps-clamp-negative-control",
+        "tables-maps-key-over-bound-negative-control",
         "tables-maps-cook-check-negative-control",
         "tables-maps-dead-entry-negative-control"
       ]
@@ -510,7 +510,7 @@
       "why": "every tables-maps-*-negative-control target invokes map_negative_control, regenerating all 13 map schema units and compiling test/tables/maps_main.cpp plus all 13 build/tables-map-X/maps/*Table.cpp files (286k lines of generated C++) in one single-threaded g++ call; tables-maps-depth-negative-control alone ran 84 s of control time on run 42554833739 (135 s wall, killed at 2m), past the ~75 s per-commit control ceiling on a single target. base-maps and tables-json-map-walk-negative-controls stay on pull-request.",
       "targets": [
         "tables-maps-depth-negative-control",
-        "tables-maps-duplicate-negative-control",
+        "tables-maps-repeated-key-negative-control",
         "tables-maps-entry-node-negative-control",
         "tables-maps-fit-negative-control"
       ]

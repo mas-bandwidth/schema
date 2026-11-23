@@ -2928,11 +2928,17 @@ impl<'a> Jr<'a> {
         while p < b.len() && b[p].is_ascii_digit() {
             p += 1;
         }
-        if p < b.len() && !matches!(b[p], b' ' | b'\t' | b'\n' | b'\r' | b',' | b'}' | b'/') {
+        let v = std::str::from_utf8(&b[s..p]).ok()?.parse::<u64>().ok()?;
+        let at = self.p;
+        self.p = p;
+        // the label is followed by its object's , or } and nothing else
+        // (§16.7; RFC 8259's value-separator): a second key with no comma
+        // before it is not JSON, and neither is a fraction or an exponent
+        // after the digits
+        if !matches!(self.peek(), b',' | b'}') {
+            self.p = at;
             return None;
         }
-        let v = std::str::from_utf8(&b[s..p]).ok()?.parse::<u64>().ok()?;
-        self.p = p;
         Some(v)
     }
     /// A REFERENCE (docs/SPEC-TABLES.md §16.7): a label the text has defined,

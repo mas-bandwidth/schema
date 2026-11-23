@@ -72,22 +72,22 @@ func TestMatchedScalarWidthShape(t *testing.T) {
 	for _, want := range []string{
 		"table_reader_get16",
 		"table_reader_get32",
-		"table_reader_has( &(*r), 2 )",
-		"table_reader_has( &(*r), 4 )",
+		"table_reader_has( &( *r ), 2 )",
+		"table_reader_has( &( *r ), 4 )",
 		"table_kind_widens( kind, 7 )",
 		"table_kind_widens( kind, 4 )",
-		"(uint8_t) table_reader_get8( &(*r) )",
-		"(int8_t) table_reader_get8( &(*r) )",
+		"(uint8_t) table_reader_get8( &( *r ) )",
+		"(int8_t) table_reader_get8( &( *r ) )",
 	} {
 		if !strings.Contains(load, want) {
 			t.Fatalf("matched-width load_body is missing %q", want)
 		}
 	}
 	rest := stripWidenArms(load)
-	if strings.Contains(rest, "(uint8_t) table_reader_get8( &(*r) )") {
+	if strings.Contains(rest, "(uint8_t) table_reader_get8( &( *r ) )") {
 		t.Fatal("unsigned source-width get8 escaped the widen arm")
 	}
-	if strings.Contains(rest, "(int8_t) table_reader_get8( &(*r) )") {
+	if strings.Contains(rest, "(int8_t) table_reader_get8( &( *r ) )") {
 		t.Fatal("signed source-width get8 escaped the widen arm")
 	}
 	if strings.Contains(rest, "table_kind_bytes") {

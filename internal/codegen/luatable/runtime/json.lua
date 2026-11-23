@@ -514,8 +514,12 @@ end
 
 local skip_value
 
--- a skipped OBJECT may still be a pointer's: `&node` opening it takes its
--- label with no node, so a later reference reads null (§16.7)
+-- a skipped OBJECT may still be a pointer's, and the label rules hold in it as
+-- they do for a placed pointer (§16.7): `{"&node": N}` alone REFERS, so N must
+-- be defined earlier in the text and closed; `&node` opening an object with
+-- fields DEFINES, so N must be new to the whole text, and it stays open until
+-- the skipped object closes. A defined label has no node, so a later reference
+-- reads null.
 local function skip_container(inp, close, depth, graph)
   if depth > MAX_DEPTH then
     inp.bad = true
@@ -1545,9 +1549,14 @@ local function read_pointer(T, d, inp, holder, key, depth, graph, report, elem)
   if label == nil then return false end
   local entry = graph[label]
   c = peek(inp)
+  -- the label is a member like any other: a comma or the object's close
+  -- follows it, never the next key (§16.2)
   if c == "," then
     inp.p = inp.p + 1
     c = peek(inp)
+  elseif c ~= "}" then
+    inp.bad = true
+    return false
   end
   local bare = c == "}"
   if bare ~= (entry ~= nil) then

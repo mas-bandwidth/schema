@@ -1,0 +1,35 @@
+# <surface> <case> <answer>, for manifest.txt beside this file:
+#   bytes   <case> written, and no <case>.absent
+#   reason  the present codec refused: <case>.absent holding a reason, no <case>
+#   absent  no codec for the case: an EMPTY <case>.absent, no <case>
+#   error   a driver error: neither file, and the case named on stderr
+#   =<word> <case> holds exactly <word> and a newline, and no <case>.absent
+wire case_read bytes
+wire case_refused reason
+wire case_error error
+wire case_fixed_read bytes
+wire case_fixed_refused reason
+wire case_no_unit absent
+wire case_no_root absent
+write-refusal wr_tag_ok =wrote
+write-refusal wr_tag_256 =refused
+write-refusal wr_tag_2p32 =refused
+write-refusal wr_ord_ok =wrote
+write-refusal wr_error error
+write-refusal wr_ord_256 =refused
+write-refusal wr_ord_2p32 =refused
+write-refusal wr_no_unit absent
+write-refusal-fixed fr_tag_ok =wrote
+write-refusal-fixed fr_tag_256 =refused
+write-refusal-fixed fr_tag_2p32 =refused
+write-refusal-fixed fr_ord_ok =wrote
+write-refusal-fixed fr_error error
+write-refusal-fixed fr_ord_256 =refused
+write-refusal-fixed fr_ord_2p32 =refused
+write-refusal-fixed fr_no_root absent
+write-refusal-json jr_tag_ok =wrote
+write-refusal-json jr_tag_256 =refused
+write-refusal-json jr_ord_ok =wrote
+write-refusal-json jr_error error
+write-refusal-json jr_ord_256 =refused
+write-refusal-json jr_no_unit absent

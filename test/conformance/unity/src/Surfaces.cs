@@ -194,21 +194,110 @@ namespace SchemaUnityConformance
             // Leaf mutation
             if (elemIdx.HasValue)
             {
-                if (kind == "float")
+                object arr = f.GetValue(holder);
+                if (arr is Array sysArr && elemIdx.Value >= sysArr.Length)
                 {
-                    double dv = text == "nan" ? double.NaN
-                        : text == "inf" ? double.PositiveInfinity
-                        : text == "-inf" ? double.NegativeInfinity
-                        : double.Parse(text, NumberStyles.Float, CultureInfo.InvariantCulture);
-                    object arr = f.GetValue(holder);
+                    Array grown = Array.CreateInstance(sysArr.GetType().GetElementType(), elemIdx.Value + 1);
+                    Array.Copy(sysArr, grown, sysArr.Length);
+                    arr = grown;
+                    f.SetValue(holder, arr);
+                }
+                FieldInfo cfIdx = holderType.GetField(member + "Count", BindingFlags.Public | BindingFlags.Instance);
+                if (cfIdx != null && (int)cfIdx.GetValue(holder) <= elemIdx.Value)
+                {
+                    cfIdx.SetValue(holder, elemIdx.Value + 1);
+                }
+                if (kind == "float" || kind == "real")
+                {
                     object existing = BufferGet(arr, elemIdx.Value);
-                    BufferSet(arr, elemIdx.Value, existing is float ? (object)(float)dv : dv);
+                    object val;
+                    if (existing is float)
+                    {
+                        float fv = text == "nan" ? float.NaN
+                            : text == "inf" ? float.PositiveInfinity
+                            : text == "-inf" ? float.NegativeInfinity
+                            : float.Parse(text, NumberStyles.Float, CultureInfo.InvariantCulture);
+                        val = fv;
+                    }
+                    else
+                    {
+                        double dv = text == "nan" ? double.NaN
+                            : text == "inf" ? double.PositiveInfinity
+                            : text == "-inf" ? double.NegativeInfinity
+                            : double.Parse(text, NumberStyles.Float, CultureInfo.InvariantCulture);
+                        val = dv;
+                    }
+                    BufferSet(arr, elemIdx.Value, val);
+                    f.SetValue(holder, arr);
+                    return true;
+                }
+                if (kind == "int")
+                {
+                    object existing = BufferGet(arr, elemIdx.Value);
+                    Type et = existing.GetType();
+                    object converted;
+                    if (et == typeof(sbyte)) { converted = checked((sbyte)long.Parse(text, CultureInfo.InvariantCulture)); }
+                    else if (et == typeof(short)) { converted = checked((short)long.Parse(text, CultureInfo.InvariantCulture)); }
+                    else if (et == typeof(int)) { converted = checked((int)long.Parse(text, CultureInfo.InvariantCulture)); }
+                    else if (et == typeof(long)) { converted = long.Parse(text, CultureInfo.InvariantCulture); }
+                    else if (et == typeof(byte)) { converted = checked((byte)ulong.Parse(text, CultureInfo.InvariantCulture)); }
+                    else if (et == typeof(ushort)) { converted = checked((ushort)ulong.Parse(text, CultureInfo.InvariantCulture)); }
+                    else if (et == typeof(uint)) { converted = checked((uint)ulong.Parse(text, CultureInfo.InvariantCulture)); }
+                    else if (et == typeof(ulong)) { converted = ulong.Parse(text, CultureInfo.InvariantCulture); }
+                    else { throw new InvalidOperationException("write-refusal: unsupported indexed int type " + et); }
+                    BufferSet(arr, elemIdx.Value, converted);
+                    f.SetValue(holder, arr);
+                    return true;
+                }
+                if (kind == "ordinal")
+                {
+                    object existing = BufferGet(arr, elemIdx.Value);
+                    Type et = existing.GetType();
+                    ulong raw = ulong.Parse(text, CultureInfo.InvariantCulture);
+                    Type under = Enum.GetUnderlyingType(et);
+                    object rawVal = under == typeof(byte) ? (object)checked((byte)raw)
+                        : under == typeof(ushort) ? checked((ushort)raw)
+                        : under == typeof(uint) ? checked((uint)raw)
+                        : under == typeof(ulong) ? raw
+                        : under == typeof(sbyte) ? checked((sbyte)raw)
+                        : under == typeof(short) ? checked((short)raw)
+                        : under == typeof(int) ? checked((int)raw)
+                        : checked((long)raw);
+                    BufferSet(arr, elemIdx.Value, Enum.ToObject(et, rawVal));
+                    f.SetValue(holder, arr);
+                    return true;
+                }
+                if (kind == "tag")
+                {
+                    object unionObj = BufferGet(arr, elemIdx.Value);
+                    FieldInfo typeField = unionObj.GetType().GetField("Type", BindingFlags.Public | BindingFlags.Instance);
+                    Type under = Enum.GetUnderlyingType(typeField.FieldType);
+                    ulong raw = ulong.Parse(text, CultureInfo.InvariantCulture);
+                    object rawVal = under == typeof(byte) ? (object)checked((byte)raw)
+                        : under == typeof(ushort) ? checked((ushort)raw)
+                        : under == typeof(uint) ? checked((uint)raw)
+                        : checked((int)raw);
+                    typeField.SetValue(unionObj, Enum.ToObject(typeField.FieldType, rawVal));
+                    Type schema = FindSchemaType(codec.UnitAssembly);
+                    foreach (FieldInfo af in unionObj.GetType().GetFields(BindingFlags.Public | BindingFlags.Instance))
+                    {
+                        if (af.Name == "Type") { continue; }
+                        if (af.FieldType.IsValueType)
+                        {
+                            MethodInfo initM = schema?.GetMethod("New" + af.FieldType.Name, BindingFlags.Public | BindingFlags.Static, null, Type.EmptyTypes, null);
+                            if (initM != null) { af.SetValue(unionObj, initM.Invoke(null, null)); }
+                        }
+                        else if (af.GetValue(unionObj) == null && !af.FieldType.IsArray)
+                        {
+                            af.SetValue(unionObj, Activator.CreateInstance(af.FieldType));
+                        }
+                    }
+                    BufferSet(arr, elemIdx.Value, unionObj);
                     f.SetValue(holder, arr);
                     return true;
                 }
                 if (kind == "length" || kind == "bytes")
                 {
-                    object arr = f.GetValue(holder);
                     object elem = BufferGet(arr, elemIdx.Value);
                     if (!MutatePath(codec, wire, elem, new[] { "value" }, 0, kind, text)) { return false; }
                     BufferSet(arr, elemIdx.Value, elem);
@@ -237,13 +326,24 @@ namespace SchemaUnityConformance
                     return true;
                 }
                 case "float":
+                case "real":
                 {
-                    double dv = text == "nan" ? double.NaN
-                        : text == "inf" ? double.PositiveInfinity
-                        : text == "-inf" ? double.NegativeInfinity
-                        : double.Parse(text, NumberStyles.Float, CultureInfo.InvariantCulture);
-                    if (f.FieldType == typeof(float)) { f.SetValue(holder, (float)dv); }
-                    else { f.SetValue(holder, dv); }
+                    if (f.FieldType == typeof(float))
+                    {
+                        float fv = text == "nan" ? float.NaN
+                            : text == "inf" ? float.PositiveInfinity
+                            : text == "-inf" ? float.NegativeInfinity
+                            : float.Parse(text, NumberStyles.Float, CultureInfo.InvariantCulture);
+                        f.SetValue(holder, fv);
+                    }
+                    else
+                    {
+                        double dv = text == "nan" ? double.NaN
+                            : text == "inf" ? double.PositiveInfinity
+                            : text == "-inf" ? double.NegativeInfinity
+                            : double.Parse(text, NumberStyles.Float, CultureInfo.InvariantCulture);
+                        f.SetValue(holder, dv);
+                    }
                     return true;
                 }
                 case "ordinal":

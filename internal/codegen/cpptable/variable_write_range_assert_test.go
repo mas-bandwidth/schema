@@ -92,8 +92,9 @@ func TestCppVariableWriteRangeAssert(t *testing.T) {
 	}
 	src := all.String()
 	for _, want := range []string{
-		"schema_assert( !( value.p < 0 || value.p > 10 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)",
-		"schema_assert( value.b <= 63ull ); // bits(6) wider than 6 bits, debug only (SPEC.md §5.1 row 2)",
+		"schema_assert( value.p >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)",
+		"schema_assert( value.p <= 10 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)",
+		"schema_assert( value.b <= 63ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 2, bits(6))",
 	} {
 		if !strings.Contains(src, want) {
 			t.Errorf("the variable Measure and Save do not hold:\n%s", want)

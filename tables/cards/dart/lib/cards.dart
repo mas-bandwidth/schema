@@ -72,12 +72,12 @@ class Record {
   // card is the loaded card; the record owns it for its whole life.
   Card get card => _card;
 
-  // report is the tolerant read report the load filled.
+  // report is the read report the strict load filled (evolution counts only).
   TableWireReport get report => _report;
 }
 
-// load reads wire into a Record using the generated tolerant load (§6.2).
-// Failures and malformed wire throw; tolerant events ride in the returned
+// load reads wire into a Record using the generated strict load (§6.2).
+// Failures and malformed wire throw; evolution events ride in the returned
 // Record's report. The ORIGINAL wire is copied, never rewritten, so an old
 // input is preserved byte for byte.
 Record load(Uint8List wire) {

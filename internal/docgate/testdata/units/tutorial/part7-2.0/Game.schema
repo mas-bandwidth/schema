@@ -1,0 +1,8 @@
+// The part of the tutorial's Game.schema that Config.schema names, in the
+// starlight-2.0 copy (docs/TUTORIAL.md Part 7's keyed.cpp: Interceptor
+// inserted mid-enum, MaxWeapons as Part 7 adds it).
+package starlight
+
+const MaxWeapons = 8
+
+enum ShipType { Fighter, Interceptor, Freighter, Corvette }

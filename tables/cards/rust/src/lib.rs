@@ -757,9 +757,9 @@ fn emit_id_list(out: &mut String, key: &str, elems: &[CardID]) {
 // round trip through the generated retaining path — CardLoadRetain keeps every
 // field the current declaration cannot name, CardSaveRetain writes them back at
 // the end of their own body. It is pure and byte-idempotent after the first
-// save, and it never mutates the input wire. ReadStrict is the strict half of
-// the tolerant read (§4): it refuses any data the current declaration cannot
-// support. The checked abstraction is tla/CardVersioning.tla: one atomic
+// save, and it never mutates the input wire. ReadStrict is the strict load
+// with unknown fields refused too (§4): it refuses any data the current
+// declaration cannot support. The checked abstraction is tla/CardVersioning.tla: one atomic
 // retained round trip holding NoFieldLost, BodyUnchanged, RefusalKeepsOriginal
 // and ShippedUpgradeSucceeds (upgrade.go).
 

@@ -21,15 +21,20 @@ use std::path::{Path, PathBuf};
 struct Unit {
     krate: String,
     fns: BTreeSet<String>,
+    // every table whose fixed-class row has the generated checked bridge into
+    // its variable value: `impl TryFrom<&super::<T>Row> for <T>`
+    values: BTreeSet<String>,
 }
 
 fn squash(s: &str) -> String {
     s.chars().filter(|c| *c != '_').flat_map(|c| c.to_lowercase()).collect()
 }
 
-// Every `pub fn <name>(` in the crate's source files.
-fn scan(dir: &Path) -> BTreeSet<String> {
+// Every `pub fn <name>(` in the crate's source files, and every table a
+// `impl TryFrom<&super::<T>Row> for <T>` bridges.
+fn scan(dir: &Path) -> (BTreeSet<String>, BTreeSet<String>) {
     let mut out = BTreeSet::new();
+    let mut values = BTreeSet::new();
     let mut entries: Vec<PathBuf> = fs::read_dir(dir)
         .unwrap_or_else(|e| panic!("{}: {e}", dir.display()))
         .map(|e| e.expect("dir entry").path())
@@ -39,14 +44,24 @@ fn scan(dir: &Path) -> BTreeSet<String> {
     for path in entries {
         let text = fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
         for line in text.lines() {
-            let Some(rest) = line.trim_start().strip_prefix("pub fn ") else { continue };
+            let line = line.trim_start();
+            if let Some(rest) = line.strip_prefix("impl TryFrom<&super::") {
+                let row: String = rest.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_').collect();
+                if let Some(table) = row.strip_suffix("Row") {
+                    if rest[row.len()..].starts_with(&format!("> for {table} ")) {
+                        values.insert(table.to_string());
+                    }
+                }
+                continue;
+            }
+            let Some(rest) = line.strip_prefix("pub fn ") else { continue };
             let name: String = rest.chars().take_while(|c| c.is_ascii_alphanumeric() || *c == '_').collect();
             if !name.is_empty() {
                 out.insert(name);
             }
         }
     }
-    out
+    (out, values)
 }
 
 // The snake-case stem whose `<stem><suffix>` the crate defines and whose
@@ -75,7 +90,8 @@ fn main() {
         let f: Vec<&str> = line.split('\t').collect();
         assert_eq!(f.len(), 3, "units line: {line}");
         println!("cargo:rerun-if-changed={}", f[2]);
-        units.insert(f[1].to_string(), Unit { krate: f[0].to_string(), fns: scan(Path::new(f[2])) });
+        let (fns, values) = scan(Path::new(f[2]));
+        units.insert(f[1].to_string(), Unit { krate: f[0].to_string(), fns, values });
     }
 
     let mut tables: BTreeSet<(String, String)> = BTreeSet::new();
@@ -109,28 +125,59 @@ fn main() {
     out.push_str("pub fn table(schema: &str, table: &str) -> Option<TableOps> {\n    match (schema, table) {\n");
     for (schema, table) in &tables {
         let Some(unit) = units.get(schema) else { continue };
-        let Some(s) = stem(unit, table, "", "_load_retain") else { continue };
-        let need = ["_load", "_save_checked", "_save_retain", "_load_measure", "_to_json_checked", "_from_json_bytes"];
-        if !need.iter().all(|n| unit.fns.contains(&format!("{s}{n}"))) {
+        // The table's snake-case stem, read off whichever of its readers the
+        // crate defines. A table outside the Rust variable class (a construct
+        // internal/codegen/rusttable/variablerefusal.go names) has no
+        // variable codec and still has its fixed and message reads, so each
+        // reader is bound on its own and none waits on another.
+        let Some(s) = ["_load_retain", "_fixed_load", "_load_messages"].iter().find_map(|suffix| stem(unit, table, "", suffix))
+        else {
             continue;
-        }
-        let msg = ["_load_messages", "_measure_messages", "_save_messages", "_message_default", "_fixed_write_body"]
+        };
+        let has = |n: &str| unit.fns.contains(&format!("{s}{n}"));
+        let variable = ["_load", "_load_retain", "_save_checked", "_save_retain", "_load_measure", "_to_json_checked", "_from_json_bytes"]
             .iter()
-            .all(|n| unit.fns.contains(&format!("{s}{n}")));
+            .all(|n| has(n));
+        let msg = ["_load_messages", "_measure_messages", "_save_messages", "_message_default", "_fixed_write_body"].iter().all(|n| has(n));
         // A ROOT DECLARED `fixed table` reads a form-3 file through its fixed
         // codec: <stem>_fixed_load and _fixed_save into <Table>Row.
-        let fixed = ["_fixed_load", "_fixed_save"].iter().all(|n| unit.fns.contains(&format!("{s}{n}")));
+        let fixed = ["_fixed_load", "_fixed_save"].iter().all(|n| has(n));
+        // A decoded fixed-class row (a form-3 record, a message body) is
+        // digested through the generated checked bridge into the variable
+        // value and that value's text writer. A table with neither has no
+        // canonical text in this port: its refusals still answer, and an
+        // accepted read says why it has no digest.
+        let bridged = variable && unit.values.contains(table.as_str());
         let k = &unit.krate;
+        let row_digest = if bridged {
+            format!(
+                "|row: &{k}::{table}Row| match {k}::{table}::try_from(row) {{ Ok(value) => crate::text_digest({k}::{s}_to_json_checked(&value)), Err(()) => \"error: the decoded fixed row did not convert to its value\".to_string() }}"
+            )
+        } else if variable {
+            format!("|_row: &{k}::{table}Row| \"unhandled decoded value: {table} has no checked row-to-value bridge\".to_string()")
+        } else {
+            format!("|_row: &{k}::{table}Row| crate::no_value({table:?})")
+        };
+        let defaults_digest = if variable {
+            format!("|| {{ let mut dr = {k}::TableReport::default(); match {k}::{s}_from_json_bytes(b\"{{}}\", &mut dr) {{ Some(defaults) => crate::text_digest({k}::{s}_to_json_checked(&defaults)), None => \"error: the port refused {{}}\".to_string() }} }}")
+        } else {
+            format!("|| crate::no_value({table:?})")
+        };
         let _ = writeln!(
             out,
-            "        ({schema:?}, {table:?}) => Some(table_ops!({k}, {s}_load, {s}_load_retain, {s}_save_checked, {s}_save_retain, {s}_load_measure, {s}_to_json_checked, {s}_from_json_bytes, {msg_arm}, {fixed_arm})),",
+            "        ({schema:?}, {table:?}) => Some(TableOps {{ variable: {variable_arm}, message: {msg_arm}, fixed: {fixed_arm} }}),",
+            variable_arm = if variable {
+                format!("Some(variable_ops!({k}, {s}_load, {s}_load_retain, {s}_save_checked, {s}_save_retain, {s}_load_measure, {s}_to_json_checked, {s}_from_json_bytes))")
+            } else {
+                "None".to_string()
+            },
             msg_arm = if msg {
-                format!("Some(message_ops!({k}, {s}_load_messages, {s}_measure_messages, {s}_save_messages, {s}_message_default, {s}_fixed_write_body, {s}_from_json_bytes, {s}_to_json_checked))")
+                format!("Some(message_ops!({k}, {s}_load_messages, {s}_measure_messages, {s}_save_messages, {s}_message_default, {s}_fixed_write_body, {row_digest}, {defaults_digest}))")
             } else {
                 "None".to_string()
             },
             fixed_arm = if fixed {
-                format!("Some(fixed_ops!({k}, {s}_fixed_load, {s}_fixed_save, {table}Row, {table}, {s}_to_json_checked))")
+                format!("Some(fixed_ops!({k}, {s}_fixed_load, {s}_fixed_save, {table}Row, {row_digest}))")
             } else {
                 "None".to_string()
             }

@@ -489,6 +489,10 @@ struct TableFieldInfo
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
+    // a [A..B]T count's declared minimum A (docs/SPEC.md §4.2, §5.1 row 3):
+    // the count it is born at and the least a read accepts; 0 on every other
+    // field
+    int32_t array_min;
 };
 
 struct TableTypeInfo
@@ -1015,6 +1019,12 @@ struct TableReader
         return false;
     }
 
+    // EVERY STRUCTURAL CONTENT IS A LEVEL, A UNION AMONG THEM (§4): a union
+    // whose arm is a union nests exactly as a table in a table does, so the
+    // cap below counts it, at the strict walk's own bound. A chain of unions
+    // costs five bytes a level, and an uncounted one is a recursion as deep as
+    // the input is long, which overflows the stack before the strict walk,
+    // which does count it, ever runs.
     bool badElementKindContent( uint8_t kind, const uint8_t * b, int64_t n, int depth )
     {
         if ( depth >= 128 ) return false;
@@ -1026,7 +1036,7 @@ struct TableReader
             case 15:
             {
                 TableReader r( b, n, report, ids );
-                return badElementKindUnion( r, depth );
+                return badElementKindUnion( r, depth + 1 );
             }
         }
         return false;
@@ -2047,6 +2057,14 @@ inline int64_t TableBitsRequired( int64_t min, int64_t max )
 // that rule CONSUMES are locals of the parse. The widths are int16 because a
 // width is bounded by the kind it came under and no kind holds more than 128
 // bits.
+// THE REPEAT CHECK's DEPTH (§3.3): one level per body open on the read's path,
+// named or skipped, and one per keyed array's key set. The skip walk's own
+// bound is 128 levels below the body that met the unknown entry, so this
+// leaves the named nesting above it the same room again; a read deeper than
+// this is damage, never silently untracked.
+static const int32_t kTableMessageSeenLevels = 256;
+static const int32_t kTableMessageSeenWords = kTableMessageSeenLevels / 64;
+
 struct TableMessageEntry
 {
     uint64_t id = 0;
@@ -2073,6 +2091,18 @@ struct TableMessageEntry
     uint8_t packing = 0;
     uint8_t elem_kind = 0;
     uint8_t elem_packing = 0;
+    // THE REPEAT CHECK's STATE (§3.3), kept in the caller's storage beside the
+    // shape so a body costs nothing to open and a frame carries no set: the
+    // slot of this id's FIRST entry (0 when it is this one), resolved once at
+    // AnnounceRead, because an ID is the wire's name and one name may be
+    // announced at two shapes; the read clock's tick at the last naming above
+    // nine bits holding that body's level; and one bit for each shallower
+    // level whose open body had named it before a deeper body named it again
+    // (TableMessageSeenOnce). Only the first entry of an id carries the last
+    // two.
+    uint32_t seen_first = 0;
+    uint64_t seen_at = 0;
+    uint64_t seen_below[kTableMessageSeenWords] = {};
 };
 
 // TableMessageKindBits is the widest RANGED value a kind can carry, its own
@@ -2605,6 +2635,14 @@ struct TableVocabulary
     // announcement after it is refused as second_announcement
     bool refused = false;
     int64_t max_bytes = kDefaultMaxBytes;
+    // THE REPEAT CHECK's CLOCK (§3.3, TableMessageSeenOnce): every body a read
+    // opens takes the next tick and keeps it at its level until it closes. A
+    // read moves these through the const reference it is handed, as it moves
+    // the entries' own marks, so one vocabulary is read by one thread at a
+    // time, which is what one direction of one connection is.
+    mutable uint64_t seen_clock = 0;
+    mutable int32_t seen_depth = 0;
+    mutable uint64_t seen_starts[kTableMessageSeenLevels] = {};
     // STRICT MODE IS OPT-IN (§3.3): false when the vocabulary is made, read
     // once by the FIRST AnnounceRead and never after. Set, an announcement
     // whose build version is not this unit's own is refused as
@@ -2873,7 +2911,12 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
         // scan is quadratic in the entry count, and the entry count is bounded
         // above at 4096, so it is at most eight million compares on a path
         // that runs ONCE a connection and never again.
+        //
+        // The same scan finds the slot of each id's FIRST entry, which the
+        // repeat check keys on (TableMessageSeenOnce), so a body never scans
+        // the vocabulary for it.
         const int64_t length = at - began;
+        uint32_t first = 0;
         for ( int64_t seen = 0; seen < count; seen++ )
         {
             const TableMessageEntry & other = vocabulary.entries[seen];
@@ -2882,20 +2925,24 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
                 to->damaged = true;
                 return false;
             }
+            if ( first == 0 && other.id == parsed.id ) { first = (uint32_t) ( seen + 1 ); }
         }
         parsed.min = began;
         parsed.max = at;
+        parsed.seen_first = first;
         count++;
     }
     // THE ENTRIES RESOLVED, over bytes the first pass already accepted
     at = 0;
     for ( int64_t slot = 0; slot < count; slot++ )
     {
+        const uint32_t first = vocabulary.entries[slot].seen_first;
         if ( !TableMessageEntryRead( words, words_bytes, at, vocabulary.entries[slot] ) )
         {
             to->damaged = true;
             return false;
         }
+        vocabulary.entries[slot].seen_first = first;
     }
     vocabulary.count = count;
     vocabulary.ref_bits = TableBitsRequired( 0, count );
@@ -2963,6 +3010,8 @@ inline bool TableMessageSkipVariant( TableBitReader & r, const TableVocabulary &
 // element pass depth + 1. depth > 128 is malformed; 128 itself still skips.
 inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int depth = 0 );
 inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry, int depth = 0 );
+inline bool TableMessageSkipKeyed( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry, uint64_t n, int depth );
+inline bool TableMessageSkipField( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry, int depth = 0 );
 
 // TableMessageSkipElement steps over ONE element of an array or keyed entry
 // by the element's own announced shape: a nested body to its zero reference,
@@ -3014,15 +3063,18 @@ inline bool TableMessageSignedKind( uint8_t kind )
     return ( kind >= 2 && kind <= 5 ) || kind == 18 || ( kind >= 20 && kind <= 24 );
 }
 
-// TableMessageSkipRanged steps over a RANGED value and holds base plus offset
-// to the kind's own domain, the bound a named read holds it to: the offset's
-// bits can spell a value past the sender's range (§3.3). The base and the
-// offset are added exactly as the named read adds them. The arithmetic is on
-// 64-bit words, since this runtime carries no 128-bit type of its own.
-inline bool TableMessageSkipRanged( TableBitReader & r, uint8_t kind, int64_t width, int64_t base_lo, int64_t base_hi )
+// TableMessageRangedHolds is THE ANNOUNCED KIND'S DOMAIN for a RANGED value
+// (§3.3): the offset's bits can spell a value past the sender's range and past
+// the kind itself, and base plus offset is held to the kind's own storage
+// domain, exactly, with no wraparound, before anything else reads it. It is
+// the ONE test the skip path (TableMessageSkipRanged) and every named read
+// take, so the two cannot drift: a named read that added the base modulo 2^64
+// landed a sum past the domain wrapped back into range where the skip of the
+// same bytes refused. lo and hi are the offset's two words, hi zero at 64 bits
+// or fewer. The arithmetic is on 64-bit words, since this runtime carries no
+// 128-bit type of its own.
+inline bool TableMessageRangedHolds( uint8_t kind, uint64_t lo, uint64_t hi, int64_t base_lo, int64_t base_hi )
 {
-    uint64_t lo = 0, hi = 0;
-    if ( width < 0 || !r.get( lo, width < 64 ? width : 64 ) || ( width > 64 && !r.get( hi, width - 64 ) ) ) { return false; }
     const bool is_signed = TableMessageSignedKind( kind );
     const int64_t domain = TableMessageKindBits( kind );
     if ( domain == 128 )
@@ -3036,6 +3088,7 @@ inline bool TableMessageSkipRanged( TableBitReader & r, uint8_t kind, int64_t wi
     }
     // AT SIXTY-FOUR BITS OR FEWER the offset is one word and so is the base,
     // sign-extended for a signed kind, and the sum is held to both ends
+    if ( hi != 0 ) { return false; }
     if ( !is_signed )
     {
         const uint64_t top = domain == 64 ? UINT64_MAX : ( uint64_t( 1 ) << domain ) - 1;
@@ -3048,28 +3101,95 @@ inline bool TableMessageSkipRanged( TableBitReader & r, uint8_t kind, int64_t wi
     return base_lo >= bottom || lo >= (uint64_t) bottom - (uint64_t) base_lo;
 }
 
-// THE SKIP PATH'S SEEN SET is a fixed bitmap over an id's FIRST vocabulary
-// slot, so a skip allocates nothing and the depth cap bounds the walk. An ID
-// is the wire's own name (§3.2, §3.3), not the slot that happened to carry
-// it: one name may be announced at two shapes, and naming it twice is a
-// repeat whichever slot it rode. The bitmap covers every slot a 64 KiB
-// announcement can carry; a slot past it is damage, never silently untracked.
-static const int64_t kTableMessageSeenBits = 65536;
-
-// TableMessageSeenOnce records one id of a body or one key of a keyed array
-// and answers false on a repeat, whether or not this reader can name the field
-// (§3.2, §3.3).
-inline bool TableMessageSeenOnce( uint64_t * seen, const TableVocabulary & vocabulary, uint64_t ref, uint64_t id )
+// TableMessageSkipRanged steps over a RANGED value and holds base plus offset
+// to the kind's own domain, the bound a named read holds it to (§3.3).
+inline bool TableMessageSkipRanged( TableBitReader & r, uint8_t kind, int64_t width, int64_t base_lo, int64_t base_hi )
 {
-    uint64_t slot = ref;
-    for ( uint64_t i = 1; i < ref; i++ )
+    uint64_t lo = 0, hi = 0;
+    if ( width < 0 || !r.get( lo, width < 64 ? width : 64 ) || ( width > 64 && !r.get( hi, width - 64 ) ) ) { return false; }
+    return TableMessageRangedHolds( kind, lo, hi, base_lo, base_hi );
+}
+
+// THE SEEN SET OF ONE BODY (§3.2, §3.3): a FIELD ID TWICE IN ONE BODY, and one
+// KEY twice in one keyed array, is damage, named or skipped. An ID is the
+// wire's own name, not the slot that happened to carry it: one name may be
+// announced at two shapes, and naming it twice is a repeat whichever slot it
+// rode, so the check keys on the id's FIRST slot, which AnnounceRead resolved.
+//
+// THE SET IS NOT ON THE FRAME. A bitmap per body, sized for every slot an
+// announcement can carry, was 8 KiB of every level of a walk the input nests
+// 128 deep, a megabyte of stack for a twenty-byte batch, and 8 KiB zeroed for
+// every empty body a count can claim. The marks live in the entries instead,
+// as the Go leg keeps them (gotable's tableMessageSeenRepeat): opening a body
+// takes the next tick of the vocabulary's clock and keeps it at the body's
+// level, and naming an id records the tick and the level in the id's first
+// entry. A body's own earlier naming still stands when a deeper body named the
+// id since, because that naming left a bit for each shallower level whose open
+// body had named it; a level's bit stands only while that level's body is the
+// one open at the last naming, and the levels opened since are cleared as the
+// id is named again. Opening a body is one store, a naming is a constant
+// number of word operations and at most a binary search over the open levels,
+// and nothing is zeroed, so the work is linear in the batch.
+struct TableMessageSeenBody
+{
+    const TableVocabulary & vocabulary;
+    int32_t level;
+    explicit TableMessageSeenBody( const TableVocabulary & owner ) : vocabulary( owner ), level( owner.seen_depth )
     {
-        if ( TableVocabularyEntryAt( vocabulary, i ).id == id ) { slot = i; break; }
+        if ( level < kTableMessageSeenLevels ) { owner.seen_starts[level] = ++owner.seen_clock; }
+        owner.seen_depth = level + 1;
     }
-    if ( slot >= (uint64_t) kTableMessageSeenBits ) { return false; }
-    const uint64_t bit = uint64_t( 1 ) << ( slot & 63 );
-    if ( ( seen[slot >> 6] & bit ) != 0 ) { return false; }
-    seen[slot >> 6] |= bit;
+    ~TableMessageSeenBody() { vocabulary.seen_depth = level; }
+    TableMessageSeenBody( const TableMessageSeenBody & ) = delete;
+    TableMessageSeenBody & operator=( const TableMessageSeenBody & ) = delete;
+};
+
+// keeps the marks of the levels below level and clears the rest
+inline void TableMessageSeenKeepBelow( TableMessageEntry & entry, int32_t level )
+{
+    for ( int32_t w = 0; w < kTableMessageSeenWords; w++ )
+    {
+        const int32_t low = w * 64;
+        if ( level <= low ) { entry.seen_below[w] = 0; }
+        else if ( level < low + 64 ) { entry.seen_below[w] &= ( uint64_t( 1 ) << ( level - low ) ) - 1; }
+    }
+}
+
+// TableMessageSeenOnce records one id of the open body (or one key of the
+// open keyed array) through the reference that named it, and answers false on
+// a repeat, whether or not this reader can name the field, and past the level
+// bound. ref is a slot the caller already held to [1, count].
+inline bool TableMessageSeenOnce( const TableMessageSeenBody & body, uint64_t ref )
+{
+    const int32_t level = body.level;
+    if ( level >= kTableMessageSeenLevels ) { return false; }
+    const TableVocabulary & vocabulary = body.vocabulary;
+    TableMessageEntry * entry = &vocabulary.entries[ref - 1];
+    if ( entry->seen_first != 0 ) { entry = &vocabulary.entries[entry->seen_first - 1]; }
+    const uint64_t at = entry->seen_at >> 9;
+    const int32_t last = (int32_t) ( entry->seen_at & 511 );
+    if ( vocabulary.seen_starts[level] <= at )
+    {
+        // this body was open at the last naming, so that naming was this
+        // body's or a deeper one's, and every deeper body has closed since
+        if ( last == level || ( ( entry->seen_below[level >> 6] >> ( level & 63 ) ) & 1 ) != 0 ) { return false; }
+        TableMessageSeenKeepBelow( *entry, level );
+    }
+    else
+    {
+        // this body opened after the last naming: the levels still open
+        // since then are the ones whose start is no later than it
+        int32_t kept = 0, high = level;
+        while ( kept < high )
+        {
+            const int32_t mid = ( kept + high ) / 2;
+            if ( vocabulary.seen_starts[mid] <= at ) { kept = mid + 1; }
+            else { high = mid; }
+        }
+        if ( last < kept ) { entry->seen_below[last >> 6] |= uint64_t( 1 ) << ( last & 63 ); }
+        TableMessageSeenKeepBelow( *entry, kept );
+    }
+    entry->seen_at = ( vocabulary.seen_clock << 9 ) | (uint64_t) level;
     return true;
 }
 
@@ -3140,6 +3260,9 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
         {
             uint64_t n = 0;
             if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() ) { return false; }
+            // a length above the ANNOUNCED max, which its bits can spell and
+            // no conforming writer emits, refuses as at a named field (§3.3)
+            if ( n > (uint64_t) entry.max ) { return false; }
             if ( n > (uint64_t) ( ( r.bits - r.offset ) / 8 ) ) { return false; }
             const uint8_t * text = r.buffer + ( r.offset >> 3 );
             if ( !TableUtf8Valid( text, n ) ) { return false; }
@@ -3194,17 +3317,9 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
             // does not, so the depth cap counts what §4 says it counts.
             const bool nested = entry.elem_kind == 13 || entry.elem_kind == 14 || entry.elem_kind == 15 ||
                 entry.elem_kind == 16 || entry.elem_kind == 17 || entry.elem_kind == 30;
-            uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+            if ( entry.kind == 16 ) { return TableMessageSkipKeyed( r, vocabulary, index_bits, entry, n, nested ? depth + 1 : depth ); }
             for ( uint64_t i = 0; i < n; i++ )
             {
-                if ( entry.kind == 16 )
-                {
-                    uint64_t key_ref = 0;
-                    TableMessageEntry key_entry;
-                    if ( !r.get( key_ref, vocabulary.ref_bits ) ) { return false; }
-                    if ( !TableMessageNameEntry( vocabulary, key_ref, key_entry ) ) { return false; }
-                    if ( !TableMessageSeenOnce( seen, vocabulary, key_ref, key_entry.id ) ) { return false; } // one key twice
-                }
                 if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry, nested ? depth + 1 : depth ) ) { return false; }
             }
             return true;
@@ -3218,10 +3333,28 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
     return width >= 0 && r.skip( width );
 }
 
+// TableMessageSkipKeyed walks a skipped keyed array's n (key, element) pairs:
+// the keys are their own seen set, one level of the repeat check's own, so a
+// frame of the skip walk carries none.
+inline bool TableMessageSkipKeyed( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry, uint64_t n, int depth )
+{
+    const TableMessageSeenBody keys( vocabulary );
+    for ( uint64_t i = 0; i < n; i++ )
+    {
+        uint64_t key_ref = 0;
+        TableMessageEntry key_entry;
+        if ( !r.get( key_ref, vocabulary.ref_bits ) ) { return false; }
+        if ( !TableMessageNameEntry( vocabulary, key_ref, key_entry ) ) { return false; }
+        if ( !TableMessageSeenOnce( keys, key_ref ) ) { return false; } // one key twice
+        if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry, depth ) ) { return false; }
+    }
+    return true;
+}
+
 inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int depth )
 {
     if ( depth > 128 ) { return false; }
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const TableMessageSeenBody seen( vocabulary );
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -3230,15 +3363,25 @@ inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vo
         if ( ref > (uint64_t) vocabulary.count ) { return false; }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         if ( TableMessageReserved( entry.id ) ) { return false; }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) ) { return false; } // one id twice
-        if ( entry.kind == 15 )
-        {
-            TableBitReader peek = r;
-            uint64_t arm = 0;
-            if ( !peek.get( arm, vocabulary.ref_bits ) || arm == 0 ) { return false; }
-        }
-        if ( !TableMessageSkip( r, vocabulary, index_bits, entry, depth ) ) { return false; }
+        if ( !TableMessageSeenOnce( seen, ref ) ) { return false; } // one id twice
+        if ( !TableMessageSkipField( r, vocabulary, index_bits, entry, depth ) ) { return false; }
     }
+}
+
+// TableMessageSkipField skips one FIELD's payload: a union FIELD names an arm,
+// because a conforming writer elides an empty union (§3.3, §22.2), so an
+// explicit arm 0 at a field is not the one encoding and is damage, in a root
+// body and in a nested one alike. A union ELEMENT is not elided and its arm 0
+// is the empty arm, which is why TableMessageSkip itself admits it.
+inline bool TableMessageSkipField( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry, int depth )
+{
+    if ( entry.kind == 15 )
+    {
+        TableBitReader peek = r;
+        uint64_t arm = 0;
+        if ( !peek.get( arm, vocabulary.ref_bits ) || arm == 0 ) { return false; }
+    }
+    return TableMessageSkip( r, vocabulary, index_bits, entry, depth );
 }
 
 // AnnounceMeasure is the announcement's byte count, which is a constant of the
@@ -9612,7 +9755,7 @@ inline void SceneReset( Scene & value )
     {
         LayerReset( value.layers[i] );
     }
-    value.layers_count = 0; // born at Min (docs/SPEC.md §4.2)
+    value.layers_count = 0;
     MetaReset( value.meta );
 }
 
@@ -9973,7 +10116,8 @@ inline bool AlbumLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Al
 inline int64_t MetaMeasureBody( TableIds & ids, const Meta & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    schema_assert( !( value.build < 0 || value.build > 1000 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
+    schema_assert( value.build >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+    schema_assert( value.build <= 1000 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     if ( value.build != 1 ) { bytes += TableLebBytes( ids.ref_at( 26, 0x802517e298c70b03ull ) ) + 1 + 4; } // build
     schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( !TableUtf8Valid( (const uint8_t *) value.tag, (uint64_t) value.tag_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
@@ -9996,7 +10140,8 @@ GRAPHDEMO_TABLE_INLINE bool MetaSaveBody( TableWriter & w, TableIds & ids, const
     if ( value.build != 1 )
     {
         w.header( ids.ref_at( 26, 0x802517e298c70b03ull ), 4 ); // build
-        schema_assert( !( value.build < 0 || value.build > 1000 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
+        schema_assert( value.build >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+        schema_assert( value.build <= 1000 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.build ) );
     }
     schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // storage invariant, debug only (§5.1)
@@ -10345,7 +10490,7 @@ inline bool MetaSaveMessageBody( TableBitWriter & w, const Meta & value )
 inline bool MetaLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, Meta & value )
 {
     MetaReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const TableMessageSeenBody seen( vocabulary );
     const bool same_build = vocabulary.build_version == BuildVersion;
     int32_t last_field_ord = 0;
     for ( ;; )
@@ -10376,7 +10521,7 @@ inline bool MetaLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        if ( !TableMessageSeenOnce( seen, ref ) )
         {
             report->damaged = true;
             return false;
@@ -10407,8 +10552,14 @@ inline bool MetaLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -10434,7 +10585,7 @@ inline bool MetaLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -10449,8 +10600,14 @@ inline bool MetaLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -10470,7 +10627,7 @@ inline bool MetaLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                         report->refuse_reason = out_of_range;
                     }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 1 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 1 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -10495,7 +10652,7 @@ inline bool MetaLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -10536,7 +10693,7 @@ inline bool MetaLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
             default:
                 if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
                     report->damaged = true;
                     return false;
@@ -10643,7 +10800,8 @@ inline bool MetaLoadMessages( Meta * values, int64_t * count, const TableVocabul
 inline int64_t SettingsMeasureBody( TableIds & ids, const Settings & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    schema_assert( !( value.quality < 0 || value.quality > 4 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
+    schema_assert( value.quality >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+    schema_assert( value.quality <= 4 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     if ( value.quality != 2 ) { bytes += TableLebBytes( ids.ref_at( 23, 0x7a8060916400fe66ull ) ) + 1 + 4; } // quality
     schema_assert( value.label_length >= 0 && value.label_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
@@ -10666,7 +10824,8 @@ GRAPHDEMO_TABLE_INLINE bool SettingsSaveBody( TableWriter & w, TableIds & ids, c
     if ( value.quality != 2 )
     {
         w.header( ids.ref_at( 23, 0x7a8060916400fe66ull ), 4 ); // quality
-        schema_assert( !( value.quality < 0 || value.quality > 4 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
+        schema_assert( value.quality >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+        schema_assert( value.quality <= 4 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.quality ) );
     }
     schema_assert( value.label_length >= 0 && value.label_length <= 16 ); // storage invariant, debug only (§5.1)
@@ -11015,7 +11174,7 @@ inline bool SettingsSaveMessageBody( TableBitWriter & w, const Settings & value 
 inline bool SettingsLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, Settings & value )
 {
     SettingsReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const TableMessageSeenBody seen( vocabulary );
     const bool same_build = vocabulary.build_version == BuildVersion;
     int32_t last_field_ord = 0;
     for ( ;; )
@@ -11046,7 +11205,7 @@ inline bool SettingsLoadMessageBody( TableBitReader & r, const TableVocabulary &
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        if ( !TableMessageSeenOnce( seen, ref ) )
         {
             report->damaged = true;
             return false;
@@ -11077,8 +11236,14 @@ inline bool SettingsLoadMessageBody( TableBitReader & r, const TableVocabulary &
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -11104,7 +11269,7 @@ inline bool SettingsLoadMessageBody( TableBitReader & r, const TableVocabulary &
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -11119,8 +11284,14 @@ inline bool SettingsLoadMessageBody( TableBitReader & r, const TableVocabulary &
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -11140,7 +11311,7 @@ inline bool SettingsLoadMessageBody( TableBitReader & r, const TableVocabulary &
                         report->refuse_reason = out_of_range;
                     }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 2 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 2 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -11165,7 +11336,7 @@ inline bool SettingsLoadMessageBody( TableBitReader & r, const TableVocabulary &
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -11206,7 +11377,7 @@ inline bool SettingsLoadMessageBody( TableBitReader & r, const TableVocabulary &
             default:
                 if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
                     report->damaged = true;
                     return false;
@@ -11808,7 +11979,8 @@ inline int64_t LayerMeasureBody( const Ctx & ctx, const TableNumbering & numberi
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    schema_assert( !( value.depth < 0 || value.depth > 64 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
+    schema_assert( value.depth >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+    schema_assert( value.depth <= 64 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     if ( value.depth != 0 ) { bytes += TableLebBytes( ids.ref_at( 20, 0x75d8e97600b296eaull ) ) + 1 + 4; } // depth
     {
         const ListNode * pointee_head = ListNodeAt( ctx, value.head ); // *ListNode
@@ -11835,7 +12007,8 @@ inline bool LayerSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
     if ( value.depth != 0 )
     {
         w.header( ids.ref_at( 20, 0x75d8e97600b296eaull ), 4 ); // depth
-        schema_assert( !( value.depth < 0 || value.depth > 64 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
+        schema_assert( value.depth >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+        schema_assert( value.depth <= 64 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.depth ) );
     }
     {
@@ -12024,7 +12197,8 @@ inline int64_t SceneMeasureBody( const Ctx & ctx, const TableNumbering & numberi
     schema_assert( value.name_length >= 0 && value.name_length <= 24 ); // storage invariant, debug only (§5.1)
     if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
-    schema_assert( !( value.version < 0 || value.version > 99 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
+    schema_assert( value.version >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+    schema_assert( value.version <= 99 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     if ( value.version != 1 ) { bytes += TableLebBytes( ids.ref_at( 36, 0xbb62c62c9808ea37ull ) ) + 1 + 4; } // version
     {
         const ListNode * pointee_head = ListNodeAt( ctx, value.head ); // *ListNode
@@ -12091,8 +12265,7 @@ inline int64_t SceneMeasureBody( const Ctx & ctx, const TableNumbering & numberi
         else { ids.truncate( mark_ground ); } // an all-default nested table elides, and costs no entry
     }
     schema_assert( value.layers_count >= 0 && value.layers_count <= 4 ); // storage invariant, debug only (§5.1)
-    bool rides_layers = value.layers_count > 0;
-    if ( rides_layers )
+    if ( value.layers_count > 0 )
     {
         const uint64_t ref_layers = ids.ref_at( 10, 0x4554e34a747022dfull );
         int64_t body_layers = 0;
@@ -12132,7 +12305,8 @@ inline bool SceneSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
     if ( value.version != 1 )
     {
         w.header( ids.ref_at( 36, 0xbb62c62c9808ea37ull ), 4 ); // version
-        schema_assert( !( value.version < 0 || value.version > 99 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
+        schema_assert( value.version >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+        schema_assert( value.version <= 99 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.version ) );
     }
     {
@@ -12189,8 +12363,7 @@ inline bool SceneSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
         else { ids.truncate( mark_ground ); }
     }
     schema_assert( value.layers_count >= 0 && value.layers_count <= 4 ); // storage invariant, debug only (§5.1)
-    bool rides_layers = value.layers_count > 0;
-    if ( rides_layers )
+    if ( value.layers_count > 0 )
     {
         const uint64_t ref_layers = ids.ref_at( 10, 0x4554e34a747022dfull );
         int64_t body_layers = 0;
@@ -21368,7 +21541,8 @@ inline const Album * AlbumReadStrict( const uint8_t * wire_file, int64_t wire_fi
 inline int64_t MetaMeasureBodyRetain( TableRetainIds & ids, const Meta & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    schema_assert( !( value.build < 0 || value.build > 1000 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
+    schema_assert( value.build >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+    schema_assert( value.build <= 1000 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     if ( value.build != 1 ) { bytes += TableLebBytes( ids.ref_at( 26, 0x802517e298c70b03ull ) ) + 1 + 4; } // build
     schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( !TableUtf8Valid( (const uint8_t *) value.tag, (uint64_t) value.tag_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
@@ -21382,7 +21556,8 @@ GRAPHDEMO_TABLE_INLINE bool MetaSaveBodyRetain( TableWriter & w, TableRetainIds 
     if ( value.build != 1 )
     {
         w.header( ids.ref_at( 26, 0x802517e298c70b03ull ), 4 ); // build
-        schema_assert( !( value.build < 0 || value.build > 1000 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
+        schema_assert( value.build >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+        schema_assert( value.build <= 1000 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.build ) );
     }
     schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // storage invariant, debug only (§5.1)
@@ -21567,7 +21742,8 @@ GRAPHDEMO_TABLE_INLINE bool MetaLoadBodyRetain( TableReader & r, Meta & value, T
 inline int64_t SettingsMeasureBodyRetain( TableRetainIds & ids, const Settings & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    schema_assert( !( value.quality < 0 || value.quality > 4 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
+    schema_assert( value.quality >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+    schema_assert( value.quality <= 4 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     if ( value.quality != 2 ) { bytes += TableLebBytes( ids.ref_at( 23, 0x7a8060916400fe66ull ) ) + 1 + 4; } // quality
     schema_assert( value.label_length >= 0 && value.label_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
@@ -21581,7 +21757,8 @@ GRAPHDEMO_TABLE_INLINE bool SettingsSaveBodyRetain( TableWriter & w, TableRetain
     if ( value.quality != 2 )
     {
         w.header( ids.ref_at( 23, 0x7a8060916400fe66ull ), 4 ); // quality
-        schema_assert( !( value.quality < 0 || value.quality > 4 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
+        schema_assert( value.quality >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+        schema_assert( value.quality <= 4 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.quality ) );
     }
     schema_assert( value.label_length >= 0 && value.label_length <= 16 ); // storage invariant, debug only (§5.1)
@@ -22275,7 +22452,8 @@ inline int64_t LayerMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    schema_assert( !( value.depth < 0 || value.depth > 64 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
+    schema_assert( value.depth >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+    schema_assert( value.depth <= 64 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     if ( value.depth != 0 ) { bytes += TableLebBytes( ids.ref_at( 20, 0x75d8e97600b296eaull ) ) + 1 + 4; } // depth
     {
         const ListNode * pointee_head = ListNodeAt( ctx, value.head ); // *ListNode
@@ -22303,7 +22481,8 @@ inline bool LayerSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
     if ( value.depth != 0 )
     {
         w.header( ids.ref_at( 20, 0x75d8e97600b296eaull ), 4 ); // depth
-        schema_assert( !( value.depth < 0 || value.depth > 64 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
+        schema_assert( value.depth >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+        schema_assert( value.depth <= 64 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.depth ) );
     }
     {
@@ -22498,7 +22677,8 @@ inline int64_t SceneMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
     schema_assert( value.name_length >= 0 && value.name_length <= 24 ); // storage invariant, debug only (§5.1)
     if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
-    schema_assert( !( value.version < 0 || value.version > 99 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
+    schema_assert( value.version >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+    schema_assert( value.version <= 99 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     if ( value.version != 1 ) { bytes += TableLebBytes( ids.ref_at( 36, 0xbb62c62c9808ea37ull ) ) + 1 + 4; } // version
     {
         const ListNode * pointee_head = ListNodeAt( ctx, value.head ); // *ListNode
@@ -22565,8 +22745,7 @@ inline int64_t SceneMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
         else { ids.truncate( mark_ground ); } // an all-default nested table elides, and costs no entry
     }
     schema_assert( value.layers_count >= 0 && value.layers_count <= 4 ); // storage invariant, debug only (§5.1)
-    bool rides_layers = value.layers_count > 0;
-    if ( rides_layers )
+    if ( value.layers_count > 0 )
     {
         const uint64_t ref_layers = ids.ref_at( 10, 0x4554e34a747022dfull );
         int64_t body_layers = 0;
@@ -22607,7 +22786,8 @@ inline bool SceneSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
     if ( value.version != 1 )
     {
         w.header( ids.ref_at( 36, 0xbb62c62c9808ea37ull ), 4 ); // version
-        schema_assert( !( value.version < 0 || value.version > 99 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
+        schema_assert( value.version >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+        schema_assert( value.version <= 99 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.version ) );
     }
     {
@@ -22664,8 +22844,7 @@ inline bool SceneSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
         else { ids.truncate( mark_ground ); }
     }
     schema_assert( value.layers_count >= 0 && value.layers_count <= 4 ); // storage invariant, debug only (§5.1)
-    bool rides_layers = value.layers_count > 0;
-    if ( rides_layers )
+    if ( value.layers_count > 0 )
     {
         const uint64_t ref_layers = ids.ref_at( 10, 0x4554e34a747022dfull );
         int64_t body_layers = 0;
@@ -27998,72 +28177,72 @@ extern const TableTypeInfo DepotTableInfo;
 extern const TableTypeInfo AlbumTableInfo;
 
 inline const TableFieldInfo MetaTableFields[] = {
-    { "build", "build", "int32", 0x802517e298c70b03ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Meta, build ), (uint32_t) sizeof( Meta::build ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0ll, 1000ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "tag", "tag", "string", 0x56d7ab194448a4f3ull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( Meta, tag ), (uint32_t) sizeof( Meta::tag ), (uint32_t) offsetof( Meta, tag_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "build", "build", "int32", 0x802517e298c70b03ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Meta, build ), (uint32_t) sizeof( Meta::build ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0ll, 1000ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "tag", "tag", "string", 0x56d7ab194448a4f3ull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( Meta, tag ), (uint32_t) sizeof( Meta::tag ), (uint32_t) offsetof( Meta, tag_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo MetaTableInfo = { "Meta", (uint32_t) sizeof( Meta ), 2, MetaTableFields, +[]( void * p ) { MetaReset( *(Meta *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * MetaTableType() { return &MetaTableInfo; }
 
 inline const TableFieldInfo SettingsTableFields[] = {
-    { "quality", "quality", "int32", 0x7a8060916400fe66ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Settings, quality ), (uint32_t) sizeof( Settings::quality ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4.0, 0ll, 4ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, false, false, NULL, NULL, true, false, 16, (uint32_t) offsetof( Settings, label ), (uint32_t) sizeof( Settings::label ), (uint32_t) offsetof( Settings, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "quality", "quality", "int32", 0x7a8060916400fe66ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Settings, quality ), (uint32_t) sizeof( Settings::quality ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4.0, 0ll, 4ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, false, false, NULL, NULL, true, false, 16, (uint32_t) offsetof( Settings, label ), (uint32_t) sizeof( Settings::label ), (uint32_t) offsetof( Settings, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo SettingsTableInfo = { "Settings", (uint32_t) sizeof( Settings ), 2, SettingsTableFields, +[]( void * p ) { SettingsReset( *(Settings *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * SettingsTableType() { return &SettingsTableInfo; }
 
 inline const TableFieldInfo ListNodeTableFields[] = {
-    { "value", "value", "int32", 0x7ce4fd9430e80ceaull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ListNode, value ), (uint32_t) sizeof( ListNode::value ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, false, NULL, NULL, true, false, 12, (uint32_t) offsetof( ListNode, name ), (uint32_t) sizeof( ListNode::name ), (uint32_t) offsetof( ListNode, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "next", "next", "ListNode", 0xe5316cbaa025f028ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( ListNode, next ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "value", "value", "int32", 0x7ce4fd9430e80ceaull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ListNode, value ), (uint32_t) sizeof( ListNode::value ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, false, NULL, NULL, true, false, 12, (uint32_t) offsetof( ListNode, name ), (uint32_t) sizeof( ListNode::name ), (uint32_t) offsetof( ListNode, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "next", "next", "ListNode", 0xe5316cbaa025f028ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( ListNode, next ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo ListNodeTableInfo = { "ListNode", (uint32_t) sizeof( ListNode ), 3, ListNodeTableFields, +[]( void * p ) { ListNodeReset( *(ListNode *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * ListNodeTableType() { return &ListNodeTableInfo; }
 
 inline const TableFieldInfo TreeNodeTableFields[] = {
-    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, false, false, NULL, NULL, true, false, 12, (uint32_t) offsetof( TreeNode, label ), (uint32_t) sizeof( TreeNode::label ), (uint32_t) offsetof( TreeNode, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "left", "left", "TreeNode", 0x24b070ada2041cb0ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TreeNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) TreeNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( TreeNode, left ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &TreeNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "right", "right", "TreeNode", 0x76aaaa535714d805ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TreeNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) TreeNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( TreeNode, right ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &TreeNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, false, false, NULL, NULL, true, false, 12, (uint32_t) offsetof( TreeNode, label ), (uint32_t) sizeof( TreeNode::label ), (uint32_t) offsetof( TreeNode, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "left", "left", "TreeNode", 0x24b070ada2041cb0ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TreeNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) TreeNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( TreeNode, left ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &TreeNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "right", "right", "TreeNode", 0x76aaaa535714d805ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TreeNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) TreeNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( TreeNode, right ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &TreeNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo TreeNodeTableInfo = { "TreeNode", (uint32_t) sizeof( TreeNode ), 3, TreeNodeTableFields, +[]( void * p ) { TreeNodeReset( *(TreeNode *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * TreeNodeTableType() { return &TreeNodeTableInfo; }
 
 inline const TableFieldInfo LayerTableFields[] = {
-    { "depth", "depth", "int32", 0x75d8e97600b296eaull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Layer, depth ), (uint32_t) sizeof( Layer::depth ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 64.0, 0ll, 64ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "head", "head", "ListNode", 0x0a8f12cc5f9a0c03ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Layer, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "depth", "depth", "int32", 0x75d8e97600b296eaull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Layer, depth ), (uint32_t) sizeof( Layer::depth ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 64.0, 0ll, 64ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "head", "head", "ListNode", 0x0a8f12cc5f9a0c03ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Layer, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo LayerTableInfo = { "Layer", (uint32_t) sizeof( Layer ), 2, LayerTableFields, +[]( void * p ) { LayerReset( *(Layer *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * LayerTableType() { return &LayerTableInfo; }
 
 inline const TableFieldInfo SceneTableFields[] = {
-    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, false, NULL, NULL, true, false, 24, (uint32_t) offsetof( Scene, name ), (uint32_t) sizeof( Scene::name ), (uint32_t) offsetof( Scene, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "version", "version", "int32", 0xbb62c62c9808ea37ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Scene, version ), (uint32_t) sizeof( Scene::version ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 99.0, 0ll, 99ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "head", "head", "ListNode", 0x0a8f12cc5f9a0c03ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Scene, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "tree", "tree", "TreeNode", 0x5b25b8ef511eb395ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TreeNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) TreeNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Scene, tree ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &TreeNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "settings", "settings", "Settings", 0xee5f6d7b48b44de8ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) SettingsAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) SettingsEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Scene, settings ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &SettingsTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "alias", "alias", "ListNode", 0x509220bb65a646b7ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Scene, alias ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "ground", "ground", "Layer", 0x60839e2395be697eull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Scene, ground ), (uint32_t) sizeof( Scene::ground ), 0xffffffffu, 0xffffffffu, &LayerTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "layers", "layers", "Layer", 0x4554e34a747022dfull, 13, true, false, NULL, NULL, true, false, 4, (uint32_t) offsetof( Scene, layers ), (uint32_t) sizeof( Scene::layers[0] ), (uint32_t) offsetof( Scene, layers_count ), 0xffffffffu, &LayerTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "meta", "meta", "Meta", 0x4320e9a2e32eac38ull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Scene, meta ), (uint32_t) sizeof( Scene::meta ), 0xffffffffu, 0xffffffffu, &MetaTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, false, NULL, NULL, true, false, 24, (uint32_t) offsetof( Scene, name ), (uint32_t) sizeof( Scene::name ), (uint32_t) offsetof( Scene, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "version", "version", "int32", 0xbb62c62c9808ea37ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Scene, version ), (uint32_t) sizeof( Scene::version ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 99.0, 0ll, 99ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "head", "head", "ListNode", 0x0a8f12cc5f9a0c03ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Scene, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "tree", "tree", "TreeNode", 0x5b25b8ef511eb395ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TreeNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) TreeNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Scene, tree ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &TreeNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "settings", "settings", "Settings", 0xee5f6d7b48b44de8ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) SettingsAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) SettingsEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Scene, settings ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &SettingsTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "alias", "alias", "ListNode", 0x509220bb65a646b7ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Scene, alias ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "ground", "ground", "Layer", 0x60839e2395be697eull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Scene, ground ), (uint32_t) sizeof( Scene::ground ), 0xffffffffu, 0xffffffffu, &LayerTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "layers", "layers", "Layer", 0x4554e34a747022dfull, 13, true, false, NULL, NULL, true, false, 4, (uint32_t) offsetof( Scene, layers ), (uint32_t) sizeof( Scene::layers[0] ), (uint32_t) offsetof( Scene, layers_count ), 0xffffffffu, &LayerTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "meta", "meta", "Meta", 0x4320e9a2e32eac38ull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Scene, meta ), (uint32_t) sizeof( Scene::meta ), 0xffffffffu, 0xffffffffu, &MetaTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo SceneTableInfo = { "Scene", (uint32_t) sizeof( Scene ), 9, SceneTableFields, +[]( void * p ) { SceneReset( *(Scene *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * SceneTableType() { return &SceneTableInfo; }
 
 inline const TableFieldInfo DepotTableFields[] = {
-    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, false, NULL, NULL, true, false, 12, (uint32_t) offsetof( Depot, name ), (uint32_t) sizeof( Depot::name ), (uint32_t) offsetof( Depot, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "banks", "banks", "Layer", 0xdd9eb981e152e90cull, 13, true, false, NULL, NULL, false, false, (int32_t) Tier::Max, (uint32_t) offsetof( Depot, banks ), (uint32_t) sizeof( Depot::banks.slots[0] ), 0xffffffffu, 0xffffffffu, &LayerTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, "Tier", +[]( uint64_t v ) { return EnumName( Tier( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Tier( v ), id ); return id; }, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "spare", "spare", "Meta", 0x4339ee8ab21c8380ull, 13, false, false, NULL, NULL, false, true, 0, (uint32_t) offsetof( Depot, spare ), (uint32_t) sizeof( Depot::spare ), 0xffffffffu, (uint32_t) offsetof( Depot, spare_present ), &MetaTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "head", "head", "ListNode", 0x0a8f12cc5f9a0c03ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Depot, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, false, NULL, NULL, true, false, 12, (uint32_t) offsetof( Depot, name ), (uint32_t) sizeof( Depot::name ), (uint32_t) offsetof( Depot, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "banks", "banks", "Layer", 0xdd9eb981e152e90cull, 13, true, false, NULL, NULL, false, false, (int32_t) Tier::Max, (uint32_t) offsetof( Depot, banks ), (uint32_t) sizeof( Depot::banks.slots[0] ), 0xffffffffu, 0xffffffffu, &LayerTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, "Tier", +[]( uint64_t v ) { return EnumName( Tier( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Tier( v ), id ); return id; }, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "spare", "spare", "Meta", 0x4339ee8ab21c8380ull, 13, false, false, NULL, NULL, false, true, 0, (uint32_t) offsetof( Depot, spare ), (uint32_t) sizeof( Depot::spare ), 0xffffffffu, (uint32_t) offsetof( Depot, spare_present ), &MetaTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "head", "head", "ListNode", 0x0a8f12cc5f9a0c03ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Depot, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo DepotTableInfo = { "Depot", (uint32_t) sizeof( Depot ), 4, DepotTableFields, +[]( void * p ) { DepotReset( *(Depot *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * DepotTableType() { return &DepotTableInfo; }
 
 inline const TableFieldInfo AlbumTableFields[] = {
-    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, false, NULL, NULL, true, false, 16, (uint32_t) offsetof( Album, name ), (uint32_t) sizeof( Album::name ), (uint32_t) offsetof( Album, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "tint", "tint", "Colour", 0x1e4984ef2e958a4cull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Album, tint ), (uint32_t) sizeof( Album::tint ), 0xffffffffu, 0xffffffffu, &ColourTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "stamp", "stamp", "Stamp", 0xee7ba9ad45c64144ull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Album, stamp ), (uint32_t) sizeof( Album::stamp ), 0xffffffffu, 0xffffffffu, &StampTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "marker", "marker", "Marker", 0xeddcb72b15486e77ull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Album, marker ), (uint32_t) sizeof( Album::marker ), 0xffffffffu, 0xffffffffu, &MarkerTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "pin", "pin", "Marker", 0x77af761956600b54ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) MarkerAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) MarkerEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Album, pin ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &MarkerTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "head", "head", "ListNode", 0x0a8f12cc5f9a0c03ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Album, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, false, NULL, NULL, true, false, 16, (uint32_t) offsetof( Album, name ), (uint32_t) sizeof( Album::name ), (uint32_t) offsetof( Album, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "tint", "tint", "Colour", 0x1e4984ef2e958a4cull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Album, tint ), (uint32_t) sizeof( Album::tint ), 0xffffffffu, 0xffffffffu, &ColourTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "stamp", "stamp", "Stamp", 0xee7ba9ad45c64144ull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Album, stamp ), (uint32_t) sizeof( Album::stamp ), 0xffffffffu, 0xffffffffu, &StampTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "marker", "marker", "Marker", 0xeddcb72b15486e77ull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Album, marker ), (uint32_t) sizeof( Album::marker ), 0xffffffffu, 0xffffffffu, &MarkerTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "pin", "pin", "Marker", 0x77af761956600b54ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) MarkerAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) MarkerEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Album, pin ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &MarkerTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "head", "head", "ListNode", 0x0a8f12cc5f9a0c03ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) ListNodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) ListNodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Album, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &ListNodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo AlbumTableInfo = { "Album", (uint32_t) sizeof( Album ), 6, AlbumTableFields, +[]( void * p ) { AlbumReset( *(Album *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * AlbumTableType() { return &AlbumTableInfo; }

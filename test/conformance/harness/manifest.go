@@ -10,6 +10,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -253,6 +254,16 @@ type AnnounceGrown struct {
 // message batch written by that peer, FileWire is a placeholder file-form path
 // for drivers that inspect column 5, and SaveWire is the canonical Form-2
 // message batch re-saved in Unit's own vocabulary after loading PeerWire.
+//
+// A PRIOR-WRITER row (`message-prior`) is the same read with the peer NAMED BY
+// ITS SCHEMA rather than by a connection: WriterSchema is an earlier release of
+// Unit's own schema, WriterValue is a value that release may lawfully write,
+// and `harness generate` writes PeerAnnounce and PeerWire from the two with the
+// independent engine, with FileWire, the reader's default value in the file
+// form. PeerConn is empty and PeerBuildVersion is the writer's.
+// A SaveWire of `-` is a row every reader REFUSES: the prior writer's lawful
+// value lies outside what this reader's declaration holds, or its kind is not
+// one the reader's widens from (§4).
 type MessageDrift struct {
 	Name     string
 	Unit     string
@@ -261,6 +272,58 @@ type MessageDrift struct {
 	FileWire string
 	PeerWire string
 	SaveWire string
+
+	WriterSchema     string
+	WriterValue      string
+	PeerAnnounce     string
+	PeerBuildVersion uint64
+}
+
+// priorWireDir holds every file a prior-writer row names: the reader's
+// default file-form wire and the writer's announcement, one of each per
+// (unit, root), and the row's own batch and re-saved batch.
+const priorWireDir = "testdata/wire/tables/prior"
+
+// Refused says every reader owes this row a refusal.
+func (md MessageDrift) Refused() bool { return md.SaveWire == "-" }
+
+// Prior says the row is a prior-writer row, which rides the `message-prior`
+// surface rather than `message`.
+func (md MessageDrift) Prior() bool { return md.WriterSchema != "" }
+
+// WriterBodies splits a prior-writer row's WriterValue into the §16 texts of
+// its batch's bodies, in order: one object is a batch of one, and a JSON array
+// of objects a batch of as many (FORMAT.md, `message-prior`).
+func (md MessageDrift) WriterBodies() ([][]byte, error) {
+	text := strings.TrimSpace(md.WriterValue)
+	if !strings.HasPrefix(text, "[") {
+		return [][]byte{[]byte(text)}, nil
+	}
+	var bodies []json.RawMessage
+	if err := json.Unmarshal([]byte(text), &bodies); err != nil {
+		return nil, fmt.Errorf("%s: the writer value is not a JSON array of bodies: %w", md.Name, err)
+	}
+	if len(bodies) == 0 {
+		return nil, fmt.Errorf("%s: the writer value names no body", md.Name)
+	}
+	out := make([][]byte, len(bodies))
+	for i, b := range bodies {
+		out[i] = b
+	}
+	return out, nil
+}
+
+// DriftPeer answers the peer's announcement wire and build version: the named
+// connection's, or a prior-writer row's own.
+func (m *Manifest) DriftPeer(md MessageDrift) (string, uint64, error) {
+	if md.PeerConn == "" {
+		return md.PeerAnnounce, md.PeerBuildVersion, nil
+	}
+	pc, err := m.LookupConnection(md.PeerConn)
+	if err != nil {
+		return "", 0, err
+	}
+	return pc.Wire, pc.BuildVersion, nil
 }
 
 // AnnouncementMalformed is the diagnostic reason for a message row whose
@@ -364,7 +427,10 @@ func (b MessageBatch) Wire() string { return MessageBatchDir + "/" + b.Name + ".
 const RetainShortSlack = 16
 
 type Manifest struct {
-	Units         []Unit
+	Units []Unit
+	// OptIn names the units whose rows a leg answers only once its `list`
+	// names `unit <key>` (optin.go).
+	OptIn         map[string]bool
 	Instances     []Instance
 	Connections   []Connection
 	Messages      []Message
@@ -420,7 +486,7 @@ type WriteRefusal struct {
 }
 
 // writeRefusalKinds is the closed set a row's Kind is drawn from.
-var writeRefusalKinds = map[string]bool{"int": true, "count": true, "length": true, "ordinal": true, "tag": true, "float": true, "bytes": true, "units": true}
+var writeRefusalKinds = map[string]bool{"int": true, "count": true, "length": true, "ordinal": true, "tag": true, "float": true, "real": true, "bytes": true, "units": true}
 
 // writeRefusalForms maps each write-refusal line kind, which is also its
 // surface, to the writer it drives.
@@ -557,6 +623,16 @@ func ReadManifest(path, jsonDir string) (m *Manifest, err error) {
 				return nil, fmt.Errorf("%s: unit takes a key and at least one schema path", where)
 			}
 			m.Units = append(m.Units, Unit{Key: f[1], Paths: f[2:]})
+		case "opt-in":
+			// opt-in <unit>: rows on this unit reach only a leg whose `list`
+			// names `unit <key>` (optin.go); for any other leg they are absent
+			if len(f) != 2 {
+				return nil, fmt.Errorf("%s: opt-in takes one unit key", where)
+			}
+			if m.OptIn == nil {
+				m.OptIn = map[string]bool{}
+			}
+			m.OptIn[f[1]] = true
 		case "instance":
 			if len(f) < 5 {
 				return nil, fmt.Errorf("%s: instance takes name, unit, root, wire path, and optional markers", where)
@@ -660,6 +736,34 @@ func ReadManifest(path, jsonDir string) (m *Manifest, err error) {
 				Name: f[1], Unit: f[2], PeerConn: f[3], Root: f[4],
 				FileWire: f[5], PeerWire: f[6], SaveWire: f[7],
 			})
+		case "message-prior":
+			// message-prior <name> <unit> <root> <writer schema> <writer build version> <writer value> <read|refused>
+			if len(f) != 8 {
+				return nil, fmt.Errorf("%s: message-prior takes name, unit, root, writer schema, writer build version, writer value, read or refused", where)
+			}
+			bv, err := strconv.ParseUint(f[5], 0, 64)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %q is not a build version: %w", where, f[5], err)
+			}
+			if !strings.HasPrefix(f[6], "{") && !strings.HasPrefix(f[6], "[{") {
+				return nil, fmt.Errorf("%s: %q is not a writer value: it is the §16 text of the root, or a JSON array of them, written without spaces", where, f[6])
+			}
+			md := MessageDrift{
+				Name: f[1], Unit: f[2], Root: f[3],
+				WriterSchema: f[4], PeerBuildVersion: bv, WriterValue: f[6],
+				FileWire:     priorWireDir + "/" + f[2] + "_" + f[3] + "_default.bin",
+				PeerAnnounce: priorWireDir + "/" + f[2] + "_" + f[3] + "_conn.bin",
+				PeerWire:     priorWireDir + "/" + f[1] + "_message.bin",
+			}
+			switch f[7] {
+			case "read":
+				md.SaveWire = priorWireDir + "/" + f[1] + "_resaved.bin"
+			case "refused":
+				md.SaveWire = "-"
+			default:
+				return nil, fmt.Errorf("%s: %q is not an answer; it is read or refused", where, f[7])
+			}
+			m.MessageDrifts = append(m.MessageDrifts, md)
 		case "message-batch":
 			// message-batch <case> <connection> <root> <sent json> <shape> <verdict>
 			if len(f) != 7 {
@@ -907,6 +1011,10 @@ func ReadManifest(path, jsonDir string) (m *Manifest, err error) {
 		if _, err := m.LookupInstance(cw.Instance); err != nil {
 			return nil, fmt.Errorf("%s: cook-write %s: %w", path, cw.Instance, err)
 		}
+	}
+	// one name on one surface is one unit's case (optin.go)
+	if _, err := caseOwners(m); err != nil {
+		return nil, fmt.Errorf("%s: %w", path, err)
 	}
 	return m, nil
 }

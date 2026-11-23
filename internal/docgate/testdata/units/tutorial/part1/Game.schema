@@ -1,0 +1,6 @@
+package starlight
+
+const MaxPlayers   = 64
+const TickRate     = 60
+const TickInterval = 1.0 / TickRate
+const Pi float32   = 3.14159265359

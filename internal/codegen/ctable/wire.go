@@ -767,6 +767,14 @@ func (g *tableGen) wirePayload(f *ir.Field, expr, ind string) {
 	}
 }
 
+// writeCountMin is row 3's lower half (docs/SPEC.md §5.1): a counted array's
+// count below its declared Min. Debug only, as every C write check is.
+func (g *tableGen) writeCountMin(f *ir.Field, expr, ind string) {
+	if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+		g.pf("%sschema_assert( %s >= %d ); /* a count below the declared Min (§5.1 row 3) */\n", ind, expr, f.ArrayMin)
+	}
+}
+
 // writeStorageBound is the WRITE-SIDE STORAGE CHECK, DEBUG-ONLY BY RULE
 // (docs/SPEC.md §5.1): a count or a length that would index past the storage
 // it describes is the programmer's error, so C holds it with schema_assert,
@@ -776,41 +784,38 @@ func (g *tableGen) writeStorageBound(expr string, bound int64, ind string) {
 	g.pf("%sschema_assert( 0 <= %s && %s <= %d );\n", ind, expr, expr, bound)
 }
 
-// writeCountBound is writeStorageBound for a counted array's count, held to
-// the declared [Min, N] (docs/SPEC.md §4.2): a [Min..N]T holds at least Min
-// elements, so a count below Min is the programmer's error exactly as a count
-// past N is. Debug-only by the same rule.
-func (g *tableGen) writeCountBound(f *ir.Field, expr, ind string) {
-	if f.ArrayMin <= 0 {
-		g.writeStorageBound(expr, f.ArrayBound, ind)
-		return
+// countedBirthRides is the elision predicate of a [A..B]T field with A above
+// zero, which is BORN AT A (docs/SPEC.md §4.2): it rides unless its count is A
+// and each of those A elements is the element's default, the value a fresh one
+// carries (internal/tablewire encodeArray's allBirth, gotable's
+// emitCountedBirthRides). message picks the message form's bit probe for a
+// table element; a text element is at its default when it is empty.
+func (g *tableGen) countedBirthRides(f *ir.Field, expr, ind string, message bool) string {
+	born := f.BornCount()
+	el := expr + "[bi]"
+	g.pf("%sint birth_rides = %s_count != %d;\n", ind, expr, born)
+	g.pf("%sif ( !birth_rides ) { int32_t bi; for ( bi = 0; bi < %d; bi++ ) {\n", ind, born)
+	switch {
+	case ir.TableWireScalarKind(f) == tkTable && !f.Type.Pointer && message:
+		g.pf("%s    TableBitWriter birth_probe = *w; birth_probe.buffer = NULL; birth_probe.capacity = INT64_MAX; birth_probe.bits = 0;\n", ind)
+		g.pf("%s    if ( !%s( &birth_probe, &%s ) ) { return 0; }\n", ind, g.api(f.Type.Name, "save_message_body"), el)
+		g.pf("%s    if ( birth_probe.bits > kTableMessageRefBitsHere ) { birth_rides = 1; break; }\n", ind)
+	case ir.TableWireScalarKind(f) == tkTable && !f.Type.Pointer:
+		g.pf("%s    TableWriter birth_probe = table_writer_probe( w ); birth_probe.check_default = 1;\n", ind)
+		g.pf("%s    if ( !%s( &birth_probe, &%s ) ) { return 0; }\n", ind, g.api(f.Type.Name, "save_body"), el)
+		g.pf("%s    table_writer_rewind( &birth_probe );\n", ind)
+		g.pf("%s    if ( birth_probe.offset > 1 ) { birth_rides = 1; break; }\n", ind)
+	case f.IsTextList():
+		cond := el + ".value_length != 0"
+		if ir.TextListOptional(f) {
+			cond = el + ".value_present"
+		}
+		g.pf("%s    if ( %s ) { birth_rides = 1; break; }\n", ind, cond)
+	default:
+		g.pf("%s    if ( !( %s ) ) { birth_rides = 1; break; }\n", ind, g.wireDefaultEquals(f, el))
 	}
-	g.pf("%sschema_assert( %d <= %s && %s <= %d );\n", ind, f.ArrayMin, expr, expr, f.ArrayBound)
-}
-
-// countedBirth reports whether a counted array elides at its birth value: a
-// [Min..N]T that is neither required nor optional is born holding Min default
-// elements (docs/SPEC.md §4.2, ir.Field.BornCount), and the writers elide it
-// exactly there, as internal/tablewire's encodeArray and messageElides do.
-func countedBirth(f *ir.Field) bool {
-	return f.ElidesAtBirth()
-}
-
-// countedRides emits the riding test of a counted array and returns its
-// condition: a count of zero elides, and so does a count of Min whose every
-// element sits at its default (a float by bit pattern, a table whose body is
-// its terminator alone, a union at None). The element probe is the one the
-// keyed form uses, so a default element interns no id.
-func (g *tableGen) countedRides(f *ir.Field, expr, ind string, keyed func(f *ir.Field, expr, ind string)) string {
-	if !countedBirth(f) {
-		return expr + "_count > 0"
-	}
-	g.pf("%sint rides = %s_count > 0;\n", ind, expr)
-	g.pf("%sif ( %s_count == %d ) /* the birth value of [%d..%d] elides (§4.2) */\n%s{\n", ind, expr, f.BornCount(), f.ArrayMin, f.ArrayBound, ind)
-	g.pf("%s    int32_t i; rides = 0;\n%s    for ( i = 0; i < %d; i++ )\n%s    {\n", ind, ind, f.BornCount(), ind)
-	keyed(f, expr+"[i]", ind+"        ")
-	g.pf("%s        rides = 1; break;\n%s    }\n%s}\n", ind, ind, ind)
-	return "rides"
+	g.pf("%s} }\n", ind)
+	return "birth_rides"
 }
 
 // unitHasWriteBound reports a unit whose writers carry a debug-only write
@@ -899,7 +904,8 @@ func (g *tableGen) emitWireFieldHelper(st *ir.Struct, f *ir.Field) {
 	if !f.Type.TextUnbounded() && ((f.Type.Kind == ir.TString && !f.Type.Blob()) || (f.Type.Kind == ir.TBytes && !f.Type.Blob())) {
 		g.writeStorageBound(expr+"_length", f.Type.Size, "    ")
 	} else if f.Array == ir.ArrayCounted {
-		g.writeCountBound(f, expr+"_count", "    ")
+		g.writeStorageBound(expr+"_count", f.ArrayBound, "    ")
+		g.writeCountMin(f, expr+"_count", "    ")
 	}
 	switch {
 	case f.IsList() || f.IsMap():
@@ -1073,8 +1079,12 @@ func (g *tableGen) emitWireWrite(st *ir.Struct) {
 			g.writeStorageBound(expr+"_length", f.Type.Size, "        ")
 			condition = g.wireBytesDiffer(f, expr)
 		case f.Array == ir.ArrayCounted:
-			g.writeCountBound(f, expr+"_count", "        ")
-			condition = g.countedRides(f, expr, "        ", func(f *ir.Field, _, ind string) { g.wireKeyedRides(f, ind) })
+			g.writeStorageBound(expr+"_count", f.ArrayBound, "        ")
+			g.writeCountMin(f, expr+"_count", "        ")
+			condition = expr + "_count > 0"
+			if f.BornCount() > 0 && !f.Required && !f.Type.Optional {
+				condition = g.countedBirthRides(f, expr, "        ", false)
+			}
 		case f.KeyEnum != "":
 			if f.Required {
 				condition = "1"

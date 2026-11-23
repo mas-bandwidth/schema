@@ -201,17 +201,26 @@ func manifestMessageRoots(t *testing.T) []string {
 			roots = append(roots, key)
 		}
 	}
+	// the `message-prior` rows (testdata/conformance/tables/FORMAT.md) ride
+	// the same row table on their own surface, and so do the `message-drift`
+	// rows:
+	// message-prior <name> <unit> <root> ...
+	// message-drift <name> <unit> <peer-conn> <root> <file> <peer wire> <resaved wire>
 	data, err := os.ReadFile("../../../testdata/conformance/tables/MANIFEST.txt")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for line := range strings.SplitSeq(string(data), "\n") {
-		// message-drift <name> <unit> <peer-conn> <root> <file> <peer wire> <resaved wire>
 		f := strings.Fields(line)
-		if len(f) != 8 || f[0] != "message-drift" {
+		var key string
+		switch {
+		case len(f) >= 4 && f[0] == "message-prior":
+			key = f[2] + "/" + f[3]
+		case len(f) == 8 && f[0] == "message-drift":
+			key = f[2] + "/" + f[4]
+		default:
 			continue
 		}
-		key := f[2] + "/" + f[4]
 		if !seen[key] {
 			seen[key] = true
 			roots = append(roots, key)

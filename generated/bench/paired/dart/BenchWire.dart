@@ -2537,20 +2537,54 @@ int _bytesCompare(List<int> a, List<int> b) {
   return a.length.compareTo(b.length);
 }
 
-// _stableSorted is a copy of a map's entries in ascending key order, ties in
-// their stored order (docs/SPEC-TABLES.md §2.8).
-List<T> _stableSorted<T>(List<T> l, int Function(T a, T b) cmp) {
-  final out = List<T>.from(l);
-  for (var i = 1; i < out.length; i++) {
-    final x = out[i];
-    var j = i - 1;
-    while (j >= 0 && cmp(out[j], x) > 0) {
-      out[j + 1] = out[j];
-      j--;
-    }
-    out[j + 1] = x;
+// _intCompare orders two signed integer keys by value (docs/SPEC-TABLES.md §2.8).
+int _intCompare(int a, int b) => a.compareTo(b);
+
+// _u64Compare orders two unsigned keys as 64-bit patterns (docs/SPEC-TABLES.md §2.8).
+int _u64Compare(int a, int b) => _u64Below(a, b) ? -1 : (_u64Above(a, b) ? 1 : 0);
+
+// _stableSortedBy is a copy of a map's entries in ascending key order, ties in
+// their stored order (docs/SPEC-TABLES.md §2.8). Each entry's sort key is
+// built ONCE, and a bottom-up merge sort over the entries' indices makes at
+// most n log2 n compares whatever order the entries arrive in: the JSON read
+// sorts a map in the order the document sent it, so the cost must not depend
+// on that order (§2.8's cost row: the sort is O(n log n) once per map).
+List<T> _stableSortedBy<T, K>(List<T> l, K Function(T) keyOf, int Function(K a, K b) cmp) {
+  final n = l.length;
+  if (n < 2) {
+    return List<T>.from(l);
   }
-  return out;
+  final keys = List<K>.generate(n, (i) => keyOf(l[i]), growable: false);
+  var from = List<int>.generate(n, (i) => i, growable: false);
+  var to = List<int>.filled(n, 0);
+  for (var width = 1; width < n; width *= 2) {
+    for (var lo = 0; lo < n; lo += 2 * width) {
+      final mid = lo + width < n ? lo + width : n;
+      final hi = lo + 2 * width < n ? lo + 2 * width : n;
+      var i = lo;
+      var j = mid;
+      var k = lo;
+      while (i < mid && j < hi) {
+        // the right run's entry goes first only when it is strictly below:
+        // an equal key keeps its stored order
+        if (cmp(keys[from[j]], keys[from[i]]) < 0) {
+          to[k++] = from[j++];
+        } else {
+          to[k++] = from[i++];
+        }
+      }
+      while (i < mid) {
+        to[k++] = from[i++];
+      }
+      while (j < hi) {
+        to[k++] = from[j++];
+      }
+    }
+    final swap = from;
+    from = to;
+    to = swap;
+  }
+  return List<T>.generate(n, (i) => l[from[i]]);
 }
 
 // _wideValid reports whether a run of Dart String UTF-16 codeUnits is well-formed:
@@ -3056,6 +3090,7 @@ void benchMixedWireSaveBodyFields(TableWireWriter w, BenchMixed v) {
     w.putByte(9);
     w.putU64(v.sessionId);
   }
+  assert(v.clientId >= 0 && v.clientId <= 4294967295);
   if (v.clientId != 0) {
     w.putLeb(w.refFor(7889067272199050878));
     w.putByte(8);
@@ -3085,9 +3120,18 @@ void benchMixedWireSaveBodyFields(TableWireWriter w, BenchMixed v) {
     _putWide(w, v.serverTime, 4);
   }
   assert(v.entities.length >= 1 && v.entities.length <= 8);
-  if (v.entities.isNotEmpty) {
-    final bornMark = w.state.mark();
-    var born = v.entities.length == 1;
+  var birthEntities = v.entities.length == 1;
+  if (birthEntities) {
+    for (var bi = 0; bi < 1; bi++) {
+      final mark = w.state.mark();
+      final b = w.sub();
+      b.path = [...w.path, 9, bi];
+      mixedEntityWireSaveBody(b, v.entities[bi]);
+      w.state.rollback(mark);
+      if (b.buf.length > 1) { birthEntities = false; break; }
+    }
+  }
+  if (v.entities.isNotEmpty && !birthEntities) {
     final ref = w.refFor(-7828083326636031446);
     final s = w.sub();
     s.putByte(13);
@@ -3097,18 +3141,13 @@ void benchMixedWireSaveBodyFields(TableWireWriter w, BenchMixed v) {
       final b = s.sub();
       b.path = [...w.path, 9, i];
       mixedEntityWireSaveBody(b, e);
-      if (b.buf.length > 1) born = false;
       s.putLeb(b.buf.length);
       s.putBytes(b.buf);
     }
-    if (born) {
-      w.state.rollback(bornMark);
-    } else {
-      w.putLeb(ref);
-      w.putByte(14);
-      w.putLeb(s.buf.length);
-      w.putBytes(s.buf);
-    }
+    w.putLeb(ref);
+    w.putByte(14);
+    w.putLeb(s.buf.length);
+    w.putBytes(s.buf);
   }
   assert(v.stats.length >= 0 && v.stats.length <= 80);
   if (v.stats.isNotEmpty) {
@@ -3136,6 +3175,9 @@ void benchMixedWireSaveBodyFields(TableWireWriter w, BenchMixed v) {
     if (v.gameEvent.armTag == 0) { w.putLeb(0); } else { _mixedEventSaveArm(w, v.gameEvent); }
   }
   assert(v.loadout.length == 4);
+  for (final assertElem in v.loadout) {
+    assert(assertElem >= 0 && assertElem <= 255);
+  }
   if (v.loadout.any((e) => e != 0)) {
     final ref = w.refFor(6294288958393922979);
     final s = w.sub();
@@ -3171,19 +3213,19 @@ void benchMixedWireSaveBodyFields(TableWireWriter w, BenchMixed v) {
     w.putBytes(s.buf);
   }
   assert(!v.aimX.isFinite || ((_rangeF32..[0] = v.aimX)[0] >= -1.0 && _rangeF32[0] <= 1.0));
-  if (_f32Bits((v.aimX == 0 ? 0.0 : v.aimX)) != 0) {
+  if (_f32Bits(((v.aimX == 0 ? 0.0 : v.aimX) == 0 ? 0.0 : (v.aimX == 0 ? 0.0 : v.aimX))) != 0) {
     w.putLeb(w.refFor(-2616736631205226807));
     w.putByte(10);
     w.putU32(_f32Write((v.aimX == 0 ? 0.0 : v.aimX), 'BenchMixed.aim_x'));
   }
   assert(!v.aimY.isFinite || ((_rangeF32..[0] = v.aimY)[0] >= -1.0 && _rangeF32[0] <= 1.0));
-  if (_f32Bits((v.aimY == 0 ? 0.0 : v.aimY)) != 0) {
+  if (_f32Bits(((v.aimY == 0 ? 0.0 : v.aimY) == 0 ? 0.0 : (v.aimY == 0 ? 0.0 : v.aimY))) != 0) {
     w.putLeb(w.refFor(-2616737730716855018));
     w.putByte(10);
     w.putU32(_f32Write((v.aimY == 0 ? 0.0 : v.aimY), 'BenchMixed.aim_y'));
   }
   assert(!v.aimZ.isFinite || ((_rangeF32..[0] = v.aimZ)[0] >= -1.0 && _rangeF32[0] <= 1.0));
-  if (_f32Bits((v.aimZ == 0 ? 0.0 : v.aimZ)) != 0) {
+  if (_f32Bits(((v.aimZ == 0 ? 0.0 : v.aimZ) == 0 ? 0.0 : (v.aimZ == 0 ? 0.0 : v.aimZ))) != 0) {
     w.putLeb(w.refFor(-2616738830228483229));
     w.putByte(10);
     w.putU32(_f32Write((v.aimZ == 0 ? 0.0 : v.aimZ), 'BenchMixed.aim_z'));
@@ -4465,7 +4507,7 @@ void benchMixedWireLoadBody(TableWireReader r, BenchMixed v, bool nested) {
           if (r.retain != null) { for (final old in v.entities) { r.retain!.forget(old); } }
           v.entities = <MixedEntity>[];
           var keep = count;
-          if (keep < 0 || keep > 8) { r.report.refuse('count_over_bound'); return; }
+          if (keep < 1 || keep > 8) { r.report.refuse('count_over_bound'); return; }
           final arr = TableWireReader.sub(r, r.pos, end < r.pos ? r.pos : end);
           for (var i = 0; i < keep; i++) {
             final elen = arr.readLeb();
@@ -6547,6 +6589,14 @@ List<T> _jsonList<T>(dynamic val, TableTextReport r, int bound, T Function(dynam
   return out;
 }
 
+// _jsonCountMin holds a counted [Min..N] array's read to its declared Min: a
+// shorter one is refused, in the text form as on the wire (docs/SPEC.md §5.1
+// row 3).
+List<T> _jsonCountMin<T>(List<T> out, TableTextReport r, int min) {
+  if (out.length < min) r.refuse('count_over_bound');
+  return out;
+}
+
 List<T> _jsonFixed<T>(dynamic val, TableTextReport r, int n, T Function() def, T Function(dynamic, T) f, [List<T>? fallback]) {
   if (val is! List) {
     r.refuse('kind_mismatch');
@@ -6593,7 +6643,11 @@ List<T> _jsonKeyed<T>(dynamic val, TableTextReport r, int n, T Function() def, M
   return out;
 }
 
-List<T> _jsonMap<T>(dynamic val, TableTextReport r, Object Function(T) keyOf, int Function(T a, T b) cmp, T? Function(String, dynamic) f, [List<T>? fallback]) {
+// _jsonMap reads a map's object in the order the document sent it and lands
+// the entries in ascending key order (§2.8, §16): sortKey builds each entry's
+// key once and _stableSortedBy sorts in O(n log n), so keys sent in
+// descending order cost what any order costs.
+List<T> _jsonMap<T, K>(dynamic val, TableTextReport r, Object Function(T) keyOf, K Function(T) sortKey, int Function(K a, K b) cmp, T? Function(String, dynamic) f, [List<T>? fallback]) {
   final entries = _jsonEntries(val);
   if (entries == null) {
     r.refuse('kind_mismatch');
@@ -6614,13 +6668,16 @@ List<T> _jsonMap<T>(dynamic val, TableTextReport r, Object Function(T) keyOf, in
       out.add(item);
     }
   }
-  return _stableSorted(out, cmp);
+  return _stableSortedBy<T, K>(out, sortKey, cmp);
 }
 
+// A MAP KEY is held to its declared string(N) bound and nothing else: the
+// 255-byte schema-name cap (_jsonName) never reaches a map key (§16.2), so a
+// string(300) key of 280 bytes is a key.
 String? _jsonStringKey(String k, int bound, TableTextReport r) {
   k = _jsonText(k);
   final len = utf8.encode(k).length;
-  if (bound >= 0 && (len > bound || len > 255)) {
+  if (bound >= 0 && len > bound) {
     r.refuse('length_over_bound');
     return null;
   }
@@ -7675,6 +7732,7 @@ void benchMixedFromJsonFields(BenchMixed v, dynamic obj, TableTextReport r, _Sha
           }
           v.entities.add(e);
         }
+        if (v.entities.length < 1) { r.refuse('count_over_bound'); }
         break;
       case "stats":
         if (!seen.add(key)) r.refuse('text_damaged');

@@ -1,0 +1,37 @@
+{
+  "tenth": 0.05,
+  "seventh": 0.75,
+  "ranged": 2.5,
+  "zero": 0,
+  "nonzero": 1.5,
+  "pinned": "3.0",
+  "octets": [
+    1,
+    2
+  ],
+  "shorts": [
+    5
+  ],
+  "recs": [
+    {
+      "a": 1,
+      "b": 2
+    }
+  ],
+  "pick": {
+    "small": 3
+  },
+  "tones": [
+    "Low",
+    "High"
+  ],
+  "marks": [
+    [
+      "Red"
+    ],
+    [
+      "Green",
+      "Blue"
+    ]
+  ]
+}

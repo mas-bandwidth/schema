@@ -184,10 +184,12 @@ func (g *wireGen) storageDecl(f *ir.Field, name string) string {
 		return fmt.Sprintf("Uint8List? %s;", name)
 	case f.CountedOnWire():
 		et := g.listElemType(f)
-		if n := wireBornCount(f); n > 0 {
-			// A `[M..N]T` IS BORN HOLDING M DEFAULT ELEMENTS (docs/SPEC-TABLES.md
-			// §22.2, ir.Field.BornCount), never zero
-			return fmt.Sprintf("List<%s> %s = List<%s>.generate(%d, (_) => %s);", et, name, et, n, g.elemDefault(f))
+		if n := f.BornCount(); n > 0 {
+			// A FRESH [Min..N]T IS BORN AT ITS MIN, every slot at the
+			// element's default (docs/SPEC.md §4.2; internal/tabletext
+			// value.go), and the save elides that birth value
+			// (emitCountedBirthRides).
+			return fmt.Sprintf("List<%s> %s = List<%s>.generate(%d, (_) => %s);", et, name, et, n, g.countedBirthElem(f))
 		}
 		return fmt.Sprintf("List<%s> %s = <%s>[];", et, name, et)
 	case isUnionField(f):
@@ -564,7 +566,9 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		// internal/tablewire arrayBody, which an arm shares with a field)
 		g.pf("%svar keep = count;\n", ind)
 		if f.Array == ir.ArrayCounted {
-			g.pf("%sif (keep > %d || keep < 0) { %s.report.refuse('count_over_bound'); keep = 0; }\n", ind, f.ArrayBound, p)
+			// a count below the declared Min refuses as one past Max does
+			// (docs/SPEC.md §5.1 row 3)
+			g.pf("%sif (keep > %d || keep < %d) { %s.report.refuse('count_over_bound'); keep = 0; }\n", ind, f.ArrayBound, max(f.ArrayMin, 0), p)
 		} else {
 			g.pf("%sif (keep < 0 || keep > 0x7FFFFFFF) %s\n", ind, bad)
 		}
@@ -954,16 +958,35 @@ func mapKeyCompare(f *ir.Field) string {
 	return fmt.Sprintf("_u64Below(a.%s, b.%s) ? -1 : (_u64Above(a.%s, b.%s) ? 1 : 0)", k, k, k, k)
 }
 
+// mapSortArgs is what _stableSortedBy takes for a map field's entries (§2.8):
+// the sort key's Dart type, the expression that builds one entry's key ONCE
+// (a string key's UTF-8 bytes, an integer key itself; the entry is `e`), and
+// the compare over two keys. Building the key outside the compare is the
+// point: a string compare that encoded both keys allocated two byte lists
+// per comparison.
+func mapSortArgs(f *ir.Field) (keyType, keyOf, cmp string) {
+	key := ir.MapKeyField(f)
+	k := fieldMember(key)
+	switch {
+	case key.Type.Kind == ir.TString:
+		return "List<int>", "utf8.encode(e." + k + ")", "_bytesCompare"
+	case key.Type.Kind == ir.TInt && key.Type.Signed:
+		return "int", "e." + k, "_intCompare"
+	}
+	return "int", "e." + k, "_u64Compare"
+}
+
 // mapSorted is a Dart expression for a map field's entries in ASCENDING KEY
 // ORDER, the writer's rule the walk and the save share (§2.8,
 // internal/tablewire MapEntryOrder): a stable sort of a copy, so the caller's
 // list is not reordered.
 func mapSorted(f *ir.Field, expr string) string {
-	return fmt.Sprintf("_stableSorted(%s, (%s a, %s b) => %s)", expr, f.MapEntry.Name, f.MapEntry.Name, mapKeyCompare(f))
+	keyType, keyOf, cmp := mapSortArgs(f)
+	return fmt.Sprintf("_stableSortedBy<%s, %s>(%s, (%s e) => %s, %s)", f.MapEntry.Name, keyType, expr, f.MapEntry.Name, keyOf, cmp)
 }
 
-// emitMapRuntime emits the two helpers mapSorted uses: a byte-order compare
-// and a stable insertion sort (§2.8).
+// emitMapRuntime emits the helpers mapSorted uses: the key compares and a
+// stable merge sort over keys built once (§2.8).
 func (g *wireGen) emitMapRuntime() {
 	g.pf(`// _bytesCompare orders two keys by their UTF-8 bytes (docs/SPEC-TABLES.md §2.8).
 int _bytesCompare(List<int> a, List<int> b) {
@@ -974,20 +997,54 @@ int _bytesCompare(List<int> a, List<int> b) {
   return a.length.compareTo(b.length);
 }
 
-// _stableSorted is a copy of a map's entries in ascending key order, ties in
-// their stored order (docs/SPEC-TABLES.md §2.8).
-List<T> _stableSorted<T>(List<T> l, int Function(T a, T b) cmp) {
-  final out = List<T>.from(l);
-  for (var i = 1; i < out.length; i++) {
-    final x = out[i];
-    var j = i - 1;
-    while (j >= 0 && cmp(out[j], x) > 0) {
-      out[j + 1] = out[j];
-      j--;
-    }
-    out[j + 1] = x;
+// _intCompare orders two signed integer keys by value (docs/SPEC-TABLES.md §2.8).
+int _intCompare(int a, int b) => a.compareTo(b);
+
+// _u64Compare orders two unsigned keys as 64-bit patterns (docs/SPEC-TABLES.md §2.8).
+int _u64Compare(int a, int b) => _u64Below(a, b) ? -1 : (_u64Above(a, b) ? 1 : 0);
+
+// _stableSortedBy is a copy of a map's entries in ascending key order, ties in
+// their stored order (docs/SPEC-TABLES.md §2.8). Each entry's sort key is
+// built ONCE, and a bottom-up merge sort over the entries' indices makes at
+// most n log2 n compares whatever order the entries arrive in: the JSON read
+// sorts a map in the order the document sent it, so the cost must not depend
+// on that order (§2.8's cost row: the sort is O(n log n) once per map).
+List<T> _stableSortedBy<T, K>(List<T> l, K Function(T) keyOf, int Function(K a, K b) cmp) {
+  final n = l.length;
+  if (n < 2) {
+    return List<T>.from(l);
   }
-  return out;
+  final keys = List<K>.generate(n, (i) => keyOf(l[i]), growable: false);
+  var from = List<int>.generate(n, (i) => i, growable: false);
+  var to = List<int>.filled(n, 0);
+  for (var width = 1; width < n; width *= 2) {
+    for (var lo = 0; lo < n; lo += 2 * width) {
+      final mid = lo + width < n ? lo + width : n;
+      final hi = lo + 2 * width < n ? lo + 2 * width : n;
+      var i = lo;
+      var j = mid;
+      var k = lo;
+      while (i < mid && j < hi) {
+        // the right run's entry goes first only when it is strictly below:
+        // an equal key keeps its stored order
+        if (cmp(keys[from[j]], keys[from[i]]) < 0) {
+          to[k++] = from[j++];
+        } else {
+          to[k++] = from[i++];
+        }
+      }
+      while (i < mid) {
+        to[k++] = from[i++];
+      }
+      while (j < hi) {
+        to[k++] = from[j++];
+      }
+    }
+    final swap = from;
+    from = to;
+    to = swap;
+  }
+  return List<T>.generate(n, (i) => l[from[i]]);
 }
 
 // _wideValid reports whether a run of Dart String UTF-16 codeUnits is well-formed:
@@ -1062,35 +1119,33 @@ func (g *wireGen) emitSaveMap(f *ir.Field, expr, ind string, id uint64, ordinal 
 }
 
 // emitLoadMap reads one map field (§2.8, §4): kind 14 over element kind 13,
-// each entry a length-framed entry body read tolerantly, decided entry by
-// entry exactly as internal/tablewire (*wireReader).mapField decides it
-// (docs/SPEC-TABLES.md §2.8, §4; the counters of §6.6). Before an entry body
-// decodes, the KEY SCAN (TableWireReader.mapEntryScan, the twin of
-// internal/tablewire (*wireReader).mapKey) walks its field headers:
+// each entry a length-framed entry body, read under the one strict read
+// (docs/SPEC-TABLES.md §2.8, §4; docs/rulings.json strict-only-read): any
+// entry the read cannot take refuses the WHOLE load and nothing of the map
+// is kept. Before an entry body decodes, the KEY SCAN
+// (TableWireReader.mapEntryScan, the twin of internal/tablewire
+// (*wireReader).mapKey) walks its field headers:
 //
-//   - A body the scan cannot frame whole to its terminator makes the MAP
-//     malformed: that entry does not land, nothing inside it is counted, and
-//     the rest of the map skips by its L. No duplicate is judged on it.
-//   - A key whose LAST occurrence rides a kind the declaration neither is nor
-//     widens from is A MAP WITH HALF ITS KEYS: the map resets to empty, ONE
-//     kind_mismatch counts, and the rest skips.
+//   - A body the scan cannot frame whole to its terminator refuses
+//     wire_damaged.
+//   - A key that rides a kind the declaration neither is nor widens from
+//     refuses kind_mismatch.
 //   - A key that rides a kind the declaration WIDENS from counts ONE
 //     widened for the whole map, at the first such key, before the entry is
 //     judged: the entry body's own decode never counts it again.
-//   - Otherwise the body decodes and the entry lands. An entry whose key
-//     EQUALS the previous landed key is a DUPLICATE: the earlier slot is
-//     replaced whole (last wins), the map's count excludes it, and the
-//     report's duplicate counter rises. A key BELOW the previous landed key
-//     is malformed; the ascending prefix stands, nothing the descending
-//     body held is counted, and the rest skips by L.
+//   - A bounded string key past its bound refuses length_over_bound (KEYS
+//     NEVER CLAMP).
+//   - Otherwise the body decodes and the entry lands. A key that EQUALS the
+//     previous landed key (a repeated key) or is BELOW it (out of ascending
+//     order) refuses wire_damaged: no last-wins, no prefix kept.
 func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	name := fieldMember(f)
 	en := f.MapEntry.Name
 	// the key's declared wire kind and the kinds that widen into it, which
 	// the key scan reads (ir.TableKindWidens; internal/tablewire mapKey), and
 	// the key's declared string bound (ir.MapKeyField(f).Type.Size) for the
-	// fit rule: a `string(N)` key past N drops its entry whole (§2.8, KEYS
-	// NEVER CLAMP; internal/tabletext MapKeyFits). keySize is -1 for a key
+	// fit rule: a `string(N)` key past N refuses the load (§2.8, KEYS NEVER
+	// CLAMP; internal/tabletext MapKeyFits). keySize is -1 for a key
 	// that is not a bounded string, which can never fail to fit.
 	keyField := ir.MapKeyField(f)
 	keyKind := ir.TableWireScalarKind(keyField)
@@ -1146,11 +1201,9 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	g.pf("%s\t\t\tif ((scan & 4) != 0 && !mapWidened) { mapWidened = true; r.report.widened++; }\n", ind)
 	g.pf("%s\t\t\tif ((scan & 3) == 2) { r.report.refuse('kind_mismatch'); break; }\n", ind)
 	g.pf("%s\t\t\tif ((scan & 3) != 0) { r.report.refuse('wire_damaged'); break; }\n", ind)
-	// KEYS NEVER CLAMP (§2.8): a key whose LAST occurrence rides a string the
-	// declaration bounds under its length drops the entry WHOLE, one `clamped`
-	// per entry, and nothing inside the body is decoded or counted, and the
-	// entry never becomes the last landed key (internal/tablewire mapField
-	// `if !tabletext.MapKeyFits(f, key) { r.report.Clamped++; continue }`).
+	// KEYS NEVER CLAMP (§2.8): a key longer than the bound its declaration
+	// gives refuses the whole load as length_over_bound; nothing of the map
+	// is kept (docs/rulings.json strict-only-read).
 	g.pf("%s\t\t\tif ((scan & 8) != 0) { r.report.refuse('length_over_bound'); break; }\n", ind)
 	// Order admits an entry before its body can add events or refuse a
 	// nested allocation (§2.8). The final key may follow the value on wire.
@@ -1172,7 +1225,7 @@ func (g *wireGen) emitLoadMap(f *ir.Field, ind string, ordinal int) {
 	g.pf("%s\t\t\tfinal retainedAt = r.retain?.records.length ?? 0;\n", ind)
 	g.pf("%s\t\t\t%sWireLoadBody(sub, e, true);\n", ind, dartName(en))
 	g.pf("%s\t\t\tif ((r.retain?.records.length ?? 0) > retainedAt) r.retain!.rememberMap(v, %q, e);\n", ind, name)
-	g.pf("%s\t\t\t// EQUAL: a DUPLICATE, last wins whole (§2.8, §6.6)\n", ind)
+	g.pf("%s\t\t\t// EQUAL: a repeated key refuses the whole load (§2.8, §4)\n", ind)
 	g.pf("%s\t\t\tif (order == 0) { r.report.refuse('wire_damaged'); break; }\n", ind)
 	g.pf("%s\t\t\tlastEntry = e;\n", ind)
 	g.pf("%s\t\t\tlastLanded = true;\n", ind)
@@ -1198,7 +1251,8 @@ func (g *wireGen) emitSaveUnionField(f *ir.Field, expr, ind string, id uint64) {
 // over element kind 15 (§3): the live count, then each element's arm header,
 // a None element the single zero byte. An empty array elides (§2.9).
 func (g *wireGen) emitSaveUnionList(f *ir.Field, expr, ind string, id uint64) {
-	g.pf("%s", rideOpen(ind, f, g.countedRides(f, expr)))
+	rides := g.countedRides(f, expr, ind, 0)
+	g.pf("%s", rideOpen(ind, f, rides))
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal s = w.sub();\n", ind)
 	g.pf("%s\ts.putByte(%d);\n", ind, wireKindUnion)

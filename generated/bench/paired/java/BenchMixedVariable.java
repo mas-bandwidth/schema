@@ -890,6 +890,8 @@ public final class BenchMixedVariable {
                                 if (n < 0 || n > 8) {
                                     n = 8;
                                     report.refuse("count_over_bound");
+                                } else if (n < 1) {
+                                    report.refuse("count_over_bound");
                                 }
                                 v.entities.clear();
                                 for (long i = 0; i < n; i++) {
@@ -1462,13 +1464,13 @@ public final class BenchMixedVariable {
             w.put8(22);
             w.put32(v.serverTime);
         }
-        boolean born_entities = v.entities.size() == 1;
-        for (int i = 0; born_entities && i < 1; i++) {
+        boolean rides_entities = v.entities.size() != 1;
+        for (int i = 0; !rides_entities && i < 1; i++) {
             if (!(MixedEntityVariable.isDefault(v.entities.get(i), w, graph))) {
-                born_entities = false;
+                rides_entities = true;
             }
         }
-        if (!v.entities.isEmpty() && !born_entities) {
+        if (rides_entities) {
             w.putLeb(w.ref(F_entities));
             w.put8(14);
             int list = w.off;
@@ -2423,6 +2425,10 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "aim_x");
         b.append(": ");
+        if (v.aimX < java.lang.Float.intBitsToFloat(0xbf800000)
+                || v.aimX > java.lang.Float.intBitsToFloat(0x3f800000)) {
+            throw new TableJson.Refused("out_of_range");
+        }
         TableJson.writeFloat(b, (v.aimX == 0.0f ? 0.0f : v.aimX), true);
         if (!first) {
             b.append(',');
@@ -2431,6 +2437,10 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "aim_y");
         b.append(": ");
+        if (v.aimY < java.lang.Float.intBitsToFloat(0xbf800000)
+                || v.aimY > java.lang.Float.intBitsToFloat(0x3f800000)) {
+            throw new TableJson.Refused("out_of_range");
+        }
         TableJson.writeFloat(b, (v.aimY == 0.0f ? 0.0f : v.aimY), true);
         if (!first) {
             b.append(',');
@@ -2439,6 +2449,10 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "aim_z");
         b.append(": ");
+        if (v.aimZ < java.lang.Float.intBitsToFloat(0xbf800000)
+                || v.aimZ > java.lang.Float.intBitsToFloat(0x3f800000)) {
+            throw new TableJson.Refused("out_of_range");
+        }
         TableJson.writeFloat(b, (v.aimZ == 0.0f ? 0.0f : v.aimZ), true);
         if (!first) {
             b.append(',');
@@ -2618,6 +2632,14 @@ public final class BenchMixedVariable {
         long labelId = in.scanLabel();
         if (in.bad || labelId <= 0) return null;
         int c = in.peek();
+        if (c != '}' && c != ',') {
+            in.bad = true;
+            return null;
+        }
+        if (c == ',') {
+            in.p++;
+            c = in.peek();
+        }
         if (c == '}') {
             in.p++;
             TableJson.LabelEntry entry = in.labels.get(labelId);
@@ -2633,12 +2655,7 @@ public final class BenchMixedVariable {
                 return null;
             }
             return (Value) entry.value;
-        } else if (c == ',') {
-            in.p++;
-            if (in.peek() == '}') {
-                in.bad = true;
-                return null;
-            }
+        } else {
             if (in.labels.containsKey(labelId)) {
                 in.bad = true;
                 return null;
@@ -2649,9 +2666,6 @@ public final class BenchMixedVariable {
             jsonReadFieldsBody(in, child, depth + 1);
             entry.open = false;
             return child;
-        } else {
-            in.bad = true;
-            return null;
         }
     }
 
@@ -2918,7 +2932,7 @@ public final class BenchMixedVariable {
                     in.skipValue();
                     in.rep.refuse("kind_mismatch");
                 } else {
-                    if (repeated && in.peek() != 'n') {
+                    if (in.peek() != 'n' || (repeated && in.peek() != 'n')) {
                         v.entities = new java.util.ArrayList<>();
                     }
                     if (in.peek() == '[') {

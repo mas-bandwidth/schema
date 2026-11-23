@@ -105,17 +105,19 @@ const tableMapJsonSource = `
     }
     static bool ReadMap(ReadOnlySpan<byte> text, ref In input, object owner, TableFieldInfo f, int depth)
     {
-        if (Peek(text, ref input) != '{' || depth + 1 > MaxDepth) { input.Bad = true; return false; } // THE READ CAP COUNTS EVERY CONTAINER, placed or skipped (docs/SPEC-TABLES.md 16.2)
+        if (depth + 1 > MaxDepth) { input.Bad = true; return false; }
+        if (Peek(text, ref input) != '{') { input.Bad = true; return false; }
         input.Pos++; f.ResetField(owner);
         TableFieldInfo key = f.Table.Fields[0], field = f.Table.Fields[1];
         int count = 0;
+        bool sorted = true;
         string mapField = input.TextField;
         // A map key is data, bounded only by its own string(N), never by the 255-byte cap on schema names (docs/SPEC-TABLES.md §16.2)
         Span<byte> spelling = key.Kind == 12 && !key.Unbounded && key.ArrayBound > MaxKey ? new byte[key.ArrayBound] : stackalloc byte[MaxKey];
         for (; ; )
         {
             byte c = Peek(text, ref input);
-            if (c == '}') { input.Pos++; return true; }
+            if (c == '}') { input.Pos++; break; }
             input.TextField = mapField;
             scoped ReadOnlySpan<byte> actual; int used;
             if (key.Unbounded)
@@ -139,7 +141,7 @@ const tableMapJsonSource = `
                 In probe = new In { Report = new TableReport() };
                 ReadOnlySpan<byte> token = actual;
                 Space(token, ref probe);
-                if (probe.Pos != 0 || !ReadScalar(token, ref probe, entry, key, 0, depth) || probe.Pos != used || probe.Bad)
+                if (probe.Pos != 0 || !ReadScalar(token, ref probe, entry, key, 0, depth + 1) || probe.Pos != used || probe.Bad)
                 {
                     // a key that is not the key kind's integer spelling is a
                     // NAMED refusal (docs/SPEC-TABLES.md §16.2), not damage
@@ -148,7 +150,7 @@ const tableMapJsonSource = `
                 }
                 if (probe.Report.Refused) { return RefuseText(ref input, "kind_mismatch"); }
             }
-            if (drop) { if (!SkipValue(text, ref input, depth + 1)) { return false; } }
+            if (drop) { if (!SkipValue(text, ref input, depth + 2)) { return false; } }
             else
             {
                 char shape = ValueShape(text, ref input);
@@ -169,21 +171,34 @@ const tableMapJsonSource = `
                     }
                     else if (!ReadField(text, ref input, entry, field, depth + 1)) { return false; }
                 }
-                int at = 0;
-                while (at < count && TableWire.CompareKey(f.GetChild(owner, at), entry, key) < 0) { at++; }
-                if (at < count && TableWire.CompareKey(f.GetChild(owner, at), entry, key) == 0)
-                { return RefuseText(ref input, "duplicate"); }
-                else
+                if (sorted && count > 0)
                 {
-                    f.EnsureCount(owner, count + 1);
-                    for (int i = count; i > at; i--) { f.SetChild(owner, i, f.GetChild(owner, i - 1)); }
-                    f.SetChild(owner, at, entry); count++; f.SetCount(owner, count);
+                    int cmp = TableWire.CompareKey(f.GetChild(owner, count - 1), entry, key);
+                    if (cmp == 0) { return RefuseText(ref input, "duplicate"); }
+                    if (cmp > 0) { sorted = false; }
                 }
+                f.EnsureCount(owner, count + 1);
+                f.SetChild(owner, count, entry);
+                count++;
+                f.SetCount(owner, count);
             }
             c = Peek(text, ref input);
             if (c == ',') { input.Pos++; continue; }
-            if (c == '}') { input.Pos++; return true; }
+            if (c == '}') { input.Pos++; break; }
             input.Bad = true; return false;
         }
+        if (!sorted && count > 1)
+        {
+            object[] items = new object[count];
+            for (int i = 0; i < count; i++) { items[i] = f.GetChild(owner, i); }
+            System.Array.Sort(items, (a, b) => TableWire.CompareKey(a, b, key));
+            for (int i = 1; i < count; i++)
+            {
+                if (TableWire.CompareKey(items[i - 1], items[i], key) == 0)
+                { return RefuseText(ref input, "duplicate"); }
+            }
+            for (int i = 0; i < count; i++) { f.SetChild(owner, i, items[i]); }
+        }
+        return true;
     }
 `

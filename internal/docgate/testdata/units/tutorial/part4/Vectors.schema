@@ -1,0 +1,7 @@
+package starlight
+
+type Vector2 | cpp_native = GameVector2, cpp_include = "game_vector2.h"
+{
+    x float32
+    y float32
+}

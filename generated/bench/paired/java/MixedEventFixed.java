@@ -108,11 +108,11 @@ public final class MixedEventFixed {
             byte[] b, int at, Value v, TableFixed.Report r, boolean live, boolean checkDead) {
         v.type = (b[at + 0] & 0xFF);
         final int taken = v.type;
-        // A TAG PAST THE LAST ARM LANDS None AND COUNTS ONE CLAMPED: it
-        // is a value this reader's own storage does not admit, and
-        // landing it raw would hand a caller a `type` that names no arm
-        // and that its own switch cannot answer. `taken` is the wire tag,
-        // before that clamp, so a forged tag is not the tag-0 dead span.
+        // A TAG PAST THE LAST ARM REFUSES out_of_range: it is a value
+        // this reader's own storage does not admit. It is stored as None
+        // only so the refused record holds no `type` that names no arm.
+        // `taken` is the wire tag, before that, so a forged tag is not
+        // the tag-0 dead span.
         if (v.type > 3) {
             v.type = none;
             if (live) {

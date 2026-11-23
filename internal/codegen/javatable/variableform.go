@@ -4078,6 +4078,10 @@ public final class TableJson {
                         }
                         LabelEntry entry = labels.get(labelId);
                         c = peek();
+                        if (c != ',' && c != closing) {
+                            bad = true;
+                            return;
+                        }
                         if (c == ',') {
                             p++;
                             c = peek();
@@ -4092,6 +4096,9 @@ public final class TableJson {
                         }
                         if (bare) {
                             p++;
+                            if (entry == null || entry.open) {
+                                bad = true;
+                            }
                             return;
                         }
                         labels.put(labelId, new LabelEntry(null, 0L, true));
@@ -4117,6 +4124,14 @@ public final class TableJson {
                 }
                 bad = true;
                 return;
+            }
+        }
+
+        // closeSkipped closes the label a skipped object's definition opened:
+        // a reference after it reads null (§16.7).
+        private void closeSkipped(long opened) {
+            if (opened != 0) {
+                labels.put(opened, new LabelEntry(null, 0L, false));
             }
         }
     }
@@ -4216,6 +4231,19 @@ func variableElemWireKind(f *ir.Field) int { return ir.TableWireElemKind(f) }
 // countRead is the Java expression that reads a collection's count after its
 // element kind: a bounded collection's against the enclosing body (Reader.count,
 // as the engine's arrayBody), an unbounded list's inside its own L.
+// countMinRefuse is the read's hold on a counted array's declared minimum
+// (docs/SPEC.md §5.1 row 3), spliced after the bound's clamp: a count under
+// the minimum refuses, at whatever depth the record sits, the way the engine
+// and every other port's read holds [Min, N]. A count past N is clamped and
+// refused by the line it follows, so this is its else. Nothing for an array
+// with no minimum.
+func countMinRefuse(f *ir.Field, n, reason string) string {
+	if f.Array != ir.ArrayCounted || f.ArrayMin <= 0 {
+		return ""
+	}
+	return fmt.Sprintf(" else if (%s < %d) { report.refuse(%q); }", n, f.ArrayMin, reason)
+}
+
 func countRead(f *ir.Field, reader string) string {
 	if f.ArrayBound > 0 {
 		return reader + ".count(r.limit)"
@@ -5331,7 +5359,12 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("        in.p++;\n")
 	b.WriteString("        long labelId = in.scanLabel();\n")
 	b.WriteString("        if (in.bad || labelId <= 0) return null;\n")
+	// A LABEL IS FOLLOWED BY ITS OBJECT'S , OR } AND NOTHING ELSE, and what
+	// follows says which half it is (§16.7): a label alone, a trailing comma
+	// allowed (§16.2), REFERS; a label with fields after it DEFINES.
 	b.WriteString("        int c = in.peek();\n")
+	b.WriteString("        if (c != '}' && c != ',') { in.bad = true; return null; }\n")
+	b.WriteString("        if (c == ',') { in.p++; c = in.peek(); }\n")
 	b.WriteString("        if (c == '}') {\n")
 	b.WriteString("            in.p++;\n")
 	b.WriteString("            TableJson.LabelEntry entry = in.labels.get(labelId);\n")
@@ -5339,9 +5372,7 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	b.WriteString("            if (entry.typeId == 0) { return null; }\n")
 	b.WriteString("            if (entry.typeId != targetTypeId) { in.rep.refuse(\"kind_mismatch\"); return null; }\n")
 	b.WriteString("            return (Value) entry.value;\n")
-	b.WriteString("        } else if (c == ',') {\n")
-	b.WriteString("            in.p++;\n")
-	b.WriteString("            if (in.peek() == '}') { in.bad = true; return null; }\n")
+	b.WriteString("        } else {\n")
 	b.WriteString("            if (in.labels.containsKey(labelId)) { in.bad = true; return null; }\n")
 	b.WriteString("            Value child = new Value();\n")
 	b.WriteString("            TableJson.LabelEntry entry = new TableJson.LabelEntry(child, targetTypeId, true);\n")
@@ -5349,8 +5380,6 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	fmt.Fprintf(b, "            jsonReadFieldsBody(in, child, depth + 1);\n")
 	b.WriteString("            entry.open = false;\n")
 	b.WriteString("            return child;\n")
-	b.WriteString("        } else {\n")
-	b.WriteString("            in.bad = true; return null;\n")
 	b.WriteString("        }\n")
 	b.WriteString("    }\n\n")
 
@@ -5416,7 +5445,13 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 			if f.Type.Optional || f.Type.Pointer {
 				takesNull = "true"
 			}
-			fmt.Fprintf(b, "                if (repeated && %s) { v.%s = %s; }\n", takesNull, varMember(f), variableDefault(f))
+			if variableBornCount(f) > 0 {
+				// A LIST BORN AT A (variableBornCount) is replaced whole by
+				// the list the text places, never appended to.
+				fmt.Fprintf(b, "                if (in.peek() != 'n' || (repeated && %s)) { v.%s = %s; }\n", takesNull, varMember(f), variableDefault(f))
+			} else {
+				fmt.Fprintf(b, "                if (repeated && %s) { v.%s = %s; }\n", takesNull, varMember(f), variableDefault(f))
+			}
 		}
 		readJsonFieldValue(b, u, st, f, "depth")
 		b.WriteString("                }\n")
@@ -5874,8 +5909,16 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	case f.Type.Kind == ir.TBool:
 		fmt.Fprintf(b, "        b.append(v.%s ? \"true\" : \"false\");\n", m)
 	case f.Type.Kind == ir.TFloat32:
+		if f.HasFloatRange {
+			lo, hi, _ := fixedFloatRange(f)
+			fmt.Fprintf(b, "        if (v.%s < %s || v.%s > %s) { throw new TableJson.Refused(\"out_of_range\"); }\n", m, lo, m, hi)
+		}
 		fmt.Fprintf(b, "        TableJson.writeFloat(b, %s, true);\n", javaStoredFloat(f, "v."+m))
 	case f.Type.Kind == ir.TFloat64:
+		if f.HasFloatRange {
+			lo, hi, _ := fixedFloatRange(f)
+			fmt.Fprintf(b, "        if (v.%s < %s || v.%s > %s) { throw new TableJson.Refused(\"out_of_range\"); }\n", m, lo, m, hi)
+		}
 		fmt.Fprintf(b, "        TableJson.writeFloat(b, %s, false);\n", javaStoredFloat(f, "v."+m))
 	case (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits) && f.Type.Width <= 32:
 		if f.Type.Kind == ir.TBits {
@@ -6256,7 +6299,7 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		// struct-array read below already does.
 		if f.ArrayBound > 0 {
 			fmt.Fprintf(b, "                            if (ar.fail) { /* damaged count keeps the prefix (§3, §4) */ } else {\n")
-			fmt.Fprintf(b, "                                if (n < 0 || n > %d) { n = %d; report.refuse(\"count_over_bound\"); }\n", f.ArrayBound, f.ArrayBound)
+			fmt.Fprintf(b, "                                if (n < 0 || n > %d) { n = %d; report.refuse(\"count_over_bound\"); }%s\n", f.ArrayBound, f.ArrayBound, countMinRefuse(f, "n", "count_over_bound"))
 			if f.Array != ir.ArrayFixed {
 				fmt.Fprintf(b, "                                v.%s.clear();\n", m)
 				fmt.Fprintf(b, "                                v.%sIdx.clear();\n", m)
@@ -6316,9 +6359,9 @@ func writeFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, 
 		}
 		if f.ArrayBound > 0 {
 			if f.IsTextList() {
-				fmt.Fprintf(b, "                                if (n < 0 || n > %d) { n = %d; report.refuse(%q); }\n", f.ArrayBound, f.ArrayBound, "count_over_bound: "+f.TextListElem().MapEntryOf)
+				fmt.Fprintf(b, "                                if (n < 0 || n > %d) { n = %d; report.refuse(%q); }%s\n", f.ArrayBound, f.ArrayBound, "count_over_bound: "+f.TextListElem().MapEntryOf, countMinRefuse(f, "n", "count_over_bound: "+f.TextListElem().MapEntryOf))
 			} else {
-				fmt.Fprintf(b, "                                if (n < 0 || n > %d) { n = %d; report.refuse(\"count_over_bound\"); }\n", f.ArrayBound, f.ArrayBound)
+				fmt.Fprintf(b, "                                if (n < 0 || n > %d) { n = %d; report.refuse(\"count_over_bound\"); }%s\n", f.ArrayBound, f.ArrayBound, countMinRefuse(f, "n", "count_over_bound"))
 			}
 		}
 		if f.Array != ir.ArrayFixed {
@@ -6470,7 +6513,7 @@ func writeArrayFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	cond := variableCompatibleKinds(ek, "ek")
 	countCheck := "else if (n < 0 || n > 0x7FFFFFFFL) { if (!report.refused) { report.reason = \"count_over_extent_cap\"; } report.refused = true; } else {"
 	if f.ArrayBound > 0 {
-		countCheck = fmt.Sprintf("else { if (n < 0 || n > %d) { n = %d; report.refuse(\"out_of_range\"); }", f.ArrayBound, f.ArrayBound)
+		countCheck = fmt.Sprintf("else { if (n < 0 || n > %d) { n = %d; report.refuse(\"out_of_range\"); }%s", f.ArrayBound, f.ArrayBound, countMinRefuse(f, "n", "count_over_bound"))
 	}
 	// The header is the element kind AND the count, read before either is
 	// judged (the engine's arrayBody, §3, §4): a damaged count is framing
@@ -6700,7 +6743,7 @@ func variableRidesGuard(b *strings.Builder, f *ir.Field, owner string) string {
 func writeArrayFieldSaveRef(b *strings.Builder, f *ir.Field, fieldRef string) {
 	m := varMember(f)
 	ek := variableElemWireKind(f)
-	fmt.Fprintf(b, "        if (%s) {\n", variableRidesGuard(b, f, "v"))
+	fmt.Fprintf(b, "        if (%s) {\n", variableArrayRides(b, f, m))
 	fmt.Fprintf(b, "            w.putLeb(w.ref(%s)); w.put8(14);\n", fieldRef)
 	fmt.Fprintf(b, "            int list = w.off;\n")
 	fmt.Fprintf(b, "            w.put8(%d); w.putLeb(v.%s.size());\n", ek, m)
@@ -6814,7 +6857,7 @@ func writeFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) 
 	switch {
 	case isPointerArray(f):
 		target := f.Type.Ref.(*ir.Struct)
-		fmt.Fprintf(b, "        if (%s) {\n", variableRidesGuard(b, f, "v"))
+		fmt.Fprintf(b, "        if (%s) {\n", variableArrayRides(b, f, m))
 		fmt.Fprintf(b, "            w.putLeb(w.ref(F_%s)); w.put8(14);\n", m)
 		fmt.Fprintf(b, "            int list = w.off;\n")
 		fmt.Fprintf(b, "            w.put8(17); w.putLeb(v.%s.size());\n", m)
@@ -6826,7 +6869,7 @@ func writeFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) 
 		fmt.Fprintf(b, "        }\n")
 	case isStructArray(f):
 		target := f.Type.Ref.(*ir.Struct)
-		fmt.Fprintf(b, "        if (%s) {\n", variableRidesGuard(b, f, "v"))
+		fmt.Fprintf(b, "        if (%s) {\n", variableArrayRides(b, f, m))
 		fmt.Fprintf(b, "            w.putLeb(w.ref(F_%s)); w.put8(14);\n", m)
 		fmt.Fprintf(b, "            int list = w.off;\n")
 		if ir.TextListPlain(f) {

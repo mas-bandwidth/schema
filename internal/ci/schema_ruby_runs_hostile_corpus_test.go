@@ -219,6 +219,16 @@ def refuse_reason(carrier, exc)
 
     return 'damaged'
   end
+  # A MESSAGE READ'S REFUSAL is the verdict, never the reason
+  # (docs/rulings.json refusal-verdict-only; docs/SPEC-TABLES.md §6.5): the
+  # corpus names batch_too_large and no_vocabulary on this carrier, and every
+  # other refusal, a bound one record down included (wire_damaged,
+  # out_of_range), is the manifest's generic damaged, as on the wire.
+  if %w[message message_novocab].include?(carrier)
+    return reason if %w[batch_too_large no_vocabulary non_finite_float].include?(reason)
+
+    return 'damaged'
+  end
   reason.empty? ? 'damaged' : reason
 end
 

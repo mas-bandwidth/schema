@@ -207,9 +207,10 @@ corpus once per build profile, so its recipe passes `-runs`.
 
 ## Reasons
 
-`damaged` is a read that reports a malformed/kind-mismatch event without naming
-a refusal. Every other reason is the Go engine's own name, read off its
-constants:
+`damaged` is every other refusal of the one read (damage, a kind mismatch, a
+value past its bound, a text that is not this dialect's JSON): the verdict is
+compared and the reason is per-language detail (SPEC-TABLES §6.5). Every other
+reason is the Go engine's own name, read off its constants:
 
 `newer_form`, `no_vocabulary`, `second_announcement`, `vocabulary_too_large`,
 `message_form_as_file`, `batch_too_large`, and `count_refusal` (the builder-path

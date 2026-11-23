@@ -216,6 +216,7 @@ func TestOptVerifyFastWorkflowSelector(t *testing.T) {
 	}{
 		{"c", "internal/codegen/ctable/emit.go", `["c"]`},
 		{"cpp", "internal/codegen/cpptable/emit.go", `["cpp"]`},
+		{"cfmt", "internal/codegen/cfmt/format.go", `["c"]`},
 		{"ccommon", "internal/codegen/ccommon/emit.go", `["c","cpp"]`},
 		{"cs", "internal/codegen/cstable/emit.go", `["cs"]`},
 		{"unity", "internal/codegen/unitytable/emit.go", `["unity"]`},

@@ -4,7 +4,9 @@ package compiler
 
 import (
 	"fmt"
+	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/rust"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/rusttable"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -26,6 +28,9 @@ func (t rustTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error
 // unit's lock once (compiler/lineage.go) and hands the lineage down as DATA, so
 // rusttable opens no file and a build ships a reader for every locked layout.
 func (rustTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (map[string][]byte, error) {
+	if err := refuseRustModuleNames(u); err != nil {
+		return nil, err
+	}
 	if err := refuseUnported(u, "rust"); err != nil {
 		return nil, err
 	}
@@ -68,6 +73,20 @@ func (rustTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) 
 	}
 	files["lib.rs"] = lib
 	return files, nil
+}
+
+// refuseRustModuleNames refuses a schema file whose basename, lowercased, is
+// a Rust keyword: lib.rs declares `mod <base lowercased>;`, and `mod type;`
+// or `mod box;` is a parse error in the generated crate (SPEC §4.6, ruling
+// target-name-safety). Refused by name here rather than emitted broken.
+func refuseRustModuleNames(u *ir.Unit) error {
+	words := check.ReservedIn("Rust")
+	for _, f := range u.Files {
+		if lower := strings.ToLower(f.Base); words[lower] {
+			return fmt.Errorf("schema file %s.schema: the Rust module is named after the basename lowercased, and %s is a reserved word in Rust; rename the file (SPEC §4.6)", f.Base, lower)
+		}
+	}
+	return nil
 }
 
 // rustTableLineage is the lock's lineage in the Rust backend's own spelling.

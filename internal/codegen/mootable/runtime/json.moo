@@ -1454,6 +1454,11 @@ end
 -- THE READER (docs/SPEC-TABLES.md §16.1, §16.2): one text, one cursor.
 ----------------------------------------------------------------------------
 
+-- THE DEPTH CAP (§16.2) counts every container, placed or skipped, the root at
+-- depth 0: 128 reads, 129 refuses. A read function handed `depth` is handed its
+-- HOLDER's depth, so the array, map, union or flags object it opens sits at
+-- depth + 1 and that container's values at depth + 2; skipValue and readTable
+-- are handed the depth of the value itself.
 local MAX_DEPTH = 128
 local MAX_KEY = 255
 
@@ -2281,9 +2286,14 @@ local function readPointerCell(r: Reader, holder: any, key: any, t: string?, dep
 	end
 	local entry = graph[label]
 	c = peek(r)
+	-- the label is a member like any other: a comma or the object's close
+	-- follows it, never the next key (§16.2)
 	if c == 44 then
 		r.pos += 1
 		c = peek(r)
+	elseif c ~= 125 then
+		r.bad = true
+		return false
 	end
 	local bare = c == 125
 	if bare ~= (entry ~= nil) then
@@ -2551,6 +2561,10 @@ local function placeWide(r: Reader, fd: any, holder: any, key: any, token: strin
 end
 
 local function readUnion(r: Reader, t: string, holder: any, key: any, depth: number): boolean
+	if depth + 1 > MAX_DEPTH then
+		r.bad = true -- the container itself sits one level below its holder (§16.2)
+		return false
+	end
 	if peek(r) ~= 123 then
 		r.bad = true
 		return false
@@ -2650,6 +2664,10 @@ local function readUnion(r: Reader, t: string, holder: any, key: any, depth: num
 end
 
 local function readFlags(r: Reader, names: { string }, holder: any, key: any, depth: number): boolean
+	if depth + 1 > MAX_DEPTH then
+		r.bad = true -- the container itself sits one level below its holder (§16.2)
+		return false
+	end
 	if peek(r) ~= 91 then
 		r.bad = true
 		return false
@@ -2800,7 +2818,7 @@ local function readScalar(r: Reader, fd: any, holder: any, key: any, depth: numb
 	end
 	if s == "int" and fd.kw > 4 and valueShape(r) ~= "s" then
 		r.report.kindChanged += 1
-		return skipValue(r, depth)
+		return skipValue(r, depth + 1)
 	end
 	if s == "int" and fd.kw > 4 and valueShape(r) == "s" then
 		-- A WIDE INTEGER READS AS A STRING (§16.2): the string holds
@@ -2852,6 +2870,10 @@ local function readBase64Into(r: Reader, b: buffer, bound: number): (boolean, nu
 end
 
 local function readArray(r: Reader, fd: any, rec: any, depth: number): boolean
+	if depth + 1 > MAX_DEPTH then
+		r.bad = true -- the container itself sits one level below its holder (§16.2)
+		return false
+	end
 	if peek(r) ~= 91 then
 		r.bad = true
 		return false
@@ -2968,6 +2990,10 @@ end
 -- bytes fit it: the first element past the total is dropped, counted outOfRange
 -- once, and every later element skipped, an element past [..N] still counted.
 local function readTextList(r: Reader, fd: any, tl: any, rec: any, depth: number): boolean
+	if depth + 1 > MAX_DEPTH then
+		r.bad = true -- the container itself sits one level below its holder (§16.2)
+		return false
+	end
 	if peek(r) ~= 91 then
 		r.bad = true
 		return false
@@ -3098,6 +3124,10 @@ local function readTextList(r: Reader, fd: any, tl: any, rec: any, depth: number
 end
 
 local function readKeyed(r: Reader, fd: any, rec: any, depth: number): boolean
+	if depth + 1 > MAX_DEPTH then
+		r.bad = true -- the container itself sits one level below its holder (§16.2)
+		return false
+	end
 	if peek(r) ~= 123 then
 		r.bad = true
 		return false
@@ -3228,6 +3258,10 @@ local function keyId(v: any): any
 end
 
 local function readMap(r: Reader, fd: any, rec: any, depth: number): boolean
+	if depth + 1 > MAX_DEPTH then
+		r.bad = true -- the container itself sits one level below its holder (§16.2)
+		return false
+	end
 	if peek(r) ~= 123 then
 		r.bad = true
 		return false
@@ -3307,17 +3341,17 @@ local function readMap(r: Reader, fd: any, rec: any, depth: number): boolean
 			else
 				r.report.kindChanged += 1
 			end
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		elseif placed == "mismatch" then
 			r.report.kindChanged += 1
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		elseif kd.s == "str" and #name > kd.bound then
 			r.report.outOfRange += 1
-			if not skipValue(r, depth + 1) then
+			if not skipValue(r, depth + 2) then
 				return false
 			end
 		else
@@ -3540,7 +3574,7 @@ readTable = function(r: Reader, d: any, rec: any, depth: number): boolean
 			r.bad = true
 			return false
 		end
-		if not readField(r, d, d.fields[1], rec, depth) then
+		if not readField(r, d, d.fields[1], rec, depth - 1) then
 			nameZero(r, d.name, d.fields[1])
 			return false
 		end

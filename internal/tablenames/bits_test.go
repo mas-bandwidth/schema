@@ -15,7 +15,7 @@ func TestEveryPortBackendBitIsItsOwn(t *testing.T) {
 	}
 	// The allocation in tablenames.go: Cpp 0, Cs 1, Rust 2, Go 3,
 	// Java 4, C 5, Elixir 6, Js 7, Dart 8, Lua 9, Luau 10, Moo 11,
-	// Squirrel 12.
+	// Squirrel 12, Python 13, Unity 14, Ruby 15.
 	allocs := []alloc{
 		{"Cpp", Cpp, 0},
 		{"Cs", Cs, 1},
@@ -44,6 +44,21 @@ func TestEveryPortBackendBitIsItsOwn(t *testing.T) {
 			t.Errorf("%s is 1<<%d, same bit as %s", a.name, bitShift(a.b), prev)
 		}
 		seen[a.b] = a.name
+	}
+}
+
+// TestBackendHasRoomForTheNextPort holds the allocation's promise that a new
+// port takes the next bit after the highest one used: with Ruby at 15 that is
+// 16, and Backend must be wide enough to hold it (review 2026-11-21,
+// TABLETEXT-10: a uint16 Backend had no next bit).
+func TestBackendHasRoomForTheNextPort(t *testing.T) {
+	highest := bitShift(Ruby)
+	for _, b := range []Backend{Cpp, Cs, Rust, Go, Java, C, Elixir, Js, Dart, Lua, Luau, Moo, Squirrel, Python, Unity} {
+		highest = max(highest, bitShift(b))
+	}
+	next := uint(highest + 1)
+	if Backend(1)<<next == 0 {
+		t.Fatalf("the next port's bit, 1<<%d, does not fit in Backend", next)
 	}
 }
 

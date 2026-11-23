@@ -256,7 +256,7 @@ Fixed now for the pro cards; never renamed.
 | `test/conformance/lobster/driver`, `ci.json`, `main.lobster` | the conformance leg | this card (driver, ci.json); conformance-leg (`main.lobster`) |
 | `make/lobster.mk` | the leg's build: `dist-lobster`, `toolchain-lobster`, `test-lobster`, `build/conformance-lobster` | this card; later cards add their own `make/lobster-*.mk` |
 | `bench/lobster/run`, `main.lobster`, `harness.lobster`, `route.sh` | the type-bench leg (BenchMixed, family gen) and the harness and output routing both legs share | schema-lobster-bench |
-| `bench/tables/lobster/leg`, `table_main.lobster` | the tables-bench leg (TableMixed on the tolerant wire, family table) | schema-lobster-bench |
+| `bench/tables/lobster/leg`, `table_main.lobster` | the tables-bench leg (TableMixed on the variable wire, family table) | schema-lobster-bench |
 | `make/lobster-bench.mk` | `bench-lobster-gate` (both legs' gates, no clock) and its negative control | schema-lobster-bench |
 
 **How a module reaches its runtime.** The runtime files are emitted beside
@@ -349,40 +349,30 @@ let _my = schema_rt.register_shape(MyShape { key: "my" })
 The last registration of a key wins, and a shape reads its report through
 `r.st.report`.
 
-**The report.** `LoadReport` holds the six counters reports.txt names
-(`unknown`, `kind_mismatch`, `widened`, `clamped`, `duplicate`, `malformed`),
-`blob_shared`, the `reason` a named rule gives and the verdict `refused` (a
-form byte this reader does not carry; a collection count past the int32 cap
-on a variable root, which Go returns as `CountRefusal`).
+**The report.** `schema_rt.load` is the one strict read (docs/rulings.json
+`strict-only-read`): any damage, out-of-range value, kind mismatch, repeated
+id or key, or blob named from two slots refuses the whole load through
+`read_refuse`, which sets `refused` and names the `reason`; nothing of a
+refused load is returned. An accepted read moves only `unknown`, `widened`,
+`retained` and `retain_lost`. `LoadReport` still declares the retired
+`kind_mismatch`, `clamped`, `duplicate` and `blob_shared` counters; no read
+moves them.
 
 **Carried by the descriptor card.** The descriptor names an enum-keyed
 array's KEY enum (`schema_rt.keyed_enum`) beside the variants
 (`schema_rt.keyed_keys`), a map field's ENTRY TABLE (`schema_rt.map_entry`),
 and each deprecated enum variant's flag on `ViewVariant`; the load's
 `DeprecatedEnumShape` yields the field's declared default for such a variant
-(§2.15), never the variant itself. A text-list clamp, of an element or of the
-count (§2.13), is counted but does not set `reason` to
-`clamped: <Holder.field>` as Go's does, and the report line the tests compare
-carries no `reason`; the text-lists card (schema-lobster-vt-text-lists)
-carries it. Retention (§6.6) and the region read are later cards'
-(retain-unknown).
+(§2.15), never the variant itself. A text list past its element or count
+bound (§2.13) refuses the load (`length_over_bound`, `count_over_bound`), as
+every other bound does. Retention (§6.6) and the region read are later
+cards' (retain-unknown).
 
-**The final widened map key.** A repeated map key whose earlier occurrence
-carried an incompatible kind keeps its `kind_bad` flag only until a later
-occurrence widens to the declared kind; the later key replaces the earlier
-kind (§2.8, §3), so `map_key` clears `kind_bad` when it takes the widening
-branch. Without that store the widening entry is discarded even though the
-last key wins. The reset is one store inside the widening branch, so a map
-key that does not widen never executes it. On a Linux/x86-64 fleet host with
-the pinned toolchain (default JIT), 200,000 plain loads of the shared
-`map_repeated_key_widen` vector took a median of 1.274s with the reset and
-0.537s without it: the difference is the repair keeping the widened entry
-instead of dropping it early. On `map_key_widen`, where no key repeats, the
-medians were 0.480s with and 0.471s without, inside run-to-run noise, because
-the added line is unreachable there. `TestLobsterMapRepeatedKeyLastKindWins`
-holds the repeated-key value to the Go reader and removes the reset to check
-the original misdecode returns; `TestLobsterMapRepeatedKeySharedVector` holds
-the shared vector through plain and retaining load, save and reload.
+**A repeated map key refuses.** `MapShape` decodes each entry once and
+holds the keys strictly ascending: a key equal to or below the previous one
+refuses the whole load as `wire_damaged` (§2.8; docs/rulings.json
+`strict-only-read`), whatever kind either occurrence carried. No later
+occurrence replaces an earlier one, so there is no last-wins repair to keep.
 
 **The test.** `TestLobsterTableLoadMatchesTheReports` loads every report and
 instance row of the tables manifest, one program per unit, and holds each
@@ -468,9 +458,9 @@ as lines (lowercase hex for bytes).**
   `LOBSTER_TOCPP` build does), and the row names which build it measured.
 - **The bench legs as they run.** `bench/lobster/run` (BenchMixed through
   `generated/bench/lobster`, family `gen`) and `bench/tables/lobster/leg`
-  (TableMixed through `generated/bench/tables/lobster` on the tolerant wire,
+  (TableMixed through `generated/bench/tables/lobster` on the variable wire,
   family `table`; the timed codec is the port's one runtime walk,
-  `load_tolerant` then `save`) run their program under the pin's DEFAULT JIT
+  `load`, the one strict read, then `save`) run their program under the pin's DEFAULT JIT
   with `--runtime-no-asserts`, every row `linkage=jit,checks=contract`. The
   clock is `seconds_elapsed()`. A Lobster program has one output stream and
   the compiler warns on it, so every line the runners print is tagged `csv `
@@ -515,7 +505,7 @@ as lines (lowercase hex for bytes).**
   generates every manifest unit for lobster and records each refusal by name
   as `<unit>.refused`; the driver answers that unit's cases `absent` without
   running anything. **The leg answers every surface the harness asks:**
-  `wire` (`load_tolerant` then `save_reasoned`; a graph naming one blob from
+  `wire` (`load`, the one strict read, then `save_reasoned`; a graph naming one blob from
   two slots is refused by name, `blob_shared`, as §2.5 requires of every
   writer, and answered `absent`), `report`, `message`, `retain`,
   `retain-save`, `cook`, `cook-write`, `cook-foreign`, `cook-forgery`,
@@ -617,7 +607,7 @@ stands:
 | the type wire's write, byte for byte against the C++ goldens; write misuse traps in the runtime, the schema's own contracts are `assert` | `lobster/write.go` | landed |
 | the type wire's read, every refusal latched by name, `serialize_end` | `lobster/read.go`, `lobster/runtime/schema_wire.lobster` | landed |
 | packet floats finite only; packet defaults | `lobster/` | landed |
-| the variable table wire's load (strict, and `load_tolerant`) and save | `lobstertable/runtime/load.lobster`, `schema_save.lobster` | landed |
+| the variable table wire's load (the one strict read; no tolerant read) and save | `lobstertable/runtime/load.lobster`, `schema_save.lobster` | landed |
 | the fixed form and its evolution under the lock's lineage | `lobstertable/fixedform.go`, `fixedevolve.go` | landed |
 | table floats finite only in every form | `lobstertable/` | landed |
 | defaults, renames, deprecation, the build version; optionals and `\| required`; collections; text lists; wide kinds; descriptors | `lobstertable/*.go` and their runtime modules | landed |

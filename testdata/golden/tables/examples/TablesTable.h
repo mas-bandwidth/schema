@@ -486,6 +486,10 @@ struct TableFieldInfo
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
+    // a [A..B]T count's declared minimum A (docs/SPEC.md §4.2, §5.1 row 3):
+    // the count it is born at and the least a read accepts; 0 on every other
+    // field
+    int32_t array_min;
 };
 
 struct TableTypeInfo
@@ -1012,6 +1016,12 @@ struct TableReader
         return false;
     }
 
+    // EVERY STRUCTURAL CONTENT IS A LEVEL, A UNION AMONG THEM (§4): a union
+    // whose arm is a union nests exactly as a table in a table does, so the
+    // cap below counts it, at the strict walk's own bound. A chain of unions
+    // costs five bytes a level, and an uncounted one is a recursion as deep as
+    // the input is long, which overflows the stack before the strict walk,
+    // which does count it, ever runs.
     bool badElementKindContent( uint8_t kind, const uint8_t * b, int64_t n, int depth )
     {
         if ( depth >= 128 ) return false;
@@ -1023,7 +1033,7 @@ struct TableReader
             case 15:
             {
                 TableReader r( b, n, report, ids );
-                return badElementKindUnion( r, depth );
+                return badElementKindUnion( r, depth + 1 );
             }
         }
         return false;
@@ -2068,6 +2078,14 @@ inline int64_t TableBitsRequired( int64_t min, int64_t max )
 // that rule CONSUMES are locals of the parse. The widths are int16 because a
 // width is bounded by the kind it came under and no kind holds more than 128
 // bits.
+// THE REPEAT CHECK's DEPTH (§3.3): one level per body open on the read's path,
+// named or skipped, and one per keyed array's key set. The skip walk's own
+// bound is 128 levels below the body that met the unknown entry, so this
+// leaves the named nesting above it the same room again; a read deeper than
+// this is damage, never silently untracked.
+static const int32_t kTableMessageSeenLevels = 256;
+static const int32_t kTableMessageSeenWords = kTableMessageSeenLevels / 64;
+
 struct TableMessageEntry
 {
     uint64_t id = 0;
@@ -2094,6 +2112,18 @@ struct TableMessageEntry
     uint8_t packing = 0;
     uint8_t elem_kind = 0;
     uint8_t elem_packing = 0;
+    // THE REPEAT CHECK's STATE (§3.3), kept in the caller's storage beside the
+    // shape so a body costs nothing to open and a frame carries no set: the
+    // slot of this id's FIRST entry (0 when it is this one), resolved once at
+    // AnnounceRead, because an ID is the wire's name and one name may be
+    // announced at two shapes; the read clock's tick at the last naming above
+    // nine bits holding that body's level; and one bit for each shallower
+    // level whose open body had named it before a deeper body named it again
+    // (TableMessageSeenOnce). Only the first entry of an id carries the last
+    // two.
+    uint32_t seen_first = 0;
+    uint64_t seen_at = 0;
+    uint64_t seen_below[kTableMessageSeenWords] = {};
 };
 
 // TableMessageKindBits is the widest RANGED value a kind can carry, its own
@@ -3977,6 +4007,14 @@ struct TableVocabulary
     // announcement after it is refused as second_announcement
     bool refused = false;
     int64_t max_bytes = kDefaultMaxBytes;
+    // THE REPEAT CHECK's CLOCK (§3.3, TableMessageSeenOnce): every body a read
+    // opens takes the next tick and keeps it at its level until it closes. A
+    // read moves these through the const reference it is handed, as it moves
+    // the entries' own marks, so one vocabulary is read by one thread at a
+    // time, which is what one direction of one connection is.
+    mutable uint64_t seen_clock = 0;
+    mutable int32_t seen_depth = 0;
+    mutable uint64_t seen_starts[kTableMessageSeenLevels] = {};
     // STRICT MODE IS OPT-IN (§3.3): false when the vocabulary is made, read
     // once by the FIRST AnnounceRead and never after. Set, an announcement
     // whose build version is not this unit's own is refused as
@@ -4245,7 +4283,12 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
         // scan is quadratic in the entry count, and the entry count is bounded
         // above at 4096, so it is at most eight million compares on a path
         // that runs ONCE a connection and never again.
+        //
+        // The same scan finds the slot of each id's FIRST entry, which the
+        // repeat check keys on (TableMessageSeenOnce), so a body never scans
+        // the vocabulary for it.
         const int64_t length = at - began;
+        uint32_t first = 0;
         for ( int64_t seen = 0; seen < count; seen++ )
         {
             const TableMessageEntry & other = vocabulary.entries[seen];
@@ -4254,20 +4297,24 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
                 to->damaged = true;
                 return false;
             }
+            if ( first == 0 && other.id == parsed.id ) { first = (uint32_t) ( seen + 1 ); }
         }
         parsed.min = began;
         parsed.max = at;
+        parsed.seen_first = first;
         count++;
     }
     // THE ENTRIES RESOLVED, over bytes the first pass already accepted
     at = 0;
     for ( int64_t slot = 0; slot < count; slot++ )
     {
+        const uint32_t first = vocabulary.entries[slot].seen_first;
         if ( !TableMessageEntryRead( words, words_bytes, at, vocabulary.entries[slot] ) )
         {
             to->damaged = true;
             return false;
         }
+        vocabulary.entries[slot].seen_first = first;
     }
     vocabulary.count = count;
     vocabulary.ref_bits = TableBitsRequired( 0, count );
@@ -4335,6 +4382,8 @@ inline bool TableMessageSkipVariant( TableBitReader & r, const TableVocabulary &
 // element pass depth + 1. depth > 128 is malformed; 128 itself still skips.
 inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int depth = 0 );
 inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry, int depth = 0 );
+inline bool TableMessageSkipKeyed( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry, uint64_t n, int depth );
+inline bool TableMessageSkipField( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry, int depth = 0 );
 
 // TableMessageSkipElement steps over ONE element of an array or keyed entry
 // by the element's own announced shape: a nested body to its zero reference,
@@ -4386,15 +4435,18 @@ inline bool TableMessageSignedKind( uint8_t kind )
     return ( kind >= 2 && kind <= 5 ) || kind == 18 || ( kind >= 20 && kind <= 24 );
 }
 
-// TableMessageSkipRanged steps over a RANGED value and holds base plus offset
-// to the kind's own domain, the bound a named read holds it to: the offset's
-// bits can spell a value past the sender's range (§3.3). The base and the
-// offset are added exactly as the named read adds them. The arithmetic is on
-// 64-bit words, since this runtime carries no 128-bit type of its own.
-inline bool TableMessageSkipRanged( TableBitReader & r, uint8_t kind, int64_t width, int64_t base_lo, int64_t base_hi )
+// TableMessageRangedHolds is THE ANNOUNCED KIND'S DOMAIN for a RANGED value
+// (§3.3): the offset's bits can spell a value past the sender's range and past
+// the kind itself, and base plus offset is held to the kind's own storage
+// domain, exactly, with no wraparound, before anything else reads it. It is
+// the ONE test the skip path (TableMessageSkipRanged) and every named read
+// take, so the two cannot drift: a named read that added the base modulo 2^64
+// landed a sum past the domain wrapped back into range where the skip of the
+// same bytes refused. lo and hi are the offset's two words, hi zero at 64 bits
+// or fewer. The arithmetic is on 64-bit words, since this runtime carries no
+// 128-bit type of its own.
+inline bool TableMessageRangedHolds( uint8_t kind, uint64_t lo, uint64_t hi, int64_t base_lo, int64_t base_hi )
 {
-    uint64_t lo = 0, hi = 0;
-    if ( width < 0 || !r.get( lo, width < 64 ? width : 64 ) || ( width > 64 && !r.get( hi, width - 64 ) ) ) { return false; }
     const bool is_signed = TableMessageSignedKind( kind );
     const int64_t domain = TableMessageKindBits( kind );
     if ( domain == 128 )
@@ -4408,6 +4460,7 @@ inline bool TableMessageSkipRanged( TableBitReader & r, uint8_t kind, int64_t wi
     }
     // AT SIXTY-FOUR BITS OR FEWER the offset is one word and so is the base,
     // sign-extended for a signed kind, and the sum is held to both ends
+    if ( hi != 0 ) { return false; }
     if ( !is_signed )
     {
         const uint64_t top = domain == 64 ? UINT64_MAX : ( uint64_t( 1 ) << domain ) - 1;
@@ -4420,28 +4473,95 @@ inline bool TableMessageSkipRanged( TableBitReader & r, uint8_t kind, int64_t wi
     return base_lo >= bottom || lo >= (uint64_t) bottom - (uint64_t) base_lo;
 }
 
-// THE SKIP PATH'S SEEN SET is a fixed bitmap over an id's FIRST vocabulary
-// slot, so a skip allocates nothing and the depth cap bounds the walk. An ID
-// is the wire's own name (§3.2, §3.3), not the slot that happened to carry
-// it: one name may be announced at two shapes, and naming it twice is a
-// repeat whichever slot it rode. The bitmap covers every slot a 64 KiB
-// announcement can carry; a slot past it is damage, never silently untracked.
-static const int64_t kTableMessageSeenBits = 65536;
-
-// TableMessageSeenOnce records one id of a body or one key of a keyed array
-// and answers false on a repeat, whether or not this reader can name the field
-// (§3.2, §3.3).
-inline bool TableMessageSeenOnce( uint64_t * seen, const TableVocabulary & vocabulary, uint64_t ref, uint64_t id )
+// TableMessageSkipRanged steps over a RANGED value and holds base plus offset
+// to the kind's own domain, the bound a named read holds it to (§3.3).
+inline bool TableMessageSkipRanged( TableBitReader & r, uint8_t kind, int64_t width, int64_t base_lo, int64_t base_hi )
 {
-    uint64_t slot = ref;
-    for ( uint64_t i = 1; i < ref; i++ )
+    uint64_t lo = 0, hi = 0;
+    if ( width < 0 || !r.get( lo, width < 64 ? width : 64 ) || ( width > 64 && !r.get( hi, width - 64 ) ) ) { return false; }
+    return TableMessageRangedHolds( kind, lo, hi, base_lo, base_hi );
+}
+
+// THE SEEN SET OF ONE BODY (§3.2, §3.3): a FIELD ID TWICE IN ONE BODY, and one
+// KEY twice in one keyed array, is damage, named or skipped. An ID is the
+// wire's own name, not the slot that happened to carry it: one name may be
+// announced at two shapes, and naming it twice is a repeat whichever slot it
+// rode, so the check keys on the id's FIRST slot, which AnnounceRead resolved.
+//
+// THE SET IS NOT ON THE FRAME. A bitmap per body, sized for every slot an
+// announcement can carry, was 8 KiB of every level of a walk the input nests
+// 128 deep, a megabyte of stack for a twenty-byte batch, and 8 KiB zeroed for
+// every empty body a count can claim. The marks live in the entries instead,
+// as the Go leg keeps them (gotable's tableMessageSeenRepeat): opening a body
+// takes the next tick of the vocabulary's clock and keeps it at the body's
+// level, and naming an id records the tick and the level in the id's first
+// entry. A body's own earlier naming still stands when a deeper body named the
+// id since, because that naming left a bit for each shallower level whose open
+// body had named it; a level's bit stands only while that level's body is the
+// one open at the last naming, and the levels opened since are cleared as the
+// id is named again. Opening a body is one store, a naming is a constant
+// number of word operations and at most a binary search over the open levels,
+// and nothing is zeroed, so the work is linear in the batch.
+struct TableMessageSeenBody
+{
+    const TableVocabulary & vocabulary;
+    int32_t level;
+    explicit TableMessageSeenBody( const TableVocabulary & owner ) : vocabulary( owner ), level( owner.seen_depth )
     {
-        if ( TableVocabularyEntryAt( vocabulary, i ).id == id ) { slot = i; break; }
+        if ( level < kTableMessageSeenLevels ) { owner.seen_starts[level] = ++owner.seen_clock; }
+        owner.seen_depth = level + 1;
     }
-    if ( slot >= (uint64_t) kTableMessageSeenBits ) { return false; }
-    const uint64_t bit = uint64_t( 1 ) << ( slot & 63 );
-    if ( ( seen[slot >> 6] & bit ) != 0 ) { return false; }
-    seen[slot >> 6] |= bit;
+    ~TableMessageSeenBody() { vocabulary.seen_depth = level; }
+    TableMessageSeenBody( const TableMessageSeenBody & ) = delete;
+    TableMessageSeenBody & operator=( const TableMessageSeenBody & ) = delete;
+};
+
+// keeps the marks of the levels below level and clears the rest
+inline void TableMessageSeenKeepBelow( TableMessageEntry & entry, int32_t level )
+{
+    for ( int32_t w = 0; w < kTableMessageSeenWords; w++ )
+    {
+        const int32_t low = w * 64;
+        if ( level <= low ) { entry.seen_below[w] = 0; }
+        else if ( level < low + 64 ) { entry.seen_below[w] &= ( uint64_t( 1 ) << ( level - low ) ) - 1; }
+    }
+}
+
+// TableMessageSeenOnce records one id of the open body (or one key of the
+// open keyed array) through the reference that named it, and answers false on
+// a repeat, whether or not this reader can name the field, and past the level
+// bound. ref is a slot the caller already held to [1, count].
+inline bool TableMessageSeenOnce( const TableMessageSeenBody & body, uint64_t ref )
+{
+    const int32_t level = body.level;
+    if ( level >= kTableMessageSeenLevels ) { return false; }
+    const TableVocabulary & vocabulary = body.vocabulary;
+    TableMessageEntry * entry = &vocabulary.entries[ref - 1];
+    if ( entry->seen_first != 0 ) { entry = &vocabulary.entries[entry->seen_first - 1]; }
+    const uint64_t at = entry->seen_at >> 9;
+    const int32_t last = (int32_t) ( entry->seen_at & 511 );
+    if ( vocabulary.seen_starts[level] <= at )
+    {
+        // this body was open at the last naming, so that naming was this
+        // body's or a deeper one's, and every deeper body has closed since
+        if ( last == level || ( ( entry->seen_below[level >> 6] >> ( level & 63 ) ) & 1 ) != 0 ) { return false; }
+        TableMessageSeenKeepBelow( *entry, level );
+    }
+    else
+    {
+        // this body opened after the last naming: the levels still open
+        // since then are the ones whose start is no later than it
+        int32_t kept = 0, high = level;
+        while ( kept < high )
+        {
+            const int32_t mid = ( kept + high ) / 2;
+            if ( vocabulary.seen_starts[mid] <= at ) { kept = mid + 1; }
+            else { high = mid; }
+        }
+        if ( last < kept ) { entry->seen_below[last >> 6] |= uint64_t( 1 ) << ( last & 63 ); }
+        TableMessageSeenKeepBelow( *entry, kept );
+    }
+    entry->seen_at = ( vocabulary.seen_clock << 9 ) | (uint64_t) level;
     return true;
 }
 
@@ -4512,6 +4632,9 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
         {
             uint64_t n = 0;
             if ( !r.get( n, TableBitsRequired( 0, entry.max ) ) || !r.align() ) { return false; }
+            // a length above the ANNOUNCED max, which its bits can spell and
+            // no conforming writer emits, refuses as at a named field (§3.3)
+            if ( n > (uint64_t) entry.max ) { return false; }
             if ( n > (uint64_t) ( ( r.bits - r.offset ) / 8 ) ) { return false; }
             const uint8_t * text = r.buffer + ( r.offset >> 3 );
             if ( !TableUtf8Valid( text, n ) ) { return false; }
@@ -4566,17 +4689,9 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
             // does not, so the depth cap counts what §4 says it counts.
             const bool nested = entry.elem_kind == 13 || entry.elem_kind == 14 || entry.elem_kind == 15 ||
                 entry.elem_kind == 16 || entry.elem_kind == 17 || entry.elem_kind == 30;
-            uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+            if ( entry.kind == 16 ) { return TableMessageSkipKeyed( r, vocabulary, index_bits, entry, n, nested ? depth + 1 : depth ); }
             for ( uint64_t i = 0; i < n; i++ )
             {
-                if ( entry.kind == 16 )
-                {
-                    uint64_t key_ref = 0;
-                    TableMessageEntry key_entry;
-                    if ( !r.get( key_ref, vocabulary.ref_bits ) ) { return false; }
-                    if ( !TableMessageNameEntry( vocabulary, key_ref, key_entry ) ) { return false; }
-                    if ( !TableMessageSeenOnce( seen, vocabulary, key_ref, key_entry.id ) ) { return false; } // one key twice
-                }
                 if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry, nested ? depth + 1 : depth ) ) { return false; }
             }
             return true;
@@ -4590,10 +4705,28 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
     return width >= 0 && r.skip( width );
 }
 
+// TableMessageSkipKeyed walks a skipped keyed array's n (key, element) pairs:
+// the keys are their own seen set, one level of the repeat check's own, so a
+// frame of the skip walk carries none.
+inline bool TableMessageSkipKeyed( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry, uint64_t n, int depth )
+{
+    const TableMessageSeenBody keys( vocabulary );
+    for ( uint64_t i = 0; i < n; i++ )
+    {
+        uint64_t key_ref = 0;
+        TableMessageEntry key_entry;
+        if ( !r.get( key_ref, vocabulary.ref_bits ) ) { return false; }
+        if ( !TableMessageNameEntry( vocabulary, key_ref, key_entry ) ) { return false; }
+        if ( !TableMessageSeenOnce( keys, key_ref ) ) { return false; } // one key twice
+        if ( !TableMessageSkipElement( r, vocabulary, index_bits, entry, depth ) ) { return false; }
+    }
+    return true;
+}
+
 inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, int depth )
 {
     if ( depth > 128 ) { return false; }
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const TableMessageSeenBody seen( vocabulary );
     for ( ;; )
     {
         uint64_t ref = 0;
@@ -4602,15 +4735,25 @@ inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vo
         if ( ref > (uint64_t) vocabulary.count ) { return false; }
         const TableMessageEntry & entry = TableVocabularyEntryAt( vocabulary, ref );
         if ( TableMessageReserved( entry.id ) ) { return false; }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) ) { return false; } // one id twice
-        if ( entry.kind == 15 )
-        {
-            TableBitReader peek = r;
-            uint64_t arm = 0;
-            if ( !peek.get( arm, vocabulary.ref_bits ) || arm == 0 ) { return false; }
-        }
-        if ( !TableMessageSkip( r, vocabulary, index_bits, entry, depth ) ) { return false; }
+        if ( !TableMessageSeenOnce( seen, ref ) ) { return false; } // one id twice
+        if ( !TableMessageSkipField( r, vocabulary, index_bits, entry, depth ) ) { return false; }
     }
+}
+
+// TableMessageSkipField skips one FIELD's payload: a union FIELD names an arm,
+// because a conforming writer elides an empty union (§3.3, §22.2), so an
+// explicit arm 0 at a field is not the one encoding and is damage, in a root
+// body and in a nested one alike. A union ELEMENT is not elided and its arm 0
+// is the empty arm, which is why TableMessageSkip itself admits it.
+inline bool TableMessageSkipField( TableBitReader & r, const TableVocabulary & vocabulary, int64_t index_bits, const TableMessageEntry & entry, int depth )
+{
+    if ( entry.kind == 15 )
+    {
+        TableBitReader peek = r;
+        uint64_t arm = 0;
+        if ( !peek.get( arm, vocabulary.ref_bits ) || arm == 0 ) { return false; }
+    }
+    return TableMessageSkip( r, vocabulary, index_bits, entry, depth );
 }
 
 // AnnounceMeasure is the announcement's byte count, which is a constant of the
@@ -11052,7 +11195,7 @@ inline void LoadoutConfigReset( LoadoutConfig & value )
 {
     value.grade = Grade::Silver;
     memset( value.grades, 0, sizeof( value.grades ) );
-    value.grades_count = 0; // born at Min (docs/SPEC.md §4.2)
+    value.grades_count = 0;
     memset( value.podium, 0, sizeof( value.podium ) );
     value.perks = 0;
     WeaponConfigReset( value.primary );
@@ -11064,7 +11207,7 @@ inline void LoadoutConfigReset( LoadoutConfig & value )
     {
         AttachmentReset( value.attachments[i] );
     }
-    value.attachments_count = 0; // born at Min (docs/SPEC.md §4.2)
+    value.attachments_count = 0;
 }
 
 inline void ProfileConfigReset( ProfileConfig & value )
@@ -11094,12 +11237,12 @@ inline void RootConfigReset( RootConfig & value )
     {
         WeaponConfigReset( value.weapons[i] );
     }
-    value.weapons_count = 0; // born at Min (docs/SPEC.md §4.2)
+    value.weapons_count = 0;
     for ( int32_t i = 0; i < 4; i++ )
     {
         ProfileConfigReset( value.profiles[i] );
     }
-    value.profiles_count = 0; // born at Min (docs/SPEC.md §4.2)
+    value.profiles_count = 0;
 }
 
 inline void AttachmentReset( Attachment & value )
@@ -11214,9 +11357,10 @@ inline int64_t WeaponConfigMeasureBody( TableIds & ids, const WeaponConfig & val
     if ( table_float_to_bits( value.damage ) != table_float_to_bits( 21.0f ) ) { bytes += TableLebBytes( ids.ref_at( 66, 0x7f6308be8ab37fc0ull ) ) + 1 + 4; } // damage
     if ( !TableFloatFinite( value.speed ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
     if ( table_float_to_bits( value.speed ) != table_float_to_bits( 500.0f ) ) { bytes += TableLebBytes( ids.ref_at( 12, 0x1733055702acb1d2ull ) ) + 1 + 4; } // speed
-    schema_assert( !( value.penetration < 0 || value.penetration > 10 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
+    schema_assert( value.penetration >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+    schema_assert( value.penetration <= 10 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     if ( value.penetration != 1 ) { bytes += TableLebBytes( ids.ref_at( 47, 0x4f31c5309e13e932ull ) ) + 1 + 4; } // penetration
-    schema_assert( value.channel <= 63ull ); // bits(6) wider than 6 bits, debug only (SPEC.md §5.1 row 2)
+    schema_assert( value.channel <= 63ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 2, bits(6))
     if ( value.channel != 0 ) { bytes += TableLebBytes( ids.ref_at( 86, 0xa5013e9ad5caeda4ull ) ) + 1 + 1; } // channel
     if ( value.homing != false ) { bytes += TableLebBytes( ids.ref_at( 94, 0xad6587bc602e3f59ull ) ) + 1 + 1; } // homing
     if ( value.effect.type != EffectType::None ) // None elides — the absence of the field is the None
@@ -11282,13 +11426,14 @@ TABLEDEMO_TABLE_INLINE bool WeaponConfigSaveBody( TableWriter & w, TableIds & id
     if ( value.penetration != 1 )
     {
         w.header( ids.ref_at( 47, 0x4f31c5309e13e932ull ), 4 ); // penetration
-        schema_assert( !( value.penetration < 0 || value.penetration > 10 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
+        schema_assert( value.penetration >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+        schema_assert( value.penetration <= 10 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.penetration ) );
     }
     if ( value.channel != 0 )
     {
         w.header( ids.ref_at( 86, 0xa5013e9ad5caeda4ull ), 6 ); // channel
-        schema_assert( value.channel <= 63ull ); // bits(6) wider than 6 bits, debug only (SPEC.md §5.1 row 2)
+        schema_assert( value.channel <= 63ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 2, bits(6))
         w.put8( uint8_t( value.channel ) );
     }
     if ( value.homing != false )
@@ -11912,7 +12057,7 @@ inline bool WeaponConfigSaveMessageBody( TableBitWriter & w, const WeaponConfig 
 inline bool WeaponConfigLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, WeaponConfig & value )
 {
     WeaponConfigReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const TableMessageSeenBody seen( vocabulary );
     const bool same_build = vocabulary.build_version == BuildVersion;
     int32_t last_field_ord = 0;
     for ( ;; )
@@ -11943,7 +12088,7 @@ inline bool WeaponConfigLoadMessageBody( TableBitReader & r, const TableVocabula
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        if ( !TableMessageSeenOnce( seen, ref ) )
         {
             report->damaged = true;
             return false;
@@ -11966,7 +12111,7 @@ inline bool WeaponConfigLoadMessageBody( TableBitReader & r, const TableVocabula
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -12030,7 +12175,7 @@ inline bool WeaponConfigLoadMessageBody( TableBitReader & r, const TableVocabula
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -12102,8 +12247,14 @@ inline bool WeaponConfigLoadMessageBody( TableBitReader & r, const TableVocabula
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -12129,7 +12280,7 @@ inline bool WeaponConfigLoadMessageBody( TableBitReader & r, const TableVocabula
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -12144,8 +12295,14 @@ inline bool WeaponConfigLoadMessageBody( TableBitReader & r, const TableVocabula
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -12165,7 +12322,7 @@ inline bool WeaponConfigLoadMessageBody( TableBitReader & r, const TableVocabula
                         report->refuse_reason = out_of_range;
                     }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 1 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 1 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -12190,7 +12347,7 @@ inline bool WeaponConfigLoadMessageBody( TableBitReader & r, const TableVocabula
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -12205,8 +12362,14 @@ inline bool WeaponConfigLoadMessageBody( TableBitReader & r, const TableVocabula
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 255ull )
                     {
@@ -12221,7 +12384,7 @@ inline bool WeaponConfigLoadMessageBody( TableBitReader & r, const TableVocabula
                         report->refuse_reason = out_of_range;
                     } // bits(6) width clamp
                     uint8_t decoded_v = (uint8_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -12246,7 +12409,7 @@ inline bool WeaponConfigLoadMessageBody( TableBitReader & r, const TableVocabula
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -12277,7 +12440,7 @@ inline bool WeaponConfigLoadMessageBody( TableBitReader & r, const TableVocabula
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -12358,7 +12521,7 @@ inline bool WeaponConfigLoadMessageBody( TableBitReader & r, const TableVocabula
             default:
                 if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
                     report->damaged = true;
                     return false;
@@ -12474,8 +12637,7 @@ inline int64_t LoadoutConfigMeasureBody( TableIds & ids, const LoadoutConfig & v
         bytes += TableLebBytes( ref_grade ) + 1 + TableLebBytes( variant_grade ); // grade: the variant's reference
     }
     schema_assert( value.grades_count >= 0 && value.grades_count <= 4 ); // storage invariant, debug only (§5.1)
-    bool rides_grades = value.grades_count > 0;
-    if ( rides_grades )
+    if ( value.grades_count > 0 )
     {
         const uint64_t ref_grades = ids.ref_at( 131, 0xd90a4e7682f799c5ull );
         int64_t body_grades = 0;
@@ -12527,8 +12689,7 @@ inline int64_t LoadoutConfigMeasureBody( TableIds & ids, const LoadoutConfig & v
         bytes += TableLebBytes( ref_backups ) + 1 + TableLebBytes( (uint64_t) ( body_backups ) ) + ( body_backups ); // backups (fixed [2])
     }
     schema_assert( value.attachments_count >= 0 && value.attachments_count <= 8 ); // storage invariant, debug only (§5.1)
-    bool rides_attachments = value.attachments_count > 0;
-    if ( rides_attachments )
+    if ( value.attachments_count > 0 )
     {
         const uint64_t ref_attachments = ids.ref_at( 145, 0xf901aa0340249a41ull );
         int64_t body_attachments = 0;
@@ -12565,8 +12726,7 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBody( TableWriter & w, TableIds & i
         w.header( ref_grade, 30 ); w.putleb( variant_grade ); // grade
     }
     schema_assert( value.grades_count >= 0 && value.grades_count <= 4 ); // storage invariant, debug only (§5.1)
-    bool rides_grades = value.grades_count > 0;
-    if ( rides_grades )
+    if ( value.grades_count > 0 )
     {
         const uint64_t ref_grades = ids.ref_at( 131, 0xd90a4e7682f799c5ull );
         int64_t body_grades = 0;
@@ -12666,8 +12826,7 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBody( TableWriter & w, TableIds & i
         }
     }
     schema_assert( value.attachments_count >= 0 && value.attachments_count <= 8 ); // storage invariant, debug only (§5.1)
-    bool rides_attachments = value.attachments_count > 0;
-    if ( rides_attachments )
+    if ( value.attachments_count > 0 )
     {
         const uint64_t ref_attachments = ids.ref_at( 145, 0xf901aa0340249a41ull );
         int64_t body_attachments = 0;
@@ -13346,8 +13505,7 @@ inline int64_t LoadoutConfigMeasureMessageBody( int64_t at, const LoadoutConfig 
         bits += kTableMessageRefBitsHere;
     }
     schema_assert( value.grades_count >= 0 && value.grades_count <= 4 ); // storage invariant, debug only (§5.1)
-    bool rides_grades = value.grades_count > 0;
-    if ( rides_grades )
+    if ( value.grades_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
         bits += 3;
@@ -13399,8 +13557,7 @@ inline int64_t LoadoutConfigMeasureMessageBody( int64_t at, const LoadoutConfig 
         }
     }
     schema_assert( value.attachments_count >= 0 && value.attachments_count <= 8 ); // storage invariant, debug only (§5.1)
-    bool rides_attachments = value.attachments_count > 0;
-    if ( rides_attachments )
+    if ( value.attachments_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
         bits += 4;
@@ -13432,8 +13589,7 @@ inline bool LoadoutConfigSaveMessageBody( TableBitWriter & w, const LoadoutConfi
         }
     }
     schema_assert( value.grades_count >= 0 && value.grades_count <= 4 ); // storage invariant, debug only (§5.1)
-    bool rides_grades = value.grades_count > 0;
-    if ( rides_grades )
+    if ( value.grades_count > 0 )
     {
         w.put( 21, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.grades_count ) - 0, 3 );
@@ -13491,8 +13647,7 @@ inline bool LoadoutConfigSaveMessageBody( TableBitWriter & w, const LoadoutConfi
         }
     }
     schema_assert( value.attachments_count >= 0 && value.attachments_count <= 8 ); // storage invariant, debug only (§5.1)
-    bool rides_attachments = value.attachments_count > 0;
-    if ( rides_attachments )
+    if ( value.attachments_count > 0 )
     {
         w.put( 26, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.attachments_count ) - 0, 4 );
@@ -13512,7 +13667,7 @@ inline bool LoadoutConfigSaveMessageBody( TableBitWriter & w, const LoadoutConfi
 inline bool LoadoutConfigLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, LoadoutConfig & value )
 {
     LoadoutConfigReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const TableMessageSeenBody seen( vocabulary );
     const bool same_build = vocabulary.build_version == BuildVersion;
     int32_t last_field_ord = 0;
     for ( ;; )
@@ -13543,7 +13698,7 @@ inline bool LoadoutConfigLoadMessageBody( TableBitReader & r, const TableVocabul
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        if ( !TableMessageSeenOnce( seen, ref ) )
         {
             report->damaged = true;
             return false;
@@ -13566,7 +13721,7 @@ inline bool LoadoutConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13622,7 +13777,7 @@ inline bool LoadoutConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13709,7 +13864,7 @@ inline bool LoadoutConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13805,8 +13960,14 @@ inline bool LoadoutConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             uint64_t decoded_v = (uint64_t) decoded_wide;
                             value.perks = decoded_v;
                         }
@@ -13815,7 +13976,7 @@ inline bool LoadoutConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13830,11 +13991,17 @@ inline bool LoadoutConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     uint64_t decoded_v = (uint64_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13859,7 +14026,7 @@ inline bool LoadoutConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13895,7 +14062,7 @@ inline bool LoadoutConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -13951,7 +14118,7 @@ inline bool LoadoutConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -14000,7 +14167,7 @@ inline bool LoadoutConfigLoadMessageBody( TableBitReader & r, const TableVocabul
             default:
                 if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
                     report->damaged = true;
                     return false;
@@ -15195,7 +15362,7 @@ inline bool ProfileConfigSaveMessageBody( TableBitWriter & w, const ProfileConfi
 inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, ProfileConfig & value )
 {
     ProfileConfigReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const TableMessageSeenBody seen( vocabulary );
     const bool same_build = vocabulary.build_version == BuildVersion;
     int32_t last_field_ord = 0;
     for ( ;; )
@@ -15226,7 +15393,7 @@ inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabul
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        if ( !TableMessageSeenOnce( seen, ref ) )
         {
             report->damaged = true;
             return false;
@@ -15249,7 +15416,7 @@ inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -15303,7 +15470,7 @@ inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -15312,7 +15479,13 @@ inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                 }
                 {
                     uint64_t n = 0;
-                    if ( !r.get( n, TableBitsRequired( entry.min, entry.max ) ) || !r.align() || !r.has( (int64_t) n * 8 ) )
+                    if ( !r.get( n, TableBitsRequired( entry.min, entry.max ) ) )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
+                    n += (uint64_t) entry.min;
+                    if ( !r.align() || !r.has( (int64_t) n * 8 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -15364,8 +15537,14 @@ inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             if ( (uint64_t) decoded_wide > 4294967295ull )
                             {
                                 decoded_wide = (int64_t) 4294967295ull;
@@ -15380,7 +15559,7 @@ inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -15395,8 +15574,14 @@ inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 4294967295ull )
                     {
@@ -15405,7 +15590,7 @@ inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                         report->refuse_reason = out_of_range;
                     }
                     uint32_t decoded_v = (uint32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -15430,7 +15615,7 @@ inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -15445,8 +15630,14 @@ inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -15466,7 +15657,7 @@ inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                         report->refuse_reason = out_of_range;
                     }
                     int8_t decoded_v = (int8_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -15499,8 +15690,14 @@ inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -15526,7 +15723,7 @@ inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -15541,8 +15738,14 @@ inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -15562,7 +15765,7 @@ inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                         report->refuse_reason = out_of_range;
                     }
                     int16_t decoded_v = (int16_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -15595,8 +15798,14 @@ inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -15610,7 +15819,7 @@ inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -15625,8 +15834,14 @@ inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -15634,7 +15849,7 @@ inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                     }
                     const int64_t pre_clamp = decoded_wide;
                     int64_t decoded_v = (int64_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -15659,7 +15874,7 @@ inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -15674,8 +15889,14 @@ inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 255ull )
                     {
@@ -15684,7 +15905,7 @@ inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                         report->refuse_reason = out_of_range;
                     }
                     uint8_t decoded_v = (uint8_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -15717,8 +15938,14 @@ inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             if ( (uint64_t) decoded_wide > 65535ull )
                             {
                                 decoded_wide = (int64_t) 65535ull;
@@ -15733,7 +15960,7 @@ inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -15748,8 +15975,14 @@ inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     if ( (uint64_t) decoded_wide > 65535ull )
                     {
@@ -15758,7 +15991,7 @@ inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                         report->refuse_reason = out_of_range;
                     }
                     uint16_t decoded_v = (uint16_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -15791,8 +16024,14 @@ inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             uint64_t decoded_v = (uint64_t) decoded_wide;
                             value.epoch = decoded_v;
                         }
@@ -15801,7 +16040,7 @@ inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -15816,11 +16055,17 @@ inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
                     uint64_t decoded_v = (uint64_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -15882,7 +16127,7 @@ inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -15913,7 +16158,7 @@ inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -16016,7 +16261,7 @@ inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -16047,7 +16292,7 @@ inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabul
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -16070,7 +16315,7 @@ inline bool ProfileConfigLoadMessageBody( TableBitReader & r, const TableVocabul
             default:
                 if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
                     report->damaged = true;
                     return false;
@@ -16181,8 +16426,7 @@ inline int64_t RootConfigMeasureBody( TableIds & ids, const RootConfig & value )
     if ( !TableUtf8Valid( (const uint8_t *) value.version_note, (uint64_t) value.version_note_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.version_note_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 72, 0x8a67c9728746d394ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.version_note_length ) ) + ( value.version_note_length ); } // version_note
     schema_assert( value.weapons_count >= 0 && value.weapons_count <= 8 ); // storage invariant, debug only (§5.1)
-    bool rides_weapons = value.weapons_count > 0;
-    if ( rides_weapons )
+    if ( value.weapons_count > 0 )
     {
         const uint64_t ref_weapons = ids.ref_at( 40, 0x41cbd901b87fabb6ull );
         int64_t body_weapons = 0;
@@ -16196,8 +16440,7 @@ inline int64_t RootConfigMeasureBody( TableIds & ids, const RootConfig & value )
         bytes += TableLebBytes( ref_weapons ) + 1 + TableLebBytes( (uint64_t) ( body_weapons ) ) + ( body_weapons ); // weapons
     }
     schema_assert( value.profiles_count >= 0 && value.profiles_count <= 4 ); // storage invariant, debug only (§5.1)
-    bool rides_profiles = value.profiles_count > 0;
-    if ( rides_profiles )
+    if ( value.profiles_count > 0 )
     {
         const uint64_t ref_profiles = ids.ref_at( 70, 0x8181e61fc0436767ull );
         int64_t body_profiles = 0;
@@ -16234,8 +16477,7 @@ TABLEDEMO_TABLE_INLINE bool RootConfigSaveBody( TableWriter & w, TableIds & ids,
         w.raw( value.version_note, value.version_note_length );
     }
     schema_assert( value.weapons_count >= 0 && value.weapons_count <= 8 ); // storage invariant, debug only (§5.1)
-    bool rides_weapons = value.weapons_count > 0;
-    if ( rides_weapons )
+    if ( value.weapons_count > 0 )
     {
         const uint64_t ref_weapons = ids.ref_at( 40, 0x41cbd901b87fabb6ull );
         int64_t body_weapons = 0;
@@ -16266,8 +16508,7 @@ TABLEDEMO_TABLE_INLINE bool RootConfigSaveBody( TableWriter & w, TableIds & ids,
         }
     }
     schema_assert( value.profiles_count >= 0 && value.profiles_count <= 4 ); // storage invariant, debug only (§5.1)
-    bool rides_profiles = value.profiles_count > 0;
-    if ( rides_profiles )
+    if ( value.profiles_count > 0 )
     {
         const uint64_t ref_profiles = ids.ref_at( 70, 0x8181e61fc0436767ull );
         int64_t body_profiles = 0;
@@ -16724,8 +16965,7 @@ inline int64_t RootConfigMeasureMessageBody( int64_t at, const RootConfig & valu
         bits += (int64_t) value.version_note_length * 8;
     }
     schema_assert( value.weapons_count >= 0 && value.weapons_count <= 8 ); // storage invariant, debug only (§5.1)
-    bool rides_weapons = value.weapons_count > 0;
-    if ( rides_weapons )
+    if ( value.weapons_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
         bits += 4;
@@ -16737,8 +16977,7 @@ inline int64_t RootConfigMeasureMessageBody( int64_t at, const RootConfig & valu
         }
     }
     schema_assert( value.profiles_count >= 0 && value.profiles_count <= 4 ); // storage invariant, debug only (§5.1)
-    bool rides_profiles = value.profiles_count > 0;
-    if ( rides_profiles )
+    if ( value.profiles_count > 0 )
     {
         bits += kTableMessageRefBitsHere;
         bits += 3;
@@ -16768,8 +17007,7 @@ inline bool RootConfigSaveMessageBody( TableBitWriter & w, const RootConfig & va
         w.putbytes( (const uint8_t *) value.version_note, value.version_note_length );
     }
     schema_assert( value.weapons_count >= 0 && value.weapons_count <= 8 ); // storage invariant, debug only (§5.1)
-    bool rides_weapons = value.weapons_count > 0;
-    if ( rides_weapons )
+    if ( value.weapons_count > 0 )
     {
         w.put( 86, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.weapons_count ) - 0, 4 );
@@ -16779,8 +17017,7 @@ inline bool RootConfigSaveMessageBody( TableBitWriter & w, const RootConfig & va
         }
     }
     schema_assert( value.profiles_count >= 0 && value.profiles_count <= 4 ); // storage invariant, debug only (§5.1)
-    bool rides_profiles = value.profiles_count > 0;
-    if ( rides_profiles )
+    if ( value.profiles_count > 0 )
     {
         w.put( 87, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.profiles_count ) - 0, 3 );
@@ -16800,7 +17037,7 @@ inline bool RootConfigSaveMessageBody( TableBitWriter & w, const RootConfig & va
 inline bool RootConfigLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, RootConfig & value )
 {
     RootConfigReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const TableMessageSeenBody seen( vocabulary );
     const bool same_build = vocabulary.build_version == BuildVersion;
     int32_t last_field_ord = 0;
     for ( ;; )
@@ -16831,7 +17068,7 @@ inline bool RootConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        if ( !TableMessageSeenOnce( seen, ref ) )
         {
             report->damaged = true;
             return false;
@@ -16854,7 +17091,7 @@ inline bool RootConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -16908,7 +17145,7 @@ inline bool RootConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -16970,7 +17207,7 @@ inline bool RootConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -17019,7 +17256,7 @@ inline bool RootConfigLoadMessageBody( TableBitReader & r, const TableVocabulary
             default:
                 if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
                     report->damaged = true;
                     return false;
@@ -17126,7 +17363,8 @@ inline bool RootConfigLoadMessages( RootConfig * values, int64_t * count, const 
 inline int64_t AttachmentMeasureBody( TableIds & ids, const Attachment & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    schema_assert( !( value.slot < 0 || value.slot > 7 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
+    schema_assert( value.slot >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+    schema_assert( value.slot <= 7 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     if ( value.slot != 0 ) { bytes += TableLebBytes( ids.ref_at( 59, 0x6a771618f6fe31d1ull ) ) + 1 + 4; } // slot
     if ( !TableFloatFinite( value.power ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
     if ( table_float_to_bits( value.power ) != table_float_to_bits( 1.0f ) ) { bytes += TableLebBytes( ids.ref_at( 140, 0xeef9d1358ae7b4e6ull ) ) + 1 + 4; } // power
@@ -17146,7 +17384,8 @@ TABLEDEMO_TABLE_INLINE bool AttachmentSaveBody( TableWriter & w, TableIds & ids,
     if ( value.slot != 0 )
     {
         w.header( ids.ref_at( 59, 0x6a771618f6fe31d1ull ), 4 ); // slot
-        schema_assert( !( value.slot < 0 || value.slot > 7 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
+        schema_assert( value.slot >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+        schema_assert( value.slot <= 7 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.slot ) );
     }
     if ( table_float_to_bits( value.power ) != table_float_to_bits( 1.0f ) )
@@ -17475,7 +17714,7 @@ inline bool AttachmentSaveMessageBody( TableBitWriter & w, const Attachment & va
 inline bool AttachmentLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, Attachment & value )
 {
     AttachmentReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const TableMessageSeenBody seen( vocabulary );
     const bool same_build = vocabulary.build_version == BuildVersion;
     int32_t last_field_ord = 0;
     for ( ;; )
@@ -17506,7 +17745,7 @@ inline bool AttachmentLoadMessageBody( TableBitReader & r, const TableVocabulary
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        if ( !TableMessageSeenOnce( seen, ref ) )
         {
             report->damaged = true;
             return false;
@@ -17537,8 +17776,14 @@ inline bool AttachmentLoadMessageBody( TableBitReader & r, const TableVocabulary
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -17564,7 +17809,7 @@ inline bool AttachmentLoadMessageBody( TableBitReader & r, const TableVocabulary
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -17579,8 +17824,14 @@ inline bool AttachmentLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -17600,7 +17851,7 @@ inline bool AttachmentLoadMessageBody( TableBitReader & r, const TableVocabulary
                         report->refuse_reason = out_of_range;
                     }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -17625,7 +17876,7 @@ inline bool AttachmentLoadMessageBody( TableBitReader & r, const TableVocabulary
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -17676,7 +17927,7 @@ inline bool AttachmentLoadMessageBody( TableBitReader & r, const TableVocabulary
             default:
                 if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
                     report->damaged = true;
                     return false;
@@ -18049,7 +18300,7 @@ inline bool BuffSaveMessageBody( TableBitWriter & w, const Buff & value )
 inline bool BuffLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, Buff & value )
 {
     BuffReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const TableMessageSeenBody seen( vocabulary );
     const bool same_build = vocabulary.build_version == BuildVersion;
     int32_t last_field_ord = 0;
     for ( ;; )
@@ -18080,7 +18331,7 @@ inline bool BuffLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        if ( !TableMessageSeenOnce( seen, ref ) )
         {
             report->damaged = true;
             return false;
@@ -18103,7 +18354,7 @@ inline bool BuffLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
                 {
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -18154,7 +18405,7 @@ inline bool BuffLoadMessageBody( TableBitReader & r, const TableVocabulary & voc
             default:
                 if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
                     report->damaged = true;
                     return false;
@@ -18259,7 +18510,8 @@ inline bool BuffLoadMessages( Buff * values, int64_t * count, const TableVocabul
 inline int64_t DebuffMeasureBody( TableIds & ids, const Debuff & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    schema_assert( !( value.amount < 0 || value.amount > 100 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
+    schema_assert( value.amount >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+    schema_assert( value.amount <= 100 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     if ( value.amount != 0 ) { bytes += TableLebBytes( ids.ref_at( 69, 0x8113fe7ea2b16969ull ) ) + 1 + 4; } // amount
     return bytes;
 }
@@ -18277,7 +18529,8 @@ TABLEDEMO_TABLE_INLINE bool DebuffSaveBody( TableWriter & w, TableIds & ids, con
     if ( value.amount != 0 )
     {
         w.header( ids.ref_at( 69, 0x8113fe7ea2b16969ull ), 4 ); // amount
-        schema_assert( !( value.amount < 0 || value.amount > 100 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
+        schema_assert( value.amount >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+        schema_assert( value.amount <= 100 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.amount ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -18558,7 +18811,7 @@ inline bool DebuffSaveMessageBody( TableBitWriter & w, const Debuff & value )
 inline bool DebuffLoadMessageBody( TableBitReader & r, const TableVocabulary & vocabulary, TableReport * report, int64_t index_bits, Debuff & value )
 {
     DebuffReset( value );
-    uint64_t seen[(kTableMessageSeenBits + 63) / 64] = {};
+    const TableMessageSeenBody seen( vocabulary );
     const bool same_build = vocabulary.build_version == BuildVersion;
     int32_t last_field_ord = 0;
     for ( ;; )
@@ -18589,7 +18842,7 @@ inline bool DebuffLoadMessageBody( TableBitReader & r, const TableVocabulary & v
             report->damaged = true;
             return false;
         }
-        if ( !TableMessageSeenOnce( seen, vocabulary, ref, entry.id ) )
+        if ( !TableMessageSeenOnce( seen, ref ) )
         {
             report->damaged = true;
             return false;
@@ -18620,8 +18873,14 @@ inline bool DebuffLoadMessageBody( TableBitReader & r, const TableVocabulary & v
                                 report->damaged = true;
                                 return false;
                             }
+                            const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                            if ( past )
+                            {
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             int64_t decoded_wide = (int64_t) raw;
-                            if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                             else if ( width > 0 && width < 64 )
                             {
                                 const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -18647,7 +18906,7 @@ inline bool DebuffLoadMessageBody( TableBitReader & r, const TableVocabulary & v
                     }
                     report->refused = true;
                     report->refuse_reason = kind_mismatch;
-                    if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                    if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                     {
                         report->damaged = true;
                         return false;
@@ -18662,8 +18921,14 @@ inline bool DebuffLoadMessageBody( TableBitReader & r, const TableVocabulary & v
                         report->damaged = true;
                         return false;
                     }
+                    const bool past = entry.packing == 1 && !TableMessageRangedHolds( entry.kind, raw, 0, entry.base_lo, entry.base_hi );
+                    if ( past )
+                    {
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     int64_t decoded_wide = (int64_t) raw;
-                    if ( entry.packing == 1 ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                    if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     else if ( width > 0 && width < 64 )
                     {
                         const uint64_t sign = uint64_t(1) << ( width - 1 );
@@ -18683,7 +18948,7 @@ inline bool DebuffLoadMessageBody( TableBitReader & r, const TableVocabulary & v
                         report->refuse_reason = out_of_range;
                     }
                     int32_t decoded_v = (int32_t) decoded_wide;
-                    if ( same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
+                    if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
                         report->damaged = true;
                         return false;
@@ -18695,7 +18960,7 @@ inline bool DebuffLoadMessageBody( TableBitReader & r, const TableVocabulary & v
             default:
                 if ( vocabulary.build_version == BuildVersion ) { report->damaged = true; return false; }
                 report->unknown++;
-                if ( !TableMessageSkip( r, vocabulary, index_bits, entry ) )
+                if ( !TableMessageSkipField( r, vocabulary, index_bits, entry ) )
                 {
                     report->damaged = true;
                     return false;
@@ -19482,7 +19747,7 @@ constexpr TableFixedEntry WeaponConfigFixedPlan[] = {
     { 0u, 0u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 4u, 4u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 8u, 8u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
-    { 12u, 12u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // damage
+    { 12u, 12u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 16u, 16u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // homing
     { 17u, 20u, 1u, 2u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // effect tag
     { 18u, 24u, 4u, 0u, 17u, kTableFixedCopy, 1, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 1, 0 * (int) sizeof( TableFixedGuardLink ), 4 }, // multiplier
@@ -20180,19 +20445,19 @@ constexpr TableFixedEntry LoadoutConfigFixedPlan[] = {
     { 20u, 24u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // perks
     { 24u, 28u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // perks
     { 28u, 32u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // perks
-    { 32u, 36u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // perks
+    { 32u, 36u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // perks
     { 36u, 40u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // homing
     { 37u, 44u, 1u, 2u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // effect tag
     { 42u, 52u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 46u, 56u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 50u, 60u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
-    { 54u, 64u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // damage
+    { 54u, 64u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 58u, 68u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // homing
     { 59u, 72u, 1u, 2u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // effect tag
     { 64u, 80u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 68u, 84u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 72u, 88u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
-    { 76u, 92u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // damage
+    { 76u, 92u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 80u, 96u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // homing
     { 81u, 100u, 1u, 2u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // effect tag
     { 86u, 172u, 8u, 8u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // attachments count
@@ -21057,19 +21322,19 @@ constexpr TableFixedEntry ProfileConfigFixedPlan[] = {
     { 127u, 152u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // perks
     { 131u, 156u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // perks
     { 135u, 160u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // perks
-    { 139u, 164u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // perks
+    { 139u, 164u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // perks
     { 143u, 168u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // homing
     { 144u, 172u, 1u, 2u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // effect tag
     { 149u, 180u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 153u, 184u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 157u, 188u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
-    { 161u, 192u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // damage
+    { 161u, 192u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 165u, 196u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // homing
     { 166u, 200u, 1u, 2u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // effect tag
     { 171u, 208u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 175u, 212u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 179u, 216u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
-    { 183u, 220u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // damage
+    { 183u, 220u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 187u, 224u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // homing
     { 188u, 228u, 1u, 2u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // effect tag
     { 193u, 300u, 8u, 8u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // attachments count
@@ -22010,49 +22275,49 @@ constexpr TableFixedEntry RootConfigFixedPlan[] = {
     { 24u, 24u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 28u, 28u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 32u, 32u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
-    { 36u, 36u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // damage
+    { 36u, 36u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 40u, 40u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // homing
     { 41u, 44u, 1u, 2u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // effect tag
     { 46u, 52u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 50u, 56u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 54u, 60u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
-    { 58u, 64u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // damage
+    { 58u, 64u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 62u, 68u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // homing
     { 63u, 72u, 1u, 2u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // effect tag
     { 68u, 80u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 72u, 84u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 76u, 88u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
-    { 80u, 92u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // damage
+    { 80u, 92u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 84u, 96u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // homing
     { 85u, 100u, 1u, 2u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // effect tag
     { 90u, 108u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 94u, 112u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 98u, 116u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
-    { 102u, 120u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // damage
+    { 102u, 120u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 106u, 124u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // homing
     { 107u, 128u, 1u, 2u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // effect tag
     { 112u, 136u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 116u, 140u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 120u, 144u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
-    { 124u, 148u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // damage
+    { 124u, 148u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 128u, 152u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // homing
     { 129u, 156u, 1u, 2u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // effect tag
     { 134u, 164u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 138u, 168u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 142u, 172u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
-    { 146u, 176u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // damage
+    { 146u, 176u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 150u, 180u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // homing
     { 151u, 184u, 1u, 2u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // effect tag
     { 156u, 192u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 160u, 196u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 164u, 200u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
-    { 168u, 204u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // damage
+    { 168u, 204u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 172u, 208u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // homing
     { 173u, 212u, 1u, 2u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // effect tag
     { 178u, 220u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 182u, 224u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 186u, 228u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
-    { 190u, 232u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // damage
+    { 190u, 232u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 194u, 236u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // homing
     { 195u, 240u, 1u, 2u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // effect tag
     { 200u, 1472u, 4u, 261u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // profiles count
@@ -22084,19 +22349,19 @@ constexpr TableFixedEntry RootConfigFixedPlan[] = {
     { 331u, 408u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // perks
     { 335u, 412u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // perks
     { 339u, 416u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // perks
-    { 343u, 420u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // perks
+    { 343u, 420u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // perks
     { 347u, 424u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // homing
     { 348u, 428u, 1u, 2u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // effect tag
     { 353u, 436u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 357u, 440u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 361u, 444u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
-    { 365u, 448u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // damage
+    { 365u, 448u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 369u, 452u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // homing
     { 370u, 456u, 1u, 2u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // effect tag
     { 375u, 464u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 379u, 468u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 383u, 472u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
-    { 387u, 476u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // damage
+    { 387u, 476u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 391u, 480u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // homing
     { 392u, 484u, 1u, 2u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // effect tag
     { 397u, 556u, 8u, 8u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // attachments count
@@ -22144,19 +22409,19 @@ constexpr TableFixedEntry RootConfigFixedPlan[] = {
     { 592u, 712u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // perks
     { 596u, 716u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // perks
     { 600u, 720u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // perks
-    { 604u, 724u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // perks
+    { 604u, 724u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // perks
     { 608u, 728u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // homing
     { 609u, 732u, 1u, 2u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // effect tag
     { 614u, 740u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 618u, 744u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 622u, 748u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
-    { 626u, 752u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // damage
+    { 626u, 752u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 630u, 756u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // homing
     { 631u, 760u, 1u, 2u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // effect tag
     { 636u, 768u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 640u, 772u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 644u, 776u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
-    { 648u, 780u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // damage
+    { 648u, 780u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 652u, 784u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // homing
     { 653u, 788u, 1u, 2u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // effect tag
     { 658u, 860u, 8u, 8u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // attachments count
@@ -22204,19 +22469,19 @@ constexpr TableFixedEntry RootConfigFixedPlan[] = {
     { 853u, 1016u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // perks
     { 857u, 1020u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // perks
     { 861u, 1024u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // perks
-    { 865u, 1028u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // perks
+    { 865u, 1028u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // perks
     { 869u, 1032u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // homing
     { 870u, 1036u, 1u, 2u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // effect tag
     { 875u, 1044u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 879u, 1048u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 883u, 1052u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
-    { 887u, 1056u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // damage
+    { 887u, 1056u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 891u, 1060u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // homing
     { 892u, 1064u, 1u, 2u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // effect tag
     { 897u, 1072u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 901u, 1076u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 905u, 1080u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
-    { 909u, 1084u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // damage
+    { 909u, 1084u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 913u, 1088u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // homing
     { 914u, 1092u, 1u, 2u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // effect tag
     { 919u, 1164u, 8u, 8u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // attachments count
@@ -22264,19 +22529,19 @@ constexpr TableFixedEntry RootConfigFixedPlan[] = {
     { 1114u, 1320u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // perks
     { 1118u, 1324u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // perks
     { 1122u, 1328u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // perks
-    { 1126u, 1332u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // perks
+    { 1126u, 1332u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // perks
     { 1130u, 1336u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // homing
     { 1131u, 1340u, 1u, 2u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // effect tag
     { 1136u, 1348u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 1140u, 1352u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 1144u, 1356u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
-    { 1148u, 1360u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // damage
+    { 1148u, 1360u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 1152u, 1364u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // homing
     { 1153u, 1368u, 1u, 2u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // effect tag
     { 1158u, 1376u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 1162u, 1380u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 1166u, 1384u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
-    { 1170u, 1388u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // damage
+    { 1170u, 1388u, 4u, 0u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 4 }, // damage
     { 1174u, 1392u, 1u, 0u, kTableFixedNoGuard, kTableFixedBool, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // homing
     { 1175u, 1396u, 1u, 2u, kTableFixedNoGuard, kTableFixedCopy, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 1 }, // effect tag
     { 1180u, 1468u, 8u, 8u, kTableFixedNoGuard, kTableFixedCount, 0, 0, 0, 0, 1, kTableFixedNoGuard, 0, 1, 0, 0, 0 }, // attachments count
@@ -23023,9 +23288,10 @@ inline int64_t WeaponConfigMeasureBodyRetain( TableRetainIds & ids, const Weapon
     if ( table_float_to_bits( value.damage ) != table_float_to_bits( 21.0f ) ) { bytes += TableLebBytes( ids.ref_at( 66, 0x7f6308be8ab37fc0ull ) ) + 1 + 4; } // damage
     if ( !TableFloatFinite( value.speed ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
     if ( table_float_to_bits( value.speed ) != table_float_to_bits( 500.0f ) ) { bytes += TableLebBytes( ids.ref_at( 12, 0x1733055702acb1d2ull ) ) + 1 + 4; } // speed
-    schema_assert( !( value.penetration < 0 || value.penetration > 10 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
+    schema_assert( value.penetration >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+    schema_assert( value.penetration <= 10 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     if ( value.penetration != 1 ) { bytes += TableLebBytes( ids.ref_at( 47, 0x4f31c5309e13e932ull ) ) + 1 + 4; } // penetration
-    schema_assert( value.channel <= 63ull ); // bits(6) wider than 6 bits, debug only (SPEC.md §5.1 row 2)
+    schema_assert( value.channel <= 63ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 2, bits(6))
     if ( value.channel != 0 ) { bytes += TableLebBytes( ids.ref_at( 86, 0xa5013e9ad5caeda4ull ) ) + 1 + 1; } // channel
     if ( value.homing != false ) { bytes += TableLebBytes( ids.ref_at( 94, 0xad6587bc602e3f59ull ) ) + 1 + 1; } // homing
     if ( value.effect.type != EffectType::None ) // None elides — the absence of the field is the None
@@ -23082,13 +23348,14 @@ TABLEDEMO_TABLE_INLINE bool WeaponConfigSaveBodyRetain( TableWriter & w, TableRe
     if ( value.penetration != 1 )
     {
         w.header( ids.ref_at( 47, 0x4f31c5309e13e932ull ), 4 ); // penetration
-        schema_assert( !( value.penetration < 0 || value.penetration > 10 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
+        schema_assert( value.penetration >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+        schema_assert( value.penetration <= 10 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.penetration ) );
     }
     if ( value.channel != 0 )
     {
         w.header( ids.ref_at( 86, 0xa5013e9ad5caeda4ull ), 6 ); // channel
-        schema_assert( value.channel <= 63ull ); // bits(6) wider than 6 bits, debug only (SPEC.md §5.1 row 2)
+        schema_assert( value.channel <= 63ull ); // the write contract, debug only (docs/SPEC.md §5.1 row 2, bits(6))
         w.put8( uint8_t( value.channel ) );
     }
     if ( value.homing != false )
@@ -23482,8 +23749,7 @@ inline int64_t LoadoutConfigMeasureBodyRetain( TableRetainIds & ids, const Loado
         bytes += TableLebBytes( ref_grade ) + 1 + TableLebBytes( variant_grade ); // grade: the variant's reference
     }
     schema_assert( value.grades_count >= 0 && value.grades_count <= 4 ); // storage invariant, debug only (§5.1)
-    bool rides_grades = value.grades_count > 0;
-    if ( rides_grades )
+    if ( value.grades_count > 0 )
     {
         const uint64_t ref_grades = ids.ref_at( 131, 0xd90a4e7682f799c5ull );
         int64_t body_grades = 0;
@@ -23535,8 +23801,7 @@ inline int64_t LoadoutConfigMeasureBodyRetain( TableRetainIds & ids, const Loado
         bytes += TableLebBytes( ref_backups ) + 1 + TableLebBytes( (uint64_t) ( body_backups ) ) + ( body_backups ); // backups (fixed [2])
     }
     schema_assert( value.attachments_count >= 0 && value.attachments_count <= 8 ); // storage invariant, debug only (§5.1)
-    bool rides_attachments = value.attachments_count > 0;
-    if ( rides_attachments )
+    if ( value.attachments_count > 0 )
     {
         const uint64_t ref_attachments = ids.ref_at( 145, 0xf901aa0340249a41ull );
         int64_t body_attachments = 0;
@@ -23564,8 +23829,7 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBodyRetain( TableWriter & w, TableR
         w.header( ref_grade, 30 ); w.putleb( variant_grade ); // grade
     }
     schema_assert( value.grades_count >= 0 && value.grades_count <= 4 ); // storage invariant, debug only (§5.1)
-    bool rides_grades = value.grades_count > 0;
-    if ( rides_grades )
+    if ( value.grades_count > 0 )
     {
         const uint64_t ref_grades = ids.ref_at( 131, 0xd90a4e7682f799c5ull );
         int64_t body_grades = 0;
@@ -23660,8 +23924,7 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBodyRetain( TableWriter & w, TableR
         }
     }
     schema_assert( value.attachments_count >= 0 && value.attachments_count <= 8 ); // storage invariant, debug only (§5.1)
-    bool rides_attachments = value.attachments_count > 0;
-    if ( rides_attachments )
+    if ( value.attachments_count > 0 )
     {
         const uint64_t ref_attachments = ids.ref_at( 145, 0xf901aa0340249a41ull );
         int64_t body_attachments = 0;
@@ -24996,8 +25259,7 @@ inline int64_t RootConfigMeasureBodyRetain( TableRetainIds & ids, const RootConf
     if ( !TableUtf8Valid( (const uint8_t *) value.version_note, (uint64_t) value.version_note_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.version_note_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 72, 0x8a67c9728746d394ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.version_note_length ) ) + ( value.version_note_length ); } // version_note
     schema_assert( value.weapons_count >= 0 && value.weapons_count <= 8 ); // storage invariant, debug only (§5.1)
-    bool rides_weapons = value.weapons_count > 0;
-    if ( rides_weapons )
+    if ( value.weapons_count > 0 )
     {
         const uint64_t ref_weapons = ids.ref_at( 40, 0x41cbd901b87fabb6ull );
         int64_t body_weapons = 0;
@@ -25011,8 +25273,7 @@ inline int64_t RootConfigMeasureBodyRetain( TableRetainIds & ids, const RootConf
         bytes += TableLebBytes( ref_weapons ) + 1 + TableLebBytes( (uint64_t) ( body_weapons ) ) + ( body_weapons ); // weapons
     }
     schema_assert( value.profiles_count >= 0 && value.profiles_count <= 4 ); // storage invariant, debug only (§5.1)
-    bool rides_profiles = value.profiles_count > 0;
-    if ( rides_profiles )
+    if ( value.profiles_count > 0 )
     {
         const uint64_t ref_profiles = ids.ref_at( 70, 0x8181e61fc0436767ull );
         int64_t body_profiles = 0;
@@ -25040,8 +25301,7 @@ TABLEDEMO_TABLE_INLINE bool RootConfigSaveBodyRetain( TableWriter & w, TableReta
         w.raw( value.version_note, value.version_note_length );
     }
     schema_assert( value.weapons_count >= 0 && value.weapons_count <= 8 ); // storage invariant, debug only (§5.1)
-    bool rides_weapons = value.weapons_count > 0;
-    if ( rides_weapons )
+    if ( value.weapons_count > 0 )
     {
         const uint64_t ref_weapons = ids.ref_at( 40, 0x41cbd901b87fabb6ull );
         int64_t body_weapons = 0;
@@ -25067,8 +25327,7 @@ TABLEDEMO_TABLE_INLINE bool RootConfigSaveBodyRetain( TableWriter & w, TableReta
         }
     }
     schema_assert( value.profiles_count >= 0 && value.profiles_count <= 4 ); // storage invariant, debug only (§5.1)
-    bool rides_profiles = value.profiles_count > 0;
-    if ( rides_profiles )
+    if ( value.profiles_count > 0 )
     {
         const uint64_t ref_profiles = ids.ref_at( 70, 0x8181e61fc0436767ull );
         int64_t body_profiles = 0;
@@ -25400,7 +25659,8 @@ TABLEDEMO_TABLE_INLINE bool RootConfigLoadBodyRetain( TableReader & r, RootConfi
 inline int64_t AttachmentMeasureBodyRetain( TableRetainIds & ids, const Attachment & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    schema_assert( !( value.slot < 0 || value.slot > 7 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
+    schema_assert( value.slot >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+    schema_assert( value.slot <= 7 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     if ( value.slot != 0 ) { bytes += TableLebBytes( ids.ref_at( 59, 0x6a771618f6fe31d1ull ) ) + 1 + 4; } // slot
     if ( !TableFloatFinite( value.power ) ) { return -1; } // a NaN or an infinity is refused (§3.3)
     if ( table_float_to_bits( value.power ) != table_float_to_bits( 1.0f ) ) { bytes += TableLebBytes( ids.ref_at( 140, 0xeef9d1358ae7b4e6ull ) ) + 1 + 4; } // power
@@ -25413,7 +25673,8 @@ TABLEDEMO_TABLE_INLINE bool AttachmentSaveBodyRetain( TableWriter & w, TableReta
     if ( value.slot != 0 )
     {
         w.header( ids.ref_at( 59, 0x6a771618f6fe31d1ull ), 4 ); // slot
-        schema_assert( !( value.slot < 0 || value.slot > 7 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
+        schema_assert( value.slot >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+        schema_assert( value.slot <= 7 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.slot ) );
     }
     if ( table_float_to_bits( value.power ) != table_float_to_bits( 1.0f ) )
@@ -25693,7 +25954,8 @@ TABLEDEMO_TABLE_INLINE bool BuffLoadBodyRetain( TableReader & r, Buff & value, T
 inline int64_t DebuffMeasureBodyRetain( TableRetainIds & ids, const Debuff & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    schema_assert( !( value.amount < 0 || value.amount > 100 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
+    schema_assert( value.amount >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+    schema_assert( value.amount <= 100 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
     if ( value.amount != 0 ) { bytes += TableLebBytes( ids.ref_at( 69, 0x8113fe7ea2b16969ull ) ) + 1 + 4; } // amount
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -25704,7 +25966,8 @@ TABLEDEMO_TABLE_INLINE bool DebuffSaveBodyRetain( TableWriter & w, TableRetainId
     if ( value.amount != 0 )
     {
         w.header( ids.ref_at( 69, 0x8113fe7ea2b16969ull ), 4 ); // amount
-        schema_assert( !( value.amount < 0 || value.amount > 100 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
+        schema_assert( value.amount >= 0 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
+        schema_assert( value.amount <= 100 ); // the write contract, debug only (docs/SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.amount ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }
@@ -26686,69 +26949,69 @@ extern const TableTypeInfo DebuffTableInfo;
 inline const char * const WeaponConfig_damage_tags[] = { "ui_slider", "hot", "tuning" };
 inline const char * const WeaponConfig_tags[] = { "designer_facing" };
 inline const TableFieldInfo WeaponConfigTableFields[] = {
-    { "damage", "damage", "float32", 0x7f6308be8ab37fc0ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WeaponConfig, damage ), (uint32_t) sizeof( WeaponConfig::damage ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", " Damage per hit, before armor.\012\012The armor curve is written \"hardness \\ hit\" in the design notes,\012and the backslash is part of the name.", 3, WeaponConfig_damage_tags, false, false, 0, 0, false },
-    { "speed", "speed", "float32", 0x1733055702acb1d2ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WeaponConfig, speed ), (uint32_t) sizeof( WeaponConfig::speed ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "penetration", "penetration", "int32", 0x4f31c5309e13e932ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WeaponConfig, penetration ), (uint32_t) sizeof( WeaponConfig::penetration ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 10.0, 0ll, 10ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "channel", "channel", "bits(6)", 0xa5013e9ad5caeda4ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WeaponConfig, channel ), (uint32_t) sizeof( WeaponConfig::channel ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 63.0, 0, 0, 0, 63ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "homing", "homing", "bool", 0xad6587bc602e3f59ull, 1, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WeaponConfig, homing ), (uint32_t) sizeof( WeaponConfig::homing ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "effect", "effect", "Effect", 0x36c1c83b51f24394ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WeaponConfig, effect ), (uint32_t) sizeof( WeaponConfig::effect ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "buff"; case 2: return "debuff"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0xffb5be9be2e469ccull; case 2: return 0x13cdc5ede73d2fd7ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Effect, buff ), &BuffTableInfo, NULL, 4 }, { (uint32_t) offsetof( Effect, debuff ), &DebuffTableInfo, NULL, 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Effect, type ), (uint32_t) sizeof( Effect::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "damage", "damage", "float32", 0x7f6308be8ab37fc0ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WeaponConfig, damage ), (uint32_t) sizeof( WeaponConfig::damage ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", " Damage per hit, before armor.\012\012The armor curve is written \"hardness \\ hit\" in the design notes,\012and the backslash is part of the name.", 3, WeaponConfig_damage_tags, false, false, 0, 0, false, 0 },
+    { "speed", "speed", "float32", 0x1733055702acb1d2ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WeaponConfig, speed ), (uint32_t) sizeof( WeaponConfig::speed ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "penetration", "penetration", "int32", 0x4f31c5309e13e932ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WeaponConfig, penetration ), (uint32_t) sizeof( WeaponConfig::penetration ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 10.0, 0ll, 10ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "channel", "channel", "bits(6)", 0xa5013e9ad5caeda4ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WeaponConfig, channel ), (uint32_t) sizeof( WeaponConfig::channel ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 63.0, 0, 0, 0, 63ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "homing", "homing", "bool", 0xad6587bc602e3f59ull, 1, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WeaponConfig, homing ), (uint32_t) sizeof( WeaponConfig::homing ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "effect", "effect", "Effect", 0x36c1c83b51f24394ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( WeaponConfig, effect ), (uint32_t) sizeof( WeaponConfig::effect ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "buff"; case 2: return "debuff"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0xffb5be9be2e469ccull; case 2: return 0x13cdc5ede73d2fd7ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Effect, buff ), &BuffTableInfo, NULL, 4 }, { (uint32_t) offsetof( Effect, debuff ), &DebuffTableInfo, NULL, 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Effect, type ), (uint32_t) sizeof( Effect::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo WeaponConfigTableInfo = { "WeaponConfig", (uint32_t) sizeof( WeaponConfig ), 6, WeaponConfigTableFields, +[]( void * p ) { WeaponConfigReset( *(WeaponConfig *) p ); }, false, "One weapon's tuning. A designer edits this table and nothing else.", 1, WeaponConfig_tags, false };
 inline const TableTypeInfo * WeaponConfigTableType() { return &WeaponConfigTableInfo; }
 
 inline const TableFieldInfo LoadoutConfigTableFields[] = {
-    { "grade", "grade", "Grade", 0x32a89b2977c48ad4ull, 30, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( LoadoutConfig, grade ), (uint32_t) sizeof( LoadoutConfig::grade ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( Grade( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Grade( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "grades", "grades", "Grade", 0xd90a4e7682f799c5ull, 30, true, false, NULL, NULL, true, false, 4, (uint32_t) offsetof( LoadoutConfig, grades ), (uint32_t) sizeof( LoadoutConfig::grades[0] ), (uint32_t) offsetof( LoadoutConfig, grades_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( Grade( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Grade( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "podium", "podium", "Grade", 0xb46ff45a23d72549ull, 30, true, false, NULL, NULL, false, false, 3, (uint32_t) offsetof( LoadoutConfig, podium ), (uint32_t) sizeof( LoadoutConfig::podium[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( Grade( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Grade( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "perks", "perks", "Perks", 0x4b06f5847096e54aull, 9, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( LoadoutConfig, perks ), (uint32_t) sizeof( LoadoutConfig::perks ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return FlagNamePerks( (int) v ); }, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "primary", "primary", "WeaponConfig", 0xbf31137ff783e939ull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( LoadoutConfig, primary ), (uint32_t) sizeof( LoadoutConfig::primary ), 0xffffffffu, 0xffffffffu, &WeaponConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "backups", "backups", "WeaponConfig", 0xde28f0f5118acc24ull, 13, true, false, NULL, NULL, false, false, 2, (uint32_t) offsetof( LoadoutConfig, backups ), (uint32_t) sizeof( LoadoutConfig::backups[0] ), 0xffffffffu, 0xffffffffu, &WeaponConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "attachments", "attachments", "Attachment", 0xf901aa0340249a41ull, 13, true, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( LoadoutConfig, attachments ), (uint32_t) sizeof( LoadoutConfig::attachments[0] ), (uint32_t) offsetof( LoadoutConfig, attachments_count ), 0xffffffffu, &AttachmentTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "grade", "grade", "Grade", 0x32a89b2977c48ad4ull, 30, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( LoadoutConfig, grade ), (uint32_t) sizeof( LoadoutConfig::grade ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( Grade( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Grade( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "grades", "grades", "Grade", 0xd90a4e7682f799c5ull, 30, true, false, NULL, NULL, true, false, 4, (uint32_t) offsetof( LoadoutConfig, grades ), (uint32_t) sizeof( LoadoutConfig::grades[0] ), (uint32_t) offsetof( LoadoutConfig, grades_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( Grade( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Grade( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "podium", "podium", "Grade", 0xb46ff45a23d72549ull, 30, true, false, NULL, NULL, false, false, 3, (uint32_t) offsetof( LoadoutConfig, podium ), (uint32_t) sizeof( LoadoutConfig::podium[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) { return EnumName( Grade( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Grade( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "perks", "perks", "Perks", 0x4b06f5847096e54aull, 9, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( LoadoutConfig, perks ), (uint32_t) sizeof( LoadoutConfig::perks ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return FlagNamePerks( (int) v ); }, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "primary", "primary", "WeaponConfig", 0xbf31137ff783e939ull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( LoadoutConfig, primary ), (uint32_t) sizeof( LoadoutConfig::primary ), 0xffffffffu, 0xffffffffu, &WeaponConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "backups", "backups", "WeaponConfig", 0xde28f0f5118acc24ull, 13, true, false, NULL, NULL, false, false, 2, (uint32_t) offsetof( LoadoutConfig, backups ), (uint32_t) sizeof( LoadoutConfig::backups[0] ), 0xffffffffu, 0xffffffffu, &WeaponConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "attachments", "attachments", "Attachment", 0xf901aa0340249a41ull, 13, true, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( LoadoutConfig, attachments ), (uint32_t) sizeof( LoadoutConfig::attachments[0] ), (uint32_t) offsetof( LoadoutConfig, attachments_count ), 0xffffffffu, &AttachmentTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo LoadoutConfigTableInfo = { "LoadoutConfig", (uint32_t) sizeof( LoadoutConfig ), 7, LoadoutConfigTableFields, +[]( void * p ) { LoadoutConfigReset( *(LoadoutConfig *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * LoadoutConfigTableType() { return &LoadoutConfigTableInfo; }
 
 inline const TableFieldInfo ProfileConfigTableFields[] = {
-    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, false, NULL, NULL, true, false, 32, (uint32_t) offsetof( ProfileConfig, name ), (uint32_t) sizeof( ProfileConfig::name ), (uint32_t) offsetof( ProfileConfig, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "icon", "icon", "bytes", 0xdbff4cc56c2092f0ull, 6, true, false, NULL, NULL, true, false, 16, (uint32_t) offsetof( ProfileConfig, icon ), (uint32_t) sizeof( ProfileConfig::icon[0] ), (uint32_t) offsetof( ProfileConfig, icon_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "experience", "experience", "uint32", 0xab8b6d521f80b969ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, experience ), (uint32_t) sizeof( ProfileConfig::experience ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "tilt", "tilt", "int8", 0x1e5088ef2e9bafc6ull, 2, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, tilt ), (uint32_t) sizeof( ProfileConfig::tilt ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "heading", "heading", "int16", 0xb128829190ca0f75ull, 3, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, heading ), (uint32_t) sizeof( ProfileConfig::heading ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "timestamp", "timestamp", "int64", 0x5ddc92338ef53403ull, 5, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, timestamp ), (uint32_t) sizeof( ProfileConfig::timestamp ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "badge", "badge", "uint8", 0x10bda981fe095518ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, badge ), (uint32_t) sizeof( ProfileConfig::badge ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "port", "port", "uint16", 0x8c2cdb0da8933fa6ull, 7, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, port ), (uint32_t) sizeof( ProfileConfig::port ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "epoch", "epoch", "uint64", 0xfc9697d1196e6ba6ull, 9, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, epoch ), (uint32_t) sizeof( ProfileConfig::epoch ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "precision", "precision", "float64", 0x288427f5babd05f7ull, 11, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, precision ), (uint32_t) sizeof( ProfileConfig::precision ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "ratings", "ratings", "float32", 0xb921eb8a3d0cb0f9ull, 10, true, false, NULL, NULL, false, false, 4, (uint32_t) offsetof( ProfileConfig, ratings ), (uint32_t) sizeof( ProfileConfig::ratings[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "has_loadout", "has_loadout", "bool", 0xa06f5e0a148e253cull, 1, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, has_loadout ), (uint32_t) sizeof( ProfileConfig::has_loadout ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "loadout", "loadout", "LoadoutConfig", 0x5759ce7586bbb5a3ull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, loadout ), (uint32_t) sizeof( ProfileConfig::loadout ), 0xffffffffu, 0xffffffffu, &LoadoutConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, false, NULL, NULL, true, false, 32, (uint32_t) offsetof( ProfileConfig, name ), (uint32_t) sizeof( ProfileConfig::name ), (uint32_t) offsetof( ProfileConfig, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "icon", "icon", "bytes", 0xdbff4cc56c2092f0ull, 6, true, false, NULL, NULL, true, false, 16, (uint32_t) offsetof( ProfileConfig, icon ), (uint32_t) sizeof( ProfileConfig::icon[0] ), (uint32_t) offsetof( ProfileConfig, icon_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "experience", "experience", "uint32", 0xab8b6d521f80b969ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, experience ), (uint32_t) sizeof( ProfileConfig::experience ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "tilt", "tilt", "int8", 0x1e5088ef2e9bafc6ull, 2, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, tilt ), (uint32_t) sizeof( ProfileConfig::tilt ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "heading", "heading", "int16", 0xb128829190ca0f75ull, 3, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, heading ), (uint32_t) sizeof( ProfileConfig::heading ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "timestamp", "timestamp", "int64", 0x5ddc92338ef53403ull, 5, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, timestamp ), (uint32_t) sizeof( ProfileConfig::timestamp ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "badge", "badge", "uint8", 0x10bda981fe095518ull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, badge ), (uint32_t) sizeof( ProfileConfig::badge ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "port", "port", "uint16", 0x8c2cdb0da8933fa6ull, 7, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, port ), (uint32_t) sizeof( ProfileConfig::port ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "epoch", "epoch", "uint64", 0xfc9697d1196e6ba6ull, 9, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, epoch ), (uint32_t) sizeof( ProfileConfig::epoch ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "precision", "precision", "float64", 0x288427f5babd05f7ull, 11, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, precision ), (uint32_t) sizeof( ProfileConfig::precision ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "ratings", "ratings", "float32", 0xb921eb8a3d0cb0f9ull, 10, true, false, NULL, NULL, false, false, 4, (uint32_t) offsetof( ProfileConfig, ratings ), (uint32_t) sizeof( ProfileConfig::ratings[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "has_loadout", "has_loadout", "bool", 0xa06f5e0a148e253cull, 1, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, has_loadout ), (uint32_t) sizeof( ProfileConfig::has_loadout ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "loadout", "loadout", "LoadoutConfig", 0x5759ce7586bbb5a3ull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ProfileConfig, loadout ), (uint32_t) sizeof( ProfileConfig::loadout ), 0xffffffffu, 0xffffffffu, &LoadoutConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo ProfileConfigTableInfo = { "ProfileConfig", (uint32_t) sizeof( ProfileConfig ), 13, ProfileConfigTableFields, +[]( void * p ) { ProfileConfigReset( *(ProfileConfig *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * ProfileConfigTableType() { return &ProfileConfigTableInfo; }
 
 inline const TableFieldInfo RootConfigTableFields[] = {
-    { "version_note", "version_note", "string", 0x8a67c9728746d394ull, 12, false, false, NULL, NULL, true, false, 16, (uint32_t) offsetof( RootConfig, version_note ), (uint32_t) sizeof( RootConfig::version_note ), (uint32_t) offsetof( RootConfig, version_note_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "weapons", "weapons", "WeaponConfig", 0x41cbd901b87fabb6ull, 13, true, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( RootConfig, weapons ), (uint32_t) sizeof( RootConfig::weapons[0] ), (uint32_t) offsetof( RootConfig, weapons_count ), 0xffffffffu, &WeaponConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "profiles", "profiles", "ProfileConfig", 0x8181e61fc0436767ull, 13, true, false, NULL, NULL, true, false, 4, (uint32_t) offsetof( RootConfig, profiles ), (uint32_t) sizeof( RootConfig::profiles[0] ), (uint32_t) offsetof( RootConfig, profiles_count ), 0xffffffffu, &ProfileConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "version_note", "version_note", "string", 0x8a67c9728746d394ull, 12, false, false, NULL, NULL, true, false, 16, (uint32_t) offsetof( RootConfig, version_note ), (uint32_t) sizeof( RootConfig::version_note ), (uint32_t) offsetof( RootConfig, version_note_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "weapons", "weapons", "WeaponConfig", 0x41cbd901b87fabb6ull, 13, true, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( RootConfig, weapons ), (uint32_t) sizeof( RootConfig::weapons[0] ), (uint32_t) offsetof( RootConfig, weapons_count ), 0xffffffffu, &WeaponConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "profiles", "profiles", "ProfileConfig", 0x8181e61fc0436767ull, 13, true, false, NULL, NULL, true, false, 4, (uint32_t) offsetof( RootConfig, profiles ), (uint32_t) sizeof( RootConfig::profiles[0] ), (uint32_t) offsetof( RootConfig, profiles_count ), 0xffffffffu, &ProfileConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo RootConfigTableInfo = { "RootConfig", (uint32_t) sizeof( RootConfig ), 3, RootConfigTableFields, +[]( void * p ) { RootConfigReset( *(RootConfig *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * RootConfigTableType() { return &RootConfigTableInfo; }
 
 inline const TableFieldInfo AttachmentTableFields[] = {
-    { "slot", "slot", "int32", 0x6a771618f6fe31d1ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Attachment, slot ), (uint32_t) sizeof( Attachment::slot ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 7.0, 0ll, 7ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "power", "power", "float32", 0xeef9d1358ae7b4e6ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Attachment, power ), (uint32_t) sizeof( Attachment::power ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "slot", "slot", "int32", 0x6a771618f6fe31d1ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Attachment, slot ), (uint32_t) sizeof( Attachment::slot ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 7.0, 0ll, 7ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "power", "power", "float32", 0xeef9d1358ae7b4e6ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Attachment, power ), (uint32_t) sizeof( Attachment::power ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo AttachmentTableInfo = { "Attachment", (uint32_t) sizeof( Attachment ), 2, AttachmentTableFields, +[]( void * p ) { AttachmentReset( *(Attachment *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * AttachmentTableType() { return &AttachmentTableInfo; }
 
 inline const TableFieldInfo BuffTableFields[] = {
-    { "multiplier", "multiplier", "float32", 0x9adc623a805c87c6ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Buff, multiplier ), (uint32_t) sizeof( Buff::multiplier ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "multiplier", "multiplier", "float32", 0x9adc623a805c87c6ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Buff, multiplier ), (uint32_t) sizeof( Buff::multiplier ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo BuffTableInfo = { "Buff", (uint32_t) sizeof( Buff ), 1, BuffTableFields, +[]( void * p ) { BuffReset( *(Buff *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * BuffTableType() { return &BuffTableInfo; }
 
 inline const TableFieldInfo DebuffTableFields[] = {
-    { "amount", "amount", "int32", 0x8113fe7ea2b16969ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Debuff, amount ), (uint32_t) sizeof( Debuff::amount ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100.0, 0ll, 100ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "amount", "amount", "int32", 0x8113fe7ea2b16969ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Debuff, amount ), (uint32_t) sizeof( Debuff::amount ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100.0, 0ll, 100ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo DebuffTableInfo = { "Debuff", (uint32_t) sizeof( Debuff ), 1, DebuffTableFields, +[]( void * p ) { DebuffReset( *(Debuff *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * DebuffTableType() { return &DebuffTableInfo; }

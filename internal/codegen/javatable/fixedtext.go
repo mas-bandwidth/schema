@@ -110,8 +110,9 @@ func writeFixedField(b *strings.Builder, u *ir.Unit, f *ir.Field, vname, fname s
 		if f.Array == ir.ArrayCounted {
 			fmt.Fprintf(b, "%sassert fixed.%sCount >= %d && fixed.%sCount <= %d;\n", ind, fname, f.ArrayMin, fname, f.ArrayBound)
 			bound = "fixed." + fname + "Count"
+			// a counted list is born holding its minimum (variableBornCount), so
+			// the carry empties it before it appends the fixed record's elements
 			if variableBornCount(f) > 0 {
-				// the list is born holding its minimum (Value's constructor)
 				fmt.Fprintf(b, "%sv.%s.clear();\n", ind, vname)
 			}
 		} else {
@@ -122,8 +123,8 @@ func writeFixedField(b *strings.Builder, u *ir.Unit, f *ir.Field, vname, fname s
 		if f.KeyEnum != "" {
 			// a keyed array's list is born pre-filled with the bound's defaults
 			// (generateTableVariable's Value constructor), so its slots are
-			// set, not appended; a bounded array is born empty and a counted
-			// one is emptied above.
+			// set, not appended; a counted array born at its minimum was emptied
+			// above, and a bounded array is born empty.
 			fmt.Fprintf(b, "%s    v.%s.set(i, %s);\n", ind, vname, elem)
 		} else {
 			fmt.Fprintf(b, "%s    v.%s.add(%s);\n", ind, vname, elem)

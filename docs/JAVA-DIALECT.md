@@ -161,7 +161,7 @@ failure in their tree and not only in ours.
   Where such storage is wider than the kind, the type does not bound the
   value: the writer's checks hold the range the schema declares. A required
   field's declared bounds are checked on save (`buildGraph` fails, so `save`
-  returns null), and a load clamps a wire value past them and reports
+  returns null), and a load refuses a wire value past them, naming
   `out_of_range`; a field with no such bound takes no save check, and the save
   writes only the kind's low bits.
 - **The packet codecs compose** (SPEC §6.1): `write<Name>Bits(value, data,

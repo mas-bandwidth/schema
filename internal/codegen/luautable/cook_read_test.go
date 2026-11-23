@@ -228,14 +228,19 @@ func TestLuauCookOpenAgreesWithGo(t *testing.T) {
 			inst := cu.m.New(table)
 			var report tabletext.Report
 			if _, err := tablewire.Decode(cu.m, inst, wire, &report); err != nil {
-				if strings.HasPrefix(tablewire.RefusalReason(err), "blob_shared") {
+				if row.blobShared || strings.HasPrefix(tablewire.RefusalReason(err), "blob_shared") {
+					// a wire-refused row (testdata/conformance/tables/FORMAT.md): the
+					// strict read refuses it, so the tool writes no cook to open
 					t.Skip("layer 4 (luau): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 				}
 				t.Fatalf("decode %s: %v", row.caseName, err)
 			}
 			cooked, err := tablecook.Cook(cu.m, inst, tablecook.Options{})
 			if err != nil {
-				t.Skipf("the tool writes no cook for %s: %v", row.caseName, err)
+				// The strict read accepted this instance, so it has a cook:
+				// the refused rows left by name above. An error here is the
+				// tool failing on an eligible case, never a row to skip.
+				t.Fatalf("the tool wrote no cook for %s, which the strict read accepts: %v", row.caseName, err)
 			}
 			build := fmt.Sprintf("0x%016x", cu.build)
 			out := runProbe(t, cu.g, cookProbe(cu.g, rootName, build, false), map[string][]byte{"wire": wire, "cook": cooked})

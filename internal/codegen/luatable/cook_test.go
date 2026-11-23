@@ -25,6 +25,7 @@ func TestLuaCookOpenAndCheck(t *testing.T) {
 	manifest := filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt")
 	units := manifestUnits(t, manifest)
 	rows := map[string]manifestRow{}
+	wireRefused := manifestWireRefusalRows(t, manifest)
 	for _, r := range manifestRows(t, manifest, "instance") {
 		rows[r.caseName] = r
 	}
@@ -52,16 +53,19 @@ func TestLuaCookOpenAndCheck(t *testing.T) {
 				inst := m.New(m.Lookup(r.root))
 				var report tabletext.Report
 				if _, err := tablewire.Decode(m, inst, wire, &report); err != nil {
-					if strings.HasPrefix(tablewire.RefusalReason(err), "blob_shared") {
+					if wireRefused[r.caseName] || strings.HasPrefix(tablewire.RefusalReason(err), "blob_shared") {
+						// a wire-refused row (testdata/conformance/tables/FORMAT.md): the
+						// strict read refuses it, so the tool writes no cook to open
 						t.Skip("layer 4 (lua): leg tolerates what the strict read refuses, re-pin as a verdict: docs/plans/strict-only.md")
 					}
 					t.Fatalf("decode %s: %v", r.caseName, err)
 				}
 				cooked, err := tablecook.Cook(m, inst, tablecook.Options{})
 				if err != nil {
-					// the tool refuses to write this cook (a map-bearing unit,
-					// docs/SPEC-TABLES.md §2.8); there is no cook to open.
-					t.Skipf("the tool writes no cook for %s: %v", r.caseName, err)
+					// The strict read accepted this instance, so it has a cook:
+					// the refused rows left by name above. An error here is the
+					// tool failing on an eligible case, never a row to skip.
+					t.Fatalf("the tool wrote no cook for %s, which the strict read accepts: %v", r.caseName, err)
 				}
 				if got := runCookProbe(t, u, r.root, cooked); got != "open" {
 					t.Fatalf("%s: cook refused: %s", r.caseName, got)

@@ -53,6 +53,11 @@ func TestUnboundedTextRefusals(t *testing.T) {
 			"package t\ntable T {\n    name string\n}\n"},
 		{"[N]string", "field rules: [N]string is refused — a text list is COUNTED, so a fixed extent, an enum key or a lower bound names a count that cannot vary the way a list's does; spell it [..N]string",
 			"package t\ntable T {\n    rules [4]string\n}\n"},
+		// A LOWER BOUND IS REFUSED TOO, so no text list is ever born at a
+		// count above zero and no writer has a minimum-count text list to
+		// elide (SPEC-TABLES §2.13.1).
+		{"[A..N]string", "field rules: [A..N]string is refused — a text list is COUNTED",
+			"package t\ntable T {\n    rules [2..5]string\n}\n"},
 		{"[E]string", "field rules: [E]string is refused — a text list is COUNTED",
 			"package t\nenum E { A, B }\ntable T {\n    rules [E]string\n}\n"},
 		{"?[]string", "field rules: ?[]string puts a presence bit on a list of text",

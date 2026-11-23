@@ -173,7 +173,7 @@ static const UnitFn units[] = {
     conformance_codecs_tblp1,
     conformance_codecs_tblp3,
     conformance_codecs_scalars,
-    conformance_codecs_graphdemo, conformance_codecs_blobdemo, conformance_codecs_tblg1, conformance_codecs_tblp2, conformance_codecs_streamdemo, conformance_codecs_tblscalars2, conformance_codecs_tblfixedevo, conformance_codecs_widelist, conformance_codecs_featurewitnesses, conformance_codecs_tblvarevo1, conformance_codecs_tblvarevo2, conformance_codecs_tblvarevo3, conformance_codecs_cooktorture, conformance_codecs_cooktorturewide
+    conformance_codecs_graphdemo, conformance_codecs_blobdemo, conformance_codecs_tblg1, conformance_codecs_tblp2, conformance_codecs_streamdemo, conformance_codecs_tblscalars2, conformance_codecs_tblfixedevo, conformance_codecs_widelist, conformance_codecs_featurewitnesses, conformance_codecs_tblvarevo1, conformance_codecs_tblvarevo2, conformance_codecs_tblvarevo3, conformance_codecs_cooktorture, conformance_codecs_cooktorturewide, conformance_codecs_shapes, conformance_codecs_tblprior
 };
 
 static const ConformanceCodec * find_codec( const char * unit, const char * root )
@@ -234,18 +234,28 @@ static int surface_wire( const char * out )
         if ( wire == NULL ) { fprintf( stderr, "driver: cannot read %s\n", f->field[4] ); return 1; }
         value = codec->storage();
         memset( &report, 0, sizeof( report ) );
-        if ( !codec->load( value, wire, (int64_t) bytes, &report ) )
         {
-            /* AN INSTANCE THE WIRE READ REFUSES (FORMAT.md, `wire-refused`):
-               a blob named from two slots (docs/SPEC-TABLES.md §2.5), which no
-               writer writes, so its answer is the refusal and no bytes */
+            int wire_refused = 0, mi;
+            for ( mi = 5; mi < f->count; mi++ ) { if ( strcmp( f->field[mi], "wire-refused" ) == 0 ) { wire_refused = 1; } }
+            if ( !codec->load( value, wire, (int64_t) bytes, &report ) )
+            {
+                /* AN INSTANCE THE WIRE READ REFUSES (FORMAT.md, `wire-refused`):
+                   a blob named from two slots (docs/SPEC-TABLES.md §2.5), which no
+                   writer writes, so its answer is the refusal and no bytes */
+                free( wire );
+                if ( report.blob_shared > 0 ) { if ( !spill_absent_reason( out, f->field[1], "blob_shared" ) ) { return 1; } continue; }
+                if ( wire_refused ) { if ( !spill_absent_reason( out, f->field[1], "refused" ) ) { return 1; } continue; }
+                fprintf( stderr, "driver: %s: load refused %s\n", f->field[1], f->field[4] );
+                return 1;
+            }
             free( wire );
-            if ( report.blob_shared > 0 ) { if ( !spill_absent_reason( out, f->field[1], "blob_shared" ) ) { return 1; } continue; }
-            fprintf( stderr, "driver: %s: load refused %s\n", f->field[1], f->field[4] );
-            return 1;
+            if ( !save_into( codec, value, out, f->field[1] ) )
+            {
+                if ( wire_refused ) { if ( !spill_absent_reason( out, f->field[1], "refused" ) ) { return 1; } continue; }
+                fprintf( stderr, "driver: %s: the write-back refused\n", f->field[1] );
+                return 1;
+            }
         }
-        free( wire );
-        if ( !save_into( codec, value, out, f->field[1] ) ) { fprintf( stderr, "driver: %s: the write-back refused\n", f->field[1] ); return 1; }
     }
     return 0;
 }
@@ -736,24 +746,39 @@ static int surface_reason(const char * out,const char * kind)
     return 0;
 }
 
-static int surface_message(const char * out)
+static int surface_message(const char * out, int prior)
 {
+ const char * conn_kind = prior ? "prior-connection" : "connection";
+ const char * msg_kind = prior ? "prior-message" : "message";
  int i,j;
  for(i=0;i<num_lines;i++){
   const Line * f=lines+i;const Line * connection=NULL;const ConformanceCodec * codec;
   uint8_t * announcement,*message,*answer=NULL;size_t an,n;int64_t size=0;ConformanceReport report={0};int ok;
-  if(strcmp(f->field[0],"message")!=0)continue;
-  for(j=0;j<num_lines;j++)if(!strcmp(lines[j].field[0],"connection")&&!strcmp(lines[j].field[1],f->field[2])){connection=lines+j;break;}
+  if(strcmp(f->field[0],msg_kind)!=0)continue;
+  for(j=0;j<num_lines;j++)if(!strcmp(lines[j].field[0],conn_kind)&&!strcmp(lines[j].field[1],f->field[2])){connection=lines+j;break;}
   if(!connection){return 1;}codec=find_codec(connection->field[2],f->field[3]);if(!codec)return 1;
   /* only a fixed table rides the message form: a variable root has no message codec */
-  if(codec->message==NULL){if(!spill_absent_reason(out,f->field[1],"variable table: the message form is fixed tables only (SPEC-TABLES §3.3)"))return 1;continue;}
+  if(strcmp(f->field[5],"-")==0||codec->message==NULL){if(!spill_absent_reason(out,f->field[1],"variable table: the message form is fixed tables only (SPEC-TABLES §3.3)"))return 1;continue;}
   announcement=slurp(connection->field[4],&an);message=slurp(f->field[5],&n);
   if(!announcement||!message){free(announcement);free(message);return 1;}
   ok=codec->message(announcement,(int64_t)an,message,(int64_t)n,&answer,&size,&report);
-  if(ok)ok=spill(out,f->field[1],answer,(size_t)size);
+  if(ok){
+   ok=spill(out,f->field[1],answer,(size_t)size);
+   free(answer);free(message);free(announcement);
+   if(!ok)return 1;
+   continue;
+  }
   free(answer);free(message);free(announcement);
-  if(!ok){fprintf(stderr,"message %s failed: refused=%d unknown=%d\n",f->field[1],report.refused,report.unknown);return 1;}
+  if(prior){
+   char rname[1024];
+   snprintf(rname,sizeof(rname),"%s.refused",f->field[1]);
+   if(!spill(out,rname,"refused",7))return 1;
+   continue;
+  }
+  fprintf(stderr,"message %s failed: refused=%d unknown=%d\n",f->field[1],report.refused,report.unknown);
+  return 1;
  }
+ if(prior)return 0;
  /* message-batch <case> <connection> <root> <wire>: load with room for every
     body and answer the count load_messages returned (docs/SPEC-TABLES.md §3.3;
     FORMAT.md, `message-batch`) */
@@ -841,12 +866,13 @@ static int surface_write_refusal( const char * out, const char * surface, int wr
             fprintf( stderr, "driver: %s %s: no setter for %s %s %s\n", surface, f->field[1], f->field[3], f->field[5], f->field[6] );
             return 1;
         }
-        if ( verdict != CONFORMANCE_WROTE && verdict != CONFORMANCE_REFUSED )
+        if ( verdict != CONFORMANCE_WROTE && verdict != CONFORMANCE_REFUSED && verdict != CONFORMANCE_UNREPRESENTABLE )
         {
             fprintf( stderr, "driver: %s %s: the case did not run\n", surface, f->field[1] );
             return 1;
         }
-        answer = verdict == CONFORMANCE_WROTE ? "wrote\n" : "refused\n";
+        /* a value the leg's storage cannot hold is said so, never narrowed */
+        answer = verdict == CONFORMANCE_WROTE ? "wrote\n" : verdict == CONFORMANCE_REFUSED ? "refused\n" : "unrepresentable\n";
         if ( !spill( out, f->field[1], answer, strlen( answer ) ) ) { return 1; }
     }
     return 0;
@@ -865,7 +891,7 @@ int main( int argc, char ** argv )
     surface = argv[2];
     if ( strcmp( surface, "list" ) == 0 )
     {
-        printf( "wire\nmessage\nretain\nretain-save\nreport\nframing\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-reason\nblock-reason\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n" );
+        printf( "wire\nmessage\nmessage-prior\nretain\nretain-save\nreport\nframing\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-reason\nblock-reason\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nunit shapes\n" );
         return 0;
     }
     if ( argc < 4 )
@@ -876,7 +902,8 @@ int main( int argc, char ** argv )
     out = argv[3];
     if(!strcmp(surface,"retain"))return surface_retain(out,0);
     if(!strcmp(surface,"retain-save"))return surface_retain(out,1);
-    if ( strcmp( surface, "message" ) == 0 ) { return surface_message(out); }
+    if ( strcmp( surface, "message" ) == 0 ) { return surface_message(out, 0); }
+    if ( strcmp( surface, "message-prior" ) == 0 ) { return surface_message(out, 1); }
     if ( strcmp( surface, "wire" ) == 0 ) { return surface_wire( out ); }
     if ( strcmp( surface, "report" ) == 0 ) { return surface_report( out ); }
     if ( strcmp( surface, "framing" ) == 0 ) { return surface_framing( out ); }

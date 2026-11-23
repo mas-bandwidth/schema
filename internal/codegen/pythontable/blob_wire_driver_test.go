@@ -54,7 +54,7 @@ Path('out').mkdir()
 wire.run('manifest', 'out')
 for case in ('blob_shared', 'blob_shared_string'):
     assert Path('out', case + '.absent').exists(), 'missing observed blob_shared refusal'
-    assert Path('out', case + '.absent').read_bytes() == b'blob_shared'
+    assert Path('out', case + '.absent').read_bytes() == b'blob_shared', 'driver dropped a public refusal'
     assert not Path('out', case).exists()
 assert Path('out/blob_equal_bytes').read_bytes() == Path('blob_equal_bytes.bin').read_bytes()
 Catalog = root_class('blobdemo', 'Catalog')
@@ -89,21 +89,32 @@ assert d.pages['a'] is not d.pages['b']
 saved_text = d.save()
 assert d.measure() == len(saved_text) and Docs.load(saved_text).save() == saved_text
 
+import _common
 original = Catalog.load
-for exception in (blobs.Refused('wire_damaged'), ValueError('blob_shared')):
-    def wrong_load(data, error=exception): raise error
-    Catalog.load = staticmethod(wrong_load)
-    Path('wrong-manifest').write_text('instance wrong blobdemo Catalog blob_shared.bin\n')
-    Path('wrong-out').mkdir(exist_ok=True)
-    try: wire.run('wrong-manifest', 'wrong-out')
-    except (AssertionError, ValueError): pass
-    else: raise AssertionError('driver accepted wrong public refusal')
-    assert not Path('wrong-out/wrong.absent').exists()
+Path('wrong-manifest').write_text('instance wrong blobdemo Catalog blob_shared.bin\n')
+# ANY public refusal is the leg's answer, whatever its reason: the harness
+# compares the verdict (docs/rulings.json refusal-verdict-only)
+def damaged_load(data): raise blobs.Refused('wire_damaged')
+Catalog.load = staticmethod(damaged_load)
+Path('damaged-out').mkdir()
+wire.run('wrong-manifest', 'damaged-out')
+assert Path('damaged-out/wrong.absent').read_bytes() == b'wire_damaged', 'driver dropped a public refusal'
+assert not Path('damaged-out/wrong').exists() and not _common.DRIVER_ERRORS
+# a failure that is not the codec's public refusal is a DRIVER ERROR: no
+# answer, the case named, and the surface red once its cases have run
+def broken_load(data): raise ValueError('blob_shared')
+Catalog.load = staticmethod(broken_load)
+Path('broken-out').mkdir()
+wire.run('wrong-manifest', 'broken-out')
+assert _common.DRIVER_ERRORS == ['wrong'], 'driver turned a non-public failure into an answer'
+assert not Path('broken-out/wrong.absent').exists() and not Path('broken-out/wrong').exists()
+del _common.DRIVER_ERRORS[:]
 Catalog.load = original
+# NO CODEC is an EMPTY .absent: never an abort, never a refusal
 Path('missing-manifest').write_text('instance missing missing Root blob_shared.bin\n')
-try: wire.run('missing-manifest', 'out')
-except AssertionError: pass
-else: raise AssertionError('driver treated missing root as expected refusal')
+wire.run('missing-manifest', 'out')
+assert Path('out/missing.absent').exists() and Path('out/missing.absent').read_bytes() == b'', 'driver treated a missing root as a refusal or an error'
+assert not Path('out/missing').exists() and not _common.DRIVER_ERRORS
 print('blob wire contract passed')
 `
 
@@ -128,7 +139,8 @@ func TestPythonWireBlobDriverNegativeControl(t *testing.T) {
 	for _, tc := range []struct{ name, path, before, after, diagnostic string }{
 		{"reader", "generated/blobdemo/blobdemo/_schema/load.py", "if blob and names[k + 1] > 1:", "if False:", "missing observed blob_shared refusal"},
 		{"writer", "generated/blobdemo/blobdemo/_schema/save.py", "if identity in ctx.blob_refs:", "if False:", "shared bytes writer accepted"},
-		{"driver", "surfaces/wire.py", `if err.reason != "blob_shared":`, "if False:", "driver accepted wrong public refusal"},
+		{"driver", "surfaces/wire.py", "absent(outdir, case, err.reason)", "no_codec(outdir, case)", "driver dropped a public refusal"},
+		{"driver-missing", "surfaces/wire.py", "        no_codec(outdir, case)\n        return", "        raise AssertionError(case)", "driver treated a missing root as a refusal or an error"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			files := maps.Clone(original)

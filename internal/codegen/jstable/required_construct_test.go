@@ -182,9 +182,11 @@ const rr=new m.TableVariableReport();const wrongShape=m.GuardFromJson('{"on":tru
 expect(wrongShape===null && rr.mismatch===1 && rr.missingRequired===0 && rr.err()==="kind_mismatch", "present wrong-kind JSON must refuse by kind");
 `
 
-// Required is a variable-table declaration. Its fixed positional accelerator
-// remains valid, but it must not acquire message APIs (message roots are explicit
-// fixed tables, where Required is forbidden by the checker).
+// Required is a variable-table declaration, and a variable table encodes as
+// form 1, always (docs/SPEC-TABLES.md §3.4): it acquires no fixed positional
+// API and no message API (message roots are explicit fixed tables, where
+// Required is forbidden by the checker). The declared fixed table beside it
+// keeps its whole fixed surface.
 func TestJavaScriptRequiredFixedConstruct(t *testing.T) {
 	slowtest.Gate(t, "node (it executes required no-default fixed storage)")
 	const src = `package probe
@@ -198,22 +200,20 @@ fixed table Other { x int32 }
 `
 	const probe = `
 const exports=await import("./ProbeTable.js");
-if(exports.GuardedFixedSave!==undefined){fail("guarded ordinary table acquired fixed positional API");}
+for(const name of ["GuardedFixedSave","GuardedFixedLoad","TFixedSave","TFixedLoad","TFixedMeasure"]){
+ if(exports[name]!==undefined){fail("variable table acquired fixed positional API "+name);}
+}
 for(const name of Object.keys(exports)){
  if(name.startsWith("T") && name.includes("Message") && !name.startsWith("Table")) {fail("required table leaked message surface "+name);}
 }
 const value=new T();InitT(value);
+value.x=7;
 const wire=new Uint8Array(TMeasure(1));
-if(TSave([value],1,wire)!==-1){fail("required storage zero outside range accepted by fixed writer");}
-value.n=5;
-value.wide=9007199254740992n;
-if(TSave([value],1,wire)!==-1){fail("required uint64 preflight rounded its minimum");}
-value.wide=9007199254740993n;
-if(TSave([value],1,wire)!==wire.length){fail("required initialized fixed value rejected");}
+if(TSave([value],1,wire)!==wire.length){fail("declared fixed table lost its fixed writer");}
 const back=[new T()];InitT(back[0]);const report=new TableFixedReport();
-if(TLoad(back,1,wire,wire.length,TNewPlan(4096,4096),report)!==1 || back[0].n!==5 || back[0].wide!==9007199254740993n || report.damaged || report.refused!==0){fail("required fixed roundtrip");}
+if(TLoad(back,1,wire,wire.length,TNewPlan(4096,4096),report)!==1 || back[0].x!==7 || report.damaged || report.refused!==0){fail("declared fixed table roundtrip");}
 `
-	if out, err := jsRunVersionProbe(t, jsNode(t), src, nil, 0, "T", probe); err != nil {
+	if out, err := jsRunVersionProbe(t, jsNode(t), src, nil, 0, "Other", probe); err != nil {
 		t.Fatalf("required fixed: %v\n%s", err, out)
 	}
 }

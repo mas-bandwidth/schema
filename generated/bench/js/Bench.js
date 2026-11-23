@@ -1426,14 +1426,14 @@ export function WriteBenchMixed(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 32)) {
     return false;
   }
-  if (value.nonce < 0n || value.nonce > 18446744073709551615n) {
+  if (typeof value.nonce !== "bigint" || value.nonce < 0n || value.nonce > 18446744073709551615n) {
     return false;
   }
   BIGINT_SCRATCH.value = globalThis.BigInt.asUintN(64, value.nonce);
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
   }
-  if (value.worldTime < -1000000000000n || value.worldTime > 1000000000000n) {
+  if (typeof value.worldTime !== "bigint" || value.worldTime < -1000000000000n || value.worldTime > 1000000000000n) {
     return false;
   }
   BIGINT_SCRATCH.value = globalThis.BigInt.asUintN(64, value.worldTime - -1000000000000n);
@@ -1445,6 +1445,9 @@ export function WriteBenchMixed(stream, value) {
   }
   BIGINT_SCRATCH.value = value.frameTick;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 48)) {
+    return false;
+  }
+  if (!globalThis.Number.isInteger(value.serverTime) || value.serverTime < 0 || value.serverTime > 16776960) {
     return false;
   }
   NUMBER_SCRATCH.value = value.serverTime;
@@ -1566,6 +1569,9 @@ export function WriteBenchMixed(stream, value) {
   }
   BIGINT_SCRATCH.value = value.flux;
   if (!stream.serializeInt128(BIGINT_SCRATCH, -1267650600228229401496703205376n, 1267650600228229401496703205376n)) {
+    return false;
+  }
+  if (!globalThis.Number.isInteger(value.ping) || value.ping < 0 || value.ping > 64000) {
     return false;
   }
   NUMBER_SCRATCH.value = value.ping;

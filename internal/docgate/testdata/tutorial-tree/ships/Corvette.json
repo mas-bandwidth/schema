@@ -1,0 +1,8 @@
+{
+  "display_name": "Corvette",
+  "max_health": 500,
+  "max_speed": 500,
+  "armor": 1,
+  "ship_type": "Corvette",
+  "settings": { "sensitivity": 0.8 }
+}

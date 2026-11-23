@@ -2,43 +2,44 @@
 
 import os
 
-from _common import ROOT, absent, entries, root_class, write_bytes
+from _common import answering, no_codec, ROOT, entries, root_class, write_bytes
 from _json_common import raise_if_unsupported, read_wire, write_wire
 
 
 def run(manifest, outdir):
     for row in entries(manifest, "framing"):
-        case, unit, root, wire = row[1:5]
-        # The roster tests form 1 for fixed roots (tblr1/Cfg, listdemo/Bounded);
-        # read through their generated variable-class sibling, then write the
-        # canonical fixed-form save-wire via the original fixed root.
-        is_fixed_twin = (unit == "tblr1" and root == "Cfg") or (unit == "listdemo" and root == "Bounded")
-        if unit == "tblr1" and root == "Cfg":
-            tree = os.environ.get("PYTHON_FRAMING_GENERATED", os.path.join(ROOT, "tblr1", "_framing"))
-        elif unit == "listdemo" and root == "Bounded":
-            tree = os.path.join(ROOT, "listdemo", "_framing")
-        else:
-            tree = None
-        cls = root_class(unit, root, tree)
-        if cls is None:
-            absent(outdir, case, "unit not generated for python")
-            continue
-        try:
-            value = read_wire(cls, wire)
-        except ValueError as error:
-            raise_if_unsupported(error)
-            write_bytes(outdir, case, b"refused\n")
-            continue
-        # The shared roster's canonical writer is the original fixed Cfg.
-        # Convert through the public text APIs after the variable form-1 read.
-        text = value.to_json()
-        if is_fixed_twin:
-            fixed_cls = root_class(unit, root)
-            if fixed_cls is None:
-                absent(outdir, case, "fixed unit not generated for python")
+        with answering(row[1]):
+            case, unit, root, wire = row[1:5]
+            # The roster tests form 1 for fixed roots (tblr1/Cfg, listdemo/Bounded);
+            # read through their generated variable-class sibling, then write the
+            # canonical fixed-form save-wire via the original fixed root.
+            is_fixed_twin = (unit == "tblr1" and root == "Cfg") or (unit == "listdemo" and root == "Bounded")
+            if unit == "tblr1" and root == "Cfg":
+                tree = os.environ.get("PYTHON_FRAMING_GENERATED", os.path.join(ROOT, "tblr1", "_framing"))
+            elif unit == "listdemo" and root == "Bounded":
+                tree = os.path.join(ROOT, "listdemo", "_framing")
+            else:
+                tree = None
+            cls = root_class(unit, root, tree)
+            if cls is None:
+                no_codec(outdir, case)
                 continue
-            saved = fixed_cls.from_json(text).save()
-        else:
-            saved = write_wire(cls, value)
-        write_bytes(outdir, case + ".wire", saved)
-        write_bytes(outdir, case, b"read\n" if "no-value" in row[5:] else b"read\n" + text.encode("utf-8"))
+            try:
+                value = read_wire(cls, wire)
+            except ValueError as error:
+                raise_if_unsupported(error)
+                write_bytes(outdir, case, b"refused\n")
+                continue
+            # The shared roster's canonical writer is the original fixed root.
+            # Convert through the public text APIs after the variable form-1 read.
+            text = value.to_json()
+            if is_fixed_twin:
+                fixed_cls = root_class(unit, root)
+                if fixed_cls is None:
+                    no_codec(outdir, case)
+                    continue
+                saved = fixed_cls.from_json(text).save()
+            else:
+                saved = write_wire(cls, value)
+            write_bytes(outdir, case + ".wire", saved)
+            write_bytes(outdir, case, b"read\n" if "no-value" in row[5:] else b"read\n" + text.encode("utf-8"))
