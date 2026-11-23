@@ -675,7 +675,7 @@ build/tables-generated-dart-framing/countedmin/.stamp: bin/schema make/dart.mk t
 	./bin/schema generate --lang dart --out build/tables-generated-dart-framing/countedmin build/tables-dart-counted-min-variable/CountedMin.schema
 	@touch $@
 
-build/conformance-dart: build/tables-generated-dart/.stamp build/tables-generated-dart-framing/countedmin/.stamp $(CARDS_DART_STAMP) test/conformance/dart/main.dart
+build/conformance-dart: build/tables-generated-dart/.stamp $(CARDS_DART_STAMP) build/tables-generated-dart-framing/countedmin/.stamp test/conformance/dart/main.dart
 	@mkdir -p build
 	$(DART) compile exe -o $@ test/conformance/dart/main.dart >/dev/null
 
