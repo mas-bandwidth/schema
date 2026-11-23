@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -151,7 +153,7 @@ func TestSpec1122EvolutionVectorsPinned(t *testing.T) {
 			t.Fatal(err)
 		}
 		path := filepath.Join(spEvoDir, row.wire)
-		if os.Getenv("SP1122_WRITE") == "1" {
+		if slowtest.Rewriting(t, "SP1122_WRITE") {
 			if err := os.WriteFile(path, want, 0o644); err != nil {
 				t.Fatal(err)
 			}

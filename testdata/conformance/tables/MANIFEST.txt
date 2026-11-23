@@ -1922,8 +1922,6 @@ json-hostile sp-f32-bound-inside                tabledemo        FloatBound   te
 json-hostile sp-f32-bound-one-step-past         tabledemo        FloatBound   testdata/conformance/tables/json-hostile/sp-f32-bound-one-step-past refused
 json-hostile sp-f32-bound-narrows               tabledemo        FloatBound   testdata/conformance/tables/json-hostile/sp-f32-bound-narrows read
 json-hostile sp-enum-elem-deprecated-array      tabledemo        Moods        testdata/conformance/tables/json-hostile/sp-enum-elem-deprecated-array read
-framing sp_count_min_below                      tabledemo CountedMin testdata/wire/tables/framing/sp_count_min_below.bin refused -
-framing sp_count_min_zero                       tabledemo CountedMin testdata/wire/tables/framing/sp_count_min_zero.bin refused -
 
 # SPEC ROWS ROOTS 1122, EVOLUTION AND FIXED-FORM READS (test/conformance/harness/spec1122_evolution_vectors_test.go): a deprecated enum element reads as None on the fixed form and on the compiled plan; a count below the reader's minimum A refuses on the compiled plan.
 report  sp_enum_fixed_deprecated       tabledemo Moods      testdata/conformance/tables/wire/sp_enum_fixed_deprecated.bin
@@ -1931,6 +1929,8 @@ report  sp_enum_evolved_deprecated     tabledemo Moods      testdata/conformance
 report  sp_count_min_evolved_at        tabledemo CountedMin testdata/conformance/tables/wire/sp_count_min_evolved_at.bin
 report  sp_count_min_evolved_max       tabledemo CountedMin testdata/conformance/tables/wire/sp_count_min_evolved_max.bin
 report  sp_count_min_evolved_below     tabledemo CountedMin testdata/conformance/tables/wire/sp_count_min_evolved_below.bin
+report  sp_count_min_below             tabledemo CountedMin testdata/conformance/tables/wire/sp_count_min_below.bin
+report  sp_count_min_zero              tabledemo CountedMin testdata/conformance/tables/wire/sp_count_min_zero.bin
 rewrite sp_enum_fixed_deprecated       tabledemo Moods      testdata/conformance/tables/wire/sp_enum_fixed_deprecated.bin
 rewrite sp_enum_evolved_deprecated     tabledemo Moods      testdata/conformance/tables/wire/sp_enum_evolved_deprecated.bin
 rewrite sp_count_min_evolved_at        tabledemo CountedMin testdata/conformance/tables/wire/sp_count_min_evolved_at.bin
@@ -1940,6 +1940,8 @@ rewrite sp_count_min_evolved_max       tabledemo CountedMin testdata/conformance
 # match, so the only rule the wire breaks is A = 2. The oracle reads them at the variable class.
 framing sp_count_min_below_form1                tabledemo CountedMin testdata/wire/tables/framing/sp_count_min_below_form1.bin refused -
 framing sp_count_min_zero_form1                 tabledemo CountedMin testdata/wire/tables/framing/sp_count_min_zero_form1.bin refused -
+framing twin_count_min_at_form1                 tabledemo CountedMin testdata/wire/tables/framing/twin_count_min_at_form1.bin read testdata/conformance/tables/framing/twin_count_min_at_form1.json
+rewrite twin_count_min_at_form1                 tabledemo CountedMin testdata/wire/tables/framing/twin_count_min_at_form1.bin
 # a deprecated variant is never written (docs/SPEC-TABLES.md §2.15): Old (2) refused, Fierce (3) the lawful twin
 instance sp_enum_moods                          tabledemo Moods     testdata/conformance/tables/save-wire/sp-enum-elem-deprecated-array.bin
 write-refusal-json jref_enum_deprecated         tabledemo Moods testdata/conformance/tables/save-wire/sp-enum-elem-deprecated-array.bin row[0] ordinal 2 refused
