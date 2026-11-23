@@ -260,7 +260,7 @@ if (mode == "list") {
                      "cook", "cook-foreign", "block", "block-foreign", "block-dump",
                      "forgery", "cook-forgery", "cook-reason", "block-reason",
                      "cook-write", "message", "message-prior", "retain", "retain-save",
-                     "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json"]) print(name + "\n");
+                     "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json", "unit shapes"]) print(name + "\n");
   return;
 }
 
@@ -308,7 +308,8 @@ if (mode == "wire") {
         writeText(outdir + "/" + cname + ".absent", "blob_shared");
         continue;
       }
-      throw cname + ": load refused " + wirepath;
+      writeText(outdir + "/" + cname + ".absent", report.reason != null ? report.reason : "refused");
+      continue;
     }
     local out = S.save(T, root, v);
     if (out == null) {
@@ -954,6 +955,45 @@ if (mode == "write-refusal" || mode == "write-refusal-fixed" || mode == "write-r
     }
     return dst;
   };
+  local u64lt = function(a, b) {
+    if ((a < 0) != (b < 0)) return b < 0;
+    return a < b;
+  };
+  local wrefInteger = function(text, u64) {
+    if (text.len() == 0) return null;
+    local neg = false;
+    local i = 0;
+    if (text[0] == '-') {
+      if (u64) return null;
+      neg = true;
+      i = 1;
+    }
+    if (i >= text.len()) return null;
+    local acc = 0;
+    for (; i < text.len(); i++) {
+      local ch = text[i];
+      if (ch < '0' || ch > '9') return null;
+      local dig = ch - '0';
+      if (u64) {
+        if (u64lt(0x1999999999999999, acc)) return null;
+        local t = acc * 10;
+        local nv = t + dig;
+        if (u64lt(nv, t)) return null;
+        acc = nv;
+      } else if (neg) {
+        if (acc < -922337203685477580) return null;
+        local t = acc * 10;
+        if (acc == -922337203685477580 && dig > 8) return null;
+        acc = t - dig;
+      } else {
+        if (acc > 922337203685477580) return null;
+        local t = acc * 10;
+        if (acc == 922337203685477580 && dig > 7) return null;
+        acc = t + dig;
+      }
+    }
+    return acc;
+  };
   local wrefSet = function(T, root, v, path, what, text) {
     local segments = [];
     local start = 0;
@@ -1014,12 +1054,15 @@ if (mode == "write-refusal" || mode == "write-refusal-fixed" || mode == "write-r
         d = ed;
       }
       if (what == "int") {
-        holder[key] = text.tointeger();
+        local u64 = (d != null && d.shape == "int" && !d.signed && d.width == 8);
+        local n = wrefInteger(text, u64);
+        if (n == null) return "unrepresentable\n";
+        holder[key] = n;
       } else if (what == "ordinal") {
         local n = text.tointeger();
         if (d.variants != null && n >= 1 && n <= d.variants.len()) holder[key] = d.variants[n - 1][0];
         else holder[key] = n;
-      } else if (what == "float") {
+      } else if (what == "float" || what == "real") {
         holder[key] = wrefFloat(text);
       } else if (what == "count") {
         local n = text.tointeger();
@@ -1069,7 +1112,8 @@ if (mode == "write-refusal" || mode == "write-refusal-fixed" || mode == "write-r
     local got = strictLoad(opened, root, readBytes(wirepath));
     local v = got[0];
     if (v == null) throw cname + ": strictLoad refused " + wirepath;
-    wrefSet(T, root, v, path, what, text);
+    local setRes = wrefSet(T, root, v, path, what, text);
+    if (setRes != null) { writeText(outdir + "/" + cname, setRes); continue; }
     local answer = "refused\n";
     try {
       if (mode == "write-refusal" || mode == "write-refusal-fixed") {
