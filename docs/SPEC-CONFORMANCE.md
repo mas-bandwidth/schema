@@ -492,7 +492,8 @@ The `sfw_opt_arr_ok` edit grows the present array from `[1, 2]` to
 `[1, 2, 1]`. The driver preserves the existing elements and copies element
 zero into the new slot. Its save must match the
 [canonical resized file](../testdata/conformance/table-write-bounds/expected/torture_var_wref_resized.bin),
-which decodes to that array with the other fields unchanged.
+which decodes to that array with the other fields unchanged. Run `make table-optional-array-resize-go` for the
+standalone generated Go test. An observed `[1, 2, 0]` fails even when the save succeeds.
 
 | Carrier | Accepted cases | Refused cases |
 |---|---|---|
@@ -534,25 +535,37 @@ readback goldens. Their writer-argument gates run the cases above.
 
 ### Declared deprecated enum writers
 
-The [declaration](../testdata/conformance/feature-witnesses/declared-deprecated-enum/Probe.schema)
-keeps `Phase.Old` at ordinal 2 and `Phase.Next` at ordinal 3.
-Each case assigns `phase` through the typed caller value. Form 1 emits a
-field entry for the non-default `Next` and names its variant by reference
-([SPEC-TABLES §3](SPEC-TABLES.md#3-the-wire)).
-Form 3 saves one fixed record and stores ordinal 3 in its enum slot
-([SPEC-TABLES §3.4](SPEC-TABLES.md#34-the-fixed-form-a-record-of-values-under-a-layout)).
-For `Old`, both forms refuse the write under
-[SPEC-TABLES §2.15](SPEC-TABLES.md#215-enum-variants--deprecated-in-place).
-The [expected outcomes](../testdata/conformance/feature-witnesses/declared-deprecated-enum/cases.txt)
-give each case ID followed by the complete output in hex, the measured size
-in decimal bytes, or `refused`.
+Compile the [SF-26 schema](../testdata/conformance/feature-witnesses/declared-deprecated-enum/Probe.schema).
+Its `Phase` enum keeps the deprecated variant `Old` at ordinal 2 and the
+live variant `Next` at ordinal 3. Assign each variant directly to the
+root's `phase` field through the caller API. A reader may map a deprecated
+variant to its default, so constructing the caller value directly is part
+of this test. Run with write assertions enabled on targets that use them.
 
-| Case | Typed operation |
-|---|---|
-| `sf26_form1_next`, `sf26_form1_old` | Save `VarRoot` with `Next` or `Old` |
-| `sf26_form3_next`, `sf26_form3_old` | Measure room for one `FixedRoot` and save with `Next` or `Old` |
-| `sf26_cook_measure_next`, `sf26_cook_measure_old` | Measure a `FixedRoot` holding `Next` or `Old`; both return the layout's 88 bytes |
-| `sf26_cook_next_le`, `sf26_cook_next_be`, `sf26_cook_old_le`, `sf26_cook_old_be` | Cook a `FixedRoot` holding `Next` or `Old` in each byte order ([SPEC-TABLES §7.6](SPEC-TABLES.md#76-the-write-side-cook-and-cookmeasure)) |
+| Operation | `Phase.Next` | `Phase.Old` |
+|---|---|---|
+| Save one `VarRoot` in Form 1 | `sf26_form1_next` emits the pinned 29 bytes | `sf26_form1_old` refuses |
+| Save one `FixedRoot` in Form 3 | `sf26_form3_next` emits the pinned 118 bytes, with ordinal 3 in its enum slot | `sf26_form3_old` refuses |
+| Call fixed-root `CookMeasure` | `sf26_cook_measure_next` returns 88 bytes | `sf26_cook_measure_old` also returns 88 bytes |
+| Cook one `FixedRoot` in little-endian order | `sf26_cook_next_le` emits the pinned 88 bytes | `sf26_cook_old_le` refuses before writing |
+| Cook one `FixedRoot` in big-endian order | `sf26_cook_next_be` emits the pinned 88 bytes | `sf26_cook_old_be` refuses before writing |
+
+[The shared expected answers](../testdata/conformance/feature-witnesses/declared-deprecated-enum/cases.txt)
+give each case ID and its complete wire bytes in hex, size in decimal bytes,
+or refusal verdict. Compare every output byte for `Next`. For a caller-buffer
+Cook API, fill an 88-byte destination with `0x5a` before each `Old` call
+and check that every byte retains that value after refusal. A reasoned
+fixed-root measure reports success with size 88 for either variant. The
+fixed layout determines the size. The writer checks whether the supplied
+value may be emitted. These are the enum and fixed Cook rules in
+[SPEC-TABLES §2.15](SPEC-TABLES.md#215-enum-variants--deprecated-in-place)
+and [§7.6](SPEC-TABLES.md#76-the-write-side-cook-and-cookmeasure).
+
+Run the six fixed-root Cook and CookMeasure cases against generated Go with
+
+```sh
+SCHEMA_SLOW=1 go test -count=1 -v ./internal/codegen/gotable -run '^TestDeclaredDeprecatedEnumCook$'
+```
 
 The Rust and Dart generator tests run these shared cases with assertions enabled.
 Fixed-root `CookMeasure` reports the layout size for either value.
