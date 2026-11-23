@@ -1568,8 +1568,10 @@ static void test_message_form_bases()
 static void test_message_form_quantized()
 {
     // THE INDEX IS THE PACKET WIRE'S, bit for bit: 0.005 the rounding tie, 0.123
-    // off the grid, 11.0 past the clamp, over [0, 10] at 0.01
-    const float values[3] = { 0.005f, 0.123f, 11.0f };
+    // off the grid, 9.996 rounding up onto the top end, over [0, 10] at 0.01.
+    // A value past the range (11.0) is not written: it breaks the write
+    // contract (docs/SPEC.md §5.1 row 10), a debug assert in SaveMessages.
+    const float values[3] = { 0.005f, 0.123f, 9.996f };
     const uint32_t indices[3] = { 1, 12, 1000 };
 
     static uint8_t announcement[8192];
