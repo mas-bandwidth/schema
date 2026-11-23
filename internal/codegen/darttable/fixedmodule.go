@@ -645,9 +645,14 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 		"List<" + st.Name + "> values", "int capacity", "Uint8List bytes",
 		"int byteLength", "TableFixedPlan plan", "TableFixedReport report",
 	})
+	// R4: EVERY REFUSAL HANDS BACK NO ROW: the rows the caller handed in (the
+	// whole list, `capacity` or not: the list is what was given) all go back to
+	// their declared defaults, whichever check refused, and the read answers -1.
+	g.pf("  int refuse() {\n")
+	g.pf("    for (var j = 0; j < values.length; j++) {\n      init%s(values[j]);\n    }\n    return -1;\n  }\n\n", capitalize(st.Name))
 	g.pf("  report.reset();\n")
 	g.pf("  if (byteLength < 1 || byteLength > bytes.length) {\n")
-	g.pf("    report.refused = TableFixedRefusal.damaged;\n    return -1;\n  }\n")
+	g.pf("    report.refused = TableFixedRefusal.damaged;\n    return refuse();\n  }\n")
 	g.pf("  final view = %sFixedLoadView.of(bytes);\n", lower)
 	g.pf("  // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):\n")
 	g.pf("  // the registry is ordered, so a byte this reader does not carry is named\n")
@@ -661,19 +666,19 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("      TableFixedLimits.messageForm => TableFixedRefusal.messageFormAsFile,\n")
 	g.pf("      _ => TableFixedRefusal.newerForm,\n")
 	g.pf("    };\n")
-	g.pf("    return -1;\n  }\n")
+	g.pf("    return refuse();\n  }\n")
 	if st.Integrity != "" {
-		g.pf("  if (!tableIntegrityValid(bytes, byteLength, 5)) {\n    report.refused = TableFixedRefusal.integrityMismatch;\n    return -1;\n  }\n  byteLength -= 4;\n")
+		g.pf("  if (!tableIntegrityValid(bytes, byteLength, 5)) {\n    report.refused = TableFixedRefusal.integrityMismatch;\n    return refuse();\n  }\n  byteLength -= 4;\n")
 	}
 	g.pf("  if (byteLength < TableFixedLimits.layoutAt) {\n")
-	g.pf("    report.refused = TableFixedRefusal.damaged;\n    return -1;\n  }\n")
+	g.pf("    report.refused = TableFixedRefusal.damaged;\n    return refuse();\n  }\n")
 	g.pf("  // THE SEVEN RESERVED BYTES ARE REFUSED, NOT IGNORED (§3.4, §5.3).\n")
 	g.pf("  for (var i = 1; i < TableFixedLimits.hashAt; i++) {\n")
-	g.pf("    if (bytes[i] != 0) {\n      report.refused = TableFixedRefusal.damaged;\n      return -1;\n    }\n  }\n")
+	g.pf("    if (bytes[i] != 0) {\n      report.refused = TableFixedRefusal.damaged;\n      return refuse();\n    }\n  }\n")
 	g.call("  ", "final layoutBytes = ", "view.getUint32",
 		[]string{"TableFixedLimits.headerBytes", "Endian.little"}, ";")
 	g.pf("  if (layoutBytes + TableFixedLimits.layoutAt > byteLength) {\n")
-	g.pf("    report.refused = TableFixedRefusal.layoutDamaged;\n    return -1;\n  }\n")
+	g.pf("    report.refused = TableFixedRefusal.layoutDamaged;\n    return refuse();\n  }\n")
 	g.call("  ", "final hash = ", "view.getUint64",
 		[]string{"TableFixedLimits.hashAt", "Endian.little"}, ";")
 	// STEP 5 and STEP 6: SELECT BY HASH, then the floor. Outside the lineage is
@@ -687,10 +692,10 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("  final pick = tableFixedSelect(%sFixedKnown, hash);\n", lower)
 	g.pf("  if (pick < 0) {\n")
 	g.pf("    report.layoutHash = hash;\n")
-	g.pf("    report.refused = TableFixedRefusal.layoutNewer;\n    return -1;\n  }\n")
+	g.pf("    report.refused = TableFixedRefusal.layoutNewer;\n    return refuse();\n  }\n")
 	g.pf("  if (pick < %sFixedFloor) {\n", lower)
 	g.pf("    report.layoutHash = hash;\n")
-	g.pf("    report.refused = TableFixedRefusal.layoutUnsupported;\n    return -1;\n  }\n")
+	g.pf("    report.refused = TableFixedRefusal.layoutUnsupported;\n    return refuse();\n  }\n")
 	// STEP 7: a known hash is read under THE LOCK'S layout bytes. A difference
 	// is ONE name — a lie about a known version — and §1.1's seven rules do not
 	// run at read time at all.
@@ -698,10 +703,10 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("  // malformation under a KNOWN hash is one name, layout_malformed.\n")
 	g.pf("  final known = %sFixedKnown[pick];\n", lower)
 	g.pf("  if (layoutBytes != known.layoutBytes) {\n")
-	g.pf("    report.refused = TableFixedRefusal.layoutDamaged;\n    return -1;\n  }\n")
+	g.pf("    report.refused = TableFixedRefusal.layoutDamaged;\n    return refuse();\n  }\n")
 	g.pf("  for (var i = 0; i < layoutBytes; i++) {\n")
 	g.pf("    if (bytes[TableFixedLimits.layoutAt + i] != known.layout[i]) {\n")
-	g.pf("      report.refused = TableFixedRefusal.layoutDamaged;\n      return -1;\n    }\n")
+	g.pf("      report.refused = TableFixedRefusal.layoutDamaged;\n      return refuse();\n    }\n")
 	g.pf("  }\n")
 	g.pf("  report.hash = hash; // the header's hash; digest is not on the wire\n")
 	// STEP 8: the plan this endpoint resolves to, and the record size FROM THE LOCK.
@@ -729,12 +734,12 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("  if (hash != %sFixedHash) {\n", lower)
 	g.pf("    final lane = %sFixedLineagePlans[pick];\n", lower)
 	g.pf("    if (lane.why != TableFixedRefusal.none) {\n")
-	g.pf("      report.refused = lane.why;\n      return -1;\n    }\n")
+	g.pf("      report.refused = lane.why;\n      return refuse();\n    }\n")
 	g.pf("    // THE CALLER'S PLAN STAYS A CAPACITY DECLARATION and is no longer\n")
 	g.pf("    // written through (§5.9 #5): the entry count is checked against it and\n")
 	g.pf("    // a plan past it refuses by name.\n")
 	g.pf("    if (lane.count > plan.capacity) {\n")
-	g.pf("      report.refused = TableFixedRefusal.planTooLarge;\n      return -1;\n    }\n")
+	g.pf("      report.refused = TableFixedRefusal.planTooLarge;\n      return refuse();\n    }\n")
 	g.pf("    entries = lane.entries;\n    entryCount = lane.count;\n")
 	g.pf("    fills = lane.fill;\n    fillCount = lane.fillCount;\n")
 	g.pf("    remap = lane.remap;\n")
@@ -758,10 +763,10 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("  // (§5.3 step 9): a header and a layout followed by no record reads zero\n")
 	g.pf("  // records, and a batch of none holds no value to read.\n")
 	g.pf("  if (rest == 0 || recordBytes <= 8 || rest %% recordBytes != 0) {\n")
-	g.pf("    report.refused = TableFixedRefusal.damaged;\n    return -1;\n  }\n")
+	g.pf("    report.refused = TableFixedRefusal.damaged;\n    return refuse();\n  }\n")
 	g.pf("  final n = rest ~/ recordBytes;\n")
 	g.pf("  if (n > capacity) {\n")
-	g.pf("    report.refused = TableFixedRefusal.batchTooLarge;\n    return -1;\n  }\n")
+	g.pf("    report.refused = TableFixedRefusal.batchTooLarge;\n    return refuse();\n  }\n")
 	g.pf("  var at = TableFixedLimits.layoutAt + layoutBytes;\n")
 	g.pf("  // A RECORD WHOSE HASH NAMES NO LAYOUT THIS READER HOLDS IS A REFUSAL BY\n")
 	g.pf("  // NAME, never a guess and never damage: nothing is decoded and no\n")
@@ -770,7 +775,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("  // written, so a bad later record cannot follow good earlier ones in.\n")
 	g.pf("  for (var k = 0, probe = at; k < n; k++, probe += recordBytes) {\n")
 	g.pf("    if (view.getUint64(probe, Endian.little) != hash) {\n")
-	g.pf("      report.refused = TableFixedRefusal.noLayout;\n      return -1;\n    }\n")
+	g.pf("      report.refused = TableFixedRefusal.noLayout;\n      return refuse();\n    }\n")
 	g.pf("  }\n")
 	g.pf("  for (var k = 0; k < n; k++) {\n")
 	g.call("    ", "", "tableFixedFillRun",
@@ -784,12 +789,9 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("      plan.image,\n      plan.imageView,\n      remap,\n      plan.conv,\n")
 	g.pf("      report,\n    );\n")
 	g.pf("    if (runWhy != TableFixedRefusal.none) {\n")
-	// a refused read hands back nothing: the records before this one go back
-	// to their defaults (docs/SPEC-TABLES.md §4)
-	g.pf("      for (var j = 0; j < k; j++) {\n")
-	g.pf("        init%s(values[j]);\n", capitalize(st.Name))
-	g.pf("      }\n")
-	g.pf("      report.refused = runWhy;\n      return -1;\n    }\n")
+	// a refused read hands back nothing: the rows go back
+	// to their defaults (every row handed in, R4) (docs/SPEC-TABLES.md §4)
+	g.pf("      report.refused = runWhy;\n      return refuse();\n    }\n")
 	if writerBounds {
 		g.pf("    // THE WRITER'S RANGE, THEN THIS READER'S (§4.6): the lane's own pass on\n")
 		g.pf("    // the image, then the projection's clamp.\n")
@@ -798,10 +800,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.call("    ", "", lower+"FixedDecode",
 		[]string{"values[k]", "plan.image", "plan.imageView", "0", "report"}, ";")
 	g.pf("    if (report.refused != TableFixedRefusal.none) {\n")
-	g.pf("      for (var j = 0; j <= k; j++) {\n")
-	g.pf("        init%s(values[j]);\n", capitalize(st.Name))
-	g.pf("      }\n")
-	g.pf("      return -1;\n")
+	g.pf("      return refuse();\n")
 	g.pf("    }\n")
 	if finite {
 		g.pf("    // A FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the decode tested each\n")
@@ -810,13 +809,10 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 		g.pf("    // kept: every record this call wrote goes back to its defaults.\n")
 		g.pf("    if (report.nonFiniteFloat.isNotEmpty) {\n")
 		g.pf("      final field = report.nonFiniteFloat;\n")
-		g.pf("      for (var j = 0; j <= k; j++) {\n")
-		g.pf("        init%s(values[j]);\n", capitalize(st.Name))
-		g.pf("      }\n")
 		g.pf("      report.reset();\n")
 		g.pf("      report.nonFiniteFloat = field;\n")
 		g.pf("      report.refused = TableFixedRefusal.nonFiniteFloat;\n")
-		g.pf("      return -1;\n")
+		g.pf("      return refuse();\n")
 		g.pf("    }\n")
 	}
 	g.pf("    at += recordBytes;\n")

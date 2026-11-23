@@ -459,8 +459,9 @@ fn check_target(name: const u8[:]) {
     var values: probe::Target[1] = [probe::Target { Lead: 777, Name: "sentinel", Trail: 888 }; 1];
     var rep = schema_rt::FixedEvolveReport { .. };
     let n = probe::TargetFixedEvolveLoad(values, bytes, rep);
-    let untouched = values[0].Lead == 777 && values[0].Name == "sentinel" && values[0].Trail == 888;
-    print(name, " ", n, " ", schema_rt::fixed_evolve_refusal_name(rep.reason), " ", untouched);
+    let fresh = probe::Target { .. };
+    let defaulted = values[0].Lead == fresh.Lead && values[0].Name == fresh.Name && values[0].Trail == fresh.Trail;
+    print(name, " ", n, " ", schema_rt::fixed_evolve_refusal_name(rep.reason), " ", defaulted);
 }
 
 fn main() {
@@ -857,8 +858,9 @@ fn check_file(name: const u8[:]) {
     var values: probe::Gate[1] = [probe::Gate { Mode: probe::ModeB, Val: 777 }; 1];
     var rep = schema_rt::FixedEvolveReport { .. };
     let n = probe::GateFixedEvolveLoad(values, bytes, rep);
-    let untouched = values[0].Mode == probe::ModeB && values[0].Val == 777;
-    print(name, " ", n, " ", schema_rt::fixed_evolve_refusal_name(rep.reason), " ", untouched);
+    let fresh = probe::Gate { .. };
+    let defaulted = values[0].Mode == fresh.Mode && values[0].Val == fresh.Val;
+    print(name, " ", n, " ", schema_rt::fixed_evolve_refusal_name(rep.reason), " ", defaulted);
 }
 
 fn main() {
