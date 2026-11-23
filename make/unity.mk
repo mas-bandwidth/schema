@@ -160,6 +160,16 @@ packet-write-refusal-unity-negative-control: build/packet-write-refusal/unity/.s
 	@grep -m1 '^FAILED: ' $(UNITY_WRITE_REFUSAL_NC)/log
 	@echo 'packet write-refusal Unity negative control: a moved upper bound turns the boundary case red and nothing else'
 
+# Run the same cfloat caller cases as modern C#, against Unity's generated
+# netstandard2.1 library and with the packet writer's Debug.Assert enabled.
+build/packet-write-cfloat/unity/.stamp: bin/schema test/packet-write-cfloat/PacketCFloat.schema
+	./bin/schema generate --lang unity --out build/packet-write-cfloat/unity test/packet-write-cfloat/PacketCFloat.schema
+	@touch $@
+
+.PHONY: packet-write-cfloat-unity
+packet-write-cfloat-unity: build/mustrun build/packet-write-cfloat/unity/.stamp
+	$(MUSTRUN) -name packet-write-cfloat-unity -count 10 -- $(DOTNET) run --configuration Debug --project test/packet-write-cfloat/unity/packet-write-cfloat-unity.csproj -- test/packet-write-cfloat
+
 # ---- the leg ----
 
 .PHONY: test-unity
@@ -171,6 +181,7 @@ test-unity: toolchain-unity
 	$(MAKE) packet-utf8-unity
 	$(MAKE) packet-utf8-unity-negative-control
 	$(MAKE) packet-write-refusal-unity
+	$(MAKE) packet-write-cfloat-unity
 	$(MAKE) packet-write-refusal-unity-negative-control
 
 TEST_LEGS          += test-unity

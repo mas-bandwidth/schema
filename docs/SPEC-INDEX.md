@@ -375,5 +375,11 @@ and absence scoring rules, and §7 traces the rules to their sources.
 | #4771, SF-09/21/26 | #4771's PR description says the bytes, fixed minimum and deprecated-enum cases were withdrawn from its retained set. | The appendix names the existing fixed-minimum pair and JSON deprecated-variant twins. Rust’s caller-side check covers the plain byte buffer, the arm byte buffer and the arm array. Shared rows for those additional carriers and binary and cook rows for SF-26 remain owed. |
 | #4772, SF-08 (SPEC §5.1 row 10) | `8b0dd5a18fc4` has six packet rows: four `ratio_{high,low,nan,inf}` refusals and two accepted `ratio_at_{max,min}` controls. The PR reports results for eleven drivers and identifies C, C++, C#, Unity, Rust, Java and Dart probes as owing the ratio operation. | The accepted Go endpoints run through `make packet-cfloat-endpoints-go`. The four refusal IDs and current affected-port packet results remain owed. `smref_big_ratio_*` exercises the message writer. |
 
-The focused carrier manifest credits the Go driver. Port-specific debug probes
-and packet cases provide evidence only for the target and writer they exercise.
+The focused carrier manifest credits the Go driver. The Rust debug caller
+probes cover their own writer operations. Other #4771 port registrations,
+the remaining arm cases, and the binary and cook deprecated-enum cases
+still require evidence.
+
+For #4772, the [packet conformance inventory](SPEC-CONFORMANCE.md#compressed-float-packet-writes)
+names the shared packet caller gates and the Python packet tests. The exact
+seven-bit endpoint vectors currently run through Go.
