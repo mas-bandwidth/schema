@@ -67,6 +67,7 @@ LUA_FUZZ_HARNESS_B64 := LS0gdGVzdC9sdWEtZnV6ei9mdXp6Lmx1YSDigJQgdGhlIEx1YSBwb3J0
 
 $(LUA_FUZZ_SCRIPT): make/schema-lua-nightly-fuzz.mk
 	@mkdir -p $(dir $@)
+# loud-ok: GNU base64 -d, else BSD base64 -D, whose failure is the line's status
 	@printf '%s' '$(LUA_FUZZ_HARNESS_B64)' | base64 -d > $@ 2>/dev/null || \
 		printf '%s' '$(LUA_FUZZ_HARNESS_B64)' | base64 -D > $@
 	@chmod +x $@
@@ -103,7 +104,7 @@ $(LUA_FUZZ_GENERATED)/.stamp: bin/schema $(LUA_FUZZ_CORPUS) $(LUA_FUZZ_SCRIPT) $
 .PHONY: schema-lua-nightly-fuzz
 schema-lua-nightly-fuzz: schema-lua-fuzz-toolchain $(LUA_FUZZ_GENERATED)/.stamp
 	@rm -rf $(LUA_FUZZ_FINDINGS) && mkdir -p $(LUA_FUZZ_FINDINGS)
-	@set +e; $(LUA_FUZZ_LUA) $(LUA_FUZZ_SCRIPT) --generated $(LUA_FUZZ_GENERATED) \
+	@$(LUA_FUZZ_LUA) $(LUA_FUZZ_SCRIPT) --generated $(LUA_FUZZ_GENERATED) \
 		--corpus $(LUA_FUZZ_CORPUS) --seconds $(LUA_FUZZ_SECONDS) \
 		--seed $(LUA_FUZZ_SEED) --findings $(LUA_FUZZ_FINDINGS) $(LUA_FUZZ_SEEDS) > build/lua-fuzz/nightly.log 2>&1; \
 	status=$$?; cat build/lua-fuzz/nightly.log; \
@@ -190,12 +191,13 @@ schema-lua-fuzz-replay-controls: schema-lua-fuzz-toolchain $(LUA_FUZZ_GENERATED)
 	refused=0; \
 	for case in $(addprefix $$c/,$(LUA_FUZZ_REPLAY_REFUSED)) $$w/empty $$w/missing partial-find; do \
 		name=$$(basename $$case); \
+		st=0; \
 		if [ "$$name" = partial-find ]; then \
-			( PATH=$$PWD/$$w/shim:$$PATH; export PATH; replay $$c/good ) > $$w/$$name.log 2>&1; \
+			( PATH=$$PWD/$$w/shim:$$PATH; export PATH; replay $$c/good ) > $$w/$$name.log 2>&1 || st=$$?; \
 		else \
-			replay $$case > $$w/$$name.log 2>&1; \
+			replay $$case > $$w/$$name.log 2>&1 || st=$$?; \
 		fi; \
-		if [ $$? -eq 0 ]; then \
+		if [ $$st -eq 0 ]; then \
 			echo "lua replay control failed: $$name replayed green"; cat $$w/$$name.log; exit 1; fi; \
 		reason=$$(grep -v ' cases, [0-9]* failed$$' $$w/$$name.log | sed -n 1p); \
 		[ -n "$$reason" ] || { echo "lua replay control failed: $$name was refused without a reason"; exit 1; }; \

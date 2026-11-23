@@ -74,7 +74,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     outputs:
       ports: ${{ steps.discover.outputs.ports }}
     steps:
@@ -107,7 +107,7 @@ jobs:
     # shared regression step. No bound: the nightly rule in the header.
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - name: never the host named space
         # before the checkout, so tools/pgroup is not there yet
@@ -298,7 +298,7 @@ jobs:
       SHARED_FIXED_RECEIPT: build/nightly/report/fixedform-corpus-identity.json
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.registry.outputs.ports) }}
@@ -534,7 +534,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - name: never the host named space
         # before the checkout, so tools/pgroup is not there yet
@@ -553,11 +553,13 @@ jobs:
         with:
           pattern: port-*-writes
           path: build/nightly/rows
-        continue-on-error: true  # missing artifacts are named by the completion gate
+        # loud-ok: a missing port artifact is named row by row as a failed receipt by the coverage step below (--require-original-nine), which exits nonzero
+        continue-on-error: true
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: reference-report
           path: build/nightly/rows/reference-report
+        # loud-ok: a missing reference report is a failed receipt in the coverage step below, which exits nonzero
         continue-on-error: true
       # The coverage command invokes SBCL itself and records a missing validator
       # as a failed acceptance check, alongside every other missing receipt.

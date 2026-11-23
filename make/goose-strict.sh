@@ -13,7 +13,7 @@
 # whichever module's check reached it (a runtime module imported by ten
 # modules warns ten times and is one finding). A tree with no module in it is
 # a refusal, never a vacuous pass.
-set -u
+set -eu -o pipefail
 
 if [ $# -lt 2 ]; then
 	echo "usage: goose-strict.sh <goose> <tree>..." >&2
@@ -39,13 +39,12 @@ for tree in "$@"; do
 	for f in $(find "$tree" -name '*.goose' | LC_ALL=C sort); do
 		n=$((n + 1))
 		dir=$(dirname "$f")
-		out=$(cd "$dir" && "$goose" check "$(basename "$f")" 2>&1)
-		rc=$?
+		rc=0
+		out=$(cd "$dir" && "$goose" check "$(basename "$f")" 2>&1) || rc=$?
 		# a warning or an error the compiler places: <file>:<line>: <what>
-		printf '%s\n' "$out" | grep -E '^[^ :]+\.goose:[0-9]+: (warning|error):' |
-			sed "s|^|$dir/|" >>"$findings"
+		printf '%s\n' "$out" | sed -nE "/^[^ :]+\.goose:[0-9]+: (warning|error):/s|^|$dir/|p" >>"$findings"
 		if [ $rc -ne 0 ]; then
-			first=$(printf '%s\n' "$out" | grep -v -E '^(parsed ok|typechecked ok|bce:)' | head -1)
+			first=$(printf '%s\n' "$out" | sed -E '/^(parsed ok|typechecked ok|bce:)/d' | sed -n 1p)
 			echo "$f: goose check exits $rc: $first" >>"$findings"
 		fi
 	done

@@ -1,6 +1,6 @@
 #!/bin/sh
 # Corrupt the staged variant zero; the real runner must refuse before timing.
-set -eu
+set -eu -o pipefail
 dir=$(mktemp -d)
 trap 'rm -rf "$dir"' EXIT HUP INT TERM
 cp bench/corpus/variants/bench_mixed.variants.bin "$dir/bench_mixed.variants.bin"
