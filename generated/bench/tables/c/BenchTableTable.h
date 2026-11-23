@@ -209,6 +209,7 @@ typedef struct benchtable_table_field_info_t
     int optional;           /* a ?T field: a _present companion decides whether it rides */
     int required;           /* a | required field (docs/SPEC-TABLES.md §2.3) */
     int32_t array_bound;    /* array capacity / string max length; 0 for plain scalars */
+    int32_t array_min;      /* a union arm's counted [A..B] A, held on read and write (ruling R10); 0 otherwise */
     uint32_t offset;        /* offsetof the storage member */
     uint32_t elem_size;     /* sizeof the member (element size for arrays) */
     uint32_t count_offset;  /* offsetof the _count/_length companion, or 0xffffffff */
@@ -7139,6 +7140,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_body( benchtable_table_read
                         if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED; }
                     }
                 }
+                if ( value->entities_count < 1 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE; }
                 break;
             }
             case 0xee639cad45b1994cull: /* stats */
@@ -7865,7 +7867,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_message_body(benchtable_tab
  }
  if(rides) {
   benchtable_table_bit_put(w,31,BENCHTABLE_K_TABLE_MESSAGE_REF_BITS_HERE);
-  schema_assert( 0 <= value->entities_count && value->entities_count <= 8 );
+  schema_assert( 1 <= value->entities_count && value->entities_count <= 8 );
   benchtable_table_bit_put(w,(uint64_t)value->entities_count-1,3);
   { int32_t i;
   for(i=0;i<value->entities_count;i++) {
@@ -8389,6 +8391,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
   }if(walk<n && !benchtable_table_message_skip_run(r,n-walk,element_entry->value_bits))goto damaged;
   value->entities_count=(int32_t)kept;
  }
+ if(value->entities_count<1)r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_OUT_OF_RANGE;
  if(same_shape && original_count==0)goto damaged;
  break;
  }
@@ -10385,7 +10388,7 @@ static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table
     benchtable_table_fixed_put64( b + 34, (uint64_t) value->world_time );
     benchtable_table_fixed_put64( b + 42, (uint64_t) value->frame_tick );
     benchtable_table_fixed_put32( b + 50, benchtable_table_stored_float_bits( value->server_time ) );
-    schema_assert( value->entities_count >= 0 && value->entities_count <= 8 ); /* the declared count is the bound (§3.4) */
+    schema_assert( value->entities_count >= 1 && value->entities_count <= 8 ); /* the declared [A..B] is the bound (§3.4) */
     benchtable_table_fixed_put32( b + 54, (uint32_t) value->entities_count );
     {
         int64_t i;
@@ -10533,6 +10536,7 @@ static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table
     (*out_of_range) += ( value->frame_tick > 281474976710655ull );
     (*out_of_range) += (int) ( value->server_time < 0.0f ) | (int) ( value->server_time > 65535.0f );
     value->server_time = value->server_time + 0.0f;
+    if ( value->entities_count < 1 ) { (*out_of_range)++; }
     {
         int64_t i;
         for ( i = 0; i < (int64_t) value->entities_count; ++i )
@@ -10655,6 +10659,7 @@ static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table
     /* bits(48) width clamp */
     (*out_of_range) += ( value->frame_tick > 281474976710655ull );
     (*out_of_range) += (int) ( benchtable_table_float_finite( value->server_time ) && ( value->server_time < 0.0f || value->server_time > 65535.0f ) );
+    if ( value->entities_count < 1 ) { (*out_of_range)++; }
     {
         int64_t i;
         for ( i = 0; i < ( value->entities_count >= 0 && value->entities_count <= 8 ? (int64_t) value->entities_count : 0 ); ++i )
@@ -11099,7 +11104,7 @@ static SCHEMA_UNUSED int64_t benchtable_table_entity_fixed_load( benchtable_tabl
             }
         }
         /* The immutable spans passed the whole-load preflight above. */
-        if ( !benchtable_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
+        if ( fill_count > 0 && !benchtable_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
         {
             memset( report, 0, sizeof( *report ) ); report->refused = 1; report->reason = SCHEMA_BENCHTABLE_TABLE_LAYOUT_MALFORMED;
             return -1;
@@ -11452,7 +11457,7 @@ static SCHEMA_UNUSED int64_t benchtable_table_stat_fixed_load( benchtable_table_
             }
         }
         /* The immutable spans passed the whole-load preflight above. */
-        if ( !benchtable_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
+        if ( fill_count > 0 && !benchtable_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
         {
             memset( report, 0, sizeof( *report ) ); report->refused = 1; report->reason = SCHEMA_BENCHTABLE_TABLE_LAYOUT_MALFORMED;
             return -1;
@@ -12280,7 +12285,7 @@ static SCHEMA_UNUSED int64_t benchtable_table_mixed_fixed_load( benchtable_table
             }
         }
         /* The immutable spans passed the whole-load preflight above. */
-        if ( !benchtable_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
+        if ( fill_count > 0 && !benchtable_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
         {
             memset( report, 0, sizeof( *report ) ); report->refused = 1; report->reason = SCHEMA_BENCHTABLE_TABLE_LAYOUT_MALFORMED;
             return -1;
@@ -12519,6 +12524,7 @@ static SCHEMA_UNUSED int schema_benchtable_table_mixed_body_pack_(struct benchta
     benchtable_table_cook_put(at+40,(uint64_t)value->world_time,8,order);
     benchtable_table_cook_put(at+48,(uint64_t)value->frame_tick,8,order);
     if(!benchtable_table_bits_finite32(benchtable_table_stored_float_bits(value->server_time))) { return 0; } benchtable_table_cook_put(at+56,benchtable_table_stored_float_bits(value->server_time),4,order);
+    schema_assert( 1 <= value->entities_count && value->entities_count <= 8 );
     { int32_t cook_i1; for(cook_i1=0;cook_i1<value->entities_count && cook_i1<8;cook_i1++) {
         if(!schema_benchtable_table_entity_body_pack_(n,at+64+cook_i1*64,&value->entities[cook_i1],order)) { return 0; }
     } }

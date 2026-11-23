@@ -1773,6 +1773,8 @@ defmodule Bench.Table do
     value = fixed_class_from_table("FixedTable", value)
     data = Bench.WrapFixed.fixed_table_fixed_save([value])
     {:ok, IO.iodata_to_binary(data)}
+  rescue
+    ArgumentError -> {:error, :invalid_value}
   end
 
   # ---- the write side (docs/SPEC-TABLES.md §3) ----
@@ -4839,6 +4841,9 @@ defmodule Bench.Table do
   # Storage refusal is terminal and distinct from body damage. Bounded arrays
   # keep their declared clamp contract; unbounded extents must fit int32.
   defp check_wire_count(n, f, report) do
+    # a counted [A..B] below A refuses the whole read (docs/SPEC-TABLES.md §3.3)
+    if n < Map.get(f, :min_count, 0), do: throw(:wire_damaged)
+
     if n > 0x7FFFFFFF and not Map.has_key?(f, :max_count),
       do: throw({:count_over_extent_cap, report})
 
@@ -5323,6 +5328,8 @@ defmodule Bench.Table do
 
     if Map.has_key?(f, :array_bound) and f.array_bound > 0 and n > f.array_bound,
       do: throw(:invalid_value)
+
+    if n < Map.get(f, :min_count, 0), do: throw(:invalid_value)
 
     required_value(f, v)
     if f.elem_kind == 30, do: Enum.each(v, &check_enum(f, &1))
@@ -7166,7 +7173,7 @@ defmodule Bench.Table do
     bound = Map.get(f, :array_bound, 0)
     # every element past [..N] refuses the whole read (docs/SPEC-TABLES.md §2.13, §16.2)
 
-    {elements, _count, _f, report} =
+    {elements, count, _f, report} =
       Enum.reduce_while(raw, {[], 0, f, report}, fn raw, {acc, count, f, report} ->
         cond do
           bound > 0 and count >= bound ->
@@ -7185,13 +7192,15 @@ defmodule Bench.Table do
         end
       end)
 
+    if count < Map.get(f, :min_count, 0), do: throw(:wire_damaged)
+
     {Enum.reverse(elements), report}
   end
 
   defp json_read_field(%{t: :list} = f, raw, report) when is_list(raw) do
     bound = Map.get(f, :array_bound, 0)
 
-    {elems, _placed, report} =
+    {elems, placed, report} =
       Enum.reduce(raw, {[], 0, report}, fn e, {acc, placed, report} ->
         if Process.get(:elixir_json_bad, false) do
           {acc, placed, report}
@@ -7211,6 +7220,8 @@ defmodule Bench.Table do
           end
         end
       end)
+
+    if placed < Map.get(f, :min_count, 0), do: throw(:wire_damaged)
 
     {Enum.reverse(elems), report}
   end
