@@ -361,7 +361,7 @@ func ShipEntryBlockBytes(b *ShipEntryBlock) int64 {
 // a lookup and not a parse. The row layouts hang off the element column
 // rather than taking names of their own, so a walker reaches every record
 // through the graph.
-func (b *ShipEntryBlock) Type() *TableBlockInfo { return &tableBlockRecords[12] }
+func (b *ShipEntryBlock) Type() *TableBlockInfo { return &tableBlockRecords[14] }
 
 // GlobalSettingsBlockMaxBytes is the storage a PRODUCER of this block allocates, sized
 // from the declared maxima (mas-bandwidth/schema docs/SPEC-TABLES.md §19.1). A Go consumer does
@@ -677,4 +677,4 @@ func PackConfigBlockBytes(b *PackConfigBlock) int64 {
 // a lookup and not a parse. The row layouts hang off the element column
 // rather than taking names of their own, so a walker reaches every record
 // through the graph.
-func (b *PackConfigBlock) Type() *TableBlockInfo { return &tableBlockRecords[8] }
+func (b *PackConfigBlock) Type() *TableBlockInfo { return &tableBlockRecords[10] }

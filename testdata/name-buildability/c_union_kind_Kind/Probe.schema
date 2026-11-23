@@ -1,0 +1,12 @@
+package probe
+
+enum Kind
+{ Alpha, Beta }
+
+union kind
+{ n int32 }
+
+table Rec
+{
+    choice kind
+}

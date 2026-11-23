@@ -955,7 +955,7 @@ namespace SchemaUnityConformance
                 {
                     if (rep.ReasonText != null && rep.ReasonText.Contains("blob_shared", StringComparison.Ordinal))
                     {
-                        File.WriteAllText(Path.Combine(outDir, f[1] + ".absent"), "blob_shared");
+                        File.WriteAllText(Path.Combine(outDir, f[1]), "refused\n");
                         continue;
                     }
                     if (wireRefused)
@@ -999,7 +999,7 @@ namespace SchemaUnityConformance
                 ICodec codec = FindCodec(conn[2], f[3]);
                 if (f[5] == "-" || (codec != null && !codec.HasMessage))
                 {
-                    File.WriteAllText(Path.Combine(outDir, f[1] + ".absent"), "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)");
+                    File.WriteAllText(Path.Combine(outDir, f[1]), "refused\n");
                     continue;
                 }
                 if (codec == null)

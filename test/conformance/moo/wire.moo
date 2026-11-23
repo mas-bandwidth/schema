@@ -38,20 +38,25 @@ return function(ctx: any): { [string]: Surface }
 					ctx.say(f[2], nil)
 					continue
 				end
-				-- a read the wire's own row expects refused (`wire-refused`) is a
-				-- named absence: the harness scores it a pass there, and on any
-				-- other row an absence the matrix counts, never a pass
+				-- a read the runtime refuses as blob_shared (docs/SPEC-TABLES.md
+				-- §2.5) answers `refused` and a newline (ruling R13); any other
+				-- load refusal is a named absence the matrix counts, never a pass
 				local v, rep = loadWire(f)
 				if v == nil then
-					ctx.refuse(f[2], tostring(rep.reason))
+					if rep.reason == "blob_shared" then
+						ctx.say(f[2], "refused\n")
+					else
+						ctx.refuse(f[2], tostring(rep.reason))
+					end
 					continue
 				end
 				local out, why = ctx.write(f[3], f[4], v)
 				if out ~= nil then
 					ctx.say(f[2], buffer.tostring(out))
 				elseif why ~= nil and why.name == "blob_shared" then
-					-- the writer refusal every writer owes (docs/SPEC-TABLES.md §2.5)
-					ctx.refuse(f[2], why.name)
+					-- the writer refusal every writer owes (docs/SPEC-TABLES.md
+					-- §2.5): `refused` and a newline (ruling R13)
+					ctx.say(f[2], "refused\n")
 				else
 					ctx.say(f[2], "refused")
 				end

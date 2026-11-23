@@ -91,7 +91,7 @@ func TestPythonCookSurfaceSelection(t *testing.T) {
 	if _, exists := only["cookselect/_schema/cook.py"]; exists {
 		t.Fatal("wire-only generated the cook runtime")
 	}
-	if strings.Contains(string(only["cookselect/Core.py"]), "_s_cook_write") {
+	if strings.Contains(string(only["cookselect/Records.py"]), "_s_cook_write") {
 		t.Fatal("wire-only generated a cook writer")
 	}
 	selected, err := ParseSurfaces("wire,cook")
@@ -133,7 +133,7 @@ print("ok")
 	t.Run("selection-negative-control", func(t *testing.T) {
 		t.Parallel()
 		planted := cloneFiles(files)
-		const path = "cookselect/Core.py"
+		const path = "cookselect/Records.py"
 		const anchor = `forms=("wire", "cook"),`
 		body := string(planted[path])
 		if !strings.Contains(body, anchor) {

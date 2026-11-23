@@ -1124,9 +1124,9 @@ CONFORMANCE_LEGS     += $(call unless_skipped,elixir,build-conformance-elixir)
 REGISTRY_NA          += goldens:elixir
 REGISTRY_NA_WHY.goldens.elixir := no committed table goldens; its packet goldens (testdata/golden/elixir) are rewritten by internal/goldens at the top of update-goldens
 # Packet UTF-8 content validation, including a compiled mutation control.
-build/packet-text/elixir/.stamp: bin/schema test/packet-text/Narrow.schema
+build/packet-text/elixir/.stamp: bin/schema test/packet-text/Text.schema
 	@mkdir -p build/packet-text/elixir/source
-	cp test/packet-text/Narrow.schema build/packet-text/elixir/source/Text.schema
+	cp test/packet-text/Text.schema build/packet-text/elixir/source/Text.schema
 	./bin/schema generate --lang elixir --out build/packet-text/elixir build/packet-text/elixir/source/Text.schema
 	@touch $@
 
@@ -1645,8 +1645,8 @@ tables-elixir-message-batch:
 # THE MESSAGE SURFACE ON THE HARNESS (test/conformance/README.md, "The
 # surfaces"; docs/SPEC-TABLES.md §3.3): the driver answers every manifest
 # `message` row whose root is a fixed table, byte-equal to the C++ reference's
-# golden, and writes graph_tree.absent (its root Scene is a variable table, which
-# the form refuses by name). TestMessageFormConformanceElixir's harness clause
+# golden, and answers graph_tree `refused` (its root Scene is a variable table,
+# which the form refuses by name; ruling R13). TestMessageFormConformanceElixir's harness clause
 # runs `./build/conformance-harness run --only elixir` over the built leg; the
 # target arms SCHEMA_REQUIRE_CORPUS=1 and reds on any `--- SKIP`.
 .PHONY: tables-elixir-message-conformance
@@ -1661,7 +1661,7 @@ tables-elixir-message-conformance: build/conformance-harness build-conformance-e
 		echo "tables-elixir-message-conformance: a clause SKIPPED; under SCHEMA_REQUIRE_CORPUS=1 a missing toolchain or build is a failure"; \
 		exit 1; \
 	fi
-	@echo 'tables Elixir message conformance: the driver answers the message surface, graph_tree the one named absence'
+	@echo 'tables Elixir message conformance: the driver answers the message surface, graph_tree the one refusal'
 test-elixir: tables-elixir-message-conformance
 
 .PHONY: tables-elixir-fixed-roadmap-t12

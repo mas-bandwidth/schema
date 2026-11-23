@@ -364,6 +364,9 @@ static const Codec codecs[] = {
     CODEC( "tabledemo", tabledemo, CountedMin ),
     CODEC( "tabledemo", tabledemo, FloatBound ),
     CODEC( "tabledemo", tabledemo, Moods ),
+    CODEC( "tabledemo", tabledemo, MoodField ),
+    CODEC( "tabledemo", tabledemo, MinArmFix ),
+    CODEC( "tabledemo", tabledemo, MinPlainFix ),
     CODEC( "tblv1", tblv1, Cfg ),
     CODEC( "tblv2", tblv2, Cfg ),
     CODEC( "tblp1", tblp1, Chain ),
@@ -430,11 +433,15 @@ struct VarCodec
         unit_key, #type,                                                                       \
         []( std::vector<uint8_t> & region, const uint8_t * b, int64_t n, Report * r )           \
             -> const void * {                                                                  \
-            int64_t need = ns::type##LoadMeasure( b, n );                                       \
+            /* the strict walk's refusal carries its reason out (§6.5): a blob */            \
+            /* two slots name is refused here by name, blob_shared (§2.5) */                 \
+            ns::TableRefuseReason why = ns::ok;                                                 \
+            int64_t need = ns::type##LoadMeasure( b, n, NULL, &why );                           \
             if ( need < 0 )                                                                     \
             {                                                                                   \
                 *r = Report();                                                                  \
                 r->refused = true;                                                              \
+                r->blob_shared = why == ns::blob_shared;                                        \
                 return NULL;                                                                    \
             }                                                                                   \
             region.assign( (size_t) need, 0 );                                                  \
@@ -1037,12 +1044,20 @@ static bool block_dump( const std::string & name, const std::vector<uint8_t> & d
 
 static std::vector<uint8_t> scratch;
 
-// a wire the strict read refused has no bytes to save: the answer is
-// `<case>.absent` naming the refusal, which a `wire-refused` row expects
+// a wire the strict read refused has no bytes to save. A refusal BY REASON
+// `blob_shared` (a blob two slots name, §2.5) is the answer a `wire-refused`
+// row expects: `<case>` holding exactly `refused\n` (ruling R13: an absence
+// is never credited as the refusal). Any other refusal keeps its named
+// `<case>.absent` marker, which the harness holds against the row.
 static bool spill_refusal( const std::string & out, const std::string & name, const Report & report )
 {
-    const char * why = report.blob_shared ? "blob_shared" : "refused";
-    return spill( out, name + ".absent", why, strlen( why ) );
+    if ( report.blob_shared )
+    {
+        static const char refused[] = "refused\n";
+        return spill( out, name, refused, sizeof( refused ) - 1 );
+    }
+    static const char why[] = "refused";
+    return spill( out, name + ".absent", why, sizeof( why ) - 1 );
 }
 
 // THE VERDICT LINE of a `report`, `framing` and `json-hostile` answer: the
@@ -1075,9 +1090,9 @@ static int surface_wire( const std::string & out )
             {
                 // A `wire-refused` instance (a blob two slots name, §2.5): the
                 // strict read refuses the whole load, so the row's answer is
-                // that refusal and no bytes, as the Go driver's is. A refusal
-                // of any other instance is the same answer, and the harness
-                // holds it against the row's flag.
+                // that refusal and no bytes, as the Go driver's is. Any other
+                // refusal answers a named absence (spill_refusal), and the
+                // harness holds it against the row.
                 if ( !spill_refusal( out, f[1], report ) ) return 1;
                 continue;
             }
@@ -1157,10 +1172,10 @@ static int surface_message( const std::string & out, bool prior )
         if ( f[5] == "-" )
         {
             // a variable table: the message form is fixed tables only (§3.3),
-            // so no codec exists, and the row is answered by name
+            // so no codec exists, and the row's answer is the refusal (R13)
             if ( codec != NULL ) { fprintf( stderr, "driver: %s.%s is a refusal row and carries a message codec\n", unit.c_str(), f[3].c_str() ); return 1; }
-            static const char reason[] = "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)";
-            if ( !spill( out, f[1] + ".absent", (const uint8_t *) reason, sizeof( reason ) - 1 ) ) return 1;
+            static const char refused[] = "refused\n";
+            if ( !spill( out, f[1], (const uint8_t *) refused, sizeof( refused ) - 1 ) ) return 1;
             continue;
         }
         if ( codec == NULL ) { fprintf( stderr, "driver: no message codec for %s.%s\n", unit.c_str(), f[3].c_str() ); return 1; }
@@ -2371,6 +2386,16 @@ static bool write_refusal_set( const std::string & root, void * value, const std
     {
         tabledemo::LoadoutConfig & v = *(tabledemo::LoadoutConfig *) value;
         if ( path == "grade" && kind == "ordinal" ) return wref_store_enum( v.grade, text );
+    }
+    if ( root == "Moods" )
+    {
+        tabledemo::Moods & v = *(tabledemo::Moods *) value;
+        if ( path == "row[0]" && kind == "ordinal" && v.row_count >= 1 ) { return wref_store_enum( v.row[0], text ); }
+    }
+    if ( root == "MoodField" )
+    {
+        tabledemo::MoodField & v = *(tabledemo::MoodField *) value;
+        if ( path == "mood" && kind == "ordinal" ) { return wref_store_enum( v.mood, text ); }
     }
     if ( root == "SimState" )
     {

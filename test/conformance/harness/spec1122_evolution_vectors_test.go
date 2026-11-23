@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -40,7 +42,11 @@ type spEvoRow struct {
 	root string
 	// retire marks Old live in the writer's Mood; bound narrows Moods.row;
 	// countB narrows CountedMin.few's maximum
-	live  bool
+	live bool
+	// older drops the root's last field from the writer: a build from before
+	// it was appended, whose layout the reader compiles a plan for (a scalar
+	// root has no array bound to narrow)
+	older bool
 	bound int64
 	doc   string
 	// forge sets the writer's used count to this after the write (0: none)
@@ -50,6 +56,8 @@ type spEvoRow struct {
 var spEvoRows = []spEvoRow{
 	{wire: "sp_enum_fixed_deprecated.bin", root: "Moods", live: true, doc: `{"row":["Calm","Old","Fierce"]}`},
 	{wire: "sp_enum_evolved_deprecated.bin", root: "Moods", live: true, bound: 3, doc: `{"row":["Calm","Old","Fierce"]}`},
+	{wire: "sp_enum_scalar_fixed_deprecated.bin", root: "MoodField", live: true, doc: `{"mood":"Old"}`},
+	{wire: "sp_enum_scalar_evolved_deprecated.bin", root: "MoodField", live: true, older: true, doc: `{"mood":"Old"}`},
 	{wire: "sp_count_min_evolved_at.bin", root: "CountedMin", bound: 3, doc: `{"few":[7,8]}`},
 	{wire: "sp_count_min_evolved_max.bin", root: "CountedMin", bound: 3, doc: `{"few":[7,8,9]}`},
 	{wire: "sp_count_min_evolved_below.bin", root: "CountedMin", bound: 3, doc: `{"few":[7,8]}`, forge: 1},
@@ -70,6 +78,10 @@ func spEvoWriter(m *Manifest, row spEvoRow) (*tabletext.Model, error) {
 		for i := range e.VariantDeprecated {
 			e.VariantDeprecated[i] = false
 		}
+	}
+	if row.older {
+		st := unit.Tables[row.root]
+		st.Fields = st.Fields[:len(st.Fields)-1]
 	}
 	if row.bound != 0 {
 		st := unit.Tables[row.root]
@@ -141,7 +153,7 @@ func TestSpec1122EvolutionVectorsPinned(t *testing.T) {
 			t.Fatal(err)
 		}
 		path := filepath.Join(spEvoDir, row.wire)
-		if os.Getenv("SP1122_WRITE") == "1" {
+		if slowtest.Rewriting(t, "SP1122_WRITE") {
 			if err := os.WriteFile(path, want, 0o644); err != nil {
 				t.Fatal(err)
 			}

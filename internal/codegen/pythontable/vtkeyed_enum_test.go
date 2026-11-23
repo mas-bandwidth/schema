@@ -37,7 +37,7 @@ func TestPythonVtKeyedEnumDescriptor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	source := string(files["enumkey/Core.py"])
+	source := string(files["enumkey/Records.py"])
 	if !strings.Contains(source, `codec="keyed"`) {
 		t.Fatal("enum-valued keyed field is not carried by the keyed codec")
 	}
@@ -305,7 +305,7 @@ func TestPythonVtKeyedEnumNegativeControlFunctional(t *testing.T) {
 		inputs                                         map[string][]byte
 	}{
 		{"writer-id", "_schema/kind_keyed.py", `codec.write_element(Writer(element), elem, current, ctx)`, `Writer(element).byte(current)`, pyKeyedEnumProbe, "python writer differs from Go engine", map[string][]byte{"wire": good, "mode": []byte("wrapper"), "values": []byte(`[1,0,2]`)}},
-		{"element-ids", "Core.py", `variant_ids=` + variantIds(u.Tables["Root"].Fields[0]), `variant_ids=()`, pyKeyedEnumDescriptorReadProbe, "enum descriptor drift", map[string][]byte{"wire": good}},
+		{"element-ids", "Records.py", `variant_ids=` + variantIds(u.Tables["Root"].Fields[0]), `variant_ids=()`, pyKeyedEnumDescriptorReadProbe, "enum descriptor drift", map[string][]byte{"wire": good}},
 		{"deprecated-read", "_schema/kind_enum.py", `if ordinal in fd.deprecated:`, `if False and ordinal in fd.deprecated:`, pyKeyedEnumDeprecatedReadProbe, "deprecated enum drift", map[string][]byte{"wire": old}},
 		{"deprecated-write", "_schema/kind_enum.py", `if value in fd.deprecated:`, `if False and value in fd.deprecated:`, pyKeyedEnumWriteRefusalProbe, "deprecated write accepted", map[string][]byte{"mode": []byte("wrapper")}},
 		{"unknown-key-check", "_schema/kind_keyed.py", `_skip_content(element, elem_kind, ctx, ctx.depth)`, `pass`, pyKeyedEnumUnknownKeyProbe, "damaged unknown key accepted", map[string][]byte{"wire": damaged}},

@@ -1407,6 +1407,9 @@ namespace Bench
                     // no wire identity: the writer REFUSES rather than writing None
                     // over it, the rule measure and save already apply (§5)
                     if ((long)value > f.EnumMax) { return false; }
+                    // A DEPRECATED VARIANT IS NEVER WRITTEN (docs/SPEC-TABLES.md §2.15): a
+                    // write-side check, so a debug assert in this language (SPEC.md §5.1)
+                    System.Diagnostics.Debug.Assert(f.EnumDeprecated == null || !f.EnumDeprecated(value), "a deprecated variant is never written");
                     if (value != 0 && f.VariantId(value) == 0) { return false; }
                     string name = f.EnumName(value);
                     if (!Named(name)) { return false; }
@@ -1800,7 +1803,7 @@ namespace Bench
                     if (c == '}') { input.Pos++; break; }
                     input.TextField = mapField;
                     scoped ReadOnlySpan<byte> actual; int used;
-                    if (key.Unbounded)
+                    if (key.Unbounded || (key.Kind == 12 && key.ArrayBound >= MaxKey))
                     {
                         if (!DecodedStringBody(text, ref input, out actual)) { return false; }
                         if (!TableWire.TextValid(actual)) { return RefuseText(ref input, "text_holds_zero"); }
@@ -4729,7 +4732,7 @@ namespace Bench
                     else if (id == ulong.MaxValue - 2)
                     {
                         if (kind != 14 || !r.Slice(out Reader a) || !a.Has(1) || a.Byte() != 6 || !a.Var(out ulong n) || n != (ulong)(a.Buffer.Length - a.Offset)) { break; }
-                        if (n > (ulong)(v.MaxBytes > 0 ? v.MaxBytes : 65536)) { return Refuse(report, "vocabulary_too_large"); }
+                        if (n > (ulong)(v.MaxBytes < 0 ? 0 : v.MaxBytes)) { return Refuse(report, "vocabulary_too_large"); }
                         payload = new Reader(a.Buffer.Slice(a.Offset), default); vocabularies++;
                     }
                     else { report.Unknown++; if (!r.Skip(kind)) { break; } }

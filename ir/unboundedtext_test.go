@@ -13,7 +13,7 @@ import (
 // string(M) as string moves the build version as moving M does.
 func TestUnboundedTextProjectsItsOwnLine(t *testing.T) {
 	t.Parallel()
-	const src = "package t\ntable Where {\n    rules []string\n    byname map[string]int32\n}\n"
+	const src = "package tx\ntable Where {\n    rules []string\n    byname map[string]int32\n}\n"
 	text := ir.CookProjection(unitFrom(t, src))
 	for _, want := range []string{"size=8 text=unbounded"} {
 		if strings.Count(text, want) != 2 {

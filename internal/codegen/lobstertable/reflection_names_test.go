@@ -33,7 +33,7 @@ func TestLobsterUnitViewGeneratedNames(t *testing.T) {
 				if err := os.WriteFile(path, []byte("package namesprobe\n"+source), 0644); err != nil {
 					t.Fatal(err)
 				}
-				u, err := compiler.New().Load([]string{path})
+				u, err := compiler.New().LoadWithoutEmitterRules([]string{path})
 				if err != nil {
 					// UnitView is already reserved by the common checker.
 					if reject && tc.name == "UnitView" && strings.Contains(err.Error(), "declaration UnitView collides") {
@@ -71,7 +71,7 @@ func TestLobsterUnitViewVocabularyMemberNames(t *testing.T) {
 				if err := os.WriteFile(path, []byte(source), 0644); err != nil {
 					t.Fatal(err)
 				}
-				u, err := compiler.New().Load([]string{path})
+				u, err := compiler.New().LoadWithoutEmitterRules([]string{path})
 				if err != nil {
 					t.Fatal(err)
 				}

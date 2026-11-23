@@ -71,7 +71,8 @@ fixed table Cell
 		t.Error("the fixed read does not hold the compressed float's float32 range")
 	}
 	// the text form's bound test sees the value the JSON read lands
-	if !strings.Contains(src, "double d = f->kind == 10 ? (double) strtof( n.text.c_str(), NULL ) : strtod( n.text.c_str(), NULL );") {
+	if !strings.Contains(src, "bool single = f->kind == 10;\n        double value = TableJsonTokenDouble( token, length, single );") ||
+		!strings.Contains(src, "if ( single ) { return (double) TableJsonStrtof( work ); }") {
 		t.Error("the text form does not narrow a float32 token before its bound test")
 	}
 	if strings.Contains(src, "value.p < ") || strings.Contains(src, "value.p > ") {

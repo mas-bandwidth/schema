@@ -96,7 +96,7 @@ func RootConfigAt(slot *int64, arena ...*TableArena) *RootConfigRow {
 
 // Type is RootConfig's cooked-record descriptor, the head of the graph a reflective
 // walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
-func (c RootConfigCook) Type() *TableCookInfo { return &tableCookRecords[19] }
+func (c RootConfigCook) Type() *TableCookInfo { return &tableCookRecords[22] }
 
 // WeaponConfigCook is WeaponConfig's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -162,7 +162,7 @@ func WeaponConfigAt(slot *int64, arena ...*TableArena) *WeaponConfigRow {
 
 // Type is WeaponConfig's cooked-record descriptor, the head of the graph a reflective
 // walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
-func (c WeaponConfigCook) Type() *TableCookInfo { return &tableCookRecords[24] }
+func (c WeaponConfigCook) Type() *TableCookInfo { return &tableCookRecords[27] }
 
 // LoadoutConfigCook is LoadoutConfig's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -294,7 +294,7 @@ func ProfileConfigAt(slot *int64, arena ...*TableArena) *ProfileConfigRow {
 
 // Type is ProfileConfig's cooked-record descriptor, the head of the graph a reflective
 // walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
-func (c ProfileConfigCook) Type() *TableCookInfo { return &tableCookRecords[15] }
+func (c ProfileConfigCook) Type() *TableCookInfo { return &tableCookRecords[18] }
 
 // CountedMinCook is CountedMin's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -492,7 +492,205 @@ func MoodsAt(slot *int64, arena ...*TableArena) *MoodsRow {
 
 // Type is Moods's cooked-record descriptor, the head of the graph a reflective
 // walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
-func (c MoodsCook) Type() *TableCookInfo { return &tableCookRecords[12] }
+func (c MoodsCook) Type() *TableCookInfo { return &tableCookRecords[15] }
+
+// MoodFieldCook is MoodField's cook: a pointer and a length, and then the root where it
+// lies. Opening one is a HEADER MATCH and no copy; a reference is one add
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
+//
+// `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
+// functions — MoodFieldOpen, MoodFieldAt — and so does Go, because Go has free functions;
+// what is a MEMBER here is only what §11 leaves a language free to make one.
+//
+// THE MEMORY IS THE CONSUMER'S. Nothing here allocates, nothing here copies and
+// nothing here pins: the region must stay put and stay aligned for as long as
+// this handle or anything reached through it is used.
+type MoodFieldCook struct {
+	Region       unsafe.Pointer // the DATA part's base: the root sits at offset zero
+	RegionLength int64          // data_length, as the header framed it
+}
+
+// §7.1's constants, so a consumer reading this file has the facts and not a
+// description of them. They are METHODS because §11 leaves a language whose
+// accessors are members free to spell them that way, and a package constant
+// per table per fact would claim names §11 does not.
+func (c MoodFieldCook) RegionAlignment() int64 { return 8 } // the greatest alignof in the region, floor eight
+func (c MoodFieldCook) RootSize() int64        { return 4 }
+func (c MoodFieldCook) RootAlign() int64       { return 2 }
+
+// Root is the root record at the region's base. It is a POINTER and not a
+// copy: a cooked graph is walked by adding deltas to slot addresses.
+func (c MoodFieldCook) Root() *MoodFieldRow { return (*MoodFieldRow)(c.Region) }
+
+// MoodFieldOpen is the bool convenience for the typed Open error on the handle.
+func MoodFieldOpen(cook *MoodFieldCook, base unsafe.Pointer, length int64) bool {
+	return cook.Open(base, length) == nil
+}
+
+// Open checks the header in SPEC §7 order, bytewise until base alignment is
+// established. A successful match points at the region and allocates nothing.
+func (cook *MoodFieldCook) Open(base unsafe.Pointer, length int64) error {
+	*cook = MoodFieldCook{}
+	var err error
+	cook.Region, cook.RegionLength, err = tableCookOpenRegion(base, length, 2, 4)
+	return err
+}
+
+// MoodFieldAt dereferences a reference, and it is the same call in a locked region
+// and an opened cook because they are the same encoding (§6.3): the slot is
+// eight bytes, SIGNED, self-relative from the SLOT'S OWN ADDRESS, so a deref
+// needs no base pointer and no bounds test, and NULL IS A DELTA OF ZERO.
+// Nothing about this call is the cook's: it is what a region reference is, and
+// a cook is a region written verbatim.
+//
+// It takes the SLOT and not its value, because a self-relative delta means
+// nothing without the address it is relative to.
+func MoodFieldAt(slot *int64, arena ...*TableArena) *MoodFieldRow {
+	if len(arena) > 0 && arena[0] != nil {
+		return (*MoodFieldRow)(arena[0].At(*slot))
+	}
+	delta := *slot
+	if delta == 0 {
+		return nil
+	}
+	return (*MoodFieldRow)(unsafe.Add(unsafe.Pointer(slot), uintptr(delta)))
+}
+
+// Type is MoodField's cooked-record descriptor, the head of the graph a reflective
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
+func (c MoodFieldCook) Type() *TableCookInfo { return &tableCookRecords[14] }
+
+// MinArmFixCook is MinArmFix's cook: a pointer and a length, and then the root where it
+// lies. Opening one is a HEADER MATCH and no copy; a reference is one add
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
+//
+// `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
+// functions — MinArmFixOpen, MinArmFixAt — and so does Go, because Go has free functions;
+// what is a MEMBER here is only what §11 leaves a language free to make one.
+//
+// THE MEMORY IS THE CONSUMER'S. Nothing here allocates, nothing here copies and
+// nothing here pins: the region must stay put and stay aligned for as long as
+// this handle or anything reached through it is used.
+type MinArmFixCook struct {
+	Region       unsafe.Pointer // the DATA part's base: the root sits at offset zero
+	RegionLength int64          // data_length, as the header framed it
+}
+
+// §7.1's constants, so a consumer reading this file has the facts and not a
+// description of them. They are METHODS because §11 leaves a language whose
+// accessors are members free to spell them that way, and a package constant
+// per table per fact would claim names §11 does not.
+func (c MinArmFixCook) RegionAlignment() int64 { return 8 } // the greatest alignof in the region, floor eight
+func (c MinArmFixCook) RootSize() int64        { return 24 }
+func (c MinArmFixCook) RootAlign() int64       { return 4 }
+
+// Root is the root record at the region's base. It is a POINTER and not a
+// copy: a cooked graph is walked by adding deltas to slot addresses.
+func (c MinArmFixCook) Root() *MinArmFixRow { return (*MinArmFixRow)(c.Region) }
+
+// MinArmFixOpen is the bool convenience for the typed Open error on the handle.
+func MinArmFixOpen(cook *MinArmFixCook, base unsafe.Pointer, length int64) bool {
+	return cook.Open(base, length) == nil
+}
+
+// Open checks the header in SPEC §7 order, bytewise until base alignment is
+// established. A successful match points at the region and allocates nothing.
+func (cook *MinArmFixCook) Open(base unsafe.Pointer, length int64) error {
+	*cook = MinArmFixCook{}
+	var err error
+	cook.Region, cook.RegionLength, err = tableCookOpenRegion(base, length, 4, 24)
+	return err
+}
+
+// MinArmFixAt dereferences a reference, and it is the same call in a locked region
+// and an opened cook because they are the same encoding (§6.3): the slot is
+// eight bytes, SIGNED, self-relative from the SLOT'S OWN ADDRESS, so a deref
+// needs no base pointer and no bounds test, and NULL IS A DELTA OF ZERO.
+// Nothing about this call is the cook's: it is what a region reference is, and
+// a cook is a region written verbatim.
+//
+// It takes the SLOT and not its value, because a self-relative delta means
+// nothing without the address it is relative to.
+func MinArmFixAt(slot *int64, arena ...*TableArena) *MinArmFixRow {
+	if len(arena) > 0 && arena[0] != nil {
+		return (*MinArmFixRow)(arena[0].At(*slot))
+	}
+	delta := *slot
+	if delta == 0 {
+		return nil
+	}
+	return (*MinArmFixRow)(unsafe.Add(unsafe.Pointer(slot), uintptr(delta)))
+}
+
+// Type is MinArmFix's cooked-record descriptor, the head of the graph a reflective
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
+func (c MinArmFixCook) Type() *TableCookInfo { return &tableCookRecords[12] }
+
+// MinPlainFixCook is MinPlainFix's cook: a pointer and a length, and then the root where it
+// lies. Opening one is a HEADER MATCH and no copy; a reference is one add
+// (mas-bandwidth/schema docs/SPEC-TABLES.md §7).
+//
+// `Cook` is a CLAIMED suffix (§11). C++ spells the same claimed verbs as free
+// functions — MinPlainFixOpen, MinPlainFixAt — and so does Go, because Go has free functions;
+// what is a MEMBER here is only what §11 leaves a language free to make one.
+//
+// THE MEMORY IS THE CONSUMER'S. Nothing here allocates, nothing here copies and
+// nothing here pins: the region must stay put and stay aligned for as long as
+// this handle or anything reached through it is used.
+type MinPlainFixCook struct {
+	Region       unsafe.Pointer // the DATA part's base: the root sits at offset zero
+	RegionLength int64          // data_length, as the header framed it
+}
+
+// §7.1's constants, so a consumer reading this file has the facts and not a
+// description of them. They are METHODS because §11 leaves a language whose
+// accessors are members free to spell them that way, and a package constant
+// per table per fact would claim names §11 does not.
+func (c MinPlainFixCook) RegionAlignment() int64 { return 8 } // the greatest alignof in the region, floor eight
+func (c MinPlainFixCook) RootSize() int64        { return 20 }
+func (c MinPlainFixCook) RootAlign() int64       { return 4 }
+
+// Root is the root record at the region's base. It is a POINTER and not a
+// copy: a cooked graph is walked by adding deltas to slot addresses.
+func (c MinPlainFixCook) Root() *MinPlainFixRow { return (*MinPlainFixRow)(c.Region) }
+
+// MinPlainFixOpen is the bool convenience for the typed Open error on the handle.
+func MinPlainFixOpen(cook *MinPlainFixCook, base unsafe.Pointer, length int64) bool {
+	return cook.Open(base, length) == nil
+}
+
+// Open checks the header in SPEC §7 order, bytewise until base alignment is
+// established. A successful match points at the region and allocates nothing.
+func (cook *MinPlainFixCook) Open(base unsafe.Pointer, length int64) error {
+	*cook = MinPlainFixCook{}
+	var err error
+	cook.Region, cook.RegionLength, err = tableCookOpenRegion(base, length, 4, 20)
+	return err
+}
+
+// MinPlainFixAt dereferences a reference, and it is the same call in a locked region
+// and an opened cook because they are the same encoding (§6.3): the slot is
+// eight bytes, SIGNED, self-relative from the SLOT'S OWN ADDRESS, so a deref
+// needs no base pointer and no bounds test, and NULL IS A DELTA OF ZERO.
+// Nothing about this call is the cook's: it is what a region reference is, and
+// a cook is a region written verbatim.
+//
+// It takes the SLOT and not its value, because a self-relative delta means
+// nothing without the address it is relative to.
+func MinPlainFixAt(slot *int64, arena ...*TableArena) *MinPlainFixRow {
+	if len(arena) > 0 && arena[0] != nil {
+		return (*MinPlainFixRow)(arena[0].At(*slot))
+	}
+	delta := *slot
+	if delta == 0 {
+		return nil
+	}
+	return (*MinPlainFixRow)(unsafe.Add(unsafe.Pointer(slot), uintptr(delta)))
+}
+
+// Type is MinPlainFix's cooked-record descriptor, the head of the graph a reflective
+// walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
+func (c MinPlainFixCook) Type() *TableCookInfo { return &tableCookRecords[13] }
 
 func RootConfigCookMeasure(value *RootConfig) int64 { return 1560 }
 func RootConfigCookMeasureReason(value *RootConfig) (int64, error) {
@@ -540,4 +738,25 @@ func MoodsCookMeasure(value *Moods) int64                { return 88 }
 func MoodsCookMeasureReason(value *Moods) (int64, error) { return MoodsCookMeasure(value), nil }
 func MoodsCookFrom(value *Moods, buffer []byte, order TableByteOrder) bool {
 	return tableCookFixed(unsafe.Pointer(value), MoodsTableType(), buffer, order)
+}
+func MoodFieldCookMeasure(value *MoodField) int64 { return 88 }
+func MoodFieldCookMeasureReason(value *MoodField) (int64, error) {
+	return MoodFieldCookMeasure(value), nil
+}
+func MoodFieldCookFrom(value *MoodField, buffer []byte, order TableByteOrder) bool {
+	return tableCookFixed(unsafe.Pointer(value), MoodFieldTableType(), buffer, order)
+}
+func MinArmFixCookMeasure(value *MinArmFix) int64 { return 104 }
+func MinArmFixCookMeasureReason(value *MinArmFix) (int64, error) {
+	return MinArmFixCookMeasure(value), nil
+}
+func MinArmFixCookFrom(value *MinArmFix, buffer []byte, order TableByteOrder) bool {
+	return tableCookFixed(unsafe.Pointer(value), MinArmFixTableType(), buffer, order)
+}
+func MinPlainFixCookMeasure(value *MinPlainFix) int64 { return 104 }
+func MinPlainFixCookMeasureReason(value *MinPlainFix) (int64, error) {
+	return MinPlainFixCookMeasure(value), nil
+}
+func MinPlainFixCookFrom(value *MinPlainFix, buffer []byte, order TableByteOrder) bool {
+	return tableCookFixed(unsafe.Pointer(value), MinPlainFixTableType(), buffer, order)
 }

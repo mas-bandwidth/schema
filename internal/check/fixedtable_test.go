@@ -46,49 +46,49 @@ func TestFixedTableClosureRefusals(t *testing.T) {
 	}{
 		{
 			name: "a map", field: "Fleet.ships", want: "is a map",
-			src: "package t\nfixed table Fleet { ships map[uint32]int32 }\n",
+			src: "package tx\nfixed table Fleet { ships map[uint32]int32 }\n",
 		},
 		{
 			name: "an unbounded array", field: "Log.entries", want: "is an unbounded array",
-			src: "package t\nfixed table Log { entries []int32 }\n",
+			src: "package tx\nfixed table Log { entries []int32 }\n",
 		},
 		{
 			name: "a pointer", field: "Scene.head", want: "is a pointer",
-			src: "package t\ntable Node { x int32 }\nfixed table Scene { head *Node }\n",
+			src: "package tx\ntable Node { x int32 }\nfixed table Scene { head *Node }\n",
 		},
 		{
 			name: "an unbounded byte buffer", field: "Asset.data", want: "is a byte buffer",
-			src: "package t\nfixed table Asset { data *bytes }\n",
+			src: "package tx\nfixed table Asset { data *bytes }\n",
 		},
 		{
 			name: "an unbounded string", field: "Asset.caption", want: "is a byte buffer",
-			src: "package t\nfixed table Asset { caption *string }\n",
+			src: "package tx\nfixed table Asset { caption *string }\n",
 		},
 		{
 			name: "a guarded branch", field: "Patrol.target_id", want: "sits in an `if` branch",
-			src: "package t\nfixed table Patrol {\n    has_target bool\n    if has_target\n    {\n        target_id bits(12)\n    }\n}\n",
+			src: "package tx\nfixed table Patrol {\n    has_target bool\n    if has_target\n    {\n        target_id bits(12)\n    }\n}\n",
 		},
 		{
 			name: "a nested variable table", field: "Root.child", want: "holds the variable table Child by value",
-			src: "package t\ntable Child { x int32 }\nfixed table Root { child Child }\n",
+			src: "package tx\ntable Child { x int32 }\nfixed table Root { child Child }\n",
 		},
 		// THE CLOSURE IS BY-VALUE AND REACHES THROUGH A `type` (§2.2), which
 		// is how bench/corpus/FixedTable.schema's wrapper is refused: the
 		// guard is BenchMixed's, and the fixed table is the wrapper's.
 		{
 			name: "a guard inside a `type` held by value", field: "Body.extra", want: "sits in an `if` branch",
-			src: "package t\ntype Body {\n    gate bool\n    if gate\n    {\n        extra int32\n    }\n}\nfixed table Wrap { value Body }\n",
+			src: "package tx\ntype Body {\n    gate bool\n    if gate\n    {\n        extra int32\n    }\n}\nfixed table Wrap { value Body }\n",
 		},
 		// AN ARM IS A FIELD LINE (§2.6), so the arms take the same rules and
 		// the refusal names the UNION, which is the declaration to edit.
 		{
 			name: "a pointer arm", field: "Shape.chunk", want: "is a pointer arm",
-			src: "package t\ntable Chunk { seq uint32 }\nunion Shape { chunk *Chunk }\nfixed table Holder { shape Shape }\n",
+			src: "package tx\ntable Chunk { seq uint32 }\nunion Shape { chunk *Chunk }\nfixed table Holder { shape Shape }\n",
 		},
 		// AN ELEMENT OF A BOUNDED ARRAY is a by-value edge like any other.
 		{
 			name: "a variable table in a bounded array", field: "Fleet.ships", want: "holds the variable table Ship by value",
-			src: "package t\ntable Ship { hp int32 }\nfixed table Fleet { ships [..4]Ship }\n",
+			src: "package tx\ntable Ship { hp int32 }\nfixed table Fleet { ships [..4]Ship }\n",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -112,7 +112,7 @@ func TestFixedTableClosureRefusals(t *testing.T) {
 // inferred from the fields, so adding a map to this table later is an edit to
 // its body and not a change of its wire.
 func TestABoundedPlainTableIsStillVariable(t *testing.T) {
-	u := buildUnit(t, "package t\ntable Bounded {\n    name  string(16)\n    slots [4]int32\n    flag  bool\n}\nfixed table Sized {\n    name  string(16)\n    slots [4]int32\n    flag  bool\n}\n")
+	u := buildUnit(t, "package tx\ntable Bounded {\n    name  string(16)\n    slots [4]int32\n    flag  bool\n}\nfixed table Sized {\n    name  string(16)\n    slots [4]int32\n    flag  bool\n}\n")
 	variable := ir.VariableTables(u)
 	if !variable["Bounded"] {
 		t.Error("a variable table of bounded fields is the VARIABLE wire — the class is declared, not derived (docs/SPEC-TABLES.md §2.2)")
@@ -141,7 +141,7 @@ func TestABoundedPlainTableIsStillVariable(t *testing.T) {
 // class keyword and nothing else. The same word inside a body is the
 // `fixed(I, F)` scalar (SPEC §4.3), and the two never meet.
 func TestFixedIsRefusedAwayFromATableDeclaration(t *testing.T) {
-	got := refuse(t, "package t\nfixed type P { x int32 }\n")
+	got := refuse(t, "package tx\nfixed type P { x int32 }\n")
 	if !strings.Contains(got, "`fixed` at file scope qualifies a table declaration") {
 		t.Errorf("the refusal does not say what `fixed` qualifies: %s", got)
 	}
@@ -150,7 +150,7 @@ func TestFixedIsRefusedAwayFromATableDeclaration(t *testing.T) {
 // TestTheDeclaredClassReachesTheIr: the flag the parser sets is the flag every
 // emitter switches on, and [ir.VariableTables] is its complement.
 func TestTheDeclaredClassReachesTheIr(t *testing.T) {
-	f, perrs := parser.Parse("T.schema", []byte("package t\nfixed table A { x int32 }\ntable B { y int32 }\n"))
+	f, perrs := parser.Parse("T.schema", []byte("package tx\nfixed table A { x int32 }\ntable B { y int32 }\n"))
 	if len(perrs) > 0 {
 		t.Fatalf("parse: %v", perrs[0])
 	}
@@ -163,7 +163,7 @@ func TestTheDeclaredClassReachesTheIr(t *testing.T) {
 			t.Errorf("%s: parsed Fixed = %v, want %v", td.Name, td.Fixed, want)
 		}
 	}
-	u := buildUnit(t, "package t\nfixed table A { x int32 }\ntable B { y int32 }\n")
+	u := buildUnit(t, "package tx\nfixed table A { x int32 }\ntable B { y int32 }\n")
 	if !u.Tables["A"].FixedDeclared || u.Tables["B"].FixedDeclared {
 		t.Errorf("the declared class did not reach the IR: A.FixedDeclared=%v B.FixedDeclared=%v", u.Tables["A"].FixedDeclared, u.Tables["B"].FixedDeclared)
 	}

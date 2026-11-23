@@ -78,12 +78,15 @@ func unprefixedRuntimeNames(t *testing.T, files map[string][]byte) []string {
 }
 
 // admitted checks src with the front end and reports the unit when it is legal.
+// The emitter name rules (SPEC §4.6) stay out: check.Unit refuses a runtime
+// import spelling for every target already, and this pins that Generate
+// refuses it by name on its own, as a unit built in memory meets it.
 func admitted(src string) (*ir.Unit, bool) {
-	ast, perrs := parser.Parse("Core.schema", []byte(src))
+	ast, perrs := parser.Parse("Scan.schema", []byte(src))
 	if len(perrs) > 0 {
 		return nil, false
 	}
-	u, errs := check.Unit([]check.SourceFile{{Path: "Core.schema", Name: "Core.schema", Base: "Core", Bytes: []byte(src), AST: ast}})
+	u, errs := check.UnitWithoutEmitterRules([]check.SourceFile{{Path: "Scan.schema", Name: "Scan.schema", Base: "Scan", Bytes: []byte(src), AST: ast}})
 	return u, len(errs) == 0
 }
 

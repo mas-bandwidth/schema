@@ -20,7 +20,7 @@ import (
 func TeamConfigSaveMessageBody(w *TableMessageWriter, value *TeamConfig) bool {
 	{
 		if value.SpawnCount != 4 {
-			w.Put(95, TableMessageRefBitsHere)
+			w.Put(99, TableMessageRefBitsHere)
 			if value.SpawnCount < 0 || value.SpawnCount > 64 {
 				w.Over++
 			}
@@ -32,7 +32,7 @@ func TeamConfigSaveMessageBody(w *TableMessageWriter, value *TeamConfig) bool {
 			return false
 		}
 		if value.BannerLength > 0 {
-			w.Put(96, TableMessageRefBitsHere)
+			w.Put(100, TableMessageRefBitsHere)
 			if value.BannerLength < 0 || value.BannerLength > 16 {
 				return false
 			}
@@ -156,7 +156,7 @@ func tableMessageBodyTeamConfig(r *TableMessageReader, value *TeamConfig, starts
 		switch entry.ID {
 		case 0xceec99e2d65db674:
 			{
-				exact := ownBuild && entry.OwnSlot == 95
+				exact := ownBuild && entry.OwnSlot == 99
 				if exact {
 					if order >= 0 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -215,7 +215,7 @@ func tableMessageBodyTeamConfig(r *TableMessageReader, value *TeamConfig, starts
 			}
 		case 0xbca0dab1c7a00ccf:
 			{
-				exact := ownBuild && entry.OwnSlot == 96
+				exact := ownBuild && entry.OwnSlot == 100
 				if exact {
 					if order >= 1 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -576,7 +576,7 @@ func GunnerConfigLoadMessages(values []GunnerConfig, vocabulary *TableVocabulary
 func TurretConfigSaveMessageBody(w *TableMessageWriter, value *TurretConfig) bool {
 	{
 		if math.Float32bits(value.Damage) != math.Float32bits(10.0) {
-			w.Put(97, TableMessageRefBitsHere)
+			w.Put(101, TableMessageRefBitsHere)
 			if value.Damage-value.Damage != 0 {
 				w.Over++
 			}
@@ -588,7 +588,7 @@ func TurretConfigSaveMessageBody(w *TableMessageWriter, value *TurretConfig) boo
 	}
 	{
 		if math.Float32bits(value.Cooldown) != math.Float32bits(0.5) {
-			w.Put(98, TableMessageRefBitsHere)
+			w.Put(102, TableMessageRefBitsHere)
 			if value.Cooldown-value.Cooldown != 0 {
 				w.Over++
 			}
@@ -601,7 +601,7 @@ func TurretConfigSaveMessageBody(w *TableMessageWriter, value *TurretConfig) boo
 	{
 		if value.GunnerPresent {
 			if true {
-				w.Put(94, TableMessageRefBitsHere)
+				w.Put(98, TableMessageRefBitsHere)
 				if !GunnerConfigSaveMessageBody(w, &value.Gunner) {
 					return false
 				}
@@ -691,7 +691,7 @@ func tableMessageBodyTurretConfig(r *TableMessageReader, value *TurretConfig, st
 		switch entry.ID {
 		case 0x7f6308be8ab37fc0:
 			{
-				exact := ownBuild && entry.OwnSlot == 97
+				exact := ownBuild && entry.OwnSlot == 101
 				if exact {
 					if order >= 0 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -746,7 +746,7 @@ func tableMessageBodyTurretConfig(r *TableMessageReader, value *TurretConfig, st
 			}
 		case 0xdc2cbe6953343d48:
 			{
-				exact := ownBuild && entry.OwnSlot == 98
+				exact := ownBuild && entry.OwnSlot == 102
 				if exact {
 					if order >= 1 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -801,7 +801,7 @@ func tableMessageBodyTurretConfig(r *TableMessageReader, value *TurretConfig, st
 			}
 		case 0x40dbb648c0cd44aa:
 			{
-				exact := ownBuild && entry.OwnSlot == 94
+				exact := ownBuild && entry.OwnSlot == 98
 				if exact {
 					if order >= 2 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")
@@ -1762,7 +1762,7 @@ func ScoreBoardSaveMessageBody(w *TableMessageWriter, value *ScoreBoardRow) bool
 			}
 		}
 		if pairs > 0 {
-			w.Put(91, TableMessageRefBitsHere)
+			w.Put(95, TableMessageRefBitsHere)
 			pairs := uint64(0)
 			for i1 := range value.PerTeam {
 				if value.PerTeam[i1] != 0 {
@@ -1823,7 +1823,7 @@ func tableMessageBodyScoreBoard(r *TableMessageReader, value *ScoreBoardRow, sta
 		switch entry.ID {
 		case 0xf10fad739a0e1660:
 			{
-				exact := ownBuild && entry.OwnSlot == 91
+				exact := ownBuild && entry.OwnSlot == 95
 				if exact {
 					if order >= 0 {
 						r.Report.Refuse(TableRefuseWireDamaged, "")

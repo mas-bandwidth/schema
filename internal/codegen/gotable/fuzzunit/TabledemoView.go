@@ -164,7 +164,7 @@ var tableUnitView = UnitViewInfo{Package: "tabledemo", ProtocolID: 0x5c9bc571714
 		{Name: "Debuff", File: "Tables.schema", Table: false, Type: &DebuffTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "ScoreBoard", File: "Keyed.schema", Table: false, Type: &ScoreBoardTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 	},
-	NumTables: 22, Tables: []ViewType{
+	NumTables: 25, Tables: []ViewType{
 		{Name: "ArchiveConfig", File: "Nested.schema", Table: true, Type: &ArchiveConfigTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "CountedMin", File: "Tables.schema", Table: true, Type: &CountedMinTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "FloatBound", File: "Tables.schema", Table: true, Type: &FloatBoundTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -174,6 +174,9 @@ var tableUnitView = UnitViewInfo{Package: "tabledemo", ProtocolID: 0x5c9bc571714
 		{Name: "HullConfig", File: "Keyed.schema", Table: true, Type: &HullConfigTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "KeyedConfig", File: "Keyed.schema", Table: true, Type: &KeyedConfigTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "LoadoutConfig", File: "Tables.schema", Table: true, Type: &LoadoutConfigTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
+		{Name: "MinArmFix", File: "Tables.schema", Table: true, Type: &MinArmFixTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
+		{Name: "MinPlainFix", File: "Tables.schema", Table: true, Type: &MinPlainFixTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
+		{Name: "MoodField", File: "Tables.schema", Table: true, Type: &MoodFieldTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "Moods", File: "Tables.schema", Table: true, Type: &MoodsTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "PackConfig", File: "Pack.schema", Table: true, Type: &PackConfigTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "Patrol", File: "Guarded.schema", Table: true, Type: &PatrolTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -239,11 +242,16 @@ var tableUnitView = UnitViewInfo{Package: "tabledemo", ProtocolID: 0x5c9bc571714
 			{Value: 2, Name: "Turbo", ID: 0x0000000000000000, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		}},
 	},
-	NumUnions: 1, Unions: []ViewVocabulary{
+	NumUnions: 2, Unions: []ViewVocabulary{
 		{Name: "Effect", File: "Tables.schema", Max: 2, StorageBits: 8, NumVariants: 3, Doc: "What a weapon does to a target beyond its damage.", NumTags: 1, Tags: []string{"gameplay"}, Variants: []ViewVariant{
 			{Name: "None", Doc: TableDocNone, NumTags: 0, Tags: nil},
 			{Value: 1, Name: "buff", ID: 0xffb5be9be2e469cc, PayloadName: "Buff", Payload: BuffTableType, Doc: "A multiplier that rides while the effect is live.", NumTags: 1, Tags: []string{"positive"}},
 			{Value: 2, Name: "debuff", ID: 0x13cdc5ede73d2fd7, PayloadName: "Debuff", Payload: DebuffTableType, Doc: TableDocNone, NumTags: 0, Tags: nil},
+		}},
+		{Name: "MinPick", File: "Tables.schema", Max: 2, StorageBits: 8, NumVariants: 3, PayloadOffset: uint32(unsafe.Offsetof(MinPickRow{}.Payload)), Doc: TableDocNone, NumTags: 0, Tags: nil, Variants: []ViewVariant{
+			{Name: "None", Doc: TableDocNone, NumTags: 0, Tags: nil},
+			{Value: 1, Name: "few", ID: 0xdcc67d18feea8c19, PayloadName: "[2..4]uint32", Field: func() *TableFieldInfo { return &tableUnionArms[1].Arms[1].Field }, Doc: TableDocNone, NumTags: 0, Tags: nil},
+			{Value: 2, Name: "other", ID: 0x0a24ad61c2562a55, PayloadName: "int32", Field: func() *TableFieldInfo { return &tableUnionArms[1].Arms[2].Field }, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		}},
 	},
 	NumConstants: 3, Constants: []ViewConstant{

@@ -111,7 +111,7 @@ print("long:" .. #bw)
 func TestLuaUnboundedTextBinary(t *testing.T) {
 	t.Parallel()
 	schemaDir := t.TempDir()
-	schema := filepath.Join(schemaDir, "Where.schema")
+	schema := filepath.Join(schemaDir, "Venue.schema")
 	if err := os.WriteFile(schema, []byte(luaUnboundedTextSchema), 0o644); err != nil {
 		t.Fatal(err)
 	}

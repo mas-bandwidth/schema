@@ -695,6 +695,12 @@ json-hostile skipped-ampersand-node-not-first        tabledemo  RootConfig  test
 # key included, because a skipped value has no declaration to tell one apart.
 json-hostile skipped-key-255-bytes         tabledemo  RootConfig  testdata/conformance/tables/json-hostile/skipped-key-255-bytes read
 json-hostile skipped-key-256-bytes         tabledemo  RootConfig  testdata/conformance/tables/json-hostile/skipped-key-256-bytes refused
+# R7 AT A VARIABLE ROOT (docs/SPEC-TABLES.md §16.7): a stray `&` key in a
+# skipped value refuses at a variable root as at a fixed one, and a variable
+# root holds a skipped value to the definition rules whether or not its unit
+# declares a pointer (listdemo declares none).
+json-hostile skipped-ampersand-key-variable graphdemo Scene       testdata/conformance/tables/json-hostile/skipped-ampersand-key-variable refused
+json-hostile skipped-label-undefined-pointer-free listdemo Army   testdata/conformance/tables/json-hostile/skipped-label-undefined-pointer-free refused
 json-hostile dup-key                       tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key            refused
 json-hostile dup-key-array                 tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key-array      refused
 json-hostile dup-key-placeable             tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key-placeable  refused
@@ -1379,6 +1385,18 @@ write-refusal-fixed rr_fref_f32_past_range tabledemo RootConfig testdata/conform
 write-refusal-fixed rr_fref_f32_max        tabledemo RootConfig testdata/conformance/tables/wire/root_full.bin weapons[0].damage float 3.4028234663852886e38 wrote
 write-refusal-json rr_jref_f32_past_range tabledemo RootConfig testdata/conformance/tables/wire/root_full.bin weapons[0].damage float 1e39 refused
 write-refusal-json rr_jref_f32_max        tabledemo RootConfig testdata/conformance/tables/wire/root_full.bin weapons[0].damage float 3.4028234663852886e38 wrote
+report sp_fixed_reserved_byte_1           tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_reserved_byte_1.bin
+report sp_fixed_reserved_byte_4           tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_reserved_byte_4.bin
+report sp_fixed_reserved_byte_7           tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_reserved_byte_7.bin
+report sp_fixed_nineteen_bytes            tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_nineteen_bytes.bin
+report sp_fixed_form_one                  tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_form_one.bin
+report sp_fixed_form_two                  tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_form_two.bin
+report sp_fixed_form_four                 tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_form_four.bin
+report sp_fixed_count_negative            tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_count_negative.bin
+report sp_fixed_count_over_bound          tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_count_over_bound.bin
+report sp_fixed_dead_slot_nonzero         tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_dead_slot_nonzero.bin
+report sp_fixed_text_length_negative      tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_text_length_negative.bin
+report sp_fixed_text_length_over_bound    tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_text_length_over_bound.bin
 
 # THE COOK'S NODE ALIGNMENT (docs/SPEC-TABLES.md §6.2, THE TWO ALIGNMENT
 # RULES): a 128-bit list element in holders aligned eight, its own unit so no
@@ -1523,9 +1541,9 @@ rewrite node_chain_two graphdemo ListNode testdata/wire/tables/framing/node_chai
 # remains first-use ordered; the current writer emits its own field order.
 rewrite array_L2_empty tblr1 Cfg testdata/wire/tables/framing/array_L2_empty.bin
 rewrite union_arm_zero_in_field tblr1 Cfg testdata/wire/tables/framing/union_arm_zero_in_field.bin
+rewrite skipped_ids_first_use tblr1 Cfg testdata/wire/tables/framing/skipped_ids_first_use.bin
 rewrite node_index_null graphdemo ListNode testdata/wire/tables/framing/node_index_null.bin
 rewrite node_type_undeclared graphdemo ListNode testdata/wire/tables/framing/node_type_undeclared.bin
-rewrite skipped_ids_first_use tblr1 Cfg testdata/wire/tables/framing/skipped_ids_first_use.bin
 rewrite twin_a2_root tbla2 Root testdata/conformance/tables/wire/twin_a2_root.bin
 rewrite twin_k1_root tblk1 Root testdata/conformance/tables/wire/twin_k1_root.bin
 rewrite twin_k2_root tblk2 Root testdata/conformance/tables/wire/twin_k2_root.bin
@@ -2306,6 +2324,106 @@ unit widenboundpeer test/tables/widenbound/WidenBoundPeer.schema
 connection widenbound_conn widenboundpeer 0x500563706e877710 testdata/conformance/tables/wire/widenbound_conn.bin
 message-drift widenbound_msg messagedemo widenbound_conn ToolMessage testdata/conformance/tables/wire/widenbound_msg.bin testdata/conformance/tables/wire/widenbound_msg_peer.bin testdata/conformance/tables/wire/widenbound_msg_as_reader.bin
 
+# SPEC ROWS 1122: the rules PR #4664 pins, as rows every leg owes. Fixed-form header and count rows (§3.4), the JSON text rules (§16.2: depth and key cap in a skipped value, placed map keys, timestamp bounds, the quoted 64-bit grammar, base64 after escapes, enum None), and the held vectors promoted (depth, element kinds, THE GRAPH, reserved node types).
+json-hostile sp-skip-depth-129                  tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-skip-depth-129 read
+json-hostile sp-skip-depth-130                  tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-skip-depth-130 refused
+json-hostile sp-skip-key-255                    tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-skip-key-255 read
+json-hostile sp-skip-key-256                    tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-skip-key-256 refused
+json-hostile sp-skip-key-255-nested             tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-skip-key-255-nested read
+json-hostile sp-skip-key-256-nested             tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-skip-key-256-nested refused
+json-hostile sp-skip-key-escaped-255            tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-skip-key-escaped-255 read
+json-hostile sp-skip-key-escaped-256            tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-skip-key-escaped-256 refused
+json-hostile sp-unknown-key-255                 tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-unknown-key-255 read
+json-hostile sp-unknown-key-256                 tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-unknown-key-256 refused
+json-hostile sp-map-key-256-wide                mapdemo          EdgeRow      testdata/conformance/tables/json-hostile/sp-map-key-256-wide read
+json-hostile sp-map-key-300-wide                mapdemo          EdgeRow      testdata/conformance/tables/json-hostile/sp-map-key-300-wide read
+json-hostile sp-map-key-301-wide                mapdemo          EdgeRow      testdata/conformance/tables/json-hostile/sp-map-key-301-wide refused
+json-hostile sp-enum-none-name                  tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-enum-none-name read
+json-hostile sp-enum-name-255                   tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-enum-name-255 read
+json-hostile sp-enum-name-256                   tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-enum-name-256 refused
+json-hostile sp-ts-min                          featurewitnesses Root         testdata/conformance/tables/json-hostile/sp-ts-min read
+json-hostile sp-ts-below-min                    featurewitnesses Root         testdata/conformance/tables/json-hostile/sp-ts-below-min refused
+json-hostile sp-ts-max                          featurewitnesses Root         testdata/conformance/tables/json-hostile/sp-ts-max read
+json-hostile sp-ts-above-max                    featurewitnesses Root         testdata/conformance/tables/json-hostile/sp-ts-above-max refused
+json-hostile sp-ts-max-truncated                featurewitnesses Root         testdata/conformance/tables/json-hostile/sp-ts-max-truncated read
+json-hostile sp-ts-min-truncated-below          featurewitnesses Root         testdata/conformance/tables/json-hostile/sp-ts-min-truncated-below refused
+json-hostile sp-ts-max-offset                   featurewitnesses Root         testdata/conformance/tables/json-hostile/sp-ts-max-offset read
+json-hostile sp-ts-offset-over-max              featurewitnesses Root         testdata/conformance/tables/json-hostile/sp-ts-offset-over-max refused
+json-hostile sp-ts-min-offset                   featurewitnesses Root         testdata/conformance/tables/json-hostile/sp-ts-min-offset read
+json-hostile sp-ts-year-0000                    featurewitnesses Root         testdata/conformance/tables/json-hostile/sp-ts-year-0000 refused
+json-hostile sp-ts-second-60                    featurewitnesses Root         testdata/conformance/tables/json-hostile/sp-ts-second-60 refused
+json-hostile sp-ts-comma-fraction               featurewitnesses Root         testdata/conformance/tables/json-hostile/sp-ts-comma-fraction refused
+json-hostile sp-ts-empty-fraction               featurewitnesses Root         testdata/conformance/tables/json-hostile/sp-ts-empty-fraction refused
+json-hostile sp-ts-lowercase-t-z                featurewitnesses Root         testdata/conformance/tables/json-hostile/sp-ts-lowercase-t-z read
+json-hostile sp-ts-number                       featurewitnesses Root         testdata/conformance/tables/json-hostile/sp-ts-number refused
+json-hostile sp-ts-offset-hour-24               featurewitnesses Root         testdata/conformance/tables/json-hostile/sp-ts-offset-hour-24 refused
+json-hostile sp-qint-plus                       tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-qint-plus refused
+json-hostile sp-qint-leading-zero               tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-qint-leading-zero refused
+json-hostile sp-qint-neg-leading-zero           tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-qint-neg-leading-zero refused
+json-hostile sp-qint-neg-zero                   tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-qint-neg-zero refused
+json-hostile sp-qint-fraction                   tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-qint-fraction refused
+json-hostile sp-qint-exponent                   tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-qint-exponent refused
+json-hostile sp-qint-space-lead                 tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-qint-space-lead refused
+json-hostile sp-qint-space-trail                tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-qint-space-trail refused
+json-hostile sp-qint-empty                      tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-qint-empty refused
+json-hostile sp-qint-hex                        tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-qint-hex refused
+json-hostile sp-qint-bare-minus                 tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-qint-bare-minus refused
+json-hostile sp-qint-escaped-digit              tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-qint-escaped-digit read
+json-hostile sp-qint-escaped-minus              tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-qint-escaped-minus read
+json-hostile sp-qint-escaped-neg-zero           tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-qint-escaped-neg-zero refused
+json-hostile sp-qint-escaped-plus               tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-qint-escaped-plus refused
+json-hostile sp-qint-escaped-leading-zero       tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-qint-escaped-leading-zero refused
+json-hostile sp-qint-zero                       tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-qint-zero read
+json-hostile sp-b64-escaped-pad                 tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-b64-escaped-pad read
+json-hostile sp-b64-escaped-letter              tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-b64-escaped-letter read
+json-hostile sp-b64-escaped-slash               tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-b64-escaped-slash read
+json-hostile sp-b64-escaped-noncanonical        tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-b64-escaped-noncanonical refused
+json-hostile sp-b64-escaped-invalid             tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-b64-escaped-invalid refused
+json-hostile sp-b64-escaped-newline             tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-b64-escaped-newline refused
+framing depth_tables_128                         graphdemo Scene testdata/wire/tables/framing/depth_tables_128.bin read testdata/conformance/tables/framing/depth_tables_128.json
+framing depth_arrays_128                         graphdemo Scene testdata/wire/tables/framing/depth_arrays_128.bin read testdata/conformance/tables/framing/depth_arrays_128.json
+framing depth_union_tables_64                    graphdemo Scene testdata/wire/tables/framing/depth_union_tables_64.bin read testdata/conformance/tables/framing/depth_union_tables_64.json
+framing depth_keyed_128                          graphdemo Scene testdata/wire/tables/framing/depth_keyed_128.bin read testdata/conformance/tables/framing/depth_keyed_128.json
+framing depth_tables_129                         graphdemo Scene testdata/wire/tables/framing/depth_tables_129.bin refused -
+framing depth_arrays_129                         graphdemo Scene testdata/wire/tables/framing/depth_arrays_129.bin refused -
+framing depth_union_tables_65                    graphdemo Scene testdata/wire/tables/framing/depth_union_tables_65.bin refused -
+framing depth_keyed_129                          graphdemo Scene testdata/wire/tables/framing/depth_keyed_129.bin refused -
+framing depth_tables_5000                        graphdemo Scene testdata/wire/tables/framing/depth_tables_5000.bin refused -
+framing array_elem_kind_32_count_2               graphdemo Scene testdata/wire/tables/framing/array_elem_kind_32_count_2.bin refused -
+framing array_elem_kind_31_count_1               graphdemo Scene testdata/wire/tables/framing/array_elem_kind_31_count_1.bin refused -
+framing array_elem_kind_16_count_1               graphdemo Scene testdata/wire/tables/framing/array_elem_kind_16_count_1.bin refused -
+framing array_elem_unassigned_count_0            graphdemo Scene testdata/wire/tables/framing/array_elem_unassigned_count_0.bin refused -
+framing array_elem_reserved_count_0              graphdemo Scene testdata/wire/tables/framing/array_elem_reserved_count_0.bin refused -
+framing array_elem_zero_count_0                  graphdemo Scene testdata/wire/tables/framing/array_elem_zero_count_0.bin refused -
+framing array_elem_kind_17_count_0               graphdemo Scene testdata/wire/tables/framing/array_elem_kind_17_count_0.bin read testdata/conformance/tables/framing/array_elem_kind_17_count_0.json
+framing array_elem_kind_17_count_1               graphdemo Scene testdata/wire/tables/framing/array_elem_kind_17_count_1.bin read testdata/conformance/tables/framing/array_elem_kind_17_count_1.json
+framing graph_unknown_type_self                  graphdemo Scene testdata/wire/tables/framing/graph_unknown_type_self.bin refused -
+framing graph_unknown_type_pair                  graphdemo Scene testdata/wire/tables/framing/graph_unknown_type_pair.bin refused -
+framing graph_listnode_unknown_self              graphdemo Scene testdata/wire/tables/framing/graph_listnode_unknown_self.bin refused -
+framing graph_unknown_to_root                    graphdemo Scene testdata/wire/tables/framing/graph_unknown_to_root.bin refused -
+framing graph_blob_two_unknown_fields            graphdemo Scene testdata/wire/tables/framing/graph_blob_two_unknown_fields.bin refused -
+framing graph_blob_two_unknown_elements          graphdemo Scene testdata/wire/tables/framing/graph_blob_two_unknown_elements.bin refused -
+framing graph_string_blob_ill_formed             graphdemo Scene testdata/wire/tables/framing/graph_string_blob_ill_formed.bin refused -
+framing graph_string_blob_zero_byte              graphdemo Scene testdata/wire/tables/framing/graph_string_blob_zero_byte.bin refused -
+framing graph_unknown_type_unreached             graphdemo Scene testdata/wire/tables/framing/graph_unknown_type_unreached.bin refused -
+framing graph_string_blob_unreached              graphdemo Scene testdata/wire/tables/framing/graph_string_blob_unreached.bin refused -
+framing graph_reach_unknown_field                graphdemo Scene testdata/wire/tables/framing/graph_reach_unknown_field.bin read testdata/conformance/tables/framing/graph_reach_unknown_field.json
+framing graph_reach_unknown_nested               graphdemo Scene testdata/wire/tables/framing/graph_reach_unknown_nested.bin read testdata/conformance/tables/framing/graph_reach_unknown_nested.json
+framing graph_reach_unknown_union_arm            graphdemo Scene testdata/wire/tables/framing/graph_reach_unknown_union_arm.bin read testdata/conformance/tables/framing/graph_reach_unknown_union_arm.json
+framing graph_reach_unknown_keyed_slot           graphdemo Scene testdata/wire/tables/framing/graph_reach_unknown_keyed_slot.bin read testdata/conformance/tables/framing/graph_reach_unknown_keyed_slot.json
+framing node_type_node_table_id                  graphdemo Scene testdata/wire/tables/framing/node_type_node_table_id.bin refused -
+framing node_type_build_version_id               graphdemo Scene testdata/wire/tables/framing/node_type_build_version_id.bin refused -
+framing node_type_vocabulary_id                  graphdemo Scene testdata/wire/tables/framing/node_type_vocabulary_id.bin refused -
+rewrite depth_tables_128 graphdemo Scene testdata/wire/tables/framing/depth_tables_128.bin
+rewrite depth_arrays_128 graphdemo Scene testdata/wire/tables/framing/depth_arrays_128.bin
+rewrite depth_union_tables_64 graphdemo Scene testdata/wire/tables/framing/depth_union_tables_64.bin
+rewrite depth_keyed_128 graphdemo Scene testdata/wire/tables/framing/depth_keyed_128.bin
+rewrite array_elem_kind_17_count_0 graphdemo Scene testdata/wire/tables/framing/array_elem_kind_17_count_0.bin
+rewrite array_elem_kind_17_count_1 graphdemo Scene testdata/wire/tables/framing/array_elem_kind_17_count_1.bin
+rewrite graph_reach_unknown_field graphdemo Scene testdata/wire/tables/framing/graph_reach_unknown_field.bin
+rewrite graph_reach_unknown_nested graphdemo Scene testdata/wire/tables/framing/graph_reach_unknown_nested.bin
+rewrite graph_reach_unknown_union_arm graphdemo Scene testdata/wire/tables/framing/graph_reach_unknown_union_arm.bin
+rewrite graph_reach_unknown_keyed_slot graphdemo Scene testdata/wire/tables/framing/graph_reach_unknown_keyed_slot.bin
 # LAWFUL TWINS (test/conformance/harness/discriminate.go, 2026-11-22): every
 # must-refuse row needs a row in its group that must be ACCEPTED, or a leg that
 # refuses the whole form passes it without reaching its rule. These roots had
@@ -2337,8 +2455,6 @@ json-hostile sp-enum-elem-deprecated-array      tabledemo        Moods        te
 instance sp_count_min_current                   tabledemo CountedMin testdata/conformance/tables/save-wire/sp-count-min-at.bin
 framing sp_count_min_at                         tabledemo CountedMin testdata/wire/tables/framing/sp_count_min_at.bin read testdata/conformance/tables/framing/sp_count_min_at.json
 rewrite sp_count_min_at                         tabledemo CountedMin testdata/wire/tables/framing/sp_count_min_at.bin
-report  sp_count_min_below             tabledemo CountedMin testdata/conformance/tables/wire/sp_count_min_below.bin
-report  sp_count_min_zero              tabledemo CountedMin testdata/conformance/tables/wire/sp_count_min_zero.bin
 
 # SPEC ROWS ROOTS 1122, EVOLUTION AND FIXED-FORM READS (test/conformance/harness/spec1122_evolution_vectors_test.go): a deprecated enum element reads as None on the fixed form and on the compiled plan; a count below the reader's minimum A refuses on the compiled plan.
 report  sp_enum_fixed_deprecated       tabledemo Moods      testdata/conformance/tables/wire/sp_enum_fixed_deprecated.bin
@@ -2346,10 +2462,13 @@ report  sp_enum_evolved_deprecated     tabledemo Moods      testdata/conformance
 report  sp_count_min_evolved_at        tabledemo CountedMin testdata/conformance/tables/wire/sp_count_min_evolved_at.bin
 report  sp_count_min_evolved_max       tabledemo CountedMin testdata/conformance/tables/wire/sp_count_min_evolved_max.bin
 report  sp_count_min_evolved_below     tabledemo CountedMin testdata/conformance/tables/wire/sp_count_min_evolved_below.bin
+report  sp_count_min_below             tabledemo CountedMin testdata/conformance/tables/wire/sp_count_min_below.bin
+report  sp_count_min_zero              tabledemo CountedMin testdata/conformance/tables/wire/sp_count_min_zero.bin
 rewrite sp_enum_fixed_deprecated       tabledemo Moods      testdata/conformance/tables/wire/sp_enum_fixed_deprecated.bin
 rewrite sp_enum_evolved_deprecated     tabledemo Moods      testdata/conformance/tables/wire/sp_enum_evolved_deprecated.bin
 rewrite sp_count_min_evolved_at        tabledemo CountedMin testdata/conformance/tables/wire/sp_count_min_evolved_at.bin
 rewrite sp_count_min_evolved_max       tabledemo CountedMin testdata/conformance/tables/wire/sp_count_min_evolved_max.bin
+
 # the same minimum on the VARIABLE form (form 1): a count of 1 and of 0, the elements and L trimmed to
 # match, so the only rule the wire breaks is A = 2. The oracle reads them at the variable class.
 framing sp_count_min_below_form1                tabledemo CountedMin testdata/wire/tables/framing/sp_count_min_below_form1.bin refused -
@@ -2359,3 +2478,42 @@ write-refusal wref_count_min       tabledemo CountedMin testdata/conformance/tab
 write-refusal wref_count_min_ok    tabledemo CountedMin testdata/conformance/tables/save-wire/sp-count-min-at.bin few count 2 wrote
 write-refusal-fixed fref_count_min    tabledemo CountedMin testdata/conformance/tables/save-wire/sp-count-min-at.bin few count 1 refused
 write-refusal-fixed fref_count_min_ok tabledemo CountedMin testdata/conformance/tables/save-wire/sp-count-min-at.bin few count 2 wrote
+framing twin_count_min_at_form1                 tabledemo CountedMin testdata/wire/tables/framing/twin_count_min_at_form1.bin read testdata/conformance/tables/framing/twin_count_min_at_form1.json
+rewrite twin_count_min_at_form1                 tabledemo CountedMin testdata/wire/tables/framing/twin_count_min_at_form1.bin
+# a deprecated variant is never written (docs/SPEC-TABLES.md §2.15): Old (2) refused, Fierce (3) the lawful twin
+instance sp_enum_moods                          tabledemo Moods     testdata/conformance/tables/save-wire/sp-enum-elem-deprecated-array.bin
+write-refusal-json jref_enum_deprecated         tabledemo Moods testdata/conformance/tables/save-wire/sp-enum-elem-deprecated-array.bin row[0] ordinal 2 refused
+write-refusal-json jref_enum_deprecated_ok      tabledemo Moods testdata/conformance/tables/save-wire/sp-enum-elem-deprecated-array.bin row[0] ordinal 3 wrote
+
+# THE SCALAR HALF of the deprecated-variant rule (docs/SPEC-TABLES.md §2.15): on a scalar enum field a
+# deprecated variant reads as the field's DECLARED default (MoodField.mood = Fierce), where in an array
+# element it reads as None. The text, the fixed form read by the writer's own layout, the compiled plan
+# of a writer whose Mood is wider, and the text writer's refusal.
+json-hostile sp-enum-scalar-deprecated          tabledemo        MoodField    testdata/conformance/tables/json-hostile/sp-enum-scalar-deprecated read
+json-hostile sp-enum-scalar-live                tabledemo        MoodField    testdata/conformance/tables/json-hostile/sp-enum-scalar-live read
+report  sp_enum_scalar_fixed_deprecated   tabledemo MoodField  testdata/conformance/tables/wire/sp_enum_scalar_fixed_deprecated.bin
+report  sp_enum_scalar_evolved_deprecated tabledemo MoodField  testdata/conformance/tables/wire/sp_enum_scalar_evolved_deprecated.bin
+rewrite sp_enum_scalar_fixed_deprecated   tabledemo MoodField  testdata/conformance/tables/wire/sp_enum_scalar_fixed_deprecated.bin
+rewrite sp_enum_scalar_evolved_deprecated tabledemo MoodField  testdata/conformance/tables/wire/sp_enum_scalar_evolved_deprecated.bin
+instance sp_enum_moodfield                      tabledemo MoodField testdata/conformance/tables/save-wire/sp-enum-scalar-deprecated.bin
+write-refusal-json jref_enum_scalar_deprecated    tabledemo MoodField testdata/conformance/tables/save-wire/sp-enum-scalar-deprecated.bin mood ordinal 2 refused
+write-refusal-json jref_enum_scalar_deprecated_ok tabledemo MoodField testdata/conformance/tables/save-wire/sp-enum-scalar-deprecated.bin mood ordinal 3 wrote
+# ARM MIN (R10, 1122): a counted [A..B] inside a union arm holds A wherever the field sits: count below A refuses on read in every form (tables/examples/ArmMin.schema); A through B reads.
+json-hostile arm-min-fix-below   tabledemo MinArmFix testdata/conformance/tables/json-hostile/arm-min-fix-below   refused
+json-hostile arm-min-fix-empty   tabledemo MinArmFix testdata/conformance/tables/json-hostile/arm-min-fix-empty   refused
+json-hostile arm-min-fix-at      tabledemo MinArmFix testdata/conformance/tables/json-hostile/arm-min-fix-at      read
+json-hostile arm-min-fix-max     tabledemo MinArmFix testdata/conformance/tables/json-hostile/arm-min-fix-max     read
+report  armmin_fix_count_0       tabledemo MinArmFix testdata/conformance/tables/wire/armmin_fix_count_0.bin
+report  armmin_fix_count_1       tabledemo MinArmFix testdata/conformance/tables/wire/armmin_fix_count_1.bin
+report  twin_armmin_fix_at       tabledemo MinArmFix testdata/conformance/tables/wire/twin_armmin_fix_at.bin
+rewrite twin_armmin_fix_at       tabledemo MinArmFix testdata/conformance/tables/wire/twin_armmin_fix_at.bin
+
+# PLAIN MIN (R10, 1122): the same counted [A..B] as a plain field holds A: count below A refuses on read in every form (tables/examples/Tables.schema MinPlainFix); A through B reads. The framing rows are form-3 files read through the fixed load.
+json-hostile plain-min-below     tabledemo MinPlainFix testdata/conformance/tables/json-hostile/plain-min-below     refused
+json-hostile plain-min-empty     tabledemo MinPlainFix testdata/conformance/tables/json-hostile/plain-min-empty     refused
+json-hostile plain-min-at        tabledemo MinPlainFix testdata/conformance/tables/json-hostile/plain-min-at        read
+json-hostile plain-min-max       tabledemo MinPlainFix testdata/conformance/tables/json-hostile/plain-min-max       read
+report  plainmin_fix_count_0     tabledemo MinPlainFix testdata/conformance/tables/wire/plainmin_fix_count_0.bin
+report  plainmin_fix_count_1     tabledemo MinPlainFix testdata/conformance/tables/wire/plainmin_fix_count_1.bin
+report  twin_plainmin_fix_at     tabledemo MinPlainFix testdata/conformance/tables/wire/twin_plainmin_fix_at.bin
+rewrite twin_plainmin_fix_at     tabledemo MinPlainFix testdata/conformance/tables/wire/twin_plainmin_fix_at.bin

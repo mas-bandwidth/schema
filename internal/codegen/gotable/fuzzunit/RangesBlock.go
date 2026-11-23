@@ -245,7 +245,7 @@ func RangedSignedBlockBytes(b *RangedSignedBlock) int64 {
 // a lookup and not a parse. The row layouts hang off the element column
 // rather than taking names of their own, so a walker reaches every record
 // through the graph.
-func (b *RangedSignedBlock) Type() *TableBlockInfo { return &tableBlockRecords[9] }
+func (b *RangedSignedBlock) Type() *TableBlockInfo { return &tableBlockRecords[11] }
 
 // RangedUnsignedBlockMaxBytes is the storage a PRODUCER of this block allocates, sized
 // from the declared maxima (mas-bandwidth/schema docs/SPEC-TABLES.md §19.1). A Go consumer does
@@ -367,7 +367,7 @@ func RangedUnsignedBlockBytes(b *RangedUnsignedBlock) int64 {
 // a lookup and not a parse. The row layouts hang off the element column
 // rather than taking names of their own, so a walker reaches every record
 // through the graph.
-func (b *RangedUnsignedBlock) Type() *TableBlockInfo { return &tableBlockRecords[10] }
+func (b *RangedUnsignedBlock) Type() *TableBlockInfo { return &tableBlockRecords[12] }
 
 // RangedWidthsBlockMaxBytes is the storage a PRODUCER of this block allocates, sized
 // from the declared maxima (mas-bandwidth/schema docs/SPEC-TABLES.md §19.1). A Go consumer does
@@ -489,4 +489,4 @@ func RangedWidthsBlockBytes(b *RangedWidthsBlock) int64 {
 // a lookup and not a parse. The row layouts hang off the element column
 // rather than taking names of their own, so a walker reaches every record
 // through the graph.
-func (b *RangedWidthsBlock) Type() *TableBlockInfo { return &tableBlockRecords[11] }
+func (b *RangedWidthsBlock) Type() *TableBlockInfo { return &tableBlockRecords[13] }

@@ -22,7 +22,7 @@ func TestFixedTableFieldNamedAfterTheBlockPrologueIsRefused(t *testing.T) {
 		for _, kind := range []string{"fixed table", "table"} {
 			t.Run(kind+" "+name, func(t *testing.T) {
 				t.Parallel()
-				src := "package t\n" + kind + " Header\n{\n    id uint32\n    " + name + " uint32\n}\n"
+				src := "package tx\n" + kind + " Header\n{\n    id uint32\n    " + name + " uint32\n}\n"
 				got := refuse(t, src)
 				for _, want := range []string{"table Header", "field " + name, "collides with the block form's generated prologue"} {
 					if !strings.Contains(got, want) {
@@ -34,6 +34,6 @@ func TestFixedTableFieldNamedAfterTheBlockPrologueIsRefused(t *testing.T) {
 	}
 	t.Run("near names are accepted", func(t *testing.T) {
 		t.Parallel()
-		buildUnit(t, "package t\nfixed table Header\n{\n    magic_number uint32\n    version_build uint32\n    order_byte uint8\n}\n")
+		buildUnit(t, "package tx\nfixed table Header\n{\n    magic_number uint32\n    version_build uint32\n    order_byte uint8\n}\n")
 	})
 }

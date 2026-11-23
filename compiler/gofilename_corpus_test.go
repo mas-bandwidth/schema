@@ -37,27 +37,18 @@ func TestGoBasenameCorpus(t *testing.T) {
 			c := New()
 			name := strings.TrimSuffix(row[0], ".schema") + ".go"
 			unit, err := c.Load([]string{path})
-			var files map[string][]byte
-			if row[1] != "refuse-load" {
+			switch row[1] {
+			case "accept":
 				if err != nil {
 					t.Fatal(err)
 				}
-				files, err = c.Generate(unit, "go", Options{})
-			}
-			switch row[1] {
-			case "refuse-load":
-				// a basename with a dot is no identifier (SPEC §4.6, FRONTEND-4):
-				// the front end refuses it before the Go target sees it
-				if err == nil || !strings.Contains(err.Error(), row[0]) || !strings.Contains(err.Error(), "becomes generated identifiers") {
-					t.Errorf("Load: want an identifier refusal naming %s, got %v", row[0], err)
-				}
-			case "accept":
+				files, err := c.Generate(unit, "go", Options{})
 				if err != nil || len(files[name]) == 0 {
 					t.Errorf("Go generation: want %s, got error %v", name, err)
 				}
 			case "refuse":
-				if err == nil || !strings.Contains(err.Error(), row[0]) || !strings.Contains(err.Error(), "build constraint") {
-					t.Errorf("Go generation: want a build-constraint refusal naming %s, got %v", row[0], err)
+				if err == nil || !strings.Contains(err.Error(), row[0]) || !strings.Contains(err.Error(), "rename the file") {
+					t.Errorf("check: want a refusal naming %s and asking for a rename, got %v", row[0], err)
 				}
 			default:
 				t.Fatalf("unknown generation verdict %q", row[1])

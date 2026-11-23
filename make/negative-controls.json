@@ -1577,7 +1577,7 @@
     {
       "name": "cs-absent",
       "when": "pull-request",
-      "why": "I4 for the C# leg: the conformance driver built from a copy whose per-case absent answers (SpillAbsent and the wire surface's blob_shared rows) write nothing, run through a substituted registry; the wire surface must go red on the cases with no answer. 19 s on amd-1.",
+      "why": "I4 for the C# leg: the conformance driver built from a copy whose per-case answers (SpillAbsent, and SpillRefused for the must-refuse blob_shared and variable-root rows, ruling R13) write nothing, run through a substituted registry; the wire surface must go red on the cases with no answer. 19 s on amd-1.",
       "targets": [
         "conformance-cs-absent-negative-control"
       ],
@@ -1624,7 +1624,8 @@
       "when": "pull-request",
       "why": "The exact nested arm boundary and its omission control run natively; measured pair 1.396s on Intel Linux.",
       "targets": [
-        "tables-rust-nested-union-negative-control"
+        "tables-rust-nested-union-negative-control",
+        "packet-write-refusal-rust-negative-control"
       ],
       "rust": "stable"
     },
@@ -3365,6 +3366,50 @@
         "conformance-negative-control-js-write-refusal-message"
       ],
       "node": "26"
+    },
+    {
+      "name": "python-write-refusal",
+      "when": "nightly",
+      "why": "the Python leg's write-contract controls (test/conformance/python/negative-control-write-refusal): each removes one refusal from a copy of the generated tree and requires its write-refusal surface red while wire or message stays green. Each is a whole-matrix harness run, 44 to 62 s on a shared bench, so the three together pass the two-minute per-commit cap; nightly, not relaxed, until a faster surface-only run exists.",
+      "targets": [
+        "conformance-negative-control-python-write-refusal",
+        "conformance-negative-control-python-write-refusal-fixed",
+        "conformance-negative-control-python-write-refusal-message"
+      ],
+      "python": "pin"
+    },
+    {
+      "name": "ruby-write-refusal",
+      "when": "pull-request",
+      "why": "the Ruby leg's write-contract controls (test/conformance/ruby/negative-control-write-refusal): each removes one refusal from a copy of the generated tree and requires its write-refusal surface red while wire or message stays green. Each is a whole-matrix harness run, about 31 s on a shared bench plus the corpus build, so the three together fit the two-minute per-commit cap.",
+      "targets": [
+        "conformance-negative-control-ruby-write-refusal",
+        "conformance-negative-control-ruby-write-refusal-fixed",
+        "conformance-negative-control-ruby-write-refusal-message"
+      ],
+      "ruby": "pin"
+    },
+    {
+      "name": "luau-write-refusal",
+      "when": "pull-request",
+      "why": "the Luau leg's write-contract controls (test/conformance/luau/write-refusal-control): each removes one refusal from a copy of the generated units under a mirror of the repository and requires its write-refusal surface red while wire or message stays green. Each is a whole-matrix harness run, about 27 s on a shared bench plus the corpus build, so the three together fit the two-minute per-commit cap.",
+      "targets": [
+        "conformance-negative-control-luau-write-refusal",
+        "conformance-negative-control-luau-write-refusal-fixed",
+        "conformance-negative-control-luau-write-refusal-message"
+      ],
+      "luau": "0.741"
+    },
+    {
+      "name": "squirrel-write-refusal",
+      "when": "nightly",
+      "why": "the Squirrel leg's write-contract controls (test/conformance/squirrel/write-refusal-control): each removes one refusal from a copy of the generated corpus and requires its write-refusal surface red while wire or message stays green. Each is a whole-matrix harness run, 117 s wall on a loaded shared bench (34 s of user time), so the three together pass the two-minute per-commit cap; nightly until a faster surface-only run exists.",
+      "targets": [
+        "conformance-negative-control-squirrel-write-refusal",
+        "conformance-negative-control-squirrel-write-refusal-fixed",
+        "conformance-negative-control-squirrel-write-refusal-message"
+      ],
+      "squirrel": "3.2"
     },
     {
       "name": "lobster-write-refusal",

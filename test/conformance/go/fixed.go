@@ -248,6 +248,15 @@ func init() {
 	bind("tabledemo", "Moods", func(c codec) codec {
 		return fixedForm(c, tabledemo.MoodsFixedLoad, tabledemo.MoodsFixedMeasure, tabledemo.MoodsFixedSave)
 	})
+	bind("tabledemo", "MoodField", func(c codec) codec {
+		return fixedForm(c, tabledemo.MoodFieldFixedLoad, tabledemo.MoodFieldFixedMeasure, tabledemo.MoodFieldFixedSave)
+	})
+	bind("tabledemo", "MinArmFix", func(c codec) codec {
+		return fixedForm(c, tabledemo.MinArmFixFixedLoad, tabledemo.MinArmFixFixedMeasure, tabledemo.MinArmFixFixedSave)
+	})
+	bind("tabledemo", "MinPlainFix", func(c codec) codec {
+		return fixedForm(c, tabledemo.MinPlainFixFixedLoad, tabledemo.MinPlainFixFixedMeasure, tabledemo.MinPlainFixFixedSave)
+	})
 	bind("tabledemo", "KeyedConfig", func(c codec) codec {
 		return fixedForm(c, tabledemo.KeyedConfigFixedLoad, tabledemo.KeyedConfigFixedMeasure, tabledemo.KeyedConfigFixedSave)
 	})

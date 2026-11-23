@@ -6863,11 +6863,11 @@ List<T> _jsonList<T>(dynamic val, TableTextReport r, int bound, T Function(dynam
   return out;
 }
 
-// _jsonCountMin holds a counted [Min..N] array's read to its declared Min: a
-// shorter one is refused, in the text form as on the wire (docs/SPEC.md §5.1
-// row 3).
-List<T> _jsonCountMin<T>(List<T> out, TableTextReport r, int min) {
-  if (out.length < min) r.refuse('count_over_bound');
+// _jsonAtLeast holds a counted [A..B] array read from text to its minimum A,
+// wherever the field sits, a union arm included (ruling R10,
+// docs/SPEC-TABLES.md §3.4): a list shorter than A refuses count_over_bound.
+List<T> _jsonAtLeast<T>(List<T> out, dynamic val, TableTextReport r, int min) {
+  if (val is List && out.length < min) r.refuse('count_over_bound');
   return out;
 }
 

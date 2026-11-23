@@ -5937,6 +5937,279 @@ func MoodsLoadText(text string, report *TableReport) (*Moods, error) {
 	return &v, nil
 }
 
+// MoodFieldFromJSON fills one MoodField from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16): the whole
+// value, or a refusal with value at its defaults and false (§4, §6.5). A
+// supplied report receives this read's report, and on a refusal report.Err()
+// is the typed reason.
+func MoodFieldFromJSON(value *MoodField, text []byte, report *TableReport) bool {
+	return MoodFieldFromJSONWith(value, text, report, TableJSONOptions{})
+}
+
+// MoodFieldToJSONMeasure is the exact size of MoodField's JSON text, writing nothing.
+func MoodFieldToJSONMeasure(value *MoodField) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), MoodFieldTableType(), nil, TableJSONOptions{})
+}
+
+// MoodFieldToJSON writes MoodField's JSON text into the caller's slice and returns the
+// bytes written — exactly MoodFieldToJSONMeasure's answer — or -1 when it is short.
+func MoodFieldToJSON(value *MoodField, buffer []byte) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), MoodFieldTableType(), buffer, TableJSONOptions{})
+}
+
+// MoodFieldFromJSONWith is MoodFieldFromJSON under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2).
+func MoodFieldFromJSONWith(value *MoodField, text []byte, report *TableReport, options TableJSONOptions) bool {
+	read := report
+	if read == nil {
+		read = &TableReport{}
+	} else {
+		*read = TableReport{}
+	}
+	return tableJSONRead(unsafe.Pointer(value), MoodFieldTableType(), text, read, options)
+}
+
+// MoodFieldToJSONMeasureWith is MoodFieldToJSONMeasure under TableJSONOptions (§16.2).
+func MoodFieldToJSONMeasureWith(value *MoodField, options TableJSONOptions) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), MoodFieldTableType(), nil, options)
+}
+
+// MoodFieldToJSONWith is MoodFieldToJSON under TableJSONOptions (§16.2).
+func MoodFieldToJSONWith(value *MoodField, buffer []byte, options TableJSONOptions) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), MoodFieldTableType(), buffer, options)
+}
+
+// MoodFieldSaveText returns the base64 of MoodField's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.8): the whole file, form byte first, so the text keeps the form byte,
+// the framing check and every versioning guarantee and is opaque.
+func MoodFieldSaveText(value *MoodField) (string, error) {
+	n := MoodFieldMeasure(value)
+	if n < 0 {
+		return "", tableRefuseError(TableRefuseInvalidValue)
+	}
+	buf := make([]byte, n)
+	if MoodFieldSave(value, buf) < 0 {
+		return "", tableRefuseError(TableRefuseInvalidValue)
+	}
+	return base64.StdEncoding.EncodeToString(buf), nil
+}
+
+// MoodFieldLoadText fills one MoodField from a base64 wire text (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.8): the read (§6.5) over the decoded wire. It refuses base64_damaged
+// when the body does not decode, base64_not_canonical when it decodes but is
+// not canonical (a pad bit set, or an embedded CR or LF), unknown_form when
+// the decoded wire's form byte is not one this build carries, and the read's
+// own reason otherwise. A nil report is allowed; a supplied one receives this
+// read's report.
+func MoodFieldLoadText(text string, report *TableReport) (*MoodField, error) {
+	if report != nil {
+		*report = TableReport{}
+	}
+	wire, err := base64.StdEncoding.Strict().DecodeString(text)
+	if err != nil {
+		if _, plainErr := base64.StdEncoding.DecodeString(text); plainErr == nil {
+			return nil, tableRefuseError(TableRefuseBase64NotCanonical)
+		}
+		return nil, tableRefuseError(TableRefuseBase64Damaged)
+	}
+	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
+		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
+	}
+	if len(wire) == 0 || (wire[0] != 1 && wire[0] != TableFixedForm) {
+		return nil, tableRefuseError(TableRefuseUnknownForm)
+	}
+	var v MoodField
+	var read TableReport
+	ok := MoodFieldLoad(&v, wire, &read)
+	if report != nil {
+		*report = read
+	}
+	if !ok {
+		return nil, read.Err()
+	}
+	return &v, nil
+}
+
+// MinArmFixFromJSON fills one MinArmFix from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16): the whole
+// value, or a refusal with value at its defaults and false (§4, §6.5). A
+// supplied report receives this read's report, and on a refusal report.Err()
+// is the typed reason.
+func MinArmFixFromJSON(value *MinArmFix, text []byte, report *TableReport) bool {
+	return MinArmFixFromJSONWith(value, text, report, TableJSONOptions{})
+}
+
+// MinArmFixToJSONMeasure is the exact size of MinArmFix's JSON text, writing nothing.
+func MinArmFixToJSONMeasure(value *MinArmFix) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), MinArmFixTableType(), nil, TableJSONOptions{})
+}
+
+// MinArmFixToJSON writes MinArmFix's JSON text into the caller's slice and returns the
+// bytes written — exactly MinArmFixToJSONMeasure's answer — or -1 when it is short.
+func MinArmFixToJSON(value *MinArmFix, buffer []byte) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), MinArmFixTableType(), buffer, TableJSONOptions{})
+}
+
+// MinArmFixFromJSONWith is MinArmFixFromJSON under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2).
+func MinArmFixFromJSONWith(value *MinArmFix, text []byte, report *TableReport, options TableJSONOptions) bool {
+	read := report
+	if read == nil {
+		read = &TableReport{}
+	} else {
+		*read = TableReport{}
+	}
+	return tableJSONRead(unsafe.Pointer(value), MinArmFixTableType(), text, read, options)
+}
+
+// MinArmFixToJSONMeasureWith is MinArmFixToJSONMeasure under TableJSONOptions (§16.2).
+func MinArmFixToJSONMeasureWith(value *MinArmFix, options TableJSONOptions) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), MinArmFixTableType(), nil, options)
+}
+
+// MinArmFixToJSONWith is MinArmFixToJSON under TableJSONOptions (§16.2).
+func MinArmFixToJSONWith(value *MinArmFix, buffer []byte, options TableJSONOptions) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), MinArmFixTableType(), buffer, options)
+}
+
+// MinArmFixSaveText returns the base64 of MinArmFix's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.8): the whole file, form byte first, so the text keeps the form byte,
+// the framing check and every versioning guarantee and is opaque.
+func MinArmFixSaveText(value *MinArmFix) (string, error) {
+	n := MinArmFixMeasure(value)
+	if n < 0 {
+		return "", tableRefuseError(TableRefuseInvalidValue)
+	}
+	buf := make([]byte, n)
+	if MinArmFixSave(value, buf) < 0 {
+		return "", tableRefuseError(TableRefuseInvalidValue)
+	}
+	return base64.StdEncoding.EncodeToString(buf), nil
+}
+
+// MinArmFixLoadText fills one MinArmFix from a base64 wire text (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.8): the read (§6.5) over the decoded wire. It refuses base64_damaged
+// when the body does not decode, base64_not_canonical when it decodes but is
+// not canonical (a pad bit set, or an embedded CR or LF), unknown_form when
+// the decoded wire's form byte is not one this build carries, and the read's
+// own reason otherwise. A nil report is allowed; a supplied one receives this
+// read's report.
+func MinArmFixLoadText(text string, report *TableReport) (*MinArmFix, error) {
+	if report != nil {
+		*report = TableReport{}
+	}
+	wire, err := base64.StdEncoding.Strict().DecodeString(text)
+	if err != nil {
+		if _, plainErr := base64.StdEncoding.DecodeString(text); plainErr == nil {
+			return nil, tableRefuseError(TableRefuseBase64NotCanonical)
+		}
+		return nil, tableRefuseError(TableRefuseBase64Damaged)
+	}
+	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
+		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
+	}
+	if len(wire) == 0 || (wire[0] != 1 && wire[0] != TableFixedForm) {
+		return nil, tableRefuseError(TableRefuseUnknownForm)
+	}
+	var v MinArmFix
+	var read TableReport
+	ok := MinArmFixLoad(&v, wire, &read)
+	if report != nil {
+		*report = read
+	}
+	if !ok {
+		return nil, read.Err()
+	}
+	return &v, nil
+}
+
+// MinPlainFixFromJSON fills one MinPlainFix from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16): the whole
+// value, or a refusal with value at its defaults and false (§4, §6.5). A
+// supplied report receives this read's report, and on a refusal report.Err()
+// is the typed reason.
+func MinPlainFixFromJSON(value *MinPlainFix, text []byte, report *TableReport) bool {
+	return MinPlainFixFromJSONWith(value, text, report, TableJSONOptions{})
+}
+
+// MinPlainFixToJSONMeasure is the exact size of MinPlainFix's JSON text, writing nothing.
+func MinPlainFixToJSONMeasure(value *MinPlainFix) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), MinPlainFixTableType(), nil, TableJSONOptions{})
+}
+
+// MinPlainFixToJSON writes MinPlainFix's JSON text into the caller's slice and returns the
+// bytes written — exactly MinPlainFixToJSONMeasure's answer — or -1 when it is short.
+func MinPlainFixToJSON(value *MinPlainFix, buffer []byte) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), MinPlainFixTableType(), buffer, TableJSONOptions{})
+}
+
+// MinPlainFixFromJSONWith is MinPlainFixFromJSON under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2).
+func MinPlainFixFromJSONWith(value *MinPlainFix, text []byte, report *TableReport, options TableJSONOptions) bool {
+	read := report
+	if read == nil {
+		read = &TableReport{}
+	} else {
+		*read = TableReport{}
+	}
+	return tableJSONRead(unsafe.Pointer(value), MinPlainFixTableType(), text, read, options)
+}
+
+// MinPlainFixToJSONMeasureWith is MinPlainFixToJSONMeasure under TableJSONOptions (§16.2).
+func MinPlainFixToJSONMeasureWith(value *MinPlainFix, options TableJSONOptions) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), MinPlainFixTableType(), nil, options)
+}
+
+// MinPlainFixToJSONWith is MinPlainFixToJSON under TableJSONOptions (§16.2).
+func MinPlainFixToJSONWith(value *MinPlainFix, buffer []byte, options TableJSONOptions) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), MinPlainFixTableType(), buffer, options)
+}
+
+// MinPlainFixSaveText returns the base64 of MinPlainFix's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.8): the whole file, form byte first, so the text keeps the form byte,
+// the framing check and every versioning guarantee and is opaque.
+func MinPlainFixSaveText(value *MinPlainFix) (string, error) {
+	n := MinPlainFixMeasure(value)
+	if n < 0 {
+		return "", tableRefuseError(TableRefuseInvalidValue)
+	}
+	buf := make([]byte, n)
+	if MinPlainFixSave(value, buf) < 0 {
+		return "", tableRefuseError(TableRefuseInvalidValue)
+	}
+	return base64.StdEncoding.EncodeToString(buf), nil
+}
+
+// MinPlainFixLoadText fills one MinPlainFix from a base64 wire text (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.8): the read (§6.5) over the decoded wire. It refuses base64_damaged
+// when the body does not decode, base64_not_canonical when it decodes but is
+// not canonical (a pad bit set, or an embedded CR or LF), unknown_form when
+// the decoded wire's form byte is not one this build carries, and the read's
+// own reason otherwise. A nil report is allowed; a supplied one receives this
+// read's report.
+func MinPlainFixLoadText(text string, report *TableReport) (*MinPlainFix, error) {
+	if report != nil {
+		*report = TableReport{}
+	}
+	wire, err := base64.StdEncoding.Strict().DecodeString(text)
+	if err != nil {
+		if _, plainErr := base64.StdEncoding.DecodeString(text); plainErr == nil {
+			return nil, tableRefuseError(TableRefuseBase64NotCanonical)
+		}
+		return nil, tableRefuseError(TableRefuseBase64Damaged)
+	}
+	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
+		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
+	}
+	if len(wire) == 0 || (wire[0] != 1 && wire[0] != TableFixedForm) {
+		return nil, tableRefuseError(TableRefuseUnknownForm)
+	}
+	var v MinPlainFix
+	var read TableReport
+	ok := MinPlainFixLoad(&v, wire, &read)
+	if report != nil {
+		*report = read
+	}
+	if !ok {
+		return nil, read.Err()
+	}
+	return &v, nil
+}
+
 // AttachmentFromJSON fills one Attachment from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16): the whole
 // value, or a refusal with value at its defaults and false (§4, §6.5). A
 // supplied report receives this read's report, and on a refusal report.Err()

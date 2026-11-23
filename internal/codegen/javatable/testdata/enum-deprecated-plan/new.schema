@@ -1,0 +1,17 @@
+// The reader side: Old is retired in place, Extra is appended (so the layout
+// differs and the read compiles a plan), and one declares a default.
+package vnew_enum_dep
+
+enum Mood
+{
+    Calm
+    Old | deprecated
+    Fierce
+    Extra
+}
+
+fixed table Lineage
+{
+    one Mood = Fierce
+    row [..3]Mood
+}

@@ -72,7 +72,7 @@ func (m *rbModule) emitDescriptorStruct(d *ir.Struct) {
 	m.line("")
 	m.line("    S_DESC = %s", m.descItemsExpr(structItems(d)))
 	m.line("")
-	m.emitEntryPoints(d.Name)
+	m.emitEntryPoints(ClassName(d.Name))
 	m.line("    def _s_read(stream)")
 	m.line("      ::%s._s_desc_read_items(self, S_DESC, stream)", m.mod)
 	m.line("    end")
@@ -106,7 +106,7 @@ func (m *rbModule) emitDescriptorUnion(d *ir.Union) {
 	}
 	m.line("    S_UNION_DESC = [%d, [%s].freeze].freeze", d.Max, strings.Join(arms, ", "))
 	m.line("")
-	m.emitEntryPoints(d.Name)
+	m.emitEntryPoints(ClassName(d.Name))
 	m.line("    def _s_read(stream)")
 	m.line("      ::%s._s_desc_read_union(self, S_UNION_DESC, stream)", m.mod)
 	m.line("    end")
@@ -187,7 +187,7 @@ func (m *rbModule) descFieldSpec(f *ir.Field) string {
 	case "bytes":
 		return fmt.Sprintf("[:bytes, %d].freeze", f.Type.Size)
 	case "type", "union":
-		return fmt.Sprintf("[:object, -> { %s.new }].freeze", f.Type.Name)
+		return fmt.Sprintf("[:object, -> { %s.new }].freeze", ClassName(f.Type.Name))
 	}
 	return "[:unknown].freeze"
 }

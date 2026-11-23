@@ -905,6 +905,15 @@ func (g *tableGen) storageAssert(ind, expr string, bound int64) {
 	g.pf("%sschema_assert( %s >= 0 && %s <= %d ); // storage invariant, debug only (§5.1)\n", ind, expr, expr, bound)
 }
 
+func (g *tableGen) storageAssertMin(ind, expr string, min, bound int64) {
+	if min <= 0 {
+		g.storageAssert(ind, expr, bound)
+		return
+	}
+	g.storageAsserts = true
+	g.pf("%sschema_assert( %s >= %d && %s <= %d ); // the declared [%d..%d] holds, debug only (§5.1)\n", ind, expr, min, expr, bound, min, bound)
+}
+
 // emitCountedRides declares rides_<name>: whether a counted array rides. An
 // empty one elides, and so does a [Min..N]T holding its BIRTH VALUE — exactly
 // Min elements, each at its default (docs/SPEC-TABLES.md §22.2; the reference

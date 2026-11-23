@@ -779,7 +779,9 @@ pub fn bench_mixed_load_body(wire: &[u8], off: &mut usize, end: usize, ids: &[u6
                                 if !table_array_element_kind_allowed(ek) || ek != 13 { report.damaged = true; }
                                 else {
                                     if let Some(ret) = retain.as_deref_mut() { retain_discard(ret, path, 9); }
+                                    if count < 1 { return nodes.refuse_count(report); }
                                     v.entities.clear();
+                                    if count < 1 { report.damaged = true; }
                                     if count < 1 { report.damaged = true; }
                                     let keep = if count > 8 { report.damaged = true; 8 } else { count };
                                     for j in 0..keep {
@@ -3786,7 +3788,7 @@ pub fn bench_mixed_cook_body(v: &BenchMixed, w: &mut TableRegionWriter, at: i64)
     w.put(at + 40, v.world_time as u64, 8);
     w.put(at + 48, v.frame_tick, 8);
     w.put(at + 56, v.server_time as u64, 4);
-    if v.entities.len() > 8 { w.fail(); }
+    if v.entities.len() < 1 || v.entities.len() > 8 { w.fail(); }
     w.put(at + 576, v.entities.len() as u64, 4);
     for i in 0..v.entities.len() {
         let ea = at + 64 + i as i64 * 64;

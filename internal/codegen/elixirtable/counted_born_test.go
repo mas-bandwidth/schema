@@ -16,7 +16,7 @@ import (
 func TestCountedBornStateElides(t *testing.T) {
 	t.Parallel()
 	schema := filepath.Join(t.TempDir(), "Born.schema")
-	src := "package born\ntable VarRoot {\n    few [2..4]int32\n}\n"
+	src := "package bornprobe\ntable VarRoot {\n    few [2..4]int32\n}\n"
 	if err := os.WriteFile(schema, []byte(src), 0o600); err != nil {
 		t.Fatal(err)
 	}

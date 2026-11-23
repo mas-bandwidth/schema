@@ -52,14 +52,14 @@ endef
 .PHONY: packet-utf8-goose packet-utf8-goose-negative-control
 packet-utf8-goose: goose-packet-ready build/packet-text/cpp/driver build/packet-text/harness
 	@rm -rf build/packet-text/goose && mkdir -p build/packet-text/goose
-	./build/schema-goose-packet generate --lang goose --out build/packet-text/goose test/packet-text/Narrow.schema
+	./build/schema-goose-packet generate --lang goose --out build/packet-text/goose test/packet-text/Text.schema
 	cp test/goose/driverlib.goose test/packet-text/goose/main.goose build/packet-text/goose/
 	./build/packet-text/harness env $(GOOSE) run build/packet-text/goose/main.goose
 
 packet-utf8-goose-negative-control: packet-utf8-goose
 	$(call goose-packet-sabotaged,build/packet-text/goose-negative,packet-utf8-goose-read,internal/codegen/goose/read.go)
 	@rm -rf build/packet-text/goose-negative/generated && mkdir -p build/packet-text/goose-negative/generated
-	./build/packet-text/goose-negative/schema generate --lang goose --out build/packet-text/goose-negative/generated test/packet-text/Narrow.schema
+	./build/packet-text/goose-negative/schema generate --lang goose --out build/packet-text/goose-negative/generated test/packet-text/Text.schema
 	cp test/goose/driverlib.goose test/packet-text/goose/main.goose build/packet-text/goose-negative/generated/
 	@if ./build/packet-text/harness -mutations-only env $(GOOSE) run build/packet-text/goose-negative/generated/main.goose > build/packet-text/goose-negative/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: Goose UTF-8 removal passed'; exit 1; fi

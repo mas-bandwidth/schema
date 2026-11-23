@@ -162,7 +162,7 @@ func ShipEntryAt(slot *int64, arena ...*TableArena) *ShipEntryRow {
 
 // Type is ShipEntry's cooked-record descriptor, the head of the graph a reflective
 // walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
-func (c ShipEntryCook) Type() *TableCookInfo { return &tableCookRecords[21] }
+func (c ShipEntryCook) Type() *TableCookInfo { return &tableCookRecords[24] }
 
 // GlobalSettingsCook is GlobalSettings's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -294,7 +294,7 @@ func PackConfigAt(slot *int64, arena ...*TableArena) *PackConfigRow {
 
 // Type is PackConfig's cooked-record descriptor, the head of the graph a reflective
 // walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
-func (c PackConfigCook) Type() *TableCookInfo { return &tableCookRecords[13] }
+func (c PackConfigCook) Type() *TableCookInfo { return &tableCookRecords[16] }
 
 func GunnerSettingsCookMeasure(value *GunnerSettings) int64 { return 120 }
 func GunnerSettingsCookMeasureReason(value *GunnerSettings) (int64, error) {

@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The generated unit this driver exercises, in the Unity dialect
+       (test/unity/UnityDialect.props). -->
+  <Import Project="../../../unity/UnityDialect.props" />
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <AssemblyName>packetwriterefusalunity</AssemblyName>
+    <RefusalDir Condition="'$(RefusalDir)' == ''">$(MSBuildThisFileDirectory)../../../../build/packet-write-refusal/unity</RefusalDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="$(RefusalDir)/*.cs" />
+  </ItemGroup>
+
+</Project>

@@ -8,8 +8,8 @@ SERIALIZE_GO ?= ../serialize.go
 SERIALIZE_GO_FETCHED := build/serialize.go
 SERIALIZE_GO_RUNTIME := $(if $(wildcard $(SERIALIZE_GO)/go.mod),$(SERIALIZE_GO),$(SERIALIZE_GO_FETCHED))
 
-build/packet-text/go/.stamp: bin/schema test/packet-text/Narrow.schema make/go.mk
-	./bin/schema generate --lang go --out build/packet-text/go test/packet-text/Narrow.schema
+build/packet-text/go/.stamp: bin/schema test/packet-text/Text.schema make/go.mk
+	./bin/schema generate --lang go --out build/packet-text/go test/packet-text/Text.schema
 	@printf 'module packettext\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => "%s/$(SERIALIZE_GO)"\n' "$(CURDIR)" > build/packet-text/go/go.mod
 	@touch $@
 
@@ -22,7 +22,7 @@ packet-utf8-go-negative-control: packet-utf8-go
 	@mkdir -p build/packet-text/go-negative/checker
 	go run ./tools/sabotage -name packet-utf8-go-read -out build/packet-text/go-negative/functions.gotext internal/codegen/golang/functions.go
 	@printf '{"Replace":{"%s/internal/codegen/golang/functions.go":"%s/build/packet-text/go-negative/functions.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-text/go-negative/overlay.json
-	go run -overlay=build/packet-text/go-negative/overlay.json ./cmd/schema generate --lang go --out build/packet-text/go-negative test/packet-text/Narrow.schema
+	go run -overlay=build/packet-text/go-negative/overlay.json ./cmd/schema generate --lang go --out build/packet-text/go-negative test/packet-text/Text.schema
 	cp build/packet-text/go/go.mod build/packet-text/go-negative/go.mod
 	cp test/packet-text/go/main.go build/packet-text/go-negative/checker/main.go
 	cd build/packet-text/go-negative/checker && go build -o ../driver .

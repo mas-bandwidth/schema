@@ -259,6 +259,7 @@ namespace Benchtable
         {
             {
                 // flat run: 28 bits in 1 chunk(s) — the field placement is folded
+                Debug.Assert((ulong)value.TargetId < 1ul << 12, "value.TargetId is wider than its 12-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
                 Debug.Assert(value.Damage >= 0 && value.Damage <= 4095, "value.Damage out of range [0, 4095]");
                 Debug.Assert(value.HitKind >= 0 && value.HitKind <= 7, "value.HitKind out of range [0, 7]");
                 ulong f0 = ((ulong)value.TargetId) & 0xfffUL;
@@ -345,6 +346,7 @@ namespace Benchtable
             {
                 // flat run: 14 bits in 1 chunk(s) — the field placement is folded
                 Debug.Assert(value.Channel >= 0 && value.Channel <= 3, "value.Channel out of range [0, 3]");
+                Debug.Assert((ulong)value.Speaker < 1ul << 12, "value.Speaker is wider than its 12-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
                 ulong f0 = ((ulong)(unchecked((uint)(value.Channel)))) & 0x3UL;
                 ulong f1 = ((ulong)value.Speaker) & 0xfffUL;
                 uint w0 = (uint)(f0 | (f1 << 2));
@@ -422,6 +424,7 @@ namespace Benchtable
         {
             {
                 // flat run: 18 bits in 1 chunk(s) — the field placement is folded
+                Debug.Assert((ulong)value.ItemId < 1ul << 10, "value.ItemId is wider than its 10-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
                 Debug.Assert(value.Amount >= 0 && value.Amount <= 255, "value.Amount out of range [0, 255]");
                 ulong f0 = ((ulong)value.ItemId) & 0x3ffUL;
                 ulong f1 = ((ulong)(unchecked((uint)(value.Amount)))) & 0xffUL;

@@ -350,6 +350,15 @@ func (g *tableGen) emitMessageArray(f *ir.Field, entry ir.TableVocabularyEntry, 
 	elem := fmt.Sprintf(access, idx)
 	shape := entry.Shape
 	if width := ir.TableMessageCountBits(shape); width > 0 {
+		if shape.Min > 0 {
+			// THE COUNT RIDES AS count - min (§3.3): a count below the
+			// declared minimum has no spelling, and subtracting would wrap
+			// into a count the elements that follow do not match. The write
+			// contract is a debug assert on this leg (docs/SPEC.md §5.1); the
+			// guard keeps a release build from writing an unreadable body,
+			// refusing it as an unnamed union tag is refused.
+			g.pf("%sif ( ( %s ) < %d ) { return %s; } // below the declared [%d..%d] (R10)\n", ind, count, shape.Min, messageBad(pass), shape.Min, shape.Max)
+		}
 		if pass == messagePassMeasure {
 			g.pf("%sbits += %d;\n", ind, width)
 		} else {
@@ -624,7 +633,7 @@ func (g *tableGen) emitMessageArm(v ir.UnionVariant, entry ir.TableVocabularyEnt
 	case af.Array != ir.ArrayNone:
 		n := strconv.FormatInt(af.ArrayBound, 10)
 		if af.Array == ir.ArrayCounted {
-			g.storageAssert(ind, count, af.ArrayBound)
+			g.storageAssertMin(ind, count, af.ArrayMin, af.ArrayBound)
 			n = count
 		}
 		g.emitMessageArray(af, entry, n, value+"[%s]", ind, pass)

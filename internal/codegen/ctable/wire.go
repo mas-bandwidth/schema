@@ -784,6 +784,18 @@ func (g *tableGen) writeStorageBound(expr string, bound int64, ind string) {
 	g.pf("%sschema_assert( 0 <= %s && %s <= %d );\n", ind, expr, expr, bound)
 }
 
+// writeCountBound is writeStorageBound for a counted array's count, held to
+// the declared [Min, N] (docs/SPEC.md §4.2): a [Min..N]T holds at least Min
+// elements, so a count below Min is the programmer's error exactly as a count
+// past N is. Debug-only by the same rule.
+func (g *tableGen) writeCountBound(f *ir.Field, expr, ind string) {
+	if f.ArrayMin <= 0 {
+		g.writeStorageBound(expr, f.ArrayBound, ind)
+		return
+	}
+	g.pf("%sschema_assert( %d <= %s && %s <= %d );\n", ind, f.ArrayMin, expr, expr, f.ArrayBound)
+}
+
 // countedBirthRides is the elision predicate of a [A..B]T field with A above
 // zero, which is BORN AT A (docs/SPEC.md §4.2): it rides unless its count is A
 // and each of those A elements is the element's default, the value a fresh one

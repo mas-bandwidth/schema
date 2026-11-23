@@ -786,7 +786,6 @@ defmodule Benchtable.Table do
           t: :list,
           elem_kind: 13,
           array_bound: 8,
-          min_count: 1,
           elem_default: %{},
           elem: "TableEntity",
           elem_size: 64,
@@ -796,6 +795,7 @@ defmodule Benchtable.Table do
           present_off: -1,
           array: :counted,
           max_count: 8,
+          min_count: 1,
           elem_t: :record,
           shape: :table,
           bound: nil,
@@ -1756,18 +1756,24 @@ defmodule Benchtable.Table do
     value = fixed_class_from_table("TableEntity", value)
     data = Benchtable.BenchTableFixed.table_entity_fixed_save([value])
     {:ok, IO.iodata_to_binary(data)}
+  rescue
+    ArgumentError -> {:error, :invalid_value}
   end
 
   def save("TableStat", value) when is_map(value) do
     value = fixed_class_from_table("TableStat", value)
     data = Benchtable.BenchTableFixed.table_stat_fixed_save([value])
     {:ok, IO.iodata_to_binary(data)}
+  rescue
+    ArgumentError -> {:error, :invalid_value}
   end
 
   def save("TableMixed", value) when is_map(value) do
     value = fixed_class_from_table("TableMixed", value)
     data = Benchtable.BenchTableFixed.table_mixed_fixed_save([value])
     {:ok, IO.iodata_to_binary(data)}
+  rescue
+    ArgumentError -> {:error, :invalid_value}
   end
 
   # ---- the write side (docs/SPEC-TABLES.md §3) ----
@@ -2457,6 +2463,12 @@ defmodule Benchtable.Table do
   # must write even its zero/default value, while nil never becomes a payload.
   # An optional enum has two zero states: absent nil and present reserved None.
   defp enum_none(f), do: if(Map.get(f, :optional, false), do: "None", else: nil)
+
+  # A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT, and an ARRAY
+  # ELEMENT as the ELEMENT's default, None; it is never counted unknown
+  # (docs/SPEC-TABLES.md section 2.15). The writer refuses it (check_enum).
+  defp retire(f, name, fallback),
+    do: if(name in Map.get(f, :retired, []), do: fallback, else: name)
 
   defp emit_scalar?(%{required: true}, _v), do: true
   defp emit_scalar?(%{optional: true}, v), do: v != nil
@@ -4401,7 +4413,7 @@ defmodule Benchtable.Table do
 
           variant_id ->
             case Map.fetch(f.by_id, variant_id) do
-              {:ok, name} -> {:cont, name, report}
+              {:ok, name} -> {:cont, retire(f, name, Map.get(f, :default)), report}
               :error -> {:cont, enum_none(f), %{report | unknown: report.unknown + 1}}
             end
         end
@@ -4951,6 +4963,9 @@ defmodule Benchtable.Table do
   # a count past a bounded array's declared bound reads the first bound
   # elements and counts one refusal, before any element is read, so the
   # elements past the bound are never asked of the body (docs/SPEC-TABLES.md §4)
+  defp clamp_count(n, %{min_count: min}, _report) when n < min,
+    do: {min, throw(:wire_damaged)}
+
   defp clamp_count(n, %{max_count: max}, _report) when n > max,
     do: {max, throw(:wire_damaged)}
 
@@ -5179,7 +5194,7 @@ defmodule Benchtable.Table do
           variant_id ->
             {value, report} =
               case Map.fetch(f.by_id, variant_id) do
-                {:ok, name} -> {name, report}
+                {:ok, name} -> {retire(f, name, nil), report}
                 :error -> {nil, %{report | unknown: report.unknown + 1}}
               end
 
@@ -6257,8 +6272,8 @@ defmodule Benchtable.Table do
   end
 
   defp json_field(%{t: :list} = f, elements, depth) when is_list(elements) do
-    if Map.has_key?(f, :min_count) and
-         (length(elements) < f.min_count or length(elements) > f.array_bound),
+    if Map.get(f, :array) == :counted and
+         (length(elements) < Map.get(f, :min_count, 0) or length(elements) > f.array_bound),
        do: throw(:invalid_value)
 
     if Map.has_key?(f, :array_bound) and f.array_bound > 0 and length(elements) > f.array_bound,
@@ -6281,6 +6296,9 @@ defmodule Benchtable.Table do
   end
 
   defp json_field(%{t: :list}, nil, _depth), do: "[]"
+
+  # a list field holding anything but a list or nil is a value off the contract:
+  # the writer refuses it and never writes [] over it (docs/SPEC.md section 5.1)
   defp json_field(%{t: :list}, _other, _depth), do: throw(:invalid_value)
 
   defp json_field(%{optional: true}, nil, _depth), do: "null"
@@ -7052,7 +7070,7 @@ defmodule Benchtable.Table do
 
       _ ->
         case Map.fetch(f.by_name, raw) do
-          {:ok, _id} -> {raw, report}
+          {:ok, _id} -> {retire(f, raw, Map.get(f, :default)), report}
           :error -> {enum_none(f), %{report | unknown: report.unknown + 1}}
         end
     end
@@ -7353,7 +7371,7 @@ defmodule Benchtable.Table do
   defp json_read_field(%{t: :list} = f, raw, report) when is_list(raw) do
     bound = Map.get(f, :array_bound, 0)
 
-    {elems, _placed, report} =
+    {elems, placed, report} =
       Enum.reduce(raw, {[], 0, report}, fn e, {acc, placed, report} ->
         if Process.get(:elixir_json_bad, false) do
           {acc, placed, report}
@@ -7375,7 +7393,7 @@ defmodule Benchtable.Table do
       end)
 
     # a counted array below its Min refuses (docs/SPEC.md §5.1 row 3)
-    if length(elems) < Map.get(f, :min_count, 0), do: throw(:wire_damaged)
+    if placed < Map.get(f, :min_count, 0), do: throw(:wire_damaged)
     {Enum.reverse(elems), report}
   end
 
@@ -7680,7 +7698,7 @@ defmodule Benchtable.Table do
 
       _ ->
         case Map.fetch(f.by_name, e) do
-          {:ok, _id} -> {e, report}
+          {:ok, _id} -> {retire(f, e, nil), report}
           :error -> {nil, %{report | unknown: report.unknown + 1}}
         end
     end
@@ -8386,18 +8404,30 @@ defmodule Benchtable.Table do
   # list count past the storage cap, answers -1.
 
   def load_measure(table, data) when is_binary(data) do
+    case load_measure_parts(table, data) do
+      {-1, 0} -> -1
+      {data_bytes, attribution_bytes} -> data_bytes + attribution_bytes
+    end
+  end
+
+  # load_measure_parts/2 answers {data, attribution} apart, as C and C++ report
+  # them (docs/SPEC-TABLES.md §6.3, §6.5): the attribution is the directory of
+  # one 16-byte entry per node record plus the root, which a caller may place
+  # apart and release once Load returns. The sum is load_measure/2's. A refusal
+  # answers {-1, 0}.
+  def load_measure_parts(table, data) when is_binary(data) do
     desc = Map.fetch!(@tables, table)
 
     case open(data) do
       {:error, _} ->
-        -1
+        {-1, 0}
 
       {:ok, body, ids} ->
         with {:ok, at} <- extent(desc, body, ids),
              {:ok, count, blobs} <- measure_nodes(body, ids, desc) do
-          region_round(region_round(desc.size) + at) + blobs + (count + 1) * 16
+          {region_round(region_round(desc.size) + at) + blobs, (count + 1) * 16}
         else
-          _ -> -1
+          _ -> {-1, 0}
         end
     end
   end

@@ -30,7 +30,7 @@ import (
 // never typed by hand.
 func TestLuauJsonTextZeroByteRefused(t *testing.T) {
 	t.Parallel()
-	const schemaSrc = `package p
+	const schemaSrc = `package px
 
 table Inner
 {

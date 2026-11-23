@@ -22,7 +22,7 @@ import (
 // (internal/tabletext, internal/tablewire) over the same unit. The reversed
 // witness puts the signed compare back and holds that it is red on exactly
 // the uint64 tokens at and past 2^63.
-const jsonInt64Schema = `package p
+const jsonInt64Schema = `package px
 
 table Root
 {

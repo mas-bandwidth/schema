@@ -124,17 +124,15 @@ the program never started, which is a failure).
 | 2 | this backend does not implement it — the matrix prints ABSENT |
 | anything else | the driver failed; the matrix prints FAIL and the harness prints stderr |
 
-An expected semantic refusal scores PASS. Drivers write `refused` and a
-newline to the case's answer file, including on `wire-refused` rows.
-`message-prior` uses the `<case>.refused` marker described below. On
-surfaces that accept the historical `.absent` refusal, the file names a
-reason whose text is ignored.
-An EMPTY `.absent` is the per-case absence below, a leg with no codec for the
-root: on a row that expects a refusal it counts absent, never PASS, so a leg
-that cannot read a root cannot pass the must-refuse rows on it. The other way
-round holds too: a `.absent` that names a reason is a refusal wherever it
-stands, so on a row that owes an answer (bytes, a golden, a verdict) it FAILS
-and never counts absent. A driver therefore tells a case's three endings
+An expected semantic refusal scores PASS. **A refusal is spelled `refused` and
+a newline, in the file named by the case, on every read surface, the `wire`
+surface's `wire-refused` rows included, and a `message` row whose message
+wire is `-`.** **An absent answer is never credited** (ruling R13): a
+`<case>.absent` on a row that owes a refusal is an ABSENCE, counted and
+printed as one, and fails `make conformance-port` like any other absence; it
+never scores the refusal.
+`message-prior` uses the `<case>.refused` marker described below.
+A driver therefore tells a case's three endings
 apart by mechanism: no codec is the empty `.absent`; a present codec's public
 refusal is the refusal answer; anything else is a driver error, which names
 its case on stderr, lets the remaining cases run, and exits the surface
@@ -347,11 +345,15 @@ a copy of the generated code and require that surface to go red while `wire`
 **The packet wire has its own surface, `write-refusal-packet`** (docs/SPEC.md
 §5.1): a generated packet type carries one field per row, and the surface runs
 the packet `Write` over each refused value and its lawful twin at the same
-boundary. It starts with the Go leg: `TestWriteRefusalPacket` in
-`test/conformance/harness` generates the unit, compiles it against serialize.go
-and runs the battery behind `slowtest.Gate`, then runs a negative control that
-changes the emitter's upper-bound comparison and requires the boundary row to
-go red.
+boundary. The Go leg is `TestWriteRefusalPacket` in `test/conformance/harness`: it
+generates the unit, compiles it against serialize.go and runs the battery behind
+`slowtest.Gate`, then runs a negative control that changes the emitter's
+upper-bound comparison and requires the boundary row to go red. The assert legs
+(C, C++, C#, C# (unity), Rust, Java, Dart) answer the same rows from the shared
+schema and cases in `test/packet-write-refusal/`, in their debug build, where
+the assert firing is the refusal: `packet-write-refusal-<lang>`, each with a
+`-negative-control` that removes one emitted check and requires a named case to
+go red. Rust names the union tag as not representable.
 
 The every-build scripting legs (JavaScript, Python, Ruby, Elixir, Lua, Luau,
 Squirrel, MOO, Goose, Lobster) share one schema and one row list,
@@ -982,9 +984,7 @@ counters. Native resource and allocator tests remain separate gates.
 
 The `wire-refused` instance marker specifies refusal for every port. Legacy
 `go-refusal=<reason>` and `refused-by=<ports>` spellings are accepted as
-compatibility metadata; they do not select a language or a shared reason.
-Drivers write `refused` and a newline to `<case>`. A historical
-`<case>.absent` file naming a reason also scores PASS. The reason text is
-ignored. An empty `<case>.absent` is a missing codec and counts absent.
+compatibility metadata; they do not select a language or a shared reason. Drivers emit `<case>` holding `refused` and a newline, and only that scores PASS; a
+`<case>` file holding anything else is value bytes and fails, and a `<case>.absent` file is an absence, never the refusal (ruling R13).
 Emitting value bytes, or emitting nothing at all, fails. An ordinary absence
 for a missing codec remains incomplete coverage.

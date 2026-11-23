@@ -54,6 +54,15 @@ static partial class Program
         File.WriteAllBytes(Path.Combine(outDir, name + ".absent"), new byte[0]);
     }
 
+    // a must-refuse row's answer when this leg's runtime refused it (a strict
+    // read refusing a blob two slots name, §2.5) or carries no message codec
+    // for it (a variable root, §3.3): <case> holding exactly "refused\n",
+    // never an absence (ruling R13)
+    static void SpillRefused(string outDir, string name)
+    {
+        File.WriteAllText(Path.Combine(outDir, name), "refused\n");
+    }
+
     // NoText marks an instance the corpus carries on the WIRE only — past the
     // text form's depth cap by the form's own rule (docs/SPEC-TABLES.md §16.7)
     // — so no leg is asked for its text.
@@ -571,6 +580,12 @@ static partial class Program
             Tabledemo.Schema.FloatBoundFromJson, Tabledemo.Schema.FloatBoundToJsonMeasure, Tabledemo.Schema.FloatBoundToJson),
         Demo<Tabledemo.Moods>("Moods", Tabledemo.Schema.MoodsLoad, Tabledemo.Schema.MoodsMeasure, Tabledemo.Schema.MoodsSave,
             Tabledemo.Schema.MoodsFromJson, Tabledemo.Schema.MoodsToJsonMeasure, Tabledemo.Schema.MoodsToJson),
+        Demo<Tabledemo.MoodField>("MoodField", Tabledemo.Schema.MoodFieldLoad, Tabledemo.Schema.MoodFieldMeasure, Tabledemo.Schema.MoodFieldSave,
+            Tabledemo.Schema.MoodFieldFromJson, Tabledemo.Schema.MoodFieldToJsonMeasure, Tabledemo.Schema.MoodFieldToJson),
+        Demo<Tabledemo.MinArmFix>("MinArmFix", Tabledemo.Schema.MinArmFixLoad, Tabledemo.Schema.MinArmFixMeasure, Tabledemo.Schema.MinArmFixSave,
+            Tabledemo.Schema.MinArmFixFromJson, Tabledemo.Schema.MinArmFixToJsonMeasure, Tabledemo.Schema.MinArmFixToJson),
+        Demo<Tabledemo.MinPlainFix>("MinPlainFix", Tabledemo.Schema.MinPlainFixLoad, Tabledemo.Schema.MinPlainFixMeasure, Tabledemo.Schema.MinPlainFixSave,
+            Tabledemo.Schema.MinPlainFixFromJson, Tabledemo.Schema.MinPlainFixToJsonMeasure, Tabledemo.Schema.MinPlainFixToJson),
         Row<Tblv1.Cfg, Tblv1.TableReport>("tblv1", "Cfg", () => new Tblv1.TableReport(), Copy,
             Tblv1.Schema.CfgLoad, Tblv1.Schema.CfgMeasure, Tblv1.Schema.CfgSave,
             Tblv1.Schema.CfgFromJson, Tblv1.Schema.CfgToJsonMeasure, Tblv1.Schema.CfgToJson),
@@ -741,7 +756,7 @@ static partial class Program
             Codec codec = Find(connection[2], f[3]);
             // only a fixed table rides the message form: a variable root has no message codec
             if (f[5] == "-" || (codec != null && codec.MessageLoad == null))
-            { File.WriteAllText(Path.Combine(outDir, f[1] + ".absent"), "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)"); continue; }
+            { SpillRefused(outDir, f[1]); continue; }
             if (codec == null) { SpillAbsent(outDir, f[1]); continue; }
             var report = new Report();
             object value = codec.MessageLoad(File.ReadAllBytes(connection[4]), File.ReadAllBytes(f[5]), report);
@@ -804,12 +819,12 @@ static partial class Program
                 // every writer (§2.5): that refusal is this row's answer.
                 if (report.Reason != null && report.Reason.Contains("blob_shared"))
                 {
-                    File.WriteAllText(Path.Combine(outDir, f[1] + ".absent"), "blob_shared");
+                    SpillRefused(outDir, f[1]);
                     continue;
                 }
                 if (wireRefused)
                 {
-                    File.WriteAllText(Path.Combine(outDir, f[1] + ".absent"), string.IsNullOrEmpty(report.Reason) ? "refused" : report.Reason);
+                    SpillRefused(outDir, f[1]);
                     continue;
                 }
                 Console.Error.WriteLine("driver: " + f[1] + " does not load");
@@ -820,14 +835,14 @@ static partial class Program
             {
                 // a blob two slots name is refused by every writer
                 // (docs/SPEC-TABLES.md §2.5): the case's answer is that refusal
-                File.WriteAllText(Path.Combine(outDir, f[1] + ".absent"), "blob_shared");
+                SpillRefused(outDir, f[1]);
                 continue;
             }
             if (size < 0)
             {
                 if (wireRefused)
                 {
-                    File.WriteAllText(Path.Combine(outDir, f[1] + ".absent"), "refused");
+                    SpillRefused(outDir, f[1]);
                     continue;
                 }
                 Console.Error.WriteLine("driver: " + f[1] + " measure refused the value");

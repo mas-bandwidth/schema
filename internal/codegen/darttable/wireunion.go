@@ -546,7 +546,13 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		// A payload too short for its own header (the element kind and the
 		// count, under two bytes) is INERT (§4): the arm is selected holding the
 		// value it has, which is the empty array.
-		g.pf("%sif (%s.limit - %s.pos < 2) { %s = <%s>[]; return true; }\n", ind, p, p, dest, g.listElemType(f))
+		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+			// an inert payload holds no elements, which is below A: the
+			// minimum holds inside an arm as it does on a field (ruling R10)
+			g.pf("%sif (%s.limit - %s.pos < 2) { %s.report.refuse('count_over_bound'); return false; }\n", ind, p, p, p)
+		} else {
+			g.pf("%sif (%s.limit - %s.pos < 2) { %s = <%s>[]; return true; }\n", ind, p, p, dest, g.listElemType(f))
+		}
 		g.pf("%sfinal elemKind = %s.readByte();\n", ind, p)
 		g.pf("%sfinal count = %s.readLeb();\n", ind, p)
 		g.pf("%sif (count == null) %s\n", ind, bad)
@@ -566,9 +572,12 @@ func (g *wireGen) emitGetPayload(f *ir.Field, dest, p, ind string) {
 		// internal/tablewire arrayBody, which an arm shares with a field)
 		g.pf("%svar keep = count;\n", ind)
 		if f.Array == ir.ArrayCounted {
-			// a count below the declared Min refuses as one past Max does
-			// (docs/SPEC.md §5.1 row 3)
-			g.pf("%sif (keep > %d || keep < %d) { %s.report.refuse('count_over_bound'); keep = 0; }\n", ind, f.ArrayBound, max(f.ArrayMin, 0), p)
+			g.pf("%sif (keep > %d || keep < 0) { %s.report.refuse('count_over_bound'); keep = 0; }\n", ind, f.ArrayBound, p)
+			if f.ArrayMin > 0 {
+				// [A..B] holds A inside a union arm (ruling R10,
+				// docs/SPEC-TABLES.md §3.4), as internal/tablewire arrayBody
+				g.pf("%sif (count < %d) { %s.report.refuse('count_over_bound'); return false; }\n", ind, f.ArrayMin, p)
+			}
 		} else {
 			g.pf("%sif (keep < 0 || keep > 0x7FFFFFFF) %s\n", ind, bad)
 		}

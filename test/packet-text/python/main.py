@@ -13,7 +13,7 @@ import sys
 
 sys.path.insert(0, sys.argv[1])
 
-from packettext.Narrow import Narrow  # noqa: E402
+from packettext.Text import Narrow  # noqa: E402
 from packettext._schema.serialize import ReadStream, WriteStream  # noqa: E402
 
 

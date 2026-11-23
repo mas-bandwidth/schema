@@ -31,8 +31,8 @@ define luau-packet-generate
 endef
 
 # ---------------------------------------------------------------- UTF-8
-build/packet-text/luau/.stamp: $(LUAU_PACKET_SCHEMA) test/packet-text/Narrow.schema test/packet-text/luau/main.luau
-	$(call luau-packet-generate,build/packet-text/luau,test/packet-text/Narrow.schema)
+build/packet-text/luau/.stamp: $(LUAU_PACKET_SCHEMA) test/packet-text/Text.schema test/packet-text/luau/main.luau
+	$(call luau-packet-generate,build/packet-text/luau,test/packet-text/Text.schema)
 	cp test/packet-text/luau/main.luau build/packet-text/luau/main.luau
 	@touch $@
 
@@ -47,7 +47,7 @@ packet-utf8-luau-negative-control: packet-utf8-luau
 	@printf '{"Replace":{"%s/internal/codegen/luau/read.go":"%s/build/packet-text/luau-negative/read.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/packet-text/luau-negative/overlay.json
 	go build -overlay=build/packet-text/luau-negative/overlay.json -o build/packet-text/luau-negative/schema ./cmd/schema
-	$(call luau-packet-generate,build/packet-text/luau-negative/generated,test/packet-text/Narrow.schema,./build/packet-text/luau-negative/schema)
+	$(call luau-packet-generate,build/packet-text/luau-negative/generated,test/packet-text/Text.schema,./build/packet-text/luau-negative/schema)
 	cp test/packet-text/luau/main.luau build/packet-text/luau-negative/generated/main.luau
 	@if ./build/packet-text/harness -mutations-only sh $(LUAU_PACKET_STDIN) build/packet-text/luau-negative/generated main.luau \
 		> build/packet-text/luau-negative/log 2>&1; then \

@@ -84,7 +84,7 @@ func TestReference(t *testing.T) {
 	source := `#include <cstdio>
 #include <cstring>
 #include <vector>
-#include "CoreTable.h"
+#include "RecordsTable.h"
 using namespace probe;
 int main() {
  const char *text = R"doc(` + input + `)doc"; Sample v; const char *reason = nullptr;
@@ -102,7 +102,7 @@ int main() {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(cppDir, "reference")
-	cmd = testproc.Command(t, "c++", "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "-I"+cppDir, "-I"+ser, path, filepath.Join(cppDir, "CoreTable.cpp"), "-o", bin)
+	cmd = testproc.Command(t, "c++", "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "-I"+cppDir, "-I"+ser, path, filepath.Join(cppDir, "RecordsTable.cpp"), "-o", bin)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("C++ compile: %v\n%s", err, out)
 	}
@@ -256,7 +256,7 @@ func TestPythonHandtextCppCorpusFunctional(t *testing.T) {
 #include <iterator>
 #include <string>
 #include <vector>
-#include "CoreTable.h"
+#include "RecordsTable.h"
 using namespace probe;
 int main(int argc, char **argv) {
  if (argc != 3) return 1;
@@ -278,7 +278,7 @@ int main(int argc, char **argv) {
 				t.Fatal(err)
 			}
 			bin := filepath.Join(dir, "oracle")
-			cmd := testproc.Command(t, "c++", "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "-I"+dir, "-I"+ser, path, filepath.Join(dir, "CoreTable.cpp"), "-o", bin)
+			cmd := testproc.Command(t, "c++", "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "-I"+dir, "-I"+ser, path, filepath.Join(dir, "RecordsTable.cpp"), "-o", bin)
 			if out, err := cmd.CombinedOutput(); err != nil {
 				t.Fatalf("compile: %v\n%s", err, out)
 			}
@@ -393,7 +393,7 @@ func TestOracle(t *testing.T) {
 #include <iterator>
 #include <string>
 #include <vector>
-#include "CoreTable.h"
+#include "RecordsTable.h"
 using namespace probe;
 int main(int argc, char **argv) {
  if (argc != 2) return 1;
@@ -417,7 +417,7 @@ int main(int argc, char **argv) {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(cppDir, "oracle")
-	cmd = testproc.Command(t, "c++", "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "-I"+cppDir, "-I"+ser, path, filepath.Join(cppDir, "CoreTable.cpp"), "-o", bin)
+	cmd = testproc.Command(t, "c++", "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "-I"+cppDir, "-I"+ser, path, filepath.Join(cppDir, "RecordsTable.cpp"), "-o", bin)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("C++ compile: %v\n%s", err, out)
 	}
@@ -476,7 +476,7 @@ fixed table Root | integrity = "crc32c" { n int32 }
 	writeTree(t, cppDir, cppFiles)
 	source := `#include <cstdio>
 #include <vector>
-#include "CoreTable.h"
+#include "RecordsTable.h"
 using namespace probe;
 int main() {
  Root value[1] = {}; value[0].n = 7;
@@ -494,7 +494,7 @@ int main() {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(cppDir, "oracle")
-	cmd := testproc.Command(t, "c++", "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "-I"+cppDir, "-I"+ser, path, filepath.Join(cppDir, "CoreTable.cpp"), "-o", bin)
+	cmd := testproc.Command(t, "c++", "-std=c++17", "-O1", "-Wall", "-Wextra", "-Werror", "-I"+cppDir, "-I"+ser, path, filepath.Join(cppDir, "RecordsTable.cpp"), "-o", bin)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("C++ compile: %v\n%s", err, out)
 	}

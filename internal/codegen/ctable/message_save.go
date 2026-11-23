@@ -117,10 +117,8 @@ func (g *tableGen) messageValue(f *ir.Field, e ir.TableVocabularyEntry, expr, co
 		g.pf("%s } }\n", ind)
 	case f.Array != ir.ArrayNone:
 		if f.Array == ir.ArrayCounted {
-			// a field's count was already held to [Min, N] by its presence
-			// test (messageFieldPresence); this bound also serves union arms
-			g.writeStorageBound(count, f.ArrayBound, ind)
-			g.writeCountMin(f, count, ind)
+			// a counted [A..B] holds A on union arms too (ruling R10)
+			g.writeCountBound(f, count, ind)
 		}
 		g.pf("%stable_bit_put(w,(uint64_t)%s-%d,%d);\n", ind, count, e.Shape.Min, ir.TableMessageCountBits(e.Shape))
 		if ir.TableMessageAligns(e.Kind, e.Shape) {

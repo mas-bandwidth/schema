@@ -1617,6 +1617,11 @@ typedef int TableFixedOnce;
 #endif
 `
 
+// cArmMin reports whether a counted field has a positive declared minimum.
+func cArmMin(f *ir.Field) bool {
+	return f.Array == ir.ArrayCounted && f.ArrayMin > 0
+}
+
 // fixedBoundsNeeded is ir.TableFixedBoundsNeeded with one bound more, the C
 // twin of the reference: a flags mask narrower than 64 bits is held to its W
 // anywhere in the closure (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK

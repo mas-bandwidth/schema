@@ -1,7 +1,7 @@
 /* One wire per input line; one verdict, payload and canonical write per output. */
 #include <stdio.h>
 #include <string.h>
-#include "NarrowWire.h"
+#include "TextWire.h"
 
 #ifdef __cplusplus
 using namespace packettext;

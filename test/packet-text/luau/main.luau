@@ -6,7 +6,7 @@
 -- because the interpreter has no io library. It runs beside the generated
 -- Narrow module and the vendored serialize.luau.
 local serialize = require("./serialize")
-local Narrow = require("./Narrow")
+local Narrow = require("./Text")
 local lines: { string } = require("./stdin") :: any
 
 local function unhex(s: string): buffer

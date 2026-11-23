@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import '../../../build/packet-text/dart/Narrow.dart' as d;
+import '../../../build/packet-text/dart/Text.dart' as d;
 
 String hex(Uint8List bytes) => bytes.isEmpty
     ? '-'

@@ -2176,6 +2176,11 @@ public final class TableVariable {
         public long nodeRecords;
         public long nodeBlobBytes;
         public long nodeTableBytes;
+        // dataBytes and attributionBytes are the last successful loadMeasure's
+        // two parts (docs/SPEC-TABLES.md §6.3, §6.5): the region's data and the
+        // node directory a caller may place apart; the answer is their sum.
+        public long dataBytes;
+        public long attributionBytes;
         // nodeSizer is the generated root's answer for a record's type id. It
         // is installed once per root class, never allocated per call.
         public NodeSizer nodeSizer;
@@ -4340,6 +4345,28 @@ func variableValueType(f *ir.Field) string {
 	return "java.lang.Object"
 }
 
+// variableBornCounted says whether f is a plain counted [A..B] array with a
+// positive minimum: its BORN state is A default elements (ir.Field.BornCount,
+// docs/SPEC.md §4.2), and the writer elides it exactly there (SPEC-TABLES §2.3).
+func variableBornCounted(f *ir.Field) bool {
+	return f.Array == ir.ArrayCounted && f.BornCount() > 0 && !f.Type.Optional && f.KeyEnum == "" &&
+		!f.IsMap() && !f.Type.Pointer && !ir.TextListPlain(f)
+}
+
+// variableBorn is a field's initializer: a counted [A..B] array is born
+// holding A default elements, every other field at variableDefault.
+func variableBorn(f *ir.Field) string {
+	if !variableBornCounted(f) {
+		return variableDefault(f)
+	}
+	one := variableDefault(variableElement(f))
+	elems := make([]string, f.BornCount())
+	for i := range elems {
+		elems[i] = one
+	}
+	return "new java.util.ArrayList<>(java.util.Arrays.asList(" + strings.Join(elems, ", ") + "))"
+}
+
 func variableDefault(f *ir.Field) string {
 	if f.Array != ir.ArrayNone {
 		return "new java.util.ArrayList<>()"
@@ -4901,6 +4928,14 @@ func writeLoadMeasure(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	fmt.Fprintf(b, "    public static long loadMeasure(byte[] data) {\n")
 	fmt.Fprintf(b, "        return loadMeasure(data, new TableVariable.Measure());\n")
 	fmt.Fprintf(b, "    }\n\n")
+	b.WriteString("    // loadMeasureParts reports the DATA bytes and the ATTRIBUTION bytes\n")
+	b.WriteString("    // separately, {data, attribution}; a refusal answers {-1, 0}.\n")
+	fmt.Fprintf(b, "    public static long[] loadMeasureParts(byte[] data) {\n")
+	fmt.Fprintf(b, "        TableVariable.Measure m = new TableVariable.Measure();\n")
+	fmt.Fprintf(b, "        long total = loadMeasure(data, m, true);\n")
+	fmt.Fprintf(b, "        if (total < 0) { return new long[] {-1, 0}; }\n")
+	fmt.Fprintf(b, "        return new long[] {m.dataBytes, m.attributionBytes};\n")
+	fmt.Fprintf(b, "    }\n\n")
 	fmt.Fprintf(b, "    public static long loadMeasure(byte[] data, TableVariable.Measure m) {\n")
 	fmt.Fprintf(b, "        return loadMeasure(data, m, true);\n")
 	fmt.Fprintf(b, "    }\n\n")
@@ -4930,7 +4965,9 @@ func writeLoadMeasure(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	fmt.Fprintf(b, "            records = m.nodeRecords;\n")
 	fmt.Fprintf(b, "            total += m.nodeBlobBytes + m.nodeTableBytes;\n")
 	fmt.Fprintf(b, "        }\n")
-	fmt.Fprintf(b, "        total += (records + 1) * 16;\n")
+	fmt.Fprintf(b, "        m.attributionBytes = (records + 1) * 16;\n")
+	fmt.Fprintf(b, "        total += m.attributionBytes;\n")
+	fmt.Fprintf(b, "        m.dataBytes = total - m.attributionBytes;\n")
 	fmt.Fprintf(b, "        return total;\n")
 	fmt.Fprintf(b, "    }\n\n")
 
@@ -5613,6 +5650,11 @@ func writeJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 			case *ir.Enum:
 				fmt.Fprintf(b, "                switch (v.%s.get(i)) {\n", m)
 				for j := range ref.Variants {
+					if variantDeprecated(ref, j) {
+						// §2.15: a deprecated variant is never written (a debug assert in Java, SPEC.md §5.1)
+						fmt.Fprintf(b, "                    case %d: assert false : \"deprecated variant is never written\"; TableJson.esc(b, %q); break;\n", j+1, ref.Variants[j])
+						continue
+					}
 					fmt.Fprintf(b, "                    case %d: TableJson.esc(b, %q); break;\n", j+1, ref.Variants[j])
 				}
 				fmt.Fprintf(b, "                    default: assert v.%s.get(i) == 0 : \"enum value names no variant\"; TableJson.esc(b, \"None\"); break;\n                }\n", m)
@@ -5627,10 +5669,20 @@ func writeJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	b.WriteString("        }\n")
 }
 
+// writeJsonBornClear empties a counted [A..B] array before its JSON elements
+// are placed: the value is born holding A elements (variableBorn), and the
+// text's elements replace them rather than follow them.
+func writeJsonBornClear(b *strings.Builder, f *ir.Field, m string) {
+	if variableBornCounted(f) {
+		fmt.Fprintf(b, "                    v.%s.clear();\n", m)
+	}
+}
+
 func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, depth string) {
 	m := varMember(f)
 	fmt.Fprintf(b, "                if (%s + 1 > TableJson.In.MAX_JSON_DEPTH) { in.bad = true; in.skipValue(); } else if (in.peek() == '[') {\n", depth)
 	b.WriteString("                    in.p++;\n")
+	writeJsonBornClear(b, f, m)
 	b.WriteString("                    int idx = 0;\n")
 	if f.Array != ir.ArrayList {
 		fmt.Fprintf(b, "                    int ab = %d;\n", f.ArrayBound)
@@ -5962,6 +6014,11 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 		if enum, ok := f.Type.Ref.(*ir.Enum); ok {
 			fmt.Fprintf(b, "        switch (v.%s) {\n", m)
 			for i := range enum.Variants {
+				if variantDeprecated(enum, i) {
+					// §2.15: a deprecated variant is never written (a debug assert in Java, SPEC.md §5.1)
+					fmt.Fprintf(b, "            case %d: assert false : \"deprecated variant is never written\"; TableJson.esc(b, %q); break;\n", i+1, enum.Variants[i])
+					continue
+				}
 				fmt.Fprintf(b, "            case %d: TableJson.esc(b, %q); break;\n", i+1, enum.Variants[i])
 			}
 			fmt.Fprintf(b, "            default: assert v.%s == 0 : \"enum value names no variant\"; TableJson.esc(b, \"None\"); break;\n        }\n", m)
@@ -6115,6 +6172,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		target := f.Type.Ref.(*ir.Struct)
 		fmt.Fprintf(b, "                if (%s + 1 > TableJson.In.MAX_JSON_DEPTH) { in.bad = true; in.skipValue(); } else if (in.peek() == '[') {\n", depth)
 		b.WriteString("                    in.p++;\n")
+		writeJsonBornClear(b, f, m)
 		b.WriteString("                    int idx = 0;\n")
 		if f.Array != ir.ArrayList {
 			fmt.Fprintf(b, "                    int ab = %d;\n", f.ArrayBound)

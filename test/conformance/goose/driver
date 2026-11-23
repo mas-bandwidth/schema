@@ -46,9 +46,13 @@ dir=$base/$2
 mkdir -p "$dir" || exit 1
 # glue <unit dir>: the root and its glue module beside the unit's modules
 glue() {
-	if [ -f "$1/conformance_unit.goose" ] && [ -f "$1/main.goose" ] && [ -f "$1/unit.goose" ]; then
+	text=test/conformance/goose/units/$(basename "$1").goose
+	[ -f "$text" ] || text=test/conformance/goose/unit.goose
+	# Compare the copies to their sources, including a switch to the fallback.
+	if [ -f "$1/conformance_unit.goose" ] &&
+		cmp -s "$main" "$1/main.goose" && cmp -s "$text" "$1/unit.goose"; then
 		_fresh=1
-		for _f in "$1"/*.goose "$main" test/conformance/goose/driver; do
+		for _f in "$1"/*.goose test/conformance/goose/driver; do
 			case "$(basename "$_f")" in main.goose|conformance_unit.goose|unit.goose) continue ;; esac
 			if [ "$_f" -nt "$1/conformance_unit.goose" ]; then _fresh=0; break; fi
 		done
@@ -915,8 +919,6 @@ EOF_FIXED_HELPERS
 		echo "}"
 	} >"$1/conformance_unit.goose.$$"
 	cp "$main" "$1/main.goose.$$"
-	text=test/conformance/goose/units/$(basename "$1").goose
-	[ -f "$text" ] || text=test/conformance/goose/unit.goose
 	cp "$text" "$1/unit.goose.$$"
 	# each lands by rename, so a call compiling this unit beside us never
 	# reads a half-written module

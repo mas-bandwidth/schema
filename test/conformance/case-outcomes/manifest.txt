@@ -11,7 +11,7 @@
 #     codec was missing, and an accepted row's absence named a reason, which
 #     reads as a refusal;
 #   a REFUSAL of a present codec: that surface's refusal answer, which on the
-#     wire and message surfaces is <case>.absent HOLDING THE READ'S REASON,
+#     wire and message surfaces is `refused` followed by a newline in <case>,
 #     whatever the reason (docs/rulings.json refusal-verdict-only). Review
 #     F-088/F-089/F-090: the wire drivers turned every refusal but blob_shared
 #     into an abort, and a missing root into an abort too;

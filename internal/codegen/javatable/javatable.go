@@ -269,6 +269,12 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	return generateLineage(u, lineage, javapkt.Canonical)
 }
 
+// GenerateLineageRaw emits the exact same file set as GenerateLineage without
+// running java.Canonical layout formatting, for check-time file-collision checks.
+func GenerateLineageRaw(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
+	return generateLineage(u, lineage, func(b []byte) []byte { return b })
+}
+
 // generateLineage is GenerateLineage with the last pass named: canon puts each
 // file in the formatter's shape (java.Canonical), and a test passes the
 // identity to hold that the pass moves layout and never a token.
@@ -601,3 +607,12 @@ func variableFormRefusal(f *ir.Field) string {
 // javaReserved is Java's reserved words, read from the one table (check.ReservedIn,
 // SPEC §4.6) and never copied here.
 var javaReserved = schemacheck.ReservedIn("Java")
+
+// CheckNames is the Java table backend's name check for a unit with tables,
+// run by schema check for every target (SPEC §4.6) as well as at generate.
+func CheckNames(u *ir.Unit) error {
+	if len(u.Tables) == 0 {
+		return nil
+	}
+	return checkNames(u)
+}

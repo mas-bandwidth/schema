@@ -53,9 +53,9 @@ from _common import root_class, unit_package
 Path('out').mkdir()
 wire.run('manifest', 'out')
 for case in ('blob_shared', 'blob_shared_string'):
-    assert Path('out', case + '.absent').exists(), 'missing observed blob_shared refusal'
-    assert Path('out', case + '.absent').read_bytes() == b'blob_shared', 'driver dropped a public refusal'
-    assert not Path('out', case).exists()
+    answer = Path('out', case)
+    assert answer.exists() and answer.read_bytes() == b'refused\n', 'missing observed blob_shared refusal'
+    assert not Path('out', case + '.absent').exists()
 assert Path('out/blob_equal_bytes').read_bytes() == Path('blob_equal_bytes.bin').read_bytes()
 Catalog = root_class('blobdemo', 'Catalog')
 Docs = root_class('mapdemo', 'Docs')
@@ -98,8 +98,8 @@ def damaged_load(data): raise blobs.Refused('wire_damaged')
 Catalog.load = staticmethod(damaged_load)
 Path('damaged-out').mkdir()
 wire.run('wrong-manifest', 'damaged-out')
-assert Path('damaged-out/wrong.absent').read_bytes() == b'wire_damaged', 'driver dropped a public refusal'
-assert not Path('damaged-out/wrong').exists() and not _common.DRIVER_ERRORS
+assert Path('damaged-out/wrong').read_bytes() == b'refused\n', 'driver dropped a public refusal'
+assert not Path('damaged-out/wrong.absent').exists() and not _common.DRIVER_ERRORS
 # a failure that is not the codec's public refusal is a DRIVER ERROR: no
 # answer, the case named, and the surface red once its cases have run
 def broken_load(data): raise ValueError('blob_shared')

@@ -59,7 +59,7 @@ print("ok")
 	t.Run("generated-store-negative-control", func(t *testing.T) {
 		t.Parallel()
 		planted := cloneFiles(files)
-		const path = "fixedunion/Core.py"
+		const path = "fixedunion/Records.py"
 		const anchor = "int(value.f8).to_bytes(1, order, signed=True)"
 		body := string(planted[path])
 		if !strings.Contains(body, anchor) {

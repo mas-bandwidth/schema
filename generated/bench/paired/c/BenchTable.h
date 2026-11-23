@@ -255,7 +255,17 @@ typedef struct bench_table_field_info_t
     uint8_t text_list; /* 0 none, 1 string(M) elements, 2 ?string(M) elements (SPEC-TABLES 2.13) */
     int64_t text_total; /* | total = N byte cap across text-list elements, or 0 (SPEC-TABLES 2.13) */
     void * (*place)(void * worker,void * slot,const char * key,int32_t length,int64_t number,int fresh);
-    int32_t array_min; /* a [A..B]T count's declared minimum A (docs/SPEC.md §4.2), else 0 */
+    /* A COUNTED ARRAY'S MINIMUM (docs/SPEC.md §5.1, docs/SPEC-TABLES.md §16.2):
+       the A of [A..B]T, 0 on every other field. A text read that places
+       fewer elements refuses, as the wire read does. */
+    int32_t array_min;
+    /* A DEPRECATED VARIANT (docs/SPEC-TABLES.md §2.15): enum_deprecated is one
+       flag per value in [0, enum_max], 1 where the variant is marked
+       "| deprecated", NULL when the enum carries none. A read naming one
+       stores enum_default instead — the field's declared default, None for
+       an element — and is never counted unknown. */
+    uint64_t enum_default;
+    const uint8_t * enum_deprecated;
 } bench_table_field_info_t;
 
 typedef struct bench_table_type_info_t
@@ -8432,6 +8442,7 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                         if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; }
                     }
                 }
+                if ( value->entities_count < 1 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; }
                 break;
             }
             case 0xee639cad45b1994cull: /* stats */
@@ -9232,9 +9243,7 @@ static SCHEMA_UNUSED int bench_bench_mixed_save_message_body(bench_table_bit_wri
   return 1;
   }
   bench_table_bit_put(w,10,BENCH_K_TABLE_MESSAGE_REF_BITS_HERE);
-  schema_assert( 0 <= value->entities_count && value->entities_count <= 8 );
-  schema_assert( value->entities_count >= 1 );
-  /* a count below the declared Min (§5.1 row 3) */
+  schema_assert( 1 <= value->entities_count && value->entities_count <= 8 );
   bench_table_bit_put(w,(uint64_t)value->entities_count-1,3);
   { int32_t i;
   for(i=0;i<value->entities_count;i++) {
@@ -9773,6 +9782,7 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message
   }if(walk<n && !bench_table_message_skip_run(r,n-walk,element_entry->value_bits))goto damaged;
   value->entities_count=(int32_t)kept;
  }
+ if(value->entities_count<1)r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE;
  if(same_shape && original_count==1){int32_t bi;
  int empty=1;
  for(bi=0;bi<1;bi++){uint64_t first=0;
@@ -10518,7 +10528,7 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fix
     bench_table_fixed_put64( b + 32, (uint64_t) value->world_time );
     bench_table_fixed_put64( b + 40, (uint64_t) value->frame_tick );
     bench_table_fixed_put32( b + 48, (uint32_t) value->server_time );
-    schema_assert( value->entities_count >= 0 && value->entities_count <= 8 ); /* the declared count is the bound (§3.4) */
+    schema_assert( value->entities_count >= 1 && value->entities_count <= 8 ); /* the declared [A..B] is the bound (§3.4) */
     bench_table_fixed_put32( b + 52, (uint32_t) value->entities_count );
     {
         int64_t i;
@@ -10962,6 +10972,7 @@ static SCHEMA_UNUSED int schema_bench_bench_mixed_body_pack_(struct bench_table_
     bench_table_cook_put(at+40,(uint64_t)value->world_time,8,order);
     bench_table_cook_put(at+48,(uint64_t)value->frame_tick,8,order);
     bench_table_cook_put(at+56,(uint64_t)value->server_time,4,order);
+    schema_assert( 1 <= value->entities_count && value->entities_count <= 8 );
     { int32_t cook_i1; for(cook_i1=0;cook_i1<value->entities_count && cook_i1<8;cook_i1++) {
         if(!schema_bench_mixed_entity_body_pack_(n,at+64+cook_i1*64,&value->entities[cook_i1],order)) { return 0; }
     } }

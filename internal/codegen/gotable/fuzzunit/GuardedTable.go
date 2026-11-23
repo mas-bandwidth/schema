@@ -46,7 +46,7 @@ func PatrolSaveBody(w *TableWriter, value *Patrol) bool {
 func PatrolSaveBodyFields(w *TableWriter, value *Patrol) bool {
 	{
 		if value.Active != false {
-			if ref := w.Ids.refAtHit(61, 0x6580790b036f0c6f); !w.headerPair(ref, 1) {
+			if ref := w.Ids.refAtHit(64, 0x6580790b036f0c6f); !w.headerPair(ref, 1) {
 				w.headerRest(ref, 1)
 			}
 			if value.Active {
@@ -59,7 +59,7 @@ func PatrolSaveBodyFields(w *TableWriter, value *Patrol) bool {
 	if value.Active {
 		{
 			if math.Float32bits(value.Speed) != math.Float32bits(1.0) {
-				if ref := w.Ids.refAtHit(24, 0x2281498aa0200e40); !w.headerPair(ref, 10) {
+				if ref := w.Ids.refAtHit(26, 0x2281498aa0200e40); !w.headerPair(ref, 10) {
 					w.headerRest(ref, 10)
 				}
 				if value.Speed-value.Speed != 0 {
@@ -72,7 +72,7 @@ func PatrolSaveBodyFields(w *TableWriter, value *Patrol) bool {
 	if value.Active {
 		{
 			if value.HasTarget != false {
-				if ref := w.Ids.refAtHit(25, 0x247f0e7f55aacfbd); !w.headerPair(ref, 1) {
+				if ref := w.Ids.refAtHit(27, 0x247f0e7f55aacfbd); !w.headerPair(ref, 1) {
 					w.headerRest(ref, 1)
 				}
 				if value.HasTarget {
@@ -86,7 +86,7 @@ func PatrolSaveBodyFields(w *TableWriter, value *Patrol) bool {
 	if value.Active && value.HasTarget {
 		{
 			if value.TargetID != 0 {
-				if ref := w.Ids.refAtHit(109, 0xb7bc9ac015a25050); !w.headerPair(ref, 4) {
+				if ref := w.Ids.refAtHit(112, 0xb7bc9ac015a25050); !w.headerPair(ref, 4) {
 					w.headerRest(ref, 4)
 				}
 				if value.TargetID < 0 || value.TargetID > 1000 {
@@ -99,7 +99,7 @@ func PatrolSaveBodyFields(w *TableWriter, value *Patrol) bool {
 	if value.Active && !value.HasTarget {
 		{
 			if math.Float32bits(value.Wander) != math.Float32bits(0.5) {
-				if ref := w.Ids.refAtHit(110, 0xb8c758d8bd1845d4); !w.headerPair(ref, 10) {
+				if ref := w.Ids.refAtHit(113, 0xb8c758d8bd1845d4); !w.headerPair(ref, 10) {
 					w.headerRest(ref, 10)
 				}
 				if value.Wander-value.Wander != 0 {
@@ -115,7 +115,7 @@ func PatrolSaveBodyFields(w *TableWriter, value *Patrol) bool {
 				return false
 			}
 			if value.NoteLength > 0 {
-				if ref := w.Ids.refAtHit(41, 0x3bf8fbbad1587cdd); !w.headerPair(ref, 12) {
+				if ref := w.Ids.refAtHit(44, 0x3bf8fbbad1587cdd); !w.headerPair(ref, 12) {
 					w.headerRest(ref, 12)
 				}
 				if value.NoteLength < 0 || value.NoteLength > 8 {
@@ -389,7 +389,7 @@ func PatrolSaveBodyRetain(w *TableRetainWriter, value *Patrol) bool {
 func PatrolSaveBodyFieldsRetain(w *TableRetainWriter, value *Patrol) bool {
 	{
 		if value.Active != false {
-			if ref := w.Ids.refAtHit(61, 0x6580790b036f0c6f); !w.headerPair(ref, 1) {
+			if ref := w.Ids.refAtHit(64, 0x6580790b036f0c6f); !w.headerPair(ref, 1) {
 				w.headerRest(ref, 1)
 			}
 			if value.Active {
@@ -402,7 +402,7 @@ func PatrolSaveBodyFieldsRetain(w *TableRetainWriter, value *Patrol) bool {
 	if value.Active {
 		{
 			if math.Float32bits(value.Speed) != math.Float32bits(1.0) {
-				if ref := w.Ids.refAtHit(24, 0x2281498aa0200e40); !w.headerPair(ref, 10) {
+				if ref := w.Ids.refAtHit(26, 0x2281498aa0200e40); !w.headerPair(ref, 10) {
 					w.headerRest(ref, 10)
 				}
 				if value.Speed-value.Speed != 0 {
@@ -415,7 +415,7 @@ func PatrolSaveBodyFieldsRetain(w *TableRetainWriter, value *Patrol) bool {
 	if value.Active {
 		{
 			if value.HasTarget != false {
-				if ref := w.Ids.refAtHit(25, 0x247f0e7f55aacfbd); !w.headerPair(ref, 1) {
+				if ref := w.Ids.refAtHit(27, 0x247f0e7f55aacfbd); !w.headerPair(ref, 1) {
 					w.headerRest(ref, 1)
 				}
 				if value.HasTarget {
@@ -429,7 +429,7 @@ func PatrolSaveBodyFieldsRetain(w *TableRetainWriter, value *Patrol) bool {
 	if value.Active && value.HasTarget {
 		{
 			if value.TargetID != 0 {
-				if ref := w.Ids.refAtHit(109, 0xb7bc9ac015a25050); !w.headerPair(ref, 4) {
+				if ref := w.Ids.refAtHit(112, 0xb7bc9ac015a25050); !w.headerPair(ref, 4) {
 					w.headerRest(ref, 4)
 				}
 				if value.TargetID < 0 || value.TargetID > 1000 {
@@ -442,7 +442,7 @@ func PatrolSaveBodyFieldsRetain(w *TableRetainWriter, value *Patrol) bool {
 	if value.Active && !value.HasTarget {
 		{
 			if math.Float32bits(value.Wander) != math.Float32bits(0.5) {
-				if ref := w.Ids.refAtHit(110, 0xb8c758d8bd1845d4); !w.headerPair(ref, 10) {
+				if ref := w.Ids.refAtHit(113, 0xb8c758d8bd1845d4); !w.headerPair(ref, 10) {
 					w.headerRest(ref, 10)
 				}
 				if value.Wander-value.Wander != 0 {
@@ -458,7 +458,7 @@ func PatrolSaveBodyFieldsRetain(w *TableRetainWriter, value *Patrol) bool {
 				return false
 			}
 			if value.NoteLength > 0 {
-				if ref := w.Ids.refAtHit(41, 0x3bf8fbbad1587cdd); !w.headerPair(ref, 12) {
+				if ref := w.Ids.refAtHit(44, 0x3bf8fbbad1587cdd); !w.headerPair(ref, 12) {
 					w.headerRest(ref, 12)
 				}
 				if value.NoteLength < 0 || value.NoteLength > 8 {
@@ -695,6 +695,13 @@ func PatrolLoadBodyRetain(r *TableRetainReader, value *Patrol) bool {
 func PatrolLoadMeasure(wire []byte) int64 {
 	n, _, _ := tableRegionMeasure(wire, PatrolTableType(), PatrolTableType().NodeType, 0)
 	return n
+}
+func PatrolLoadMeasureParts(wire []byte) (data, attribution int64) {
+	n, a, _ := tableRegionMeasure(wire, PatrolTableType(), PatrolTableType().NodeType, 0)
+	if n < 0 {
+		return -1, 0
+	}
+	return n - a, a
 }
 func PatrolLoadMeasureReason(wire []byte) (int64, error) {
 	size, _, _, reason := tableRegionMeasureReason(wire, PatrolTableType(), PatrolTableType().NodeType, 0)
@@ -945,7 +952,7 @@ var PatrolTableFields = []TableFieldInfo{
 var PatrolTableInfo TableTypeInfo
 
 func init() {
-	PatrolTableInfo = TableTypeInfo{Name: "Patrol", Size: uint32(unsafe.Sizeof(Patrol{})), NumFields: 6, Fields: PatrolTableFields, Reset: func(storage unsafe.Pointer) { PatrolReset((*Patrol)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x1c182e1c2529027b, Variable: true, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return PatrolSaveBody(w, (*Patrol)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return PatrolLoadBody(&r, (*Patrol)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return PatrolSaveBodyRetain(w, (*Patrol)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return PatrolLoadBodyRetain(&r, (*Patrol)(p)) }, CycleIndex: 15, CycleType: tableCycleType, CookSize: 36, CookAlign: 4, NodeType: tableDeclaredType}
+	PatrolTableInfo = TableTypeInfo{Name: "Patrol", Size: uint32(unsafe.Sizeof(Patrol{})), NumFields: 6, Fields: PatrolTableFields, Reset: func(storage unsafe.Pointer) { PatrolReset((*Patrol)(storage)) }, Doc: TableDocNone, NumTags: 0, Tags: nil, ID: 0x1c182e1c2529027b, Variable: true, SaveBody: func(w *TableWriter, p unsafe.Pointer) bool { return PatrolSaveBody(w, (*Patrol)(p)) }, LoadBody: func(r TableReader, p unsafe.Pointer) bool { return PatrolLoadBody(&r, (*Patrol)(p)) }, SaveBodyRetain: func(w *TableRetainWriter, p unsafe.Pointer) bool { return PatrolSaveBodyRetain(w, (*Patrol)(p)) }, LoadBodyRetain: func(r TableRetainReader, p unsafe.Pointer) bool { return PatrolLoadBodyRetain(&r, (*Patrol)(p)) }, CycleIndex: 18, CycleType: tableCycleType, CookSize: 36, CookAlign: 4, NodeType: tableDeclaredType}
 }
 
 // PatrolTableType returns Patrol's reflection descriptor.
