@@ -8176,7 +8176,7 @@ pins-source-cs: bin/schema
 	done
 
 .PHONY: pins-source-goldens
-pins-source-goldens: bin/schema
+pins-source-goldens:
 	@mkdir -p testdata/golden
 	go test ./internal/goldens -update -run '^TestGolden'
 	go test -tags schema_leg_moo ./internal/goldens -update -run '^TestGolden'
