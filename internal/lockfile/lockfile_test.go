@@ -448,8 +448,8 @@ func TestInsertInTheMiddleRefused(t *testing.T) {
 
 // TestUnDeprecateRefused: DEPRECATION IS ONE WAY
 // (docs/FIXED-FORM-BILL-READS-BACKWARD.md §12.3, which restores this test's
-// original answer). Every writer that ran while the field was deprecated left
-// the DEFAULT in the slot, so "what would come back is not data" — and
+// original answer). The field was carried all along, but the application
+// ignored it while it was deprecated, so its slot holds nothing anyone kept — and
 // `schema lock` will not write the flag off either, because the lock is not a
 // way to make the refusal go away.
 func TestUnDeprecateRefused(t *testing.T) {

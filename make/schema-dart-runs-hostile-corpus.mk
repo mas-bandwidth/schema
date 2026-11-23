@@ -60,7 +60,7 @@ $(DART_HOSTILE_BUILD)/dispatch.dart: $(DART_HOSTILE_BUILD)/generated/.stamp $(DA
 # runner prints "ran N, failed M" and tools/mustrun holds N to this number,
 # so a manifest that loses cases is red. A commit that adds a hostile case
 # changes it.
-DART_HOSTILE_CASES ?= 192
+DART_HOSTILE_CASES ?= $(shell grep -vc '^#' $(DART_HOSTILE_CORPUS)/manifest.tsv)
 .PHONY: schema-dart-runs-hostile-corpus
 schema-dart-runs-hostile-corpus: build/mustrun $(DART_HOSTILE_BUILD)/dispatch.dart
 	$(DART) run test/dart-hostile/reasons_test.dart

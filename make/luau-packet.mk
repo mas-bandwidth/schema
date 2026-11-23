@@ -4,7 +4,7 @@
 #   packet-utf8-luau      the shared string corpus and every bit flip of it,
 #                         verdicts, code units, consumed bits and canonical
 #                         bytes against the C++ oracle (build/packet-text/harness)
-#   packet-defaults-luau  constructors, Init, the eight C++ pins of
+#   packet-defaults-luau  constructors, Init, the ten C++ pins of
 #                         testdata/wire/packet-defaults and reused storage
 #
 # Each gate ends with luau-analyze (--!strict, zero diagnostics) over the
@@ -59,30 +59,32 @@ packet-utf8-luau-negative-control: packet-utf8-luau
 
 # ---------------------------------------------------------------- defaults
 # pins.luau carries testdata/wire/packet-defaults in as source: one entry per
-# pin, its bytes as hex and its consumed bits. A .bin with no .bits (the C and
-# C++ constant-default writer corpus, test/conformance/packet) is not a pin.
+# pin, its bytes as hex and its consumed bits. A .bin with no .bits fails the
+# build: every .bin of the directory is a pin and the driver reads every one.
 LUAU_PACKET_DEFAULT_PINS := $(wildcard testdata/wire/packet-defaults/*.bin testdata/wire/packet-defaults/*.bits)
 define luau-packet-defaults-tree
 	$(call luau-packet-generate,$(1),test/packet-defaults/Defaults.schema,$(2))
 	$(or $(2),$(LUAU_PACKET_SCHEMA)) generate --lang luau --out $(1)/plain test/packet-defaults/Plain.schema
+	$(or $(2),$(LUAU_PACKET_SCHEMA)) generate --lang luau --out $(1)/constant-hexadecimal-addition test/conformance/packet/testdata/constant-defaults/hexadecimal-addition/Defaults.schema
+	$(or $(2),$(LUAU_PACKET_SCHEMA)) generate --lang luau --out $(1)/constant-unsigned-subtraction test/conformance/packet/testdata/constant-defaults/unsigned-subtraction/Defaults.schema
 	cp test/packet-defaults/luau/main.luau $(1)/main.luau
 	{ printf 'return {\n'; \
 	  for f in testdata/wire/packet-defaults/*.bin; do \
 		n=$$(basename $$f .bin); \
-		[ -f testdata/wire/packet-defaults/$$n.bits ] || continue; \
+		[ -f testdata/wire/packet-defaults/$$n.bits ] || { echo "packet-defaults pin $$n has no .bits" >&2; exit 1; }; \
 		printf '\t["%s"] = { hex = "%s", bits = %s },\n' "$$n" "$$(od -An -v -tx1 $$f | tr -d ' \n')" "$$(tr -d ' \n' < testdata/wire/packet-defaults/$$n.bits)"; \
 	  done; printf '}\n'; } > $(1)/pins.luau
 endef
 
 build/packet-defaults/luau/.stamp: $(LUAU_PACKET_SCHEMA) test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema \
-	test/packet-defaults/luau/main.luau $(LUAU_PACKET_DEFAULT_PINS)
+	test/packet-defaults/luau/main.luau $(wildcard test/conformance/packet/testdata/constant-defaults/*/Defaults.schema) $(LUAU_PACKET_DEFAULT_PINS)
 	$(call luau-packet-defaults-tree,build/packet-defaults/luau)
 	@touch $@
 
 .PHONY: packet-defaults-luau packet-defaults-luau-negative-control
 packet-defaults-luau: toolchain-luau build/packet-defaults/luau/.stamp build/mustrun
-	cd build/packet-defaults/luau && $(CURDIR)/$(MUSTRUN) -name packet-defaults-luau -count 113 -- $(LUAU) main.luau
-	cd build/packet-defaults/luau && $(LUAU_ANALYZE) *.luau plain/*.luau
+	cd build/packet-defaults/luau && $(CURDIR)/$(MUSTRUN) -name packet-defaults-luau -count 127 -- $(LUAU) main.luau
+	cd build/packet-defaults/luau && $(LUAU_ANALYZE) *.luau plain/*.luau constant-*/*.luau
 
 packet-defaults-luau-negative-control: packet-defaults-luau
 	@rm -rf build/packet-defaults/luau-negative && mkdir -p build/packet-defaults/luau-negative
