@@ -203,15 +203,17 @@ func TestWriterBoundsSelectTheirRegisteredReaders(t *testing.T) {
 		legs           []string
 		inputs         []string
 		readbackInputs []string
+		watched        []string
 	}{
 		{
 			family:   "packet-cfloat-endpoints",
 			neighbor: "packet-write-cfloat",
-			legs:     []string{"go"},
+			legs:     []string{"go", "js"},
 			inputs: []string{
 				"test/packet-cfloat-endpoints/PacketRatio.schema",
 				"test/packet-cfloat-endpoints/ratio-endpoints.txt",
 			},
+			watched: []string{"make/js-packet-cfloat-endpoints.mk"},
 		},
 		{
 			family:   "table-write-bounds",
@@ -246,7 +248,7 @@ func TestWriterBoundsSelectTheirRegisteredReaders(t *testing.T) {
 				}
 				want = append(want, Row{Leg: leg, Family: tc.family, Target: tc.family + "-" + leg})
 			}
-			for _, input := range slices.Concat(tc.inputs, tc.readbackInputs) {
+			for _, input := range slices.Concat(tc.inputs, tc.readbackInputs, tc.watched) {
 				if got := Select(tree, []string{input}, false, true).Rows; !slices.Equal(got, want) {
 					t.Errorf("%s selected %v, want %v", input, got, want)
 				}

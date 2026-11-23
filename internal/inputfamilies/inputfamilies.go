@@ -88,7 +88,7 @@ var Families = []Family{
 		Target:  "packet-write-cfloat-{leg}",
 		Drivers: `^test/packet-write-cfloat/([a-z]+)/`},
 	{Name: "packet-cfloat-endpoints", PR: true,
-		Inputs:  []string{"test/packet-cfloat-endpoints/", "make/go-packet-cfloat-endpoints.mk"},
+		Inputs:  []string{"test/packet-cfloat-endpoints/", "make/go-packet-cfloat-endpoints.mk", "make/js-packet-cfloat-endpoints.mk"},
 		Target:  "packet-cfloat-endpoints-{leg}",
 		Drivers: `^test/packet-cfloat-endpoints/([a-z]+)/`},
 	{Name: "table-write-bounds", PR: true,
