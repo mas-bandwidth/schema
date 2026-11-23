@@ -1103,7 +1103,8 @@ internal static class Program
 		return err
 	}
 	dotnet := envOr("DOTNET", "dotnet")
-	out, err := runChecked(appDir, nil, dotnet, "run", "-c", "Release", "--project", filepath.Join(appDir, "app.csproj"), "--", corpusDir)
+	out, err := runChecked(appDir, nil, dotnet, "run", "-c", "Release", "--project", filepath.Join(appDir, "app.csproj"),
+		"--artifacts-path", filepath.Join(appDir, "artifacts"), "--", corpusDir)
 	return requireToken(out, err, "unity")
 }
 
