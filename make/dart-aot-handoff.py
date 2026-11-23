@@ -13,7 +13,12 @@ import tempfile
 
 BUILD_PATHS = tuple(
     Path("build") / name
-    for name in ("conformance-dart", "tables-generated-dart", "tables-generated-dart-scalars")
+    for name in (
+        "conformance-dart",
+        "tables-generated-dart",
+        "tables-generated-dart-framing",
+        "tables-generated-dart-scalars",
+    )
 )
 
 

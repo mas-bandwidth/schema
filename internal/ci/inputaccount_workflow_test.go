@@ -4,10 +4,41 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
+
+// The accounting consumer also runs Dart in JIT mode and needs the generated
+// source trees imported by the driver.
+func TestDartConformanceHandoffIncludesGeneratedImports(t *testing.T) {
+	t.Parallel()
+	root := repoRoot(t)
+	driver := readCI(t, root, "test/conformance/dart/main.dart")
+	helper := readCI(t, root, "make/dart-aot-handoff.py")
+	_, paths, ok := strings.Cut(helper, "\nBUILD_PATHS = tuple(\n")
+	if !ok {
+		t.Fatal("handoff helper has no BUILD_PATHS manifest")
+	}
+	paths, _, ok = strings.Cut(paths, "\n)\n")
+	if !ok {
+		t.Fatal("handoff helper has no end to its BUILD_PATHS manifest")
+	}
+	imports := regexp.MustCompile(`(?m)^import '\.\./\.\./\.\./build/([^/]+)/`).FindAllStringSubmatch(driver, -1)
+	if len(imports) == 0 {
+		t.Fatal("Dart conformance driver has no generated imports")
+	}
+	checked := make(map[string]bool)
+	for _, match := range imports {
+		dir := match[1]
+		if !checked[dir] && !strings.Contains(paths, `"`+dir+`"`) {
+			t.Errorf("Dart handoff manifest is missing imported build directory %s", dir)
+		}
+		checked[dir] = true
+	}
+}
 
 func TestFastInputAccountingKeepsBothCanaries(t *testing.T) {
 	t.Parallel()
@@ -114,11 +145,13 @@ func TestFastPlanSelectsDartHandoffChanges(t *testing.T) {
 		t.Fatal("the end of the input-family selector is missing")
 	}
 	for _, tc := range []struct {
-		name, files, want string
+		name, files, want, wantPackage string
 	}{
-		{"handoff helper", "make/dart-aot-handoff.py\n.github/workflows/ci-fast.yml\n", "true"},
-		{"accounting runtime", "tools/inputaccount/main.go\ntools/inputaccount/watch_linux_test.go\n", "true"},
-		{"accounting test only", "tools/inputaccount/watch_linux_test.go\n", "false"},
+		{"handoff helper", "make/dart-aot-handoff.py\n.github/workflows/ci-fast.yml\n", "true", ""},
+		{"Dart driver build", "make/dart.mk\n", "true", ""},
+		{"Dart driver imports", "test/conformance/dart/main.dart\n", "true", "./test/conformance/harness"},
+		{"accounting runtime", "tools/inputaccount/main.go\ntools/inputaccount/watch_linux_test.go\n", "true", ""},
+		{"accounting test only", "tools/inputaccount/watch_linux_test.go\n", "false", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
@@ -136,9 +169,16 @@ func TestFastPlanSelectsDartHandoffChanges(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			want := "dart_corpus_account=" + tc.want + "\npackages=\ninput_rows=[]\n"
-			if string(got) != want {
-				t.Fatalf("input-family plan = %q, want %q", got, want)
+			packages, ok := strings.CutPrefix(string(got), "dart_corpus_account="+tc.want+"\npackages=")
+			packages, rowsOK := strings.CutSuffix(packages, "\ninput_rows=[]\n")
+			if !ok || !rowsOK {
+				t.Fatalf("input-family plan = %q, want account=%s and no generic rows", got, tc.want)
+			}
+			if tc.wantPackage == "" && packages != "" {
+				t.Errorf("input-family plan added packages %q", packages)
+			}
+			if tc.wantPackage != "" && !slices.Contains(strings.Fields(packages), tc.wantPackage) {
+				t.Errorf("input-family plan packages %q omitted %s", packages, tc.wantPackage)
 			}
 		})
 	}

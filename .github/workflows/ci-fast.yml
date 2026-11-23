@@ -723,7 +723,7 @@ jobs:
           # from its verify producer. Other readers remain independent.
           dart_corpus_account=$(jq -r 'any(.[]; .family == "conformance-corpus" and .leg == "dart")' <<<"$input_rows")
           # Verify the real handoff when its producer or Linux consumer changes.
-          if grep -Eqx 'make/dart-aot-handoff\.py|tools/inputaccount/(main|watch_linux)\.go' "$RUNNER_TEMP/diff-files.txt"; then
+          if grep -Eqx 'make/dart-aot-handoff\.py|make/dart\.mk|test/conformance/dart/main\.dart|tools/inputaccount/(main|watch_linux)\.go' "$RUNNER_TEMP/diff-files.txt"; then
             dart_corpus_account=true
           fi
           input_rows=$(jq -c 'map(select(.family != "conformance-corpus" or .leg != "dart"))' <<<"$input_rows")
