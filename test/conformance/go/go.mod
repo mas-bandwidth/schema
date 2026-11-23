@@ -211,3 +211,11 @@ replace announce4096 => ../../../build/tables-generated-go-announce/4096
 require announce4097 v0.0.0
 
 replace announce4097 => ../../../build/tables-generated-go-announce/4097
+
+require tblvaluedefaults v0.0.0
+
+replace tblvaluedefaults => ../../../build/tables-generated-go/valuedefaults
+
+require tblpacketunions v0.0.0
+
+replace tblpacketunions => ../../../build/tables-generated-go/packetunions

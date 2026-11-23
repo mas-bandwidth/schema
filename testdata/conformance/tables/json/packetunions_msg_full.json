@@ -1,0 +1,30 @@
+{
+  "seq": 42,
+  "shapes": [
+    {
+      "slab": {
+        "width": 1,
+        "depth": 32767
+      }
+    },
+    {},
+    {
+      "ring": {
+        "radius": 9
+      }
+    }
+  ],
+  "pair": [
+    {
+      "ring": {
+        "radius": 4096
+      }
+    },
+    {
+      "slab": {
+        "width": 255,
+        "depth": -32768
+      }
+    }
+  ]
+}

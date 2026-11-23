@@ -1,0 +1,20 @@
+{
+  "s": "dflt",
+  "b": "YWI=",
+  "f": ["Jump", "Fly"],
+  "item": {"s": "dflt", "b": "YWI=", "f": ["Jump", "Fly"], "n": 0},
+  "counted": [
+    {"s": "dflt", "b": "YWI=", "f": ["Jump", "Fly"], "n": 0},
+    {"s": "dflt", "b": "YWI=", "f": ["Jump", "Fly"], "n": 0}
+  ],
+  "pair": [
+    {"s": "dflt", "b": "YWI=", "f": ["Jump", "Fly"], "n": 0},
+    {"s": "dflt", "b": "YWI=", "f": ["Jump", "Fly"], "n": 0}
+  ],
+  "keyed": {
+    "Alpha": {"s": "dflt", "b": "YWI=", "f": ["Jump", "Fly"], "n": 0},
+    "Beta": {"s": "dflt", "b": "YWI=", "f": ["Jump", "Fly"], "n": 0},
+    "Gamma": {"s": "dflt", "b": "YWI=", "f": ["Jump", "Fly"], "n": 0}
+  },
+  "pick": {"item": {"s": "dflt", "b": "YWI=", "f": ["Jump", "Fly"], "n": 0}}
+}

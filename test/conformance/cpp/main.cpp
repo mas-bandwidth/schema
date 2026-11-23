@@ -61,6 +61,8 @@
 // the SHAPES unit (test/tables/shapes): bounds a float32 cannot hold exactly,
 // -0, counted arrays with a Min, a degenerate fixed field, scalar union arms
 #include "ShapesTable.h"
+// an ARRAY OF PACKET UNIONS in a variable and a fixed table (docs/SPEC-TABLES.md §2.6)
+#include "PacketUnionsTable.h"
 // the MESSAGE FORM's units (docs/SPEC-TABLES.md §3.3): the three backend
 // messages the ruling measured, and the WIDE-VOCABULARY unit whose slots fall
 // on both sides of the one-byte boundary
@@ -94,6 +96,9 @@
 #include "W2Table.h"
 #include "R1Table.h"
 #include "R2Table.h"
+// the VALUE-DEFAULTS unit (docs/SPEC.md §4.2): string, bytes and flags
+// defaults in every carried field shape, a variable root and a fixed root
+#include "ValueDefaultsTable.h"
 // the BYTE BUFFER unit (docs/SPEC-TABLES.md §2.5): a blob at its used size,
 // pointed at — a variable root like any pointered one
 #include "AssetsTable.h"
@@ -413,6 +418,8 @@ static const Codec codecs[] = {
     CODEC( "tblsurf", surfaces, Wide ),
     CODEC( "tblsurf", surfaces, Arrays ),
     NOFILE_CODEC( "tblsurf", surfaces, Big ),
+    CODEC( "tblvaluedefaults", tblvaluedefaults, FixedDefaults ),
+    CODEC( "packetunions", tblpacketunions, ShapeMsg ),
 };
 
 // ---------------------------------------------------------------------------
@@ -525,6 +532,7 @@ static const VarCodec var_codecs[] = {
     VARCODEC( "cooktorture", cooktorture, TortureCook ),
     VARCODEC( "cooktorturewide", cooktorturewide, TortureWideCook ),
     VARCODEC( "shapes", shapes, Bounds ),
+    VARCODEC( "packetunions", tblpacketunions, ShapeDoc ),
 
     VARCODEC( "graphdemo", graphdemo, Scene ),
     VARCODEC( "graphdemo", graphdemo, ListNode ),
@@ -534,6 +542,7 @@ static const VarCodec var_codecs[] = {
     VARCODEC( "tblg1", tblg1, Guarded ),
     VARCODEC( "tblw1", tblw1, Fleet ),
     VARCODEC( "tblw2", tblw2, Fleet ),
+    VARCODEC( "tblvaluedefaults", tblvaluedefaults, VarDefaults ),
     VARCODEC( "messagedemo", messagedemo, ToolEnvelope ),
     VARCODEC( "featurewitnesses", featurewitnesses, Root ),
     VARCODEC( "featurewitnesses", featurewitnesses, ArrayRoot ),
@@ -630,6 +639,7 @@ static const MsgCodec msg_codecs[] = {
     MSGCODEC( "tblsurf", surfaces, Wide ),
     MSGCODEC( "tblsurf", surfaces, Arrays ),
     MSGCODEC( "tblsurf", surfaces, Big ),
+    MSGCODEC( "packetunions", tblpacketunions, ShapeMsg ),
 };
 
 // ---------------------------------------------------------------------------

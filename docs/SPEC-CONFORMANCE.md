@@ -70,6 +70,41 @@ that count. The reader checks the final five bits as padding. An API that
 reports bits consumed reports **3** after success. The C++ reference
 driver asserts the value and count in [`make packet-end-cpp`](../test/packet-end/cpp/main.cpp).
 
+### Python packet defaults and hosted packet items
+
+[SPEC §4.2](SPEC.md#42-grammar) requires declared string, bytes and flags
+defaults to initialize packet storage. These fields still ride on the wire.
+[SPEC §4.8](SPEC.md#48-unions--union-first-class-one-of-fields) applies the
+construction rule when a packet union arm is selected. The shared
+[packet-defaults pins](../testdata/wire/packet-defaults) `sample-defaults`,
+`sample-empty`, and `choice-sample` hold the bytes and logical bit count.
+`make packet-defaults-python` runs these pins. The public Python compiler
+entry is covered by `TestPythonDriverCarriesPacketValueDefault`.
+
+[SPEC §4.3](SPEC.md#43-field-types-and-their-wire-encodings) also applies
+to `const`, `reserved`, and `align` in packet types in units that declare
+tables. These items occupy packet bits and contribute no table field. The
+[hosted packet probe](../internal/codegen/pythontable/hosted_items_test.go)
+checks this distinction in `TestPythonTableHostedPacketItemsGenerate` and
+`TestPythonTableHostedPacketItems`.
+
+### Declared defaults in table fields
+
+[SPEC §4.2](SPEC.md#42-grammar) places string, bytes and flags defaults
+on fields. A field in an embedded type keeps those defaults when the type
+is used in an array, keyed slot, map value, optional, pointer or union arm.
+SPEC-TABLES §§4 and 22.2 define variable-form elision and reconstruction.
+Section 3.4 defines fixed-record prefill, and §16.2 applies declared defaults
+to absent JSON keys.
+
+The [tables manifest](../testdata/conformance/tables/MANIFEST.txt) registers
+`vd_var_defaults` and `vd_fixed_defaults` for construction values, and
+`vd_var_values` and `vd_fixed_values` for values distinct from their defaults,
+including empty strings, empty bytes, and zero masks. The accepted JSON cases
+`vd-var-omitted` and `vd-fixed-omitted` exercise omitted fields.
+`TestValueDefaultsEveryShape` checks that the registered compiler targets
+generate both roots from [the shared declaration](../test/tables/ValueDefaults.schema).
+
 ## 2. The surfaces
 
 A surface is one question put to every case of the corpus that applies to it.
@@ -467,6 +502,22 @@ requires its variable-form measure and save to complete.
 | Enum-keyed `Beta` slot at 0 and 50 | `sfw_slot_min`, `sfw_slot_max` |
 
 Run these cases with `make table-write-bounds-go`.
+
+
+### Packet union arrays in table closures
+
+[The packet union fixture](../test/tables/packetunions/PacketUnions.schema) covers
+arrays of a union whose arms are packet types ([SPEC §4.8](SPEC.md) and
+[SPEC-TABLES §§2.6, 3, 3.3, 3.4 and 16](SPEC-TABLES.md)). The shared manifest
+registers these canonical cases across the variable, fixed, message and text forms.
+
+| Cases | Form and values |
+|---|---|
+| `packetunions_doc_full`, `packetunions_doc_empty` | Form 1 document with a full or empty counted array, together with a fixed array. |
+| `packetunions_msg_full`, `packetunions_msg_one` | Form 3 records with full or single-element counted arrays. Each also has a form 2 pin over `packetunions_conn`. |
+
+The full cases carry a live `None` between selected packet arms. The counted
+array's length includes that element.
 
 ### Declared deprecated enum writers
 
