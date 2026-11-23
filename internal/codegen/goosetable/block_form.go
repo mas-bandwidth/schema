@@ -294,6 +294,16 @@ func emitBlockHandle(g *goose.Gen, u *ir.Unit, bl *ir.BlockLayout) {
 	}
 	g.Pf("    return (offset + %d) / %d * %d;\n", ir.BlockAlign-1, ir.BlockAlign, ir.BlockAlign)
 	g.Pf("}\n")
+	if len(bl.Arrays) == 0 {
+		if ok, _ := cookWritable(u, bl.Table, map[string]bool{}); ok && ir.BlockPrologueBytes+ir.RecordLayout(u, bl.Table).Size <= bl.Projection.Size {
+			g.Pf("fn %s(b: u8[:], lead: i64, v: const %s&) -> i64 {\n", decl(n+"BlockBuildValue"), g.TypeRef(bl.Table.Name, true))
+			g.Pf("    let used = %sBlockBegin(b, lead);\n", n)
+			g.Pf("    if used < 0 { return -1; }\n")
+			g.Pf("    if !%sCookPutMode(v, b, %d, false, true) { return -1; }\n", n, ir.BlockPrologueBytes)
+			g.Pf("    return used;\n")
+			g.Pf("}\n")
+		}
+	}
 	// BYTES
 	g.Pf("// %sBlockBytes is the used extent of an opened block (§19.1): the greatest\n", n)
 	g.Pf("// array end read out of the instance, rounded up to sixty-four.\n")

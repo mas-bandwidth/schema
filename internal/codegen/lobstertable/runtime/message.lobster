@@ -222,6 +222,8 @@ def message_kind_bits(k:int) -> int:
 // announce_measure and announce are the unit's announcement, a constant
 // (§3.3): a backend emits it as a byte array rather than as a walk.
 def announce_measure() -> int:
+    if length(message_facts.announcement) == 0:
+        return -1
     return length(message_facts.announcement)
 
 def announce() -> string:
@@ -1218,15 +1220,29 @@ def message_reset_report(rep:LoadReport):
     rep.stopped = false
 
 // The caller receives no usable bodies from a damaged read (§4).
+def message_refill_batch(root:string, batch:[Record], keep:int):
+    if keep > 0 and is_message_root(root):
+        let d = table_of(root)
+        for(keep):
+            push(batch, new_record(d))
+
+def message_reset_batch(root:string, batch:[Record], keep:int):
+    for(batch) rec: release(rec)
+    truncate(batch, 0)
+    message_refill_batch(root, batch, keep)
+
 def load_messages_into(root:string, v:MessageVocabulary, data:string, rep:LoadReport, capacity:int, batch:[Record]) -> int, bool:
     message_reset_report(rep)
+    let keep = length(batch)
     for(batch) rec: release(rec)
     truncate(batch, 0)
     if length(data) == 0:
         rep.malformed = true
+        message_reset_batch(root, batch, keep)
         return 0, false
     if data[0] != 2:
         message_refuse(rep, "newer_form")
+        message_reset_batch(root, batch, keep)
         return 0, false
     if not is_message_root(root):
         message_refuse(rep, "not_a_message_root: " + root)
@@ -1237,18 +1253,22 @@ def load_messages_into(root:string, v:MessageVocabulary, data:string, rep:LoadRe
         rep.malformed = true
         rep.damaged = true
         rep.reason = "integrity_mismatch"
+        message_reset_batch(root, batch, keep)
         return 0, false
     if not v.announced:
         message_refuse(rep, "no_vocabulary")
+        message_reset_batch(root, batch, keep)
         return 0, false
     if length(wire) < 2:
         rep.malformed = true
+        message_reset_batch(root, batch, keep)
         return 0, false
     let count = wire[1] + 1
     if count > capacity:
         // "A refused batch returns a count of `0`, as every refused batch
         // does; a caller that needs room reads the wire's `M` itself" (§3.3)
         message_refuse(rep, "batch_too_large")
+        message_reset_batch(root, batch, keep)
         return 0, false
     let bits = MessageBits { b: wire, lo: 2, n: (length(wire) - 2) * 8 }
     let m = MessageRead { bits: bits, v: v, rep: rep }
@@ -1259,6 +1279,7 @@ def load_messages_into(root:string, v:MessageVocabulary, data:string, rep:LoadRe
         if not message_body(m, rec):
             for(batch) value: release(value)
             truncate(batch, 0)
+            message_refill_batch(root, batch, keep)
             return 0, false
         i++
     // THE TRAILING PAD IS VERIFIED ZERO, AND BYTES AFTER IT ARE MALFORMED
@@ -1266,6 +1287,7 @@ def load_messages_into(root:string, v:MessageVocabulary, data:string, rep:LoadRe
         rep.malformed = true
         for(batch) value: release(value)
         truncate(batch, 0)
+        message_refill_batch(root, batch, keep)
         return 0, false
     return count, true
 
@@ -1332,17 +1354,18 @@ def mw_rides(w:MessageWriter, sl:Slot) -> bool, bool:
             if sl.count < 0 or sl.count > length(sl.elems):
                 return false, false
             return sl.count > 0, true
+        if length(sl.elems) != f.bound:
+            return false, false
         if f.ek == 13:
             return true, true
         let ed = elem_of(f)
         var i = 0
         while i < f.bound:
-            if i < length(sl.elems):
-                let rides, ok = mw_cell_rides(w, ed, f.ek, sl.elems[i], true)
-                if not ok:
-                    return false, false
-                if rides:
-                    return true, true
+            let rides, ok = mw_cell_rides(w, ed, f.ek, sl.elems[i], true)
+            if not ok:
+                return false, false
+            if rides:
+                return true, true
             i++
         return false, true
     if sh == "bytes" or sh == "text" or sh == "str":
@@ -1351,6 +1374,8 @@ def mw_rides(w:MessageWriter, sl:Slot) -> bool, bool:
 
 def mw_keyed_pairs(w:MessageWriter, sl:Slot) -> int, bool:
     let f = sl.fd
+    if length(sl.elems) != f.bound:
+        return 0, false
     let ed = elem_of(f)
     var pairs = 0
     for(sl.elems) v:
@@ -1539,8 +1564,10 @@ def mw_value(w:MessageWriter, sl:Slot, e:MessageEntry) -> bool:
         var count = f.bound
         if f.array == "counted":
             count = sl.count
-            if count < f.min or count > f.bound:
+            if count < f.min or count > f.bound or count > length(sl.elems):
                 return false
+        elif length(sl.elems) != f.bound:
+            return false
         mw_put(w, count - s.min, count_bits)
         if e.element.kind == 6:
             mw_align(w)

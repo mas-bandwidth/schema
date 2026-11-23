@@ -802,19 +802,14 @@ def surface_read_into(text:string):
             // can be asked of it
             out = "unrepresentable\n"
         elif form == "variable":
-            // THE VARIABLE LOAD RETURNS A NEW VALUE: schema_rt.load takes no
-            // caller value, so the driver holds the value the last read that
-            // succeeded returned, and a refused read returns none (ruling 3)
             let rep = schema_rt.LoadReport {}
-            var held = schema_rt.new_record(schema_rt.table_of(root))
+            let held = schema_rt.new_record(schema_rt.table_of(root))
             for(steps) step:
                 if step == "":
                     out += ri_text(held)
                 else:
-                    let rec = schema_rt.load(root, fixture(step), rep)
-                    if rec:
-                        held = rec
-                    out += ri_verdict(rec != nil, schema_rt.strict_reason(rep))
+                    let ok = schema_rt.load_into(held, fixture(step), rep)
+                    out += ri_verdict(ok, schema_rt.strict_reason(rep))
         elif form == "json":
             // FromJson into the caller value: json_read_into
             let rep = schema_rt.LoadReport {}
