@@ -34,6 +34,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -51,7 +52,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	say := func(format string, a ...any) { fmt.Fprintf(stderr, "inputaccount: "+format+"\n", a...) }
+	say := func(format string, a ...any) { _, _ = fmt.Fprintf(stderr, "inputaccount: "+format+"\n", a...) }
 	t, err := inputfamilies.Load(".")
 	if err != nil {
 		say("%v", err)
@@ -182,12 +183,7 @@ func plant(kind string, inputs []string) (string, func(), error) {
 }
 
 func contains(xs []string, x string) bool {
-	for _, y := range xs {
-		if y == x {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(xs, x)
 }
 
 func sortedKeys(m map[string]bool) []string {

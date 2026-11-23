@@ -24,6 +24,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -132,12 +133,7 @@ func (f Family) Matches(p string) bool {
 }
 
 func isLeg(s string) bool {
-	for _, l := range Legs {
-		if l == s {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(Legs, s)
 }
 
 func sub(tmpl, leg string) string { return strings.ReplaceAll(tmpl, "{leg}", leg) }
@@ -258,13 +254,7 @@ func Select(t Tree, changed []string, all, pr bool) Selection {
 	fams := map[string]bool{}
 	pkgs := map[string]bool{}
 	for _, f := range Families {
-		hit := all
-		for _, p := range changed {
-			if f.Matches(p) {
-				hit = true
-				break
-			}
-		}
+		hit := all || slices.ContainsFunc(changed, f.Matches)
 		if !hit {
 			continue
 		}

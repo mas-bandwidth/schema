@@ -1402,6 +1402,7 @@ jobs:
         include: ${{ fromJSON(needs.plan.outputs.input_rows) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
 
       # THE SKIP LEDGER'S RECORD (.github/skip-ledger.txt). With
       # PGROUP_GO_TEST_JSON set, tools/pgroup records the `go test -json`
