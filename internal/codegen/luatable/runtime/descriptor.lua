@@ -375,7 +375,10 @@ local function invalid_value(T, d, val, where, seen, zero_ok)
     return where
   elseif s == "array" then
     if type(val) ~= "table" then return where end
-    if not d.fixed and not d.keyed and not d.list then
+    if d.fixed or d.keyed then
+      local want = d.bound or 0
+      if #val ~= want or val[want + 1] ~= nil then return where end
+    elseif not d.list then
       if #val > d.bound or #val < (d.min or 0) then return where end
     end
     -- every index the writers walk: 1..bound for a fixed or keyed array
@@ -1211,6 +1214,13 @@ function D.fingerprint(T)
   end
   walk(T, "")
   return table.concat(out, "\n")
+end
+
+-- D.copy_into replaces dst's keys in place with src's (FL-03 read-into reset).
+function D.copy_into(dst, src)
+  if type(dst) ~= "table" or type(src) ~= "table" or dst == src then return end
+  for k in pairs(dst) do dst[k] = nil end
+  for k, v in pairs(src) do dst[k] = v end
 end
 
 return D

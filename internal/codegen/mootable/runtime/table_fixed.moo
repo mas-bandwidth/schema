@@ -1007,6 +1007,11 @@ writeValue = function(f: any, n: Node, dx: number, v: any, extra: any, out: buff
 			return nil
 		end
 		if f.array == "keyed" then
+			if type(v) == "buffer" then
+				if buffer.len(v) ~= f.bound then refuse("invalid_value", false, fieldName(named)) end
+			elseif type(v) ~= "table" or #v ~= f.bound or v[f.bound + 1] ~= nil then
+				refuse("invalid_value", false, fieldName(named))
+			end
 			local c = n.children[2]
 			for k = 1, f.bound do
 				writeValue(e, c, dx + (k - 1) * c.size, at(k), lenAt(k), out, named)
@@ -1024,6 +1029,13 @@ writeValue = function(f: any, n: Node, dx: number, v: any, extra: any, out: buff
 			end
 			buffer.writeu32(out, off, count)
 			first = COUNT
+		end
+		if f.array == "fixed" then
+			if type(v) == "buffer" then
+				if buffer.len(v) ~= f.bound then refuse("invalid_value", false, fieldName(named)) end
+			elseif type(v) ~= "table" or #v ~= f.bound or v[f.bound + 1] ~= nil then
+				refuse("invalid_value", false, fieldName(named))
+			end
 		end
 		if type(v) == "buffer" and count > buffer.len(v) then refuse("invalid_value", false, fieldName(named)) end
 		for i = 1, count do
@@ -1308,5 +1320,23 @@ F.Names = table.freeze({
 	length_over_bound = true, text_ill_formed = true, integrity_mismatch = true, non_finite_float = true,
 	invalid_value = true, batch_too_large = true, out_of_range = true, wire_damaged = true,
 })
+
+function F.loadInto(d: any, fixed: Fixed, file: buffer?, report: any?, into: { any }): { any }?
+	local res = F.load(d, fixed, file, report, #into)
+	if res == nil then
+		for i = 1, #into do
+			local fresh = d.new()
+			for k in into[i] do into[i][k] = nil end
+			for k, val in fresh do into[i][k] = val end
+		end
+		return nil
+	end
+	for i = 1, #res do
+		if into[i] == nil then into[i] = d.new() end
+		for k in into[i] do into[i][k] = nil end
+		for k, val in res[i] do into[i][k] = val end
+	end
+	return into
+end
 
 return table.freeze(F)

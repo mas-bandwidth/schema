@@ -2583,7 +2583,7 @@ end
 -- THE PLAIN NAME IS THE STRICT READ (§6.5, §16.2): it answers nil where the
 -- report is not clean under the strict set, writing that reason into the
 -- supplied report. Unknown alone is evolution, not loss, and reads clean.
-function J.FromJson(T, name, text, report)
+function J.FromJson(T, name, text, report, into)
   report = report or {}
   report.damaged = false
   report.refused = 0
@@ -2622,7 +2622,12 @@ function J.FromJson(T, name, text, report)
     report.refused = 1
     report.Reason = reason
     report.reason = reason
+    if into ~= nil and T["New" .. name] ~= nil then D.copy_into(into, T["New" .. name]()) end
     return nil
+  end
+  if into ~= nil then
+    D.copy_into(into, v)
+    return into
   end
   return v
 end

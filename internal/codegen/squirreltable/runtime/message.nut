@@ -800,6 +800,11 @@ local writeScalar = function(T, w, fd, value) {
     return;
   }
   if (fd.shape == "int" && !intAdmits(fd, value)) { refuseValue(w); return; }
+  if (fd.shape == "flags") {
+    if (typeof value != "integer" || value < 0 || (fd.flagbits < 64 && (value & ~((1 << fd.flagbits) - 1)) != 0)) {
+      refuseValue(w); return;
+    }
+  }
   local raw = value;
   if (fd.shape == "int" && fd.lo != null) {
     if (typeof fd.lo == "array") raw = u128sub(value, fd.lo);
@@ -930,9 +935,13 @@ writePayload = function(T, w, fd, value, depth) {
     // §3.3: kind 14 bytes count/alignment/raw octets; kind 16 count then key/element pairs.
     if (typeof value != "array") { refuseValue(w); return; }
     local n = value.len();
-    if (n < fd.min || n > fd.bound) { w.bad = true; return; }
-    local e = fd.elem;
     local keyed = (fd.keyvariants != null), present = 0, slotRides = null;
+    if (keyed || (!fd.counted && !fd.list)) {
+      if (n != fd.bound) { w.bad = true; return; }
+    } else if (n < fd.min || n > fd.bound) {
+      w.bad = true; return;
+    }
+    local e = fd.elem;
     if (keyed) {
       slotRides = array(n, false);
       for (local i = 0; i < n; i++) {

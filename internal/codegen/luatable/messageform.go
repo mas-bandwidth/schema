@@ -8,6 +8,8 @@
 package luatable
 
 import (
+	"strings"
+
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -32,12 +34,32 @@ func init() {
 func messageRoots(u *ir.Unit) []*ir.Struct {
 	variable := ir.VariableTables(u)
 	var out []*ir.Struct
-	for _, st := range fixedRoots(u) {
-		if !variable[st.Name] {
-			out = append(out, st)
+	for _, st := range ir.TableFixedRoots(u) {
+		if variable[st.Name] || fixedRefusal(st) != "" || !fixedFinite(st) {
+			continue
 		}
+		out = append(out, st)
 	}
 	return out
+}
+
+// chunkedLuaByteString emits a Lua byte string as table.concat({ ... }) so a
+// 4096-entry announcement (~37 KiB) never hits Lua 5.4's right-associative
+// `..` parser C-stack limit.
+func chunkedLuaByteString(data []byte) string {
+	if len(data) <= 80 {
+		return lua.ByteString(data)
+	}
+	var b strings.Builder
+	b.WriteString("table.concat({\n")
+	for i := 0; i < len(data); i += 80 {
+		end := min(i+80, len(data))
+		b.WriteString("  ")
+		b.WriteString(lua.ByteString(data[i:end]))
+		b.WriteString(",\n")
+	}
+	b.WriteString("})")
+	return b.String()
 }
 
 // emitMessageForm emits the announcement constants and the message-form entry
@@ -57,7 +79,11 @@ func emitMessageForm(m *Module) error {
 	m.Printf("_M.MessageBatchMax = %d\n", messageBatchMax)
 	m.Printf("_M.MessageRefBits = %d\n", refBits)
 	m.Printf("_M.MessageEntries = %d\n", len(vocab))
-	m.Printf("_M.Announcement = %s\n\n", lua.ByteString(announce))
+	if len(vocab) > 4096 {
+		m.Printf("_M.Announcement = nil\n\n")
+	} else {
+		m.Printf("_M.Announcement = %s\n\n", chunkedLuaByteString(announce))
+	}
 	m.Printf("_M.MessageVersionId = %s\n", idLit(messageVersionID))
 	m.Printf("_M.MessageVocabularyId = %s\n", idLit(messageVocabularyID))
 	m.Printf("_M.MessageNodeId = %s\n", idLit(messageNodeID))
@@ -99,8 +125,8 @@ func emitMessageForm(m *Module) error {
 	m.Printf("end\n\n")
 	// THE PLAIN NAME IS THE STRICT READ (docs/SPEC-TABLES.md §6.5):
 	// LoadMessages passes the strict decision into runtime/message.lua.
-	m.Printf("function _M.LoadMessages(root, vocab, data, report)\n")
-	m.Printf("  return M.loadMessages(_M, root, vocab, data, report, true)\n")
+	m.Printf("function _M.LoadMessages(root, vocab, data, report, into)\n")
+	m.Printf("  return M.loadMessages(_M, root, vocab, data, report, true, into)\n")
 	m.Printf("end\n\n")
 	m.Printf("function _M.MeasureMessages(root, vocab, values)\n")
 	m.Printf("  return M.measureMessages(_M, root, vocab, values)\n")

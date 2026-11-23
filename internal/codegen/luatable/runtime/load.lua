@@ -2755,6 +2755,7 @@ function L.Load(T, name, bytes, report, state, into)
   if desc ~= nil and not desc.variable and type(bytes) == "string" and #bytes >= 1 and bytes:byte(1) == 1 then
     r.refused = 1
     r.reason = "previous_form"
+    if into ~= nil and T["New" .. name] ~= nil then D.copy_into(into, T["New" .. name]()) end
     return nil
   end
   -- THE WIRE ALONE (§6.5): every byte is held to the wire's own rules, the
@@ -2783,6 +2784,7 @@ function L.Load(T, name, bytes, report, state, into)
   end
   if reason ~= nil then
     r.reason = reason
+    if into ~= nil and T["New" .. name] ~= nil then D.copy_into(into, T["New" .. name]()) end
     return nil
   end
   return root

@@ -380,12 +380,24 @@ writeField = function(ctx: any, owner: string, fd: any, l: any, base: number, v:
 		local n = fd.bound
 		if fd.array == "counted" then
 			local count = v[slot .. "Count"]
-			if type(count) ~= "number" or count < 0 or count > n or count ~= math.floor(count) then
+			if type(count) ~= "number" or count < (fd.min or 0) or count > n or count ~= math.floor(count) then
 				return fail(ctx, "invalid_value", owner, fd)
 			end
 			putUN(ctx, base + l.p[2], 4, count)
 			-- a slot past the live count is dead bytes: it stays zero
 			n = count
+		elseif fd.array == "fixed" or fd.array == "keyed" then
+			local arr = v[slot]
+			local nullableElem = fd.e ~= nil and (fd.e.s == "ptr" or fd.e.s == "sblob" or fd.e.s == "bblob")
+			if type(arr) == "buffer" then
+				if buffer.len(arr) ~= n then return fail(ctx, "invalid_value", owner, fd) end
+			elseif type(arr) ~= "table" then
+				return fail(ctx, "invalid_value", owner, fd)
+			elseif nullableElem then
+				for k in arr do if type(k) == "number" and (k < 1 or k > n) then return fail(ctx, "invalid_value", owner, fd) end end
+			elseif #arr ~= n or arr[n + 1] ~= nil then
+				return fail(ctx, "invalid_value", owner, fd)
+			end
 		end
 		local dst = v[slot]
 		if n > 0 and dst == nil then

@@ -2286,3 +2286,14 @@ _M.report <- function(report) {
 _M.load <- function(T, rootName, bytes, report) {
   return R.ReadStrict(T, rootName, bytes, report);
 };
+
+_M.loadInto <- function(T, rootName, bytes, report, into) {
+  local v = _M.load(T, rootName, bytes, report);
+  if (into == null) return v;
+  local src = (v != null) ? v : T.Descriptors[rootName].make();
+  foreach (f in T.Descriptors[rootName].fields) {
+    into[f.member] = src[f.member];
+    if (f.optional) into[f.member + "Present"] = src[f.member + "Present"];
+  }
+  return v != null ? into : null;
+};

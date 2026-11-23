@@ -719,6 +719,16 @@ end
 -- reference, L, element) triple per slot that is not at its default, in
 -- variant order. An array with no such slot is not written at all.
 local function write_keyed(c: any, fd: any, w: any, val: any): boolean
+	local nullableElem = fd.e ~= nil and (fd.e.s == "ptr" or fd.e.s == "sblob" or fd.e.s == "bblob")
+	if typeof(val) == "buffer" then
+		if buffer.len(val) ~= (fd.bound or 0) then return false end
+	elseif typeof(val) ~= "table" then
+		return false
+	elseif nullableElem then
+		for k in val do if typeof(k) == "number" and (k < 1 or k > (fd.bound or 0)) then return false end end
+	elseif #val ~= (fd.bound or 0) or val[(fd.bound or 0) + 1] ~= nil then
+		return false
+	end
 	local m = mark(c.ids)
 	local fref = ref(c.ids, fd.id)
 	local body = new_writer(c.count)
@@ -788,7 +798,17 @@ local function write_map(c: any, fd: any, w: any, val: any, required: boolean?):
 	local b = new_writer(c.count)
 	w_u8(b, 13)
 	w_leb(b, val == nil and 0 or #val)
-	for _, ev in map_order(fd, val or {}) do
+	local ordered = map_order(fd, val or {})
+	local keyfd: any = nil
+	for _, f in entry.fields do if f.id == MapKeyId then keyfd = f end end
+	if keyfd ~= nil then
+		for i = 2, #ordered do
+			if not key_less(keyfd, ordered[i - 1], ordered[i]) and not key_less(keyfd, ordered[i], ordered[i - 1]) then
+				return false
+			end
+		end
+	end
+	for _, ev in ordered do
 		local eb = body_of(c, entry, ev)
 		if eb == nil then return false end
 		w_leb(b, eb.n)
@@ -1063,6 +1083,16 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 				end
 			end
 			return write_array(c, fd, w, v, val, n)
+		end
+		local nullableElem = fd.e ~= nil and (fd.e.s == "ptr" or fd.e.s == "sblob" or fd.e.s == "bblob")
+		if typeof(val) == "buffer" then
+			if buffer.len(val) ~= (fd.bound or 0) then return false end
+		elseif typeof(val) ~= "table" then
+			return false
+		elseif nullableElem then
+			for k in val do if typeof(k) == "number" and (k < 1 or k > (fd.bound or 0)) then return false end end
+		elseif #val ~= (fd.bound or 0) or val[(fd.bound or 0) + 1] ~= nil then
+			return false
 		end
 		if fd.e.s == "tab" then
 			-- a fixed array of tables always rides: position is identity there

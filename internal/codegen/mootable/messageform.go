@@ -40,8 +40,13 @@ func emitMessageForm(g *Gen) error {
 	g.Pf("-- THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the unit's announcement, an\n")
 	g.Pf("-- ordinary form-1 file carrying the build version and the vocabulary, a\n")
 	g.Pf("-- compile-time constant, registered once with the message runtime.\n")
-	g.Pf("%s.TableMessageAnnouncement = %s.unit(%s)\n", g.Self, ms, luaString(ann))
-	g.Pf("%s.TableMessageAnnouncementLength = %d\n", g.Self, len(ann))
+	if len(vocabulary) > 4096 {
+		g.Pf("%s.TableMessageAnnouncement = nil\n", g.Self)
+		g.Pf("%s.TableMessageAnnouncementLength = 0\n", g.Self)
+	} else {
+		g.Pf("%s.TableMessageAnnouncement = %s.unit(%s)\n", g.Self, ms, luaString(ann))
+		g.Pf("%s.TableMessageAnnouncementLength = %d\n", g.Self, len(ann))
+	}
 	g.Pf("%s.TableMessageRefBits = %d\n", g.Self, ir.TableMessageRefBits(len(vocabulary)))
 	g.Pf("%s.TableMessageEntriesHere = %d\n", g.Self, len(vocabulary))
 	g.Pf("%s.TableMessageBuildVersion = %s -- the eight little-endian bytes of the build version\n\n", g.Self, IdLit(ir.BuildVersion(g.Unit)))

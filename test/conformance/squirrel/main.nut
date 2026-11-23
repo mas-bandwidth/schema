@@ -1103,7 +1103,13 @@ if (mode == "write-refusal" || mode == "write-refusal-fixed" || mode == "write-r
           if (f.outOfLine) {
             // its count went to Begin
           } else if (f.table != null && f.isArray) {
-            for (local i = 0; i < val.len(); i++) {
+            local df = null;
+            foreach (cand in T.Descriptors[root].fields) if (cand.name == path) { df = cand; break; }
+            if (df != null && !df.counted && !df.list && val.len() != df.bound) {
+              ok = false;
+            } else if (df != null && df.counted && (val.len() < df.min || val.len() > df.bound)) {
+              ok = false;
+            } else for (local i = 0; i < val.len(); i++) {
               foreach (sub in T.Descriptors[f.table].fields) {
                 if (!B.Set(T, block, null, block.Base, path + "[" + i + "]." + sub.name, val[i][sub.member])) ok = false;
               }
@@ -1240,7 +1246,8 @@ if (mode == "read-into") {
     if (f.len() < 9 || f[0] != "read-into") continue;
     local cname = f[1], unit = f[2], root = f[3], form = f[4], lawful = f[5], damaged = f[6], count = f[7], announcement = f[8];
     if (!generated(unit)) { writeAbsent(cname); continue; }
-    local T = openUnit(unit)[1];
+    local opened = openUnit(unit);
+    local T = opened[1];
     if (form == "fixed-nocap") {
       writeText(outdir + "/" + cname, "unrepresentable\n");
       continue;
@@ -1260,10 +1267,10 @@ if (mode == "read-into") {
       local got = null, ok = false;
       try {
         if (form == "variable") {
-          got = T[root + "Load"](bytes, report);
+          got = opened[0].require("schema_table_load").loadInto(T, root, bytes, report, values[0]);
           ok = got != null;
         } else if (form == "json") {
-          got = T[root + "FromJson"](bytes, report);
+          got = opened[0].require("schema_table_json").FromJsonInto(T, root, bytes, report, values[0]);
           ok = got != null;
         } else if (form == "fixed") {
           ok = T[root + "FixedLoad"](bytes, values, n) >= 0;

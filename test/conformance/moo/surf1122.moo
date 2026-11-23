@@ -145,7 +145,7 @@ return function(ctx: any): { [string]: Surface }
 				local ok: boolean, got: any
 				if form == "variable" then
 					local R: any = ctx.module(key, "table_refusal")
-					ok, got = pcall(R.ReadStrict, nil, root, bytes, report)
+					ok, got = pcall(R.ReadStrictInto, nil, root, bytes, report, values[1])
 				elseif form == "json" then
 					ok, got = pcall(J.fromJson, d, values[1], bytes, report)
 					if ok then got = if got then values[1] else nil end
@@ -153,11 +153,11 @@ return function(ctx: any): { [string]: Surface }
 					local F: any = ctx.module(key, "table_fixed")
 					local T: any = ctx.fixedTable(key, root)
 					if F == nil or T == nil then error("driver: " .. name .. ": " .. root .. " has no fixed form here", 0) end
-					ok, got = pcall(F.load, d, T[root .. "Fixed"], bytes, report, n)
+					ok, got = pcall(F.loadInto, d, T[root .. "Fixed"], bytes, report, values)
 				elseif form == "message" then
-					local c: any, bodies: any
-					ok, c, bodies = pcall(MS.LoadMessages, voc, root, bytes, n, report)
-					got = if ok and c ~= nil and c >= 1 then bodies else nil
+					local c: any
+					ok, c = pcall(MS.LoadMessagesInto, voc, root, bytes, values, report)
+					got = if ok and c ~= nil and c >= 1 then values else nil
 				else
 					error("driver: " .. name .. ": " .. form .. " is not a read-into form", 0)
 				end

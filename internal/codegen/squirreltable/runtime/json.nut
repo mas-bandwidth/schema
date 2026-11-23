@@ -1090,6 +1090,9 @@ writeMap = function(T, d, val, depth, g, out) {
     if (o != 0) return o;
     return x < y ? -1 : 1;
   });
+  for (local i = 1; i < n; i++) {
+    if (mapKeyOrder(kd, val[order[i - 1]][kd.member], val[order[i]][kd.member]) == 0) return false;
+  }
   out.append("{");
   for (local i = 0; i < n; i++) {
     local ent = val[order[i]];
@@ -1174,6 +1177,7 @@ writeField = function(T, d, val, depth, g, out) {
       if (isKeyed(d)) {
         // an enum-keyed array is an OBJECT keyed by variant name, every slot
         // the array keys written (write.go writeKeyed)
+        if (typeof val != "array" || val.len() != d.bound) return false;
         if (d.bound <= 0) { out.append("{}"); return true; }
         out.append("{");
         for (local slot = 0; slot < d.bound; slot++) {
@@ -1189,6 +1193,7 @@ writeField = function(T, d, val, depth, g, out) {
       // bound applies to the other bounded arrays (docs/SPEC.md §5.1 row 3).
       local n = writeCount(d, val);
       if (d.counted && n < d.min) return false;
+      if (!d.counted && !d.list && (typeof val != "array" || val.len() != d.bound)) return false;
       if (!d.list && val != null && val.len() > d.bound) return false;
       if (n == 0) { out.append("[]"); return true; }
       out.append("[");
@@ -2679,6 +2684,15 @@ _M.fromJsonWalk <- function(T, rootName, text, report) {
 // with the first missing field in report.field (§2.3, §16.2).
 _M.FromJson <- function(T, rootName, text, report) {
   if (report == null) report = {};
+  report.reason <- null;
+  report.field <- null;
+  report.bodyDamaged <- false;
+  report.refused <- false;
+  report.unknown <- 0;
+  report.mismatch <- 0;
+  report.widened <- 0;
+  report.oor <- 0;
+  report.repeated <- 0;
   local v = _M.fromJsonWalk(T, rootName, text, report);
   local reason = ("reason" in report) ? report.reason : null;
   local field = null;
@@ -2700,4 +2714,15 @@ _M.FromJson <- function(T, rootName, text, report) {
     return null;
   }
   return v;
+};
+
+_M.FromJsonInto <- function(T, rootName, text, report, into) {
+  local v = _M.FromJson(T, rootName, text, report);
+  if (into == null) return v;
+  local src = (v != null) ? v : T.Descriptors[rootName].make();
+  foreach (f in T.Descriptors[rootName].fields) {
+    into[f.member] = src[f.member];
+    if (f.optional) into[f.member + "Present"] = src[f.member + "Present"];
+  }
+  return v != null ? into : null;
 };

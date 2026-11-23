@@ -376,7 +376,7 @@ func emitFixedForm(m *Module) error {
 		entries := ir.TableFixedWalkRoot(st)
 		layout := ir.TableFixedLayoutBytes(entries)
 		hash := ir.TableFixedLayoutHash(layout, st)
-		m.Printf("_M.Fixed[%q].layout = %s\n", st.Name, lua.ByteString(layout))
+		m.Printf("_M.Fixed[%q].layout = %s\n", st.Name, chunkedLuaByteString(layout))
 		m.Printf("_M.Fixed[%q].hash = %s\n", st.Name, idLit(hash))
 		// THE KNOWN LAYOUTS (docs/FIXED-FORM-ALGORITHM.md §5.2): one entry per
 		// locked layout, OLDEST FIRST, the current one LAST. A file is matched
@@ -396,7 +396,7 @@ func emitFixedForm(m *Module) error {
 				m.Printf("  {\n    hash = %s,\n    layout = table.concat({\n", idLit(e.Wire))
 				for i := 0; i < len(e.Layout); i += 20 {
 					end := min(i+20, len(e.Layout))
-					m.Printf("      %s,\n", lua.ByteString(e.Layout[i:end]))
+					m.Printf("      %s,\n", chunkedLuaByteString(e.Layout[i:end]))
 				}
 				m.Printf("    }),\n    record = %d,\n", e.Record)
 				if len(rangeParts) > 0 {
@@ -413,7 +413,7 @@ func emitFixedForm(m *Module) error {
 				}
 				m.Printf("  },\n")
 			} else {
-				m.Printf("  { hash = %s, layout = %s, record = %d%s },\n", idLit(e.Wire), lua.ByteString(e.Layout), e.Record, ranges)
+				m.Printf("  { hash = %s, layout = %s, record = %d%s },\n", idLit(e.Wire), chunkedLuaByteString(e.Layout), e.Record, ranges)
 			}
 		}
 		m.Printf("}\n")
@@ -438,9 +438,9 @@ func emitFixedForm(m *Module) error {
 	m.Printf("  local f = _M.Fixed[name]\n")
 	m.Printf("  return F.save(_M, f.table, values)\n")
 	m.Printf("end\n\n")
-	m.Printf("function _M.FixedLoad(name, buf, cap)\n")
+	m.Printf("function _M.FixedLoad(name, buf, cap, report, into)\n")
 	m.Printf("  local f = _M.Fixed[name]\n")
-	m.Printf("  return F.load(_M, f.table, buf, true, cap)\n")
+	m.Printf("  return F.load(_M, f.table, buf, true, cap, report, into)\n")
 	m.Printf("end\n\n")
 	return nil
 }

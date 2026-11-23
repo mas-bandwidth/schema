@@ -830,6 +830,7 @@ writeMapField = function(T, d, val, w, ids, at, root) {
   // a present empty optional map writes its field header and `0d 00` (§2.8)
   if (n == 0 && !d.optional) return true;
   local idx = mapWriteOrder(val, d.mapkey);
+  if (idx.len() < val.len()) return false;
   local mark = idsMark(ids);
   local field = newWriter();
   wleb(field, idsRef(ids, d.id)); wu8(field, 14);
