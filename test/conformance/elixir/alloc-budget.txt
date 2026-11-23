@@ -162,3 +162,6 @@ shapes_fixed_tenth_at_max 13127 78 8738
 shapes_fixed_seventh_at_min 13150 78 8756
 shapes_fixed_f32_ok 13150 78 8752
 shapes_fixed_f64_ok 13150 78 8752
+sp_count_min_current 1058 3 896
+sp_enum_moods 1353 3 1132
+sp_enum_moodfield 1099 4 868
