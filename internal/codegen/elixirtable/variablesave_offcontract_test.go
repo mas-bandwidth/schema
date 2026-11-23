@@ -228,7 +228,7 @@ table Tv
 	save("born", "[1, 2, 3, 4, 5]", "refused", "[2..4] of 5 refuses")
 	// a [N]T longer than N refuses rather than being cut at N
 	save("trio", "[1, 2, 3]", "wrote", "[3] of 3 writes")
-	save("trio", "[1]", "wrote", "[3] of 1 pads with the default and writes")
+	save("trio", "[1]", "refused", "[3] of 1 refuses, never padded")
 	save("trio", "[1, 2, 3, 4]", "refused", "[3] of 4 refuses, never cut")
 	save("ranged", "[3, -2]", "wrote", "ranged elements at their ends write")
 	save("ranged", "[4, 0]", "refused", "a ranged element past its max refuses")

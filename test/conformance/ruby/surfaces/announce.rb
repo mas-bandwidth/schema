@@ -37,7 +37,11 @@ def self.run(manifest, outdir)
     out =
       case mode
       when 'write'
-        pkg::ANNOUNCEMENT.b
+        begin
+          pkg.announce.b
+        rescue pkg::Refused
+          "refused\n".b
+        end
       when 'strict', 'lenient'
         vocab = pkg::MessageVocabulary.new(strict: mode == 'strict')
         begin

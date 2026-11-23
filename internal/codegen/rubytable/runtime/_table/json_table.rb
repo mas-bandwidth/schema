@@ -335,11 +335,11 @@ module SchemaRuntimeUnit
         raise Refused.new('json_root_not_array', desc.name) unless data.instance_of?(Array)
 
         f0 = desc.fields[0]
-        f0.set(val, read_json_field(f0, data, graph, unknown, 0))
+        f0.set(val, read_json_field(f0, data, graph, unknown))
       else
         raise Refused, 'kind_mismatch' unless data.instance_of?(Hash)
 
-        fill_json_object(val, data, graph, unknown, 0)
+        fill_json_object(val, data, graph, unknown)
       end
       unless report.nil?
         report.reset
@@ -365,9 +365,7 @@ module SchemaRuntimeUnit
       true
     end
 
-    def self.fill_json_object(value, data, graph, unknown, depth = 0)
-      raise Refused, 'malformed' if depth > MAX_DEPTH
-
+    def self.fill_json_object(value, data, graph, unknown)
       desc = obj_class(value).descriptor
       fields_by_json = SchemaTable.map_h
       desc.fields.each { |f| fields_by_json[f.json_key] = f }
@@ -377,13 +375,13 @@ module SchemaRuntimeUnit
         field = fields_by_json[key]
         if field
           if field.codec == 'keyed'
-            read_json_keyed(field, item, field.get(value), graph, unknown, depth)
+            read_json_keyed(field, item, field.get(value), graph, unknown)
           else
-            field.set(value, read_json_field(field, item, graph, unknown, depth))
+            field.set(value, read_json_field(field, item, graph, unknown))
           end
         else
           unknown[0] += 1
-          skip_json_unknown(item, graph, depth + 1)
+          skip_json_unknown(item, graph)
         end
       end
       desc.fields.each do |field|
@@ -393,16 +391,12 @@ module SchemaRuntimeUnit
       end
     end
 
-    def self.skip_json_unknown(val, graph, depth = 1)
+    def self.skip_json_unknown(val, graph)
       if val.instance_of?(String)
         raise Refused, 'malformed' if val.include?("\x00")
       elsif val.instance_of?(Array)
-        raise Refused, 'malformed' if depth > MAX_DEPTH
-
-        val.each { |item| skip_json_unknown(item, graph, depth + 1) }
+        val.each { |item| skip_json_unknown(item, graph) }
       elsif val.instance_of?(Hash)
-        raise Refused, 'malformed' if depth > MAX_DEPTH
-
         defined_label = nil
         val.each_with_index do |(key, item), idx|
           raise Refused, 'malformed' if key.include?("\x00") || key.bytesize > 255
@@ -433,14 +427,14 @@ module SchemaRuntimeUnit
               defined_label = num
             end
           else
-            skip_json_unknown(item, graph, depth + 1)
+            skip_json_unknown(item, graph)
           end
         end
         graph[defined_label] = [nil, false] unless defined_label.nil?
       end
     end
 
-    def self.read_json_keyed(field, item, container, graph, unknown, depth = 0)
+    def self.read_json_keyed(field, item, container, graph, unknown)
       raise Refused.new('kind_mismatch', field.name) if !item.instance_of?(Hash) || field.elem.nil?
 
       slots = field.keyed_list ? container : container._s_values
@@ -449,27 +443,27 @@ module SchemaRuntimeUnit
 
         idx = field.json_keys.index(slot_name)
         if idx
-          slots[idx] = read_json_field(field.elem, cur, graph, unknown, depth + 1)
+          slots[idx] = read_json_field(field.elem, cur, graph, unknown)
         else
           unknown[0] += 1
-          skip_json_unknown(cur, graph, depth + 1)
+          skip_json_unknown(cur, graph)
         end
       end
     end
 
-    def self.read_json_field(field, val, graph, unknown, depth = 0)
+    def self.read_json_field(field, val, graph, unknown)
       if %w[string_blob bytes_blob].include?(field.codec)
         return nil if val.nil?
 
         blob = field.dup
         blob.codec = field.codec == 'string_blob' ? 'string' : 'bytes'
         blob.size = 0xFFFFFFFF
-        return read_json_field(blob, val, graph, unknown, depth)
+        return read_json_field(blob, val, graph, unknown)
       end
       if field.codec == 'optional'
         return nil if val.nil?
 
-        return read_json_field(json_inner_field(field), val, graph, unknown, depth)
+        return read_json_field(json_inner_field(field), val, graph, unknown)
       end
       return read_json_float(field, val) if [10, 11].include?(field.kind) && !%w[array keyed map].include?(field.codec)
 
@@ -484,14 +478,14 @@ module SchemaRuntimeUnit
           arm = obj_class(un).descriptor.arms.find { |a| a.name == name }
           if arm.nil?
             unknown[0] += 1
-            skip_json_unknown(item, graph, depth + 1)
+            skip_json_unknown(item, graph)
           elsif arm.field.nil?
             raise Refused.new('kind_mismatch', field.name) unless item.nil?
 
             un.type = arm.tag
           else
             un.type = arm.tag
-            ivar_set(un, arm.ivar, read_json_field(arm.field, item, graph, unknown, depth + 1))
+            ivar_set(un, arm.ivar, read_json_field(arm.field, item, graph, unknown))
           end
         end
         return un
@@ -556,10 +550,10 @@ module SchemaRuntimeUnit
             raise Refused.new('unsupported', field.name) if e_cls.nil?
 
             container = value_field.get(e_cls.new)
-            read_json_keyed(value_field, item, container, graph, unknown, depth)
+            read_json_keyed(value_field, item, container, graph, unknown)
             mapping[parsed_key] = container
           else
-            mapping[parsed_key] = read_json_field(value_field, item, graph, unknown, depth)
+            mapping[parsed_key] = read_json_field(value_field, item, graph, unknown)
           end
         end
         mapping
@@ -576,14 +570,14 @@ module SchemaRuntimeUnit
           result = SchemaTable.arr
           spent = 0
           val.each do |item|
-            txt = u(element.codec == 'text_optional' && item.nil? ? nil : read_json_field(inner, item, graph, unknown, depth + 1))
+            txt = u(element.codec == 'text_optional' && item.nil? ? nil : read_json_field(inner, item, graph, unknown))
             spent += txt.bytesize unless txt.nil?
             raise Refused.new('length_over_bound', field.name) if field.text_total.positive? && spent > field.text_total
 
             result << txt
           end
         else
-          result = val.map { |item| read_json_field(element, item, graph, unknown, depth + 1) }
+          result = val.map { |item| read_json_field(element, item, graph, unknown) }
         end
         if field.array_kind == 1
           (field.bound - result.length).times { result << json_zero_element(element, field.name) }
@@ -591,7 +585,6 @@ module SchemaRuntimeUnit
         result
       when 'pointer', 'table'
         return nil if field.codec == 'pointer' && val.nil?
-        raise Refused, 'malformed' if depth + 1 > MAX_DEPTH
 
         cls = by_name(field.target)
         raise Refused.new('kind_mismatch', field.name) if cls.nil?
@@ -599,7 +592,7 @@ module SchemaRuntimeUnit
         if cls.descriptor.json_array && field.codec == 'table'
           obj = cls.new
           f0 = cls.descriptor.fields[0]
-          f0.set(obj, read_json_field(f0, val, graph, unknown, depth + 1))
+          f0.set(obj, read_json_field(f0, val, graph, unknown))
           return obj
         end
         raise Refused.new('kind_mismatch', field.name) unless val.instance_of?(Hash)
@@ -626,12 +619,12 @@ module SchemaRuntimeUnit
           obj = cls.new
           graph[num] = [obj, true]
           rest = val.except('&node')
-          fill_json_object(obj, rest, graph, unknown, depth + 1)
+          fill_json_object(obj, rest, graph, unknown)
           graph[num] = [obj, false]
           return obj
         end
         obj = cls.new
-        fill_json_object(obj, val, graph, unknown, depth + 1)
+        fill_json_object(obj, val, graph, unknown)
         obj
       when 'bool'
         raise Refused.new('kind_mismatch', field.name) unless val.equal?(true) || val.equal?(false)

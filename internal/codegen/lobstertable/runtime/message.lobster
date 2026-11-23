@@ -1342,17 +1342,18 @@ def mw_rides(w:MessageWriter, sl:Slot) -> bool, bool:
             if sl.count < 0 or sl.count > length(sl.elems):
                 return false, false
             return sl.count > 0, true
+        if length(sl.elems) != f.bound:
+            return false, false
         if f.ek == 13:
             return true, true
         let ed = elem_of(f)
         var i = 0
         while i < f.bound:
-            if i < length(sl.elems):
-                let rides, ok = mw_cell_rides(w, ed, f.ek, sl.elems[i], true)
-                if not ok:
-                    return false, false
-                if rides:
-                    return true, true
+            let rides, ok = mw_cell_rides(w, ed, f.ek, sl.elems[i], true)
+            if not ok:
+                return false, false
+            if rides:
+                return true, true
             i++
         return false, true
     if sh == "bytes" or sh == "text" or sh == "str":
@@ -1361,6 +1362,8 @@ def mw_rides(w:MessageWriter, sl:Slot) -> bool, bool:
 
 def mw_keyed_pairs(w:MessageWriter, sl:Slot) -> int, bool:
     let f = sl.fd
+    if length(sl.elems) != f.bound:
+        return 0, false
     let ed = elem_of(f)
     var pairs = 0
     for(sl.elems) v:
@@ -1549,8 +1552,10 @@ def mw_value(w:MessageWriter, sl:Slot, e:MessageEntry) -> bool:
         var count = f.bound
         if f.array == "counted":
             count = sl.count
-            if count < f.min or count > f.bound:
+            if count < f.min or count > f.bound or count > length(sl.elems):
                 return false
+        elif length(sl.elems) != f.bound:
+            return false
         mw_put(w, count - s.min, count_bits)
         if e.element.kind == 6:
             mw_align(w)

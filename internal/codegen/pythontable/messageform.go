@@ -87,8 +87,8 @@ func messageModule(u *ir.Unit) string {
 	b.WriteString(")\n")
 	b.WriteString(`
 from typing import Any, Callable, TypeVar, cast
-from . import LoadReport
-from .message import BuildVersionMismatch as BuildVersionMismatch, Refused as _Refused, MessageVocabulary as _Vocabulary, announce_read as _announce, resolve_vocabulary as _resolve
+from . import LoadReport, Refused as _Refused
+from .message import BuildVersionMismatch as BuildVersionMismatch, MessageVocabulary as _Vocabulary, announce_read as _announce, resolve_vocabulary as _resolve
 from .message import BitWriter, _write_value
 from .descriptor import by_name as _by_name
 from .integrity import open_crc as _open_crc, seal_crc as _seal_crc
