@@ -562,11 +562,25 @@ func TestSquirrelRunsHostileCorpusWorkflowIsFleetOnly(t *testing.T) {
 
 const squirrelHostilePrelude = `local inputs = dofile("inputs.nut", true);
 local fresh = function() { return {}; };
+local HEX2 = array(256);
+for (local i = 0; i < 256; i++) HEX2[i] = format("%02x", i);
+local join = function(parts) {
+  if (parts.len() == 0) return "";
+  local a = parts;
+  while (a.len() > 1) {
+    local b = array((a.len() + 1) / 2);
+    for (local i = 0; i < b.len(); i++) {
+      b[i] = (2 * i + 1 < a.len()) ? a[2 * i] + a[2 * i + 1] : a[2 * i];
+    }
+    a = b;
+  }
+  return a[0];
+};
 local hexOf = function(s) {
   if (s == null) return "-";
-  local out = "";
-  for (local i = 0; i < s.len(); i++) out += format("%02x", s[i] & 0xff);
-  return out;
+  local parts = array(s.len());
+  for (local i = 0; i < s.len(); i++) parts[i] = HEX2[s[i] & 0xff];
+  return join(parts);
 };
 local emit = function(name, verdict, reason, text) {
   print(name + "\t" + verdict + "\t" + reason + "\t" + hexOf(text) + "\n");

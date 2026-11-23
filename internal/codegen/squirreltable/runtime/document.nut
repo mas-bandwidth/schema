@@ -805,28 +805,36 @@ local magnitude = function(tok) {
 };
 
 // exact parses a number token (RFC 8259, already checked) as [negative,
-// digits magnitude, exp10]: the value is digits x 10^exp10.
+// digits, point] with leading and trailing zeros stripped: the value is
+// digits x 10^(point - digits.len()), and a dyadic fraction of F bits has at
+// most F fractional decimal digits once trailing zeros are gone (TABLETEXT-5).
 local exact = function(tok) {
   local i = 0, n = tok.len();
   local neg = tok[0] == '-';
   if (neg) i++;
-  local m = [];
-  local exp = 0;
-  local point = false;
-  for (; i < n && tok[i] != 'e' && tok[i] != 'E'; i++) {
-    if (tok[i] == '.') { point = true; continue; }
-    m = bnMulSmall(m, 10, tok[i] - '0');
-    if (point) exp--;
+  local ip = [];
+  for (; i < n && tok[i] != '.' && tok[i] != 'e' && tok[i] != 'E'; i++) ip.append(tok[i]);
+  local fp = [];
+  if (i < n && tok[i] == '.') {
+    i++;
+    for (; i < n && tok[i] != 'e' && tok[i] != 'E'; i++) fp.append(tok[i]);
   }
+  local exp = 0;
   if (i < n) {
     i++;
     local minus = false;
     if (i < n && (tok[i] == '+' || tok[i] == '-')) { minus = tok[i] == '-'; i++; }
-    local e = 0;
-    for (; i < n; i++) if (e < 1000000) e = e * 10 + (tok[i] - '0');
-    exp += minus ? -e : e;
+    for (; i < n; i++) if (exp < 1000000) exp = exp * 10 + (tok[i] - '0');
+    if (minus) exp = -exp;
   }
-  return [neg, m, exp];
+  local point = ip.len() + exp;
+  local digits = ip;
+  digits.extend(fp);
+  local a = 0;
+  while (a < digits.len() && digits[a] == '0') { a++; point--; }
+  local z = digits.len();
+  while (z > a && digits[z - 1] == '0') z--;
+  return [neg, digits.slice(a, z), point];
 };
 
 // the storage domain of an integral descriptor: its declared raw range when
@@ -857,8 +865,12 @@ local integer = function(r, v, d) {
     if (mag > 60) return rfail(r, BOUND, v, v.start);
     if (mag < -60) return rfail(r, KIND_MISMATCH, v, v.start);
     local x = exact(v.text);
-    local m = bnShl(x[1], frac);
-    local e = x[2];
+    local digits = x[1], point = x[2];
+    if (digits.len() - point > frac) return rfail(r, KIND_MISMATCH, v, v.start);
+    local m = [];
+    foreach (c in digits) m = bnMulSmall(m, 10, c - '0');
+    m = bnShl(m, frac);
+    local e = point - digits.len();
     for (; e > 0; e--) m = bnMulSmall(m, 10, 0);
     for (; e < 0; e++) {
       local qr = bnDivSmall(m, 10);
