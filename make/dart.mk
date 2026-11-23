@@ -1426,8 +1426,8 @@ CONFORMANCE_LEGS  += $(call unless_skipped,dart,build/conformance-dart)
 REGISTRY_NA       += goldens:dart
 REGISTRY_NA_WHY.goldens.dart := no committed table goldens; its packet goldens (testdata/golden/dart) are rewritten by internal/goldens at the top of update-goldens
 # Packet UTF-8 content validation, including a compiled mutation control.
-build/packet-text/dart/.stamp: bin/schema test/packet-text/Narrow.schema
-	./bin/schema generate --lang dart --out build/packet-text/dart test/packet-text/Narrow.schema
+build/packet-text/dart/.stamp: bin/schema test/packet-text/Text.schema
+	./bin/schema generate --lang dart --out build/packet-text/dart test/packet-text/Text.schema
 	@touch $@
 
 .PHONY: packet-utf8-dart packet-utf8-dart-negative-control
@@ -1442,7 +1442,7 @@ packet-utf8-dart-negative-control: packet-utf8-dart
 	@mkdir -p build/packet-text/dart-negative
 	go run ./tools/sabotage -name packet-utf8-dart-read -out build/packet-text/dart-negative/utf8.gotext internal/codegen/dart/utf8.go
 	@printf '{"Replace":{"%s/internal/codegen/dart/utf8.go":"%s/build/packet-text/dart-negative/utf8.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-text/dart-negative/overlay.json
-	go run -overlay=build/packet-text/dart-negative/overlay.json ./cmd/schema generate --lang dart --out build/packet-text/dart-negative test/packet-text/Narrow.schema
+	go run -overlay=build/packet-text/dart-negative/overlay.json ./cmd/schema generate --lang dart --out build/packet-text/dart-negative test/packet-text/Text.schema
 	@sed 's|../../../build/packet-text/dart|$(CURDIR)/build/packet-text/dart-negative|' test/packet-text/dart/main.dart > build/packet-text/dart-negative/main.dart
 	$(DART) compile exe -o build/packet-text/dart-negative/driver build/packet-text/dart-negative/main.dart
 	@if ./build/packet-text/harness -mutations-only ./build/packet-text/dart-negative/driver > build/packet-text/dart-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: Dart UTF-8 removal passed'; exit 1; fi

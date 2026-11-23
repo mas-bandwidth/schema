@@ -91,7 +91,7 @@ packet-finite-moo-negative-control: packet-finite-moo
 # rows and every single-bit mutation of each accepted row against the C++
 # oracle. The control reads the text raw at the emitter (the runtime's UTF-8
 # check bypassed, the zero-byte rule kept) and must fail mutation agreement.
-MOO_PACKET_TEXT_RUN = -stdin -schema test/packet-text/Narrow.schema -main test/packet-text/moo/main.moo
+MOO_PACKET_TEXT_RUN = -stdin -schema test/packet-text/Text.schema -main test/packet-text/moo/main.moo
 
 .PHONY: packet-utf8-moo packet-utf8-moo-negative-control
 packet-utf8-moo: toolchain-moo moo-packet-driver build/packet-text/cpp/driver build/packet-text/harness

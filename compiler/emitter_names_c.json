@@ -387,6 +387,7 @@
   "{p}_table_json_skip_members",
   "{p}_table_json_skip_value",
   "{p}_table_json_skipped_ampersand",
+  "{p}_table_json_skipped_close",
   "{p}_table_json_space",
   "{p}_table_json_strtod",
   "{p}_table_json_strtof",

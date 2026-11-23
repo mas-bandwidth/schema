@@ -193,9 +193,9 @@ packet-finite-lua-negative-control: packet-finite-lua
 	$(call packet-finite-lua-control,write)
 
 # ---------------------------------------------------------------- UTF-8
-build/packet-text/lua/.stamp: bin/schema test/packet-text/Narrow.schema
+build/packet-text/lua/.stamp: bin/schema test/packet-text/Text.schema
 	@rm -rf build/packet-text/lua && mkdir -p build/packet-text/lua
-	./bin/schema generate --lang lua --out build/packet-text/lua/generated test/packet-text/Narrow.schema
+	./bin/schema generate --lang lua --out build/packet-text/lua/generated test/packet-text/Text.schema
 	@touch $@
 
 .PHONY: packet-utf8-lua packet-utf8-lua-negative-control
@@ -208,7 +208,7 @@ packet-utf8-lua-negative-control: packet-utf8-lua
 	@printf '{"Replace":{"%s/internal/codegen/lua/read.go":"%s/build/packet-text/lua-negative/read.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/packet-text/lua-negative/overlay.json
 	go build -overlay=build/packet-text/lua-negative/overlay.json -o build/packet-text/lua-negative/schema ./cmd/schema
-	./build/packet-text/lua-negative/schema generate --lang lua --out build/packet-text/lua-negative/generated test/packet-text/Narrow.schema
+	./build/packet-text/lua-negative/schema generate --lang lua --out build/packet-text/lua-negative/generated test/packet-text/Text.schema
 	@if ./build/packet-text/harness -mutations-only $(LUA) test/packet-text/lua/main.lua build/packet-text/lua-negative/generated \
 		> build/packet-text/lua-negative/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: Lua UTF-8 removal passed'; exit 1; fi

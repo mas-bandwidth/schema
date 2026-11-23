@@ -1265,8 +1265,8 @@ CONFORMANCE_LEGS  += $(call unless_skipped,cs,build-conformance-cs build-cs-cook
 BENCH_TABLES_LEGS += generated/bench/tables/cs/.stamp
 GOLDENS_LEGS      += update-goldens-cs
 # Packet UTF-8 content validation, including a compiled mutation control.
-build/packet-text/cs/.stamp: bin/schema test/packet-text/Narrow.schema
-	./bin/schema generate --lang cs --out build/packet-text/cs test/packet-text/Narrow.schema
+build/packet-text/cs/.stamp: bin/schema test/packet-text/Text.schema
+	./bin/schema generate --lang cs --out build/packet-text/cs test/packet-text/Text.schema
 	@touch $@
 
 .PHONY: packet-utf8-cs packet-utf8-cs-negative-control
@@ -1280,7 +1280,7 @@ packet-utf8-cs-negative-control: packet-utf8-cs
 	@mkdir -p build/packet-text/cs-negative
 	go run ./tools/sabotage -name packet-utf8-cs-read -out build/packet-text/cs-negative/utf8.gotext internal/codegen/csharp/utf8.go
 	@printf '{"Replace":{"%s/internal/codegen/csharp/utf8.go":"%s/build/packet-text/cs-negative/utf8.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-text/cs-negative/overlay.json
-	go run -overlay=build/packet-text/cs-negative/overlay.json ./cmd/schema generate --lang cs --out build/packet-text/cs-negative test/packet-text/Narrow.schema
+	go run -overlay=build/packet-text/cs-negative/overlay.json ./cmd/schema generate --lang cs --out build/packet-text/cs-negative test/packet-text/Text.schema
 	$(DOTNET) build test/packet-text/cs/packet-text.csproj -c Release -o build/packet-text/cs-negative/bin -p:TextDir="$(CURDIR)/build/packet-text/cs-negative" --nologo
 	@if ./build/packet-text/harness -mutations-only dotnet build/packet-text/cs-negative/bin/packet-text.dll > build/packet-text/cs-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: C# UTF-8 removal passed'; exit 1; fi
 	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-text/cs-negative/log || { cat build/packet-text/cs-negative/log; exit 1; }

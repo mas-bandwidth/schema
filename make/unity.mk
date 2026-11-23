@@ -94,8 +94,8 @@ packet-defaults-unity-negative-control: build/packet-defaults/unity/.stamp
 
 # ---- packet UTF-8: the read refusals agree with the C++ oracle ----
 
-build/packet-text/unity/.stamp: bin/schema test/packet-text/Narrow.schema
-	./bin/schema generate --lang unity --out build/packet-text/unity test/packet-text/Narrow.schema
+build/packet-text/unity/.stamp: bin/schema test/packet-text/Text.schema
+	./bin/schema generate --lang unity --out build/packet-text/unity test/packet-text/Text.schema
 	@touch $@
 
 .PHONY: packet-utf8-unity packet-utf8-unity-negative-control
@@ -110,8 +110,8 @@ UNITY_TEXT_NC := build/packet-text/unity-negative
 packet-utf8-unity-negative-control: build/packet-text/unity/.stamp build/packet-text/cpp/driver build/packet-text/harness
 	@rm -rf $(UNITY_TEXT_NC) && mkdir -p $(UNITY_TEXT_NC)/generated
 	@cp build/packet-text/unity/*.cs $(UNITY_TEXT_NC)/generated/
-	@sed -i.orig 's/if (!ValidUtf8Text(bytes))/if (bytes.Length < 0)/' $(UNITY_TEXT_NC)/generated/Narrow.cs
-	@cmp -s build/packet-text/unity/Narrow.cs $(UNITY_TEXT_NC)/generated/Narrow.cs && { echo 'NEGATIVE CONTROL: the planted removal patched nothing'; exit 1; } || true
+	@sed -i.orig 's/if (!ValidUtf8Text(bytes))/if (bytes.Length < 0)/' $(UNITY_TEXT_NC)/generated/Text.cs
+	@cmp -s build/packet-text/unity/Text.cs $(UNITY_TEXT_NC)/generated/Text.cs && { echo 'NEGATIVE CONTROL: the planted removal patched nothing'; exit 1; } || true
 	@rm -f $(UNITY_TEXT_NC)/generated/*.orig
 	$(DOTNET) build test/packet-text/unity/packet-text-unity.csproj -c Release -o $(UNITY_TEXT_NC)/bin --nologo -v quiet \
 		-p:TextDir="$(CURDIR)/$(UNITY_TEXT_NC)/generated"

@@ -2546,6 +2546,13 @@ included, in the text writer as much as in the binary save). A field that
 holds a value of the wrong kind (a list field holding a number) is refused,
 never written as an empty list or a default.
 
+**Rows 2 and 11 read an unsigned value unsigned.** A `bits(64)` or `uint64`
+value with its top bit set (2^63 and up) is inside its width: it is written,
+never refused. A reader that carries an integer wider than its kind (a
+128-bit value slot) extends an unsigned kind with zeros, never by its top bit,
+so a file it read saves back byte for byte (held by verify-tablegen
+`pin:fwrec:first`, a `[2]` array of a type holding a `bits(64)` at 2^63).
+
 **The mechanism is the language's own, and it decides the build.** A language
 whose established idiom is a debug-only assert checks in its debug build and
 pays nothing in release; a language without one refuses in every build, by its

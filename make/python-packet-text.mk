@@ -22,9 +22,9 @@ python-packet-text-negative-control: python-toolchain-check deps-go
 # line holds the oracle build behind it under make -j.
 build/packet-text/cpp/driver: | serialize-siblings
 
-build/packet-text/python/.stamp: build/schema-python test/packet-text/Narrow.schema
+build/packet-text/python/.stamp: build/schema-python test/packet-text/Text.schema
 	@rm -rf build/packet-text/python && mkdir -p build/packet-text/python
-	./build/schema-python generate --lang python --out build/packet-text/python/generated test/packet-text/Narrow.schema
+	./build/schema-python generate --lang python --out build/packet-text/python/generated test/packet-text/Text.schema
 	@touch $@
 
 packet-utf8-python: python-toolchain-check serialize-siblings build/packet-text/python/.stamp build/packet-text/cpp/driver build/packet-text/harness

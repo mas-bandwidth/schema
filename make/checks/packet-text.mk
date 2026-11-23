@@ -1,5 +1,5 @@
-build/packet-text/cpp/.stamp: bin/schema test/packet-text/Narrow.schema
-	./bin/schema generate --lang cpp --out build/packet-text/cpp test/packet-text/Narrow.schema
+build/packet-text/cpp/.stamp: bin/schema test/packet-text/Text.schema
+	./bin/schema generate --lang cpp --out build/packet-text/cpp test/packet-text/Text.schema
 	@touch $@
 
 build/packet-text/cpp/driver: build/packet-text/cpp/.stamp test/packet-text/driver.c

@@ -8,8 +8,8 @@ SERIALIZE_GO ?= ../serialize.go
 SERIALIZE_GO_FETCHED := build/serialize.go
 SERIALIZE_GO_RUNTIME := $(if $(wildcard $(SERIALIZE_GO)/go.mod),$(SERIALIZE_GO),$(SERIALIZE_GO_FETCHED))
 
-build/packet-text/go/.stamp: bin/schema test/packet-text/Narrow.schema make/go.mk
-	./bin/schema generate --lang go --out build/packet-text/go test/packet-text/Narrow.schema
+build/packet-text/go/.stamp: bin/schema test/packet-text/Text.schema make/go.mk
+	./bin/schema generate --lang go --out build/packet-text/go test/packet-text/Text.schema
 	@printf 'module packettext\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => "%s/$(SERIALIZE_GO)"\n' "$(CURDIR)" > build/packet-text/go/go.mod
 	@touch $@
 
@@ -22,7 +22,7 @@ packet-utf8-go-negative-control: packet-utf8-go
 	@mkdir -p build/packet-text/go-negative/checker
 	go run ./tools/sabotage -name packet-utf8-go-read -out build/packet-text/go-negative/functions.gotext internal/codegen/golang/functions.go
 	@printf '{"Replace":{"%s/internal/codegen/golang/functions.go":"%s/build/packet-text/go-negative/functions.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-text/go-negative/overlay.json
-	go run -overlay=build/packet-text/go-negative/overlay.json ./cmd/schema generate --lang go --out build/packet-text/go-negative test/packet-text/Narrow.schema
+	go run -overlay=build/packet-text/go-negative/overlay.json ./cmd/schema generate --lang go --out build/packet-text/go-negative test/packet-text/Text.schema
 	cp build/packet-text/go/go.mod build/packet-text/go-negative/go.mod
 	cp test/packet-text/go/main.go build/packet-text/go-negative/checker/main.go
 	cd build/packet-text/go-negative/checker && go build -o ../driver .
@@ -245,6 +245,17 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema t
 	@grep -q '^table Cfg$$' build/tables-r1-variable/R1.schema || { echo "R1 variable twin: the sed did not turn Cfg variable"; exit 1; }
 	./bin/schema generate --lang go --out build/tables-generated-go-framing/r1variable build/tables-r1-variable/R1.schema
 	$(call go_table_module_in,build/tables-generated-go-framing/r1variable,tblr1variable)
+	# THE SAME TWIN FOR listdemo Bounded, the battery's other fixed root: its
+	# array vectors (array_elem_*) are form-1 files read as the variable class,
+	# and without this twin the Go leg refused them as previous_form before any
+	# array rule ran, which the lawful twin twin_listdemo_bounded_empty exposed
+	# (test/conformance/harness/discriminate.go). Migrate.schema declares Unit
+	# and Bounded alone, so it generates on its own.
+	@mkdir -p build/tables-lists-variable
+	sed 's/^fixed table Bounded$$/table Bounded/' tables/lists/Migrate.schema > build/tables-lists-variable/Migrate.schema
+	@grep -q '^table Bounded$$' build/tables-lists-variable/Migrate.schema || { echo "lists variable twin: the sed did not turn Bounded variable"; exit 1; }
+	./bin/schema generate --lang go --out build/tables-generated-go-framing/listsvariable build/tables-lists-variable/Migrate.schema
+	$(call go_table_module_in,build/tables-generated-go-framing/listsvariable,listdemovariable)
 	# THE R19 ROW'S COMMITTED PAIR (test/conformance/go/rows/R19_test.go): one
 	# lineage, two generations. The old side is generated from its schema alone
 	# (it wrote testdata/conformance/r19/old.bin); the new side from its unit

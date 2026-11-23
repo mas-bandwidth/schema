@@ -2176,9 +2176,9 @@ REGISTRY_NA_WHY.bench-tables.java := bench/tables/java has no leg script, so ben
 REGISTRY_NA_WHY.goldens.java      := no committed table goldens; its packet goldens (testdata/golden/java) are rewritten by internal/goldens at the top of update-goldens
 CONFORMANCE_ENV    += JAVA=$(JAVA)
 # Packet UTF-8 content validation, including a compiled mutation control.
-build/packet-text/java/.stamp: bin/schema test/packet-text/Narrow.schema
+build/packet-text/java/.stamp: bin/schema test/packet-text/Text.schema
 	@mkdir -p build/packet-text/java/source
-	cp test/packet-text/Narrow.schema build/packet-text/java/source/Text.schema
+	cp test/packet-text/Text.schema build/packet-text/java/source/Text.schema
 	./bin/schema generate --lang java --out build/packet-text/java build/packet-text/java/source/Text.schema
 	@touch $@
 
