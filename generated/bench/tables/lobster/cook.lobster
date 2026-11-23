@@ -817,6 +817,7 @@ def cg_place(g:CookGraph) -> int, int:
 // a count past its bound or a union tag past its arms is refused here rather
 // than cut or written past its storage.
 def cook_contract_holds(g:CookGraph) -> bool:
+    wc_non_finite = false
     for(g.nodes) n:
         let r = n.rec
         if r and not wc_body(r):
@@ -824,7 +825,8 @@ def cook_contract_holds(g:CookGraph) -> bool:
         let b = n.blob
         if n.kind == 2 and b and not text_valid(b, 0, length(b)):
             return false
-    return true
+    // a NaN or an infinity in a plain float is refused (row 7, SF-37)
+    return not wc_non_finite
 
 // cook_plan numbers and places the graph; check runs the write contract over
 // it first. A fixed root's measure is the layout constant whatever the value

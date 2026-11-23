@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -202,6 +203,27 @@ func TestTheShimIsWantedForARecordAlone(t *testing.T) {
 	} {
 		if got := shimWanted(c.timeout, c.jsonDir, c.summaryDir); got != c.want {
 			t.Errorf("shimWanted(%q, %q, %q) = %v, want %v", c.timeout, c.jsonDir, c.summaryDir, got, c.want)
+		}
+	}
+}
+
+// A cached pass is never a CI verdict: every go test through the shim runs
+// with -count=1 unless it named a -count of its own; other go commands and
+// a -count after -args are untouched.
+func TestWithCountOne(t *testing.T) {
+	for _, c := range []struct {
+		in, want []string
+	}{
+		{[]string{"test", "./p"}, []string{"test", "-count=1", "./p"}},
+		{[]string{"-C", "d", "test", "-run", "X", "./p"}, []string{"-C", "d", "test", "-count=1", "-run", "X", "./p"}},
+		{[]string{"test", "-count=3", "./p"}, []string{"test", "-count=3", "./p"}},
+		{[]string{"test", "-count", "2", "./p"}, []string{"test", "-count", "2", "./p"}},
+		{[]string{"test", "./p", "-args", "-count=5"}, []string{"test", "-count=1", "./p", "-args", "-count=5"}},
+		{[]string{"build", "./p"}, []string{"build", "./p"}},
+		{[]string{"vet", "-count=1"}, []string{"vet", "-count=1"}},
+	} {
+		if got := withCountOne(c.in); !slices.Equal(got, c.want) {
+			t.Errorf("withCountOne(%q) = %q, want %q", c.in, got, c.want)
 		}
 	}
 }

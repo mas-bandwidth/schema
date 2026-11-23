@@ -81,8 +81,8 @@ func TestWireFuzzFindingsAreSpelledByTheEmitter(t *testing.T) {
 	loadoutSave := dartFunc(t, tabledemo, "void loadoutConfigWireSaveBodyFields(")
 	guardedSave := dartFunc(t, g1, "void guardedWireSaveBodyFields(")
 	guardedNumber := dartFunc(t, g1, "void guardedNumber(")
-	guardedLoad := dartFunc(t, g1, "Guarded guardedWireLoad(")
-	rootLoad := dartFunc(t, tabledemo, "RootConfig rootConfigWireLoad(")
+	guardedLoad := dartFunc(t, g1, "Guarded _guardedWireLoadRead(")
+	rootLoad := dartFunc(t, tabledemo, "RootConfig _rootConfigWireLoadRead(")
 	loadoutLoad := dartFunc(t, tabledemo, "void loadoutConfigWireLoadBody(")
 	toolAt := strings.Index(messagedemo, "bool _toolMessageMarksFixed(")
 	if toolAt < 0 {

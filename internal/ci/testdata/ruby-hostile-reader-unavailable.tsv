@@ -1,0 +1,5 @@
+# THE HOSTILE-CORPUS CASES THE RUBY PORT HAS NO READER FOR
+# (internal/ci/schema_ruby_runs_hostile_corpus_test.go). One line per case: the
+# manifest name, a tab, and one line saying why. A case the runner answers
+# reader_unavailable that no line names fails the gate, and so does a line
+# whose case answers or is gone from the manifest.
