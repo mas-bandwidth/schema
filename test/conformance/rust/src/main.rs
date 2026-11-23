@@ -3123,6 +3123,36 @@ fn wref_fixed_case(f: &[String], data: &[u8]) -> &'static str {
     }
 }
 
+// Apply the caller's assignment. The generated writer owns the bounds checks.
+fn wref_writebounds(v: &mut writebounds::TortureVarWref, path: &str, kind: &str, value: &str) -> Mutation {
+    use writebounds::WrefArm;
+    match (path, kind) {
+        ("opt_arr", "count") => {
+            let first = v.opt_arr.as_ref().and_then(|a| a.first().copied()).unwrap_or(0);
+            v.opt_arr = Some(vec![first; wref_usize(value)]);
+            Mutation::Done
+        }
+        ("arm_bits.a_bits", "int") => {
+            let mut bits = 0u16;
+            let result = wref_int(value, &mut bits);
+            v.arm_bits = WrefArm::ABits(bits);
+            result
+        }
+        ("arm_range.a_range", "int") => {
+            let mut n = 0i32;
+            let result = wref_int(value, &mut n);
+            v.arm_range = WrefArm::ARange(n);
+            result
+        }
+        ("arm_str.a_str", "length") => {
+            v.arm_str = WrefArm::AStr("a".repeat(wref_usize(value)));
+            Mutation::Done
+        }
+        ("chan_lim[1]", "int") => wref_int(value, &mut v.chan_lim[1]),
+        _ => fail(&format!("write-refusal: TortureVarWref names no {kind} path {path}")),
+    }
+}
+
 fn surface_write_refusal(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("write-refusal") {
         if f.len() < 8 {
@@ -3157,6 +3187,14 @@ fn surface_write_refusal(manifest: &Manifest, out: &str) {
                 let Some(mut v) = tabledemo::loadout_config_load(&data, &mut report) else { fail(&format!("{case}: load refused {wire}")) };
                 match wref_loadout_config(&mut v, path, kind, value) {
                     Mutation::Done => wref_save(|| tabledemo::loadout_config_save_checked(&v)),
+                    Mutation::Unrepresentable => "unrepresentable\n",
+                }
+            }
+            ("writebounds", "TortureVarWref") => {
+                let mut report = writebounds::TableReport::default();
+                let Some(mut v) = writebounds::torture_var_wref_load(&data, &mut report) else { fail(&format!("{case}: load refused {wire}")) };
+                match wref_writebounds(&mut v, path, kind, value) {
+                    Mutation::Done => wref_save(|| writebounds::torture_var_wref_save_checked(&v)),
                     Mutation::Unrepresentable => "unrepresentable\n",
                 }
             }
