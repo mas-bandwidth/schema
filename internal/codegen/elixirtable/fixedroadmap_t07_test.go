@@ -33,7 +33,7 @@ package elixirtable
 // has no compile-out assert.
 //
 // elixir/W8 [verify]: bytes(N) takes the array row — Dst the buffer, Aux the
-// count; a text field's row is the other way round.
+// count and a minimum of zero; a text field's row is the other way round.
 //
 // elixir/W7 [verify]: arg and meta are two lanes — a guarded text entry carries
 // the arm ordinal and the text flavour in two distinct tuple positions.
@@ -239,7 +239,8 @@ func t07W5(t *testing.T) {
 
 // t07W8 holds elixir/W8 to §4.1: a bytes(N) takes the ARRAY's row — Dst the
 // buffer, Aux the count — where a text field's row is the other way round (Dst
-// the length, Aux the buffer). The image destination rows carry it.
+// the length, Aux the buffer). A byte buffer carries its zero count minimum
+// in the destination row and its binary flavour in the IR metadata.
 func t07W8(t *testing.T) {
 	u := unitFrom(t, t07LiveSource)
 	st := u.Tables["Root"]
@@ -250,6 +251,9 @@ func t07W8(t *testing.T) {
 		switch e.Note {
 		case "blob":
 			blob = &dst[i]
+			if e.Dst.Meta != fixedTextBytes {
+				t.Errorf("W8: bytes(N)'s IR flavour = %d, want %d", e.Dst.Meta, fixedTextBytes)
+			}
 		case "name":
 			name = &dst[i]
 		}
@@ -257,8 +261,8 @@ func t07W8(t *testing.T) {
 	if blob == nil || name == nil {
 		t.Fatal("W8: the walk carries no blob/name destination row")
 	}
-	if blob.counted != 1 || blob.stride != 1 || blob.arg != fixedTextBytes {
-		t.Errorf("W8: bytes(N)'s row is (counted %d, stride %d, arg %d), want the ARRAY row (1, 1, %d)", blob.counted, blob.stride, blob.arg, fixedTextBytes)
+	if blob.counted != 1 || blob.stride != 1 || blob.arg != 0 {
+		t.Errorf("W8: bytes(N)'s row is (counted %d, stride %d, minimum %d), want the ARRAY row (1, 1, 0)", blob.counted, blob.stride, blob.arg)
 	}
 	if blob.dst != blob.aux+fixedCountBytes {
 		t.Errorf("W8: bytes(N)'s Dst (%d) is not the buffer past the count field (Aux %d + 4)", blob.dst, blob.aux)

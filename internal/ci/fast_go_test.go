@@ -186,7 +186,7 @@ func TestCIFastAndCIFullRunOnPullRequestWhateverItsBase(t *testing.T) {
 	if !workflowTriggersOn(wfs["ci-fast.yml"], ciEvent{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema"}) {
 		t.Fatal("ci-fast.yml does not trigger on a push to main")
 	}
-	mainPush := ciEvent{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema", PlanPkgs: "./internal/codegen/gotable", PlanLegs: `["go"]`, PlanVerifyLegs: `["dart","elixir","go"]`, PlanDartCorpus: "true"}
+	mainPush := ciEvent{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema", PlanPkgs: "./internal/codegen/gotable", PlanLegs: `["go"]`, PlanVerifyLegs: `["dart","elixir","go"]`, PlanDartCorpus: "true", PlanCppCorpus: "true"}
 	fastJobs := yamlJobs(wfs["ci-fast.yml"])
 	if len(fastJobs) == 0 {
 		t.Fatal("ci-fast.yml has no jobs: the push-to-main check below would check nothing")
