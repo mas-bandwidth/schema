@@ -87,7 +87,7 @@ func read(in io.Reader, text io.Writer) tally {
 		line := sc.Bytes()
 		var e event
 		if len(line) == 0 || line[0] != '{' || json.Unmarshal(line, &e) != nil || e.Action == "" {
-			_, _ = text.Write(append(bytes.Clone(line), '\n'))
+			_, _ = text.Write(append(bytes.Clone(line), '\n')) // errdiscard: best-effort mirror of go test output; tally decides the verdict
 			continue
 		}
 		if e.Package != "" {
@@ -96,7 +96,7 @@ func read(in io.Reader, text io.Writer) tally {
 			}
 		}
 		if e.Action == "output" {
-			_, _ = io.WriteString(text, e.Output)
+			_, _ = io.WriteString(text, e.Output) // errdiscard: best-effort mirror of go test output; tally decides the verdict
 			if e.Test != "" && slowReason.MatchString(e.Output) {
 				slow[e.Package+" "+e.Test] = true
 			}

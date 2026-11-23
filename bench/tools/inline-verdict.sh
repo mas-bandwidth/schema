@@ -51,7 +51,11 @@
 # remark pass rebuilds with -Cremark=inline -Cdebuginfo=1 (RUSTFLAGS is in
 # cargo's fingerprint, so the change itself forces the rebuild) and
 # disassembles the measured binary FIRST, before that rebuild replaces it.
-set -u
+#
+# STRICT (set -e -o pipefail): an otool or objdump that fails must never
+# leave an empty disassembly behind it, which counts zero calls and fakes a
+# full. A sourcing script (the inline-gate) runs strict with it.
+set -eu -o pipefail
 
 cd "$(dirname "$0")/../.."      # repo root
 
@@ -408,7 +412,7 @@ rust_cold_regex() {
             } else if ($0 ~ /^[ \t]*#\[/) {
                 # another attribute between #[cold] and its fn: keep waiting
             } else pending--
-        }' "$crate_dir"/src/*.rs 2>/dev/null | sort -u | paste -sd'|' -)"
+        }' "$crate_dir"/src/*.rs | sort -u | paste -sd'|' -)"
     if [ -n "$names" ]; then
         echo "[^0-9]($names)|$COLD_SPLIT"
     else
@@ -601,7 +605,13 @@ backfill() {
 
 # Library mode ends here: every function above is defined, nothing below runs.
 if [ -n "${INLINE_VERDICT_LIB:-}" ]; then
-    return 0 2>/dev/null || exit 0
+    # executed (not sourced) with INLINE_VERDICT_LIB set, nothing below would
+    # run and the "verdict" would be an empty pass: refuse by name
+    if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+        echo "inline-verdict: INLINE_VERDICT_LIB is library mode for a sourcing script; executed, it verifies nothing" >&2
+        exit 1
+    fi
+    return 0
 fi
 
 case "$LANG_ARG" in
@@ -625,17 +635,19 @@ c|cpp)
     # -fopt-info-inline, the GCC spelling Apple clang rejects). A shadow
     # compile with the recorded codegen flags plus the remark switches; its
     # binary is discarded — the verdict came from $BIN.
-    FLAGS_LINE="$(grep "^# $LANG_ARG flags:" "$CSV" | head -1 | sed "s/^# $LANG_ARG flags: //; s/ (serialize\.c compiled in, no LTO)//")"
+    # sed, never grep: a bare CSV has no flags line, which is an answer (the
+    # shadow compile is skipped and noted below), not a pipeline failure
+    FLAGS_LINE="$(sed -n "s/^# $LANG_ARG flags: //p" "$CSV" | sed -n 1p | sed "s/ (serialize\.c compiled in, no LTO)//")"
     REMARKS="$VD/remarks.txt"
     : > "$REMARKS"
     if [ -n "$FLAGS_LINE" ]; then
         if [ "$LANG_ARG" = c ]; then
             ${CC:-cc} $FLAGS_LINE -Rpass=inline -Rpass-missed=inline -g \
                 bench/c/bench_main.c "$SERIALIZE_C/serialize.c" \
-                -o "$VD/shadow" -lm 2> "$REMARKS" || true
+                -o "$VD/shadow" -lm 2> "$REMARKS" || true  # loud-ok: advisory remarks for the ledger; the verdict is the disassembly read above, and a failed shadow compile leaves its error text in the remarks file
         else
             ${CXX:-c++} $FLAGS_LINE -Rpass=inline -Rpass-missed=inline -g \
-                bench/cpp/bench_main.cpp -o "$VD/shadow" 2> "$REMARKS" || true
+                bench/cpp/bench_main.cpp -o "$VD/shadow" 2> "$REMARKS" || true  # loud-ok: advisory remarks for the ledger; the verdict is the disassembly read above, and a failed shadow compile leaves its error text in the remarks file
         fi
     else
         echo "note: $CSV carries no '# $LANG_ARG flags:' line (bare file?) — remark shadow compile skipped" >> "$VD/remarks.note"
@@ -646,10 +658,10 @@ c|cpp)
         echo "# symbol / direct-hot / transitive-hot / indirect / direct-cold / transitive-cold (nonzero only)"
         nonzero_symbols
         echo "# missed-inline remarks naming serialize (callee, caller, cost where reported):"
-        grep -E "not inlined into" "$REMARKS" 2>/dev/null | grep -i serialize \
+        # awk, never grep: no matching remark is an empty list, not a failure
+        awk '/not inlined into/ && tolower($0) ~ /serialize/' "$REMARKS" \
             | sed -E "s/^[^:]*:[0-9]+:[0-9]+: remark: //; s/ \[-Rpass.*//" \
-            | sort | uniq -c | sort -rn | head -40 | sed 's/^ */remark /' \
-            || true
+            | sort | uniq -c | sort -rn | sed -n 1,40p | sed 's/^ */remark /'
     } >> "$LEDGER"
 
     : > "$VD/verdicts.txt"
@@ -697,7 +709,7 @@ go)
     # ($GO_MODFILE_ARG: the §3.5 override modfile when SERIALIZE_GO points
     # away from the default — the same resolution the measured leg used)
     ( cd bench/go && go build $GO_MODFILE_ARG -o "$OLDPWD/$VD/benchgo" . ) || exit 1
-    go tool objdump "$VD/benchgo" > "$VD/objdump.txt" 2>/dev/null
+    go tool objdump "$VD/benchgo" > "$VD/objdump.txt"
 
     # translate objdump into the otool shape count_calls parses
     go_translate < "$VD/objdump.txt" > "$VD/calls.txt"
@@ -709,9 +721,10 @@ go)
     selftest_join "$VD/calls.txt" "$VD/counts.txt" "$GO_HELPER" || exit 1
 
     # remarks: go build -a -gcflags=-m=2 — -a is MANDATORY (see header)
+    # loud-ok: advisory -m=2 remarks for the ledger; the verdict is the disassembly read above, and a failed build leaves its error text in the remarks file
     ( cd bench/go && go build $GO_MODFILE_ARG -a -gcflags=all=-m=2 -o /dev/null . 2> "$OLDPWD/$VD/remarks.txt" ) || true
-    grep -E "serialize\.go/" "$VD/remarks.txt" | grep -E ": can inline|: cannot inline" \
-        | sed -E 's/^.*serialize\.go\///' | sed -E 's/ as:.*$//' | sort -u > "$VD/serialize-remarks.txt" || true
+    awk '/serialize\.go\// && /: can inline|: cannot inline/' "$VD/remarks.txt" \
+        | sed -E 's/^.*serialize\.go\///' | sed -E 's/ as:.*$//' | sort -u > "$VD/serialize-remarks.txt"
 
     # the §4.1 sanity cross-check: every runtime symbol the disassembly shows
     # as a call target should be one -m=2 could not inline, or one whose
@@ -736,7 +749,7 @@ go)
         echo "# serialize.go remark ledger (file:line, symbol, cost, budget):"
         sed 's/^/remark /' "$VD/serialize-remarks.txt"
         echo "# symbol / direct-hot / transitive-hot / indirect / direct-cold / transitive-cold (generated code, nonzero)"
-        grep "^SYM example\." "$VD/counts.txt" | awk '$3 + $4 + $5 + $6 + $7 > 0' | sort -k4 -rn | sed 's/^SYM /symbol /'
+        awk '$1 == "SYM" && $2 ~ /^example[.]/ && $3 + $4 + $5 + $6 + $7 > 0' "$VD/counts.txt" | sort -k4 -rn | sed 's/^SYM /symbol /'
     } >> "$LEDGER"
 
     : > "$VD/verdicts.txt"
@@ -798,18 +811,19 @@ rust)
     # forces it); runs AFTER the measured binary was disassembled above.
     RUSTUP_BIN="/opt/homebrew/opt/rustup/bin"
     CARGO="cargo"; command -v cargo >/dev/null 2>&1 || CARGO="$RUSTUP_BIN/cargo"
+    # loud-ok: advisory inline remarks for the ledger; the verdict is the disassembly read above, and a failed rebuild leaves its error text in the remarks file
     ( cd bench/rust && \
       RUSTFLAGS="-Cremark=inline -Cdebuginfo=1" CARGO_INCREMENTAL=0 \
       PATH="$RUSTUP_BIN:$PATH" "$CARGO" build --release --quiet $RS_CARGO_ARGS 2> "$OLDPWD/$VD/remarks.txt" ) || true
-    grep -E "inline \(missed\)" "$VD/remarks.txt" | grep -F serialize \
+    awk '/inline \(missed\)/ && /serialize/' "$VD/remarks.txt" \
         | sed -E 's/^[^:]*:[0-9]+:[0-9]+: *//; s/note: //' \
-        | sort | uniq -c | sort -rn | head -40 > "$VD/serialize-remarks.txt" || true
+        | sort | uniq -c | sort -rn | sed -n 1,40p > "$VD/serialize-remarks.txt"
 
     section rust "(otool -tv of the measured $BIN, targets classified by defining crate; -Cremark=inline shadow rebuild; cold = #[cold] fns scanned from $RS_CRATE + split .cold symbols)"
     {
         echo "# cold-classified targets (regex): $COLD_RS"
         echo "# symbol / direct-hot / transitive-hot / indirect / direct-cold / transitive-cold (nonzero only)"
-        nonzero_symbols | head -60
+        nonzero_symbols | sed -n 1,60p
         echo "# -Cremark=inline missed-inline lines naming serialize (count, remark):"
         sed 's/^ */remark /' "$VD/serialize-remarks.txt"
     } >> "$LEDGER"
@@ -866,7 +880,13 @@ cs)
       DOTNET_TieredCompilation=0 \
       DOTNET_JitDisasm="$CS_JIT_FILTER" \
       DOTNET_JitStdOutFile="$OLDPWD/$JIT" \
-      dotnet run -c Release --no-build -- --round 0 > /dev/null 2>&1 ) || true
+      dotnet run -c Release --no-build -- --round 0 > "$OLDPWD/$VD/cs-run.log" 2>&1 ) || {
+        # a run that died part-way leaves a partial listing, which would
+        # count too few calls: refuse it by name
+        echo "inline-verdict: the JitDisasm run failed (log: $VD/cs-run.log) — is the Release build present?" >&2
+        sed 's/^/    /' "$VD/cs-run.log" >&2
+        exit 1
+    }
     [ -s "$JIT" ] || { echo "JitDisasm produced nothing — is the Release build present?" >&2; exit 1; }
 
     # translate JitDisasm blocks into the otool shape (cs_translate above:
@@ -897,7 +917,7 @@ cs)
         echo "# method / direct-calls / per-op-total-with-indirect / indirect / direct-cold / transitive-cold (nonzero only)"
         nonzero_symbols
         echo "# JIT inlinee summaries per method:"
-        awk '/^; Assembly listing for method /{m=$0; sub(/^; Assembly listing for method /,"",m); sub(/ .*/,"",m)} /inlinees/{print "jit " m "  " substr($0,3)}' "$JIT" | head -40
+        awk '/^; Assembly listing for method /{m=$0; sub(/^; Assembly listing for method /,"",m); sub(/ .*/,"",m)} /inlinees/{print "jit " m "  " substr($0,3)}' "$JIT" | sed -n 1,40p
     } >> "$LEDGER"
 
     : > "$VD/verdicts.txt"

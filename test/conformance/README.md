@@ -89,8 +89,32 @@ language" below, where both shapes are stated.
 - **`list`** prints the surfaces this backend implements, one per line, to
   stdout.
 - **A surface run** writes ONE FILE PER CASE into `<outdir>`, named by the case,
-  and prints nothing that matters. The harness holds the expectations and does
-  the comparing.
+  and prints NOTHING on stdout. The harness holds the expectations and does the
+  comparing.
+
+### The driver's stdout
+
+Stdout is protocol and nothing else. `list` prints surface names, one per line
+(`[a-z][a-z0-9-]*`); a surface run prints nothing. **Compiler, interpreter and
+runtime diagnostics (warnings included) go to stderr**, which the harness prints
+when a driver fails. A non-blank stdout line outside that grammar fails the
+driver with `driver printed non-protocol line: <line>`: never a wrong answer,
+and never a surface that fails 0/N with nothing naming why (a Lobster
+`unused variable recs` warning once did exactly that). `harness/run.go`
+(`parseSurfaceList`, `checkRunStdout`) enforces it for every leg, and
+`harness/driverstdout_test.go` holds it.
+
+Four legs have a program that can only answer on stdout (Lobster, Luau, Goose
+and Moo: the interpreter has no file API the driver can rely on), so their
+driver script turns the program's stdout into the files. That script is ONE
+shared parser, `test/conformance/answer-lines.pl`, and its grammar is the whole
+of the protocol: `<case> <lowercase hex, an even number of digits, maybe none>`
+or `<case> absent [<reason>]`, with `<case>` in `[A-Za-z0-9_.-]+`. Any other
+line stops the driver with the message above. Lobster prints its own compiler
+warnings and errors on stdout and cannot be told otherwise, so
+`lobster/main.lobster` opens its output with a marker line and
+`lobster/driver` sends everything before the marker to stderr (no marker means
+the program never started, which is a failure).
 
 ### Exit codes
 
@@ -107,8 +131,8 @@ case requires an accepted value.
 **A CASE may be absent too, and it is said the same way.** A driver that
 cannot answer one case of a surface it otherwise implements writes
 `<case>.absent` — an empty file, beside where the answer would go — and the
-harness counts it. The cell then reads `pass 16/16 +4a`: what the leg answered,
-and how many it said it cannot. The distinction is the surface-level one at a
+harness counts it. The cell then reads `pass 16/20 +4a`: what the leg answered
+out of every row sent, and how many it said it cannot. The distinction is the surface-level one at a
 finer grain, and the corpus needed it the day it gained VARIABLE-class
 instances: a backend with no variable class still answers the wire surface over
 every FIXED instance, and a leg that failed the whole surface for them would say
@@ -436,6 +460,49 @@ promised, and a surface that ran no rows must not print a green cell.
 - **Every skip that remains is ledgered** in `.github/skip-ledger.txt` with its
   class; a skip with no ledger line is red at the pull request that writes it.
 
+## Nothing a driver leaves out reads as a pass
+
+Glenn, 2026-11-22: "Nothing is allowed to fail silently." The spec-only Zig
+port (PR #4726) ran a driver that answered nothing, and the harness printed
+`every registered surface passes`. Every way a driver can say less than it was
+asked is now red and names the leg, the surface and the row, or (for the one
+answer the contract allows, a declared absence) is named in place of the
+success line:
+
+| the driver | what `harness run` does |
+|---|---|
+| `list` exits 0 and names no surface | refuses the leg: `named no surface` (exit 1) |
+| `list` names a surface the harness does not have | refuses the leg, naming it (exit 1) |
+| `list` names a RETIRED surface (`cook-reason`, `block-reason`, `strict-reason`) | prints `conformance IGNORES <name> listed by the <lang> leg` on every run; not run, not scored |
+| leaves a row of a surface unanswered (no file, no `.absent`) | `FAIL`, `<lang> / <surface>: <row>: the driver wrote nothing` |
+| writes a file no row of the surface owns | `FAIL`, `<file>: the driver answered a row the corpus did not send` |
+| writes an answer that is not the row's | `FAIL`, the row and the first difference |
+| dies on a signal, or exits other than 0 or 2 | `FAIL`, how it died and `N of M row(s) unanswered: <rows>` |
+| exits 2 after writing answers, or with a Go panic on stderr | `FAIL`, `a crash, not an absence` (a Go panic exits 2) |
+| answers no row on any surface asked (all absent, all `.absent`, or `--surfaces` selected none it runs) | `FAIL`, `<lang> / (every surface): the leg answered none of the N row(s)` |
+| `--only` names no leg, or `--surfaces` names no surface | refused (exit 1) |
+
+A row is answered by its file `<row>` and anything named `<row>.<suffix>`
+beside it (`.absent`, `.wire`). Every row named in the derived manifest owns its
+answers on any surface — a driver cannot tell from the manifest which `retain`
+rows save, so it answers them all and the harness scores the ones with a golden —
+and anything else in an output directory is a stray answer. The cards runner
+holds its output directories to the same rule over its own manifest.
+
+**A declared absence is still not a pass.** A port's `list` omission, exit 2 or
+`<case>.absent` stays the completion tracker and does not turn the run red (the
+reference leg's does, above), but the cell's denominator is every row SENT
+(`pass 16/20 +4a`, never `pass 16/16 +4a`), and a run with any absence or any
+`--skip`ped leg prints `tables conformance: no failures, and NOT every row was
+answered — absent is not a pass:` followed by each leg and surface, instead of
+`tables conformance: every registered surface passes`. That line now means
+exactly what it says: every surface run, every row answered and passed, no leg
+skipped.
+
+The fast-tier tests in `harness/footgun_test.go` plant each row of the table
+with the test binary itself as the driver (no shell, no toolchain) and are red
+on the old harness.
+
 ## Registering a language
 
 1. Write a driver at `test/conformance/<lang>/driver` that answers `list` and
@@ -729,6 +796,34 @@ SCHEMA_SLOW=1 go test ./test/conformance/packet/ -run TestPacketCarrier
 
 A seed is a schema directory under `packet/testdata/`, one entry in `Seeds`,
 and one codec in every driver.
+
+## The pins are written by generators, never by hand
+
+Every committed pin is regenerated in CI and diffed, so a hand-written golden
+fails on the pull request that adds it. The `pins` job of
+`.github/workflows/ci-fast.yml` runs when the diff touches `testdata/`, a pin
+writer or anything the broad rule names, and has five rows, each a make target
+that rewrites one family in place followed by `git diff --exit-code` on
+`testdata/` and a check for uncommitted new files:
+
+| row | target | family |
+|---|---|---|
+| source | `pins-source pins-framing` | `testdata/golden/` (Go goldens, C++/C/C# table copies); the framing vectors, written by `FRAMING_WRITE=1` tests in `test/conformance/harness` |
+| wire-packet | `pins-fresh-wire-packet` | `testdata/wire/*.bin`, `*.bits`, `packet-defaults/`, `bench_*.bin`, EMPTIED FIRST so a file no generator writes shows as a deletion |
+| wire-tables | `pins-wire-tables` | `testdata/wire/tables/` from `test/tables/main.cpp` |
+| wire-tables-forms | `pins-wire-tables-forms` | block, maps, lists, arms and retain wire pins; the harness `generate` half of `testdata/conformance/tables` |
+| conformance | `pins-conformance` | the cook node dumps and the block forgeries, written by the reference leg (`harness pin`) |
+
+The generated tree (`generated/`) is `generated-current` in the same file. The
+whole of it is one local command, `make update-goldens`, which runs the same
+writers and is all or nothing: it snapshots `testdata/` (`test/goldens/transact`)
+and restores the snapshot on any failure, interrupt or kill, so an abort (a debug
+assert in a reference binary, a failing `go test`) leaves the tree exactly as it
+was. A snapshot left by a run killed outright is put back at the start of the
+next one. Not generated, by design, and so not in the rewrite: the hostile and
+fuzz corpora (`testdata/wire/tables/fuzz-vectors/`, `testdata/jsontestsuite/`)
+and the feature witnesses, which are authored inputs that the conformance matrix
+reads.
 
 ## The budget
 

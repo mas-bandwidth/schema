@@ -25,7 +25,7 @@
 # invocation, and `make slow-gate-coverage` checks that accounting test by test
 # against a real transcript rather than trusting this paragraph.
 test	./...	the fast half by design (the 1-2 minute rule); the slow half runs in the fourteen positive gate targets `test`/`test-go` depend on, each through test/slowgate/proof, and `make slow-gate-coverage` proves test by test that no gated test is left to nobody
-update-goldens	./...	regenerates goldens with -update; it is the pure-Go golden half, and the toolchain gates it cannot regenerate are run by the fourteen positive gate targets (same accounting as `test`)
+update-goldens-steps	./...	regenerates goldens with -update; it is the pure-Go golden half, and the toolchain gates it cannot regenerate are run by the fourteen positive gate targets (same accounting as `test`)
 slow-gate-coverage	./...	it MUST run plain: the accounting reads which tests skip at the gate under a DEFAULT `go test ./...`, so setting the variable here would erase the very thing being counted
 slow-gate-coverage-codegen	./tools/slowgatescan	the emitter half of slow-gate-coverage, plain for the same reason: it reads which tests skip at the gate; its packages come from `go run ./tools/slowgatescan -emit-shard-packages`, which is the one package the scan reads on the line
 slow-gate-coverage-rest	./tools/slowgatescan	the other half of slow-gate-coverage (every package but the emitters, from `go run ./tools/slowgatescan -emit-shard-packages`, which is the one package the scan reads on the line), plain for the same reason
@@ -56,6 +56,6 @@ schema-squirrel-resource-bounds-fast	./internal/ci	TestSquirrelResourceBoundsGat
 # where one heavy test is now gated to the nightly; the tests it runs are not
 # gated, so it runs what it names.
 projection-wire-law-negative-control	./internal/goldens	runs only its named projection test; TestGeneratedTextNamesNoMachine, the gated one, is not selected
-update-goldens	./internal/goldens	runs only ^TestGolden (-update); the gated TestGeneratedTextNamesNoMachine is not selected
+update-goldens-steps	./internal/goldens	runs only ^TestGolden (-update); the gated TestGeneratedTextNamesNoMachine is not selected
 pins-source-goldens	./internal/goldens	runs only ^TestGolden; the gated TestGeneratedTextNamesNoMachine is not selected
 fuzz-generated-readers-go	./internal/codegen/gotable/fuzzunit	lists the Fuzz targets only (-list ^Fuzz); the gated TestGeneratedFixedOneVerdictEveryByte is not run
