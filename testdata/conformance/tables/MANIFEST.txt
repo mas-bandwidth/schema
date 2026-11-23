@@ -2000,8 +2000,8 @@ json-hostile sp-enum-elem-deprecated-array      tabledemo        Moods        te
 instance sp_count_min_current                   tabledemo CountedMin testdata/conformance/tables/save-wire/sp-count-min-at.bin
 framing sp_count_min_at                         tabledemo CountedMin testdata/wire/tables/framing/sp_count_min_at.bin read testdata/conformance/tables/framing/sp_count_min_at.json
 rewrite sp_count_min_at                         tabledemo CountedMin testdata/wire/tables/framing/sp_count_min_at.bin
-framing sp_count_min_below                      tabledemo CountedMin testdata/wire/tables/framing/sp_count_min_below.bin refused -
-framing sp_count_min_zero                       tabledemo CountedMin testdata/wire/tables/framing/sp_count_min_zero.bin refused -
+report  sp_count_min_below             tabledemo CountedMin testdata/conformance/tables/wire/sp_count_min_below.bin
+report  sp_count_min_zero              tabledemo CountedMin testdata/conformance/tables/wire/sp_count_min_zero.bin
 
 # SPEC ROWS ROOTS 1122, EVOLUTION AND FIXED-FORM READS (test/conformance/harness/spec1122_evolution_vectors_test.go): a deprecated enum element reads as None on the fixed form and on the compiled plan; a count below the reader's minimum A refuses on the compiled plan.
 report  sp_enum_fixed_deprecated       tabledemo Moods      testdata/conformance/tables/wire/sp_enum_fixed_deprecated.bin
