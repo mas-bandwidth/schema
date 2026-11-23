@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 // surfaces, in the order the matrix prints them.
@@ -863,6 +864,7 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			code    int
 			stderr  string
 			err     error
+			aborted bool
 		}
 		runs := map[string]*surfaceRun{}
 		var active []*surfaceRun
@@ -884,12 +886,15 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			runs[s] = sr
 			active = append(active, sr)
 		}
-		// Run independent surfaces in parallel across available cores; luau and
-		// lobster stage files into a shared driver directory and stay serial.
-		workers := min(runtime.GOMAXPROCS(0), 8)
+		// Run independent surfaces in parallel across up to 4 cores so co-tenant
+		// fleet runners saturate without thrashing; luau and lobster stage files
+		// into a shared driver directory and stay serial.
+		workers := min(runtime.GOMAXPROCS(0), 4)
 		if d.lang == "luau" || d.lang == "lobster" || workers < 1 {
 			workers = 1
 		}
+		failFast := os.Getenv("CONFORMANCE_FAIL_FAST") == "1"
+		var failed atomic.Bool
 		if len(active) > 0 {
 			jobs := make(chan *surfaceRun, len(active))
 			for _, sr := range active {
@@ -900,7 +905,26 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			for range min(workers, len(active)) {
 				wg.Go(func() {
 					for sr := range jobs {
+						if failFast && failed.Load() {
+							sr.aborted = true
+							continue
+						}
 						sr.code, sr.stderr, sr.err = runDriver(d, derived, sr.surface, sr.out)
+						if failFast {
+							if sr.err != nil || (sr.code != 0 && sr.code != 2) {
+								failed.Store(true)
+							} else if sr.code == 0 && sr.surface != "json-hostile" {
+								// Check surface answers read-only so legs that report a bad
+								// canary input as an absence or diff with exit 0 still stop early.
+								probe := &result{total: len(want[sr.surface])}
+								for _, e := range want[sr.surface] {
+									scoreAnswer(d.lang, sr.surface, sr.out, e, wireRefusals[e.name], probe)
+								}
+								if len(probe.failures) > 0 || probe.missing > probe.named {
+									failed.Store(true)
+								}
+							}
+						}
 					}
 				})
 			}
@@ -934,6 +958,14 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 				continue
 			}
 			sr := runs[s]
+			if sr.aborted {
+				for _, e := range legWant {
+					r.verdict(e.name, "fail")
+					r.mark(e.name, outcomeFail)
+				}
+				r.failures = append(r.failures, "skipped after earlier surface failure (CONFORMANCE_FAIL_FAST=1)")
+				continue
+			}
 			out, code, stderr, err := sr.out, sr.code, sr.stderr, sr.err
 			if err != nil {
 				return false, err
