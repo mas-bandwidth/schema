@@ -4,6 +4,7 @@
   "excludeFiles": [
     "BASE-REDS.md",
     "CARDS.md",
+    "CI-TIERS.md",
     "CLI.md",
     "COMPARISON-TABLES.md",
     "COMPARISON.md",
