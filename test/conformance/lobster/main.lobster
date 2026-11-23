@@ -944,8 +944,13 @@ def surface_read_into(text:string):
                 push(batch, schema_rt.new_record(schema_rt.table_of(root)))
             for(steps) step:
                 if step == "":
-                    for(batch) r:
-                        out += ri_text(r)
+                    var i = 0
+                    while i < count:
+                        if i < length(batch):
+                            out += ri_text(batch[i])
+                        else:
+                            out += ri_text(schema_rt.new_record(schema_rt.table_of(root)))
+                        i++
                 else:
                     let n, ok = schema_rt.load_messages_into(root, v, fixture(step), rep, count, batch)
                     out += ri_verdict(ok and n == length(batch), schema_rt.strict_reason(rep))
