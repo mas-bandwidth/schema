@@ -10,6 +10,7 @@
 
 #define _POSIX_C_SOURCE 200809L
 
+#include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
 #include <sys/types.h>
@@ -22,7 +23,8 @@ enum
 {
     kWroteExit = 10,
     kRefusedExit = 11,
-    kNoSetterExit = 12
+    kNoSetterExit = 12,
+    kUnrepresentableExit = 13
 };
 
 #ifndef CONFORMANCE_NO_WREF_CASE
@@ -39,6 +41,9 @@ static const struct
     { "scalars", conformance_write_refusal_set_scalars, conformance_write_refusal_write_scalars },
     { "cooktorture", conformance_write_refusal_set_cooktorture, conformance_write_refusal_write_cooktorture },
     { "tblvarevo3", conformance_write_refusal_set_tblvarevo3, conformance_write_refusal_write_tblvarevo3 },
+    { "tblsurf", conformance_write_refusal_set_tblsurf, conformance_write_refusal_write_tblsurf },
+    { "mapdemo", conformance_write_refusal_set_mapdemo, conformance_write_refusal_write_none },
+    { "graphdemo", conformance_write_refusal_set_graphdemo, conformance_write_refusal_write_none },
 };
 #endif
 
@@ -116,6 +121,33 @@ int conformance_write_refusal_units( uint16_t * storage, int32_t capacity, int32
     return 1;
 }
 
+int conformance_write_refusal_int( const char * text, long long min, long long max, long long * out )
+{
+    char * end = NULL;
+    long long n;
+    errno = 0;
+    n = strtoll( text, &end, 10 );
+    if ( end == NULL || end == text || *end != 0 || errno != 0 ) { return 0; }
+    if ( n < min || n > max ) { return CONFORMANCE_SET_UNREPRESENTABLE; }
+    *out = n;
+    return 1;
+}
+
+int conformance_write_refusal_elems( const char * text, long long storage )
+{
+    char * end = NULL;
+    const long long n = strtoll( text, &end, 10 );
+    if ( end == NULL || end == text || *end != 0 ) { return 0; }
+    return n == storage ? 1 : CONFORMANCE_SET_UNREPRESENTABLE;
+}
+
+int conformance_write_refusal_write_none( int surface, const char * root, const void * value, const uint8_t * announcement,
+                                          int64_t announcement_bytes, uint8_t * buffer, int64_t capacity, int64_t * wrote )
+{
+    (void) surface; (void) root; (void) value; (void) announcement; (void) announcement_bytes; (void) buffer; (void) capacity; (void) wrote;
+    return 0;
+}
+
 #ifndef CONFORMANCE_NO_WREF_CASE
 /* The writer a surface names, over the one value the row set: the child's
    exit code. */
@@ -136,6 +168,17 @@ static int write_refusal_write( int surface, int which, const ConformanceCodec *
         if ( codec->to_json( value, text, size + 1 ) != size ) { return kRefusedExit; }
         return kWroteExit;
     }
+    if ( surface == CONFORMANCE_WRITE_COOK )
+    {
+        /* THE COOK WRITER (docs/SPEC-TABLES.md §7.6): cook_measure, then cook
+           in little-endian order; `wrote` when both complete */
+        const int64_t need = codec->cook_measure( value );
+        uint8_t * file;
+        if ( need < 0 ) { return kRefusedExit; }
+        file = (uint8_t *) malloc( (size_t) ( need > 0 ? need : 1 ) );
+        if ( file == NULL ) { return 2; }
+        return codec->cook( value, file, (uint64_t) need, 0 ) ? kWroteExit : kRefusedExit;
+    }
     buffer = (uint8_t *) malloc( capacity );
     if ( buffer == NULL ) { return 2; }
     if ( surface == CONFORMANCE_WRITE_VARIABLE ) { wrote = codec->save( value, buffer, (int64_t) capacity ); }
@@ -145,6 +188,10 @@ static int write_refusal_write( int surface, int which, const ConformanceCodec *
     }
     return wrote < 0 ? kRefusedExit : kWroteExit;
 }
+
+/* A writer that walks a cycle forever ends its case by this alarm, which the
+   parent names and answers nothing for. */
+static const unsigned kWrefChildSeconds = 30;
 
 int conformance_write_refusal_case( int surface, const ConformanceCodec * codec, const char * unit, const uint8_t * wire, int64_t bytes,
                                     const uint8_t * announcement, int64_t announcement_bytes,
@@ -165,19 +212,32 @@ int conformance_write_refusal_case( int surface, const ConformanceCodec * codec,
     {
         ConformanceReport report;
         void * value = codec->storage();
-        int quiet;
+        int quiet, set;
+        alarm( kWrefChildSeconds );
         memset( &report, 0, sizeof( report ) );
-        if ( !codec->load( value, wire, bytes, &report ) ) { _exit( 2 ); }
-        if ( !write_units[which].set( root, value, path, kind, text ) ) { _exit( kNoSetterExit ); }
+        /* a NULL wire is the row's `-`: the root's FRESH value (a fixed table
+           past the 65536-byte ceiling has no file form to load) */
+        if ( wire != NULL && !codec->load( value, wire, bytes, &report ) ) { _exit( 2 ); }
+        set = write_units[which].set( root, value, path, kind, text );
+        if ( set == CONFORMANCE_SET_UNREPRESENTABLE ) { _exit( kUnrepresentableExit ); }
+        if ( set != 1 ) { _exit( kNoSetterExit ); }
         quiet = open( "/dev/null", O_WRONLY );
         if ( quiet >= 0 ) { dup2( quiet, 2 ); }
         _exit( write_refusal_write( surface, which, codec, root, path, value, announcement, announcement_bytes ) );
     }
     if ( waitpid( child, &status, 0 ) != child ) { return CONFORMANCE_BROKEN; }
     if ( WIFSIGNALED( status ) && WTERMSIG( status ) == SIGABRT ) { return CONFORMANCE_REFUSED; }
+    if ( WIFSIGNALED( status ) )
+    {
+        fprintf( stderr, "driver: the writer's child died by signal %d%s\n", WTERMSIG( status ),
+                 WTERMSIG( status ) == SIGALRM ? " (it ran past the alarm)" : "" );
+        return CONFORMANCE_DIED;
+    }
     if ( WIFEXITED( status ) && WEXITSTATUS( status ) == kRefusedExit ) { return CONFORMANCE_REFUSED; }
     if ( WIFEXITED( status ) && WEXITSTATUS( status ) == kWroteExit ) { return CONFORMANCE_WROTE; }
     if ( WIFEXITED( status ) && WEXITSTATUS( status ) == kNoSetterExit ) { return CONFORMANCE_NO_SETTER; }
+    if ( WIFEXITED( status ) && WEXITSTATUS( status ) == kUnrepresentableExit ) { return CONFORMANCE_UNREPRESENTABLE; }
+    if ( WIFEXITED( status ) && WEXITSTATUS( status ) == 2 ) { return CONFORMANCE_ROW_WIRE; }
     return CONFORMANCE_BROKEN;
 }
 #endif

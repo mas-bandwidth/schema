@@ -15,6 +15,8 @@
  * units the corpus names cannot meet in one translation unit; each has one of
  * its own beside this file and reaches it through driver.h's erased shapes. */
 
+#include <locale.h>
+
 #include "driver.h"
 
 /* ---------------------------------------------------------------------------
@@ -173,7 +175,8 @@ static const UnitFn units[] = {
     conformance_codecs_tblp1,
     conformance_codecs_tblp3,
     conformance_codecs_scalars,
-    conformance_codecs_graphdemo, conformance_codecs_blobdemo, conformance_codecs_tblg1, conformance_codecs_tblp2, conformance_codecs_streamdemo, conformance_codecs_tblscalars2, conformance_codecs_tblfixedevo, conformance_codecs_widelist, conformance_codecs_featurewitnesses, conformance_codecs_tblvarevo1, conformance_codecs_tblvarevo2, conformance_codecs_tblvarevo3, conformance_codecs_cooktorture, conformance_codecs_cooktorturewide
+    conformance_codecs_graphdemo, conformance_codecs_blobdemo, conformance_codecs_tblg1, conformance_codecs_tblp2, conformance_codecs_streamdemo, conformance_codecs_tblscalars2, conformance_codecs_tblfixedevo, conformance_codecs_widelist, conformance_codecs_featurewitnesses, conformance_codecs_tblvarevo1, conformance_codecs_tblvarevo2, conformance_codecs_tblvarevo3, conformance_codecs_cooktorture, conformance_codecs_cooktorturewide,
+    conformance_codecs_tblsurf
 };
 
 static const ConformanceCodec * find_codec( const char * unit, const char * root )
@@ -830,8 +833,10 @@ static int surface_write_refusal( const char * out, const char * surface, int wr
         }
         codec = find_codec( unit, f->field[3] );
         if ( codec == NULL ) { fprintf( stderr, "driver: no codec for %s.%s\n", unit, f->field[3] ); free( announcement ); return 1; }
-        wire = slurp( f->field[4], &bytes );
-        if ( wire == NULL ) { fprintf( stderr, "driver: cannot read %s\n", f->field[4] ); free( announcement ); return 1; }
+        /* `-` is the root's FRESH value: a fixed table past the 65536-byte
+           ceiling has no file form to load (FORMAT.md) */
+        wire = strcmp( f->field[4], "-" ) == 0 ? NULL : slurp( f->field[4], &bytes );
+        if ( wire == NULL && strcmp( f->field[4], "-" ) != 0 ) { fprintf( stderr, "driver: cannot read %s\n", f->field[4] ); free( announcement ); return 1; }
         verdict = conformance_write_refusal_case( writer, codec, unit, wire, (int64_t) bytes, announcement, (int64_t) announcement_bytes,
                                                   f->field[3], f->field[5], f->field[6], f->field[7] );
         free( wire );
@@ -841,14 +846,229 @@ static int surface_write_refusal( const char * out, const char * surface, int wr
             fprintf( stderr, "driver: %s %s: no setter for %s %s %s\n", surface, f->field[1], f->field[3], f->field[5], f->field[6] );
             return 1;
         }
-        if ( verdict != CONFORMANCE_WROTE && verdict != CONFORMANCE_REFUSED )
+        if ( verdict == CONFORMANCE_ROW_WIRE )
+        {
+            fprintf( stderr, "driver: %s %s: the row's wire %s did not load\n", surface, f->field[1], f->field[4] );
+            return 1;
+        }
+        if ( verdict == CONFORMANCE_DIED )
+        {
+            /* the runtime died another way (named by the case runner): the
+               case is unanswered, and the rows after it are still asked */
+            fprintf( stderr, "driver: %s %s: no answer\n", surface, f->field[1] );
+            continue;
+        }
+        if ( verdict != CONFORMANCE_WROTE && verdict != CONFORMANCE_REFUSED && verdict != CONFORMANCE_UNREPRESENTABLE )
         {
             fprintf( stderr, "driver: %s %s: the case did not run\n", surface, f->field[1] );
             return 1;
         }
-        answer = verdict == CONFORMANCE_WROTE ? "wrote\n" : "refused\n";
+        answer = verdict == CONFORMANCE_WROTE ? "wrote\n" : verdict == CONFORMANCE_REFUSED ? "refused\n" : "unrepresentable\n";
         if ( !spill( out, f->field[1], answer, strlen( answer ) ) ) { return 1; }
     }
+    return 0;
+}
+
+/* ---------------------------------------------------------------------------
+   THE 2026-11-22 SURFACES (test/conformance/README.md): each calls the unit's
+   real generated runtime through driver.h's ConformanceUnit1122
+   --------------------------------------------------------------------------- */
+
+static const ConformanceUnit1122 * find_unit1122( const char * unit )
+{
+    static const ConformanceUnit1122 * ( * const getters[] )( void ) = {
+        conformance_unit1122_tblsurf, conformance_unit1122_tblann4096, conformance_unit1122_tblann4097,
+        conformance_unit1122_messagedemo, conformance_unit1122_backenddemo,
+    };
+    size_t i;
+    for ( i = 0; i < sizeof( getters ) / sizeof( getters[0] ); i++ )
+    {
+        const ConformanceUnit1122 * u = getters[i]();
+        if ( strcmp( u->unit, unit ) == 0 ) { return u; }
+    }
+    return NULL;
+}
+
+/* announce <case> <unit> <root> <mode> <input>: the unit's announcement
+   written, read strict or lenient, or a root sent as a batch of one with no
+   announcement read or written on the connection */
+static int surface_announce( const char * out )
+{
+    int i;
+    for ( i = 0; i < num_lines; i++ )
+    {
+        const Line * f = &lines[i];
+        const ConformanceUnit1122 * u;
+        const char * mode;
+        const char * verdict = NULL;
+        uint8_t * answer = NULL;
+        int64_t size = 0;
+        int ok;
+        if ( strcmp( f->field[0], "announce" ) != 0 ) { continue; }
+        if ( f->count < 6 ) { fprintf( stderr, "driver: short announce line\n" ); return 1; }
+        u = find_unit1122( f->field[2] );
+        if ( u == NULL ) { fprintf( stderr, "driver: announce %s: no announcement for unit %s\n", f->field[1], f->field[2] ); return 1; }
+        mode = f->field[4];
+        if ( strcmp( mode, "write" ) == 0 )
+        {
+            size = u->announce_measure();
+            if ( size < 0 ) { verdict = "refused\n"; }
+            else
+            {
+                int64_t wrote;
+                answer = (uint8_t *) malloc( (size_t) ( size > 0 ? size : 1 ) );
+                if ( answer == NULL ) { fprintf( stderr, "driver: out of memory\n" ); return 1; }
+                wrote = u->announce( answer, size );
+                if ( wrote < 0 ) { verdict = "refused\n"; }
+                else { size = wrote; }
+            }
+        }
+        else if ( strcmp( mode, "strict" ) == 0 || strcmp( mode, "lenient" ) == 0 )
+        {
+            size_t n = 0;
+            uint8_t * input = slurp( f->field[5], &n );
+            if ( input == NULL ) { fprintf( stderr, "driver: cannot read %s\n", f->field[5] ); return 1; }
+            verdict = u->announce_read( input, (int64_t) n, strcmp( mode, "strict" ) == 0 ) ? "read\n" : "refused\n";
+            free( input );
+        }
+        else if ( strcmp( mode, "send" ) == 0 )
+        {
+            const ConformanceCodec * codec = find_codec( f->field[2], f->field[3] );
+            void * value;
+            int sent;
+            if ( codec == NULL || u->send == NULL ) { fprintf( stderr, "driver: announce %s: no message codec for %s.%s\n", f->field[1], f->field[2], f->field[3] ); return 1; }
+            value = codec->storage();
+            if ( strcmp( f->field[5], "-" ) != 0 )
+            {
+                ConformanceReport report;
+                size_t n = 0;
+                uint8_t * wire = slurp( f->field[5], &n );
+                memset( &report, 0, sizeof( report ) );
+                if ( wire == NULL ) { fprintf( stderr, "driver: cannot read %s\n", f->field[5] ); return 1; }
+                ok = codec->load( value, wire, (int64_t) n, &report );
+                free( wire );
+                if ( !ok ) { fprintf( stderr, "driver: announce %s: the row's wire did not load\n", f->field[1] ); return 1; }
+            }
+            sent = u->send( f->field[3], value, &answer, &size );
+            if ( sent < 0 ) { fprintf( stderr, "driver: announce %s: %s sends no %s\n", f->field[1], f->field[2], f->field[3] ); return 1; }
+            if ( sent == 0 ) { verdict = "refused\n"; }
+        }
+        else
+        {
+            fprintf( stderr, "driver: announce %s: no mode %s\n", f->field[1], mode );
+            return 1;
+        }
+        ok = verdict != NULL ? spill( out, f->field[1], verdict, strlen( verdict ) ) : spill( out, f->field[1], answer, (size_t) size );
+        free( answer );
+        if ( !ok ) { return 1; }
+    }
+    return 0;
+}
+
+/* read-into <case> <unit> <root> <form> <lawful> <damaged> <count|-> <announcement|-> */
+static int surface_read_into( const char * out )
+{
+    int i;
+    for ( i = 0; i < num_lines; i++ )
+    {
+        const Line * f = &lines[i];
+        const ConformanceUnit1122 * u;
+        uint8_t * lawful, * damaged, * announcement = NULL;
+        size_t lawful_bytes = 0, damaged_bytes = 0, announcement_bytes = 0;
+        ConformanceText answer = { NULL, 0, 0 };
+        char * end = NULL;
+        long long count;
+        int ran;
+        if ( strcmp( f->field[0], "read-into" ) != 0 ) { continue; }
+        if ( f->count < 9 ) { fprintf( stderr, "driver: short read-into line\n" ); return 1; }
+        if ( strcmp( f->field[4], "fixed-nocap" ) == 0 )
+        {
+            /* NO CALL TO MAKE: C's <base>_fixed_load takes its capacity as a
+               parameter, and C has no overload without it, so no omitted
+               capacity can be asked of it */
+            if ( !spill( out, f->field[1], "unrepresentable\n", strlen( "unrepresentable\n" ) ) ) { return 1; }
+            continue;
+        }
+        u = find_unit1122( f->field[2] );
+        if ( u == NULL || u->read_into == NULL ) { fprintf( stderr, "driver: read-into %s: no read-into for unit %s\n", f->field[1], f->field[2] ); return 1; }
+        lawful = slurp( f->field[5], &lawful_bytes );
+        damaged = slurp( f->field[6], &damaged_bytes );
+        if ( strcmp( f->field[8], "-" ) != 0 ) { announcement = slurp( f->field[8], &announcement_bytes ); }
+        if ( lawful == NULL || damaged == NULL || ( strcmp( f->field[8], "-" ) != 0 && announcement == NULL ) )
+        {
+            fprintf( stderr, "driver: read-into %s: cannot read its inputs\n", f->field[1] );
+            return 1;
+        }
+        count = strtoll( f->field[7], &end, 10 );
+        if ( end == NULL || *end != 0 || count < 1 ) { fprintf( stderr, "driver: read-into %s: %s is no count\n", f->field[1], f->field[7] ); return 1; }
+        ran = u->read_into( f->field[3], f->field[4], lawful, (int64_t) lawful_bytes, damaged, (int64_t) damaged_bytes, (int64_t) count,
+                            announcement, (int64_t) announcement_bytes, &answer );
+        free( lawful );
+        free( damaged );
+        free( announcement );
+        if ( ran == 1 ) { fprintf( stderr, "driver: read-into %s: no %s form for %s.%s\n", f->field[1], f->field[4], f->field[2], f->field[3] ); return 1; }
+        if ( ran == 2 ) { fprintf( stderr, "driver: read-into %s: unanswered\n", f->field[1] ); free( answer.data ); continue; }
+        ran = spill( out, f->field[1], answer.data, answer.length );
+        free( answer.data );
+        if ( !ran ) { return 1; }
+    }
+    return 0;
+}
+
+/* json-write-into <case> <unit> <root> <wire>: the text writer under a
+   comma-decimal locale, into a caller buffer 64 bytes past what it measured,
+   every byte of which starts as 0xA5; a byte past the returned length that
+   changed answers `tail-written` */
+static int surface_json_write_into( const char * out )
+{
+    const char * name = getenv( "SCHEMA_COMMA_LOCALE" );
+    const struct lconv * conv;
+    int i;
+    if ( name == NULL || name[0] == 0 ) { fprintf( stderr, "driver: json-write-into: SCHEMA_COMMA_LOCALE is not set\n" ); return 1; }
+    if ( setlocale( LC_ALL, name ) == NULL ) { fprintf( stderr, "driver: json-write-into: setlocale( LC_ALL, %s ) was refused\n", name ); return 1; }
+    conv = localeconv();
+    if ( conv == NULL || conv->decimal_point == NULL || strcmp( conv->decimal_point, "," ) != 0 )
+    {
+        /* a locale rule checked under a dot locale checks nothing */
+        fprintf( stderr, "driver: json-write-into: %s is set but its decimal point is not a comma\n", name );
+        return 1;
+    }
+    for ( i = 0; i < num_lines; i++ )
+    {
+        const Line * f = &lines[i];
+        const ConformanceCodec * codec;
+        ConformanceReport report;
+        uint8_t * wire;
+        char * buffer;
+        size_t n = 0;
+        void * value;
+        int64_t size, capacity, wrote, k;
+        int tail = 0, ok;
+        if ( strcmp( f->field[0], "json-write-into" ) != 0 ) { continue; }
+        if ( f->count < 5 ) { fprintf( stderr, "driver: short json-write-into line\n" ); return 1; }
+        codec = find_codec( f->field[2], f->field[3] );
+        if ( codec == NULL ) { fprintf( stderr, "driver: json-write-into %s: no codec for %s.%s\n", f->field[1], f->field[2], f->field[3] ); return 1; }
+        wire = slurp( f->field[4], &n );
+        if ( wire == NULL ) { fprintf( stderr, "driver: cannot read %s\n", f->field[4] ); return 1; }
+        value = codec->storage();
+        memset( &report, 0, sizeof( report ) );
+        ok = codec->load( value, wire, (int64_t) n, &report );
+        free( wire );
+        if ( !ok ) { fprintf( stderr, "driver: json-write-into %s: the wire did not load\n", f->field[1] ); return 1; }
+        size = codec->to_json( value, NULL, 0 );
+        if ( size < 0 ) { fprintf( stderr, "driver: json-write-into %s: the measure refused; no answer\n", f->field[1] ); continue; }
+        capacity = size + 64;
+        buffer = (char *) malloc( (size_t) capacity );
+        if ( buffer == NULL ) { fprintf( stderr, "driver: out of memory\n" ); return 1; }
+        memset( buffer, 0xA5, (size_t) capacity );
+        wrote = codec->to_json( value, buffer, capacity );
+        if ( wrote < 0 || wrote > capacity ) { fprintf( stderr, "driver: json-write-into %s: to_json answered %lld; no answer\n", f->field[1], (long long) wrote ); free( buffer ); continue; }
+        for ( k = wrote; k < capacity; k++ ) { tail = tail || (uint8_t) buffer[k] != 0xA5; }
+        ok = tail ? spill( out, f->field[1], "tail-written\n", strlen( "tail-written\n" ) ) : spill( out, f->field[1], buffer, (size_t) wrote );
+        free( buffer );
+        if ( !ok ) { return 1; }
+    }
+    setlocale( LC_ALL, "C" );
     return 0;
 }
 
@@ -865,7 +1085,7 @@ int main( int argc, char ** argv )
     surface = argv[2];
     if ( strcmp( surface, "list" ) == 0 )
     {
-        printf( "wire\nmessage\nretain\nretain-save\nreport\nframing\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-reason\nblock-reason\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n" );
+        printf( "wire\nmessage\nretain\nretain-save\nreport\nframing\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-reason\nblock-reason\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nannounce\nread-into\njson-write-into\n" );
         return 0;
     }
     if ( argc < 4 )
@@ -897,5 +1117,10 @@ int main( int argc, char ** argv )
     if ( strcmp( surface, "write-refusal-fixed" ) == 0 ) { return surface_write_refusal( out, surface, CONFORMANCE_WRITE_FIXED ); }
     if ( strcmp( surface, "write-refusal-message" ) == 0 ) { return surface_write_refusal( out, surface, CONFORMANCE_WRITE_MESSAGE ); }
     if ( strcmp( surface, "write-refusal-json" ) == 0 ) { return surface_write_refusal( out, surface, CONFORMANCE_WRITE_JSON ); }
+    if ( strcmp( surface, "write-refusal-cook" ) == 0 ) { return surface_write_refusal( out, surface, CONFORMANCE_WRITE_COOK ); }
+    if ( strcmp( surface, "write-refusal-block" ) == 0 ) { return surface_write_refusal( out, surface, CONFORMANCE_WRITE_BLOCK ); }
+    if ( strcmp( surface, "announce" ) == 0 ) { return surface_announce( out ); }
+    if ( strcmp( surface, "read-into" ) == 0 ) { return surface_read_into( out ); }
+    if ( strcmp( surface, "json-write-into" ) == 0 ) { return surface_json_write_into( out ); }
     return 2;
 }
