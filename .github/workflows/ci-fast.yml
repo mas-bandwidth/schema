@@ -1760,17 +1760,45 @@ jobs:
             -provides "platform tool:make tool:git tool:sh tool:dart" "$PGROUP_GO_TEST_JSON"
 
   # Build the native executables separately from the I/O-accounted runs.
+  # The C++ build used to spend ~36 s of this job's two-minute budget building
+  # bin/schema before generation could begin (#4843). block-gate already builds
+  # that exact compiler in every run; restore its tree-bound artifact here so
+  # this job's budget covers the C++ producer rather than duplicate Go work.
   build-cpp-conformance-account:
-    needs: plan
+    needs: [plan, block-gate]
     if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.cpp_corpus_account == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
+    permissions:
+      actions: read
+      contents: read
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/merge-main
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: schema-compiler-${{ github.run_id }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          path: ${{ runner.temp }}/schema-compiler
+          digest-mismatch: error
+      - name: Restore the same-run compiler for this exact source tree
+        run: |
+          set -euo pipefail
+          artifact="$RUNNER_TEMP/schema-compiler"
+          expected=$(git rev-parse HEAD^{tree})
+          actual=$(cat "$artifact/source-tree")
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::schema compiler source tree $actual, want $expected"
+            exit 1
+          fi
+          (cd "$artifact" && sha256sum -c SHA256SUMS)
+          mkdir -p bin
+          install -m 0755 "$artifact/bin/schema" bin/schema
       - name: Check out the pinned C++ runtime
         run: |
           cd ..
@@ -1779,7 +1807,7 @@ jobs:
       - name: Build the C++ conformance driver and cook companion
         run: |
           if [ -f /opt/nova/sdk/env.sh ]; then . /opt/nova/sdk/env.sh; fi
-          python3 make/conformance-handoff.py produce "$RUNNER_TEMP/cpp-conformance.tar.gz" --leg cpp
+          python3 make/conformance-handoff.py produce "$RUNNER_TEMP/cpp-conformance.tar.gz" --leg cpp --prebuilt-compiler
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cpp-conformance
@@ -2015,11 +2043,32 @@ jobs:
         with:
           go-version: '1.26'
           cache: false
+      # The compiler is already a prerequisite of tables-block-zero-cost. Stage
+      # it before that gate and publish only after the gate passes, binding the
+      # binary to this post-merge source tree and its own digest.
+      - name: Build the compiler once for this checkout
+        run: |
+          set -euo pipefail
+          make bin/schema
+          artifact="$RUNNER_TEMP/schema-compiler"
+          rm -rf "$artifact"
+          mkdir -p "$artifact/bin"
+          cp bin/schema "$artifact/bin/schema"
+          git rev-parse HEAD^{tree} > "$artifact/source-tree"
+          (cd "$artifact" && sha256sum bin/schema > SHA256SUMS)
       # The three languages write separate trees, so they run side by side:
       # one after another they were the sum of three rows, past the
       # per-commit limit on a busy runner.
       - name: the tables goldens match a fresh generation (the block zero-cost gate, byte-identity half)
         run: make -j"$(nproc)" tables-block-zero-cost
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: schema-compiler-${{ github.run_id }}
+          path: ${{ runner.temp }}/schema-compiler
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+          overwrite: true
 
   # THE NEW-LEG SCAFFOLD'S FIXTURE (#4541). The one SCHEMA_SLOW test this lane
   # runs, for a diff plan's newleg rule selects (THE NEW-LEG SCAFFOLD in
