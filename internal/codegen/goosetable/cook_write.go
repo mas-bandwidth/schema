@@ -187,7 +187,7 @@ func (w *cookWriter) field(f *ir.Field, src, dst string, offset int64, ordinal i
 	case f.Array != ir.ArrayNone || f.KeyEnum != "":
 		facts := ir.BlockFieldOf(w.u, f, offset, false)
 		if f.Array == ir.ArrayCounted {
-			w.pl(1, "if %sCount < 0 || %sCount > %d { return false; }", src, src, f.ArrayBound)
+			w.pl(1, "if %sCount < %d || %sCount > %d { return false; }", src, max(int64(0), f.ArrayMin), src, f.ArrayBound)
 			w.pl(1, "%s::cook_put(b, at + %d, %sCount as! u64, 4, big);", rt, facts.CountOffset, src)
 			w.cl(1, "if %s { %sCount = %s::cook_loaded_count(vals, %s, %d); }", ride, dst, rt, slot, f.ArrayBound)
 		}
@@ -259,6 +259,9 @@ func (w *cookWriter) value(f *ir.Field, src, dst, at string, s string, ind int) 
 		w.pl(ind, "%s::cook_put(b, at + %s, %s, 8, big);", rt, at, x)
 		w.cl(ind, "if %s { %s = %s::accel_bits_f64(%s); }", ride, dst, rt, bits)
 	case ir.TInt, ir.TFixed, ir.TBits:
+		for _, b := range scalarBounds(f) {
+			w.pl(ind, "if %s { return false; }", b.over(src))
+		}
 		typ := elemTypeOf(w.g.Slots(f)[0].Type)
 		width := int64(t.Width) / 8
 		if width == 16 {

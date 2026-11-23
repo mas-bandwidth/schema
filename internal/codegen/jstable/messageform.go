@@ -41,6 +41,7 @@ func messageAnnouncementRuntime(u *ir.Unit) string {
 	fmt.Fprintf(&b, "  return prev;\n")
 	fmt.Fprintf(&b, "}\n")
 	fmt.Fprintf(&b, "export const TableMessageEntriesHere = %d;\n", len(tablewire.MessageVocabulary(u)))
+	fmt.Fprintf(&b, "export const TableMessageBuildVersionHere = globalThis.BigInt(\"0x%016x\");\n", ir.BuildVersion(u))
 	fmt.Fprintf(&b, "export const TableMessageAnnouncement = new globalThis.Uint8Array([%s]);\n", jsByteLiterals(tablewire.Announce(u)))
 	// R8: the writer refuses a vocabulary past the readers' default entry maximum.
 	fmt.Fprintf(&b, "const TableAnnounceTooLarge = %t;\n", len(tablewire.MessageVocabulary(u)) > ir.TableVocabularyMaxEntries)
@@ -71,6 +72,7 @@ export class TableVocabulary {
     this.Count = 0;
     this.RefBits = 1;
     this.BuildVersion = 0n;
+    this.BuildVersionOwn = TableMessageBuildVersionHere;
     this.Announced = false;
     this.Refused = false;
     this.MaxBytes = 64 * 1024;
@@ -81,6 +83,7 @@ export class TableVocabulary {
     this.Count = 0;
     this.RefBits = 1;
     this.BuildVersion = 0n;
+    this.BuildVersionOwn = TableMessageBuildVersionHere;
     this.Announced = false;
     this.Refused = false;
     this.MaxBytes = 64 * 1024;

@@ -47,9 +47,12 @@ package jstable
 
 import (
 	"fmt"
+	"math/big"
 	"sort"
+	"strconv"
 	"strings"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/js"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -184,6 +187,9 @@ func (g *blockGen) emit() {
 				g.needHome(reader)
 			}
 		}
+		if strings.Contains(g.body.String(), "TableBlockUtf8Ok(") {
+			g.needHome("TableBlockUtf8Ok")
+		}
 	}
 }
 
@@ -299,7 +305,7 @@ func (g *blockGen) emitBlockHandle(bl *ir.BlockLayout) {
 		g.pf("    %sStride: %d, %sMax: %d, %sProjectionOffset: %d,\n",
 			field, a.Stride, field, a.Max, field, a.TripleOffset)
 	}
-	members := []string{"Open", "OpenReason", "Begin", "Layout", "Type: projection"}
+	members := []string{"Open", "OpenReason", "Begin", "BeginFrom", "Layout", "Type: projection"}
 	for _, a := range bl.Arrays {
 		field := ir.GoExportName(a.Field.Name)
 		members = append(members, field+"Count", field+"Pitch", field+"At")
@@ -508,6 +514,160 @@ func (g *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 	}
 	g.pf("    return globalThis.Math.floor((offset + %d) / %d) * %d;\n", ir.BlockAlign-1, ir.BlockAlign, ir.BlockAlign)
 	g.pf("  }\n\n")
+	g.emitBlockBeginFrom(bl)
+}
+
+func (g *blockGen) emitBlockBeginFrom(bl *ir.BlockLayout) {
+	seen := map[string]bool{}
+	var order []*ir.Struct
+	fixedCollectTypes(bl.Table, seen, &order)
+	for _, st := range order {
+		g.emitBlockCheckStruct(st)
+	}
+	g.pf("  function BeginFrom(bytes, value) {\n")
+	g.pf("    if (!check_%s(value)) { return -1; }\n", bl.Table.Name)
+	if len(bl.Arrays) > 0 {
+		g.pf("    const counts = {\n")
+		for _, a := range bl.Arrays {
+			field := ir.GoExportName(a.Field.Name)
+			mem := js.MemberName(a.Field.Name)
+			if a.Field.Array == ir.ArrayCounted {
+				g.pf("      %s: value.%sCount,\n", field, mem)
+			} else {
+				g.pf("      %s: value.%s.length,\n", field, mem)
+			}
+		}
+		g.pf("    };\n")
+		g.pf("    return Begin(bytes, counts);\n")
+	} else {
+		g.pf("    return Begin(bytes);\n")
+	}
+	g.pf("  }\n\n")
+}
+
+func (g *blockGen) emitBlockCheckStruct(st *ir.Struct) {
+	g.pf("  function check_%s(value) {\n", st.Name)
+	g.pf("    if (value === null || typeof value !== \"object\") { return false; }\n")
+	for _, f := range st.Fields {
+		if f.Type.Optional {
+			name := js.MemberName(f.Name)
+			g.pf("    if (value.%sPresent) {\n", name)
+			g.emitBlockCheckPayload(f, "value", "      ")
+			g.pf("    }\n")
+			continue
+		}
+		g.emitBlockCheckPayload(f, "value", "    ")
+	}
+	g.pf("    return true;\n  }\n")
+}
+
+func (g *blockGen) emitBlockCheckPayload(f *ir.Field, val, ind string) {
+	name := js.MemberName(f.Name)
+	expr := val + "." + name
+	switch {
+	case f.KeyEnum != "":
+		g.pf("%sif (!globalThis.Array.isArray(%s) && !(%s instanceof globalThis.Uint8Array)) { return false; }\n", ind, expr, expr)
+		g.pf("%sif (%s.length !== %d) { return false; }\n", ind, expr, f.KeyEnumRef.Max)
+		g.emitBlockCheckLoop(f, strconv.FormatInt(f.KeyEnumRef.Max, 10), expr, ind)
+	case f.Array == ir.ArrayFixed:
+		g.pf("%sif (!globalThis.Array.isArray(%s) && !(%s instanceof globalThis.Uint8Array)) { return false; }\n", ind, expr, expr)
+		g.pf("%sif (%s.length !== %d) { return false; }\n", ind, expr, f.ArrayBound)
+		g.emitBlockCheckLoop(f, strconv.FormatInt(f.ArrayBound, 10), expr, ind)
+	case f.Array == ir.ArrayCounted:
+		g.pf("%sif (!globalThis.Array.isArray(%s) && !(%s instanceof globalThis.Uint8Array)) { return false; }\n", ind, expr, expr)
+		count := expr + "Count"
+		g.pf("%sif (typeof %s !== \"number\" || !globalThis.Number.isInteger(%s) || %s < %d || %s > %d || %s > %s.length) { return false; }\n",
+			ind, count, count, count, f.ArrayMin, count, f.ArrayBound, count, expr)
+		g.emitBlockCheckLoop(f, count, expr, ind)
+	case f.Type.Kind == ir.TString:
+		length := expr + "Length"
+		g.pf("%sif (!(%s instanceof globalThis.Uint8Array)) { return false; }\n", ind, expr)
+		g.pf("%sif (typeof %s !== \"number\" || !globalThis.Number.isInteger(%s) || %s < 0 || %s > %d || %s > %s.length) { return false; }\n",
+			ind, length, length, length, length, f.Type.Size, length, expr)
+		g.pf("%sif (!TableBlockUtf8Ok(%s, %s)) { return false; }\n", ind, expr, length)
+	case f.Type.Kind == ir.TBytes:
+		length := expr + "Length"
+		g.pf("%sif (!(%s instanceof globalThis.Uint8Array)) { return false; }\n", ind, expr)
+		g.pf("%sif (typeof %s !== \"number\" || !globalThis.Number.isInteger(%s) || %s < 0 || %s > %d || %s > %s.length) { return false; }\n",
+			ind, length, length, length, length, f.Type.Size, length, expr)
+	default:
+		g.emitBlockCheckElement(f, expr, ind)
+	}
+}
+
+func (g *blockGen) emitBlockCheckLoop(f *ir.Field, count, expr, ind string) {
+	iv := fmt.Sprintf("_bi%d", len(ind))
+	g.pf("%sfor (let %s = 0; %s < %s; %s++) {\n", ind, iv, iv, count, iv)
+	g.emitBlockCheckElement(f, expr+"["+iv+"]", ind+"  ")
+	g.pf("%s}\n", ind)
+}
+
+func (g *blockGen) emitBlockCheckElement(f *ir.Field, expr, ind string) {
+	if f.Type.Kind == ir.TNamed {
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			g.pf("%sif (!check_%s(%s)) { return false; }\n", ind, r.Name, expr)
+		case *ir.Union:
+			g.pf("%sif (%s === null || typeof %s !== \"object\") { return false; }\n", ind, expr, expr)
+			g.pf("%sif (!globalThis.Number.isInteger(%s.type) || %s.type < 0 || %s.type > %d) { return false; }\n",
+				ind, expr, expr, expr, len(r.Variants))
+			g.pf("%sswitch (%s.type) {\n", ind, expr)
+			for i, v := range r.Variants {
+				if v.F == nil {
+					continue
+				}
+				g.pf("%s  case %d: {\n", ind, i+1)
+				g.emitBlockCheckPayload(v.F, expr, ind+"    ")
+				g.pf("%s    break;\n%s  }\n", ind, ind)
+			}
+			g.pf("%s  default: break;\n%s}\n", ind, ind)
+		case *ir.Enum:
+			g.pf("%sif (!globalThis.Number.isInteger(%s) || %s < 0 || %s > %d) { return false; }\n",
+				ind, expr, expr, expr, r.Max)
+		case *ir.Flags:
+			g.pf("%sif (typeof %s !== \"bigint\") { return false; }\n", ind, expr)
+		}
+		return
+	}
+	switch f.Type.Kind {
+	case ir.TBool:
+		return
+	case ir.TFloat32:
+		g.pf("%sif (typeof %s !== \"number\" || !globalThis.Number.isFinite(globalThis.Math.fround(%s))) { return false; }\n", ind, expr, expr)
+		if lo, hi, ok := fixedFloatClampEnds(f); ok {
+			g.pf("%sif (globalThis.Math.fround(%s) < %s || globalThis.Math.fround(%s) > %s) { return false; }\n", ind, expr, lo, expr, hi)
+		}
+		return
+	case ir.TFloat64:
+		g.pf("%sif (typeof %s !== \"number\" || !globalThis.Number.isFinite(%s)) { return false; }\n", ind, expr, expr)
+		if lo, hi, ok := fixedFloatClampEnds(f); ok {
+			g.pf("%sif (%s < %s || %s > %s) { return false; }\n", ind, expr, lo, expr, hi)
+		}
+		return
+	}
+	asBig := fixedIsBig(f.Type)
+	if asBig {
+		g.pf("%sif (typeof %s !== \"bigint\") { return false; }\n", ind, expr)
+	} else {
+		g.pf("%sif (typeof %s !== \"number\" || !globalThis.Number.isInteger(%s)) { return false; }\n", ind, expr, expr)
+	}
+	if rlo, rhi, ok := ir.TableRawRange(f); ok {
+		lo, hi := jsIntLit(rlo, asBig), jsIntLit(rhi, asBig)
+		g.pf("%sif (%s < %s || %s > %s) { return false; }\n", ind, expr, lo, expr, hi)
+	} else if f.Type.Kind == ir.TInt && f.Type.Width > 0 {
+		w := uint(f.Type.Width)
+		lo := big.NewInt(0)
+		hi := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), w), big.NewInt(1))
+		if f.Type.Signed {
+			hi = new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), w-1), big.NewInt(1))
+			lo = new(big.Int).Neg(new(big.Int).Add(hi, big.NewInt(1)))
+		}
+		g.pf("%sif (%s < %s || %s > %s) { return false; }\n", ind, expr, jsIntLit(lo, asBig), expr, jsIntLit(hi, asBig))
+	}
+	if f.Type.Kind == ir.TBits {
+		maxv := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
+		g.pf("%sif (%s < %s || %s > %s) { return false; }\n", ind, expr, jsIntLit(big.NewInt(0), asBig), expr, jsIntLit(maxv, asBig))
+	}
 }
 
 // emitBlockAccessors emits the projection's own reads: the inline fields where
@@ -780,6 +940,33 @@ export const TableBlockByteOrder = 1n;
 // A failure is THIS BUILD's defect — its own constants disagree — and the
 // first Open of the block throws, naming it. It is not a null: a null says the
 // bytes are not this build's, and these bytes were never looked at.
+export function TableBlockUtf8Ok(bytes, len) {
+  let i = 0;
+  while (i < len) {
+    const b0 = bytes[i];
+    if (b0 === 0) { return false; }
+    if (b0 < 0x80) { i++; continue; }
+    if (b0 < 0xc2 || b0 > 0xf4) { return false; }
+    if (b0 < 0xe0) {
+      if (i + 1 >= len || (bytes[i + 1] & 0xc0) !== 0x80) { return false; }
+      i += 2; continue;
+    }
+    if (b0 < 0xf0) {
+      if (i + 2 >= len) { return false; }
+      const b1 = bytes[i + 1], b2 = bytes[i + 2];
+      if ((b1 & 0xc0) !== 0x80 || (b2 & 0xc0) !== 0x80) { return false; }
+      if ((b0 === 0xe0 && b1 < 0xa0) || (b0 === 0xed && b1 >= 0xa0)) { return false; }
+      i += 3; continue;
+    }
+    if (i + 3 >= len) { return false; }
+    const b1 = bytes[i + 1], b2 = bytes[i + 2], b3 = bytes[i + 3];
+    if ((b1 & 0xc0) !== 0x80 || (b2 & 0xc0) !== 0x80 || (b3 & 0xc0) !== 0x80) { return false; }
+    if ((b0 === 0xf0 && b1 < 0x90) || (b0 === 0xf4 && b1 >= 0x90)) { return false; }
+    i += 4;
+  }
+  return true;
+}
+
 export const TableBlockLayout = globalThis.Object.freeze({
   verify(projection, strides) {
     const seen = new globalThis.Set();

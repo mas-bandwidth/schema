@@ -742,11 +742,25 @@ const surfacesConnRows = [
 // wire is `-`; null where the root has no fixed codec on this leg.
 async function fixedValueOf(unit, root, wirePath) {
   const codec = await textCodec(unit, root);
-  if (codec === null || codec.fixedValue === undefined) { return null; }
-  if (wirePath === "-") { return codec.fixedValue.fresh(); }
-  const x = codec.fixedValue.load(new Uint8Array(readFileSync(wirePath)));
-  if (x === null) { fail(unit + "." + root + ": the fixed load refused " + wirePath); }
-  return x;
+  if (codec !== null && codec.fixedValue !== undefined) {
+    if (wirePath === "-") { return codec.fixedValue.fresh(); }
+    const x = codec.fixedValue.load(new Uint8Array(readFileSync(wirePath)));
+    if (x === null) { fail(unit + "." + root + ": the fixed load refused " + wirePath); }
+    return x;
+  }
+  if (wirePath === "-") {
+    const row = messageRow(unit, root) ?? surfacesConnRows.find((r) => r[0] === unit && r[1] === root) ?? null;
+    if (row !== null) {
+      const home = await load(row[2]);
+      const Class = home[root], init = home["Init" + root];
+      if (typeof Class === "function" && typeof init === "function") {
+        const x = new Class();
+        init(x);
+        return x;
+      }
+    }
+  }
+  return null;
 }
 
 // messageVerbs answers a message row's Measure/Save pair for the write-refusal
@@ -758,6 +772,15 @@ async function messageVerbs(unit, root) {
   const measure = m[root + "MeasureMessages"], save = m[root + "SaveMessages"];
   if (typeof measure !== "function" || typeof save !== "function") { return null; }
   return { measure, save };
+}
+
+async function blockUnit(unit, root) {
+  const row = fixedRoots.find((r) => r[0] === unit && r[1] === root) ?? null;
+  if (row === null) { return null; }
+  const blockPath = row[2].replace(/Table\.js$/, "Block.js");
+  if (!existsSync(resolve(generated, blockPath))) { return null; }
+  const m = await load(blockPath);
+  return m[root + "Block"] ?? null;
 }
 
 // ---- the WIRE-CARRYING surfaces (docs/SPEC-TABLES.md §3, §3.1, §4, §16, §16.7)
@@ -1746,7 +1769,7 @@ if (surface === "list") {
   // counts rather than reading as a feature the leg lacks. The retain surfaces
   // answer every row whose unit this leg generates, and name the reason beside
   // a row it cannot reach.
-  process.stdout.write("wire\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\nmessage\nmessage-prior\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nannounce\nread-into\njson-write-into\n");
+  process.stdout.write("wire\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\nmessage\nmessage-prior\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nannounce\nread-into\njson-write-into\n");
   // the opt-in units this leg answers (MANIFEST.txt `opt-in`)
   process.stdout.write("unit shapes\n");
   process.exit(0);
@@ -1786,16 +1809,8 @@ switch (surface) {
   case "write-refusal-message":
   case "write-refusal-json":
   case "write-refusal-cook":
-    await surfaceWriteRefusal(surface, lines, outDir, textCodec, messageVerbs, unitView, fixedValueOf);
-    break;
-  // THE BLOCK BUILDER IS NOT IN THIS LEG (docs/SPEC-TABLES.md §19.1): a
-  // generated <Root>Block carries Open, OpenReason, the row readers and
-  // Begin(bytes), which writes the prologue alone; nothing builds a root's
-  // block from a value (no count, used-length or row setter), so the surface
-  // is ABSENT and stays out of `list`.
   case "write-refusal-block":
-    process.stderr.write("write-refusal-block: absent: the JavaScript block form has no builder from a value (only Begin, which writes the prologue)\n");
-    process.exit(2);
+    await surfaceWriteRefusal(surface, lines, outDir, textCodec, messageVerbs, unitView, fixedValueOf, blockUnit);
     break;
   case "announce": await surfaceAnnounce(lines, outDir, load, messageVerbs, fixedValueOf); break;
   case "read-into": await surfaceReadInto(lines, outDir, load); break;

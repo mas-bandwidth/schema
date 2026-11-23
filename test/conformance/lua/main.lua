@@ -1264,16 +1264,8 @@ end
 -- count is never handed to it. A row whose edit is one of those answers
 -- `unrepresentable`; a count of an out-of-line array is handed to Begin as
 -- the value holds it.
-local function wrefBlock(u, root, v, path, what)
-  local owner, fd = wrefWalk(u, root, v, path)
-  if what ~= "count" or path:find("[.%[]") or fd.shape ~= "array" or fd.fixed then
-    return "unrepresentable\n"
-  end
-  local arr = owner[fd.name]
-  local counts = {}
-  counts[fd.name] = type(arr) == "table" and #arr or arr
-  local answer = wrefWrite(u.blockbuild.Begin, u.T, root, counts)
-  return answer
+local function wrefBlock(u, root, v, _path, _what)
+  return wrefWrite(u.blockbuild.Build, u.T, root, v)
 end
 
 local function surfaceWriteRefusal(all, outdir, surface)
@@ -1446,11 +1438,12 @@ local function surfaceReadInto(all, outdir)
           ok, got = pcall(u.load.Load, u.T, root, bytes, report, nil, values[1])
           if ok and got ~= nil and got ~= values[1] then values[1] = got end
         elseif form == "json" then
-          ok, got = pcall(u.json.FromJson, u.T, root, bytes, report)
+          ok, got = pcall(u.json.FromJson, u.T, root, bytes, report, values[1])
+          if ok and got ~= nil and got ~= values[1] then values[1] = got end
         elseif form == "fixed" then
-          ok, got = pcall(u.T.FixedLoad, root, bytes, n)
+          ok, got = pcall(u.T.FixedLoad, root, bytes, n, report, values)
         elseif form == "message" then
-          ok, got = pcall(u.T.LoadMessages, root, vocab, bytes, report)
+          ok, got = pcall(u.T.LoadMessages, root, vocab, bytes, report, values)
         else
           fail(name .. ": " .. form .. " is not a read-into form")
         end
@@ -1464,7 +1457,7 @@ local function surfaceReadInto(all, outdir)
         if form == "json" then
           values[1] = got
         elseif form == "fixed" or form == "message" then
-          values = got
+          if got ~= values then values = got end
         end
         return "read\n"
       end

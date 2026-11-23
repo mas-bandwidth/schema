@@ -1030,6 +1030,12 @@ local function encodeValue(c: any, e: any, kind: number, shape: any, val: any, n
 	if shape.packing == 1 and shape.base ~= nil then
 		x = sub4(x, shape.base)
 	end
+	if bits > 0 and bits < 64 and (shape.packing == 1 or not e.signed) then
+		local overflow = if bits < 32 then (bit32.rshift(x[1], bits) ~= 0 or x[2] ~= 0) elseif bits == 32 then (x[2] ~= 0) else (bit32.rshift(x[2], bits - 32) ~= 0)
+		if overflow or x[3] ~= 0 or x[4] ~= 0 then
+			return fail(c, "invalid_value", named)
+		end
+	end
 	putLimbs(w, x, bits)
 	return true
 end
@@ -1093,6 +1099,13 @@ local function encodeElement(c: any, fd: any, shape: any, x: any): boolean
 end
 
 local function encodeArray(c: any, fd: any, entry: any, holder: any, val: any, count: number): boolean
+	if fd.array == "fixed" then
+		if type(val) == "buffer" then
+			if buffer.len(val) ~= fd.bound then return fail(c, "invalid_value", fd) end
+		elseif type(val) ~= "table" or #val ~= fd.bound or val[fd.bound + 1] ~= nil then
+			return fail(c, "invalid_value", fd)
+		end
+	end
 	if type(val) == "buffer" and count > buffer.len(val) then return fail(c, "invalid_value", fd) end
 	local shape = entry.shape
 	local bits = countBits(shape)
@@ -1161,6 +1174,11 @@ local function bornElides(c: any, fd: any, val: any, n: number): boolean
 end
 
 local function encodeKeyed(c: any, fd: any, entry: any, val: any): boolean
+	if type(val) == "buffer" then
+		if buffer.len(val) ~= fd.bound then return fail(c, "invalid_value", fd) end
+	elseif type(val) ~= "table" or #val ~= fd.bound or val[fd.bound + 1] ~= nil then
+		return fail(c, "invalid_value", fd)
+	end
 	local shape = entry.shape
 	local e = fd.e
 	local present = {}
@@ -2513,6 +2531,26 @@ function MS.LoadMessages(v: any, root: string, data: buffer, capacity: number, r
 		return 0, {}
 	end
 	return count, values
+end
+
+function MS.LoadMessagesInto(v: any, root: string, data: buffer, into: { any }, report: any?): number
+	local d = S.lookup(root)
+	local rep: any = report or {}
+	local count, values = MS.LoadMessages(v, root, data, #into, rep)
+	if count < 1 or rep.damaged == true or rep.reason ~= nil then
+		for i = 1, #into do
+			local fresh = d.new()
+			for k in into[i] do into[i][k] = nil end
+			for k, val in fresh do into[i][k] = val end
+		end
+		return 0
+	end
+	for i = 1, count do
+		if into[i] == nil then into[i] = d.new() end
+		for k in into[i] do into[i][k] = nil end
+		for k, val in values[i] do into[i][k] = val end
+	end
+	return count
 end
 
 return table.freeze(MS)

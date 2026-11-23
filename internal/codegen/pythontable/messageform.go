@@ -136,6 +136,28 @@ def load_messages(root: type[_T], vocab: MessageVocabulary, data: bytes | bytear
     if getattr(getattr(root, "descriptor", None), "name", "") in _CRC_ROOTS:
         data = _open_crc(data, 2)
     return cast(list[_T], _load(root, vocab, data, BUILD_VERSION, FIELD_KEYS, ROOTS, capacity, report))
+
+def load_messages_into(root: type[_T], targets: list[_T], vocab: MessageVocabulary, data: bytes | bytearray | memoryview, capacity: int = 256, report: LoadReport | None = None) -> int:
+    from . import Refused as _Refused, _copy_instance as _copy
+    if report is not None:
+        report.reset()
+    try:
+        loaded = load_messages(root, vocab, data, capacity, report)
+        if len(loaded) > len(targets):
+            raise _Refused("batch_too_large")
+    except _Refused as err:
+        for item in targets:
+            _copy(item, root())
+        if report is not None:
+            report.reset()
+            report.refused = True
+            report.reason = err.reason
+        return 0
+    for i, item in enumerate(loaded):
+        _copy(targets[i], item)
+    for i in range(len(loaded), len(targets)):
+        _copy(targets[i], root())
+    return len(loaded)
 `)
 	entries := tablewire.MessageVocabulary(u)
 	slots := make(map[string]int, len(entries))

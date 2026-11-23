@@ -891,7 +891,7 @@ defmodule Bench.BenchFixed do
     acc = R.each(v_stats, acc, &mixed_stat_fixed_write_into/2)
     acc = <<acc::binary, 0::size((80 - n_stats) * 8)-unit(8)>>
     acc = mixed_event_fixed_write_into(v_game_event, acc)
-    n_loadout = R.count(v_loadout, 0, 4)
+    n_loadout = R.count(v_loadout, 4, 4)
 
     acc =
       R.each(v_loadout, acc, fn e, acc ->

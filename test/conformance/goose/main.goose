@@ -1052,9 +1052,9 @@ fn read_into_variable(root: const u8[:], lawful: const u8[:], damaged: const u8[
         if step == 1 { input.append(damaged); } else { input.append(lawful); }
         let r = schema_rt::load_table(u, root, input, vals, nodes, report);
         conformance_ri_verdict(out, r >= 0 && !report.refused && schema_rt::load_error(report, r) == schema_rt::LoadRefuseOk);
+        at = r;
+        held.clear();
         if r >= 0 {
-            at = r;
-            held.clear();
             held.append(input);
         }
         if step == 1 {

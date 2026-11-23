@@ -441,7 +441,7 @@ conformance-negative-control-elixir-write-refusal-fixed: build/conformance-harne
 	$(call ELIXIR_WREF_CONTROL,build/elixir-conformance-negative-wref-fixed,internal/codegen/elixirtable/fixedruntime.go,ELIXIR_WREF_TEXT_SED,write-refusal-fixed,fref_text_illformed fref_text_zero fref_unionstr_nul fref_unionstr_oor fref_unionstr_overlong fref_unionstr_surrogate fref_unionstr_trunc fref_utf8_outofrange fref_utf8_overlong fref_utf8_surrogate fref_utf8_truncated,wire,a fixed writer that takes ill-formed and zero-byte text)
 
 conformance-negative-control-elixir-write-refusal-message: build/conformance-harness
-	$(call ELIXIR_WREF_CONTROL,build/elixir-conformance-negative-wref-message,internal/codegen/elixirtable/messageform.go,ELIXIR_WREF_MESSAGE_SED,write-refusal-message,mref_element mref_range_high mref_range_low,message,a message writer whose integer rule holds no range)
+	$(call ELIXIR_WREF_CONTROL,build/elixir-conformance-negative-wref-message,internal/codegen/elixirtable/messageform.go,ELIXIR_WREF_MESSAGE_SED,write-refusal-message,mref_element mref_range_high mref_range_low smref_big_hp_high smref_big_hp_low smref_big_mask_wide smref_mask_unnamed smref_narrow_hp_6 smref_wide_hp_11,message,a message writer whose integer rule holds no range)
 
 test-elixir: conformance-negative-control-elixir-write-refusal conformance-negative-control-elixir-write-refusal-fixed \
 	conformance-negative-control-elixir-write-refusal-message

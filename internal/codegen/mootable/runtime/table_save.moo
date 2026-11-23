@@ -612,6 +612,18 @@ end
 -- a positional array body under kind 14: the element kind, the count, then
 -- the elements (§2.9, §3)
 local function write_array(c: any, fd: any, w: any, holder: any, val: any, count: number): boolean
+	if fd.array == "fixed" then
+		local nullableElem = fd.e ~= nil and (fd.e.s == "ptr" or fd.e.s == "sblob" or fd.e.s == "bblob")
+		if type(val) == "buffer" then
+			if buffer.len(val) ~= fd.bound then return refuse(c, "invalid_value", fd) end
+		elseif type(val) ~= "table" then
+			return refuse(c, "invalid_value", fd)
+		elseif nullableElem then
+			for k in val do if type(k) == "number" and (k < 1 or k > fd.bound) then return refuse(c, "invalid_value", fd) end end
+		elseif #val ~= fd.bound or val[fd.bound + 1] ~= nil then
+			return refuse(c, "invalid_value", fd)
+		end
+	end
 	if type(val) == "buffer" and count > buffer.len(val) then return refuse(c, "invalid_value", fd) end
 	if fd.bound ~= nil and fd.bound > 0 and fd.array ~= "list" and count > fd.bound then
 		return refuse(c, "invalid_value", fd)
@@ -672,6 +684,16 @@ end
 -- triple per slot not at its default, in variant order. An array with no
 -- such slot is not written at all.
 local function write_keyed(c: any, fd: any, w: any, val: any): boolean
+	local nullableElem = fd.e ~= nil and (fd.e.s == "ptr" or fd.e.s == "sblob" or fd.e.s == "bblob")
+	if type(val) == "buffer" then
+		if buffer.len(val) ~= fd.bound then return refuse(c, "invalid_value", fd) end
+	elseif type(val) ~= "table" then
+		return refuse(c, "invalid_value", fd)
+	elseif nullableElem then
+		for k in val do if type(k) == "number" and (k < 1 or k > fd.bound) then return refuse(c, "invalid_value", fd) end end
+	elseif #val ~= fd.bound or val[fd.bound + 1] ~= nil then
+		return refuse(c, "invalid_value", fd)
+	end
 	local m = mark(c.ids)
 	local fref = ref(c.ids, fd.id)
 	local body = new_writer(c.count)
@@ -739,7 +761,17 @@ local function write_map(c: any, fd: any, w: any, val: any, required: boolean?):
 	w_u8(b, 13)
 	w_leb(b, n)
 	if n > 0 then
-		for _, ev in map_order(fd, val) do
+		local ordered = map_order(fd, val)
+		local keyfd: any = nil
+		for _, f in entry.fields do if f.id == MapKeyId then keyfd = f end end
+		if keyfd ~= nil then
+			for i = 2, #ordered do
+				if not key_less(keyfd, ordered[i - 1], ordered[i]) and not key_less(keyfd, ordered[i], ordered[i - 1]) then
+					return refuse(c, "invalid_value", fd)
+				end
+			end
+		end
+		for _, ev in ordered do
 			local eb = body_of(c, entry, ev)
 			if eb == nil then
 				return false

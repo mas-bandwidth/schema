@@ -129,6 +129,22 @@ defmodule Benchtable.BenchTableBlock do
     B.begin(counts, [], 88, @build_version)
   end
 
+  defp table_entity_block_rules do
+    [
+      {:int, "pos_x", -16_383, 16_383},
+      {:int, "pos_y", -16_383, 16_383},
+      {:int, "pos_z", -16_383, 16_383},
+      {:int, "vel_x", -2048, 2047},
+      {:int, "vel_y", -2048, 2047},
+      {:int, "vel_z", -2048, 2047},
+      {:int, "health", 0, 1000}
+    ]
+  end
+
+  def block_build_table_entity(value) do
+    B.build(value, table_entity_block_rules(), [], 88, @build_version)
+  end
+
   # TableEntity's block descriptor (docs/SPEC-TABLES.md §8, §19.2): a module
   # attribute, so a read of it copies no term — describing the PROJECTION.
   @block_info_table_entity %{
@@ -494,6 +510,16 @@ defmodule Benchtable.BenchTableBlock do
   # written, rows left zero for the caller to fill.
   def block_begin_table_stat(counts) do
     B.begin(counts, [], 32, @build_version)
+  end
+
+  defp table_stat_block_rules do
+    [
+      {:int, "delta", -512, 511}
+    ]
+  end
+
+  def block_build_table_stat(value) do
+    B.build(value, table_stat_block_rules(), [], 32, @build_version)
   end
 
   # TableStat's block descriptor (docs/SPEC-TABLES.md §8, §19.2): a module

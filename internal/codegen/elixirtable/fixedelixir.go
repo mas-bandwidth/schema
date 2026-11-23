@@ -390,9 +390,9 @@ func (g *fixedGen) writePayload(f *ir.Field, val string) []wseg {
 	name := g.fieldRef(val, f.Name)
 	switch {
 	case f.KeyEnum != "":
-		out = append(out, g.writeElements(f, name, f.KeyEnumRef.Max, 0)...)
+		out = append(out, g.writeElements(f, name, f.KeyEnumRef.Max, f.KeyEnumRef.Max)...)
 	case f.Array == ir.ArrayFixed:
-		out = append(out, g.writeElements(f, name, f.ArrayBound, 0)...)
+		out = append(out, g.writeElements(f, name, f.ArrayBound, f.ArrayBound)...)
 	case f.Array == ir.ArrayCounted:
 		// THE COUNT, THEN MAX ELEMENTS, the slack zero-filled. The count is
 		// HELD TO ITS DECLARED RANGE on the way out: the variable leg raises

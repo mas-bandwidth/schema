@@ -82,12 +82,14 @@ class LoadReport:
     Refused is the one read.
     """
 
-    __slots__ = ("unknown", "widened", "retained", "retain_lost")
+    __slots__ = ("unknown", "widened", "retained", "retain_lost", "refused", "reason")
 
     unknown: int
     widened: int
     retained: int
     retain_lost: int
+    refused: bool
+    reason: str
 
     def __init__(self) -> None:
         self.reset()
@@ -97,6 +99,16 @@ class LoadReport:
         self.widened = 0
         self.retained = 0
         self.retain_lost = 0
+        self.refused = False
+        self.reason = ""
+
+
+def _copy_instance(dst: object, src: object) -> None:
+    slots = getattr(type(src), "__slots__", ())
+    if isinstance(slots, str):
+        slots = (slots,)
+    for slot in slots:
+        setattr(dst, slot, getattr(src, slot))
 
 
 def _validate_int(value: object, path: str, min: int, max: int) -> None:

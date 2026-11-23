@@ -3958,6 +3958,18 @@ local function writeArray(w: W, fd: any, rec: any, depth: number): boolean
 	local v = rec[fd.slot]
 	local e = fd.e
 	local n = fd.bound
+	if fd.array == "fixed" then
+		local nullableElem = e ~= nil and (e.s == "ptr" or e.s == "sblob" or e.s == "bblob")
+		if type(v) == "buffer" then
+			if buffer.len(v) ~= fd.bound then return fail(w, "invalid_value") end
+		elseif type(v) ~= "table" then
+			return fail(w, "invalid_value")
+		elseif nullableElem then
+			for k in v do if type(k) == "number" and (k < 1 or k > fd.bound) then return fail(w, "invalid_value") end end
+		elseif #v ~= fd.bound or v[fd.bound + 1] ~= nil then
+			return fail(w, "invalid_value")
+		end
+	end
 	if fd.array == "counted" then
 		n = rec[fd.slot .. "Count"]
 	elseif fd.array == "list" then
@@ -3999,6 +4011,17 @@ end
 local function writeKeyed(w: W, fd: any, rec: any, depth: number): boolean
 	local v = rec[fd.slot]
 	local n = fd.bound
+	local e = fd.e
+	local nullableElem = e ~= nil and (e.s == "ptr" or e.s == "sblob" or e.s == "bblob")
+	if type(v) == "buffer" then
+		if buffer.len(v) ~= fd.bound then return fail(w, "invalid_value") end
+	elseif type(v) ~= "table" then
+		return fail(w, "invalid_value")
+	elseif nullableElem then
+		for k in v do if type(k) == "number" and (k < 1 or k > fd.bound) then return fail(w, "invalid_value") end end
+	elseif #v ~= fd.bound or v[fd.bound + 1] ~= nil then
+		return fail(w, "invalid_value")
+	end
 	if n <= 0 then
 		emit(w, "{}")
 		return true
@@ -4047,6 +4070,12 @@ local function writeMap(w: W, fd: any, rec: any, depth: number): boolean
 	table.sort(order, function(a: any, b: any): boolean
 		return keyLess(keyOf(a), keyOf(b), cls, signed)
 	end)
+	for i = 2, #order do
+		local ka, kb = keyOf(order[i - 1]), keyOf(order[i])
+		if not keyLess(ka, kb, cls, signed) and not keyLess(kb, ka, cls, signed) then
+			return fail(w, "invalid_value")
+		end
+	end
 	emit(w, "{")
 	for i, entry in order do
 		if i > 1 then

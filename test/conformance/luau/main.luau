@@ -1474,16 +1474,14 @@ local function surfaceWriteRefusal(lines: { { string } }, kindName: string)
 					end
 				end
 			elseif kindName == "write-refusal-block" then
-				-- THE BLOCK BUILDER (SPEC-TABLES §19.1) is schema_block's Begin,
-				-- which takes the COUNT of each out-of-line array and writes the
-				-- prologue and the triples, never a row: a field value, an inline
-				-- text's used length and an inline fixed array's element count
-				-- are never handed to it, and those rows are `unrepresentable`
-				local _, bfd = wrefWalk(u, root, v, path)
-				if what ~= "count" or string.find(path, "[.%[]") ~= nil or bfd.s ~= "arr" or bfd.array == "fixed" then
+				local B = optional(u, "schema_block")
+				if B == nil then
 					answer = "unrepresentable\n"
 				else
-					error(name .. ": a count row on an out-of-line array: the Luau unit emits no block-builder parameters for schema_block.Begin, so this row has no generated call to make")
+					local okb, built = pcall(B.Build, d, v)
+					if okb and built then
+						answer = "wrote\n"
+					end
 				end
 			elseif kindName == "write-refusal" or kindName == "write-refusal-fixed" then
 				if kindName == "write-refusal-fixed" and not d.fixed then
@@ -1635,16 +1633,16 @@ local function surfaceReadInto(lines: { { string } })
 				local bytes = file(path)
 				local ok: boolean, got: any
 				if form == "variable" then
-					ok, got = pcall(u.load.load, root, bytes, r)
+					ok, got = pcall(u.load.loadInto, root, bytes, r, values[1])
 				elseif form == "json" then
-					ok, got = pcall(u.json.FromJson, root, bytes, r)
+					ok, got = pcall(u.json.FromJsonInto, root, bytes, r, values[1])
 				elseif form == "fixed" then
 					if Fx == nil then error(name .. ": the unit emits no schema_fixed") end
-					ok, got = pcall(Fx.read, d, nil, bytes, r, n)
+					ok, got = pcall(Fx.readInto, d, nil, bytes, r, values)
 				elseif form == "message" then
-					local c: any, bodies: any
-					ok, c, bodies = pcall(M.LoadMessages, voc, root, bytes, n, r)
-					got = if ok and c ~= nil and c >= 1 then bodies else nil
+					local c: any
+					ok, c = pcall(M.LoadMessagesInto, voc, root, bytes, values, r)
+					got = if ok and c ~= nil and c >= 1 then values else nil
 				else
 					error(name .. ": " .. form .. " is not a read-into form")
 				end
@@ -1653,23 +1651,11 @@ local function surfaceReadInto(lines: { { string } })
 				if got == nil or (reason ~= nil and reason ~= "") or r.malformed == true or (r.verdict or 0) ~= 0 then
 					return "refused\n"
 				end
-				if form == "variable" or form == "json" then
-					values[1] = got
-				else
-					values = got
-				end
 				return "read\n"
 			end
 			local parts = {}
 			parts[#parts + 1] = readOnce(lawful)
 			parts[#parts + 1] = readOnce(damaged)
-			if form == "message" then
-				-- LoadMessages answers opaque message BODIES (bit ranges and
-				-- their transcoded tree), not values of the root: there is no
-				-- value for ToJson to write, and the row says so
-				parts[#parts + 1] = "LoadMessages answers bodies, not values of the root\n"
-				values = {}
-			end
 			for i, value in values do
 				local jr = report()
 				local text = u.json.ToJson(root, value, jr)

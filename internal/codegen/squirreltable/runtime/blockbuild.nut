@@ -191,7 +191,13 @@ local splitPath = function(path) {
   return out;
 };
 
-local writeScalar = function(b, at, f, value) {
+local findDescField = function(T, recName, fieldName) {
+  if (T == null || !("Descriptors" in T) || !(recName in T.Descriptors)) return null;
+  foreach (fd in T.Descriptors[recName].fields) if (fd.name == fieldName) return fd;
+  return null;
+};
+
+local writeScalar = function(b, at, f, value, fd = null) {
   local n = f.elemSize;
   if (f.storage == "Bool") { b[at] = value ? 1 : 0; return true; }
   if (f.storage == "Float") {
@@ -205,34 +211,47 @@ local writeScalar = function(b, at, f, value) {
     return true;
   }
   if (f.storage == "Signed" || f.storage == "Unsigned") {
+    if (fd != null && ("lo" in fd) && fd.lo != null && fd.hi != null && typeof fd.lo != "array") {
+      if (fd.signed) {
+        if (value < fd.lo || value > fd.hi) { _M.SetReason <- "out_of_range"; return false; }
+      } else {
+        local MIN = 0x8000000000000000;
+        if ((value ^ MIN) < (fd.lo ^ MIN) || (value ^ MIN) > (fd.hi ^ MIN)) { _M.SetReason <- "out_of_range"; return false; }
+      }
+    }
     writeRaw(b, at, value, n);
     return true;
   }
   return false;
 };
 
-local writeValue = function(b, f, at, idx, value) {
+local writeValue = function(b, f, at, idx, value, fd = null) {
   if (f.counted && (f.storage == "String" || f.storage == "Bytes")) {
     // the fixed buffer stands where it is; the used length is beside it
     // (§19.3, §2.7)
     local len = (value == null) ? 0 : value.len();
+    local cap = ("bound" in f) ? f.bound : (fd != null && ("bound" in fd) ? fd.bound : -1);
+    if (cap >= 0 && len > cap) { _M.SetReason <- "length_over_bound"; return false; }
     for (local i = 0; i < len; i++) b[at + i] = value[i] & 0xff;
     writeRaw(b, at - f.offset + f.countOffset, len, 4);
     return true;
   }
   if (f.isArray) {
-    if (idx != null) return writeScalar(b, at, f, value);
+    local efd = (fd != null && ("elem" in fd)) ? fd.elem : null;
+    if (idx != null) return writeScalar(b, at, f, value, efd);
     if (typeof value != "array") return false;
+    local cap = ("bound" in f) ? f.bound : (fd != null && ("bound" in fd) ? fd.bound : -1);
+    if (cap >= 0 && value.len() > cap) { _M.SetReason <- "count_over_bound"; return false; }
     // the whole array refuses before any byte changes when one element is
     // a NaN or an infinity (docs/SPEC-TABLES.md §3.3)
     if (f.storage == "Float") {
       local probe = blob(8);
-      foreach (x in value) if (!writeScalar(probe, 0, f, x)) return false;
+      foreach (x in value) if (!writeScalar(probe, 0, f, x, efd)) return false;
     }
-    for (local i = 0; i < value.len(); i++) writeScalar(b, at + i * f.elemSize, f, value[i]);
+    for (local i = 0; i < value.len(); i++) if (!writeScalar(b, at + i * f.elemSize, f, value[i], efd)) return false;
     return true;
   }
-  return writeScalar(b, at, f, value);
+  return writeScalar(b, at, f, value, fd);
 };
 
 local setPath;
@@ -263,7 +282,7 @@ setPath = function(T, block, info, at, segs, k, value) {
     block.Blob[at + f.presentOffset] = value ? 1 : 0;
     return true;
   }
-  return writeValue(block.Blob, f, target, idx, value);
+  return writeValue(block.Blob, f, target, idx, value, findDescField(T, info.name, name));
 };
 
 // Set writes one field through the SAME descriptors the reader walks

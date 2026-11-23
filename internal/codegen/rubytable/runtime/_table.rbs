@@ -140,6 +140,7 @@
     def self.attach_text_comments: (untyped, untyped, untyped, untyped) -> untyped
     def self.binary_input: (untyped) -> untyped
     def self.block_begin: (untyped, ?untyped) -> untyped
+    def self.block_begin_from: (untyped, untyped) -> untyped
     def self.block_buffer_bytes: (untyped) -> untyped
     def self.block_dump: (untyped) -> untyped
     def self.block_dump_record: (untyped, untyped, untyped, untyped, untyped) -> untyped
@@ -201,7 +202,7 @@
     def self.encode_retain_table: (untyped, untyped, untyped, untyped) -> untyped
     def self.encode_table: (untyped, untyped) -> untyped
     def self.encode_text: (untyped) -> untyped
-    def self.fill_json_object: (untyped, untyped, untyped, untyped) -> untyped
+    def self.fill_json_object: (untyped, untyped, untyped, untyped, ?untyped) -> untyped
     def self.finite_float32: (untyped, untyped) -> untyped
     def self.float32_bits: (untyped) -> untyped
     def self.float32_bits_eq?: (untyped, untyped) -> untyped
@@ -214,6 +215,7 @@
     def self.format_cook_text: (untyped, untyped, untyped) -> untyped
     def self.format_json_fixed: (untyped, untyped) -> untyped
     def self.from_json: (untyped, untyped, ?untyped) -> untyped
+    def self.from_json_into: (untyped, untyped, untyped, ?untyped) -> untyped
     def self.generated_object?: (untyped) -> untyped
     def self.graph_eq: (untyped, untyped, ?untyped) -> untyped
     def self.graph_inspect: (untyped) -> untyped
@@ -228,6 +230,7 @@
     def self.json_zero_element: (untyped, untyped) -> untyped
     def self.land_text_root: (untyped, untyped) -> untyped
     def self.load_message_batch: (untyped, untyped, untyped, untyped, untyped, untyped, ?untyped, ?untyped) -> untyped
+    def self.load_into: (untyped, untyped, untyped, ?untyped) -> untyped
     def self.load_table: (untyped, untyped, ?untyped, ?untyped) -> untyped
     def self.load_text_form: (untyped, untyped, ?untyped) -> untyped
     def self.locate_text_node: (untyped, untyped, untyped) -> untyped
@@ -275,11 +278,11 @@
     def self.read_field_codec: (untyped, untyped, untyped) -> untyped
     def self.read_float_element: (untyped, untyped) -> untyped
     def self.read_int_element: (untyped, untyped) -> untyped
-    def self.read_json_field: (untyped, untyped, untyped, untyped) -> untyped
+    def self.read_json_field: (untyped, untyped, untyped, untyped, ?untyped) -> untyped
     def self.read_json_fixed: (untyped, untyped) -> untyped
     def self.read_json_float: (untyped, untyped) -> untyped
     def self.read_json_integer: (untyped, untyped) -> untyped
-    def self.read_json_keyed: (untyped, untyped, untyped, untyped, untyped) -> untyped
+    def self.read_json_keyed: (untyped, untyped, untyped, untyped, untyped, ?untyped) -> untyped
     def self.read_json_timestamp: (untyped, untyped) -> untyped
     def self.read_keyed_field: (untyped, untyped, untyped) -> untyped
     def self.read_map_field: (untyped, untyped, untyped) -> untyped
@@ -326,7 +329,7 @@
     def self.skip_array: (untyped, untyped, untyped) -> untyped
     def self.skip_body: (untyped, untyped, untyped) -> untyped
     def self.skip_content: (untyped, untyped, untyped, untyped) -> untyped
-    def self.skip_json_unknown: (untyped, untyped) -> untyped
+    def self.skip_json_unknown: (untyped, untyped, ?untyped) -> untyped
     def self.skip_keyed: (untyped, untyped, untyped) -> untyped
     def self.skip_payload: (untyped, untyped, untyped, untyped) -> untyped
     def self.skip_union: (untyped, untyped, untyped) -> untyped
