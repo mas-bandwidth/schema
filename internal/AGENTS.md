@@ -16,6 +16,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `fixedvector/` | fixed form's shared cross-version vectors | `go test ./internal/fixedvector` | `go test ./internal/fixedvector` |
 | `format/` | schemafmt | `go test ./internal/format` | `go test ./internal/format` |
 | `fuzz/` | seeded fuzz corpus | `go test ./internal/fuzz` | `go test ./internal/fuzz` |
+| `githooks/` | temp-repo tests for the .githooks/pre-push hook range and no-verify rules | `go test ./internal/githooks` | `go test ./internal/githooks` |
 | `goldens/` | source, id, and wire pins | `go test ./internal/goldens` | `make update-goldens` |
 | `goname/` | Go member spelling (initialisms) | `go test ./internal/goname` | `go test ./internal/goname` |
 | `idcapwire/` | the retain-writer id cap test file builder | `go test ./internal/tablewire` | `go test ./internal/tablewire` |
