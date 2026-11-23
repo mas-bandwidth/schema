@@ -8082,6 +8082,7 @@ define pins_generate_dirs
 	done < "$$tmp/cmds"; \
 	procs=$$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4); \
 	if [ "$$procs" -gt 8 ]; then procs=8; fi; \
+	if [ -n "$(4)" ] && [ "$(4)" -lt "$$procs" ]; then procs="$(4)"; fi; \
 	slot=0; pids=''; fail=0; \
 	for b in "$$tmp"/b.*; do \
 		[ -f "$$b" ] || continue; \
@@ -8255,16 +8256,33 @@ pins-wire-tables-forms: bin/schema build/conformance-harness
 	./build/conformance-harness generate
 
 PINS_CONFORMANCE_DIRS := maps lists widelist examples v1 v2 p1 p2 p3 block pointers messages stream m1 m2 a1 a2 g1 k1 k2 w1 w2 r1 r2 blobs scalars scalars2 fixedevo varevo1 varevo2 varevo3 prior cooktorture cooktorturewide shapes backend vocab vocab9 arms rt1 features
-PINS_CONFORMANCE_SOURCES = $$(ls build/tables-generated/maps/*Table.cpp build/tables-generated/lists/*Table.cpp build/tables-generated/widelist/*Table.cpp) $(filter-out build/tables-generated/maps/% build/tables-generated/lists/% build/tables-generated/widelist/%,$(CONFORMANCE_SOURCES))
+# GNU Make records unlimited -j without a number and default serial without -j.
+PINS_CONFORMANCE_WIDTH = $(patsubst -j%,%,$(or $(filter -j%,$(MAKEFLAGS)),-j1))
+# The cook binary is used by `harness pin` as well as the conformance driver.
+# Start both large translation units alongside the generated table objects,
+# with one bounded Make jobserver instead of a serial cook build and batches.
+# The sub-make reads the generated source list after the files exist.
+# Keep the old `ls` order for the collection objects when linking.
+PINS_CONFORMANCE_COLLECTION_OBJECTS = $(filter build/conformance-cpp-objs/maps/% build/conformance-cpp-objs/lists/% build/conformance-cpp-objs/widelist/%,$(CONFORMANCE_OBJECTS))
+PINS_CONFORMANCE_OBJECTS = $(sort $(PINS_CONFORMANCE_COLLECTION_OBJECTS)) $(filter-out $(PINS_CONFORMANCE_COLLECTION_OBJECTS),$(CONFORMANCE_OBJECTS))
+.PHONY: _pins-conformance-binaries
+_pins-conformance-binaries: build/schema_test_cook build/conformance-cpp-objs/_main/conformance_main.o $(PINS_CONFORMANCE_OBJECTS)
+	$(CXX) $(TABLES_CXXFLAGS) build/conformance-cpp-objs/_main/conformance_main.o $(PINS_CONFORMANCE_OBJECTS) -o build/conformance-cpp
 
 .PHONY: pins-conformance
 pins-conformance: export PINS_CPP_GENERATE = $(call tables_generate,./bin/schema,build/tables-generated)
 pins-conformance: bin/schema build/conformance-harness
 	@rm -rf build/tables-generated && mkdir -p build/tables-generated
-	$(call pins_generate_dirs,PINS_CPP_GENERATE,$(PINS_CONFORMANCE_DIRS),conformance)
+	$(call pins_generate_dirs,PINS_CPP_GENERATE,$(PINS_CONFORMANCE_DIRS),conformance,$(PINS_CONFORMANCE_WIDTH))
 	@touch build/tables-generated/.stamp
-	$(CXX) $(COOK_CXXFLAGS) $(COOK_INCLUDES) test/tables/cook_main.cpp -o build/schema_test_cook
-	$(call pins_compile_cxx,build/conformance-cpp,$(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES),test/conformance/cpp/main.cpp $(PINS_CONFORMANCE_SOURCES),conformance)
+	@# loud-ok: a core count for the job width (nproc, else sysctl, else 4); the work decides the status
+	@set -eu; \
+	procs=$$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4); \
+	if [ "$$procs" -gt 8 ]; then procs=8; fi; \
+	requested="$(PINS_CONFORMANCE_WIDTH)"; \
+	jobs=; \
+	if [ -z "$$requested" ] || [ "$$requested" -gt "$$procs" ]; then jobs="-j$$procs"; fi; \
+	$(MAKE) --no-print-directory $$jobs _pins-conformance-binaries
 	./build/conformance-harness pin
 
 
