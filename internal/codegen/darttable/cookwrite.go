@@ -3,6 +3,7 @@ package darttable
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -74,6 +75,10 @@ func (g *cookGen) emitCookWriteFixed(st *ir.Struct) {
 		} else {
 			g.pf("%s\n      %s\n\n", head, expr)
 		}
+	} else if g.cookHasDeprecatedEnum(st) {
+		g.pf("  static int cookMeasure(%s value) {\n", st.Name)
+		g.cookAssert("    ", fmt.Sprintf("_cook%s(value, null, 64, Endian.little)", st.Name))
+		g.pf("    return %d;\n  }\n\n", total)
 	} else {
 		g.pf("  static int cookMeasure(%s value) => %d;\n\n", st.Name, total)
 	}
@@ -110,6 +115,19 @@ func (g *cookGen) emitCookWriteFixed(st *ir.Struct) {
 		g.pf("    return true;\n  }\n\n")
 	})
 	g.trimBlank()
+}
+
+// cookHasDeprecatedEnum finds an enum checked by the fixed cook's value walk.
+func (g *cookGen) cookHasDeprecatedEnum(st *ir.Struct) bool {
+	found := false
+	cookWalk(g.unit, st.Name, func(_ string, record *ir.MemberLayout) {
+		for _, fl := range record.Fields {
+			if e, ok := fl.Field.Type.Ref.(*ir.Enum); ok && !fl.Field.Deprecated && slices.Contains(e.VariantDeprecated, true) {
+				found = true
+			}
+		}
+	})
+	return found
 }
 
 // fixedCookUnion names the first field of st's closure that holds a union
@@ -244,6 +262,9 @@ func (g *cookGen) emitCookFixedScalar(f *ir.Field, expr, at string, width int64,
 		// infinity refuses the cook, measure and write alike, before its slot
 		// is touched.
 		g.cookRefuseUnless(ind, expr+".isFinite", "false")
+	}
+	if e, ok := f.Type.Ref.(*ir.Enum); ok && !f.Deprecated {
+		emitDeprecatedVariantAssert(g.pf, e, expr, ind)
 	}
 	g.pf("%sif (out != null) {\n", ind)
 	g.emitCookScalarStore(f, expr, at, width, ind+"  ")
@@ -960,6 +981,9 @@ func (g *cookGen) emitCookExtentHolder(f *ir.Field, val, addr, ind string, write
 			// a cooked float element is finite (docs/SPEC-TABLES.md §3.3):
 			// measure and write refuse a NaN or an infinity alike
 			g.cookRefuseUnless(in+"  ", e+".isFinite", "-1")
+		}
+		if enum, ok := elem.Type.Ref.(*ir.Enum); ok && !elem.Deprecated {
+			emitDeprecatedVariantAssert(g.pf, enum, e, in+"  ")
 		}
 		g.pf("%s  if (out != null) {\n", in)
 		g.emitCookScalarStore(&elem, e, at, size, in+"    ")

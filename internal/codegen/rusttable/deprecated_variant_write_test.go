@@ -81,5 +81,11 @@ fn main() {
     for (id, order) in [("sf26_cook_next_le", 1), ("sf26_cook_next_be", 2)] {
         emit(id, &fixed_root_cook_write(&fixed, order).unwrap());
     }
+    fixed.phase = Phase::Old;
+    for (id, order) in [("sf26_cook_old_le", 1), ("sf26_cook_old_be", 2)] {
+        refuse(id, "invalid_value: Phase.Old is deprecated", || {
+            fixed_root_cook_write(&fixed, order).ok();
+        });
+    }
 }
 `
