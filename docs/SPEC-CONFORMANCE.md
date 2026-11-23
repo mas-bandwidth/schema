@@ -428,3 +428,52 @@ requires its variable-form measure and save to complete.
 | Enum-keyed `Beta` slot at 0 and 50 | `sfw_slot_min`, `sfw_slot_max` |
 
 Run these cases with `make table-write-bounds-go`.
+
+### Declared deprecated enum writers
+
+Compile the [SF-26 schema](../testdata/conformance/feature-witnesses/declared-deprecated-enum/Probe.schema).
+Its `Phase` enum keeps the deprecated variant `Old` at ordinal 2 and the
+live variant `Next` at ordinal 3. Assign each variant directly to the
+root's `phase` field through the caller API. A reader may map a deprecated
+variant to its default, so constructing the caller value directly is part
+of this test. Run with write assertions enabled on targets that use them.
+
+| Operation | `Phase.Next` | `Phase.Old` |
+|---|---|---|
+| Save one `VarRoot` in Form 1 | `sf26_form1_next` emits the pinned 29 bytes | `sf26_form1_old` refuses |
+| Save one `FixedRoot` in Form 3 | `sf26_form3_next` emits the pinned 118 bytes, with ordinal 3 in its enum slot | `sf26_form3_old` refuses |
+| Call fixed-root `CookMeasure` | `sf26_cook_measure_next` returns 88 bytes | `sf26_cook_measure_old` also returns 88 bytes |
+| Cook one `FixedRoot` in little-endian order | `sf26_cook_next_le` emits the pinned 88 bytes | `sf26_cook_old_le` refuses before writing |
+| Cook one `FixedRoot` in big-endian order | `sf26_cook_next_be` emits the pinned 88 bytes | `sf26_cook_old_be` refuses before writing |
+
+[The shared expected answers](../testdata/conformance/feature-witnesses/declared-deprecated-enum/cases.txt)
+give each case ID and its complete wire bytes in hex, size in decimal bytes,
+or refusal verdict. Compare every output byte for `Next`. For a caller-buffer
+Cook API, fill an 88-byte destination with `0x5a` before each `Old` call
+and check that every byte retains that value after refusal. A reasoned
+fixed-root measure reports success with size 88 for either variant. The
+fixed layout determines the size. The writer checks whether the supplied
+value may be emitted. These are the enum and fixed Cook rules in
+[SPEC-TABLES §2.15](SPEC-TABLES.md#215-enum-variants--deprecated-in-place)
+and [§7.6](SPEC-TABLES.md#76-the-write-side-cook-and-cookmeasure).
+
+Run the six fixed-root Cook and CookMeasure cases against generated Go with
+
+```sh
+SCHEMA_SLOW=1 go test -count=1 -v ./internal/codegen/gotable -run '^TestDeclaredDeprecatedEnumCook$'
+```
+
+### Present optional array grown from two elements to three
+
+Load the [variable-form seed](../testdata/conformance/table-write-bounds/torture_var_wref.bin)
+as `TortureVarWref` using the [declaration](../testdata/conformance/table-write-bounds/TableWriteBounds.schema).
+The optional `opt_arr` is present and holds `[1, 2]`. For the conformance
+driver's `count` edit, grow it to its declared maximum of three elements.
+Preserve the prefix and copy element zero into the new slot. Save the root.
+The output must match the complete [252-byte expected file](../testdata/conformance/table-write-bounds/expected/torture_var_wref_resized.bin).
+Loading it must return a present `[1, 2, 1]`, with every other field unchanged.
+A successful save of `[1, 2, 0]` fails this test. The fill rule defines the
+test driver's edit. A port may use any caller API that constructs that value.
+
+Run `make table-optional-array-resize-go` to exercise the generated Go writer
+and reader. The expected file is also the comparison input for a new port.

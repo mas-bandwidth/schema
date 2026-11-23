@@ -2,7 +2,7 @@ package writebounds
 
 enum Channel { Alpha, Beta, Gamma }
 
-// Accepted boundary values on variable-table carriers in the shared corpus.
+// Boundary pairs on variable-table carriers in the shared corpus.
 enum Phase
 {
     Live
