@@ -95,6 +95,7 @@ void main() {
 
   fixed.phase = p.Phase.next;
   final size = c.FixedRootCook.cookMeasure(fixed);
+  print('sf26_cook_measure_next $size');
   for (final order in [Endian.little, Endian.big]) {
     final cooked = Uint8List(size);
     if (!c.FixedRootCook.cook(fixed, cooked, order)) {
@@ -103,14 +104,8 @@ void main() {
     emit(order == Endian.little ? 'sf26_cook_next_le' : 'sf26_cook_next_be', cooked);
   }
   fixed.phase = p.Phase.old;
-  try {
-    c.FixedRootCook.cookMeasure(fixed);
-    throw StateError('CookMeasure accepted Phase.Old');
-  } on AssertionError catch (error) {
-    if (error.message != 'deprecated enum variant Phase.Old') {
-      rethrow;
-    }
-  }
+  final oldSize = c.FixedRootCook.cookMeasure(fixed);
+  print('sf26_cook_measure_old $oldSize');
   for (final order in [Endian.little, Endian.big]) {
     final cooked = Uint8List(size)..fillRange(0, size, 0x5a);
     refuse(order == Endian.little ? 'sf26_cook_old_le' : 'sf26_cook_old_be',

@@ -97,9 +97,12 @@ fn main() {
     let mut fixed = FixedRoot::default();
     fixed.phase = Phase::Next;
     row.phase = 3;
+    let size = fixed_root_cook_measure(&row);
+    assert!(matches!(fixed_root_cook_measure_reason(&row), (n, TableCookRefuse::Ok) if n == size));
+    println!("sf26_cook_measure_next {size}");
+    let size = size as usize;
     for (id, order) in [("sf26_cook_next_le", 1), ("sf26_cook_next_be", 2)] {
         let bytes = fixed_root_cook_write(&fixed, order).unwrap();
-        let size = fixed_root_cook_measure(&row) as usize;
         assert_eq!(size, bytes.len());
         let mut raw = vec![0; size];
         assert!(fixed_root_cook_from(&row, &mut raw, order));
@@ -107,12 +110,11 @@ fn main() {
         emit(id, &bytes);
     }
     fixed.phase = Phase::Old;
-    let size = fixed_root_cook_measure(&row) as usize;
     row.phase = 2;
+    let old_size = fixed_root_cook_measure(&row);
+    assert!(matches!(fixed_root_cook_measure_reason(&row), (n, TableCookRefuse::Ok) if n == old_size));
+    println!("sf26_cook_measure_old {old_size}");
     let why = "invalid_value: FixedRoot.phase holds deprecated variant Phase.Old";
-    check_refusal(why, || {
-        fixed_root_cook_measure(&row);
-    });
     for (id, order) in [("sf26_cook_old_le", 1), ("sf26_cook_old_be", 2)] {
         let mut raw = vec![0x5a; size];
         check_refusal(why, || {

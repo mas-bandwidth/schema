@@ -3,7 +3,6 @@ package darttable
 import (
 	"fmt"
 	"regexp"
-	"slices"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -75,10 +74,6 @@ func (g *cookGen) emitCookWriteFixed(st *ir.Struct) {
 		} else {
 			g.pf("%s\n      %s\n\n", head, expr)
 		}
-	} else if g.cookHasDeprecatedEnum(st) {
-		g.pf("  static int cookMeasure(%s value) {\n", st.Name)
-		g.cookAssert("    ", fmt.Sprintf("_cook%s(value, null, 64, Endian.little)", st.Name))
-		g.pf("    return %d;\n  }\n\n", total)
 	} else {
 		g.pf("  static int cookMeasure(%s value) => %d;\n\n", st.Name, total)
 	}
@@ -115,19 +110,6 @@ func (g *cookGen) emitCookWriteFixed(st *ir.Struct) {
 		g.pf("    return true;\n  }\n\n")
 	})
 	g.trimBlank()
-}
-
-// cookHasDeprecatedEnum finds an enum checked by the fixed cook's value walk.
-func (g *cookGen) cookHasDeprecatedEnum(st *ir.Struct) bool {
-	found := false
-	cookWalk(g.unit, st.Name, func(_ string, record *ir.MemberLayout) {
-		for _, fl := range record.Fields {
-			if e, ok := fl.Field.Type.Ref.(*ir.Enum); ok && !fl.Field.Deprecated && slices.Contains(e.VariantDeprecated, true) {
-				found = true
-			}
-		}
-	})
-	return found
 }
 
 // fixedCookUnion names the first field of st's closure that holds a union

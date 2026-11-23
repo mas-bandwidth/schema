@@ -525,17 +525,22 @@ Form 3 saves one fixed record and stores ordinal 3 in its enum slot
 For `Old`, both forms refuse the write under
 [SPEC-TABLES §2.15](SPEC-TABLES.md#215-enum-variants--deprecated-in-place).
 The [expected outcomes](../testdata/conformance/feature-witnesses/declared-deprecated-enum/cases.txt)
-give each case ID followed by its complete output in hex or `refused`.
+give each case ID followed by the complete output in hex, the measured size
+in decimal bytes, or `refused`.
 
 | Case | Typed operation |
 |---|---|
 | `sf26_form1_next`, `sf26_form1_old` | Save `VarRoot` with `Next` or `Old` |
 | `sf26_form3_next`, `sf26_form3_old` | Measure room for one `FixedRoot` and save with `Next` or `Old` |
+| `sf26_cook_measure_next`, `sf26_cook_measure_old` | Measure a `FixedRoot` holding `Next` or `Old`; both return the layout's 88 bytes |
 | `sf26_cook_next_le`, `sf26_cook_next_be`, `sf26_cook_old_le`, `sf26_cook_old_be` | Cook a `FixedRoot` holding `Next` or `Old` in each byte order ([SPEC-TABLES §7.6](SPEC-TABLES.md#76-the-write-side-cook-and-cookmeasure)) |
 
-The Rust and Dart generator tests run these shared cases with assertions enabled. Both probes check measurement
-and verify the caller buffer is unchanged on refusal. Rust checks both its
-typed writer and its fixed-row caller-buffer API.
+The Rust and Dart generator tests run these shared cases with assertions enabled.
+Fixed-root `CookMeasure` reports the layout size for either value.
+Rust's `CookMeasureReason` reports the same size with an OK reason.
+`Cook` validates the value before writing and leaves the caller buffer unchanged
+when it refuses. Rust checks both its typed writer and its fixed-row
+caller-buffer API.
 
 ```sh
 SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 \

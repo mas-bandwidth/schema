@@ -1236,12 +1236,8 @@ func (g *gen) emitCookWrite(st *ir.Struct) {
 	g.pf("// fixed table, so the reason is always Ok; a buffer short of it, a bad\n")
 	g.pf("// byte order or a value outside a declared bound writes NOTHING and\n")
 	g.pf("// returns false.\n")
-	g.pf("pub fn %s(_value: &%sRow) -> i64 {\n", fn(n, "cook_measure"), n)
 	checkEnum := cookRowHasDeprecatedEnum(st, map[*ir.Struct]bool{})
-	if checkEnum {
-		g.pf("    #[cfg(debug_assertions)]\n    unsafe { table_cook_check_enum_variants(_value as *const %sRow as *const u8, %s()); }\n", n, fn(n, "cook_info"))
-	}
-	g.pf("    %d\n}\n\n", total)
+	g.pf("pub fn %s(_value: &%sRow) -> i64 {\n    %d\n}\n\n", fn(n, "cook_measure"), n, total)
 	g.pf("pub fn %s(value: &%sRow) -> (i64, TableCookRefuse) {\n    (%s(value), TableCookRefuse::Ok)\n}\n\n",
 		fn(n, "cook_measure_reason"), n, fn(n, "cook_measure"))
 	g.pf("pub fn %s(value: &%sRow, buffer: &mut [u8], order: u64) -> bool {\n", fn(n, "cook_from"), n)
