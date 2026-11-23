@@ -2296,9 +2296,38 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("     *  counted, arg. A layout entry cannot carry these; the plan compiler\n")
 	g.pf("     *  lands values through them. A `bytes(N)` row is an ARRAY's: dest the\n")
 	g.pf("     *  buffer, aux the live count. */\n")
-	g.pf("    public static final int[] dest = {\n")
-	g.emitDestArray(w)
-	g.pf("    };\n\n")
+	if len(w.dst) > 256 {
+		buf := make([]byte, 0, len(w.dst)*20)
+		putI32 := func(v int64) {
+			u := uint32(v)
+			buf = append(buf, byte(u), byte(u>>8), byte(u>>16), byte(u>>24))
+		}
+		for _, d := range w.dst {
+			putI32(d.dst)
+			putI32(d.stride)
+			putI32(d.aux)
+			putI32(int64(d.counted))
+			putI32(int64(d.arg))
+		}
+		g.pf("    public static final int[] dest = TableFixed.ints(\n")
+		for at := 0; at < len(buf); at += fixedChunkBytes {
+			end := min(at+fixedChunkBytes, len(buf))
+			g.pf("        \"")
+			for _, v := range buf[at:end] {
+				g.pf("\\%03o", v)
+			}
+			if end == len(buf) {
+				g.pf("\"\n")
+			} else {
+				g.pf("\",\n")
+			}
+		}
+		g.pf("    );\n\n")
+	} else {
+		g.pf("    public static final int[] dest = {\n")
+		g.emitDestArray(w)
+		g.pf("    };\n\n")
+	}
 
 	entries, floor := g.fixedLineage(st, FixedLineageEntry{Wire: hash, Layout: layout, Record: 8 + body})
 	g.emitLineage(st, hash, layout, entries, floor)

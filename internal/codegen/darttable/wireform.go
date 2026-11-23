@@ -3922,6 +3922,21 @@ func (g *wireGen) emitLoad(st *ir.Struct) {
 	g.pf("\tif (r.report.refused) return %s();\n", n)
 	g.pf("\treturn v;\n")
 	g.pf("}\n\n")
+	g.pf("void _copy%s(%s dst, %s src) {\n", n, n, n)
+	for _, f := range st.Fields {
+		if f.Type.Optional {
+			g.pf("\tdst.%s = src.%s;\n", hasMember(f), hasMember(f))
+		}
+		g.pf("\tdst.%s = src.%s;\n", fieldMember(f), fieldMember(f))
+	}
+	g.pf("}\n\n")
+	g.pf("bool %sInto(%s target, Uint8List data, [TableWireReport? report]) {\n", fn, n)
+	g.pf("\tfinal r = report ?? TableWireReport();\n")
+	g.pf("\tfinal v = _%sRead(data, r);\n", fn)
+	g.pf("\t_copy%s(target, r.refused ? %s() : v);\n", n, n)
+	g.pf("\tif (report == null && r.reason != 'ok') throw FormatException(r.reason);\n")
+	g.pf("\treturn !r.refused;\n")
+	g.pf("}\n\n")
 }
 
 // measureSpec is one root's extent-walk spec (docs/SPEC-TABLES.md §6.2): the

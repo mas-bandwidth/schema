@@ -5045,6 +5045,31 @@ TableEntity _tableEntityWireLoadRead(Uint8List data, TableWireReport report) {
   return v;
 }
 
+void _copyTableEntity(TableEntity dst, TableEntity src) {
+  dst.entityId = src.entityId;
+  dst.posX = src.posX;
+  dst.posY = src.posY;
+  dst.posZ = src.posZ;
+  dst.yaw = src.yaw;
+  dst.pitch = src.pitch;
+  dst.velX = src.velX;
+  dst.velY = src.velY;
+  dst.velZ = src.velZ;
+  dst.health = src.health;
+  dst.weapon = src.weapon;
+  dst.damage = src.damage;
+  dst.moving = src.moving;
+  dst.firing = src.firing;
+}
+
+bool tableEntityWireLoadInto(TableEntity target, Uint8List data, [TableWireReport? report]) {
+  final r = report ?? TableWireReport();
+  final v = _tableEntityWireLoadRead(data, r);
+  _copyTableEntity(target, r.refused ? TableEntity() : v);
+  if (report == null && r.reason != 'ok') throw FormatException(r.reason);
+  return !r.refused;
+}
+
 const _measureStructsTableEntity = <Map<int, _MF>>[
   // TableEntity
   {
@@ -5224,6 +5249,19 @@ TableStat _tableStatWireLoadRead(Uint8List data, TableWireReport report) {
   return v;
 }
 
+void _copyTableStat(TableStat dst, TableStat src) {
+  dst.statId = src.statId;
+  dst.delta = src.delta;
+}
+
+bool tableStatWireLoadInto(TableStat target, Uint8List data, [TableWireReport? report]) {
+  final r = report ?? TableWireReport();
+  final v = _tableStatWireLoadRead(data, r);
+  _copyTableStat(target, r.refused ? TableStat() : v);
+  if (report == null && r.reason != 'ok') throw FormatException(r.reason);
+  return !r.refused;
+}
+
 const _measureStructsTableStat = <Map<int, _MF>>[
   // TableStat
   {
@@ -5389,6 +5427,45 @@ TableMixed _tableMixedWireLoadRead(Uint8List data, TableWireReport report) {
   if (r.wireBadPointerIndex()) { r.report.refuse('wire_damaged'); }
   if (r.report.refused) return TableMixed();
   return v;
+}
+
+void _copyTableMixed(TableMixed dst, TableMixed src) {
+  dst.protocolMagic = src.protocolMagic;
+  dst.sequence = src.sequence;
+  dst.ackSequence = src.ackSequence;
+  dst.ackBits = src.ackBits;
+  dst.sessionId = src.sessionId;
+  dst.clientId = src.clientId;
+  dst.nonce = src.nonce;
+  dst.worldTime = src.worldTime;
+  dst.frameTick = src.frameTick;
+  dst.serverTime = src.serverTime;
+  dst.entities = src.entities;
+  dst.stats = src.stats;
+  dst.gameEvent = src.gameEvent;
+  dst.loadout = src.loadout;
+  dst.playerName = src.playerName;
+  dst.payload = src.payload;
+  dst.aimX = src.aimX;
+  dst.aimY = src.aimY;
+  dst.aimZ = src.aimZ;
+  dst.recoil = src.recoil;
+  dst.drift = src.drift;
+  dst.wideKey = src.wideKey;
+  dst.flux = src.flux;
+  dst.ping = src.ping;
+  dst.crcHint = src.crcHint;
+  dst.hasExtra = src.hasExtra;
+  dst.extra = src.extra;
+  dst.idleTicks = src.idleTicks;
+}
+
+bool tableMixedWireLoadInto(TableMixed target, Uint8List data, [TableWireReport? report]) {
+  final r = report ?? TableWireReport();
+  final v = _tableMixedWireLoadRead(data, r);
+  _copyTableMixed(target, r.refused ? TableMixed() : v);
+  if (report == null && r.reason != 'ok') throw FormatException(r.reason);
+  return !r.refused;
 }
 
 const _measureStructsTableMixed = <Map<int, _MF>>[
@@ -6517,12 +6594,12 @@ final class _JParse {
     i++;
   }
 
-  // stack guard for raw container nesting; semantic table/skip depth 128 is
-  // enforced by FromJsonFields and _jsonSkipValue (FL-11, SPEC-TABLES §16.14 W2)
+  // container nesting cap (128 levels of nesting = 129 containers; 130th refuses,
+  // docs/SPEC-TABLES.md §16.2, §16.14 W2)
   dynamic value(int depth) {
     if (i >= s.length) throw const FormatException('unexpected end of text');
     final c = s.codeUnitAt(i);
-    if ((c == 0x7B || c == 0x5B) && depth > 256) throw const FormatException('nested past the depth cap of 128');
+    if ((c == 0x7B || c == 0x5B) && depth > 128) throw const FormatException('nested past the depth cap of 128');
     if (c == 0x7B) {
       i++;
       final m = _JObj();

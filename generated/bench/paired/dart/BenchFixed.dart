@@ -3230,6 +3230,12 @@ int tableMessageBatchOpen(
   TableReport report,
   TableMessageReader r,
 ) {
+  report.refused = false;
+  report.reason = '';
+  report.unknown = 0;
+  report.widened = 0;
+  report.buildVersionRemote = 0;
+  report.buildVersionOwn = 0;
   report.nonFiniteFloat = ''; // this read's own refusal (§3.3)
   if (data.length == 0) { report.Damage(); return -1; }
   if (data[0] != 2) { report.Refuse('newer_form'); return -1; }
