@@ -109,7 +109,7 @@ func hostedHolderWire(t *testing.T, u *ir.Unit) []byte {
 const hostedItemsProbe = pyrun.ImportPrelude + `import sys
 
 import hostedframing
-from hostedframing.Core import Defaulted, Framed, Holder, Loose
+from hostedframing.Records import Defaulted, Framed, Holder, Loose
 
 
 def fail(message):
@@ -210,7 +210,7 @@ func hostedItemsFiles(t *testing.T) (*ir.Unit, map[string][]byte) {
 func TestPythonTableHostedPacketItemsGenerate(t *testing.T) {
 	t.Parallel()
 	_, files := hostedItemsFiles(t)
-	module := string(files["hostedframing/Core.py"])
+	module := string(files["hostedframing/Records.py"])
 	for _, want := range []string{
 		"        _s_ri.value = 199\n        _s_serialize_bits(_s_ri, 8)\n",
 		"        if _s_ri.value != 199:\n            return False\n",
@@ -271,7 +271,7 @@ func TestPythonTableHostedPacketItemsNegativeControl(t *testing.T) {
 		"loose.bin":  loose,
 		"holder.bin": hostedHolderWire(t, u),
 	}
-	const path = "hostedframing/Core.py"
+	const path = "hostedframing/Records.py"
 	original := string(files[path])
 	for _, c := range []struct{ name, old, new, want string }{
 		{"const check", "        if _s_ri.value != 199:\n", "        if False:\n", "FAILED: a wrong const: accepted"},
