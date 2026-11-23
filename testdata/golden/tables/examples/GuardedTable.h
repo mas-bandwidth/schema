@@ -282,7 +282,7 @@ struct TableReport
     // from a caller's report that already held one.
     int32_t non_finite_floats = 0;
     // THE STRICT ANNOUNCEMENT'S TWO BUILD VERSIONS (docs/SPEC-TABLES.md §3.3):
-    // on reason build_version_mismatch, the peer's announced build version
+    // on reason build_version_mismatch, the writer's announced build version
     // (remote) and this unit's own (own). Zero on every other path.
     uint64_t build_version_remote = 0;
     uint64_t build_version_own = 0;
@@ -4177,7 +4177,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
         return false;
     }
     // "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3): refused
-    // by name, the peer's build version kept, no vocabulary set, never damage.
+    // by name, the writer's build version kept, no vocabulary set, never damage.
     // The unit's own build version is spelled here as the literal BuildVersion
     // holds, because the cook runtime that declares BuildVersion follows this one.
     if ( vocabulary.strict && version != 0x3684616af27a45c9ull )
