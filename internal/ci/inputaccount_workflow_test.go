@@ -92,10 +92,8 @@ func TestDartConformanceHandoffSelection(t *testing.T) {
 
 func TestFastPlanSelectsDartHandoffChanges(t *testing.T) {
 	t.Parallel()
-	for _, tool := range []string{"bash", "jq"} {
-		if _, err := exec.LookPath(tool); err != nil {
-			t.Skipf("the CI plan needs %s", tool)
-		}
+	if runtime.GOOS == "windows" {
+		t.Skip("the Linux input accounting lane runs its recipe in a POSIX host's Bash")
 	}
 	root := repoRoot(t)
 	data, err := os.ReadFile(filepath.Join(root, ".github/workflows/ci-fast.yml"))
@@ -130,7 +128,7 @@ func TestFastPlanSelectsDartHandoffChanges(t *testing.T) {
 			output := filepath.Join(dir, "outputs")
 			cmd := exec.Command("bash", "-euo", "pipefail", "-c", start+script)
 			cmd.Dir = root
-			cmd.Env = append(os.Environ(), "RUNNER_TEMP="+dir, "GITHUB_OUTPUT="+output, "all=no", "packages=")
+			cmd.Env = append(scriptEnv(os.Environ()), "RUNNER_TEMP="+dir, "GITHUB_OUTPUT="+output, "all=no", "packages=")
 			if out, err := cmd.CombinedOutput(); err != nil {
 				t.Fatalf("input-family selector failed: %v\n%s", err, out)
 			}
