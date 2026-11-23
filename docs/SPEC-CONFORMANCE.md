@@ -407,6 +407,12 @@ value may be emitted. These are the enum and fixed Cook rules in
 [SPEC-TABLES §2.15](SPEC-TABLES.md#215-enum-variants--deprecated-in-place)
 and [§7.6](SPEC-TABLES.md#76-the-write-side-cook-and-cookmeasure).
 
+Run the six fixed-root Cook and CookMeasure cases against generated Go with
+
+```sh
+SCHEMA_SLOW=1 go test -count=1 -v ./internal/codegen/gotable -run '^TestDeclaredDeprecatedEnumCook$'
+```
+
 ### Present optional array grown from two elements to three
 
 Load the [variable-form seed](../testdata/conformance/table-write-bounds/torture_var_wref.bin)

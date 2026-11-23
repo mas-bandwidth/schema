@@ -70,7 +70,7 @@ func TestFixedRootCook(t *testing.T) {
 		} {
 			row := "sf26_cook_" + variant.name + "_" + byteOrder.name
 			t.Run(row, func(t *testing.T) {
-				initial := bytes.Repeat([]byte{0xa5}, int(want))
+				initial := bytes.Repeat([]byte{0x5a}, int(want))
 				output := bytes.Clone(initial)
 				ok := FixedRootCookFrom(&value, output, byteOrder.value)
 				if variant.value == PhaseOld {
