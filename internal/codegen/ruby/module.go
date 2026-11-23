@@ -57,7 +57,7 @@ func (m *rbModule) line(format string, args ...any)   { m.printf(format+"\n", ar
 // typeRef names a declaration inside the unit module. Because every schema
 // file in the unit reopens the same module <Mod>, declarations name each other
 // unqualified inside <Mod>.
-func (m *rbModule) typeRef(name string) string { return name }
+func (m *rbModule) typeRef(name string) string { return ClassName(name) }
 
 func (m *rbModule) assemble() string {
 	var h strings.Builder
@@ -189,7 +189,7 @@ func (m *rbModule) defaultExpr(f *ir.Field) string {
 		}
 		return "false"
 	case f.DefVariant != "":
-		return m.typeRef(f.Type.Name) + "::" + f.DefVariant
+		return m.typeRef(f.Type.Name) + "::" + VariantConstant(f.DefVariant)
 	case f.Type.Kind == ir.TFloat32:
 		return floatLiteral(float32Value(f.DefFloat))
 	case f.Type.Kind == ir.TFloat64:

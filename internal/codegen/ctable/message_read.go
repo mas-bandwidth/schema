@@ -187,9 +187,7 @@ static SCHEMA_UNUSED int table_message_skip(TableMessageReader * r,const TableMe
   if(!table_wire_utf8(text,n))return 0;
   r->bits.offset+=(int64_t)n*8;
   return 1;
- case 31:
-  if(!table_bit_align_read(&r->bits)||!table_bit_get(&r->bits,&n,32))return 0;
-  return table_message_skip_run(r,n,8);
+ case 31:return 0; /* held by name and never written (R17): no announcement names it */
  case 10:
   /* A PLAIN FLOAT IS FINITE, AND A QUANTIZED INDEX IS AT MOST ITS COUNT
      (§3.3): the same raw-bits rule a named float read applies. */
@@ -368,6 +366,7 @@ func (g *tableGen) messageReadScalar(f *ir.Field, dst, e, ind string) {
 		s := tableIntLit(high, signed, 8)
 		g.pf("%s if(decoded>%s){decoded=%s;r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE;}\n", ind, s, s)
 	}
+	g.emitFlagsWidthClamp(f, "decoded", ind+" ")
 	g.pf("%s %s=(%s)decoded; }\n", ind, dst, g.cFieldType(f.Type))
 }
 
@@ -512,6 +511,11 @@ func (g *tableGen) emitMessageUnionRead(un *ir.Union) {
 			}
 			g.pf(" memset(&%s,0,sizeof(%s));\n", dst, dst)
 			g.messageReadValue(v.F, dst, count, "entry", " ")
+			if v.F.Array == ir.ArrayCounted && v.F.ArrayMin > 0 {
+				// a count below A refuses in an arm (ruling R10): the announced
+				// shape is the WRITER's, and its minimum need not be ours
+				g.pf(" if(%s<%d)r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE;\n", count, v.F.ArrayMin)
+			}
 		}
 		g.pf(" value->type=%s;break;}\n", enumConst(un.Name+"Type", v.Name))
 	}
@@ -548,6 +552,11 @@ func (g *tableGen) emitMessageRead(st *ir.Struct) {
 			count = "value->" + f.Name + "_length"
 		}
 		g.messageReadValue(f, dst, count, "entry", " ")
+		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+			// a count below A refuses (ruling R10): the announced shape is the
+			// WRITER's, and its minimum need not be ours
+			g.pf(" if(%s<%d)r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE;\n", count, f.ArrayMin)
+		}
 		if !f.Required && !f.Type.Optional {
 			// Quantization can project a lawful non-default writer value to the
 			// reader's default. Such payloads provide no default-value proof.

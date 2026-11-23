@@ -476,7 +476,7 @@ fn fixed_table_load_walk(wire: &[u8], end: usize, ids: &[u64], mut retain: Optio
         if let Some(t) = term && t != end { report.damaged = true; return Some(FixedTable::default()); }
     }
     // A fixed-class root does not own the node table: §4 reads it as an unknown field.
-    let mut nodes = TableNodeReader { good: true, count_refused: false, root_type: 0x85df369cdca746b3, retaining: retain.is_some(), retain_capacity: retain.as_ref().map_or(0, |r| r.bytes.capacity()), retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new(), root_open: true, stubs: Vec::new(), stub_index: HashMap::new(), decoded: Vec::new(), wire_edges: Vec::new(), wire_edge_owner: 0, wire_blob_names: Vec::new() };
+    let mut nodes = TableNodeReader { good: true, count_refused: false, root_type: 0x85df369cdca746b3, retaining: retain.is_some(), retain_capacity: retain.as_ref().map_or(0, |r| r.bytes.capacity()), retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new(), blob_twice: false, root_open: true, stubs: Vec::new(), stub_index: HashMap::new(), decoded: Vec::new(), wire_edges: Vec::new(), wire_edge_owner: 0, wire_blob_names: Vec::new() };
     let mut v = FixedTable::default();
     let mut off = 1usize;
     let _ = fixed_table_load_body(wire, &mut off, end, ids, &mut v, &mut nodes, report, TableRetainPath::default(), retain.as_deref_mut(), false);
@@ -516,10 +516,24 @@ fn fixed_table_load_walk(wire: &[u8], end: usize, ids: &[u64], mut retain: Optio
     Some(v)
 }
 
+/// fixed_table_load_measure_parts — the DATA bytes and the ATTRIBUTION bytes
+/// separately, (data, attribution), as C and C++ report them (§6.3, §6.5); the
+/// sum is `fixed_table_load_measure`'s. A refusal answers (-1, 0).
+pub fn fixed_table_load_measure_parts(wire: &[u8]) -> (i64, i64) {
+    let mut attr = 0i64;
+    let total = fixed_table_load_measure_walk(wire, &mut attr);
+    if total < 0 { (-1, 0) } else { (total - attr, attr) }
+}
+
 /// fixed_table_load_measure — the region bytes the framing commands
 /// (docs/SPEC-TABLES.md §3, §3.1, §6.5): -1 when the file cannot be opened.
-#[allow(clippy::single_match)] // one arm per placeable type or list field: one is a real shape
 pub fn fixed_table_load_measure(wire: &[u8]) -> i64 {
+    let mut attr = 0i64;
+    fixed_table_load_measure_walk(wire, &mut attr)
+}
+
+#[allow(clippy::single_match)] // one arm per placeable type or list field: one is a real shape
+fn fixed_table_load_measure_walk(wire: &[u8], attr: &mut i64) -> i64 {
     if wire.is_empty() || wire[0] != TABLE_WIRE_FORM { return -1; }
     if wire.len() < 9 { return -1; }
     let count = u64::from_le_bytes(wire[wire.len() - 8..].try_into().unwrap());
@@ -627,7 +641,8 @@ pub fn fixed_table_load_measure(wire: &[u8]) -> i64 {
     }
     let root_at = nested_measure(0x85df369cdca746b3, &wire[1..end], ids, 0);
     if root_at < 0 { return -1; }
-    round(round(1376) + root_at) + blob_total + (records + 1) * 16
+    *attr = (records + 1) * 16;
+    round(round(1376) + root_at) + blob_total + *attr
 }
 
 

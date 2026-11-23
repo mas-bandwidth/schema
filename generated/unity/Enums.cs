@@ -60,8 +60,8 @@ namespace Example
         None = 0,
     }
 
-    // ShipFlags — one bit per variant; wire 4 bits (SPEC §4.2). ulong-backed, the full
-    // width §4.2 requires, so bits a newer build appended survive a round trip.
+    // ShipFlags — one bit per variant; wire 4 bits (SPEC §4.2). ulong-backed: 64 bits
+    // is the variant ceiling (§4.2); a table load refuses a bit at or above the wire width.
     [Flags]
     public enum ShipFlags : ulong
     {

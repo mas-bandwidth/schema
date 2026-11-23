@@ -39,7 +39,7 @@ func TestEveryEmittedGoSuffixIsClaimed(t *testing.T) {
 	for _, suffix := range suffixes {
 		t.Run(suffix, func(t *testing.T) {
 			t.Parallel()
-			src := "package t\ntable Ship { x int32 }\ntype Ship" + suffix + " { y int32 }\n"
+			src := "package tx\ntable Ship { x int32 }\ntype Ship" + suffix + " { y int32 }\n"
 			errs := runUnit(t, map[string]string{"T.schema": src})
 			if len(errs) == 0 {
 				t.Fatalf("table Ship plus type Ship%s must be refused by name, but the checker accepted it", suffix)
@@ -60,7 +60,7 @@ func TestEveryEmittedGoSuffixIsClaimed(t *testing.T) {
 
 	t.Run("a near-miss spelling is accepted", func(t *testing.T) {
 		t.Parallel()
-		src := "package t\ntable Ship { x int32 }\ntype ShipReadStrictly { y int32 }\n"
+		src := "package tx\ntable Ship { x int32 }\ntype ShipReadStrictly { y int32 }\n"
 		if errs := runUnit(t, map[string]string{"T.schema": src}); len(errs) > 0 {
 			t.Fatalf("type ShipReadStrictly is not a claimed suffix and must be accepted: %v", errs)
 		}
@@ -72,7 +72,7 @@ func TestEveryEmittedGoSuffixIsClaimed(t *testing.T) {
 	// so a declaration spelling one of them is not a collision and is accepted.
 	t.Run("type ShipIndex is accepted", func(t *testing.T) {
 		t.Parallel()
-		src := "package t\ntable Ship { x int32 }\ntype ShipIndex { y int32 }\n"
+		src := "package tx\ntable Ship { x int32 }\ntype ShipIndex { y int32 }\n"
 		if errs := runUnit(t, map[string]string{"T.schema": src}); len(errs) > 0 {
 			t.Fatalf("type ShipIndex is not a bare table claim and must be accepted: %v", errs)
 		}
@@ -80,7 +80,7 @@ func TestEveryEmittedGoSuffixIsClaimed(t *testing.T) {
 
 	t.Run("enum ShipType is accepted", func(t *testing.T) {
 		t.Parallel()
-		src := "package t\nenum ShipType { A }\ntable Ship { kind ShipType }\n"
+		src := "package tx\nenum ShipType { A }\ntable Ship { kind ShipType }\n"
 		if errs := runUnit(t, map[string]string{"T.schema": src}); len(errs) > 0 {
 			t.Fatalf("enum ShipType beside table Ship is not a bare table claim and must be accepted: %v", errs)
 		}
@@ -279,7 +279,7 @@ func TestEmitterTemplatesNameOnlyClaimedSuffixes(t *testing.T) {
 
 func TestJavaScriptFixedReadCheckSuffixIsClaimed(t *testing.T) {
 	t.Parallel()
-	errs := runUnit(t, map[string]string{"T.schema": "package t\ntable Ship { x int32 }\ntype ShipFixedCheckRead { y int32 }\n"})
+	errs := runUnit(t, map[string]string{"T.schema": "package tx\ntable Ship { x int32 }\ntype ShipFixedCheckRead { y int32 }\n"})
 	if len(errs) == 0 {
 		t.Fatal("ShipFixedCheckRead must be claimed for the fixed reader's read-only check")
 	}

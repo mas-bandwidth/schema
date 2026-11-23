@@ -780,6 +780,8 @@ namespace Example
         {
             {
                 // flat run: 3 bits in 1 chunk(s) — the field placement is folded
+                Debug.Assert((ulong)value.A < 1ul << 1, "value.A is wider than its 1-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
+                Debug.Assert((ulong)value.B < 1ul << 2, "value.B is wider than its 2-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
                 ulong f0 = ((ulong)value.A) & 0x1UL;
                 ulong f1 = ((ulong)value.B) & 0x3UL;
                 uint w0 = (uint)(f0 | (f1 << 1));
@@ -939,6 +941,8 @@ namespace Example
         {
             {
                 // flat run: 11 bits in 1 chunk(s) — the field placement is folded
+                Debug.Assert((ulong)value.A < 1ul << 3, "value.A is wider than its 3-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
+                Debug.Assert((ulong)value.B < 1ul << 8, "value.B is wider than its 8-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
                 ulong f0 = ((ulong)value.A) & 0x7UL;
                 ulong f1 = ((ulong)value.B) & 0xffUL;
                 uint w0 = (uint)(f0 | (f1 << 3));
@@ -1297,6 +1301,7 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteHoldsEmptyUnionBatch(ref WriteBatch batch, ref HoldsEmptyUnion value)
         {
+            Debug.Assert((ulong)value.Lead < 1ul << 5, "value.Lead is wider than its 5-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
             if (!batch.SerializeBits(ref value.Lead, 5))
             {
                 return false;
@@ -1305,6 +1310,7 @@ namespace Example
             {
                 return false;
             }
+            Debug.Assert((ulong)value.Tail < 1ul << 7, "value.Tail is wider than its 7-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
             if (!batch.SerializeBits(ref value.Tail, 7))
             {
                 return false;
@@ -1366,6 +1372,7 @@ namespace Example
 
         public static bool WriteStrs(WriteStream stream, ref Strs value)
         {
+            Debug.Assert((ulong)value.Lead < 1ul << 5, "value.Lead is wider than its 5-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
             if (!stream.SerializeBits(ref value.Lead, 5))
             {
                 return false;
@@ -1395,6 +1402,7 @@ namespace Example
             {
                 return false;
             }
+            Debug.Assert((ulong)value.Tail < 1ul << 3, "value.Tail is wider than its 3-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
             if (!stream.SerializeBits(ref value.Tail, 3))
             {
                 return false;
@@ -1475,6 +1483,7 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteArrNestedBatch(ref WriteBatch batch, ref ArrNested value)
         {
+            Debug.Assert((ulong)value.Lead < 1ul << 5, "value.Lead is wider than its 5-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
             if (!batch.SerializeBits(ref value.Lead, 5))
             {
                 return false;
@@ -1494,6 +1503,7 @@ namespace Example
                     return false;
                 }
             }
+            Debug.Assert((ulong)value.Tail < 1ul << 3, "value.Tail is wider than its 3-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
             if (!batch.SerializeBits(ref value.Tail, 3))
             {
                 return false;
@@ -1557,6 +1567,7 @@ namespace Example
 
         public static bool WriteSole(WriteStream stream, ref Sole value)
         {
+            Debug.Assert((ulong)value.Only < 1ul << 13, "value.Only is wider than its 13-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
             if (!stream.SerializeBits(ref value.Only, 13))
             {
                 return false;

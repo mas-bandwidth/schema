@@ -350,6 +350,15 @@ func (g *tableGen) emitMessageArray(f *ir.Field, entry ir.TableVocabularyEntry, 
 	elem := fmt.Sprintf(access, idx)
 	shape := entry.Shape
 	if width := ir.TableMessageCountBits(shape); width > 0 {
+		if shape.Min > 0 {
+			// THE COUNT RIDES AS count - min (§3.3): a count below the
+			// declared minimum has no spelling, and subtracting would wrap
+			// into a count the elements that follow do not match. The write
+			// contract is a debug assert on this leg (docs/SPEC.md §5.1); the
+			// guard keeps a release build from writing an unreadable body,
+			// refusing it as an unnamed union tag is refused.
+			g.pf("%sif ( ( %s ) < %d ) { return %s; } // below the declared [%d..%d] (R10)\n", ind, count, shape.Min, messageBad(pass), shape.Min, shape.Max)
+		}
 		if pass == messagePassMeasure {
 			g.pf("%sbits += %d;\n", ind, width)
 		} else {
@@ -420,6 +429,16 @@ func (g *tableGen) emitMessageArray(f *ir.Field, entry ir.TableVocabularyEntry, 
 				g.pf("#ifndef NDEBUG\n%s", loop)
 				g.pf("%s    schema_assert( ( uint64_t( %s ) >> %d ) == 0 ); // message flags domain, debug only (§5.1)\n%s}\n#endif\n", ind, elem, width, ind)
 			}
+			if g.messageNeedsWriteAsserts() && messageRowAssertNeeded(f, int(shape.Elem)) {
+				// THE SAME OFFER FOR A FIXED TABLE PAST THE SIZE CEILING: the
+				// arithmetic measure never visits a scalar element, so a debug
+				// loop holds rows 1, 2 and 10 over each one, as the save does
+				debugOnly := *f
+				debugOnly.Required = false
+				g.pf("#ifndef NDEBUG\n%s", loop)
+				g.emitRequiredRangeCheck(&debugOnly, elem, ind+"    ", "")
+				g.pf("%s}\n#endif\n", ind)
+			}
 			if int(shape.Elem) == tkF32 || int(shape.Elem) == tkF64 {
 				// THE WRITER'S FINITE RULE over every element (§3.3): the
 				// measure refuses what the save refuses
@@ -457,8 +476,9 @@ func (g *tableGen) emitMessageEnumRef(f *ir.Field, expr, ind string, pass messag
 func (g *tableGen) emitMessageScalar(f *ir.Field, kind uint8, shape ir.TableMessageShape, expr, ind string, pass messagePass) {
 	width := msgValueBits(kind, shape)
 	if _, flags := f.Type.Ref.(*ir.Flags); flags && width < 64 {
-		// File and cook masks retain all storage bits; a message may carry
-		// only its announced width. This is writer misuse, checked in debug
+		// A cook mask retains its storage bits; a file and a message hold
+		// the mask to its declared W (docs/SPEC-TABLES.md §4). This is writer
+		// misuse, checked in debug
 		// like the packet writer (SPEC.md §5.1; SPEC-TABLES.md §3.3).
 		g.pf("%sschema_assert( ( uint64_t( %s ) >> %d ) == 0 ); // message flags domain, debug only (§5.1)\n", ind, expr, width)
 	}
@@ -472,6 +492,13 @@ func (g *tableGen) emitMessageScalar(f *ir.Field, kind uint8, shape ir.TableMess
 			// writer's answer to an off-range value in a debug build
 			g.emitFloatRangeAssert(f, expr, ind)
 		}
+	}
+	if g.messageNeedsWriteAsserts() {
+		// A FIXED TABLE PAST THE SIZE CEILING has no write check to assert, so
+		// each value asserts rows 1, 2 and 10 here (docs/SPEC.md §5.1), debug only
+		debugOnly := *f
+		debugOnly.Required = false
+		g.emitRequiredRangeCheck(&debugOnly, expr, ind, "")
 	}
 	if pass == messagePassMeasure {
 		g.pf("%sbits += %d;\n", ind, width)
@@ -606,7 +633,7 @@ func (g *tableGen) emitMessageArm(v ir.UnionVariant, entry ir.TableVocabularyEnt
 	case af.Array != ir.ArrayNone:
 		n := strconv.FormatInt(af.ArrayBound, 10)
 		if af.Array == ir.ArrayCounted {
-			g.storageAssert(ind, count, af.ArrayBound)
+			g.storageAssertMin(ind, count, af.ArrayMin, af.ArrayBound)
 			n = count
 		}
 		g.emitMessageArray(af, entry, n, value+"[%s]", ind, pass)
@@ -727,4 +754,33 @@ func (g *tableGen) emitMessageArrayRides(f *ir.Field, ind string) {
 		g.pf("%sfor ( int32_t i = 0; i < %d; i++ ) { if ( %s ) { rides_%s = true; break; } }\n",
 			ind, f.ArrayBound, g.fieldDiffers(f, "value."+f.Name+"[i]"), f.Name)
 	}
+}
+
+// messageNeedsWriteAsserts is whether the message body of the member being
+// emitted holds the write contract itself. A table the fixed form is emitted
+// for has its write check (writeAdmits), which every SaveMessages and
+// MeasureMessages asserts over each value, nested types included. A fixed table
+// PAST THE SIZE CEILING of the fixed form has none, so its body, and the body of
+// each type nested in it, asserts per value.
+func (g *tableGen) messageNeedsWriteAsserts() bool {
+	if g.owner == nil {
+		return true
+	}
+	if g.writeChecked == nil {
+		g.writeChecked = ir.TableWriteChecked(g.unit)
+	}
+	return !g.writeChecked[g.owner.Name]
+}
+
+// messageRowAssertNeeded is whether a scalar of kind carries a row 1, 2 or 10
+// check: a ranged integer or fixed-point raw value, a bits(N) narrower than its
+// storage, or a ranged float.
+func messageRowAssertNeeded(f *ir.Field, kind int) bool {
+	if f.HasFloatRange {
+		return true
+	}
+	if _, _, ok := ir.TableRawRange(f); ok {
+		return true
+	}
+	return f.Type.Kind == ir.TBits && f.Type.Width < tableKindWidth(kind)*8
 }

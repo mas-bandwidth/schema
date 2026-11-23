@@ -729,6 +729,9 @@ public static class TableJson
             // no wire identity: the writer REFUSES rather than writing None
             // over it, the rule measure and save already apply (§5)
             if ((long)value > f.EnumMax) { return false; }
+            // A DEPRECATED VARIANT IS NEVER WRITTEN (docs/SPEC-TABLES.md §2.15): a
+            // write-side check, so a debug assert in this language (SPEC.md §5.1)
+            System.Diagnostics.Debug.Assert(f.EnumDeprecated == null || !f.EnumDeprecated(value), "a deprecated variant is never written");
             if (value != 0 && f.VariantId(value) == 0) { return false; }
             string name = f.EnumName(value);
             if (!Named(name)) { return false; }
@@ -1567,7 +1570,7 @@ public static class TableJson
     static bool ScanUnionKey(ReadOnlySpan<byte> text, ref In input, TableFieldInfo f, out int tag)
     {
         tag = 0;
-        Span<byte> key = stackalloc byte[MaxName];
+        Span<byte> key = input.KeyBuf;
         int keyLength;
         if (!ScanString(text, ref input, key, true, out keyLength, stored: true)) { return false; }
         if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
@@ -2055,9 +2058,9 @@ public static class TableJson
         // The schema fixes the vocabulary size. Small schemas use the
         // stack; larger ones still count every duplicate exactly.
         int words = (f.ArrayBound + 63) / 64;
-        Span<ulong> seen = words <= 8 ? stackalloc ulong[words] : new ulong[words];
-        seen.Clear();
-        Span<byte> key = stackalloc byte[MaxName];
+        ulong seen0 = 0;
+        ulong[] seenBig = words > 1 ? new ulong[words] : null;
+        Span<byte> key = input.KeyBuf;
         System.Collections.Generic.HashSet<string> unplaced = null;
         for (; ; )
         {
@@ -2080,8 +2083,16 @@ public static class TableJson
             if (slot >= 0)
             {
                 ulong bit = 1ul << (slot & 63);
-                if ((seen[slot >> 6] & bit) != 0) { return RefuseText(ref input, "duplicate"); }
-                seen[slot >> 6] |= bit;
+                if (seenBig == null)
+                {
+                    if ((seen0 & bit) != 0) { return RefuseText(ref input, "duplicate"); }
+                    seen0 |= bit;
+                }
+                else
+                {
+                    if ((seenBig[slot >> 6] & bit) != 0) { return RefuseText(ref input, "duplicate"); }
+                    seenBig[slot >> 6] |= bit;
+                }
             }
             if (slot < 0)
             {
@@ -2116,7 +2127,7 @@ public static class TableJson
     static bool ScanTableKey(ReadOnlySpan<byte> text, ref In input, TableTypeInfo info, out int index, out bool isAmp, out string unknownKey)
     {
         index = -1; isAmp = false; unknownKey = null;
-        Span<byte> key = stackalloc byte[MaxName];
+        Span<byte> key = input.KeyBuf;
         int keyLength;
         if (!ScanString(text, ref input, key, true, out keyLength, stored: true)) { return false; }
         if (Peek(text, ref input) != ':') { input.Bad = true; return false; }

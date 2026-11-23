@@ -40,12 +40,12 @@ func specSection(t *testing.T, start, end string) string {
 func TestSpecSerializeIncludeRule(t *testing.T) {
 	t.Parallel()
 	u := unitFromSources(t, map[string]string{
-		"Narrow.schema": `package t
+		"NarrowUnit.schema": `package t
 type Narrow {
     w fixed(2, 30) = 1.0 | min = -1, max = 1
 }
 `,
-		"Wide.schema": `package t
+		"WideUnit.schema": `package t
 type Wide {
     big uint128
 }
@@ -61,12 +61,12 @@ enum Mode { Idle, Run }
 	}
 	const inc = "#include \"serialize.h\""
 	for name, want := range map[string]bool{
-		"Narrow.h":     false, // fixed below 128 bits is int32_t storage
-		"Wide.h":       true,  // serialize::uint128_t storage
-		"Consts.h":     false,
-		"NarrowWire.h": true,
-		"WideWire.h":   true,
-		"ConstsWire.h": false, // no wire function, no serialize dependency
+		"NarrowUnit.h":     false, // fixed below 128 bits is int32_t storage
+		"WideUnit.h":       true,  // serialize::uint128_t storage
+		"Consts.h":         false,
+		"NarrowUnitWire.h": true,
+		"WideUnitWire.h":   true,
+		"ConstsWire.h":     false, // no wire function, no serialize dependency
 	} {
 		if got := strings.Contains(string(files[name]), inc); got != want {
 			t.Errorf("%s: includes serialize.h = %v, want %v", name, got, want)
@@ -92,7 +92,7 @@ enum Mode { Idle, Run }
 func TestSpecBulkBytesAndInlining(t *testing.T) {
 	t.Parallel()
 	u := unitFromSources(t, map[string]string{
-		"Blob.schema": `package t
+		"BlobUnit.schema": `package t
 type Blob {
     align
     digest [16]uint8
@@ -103,7 +103,7 @@ type Blob {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wire := string(files["BlobWire.h"])
+	wire := string(files["BlobUnitWire.h"])
 	for _, want := range []string{
 		"write_bytes( stream, value.digest, 16 ); // byte-aligned [N]uint8",
 		"read_bytes( stream, value.digest, 16 ); // byte-aligned [N]uint8",
@@ -111,7 +111,7 @@ type Blob {
 		"SCHEMA_READ_INLINE bool ReadBlob(",
 	} {
 		if !strings.Contains(wire, want) {
-			t.Errorf("BlobWire.h: want %q\n%s", want, wire)
+			t.Errorf("BlobUnitWire.h: want %q\n%s", want, wire)
 		}
 	}
 

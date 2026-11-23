@@ -29,8 +29,8 @@ import (
 // the Go option runtime=shared, so the table-independent machinery is imported ----
 
 // A unit and its runtime come from one compiler: either difference overflows.
-const _ = uint64(goruntime.Version - 0x3af2702a313e2e51)
-const _ = uint64(0x3af2702a313e2e51 - goruntime.Version)
+const _ = uint64(goruntime.Version - 0x0e8702581dce3641)
+const _ = uint64(0x0e8702581dce3641 - goruntime.Version)
 
 type TableReport = goruntime.TableReport
 
@@ -442,10 +442,23 @@ type BuffRow struct {
 	Multiplier float32
 }
 
+// CountedMinRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type CountedMinRow struct {
+	Few      [5]uint32
+	FewCount int32
+}
+
 // DebuffRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type DebuffRow struct {
 	Amount int32
+}
+
+// FloatBoundRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type FloatBoundRow struct {
+	Level float32
 }
 
 // KeyedConfigRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -470,6 +483,34 @@ type LoadoutConfigRow struct {
 	Backups          [2]WeaponConfigRow
 	Attachments      [8]AttachmentRow
 	AttachmentsCount int32
+}
+
+// MinArmFixRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type MinArmFixRow struct {
+	Pick MinPickRow
+}
+
+// MinPlainFixRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type MinPlainFixRow struct {
+	Few      [4]uint32
+	FewCount int32
+}
+
+// MoodFieldRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type MoodFieldRow struct {
+	Mood Mood
+	_    [1]byte // generated padding
+	Tail uint16
+}
+
+// MoodsRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §11), so no declaration in the unit can take it.
+type MoodsRow struct {
+	Row      [4]Mood
+	RowCount int32
 }
 
 // PackConfigRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
@@ -630,11 +671,17 @@ type EffectRow struct {
 	_       [3]byte
 	Payload [4]byte
 }
+type MinPickRow struct {
+	_       [0]uint32
+	Type    MinPickType
+	_       [3]byte
+	Payload [20]byte
+}
 
 // BuildVersion is the unit's build version (mas-bandwidth/schema docs/SPEC-TABLES.md §20): the
 // one digest a block carries and BlockOpen compares, and the fact §3.3's
 // announcement carries before the first body so an endpoint's build is knowable.
-const BuildVersion uint64 = 0x3684616af27a45c9
+const BuildVersion uint64 = 0x74f8a79e113ca9df
 
 // ---- reflection (tables only, mas-bandwidth/schema docs/SPEC-TABLES.md §8) ----
 //
@@ -888,7 +935,7 @@ func tableJSONGuardHolds(base unsafe.Pointer, info *TableTypeInfo, guard string)
 	}
 }
 
-const tableIDCapacity = 155
+const tableIDCapacity = 171
 const tableIDBuckets = 512
 
 // TableIds interns the writer's ids in first-use order. Bucket links are
@@ -1268,7 +1315,7 @@ func (r *TableReader) Skip(kind uint8) bool {
 	case 17, 30:
 		_, ok := r.Leb()
 		return ok
-	case 12, 13, 14, 16, 31, 32:
+	case 12, 13, 14, 16, 32:
 		_, ok := r.Body()
 		return ok
 	case 15:
@@ -1546,7 +1593,7 @@ func (c *tableWireCheck) value(r TableReader, kind uint8) (int64, bool) {
 		}
 	case 15:
 		return c.union(r)
-	case 12, 13, 14, 16, 31, 32:
+	case 12, 13, 14, 16, 32:
 		sub, ok := r.Body()
 		if !ok || !c.framed(sub, kind) {
 			return 0, c.fail(TableRefuseWireDamaged)
@@ -1569,8 +1616,6 @@ func (c *tableWireCheck) framed(sub TableReader, kind uint8) bool {
 	switch kind {
 	case 12:
 		return tableUTF8Valid(sub.Buffer) || c.fail(TableRefuseWireDamaged)
-	case 31:
-		return true
 	case 32:
 		return len(sub.Buffer) == 0 || c.fail(TableRefuseWireDamaged)
 	case 13, 14, 16:
@@ -2061,7 +2106,7 @@ type tableFixedCompiler struct {
 	// or a kind moved off every ladder: no plan
 	// is laid, and a file under the entry's hash refuses layout_malformed
 	// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.4).
-	unlawful bool
+	unlawful int8 // 0 none, 1 layout_malformed, 3 kind_mismatch (writer ?T into reader bare T, R2)
 }
 
 // layGuards lays one guard chain into the plan's pool, behind the entries and
@@ -2149,7 +2194,7 @@ func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView,
 	te := tableFixedEntryAt(theirs, ti)
 	me := tableFixedEntryAt(mine, mi)
 	if !tableFixedChildrenNamed(theirs, ti, mine, mi) {
-		c.unlawful = true
+		c.unlawful = 1
 		return
 	}
 	myChild := mi + 1
@@ -2190,7 +2235,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			tableFixedPush(c, e)
 			return
 		}
-		c.unlawful = true
+		c.unlawful = 3 - 2*int8(min(1, te.Kind^35)) // 3 when the writer carried ?T
 		return
 	}
 	// T INTO ?T (§5.2 EMIT, bill §12.8): the reader wrapped a value the writer
@@ -2229,7 +2274,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			myN = (me.Size - head) / mel.Size
 		}
 		if theirN > myN {
-			c.unlawful = true
+			c.unlawful = 1
 			return
 		}
 		theirBase := theirAt + head
@@ -2249,7 +2294,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		}
 	case 16:
 		if !tableFixedChildrenNamed(theirs, ti+1, mine, mi+1) {
-			c.unlawful = true
+			c.unlawful = 1
 			return
 		}
 		tkey := tableFixedEntryAt(theirs, ti+1)
@@ -2259,7 +2304,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		tee := tableFixedEntryAt(theirs, tel)
 		mee := tableFixedEntryAt(mine, mel)
 		if te.Size/tee.Size > me.Size/mee.Size {
-			c.unlawful = true
+			c.unlawful = 1
 			return
 		}
 		for k := range mkey.Children {
@@ -2274,7 +2319,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		}
 	case 15:
 		if !tableFixedChildrenNamed(theirs, ti, mine, mi) {
-			c.unlawful = true
+			c.unlawful = 1
 			return
 		}
 		theirTag := tableFixedTagBytes(theirs, ti)
@@ -2347,7 +2392,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		// table.
 		if te.Size < me.Size {
 			if !tableFixedChildrenNamed(theirs, ti, mine, mi) {
-				c.unlawful = true
+				c.unlawful = 1
 				return
 			}
 			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: at, Size: te.Size, Guard: guard,
@@ -2365,7 +2410,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			return
 		}
 		if !tableFixedChildrenNamed(theirs, ti, mine, mi) {
-			c.unlawful = true
+			c.unlawful = 1
 			return
 		}
 		m := make([]uint16, n)
@@ -2385,7 +2430,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		tableFixedPush(c, e)
 	case 12:
 		if te.Size > me.Size {
-			c.unlawful = true
+			c.unlawful = 1
 			return
 		}
 		units := me.Size - 4
@@ -2406,7 +2451,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			e.Op = tableFixedWiden
 			tableFixedPush(c, e)
 		} else {
-			c.unlawful = true
+			c.unlawful = 1
 		}
 	}
 }
@@ -2432,8 +2477,8 @@ func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []Table
 	if c.tooLarge {
 		return -3
 	}
-	if c.unlawful {
-		return -2
+	if c.unlawful != 0 {
+		return -1 - int32(c.unlawful)
 	}
 	if c.overflow {
 		return -1
@@ -2519,6 +2564,10 @@ func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst 
 				out[i].Why = TableRefuseLayoutRecordTooLarge.Error()
 				break
 			}
+			if made == -4 {
+				out[i].Why = TableRefuseKindMismatch.Error()
+				break
+			}
 			if made < 0 {
 				if room >= 1<<18 {
 					out[i].Why = TableRefusePlanTooLarge.Error()
@@ -2557,6 +2606,27 @@ func (value *EffectRow) Debuff() *struct {
 } {
 	return (*struct {
 		Value DebuffRow
+	})(unsafe.Add(unsafe.Pointer(value), 4))
+}
+func init() {
+	if unsafe.Sizeof(MinPickRow{}) != 24 || unsafe.Offsetof(MinPickRow{}.Type) != 0 {
+		panic("schema union row layout")
+	}
+}
+func (value *MinPickRow) Few() *struct {
+	Value      [4]uint32
+	ValueCount int32
+} {
+	return (*struct {
+		Value      [4]uint32
+		ValueCount int32
+	})(unsafe.Add(unsafe.Pointer(value), 4))
+}
+func (value *MinPickRow) Other() *struct {
+	Value int32
+} {
+	return (*struct {
+		Value int32
 	})(unsafe.Add(unsafe.Pointer(value), 4))
 }
 
@@ -4209,50 +4279,62 @@ func tableCycleType(index uint64) *TableTypeInfo {
 	case 3:
 		return BuffTableType()
 	case 4:
-		return DebuffTableType()
+		return CountedMinTableType()
 	case 5:
-		return GlobalSettingsTableType()
+		return DebuffTableType()
 	case 6:
-		return GunnerConfigTableType()
+		return FloatBoundTableType()
 	case 7:
-		return GunnerSettingsTableType()
+		return GlobalSettingsTableType()
 	case 8:
-		return HullConfigTableType()
+		return GunnerConfigTableType()
 	case 9:
-		return KeyedConfigTableType()
+		return GunnerSettingsTableType()
 	case 10:
-		return LoadoutConfigTableType()
+		return HullConfigTableType()
 	case 11:
-		return PackConfigTableType()
+		return KeyedConfigTableType()
 	case 12:
-		return PatrolTableType()
+		return LoadoutConfigTableType()
 	case 13:
-		return ProfileConfigTableType()
+		return MinArmFixTableType()
 	case 14:
-		return RangedSignedTableType()
+		return MinPlainFixTableType()
 	case 15:
-		return RangedUnsignedTableType()
+		return MoodFieldTableType()
 	case 16:
-		return RangedWidthsTableType()
+		return MoodsTableType()
 	case 17:
-		return RootConfigTableType()
+		return PackConfigTableType()
 	case 18:
-		return ScoreBoardTableType()
+		return PatrolTableType()
 	case 19:
-		return ShipEntryTableType()
+		return ProfileConfigTableType()
 	case 20:
-		return TeamConfigTableType()
+		return RangedSignedTableType()
 	case 21:
-		return TurretConfigTableType()
+		return RangedUnsignedTableType()
 	case 22:
-		return WeaponConfigTableType()
+		return RangedWidthsTableType()
 	case 23:
+		return RootConfigTableType()
+	case 24:
+		return ScoreBoardTableType()
+	case 25:
+		return ShipEntryTableType()
+	case 26:
+		return TeamConfigTableType()
+	case 27:
+		return TurretConfigTableType()
+	case 28:
+		return WeaponConfigTableType()
+	case 29:
 		return WideBlobTableType()
 	}
 	return nil
 }
 
-var tableDeclaredTypes = map[uint64]*TableTypeInfo{0x413e7bcf261bc3c7: ArchiveConfigTableType(), 0xffb1dfb1f6ce215b: GlobalSettingsTableType(), 0x5fcbe04615411b64: GunnerConfigTableType(), 0xb76842b2253337af: GunnerSettingsTableType(), 0x3066b130dfbd7890: HullConfigTableType(), 0xd6633ae4e94deecf: KeyedConfigTableType(), 0xa6aa0caea28dcca1: LoadoutConfigTableType(), 0xd02d825db114336e: PackConfigTableType(), 0x1c182e1c2529027b: PatrolTableType(), 0x19fffcb7859da778: ProfileConfigTableType(), 0xec79751dda28be2e: RangedSignedTableType(), 0x031ec0c4b7d28bf1: RangedUnsignedTableType(), 0xbf59694e9e4f5ed7: RangedWidthsTableType(), 0x5f4843f6def45e87: RootConfigTableType(), 0x1d1a9911da171a29: ShipEntryTableType(), 0x1cf8555d11fb113a: TeamConfigTableType(), 0x469dba0c16b2ad15: TurretConfigTableType(), 0x0577780d86c4b0c3: WeaponConfigTableType(), 0xab6a6961d3366451: WideBlobTableType()}
+var tableDeclaredTypes = map[uint64]*TableTypeInfo{0x413e7bcf261bc3c7: ArchiveConfigTableType(), 0x2c8168f122124937: CountedMinTableType(), 0x19212a5b5b3ccb4b: FloatBoundTableType(), 0xffb1dfb1f6ce215b: GlobalSettingsTableType(), 0x5fcbe04615411b64: GunnerConfigTableType(), 0xb76842b2253337af: GunnerSettingsTableType(), 0x3066b130dfbd7890: HullConfigTableType(), 0xd6633ae4e94deecf: KeyedConfigTableType(), 0xa6aa0caea28dcca1: LoadoutConfigTableType(), 0xe2f227393c6b20a2: MinArmFixTableType(), 0xf5b735fce4011ff4: MinPlainFixTableType(), 0x33de720d0bcfd78a: MoodFieldTableType(), 0xad3596f9de08e3b7: MoodsTableType(), 0xd02d825db114336e: PackConfigTableType(), 0x1c182e1c2529027b: PatrolTableType(), 0x19fffcb7859da778: ProfileConfigTableType(), 0xec79751dda28be2e: RangedSignedTableType(), 0x031ec0c4b7d28bf1: RangedUnsignedTableType(), 0xbf59694e9e4f5ed7: RangedWidthsTableType(), 0x5f4843f6def45e87: RootConfigTableType(), 0x1d1a9911da171a29: ShipEntryTableType(), 0x1cf8555d11fb113a: TeamConfigTableType(), 0x469dba0c16b2ad15: TurretConfigTableType(), 0x0577780d86c4b0c3: WeaponConfigTableType(), 0xab6a6961d3366451: WideBlobTableType()}
 
 func tableDeclaredType(id uint64) *TableTypeInfo { return tableDeclaredTypes[id] }
 func tableCycleEdges(base unsafe.Pointer, info *TableTypeInfo, visit func(*TableRef, *TableFieldInfo) bool) bool {
@@ -4555,7 +4637,7 @@ func tableCycleCheckReason(base unsafe.Pointer, root *TableTypeInfo, a *TableAre
 
 const tableRetainPathDepth = 7
 
-var tableRetainKnown = [...]uint64{0x0117ad66e0fff227, 0x01986b0b27400fb2, 0x031ec0c4b7d28bf1, 0x04dc16aea8ff5276, 0x0577780d86c4b0c3, 0x065ee827cf99fbb4, 0x08a60c07b54d8dc7, 0x09ae5613b0051271, 0x0f8897557f37c021, 0x10bda981fe095518, 0x13cdc5ede73d2fd7, 0x14ec921cc2549d60, 0x1733055702acb1d2, 0x19fffcb7859da778, 0x1c182e1c2529027b, 0x1cb2c073a6f5844d, 0x1cce6617419771db, 0x1cf8555d11fb113a, 0x1d1a9911da171a29, 0x1e5088ef2e9bafc6, 0x1f3757a2ce7b0ab1, 0x200b924de7479cda, 0x2281498aa0200e40, 0x247f0e7f55aacfbd, 0x288427f5babd05f7, 0x294a5c4913e1ad44, 0x2a43bfa7e454ddac, 0x2d21d7cd66bd5a5d, 0x2e17553f8200a2a1, 0x2f2ec0474f1c4fe4, 0x3066b130dfbd7890, 0x32a89b2977c48ad4, 0x334d24e1420dbc1f, 0x36c1c83b51f24394, 0x38b429bf239b38db, 0x39f7fcec8fcb623d, 0x3b54fa60620b5597, 0x3bf8fbbad1587cdd, 0x40dbb648c0cd44aa, 0x413e7bcf261bc3c7, 0x41cbd901b87fabb6, 0x467f35a74c6e4a70, 0x469dba0c16b2ad15, 0x48121511bf702eb5, 0x483d9e6c1ccd1f9b, 0x4b06f5847096e54a, 0x4ca0c150b1790960, 0x4f31c5309e13e932, 0x4f37e1f216e7610c, 0x52bb98fcd979eab7, 0x5759ce7586bbb5a3, 0x5854debe3b2e767c, 0x58c7b5d87587287c, 0x5bc44627b9848818, 0x5ddc92338ef53403, 0x5f4843f6def45e87, 0x5fcbe04615411b64, 0x6580790b036f0c6f, 0x6a659d7c354db158, 0x6a771618f6fe31d1, 0x6c2321a3d00e23db, 0x704be0d8faaffc58, 0x713e12017eebcaf7, 0x7549c70700c49d6f, 0x77707fccd201c228, 0x7d573c625719c1a5, 0x7f6308be8ab37fc0, 0x7f69d4b5288ba9cf, 0x7fb43557b54149ce, 0x8113fe7ea2b16969, 0x8181e61fc0436767, 0x84f8260bc283608c, 0x8a67c9728746d394, 0x8c2cdb0da8933fa6, 0x8dc515fc082e3c0e, 0x90652f70c9127900, 0x942bfe3168090f7d, 0x95d0cce09ca82b73, 0x9759be8ea1a4e3d2, 0x9adc623a805c87c6, 0x9cda940a344e1571, 0x9ff1de19feac1b7c, 0x9ff3121d30f88d52, 0xa06f5e0a148e253c, 0xa0e5c60df9301b7d, 0xa354fd1ff0c467c5, 0xa5013e9ad5caeda4, 0xa53d2f2a31b5acb0, 0xa65f859b617deaf3, 0xa6aa0caea28dcca1, 0xa6bf719a4602b0bc, 0xa8216aa1c554cb8a, 0xab6a6961d3366451, 0xab8b6d521f80b969, 0xad6587bc602e3f59, 0xae61a6cbe88c2cf4, 0xb128829190ca0f75, 0xb1e5e28e4479a274, 0xb46ff45a23d72549, 0xb528592e5a4583e3, 0xb655574ea23760b4, 0xb75aa3662201646a, 0xb76842b2253337af, 0xb7bc9ac015a25050, 0xb8c758d8bd1845d4, 0xb921eb8a3d0cb0f9, 0xbaaeb048a5a8fa6d, 0xbb62c62c9808ea37, 0xbca0dab1c7a00ccf, 0xbeecef11dbdf8973, 0xbf31137ff783e939, 0xbf59694e9e4f5ed7, 0xc341febe5aae51e5, 0xc3e51adeeaf12580, 0xc416c97e0d3218b3, 0xc4927739aac4c591, 0xc4bcadba8e631b86, 0xc70cde6b85b6197d, 0xc9b121c4c2a186ee, 0xce0ac3c25694d8ff, 0xceec99e2d65db674, 0xcf00d78fd5953f1c, 0xcfb8a9d063b5e9e5, 0xd011f7c3c15285c2, 0xd02d825db114336e, 0xd176b605978f3304, 0xd182acd105b55dd1, 0xd217b3af8d7a2bde, 0xd308fcb98ece5d23, 0xd363dfa465acf27a, 0xd6633ae4e94deecf, 0xd90a4e7682f799c5, 0xdbff4cc56c2092f0, 0xdc2cbe6953343d48, 0xddfc86d2b1251528, 0xde28f0f5118acc24, 0xe3b1ca6a3b48dddc, 0xe693bd88532c91d6, 0xec79751dda28be2e, 0xecf3d3a7c1693e2d, 0xeef9d1358ae7b4e6, 0xef9ded23c8912a81, 0xf10fad739a0e1660, 0xf252136836b04cb2, 0xf2b45af3b50689db, 0xf901aa0340249a41, 0xfc9697d1196e6ba6, 0xff8b681912a535a1, 0xff92701912ab61e7, 0xff95701912ad97be, 0xff95741912ad9e8a, 0xff9c5c1912b39470, 0xffb1dfb1f6ce215b, 0xffb5be9be2e469cc, 0xffffffffffffffff}
+var tableRetainKnown = [...]uint64{0x0117ad66e0fff227, 0x01986b0b27400fb2, 0x031ec0c4b7d28bf1, 0x04dc16aea8ff5276, 0x0577780d86c4b0c3, 0x065ee827cf99fbb4, 0x08a60c07b54d8dc7, 0x09ae5613b0051271, 0x0a24ad61c2562a55, 0x0d5cfaa2c43877be, 0x0f8897557f37c021, 0x10bda981fe095518, 0x13cdc5ede73d2fd7, 0x14ec921cc2549d60, 0x1733055702acb1d2, 0x19212a5b5b3ccb4b, 0x199c482b49ef9acb, 0x19fffcb7859da778, 0x1c182e1c2529027b, 0x1cb2c073a6f5844d, 0x1cce6617419771db, 0x1cf8555d11fb113a, 0x1d1a9911da171a29, 0x1e5088ef2e9bafc6, 0x1f3757a2ce7b0ab1, 0x200b924de7479cda, 0x2281498aa0200e40, 0x247f0e7f55aacfbd, 0x288427f5babd05f7, 0x294a5c4913e1ad44, 0x2a43bfa7e454ddac, 0x2c8168f122124937, 0x2d21d7cd66bd5a5d, 0x2e17553f8200a2a1, 0x2f2ec0474f1c4fe4, 0x3018cd19bf898cd6, 0x3066b130dfbd7890, 0x32a89b2977c48ad4, 0x334d24e1420dbc1f, 0x33de720d0bcfd78a, 0x36c1c83b51f24394, 0x38b429bf239b38db, 0x39f7fcec8fcb623d, 0x3b54fa60620b5597, 0x3bf8fbbad1587cdd, 0x40dbb648c0cd44aa, 0x413e7bcf261bc3c7, 0x41cbd901b87fabb6, 0x467f35a74c6e4a70, 0x469dba0c16b2ad15, 0x48121511bf702eb5, 0x483d9e6c1ccd1f9b, 0x4b06f5847096e54a, 0x4ca0c150b1790960, 0x4f31c5309e13e932, 0x4f37e1f216e7610c, 0x52bb98fcd979eab7, 0x5759ce7586bbb5a3, 0x5854debe3b2e767c, 0x58c7b5d87587287c, 0x5bc44627b9848818, 0x5ddc92338ef53403, 0x5f4843f6def45e87, 0x5fcbe04615411b64, 0x6580790b036f0c6f, 0x6a659d7c354db158, 0x6a771618f6fe31d1, 0x6c2321a3d00e23db, 0x704be0d8faaffc58, 0x713e12017eebcaf7, 0x7549c70700c49d6f, 0x77707fccd201c228, 0x7d573c625719c1a5, 0x7f6308be8ab37fc0, 0x7f69d4b5288ba9cf, 0x7fb43557b54149ce, 0x8113fe7ea2b16969, 0x8181e61fc0436767, 0x84f8260bc283608c, 0x8a0bc1196111ad9b, 0x8a67c9728746d394, 0x8c2cdb0da8933fa6, 0x8dc515fc082e3c0e, 0x90652f70c9127900, 0x942bfe3168090f7d, 0x95d0cce09ca82b73, 0x9759be8ea1a4e3d2, 0x9adc623a805c87c6, 0x9cda940a344e1571, 0x9ff1de19feac1b7c, 0x9ff3121d30f88d52, 0xa06f5e0a148e253c, 0xa0e5c60df9301b7d, 0xa354fd1ff0c467c5, 0xa5013e9ad5caeda4, 0xa53d2f2a31b5acb0, 0xa65f859b617deaf3, 0xa6aa0caea28dcca1, 0xa6bf719a4602b0bc, 0xa8216aa1c554cb8a, 0xab6a6961d3366451, 0xab8b6d521f80b969, 0xad3596f9de08e3b7, 0xad6587bc602e3f59, 0xae61a6cbe88c2cf4, 0xb128829190ca0f75, 0xb1e5e28e4479a274, 0xb46ff45a23d72549, 0xb528592e5a4583e3, 0xb655574ea23760b4, 0xb75aa3662201646a, 0xb76842b2253337af, 0xb7bc9ac015a25050, 0xb8c758d8bd1845d4, 0xb921eb8a3d0cb0f9, 0xbaaeb048a5a8fa6d, 0xbb62c62c9808ea37, 0xbca0dab1c7a00ccf, 0xbeecef11dbdf8973, 0xbf0bc40dc513bbd8, 0xbf31137ff783e939, 0xbf59694e9e4f5ed7, 0xc341febe5aae51e5, 0xc3e51adeeaf12580, 0xc416c97e0d3218b3, 0xc4927739aac4c591, 0xc4bcadba8e631b86, 0xc70cde6b85b6197d, 0xc9b121c4c2a186ee, 0xce0ac3c25694d8ff, 0xceec99e2d65db674, 0xcf00d78fd5953f1c, 0xcfb8a9d063b5e9e5, 0xd011f7c3c15285c2, 0xd02d825db114336e, 0xd176b605978f3304, 0xd182acd105b55dd1, 0xd217b3af8d7a2bde, 0xd308fcb98ece5d23, 0xd363dfa465acf27a, 0xd6633ae4e94deecf, 0xd90a4e7682f799c5, 0xd94c56ef0798d723, 0xdbff4cc56c2092f0, 0xdc2cbe6953343d48, 0xdcc67d18feea8c19, 0xddfc86d2b1251528, 0xde28f0f5118acc24, 0xdfa47a9ce9ac16d6, 0xe2f227393c6b20a2, 0xe3b1ca6a3b48dddc, 0xe693bd88532c91d6, 0xe8ddc90a9d7c709d, 0xec79751dda28be2e, 0xecf3d3a7c1693e2d, 0xeef9d1358ae7b4e6, 0xef9ded23c8912a81, 0xf10fad739a0e1660, 0xf252136836b04cb2, 0xf2b45af3b50689db, 0xf5b735fce4011ff4, 0xf901aa0340249a41, 0xfc9697d1196e6ba6, 0xff8b681912a535a1, 0xff92701912ab61e7, 0xff95701912ad97be, 0xff95741912ad9e8a, 0xff9c5c1912b39470, 0xffb1dfb1f6ce215b, 0xffb5be9be2e469cc, 0xffffffffffffffff}
 
 // TableRetain owns no storage. The caller supplies both bounded buffers; a
 // whole unknown record that does not fit is dropped and counted once.
@@ -4775,7 +4857,7 @@ func tableRetainFileMinimum(kind uint8) int64 {
 		return 10
 	case 15, 30:
 		return 8
-	case 12, 31, 32:
+	case 12, 32:
 		return 1
 	}
 	return 0
@@ -4901,7 +4983,7 @@ func (s *tableRetainIn) payload(kind uint8, depth int) bool {
 		return s.raw(width)
 	}
 	switch kind {
-	case 12, 31, 32:
+	case 12, 32:
 		n, ok := s.r.Leb()
 		if !ok || !s.r.Room(n) || !s.room(tableLebBytes(n)) {
 			return false
@@ -5187,7 +5269,7 @@ func (s *tableRetainOut) payload(kind uint8, depth int) bool {
 		return s.raw(n)
 	}
 	switch kind {
-	case 12, 31, 32:
+	case 12, 32:
 		n, ok := s.r.Leb()
 		if !ok || !s.r.Room(n) {
 			return false
@@ -5665,4 +5747,4 @@ func TableKeyed[T any](slots []T, key int) *T {
 }
 
 // One descriptor per union declaration, initialized after package data.
-var tableUnionArms = make([]TableUnionInfo, 1)
+var tableUnionArms = make([]TableUnionInfo, 2)

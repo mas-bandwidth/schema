@@ -181,7 +181,7 @@ defmodule Bench.TableMessage do
       0x6CEDE8B6EB60F1CD => {8, 0x01CDF160EBB6E8ED6C04010CFF1F, {:same, 0}, nil, {-2048, 2047}},
       0x7F69D4B5288BA9CF => {9, 0x01CFA98B28B5D4697F04010A00, {:same, 0}, nil, {0, 1000}},
       0xA0B610205F2C6E01 => {10, 0x01016E2C5F2010B6A01E, {:enum, :none}, nil, nil},
-      0x7F6308BE8AB37FC0 => {11, 0x01C07FB38ABE08637F09010800, {:same, 0}, nil, nil},
+      0x7F6308BE8AB37FC0 => {11, 0x01C07FB38ABE08637F09010800, {:same, 0}, nil, {0, 255}},
       0x11A44FC1D1243DA7 => {12, 0x01A73D24D1C14FA41101, {:same, 0}, nil, nil},
       0x7674CFD19B9031CA => {13, 0x01CA31909BD1CF747601, {:same, 0}, nil, nil}
     },
@@ -464,7 +464,7 @@ defmodule Bench.TableMessage do
     end
   end
 
-  defp first_use_payload(bin, kind, ids, acc, d) when kind in [12, 13, 14, 16, 31, 32] do
+  defp first_use_payload(bin, kind, ids, acc, d) when kind in [12, 13, 14, 16, 32] do
     with {:ok, content, rest} <- first_use_framed(bin),
          {:ok, acc} <- first_use_content(content, kind, ids, acc, d + 1) do
       {:ok, rest, acc}
@@ -716,7 +716,7 @@ defmodule Bench.TableMessage do
       kind in [17, 30] ->
         leb_rest(bin)
 
-      kind in [12, 13, 14, 16, 31, 32] ->
+      kind in [12, 13, 14, 16, 32] ->
         body(bin)
 
       kind == 15 ->
@@ -872,7 +872,9 @@ defmodule Bench.TableMessage do
 
   defp read_element(_kind, _id, _s, _), do: :error
 
-  defp known_kind?(kind), do: (kind >= 0 and kind <= 32) or kind == 36
+  # 31 is held by name and never written (R17): an announcement naming it is
+  # malformed, as one naming 33 or 34 is
+  defp known_kind?(kind), do: (kind >= 0 and kind <= 30) or kind == 32 or kind == 36
 
   defp base_inside_kind?(kind, base) do
     dom = kind_bits(kind)
@@ -1179,7 +1181,7 @@ defmodule Bench.TableMessage do
     if n < 1 or n > @batch_max do
       {:error, :batch_too_large}
     else
-      case encode_bodies(vocab, values, {0, 0}, vocab.root) do
+      case encode_bodies(vocab, values, {0, 0}, own_record(vocab), own_scope(vocab)) do
         {:ok, {_acc, nbits}} -> {:ok, 2 + div(nbits + 7, 8)}
         :error -> {:error, :malformed}
       end
@@ -1204,7 +1206,7 @@ defmodule Bench.TableMessage do
     if n < 1 or n > @batch_max do
       {:error, :batch_too_large}
     else
-      case encode_bodies(vocab, values, {0, 0}, vocab.root) do
+      case encode_bodies(vocab, values, {0, 0}, own_record(vocab), own_scope(vocab)) do
         {:ok, bits} -> {:ok, frame_batch(n, bits)}
         :error -> {:error, :malformed}
       end
@@ -1676,19 +1678,17 @@ defmodule Bench.TableMessage do
 
   defp align_write({acc, nbits}), do: {acc, nbits + rem(8 - rem(nbits, 8), 8)}
 
-  # owner is the name of the table or struct whose body is written (the bound
-  # root, then each nested record), the key of its own write rules
-  defp encode_bodies(_vocab, [], acc, _owner), do: {:ok, acc}
+  defp encode_bodies(_vocab, [], acc, _rec, _scope), do: {:ok, acc}
 
-  defp encode_bodies(vocab, [body | rest], acc, owner) do
-    case encode_body(vocab, body, acc, owner) do
-      {:ok, acc2} -> encode_bodies(vocab, rest, acc2, owner)
+  defp encode_bodies(vocab, [body | rest], acc, rec, scope) do
+    case encode_body(vocab, body, acc, rec, scope) do
+      {:ok, acc2} -> encode_bodies(vocab, rest, acc2, rec, scope)
       :error -> :error
     end
   end
 
-  defp encode_body(vocab, body, acc, owner) do
-    case encode_fields(vocab, body, acc, owner, -1) do
+  defp encode_body(vocab, body, acc, rec, scope) do
+    case encode_fields(vocab, body, acc, rec, scope, -1) do
       {:ok, acc2} -> {:ok, put_bits(acc2, 0, vocab.ref_bits)}
       :error -> :error
     end
@@ -1700,19 +1700,22 @@ defmodule Bench.TableMessage do
   # field the record does not declare, a field out of its declaration order and
   # a field stored at the default the writer elides are refused, each by
   # :invalid_value in every build. Nothing is reordered or dropped.
-  defp encode_fields(_vocab, [], acc, _owner, _last), do: {:ok, acc}
+  defp encode_fields(_vocab, [], acc, _rec, _scope, _last), do: {:ok, acc}
 
-  defp encode_fields(vocab, [{ref, value} | rest], acc, owner, last) do
+  defp encode_fields(vocab, [{ref, value} | rest], acc, rec, scope, last) do
     case entry_at(vocab, ref) do
       {:ok, entry} ->
-        check_field(vocab, entry, value, owner)
-        check(not (entry.kind == 15 and value == :none))
-
         decl =
-          case write_decl(record(owner), entry, last, vocab) do
+          case write_decl(rec, entry, last, vocab) do
             {:ok, decl} -> decl
             _ -> throw(:invalid_value)
           end
+
+        # THE RULE IS THE DECLARATION'S OWN: the record being written holds this
+        # field, so the rule of THIS table's declaration judges it, never the
+        # merge of every declaration that shares its name and kind on the wire
+        check_field(vocab, entry, value, scope, decl != nil)
+        check(not (entry.kind == 15 and value == :none))
 
         acc2 = put_bits(acc, ref, vocab.ref_bits)
         elem = Map.get(entry, :element)
@@ -1720,7 +1723,7 @@ defmodule Bench.TableMessage do
         case encode_value(vocab, entry.kind, entry.shape, elem, value, acc2, sub_of(decl)) do
           {:ok, acc3} ->
             check(not written_at_default?(vocab, decl, entry, value))
-            encode_fields(vocab, rest, acc3, owner, next_last(decl, last))
+            encode_fields(vocab, rest, acc3, rec, scope, next_last(decl, last))
 
           :error ->
             :error
@@ -1751,7 +1754,7 @@ defmodule Bench.TableMessage do
     do: encode_string(shape, value, acc)
 
   defp encode_value(vocab, 13, _shape, _elem, value, acc, sub),
-    do: encode_body(vocab, value, acc, sub)
+    do: encode_body(vocab, value, acc, record(sub), sub)
 
   defp encode_value(vocab, 14, shape, elem, value, acc, sub),
     do: encode_array(vocab, shape, elem, value, acc, sub)
@@ -1903,7 +1906,7 @@ defmodule Bench.TableMessage do
 
     case entry_at(vocab, ref) do
       {:ok, entry} ->
-        check_field(vocab, entry, value, sub)
+        check_field(vocab, entry, value, sub, arm_known?(sub, entry.id))
         elem = Map.get(entry, :element)
         encode_value(vocab, entry.kind, entry.shape, elem, value, acc2, arm_sub(sub, entry.id))
 
@@ -1922,20 +1925,8 @@ defmodule Bench.TableMessage do
   # by the compiler as write_rule_rows/0 and keyed by the {id, kind} a
   # vocabulary entry carries; a field no declaration of this unit names
   # carries no rule.
-  #
-  # A value is held to the rule of the declaration that owns it (the owner: a
-  # table or struct name, or {:union, name} for an arm), never to the looser
-  # rule a same-named field of another declaration shares its wire entry with.
-  # Only a field the owner declares no rule for falls back to the rule merged
-  # over every declaration of its {id, kind}.
-  defp check_field(vocab, entry, value, owner) do
-    rule =
-      case Map.fetch(owner_rules(), {owner, entry.id, entry.kind}) do
-        {:ok, rule} -> rule
-        :error -> Map.get(write_rules(), {entry.id, entry.kind})
-      end
-
-    case rule do
+  defp check_field(vocab, entry, value, scope, declared) do
+    case field_rule(entry, scope, declared) do
       %{min: lo, max: hi} ->
         check(is_integer(value) and value >= lo and value <= hi)
 
@@ -1975,6 +1966,14 @@ defmodule Bench.TableMessage do
     end
   end
 
+  # a declaration of the scope (a table name, or {:union, name}) judges its own
+  # field; a field the scope does not declare (a peer at another build, an
+  # unbound root) falls back to the merge over every declaration of its id and kind
+  defp field_rule(entry, scope, true) when scope != nil,
+    do: Map.get(scoped_rules(), {scope, entry.id, entry.kind})
+
+  defp field_rule(entry, _scope, _declared), do: Map.get(write_rules(), {entry.id, entry.kind})
+
   defp check(true), do: :ok
   defp check(false), do: throw(:invalid_value)
 
@@ -1993,20 +1992,15 @@ defmodule Bench.TableMessage do
 
   defp named?(_vocab, _ids, _ref), do: false
 
-  defp owner_rules do
-    case :persistent_term.get({__MODULE__, :owner_rules}, nil) do
+  defp scoped_rules do
+    case :persistent_term.get({__MODULE__, :scoped_rules}, nil) do
       nil ->
         rules =
-          Enum.reduce(write_owner_rows(), %{}, fn {owner, id, kind, what, v}, acc ->
-            Map.update(
-              acc,
-              {owner, id, kind},
-              add_rule(%{}, what, v),
-              &add_rule(&1, what, v)
-            )
+          Enum.reduce(scoped_write_rule_rows(), %{}, fn {scope, id, kind, what, v}, acc ->
+            Map.update(acc, {scope, id, kind}, add_rule(%{}, what, v), &add_rule(&1, what, v))
           end)
 
-        :persistent_term.put({__MODULE__, :owner_rules}, rules)
+        :persistent_term.put({__MODULE__, :scoped_rules}, rules)
         rules
 
       rules ->
@@ -2347,6 +2341,9 @@ defmodule Bench.TableMessage do
   defp own_record(%{root: root}) when is_binary(root), do: record(root)
 
   defp own_record(_vocab), do: nil
+
+  defp own_scope(%{root: root}) when is_binary(root), do: root
+  defp own_scope(_vocab), do: nil
 
   defp own_build?(%{build_version: @build_version}), do: true
   defp own_build?(_vocab), do: false
@@ -2960,57 +2957,65 @@ defmodule Bench.TableMessage do
     ]
   end
 
-  # the same rules per DECLARING table, struct or {:union, name}, one {owner, id, kind, rule, value} row each: a value is held to its own declaration, never to the looser rule a same-named field of another declaration shares its wire entry with
-  defp write_owner_rows do
+  # the same rules once per declaration scope, {scope, id, kind, rule, value} each
+  defp scoped_write_rule_rows do
     [
+      {"BenchMixed", 0xAA38ACA481F528A8, 7, :min, 0},
+      {"BenchMixed", 0xAA38ACA481F528A8, 7, :max, 65_535},
       {"BenchMixed", 0x0DBE005C56697C3E, 4, :min, 0},
       {"BenchMixed", 0x0DBE005C56697C3E, 4, :max, 65_535},
-      {"BenchMixed", 0x13A62F542CF8E86E, 12, :text, 15},
-      {"BenchMixed", 0x2E35DC5321AA5790, 15, :arm, 0x33732819300680AA},
-      {"BenchMixed", 0x2E35DC5321AA5790, 15, :arm, 0x9FA3A41C86ECB765},
-      {"BenchMixed", 0x2E35DC5321AA5790, 15, :arm, 0xF2A38D910B5B348B},
-      {"BenchMixed", 0x3C460475F9BE69C6, 22, :min, 0},
-      {"BenchMixed", 0x3C460475F9BE69C6, 22, :max, 16_776_960},
-      {"BenchMixed", 0x3EEE6B51BE54FC85, 5, :min, -1_000_000_000_000},
-      {"BenchMixed", 0x3EEE6B51BE54FC85, 5, :max, 1_000_000_000_000},
-      {"BenchMixed", 0x560D6527CCD8515F, 8, :min, 0},
-      {"BenchMixed", 0x560D6527CCD8515F, 8, :max, 16_777_215},
-      {"BenchMixed", 0x5759CE7586BBB5A3, 14, :each_min, 0},
-      {"BenchMixed", 0x5759CE7586BBB5A3, 14, :each_max, 255},
+      {"BenchMixed", 0x9BAE0DA8B829EE03, 8, :min, 0},
+      {"BenchMixed", 0x9BAE0DA8B829EE03, 8, :max, 4_294_967_295},
+      {"BenchMixed", 0xB7D7B5650A590B05, 9, :min, 0},
+      {"BenchMixed", 0xB7D7B5650A590B05, 9, :max, 18_446_744_073_709_551_615},
       {"BenchMixed", 0x6D7B98E2D095967E, 8, :min, 0},
       {"BenchMixed", 0x6D7B98E2D095967E, 8, :max, 4_294_967_295},
       {"BenchMixed", 0x73A94C71D60DC0D8, 9, :min, 0},
       {"BenchMixed", 0x73A94C71D60DC0D8, 9, :max, 18_446_744_073_709_551_615},
-      {"BenchMixed", 0x78101AC0AA8CBCFE, 4, :min, 0},
-      {"BenchMixed", 0x78101AC0AA8CBCFE, 4, :max, 15},
+      {"BenchMixed", 0x3EEE6B51BE54FC85, 5, :min, -1_000_000_000_000},
+      {"BenchMixed", 0x3EEE6B51BE54FC85, 5, :max, 1_000_000_000_000},
       {"BenchMixed", 0x7BBC035F7B6D0112, 9, :min, 0},
       {"BenchMixed", 0x7BBC035F7B6D0112, 9, :max, 281_474_976_710_655},
-      {"BenchMixed", 0x9BAE0DA8B829EE03, 8, :min, 0},
-      {"BenchMixed", 0x9BAE0DA8B829EE03, 8, :max, 4_294_967_295},
+      {"BenchMixed", 0x3C460475F9BE69C6, 22, :min, 0},
+      {"BenchMixed", 0x3C460475F9BE69C6, 22, :max, 16_776_960},
+      {"BenchMixed", 0x2E35DC5321AA5790, 15, :arm, 0x33732819300680AA},
+      {"BenchMixed", 0x2E35DC5321AA5790, 15, :arm, 0x9FA3A41C86ECB765},
+      {"BenchMixed", 0x2E35DC5321AA5790, 15, :arm, 0xF2A38D910B5B348B},
+      {"BenchMixed", 0x5759CE7586BBB5A3, 14, :each_min, 0},
+      {"BenchMixed", 0x5759CE7586BBB5A3, 14, :each_max, 255},
+      {"BenchMixed", 0x13A62F542CF8E86E, 12, :text, 15},
       {"BenchMixed", 0xA3348580461FAF16, 19, :min, 0},
       {"BenchMixed", 0xA3348580461FAF16, 19, :max, 340_282_366_920_938_463_463_374_607_431_768_211_455},
-      {"BenchMixed", 0xAA38ACA481F528A8, 7, :min, 0},
-      {"BenchMixed", 0xAA38ACA481F528A8, 7, :max, 65_535},
-      {"BenchMixed", 0xB7D7B5650A590B05, 9, :min, 0},
-      {"BenchMixed", 0xB7D7B5650A590B05, 9, :max, 18_446_744_073_709_551_615},
-      {"BenchMixed", 0xBF30E00DC53307A9, 26, :min, 0},
-      {"BenchMixed", 0xBF30E00DC53307A9, 26, :max, 64_000},
       {"BenchMixed", 0xD61BDD7908AF2642, 18, :min, -1_267_650_600_228_229_401_496_703_205_376},
       {"BenchMixed", 0xD61BDD7908AF2642, 18, :max, 1_267_650_600_228_229_401_496_703_205_376},
+      {"BenchMixed", 0xBF30E00DC53307A9, 26, :min, 0},
+      {"BenchMixed", 0xBF30E00DC53307A9, 26, :max, 64_000},
+      {"BenchMixed", 0x560D6527CCD8515F, 8, :min, 0},
+      {"BenchMixed", 0x560D6527CCD8515F, 8, :max, 16_777_215},
       {"BenchMixed", 0xFD29EE12A979CB69, 4, :min, 0},
       {"BenchMixed", 0xFD29EE12A979CB69, 4, :max, 255},
+      {"BenchMixed", 0x78101AC0AA8CBCFE, 4, :min, 0},
+      {"BenchMixed", 0x78101AC0AA8CBCFE, 4, :max, 15},
       {"MixedChatEvent", 0xA5013E9AD5CAEDA4, 4, :min, 0},
       {"MixedChatEvent", 0xA5013E9AD5CAEDA4, 4, :max, 3},
       {"MixedChatEvent", 0xFBF1AC4D96EBD022, 7, :min, 0},
       {"MixedChatEvent", 0xFBF1AC4D96EBD022, 7, :max, 4095},
       {"MixedEntity", 0x23FCFD6678E36712, 7, :min, 0},
       {"MixedEntity", 0x23FCFD6678E36712, 7, :max, 4095},
+      {"MixedEntity", 0xCB4B37357667310E, 4, :min, -16_383},
+      {"MixedEntity", 0xCB4B37357667310E, 4, :max, 16_383},
+      {"MixedEntity", 0xCB4B3835766732C1, 4, :min, -16_383},
+      {"MixedEntity", 0xCB4B3835766732C1, 4, :max, 16_383},
+      {"MixedEntity", 0xCB4B353576672DA8, 4, :min, -16_383},
+      {"MixedEntity", 0xCB4B353576672DA8, 4, :max, 16_383},
+      {"MixedEntity", 0xB54D8E19798E16E8, 7, :min, 0},
+      {"MixedEntity", 0xB54D8E19798E16E8, 7, :max, 511},
       {"MixedEntity", 0x53A9F665A90CC1B1, 7, :min, 0},
       {"MixedEntity", 0x53A9F665A90CC1B1, 7, :max, 511},
-      {"MixedEntity", 0x6CEDE5B6EB60ECB4, 4, :min, -2048},
-      {"MixedEntity", 0x6CEDE5B6EB60ECB4, 4, :max, 2047},
       {"MixedEntity", 0x6CEDE6B6EB60EE67, 4, :min, -2048},
       {"MixedEntity", 0x6CEDE6B6EB60EE67, 4, :max, 2047},
+      {"MixedEntity", 0x6CEDE5B6EB60ECB4, 4, :min, -2048},
+      {"MixedEntity", 0x6CEDE5B6EB60ECB4, 4, :max, 2047},
       {"MixedEntity", 0x6CEDE8B6EB60F1CD, 4, :min, -2048},
       {"MixedEntity", 0x6CEDE8B6EB60F1CD, 4, :max, 2047},
       {"MixedEntity", 0x7F69D4B5288BA9CF, 4, :min, 0},
@@ -3030,28 +3035,20 @@ defmodule Bench.TableMessage do
       {"MixedEntity", 0xA0B610205F2C6E01, 30, :member, 0x9FBFEFA835DA8476},
       {"MixedEntity", 0xA0B610205F2C6E01, 30, :member, 0xA790EEE12766CF0C},
       {"MixedEntity", 0xA0B610205F2C6E01, 30, :member, 0xD9CD0DCC285B7816},
-      {"MixedEntity", 0xB54D8E19798E16E8, 7, :min, 0},
-      {"MixedEntity", 0xB54D8E19798E16E8, 7, :max, 511},
-      {"MixedEntity", 0xCB4B353576672DA8, 4, :min, -16_383},
-      {"MixedEntity", 0xCB4B353576672DA8, 4, :max, 16_383},
-      {"MixedEntity", 0xCB4B37357667310E, 4, :min, -16_383},
-      {"MixedEntity", 0xCB4B37357667310E, 4, :max, 16_383},
-      {"MixedEntity", 0xCB4B3835766732C1, 4, :min, -16_383},
-      {"MixedEntity", 0xCB4B3835766732C1, 4, :max, 16_383},
-      {"MixedHitEvent", 0x01FBC365B059B925, 4, :min, 0},
-      {"MixedHitEvent", 0x01FBC365B059B925, 4, :max, 7},
-      {"MixedHitEvent", 0x7F6308BE8AB37FC0, 4, :min, 0},
-      {"MixedHitEvent", 0x7F6308BE8AB37FC0, 4, :max, 4095},
       {"MixedHitEvent", 0xB7BC9AC015A25050, 7, :min, 0},
       {"MixedHitEvent", 0xB7BC9AC015A25050, 7, :max, 4095},
-      {"MixedPickupEvent", 0x8113FE7EA2B16969, 4, :min, 0},
-      {"MixedPickupEvent", 0x8113FE7EA2B16969, 4, :max, 255},
+      {"MixedHitEvent", 0x7F6308BE8AB37FC0, 4, :min, 0},
+      {"MixedHitEvent", 0x7F6308BE8AB37FC0, 4, :max, 4095},
+      {"MixedHitEvent", 0x01FBC365B059B925, 4, :min, 0},
+      {"MixedHitEvent", 0x01FBC365B059B925, 4, :max, 7},
       {"MixedPickupEvent", 0x9E7FD06D864FBD56, 7, :min, 0},
       {"MixedPickupEvent", 0x9E7FD06D864FBD56, 7, :max, 1023},
-      {"MixedStat", 0x52076675EC13A0C1, 4, :min, -512},
-      {"MixedStat", 0x52076675EC13A0C1, 4, :max, 511},
+      {"MixedPickupEvent", 0x8113FE7EA2B16969, 4, :min, 0},
+      {"MixedPickupEvent", 0x8113FE7EA2B16969, 4, :max, 255},
       {"MixedStat", 0x80AB75F0866DBF65, 6, :min, 0},
-      {"MixedStat", 0x80AB75F0866DBF65, 6, :max, 255}
+      {"MixedStat", 0x80AB75F0866DBF65, 6, :max, 255},
+      {"MixedStat", 0x52076675EC13A0C1, 4, :min, -512},
+      {"MixedStat", 0x52076675EC13A0C1, 4, :max, 511}
     ]
   end
 end

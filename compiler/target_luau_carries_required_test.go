@@ -11,7 +11,7 @@ import (
 
 func TestLuauCarriesRequired(t *testing.T) {
 	t.Parallel()
-	u := unitFromSource(t, "package t\ntable Ship\n{\n    name string(32) | required\n}\n")
+	u := unitFromSource(t, "package tx\ntable Ship\n{\n    name string(32) | required\n}\n")
 	c := New()
 	if !carries("luau", carryRequired) {
 		t.Fatal("luau does not carry | required")

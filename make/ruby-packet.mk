@@ -3,9 +3,9 @@
 
 build/packet-text/cpp/driver: | serialize-siblings
 
-build/packet-text/ruby/.stamp: build/schema-ruby test/packet-text/Narrow.schema
+build/packet-text/ruby/.stamp: build/schema-ruby test/packet-text/Text.schema
 	@rm -rf build/packet-text/ruby && mkdir -p build/packet-text/ruby
-	./build/schema-ruby generate --lang ruby --out build/packet-text/ruby/generated test/packet-text/Narrow.schema
+	./build/schema-ruby generate --lang ruby --out build/packet-text/ruby/generated test/packet-text/Text.schema
 	@touch $@
 
 .PHONY: packet-utf8-ruby packet-utf8-ruby-negative-control
@@ -31,7 +31,7 @@ packet-utf8-ruby-negative-control: packet-utf8-ruby
 .PHONY: packet-finite-ruby packet-finite-ruby-negative-control
 packet-finite-ruby: build/schema-ruby ruby-toolchain-check
 	@rm -rf build/packet-finite/ruby && mkdir -p build/packet-finite/ruby
-	./build/schema-ruby generate --lang ruby --out build/packet-finite/ruby/generated test/packet-finite/ruby/Finite.schema
+	./build/schema-ruby generate --lang ruby --out build/packet-finite/ruby/generated test/packet-finite/ruby/PacketFinite.schema
 	$(RUBY) --disable-gems -w test/packet-finite/ruby/main.rb build/packet-finite/ruby/generated
 	$(RUBY_FLOOR) --disable-gems -w test/packet-finite/ruby/main.rb build/packet-finite/ruby/generated
 

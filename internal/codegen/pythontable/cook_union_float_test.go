@@ -65,7 +65,7 @@ print("OK")
 	t.Run("range-negative-control", func(t *testing.T) {
 		t.Parallel()
 		planted := cloneFiles(files)
-		const path = "cookunionfloat/Core.py"
+		const path = "cookunionfloat/Records.py"
 		const from = "float_range=True"
 		text := string(planted[path])
 		if !strings.Contains(text, from) {

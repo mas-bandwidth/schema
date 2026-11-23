@@ -36,7 +36,7 @@ let ArrayKeyed: u8 = 4;
 
 // VariantDesc is one enum variant: its name and its table-wire id, the
 // FNV-1a 64 of the variant's wire name (docs/SPEC-TABLES.md §5).
-struct VariantDesc { name: const u8[:], id: u64 }
+struct VariantDesc { name: const u8[:], id: u64, deprecated: bool }
 
 // FieldDesc is one field (or union arm, or array element) as data. Integer
 // facts are Int128 lanes so one shape holds every domain; a bound or default
@@ -62,6 +62,7 @@ struct FieldDesc {
     lo: Int128,
     hi: Int128,
     bits: i32,                // bits(N)
+    mw: i32,                  // a flags mask's wire width W (docs/SPEC-TABLES.md §4)
     ibits: i32,               // fixed(I, F)
     fbits: i32,
     is_f32: bool,

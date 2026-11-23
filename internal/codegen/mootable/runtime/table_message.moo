@@ -373,8 +373,10 @@ local function fixedKind(k: number): boolean
 	return k >= 20 and k <= 29
 end
 
+-- Kind 31 is held by name and never written (R17): an announcement naming it
+-- is malformed, as one naming 33 or 34 is.
 local function knownKind(k: number): boolean
-	return k == 0 or (k >= 1 and k <= 17) or (k >= 18 and k <= 29) or (k >= 30 and k <= 32) or k == 36
+	return k == 0 or (k >= 1 and k <= 17) or (k >= 18 and k <= 29) or k == 30 or k == 32 or k == 36
 end
 
 -- the compressed float's derivation (ir.TableMessageQuantization): the step
@@ -566,7 +568,7 @@ end
 
 -- MS.NewVocabulary is one direction's vocabulary, unannounced.
 function MS.NewVocabulary(): any
-	return { entries = {}, count = 0, refBits = 1, buildVersion = nil, announced = false, refused = false, maxBytes = 0, maxEntries = 0, strict = false }
+	return { entries = {}, count = 0, refBits = 1, buildVersion = nil, announced = false, refused = false, maxBytes = DEFAULT_MAX_BYTES, maxEntries = 0, strict = false }
 end
 
 local function resetReport(report: any)
@@ -648,7 +650,7 @@ local function announceRead(v: any, data: buffer, report: any): boolean
 	local versions, vocabs = 0, 0
 	local version: string? = nil
 	local words: buffer? = nil
-	local maxBytes = if v.maxBytes ~= nil and v.maxBytes > 0 then v.maxBytes else DEFAULT_MAX_BYTES
+	local maxBytes = if v.maxBytes ~= nil then v.maxBytes else DEFAULT_MAX_BYTES -- a caller 0 refuses (R9)
 	while true do
 		local ref, next = V.leb(data, at, start)
 		if ref == nil then
@@ -713,7 +715,7 @@ local function announceRead(v: any, data: buffer, report: any): boolean
 					return false
 				end
 				at += w
-			elseif kind == 12 or kind == 13 or kind == 14 or kind == 15 or kind == 16 or kind == 31 then
+			elseif kind == 12 or kind == 13 or kind == 14 or kind == 15 or kind == 16 then
 				local n
 				n, at = V.leb(data, at, start)
 				if n == nil or at + n > start then
@@ -1735,15 +1737,6 @@ skipEntry = function(t: any, kind: number, shape: any, depth: number?, field: bo
 			return dmal(t)
 		end
 		return true
-	elseif kind == 31 then
-		if not ralign(r) then
-			return false
-		end
-		local n, ok = get(r, 32)
-		if not ok then
-			return false
-		end
-		return skipBits(r, n * 8)
 	elseif kind == 14 or kind == 16 then
 		local n = shape.min
 		local width = countBits(shape)
@@ -1887,6 +1880,16 @@ local function decodeInteger(t: any, fd: any, kind: number, shape: any): (any, b
 	end
 	if fd.bits ~= nil and fd.bits < 64 then
 		local cap = Uint64.sub(Uint64.lsh(Uint64.fromNumber(1), fd.bits), Uint64.fromNumber(1))
+		local uv = if type(value) == "number" then value else (if Int64.is(value) then Int64.toUint64(value) else value)
+		if Uint64.cmp(uv, cap) > 0 then
+			return nil, refuseRead(t, "out_of_range")
+		end
+	end
+	-- A MASK BIT AT OR ABOVE THE READER'S W REFUSES out_of_range (docs/SPEC-TABLES.md
+	-- §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH): a newer writer announces a
+	-- wider mask, and each value is held to this reader's W
+	if fd.mw ~= nil and fd.mw < 64 then
+		local cap = Uint64.sub(Uint64.lsh(Uint64.fromNumber(1), fd.mw), Uint64.fromNumber(1))
 		local uv = if type(value) == "number" then value else (if Int64.is(value) then Int64.toUint64(value) else value)
 		if Uint64.cmp(uv, cap) > 0 then
 			return nil, refuseRead(t, "out_of_range")

@@ -66,9 +66,8 @@ const (
 func tableScalarKind(f *ir.Field) int { return ir.TableWireScalarKind(f) }
 
 // the kinds this form added (docs/SPEC-TABLES.md §3): an ENUM rides under
-// its own kind carrying the reference to its variant name's id, the ESCAPE
-// is how a later major adds a kind without the addition reading as damage,
-// and the PAYLOAD-FREE kind is what an arm that holds nothing rides under,
+// its own kind carrying the reference to its variant name's id, and the
+// PAYLOAD-FREE kind is what an arm that holds nothing rides under,
 // because an arm header carries a kind.
 const (
 	tkEnum      = ir.TableKindEnum
@@ -119,6 +118,7 @@ type tableGen struct {
 	// answerable by asking one question (§2.2).
 	blocks         *ir.BlockUnit
 	owner          *ir.Struct      // the closure member whose codec is being emitted
+	writeChecked   map[string]bool // see messageNeedsWriteAsserts
 	variable       map[string]bool // the derived VARIABLE-LENGTH members (ir.VariableTables)
 	targets        map[string]bool // tables some pointer targets (ir.PointerTargets)
 	body           strings.Builder
@@ -1122,10 +1122,17 @@ inline const char TableDocNone[1] = "";
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
-    // a [A..B]T count's declared minimum A (docs/SPEC.md §4.2, §5.1 row 3):
-    // the count it is born at and the least a read accepts; 0 on every other
-    // field
+    // A COUNTED ARRAY'S MINIMUM (docs/SPEC.md §5.1, docs/SPEC-TABLES.md §16.2):
+    // the A of [A..B]T, 0 on every other field. A text read that
+    // places fewer elements refuses, as the wire read does.
     int32_t array_min;
+    // A DEPRECATED VARIANT (docs/SPEC-TABLES.md §2.15): enum_deprecated says
+    // whether a value names a variant marked "| deprecated", NULL when
+    // the enum carries none. A read naming one stores enum_default instead —
+    // the field's declared default, None for an element — and is never
+    // counted unknown.
+    uint64_t enum_default;
+    bool ( *enum_deprecated )( uint64_t value );
 };
 
 struct TableTypeInfo
@@ -1625,7 +1632,6 @@ struct TableReader
                 return false;
             }
             case 12:
-            case 31:
             case 32:
             {
                 uint64_t n = 0;
@@ -1745,7 +1751,7 @@ struct TableReader
 
     // skip one payload by kind; false = framing damage. FOUR RULES COVER THE
     // SET (docs/SPEC-TABLES.md §3), and a kind outside it is not skippable —
-    // which is why the set is closed and why kind 31 exists.
+    // which is why the set is closed.
     bool skip( uint8_t kind, int depth = 0 )
     {
         switch ( kind )
@@ -1787,8 +1793,7 @@ struct TableReader
                 return getleb( ignored );
             }
             case 12: // a string body: its L is opaque here
-            case 31:
-            case 32: // 31 is the ESCAPE, 32 the payload-free kind
+            case 32: // the payload-free kind
             {
                 uint64_t n = 0;
                 if ( !getleb( n ) ) return false;
@@ -1819,10 +1824,11 @@ struct TableReader
                 offset += (int64_t) n;
                 return !badElementKindContent( arm_kind, b, (int64_t) n, depth );
             }
-            // KIND 34 IS RESERVED FOR float16 AND IS NOT PART OF THIS MAJOR (§3):
-            // no writer emits it and no reader has a rule for it, so a reader
-            // meets it only as DAMAGE, exactly as it meets 35 or 200. A bare 34
-            // is a writer that ignored the escape kind 31.
+            // KIND 31 IS HELD BY NAME AND NEVER WRITTEN (R17) AND KIND 34 IS
+            // RESERVED FOR float16; NEITHER IS PART OF THIS MAJOR (§3): no writer
+            // emits them and no reader has a rule for them, so a reader meets them
+            // only as DAMAGE, exactly as it meets 35 or 200.
+            case 31:
             case 34: return false;
         }
         return false;
@@ -2526,7 +2532,8 @@ func GenerateLineage(u *ir.Unit, lock *lockfile.Unit) (map[string][]byte, error)
 			fmt.Fprintf(&c, "#include \"%sTable.h\"\n\n", f.Base)
 			c.WriteString("#include <stdio.h> // the text form: number formatting\n")
 			c.WriteString("#include <stdlib.h> // the text form: exact number conversion\n")
-			c.WriteString("#include <locale.h> // the text form: the runtime's decimal point\n")
+			c.WriteString("#include <locale.h> // the text form: numbers convert in the \"C\" locale\n")
+			c.WriteString("#if defined(__APPLE__)\n#include <xlocale.h> // newlocale, uselocale\n#endif\n")
 			c.WriteString("#include <string> // the hand-editable text form (§16.9)\n")
 			c.WriteString("#include <vector> // the hand-editable text form (§16.9)\n")
 			c.WriteString("#include <string.h> // the hand-editable text form (§16.9)\n\n")

@@ -401,12 +401,14 @@ local function entryRead(r: any): any
 	r.at = r.at + 8
 	if e.id == VERSION_ID or e.id == VOCAB_ID then r.bad = true; return e end
 	local kind = rU8(r)
-	if kind > 32 and kind ~= 36 then r.bad = true; return e end
+	-- Kind 31 is held by name and never written (R17): an announcement naming
+	-- it is malformed, as one naming 33 or 34 is.
+	if kind == 31 or (kind > 32 and kind ~= 36) then r.bad = true; return e end
 	e.shape = shapeRead(r, kind)
 	if r.bad then return e end
 	if kind == 14 or kind == 16 then
 		local elem = rU8(r)
-		if (elem > 32 and elem ~= 36) or elem == 14 or elem == 16 then r.bad = true; return e end
+		if elem == 31 or (elem > 32 and elem ~= 36) or elem == 14 or elem == 16 then r.bad = true; return e end
 		e.shape.elem = elem
 		e.element = shapeRead(r, elem)
 		e.shape.element = e.element
@@ -424,7 +426,7 @@ local function skipStep(r: any, kind: number): boolean
 		if r.at + w // 8 > r.e then return false end
 		r.at = r.at + w // 8
 		return true
-	elseif kind == 12 or kind == 13 or kind == 14 or kind == 15 or kind == 16 or kind == 31 then
+	elseif kind == 12 or kind == 13 or kind == 14 or kind == 15 or kind == 16 then
 		local n = rLeb(r)
 		if r.bad or r.at + n > r.e then return false end
 		r.at = r.at + n
@@ -609,7 +611,7 @@ end
 -- refusal names <Table>.<field> even when the deprecated value is an element.
 local function named(f: any, name: string): any
 	if f == nil or f.name ~= nil then return f end
-	return { s = f.s, t = f.t, vs = f.vs, def = f.def, e = f.e, lo = f.lo, hi = f.hi, f32 = f.f32, fbits = f.fbits, ibits = f.ibits, bits = f.bits, signed = f.signed, kw = f.kw, name = name }
+	return { s = f.s, t = f.t, vs = f.vs, def = f.def, e = f.e, lo = f.lo, hi = f.hi, f32 = f.f32, fbits = f.fbits, ibits = f.ibits, bits = f.bits, fw = f.fw, signed = f.signed, kw = f.kw, name = name }
 end
 
 local function variantIndex(vs: any, id: integer): number
@@ -1009,7 +1011,7 @@ skipShape = function(r: any, st: any, e: any, fd: any, dep: any, fieldEntry: boo
 		-- A missing element is that zero shape (kind 0, width 0), not a raised index.
 		local element = if e.element ~= nil then e.element else newShape()
 		local ik = element.kind
-		local variable = ik == 12 or ik == 13 or ik == 14 or ik == 15 or ik == 16 or ik == 17 or ik == 30 or ik == 31
+		local variable = ik == 12 or ik == 13 or ik == 14 or ik == 15 or ik == 16 or ik == 17 or ik == 30
 		-- A walked element that consumes no bits refuses the read
 		-- (docs/SPEC-TABLES.md §3.3; tableMessageSkip, r.Offset==before).
 		local function walkOne(): boolean
@@ -1079,10 +1081,6 @@ skipShape = function(r: any, st: any, e: any, fd: any, dep: any, fieldEntry: boo
 			if not walkOne() then return false end
 		end
 		return true
-	elseif k == 31 then
-		if not align(r) then return false end
-		local n, ok = get(r, 32)
-		return ok and skip(r, n * 8)
 	end
 	-- A SKIPPED RANGED VALUE IS HELD TO THE ANNOUNCED KIND as the named read
 	-- holds it (§3.3, SKIPPED IS NOT UNREAD): a sum the kind cannot hold is
@@ -1501,6 +1499,17 @@ transcodeValue = function(r: any, pv: any, ov: any, rootName: string, pe: any, o
 					rep.clamped = (rep.clamped or 0) + 1
 					return nil, false
 				end
+			end
+		end
+	end
+	-- A MASK BIT AT OR ABOVE THE READER'S W REFUSES out_of_range (docs/SPEC-TABLES.md
+	-- §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH): a newer writer announces a
+	-- wider mask, and each value is held to this reader's W
+	if fd ~= nil and fd.fw ~= nil and fd.fw < 128 then
+		for bi = fd.fw, 127 do
+			if bit16(val16, bi) ~= 0 then
+				rep.clamped = (rep.clamped or 0) + 1
+				return nil, false
 			end
 		end
 	end
@@ -2099,6 +2108,9 @@ local function mValidScalar(e: any, val: any): (boolean, string?)
 			local top: any = if typeof(val) == "integer" then integer.sub(integer.lshift(1i, integer.create(e.bits)), 1i) else (2 ^ e.bits - 1)
 			if mCmpLt(top, val, false) then return false, "invalid_value" end
 		end
+		-- a mask is held to W, the width its reader holds it to (docs/SPEC-TABLES.md
+		-- §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH)
+		if e.fw ~= nil and e.fw < 64 and typeof(val) == "integer" and integer.rshift(val, integer.create(e.fw)) ~= 0i then return false, "invalid_value" end
 		return true, nil
 	end
 	return true, nil

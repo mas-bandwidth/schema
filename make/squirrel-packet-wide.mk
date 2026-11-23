@@ -3,9 +3,9 @@
 # test/packet-defaults/README.md; SPEC §4.2, §4.7, §4.8). The Makefile's
 # wildcard include pulls this in.
 
-build/packet-text/squirrel/.stamp: bin/schema test/packet-text/Narrow.schema make/squirrel-packet-wide.mk
+build/packet-text/squirrel/.stamp: bin/schema test/packet-text/Text.schema make/squirrel-packet-wide.mk
 	@rm -rf build/packet-text/squirrel
-	./bin/schema generate --lang squirrel --out build/packet-text/squirrel test/packet-text/Narrow.schema
+	./bin/schema generate --lang squirrel --out build/packet-text/squirrel test/packet-text/Text.schema
 	@touch $@
 
 .PHONY: packet-utf8-squirrel packet-utf8-squirrel-negative-control
@@ -19,7 +19,7 @@ packet-utf8-squirrel-negative-control: packet-utf8-squirrel
 	@mkdir -p build/packet-text/squirrel-negative
 	go run ./tools/sabotage -name packet-utf8-squirrel-read -out build/packet-text/squirrel-negative/read.gotext internal/codegen/squirrel/read.go
 	@printf '{"Replace":{"%s/internal/codegen/squirrel/read.go":"%s/build/packet-text/squirrel-negative/read.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-text/squirrel-negative/overlay.json
-	go run -overlay=build/packet-text/squirrel-negative/overlay.json ./cmd/schema generate --lang squirrel --out build/packet-text/squirrel-negative/gen test/packet-text/Narrow.schema
+	go run -overlay=build/packet-text/squirrel-negative/overlay.json ./cmd/schema generate --lang squirrel --out build/packet-text/squirrel-negative/gen test/packet-text/Text.schema
 	@if ./build/packet-text/harness -oracle build/packet-text/cpp/driver -mutations-only "$(SQ)" test/packet-text/squirrel/main.nut "$(CURDIR)/build/packet-text/squirrel-negative/gen" > build/packet-text/squirrel-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: Squirrel unchecked UTF-8 read passed'; exit 1; fi
 	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-text/squirrel-negative/log || { cat build/packet-text/squirrel-negative/log; exit 1; }
 	@echo 'packet UTF-8 Squirrel negative control: unchecked read fails bit-flip agreement'

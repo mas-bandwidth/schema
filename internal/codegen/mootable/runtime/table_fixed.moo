@@ -644,6 +644,11 @@ local function readScalar(f: any, n: Node, dx: number, rec: buffer, rep: any, na
 	if f.bits ~= nil and f.bits < kw * 8 and V.rawCmp(x, V.bitsCap(f.bits, kw), kw, false) > 0 then
 		refuse("out_of_range", false, fieldName(named))
 	end
+	-- a mask bit at or above W refuses out_of_range, the older layout's read
+	-- included (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH)
+	if f.mw ~= nil and f.mw < kw * 8 and V.rawCmp(x, V.bitsCap(f.mw, kw), kw, false) > 0 then
+		refuse("out_of_range", false, fieldName(named))
+	end
 	return V.toStorage(f, x)
 end
 

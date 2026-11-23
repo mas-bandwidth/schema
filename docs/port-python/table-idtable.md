@@ -36,15 +36,16 @@ reference wire loads, saves back byte for byte, and measures its length. The
 four report rows (`escape_unnamed_field`, `escape_named_field`,
 `escape_element`, `nopayload_named_field`) are form-1 wires of the fixed root
 `ToolMessage`: the plain load refuses them `previous_form`, as the Go engine's
-`Decode` does, and the variable reader (`load_table`), where the escape and
-payload-free kinds are judged, answers the engine's `DecodeVariable` verdict on
-the same bytes: `escape_unnamed_field` reads (the escape at a position it
-cannot name is skipped and counted unknown), the two named-field rows refuse
-`kind_mismatch`, and `escape_element` refuses `wire_damaged`. The rows needed
-no runtime change. `TestPythonVtIdtableRowsNegativeControl` plants, in a copy
+`Decode` does, and the variable reader (`load_table`), where the held kind 31
+and the payload-free kind 32 are judged, answers the engine's `DecodeVariable` verdict on
+the same bytes. Kind 31 is held by name and never written (R17: the newer
+reader reads old data, never the other way), so every escape row refuses
+`wire_damaged`, at a field the reader cannot name as at one it declares, and
+`nopayload_named_field` refuses `kind_mismatch`. `TestPythonVtIdtableRowsNegativeControl` plants, in a copy
 of the runtime, the fixed save's layout hash one bit off and the fixed read's
 record-hash test inverted (every instance case red under each), and the
-variable read refusing an unnamed escape (`escape_unnamed_field` red).
+variable read skipping an unnamed kind 31 by its L as the removed escape did
+(`escape_unnamed_field` red).
 
 ### Enum lookup bench
 

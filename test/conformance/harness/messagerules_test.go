@@ -175,10 +175,10 @@ func decodeOne(t *testing.T, model *tabletext.Model, root string, v *tablewire.V
 
 // TestTheMasksWidth: a `flags` field of three variants in a message and in a
 // file, whose message payload is three bits and whose file payload is eight
-// bytes, and a file load carrying a bit above the reader's W saved into a
-// message, which must drop it. Red if a leg writes sixty-four bits on a
-// message, or keeps the appended bit through the message round trip and so
-// contradicts the row §4 states as moved.
+// bytes, and a newer writer's message carrying a bit above the reader's W,
+// which the reader refuses out_of_range (docs/SPEC-TABLES.md §4, A TABLE LOAD
+// HOLDS A MASK TO ITS WIDTH). Red if a leg writes sixty-four bits on a message,
+// or reads a bit above its W.
 func TestTheMasksWidth(t *testing.T) {
 	unit := tempUnit(t, "package rowdemo\n\nflags Perks { Shielded, Cloaked, Turbo }\n\nfixed table Masked\n{\n    perks Perks\n}\n")
 	model := tabletext.NewModel(unit)
@@ -218,7 +218,8 @@ func TestTheMasksWidth(t *testing.T) {
 		t.Errorf("the mask did not read back: ok=%v err=%v report=%+v perks=%d", ok, derr, report, instU64(t, back, "perks"))
 	}
 
-	// A NEWER WRITER'S BIT ABOVE W SURVIVES MESSAGE READ AND REFUSES OLDER RE-ENCODE
+	// A NEWER WRITER'S BIT ABOVE W REFUSES THE READ out_of_range, and the older
+	// build never encodes one
 	newerUnit := tempUnit(t, "package rowdemo\n\nflags Perks { Shielded, Cloaked, Turbo, Hyper }\n\nfixed table Masked\n{\n    perks Perks\n}\n")
 	newerModel := tabletext.NewModel(newerUnit)
 	newerVocab := vocabularyOf(t, newerUnit)
@@ -229,12 +230,10 @@ func TestTheMasksWidth(t *testing.T) {
 		t.Fatal(err)
 	}
 	fromMessage, ok, mreport, derr := decodeOne(t, model, "Masked", newerVocab, messageWire)
-	if derr != nil || !ok || mreport.Refused {
-		t.Fatalf("the message with the appended bit did not read: %v %+v", derr, mreport)
+	if ok || !mreport.Refused || tablewire.RefusalReason(derr) != tablewire.ReasonOutOfRange {
+		t.Errorf("the message with the appended bit read: ok=%v err=%v report=%+v, want out_of_range", ok, derr, mreport)
 	}
-	if instU64(t, fromMessage, "perks") != (1<<3)|1 || mreport.Unknown != 0 {
-		t.Errorf("the message read dropped or miscounted a bit above W: perks=%d unknown=%d, want perks=9 unknown=0", instU64(t, fromMessage, "perks"), mreport.Unknown)
-	}
+	setU64(t, fromMessage, "perks", (1<<3)|1)
 	if _, err := tablewire.EncodeMessage(model, fromMessage); err == nil {
 		t.Errorf("the older build encoded a bit above W without refusing invalid_value")
 	}
@@ -273,14 +272,16 @@ func TestTheMasksWidthOnAMessage(t *testing.T) {
 	}
 }
 
-// TestTheRetiredAndReservedKindsRefuseTheAnnouncement: kind 33 is retired and
-// kind 34 is reserved for float16 (docs/SPEC-TABLES.md §3), so neither is in
+// TestTheRetiredAndReservedKindsRefuseTheAnnouncement: kind 31 is held by name
+// and never written (R17: the newer reader reads old data, never the other way,
+// so the escape an older reader would have skipped is gone), kind 33 is retired
+// and kind 34 is reserved for float16 (docs/SPEC-TABLES.md §3), so none is in
 // this major's closed set and an announcement entry carrying one is damage. The
 // whole announcement is refused and sets no vocabulary, exactly as an entry of
 // any other kind outside the set is (§3.3).
 func TestTheRetiredAndReservedKindsRefuseTheAnnouncement(t *testing.T) {
 	_, _, backendVocabulary := backend(t)
-	for _, kind := range []uint8{ir.TableKindRetiredWstring, ir.TableKindReservedFloat16} {
+	for _, kind := range []uint8{ir.TableKindHeldEscape, ir.TableKindRetiredWstring, ir.TableKindReservedFloat16} {
 		entries := append([]ir.TableVocabularyEntry(nil), backendVocabulary.Entries()...)
 		entries = append(entries, ir.TableVocabularyEntry{Id: ir.TableWireId("label"), Kind: kind, Shape: ir.TableMessageShape{Max: 8}})
 		v, report, err := readAnnouncement(announce(backendVocabulary.BuildVersion(), entries))
@@ -635,14 +636,13 @@ fixed table Every
 	if err != nil {
 		t.Fatal(err)
 	}
-	// AND THE KIND NO DECLARATION SPELLS, appended by hand after the engine's
-	// fields: an escape (31) with a two-byte payload. The engine's body ends with `last` and its
-	// terminator, and `last` is set with its top bit on so the fields end at
-	// the stream's last one bit: what follows is the terminator and the pad,
-	// both zero, and the rebuilt body replaces them.
+	// The engine's body ends with `last` and its terminator, and `last` is
+	// set with its top bit on so the fields end at the stream's last one bit:
+	// what follows is the terminator and the pad, both zero, and the rebuilt
+	// body replaces them. Kind 31 is not among the rows: it is held by name
+	// and never written (R17), and an announcement naming it is refused
+	// (TestTheRetiredAndReservedKindsRefuseTheAnnouncement).
 	entries := append([]ir.TableVocabularyEntry(nil), wv.Entries()...)
-	escape := ir.TableVocabularyEntry{Id: ir.TableWireId("escaped"), Kind: ir.TableKindEscape}
-	entries = append(entries, escape)
 	v, areport, aerr := readAnnouncement(announce(wv.BuildVersion(), entries))
 	if aerr != nil || !v.Announced() || areport.Refused {
 		t.Fatalf("the announcement of every kind was refused: %v %+v", aerr, areport)
@@ -662,18 +662,13 @@ fixed table Every
 	for i := 8; i < fields; i++ {
 		rebuilt.put(in.get(1), 1)
 	}
-	rebuilt.put(uint64(len(entries)), refBits) // the escape's slot: align, a thirty-two bit L, then L bytes
-	rebuilt.align()
-	rebuilt.put(2, 32)
-	rebuilt.bytes([]byte{0xAA, 0xBB})
 	rebuilt.put(0, refBits)
 	back, ok, report, derr := decodeOne(t, rm, "Every", v, batchOf(rebuilt))
 	if derr != nil || !ok || report.Refused {
 		t.Fatalf("the shapes row: ok=%v err=%v report=%+v", ok, derr, report)
 	}
-	// every field but `last` is unknown to the reader: the declared ones and
-	// the escape
-	if want := len(wm.Lookup("Every").Fields) - 1 + 1; report.Unknown != want {
+	// every field but `last` is unknown to the reader
+	if want := len(wm.Lookup("Every").Fields) - 1; report.Unknown != want {
 		t.Errorf("the reader counted %d unknowns, one for each of %d kinds is owed", report.Unknown, want)
 	}
 	if instU64(t, back, "last") != 0x80000001 {

@@ -78,6 +78,28 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
+// OutputFileNames returns the exact set of Java filenames Generate writes for u,
+// without emitting or formatting file bodies (used by check-time collision detection).
+func OutputFileNames(u *ir.Unit) (map[string]struct{}, error) {
+	if err := checkNames(u); err != nil {
+		return nil, err
+	}
+	out := map[string]struct{}{}
+	if unitNeeds128(u) {
+		for _, f := range u.Files {
+			if f.Base == "Int128" || f.Base == "UInt128" {
+				return nil, fmt.Errorf("schema file %s.schema collides with the %s.java support library the Java emitter writes beside a 128-bit unit; rename the file", f.Base, f.Base)
+			}
+		}
+		out["Int128.java"] = struct{}{}
+		out["UInt128.java"] = struct{}{}
+	}
+	for _, f := range u.Files {
+		out[f.Base+".java"] = struct{}{}
+	}
+	return out, nil
+}
+
 // Generate returns basename.java -> file contents for every file of the
 // unit, plus Int128.java and UInt128.java when the unit has 128-bit storage.
 func Generate(u *ir.Unit) (map[string][]byte, error) {
@@ -4156,3 +4178,7 @@ func splitAssertMsg(e string) (cond, msg string, ok bool) {
 	}
 	return "", "", false
 }
+
+// CheckNames is this emitter's name check, run by schema check for every
+// target (SPEC §4.6, compiler/emitter_names.go) as well as at generate.
+func CheckNames(u *ir.Unit) error { return checkNames(u) }

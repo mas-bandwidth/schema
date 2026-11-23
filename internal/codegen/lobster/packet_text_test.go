@@ -192,7 +192,7 @@ func generateText(t *testing.T) map[string][]byte {
 	t.Helper()
 	files := map[string][]byte{}
 	for _, src := range []string{
-		filepath.Join("..", "..", "..", "test", "packet-text", "Narrow.schema"),
+		filepath.Join("..", "..", "..", "test", "packet-text", "Text.schema"),
 	} {
 		dir := t.TempDir()
 		data, err := os.ReadFile(src)
@@ -284,7 +284,7 @@ func TestLobsterPacketTextNegativeControls(t *testing.T) {
 	}
 }
 
-const packetTextDriver = `import .Narrow
+const packetTextDriver = `import .Text
 import .serialize
 
 def unhex(s:string) -> string:

@@ -507,6 +507,7 @@ pub fn mixed_entity_load_message_body(r: &mut TableBitReader, v: &TableVocabular
                     {
                         let Some((lo, hi)) = table_message_read_scalar(r, entry.kind, &entry.shape) else { report.damaged = true; return false; };
                         let x = table_message_unsigned(entry.kind, lo, hi);
+                        if x >> 8 != 0 { report.out_of_range("MixedEntity.damage"); }
                         value.damage = x as u64;
                     }
                     if same_build && report.unknown == unknown_before {

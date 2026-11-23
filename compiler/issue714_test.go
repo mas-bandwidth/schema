@@ -33,7 +33,7 @@ import (
 // the two-second per-commit unit test budget. The behavioral reproduction under Clang
 // UBSan (-fsanitize=undefined) is tracked as a certify-tier suite item in #746.
 func TestIssue714Base64WriterIntegerWrap(t *testing.T) {
-	u := unitFromSource(t, "package p\ntable Blob { payload bytes(16) }\n")
+	u := unitFromSource(t, "package px\ntable Blob { payload bytes(16) }\n")
 	c := New()
 
 	tests := []struct {

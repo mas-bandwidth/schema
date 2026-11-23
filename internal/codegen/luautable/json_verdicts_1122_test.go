@@ -26,7 +26,7 @@ import (
 //
 // Every read row is compared with the Go engine's own verdict and wire over the
 // same unit; each fix has a planted old line that goes red.
-const jsonVerdictsSchema = `package p
+const jsonVerdictsSchema = `package px
 
 enum Ship
 {

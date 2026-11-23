@@ -179,7 +179,7 @@ func loadViewUnit(t *testing.T, dir string) *ir.Unit {
 // 0xfffffffffffffffb, never the magnitude 5 that big.Int.Uint64 answers. The
 // listing gate found this on tables/vocab's WideNegative.
 func TestUnitViewNegativeConstantRust(t *testing.T) {
-	u := unitFrom(t, "package t\nconst Down = -5\nconst Up = 5\ntable T { x int32 }\n")
+	u := unitFrom(t, "package tx\nconst Down = -5\nconst Up = 5\ntable T { x int32 }\n")
 	out, err := Generate(u)
 	if err != nil {
 		t.Fatal(err)

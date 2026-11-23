@@ -452,10 +452,17 @@ struct TableFieldInfo
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
-    // a [A..B]T count's declared minimum A (docs/SPEC.md §4.2, §5.1 row 3):
-    // the count it is born at and the least a read accepts; 0 on every other
-    // field
+    // A COUNTED ARRAY'S MINIMUM (docs/SPEC.md §5.1, docs/SPEC-TABLES.md §16.2):
+    // the A of [A..B]T, 0 on every other field. A text read that
+    // places fewer elements refuses, as the wire read does.
     int32_t array_min;
+    // A DEPRECATED VARIANT (docs/SPEC-TABLES.md §2.15): enum_deprecated says
+    // whether a value names a variant marked "| deprecated", NULL when
+    // the enum carries none. A read naming one stores enum_default instead —
+    // the field's declared default, None for an element — and is never
+    // counted unknown.
+    uint64_t enum_default;
+    bool ( *enum_deprecated )( uint64_t value );
 };
 
 struct TableTypeInfo
@@ -955,7 +962,6 @@ struct TableReader
                 return false;
             }
             case 12:
-            case 31:
             case 32:
             {
                 uint64_t n = 0;
@@ -1075,7 +1081,7 @@ struct TableReader
 
     // skip one payload by kind; false = framing damage. FOUR RULES COVER THE
     // SET (docs/SPEC-TABLES.md §3), and a kind outside it is not skippable —
-    // which is why the set is closed and why kind 31 exists.
+    // which is why the set is closed.
     bool skip( uint8_t kind, int depth = 0 )
     {
         switch ( kind )
@@ -1117,8 +1123,7 @@ struct TableReader
                 return getleb( ignored );
             }
             case 12: // a string body: its L is opaque here
-            case 31:
-            case 32: // 31 is the ESCAPE, 32 the payload-free kind
+            case 32: // the payload-free kind
             {
                 uint64_t n = 0;
                 if ( !getleb( n ) ) return false;
@@ -1149,10 +1154,11 @@ struct TableReader
                 offset += (int64_t) n;
                 return !badElementKindContent( arm_kind, b, (int64_t) n, depth );
             }
-            // KIND 34 IS RESERVED FOR float16 AND IS NOT PART OF THIS MAJOR (§3):
-            // no writer emits it and no reader has a rule for it, so a reader
-            // meets it only as DAMAGE, exactly as it meets 35 or 200. A bare 34
-            // is a writer that ignored the escape kind 31.
+            // KIND 31 IS HELD BY NAME AND NEVER WRITTEN (R17) AND KIND 34 IS
+            // RESERVED FOR float16; NEITHER IS PART OF THIS MAJOR (§3): no writer
+            // emits them and no reader has a rule for them, so a reader meets them
+            // only as DAMAGE, exactly as it meets 35 or 200.
+            case 31:
             case 34: return false;
         }
         return false;
@@ -1619,7 +1625,7 @@ inline bool TableStrictContent( TableStrict & s, const uint8_t * b, int64_t n, u
     switch ( kind )
     {
         case 12: return TableUtf8Valid( b, (uint64_t) n ); // ill-formed text is damage
-        case 31: return true; // the escape: opaque by rule (§3)
+        case 31: return false; // KIND 31 IS HELD BY NAME AND NEVER WRITTEN (R17): damage, as 33 and 34
         case 32: return n == 0; // kind 32 with a nonzero L is damage
         case 13:
         {
@@ -1682,7 +1688,7 @@ inline bool TableStrictPayload( TableStrict & s, TableReader & r, uint8_t kind, 
         }
         case 15:
             return TableStrictUnion( s, r, depth );
-        case 12: case 31: case 32: case 13: case 14: case 16:
+        case 12: case 32: case 13: case 14: case 16:
         {
             uint64_t n = 0;
             if ( !r.getleb( n ) || !r.room( n ) ) { return false; } // L4
@@ -2218,8 +2224,10 @@ inline bool TableMessageFixedKind( uint8_t kind ) { return kind >= 20 && kind <=
 inline bool TableMessageKnownKind( uint8_t kind )
 {
     // 36 is the TIMESTAMP: a closed-set kind with no shape bytes and a
-    // sixty-four bit raw payload (docs/SPEC-TABLES.md §2.11, §3.3).
-    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 32 ) || kind == 36;
+    // sixty-four bit raw payload (docs/SPEC-TABLES.md §2.11, §3.3). 31 is held by
+    // name and never written (R17): an announcement naming it is malformed,
+    // as one naming 33 or 34 is.
+    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || kind == 30 || kind == 32 || kind == 36;
 }
 
 // A CANONICAL LEB128, which is the announcement's own integer: the
@@ -4065,14 +4073,7 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
             if ( !TableUtf8Valid( text, n ) ) { return false; }
             return r.skip( (int64_t) n * 8 );
         }
-        case 31:
-        {
-            // THE ESCAPE: align, a thirty-two bit L, then L bytes, opaque. It is
-            // the one path a later-major writer has on this form (§3.3)
-            uint64_t n = 0;
-            if ( !r.align() || !r.get( n, 32 ) ) { return false; }
-            return r.skip( (int64_t) n * 8 );
-        }
+        case 31: return false; // held by name and never written (R17): no announcement names it
         case 10:
         {
             if ( entry.packing == 2 )
@@ -5616,7 +5617,7 @@ inline bool TableFixedOrdinalWidth( uint32_t n ) { return n == 1u || n == 2u || 
 
 // THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
 // the no-payload variant 32, and the ONE kind this form's layout adds, the
-// optional wrapper 35. 31 is §3's BODY framing escape, 33 is retired and 34 is
+// optional wrapper 35. 31 is held by name and never written (R17), 33 is retired and 34 is
 // reserved: none is a kind a declaration spells, so none is ever an entry's
 // kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a leaf to step over
 // — see the note above TableFixedCheck.
@@ -7441,6 +7442,7 @@ inline int64_t MixedEntityMeasureBody( TableIds & ids, const MixedEntity & value
         if ( !TableEnumRef( ids, value.weapon, variant_weapon ) ) { return -1; }
         bytes += TableLebBytes( ref_weapon ) + 1 + TableLebBytes( variant_weapon ); // weapon: the variant's reference
     }
+    schema_assert( ( uint64_t( value.damage ) >> 8 ) == 0 ); // the write contract, debug only: a mask bit at or above W (docs/SPEC-TABLES.md §4)
     if ( value.damage != 0 ) { bytes += TableLebBytes( ids.ref_at( 36, 0x7f6308be8ab37fc0ull ) ) + 1 + 8; } // damage
     if ( value.moving != false ) { bytes += TableLebBytes( ids.ref_at( 5, 0x11a44fc1d1243da7ull ) ) + 1 + 1; } // moving
     if ( value.firing != false ) { bytes += TableLebBytes( ids.ref_at( 32, 0x7674cfd19b9031caull ) ) + 1 + 1; } // firing
@@ -7535,6 +7537,7 @@ BENCH_TABLE_INLINE bool MixedEntitySaveBody( TableWriter & w, TableIds & ids, co
     if ( value.damage != 0 )
     {
         w.header( ids.ref_at( 36, 0x7f6308be8ab37fc0ull ), 9 ); // damage
+        schema_assert( ( uint64_t( value.damage ) >> 8 ) == 0 ); // the write contract, debug only: a mask bit at or above W (docs/SPEC-TABLES.md §4)
         w.put64( uint64_t( value.damage ) );
     }
     if ( value.moving != false )
@@ -7628,7 +7631,7 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -7685,7 +7688,7 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -7748,7 +7751,7 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -7811,7 +7814,7 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -7868,7 +7871,7 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -7919,7 +7922,7 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -7976,7 +7979,7 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -8039,7 +8042,7 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -8102,7 +8105,7 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -8165,7 +8168,7 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -8201,7 +8204,7 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
                 if ( kind != 30 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -8239,12 +8242,18 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
                             return false;
                         }
                         uint64_t decoded_v = (uint64_t) widened_v;
+                        if ( ( (uint64_t) decoded_v >> 8 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                        {
+                            decoded_v &= 0xffull;
+                            r.report->refused = true;
+                            r.report->refuse_reason = out_of_range;
+                        }
                         value.damage = decoded_v;
                         r.report->widened++;
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -8260,6 +8269,12 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
                     return false;
                 }
                 uint64_t decoded_v = uint64_t( r.get64() );
+                if ( ( (uint64_t) decoded_v >> 8 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                {
+                    decoded_v &= 0xffull;
+                    r.report->refused = true;
+                    r.report->refuse_reason = out_of_range;
+                }
                 value.damage = decoded_v;
                 break;
             }
@@ -8268,7 +8283,7 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
                 if ( kind != 1 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -8295,7 +8310,7 @@ BENCH_TABLE_INLINE bool MixedEntityLoadBody( TableReader & r, MixedEntity & valu
                 if ( kind != 1 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -9791,6 +9806,12 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                             }
                             int64_t decoded_wide = (int64_t) raw;
                             if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
+                            if ( ( (uint64_t) decoded_wide >> 8 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                            {
+                                decoded_wide &= 0xffull;
+                                report->refused = true;
+                                report->refuse_reason = out_of_range;
+                            }
                             uint64_t decoded_v = (uint64_t) decoded_wide;
                             value.damage = decoded_v;
                         }
@@ -9823,6 +9844,12 @@ inline bool MixedEntityLoadMessageBody( TableBitReader & r, const TableVocabular
                     int64_t decoded_wide = (int64_t) raw;
                     if ( entry.packing == 1 && !past ) { decoded_wide = (int64_t) ( raw + (uint64_t) entry.base_lo ); }
                     const int64_t pre_clamp = decoded_wide;
+                    if ( ( (uint64_t) decoded_wide >> 8 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                    {
+                        decoded_wide &= 0xffull;
+                        report->refused = true;
+                        report->refuse_reason = out_of_range;
+                    }
                     uint64_t decoded_v = (uint64_t) decoded_wide;
                     if ( !past && same_shape && decoded_wide == pre_clamp && ( decoded_v == 0 ) )
                     {
@@ -10092,7 +10119,7 @@ BENCH_TABLE_INLINE bool MixedStatLoadBody( TableReader & r, MixedStat & value )
                 if ( kind != 6 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -10143,7 +10170,7 @@ BENCH_TABLE_INLINE bool MixedStatLoadBody( TableReader & r, MixedStat & value )
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -10782,7 +10809,7 @@ BENCH_TABLE_INLINE bool MixedHitEventLoadBody( TableReader & r, MixedHitEvent & 
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -10839,7 +10866,7 @@ BENCH_TABLE_INLINE bool MixedHitEventLoadBody( TableReader & r, MixedHitEvent & 
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -10902,7 +10929,7 @@ BENCH_TABLE_INLINE bool MixedHitEventLoadBody( TableReader & r, MixedHitEvent & 
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -10938,7 +10965,7 @@ BENCH_TABLE_INLINE bool MixedHitEventLoadBody( TableReader & r, MixedHitEvent & 
                 if ( kind != 1 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -11759,7 +11786,7 @@ BENCH_TABLE_INLINE bool MixedChatEventLoadBody( TableReader & r, MixedChatEvent 
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -11816,7 +11843,7 @@ BENCH_TABLE_INLINE bool MixedChatEventLoadBody( TableReader & r, MixedChatEvent 
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -12475,7 +12502,7 @@ BENCH_TABLE_INLINE bool MixedPickupEventLoadBody( TableReader & r, MixedPickupEv
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -12532,7 +12559,7 @@ BENCH_TABLE_INLINE bool MixedPickupEventLoadBody( TableReader & r, MixedPickupEv
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -13614,7 +13641,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -13665,7 +13692,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -13716,7 +13743,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -13755,7 +13782,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -13794,7 +13821,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -13833,7 +13860,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -13884,7 +13911,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -13941,7 +13968,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -13971,7 +13998,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 if ( kind != 22 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -14007,7 +14034,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -14037,6 +14064,14 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                     // RODE, so an optional is still PRESENT (§2.3) — only a foreign
                     // ELEMENT KIND says the payload is not this array's at all.
                     if ( !counted_ok ) { r.report->damaged = true; }
+                    // a count below the declared min A = 1 is refused (SPEC.md §5.1)
+                    if ( counted_ok && count < 1 )
+                    {
+                        r.report->refused = true;
+                        r.report->refuse_reason = out_of_range;
+                        r.offset = body_end;
+                        break;
+                    }
                     // THE ELEMENT KIND IS CLOSED, judged under any count before the
                     // reader's declaration (§3, §4).
                     if ( !TableArrayElementKind( elem_kind ) )
@@ -14107,7 +14142,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -14202,7 +14237,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 if ( kind != 15 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -14311,7 +14346,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -14389,7 +14424,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 if ( kind != 12 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -14433,7 +14468,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -14514,7 +14549,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 if ( kind != 10 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -14558,7 +14593,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 if ( kind != 10 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -14602,7 +14637,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 if ( kind != 10 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -14646,7 +14681,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 if ( kind != 10 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -14693,7 +14728,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -14735,7 +14770,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -14788,7 +14823,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -14826,7 +14861,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 if ( kind != 26 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -14877,7 +14912,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -14907,7 +14942,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                 if ( kind != 1 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -14961,7 +14996,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -15024,7 +15059,7 @@ BENCH_TABLE_INLINE bool BenchMixedLoadBody( TableReader & r, BenchMixed & value 
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -15241,6 +15276,7 @@ inline int64_t BenchMixedMeasureMessageBody( int64_t at, const BenchMixed & valu
     if ( birth_rides_entities )
     {
         bits += kTableMessageRefBitsHere;
+        if ( ( value.entities_count ) < 1 ) { return -1; } // below the declared [1..8] (R10)
         bits += 3;
         for ( int32_t i = 0; i < value.entities_count; i++ )
         {
@@ -15460,6 +15496,7 @@ inline bool BenchMixedSaveMessageBody( TableBitWriter & w, const BenchMixed & va
     if ( birth_rides_entities )
     {
         w.put( 10, kTableMessageRefBitsHere );
+        if ( ( value.entities_count ) < 1 ) { return false; } // below the declared [1..8] (R10)
         w.put( (uint64_t) ( value.entities_count ) - 1, 3 );
         for ( int32_t i = 0; i < value.entities_count; i++ )
         {
@@ -18103,7 +18140,7 @@ inline void BenchMixedFixedWriteBody( uint8_t * b, const BenchMixed & value )
     TableFixedPut64( b + 32, (uint64_t) value.world_time );
     TableFixedPut64( b + 40, (uint64_t) value.frame_tick );
     TableFixedPut32( b + 48, (uint32_t) value.server_time );
-    schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // the declared count is the bound (§3.4)
+    schema_assert( value.entities_count >= 1 && value.entities_count <= 8 ); // the declared [1..8] is the bound (§3.4)
     TableFixedPut32( b + 52, (uint32_t) value.entities_count );
     for ( int64_t i = 0; i < (int64_t) value.entities_count; ++i )
     {
@@ -18179,6 +18216,7 @@ TABLE_FIXED_INLINE bool MixedEntityFixedInRange( const MixedEntity & value )
     bad |= (int) ( value.vel_z < -2048 ) | (int) ( value.vel_z > 2047 );
     bad |= (int) ( value.health < 0 ) | (int) ( value.health > 1000 );
     bad |= (int) ( (uint64_t) value.weapon > 15u );
+    bad |= (int) ( ( (uint64_t) value.damage >> 8 ) != 0 ); // a fixed flags mask held to W (docs/SPEC-TABLES.md §4)
     return bad == 0;
 }
 
@@ -18202,6 +18240,7 @@ inline bool MixedEntityFixedWriteAdmits( const MixedEntity & value )
     bad |= (int) ( value.vel_z < -2048 ) | (int) ( value.vel_z > 2047 );
     bad |= (int) ( value.health < 0 ) | (int) ( value.health > 1000 );
     bad |= (int) ( (uint64_t) value.weapon > 15u );
+    bad |= (int) ( ( (uint64_t) value.damage >> 8 ) != 0 ); // a fixed flags mask held to W (docs/SPEC-TABLES.md §4)
     return bad == 0;
 }
 
@@ -18235,6 +18274,7 @@ inline void MixedEntityFixedClampBody( MixedEntity & value, int32_t & TABLE_CLAM
     oor_count += (int) ( value.health < 0 ) | (int) ( value.health > 1000 );
     value.health = ( value.health < 0 ) ? 0 : ( ( value.health > 1000 ) ? 1000 : value.health );
     if ( (uint64_t) value.weapon > 15u ) { value.weapon = MixedWeapon::None; oor_count++; }
+    if ( ( (uint64_t) value.damage >> 8 ) != 0 ) { value.damage &= 0xffull; oor_count++; } // a mask bit at or above W (docs/SPEC-TABLES.md §4)
 }
 
 // MixedStat's read-side bounds, CHECKED: true when every clamp below would
@@ -18890,7 +18930,7 @@ inline bool BenchMixedCookBody( uint8_t * at, const BenchMixed & value, TableByt
     table_cook_put( at + 48, (uint64_t) value.frame_tick, 8, order );
     table_cook_put( at + 56, (uint64_t) value.server_time, 4, order );
     // 8 slots of storage, value.entities_count live: a slot past the count keeps the extent's zero (§7.2)
-    schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // storage invariant, debug only (§5.1)
+    schema_assert( value.entities_count >= 1 && value.entities_count <= 8 ); // the declared [1..8] holds, debug only (§5.1)
     for ( int32_t i = 0; i < value.entities_count; i++ )
     {
         if ( !MixedEntityCookBody( at + 64 + i * 64, value.entities[i], order ) ) { return false; }
@@ -19053,20 +19093,20 @@ inline const TableTypeInfo * BenchMixedTableType();
 inline const TableTypeInfo * MixedEntityTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "entity_id", "entity_id", "bits(12)", 0x23fcfd6678e36712ull, 7, false, false, false, 0, (uint32_t) offsetof( MixedEntity, entity_id ), (uint32_t) sizeof( MixedEntity::entity_id ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4095.0, 0, 0, 0, 4095ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "pos_x", "pos_x", "int32", 0xcb4b37357667310eull, 4, false, false, false, 0, (uint32_t) offsetof( MixedEntity, pos_x ), (uint32_t) sizeof( MixedEntity::pos_x ), 0xffffffffu, 0xffffffffu, NULL, true, -16383.0, 16383.0, -16383ll, 16383ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "pos_y", "pos_y", "int32", 0xcb4b3835766732c1ull, 4, false, false, false, 0, (uint32_t) offsetof( MixedEntity, pos_y ), (uint32_t) sizeof( MixedEntity::pos_y ), 0xffffffffu, 0xffffffffu, NULL, true, -16383.0, 16383.0, -16383ll, 16383ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "pos_z", "pos_z", "int32", 0xcb4b353576672da8ull, 4, false, false, false, 0, (uint32_t) offsetof( MixedEntity, pos_z ), (uint32_t) sizeof( MixedEntity::pos_z ), 0xffffffffu, 0xffffffffu, NULL, true, -16383.0, 16383.0, -16383ll, 16383ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "yaw", "yaw", "bits(9)", 0xb54d8e19798e16e8ull, 7, false, false, false, 0, (uint32_t) offsetof( MixedEntity, yaw ), (uint32_t) sizeof( MixedEntity::yaw ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 511.0, 0, 0, 0, 511ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "pitch", "pitch", "bits(9)", 0x53a9f665a90cc1b1ull, 7, false, false, false, 0, (uint32_t) offsetof( MixedEntity, pitch ), (uint32_t) sizeof( MixedEntity::pitch ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 511.0, 0, 0, 0, 511ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "vel_x", "vel_x", "int32", 0x6cede6b6eb60ee67ull, 4, false, false, false, 0, (uint32_t) offsetof( MixedEntity, vel_x ), (uint32_t) sizeof( MixedEntity::vel_x ), 0xffffffffu, 0xffffffffu, NULL, true, -2048.0, 2047.0, -2048ll, 2047ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "vel_y", "vel_y", "int32", 0x6cede5b6eb60ecb4ull, 4, false, false, false, 0, (uint32_t) offsetof( MixedEntity, vel_y ), (uint32_t) sizeof( MixedEntity::vel_y ), 0xffffffffu, 0xffffffffu, NULL, true, -2048.0, 2047.0, -2048ll, 2047ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "vel_z", "vel_z", "int32", 0x6cede8b6eb60f1cdull, 4, false, false, false, 0, (uint32_t) offsetof( MixedEntity, vel_z ), (uint32_t) sizeof( MixedEntity::vel_z ), 0xffffffffu, 0xffffffffu, NULL, true, -2048.0, 2047.0, -2048ll, 2047ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "health", "health", "int32", 0x7f69d4b5288ba9cfull, 4, false, false, false, 0, (uint32_t) offsetof( MixedEntity, health ), (uint32_t) sizeof( MixedEntity::health ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0ll, 1000ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "weapon", "weapon", "MixedWeapon", 0xa0b610205f2c6e01ull, 30, false, false, false, 0, (uint32_t) offsetof( MixedEntity, weapon ), (uint32_t) sizeof( MixedEntity::weapon ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 15, +[]( uint64_t v ) { return EnumName( MixedWeapon( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( MixedWeapon( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "damage", "damage", "MixedDamage", 0x7f6308be8ab37fc0ull, 9, false, false, false, 0, (uint32_t) offsetof( MixedEntity, damage ), (uint32_t) sizeof( MixedEntity::damage ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 7, +[]( uint64_t v ) { return FlagNameMixedDamage( (int) v ); }, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "moving", "moving", "bool", 0x11a44fc1d1243da7ull, 1, false, false, false, 0, (uint32_t) offsetof( MixedEntity, moving ), (uint32_t) sizeof( MixedEntity::moving ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "firing", "firing", "bool", 0x7674cfd19b9031caull, 1, false, false, false, 0, (uint32_t) offsetof( MixedEntity, firing ), (uint32_t) sizeof( MixedEntity::firing ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "entity_id", "entity_id", "bits(12)", 0x23fcfd6678e36712ull, 7, false, false, false, 0, (uint32_t) offsetof( MixedEntity, entity_id ), (uint32_t) sizeof( MixedEntity::entity_id ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4095.0, 0, 0, 0, 4095ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "pos_x", "pos_x", "int32", 0xcb4b37357667310eull, 4, false, false, false, 0, (uint32_t) offsetof( MixedEntity, pos_x ), (uint32_t) sizeof( MixedEntity::pos_x ), 0xffffffffu, 0xffffffffu, NULL, true, -16383.0, 16383.0, -16383ll, 16383ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "pos_y", "pos_y", "int32", 0xcb4b3835766732c1ull, 4, false, false, false, 0, (uint32_t) offsetof( MixedEntity, pos_y ), (uint32_t) sizeof( MixedEntity::pos_y ), 0xffffffffu, 0xffffffffu, NULL, true, -16383.0, 16383.0, -16383ll, 16383ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "pos_z", "pos_z", "int32", 0xcb4b353576672da8ull, 4, false, false, false, 0, (uint32_t) offsetof( MixedEntity, pos_z ), (uint32_t) sizeof( MixedEntity::pos_z ), 0xffffffffu, 0xffffffffu, NULL, true, -16383.0, 16383.0, -16383ll, 16383ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "yaw", "yaw", "bits(9)", 0xb54d8e19798e16e8ull, 7, false, false, false, 0, (uint32_t) offsetof( MixedEntity, yaw ), (uint32_t) sizeof( MixedEntity::yaw ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 511.0, 0, 0, 0, 511ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "pitch", "pitch", "bits(9)", 0x53a9f665a90cc1b1ull, 7, false, false, false, 0, (uint32_t) offsetof( MixedEntity, pitch ), (uint32_t) sizeof( MixedEntity::pitch ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 511.0, 0, 0, 0, 511ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "vel_x", "vel_x", "int32", 0x6cede6b6eb60ee67ull, 4, false, false, false, 0, (uint32_t) offsetof( MixedEntity, vel_x ), (uint32_t) sizeof( MixedEntity::vel_x ), 0xffffffffu, 0xffffffffu, NULL, true, -2048.0, 2047.0, -2048ll, 2047ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "vel_y", "vel_y", "int32", 0x6cede5b6eb60ecb4ull, 4, false, false, false, 0, (uint32_t) offsetof( MixedEntity, vel_y ), (uint32_t) sizeof( MixedEntity::vel_y ), 0xffffffffu, 0xffffffffu, NULL, true, -2048.0, 2047.0, -2048ll, 2047ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "vel_z", "vel_z", "int32", 0x6cede8b6eb60f1cdull, 4, false, false, false, 0, (uint32_t) offsetof( MixedEntity, vel_z ), (uint32_t) sizeof( MixedEntity::vel_z ), 0xffffffffu, 0xffffffffu, NULL, true, -2048.0, 2047.0, -2048ll, 2047ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "health", "health", "int32", 0x7f69d4b5288ba9cfull, 4, false, false, false, 0, (uint32_t) offsetof( MixedEntity, health ), (uint32_t) sizeof( MixedEntity::health ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0ll, 1000ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "weapon", "weapon", "MixedWeapon", 0xa0b610205f2c6e01ull, 30, false, false, false, 0, (uint32_t) offsetof( MixedEntity, weapon ), (uint32_t) sizeof( MixedEntity::weapon ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 15, +[]( uint64_t v ) { return EnumName( MixedWeapon( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( MixedWeapon( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "damage", "damage", "MixedDamage", 0x7f6308be8ab37fc0ull, 9, false, false, false, 0, (uint32_t) offsetof( MixedEntity, damage ), (uint32_t) sizeof( MixedEntity::damage ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 7, +[]( uint64_t v ) { return FlagNameMixedDamage( (int) v ); }, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "moving", "moving", "bool", 0x11a44fc1d1243da7ull, 1, false, false, false, 0, (uint32_t) offsetof( MixedEntity, moving ), (uint32_t) sizeof( MixedEntity::moving ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "firing", "firing", "bool", 0x7674cfd19b9031caull, 1, false, false, false, 0, (uint32_t) offsetof( MixedEntity, firing ), (uint32_t) sizeof( MixedEntity::firing ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
     };
     static const TableTypeInfo info = { "MixedEntity", (uint32_t) sizeof( MixedEntity ), 14, fields, +[]( void * p ) { MixedEntityReset( *(MixedEntity *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
@@ -19075,8 +19115,8 @@ inline const TableTypeInfo * MixedEntityTableType()
 inline const TableTypeInfo * MixedStatTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "stat_id", "stat_id", "bits(8)", 0x80ab75f0866dbf65ull, 6, false, false, false, 0, (uint32_t) offsetof( MixedStat, stat_id ), (uint32_t) sizeof( MixedStat::stat_id ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 255.0, 0, 0, 0, 255ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "delta", "delta", "int32", 0x52076675ec13a0c1ull, 4, false, false, false, 0, (uint32_t) offsetof( MixedStat, delta ), (uint32_t) sizeof( MixedStat::delta ), 0xffffffffu, 0xffffffffu, NULL, true, -512.0, 511.0, -512ll, 511ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "stat_id", "stat_id", "bits(8)", 0x80ab75f0866dbf65ull, 6, false, false, false, 0, (uint32_t) offsetof( MixedStat, stat_id ), (uint32_t) sizeof( MixedStat::stat_id ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 255.0, 0, 0, 0, 255ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "delta", "delta", "int32", 0x52076675ec13a0c1ull, 4, false, false, false, 0, (uint32_t) offsetof( MixedStat, delta ), (uint32_t) sizeof( MixedStat::delta ), 0xffffffffu, 0xffffffffu, NULL, true, -512.0, 511.0, -512ll, 511ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
     };
     static const TableTypeInfo info = { "MixedStat", (uint32_t) sizeof( MixedStat ), 2, fields, +[]( void * p ) { MixedStatReset( *(MixedStat *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
@@ -19085,10 +19125,10 @@ inline const TableTypeInfo * MixedStatTableType()
 inline const TableTypeInfo * MixedHitEventTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "target_id", "target_id", "bits(12)", 0xb7bc9ac015a25050ull, 7, false, false, false, 0, (uint32_t) offsetof( MixedHitEvent, target_id ), (uint32_t) sizeof( MixedHitEvent::target_id ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4095.0, 0, 0, 0, 4095ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "damage", "damage", "int32", 0x7f6308be8ab37fc0ull, 4, false, false, false, 0, (uint32_t) offsetof( MixedHitEvent, damage ), (uint32_t) sizeof( MixedHitEvent::damage ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4095.0, 0ll, 4095ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "hit_kind", "hit_kind", "int32", 0x01fbc365b059b925ull, 4, false, false, false, 0, (uint32_t) offsetof( MixedHitEvent, hit_kind ), (uint32_t) sizeof( MixedHitEvent::hit_kind ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 7.0, 0ll, 7ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "crit", "crit", "bool", 0x126167908c9aa52dull, 1, false, false, false, 0, (uint32_t) offsetof( MixedHitEvent, crit ), (uint32_t) sizeof( MixedHitEvent::crit ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "target_id", "target_id", "bits(12)", 0xb7bc9ac015a25050ull, 7, false, false, false, 0, (uint32_t) offsetof( MixedHitEvent, target_id ), (uint32_t) sizeof( MixedHitEvent::target_id ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4095.0, 0, 0, 0, 4095ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "damage", "damage", "int32", 0x7f6308be8ab37fc0ull, 4, false, false, false, 0, (uint32_t) offsetof( MixedHitEvent, damage ), (uint32_t) sizeof( MixedHitEvent::damage ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4095.0, 0ll, 4095ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "hit_kind", "hit_kind", "int32", 0x01fbc365b059b925ull, 4, false, false, false, 0, (uint32_t) offsetof( MixedHitEvent, hit_kind ), (uint32_t) sizeof( MixedHitEvent::hit_kind ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 7.0, 0ll, 7ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "crit", "crit", "bool", 0x126167908c9aa52dull, 1, false, false, false, 0, (uint32_t) offsetof( MixedHitEvent, crit ), (uint32_t) sizeof( MixedHitEvent::crit ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
     };
     static const TableTypeInfo info = { "MixedHitEvent", (uint32_t) sizeof( MixedHitEvent ), 4, fields, +[]( void * p ) { MixedHitEventReset( *(MixedHitEvent *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
@@ -19097,8 +19137,8 @@ inline const TableTypeInfo * MixedHitEventTableType()
 inline const TableTypeInfo * MixedChatEventTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "channel", "channel", "int32", 0xa5013e9ad5caeda4ull, 4, false, false, false, 0, (uint32_t) offsetof( MixedChatEvent, channel ), (uint32_t) sizeof( MixedChatEvent::channel ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 3.0, 0ll, 3ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "speaker", "speaker", "bits(12)", 0xfbf1ac4d96ebd022ull, 7, false, false, false, 0, (uint32_t) offsetof( MixedChatEvent, speaker ), (uint32_t) sizeof( MixedChatEvent::speaker ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4095.0, 0, 0, 0, 4095ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "channel", "channel", "int32", 0xa5013e9ad5caeda4ull, 4, false, false, false, 0, (uint32_t) offsetof( MixedChatEvent, channel ), (uint32_t) sizeof( MixedChatEvent::channel ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 3.0, 0ll, 3ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "speaker", "speaker", "bits(12)", 0xfbf1ac4d96ebd022ull, 7, false, false, false, 0, (uint32_t) offsetof( MixedChatEvent, speaker ), (uint32_t) sizeof( MixedChatEvent::speaker ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4095.0, 0, 0, 0, 4095ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
     };
     static const TableTypeInfo info = { "MixedChatEvent", (uint32_t) sizeof( MixedChatEvent ), 2, fields, +[]( void * p ) { MixedChatEventReset( *(MixedChatEvent *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
@@ -19107,8 +19147,8 @@ inline const TableTypeInfo * MixedChatEventTableType()
 inline const TableTypeInfo * MixedPickupEventTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "item_id", "item_id", "bits(10)", 0x9e7fd06d864fbd56ull, 7, false, false, false, 0, (uint32_t) offsetof( MixedPickupEvent, item_id ), (uint32_t) sizeof( MixedPickupEvent::item_id ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1023.0, 0, 0, 0, 1023ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "amount", "amount", "int32", 0x8113fe7ea2b16969ull, 4, false, false, false, 0, (uint32_t) offsetof( MixedPickupEvent, amount ), (uint32_t) sizeof( MixedPickupEvent::amount ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 255.0, 0ll, 255ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "item_id", "item_id", "bits(10)", 0x9e7fd06d864fbd56ull, 7, false, false, false, 0, (uint32_t) offsetof( MixedPickupEvent, item_id ), (uint32_t) sizeof( MixedPickupEvent::item_id ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1023.0, 0, 0, 0, 1023ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "amount", "amount", "int32", 0x8113fe7ea2b16969ull, 4, false, false, false, 0, (uint32_t) offsetof( MixedPickupEvent, amount ), (uint32_t) sizeof( MixedPickupEvent::amount ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 255.0, 0ll, 255ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
     };
     static const TableTypeInfo info = { "MixedPickupEvent", (uint32_t) sizeof( MixedPickupEvent ), 2, fields, +[]( void * p ) { MixedPickupEventReset( *(MixedPickupEvent *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
@@ -19120,33 +19160,33 @@ inline const TableTypeInfo * BenchMixedTableType()
     static const TableWideRange BenchMixed_flux_wide = { { 0ull, 18446744004990074880ull }, { 0ull, 68719476736ull } };
     static const TableWideRange BenchMixed_ping_wide = { { 0ull, 0ull }, { 64000ull, 0ull } };
     static const TableFieldInfo fields[] = {
-        { "sequence", "sequence", "bits(16)", 0xaa38aca481f528a8ull, 7, false, false, false, 0, (uint32_t) offsetof( BenchMixed, sequence ), (uint32_t) sizeof( BenchMixed::sequence ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 65535.0, 0, 0, 0, 65535ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "ack_sequence", "ack_sequence", "int32", 0x0dbe005c56697c3eull, 4, false, false, false, 0, (uint32_t) offsetof( BenchMixed, ack_sequence ), (uint32_t) sizeof( BenchMixed::ack_sequence ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 65535.0, 0ll, 65535ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "ack_bits", "ack_bits", "bits(32)", 0x9bae0da8b829ee03ull, 8, false, false, false, 0, (uint32_t) offsetof( BenchMixed, ack_bits ), (uint32_t) sizeof( BenchMixed::ack_bits ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4.294967295e+09, 0, 0, 0, 4294967295ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "session_id", "session_id", "uint64", 0xb7d7b5650a590b05ull, 9, false, false, false, 0, (uint32_t) offsetof( BenchMixed, session_id ), (uint32_t) sizeof( BenchMixed::session_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "client_id", "client_id", "uint32", 0x6d7b98e2d095967eull, 8, false, false, false, 0, (uint32_t) offsetof( BenchMixed, client_id ), (uint32_t) sizeof( BenchMixed::client_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "nonce", "nonce", "uint64", 0x73a94c71d60dc0d8ull, 9, false, false, false, 0, (uint32_t) offsetof( BenchMixed, nonce ), (uint32_t) sizeof( BenchMixed::nonce ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1.8446744073709552e+19, 0, 0, 0ull, 18446744073709551615ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "world_time", "world_time", "int64", 0x3eee6b51be54fc85ull, 5, false, false, false, 0, (uint32_t) offsetof( BenchMixed, world_time ), (uint32_t) sizeof( BenchMixed::world_time ), 0xffffffffu, 0xffffffffu, NULL, true, -1e+12, 1e+12, -1000000000000ll, 1000000000000ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "frame_tick", "frame_tick", "bits(48)", 0x7bbc035f7b6d0112ull, 9, false, false, false, 0, (uint32_t) offsetof( BenchMixed, frame_tick ), (uint32_t) sizeof( BenchMixed::frame_tick ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 2.81474976710655e+14, 0, 0, 0, 281474976710655ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "server_time", "server_time", "fixed(24, 8)", 0x3c460475f9be69c6ull, 22, false, false, false, 0, (uint32_t) offsetof( BenchMixed, server_time ), (uint32_t) sizeof( BenchMixed::server_time ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 65535.0, 0, 0, 0, 0, 8, &BenchMixed_server_time_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "entities", "entities", "MixedEntity", 0x935d0fb07bb3822aull, 13, true, true, false, 8, (uint32_t) offsetof( BenchMixed, entities ), (uint32_t) sizeof( BenchMixed::entities[0] ), (uint32_t) offsetof( BenchMixed, entities_count ), 0xffffffffu, MixedEntityTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 1 },
-        { "stats", "stats", "MixedStat", 0xee639cad45b1994cull, 13, true, true, false, 80, (uint32_t) offsetof( BenchMixed, stats ), (uint32_t) sizeof( BenchMixed::stats[0] ), (uint32_t) offsetof( BenchMixed, stats_count ), 0xffffffffu, MixedStatTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "game_event", "game_event", "MixedEvent", 0x2e35dc5321aa5790ull, 15, false, false, false, 0, (uint32_t) offsetof( BenchMixed, game_event ), (uint32_t) sizeof( BenchMixed::game_event ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "hit"; case 2: return "chat"; case 3: return "pickup"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x33732819300680aaull; case 2: return 0xf2a38d910b5b348bull; case 3: return 0x9fa3a41c86ecb765ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( MixedEvent, hit ), MixedHitEventTableType(), NULL, 16 }, { (uint32_t) offsetof( MixedEvent, chat ), MixedChatEventTableType(), NULL, 8 }, { (uint32_t) offsetof( MixedEvent, pickup ), MixedPickupEventTableType(), NULL, 8 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( MixedEvent, type ), (uint32_t) sizeof( MixedEvent::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "loadout", "loadout", "uint8", 0x5759ce7586bbb5a3ull, 6, true, false, false, 4, (uint32_t) offsetof( BenchMixed, loadout ), (uint32_t) sizeof( BenchMixed::loadout[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "player_name", "player_name", "string", 0x13a62f542cf8e86eull, 12, false, true, false, 15, (uint32_t) offsetof( BenchMixed, player_name ), (uint32_t) sizeof( BenchMixed::player_name ), (uint32_t) offsetof( BenchMixed, player_name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "payload", "payload", "bytes", 0xcfb8a9d063b5e9e5ull, 6, true, true, false, 16, (uint32_t) offsetof( BenchMixed, payload ), (uint32_t) sizeof( BenchMixed::payload[0] ), (uint32_t) offsetof( BenchMixed, payload_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "aim_x", "aim_x", "float32", 0xdbaf7be5e24296c9ull, 10, false, false, false, 0, (uint32_t) offsetof( BenchMixed, aim_x ), (uint32_t) sizeof( BenchMixed::aim_x ), 0xffffffffu, 0xffffffffu, NULL, true, -1.0, 1.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "aim_y", "aim_y", "float32", 0xdbaf7ae5e2429516ull, 10, false, false, false, 0, (uint32_t) offsetof( BenchMixed, aim_y ), (uint32_t) sizeof( BenchMixed::aim_y ), 0xffffffffu, 0xffffffffu, NULL, true, -1.0, 1.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "aim_z", "aim_z", "float32", 0xdbaf79e5e2429363ull, 10, false, false, false, 0, (uint32_t) offsetof( BenchMixed, aim_z ), (uint32_t) sizeof( BenchMixed::aim_z ), 0xffffffffu, 0xffffffffu, NULL, true, -1.0, 1.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "recoil", "recoil", "float32", 0x9cef31fff7e2e457ull, 10, false, false, false, 0, (uint32_t) offsetof( BenchMixed, recoil ), (uint32_t) sizeof( BenchMixed::recoil ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "drift", "drift", "float64", 0x5ab3f9c9341f6c04ull, 11, false, false, false, 0, (uint32_t) offsetof( BenchMixed, drift ), (uint32_t) sizeof( BenchMixed::drift ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "wide_key", "wide_key", "uint128", 0xa3348580461faf16ull, 19, false, false, false, 0, (uint32_t) offsetof( BenchMixed, wide_key ), (uint32_t) sizeof( BenchMixed::wide_key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "flux", "flux", "int128", 0xd61bdd7908af2642ull, 18, false, false, false, 0, (uint32_t) offsetof( BenchMixed, flux ), (uint32_t) sizeof( BenchMixed::flux ), 0xffffffffu, 0xffffffffu, NULL, true, -1.2676506002282294e+30, 1.2676506002282294e+30, 0, 0, 0, 0, 0, &BenchMixed_flux_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "ping", "ping", "ufixed(8, 8)", 0xbf30e00dc53307a9ull, 26, false, false, false, 0, (uint32_t) offsetof( BenchMixed, ping ), (uint32_t) sizeof( BenchMixed::ping ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 250.0, 0, 0, 0, 0, 8, &BenchMixed_ping_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "crc_hint", "crc_hint", "bits(24)", 0x560d6527ccd8515full, 8, false, false, false, 0, (uint32_t) offsetof( BenchMixed, crc_hint ), (uint32_t) sizeof( BenchMixed::crc_hint ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1.6777215e+07, 0, 0, 0, 16777215ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "has_extra", "has_extra", "bool", 0xc08292176cfd8672ull, 1, false, false, false, 0, (uint32_t) offsetof( BenchMixed, has_extra ), (uint32_t) sizeof( BenchMixed::has_extra ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "extra", "extra", "int32", 0xfd29ee12a979cb69ull, 4, false, false, false, 0, (uint32_t) offsetof( BenchMixed, extra ), (uint32_t) sizeof( BenchMixed::extra ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 255.0, 0ll, 255ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "idle_ticks", "idle_ticks", "int32", 0x78101ac0aa8cbcfeull, 4, false, false, false, 0, (uint32_t) offsetof( BenchMixed, idle_ticks ), (uint32_t) sizeof( BenchMixed::idle_ticks ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 15.0, 0ll, 15ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "sequence", "sequence", "bits(16)", 0xaa38aca481f528a8ull, 7, false, false, false, 0, (uint32_t) offsetof( BenchMixed, sequence ), (uint32_t) sizeof( BenchMixed::sequence ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 65535.0, 0, 0, 0, 65535ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "ack_sequence", "ack_sequence", "int32", 0x0dbe005c56697c3eull, 4, false, false, false, 0, (uint32_t) offsetof( BenchMixed, ack_sequence ), (uint32_t) sizeof( BenchMixed::ack_sequence ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 65535.0, 0ll, 65535ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "ack_bits", "ack_bits", "bits(32)", 0x9bae0da8b829ee03ull, 8, false, false, false, 0, (uint32_t) offsetof( BenchMixed, ack_bits ), (uint32_t) sizeof( BenchMixed::ack_bits ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4.294967295e+09, 0, 0, 0, 4294967295ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "session_id", "session_id", "uint64", 0xb7d7b5650a590b05ull, 9, false, false, false, 0, (uint32_t) offsetof( BenchMixed, session_id ), (uint32_t) sizeof( BenchMixed::session_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "client_id", "client_id", "uint32", 0x6d7b98e2d095967eull, 8, false, false, false, 0, (uint32_t) offsetof( BenchMixed, client_id ), (uint32_t) sizeof( BenchMixed::client_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "nonce", "nonce", "uint64", 0x73a94c71d60dc0d8ull, 9, false, false, false, 0, (uint32_t) offsetof( BenchMixed, nonce ), (uint32_t) sizeof( BenchMixed::nonce ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1.8446744073709552e+19, 0, 0, 0ull, 18446744073709551615ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "world_time", "world_time", "int64", 0x3eee6b51be54fc85ull, 5, false, false, false, 0, (uint32_t) offsetof( BenchMixed, world_time ), (uint32_t) sizeof( BenchMixed::world_time ), 0xffffffffu, 0xffffffffu, NULL, true, -1e+12, 1e+12, -1000000000000ll, 1000000000000ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "frame_tick", "frame_tick", "bits(48)", 0x7bbc035f7b6d0112ull, 9, false, false, false, 0, (uint32_t) offsetof( BenchMixed, frame_tick ), (uint32_t) sizeof( BenchMixed::frame_tick ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 2.81474976710655e+14, 0, 0, 0, 281474976710655ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "server_time", "server_time", "fixed(24, 8)", 0x3c460475f9be69c6ull, 22, false, false, false, 0, (uint32_t) offsetof( BenchMixed, server_time ), (uint32_t) sizeof( BenchMixed::server_time ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 65535.0, 0, 0, 0, 0, 8, &BenchMixed_server_time_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "entities", "entities", "MixedEntity", 0x935d0fb07bb3822aull, 13, true, true, false, 8, (uint32_t) offsetof( BenchMixed, entities ), (uint32_t) sizeof( BenchMixed::entities[0] ), (uint32_t) offsetof( BenchMixed, entities_count ), 0xffffffffu, MixedEntityTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 1, 0, NULL },
+        { "stats", "stats", "MixedStat", 0xee639cad45b1994cull, 13, true, true, false, 80, (uint32_t) offsetof( BenchMixed, stats ), (uint32_t) sizeof( BenchMixed::stats[0] ), (uint32_t) offsetof( BenchMixed, stats_count ), 0xffffffffu, MixedStatTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "game_event", "game_event", "MixedEvent", 0x2e35dc5321aa5790ull, 15, false, false, false, 0, (uint32_t) offsetof( BenchMixed, game_event ), (uint32_t) sizeof( BenchMixed::game_event ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "hit"; case 2: return "chat"; case 3: return "pickup"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x33732819300680aaull; case 2: return 0xf2a38d910b5b348bull; case 3: return 0x9fa3a41c86ecb765ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( MixedEvent, hit ), MixedHitEventTableType(), NULL, 16 }, { (uint32_t) offsetof( MixedEvent, chat ), MixedChatEventTableType(), NULL, 8 }, { (uint32_t) offsetof( MixedEvent, pickup ), MixedPickupEventTableType(), NULL, 8 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( MixedEvent, type ), (uint32_t) sizeof( MixedEvent::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "loadout", "loadout", "uint8", 0x5759ce7586bbb5a3ull, 6, true, false, false, 4, (uint32_t) offsetof( BenchMixed, loadout ), (uint32_t) sizeof( BenchMixed::loadout[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "player_name", "player_name", "string", 0x13a62f542cf8e86eull, 12, false, true, false, 15, (uint32_t) offsetof( BenchMixed, player_name ), (uint32_t) sizeof( BenchMixed::player_name ), (uint32_t) offsetof( BenchMixed, player_name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "payload", "payload", "bytes", 0xcfb8a9d063b5e9e5ull, 6, true, true, false, 16, (uint32_t) offsetof( BenchMixed, payload ), (uint32_t) sizeof( BenchMixed::payload[0] ), (uint32_t) offsetof( BenchMixed, payload_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "aim_x", "aim_x", "float32", 0xdbaf7be5e24296c9ull, 10, false, false, false, 0, (uint32_t) offsetof( BenchMixed, aim_x ), (uint32_t) sizeof( BenchMixed::aim_x ), 0xffffffffu, 0xffffffffu, NULL, true, -1.0, 1.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "aim_y", "aim_y", "float32", 0xdbaf7ae5e2429516ull, 10, false, false, false, 0, (uint32_t) offsetof( BenchMixed, aim_y ), (uint32_t) sizeof( BenchMixed::aim_y ), 0xffffffffu, 0xffffffffu, NULL, true, -1.0, 1.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "aim_z", "aim_z", "float32", 0xdbaf79e5e2429363ull, 10, false, false, false, 0, (uint32_t) offsetof( BenchMixed, aim_z ), (uint32_t) sizeof( BenchMixed::aim_z ), 0xffffffffu, 0xffffffffu, NULL, true, -1.0, 1.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "recoil", "recoil", "float32", 0x9cef31fff7e2e457ull, 10, false, false, false, 0, (uint32_t) offsetof( BenchMixed, recoil ), (uint32_t) sizeof( BenchMixed::recoil ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "drift", "drift", "float64", 0x5ab3f9c9341f6c04ull, 11, false, false, false, 0, (uint32_t) offsetof( BenchMixed, drift ), (uint32_t) sizeof( BenchMixed::drift ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "wide_key", "wide_key", "uint128", 0xa3348580461faf16ull, 19, false, false, false, 0, (uint32_t) offsetof( BenchMixed, wide_key ), (uint32_t) sizeof( BenchMixed::wide_key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "flux", "flux", "int128", 0xd61bdd7908af2642ull, 18, false, false, false, 0, (uint32_t) offsetof( BenchMixed, flux ), (uint32_t) sizeof( BenchMixed::flux ), 0xffffffffu, 0xffffffffu, NULL, true, -1.2676506002282294e+30, 1.2676506002282294e+30, 0, 0, 0, 0, 0, &BenchMixed_flux_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "ping", "ping", "ufixed(8, 8)", 0xbf30e00dc53307a9ull, 26, false, false, false, 0, (uint32_t) offsetof( BenchMixed, ping ), (uint32_t) sizeof( BenchMixed::ping ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 250.0, 0, 0, 0, 0, 8, &BenchMixed_ping_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "crc_hint", "crc_hint", "bits(24)", 0x560d6527ccd8515full, 8, false, false, false, 0, (uint32_t) offsetof( BenchMixed, crc_hint ), (uint32_t) sizeof( BenchMixed::crc_hint ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1.6777215e+07, 0, 0, 0, 16777215ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "has_extra", "has_extra", "bool", 0xc08292176cfd8672ull, 1, false, false, false, 0, (uint32_t) offsetof( BenchMixed, has_extra ), (uint32_t) sizeof( BenchMixed::has_extra ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "extra", "extra", "int32", 0xfd29ee12a979cb69ull, 4, false, false, false, 0, (uint32_t) offsetof( BenchMixed, extra ), (uint32_t) sizeof( BenchMixed::extra ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 255.0, 0ll, 255ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "idle_ticks", "idle_ticks", "int32", 0x78101ac0aa8cbcfeull, 4, false, false, false, 0, (uint32_t) offsetof( BenchMixed, idle_ticks ), (uint32_t) sizeof( BenchMixed::idle_ticks ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 15.0, 0ll, 15ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
     };
     static const TableTypeInfo info = { "BenchMixed", (uint32_t) sizeof( BenchMixed ), 27, fields, +[]( void * p ) { BenchMixedReset( *(BenchMixed *) p ); }, TableDocNone, 0, NULL, false };
     return &info;

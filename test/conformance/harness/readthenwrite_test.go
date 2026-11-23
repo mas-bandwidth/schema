@@ -352,6 +352,9 @@ func TestHarnessIsReadThenWrite(t *testing.T) {
 	}
 
 	for _, rc := range m.Retains {
+		if rc.Refused {
+			continue // a refused row owes no value and no save
+		}
 		checkValueBytes(rc.Name, rc.Unit, rc.Root, "testdata/conformance/tables/retain-values/"+rc.Name+".json")
 		if !rc.Short {
 			if _, err := os.Stat(filepath.Join(root, rc.Saves)); err != nil {

@@ -44,9 +44,9 @@ import (
 //     one blob two slots name (blob_shared, and a *string the oracle shares in
 //     probe_shared_string) stays one record through a JavaScript load and save,
 //     and the text writer REFUSES it, as the oracle's does (§16.7);
-//   - the ESCAPE KIND 31 (§3): at a field the reader cannot name (unknown), at a
-//     field it names and as an array's element kind (kind_mismatch each), the
-//     report compared with the oracle's and the re-save with the oracle's;
+//   - the HELD KIND 31 (§3, R17): held by name and never written, so a wire
+//     carrying it at a field the reader cannot name refuses the whole load, as
+//     the oracle refuses it;
 //   - a DECLARED MINIMUM, [2..4]uint8, at 0, 1 and 4 elements (the bytes of a
 //     [..4]) and at 5 from the wire and from the text (one clamped, the prefix
 //     kept), each against the oracle's report and save;
@@ -284,20 +284,14 @@ func TestVariableClassBeyondCardConstructsJavaScript(t *testing.T) {
 	}
 	units = append(units, &vcUnit{"classprobe", probe, probeCases})
 
-	// THE ESCAPE KIND (§3): one wire, kind 31 at three positions, and the
-	// oracle's report and re-save for it.
-	escape := variableClassEscapeWire(t, probe)
-	escInst := pm.New(pm.Lookup("Probe"))
+	// THE HELD KIND 31 (§3, R17): held by name and never written, so a wire
+	// carrying it at a field this reader cannot name refuses the whole load, as
+	// the oracle refuses it.
+	escape := variableClassHeldEscapeWire(t, probe)
 	var escRep tabletext.Report
-	escOK, err := tablewire.Decode(pm, escInst, escape, &escRep)
-	if err != nil && !tablewire.ReadRefusal(err) {
-		t.Fatalf("the oracle failed on the escape wire: %v", err)
-	}
-	var escSaved []byte
-	if escOK {
-		if escSaved, err = tablewire.Encode(pm, escInst); err != nil {
-			t.Fatal(err)
-		}
+	escOK, err := tablewire.Decode(pm, pm.New(pm.Lookup("Probe")), escape, &escRep)
+	if escOK || !tablewire.ReadRefusal(err) {
+		t.Fatalf("the oracle read the held kind 31: ok=%v err=%v %+v", escOK, err, escRep)
 	}
 
 	// FIVE ELEMENTS IN A [2..4]uint8 (§4): a count past the bound refuses the
@@ -420,18 +414,10 @@ func TestVariableClassBeyondCardConstructsJavaScript(t *testing.T) {
 		}
 	}
 	escPath := filepath.Join(work, "escape.wire")
-	escSavedPath := filepath.Join(work, "escape_saved.wire")
 	if err := os.WriteFile(escPath, escape, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(escSavedPath, escSaved, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if escOK {
-		want = append(want, fmt.Sprintf("ESCAPE %d,%d,%d,%d,%d,%v SAVED OK", escRep.Unknown, 0, escRep.Widened, 0, 0, false))
-	} else {
-		want = append(want, "ESCAPE REFUSED")
-	}
+	want = append(want, "ESCAPE REFUSED")
 	files := map[string][]byte{
 		"least5.wire": leastWire, "least5_saved.wire": leastSaved, "least5_text.wire": leastTextWire,
 	}
@@ -450,7 +436,7 @@ func TestVariableClassBeyondCardConstructsJavaScript(t *testing.T) {
 	probeModule := filepath.Join(work, "classprobe", runtimeHome(probe)+"Variable.js")
 	spec, err := json.Marshal(map[string]any{
 		"cases":  all,
-		"escape": map[string]string{"module": probeModule, "wire": escPath, "saved": escSavedPath},
+		"escape": map[string]string{"module": probeModule, "wire": escPath},
 		"least": map[string]string{"module": probeModule, "wire": filepath.Join(work, "least5.wire"),
 			"saved": filepath.Join(work, "least5_saved.wire"), "text": leastText, "textWire": filepath.Join(work, "least5_text.wire")},
 		"cycle": map[string]string{"module": probeModule, "selfRef": selfRefText},
@@ -488,36 +474,18 @@ func TestVariableClassBeyondCardConstructsJavaScript(t *testing.T) {
 	}
 }
 
-// variableClassEscapeWire builds one Probe wire carrying the escape kind 31
-// (docs/SPEC-TABLES.md §3) at three positions: a field this reader cannot name
-// (unknown), the named int32 `tail` (kind_mismatch), and the element kind of
-// the named []int8 `small` (kind_mismatch).
-func variableClassEscapeWire(t *testing.T, u *ir.Unit) []byte {
+// variableClassHeldEscapeWire builds one Probe wire carrying the held kind 31
+// (docs/SPEC-TABLES.md §3, R17) at a field this reader cannot name: the whole
+// load refuses, as it refuses 33 and 34. The old escape skipped it by its L and
+// counted it unknown.
+func variableClassHeldEscapeWire(t *testing.T, u *ir.Unit) []byte {
 	t.Helper()
-	probe := u.Tables["Probe"]
-	var tail, small *ir.Field
-	for _, f := range probe.Fields {
-		switch f.Name {
-		case "tail":
-			tail = f
-		case "small":
-			small = f
-		}
+	if u.Tables["Probe"] == nil {
+		t.Fatal("the probe unit declares no Probe")
 	}
-	if tail == nil || small == nil {
-		t.Fatal("the probe declares no tail or small")
-	}
-	ids := []uint64{ir.TableWireId("from_a_later_major"), ir.TableFieldWireId(tail), ir.TableFieldWireId(small)}
-	esc, arr := byte(ir.TableKindEscape), byte(ir.TableKindArray)
-	w := []byte{byte(ir.TableWireForm)}
-	w = append(w, 1, esc, 2, 0xAA, 0xBB) // unnameable: skipped by L, unknown
-	w = append(w, 2, esc, 1, 0x00)       // named: kind_mismatch
-	w = append(w, 3, arr, 3, esc, 1, 0)  // element kind 31: kind_mismatch
-	w = append(w, 0)
-	for _, id := range ids {
-		w = binary.LittleEndian.AppendUint64(w, id)
-	}
-	return binary.LittleEndian.AppendUint64(w, uint64(len(ids)))
+	w := []byte{byte(ir.TableWireForm), 1, byte(ir.TableKindHeldEscape), 2, 0xAA, 0xBB, 0}
+	w = binary.LittleEndian.AppendUint64(w, ir.TableWireId("from_a_later_major"))
+	return binary.LittleEndian.AppendUint64(w, 1)
 }
 
 // variableClassChain is a Probe whose head is a chain of n Leaves (id k, each
@@ -677,8 +645,8 @@ var variableClassProbeTexts = []struct{ name, text string }{
 // prints one line per verdict: WIRE (load, save, the bytes and a clean
 // report), JSONW (the text), JSONR (the text read back and saved), JSONREFUSE
 // (the text writer refuses a shared blob), SAME (two slots naming one node or
-// blob are one object after the load), and ESCAPE (the escape kind's report and
-// re-save).
+// blob are one object after the load), and ESCAPE (the held kind 31 refuses
+// the whole load).
 const variableClassProbeDriver = `
 import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
@@ -731,14 +699,10 @@ for (const c of spec.cases) {
   const e = spec.escape;
   const m = await import(pathToFileURL(e.module).href);
   const wire = new Uint8Array(readFileSync(e.wire));
-  const want = new Uint8Array(readFileSync(e.saved));
   const r = new m.TableVariableReport();
   const v = m.ProbeLoad(wire, r);
   if (v === null) { console.log("ESCAPE REFUSED"); }
-  else {
-    const again = m.ProbeSave(v);
-    console.log("ESCAPE " + [r.unknown, r.mismatch, r.widened, r.oor, r.repeated, r.damaged].join(",") + " SAVED " + (same(again, want) ? "OK" : "DIFF " + firstDiff(again, want)));
-  }
+  else { console.log("ESCAPE LOADED " + [r.unknown, r.mismatch, r.widened, r.oor, r.repeated, r.damaged].join(",")); }
 }
 
 const counts = (r) => [r.unknown, r.mismatch, r.widened, r.oor, r.repeated, r.damaged].join(",");

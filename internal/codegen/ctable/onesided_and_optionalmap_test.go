@@ -210,7 +210,27 @@ int main(void)
 }
 `
 
-func cMapJsonNullRun(t *testing.T, cc string, revert bool) (string, error) {
+const cMapJSONFirstEntry = `#include "ProbeTable.h"
+#include <stdio.h>
+#define CHECK(x) do { if (!(x)) { fprintf(stderr,"%s\n",#x); return 1; } } while(0)
+int main(void)
+{
+    const char text[] = "{\"tags\":{\"42\":{\"marker\":5}}}";
+    MBuilder b;
+    TableReport report = {0};
+    CHECK(m_builder_init(&b));
+    CHECK(m_from_json(&b, text, sizeof(text)-1, &report));
+    CHECK(m_builder_lock(&b));
+    const M * root = (const M *)(const void *)b.region;
+    CHECK(root->tags_present && root->tags.count == 1);
+    const V * entry = m_tags_find(&root->tags, 42);
+    CHECK(entry != NULL && entry->marker == 5);
+    m_builder_shutdown(&b);
+    return 0;
+}
+`
+
+func cMapJsonRun(t *testing.T, cc, probe string, revert bool) (string, error) {
 	t.Helper()
 	u := unitFrom(t, cMapJsonNullSchema)
 	files, err := cgen.Generate(u)
@@ -242,7 +262,7 @@ func cMapJsonNullRun(t *testing.T, cc string, revert bool) (string, error) {
 		}
 	}
 	main := filepath.Join(dir, "main.c")
-	if err := os.WriteFile(main, []byte(cMapJsonNullProbe), 0600); err != nil {
+	if err := os.WriteFile(main, []byte(probe), 0600); err != nil {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(dir, "probe")
@@ -262,6 +282,18 @@ func cMapJsonNullRun(t *testing.T, cc string, revert bool) (string, error) {
 	return string(out), err
 }
 
+func TestCFirstJSONMapEntry(t *testing.T) {
+	t.Parallel()
+	slowtest.Gate(t, "the C compiler")
+	cc, err := exec.LookPath("cc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out, err := cMapJsonRun(t, cc, cMapJSONFirstEntry, false); err != nil {
+		t.Fatalf("first map entry: %v\n%s", err, out)
+	}
+}
+
 func TestCOptionalMapJsonNullResetsToEmpty(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the C compiler")
@@ -269,11 +301,11 @@ func TestCOptionalMapJsonNullResetsToEmpty(t *testing.T) {
 	if err != nil {
 		t.Skip("the generated C is compiled and run: no cc on PATH")
 	}
-	if out, err := cMapJsonNullRun(t, cc, false); err != nil {
+	if out, err := cMapJsonRun(t, cc, cMapJsonNullProbe, false); err != nil {
 		t.Fatalf("the null reset probe failed: %v\n%s", err, out)
 	}
 	t.Run("reversed witness", func(t *testing.T) {
-		out, err := cMapJsonNullRun(t, cc, true)
+		out, err := cMapJsonRun(t, cc, cMapJsonNullProbe, true)
 		if err == nil {
 			t.Fatalf("the probe passed with the map branch reverted, so it does not pin the branch:\n%s", out)
 		}

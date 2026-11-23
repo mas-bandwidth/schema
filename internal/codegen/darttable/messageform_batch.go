@@ -1138,6 +1138,12 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, entry ir.TableVocabular
 		lhs, cmp, _ := g.gen.fixedClampTerms(f.Type, expr, maxBits)
 		g.pf("%sif (%s > %s) { r.report.Refuse('out_of_range'); return false; }\n", ind, lhs, cmp)
 	}
+	if fl := flagsRef(f); fl != nil && fl.WireBits < 64 {
+		// A MASK BIT AT OR ABOVE THE READER'S W REFUSES (docs/SPEC-TABLES.md §4, A
+		// TABLE LOAD HOLDS A MASK TO ITS WIDTH): a newer writer announces a wider
+		// mask, and each value is held to this reader's own W
+		g.pf("%sif ((%s >>> %d) != 0) { r.report.Refuse('out_of_range'); return false; }\n", ind, expr, fl.WireBits)
+	}
 }
 
 // emitMessageReadScalar128 reads a 128-bit scalar back as its two 64-bit
@@ -1558,11 +1564,6 @@ bool tableMessageSkip(TableMessageReader r, int kind, TableMessageShape s, [int 
       // ILL-FORMED TEXT, OR A ZERO BYTE, IS DAMAGE ON THE SKIP PATH TOO
       // (docs/SPEC-TABLES.md §3.3, §4): reuse the named read's own check.
       return tableTextValid(r.bits.buffer, start, n);
-    case 31:
-      if (!r.bits.align()) return false;
-      final n = r.bits.get(32);
-      if (r.bits.failed) return false;
-      return r.bits.skip(n * 8);
     case 10:
       // A FLOAT IS FINITE ON THE SKIP PATH TOO (docs/SPEC-TABLES.md §3.3):
       // a raw NaN or infinity is refused on its bits, and a quantized index

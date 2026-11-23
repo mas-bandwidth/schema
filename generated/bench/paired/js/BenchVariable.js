@@ -287,7 +287,7 @@ function TableVariableSkip(r, kind) {
     case 4: case 8: case 10: case 22: case 27: { if (r.at + 4 > r.end) return false; r.at += 4; return true; }
     case 5: case 9: case 11: case 23: case 28: case 36: { if (r.at + 8 > r.end) return false; r.at += 8; return true; }
     case 18: case 19: case 24: case 29: { if (r.at + 16 > r.end) return false; r.at += 16; return true; }
-    case 12: case 13: case 14: case 16: case 31: case 32: {
+    case 12: case 13: case 14: case 16: case 32: {
       const L = r.leb(); if (r.bad) return false; if (r.at + L > r.end) return false; r.at += L; return true;
     }
     case 15: {
@@ -525,8 +525,8 @@ function TableVariableRetainResolve(r, table, kind, out, depth) {
   const width = tableRetainWidth(kind);
   if (width > 0) { if (r.at + width > r.end) { return false; } out.raw(r.b.subarray(r.at, r.at + width)); r.at += width; return true; }
   switch (kind) {
-    case 12: case 31: case 32: {
-      // a string and a wide string (§6.6, internal/tablewire retain.go): the
+    case 12: case 32: {
+      // a string and the payload-free kind (§6.6, internal/tablewire retain.go): the
       // payload copies verbatim under its L
       const L = r.leb(); if (r.bad || r.at + L > r.end) { return false; }
       out.leb(L); out.raw(r.b.subarray(r.at, r.at + L)); r.at += L; return true;
@@ -670,7 +670,7 @@ function TableVariableRetainEmit(r, ids, kind, w) {
   const width = tableRetainWidth(kind);
   if (width > 0) { if (r.at + width > r.end) { return false; } w.raw(r.b.subarray(r.at, r.at + width)); r.at += width; return true; }
   switch (kind) {
-    case 12: case 31: case 32: {
+    case 12: case 32: {
       const L = r.leb(); if (r.bad || r.at + L > r.end) { return false; }
       w.leb(L); w.raw(r.b.subarray(r.at, r.at + L)); r.at += L; return true;
     }
@@ -1460,7 +1460,7 @@ function TableVariableOpen(bytes, report) {
 // whose type id this root cannot place keeps its index and counts one unknown;
 // every pointer naming it reads null.
 function TableVariableCountRefused(report) {
-  return report.refused && report.reason === "count_over_extent_cap";
+  return report.refused && (report.reason === "count_over_extent_cap" || String(report.reason).startsWith("count_over_bound"));
 }
 
 // A reference joins the id-table sequence at the moment the bytes name it.
@@ -1885,7 +1885,7 @@ function TableVariableNotePayload(sub, kind, table, st, report, depth) {
     if (depth + levels > 128) { return false; }
     return TableVariableNoteContent(sub.b, from, sub.at, ak, table, st, report, depth + levels);
   }
-  if (kind === 12 || kind === 13 || kind === 14 || kind === 16 || kind === 31 || kind === 32) {
+  if (kind === 12 || kind === 13 || kind === 14 || kind === 16 || kind === 32) {
     const L = sub.leb();
     if (sub.bad || sub.at + L > sub.end) { return false; }
     const from = sub.at;
@@ -1920,7 +1920,6 @@ function TableVariableNoteContent(b, from, to, kind, table, st, report, depth) {
     return inner.at === inner.end;
   }
   if (kind === 12) { return TableVariableUtf8Decode(b.subarray(from, to)).ok; }
-  if (kind === 31) { return true; }
   if (kind === 32) { return from === to; }
   const w = tableRetainWidth(kind);
   if (w <= 0 || to - from !== w) { return false; }
@@ -2109,7 +2108,7 @@ function TableVariableBodyRead(c, r, table, v, report, st, nested, retain, path)
         if (!(c.entry && fd.n === "key")) { report.widened++; }
         continue;
       }
-      // the escape kind 31 and the payload-free kind 32 at a named position take
+      // the payload-free kind 32 at a named position takes
       // this same rule and no other (§3)
       report.mismatch++;
       const mismatchFrom = r.at;
@@ -2224,7 +2223,9 @@ function TableVariableEnumRead(e, r, table, report, retain, st) {
   if (ref > table.length) { report.damaged = true; return undefined; }
   TableVariableIntroduce(st, ref);
   const id = table[ref - 1];
-  for (const [name, vid] of e.vs) { if (vid === id) { return name; } }
+  for (const [name, vid] of e.vs) {
+    if (vid === id) { return e.dp.includes(name) ? (e.el ? null : e.def) : name; }
+  }
   report.unknown++;
   if (retain !== null) { report.retainLost++; }
   return null;
@@ -2360,6 +2361,14 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
     if (ek !== fd.ek) {
       if (!TableVariableWidens(ek, fd.ek)) { report.mismatch++; return false; }
       report.widened++;
+    }
+    // A COUNTED [A..B] ARRAY BELOW ITS MINIMUM A REFUSES count_over_bound, in
+    // every form (docs/SPEC-TABLES.md section 22.2), before any element is read:
+    // a count short of A is a value no writer could have written.
+    if (!fd.list && !fd.fixed && fd.min > 0 && count < fd.min) {
+      report.refused = 1;
+      if (!report.reason) { report.reason = "count_over_bound: " + fd.n; }
+      return false;
     }
     let keep = count;
     if (fd.list) {
@@ -3768,7 +3777,9 @@ function TableVariableJsonScalar(d, val, depth, g, out) {
     case "union": return TableVariableJsonUnion(d.u, val, depth, g, out);
     case "enum":
       if (val === null || val === "None") { out.push("\"None\""); return true; }
-      for (const [name] of d.vs) { if (name === val) { out.push(TableVariableJsonString(name)); return true; } }
+      // a DEPRECATED variant is never written (§2.15): it reads as the default, so
+      // the text writer refuses it, as every writer does
+      for (const [name] of d.vs) { if (name === val) { if (d.dp !== undefined && d.dp.includes(name)) { return false; } out.push(TableVariableJsonString(name)); return true; } }
       return false;
     case "flags": {
       // the save's own test: a BigInt mask inside the unsigned width, never a Number
@@ -4378,12 +4389,19 @@ function TableVariableTextArray(fd, inp, v, depth, graph, report) {
   v[fd.n] = out;
   const bound = fd.list ? 0x7fffffff : fd.bound;
   let placed = 0;
-  // a closed array shorter than the declared Min is off the count's own
-  // range, refused as the count past Max is (SPEC §5.1 row 3; read.go)
-  const least = () => { if (placed < (fd.min || 0)) { report.oor++; } return true; };
+  // a counted array below its minimum A refuses on read, in the text form as in
+  // the wire (docs/SPEC.md section 4.6): a refusal is an answer, never a throw
+  const below = () => {
+    if (fd.min > 0 && placed < fd.min) {
+      report.refused = 1;
+      if (!report.reason) { report.reason = "count_over_bound: " + fd.n; }
+      return true;
+    }
+    return false;
+  };
   for (;;) {
     let ch = inp.peek();
-    if (ch === "]") { inp.p++; return least(); }
+    if (ch === "]") { inp.p++; return !below(); }
     if (ch === "") { inp.bad = true; return false; }
     const shape = inp.shape();
     if (placed >= bound) {
@@ -4403,7 +4421,7 @@ function TableVariableTextArray(fd, inp, v, depth, graph, report) {
     }
     ch = inp.peek();
     if (ch === ",") { inp.p++; continue; }
-    if (ch === "]") { inp.p++; return least(); }
+    if (ch === "]") { inp.p++; return !below(); }
     inp.bad = true;
     return false;
   }
@@ -4472,7 +4490,12 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
       const s = inp.name();
       if (s === null) { return false; }
       if (s === "None") { holder[key] = null; return true; }
-      for (const [name] of d.vs) { if (name === s) { holder[key] = name; return true; } }
+      for (const [name] of d.vs) {
+        if (name !== s) { continue; }
+        // A DEPRECATED VARIANT READS AS THE FIELD'S DEFAULT, an element as None (§2.15)
+        holder[key] = d.dp.includes(name) ? (d.el ? null : d.def) : name;
+        return true;
+      }
       // a name this build cannot name reads None and counts unknown (§4)
       holder[key] = null;
       report.unknown++;
@@ -5152,8 +5175,8 @@ const TableVariableCodecs = {
       { n: "vel_y", key: "vel_y", id: 0x6cede5b6eb60ecb4n, o: 7, s: "int", js: "n", k: 4, big: false, kw: 4, lo: -2048, hi: 2047, bits: 0, bmax: 0, frac: 0, tlo: -2048n, thi: 2047n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
       { n: "vel_z", key: "vel_z", id: 0x6cede8b6eb60f1cdn, o: 8, s: "int", js: "n", k: 4, big: false, kw: 4, lo: -2048, hi: 2047, bits: 0, bmax: 0, frac: 0, tlo: -2048n, thi: 2047n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
       { n: "health", key: "health", id: 0x7f69d4b5288ba9cfn, o: 9, s: "int", js: "n", k: 4, big: false, kw: 4, lo: 0, hi: 1000, bits: 0, bmax: 0, frac: 0, tlo: 0n, thi: 1000n, dlo: -2147483648n, dhi: 2147483647n, def: 0 },
-      { n: "weapon", key: "weapon", id: 0xa0b610205f2c6e01n, o: 10, k: 30, s: "enum", js: "s", vs: [["Fists", 0xa790eee12766cf0cn], ["Pistol", 0x9fbfefa835da8476n], ["Shotgun", 0x188bbb1783928a95n], ["Rifle", 0x2c3667b9c2f272f1n], ["Sniper", 0x0ca8b41b00d755f6n], ["Smg", 0x985fc819fab21a4en], ["Rocket", 0x229d0447c3086a55n], ["Grenade", 0x011c7b49a7228f9dn], ["Plasma", 0x89f7566e1123e15fn], ["Railgun", 0x8d7f25318b3b4469n], ["Flamer", 0xd9cd0dcc285b7816n], ["Mine", 0x04dc16aea8ff5276n], ["Turret", 0x35e53bc341129217n], ["Drone", 0x2cc8282fb0de8831n], ["Repair", 0x20bada21bc8cb334n]], def: null },
-      { n: "damage", key: "damage", id: 0x7f6308be8ab37fc0n, o: 11, k: 9, s: "flags", js: "a", big: true, kw: 8, lo: null, hi: null, bits: 0, vs: ["Bleeding", "Burning", "Stunned", "Slowed", "Poisoned", "Shielded", "Airborne", "Downed"], def: 0n },
+      { n: "weapon", key: "weapon", id: 0xa0b610205f2c6e01n, o: 10, k: 30, s: "enum", js: "s", vs: [["Fists", 0xa790eee12766cf0cn], ["Pistol", 0x9fbfefa835da8476n], ["Shotgun", 0x188bbb1783928a95n], ["Rifle", 0x2c3667b9c2f272f1n], ["Sniper", 0x0ca8b41b00d755f6n], ["Smg", 0x985fc819fab21a4en], ["Rocket", 0x229d0447c3086a55n], ["Grenade", 0x011c7b49a7228f9dn], ["Plasma", 0x89f7566e1123e15fn], ["Railgun", 0x8d7f25318b3b4469n], ["Flamer", 0xd9cd0dcc285b7816n], ["Mine", 0x04dc16aea8ff5276n], ["Turret", 0x35e53bc341129217n], ["Drone", 0x2cc8282fb0de8831n], ["Repair", 0x20bada21bc8cb334n]], dp: [], def: null },
+      { n: "damage", key: "damage", id: 0x7f6308be8ab37fc0n, o: 11, k: 9, s: "flags", js: "a", big: true, kw: 8, lo: null, hi: null, bits: 8, bmax: 255n, vs: ["Bleeding", "Burning", "Stunned", "Slowed", "Poisoned", "Shielded", "Airborne", "Downed"], def: 0n },
       { n: "moving", key: "moving", id: 0x11a44fc1d1243da7n, o: 12, k: 1, s: "bool", js: "b", def: false },
       { n: "firing", key: "firing", id: 0x7674cfd19b9031can, o: 13, k: 1, s: "bool", js: "b", def: false },
     ],
@@ -5334,10 +5357,10 @@ export const TableCookWrite = (() => {
         {k:"int",n:"world_time",at:40,w:8,sg:1},
         {k:"int",n:"frame_tick",at:48,w:8,sg:0},
         {k:"int",n:"server_time",at:56,w:4,sg:1},
-        {k:"arr",n:"entities",at:64,countAt:576,countFrom:"len",bound:8,stride:64,elem:{k:"rec",n:"entities",at:0,t:"MixedEntity"}},
-        {k:"arr",n:"stats",at:580,countAt:1220,countFrom:"len",bound:80,stride:8,elem:{k:"rec",n:"stats",at:0,t:"MixedStat"}},
+        {k:"arr",n:"entities",at:64,countAt:576,countFrom:"len",bound:8,min:1,stride:64,elem:{k:"rec",n:"entities",at:0,t:"MixedEntity"}},
+        {k:"arr",n:"stats",at:580,countAt:1220,countFrom:"len",bound:80,min:0,stride:8,elem:{k:"rec",n:"stats",at:0,t:"MixedStat"}},
         {k:"union",n:"game_event",at:1224,tagW:1,armAt:4,arms:3,var:1,arm:[{k:"rec",n:"value",at:0,t:"MixedHitEvent",an:"hit"},{k:"rec",n:"value",at:0,t:"MixedChatEvent",an:"chat"},{k:"rec",n:"value",at:0,t:"MixedPickupEvent",an:"pickup"}]},
-        {k:"arr",n:"loadout",at:1244,countAt:-1,countFrom:"bound",bound:4,stride:1,elem:{k:"int",n:"loadout",at:0,w:1,sg:0}},
+        {k:"arr",n:"loadout",at:1244,countAt:-1,countFrom:"bound",bound:4,min:0,stride:1,elem:{k:"int",n:"loadout",at:0,w:1,sg:0}},
         {k:"vstr",n:"player_name",at:1248,lenAt:1264,cap:15},
         {k:"vbytes",n:"payload",at:1268,lenAt:1284,cap:16},
         {k:"f32",n:"aim_x",at:1288,c:1},
@@ -5504,7 +5527,7 @@ export const TableCookWrite = (() => {
       if (!globalThis.Array.isArray(arr)) { return false; }
       count = arr.length;
     } else { count = parent[fd.n + "Count"]; }
-    if (!globalThis.Number.isInteger(count) || count < 0 || count > fd.bound) { return false; }
+    if (!globalThis.Number.isInteger(count) || count < (fd.min || 0) || count > fd.bound) { return false; }
     if (fd.countAt >= 0 && !putWidth(view, base + fd.countAt, 4, count, true, le)) { return false; }
     // a counted array's slots past the live count are DEAD BYTES and stay the
     // buffer's zero (docs/SPEC-TABLES.md §7.2, §7.4; docs/rulings.json
@@ -5860,7 +5883,7 @@ export function FixedTableFromJsonBytes(bytes, report) {
   return TableVariableFromJsonBytes(TableVariableCodecs.FixedTable, bytes, report);
 }
 
-export function FixedTableLoadMeasure(bytes) {
+function FixedTableLoadMeasureWalk(bytes, out) {
   if (bytes.length < 9) { return 1392; }
   if (bytes[0] !== TableVariableForm) { return 1392; }
   const dv = new globalThis.DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -5937,7 +5960,22 @@ export function FixedTableLoadMeasure(bytes) {
     payload.at += tlen;
     records++;
   }
-  return data + (records + 1) * 16;
+  out.attribution = (records + 1) * 16;
+  return data + out.attribution;
+}
+
+export function FixedTableLoadMeasure(bytes) {
+  return FixedTableLoadMeasureWalk(bytes, { attribution: 16 });
+}
+
+// FixedTableLoadMeasureParts reports the DATA bytes and the ATTRIBUTION bytes separately
+// (docs/SPEC-TABLES.md §6.3, §6.5, as C and C++ do); LoadMeasure answers their sum.
+// A refusal answers { data: -1, attribution: 0 }.
+export function FixedTableLoadMeasureParts(bytes) {
+  const out = { attribution: 16 };
+  const total = FixedTableLoadMeasureWalk(bytes, out);
+  if (total < 0) { return { data: -1, attribution: 0 }; }
+  return { data: total - out.attribution, attribution: out.attribution };
 }
 
 export function FixedTableLoadRetain(bytes, retain, report) {

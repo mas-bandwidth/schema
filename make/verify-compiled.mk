@@ -229,7 +229,7 @@ _verify-rust-bench-quick: generated/bench/rust/.stamp
 _verify-rust-bench-paired: bin/schema generated/bench/paired/rust/.stamp
 	PATH="$(RUSTUP_BIN):$$PATH" go run ./bench/paired -mode gate -langs rust
 
-_verify-rust-bench: bin/schema generated/bench/rust/.stamp generated/bench/paired/rust/.stamp packet-defaults-rust packet-end-rust packet-write-cfloat-rust packet-write-text-rust cards-rust-conformance tables-rust-view _verify-rust-bench-quick _verify-rust-bench-paired
+_verify-rust-bench: bin/schema generated/bench/rust/.stamp generated/bench/paired/rust/.stamp packet-defaults-rust packet-end-rust packet-write-cfloat-rust packet-write-text-rust packet-write-refusal-rust cards-rust-conformance tables-rust-view _verify-rust-bench-quick _verify-rust-bench-paired
 	@test -s build/verify/bench-rust.csv
 
 # ---- java ----

@@ -16,7 +16,7 @@ import (
 // and accepts mid-string / invalid '=' padding.
 func TestIssue715Base64ReaderDefaults(t *testing.T) {
 	t.Parallel()
-	src := `package p
+	src := `package px
 fixed table Ship
 {
     tag bytes(4) = "ab"
@@ -173,7 +173,7 @@ int main(void) {
 		if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module testpkg\n\ngo 1.24.0\n"), 0644); err != nil {
 			t.Fatal(err)
 		}
-		testSrc := `package p
+		testSrc := `package px
 
 import (
 	"testing"
@@ -281,7 +281,7 @@ class Program {
 	})
 
 	t.Run("emitted_text", func(t *testing.T) {
-		uNoDefault := unitFromSource(t, "package p\ntable Ship { tag bytes(4)\n past int32 }\n")
+		uNoDefault := unitFromSource(t, "package px\ntable Ship { tag bytes(4)\n past int32 }\n")
 		// Rust, Dart, JavaScript, Elixir and Java emit no text form: their previous-form
 		// table wire was removed; only the block and cook readers remain
 		// (#518, #514, #516, #515, #517).

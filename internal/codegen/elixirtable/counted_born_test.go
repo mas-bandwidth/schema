@@ -16,7 +16,7 @@ import (
 func TestCountedBornStateElides(t *testing.T) {
 	t.Parallel()
 	schema := filepath.Join(t.TempDir(), "Born.schema")
-	src := "package born\ntable VarRoot {\n    few [2..4]int32\n}\n"
+	src := "package bornprobe\ntable VarRoot {\n    few [2..4]int32\n}\n"
 	if err := os.WriteFile(schema, []byte(src), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -25,7 +25,10 @@ func TestCountedBornStateElides(t *testing.T) {
 		b.Write(data)
 	}
 	all := b.String()
-	for _, want := range []string{"min_count: 2", "default: [0, 0]", "list_born?(f, elements, idx_map, ids, order) or"} {
+	if got := strings.Count(all, "min_count: 2"); got != 1 {
+		t.Errorf("generated Elixir has %d min_count: 2 entries for one counted field, want 1", got)
+	}
+	for _, want := range []string{"default: [0, 0]", "list_born?(f, elements, idx_map, ids, order) or"} {
 		if !strings.Contains(all, want) {
 			t.Errorf("generated Elixir lacks %q: a counted [2..4] is not born at 2 default elements, or its born state is written", want)
 		}

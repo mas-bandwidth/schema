@@ -1,0 +1,17 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Probe
+{
+    first uint32
+    kind Kind
+}
+
+table Rec
+{
+    value uint32
+}

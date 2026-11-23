@@ -3,9 +3,9 @@
 // and the canonical rewrite's bits and bytes. It reads through _ReadNarrow,
 // the composable read that reports bits and runs no end check (the end check
 // is packet-end-goose's). The make target generates
-// test/packet-text/Narrow.schema beside this file.
+// test/packet-text/Text.schema beside this file.
 import os;
-import .Narrow;
+import .Text;
 import .driverlib;
 import .serialize;
 

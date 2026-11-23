@@ -5,6 +5,7 @@
 // AGPL-3.0, its output is not.
 // package example — protocol id 0x2bf51af687ac0abd
 
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Serialize;
 
@@ -682,6 +683,9 @@ namespace Example
         {
             {
                 // flat run: 64 bits in 1 chunk(s) — the field placement is folded
+                Debug.Assert((ulong)value.A < 1ul << 20, "value.A is wider than its 20-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
+                Debug.Assert((ulong)value.B < 1ul << 20, "value.B is wider than its 20-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
+                Debug.Assert((ulong)value.C < 1ul << 24, "value.C is wider than its 24-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
                 ulong f0 = ((ulong)value.A) & 0xfffffUL;
                 ulong f1 = ((ulong)value.B) & 0xfffffUL;
                 ulong f2 = ((ulong)value.C) & 0xffffffUL;
@@ -884,6 +888,7 @@ namespace Example
             {
                 return false;
             }
+            Debug.Assert((ulong)value.Trailer < 1ul << 16, "value.Trailer is wider than its 16-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
             if (!batch.SerializeBits(ref value.Trailer, 16))
             {
                 return false;
@@ -974,6 +979,7 @@ namespace Example
             {
                 return false;
             }
+            Debug.Assert((ulong)value.Pad5 < 1ul << 24, "value.Pad5 is wider than its 24-bit wire width"); // a bits(N) value wider than N cannot ride (SPEC §5.1 row 2)
             if (!batch.SerializeBits(ref value.Pad5, 24))
             {
                 return false;

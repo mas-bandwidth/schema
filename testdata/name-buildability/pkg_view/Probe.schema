@@ -1,0 +1,6 @@
+package view
+
+type Inner
+{
+    a uint8
+}

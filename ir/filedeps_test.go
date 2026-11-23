@@ -39,8 +39,8 @@ func loadFiles(t *testing.T, srcs map[string]string) *ir.Unit {
 }
 
 // Each case declares a constant in Bounds.schema and references it from
-// Use.schema through one expression-carrying position. Every one of them
-// must produce the Use -> Bounds edge.
+// User.schema through one expression-carrying position. Every one of them
+// must produce the User -> Bounds edge.
 func TestFileDepsCoversEverySymbolicExpression(t *testing.T) {
 	cases := []struct {
 		name string
@@ -61,16 +61,16 @@ func TestFileDepsCoversEverySymbolicExpression(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			u := loadFiles(t, map[string]string{
 				"Bounds.schema": "package t\nconst Lim = 100\n",
-				"Use.schema":    tc.use,
+				"User.schema":   tc.use,
 			})
 			deps := ir.FileDeps(u)
-			if !deps["Use"]["Bounds"] {
-				t.Fatalf("Use -> Bounds edge missing: the expression naming Lim is not tracked, "+
+			if !deps["User"]["Bounds"] {
+				t.Fatalf("User -> Bounds edge missing: the expression naming Lim is not tracked, "+
 					"so the include graph and dispatch-owner topo order are wrong (deps = %v)", deps)
 			}
-			// the edge is one-directional: Bounds names nothing in Use
-			if deps["Bounds"]["Use"] {
-				t.Errorf("spurious Bounds -> Use edge (deps = %v)", deps)
+			// the edge is one-directional: Bounds names nothing in User
+			if deps["Bounds"]["User"] {
+				t.Errorf("spurious Bounds -> User edge (deps = %v)", deps)
 			}
 		})
 	}

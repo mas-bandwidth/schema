@@ -99,7 +99,7 @@ const TableFixedLaneGuardCount = 10;
 // THE OPS ARE THE WHOLE SET. The IDENTITY plan carries only the first; the
 // others are what a plan compiled from another writer's layout adds.
 const TableFixedOpCopy = 0;    // move size bytes
-const TableFixedOpCount = 1;   // a count: clamp it to the reader's own bound
+const TableFixedOpCount = 1;   // a count: refuse it outside the reader's own min..bound
 const TableFixedOpText = 2;    // a length, then the units
 const TableFixedOpOrdinal = 3; // a variant ordinal, remapped through the plan's own table
 const TableFixedOpWiden = 4;   // a narrower source into a wider destination
@@ -169,6 +169,9 @@ export const TableFixedRefusal = globalThis.Object.freeze({
   // §4, §6.5, §4.5): no writer emits one, and 0x02 is neither stored verbatim
   // nor normalized to true. It is a check-loop refusal, not a bounds-pass one.
   WireDamaged: 23,
+  // A WRITER'S OPTIONAL READ INTO A READER'S BARE FIELD refuses the lineage by
+  // name: the reader cannot hold an absent value (rulings 2026-11-22, R2).
+  KindMismatch: 24,
 });
 
 // THE REFUSAL'S OWN NAME, matching the C++ reference's spellings exactly.
@@ -198,6 +201,7 @@ export function TableFixedRefusalName(r) {
     case TableFixedRefusal.LengthOverBound: return "length_over_bound";
     case TableFixedRefusal.OutOfRange: return "out_of_range";
     case TableFixedRefusal.WireDamaged: return "wire_damaged";
+    case TableFixedRefusal.KindMismatch: return "kind_mismatch";
     default: return "???";
   }
 }
@@ -268,6 +272,7 @@ export class TableFixedPlan {
     this.ready = false;
     this.overflow = false;
     this.hostile = false;
+    this.absentIntoBare = false;
     // the CURRENT union's tag width, stamped onto every push — C++'s c.argw
     this.argw = 1;
     // THE GUARD CHAIN being compiled, OUTERMOST FIRST (§4.1): one
@@ -474,7 +479,8 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         // forged count is not a number this writer could have written. It
         // refuses before any destination byte is written.
         const v = TableFixedGetU32(src, s) | 0;
-        if (v < 0 || v > size) { report.refused = TableFixedRefusal.CountOverBound; return; }
+        // BELOW THE READER'S OWN MINIMUM A is a refusal too (SPEC-TABLES.md 22.2): the meta lane carries A.
+        if (v < 0 || v < e[b + TableFixedLaneMeta] || v > size) { report.refused = TableFixedRefusal.CountOverBound; return; }
         dst[d] = v & 0xff; dst[d + 1] = (v >>> 8) & 0xff;
         dst[d + 2] = (v >>> 16) & 0xff; dst[d + 3] = (v >>> 24) & 0xff;
         break;
@@ -828,8 +834,8 @@ function TableFixedOrdinalWidth(n) { return n === 1 || n === 2 || n === 4 || n =
 
 // THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
 // the no-payload variant 32, and the ONE kind this form's layout adds, the
-// optional wrapper 35. 31 is §3's BODY framing escape, 33 is retired and 34 is
-// reserved: none is a kind a declaration spells, so none is ever an entry's
+// optional wrapper 35. 31 is held by name and never written (R17), 33 is retired
+// and 34 is reserved: none is a kind a declaration spells, so none is ever an entry's
 // kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a leaf to step over.
 function TableFixedKnownKind(kind) {
   if (kind >= 1 && kind <= 30) { return true; }
@@ -1176,6 +1182,10 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
   // constant in its VALUE and still carrying the row's own guard/arg (§5.9 #13),
   // and the payload is compiled against the writer's own entry under the same
   // guard and ordinal. It is not a kind that moved.
+  if (theirKind === 35 && myKind !== 35) {
+    plan.absentIntoBare = true;
+    return;
+  }
   if (myKind === 35 && theirKind !== 35) {
     TableFixedPush(plan, TableFixedOpConst, theirAt, auxAt, 1, 1, guard, arg, 0);
     TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi + 1, dst, myAt, guard, arg, report);
@@ -1234,7 +1244,7 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
         // bill §12.5): a count forged past what THAT endpoint could have written
         // clamps and counts, and a reader whose own bound merely grew does not
         // let the forgery through. The reader's storage has room by §5.1.
-        TableFixedPush(plan, TableFixedOpCount, theirAt, auxAt, theirN, 0, guard, arg, 0);
+        TableFixedPush(plan, TableFixedOpCount, theirAt, auxAt, theirN, 0, guard, arg, dst[row + TableFixedDstArg] >>> 8);
         // THE ELEMENT SLOTS PAST THE COUNT ARE DEAD (§4.5).
         if (theirN > 0 && theirElem > 0) {
           TableFixedPush(plan, TableFixedOpDeadCounted, theirAt, 0, theirN, theirElem, guard, arg, 0);
@@ -1546,6 +1556,11 @@ export function TableFixedLineagePlans(known, ownLo, ownHi, myLayout, myDst, ima
         lane.why = TableFixedRefusal.LayoutRecordTooLarge;
         break;
       }
+      if (made === -3) {
+        lane = new TableFixedPlan(1, imageBytes, 1);
+        lane.why = TableFixedRefusal.KindMismatch;
+        break;
+      }
       if (made < 0) { continue; }
       plan.recordBytes = k.recordBytes;
       // THE CENSUS IS THE PLAN'S OWN NUMBER, fixed when the plan was built, and
@@ -1575,6 +1590,7 @@ export function TableFixedCompile(theirs, myLayout, myDst, plan, report) {
   plan.remapUsed = 0;
   plan.overflow = false;
   plan.hostile = false;
+  plan.absentIntoBare = false;
   plan.argw = 1;
   // THE WRITER'S OWN DECLARED RECORD (the root's body size) bounds every entry
   // (docs/FIXED-FORM-ALGORITHM.md §5.2 PLAN, fix 3).
@@ -1592,6 +1608,7 @@ export function TableFixedCompile(theirs, myLayout, myDst, plan, report) {
   TableFixedCoalesce(plan, plan.split);
   plan.pass = 0;
   if (plan.hostile) { return -2; }
+  if (plan.absentIntoBare) { return -3; }
   if (plan.overflow) { return -1; }
   return plan.count;
 }

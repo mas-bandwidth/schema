@@ -1283,7 +1283,7 @@ func (r *TableReader) Skip(kind uint8) bool {
 	case 17, 30:
 		_, ok := r.Leb()
 		return ok
-	case 12, 13, 14, 16, 31, 32:
+	case 12, 13, 14, 16, 32:
 		_, ok := r.Body()
 		return ok
 	case 15:
@@ -1599,7 +1599,7 @@ func (c *tableWireCheck) value(r TableReader, kind uint8) (int64, bool) {
 		}
 	case 15:
 		return c.union(r)
-	case 12, 13, 14, 16, 31, 32:
+	case 12, 13, 14, 16, 32:
 		sub, ok := r.Body()
 		if !ok || !c.framed(sub, kind) {
 			return 0, c.fail(TableRefuseWireDamaged)
@@ -1622,8 +1622,6 @@ func (c *tableWireCheck) framed(sub TableReader, kind uint8) bool {
 	switch kind {
 	case 12:
 		return tableUTF8Valid(sub.Buffer) || c.fail(TableRefuseWireDamaged)
-	case 31:
-		return true
 	case 32:
 		return len(sub.Buffer) == 0 || c.fail(TableRefuseWireDamaged)
 	case 13, 14, 16:
@@ -2075,9 +2073,9 @@ func tableFixedSignedKind(kind uint8) bool {
 
 // THE CLOSED KIND SET (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §1): §3's own kinds 1..30,
 // the no-payload variant 32, and the ONE kind this form's layout adds, the
-// optional wrapper 35. 0 is no kind at all, 31 is §3's BODY framing escape, 33
-// is retired and 34 is reserved: none of the four is a kind a declaration
-// spells, so none is ever an entry's kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a
+// optional wrapper 35. 0 is no kind at all, 31 is held by name and never
+// written (R17), 33 is retired and 34 is reserved: none of the four is a kind
+// a declaration spells, so none is ever an entry's kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a
 // leaf to step over — the form byte versions the kinds behind it, so a kind
 // this build does not know names a FORM this reader never saw.
 func tableFixedKindKnown(kind uint8) bool {
@@ -3074,7 +3072,7 @@ type tableFixedCompiler struct {
 	// or a kind moved off every ladder: no plan
 	// is laid, and a file under the entry's hash refuses layout_malformed
 	// (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §5.4).
-	unlawful bool
+	unlawful int8 // 0 none, 1 layout_malformed, 3 kind_mismatch (writer ?T into reader bare T, R2)
 }
 
 // layGuards lays one guard chain into the plan's pool, behind the entries and
@@ -3226,7 +3224,7 @@ func tableFixedMatchChildren(c *tableFixedCompiler, theirs tableFixedLayoutView,
 	te := tableFixedEntryAt(theirs, ti)
 	me := tableFixedEntryAt(mine, mi)
 	if !tableFixedChildrenNamed(theirs, ti, mine, mi) {
-		c.unlawful = true
+		c.unlawful = 1
 		return
 	}
 	myChild := mi + 1
@@ -3267,7 +3265,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			tableFixedPush(c, e)
 			return
 		}
-		c.unlawful = true
+		c.unlawful = 3 - 2*int8(min(1, te.Kind^35)) // 3 when the writer carried ?T
 		return
 	}
 	// T INTO ?T (§5.2 EMIT, bill §12.8): the reader wrapped a value the writer
@@ -3306,7 +3304,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			myN = (me.Size - head) / mel.Size
 		}
 		if theirN > myN {
-			c.unlawful = true
+			c.unlawful = 1
 			return
 		}
 		theirBase := theirAt + head
@@ -3326,7 +3324,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		}
 	case 16:
 		if !tableFixedChildrenNamed(theirs, ti+1, mine, mi+1) {
-			c.unlawful = true
+			c.unlawful = 1
 			return
 		}
 		tkey := tableFixedEntryAt(theirs, ti+1)
@@ -3336,7 +3334,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		tee := tableFixedEntryAt(theirs, tel)
 		mee := tableFixedEntryAt(mine, mel)
 		if te.Size/tee.Size > me.Size/mee.Size {
-			c.unlawful = true
+			c.unlawful = 1
 			return
 		}
 		for k := range mkey.Children {
@@ -3351,7 +3349,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		}
 	case 15:
 		if !tableFixedChildrenNamed(theirs, ti, mine, mi) {
-			c.unlawful = true
+			c.unlawful = 1
 			return
 		}
 		theirTag := tableFixedTagBytes(theirs, ti)
@@ -3424,7 +3422,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		// table.
 		if te.Size < me.Size {
 			if !tableFixedChildrenNamed(theirs, ti, mine, mi) {
-				c.unlawful = true
+				c.unlawful = 1
 				return
 			}
 			tableFixedPush(c, TableFixedEntry{Src: theirAt, Dst: at, Size: te.Size, Guard: guard,
@@ -3442,7 +3440,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			return
 		}
 		if !tableFixedChildrenNamed(theirs, ti, mine, mi) {
-			c.unlawful = true
+			c.unlawful = 1
 			return
 		}
 		m := make([]uint16, n)
@@ -3462,7 +3460,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 		tableFixedPush(c, e)
 	case 12:
 		if te.Size > me.Size {
-			c.unlawful = true
+			c.unlawful = 1
 			return
 		}
 		units := me.Size - 4
@@ -3483,7 +3481,7 @@ func tableFixedCompileEntry(c *tableFixedCompiler, theirs tableFixedLayoutView, 
 			e.Op = tableFixedWiden
 			tableFixedPush(c, e)
 		} else {
-			c.unlawful = true
+			c.unlawful = 1
 		}
 	}
 }
@@ -3509,8 +3507,8 @@ func tableFixedCompile(theirs tableFixedLayoutView, myLayout []byte, dst []Table
 	if c.tooLarge {
 		return -3
 	}
-	if c.unlawful {
-		return -2
+	if c.unlawful != 0 {
+		return -1 - int32(c.unlawful)
 	}
 	if c.overflow {
 		return -1
@@ -3710,6 +3708,10 @@ func tableFixedLineagePlans(known []TableFixedKnownLayout, myLayout []byte, dst 
 			}
 			if made == -3 {
 				out[i].Why = TableRefuseLayoutRecordTooLarge.Error()
+				break
+			}
+			if made == -4 {
+				out[i].Why = TableRefuseKindMismatch.Error()
 				break
 			}
 			if made < 0 {
@@ -4000,6 +4002,9 @@ func MixedEntityMeasureBody(value *MixedEntity, ids *TableIds) int64 {
 		}
 		bytes += tableLebBytes(ref) + 1 + tableLebBytes(vref)
 	}
+	if (value.Damage != 0) && (value.Damage>>8 != 0) {
+		return -1
+	}
 	if value.Damage != 0 {
 		bytes += tableLebBytes(ids.refAtHit(36, 0x7f6308be8ab37fc0)) + 1 + 8
 	} // damage
@@ -4191,6 +4196,9 @@ func MixedEntitySaveBody(w *TableWriter, value *MixedEntity) bool {
 		if value.Damage != 0 {
 			if ref := w.Ids.refAtHit(36, 0x7f6308be8ab37fc0); !w.headerPair(ref, 9) {
 				w.headerRest(ref, 9)
+			}
+			if value.Damage>>8 != 0 {
+				return false
 			}
 			w.Put64(uint64(value.Damage))
 		}
@@ -4667,6 +4675,11 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 					}
 					{
 						v := r.Unsigned(kind)
+						if v>>8 != 0 {
+							r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.damage")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
+						}
 						value.Damage = MixedDamage(v)
 					}
 					r.Report.Widened++
@@ -4681,6 +4694,11 @@ func MixedEntityLoadBody(r *TableReader, value *MixedEntity) bool {
 			}
 			{
 				v := r.Get64()
+				if v>>8 != 0 {
+					r.Report.Refuse(TableRefuseOutOfRange, "MixedEntity.damage")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				value.Damage = MixedDamage(v)
 			}
 		case 0x11a44fc1d1243da7: // moving
@@ -8033,6 +8051,9 @@ func MixedEntityFixedBoundsBody(value *MixedEntity, over *int32) {
 	if uint64(value.Weapon) > 15 {
 		(*over)++
 	}
+	if value.Damage>>8 != 0 {
+		(*over)++
+	}
 }
 
 // MixedStat's read-side bounds: each value outside them counts one in over.
@@ -8203,6 +8224,9 @@ func MixedEntityFixedCheckBody(value *MixedEntity) bool {
 		return false
 	}
 	if uint64(value.Weapon) > 15 {
+		return false
+	}
+	if value.Damage>>8 != 0 {
 		return false
 	}
 	return true

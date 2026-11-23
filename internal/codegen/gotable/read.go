@@ -114,7 +114,9 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 			g.pf("\t\t\t\t}\n")
 		}
 		// A KIND THAT IS NOT THE DECLARED ONE AND NOT A WIDENING REFUSES the
-		// load (docs/SPEC-TABLES.md §4); kinds 31 and 32 take the same rule.
+		// load (docs/SPEC-TABLES.md §4); kind 32 takes the same rule, and
+		// kind 31, held by name and never written (R17), is refused before here
+		// as damage by the wire check.
 		g.pf("\t\t\t\t%s\n", refuse("TableRefuseKindMismatch", g.floatOwner(f), "return false"))
 		g.pf("\t\t\t}\n")
 		g.elides = false
@@ -608,10 +610,7 @@ func (g *tableGen) emitReadScalar(f *ir.Field, expr, rdr, wireKind, ind, onBad s
 			lo, hi := goIntLit(rlo, signed, 8), goIntLit(rhi, signed, 8)
 			g.pf("%s\tif v < %s || v > %s { %s }\n", ind, lo, hi, refuse("TableRefuseOutOfRange", g.floatOwner(f), onBad))
 		}
-		if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
-			max := uint64(1)<<f.Type.Width - 1
-			g.pf("%s\tif v > %d { %s }\n", ind, max, refuse("TableRefuseOutOfRange", g.floatOwner(f), onBad))
-		}
+		g.emitWidthRead(f, wireKind, ind, onBad)
 		typ := goFieldType(f.Type)
 		if f.Type.Kind == ir.TBytes && !f.Type.Pointer {
 			typ = "byte"

@@ -35,7 +35,7 @@ func TestMessageReadDifferentShape(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			writer, reader := covModel(t, "package shape\n"+tc.writer+"\n"), covModel(t, "package shape\n"+tc.reader+"\n")
+			writer, reader := covModel(t, "package shapex\n"+tc.writer+"\n"), covModel(t, "package shapex\n"+tc.reader+"\n")
 			wire, err := EncodeMessage(writer, covPlace(t, writer, "Root", tc.input))
 			if err != nil {
 				t.Fatal(err)

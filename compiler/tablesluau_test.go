@@ -26,6 +26,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
+	"github.com/mas-bandwidth/schema/v2/internal/irtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -132,7 +133,7 @@ func luauUnit(t *testing.T, files map[string]string) *ir.Unit {
 		paths = append(paths, p)
 	}
 	sort.Strings(paths)
-	u, err := New().Load(paths)
+	u, err := New().LoadWithoutEmitterRules(paths)
 	if err != nil {
 		t.Fatalf("the unit does not load: %v", err)
 	}
@@ -174,32 +175,33 @@ func TestLuauRefusesUnportedConstructsByName(t *testing.T) {
 		return err
 	}
 
-	const table = "package p\n\ntable Game\n{\n    x uint8\n}\n"
-	const tableWithType = "package p\n\ntype T\n{\n    x uint8\n}\n\ntable Game\n{\n    x uint8\n}\n"
+	const table = "package px\n\ntable Game\n{\n    x uint8\n}\n"
+	const tableWithType = "package px\n\ntype T\n{\n    x uint8\n}\n\ntable Game\n{\n    x uint8\n}\n"
 	cases := []struct {
 		site, name string
 		files      map[string]string
-		names      string // what the refusal must name
+		names      string    // what the refusal must name
+		rename     [2]string // from, to: a basename the checker refuses first (SPEC §4.6), set after the check
 	}{
 		{"luau.CheckBases", "a schema file named for the type surface's runtime",
-			map[string]string{"schema_runtime.schema": "package p\n\ntype T\n{\n    x uint8\n}\n"}, "schema_runtime.luau"},
+			map[string]string{"Probe.schema": "package px\n\ntype T\n{\n    x uint8\n}\n"}, "schema_runtime.luau", [2]string{"Probe", "schema_runtime"}},
 		{"luau.CheckBases", "a schema file named for the table runtime's strict read",
-			map[string]string{"Schema_refusal.schema": tableWithType}, "schema_refusal.luau"},
+			map[string]string{"Probe.schema": tableWithType}, "schema_refusal.luau", [2]string{"Probe", "Schema_refusal"}},
 		{"luau.CheckBases", "a schema file named for the table runtime's load",
-			map[string]string{"schema_load.schema": tableWithType}, "schema_load.luau"},
+			map[string]string{"Probe.schema": tableWithType}, "schema_load.luau", [2]string{"Probe", "schema_load"}},
 		// the table surface's own RequireCycle call is the same site: a
 		// cross-file TABLE cycle never reaches it, because the front end
 		// refuses one first (docs/SPEC-TABLES.md §11, a unit's table files
 		// form a DAG by reference)
 		{"luau.RequireCycle", "type modules that require each other",
 			map[string]string{
-				"A.schema": "package p\n\ntype A\n{\n    x uint8\n}\n\ntype C\n{\n    b B\n}\n",
-				"B.schema": "package p\n\ntype B\n{\n    a A\n}\n",
-			}, "A -> B -> A"},
+				"A.schema": "package px\n\ntype AA\n{\n    x uint8\n}\n\ntype C\n{\n    b BB\n}\n",
+				"B.schema": "package px\n\ntype BB\n{\n    a AA\n}\n",
+			}, "A -> B -> A", [2]string{}},
 		{"luautable.Refuse", "a file and its own table module",
-			map[string]string{"Game.schema": table, "GameTable.schema": "package p\n\ntype Other\n{\n    y uint8\n}\n"}, "GameTable"},
+			map[string]string{"Game.schema": table, "GameTable.schema": "package px\n\ntype Other\n{\n    y uint8\n}\n"}, "GameTable", [2]string{}},
 		{"luautable.Refuse", "a file and its own block module",
-			map[string]string{"Game.schema": table, "GameBlock.schema": "package p\n\ntype Other\n{\n    y uint8\n}\n"}, "GameBlock"},
+			map[string]string{"Game.schema": table, "GameBlock.schema": "package px\n\ntype Other\n{\n    y uint8\n}\n"}, "GameBlock", [2]string{}},
 	}
 	// luau is a builtin target (compiler/target_luau.go): its Generate is the
 	// half of every refusal below that a user meets, so an unregistered luau
@@ -226,6 +228,9 @@ func TestLuauRefusesUnportedConstructsByName(t *testing.T) {
 	covered := map[string]bool{}
 	for _, tc := range cases {
 		u := luauUnit(t, tc.files)
+		if tc.rename[0] != "" {
+			irtest.Rebase(t, u, tc.rename[0], tc.rename[1])
+		}
 		named(tc.name+" (the luau chain)", chain(u), tc.names)
 		_, err := c.Generate(u, "luau", nil)
 		named(tc.name+" (Generate luau)", err, tc.names)

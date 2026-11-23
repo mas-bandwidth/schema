@@ -385,7 +385,6 @@ public final class TableVariable {
                 case 13:
                 case 14:
                 case 16:
-                case 31:
                 case 32:
                     {
                         long n = leb();
@@ -1287,7 +1286,6 @@ public final class TableVariable {
                 case 13:
                 case 14:
                 case 16:
-                case 31:
                 case 32:
                     {
                         long n = leb(off, end);
@@ -1354,7 +1352,6 @@ public final class TableVariable {
                 case 13:
                 case 14:
                 case 16:
-                case 31:
                 case 32:
                     {
                         long n = leb(off, end);
@@ -1385,8 +1382,6 @@ public final class TableVariable {
             switch (kind) {
                 case 12:
                     return textValid(buf, off, end - off) || damage();
-                case 31:
-                    return true; // opaque: the one kind whose meaning a reader may not know (§3)
                 case 32:
                     return end == off || damage();
                 case 13:
@@ -1854,7 +1849,6 @@ public final class TableVariable {
             case 13:
             case 14:
             case 16:
-            case 31:
             case 32:
                 {
                     int e = lebEnd(buf, off, limit);
@@ -2171,6 +2165,11 @@ public final class TableVariable {
         public long nodeRecords;
         public long nodeBlobBytes;
         public long nodeTableBytes;
+        // dataBytes and attributionBytes are the last successful loadMeasure's
+        // two parts (docs/SPEC-TABLES.md §6.3, §6.5): the region's data and the
+        // node directory a caller may place apart; the answer is their sum.
+        public long dataBytes;
+        public long attributionBytes;
         // nodeSizer is the generated root's answer for a record's type id. It
         // is installed once per root class, never allocated per call.
         public NodeSizer nodeSizer;

@@ -5,8 +5,8 @@
 # the serialize.c runtime the generated C targets, a sibling checkout
 SERIALIZE_C ?= ../serialize.c
 
-build/packet-text/c/.stamp: bin/schema test/packet-text/Narrow.schema
-	./bin/schema generate --lang c --out build/packet-text/c test/packet-text/Narrow.schema
+build/packet-text/c/.stamp: bin/schema test/packet-text/Text.schema
+	./bin/schema generate --lang c --out build/packet-text/c test/packet-text/Text.schema
 	@touch $@
 
 .PHONY: packet-utf8-c packet-utf8-c-negative-control
@@ -20,7 +20,7 @@ packet-utf8-c-negative-control: packet-utf8-c
 	@mkdir -p build/packet-text/c-negative
 	go run ./tools/sabotage -name packet-utf8-c-read -out build/packet-text/c-negative/fields.gotext internal/codegen/c/fields.go
 	@printf '{"Replace":{"%s/internal/codegen/c/fields.go":"%s/build/packet-text/c-negative/fields.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-text/c-negative/overlay.json
-	go run -overlay=build/packet-text/c-negative/overlay.json ./cmd/schema generate --lang c --out build/packet-text/c-negative test/packet-text/Narrow.schema
+	go run -overlay=build/packet-text/c-negative/overlay.json ./cmd/schema generate --lang c --out build/packet-text/c-negative test/packet-text/Text.schema
 	$(CC) -std=c99 -Wall -Wextra -Werror -O2 -DNDEBUG -I$(SERIALIZE_C) -Ibuild/packet-text/c-negative test/packet-text/driver.c $(SERIALIZE_C)/serialize.c -lm -o build/packet-text/c-negative/driver
 	@if ./build/packet-text/harness -mutations-only ./build/packet-text/c-negative/driver > build/packet-text/c-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: C UTF-8 removal passed'; exit 1; fi
 	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-text/c-negative/log || { cat build/packet-text/c-negative/log; exit 1; }
@@ -549,20 +549,25 @@ conformance-negative-control-c: build/conformance-harness
 	@grep -m1 "c / json-read" $(CONFORMANCE_NEGATIVE_C)/log
 	@echo "negative control: one field index off in the C walk turns the harness RED on json-read alone"
 
-# I4 (docs/PORTING.md) — PER-CASE ABSENT, the C driver's half. The C leg
-# answers a case it cannot write as `<case>.absent` (spill_absent_reason): the
-# blob_shared instance is a NAMED absence today, as every writer refuses a blob
-# two slots name. The sabotage makes the marker write nothing — a driver that
-# silently drops a case — in a copy of the driver, built against the tree's own
-# generated units, and the harness must go red naming the absence it expected.
+# I4 (docs/PORTING.md) — PER-CASE ANSWERS, the C driver's half. The C leg
+# answers a case it cannot write as `<case>.absent` (spill_absent_reason), and a
+# must-refuse row its runtime refuses — the blob_shared instances, which the
+# strict read refuses as a blob two slots name — as `<case>` holding `refused\n`
+# (spill_refused; ruling R13: an absence is never the refusal). The sabotage
+# makes both write nothing — a driver that silently drops a case — in a copy of
+# the driver, built against the tree's own generated units, and the harness
+# must go red naming the answer it expected.
 CONFORMANCE_NEGATIVE_C_ABSENT := build/conformance-negative-c-absent
 .PHONY: conformance-negative-control-c-absent
 conformance-negative-control-c-absent: build/conformance-harness build/tables-generated-c/.stamp
 	@rm -rf $(CONFORMANCE_NEGATIVE_C_ABSENT) && mkdir -p $(CONFORMANCE_NEGATIVE_C_ABSENT)
-	@sed 's|    return spill( dir, marker, reason, strlen( reason ) );|    (void) spill; (void) dir; (void) marker; (void) reason; return 1; /* SABOTAGED: the absence is dropped */|' \
+	@sed -e 's|    return spill( dir, marker, reason, strlen( reason ) );|    (void) spill; (void) dir; (void) marker; (void) reason; return 1; /* SABOTAGED: the absence is dropped */|' \
+	     -e 's|    return spill( dir, name, "refused\\n", 8 );|    (void) dir; (void) name; return 1; /* SABOTAGED: the refusal is dropped */|' \
 		test/conformance/c/main.c > $(CONFORMANCE_NEGATIVE_C_ABSENT)/main.c
 	@grep -q "SABOTAGED: the absence is dropped" $(CONFORMANCE_NEGATIVE_C_ABSENT)/main.c || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
+	@grep -q "SABOTAGED: the refusal is dropped" $(CONFORMANCE_NEGATIVE_C_ABSENT)/main.c || \
+		{ echo "NEGATIVE CONTROL FAILED: the refusal sabotage patched nothing"; exit 1; }
 	$(CC) $(TABLES_CFLAGS_CONTROL) $(C_CONFORMANCE_INCLUDES) $(CONFORMANCE_NEGATIVE_C_ABSENT)/main.c \
 		$(filter-out test/conformance/c/main.c,$(C_CONFORMANCE_SOURCES)) -o $(CONFORMANCE_NEGATIVE_C_ABSENT)/driver-bin -lm
 	@printf '#!/bin/sh\nexec "%s/driver-bin" "$$@"\n' "$(CURDIR)/$(CONFORMANCE_NEGATIVE_C_ABSENT)" > $(CONFORMANCE_NEGATIVE_C_ABSENT)/driver
@@ -2456,6 +2461,44 @@ packet-write-text-c-negative-control: packet-write-text-c
 	@echo 'C packet Write negative control: removing UTF-8 validation fails invalid-byte'
 
 test-c: packet-write-text-c packet-write-text-c-negative-control
+
+# write-refusal-packet (docs/SPEC.md §5.1): the shared packet-write-refusal
+# battery in a C debug build, one child per case; an abort is the refusal and
+# a written twin is read back. The control removes the ranged-integer assert
+# from the emitter and requires exactly the ranged-integer rows to go red.
+build/packet-write-refusal/c/.stamp: bin/schema test/packet-write-refusal/RefusalPacket.schema
+	@mkdir -p build/packet-write-refusal/c
+	./bin/schema generate --lang c --out build/packet-write-refusal/c test/packet-write-refusal/RefusalPacket.schema
+	@touch $@
+
+build/packet-write-refusal/c/driver: build/packet-write-refusal/c/.stamp test/packet-write-refusal/c/driver.c $(SERIALIZE_C)/serialize.c $(SERIALIZE_C)/serialize.h
+	$(CC) -std=c99 -Wall -Wextra -Werror -I$(SERIALIZE_C) -Ibuild/packet-write-refusal/c \
+		test/packet-write-refusal/c/driver.c $(SERIALIZE_C)/serialize.c -o $@ -lm
+
+.PHONY: packet-write-refusal-c packet-write-refusal-c-negative-control
+packet-write-refusal-c: build/packet-write-refusal/c/driver
+	./build/packet-write-refusal/c/driver test/packet-write-refusal/cases.txt
+
+packet-write-refusal-c-negative-control: packet-write-refusal-c
+	@mkdir -p build/packet-write-refusal/c-negative
+	go run ./tools/sabotage -name packet-write-refusal-c-range-write \
+		-out build/packet-write-refusal/c-negative/fields.gotext internal/codegen/c/fields.go
+	@printf '{"Replace":{"%s/internal/codegen/c/fields.go":"%s/build/packet-write-refusal/c-negative/fields.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > build/packet-write-refusal/c-negative/overlay.json
+	go build -overlay=build/packet-write-refusal/c-negative/overlay.json -o build/packet-write-refusal/c-negative/schema ./cmd/schema
+	./build/packet-write-refusal/c-negative/schema generate --lang c --out build/packet-write-refusal/c-negative/generated test/packet-write-refusal/RefusalPacket.schema
+	$(CC) -std=c99 -Wall -Wextra -Werror -I$(SERIALIZE_C) -Ibuild/packet-write-refusal/c-negative/generated \
+		test/packet-write-refusal/c/driver.c $(SERIALIZE_C)/serialize.c -o build/packet-write-refusal/c-negative/driver -lm
+	@if ./build/packet-write-refusal/c-negative/driver test/packet-write-refusal/cases.txt > build/packet-write-refusal/c-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: C packet Write without the ranged-integer assert passed'; exit 1; fi
+	@grep -Fq 'FAILED: packet-write-refusal scalar_high: expected debug assert' build/packet-write-refusal/c-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: C packet Write did not fail on scalar_high'; cat build/packet-write-refusal/c-negative/log; exit 1; }
+	@if grep '^FAILED: ' build/packet-write-refusal/c-negative/log | grep -Fv -e 'scalar_high:' -e 'scalar_low:' -e 'const_wrong:' -e 'reserved_wrong:' >/dev/null; then \
+		echo 'NEGATIVE CONTROL FAILED: a case other than the ranged-integer rows went red'; cat build/packet-write-refusal/c-negative/log; exit 1; fi
+	@grep -Fm1 'FAILED: packet-write-refusal scalar_high:' build/packet-write-refusal/c-negative/log
+	@echo 'C packet Write refusal negative control: removing the ranged-integer assert fails exactly the ranged-integer rows'
+
+test-c: packet-write-refusal-c packet-write-refusal-c-negative-control
 
 # Hash-zero IDs are ordinary retained identities, distinct from wire None.
 .PHONY: tables-c-retain-hashzero tables-c-retain-hashzero-negative-control

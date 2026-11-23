@@ -46,6 +46,27 @@ func isChildScalarArray(f *ir.Field) (*ir.Struct, bool) {
 	return nil, false
 }
 
+// emitChildArrayRides opens the block a counted array of scalar-leaf tables
+// rides in, on the typed collect, size and write passes alike: a live count,
+// and, for a [A..B] array, not its BORN state (A elements, each one's body
+// the terminator alone: no leaf off its default), which elides as Rides says
+// (docs/SPEC-TABLES.md §2.3; R10).
+func (g *tableGen) emitChildArrayRides(f *ir.Field, childSt *ir.Struct, i int) {
+	if f.BornCount() == 0 {
+		g.pf("    if (count_%d > 0)\n    {\n", i)
+		return
+	}
+	conds := make([]string, len(childSt.Fields))
+	for j, cf := range childSt.Fields {
+		conds[j] = "(" + leafRideCondition(cf) + ")"
+	}
+	g.pf("    static bool bornElem_%d(%s v) { return !(%s); }\n", i, childSt.Name, strings.Join(conds, " || "))
+	g.pf("    bool rides_%d = count_%d > 0;\n", i, i)
+	g.pf("    if (count_%d == %d) { rides_%d = false; for (int j_%d = 0; j_%d < %d; j_%d++) { if (!bornElem_%d(v.%s[j_%d])) { rides_%d = true; break; } } }\n",
+		i, f.BornCount(), i, i, i, f.BornCount(), i, i, member(f), i, i)
+	g.pf("    if (rides_%d)\n    {\n", i)
+}
+
 func needsElemOffset(st *ir.Struct) bool {
 	for _, f := range st.Fields {
 		if f.Array != ir.ArrayNone && f.KeyEnum == "" && tableScalarKind(f) == tkTable {
@@ -149,7 +170,7 @@ func (g *tableGen) emitCollectTyped(st *ir.Struct) {
 			if f.CountedOnWire() {
 				g.pf("    int count_%d = v.%sCount;\n", i, prop)
 				g.pf("    System.Diagnostics.Debug.Assert(count_%d >= 0 && count_%d <= %d);\n", i, i, f.ArrayBound)
-				g.pf("    if (count_%d > 0)\n    {\n", i)
+				g.emitChildArrayRides(f, childSt, i)
 				g.pf("        if (!ids.Add(0x%016xul)) return false;\n", id)
 				g.pf("        for (int i_%d = 0; i_%d < count_%d; i_%d++)\n        {\n", i, i, i, i)
 				g.pf("            if (!%sCollectTyped(v.%s[i_%d], ref ids)) return false;\n", childName, prop, i)
@@ -203,7 +224,7 @@ func (g *tableGen) emitBodySizeTyped(st *ir.Struct) {
 			childName := childSt.Name
 			if f.CountedOnWire() {
 				g.pf("    int count_%d = v.%sCount;\n", i, prop)
-				g.pf("    if (count_%d > 0)\n    {\n", i)
+				g.emitChildArrayRides(f, childSt, i)
 			} else {
 				g.pf("    int count_%d = %d;\n    {\n", i, f.ArrayBound)
 			}
@@ -269,7 +290,7 @@ func (g *tableGen) emitWriteBodyTyped(st *ir.Struct) {
 			childName := childSt.Name
 			if f.CountedOnWire() {
 				g.pf("    int count_%d = v.%sCount;\n", i, prop)
-				g.pf("    if (count_%d > 0)\n    {\n", i)
+				g.emitChildArrayRides(f, childSt, i)
 			} else {
 				g.pf("    int count_%d = %d;\n    {\n", i, f.ArrayBound)
 			}
@@ -472,6 +493,10 @@ func (g *tableGen) wireColumns(f *ir.Field) string {
 	} else if f.Type.Kind == ir.TBits && int64(f.Type.Width) < 8*ir.TableFixedStorageBytes(f.Type) {
 		high := (uint64(1) << f.Type.Width) - 1
 		fmt.Fprintf(&b, ", RequiredValidRaw = delegate (ulong raw) { return raw <= %dul; }", high)
+	} else if fl := flagsRef(f); fl != nil && fl.WireBits < 64 {
+		// A FLAGS MASK HOLDS TO ITS WIDTH W (docs/SPEC-TABLES.md §4, A TABLE LOAD
+		// HOLDS A MASK TO ITS WIDTH): a write never lands a bit its own read refuses
+		fmt.Fprintf(&b, ", RequiredValidRaw = delegate (ulong raw) { return (raw >> %d) == 0; }", fl.WireBits)
 	}
 	if f.HasFloatRange {
 		typ := csFieldType(f.Type)
@@ -497,6 +522,11 @@ func (g *tableGen) wireColumns(f *ir.Field) string {
 		}
 	} else if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
 		fmt.Fprintf(&c, "if (v > %dul) { if (!r.Refused) { r.Refused = true; r.Reason = \"out_of_range\"; } } ", (uint64(1)<<f.Type.Width)-1)
+	} else if fl := flagsRef(f); fl != nil && fl.WireBits < 64 {
+		// A MASK BIT AT OR ABOVE THE READER'S W REFUSES THE LOAD (docs/SPEC-TABLES.md
+		// §4): flags append at the end, so old data never carries one, and an old
+		// reader does not read new data; every widened unsigned kind lands here too
+		fmt.Fprintf(&c, "if ((raw >> %d) != 0) { if (!r.Refused) { r.Refused = true; r.Reason = \"out_of_range\"; } } ", fl.WireBits)
 	}
 	if f.HasFloatRange {
 		lit := formatFloat64
@@ -793,7 +823,6 @@ public static partial class TableWire
                 case 13:
                 case 14:
                 case 16:
-                case 31:
                 case 32:
                     return Slice(out _);
                 case 15:

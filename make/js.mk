@@ -692,7 +692,7 @@ test-js: tables-js-cook-map-extent-start-negative-control tables-js-cook-map-nod
 # §2.9, §3, §3.1, §16.7): table pointers over the flat node table, tables nested
 # by value, *string and *bytes blobs, unbounded and bounded arrays of scalar,
 # enum, table and pointer elements, the rest of the scalar kinds, bytes(N), the
-# escape kind and the text form's &node sharing — held byte for byte against the
+# held kind 31 (refused whole) and the text form's &node sharing — held byte for byte against the
 # Go oracle over tables/pointers, tables/blobs and tables/lists (and a probe unit
 # the oracle writes) by TestVariableClassBeyondCardConstructsJavaScript, and every
 # construct the leg still refuses named by TestOtherVariableConstructsAreRefusedByName.
@@ -1372,8 +1372,8 @@ tables-js-clean-negative-control: toolchain-js generated/js/.stamp
 test-js: tables-js-clean
 
 # Both JavaScript packet tiers share the UTF-8 rule and mutation corpus.
-build/packet-text/js/.stamp: bin/schema test/packet-text/Narrow.schema
-	./bin/schema generate --lang js --out build/packet-text/js test/packet-text/Narrow.schema
+build/packet-text/js/.stamp: bin/schema test/packet-text/Text.schema
+	./bin/schema generate --lang js --out build/packet-text/js test/packet-text/Text.schema
 	@printf '{"type":"module"}\n' > build/packet-text/js/package.json
 	@touch $@
 
@@ -1387,10 +1387,10 @@ packet-utf8-js-negative-control: packet-utf8-js
 	@mkdir -p build/packet-text/js-negative
 	go run ./tools/sabotage -name packet-utf8-js-read -out build/packet-text/js-negative/utf8.gotext internal/codegen/js/utf8.go
 	@printf '{"Replace":{"%s/internal/codegen/js/utf8.go":"%s/build/packet-text/js-negative/utf8.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-text/js-negative/overlay.json
-	go run -overlay=build/packet-text/js-negative/overlay.json ./cmd/schema generate --lang js --out build/packet-text/js-negative test/packet-text/Narrow.schema
+	go run -overlay=build/packet-text/js-negative/overlay.json ./cmd/schema generate --lang js --out build/packet-text/js-negative test/packet-text/Text.schema
 	cp build/packet-text/js/package.json build/packet-text/js-negative/package.json
-	$(NODE) --check build/packet-text/js-negative/Narrow.js
-	$(NODE) --check build/packet-text/js-negative/NarrowFlat.js
+	$(NODE) --check build/packet-text/js-negative/Text.js
+	$(NODE) --check build/packet-text/js-negative/TextFlat.js
 	@for tier in runtime flat; do \
 		if NODE_ENV=production ./build/packet-text/harness -mutations-only $(NODE) test/packet-text/js/main.mjs $$tier "$(CURDIR)/build/packet-text/js-negative" > build/packet-text/js-negative/$$tier.log 2>&1; then echo 'NEGATIVE CONTROL FAILED: JS UTF-8 removal passed'; exit 1; fi; \
 		grep -Fq 'FAILED: packet-text verdict on ' build/packet-text/js-negative/$$tier.log || { cat build/packet-text/js-negative/$$tier.log; exit 1; }; \
@@ -1728,6 +1728,11 @@ tables-js-release-negative-control: bin/schema build/tables-generated-js/.stamp 
 # cases with no answer at all, and the leg's conformance run must go red naming
 # one. The driver copy runs from build/ over the same generated tree, through a
 # substituted one-leg registry.
+# The leg answers every committed case (ruling R13 turned its last absences,
+# the must-refuse rows, into `refused`), so the run reads a copy of the
+# manifest with one instance whose unit no leg generates, absent_probe: the
+# real driver answers it absent, the sabotaged one nothing.
+JS_ABSENT_PROBE := instance absent_probe nothere Root testdata/wire/tables/blob_small.bin no-text
 conformance-negative-control-js-absent: build/conformance-harness build/tables-generated-js/.stamp
 	@rm -rf build/$@ && mkdir -p build/$@
 	@sed '/\.absent"/s/writeFileSync(/void (/' test/conformance/js/main.mjs > build/$@/main.mjs
@@ -1739,10 +1744,12 @@ conformance-negative-control-js-absent: build/conformance-harness build/tables-g
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not reach every absent writer"; exit 1; }
 	@printf '#!/bin/sh\nexec "$${NODE:-node}" $(CURDIR)/build/$@/main.mjs "$$@"\n' > build/$@/driver && chmod +x build/$@/driver
 	@printf 'js build/$@/driver\n' > build/$@/drivers.txt
-	@if NODE=$(NODE) ./build/conformance-harness run --drivers build/$@/drivers.txt --work build/$@/work > build/$@/log 2>&1; then \
+	@cp testdata/conformance/tables/MANIFEST.txt build/$@/MANIFEST.txt
+	@echo '$(JS_ABSENT_PROBE)' >> build/$@/MANIFEST.txt
+	@if NODE=$(NODE) ./build/conformance-harness run --drivers build/$@/drivers.txt --manifest build/$@/MANIFEST.txt --work build/$@/work > build/$@/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the JavaScript leg's absences wrote nothing and the run stayed green"; cat build/$@/log; exit 1; \
 	fi
-	@grep -qF 'driver wrote nothing' build/$@/log || \
+	@grep -qF 'absent_probe: the driver wrote nothing' build/$@/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the run went red, but not on a case left with no answer"; cat build/$@/log; exit 1; }
 	@echo "negative control: a JavaScript leg whose per-case absences write nothing turns its conformance run RED"
 

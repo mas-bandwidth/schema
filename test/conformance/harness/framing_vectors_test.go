@@ -329,6 +329,9 @@ func sceneUnknownArray(body []byte) []byte {
 }
 
 var framingVectors = []framingVector{
+	// A real writer's variable-form file for few = [1, 2], at the minimum.
+	{name: "sp_count_min_at", unit: "tabledemo", root: "CountedMin", ids: []string{"few"},
+		body: cat(b(1, 14, 10, 8, 2), i32(1), i32(2), b(0))},
 	// ---------------------------------------------------------------- A. the file frame
 	// F1: form byte 0 is never assigned and refuses before anything is read.
 	{name: "frame_form_zero", unit: "tblr1", root: "Cfg", raw: b(0)},
@@ -569,6 +572,16 @@ var framingVectors = []framingVector{
 	// an empty layout) at a plain variable root refuses: a variable table has no
 	// fixed form. Its accepted form-1 twin on the same root is node_clean.
 	{name: "frame_form_three_at_variable_root", unit: "graphdemo", root: "ListNode", raw: cat(b(3, 0, 0, 0, 0, 0, 0, 0), u64(0x7b8a31b17495f6d5), b(0, 0, 0, 0))},
+
+	// ---------------------------------------------------------------- R10. counted minimum, fixed form
+	// A counted [A..B] holds A in the fixed form too (docs/SPEC-TABLES.md
+	// §3.4, ruling R10): a form-3 file whose count is below A=2 refuses. The
+	// file is form 3, so a fixed root reads it through its fixed load
+	// (framingFixedFile). Each is the root's own fixed-form layout, the count
+	// word set to 0 or 1 (the second with element 7), as a writer built
+	// without its debug assert leaves it; the bytes are the vector.
+	// In a union arm: tabledemo MinArmFix { pick MinPick }, arm few [2..4]uint32.
+	// As a plain field: tabledemo MinPlainFix { few [2..4]uint32 }.
 	// T3: node_count 2 over one record.
 	{name: "node_count_disagrees", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(2, listNodeRecord(2)), b(0))},
 	// T2: a record whose length runs past the field.
@@ -631,9 +644,9 @@ var framingVectors = []framingVector{
 	// node-table id is already slot 4, so its record names that slot directly;
 	// the build-version and vocabulary ids ride in slot 5 like a declared type
 	// id. The two blob type ids are a blob record's lawful type (§2.5).
-	{name: "node_type_node_table_id", unit: "graphdemo", root: "Scene", ids: sceneNodeTypeIds, body: sceneNodeTypeBody(4), held: true},
-	{name: "node_type_build_version_id", unit: "graphdemo", root: "Scene", ids: []string{"head", "name", "next", "node-table", "build-version"}, body: sceneNodeTypeBody(5), held: true},
-	{name: "node_type_vocabulary_id", unit: "graphdemo", root: "Scene", ids: []string{"head", "name", "next", "node-table", "vocabulary"}, body: sceneNodeTypeBody(5), held: true},
+	{name: "node_type_node_table_id", unit: "graphdemo", root: "Scene", ids: sceneNodeTypeIds, body: sceneNodeTypeBody(4)},
+	{name: "node_type_build_version_id", unit: "graphdemo", root: "Scene", ids: []string{"head", "name", "next", "node-table", "build-version"}, body: sceneNodeTypeBody(5)},
+	{name: "node_type_vocabulary_id", unit: "graphdemo", root: "Scene", ids: []string{"head", "name", "next", "node-table", "vocabulary"}, body: sceneNodeTypeBody(5)},
 
 	// ------------------------------------------- C2. the closed array element kinds
 	// THE ELEMENT KIND BYTE IS CLOSED (docs/SPEC-TABLES.md §3): an array body
@@ -644,25 +657,25 @@ var framingVectors = []framingVector{
 	// field of graphdemo Scene, so only the wire-alone walk can see them; each
 	// is held out of the manifest until every leg answers it, and a manifest
 	// row joins them in a later card.
-	{name: "array_elem_kind_32_count_2", unit: "graphdemo", root: "Scene", ids: sceneElemKindIds, held: true,
+	{name: "array_elem_kind_32_count_2", unit: "graphdemo", root: "Scene", ids: sceneElemKindIds,
 		body: sceneUnknownArray(b(32, 2, 0, 0))},
-	{name: "array_elem_kind_31_count_1", unit: "graphdemo", root: "Scene", ids: sceneElemKindIds, held: true,
+	{name: "array_elem_kind_31_count_1", unit: "graphdemo", root: "Scene", ids: sceneElemKindIds,
 		body: sceneUnknownArray(b(31, 1, 0))},
 	// one L-framed keyed body holding element kind 6, count 0
-	{name: "array_elem_kind_16_count_1", unit: "graphdemo", root: "Scene", ids: sceneElemKindIds, held: true,
+	{name: "array_elem_kind_16_count_1", unit: "graphdemo", root: "Scene", ids: sceneElemKindIds,
 		body: sceneUnknownArray(b(16, 1, 2, 6, 0))},
 	// an unassigned kind, the reserved float16 kind, and zero, each at count 0
-	{name: "array_elem_unassigned_count_0", unit: "graphdemo", root: "Scene", ids: sceneElemKindIds, held: true,
+	{name: "array_elem_unassigned_count_0", unit: "graphdemo", root: "Scene", ids: sceneElemKindIds,
 		body: sceneUnknownArray(b(37, 0))},
-	{name: "array_elem_reserved_count_0", unit: "graphdemo", root: "Scene", ids: sceneElemKindIds, held: true,
+	{name: "array_elem_reserved_count_0", unit: "graphdemo", root: "Scene", ids: sceneElemKindIds,
 		body: sceneUnknownArray(b(34, 0))},
-	{name: "array_elem_zero_count_0", unit: "graphdemo", root: "Scene", ids: sceneElemKindIds, held: true,
+	{name: "array_elem_zero_count_0", unit: "graphdemo", root: "Scene", ids: sceneElemKindIds,
 		body: sceneUnknownArray(b(0, 0))},
 	// READ CONTROLS: element kind 17 is on the array list, at count 0 and at
 	// count 1 where its one node index names a reachable ListNode record.
-	{name: "array_elem_kind_17_count_0", unit: "graphdemo", root: "Scene", ids: sceneElemKindIds, held: true,
+	{name: "array_elem_kind_17_count_0", unit: "graphdemo", root: "Scene", ids: sceneElemKindIds,
 		body: sceneUnknownArray(b(17, 0))},
-	{name: "array_elem_kind_17_count_1", unit: "graphdemo", root: "Scene", ids: sceneElemKindNodeIds, held: true,
+	{name: "array_elem_kind_17_count_1", unit: "graphdemo", root: "Scene", ids: sceneElemKindNodeIds,
 		body: cat(b(6, 14), leb(uint64(len(b(17, 1, 2)))), b(17, 1, 2),
 			nodeTable(1, listNodeRecord(7)), b(0))},
 
@@ -672,15 +685,15 @@ var framingVectors = []framingVector{
 	// and 129 refuses in every walk, unknown fields included (§6.5). A union
 	// whose arm is a table adds two levels: the union, then the table body
 	// inside it. HELD out of the manifest until every leg answers them.
-	{name: "depth_tables_128", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthTables(128), held: true},
-	{name: "depth_arrays_128", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthArrays(128), held: true},
-	{name: "depth_union_tables_64", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthUnionTables(64), held: true},
-	{name: "depth_keyed_128", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthKeyed(128), held: true},
-	{name: "depth_tables_129", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthTables(129), held: true},
-	{name: "depth_arrays_129", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthArrays(129), held: true},
-	{name: "depth_union_tables_65", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthUnionTables(65), held: true},
-	{name: "depth_keyed_129", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthKeyed(129), held: true},
-	{name: "depth_tables_5000", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthTables(5000), held: true},
+	{name: "depth_tables_128", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthTables(128)},
+	{name: "depth_arrays_128", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthArrays(128)},
+	{name: "depth_union_tables_64", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthUnionTables(64)},
+	{name: "depth_keyed_128", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthKeyed(128)},
+	{name: "depth_tables_129", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthTables(129)},
+	{name: "depth_arrays_129", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthArrays(129)},
+	{name: "depth_union_tables_65", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthUnionTables(65)},
+	{name: "depth_keyed_129", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthKeyed(129)},
+	{name: "depth_tables_5000", unit: "graphdemo", root: "Scene", ids: depthIds, body: depthTables(5000)},
 
 	// ---------------------------------------------------------------- G. the graph through unknown pointers
 	// THE GRAPH IS EVERY KIND 17 PAYLOAD (§6.5), in every field and record,
@@ -691,53 +704,53 @@ var framingVectors = []framingVector{
 	//
 	// REFUSED: an unknown type's own kind-17 field names itself, and two such
 	// records name each other, so a walk from the root meets an OPEN node.
-	{name: "graph_unknown_type_self", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+	{name: "graph_unknown_type_self", unit: "graphdemo", root: "Scene", ids: sceneGraphIds,
 		body: cat(b(11, 17, 2), nodeTable(1, graphNodeRecord(13, cat(b(7, 17, 2), b(0)))), b(0))},
-	{name: "graph_unknown_type_pair", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+	{name: "graph_unknown_type_pair", unit: "graphdemo", root: "Scene", ids: sceneGraphIds,
 		body: cat(b(11, 17, 2), nodeTable(2,
 			graphNodeRecord(13, cat(b(7, 17, 3), b(0))),
 			graphNodeRecord(13, cat(b(7, 17, 2), b(0)))), b(0))},
 	// REFUSED: a ListNode's UNKNOWN kind-17 field names the same ListNode.
-	{name: "graph_listnode_unknown_self", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+	{name: "graph_listnode_unknown_self", unit: "graphdemo", root: "Scene", ids: sceneGraphIds,
 		body: cat(b(1, 17, 2), nodeTable(1, graphNodeRecord(5, cat(b(11, 17, 2), b(0)))), b(0))},
 	// REFUSED: an unknown kind-17 root field names index 1, the root, whose
 	// descent is open for the whole walk.
-	{name: "graph_unknown_to_root", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+	{name: "graph_unknown_to_root", unit: "graphdemo", root: "Scene", ids: sceneGraphIds,
 		body: cat(b(11, 17, 1), b(0))},
 	// REFUSED: one bytes blob record named from two unknown kind-17 root
 	// fields (blob_shared), and the same record named twice from one unknown
 	// array of element kind 17.
-	{name: "graph_blob_two_unknown_fields", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+	{name: "graph_blob_two_unknown_fields", unit: "graphdemo", root: "Scene", ids: sceneGraphIds,
 		body: cat(b(11, 17, 2), b(12, 17, 2), nodeTable(1, graphNodeRecord(15, b('A'))), b(0))},
-	{name: "graph_blob_two_unknown_elements", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+	{name: "graph_blob_two_unknown_elements", unit: "graphdemo", root: "Scene", ids: sceneGraphIds,
 		body: cat(b(11, 14, 4, 17, 2, 2, 2), nodeTable(1, graphNodeRecord(15, b('A'))), b(0))},
 	// REFUSED: a string blob record's bytes are well-formed UTF-8 with no zero
 	// byte wherever it is reached from; graphdemo declares no *string, so only
 	// an unknown kind-17 root field names these.
-	{name: "graph_string_blob_ill_formed", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+	{name: "graph_string_blob_ill_formed", unit: "graphdemo", root: "Scene", ids: sceneGraphIds,
 		body: cat(b(11, 17, 2), nodeTable(1, graphNodeRecord(14, b(0xFF))), b(0))},
-	{name: "graph_string_blob_zero_byte", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+	{name: "graph_string_blob_zero_byte", unit: "graphdemo", root: "Scene", ids: sceneGraphIds,
 		body: cat(b(11, 17, 2), nodeTable(1, graphNodeRecord(14, b(0))), b(0))},
 	// REFUSED: a record of an undeclared type, and a string blob record, that
 	// no pointer reaches.
-	{name: "graph_unknown_type_unreached", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+	{name: "graph_unknown_type_unreached", unit: "graphdemo", root: "Scene", ids: sceneGraphIds,
 		body: cat(nodeTable(1, graphNodeRecord(13, b(0))), b(0))},
-	{name: "graph_string_blob_unreached", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+	{name: "graph_string_blob_unreached", unit: "graphdemo", root: "Scene", ids: sceneGraphIds,
 		body: cat(nodeTable(1, graphNodeRecord(14, b('o', 'k'))), b(0))},
 	//
 	// READ: a record of a type this reader cannot name reads null and counts
 	// unknown, reached from an unknown kind-17 root field, from inside an
 	// unknown nested table, from the kind-17 arm of an unknown union, and from
 	// a kind-17 slot of an unknown enum-keyed body.
-	{name: "graph_reach_unknown_field", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+	{name: "graph_reach_unknown_field", unit: "graphdemo", root: "Scene", ids: sceneGraphIds,
 		body: cat(b(11, 17, 2), nodeTable(1, graphNodeRecord(13, b(0))), b(0))},
-	{name: "graph_reach_unknown_nested", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+	{name: "graph_reach_unknown_nested", unit: "graphdemo", root: "Scene", ids: sceneGraphIds,
 		body: cat(b(11, 13, 4, 7, 17, 2, 0), nodeTable(1, graphNodeRecord(13, b(0))), b(0))},
-	{name: "graph_reach_unknown_union_arm", unit: "graphdemo", root: "Scene", ids: sceneGraphIds, held: true,
+	{name: "graph_reach_unknown_union_arm", unit: "graphdemo", root: "Scene", ids: sceneGraphIds,
 		body: cat(b(11, 15, 17, 17, 1, 2), nodeTable(1, graphNodeRecord(13, b(0))), b(0))},
 	// A keyed element can be a table, but not a pointer (§3); the table
 	// carries the pointer that reaches the unknown node type.
-	{name: "graph_reach_unknown_keyed_slot", unit: "graphdemo", root: "Scene", ids: []string{"mystery", "key", "mystery2", "node-table", "graphUnknown"}, held: true,
+	{name: "graph_reach_unknown_keyed_slot", unit: "graphdemo", root: "Scene", ids: []string{"mystery", "key", "mystery2", "node-table", "graphUnknown"},
 		body: cat(b(1, 16, 8, 13, 1, 2, 4, 3, 17, 2, 0), nodeTable(1, graphNodeRecord(5, b(0))), b(0))},
 	{name: "varevo_kind31_escape", unit: "tblvarevo1", root: "EvoDoc", raw: mustHex("01010c0776312d70696e67021e03040f052000060d0707040700000000080e0603020000ffff090e120d02070704010000000007070402000000000a0e060d02010001000b1f0b6675747572652d6d616a21003d62cb8fecfcf7398959b62eef846f1e8025f1eade1ae5c3df565a030b646865a90733c50de030bff5c20f5d199d718274a279448ee2e5b1b20f40270b6b98016f2c414fbf84783e1051ac9362dbfaf24350a1109b377a3b0b00000000000000")},
 	{name: "varevo_kind31_truncated", unit: "tblvarevo1", root: "EvoDoc", raw: mustHex("01010c0776312d70696e67021e03040f052000060d0707040700000000080e0603020000ffff090e120d02070704010000000007070402000000000a0e060d02010001000b1f326675747572652d6d616a21003d62cb8fecfcf7398959b62eef846f1e8025f1eade1ae5c3df565a030b646865a90733c50de030bff5c20f5d199d718274a279448ee2e5b1b20f40270b6b98016f2c414fbf84783e1051ac9362dbfaf24350a1109b377a3b0b00000000000000")},
@@ -745,6 +758,10 @@ var framingVectors = []framingVector{
 	{name: "varevo_cycle_known_via_unknown", unit: "tblvarevo1", root: "EvoDoc", raw: mustHex("01011102020c100303040411030005040611020003010000030c9a5fcc128f0affffffffffffffff4c03cd851ab6f419839352074c926a68b66db6f626693c5bc9cf6e5bf865746c0600000000000000")},
 	{name: "varevo_cycle_unknown_self", unit: "tblvarevo1", root: "EvoDoc", raw: mustHex("01011102020c0a0203040411020003010000a49527e2779733f8ffffffffffffffffb66db6f626693c5b1be0af1522764f9f0400000000000000")},
 	{name: "varevo_cycle_two_unknowns", unit: "tblvarevo1", root: "EvoDoc", raw: mustHex("01011102020c100303040411030005040611010007010000a49527e2779733f8ffffffffffffffffb66db6f626693c5bb91f2e39efc68730036cb6f626683c5be9ea58f7272ee6e9032b199c12a611ed0700000000000000")},
+	// Counted-array minimum refusal framing vectors (form 3 and form 1).
+	{name: "sp_count_min_below_form1", unit: "tabledemo", root: "CountedMin", raw: mustHex("01010e0608010700000000198ceafe187dc6dc0100000000000000")},
+	{name: "sp_count_min_zero_form1", unit: "tabledemo", root: "CountedMin", raw: mustHex("01010e02080000198ceafe187dc6dc0100000000000000")},
+	{name: "twin_count_min_at_form1", unit: "tabledemo", root: "CountedMin", raw: mustHex("01010e0a0802070000000800000000198ceafe187dc6dc0100000000000000")},
 }
 
 // counting is n distinct raw entries, 1..n: ids no Cfg declares, so each is an

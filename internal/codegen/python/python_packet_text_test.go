@@ -122,7 +122,7 @@ func textCorpusMismatch(t *testing.T, python, dir string, rows []textRow) string
 // packet-text driver.
 func textTree(t *testing.T, root string) map[string][]byte {
 	t.Helper()
-	u := loadPythonUnit(t, filepath.Join(root, "test", "packet-text", "Narrow.schema"))
+	u := loadPythonUnit(t, filepath.Join(root, "test", "packet-text", "Text.schema"))
 	files, err := Generate(u)
 	if err != nil {
 		t.Fatal(err)
@@ -496,7 +496,7 @@ func TestPythonPacketTextNegativeControl(t *testing.T) {
 	plants := []struct {
 		name, file, from, to string
 	}{
-		{"reader-bound", "packettext/Narrow.py", "_s_serialize_string(_s_rs, 16)", "_s_serialize_string(_s_rs, 8)"},
+		{"reader-bound", "packettext/Text.py", "_s_serialize_string(_s_rs, 16)", "_s_serialize_string(_s_rs, 8)"},
 		{"runtime-utf8", "packettext/_schema/serialize/_core.py", `text = payload.decode("utf-8")`, `text = payload.decode("latin-1")`},
 	}
 	for _, plant := range plants {

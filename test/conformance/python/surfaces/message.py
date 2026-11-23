@@ -36,16 +36,14 @@ def run(manifest, outdir):
                         raise
                 else:
                     raise RuntimeError(f"{case}: message reader accepted an inapplicable root")
-                absent(outdir, case, "message form is inapplicable to this variable root")
+                write_bytes(outdir, case, b"refused\n")
                 continue
             vocab = message.MessageVocabulary()
             try:
                 message.announce_read(vocab, read_bytes(conn[4]))
                 values = message.load_messages(cls, vocab, read_bytes(wire))
-            except package.Refused as error:
-                # the present codec's public refusal is its answer (the
-                # verdict, never the reason, is compared)
-                absent(outdir, case, error.reason)
+            except package.Refused:
+                write_bytes(outdir, case, b"refused\n")
                 continue
             write_bytes(outdir, case, message.save_messages(cls, values))
     # message-batch <case> <connection> <root> <wire>: load with room for every

@@ -346,18 +346,18 @@ func (r *wireReader) skip(kind uint8) bool {
 		_, ok := r.leb()
 		return ok
 	case ir.TableKindString, ir.TableKindTable, ir.TableKindArray, ir.TableKindKeyed,
-		ir.TableKindEscape, ir.TableKindNoPayload:
+		ir.TableKindNoPayload:
 		n, ok := r.leb()
 		if !ok || !r.has(int(n)) || n > uint64(len(r.buf)) {
 			return false
 		}
 		r.off += int(n)
 		return true
-	case ir.TableKindRetiredWstring, ir.TableKindReservedFloat16:
-		// KIND 33 IS RETIRED AND KIND 34 IS RESERVED FOR float16; NEITHER IS
-		// PART OF THIS MAJOR (§3): no writer emits them and no reader has a
-		// rule for them, so a reader meets them only as DAMAGE, exactly as it
-		// meets 35 or 200
+	case ir.TableKindHeldEscape, ir.TableKindRetiredWstring, ir.TableKindReservedFloat16:
+		// KIND 31 IS HELD (R17), KIND 33 IS RETIRED AND KIND 34 IS RESERVED FOR
+		// float16; NONE IS PART OF THIS MAJOR (§3): no writer emits them and
+		// no reader has a rule for them, so a reader meets them only as
+		// DAMAGE, exactly as it meets 35 or 200
 		return false
 	case ir.TableKindUnion:
 		arm, ok := r.leb()
@@ -1222,6 +1222,12 @@ func (r *wireReader) scalarAt(cell *tabletext.Cell, f *ir.Field, kind int) bool 
 		raw = uint64(r.u32())
 	default:
 		raw = r.u64()
+	}
+	if fl := tabletext.FlagsOf(f); fl != nil && tabletext.FlagsPastWidth(fl, raw) {
+		// A MASK BIT AT OR ABOVE THE READER'S W REFUSES THE LOAD (docs/SPEC-TABLES.md
+		// §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH): flags append at the end, so
+		// old data never carries one, and an old reader does not read new data
+		return r.refuseField(ReasonOutOfRange, f)
 	}
 	value := int64(raw)
 	if signed && width < 8 {

@@ -11,7 +11,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/baseline"
 )
 
-const wasRowsSrc = `package rows
+const wasRowsSrc = `package rowsx
 
 flags Caps { Jump, Crouch, Fly }
 

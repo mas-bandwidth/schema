@@ -4659,6 +4659,17 @@ read a deprecated variant by its name the same way every other form reads its
 id: the fields declared default, an array or map elements default, and never
 the variant itself.
 
+The conformance rows hold both halves on every leg. The ARRAY element half:
+`sp-enum-elem-deprecated-array` (text), `sp_enum_fixed_deprecated` and
+`sp_enum_evolved_deprecated` (the fixed read and the compiled plan), on the root
+`Moods`. The SCALAR half, a deprecated variant reading as the field's declared
+default and not as zero: `sp-enum-scalar-deprecated` (text),
+`sp_enum_scalar_fixed_deprecated` and `sp_enum_scalar_evolved_deprecated`
+(the fixed read and a compiled plan), `jref_enum_scalar_deprecated` and
+`jref_enum_scalar_deprecated_ok` (the text writer), on the root `MoodField`
+(`mood Mood = Fierce`, where `Old` is deprecated and the expected read is
+`Fierce`). A new implementer is held to all of them.
+
 **WRITE.** A strict write refuses a value holding a deprecated variant with
 `invalid_value`, the Reason naming `<Table>.<field>` and the variant. A
 deprecated field is never refused because its value is the writer's own
@@ -5107,6 +5118,14 @@ one document rather than two.
   | a pointer `*T` | `17` | the index's own length | the node index, null as `0` (§3.1) |
   | a union | `15` | the inner arm id's length, or that plus the inner kind byte, its `L` and its payload | the union payload in its place: the inner arm id reference, then its kind, its own `L` and its payload when the id is not `0` |
   | NO PAYLOAD (§2.6) | `32` | `0` | nothing rides: the arm id, the kind byte and a zero `L` are the whole of it |
+
+  **An array arm's declared MINIMUM holds as it does on a field.** An arm
+  `[A..B]T` whose payload count is below A refuses on read, `count_over_bound`
+  (recommended name), in every form that reads it: this wire, the fixed form,
+  the message form and the text form. A writer never produces one (the write
+  side is SPEC §4.6's contract, split per language). A count of zero refuses for any A above zero,
+  exactly as it does on a plain field (conformance rows `arm-min-*` and
+  `armmin_*`).
 
   **An arm's payload never elides**: a union field holding `None` elides
   whole (below), and a SET arm always rides, whatever it holds (§2.6), so
@@ -10485,6 +10504,17 @@ unknown key, keyed slot, union arm, enum variant or flags name, because that
 form is an authoring file and an unknown name in it is a typo, never a newer
 writer. Every other path accepts the same unknown as evolution.
 
+**A READ THAT IS HANDED NO REPORT SIGNALS ITS REFUSAL** (audit SF-16, SF-30). A
+port whose read takes an optional report answers a refusal with the verdict of
+the report when one was passed, and with the native failure of the language (a
+throw, an `error`, a `false` with a reason) when none was passed: no read of any
+form answers a refusal with the defaults of the type and no signal. Dart
+`<root>WireLoad(data)` throws a `FormatException` naming the reason, as
+`<root>FromJson(text)` does. A read that refuses before it parses (the Go
+builder `FromJSONWith` on a locked arena, §6.5) resets a supplied report first
+and then refuses into it, so a reused report never keeps the stale success of an
+earlier read.
+
 **THE CROSS-LANGUAGE CONTRACT IS ONE OF TWO OUTCOMES** (the maintainer, 2026-11-03: "I
 am actually OK if there is only a generic failure to read. I do not care about
 the specific reporting on a per-instance basis."). For one input every read in
@@ -13208,6 +13238,14 @@ field and `present_offset` names the `<field>_present` bool, exactly as
 and write presence without knowing the spelling that produced it, and can
 tell "absent" from "present and default" (§2.3).
 
+**A counted array carries its declared MINIMUM.** A `[A..B]T` field's
+row carries A beside its bound (`array_min` in C++, `ArrayMin` in Go; `0` on
+every other field), and a union arm's field row carries its own, so a
+generic walker holds A wherever the field sits: the text read refuses a
+count below A on a plain field and on an arm alike (R10, §2.6), with no
+schema in hand. The write side's check is the language's split (SPEC
+§4.6).
+
 **An enum-keyed array carries its KEY's vocabulary, and the columns speak
 in KEYS.** `key_type_name` names the keying enum, and `key_name( key )` and
 `key_id( key )` map an ENUM VALUE to that variant's name and to the wire id
@@ -14558,7 +14596,7 @@ in build version (§20.5).
 
   ```
   Measure  MeasureBody  Save  SaveBody  SaveBodyFields  Load  LoadBody
-  SaveInto  Reset  LoadMeasure  LoadMeasureReason  LoadBuilder  TableType  Builder
+  SaveInto  Reset  LoadMeasure  LoadMeasureParts  LoadMeasureReason  LoadMeasureWalk  LoadBuilder  TableType  Builder
   LoadRegion  LoadBuilderRead
   At  Emplace  Pack  PackMeasure  MeasureReason
   Number  NumberFrom  MeasureWire  SaveWire
@@ -14972,6 +15010,10 @@ in build version (§20.5).
   It is a file-name collision rather than a declaration collision, so it is
   refused naming the FILE, and it is stated here because the view is what
   introduces a generated name that is not derived from a schema file's own.
+  The match ignores case, because Lobster spells the view `<package>View`
+  (`tabledemoView.lobster`) and a case-insensitive file system holds one file
+  for two spellings; every other basename a target cannot spell is refused by
+  SPEC.md §4.6, File-name safety, in a unit with tables and in one without.
 - **A table named after a member of its generated builder** — a member
   function hides the type name it shares, so the header would not
   compile. The two accessors a real schema would plausibly hit were

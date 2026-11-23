@@ -106,17 +106,47 @@ const (
 	// RuleCountMin — a counted array's MINIMUM COUNT. Any move refuses, and a
 	// line that carries no token holds a minimum of zero: see countMinFinding.
 	RuleCountMin
+	// RuleWidenOnly — the token is a WIDENING when added and a NARROWING when
+	// removed: adding it passes and removing it refuses. It is presence's rule
+	// (`?T`, docs/SPEC-TABLES.md §4 THE ONE WIDENING RULE, §18.2): `T` to `?T`
+	// widens and passes, and `?T` to `T` narrows and is refused, naming the
+	// field. Once a field is optional it stays optional (R16, 2026-11-22).
+	RuleWidenOnly
+	// RuleKindWidens — a field's KIND, one level in its ELEMENT kind, and a
+	// map's KEY kind. A change that is a widening of docs/SPEC-TABLES.md §4
+	// THE ONE WIDENING RULE (an integer kind to a wider one of the same
+	// signedness, `f32` to `f64`: ir.TableKindWidens) passes, because the NEW
+	// reader reads every OLD value exactly and counts `widened`. Every other
+	// change (a narrowing or a retype), and the token added or removed,
+	// refuses. An OLD reader given the NEW file refuses it `kind_mismatch` by
+	// name, which is lawful and never promised to work (R17, Glenn,
+	// 2026-11-22: "the newer reader can read old data, but never the other
+	// way").
+	RuleKindWidens
 )
+
+// kindWidens reports whether a kind token moved from `was` to `now` is a
+// widening of docs/SPEC-TABLES.md §4 THE ONE WIDENING RULE, which the NEW
+// reader decodes exactly: ir.TableKindWidens is the one predicate every reader
+// holds. A token that is not a kind number never widens, so it refuses.
+func kindWidens(was, now string) bool {
+	w, errWas := strconv.Atoi(was)
+	n, errNow := strconv.Atoi(now)
+	return errWas == nil && errNow == nil && ir.TableKindWidens(w, n)
+}
 
 // DefaultTokenPolicy is the WHOLE compatibility policy, one row per fact.
 var DefaultTokenPolicy = map[string]TokenRule{
 	// ---- a field's own facts ----
-	"kind":    RuleFixed,  // a stored value under a kind the reader does not declare and cannot widen refuses the load `kind_mismatch`
-	"elem":    RuleFixed,  // an array's element kind is that same fact, one level in
-	"default": RuleFixed,  // an elided field MEANS the reader's default (docs/SPEC-TABLES.md §4)
-	"frac":    RuleFixed,  // a fixed field's raw value under a moved F is a different number, and no counter can fire
-	"bound":   RuleShrink, // a count past the reader's bound refuses the load `count_over_bound`
-	"size":    RuleShrink, // a string/bytes capacity is a bound like any other
+	// A field's KIND: a widening passes (the new reader reads the old value
+	// exactly, R17); a stored value under a kind the reader does not declare
+	// and cannot widen refuses the load `kind_mismatch`
+	"kind":    RuleKindWidens,
+	"elem":    RuleKindWidens, // an array's element kind is that same fact, one level in
+	"default": RuleFixed,      // an elided field MEANS the reader's default (docs/SPEC-TABLES.md §4)
+	"frac":    RuleFixed,      // a fixed field's raw value under a moved F is a different number, and no counter can fire
+	"bound":   RuleShrink,     // a count past the reader's bound refuses the load `count_over_bound`
+	"size":    RuleShrink,     // a string/bytes capacity is a bound like any other
 	// A COUNTED ARRAY'S MINIMUM (`[Min..N]T`, SPEC §4.6). Raised, a stored
 	// count below it refuses the load `count_over_bound`; moved either way,
 	// an array the writer elided at its born count reads back with the
@@ -142,19 +172,21 @@ var DefaultTokenPolicy = map[string]TokenRule{
 	"array": RuleShape,
 	// A MAP'S KEY, which is the map's own pair of facts (docs/SPEC-TABLES.md
 	// §2.8). A key kind the reader does not declare refuses the load
-	// `kind_mismatch`, so it is fixed exactly as `kind` is; a stored key past
+	// `kind_mismatch`, so it is judged exactly as `kind` is (a widening passes); a stored key past
 	// a tightened key bound refuses it `length_over_bound`, so it is an extent
 	// exactly as `bound` is.
-	"keykind":  RuleFixed,
+	"keykind":  RuleKindWidens,
 	"keybound": RuleShrink,
 	// A TEXT LIST'S TOTAL (docs/SPEC-TABLES.md §2.13, §18.2): a reader refuses
 	// a list past its own total `length_over_bound`, so a lowered or newly
 	// declared total warns and a raised or removed one passes
 	"total": RuleShrink,
 	"was":   RulePass, // `was` is the rename that PRESERVES identity — that is its whole job
-	// Variable T and ?T share framing; presence changes are absorbed both
-	// ways, including explicit defaults (§2.3, §4, §18.2).
-	"optional": RulePass,
+	// PRESENCE IS A WIDENING, AND IT RUNS ONE WAY (R16, 2026-11-22: "once a
+	// field is optional, it must stay optional forever"). `T` to `?T` passes:
+	// every old value lands present. `?T` to `T` is a narrowing and refuses,
+	// naming the field (docs/SPEC-TABLES.md §4 THE ONE WIDENING RULE, §18.2).
+	"optional": RuleWidenOnly,
 	// `| required` ADDED to a shipped field: old records never wrote it and a
 	// newer reader refuses them as missing_required. Removed, the writer just
 	// starts eliding again, so removal passes (docs/SPEC-TABLES.md §2.3).
@@ -586,7 +618,7 @@ func (d *differ) factDistance(baseName, candidate string) int {
 			}
 		}
 		for _, lt := range lf.Tokens {
-			if !seen[lt.Key] && (d.policy[lt.Key] == RuleFixed || d.policy[lt.Key] == RuleCountMin) {
+			if !seen[lt.Key] && (d.policy[lt.Key] == RuleFixed || d.policy[lt.Key] == RuleKindWidens || d.policy[lt.Key] == RuleCountMin) {
 				n++
 			}
 		}
@@ -825,6 +857,13 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 			case lv != bt.Value && (bt.Key != "default" || !d.sameDefaultVariant(bf, lf, bt.Value, lv)):
 				out = append(out, Finding{Refuse, where, fmt.Sprintf("%s %s -> %s", tokenNoun(bt.Key), bt.Value, lv)})
 			}
+		case RuleKindWidens:
+			switch {
+			case !present:
+				out = append(out, Finding{Refuse, where, fmt.Sprintf("%s %s removed", tokenNoun(bt.Key), bt.Value)})
+			case lv != bt.Value && !kindWidens(bt.Value, lv):
+				out = append(out, Finding{Refuse, where, fmt.Sprintf("%s %s -> %s", tokenNoun(bt.Key), bt.Value, lv)})
+			}
 		case RuleShrink, RuleRaise:
 			if !present || lv == bt.Value {
 				continue
@@ -847,6 +886,10 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 		case RuleCountMin:
 			// a minimum that vanished is a minimum of zero now
 			out = append(out, countMinFinding(where, bf, lf)...)
+		case RuleWidenOnly:
+			if !present {
+				out = append(out, Finding{Refuse, where, fmt.Sprintf("%s removed: `?T` to `T` narrows the field, and once a field is optional it stays optional (docs/SPEC-TABLES.md §4 THE ONE WIDENING RULE, §18.2)", tokenNoun(bt.Key))})
+			}
 		case RuleShape:
 			out = append(out, mapShapeFinding(where, bt.Value, lv, present)...)
 		case RuleRefs:
@@ -865,7 +908,7 @@ func (d *differ) diffTokens(where string, bf, lf Field) []Finding {
 			continue
 		}
 		switch d.policy[lt.Key] {
-		case RuleFixed, RuleRefs:
+		case RuleFixed, RuleRefs, RuleKindWidens:
 			out = append(out, Finding{Refuse, where, fmt.Sprintf("%s %s added", tokenNoun(lt.Key), lt.Value)})
 		case RuleGain:
 			out = append(out, Finding{Refuse, where, fmt.Sprintf("%s added: records written before it lack the field and a reader refuses them as missing_required", lt.Key)})

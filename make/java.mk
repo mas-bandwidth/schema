@@ -961,13 +961,14 @@ test-java: tables-java-block-build
 # blob and list corpora round-trip against the committed reference bytes. It is
 # the variable class beyond the card constructs — *bytes blobs, unbounded
 # arrays of scalars/strings/enums, arrays of pointers and pointers outside a
-# list element, the 64-bit id-table escape kind and the §16.7 sharing text.
+# list element, the 64-bit id-table wire refusing the held kind 31 (R17) and the
+# §16.7 sharing text.
 # `SCHEMA_REQUIRE_CORPUS=1` turns a missing-oracle skip into a FAILURE, so under
 # this name a missing oracle can never pass silently.
 .PHONY: tables-java-variable-class
 tables-java-variable-class:
 	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
-		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -run 'TestVariableClassBeyondCardConstructsJava|TestUnboundedArraysRoundTripJava|TestEscapeKind31SkippedAndCountedJava'
+		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -run 'TestVariableClassBeyondCardConstructsJava|TestUnboundedArraysRoundTripJava|TestHeldKind31RefusesTheLoadJava'
 	@echo 'tables Java variable class: the pointered, blob and list corpora round-trip against the committed reference bytes'
 
 # ITS NEGATIVE CONTROL, and it is the gate's first: until this target existed
@@ -1743,7 +1744,12 @@ conformance-java-absent: build/conformance-harness build-conformance-java
 # ITS NEGATIVE CONTROL: the driver's two absence writers (spillAbsent and
 # spillAbsentReason) write no marker. Every case the leg cannot answer then has
 # no answer at all, and the gate must go red on "the driver wrote nothing".
+# The Java leg answers every committed case (ruling R13 turned its last
+# absences, the must-refuse rows, into `refused`), so the control runs over a
+# copy of the manifest with one instance whose unit no leg generates,
+# absent_probe: the real driver answers it absent, the sabotaged one nothing.
 JAVA_ABSENT_SABOTAGE := build/conformance-java-absent-sabotage
+JAVA_ABSENT_PROBE := instance absent_probe nothere Root testdata/wire/tables/blob_small.bin no-text
 JAVA_ABSENT_SED := s@Files.write(Path.of(out, name + ".absent"), @if (false) Files.write(Path.of(out, name + ".absent"), /* SABOTAGED */ @
 conformance-java-absent-negative-control: build/conformance-harness build-conformance-java
 	@rm -rf $(JAVA_ABSENT_SABOTAGE) && mkdir -p $(JAVA_ABSENT_SABOTAGE)/src $(JAVA_ABSENT_SABOTAGE)/classes
@@ -1754,15 +1760,18 @@ conformance-java-absent-negative-control: build/conformance-harness build-confor
 	@printf '#!/bin/sh\nexec %s -cp %s/classes:%s/build/conformance-java Driver "$$@"\n' "$(JAVA)" "$(CURDIR)/$(JAVA_ABSENT_SABOTAGE)" "$(CURDIR)" > $(JAVA_ABSENT_SABOTAGE)/driver
 	@chmod +x $(JAVA_ABSENT_SABOTAGE)/driver
 	@printf 'java %s/driver\n' "$(CURDIR)/$(JAVA_ABSENT_SABOTAGE)" > $(JAVA_ABSENT_SABOTAGE)/drivers.txt
+	@cp testdata/conformance/tables/MANIFEST.txt $(JAVA_ABSENT_SABOTAGE)/MANIFEST.txt
+	@echo '$(JAVA_ABSENT_PROBE)' >> $(JAVA_ABSENT_SABOTAGE)/MANIFEST.txt
 	@if ./build/conformance-harness run --drivers $(JAVA_ABSENT_SABOTAGE)/drivers.txt \
+			--manifest $(JAVA_ABSENT_SABOTAGE)/MANIFEST.txt \
 			--work $(JAVA_ABSENT_SABOTAGE)/work > $(JAVA_ABSENT_SABOTAGE)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a driver that writes no absence marker left the harness green"; \
 		cat $(JAVA_ABSENT_SABOTAGE)/log; exit 1; \
 	fi
-	@grep -q "driver wrote nothing" $(JAVA_ABSENT_SABOTAGE)/log || \
+	@grep -q "absent_probe: the driver wrote nothing" $(JAVA_ABSENT_SABOTAGE)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on a missing answer"; \
 		  cat $(JAVA_ABSENT_SABOTAGE)/log; exit 1; }
-	@grep -m1 "driver wrote nothing" $(JAVA_ABSENT_SABOTAGE)/log
+	@grep -m1 "absent_probe: the driver wrote nothing" $(JAVA_ABSENT_SABOTAGE)/log
 	@echo "negative control: a driver that writes no absence marker turns the harness RED on the cases it cannot answer"
 
 # THE JAVA LEG OF THE TOLERANT WIRE'S DIFFERENTIAL FUZZER (docs/PORTING.md
@@ -2183,9 +2192,9 @@ REGISTRY_NA_WHY.bench-tables.java := bench/tables/java has no leg script, so ben
 REGISTRY_NA_WHY.goldens.java      := no committed table goldens; its packet goldens (testdata/golden/java) are rewritten by internal/goldens at the top of update-goldens
 CONFORMANCE_ENV    += JAVA=$(JAVA)
 # Packet UTF-8 content validation, including a compiled mutation control.
-build/packet-text/java/.stamp: bin/schema test/packet-text/Narrow.schema
+build/packet-text/java/.stamp: bin/schema test/packet-text/Text.schema
 	@mkdir -p build/packet-text/java/source
-	cp test/packet-text/Narrow.schema build/packet-text/java/source/Text.schema
+	cp test/packet-text/Text.schema build/packet-text/java/source/Text.schema
 	./bin/schema generate --lang java --out build/packet-text/java build/packet-text/java/source/Text.schema
 	@touch $@
 

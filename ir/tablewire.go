@@ -119,13 +119,17 @@ const TableWireIdTableBound = 4096
 
 // The kinds this form adds to §3's closed set. An ENUM rides under its own
 // kind carrying the reference to its variant name's id, whatever the
-// declaration-side storage width; the ESCAPE is how a later major adds a kind
-// without the addition reading as damage; the PAYLOAD-FREE kind is what an
+// declaration-side storage width; the PAYLOAD-FREE kind is what an
 // arm that holds nothing rides under, because an arm header carries a kind.
 const (
-	TableKindEnum      = 30
-	TableKindEscape    = 31
-	TableKindNoPayload = 32
+	TableKindEnum = 30
+	// KIND 31 IS HELD BY NAME AND NEVER WRITTEN (docs/SPEC-TABLES.md §3,
+	// R17): it was the escape a later major would have written for an older
+	// reader to skip, and the newer reader reads old data but never the other
+	// way, so no writer emits it and a reader of this major meets it only as
+	// damage, exactly as it meets 33 and 34.
+	TableKindHeldEscape = 31
+	TableKindNoPayload  = 32
 	// KIND 33 IS RETIRED AND HELD BY NAME (docs/SPEC-TABLES.md §3): wide text
 	// is not part of schema, text is UTF-8 `string`, and 33 is never reused.
 	// No writer emits it, and a reader of this major meets it only as damage,

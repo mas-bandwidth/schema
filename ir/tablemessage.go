@@ -297,7 +297,9 @@ func TableMessageKnownKind(kind uint8) bool {
 		return true
 	case kind >= TableKindI128 && kind <= TableKindUFixed128:
 		return true
-	case kind >= TableKindEnum && kind <= TableKindNoPayload:
+	case kind == TableKindEnum, kind == TableKindNoPayload:
+		// 31 is held by name and never written (R17): an announcement
+		// naming it is malformed, as one naming 33 or 34 is
 		return true
 	case kind == TableKindTimestamp:
 		// 36: the timestamp, a sixty-four bit raw payload with no shape bytes

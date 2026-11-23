@@ -1677,8 +1677,8 @@ All compile errors with positions:
   (`type`, `match`, `impl`, `func`, `class`, `end`, `after`, ...), or that
   collides with another name after Go export-casing (`atRest` → `AtRest`), is
   rejected, with one diagnostic per name listing every language it collides
-  with; every collision in the unit is reported in the same run. Outside the Go escape and the platform names below there is no escaping
-  machinery; rename at the source.
+  with; every collision in the unit is reported in the same run. Outside the Go escape and the platform
+  names below there is no escaping machinery; rename at the source.
 
   **The reserved-word table.** The rule is an EXACT, CASE-SENSITIVE match of
   the schema name against the union of the rows below (`Self` and `self` are
@@ -1715,9 +1715,12 @@ All compile errors with positions:
   refused for every target.
 - **Platform names are the emitter's to carry.** A name no language reserves
   can still be one a target's platform defines, and where the target can
-  say the name, its emitter does; nothing here is refused. In C and C++ a
-  declared type may spell a libc type, function or macro (`type uint8_t`,
-  `type memcpy`, `type NULL`): the emitters write the declared types under a
+  say the name, its emitter does and the checker accepts it. A platform name
+  some target's emitter still spells unqualified is refused for every target
+  instead (platform-name safety, below). In C and C++ a
+  declared type or table may spell a libc type, function or macro
+  (`table uint8_t`, `table memcpy`, `type NULL`): the emitters write the
+  declared types under a
   marker the pass after them maps back (`internal/codegen/cqualify`), so the
   emitter's own `uint8_t`, `memcpy(` and `NULL` stay the platform's. C++
   then names the platform's from the global root where a declared type hides
@@ -1727,10 +1730,15 @@ All compile errors with positions:
   package already. A C header's include guard keeps the file base's case and
   spells every other byte in hex (`my_file.schema` guards with
   `SCHEMA_PROBE_my_5Ffile_h`), so no two files share one.
-  C# names `global::System.Math`, and a unit with a type named in
+  C# names `global::System.Math`, and a unit with a declaration named in
   lowercase letters only disables CS8981 in its generated files. Elixir
   lowers a declaration to the module `<Ns>.<Name>` with its first letter
-  raised (`type memcpy` is `Probe.Memcpy`). Every one of these is the target's
+  raised (`enum kind` is `Probe.Kind`). Ruby spells a declaration whose
+  name is no Ruby constant as the constant it maps to: a const in
+  SCREAMING_SNAKE_CASE (`const max_items` is `MAX_ITEMS`), every other
+  declaration in UpperCamelCase (`enum kind` is `Kind`, `table max_items`
+  is `MaxItems`, and a union's tag module is that name and `Type`); a name
+  that is already a constant is spelled as written. Every one of these is the target's
   spelling and nothing else: the wire name, every id, every projection, the
   descriptors and every diagnostic keep the schema name. The cases are
   `testdata/name-buildability-emit`, built by each target's toolchain.
@@ -1809,6 +1817,67 @@ All compile errors with positions:
   the build naming the schema. The C++ headers' bare spellings are out of
   scope, because every generated name carries an extension and `<cmath>` has
   none.
+  **Every target can spell every basename the checker accepts** (Rowan's
+  ruling, 2026-11-21: a unit `schema check` accepts generates code that builds
+  and loads in all 18 targets; strict wins, the same in every language). A
+  basename names a module (Rust, Python, Ruby, Elixir, Lua, Luau, moo), an
+  import (Goose, Lobster), a class file (Java, C#) or an include guard (C,
+  C++), so whatever target is generated it is refused, naming the file and the
+  targets that cannot express it, when it is:
+  (1) not an identifier (`[A-Za-z_][A-Za-z0-9_]*`: `1x`, `my-file`);
+  (2) a reserved word of any of the seventeen languages (the one table
+  above), matched as written, and lowercased for Rust, which lowercases the
+  basename into its module (`Enum.schema` is `mod enum`); Goose and Lobster
+  import the basename as written, so `Def.schema` stays legal;
+  (3) started with `_`, which the go tool reads as leaving the file out of
+  the package and the Python package reserves;
+  (4) the name of a standard module or of the runtime some target emits
+  beside the generated modules: Lua's standard libraries (`coroutine`,
+  `debug`, `io`, `os`, `package`, `string`, `table`, `utf8`, `math`), which
+  `require` answers first; Rust's `core`, `std`, `main` and `lib`, lowercased;
+  Goose's `std`, `main` and scalar types (`bool`, `i8` ... `u64`, `f32`,
+  `f64`); `init`, which Luau and moo resolve to the directory's own module;
+  `serialize`, and any basename starting with `serialize_` or `schema_`
+  (the runtimes' module families); the support files `SchemaRuntime` (C),
+  `PacketRuntime` (Elixir), `Schema` (Dart), `Int128` and `UInt128` (Dart,
+  Java) and `descriptors` (Lobster), ignoring case; and `InvalidValue`,
+  `PROTOCOL_ID` and `Refused`, which the Python package's `__init__.py`
+  exports;
+  (5) a Go build constraint in the file the Go target writes (`<base>.go`): a
+  `_test` suffix, or a `_<goos>`, `_<goarch>` or `_<goos>_<goarch>` suffix;
+  (6) equal, ignoring case, to another basename of the unit, because a
+  case-insensitive file system (macOS, Windows) holds one file for the pair;
+  or (7) equal, ignoring case, to the unit's view file name (SPEC-TABLES.md
+  §8.5), which Lobster spells `<package>View`.
+  The corpus that proves each rule is testdata/name-buildability: the checker
+  holds every row's verdict in the fast lane, and the nightly
+  (tools/namebuild) generates every accepted row in all 18 targets and builds
+  and loads it.
+- **Platform-name safety:** a declaration is a top-level symbol beside the
+  names a target's generated code spells unqualified and cannot qualify, so a
+  declaration named like one is refused for every target, naming the target:
+  Rust's primitive types and crates (`u8` ... `u128`, `usize`, `i8` ...
+  `i128`, `isize`, `f32`, `f64`, `str`, `std`, `core`), the same scalar names
+  in Goose's namespace, the `dart:typed_data` list classes the Dart output
+  imports unprefixed (`Uint8List` and the rest), the packages the Go output
+  imports (`atomic`, `base64`, `binary`, `errors`, `fmt`, `goruntime`,
+  `math`, `slices`, `strconv`, `sync`, `time`, `utf8`), Luau's and moo's
+  `buffer` library, C#'s `Debug` and `InlineBuffer<N>` (`InlineBuffer4`,
+  any length N), the 128-bit support classes `Int128` and
+  `UInt128` (Dart, Java), and Elixir's support module `PacketRuntime`. A
+  reserved word or a claimed name above takes its own diagnostic instead.
+- **Emitter name rules:** the checker also runs the rules a target's
+  emitter holds itself (for Ruby and Python, the emitter's whole name check
+  under every surface a generate can select: a Ruby declaration's constant,
+  as mapped above, is none the interpreter or the generated runtime defines
+  and no other declaration's, so `foo_bar` beside `FooBar` is refused; a
+  Python package is no standard-library module and no declaration a
+  builtin; in both, no field or arm starts with `__` or the helper prefix
+  `_s_` or spells a member the generated class defines; a Goose namespace is
+  no reserved one) and the C and C++ wire-header name
+  (`<Base>Wire.h`, so `Other.schema` beside `OtherWire.schema` collides), and
+  refuses for every target, naming the target, a unit one of them refuses,
+  so those names are refused at check rather than at generate.
 
 ### 4.7 Strings and byte blocks — byte strings, one shape
 
@@ -2547,7 +2616,7 @@ Each leg's variable `Save` and its `Measure`:
 
 - **C#**: 1–8 and 10 debug, the region `Save` and the managed cook included; 9 unchecked
 
-- **Rust**: 1–4 debug wherever the value rides (a field, an optional, an array element or count, a `bytes(N)` length, a union arm's payload, a keyed slot), a count past `Max` clamped for the storage in every build; 8 debug for a `string(N)`'s zero byte (unbounded text refuses it every build; ill-formed UTF-8 is unrepresentable in a Rust `String`); 7 every build; 5–6 unrepresentable (native enums); 9 unchecked; 10 every build
+- **Rust**: 1–4 debug wherever the value rides (a field, an optional, an array element or count, a `bytes(N)` length, a union arm's payload, a keyed slot), a `[N]T` or `[E]T` whose length is not exactly `N` (or the variant count) debug, never cut or padded (SF-34, SF-35), a count past `Max` clamped for the storage in every build; 8 debug for a `string(N)`'s zero byte (unbounded text refuses it every build; ill-formed UTF-8 is unrepresentable in a Rust `String`); 7 every build; 5–6 unrepresentable (native enums); 9 unchecked; 10 every build
 
 - **Java**: 1–5 and 8 debug; 6–7 every build; 9 unchecked; 10 every build
 
@@ -2596,6 +2665,20 @@ A fixed-length array `[N]T` or an enum-keyed array `[E]T` handed to a
 writer holds exactly N values: a writer checks any other length like a count
 past its storage, and never cuts or pads it to N (SF-20,
 docs/silent-failure-audit-1122.md).
+A counted array `[A..B]T` holds a count from A to B in every direction. A
+writer refuses a count below A (SF-21, SF-22, as it refuses one above B), and
+**a reader meeting a count below A refuses it, `count_over_bound`, in EVERY
+form it reads: the binary body, the text, the fixed file and the evolved
+reader plan** (SF-01, SF-02; SPEC-TABLES.md §22.2). No reader places the short
+array and no reader answers the damage class for it. A value that fails a
+check is never replaced by something that passes it: a text writer refuses a
+list field holding what is not a list and never writes `[]` over it (SF-28),
+and the fixed form places a text value whose array field is not array-like as
+held, so the check refuses it, never as the fresh defaults (SF-38). A packet
+`[N]uint8` that the writer copies in bulk is refused unless its storage is a
+`Uint8Array` of at least N bytes (SF-24). The message form holds an integer to
+the range of the declaration that holds it, never to the looser range of
+another declaration that shares its field name and wire kind (SF-23).
 `FixedSave`'s row 8 includes a zero byte or a zero unit, because the fixed
 reader refuses one as `text_ill_formed`: in the build where its check is
 active, a writer never produces bytes its own reader refuses.
@@ -2626,7 +2709,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: 1–8 and 10 debug
 
-  - packet `Write`: 1, 3–8 and 10 debug; 2 unchecked; 11 unrepresentable (the storage is `sbyte`…`ulong`)
+  - packet `Write`: 1–8 and 10 debug; 11 unrepresentable (the storage is `sbyte`…`ulong`)
 
 - **Rust**
 
@@ -2747,12 +2830,15 @@ through the text writer. The fifth, `write-refusal-packet`, holds the packet
 `Write` on a generated type carrying one field per row: a ranged scalar, a
 `bits(7)` past its width, an enum ordinal, a union tag, a counted array's
 count, a `string`'s length and content, and a constant or reserved-range
-field's only lawful value. It starts
-with the Go leg, and the every-build scripting legs answer the same rows from
-test/conformance/write-refusal-packet (see test/conformance/README.md);
-`TestWriteRefusalPacket` in test/conformance/harness runs the
-battery and a negative control that changes the emitter's upper-bound
-comparison, requiring the boundary row to go red. The four table-form batteries
+field's only lawful value. The Go leg runs it as `TestWriteRefusalPacket` in
+test/conformance/harness, with a negative control that changes the emitter's
+upper-bound comparison and requires the boundary row to go red. The every-build
+scripting legs answer the same rows from test/conformance/write-refusal-packet
+(see test/conformance/README.md). The assert legs
+(C, C++, C#, C# (unity), Rust, Java and Dart) run a shared schema and
+cases (test/packet-write-refusal/) in their debug build, where the assert is the
+refusal, as `packet-write-refusal-<lang>` with a `-negative-control` beside it;
+Rust names the union tag as not representable. The four table-form batteries
 cover a ranged integer above and below its range, a `bits(6)` past its width, a
 count past `Max`, a text past `N`, an enum ordinal and a union tag past their
 sets, a NaN and an infinity, ill-formed UTF-8 (`61 FF 62`) and a lone surrogate

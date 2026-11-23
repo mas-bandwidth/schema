@@ -1,0 +1,17 @@
+{
+  "name": "",
+  "version": 1,
+  "head": null,
+  "tree": null,
+  "settings": null,
+  "alias": null,
+  "ground": {
+    "depth": 0,
+    "head": null
+  },
+  "layers": [],
+  "meta": {
+    "build": 1,
+    "tag": ""
+  }
+}

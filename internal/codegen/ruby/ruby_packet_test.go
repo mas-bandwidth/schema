@@ -589,7 +589,7 @@ func TestRubyPacketCloseAnalyzer(t *testing.T) {
 		"examples128",
 		"bench/corpus/Bench.schema",
 		"test/packet-defaults/Defaults.schema",
-		"test/packet-finite/ruby/Finite.schema",
+		"test/packet-finite/ruby/PacketFinite.schema",
 		"test/packet-void/ruby/Ruby.schema",
 	} {
 		t.Run(rel, func(t *testing.T) {
@@ -743,7 +743,7 @@ func packetDefaultsProbe(t *testing.T, fault bool) {
 func TestRubyPacketFinite(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
-	u := loadRubyUnit(t, filepath.Join(root, "test", "packet-finite", "ruby", "Finite.schema"))
+	u := loadRubyUnit(t, filepath.Join(root, "test", "packet-finite", "ruby", "PacketFinite.schema"))
 	files, err := Generate(u)
 	if err != nil {
 		t.Fatal(err)
@@ -778,7 +778,7 @@ func failedFiniteVectors(stderr string) []string {
 func TestRubyPacketFiniteNegativeControl(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
-	u := loadRubyUnit(t, filepath.Join(root, "test", "packet-finite", "ruby", "Finite.schema"))
+	u := loadRubyUnit(t, filepath.Join(root, "test", "packet-finite", "ruby", "PacketFinite.schema"))
 	baseFiles, err := Generate(u)
 	if err != nil {
 		t.Fatal(err)

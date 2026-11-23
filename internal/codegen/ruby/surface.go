@@ -27,7 +27,7 @@ func (m *rbModule) emitConst(d *ir.Const) {
 	if d.Doc != "" {
 		m.printf("%s", docComment(d.Doc, "  ", "#"))
 	}
-	m.line("  %s = %s%s", d.Name, value, note)
+	m.line("  %s = %s%s", ConstName(d.Name), value, note)
 	m.line("")
 }
 
@@ -35,7 +35,7 @@ func (m *rbModule) emitEnum(d *ir.Enum) {
 	if d.Doc != "" {
 		m.printf("%s", docComment(d.Doc, "  ", "#"))
 	}
-	m.line("  module %s", d.Name)
+	m.line("  module %s", ClassName(d.Name))
 	m.line("    None = 0")
 	for i, v := range d.Variants {
 		if i < len(d.VariantDocs) && d.VariantDocs[i] != "" {
@@ -57,7 +57,7 @@ func (m *rbModule) emitFlags(d *ir.Flags) {
 	if d.Doc != "" {
 		m.printf("%s", docComment(d.Doc, "  ", "#"))
 	}
-	m.line("  module %s", d.Name)
+	m.line("  module %s", ClassName(d.Name))
 	for i, v := range d.Variants {
 		if i < len(d.VariantDocs) && d.VariantDocs[i] != "" {
 			m.printf("%s", docComment(d.VariantDocs[i], "    ", "#"))
@@ -85,7 +85,7 @@ func (m *rbModule) emitStruct(d *ir.Struct) {
 	if d.Doc != "" {
 		m.printf("%s", docComment(d.Doc, "  ", "#"))
 	}
-	m.line("  class %s", d.Name)
+	m.line("  class %s", ClassName(d.Name))
 	if len(d.Fields) > 0 {
 		syms := make([]string, len(d.Fields))
 		hasObjectID := false
@@ -125,10 +125,10 @@ func (m *rbModule) emitStruct(d *ir.Struct) {
 	}
 	m.line("    end")
 	m.line("")
-	m.emitCopyFrom(d.Name, d.Fields)
+	m.emitCopyFrom(ClassName(d.Name), d.Fields)
 	m.emitToH(d.Fields)
-	m.emitEquality(d.Name, d.Fields)
-	m.emitInspect(d.Name, d.Fields)
+	m.emitEquality(ClassName(d.Name), d.Fields)
+	m.emitInspect(ClassName(d.Name), d.Fields)
 	if !m.surfaceOnly {
 		m.emitCodecStruct(d)
 	}
@@ -137,7 +137,7 @@ func (m *rbModule) emitStruct(d *ir.Struct) {
 }
 
 func (m *rbModule) emitUnion(d *ir.Union) {
-	tag := d.Name + "Type"
+	tag := ClassName(d.Name) + "Type"
 	m.line("  module %s", tag)
 	m.line("    None = 0")
 	for _, v := range d.Variants {
@@ -155,7 +155,7 @@ func (m *rbModule) emitUnion(d *ir.Union) {
 	if d.Doc != "" {
 		m.printf("%s", docComment(d.Doc, "  ", "#"))
 	}
-	m.line("  class %s", d.Name)
+	m.line("  class %s", ClassName(d.Name))
 	arms := unionArms(d)
 	syms := []string{":type"}
 	for _, v := range arms {
@@ -246,7 +246,7 @@ func copyValueExpr(f *ir.Field, src string) string {
 	if f.Type.Kind == ir.TNamed {
 		switch f.Type.Ref.(type) {
 		case *ir.Struct, *ir.Union:
-			return fmt.Sprintf("%s.new.%scopy_from(%s)", f.Type.Name, HelperPrefix, src)
+			return fmt.Sprintf("%s.new.%scopy_from(%s)", ClassName(f.Type.Name), HelperPrefix, src)
 		}
 	}
 	return src
@@ -346,8 +346,8 @@ func (m *rbModule) emitInspect(name string, fields []*ir.Field) {
 
 func (m *rbModule) emitUnionEquality(d *ir.Union, arms []ir.UnionVariant) {
 	m.line("    def ==(other)")
-	m.line("      return false unless other.instance_of?(%s)", d.Name)
-	m.line("      _s_o = other #: %s", d.Name)
+	m.line("      return false unless other.instance_of?(%s)", ClassName(d.Name))
+	m.line("      _s_o = other #: %s", ClassName(d.Name))
 	m.line("      return false if self.type != _s_o.type")
 	for i, v := range arms {
 		cond := "if"
@@ -371,7 +371,7 @@ func (m *rbModule) emitUnionInspect(d *ir.Union, arms []ir.UnionVariant) {
 	for _, v := range arms {
 		parts = append(parts, fmt.Sprintf("%s=#{%s.inspect}", v.Name, fieldRead("self", v.Name)))
 	}
-	m.line("      \"%s(%s)\"", d.Name, strings.Join(parts, ", "))
+	m.line("      \"%s(%s)\"", ClassName(d.Name), strings.Join(parts, ", "))
 	m.line("    end")
 	m.line("")
 }

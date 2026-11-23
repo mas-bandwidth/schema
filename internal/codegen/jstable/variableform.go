@@ -478,7 +478,7 @@ function TableVariableSkip(r, kind) {
     case 4: case 8: case 10: case 22: case 27: { if (r.at + 4 > r.end) return false; r.at += 4; return true; }
     case 5: case 9: case 11: case 23: case 28: case 36: { if (r.at + 8 > r.end) return false; r.at += 8; return true; }
     case 18: case 19: case 24: case 29: { if (r.at + 16 > r.end) return false; r.at += 16; return true; }
-    case 12: case 13: case 14: case 16: case 31: case 32: {
+    case 12: case 13: case 14: case 16: case 32: {
       const L = r.leb(); if (r.bad) return false; if (r.at + L > r.end) return false; r.at += L; return true;
     }
     case 15: {
@@ -731,6 +731,18 @@ func unionOf(f *ir.Field) *ir.Union {
 		return un
 	}
 	return nil
+}
+
+// flagsWidth is a flags mask's W and the widest mask it admits
+// (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH): the
+// descriptor's bits/bmax, so the read refuses a mask bit at or above W
+// out_of_range and the writer refuses one in every build, exactly as they hold
+// a bits(N). W of 64 holds every mask, and bits stays 0.
+func flagsWidth(fl *ir.Flags) (int, string) {
+	if fl.WireBits >= 64 {
+		return 0, "0n"
+	}
+	return fl.WireBits, new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(fl.WireBits)), big.NewInt(1)).String() + "n"
 }
 
 // flagsOf returns the flags declaration a field names, or nil.
@@ -1026,10 +1038,11 @@ func (g *variableGen) fieldDescTail(f *ir.Field) string {
 	case f.Type.Pointer:
 		fmt.Fprintf(&b, "s: \"ptr\", js: \"o\", t: %s }", jsStr(tableOf(f).Name))
 	case enumOf(f) != nil:
-		fmt.Fprintf(&b, "s: \"enum\", js: \"s\", vs: %s, def: %s }", enumVariants(enumOf(f)), enumDefault(f))
+		fmt.Fprintf(&b, "s: \"enum\", js: \"s\", vs: %s, dp: %s, def: %s }", enumVariants(enumOf(f)), enumDeprecated(enumOf(f)), enumDefault(f))
 	case flagsOf(f) != nil:
-		fmt.Fprintf(&b, "s: \"flags\", js: \"a\", big: true, kw: 8, lo: null, hi: null, bits: 0, vs: %s, def: %s }",
-			flagsVariants(flagsOf(f)), intDefault(f))
+		w, wmax := flagsWidth(flagsOf(f))
+		fmt.Fprintf(&b, "s: \"flags\", js: \"a\", big: true, kw: 8, lo: null, hi: null, bits: %d, bmax: %s, vs: %s, def: %s }",
+			w, wmax, flagsVariants(flagsOf(f)), intDefault(f))
 	case tableOf(f) != nil:
 		fmt.Fprintf(&b, "s: \"tab\", js: %q, t: %s }", tableJSONShape(tableOf(f)), jsStr(tableOf(f).Name))
 	case f.Type.Kind == ir.TString:
@@ -1066,10 +1079,11 @@ func (g *variableGen) elemDesc(f *ir.Field) string {
 	case f.Type.Pointer:
 		return fmt.Sprintf("{ s: \"ptr\", js: \"o\", t: %s }", jsStr(tableOf(f).Name))
 	case enumOf(f) != nil:
-		return fmt.Sprintf("{ s: \"enum\", js: \"s\", vs: %s }", enumVariants(enumOf(f)))
+		return fmt.Sprintf("{ s: \"enum\", js: \"s\", el: true, vs: %s, dp: %s }", enumVariants(enumOf(f)), enumDeprecated(enumOf(f)))
 	case flagsOf(f) != nil:
-		return fmt.Sprintf("{ s: \"flags\", js: \"a\", big: true, kw: 8, lo: null, hi: null, bits: 0, vs: %s }",
-			flagsVariants(flagsOf(f)))
+		w, wmax := flagsWidth(flagsOf(f))
+		return fmt.Sprintf("{ s: \"flags\", js: \"a\", big: true, kw: 8, lo: null, hi: null, bits: %d, bmax: %s, vs: %s }",
+			w, wmax, flagsVariants(flagsOf(f)))
 	case tableOf(f) != nil:
 		return fmt.Sprintf("{ s: \"tab\", js: %q, t: %s }", tableJSONShape(tableOf(f)), jsStr(tableOf(f).Name))
 	case f.Type.Kind == ir.TBool:
@@ -1119,6 +1133,19 @@ func tableJSONShape(st *ir.Struct) string {
 
 // enumVariants renders an enum's variants as [name, wire id] pairs: identity
 // is the variant NAME's hash (docs/SPEC-TABLES.md §5).
+// enumDeprecated lists the variants marked `| deprecated` (docs/SPEC-TABLES.md
+// section 2.15): a reader meeting one yields the field's default, an element's
+// default (None) for an element, and never counts it unknown.
+func enumDeprecated(e *ir.Enum) string {
+	var parts []string
+	for i := range e.Variants {
+		if i < len(e.VariantTags) && slices.Contains(e.VariantTags[i], "deprecated") {
+			parts = append(parts, jsStr(e.Variants[i]))
+		}
+	}
+	return "[" + strings.Join(parts, ", ") + "]"
+}
+
 func enumVariants(e *ir.Enum) string {
 	parts := make([]string, len(e.Variants))
 	for i := range e.Variants {
@@ -1269,6 +1296,9 @@ func (g *variableGen) emitNoFileFormRoot(st *ir.Struct) {
 	g.pf("export function %sLoadMeasure(bytes) {\n", st.Name)
 	g.pf("  void bytes;\n  return -1;\n")
 	g.pf("}\n\n")
+	g.pf("export function %sLoadMeasureParts(bytes) {\n", st.Name)
+	g.pf("  void bytes;\n  return { data: -1, attribution: 0 };\n")
+	g.pf("}\n\n")
 }
 
 // emitRootLoadMeasure emits <T>LoadMeasure: the region size a caller owes a
@@ -1288,7 +1318,11 @@ func (g *variableGen) emitRootLoadMeasure(st *ir.Struct) {
 	if !g.variable[st.Name] {
 		refused = fmt.Sprintf("%d", rootSize+16)
 	}
-	g.pf("export function %sLoadMeasure(bytes) {\n", st.Name)
+	// The walk answers the SUM; `out.attribution` is its attribution term, the
+	// directory of one 16-byte entry per node record plus the root (§6.3), which
+	// a caller may place apart and release once Load returns. A fixed-class root
+	// that is refused its framing answers its root's region plus that one entry.
+	g.pf("function %sLoadMeasureWalk(bytes, out) {\n", st.Name)
 	if st.Integrity != "" {
 		g.pf("  if (bytes.length > 0 && bytes[0] === 1) { if (!TableIntegrityHolds(bytes, 1)) { return -1; } bytes = bytes.subarray(0, bytes.length - 4); }\n")
 	}
@@ -1368,6 +1402,19 @@ func (g *variableGen) emitRootLoadMeasure(st *ir.Struct) {
 	g.pf("    payload.at += tlen;\n")
 	g.pf("    records++;\n")
 	g.pf("  }\n")
-	g.pf("  return data + (records + 1) * 16;\n")
+	g.pf("  out.attribution = (records + 1) * 16;\n")
+	g.pf("  return data + out.attribution;\n")
+	g.pf("}\n\n")
+	g.pf("export function %sLoadMeasure(bytes) {\n", st.Name)
+	g.pf("  return %sLoadMeasureWalk(bytes, { attribution: 16 });\n", st.Name)
+	g.pf("}\n\n")
+	g.pf("// %sLoadMeasureParts reports the DATA bytes and the ATTRIBUTION bytes separately\n", st.Name)
+	g.pf("// (docs/SPEC-TABLES.md §6.3, §6.5, as C and C++ do); LoadMeasure answers their sum.\n")
+	g.pf("// A refusal answers { data: -1, attribution: 0 }.\n")
+	g.pf("export function %sLoadMeasureParts(bytes) {\n", st.Name)
+	g.pf("  const out = { attribution: 16 };\n")
+	g.pf("  const total = %sLoadMeasureWalk(bytes, out);\n", st.Name)
+	g.pf("  if (total < 0) { return { data: -1, attribution: 0 }; }\n")
+	g.pf("  return { data: total - out.attribution, attribution: out.attribution };\n")
 	g.pf("}\n\n")
 }

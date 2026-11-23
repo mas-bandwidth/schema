@@ -178,4 +178,4 @@ func WideBlobBlockBytes(b *WideBlobBlock) int64 {
 // a lookup and not a parse. The row layouts hang off the element column
 // rather than taking names of their own, so a walker reaches every record
 // through the graph.
-func (b *WideBlobBlock) Type() *TableBlockInfo { return &tableBlockRecords[12] }
+func (b *WideBlobBlock) Type() *TableBlockInfo { return &tableBlockRecords[17] }

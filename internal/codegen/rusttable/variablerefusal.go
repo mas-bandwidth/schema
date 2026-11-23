@@ -45,6 +45,13 @@ func refuseCardUnsupportedVariableConstructs(u *ir.Unit) error {
 		if why := vc.reason[name]; why != "" {
 			return fmt.Errorf("rust variable form: %s.%s (docs/SPEC-TABLES.md §11)", name, why)
 		}
+		// the generate path carries a counted minimum (§3, SPEC §4.6); the
+		// card slice does not, and refuses it by name
+		for _, f := range vStruct(u, name).Fields {
+			if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+				return fmt.Errorf("rust variable form: %s.%s: a counted array with a declared minimum [Min..N]T is outside the card slice (docs/SPEC-TABLES.md §11)", name, f.Name)
+			}
+		}
 	}
 	return nil
 }

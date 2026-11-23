@@ -216,20 +216,11 @@ local function surfaceWire(lines: { { string } })
 			local r = report()
 			local v = u.load.load(f[4], file(f[5]), r)
 			if v == nil then
-				-- THE READ'S REFUSAL IS THIS ROW'S ANSWER, whatever its reason
-				-- (docs/rulings.json refusal-verdict-only): an absence naming
-				-- the reason, which the harness passes on a row the corpus marks
-				-- wire-refused (blob_shared, §2.5; shapes_*_below_min) and fails
-				-- on a row that owes the bytes (as test/conformance/go/main.go does)
-				print(f[2] .. " absent " .. (if r.reason ~= nil then tostring(r.reason) else "refused"))
+				sayText(f[2], "refused\n")
 			else
-				local saved, why = u.save.save(u.S.lookup(f[4]), v)
-				if saved == nil and why ~= nil and why.name == "blob_shared" then
-					-- every writer refuses one blob named from two slots
-					-- (docs/SPEC-TABLES.md §2.5): the case is a NAMED refusal
-					print(f[2] .. " absent blob_shared")
-				elseif saved == nil then
-					error(f[2] .. ": save refused " .. f[5])
+				local saved = u.save.save(u.S.lookup(f[4]), v)
+				if saved == nil then
+					sayText(f[2], "refused\n")
 				else
 					say(f[2], saved)
 				end
@@ -586,13 +577,16 @@ local function surfaceMessage(lines: { { string } })
 		local u = unit(conn[3])
 		local M = u and optional(u, "schema_message")
 		local d = if u ~= nil then rootOf(u, f[4]) else nil
-		if f[6] == "-" then
-			-- a named refusal row: the root is a variable table (§3.3)
-			print(f[2] .. " absent variable table: the message form is fixed tables only (SPEC-TABLES §3.3)")
-		elseif u == nil or M == nil or d == nil then
+		if u == nil or M == nil or d == nil then
 			say(f[2], nil)
+		elseif not (d.table and d.fixed) and f[6] == "-" then
+			-- a named refusal row: the root is a variable table (§3.3), which
+			-- carries no message form: `refused` and a newline (ruling R13)
+			sayText(f[2], "refused\n")
 		elseif not (d.table and d.fixed) then
 			print(f[2] .. " absent variable table: the message form is fixed tables only (SPEC-TABLES §3.3)")
+		elseif f[6] == "-" then
+			error(f[2] .. ": a refusal row names a fixed root " .. f[4])
 		else
 			local v = M.NewVocabulary()
 			local r = report()

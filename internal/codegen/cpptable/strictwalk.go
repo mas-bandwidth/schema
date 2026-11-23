@@ -192,7 +192,7 @@ inline bool TableStrictContent( TableStrict & s, const uint8_t * b, int64_t n, u
     switch ( kind )
     {
         case 12: return TableUtf8Valid( b, (uint64_t) n ); // ill-formed text is damage
-        case 31: return true; // the escape: opaque by rule (§3)
+        case 31: return false; // KIND 31 IS HELD BY NAME AND NEVER WRITTEN (R17): damage, as 33 and 34
         case 32: return n == 0; // kind 32 with a nonzero L is damage
         case 13:
         {
@@ -255,7 +255,7 @@ inline bool TableStrictPayload( TableStrict & s, TableReader & r, uint8_t kind, 
         }
         case 15:
             return TableStrictUnion( s, r, depth );
-        case 12: case 31: case 32: case 13: case 14: case 16:
+        case 12: case 32: case 13: case 14: case 16:
         {
             uint64_t n = 0;
             if ( !r.getleb( n ) || !r.room( n ) ) { return false; } // L4

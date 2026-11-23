@@ -337,6 +337,13 @@ const fixedRuntimeBody = `  @moduledoc """
   def clamps(acc, _v, _lo, _hi), do: acc
 
   @doc """
+  A COUNTED [A..B] HOLDS A wherever it stands, a union arm included: a count
+  below the declared minimum REFUSES count_over_bound and lands nothing.
+  """
+  def held_min(_acc, v, min) when v < min, do: throw({:refuse, :count_over_bound})
+  def held_min(acc, _v, _min), do: acc
+
+  @doc """
   A COMPILED LANE'S IMAGE HELD TO ITS WRITER'S OWN RANGES, before the projection
   holds this reader's own (docs/FIXED-FORM-ALGORITHM.md §4.6, bill §12.5). Each
   bound is {offset, bits, sign, lo, hi} on the raw scale; a value past one lands
@@ -792,8 +799,9 @@ const fixedRuntimeBody = `  @moduledoc """
 
   # THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
   # the no-payload variant 32, and the ONE kind this form's layout adds, the
-  # optional wrapper 35, plus timestamp 36. 31 is §3's body framing escape, 33
-  # is retired and 34 is reserved: none is a kind a declaration spells.
+  # optional wrapper 35, plus timestamp 36. 31 is held by name and never
+  # written (R17), 33 is retired and 34 is reserved: none is a kind a
+  # declaration spells, and a reader meets each only as damage.
   defp known_kind?(kind) when kind >= 1 and kind <= 30, do: true
   defp known_kind?(kind), do: kind == 32 or kind == 35 or kind == 36
 
@@ -1062,7 +1070,7 @@ const fixedRuntimeBody = `  @moduledoc """
   defp src_end({:widen, at, _dst, size, _my_size, _signed}), do: at + size
   defp src_end({:widenf, at, _dst}), do: at + 4
   defp src_end({:text, at, _dst, _aux, units, _meta}), do: at + 4 + units
-  defp src_end({:count, at, _aux, _n}), do: at + 4
+  defp src_end({:count, at, _aux, _n, _min}), do: at + 4
   defp src_end({:ordinal, at, _dst, their_size, _my_size, _remap}), do: at + their_size
   defp src_end({:remap_too_large, _variants}), do: 0
   defp src_end({:tagcount, at, tag, _arms}), do: at + tag
@@ -1429,7 +1437,7 @@ const fixedRuntimeBody = `  @moduledoc """
         # so a count forged past what the writer could have written clamps and
         # counts. Holding it to MY bound lets a count between their_n and my_n
         # through untouched, and every slot behind it reads as live.
-        guarded(acc, guard, tag, {:count, their_at, aux_at, their_n})
+        guarded(acc, guard, tag, {:count, their_at, aux_at, their_n, elem(row, 4)})
       else
         acc
       end
@@ -1969,10 +1977,10 @@ const fixedRuntimeBody = `  @moduledoc """
     end
   end
 
-  defp step([{:count, src, dst, max} | rest], body, writes, report) do
+  defp step([{:count, src, dst, max, min} | rest], body, writes, report) do
     case body do
       <<_::binary-size(^src), raw::little-signed-32, _::binary>> ->
-        {v, report} = clamp_count(raw, max, report)
+        {v, report} = clamp_count(raw, min, max, report)
         step(rest, body, [{dst, <<v::little-signed-32>>} | writes], report)
 
       _ ->
@@ -1985,7 +1993,7 @@ const fixedRuntimeBody = `  @moduledoc """
 
     case body do
       <<_::binary-size(^src), raw::little-signed-32, take::binary-size(^size), _::binary>> ->
-        {v, report} = clamp_count(raw, cap, report)
+        {v, report} = clamp_count(raw, 0, cap, report)
 
         # THE ONE CONTENT RULE THE WIRE HAS (§3, §4), over the USED UNITS and
         # over nothing else: the slack carries no meaning, and reading a whole
@@ -2156,9 +2164,10 @@ const fixedRuntimeBody = `  @moduledoc """
       else: {0, mark_forged(report)}
   end
 
-  defp clamp_count(raw, max, report) do
+  defp clamp_count(raw, min, max, report) do
     cond do
       raw < 0 -> throw({:refuse, :count_over_bound})
+      raw < min -> throw({:refuse, :count_over_bound})
       raw > max -> throw({:refuse, :count_over_bound})
       true -> {raw, report}
     end

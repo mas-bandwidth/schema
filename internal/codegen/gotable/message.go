@@ -247,7 +247,7 @@ func tableAnnounceRead(v *TableVocabulary,data []byte,report *TableReport)bool {
  r,verdict:=tableOpenFramed(data,report);if verdict!=TableOpenOk {if verdict==TableOpenRefused {reason:="newer_form";if len(data)>0&&data[0]==2 {reason="message_form_as_file"};return tableMessageRefuse(report,reason)};report.Refuse(TableRefuseWireDamaged,"");return false}
  versionCount,wordsCount:=0,0;var words []byte;var seen [4097]bool;var fuRep TableReport;tableFirstUseCount(&fuRep,2);r.Report=&fuRep
  for {ref,ok:=r.Leb();if !ok{report.Refuse(TableRefuseWireDamaged,"");return false};if ref==0 {break};if ref>4096||seen[ref]{report.Refuse(TableRefuseWireDamaged,"");return false};seen[ref]=true;id,ok:=r.Resolve(ref);if !ok||!r.Has(1)||id==0xffffffffffffffff{report.Refuse(TableRefuseWireDamaged,"");return false};kind:=r.Get8();switch id {case 0xfffffffffffffffe:if kind!=9||!r.Has(8){report.Refuse(TableRefuseWireDamaged,"");return false};v.BuildVersion=r.Get64();versionCount++
- case 0xfffffffffffffffd:if kind!=14{report.Refuse(TableRefuseWireDamaged,"");return false};sub,ok:=r.Body();if !ok||!sub.Has(1)||sub.Get8()!=6{report.Refuse(TableRefuseWireDamaged,"");return false};n,ok:=sub.Leb();if !ok||n>uint64(len(sub.Buffer))||int64(n)!=int64(len(sub.Buffer))-sub.Offset{report.Refuse(TableRefuseWireDamaged,"");return false};limit:=v.MaxBytes;if limit==0{limit=64*1024};if int64(n)>limit{return tableMessageRefuse(report,"vocabulary_too_large")};words=sub.Buffer[sub.Offset:];wordsCount++
+ case 0xfffffffffffffffd:if kind!=14{report.Refuse(TableRefuseWireDamaged,"");return false};sub,ok:=r.Body();if !ok||!sub.Has(1)||sub.Get8()!=6{report.Refuse(TableRefuseWireDamaged,"");return false};n,ok:=sub.Leb();if !ok||n>uint64(len(sub.Buffer))||int64(n)!=int64(len(sub.Buffer))-sub.Offset{report.Refuse(TableRefuseWireDamaged,"");return false};if int64(n)>v.MaxBytes{return tableMessageRefuse(report,"vocabulary_too_large")};words=sub.Buffer[sub.Offset:];wordsCount++
  default:report.Unknown++;var wc tableWireCheck;wc.ids=uint64(len(r.Ids))/8;at,wok:=wc.value(r,kind);if !wok{report.Refuse(wc.failed(),"");return false};r.Offset=at}
  };if r.Offset!=int64(len(r.Buffer))||!tableFirstUseWhole(&fuRep,uint64(len(r.Ids))/8)||versionCount!=1||wordsCount!=1{report.Refuse(TableRefuseWireDamaged,"");return false}
  if v.Strict&&v.BuildVersion!=BuildVersion {report.BuildVersionRemote=v.BuildVersion;report.BuildVersionOwn=BuildVersion;return tableMessageRefuse(report,"build_version_mismatch")}
@@ -276,10 +276,11 @@ func tableAnnounceRead(v *TableVocabulary,data []byte,report *TableReport)bool {
 // repeated entry read before the bound is crossed is damage, as it was when
 // each entry was compared on arrival. It is spelled inline so the emitter
 // claims no new runtime name.
-// tableMessageKnownKind is §3.3's closed announcement set: kinds 0..32 plus the
-// timestamp 36 (docs/SPEC-TABLES.md §3.3 entry shape table); 33, 34, 35 and 37
-// stay malformed.
-func tableMessageKnownKind(k uint8)bool {return k<=32||k==36}
+// tableMessageKnownKind is §3.3's closed announcement set: kinds 0..30, the
+// payload-free 32 and the timestamp 36 (docs/SPEC-TABLES.md §3.3 entry shape
+// table); 31 is held by name and never written (R17), and it, 33, 34, 35 and
+// 37 stay malformed.
+func tableMessageKnownKind(k uint8)bool {return k<=30||k==32||k==36}
 func tableMessageKindBits(k uint8)int64 {if k==0||k==32{return 0};if k==1{return 1};switch k {case 2,6,20,25:return 8;case 3,7,21,26:return 16;case 4,8,10,22,27:return 32;case 5,9,11,23,28,36:return 64;case 18,19,24,29:return 128};return -1}
 func tableMessageBaseInsideKind(k uint8, b [2]uint64) bool {
  switch k {
@@ -324,7 +325,7 @@ func tableMessageSkip(r *TableBitReader,v *TableVocabulary,indexBits int64,e Tab
  case 17:return indexBits>0&&r.Skip(indexBits)
  case 15:ref,ok:=r.Get(v.RefBits);if !ok||ref==0{return ok&&!field};arm,ok:=v.Entry(ref);return ok&&arm.ID<0xfffffffffffffffd&&arm.Shape.Kind!=0&&tableMessageSkip(r,v,indexBits,arm,depth+1,false)
  case 12:n,ok:=tableMessageCount(r,s);if !ok||n>uint64(s.Max)||!r.Align(){return false};start:=r.Offset/8;if !r.Skip(int64(n)*8){return false};return tableUTF8Valid(r.Buffer[start:start+int64(n)])
- case 31:if !r.Align(){return false};n,ok:=r.Get(32);return ok&&r.Skip(int64(n)*8)
+ case 31:return false // held by name, never written (R17): met only as damage
  case 14,16:
   n,ok:=tableMessageCount(r,s);if !ok||n>uint64(s.Max){return false}
   if s.Kind==14&&e.Element.Kind==6&&!r.Align(){return false}
