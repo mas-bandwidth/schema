@@ -22,9 +22,6 @@ define hostile_ledgered
 	go run ./tools/hostileledger -port $(1) -corpus "$(4)" -log $(2) $(5)
 endef
 
-# GNU Make 3.81 treats a literal hash in a variable assignment as a comment.
-hostile_case_count = $(shell awk 'substr($$0, 1, 1) != "\043" { count++ } END { print count + 0 }' "$(1)/manifest.tsv")
-
 # THE LEDGER'S OWN CORPUS (tools/hostileledger/testdata/ledger-corpus): committed
 # runner logs and the verdict each owes, the reviewer's findings beside their
 # controls, replayed through the tool. The generated-Go gate depends on it, so
