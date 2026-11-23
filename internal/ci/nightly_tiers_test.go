@@ -272,3 +272,43 @@ func TestNightlyFastRunsTheRubyStrictFormOnARubyDiff(t *testing.T) {
 		t.Errorf("a docs-only diff selects %d nightly-fast rows, want none", len(fast))
 	}
 }
+
+// TestNightlyFastSelectsCSharpTableLeg protects the native table suite that
+// verify-cs-conformance does not run, including the non-leg corpus selectors.
+func TestNightlyFastSelectsCSharpTableLeg(t *testing.T) {
+	t.Parallel()
+	f, err := os.Open(filepath.Join(repoRoot(t), filepath.FromSlash(nightlyrows.RegistryPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	rows, err := nightlyrows.Parse(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"cs-leg-debug-wire", "cs-leg-debug-core", "cs-leg-debug-evolution", "cs-leg-debug-fixed",
+		"cs-leg-release-wire", "cs-leg-release-core", "cs-leg-release-evolution", "cs-leg-release-fixed",
+		"cs-versioning-assembly", "cs-versioning-rows",
+	}
+	for _, tc := range []struct {
+		path string
+		legs []string
+		want []string
+	}{
+		{"internal/codegen/cstable/cstable.go", []string{"cs"}, want},
+		{"internal/tablewire/fixed.go", nil, want},
+		{"testdata/conformance/tables/MANIFEST.txt", nil, want},
+		{"internal/codegen/javatable/javatable.go", []string{"java"}, nil},
+	} {
+		var got []string
+		for _, row := range nightlyrows.Select(rows, []string{tc.path}, tc.legs, false) {
+			if strings.HasPrefix(row.Name, "cs-leg-") || strings.HasPrefix(row.Name, "cs-versioning-") {
+				got = append(got, row.Name)
+			}
+		}
+		if !slices.Equal(got, tc.want) {
+			t.Errorf("%s selects C# rows %v, want %v", tc.path, got, tc.want)
+		}
+	}
+}

@@ -613,7 +613,7 @@ tables-cs-view: bin/schema
 # and the owner's rule is one to two minutes for anything a child iterates on.
 # Debug alone is about half that, so `make tables-cs-leg-debug` is the loop and
 # `make tables-cs-leg` remains the full-CI and release gate, running both.
-# Fast CI uses Debug with versioning to stay within its two-minute budget.
+# Fast CI runs the Debug and Release shards below in separate jobs.
 tables-cs-leg:
 	$(MAKE) tables-cs-leg-debug
 	$(MAKE) tables-cs-leg-release
@@ -629,7 +629,7 @@ tables-cs-leg-release: build/tables-generated-cs/.stamp
 # (12 s corpus generation + 106 s `run the leg`), over the fleet's 120 s
 # per-commit kill (110 s budget). Program.cs partitions its suites into
 # wire, core, evolution and fixed; each shard target below runs one
-# partition in one configuration, and ci-full.yml runs all eight as
+# partition in one configuration, and ci-fast.yml runs all eight as
 # parallel matrix rows, so a row pays generation + build + one quarter
 # of the suites instead of the whole leg. Nothing is dropped: with no
 # shard argument the binary still runs every suite, `tables-cs-leg`
@@ -843,6 +843,18 @@ tables-cs-soak-negative-control: build/tables-generated-cs/.stamp
 tables-cs-versioning: tables-fixedform-corpus
 	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 20m -run 'TestFixedVersioning'
 	@echo 'tables C# versioning: §5 read both columns of every row against the C++ reference bytes'
+
+# THE SAME RUN IN TWO HALVES, for the two-minute nightly-fast rows: the one
+# probe assembly (^TestFixedVersioning$, about half the run) and every other
+# TestFixedVersioning* test. Together they run exactly what -run
+# 'TestFixedVersioning' runs; tables-cs-versioning stays the one-job form.
+.PHONY: tables-cs-versioning-assembly tables-cs-versioning-rows
+tables-cs-versioning-assembly: tables-fixedform-corpus
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 20m -run '^TestFixedVersioning$$'
+	@echo 'tables C# versioning (assembly): §5 read both columns of every row against the C++ reference bytes'
+tables-cs-versioning-rows: tables-fixedform-corpus
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 20m -run 'TestFixedVersioning' -skip '^TestFixedVersioning$$'
+	@echo 'tables C# versioning (rows): every other TestFixedVersioning test against the C++ reference bytes'
 
 .PHONY: tables-cs-fixed-t13
 tables-cs-fixed-t13:

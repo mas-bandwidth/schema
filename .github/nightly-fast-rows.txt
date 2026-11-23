@@ -62,3 +62,15 @@ replay-luau | luau | (^|/)schema[-_]luau[-_]nightly[-_]fuzz|^testdata/luau-night
 # the differentials and the fixed-form proof
 differential-squirrel | squirrel | (^|/)schema[-_]squirrel[-_]all[-_]port[-_]differential | make dist-squirrel schema-squirrel-all-port-differential-fast
 lobster-fixed-proof | lobster | (^|/)lobster[-_]fixed[-_]proof | make -j4 lobster-fixed-proof-fast
+
+# the C# table leg and its versioning checks (ci-full.yml)
+cs-leg-debug-wire | cs | ^internal/(tablewire|tablecook|tablepack|tabletext|tablenames|codegen/genheader)/|^testdata/(wire/tables|conformance/tables)/|^test/conformance/harness/framing_vectors_test\.go$|^\.github/dotnet-version$ | make tables-cs-leg-debug-wire
+cs-leg-debug-core | cs | ^internal/(tablewire|tablecook|tablepack|tabletext|tablenames|codegen/genheader)/|^testdata/(wire/tables|conformance/tables)/|^test/conformance/harness/framing_vectors_test\.go$|^\.github/dotnet-version$ | make tables-cs-leg-debug-core
+cs-leg-debug-evolution | cs | ^internal/(tablewire|tablecook|tablepack|tabletext|tablenames|codegen/genheader)/|^testdata/(wire/tables|conformance/tables)/|^test/conformance/harness/framing_vectors_test\.go$|^\.github/dotnet-version$ | make tables-cs-leg-debug-evolution
+cs-leg-debug-fixed | cs | ^internal/(tablewire|tablecook|tablepack|tabletext|tablenames|codegen/genheader)/|^testdata/(wire/tables|conformance/tables)/|^test/conformance/harness/framing_vectors_test\.go$|^\.github/dotnet-version$ | make tables-cs-leg-debug-fixed
+cs-leg-release-wire | cs | ^internal/(tablewire|tablecook|tablepack|tabletext|tablenames|codegen/genheader)/|^testdata/(wire/tables|conformance/tables)/|^test/conformance/harness/framing_vectors_test\.go$|^\.github/dotnet-version$ | make tables-cs-leg-release-wire
+cs-leg-release-core | cs | ^internal/(tablewire|tablecook|tablepack|tabletext|tablenames|codegen/genheader)/|^testdata/(wire/tables|conformance/tables)/|^test/conformance/harness/framing_vectors_test\.go$|^\.github/dotnet-version$ | make tables-cs-leg-release-core
+cs-leg-release-evolution | cs | ^internal/(tablewire|tablecook|tablepack|tabletext|tablenames|codegen/genheader)/|^testdata/(wire/tables|conformance/tables)/|^test/conformance/harness/framing_vectors_test\.go$|^\.github/dotnet-version$ | make tables-cs-leg-release-evolution
+cs-leg-release-fixed | cs | ^internal/(tablewire|tablecook|tablepack|tabletext|tablenames|codegen/genheader)/|^testdata/(wire/tables|conformance/tables)/|^test/conformance/harness/framing_vectors_test\.go$|^\.github/dotnet-version$ | make tables-cs-leg-release-fixed
+cs-versioning-assembly | cs | ^internal/(tablewire|tablecook|tablepack|tabletext|tablenames|codegen/genheader)/|^testdata/(wire/tables|conformance/tables)/|^test/conformance/harness/framing_vectors_test\.go$|^\.github/dotnet-version$ | make tables-cs-versioning-assembly
+cs-versioning-rows | cs | ^internal/(tablewire|tablecook|tablepack|tabletext|tablenames|codegen/genheader)/|^testdata/(wire/tables|conformance/tables)/|^test/conformance/harness/framing_vectors_test\.go$|^\.github/dotnet-version$ | make tables-cs-versioning-rows
