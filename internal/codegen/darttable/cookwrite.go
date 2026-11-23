@@ -64,19 +64,7 @@ func (g *cookGen) emitCookWriteFixed(st *ir.Struct) {
 	total := cookHeaderBytes + data + 16
 	g.need(g.homeBase+"Fixed.dart", st.Name)
 	g.pf("  // The fixed cook's extent is constant; every storage slot is written (§7.6).\n")
-	if fixedHoldsFloat(st, map[string]bool{}) {
-		// A COOKED FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): the measure
-		// refuses a NaN or an infinity with -1, as the cook itself does.
-		head := fmt.Sprintf("  static int cookMeasure(%s value) =>", st.Name)
-		expr := fmt.Sprintf("_cook%s(value, null, 64, Endian.little) ? %d : -1;", st.Name, total)
-		if len(head)+1+len(expr) <= 80 {
-			g.pf("%s %s\n\n", head, expr)
-		} else {
-			g.pf("%s\n      %s\n\n", head, expr)
-		}
-	} else {
-		g.pf("  static int cookMeasure(%s value) => %d;\n\n", st.Name, total)
-	}
+	g.pf("  static int cookMeasure(%s value) => %d;\n\n", st.Name, total)
 	g.pf("  // Capacity and value validation precede every output write (§7.6).\n")
 	g.pf("  static bool cook(\n    %s value,\n    Uint8List output,\n    Endian order, {\n    TableCookWriteReport? report,\n  }) {\n", st.Name)
 	g.pf("    if (report != null) report.reason = 'ok';\n")
@@ -241,8 +229,8 @@ func (g *cookGen) emitCookFixedScalar(f *ir.Field, expr, at string, width int64,
 	}
 	if f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64 {
 		// A COOKED FLOAT IS FINITE (docs/SPEC-TABLES.md §3.3): a NaN or an
-		// infinity refuses the cook, measure and write alike, before its slot
-		// is touched.
+		// infinity refuses the cook before its slot is touched. A fixed root's
+		// CookMeasure remains the structural constant (§7.6).
 		g.cookRefuseUnless(ind, expr+".isFinite", "false")
 	}
 	if e, ok := f.Type.Ref.(*ir.Enum); ok && !f.Deprecated {

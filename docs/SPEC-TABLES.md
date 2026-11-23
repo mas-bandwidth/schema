@@ -12801,7 +12801,10 @@ count lies below its array's `Min` or above its bound, or whose length is
 negative, is REFUSED (`Cook` writes nothing, `CookMeasure` answers `-1`); it is
 never clamped to the bound and written. A NaN or an infinity in a plain float
 is refused (row 7), as the save refuses it. A leg whose measure and write
-share one body refuses in both.
+share one body refuses in both. **These `CookMeasure` refusal answers are for a
+pointered root, whose reached graph determines its size. A fixed root is the
+exception stated below: its `CookMeasure` is the layout constant even for an
+invalid value, and its `Cook` alone runs the value checks before writing.**
 
 **A BUILD CAN WRITE A COOK, AND THE BYTES ARE THE TOOL'S.** `schema cook` is
 the reference and stays it: a generated writer is held to the tool's output
