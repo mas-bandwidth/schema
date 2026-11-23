@@ -38,7 +38,7 @@ func watch(dirs []string) (*watcher, error) {
 	for _, d := range dirs {
 		wd, err := syscall.InotifyAddWatch(fd, filepath.FromSlash(d), syscall.IN_OPEN)
 		if err != nil {
-			_ = syscall.Close(fd)
+			_ = syscall.Close(fd) // errdiscard: releasing inotify fd on watch setup failure
 			return nil, fmt.Errorf("inotify watch %s: %w", d, err)
 		}
 		w.dirs[int32(wd)] = d
@@ -96,7 +96,7 @@ func (w *watcher) parse(b []byte) {
 func (w *watcher) stop() (map[string]bool, error) {
 	close(w.quit)
 	<-w.done
-	_ = syscall.Close(w.fd)
+	_ = syscall.Close(w.fd) // errdiscard: releasing inotify fd after reader loop exited
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.err != nil {

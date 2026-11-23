@@ -156,7 +156,11 @@ func plant(kind string, inputs []string) (string, func(), error) {
 		if err := os.WriteFile(dst, b, 0o644); err != nil {
 			return "", nil, err
 		}
-		return dst, func() { _ = os.Remove(dst) }, nil
+		return dst, func() {
+			if err := os.Remove(dst); err != nil {
+				_, _ = fmt.Fprintf(os.Stderr, "inputaccount: canary cleanup %s: %v\n", dst, err)
+			}
+		}, nil
 	case "wrong":
 		victim := inputs[0]
 		for _, p := range inputs {
@@ -177,7 +181,11 @@ func plant(kind string, inputs []string) (string, func(), error) {
 		if err := os.WriteFile(victim, b, 0o644); err != nil {
 			return "", nil, err
 		}
-		return victim, func() { _ = os.WriteFile(victim, orig, 0o644) }, nil
+		return victim, func() {
+			if err := os.WriteFile(victim, orig, 0o644); err != nil {
+				_, _ = fmt.Fprintf(os.Stderr, "inputaccount: canary restore %s: %v\n", victim, err)
+			}
+		}, nil
 	}
 	return "", nil, fmt.Errorf("unknown canary %q (extra or wrong)", kind)
 }

@@ -76,7 +76,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 		if rows == nil {
 			rows = []inputfamilies.Row{}
 		}
-		j, _ := json.Marshal(rows)
+		j, err := json.Marshal(rows)
+		if err != nil {
+			_, _ = fmt.Fprintln(stderr, "inputfamilies:", err)
+			return 1
+		}
 		_, _ = fmt.Fprintf(stdout, "families=%s\n", strings.Join(s.Families, " "))
 		_, _ = fmt.Fprintf(stdout, "input_rows=%s\n", j)
 		_, _ = fmt.Fprintf(stdout, "input_packages=%s\n", strings.Join(s.Packages, " "))
