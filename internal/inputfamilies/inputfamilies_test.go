@@ -194,38 +194,54 @@ func TestAccountFilesForLegResolvesPerLegSchemasAndExclusions(t *testing.T) {
 	}
 }
 
-func TestAcceptedBoundsSelectOnlyTheirGoReaders(t *testing.T) {
+func TestWriterBoundsSelectTheirRegisteredReaders(t *testing.T) {
 	t.Parallel()
 	tree := repoTree(t)
 	for _, tc := range []struct {
 		family   string
 		neighbor string
+		legs     []string
 		inputs   []string
+		watched  []string
 	}{
 		{
 			family:   "packet-cfloat-endpoints",
 			neighbor: "packet-write-cfloat",
+			legs:     []string{"go", "js"},
 			inputs: []string{
 				"test/packet-cfloat-endpoints/PacketRatio.schema",
 				"test/packet-cfloat-endpoints/ratio-endpoints.txt",
 			},
+			watched: []string{"make/js-packet-cfloat-endpoints.mk"},
 		},
 		{
 			family:   "table-write-bounds",
 			neighbor: "conformance-corpus",
+			legs:     []string{"cpp", "c", "go", "rust", "js", "cs", "unity", "dart"},
 			inputs: []string{
-				"testdata/conformance/table-write-bounds/ACCEPTED-WRITE-BOUNDS.txt",
 				"testdata/conformance/table-write-bounds/TableWriteBounds.schema",
+				"testdata/conformance/table-write-bounds/WRITE-BOUNDS.txt",
 				"testdata/conformance/table-write-bounds/torture_var_wref.bin",
+				"testdata/conformance/table-write-bounds/wire/sfw_arm_arr_payload.bin",
+				"testdata/conformance/table-write-bounds/wire/sfw_arm_raw_payload.bin",
+				"testdata/conformance/table-write-bounds/wire/sfw_raw_payload.bin",
+				"testdata/conformance/table-write-bounds/sfw_arm_arr_payload.json",
+				"testdata/conformance/table-write-bounds/sfw_arm_raw_payload.json",
+				"testdata/conformance/table-write-bounds/sfw_raw_payload.json",
+				"testdata/conformance/table-write-bounds/torture_var_wref.json",
 			},
 		},
 	} {
 		t.Run(tc.family, func(t *testing.T) {
-			if got := AccountFilesForLeg(tree, tc.family, "go"); !slices.Equal(got, tc.inputs) {
-				t.Errorf("accounted files = %v, want %v", got, tc.inputs)
+			var want []Row
+			slices.Sort(tc.inputs)
+			for _, leg := range tc.legs {
+				if got := AccountFilesForLeg(tree, tc.family, leg); !slices.Equal(got, tc.inputs) {
+					t.Errorf("%s accounted files = %v, want %v", leg, got, tc.inputs)
+				}
+				want = append(want, Row{Leg: leg, Family: tc.family, Target: tc.family + "-" + leg})
 			}
-			for _, input := range tc.inputs {
-				want := []Row{{Leg: "go", Family: tc.family, Target: tc.family + "-go"}}
+			for _, input := range slices.Concat(tc.inputs, tc.watched) {
 				if got := Select(tree, []string{input}, false, true).Rows; !slices.Equal(got, want) {
 					t.Errorf("%s selected %v, want %v", input, got, want)
 				}

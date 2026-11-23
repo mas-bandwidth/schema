@@ -860,6 +860,12 @@ macro_rules! with_root {
                 let $save = fixed_save_from_variable!(tblfixedevo, EvoRoot, EvoRootRow, evo_root_cook_write, evo_root_fixed_save, evo_root_fixed_measure);
                 Some($body)
             }
+            ("writebounds", "TortureVarWref") => {
+                #[allow(unused_imports)]
+                use writebounds::{torture_var_wref_from_json_bytes as $from_json, torture_var_wref_load as $load,
+                    torture_var_wref_save_checked as $save, torture_var_wref_to_json_checked as $to_json};
+                Some($body)
+            }
             ("tblvarevo1", "EvoDoc") => {
                 #[allow(unused_imports)]
                 use tblvarevo1::{evo_doc_from_json_bytes as $from_json, evo_doc_load as $load, evo_doc_save_checked as $save, evo_doc_to_json_checked as $to_json};
@@ -2029,11 +2035,15 @@ fn surface_retain(manifest: &Manifest, out: &str, saves: bool) {
 }
 
 fn surface_json_read(manifest: &Manifest, out: &str) {
+    let json_dir = std::env::var("SCHEMA_CONFORMANCE_JSON_INPUT_DIR")
+        .ok()
+        .filter(|dir| !dir.is_empty())
+        .unwrap_or_else(|| "testdata/conformance/tables/json".into());
     for f in manifest.of_kind("instance") {
         if no_text(f) {
             continue;
         }
-        let path = format!("testdata/conformance/tables/json/{}.json", f[1]);
+        let path = format!("{json_dir}/{}.json", f[1]);
         if instance_is_fixed(f) {
             if let Some(value) = fixed_text_read(&f[2], &f[3], &slurp(&path)) {
                 let bytes = value.unwrap_or_else(|| fail(&format!("{}: fixed text read refused", f[1])));
@@ -3123,6 +3133,37 @@ fn wref_fixed_case(f: &[String], data: &[u8]) -> &'static str {
     }
 }
 
+// Apply the caller's assignment. The generated writer owns the bounds checks.
+fn wref_writebounds(v: &mut writebounds::TortureVarWref, path: &str, kind: &str, value: &str) -> Mutation {
+    use writebounds::WrefArm;
+    match (path, kind) {
+        ("opt_arr", "count") => {
+            let array = v.opt_arr.get_or_insert_with(Vec::new);
+            let first = array.first().copied().unwrap_or(0);
+            array.resize(wref_usize(value), first);
+            Mutation::Done
+        }
+        ("arm_bits.a_bits", "int") => {
+            let mut bits = 0u16;
+            let result = wref_int(value, &mut bits);
+            v.arm_bits = WrefArm::ABits(bits);
+            result
+        }
+        ("arm_range.a_range", "int") => {
+            let mut n = 0i32;
+            let result = wref_int(value, &mut n);
+            v.arm_range = WrefArm::ARange(n);
+            result
+        }
+        ("arm_str.a_str", "length") => {
+            v.arm_str = WrefArm::AStr("a".repeat(wref_usize(value)));
+            Mutation::Done
+        }
+        ("chan_lim[1]", "int") => wref_int(value, &mut v.chan_lim[1]),
+        _ => fail(&format!("write-refusal: TortureVarWref names no {kind} path {path}")),
+    }
+}
+
 fn surface_write_refusal(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("write-refusal") {
         if f.len() < 8 {
@@ -3157,6 +3198,22 @@ fn surface_write_refusal(manifest: &Manifest, out: &str) {
                 let Some(mut v) = tabledemo::loadout_config_load(&data, &mut report) else { fail(&format!("{case}: load refused {wire}")) };
                 match wref_loadout_config(&mut v, path, kind, value) {
                     Mutation::Done => wref_save(|| tabledemo::loadout_config_save_checked(&v)),
+                    Mutation::Unrepresentable => "unrepresentable\n",
+                }
+            }
+            ("writebounds", "TortureVarWref") => {
+                let mut report = writebounds::TableReport::default();
+                let Some(mut v) = writebounds::torture_var_wref_load(&data, &mut report) else { fail(&format!("{case}: load refused {wire}")) };
+                match wref_writebounds(&mut v, path, kind, value) {
+                    Mutation::Done => match wref_run(|| writebounds::torture_var_wref_save_checked(&v)) {
+                        Ok(saved) => {
+                            if f.get(8).map(String::as_str) == Some("save-wire") {
+                                spill(out, &format!("{case}.wire"), &saved);
+                            }
+                            "wrote\n"
+                        }
+                        Err(_) => "refused\n",
+                    },
                     Mutation::Unrepresentable => "unrepresentable\n",
                 }
             }

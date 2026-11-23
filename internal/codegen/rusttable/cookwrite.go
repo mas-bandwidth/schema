@@ -488,6 +488,11 @@ func (g *gen) emitCookElement(b *strings.Builder, f *ir.Field, x, at, ind string
 	case ir.TNamed:
 		switch ref := t.Ref.(type) {
 		case *ir.Enum:
+			for i, variant := range ref.Variants {
+				if !f.Deprecated && variantDeprecated(ref, i) {
+					fmt.Fprintf(b, "%sdebug_assert!(%s != %s::%s, %q);\n", ind, cookVal(x), ref.Name, rustVariant(variant), "invalid_value: "+ref.Name+"."+variant+" is deprecated")
+				}
+			}
 			// the slot stores the ORDINAL, not the wire's name hash (§7.2)
 			fmt.Fprintf(b, "%sw.put(%s, %s, %d);\n", ind, at, cookCast(x, ref.Name, "u64"), ir.StorageBitsFor(ref.Max)/8)
 		case *ir.Flags:

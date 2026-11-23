@@ -115,7 +115,11 @@ func TestRulingsR2R5R9PortRows(t *testing.T) {
 		{"R9 cs", cstable.Generate, []string{"(ulong)(v.MaxBytes < 0 ? 0 : v.MaxBytes)"}},
 		{"R9 unity", unitytable.Generate, []string{"(ulong)(v.MaxBytes < 0 ? 0 : v.MaxBytes)"}},
 		{"R9 lua", luatable.Generate, []string{"if maxBytes == nil then maxBytes = 64 * 1024 end"}},
-		{"R9 moo", mootable.Generate, []string{"maxBytes = DEFAULT_MAX_BYTES, maxEntries = 0", "if v.maxBytes ~= nil then v.maxBytes else DEFAULT_MAX_BYTES"}},
+		{"R9 moo", mootable.Generate, []string{
+			"maxBytes = DEFAULT_MAX_BYTES, maxEntries = DEFAULT_MAX_ENTRIES",
+			"if v.maxBytes ~= nil then v.maxBytes else DEFAULT_MAX_BYTES",
+			"if v.maxEntries ~= nil and v.maxEntries >= 0 then v.maxEntries else DEFAULT_MAX_ENTRIES",
+		}},
 		{"R9 lobster", lobstertable.Generate, []string{"if n > v.max_bytes:"}},
 		{"R9 squirrel", squirreltable.Generate, []string{"(\"MaxBytes\" in v) ? v.MaxBytes : 65536"}},
 	}

@@ -182,7 +182,7 @@ static const UnitFn units[] = {
     conformance_codecs_scalars,
     conformance_codecs_graphdemo, conformance_codecs_blobdemo, conformance_codecs_tblg1, conformance_codecs_tblp2, conformance_codecs_streamdemo, conformance_codecs_tblscalars2, conformance_codecs_tblfixedevo, conformance_codecs_widelist, conformance_codecs_featurewitnesses, conformance_codecs_tblvarevo1, conformance_codecs_tblvarevo2, conformance_codecs_tblvarevo3, conformance_codecs_cooktorture, conformance_codecs_cooktorturewide, conformance_codecs_shapes, conformance_codecs_tblprior,
     conformance_codecs_tblsurf,
-    conformance_codecs_tblvaluedefaults, conformance_codecs_packetunions
+    conformance_codecs_tblvaluedefaults, conformance_codecs_packetunions, conformance_codecs_writebounds
 };
 
 static const ConformanceCodec * find_codec( const char * unit, const char * root )
@@ -378,7 +378,9 @@ static int surface_framing( const char * out )
 
 static int surface_json_read( const char * out )
 {
+    const char * json_dir = getenv( "SCHEMA_CONFORMANCE_JSON_INPUT_DIR" );
     int i;
+    if ( json_dir == NULL || json_dir[0] == '\0' ) { json_dir = "testdata/conformance/tables/json"; }
     for ( i = 0; i < num_lines; i++ )
     {
         const Line * f = &lines[i];
@@ -392,7 +394,7 @@ static int surface_json_read( const char * out )
         codec = find_codec( f->field[2], f->field[3] );
         /* the C port carries no text form for a pointered unit (16.7), and says so per case */
         if ( codec == NULL || codec->from_json == NULL ) { if ( !spill_absent( out, f->field[1] ) ) { return 1; } continue; }
-        snprintf( path, sizeof( path ), "testdata/conformance/tables/json/%s.json", f->field[1] );
+        snprintf( path, sizeof( path ), "%s/%s.json", json_dir, f->field[1] );
         text = slurp( path, &bytes );
         if ( text == NULL ) { fprintf( stderr, "driver: cannot read %s\n", path ); return 1; }
         value = codec->storage();
@@ -866,8 +868,16 @@ static int surface_write_refusal( const char * out, const char * surface, int wr
            ceiling has no file form to load (FORMAT.md) */
         wire = strcmp( f->field[4], "-" ) == 0 ? NULL : slurp( f->field[4], &bytes );
         if ( wire == NULL && strcmp( f->field[4], "-" ) != 0 ) { fprintf( stderr, "driver: cannot read %s\n", f->field[4] ); free( announcement ); return 1; }
+        char output_path[4096];
+        const char * save_wire = NULL;
+        if ( f->count > 8 && strcmp( f->field[8], "save-wire" ) == 0 )
+        {
+            const int n = snprintf( output_path, sizeof( output_path ), "%s/%s.wire", out, f->field[1] );
+            if ( n < 0 || (size_t) n >= sizeof( output_path ) ) { free( wire ); free( announcement ); return 1; }
+            save_wire = output_path;
+        }
         verdict = conformance_write_refusal_case( writer, codec, unit, wire, (int64_t) bytes, announcement, (int64_t) announcement_bytes,
-                                                  f->field[3], f->field[5], f->field[6], f->field[7] );
+                                                  f->field[3], f->field[5], f->field[6], f->field[7], save_wire );
         free( wire );
         free( announcement );
         if ( verdict == CONFORMANCE_NO_SETTER )

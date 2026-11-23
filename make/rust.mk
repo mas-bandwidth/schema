@@ -332,7 +332,9 @@ generated/bench/rust/.stamp: bin/schema $(SCHEMAS_BENCH)
 # way it is a C++ namespace — its own package, its own protocol id, its own
 # table runtime. The crates carry a generated Cargo.toml each; nothing here is
 # checked in.
-RUST_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
+RUST_WRITE_BOUNDS_SCHEMA := testdata/conformance/table-write-bounds/TableWriteBounds.schema
+
+RUST_TABLE_UNITS := writebounds:$(RUST_WRITE_BOUNDS_SCHEMA) tabledemo:tables/examples graphdemo:tables/pointers \
 	blobdemo:tables/blobs mapdemo:tables/maps listdemo:tables/lists widelistdemo:tables/widelist \
 	messagedemo:tables/messages streamdemo:tables/stream \
 	scalars:tables/scalars tblscalars2:test/tables/Scalars2.schema tblfixedevo:test/tables/fixedevo tblvarevo1:test/tables/varevo/VarEvo1.schema tblvarevo2:test/tables/varevo/VarEvo2.schema tblvarevo3:test/tables/varevo/VarEvo3.schema cooktorture:test/tables/cooktorture/CookTorture.schema cooktorturewide:test/tables/cooktorturewide/CookTortureWide.schema packetunions:test/tables/packetunions/PacketUnions.schema blockdemo:tables/block blockhome:tables/blockhome \
@@ -361,7 +363,7 @@ RUST_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 # those bytes (docs/SPEC-TABLES.md §3.4, §15).
 RUST_TABLE_BENCH_SCHEMAS := bench/corpus/Bench.schema bench/corpus/FixedTable.schema
 
-build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_SCALARS) test/tables/Scalars2.schema $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/G1.schema test/tables/shapes/Shapes.schema test/tables/prior/PriorNarrow.schema $(RUST_TABLE_BENCH_SCHEMAS) test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/packetunions/PacketUnions.schema
+build/tables-generated-rust/.stamp: bin/schema $(RUST_WRITE_BOUNDS_SCHEMA) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_SCALARS) test/tables/Scalars2.schema $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/G1.schema test/tables/shapes/Shapes.schema test/tables/prior/PriorNarrow.schema $(RUST_TABLE_BENCH_SCHEMAS) test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/packetunions/PacketUnions.schema
 	@mkdir -p build/tables-generated-rust
 	@for unit in $(RUST_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
@@ -449,6 +451,17 @@ build/conformance-rust: build/tables-generated-rust/.stamp test/conformance/rust
 	@rm -f $@   # replace the inode: writing over a binary another process is
 	            # running corrupts it in place, and a long soak runs this one
 	cp test/conformance/rust/target/debug/conformance-rust $@
+
+# Shared variable writer boundary pairs. The driver above is a debug build,
+# so the generated writer's assertions decide the refusal rows.
+.PHONY: table-write-bounds-rust
+table-write-bounds-rust: build/conformance-harness build/conformance-rust
+	./build/conformance-harness run --only rust --surfaces write-refusal,wire,json-read,json-write --complete \
+		--manifest testdata/conformance/table-write-bounds/WRITE-BOUNDS.txt \
+		--json testdata/conformance/table-write-bounds \
+		--work build/conformance-write-bounds-rust
+
+test-rust: table-write-bounds-rust
 
 # THE PAIRED BENCH UNIT, for bench/tables/rust — the FIXED FORM's leg in
 # `bench/paired` (bench/paired/main.go, bench/tables/rust/src/main.rs).

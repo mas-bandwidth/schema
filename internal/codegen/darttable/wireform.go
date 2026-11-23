@@ -4286,6 +4286,7 @@ func (g *wireGen) emitWireWriteAssert(f *ir.Field, expr, ind string) {
 	}
 	if e := enumRef(f); e != nil {
 		g.pf("%sassert(%s >= 0 && %s <= %d);\n", ind, expr, expr, len(e.Variants))
+		emitDeprecatedVariantAssert(g.pf, e, expr, ind)
 		return
 	}
 	if fl := flagsRef(f); fl != nil {
@@ -4346,6 +4347,16 @@ func (g *wireGen) emitWireWriteAssert(f *ir.Field, expr, ind string) {
 	if f.HasFloatRange && (f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64) {
 		if _, _, ok := fixedFloatClampEnds(f); ok {
 			g.pf("%sassert(!%s.isFinite || (%s));\n", ind, expr, floatRangeCond(f, expr, "_rangeF32"))
+		}
+	}
+}
+
+// emitDeprecatedVariantAssert keeps the binary writers' debug check in step
+// with the enum declaration (SPEC-TABLES §2.15).
+func emitDeprecatedVariantAssert(pf func(string, ...any), e *ir.Enum, expr, ind string) {
+	for i, variant := range e.Variants {
+		if i < len(e.VariantDeprecated) && e.VariantDeprecated[i] {
+			pf("%sassert(%s != %d, 'deprecated enum variant %s.%s');\n", ind, expr, i+1, e.Name, variant)
 		}
 	}
 }

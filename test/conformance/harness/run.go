@@ -352,7 +352,11 @@ func deriveManifest(m *Manifest, path string) error {
 	for _, wr := range m.WriteRefusals {
 		// the verdict is the answer and stays withheld: a driver is handed the
 		// value and owes what its writer does with it (docs/SPEC.md §5.1)
-		fmt.Fprintf(&b, "%s %s %s %s %s %s %s %s\n", wr.Surface(), wr.Name, wr.Unit, wr.Root, wr.Wire, wr.Path, wr.Kind, wr.Value)
+		fmt.Fprintf(&b, "%s %s %s %s %s %s %s %s", wr.Surface(), wr.Name, wr.Unit, wr.Root, wr.Wire, wr.Path, wr.Kind, wr.Value)
+		if wr.SaveWire != "" {
+			fmt.Fprint(&b, " save-wire")
+		}
+		fmt.Fprintln(&b)
 	}
 	for _, a := range m.Announces {
 		// the verdict is withheld; a strict or lenient read is handed the
@@ -727,7 +731,18 @@ func expectations(m *Manifest, surface string, reports map[string]string, jsonDi
 			if wr.Surface() != surface {
 				continue
 			}
-			out = append(out, expectation{name: wr.Name, want: []byte(wr.Verdict + "\n")})
+			e := expectation{name: wr.Name, want: []byte(wr.Verdict + "\n")}
+			if wr.SaveWire != "" {
+				save, err := os.ReadFile(wr.SaveWire)
+				if err != nil {
+					return nil, fmt.Errorf("%s: read the expected saved wire: %w", wr.Name, err)
+				}
+				if len(save) == 0 {
+					return nil, fmt.Errorf("%s: the expected saved wire is empty", wr.Name)
+				}
+				e.save = save
+			}
+			out = append(out, e)
 		}
 	case "forgery", "cook-forgery":
 		// one surface per KIND: a backend can have a block reader and no cook
@@ -1012,7 +1027,11 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 							sr.aborted = true
 							continue
 						}
-						sr.code, sr.stderr, sr.err = runDriver(d, legDerived, sr.surface, sr.out)
+						var inputEnv []string
+						if sr.surface == "json-read" {
+							inputEnv = []string{"SCHEMA_CONFORMANCE_JSON_INPUT_DIR=" + jsonDir}
+						}
+						sr.code, sr.stderr, sr.err = runDriver(d, legDerived, sr.surface, sr.out, inputEnv...)
 						if failFast {
 							if sr.err != nil || (sr.code != 0 && sr.code != 2) {
 								failed.Store(true)
@@ -1860,18 +1879,19 @@ func listSurfaces(d driver, manifest string) (map[string]bool, []string, error) 
 	return out, retired, nil
 }
 
-func runDriver(d driver, manifest, surface, out string) (int, string, error) {
+func runDriver(d driver, manifest, surface, out string, env ...string) (int, string, error) {
 	argv := append(append([]string{}, d.argv...), manifest, surface, out)
 	cmd := exec.Command(argv[0], argv[1:]...)
+	cmd.Env = append(os.Environ(), env...)
 	if surface == "json-write-into" {
 		// THE COMMA-DECIMAL LOCALE the surface runs the text writer under
 		// (FL-14): named to the driver, and compiled for it where the host
 		// has none. A host that can do neither fails the surface loudly.
-		env, err := commaLocaleOnce()
+		localeEnv, err := commaLocaleOnce()
 		if err != nil {
 			return 0, "", err
 		}
-		cmd.Env = append(os.Environ(), env...)
+		cmd.Env = append(cmd.Env, localeEnv...)
 	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stderr = &stderr

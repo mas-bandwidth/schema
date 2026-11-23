@@ -584,6 +584,19 @@ func (g *gen) fixedScalarWriteCheck(f *ir.Field, expr string, width int64, ind s
 		if extent, ranged := fixedEnumExtent(f, width); ranged {
 			g.pf("%sdebug_assert!(%s <= %d, \"%s ordinal exceeds the enum's extent\");\n", ind, expr, extent, f.Name)
 		}
+		if en, ok := f.Type.Ref.(*ir.Enum); ok {
+			// A fixed Row stores wire ordinals. Reject deprecated variants
+			// through the same debug write contract as an out-of-set ordinal.
+			var ordinals []string
+			for i := range en.Variants {
+				if variantDeprecated(en, i) {
+					ordinals = append(ordinals, strconv.Itoa(i+1))
+				}
+			}
+			if len(ordinals) > 0 {
+				g.pf("%sdebug_assert!(!matches!(%s, %s), \"invalid_value: %s holds a deprecated variant\");\n", ind, expr, strings.Join(ordinals, " | "), f.Name)
+			}
+		}
 		if w, held := fixedFlagsWidth(f); held {
 			// A FLAGS MASK IS HELD TO W (docs/SPEC-TABLES.md §4, A TABLE LOAD
 			// HOLDS A MASK TO ITS WIDTH): its own reader refuses a bit at or

@@ -984,6 +984,9 @@ func TeamConfigBlockBytes(b *TeamConfigBlock) int64 {
 		return 0
 	}
 	used := int64(56)
+	if (int64(b.Projection.SpawnCount) < 0 || int64(b.Projection.SpawnCount) > 64) || (b.Projection.BannerLength < 0 || b.Projection.BannerLength > 16) {
+		return -1
+	}
 	return (used + 63) &^ int64(63)
 }
 

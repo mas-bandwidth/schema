@@ -146,6 +146,7 @@ import '../../../build/tables-generated-dart-scalars/varevo3/Tblvarevo3Fixed.dar
 import '../../../build/tables-generated-dart-scalars/varevo3/VarEvo3Fixed.dart' as varevo3_fixed;
 import '../../../build/tables-generated-dart-scalars/varevo3/VarEvo3Cook.dart' as varevo3cook;
 import '../../../build/tables-generated-dart/cooktorture/CookTortureWire.dart' as cooktorture;
+import '../../../build/tables-generated-dart/writebounds/WriteboundsWire.dart' as writebounds;
 import '../../../build/tables-generated-dart/cooktorture/CookTortureFixed.dart' as cooktorture_fixed;
 import '../../../build/tables-generated-dart/cooktorture/CookTortureCook.dart' as cooktorturecook;
 import '../../../build/tables-generated-dart-scalars/cooktorturewide/CookTortureWideWire.dart' as cooktorturewide;
@@ -2568,6 +2569,8 @@ void _f2w_vocab9_Wide19(vocab9demo_fixed.Wide19 f, vocab9demo.Wide19 w) {
 
 Uint8List? wireResave(String unit, String root, Uint8List wire) {
   switch ('$unit $root') {
+    case 'writebounds TortureVarWref':
+      return _wireResaveOne(wire, writebounds.TableWireReport.new, (rep) => (rep.refused, rep.refusal), writebounds.tortureVarWrefWireLoad, writebounds.tortureVarWrefWireSave);
     case 'featurewitnesses Root':
       return _wireResaveOne(wire, feature.TableWireReport.new, (rep) => (rep.refused, rep.refusal), feature.rootWireLoad, feature.rootWireSave);
     case 'featurewitnesses ArrayRoot':
@@ -3047,6 +3050,11 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
 
 Uint8List? jsonReadSave(String unit, String root, String text) {
   switch ('$unit $root') {
+    case 'writebounds TortureVarWref':
+      final rep = writebounds.TableTextReport();
+      final v = writebounds.tortureVarWrefFromJson(text, rep);
+      if (rep.refused) return null;
+      return writebounds.tortureVarWrefWireSave(v);
     case 'featurewitnesses Root':
       final rep = feature.TableTextReport();
       final v = feature.rootFromJson(text, rep);
@@ -3556,6 +3564,11 @@ Uint8List? jsonReadSave(String unit, String root, String text) {
 
 String? jsonWriteText(String unit, String root, Uint8List wire) {
   switch ('$unit $root') {
+    case 'writebounds TortureVarWref':
+      final rep = writebounds.TableWireReport();
+      final v = writebounds.tortureVarWrefWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return writebounds.tortureVarWrefToJson(v);
     case 'featurewitnesses Root':
       final rep = feature.TableWireReport();
       final v = feature.rootWireLoad(wire, rep);
@@ -5146,9 +5159,11 @@ int surfaceWire(String outDir) {
 }
 
 int surfaceJsonRead(String outDir) {
+  final suppliedDir = Platform.environment['SCHEMA_CONFORMANCE_JSON_INPUT_DIR'];
+  final jsonDir = suppliedDir == null || suppliedDir.isEmpty ? 'testdata/conformance/tables/json' : suppliedDir;
   for (final f in kind('instance')) {
     if (noTextRow(f)) continue;
-    final textPath = 'testdata/conformance/tables/json/${f[1]}.json';
+    final textPath = '$jsonDir/${f[1]}.json';
     if (!File(textPath).existsSync()) {
       spillAbsent(outDir, f[1]);
       continue;
@@ -7403,6 +7418,32 @@ void _mutateSimStateWire(scalardemo.SimState w, String path, String vkind, Strin
   }
 }
 
+void _mutateWriteBounds(writebounds.TortureVarWref value, String path, String kind, String text) {
+  final n = int.parse(text);
+  switch ('$path $kind') {
+    case 'opt_arr count':
+      final original = value.optArr;
+      final fill = original.isEmpty ? 0 : original.first;
+      value.hasOptArr = true;
+      value.optArr = List<int>.generate(n, (i) => i < original.length ? original[i] : fill);
+      break;
+    case 'arm_bits.a_bits int':
+      value.armBits.aBits = n;
+      break;
+    case 'arm_range.a_range int':
+      value.armRange.aRange = n;
+      break;
+    case 'arm_str.a_str length':
+      value.armStr.aStr = 'a' * n;
+      break;
+    case 'chan_lim[1] int':
+      value.chanLim[1] = n;
+      break;
+    default:
+      throw StateError('unsupported writebounds edit: $path $kind');
+  }
+}
+
 int surfaceWriteRefusal(String outDir, String surface) {
   for (final f in kind(surface)) {
     final name = f[1];
@@ -7535,6 +7576,18 @@ int surfaceWriteRefusal(String outDir, String surface) {
           stderr.writeln('$surface $name: unsupported $unit.$root');
           return 1;
       }
+    } else if (surface == 'write-refusal' && '$unit $root' == 'writebounds TortureVarWref') {
+      final rep = writebounds.TableWireReport();
+      final value = writebounds.tortureVarWrefWireLoad(wire, rep);
+      if (rep.refused) return 1;
+      _mutateWriteBounds(value, path, vkind, text);
+      answer = _catchWrite(() {
+        final saved = writebounds.tortureVarWrefWireSave(value);
+        if (f.length > 8 && f[8] == 'save-wire') {
+          File('$outDir/$name.wire').writeAsBytesSync(saved);
+        }
+        return 0;
+      });
     } else if ('$unit $root' == 'tabledemo RootConfig') {
       final fx = _fixedLoadOne(wire, tabledemo_fixed.RootConfig.new, tables_fixed.rootConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.rootConfigFixedLoad);
       if (fx == null) return 1;

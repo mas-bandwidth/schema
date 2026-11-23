@@ -133,6 +133,7 @@ build/tables-generated-dart/.stamp: bin/schema testdata/conformance/feature-witn
 	@mkdir -p build/tables-generated-dart
 	./bin/schema generate --lang dart --out build/tables-generated-dart/features testdata/conformance/feature-witnesses/full/Features.schema
 	./bin/schema generate --lang dart --out build/tables-generated-dart/examples tables/examples
+	./bin/schema generate --lang dart --out build/tables-generated-dart/writebounds testdata/conformance/table-write-bounds/TableWriteBounds.schema
 	# the POINTERED unit: form 1 for Scene, form 3 and cook beside it.
 	./bin/schema generate --lang dart --out build/tables-generated-dart/pointers tables/pointers
 	./bin/schema generate --lang dart --out build/tables-generated-dart/blobs tables/blobs
@@ -1879,7 +1880,17 @@ test-dart: conformance-dart-text-boundary
 
 # the leg's generated units move with every unit schema the conformance
 # manifest names, not only with the ones listed above
-build/tables-generated-dart/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)
+build/tables-generated-dart/.stamp: $(CONFORMANCE_UNIT_SCHEMAS) testdata/conformance/table-write-bounds/TableWriteBounds.schema
+
+.PHONY: table-write-bounds-dart
+table-write-bounds-dart: build/conformance-harness build/conformance-dart
+	DART="$(DART)" ./build/conformance-harness run --only dart --surfaces write-refusal,wire,json-read,json-write --complete \
+		--manifest testdata/conformance/table-write-bounds/WRITE-BOUNDS.txt \
+		--json testdata/conformance/table-write-bounds \
+		--work build/conformance-write-bounds-dart
+
+test-dart: table-write-bounds-dart
+
 
 # A FORGED ORDINAL REFUSES (STRICT 100; docs/SPEC-TABLES.md §4,
 # docs/plans/strict-only.md). TestFixedVersioningForgedOrdinalBothPlans reads an
