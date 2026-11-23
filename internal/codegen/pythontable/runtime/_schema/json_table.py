@@ -538,7 +538,7 @@ def _skip(value: Any, graph: dict[int, tuple[Any, bool]] | None) -> None:
                     defined = number
             else:
                 _skip(item, graph)
-        if defined is not None:
+        if defined is not None and graph is not None:
             graph[defined] = (None, False)
 
 
