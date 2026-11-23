@@ -16855,6 +16855,16 @@ depth 128 is the deepest read, so 129 nested containers (the root and 128
 inside it) are read and the 130th nested container refuses `malformed`. The write's cap at the same number counts
 table and type values only (W2), so the two caps share a number and not a unit.
 
+**LEAF-CONTAINER BOUNDARY VECTORS.** Let `Node` be a variable table with
+`next *Node`, `marks Mark` for a one-variant `flags Mark`, and
+`words [..1]string(2)`. Nest a terminal `{"marks":["Hot"]}` or
+`{"words":["x"]}` under 127 `{"next":` objects and their closing braces.
+The terminal flags array or text list is at depth 128 and READS. Nest it under
+128 such objects and that leaf container is at depth 129 and REFUSES. These
+are portable construction recipes: they require no implementation-specific
+root or generated identifier, and the declared `json_max_depth` below remains
+the number both verdicts straddle.
+
 **A SCHEMA-NAME STRING IS CAPPED AT 255 BYTES, wherever the read meets one** —
 an object key that names a field, an enum variant name, a flags element, a
 union arm key and an `&node` name, in every object and inside a skipped value:
