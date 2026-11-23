@@ -29,6 +29,7 @@ import '../../../build/tables-generated-dart/maps/MapdemoWire.dart' as mapdemo;
 import '../../../build/tables-generated-dart/messages/MessagedemoWire.dart' as messagedemo;
 import '../../../build/tables-generated-dart/backend/BackenddemoWire.dart' as backenddemo;
 import '../../../build/tables-generated-dart/stream/StreamdemoWire.dart' as streamdemo;
+import '../../../build/tables-generated-dart-framing/countedmin/TabledemoWire.dart' as countedminvariable;
 import '../../../build/tables-generated-dart/examples/TabledemoWire.dart' as tabledemo;
 import '../../../build/tables-generated-dart/vocab/VocabdemoWire.dart' as vocabdemo;
 import '../../../build/tables-generated-dart/vocab9/Vocab9demoWire.dart' as vocab9demo;
@@ -2582,11 +2583,12 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
       return _fixedResave(wire, tabledemo_fixed.PackConfig.new, pack_fixed.packConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, pack_fixed.packConfigFixedLoad, pack_fixed.packConfigFixedMeasure, pack_fixed.packConfigFixedSave);
     case 'tabledemo CountedMin':
       if (wire.isNotEmpty && wire[0] == 1) {
-        final rep = tabledemo.TableWireReport();
-        final w = tabledemo.countedMinWireLoad(wire, rep);
+        final rep = countedminvariable.TableWireReport();
+        final w = countedminvariable.countedMinWireLoad(wire, rep);
         if (rep.refused) return null;
         final f = tabledemo_fixed.CountedMin();
-        _w2f_examples_CountedMin(w, f);
+        f.fewCount = w.few.length;
+        f.few.setRange(0, w.few.length, w.few);
         return _fixedSaveOne(f, tables_fixed.countedMinFixedMeasure, tables_fixed.countedMinFixedSave);
       }
       return _fixedResave(wire, tabledemo_fixed.CountedMin.new, tables_fixed.countedMinFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.countedMinFixedLoad, tables_fixed.countedMinFixedMeasure, tables_fixed.countedMinFixedSave);
@@ -3579,10 +3581,10 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
       return tabledemo.packConfigToJson(w);
     case 'tabledemo CountedMin':
       if (wire.isNotEmpty && wire[0] == 1) {
-        final rep = tabledemo.TableWireReport();
-        final w = tabledemo.countedMinWireLoad(wire, rep);
+        final rep = countedminvariable.TableWireReport();
+        final w = countedminvariable.countedMinWireLoad(wire, rep);
         if (rep.refused) return null;
-        return tabledemo.countedMinToJson(w);
+        return countedminvariable.countedMinToJson(w);
       }
       final f = _fixedLoadOne(wire, tabledemo_fixed.CountedMin.new, tables_fixed.countedMinFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.countedMinFixedLoad);
       if (f == null) return null;
@@ -4044,6 +4046,11 @@ String? loadReport(String unit, String root, Uint8List wire, {bool framing = fal
     case 'tabledemo PackConfig':
       return _fixedReportLine(wire, tabledemo_fixed.PackConfig.new, pack_fixed.packConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), pack_fixed.packConfigFixedLoad);
     case 'tabledemo CountedMin':
+      if (framing && wire.isNotEmpty && wire[0] == 1) {
+        final rep = countedminvariable.TableWireReport();
+        countedminvariable.countedMinWireLoad(wire, rep);
+        return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
+      }
       return _fixedReportLine(wire, tabledemo_fixed.CountedMin.new, tables_fixed.countedMinFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), tables_fixed.countedMinFixedLoad);
     case 'tabledemo FloatBound':
       return _fixedReportLine(wire, tabledemo_fixed.FloatBound.new, tables_fixed.floatBoundFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), tables_fixed.floatBoundFixedLoad);
