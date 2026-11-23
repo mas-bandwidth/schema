@@ -41,7 +41,7 @@ conformance:
   ([FIXED-FORM-ALGORITHM §4.1](FIXED-FORM-ALGORITHM.md#41-the-plan)).
   Run on a target with `make verify-tablegen-<lang>`. To select this pair
   alone, pass `--only pin:bytes_lineage:` to `build/verify-tablegen-bin`.
-- **The compressed-float endpoint pins**: [`ratio-endpoints.txt`](../test/packet-write-cfloat/ratio-endpoints.txt)
+- **The compressed-float endpoint pins**: [`ratio-endpoints.txt`](../test/packet-cfloat-endpoints/ratio-endpoints.txt)
   gives the packet bytes for both [accepted endpoints](#compressed-float-packet-endpoints).
 - **The packet end pins**: [packet-end](../testdata/wire/packet-end/README.md)
   includes the [logical bit count case](#packet-end-and-the-logical-bit-count).
@@ -398,9 +398,9 @@ name, lawfully.
 
 ### Compressed float packet endpoints
 
-[`RatioEndpoint`](../test/packet-write-cfloat/PacketRatio.schema) declares a closed
+[`RatioEndpoint`](../test/packet-cfloat-endpoints/PacketRatio.schema) declares a closed
 `[0, 1]` range at resolution `0.01` ([packet wire §2.5](PACKET-WIRE-ALGORITHM.md#25-compressed-float-write)).
-The [endpoint cases](../test/packet-write-cfloat/ratio-endpoints.txt) pin the seven-bit
+The [endpoint cases](../test/packet-cfloat-endpoints/ratio-endpoints.txt) pin the seven-bit
 step indices 0 and 100 and their zero-padded packet bytes `00` and `64`.
 `make packet-cfloat-endpoints-go` writes each endpoint through the generated Go
 packet writer, checks the exact byte, and reads back the original value.
@@ -408,7 +408,7 @@ packet writer, checks the exact byte, and reads back the original value.
 
 ### Accepted variable-table write bounds
 
-[The focused manifest](../testdata/conformance/tables/ACCEPTED-WRITE-BOUNDS.txt)
+[The focused manifest](../testdata/conformance/table-write-bounds/ACCEPTED-WRITE-BOUNDS.txt)
 loads the lawful `TortureVarWref` seed, changes one field or arm per case, and
 requires its variable-form measure and save to complete.
 

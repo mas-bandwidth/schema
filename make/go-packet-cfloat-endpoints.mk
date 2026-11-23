@@ -1,6 +1,6 @@
 # Closed compressed-float bounds, SPEC §5.1 row 10.
-PACKET_CFLOAT_ENDPOINT_DIR := build/packet-write-cfloat/go
-PACKET_CFLOAT_FIXTURE := test/packet-write-cfloat
+PACKET_CFLOAT_ENDPOINT_DIR := build/packet-cfloat-endpoints/go
+PACKET_CFLOAT_FIXTURE := test/packet-cfloat-endpoints
 
 .PHONY: packet-cfloat-endpoints-go
 packet-cfloat-endpoints-go: bin/schema tables-go-sibling-runtime
