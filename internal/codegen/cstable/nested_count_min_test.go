@@ -47,8 +47,8 @@ func TestCSharpFixedFormHoldsACountMinimumInsideEachCountedChild(t *testing.T) {
 		{"public static void TightFixedClampBody(", "if (value.NestCount < 1) { clamped++; }"},
 		{"public static void LooseFixedWriteCheckBody(", "ChildFixedWriteCheckBody(value.Nest[i], ref clamped);"},
 		{"public static void TightFixedWriteCheckBody(", "if (value.NestCount < 1) { clamped++; }"},
-		{"public static long LooseFixedLoad(", "if (!LooseFixedClamp(values[k], report)) { refused = true; }"},
-		{"public static long TightFixedLoad(", "if (!TightFixedClamp(values[k], report)) { refused = true; }"},
+		{"static long LooseFixedLoadWalk(", "if (!LooseFixedClamp(values[k], report)) { refused = true; }"},
+		{"static long TightFixedLoadWalk(", "if (!TightFixedClamp(values[k], report)) { refused = true; }"},
 	} {
 		body := csFn(src, c.fn)
 		if body == "" {

@@ -2938,7 +2938,10 @@ public final class BenchMixedVariable {
                     if (in.peek() == '[') {
                         v.entities.clear();
                     }
-                    if (in.peek() == '[') {
+                    if (depth + 1 > TableJson.In.MAX_JSON_DEPTH) {
+                        in.bad = true;
+                        in.skipValue();
+                    } else if (in.peek() == '[') {
                         in.p++;
                         int idx = 0;
                         int ab = 8;
@@ -3002,7 +3005,10 @@ public final class BenchMixedVariable {
                     if (repeated && in.peek() != 'n') {
                         v.stats = new java.util.ArrayList<>();
                     }
-                    if (in.peek() == '[') {
+                    if (depth + 1 > TableJson.In.MAX_JSON_DEPTH) {
+                        in.bad = true;
+                        in.skipValue();
+                    } else if (in.peek() == '[') {
                         in.p++;
                         int idx = 0;
                         int ab = 80;
@@ -3075,7 +3081,10 @@ public final class BenchMixedVariable {
                     if (repeated && in.peek() != 'n') {
                         v.loadout = new java.util.ArrayList<>();
                     }
-                    if (in.peek() == '[') {
+                    if (depth + 1 > TableJson.In.MAX_JSON_DEPTH) {
+                        in.bad = true;
+                        in.skipValue();
+                    } else if (in.peek() == '[') {
                         in.p++;
                         int idx = 0;
                         int ab = 4;

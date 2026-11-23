@@ -2055,6 +2055,7 @@ namespace Benchtable
                 public TableReport Report;
                 public bool Bad; // the text is not JSON: the whole read is discarded
                 internal string TextField;
+                internal byte[] KeyBuf;
             }
 
             static void Space(ReadOnlySpan<byte> text, ref In input)
@@ -2577,7 +2578,7 @@ namespace Benchtable
                 if (depth > MaxDepth) { input.Bad = true; return false; }
                 input.Pos++; // the opening bracket
                 bool first = true;
-                Span<byte> key = stackalloc byte[MaxName];
+                Span<byte> key = input.KeyBuf;
                 // a skipped object's keys are held to the layer's rule too: a repeated
                 // key refuses in every object of the text (docs/SPEC-TABLES.md §16.2,
                 // §16.12), the objects this walk skips included
@@ -2728,7 +2729,7 @@ namespace Benchtable
                     // a union is an object with ONE key, the arm's name; {} is None,
                     // and two keys is a text this walk will not guess at
                     object union = f.GetChild(owner, index);
-                    if (Peek(text, ref input) != '{') { input.Bad = true; return false; }
+                    if (Peek(text, ref input) != '{' || depth + 1 > MaxDepth) { input.Bad = true; return false; } // THE READ CAP COUNTS EVERY CONTAINER, placed or skipped (docs/SPEC-TABLES.md 16.2)
                     input.Pos++;
                     f.Arms.SetTag(union, 0);
                     if (Peek(text, ref input) == '}') { input.Pos++; return true; }
@@ -2811,7 +2812,7 @@ namespace Benchtable
                 }
                 if (IsFlags(f))
                 {
-                    if (Peek(text, ref input) != '[') { input.Bad = true; return false; }
+                    if (Peek(text, ref input) != '[' || depth + 1 > MaxDepth) { input.Bad = true; return false; } // THE READ CAP COUNTS EVERY CONTAINER, placed or skipped (docs/SPEC-TABLES.md 16.2)
                     input.Pos++;
                     ulong bits = 0;
                     Span<byte> name = stackalloc byte[MaxName];
@@ -3273,6 +3274,8 @@ namespace Benchtable
             // counted, a repeated key (known or unknown) is damage. The instance is already
             // at its declared defaults when this is entered, so a key the text never
             // mentions keeps the default an absent field takes on the wire (§4).
+            [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+
             static bool ReadTable(ReadOnlySpan<byte> text, ref In input, object value, TableTypeInfo info, int depth, bool opened = false)
             {
                 if (depth > MaxDepth) { input.Bad = true; return false; }
@@ -3385,6 +3388,7 @@ namespace Benchtable
                 input.Report = report != null ? report : new TableReport();
                 input.Report.Zero();
                 input.Bad = false;
+                input.KeyBuf = new byte[MaxName];
                 if (info.Variable) { input.Labels = new System.Collections.Generic.Dictionary<ulong, Label>(); }
                 info.Reset(value);
                 // C++ refuses a null pointer and a negative length here before it walks.

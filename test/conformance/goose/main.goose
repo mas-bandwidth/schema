@@ -592,7 +592,15 @@ fn wref_loaded_f32_bits(s: const u8[:]) -> u64 {
     if s == "nan" { return 0x7fc00000; }
     if s == "inf" { return 0x7f800000; }
     if s == "-inf" { return 0xff800000; }
-    let x, _fin = schema_rt::json_token_f32(s);
+    let x, fin = schema_rt::json_token_f32(s);
+    if !fin {
+        let d, dfin = schema_rt::json_token_f64(s);
+        if !dfin {
+            if s.len > 0 && s[0] == '-' { return 0xff800000; }
+            return 0x7f800000;
+        }
+        return schema_rt::fixed_f32_bits(d as f32) as u64;
+    }
     return schema_rt::fixed_f32_bits(x) as u64;
 }
 
@@ -600,7 +608,11 @@ fn wref_loaded_f64_bits(s: const u8[:]) -> u64 {
     if s == "nan" { return 0x7ff8000000000000; }
     if s == "inf" { return 0x7ff0000000000000; }
     if s == "-inf" { return 0xfff0000000000000; }
-    let x, _fin = schema_rt::json_token_f64(s);
+    let x, fin = schema_rt::json_token_f64(s);
+    if !fin {
+        if s.len > 0 && s[0] == '-' { return 0xfff0000000000000; }
+        return 0x7ff0000000000000;
+    }
     return schema_rt::fixed_f64_bits(x);
 }
 

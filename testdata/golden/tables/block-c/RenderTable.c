@@ -1191,6 +1191,7 @@ typedef struct blockdemo_table_json_in_t
     blockdemo_table_report_t * report;
     int bad; /* the text is not JSON: the walk stops and keeps what it placed */
     void * graph;
+    char key_buf[BLOCKDEMO_K_TABLE_JSON_MAX_KEY];
 } blockdemo_table_json_in_t;
 
 /* A COMMENT IS TEXT (docs/SPEC-TABLES.md §16.2, §16.3): the bytes inside a line
@@ -1846,23 +1847,21 @@ typedef struct blockdemo_table_json_key_t
 typedef struct blockdemo_table_json_keys_t
 {
     blockdemo_table_json_key_t * slots;
-    int64_t capacity; /* a power of two */
+    int64_t capacity; /* 0 until the first unknown key, then a power of two */
     int64_t count;
-    blockdemo_table_json_key_t local[BLOCKDEMO_K_TABLE_JSON_KEYS_LOCAL];
 } blockdemo_table_json_keys_t;
 
 static SCHEMA_UNUSED void blockdemo_table_json_keys_init( blockdemo_table_json_keys_t * keys )
 {
-    memset( keys->local, 0, sizeof( keys->local ) );
-    keys->slots = keys->local;
-    keys->capacity = BLOCKDEMO_K_TABLE_JSON_KEYS_LOCAL;
+    keys->slots = NULL;
+    keys->capacity = 0;
     keys->count = 0;
 }
 
 static SCHEMA_UNUSED void blockdemo_table_json_keys_free( blockdemo_table_json_keys_t * keys )
 {
-    if ( keys->slots != keys->local ) { schema_release( keys->slots ); }
-    keys->slots = keys->local;
+    if ( keys->slots != NULL ) { schema_release( keys->slots ); }
+    keys->slots = NULL;
 }
 
 /* the key a slot holds, decoded again from the text, against this one */
@@ -1891,7 +1890,7 @@ static SCHEMA_UNUSED int blockdemo_table_json_keys_add( blockdemo_table_json_in_
     for ( k = 0; k < length; k++ ) { hash = ( hash ^ (uint64_t) (unsigned char) key[k] ) * 1099511628211ULL; }
     if ( ( keys->count + 1 ) * 2 > keys->capacity )
     {
-        const int64_t capacity = keys->capacity * 2;
+        const int64_t capacity = keys->capacity == 0 ? BLOCKDEMO_K_TABLE_JSON_KEYS_LOCAL : keys->capacity * 2;
         blockdemo_table_json_key_t * grown;
         int64_t j;
         if ( (uint64_t) capacity > SIZE_MAX / sizeof( blockdemo_table_json_key_t ) ) { in->bad = 1; return -1; }
@@ -1942,7 +1941,7 @@ static SCHEMA_UNUSED int blockdemo_table_json_skip_members( blockdemo_table_json
         if ( c == 0 ) { in->bad = 1; return 0; }
         if ( close == '}' )
         {
-            char key[BLOCKDEMO_K_TABLE_JSON_MAX_KEY];
+            char * key = in->key_buf;
             int32_t length = 0;
             const int64_t quote = in->pos;
             int added;
@@ -2516,12 +2515,14 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_JSON_NOINLINE int blockdemo_table_json_rea
         /* a union is an object with ONE key, the arm's name; {} is None, and
            two keys is a text this walk will not guess at */
         const blockdemo_table_union_info_t * arms = f->arms;
-        char key[BLOCKDEMO_K_TABLE_JSON_MAX_KEY];
+        char * key = in->key_buf;
         int32_t key_length = 0;
         int64_t tag = 0;
         int64_t t;
         char c;
         if ( blockdemo_table_json_peek( in ) != '{' ) { in->bad = 1; return 0; }
+        /* THE READ CAP COUNTS EVERY CONTAINER, placed or skipped (§16.2): the union object is one */
+        if ( depth + 1 > BLOCKDEMO_K_TABLE_JSON_MAX_DEPTH ) { in->bad = 1; return 0; }
         in->pos++;
         blockdemo_table_json_set_raw( (uint8_t *) storage + arms->tag_offset, arms->tag_size, 0 );
         if ( blockdemo_table_json_peek( in ) == '}' ) { in->pos++; return 1; }
@@ -2865,7 +2866,7 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_JSON_NOINLINE int blockdemo_table_json_rea
         for ( ;; )
         {
             char c = blockdemo_table_json_peek( in );
-            char key[BLOCKDEMO_K_TABLE_JSON_MAX_KEY];
+            char * key = in->key_buf;
             int32_t key_length = 0;
             int64_t slot = -1;
             int64_t v;
@@ -2905,7 +2906,7 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_JSON_NOINLINE int blockdemo_table_json_rea
                 }
                 if ( ki == unplaced_count && unplaced_count < 64 ) { unplaced[unplaced_count++] = hash; }
                 in->report->unknown++;
-                if ( !blockdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
+                if ( !blockdemo_table_json_skip_value( in, depth + 2 ) ) { return 0; }
             }
             else if ( !blockdemo_table_json_element_shape_accepts( f, blockdemo_table_json_value_shape( in ) ) && !(f->kind == 17 && blockdemo_table_json_value_shape(in) == 'z') )
             {
@@ -2937,6 +2938,9 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_JSON_NOINLINE int blockdemo_table_json_rea
            this occurrence's elements are placed — the re-establishment a nested
            table and a union arm already get. */
         int32_t placed = 0;
+        /* the array is a container one level below the table holding it, counted toward
+           the cap whether or not it holds an element (FL-12) */
+        if ( depth + 1 > BLOCKDEMO_K_TABLE_JSON_MAX_DEPTH ) { in->bad = 1; return 0; }
         if ( blockdemo_table_json_peek( in ) != '[' ) { in->bad = 1; return 0; }
         in->pos++;
         int64_t spent = 0;
@@ -3041,12 +3045,12 @@ static SCHEMA_UNUSED int blockdemo_table_json_read_table_members( blockdemo_tabl
     for ( ;; )
     {
         char c = 0;
-        char key[BLOCKDEMO_K_TABLE_JSON_MAX_KEY];
+        char * key = in->key_buf;
         int32_t key_length = 0;
         int64_t quote = first_quote;
         int32_t index = -1;
         int32_t i;
-        if ( first_key != NULL ) { memcpy(key,first_key,(size_t)first_length); key[first_length] = 0; key_length = first_length; first_key = NULL; }
+        if ( first_key != NULL ) { if ( first_key != key ) { memcpy(key,first_key,(size_t)first_length); } key[first_length] = 0; key_length = first_length; first_key = NULL; }
         else
         {
             c = blockdemo_table_json_peek(in);

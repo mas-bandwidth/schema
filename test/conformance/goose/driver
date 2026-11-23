@@ -294,14 +294,26 @@ fn wref_f32(s: const u8[:]) -> f32 {
     if s == "nan" { return wref_f32_bits(0x7fc00000); }
     if s == "inf" { return wref_f32_bits(0x7f800000); }
     if s == "-inf" { return wref_f32_bits(0xff800000); }
-    let x, _fin = schema_rt::json_token_f32(s);
+    let x, fin = schema_rt::json_token_f32(s);
+    if !fin {
+        let d, dfin = schema_rt::json_token_f64(s);
+        if !dfin {
+            if s.len > 0 && s[0] == '-' { return wref_f32_bits(0xff800000); }
+            return wref_f32_bits(0x7f800000);
+        }
+        return d as f32;
+    }
     return x;
 }
 fn wref_f64(s: const u8[:]) -> f64 {
     if s == "nan" { return wref_f64_bits(0x7ff8000000000000); }
     if s == "inf" { return wref_f64_bits(0x7ff0000000000000); }
     if s == "-inf" { return wref_f64_bits(0xfff0000000000000); }
-    let x, _fin = schema_rt::json_token_f64(s);
+    let x, fin = schema_rt::json_token_f64(s);
+    if !fin {
+        if s.len > 0 && s[0] == '-' { return wref_f64_bits(0xfff0000000000000); }
+        return wref_f64_bits(0x7ff0000000000000);
+    }
     return x;
 }
 struct WrefSeg { seg: const u8[:], idx: i64, rest: const u8[:] }

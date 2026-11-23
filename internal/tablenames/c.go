@@ -489,7 +489,6 @@ func init() {
 		Name{Name: "table_json_read", What: "the text form's walk"},
 		Name{Name: "table_json_read_field", What: "the text form's walk"},
 		Name{Name: "table_json_read_scalar", What: "the text form's walk"},
-		Name{Name: "table_json_read_scalar_leaf", What: "the text form's walk"},
 		Name{Name: "table_json_read_table", What: "the text form's walk"},
 		Name{Name: "table_json_scan_number", What: "the text form's walk"},
 		Name{Name: "table_json_scan_string", What: "the text form's walk"},
