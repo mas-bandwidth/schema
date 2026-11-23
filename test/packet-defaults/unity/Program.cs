@@ -4,6 +4,10 @@ using System.Runtime.InteropServices;
 using Serialize;
 using D = Packetdefaults;
 using P = Packetplain;
+// The constant-default pins. Both schemas declare package arithmetic, so the
+// make recipe renames each one's namespace after its pin before compiling.
+using HA = ArithmeticHexadecimalAddition;
+using US = ArithmeticUnsignedSubtraction;
 using static Packetdefaults.Buffers;
 using static Packetplain.Buffers;
 
@@ -56,9 +60,12 @@ static class Program
         Check(stream.BitsProcessed == (bits + 7) / 8 * 8, "read consumed bits");
         Check(Equal(initial, want), "read values and backing storage");
     }
+    // Every pin Golden reads is recorded; Main fails on a .bin never read.
+    static readonly System.Collections.Generic.HashSet<string> PinsRead = new System.Collections.Generic.HashSet<string>();
     static void Golden<T>(string dir, string name, T value, T initial, T want,
         Encode<T> encode, Decode<T> decode) where T : unmanaged
     {
+        PinsRead.Add(name);
         byte[] bytes = File.ReadAllBytes(Path.Combine(dir, name + ".bin"));
         long bits = long.Parse(File.ReadAllText(Path.Combine(dir, name + ".bits")), System.Globalization.CultureInfo.InvariantCulture);
         var wire = Write(value, encode);
@@ -155,6 +162,16 @@ static class Program
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < 1000; i++) D.Schema.InitSample(ref reused);
         Check(GC.GetAllocatedBytesForCurrentThread() == before, "Init allocates nothing");
-        Console.WriteLine("packet defaults Unity C#: constructors, eight C++ goldens and reused storage OK");
+        // A fresh Value (defaults from constants) writes the pinned bytes and bits;
+        // the pin reads back over zeroed storage.
+        Golden(dir, "hexadecimal-addition", HA.Schema.NewValue(), default(HA.Value), HA.Schema.NewValue(), HA.Schema.WriteValue, HA.Schema.ReadValue);
+        Golden(dir, "unsigned-subtraction", US.Schema.NewValue(), default(US.Value), US.Schema.NewValue(), US.Schema.WriteValue, US.Schema.ReadValue);
+        int pins = 0;
+        foreach (string file in Directory.GetFiles(dir, "*.bin"))
+        {
+            pins++; Check(PinsRead.Contains(Path.GetFileNameWithoutExtension(file)), "pin " + file + " was never read");
+        }
+        Check(pins == 10 && PinsRead.Count == pins, "ten pins read, read " + PinsRead.Count + " of " + pins);
+        Console.WriteLine("packet defaults Unity C#: constructors, ten C++ goldens and reused storage OK");
     }
 }

@@ -10,6 +10,7 @@ import (
 // tree resolves, and every "PAGE.md §N.M" citation resolves to a numbered
 // heading. A red here names the file, line, and reference.
 func TestPagesResolve(t *testing.T) {
+	t.Parallel()
 	root, err := FindRoot(".")
 	if err != nil {
 		t.Fatal(err)

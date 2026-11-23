@@ -664,12 +664,16 @@ REGISTRY_NA_WHY.toolchain.rust    := no pin yet: cargo is the host's rustup defa
 
 # Packet defaults share the C++ oracle. Both build modes consume its byte and
 # bit pins, and the control removes only constructor byte copies.
-build/packet-defaults/rust/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema make/rust.mk
+build/packet-defaults/rust/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema $(wildcard test/conformance/packet/testdata/constant-defaults/*/Defaults.schema) make/rust.mk
 	@mkdir -p build/packet-defaults/rust
 	@for unit in defaults plain; do \
 		if [ "$$unit" = defaults ]; then source=Defaults; else source=Plain; fi; \
 		./bin/schema generate --lang rust --out build/packet-defaults/rust/$$unit/src test/packet-defaults/$$source.schema || exit 1; \
 		printf '[package]\nname = "packet%s"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../../$(SERIALIZE_RS)" }\n' $$unit > build/packet-defaults/rust/$$unit/Cargo.toml; \
+	done
+	@for pin in hexadecimal-addition unsigned-subtraction; do \
+		./bin/schema generate --lang rust --out build/packet-defaults/rust/constant-$$pin/src test/conformance/packet/testdata/constant-defaults/$$pin/Defaults.schema || exit 1; \
+		printf '[package]\nname = "packetconstant-%s"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../../$(SERIALIZE_RS)" }\n' $$pin > build/packet-defaults/rust/constant-$$pin/Cargo.toml; \
 	done
 	@touch $@
 
@@ -691,6 +695,7 @@ packet-defaults-rust-negative-control: packet-defaults-rust
 	cp test/packet-defaults/rust/src/main.rs build/packet-defaults/rust-negative/checker/src/main.rs
 	@sed -e 's|../../../build/packet-defaults/rust/defaults|../generated|' \
 		-e 's|../../../build/packet-defaults/rust/plain|$(CURDIR)/build/packet-defaults/rust/plain|' \
+		-e 's|../../../build/packet-defaults/rust/constant-|$(CURDIR)/build/packet-defaults/rust/constant-|' \
 		-e 's|../../../../serialize.rs|$(CURDIR)/$(SERIALIZE_RS)|' \
 		test/packet-defaults/rust/Cargo.toml > build/packet-defaults/rust-negative/checker/Cargo.toml
 	cd build/packet-defaults/rust-negative/checker && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet
