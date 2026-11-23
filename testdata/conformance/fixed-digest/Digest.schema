@@ -1,5 +1,5 @@
 // THE DEFINITIONS DIGEST, WORKED (docs/SPEC-TABLES.md §3.4, "THE DEFINITIONS
-// DIGEST"; docs/SPEC-CONFORMANCE.md §8, gap 8). One fixed root whose closure
+// DIGEST"; docs/SPEC-CONFORMANCE.md §7, gap 8). One fixed root whose closure
 // emits every row the digest has: C (a counted minimum), R (a ranged integer,
 // a one-sided range filled with the storage bound, a ranged fixed point), D and
 // Q (a compressed float), B (bits), X (fixed point), F (flags with headroom),

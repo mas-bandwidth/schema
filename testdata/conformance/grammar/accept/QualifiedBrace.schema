@@ -1,5 +1,5 @@
 // A DECLARATION'S QUALIFICATION ENDS AT THE NEWLINE, A `//` COMMENT, OR THE
-// `{` THAT OPENS ITS BODY (SPEC.md §4.1, §4.2; docs/SPEC-CONFORMANCE.md §8,
+// `{` THAT OPENS ITS BODY (SPEC.md §4.1, §4.2; docs/SPEC-CONFORMANCE.md §7,
 // gap 3). The body may open on the same line as the section, and a one-line
 // body may close there too. Every line below parses.
 package grammarbrace

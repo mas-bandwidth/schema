@@ -930,7 +930,7 @@ struct TableReport
     // from a caller's report that already held one.
     int32_t non_finite_floats = 0;
     // THE STRICT ANNOUNCEMENT'S TWO BUILD VERSIONS (docs/SPEC-TABLES.md §3.3):
-    // on reason build_version_mismatch, the peer's announced build version
+    // on reason build_version_mismatch, the writer's announced build version
     // (remote) and this unit's own (own). Zero on every other path.
     uint64_t build_version_remote = 0;
     uint64_t build_version_own = 0;

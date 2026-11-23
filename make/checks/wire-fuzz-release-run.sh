@@ -14,33 +14,40 @@
 # verdict. The verdict is one of
 #   pass (<M> mutants, <S> s)
 #   RED: <the first divergence: root, mutant, what differs>
+#   RED: <a run that exited 0 and proved nothing: no summary, no seed, no
+#        mutant, or seeds absent that the absent list does not hold>
 #   owed: <the owed list's entry>            (and the arm runs red, or has no driver)
 #   RED: owed but green: ...                 (the owed entry is stale; remove it)
-# The run itself always exits 0, so every run of a leg finishes and lands its
-# row; the leg's target reads the rows and is red on any RED.
+# The run itself exits 0 whatever the verdict, so every run of a leg finishes
+# and lands its row; the leg's target reads its roster of rows BY NAME
+# (tools/wirefuzzrelease table) and is red on a RED row and on a missing one.
+# A run whose row could not be written exits 2.
 #
 # THE OWED LIST is test/conformance/wire-fuzz-owed.txt: `<leg> <arm> <why>`.
 # An owed arm still RUNS when the leg has a driver, so an owed entry that has
 # gone green turns the gate red until the entry is removed; an owed arm is
 # never a silent skip.
+#
+# THE ABSENT LIST is test/conformance/wire-fuzz-absent.txt: `<leg> <arm> <count>
+# <why>`. The harness counts the seeds a leg has no codec for; a run with any
+# is RED unless the list holds that exact count for the leg and arm, and a
+# line whose leg now answers every seed is RED until it is removed.
 set -u
 leg=$1 arm=$2 seed=$3 n=$4 dir=$5
 owedfile=${WFR_OWED:-test/conformance/wire-fuzz-owed.txt}
+absentfile=${WFR_ABSENT:-test/conformance/wire-fuzz-absent.txt}
 mkdir -p "$dir"
 base=$dir/$leg.$arm.$seed
 row=$base.row log=$base.log
 rm -f "$row" "$log" "$base.bin"
 
-owed=$(awk -v l="$leg" -v a="$arm" '!/^#/ && $1 == l && $2 == a { $1 = ""; $2 = ""; sub(/^ +/, ""); print; exit }' "$owedfile")
-
-emit() { printf '%s\t%s\t%s\t%s\n' "$leg" "$arm" "$seed" "$1" > "$row"; }
+# THE VERDICT is tools/wirefuzzrelease's (`row`): the owed list, the absent
+# list and the rule every leg is held to live there, under unit tests.
+tool=${WFR_TOOL:-go run ./tools/wirefuzzrelease}
 
 if [ -z "${WFR_DRIVER:-}" ]; then
-	if [ -n "$owed" ]; then
-		emit "owed: $owed"
-	else
-		emit "RED: the leg has no wire-fuzz driver and the owed list does not name this arm"
-	fi
+	# shellcheck disable=SC2086 # WFR_TOOL is a command line
+	$tool row -leg "$leg" -arm "$arm" -seed "$seed" -dir "$dir" -owed "$owedfile" -absent "$absentfile" -no-driver || exit 2
 	exit 0
 fi
 
@@ -52,82 +59,6 @@ env ${WFR_ENV:-} ./build/conformance-harness wire-fuzz ${WFR_FLAGS:-} $retain \
 	--driver "$WFR_DRIVER" --seed "$seed" --n "$n" --failed "$base.bin" > "$log" 2>&1
 status=$?
 secs=$(( $(date +%s) - start ))
-
-# Python's release row must not hide an absent generated corpus entry.
-if [ "$leg" = python ]; then
-    if grep -qE '[0-9]+ seeds absent' "$log"; then
-        emit 'RED: incomplete Python wire-fuzz roster'
-        exit 0
-    fi
-    if [ "$status" -eq 0 ] && ! grep -qE '[1-9][0-9]* mutants' "$log"; then
-        emit 'RED: missing or empty Python wire-fuzz mutation count'
-        exit 0
-    fi
-fi
-
-if [ $status -eq 0 ] && grep -qE '(^|[^0-9])0 divergences' "$log" && grep -qE '[1-9][0-9]* seeds over [1-9][0-9]* roots' "$log"; then
-	# THE RUN'S OWN COUNT IS HELD TO WHAT WAS ASKED. The harness ends a clean
-	# run with
-	#   <arm>: seed <S>, ... <E> enumerated + <R> random = <M> mutants, 0 divergences
-	# and a pass is that line with S the seed asked for, R the budget asked
-	# for, M = E + R and the arm named. A process that printed "0 divergences"
-	# after 1 mutant, after none, or with no count at all used to certify a
-	# row at N=100000.
-	summary=$(grep -E ': seed [0-9]+, [0-9]+ seeds over [0-9]+ roots' "$log" | tail -1)
-	count='.*, ([0-9]+) enumerated \+ ([0-9]+) random = ([0-9]+) mutants, 0 divergences.*'
-	got_seed=$(printf '%s\n' "$summary" | sed -nE 's/^[a-z-]+( retain)?: seed ([0-9]+), .*/\2/p')
-	enumerated=$(printf '%s\n' "$summary" | sed -nE "s/$count/\\1/p")
-	random=$(printf '%s\n' "$summary" | sed -nE "s/$count/\\2/p")
-	mutants=$(printf '%s\n' "$summary" | sed -nE "s/$count/\\3/p")
-	if [ -z "$got_seed" ] || [ -z "$enumerated" ] || [ -z "$random" ] || [ -z "$mutants" ]; then
-		emit "RED: the run reports no 'seed <S>, ... <E> enumerated + <R> random = <M> mutants' count"
-		exit 0
-	fi
-	if [ "$got_seed" != "$seed" ]; then
-		emit "RED: the run reports seed $got_seed and seed $seed was asked for"
-		exit 0
-	fi
-	if [ "$random" != "$n" ]; then
-		emit "RED: the run reports $random random mutants and $n were asked for"
-		exit 0
-	fi
-	if [ "$mutants" -eq 0 ] || [ "$mutants" -ne $((enumerated + random)) ]; then
-		emit "RED: the run reports $mutants mutants for $enumerated enumerated + $random random"
-		exit 0
-	fi
-	case "$arm:$summary" in
-	retain:*" retain: seed "*) ;;
-	retain:*) emit "RED: the retain arm was asked for and the run does not name it"; exit 0 ;;
-	*" retain: seed "*) emit "RED: the plain arm was asked for and the run names retain"; exit 0 ;;
-	esac
-	if [ -n "$owed" ]; then
-		emit "RED: owed but green ($mutants mutants): remove '$leg $arm' from $owedfile"
-	else
-		emit "pass ($mutants mutants, $secs s)"
-	fi
-	exit 0
-fi
-
-# THE FIRST DIVERGENCE. The harness names it as
-#   FAILED after <P> mutants: <what differs>
-#     corpus seed <name> (<unit>.<root>), pass <pass> #<i>, run seed <S>, ...
-# and the row carries the root, the mutant (the one after the P that passed)
-# and what differs. Anything else (a leg that died, a roster it did not
-# answer) is the harness's first error line.
-first=$(grep -m1 -E 'FAILED after [0-9]+ mutants' "$log")
-if [ -n "$first" ]; then
-	passed=$(printf '%s\n' "$first" | sed -nE 's/.*FAILED after ([0-9]+) mutants.*/\1/p')
-	what=$(printf '%s\n' "$first" | sed -E 's/.*FAILED after [0-9]+ mutants: //')
-	where=$(grep -m1 -E '^ *corpus seed ' "$log" | sed -nE 's/^ *corpus seed [^ ]+ \(([^)]*)\), pass ([^,]+),.*/\1, pass \2/p')
-	verdict="RED: $where, mutant $((passed + 1)): $what"
-else
-	line=$(grep -m1 -E 'FAILED|harness:|wire-fuzz:|panic|error' "$log" || tail -1 "$log")
-	verdict="RED: exit $status: $line"
-fi
-verdict=$(printf '%s' "$verdict" | tr '\t\n' '  ' | cut -c1-400)
-if [ -n "$owed" ]; then
-	emit "owed: $owed (runs red: ${verdict#RED: })"
-else
-	emit "$verdict"
-fi
+# shellcheck disable=SC2086
+$tool row -leg "$leg" -arm "$arm" -seed "$seed" -dir "$dir" -owed "$owedfile" -absent "$absentfile" -status "$status" -secs "$secs" -n "$n" || exit 2
 exit 0
