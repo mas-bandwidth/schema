@@ -1018,6 +1018,8 @@ macro_rules! with_root {
                 use tabledemo::{mood_field_from_json_bytes as $from_json, mood_field_load as $load, mood_field_to_json_checked as $to_json};
                 #[allow(unused_variables)]
                 let $save = fixed_save_from_variable!(tabledemo, MoodField, MoodFieldRow, mood_field_cook_write, mood_field_fixed_save, mood_field_fixed_measure);
+                Some($body)
+            }
             ("tabledemo", "MinArmFix") => {
                 #[allow(unused_imports, unused_variables)]
                 use tabledemo::{min_arm_fix_from_json_bytes as $from_json, min_arm_fix_load as $load, min_arm_fix_to_json_checked as $to_json};
@@ -1543,6 +1545,8 @@ macro_rules! with_fixed_value_root {
                 use tabledemo as $k;
                 #[allow(unused_imports)]
                 use $k::{MoodFieldRow as $row, MoodField as $value, mood_field_fixed_load as $load, mood_field_fixed_save as $save, mood_field_fixed_measure as $measure, mood_field_to_json_checked as $to, mood_field_from_json_bytes as $from, mood_field_cook_write as $cook};
+                Some($body)
+            }
             ("tabledemo", "MinArmFix") => {
                 use tabledemo as $k;
                 #[allow(unused_imports)]
