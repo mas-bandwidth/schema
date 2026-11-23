@@ -2781,6 +2781,8 @@ def j_count_admitted(sl:Slot, count:int) -> bool:
     let f = sl.fd
     if f.array == "counted" and (count < f.min or count > f.bound):
         return false
+    if f.array == "fixed":
+        return length(sl.elems) == f.bound
     return count >= 0 and count <= length(sl.elems)
 
 def j_length_admitted(f:FieldDescriptor, s:string) -> bool:
@@ -2889,6 +2891,8 @@ def j_write_map(w:JsonWriter, sl:Slot, depth:int) -> bool:
 def j_write_keyed(w:JsonWriter, sl:Slot, depth:int) -> bool:
     let f = sl.fd
     let n = f.bound
+    if length(sl.elems) != n:
+        return j_fail(w, "invalid_value")
     if n <= 0:
         j_raw(w, "{{}}")
         return true

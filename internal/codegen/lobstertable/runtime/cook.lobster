@@ -811,11 +811,67 @@ def cg_place(g:CookGraph) -> int, int:
     let data = cook_align_up(off, align)
     return data, align
 
+def cook_val_finite(d:FieldDescriptor, kind:int, v:Value) -> bool:
+    let s = d.s
+    if s == "float":
+        if kind == 10:
+            return finite_f32(v.f)
+        return finite_f64(v.f)
+    if s == "tab":
+        let t = v.tab
+        return not t or cook_rec_finite(t)
+    if s == "union":
+        if v.i == 0:
+            return true
+        let un = lookup_union(d.t)
+        if not un or v.i < 1 or v.i > length(un.arms):
+            return false
+        let arm = un.arms[v.i - 1]
+        if arm.s == "tab":
+            let t = v.tab
+            return not t or cook_rec_finite(t)
+        let sl = v.arm
+        return not sl or cook_slot_finite(sl)
+    return true
+
+def cook_slot_finite(sl:Slot) -> bool:
+    let f = sl.fd
+    if f.present != "" and not sl.present:
+        return true
+    if f.s == "map":
+        for(sl.entries) entry:
+            let er = entry.tab
+            if er and not cook_rec_finite(er):
+                return false
+        return true
+    if f.s == "arr":
+        let ed = elem_of(f)
+        let n = min(save_live_count(f, sl), length(sl.elems))
+        var i = 0
+        while i < n:
+            if not cook_val_finite(ed, f.ek, sl.elems[i]):
+                return false
+            i++
+        return true
+    return cook_val_finite(f, f.k, sl.cell)
+
+def cook_rec_finite(rec:Record) -> bool:
+    for(rec.fields) sl:
+        if guard_holds(rec, sl.fd) and not cook_slot_finite(sl):
+            return false
+    return true
+
 def cook_plan(rec:Record) -> CookGraph, int, int:
     let g = CookGraph {}
+    if not wc_body(rec) or not cook_rec_finite(rec):
+        return g, -1, 8
     cg_add_rec(g, rec)
     if g.cycle:
         return g, -1, 8
+    for(g.nodes) n:
+        let node = n.rec
+        if node and (not wc_body(node) or not cook_rec_finite(node)):
+            return g, -1, 8
     let data, align = cg_place(g)
     return g, data, align
 

@@ -1280,7 +1280,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # that names the same integer as another ("7" beside 7) is refused, so no
   # key is written twice and none raises.
   defp check_map_keys(%{key_kind: 12}, values) do
-    Enum.each(values, fn {key, _v} -> if not is_binary(key), do: throw(:invalid_value) end)
+    keys =
+      Enum.map(values, fn {key, _v} ->
+        if not is_binary(key), do: throw(:invalid_value)
+        key
+      end)
+
+    if length(Enum.uniq(keys)) != length(keys), do: throw(:invalid_value)
   end
 
   defp check_map_keys(_f, values) do
@@ -2604,13 +2610,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   # A positional fixed array updates its received prefix; an enum-keyed
   # occurrence updates only the slots it names. Other fields replace normally.
-  defp put_wire_field(value, %{t: :list, fixed_array: _} = f, incoming) do
-    prior = Map.get(value, f.name) || []
+  defp put_wire_field(value, %{t: :list, fixed_array: n} = f, incoming) do
+    prior = Map.get(value, f.name) || List.duplicate(json_element_default(f), n)
     Map.put(value, f.name, incoming ++ Enum.drop(prior, length(incoming)))
   end
 
   defp put_wire_field(value, %{t: :keyed} = f, incoming) do
-    prior = Map.get(value, f.name) || %{}
+    prior = Map.get(value, f.name) || keyed_defaults(f)
     Map.put(value, f.name, Map.merge(prior, incoming))
   end
 
@@ -3089,10 +3095,22 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     # every other arm reads its payload exactly as a field does
     payload = if a.arm_kind in [12, 13, 14, 16], do: framed, else: inner
 
-    case read_payload(a, payload, nodes, ids, report) do
-      {:cont, v, report} -> {:cont, {name, v}, report}
-      {:halt, v, report} -> {:halt, {name, v}, report}
-    end
+    {status, v, report} = read_payload(a, payload, nodes, ids, report)
+    n = Map.get(a, :fixed_array)
+
+    v =
+      cond do
+        is_integer(n) and is_list(v) and length(v) < n ->
+          v ++ List.duplicate(json_element_default(a), n - length(v))
+
+        Map.get(a, :t) == :keyed and is_map(v) ->
+          Map.merge(keyed_defaults(a), v)
+
+        true ->
+          v
+      end
+
+    {status, {name, v}, report}
   end
 
   # arm_framing_damaged? is §3's length rule for an arm whose kind byte
@@ -3629,8 +3647,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         required_value(f, Map.get(value, f.name, f.default))
       end
 
-      if Map.has_key?(value, f.name) and field_active?(f, desc, value),
-        do: check_field(f, Map.fetch!(value, f.name))
+      if Map.has_key?(value, f.name) and field_active?(f, desc, value) do
+        check_field(f, Map.fetch!(value, f.name))
+      else
+        if Map.get(f, :min_count, 0) > 0 and field_active?(f, desc, value),
+          do: check_field(f, Map.get(value, f.name, f.default))
+      end
     end)
   end
 
@@ -3698,6 +3720,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp check_field(%{t: :list} = f, v) when is_list(v) do
     n = length(v)
 
+    if Map.has_key?(f, :fixed_array) and n != f.fixed_array,
+      do: throw(:invalid_value)
+
+    if Map.get(f, :min_count, 0) > 0 and n < f.min_count,
+      do: throw(:invalid_value)
+
     if Map.has_key?(f, :array_bound) and f.array_bound > 0 and n > f.array_bound,
       do: throw(:invalid_value)
 
@@ -3705,11 +3733,16 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     if f.elem_kind == 30, do: Enum.each(v, &check_enum(f, &1))
   end
 
+  defp check_field(%{t: :list}, _v), do: throw(:invalid_value)
+
   defp check_field(%{t: :keyed} = f, slots) when is_map(slots) do
     Enum.each(f.key_names, fn name ->
-      check_field(f.item, Map.get(slots, name, f.item.default))
+      if not Map.has_key?(slots, name), do: throw(:invalid_value)
+      check_field(f.item, Map.fetch!(slots, name))
     end)
   end
+
+  defp check_field(%{t: :keyed}, _v), do: throw(:invalid_value)
 
   defp check_field(_f, _v), do: :ok
 
@@ -3817,11 +3850,23 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         case f do
           %{optional: true} -> Map.get(f, :default)
           %{t: :table, elem: name} -> defaults(Map.fetch!(@tables, name))
+          %{t: :list, fixed_array: n} -> List.duplicate(json_element_default(f), n)
+          %{t: :list, min_count: m} when m > 0 -> List.duplicate(json_element_default(f), m)
+          %{t: :keyed} -> keyed_defaults(f)
           _ -> Map.get(f, :default)
         end
 
       {f.name, value}
     end)
+  end
+
+  defp keyed_defaults(f) do
+    def_val =
+      if f.item.t == :table,
+        do: defaults(Map.fetch!(@tables, f.item.elem)),
+        else: Map.get(f.item, :default)
+
+    Map.new(f.key_names, fn name -> {name, def_val} end)
   end
 
   # intern assigns a reference in first-use order and returns it.
@@ -5150,7 +5195,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         end)
 
         Process.put(:elixir_json_open, Map.delete(Process.get(:elixir_json_open, %{}), label))
-        Process.put(:elixir_json_defs, Map.put(Process.get(:elixir_json_defs, %{}), label, :dropped))
+
+        Process.put(
+          :elixir_json_defs,
+          Map.put(Process.get(:elixir_json_defs, %{}), label, :dropped)
+        )
       end
     else
       Enum.each(rest, fn {k, v} ->
@@ -5300,7 +5349,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # keyed by variant name; a name the key enum does not have counts unknown.
   defp json_read_field(%{t: :keyed} = f, {:obj, pairs}, report) do
     {values, _seen, report} =
-      Enum.reduce(pairs, {%{}, MapSet.new(), report}, fn {name, input}, {acc, seen, report} ->
+      Enum.reduce(pairs, {keyed_defaults(f), MapSet.new(), report}, fn {name, input},
+                                                                       {acc, seen, report} ->
         if Process.get(:elixir_json_bad, false) do
           {acc, seen, report}
         else
@@ -5599,7 +5649,18 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         end
       end)
 
-    {Enum.reverse(elems), report}
+    list = Enum.reverse(elems)
+
+    list =
+      case Map.get(f, :fixed_array) do
+        n when is_integer(n) and length(list) < n ->
+          list ++ List.duplicate(json_element_default(f), n - length(list))
+
+        _ ->
+          list
+      end
+
+    {list, report}
   end
 
   defp json_read_field(%{t: :list}, raw, _report) do
@@ -5665,8 +5726,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_present_default(_f), do: 0
 
   # Array elements are positional: a rejected element keeps its default slot.
-  defp json_element_default(%{elem_default: value}), do: value
   defp json_element_default(%{elem_kind: 13, elem: name}), do: defaults(Map.fetch!(@tables, name))
+  defp json_element_default(%{elem_default: value}), do: value
   defp json_element_default(%{elem_kind: kind}) when kind in [15, 17, 30], do: nil
   defp json_element_default(%{elem_kind: 12}), do: ""
   defp json_element_default(%{elem_kind: 1}), do: false
@@ -6145,7 +6206,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
              :ok <- json_key_ok(key),
              <<":", r2::binary>> <- json_skip(r1),
              false <- MapSet.member?(seen, key),
-             {:ok, val, r3} <- json_object_val(key, acc, r2, depth + 1) do
+             {:ok, val, r3} <- json_object_val(key, acc, r2, depth) do
           seen = MapSet.put(seen, key)
 
           case json_skip(r3) do
@@ -6179,7 +6240,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         json_label(bin)
       end
     else
-      json_value(bin, depth)
+      case json_skip(bin) do
+        <<"[", rest::binary>> -> json_array_p(rest, depth)
+        other -> json_value(other, depth + 1)
+      end
     end
   end
 

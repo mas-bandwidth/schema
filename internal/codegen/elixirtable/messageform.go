@@ -82,8 +82,13 @@ func messageformModule(u *ir.Unit, ns string) []byte {
 	b.WriteString("  batch, and a write refusal is `:invalid_value`.\n")
 	b.WriteString("  \"\"\"\n\n")
 	b.WriteString("  import Bitwise\n\n")
-	b.WriteString(exAttrBinary("  @announcement ", elixirBytes(tablewire.Announce(u))))
-	fmt.Fprintf(&b, "  @entries_here %d\n", len(tablewire.MessageVocabulary(u)))
+	vocab := tablewire.MessageVocabulary(u)
+	ann := tablewire.Announce(u)
+	if len(vocab) > 4096 {
+		ann = nil
+	}
+	b.WriteString(exAttrBinary("  @announcement ", elixirBytes(ann)))
+	fmt.Fprintf(&b, "  @entries_here %d\n", len(vocab))
 	records, unions := messageRecords(u)
 	b.WriteString(records)
 	b.WriteString("\n")
@@ -95,6 +100,10 @@ func messageformModule(u *ir.Unit, ns string) []byte {
 		batch = strings.Replace(batch, messageArmSubUnion, "", 1)
 		batch = strings.Replace(batch, messageArmRawUnion, "", 1)
 		batch = strings.Replace(batch, messageArmKnownUnion, "", 1)
+		batch = strings.Replace(batch, messageUnionOwner, "", 1)
+	}
+	if len(vocab) > 4096 {
+		runtime = strings.Replace(runtime, "  def announce_measure, do: byte_size(@announcement)\n", "  def announce_measure, do: -1\n", 1)
 	}
 	b.WriteString(messageIntegrity(u, runtime+batch))
 	b.WriteString(messageBinding(u))
@@ -133,7 +142,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
     if n < 1 or n > @batch_max do
       {:error, :batch_too_large}
     else
-      case encode_bodies(vocab, values, {0, 0}, own_record(vocab)) do
+      case encode_bodies(vocab, values, {0, 0}, vocab.root) do
         {:ok, {_acc, nbits}} -> {:ok, 2 + div(nbits + 7, 8)}
         :error -> {:error, :malformed}
       end
@@ -142,6 +151,11 @@ const messageBatchRuntimeBody = `  @batch_max 256
     # every writer refuses a float that is not finite (docs/SPEC-TABLES.md §3.3)
     :non_finite_float -> {:error, :non_finite_float}
     :invalid_value -> {:error, :invalid_value}
+  end
+
+  def measure_messages(%__MODULE__{announced: false, refused: false, root: root}, values)
+      when is_binary(root) and is_list(values) do
+    with {:ok, own} <- own_vocab(root), do: measure_messages(own, values)
   end
 
   def measure_messages(_vocab, _values), do: {:error, :no_vocabulary}
@@ -158,7 +172,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
     if n < 1 or n > @batch_max do
       {:error, :batch_too_large}
     else
-      case encode_bodies(vocab, values, {0, 0}, own_record(vocab)) do
+      case encode_bodies(vocab, values, {0, 0}, vocab.root) do
         {:ok, bits} -> {:ok, frame_batch(n, bits)}
         :error -> {:error, :malformed}
       end
@@ -168,7 +182,29 @@ const messageBatchRuntimeBody = `  @batch_max 256
     :invalid_value -> {:error, :invalid_value}
   end
 
+  def save_messages(%__MODULE__{announced: false, refused: false, root: root}, values)
+      when is_binary(root) and is_list(values) do
+    with {:ok, own} <- own_vocab(root), do: save_messages(own, values)
+  end
+
   def save_messages(_vocab, _values), do: {:error, :no_vocabulary}
+
+  defp own_vocab(root) do
+    case :persistent_term.get({__MODULE__, :own_vocab}, nil) do
+      nil ->
+        case announce_read(@announcement) do
+          {:ok, vocab} ->
+            :persistent_term.put({__MODULE__, :own_vocab}, vocab)
+            for_root(vocab, root)
+
+          _ ->
+            {:error, :no_vocabulary}
+        end
+
+      vocab ->
+        for_root(vocab, root)
+    end
+  end
 
   @doc false
   def rebind_messages(from_vocab, %__MODULE__{announced: true, root: root} = to_vocab, bodies)
@@ -580,7 +616,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
       # zero, for damage inside a body and for "BYTES AFTER THE PAD" alike.
       r = {bytes_to_int(rest), 0, bit_size(rest)}
 
-      case read_bodies(vocab, r, count, [], own_record(vocab)) do
+      case read_bodies(vocab, r, count, [], vocab.root) do
         {:ok, bodies, r} ->
           if batch_ends_clean?(r), do: {:ok, bodies}, else: {:malformed, 0, []}
 
@@ -627,17 +663,17 @@ const messageBatchRuntimeBody = `  @batch_max 256
 
   defp align_write({acc, nbits}), do: {acc, nbits + rem(8 - rem(nbits, 8), 8)}
 
-  defp encode_bodies(_vocab, [], acc, _rec), do: {:ok, acc}
+  defp encode_bodies(_vocab, [], acc, _rec_name), do: {:ok, acc}
 
-  defp encode_bodies(vocab, [body | rest], acc, rec) do
-    case encode_body(vocab, body, acc, rec) do
-      {:ok, acc2} -> encode_bodies(vocab, rest, acc2, rec)
+  defp encode_bodies(vocab, [body | rest], acc, rec_name) do
+    case encode_body(vocab, body, acc, rec_name) do
+      {:ok, acc2} -> encode_bodies(vocab, rest, acc2, rec_name)
       :error -> :error
     end
   end
 
-  defp encode_body(vocab, body, acc, rec) do
-    case encode_fields(vocab, body, acc, rec, -1) do
+  defp encode_body(vocab, body, acc, rec_name) do
+    case encode_fields(vocab, body, acc, rec_name, record(rec_name), -1) do
       {:ok, acc2} -> {:ok, put_bits(acc2, 0, vocab.ref_bits)}
       :error -> :error
     end
@@ -649,12 +685,12 @@ const messageBatchRuntimeBody = `  @batch_max 256
   # field the record does not declare, a field out of its declaration order and
   # a field stored at the default the writer elides are refused, each by
   # :invalid_value in every build. Nothing is reordered or dropped.
-  defp encode_fields(_vocab, [], acc, _rec, _last), do: {:ok, acc}
+  defp encode_fields(_vocab, [], acc, _rec_name, _rec, _last), do: {:ok, acc}
 
-  defp encode_fields(vocab, [{ref, value} | rest], acc, rec, last) do
+  defp encode_fields(vocab, [{ref, value} | rest], acc, rec_name, rec, last) do
     case entry_at(vocab, ref) do
       {:ok, entry} ->
-        check_field(vocab, entry, value)
+        check_field(vocab, rec_name, entry, value)
         check(not (entry.kind == 15 and value == :none))
 
         decl =
@@ -669,7 +705,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
         case encode_value(vocab, entry.kind, entry.shape, elem, value, acc2, sub_of(decl)) do
           {:ok, acc3} ->
             check(not written_at_default?(vocab, decl, entry, value))
-            encode_fields(vocab, rest, acc3, rec, next_last(decl, last))
+            encode_fields(vocab, rest, acc3, rec_name, rec, next_last(decl, last))
 
           :error ->
             :error
@@ -700,7 +736,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
     do: encode_string(shape, value, acc)
 
   defp encode_value(vocab, 13, _shape, _elem, value, acc, sub),
-    do: encode_body(vocab, value, acc, record(sub))
+    do: encode_body(vocab, value, acc, sub)
 
   defp encode_value(vocab, 14, shape, elem, value, acc, sub),
     do: encode_array(vocab, shape, elem, value, acc, sub)
@@ -852,7 +888,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
 
     case entry_at(vocab, ref) do
       {:ok, entry} ->
-        check_field(vocab, entry, value)
+        check_field(vocab, union_owner(sub), entry, value)
         elem = Map.get(entry, :element)
         encode_value(vocab, entry.kind, entry.shape, elem, value, acc2, arm_sub(sub, entry.id))
 
@@ -871,8 +907,14 @@ const messageBatchRuntimeBody = `  @batch_max 256
   # by the compiler as write_rule_rows/0 and keyed by the {id, kind} a
   # vocabulary entry carries; a field no declaration of this unit names
   # carries no rule.
-  defp check_field(vocab, entry, value) do
-    case Map.get(write_rules(), {entry.id, entry.kind}) do
+  defp check_field(vocab, owner, entry, value) do
+    rules = write_rules()
+
+    rule =
+      Map.get(rules, {owner, entry.id, entry.kind}) ||
+        Map.get(rules, {entry.id, entry.kind})
+
+    case rule do
       %{min: lo, max: hi} ->
         check(is_integer(value) and value >= lo and value <= hi)
 
@@ -938,6 +980,11 @@ const messageBatchRuntimeBody = `  @batch_max 256
             Map.update(acc, {id, kind}, add_rule(%{}, what, v), &add_rule(&1, what, v))
           end)
 
+        rules =
+          Enum.reduce(write_owner_rule_rows(), rules, fn {owner, id, kind, what, v}, acc ->
+            Map.update(acc, {owner, id, kind}, add_rule(%{}, what, v), &add_rule(&1, what, v))
+          end)
+
         :persistent_term.put({__MODULE__, :write_rules}, rules)
         rules
 
@@ -975,11 +1022,11 @@ const messageBatchRuntimeBody = `  @batch_max 256
   # mask and never a byte-order question.
   # ---------------------------------------------------------------------------
 
-  defp read_bodies(_vocab, r, 0, acc, _rec), do: {:ok, Enum.reverse(acc), r}
+  defp read_bodies(_vocab, r, 0, acc, _rec_name), do: {:ok, Enum.reverse(acc), r}
 
-  defp read_bodies(vocab, r, n, acc, rec) do
-    case read_body(vocab, r, [], MapSet.new(), 0, rec, -1) do
-      {:ok, body, rest} -> read_bodies(vocab, rest, n - 1, [body | acc], rec)
+  defp read_bodies(vocab, r, n, acc, rec_name) do
+    case read_body(vocab, r, [], MapSet.new(), 0, rec_name, record(rec_name), -1) do
+      {:ok, body, rest} -> read_bodies(vocab, rest, n - 1, [body | acc], rec_name)
       :malformed -> {:malformed, length(acc), Enum.reverse(acc)}
     end
   end
@@ -1001,9 +1048,10 @@ const messageBatchRuntimeBody = `  @batch_max 256
   #     (§3.3 (a)) are damage;
   #   * under another build version an undeclared field is stepped over by its
   #     announced shape and omitted, never appended to the body.
-  defp read_body(_vocab, _r, _acc, _seen, depth, _rec, _last) when depth > 128, do: :malformed
+  defp read_body(_vocab, _r, _acc, _seen, depth, _rec_name, _rec, _last) when depth > 128,
+    do: :malformed
 
-  defp read_body(vocab, r, acc, seen, depth, rec, last) do
+  defp read_body(vocab, r, acc, seen, depth, rec_name, rec, last) do
     case get_bits(r, vocab.ref_bits) do
       {:ok, 0, rest} ->
         {:ok, Enum.reverse(acc), rest}
@@ -1019,7 +1067,16 @@ const messageBatchRuntimeBody = `  @batch_max 256
                 :skip ->
                   case skip_value(vocab, entry.kind, entry.shape, elem, rest, depth) do
                     {:ok, rest2} ->
-                      read_body(vocab, rest2, acc, MapSet.put(seen, entry.id), depth, rec, last)
+                      read_body(
+                        vocab,
+                        rest2,
+                        acc,
+                        MapSet.put(seen, entry.id),
+                        depth,
+                        rec_name,
+                        rec,
+                        last
+                      )
 
                     :malformed ->
                       :malformed
@@ -1037,6 +1094,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
                            sub_of(decl)
                          ),
                        false <- entry.kind == 15 and value == :none,
+                       true <- read_in_range?(rec_name, decl, entry, value),
                        false <- stored_at_default?(vocab, decl, value) do
                     seen = MapSet.put(seen, entry.id)
                     last = next_last(decl, last)
@@ -1046,7 +1104,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
                         do: acc,
                         else: [{ref, value} | acc]
 
-                    read_body(vocab, rest2, acc2, seen, depth, rec, last)
+                    read_body(vocab, rest2, acc2, seen, depth, rec_name, rec, last)
                   else
                     _ -> :malformed
                   end
@@ -1107,6 +1165,27 @@ const messageBatchRuntimeBody = `  @batch_max 256
 
   defp sub_of({_index, _exact, _rule, sub}), do: sub
   defp sub_of(nil), do: nil
+
+  defp read_in_range?(owner, {_index, true, _rule, _sub}, entry, value) do
+    rules = write_rules()
+
+    rule =
+      Map.get(rules, {owner, entry.id, entry.kind}) ||
+        Map.get(rules, {entry.id, entry.kind})
+
+    case rule do
+      %{min: lo, max: hi} when is_integer(value) ->
+        value >= lo and value <= hi
+
+      %{each_min: lo, each_max: hi} when is_list(value) ->
+        Enum.all?(value, &(is_integer(&1) and &1 >= lo and &1 <= hi))
+
+      _ ->
+        true
+    end
+  end
+
+  defp read_in_range?(_owner, _decl, _entry, _value), do: true
 
   defp stored_at_default?(_vocab, {_index, true, {:keyed, _keys, _elem_rule}, _sub}, []),
     do: true
@@ -1220,8 +1299,6 @@ const messageBatchRuntimeBody = `  @batch_max 256
   # can tell a declared field from one it must step over
   defp own_record(%{root: root}) when is_binary(root), do: record(root)
 
-  defp own_record(_vocab), do: nil
-
   defp own_build?(%{build_version: @build_version}), do: true
   defp own_build?(_vocab), do: false
 
@@ -1251,6 +1328,9 @@ const messageBatchRuntimeBody = `  @batch_max 256
 
   defp arm_known?(_sub, id), do: id >= 0
 
+  defp union_owner({:union, name}), do: name
+  defp union_owner(_sub), do: nil
+
   # An undeclared field under another build version is stepped over by its
   # announced shape and omitted (docs/SPEC-TABLES.md §3.3, §4). Its payload is
   # read exactly as a kept value would be, so damage stays damage, but nothing
@@ -1268,7 +1348,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
     do: :malformed
 
   defp read_value(vocab, 13, _shape, _elem, r, depth, sub),
-    do: read_body(vocab, r, [], MapSet.new(), depth + 1, record(sub), -1)
+    do: read_body(vocab, r, [], MapSet.new(), depth + 1, sub, record(sub), -1)
 
   defp read_value(vocab, 14, shape, elem, r, depth, sub),
     do: read_array(vocab, shape, elem, r, depth, sub)
@@ -2569,6 +2649,7 @@ func messageRecords(u *ir.Unit) (string, bool) {
 const messageArmSubUnion = "  defp arm_sub({:union, name}, id) do\n    case @message_unions |> Map.get(name, %{}) |> Map.get(id) do\n      {_raw, sub} -> sub\n      _ -> nil\n    end\n  end\n\n"
 const messageArmRawUnion = "  defp arm_raw({:union, name}, id) do\n    case @message_unions |> Map.get(name, %{}) |> Map.get(id) do\n      {raw, _sub} -> raw\n      _ -> nil\n    end\n  end\n\n"
 const messageArmKnownUnion = "  defp arm_known?({:union, name}, id),\n    do: @message_unions |> Map.get(name, %{}) |> Map.has_key?(id)\n\n"
+const messageUnionOwner = "  defp union_owner({:union, name}), do: name\n"
 
 // messageSub is what a body under field f is read against: a record's name, a
 // union's arms by name, or nil.
@@ -2733,12 +2814,62 @@ func messageWriteRuleRows(u *ir.Unit) string {
 		retired  map[uint64]bool
 		conflict bool
 	}
+	type ownerKey struct {
+		owner string
+		id    uint64
+		kind  uint8
+	}
+	ownerRules := map[ownerKey]*rule{}
+	disagrees := map[key]bool{}
+	ruleEq := func(a, b *rule) bool {
+		if a.what != b.what || a.text != b.text || len(a.ids) != len(b.ids) || len(a.retired) != len(b.retired) {
+			return false
+		}
+		if (a.lo == nil) != (b.lo == nil) || (a.hi == nil) != (b.hi == nil) {
+			return false
+		}
+		if a.lo != nil && (a.lo.Cmp(b.lo) != 0 || a.hi.Cmp(b.hi) != 0) {
+			return false
+		}
+		for id := range a.ids {
+			if !b.ids[id] {
+				return false
+			}
+		}
+		for id := range a.retired {
+			if !b.retired[id] {
+				return false
+			}
+		}
+		return true
+	}
 	rules := map[key]*rule{}
-	add := func(k key, r *rule) {
+	add := func(owner string, k key, r *rule) {
+		ownerRules[ownerKey{owner, k.id, k.kind}] = r
 		old := rules[k]
 		if old == nil {
-			rules[k] = r
+			cp := *r
+			if r.lo != nil {
+				cp.lo = new(big.Int).Set(r.lo)
+				cp.hi = new(big.Int).Set(r.hi)
+			}
+			if r.ids != nil {
+				cp.ids = map[uint64]bool{}
+				for id := range r.ids {
+					cp.ids[id] = true
+				}
+			}
+			if r.retired != nil {
+				cp.retired = map[uint64]bool{}
+				for id := range r.retired {
+					cp.retired[id] = true
+				}
+			}
+			rules[k] = &cp
 			return
+		}
+		if !ruleEq(old, r) {
+			disagrees[k] = true
 		}
 		if old.conflict || old.what != r.what {
 			old.conflict = true
@@ -2817,11 +2948,11 @@ func messageWriteRuleRows(u *ir.Unit) string {
 		return nil
 	}
 	seenUnion := map[*ir.Union]bool{}
-	fields := func(fs []*ir.Field) {
+	fields := func(owner string, fs []*ir.Field) {
 		for _, f := range fs {
 			e := ir.TableFieldEntry(f)
 			if r := fieldRule(f); r != nil {
-				add(key{e.Id, e.Kind}, r)
+				add(owner, key{e.Id, e.Kind}, r)
 			}
 			un, ok := f.Type.Ref.(*ir.Union)
 			if f.Type.Kind != ir.TNamed || !ok || seenUnion[un] {
@@ -2834,7 +2965,7 @@ func messageWriteRuleRows(u *ir.Unit) string {
 				}
 				arm := ir.TableArmEntry(v)
 				if r := fieldRule(v.F); r != nil {
-					add(key{arm.Id, arm.Kind}, r)
+					add(un.Name, key{arm.Id, arm.Kind}, r)
 				}
 			}
 		}
@@ -2851,7 +2982,7 @@ func messageWriteRuleRows(u *ir.Unit) string {
 			st = u.Structs[name]
 		}
 		if st != nil {
-			fields(st.Fields)
+			fields(name, st.Fields)
 		}
 	}
 
@@ -2902,21 +3033,84 @@ func messageWriteRuleRows(u *ir.Unit) string {
 		}
 	}
 
+	var okeys []ownerKey
+	for ok := range ownerRules {
+		if disagrees[key{ok.id, ok.kind}] {
+			okeys = append(okeys, ok)
+		}
+	}
+	sort.Slice(okeys, func(i, j int) bool {
+		if okeys[i].owner != okeys[j].owner {
+			return okeys[i].owner < okeys[j].owner
+		}
+		if okeys[i].id != okeys[j].id {
+			return okeys[i].id < okeys[j].id
+		}
+		return okeys[i].kind < okeys[j].kind
+	})
+	var ownerRows []string
+	for _, ok := range okeys {
+		r := ownerRules[ok]
+		head := fmt.Sprintf("{%q, 0x%016X, %d, ", ok.owner, ok.id, ok.kind)
+		switch r.what {
+		case "int":
+			ownerRows = append(ownerRows, head+":min, "+fixedIntLiteral(r.lo)+"}", head+":max, "+fixedIntLiteral(r.hi)+"}")
+		case "each":
+			ownerRows = append(ownerRows, head+":each_min, "+fixedIntLiteral(r.lo)+"}", head+":each_max, "+fixedIntLiteral(r.hi)+"}")
+		case "keyed_each":
+			ownerRows = append(ownerRows, head+":keyed_each_min, "+fixedIntLiteral(r.lo)+"}", head+":keyed_each_max, "+fixedIntLiteral(r.hi)+"}")
+		case "text":
+			ownerRows = append(ownerRows, fmt.Sprintf("%s:text, %d}", head, r.text))
+		default:
+			ids := make([]uint64, 0, len(r.ids))
+			for id := range r.ids {
+				ids = append(ids, id)
+			}
+			slices.Sort(ids)
+			for _, id := range ids {
+				ownerRows = append(ownerRows, fmt.Sprintf("%s:%s, 0x%016X}", head, r.what, id))
+			}
+			if r.whatRet != "" && len(r.retired) > 0 {
+				rids := make([]uint64, 0, len(r.retired))
+				for id := range r.retired {
+					rids = append(rids, id)
+				}
+				slices.Sort(rids)
+				for _, id := range rids {
+					ownerRows = append(ownerRows, fmt.Sprintf("%s:%s, 0x%016X}", head, r.whatRet, id))
+				}
+			}
+		}
+	}
+
 	var b strings.Builder
 	b.WriteString("\n  # this unit's own write rules, one {id, kind, rule, value} row each\n")
 	if len(rows) == 0 {
 		b.WriteString("  defp write_rule_rows, do: []\n")
-		return b.String()
-	}
-	b.WriteString("  defp write_rule_rows do\n    [\n")
-	for i, row := range rows {
-		b.WriteString("      " + row)
-		if i < len(rows)-1 {
-			b.WriteString(",")
+	} else {
+		b.WriteString("  defp write_rule_rows do\n    [\n")
+		for i, row := range rows {
+			b.WriteString("      " + row)
+			if i < len(rows)-1 {
+				b.WriteString(",")
+			}
+			b.WriteString("\n")
 		}
-		b.WriteString("\n")
+		b.WriteString("    ]\n  end\n")
 	}
-	b.WriteString("    ]\n  end\n")
+	if len(ownerRows) == 0 {
+		b.WriteString("\n  defp write_owner_rule_rows, do: []\n")
+	} else {
+		b.WriteString("\n  defp write_owner_rule_rows do\n    [\n")
+		for i, row := range ownerRows {
+			b.WriteString("      " + row)
+			if i < len(ownerRows)-1 {
+				b.WriteString(",")
+			}
+			b.WriteString("\n")
+		}
+		b.WriteString("    ]\n  end\n")
+	}
 	return b.String()
 }
 

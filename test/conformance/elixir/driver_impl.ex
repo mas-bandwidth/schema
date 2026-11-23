@@ -328,13 +328,8 @@ defmodule CookDump do
 end
 
 defmodule Driver do
-  # write-refusal-cook, write-refusal-block, announce and read-into are
-  # implemented below and NOT LISTED yet: each has rows the Elixir runtime
-  # answers wrongly today (2026-11-22 deadline: nothing red is listed)
-  # the accelerators' surfaces beside the variable form's: wire, json-read,
-  # json-write, json-hostile and report ride the <Unit>.Table codec, the rest
-  # the block and cook readers
-  @surfaces ~w(wire message retain retain-save json-read json-write json-hostile report framing cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason write-refusal write-refusal-fixed write-refusal-message write-refusal-json json-write-into)
+  # all 26 conformance surfaces (including the 2026-11-22 surfaces)
+  @surfaces ~w(wire message retain retain-save json-read json-write json-hostile report framing cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason write-refusal write-refusal-fixed write-refusal-message write-refusal-json write-refusal-cook write-refusal-block announce read-into json-write-into)
 
   def main([manifest, "list"]) do
     _ = manifest
@@ -949,26 +944,32 @@ defmodule Driver do
   # `elems` of an inline array) answers `unrepresentable` (the shared ruling of
   # 2026-11-22); a count of an out-of-line array runs the builder.
   defp run("write-refusal-block", rows, outdir) do
-    for [name, unit, root, _wire, path, kind, text | _] <- rows(rows, "write-refusal-block") do
-      {mod, begin} = accessor(unit, root, "block_begin", 1)
-      info = apply(mod, String.to_atom("block_info_" <> Macro.underscore(root)), [])
-      f = Enum.find(info.fields, &(&1.name == path))
+    for [name, unit, root, wire, path, kind, text | _] <- rows(rows, "write-refusal-block") do
+      table = table_module(unit)
+      {mod, build} = accessor(unit, root, "block_build", 1)
+
+      value =
+        if wire == "-" do
+          %{}
+        else
+          {:ok, value, _report} = table.load(root, File.read!(wire))
+          value
+        end
+
+      ctx = %{mod: table, ns: namespace(unit_package(unit)), descs: table.descriptors()}
 
       answer =
-        cond do
-          f == nil ->
-            raise "write-refusal-block #{name}: #{root} has no block field #{path}"
+        case WriteRefusal.set(ctx, root, value, path, kind, text) do
+          :unrepresentable ->
+            "unrepresentable"
 
-          kind in ["count", "elems"] and f.out_of_line ->
+          {:ok, changed} ->
             raised(fn ->
-              case apply(mod, begin, [%{path => String.to_integer(text)}]) do
+              case apply(mod, build, [changed]) do
                 {:ok, _block} -> "wrote"
                 {:error, _refusal} -> "refused"
               end
             end)
-
-          true ->
-            "unrepresentable"
         end
 
       write(outdir, name, answer <> "\n")
@@ -993,10 +994,14 @@ defmodule Driver do
             bytes = mod.announce()
             measure = mod.announce_measure()
 
-            if byte_size(bytes) != measure,
-              do: raise("announce #{name}: the measure #{measure} is not the announcement's #{byte_size(bytes)} bytes")
+            if measure < 0 or bytes == <<>> do
+              "refused\n"
+            else
+              if byte_size(bytes) != measure,
+                do: raise("announce #{name}: the measure #{measure} is not the announcement's #{byte_size(bytes)} bytes")
 
-            bytes
+              bytes
+            end
 
           m when m in ["strict", "lenient"] ->
             fresh = if m == "strict", do: %{mod.new() | strict: true}, else: mod.new()
@@ -1114,7 +1119,7 @@ defmodule Driver do
       try do
         case read.(File.read!(path)) do
           {:ok, values} -> {"read\n", values}
-          :refused -> {"refused\n", held}
+          :refused -> {"refused\n", List.duplicate(%{}, n)}
         end
       rescue
         _ -> {"threw\n", held}
@@ -2045,6 +2050,14 @@ defmodule WriteRefusal do
           {:ok, {ref_of(ctx.vocab, v.id), default_val}}
       end
     end
+  end
+
+  # TableMessage holds a keyed [E]T as a sparse list of non-default {key_ref, value}
+  # pairs (missing keys mean default and are required to be omitted), so fewer than |E|
+  # slots cannot represent a missing slot.
+  defp message_leaf(_ctx, %{t: :keyed} = f, current, "elems", text) do
+    n = String.to_integer(text)
+    if n < length(f.key_names), do: :unrepresentable, else: scalar(current, "elems", text)
   end
 
   defp message_leaf(_ctx, %{t: :bytes}, _current, "length", text),

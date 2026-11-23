@@ -119,6 +119,9 @@ func writeCookLayout(b *strings.Builder, u *ir.Unit, f *ir.Field, fl *ir.FieldLa
 		b.WriteString(", array: :list")
 	case f.Array == ir.ArrayCounted:
 		b.WriteString(", array: :counted")
+		if f.ArrayMin > 0 {
+			fmt.Fprintf(b, ", min_count: %d", f.ArrayMin)
+		}
 	case f.Array == ir.ArrayFixed:
 		b.WriteString(", array: :fixed")
 	}

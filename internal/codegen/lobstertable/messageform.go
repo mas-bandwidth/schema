@@ -35,7 +35,11 @@ func emitMessageForm(g *lobster.Gen) error {
 	g.Import("message")
 	g.Pf("// %sMessageUnit — the unit's announcement and build version, the message\n", base)
 	g.Pf("// form's compile-time constants (docs/SPEC-TABLES.md §3.3)\n")
-	g.Pf("let _%sMessageUnit = %s.message_unit(%s, %s)\n", base, rt, lobster.StringLit(tablewire.Announce(u)),
+	ann := tablewire.Announce(u)
+	if len(slots) > 4096 {
+		ann = nil
+	}
+	g.Pf("let _%sMessageUnit = %s.message_unit(%s, %s)\n", base, rt, lobster.StringLit(ann),
 		lobster.IntLit(new(big.Int).SetUint64(ir.BuildVersion(u))))
 	var structs []*ir.Struct
 	for _, st := range g.File.Tables {

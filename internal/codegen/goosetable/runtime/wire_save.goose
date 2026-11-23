@@ -453,9 +453,9 @@ fn header(c: SaveCtx&, id: u64, kind: u8) {
 
 fn field(c: SaveCtx&, s: i64, d: FieldDesc, owner: i64, ordinal: i64) {
     if d.shape == ShapePtr || d.shape == ShapeSBlob || d.shape == ShapeBBlob {
-        // NULL IS ELIDED, and a non-null pointer always rides (§3.1, §2.5)
+        // NULL IS ELIDED unless required (FL-16: a null *T | required writes index 0)
         let index = node_ref(c, s);
-        if index == 0 { return; }
+        if index == 0 && !d.required { return; }
         header(c, d.id, KindPointer);
         put_leb(c, index);
         return;

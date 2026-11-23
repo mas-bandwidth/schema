@@ -233,6 +233,77 @@ const blockRuntimeSource = `  @moduledoc """
 
   def begin(_, _, _, _), do: false
 
+  def build(value, rules, arrays, projection, build)
+      when is_map(value) and is_list(rules) and is_integer(projection) do
+    case check_rules(rules, value) do
+      :ok ->
+        counts =
+          Map.new(arrays, fn a ->
+            v = Map.get(value, a.name, [])
+            {a.name, if(is_list(v), do: length(v), else: -1)}
+          end)
+
+        begin(counts, arrays, projection, build)
+
+      {:error, _} = err ->
+        err
+    end
+  end
+
+  def build(_, _, _, _, _), do: {:error, :invalid_value}
+
+  defp check_rules([], _value), do: :ok
+
+  defp check_rules([rule | rest], value) do
+    if rule_ok?(rule, value), do: check_rules(rest, value), else: {:error, :invalid_value}
+  end
+
+  defp rule_ok?({:int, name, lo, hi}, value) do
+    case Map.fetch(value, name) do
+      {:ok, v} when not is_nil(v) -> is_integer(v) and v >= lo and v <= hi
+      _ -> true
+    end
+  end
+
+  defp rule_ok?({:text, name, bound}, value) do
+    case Map.fetch(value, name) do
+      {:ok, v} when not is_nil(v) ->
+        is_binary(v) and byte_size(v) <= bound and String.valid?(v) and
+          :binary.match(v, <<0>>) == :nomatch
+
+      _ ->
+        true
+    end
+  end
+
+  defp rule_ok?({:bytes, name, bound}, value) do
+    case Map.fetch(value, name) do
+      {:ok, v} when not is_nil(v) -> is_binary(v) and byte_size(v) <= bound
+      _ -> true
+    end
+  end
+
+  defp rule_ok?({:fixed, name, bound}, value) do
+    case Map.fetch(value, name) do
+      {:ok, v} when not is_nil(v) -> is_list(v) and length(v) == bound
+      _ -> true
+    end
+  end
+
+  defp rule_ok?({:counted, name, min, bound}, value) do
+    case Map.fetch(value, name) do
+      {:ok, v} when not is_nil(v) -> is_list(v) and length(v) >= min and length(v) <= bound
+      _ -> min == 0
+    end
+  end
+
+  defp rule_ok?({:keyed, name, keys}, value) do
+    case Map.fetch(value, name) do
+      {:ok, v} when not is_nil(v) -> is_map(v) and Enum.all?(keys, &Map.has_key?(v, &1))
+      _ -> true
+    end
+  end
+
   defp count_of(counts, name) do
     cond do
       Map.has_key?(counts, name) -> counts[name]
@@ -331,6 +402,71 @@ func (b *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 	b.pf("  def block_begin_%s(counts) do\n", lo)
 	b.pf("    B.begin(counts, %s, %s, @build_version)\n", arrays, exInt(bl.Projection.Size))
 	b.pf("  end\n\n")
+	rules := blockFieldRules(bl.Table)
+	rulesCall := "[]"
+	if len(rules) > 0 {
+		rulesCall = lo + "_block_rules()"
+		b.pf("  defp %s_block_rules do\n    [\n", lo)
+		for i, r := range rules {
+			if i < len(rules)-1 {
+				b.pf("      %s,\n", r)
+			} else {
+				b.pf("      %s\n", r)
+			}
+		}
+		b.pf("    ]\n  end\n\n")
+	}
+	b.pf("  def block_build_%s(value) do\n", lo)
+	callLine := fmt.Sprintf("    B.build(value, %s, %s, %s, @build_version)", rulesCall, arrays, exInt(bl.Projection.Size))
+	if len(callLine) <= 98 {
+		b.pf("%s\n", callLine)
+	} else {
+		b.pf("    B.build(\n      value,\n      %s,\n      %s,\n      %s,\n      @build_version\n    )\n",
+			rulesCall, arrays, exInt(bl.Projection.Size))
+	}
+	b.pf("  end\n\n")
+}
+
+func blockFieldRules(st *ir.Struct) []string {
+	var out []string
+	for _, f := range st.Fields {
+		switch {
+		case f.KeyEnum != "" && f.KeyEnumRef != nil:
+			var ks []string
+			for _, v := range f.KeyEnumRef.Variants {
+				ks = append(ks, fmt.Sprintf("%q", v))
+			}
+			line := fmt.Sprintf("{:keyed, %q, [%s]}", f.Name, strings.Join(ks, ", "))
+			if len("      "+line+",") <= 98 {
+				out = append(out, line)
+			} else {
+				var kb strings.Builder
+				fmt.Fprintf(&kb, "{:keyed, %q,\n       [\n", f.Name)
+				for i, k := range ks {
+					if i < len(ks)-1 {
+						fmt.Fprintf(&kb, "         %s,\n", k)
+					} else {
+						fmt.Fprintf(&kb, "         %s\n", k)
+					}
+				}
+				kb.WriteString("       ]}")
+				out = append(out, kb.String())
+			}
+		case f.Array == ir.ArrayFixed:
+			out = append(out, fmt.Sprintf("{:fixed, %q, %s}", f.Name, exInt(f.ArrayBound)))
+		case f.Array == ir.ArrayCounted:
+			out = append(out, fmt.Sprintf("{:counted, %q, %s, %s}", f.Name, exInt(f.ArrayMin), exInt(f.ArrayBound)))
+		case f.Type.Kind == ir.TString && !f.Type.Blob() && !f.Type.Unbounded && f.Type.Size > 0:
+			out = append(out, fmt.Sprintf("{:text, %q, %s}", f.Name, exInt(f.Type.Size)))
+		case f.Type.Kind == ir.TBytes && !f.Type.Blob() && f.Type.Size > 0:
+			out = append(out, fmt.Sprintf("{:bytes, %q, %s}", f.Name, exInt(f.Type.Size)))
+		case f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits || f.Type.Kind == ir.TFixed:
+			if lo, hi, ok := ir.TableRawRange(f); ok {
+				out = append(out, fmt.Sprintf("{:int, %q, %s, %s}", f.Name, fixedIntLiteral(lo), fixedIntLiteral(hi)))
+			}
+		}
+	}
+	return out
 }
 
 // blockStartAlign is where one out-of-line array begins: aligned to

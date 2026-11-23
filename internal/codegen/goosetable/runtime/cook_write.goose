@@ -135,9 +135,9 @@ fn cook_live(c: CookCtx&, s: i64, d: const FieldDesc&) -> i64 {
         if d.array == ArrayCounted { return d.min; }
         return 0;
     }
-    var n = c.vals[s].len;
-    if n < 0 { n = 0; }
-    if d.array == ArrayCounted && n > d.bound { n = d.bound; }
+    let n = c.vals[s].len;
+    if n < 0 { c.refused = true; return 0; }
+    if d.array == ArrayCounted && (n < d.min || n > d.bound) { c.refused = true; return 0; }
     return n;
 }
 
