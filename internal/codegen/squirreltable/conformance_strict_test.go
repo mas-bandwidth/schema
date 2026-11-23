@@ -75,7 +75,7 @@ func squirrelDriverStrict(src, jsonRuntime string) error {
 		return nil
 	}
 	if err := check(`if (mode == "wire")`, "wire",
-		[]string{"strictLoad(", "blob_shared"}, []string{"loadWalk"}); err != nil {
+		[]string{"strictLoad(", "writeRefusal("}, []string{"loadWalk"}); err != nil {
 		return err
 	}
 	if err := check(`if (mode == "report" || mode == "framing")`, "report/framing",
