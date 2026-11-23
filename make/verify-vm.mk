@@ -252,7 +252,7 @@ verify-cards-lobster: verify-toolchain-lobster build/conformance-harness-vm card
 # ---- Umbrella wrapper macro (matches make/verify-compiled.mk) ----
 
 define verify_vm_entrypoints
-.PHONY: _verify-$(1)-all verify-$(1) verify-$(1)-conformance verify-$(1)-bench verify-$(1)-fuzz
+.PHONY: _verify-$(1)-all verify-$(1) verify-$(1)-conformance verify-$(1)-bench verify-$(1)-fuzz conformance-corpus-$(1)
 _verify-$(1)-all: _verify-$(1)-conformance _verify-$(1)-bench _verify-$(1)-fuzz
 
 verify-$(1):
@@ -266,6 +266,9 @@ verify-$(1)-bench:
 
 verify-$(1)-fuzz:
 	@$$(MAKE) $$(VERIFY_JFLAG) --no-print-directory _verify-$(1)-fuzz
+
+conformance-corpus-$(1):
+	@$$(MAKE) $$(VERIFY_JFLAG) --no-print-directory _conformance-corpus-$(1)
 endef
 
 $(foreach leg,$(VERIFY_VM_LEGS),$(eval $(call verify_vm_entrypoints,$(leg))))
@@ -655,3 +658,45 @@ verify-sabotage-negative-control: \
 	verify-sabotage-variable-negative-control \
 	verify-sabotage-retain-negative-control
 	@echo "verify-sabotage-negative-control: all 4 sabotage classes (packet, fixed, variable, retain) caught immediately"
+
+# ---- conformance-corpus (tables conformance harness only, for input-family accounting) ----
+
+.PHONY: _conformance-corpus-js _conformance-corpus-python _conformance-corpus-ruby \
+	_conformance-corpus-lua _conformance-corpus-luau _conformance-corpus-squirrel \
+	_conformance-corpus-moo _conformance-corpus-goose _conformance-corpus-lobster
+
+_conformance-corpus-js: verify-toolchain-js build/conformance-harness-vm build/tables-generated-js/.stamp
+	@rm -rf build/verify/conformance-corpus-js && mkdir -p build/verify/conformance-corpus-js $(VERIFY_RESULTS_DIR)
+	NODE="$(NODE)" ./build/conformance-harness-vm run --only js --claims --work build/verify/conformance-corpus-js --results $(VERIFY_RESULTS_DIR)/js.json
+
+_conformance-corpus-python: verify-toolchain-python build/conformance-harness-vm build/conformance-python
+	@rm -rf build/verify/conformance-corpus-python && mkdir -p build/verify/conformance-corpus-python $(VERIFY_RESULTS_DIR)
+	PYTHON="$(PYTHON)" ./build/conformance-harness-vm run --only python --claims --work build/verify/conformance-corpus-python --results $(VERIFY_RESULTS_DIR)/python.json
+
+_conformance-corpus-ruby: verify-toolchain-ruby build/conformance-harness-vm build/conformance-ruby
+	@rm -rf build/verify/conformance-corpus-ruby && mkdir -p build/verify/conformance-corpus-ruby $(VERIFY_RESULTS_DIR)
+	RUBY="$(RUBY)" ./build/conformance-harness-vm run --only ruby --claims --work build/verify/conformance-corpus-ruby --results $(VERIFY_RESULTS_DIR)/ruby.json
+
+_conformance-corpus-lua: verify-toolchain-lua build/conformance-harness-vm build/conformance-lua
+	@rm -rf build/verify/conformance-corpus-lua && mkdir -p build/verify/conformance-corpus-lua $(VERIFY_RESULTS_DIR)
+	LUA="$(LUA)" ./build/conformance-harness-vm run --only lua --claims --work build/verify/conformance-corpus-lua --results $(VERIFY_RESULTS_DIR)/lua.json
+
+_conformance-corpus-luau: verify-toolchain-luau build/conformance-harness-vm build/conformance-luau
+	@rm -rf build/verify/conformance-corpus-luau && mkdir -p build/verify/conformance-corpus-luau $(VERIFY_RESULTS_DIR)
+	LUAU="$(LUAU)" ./build/conformance-harness-vm run --only luau --claims --work build/verify/conformance-corpus-luau --results $(VERIFY_RESULTS_DIR)/luau.json
+
+_conformance-corpus-squirrel: verify-toolchain-squirrel build/conformance-harness-vm build/conformance-squirrel
+	@rm -rf build/verify/conformance-corpus-squirrel && mkdir -p build/verify/conformance-corpus-squirrel $(VERIFY_RESULTS_DIR)
+	SQ="$(SQ)" ./build/conformance-harness-vm run --only squirrel --claims --work build/verify/conformance-corpus-squirrel --results $(VERIFY_RESULTS_DIR)/squirrel.json
+
+_conformance-corpus-moo: verify-toolchain-moo build/conformance-harness-vm build/conformance-moo
+	@rm -rf build/verify/conformance-corpus-moo && mkdir -p build/verify/conformance-corpus-moo $(VERIFY_RESULTS_DIR)
+	MOO="$(MOO)" MOO_ANALYZE="$(MOO_ANALYZE)" ./build/conformance-harness-vm run --only moo --claims --work build/verify/conformance-corpus-moo --results $(VERIFY_RESULTS_DIR)/moo.json
+
+_conformance-corpus-goose: verify-toolchain-goose build/conformance-harness-vm build/conformance-goose
+	@rm -rf build/verify/conformance-corpus-goose && mkdir -p build/verify/conformance-corpus-goose $(VERIFY_RESULTS_DIR)
+	GOOSE="$(GOOSE)" ./build/conformance-harness-vm run --only goose --claims --work build/verify/conformance-corpus-goose --results $(VERIFY_RESULTS_DIR)/goose.json
+
+_conformance-corpus-lobster: verify-toolchain-lobster build/conformance-harness-vm build/conformance-lobster
+	@rm -rf build/verify/conformance-corpus-lobster && mkdir -p build/verify/conformance-corpus-lobster $(VERIFY_RESULTS_DIR)
+	LOBSTER="$(LOBSTER)" ./build/conformance-harness-vm run --only lobster --claims --work build/verify/conformance-corpus-lobster --results $(VERIFY_RESULTS_DIR)/lobster.json

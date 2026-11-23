@@ -1286,9 +1286,9 @@ func tableMessageBodyRangedSigned(r *TableMessageReader, value *RangedSigned, st
 }
 
 // RangedSignedLoadMessages is the message read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3, §6.5): the whole batch, or ok false with a
-// count of 0 and every value it had written reset. A supplied report receives this read's report;
-// report.Err() is the reason.
-func RangedSignedLoadMessages(values []RangedSigned, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
+// count of 0 and every value handed in reset to its declared defaults. A supplied report receives this
+// read's report; report.Err() is the reason.
+func RangedSignedLoadMessages(values []RangedSigned, vocabulary *TableVocabulary, data []byte, report *TableReport) (loaded int64, ok bool) {
 	read := report
 	if read == nil {
 		read = &TableReport{}
@@ -1301,6 +1301,7 @@ func RangedSignedLoadMessages(values []RangedSigned, vocabulary *TableVocabulary
 		if read.Refused() {
 			tableRefused(read)
 		}
+		tableResetIf(func() bool { return !ok }, values, RangedSignedReset)
 	}()
 	if count < 0 {
 		return 0, false
@@ -1311,16 +1312,10 @@ func RangedSignedLoadMessages(values []RangedSigned, vocabulary *TableVocabulary
 	}
 	for i := range count {
 		if !RangedSignedLoadMessageBody(&r, &values[i]) || r.Report.Refused() {
-			for j := range i + 1 {
-				RangedSignedReset(&values[j])
-			}
 			return 0, false
 		}
 	}
 	if !tableMessageBatchClose(&r) {
-		for j := range count {
-			RangedSignedReset(&values[j])
-		}
 		return 0, false
 	}
 	return count, true
@@ -2594,9 +2589,9 @@ func tableMessageBodyRangedUnsigned(r *TableMessageReader, value *RangedUnsigned
 }
 
 // RangedUnsignedLoadMessages is the message read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3, §6.5): the whole batch, or ok false with a
-// count of 0 and every value it had written reset. A supplied report receives this read's report;
-// report.Err() is the reason.
-func RangedUnsignedLoadMessages(values []RangedUnsigned, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
+// count of 0 and every value handed in reset to its declared defaults. A supplied report receives this
+// read's report; report.Err() is the reason.
+func RangedUnsignedLoadMessages(values []RangedUnsigned, vocabulary *TableVocabulary, data []byte, report *TableReport) (loaded int64, ok bool) {
 	read := report
 	if read == nil {
 		read = &TableReport{}
@@ -2609,6 +2604,7 @@ func RangedUnsignedLoadMessages(values []RangedUnsigned, vocabulary *TableVocabu
 		if read.Refused() {
 			tableRefused(read)
 		}
+		tableResetIf(func() bool { return !ok }, values, RangedUnsignedReset)
 	}()
 	if count < 0 {
 		return 0, false
@@ -2619,16 +2615,10 @@ func RangedUnsignedLoadMessages(values []RangedUnsigned, vocabulary *TableVocabu
 	}
 	for i := range count {
 		if !RangedUnsignedLoadMessageBody(&r, &values[i]) || r.Report.Refused() {
-			for j := range i + 1 {
-				RangedUnsignedReset(&values[j])
-			}
 			return 0, false
 		}
 	}
 	if !tableMessageBatchClose(&r) {
-		for j := range count {
-			RangedUnsignedReset(&values[j])
-		}
 		return 0, false
 	}
 	return count, true
@@ -3127,9 +3117,9 @@ func tableMessageBodyRangedWidths(r *TableMessageReader, value *RangedWidths, st
 }
 
 // RangedWidthsLoadMessages is the message read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3, §6.5): the whole batch, or ok false with a
-// count of 0 and every value it had written reset. A supplied report receives this read's report;
-// report.Err() is the reason.
-func RangedWidthsLoadMessages(values []RangedWidths, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
+// count of 0 and every value handed in reset to its declared defaults. A supplied report receives this
+// read's report; report.Err() is the reason.
+func RangedWidthsLoadMessages(values []RangedWidths, vocabulary *TableVocabulary, data []byte, report *TableReport) (loaded int64, ok bool) {
 	read := report
 	if read == nil {
 		read = &TableReport{}
@@ -3142,6 +3132,7 @@ func RangedWidthsLoadMessages(values []RangedWidths, vocabulary *TableVocabulary
 		if read.Refused() {
 			tableRefused(read)
 		}
+		tableResetIf(func() bool { return !ok }, values, RangedWidthsReset)
 	}()
 	if count < 0 {
 		return 0, false
@@ -3152,16 +3143,10 @@ func RangedWidthsLoadMessages(values []RangedWidths, vocabulary *TableVocabulary
 	}
 	for i := range count {
 		if !RangedWidthsLoadMessageBody(&r, &values[i]) || r.Report.Refused() {
-			for j := range i + 1 {
-				RangedWidthsReset(&values[j])
-			}
 			return 0, false
 		}
 	}
 	if !tableMessageBatchClose(&r) {
-		for j := range count {
-			RangedWidthsReset(&values[j])
-		}
 		return 0, false
 	}
 	return count, true

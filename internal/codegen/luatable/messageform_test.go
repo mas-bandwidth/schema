@@ -171,8 +171,7 @@ local vocab = {}
 for i = 1, T.MessageEntries do vocab[i] = {} end
 assert(T.AnnounceRead(vocab, inputs.announce, report))
 local values = T.LoadMessages("LoginRequest", vocab, inputs.batch, report)
-assert(values ~= nil, "a damaged batch should return an empty result")
-assert(#values == 0, "damage in body 2 delivered partial bodies")
+assert(values == nil, "damage in body 2 delivered partial bodies: a refusal answers nil")
 assert(report.damaged == true, "damage in body 2 did not report malformed")
 print("damage-ok")
 `)
