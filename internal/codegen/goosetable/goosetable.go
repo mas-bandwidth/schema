@@ -708,7 +708,7 @@ func valueFacts(g *goose.Gen, f *ir.Field, def bool) facts {
 			// mw is W, the mask width every table read and write holds the value
 			// to (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH)
 			v := intFacts(f, def)
-			v.mw = int(r.WireBits)
+			v.mw = r.WireBits
 			return v
 		case *ir.Union:
 			requireHome(g, r.Name)

@@ -238,21 +238,6 @@ func variableFieldConstruct(f *ir.Field) string {
 	return ""
 }
 
-// countedMinCarried reports a [Min..N]T whose element this leg's variable
-// codec carries at its birth count (ir.Field.BornCount, SPEC §4.6): a scalar,
-// an enum or a table by value. A fresh value holds Min elements at their
-// zero, the save elides exactly that, and a read below Min refuses.
-func countedMinCarried(f *ir.Field) bool {
-	if f.IsTextList() || f.Type.Pointer || f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
-		return false
-	}
-	switch classOf(f) {
-	case vScalar, vEnum, vTable:
-		return true
-	}
-	return false
-}
-
 func unionFieldConstruct(un *ir.Union, seen map[*ir.Union]bool) string {
 	if un == nil || seen[un] {
 		return ""

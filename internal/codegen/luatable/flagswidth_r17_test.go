@@ -13,6 +13,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"maps"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -127,9 +128,7 @@ print("announce=" .. hex(T.Announcement))
 print("msg_inside=" .. hex(assert(T.SaveMessages("Rec", vocab, { inside }))))
 print("msg_past=" .. hex(assert(T.SaveMessages("Rec", vocab, { past }))))
 `, wideMod))
-	for k, v := range r17Wires(t, string(luarun.Run(t, msgDir, "main.lua", nil))) {
-		files[k] = v
-	}
+	maps.Copy(files, r17Wires(t, string(luarun.Run(t, msgDir, "main.lua", nil))))
 
 	var slot [8]byte
 	binary.LittleEndian.PutUint64(slot[:], 0x123456789a)

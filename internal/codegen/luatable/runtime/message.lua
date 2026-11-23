@@ -815,10 +815,7 @@ skip_entry = function(R, e, ctx, depth, field)
     -- A STRING, A TABLE, A NESTED ARRAY OR KEYED BODY, A UNION AND AN ENUM
     -- ARE WALKED ONE LEVEL DEEPER; a fixed-width scalar element rides at the
     -- array body's level (§3.3, message_skip_depth).
-    local walked = inner.kind == 12
-      or inner.kind == 13
-      or (inner.kind >= 14 and inner.kind <= 17)
-      or inner.kind == 30
+    local walked = inner.kind == 12 or inner.kind == 13 or (inner.kind >= 14 and inner.kind <= 17) or inner.kind == 30
     for _ = 1, n do
       local at = R.off
       if k == 16 then

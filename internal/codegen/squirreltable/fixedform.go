@@ -762,7 +762,7 @@ func fixedFlagsWidth(f *ir.Field) (int, bool) {
 	if !ok || fl.WireBits >= 64 {
 		return 0, false
 	}
-	return int(fl.WireBits), true
+	return fl.WireBits, true
 }
 
 // fixedIntLit spells a 64-bit integer as a Squirrel literal; the most

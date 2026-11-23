@@ -1318,7 +1318,7 @@ public final class TableVocabulary {
 
     static boolean knownKind(int kind) {
         // 31 is held by name, never written (R17): an announcement naming it is
-        // malformed, as one naming 33 or 34 is
+        // refused, as one naming 33 or 34 is
         return kind <= 30 || kind == 32 || kind == 36;
     }
 

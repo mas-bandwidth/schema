@@ -33,22 +33,22 @@ import (
 // rather than in the emitted text so a change is one place (docs/SPEC-TABLES.md
 // §3).
 const (
-	wireKindBool   = 1
-	wireKindI8     = 2
-	wireKindI16    = 3
-	wireKindI32    = 4
-	wireKindI64    = 5
-	wireKindU8     = 6
-	wireKindU16    = 7
-	wireKindU32    = 8
-	wireKindU64    = 9
-	wireKindF32    = 10
-	wireKindF64    = 11
-	wireKindString = 12
-	wireKindTable  = 13
-	wireKindArray  = 14
-	wireKindPtr    = 17
-	wireKindEnum   = 30
+	wireKindBool       = 1
+	wireKindI8         = 2
+	wireKindI16        = 3
+	wireKindI32        = 4
+	wireKindI64        = 5
+	wireKindU8         = 6
+	wireKindU16        = 7
+	wireKindU32        = 8
+	wireKindU64        = 9
+	wireKindF32        = 10
+	wireKindF64        = 11
+	wireKindString     = 12
+	wireKindTable      = 13
+	wireKindArray      = 14
+	wireKindPtr        = 17
+	wireKindEnum       = 30
 	wireKindHeldEscape = 31 // held by name, never written (R17)
 )
 
