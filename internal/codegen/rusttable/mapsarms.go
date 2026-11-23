@@ -1546,18 +1546,3 @@ func rustBoundedLenAssert(f *ir.Field, x, ind string) string {
 	}
 	return fmt.Sprintf("%sdebug_assert!(%s.len() <= %d, \"%s length past %d\");\n", ind, x, f.Type.Size, f.Name, f.Type.Size)
 }
-
-// rustBoundedTextAsserts is what a bounded string(N) owes on write wherever it
-// rides (a field, an optional, a keyed slot, a union arm): a length past N and
-// a zero byte are debug asserts (docs/SPEC.md §5.1, rows 4 and 8), exactly as
-// the plain field's save emits them.
-func rustBoundedTextAsserts(f *ir.Field, x, ind string) string {
-	if f.Type.Kind != ir.TString {
-		return ""
-	}
-	a := rustBoundedLenAssert(f, x, ind)
-	if a == "" {
-		return ""
-	}
-	return a + fmt.Sprintf("%sdebug_assert!(!%s.as_bytes().contains(&0), \"%s holds a zero byte\");\n", ind, x, f.Name)
-}

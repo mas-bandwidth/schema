@@ -594,9 +594,12 @@ func (g *gen) fixedScalarWriteCheck(f *ir.Field, expr string, width int64, ind s
 		minBits, maxBits := fixedStorageLimits(width, f.Type.Signed)
 		var conds []string
 		low, high := lo.Cmp(minBits) > 0, hi.Cmp(maxBits) < 0
-		if low && high && !strings.ContainsAny(at, ".[*") {
+		switch {
+		case low && high && lo.Cmp(hi) == 0:
+			conds = append(conds, fmt.Sprintf("%s == %s", at, lo.String()))
+		case low && high && !strings.ContainsAny(at, ".[*"):
 			conds = append(conds, fmt.Sprintf("(%s..=%s).contains(&%s)", lo.String(), hi.String(), at))
-		} else {
+		default:
 			if low {
 				conds = append(conds, fmt.Sprintf("%s >= %s", at, lo.String()))
 			}

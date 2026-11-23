@@ -224,6 +224,12 @@ build/tables-generated-c/pointers/PartsBlock.c
 build/tables-generated-c/pointers/PartsBlock.h
 build/tables-generated-c/pointers/PartsTable.c
 build/tables-generated-c/pointers/PartsTable.h
+build/tables-generated-c/prior/PriorNarrowBlock.c
+build/tables-generated-c/prior/PriorNarrowBlock.h
+build/tables-generated-c/prior/PriorNarrowTable.c
+build/tables-generated-c/prior/PriorNarrowTable.h
+build/tables-generated-c/prior/TblpriorView.c
+build/tables-generated-c/prior/TblpriorView.h
 build/tables-generated-c/r1/R1Table.c
 build/tables-generated-c/r1/R1Table.h
 build/tables-generated-c/r1/Tblr1View.c
@@ -250,6 +256,12 @@ build/tables-generated-c/scalars2/Scalars2Block.c
 build/tables-generated-c/scalars2/Scalars2Block.h
 build/tables-generated-c/scalars2/Scalars2Table.c
 build/tables-generated-c/scalars2/Scalars2Table.h
+build/tables-generated-c/shapes/ShapesBlock.c
+build/tables-generated-c/shapes/ShapesBlock.h
+build/tables-generated-c/shapes/ShapesTable.c
+build/tables-generated-c/shapes/ShapesTable.h
+build/tables-generated-c/shapes/ShapesView.c
+build/tables-generated-c/shapes/ShapesView.h
 build/tables-generated-c/stream/StreamBlock.c
 build/tables-generated-c/stream/StreamBlock.h
 build/tables-generated-c/stream/StreamTable.c

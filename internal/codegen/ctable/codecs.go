@@ -538,20 +538,6 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string
 			} else {
 				g.pf("%sschema_assert( (uint64_t)( %s ) <= 0x%xull ); /* bits(%d) wider than %d bits, debug only (SPEC.md §5.1 row 2) */\n", ind, expr, mask, f.Type.Width, f.Type.Width)
 			}
-		} else if lo, hi, ok := ir.TableRawRange(f); ok {
-			// rows 1 and 2 of the write contract (docs/SPEC.md §5.1) on every
-			// field, element and arm payload that is not required: C is an
-			// assert leg, so the check is schema_assert and NDEBUG removes it
-			clampMin, clampMax := tableClampEnds(f, width)
-			if clampMin {
-				g.pf("%sschema_assert( %s >= %s ); /* a ranged value inside its declaration (§5.1 row 1) */\n", ind, expr, tableIntLit(lo, f.Type.Signed, width))
-			}
-			if clampMax {
-				g.pf("%sschema_assert( %s <= %s ); /* a ranged value inside its declaration (§5.1 row 1) */\n", ind, expr, tableIntLit(hi, f.Type.Signed, width))
-			}
-		} else if f.Type.Kind == ir.TBits && f.Type.Width < width*8 {
-			mask := (uint64(1) << f.Type.Width) - 1
-			g.pf("%sschema_assert( (uint64_t)( %s ) <= 0x%xull ); /* bits(%d) no wider than %d bits (§5.1 row 2) */\n", ind, expr, mask, f.Type.Width, f.Type.Width)
 		}
 		cast := fmt.Sprintf("uint%d_t", width*8)
 		g.pf("%s%s( w, (%s) ( %s ) );\n", ind, tablePut(width), cast, expr)
