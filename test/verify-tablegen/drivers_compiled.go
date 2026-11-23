@@ -317,6 +317,35 @@ int main( int argc, char ** argv ) {
 // 2. C (-std=c99 -Wall -Wextra -Werror, including *Table.h, *Block.h, *Cook.h)
 // ============================================================================
 
+const cTablegenPrelude = `#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+typedef struct {
+    char id[128], pkg[64], root[64];
+    uint8_t op;
+    const uint8_t *aux, *in, *w1, *w2;
+    size_t aux_len, in_len, w1_len, w2_len;
+} case_t;
+
+static void die( const char * id, const char * why ) {
+    fprintf( stderr, "FAILED: %s: %s\n", id, why );
+    exit( 1 );
+}
+
+`
+
+const cTablegenCheckBytes = `static void check_bytes( const char * id, const uint8_t * got, size_t n, const uint8_t * want, size_t wn ) {
+    if ( n != wn || ( n > 0 && memcmp( got, want, n ) != 0 ) ) {
+        fprintf( stderr, "FAILED: %s: byte mismatch got=%zu want=%zu\n", id, n, wn );
+        exit( 1 );
+    }
+}
+
+`
+
 func verifyC(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec, caseCount int) error {
 	genRoot := filepath.Join(workDir, "gen")
 	if err := generateAllUnits(repoRoot, schemaBin, "", "c", units, genRoot); err != nil {
@@ -324,11 +353,11 @@ func verifyC(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec, ca
 	}
 	serC := resolveExistingDir(repoRoot, "SERIALIZE_C", "../serialize.c", "build/serialize.c")
 
-	var inc strings.Builder
-	var disp strings.Builder
-	var cFiles []string
+	var decls, calls strings.Builder
+	var unitFiles, cFiles []string
 
-	for _, u := range units {
+	for i, u := range units {
+		var inc, disp strings.Builder
 		fmt.Fprintf(&inc, "#include \"%s/%sTable.h\"\n", u.Pkg, u.FileBase)
 		if fileExists(filepath.Join(genRoot, u.Pkg, u.FileBase+"Block.h")) {
 			fmt.Fprintf(&inc, "#include \"%s/%sBlock.h\"\n", u.Pkg, u.FileBase)
@@ -354,7 +383,7 @@ func verifyC(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec, ca
                 uint8_t * out = (uint8_t *)calloc( sz > 0 ? (size_t)sz : 1, 1 );
                 if ( %s_%s_save( NULL, r, out, sz ) != sz ) die( c->id, "save" );
                 check_bytes( c->id, out, (size_t)sz, c->w1, c->w1_len );
-                free( out ); free( reg ); return;
+                free( out ); free( reg ); return true;
             }
             if ( c->op == 2 ) {
                 int64_t need = %s_%s_load_measure( c->in, (int64_t)c->in_len );
@@ -371,7 +400,7 @@ func verifyC(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec, ca
                 uint8_t * out = (uint8_t *)calloc( sz > 0 ? (size_t)sz : 1, 1 );
                 if ( %s_%s_save_retain( r, &ret, out, sz, &rep ) != sz ) die( c->id, "save_retain" );
                 check_bytes( c->id, out, (size_t)sz, c->w1, c->w1_len );
-                free( out ); free( ret.ids ); free( ret.bytes ); free( reg ); return;
+                free( out ); free( ret.ids ); free( ret.bytes ); free( reg ); return true;
             }
             if ( c->op == 6 ) {
                 %s_%s_builder_t b; memset( &b, 0, sizeof(b) );
@@ -392,7 +421,7 @@ func verifyC(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec, ca
                     check_bytes( c->id, wout, (size_t)wsz, c->w2, c->w2_len );
                     free( wout );
                 }
-                free( jout ); %s_%s_builder_shutdown( &b ); return;
+                free( jout ); %s_%s_builder_shutdown( &b ); return true;
             }
         }
 `,
@@ -413,14 +442,14 @@ func verifyC(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec, ca
                 free( plan );
                 if ( c->op == 5 ) {
                     if ( n == 1 && !rep.refused ) die( c->id, "expected historical writer-bound refusal" );
-                    return;
+                    return true;
                 }
                 if ( n != 1 || rep.refused ) die( c->id, "fixed_load" );
                 int64_t sz = %s_%s_fixed_measure( 1 );
                 uint8_t * out = (uint8_t *)calloc( (size_t)sz + 1, 1 );
                 if ( %s_%s_fixed_save( &val, 1, out, sz ) != sz ) die( c->id, "fixed_save" );
                 check_bytes( c->id, out, (size_t)sz, c->w1, c->w1_len );
-                free( out ); return;
+                free( out ); return true;
             }
             if ( c->op == 3 ) {
                 %s_table_message_entry_t * entries = (%s_table_message_entry_t *)calloc( 4096, sizeof(%s_table_message_entry_t) );
@@ -442,7 +471,7 @@ func verifyC(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec, ca
                 uint8_t * out = (uint8_t *)calloc( (size_t)msz + 1, 1 );
                 if ( %s_%s_save_messages( vals, cnt, out, msz, &srep ) != msz ) die( c->id, "save_messages" );
                 check_bytes( c->id, out, (size_t)msz, c->w1, c->w1_len );
-                free( out ); free( vals ); free( entries ); return;
+                free( out ); free( vals ); free( entries ); return true;
             }
             if ( c->op == 6 || c->op == 7 ) {
                 %s_%s_t val; memset( &val, 0, sizeof(val) ); %s_%s_reset( &val );
@@ -462,7 +491,7 @@ func verifyC(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec, ca
                     check_bytes( c->id, mout, (size_t)msz, c->w2, c->w2_len );
                     free( mout );
                 }
-                free( jout ); return;
+                free( jout ); return true;
             }
         }
 `,
@@ -474,31 +503,20 @@ func verifyC(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec, ca
 			)
 		}
 		disp.WriteString("    }\n")
+
+		// Compile each dispatch with only its own generated headers, as in C++.
+		unitC := filepath.Join(workDir, fmt.Sprintf("unit_%03d.c", i))
+		unitSrc := cTablegenPrelude + inc.String() + cTablegenCheckBytes +
+			fmt.Sprintf("bool run_unit_%03d( const case_t * c ) {\n%s    return false;\n}\n", i, disp.String())
+		if err := os.WriteFile(unitC, []byte(unitSrc), 0o644); err != nil {
+			return err
+		}
+		unitFiles = append(unitFiles, unitC)
+		fmt.Fprintf(&decls, "bool run_unit_%03d( const case_t * c );\n", i)
+		fmt.Fprintf(&calls, "    if ( run_unit_%03d( c ) ) return;\n", i)
 	}
 
-	cSrc := fmt.Sprintf(`#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-%s
-
-typedef struct {
-    char id[128], pkg[64], root[64];
-    uint8_t op;
-    const uint8_t *aux, *in, *w1, *w2;
-    size_t aux_len, in_len, w1_len, w2_len;
-} case_t;
-
-static void die( const char * id, const char * why ) {
-    fprintf( stderr, "FAILED: %%s: %%s\n", id, why );
-    exit( 1 );
-}
-
-static void check_bytes( const char * id, const uint8_t * got, size_t n, const uint8_t * want, size_t wn ) {
-    if ( n != wn || ( n > 0 && memcmp( got, want, n ) != 0 ) ) {
-        fprintf( stderr, "FAILED: %%s: byte mismatch got=%%zu want=%%zu\n", id, n, wn );
-        exit( 1 );
-    }
-}
+	cSrc := cTablegenPrelude + fmt.Sprintf(`%s
 
 static uint32_t ru32( const uint8_t * p ) {
     return (uint32_t)p[0] | ( (uint32_t)p[1] << 8 ) | ( (uint32_t)p[2] << 16 ) | ( (uint32_t)p[3] << 24 );
@@ -538,7 +556,7 @@ int main( int argc, char ** argv ) {
     free( raw );
     return 0;
 }
-`, inc.String(), disp.String())
+`, decls.String(), calls.String())
 
 	mainC := filepath.Join(workDir, "main.c")
 	if err := os.WriteFile(mainC, []byte(cSrc), 0o644); err != nil {
@@ -547,7 +565,7 @@ int main( int argc, char ** argv ) {
 	binPath := filepath.Join(workDir, "runner")
 	cc := envOr("CC", "cc")
 	compileFlags := []string{"-std=c99", "-O1", "-ffp-contract=off", "-Wall", "-Wextra", "-Werror", "-I" + genRoot, "-I" + serC}
-	objs, err := compileObjectsParallel(workDir, cc, compileFlags, append([]string{mainC, filepath.Join(serC, "serialize.c")}, cFiles...))
+	objs, err := compileObjectsParallel(workDir, cc, compileFlags, append(append(unitFiles, mainC, filepath.Join(serC, "serialize.c")), cFiles...))
 	if err != nil {
 		return fmt.Errorf("compile c: %w", err)
 	}

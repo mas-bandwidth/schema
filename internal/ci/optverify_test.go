@@ -225,6 +225,7 @@ func TestOptVerifyFastWorkflowSelector(t *testing.T) {
 		{"js", "internal/codegen/jstable/variableform.go", `["js"]`},
 		{"dart", "internal/codegen/darttable/darttable.go", `["dart"]`},
 		{"elixir", "internal/codegen/elixirtable/variableform.go", `["elixir"]`},
+		{"elixir handoff", "make/elixir-handoff.py", `["elixir"]`},
 		{"goose", "internal/codegen/goosetable/fixedform.go", `["goose"]`},
 		{"luau", "internal/codegen/luautable/fixedlineage.go", `["luau"]`},
 		{"lua", "internal/codegen/luatable/runtime/wire.lua", `["lua"]`},

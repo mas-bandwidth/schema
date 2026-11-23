@@ -9973,6 +9973,7 @@ inline bool AlbumLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Al
 inline int64_t MetaMeasureBody( TableIds & ids, const Meta & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    schema_assert( !( value.build < 0 || value.build > 1000 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.build != 1 ) { bytes += TableLebBytes( ids.ref_at( 26, 0x802517e298c70b03ull ) ) + 1 + 4; } // build
     schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( !TableUtf8Valid( (const uint8_t *) value.tag, (uint64_t) value.tag_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
@@ -9995,6 +9996,7 @@ GRAPHDEMO_TABLE_INLINE bool MetaSaveBody( TableWriter & w, TableIds & ids, const
     if ( value.build != 1 )
     {
         w.header( ids.ref_at( 26, 0x802517e298c70b03ull ), 4 ); // build
+        schema_assert( !( value.build < 0 || value.build > 1000 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.build ) );
     }
     schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // storage invariant, debug only (§5.1)
@@ -10641,6 +10643,7 @@ inline bool MetaLoadMessages( Meta * values, int64_t * count, const TableVocabul
 inline int64_t SettingsMeasureBody( TableIds & ids, const Settings & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    schema_assert( !( value.quality < 0 || value.quality > 4 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.quality != 2 ) { bytes += TableLebBytes( ids.ref_at( 23, 0x7a8060916400fe66ull ) ) + 1 + 4; } // quality
     schema_assert( value.label_length >= 0 && value.label_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
@@ -10663,6 +10666,7 @@ GRAPHDEMO_TABLE_INLINE bool SettingsSaveBody( TableWriter & w, TableIds & ids, c
     if ( value.quality != 2 )
     {
         w.header( ids.ref_at( 23, 0x7a8060916400fe66ull ), 4 ); // quality
+        schema_assert( !( value.quality < 0 || value.quality > 4 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.quality ) );
     }
     schema_assert( value.label_length >= 0 && value.label_length <= 16 ); // storage invariant, debug only (§5.1)
@@ -11804,6 +11808,7 @@ inline int64_t LayerMeasureBody( const Ctx & ctx, const TableNumbering & numberi
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    schema_assert( !( value.depth < 0 || value.depth > 64 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.depth != 0 ) { bytes += TableLebBytes( ids.ref_at( 20, 0x75d8e97600b296eaull ) ) + 1 + 4; } // depth
     {
         const ListNode * pointee_head = ListNodeAt( ctx, value.head ); // *ListNode
@@ -11830,6 +11835,7 @@ inline bool LayerSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
     if ( value.depth != 0 )
     {
         w.header( ids.ref_at( 20, 0x75d8e97600b296eaull ), 4 ); // depth
+        schema_assert( !( value.depth < 0 || value.depth > 64 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.depth ) );
     }
     {
@@ -12018,6 +12024,7 @@ inline int64_t SceneMeasureBody( const Ctx & ctx, const TableNumbering & numberi
     schema_assert( value.name_length >= 0 && value.name_length <= 24 ); // storage invariant, debug only (§5.1)
     if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
+    schema_assert( !( value.version < 0 || value.version > 99 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.version != 1 ) { bytes += TableLebBytes( ids.ref_at( 36, 0xbb62c62c9808ea37ull ) ) + 1 + 4; } // version
     {
         const ListNode * pointee_head = ListNodeAt( ctx, value.head ); // *ListNode
@@ -12125,6 +12132,7 @@ inline bool SceneSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
     if ( value.version != 1 )
     {
         w.header( ids.ref_at( 36, 0xbb62c62c9808ea37ull ), 4 ); // version
+        schema_assert( !( value.version < 0 || value.version > 99 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.version ) );
     }
     {
@@ -21360,6 +21368,7 @@ inline const Album * AlbumReadStrict( const uint8_t * wire_file, int64_t wire_fi
 inline int64_t MetaMeasureBodyRetain( TableRetainIds & ids, const Meta & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    schema_assert( !( value.build < 0 || value.build > 1000 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.build != 1 ) { bytes += TableLebBytes( ids.ref_at( 26, 0x802517e298c70b03ull ) ) + 1 + 4; } // build
     schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( !TableUtf8Valid( (const uint8_t *) value.tag, (uint64_t) value.tag_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
@@ -21373,6 +21382,7 @@ GRAPHDEMO_TABLE_INLINE bool MetaSaveBodyRetain( TableWriter & w, TableRetainIds 
     if ( value.build != 1 )
     {
         w.header( ids.ref_at( 26, 0x802517e298c70b03ull ), 4 ); // build
+        schema_assert( !( value.build < 0 || value.build > 1000 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.build ) );
     }
     schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // storage invariant, debug only (§5.1)
@@ -21557,6 +21567,7 @@ GRAPHDEMO_TABLE_INLINE bool MetaLoadBodyRetain( TableReader & r, Meta & value, T
 inline int64_t SettingsMeasureBodyRetain( TableRetainIds & ids, const Settings & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    schema_assert( !( value.quality < 0 || value.quality > 4 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.quality != 2 ) { bytes += TableLebBytes( ids.ref_at( 23, 0x7a8060916400fe66ull ) ) + 1 + 4; } // quality
     schema_assert( value.label_length >= 0 && value.label_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
@@ -21570,6 +21581,7 @@ GRAPHDEMO_TABLE_INLINE bool SettingsSaveBodyRetain( TableWriter & w, TableRetain
     if ( value.quality != 2 )
     {
         w.header( ids.ref_at( 23, 0x7a8060916400fe66ull ), 4 ); // quality
+        schema_assert( !( value.quality < 0 || value.quality > 4 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.quality ) );
     }
     schema_assert( value.label_length >= 0 && value.label_length <= 16 ); // storage invariant, debug only (§5.1)
@@ -22263,6 +22275,7 @@ inline int64_t LayerMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    schema_assert( !( value.depth < 0 || value.depth > 64 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.depth != 0 ) { bytes += TableLebBytes( ids.ref_at( 20, 0x75d8e97600b296eaull ) ) + 1 + 4; } // depth
     {
         const ListNode * pointee_head = ListNodeAt( ctx, value.head ); // *ListNode
@@ -22290,6 +22303,7 @@ inline bool LayerSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
     if ( value.depth != 0 )
     {
         w.header( ids.ref_at( 20, 0x75d8e97600b296eaull ), 4 ); // depth
+        schema_assert( !( value.depth < 0 || value.depth > 64 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.depth ) );
     }
     {
@@ -22484,6 +22498,7 @@ inline int64_t SceneMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
     schema_assert( value.name_length >= 0 && value.name_length <= 24 ); // storage invariant, debug only (§5.1)
     if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
+    schema_assert( !( value.version < 0 || value.version > 99 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.version != 1 ) { bytes += TableLebBytes( ids.ref_at( 36, 0xbb62c62c9808ea37ull ) ) + 1 + 4; } // version
     {
         const ListNode * pointee_head = ListNodeAt( ctx, value.head ); // *ListNode
@@ -22592,6 +22607,7 @@ inline bool SceneSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
     if ( value.version != 1 )
     {
         w.header( ids.ref_at( 36, 0xbb62c62c9808ea37ull ), 4 ); // version
+        schema_assert( !( value.version < 0 || value.version > 99 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.version ) );
     }
     {

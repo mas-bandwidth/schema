@@ -366,7 +366,7 @@ func TestFastPlanSelectsCodegenAndLanguageCleanGates(t *testing.T) {
 		{"generated tree file", "generated/cpp/Types.h", `yes|[]`},
 		{"tables schema", "tables/stream/Stream.schema", `yes|["c","elixir-agreement-1","elixir-agreement-2","elixir-agreement-3","elixir-agreement-4","elixir-offsets","js","rust"]`},
 		{"packet schema", "examples/Types.schema", `yes|["c","elixir-agreement-1","elixir-agreement-2","elixir-agreement-3","elixir-agreement-4","elixir-offsets","js","rust"]`},
-		{"compiler go", "compiler/compiler.go", `yes|[]`},
+		{"compiler go", "compiler/compiler.go", `yes|["elixir-agreement-1","elixir-agreement-2","elixir-agreement-3","elixir-agreement-4"]`},
 		{"ci policy only", "internal/ci/ci_test.go", `no|[]`},
 		{"docs only", "README.md", `no|[]`},
 		{"c format allowlist", "make/c-format-allow.txt", `no|["c"]`},

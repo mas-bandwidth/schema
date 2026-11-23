@@ -124,6 +124,9 @@ func TestCIFastAndCIFullRunOnPullRequestWhateverItsBase(t *testing.T) {
 			t.Fatalf("ci-fast.yml %s did not run on a pull request into %s: ok=%v err=%v", job, ev.Branch, ok, err)
 		}
 	}
+	if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], "verify-elixir-conformance", ev); err != nil || ok {
+		t.Fatalf("ci-fast.yml verify-elixir-conformance ran when the PR selected Go: ok=%v err=%v", ok, err)
+	}
 	if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate", ev); err != nil || ok {
 		t.Fatalf("ci-fast.yml leg-gate ran below main on a pull request into %s: ok=%v err=%v", ev.Branch, ok, err)
 	}
@@ -135,6 +138,7 @@ func TestCIFastAndCIFullRunOnPullRequestWhateverItsBase(t *testing.T) {
 	}
 	fork := ev
 	fork.HeadRepo = "fork/schema"
+	fork.PlanVerifyLegs = `["elixir"]`
 	fork.Labels = []string{"full-ci"}
 	for _, name := range []string{"ci-fast.yml"} {
 		if branches := workflowTriggerBranches(wfs[name])["pull_request"]; len(branches) != 0 {
@@ -182,7 +186,7 @@ func TestCIFastAndCIFullRunOnPullRequestWhateverItsBase(t *testing.T) {
 	if !workflowTriggersOn(wfs["ci-fast.yml"], ciEvent{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema"}) {
 		t.Fatal("ci-fast.yml does not trigger on a push to main")
 	}
-	mainPush := ciEvent{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema", PlanPkgs: "./internal/codegen/gotable", PlanLegs: `["go"]`}
+	mainPush := ciEvent{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema", PlanPkgs: "./internal/codegen/gotable", PlanLegs: `["go"]`, PlanVerifyLegs: `["elixir","go"]`}
 	fastJobs := yamlJobs(wfs["ci-fast.yml"])
 	if len(fastJobs) == 0 {
 		t.Fatal("ci-fast.yml has no jobs: the push-to-main check below would check nothing")

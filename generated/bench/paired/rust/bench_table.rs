@@ -368,6 +368,7 @@ pub fn bench_mixed_save_body(v: &BenchMixed, out: &mut Vec<u8>, ids: &mut IdTabl
         leb_write(out, v.player_name.len() as u64);
         out.extend_from_slice(v.player_name.as_bytes());
     }
+    debug_assert!(v.payload.len() <= 16, "payload length past 16");
     if !v.payload.is_empty() {
         let r = ids.id_ref(0xcfb8a9d063b5e9e5);
         let mut body = Vec::new();

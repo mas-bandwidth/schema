@@ -1,8 +1,8 @@
 --!strict
 -- serialize_bitpacker.luau — BitWriter and BitReader (DESIGN.md (a), (b),
 -- (g) and (h)), the bitpacking bottom layer of the serialize.luau library,
--- wire compatible with serialize (STANDARD.md, format version 2.0) and
--- serialize.go v2.0.0 bitpacker.go: the same values produce the same bytes.
+-- wire compatible with mas-bandwidth/serialize (C++) v2.1.4 (STANDARD.md,
+-- format version 2.0): the same values produce the same bytes.
 --
 -- The writer packs bits least-significant-bit first into a 64-bit scratch
 -- word; a value that crosses the 64-bit boundary is split (low 64-s bits
@@ -12,9 +12,9 @@
 -- a byte. The reader reads the same wire, never a byte past the data's end,
 -- however short the data (STANDARD.md, Reader Obligations).
 --
--- The writer is STRICT: for every value it emits exactly serialize.go v2.0.0
--- emits, byte for byte; API misuse that serialize.go panics on raises the
--- same panic text (DESIGN.md (g)). Reads refuse where serialize.go refuses;
+-- The writer is STRICT: for every value it emits exactly what the reference
+-- emits, byte for byte; API misuse that the reference panics on raises the
+-- same panic text (DESIGN.md (g)). Reads refuse where the reference refuses;
 -- hostile bytes never raise. offset and count extend Go's []byte because a
 -- Luau buffer has no slices: omitted they are 0 and the buffer's length
 -- (DESIGN.md (h)).
@@ -29,6 +29,7 @@ local RAISE_READ_OVERFLOW = "serialize: bit reader would read past the end of th
 local RAISE_NOT_ALIGNED = "serialize: byte array serialization requires byte alignment"
 local RAISE_BUFFER_BYTES = "serialize: bit writer buffer size must be a multiple of 8 bytes"
 local RAISE_READ_DST = "serialize: bit reader destination buffer too small"
+local RAISE_WRITE_AFTER_FLUSH = "serialize: cannot write after flush"
 
 -- ---------------------------------------------------------------------------
 -- BitWriter (serialize.go bitpacker.go; STANDARD.md bits, align, bytes,
@@ -81,8 +82,11 @@ end
 -- in [1,32]; bits of value above that count are ignored. Panics if the write
 -- would go past the end of the buffer (serialize.go WriteBits).
 function BitWriter.writeBits(self: any, value: number, bits: number)
-	if bits < 1 or bits > 32 then
+	if not (bits >= 1 and bits <= 32) or bits // 1 ~= bits then
 		error(RAISE_BITS_RANGE, 2)
+	end
+	if self._scratchBits ~= self._bitsWritten % 64 then
+		error(RAISE_WRITE_AFTER_FLUSH, 2)
 	end
 	if self._bitsWritten + bits > self._numBits then
 		error(RAISE_WRITE_OVERFLOW, 2)
@@ -106,6 +110,9 @@ end
 function BitWriter.writeBytes(self: any, src: buffer, offset: number?, count: number?)
 	local off = offset or 0
 	local cnt = count or buffer.len(src)
+	if self._scratchBits ~= self._bitsWritten % 64 then
+		error(RAISE_WRITE_AFTER_FLUSH, 2)
+	end
 	if self._bitsWritten % 8 ~= 0 then
 		error(RAISE_NOT_ALIGNED, 2)
 	end
@@ -192,7 +199,7 @@ end
 -- buffer.readbits call reads the whole field (LSB first, the wire's own bit
 -- order), so the cost no longer grows with the width.
 function BitReader.readBits(self: any, bits: number): number
-	if bits < 1 or bits > 32 then
+	if not (bits >= 1 and bits <= 32) or bits // 1 ~= bits then
 		error(RAISE_BITS_RANGE, 2)
 	end
 	if self._bitsRead + bits > self._numBits then
@@ -218,7 +225,8 @@ end
 
 -- readBytes reads count bytes from an ALIGNED stream into dst at offset. The
 -- reader must be byte aligned, else misuse; the whole run must fit, else
--- overflow (serialize.go ReadBytes; DESIGN.md (h)).
+-- overflow (serialize.go ReadBytes; DESIGN.md (h)). The run moves in one
+-- buffer.copy.
 function BitReader.readBytes(self: any, dst: buffer, offset: number?, count: number?)
 	local off = offset or 0
 	local cnt = count or buffer.len(dst)
@@ -231,9 +239,25 @@ function BitReader.readBytes(self: any, dst: buffer, offset: number?, count: num
 	if off + cnt > buffer.len(dst) then
 		error(RAISE_READ_DST, 2)
 	end
-	for i = 0, cnt - 1 do
-		buffer.writeu8(dst, off + i, self:readBits(8))
+	if cnt > 0 then
+		buffer.copy(dst, off, self._data, self._bitsRead // 8, cnt)
+		self._bitsRead += cnt * 8
 	end
+end
+
+-- readString reads count bytes from an ALIGNED stream as a string, in one
+-- buffer.readstring: a string read allocates only its result. The reader must
+-- be byte aligned, else misuse; the whole run must fit, else overflow.
+function BitReader.readString(self: any, count: number): string
+	if self._bitsRead % 8 ~= 0 then
+		error(RAISE_NOT_ALIGNED, 2)
+	end
+	if self._bitsRead + count * 8 > self._numBits then
+		error(RAISE_READ_OVERFLOW, 2)
+	end
+	local off = self._bitsRead // 8
+	self._bitsRead += count * 8
+	return buffer.readstring(self._data, off, count)
 end
 
 -- alignBits returns the number of align bits an align would read now, in
