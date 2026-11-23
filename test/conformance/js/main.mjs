@@ -1079,6 +1079,7 @@ const textUnits = {
   tblvarevo2: "varevo2/Tblvarevo2Variable.js",
   tblvarevo3: "varevo3/Tblvarevo3Variable.js",
   cooktorture: "cooktorture/CookTortureVariable.js",
+  writebounds: "writebounds/WriteboundsVariable.js",
   cooktorturewide: "cooktorturewide/CookTortureWideVariable.js",
   packetunions: "packetunions/TblpacketunionsVariable.js",
   backenddemo: "backend/BackenddemoVariable.js",
