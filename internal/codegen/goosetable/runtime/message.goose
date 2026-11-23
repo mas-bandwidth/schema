@@ -222,7 +222,8 @@ fn msg_signed_kind(k: u8) -> bool { (k >= 2 && k <= 5) || (k >= 20 && k <= 23) }
 // msg_known_kind is §3's closed set and the 0 of a name. Kind 31 is held by
 // name and never written (R17): an announcement naming it is malformed, as one
 // naming 33 or 34 is.
-fn msg_known_kind(k: u8) -> bool { k <= 32 && k != 31 }
+// A timestamp (36) has its own kind and a raw 64-bit payload with no shape bytes.
+fn msg_known_kind(k: u8) -> bool { (k <= 32 && k != 31) || k == 36 }
 
 // msg_kind_bits is the widest RANGED value a kind carries, its own storage
 // width: a width above it is a hostile width on the announcement.
@@ -287,7 +288,7 @@ recursive fn msg_shape(w: const u8[:], at: i64&, kind: u8, e: MsgEntry&, v: MsgV
     e.bits = -1;
     e.inner = -1;
     if kind == 1 { e.bits = 1; }
-    if kind == 11 { e.bits = 64; }
+    if kind == 11 || kind == 36 { e.bits = 64; }
     if msg_int_kind(kind) || msg_fixed_kind(kind) || kind == 10 {
         if at >= w.len { return false; }
         e.packing = w[at];
