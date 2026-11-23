@@ -785,6 +785,20 @@ public final class Driver {
             java.lang.reflect.Array.set(values, 0, valueType.getConstructor().newInstance());
             return values;
         }
+        Object newValues(int count) throws ReflectiveOperationException {
+            Object values = java.lang.reflect.Array.newInstance(valueType, count);
+            for (int i = 0; i < count; i++) {
+                java.lang.reflect.Array.set(values, i, valueType.getConstructor().newInstance());
+            }
+            return values;
+        }
+        // load with a stated capacity: the records read, or -1
+        int load(Object values, int capacity, byte[] data, Object report) throws ReflectiveOperationException {
+            Object plan = tableFixed.getMethod("plan", int.class).invoke(null, 1 << 14);
+            Object image = codec.getMethod("image").invoke(null);
+            return (int) codec.getMethod("load", values.getClass(), int.class, byte[].class, plan.getClass(), short[].class, byte[].class, reportType)
+                    .invoke(null, values, capacity, data, plan, new short[1 << 14], image, report);
+        }
         // load answers the records read, or -1 when the read refused or found damage
         int load(Object values, byte[] data, Object report) throws ReflectiveOperationException {
             Object plan = tableFixed.getMethod("plan", int.class).invoke(null, 1 << 14);
@@ -979,6 +993,7 @@ public final class Driver {
             case "scalars": return "scalardemo";
             case "widelist": return "widelistdemo";
             case "tblscalars2": return "scalardemo2";
+            case "tblsurf": return "surfaces";
             default: return unit;
         }
     }
@@ -1384,7 +1399,15 @@ public final class Driver {
                 }
                 Object fixedValue = null;
                 Object value;
-                if (fixed != null) {
+                if (wirePath.equals("-")) {
+                    // THE FRESH VALUE: a root with no file form (Big)
+                    if (fixed != null) {
+                        fixedValue = java.lang.reflect.Array.get(fixed.newValues(), 0);
+                        value = fixedValue;
+                    } else {
+                        value = variable.valueType.getConstructor().newInstance();
+                    }
+                } else if (fixed != null) {
                     Object values = fixed.newValues();
                     Object report = fixed.report();
                     int read = fixed.load(values, Files.readAllBytes(Paths.get(wirePath)), report);
@@ -1399,6 +1422,15 @@ public final class Driver {
                     if (value == null || variable.flag(report, "refused")) {
                         return failInt(name + ": load refused " + wirePath);
                     }
+                }
+                // THE TEXT WRITER's storage is the variable value: for the
+                // 2026-11-22 kinds a fixed root's value is carried there first,
+                // so a list the text writer holds is the list the row sets
+                Object jsonValue = null;
+                if (surface.equals("write-refusal-json") && fixed != null && variable != null
+                        && (kind.equals("elems") || kind.equals("mask") || kind.equals("dupkey") || kind.equals("point"))) {
+                    jsonValue = variable.fromFixed(fixedValue);
+                    value = jsonValue;
                 }
                 if (!mutateWriteRefusal(value, path, kind, text)) {
                     spill(out, name, "unrepresentable\n");
@@ -1430,6 +1462,10 @@ public final class Driver {
                             break;
                         case "write-refusal-message": {
                             MessageCodec mc = messageCodec(actualUnit, root);
+                            if (mc == null && fixed == null && variable != null) {
+                                spillAbsentReason(out, name, "the Java emitter generates no " + root + "Fixed or " + root + "Message for this root");
+                                continue;
+                            }
                             if (mc == null || fixedValue == null) {
                                 spillAbsent(out, name);
                                 continue;
@@ -1459,7 +1495,9 @@ public final class Driver {
                                 continue;
                             }
                             Object textValue = value;
-                            if (fixed != null) {
+                            if (jsonValue != null) {
+                                textValue = jsonValue;
+                            } else if (fixed != null) {
                                 textValue = variable.fromFixed(fixedValue);
                             }
                             byte[] jsonText = variable.toJson(textValue);
@@ -1477,11 +1515,9 @@ public final class Driver {
                 } catch (AssertionError refused) {
                     answer = "refused";
                 } catch (java.lang.reflect.InvocationTargetException invoked) {
-                    if (writeRefusalAssertion(invoked)) {
-                        answer = "refused";
-                    } else {
-                        throw invoked;
-                    }
+                    // a writer that neither refuses nor writes, but throws, is
+                    // that row's answer, named: never a refusal it did not make
+                    answer = writeRefusalAssertion(invoked) ? "refused" : "threw " + rootCause(invoked);
                 }
                 spill(out, name, answer + "\n");
             } catch (ReflectiveOperationException failure) {
@@ -1519,6 +1555,9 @@ public final class Driver {
 
     private static boolean mutateWriteRefusal(Object value, String path, String kind, String text)
             throws ReflectiveOperationException {
+        if (kind.equals("point")) {
+            return writeRefusalPoint(value, path, text);
+        }
         String[] segments = path.split("\\.");
         Object current = value;
         for (int i = 0; i < segments.length - 1; i++) {
@@ -1579,8 +1618,18 @@ public final class Driver {
         Object fieldValue = last.indexed ? writeRefusalElement(container, last.index) : container;
         switch (kind) {
             case "count":
+                if (Integer.parseInt(text) < 0 && fieldValue instanceof java.util.List<?>) {
+                    // `count -1` is a value that is no list: a typed List field cannot hold one
+                    return false;
+                }
                 writeRefusalCount(current, fieldValue, field.getName(), Integer.parseInt(text));
                 return true;
+            case "elems":
+                return writeRefusalElems(fieldValue, Integer.parseInt(text));
+            case "mask":
+                return writeRefusalInt(field, current, fieldValue, text);
+            case "dupkey":
+                return writeRefusalDupKey(fieldValue, text);
             case "length":
                 writeRefusalLength(current, field, fieldValue, field.getName(), Integer.parseInt(text));
                 return true;
@@ -1789,6 +1838,11 @@ public final class Driver {
             throws ReflectiveOperationException {
         java.math.BigInteger big = new java.math.BigInteger(text);
         Class<?> type = field.getType();
+        if (!writeRefusalFitsDeclared(owner.getClass(), field, big)) {
+            // FL-04: storage exactly as wide as the declared intN/uintN holds no
+            // value outside it
+            return false;
+        }
         if (type == int.class) {
             if (big.compareTo(java.math.BigInteger.valueOf(Integer.MIN_VALUE)) < 0
                     || big.compareTo(java.math.BigInteger.valueOf(0xFFFFFFFFL)) > 0) {
@@ -1841,6 +1895,59 @@ public final class Driver {
         } else {
             throw new NoSuchFieldException(field.getName() + " is not an integer");
         }
+    }
+
+    // The declared kind of a root's field, from its generated descriptor
+    // (<Table>Descriptor.tableType()), or -1 when the owner is no table value.
+    private static int writeRefusalDeclaredKind(Class<?> owner, String fieldName) {
+        Class<?> outer = owner.getEnclosingClass();
+        if (outer == null) {
+            return -1;
+        }
+        String table = outer.getSimpleName().replaceFirst("(Fixed|Variable)$", "");
+        try {
+            Class<?> descriptor = Class.forName(owner.getPackageName() + "." + table + "Descriptor");
+            Object info = descriptor.getMethod("tableType").invoke(null);
+            Object[] fields = (Object[]) info.getClass().getField("fields").get(info);
+            for (Object f : fields) {
+                String name = (String) f.getClass().getField("name").get(f);
+                if (writeRefusalFold(name).equals(writeRefusalFold(fieldName))) {
+                    return f.getClass().getField("kind").getInt(f);
+                }
+            }
+            return -1;
+        } catch (ReflectiveOperationException none) {
+            return -1;
+        }
+    }
+
+    private static boolean writeRefusalFitsDeclared(Class<?> owner, java.lang.reflect.Field field, java.math.BigInteger big) {
+        Class<?> type = field.getType();
+        int storage = type == byte.class ? 8 : type == short.class ? 16 : type == int.class ? 32 : type == long.class ? 64 : 0;
+        if (storage == 0) {
+            return true;
+        }
+        int kind = writeRefusalDeclaredKind(owner, field.getName());
+        int width;
+        boolean signed;
+        switch (kind) {
+            case 2: width = 8; signed = true; break;
+            case 3: width = 16; signed = true; break;
+            case 4: width = 32; signed = true; break;
+            case 5: width = 64; signed = true; break;
+            case 6: width = 8; signed = false; break;
+            case 7: width = 16; signed = false; break;
+            case 8: width = 32; signed = false; break;
+            case 9: width = 64; signed = false; break;
+            default: return true;
+        }
+        if (width != storage) {
+            return true;
+        }
+        java.math.BigInteger min = signed ? java.math.BigInteger.ONE.shiftLeft(width - 1).negate() : java.math.BigInteger.ZERO;
+        java.math.BigInteger max = signed ? java.math.BigInteger.ONE.shiftLeft(width - 1).subtract(java.math.BigInteger.ONE)
+                : java.math.BigInteger.ONE.shiftLeft(width).subtract(java.math.BigInteger.ONE);
+        return big.compareTo(min) >= 0 && big.compareTo(max) <= 0;
     }
 
     private static boolean writeRefusalOrdinal(
@@ -2527,6 +2634,435 @@ public final class Driver {
         return 0;
     }
 
+    // ---- THE 2026-11-22 SURFACES (test/conformance/README.md, "The 2026-11-22
+    // surfaces ask what no surface asked before"). Every answer below is what
+    // the generated runtime did; the driver only reports it.
+
+    // The announcement-cap units are not on this classpath (make/java.mk): the
+    // Java emitter's output for a 4095-variant enum does not compile.
+    private static final String ANNOUNCE_CAP_ABSENT =
+            "the Java emitter's RootFixed for tblann4096/4097 (a 4095-variant enum) does not compile: javac 'code too large'";
+
+    // Java's variable-form load and text read take no caller value: they
+    // return a new one (or null), so there is no value a refused read could
+    // leave at its defaults.
+    private static final String READ_INTO_RETURNS =
+            "Java's <Root>Variable.load and fromJson take no caller value: they return a new value or null";
+
+    private static Throwable rootCause(Throwable thrown) {
+        Throwable cause = thrown;
+        while (cause instanceof java.lang.reflect.InvocationTargetException invoked && invoked.getCause() != null) {
+            cause = invoked.getCause();
+        }
+        return cause;
+    }
+
+    // one step of a field path: the field's value, or its element
+    private static Object writeRefusalStep(Object owner, String text) throws ReflectiveOperationException {
+        WriteRefusalSegment segment = WriteRefusalSegment.parse(text);
+        java.lang.reflect.Field field = writeRefusalField(owner.getClass(), segment.name);
+        Object next = field.get(owner);
+        if (segment.indexed) {
+            next = writeRefusalElement(next, segment.index);
+        }
+        if (next == null) {
+            throw new IllegalArgumentException(text + " is null: the path goes no further");
+        }
+        return next;
+    }
+
+    // `point`: the pointer at path is set to the node the pointer at target
+    // points at, with the index the read gave beside it where the value
+    // carries one (a cycle when that node encloses path).
+    private static boolean writeRefusalPoint(Object root, String path, String target) throws ReflectiveOperationException {
+        String[] to = target.split("\\.");
+        Object targetOwner = root;
+        for (int i = 0; i < to.length - 1; i++) {
+            targetOwner = writeRefusalStep(targetOwner, to[i]);
+        }
+        java.lang.reflect.Field targetField = writeRefusalField(targetOwner.getClass(), WriteRefusalSegment.parse(to[to.length - 1]).name);
+        Object node = targetField.get(targetOwner);
+        if (node == null) {
+            throw new IllegalArgumentException(target + " points at nothing");
+        }
+        String[] at = path.split("\\.");
+        Object owner = root;
+        for (int i = 0; i < at.length - 1; i++) {
+            owner = writeRefusalStep(owner, at[i]);
+        }
+        WriteRefusalSegment last = WriteRefusalSegment.parse(at[at.length - 1]);
+        if (last.indexed) {
+            throw new IllegalArgumentException(path + ": point takes a pointer field");
+        }
+        java.lang.reflect.Field field = writeRefusalField(owner.getClass(), last.name);
+        if (!field.getType().isInstance(node)) {
+            return false;
+        }
+        field.set(owner, node);
+        java.lang.reflect.Field idx = writeRefusalFieldOrNull(owner.getClass(), field.getName() + "Idx");
+        java.lang.reflect.Field targetIdx = writeRefusalFieldOrNull(targetOwner.getClass(), targetField.getName() + "Idx");
+        if (idx != null && targetIdx != null) {
+            idx.setLong(owner, targetIdx.getLong(targetOwner));
+        }
+        return true;
+    }
+
+    // `elems`: a native [N]T array holds exactly N values, so any other count
+    // is unrepresentable; a list takes the count (more are copies of element
+    // 0, fewer drop the tail).
+    private static boolean writeRefusalElems(Object fieldValue, int count) throws ReflectiveOperationException {
+        if (fieldValue != null && fieldValue.getClass().isArray()) {
+            return java.lang.reflect.Array.getLength(fieldValue) == count;
+        }
+        if (fieldValue instanceof java.util.List<?> list) {
+            if (list.isEmpty() && count > 0) {
+                throw new IllegalArgumentException("elems: the array holds no element 0 to copy");
+            }
+            writeRefusalResize(list, count);
+            return true;
+        }
+        throw new NoSuchFieldException("elems: the field holds no array");
+    }
+
+    // `dupkey`: a map held as a list of entries can hold one key twice (1
+    // appends the first entry again); a java.util.Map cannot.
+    private static boolean writeRefusalDupKey(Object fieldValue, String text) throws ReflectiveOperationException {
+        if (fieldValue instanceof java.util.Map<?, ?>) {
+            return false;
+        }
+        if (!(fieldValue instanceof java.util.List<?> list)) {
+            throw new NoSuchFieldException("dupkey: the field holds no map");
+        }
+        if (text.equals("1")) {
+            if (list.isEmpty()) {
+                throw new IllegalArgumentException("dupkey: the map holds no first entry");
+            }
+            @SuppressWarnings("unchecked")
+            java.util.List<Object> raw = (java.util.List<Object>) list;
+            raw.add(raw.get(0));
+        } else if (!text.equals("0")) {
+            throw new IllegalArgumentException("dupkey takes 0 or 1, not " + text);
+        }
+        return true;
+    }
+
+    // THE COOK WRITER (write-refusal-cook): the row's value, then cookMeasure
+    // and cookFrom in little-endian order; `wrote` when both complete.
+    private static int surfaceWriteRefusalCook(String out) throws IOException {
+        for (String[] f : kind("write-refusal-cook")) {
+            String name = f[1];
+            String unit = f[2];
+            String root = f[3];
+            String wirePath = f[4];
+            try {
+                CookCodec codec = cookCodec(unit, root);
+                if (codec == null) {
+                    spillAbsent(out, name);
+                    continue;
+                }
+                String refusal = codec.refusal();
+                if (refusal != null) {
+                    spillAbsentReason(out, name, refusal);
+                    continue;
+                }
+                FixedCodec fixed = fixedCodec(unit, root);
+                Object value;
+                if (wirePath.equals("-")) {
+                    value = codec.variable.valueType.getConstructor().newInstance();
+                } else if (fixed != null) {
+                    value = fixedCookValue(fixed, codec, Files.readAllBytes(Paths.get(wirePath)));
+                } else {
+                    Object report = codec.variable.report();
+                    value = codec.variable.load(Files.readAllBytes(Paths.get(wirePath)), report);
+                    if (value != null && (codec.variable.flag(report, "refused") || codec.variable.flag(report, "damaged"))) {
+                        value = null;
+                    }
+                }
+                if (value == null) {
+                    return failInt(name + ": load refused " + wirePath);
+                }
+                if (!mutateWriteRefusal(value, f[5], f[6], f[7])) {
+                    spill(out, name, "unrepresentable\n");
+                    continue;
+                }
+                String answer;
+                try {
+                    long size = codec.measure(value);
+                    if (size < 1) {
+                        answer = "refused";
+                    } else {
+                        answer = codec.cookFrom(value, new byte[(int) size], 1) ? "wrote" : "refused";
+                    }
+                } catch (java.lang.reflect.InvocationTargetException invoked) {
+                    answer = writeRefusalAssertion(invoked) ? "refused" : "threw " + rootCause(invoked);
+                }
+                spill(out, name, answer + "\n");
+            } catch (ReflectiveOperationException failure) {
+                return failInt(name + ": write-refusal-cook codec failed: " + failure);
+            }
+        }
+        return 0;
+    }
+
+    // THE ANNOUNCEMENT (announce): the writer's bytes, a strict or lenient
+    // read of a peer's announcement, or a SaveMessages with no announcement.
+    private static int surfaceAnnounce(String out) throws IOException {
+        for (String[] f : kind("announce")) {
+            String name = f[1];
+            String unit = f[2];
+            String root = f[3];
+            String mode = f[4];
+            String input = f[5];
+            String pkg = variableUnitPackage(unit);
+            Class<?> vocabType;
+            Class<?> reportType;
+            try {
+                vocabType = Class.forName(pkg + ".TableVocabulary");
+                reportType = Class.forName(pkg + ".TableVocabulary$Report");
+            } catch (ClassNotFoundException missing) {
+                if (unit.equals("tblann4096") || unit.equals("tblann4097")) {
+                    spillAbsentReason(out, name, ANNOUNCE_CAP_ABSENT);
+                    continue;
+                }
+                return failInt(name + ": unit " + unit + " has no TableVocabulary on this classpath");
+            }
+            try {
+                switch (mode) {
+                    case "write": {
+                        int size = (int) vocabType.getMethod("announceMeasure").invoke(null);
+                        if (size < 1) {
+                            spill(out, name, "refused\n");
+                            break;
+                        }
+                        byte[] buffer = new byte[size];
+                        int written = (int) vocabType.getMethod("announce", byte[].class).invoke(null, buffer);
+                        if (written < 0) {
+                            spill(out, name, "refused\n");
+                        } else if (written != size) {
+                            return failInt(name + ": announce wrote " + written + " bytes, announceMeasure said " + size);
+                        } else {
+                            spill(out, name, buffer);
+                        }
+                        break;
+                    }
+                    case "strict":
+                    case "lenient": {
+                        Object vocab = vocabType.getConstructor().newInstance();
+                        vocabType.getMethod("reset", int.class).invoke(vocab, 4096);
+                        if (mode.equals("strict")) {
+                            vocabType.getField("strict").setBoolean(vocab, true);
+                        }
+                        Object report = reportType.getConstructor().newInstance();
+                        boolean ok = (boolean) vocabType.getMethod("announceRead", vocabType, byte[].class, reportType)
+                                .invoke(null, vocab, Files.readAllBytes(Paths.get(input)), report);
+                        boolean refused = reportType.getField("refused").getBoolean(report) || reportType.getField("damaged").getBoolean(report);
+                        spill(out, name, ok && !refused ? "read\n" : "refused\n");
+                        break;
+                    }
+                    case "send": {
+                        MessageCodec mc = messageCodec(unit, root);
+                        FixedCodec fixed = fixedCodec(unit, root);
+                        if (mc == null || fixed == null) {
+                            spillAbsentReason(out, name, "the Java emitter generates no " + root + "Message for this root");
+                            continue;
+                        }
+                        Object values = fixed.newValues();
+                        if (!input.equals("-")) {
+                            Object loadReport = fixed.report();
+                            int read = fixed.load(values, Files.readAllBytes(Paths.get(input)), loadReport);
+                            if (!fixedReadSucceeded(fixed, loadReport, read)) {
+                                return failInt(name + ": load refused " + input);
+                            }
+                        }
+                        Object batch = mc.newValues(1);
+                        java.lang.reflect.Array.set(batch, 0, java.lang.reflect.Array.get(values, 0));
+                        Object report = mc.report();
+                        int size = mc.measure(batch, 1, report);
+                        if (size < 1 || mc.flag(report, "refused")) {
+                            spill(out, name, "refused\n");
+                            break;
+                        }
+                        byte[] buffer = new byte[size];
+                        int written = mc.save(batch, 1, buffer, report);
+                        if (written != size || mc.flag(report, "refused")) {
+                            spill(out, name, "refused\n");
+                        } else {
+                            spill(out, name, buffer);
+                        }
+                        break;
+                    }
+                    default:
+                        return failInt(name + ": unknown announce mode " + mode);
+                }
+            } catch (java.lang.reflect.InvocationTargetException invoked) {
+                if (writeRefusalAssertion(invoked)) {
+                    spill(out, name, "refused\n");
+                } else {
+                    spill(out, name, "threw " + rootCause(invoked) + "\n");
+                }
+            } catch (ReflectiveOperationException failure) {
+                return failInt(name + ": announce codec failed: " + failure);
+            }
+        }
+        return 0;
+    }
+
+    // one read of a read-into row: `read`, `refused`, or `threw` (a read
+    // refuses through its report, never by throwing: FL-29)
+    private static String readIntoFixedLine(FixedCodec fixed, Object values, int count, String path, Object report) throws IOException, ReflectiveOperationException {
+        try {
+            int read = fixed.load(values, count, Files.readAllBytes(Paths.get(path)), report);
+            return fixedReadSucceeded(fixed, report, read) ? "read\n" : "refused\n";
+        } catch (java.lang.reflect.InvocationTargetException thrown) {
+            return "threw\n";
+        }
+    }
+
+    private static String readIntoMessageLine(MessageCodec mc, Object values, int count, Object vocab, String path, Object report) throws IOException, ReflectiveOperationException {
+        try {
+            int read = mc.load(values, count, vocab, Files.readAllBytes(Paths.get(path)), report);
+            return read > 0 && !mc.flag(report, "refused") && !mc.flag(report, "damaged") ? "read\n" : "refused\n";
+        } catch (java.lang.reflect.InvocationTargetException thrown) {
+            return "threw\n";
+        }
+    }
+
+    // READ INTO THE CALLER'S VALUES (read-into): one report and one set of
+    // values through a lawful read, a refused read and the lawful read again.
+    private static int surfaceReadInto(String out) throws IOException {
+        for (String[] f : kind("read-into")) {
+            String name = f[1];
+            String unit = f[2];
+            String root = f[3];
+            String form = f[4];
+            String lawful = f[5];
+            String damaged = f[6];
+            try {
+                switch (form) {
+                    case "variable":
+                    case "json":
+                        spillAbsentReason(out, name, READ_INTO_RETURNS);
+                        continue;
+                    case "fixed-nocap":
+                        // NO CALL TO HOLD: <Root>Fixed.load always takes a capacity
+                        spill(out, name, "unrepresentable\n");
+                        continue;
+                    case "fixed":
+                    case "message":
+                        break;
+                    default:
+                        return failInt(name + ": unknown read-into form " + form);
+                }
+                int count = Integer.parseInt(f[7]);
+                VariableCodec variable = variableCodec(unit, root);
+                if (variable == null) {
+                    return failInt(name + ": " + unit + "." + root + " has no variable codec for its text");
+                }
+                StringBuilder answer = new StringBuilder();
+                Object values;
+                if (form.equals("fixed")) {
+                    FixedCodec fixed = fixedCodec(unit, root);
+                    if (fixed == null) {
+                        return failInt(name + ": " + unit + "." + root + " has no fixed codec");
+                    }
+                    values = fixed.newValues(count);
+                    Object report = fixed.report();
+                    answer.append(readIntoFixedLine(fixed, values, count, lawful, report));
+                    answer.append(readIntoFixedLine(fixed, values, count, damaged, report));
+                    answer.append(readIntoText(variable, values, count));
+                    answer.append(readIntoFixedLine(fixed, values, count, lawful, report));
+                } else {
+                    MessageCodec mc = messageCodec(unit, root);
+                    if (mc == null) {
+                        return failInt(name + ": " + unit + "." + root + " has no message codec");
+                    }
+                    Object vocab = mc.vocab();
+                    Object announced = mc.report();
+                    if (!mc.announce(vocab, Files.readAllBytes(Paths.get(f[8])), announced)
+                            || mc.flag(announced, "refused") || mc.flag(announced, "damaged")) {
+                        return failInt(name + ": announceRead refused " + f[8]);
+                    }
+                    values = mc.newValues(count);
+                    for (int i = 0; i < count; i++) {
+                        java.lang.reflect.Array.set(values, i, mc.valueType.getConstructor().newInstance());
+                    }
+                    Object report = mc.report();
+                    answer.append(readIntoMessageLine(mc, values, count, vocab, lawful, report));
+                    answer.append(readIntoMessageLine(mc, values, count, vocab, damaged, report));
+                    answer.append(readIntoText(variable, values, count));
+                    answer.append(readIntoMessageLine(mc, values, count, vocab, lawful, report));
+                }
+                spill(out, name, answer.toString());
+            } catch (ReflectiveOperationException failure) {
+                return failInt(name + ": read-into codec failed: " + failure);
+            }
+        }
+        return 0;
+    }
+
+    // the ToJson text of every value the call was handed, in order
+    private static String readIntoText(VariableCodec variable, Object values, int count) throws ReflectiveOperationException {
+        StringBuilder text = new StringBuilder();
+        for (int i = 0; i < count; i++) {
+            byte[] json = variable.toJson(variable.fromFixed(java.lang.reflect.Array.get(values, i)));
+            if (json == null) {
+                throw new ReflectiveOperationException("toJson refused value " + i);
+            }
+            text.append(new String(json, StandardCharsets.UTF_8));
+        }
+        return text.toString();
+    }
+
+    // THE TEXT WRITER IN A COMMA-DECIMAL LOCALE (json-write-into). Java's
+    // process locale is Locale.setDefault. <Root>Variable.toJson takes no
+    // caller buffer (it returns its own array), so the tail check has no
+    // buffer to check and the answer is the text it returned.
+    private static int surfaceJsonWriteInto(String out) throws IOException {
+        String named = System.getenv("SCHEMA_COMMA_LOCALE");
+        if (named == null || named.isEmpty()) {
+            return failInt("json-write-into: the harness handed no SCHEMA_COMMA_LOCALE");
+        }
+        String tag = named.split("\\.")[0].replace('_', '-');
+        java.util.Locale.setDefault(java.util.Locale.forLanguageTag(tag));
+        if (!String.format("%.1f", 1.5).equals("1,5")) {
+            return failInt("json-write-into: Locale.setDefault(" + tag + ") gave no comma decimal: " + String.format("%.1f", 1.5));
+        }
+        for (String[] f : kind("json-write-into")) {
+            String name = f[1];
+            try {
+                VariableCodec codec = variableCodec(f[2], f[3]);
+                if (codec == null) {
+                    return failInt(name + ": " + f[2] + "." + f[3] + " has no text writer");
+                }
+                FixedCodec fixed = fixedCodec(f[2], f[3]);
+                Object value;
+                if (fixed != null) {
+                    Object report = fixed.report();
+                    Object values = fixed.newValues();
+                    int read = fixed.load(values, Files.readAllBytes(Paths.get(f[4])), report);
+                    if (!fixedReadSucceeded(fixed, report, read)) {
+                        return failInt(name + ": load refused " + f[4]);
+                    }
+                    value = codec.fromFixed(java.lang.reflect.Array.get(values, 0));
+                } else {
+                    Object report = codec.report();
+                    value = codec.load(Files.readAllBytes(Paths.get(f[4])), report);
+                    if (value == null || codec.flag(report, "refused") || codec.flag(report, "damaged")) {
+                        return failInt(name + ": load refused " + f[4]);
+                    }
+                }
+                byte[] text = codec.toJson(value);
+                if (text == null) {
+                    return failInt(name + ": toJson refused the value");
+                }
+                spill(out, name, text);
+            } catch (ReflectiveOperationException failure) {
+                return failInt(name + ": json-write-into codec failed: " + failure);
+            }
+        }
+        return 0;
+    }
+
     public static int run(String[] args) throws IOException {
         if (args.length < 2) {
             System.err.println("usage: driver <manifest> list\n       driver <manifest> <surface> <outdir>");
@@ -2543,7 +3079,8 @@ public final class Driver {
                     + "retain\nretain-save\n"
                     + "block\nblock-foreign\n"
                     + "block-dump\nforgery\ncook\ncook-write\ncook-foreign\ncook-forgery\n"
-                    + "write-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n");
+                    + "write-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n"
+                    + "write-refusal-cook\nwrite-refusal-block\nannounce\nread-into\njson-write-into\n");
             return 0;
         }
         if (args.length < 3) {
@@ -2575,6 +3112,16 @@ public final class Driver {
             case "write-refusal-fixed": return surfaceWriteRefusal(out, surface);
             case "write-refusal-message": return surfaceWriteRefusal(out, surface);
             case "write-refusal-json": return surfaceWriteRefusal(out, surface);
+            case "write-refusal-cook": return surfaceWriteRefusalCook(out);
+            case "write-refusal-block":
+                // ABSENT, the whole surface: Java's <Root>Block.begin takes only the
+                // root's Counts and writes the prologue (rows are the caller's
+                // bytes), so no block builder is handed the row's value
+                System.err.println("write-refusal-block: the Java leg has no block builder that takes a value (<Root>Block.begin takes Counts alone)");
+                return 2;
+            case "announce": return surfaceAnnounce(out);
+            case "read-into": return surfaceReadInto(out);
+            case "json-write-into": return surfaceJsonWriteInto(out);
             default: return 2;
         }
     }
