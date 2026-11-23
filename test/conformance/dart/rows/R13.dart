@@ -67,23 +67,21 @@ void expect(String label, bool condition, String reason) {
 /// defaults (ruling R4; the test caller plants the sentinel BEFORE the load).
 bool jointOk(int returnValue, TableFixedReport r, Meta dest) {
   if (returnValue != -1) return false;
-  if (r.malformed && r.refused != TableFixedRefusal.none) return false;
-  if (!r.malformed && r.refused == TableFixedRefusal.none) return false;
+  if (r.refused == TableFixedRefusal.none) return false;
   if (r.unknown != 0) return false;
-  if (r.kindMismatch != 0) return false;
-  if (r.clamped != 0) return false;
   if (r.widened != 0) return false;
-  if (r.duplicate != 0) return false;
   final defaults = Meta();
   if (dest.build != defaults.build) return false;
   if (dest.tagLength != defaults.tagLength) return false;
   return true;
 }
 
+// NOTE (current generated code): the Dart leg spells layout_malformed as TableFixedRefusal.layoutDamaged (fixedmodule.go step 7).
 void main() {
   // ---- BUILD A GOOD FILE (used by several refusal paths) ----
   final v = Meta()
     ..build = 7
+    ..tag.setRange(0, 5, const [0x68, 0x65, 0x6c, 0x6c, 0x6f])
     ..tagLength = 5;
   final buf = Uint8List(metaFixedMeasure(1));
   metaFixedSave(<Meta>[v], 1, buf);
@@ -113,7 +111,7 @@ void main() {
           r.refused == TableFixedRefusal.layoutNewer &&
           r.layoutHash == 0xF1F2F3F4F5F6F7F8,
       'n=$n refused=${TableFixedRefusal.name(r.refused)} '
-          'malformed=${r.malformed} '
+          'damaged=${r.refused == TableFixedRefusal.damaged} '
           'dest.build=0x${dest.build.toRadixString(16)} '
           'dest.tagLength=0x${dest.tagLength.toRadixString(16)}',
     );
@@ -140,9 +138,9 @@ void main() {
     );
     expect(
       'case B: layout_malformed — joint outcome on a refused-by-name read',
-      jointOk(n, r, dest) && r.refused == TableFixedRefusal.layoutMalformed,
+      jointOk(n, r, dest) && r.refused == TableFixedRefusal.layoutDamaged,
       'n=$n refused=${TableFixedRefusal.name(r.refused)} '
-          'malformed=${r.malformed} '
+          'damaged=${r.refused == TableFixedRefusal.damaged} '
           'dest.build=0x${dest.build.toRadixString(16)} '
           'dest.tagLength=0x${dest.tagLength.toRadixString(16)}',
     );
@@ -168,9 +166,9 @@ void main() {
     );
     expect(
       'case C: layout_malformed — known hash, short layout length',
-      jointOk(n, r, dest) && r.refused == TableFixedRefusal.layoutMalformed,
+      jointOk(n, r, dest) && r.refused == TableFixedRefusal.layoutDamaged,
       'n=$n refused=${TableFixedRefusal.name(r.refused)} '
-          'malformed=${r.malformed} '
+          'damaged=${r.refused == TableFixedRefusal.damaged} '
           'dest.build=0x${dest.build.toRadixString(16)} '
           'dest.tagLength=0x${dest.tagLength.toRadixString(16)}',
     );
@@ -195,9 +193,9 @@ void main() {
     expect(
       'case D: malformed - empty file, no first byte — joint outcome '
           '(refused stays none, malformed is the residue)',
-      jointOk(n, r, dest) && r.malformed && r.refused == TableFixedRefusal.none,
+      jointOk(n, r, dest) && r.refused == TableFixedRefusal.damaged,
       'n=$n refused=${TableFixedRefusal.name(r.refused)} '
-          'malformed=${r.malformed} '
+          'damaged=${r.refused == TableFixedRefusal.damaged} '
           'dest.build=0x${dest.build.toRadixString(16)} '
           'dest.tagLength=0x${dest.tagLength.toRadixString(16)}',
     );
@@ -223,9 +221,9 @@ void main() {
     );
     expect(
       'case E: malformed - reserved byte nonzero — joint outcome',
-      jointOk(n, r, dest) && r.malformed && r.refused == TableFixedRefusal.none,
+      jointOk(n, r, dest) && r.refused == TableFixedRefusal.damaged,
       'n=$n refused=${TableFixedRefusal.name(r.refused)} '
-          'malformed=${r.malformed} '
+          'damaged=${r.refused == TableFixedRefusal.damaged} '
           'dest.build=0x${dest.build.toRadixString(16)} '
           'dest.tagLength=0x${dest.tagLength.toRadixString(16)}',
     );
@@ -262,7 +260,7 @@ void main() {
           'joint outcome (the per-record hash check, §5.3 step 11)',
       jointOk(n, r, dest) && r.refused == TableFixedRefusal.noLayout,
       'n=$n refused=${TableFixedRefusal.name(r.refused)} '
-          'malformed=${r.malformed} '
+          'damaged=${r.refused == TableFixedRefusal.damaged} '
           'dest.build=0x${dest.build.toRadixString(16)} '
           'dest.tagLength=0x${dest.tagLength.toRadixString(16)}',
     );

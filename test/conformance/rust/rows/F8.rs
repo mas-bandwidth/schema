@@ -118,16 +118,19 @@ fn test_row_f8_ragged_tail() {
             TableFixedReason::None,
             "ragged tail leaves reason untouched as None: {:?}", report.reason
         );
-        assert_eq!(report.oor, 0, "ragged tail moves no clamped counter");
         assert_eq!(report.widened, 0, "ragged tail moves no widened counter");
         assert_eq!(report.unknown, 0, "ragged tail moves no unknown counter");
-        assert_eq!(report.mismatch, 0, "ragged tail moves no kind_mismatch counter");
 
-        // Ruling R4: the row handed in holds its declared defaults.
-        assert!(
-            same_row(&values[0], &declared_defaults()),
-            "ragged tail at +{extra} bytes must leave the row at its declared defaults"
-        );
+        // DAMAGE DISCARDS THE WHOLE LOAD (docs/SPEC-TABLES.md section 4, the
+        // generated padded_row_fixed_load): the poisoned record is back at its
+        // declared defaults, so nothing the read touched is a value to use. The
+        // poison (0x5A bytes) proves the discard ran; the file's own tag (42)
+        // proves nothing of the ragged file's records was kept.
+        let defaults = PaddedRowRow::default();
+        assert_eq!(values[0].tag, defaults.tag, "ragged tail at +{extra}: tag is not back at its default");
+        assert_eq!(values[0].id, defaults.id, "ragged tail at +{extra}: id is not back at its default");
+        assert_eq!(values[0].value.to_bits(), defaults.value.to_bits(), "ragged tail at +{extra}: value is not back at its default");
+        assert_ne!(values[0].tag, 42, "ragged tail at +{extra}: the file's record must not land");
     }
 
     // 3. NEGATIVE CONTROL: extra == record_bytes is a whole extra record, NOT ragged.

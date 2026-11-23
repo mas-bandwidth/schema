@@ -138,19 +138,15 @@ void main() {
     v1rt.TableFixedRefusal.name(r.refused) == 'layout_newer',
     'E8: refused BY NAME — ${v1rt.TableFixedRefusal.name(r.refused)}',
   );
-  check(!r.malformed, 'E8: a refusal by name is not damage (malformed=false)');
+  check(r.refused != v1rt.TableFixedRefusal.damaged,
+      'E8: a refusal by name is not damage (refused is not wire_damaged)');
 
   // REFUSE IS TOTAL: no counter moved, and the poisoned plan image is
   // untouched — the refusal happened before any record, so nothing was
   // decoded — and the value handed in holds its declared defaults (R4).
   check(
-    r.unknown == 0 &&
-        r.kindMismatch == 0 &&
-        r.clamped == 0 &&
-        r.widened == 0 &&
-        r.duplicate == 0,
-    'E8: refuse moves no counter (unknown=${r.unknown} kind=${r.kindMismatch} '
-    'clamped=${r.clamped} widened=${r.widened} duplicate=${r.duplicate})',
+    r.unknown == 0 && r.widened == 0,
+    'E8: refuse moves no counter (unknown=${r.unknown} widened=${r.widened})',
   );
   var poison = true;
   for (var i = 0; i < plan.image.length; i++) {
