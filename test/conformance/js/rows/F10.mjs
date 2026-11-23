@@ -5,8 +5,8 @@
 // A FIXED-TABLE RECORD OPENS WITH AN EIGHT-BYTE HASH OF THE WRITER'S LAYOUT.
 // When a reader loads a record whose first eight bytes are not the hash of the
 // layout the file's header named, the reader must REFUSE under the name
-// `no_layout` — not `malformed`, not a counter, nothing decoded, nothing
-// written to the caller's storage, the prefill included.
+// `no_layout` — not `malformed`, not a counter, nothing decoded, no prefill
+// run, and every value handed in back at its declared default (ruling R4).
 //
 // This is the law of §5.3's step 7: the hash check runs BEFORE any byte is
 // landed, and a record whose hash names no layout this build knows about
@@ -107,23 +107,25 @@ async function main() {
     "REFUSE is total: no counter moves"
   );
 
-  // --- ASSERTION 3: not one destination byte is written, the prefill included ---
-  // The hash check runs BEFORE the prefill; a refused read leaves the caller's
+  // --- ASSERTION 3: the plan image is not written, the prefill included ---
+  // The hash check runs BEFORE the prefill; a refused read leaves the plan's
   // image exactly as it was handed in.
   check(
     plan.image.every((b) => b === 0x5A),
-    "REFUSE writes nothing: not one destination byte is written, the prefill included"
+    "REFUSE runs no prefill: not one plan-image byte is written"
   );
 
-  // --- ASSERTION 4: nothing is decoded ---
-  // Every decoded value field remains at its poisoned sentinel.
+  // --- ASSERTION 4: the value handed in holds its declared defaults (R4) ---
+  // Every poisoned field comes back at the value a fresh instance holds.
+  const d = new fx1home.FxRoot();
+  const same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
   check(
-    v.keep === 0x5A5A5A5A && v.narrow === 0x5A5A && v.renamed === 0x5A5A && v.gone === 0x5A5A &&
-      v.nested.a === 0x5A5A && v.nested.b === 0x5A5A &&
-      v.label.every((b) => b === 0x5A) && v.labelLength === 0x5A &&
-      v.marks.every((b) => b === 0x5A) && v.marksCount === 0x5A &&
-      v.blob.every((b) => b === 0x5A) && v.blobLength === 0x5A,
-    "REFUSE is total: nothing is decoded"
+    v.keep === d.keep && v.narrow === d.narrow && v.renamed === d.renamed && v.gone === d.gone &&
+      v.nested.a === d.nested.a && v.nested.b === d.nested.b &&
+      same(v.label, d.label) && v.labelLength === d.labelLength &&
+      same(v.marks, d.marks) && v.marksCount === d.marksCount &&
+      same(v.blob, d.blob) && v.blobLength === d.blobLength,
+    "a refusal leaves every value handed in at its declared defaults (ruling R4)"
   );
 
   if (fail > 0) {

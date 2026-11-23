@@ -223,30 +223,30 @@ assert(gotClean[1].x == 42 and gotClean[1].y == -7, "clean values wrong")
 -- 2. Out-of-range scalar refused by LoadMessages and M.loadMessages(..., false).
 local rOob = {}
 local gotOob = T.LoadMessages("Msg", vocab, inputs.oob, rOob)
-assert(gotOob ~= nil and #gotOob == 0, "out_of_range must return empty batch")
+assert(gotOob == nil, "out_of_range must return empty batch")
 assert(rOob.refused == 1 and rOob.reason == "out_of_range", "out_of_range reason: " .. tostring(rOob.reason))
 
 local rOobFalse = {}
 local gotOobFalse = M.loadMessages(T, "Msg", vocab, inputs.oob, rOobFalse, false)
-assert(gotOobFalse ~= nil and #gotOobFalse == 0, "M.loadMessages(..., false) must still refuse out_of_range")
+assert(gotOobFalse == nil, "M.loadMessages(..., false) must still refuse out_of_range")
 assert(rOobFalse.refused == 1 and rOobFalse.reason == "out_of_range", "M.loadMessages(..., false) reason: " .. tostring(rOobFalse.reason))
 
 -- 3. String length over bound refused.
 local rLong = {}
 local gotLong = T.LoadMessages("Msg", vocab, inputs.long, rLong)
-assert(gotLong ~= nil and #gotLong == 0, "length_over_bound must return empty batch")
+assert(gotLong == nil, "length_over_bound must return empty batch")
 assert(rLong.refused == 1 and rLong.reason == "length_over_bound", "length_over_bound reason: " .. tostring(rLong.reason))
 
 -- 4. Array count over bound refused.
 local rMany = {}
 local gotMany = T.LoadMessages("Msg", vocab, inputs.many, rMany)
-assert(gotMany ~= nil and #gotMany == 0, "count_over_bound must return empty batch")
+assert(gotMany == nil, "count_over_bound must return empty batch")
 assert(rMany.refused == 1 and rMany.reason == "count_over_bound", "count_over_bound reason: " .. tostring(rMany.reason))
 
 -- 5. Incompatible announced kind refused as kind_mismatch.
 local rKind = {}
 local gotKind = T.LoadMessages("Msg", vocab, inputs.kind, rKind)
-assert(gotKind ~= nil and #gotKind == 0, "kind_mismatch must return empty batch")
+assert(gotKind == nil, "kind_mismatch must return empty batch")
 assert(rKind.refused == 1 and rKind.reason == "kind_mismatch", "kind_mismatch reason: " .. tostring(rKind.reason))
 
 -- 6. Non-finite float refused by field name.
@@ -255,14 +255,14 @@ for i = 1, T.MessageEntries do vocab2[i] = {} end
 assert(T.AnnounceRead(vocab2, inputs.ann2, {}), "AnnounceRead v2 failed")
 local rNan = {}
 local gotNan = T.LoadMessages("Msg", vocab2, inputs.nan, rNan)
-assert(gotNan ~= nil and #gotNan == 0, "non_finite_float must return empty batch")
+assert(gotNan == nil, "non_finite_float must return empty batch")
 assert(rNan.refused == 1 and rNan.nonFiniteFloat == "Msg.ratio" and rNan.reason == "non_finite_float: Msg.ratio",
   "non_finite_float reason: " .. tostring(rNan.reason))
 
 -- 7. Damaged wire discards bodies and sets damaged.
 local rDam = {}
 local gotDam = T.LoadMessages("Msg", vocab2, inputs.damaged, rDam)
-assert(gotDam ~= nil and #gotDam == 0 and rDam.damaged == true, "damaged wire must discard bodies")
+assert(gotDam == nil and rDam.damaged == true, "damaged wire must discard bodies")
 
 print("strict-message-ok")
 `, mod2)

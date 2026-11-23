@@ -5079,10 +5079,10 @@ func RangedSignedFixedSaveReason(values []RangedSigned, buffer []byte) (int64, e
 	return -1, TableRefuseInvalidValue
 }
 
-// RangedSignedFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count,
-// or -1 with every value it had written reset. A supplied report receives this read's report,
-// and report.Err() is the reason (tla/FixedLive.tla).
-func RangedSignedFixedLoad(values []RangedSigned, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
+// RangedSignedFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count, or -1 with
+// every value handed in reset to its declared defaults; report.Err() is the reason (tla/FixedBatch.tla).
+func RangedSignedFixedLoad(values []RangedSigned, data []byte, plan []TableFixedEntry, report *TableReport) (fixedN int64) {
+	defer tableResetIf(func() bool { return fixedN < 0 }, values, RangedSignedReset)
 	if report == nil {
 		var local TableReport
 		report = &local
@@ -5194,18 +5194,12 @@ func RangedSignedFixedLoad(values []RangedSigned, data []byte, plan []TableFixed
 		switch pick {
 		case 0:
 			if !RangedSignedFixedBoundsKnown0(&values[k : k+1][0]) {
-				for j := range values[:k+1] {
-					RangedSignedReset(&values[j])
-				}
 				return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
 			}
 		}
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
 		if !RangedSignedFixedBounds(&values[k : k+1][0]) {
-			for j := range values[:k+1] {
-				RangedSignedReset(&values[j])
-			}
 			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
 		}
 		at = at[recordBytes:]
@@ -5461,10 +5455,10 @@ func RangedUnsignedFixedSaveReason(values []RangedUnsigned, buffer []byte) (int6
 	return -1, TableRefuseInvalidValue
 }
 
-// RangedUnsignedFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count,
-// or -1 with every value it had written reset. A supplied report receives this read's report,
-// and report.Err() is the reason (tla/FixedLive.tla).
-func RangedUnsignedFixedLoad(values []RangedUnsigned, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
+// RangedUnsignedFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count, or -1 with
+// every value handed in reset to its declared defaults; report.Err() is the reason (tla/FixedBatch.tla).
+func RangedUnsignedFixedLoad(values []RangedUnsigned, data []byte, plan []TableFixedEntry, report *TableReport) (fixedN int64) {
+	defer tableResetIf(func() bool { return fixedN < 0 }, values, RangedUnsignedReset)
 	if report == nil {
 		var local TableReport
 		report = &local
@@ -5576,18 +5570,12 @@ func RangedUnsignedFixedLoad(values []RangedUnsigned, data []byte, plan []TableF
 		switch pick {
 		case 0:
 			if !RangedUnsignedFixedBoundsKnown0(&values[k : k+1][0]) {
-				for j := range values[:k+1] {
-					RangedUnsignedReset(&values[j])
-				}
 				return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
 			}
 		}
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
 		if !RangedUnsignedFixedBounds(&values[k : k+1][0]) {
-			for j := range values[:k+1] {
-				RangedUnsignedReset(&values[j])
-			}
 			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
 		}
 		at = at[recordBytes:]
@@ -5777,10 +5765,10 @@ func RangedWidthsFixedSaveReason(values []RangedWidths, buffer []byte) (int64, e
 	return -1, TableRefuseInvalidValue
 }
 
-// RangedWidthsFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count,
-// or -1 with every value it had written reset. A supplied report receives this read's report,
-// and report.Err() is the reason (tla/FixedLive.tla).
-func RangedWidthsFixedLoad(values []RangedWidths, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
+// RangedWidthsFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count, or -1 with
+// every value handed in reset to its declared defaults; report.Err() is the reason (tla/FixedBatch.tla).
+func RangedWidthsFixedLoad(values []RangedWidths, data []byte, plan []TableFixedEntry, report *TableReport) (fixedN int64) {
+	defer tableResetIf(func() bool { return fixedN < 0 }, values, RangedWidthsReset)
 	if report == nil {
 		var local TableReport
 		report = &local
@@ -5892,18 +5880,12 @@ func RangedWidthsFixedLoad(values []RangedWidths, data []byte, plan []TableFixed
 		switch pick {
 		case 0:
 			if !RangedWidthsFixedBoundsKnown0(&values[k : k+1][0]) {
-				for j := range values[:k+1] {
-					RangedWidthsReset(&values[j])
-				}
 				return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
 			}
 		}
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
 		if !RangedWidthsFixedBounds(&values[k : k+1][0]) {
-			for j := range values[:k+1] {
-				RangedWidthsReset(&values[j])
-			}
 			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
 		}
 		at = at[recordBytes:]

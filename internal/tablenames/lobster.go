@@ -133,7 +133,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"j_write_keyed", "j_write_map", "j_write_pointer", "j_write_root", "j_write_scalar", "j_write_string", "j_write_value",
 		"j_zeros_text", "json_array_registry", "json_array_table", "json_fd_of", "json_flags",
 		"json_flags_of", "json_flags_registry", "json_guard", "json_guard_holds", "json_guard_registry",
-		"json_is_array_table", "json_max_depth", "json_max_key", "json_read", "json_read_into", "json_text_list",
+		"json_is_array_table", "json_max_depth", "json_max_key", "json_read", "json_read_into", "json_read_walk", "json_text_list",
 		"json_text_list_registry", "json_text_total", "json_text_total_registry", "json_write",
 	},
 	"load.lobster": {
@@ -166,7 +166,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"message_ranged_holds", "message_skip_field",
 		"MessageBits", "MessageEntry", "MessageRead", "MessageShape", "MessageSlots", "MessageUnitFacts",
 		"MessageVocabulary", "MessageWriter", "announce", "announce_inner", "announce_measure", "announce_read",
-		"is_message_root", "load_messages", "load_messages_into", "mb_align", "mb_get",
+		"is_message_root", "load_messages", "load_messages_into", "load_messages_walk", "mb_align", "mb_get",
 		"mb_skip", "measure_messages", "message_arm_slots", "message_array", "message_batch_max",
 		"message_batch_ok", "message_bits", "message_body", "message_build_version", "message_bytes",
 		"message_cell", "message_compatible", "message_count", "message_entries_here", "message_entry",

@@ -10,7 +10,7 @@ import (
 )
 
 // A malformed read returns no records and resets caller storage. A named
-// preflight refusal leaves caller storage untouched. An accumulated malformed
+// preflight refusal resets every row handed in too (ruling R4). An accumulated malformed
 // bit from an earlier read must not turn a later valid read into fresh damage.
 func TestFixedLoadDamageDefaultsAndReportReuseRust(t *testing.T) {
 	t.Parallel()
@@ -52,8 +52,8 @@ func TestFixedLoadDamageDefaultsAndReportReuseRust(t *testing.T) {
         if got.is_some() || report.damaged || !report.refused || report.reason != reason {
             failures.push(format!("form{form}: expected named refusal"));
         }
-        if values.iter().any(|v| v.a != 77 || v.b != 77 || v.inner.n != 77 || !v.inner.ok || v.f != 0.0) {
-            failures.push(format!("form{form}: named preflight refusal changed caller values"));
+        if values.iter().any(|v| v.a != 0 || v.b != 0 || v.inner.n != 0 || v.inner.ok || v.f != 0.0) {
+            failures.push(format!("form{form}: named refusal left caller values (R4: every row resets)"));
         }
     }
     let mut values = vec![RootRow::default(); 2];
