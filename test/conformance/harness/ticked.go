@@ -40,11 +40,11 @@ func caseRows(surface, class string) []string {
 		return []string{"variable-tables/" + fixed}
 	}
 	switch surface {
-	case "wire", "write-refusal":
+	case "wire", "read-into", "write-refusal":
 		return byClass("fixed-class", "variable-class")
-	case "json-read", "json-write", "json-hostile", "write-refusal-json":
+	case "json-read", "json-write", "json-write-into", "json-hostile", "write-refusal-json":
 		return byClass("text-form", "text-form-variable")
-	case "message", "message-prior", "write-refusal-message":
+	case "message", "message-prior", "announce", "write-refusal-message":
 		return []string{"variable-tables/message-form"}
 	case "report":
 		return []string{"variable-tables/widening"}
@@ -54,10 +54,12 @@ func caseRows(surface, class string) []string {
 		return []string{"variable-tables/retain-unknown"}
 	case "cook", "cook-foreign", "cook-forgery":
 		return []string{"variable-tables/cook-open"}
-	case "cook-write":
+	case "cook-write", "write-refusal-cook":
 		return []string{"variable-tables/cook-write"}
 	case "block", "block-foreign", "block-dump", "forgery":
 		return []string{"variable-tables/block-read"}
+	case "write-refusal-block":
+		return []string{"variable-tables/block-build"}
 	case "write-refusal-fixed":
 		return []string{"fixed-tables/writing"}
 	}

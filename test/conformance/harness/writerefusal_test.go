@@ -82,7 +82,8 @@ func TestWriteRefusalSurfaceHoldsTheGoEngine(t *testing.T) {
 // name, and it loads at the row's root through the root's own form read (form
 // 3 at a declared fixed root, form 1 at a variable one). The historical
 // form-1 files beside the current-form instances are different rows, and a
-// write-refusal row names the current form.
+// write-refusal row names the current form. A row with wire "-" requests a
+// fresh value and still has to name a declared root.
 func TestWriteRefusalRowsLoadACurrentFormInstance(t *testing.T) {
 	t.Parallel()
 	root := conformanceRoot(t)
@@ -108,7 +109,7 @@ func TestWriteRefusalRowsLoadACurrentFormInstance(t *testing.T) {
 	for _, wr := range m.WriteRefusals {
 		t.Run(wr.Surface()+"/"+wr.Name, func(t *testing.T) {
 			t.Parallel()
-			if !current[filepath.Clean(wr.Wire)] {
+			if wr.Wire != "-" && !current[filepath.Clean(wr.Wire)] {
 				t.Fatalf("%s: the row's wire %s is not an instance the manifest carries", wr.Name, wr.Wire)
 			}
 			unitKey := wr.Unit
@@ -127,6 +128,9 @@ func TestWriteRefusalRowsLoadACurrentFormInstance(t *testing.T) {
 			def := model.Lookup(wr.Root)
 			if def == nil {
 				t.Fatalf("%s: unit %s declares no root %q", wr.Name, unitKey, wr.Root)
+			}
+			if wr.Wire == "-" {
+				return
 			}
 			wire, err := os.ReadFile(filepath.Join(root, wr.Wire))
 			if err != nil {
