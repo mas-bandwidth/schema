@@ -99,6 +99,8 @@ paths test/bench/main.cpp 1 the §1.5 golden pinner: correctness code, no timing
 
 timing internal/baseline/file.go 1 the history entry's calendar date — a day written into a text log, no interval measured (prose)
 timing internal/codegen/luatable/testgen_test.go 1 the generated-test lint's list of BANNED names (os.clock among them): a string the test refuses, no clock read — the check is lexical
+timing internal/ci/silent_skips_scan_test.go 1 a doc comment listing package testing's types (b *testing.B among them) that the scan recognises: prose, no benchmark, no clock read — the check is lexical
+timing internal/vacuous/vacuous_test.go 1 a test-input string literal (func BenchmarkNothing(b *testing.B)) the vacuous-test checker must list: source the test parses, never compiled or run — the check is lexical
 
 # ---------------------------------------------------------------------------
 # GATE 2 — the spec's own MEASURED gate (docs/SPEC-TABLES.md §12.1).
@@ -132,6 +134,7 @@ timing test/conformance/harness/wirefuzz.go 1 the wire fuzzer's throughput line 
 
 timing test/tables/cook_main.cpp 2 the cook's open-cost gate (§7, §7.5): open time flat across 1 MB and 100 MB, paired medians — a constant-time header match, no shape named
 timing test/cs-cook/src/Program.cs 3 the cook's open-cost gate on the C# leg (§7, §7.5): the same two fixtures, the same paired medians, one warm-up pass because a tiered runtime measured cold measures tier-up — a constant-time header match, no shape named
+timing internal/codegen/pythontable/cook_open_scale_test.go 1 the cook's open-cost gate on the Python leg (§7, §7.5): getrusage counts the page faults one open takes over sparse 1 MB, 100 MB and 1 GB mappings, flat in the file's size; a fault count, no shape named
 
 # THE RESOLVING WALK's LINEARITY BOUND (docs/SPEC-TABLES.md §6.6) is the same
 # kind of instrument as the cook's, and for the same reason: it measures a cost

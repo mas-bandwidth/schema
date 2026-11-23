@@ -19,6 +19,18 @@ conformance:
   (`feature-witnesses`, `text`, `write-refusal-int`, `r19`,
   `cook-authored-optional-map`) and `testdata/golden`, `testdata/wire` and
   `testdata/jsontestsuite`.
+- **The packet-defaults pins**: `testdata/wire/packet-defaults/*.bin` with
+  `.bits` (every driver of `test/packet-defaults` reads every pin, never
+  skipping one; the pin directory is checked, so an unread `.bin` is a
+  failure that names it). The two constant-default pins come from
+  `test/conformance/packet/testdata/constant-defaults/<name>/Defaults.schema`
+  (each declares package `arithmetic` with type `Value`, so each generates into
+  its own tree): `hexadecimal-addition` (`const Next = 0xffffffff + 1`) and
+  `unsigned-subtraction` (`const Half`, beside the field `half`). A fresh
+  `Value` writes exactly the pinned bytes and bits, and the pin reads back
+  over zeroed storage. `unsigned-subtraction` is the row for SPEC §4.2's rule
+  that a field never shadows a same-named constant: a target that emits
+  `half = half` fails to compile (Dart did, caught by this pin).
 - **The cards corpus**: `tables/cards/conformance/` (`MANIFEST.txt`,
   `FORMAT.md`, `cases/`, `expected/`).
 - **The harness and driver contract**: `test/conformance/` (the harness in
@@ -54,6 +66,10 @@ OWES) and is repeated here as the rule for the suite:
   pass.
 - A surface a port declares absent must be one the specification lets it
   refuse. An absence on a required surface is a failure, not a gap.
+- **Strict-compile row (C).** Generated C table output compiles under
+  `-std=c11 -Wall -Wextra -Werror` alone and when included by a unit that
+  sets `_POSIX_C_SOURCE 200809L` first; included late without it, it refuses
+  by name (SPEC-TABLES.md §16.5, A STRICT C COMPILE).
 - Every pinned wire-fuzz vector is RUN. `testdata/wire/tables/fuzz-vectors/INDEX.txt`
   names every `*.bin` beside it, and every line of it names a file that exists;
   `harness wire-fuzz` refuses the run, naming the file, when a vector is on disk
@@ -217,7 +233,6 @@ still owes part of it, takes its own number and its own ids off the entry.
 | GAP-22 | A JSON array under its counted minimum refuses (SPEC-TABLES §16.2, R10); gaps Hs11 | `sp-count-min-*` (#4689) | `sp-count-min-at`, `sp-count-min-below`, `sp-count-min-empty`, `sp-count-min-max`, `sp-count-min-over` | #4689, #4753 | owed |
 | GAP-26 | A float literal is a float64 first, then the field's width (SPEC.md §4.2); gaps Hs4 | `testdata/conformance/frontend/vector.txt` (`TestFrontEndVector`): a literal just past a float32 tie, as a default, a range end and inside an expression | `TestFrontEndVector`, `testdata/conformance/frontend/vector.txt` | #4757 | owed |
 | GAP-27 | Names are ASCII; a `was` alias hashes its UTF-8 bytes (SPEC.md §4.2); gaps Li1 | `testdata/conformance/frontend/vector.txt`: non-ASCII `was` on a table, a field and an arm | `testdata/conformance/frontend/vector.txt` | #4757 | owed |
-| retain-id-bound-is-the-wires | a retaining save numbers the generated table's ids and the retained ids into one trailer bounded by `id_table_max` = 4096, never by the generated table's own capacity; a file of 4096 retained ids saves back byte for byte (SPEC-TABLES.md §6.6, THE MERGED TRAILER IS BOUNDED BY THE WIRE) | `wire-fuzz --retain` on the pinned seed `id_table_4096` (graphdemo.Scene); C++ `TestCppRetainIdTableBoundIsTheWires` | `TestCppRetainIdTableBoundIsTheWires` | #4767 | owed |
 | SF-03, SF-04 | the variable `Save` and `Measure` check rows 1–2 on every field, not only on `\| required` fields (SPEC.md §5.1 rows 1–2) | `write-refusal` (`wref_range_*`, `wref_bits_wide*` on a fixed root); `sfv_bits_wide` / `sfv_bits_ok` on the variable root `TortureCook` (a plain non-required `bits(13)`, 8192 refused and 8191 written); a ranged non-required `int` on a variable root is owed: no corpus unit with a `min` / `max` on a variable root has a write-refusal path in the hand-coded legs | `TestCVariableWriteRangeAssertCompiled`, `TestCVariableWriteRangeAssert`, `TestCppVariableWriteRangeAssertCompiled`, `TestCppVariableWriteRangeAssert`, `sfv_bits_ok`, `sfv_bits_wide` | #4740, #4743, #4744, #4753, #4771, #4772 | owed |
 | SF-07, SF-08 | the packet `Write` checks row 8 (text) and row 10 (compressed float) in every C# target, unity included (SPEC.md §5.1 rows 8, 10) | `write-refusal-packet` (`text_illformed`, `text_zero`, `text_long`); a compressed-float row (SF-08) is owed: `PacketWriteRefusal` declares no compressed float, and no C# leg runs this surface yet | `TestUnityPacketWriteAssertsRows8And10` | #4740, #4743, #4744, #4753, #4771, #4772 | owed |
 | SF-09 to SF-15 | a write check reaches every carrier: a plain field, an optional, an array element, a union arm, a keyed slot (SPEC.md §5.1 rows 1–4, 8) | `write-refusal` (`wref_*`); on the variable root `TortureCook`, SF-10 `sfv_opt_bits_wide` / `sfv_opt_bits_ok` (an optional `?bits(37)`) and SF-12 `sfv_elem_bits_wide` / `sfv_elem_bits_ok` (a `bits(37)` element of `arr_bits`, a `[]T` array); owed because no corpus unit declares the shape on a variable root: SF-09 (a plain `bytes(N)`), SF-13 (an over-long optional array, arm array or arm `bytes(N)`), SF-14's `string(N)` arm and SF-15 (a keyed-array scalar slot with a range or width); SF-14's scalar arm is owed too: the only variable-root arm that carries a width is `bound_unions[13].u_bits`, an arm inside a list element, which the walkers of the Lua, Luau, MOO, Goose, Squirrel and Lobster drivers do not reach | `TestRustWriteRefusalReachesEveryCarrier`, `sfv_elem_bits_ok`, `sfv_elem_bits_wide`, `sfv_opt_bits_ok`, `sfv_opt_bits_wide`, `wref_enum_1_ok`, `wref_enum_256`, `wref_enum_4294967296`, `wref_enum_9`, `wref_shapes_octets_count_ok`, `wref_shapes_octets_count`, `wref_shapes_pick_tag_ok`, `wref_shapes_pick_tag`, `wref_shapes_ranged_high_ok`, `wref_shapes_ranged_high`, `wref_shapes_ranged_low_ok`, `wref_shapes_ranged_low`, `wref_shapes_recs_count_ok`, `wref_shapes_recs_count`, `wref_shapes_seventh_below_ok`, `wref_shapes_seventh_below`, `wref_shapes_tenth_past_ok`, `wref_shapes_tenth_past`, `wref_shapes_tones_enum_ok`, `wref_shapes_tones_enum`, `wref_shapes_zero_nan`, `wref_shapes_zero_ok`, `wref_union_tag_0_ok`, `wref_union_tag_1_ok`, `wref_union_tag_256`, `wref_union_tag_4294967296`, `wref_union_tag_9`, `wref_union_tag_none`, `wref_var_arm_length_ok`, `wref_var_arm_length`, `wref_var_bits13_neg`, `wref_var_bits13_ok`, `wref_var_bits13_wide`, `wref_var_bits37_ok`, `wref_var_bits37_wide`, `wref_var_count_ok`, `wref_var_count`, `wref_var_enum_ok`, `wref_var_enum`, `wref_var_i32_low`, `wref_var_i32_ok`, `wref_var_i32_wide`, `wref_var_layers_count_ok`, `wref_var_layers_count`, `wref_var_list_range_ok`, `wref_var_list_range`, `wref_var_list_tag_ok`, `wref_var_list_tag`, `wref_var_nested_range_ok`, `wref_var_nested_range`, `wref_var_range_high_ok`, `wref_var_range_high`, `wref_var_range_low_ok`, `wref_var_range_low`, `wref_var_str_length_ok`, `wref_var_str_length`, `wref_var_u64_ok`, `wref_var_u64_wide`, `wref_var_u8_ok`, `wref_var_u8_wide`, `wref_var_union_tag_ok`, `wref_var_union_tag` | #4501, #4636, #4706, #4740, #4743, #4744, #4751, #4752, #4753, #4754, #4757, #4764, #4769, #4771, #4772, #4773 | owed |
@@ -245,6 +260,7 @@ row and test named on main, so they owe nothing:
 | entry | rule (spec) | held by |
 |---|---|---|
 | INDEX | every pinned wire-fuzz vector is run: `harness wire-fuzz` refuses a vector on disk and not in the index, or in the index and not on disk, naming the file (§2; SPEC-TABLES.md §4.2) | `TestWireVectorIndexAndDirectoryAgree` (#4765, merged) |
+| retain-id-bound-is-the-wires | a retaining save numbers the generated table's ids and the retained ids into one trailer bounded by `id_table_max` = 4096, never by the generated table's own capacity; a file of 4096 retained ids saves back byte for byte (SPEC-TABLES.md §6.6, THE MERGED TRAILER IS BOUNDED BY THE WIRE) | `wire-fuzz --retain` on the pinned seed `id_table_4096` (graphdemo.Scene); C++ `TestCppRetainIdTableBoundIsTheWires` | (#4767, merged) |
 | FL-01 | compressed -0 stored as +0 (SPEC-TABLES §3.3; rulings `fixed-compressed-negzero`) | `testdata/conformance/feature-witnesses/compressed-negzero-go` |
 | FL-08 | announcement over capacity refused before any entry (SPEC-TABLES §3.3 (the announcement)) | hostile corpus `announce-entries-too-large` |
 | FL-10 | the JSON read holds bytes to the UTF-8 rules (SPEC-TABLES §16.2, §16.3) | `str-illformed-at-bound`, `str-raw-non-ascii`, `str-lone-lead-surrogate` |

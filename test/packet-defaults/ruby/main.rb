@@ -9,10 +9,34 @@ def check(cond, name)
   raise "AssertionError: #{name}" unless cond
 end
 
+PINS_READ = []
+
 def pin(name, value, klass)
+  PINS_READ << name
   data = File.binread("#{name}.bin")
   check(value.write == data, "#{name} constructor wire")
   check(klass.read(data).write == data, "#{name} round trip")
+end
+
+# A fresh Value (defaults from constants) writes the pinned bytes, and the pin
+# reads back to a fresh Value. Both constant schemas declare package arithmetic,
+# so each is generated into its own tree (constant-<name>/) and removed from the
+# runtime's constants and loaded features after the check.
+def constant_pin(name)
+  tree = File.join(__dir__, "constant-#{name}")
+  check(File.directory?(tree), "the generated tree constant-#{name} exists")
+  require File.join(tree, "arithmetic")
+  value_class = Arithmetic::Value
+  fresh = value_class.new
+  data = File.binread("#{name}.bin")
+  PINS_READ << name
+  check(!data.empty?, "#{name} pin is not empty")
+  check(fresh.write == data, "#{name} constructor wire")
+  check(value_class.read(data) == fresh, "#{name} reads back to a fresh Value")
+  check(value_class.read(data).write == data, "#{name} round trip")
+ensure
+  Object.send(:remove_const, :Arithmetic) if Object.const_defined?(:Arithmetic)
+  $LOADED_FEATURES.reject! { |f| f.start_with?(tree) } if tree
 end
 
 config = Example::ProbeConfig.new
@@ -51,4 +75,11 @@ pin("conditional-off", off_val, Packetdefaults::Conditional)
 choice = Packetdefaults::Choice.new
 choice.type = Packetdefaults::ChoiceType::Sample
 pin("choice-sample", choice, Packetdefaults::Choice)
+constant_pin("hexadecimal-addition")
+constant_pin("unsigned-subtraction")
+# Every .bin handed to the driver must have been read: a pin the driver does not
+# know fails loudly, never skipped.
+bins = Dir.glob("*.bin").map { |f| File.basename(f, ".bin") }.sort
+check(!bins.empty?, "the pins directory is not empty")
+bins.each { |name| check(PINS_READ.include?(name), "pin #{name} was never read by the driver") }
 puts "ok"

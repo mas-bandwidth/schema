@@ -433,11 +433,14 @@ jobs:
       # THE PYTHON PINS for unit-rest-ci: internal/ci/python_usage_fragments_test.go
       # runs the tutorial fragments under both pinned CPython interpreters
       # (internal/codegen/python/pyrun) and fails, never skips, without them.
+      # unit-rest runs test/conformance/python and test/conformance/ruby (the
+      # write-refusal packet surfaces), which run generated code under the
+      # pinned PYTHON and RUBY and fail, never skip, without them.
       - uses: ./.github/actions/python
-        if: startsWith(matrix.group, 'unit-codegen-python-') || startsWith(matrix.group, 'unit-rest-ci') || matrix.group == 'unit-rest-cmd-2' || matrix.group == 'unit-compiler-18'
+        if: startsWith(matrix.group, 'unit-codegen-python-') || startsWith(matrix.group, 'unit-rest-ci') || matrix.group == 'unit-rest-cmd-2' || matrix.group == 'unit-compiler-18' || matrix.group == 'unit-rest'
 
       - uses: ./.github/actions/ruby
-        if: startsWith(matrix.group, 'unit-codegen-ruby-') || startsWith(matrix.group, 'unit-rest-ci') || matrix.group == 'unit-compiler-18'
+        if: startsWith(matrix.group, 'unit-codegen-ruby-') || startsWith(matrix.group, 'unit-rest-ci') || matrix.group == 'unit-compiler-18' || matrix.group == 'unit-rest'
 
       # THE Goose PIN for the test steps below: internal/codegen/goose and
       # internal/codegen/goosetable run generated Goose under the pinned compiler

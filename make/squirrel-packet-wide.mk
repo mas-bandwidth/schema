@@ -24,10 +24,12 @@ packet-utf8-squirrel-negative-control: packet-utf8-squirrel
 	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-text/squirrel-negative/log || { cat build/packet-text/squirrel-negative/log; exit 1; }
 	@echo 'packet UTF-8 Squirrel negative control: unchecked read fails bit-flip agreement'
 
-build/packet-defaults/squirrel/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema make/squirrel-packet-wide.mk
+build/packet-defaults/squirrel/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema make/squirrel-packet-wide.mk $(wildcard test/conformance/packet/testdata/constant-defaults/*/Defaults.schema)
 	@rm -rf build/packet-defaults/squirrel
 	./bin/schema generate --lang squirrel --out build/packet-defaults/squirrel/defaults test/packet-defaults/Defaults.schema
 	./bin/schema generate --lang squirrel --out build/packet-defaults/squirrel/plain test/packet-defaults/Plain.schema
+	./bin/schema generate --lang squirrel --out build/packet-defaults/squirrel/constant-hexadecimal-addition test/conformance/packet/testdata/constant-defaults/hexadecimal-addition/Defaults.schema
+	./bin/schema generate --lang squirrel --out build/packet-defaults/squirrel/constant-unsigned-subtraction test/conformance/packet/testdata/constant-defaults/unsigned-subtraction/Defaults.schema
 	@touch $@
 
 # sq EXITS 0 ON A RUNTIME ERROR, so the exit status proves nothing. The driver
@@ -37,7 +39,7 @@ build/packet-defaults/squirrel/.stamp: bin/schema test/packet-defaults/Defaults.
 PACKET_DEFAULTS_SQUIRREL_GOLDENS = $(sort $(notdir $(wildcard testdata/wire/packet-defaults/*.bin)))
 .PHONY: packet-defaults-squirrel packet-defaults-squirrel-negative-control
 packet-defaults-squirrel: build/packet-defaults/squirrel/.stamp packet-defaults-cpp toolchain-squirrel build/mustrun
-	$(MUSTRUN) -name packet-defaults-squirrel -count 111 -- "$(SQ)" test/packet-defaults/squirrel/main.nut testdata/wire/packet-defaults --vectors $(PACKET_DEFAULTS_SQUIRREL_GOLDENS)
+	$(MUSTRUN) -name packet-defaults-squirrel -count 125 -- "$(SQ)" test/packet-defaults/squirrel/main.nut testdata/wire/packet-defaults --vectors $(PACKET_DEFAULTS_SQUIRREL_GOLDENS)
 
 # THE CONSTRUCTOR-BYTES CONTROL: drop only the emitted byte-literal assignments
 # in the constructor and require the runtime check to fail on constructor bytes.
@@ -47,7 +49,7 @@ packet-defaults-squirrel-negative-control: packet-defaults-squirrel
 	go run ./tools/sabotage -name packet-defaults-squirrel-constructor-bytes -out build/packet-defaults/squirrel-negative/squirrel.gotext internal/codegen/squirrel/squirrel.go
 	@printf '{"Replace":{"%s/internal/codegen/squirrel/squirrel.go":"%s/build/packet-defaults/squirrel-negative/squirrel.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-defaults/squirrel-negative/overlay.json
 	go run -overlay=build/packet-defaults/squirrel-negative/overlay.json ./cmd/schema generate --lang squirrel --out build/packet-defaults/squirrel-negative/generated test/packet-defaults/Defaults.schema
-	"$(SQ)" test/packet-defaults/squirrel/main.nut testdata/wire/packet-defaults build/packet-defaults/squirrel-negative/generated build/packet-defaults/squirrel/plain --vectors $(PACKET_DEFAULTS_SQUIRREL_GOLDENS) > build/packet-defaults/squirrel-negative/log 2>&1
+	@if "$(SQ)" test/packet-defaults/squirrel/main.nut testdata/wire/packet-defaults build/packet-defaults/squirrel-negative/generated build/packet-defaults/squirrel/plain --vectors $(PACKET_DEFAULTS_SQUIRREL_GOLDENS) > build/packet-defaults/squirrel-negative/log 2>&1; then 		echo NEGATIVE CONTROL FAILED: Squirrel passed with the constructor bytes dropped; exit 1; fi
 	@grep -Fxq 'FAILED: packet-default constructor bytes' build/packet-defaults/squirrel-negative/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: Squirrel constructor bytes did not fail the runtime check'; cat build/packet-defaults/squirrel-negative/log; exit 1; }
 	@grep -Fxm1 'FAILED: packet-default constructor bytes' build/packet-defaults/squirrel-negative/log
