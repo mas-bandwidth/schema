@@ -1,0 +1,78 @@
+package writebounds
+
+import (
+	"bytes"
+	"os"
+	"reflect"
+	"testing"
+	"unsafe"
+)
+
+func TestOptionalArrayResize(t *testing.T) {
+	input := readResizeFixture(t, "torture_var_wref.bin")
+	want := readResizeFixture(t, "torture_var_wref_resized.bin")
+	value := loadResizeValue(t, input)
+	if !value.OptArrPresent || value.OptArrCount != 2 || value.OptArr[0] != 1 || value.OptArr[1] != 2 {
+		t.Fatalf("seed optional array: present=%t count=%d values=%v", value.OptArrPresent, value.OptArrCount, value.OptArr)
+	}
+
+	value.OptArr[value.OptArrCount] = value.OptArr[0]
+	value.OptArrCount++
+	t.Run("canonical write and readback", func(t *testing.T) {
+		wire := saveResizeValue(t, value)
+		if !bytes.Equal(wire, want) {
+			t.Fatalf("resized wire differs from canonical file: wrote %d bytes, want %d", len(wire), len(want))
+		}
+		got := loadResizeValue(t, wire)
+		if !got.OptArrPresent || got.OptArrCount != 3 || got.OptArr != [3]int32{1, 2, 1} {
+			t.Fatalf("resized optional array: present=%t count=%d values=%v", got.OptArrPresent, got.OptArrCount, got.OptArr)
+		}
+		if !reflect.DeepEqual(got, value) {
+			t.Fatal("generated readback changed another field")
+		}
+	})
+	t.Run("zero fill is a different lawful value", func(t *testing.T) {
+		value.OptArr[2] = 0
+		if wire := saveResizeValue(t, value); bytes.Equal(wire, want) {
+			t.Fatal("canonical file failed to distinguish [1, 2, 0] from [1, 2, 1]")
+		}
+	})
+}
+
+func readResizeFixture(t *testing.T, path string) []byte {
+	t.Helper()
+	wire, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return wire
+}
+
+func loadResizeValue(t *testing.T, wire []byte) *TortureVarWref {
+	t.Helper()
+	size := TortureVarWrefLoadMeasure(wire)
+	if size < 0 {
+		t.Fatal("load measure refused the lawful file")
+	}
+	raw := make([]byte, size+63)
+	offset := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
+	report := TableReport{}
+	value := TortureVarWrefLoad(raw[offset:offset+uintptr(size)], wire, &report)
+	if value == nil || report.Err() != nil {
+		t.Fatalf("load refused the lawful file: %v", report.Err())
+	}
+	return value
+}
+
+func saveResizeValue(t *testing.T, value *TortureVarWref) []byte {
+	t.Helper()
+	size := TortureVarWrefMeasure(value)
+	if size < 0 {
+		t.Fatal("measure refused the lawful resized value")
+	}
+	wire := make([]byte, size)
+	if written := TortureVarWrefSave(value, wire); written != size {
+		t.Fatalf("save wrote %d bytes, measure returned %d", written, size)
+	}
+	return wire
+}
