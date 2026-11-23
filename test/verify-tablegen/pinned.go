@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -43,9 +44,8 @@ type PinnedUnit struct {
 }
 
 const (
-	// pinnedVersion is the case layout below: 2 since fix_json became
-	// opJSONMsg (the fixed root's native message writer).
-	pinnedVersion  = 2
+	// pinnedVersion is the case layout below. Version 3 adds the byte-buffer lineage pair.
+	pinnedVersion  = 3
 	pinnedFileBase = "Pin"
 	pinnedFixRoot  = "FixRoot"
 	pinnedVarRoot  = "VarRoot"
@@ -202,5 +202,74 @@ func BuildPinned(schemasDir string) ([]PinnedUnit, []CorpusCase, error) {
 			)
 		}
 	}
-	return units, cases, nil
+	unit, lineageCases, err := pinnedByteLineage(schemasDir)
+	if err != nil {
+		return nil, nil, err
+	}
+	return append(units, unit), append(cases, lineageCases...), nil
+}
+
+// pinnedByteLineage seals the older layout before widening the reader's
+// capacity. Encode each expected value directly in the reader's layout so a
+// faulty evolution read cannot bless itself by dropping, padding, or clamping
+// the bytes in the expected output.
+func pinnedByteLineage(schemasDir string) (PinnedUnit, []CorpusCase, error) {
+	const pkg = "pinbyteslineage"
+	dir := filepath.Join(schemasDir, pkg)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return PinnedUnit{}, nil, err
+	}
+	paths := []string{filepath.Join(dir, pinnedFileBase+".schema")}
+	c := compiler.New()
+	c.FormatInPlace = false
+
+	var models []*tabletext.Model
+	for _, capacity := range []int{2, 6} {
+		source := pinnedSchemaText(pkg, pinnedShape{Type: fmt.Sprintf("bytes(%d)", capacity)})
+		if err := os.WriteFile(paths[0], []byte(source), 0o644); err != nil {
+			return PinnedUnit{}, nil, err
+		}
+		u, err := c.Load(paths)
+		if err != nil {
+			return PinnedUnit{}, nil, err
+		}
+		if _, _, err := compiler.UpdateSchemaLock(u, paths); err != nil {
+			return PinnedUnit{}, nil, err
+		}
+		u, err = c.Load(paths)
+		if err != nil {
+			return PinnedUnit{}, nil, err
+		}
+		models = append(models, tabletext.NewModel(u))
+	}
+
+	var cases []CorpusCase
+	for _, row := range []pinnedRow{{"empty", `""`}, {"short", `"AP8="`}} {
+		id := "pin:bytes_lineage:" + row.Name
+		var wires [][]byte
+		for _, model := range models {
+			inst := model.New(model.Lookup(pinnedFixRoot))
+			var report tabletext.Report
+			src := []byte(`{"few":` + row.Text + "}")
+			if !model.Read(inst, src, &report) || report.Refused {
+				return PinnedUnit{}, nil, fmt.Errorf("%s: could not place %s: %+v", id, src, report)
+			}
+			wire, err := tablewire.EncodeFixed(model, inst)
+			if err != nil {
+				return PinnedUnit{}, nil, fmt.Errorf("%s: %w", id, err)
+			}
+			wires = append(wires, wire)
+		}
+		reader := models[1]
+		back := reader.New(reader.Lookup(pinnedFixRoot))
+		var report tabletext.Report
+		if ok, err := tablewire.Decode(reader, back, wires[0], &report); err != nil || !ok || report.Refused {
+			return PinnedUnit{}, nil, fmt.Errorf("%s: engine refused the older writer: ok=%v report=%+v err=%w", id, ok, report, err)
+		}
+		if got, err := tablewire.EncodeFixed(reader, back); err != nil || !bytes.Equal(got, wires[1]) {
+			return PinnedUnit{}, nil, fmt.Errorf("%s: engine did not preserve the older value: %x, want %x: %w", id, got, wires[1], err)
+		}
+		cases = append(cases, CorpusCase{ID: id, Pkg: pkg, Root: pinnedFixRoot, Op: opFixed, Input: wires[0], Want1: wires[1]})
+	}
+	return PinnedUnit{Pkg: pkg, FileBase: pinnedFileBase, Dir: dir}, cases, nil
 }

@@ -11,7 +11,7 @@ import (
 func TestRequiredTagIsReadAndRefusedWhereItHasNoMeaning(t *testing.T) {
 	t.Parallel()
 	t.Run("read on a table field", func(t *testing.T) {
-		u := checkUnit(t, `package t
+		u := checkUnit(t, `package tx
 table Ship
 {
     name string(32) | required
@@ -33,7 +33,7 @@ table Ship
 		}
 	})
 	t.Run("refused on a packet type field", func(t *testing.T) {
-		errs := runUnit(t, map[string]string{"T.schema": "package t\ntype P\n{\n    x int32 | required\n}\n"})
+		errs := runUnit(t, map[string]string{"T.schema": "package tx\ntype P\n{\n    x int32 | required\n}\n"})
 		if len(errs) == 0 {
 			t.Fatal("compiled clean — | required on a `type` field was accepted")
 		}
@@ -48,7 +48,7 @@ table Ship
 		}
 	})
 	t.Run("refused on an optional ?T", func(t *testing.T) {
-		errs := runUnit(t, map[string]string{"T.schema": "package t\ntable Ship\n{\n    tier ?int32 | required\n}\n"})
+		errs := runUnit(t, map[string]string{"T.schema": "package tx\ntable Ship\n{\n    tier ?int32 | required\n}\n"})
 		if len(errs) == 0 {
 			t.Fatal("compiled clean — | required on an optional field was accepted")
 		}
@@ -63,7 +63,7 @@ table Ship
 		}
 	})
 	t.Run("refused on a fixed table by name", func(t *testing.T) {
-		errs := runUnit(t, map[string]string{"T.schema": "package t\nfixed table F\n{\n    a int32 | required\n}\n"})
+		errs := runUnit(t, map[string]string{"T.schema": "package tx\nfixed table F\n{\n    a int32 | required\n}\n"})
 		var got bool
 		for _, e := range errs {
 			if strings.Contains(e.Error(), "fixed table F: field a is `| required`") {

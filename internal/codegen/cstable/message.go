@@ -109,6 +109,11 @@ func messageSlot(u *ir.Unit, f *ir.Field) string {
 	lo, hi, ok := ir.TableRawRange(f)
 	if f.Type.Kind == ir.TBits {
 		lo, hi, ok = big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1)), true
+	} else if fl, isFlags := f.Type.Ref.(*ir.Flags); isFlags && f.Type.Kind == ir.TNamed && fl.WireBits < 64 {
+		// A MASK BIT AT OR ABOVE THE READER'S W REFUSES (docs/SPEC-TABLES.md §4, A
+		// TABLE LOAD HOLDS A MASK TO ITS WIDTH): a newer writer announces a wider
+		// mask, and each value is held to this reader's own W
+		lo, hi, ok = big.NewInt(0), new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(fl.WireBits)), big.NewInt(1)), true
 	} else if !ok && ir.TableKindWide(tableScalarKind(f)) {
 		lo, hi = tableStorageRange(f.Type.Signed, f.Type.Width)
 		ok = true
@@ -158,7 +163,7 @@ internal sealed class TableMessageEntry
 const tableMessageSource = `
     static int BitCount(ulong n) { return n == 0 ? 0 : System.Numerics.BitOperations.Log2(n) + 1; }
     static bool Reserved(ulong id) { return id >= ulong.MaxValue - 2; }
-    static bool MessageKind(byte kind) { return kind <= 32 || kind == 36; }
+    static bool MessageKind(byte kind) { return kind <= 30 || kind == 32 || kind == 36; } // 31 is held by name, never written (R17): an announcement naming it is malformed, as one naming 33 or 34 is
     static bool MessageNumber(byte kind) { return kind >= 2 && kind <= 9 || kind >= 18 && kind <= 29; }
     static bool Signed(byte kind) { return kind >= 2 && kind <= 5 || kind == 18 || kind >= 20 && kind <= 24; }
     static int ValueBits(byte kind, TableMessageShape s)
@@ -267,7 +272,7 @@ const tableMessageSource = `
             else if (id == ulong.MaxValue - 2)
             {
                 if (kind != 14 || !r.Slice(out Reader a) || !a.Has(1) || a.Byte() != 6 || !a.Var(out ulong n) || n != (ulong)(a.Buffer.Length - a.Offset)) { break; }
-                if (n > (ulong)(v.MaxBytes > 0 ? v.MaxBytes : 65536)) { return Refuse(report, "vocabulary_too_large"); }
+                if (n > (ulong)(v.MaxBytes < 0 ? 0 : v.MaxBytes)) { return Refuse(report, "vocabulary_too_large"); }
                 payload = new Reader(a.Buffer.Slice(a.Offset), default); vocabularies++;
             }
             else { report.Unknown++; if (!r.Skip(kind)) { break; } }

@@ -454,13 +454,15 @@ tables-cs-byte-order-negative-control: bin/schema
 
 test-cs: tables-cs-byte-order
 
-# I4 (docs/PORTING.md) — PER-CASE ABSENT, C# side. The C# driver answers a case
+# I4 (docs/PORTING.md) — PER-CASE ANSWERS, C# side. The C# driver answers a case
 # it cannot answer with <case>.absent (test/conformance/cs/src/Program.cs:
-# SpillAbsent, and the wire surface's blob_shared rows), and the harness counts
-# it while the rest of the surface passes: `wire pass N/N +Ma`. The gate runs
-# the C# leg's table surfaces alone and requires that line. Its control builds
-# the driver from a copy whose per-case absent answers are removed and requires
-# the wire surface RED: a case with no answer at all is a failure, never a pass.
+# SpillAbsent), and a must-refuse row its runtime refuses (the wire surface's
+# blob_shared rows, the message surface's variable root) with <case> holding
+# `refused\n` (SpillRefused; ruling R13: an absence is never the refusal). The
+# gate runs the C# leg's table surfaces alone and requires no per-case absence.
+# Its control builds the driver from a copy whose per-case answers (both
+# helpers) write nothing and requires the wire surface RED: a case with no
+# answer at all is a failure, never a pass.
 CS_ABSENT := build/conformance-cs-absent
 .PHONY: conformance-cs-absent conformance-cs-absent-negative-control
 conformance-cs-absent: build-conformance-cs build/conformance-harness
@@ -475,9 +477,9 @@ conformance-cs-absent-negative-control: build-conformance-cs build/conformance-h
 	@rm -rf $(CS_ABSENT)-nc && mkdir -p $(CS_ABSENT)-nc/proj
 	@cp -R test/conformance/cs/src test/conformance/cs/schemaconformance.csproj $(CS_ABSENT)-nc/proj/
 	@sed -e 's|File.WriteAllBytes(Path.Combine(outDir, name + ".absent"), new byte\[0\]);|/* SABOTAGED: no per-case answer */|' \
-	     -e 's|File.WriteAllText(Path.Combine(outDir, f\[1\] + ".absent"), "blob_shared");|/* SABOTAGED: no per-case answer */|' \
+	     -e 's|File.WriteAllText(Path.Combine(outDir, name), "refused\\n");|/* SABOTAGED: no per-case answer */|' \
 		test/conformance/cs/src/Program.cs > $(CS_ABSENT)-nc/proj/src/Program.cs
-	@test $$(grep -c 'SABOTAGED: no per-case answer' $(CS_ABSENT)-nc/proj/src/Program.cs) = 3 || \
+	@test $$(grep -c 'SABOTAGED: no per-case answer' $(CS_ABSENT)-nc/proj/src/Program.cs) = 2 || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage did not patch every absent write"; exit 1; }
 	@$(DOTNET) build $(CS_ABSENT)-nc/proj --nologo -v quiet -p:TablesGeneratedDir=$(CURDIR)/build/tables-generated-cs \
 		-p:CardsGeneratedDir=$(CURDIR)/build/tables-generated-cs/cards -o $(CS_ABSENT)-nc/checker > $(CS_ABSENT)-nc/build.log 2>&1 || \
@@ -1275,8 +1277,8 @@ CONFORMANCE_LEGS  += $(call unless_skipped,cs,build-conformance-cs build-cs-cook
 BENCH_TABLES_LEGS += generated/bench/tables/cs/.stamp
 GOLDENS_LEGS      += update-goldens-cs
 # Packet UTF-8 content validation, including a compiled mutation control.
-build/packet-text/cs/.stamp: bin/schema test/packet-text/Narrow.schema
-	./bin/schema generate --lang cs --out build/packet-text/cs test/packet-text/Narrow.schema
+build/packet-text/cs/.stamp: bin/schema test/packet-text/Text.schema
+	./bin/schema generate --lang cs --out build/packet-text/cs test/packet-text/Text.schema
 	@touch $@
 
 .PHONY: packet-utf8-cs packet-utf8-cs-negative-control
@@ -1290,7 +1292,7 @@ packet-utf8-cs-negative-control: packet-utf8-cs
 	@mkdir -p build/packet-text/cs-negative
 	go run ./tools/sabotage -name packet-utf8-cs-read -out build/packet-text/cs-negative/utf8.gotext internal/codegen/csharp/utf8.go
 	@printf '{"Replace":{"%s/internal/codegen/csharp/utf8.go":"%s/build/packet-text/cs-negative/utf8.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-text/cs-negative/overlay.json
-	go run -overlay=build/packet-text/cs-negative/overlay.json ./cmd/schema generate --lang cs --out build/packet-text/cs-negative test/packet-text/Narrow.schema
+	go run -overlay=build/packet-text/cs-negative/overlay.json ./cmd/schema generate --lang cs --out build/packet-text/cs-negative test/packet-text/Text.schema
 	$(DOTNET) build test/packet-text/cs/packet-text.csproj -c Release -o build/packet-text/cs-negative/bin -p:TextDir="$(CURDIR)/build/packet-text/cs-negative" --nologo
 	@if ./build/packet-text/harness -mutations-only dotnet build/packet-text/cs-negative/bin/packet-text.dll > build/packet-text/cs-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: C# UTF-8 removal passed'; exit 1; fi
 	@grep -Fq 'FAILED: packet-text verdict on ' build/packet-text/cs-negative/log || { cat build/packet-text/cs-negative/log; exit 1; }
@@ -1583,8 +1585,9 @@ write-refusal-storage-debug-cs-negative-control: bin/schema $(STORAGE_RELEASE_SC
 .PHONY: packet-end-cs packet-end-cs-negative-control
 PACKET_END_CS := build/packet-end/cs
 
-build/packet-end/cs/.stamp: bin/schema test/packet-end/End.schema make/cs.mk
-	./bin/schema generate --lang cs --out $(PACKET_END_CS) test/packet-end/End.schema
+build/packet-end/cs/.stamp: bin/schema test/packet-end/PacketEnd.schema make/cs.mk
+	@rm -f $(PACKET_END_CS)/End.cs
+	./bin/schema generate --lang cs --out $(PACKET_END_CS) test/packet-end/PacketEnd.schema
 	@touch $@
 
 packet-end-cs: build/mustrun build/packet-end/cs/.stamp
@@ -1603,7 +1606,7 @@ packet-end-cs-negative-control: build/packet-end/cs/.stamp
 	@printf '{"Replace":{"%s/internal/codegen/csharp/functions.go":"%s/%s/functions.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" "$(PACKET_END_CS_NEG)" > $(PACKET_END_CS_NEG)/overlay.json
 	go build -overlay=$(PACKET_END_CS_NEG)/overlay.json -o $(PACKET_END_CS_NEG)/schema ./cmd/schema
-	./$(PACKET_END_CS_NEG)/schema generate --lang cs --out $(PACKET_END_CS_NEG)/generated test/packet-end/End.schema
+	./$(PACKET_END_CS_NEG)/schema generate --lang cs --out $(PACKET_END_CS_NEG)/generated test/packet-end/PacketEnd.schema
 	$(DOTNET) build test/packet-end/cs/packet-end.csproj \
 		-p:GeneratedDir="$(CURDIR)/$(PACKET_END_CS_NEG)/generated" -o $(PACKET_END_CS_NEG)/checker --nologo
 	@if $(DOTNET) $(PACKET_END_CS_NEG)/checker/packet-end.dll testdata/wire/packet-end > $(PACKET_END_CS_NEG)/log 2>&1; then \
@@ -1630,9 +1633,9 @@ test-cs: packet-end-cs packet-end-cs-negative-control
 .PHONY: packet-write-cfloat-cs packet-write-cfloat-cs-negative-control
 PACKET_WRITE_CFLOAT_CS := build/packet-write-cfloat/cs
 
-$(PACKET_WRITE_CFLOAT_CS)/.stamp: bin/schema test/packet-write-cfloat/CFloat.schema make/cs.mk
-	@mkdir -p $(PACKET_WRITE_CFLOAT_CS)
-	./bin/schema generate --lang cs --out $(PACKET_WRITE_CFLOAT_CS) test/packet-write-cfloat/CFloat.schema
+$(PACKET_WRITE_CFLOAT_CS)/.stamp: bin/schema test/packet-write-cfloat/PacketCFloat.schema make/cs.mk
+	@rm -rf $(PACKET_WRITE_CFLOAT_CS) && mkdir -p $(PACKET_WRITE_CFLOAT_CS)
+	./bin/schema generate --lang cs --out $(PACKET_WRITE_CFLOAT_CS) test/packet-write-cfloat/PacketCFloat.schema
 	@touch $@
 
 packet-write-cfloat-cs: build/mustrun $(PACKET_WRITE_CFLOAT_CS)/.stamp
@@ -1649,7 +1652,7 @@ packet-write-cfloat-cs-negative-control: $(PACKET_WRITE_CFLOAT_CS)/.stamp
 	@printf '{"Replace":{"%s/internal/codegen/csharp/functions.go":"%s/%s/functions.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" "$(PACKET_WRITE_CFLOAT_CS_NEG)" > $(PACKET_WRITE_CFLOAT_CS_NEG)/overlay.json
 	go build -overlay=$(PACKET_WRITE_CFLOAT_CS_NEG)/overlay.json -o $(PACKET_WRITE_CFLOAT_CS_NEG)/schema ./cmd/schema
-	./$(PACKET_WRITE_CFLOAT_CS_NEG)/schema generate --lang cs --out $(PACKET_WRITE_CFLOAT_CS_NEG)/generated test/packet-write-cfloat/CFloat.schema
+	./$(PACKET_WRITE_CFLOAT_CS_NEG)/schema generate --lang cs --out $(PACKET_WRITE_CFLOAT_CS_NEG)/generated test/packet-write-cfloat/PacketCFloat.schema
 	$(DOTNET) build test/packet-write-cfloat/cs/packet-write-cfloat.csproj \
 		-p:GeneratedDir="$(CURDIR)/$(PACKET_WRITE_CFLOAT_CS_NEG)/generated" -o $(PACKET_WRITE_CFLOAT_CS_NEG)/checker --nologo
 	@if $(DOTNET) $(PACKET_WRITE_CFLOAT_CS_NEG)/checker/packet-write-cfloat.dll test/packet-write-cfloat > $(PACKET_WRITE_CFLOAT_CS_NEG)/log 2>&1; then \

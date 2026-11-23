@@ -251,6 +251,8 @@ namespace SchemaUnityConformance
                 }
                 if (kind == "ordinal")
                 {
+                    // an enum array element: the same raw ordinal the scalar case stores,
+                    // set on the element so the real JSON writer is what judges it
                     object existing = BufferGet(arr, elemIdx.Value);
                     Type et = existing.GetType();
                     ulong raw = ulong.Parse(text, CultureInfo.InvariantCulture);

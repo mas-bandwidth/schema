@@ -961,13 +961,14 @@ test-java: tables-java-block-build
 # blob and list corpora round-trip against the committed reference bytes. It is
 # the variable class beyond the card constructs — *bytes blobs, unbounded
 # arrays of scalars/strings/enums, arrays of pointers and pointers outside a
-# list element, the 64-bit id-table escape kind and the §16.7 sharing text.
+# list element, the 64-bit id-table wire refusing the held kind 31 (R17) and the
+# §16.7 sharing text.
 # `SCHEMA_REQUIRE_CORPUS=1` turns a missing-oracle skip into a FAILURE, so under
 # this name a missing oracle can never pass silently.
 .PHONY: tables-java-variable-class
 tables-java-variable-class:
 	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
-		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -run 'TestVariableClassBeyondCardConstructsJava|TestUnboundedArraysRoundTripJava|TestEscapeKind31SkippedAndCountedJava'
+		go test ./internal/codegen/javatable/ -count=1 -timeout 600s -run 'TestVariableClassBeyondCardConstructsJava|TestUnboundedArraysRoundTripJava|TestHeldKind31RefusesTheLoadJava'
 	@echo 'tables Java variable class: the pointered, blob and list corpora round-trip against the committed reference bytes'
 
 # ITS NEGATIVE CONTROL, and it is the gate's first: until this target existed
@@ -1694,6 +1695,9 @@ build/java-bench/.stamp: generated/bench/java/.stamp bench/java/Main.java
 # second project because its cook side is a second assembly. `blockhome` is not
 # on this classpath and does not need to be; the tables-java-compile gate is
 # what proves it builds.
+# These alternate Driver launchers also reserve stdout for the harness.
+JAVA_CONFORMANCE_JVM_FLAGS := -XX:-UsePerfData
+
 .PHONY: build-conformance-java
 build-conformance-java: build/conformance-java/.stamp
 
@@ -1743,7 +1747,12 @@ conformance-java-absent: build/conformance-harness build-conformance-java
 # ITS NEGATIVE CONTROL: the driver's two absence writers (spillAbsent and
 # spillAbsentReason) write no marker. Every case the leg cannot answer then has
 # no answer at all, and the gate must go red on "the driver wrote nothing".
+# The Java leg answers every committed case (ruling R13 turned its last
+# absences, the must-refuse rows, into `refused`), so the control runs over a
+# copy of the manifest with one instance whose unit no leg generates,
+# absent_probe: the real driver answers it absent, the sabotaged one nothing.
 JAVA_ABSENT_SABOTAGE := build/conformance-java-absent-sabotage
+JAVA_ABSENT_PROBE := instance absent_probe nothere Root testdata/wire/tables/blob_small.bin no-text
 JAVA_ABSENT_SED := s@Files.write(Path.of(out, name + ".absent"), @if (false) Files.write(Path.of(out, name + ".absent"), /* SABOTAGED */ @
 conformance-java-absent-negative-control: build/conformance-harness build-conformance-java
 	@rm -rf $(JAVA_ABSENT_SABOTAGE) && mkdir -p $(JAVA_ABSENT_SABOTAGE)/src $(JAVA_ABSENT_SABOTAGE)/classes
@@ -1751,18 +1760,21 @@ conformance-java-absent-negative-control: build/conformance-harness build-confor
 	@test "$$(grep -c SABOTAGED $(JAVA_ABSENT_SABOTAGE)/src/Driver.java)" = 2 || \
 		{ echo "NEGATIVE CONTROL: the absence sabotage did not apply to both writers"; exit 1; }
 	$(JAVAC) --release 17 -nowarn -cp build/conformance-java -d $(JAVA_ABSENT_SABOTAGE)/classes $(JAVA_ABSENT_SABOTAGE)/src/Driver.java
-	@printf '#!/bin/sh\nexec %s -cp %s/classes:%s/build/conformance-java Driver "$$@"\n' "$(JAVA)" "$(CURDIR)/$(JAVA_ABSENT_SABOTAGE)" "$(CURDIR)" > $(JAVA_ABSENT_SABOTAGE)/driver
+	@printf '#!/bin/sh\nexec %s $(JAVA_CONFORMANCE_JVM_FLAGS) -cp %s/classes:%s/build/conformance-java Driver "$$@"\n' "$(JAVA)" "$(CURDIR)/$(JAVA_ABSENT_SABOTAGE)" "$(CURDIR)" > $(JAVA_ABSENT_SABOTAGE)/driver
 	@chmod +x $(JAVA_ABSENT_SABOTAGE)/driver
 	@printf 'java %s/driver\n' "$(CURDIR)/$(JAVA_ABSENT_SABOTAGE)" > $(JAVA_ABSENT_SABOTAGE)/drivers.txt
+	@cp testdata/conformance/tables/MANIFEST.txt $(JAVA_ABSENT_SABOTAGE)/MANIFEST.txt
+	@echo '$(JAVA_ABSENT_PROBE)' >> $(JAVA_ABSENT_SABOTAGE)/MANIFEST.txt
 	@if ./build/conformance-harness run --drivers $(JAVA_ABSENT_SABOTAGE)/drivers.txt \
+			--manifest $(JAVA_ABSENT_SABOTAGE)/MANIFEST.txt \
 			--work $(JAVA_ABSENT_SABOTAGE)/work > $(JAVA_ABSENT_SABOTAGE)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: a driver that writes no absence marker left the harness green"; \
 		cat $(JAVA_ABSENT_SABOTAGE)/log; exit 1; \
 	fi
-	@grep -q "driver wrote nothing" $(JAVA_ABSENT_SABOTAGE)/log || \
+	@grep -q "absent_probe: the driver wrote nothing" $(JAVA_ABSENT_SABOTAGE)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on a missing answer"; \
 		  cat $(JAVA_ABSENT_SABOTAGE)/log; exit 1; }
-	@grep -m1 "driver wrote nothing" $(JAVA_ABSENT_SABOTAGE)/log
+	@grep -m1 "absent_probe: the driver wrote nothing" $(JAVA_ABSENT_SABOTAGE)/log
 	@echo "negative control: a driver that writes no absence marker turns the harness RED on the cases it cannot answer"
 
 # THE JAVA LEG OF THE TOLERANT WIRE'S DIFFERENTIAL FUZZER (docs/PORTING.md
@@ -2049,7 +2061,7 @@ conformance-negative-control-java-block: build/conformance-harness build/tables-
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged Open"; exit 1; }
 	$(JAVAC) --release 17 -nowarn -d $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/classes \
 		$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/generated/*/*.java test/conformance/java/src/Driver.java
-	@printf '#!/bin/sh\nexec %s -cp %s/classes Driver "$$@"\n' "$(JAVA)" "$(CURDIR)/$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)" > $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/driver
+	@printf '#!/bin/sh\nexec %s $(JAVA_CONFORMANCE_JVM_FLAGS) -cp %s/classes Driver "$$@"\n' "$(JAVA)" "$(CURDIR)/$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)" > $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/driver
 	@chmod +x $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/driver
 	@printf 'java %s/driver\n' "$(CONFORMANCE_NEGATIVE_JAVA_BLOCK)" > $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/drivers.txt
 	@if ./build/conformance-harness run --drivers $(CONFORMANCE_NEGATIVE_JAVA_BLOCK)/drivers.txt \
@@ -2126,7 +2138,7 @@ conformance-negative-control-java-walk: build/conformance-harness
 		{ echo "NEGATIVE CONTROL FAILED: the sabotaged emitter emitted an unsabotaged fromJson"; exit 1; }
 	$(JAVAC) --release 17 -nowarn -d $(CONFORMANCE_NEGATIVE_JAVA_WALK)/classes \
 		$(CONFORMANCE_NEGATIVE_JAVA_WALK)/generated/*/*.java test/conformance/java/src/Driver.java
-	@printf '#!/bin/sh\nexec %s -cp %s/classes Driver "$$@"\n' "$(JAVA)" "$(CURDIR)/$(CONFORMANCE_NEGATIVE_JAVA_WALK)" > $(CONFORMANCE_NEGATIVE_JAVA_WALK)/driver
+	@printf '#!/bin/sh\nexec %s $(JAVA_CONFORMANCE_JVM_FLAGS) -cp %s/classes Driver "$$@"\n' "$(JAVA)" "$(CURDIR)/$(CONFORMANCE_NEGATIVE_JAVA_WALK)" > $(CONFORMANCE_NEGATIVE_JAVA_WALK)/driver
 	@chmod +x $(CONFORMANCE_NEGATIVE_JAVA_WALK)/driver
 	@printf 'java %s/driver\n' "$(CONFORMANCE_NEGATIVE_JAVA_WALK)" > $(CONFORMANCE_NEGATIVE_JAVA_WALK)/drivers.txt
 	@if ./build/conformance-harness run --drivers $(CONFORMANCE_NEGATIVE_JAVA_WALK)/drivers.txt \
@@ -2183,9 +2195,9 @@ REGISTRY_NA_WHY.bench-tables.java := bench/tables/java has no leg script, so ben
 REGISTRY_NA_WHY.goldens.java      := no committed table goldens; its packet goldens (testdata/golden/java) are rewritten by internal/goldens at the top of update-goldens
 CONFORMANCE_ENV    += JAVA=$(JAVA)
 # Packet UTF-8 content validation, including a compiled mutation control.
-build/packet-text/java/.stamp: bin/schema test/packet-text/Narrow.schema
+build/packet-text/java/.stamp: bin/schema test/packet-text/Text.schema
 	@mkdir -p build/packet-text/java/source
-	cp test/packet-text/Narrow.schema build/packet-text/java/source/Text.schema
+	cp test/packet-text/Text.schema build/packet-text/java/source/Text.schema
 	./bin/schema generate --lang java --out build/packet-text/java build/packet-text/java/source/Text.schema
 	@touch $@
 
@@ -2453,7 +2465,7 @@ test-java: tables-java-view tables-java-descriptor-doc
 JAVA_FRAMING_CONTROL := build/conformance-java-framing-control
 .PHONY: conformance-java-framing conformance-negative-control-java-framing
 conformance-java-framing: build/conformance-harness build-conformance-java
-	sh test/conformance/framing/gate java "$(JAVA) -cp $(CURDIR)/build/conformance-java Driver" build/conformance-java-framing
+	sh test/conformance/framing/gate java "$(JAVA) $(JAVA_CONFORMANCE_JVM_FLAGS) -cp $(CURDIR)/build/conformance-java Driver" build/conformance-java-framing
 conformance-negative-control-java-framing: build/conformance-harness build-conformance-java
 	@rm -rf $(JAVA_FRAMING_CONTROL) && mkdir -p $(JAVA_FRAMING_CONTROL)/r1 $(JAVA_FRAMING_CONTROL)/pointers \
 		$(JAVA_FRAMING_CONTROL)/share $(JAVA_FRAMING_CONTROL)/classes $(JAVA_FRAMING_CONTROL)/share-classes
@@ -2471,9 +2483,9 @@ conformance-negative-control-java-framing: build/conformance-harness build-confo
 		$(JAVA_FRAMING_CONTROL)/r1/*.java $(JAVA_FRAMING_CONTROL)/pointers/*.java
 	$(JAVAC) --release 17 -nowarn -cp build/conformance-java -d $(JAVA_FRAMING_CONTROL)/share-classes \
 		$(JAVA_FRAMING_CONTROL)/share/*.java
-	sh test/conformance/framing/gate java "$(JAVA) -cp $(CURDIR)/$(JAVA_FRAMING_CONTROL)/classes:$(CURDIR)/build/conformance-java Driver" \
+	sh test/conformance/framing/gate java "$(JAVA) $(JAVA_CONFORMANCE_JVM_FLAGS) -cp $(CURDIR)/$(JAVA_FRAMING_CONTROL)/classes:$(CURDIR)/build/conformance-java Driver" \
 		$(JAVA_FRAMING_CONTROL)/run frame_entries_4097 node_cycle_self node_cycle_to_root node_cycle_mid
-	sh test/conformance/framing/gate java "$(JAVA) -cp $(CURDIR)/$(JAVA_FRAMING_CONTROL)/share-classes:$(CURDIR)/build/conformance-java Driver" \
+	sh test/conformance/framing/gate java "$(JAVA) $(JAVA_CONFORMANCE_JVM_FLAGS) -cp $(CURDIR)/$(JAVA_FRAMING_CONTROL)/share-classes:$(CURDIR)/build/conformance-java Driver" \
 		$(JAVA_FRAMING_CONTROL)/run-share node_diamond_chain
 test-java: conformance-java-framing
 
@@ -2533,7 +2545,7 @@ conformance-negative-control-java-write-refusal: build/conformance-harness build
 	@rm $(JAVA_WRITE_REFUSAL_CONTROL)/generated/*.orig
 	$(JAVAC) --release 17 -nowarn -d $(JAVA_WRITE_REFUSAL_CONTROL)/classes \
 		$(JAVA_WRITE_REFUSAL_CONTROL)/generated/*.java
-	@printf '#!/bin/sh\nexec %s -ea -cp %s/classes:%s/build/conformance-java Driver "$$@"\n' \
+	@printf '#!/bin/sh\nexec %s $(JAVA_CONFORMANCE_JVM_FLAGS) -ea -cp %s/classes:%s/build/conformance-java Driver "$$@"\n' \
 		"$(JAVA)" "$(CURDIR)/$(JAVA_WRITE_REFUSAL_CONTROL)" "$(CURDIR)" > $(JAVA_WRITE_REFUSAL_CONTROL)/driver
 	@chmod +x $(JAVA_WRITE_REFUSAL_CONTROL)/driver
 	@printf 'java %s/driver\n' "$(CURDIR)/$(JAVA_WRITE_REFUSAL_CONTROL)" > $(JAVA_WRITE_REFUSAL_CONTROL)/drivers.txt
@@ -2563,7 +2575,7 @@ conformance-negative-control-java-write-refusal-fixed: build/conformance-harness
 	@rm $(JAVA_WRITE_REFUSAL_FIXED_CONTROL)/generated/*.orig
 	$(JAVAC) --release 17 -nowarn -d $(JAVA_WRITE_REFUSAL_FIXED_CONTROL)/classes \
 		$(JAVA_WRITE_REFUSAL_FIXED_CONTROL)/generated/*.java
-	@printf '#!/bin/sh\nexec %s -ea -cp %s/classes:%s/build/conformance-java Driver "$$@"\n' \
+	@printf '#!/bin/sh\nexec %s $(JAVA_CONFORMANCE_JVM_FLAGS) -ea -cp %s/classes:%s/build/conformance-java Driver "$$@"\n' \
 		"$(JAVA)" "$(CURDIR)/$(JAVA_WRITE_REFUSAL_FIXED_CONTROL)" "$(CURDIR)" > $(JAVA_WRITE_REFUSAL_FIXED_CONTROL)/driver
 	@chmod +x $(JAVA_WRITE_REFUSAL_FIXED_CONTROL)/driver
 	@printf 'java %s/driver\n' "$(CURDIR)/$(JAVA_WRITE_REFUSAL_FIXED_CONTROL)" > $(JAVA_WRITE_REFUSAL_FIXED_CONTROL)/drivers.txt
@@ -2593,7 +2605,7 @@ conformance-negative-control-java-write-refusal-message: build/conformance-harne
 	@rm $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/generated/*.orig
 	$(JAVAC) --release 17 -nowarn -d $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/classes \
 		$(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/generated/*.java
-	@printf '#!/bin/sh\nexec %s -ea -cp %s/classes:%s/build/conformance-java Driver "$$@"\n' \
+	@printf '#!/bin/sh\nexec %s $(JAVA_CONFORMANCE_JVM_FLAGS) -ea -cp %s/classes:%s/build/conformance-java Driver "$$@"\n' \
 		"$(JAVA)" "$(CURDIR)/$(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)" "$(CURDIR)" > $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/driver
 	@chmod +x $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/driver
 	@printf 'java %s/driver\n' "$(CURDIR)/$(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)" > $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/drivers.txt
@@ -2615,11 +2627,9 @@ conformance-negative-control-java-write-refusal-message: build/conformance-harne
 # refuses a whole byte left after the top-level object and non-zero unused
 # bits in the final byte; the Bits entry stays the composable form and does not
 # end. The driver reads the shared vectors under testdata/wire/packet-end.
-build/packet-end/java/.stamp: bin/schema test/packet-end/End.schema make/java.mk
-	@rm -rf build/packet-end/java/gen build/packet-end/java/source
-	@mkdir -p build/packet-end/java/source
-	cp test/packet-end/End.schema build/packet-end/java/source/PacketEnd.schema
-	./bin/schema generate --lang java --out build/packet-end/java/gen build/packet-end/java/source/PacketEnd.schema
+build/packet-end/java/.stamp: bin/schema test/packet-end/PacketEnd.schema make/java.mk
+	@rm -rf build/packet-end/java/gen
+	./bin/schema generate --lang java --out build/packet-end/java/gen test/packet-end/PacketEnd.schema
 	@touch $@
 
 .PHONY: packet-end-java packet-end-java-negative-control
@@ -2635,10 +2645,8 @@ packet-end-java-negative-control: packet-end-java
 	@printf '{"Replace":{"%s/internal/codegen/java/functions.go":"%s/build/packet-end/java-negative/java.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/packet-end/java-negative/overlay.json
 	go build -overlay=build/packet-end/java-negative/overlay.json -o build/packet-end/java-negative/schema ./cmd/schema
-	@rm -rf build/packet-end/java-negative/generated build/packet-end/java-negative/source
-	@mkdir -p build/packet-end/java-negative/source
-	cp test/packet-end/End.schema build/packet-end/java-negative/source/PacketEnd.schema
-	./build/packet-end/java-negative/schema generate --lang java --out build/packet-end/java-negative/generated build/packet-end/java-negative/source/PacketEnd.schema
+	@rm -rf build/packet-end/java-negative/generated
+	./build/packet-end/java-negative/schema generate --lang java --out build/packet-end/java-negative/generated test/packet-end/PacketEnd.schema
 	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-end/java-negative/classes build/packet-end/java-negative/generated/*.java test/packet-end/java/Main.java
 	@if $(JAVA) -cp build/packet-end/java-negative/classes Main testdata/wire/packet-end > build/packet-end/java-negative/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: a Java packet read with no end check accepted a trailing byte'; exit 1; fi

@@ -161,13 +161,13 @@ generated/bench/tables/lua/.stamp: ;
 # enforces the rule through its vendored serialize.lua runtime: a NaN or an
 # infinity traps on write naming non_finite_float, refuses on read on its raw
 # bits, and -0 and the subnormals ride bit exact. test/packet-finite/lua/main.lua
-# runs every bare-float position of Finite.schema at both widths, plus the
+# runs every bare-float position of PacketFinite.schema at both widths, plus the
 # quantized float's write refusal. The generator emits the runtime beside the
 # module, so each control sabotages that emitted copy (tools/sabotage, one
 # direction at a time) and must fail exactly the vectors its .expected names.
-build/packet-finite/lua/.stamp: bin/schema test/packet-finite/lua/Finite.schema
+build/packet-finite/lua/.stamp: bin/schema test/packet-finite/lua/PacketFinite.schema make/lua.mk
 	@rm -rf build/packet-finite/lua && mkdir -p build/packet-finite/lua
-	./bin/schema generate --lang lua --out build/packet-finite/lua/generated test/packet-finite/lua/Finite.schema
+	./bin/schema generate --lang lua --out build/packet-finite/lua/generated test/packet-finite/lua/PacketFinite.schema
 	@touch $@
 
 .PHONY: packet-finite-lua packet-finite-lua-negative-control
@@ -193,9 +193,9 @@ packet-finite-lua-negative-control: packet-finite-lua
 	$(call packet-finite-lua-control,write)
 
 # ---------------------------------------------------------------- UTF-8
-build/packet-text/lua/.stamp: bin/schema test/packet-text/Narrow.schema
+build/packet-text/lua/.stamp: bin/schema test/packet-text/Text.schema
 	@rm -rf build/packet-text/lua && mkdir -p build/packet-text/lua
-	./bin/schema generate --lang lua --out build/packet-text/lua/generated test/packet-text/Narrow.schema
+	./bin/schema generate --lang lua --out build/packet-text/lua/generated test/packet-text/Text.schema
 	@touch $@
 
 .PHONY: packet-utf8-lua packet-utf8-lua-negative-control
@@ -208,7 +208,7 @@ packet-utf8-lua-negative-control: packet-utf8-lua
 	@printf '{"Replace":{"%s/internal/codegen/lua/read.go":"%s/build/packet-text/lua-negative/read.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/packet-text/lua-negative/overlay.json
 	go build -overlay=build/packet-text/lua-negative/overlay.json -o build/packet-text/lua-negative/schema ./cmd/schema
-	./build/packet-text/lua-negative/schema generate --lang lua --out build/packet-text/lua-negative/generated test/packet-text/Narrow.schema
+	./build/packet-text/lua-negative/schema generate --lang lua --out build/packet-text/lua-negative/generated test/packet-text/Text.schema
 	@if ./build/packet-text/harness -mutations-only $(LUA) test/packet-text/lua/main.lua build/packet-text/lua-negative/generated \
 		> build/packet-text/lua-negative/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: Lua UTF-8 removal passed'; exit 1; fi
@@ -433,24 +433,31 @@ tables-lua-release-negative-control: toolchain-lua build/conformance-harness bui
 		{ echo "NEGATIVE CONTROL FAILED: the release wire fuzz went red, but not on a divergence"; cat build/lua-release-negative/log; exit 1; }
 	@echo "tables-lua-release negative control: the release wire fuzz (seed 2, N=$(LUA_RELEASE_FUZZ_N)) reds on a load that refuses every unknown field as damage"
 
-# PER-CASE ABSENT's REVERSED WITNESS (I4): a copy of the driver whose absent()
-# writes nothing, so a case the leg cannot answer is left with neither an
-# answer nor <case>.absent. The harness must go red on it: an unanswered case
-# is never counted as a pass, so the leg's absences are what it says they are.
+# PER-CASE ABSENT's REVERSED WITNESS (I4), and R13's: a copy of the driver
+# whose absent() and answerRefused() write nothing, so a case the leg cannot
+# answer is left with neither an answer nor <case>.absent, and a must-refuse
+# row (blob_shared on wire, the variable root on message) with no `refused`.
+# The harness must go red on it, on wire and on message: an unanswered case is
+# never counted as a pass, so the leg's refusals and absences are what it says
+# they are. (Since R13 the corpus leaves the lua leg no absence, so the refusal
+# rows are what bites.)
 .PHONY: conformance-negative-control-lua-absent
 conformance-negative-control-lua-absent: toolchain-lua build/conformance-harness build/conformance-lua
 	@rm -rf build/lua-absent-control && mkdir -p build/lua-absent-control
-	@sed 's|^  writeBytes(outdir .. "/" .. name .. ".absent", reason)$$|  do end|' test/conformance/lua/main.lua > build/lua-absent-control/main.lua
-	@if cmp -s test/conformance/lua/main.lua build/lua-absent-control/main.lua; then \
-		echo "NEGATIVE CONTROL: the absent sabotage patched nothing in test/conformance/lua/main.lua"; exit 1; fi
+	@sed -e 's|^  writeBytes(outdir .. "/" .. name .. ".absent", reason)$$|  do end|' \
+		-e 's|^  writeBytes(outdir .. "/" .. name, "refused\\n")$$|  do end|' \
+		test/conformance/lua/main.lua > build/lua-absent-control/main.lua
+	@if grep -qxF '  writeBytes(outdir .. "/" .. name .. ".absent", reason)' build/lua-absent-control/main.lua || \
+		grep -qxF '  writeBytes(outdir .. "/" .. name, "refused\n")' build/lua-absent-control/main.lua; then \
+		echo "NEGATIVE CONTROL: the absent or refused sabotage patched nothing in test/conformance/lua/main.lua"; exit 1; fi
 	@printf '#!/bin/sh\nexec env LUA=%s %s %s/build/lua-absent-control/main.lua "$$@"\n' '$(LUA)' '$(LUA)' '$(CURDIR)' > build/lua-absent-control/driver
 	@chmod +x build/lua-absent-control/driver
 	@printf 'lua %s/build/lua-absent-control/driver\n' '$(CURDIR)' > build/lua-absent-control/drivers.txt
 	@if build/conformance-harness run --drivers build/lua-absent-control/drivers.txt --work build/lua-absent-control/work > build/lua-absent-control/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: a driver that drops every <case>.absent left conformance green"; cat build/lua-absent-control/log; exit 1; fi
-	@grep -qE '^ *lua / [a-z-]+' build/lua-absent-control/log || \
-		{ echo "NEGATIVE CONTROL FAILED: conformance went red, but not on a lua surface"; cat build/lua-absent-control/log; exit 1; }
-	@echo "conformance-negative-control-lua-absent: dropping <case>.absent turns [$$(grep -oE '^ *lua / [a-z-]+' build/lua-absent-control/log | sed 's/^ *lua \/ //' | sort -u | tr '\n' ' ')] red"
+		echo "NEGATIVE CONTROL FAILED: a driver that drops every <case>.absent and every refusal answer left conformance green"; cat build/lua-absent-control/log; exit 1; fi
+	@for s in wire message; do grep -qE "^ *lua / $$s:" build/lua-absent-control/log || \
+		{ echo "NEGATIVE CONTROL FAILED: the lua $$s surface did not go red"; cat build/lua-absent-control/log; exit 1; }; done
+	@echo "conformance-negative-control-lua-absent: dropping <case>.absent and the refusal answer turns [$$(grep -oE '^ *lua / [a-z-]+' build/lua-absent-control/log | sed 's/^ *lua \/ //' | sort -u | tr '\n' ' ')] red"
 
 TEST_LEGS         += test-lua
 CONFORMANCE_LEGS  += $(call unless_skipped,lua,build/conformance-lua)
@@ -470,12 +477,12 @@ test-lua: tables-lua-damage-discard-negative-control
 # ---------------------------------------------------------------- packet end
 # SPEC §5: the generated public Read<T> is the one-packet read and ends with
 # the runtime's end check; a nested type reads through Read<T>Body, which does
-# not end. The shared End.schema vectors are read with ReadEnd: the exact
+# not end. The shared PacketEnd.schema vectors are read with ReadEnd: the exact
 # three-bit packet accepted, one whole trailing byte refused, and the final
 # byte's unused bits set refused.
-build/packet-end/lua/.stamp: bin/schema test/packet-end/End.schema
+build/packet-end/lua/.stamp: bin/schema test/packet-end/PacketEnd.schema
 	@rm -rf build/packet-end/lua && mkdir -p build/packet-end/lua
-	./bin/schema generate --lang lua --out build/packet-end/lua/generated test/packet-end/End.schema
+	./bin/schema generate --lang lua --out build/packet-end/lua/generated test/packet-end/PacketEnd.schema
 	@touch $@
 
 # The vector directory's own listing, handed to the driver: a vector it does
@@ -491,7 +498,7 @@ packet-end-lua-negative-control: packet-end-lua
 	@printf '{"Replace":{"%s/internal/codegen/lua/read.go":"%s/build/packet-end/lua-negative/read.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/packet-end/lua-negative/overlay.json
 	go build -overlay=build/packet-end/lua-negative/overlay.json -o build/packet-end/lua-negative/schema ./cmd/schema
-	./build/packet-end/lua-negative/schema generate --lang lua --out build/packet-end/lua-negative/generated test/packet-end/End.schema
+	./build/packet-end/lua-negative/schema generate --lang lua --out build/packet-end/lua-negative/generated test/packet-end/PacketEnd.schema
 	@if $(LUA) test/packet-end/lua/main.lua build/packet-end/lua-negative/generated testdata/wire/packet-end $(PACKET_END_LUA_VECTORS) > build/packet-end/lua-negative/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: the Lua packet end check was removed and the end gate stayed green'; exit 1; fi
 	@grep -Fq 'FAILED: trailing: accepted as 3' build/packet-end/lua-negative/log || \
@@ -503,9 +510,9 @@ packet-end-lua-negative-control: packet-end-lua
 	@echo 'packet end Lua negative control: removed end check accepts the trailing byte and the set padding'
 
 # Compressed-float packet writes must refuse values outside their range.
-build/packet-write-cfloat/lua/.stamp: bin/schema test/packet-write-cfloat/CFloat.schema
+build/packet-write-cfloat/lua/.stamp: bin/schema test/packet-write-cfloat/PacketCFloat.schema
 	@rm -rf build/packet-write-cfloat/lua && mkdir -p build/packet-write-cfloat/lua
-	./bin/schema generate --lang lua --out build/packet-write-cfloat/lua/generated test/packet-write-cfloat/CFloat.schema
+	./bin/schema generate --lang lua --out build/packet-write-cfloat/lua/generated test/packet-write-cfloat/PacketCFloat.schema
 	@touch $@
 
 PACKET_WRITE_CFLOAT_LUA_DIR ?= build/packet-write-cfloat/lua/generated
@@ -516,7 +523,7 @@ packet-write-cfloat-lua: toolchain-lua build/packet-write-cfloat/lua/.stamp buil
 packet-write-cfloat-lua-negative-control: packet-write-cfloat-lua
 	@rm -rf build/packet-write-cfloat/lua-negative && mkdir -p build/packet-write-cfloat/lua-negative/generated
 	@cp -R build/packet-write-cfloat/lua/generated/. build/packet-write-cfloat/lua-negative/generated/
-	go run ./tools/sabotage -name packet-write-cfloat-lua-range -out build/packet-write-cfloat/lua-negative/generated/CFloat.lua build/packet-write-cfloat/lua/generated/CFloat.lua
+	go run ./tools/sabotage -name packet-write-cfloat-lua-range -out build/packet-write-cfloat/lua-negative/generated/PacketCFloat.lua build/packet-write-cfloat/lua/generated/PacketCFloat.lua
 	@if $(MAKE) packet-write-cfloat-lua PACKET_WRITE_CFLOAT_LUA_DIR=build/packet-write-cfloat/lua-negative/generated > build/packet-write-cfloat/lua-negative/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: packet-write-cfloat-lua stayed green'; exit 1; fi
 	@sed -n 's/^FAILED: \([^:]*\):.*/\1/p' build/packet-write-cfloat/lua-negative/log | sort > build/packet-write-cfloat/lua-negative/actual

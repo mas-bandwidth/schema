@@ -831,11 +831,7 @@ skip_entry = function(R, e, ctx, depth, field)
     -- A STRING, A TABLE, A NESTED ARRAY OR KEYED BODY, A UNION AND AN ENUM
     -- ARE WALKED ONE LEVEL DEEPER; a fixed-width scalar element rides at the
     -- array body's level (§3.3, message_skip_depth).
-    local walked = inner.kind == 12
-      or inner.kind == 13
-      or (inner.kind >= 14 and inner.kind <= 17)
-      or inner.kind == 30
-      or inner.kind == 31
+    local walked = inner.kind == 12 or inner.kind == 13 or (inner.kind >= 14 and inner.kind <= 17) or inner.kind == 30
     for _ = 1, n do
       local at = R.off
       if k == 16 then
@@ -862,11 +858,6 @@ skip_entry = function(R, e, ctx, depth, field)
       if R.off == at then return false end
     end
     return true
-  elseif k == 31 then
-    if not R:align() then return false end
-    local n, ok = R:get(32)
-    if not ok then return false end
-    return R:raw(n) ~= nil
   end
   return false
 end
@@ -1131,6 +1122,13 @@ read_value = function(R, T, f, holder, key, ctx, e)
     end
     if not ok then return false end
     if holds == false then
+      ctx.reason = "out_of_range"
+      return false
+    end
+    -- A MASK BIT AT OR ABOVE THE READER'S W REFUSES (docs/SPEC-TABLES.md §4,
+    -- A TABLE LOAD HOLDS A MASK TO ITS WIDTH): a newer writer announces a wider
+    -- mask, and each value is held to this reader's W.
+    if f.shape == "flags" and f.bits ~= nil and f.bits < 64 and v >> f.bits ~= 0 then
       ctx.reason = "out_of_range"
       return false
     end
@@ -1403,12 +1401,14 @@ local function read_leb(s, at)
 end
 
 -- known_kind is §3's closed set plus the 0 an entry takes when its framing is
--- not an entry's to give (§3.3).
+-- not an entry's to give (§3.3). Kind 31 is held by name and never
+-- written (R17): an announcement naming it is malformed, as one naming 33 or 34.
 local function known_kind(kind)
   return kind == 0
     or (kind >= 1 and kind <= 17)
     or (kind >= 18 and kind <= 29)
-    or (kind >= 30 and kind <= 32)
+    or kind == 30
+    or kind == 32
     or kind == 36
 end
 
@@ -1446,7 +1446,6 @@ local function read_shape(e, s, at)
     or kind == 15
     or kind == 17
     or kind == 30
-    or kind == 31
     or kind == 32
     or kind == 36
   then
@@ -1630,7 +1629,7 @@ function M.announceRead(T, vocab, data, report, maxBytes, maxEntries)
     vocab.refused = true
     return false
   end
-  if maxBytes == nil or maxBytes == 0 then maxBytes = 64 * 1024 end
+  if maxBytes == nil then maxBytes = 64 * 1024 end -- a caller 0 refuses, never the default (R9)
   if maxEntries == nil or maxEntries == 0 then maxEntries = 4096 end
   local function damage()
     report.damaged = true
@@ -1702,10 +1701,6 @@ function M.announceRead(T, vocab, data, report, maxBytes, maxEntries)
       local s = buf:sub(np, np + n - 1)
       if s:find("\0", 1, true) ~= nil or not D.utf8_ok(s) then return nil end
       return np + n
-    elseif k == 31 then
-      local n, np = read_leb(buf, pos)
-      if n == nil or math.ult(lim - np + 1, n) then return nil end
-      return np + n
     elseif k == 32 then
       local n, np = read_leb(buf, pos)
       if n == nil or np - 1 > lim or n ~= 0 then return nil end
@@ -1774,8 +1769,6 @@ function M.announceRead(T, vocab, data, report, maxBytes, maxEntries)
       if ak == 12 then
         local s = buf:sub(anp, aEnd)
         if s:find("\0", 1, true) ~= nil or not D.utf8_ok(s) then return nil end
-        return aEnd + 1
-      elseif ak == 31 then
         return aEnd + 1
       elseif ak == 32 then
         return (n == 0) and (aEnd + 1) or nil

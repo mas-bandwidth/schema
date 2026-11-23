@@ -66,7 +66,7 @@ func TestPythonTablePacketTypesLooseDeclarations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate refused a unit whose loose packet type uses carried kinds: %v", err)
 	}
-	module := string(files["loosevalues/Core.py"])
+	module := string(files["loosevalues/Records.py"])
 	for _, class := range []string{"class Loose:", "class LooseChoice:", "class LooseChoiceType:"} {
 		if !strings.Contains(module, class+"\n") {
 			t.Errorf("the generated module drops a loose declaration: %q is absent", class)
@@ -116,7 +116,7 @@ func TestPythonTablePacketTypesLooseNegativeControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const path = "loosevalues/Core.py"
+	const path = "loosevalues/Records.py"
 	text := string(files[path])
 	const anchor = "        _s_ri.value = self.c\n"
 	if strings.Count(text, anchor) != 1 {
@@ -142,7 +142,7 @@ func TestPythonTablePacketTypesLooseNegativeControl(t *testing.T) {
 }
 
 const looseProbe = pyrun.ImportPrelude + `import loosevalues
-from loosevalues.Core import Loose, LooseChoice, LooseChoiceType
+from loosevalues.Records import Loose, LooseChoice, LooseChoiceType
 
 with open("loose.bin", "rb") as handle:
     loose_data = handle.read()

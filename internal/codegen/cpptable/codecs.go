@@ -6,6 +6,7 @@ package cpptable
 import (
 	"fmt"
 	"math/big"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -904,6 +905,15 @@ func (g *tableGen) storageAssert(ind, expr string, bound int64) {
 	g.pf("%sschema_assert( %s >= 0 && %s <= %d ); // storage invariant, debug only (§5.1)\n", ind, expr, expr, bound)
 }
 
+func (g *tableGen) storageAssertMin(ind, expr string, min, bound int64) {
+	if min <= 0 {
+		g.storageAssert(ind, expr, bound)
+		return
+	}
+	g.storageAsserts = true
+	g.pf("%sschema_assert( %s >= %d && %s <= %d ); // the declared [%d..%d] holds, debug only (§5.1)\n", ind, expr, min, expr, bound, min, bound)
+}
+
 // emitCountedRides declares rides_<name>: whether a counted array rides. An
 // empty one elides, and so does a [Min..N]T holding its BIRTH VALUE — exactly
 // Min elements, each at its default (docs/SPEC-TABLES.md §22.2; the reference
@@ -1091,6 +1101,7 @@ func (g *tableGen) emitFloatCheck(kind int, expr, ind, onBad string) {
 // fixed/ufixed raw value off its min/max; ROW 2, a bits(N) value wider than N;
 // ROW 10, a compressed float off its float32 ends (docs/SPEC-TABLES.md §3.3).
 func (g *tableGen) emitRequiredRangeCheck(f *ir.Field, expr, ind, onBad string) {
+	g.emitFlagsWidthAssert(f, expr, ind)
 	if !f.Required {
 		g.emitWriteContractAssert(f, expr, ind)
 		return
@@ -1135,6 +1146,46 @@ func (g *tableGen) emitRequiredRangeCheck(f *ir.Field, expr, ind, onBad string) 
 			g.pf("%sschema_assert( %s <= %dull ); // bits(%d) wider than %d bits, debug only (SPEC.md §5.1 row 2)\n",
 				ind, expr, maxv, f.Type.Width, f.Type.Width)
 		}
+	}
+}
+
+// flagsWidth is the reader W of a flags field narrower than 64 bits, and
+// false for every other field: a mask bit at or above W is one this
+// declaration names no variant for (docs/SPEC-TABLES.md §4, A TABLE LOAD
+// HOLDS A MASK TO ITS WIDTH; docs/SPEC.md §4.2).
+func flagsWidth(f *ir.Field) (int, bool) {
+	if f.Type.Kind != ir.TNamed {
+		return 0, false
+	}
+	fl, ok := f.Type.Ref.(*ir.Flags)
+	if !ok || fl.WireBits >= 64 {
+		return 0, false
+	}
+	return fl.WireBits, true
+}
+
+// emitFlagsWidthClamp holds a decoded mask to the W this reader declares: a
+// bit at or above it refuses the WHOLE load out_of_range, and only the bits
+// below W land. The newer reader reads old data, never the other way: an old
+// reader that meets a newer writer mask refuses it by name and keeps nothing
+// of it to write back (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO
+// ITS WIDTH). report is the spelling of the report pointer at the call site.
+func (g *tableGen) emitFlagsWidthClamp(f *ir.Field, decoded, report, ind string) {
+	w, ok := flagsWidth(f)
+	if !ok {
+		return
+	}
+	mask := fmt.Sprintf("0x%xull", (uint64(1)<<uint(w))-1)
+	g.pf("%[1]sif ( ( (uint64_t) %[2]s >> %[3]d ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)\n%[1]s{\n%[1]s    %[2]s &= %[4]s;\n%[1]s    %[5]srefused = true;\n%[1]s    %[5]srefuse_reason = out_of_range;\n%[1]s}\n", ind, decoded, w, mask, report)
+}
+
+// emitFlagsWidthAssert is the writer half of the same rule: a mask with a bit
+// at or above W is one its own reader refuses, so a same-build round trip must
+// never write it. C++ is an assert leg, so this is a debug-only schema_assert
+// (docs/SPEC.md §5.1), gone under NDEBUG.
+func (g *tableGen) emitFlagsWidthAssert(f *ir.Field, expr, ind string) {
+	if w, ok := flagsWidth(f); ok {
+		g.pf("%sschema_assert( ( uint64_t( %s ) >> %d ) == 0 ); // the write contract, debug only: a mask bit at or above W (docs/SPEC-TABLES.md §4)\n", ind, expr, w)
 	}
 }
 
@@ -2355,7 +2406,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 				g.pf("                        break;\n                    }\n")
 			}
 			g.pf("                    // AT A POSITION THE READER DOES NAME, a field under\n")
-			g.pf("                    // kind 31 or kind 32 takes this same rule and no other (§3)\n")
+			g.pf("                    // kind 32 takes this same rule and no other (§3)\n")
 			g.pf("                    r.report->refused = true;\n")
 			g.pf("                    r.report->refuse_reason = kind_mismatch;\n")
 			g.pf("                    if ( !r.skip( kind ) )\n                    {\n                        r.report->damaged = true;\n                        return false;\n                    }\n")
@@ -2708,6 +2759,12 @@ func (g *tableGen) emitTableReadField(f *ir.Field, kind int) {
 		g.pf("%s    // RODE, so an optional is still PRESENT (§2.3) — only a foreign\n", ind)
 		g.pf("%s    // ELEMENT KIND says the payload is not this array's at all.\n", ind)
 		g.pf("%s    if ( !counted_ok ) { r.report->damaged = true; }\n", ind)
+		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+			// A COUNT BELOW THE DECLARED MIN IS REFUSED (docs/SPEC.md §5.1,
+			// docs/SPEC-TABLES.md §4), before any element is placed — the
+			// Go oracle's rule for the same count
+			g.pf("%[1]s    // a count below the declared min A = %[2]d is refused (SPEC.md §5.1)\n%[1]s    if ( counted_ok && count < %[2]d )\n%[1]s    {\n%[1]s        r.report->refused = true;\n%[1]s        r.report->refuse_reason = out_of_range;\n%[1]s        r.offset = body_end;\n%[1]s        break;\n%[1]s    }\n", ind, f.ArrayMin)
+		}
 		g.pf("%s    // THE ELEMENT KIND IS CLOSED, judged under any count before the\n", ind)
 		g.pf("%s    // reader's declaration (§3, §4).\n", ind)
 		g.pf("%[1]s    if ( !TableArrayElementKind( elem_kind ) )\n%[1]s    {\n%[1]s        r.report->damaged = true;\n%[1]s        r.offset = body_end;\n%[1]s        break;\n%[1]s    }\n", ind)
@@ -3070,6 +3127,7 @@ func (g *tableGen) emitTableReadScalarFromChecked(f *ir.Field, kind int, lvalue,
 			maxv := (uint64(1) << f.Type.Width) - 1
 			g.pf("%[1]sif ( decoded_v > %[2]dull )\n%[1]s{\n%[1]s    decoded_v = %[3]dull;\n%[1]s    r.report->refused = true;\n%[1]s    r.report->refuse_reason = out_of_range;\n%[1]s} // bits(%[4]d) width clamp\n", ind, maxv, maxv, f.Type.Width)
 		}
+		g.emitFlagsWidthClamp(f, "decoded_v", "r.report->", ind)
 		g.pf("%s%s = decoded_v;\n", ind, lvalue)
 	}
 }
@@ -3559,10 +3617,16 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 	enumName := "NULL"
 	variantId := "NULL"
 	arms := "NULL"
+	enumDefault, enumDeprecated := "0", "NULL"
 	switch ref := f.Type.Ref.(type) {
 	case *ir.Enum:
 		if f.Type.Kind == ir.TNamed {
 			enumMax = fmt.Sprintf("%d", ref.Max)
+			if lambda := enumDeprecatedLambda(ref); lambda != "" {
+				g.storageAsserts = true
+				enumDefault = fmt.Sprintf("%d", enumDefaultOrdinal(f, ref))
+				enumDeprecated = lambda
+			}
 			enumName = fmt.Sprintf("+[]( uint64_t v ) { return EnumName( %s( v ) ); }", f.Type.Name)
 			variantId = fmt.Sprintf("+[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( %s( v ), id ); return id; }", f.Type.Name)
 		}
@@ -3663,11 +3727,54 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 			textList = 1
 		}
 	}
-	g.pf("%s    { \"%s\", %s, \"%s\", 0x%016xull, %d, %v, %s%v, %v, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s\"%s\", %s, %v, %v, %d, %d, %v, %d },\n",
+	g.pf("%s    { \"%s\", %s, \"%s\", 0x%016xull, %d, %v, %s%v, %v, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s\"%s\", %s, %v, %v, %d, %d, %v, %d, %s, %s },\n",
 		sp.indent, f.Name, jsonKey, tableFieldTypeName(f), id, kind, isArray, pointerColumn, counted, f.Type.Optional, bound,
 		sp.owner, sp.member, elemSize, countOffset, presentOffset, table,
 		hasRange, rangeMin, rangeMax, rangeIntMin, rangeIntMax, rangeUintMin, rangeUintMax, fracBits, wide, enumMax, enumName, variantId,
-		keyTypeName, keyName, keyId, arms, g.placeColumn(f), sp.guard, annotationColumns(f.Doc, f.Tags, sp.tagsName(f)), unboundedContainer, f.Required, textList, f.TextTotal, f.Type.TextUnbounded(), f.BornCount())
+		keyTypeName, keyName, keyId, arms, g.placeColumn(f), sp.guard, annotationColumns(f.Doc, f.Tags, sp.tagsName(f)), unboundedContainer, f.Required, textList, f.TextTotal, f.Type.TextUnbounded(),
+		arrayMinColumn(f), enumDefault, enumDeprecated)
+}
+
+// arrayMinColumn is a counted array's declared minimum A (docs/SPEC.md §5.1),
+// 0 for every other field.
+func arrayMinColumn(f *ir.Field) int64 {
+	if f.Array == ir.ArrayCounted {
+		return f.ArrayMin
+	}
+	return 0
+}
+
+// enumDeprecatedLambda spells the descriptor's enum_deprecated column: a
+// captureless lambda naming the ordinals marked `| deprecated`
+// (docs/SPEC-TABLES.md §2.15), or "" when the enum carries none.
+func enumDeprecatedLambda(e *ir.Enum) string {
+	var tests []string
+	for i := range e.Variants {
+		if i < len(e.VariantTags) && slices.Contains(e.VariantTags[i], "deprecated") {
+			tests = append(tests, fmt.Sprintf("v == %d", i+1))
+		}
+	}
+	if len(tests) == 0 {
+		return ""
+	}
+	return "+[]( uint64_t v ) -> bool { return " + strings.Join(tests, " || ") + "; }"
+}
+
+// enumDefaultOrdinal is the ordinal a deprecated variant lands on: the FIELD's
+// declared default, and the ELEMENT default (0, None) for an element of an
+// array, a list, a map or a keyed array (docs/SPEC-TABLES.md §2.15).
+func enumDefaultOrdinal(f *ir.Field, e *ir.Enum) uint64 {
+	if f.Array != ir.ArrayNone || f.KeyEnum != "" || f.IsList() || f.IsMap() {
+		return 0
+	}
+	if f.HasDefault && f.DefVariant != "" {
+		for i, v := range e.Variants {
+			if v == f.DefVariant {
+				return uint64(i + 1)
+			}
+		}
+	}
+	return 0
 }
 
 // ---- string, bytes and flags defaults (SPEC §4.2) ----

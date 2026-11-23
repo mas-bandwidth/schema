@@ -80,7 +80,7 @@ func TestLuauLoadRefusesNegativeIdCount(t *testing.T) {
 	slowtest.Gate(t, "the pinned Luau interpreter and the schema-go oracle")
 	t.Parallel()
 	dir := t.TempDir()
-	schemaPath := filepath.Join(dir, "Box.schema")
+	schemaPath := filepath.Join(dir, "Carton.schema")
 	if err := os.WriteFile(schemaPath, []byte(negativeCountSchema), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +168,7 @@ func TestLuauLoadRefusesNegativeIdCount(t *testing.T) {
 
 	main := `local inputs = require("./inputs")
 local load = require("./schema_load")
-require("./BoxTable")
+require("./CartonTable")
 for _, name in ipairs({ "minus-one", "high-bit", "past-end" }) do
 	local report = { malformed = false, refused = 0, unknown = 0, kindMismatch = 0, clamped = 0, widened = 0, duplicate = 0 }
 	local v = load.load("Box", inputs[name], report)

@@ -1,0 +1,36 @@
+# write-refusal-packet cases: name | verdict (docs/SPEC.md §5.1).
+# Every row starts from the type's default value and changes ONE field.
+# refused: a debug assert in an assert leg; written: the lawful twin at the
+# same boundary, which the writer must accept (a leg that refused everything
+# fails half the battery). The Go leg holds the same rows in
+# test/conformance/harness/writerefusalpacket_test.go.
+#
+# scalar:   int32 | min = 0, max = 10     narrow: bits(7)      grade: enum of 3
+# window:   [2..8]uint32 (WindowCount)     text:   string(8)    shot: union of 2 arms
+# fixed_constant: int32 = 5, only 5       reserved_zero: int32 = 0, only 0
+#
+# scalar_high: 11   scalar_low: -1   bits_wide: 200   enum_high: ordinal 4
+# union_tag_high: tag 3   count_high: 9   count_low: 1   text_long: length 9
+# text_illformed: byte ff   text_zero: byte 00   const_wrong: 6   reserved_wrong: 1
+scalar_high | refused
+scalar_low | refused
+scalar_at_max | wrote
+scalar_at_min | wrote
+bits_wide | refused
+bits_at_max | wrote
+enum_high | refused
+enum_at_max | wrote
+union_tag_high | refused
+union_tag_at_max | wrote
+count_high | refused
+count_low | refused
+count_at_max | wrote
+count_at_min | wrote
+text_long | refused
+text_illformed | refused
+text_zero | refused
+text_at_max | wrote
+const_wrong | refused
+const_at | wrote
+reserved_wrong | refused
+reserved_at | wrote

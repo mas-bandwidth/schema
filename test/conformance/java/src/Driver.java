@@ -1066,8 +1066,7 @@ public final class Driver {
                     Object values = fixed.newValues();
                     int read = fixed.load(values, Files.readAllBytes(Paths.get(f[4])), report);
                     if (read < 0 || fixed.flag(report, "refused")) {
-                        String reason = fixed.reason(report);
-                        spillAbsentReason(out, f[1], reason != null && !reason.isEmpty() ? reason : "refused");
+                        spill(out, f[1], "refused\n");
                         continue;
                     }
                     byte[] saved = fixed.save(values, read);
@@ -1080,14 +1079,8 @@ public final class Driver {
                 Object report = codec.report();
                 Object value = codec.load(Files.readAllBytes(Paths.get(f[4])), report);
                 if (value == null || codec.flag(report, "refused")) {
-                    // A codec load refusal writes a non-empty absence marker naming
-                    // the reason (empty marker is reserved for a missing codec).
-                    String reason = codec.reason(report);
-                    if (reason != null && reason.startsWith("blob_shared")) {
-                        spillAbsentReason(out, f[1], "blob_shared");
-                        continue;
-                    }
-                    spillAbsentReason(out, f[1], reason != null && !reason.isEmpty() ? reason : "refused");
+                    // R13 records a present codec's refusal as the answer.
+                    spill(out, f[1], "refused\n");
                     continue;
                 }
                 byte[] saved = codec.save(value);
@@ -2469,9 +2462,10 @@ public final class Driver {
                 if (f[5].equals("-")) {
                     // a named refusal row: the root is a variable table, which
                     // carries no message verbs (docs/SPEC-TABLES.md §3.3: the
-                    // message form is fixed tables only)
+                    // message form is fixed tables only); answered `refused`
+                    // (ruling R13: an absence is never credited)
                     if (codec != null) { return failInt(f[1] + ": a variable table carries a message codec"); }
-                    spillAbsentReason(out, f[1], "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)");
+                    spill(out, f[1], "refused\n");
                     continue;
                 }
                 if (codec == null) { spillAbsentReason(out, f[1], ""); continue; }

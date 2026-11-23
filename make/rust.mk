@@ -12,8 +12,8 @@ SERIALIZE_RS ?= ../serialize.rs
 # tests under it (go.mod needs go >= 1.26). A cargo or rustc recipe prepends.
 RUSTUP_BIN ?= /opt/homebrew/opt/rustup/bin
 
-build/packet-text/rust/.stamp: bin/schema test/packet-text/Narrow.schema test/packet-text/rust/src/main.rs make/rust.mk
-	./bin/schema generate --lang rust --out build/packet-text/rust/src test/packet-text/Narrow.schema
+build/packet-text/rust/.stamp: bin/schema test/packet-text/Text.schema test/packet-text/rust/src/main.rs make/rust.mk
+	./bin/schema generate --lang rust --out build/packet-text/rust/src test/packet-text/Text.schema
 	cp test/packet-text/rust/src/main.rs build/packet-text/rust/src/main.rs
 	@printf '[package]\nname = "packettext"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "%s/$(SERIALIZE_RS)" }\n' "$(CURDIR)" > build/packet-text/rust/Cargo.toml
 	@touch $@
@@ -29,7 +29,7 @@ packet-utf8-rust-negative-control: packet-utf8-rust
 	@mkdir -p build/packet-text/rust-negative
 	go run ./tools/sabotage -name packet-utf8-rust-read -out build/packet-text/rust-negative/functions.gotext internal/codegen/rust/functions.go
 	@printf '{"Replace":{"%s/internal/codegen/rust/functions.go":"%s/build/packet-text/rust-negative/functions.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-text/rust-negative/overlay.json
-	go run -overlay=build/packet-text/rust-negative/overlay.json ./cmd/schema generate --lang rust --out build/packet-text/rust-negative/src test/packet-text/Narrow.schema
+	go run -overlay=build/packet-text/rust-negative/overlay.json ./cmd/schema generate --lang rust --out build/packet-text/rust-negative/src test/packet-text/Text.schema
 	cp test/packet-text/rust/src/main.rs build/packet-text/rust-negative/src/main.rs
 	cp build/packet-text/rust/Cargo.toml build/packet-text/rust-negative/Cargo.toml
 	PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --release --manifest-path build/packet-text/rust-negative/Cargo.toml
@@ -718,7 +718,7 @@ test-rust:
 # §16.7): the constructs the card record does not use but the variable class
 # carries — table pointers over the flat node table, tables nested by value,
 # blobs, unbounded and bounded arrays of scalar, enum, table and pointer
-# elements, the rest of the scalar kinds, bytes(N), the escape kind and the
+# elements, the rest of the scalar kinds, bytes(N), the held kind 31 (refused whole) and the
 # text form's &node sharing — held byte for byte against the Go oracle over
 # tables/pointers, tables/blobs and tables/lists by
 # TestVariableClassBeyondCardConstructsRust, and every construct the leg still
@@ -1482,9 +1482,12 @@ test-rust: conformance-negative-control-rust-walk
 # driver (its own target directory) from a copy whose every absence write
 # (spill_absent, the named refusals and the not-applicable rows, on the plain,
 # `.json` and `-be` names alike) drops its `.absent` suffix and so writes an
-# ANSWER where the marker belongs, and the leg must go red on the surfaces that
-# carry an absence. The count of writes is read off the driver, not written
-# here, so a new absence write is sabotaged with the rest.
+# ANSWER where the marker belongs, and whose spill_refused (a must-refuse row
+# the runtime refused: the blob_shared wires, the variable root's message;
+# ruling R13) writes an empty answer instead of `refused\n`; the leg must go
+# red on wire and message, where those rows sit. The count of absence writes
+# is read off the driver, not written here, so a new absence write is
+# sabotaged with the rest.
 RUST_ABSENT_CONTROL := build/rust-absent-control
 .PHONY: conformance-rust-absent conformance-rust-absent-negative-control
 conformance-rust-absent: build/conformance-harness build/conformance-cpp build/schema_test_cook build/conformance-rust
@@ -1499,12 +1502,15 @@ conformance-rust-absent: build/conformance-harness build/conformance-cpp build/s
 conformance-rust-absent-negative-control: build/conformance-harness build/tables-generated-rust/.stamp
 	@rm -rf $(RUST_ABSENT_CONTROL) && mkdir -p $(RUST_ABSENT_CONTROL)/driver/src
 	@sed -e 's|\.absent"\([,)]\)|" /* SABOTAGED: an absence answered as an answer */\1|' \
+	     -e 's|^    spill(dir, name, b"refused\\n");$$|    spill(dir, name, b""); /* DROPPED: a refusal answered empty */|' \
 		test/conformance/rust/src/main.rs > $(RUST_ABSENT_CONTROL)/driver/src/main.rs
 	@writes=$$(grep -c '\.absent"[,)]' test/conformance/rust/src/main.rs); \
 	[ "$$writes" -gt 0 ] && [ "$$(grep -c SABOTAGED $(RUST_ABSENT_CONTROL)/driver/src/main.rs)" = "$$writes" ] || \
 		{ echo "NEGATIVE CONTROL: the absent sabotage did not reach every absence write"; exit 1; }
 	@! grep -q '\.absent"[,)]' $(RUST_ABSENT_CONTROL)/driver/src/main.rs || \
 		{ echo "NEGATIVE CONTROL: an absence write survived the absent sabotage"; exit 1; }
+	@grep -q 'DROPPED: a refusal answered empty' $(RUST_ABSENT_CONTROL)/driver/src/main.rs || \
+		{ echo "NEGATIVE CONTROL: the refusal sabotage did not reach spill_refused"; exit 1; }
 	@cmp -s test/conformance/rust/src/main.rs $(RUST_ABSENT_CONTROL)/driver/src/main.rs && \
 		{ echo "NEGATIVE CONTROL: the absent sabotage did not apply"; exit 1; } || true
 	@cp test/conformance/rust/Cargo.toml $(RUST_ABSENT_CONTROL)/driver/Cargo.toml
@@ -1961,9 +1967,9 @@ conformance-negative-control-rust-write-refusal-message: build/conformance-harne
 # unused bits in the final byte are refused. The driver reads the three shared
 # vectors under testdata/wire/packet-end with that public read.
 PACKET_END_RUST := build/packet-end/rust
-build/packet-end/rust/.stamp: bin/schema test/packet-end/End.schema make/rust.mk
+build/packet-end/rust/.stamp: bin/schema test/packet-end/PacketEnd.schema make/rust.mk
 	@mkdir -p $(PACKET_END_RUST)/generated/src
-	./bin/schema generate --lang rust --out $(PACKET_END_RUST)/generated/src test/packet-end/End.schema
+	./bin/schema generate --lang rust --out $(PACKET_END_RUST)/generated/src test/packet-end/PacketEnd.schema
 	@printf '[package]\nname = "packetend"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "%s/$(SERIALIZE_RS)" }\n' "$(CURDIR)" > $(PACKET_END_RUST)/generated/Cargo.toml
 	@touch $@
 
@@ -1979,7 +1985,7 @@ packet-end-rust-negative-control: packet-end-rust
 	@printf '{"Replace":{"%s/internal/codegen/rust/functions.go":"%s/$(PACKET_END_RUST)-negative/functions.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(PACKET_END_RUST)-negative/overlay.json
 	go build -overlay=$(PACKET_END_RUST)-negative/overlay.json -o $(PACKET_END_RUST)-negative/schema ./cmd/schema
-	$(PACKET_END_RUST)-negative/schema generate --lang rust --out $(PACKET_END_RUST)-negative/generated/src test/packet-end/End.schema
+	$(PACKET_END_RUST)-negative/schema generate --lang rust --out $(PACKET_END_RUST)-negative/generated/src test/packet-end/PacketEnd.schema
 	@printf '[package]\nname = "packetend"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "%s/$(SERIALIZE_RS)" }\n' "$(CURDIR)" > $(PACKET_END_RUST)-negative/generated/Cargo.toml
 	@mkdir -p $(PACKET_END_RUST)-negative/checker/src
 	cp test/packet-end/rust/src/main.rs $(PACKET_END_RUST)-negative/checker/src/main.rs
@@ -2036,3 +2042,49 @@ packet-write-text-rust-negative-control: packet-write-text-rust
 	@echo 'Rust packet Write negative control: removing the UTF-8 debug assert fails invalid-byte'
 
 test-rust: packet-write-text-rust packet-write-text-rust-negative-control
+
+# THE PACKET WRITE-REFUSAL SURFACE (docs/SPEC.md §5.1, write-refusal-packet):
+# the shared RefusalPacket schema carries one field per contract row, and
+# each case in test/packet-write-refusal/cases.txt changes ONE field. A Rust
+# debug build refuses by debug_assert! (a caught panic naming the field); the
+# lawful twin at the same boundary is written and read back. A union tag past
+# its arms cannot be built (a native enum), so that case is named not
+# representable by the driver, which fails on any case neither run nor named.
+PACKET_WRITE_REFUSAL_RUST := build/packet-write-refusal/rust
+
+$(PACKET_WRITE_REFUSAL_RUST)/.stamp: bin/schema test/packet-write-refusal/RefusalPacket.schema test/packet-write-refusal/rust/src/main.rs make/rust.mk
+	@rm -rf $(PACKET_WRITE_REFUSAL_RUST)/src
+	./bin/schema generate --lang rust --out $(PACKET_WRITE_REFUSAL_RUST)/src test/packet-write-refusal/RefusalPacket.schema
+	cp test/packet-write-refusal/rust/src/main.rs $(PACKET_WRITE_REFUSAL_RUST)/src/main.rs
+	@printf $(PACKET_WRITE_REFUSAL_RUST_TOML) "$(CURDIR)" > $(PACKET_WRITE_REFUSAL_RUST)/Cargo.toml
+	@touch $@
+
+PACKET_WRITE_REFUSAL_RUST_TOML = '[package]\nname = "packetwriterefusal"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "%s/$(SERIALIZE_RS)" }\n'
+
+.PHONY: packet-write-refusal-rust packet-write-refusal-rust-negative-control
+packet-write-refusal-rust: $(PACKET_WRITE_REFUSAL_RUST)/.stamp
+	PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --manifest-path $(PACKET_WRITE_REFUSAL_RUST)/Cargo.toml
+	./$(PACKET_WRITE_REFUSAL_RUST)/target/debug/packetwriterefusal test/packet-write-refusal/cases.txt
+
+# The control moves the emitter's upper-bound comparison, so the lawful value
+# at the boundary is refused: scalar_at_max must go red, by name.
+packet-write-refusal-rust-negative-control: packet-write-refusal-rust
+	@rm -rf $(PACKET_WRITE_REFUSAL_RUST)-negative/src
+	@mkdir -p $(PACKET_WRITE_REFUSAL_RUST)-negative
+	go run ./tools/sabotage -name packet-write-refusal-rust-upper-bound \
+		-out $(PACKET_WRITE_REFUSAL_RUST)-negative/functions.gotext internal/codegen/rust/functions.go
+	@printf '{"Replace":{"%s/internal/codegen/rust/functions.go":"%s/$(PACKET_WRITE_REFUSAL_RUST)-negative/functions.gotext"}}\n' \
+		"$(CURDIR)" "$(CURDIR)" > $(PACKET_WRITE_REFUSAL_RUST)-negative/overlay.json
+	go build -overlay=$(PACKET_WRITE_REFUSAL_RUST)-negative/overlay.json -o $(PACKET_WRITE_REFUSAL_RUST)-negative/schema ./cmd/schema
+	./$(PACKET_WRITE_REFUSAL_RUST)-negative/schema generate --lang rust --out $(PACKET_WRITE_REFUSAL_RUST)-negative/src test/packet-write-refusal/RefusalPacket.schema
+	cp test/packet-write-refusal/rust/src/main.rs $(PACKET_WRITE_REFUSAL_RUST)-negative/src/main.rs
+	@printf $(PACKET_WRITE_REFUSAL_RUST_TOML) "$(CURDIR)" > $(PACKET_WRITE_REFUSAL_RUST)-negative/Cargo.toml
+	PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --manifest-path $(PACKET_WRITE_REFUSAL_RUST)-negative/Cargo.toml
+	@if ./$(PACKET_WRITE_REFUSAL_RUST)-negative/target/debug/packetwriterefusal test/packet-write-refusal/cases.txt > $(PACKET_WRITE_REFUSAL_RUST)-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: Rust packet Write with the upper bound moved stayed green'; exit 1; fi
+	@grep -Fq 'FAILED: packet-write-refusal scalar_at_max:' $(PACKET_WRITE_REFUSAL_RUST)-negative/log || \
+		{ echo 'NEGATIVE CONTROL FAILED: Rust packet Write did not fail on scalar_at_max'; cat $(PACKET_WRITE_REFUSAL_RUST)-negative/log; exit 1; }
+	@grep -Fm1 'FAILED: packet-write-refusal scalar_at_max:' $(PACKET_WRITE_REFUSAL_RUST)-negative/log
+	@echo 'Rust packet write-refusal negative control: moving the upper-bound assert fails scalar_at_max'
+
+test-rust: packet-write-refusal-rust packet-write-refusal-rust-negative-control

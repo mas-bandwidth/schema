@@ -29,6 +29,7 @@ import (
 	"vocab9demo"
 	"vocabdemo"
 	"widelistdemo"
+	"writebounds"
 
 	"featurewitnesses"
 
@@ -825,6 +826,20 @@ var codecTable = []codec{
 	}, cooktorture.TortureCookToJSONMeasure, cooktorture.TortureCookToJSON, cooktorture.TortureCookCookMeasure, cooktorture.TortureCookCookFrom, func(r *cooktorture.TableReport) report {
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
+	regionRow("writebounds", "TortureVarWref", writebounds.TortureVarWrefLoadMeasure, writebounds.TortureVarWrefLoad, writebounds.TortureVarWrefMeasure, writebounds.TortureVarWrefSave, func(text []byte, r *writebounds.TableReport) (*writebounds.TortureVarWref, []byte, bool) {
+		var b writebounds.TortureVarWrefBuilder
+		if !b.Init() {
+			return nil, nil, false
+		}
+		defer b.Shutdown()
+		ok := writebounds.TortureVarWrefFromJSON(&b, text, r)
+		if !b.Lock() {
+			return nil, nil, false
+		}
+		return b.AsConst(), b.Region(), ok
+	}, writebounds.TortureVarWrefToJSONMeasure, writebounds.TortureVarWrefToJSON, writebounds.TortureVarWrefCookMeasure, writebounds.TortureVarWrefCookFrom, func(r *writebounds.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
 	row("cooktorture", "TortureFixedWref", cooktorture.TortureFixedWrefReset, cooktorture.TortureFixedWrefLoad, cooktorture.TortureFixedWrefMeasure, cooktorture.TortureFixedWrefSave, cooktorture.TortureFixedWrefFromJSON, cooktorture.TortureFixedWrefToJSONMeasure, cooktorture.TortureFixedWrefToJSON, cooktorture.TortureFixedWrefCookMeasure, cooktorture.TortureFixedWrefCookFrom, func(r *cooktorture.TableReport) report {
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
@@ -907,6 +922,24 @@ var codecTable = []codec{
 	row("tabledemo", "PackConfig", tabledemo.PackConfigReset, tabledemo.PackConfigLoad,
 		tabledemo.PackConfigMeasure, tabledemo.PackConfigSave,
 		tabledemo.PackConfigFromJSON, tabledemo.PackConfigToJSONMeasure, tabledemo.PackConfigToJSON, tabledemo.PackConfigCookMeasure, tabledemo.PackConfigCookFrom, snapDemo),
+	row("tabledemo", "CountedMin", tabledemo.CountedMinReset, tabledemo.CountedMinLoad,
+		tabledemo.CountedMinMeasure, tabledemo.CountedMinSave,
+		tabledemo.CountedMinFromJSON, tabledemo.CountedMinToJSONMeasure, tabledemo.CountedMinToJSON, tabledemo.CountedMinCookMeasure, tabledemo.CountedMinCookFrom, snapDemo),
+	row("tabledemo", "FloatBound", tabledemo.FloatBoundReset, tabledemo.FloatBoundLoad,
+		tabledemo.FloatBoundMeasure, tabledemo.FloatBoundSave,
+		tabledemo.FloatBoundFromJSON, tabledemo.FloatBoundToJSONMeasure, tabledemo.FloatBoundToJSON, tabledemo.FloatBoundCookMeasure, tabledemo.FloatBoundCookFrom, snapDemo),
+	row("tabledemo", "Moods", tabledemo.MoodsReset, tabledemo.MoodsLoad,
+		tabledemo.MoodsMeasure, tabledemo.MoodsSave,
+		tabledemo.MoodsFromJSON, tabledemo.MoodsToJSONMeasure, tabledemo.MoodsToJSON, tabledemo.MoodsCookMeasure, tabledemo.MoodsCookFrom, snapDemo),
+	row("tabledemo", "MoodField", tabledemo.MoodFieldReset, tabledemo.MoodFieldLoad,
+		tabledemo.MoodFieldMeasure, tabledemo.MoodFieldSave,
+		tabledemo.MoodFieldFromJSON, tabledemo.MoodFieldToJSONMeasure, tabledemo.MoodFieldToJSON, tabledemo.MoodFieldCookMeasure, tabledemo.MoodFieldCookFrom, snapDemo),
+	row("tabledemo", "MinArmFix", tabledemo.MinArmFixReset, tabledemo.MinArmFixLoad,
+		tabledemo.MinArmFixMeasure, tabledemo.MinArmFixSave,
+		tabledemo.MinArmFixFromJSON, tabledemo.MinArmFixToJSONMeasure, tabledemo.MinArmFixToJSON, tabledemo.MinArmFixCookMeasure, tabledemo.MinArmFixCookFrom, snapDemo),
+	row("tabledemo", "MinPlainFix", tabledemo.MinPlainFixReset, tabledemo.MinPlainFixLoad,
+		tabledemo.MinPlainFixMeasure, tabledemo.MinPlainFixSave,
+		tabledemo.MinPlainFixFromJSON, tabledemo.MinPlainFixToJSONMeasure, tabledemo.MinPlainFixToJSON, tabledemo.MinPlainFixCookMeasure, tabledemo.MinPlainFixCookFrom, snapDemo),
 	row("tabledemo", "KeyedConfig", tabledemo.KeyedConfigReset, tabledemo.KeyedConfigLoad,
 		tabledemo.KeyedConfigMeasure, tabledemo.KeyedConfigSave,
 		tabledemo.KeyedConfigFromJSON, tabledemo.KeyedConfigToJSONMeasure, tabledemo.KeyedConfigToJSON, tabledemo.KeyedConfigCookMeasure, tabledemo.KeyedConfigCookFrom, snapDemo),

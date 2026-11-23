@@ -561,10 +561,8 @@ defmodule Driver do
     end)
   end
 
-  # A REFUSED LOAD IS THE CODEC'S ANSWER, NOT ITS ABSENCE (FORMAT.md, the
-  # `instance` line): the wire surface answers it as <case>.absent HOLDING THE
-  # READ'S REASON, which the harness scores against a `wire-refused` row; an
-  # EMPTY <case>.absent is only for a unit or root this leg has no codec for.
+  # The wire surface answers a present codec's refusal with `refused`.
+  # A unit or root with no codec writes an empty <case>.absent (ruling R13).
   defp run("wire", rows, outdir) do
     each_case("wire", rows(rows, "instance"), fn [name, unit, root, wire | _] ->
       answer_load_save(codec(unit, root), root, wire, outdir, name)
@@ -771,8 +769,8 @@ defmodule Driver do
   # `message` row is joined BY KEY to the `connection` line naming its unit and
   # announcement; the announcement read gives the vocabulary, the batch loads
   # against it, and the saved bytes are the answer. A unit with no message
-  # codec writes an EMPTY <case>.absent; a refusal of the present codec's
-  # writes <case>.absent holding its reason; a row naming no connection the
+  # codec writes an empty <case>.absent. A present codec writes `refused`
+  # for a refusal. A row naming no connection the
   # manifest defines is a driver error.
   defp run("message", rows, outdir) do
     connections =
@@ -782,8 +780,9 @@ defmodule Driver do
 
     each_case("message", rows(rows, "message"), fn [name, connection, root, _file, batch | _] ->
       case message_answer(Map.get(connections, connection), root, batch) do
-        {:refused, why} ->
-          write_refused(outdir, name, why)
+        # ruling R13: a must-refuse row is answered `refused`, never absent
+        {:refused, _why} ->
+          write(outdir, name, "refused\n")
 
         {:ok, bytes} ->
           write(outdir, name, bytes)
@@ -1212,16 +1211,13 @@ defmodule Driver do
 
               # THE NAMED WRITER REFUSAL (docs/SPEC-TABLES.md §2.5): a blob the
               # tolerant read found named from two slots refuses the save by
-              # name, and the case answers that name beside its absence; any
-              # other refusal of the writer's is answered the same way
-              {:error, reason} ->
-                write_refused(outdir, name, reason)
+              # name. R13 spells each present codec's refusal as `refused`.
+              {:error, _reason} ->
+                write(outdir, name, "refused\n")
             end
 
-          # the read's refusal is the case's answer: its reason, never the
-          # empty absence of a codec this leg does not have
-          {:error, refusal, report} ->
-            write_refused(outdir, name, load_reason(refusal, report))
+          {:error, _refusal, _report} ->
+            write(outdir, name, "refused\n")
         end
     end
   end

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The Unity twin of the packet write-refusal driver: the generated
+       RefusalPacket unit, compiled in the Unity dialect by lib/, driven from
+       a .NET host in a Debug build, where the write asserts are live. -->
+  <Import Project="../../unity/HostDialect.props" />
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>packet-write-refusal-unity</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <ProjectReference Include="lib/packetwriterefusalunity.csproj" />
+  </ItemGroup>
+
+</Project>

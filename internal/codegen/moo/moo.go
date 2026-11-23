@@ -79,6 +79,10 @@ func Generate(u *ir.Unit) (map[string][]byte, error) {
 	return out, nil
 }
 
+// CheckBases is checkBases for schema check (SPEC §4.6): the generate-time
+// refusal of a schema file whose module is a runtime module or another module.
+func CheckBases(u *ir.Unit) error { return checkBases(u) }
+
 // checkBases refuses a schema file whose module would collide with a runtime
 // module or another module, folding case as macOS and Windows do.
 func checkBases(u *ir.Unit) error {

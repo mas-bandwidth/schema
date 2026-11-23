@@ -5,7 +5,7 @@
 // it (03 ff) is refused; the same value with the final byte's unused bits set
 // (fb) is refused. A failed vector prints "FAILED: <vector>"; the last line
 // is the verdict line the test requires.
-import .End
+import .PacketEnd
 import .serialize
 
 var failures = 0

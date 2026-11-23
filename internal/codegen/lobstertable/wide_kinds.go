@@ -1,5 +1,5 @@
 // The wide kinds on the table wire: a `timestamp` (kind 36), the one-sided
-// integer range, the enum (30) and escape (31) kinds and a plain float's -0,
+// integer range, the enum (30) kind and a plain float's -0,
 // NaN and infinity (docs/SPEC-TABLES.md §2.11, §3, §4; SPEC.md §4.13;
 // docs/PORT-LOBSTER.md, THE LOAD and THE NUMBER MODEL).
 //

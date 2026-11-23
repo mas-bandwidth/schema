@@ -15,7 +15,7 @@ func TestDartCarriesRangeAndArrayRoot(t *testing.T) {
 		"package probe\n table M { value int32 | required }\n",
 		"package probe\n table M { tags ?map[string(8)]int32 }\n",
 		"package probe\n fixed table Clock { at timestamp }\n",
-		"package probe\n fixed table Range { n uint64 = 9007199254740993 | min = 9007199254740993 }\n",
+		"package probe\n fixed table Span { n uint64 = 9007199254740993 | min = 9007199254740993 }\n",
 		"package probe\n table Item { n int32 }\n table Items | json = \"array\" { entries []Item }\n table Holder { items Items }\n",
 	} {
 		u := unitFromSource(t, src)

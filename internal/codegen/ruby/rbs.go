@@ -45,7 +45,7 @@ func (m *rbModule) rbsFieldType(f *ir.Field) string {
 		case *ir.Enum, *ir.Flags:
 			return "Integer"
 		case *ir.Struct, *ir.Union:
-			return f.Type.Name
+			return ClassName(f.Type.Name)
 		}
 	}
 	return "untyped"
@@ -204,9 +204,9 @@ func emitRBS(u *ir.Unit, mod string) string {
 				if d.IsFloat {
 					typ = "Float"
 				}
-				fmt.Fprintf(&b, "\n  %s: %s\n", d.Name, typ)
+				fmt.Fprintf(&b, "\n  %s: %s\n", ConstName(d.Name), typ)
 			case *ir.Enum:
-				fmt.Fprintf(&b, "\n  module %s\n", d.Name)
+				fmt.Fprintf(&b, "\n  module %s\n", ClassName(d.Name))
 				b.WriteString("    None: Integer\n")
 				for _, v := range d.Variants {
 					fmt.Fprintf(&b, "    %s: Integer\n", VariantConstant(v))
@@ -215,7 +215,7 @@ func emitRBS(u *ir.Unit, mod string) string {
 				b.WriteString("    NAMES: ::Hash[Integer, String]\n")
 				b.WriteString("  end\n")
 			case *ir.Flags:
-				fmt.Fprintf(&b, "\n  module %s\n", d.Name)
+				fmt.Fprintf(&b, "\n  module %s\n", ClassName(d.Name))
 				for _, v := range d.Variants {
 					fmt.Fprintf(&b, "    %s: Integer\n", VariantConstant(v))
 				}
@@ -223,7 +223,7 @@ func emitRBS(u *ir.Unit, mod string) string {
 				b.WriteString("    NAMES: ::Hash[Integer, String]\n")
 				b.WriteString("  end\n")
 			case *ir.Struct:
-				fmt.Fprintf(&b, "\n  class %s\n", d.Name)
+				fmt.Fprintf(&b, "\n  class %s\n", ClassName(d.Name))
 				for _, fld := range d.Fields {
 					ft := m.rbsFieldType(fld)
 					fmt.Fprintf(&b, "    @%s: %s\n", fld.Name, ft)
@@ -231,12 +231,12 @@ func emitRBS(u *ir.Unit, mod string) string {
 					fmt.Fprintf(&b, "    def %s: (%s) -> %s\n", rbsMethodName(fld.Name+"="), ft, ft)
 				}
 				fmt.Fprintf(&b, "    def initialize: () -> void\n")
-				fmt.Fprintf(&b, "    def %scopy_from: (%s other) -> %s\n", HelperPrefix, d.Name, d.Name)
+				fmt.Fprintf(&b, "    def %scopy_from: (%s other) -> %s\n", HelperPrefix, ClassName(d.Name), ClassName(d.Name))
 				fmt.Fprintf(&b, "    def to_h: () -> ::Hash[Symbol, untyped]\n")
 				fmt.Fprintf(&b, "    def ==: (untyped other) -> bool\n")
 				fmt.Fprintf(&b, "    def inspect: () -> String\n")
-				fmt.Fprintf(&b, "    def self.read_bits: (untyped data, ?bit_offset: untyped) -> [%s, Integer]\n", d.Name)
-				fmt.Fprintf(&b, "    def self.read: (untyped data) -> %s\n", d.Name)
+				fmt.Fprintf(&b, "    def self.read_bits: (untyped data, ?bit_offset: untyped) -> [%s, Integer]\n", ClassName(d.Name))
+				fmt.Fprintf(&b, "    def self.read: (untyped data) -> %s\n", ClassName(d.Name))
 				fmt.Fprintf(&b, "    def write: () -> String\n")
 				fmt.Fprintf(&b, "    def _s_read: (Serialize::ReadStream stream) -> bool\n")
 				fmt.Fprintf(&b, "    def _s_write: (Serialize::WriteStream stream) -> void\n")
@@ -244,7 +244,7 @@ func emitRBS(u *ir.Unit, mod string) string {
 				fmt.Fprintf(&b, "    def _s_zero: () -> void\n")
 				b.WriteString("  end\n")
 			case *ir.Union:
-				fmt.Fprintf(&b, "\n  module %sType\n", d.Name)
+				fmt.Fprintf(&b, "\n  module %sType\n", ClassName(d.Name))
 				b.WriteString("    None: Integer\n")
 				for _, v := range d.Variants {
 					fmt.Fprintf(&b, "    %s: Integer\n", ir.GoExportName(v.Name))
@@ -254,7 +254,7 @@ func emitRBS(u *ir.Unit, mod string) string {
 				b.WriteString("  end\n")
 
 				arms := unionArms(d)
-				fmt.Fprintf(&b, "\n  class %s\n", d.Name)
+				fmt.Fprintf(&b, "\n  class %s\n", ClassName(d.Name))
 				b.WriteString("    @type: Integer\n")
 				b.WriteString("    def `type`: () -> Integer\n")
 				b.WriteString("    def `type=`: (Integer) -> Integer\n")
@@ -265,11 +265,11 @@ func emitRBS(u *ir.Unit, mod string) string {
 					fmt.Fprintf(&b, "    def %s: (%s) -> %s\n", rbsMethodName(v.Name+"="), ft, ft)
 				}
 				fmt.Fprintf(&b, "    def initialize: () -> void\n")
-				fmt.Fprintf(&b, "    def %scopy_from: (%s other) -> %s\n", HelperPrefix, d.Name, d.Name)
+				fmt.Fprintf(&b, "    def %scopy_from: (%s other) -> %s\n", HelperPrefix, ClassName(d.Name), ClassName(d.Name))
 				fmt.Fprintf(&b, "    def ==: (untyped other) -> bool\n")
 				fmt.Fprintf(&b, "    def inspect: () -> String\n")
-				fmt.Fprintf(&b, "    def self.read_bits: (untyped data, ?bit_offset: untyped) -> [%s, Integer]\n", d.Name)
-				fmt.Fprintf(&b, "    def self.read: (untyped data) -> %s\n", d.Name)
+				fmt.Fprintf(&b, "    def self.read_bits: (untyped data, ?bit_offset: untyped) -> [%s, Integer]\n", ClassName(d.Name))
+				fmt.Fprintf(&b, "    def self.read: (untyped data) -> %s\n", ClassName(d.Name))
 				fmt.Fprintf(&b, "    def write: () -> String\n")
 				fmt.Fprintf(&b, "    def _s_read: (Serialize::ReadStream stream) -> bool\n")
 				fmt.Fprintf(&b, "    def _s_write: (Serialize::WriteStream stream) -> void\n")

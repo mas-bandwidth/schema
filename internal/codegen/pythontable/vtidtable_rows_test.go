@@ -9,14 +9,14 @@ package pythontable
 //	          measure its length; every root here is a fixed table, so the
 //	          plain load and save are form 3 (docs/port-python/table-idtable.md)
 //	report    the plain load answers reports.txt's verdict; for a refused
-//	          wire the variable reader (load_table), where the escape (31) and
-//	          payload-free (32) kinds are judged, answers the Go engine's own
+//	          wire the variable reader (load_table), where the held kind 31
+//	          (damage, R17) and payload-free (32) kind are judged, answers the Go engine's own
 //	          decode of the same bytes (read, or refused by its reason)
 //
 // A refused read returns nothing (it raises), so no partial value reaches the
 // caller. TestPythonVtIdtableRowsNegativeControl plants, one at a time, a
 // defect in a copy of the emitted runtime (the fixed save, the fixed read, the
-// variable read's escape skip) and requires the cases each covers to go red.
+// variable read skipping the held kind 31) and requires the cases each covers to go red.
 
 import (
 	"bufio"
@@ -200,8 +200,8 @@ func vtIdtableCase(t *testing.T, repo, name string, mutate func(*testing.T, map[
 		if verdict == "refused" {
 			// The refusal is the Go engine's by name: the plain load is held
 			// to Decode's reason, and the variable reader to DecodeVariable's
-			// verdict on the same bytes (read when an escape it cannot name
-			// is skipped and counted unknown, else refused by its reason).
+			// verdict on the same bytes (refused by its reason; kind 31 is
+			// held and met only as damage, R17).
 			plain := vtIdtableEngineVerdict(t, u, row.root, wire, tablewire.Decode)
 			variable := vtIdtableEngineVerdict(t, u, row.root, wire, tablewire.DecodeVariable)
 			if variable != "read" {
@@ -249,8 +249,8 @@ func TestPythonVtIdtableRows(t *testing.T) {
 // copy of the emitted runtime: the fixed save's layout hash one bit off (no
 // saved file is the reference's), the fixed read's record-hash test inverted
 // (every reference record is refused), each required red on every instance
-// case; and the variable read refusing an escape it cannot name, required red
-// on escape_unnamed_field.
+// case; and the variable read skipping kind 31 by its L as the removed escape
+// did, required red on escape_unnamed_field.
 //
 // Functional (python pins): run with SCHEMA_SLOW=1; make test-python does.
 func TestPythonVtIdtableRowsNegativeControl(t *testing.T) {
@@ -300,9 +300,9 @@ func TestPythonVtIdtableRowsNegativeControl(t *testing.T) {
 		// the fixed read's record-hash test inverted: every reference record
 		// is refused
 		{"load-record-hash", plant("fixedform.py", `if _integer(source, at, 8) != wire_hash:`, `if _integer(source, at, 8) == wire_hash:`), instances},
-		// the variable read refuses an escape it cannot name instead of
-		// skipping it by its L and counting it unknown
-		{"skip-escape", plant("load.py", "        return  # opaque: the one kind whose meaning a reader may not know (§3)\n", "        raise Refused(\"wire_damaged\", \"planted\")\n"), []string{"escape_unnamed_field"}},
+		// the variable read skips kind 31 by its L and counts it unknown, the
+		// escape R17 removed, instead of refusing it as damage
+		{"accept-held-escape", plant("load.py", "    if kind in (12, 13, 14, 16, 32):\n", "    if kind == 31:\n        reader.take(reader.varint())\n        return\n    if kind in (12, 13, 14, 16, 32):\n"), []string{"escape_unnamed_field"}},
 	} {
 		for _, name := range ctl.cases {
 			t.Run(ctl.name+"/"+name, func(t *testing.T) {

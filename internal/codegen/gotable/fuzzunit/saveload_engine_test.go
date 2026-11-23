@@ -9,6 +9,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/gotable"
+	tabledemo "github.com/mas-bandwidth/schema/v2/internal/codegen/gotable/fuzzunit"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -85,11 +87,37 @@ func goSaveLoadRun(t *testing.T, plant func(goSaveLoadCase) ([]byte, bool)) []st
 	t.Helper()
 	cases := goSaveLoadCases(t)
 	binary := map[string]target{}
-	for _, tg := range targets {
+	for _, tg := range slices.Concat(targets, []target{
+		keyedOf("CountedMin", tabledemo.CountedMinReset, tabledemo.CountedMinLoad, tabledemo.CountedMinReadStrict,
+			tabledemo.CountedMinMeasure, tabledemo.CountedMinSave, tabledemo.CountedMinToJSONMeasure, tabledemo.CountedMinToJSON),
+		keyedOf("FloatBound", tabledemo.FloatBoundReset, tabledemo.FloatBoundLoad, tabledemo.FloatBoundReadStrict,
+			tabledemo.FloatBoundMeasure, tabledemo.FloatBoundSave, tabledemo.FloatBoundToJSONMeasure, tabledemo.FloatBoundToJSON),
+		keyedOf("MinArmFix", tabledemo.MinArmFixReset, tabledemo.MinArmFixLoad, tabledemo.MinArmFixReadStrict,
+			tabledemo.MinArmFixMeasure, tabledemo.MinArmFixSave, tabledemo.MinArmFixToJSONMeasure, tabledemo.MinArmFixToJSON),
+		keyedOf("MinPlainFix", tabledemo.MinPlainFixReset, tabledemo.MinPlainFixLoad, tabledemo.MinPlainFixReadStrict,
+			tabledemo.MinPlainFixMeasure, tabledemo.MinPlainFixSave, tabledemo.MinPlainFixToJSONMeasure, tabledemo.MinPlainFixToJSON),
+		keyedOf("MoodField", tabledemo.MoodFieldReset, tabledemo.MoodFieldLoad, tabledemo.MoodFieldReadStrict,
+			tabledemo.MoodFieldMeasure, tabledemo.MoodFieldSave, tabledemo.MoodFieldToJSONMeasure, tabledemo.MoodFieldToJSON),
+		keyedOf("Moods", tabledemo.MoodsReset, tabledemo.MoodsLoad, tabledemo.MoodsReadStrict,
+			tabledemo.MoodsMeasure, tabledemo.MoodsSave, tabledemo.MoodsToJSONMeasure, tabledemo.MoodsToJSON),
+	}) {
 		binary[tg.name] = tg
 	}
 	text := map[string]textTarget{}
-	for _, tg := range textTargets {
+	for _, tg := range slices.Concat(textTargets, []textTarget{
+		keyedTextOf("CountedMin", tabledemo.CountedMinReset, tabledemo.CountedMinLoadText, tabledemo.CountedMinFromJSON,
+			tabledemo.CountedMinSaveText, tabledemo.CountedMinToJSONMeasure, tabledemo.CountedMinToJSON),
+		keyedTextOf("FloatBound", tabledemo.FloatBoundReset, tabledemo.FloatBoundLoadText, tabledemo.FloatBoundFromJSON,
+			tabledemo.FloatBoundSaveText, tabledemo.FloatBoundToJSONMeasure, tabledemo.FloatBoundToJSON),
+		keyedTextOf("MinArmFix", tabledemo.MinArmFixReset, tabledemo.MinArmFixLoadText, tabledemo.MinArmFixFromJSON,
+			tabledemo.MinArmFixSaveText, tabledemo.MinArmFixToJSONMeasure, tabledemo.MinArmFixToJSON),
+		keyedTextOf("MinPlainFix", tabledemo.MinPlainFixReset, tabledemo.MinPlainFixLoadText, tabledemo.MinPlainFixFromJSON,
+			tabledemo.MinPlainFixSaveText, tabledemo.MinPlainFixToJSONMeasure, tabledemo.MinPlainFixToJSON),
+		keyedTextOf("MoodField", tabledemo.MoodFieldReset, tabledemo.MoodFieldLoadText, tabledemo.MoodFieldFromJSON,
+			tabledemo.MoodFieldSaveText, tabledemo.MoodFieldToJSONMeasure, tabledemo.MoodFieldToJSON),
+		keyedTextOf("Moods", tabledemo.MoodsReset, tabledemo.MoodsLoadText, tabledemo.MoodsFromJSON,
+			tabledemo.MoodsSaveText, tabledemo.MoodsToJSONMeasure, tabledemo.MoodsToJSON),
+	}) {
 		text[tg.name] = tg
 	}
 	var failures []string
@@ -100,7 +128,7 @@ func goSaveLoadRun(t *testing.T, plant func(goSaveLoadCase) ([]byte, bool)) []st
 		bt, okB := binary[c.root]
 		tt, okT := text[c.root]
 		if !okB || !okT {
-			fail(c, "no fuzz target carries this root")
+			fail(c, "no generated Save/Load adapter carries this root")
 			continue
 		}
 		v, release, ok := tt.fromJson(c.text)

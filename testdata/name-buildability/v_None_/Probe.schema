@@ -1,0 +1,9 @@
+package probe
+
+enum Kind
+{ None_, Alpha }
+
+type Inner
+{
+    a Kind
+}

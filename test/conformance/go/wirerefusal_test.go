@@ -6,14 +6,11 @@ import (
 	"testing"
 )
 
-// TestWireRefusalIsAnAnswerNeverAnAbort holds the wire surface to the driver
-// contract (test/conformance/README.md; review F-089, found in this driver
-// too): a present codec's refusal of a row's wire is that row's answer, a
-// .absent holding the read's reason, whatever the reason, and the rows after
-// it are still answered. On the committed corpus: shapes Bounds and
-// FixedBounds below their minimum count (count_over_bound) and blobdemo's
-// shared blob (blob_shared) are refused; their legal twins on the same roots
-// are written; a unit with no codec is an EMPTY .absent.
+// TestWireRefusalIsAnAnswerNeverAnAbort holds the R13 wire surface contract
+// (test/conformance/README.md, review F-089). A present codec writes an
+// explicit refusal and the surface still answers later cases. The committed
+// refusal and accepted rows exercise both table forms. A missing codec
+// writes an empty absence marker.
 func TestWireRefusalIsAnAnswerNeverAnAbort(t *testing.T) {
 	wire := func(name string) string { return filepath.Join(repoRoot, "testdata/wire/tables", name) }
 	lines := []line{
@@ -29,20 +26,26 @@ func TestWireRefusalIsAnAnswerNeverAnAbort(t *testing.T) {
 		t.Fatalf("the surface aborted: %v", err)
 	}
 	for _, refused := range []string{"bounds_refused", "fixed_refused", "blob_refused"} {
-		reason, err := os.ReadFile(filepath.Join(out, refused+".absent"))
-		if err != nil || len(reason) == 0 {
-			t.Errorf("%s: want a .absent holding the read's reason, got %q (%v)", refused, reason, err)
+		answer, err := os.ReadFile(filepath.Join(out, refused))
+		if err != nil || string(answer) != "refused\n" {
+			t.Errorf("%s: want the explicit refusal, got %q (%v)", refused, answer, err)
+		}
+		if _, err := os.Stat(filepath.Join(out, refused+".absent")); !os.IsNotExist(err) {
+			t.Errorf("%s: a present codec must not write an absence marker (%v)", refused, err)
 		}
 	}
 	for _, read := range []string{"fixed_read", "blob_read"} {
-		if b, err := os.ReadFile(filepath.Join(out, read)); err != nil || len(b) == 0 {
+		if b, err := os.ReadFile(filepath.Join(out, read)); err != nil || len(b) == 0 || string(b) == "refused\n" {
 			t.Errorf("%s: want the written wire, got %d bytes (%v)", read, len(b), err)
 		}
-		if _, err := os.Stat(filepath.Join(out, read+".absent")); err == nil {
-			t.Errorf("%s: a legal row answered .absent", read)
+		if _, err := os.Stat(filepath.Join(out, read+".absent")); !os.IsNotExist(err) {
+			t.Errorf("%s: want no absence marker (%v)", read, err)
 		}
 	}
 	if b, err := os.ReadFile(filepath.Join(out, "no_codec.absent")); err != nil || len(b) != 0 {
 		t.Errorf("no_codec: want an EMPTY .absent, got %q (%v)", b, err)
+	}
+	if _, err := os.Stat(filepath.Join(out, "no_codec")); !os.IsNotExist(err) {
+		t.Errorf("no_codec: want no answer file (%v)", err)
 	}
 }

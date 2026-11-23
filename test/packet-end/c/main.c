@@ -13,7 +13,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "EndWire.h"
+#include "PacketEndWire.h"
 
 static int failed;
 

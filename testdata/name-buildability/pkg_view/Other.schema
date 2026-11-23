@@ -1,0 +1,6 @@
+package view
+
+table Rec
+{
+    value uint32
+}

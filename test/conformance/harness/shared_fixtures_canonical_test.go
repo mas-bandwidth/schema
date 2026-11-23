@@ -66,7 +66,7 @@ func TestSharedFixturesCanonical(t *testing.T) {
 		files = append(files, fileRow{v.name, v.unit, v.root, filepath.Join(framingDir, v.name+".bin"), false, true})
 	}
 	for _, x := range m.Retains {
-		files = append(files, fileRow{x.Name, x.Unit, x.Root, x.Wire, true, false})
+		files = append(files, fileRow{x.Name, x.Unit, x.Root, x.Wire, !x.Refused, false})
 	}
 	for _, x := range m.JSONWriteRefusals {
 		files = append(files, fileRow{x.Name, x.Unit, x.Root, x.Wire, true, false})

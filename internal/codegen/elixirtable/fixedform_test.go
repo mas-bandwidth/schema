@@ -73,7 +73,7 @@ fixed table Probe
 {
     label string(8)
     blob  bytes(6)
-    marks [..4]int32
+    marks [2..4]int32
 }
 `)
 	st := findTable(t, u, "Probe")
@@ -96,15 +96,15 @@ fixed table Probe
 		t.Fatal("no destination row for blob")
 	}
 	// ARRAY convention: dest the buffer (after the length), aux the length
-	if blob.dst != 16 || blob.aux != 12 || blob.counted != 1 || blob.stride != 1 || blob.arg != fixedTextBytes {
-		t.Fatalf("blob dst row = %+v, want dest=buffer 16, aux=length 12, counted=1, stride=1, arg=bytes", blob)
+	if blob.dst != 16 || blob.aux != 12 || blob.counted != 1 || blob.stride != 1 || blob.arg != 0 {
+		t.Fatalf("blob dst row = %+v, want dest=buffer 16, aux=length 12, counted=1, stride=1, minimum=0", blob)
 	}
 	marks, ok := row["marks"]
 	if !ok {
 		t.Fatal("no destination row for marks")
 	}
-	if marks.dst != 26 || marks.aux != 22 || marks.counted != 1 || marks.stride != 4 {
-		t.Fatalf("marks dst row = %+v, want dest=buffer 26, aux=count 22, counted=1, stride=4", marks)
+	if marks.dst != 26 || marks.aux != 22 || marks.counted != 1 || marks.stride != 4 || marks.arg != 2 {
+		t.Fatalf("marks dst row = %+v, want dest=buffer 26, aux=count 22, counted=1, stride=4, minimum=2", marks)
 	}
 }
 
@@ -737,10 +737,10 @@ fixed table Root
 		t.Fatal(err)
 	}
 	runtime := string(out[FixedRuntimeModule+".ex"])
-	if !strings.Contains(runtime, "{:count, their_at, aux_at, their_n}") {
+	if !strings.Contains(runtime, "{:count, their_at, aux_at, their_n, elem(row, 4)}") {
 		t.Fatal("the count op is not bounded by the WRITER's element count")
 	}
-	if strings.Contains(runtime, "{:count, their_at, aux_at, my_n}") {
+	if strings.Contains(runtime, "{:count, their_at, aux_at, my_n, elem(row, 4)}") {
 		t.Fatal("the count op is still bounded by the READER's own element count")
 	}
 }

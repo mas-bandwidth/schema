@@ -16,7 +16,7 @@ import (
 // remaining scalar kinds (uint8..uint64, int8, int16, float32, float64, bits,
 // bytes(N)) as codecs, never silence; blobs (*bytes beside the carried
 // *string); unbounded arrays with scalar, string and enum elements; arrays of
-// pointers ([]*T); and the 64-bit id-table wire with escape kind 31 — byte for
+// pointers ([]*T); and the 64-bit id-table wire — byte for
 // byte against the Go oracle (internal/tablewire, internal/tabletext), through
 // the corpus units tables/pointers (graphdemo), tables/blobs (blobdemo) and
 // tables/lists (listdemo), and the scalar kinds through a declaration written

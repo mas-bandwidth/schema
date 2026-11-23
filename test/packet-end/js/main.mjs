@@ -13,8 +13,8 @@ const generated = process.argv[3]
   ? pathToFileURL(process.argv[3] + "/")
   : new URL("../../../build/packet-end/js/", import.meta.url);
 
-const runtime = await import(new URL("End.js", generated));
-const flat = await import(new URL("EndFlat.js", generated));
+const runtime = await import(new URL("PacketEnd.js", generated));
+const flat = await import(new URL("PacketEndFlat.js", generated));
 
 let failures = 0;
 function fail(message) {

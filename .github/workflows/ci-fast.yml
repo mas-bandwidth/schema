@@ -238,6 +238,7 @@ jobs:
       newleg: ${{ steps.pick.outputs.newleg }}
       input_rows: ${{ steps.pick.outputs.input_rows }}
       dart_corpus_account: ${{ steps.pick.outputs.dart_corpus_account }}
+      cpp_corpus_account: ${{ steps.pick.outputs.cpp_corpus_account }}
       rows: ${{ steps.rows.outputs.rows }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -345,7 +346,7 @@ jobs:
               internal/codegen/javatable/*|internal/codegen/java/*|generated/java/*|test/java-tables/*|test/java-fixedform/*|make/java.mk|make/java-*.mk) add_leg java ;;
             esac
             case "$f" in
-              internal/codegen/darttable/*|internal/codegen/dart/*|generated/dart/*|test/dart-tables/*|make/dart.mk|make/dart-*.mk|make/dart-aot-handoff.py) add_leg dart ;;
+              internal/codegen/darttable/*|internal/codegen/dart/*|generated/dart/*|test/dart-tables/*|make/dart.mk|make/dart-*.mk|make/conformance-handoff.py) add_leg dart ;;
             esac
             case "$f" in
               internal/codegen/elixirtable/*|internal/codegen/elixir/*|generated/elixir/*|test/elixir-tables/*|test/elixir-fixedform/*|make/elixir.mk|make/elixir-*.mk|make/elixir-handoff.py) add_leg elixir ;;
@@ -723,11 +724,19 @@ jobs:
           # from its verify producer. Other readers remain independent.
           dart_corpus_account=$(jq -r 'any(.[]; .family == "conformance-corpus" and .leg == "dart")' <<<"$input_rows")
           # Verify the real handoff when its producer or Linux consumer changes.
-          if grep -Eqx 'make/dart-aot-handoff\.py|tools/inputaccount/(main|watch_linux)\.go' "$RUNNER_TEMP/diff-files.txt"; then
+          if grep -Eqx 'make/conformance-handoff\.py|make/dart\.mk|test/conformance/dart/main\.dart|tools/inputaccount/(main|watch_linux)\.go' "$RUNNER_TEMP/diff-files.txt"; then
             dart_corpus_account=true
           fi
           input_rows=$(jq -c 'map(select(.family != "conformance-corpus" or .leg != "dart"))' <<<"$input_rows")
+          # Keep Squirrel's independent wrong-input control within its own job budget.
+          input_rows=$(jq -c '. + [.[] | select(.family == "conformance-corpus" and .leg == "squirrel") | . + {account_control:"wrong"}]' <<<"$input_rows")
           echo "dart_corpus_account=$dart_corpus_account" >> "$GITHUB_OUTPUT"
+          cpp_corpus_account=$(jq -r 'any(.[]; .family == "conformance-corpus" and .leg == "cpp")' <<<"$input_rows")
+          if grep -Eqx 'make/conformance-handoff\.py|test/conformance/cpp/(main\.cpp|driver)|test/tables/cook_main\.cpp|tools/inputaccount/(main|watch_linux)\.go' "$RUNNER_TEMP/diff-files.txt"; then
+            cpp_corpus_account=true
+          fi
+          input_rows=$(jq -c 'map(select(.family != "conformance-corpus" or .leg != "cpp"))' <<<"$input_rows")
+          echo "cpp_corpus_account=$cpp_corpus_account" >> "$GITHUB_OUTPUT"
           for p in $(sed -n 's/^input_packages=//p' "$RUNNER_TEMP/input-families.txt"); do
             case " $packages " in *" $p "*) ;; *) packages="$packages $p" ;; esac
           done
@@ -1674,7 +1683,7 @@ jobs:
           if [ -f /opt/nova/sdk/env.sh ]; then . /opt/nova/sdk/env.sh; fi
           options=()
           if [ "$VERIFY" = true ]; then options+=(--verify-packets); fi
-          python3 make/dart-aot-handoff.py produce "$RUNNER_TEMP/dart-conformance.tar.gz" "${options[@]}"
+          python3 make/conformance-handoff.py produce "$RUNNER_TEMP/dart-conformance.tar.gz" "${options[@]}"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dart-conformance-aot
@@ -1733,7 +1742,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -f /opt/nova/sdk/env.sh ]; then . /opt/nova/sdk/env.sh; fi
-          python3 make/dart-aot-handoff.py consume "${DART_CONFORMANCE_ARTIFACTS:?missing artifact directory}/dart-conformance.tar.gz"
+          python3 make/conformance-handoff.py consume "${DART_CONFORMANCE_ARTIFACTS:?missing artifact directory}/dart-conformance.tar.gz"
           if [ "$ACCOUNT" != true ]; then
             make -j"$(nproc)" -o build/conformance-dart _conformance-corpus-dart DART=dart
             exit 0
@@ -1749,6 +1758,102 @@ jobs:
           go run ./tools/gotestreport -slowest 0 -skips .github/skip-ledger.txt \
             -provides "platform tool:make tool:git tool:sh tool:dart" "$PGROUP_GO_TEST_JSON"
 
+  # Build the native executables separately from the I/O-accounted runs.
+  # The C++ build used to spend ~36 s of this job's two-minute budget building
+  # bin/schema before generation could begin (#4843). block-gate already builds
+  # that exact compiler in every run; restore its tree-bound artifact here so
+  # this job's budget covers the C++ producer rather than duplicate Go work.
+  build-cpp-conformance-account:
+    needs: [plan, block-gate]
+    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.cpp_corpus_account == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 2
+    permissions:
+      actions: read
+      contents: read
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: schema-compiler-${{ github.run_id }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          path: ${{ runner.temp }}/schema-compiler
+          digest-mismatch: error
+      - name: Restore the same-run compiler for this exact source tree
+        run: |
+          set -euo pipefail
+          artifact="$RUNNER_TEMP/schema-compiler"
+          expected=$(git rev-parse HEAD^{tree})
+          actual=$(cat "$artifact/source-tree")
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::schema compiler source tree $actual, want $expected"
+            exit 1
+          fi
+          (cd "$artifact" && sha256sum -c SHA256SUMS)
+          mkdir -p bin
+          install -m 0755 "$artifact/bin/schema" bin/schema
+      - name: Check out the pinned C++ runtime
+        run: |
+          cd ..
+          rm -rf serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
+      - name: Build the C++ conformance driver and cook companion
+        run: |
+          if [ -f /opt/nova/sdk/env.sh ]; then . /opt/nova/sdk/env.sh; fi
+          python3 make/conformance-handoff.py produce "$RUNNER_TEMP/cpp-conformance.tar.gz" --leg cpp --prebuilt-compiler
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cpp-conformance
+          path: ${{ runner.temp }}/cpp-conformance.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+          overwrite: true
+
+  input-family-cpp-conformance:
+    needs: [plan, build-cpp-conformance-account]
+    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.cpp_corpus_account == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    name: input-family (conformance-corpus, cpp)
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 2
+    permissions:
+      actions: read
+      contents: read
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
+      - name: Check out the pinned C++ runtime
+        run: |
+          cd ..
+          rm -rf serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: cpp-conformance
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          path: ${{ runner.temp }}/cpp-conformance
+          digest-mismatch: error
+      - name: Verify the same-run C++ build and account for inputs
+        run: |
+          if [ -f /opt/nova/sdk/env.sh ]; then . /opt/nova/sdk/env.sh; fi
+          python3 make/conformance-handoff.py consume "$RUNNER_TEMP/cpp-conformance/cpp-conformance.tar.gz" --leg cpp
+          go build -o "$RUNNER_TEMP/inputaccount" ./tools/inputaccount
+          # Pass -o to the recursive make only after verifying the executables.
+          vars=("VERIFY_JFLAG=-j4 -o build/conformance-cpp -o build/schema_test_cook")
+          "$RUNNER_TEMP/inputaccount" -family conformance-corpus -leg cpp -check-extra "${vars[@]}"
+          "$RUNNER_TEMP/inputaccount" -family conformance-corpus -leg cpp -canary wrong "${vars[@]}"
+
   # THE INPUT FAMILIES (tools/inputfamilies, tools/inputaccount; 2026-11-22).
   # One row per reader leg of each input family the diff touches (every
   # family on a push to main). The row runs the leg's make target for the
@@ -1761,7 +1866,7 @@ jobs:
   input-family:
     needs: plan
     if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.input_rows != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
-    name: input-family (${{ matrix.family }}, ${{ matrix.leg }})
+    name: input-family (${{ matrix.family }}, ${{ matrix.leg }}${{ matrix.account_control == 'wrong' && ', wrong control' || '' }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
     defaults:
@@ -1855,6 +1960,7 @@ jobs:
         env:
           FAMILY: ${{ matrix.family }}
           LEG: ${{ matrix.leg }}
+          ACCOUNT_CONTROL: ${{ matrix.account_control }}
         run: |
           set -euo pipefail
           if [ -f /opt/nova/sdk/env.sh ]; then
@@ -1873,7 +1979,12 @@ jobs:
             # Every leg reads the named MANIFEST.txt and wire pins, so the
             # extra file beside the manifest is inert to the real run.
             vars+=("VERIFY_JOBS=4")
-            "$RUNNER_TEMP/inputaccount" -family "$FAMILY" -leg "$LEG" -check-extra "${vars[@]}"
+            if [ "$ACCOUNT_CONTROL" != wrong ]; then
+              "$RUNNER_TEMP/inputaccount" -family "$FAMILY" -leg "$LEG" -check-extra "${vars[@]}"
+              if [ "$LEG" = squirrel ]; then
+                exit 0 # The sibling matrix row runs the wrong-input control.
+              fi
+            fi
           else
             rm -rf "build/$FAMILY" build/java-finite
             "$RUNNER_TEMP/inputaccount" -family "$FAMILY" -leg "$LEG" "${vars[@]}"
@@ -1915,7 +2026,8 @@ jobs:
   # IT TAKES NO CACHE, deliberately, like the job it comes from: this is where
   # "the build did no work" must not be an available explanation for a green.
   block-gate:
-    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    needs: plan
+    if: startsWith(github.head_ref, 'sprint/') == false && (always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # fleet: 38-83 s; hosted builds bin/schema with no cache, by design
     timeout-minutes: 2
@@ -1931,11 +2043,30 @@ jobs:
         with:
           go-version: '1.26'
           cache: false
+      - name: the tables goldens match a fresh generation (the block zero-cost gate, byte-identity half)
+        run: make -j"$(nproc)" tables-block-zero-cost
+      - name: Stage the compiler for the C++ accounting build
+        if: needs.plan.outputs.cpp_corpus_account == 'true'
+        run: |
+          set -euo pipefail
+          artifact="$RUNNER_TEMP/schema-compiler"
+          rm -rf "$artifact"
+          mkdir -p "$artifact/bin"
+          cp bin/schema "$artifact/bin/schema"
+          git rev-parse HEAD^{tree} > "$artifact/source-tree"
+          (cd "$artifact" && sha256sum bin/schema > SHA256SUMS)
       # The three languages write separate trees, so they run side by side:
       # one after another they were the sum of three rows, past the
       # per-commit limit on a busy runner.
-      - name: the tables goldens match a fresh generation (the block zero-cost gate, byte-identity half)
-        run: make -j"$(nproc)" tables-block-zero-cost
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: needs.plan.outputs.cpp_corpus_account == 'true'
+        with:
+          name: schema-compiler-${{ github.run_id }}
+          path: ${{ runner.temp }}/schema-compiler
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+          overwrite: true
 
   # THE NEW-LEG SCAFFOLD'S FIXTURE (#4541). The one SCHEMA_SLOW test this lane
   # runs, for a diff plan's newleg rule selects (THE NEW-LEG SCAFFOLD in
@@ -2769,11 +2900,10 @@ jobs:
   # committed pin is REWRITTEN from its generator and `testdata/` is diffed
   # against HEAD, so a hand-written golden (a .bits or .bin typed or edited by
   # a person or a child) fails on the push that adds it instead of at the
-  # nightly. Five rows, each one family's writers, each inside the two-minute
-  # cap on its own (measured on amd-3, warm: source+framing 45 s, wire-packet
-  # 9 s, wire-tables 38 s, wire-tables-forms 20 s, conformance 70 s):
-  #   source              testdata/golden/ (Go goldens, C++/C/C# table copies)
-  #                       and testdata/wire/tables/framing (FRAMING_WRITE=1)
+  # nightly. Each row runs under the two-minute cap:
+  #   source              C++/C/C# table copies and the framing byte proofs
+  #   source-goldens      the Go golden tests, in their own checkout because
+  #                       they also rewrite table pins
   #   wire-packet         testdata/wire/*.bin, *.bits, packet-defaults/,
   #                       bench_*.bin: EMPTIED FIRST (pins-fresh-wire-packet), so
   #                       a file no generator writes shows as a deletion
@@ -2798,7 +2928,9 @@ jobs:
       matrix:
         include:
           - row: source
-            target: pins-source pins-framing
+            target: pins-source-cpp pins-source-c pins-source-cs pins-framing
+          - row: source-goldens
+            target: pins-source-goldens
           - row: wire-packet
             target: pins-fresh-wire-packet
           - row: wire-tables
@@ -2812,7 +2944,7 @@ jobs:
       - uses: ./.github/actions/merge-main
 
       - name: Check out the C++ serialize runtime (pinned release)
-        if: ${{ matrix.row != 'source' }}
+        if: ${{ matrix.row != 'source' && matrix.row != 'source-goldens' }}
         run: |
           set -euo pipefail
           cd ..
@@ -2831,8 +2963,7 @@ jobs:
           TARGETS: ${{ matrix.target }}
         run: |
           set -euo pipefail
-          # the source row's two targets share testdata/golden: serial, as in
-          # the Makefile's own aggregate
+          # Keep the source row's writers serial, as in the Makefile aggregate.
           for t in $TARGETS; do make -j"$(nproc)" "$t"; done
 
       - name: the pins are current
@@ -2860,7 +2991,7 @@ jobs:
   # ci-policy, lint-fast, vet, block-gate) may never skip. `verdict` is the
   # check to require on main.
   verdict:
-    needs: [fork-pull-request, plan, lint-fast, ci-policy, vet, golangci-lint-fast, generated-current, lang-clean, lang-lint, verify-leg, verify-elixir-conformance, verify-dart-conformance, input-family, input-family-dart-conformance, block-gate, go-fixed-corpus, go-test-touched, leg-gate, leg-gate-lobster, leg-gate-rust, leg-gate-squirrel, leg-gate-cpp, newleg-scaffold, nightly-fast, pins]
+    needs: [fork-pull-request, plan, lint-fast, ci-policy, vet, golangci-lint-fast, generated-current, lang-clean, lang-lint, verify-leg, verify-elixir-conformance, verify-dart-conformance, input-family, input-family-dart-conformance, build-cpp-conformance-account, input-family-cpp-conformance, block-gate, go-fixed-corpus, go-test-touched, leg-gate, leg-gate-lobster, leg-gate-rust, leg-gate-squirrel, leg-gate-cpp, newleg-scaffold, nightly-fast, pins]
     if: startsWith(github.head_ref, 'sprint/') == false && (always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # jq over the needs context: seconds
@@ -2891,6 +3022,7 @@ jobs:
               verify-leg) [ "$(out verify_legs)" = '[]' ] ;;
               verify-elixir-conformance) ! grep -qF '"elixir"' <<<"$(out verify_legs)" ;;
               verify-dart-conformance|input-family-dart-conformance) [ "$(out dart_corpus_account)" != true ] && ! grep -qF '"dart"' <<<"$(out verify_legs)" ;;
+              build-cpp-conformance-account|input-family-cpp-conformance) [ "$(out cpp_corpus_account)" != true ] ;;
               input-family) [ "$(out input_rows)" = '[]' ] ;;
               go-fixed-corpus) ! grep -qF '"make":"tables-go-fixedform"' <<<"$(out rows)" ;;
               go-test-touched) [ -z "$(out packages)" ] ;;

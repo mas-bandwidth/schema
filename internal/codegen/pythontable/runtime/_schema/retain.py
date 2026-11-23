@@ -130,7 +130,7 @@ def _payload(reader: Reader, sink: _Sink, kind: int, depth: int) -> None:
             _framed(reader, sink, arm_kind, depth)
     elif kind in (13, 14, 16):
         _framed(reader, sink, kind, depth)
-    elif kind in (12, 31, 32):
+    elif kind in (12, 32):
         length = reader.varint()
         sink.varint(length)
         sink.raw(reader.take(length))
@@ -236,7 +236,7 @@ def _out_payload(reader: Reader, sink: Any, kind: int, depth: int, intern: Any, 
             _out_frame(reader, sink, arm_kind, depth, intern, measure)
     elif kind in (13, 14, 16):
         _out_frame(reader, sink, kind, depth, intern, measure)
-    elif kind in (12, 31, 32):
+    elif kind in (12, 32):
         length = reader.varint()
         sink.varint(length)
         sink.raw(reader.take(length))

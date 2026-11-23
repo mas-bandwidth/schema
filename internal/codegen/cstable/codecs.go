@@ -1071,6 +1071,15 @@ func enumNameLambda(pkg, enum string) string {
 	return fmt.Sprintf("delegate (ulong v) { return v <= (ulong)%sMax ? EnumName%s((global::%s.%s)v) : \"???\"; }", enum, enum, pkg, enum)
 }
 
+// flagsRef is the flags set a named field carries, or nil.
+func flagsRef(f *ir.Field) *ir.Flags {
+	if f.Type.Kind != ir.TNamed {
+		return nil
+	}
+	fl, _ := f.Type.Ref.(*ir.Flags)
+	return fl
+}
+
 // enumVariantDeprecated reports whether variant idx of en carries
 // `| deprecated` (docs/SPEC-TABLES.md §2.15).
 func enumVariantDeprecated(en *ir.Enum, idx int) bool {

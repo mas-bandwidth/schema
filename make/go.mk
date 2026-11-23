@@ -8,8 +8,8 @@ SERIALIZE_GO ?= ../serialize.go
 SERIALIZE_GO_FETCHED := build/serialize.go
 SERIALIZE_GO_RUNTIME := $(if $(wildcard $(SERIALIZE_GO)/go.mod),$(SERIALIZE_GO),$(SERIALIZE_GO_FETCHED))
 
-build/packet-text/go/.stamp: bin/schema test/packet-text/Narrow.schema make/go.mk
-	./bin/schema generate --lang go --out build/packet-text/go test/packet-text/Narrow.schema
+build/packet-text/go/.stamp: bin/schema test/packet-text/Text.schema make/go.mk
+	./bin/schema generate --lang go --out build/packet-text/go test/packet-text/Text.schema
 	@printf 'module packettext\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => "%s/$(SERIALIZE_GO)"\n' "$(CURDIR)" > build/packet-text/go/go.mod
 	@touch $@
 
@@ -22,7 +22,7 @@ packet-utf8-go-negative-control: packet-utf8-go
 	@mkdir -p build/packet-text/go-negative/checker
 	go run ./tools/sabotage -name packet-utf8-go-read -out build/packet-text/go-negative/functions.gotext internal/codegen/golang/functions.go
 	@printf '{"Replace":{"%s/internal/codegen/golang/functions.go":"%s/build/packet-text/go-negative/functions.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-text/go-negative/overlay.json
-	go run -overlay=build/packet-text/go-negative/overlay.json ./cmd/schema generate --lang go --out build/packet-text/go-negative test/packet-text/Narrow.schema
+	go run -overlay=build/packet-text/go-negative/overlay.json ./cmd/schema generate --lang go --out build/packet-text/go-negative test/packet-text/Text.schema
 	cp build/packet-text/go/go.mod build/packet-text/go-negative/go.mod
 	cp test/packet-text/go/main.go build/packet-text/go-negative/checker/main.go
 	cd build/packet-text/go-negative/checker && go build -o ../driver .
@@ -159,7 +159,7 @@ tables-go-json-walk: build/tables-generated-go/.stamp
 # a generated package names its schema's `package` and Go resolves an import by
 # module path — so the conformance leg's go.mod replaces one path per unit,
 # exactly as test/go/go.mod already does for the packet corpus.
-build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema $(wildcard test/tables/[MAKR][12].schema) tables/scalars/Scalars.schema test/tables/Scalars2.schema tables/messages/Messages.schema tables/backend/Backend.schema tables/vocab/Vocab.schema tables/vocab9/Vocab9.schema $(wildcard tables/stream/*.schema tables/blobs/*.schema tables/lists/*.schema tables/maps/*.schema tables/widelist/*.schema) test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema testdata/conformance/feature-witnesses/full/Features.schema testdata/conformance/r19/old/R19.schema testdata/conformance/r19/new/R19.schema testdata/conformance/r19/new/schema.lock
+build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema test/tables/G1.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema $(wildcard test/tables/[MAKR][12].schema) tables/scalars/Scalars.schema test/tables/Scalars2.schema tables/messages/Messages.schema tables/backend/Backend.schema tables/vocab/Vocab.schema tables/vocab9/Vocab9.schema $(wildcard tables/stream/*.schema tables/blobs/*.schema tables/lists/*.schema tables/maps/*.schema tables/widelist/*.schema) test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema testdata/conformance/table-write-bounds/TableWriteBounds.schema test/tables/cooktorturewide/CookTortureWide.schema testdata/conformance/feature-witnesses/full/Features.schema testdata/conformance/r19/old/R19.schema testdata/conformance/r19/new/R19.schema testdata/conformance/r19/new/schema.lock
 	@mkdir -p build/tables-generated-go
 	# EVERY UNIT GENERATES AT ONCE (one xargs, 8 wide): the generations are
 	# independent, and run one after another they alone passed the 110 s
@@ -195,6 +195,7 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema t
 		'build/tables-generated-go/varevo3 test/tables/varevo/VarEvo3.schema' \
 		'build/tables-generated-go/prior test/tables/prior/PriorNarrow.schema' \
 		'build/tables-generated-go/cooktorture test/tables/cooktorture/CookTorture.schema' \
+		'build/tables-generated-go/writebounds testdata/conformance/table-write-bounds/TableWriteBounds.schema' \
 		'build/tables-generated-go/cooktorturewide test/tables/cooktorturewide/CookTortureWide.schema' \
 		'build/tables-generated-go/shapes test/tables/shapes/Shapes.schema' \
 		'build/tables-generated-go/messages tables/messages' \
@@ -240,6 +241,7 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema t
 	$(call go_table_module,varevo3,tblvarevo3)
 	$(call go_table_module,prior,tblprior)
 	$(call go_table_module,cooktorture,cooktorture)
+	$(call go_table_module,writebounds,writebounds)
 	$(call go_table_module,cooktorturewide,cooktorturewide)
 	$(call go_table_module,shapes,shapes)
 	$(call go_table_module,m1,tblm1)
@@ -276,6 +278,13 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema t
 	@grep -q '^table Bounded$$' build/tables-lists-variable/Migrate.schema || { echo "lists variable twin: the sed did not turn Bounded variable"; exit 1; }
 	./bin/schema generate --lang go --out build/tables-generated-go-framing/listsvariable build/tables-lists-variable/Migrate.schema
 	$(call go_table_module_in,build/tables-generated-go-framing/listsvariable,listdemovariable)
+	# CountedMin framing reads the same declaration as a variable-class root.
+	# Its canonical write still comes from the fixed codec.
+	@mkdir -p build/tables-counted-min-variable
+	sed -n '/^package tabledemo$$/p; /^fixed table CountedMin$$/,/^}/p' tables/examples/Tables.schema | sed 's/^fixed table CountedMin$$/table CountedMin/' > build/tables-counted-min-variable/CountedMin.schema
+	@grep -q '^table CountedMin$$' build/tables-counted-min-variable/CountedMin.schema
+	./bin/schema generate --lang go --out build/tables-generated-go-framing/countedminvariable build/tables-counted-min-variable/CountedMin.schema
+	$(call go_table_module_in,build/tables-generated-go-framing/countedminvariable,countedminvariable)
 	# THE R19 ROW'S COMMITTED PAIR (test/conformance/go/rows/R19_test.go): one
 	# lineage, two generations. The old side is generated from its schema alone
 	# (it wrote testdata/conformance/r19/old.bin); the new side from its unit

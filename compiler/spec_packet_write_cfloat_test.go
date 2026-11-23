@@ -75,8 +75,8 @@ func TestSpecPacketWriteRefusesOffRangeCompressedFloat(t *testing.T) {
 		mustNotState(t, page.name, oneLine(page.text), "every build in every leg")
 	}
 
-	if _, err := os.Stat("../test/packet-write-cfloat/CFloat.schema"); err != nil {
-		t.Errorf("test/packet-write-cfloat/CFloat.schema: %v", err)
+	if _, err := os.Stat("../test/packet-write-cfloat/PacketCFloat.schema"); err != nil {
+		t.Errorf("test/packet-write-cfloat/PacketCFloat.schema: %v", err)
 	}
 	casesData, err := os.ReadFile("../test/packet-write-cfloat/cases.txt")
 	if err != nil {

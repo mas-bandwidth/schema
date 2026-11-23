@@ -28,7 +28,7 @@ func TestStrictOnlyLuauNoTolerantEntry(t *testing.T) {
 		t.Fatalf("luautable.Generate(examples): %v", err)
 	}
 
-	const fixedSrc = `package p
+	const fixedSrc = `package px
 
 fixed table Rec
 {

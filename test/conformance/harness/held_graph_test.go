@@ -82,8 +82,8 @@ func TestHeldGraphVectorsAnswerTheEngine(t *testing.T) {
 			if !ok {
 				t.Fatalf("%s: no framing vector script", tc.name)
 			}
-			if !v.held {
-				t.Fatalf("%s: the graph vectors are held out of the manifest", tc.name)
+			if v.held {
+				t.Fatalf("%s: the graph vectors are manifest rows now", tc.name)
 			}
 			data, err := os.ReadFile(filepath.Join(root, framingDir, tc.name+".bin"))
 			if err != nil {

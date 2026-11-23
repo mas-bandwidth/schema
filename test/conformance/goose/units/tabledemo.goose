@@ -47,6 +47,36 @@ fn unit_json_verdict(root: const u8[:], text: const u8[:], out: u8[>..]&) -> boo
         verdict_of(v, text, out, tabledemo::PackConfigFromJson, tabledemo::PackConfigToJson);
         return true;
     }
+    if root == "CountedMin" {
+        var v = tabledemo::NewCountedMin();
+        verdict_of(v, text, out, tabledemo::CountedMinFromJson, tabledemo::CountedMinToJson);
+        return true;
+    }
+    if root == "FloatBound" {
+        var v = tabledemo::NewFloatBound();
+        verdict_of(v, text, out, tabledemo::FloatBoundFromJson, tabledemo::FloatBoundToJson);
+        return true;
+    }
+    if root == "Moods" {
+        var v = tabledemo::NewMoods();
+        verdict_of(v, text, out, tabledemo::MoodsFromJson, tabledemo::MoodsToJson);
+        return true;
+    }
+    if root == "MoodField" {
+        var v = tabledemo::NewMoodField();
+        verdict_of(v, text, out, tabledemo::MoodFieldFromJson, tabledemo::MoodFieldToJson);
+        return true;
+    }
+    if root == "MinArmFix" {
+        var v = tabledemo::NewMinArmFix();
+        verdict_of(v, text, out, tabledemo::MinArmFixFromJson, tabledemo::MinArmFixToJson);
+        return true;
+    }
+    if root == "MinPlainFix" {
+        var v = tabledemo::NewMinPlainFix();
+        verdict_of(v, text, out, tabledemo::MinPlainFixFromJson, tabledemo::MinPlainFixToJson);
+        return true;
+    }
     if root == "ProfileConfig" {
         var v = tabledemo::NewProfileConfig();
         verdict_of(v, text, out, tabledemo::ProfileConfigFromJson, tabledemo::ProfileConfigToJson);

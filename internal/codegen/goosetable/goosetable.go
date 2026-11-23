@@ -569,7 +569,7 @@ type facts struct {
 	kw                              int
 	signed, ranged                  bool
 	lo, hi                          string
-	bits, ibits, fbits              int
+	bits, mw, ibits, fbits          int
 	f32, frange                     bool
 	flo, fhi, fres                  string
 	timestamp                       bool
@@ -610,6 +610,9 @@ func (v facts) writeRest(l *lit) {
 	}
 	if v.bits != 0 {
 		l.add("bits", fmt.Sprint(v.bits))
+	}
+	if v.mw != 0 {
+		l.add("mw", fmt.Sprint(v.mw))
 	}
 	if v.ibits != 0 || v.fbits != 0 {
 		l.add("ibits", fmt.Sprint(v.ibits))
@@ -702,7 +705,11 @@ func valueFacts(g *goose.Gen, f *ir.Field, def bool) facts {
 			}
 			return v
 		case *ir.Flags:
-			return intFacts(f, def)
+			// mw is W, the mask width every table read and write holds the value
+			// to (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH)
+			v := intFacts(f, def)
+			v.mw = r.WireBits
+			return v
 		case *ir.Union:
 			requireHome(g, r.Name)
 			return facts{shape: "ShapeUnion", ref: r.Name}
@@ -724,7 +731,7 @@ func enumVariants(g *goose.Gen, e *ir.Enum) string {
 	g.Declare(name)
 	parts := make([]string, len(e.Variants))
 	for i := range e.Variants {
-		parts[i] = fmt.Sprintf("%s::VariantDesc { name: %s, id: 0x%016x }", goose.RuntimeNamespace, stringLit(e.Variants[i]), ir.TableWireId(e.VariantWireName(i)))
+		parts[i] = fmt.Sprintf("%s::VariantDesc { name: %s, id: 0x%016x, deprecated: %v }", goose.RuntimeNamespace, stringLit(e.Variants[i]), ir.TableWireId(e.VariantWireName(i)), i < len(e.VariantDeprecated) && e.VariantDeprecated[i])
 	}
 	g.Pf("let %s: %s::VariantDesc[%d] = [%s];\n", name, goose.RuntimeNamespace, len(parts), strings.Join(parts, ", "))
 	return name

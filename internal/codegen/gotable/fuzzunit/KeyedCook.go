@@ -96,7 +96,7 @@ func TeamConfigAt(slot *int64, arena ...*TableArena) *TeamConfigRow {
 
 // Type is TeamConfig's cooked-record descriptor, the head of the graph a reflective
 // walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
-func (c TeamConfigCook) Type() *TableCookInfo { return &tableCookRecords[19] }
+func (c TeamConfigCook) Type() *TableCookInfo { return &tableCookRecords[25] }
 
 // GunnerConfigCook is GunnerConfig's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -162,7 +162,7 @@ func GunnerConfigAt(slot *int64, arena ...*TableArena) *GunnerConfigRow {
 
 // Type is GunnerConfig's cooked-record descriptor, the head of the graph a reflective
 // walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
-func (c GunnerConfigCook) Type() *TableCookInfo { return &tableCookRecords[5] }
+func (c GunnerConfigCook) Type() *TableCookInfo { return &tableCookRecords[7] }
 
 // TurretConfigCook is TurretConfig's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -228,7 +228,7 @@ func TurretConfigAt(slot *int64, arena ...*TableArena) *TurretConfigRow {
 
 // Type is TurretConfig's cooked-record descriptor, the head of the graph a reflective
 // walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
-func (c TurretConfigCook) Type() *TableCookInfo { return &tableCookRecords[20] }
+func (c TurretConfigCook) Type() *TableCookInfo { return &tableCookRecords[26] }
 
 // HullConfigCook is HullConfig's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -294,7 +294,7 @@ func HullConfigAt(slot *int64, arena ...*TableArena) *HullConfigRow {
 
 // Type is HullConfig's cooked-record descriptor, the head of the graph a reflective
 // walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
-func (c HullConfigCook) Type() *TableCookInfo { return &tableCookRecords[7] }
+func (c HullConfigCook) Type() *TableCookInfo { return &tableCookRecords[9] }
 
 // KeyedConfigCook is KeyedConfig's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -360,7 +360,7 @@ func KeyedConfigAt(slot *int64, arena ...*TableArena) *KeyedConfigRow {
 
 // Type is KeyedConfig's cooked-record descriptor, the head of the graph a reflective
 // walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
-func (c KeyedConfigCook) Type() *TableCookInfo { return &tableCookRecords[8] }
+func (c KeyedConfigCook) Type() *TableCookInfo { return &tableCookRecords[10] }
 
 func TeamConfigCookMeasure(value *TeamConfig) int64 { return 112 }
 func TeamConfigCookMeasureReason(value *TeamConfig) (int64, error) {

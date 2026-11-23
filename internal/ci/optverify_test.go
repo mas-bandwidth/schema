@@ -118,6 +118,7 @@ func TestOptVerifyCoversEveryPort(t *testing.T) {
 		"packet-end-rust",
 		"packet-write-cfloat-rust",
 		"packet-write-text-rust",
+		"packet-write-refusal-rust",
 		"tables-rust-view",
 		"tables-view",
 		"tables-c-view",

@@ -1082,6 +1082,56 @@ func writeBoundViolation(f *ir.Field, expr string) string {
 	return strings.Join(parts, " || ")
 }
 
+// fileWriteBoundViolation is writeBoundViolation for a FILE writer, which also
+// holds a flags mask to W (flagsWidthBound). The message writer holds a mask
+// to W on its own: the mask rides at W bits there, and a wider one runs over.
+func fileWriteBoundViolation(f *ir.Field, expr string) string {
+	viol := writeBoundViolation(f, expr)
+	if b, ok := flagsWidthBound(f, expr); ok {
+		if viol != "" {
+			return viol + " || " + b
+		}
+		return b
+	}
+	return viol
+}
+
+// flagsWidthBound is a flags mask's width rule (docs/SPEC-TABLES.md §4, A TABLE
+// LOAD HOLDS A MASK TO ITS WIDTH): the condition true for a mask with a bit at
+// or above W, the declaration's wire width (the variant count, or K under
+// `| max = K`). A read refuses such a mask out_of_range and a file writer
+// refuses it, so a writer never writes a mask its own reader refuses. W of 64
+// holds every mask, and nothing is emitted.
+func flagsWidthBound(f *ir.Field, expr string) (string, bool) {
+	if f.Type.Kind != ir.TNamed || f.Type.Pointer {
+		return "", false
+	}
+	fl, ok := f.Type.Ref.(*ir.Flags)
+	if !ok || fl.WireBits >= 64 {
+		return "", false
+	}
+	return fmt.Sprintf("%s>>%d != 0", expr, fl.WireBits), true
+}
+
+// emitWidthRead holds a read value to its WIDTH: a bits(N) value past 2^N-1,
+// and, the read's half of flagsWidthBound, A MASK BIT AT OR
+// ABOVE THE READER'S W REFUSES THE LOAD out_of_range (docs/SPEC-TABLES.md §4,
+// A TABLE LOAD HOLDS A MASK TO ITS WIDTH). Flags append at the end, so old
+// data never carries one, and an old reader does not read new data. Every
+// widened kind is held the same; a wire kind no wider than W cannot carry one,
+// and nothing is emitted. v is the value the read just took.
+func (g *tableGen) emitWidthRead(f *ir.Field, wireKind, ind, onBad string) {
+	if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
+		max := uint64(1)<<f.Type.Width - 1
+		g.pf("%s\tif v > %d { %s }\n", ind, max, refuse("TableRefuseOutOfRange", g.floatOwner(f), onBad))
+	}
+	cond, ok := flagsWidthBound(f, "v")
+	if !ok || knownKindWidth(wireKind) > 0 && f.Type.Ref.(*ir.Flags).WireBits >= 8*knownKindWidth(wireKind) {
+		return
+	}
+	g.pf("%s\tif %s { %s }\n", ind, cond, refuse("TableRefuseOutOfRange", g.floatOwner(f), onBad))
+}
+
 // plainFloatFinite is the WRITE-SIDE finite rule for a float with no declared
 // range (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27, "same rule as packets"):
 // the condition that is true for a NaN or an infinity, which no form carries.

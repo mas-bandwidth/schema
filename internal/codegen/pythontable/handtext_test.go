@@ -123,7 +123,8 @@ for token in (b'8 :enabled false', b' 8', b'(8)'):
 func TestPythonHandtextReservedName(t *testing.T) {
 	t.Parallel()
 	for _, name := range []string{"from_text_form", "load_text", "save_text"} {
-		unit := loadUnit(t, "package probe\ntable Root { "+name+" int32 }\n")
+		checkRefuses(t, "package probe\ntable Root { "+name+" int32 }\n", "the Python target cannot express")
+		unit := loadTableRenamingField(t, name)
 		if _, err := generateHandtext(unit); err == nil || !strings.Contains(err.Error(), name) {
 			t.Fatalf("generated method collision %s was not refused: %v", name, err)
 		}
@@ -147,7 +148,7 @@ func TestPythonHandtextSurfaceSelection(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s: %v", tc.name, err)
 		}
-		src := string(files["probe/Core.py"])
+		src := string(files["probe/Records.py"])
 		if strings.Contains(src, "def from_text_form(") != tc.want {
 			t.Fatalf("%s: incorrect textform selection", tc.name)
 		}
@@ -155,7 +156,7 @@ func TestPythonHandtextSurfaceSelection(t *testing.T) {
 			t.Fatalf("%s: missing wire text carrier", tc.name)
 		}
 	}
-	field := loadUnit(t, "package probe\ntable Root { from_text_form int32 }\n")
+	field := loadTableRenamingField(t, "from_text_form")
 	if _, err := GenerateSurface(field, Surfaces{Wire: true}); err != nil {
 		t.Fatalf("unselected name refused: %v", err)
 	}
@@ -170,7 +171,7 @@ func TestPythonHandtextSurfaceSelection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("wire-only name refused: %v", err)
 	}
-	if strings.Contains(string(files["probe/Core.py"]), "def from_text_form(") {
+	if strings.Contains(string(files["probe/Records.py"]), "def from_text_form(") {
 		t.Fatal("wire-only table emitted textform")
 	}
 	if _, ok := files["probe/_schema/json_table.py"]; ok {
@@ -204,7 +205,7 @@ func TestPythonHandtextSurfaceNegativeControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := "probe/Core.py"
+	path := "probe/Records.py"
 	source := string(files[path])
 	const method = "def from_text_form("
 	if strings.Count(source, method) != 1 {
@@ -636,11 +637,11 @@ print('ok')
 		}
 	}
 	invalid := []byte(schema + "\ntable Pointer { target *Root }\n")
-	parsed, parseErrors := parser.Parse("Core.schema", invalid)
+	parsed, parseErrors := parser.Parse("Records.schema", invalid)
 	if len(parseErrors) != 0 {
 		t.Fatal(parseErrors)
 	}
-	_, errors := check.Unit([]check.SourceFile{{Path: "Core.schema", Name: "Core.schema", Base: "Core", Bytes: invalid, AST: parsed}})
+	_, errors := check.Unit([]check.SourceFile{{Path: "Records.schema", Name: "Records.schema", Base: "Records", Bytes: invalid, AST: parsed}})
 	if len(errors) == 0 || !strings.Contains(fmt.Sprint(errors), `json = "array" refuses a table any pointer targets`) {
 		t.Fatalf("array-root pointer was not refused by name: %v", errors)
 	}

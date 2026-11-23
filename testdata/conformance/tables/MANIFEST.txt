@@ -280,7 +280,7 @@ report parts_index_out_of_range streamdemo Feed testdata/wire/tables/parts_index
 # AN ARRAY OF UNIONS read under §3's rules, as shared rows: two hand-built
 # ToolMessage bodies with one `history` field each. The element kind 13 where
 # the reader declares 15 is a kind mismatch and the field stays empty —
-# `[N]Body` ⇄ `[N]Table` is a reported edit; an arm id no build declares reads
+# `[N]Body` ⇄ `[N]Table` is refused by name, kind_mismatch; an arm id no build declares reads
 # as a None element, skipped by its length and counted, the slot kept live.
 # The bytes are pinned by the C++ leg (test/tables/main.cpp builds them).
 report batch_elem_kind   messagedemo ToolMessage testdata/wire/tables/batch_elem_kind.bin
@@ -330,12 +330,13 @@ instance optional_present_edge    tblg1 Guarded testdata/wire/tables/optional_pr
 report k1_as_k2  tblk2 Root testdata/wire/tables/k1_as_k2.bin
 report k2_as_k1  tblk1 Root testdata/wire/tables/k2_as_k1.bin
 
-# KIND 31 AND KIND 32, AT EVERY POSITION (§3). Where the reader meets them
-# decides which event it counts: at a position it CANNOT name the escape is
-# skipped by its L and counted unknown, and at a position it DOES name — a
-# field, an arm, an array's element kind — it is an ordinary kind mismatch, on
-# the rule every other kind already takes. The bytes are the reference leg's,
-# built from §3's grammar and pinned by test/tables/main.cpp.
+# KIND 31 AND KIND 32, AT EVERY POSITION (§3). Kind 31 is HELD BY NAME AND
+# NEVER WRITTEN (R17: the newer reader reads old data, never the other way),
+# so wherever a reader meets it — a field it cannot name, one it does, an arm,
+# an array's element kind — the whole load is refused, exactly as for 33
+# and 34. Kind 32 at a named field is an ordinary kind mismatch. The bytes
+# are the reference leg's, built from §3's grammar and pinned by
+# test/tables/main.cpp.
 report escape_unnamed_field   messagedemo ToolMessage testdata/wire/tables/escape_unnamed_field.bin
 report escape_named_field     messagedemo ToolMessage testdata/wire/tables/escape_named_field.bin
 report escape_arm             messagedemo ToolMessage testdata/wire/tables/escape_arm.bin
@@ -694,6 +695,12 @@ json-hostile skipped-ampersand-node-not-first        tabledemo  RootConfig  test
 # key included, because a skipped value has no declaration to tell one apart.
 json-hostile skipped-key-255-bytes         tabledemo  RootConfig  testdata/conformance/tables/json-hostile/skipped-key-255-bytes read
 json-hostile skipped-key-256-bytes         tabledemo  RootConfig  testdata/conformance/tables/json-hostile/skipped-key-256-bytes refused
+# R7 AT A VARIABLE ROOT (docs/SPEC-TABLES.md §16.7): a stray `&` key in a
+# skipped value refuses at a variable root as at a fixed one, and a variable
+# root holds a skipped value to the definition rules whether or not its unit
+# declares a pointer (listdemo declares none).
+json-hostile skipped-ampersand-key-variable graphdemo Scene       testdata/conformance/tables/json-hostile/skipped-ampersand-key-variable refused
+json-hostile skipped-label-undefined-pointer-free listdemo Army   testdata/conformance/tables/json-hostile/skipped-label-undefined-pointer-free refused
 json-hostile dup-key                       tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key            refused
 json-hostile dup-key-array                 tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key-array      refused
 json-hostile dup-key-placeable             tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key-placeable  refused
@@ -1378,6 +1385,18 @@ write-refusal-fixed rr_fref_f32_past_range tabledemo RootConfig testdata/conform
 write-refusal-fixed rr_fref_f32_max        tabledemo RootConfig testdata/conformance/tables/wire/root_full.bin weapons[0].damage float 3.4028234663852886e38 wrote
 write-refusal-json rr_jref_f32_past_range tabledemo RootConfig testdata/conformance/tables/wire/root_full.bin weapons[0].damage float 1e39 refused
 write-refusal-json rr_jref_f32_max        tabledemo RootConfig testdata/conformance/tables/wire/root_full.bin weapons[0].damage float 3.4028234663852886e38 wrote
+report sp_fixed_reserved_byte_1           tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_reserved_byte_1.bin
+report sp_fixed_reserved_byte_4           tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_reserved_byte_4.bin
+report sp_fixed_reserved_byte_7           tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_reserved_byte_7.bin
+report sp_fixed_nineteen_bytes            tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_nineteen_bytes.bin
+report sp_fixed_form_one                  tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_form_one.bin
+report sp_fixed_form_two                  tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_form_two.bin
+report sp_fixed_form_four                 tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_form_four.bin
+report sp_fixed_count_negative            tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_count_negative.bin
+report sp_fixed_count_over_bound          tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_count_over_bound.bin
+report sp_fixed_dead_slot_nonzero         tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_dead_slot_nonzero.bin
+report sp_fixed_text_length_negative      tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_text_length_negative.bin
+report sp_fixed_text_length_over_bound    tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_text_length_over_bound.bin
 
 # THE COOK'S NODE ALIGNMENT (docs/SPEC-TABLES.md §6.2, THE TWO ALIGNMENT
 # RULES): a 128-bit list element in holders aligned eight, its own unit so no
@@ -1522,9 +1541,9 @@ rewrite node_chain_two graphdemo ListNode testdata/wire/tables/framing/node_chai
 # remains first-use ordered; the current writer emits its own field order.
 rewrite array_L2_empty tblr1 Cfg testdata/wire/tables/framing/array_L2_empty.bin
 rewrite union_arm_zero_in_field tblr1 Cfg testdata/wire/tables/framing/union_arm_zero_in_field.bin
+rewrite skipped_ids_first_use tblr1 Cfg testdata/wire/tables/framing/skipped_ids_first_use.bin
 rewrite node_index_null graphdemo ListNode testdata/wire/tables/framing/node_index_null.bin
 rewrite node_type_undeclared graphdemo ListNode testdata/wire/tables/framing/node_type_undeclared.bin
-rewrite skipped_ids_first_use tblr1 Cfg testdata/wire/tables/framing/skipped_ids_first_use.bin
 rewrite twin_a2_root tbla2 Root testdata/conformance/tables/wire/twin_a2_root.bin
 rewrite twin_k1_root tblk1 Root testdata/conformance/tables/wire/twin_k1_root.bin
 rewrite twin_k2_root tblk2 Root testdata/conformance/tables/wire/twin_k2_root.bin
@@ -1695,10 +1714,14 @@ report varevo_v3_full_as_v1   tblvarevo1 EvoDoc testdata/conformance/tables/wire
 retain varevo_retain_v3_via_v1 tblvarevo1 EvoDoc testdata/conformance/tables/wire/varevo_v3_rollback.bin full full testdata/wire/tables/varevo_retain_v1_save.bin
 report varevo_rollback_as_v3   tblvarevo3 EvoDoc testdata/wire/tables/varevo_retain_v1_save.bin
 
-# Track C Part 1.1 — 2-Hop Multi-Generation Retention (v3 + Kind 31 -> v1 LoadRetain/SaveRetain -> v2 LoadRetain/SaveRetain -> v3):
-retain  varevo_2hop_step1_v1         tblvarevo1 EvoDoc testdata/wire/tables/varevo_2hop_v3_kind31.bin full full testdata/wire/tables/varevo_2hop_after_v1.bin
+# Track C Part 1.1 — 2-Hop Multi-Generation Retention, carrying Kind 31: every hop is REFUSED, as
+# kind 31 is held by name and never written (R17). The hop files stay as hostile inputs:
+# the kind 31 rides at the root of the first and inside retained bytes of the later two.
+retain  varevo_2hop_step1_v1         tblvarevo1 EvoDoc testdata/wire/tables/varevo_2hop_v3_kind31.bin full full refused
 report  varevo_2hop_step2_v2_report  tblvarevo2 EvoDoc testdata/wire/tables/varevo_2hop_after_v1.bin
-retain  varevo_2hop_step2_v2         tblvarevo2 EvoDoc testdata/wire/tables/varevo_2hop_after_v1.bin  full full testdata/wire/tables/varevo_2hop_after_v2.bin
+retain  varevo_2hop_step2_v2         tblvarevo2 EvoDoc testdata/wire/tables/varevo_2hop_after_v1.bin  full full refused
+# A reader that refuses every v2 EvoDoc must fail the retain control.
+retain  varevo_retain_v2_full         tblvarevo2 EvoDoc testdata/conformance/tables/wire/varevo_v2_full.bin full full testdata/wire/tables/varevo_retain_v2_full.bin
 report  varevo_2hop_step3_v3_report  tblvarevo3 EvoDoc testdata/wire/tables/varevo_2hop_after_v2.bin
 
 # Track C Part 1.2 — Pointer Cycles Hiding Through Unknown-Type Nodes (refused by BOTH Load and LoadRetain):
@@ -1716,11 +1739,11 @@ report  varevo_cycle_two_unknowns_report      tblvarevo1 EvoDoc testdata/wire/ta
 retain varevo_retain_default_containers tblvarevo1 EvoDoc testdata/conformance/tables/wire/varevo_v3_default_containers.bin full full testdata/wire/tables/varevo_retain_default_containers_v1.bin
 report varevo_default_containers_as_v3  tblvarevo3 EvoDoc testdata/wire/tables/varevo_retain_default_containers_v1.bin
 
-# Kind 31 future-major escape payloads (VERSIONING.md Rule #6): skip on framing/report, byte-exact preserve on retain, refuse truncated:
-framing varevo_kind31_escape    tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin    read    testdata/conformance/tables/framing/varevo_kind31_escape.json
+# Kind 31 is HELD BY NAME AND NEVER WRITTEN (R17; VERSIONING.md promise 6): refused on framing, report and retain alike:
+framing varevo_kind31_escape    tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin    refused -
 framing varevo_kind31_truncated tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_truncated.bin refused -
 report  varevo_kind31_report    tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin
-retain  varevo_kind31_retain    tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin    full full testdata/wire/tables/varevo_kind31_retain_save.bin
+retain  varevo_kind31_retain    tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin    full full refused
 
 # Form-2 Message Connection Vocabulary Drift (v1 -> v3 and v3 -> v1 multi-message batch skipping unknown alert mid-batch):
 connection varevo1_conn tblvarevo1 0x2a3013e4855f8026 testdata/wire/tables/varevo1_conn.bin
@@ -1743,56 +1766,115 @@ message-drift varevo_msg_v3_to_v1_batch tblvarevo1 varevo3_conn EvoMsg testdata/
 # (docs/rulings.json `refusal-verdict-only`).
 unit tblprior test/tables/prior/PriorNarrow.schema
 # a ranged int32
-message-prior prior_scalar_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"scalar":40} read
-message-prior prior_scalar_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"scalar":75} refused
+message-prior prior_scalar_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"scalar":40} read
+message-prior prior_scalar_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"scalar":75} refused
 # a ranged uint8
-message-prior prior_small_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"small":40} read
-message-prior prior_small_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"small":75} refused
+message-prior prior_small_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"small":40} read
+message-prior prior_small_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"small":75} refused
 # a ranged int64
-message-prior prior_wide_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"wide":"40"} read
-message-prior prior_wide_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"wide":"75"} refused
+message-prior prior_wide_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"wide":"40"} read
+message-prior prior_wide_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"wide":"75"} refused
 # bits(7) read as bits(5)
-message-prior prior_mask_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"mask":25} read
-message-prior prior_mask_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"mask":75} refused
+message-prior prior_mask_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"mask":25} read
+message-prior prior_mask_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"mask":75} refused
 # a fixed array element
-message-prior prior_pair_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"pair":[40,10]} read
-message-prior prior_pair_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"pair":[75,10]} refused
+message-prior prior_pair_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"pair":[40,10]} read
+message-prior prior_pair_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"pair":[75,10]} refused
 # a counted array element
-message-prior prior_list_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"list":[40,10]} read
-message-prior prior_list_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"list":[10,75]} refused
+message-prior prior_list_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"list":[40,10]} read
+message-prior prior_list_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"list":[10,75]} refused
 # an enum-keyed array element
-message-prior prior_keyed_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"keyed":{"X":40,"Y":10}} read
-message-prior prior_keyed_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"keyed":{"X":10,"Y":75}} refused
+message-prior prior_keyed_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"keyed":{"X":40,"Y":10}} read
+message-prior prior_keyed_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"keyed":{"X":10,"Y":75}} refused
 # a union arm scalar payload
-message-prior prior_arm_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"arm":{"amount":40}} read
-message-prior prior_arm_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"arm":{"amount":75}} refused
+message-prior prior_arm_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"arm":{"amount":40}} read
+message-prior prior_arm_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"arm":{"amount":75}} refused
 # a union arm record payload
-message-prior prior_arm_record_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"arm":{"inner":{"level":40}}} read
-message-prior prior_arm_record_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"arm":{"inner":{"level":75}}} refused
+message-prior prior_arm_record_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"arm":{"inner":{"level":40}}} read
+message-prior prior_arm_record_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"arm":{"inner":{"level":75}}} refused
 # a nested record field
-message-prior prior_nested_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"nested":{"level":40}} read
-message-prior prior_nested_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"nested":{"level":75}} refused
+message-prior prior_nested_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"nested":{"level":40}} read
+message-prior prior_nested_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"nested":{"level":75}} refused
 # a field of a nested table in an array
-message-prior prior_cells_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"cells":[{"depth":40},{"depth":10}]} read
-message-prior prior_cells_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"cells":[{"depth":10},{"depth":75}]} refused
+message-prior prior_cells_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"cells":[{"depth":40},{"depth":10}]} read
+message-prior prior_cells_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"cells":[{"depth":10},{"depth":75}]} refused
 # a quantized float
-message-prior prior_quant_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"quant":40.5} read
-message-prior prior_quant_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"quant":75.5} refused
+message-prior prior_quant_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"quant":40.5} read
+message-prior prior_quant_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"quant":75.5} refused
 # a ranged fixed-point value
-message-prior prior_fx_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"fx":40.5} read
-message-prior prior_fx_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"fx":75.5} refused
+message-prior prior_fx_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"fx":40.5} read
+message-prior prior_fx_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"fx":75.5} refused
 # a batch of two bodies (the writer value is a JSON array of them): when the
 # second carries a value past the reader's range the WHOLE batch refuses, the
 # lawful first body included, and no body is delivered
-message-prior prior_batch_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 [{"mask":25},{"mask":30}] read
-message-prior prior_batch_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 [{"mask":25},{"mask":75}] refused
+message-prior prior_batch_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c [{"mask":25},{"mask":30}] read
+message-prior prior_batch_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c [{"mask":25},{"mask":75}] refused
 # A KIND THAT MOVED (§3.3, §4): the writer's int32 is the reader's int16 and
 # string(16), which the announcement shows and every reader refuses, never
 # defaulting the field and counting it; and the reader's
 # int64, the lawful widening, which every reader reads.
-message-prior prior_narrowed_kind   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"narrowed":40} refused
-message-prior prior_retyped_kind    tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"retyped":40} refused
-message-prior prior_widened_inside  tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"widened":40} read
+message-prior prior_narrowed_kind   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"narrowed":40} refused
+message-prior prior_retyped_kind    tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"retyped":40} refused
+message-prior prior_widened_inside  tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"widened":40} read
+# R14 (2026-11-22): A FIELD WHOSE TYPE CHANGED REFUSES THE WHOLE LOAD
+# kind_mismatch, because it is not a widening (docs/SPEC-TABLES.md §4, THE ONE
+# WIDENING RULE). Each refusal has its lawful twin beside it: the writer's
+# int64 read as the reader's string(16) refuses, and an int64 read as int64
+# reads; the writer's int64 read as the reader's timestamp refuses, and a
+# timestamp read as a timestamp reads.
+message-prior prior_restring_kind      tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"restring":"40"} refused
+message-prior prior_kept64_inside      tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"kept64":"40"} read
+message-prior prior_stamp_kind         tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"stamp":"1762086896123456789"} refused
+message-prior prior_stamped_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"stamped":"2025-11-02T12:34:56.123456789Z"} read
+# R15 (2026-11-22): A RANGED ANNOUNCEMENT IS HELD PER VALUE (§3.3). The writer
+# announces uint8 | min = 200, max = 250: base 200 in six bits, whose top
+# offsets pass 255, and that announcement is lawful. The base is held at the
+# announcement and each value on the body: 230 lies inside the reader's
+# min = 200, max = 240 and reads; 245 lies outside it and refuses.
+message-prior prior_band_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"band":230} read
+message-prior prior_band_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"band":245} refused
+# R17 (2026-11-22): a flags mask with a bit at or above the reader's W refuses the
+# WHOLE batch out_of_range (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO
+# ITS WIDTH). The writer's Perms is { Read, Write, Exec } and the reader's is
+# { Read, Write }: Read and Write reads, Read and Exec refuses.
+message-prior prior_flags_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"perms":["Read","Write"]} read
+message-prior prior_flags_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"perms":["Read","Exec"]} refused
+
+# R14 (2026-11-22) ON THE FILE FORM: a field whose TYPE changed refuses the
+# WHOLE load kind_mismatch, never defaulted and counted (docs/SPEC-TABLES.md
+# §2.3, §2.11, §4 THE ONE WIDENING RULE). The reader is featurewitnesses Root;
+# each writer is Features.schema with ONE declaration edited, under
+# test/tables/r14/<Writer>.schema, and its wire is schema pack --root Root
+# of test/tables/r14/<Writer>/Root.json under it. int64 read as timestamp
+# (AtInt64), *Part read as ?Part (OptionalPointer, from *T) and Leaf read as
+# *Leaf (ChildValue, to *T) each refuse. Their lawful twins read: the unit's
+# own Root.bin, and the R16 widening, Part read as ?Part (OptionalPlain),
+# whose value lands present.
+report r14_at_int64_as_timestamp        featurewitnesses Root testdata/wire/tables/r14_at_int64.bin
+report r14_optional_pointer_as_optional featurewitnesses Root testdata/wire/tables/r14_optional_pointer.bin
+report r14_child_value_as_pointer       featurewitnesses Root testdata/wire/tables/r14_child_value.bin
+report r14_features_twin                featurewitnesses Root testdata/conformance/feature-witnesses/full/Root.bin
+report r16_optional_plain_as_optional   featurewitnesses Root testdata/wire/tables/r16_optional_plain.bin
+rewrite r14_features_twin               featurewitnesses Root testdata/conformance/feature-witnesses/full/Root.bin
+rewrite r16_optional_plain_as_optional  featurewitnesses Root testdata/wire/tables/r16_optional_plain.bin
+
+# R17 (2026-11-22): A TABLE LOAD HOLDS A MASK TO ITS WIDTH (docs/SPEC-TABLES.md
+# §4). The newer reader reads old data, and never the other way: a flags mask
+# with a bit at or above the reader's W refuses the WHOLE load out_of_range.
+# The reader is tblvarevo1 EvoDoc (Perms { Read, Write }); the writer is
+# VarEvo2 (Perms { Read, Write, Exec }), and each wire is schema pack --root
+# EvoDoc of test/tables/r17/<Case>/EvoDoc.json under VarEvo2.schema. Read and
+# Exec refuses; the lawful twin, Read and Write from the same writer, reads.
+report r17_flags_past_width    tblvarevo1 EvoDoc testdata/wire/tables/r17_flags_past_width.bin
+report r17_flags_inside_width  tblvarevo1 EvoDoc testdata/wire/tables/r17_flags_inside_width.bin
+rewrite r17_flags_inside_width tblvarevo1 EvoDoc testdata/wire/tables/r17_flags_inside_width.bin
+# The FIXED form holds the same rule: r17_fixed_flags_past_width is
+# fixedevo_v3_min.bin with bit 17 of mask_widen set (EvoFlags has 17 variants,
+# so W = 17; byte 905, 0x00 to 0x02), and it refuses out_of_range; its twin is
+# the unforged file, which reads.
+report r17_fixed_flags_past_width   tblfixedevo EvoRoot testdata/wire/tables/r17_fixed_flags_past_width.bin
+report r17_fixed_flags_inside_width tblfixedevo EvoRoot testdata/conformance/tables/wire/fixedevo_v3_min.bin
+rewrite r17_fixed_flags_inside_width tblfixedevo EvoRoot testdata/conformance/tables/wire/fixedevo_v3_min.bin
 
 rewrite varevo_v1_as_v2                 tblvarevo2 EvoDoc testdata/conformance/tables/wire/varevo_v1_full.bin
 rewrite varevo_v1_as_v3                 tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_v1_full.bin
@@ -1800,12 +1882,8 @@ rewrite varevo_v1_ping_as_v3            tblvarevo3 EvoDoc testdata/conformance/t
 rewrite varevo_v2_as_v3                 tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_v2_full.bin
 rewrite varevo_v3_compat_as_v1          tblvarevo1 EvoDoc testdata/conformance/tables/wire/varevo_v3_compat.bin
 rewrite varevo_rollback_as_v3           tblvarevo3 EvoDoc testdata/wire/tables/varevo_retain_v1_save.bin
-rewrite varevo_2hop_step2_v2_report     tblvarevo2 EvoDoc testdata/wire/tables/varevo_2hop_after_v1.bin
 rewrite fixed_array_rides_absent tblvarevo1 EvoDoc testdata/wire/tables/framing/fixed_array_rides_absent.bin
-rewrite varevo_2hop_step3_v3_report     tblvarevo3 EvoDoc testdata/wire/tables/varevo_2hop_after_v2.bin
 rewrite varevo_default_containers_as_v3 tblvarevo3 EvoDoc testdata/wire/tables/varevo_retain_default_containers_v1.bin
-rewrite varevo_kind31_escape            tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin
-rewrite varevo_kind31_report            tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin
 
 # ---- ROUND 2 & 3: PILLAR #3 COOK & BLOCK SIGNED/UNSIGNED EXTREMES, ALIGNMENT & FORGERY TORTURE ----
 unit cooktorture     test/tables/cooktorture/CookTorture.schema
@@ -2246,6 +2324,106 @@ unit widenboundpeer test/tables/widenbound/WidenBoundPeer.schema
 connection widenbound_conn widenboundpeer 0x500563706e877710 testdata/conformance/tables/wire/widenbound_conn.bin
 message-drift widenbound_msg messagedemo widenbound_conn ToolMessage testdata/conformance/tables/wire/widenbound_msg.bin testdata/conformance/tables/wire/widenbound_msg_peer.bin testdata/conformance/tables/wire/widenbound_msg_as_reader.bin
 
+# SPEC ROWS 1122: the rules PR #4664 pins, as rows every leg owes. Fixed-form header and count rows (§3.4), the JSON text rules (§16.2: depth and key cap in a skipped value, placed map keys, timestamp bounds, the quoted 64-bit grammar, base64 after escapes, enum None), and the held vectors promoted (depth, element kinds, THE GRAPH, reserved node types).
+json-hostile sp-skip-depth-129                  tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-skip-depth-129 read
+json-hostile sp-skip-depth-130                  tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-skip-depth-130 refused
+json-hostile sp-skip-key-255                    tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-skip-key-255 read
+json-hostile sp-skip-key-256                    tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-skip-key-256 refused
+json-hostile sp-skip-key-255-nested             tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-skip-key-255-nested read
+json-hostile sp-skip-key-256-nested             tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-skip-key-256-nested refused
+json-hostile sp-skip-key-escaped-255            tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-skip-key-escaped-255 read
+json-hostile sp-skip-key-escaped-256            tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-skip-key-escaped-256 refused
+json-hostile sp-unknown-key-255                 tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-unknown-key-255 read
+json-hostile sp-unknown-key-256                 tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-unknown-key-256 refused
+json-hostile sp-map-key-256-wide                mapdemo          EdgeRow      testdata/conformance/tables/json-hostile/sp-map-key-256-wide read
+json-hostile sp-map-key-300-wide                mapdemo          EdgeRow      testdata/conformance/tables/json-hostile/sp-map-key-300-wide read
+json-hostile sp-map-key-301-wide                mapdemo          EdgeRow      testdata/conformance/tables/json-hostile/sp-map-key-301-wide refused
+json-hostile sp-enum-none-name                  tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-enum-none-name read
+json-hostile sp-enum-name-255                   tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-enum-name-255 read
+json-hostile sp-enum-name-256                   tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-enum-name-256 refused
+json-hostile sp-ts-min                          featurewitnesses Root         testdata/conformance/tables/json-hostile/sp-ts-min read
+json-hostile sp-ts-below-min                    featurewitnesses Root         testdata/conformance/tables/json-hostile/sp-ts-below-min refused
+json-hostile sp-ts-max                          featurewitnesses Root         testdata/conformance/tables/json-hostile/sp-ts-max read
+json-hostile sp-ts-above-max                    featurewitnesses Root         testdata/conformance/tables/json-hostile/sp-ts-above-max refused
+json-hostile sp-ts-max-truncated                featurewitnesses Root         testdata/conformance/tables/json-hostile/sp-ts-max-truncated read
+json-hostile sp-ts-min-truncated-below          featurewitnesses Root         testdata/conformance/tables/json-hostile/sp-ts-min-truncated-below refused
+json-hostile sp-ts-max-offset                   featurewitnesses Root         testdata/conformance/tables/json-hostile/sp-ts-max-offset read
+json-hostile sp-ts-offset-over-max              featurewitnesses Root         testdata/conformance/tables/json-hostile/sp-ts-offset-over-max refused
+json-hostile sp-ts-min-offset                   featurewitnesses Root         testdata/conformance/tables/json-hostile/sp-ts-min-offset read
+json-hostile sp-ts-year-0000                    featurewitnesses Root         testdata/conformance/tables/json-hostile/sp-ts-year-0000 refused
+json-hostile sp-ts-second-60                    featurewitnesses Root         testdata/conformance/tables/json-hostile/sp-ts-second-60 refused
+json-hostile sp-ts-comma-fraction               featurewitnesses Root         testdata/conformance/tables/json-hostile/sp-ts-comma-fraction refused
+json-hostile sp-ts-empty-fraction               featurewitnesses Root         testdata/conformance/tables/json-hostile/sp-ts-empty-fraction refused
+json-hostile sp-ts-lowercase-t-z                featurewitnesses Root         testdata/conformance/tables/json-hostile/sp-ts-lowercase-t-z read
+json-hostile sp-ts-number                       featurewitnesses Root         testdata/conformance/tables/json-hostile/sp-ts-number refused
+json-hostile sp-ts-offset-hour-24               featurewitnesses Root         testdata/conformance/tables/json-hostile/sp-ts-offset-hour-24 refused
+json-hostile sp-qint-plus                       tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-qint-plus refused
+json-hostile sp-qint-leading-zero               tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-qint-leading-zero refused
+json-hostile sp-qint-neg-leading-zero           tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-qint-neg-leading-zero refused
+json-hostile sp-qint-neg-zero                   tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-qint-neg-zero refused
+json-hostile sp-qint-fraction                   tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-qint-fraction refused
+json-hostile sp-qint-exponent                   tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-qint-exponent refused
+json-hostile sp-qint-space-lead                 tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-qint-space-lead refused
+json-hostile sp-qint-space-trail                tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-qint-space-trail refused
+json-hostile sp-qint-empty                      tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-qint-empty refused
+json-hostile sp-qint-hex                        tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-qint-hex refused
+json-hostile sp-qint-bare-minus                 tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-qint-bare-minus refused
+json-hostile sp-qint-escaped-digit              tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-qint-escaped-digit read
+json-hostile sp-qint-escaped-minus              tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-qint-escaped-minus read
+json-hostile sp-qint-escaped-neg-zero           tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-qint-escaped-neg-zero refused
+json-hostile sp-qint-escaped-plus               tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-qint-escaped-plus refused
+json-hostile sp-qint-escaped-leading-zero       tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-qint-escaped-leading-zero refused
+json-hostile sp-qint-zero                       tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-qint-zero read
+json-hostile sp-b64-escaped-pad                 tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-b64-escaped-pad read
+json-hostile sp-b64-escaped-letter              tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-b64-escaped-letter read
+json-hostile sp-b64-escaped-slash               tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-b64-escaped-slash read
+json-hostile sp-b64-escaped-noncanonical        tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-b64-escaped-noncanonical refused
+json-hostile sp-b64-escaped-invalid             tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-b64-escaped-invalid refused
+json-hostile sp-b64-escaped-newline             tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-b64-escaped-newline refused
+framing depth_tables_128                         graphdemo Scene testdata/wire/tables/framing/depth_tables_128.bin read testdata/conformance/tables/framing/depth_tables_128.json
+framing depth_arrays_128                         graphdemo Scene testdata/wire/tables/framing/depth_arrays_128.bin read testdata/conformance/tables/framing/depth_arrays_128.json
+framing depth_union_tables_64                    graphdemo Scene testdata/wire/tables/framing/depth_union_tables_64.bin read testdata/conformance/tables/framing/depth_union_tables_64.json
+framing depth_keyed_128                          graphdemo Scene testdata/wire/tables/framing/depth_keyed_128.bin read testdata/conformance/tables/framing/depth_keyed_128.json
+framing depth_tables_129                         graphdemo Scene testdata/wire/tables/framing/depth_tables_129.bin refused -
+framing depth_arrays_129                         graphdemo Scene testdata/wire/tables/framing/depth_arrays_129.bin refused -
+framing depth_union_tables_65                    graphdemo Scene testdata/wire/tables/framing/depth_union_tables_65.bin refused -
+framing depth_keyed_129                          graphdemo Scene testdata/wire/tables/framing/depth_keyed_129.bin refused -
+framing depth_tables_5000                        graphdemo Scene testdata/wire/tables/framing/depth_tables_5000.bin refused -
+framing array_elem_kind_32_count_2               graphdemo Scene testdata/wire/tables/framing/array_elem_kind_32_count_2.bin refused -
+framing array_elem_kind_31_count_1               graphdemo Scene testdata/wire/tables/framing/array_elem_kind_31_count_1.bin refused -
+framing array_elem_kind_16_count_1               graphdemo Scene testdata/wire/tables/framing/array_elem_kind_16_count_1.bin refused -
+framing array_elem_unassigned_count_0            graphdemo Scene testdata/wire/tables/framing/array_elem_unassigned_count_0.bin refused -
+framing array_elem_reserved_count_0              graphdemo Scene testdata/wire/tables/framing/array_elem_reserved_count_0.bin refused -
+framing array_elem_zero_count_0                  graphdemo Scene testdata/wire/tables/framing/array_elem_zero_count_0.bin refused -
+framing array_elem_kind_17_count_0               graphdemo Scene testdata/wire/tables/framing/array_elem_kind_17_count_0.bin read testdata/conformance/tables/framing/array_elem_kind_17_count_0.json
+framing array_elem_kind_17_count_1               graphdemo Scene testdata/wire/tables/framing/array_elem_kind_17_count_1.bin read testdata/conformance/tables/framing/array_elem_kind_17_count_1.json
+framing graph_unknown_type_self                  graphdemo Scene testdata/wire/tables/framing/graph_unknown_type_self.bin refused -
+framing graph_unknown_type_pair                  graphdemo Scene testdata/wire/tables/framing/graph_unknown_type_pair.bin refused -
+framing graph_listnode_unknown_self              graphdemo Scene testdata/wire/tables/framing/graph_listnode_unknown_self.bin refused -
+framing graph_unknown_to_root                    graphdemo Scene testdata/wire/tables/framing/graph_unknown_to_root.bin refused -
+framing graph_blob_two_unknown_fields            graphdemo Scene testdata/wire/tables/framing/graph_blob_two_unknown_fields.bin refused -
+framing graph_blob_two_unknown_elements          graphdemo Scene testdata/wire/tables/framing/graph_blob_two_unknown_elements.bin refused -
+framing graph_string_blob_ill_formed             graphdemo Scene testdata/wire/tables/framing/graph_string_blob_ill_formed.bin refused -
+framing graph_string_blob_zero_byte              graphdemo Scene testdata/wire/tables/framing/graph_string_blob_zero_byte.bin refused -
+framing graph_unknown_type_unreached             graphdemo Scene testdata/wire/tables/framing/graph_unknown_type_unreached.bin refused -
+framing graph_string_blob_unreached              graphdemo Scene testdata/wire/tables/framing/graph_string_blob_unreached.bin refused -
+framing graph_reach_unknown_field                graphdemo Scene testdata/wire/tables/framing/graph_reach_unknown_field.bin read testdata/conformance/tables/framing/graph_reach_unknown_field.json
+framing graph_reach_unknown_nested               graphdemo Scene testdata/wire/tables/framing/graph_reach_unknown_nested.bin read testdata/conformance/tables/framing/graph_reach_unknown_nested.json
+framing graph_reach_unknown_union_arm            graphdemo Scene testdata/wire/tables/framing/graph_reach_unknown_union_arm.bin read testdata/conformance/tables/framing/graph_reach_unknown_union_arm.json
+framing graph_reach_unknown_keyed_slot           graphdemo Scene testdata/wire/tables/framing/graph_reach_unknown_keyed_slot.bin read testdata/conformance/tables/framing/graph_reach_unknown_keyed_slot.json
+framing node_type_node_table_id                  graphdemo Scene testdata/wire/tables/framing/node_type_node_table_id.bin refused -
+framing node_type_build_version_id               graphdemo Scene testdata/wire/tables/framing/node_type_build_version_id.bin refused -
+framing node_type_vocabulary_id                  graphdemo Scene testdata/wire/tables/framing/node_type_vocabulary_id.bin refused -
+rewrite depth_tables_128 graphdemo Scene testdata/wire/tables/framing/depth_tables_128.bin
+rewrite depth_arrays_128 graphdemo Scene testdata/wire/tables/framing/depth_arrays_128.bin
+rewrite depth_union_tables_64 graphdemo Scene testdata/wire/tables/framing/depth_union_tables_64.bin
+rewrite depth_keyed_128 graphdemo Scene testdata/wire/tables/framing/depth_keyed_128.bin
+rewrite array_elem_kind_17_count_0 graphdemo Scene testdata/wire/tables/framing/array_elem_kind_17_count_0.bin
+rewrite array_elem_kind_17_count_1 graphdemo Scene testdata/wire/tables/framing/array_elem_kind_17_count_1.bin
+rewrite graph_reach_unknown_field graphdemo Scene testdata/wire/tables/framing/graph_reach_unknown_field.bin
+rewrite graph_reach_unknown_nested graphdemo Scene testdata/wire/tables/framing/graph_reach_unknown_nested.bin
+rewrite graph_reach_unknown_union_arm graphdemo Scene testdata/wire/tables/framing/graph_reach_unknown_union_arm.bin
+rewrite graph_reach_unknown_keyed_slot graphdemo Scene testdata/wire/tables/framing/graph_reach_unknown_keyed_slot.bin
 # LAWFUL TWINS (test/conformance/harness/discriminate.go, 2026-11-22): every
 # must-refuse row needs a row in its group that must be ACCEPTED, or a leg that
 # refuses the whole form passes it without reaching its rule. These roots had
@@ -2262,3 +2440,80 @@ framing twin_listdemo_ints_empty    listdemo Ints    testdata/wire/tables/framin
 framing twin_listdemo_bounded_empty listdemo Bounded testdata/wire/tables/framing/twin_listdemo_bounded_empty.bin read testdata/conformance/tables/framing/listdemo_bounded_default.json
 framing twin_listdemo_squad_empty   listdemo Squad   testdata/wire/tables/framing/twin_listdemo_squad_empty.bin read testdata/conformance/tables/framing/listdemo_squad_default.json
 framing twin_listdemo_army_empty    listdemo Army    testdata/wire/tables/framing/twin_listdemo_army_empty.bin read testdata/conformance/tables/framing/listdemo_army_default.json
+
+# SPEC ROWS ROOTS 1122: three rules no earlier root carries (tables/examples/Spec1122.schema): a counted array below its minimum A, a compressed float32 bound compared against the declared float64 bound, and an enum element naming a deprecated variant.
+json-hostile sp-count-min-below                 tabledemo        CountedMin   testdata/conformance/tables/json-hostile/sp-count-min-below refused
+json-hostile sp-count-min-empty                 tabledemo        CountedMin   testdata/conformance/tables/json-hostile/sp-count-min-empty refused
+json-hostile sp-count-min-at                    tabledemo        CountedMin   testdata/conformance/tables/json-hostile/sp-count-min-at read
+json-hostile sp-count-min-max                   tabledemo        CountedMin   testdata/conformance/tables/json-hostile/sp-count-min-max read
+json-hostile sp-count-min-over                  tabledemo        CountedMin   testdata/conformance/tables/json-hostile/sp-count-min-over refused
+json-hostile sp-f32-bound-declared              tabledemo        FloatBound   testdata/conformance/tables/json-hostile/sp-f32-bound-declared read
+json-hostile sp-f32-bound-inside                tabledemo        FloatBound   testdata/conformance/tables/json-hostile/sp-f32-bound-inside read
+json-hostile sp-f32-bound-one-step-past         tabledemo        FloatBound   testdata/conformance/tables/json-hostile/sp-f32-bound-one-step-past refused
+json-hostile sp-f32-bound-narrows               tabledemo        FloatBound   testdata/conformance/tables/json-hostile/sp-f32-bound-narrows read
+json-hostile sp-enum-elem-deprecated-array      tabledemo        Moods        testdata/conformance/tables/json-hostile/sp-enum-elem-deprecated-array read
+instance sp_count_min_current                   tabledemo CountedMin testdata/conformance/tables/save-wire/sp-count-min-at.bin
+framing sp_count_min_at                         tabledemo CountedMin testdata/wire/tables/framing/sp_count_min_at.bin read testdata/conformance/tables/framing/sp_count_min_at.json
+rewrite sp_count_min_at                         tabledemo CountedMin testdata/wire/tables/framing/sp_count_min_at.bin
+
+# SPEC ROWS ROOTS 1122, EVOLUTION AND FIXED-FORM READS (test/conformance/harness/spec1122_evolution_vectors_test.go): a deprecated enum element reads as None on the fixed form and on the compiled plan; a count below the reader's minimum A refuses on the compiled plan.
+report  sp_enum_fixed_deprecated       tabledemo Moods      testdata/conformance/tables/wire/sp_enum_fixed_deprecated.bin
+report  sp_enum_evolved_deprecated     tabledemo Moods      testdata/conformance/tables/wire/sp_enum_evolved_deprecated.bin
+report  sp_count_min_evolved_at        tabledemo CountedMin testdata/conformance/tables/wire/sp_count_min_evolved_at.bin
+report  sp_count_min_evolved_max       tabledemo CountedMin testdata/conformance/tables/wire/sp_count_min_evolved_max.bin
+report  sp_count_min_evolved_below     tabledemo CountedMin testdata/conformance/tables/wire/sp_count_min_evolved_below.bin
+report  sp_count_min_below             tabledemo CountedMin testdata/conformance/tables/wire/sp_count_min_below.bin
+report  sp_count_min_zero              tabledemo CountedMin testdata/conformance/tables/wire/sp_count_min_zero.bin
+rewrite sp_enum_fixed_deprecated       tabledemo Moods      testdata/conformance/tables/wire/sp_enum_fixed_deprecated.bin
+rewrite sp_enum_evolved_deprecated     tabledemo Moods      testdata/conformance/tables/wire/sp_enum_evolved_deprecated.bin
+rewrite sp_count_min_evolved_at        tabledemo CountedMin testdata/conformance/tables/wire/sp_count_min_evolved_at.bin
+rewrite sp_count_min_evolved_max       tabledemo CountedMin testdata/conformance/tables/wire/sp_count_min_evolved_max.bin
+
+# the same minimum on the VARIABLE form (form 1): a count of 1 and of 0, the elements and L trimmed to
+# match, so the only rule the wire breaks is A = 2. The oracle reads them at the variable class.
+framing sp_count_min_below_form1                tabledemo CountedMin testdata/wire/tables/framing/sp_count_min_below_form1.bin refused -
+framing sp_count_min_zero_form1                 tabledemo CountedMin testdata/wire/tables/framing/sp_count_min_zero_form1.bin refused -
+# a counted [A..B] array below its minimum A is refused by every writer (SF-21, SF-22; docs/SPEC.md section 5.1 row 3), and the count AT A writes
+write-refusal wref_count_min       tabledemo CountedMin testdata/conformance/tables/save-wire/sp-count-min-at.bin few count 1 refused
+write-refusal wref_count_min_ok    tabledemo CountedMin testdata/conformance/tables/save-wire/sp-count-min-at.bin few count 2 wrote
+write-refusal-fixed fref_count_min    tabledemo CountedMin testdata/conformance/tables/save-wire/sp-count-min-at.bin few count 1 refused
+write-refusal-fixed fref_count_min_ok tabledemo CountedMin testdata/conformance/tables/save-wire/sp-count-min-at.bin few count 2 wrote
+framing twin_count_min_at_form1                 tabledemo CountedMin testdata/wire/tables/framing/twin_count_min_at_form1.bin read testdata/conformance/tables/framing/twin_count_min_at_form1.json
+rewrite twin_count_min_at_form1                 tabledemo CountedMin testdata/wire/tables/framing/twin_count_min_at_form1.bin
+# a deprecated variant is never written (docs/SPEC-TABLES.md §2.15): Old (2) refused, Fierce (3) the lawful twin
+instance sp_enum_moods                          tabledemo Moods     testdata/conformance/tables/save-wire/sp-enum-elem-deprecated-array.bin
+write-refusal-json jref_enum_deprecated         tabledemo Moods testdata/conformance/tables/save-wire/sp-enum-elem-deprecated-array.bin row[0] ordinal 2 refused
+write-refusal-json jref_enum_deprecated_ok      tabledemo Moods testdata/conformance/tables/save-wire/sp-enum-elem-deprecated-array.bin row[0] ordinal 3 wrote
+
+# THE SCALAR HALF of the deprecated-variant rule (docs/SPEC-TABLES.md §2.15): on a scalar enum field a
+# deprecated variant reads as the field's DECLARED default (MoodField.mood = Fierce), where in an array
+# element it reads as None. The text, the fixed form read by the writer's own layout, the compiled plan
+# of a writer whose Mood is wider, and the text writer's refusal.
+json-hostile sp-enum-scalar-deprecated          tabledemo        MoodField    testdata/conformance/tables/json-hostile/sp-enum-scalar-deprecated read
+json-hostile sp-enum-scalar-live                tabledemo        MoodField    testdata/conformance/tables/json-hostile/sp-enum-scalar-live read
+report  sp_enum_scalar_fixed_deprecated   tabledemo MoodField  testdata/conformance/tables/wire/sp_enum_scalar_fixed_deprecated.bin
+report  sp_enum_scalar_evolved_deprecated tabledemo MoodField  testdata/conformance/tables/wire/sp_enum_scalar_evolved_deprecated.bin
+rewrite sp_enum_scalar_fixed_deprecated   tabledemo MoodField  testdata/conformance/tables/wire/sp_enum_scalar_fixed_deprecated.bin
+rewrite sp_enum_scalar_evolved_deprecated tabledemo MoodField  testdata/conformance/tables/wire/sp_enum_scalar_evolved_deprecated.bin
+instance sp_enum_moodfield                      tabledemo MoodField testdata/conformance/tables/save-wire/sp-enum-scalar-deprecated.bin
+write-refusal-json jref_enum_scalar_deprecated    tabledemo MoodField testdata/conformance/tables/save-wire/sp-enum-scalar-deprecated.bin mood ordinal 2 refused
+write-refusal-json jref_enum_scalar_deprecated_ok tabledemo MoodField testdata/conformance/tables/save-wire/sp-enum-scalar-deprecated.bin mood ordinal 3 wrote
+# ARM MIN (R10, 1122): a counted [A..B] inside a union arm holds A wherever the field sits: count below A refuses on read in every form (tables/examples/ArmMin.schema); A through B reads.
+json-hostile arm-min-fix-below   tabledemo MinArmFix testdata/conformance/tables/json-hostile/arm-min-fix-below   refused
+json-hostile arm-min-fix-empty   tabledemo MinArmFix testdata/conformance/tables/json-hostile/arm-min-fix-empty   refused
+json-hostile arm-min-fix-at      tabledemo MinArmFix testdata/conformance/tables/json-hostile/arm-min-fix-at      read
+json-hostile arm-min-fix-max     tabledemo MinArmFix testdata/conformance/tables/json-hostile/arm-min-fix-max     read
+report  armmin_fix_count_0       tabledemo MinArmFix testdata/conformance/tables/wire/armmin_fix_count_0.bin
+report  armmin_fix_count_1       tabledemo MinArmFix testdata/conformance/tables/wire/armmin_fix_count_1.bin
+report  twin_armmin_fix_at       tabledemo MinArmFix testdata/conformance/tables/wire/twin_armmin_fix_at.bin
+rewrite twin_armmin_fix_at       tabledemo MinArmFix testdata/conformance/tables/wire/twin_armmin_fix_at.bin
+
+# PLAIN MIN (R10, 1122): the same counted [A..B] as a plain field holds A: count below A refuses on read in every form (tables/examples/Tables.schema MinPlainFix); A through B reads. The framing rows are form-3 files read through the fixed load.
+json-hostile plain-min-below     tabledemo MinPlainFix testdata/conformance/tables/json-hostile/plain-min-below     refused
+json-hostile plain-min-empty     tabledemo MinPlainFix testdata/conformance/tables/json-hostile/plain-min-empty     refused
+json-hostile plain-min-at        tabledemo MinPlainFix testdata/conformance/tables/json-hostile/plain-min-at        read
+json-hostile plain-min-max       tabledemo MinPlainFix testdata/conformance/tables/json-hostile/plain-min-max       read
+report  plainmin_fix_count_0     tabledemo MinPlainFix testdata/conformance/tables/wire/plainmin_fix_count_0.bin
+report  plainmin_fix_count_1     tabledemo MinPlainFix testdata/conformance/tables/wire/plainmin_fix_count_1.bin
+report  twin_plainmin_fix_at     tabledemo MinPlainFix testdata/conformance/tables/wire/twin_plainmin_fix_at.bin
+rewrite twin_plainmin_fix_at     tabledemo MinPlainFix testdata/conformance/tables/wire/twin_plainmin_fix_at.bin

@@ -5,8 +5,8 @@ import { ReadStream, WriteStream } from "../../../../serialize.js/src/index.js";
 const tier = process.argv[2];
 assert(tier === "runtime" || tier === "flat");
 const base = process.argv[3] ? pathToFileURL(process.argv[3] + "/") : new URL("../../../build/packet-text/js/", import.meta.url);
-const d = await import(new URL("Narrow.js", base));
-const f = await import(new URL("NarrowFlat.js", base));
+const d = await import(new URL("Text.js", base));
+const f = await import(new URL("TextFlat.js", base));
 const hex = bytes => bytes.length ? Buffer.from(bytes).toString("hex") : "-";
 for await (const line of createInterface({ input: process.stdin, crlfDelay: Infinity })) {
   const wire = Uint8Array.from(Buffer.from(line === "-" ? "" : line, "hex"));

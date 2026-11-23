@@ -55,8 +55,8 @@ func rubyStrictGateUnits(t *testing.T, root string) map[string]map[string][]byte
 	for _, single := range []string{
 		"bench/corpus/Bench.schema",
 		"bench/corpus/RealWorld.schema",
-		"test/packet-text/Narrow.schema",
-		"test/packet-finite/ruby/Finite.schema",
+		"test/packet-text/Text.schema",
+		"test/packet-finite/ruby/PacketFinite.schema",
 		"test/packet-void/ruby/Ruby.schema",
 	} {
 		loadGen(single, []string{filepath.Join(root, filepath.FromSlash(single))})

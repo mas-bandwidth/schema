@@ -23,7 +23,7 @@ const tableVariableJsonSource = `
     static bool ScanPointerKey(ReadOnlySpan<byte> text, ref In input, out bool isNode)
     {
         isNode = false;
-        Span<byte> key = stackalloc byte[MaxName];
+        Span<byte> key = input.KeyBuf;
         if (!ScanString(text, ref input, key, true, out int used, stored: true)) { return false; }
         if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
         input.Pos++;

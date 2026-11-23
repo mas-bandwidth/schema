@@ -380,7 +380,7 @@ static SCHEMA_UNUSED int table_reader_skip( TableReader * r, uint8_t kind )
             if ( !table_reader_has( r, 1 ) ) { return 0; }
             r->offset++;
             /* fall through */
-        case 12: case 13: case 14: case 16: case 31: case 32:
+        case 12: case 13: case 14: case 16: case 32:
             if ( !table_reader_leb( r, &n ) || !table_reader_room( r, n ) ) { return 0; }
             r->offset += (int64_t) n; return 1;
         default: return 0;
@@ -421,7 +421,7 @@ static SCHEMA_UNUSED int table_skip_framed( TableReader sub, uint8_t kind, int64
     switch ( kind )
     {
         case 12: return table_skip_utf8( sub.buffer, (uint64_t) sub.size );
-        case 31: return 1;
+        case 31: return 0; /* KIND 31 IS HELD BY NAME AND NEVER WRITTEN (R17): met only as damage, as 33 and 34 are */
         case 32: return sub.size == 0;
         case 13: return depth < 128 && table_skip_body( sub, nodes, depth + 1, 0 ) == sub.size;
         case 14: case 16:
@@ -558,7 +558,7 @@ static SCHEMA_UNUSED int table_skip_value( TableReader * r, uint8_t kind, int64_
             }
             return table_skip_framed( arm, arm_kind, nodes, depth );
         }
-        case 12: case 13: case 14: case 16: case 31: case 32:
+        case 12: case 13: case 14: case 16: case 32:
         {
             TableReader sub;
             if ( !table_reader_span( r, &sub ) ) { return 0; }
@@ -782,6 +782,18 @@ func (g *tableGen) writeCountMin(f *ir.Field, expr, ind string) {
 // no write-side check. The read side checks the same number in every build.
 func (g *tableGen) writeStorageBound(expr string, bound int64, ind string) {
 	g.pf("%sschema_assert( 0 <= %s && %s <= %d );\n", ind, expr, expr, bound)
+}
+
+// writeCountBound is writeStorageBound for a counted array's count, held to
+// the declared [Min, N] (docs/SPEC.md §4.2): a [Min..N]T holds at least Min
+// elements, so a count below Min is the programmer's error exactly as a count
+// past N is. Debug-only by the same rule.
+func (g *tableGen) writeCountBound(f *ir.Field, expr, ind string) {
+	if f.ArrayMin <= 0 {
+		g.writeStorageBound(expr, f.ArrayBound, ind)
+		return
+	}
+	g.pf("%sschema_assert( %d <= %s && %s <= %d );\n", ind, f.ArrayMin, expr, expr, f.ArrayBound)
 }
 
 // countedBirthRides is the elision predicate of a [A..B]T field with A above

@@ -39,6 +39,7 @@
     "VERSIONING.md",
     "fix-ledger-1122.md",
     "silent-failure-audit-1122.md",
+    "spec-rows-1122-status.md",
     "test-input-accounting.md"
   ],
   "excludeFolders": [

@@ -29,6 +29,7 @@ import '../../../build/tables-generated-dart/maps/MapdemoWire.dart' as mapdemo;
 import '../../../build/tables-generated-dart/messages/MessagedemoWire.dart' as messagedemo;
 import '../../../build/tables-generated-dart/backend/BackenddemoWire.dart' as backenddemo;
 import '../../../build/tables-generated-dart/stream/StreamdemoWire.dart' as streamdemo;
+import '../../../build/tables-generated-dart-framing/countedmin/TabledemoWire.dart' as countedminvariable;
 import '../../../build/tables-generated-dart/examples/TabledemoWire.dart' as tabledemo;
 import '../../../build/tables-generated-dart/vocab/VocabdemoWire.dart' as vocabdemo;
 import '../../../build/tables-generated-dart/vocab9/Vocab9demoWire.dart' as vocab9demo;
@@ -1347,12 +1348,25 @@ Uint8List? _wireResaveOne<T, R>(
   Uint8List wire,
   R Function() newReport,
   (bool, String) Function(R) status,
-  T Function(Uint8List, R) load,
+  T Function(Uint8List, [R?]) load,
   Uint8List Function(T) save,
 ) {
   final r = newReport();
   final v = load(wire, r);
   final (refused, refusal) = status(r);
+  // A LOAD WITH NO REPORT SIGNALS A REFUSAL AS A THROW, never as the type
+  // defaults with no signal (docs/SPEC-TABLES.md section 4, 6.5; audit SF-16):
+  // every refused wire row must throw, and every accepted row (its lawful twin)
+  // must not.
+  var threw = false;
+  try {
+    load(wire);
+  } on FormatException {
+    threw = true;
+  }
+  if (threw != refused) {
+    throw StateError("a load with no report ${threw ? "threw" : "did not throw"} but the report says refused=$refused");
+  }
   if (refused) {
     throw StateError(refusal.isEmpty ? 'refused' : refusal);
   }
@@ -1625,6 +1639,58 @@ void _f2w_examples_PackConfig(tabledemo_fixed.PackConfig f, tabledemo.PackConfig
   for (var i = 0; i < f.ships.length; i++) _f2w_examples_ShipEntry(f.ships[i], w.ships[i]);
   for (var i = 0; i < f.thresholds.length; i++) w.thresholds[i] = f.thresholds[i];
   w.reserves = List<tabledemo.ShipEntry>.generate(f.reservesCount, (i) { final e = tabledemo.ShipEntry(); _f2w_examples_ShipEntry(f.reserves[i], e); return e; });
+}
+void _w2f_examples_CountedMin(tabledemo.CountedMin w, tabledemo_fixed.CountedMin f) {
+  f.fewCount = w.few.length;
+  for (var i = 0; i < w.few.length; i++) f.few[i] = w.few[i];
+}
+void _f2w_examples_CountedMin(tabledemo_fixed.CountedMin f, tabledemo.CountedMin w) {
+  w.few = List<int>.generate(f.fewCount, (i) => f.few[i]);
+}
+void _w2f_examples_FloatBound(tabledemo.FloatBound w, tabledemo_fixed.FloatBound f) {
+  f.level = w.level;
+}
+void _f2w_examples_FloatBound(tabledemo_fixed.FloatBound f, tabledemo.FloatBound w) {
+  w.level = f.level;
+}
+void _w2f_examples_Moods(tabledemo.Moods w, tabledemo_fixed.Moods f) {
+  f.rowCount = w.row.length;
+  for (var i = 0; i < w.row.length; i++) f.row[i] = (w.row[i] as int);
+}
+void _w2f_examples_MoodField(tabledemo.MoodField w, tabledemo_fixed.MoodField f) {
+  f.mood = (w.mood as dynamic);
+  f.tail = w.tail;
+}
+void _f2w_examples_Moods(tabledemo_fixed.Moods f, tabledemo.Moods w) {
+  w.row = List.generate(f.rowCount, (i) => (f.row[i] as dynamic));
+}
+void _f2w_examples_MoodField(tabledemo_fixed.MoodField f, tabledemo.MoodField w) {
+  w.mood = (f.mood as dynamic);
+  w.tail = f.tail;
+}
+void _w2f_examples_MinArmFix(tabledemo.MinArmFix w, tabledemo_fixed.MinArmFix f) {
+  f.pick.type = w.pick.armTag;
+  if (w.pick.armTag == 1) {
+    f.pick.fewCount = w.pick.few.length;
+    for (var i = 0; i < w.pick.few.length; i++) f.pick.few[i] = w.pick.few[i];
+  } else if (w.pick.armTag == 2) {
+    f.pick.other = w.pick.other;
+  }
+}
+void _f2w_examples_MinArmFix(tabledemo_fixed.MinArmFix f, tabledemo.MinArmFix w) {
+  w.pick.armTag = f.pick.type;
+  if (f.pick.type == 1) {
+    w.pick.few = List<int>.generate(f.pick.fewCount, (i) => f.pick.few[i]);
+  } else if (f.pick.type == 2) {
+    w.pick.other = f.pick.other;
+  }
+}
+void _w2f_examples_MinPlainFix(tabledemo.MinPlainFix w, tabledemo_fixed.MinPlainFix f) {
+  f.fewCount = w.few.length;
+  for (var i = 0; i < w.few.length; i++) f.few[i] = w.few[i];
+}
+void _f2w_examples_MinPlainFix(tabledemo_fixed.MinPlainFix f, tabledemo.MinPlainFix w) {
+  w.few = List<int>.generate(f.fewCount, (i) => f.few[i]);
 }
 void _w2f_m1_Open(tblm1.Open w, tblm1_fixed.Open f) {
   _w2fUtf8(w.path, f.path, (n) => f.pathLength = n);
@@ -2604,6 +2670,67 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
         return _fixedSaveOne(f, pack_fixed.packConfigFixedMeasure, pack_fixed.packConfigFixedSave);
       }
       return _fixedResave(wire, tabledemo_fixed.PackConfig.new, pack_fixed.packConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, pack_fixed.packConfigFixedLoad, pack_fixed.packConfigFixedMeasure, pack_fixed.packConfigFixedSave);
+    case 'tabledemo CountedMin':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = countedminvariable.TableWireReport();
+        final w = countedminvariable.countedMinWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = tabledemo_fixed.CountedMin();
+        f.fewCount = w.few.length;
+        f.few.setRange(0, w.few.length, w.few);
+        return _fixedSaveOne(f, tables_fixed.countedMinFixedMeasure, tables_fixed.countedMinFixedSave);
+      }
+      return _fixedResave(wire, tabledemo_fixed.CountedMin.new, tables_fixed.countedMinFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.countedMinFixedLoad, tables_fixed.countedMinFixedMeasure, tables_fixed.countedMinFixedSave);
+    case 'tabledemo FloatBound':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tabledemo.TableWireReport();
+        final w = tabledemo.floatBoundWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = tabledemo_fixed.FloatBound();
+        _w2f_examples_FloatBound(w, f);
+        return _fixedSaveOne(f, tables_fixed.floatBoundFixedMeasure, tables_fixed.floatBoundFixedSave);
+      }
+      return _fixedResave(wire, tabledemo_fixed.FloatBound.new, tables_fixed.floatBoundFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.floatBoundFixedLoad, tables_fixed.floatBoundFixedMeasure, tables_fixed.floatBoundFixedSave);
+    case 'tabledemo Moods':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tabledemo.TableWireReport();
+        final w = tabledemo.moodsWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = tabledemo_fixed.Moods();
+        _w2f_examples_Moods(w, f);
+        return _fixedSaveOne(f, tables_fixed.moodsFixedMeasure, tables_fixed.moodsFixedSave);
+      }
+      return _fixedResave(wire, tabledemo_fixed.Moods.new, tables_fixed.moodsFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.moodsFixedLoad, tables_fixed.moodsFixedMeasure, tables_fixed.moodsFixedSave);
+    case 'tabledemo MoodField':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tabledemo.TableWireReport();
+        final w = tabledemo.moodFieldWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = tabledemo_fixed.MoodField();
+        _w2f_examples_MoodField(w, f);
+        return _fixedSaveOne(f, tables_fixed.moodFieldFixedMeasure, tables_fixed.moodFieldFixedSave);
+      }
+      return _fixedResave(wire, tabledemo_fixed.MoodField.new, tables_fixed.moodFieldFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.moodFieldFixedLoad, tables_fixed.moodFieldFixedMeasure, tables_fixed.moodFieldFixedSave);
+    case 'tabledemo MinArmFix':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tabledemo.TableWireReport();
+        final w = tabledemo.minArmFixWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = tabledemo_fixed.MinArmFix();
+        _w2f_examples_MinArmFix(w, f);
+        return _fixedSaveOne(f, tables_fixed.minArmFixFixedMeasure, tables_fixed.minArmFixFixedSave);
+      }
+      return _fixedResave(wire, tabledemo_fixed.MinArmFix.new, tables_fixed.minArmFixFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.minArmFixFixedLoad, tables_fixed.minArmFixFixedMeasure, tables_fixed.minArmFixFixedSave);
+    case 'tabledemo MinPlainFix':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tabledemo.TableWireReport();
+        final w = tabledemo.minPlainFixWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = tabledemo_fixed.MinPlainFix();
+        _w2f_examples_MinPlainFix(w, f);
+        return _fixedSaveOne(f, tables_fixed.minPlainFixFixedMeasure, tables_fixed.minPlainFixFixedSave);
+      }
+      return _fixedResave(wire, tabledemo_fixed.MinPlainFix.new, tables_fixed.minPlainFixFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.minPlainFixFixedLoad, tables_fixed.minPlainFixFixedMeasure, tables_fixed.minPlainFixFixedSave);
     case 'tabledemo ProfileConfig':
       if (wire.isNotEmpty && wire[0] == 1) {
         final rep = tabledemo.TableWireReport();
@@ -3061,6 +3188,48 @@ Uint8List? jsonReadSave(String unit, String root, String text) {
       final f = tabledemo_fixed.PackConfig();
       _w2f_examples_PackConfig(w, f);
       return _fixedSaveOne(f, pack_fixed.packConfigFixedMeasure, pack_fixed.packConfigFixedSave);
+    case 'tabledemo CountedMin':
+      final rep = tabledemo.TableTextReport();
+      final w = tabledemo.countedMinFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = tabledemo_fixed.CountedMin();
+      _w2f_examples_CountedMin(w, f);
+      return _fixedSaveOne(f, tables_fixed.countedMinFixedMeasure, tables_fixed.countedMinFixedSave);
+    case 'tabledemo FloatBound':
+      final rep = tabledemo.TableTextReport();
+      final w = tabledemo.floatBoundFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = tabledemo_fixed.FloatBound();
+      _w2f_examples_FloatBound(w, f);
+      return _fixedSaveOne(f, tables_fixed.floatBoundFixedMeasure, tables_fixed.floatBoundFixedSave);
+    case 'tabledemo Moods':
+      final rep = tabledemo.TableTextReport();
+      final w = tabledemo.moodsFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = tabledemo_fixed.Moods();
+      _w2f_examples_Moods(w, f);
+      return _fixedSaveOne(f, tables_fixed.moodsFixedMeasure, tables_fixed.moodsFixedSave);
+    case 'tabledemo MoodField':
+      final rep = tabledemo.TableTextReport();
+      final w = tabledemo.moodFieldFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = tabledemo_fixed.MoodField();
+      _w2f_examples_MoodField(w, f);
+      return _fixedSaveOne(f, tables_fixed.moodFieldFixedMeasure, tables_fixed.moodFieldFixedSave);
+    case 'tabledemo MinArmFix':
+      final rep = tabledemo.TableTextReport();
+      final w = tabledemo.minArmFixFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = tabledemo_fixed.MinArmFix();
+      _w2f_examples_MinArmFix(w, f);
+      return _fixedSaveOne(f, tables_fixed.minArmFixFixedMeasure, tables_fixed.minArmFixFixedSave);
+    case 'tabledemo MinPlainFix':
+      final rep = tabledemo.TableTextReport();
+      final w = tabledemo.minPlainFixFromJson(text, rep);
+      if (rep.refused) return null;
+      final f = tabledemo_fixed.MinPlainFix();
+      _w2f_examples_MinPlainFix(w, f);
+      return _fixedSaveOne(f, tables_fixed.minPlainFixFixedMeasure, tables_fixed.minPlainFixFixedSave);
     case 'tabledemo ProfileConfig':
       final rep = tabledemo.TableTextReport();
       final w = tabledemo.profileConfigFromJson(text, rep);
@@ -3538,6 +3707,78 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
       final w = tabledemo.PackConfig();
       _f2w_examples_PackConfig(f, w);
       return tabledemo.packConfigToJson(w);
+    case 'tabledemo CountedMin':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = countedminvariable.TableWireReport();
+        final w = countedminvariable.countedMinWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return countedminvariable.countedMinToJson(w);
+      }
+      final f = _fixedLoadOne(wire, tabledemo_fixed.CountedMin.new, tables_fixed.countedMinFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.countedMinFixedLoad);
+      if (f == null) return null;
+      final w = tabledemo.CountedMin();
+      _f2w_examples_CountedMin(f, w);
+      return tabledemo.countedMinToJson(w);
+    case 'tabledemo FloatBound':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tabledemo.TableWireReport();
+        final w = tabledemo.floatBoundWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return tabledemo.floatBoundToJson(w);
+      }
+      final f = _fixedLoadOne(wire, tabledemo_fixed.FloatBound.new, tables_fixed.floatBoundFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.floatBoundFixedLoad);
+      if (f == null) return null;
+      final w = tabledemo.FloatBound();
+      _f2w_examples_FloatBound(f, w);
+      return tabledemo.floatBoundToJson(w);
+    case 'tabledemo Moods':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tabledemo.TableWireReport();
+        final w = tabledemo.moodsWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return tabledemo.moodsToJson(w);
+      }
+      final f = _fixedLoadOne(wire, tabledemo_fixed.Moods.new, tables_fixed.moodsFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.moodsFixedLoad);
+      if (f == null) return null;
+      final w = tabledemo.Moods();
+      _f2w_examples_Moods(f, w);
+      return tabledemo.moodsToJson(w);
+    case 'tabledemo MoodField':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tabledemo.TableWireReport();
+        final w = tabledemo.moodFieldWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return tabledemo.moodFieldToJson(w);
+      }
+      final f = _fixedLoadOne(wire, tabledemo_fixed.MoodField.new, tables_fixed.moodFieldFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.moodFieldFixedLoad);
+      if (f == null) return null;
+      final w = tabledemo.MoodField();
+      _f2w_examples_MoodField(f, w);
+      return tabledemo.moodFieldToJson(w);
+    case 'tabledemo MinArmFix':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tabledemo.TableWireReport();
+        final w = tabledemo.minArmFixWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return tabledemo.minArmFixToJson(w);
+      }
+      final f = _fixedLoadOne(wire, tabledemo_fixed.MinArmFix.new, tables_fixed.minArmFixFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.minArmFixFixedLoad);
+      if (f == null) return null;
+      final w = tabledemo.MinArmFix();
+      _f2w_examples_MinArmFix(f, w);
+      return tabledemo.minArmFixToJson(w);
+    case 'tabledemo MinPlainFix':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tabledemo.TableWireReport();
+        final w = tabledemo.minPlainFixWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return tabledemo.minPlainFixToJson(w);
+      }
+      final f = _fixedLoadOne(wire, tabledemo_fixed.MinPlainFix.new, tables_fixed.minPlainFixFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.minPlainFixFixedLoad);
+      if (f == null) return null;
+      final w = tabledemo.MinPlainFix();
+      _f2w_examples_MinPlainFix(f, w);
+      return tabledemo.minPlainFixToJson(w);
     case 'tabledemo ProfileConfig':
       if (wire.isNotEmpty && wire[0] == 1) {
         final rep = tabledemo.TableWireReport();
@@ -3760,6 +4001,17 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
 
 String? loadReport(String unit, String root, Uint8List wire, {bool framing = false}) {
   switch ('$unit $root') {
+    case 'shapes Bounds':
+      final rep = shapes.TableWireReport();
+      shapes.boundsWireLoad(wire, rep);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
+    case 'shapes FixedBounds':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = shapes.TableWireReport();
+        shapes.fixedBoundsWireLoad(wire, rep);
+        return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
+      }
+      return _fixedReportLine(wire, shapes_fixed.FixedBounds.new, shapes_fixed.fixedBoundsFixedNewPlan, shapes_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), shapes_fixed.fixedBoundsFixedLoad);
     case 'featurewitnesses Root':
       final rep = feature.TableWireReport();
       feature.rootWireLoad(wire, rep);
@@ -3932,6 +4184,23 @@ String? loadReport(String unit, String root, Uint8List wire, {bool framing = fal
       return _fixedReportLine(wire, tabledemo_fixed.LoadoutConfig.new, tables_fixed.loadoutConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), tables_fixed.loadoutConfigFixedLoad);
     case 'tabledemo PackConfig':
       return _fixedReportLine(wire, tabledemo_fixed.PackConfig.new, pack_fixed.packConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), pack_fixed.packConfigFixedLoad);
+    case 'tabledemo CountedMin':
+      if (framing && wire.isNotEmpty && wire[0] == 1) {
+        final rep = countedminvariable.TableWireReport();
+        countedminvariable.countedMinWireLoad(wire, rep);
+        return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
+      }
+      return _fixedReportLine(wire, tabledemo_fixed.CountedMin.new, tables_fixed.countedMinFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), tables_fixed.countedMinFixedLoad);
+    case 'tabledemo FloatBound':
+      return _fixedReportLine(wire, tabledemo_fixed.FloatBound.new, tables_fixed.floatBoundFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), tables_fixed.floatBoundFixedLoad);
+    case 'tabledemo Moods':
+      return _fixedReportLine(wire, tabledemo_fixed.Moods.new, tables_fixed.moodsFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), tables_fixed.moodsFixedLoad);
+    case 'tabledemo MoodField':
+      return _fixedReportLine(wire, tabledemo_fixed.MoodField.new, tables_fixed.moodFieldFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), tables_fixed.moodFieldFixedLoad);
+    case 'tabledemo MinArmFix':
+      return _fixedReportLine(wire, tabledemo_fixed.MinArmFix.new, tables_fixed.minArmFixFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), tables_fixed.minArmFixFixedLoad);
+    case 'tabledemo MinPlainFix':
+      return _fixedReportLine(wire, tabledemo_fixed.MinPlainFix.new, tables_fixed.minPlainFixFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), tables_fixed.minPlainFixFixedLoad);
     case 'tabledemo ProfileConfig':
       return _fixedReportLine(wire, tabledemo_fixed.ProfileConfig.new, tables_fixed.profileConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), tables_fixed.profileConfigFixedLoad);
     case 'tabledemo RootConfig':
@@ -4553,12 +4822,21 @@ int surfaceCookWrite(String outDir) {
 
 int surfaceWire(String outDir) {
   for (final f in kind('instance')) {
+    final wire = File(f[4]).readAsBytesSync();
+    if (f.contains('wire-refused') && loadReport(f[2], f[3], wire)?.trimRight() == 'refused') {
+      File('$outDir/${f[1]}').writeAsStringSync('refused\n');
+      continue;
+    }
     Uint8List? saved;
     try {
-      saved = wireResave(f[2], f[3], File(f[4]).readAsBytesSync());
+      saved = wireResave(f[2], f[3], wire);
     } on StateError catch (e) {
       // a wire load or save refusal writes a non-empty .absent naming the
       // reason (empty .absent is reserved for a missing codec)
+      if (!f.contains('wire-refused') && e.message.startsWith('blob_shared')) {
+        File('$outDir/${f[1]}').writeAsStringSync('refused\n');
+        continue;
+      }
       final reason = e.message.isEmpty ? 'refused' : e.message;
       File('$outDir/${f[1]}.absent').writeAsStringSync(reason);
       continue;
@@ -4667,6 +4945,36 @@ String? jsonHostileReport(String unit, String root, String text) {
         final v = tabledemo.packConfigFromJson(text, r);
         encode = () => tabledemo.packConfigToJson(v);
         break;
+      case 'tabledemo CountedMin':
+        r = tabledemo.TableTextReport();
+        final v = tabledemo.countedMinFromJson(text, r);
+        encode = () => tabledemo.countedMinToJson(v);
+        break;
+      case 'tabledemo FloatBound':
+        r = tabledemo.TableTextReport();
+        final v = tabledemo.floatBoundFromJson(text, r);
+        encode = () => tabledemo.floatBoundToJson(v);
+        break;
+      case 'tabledemo Moods':
+        r = tabledemo.TableTextReport();
+        final v = tabledemo.moodsFromJson(text, r);
+        encode = () => tabledemo.moodsToJson(v);
+        break;
+      case 'tabledemo MoodField':
+        r = tabledemo.TableTextReport();
+        final v = tabledemo.moodFieldFromJson(text, r);
+        encode = () => tabledemo.moodFieldToJson(v);
+        break;
+      case 'tabledemo MinArmFix':
+        r = tabledemo.TableTextReport();
+        final v = tabledemo.minArmFixFromJson(text, r);
+        encode = () => tabledemo.minArmFixToJson(v);
+        break;
+      case 'tabledemo MinPlainFix':
+        r = tabledemo.TableTextReport();
+        final v = tabledemo.minPlainFixFromJson(text, r);
+        encode = () => tabledemo.minPlainFixToJson(v);
+        break;
       case 'blobdemo Catalog':
         r = blobdemo.TableTextReport();
         final v = blobdemo.catalogFromJson(text, r);
@@ -4681,6 +4989,11 @@ String? jsonHostileReport(String unit, String root, String text) {
         r = mapdemo.TableTextReport();
         final v = mapdemo.textFromJson(text, r);
         encode = () => mapdemo.textToJson(v);
+        break;
+      case 'mapdemo EdgeRow':
+        r = mapdemo.TableTextReport();
+        final v = mapdemo.edgeRowFromJson(text, r);
+        encode = () => mapdemo.edgeRowToJson(v);
         break;
       case 'mapdemo Depth':
         r = mapdemo.TableTextReport();
@@ -5607,12 +5920,13 @@ int surfaceMessage(String outDir) {
     if (f[5] == '-') {
       // A named refusal row: the root is a variable table, which carries no
       // message verbs (docs/SPEC-TABLES.md §3.3: the message form is fixed
-      // tables only), so the driver answers ABSENT and names the reason.
+      // tables only), so the driver answers REFUSED (ruling R13: an absence
+      // is never credited on a must-refuse row).
       if (run != null) {
         stderr.writeln('message ${f[1]}: a variable table carries a message batch');
         return 1;
       }
-      File('$outDir/${f[1]}.absent').writeAsStringSync('variable table: the message form is fixed tables only (SPEC-TABLES §3.3)');
+      File('$outDir/${f[1]}').writeAsStringSync('refused\n');
       continue;
     }
     if (run == null) {
@@ -6060,6 +6374,24 @@ _FuzzRoot? fuzzRoot(String unit, String root) {
     case 'tabledemo PackConfig':
       return _FuzzRoot(
           _fixedFuzzCodec(tabledemo_fixed.PackConfig.new, pack_fixed.packConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, pack_fixed.packConfigFixedLoad, pack_fixed.packConfigFixedMeasure, pack_fixed.packConfigFixedSave));
+    case 'tabledemo CountedMin':
+      return _FuzzRoot(
+          _fixedFuzzCodec(tabledemo_fixed.CountedMin.new, tables_fixed.countedMinFixedNewPlan, tabledemo_fixed.TableFixedReport.new, tables_fixed.countedMinFixedLoad, tables_fixed.countedMinFixedMeasure, tables_fixed.countedMinFixedSave));
+    case 'tabledemo FloatBound':
+      return _FuzzRoot(
+          _fixedFuzzCodec(tabledemo_fixed.FloatBound.new, tables_fixed.floatBoundFixedNewPlan, tabledemo_fixed.TableFixedReport.new, tables_fixed.floatBoundFixedLoad, tables_fixed.floatBoundFixedMeasure, tables_fixed.floatBoundFixedSave));
+    case 'tabledemo Moods':
+      return _FuzzRoot(
+          _fixedFuzzCodec(tabledemo_fixed.Moods.new, tables_fixed.moodsFixedNewPlan, tabledemo_fixed.TableFixedReport.new, tables_fixed.moodsFixedLoad, tables_fixed.moodsFixedMeasure, tables_fixed.moodsFixedSave));
+    case 'tabledemo MoodField':
+      return _FuzzRoot(
+          _fixedFuzzCodec(tabledemo_fixed.MoodField.new, tables_fixed.moodFieldFixedNewPlan, tabledemo_fixed.TableFixedReport.new, tables_fixed.moodFieldFixedLoad, tables_fixed.moodFieldFixedMeasure, tables_fixed.moodFieldFixedSave));
+    case 'tabledemo MinArmFix':
+      return _FuzzRoot(
+          _fixedFuzzCodec(tabledemo_fixed.MinArmFix.new, tables_fixed.minArmFixFixedNewPlan, tabledemo_fixed.TableFixedReport.new, tables_fixed.minArmFixFixedLoad, tables_fixed.minArmFixFixedMeasure, tables_fixed.minArmFixFixedSave));
+    case 'tabledemo MinPlainFix':
+      return _FuzzRoot(
+          _fixedFuzzCodec(tabledemo_fixed.MinPlainFix.new, tables_fixed.minPlainFixFixedNewPlan, tabledemo_fixed.TableFixedReport.new, tables_fixed.minPlainFixFixedLoad, tables_fixed.minPlainFixFixedMeasure, tables_fixed.minPlainFixFixedSave));
     case 'tabledemo ProfileConfig':
       return _FuzzRoot(
           _fixedFuzzCodec(tabledemo_fixed.ProfileConfig.new, tables_fixed.profileConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, tables_fixed.profileConfigFixedLoad, tables_fixed.profileConfigFixedMeasure, tables_fixed.profileConfigFixedSave));
@@ -6781,6 +7113,24 @@ int surfaceWriteRefusal(String outDir, String surface) {
             answer = _catchWrite(() => tabledemo.rootConfigToJson(w).isEmpty ? -1 : 0);
           }
           break;
+        case 'tabledemo Moods':
+          final fx = _fixedLoadOne(wire, tabledemo_fixed.Moods.new, tables_fixed.moodsFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.moodsFixedLoad);
+          if (fx == null) return 1;
+          final w = tabledemo.Moods();
+          _f2w_examples_Moods(fx, w);
+          if ('$path $vkind' != 'row[0] ordinal' || w.row.isEmpty) return 1;
+          w.row[0] = (int.parse(text) as dynamic);
+          answer = _catchWrite(() => tabledemo.moodsToJson(w).isEmpty ? -1 : 0);
+          break;
+        case 'tabledemo MoodField':
+          final fx = _fixedLoadOne(wire, tabledemo_fixed.MoodField.new, tables_fixed.moodFieldFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.moodFieldFixedLoad);
+          if (fx == null) return 1;
+          final w = tabledemo.MoodField();
+          _f2w_examples_MoodField(fx, w);
+          if ('$path $vkind' != 'mood ordinal') return 1;
+          w.mood = (int.parse(text) as dynamic);
+          answer = _catchWrite(() => tabledemo.moodFieldToJson(w).isEmpty ? -1 : 0);
+          break;
         case 'tabledemo LoadoutConfig':
           final fx = _fixedLoadOne(wire, tabledemo_fixed.LoadoutConfig.new, tables_fixed.loadoutConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.loadoutConfigFixedLoad);
           if (fx == null) return 1;
@@ -6890,6 +7240,27 @@ int surfaceWriteRefusal(String outDir, String surface) {
           final n = tables_fixed.loadoutConfigFixedMeasure(1);
           final out = Uint8List(n);
           return tables_fixed.loadoutConfigFixedSave(<tabledemo_fixed.LoadoutConfig>[fx], 1, out) == n ? 0 : -1;
+        });
+      }
+    } else if ('$unit $root' == 'tabledemo CountedMin') {
+      final fx = _fixedLoadOne(wire, tabledemo_fixed.CountedMin.new, tables_fixed.countedMinFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.countedMinFixedLoad);
+      if (fx == null) return 1;
+      if ('$path $vkind' != 'few count') return 1;
+      final count = int.parse(text);
+      if (surface == 'write-refusal') {
+        final w = tabledemo.CountedMin();
+        _f2w_examples_CountedMin(fx, w);
+        w.few = List<int>.generate(count, (i) => i < w.few.length ? w.few[i] : 0);
+        answer = _catchWrite(() {
+          tabledemo.countedMinWireSave(w);
+          return 0;
+        });
+      } else {
+        fx.fewCount = count;
+        answer = _catchWrite(() {
+          final n = tables_fixed.countedMinFixedMeasure(1);
+          final out = Uint8List(n);
+          return tables_fixed.countedMinFixedSave(<tabledemo_fixed.CountedMin>[fx], 1, out) == n ? 0 : -1;
         });
       }
     } else if ('$unit $root' == 'scalars SimState') {

@@ -137,7 +137,7 @@ const myHashHi = 0x9abcdef0;
 // load time, not for a lineage entry at module load.
 {
   const badKindLayout = makeLayout([
-    { kind: 31, size: 4, children: 0 }, // kind 31 is the body framing escape, not in the closed set
+    { kind: 31, size: 4, children: 0 }, // kind 31 is held by name and never written (R17), not in the closed set
   ]);
   const badKindEntry = new TableFixedKnownLayout(
     0xaaaaaaaa, 0xbbbbbbbb,

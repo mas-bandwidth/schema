@@ -104,3 +104,69 @@ fixed table ProfileConfig
     has_loadout bool
     loadout     LoadoutConfig
 }
+
+// THREE SPEC RULES the conformance rows sp-count-min-*, sp-f32-bound-* and
+// sp-enum-elem-* read through every leg (docs/SPEC.md section 4.2, 4.6;
+// docs/SPEC-TABLES.md section 3.3, 16.2, 2.13).
+//
+// CountedMin: a counted array below its minimum A refuses; from A to B it
+// reads. FloatBound: a compressed float32 is held at float32 against ends held
+// at float32, so max = 0.1 admits the float32 0.1 and refuses the float32 one
+// step past it. Moods: an array element naming a deprecated variant reads as
+// the ELEMENT default, None. MoodField: the same rule on a SCALAR field, where
+// the deprecated variant reads as the field's declared default, Fierce. Its
+// second field, tail, is the one a writer built before it was appended lacks,
+// which makes that writer's layout one the reader compiles a plan for.
+
+enum Mood
+{
+    Calm
+    Old | deprecated
+    Fierce
+}
+
+fixed table CountedMin
+{
+    few [2..5]uint32
+}
+
+fixed table FloatBound
+{
+    level float32 = 0.0 | min = 0.0, max = 0.1, resolution = 0.01
+}
+
+fixed table Moods
+{
+    row [..4]Mood
+}
+
+fixed table MoodField
+{
+    mood Mood = Fierce
+    tail uint16
+}
+
+// A counted array [A..B] inside a union arm (docs/SPEC.md section 4.2;
+// docs/SPEC-TABLES.md section 3.4). The minimum A holds wherever the
+// field sits: an arm payload with a count below A refuses on read in every
+// form, and a writer never produces one. Rows: the arm-min-* cases.
+
+union MinPick
+{
+    few   [2..4]uint32
+    other int32
+}
+
+fixed table MinArmFix
+{
+    pick MinPick
+}
+
+// The same counted [A..B] as a PLAIN field (docs/SPEC-TABLES.md section 3.4,
+// ruling R10): a count below A refuses on read in every form, and a writer
+// never produces one. Rows: the plain-min-* and plainmin_* cases.
+
+fixed table MinPlainFix
+{
+    few [2..4]uint32
+}

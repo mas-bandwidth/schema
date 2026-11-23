@@ -5,7 +5,7 @@ local dir = assert(arg[1], "usage: lua main.lua <generated dir>")
 package.path = dir .. "/?.lua;" .. package.path
 
 local serialize = require("serialize")
-local Narrow = require("Narrow")
+local Narrow = require("Text")
 
 local function unhex(s)
   if s == "-" or s == "" then return "" end

@@ -590,11 +590,11 @@ List<T> _jsonList<T>(dynamic val, TableTextReport r, int bound, T Function(dynam
   return out;
 }
 
-// _jsonCountMin holds a counted [Min..N] array's read to its declared Min: a
-// shorter one is refused, in the text form as on the wire (docs/SPEC.md §5.1
-// row 3).
-List<T> _jsonCountMin<T>(List<T> out, TableTextReport r, int min) {
-  if (out.length < min) r.refuse('count_over_bound');
+// _jsonAtLeast holds a counted [A..B] array read from text to its minimum A,
+// wherever the field sits, a union arm included (ruling R10,
+// docs/SPEC-TABLES.md §3.4): a list shorter than A refuses count_over_bound.
+List<T> _jsonAtLeast<T>(List<T> out, dynamic val, TableTextReport r, int min) {
+  if (val is List && out.length < min) r.refuse('count_over_bound');
   return out;
 }
 
@@ -998,16 +998,6 @@ func unionArmShapeCond(f *ir.Field, item string) string {
 	return cond
 }
 
-// jsonCountMin wraps the JSON read of a counted [Min..N] array with Min > 0 in
-// the runtime's _jsonCountMin, which refuses a count below Min (docs/SPEC.md
-// §5.1 row 3); any other read is returned as it is.
-func jsonCountMin(f *ir.Field, read string) string {
-	if n := f.BornCount(); n > 0 {
-		return fmt.Sprintf("_jsonCountMin(%s, r, %d)", read, n)
-	}
-	return read
-}
-
 // jsonReadExpr is the Dart expression that reads one field-shaped value out of
 // the decoded JSON value `val` (§16.2, §16.3).
 func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int, fallback ...string) string {
@@ -1022,8 +1012,14 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int, fallback ...strin
 		fbArg = ", " + fb
 	}
 	switch {
+	case f.Array == ir.ArrayCounted && f.ArrayMin > 0 && !f.Type.Optional:
+		// [A..B] holds A wherever it sits (ruling R10): the list read, then
+		// its minimum
+		inner := *f
+		inner.ArrayMin = 0
+		return fmt.Sprintf("_jsonAtLeast(%s, %s, r, %d)", g.jsonReadExpr(&inner, val, d, fallback...), val, f.ArrayMin)
 	case f.IsTextList():
-		return jsonCountMin(f, g.jsonTextListRead(f, val, d, fbArg))
+		return g.jsonTextListRead(f, val, d, fbArg)
 	case f.Type.Optional:
 		return g.jsonReadExpr(nonOptional(f), val, d, fallback...)
 	case f.IsMap():
@@ -1066,8 +1062,8 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int, fallback ...strin
 		if f.Array == ir.ArrayCounted {
 			bound = int(f.ArrayBound)
 		}
-		return jsonCountMin(f, fmt.Sprintf("_jsonList<%s>(%s, r, %d, (%s) => %s%s)",
-			g.listElemType(f), val, bound, item, g.jsonReadExpr(singleOf(f), item, d+1), fbArg))
+		return fmt.Sprintf("_jsonList<%s>(%s, r, %d, (%s) => %s%s)",
+			g.listElemType(f), val, bound, item, g.jsonReadExpr(singleOf(f), item, d+1), fbArg)
 	case f.Type.Blob():
 		if f.Type.Kind == ir.TString {
 			return fmt.Sprintf("_jsonStringBlob(%s, r%s)", val, fbArg)

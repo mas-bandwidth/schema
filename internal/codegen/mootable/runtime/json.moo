@@ -3266,10 +3266,6 @@ local function readMap(r: Reader, fd: any, rec: any, depth: number): boolean
 		r.bad = true
 		return false
 	end
-	if depth + 1 > MAX_DEPTH then
-		r.bad = true
-		return false
-	end
 	r.pos += 1
 	local ed = St.lookup(fd.t)
 	local kd, vd = ed.fields[1], ed.fields[2]

@@ -113,7 +113,7 @@ func(w *tableCookWriter) field(base unsafe.Pointer,f *TableFieldInfo,at int64,re
  if f.Optional {if !*(*bool)(unsafe.Add(base,f.PresentOffset)){return w.empty(base,f)};w.put(at+int64(f.CookPresentOffset),1,1)}
  if f.List||f.Map {return w.container(p,f,dest,reached)}
  count:=int32(1);used:=int32(1)
- if f.Counted {used=*(*int32)(unsafe.Add(base,f.CountOffset));if used<0||!f.UnboundedContainer&&used>f.ArrayBound{return false};w.put(at+int64(f.CookCountOffset),uint64(used),4)}
+ if f.Counted {used=*(*int32)(unsafe.Add(base,f.CountOffset));if used<f.ArrayMin||used<0||!f.UnboundedContainer&&used>f.ArrayBound{return false};w.put(at+int64(f.CookCountOffset),uint64(used),4)}
  if !f.Pointer&&(f.TypeName=="string"||f.TypeName=="bytes") {
   width:=f.CookElemSize;for i := range used {v:=tableJSONGetRaw(unsafe.Add(p,int64(i)*int64(width)),width);w.put(dest+int64(i)*int64(width),v,width)};return true
  }

@@ -19,6 +19,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -679,6 +680,7 @@ func TestPerCommitLegBuildsFitTheWall(t *testing.T) {
 			touch: []string{
 				"build/tables-generated-dart/.stamp",
 				"build/tables-generated-dart/cards/.stamp",
+				"build/tables-generated-dart-framing/countedmin/.stamp",
 				"build/conformance-dart",
 			},
 			build: `make -j"$(nproc)" build/conformance-harness build/conformance-dart DART=dart`,
@@ -779,8 +781,24 @@ func TestPerCommitLegBuildsFitTheWall(t *testing.T) {
 	}
 
 	dartMK := readCI(t, root, "make/dart.mk")
-	if !strings.Contains(dartMK, "build/conformance-dart: build/tables-generated-dart/.stamp $(CARDS_DART_STAMP)") {
-		t.Error("make/dart.mk: build/conformance-dart still depends on the phony cards-dart-generate, so a restored driver is rebuilt every run")
+	dartPrereqs := targetPrereqs(dartMK, "build/conformance-dart")
+	if slices.Contains(dartPrereqs, "cards-dart-generate") {
+		t.Error("make/dart.mk: build/conformance-dart depends on the phony cards-dart-generate, so a restored driver is rebuilt every run")
+	}
+	const framingStamp = "build/tables-generated-dart-framing/countedmin/.stamp"
+	for _, want := range []string{"build/tables-generated-dart/.stamp", "$(CARDS_DART_STAMP)", framingStamp} {
+		if !slices.Contains(dartPrereqs, want) {
+			t.Errorf("make/dart.mk: build/conformance-dart is missing prerequisite %s", want)
+		}
+	}
+	dartFuzz := jobs["dart-fuzz"]
+	if count := strings.Count(dartFuzz, "\n            build/tables-generated-dart-framing\n"); count != 2 {
+		t.Errorf("dart-fuzz lists its generated framing tree on %d cache path lines, want it in both restore and save", count)
+	}
+	framingAt := strings.Index(dartFuzz, "touch "+framingStamp)
+	dartDriverAt := strings.Index(dartFuzz, "touch build/conformance-dart")
+	if framingAt < 0 || dartDriverAt <= framingAt {
+		t.Error("dart-fuzz must refresh the framing stamp before its restored driver")
 	}
 	if !strings.Contains(dartMK, "$(CARDS_DART_STAMP): bin/schema") {
 		t.Error("make/dart.mk: the cards stamp the driver depends on has no rule")

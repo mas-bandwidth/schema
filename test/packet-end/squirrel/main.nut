@@ -24,7 +24,7 @@ local goldenDir = argv.len() >= 1 ? argv[0] : "testdata/wire/packet-end";
 local generatedDir = argv.len() >= 2 ? argv[1] : "build/packet-end/squirrel";
 
 local serialize = dofile("internal/codegen/squirrel/serialize/serialize.nut", true);
-local End = dofile(generatedDir + "/schema_module.nut", true).require("End");
+local End = dofile(generatedDir + "/schema_module.nut", true).require("PacketEnd");
 
 local failed = 0;
 local ran = 0;

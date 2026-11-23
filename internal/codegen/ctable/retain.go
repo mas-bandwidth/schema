@@ -195,6 +195,7 @@ static SCHEMA_UNUSED int table_retain_in_content(TableRetainIn * s,uint8_t kind,
  for(i=0;i<n;i++){if(kind==16){uint64_t bytes;if(!table_retain_in_ref(s,0)||!table_reader_leb(r,&bytes)||bytes>(uint64_t)(end-r->offset)||!table_retain_in_frame(s,elem,(int64_t)bytes,depth))return 0;}else if(!table_retain_in_payload(s,elem,depth))return 0;if(r->offset>end)return 0;}break;}
  case 15:case 30:if(!table_retain_in_payload(s,kind,depth))return 0;break;
  case 17:return 0;
+ case 31:return 0; /* held by name and never written (R17): damage */
  default:if(!table_retain_raw(s,r->buffer+r->offset,length))return 0;r->offset+=length;break;
  }return r->offset==end;
 }
@@ -205,7 +206,7 @@ static SCHEMA_UNUSED int table_retain_in_payload(TableRetainIn * s,uint8_t kind,
  TableReader * r=&s->input;uint64_t length;int width=table_retain_width(kind);
  if(width){if(!table_reader_has(r,width)||!table_retain_raw(s,r->buffer+r->offset,width))return 0;r->offset+=width;return 1;}
  switch(kind){
- case 12:case 31:case 32:if(!table_reader_leb(r,&length)||!table_reader_room(r,length)||!table_retain_leb(s,length)||!table_retain_raw(s,r->buffer+r->offset,(int64_t)length))return 0;r->offset+=(int64_t)length;return 1;
+ case 12:case 32:if(!table_reader_leb(r,&length)||!table_reader_room(r,length)||!table_retain_leb(s,length)||!table_retain_raw(s,r->buffer+r->offset,(int64_t)length))return 0;r->offset+=(int64_t)length;return 1;
  case 13:case 14:case 16:if(!table_reader_leb(r,&length)||!table_reader_room(r,length))return 0;return table_retain_in_frame(s,kind,(int64_t)length,depth);
  case 15:{uint64_t arm;uint8_t k;int64_t mark=r->offset;if(!table_reader_leb(r,&arm))return 0;r->offset=mark;if(!table_retain_in_ref(s,1))return 0;if(!arm)return 1;if(!table_reader_has(r,1))return 0;k=table_reader_get8(r);if(!table_retain_raw(s,&k,1)||!table_reader_leb(r,&length)||!table_reader_room(r,length))return 0;
   if(k==13||k==14||k==15||k==16){if(depth>=SCHEMA_TABLE_RETAIN_WALK_MAX){return 0;}depth++;}return table_retain_in_frame(s,k,(int64_t)length,depth);}

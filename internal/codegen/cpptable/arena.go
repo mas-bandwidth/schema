@@ -1559,7 +1559,7 @@ inline bool TableGraphPayload( TableGraphCollect & c, TableReader & r, uint8_t k
         }
         case 15:
             return TableGraphUnion( c, r, depth );
-        case 12: case 31: case 32: case 13: case 14: case 16:
+        case 12: case 32: case 13: case 14: case 16:
         {
             uint64_t n = 0;
             if ( !r.getleb( n ) || !r.room( n ) ) { c.damaged = true; return false; }
@@ -1610,8 +1610,9 @@ inline bool TableGraphContent( TableGraphCollect & c, const uint8_t * b, int64_t
         case 12:
             if ( !TableUtf8Valid( b, (uint64_t) n ) ) { c.damaged = true; return false; }
             return true;
-        case 31:
-            return true; // opaque: the one kind whose meaning a reader may not know (§3)
+        case 31: // KIND 31 IS HELD BY NAME AND NEVER WRITTEN (R17): damage, as 33 and 34
+            c.damaged = true;
+            return false;
         case 32:
             if ( n != 0 ) { c.damaged = true; return false; }
             return true;

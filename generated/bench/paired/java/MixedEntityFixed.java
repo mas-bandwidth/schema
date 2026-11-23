@@ -125,6 +125,7 @@ public final class MixedEntityFixed {
         assert v.velZ >= -2048L && v.velZ <= 2047L;
         assert v.health >= 0L && v.health <= 1000L;
         assert v.weapon >= 0 && v.weapon <= 15;
+        assert (v.damage >>> 8) == 0L;
         return true;
     }
 
@@ -279,7 +280,16 @@ public final class MixedEntityFixed {
             }
             v.weapon = (byte) (q);
         }
-        v.damage = TableFixed.get64(b, at + 41);
+        {
+            long q = TableFixed.get64(b, at + 41);
+            if ((q >>> 8) != 0L) {
+                q &= 0xffL;
+                if (live) {
+                    r.refuse(TableFixed.Reason.outOfRange);
+                }
+            }
+            v.damage = q;
+        }
         if ((b[at + 49] & 0xFF) > 1) {
             if (live) {
                 r.refuse(TableFixed.Reason.wireDamaged);

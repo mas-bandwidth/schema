@@ -87,6 +87,13 @@ var Families = []Family{
 		Inputs:  []string{"test/packet-write-cfloat/*"},
 		Target:  "packet-write-cfloat-{leg}",
 		Drivers: `^test/packet-write-cfloat/([a-z]+)/`},
+	{Name: "packet-cfloat-endpoints", PR: true,
+		Inputs:  []string{"test/packet-cfloat-endpoints/", "make/go-packet-cfloat-endpoints.mk"},
+		Target:  "packet-cfloat-endpoints-{leg}",
+		Drivers: `^test/packet-cfloat-endpoints/([a-z]+)/`},
+	{Name: "table-write-bounds", PR: true,
+		Inputs: []string{"testdata/conformance/table-write-bounds/", "make/go-table-write-bounds.mk"},
+		Target: "table-write-bounds-{leg}"},
 	{Name: "packet-write-text", PR: true,
 		Inputs:  []string{"test/packet-write-text/*"},
 		Target:  "packet-write-text-{leg}",
@@ -228,14 +235,23 @@ func isInput(p string) bool {
 // GoReaders is every main-module package (./dir) with a .go file naming one
 // of the input's mentions, sorted.
 func GoReaders(t Tree, p string) []string {
-	ms := mentions(p)
+	return goReaders(t, p, map[string][]string{})
+}
+
+func goReaders(t Tree, p string, readersByMention map[string][]string) []string {
 	set := map[string]bool{}
-	for f, body := range t.GoFiles {
-		for _, m := range ms {
-			if strings.Contains(body, m) {
-				set["./"+path.Dir(f)] = true
-				break
+	for _, mention := range mentions(p) {
+		readers, found := readersByMention[mention]
+		if !found {
+			for f, body := range t.GoFiles {
+				if strings.Contains(body, mention) {
+					readers = append(readers, "./"+path.Dir(f))
+				}
 			}
+			readersByMention[mention] = readers
+		}
+		for _, reader := range readers {
+			set[reader] = true
 		}
 	}
 	out := make([]string, 0, len(set))
@@ -271,11 +287,14 @@ func Select(t Tree, changed []string, all, pr bool) Selection {
 			s.Rows = append(s.Rows, Row{Leg: l, Family: f.Name, Target: run})
 		}
 	}
+	// Changed files often share a directory mention. Scan the Go tree
+	// once per literal, including literals with no readers.
+	readersByMention := map[string][]string{}
 	for _, p := range changed {
 		if !isInput(p) {
 			continue
 		}
-		rs := GoReaders(t, p)
+		rs := goReaders(t, p, readersByMention)
 		for _, r := range rs {
 			pkgs[r] = true
 		}

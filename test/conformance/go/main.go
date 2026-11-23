@@ -213,17 +213,9 @@ func surfaceWire(lines []line, out string) error {
 		value := c.fresh()
 		var rep report
 		if !c.load(value, wire, &rep) {
-			// THE READ'S REFUSAL IS THIS ROW'S ANSWER, whatever its reason
-			// (docs/rulings.json refusal-verdict-only): a .absent holding the
-			// reason, which the harness passes on a row the corpus marks
-			// wire-refused (blob_shared, §2.5; shapes_*_below_min) and fails
-			// on a row that owes the bytes. It never aborts the surface (review
-			// F-089: the other rows went unanswered).
-			reason := "refused"
-			if rep.err != nil {
-				reason = rep.err.Error()
-			}
-			if err := spillAbsentReason(out, f[1], reason); err != nil {
+			// A present codec's load refusal is an answer. R13 writes it
+			// as a refusal and reserves the absent marker for missing codecs.
+			if err := spill(out, f[1], []byte("refused\n")); err != nil {
 				return err
 			}
 			continue
@@ -236,7 +228,7 @@ func surfaceWire(lines []line, out string) error {
 			if c.measureReason != nil {
 				_, reason := c.measureReason(value)
 				if errors.Is(reason, blobdemo.TableRefuseBlobShared) {
-					if err := spillAbsentReason(out, f[1], reason.Error()); err != nil {
+					if err := spill(out, f[1], []byte("refused\n")); err != nil {
 						return err
 					}
 					continue
@@ -354,8 +346,12 @@ func surfaceFraming(lines []line, out string) error {
 		}
 		value := c.fresh()
 		var rep report
+		// a fixed root's framing battery is form-1 files read by the variable
+		// load; a form-3 file there (the counted-minimum rows) is read by the
+		// root's own fixed load, so its verdict is the fixed form's rule and
+		// never a vacuous previous_form refusal
 		read := c.load
-		if c.variableLoad != nil {
+		if c.variableLoad != nil && (len(wire) == 0 || wire[0] != 3) {
 			read = c.variableLoad
 		}
 		ok := read(value, wire, &rep)

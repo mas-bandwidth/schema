@@ -30,7 +30,7 @@ func TestLuauJsonElemReadsAreNotNil(t *testing.T) {
 	// A list of `*bytes` is refused by the checker (§2.5, §15: "an array of byte
 	// buffers is a named follow-on"), so the blob read is pinned where it is
 	// expressible as an element: a map value.
-	const schemaSrc = `package p
+	const schemaSrc = `package px
 
 enum E { A, B }
 
@@ -41,12 +41,12 @@ table Box
     mb map[string(8)]*bytes
 }
 `
-	g := generateFiles(t, map[string]string{"Box.schema": schemaSrc})
+	g := generateFiles(t, map[string]string{"Carton.schema": schemaSrc})
 
 	// The Go reference over the same source: the unit, its instance model and
 	// the two walks the emitted code mirrors (§16.1, §16.5).
 	srcDir := t.TempDir()
-	schemaPath := filepath.Join(srcDir, "Box.schema")
+	schemaPath := filepath.Join(srcDir, "Carton.schema")
 	if err := os.WriteFile(schemaPath, []byte(schemaSrc), 0o644); err != nil {
 		t.Fatal(err)
 	}

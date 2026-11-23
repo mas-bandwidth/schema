@@ -19,7 +19,7 @@ import (
 // the constructs beyond the card record — *bytes blobs (§2.5), unbounded
 // arrays of scalars, strings and enums (§2.9), arrays of pointers and a
 // pointer to a table outside a list element (§2.1, §2.9), the 64-bit id-table
-// escape kind (§3) and the rest of the scalar kinds (§3) — byte for byte
+// wire (§3) and the rest of the scalar kinds (§3) — byte for byte
 // against the committed reference bytes. Each subtest generates the unit,
 // compiles its variable codecs beside the runtime, and holds a load/save and
 // toJson round trip of one committed instance to those bytes.

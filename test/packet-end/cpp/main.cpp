@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-#include "EndWire.h"
+#include "PacketEndWire.h"
 
 static bool load( const std::string & path, std::vector<uint8_t> & out )
 {

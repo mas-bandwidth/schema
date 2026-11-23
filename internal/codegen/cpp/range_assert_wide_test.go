@@ -28,7 +28,7 @@ type Wide {
 // TestRangeAssertWideStorageComparesIn64Bits pins the asserts' text.
 func TestRangeAssertWideStorageComparesIn64Bits(t *testing.T) {
 	t.Parallel()
-	_, w := generateOne(t, "Wide", rangeAssertWideSchema)
+	_, w := generateOne(t, "WideUnit", rangeAssertWideSchema)
 	for _, want := range []string{
 		"serialize_assert( int64_t( value.id ) >= int64_t( 0 ) && int64_t( value.id ) <= int64_t( 100 ) );",
 		"serialize_assert( int64_t( value.span ) >= int64_t( ",
@@ -38,12 +38,12 @@ func TestRangeAssertWideStorageComparesIn64Bits(t *testing.T) {
 		"write_bits( stream, uint32_t( value.id ), 7 );",
 	} {
 		if !strings.Contains(w, want) {
-			t.Errorf("WideWire.h: want %q in\n%s", want, w)
+			t.Errorf("WideUnitWire.h: want %q in\n%s", want, w)
 		}
 	}
 	for _, bad := range []string{" int32_t( value.id )", " int32_t( value.span )", " int32_t( value.count )"} {
 		if strings.Contains(w, bad) {
-			t.Errorf("WideWire.h narrows a 64-bit field in its range assert (%q)", bad)
+			t.Errorf("WideUnitWire.h narrows a 64-bit field in its range assert (%q)", bad)
 		}
 	}
 }
@@ -53,7 +53,7 @@ const rangeAssertWideProbe = `#include <cstdio>
 #include <cstring>
 #include <cstdint>
 
-#include "WideWire.h"
+#include "WideUnitWire.h"
 
 int main( int argc, char ** argv )
 {
@@ -98,7 +98,7 @@ func TestCppRangeAssertWideStorage(t *testing.T) {
 		}
 		t.Skipf("%s: %v", cxx, err)
 	}
-	files, err := Generate(unitFromSources(t, map[string]string{"Wide.schema": rangeAssertWideSchema}))
+	files, err := Generate(unitFromSources(t, map[string]string{"WideUnit.schema": rangeAssertWideSchema}))
 	if err != nil {
 		t.Fatal(err)
 	}

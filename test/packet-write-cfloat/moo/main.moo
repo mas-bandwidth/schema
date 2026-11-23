@@ -1,6 +1,6 @@
 --!strict
 local serialize = require("./serialize")
-local c = require("./CFloat")
+local c = require("./PacketCFloat")
 local inputs = require("./inputs") :: any
 local failed = 0
 local cases = 0

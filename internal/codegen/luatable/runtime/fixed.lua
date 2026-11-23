@@ -348,7 +348,11 @@ decode_value = function(T, d, buf, pos, size, elemSize)
     end
     return v, pos + w
   elseif s == "flags" then
-    return unpack_int(buf, pos, 8, false), pos + 8
+    -- a mask bit at or above W refuses (docs/SPEC-TABLES.md §4, A TABLE LOAD
+    -- HOLDS A MASK TO ITS WIDTH; fixed.go element)
+    local m = unpack_int(buf, pos, 8, false)
+    if d.bits ~= nil and d.bits < 64 and m >> d.bits ~= 0 then refuse_out_of_range() end
+    return m, pos + 8
   elseif s == "table" then
     local child = T.Tables[d.target].fixed_size
     local v = decode_table(T, d.target, buf, pos, child)
@@ -651,6 +655,10 @@ local function decode_old_table(T, name, node, buf, pos, rep)
           v[f.name .. "_present"] = true
           v[f.name] = decode_old_value(T, f, child, buf, cpos, rep)
         end
+      elseif child.kind == 35 then
+        -- A WRITER'S ?T READ INTO A READER'S BARE T refuses by name: the
+        -- reader cannot hold an absent value (rulings 2026-11-22, R2)
+        error("kind_mismatch", 0)
       elseif compat_old(f, child) then
         v[f.name] = decode_old_value(T, f, child, buf, cpos, rep)
       end
@@ -703,7 +711,11 @@ decode_old_value = function(T, d, node, buf, pos, rep)
     end
     return nil
   elseif s == "flags" then
-    return unpack_int(buf, pos, node.size, false)
+    -- an older layout holds a mask to W too (docs/SPEC-TABLES.md §4;
+    -- fixedlineage.go element)
+    local m = unpack_int(buf, pos, node.size, false)
+    if d.bits ~= nil and d.bits < 64 and m >> d.bits ~= 0 then refuse_out_of_range() end
+    return m
   elseif s == "table" then
     return decode_old_table(T, d.target, node, buf, pos, rep)
   elseif s == "union" then

@@ -19,7 +19,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include "CFloatWire.h"
+#include "PacketCFloatWire.h"
 
 namespace {
 constexpr float kMin = 0.0f;

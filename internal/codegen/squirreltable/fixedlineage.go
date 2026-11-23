@@ -300,7 +300,8 @@ func emitFixedPlanStruct(m *Module, st *ir.Struct, node *fixedLayoutNode, baseAt
 		fExpr := expr + "." + squirrel.Member(f)
 		child := hit.node
 		cAt := hit.at
-		if f.Type.Optional {
+		switch {
+		case f.Type.Optional:
 			if child.kind == fixedKindOptional && len(child.children) == 1 {
 				inner := child.children[0]
 				if !fixedPlanCompat(f, inner) {
@@ -328,7 +329,11 @@ func emitFixedPlanStruct(m *Module, st *ir.Struct, node *fixedLayoutNode, baseAt
 				emitFixedPlanDecodeValue(m, f, child, cAt, fExpr, ind+"  ", dyn, false)
 				m.Printf("%s}\n", ind)
 			}
-		} else if fixedPlanCompat(f, child) {
+		case child.kind == fixedKindOptional:
+			// A WRITER'S ?T READ INTO A READER'S BARE T refuses by name: the
+			// reader cannot hold an absent value (rulings 2026-11-22, R2).
+			m.Printf("%sreturn \"kind_mismatch\";\n", ind)
+		case fixedPlanCompat(f, child):
 			off := fmt.Sprintf("%d", cAt)
 			if dyn != "0" {
 				off = fmt.Sprintf("%d + %s", cAt, dyn)
@@ -512,6 +517,11 @@ func emitFixedPlanDecodeValue(m *Module, f *ir.Field, node *fixedLayoutNode, at 
 			return
 		case *ir.Flags:
 			m.Printf("%s%s = _rt_fixed.getu(b, at + %s, %d);\n", ind, expr, off, node.size)
+			// an older layout holds a mask to the reader's W too (docs/SPEC-TABLES.md
+			// §4; tablewire fixedlineage.go element)
+			if w, ok := fixedFlagsWidth(f); ok {
+				m.Printf("%sif ((%s >>> %d) != 0) return \"out_of_range\";\n", ind, expr, w)
+			}
 			return
 		}
 	}

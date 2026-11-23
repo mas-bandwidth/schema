@@ -7,12 +7,9 @@ import (
 	"testing"
 )
 
-// A `.absent` NAMING A REASON is the leg's refusal (README.md). On a row that
-// owes an ANSWER (the committed wire, a message golden, a written verdict) it
-// is the wrong verdict and fails; it may never hide in the absence count, or a
-// leg that refuses a valid input reads `pass 0/0 +1a` (review F-091). An EMPTY
-// `.absent` beside it stays the missing codec it is, and the same reason on a
-// row that owes the refusal still passes.
+// A reason-bearing `.absent` on a row that owes an answer is a failed verdict
+// (F-091). An empty marker declares a missing codec. On a wire-refused row,
+// only the explicit refusal answer earns credit (R13).
 func TestReasonedAbsentOnAnAnswerRowFails(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -55,9 +52,9 @@ func TestReasonedAbsentOnAnAnswerRowFails(t *testing.T) {
 			}
 		})
 	}
-	// the control: the same reason on the row that owes the refusal passes
+	// The control: the canonical refusal on a must-refuse row passes.
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "case.absent"), []byte("blob_shared"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "case"), []byte("refused\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	r := &result{total: 1}
@@ -68,10 +65,9 @@ func TestReasonedAbsentOnAnAnswerRowFails(t *testing.T) {
 }
 
 // The same rule on the committed corpus (F-091): blob_equal_bytes is an
-// accepted wire row of blobdemo.Catalog, and a leg that refuses it, here with
-// blob_shared's own reason, fails by that reason; blob_shared, its refused twin
-// on the same root, passes with the same answer; an EMPTY .absent on either is
-// the missing codec.
+// accepted wire row of blobdemo.Catalog. A legacy reason-bearing marker
+// fails on that row. Its refusal twin, blob_shared, requires the canonical
+// answer. An empty marker on either row declares a missing codec.
 func TestReasonedAbsentOnACommittedAcceptedRowFails(t *testing.T) {
 	chdirRepoRoot(t)
 	m, err := ReadManifest(defaultManifest, defaultJSONDir)
@@ -88,27 +84,30 @@ func TestReasonedAbsentOnACommittedAcceptedRowFails(t *testing.T) {
 	if accepted.Name == "" || refused.Name == "" || accepted.WireRefused || !refused.WireRefused || accepted.Root != refused.Root {
 		t.Fatalf("the manifest no longer carries the accepted/refused pair on one root: %+v %+v", accepted, refused)
 	}
-	score := func(inst Instance, answer []byte) *result {
-		want, err := os.ReadFile(inst.Wire)
-		if err != nil {
-			t.Fatal(err)
-		}
+	want, err := os.ReadFile(accepted.Wire)
+	if err != nil {
+		t.Fatal(err)
+	}
+	score := func(inst Instance, suffix string, answer []byte) *result {
 		dir := t.TempDir()
-		if err := os.WriteFile(filepath.Join(dir, inst.Name+".absent"), answer, 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, inst.Name+suffix), answer, 0o644); err != nil {
 			t.Fatal(err)
 		}
 		r := &result{total: 1}
 		scoreAnswer("ruby", "wire", dir, expectation{name: inst.Name, want: want}, inst, r)
 		return r
 	}
-	if r := score(accepted, []byte("blob_shared")); len(r.failures) != 1 || r.missing != 0 || r.pass != 0 {
+	if r := score(accepted, ".absent", []byte("blob_shared")); len(r.failures) != 1 || r.missing != 0 || r.pass != 0 {
 		t.Fatalf("a reasoned .absent on the accepted %s scored %+v, want one failure", accepted.Name, r)
 	}
-	if r := score(refused, []byte("blob_shared")); r.pass != 1 || len(r.failures) != 0 {
-		t.Fatalf("the owed refusal on %s scored %+v, want PASS", refused.Name, r)
+	if r := score(refused, "", []byte("refused\n")); r.pass != 1 || r.missing != 0 || len(r.failures) != 0 || r.outcome[refused.Name] != outcomePass {
+		t.Fatalf("the explicit refusal on %s scored %+v, want PASS", refused.Name, r)
+	}
+	if r := score(refused, ".absent", []byte("blob_shared")); r.missing != 1 || r.pass != 0 || len(r.failures) != 0 || r.outcome[refused.Name] != outcomeAbsent {
+		t.Fatalf("a reasoned .absent on %s scored %+v, want one missing case", refused.Name, r)
 	}
 	for _, inst := range []Instance{accepted, refused} {
-		if r := score(inst, nil); r.missing != 1 || r.pass != 0 || len(r.failures) != 0 {
+		if r := score(inst, ".absent", nil); r.missing != 1 || r.pass != 0 || len(r.failures) != 0 {
 			t.Fatalf("an empty .absent on %s scored %+v, want one missing case", inst.Name, r)
 		}
 	}

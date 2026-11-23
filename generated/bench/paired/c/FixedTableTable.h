@@ -266,7 +266,17 @@ typedef struct bench_table_field_info_t
     uint8_t text_list; /* 0 none, 1 string(M) elements, 2 ?string(M) elements (SPEC-TABLES 2.13) */
     int64_t text_total; /* | total = N byte cap across text-list elements, or 0 (SPEC-TABLES 2.13) */
     void * ( *place )( void * worker, void * slot, const char * key, int32_t length, int64_t number, int fresh );
-    int32_t array_min; /* a [A..B]T count's declared minimum A (docs/SPEC.md §4.2), else 0 */
+    /* A COUNTED ARRAY'S MINIMUM (docs/SPEC.md §5.1, docs/SPEC-TABLES.md §16.2):
+       the A of [A..B]T, 0 on every other field. A text read that places
+       fewer elements refuses, as the wire read does. */
+    int32_t array_min;
+    /* A DEPRECATED VARIANT (docs/SPEC-TABLES.md §2.15): enum_deprecated is one
+       flag per value in [0, enum_max], 1 where the variant is marked
+       "| deprecated", NULL when the enum carries none. A read naming one
+       stores enum_default instead — the field's declared default, None for
+       an element — and is never counted unknown. */
+    uint64_t enum_default;
+    const uint8_t * enum_deprecated;
 } bench_table_field_info_t;
 
 typedef struct bench_table_type_info_t
@@ -696,7 +706,6 @@ static SCHEMA_UNUSED int bench_table_reader_skip( bench_table_reader_t * r, uint
         case 13:
         case 14:
         case 16:
-        case 31:
         case 32:
             if ( !bench_table_reader_leb( r, &n ) || !bench_table_reader_room( r, n ) ) { return 0; }
             r->offset += (int64_t) n;
@@ -764,7 +773,8 @@ static SCHEMA_UNUSED int bench_table_skip_framed( bench_table_reader_t sub, uint
     switch ( kind )
     {
         case 12: return bench_table_skip_utf8( sub.buffer, (uint64_t) sub.size );
-        case 31: return 1;
+        case 31:
+            return 0; /* KIND 31 IS HELD BY NAME AND NEVER WRITTEN (R17): met only as damage, as 33 and 34 are */
         case 32: return sub.size == 0;
         case 13: return depth < 128 && bench_table_skip_body( sub, nodes, depth + 1, 0 ) == sub.size;
         case 14:
@@ -944,7 +954,6 @@ static SCHEMA_UNUSED int bench_table_skip_value( bench_table_reader_t * r, uint8
         case 13:
         case 14:
         case 16:
-        case 31:
         case 32:
         {
             bench_table_reader_t sub;
@@ -2481,7 +2490,7 @@ static SCHEMA_UNUSED int bench_table_fixed_ordinal_width( uint32_t n ) { return 
 
 /* THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
    the no-payload variant 32, and the ONE kind this form's layout adds, the
-   optional wrapper 35. 31 is §3's BODY framing escape, 33 is retired and 34 is
+   optional wrapper 35. 31 is held by name and never written (R17), 33 is retired and 34 is
    reserved: none is a kind a declaration spells, so none is ever an entry's
    kind. */
 static SCHEMA_UNUSED int bench_table_fixed_known_kind( uint8_t kind )
@@ -5992,7 +6001,8 @@ static SCHEMA_UNUSED int bench_table_message_fixed_kind( uint8_t kind )
 
 static SCHEMA_UNUSED int bench_table_message_known_kind( uint8_t kind )
 {
-    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 32 ) || kind == 36;
+    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || kind == 30 || kind == 32 || kind == 36;
+    /* 31 is held by name and never written (R17): an announcement naming it is refused, as one naming 33 or 34 is */
 }
 
 
@@ -6579,8 +6589,8 @@ static SCHEMA_UNUSED int bench_table_message_skip( bench_table_message_reader_t 
             r->bits.offset += (int64_t) n * 8;
             return 1;
         case 31:
-            if ( !bench_table_bit_align_read( &r->bits ) || !bench_table_bit_get( &r->bits, &n, 32 ) ) return 0;
-            return bench_table_message_skip_run( r, n, 8 );
+            return 0;
+            /* held by name and never written (R17): no announcement names it */
         case 10:
             /* A PLAIN FLOAT IS FINITE, AND A QUANTIZED INDEX IS AT MOST ITS COUNT
      (§3.3): the same raw-bits rule a named float read applies. */

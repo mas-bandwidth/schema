@@ -52,7 +52,7 @@ func TestGoPacketWriteRefusesOffRangeCompressedFloat(t *testing.T) {
 // so the in-test types carry the same declaration its cases describe.
 func cfloatField(t *testing.T) string {
 	t.Helper()
-	data, err := os.ReadFile("../../../test/packet-write-cfloat/CFloat.schema")
+	data, err := os.ReadFile("../../../test/packet-write-cfloat/PacketCFloat.schema")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func cfloatField(t *testing.T) string {
 			return strings.TrimSpace(line)
 		}
 	}
-	t.Fatal("test/packet-write-cfloat/CFloat.schema holds no float32 field")
+	t.Fatal("test/packet-write-cfloat/PacketCFloat.schema holds no float32 field")
 	return ""
 }
 

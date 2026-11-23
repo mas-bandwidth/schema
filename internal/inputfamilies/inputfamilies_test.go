@@ -165,7 +165,7 @@ func TestAccountFilesForLegResolvesPerLegSchemasAndExclusions(t *testing.T) {
 		{"packet-void", "python", "test/packet-void/python/Python.schema"},
 		{"packet-void", "ruby", "test/packet-void/ruby/Ruby.schema"},
 		{"packet-write-text", "rust", "test/packet-write-text/Text.schema"},
-		{"packet-write-text", "cpp", "test/packet-write-text/cpp/TextPacket.schema"},
+		{"packet-write-text", "cpp", "test/packet-write-text/cpp/TextPacketCases.schema"},
 		{"packet-write-text", "c", "test/packet-write-text/c/Text.schema"},
 		{"packet-write-text", "dart", "test/packet-write-text/dart/PacketText.schema"},
 		{"packet-write-text", "java", "test/packet-write-text/java/PacketText.schema"},
@@ -191,5 +191,48 @@ func TestAccountFilesForLegResolvesPerLegSchemasAndExclusions(t *testing.T) {
 	}
 	if !slices.Contains(cc, "testdata/conformance/tables/MANIFEST.txt") || len(cc) < 100 {
 		t.Errorf("conformance-corpus: unexpected accounted count %d", len(cc))
+	}
+}
+
+func TestAcceptedBoundsSelectOnlyTheirGoReaders(t *testing.T) {
+	t.Parallel()
+	tree := repoTree(t)
+	for _, tc := range []struct {
+		family   string
+		neighbor string
+		inputs   []string
+	}{
+		{
+			family:   "packet-cfloat-endpoints",
+			neighbor: "packet-write-cfloat",
+			inputs: []string{
+				"test/packet-cfloat-endpoints/PacketRatio.schema",
+				"test/packet-cfloat-endpoints/ratio-endpoints.txt",
+			},
+		},
+		{
+			family:   "table-write-bounds",
+			neighbor: "conformance-corpus",
+			inputs: []string{
+				"testdata/conformance/table-write-bounds/ACCEPTED-WRITE-BOUNDS.txt",
+				"testdata/conformance/table-write-bounds/TableWriteBounds.schema",
+				"testdata/conformance/table-write-bounds/torture_var_wref.bin",
+			},
+		},
+	} {
+		t.Run(tc.family, func(t *testing.T) {
+			if got := AccountFilesForLeg(tree, tc.family, "go"); !slices.Equal(got, tc.inputs) {
+				t.Errorf("accounted files = %v, want %v", got, tc.inputs)
+			}
+			for _, input := range tc.inputs {
+				want := []Row{{Leg: "go", Family: tc.family, Target: tc.family + "-go"}}
+				if got := Select(tree, []string{input}, false, true).Rows; !slices.Equal(got, want) {
+					t.Errorf("%s selected %v, want %v", input, got, want)
+				}
+				if slices.Contains(AccountFilesForLeg(tree, tc.neighbor, "cpp"), input) {
+					t.Errorf("%s is accounted by neighboring family %s", input, tc.neighbor)
+				}
+			}
+		})
 	}
 }

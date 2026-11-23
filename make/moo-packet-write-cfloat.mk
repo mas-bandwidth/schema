@@ -3,7 +3,7 @@
 # endpoint or interior value writes and reads back to its quantized value.
 # The recipes use $(MOO_PACKET_DRIVER) and moo-packet-sabotaged-driver from
 # make/moo-packet.mk, expanded when they run.
-MOO_PACKET_CFLOAT_RUN = -analyze -schema test/packet-write-cfloat/CFloat.schema -input cases=test/packet-write-cfloat/cases.txt -main test/packet-write-cfloat/moo/main.moo
+MOO_PACKET_CFLOAT_RUN = -analyze -schema test/packet-write-cfloat/PacketCFloat.schema -input cases=test/packet-write-cfloat/cases.txt -main test/packet-write-cfloat/moo/main.moo
 
 .PHONY: packet-write-cfloat-moo
 packet-write-cfloat-moo: toolchain-moo moo-packet-driver build/mustrun
