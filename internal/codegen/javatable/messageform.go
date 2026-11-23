@@ -101,8 +101,9 @@ func generateMessageFiles(u *ir.Unit) (map[string][]byte, error) {
 	vocab := tablewire.MessageVocabulary(u)
 	refBits := ir.TableMessageRefBits(len(vocab))
 
+	tooLarge := len(vocab) > ir.TableVocabularyMaxEntries
 	var annBytes []byte
-	if len(vocab) <= ir.TableVocabularyMaxEntries {
+	if !tooLarge {
 		annBytes = tablewire.Announce(u)
 	}
 	annLit := javaByteArrayLiteral(annBytes)
@@ -111,6 +112,7 @@ func generateMessageFiles(u *ir.Unit) (map[string][]byte, error) {
 	}
 	annBody := strings.Replace(tableMessageSurface, "%%ANNOUNCEMENT%%", annLit, 1)
 	annBody = strings.Replace(annBody, "%%BUILDVERSION%%", fmt.Sprintf("0x%016xL", ir.BuildVersion(u)), 1)
+	annBody = strings.ReplaceAll(annBody, "%%TOO_LARGE%%", fmt.Sprintf("%t", tooLarge))
 	out := map[string][]byte{
 		messageAnnouncementClass + ".java": javaFile(u, "the MESSAGE FORM's announcement surface (docs/SPEC-TABLES.md §3.3), form byte 2", annBody),
 		messageRuntimeClass + ".java":      javaFile(u, "the MESSAGE FORM's batch bit stream and vocabulary walk (docs/SPEC-TABLES.md §3.3), form byte 2", tableMessageBatchSurface),
@@ -202,13 +204,13 @@ public final class TableVocabulary {
     private static final long tableBuildVersion = %%BUILDVERSION%%;
 
     public static int announceMeasure() {
-        return tableAnnouncement.length == 0 ? -1 : tableAnnouncement.length;
+        return %%TOO_LARGE%% ? -1 : tableAnnouncement.length;
     }
 
     // Copy the announcement into the caller's buffer and answer its length, or
     // -1 when the buffer is too small (the C++ reference's ` + "`" + `-1` + "`" + `, §3.3).
     public static int announce(byte[] buffer) {
-        if (tableAnnouncement.length == 0 || buffer == null || buffer.length < tableAnnouncement.length) {
+        if (%%TOO_LARGE%% || buffer == null || buffer.length < tableAnnouncement.length) {
             return -1;
         }
         java.lang.System.arraycopy(tableAnnouncement, 0, buffer, 0, tableAnnouncement.length);
@@ -2132,9 +2134,8 @@ func (g *messageGen) messageCheckValue(f *ir.Field, expr string, indent int, lin
 // the same raw-scale ranges the reader clamps against (ir.TableRawRange).
 func messageScalarBounds(f *ir.Field, expr string) []string {
 	if f.Type.Kind == ir.TNamed {
-		if fl, ok := f.Type.Ref.(*ir.Flags); ok && len(fl.Variants) < 64 {
-			mask := (uint64(1) << uint(len(fl.Variants))) - 1
-			return []string{fmt.Sprintf("(%s & ~0x%xL) == 0L", expr, mask)}
+		if fl, ok := f.Type.Ref.(*ir.Flags); ok && fl.WireBits < 64 {
+			return []string{fmt.Sprintf("(%s >>> %d) == 0L", expr, fl.WireBits)}
 		}
 		return nil
 	}
@@ -3010,8 +3011,15 @@ func (g *messageGen) emitLoadElement(f *ir.Field, targetExpr, shapeExpr string, 
 				hasRange = true
 			}
 			bitsWidth := 0
-			if f.Type.Kind == ir.TBits {
+			switch f.Type.Kind {
+			case ir.TBits:
 				bitsWidth = f.Type.Width
+			case ir.TNamed:
+				if fl, ok := f.Type.Ref.(*ir.Flags); ok && fl.WireBits < 64 {
+					minLit = 0
+					maxLit = (uint64(1) << uint(fl.WireBits)) - 1
+					hasRange = true
+				}
 			}
 			g.pf("%s    long %s = TableMessage.readUnsigned(r, %s, %sL, %sL, %t, %d);\n",
 				ind, vVar, shapeExpr, fixedHexLong(minLit), fixedHexLong(maxLit), hasRange, bitsWidth)
