@@ -2,7 +2,7 @@
    Schema: https://github.com/mas-bandwidth/schema — to change this file, edit the .schema source and run `schema generate`.
    SPDX-License-Identifier: NONE — this generated output is yours. */
 #include "GraphdemoView.h"
-const graphdemo_unit_view_info_t * schema_graphdemo_unit_view_(void)
+const graphdemo_unit_view_info_t * schema_graphdemo_unit_view_( void )
 {
     static const graphdemo_view_variant_t Tier_view_variants[] = {
         { 0, "None", 0, NULL, NULL, NULL, GRAPHDEMO_TABLE_DOC_NONE, 0, NULL },
@@ -29,7 +29,7 @@ const graphdemo_unit_view_info_t * schema_graphdemo_unit_view_(void)
         { "TreeNode", "Graph.schema", 1, &schema_graphdemo_tree_node_info_, GRAPHDEMO_TABLE_DOC_NONE, 0, NULL },
     };
     static const graphdemo_view_constant_t constants[] = {
-        { "MaxLayers", "Graph.schema", "int64", 0, INT64_C(4), 0.0, GRAPHDEMO_TABLE_DOC_NONE, 0, NULL },
+        { "MaxLayers", "Graph.schema", "int64", 0, INT64_C( 4 ), 0.0, GRAPHDEMO_TABLE_DOC_NONE, 0, NULL },
     };
     static const graphdemo_unit_view_info_t info = { "graphdemo", 0xef0260949bdd7a2bull,
         1, types,

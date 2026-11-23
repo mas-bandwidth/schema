@@ -377,7 +377,7 @@ func t02R26(t *testing.T) {
 	text, _, st := t02NewerWithOlder(t)
 	snake := ir.RustSnake(st.Name)
 	// THE TWO LANES, EACH BY ITS OWN NAME, ON THE ENTRY.
-	if !strings.Contains(text, snake+"_fixed_lineage[i].reason = SCHEMA_TABLE_LAYOUT_MALFORMED; continue;") {
+	if !strings.Contains(text, snake+"_fixed_lineage[i].reason = SCHEMA_TABLE_LAYOUT_MALFORMED;\n            continue;") {
 		t.Errorf("R26: a lineage entry that does not parse carries no layout_malformed lane of its own")
 	}
 	if !strings.Contains(text, "( made == -2 ) ? SCHEMA_TABLE_LAYOUT_RECORD_TOO_LARGE : SCHEMA_TABLE_PLAN_TOO_LARGE") {

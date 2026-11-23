@@ -69,6 +69,7 @@ import (
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/ccommon"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/cfmt"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/genheader"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -1037,7 +1038,7 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	}
 	maps.Copy(out, generateViewFiles(u, closure, variable, targets, anyKeyed, anyList, anyMap, anyUnboundedText))
 	for name, data := range out {
-		out[name] = []byte(formatCompactCFunctions(string(data)))
+		out[name] = []byte(cfmt.Format(formatCompactCFunctions(string(data))))
 	}
 	return out, nil
 }

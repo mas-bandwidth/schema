@@ -1,0 +1,97 @@
+#ifndef X_H
+#define X_H
+#define INLINE inline __attribute__( ( always_inline ) )
+#define ROUND( x ) \
+    do \
+    { \
+        volatile float slot_ = ( x ); \
+        ( x ) = slot_; \
+    } while ( 0 )
+#define WAIT( f ) \
+    do \
+    { \
+        while ( !ready( f ) ) {} \
+    } while ( 0 )
+#define ASM( x ) __asm__( "" : "+w"( x ) )
+#define ZERO( ... ) ( (void) sizeof( struct { int bad : -1; } ) )
+#define A ( 1 + 2 )
+#ifdef __cplusplus
+extern "C" {
+#endif
+enum
+{
+    kA = 1,
+    kB = 2
+};
+typedef enum Mode
+{
+    MODE_NONE = 0,
+    MODE_ONE = 1
+} Mode;
+typedef struct Thing
+{
+    int a; /* first */
+    const char * name;
+    uint8_t ** rows;
+    int64_t ( *storage )( const struct Thing * );
+} Thing;
+typedef uint64_t ( *id_fn_t )( uint32_t ordinal );
+static const uint8_t bytes[] = {
+    0x01, 0x02,
+    0x03 };
+static const uint64_t ids[] = {
+    UINT64_C( 0x1 ),
+    UINT64_C( 0x2 ),
+};
+static const Row rows[] = {
+    { 0, 0 }, /* Root */
+    { 4, (uint32_t) offsetof( Thing, a ) }, /* a */
+};
+static int empty( void ) {}
+static int one( Thing * t ) { return t->a; }
+static SCHEMA_UNUSED int f( const Thing * t, int * hi, uint8_t * out, int64_t n )
+{
+    int i, k;
+    uint32_t raw[3] = { 0 };
+    if ( t == NULL ) return -1;
+    if ( n < 0 ) { return -2; }
+    if ( n > 4 )
+    {
+        hi[0] = 1;
+        return 2;
+    }
+    if ( t->a ) *hi = (int64_t) *out < 0 ? UINT64_MAX : 0;
+    if ( t->name == NULL ) ( *hi ) = 3;
+    for ( k = 0; k < 3; k++ )
+        for ( i = 0; i < 4; i++ ) raw[k] |= (uint32_t) out[4 * k + i] << ( 8 * i );
+    for ( i = 0; i < n; i++ ) /* every byte */
+    {
+        out[i] = (uint8_t) ( i & 0xff );
+    }
+    while ( n-- > 0 );
+    do { i++; } while ( i < 10 );
+    switch ( t->a )
+    {
+        case 1: return 1;
+        case UINT64_C( 0x2 ):
+        {
+            i = -i;
+        }
+        break;
+        case 3:
+            i = ~i;
+            k = !i;
+            break;
+        default: break;
+    }
+    if ( i ) goto done;
+    out[t->rows[idx( t, k )]] = 0;
+    i = t->a ? 1 : ( k ? 2 : 3 );
+    return i;
+done:
+    return sizeof( *t ) + sizeof( Thing );
+}
+#ifdef __cplusplus
+}
+#endif
+#endif
