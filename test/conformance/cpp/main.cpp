@@ -63,6 +63,7 @@
 #include "ShapesTable.h"
 // an ARRAY OF PACKET UNIONS in a variable and a fixed table (docs/SPEC-TABLES.md §2.6)
 #include "PacketUnionsTable.h"
+#include "TableWriteBoundsTable.h"
 // the MESSAGE FORM's units (docs/SPEC-TABLES.md §3.3): the three backend
 // messages the ruling measured, and the WIDE-VOCABULARY unit whose slots fall
 // on both sides of the one-byte boundary
@@ -533,6 +534,7 @@ static const VarCodec var_codecs[] = {
     VARCODEC( "cooktorturewide", cooktorturewide, TortureWideCook ),
     VARCODEC( "shapes", shapes, Bounds ),
     VARCODEC( "packetunions", tblpacketunions, ShapeDoc ),
+    VARCODEC( "writebounds", writebounds, TortureVarWref ),
 
     VARCODEC( "graphdemo", graphdemo, Scene ),
     VARCODEC( "graphdemo", graphdemo, ListNode ),
@@ -2262,6 +2264,29 @@ template <typename T, typename E> static bool write_refusal_shapes_common( T & v
 static bool write_refusal_set_variable( const std::string & root, void * value, const std::string & path,
                                         const std::string & kind, const std::string & text )
 {
+    if ( root == "TortureVarWref" )
+    {
+        writebounds::TortureVarWref & v = *(writebounds::TortureVarWref *) value;
+        if ( path == "opt_arr" && kind == "count" )
+        {
+            const int32_t count = wref_count( text );
+            const int32_t capacity = (int32_t) ( sizeof( v.opt_arr ) / sizeof( v.opt_arr[0] ) );
+            for ( int32_t i = v.opt_arr_count; i < count && i < capacity; i++ ) v.opt_arr[i] = v.opt_arr[0];
+            v.opt_arr_count = count;
+            v.opt_arr_present = true;
+            return true;
+        }
+        if ( path == "arm_str.a_str" && v.arm_str.type == writebounds::WrefArmType::AStr )
+        {
+            const int32_t capacity = (int32_t) sizeof( v.arm_str.a_str.value ) - 1;
+            return write_refusal_text( v.arm_str.a_str.value, capacity, v.arm_str.a_str.value_length, kind, text );
+        }
+        if ( kind != "int" ) return false;
+        if ( path == "arm_bits.a_bits" && v.arm_bits.type == writebounds::WrefArmType::ABits ) return wref_store_int( v.arm_bits.a_bits, text );
+        if ( path == "arm_range.a_range" && v.arm_range.type == writebounds::WrefArmType::ARange ) return wref_store_int( v.arm_range.a_range, text );
+        if ( path == "chan_lim[1]" ) return wref_store_int( v.chan_lim.slots[1], text );
+        return false;
+    }
     if ( root == "Scene" )
     {
         graphdemo::Scene & v = *(graphdemo::Scene *) value;
