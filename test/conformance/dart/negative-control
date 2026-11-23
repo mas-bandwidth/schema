@@ -85,7 +85,7 @@ if [ "$mode" = absent ]; then
     cat > "$out/driver" <<EOF
 #!/bin/sh
 case "\${2:-}" in
-  write-refusal|write-refusal-fixed|write-refusal-message|write-refusal-json)
+  write-refusal|write-refusal-fixed|write-refusal-message|write-refusal-json|json-write)
     exec "$dart" --enable-asserts "$root/$out/test/conformance/dart/main.dart" "\$@" ;;
 esac
 exec "$root/$out/conformance-dart" "\$@"
@@ -169,7 +169,7 @@ cp test/conformance/dart/main.dart "$out/test/conformance/dart/main.dart"
 cat > "$out/driver" <<EOF
 #!/bin/sh
 case "\${2:-}" in
-  write-refusal|write-refusal-fixed|write-refusal-message|write-refusal-json)
+  write-refusal|write-refusal-fixed|write-refusal-message|write-refusal-json|json-write)
     exec "$dart" --enable-asserts "$root/$out/test/conformance/dart/main.dart" "\$@" ;;
 esac
 exec "$root/$out/conformance-dart" "\$@"
