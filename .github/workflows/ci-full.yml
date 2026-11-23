@@ -497,8 +497,16 @@ jobs:
           fi
           make dist-lobster
 
-      - name: build the C++ fixed-form byte oracle for the emitter packages
-        if: startsWith(matrix.group, 'unit-codegen') && !startsWith(matrix.group, 'unit-codegen-cpp-') && !startsWith(matrix.group, 'unit-codegen-python-')
+      # THE ORACLE ON EVERY ROW THAT READS IT. Under SCHEMA_SLOW=1 on CI a
+      # missing build/fixedform-corpus is a failure, never a skip
+      # (slowtest.CorpusRequired, 2fa95aed58), so every row whose tests read it
+      # builds it here: the emitter rows (the C++ rows too: cpptable's fixed
+      # versioning and roadmap tests read the reference's bytes), the Elixir
+      # rows (elixirtable's strict harness and probes), unit-rest
+      # (internal/fixedvector) and unit-compiler-18 (the Goose lineage test).
+      # The Python rows build it in the step below.
+      - name: build the C++ fixed-form byte oracle for the rows that read it
+        if: (startsWith(matrix.group, 'unit-codegen') && !startsWith(matrix.group, 'unit-codegen-python-')) || startsWith(matrix.group, 'unit-elixir-') || matrix.group == 'unit-rest' || matrix.group == 'unit-compiler-18'
         run: make -j"$(getconf _NPROCESSORS_ONLN)" tables-fixedform-corpus
 
       - name: build the C++ fixed-form byte oracle and Python conformance corpus
