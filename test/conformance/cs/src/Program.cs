@@ -189,6 +189,10 @@ static partial class Program
     {
         return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
     }
+    static Report Copy(Writebounds.TableReport r)
+    {
+        return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
+    }
     static Report Copy(Cooktorture.TableReport r)
     {
         return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };

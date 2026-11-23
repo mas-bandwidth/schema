@@ -1282,7 +1282,7 @@ TOOLCHAIN_PINS_cs  := DOTNET
 CONFORMANCE_LEGS  += $(call unless_skipped,cs,build-conformance-cs build-cs-cook)
 
 .PHONY: table-write-bounds-cs
-table-write-bounds-cs: build/conformance-harness build-conformance-cs
+table-write-bounds-cs: build/conformance-harness build-conformance-cs build-cs-cook
 	./build/conformance-harness run --only cs --surfaces write-refusal --complete \
 		--manifest testdata/conformance/table-write-bounds/WRITE-BOUNDS.txt \
 		--json testdata/conformance/table-write-bounds \
