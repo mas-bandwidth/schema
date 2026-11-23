@@ -16975,6 +16975,13 @@ without touching a stored file.
   rather than passing vacuously, which is the distinction that keeps a
   missing feature and a failing test apart.
 
+- **A STRICT C COMPILE.** The C unit converts numbers in the "C" locale
+  (newlocale and uselocale, POSIX.1-2008). Generated `<Name>Table.c` sets
+  `_POSIX_C_SOURCE 200809L` itself before its first include, and compiles
+  under `-std=c11 -Wall -Wextra -Werror`. A unit that includes the file after
+  its own system headers sets the macro first, or the file refuses with a
+  named `#error` on glibc: never an unknown type name.
+
 ### 16.6 What this is not
 
 Not a file format, not a directory layout, not a manifest, not an envelope.

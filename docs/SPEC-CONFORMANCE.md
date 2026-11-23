@@ -66,6 +66,10 @@ OWES) and is repeated here as the rule for the suite:
   pass.
 - A surface a port declares absent must be one the specification lets it
   refuse. An absence on a required surface is a failure, not a gap.
+- **Strict-compile row (C).** Generated C table output compiles under
+  `-std=c11 -Wall -Wextra -Werror` alone and when included by a unit that
+  sets `_POSIX_C_SOURCE 200809L` first; included late without it, it refuses
+  by name (SPEC-TABLES.md §16.5, A STRICT C COMPILE).
 - Every pinned wire-fuzz vector is RUN. `testdata/wire/tables/fuzz-vectors/INDEX.txt`
   names every `*.bin` beside it, and every line of it names a file that exists;
   `harness wire-fuzz` refuses the run, naming the file, when a vector is on disk
