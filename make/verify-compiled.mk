@@ -231,11 +231,17 @@ _verify-rust-bench: bin/schema generated/bench/rust/.stamp generated/bench/paire
 
 # ---- java ----
 
-.PHONY: _verify-java-conformance _verify-java-bench
-_verify-java-conformance: toolchain-java build/conformance-harness build-conformance-java build/java-test/.stamp build/java-test-ludicrous/.stamp packet-defaults-java packet-utf8-java packet-finite-java conformance-rows-java
+.PHONY: _verify-java-conformance _verify-java-packet-main-ea _verify-java-packet-main _verify-java-packet-ludicrous _verify-java-bench
+_verify-java-packet-main-ea: toolchain-java build/java-test/.stamp
 	cd test/java && $(JAVA) -ea -cp ../../build/java-test Main
+
+_verify-java-packet-main: toolchain-java build/java-test/.stamp
 	cd test/java && $(JAVA) -cp ../../build/java-test Main
+
+_verify-java-packet-ludicrous: toolchain-java build/java-test-ludicrous/.stamp
 	cd test/java-ludicrous && $(JAVA) -ea -cp ../../build/java-test-ludicrous Main
+
+_verify-java-conformance: toolchain-java build/conformance-harness build-conformance-java _verify-java-packet-main-ea _verify-java-packet-main _verify-java-packet-ludicrous packet-defaults-java packet-utf8-java packet-finite-java conformance-rows-java
 	@rm -rf build/verify/conformance-java && mkdir -p build/verify/conformance-java $(VERIFY_RESULTS_DIR)
 	JAVA="$(JAVA)" JAVAC="$(JAVAC)" ./build/conformance-harness run --only java --claims --work build/verify/conformance-java --results $(VERIFY_RESULTS_DIR)/java.json
 
