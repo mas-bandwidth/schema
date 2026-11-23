@@ -1285,7 +1285,14 @@ func emitFixed(b *strings.Builder, u *ir.Unit, r *fixedRoot) {
 	fmt.Fprintf(b, "public static long %sFixedLoad(Span<%s> values, ReadOnlySpan<byte> data, ref TableReport report)\n{\n", name, name)
 	fmt.Fprintf(b, "    return %sFixedLoad(values, data, ref report, %sFixedPlanMax);\n}\n\n", name, name)
 
+	// R4: after ANY refusal every row handed in holds its declared default.
+	// The walk refuses with -1 and decodes only rows it accepts; this entry
+	// resets all of values on a refusal.
 	fmt.Fprintf(b, "public static long %sFixedLoad(Span<%s> values, ReadOnlySpan<byte> data, ref TableReport report, int planCapacity)\n{\n", name, name)
+	fmt.Fprintf(b, "    long loaded = %sFixedLoadWalk(values, data, ref report, planCapacity);\n", name)
+	fmt.Fprintf(b, "    if (loaded < 0)\n    {\n        for (int k = 0; k < values.Length; k++) { Init%s(ref values[k]); }\n    }\n    return loaded;\n}\n\n", name)
+
+	fmt.Fprintf(b, "private static long %sFixedLoadWalk(Span<%s> values, ReadOnlySpan<byte> data, ref TableReport report, int planCapacity)\n{\n", name, name)
 	var load strings.Builder
 	load.WriteString("report = default;\n")
 	if crc {

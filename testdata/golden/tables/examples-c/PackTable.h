@@ -6338,7 +6338,8 @@ static SCHEMA_UNUSED int tabledemo_gunner_settings_load_message_body(tabledemo_t
  damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
 }
-/* gunner_settings_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+/* gunner_settings_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report.
+   EVERY REFUSAL HAS ONE EXIT (R4): count 0 and every value handed in, all `capacity` of them, at its declared defaults. */
 static SCHEMA_UNUSED int tabledemo_gunner_settings_load_messages(tabledemo_gunner_settings_t * values,int64_t * count,const tabledemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,tabledemo_table_report_t * report)
 {
  tabledemo_table_report_t ignored={0};
@@ -6353,27 +6354,23 @@ static SCHEMA_UNUSED int tabledemo_gunner_settings_load_messages(tabledemo_gunne
  }capacity=*count;
  *count=0;
  bodies=tabledemo_table_message_open(&r,vocabulary,buffer,bytes,report);
- if(bodies<0)return 0;
- /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies<0)goto refuse;
  if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_TABLEDEMO_TABLE_BATCH_TOO_LARGE;
- return 0;
+ goto refuse;
  }
  non_finite_before=report->non_finite_floats;
  for(i=0;i<bodies;i++){if(!tabledemo_gunner_settings_load_message_body(&r,values+i))break;
  (*count)++;
  }ok=i==bodies&&tabledemo_table_message_close(&r);
- /* a NaN or an infinity refuses the whole batch, the strict read too: count 0 and every value it wrote reset (§3.3) */
- if(tabledemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)tabledemo_gunner_settings_reset(values+i);
- *count=0;
- return 0;
- }
- /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
- if(!ok||tabledemo_table_report_finish(report,ok)){for(i=0;i<bodies;i++)tabledemo_gunner_settings_reset(values+i);
- *count=0;
- return 0;
- }
+ /* a NaN or an infinity refuses the whole batch, the strict read too (§3.3) */
+ if(tabledemo_table_non_finite_refused(report,non_finite_before))goto refuse;
+ /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included (§3.3, §4) */
+ if(!ok||tabledemo_table_report_finish(report,ok))goto refuse;
  return ok;
+ refuse:for(i=0;i<capacity;i++)tabledemo_gunner_settings_reset(values+i);
+ *count=0;
+ return 0;
 }
 static SCHEMA_UNUSED int schema_tabledemo_ship_entry_wire_display_name_( tabledemo_table_writer_t * w, const tabledemo_ship_entry_t * value )
 {
@@ -6974,7 +6971,8 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_load_message_body(tabledemo_table_
  damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
 }
-/* ship_entry_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+/* ship_entry_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report.
+   EVERY REFUSAL HAS ONE EXIT (R4): count 0 and every value handed in, all `capacity` of them, at its declared defaults. */
 static SCHEMA_UNUSED int tabledemo_ship_entry_load_messages(tabledemo_ship_entry_t * values,int64_t * count,const tabledemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,tabledemo_table_report_t * report)
 {
  tabledemo_table_report_t ignored={0};
@@ -6989,27 +6987,23 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_load_messages(tabledemo_ship_entry
  }capacity=*count;
  *count=0;
  bodies=tabledemo_table_message_open(&r,vocabulary,buffer,bytes,report);
- if(bodies<0)return 0;
- /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies<0)goto refuse;
  if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_TABLEDEMO_TABLE_BATCH_TOO_LARGE;
- return 0;
+ goto refuse;
  }
  non_finite_before=report->non_finite_floats;
  for(i=0;i<bodies;i++){if(!tabledemo_ship_entry_load_message_body(&r,values+i))break;
  (*count)++;
  }ok=i==bodies&&tabledemo_table_message_close(&r);
- /* a NaN or an infinity refuses the whole batch, the strict read too: count 0 and every value it wrote reset (§3.3) */
- if(tabledemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)tabledemo_ship_entry_reset(values+i);
- *count=0;
- return 0;
- }
- /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
- if(!ok||tabledemo_table_report_finish(report,ok)){for(i=0;i<bodies;i++)tabledemo_ship_entry_reset(values+i);
- *count=0;
- return 0;
- }
+ /* a NaN or an infinity refuses the whole batch, the strict read too (§3.3) */
+ if(tabledemo_table_non_finite_refused(report,non_finite_before))goto refuse;
+ /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included (§3.3, §4) */
+ if(!ok||tabledemo_table_report_finish(report,ok))goto refuse;
  return ok;
+ refuse:for(i=0;i<capacity;i++)tabledemo_ship_entry_reset(values+i);
+ *count=0;
+ return 0;
 }
 static SCHEMA_UNUSED int schema_tabledemo_global_settings_wire_build_note_( tabledemo_table_writer_t * w, const tabledemo_global_settings_t * value )
 {
@@ -7595,7 +7589,8 @@ static SCHEMA_UNUSED int tabledemo_global_settings_load_message_body(tabledemo_t
  damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
 }
-/* global_settings_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+/* global_settings_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report.
+   EVERY REFUSAL HAS ONE EXIT (R4): count 0 and every value handed in, all `capacity` of them, at its declared defaults. */
 static SCHEMA_UNUSED int tabledemo_global_settings_load_messages(tabledemo_global_settings_t * values,int64_t * count,const tabledemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,tabledemo_table_report_t * report)
 {
  tabledemo_table_report_t ignored={0};
@@ -7610,27 +7605,23 @@ static SCHEMA_UNUSED int tabledemo_global_settings_load_messages(tabledemo_globa
  }capacity=*count;
  *count=0;
  bodies=tabledemo_table_message_open(&r,vocabulary,buffer,bytes,report);
- if(bodies<0)return 0;
- /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies<0)goto refuse;
  if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_TABLEDEMO_TABLE_BATCH_TOO_LARGE;
- return 0;
+ goto refuse;
  }
  non_finite_before=report->non_finite_floats;
  for(i=0;i<bodies;i++){if(!tabledemo_global_settings_load_message_body(&r,values+i))break;
  (*count)++;
  }ok=i==bodies&&tabledemo_table_message_close(&r);
- /* a NaN or an infinity refuses the whole batch, the strict read too: count 0 and every value it wrote reset (§3.3) */
- if(tabledemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)tabledemo_global_settings_reset(values+i);
- *count=0;
- return 0;
- }
- /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
- if(!ok||tabledemo_table_report_finish(report,ok)){for(i=0;i<bodies;i++)tabledemo_global_settings_reset(values+i);
- *count=0;
- return 0;
- }
+ /* a NaN or an infinity refuses the whole batch, the strict read too (§3.3) */
+ if(tabledemo_table_non_finite_refused(report,non_finite_before))goto refuse;
+ /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included (§3.3, §4) */
+ if(!ok||tabledemo_table_report_finish(report,ok))goto refuse;
  return ok;
+ refuse:for(i=0;i<capacity;i++)tabledemo_global_settings_reset(values+i);
+ *count=0;
+ return 0;
 }
 #define SCHEMA_TABLEDEMO_PACK_CONFIG_SHIPS_AT(value,key) SCHEMA_TABLEDEMO_TABLE_KEYED_AT((value).ships,(key),TABLEDEMO_SHIP_TYPE_MAX)
 #define SCHEMA_TABLEDEMO_PACK_CONFIG_THRESHOLDS_AT(value,key) SCHEMA_TABLEDEMO_TABLE_KEYED_AT((value).thresholds,(key),TABLEDEMO_DIFFICULTY_MAX)
@@ -8555,7 +8546,8 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_message_body(tabledemo_table
  damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
 }
-/* pack_config_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+/* pack_config_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report.
+   EVERY REFUSAL HAS ONE EXIT (R4): count 0 and every value handed in, all `capacity` of them, at its declared defaults. */
 static SCHEMA_UNUSED int tabledemo_pack_config_load_messages(tabledemo_pack_config_t * values,int64_t * count,const tabledemo_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,tabledemo_table_report_t * report)
 {
  tabledemo_table_report_t ignored={0};
@@ -8570,27 +8562,23 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_messages(tabledemo_pack_conf
  }capacity=*count;
  *count=0;
  bodies=tabledemo_table_message_open(&r,vocabulary,buffer,bytes,report);
- if(bodies<0)return 0;
- /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies<0)goto refuse;
  if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_TABLEDEMO_TABLE_BATCH_TOO_LARGE;
- return 0;
+ goto refuse;
  }
  non_finite_before=report->non_finite_floats;
  for(i=0;i<bodies;i++){if(!tabledemo_pack_config_load_message_body(&r,values+i))break;
  (*count)++;
  }ok=i==bodies&&tabledemo_table_message_close(&r);
- /* a NaN or an infinity refuses the whole batch, the strict read too: count 0 and every value it wrote reset (§3.3) */
- if(tabledemo_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)tabledemo_pack_config_reset(values+i);
- *count=0;
- return 0;
- }
- /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
- if(!ok||tabledemo_table_report_finish(report,ok)){for(i=0;i<bodies;i++)tabledemo_pack_config_reset(values+i);
- *count=0;
- return 0;
- }
+ /* a NaN or an infinity refuses the whole batch, the strict read too (§3.3) */
+ if(tabledemo_table_non_finite_refused(report,non_finite_before))goto refuse;
+ /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included (§3.3, §4) */
+ if(!ok||tabledemo_table_report_finish(report,ok))goto refuse;
  return ok;
+ refuse:for(i=0;i<capacity;i++)tabledemo_pack_config_reset(values+i);
+ *count=0;
+ return 0;
 }
 /* ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----
 
@@ -9231,10 +9219,10 @@ static SCHEMA_UNUSED int64_t tabledemo_gunner_settings_fixed_save( const tablede
    built from the lock's bytes. The signature keeps both so every caller in
    test/c-tables and the paired bench still compiles (§5.6 retires mechanisms,
    not API). */
-/* gunner_settings_fixed_load is the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
+/* schema_tabledemo_gunner_settings_fixed_load_walk_ is the walk of the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
    returns every record, or refuses the whole load at the first
-   condition it meets and lands nothing. */
-static SCHEMA_UNUSED int64_t tabledemo_gunner_settings_fixed_load( tabledemo_gunner_settings_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+   condition it meets; gunner_settings_fixed_load resets every row on that refusal. */
+static SCHEMA_UNUSED int64_t schema_tabledemo_gunner_settings_fixed_load_walk_( tabledemo_gunner_settings_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  tabledemo_table_fixed_entry_t * plan, int32_t plan_capacity, tabledemo_table_fixed_plan_cache_t * cache, tabledemo_table_report_t * report )
 {
     tabledemo_table_report_t local;
@@ -9358,8 +9346,6 @@ static SCHEMA_UNUSED int64_t tabledemo_gunner_settings_fixed_load( tabledemo_gun
            wire_damaged in this check pass, before any byte of the record lands. */
         if ( tabledemo_table_fixed_dead_refuses( entries, entry_count, entry_guarded, at + 8, entry_guards ) )
         {
-            int64_t j;
-            for ( j = 0; j < k; ++j ) { tabledemo_gunner_settings_reset( values + j ); }
             memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
             return -1;
         }
@@ -9401,8 +9387,6 @@ static SCHEMA_UNUSED int64_t tabledemo_gunner_settings_fixed_load( tabledemo_gun
                 {
                     if ( ( at + 8 )[p->src + b] > 1u )
                     {
-                        int64_t j;
-                        for ( j = 0; j < k; ++j ) { tabledemo_gunner_settings_reset( values + j ); }
                         memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
                         return -1;
                     }
@@ -9416,14 +9400,12 @@ static SCHEMA_UNUSED int64_t tabledemo_gunner_settings_fixed_load( tabledemo_gun
             return -1;
         }
         tabledemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
-        if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { tabledemo_gunner_settings_reset( values + j ); } return -1; }
+        if ( report->refused ) { return -1; }
         /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
            bounds pass: every record this call wrote is reset and no
            counter moves. */
         if ( !schema_tabledemo_gunner_settings_fixed_finite_body_( values + k ) )
         {
-            int64_t j;
-            for ( j = 0; j <= k; ++j ) { tabledemo_gunner_settings_reset( values + j ); }
             report->widened = read_widened;
             tabledemo_table_non_finite_float( report );
             return -1;
@@ -9434,8 +9416,6 @@ static SCHEMA_UNUSED int64_t tabledemo_gunner_settings_fixed_load( tabledemo_gun
            and the plan's counters are committed only past it (§5.8). */
         if ( schema_tabledemo_gunner_settings_fixed_clamp_( values + k, report ) != 0 )
         {
-            int64_t j;
-            for ( j = 0; j <= k; ++j ) { tabledemo_gunner_settings_reset( values + j ); }
             report->widened = rec_widened;
             return -1;
         }
@@ -9443,8 +9423,21 @@ static SCHEMA_UNUSED int64_t tabledemo_gunner_settings_fixed_load( tabledemo_gun
     }
     /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
     report->unknown += census_unknown;
-    if ( census_kind != 0 ) { int64_t j; for ( j = 0; j < count; ++j ) { tabledemo_gunner_settings_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH; return -1; }
+    if ( census_kind != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH; return -1; }
     return count;
+}
+
+/* gunner_settings_fixed_load is the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
+   returns every record, or refuses the whole load. EVERY REFUSAL HAS ONE
+   EXIT (R4): every row handed in, all `capacity` of them, is reset to its
+   declared defaults, so no partial value survives. */
+static SCHEMA_UNUSED int64_t tabledemo_gunner_settings_fixed_load( tabledemo_gunner_settings_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                                 tabledemo_table_fixed_entry_t * plan, int32_t plan_capacity, tabledemo_table_fixed_plan_cache_t * cache, tabledemo_table_report_t * report )
+{
+    int64_t k;
+    const int64_t n = schema_tabledemo_gunner_settings_fixed_load_walk_( values, capacity, data, bytes, plan, plan_capacity, cache, report );
+    if ( n < 0 && values != NULL ) { for ( k = 0; k < capacity; ++k ) { tabledemo_gunner_settings_reset( values + k ); } }
+    return n;
 }
 
 /* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value ShipEntry holds is
@@ -9788,10 +9781,10 @@ static SCHEMA_UNUSED int64_t tabledemo_ship_entry_fixed_save( const tabledemo_sh
    built from the lock's bytes. The signature keeps both so every caller in
    test/c-tables and the paired bench still compiles (§5.6 retires mechanisms,
    not API). */
-/* ship_entry_fixed_load is the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
+/* schema_tabledemo_ship_entry_fixed_load_walk_ is the walk of the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
    returns every record, or refuses the whole load at the first
-   condition it meets and lands nothing. */
-static SCHEMA_UNUSED int64_t tabledemo_ship_entry_fixed_load( tabledemo_ship_entry_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+   condition it meets; ship_entry_fixed_load resets every row on that refusal. */
+static SCHEMA_UNUSED int64_t schema_tabledemo_ship_entry_fixed_load_walk_( tabledemo_ship_entry_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  tabledemo_table_fixed_entry_t * plan, int32_t plan_capacity, tabledemo_table_fixed_plan_cache_t * cache, tabledemo_table_report_t * report )
 {
     tabledemo_table_report_t local;
@@ -9915,8 +9908,6 @@ static SCHEMA_UNUSED int64_t tabledemo_ship_entry_fixed_load( tabledemo_ship_ent
            wire_damaged in this check pass, before any byte of the record lands. */
         if ( tabledemo_table_fixed_dead_refuses( entries, entry_count, entry_guarded, at + 8, entry_guards ) )
         {
-            int64_t j;
-            for ( j = 0; j < k; ++j ) { tabledemo_ship_entry_reset( values + j ); }
             memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
             return -1;
         }
@@ -9958,8 +9949,6 @@ static SCHEMA_UNUSED int64_t tabledemo_ship_entry_fixed_load( tabledemo_ship_ent
                 {
                     if ( ( at + 8 )[p->src + b] > 1u )
                     {
-                        int64_t j;
-                        for ( j = 0; j < k; ++j ) { tabledemo_ship_entry_reset( values + j ); }
                         memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
                         return -1;
                     }
@@ -9973,14 +9962,12 @@ static SCHEMA_UNUSED int64_t tabledemo_ship_entry_fixed_load( tabledemo_ship_ent
             return -1;
         }
         tabledemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, (const uint8_t *) &defaults );
-        if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { tabledemo_ship_entry_reset( values + j ); } return -1; }
+        if ( report->refused ) { return -1; }
         /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
            bounds pass: every record this call wrote is reset and no
            counter moves. */
         if ( !schema_tabledemo_ship_entry_fixed_finite_body_( values + k ) )
         {
-            int64_t j;
-            for ( j = 0; j <= k; ++j ) { tabledemo_ship_entry_reset( values + j ); }
             report->widened = read_widened;
             tabledemo_table_non_finite_float( report );
             return -1;
@@ -9991,8 +9978,6 @@ static SCHEMA_UNUSED int64_t tabledemo_ship_entry_fixed_load( tabledemo_ship_ent
            and the plan's counters are committed only past it (§5.8). */
         if ( schema_tabledemo_ship_entry_fixed_clamp_( values + k, report ) != 0 )
         {
-            int64_t j;
-            for ( j = 0; j <= k; ++j ) { tabledemo_ship_entry_reset( values + j ); }
             report->widened = rec_widened;
             return -1;
         }
@@ -10000,8 +9985,21 @@ static SCHEMA_UNUSED int64_t tabledemo_ship_entry_fixed_load( tabledemo_ship_ent
     }
     /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
     report->unknown += census_unknown;
-    if ( census_kind != 0 ) { int64_t j; for ( j = 0; j < count; ++j ) { tabledemo_ship_entry_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH; return -1; }
+    if ( census_kind != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH; return -1; }
     return count;
+}
+
+/* ship_entry_fixed_load is the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
+   returns every record, or refuses the whole load. EVERY REFUSAL HAS ONE
+   EXIT (R4): every row handed in, all `capacity` of them, is reset to its
+   declared defaults, so no partial value survives. */
+static SCHEMA_UNUSED int64_t tabledemo_ship_entry_fixed_load( tabledemo_ship_entry_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                                 tabledemo_table_fixed_entry_t * plan, int32_t plan_capacity, tabledemo_table_fixed_plan_cache_t * cache, tabledemo_table_report_t * report )
+{
+    int64_t k;
+    const int64_t n = schema_tabledemo_ship_entry_fixed_load_walk_( values, capacity, data, bytes, plan, plan_capacity, cache, report );
+    if ( n < 0 && values != NULL ) { for ( k = 0; k < capacity; ++k ) { tabledemo_ship_entry_reset( values + k ); } }
+    return n;
 }
 
 /* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value GlobalSettings holds is
@@ -10338,10 +10336,10 @@ static SCHEMA_UNUSED int64_t tabledemo_global_settings_fixed_save( const tablede
    built from the lock's bytes. The signature keeps both so every caller in
    test/c-tables and the paired bench still compiles (§5.6 retires mechanisms,
    not API). */
-/* global_settings_fixed_load is the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
+/* schema_tabledemo_global_settings_fixed_load_walk_ is the walk of the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
    returns every record, or refuses the whole load at the first
-   condition it meets and lands nothing. */
-static SCHEMA_UNUSED int64_t tabledemo_global_settings_fixed_load( tabledemo_global_settings_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+   condition it meets; global_settings_fixed_load resets every row on that refusal. */
+static SCHEMA_UNUSED int64_t schema_tabledemo_global_settings_fixed_load_walk_( tabledemo_global_settings_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  tabledemo_table_fixed_entry_t * plan, int32_t plan_capacity, tabledemo_table_fixed_plan_cache_t * cache, tabledemo_table_report_t * report )
 {
     tabledemo_table_report_t local;
@@ -10465,8 +10463,6 @@ static SCHEMA_UNUSED int64_t tabledemo_global_settings_fixed_load( tabledemo_glo
            wire_damaged in this check pass, before any byte of the record lands. */
         if ( tabledemo_table_fixed_dead_refuses( entries, entry_count, entry_guarded, at + 8, entry_guards ) )
         {
-            int64_t j;
-            for ( j = 0; j < k; ++j ) { tabledemo_global_settings_reset( values + j ); }
             memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
             return -1;
         }
@@ -10508,8 +10504,6 @@ static SCHEMA_UNUSED int64_t tabledemo_global_settings_fixed_load( tabledemo_glo
                 {
                     if ( ( at + 8 )[p->src + b] > 1u )
                     {
-                        int64_t j;
-                        for ( j = 0; j < k; ++j ) { tabledemo_global_settings_reset( values + j ); }
                         memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
                         return -1;
                     }
@@ -10523,14 +10517,12 @@ static SCHEMA_UNUSED int64_t tabledemo_global_settings_fixed_load( tabledemo_glo
             return -1;
         }
         tabledemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
-        if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { tabledemo_global_settings_reset( values + j ); } return -1; }
+        if ( report->refused ) { return -1; }
         /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
            bounds pass: every record this call wrote is reset and no
            counter moves. */
         if ( !schema_tabledemo_global_settings_fixed_finite_body_( values + k ) )
         {
-            int64_t j;
-            for ( j = 0; j <= k; ++j ) { tabledemo_global_settings_reset( values + j ); }
             report->widened = read_widened;
             tabledemo_table_non_finite_float( report );
             return -1;
@@ -10544,7 +10536,7 @@ static SCHEMA_UNUSED int64_t tabledemo_global_settings_fixed_load( tabledemo_glo
             case 0: schema_tabledemo_global_settings_fixed_clamp_known_0_( values + k, &known_out_of_range ); break;
             default: break;
             }
-            if ( known_out_of_range != 0 ) { int64_t j; for ( j = 0; j <= k; ++j ) { tabledemo_global_settings_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; return -1; }
+            if ( known_out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; return -1; }
         }
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
            storage it just wrote: the same pass for either plan (§3.4). A
@@ -10552,8 +10544,6 @@ static SCHEMA_UNUSED int64_t tabledemo_global_settings_fixed_load( tabledemo_glo
            and the plan's counters are committed only past it (§5.8). */
         if ( schema_tabledemo_global_settings_fixed_clamp_( values + k, report ) != 0 )
         {
-            int64_t j;
-            for ( j = 0; j <= k; ++j ) { tabledemo_global_settings_reset( values + j ); }
             report->widened = rec_widened;
             return -1;
         }
@@ -10561,8 +10551,21 @@ static SCHEMA_UNUSED int64_t tabledemo_global_settings_fixed_load( tabledemo_glo
     }
     /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
     report->unknown += census_unknown;
-    if ( census_kind != 0 ) { int64_t j; for ( j = 0; j < count; ++j ) { tabledemo_global_settings_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH; return -1; }
+    if ( census_kind != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH; return -1; }
     return count;
+}
+
+/* global_settings_fixed_load is the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
+   returns every record, or refuses the whole load. EVERY REFUSAL HAS ONE
+   EXIT (R4): every row handed in, all `capacity` of them, is reset to its
+   declared defaults, so no partial value survives. */
+static SCHEMA_UNUSED int64_t tabledemo_global_settings_fixed_load( tabledemo_global_settings_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                                 tabledemo_table_fixed_entry_t * plan, int32_t plan_capacity, tabledemo_table_fixed_plan_cache_t * cache, tabledemo_table_report_t * report )
+{
+    int64_t k;
+    const int64_t n = schema_tabledemo_global_settings_fixed_load_walk_( values, capacity, data, bytes, plan, plan_capacity, cache, report );
+    if ( n < 0 && values != NULL ) { for ( k = 0; k < capacity; ++k ) { tabledemo_global_settings_reset( values + k ); } }
+    return n;
 }
 
 /* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value PackConfig holds is
@@ -11102,10 +11105,10 @@ static SCHEMA_UNUSED int64_t tabledemo_pack_config_fixed_save( const tabledemo_p
    built from the lock's bytes. The signature keeps both so every caller in
    test/c-tables and the paired bench still compiles (§5.6 retires mechanisms,
    not API). */
-/* pack_config_fixed_load is the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
+/* schema_tabledemo_pack_config_fixed_load_walk_ is the walk of the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
    returns every record, or refuses the whole load at the first
-   condition it meets and lands nothing. */
-static SCHEMA_UNUSED int64_t tabledemo_pack_config_fixed_load( tabledemo_pack_config_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+   condition it meets; pack_config_fixed_load resets every row on that refusal. */
+static SCHEMA_UNUSED int64_t schema_tabledemo_pack_config_fixed_load_walk_( tabledemo_pack_config_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  tabledemo_table_fixed_entry_t * plan, int32_t plan_capacity, tabledemo_table_fixed_plan_cache_t * cache, tabledemo_table_report_t * report )
 {
     tabledemo_table_report_t local;
@@ -11229,8 +11232,6 @@ static SCHEMA_UNUSED int64_t tabledemo_pack_config_fixed_load( tabledemo_pack_co
            wire_damaged in this check pass, before any byte of the record lands. */
         if ( tabledemo_table_fixed_dead_refuses( entries, entry_count, entry_guarded, at + 8, entry_guards ) )
         {
-            int64_t j;
-            for ( j = 0; j < k; ++j ) { tabledemo_pack_config_reset( values + j ); }
             memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
             return -1;
         }
@@ -11272,8 +11273,6 @@ static SCHEMA_UNUSED int64_t tabledemo_pack_config_fixed_load( tabledemo_pack_co
                 {
                     if ( ( at + 8 )[p->src + b] > 1u )
                     {
-                        int64_t j;
-                        for ( j = 0; j < k; ++j ) { tabledemo_pack_config_reset( values + j ); }
                         memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
                         return -1;
                     }
@@ -11287,14 +11286,12 @@ static SCHEMA_UNUSED int64_t tabledemo_pack_config_fixed_load( tabledemo_pack_co
             return -1;
         }
         tabledemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, (const uint8_t *) &defaults );
-        if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { tabledemo_pack_config_reset( values + j ); } return -1; }
+        if ( report->refused ) { return -1; }
         /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
            bounds pass: every record this call wrote is reset and no
            counter moves. */
         if ( !schema_tabledemo_pack_config_fixed_finite_body_( values + k ) )
         {
-            int64_t j;
-            for ( j = 0; j <= k; ++j ) { tabledemo_pack_config_reset( values + j ); }
             report->widened = read_widened;
             tabledemo_table_non_finite_float( report );
             return -1;
@@ -11305,8 +11302,6 @@ static SCHEMA_UNUSED int64_t tabledemo_pack_config_fixed_load( tabledemo_pack_co
            and the plan's counters are committed only past it (§5.8). */
         if ( schema_tabledemo_pack_config_fixed_clamp_( values + k, report ) != 0 )
         {
-            int64_t j;
-            for ( j = 0; j <= k; ++j ) { tabledemo_pack_config_reset( values + j ); }
             report->widened = rec_widened;
             return -1;
         }
@@ -11314,8 +11309,21 @@ static SCHEMA_UNUSED int64_t tabledemo_pack_config_fixed_load( tabledemo_pack_co
     }
     /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
     report->unknown += census_unknown;
-    if ( census_kind != 0 ) { int64_t j; for ( j = 0; j < count; ++j ) { tabledemo_pack_config_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH; return -1; }
+    if ( census_kind != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH; return -1; }
     return count;
+}
+
+/* pack_config_fixed_load is the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
+   returns every record, or refuses the whole load. EVERY REFUSAL HAS ONE
+   EXIT (R4): every row handed in, all `capacity` of them, is reset to its
+   declared defaults, so no partial value survives. */
+static SCHEMA_UNUSED int64_t tabledemo_pack_config_fixed_load( tabledemo_pack_config_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                                 tabledemo_table_fixed_entry_t * plan, int32_t plan_capacity, tabledemo_table_fixed_plan_cache_t * cache, tabledemo_table_report_t * report )
+{
+    int64_t k;
+    const int64_t n = schema_tabledemo_pack_config_fixed_load_walk_( values, capacity, data, bytes, plan, plan_capacity, cache, report );
+    if ( n < 0 && values != NULL ) { for ( k = 0; k < capacity; ++k ) { tabledemo_pack_config_reset( values + k ); } }
+    return n;
 }
 
 static SCHEMA_UNUSED int tabledemo_gunner_settings_save_body_retain(tabledemo_table_writer_t *,const tabledemo_gunner_settings_t *, tabledemo_table_retain_walk_t retention);

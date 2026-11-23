@@ -26,7 +26,7 @@ import (
 // is the same record with every dead byte zero, and each changed file is one
 // dead region made non-zero. The generated C# load refuses the changed files
 // whole before any record lands — the verdict only, never a reason — and leaves
-// the caller's destination as it was; a control reads and saves back byte for
+// every row handed in at its declared default (R4); a control reads and saves back byte for
 // byte.
 func TestFixedDeadBytesAreZero(t *testing.T) {
 	t.Parallel()
@@ -67,7 +67,7 @@ func TestFixedDeadBytesAreZero(t *testing.T) {
                 @TABLE@[] back = new @TABLE@[1];
                 back[0] = new @TABLE@();
                 // THE DESTINATION IS POISONED IN EVERY MEMBER AND EVERY
-                // ELEMENT: a refusal must leave the COMPLETE value alone,
+                // ELEMENT: a refusal must reset the COMPLETE value to its defaults,
                 // including the absent optional's payload, which is dead and
                 // never a value to land.
                 back[0].OptPresent = true;
@@ -98,7 +98,10 @@ func TestFixedDeadBytesAreZero(t *testing.T) {
                 back[0].Pick.Wide.A = 501;
                 back[0].Pick.Wide.B = 502;
                 back[0].Pick.Wide.C = 503;
-                string before = DestinationSnapshot.Take(back[0]);
+                // R4: a refusal resets every row handed in to its declared default.
+                @TABLE@ fresh = new @TABLE@();
+                Schema.TableReset(fresh);
+                string want = DestinationSnapshot.Take(fresh);
                 TableReport r = new TableReport();
                 TableFixedEntry[] plan = new TableFixedEntry[8192];
                 long n = Schema.@TABLE@FixedLoad(back, data, plan, r);
@@ -124,9 +127,9 @@ func TestFixedDeadBytesAreZero(t *testing.T) {
                         bad += ProbeLog.Fail(@NAME@, f + ": a non-zero dead byte must refuse the whole load: n=" + n + " verdict=" + r.Verdict + " reason=" + r.Reason);
                     }
                     string after = DestinationSnapshot.Take(back[0]);
-                    if (after != before)
+                    if (after != want)
                     {
-                        bad += ProbeLog.Fail(@NAME@, f + ": a refusal wrote the caller's destination: " + before + " -> " + after);
+                        bad += ProbeLog.Fail(@NAME@, f + ": a refusal left the caller's destination off its declared default: " + want + " -> " + after);
                     }
                 }
             }
