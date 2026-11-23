@@ -3121,12 +3121,27 @@ local function conv_from_lua(fd: any, x: any, A: any, memo: any): any
     end
     return out
   elseif s == "array" then
+    local rawArr = fd.raw and fd.raw.array or nil
+    if rawArr == "fixed" or rawArr == "keyed" then
+      local es = fd.elem and fd.elem.shape or nil
+      local nullableElem = (es == "pointer" or es == "string_blob" or es == "bytes_blob")
+      if typeof(x) == "buffer" then
+        if buffer.len(x) ~= (fd.bound or 0) then memo.invalid = true; refuse_reason = "count_over_bound" end
+      elseif typeof(x) ~= "table" then
+        memo.invalid = true; refuse_reason = "count_over_bound"
+      elseif nullableElem then
+        for k in x do if typeof(k) == "number" and (k < 1 or k > (fd.bound or 0)) then memo.invalid = true; refuse_reason = "count_over_bound"; break end end
+      elseif #x ~= (fd.bound or 0) or x[(fd.bound or 0) + 1] ~= nil then
+        memo.invalid = true; refuse_reason = "count_over_bound"
+      end
+    end
     if typeof(x) == "buffer" then
       -- a [N]uint8, [..N]uint8 or [E]uint8 is its buffer's live bytes,
       -- 0-based in the storage and 1-based in the walk
       local out = {}
       local n = memo.count[x]
       if n == nil then n = buffer.len(x) end
+      if rawArr == "counted" and n < (fd.raw.min or 0) then memo.invalid = true; refuse_reason = "out_of_range" end
       if n > buffer.len(x) then n = buffer.len(x) end
       for i = 1, n do out[i] = buffer.readu8(x, i - 1) end
       return out
@@ -3134,8 +3149,9 @@ local function conv_from_lua(fd: any, x: any, A: any, memo: any): any
     local out = {}
     local n = memo.count[x]
     if n == nil then n = #x end
-    -- a count outside 0..bound is one the strict reader clamps (§2.9, §5), so
+    -- a count outside min..bound is one the strict reader clamps (§2.9, §5), so
     -- the walk records the value as unwritable rather than truncating it here
+    if rawArr == "counted" and n < (fd.raw.min or 0) then memo.invalid = true; refuse_reason = "out_of_range" end
     if n < 0 then memo.invalid = true; refuse_reason = "out_of_range"; n = 0 end
     if (fd.bound or 0) > 0 and n > fd.bound then memo.invalid = true; refuse_reason = "out_of_range"; n = fd.bound end
     if fd.elem.shape == "pointer" then
@@ -3175,6 +3191,7 @@ local function conv_from_lua(fd: any, x: any, A: any, memo: any): any
         -- walk (a Lua table cannot hold nil), so ToJson writes it as null.
         local vs = fd.value_field.shape
         if cv == nil and (vs == "pointer" or vs == "string_blob" or vs == "bytes_blob") then cv = false end
+        if out[k] ~= nil then memo.invalid = true; refuse_reason = "repeated_key" end
         out[k] = cv
       end
     end
@@ -3350,5 +3367,24 @@ function J.ToJson(root: string, v: any, report: any): buffer?
   return from_string(text)
 end
 
+
+function J.FromJsonInto(root: string, text: buffer, report: any, into: any): any
+  local v = J.FromJson(root, text, report)
+  local desc = St.lookup(root)
+  if v == nil then
+    if into ~= nil and desc ~= nil then
+      local fresh = desc.new()
+      for k in into do into[k] = nil end
+      for k, val in fresh do into[k] = val end
+    end
+    return nil
+  end
+  if into ~= nil then
+    for k in into do into[k] = nil end
+    for k, val in v do into[k] = val end
+    return into
+  end
+  return v
+end
 
 return J

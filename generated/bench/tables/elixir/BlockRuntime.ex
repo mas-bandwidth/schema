@@ -137,6 +137,77 @@ defmodule Benchtable.BlockRuntime do
 
   def begin(_, _, _, _), do: false
 
+  def build(value, rules, arrays, projection, build)
+      when is_map(value) and is_list(rules) and is_integer(projection) do
+    case check_rules(rules, value) do
+      :ok ->
+        counts =
+          Map.new(arrays, fn a ->
+            v = Map.get(value, a.name, [])
+            {a.name, if(is_list(v), do: length(v), else: -1)}
+          end)
+
+        begin(counts, arrays, projection, build)
+
+      {:error, _} = err ->
+        err
+    end
+  end
+
+  def build(_, _, _, _, _), do: {:error, :invalid_value}
+
+  defp check_rules([], _value), do: :ok
+
+  defp check_rules([rule | rest], value) do
+    if rule_ok?(rule, value), do: check_rules(rest, value), else: {:error, :invalid_value}
+  end
+
+  defp rule_ok?({:int, name, lo, hi}, value) do
+    case Map.fetch(value, name) do
+      {:ok, v} when not is_nil(v) -> is_integer(v) and v >= lo and v <= hi
+      _ -> true
+    end
+  end
+
+  defp rule_ok?({:text, name, bound}, value) do
+    case Map.fetch(value, name) do
+      {:ok, v} when not is_nil(v) ->
+        is_binary(v) and byte_size(v) <= bound and String.valid?(v) and
+          :binary.match(v, <<0>>) == :nomatch
+
+      _ ->
+        true
+    end
+  end
+
+  defp rule_ok?({:bytes, name, bound}, value) do
+    case Map.fetch(value, name) do
+      {:ok, v} when not is_nil(v) -> is_binary(v) and byte_size(v) <= bound
+      _ -> true
+    end
+  end
+
+  defp rule_ok?({:fixed, name, bound}, value) do
+    case Map.fetch(value, name) do
+      {:ok, v} when not is_nil(v) -> is_list(v) and length(v) == bound
+      _ -> true
+    end
+  end
+
+  defp rule_ok?({:counted, name, min, bound}, value) do
+    case Map.fetch(value, name) do
+      {:ok, v} when not is_nil(v) -> is_list(v) and length(v) >= min and length(v) <= bound
+      _ -> min == 0
+    end
+  end
+
+  defp rule_ok?({:keyed, name, keys}, value) do
+    case Map.fetch(value, name) do
+      {:ok, v} when not is_nil(v) -> is_map(v) and Enum.all?(keys, &Map.has_key?(v, &1))
+      _ -> true
+    end
+  end
+
   defp count_of(counts, name) do
     cond do
       Map.has_key?(counts, name) -> counts[name]

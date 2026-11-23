@@ -1154,7 +1154,7 @@ defmodule Benchtable.TableMessage do
     if n < 1 or n > @batch_max do
       {:error, :batch_too_large}
     else
-      case encode_bodies(vocab, values, {0, 0}, own_record(vocab)) do
+      case encode_bodies(vocab, values, {0, 0}, vocab.root) do
         {:ok, {_acc, nbits}} -> {:ok, 2 + div(nbits + 7, 8)}
         :error -> {:error, :malformed}
       end
@@ -1163,6 +1163,11 @@ defmodule Benchtable.TableMessage do
     # every writer refuses a float that is not finite (docs/SPEC-TABLES.md §3.3)
     :non_finite_float -> {:error, :non_finite_float}
     :invalid_value -> {:error, :invalid_value}
+  end
+
+  def measure_messages(%__MODULE__{announced: false, refused: false, root: root}, values)
+      when is_binary(root) and is_list(values) do
+    with {:ok, own} <- own_vocab(root), do: measure_messages(own, values)
   end
 
   def measure_messages(_vocab, _values), do: {:error, :no_vocabulary}
@@ -1179,7 +1184,7 @@ defmodule Benchtable.TableMessage do
     if n < 1 or n > @batch_max do
       {:error, :batch_too_large}
     else
-      case encode_bodies(vocab, values, {0, 0}, own_record(vocab)) do
+      case encode_bodies(vocab, values, {0, 0}, vocab.root) do
         {:ok, bits} -> {:ok, frame_batch(n, bits)}
         :error -> {:error, :malformed}
       end
@@ -1189,7 +1194,29 @@ defmodule Benchtable.TableMessage do
     :invalid_value -> {:error, :invalid_value}
   end
 
+  def save_messages(%__MODULE__{announced: false, refused: false, root: root}, values)
+      when is_binary(root) and is_list(values) do
+    with {:ok, own} <- own_vocab(root), do: save_messages(own, values)
+  end
+
   def save_messages(_vocab, _values), do: {:error, :no_vocabulary}
+
+  defp own_vocab(root) do
+    case :persistent_term.get({__MODULE__, :own_vocab}, nil) do
+      nil ->
+        case announce_read(@announcement) do
+          {:ok, vocab} ->
+            :persistent_term.put({__MODULE__, :own_vocab}, vocab)
+            for_root(vocab, root)
+
+          _ ->
+            {:error, :no_vocabulary}
+        end
+
+      vocab ->
+        for_root(vocab, root)
+    end
+  end
 
   @doc false
   def rebind_messages(from_vocab, %__MODULE__{announced: true, root: root} = to_vocab, bodies)
@@ -1601,7 +1628,7 @@ defmodule Benchtable.TableMessage do
       # zero, for damage inside a body and for "BYTES AFTER THE PAD" alike.
       r = {bytes_to_int(rest), 0, bit_size(rest)}
 
-      case read_bodies(vocab, r, count, [], own_record(vocab)) do
+      case read_bodies(vocab, r, count, [], vocab.root) do
         {:ok, bodies, r} ->
           if batch_ends_clean?(r), do: {:ok, bodies}, else: {:malformed, 0, []}
 
@@ -1648,17 +1675,17 @@ defmodule Benchtable.TableMessage do
 
   defp align_write({acc, nbits}), do: {acc, nbits + rem(8 - rem(nbits, 8), 8)}
 
-  defp encode_bodies(_vocab, [], acc, _rec), do: {:ok, acc}
+  defp encode_bodies(_vocab, [], acc, _rec_name), do: {:ok, acc}
 
-  defp encode_bodies(vocab, [body | rest], acc, rec) do
-    case encode_body(vocab, body, acc, rec) do
-      {:ok, acc2} -> encode_bodies(vocab, rest, acc2, rec)
+  defp encode_bodies(vocab, [body | rest], acc, rec_name) do
+    case encode_body(vocab, body, acc, rec_name) do
+      {:ok, acc2} -> encode_bodies(vocab, rest, acc2, rec_name)
       :error -> :error
     end
   end
 
-  defp encode_body(vocab, body, acc, rec) do
-    case encode_fields(vocab, body, acc, rec, -1) do
+  defp encode_body(vocab, body, acc, rec_name) do
+    case encode_fields(vocab, body, acc, rec_name, record(rec_name), -1) do
       {:ok, acc2} -> {:ok, put_bits(acc2, 0, vocab.ref_bits)}
       :error -> :error
     end
@@ -1670,12 +1697,12 @@ defmodule Benchtable.TableMessage do
   # field the record does not declare, a field out of its declaration order and
   # a field stored at the default the writer elides are refused, each by
   # :invalid_value in every build. Nothing is reordered or dropped.
-  defp encode_fields(_vocab, [], acc, _rec, _last), do: {:ok, acc}
+  defp encode_fields(_vocab, [], acc, _rec_name, _rec, _last), do: {:ok, acc}
 
-  defp encode_fields(vocab, [{ref, value} | rest], acc, rec, last) do
+  defp encode_fields(vocab, [{ref, value} | rest], acc, rec_name, rec, last) do
     case entry_at(vocab, ref) do
       {:ok, entry} ->
-        check_field(vocab, entry, value)
+        check_field(vocab, rec_name, entry, value)
         check(not (entry.kind == 15 and value == :none))
 
         decl =
@@ -1690,7 +1717,7 @@ defmodule Benchtable.TableMessage do
         case encode_value(vocab, entry.kind, entry.shape, elem, value, acc2, sub_of(decl)) do
           {:ok, acc3} ->
             check(not written_at_default?(vocab, decl, entry, value))
-            encode_fields(vocab, rest, acc3, rec, next_last(decl, last))
+            encode_fields(vocab, rest, acc3, rec_name, rec, next_last(decl, last))
 
           :error ->
             :error
@@ -1721,7 +1748,7 @@ defmodule Benchtable.TableMessage do
     do: encode_string(shape, value, acc)
 
   defp encode_value(vocab, 13, _shape, _elem, value, acc, sub),
-    do: encode_body(vocab, value, acc, record(sub))
+    do: encode_body(vocab, value, acc, sub)
 
   defp encode_value(vocab, 14, shape, elem, value, acc, sub),
     do: encode_array(vocab, shape, elem, value, acc, sub)
@@ -1873,7 +1900,7 @@ defmodule Benchtable.TableMessage do
 
     case entry_at(vocab, ref) do
       {:ok, entry} ->
-        check_field(vocab, entry, value)
+        check_field(vocab, union_owner(sub), entry, value)
         elem = Map.get(entry, :element)
         encode_value(vocab, entry.kind, entry.shape, elem, value, acc2, arm_sub(sub, entry.id))
 
@@ -1892,8 +1919,14 @@ defmodule Benchtable.TableMessage do
   # by the compiler as write_rule_rows/0 and keyed by the {id, kind} a
   # vocabulary entry carries; a field no declaration of this unit names
   # carries no rule.
-  defp check_field(vocab, entry, value) do
-    case Map.get(write_rules(), {entry.id, entry.kind}) do
+  defp check_field(vocab, owner, entry, value) do
+    rules = write_rules()
+
+    rule =
+      Map.get(rules, {owner, entry.id, entry.kind}) ||
+        Map.get(rules, {entry.id, entry.kind})
+
+    case rule do
       %{min: lo, max: hi} ->
         check(is_integer(value) and value >= lo and value <= hi)
 
@@ -1959,6 +1992,11 @@ defmodule Benchtable.TableMessage do
             Map.update(acc, {id, kind}, add_rule(%{}, what, v), &add_rule(&1, what, v))
           end)
 
+        rules =
+          Enum.reduce(write_owner_rule_rows(), rules, fn {owner, id, kind, what, v}, acc ->
+            Map.update(acc, {owner, id, kind}, add_rule(%{}, what, v), &add_rule(&1, what, v))
+          end)
+
         :persistent_term.put({__MODULE__, :write_rules}, rules)
         rules
 
@@ -1996,11 +2034,11 @@ defmodule Benchtable.TableMessage do
   # mask and never a byte-order question.
   # ---------------------------------------------------------------------------
 
-  defp read_bodies(_vocab, r, 0, acc, _rec), do: {:ok, Enum.reverse(acc), r}
+  defp read_bodies(_vocab, r, 0, acc, _rec_name), do: {:ok, Enum.reverse(acc), r}
 
-  defp read_bodies(vocab, r, n, acc, rec) do
-    case read_body(vocab, r, [], MapSet.new(), 0, rec, -1) do
-      {:ok, body, rest} -> read_bodies(vocab, rest, n - 1, [body | acc], rec)
+  defp read_bodies(vocab, r, n, acc, rec_name) do
+    case read_body(vocab, r, [], MapSet.new(), 0, rec_name, record(rec_name), -1) do
+      {:ok, body, rest} -> read_bodies(vocab, rest, n - 1, [body | acc], rec_name)
       :malformed -> {:malformed, length(acc), Enum.reverse(acc)}
     end
   end
@@ -2022,9 +2060,10 @@ defmodule Benchtable.TableMessage do
   #     (§3.3 (a)) are damage;
   #   * under another build version an undeclared field is stepped over by its
   #     announced shape and omitted, never appended to the body.
-  defp read_body(_vocab, _r, _acc, _seen, depth, _rec, _last) when depth > 128, do: :malformed
+  defp read_body(_vocab, _r, _acc, _seen, depth, _rec_name, _rec, _last) when depth > 128,
+    do: :malformed
 
-  defp read_body(vocab, r, acc, seen, depth, rec, last) do
+  defp read_body(vocab, r, acc, seen, depth, rec_name, rec, last) do
     case get_bits(r, vocab.ref_bits) do
       {:ok, 0, rest} ->
         {:ok, Enum.reverse(acc), rest}
@@ -2040,7 +2079,16 @@ defmodule Benchtable.TableMessage do
                 :skip ->
                   case skip_value(vocab, entry.kind, entry.shape, elem, rest, depth) do
                     {:ok, rest2} ->
-                      read_body(vocab, rest2, acc, MapSet.put(seen, entry.id), depth, rec, last)
+                      read_body(
+                        vocab,
+                        rest2,
+                        acc,
+                        MapSet.put(seen, entry.id),
+                        depth,
+                        rec_name,
+                        rec,
+                        last
+                      )
 
                     :malformed ->
                       :malformed
@@ -2058,6 +2106,7 @@ defmodule Benchtable.TableMessage do
                            sub_of(decl)
                          ),
                        false <- entry.kind == 15 and value == :none,
+                       true <- read_in_range?(rec_name, decl, entry, value),
                        false <- stored_at_default?(vocab, decl, value) do
                     seen = MapSet.put(seen, entry.id)
                     last = next_last(decl, last)
@@ -2067,7 +2116,7 @@ defmodule Benchtable.TableMessage do
                         do: acc,
                         else: [{ref, value} | acc]
 
-                    read_body(vocab, rest2, acc2, seen, depth, rec, last)
+                    read_body(vocab, rest2, acc2, seen, depth, rec_name, rec, last)
                   else
                     _ -> :malformed
                   end
@@ -2128,6 +2177,27 @@ defmodule Benchtable.TableMessage do
 
   defp sub_of({_index, _exact, _rule, sub}), do: sub
   defp sub_of(nil), do: nil
+
+  defp read_in_range?(owner, {_index, true, _rule, _sub}, entry, value) do
+    rules = write_rules()
+
+    rule =
+      Map.get(rules, {owner, entry.id, entry.kind}) ||
+        Map.get(rules, {entry.id, entry.kind})
+
+    case rule do
+      %{min: lo, max: hi} when is_integer(value) ->
+        value >= lo and value <= hi
+
+      %{each_min: lo, each_max: hi} when is_list(value) ->
+        Enum.all?(value, &(is_integer(&1) and &1 >= lo and &1 <= hi))
+
+      _ ->
+        true
+    end
+  end
+
+  defp read_in_range?(_owner, _decl, _entry, _value), do: true
 
   defp stored_at_default?(_vocab, {_index, true, {:keyed, _keys, _elem_rule}, _sub}, []),
     do: true
@@ -2241,8 +2311,6 @@ defmodule Benchtable.TableMessage do
   # can tell a declared field from one it must step over
   defp own_record(%{root: root}) when is_binary(root), do: record(root)
 
-  defp own_record(_vocab), do: nil
-
   defp own_build?(%{build_version: @build_version}), do: true
   defp own_build?(_vocab), do: false
 
@@ -2272,6 +2340,9 @@ defmodule Benchtable.TableMessage do
 
   defp arm_known?(_sub, id), do: id >= 0
 
+  defp union_owner({:union, name}), do: name
+  defp union_owner(_sub), do: nil
+
   # An undeclared field under another build version is stepped over by its
   # announced shape and omitted (docs/SPEC-TABLES.md §3.3, §4). Its payload is
   # read exactly as a kept value would be, so damage stays damage, but nothing
@@ -2289,7 +2360,7 @@ defmodule Benchtable.TableMessage do
     do: :malformed
 
   defp read_value(vocab, 13, _shape, _elem, r, depth, sub),
-    do: read_body(vocab, r, [], MapSet.new(), depth + 1, record(sub), -1)
+    do: read_body(vocab, r, [], MapSet.new(), depth + 1, sub, record(sub), -1)
 
   defp read_value(vocab, 14, shape, elem, r, depth, sub),
     do: read_array(vocab, shape, elem, r, depth, sub)
@@ -2871,4 +2942,6 @@ defmodule Benchtable.TableMessage do
       {0xFD29EE12A979CB69, 4, :max, 255}
     ]
   end
+
+  defp write_owner_rule_rows, do: []
 end

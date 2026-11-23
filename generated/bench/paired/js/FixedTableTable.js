@@ -405,6 +405,8 @@ function FixedTableFixedRefuseBatch(stage, report) {
 // intermediate copy, and its results are held equal to the shared path's by
 // test. Answers the records read, or -1 with the reason named in the report.
 export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, report) {
+  let _fixedLoadOk = false;
+  try {
   TableFixedResetReport(report);
   if (bytes === null || byteLength < 1) { report.damaged = true; return -1; }
   // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):
@@ -534,7 +536,14 @@ export function FixedTableFixedLoad(values, capacity, bytes, byteLength, plan, r
   report.widened += stage.widened;
   report.unknown += censusUnknown;
   report.mismatch += censusKind;
+  _fixedLoadOk = true;
   return n;
+  } finally {
+    if (!_fixedLoadOk && values !== null && values !== undefined && capacity > 0) {
+      const _lim = globalThis.Math.min(capacity, values.length);
+      for (let _i = 0; _i < _lim; _i++) { if (values[_i] !== null && values[_i] !== undefined) { InitFixedTable(values[_i]); } }
+    }
+  }
 }
 
 // THE THREE BATCH VERBS (§3.3): the primitive is a batch and a single

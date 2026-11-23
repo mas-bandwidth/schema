@@ -930,10 +930,9 @@ def wc_slot(sl:Slot) -> bool:
             if sl.count < 0 or sl.count > n:
                 return false
             n = sl.count
-        elif f.array == "fixed":
-            if n < f.bound:
+        elif f.array == "fixed" or f.array == "keyed":
+            if n != f.bound:
                 return false
-            n = f.bound
         let ed = elem_of(f)
         for(n) i:
             if not wc_value(ed, f.ek, sl.elems[i]):

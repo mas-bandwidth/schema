@@ -31,13 +31,24 @@ module Bench
 
   # Optional table load report counters, written on success only.
   class LoadReport
-    attr_accessor :unknown, :widened, :retained, :retain_lost
+    attr_accessor :unknown, :widened, :retained, :retain_lost, :refused, :reason
 
     def initialize
       @unknown = 0
       @widened = 0
       @retained = 0
       @retain_lost = 0
+      @refused = false
+      @reason = ""
+    end
+
+    def reset
+      @unknown = 0
+      @widened = 0
+      @retained = 0
+      @retain_lost = 0
+      @refused = false
+      @reason = ""
     end
   end
 
