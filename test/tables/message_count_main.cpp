@@ -153,9 +153,12 @@ int main()
                 (int) report.damaged, (int) report.refuse_reason );
         return 1;
     }
-    if ( count != 0 || read.few_count != 0 )
+    // a refused batch writes nothing, so the storage keeps its birth value, and
+    // few is born at its minimum of 2 (docs/SPEC.md §4.2), never at 0
+    basesdemo::Bases born;
+    if ( count != 0 || read.few_count != born.few_count )
     {
-        printf( "wide count control: the refused batch left count=%lld few_count=%d\n", (long long) count, read.few_count );
+        printf( "wide count control: the refused batch left count=%lld few_count=%d, born %d\n", (long long) count, read.few_count, born.few_count );
         return 1;
     }
     printf( "wide count control: a count of 2^31 + 1 refuses the batch as out_of_range\n" );
