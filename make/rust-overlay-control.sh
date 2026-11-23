@@ -7,7 +7,7 @@
 # proves nothing.
 #
 # usage: make/rust-overlay-control.sh <name> <source.go> <sed-expr> <test-regex> <must-name>
-set -u
+set -eu -o pipefail
 name=$1 file=$2 expr=$3 run=$4 must=$5
 dir=build/$name
 rm -rf "$dir" && mkdir -p "$dir"

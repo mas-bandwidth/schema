@@ -126,6 +126,7 @@ profile_utf8_mid_trunc refused
 r1_cfg_as_r2       refused
 r1_ping_as_r2      refused
 r2_cfg_as_r1       refused
+rr_fixed_zero_records refused
 scalars_edges_as_2 refused
 scalars_full_as_2  refused
 text_total_and_count refused

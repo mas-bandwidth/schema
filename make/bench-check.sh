@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 # make/bench-check.sh -- this machine has every variable and tool schema's CI and legs expect, or it fails by name.
 # `make bench-check` runs it; run it on a bench or CI runner after a toolchain change (nova-fleet sdk-toolchain).
 #
@@ -10,7 +10,7 @@
 #   - on Linux, the linters the lint lanes of ci-fast.yml run from the SDK: modernize, golangci-lint, luacheck,
 #     eslint, clang-format (a Mac runs no Linux lane and is not asked for them).
 # Exit 0 and one BENCH-CHECK OK line, or exit 1 with a BENCH-CHECK MISSING line per gap.
-set -u
+set -eu -o pipefail
 root=$(cd "$(dirname "$0")/.." && pwd)
 for f in "${NOVA_SDK_ENV:-}" "$HOME/sdk/env.sh" /opt/nova/sdk/env.sh; do
 	if [ -n "$f" ] && [ -f "$f" ]; then . "$f"; break; fi
@@ -45,7 +45,8 @@ rbver() { "$1" --disable-gems -e 'print RUBY_VERSION' 2>/dev/null; }
 checkvar() { # name want-version probe
 	eval "v=\${$1:-}"
 	if [ -z "$v" ]; then miss "$1" "not exported by the SDK's env.sh; fix: $fixsdk"; return; fi
-	got=$($3 "$v")
+	got=""
+	if v_out=$($3 "$v"); then got=$v_out; fi
 	[ "$got" = "$2" ] || miss "$1" "$v answers '${got:-nothing}', the pin is $2; fix: $fixsdk"
 }
 checkvar PYTHON "$py_cur" pyver
@@ -54,7 +55,8 @@ checkvar RUBY "$rb_cur" rbver
 checkvar RUBY_FLOOR "$rb_floor" rbver
 if [ -z "${MYPY:-}" ]; then miss MYPY "not exported by the SDK's env.sh; fix: $fixsdk"
 else
-	got=$("$MYPY" --version 2>/dev/null)
+	got=""
+	if v_out=$("$MYPY" --version 2>/dev/null); then got=$v_out; fi
 	case "$got" in "mypy $mypy_pin "* | "mypy $mypy_pin") ;; *) miss MYPY "$MYPY answers '${got:-nothing}', the pin is mypy $mypy_pin; fix: $fixsdk" ;; esac
 fi
 
@@ -63,14 +65,16 @@ for r in "${RUBY:-}" "${RUBY_FLOOR:-}"; do
 	d=$(dirname "$r")
 	for a in rubocop:$rubocop_pin steep:$steep_pin rbs:$rbs_pin; do
 		n=${a%%:*}; want=${a#*:}
-		got=$("$d/$n" --version 2>/dev/null | sed -n '1s/^[^0-9]*\([0-9][0-9.]*\).*/\1/p')
+		got=""
+		if v_out=$("$d/$n" --version 2>/dev/null); then got=$(printf '%s\n' "$v_out" | sed -n '1s/^[^0-9]*\([0-9][0-9.]*\).*/\1/p'); fi
 		[ "$got" = "$want" ] || miss "$n" "$d/$n answers '${got:-nothing}', the pin is $want; fix: $fixsdk"
 	done
 done
 
 if [ "$(uname -s)" = Linux ]; then
 	need() { # command pin-text version-probe-output-test-pattern
-		p=$(command -v "$1" 2>/dev/null)
+		p=""
+		if p=$(command -v "$1" 2>/dev/null); then :; else p=""; fi
 		if [ -z "$p" ]; then miss "$1" "not on PATH (the SDK's bin is first); need $2; fix: $fixsdk"; return 1; fi
 		return 0
 	}
@@ -78,13 +82,15 @@ if [ "$(uname -s)" = Linux ]; then
 		readlink -f "$(command -v modernize)" | grep "modernize-$modernize_pin/" >/dev/null || miss modernize "$(readlink -f "$(command -v modernize)") is not modernize-$modernize_pin; fix: $fixsdk"
 	fi
 	if need golangci-lint "golangci-lint $golangci_pin"; then
-		golangci-lint version 2>/dev/null | grep "$golangci_pin" >/dev/null || miss golangci-lint "answers '$(golangci-lint version 2>&1 | head -1)', the pin is $golangci_pin; fix: $fixsdk"
+		golangci-lint version 2>/dev/null | grep "$golangci_pin" >/dev/null || miss golangci-lint "answers '$(golangci-lint version 2>&1 | sed -n 1p)', the pin is $golangci_pin; fix: $fixsdk"
 	fi
 	if need luacheck "luacheck $luacheck_pin"; then
-		luacheck --version 2>/dev/null | grep "$luacheck_pin" >/dev/null || miss luacheck "answers '$(luacheck --version 2>&1 | head -1)', the pin is $luacheck_pin; fix: $fixsdk"
+		luacheck --version 2>/dev/null | grep "$luacheck_pin" >/dev/null || miss luacheck "answers '$(luacheck --version 2>&1 | sed -n 1p)', the pin is $luacheck_pin; fix: $fixsdk"
 	fi
 	if need eslint "eslint $eslint_pin"; then
-		[ "$(eslint --version 2>/dev/null)" = "v$eslint_pin" ] || miss eslint "answers '$(eslint --version 2>&1 | head -1)', the pin is v$eslint_pin; fix: $fixsdk"
+		got=""
+		if v_out=$(eslint --version 2>/dev/null); then got=$v_out; fi
+		[ "$got" = "v$eslint_pin" ] || miss eslint "answers '$got', the pin is v$eslint_pin; fix: $fixsdk"
 	fi
 	if need clang-format "clang-format $(pin CLANG_FORMAT_PIN c.mk)"; then
 		cfm=$(pin CLANG_FORMAT_PIN c.mk | cut -d. -f1)

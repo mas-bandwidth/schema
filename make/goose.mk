@@ -114,7 +114,7 @@ build/conformance-goose: $(GOOSE_MANIFEST) make/goose.mk $(GO_SOURCES) \
 	$(CONFORMANCE_UNIT_SCHEMAS)
 	@rm -rf $@ build/conformance-goose-driver && mkdir -p $@
 	go build -tags schema_leg_goose -o build/schema-goose ./cmd/schema
-	@jobs=$$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4); \
+	@if ! jobs=$$(nproc 2>/dev/null); then if ! jobs=$$(sysctl -n hw.ncpu 2>/dev/null); then jobs=4; fi; fi; \
 	awk '$$1 == "unit" { $$1 = ""; sub(/^ /, ""); print }' $(GOOSE_MANIFEST) | \
 		xargs -P "$$jobs" -I{} sh -c 'out=$$1; set -- $$2; key=$$1; shift; if ./build/schema-goose generate --lang goose --out "$$out/$$key" "$$@" >"$$out/$$key.log" 2>&1; then rm -f "$$out/$$key.log"; else echo "goose refuses $$key: $$(head -1 "$$out/$$key.log")"; mv "$$out/$$key.log" "$$out/$$key.refused"; fi' _ $@ {}
 generated/bench/tables/goose/.stamp: ;
