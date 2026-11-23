@@ -217,10 +217,12 @@ packet-utf8-lua-negative-control: packet-utf8-lua
 	@echo 'packet UTF-8 Lua negative control: removed read validation fails bit-flip agreement'
 
 # ---------------------------------------------------------------- defaults
-build/packet-defaults/lua/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema
+build/packet-defaults/lua/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema $(wildcard test/conformance/packet/testdata/constant-defaults/*/Defaults.schema)
 	@rm -rf build/packet-defaults/lua && mkdir -p build/packet-defaults/lua
 	./bin/schema generate --lang lua --out build/packet-defaults/lua/generated test/packet-defaults/Defaults.schema
 	./bin/schema generate --lang lua --out build/packet-defaults/lua/generated/plain test/packet-defaults/Plain.schema
+	./bin/schema generate --lang lua --out build/packet-defaults/lua/generated/constant-hexadecimal-addition test/conformance/packet/testdata/constant-defaults/hexadecimal-addition/Defaults.schema
+	./bin/schema generate --lang lua --out build/packet-defaults/lua/generated/constant-unsigned-subtraction test/conformance/packet/testdata/constant-defaults/unsigned-subtraction/Defaults.schema
 	@touch $@
 
 # The goldens directory's own listing, handed to the driver: a golden no pin
@@ -228,7 +230,7 @@ build/packet-defaults/lua/.stamp: bin/schema test/packet-defaults/Defaults.schem
 PACKET_DEFAULTS_LUA_GOLDENS = $(sort $(notdir $(wildcard testdata/wire/packet-defaults/*.bin)))
 .PHONY: packet-defaults-lua packet-defaults-lua-negative-control
 packet-defaults-lua: toolchain-lua build/packet-defaults/lua/.stamp build/mustrun
-	$(MUSTRUN) -name packet-defaults-lua -count 104 -- $(LUA) test/packet-defaults/lua/main.lua build/packet-defaults/lua/generated testdata/wire/packet-defaults $(PACKET_DEFAULTS_LUA_GOLDENS)
+	$(MUSTRUN) -name packet-defaults-lua -count 118 -- $(LUA) test/packet-defaults/lua/main.lua build/packet-defaults/lua/generated testdata/wire/packet-defaults $(PACKET_DEFAULTS_LUA_GOLDENS)
 
 packet-defaults-lua-negative-control: packet-defaults-lua
 	@rm -rf build/packet-defaults/lua-negative && mkdir -p build/packet-defaults/lua-negative

@@ -1,4 +1,4 @@
-// THE FRONT-END VECTOR (docs/SPEC-CONFORMANCE.md §8, rows 26 and 27): what a
+// THE FRONT-END VECTOR (docs/SPEC-CONFORMANCE.md §7, rows 26 and 27): what a
 // port that reads schema text must resolve from it, held to vector.txt.
 //
 // A FLOAT LITERAL IS A float64 FIRST (SPEC.md §4.2). The literal below lies

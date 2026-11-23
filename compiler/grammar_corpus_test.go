@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// THE GRAMMAR CORPUS (testdata/conformance/grammar; docs/SPEC-CONFORMANCE.md §8,
+// THE GRAMMAR CORPUS (testdata/conformance/grammar; docs/SPEC-CONFORMANCE.md §7,
 // gaps 1, 3, 13, 14). A port parses `.schema` text with the grammar of SPEC.md
 // §4.1–§4.2, which is complete and normative. Every file under accept/ is one
 // unit the compiler accepts, and every file under refuse/ is one unit `schema

@@ -12,7 +12,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-// THE FRONT-END VECTOR (docs/SPEC-CONFORMANCE.md §8, rows 26 and 27). A port
+// THE FRONT-END VECTOR (docs/SPEC-CONFORMANCE.md §7, rows 26 and 27). A port
 // that reads schema text resolves defaults, range ends and wire ids itself;
 // this is the vector it checks them against. Two rules, each held two ways:
 // by the committed vector.txt, and by a computation here that does not use the
@@ -111,7 +111,7 @@ func TestFrontEndVector(t *testing.T) {
 
 	path := dir + "vector.txt"
 	if os.Getenv("FRONTEND_VECTOR_WRITE") == "1" {
-		head := "# THE FRONT-END VECTOR for Literals.schema (docs/SPEC-CONFORMANCE.md §8, rows 26-27).\n" +
+		head := "# THE FRONT-END VECTOR for Literals.schema (docs/SPEC-CONFORMANCE.md §7, rows 26-27).\n" +
 			"# id <what> <alias UTF-8 bytes, hex> <wire id>: fnv1a64 over those bytes.\n" +
 			"# f32/f64 <field>.<fact> <IEEE-754 bits>: the literal rounded to float64, then to the field's width.\n"
 		if err := os.WriteFile(path, []byte(head+got), 0o644); err != nil {
@@ -124,7 +124,7 @@ func TestFrontEndVector(t *testing.T) {
 		t.Fatalf("%v — FRONTEND_VECTOR_WRITE=1 writes it", err)
 	}
 	var body []string
-	for _, line := range strings.Split(string(data), "\n") {
+	for line := range strings.SplitSeq(string(data), "\n") {
 		if line != "" && !strings.HasPrefix(line, "#") {
 			body = append(body, line)
 		}

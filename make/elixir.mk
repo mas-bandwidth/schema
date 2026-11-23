@@ -46,9 +46,20 @@ toolchain-elixir:
 	@$(call toolchain_probe,elixir,ELIXIR,$(ELIXIR),PATH="$(BEAM_PATH):$$PATH" command -v $(lastword $(ELIXIR)))
 	@$(call toolchain_probe,elixir,ELIXIRC,$(ELIXIRC),PATH="$(BEAM_PATH):$$PATH" command -v $(lastword $(ELIXIRC)))
 	@$(call toolchain_probe,elixir,MIX,$(MIX),PATH="$(BEAM_PATH):$$PATH" command -v $(lastword $(MIX)))
-build/packet-defaults/elixir/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema make/elixir.mk
+build/packet-defaults/elixir/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema $(wildcard test/conformance/packet/testdata/constant-defaults/*/Defaults.schema) make/elixir.mk
 	./bin/schema generate --lang elixir --out build/packet-defaults/elixir/defaults test/packet-defaults/Defaults.schema
 	./bin/schema generate --lang elixir --out build/packet-defaults/elixir/plain test/packet-defaults/Plain.schema
+	@# Both constant schemas declare package arithmetic: generate each on its own,
+	@# then rename its modules after the pin so one VM loads both.
+	@for pin in hexadecimal-addition unsigned-subtraction; do \
+		if [ $$pin = hexadecimal-addition ]; then ns=ArithmeticHexadecimalAddition; else ns=ArithmeticUnsignedSubtraction; fi; \
+		./bin/schema generate --lang elixir --out build/packet-defaults/elixir-raw/$$pin test/conformance/packet/testdata/constant-defaults/$$pin/Defaults.schema || exit 1; \
+		mkdir -p build/packet-defaults/elixir/constant-$$pin || exit 1; \
+		for f in build/packet-defaults/elixir-raw/$$pin/*.ex; do \
+			sed "s/Arithmetic\./$$ns./g" $$f > build/packet-defaults/elixir/constant-$$pin/$${f##*/} || exit 1; \
+		done; \
+		grep -q "defmodule $$ns.Value" build/packet-defaults/elixir/constant-$$pin/Defaults.ex || { echo "rename to $$ns failed"; exit 1; }; \
+	done
 	@touch $@
 
 .PHONY: packet-defaults-elixir packet-defaults-elixir-negative-control

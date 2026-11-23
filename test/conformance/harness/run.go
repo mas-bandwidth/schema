@@ -939,6 +939,7 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 	if err := emptySelection(results, only, skip, opts.only); err != nil {
 		return false, err
 	}
+	proveRan(langs, results)
 
 	if opts.coverage != nil {
 		*opts.coverage = append(*opts.coverage, coverageRows(langs, results, want, m, opts.claims)...)
@@ -986,7 +987,7 @@ func reportComplete(w io.Writer, langs []string, results map[string]map[string]*
 
 // scoreRefusalAbsent scores a must-refuse row the leg wrote no `refused\n`
 // for: a `<case>.absent` is an ABSENCE, counted as one and never as the
-// refusal (ruling R13, docs/SPEC-CONFORMANCE.md §8), and nothing at all is a
+// refusal (ruling R13, docs/SPEC-CONFORMANCE.md §7), and nothing at all is a
 // failure.
 func scoreRefusalAbsent(answer, name, want string, r *result) {
 	if _, err := os.Stat(answer + ".absent"); err == nil {
@@ -996,6 +997,46 @@ func scoreRefusalAbsent(answer, name, want string, r *result) {
 	}
 	r.failures = append(r.failures, fmt.Sprintf("%s: %s, driver wrote nothing", name, want))
 	r.mark(name, outcomeFail)
+}
+
+// proveRan holds a run to having looked at what the manifest registers: cases
+// run equals cases registered, per leg and per surface it ran.
+//
+//   - every case a surface registers has exactly one verdict, so a scoring loop
+//     that stops early is a failure and not a smaller total;
+//   - a leg that answered no case on any surface it ran is a failure: every
+//     surface absent, or every case `.absent`, is a leg that was not run.
+//
+// A surface that registers no case at all is main's strictRows rule (the gate
+// sets it in main.go), and a run with no leg or no row is emptySelection's;
+// proveRan adds the per-leg counts those whole-run checks cannot see.
+func proveRan(langs []string, results map[string]map[string]*result) {
+	for _, l := range langs {
+		answered := 0
+		var first *result
+		for _, s := range surfaces {
+			r := results[l][s]
+			if r == nil {
+				// a surface --surfaces did not select is not run at all
+				continue
+			}
+			if first == nil {
+				first = r
+			}
+			if len(r.cases) != r.total {
+				r.failures = append(r.failures, fmt.Sprintf(
+					"%d case(s) registered and %d given a verdict: the run stopped short of the surface", r.total, len(r.cases)))
+			}
+			for _, v := range r.cases {
+				if v != "absent" {
+					answered++
+				}
+			}
+		}
+		if answered == 0 && first != nil {
+			first.failures = append(first.failures, "the leg answered no case on any surface: every one is absent, so nothing was compared")
+		}
+	}
 }
 
 // scoreAnswer scores one case written by a leg. The blob-shared marker
@@ -1027,8 +1068,8 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 	}
 	if surface == "wire" && inst.WireRefused {
 		// THE REFUSAL IS SPELLED `refused` AND A NEWLINE, as on every read
-		// surface (test/conformance/README.md, docs/SPEC-CONFORMANCE.md §8 row
-		// 7). Any other bytes are a value the row forbids, and a `<case>.absent`
+		// surface (test/conformance/README.md, docs/SPEC-CONFORMANCE.md §7).
+		// Any other bytes are a value the row forbids, and a `<case>.absent`
 		// is an ABSENCE, never the refusal (ruling R13: an absent answer is
 		// never credited).
 		if got, err := os.ReadFile(answer); err == nil {
