@@ -3,6 +3,7 @@ package inputfamilies
 import (
 	"path"
 	"sort"
+	"strings"
 )
 
 // Account names, for each family run in the pull-request tier, the input
@@ -11,9 +12,15 @@ import (
 // disk, watches them while the leg runs, and fails naming every one the leg
 // never opened. The set is the directory, never a list of names or a count:
 // a pin added to the directory is owed by every reader the moment it lands.
+//
+// packet-defaults and packet-end account for *.bin (every leg reads the
+// wire bytes; python/ruby packet-defaults and 12 of 13 packet-end legs do
+// not open the human-readable *.bits sidecars). Families[].Inputs still
+// covers both directories whole so editing any *.bits file selects every
+// reader leg.
 var Account = map[string][]string{
-	"packet-defaults":      {"testdata/wire/packet-defaults/*.bin", "testdata/wire/packet-defaults/*.bits"},
-	"packet-end":           {"testdata/wire/packet-end/*.bin", "testdata/wire/packet-end/*.bits"},
+	"packet-defaults":      {"testdata/wire/packet-defaults/*.bin"},
+	"packet-end":           {"testdata/wire/packet-end/*.bin"},
 	"packet-finite":        {"test/packet-finite/*.schema"},
 	"packet-void":          {"test/packet-void/*.schema"},
 	"packet-write-bareint": {"test/packet-write-bareint/*.schema", "test/packet-write-bareint/cases.txt"},
@@ -23,15 +30,73 @@ var Account = map[string][]string{
 	"hostile-corpus":       {"internal/ci/hostilecorpus/corpus/manifest.tsv", "internal/ci/hostilecorpus/corpus/inputs/*"},
 }
 
+// AccountExclude names files that sit inside an accounted directory but
+// belong to a different test harness rather than this family's readers.
+var AccountExclude = map[string]map[string]bool{
+	// Added in d4cc55c03b for C++ test/tables/wire_fuzz_main.cpp only;
+	// not listed in testdata/conformance/tables/MANIFEST.txt.
+	"conformance-corpus": {
+		"testdata/conformance/tables/wire/array_root_body_short.bin": true,
+		"testdata/conformance/tables/wire/graph_widened_default.bin": true,
+		// FileWire provenance copy of widenbound_msg (MANIFEST.txt message-drift);
+		// conformance-harness run reads widenbound_msg_peer.bin and widenbound_msg_as_reader.bin.
+		"testdata/conformance/tables/wire/widenbound_msg.bin": true,
+	},
+}
+
+// perLegSchemaFamilies names families where a leg with its own
+// <dir>/<leg>/*.schema reads that schema instead of <dir>/*.schema.
+var perLegSchemaFamilies = map[string]bool{
+	"packet-finite":     true,
+	"packet-void":       true,
+	"packet-write-text": true,
+}
+
+// AccountLegSchemaOverride names the single legacy per-leg schema path
+// outside its family directory.
+var AccountLegSchemaOverride = map[string]map[string]string{
+	"packet-finite": {"java": "test/java/Finite.schema"},
+}
+
 // AccountFiles is every file of the tree a reader of family f must open,
 // sorted.
 func AccountFiles(t Tree, f string) []string {
+	return AccountFilesForLeg(t, f, "")
+}
+
+// AccountFilesForLeg is every file of the tree that leg l must open when
+// running family f, sorted. When l is non-empty and f allows per-leg schema
+// variants, a leg with <dir>/<l>/*.schema (or a legacy override) accounts
+// for its own schema instead of the shared <dir>/*.schema.
+func AccountFilesForLeg(t Tree, f, leg string) []string {
+	exclude := AccountExclude[f]
+	seen := map[string]bool{}
 	var out []string
-	for _, p := range t.Files {
-		for _, pat := range Account[f] {
-			if ok, _ := path.Match(pat, p); ok {
-				out = append(out, p)
-				break
+	add := func(p string) {
+		if exclude[p] || seen[p] {
+			return
+		}
+		seen[p] = true
+		out = append(out, p)
+	}
+	for _, pat := range Account[f] {
+		effPat := pat
+		if leg != "" && perLegSchemaFamilies[f] && strings.HasSuffix(pat, "/*.schema") {
+			if ov, ok := AccountLegSchemaOverride[f][leg]; ok {
+				effPat = ov
+			} else {
+				legPat := path.Join(path.Dir(pat), leg, "*.schema")
+				for _, p := range t.Files {
+					if ok, _ := path.Match(legPat, p); ok {
+						effPat = legPat
+						break
+					}
+				}
+			}
+		}
+		for _, p := range t.Files {
+			if ok, _ := path.Match(effPat, p); ok {
+				add(p)
 			}
 		}
 	}

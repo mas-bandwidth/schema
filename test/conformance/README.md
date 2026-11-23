@@ -136,8 +136,9 @@ cannot answer one case of a surface it otherwise implements writes
 harness counts it. **The marker is the ANSWER's file name with `.absent`
 appended**, so it is `<case>.absent` where the answer is `<case>`, and
 `<case>.json.absent` on the `json-write` surface, whose answer is
-`<case>.json`. Any other spelling is a driver that wrote nothing, which fails. The cell then reads `pass 16/16 +4a`: what the leg answered,
-and how many it said it cannot. The distinction is the surface-level one at a
+`<case>.json`. Any other spelling is a driver that wrote nothing, which fails.
+The cell then reads `pass 16/20 +4a`: what the leg answered out of every row
+sent, and how many it said it cannot. The distinction is the surface-level one at a
 finer grain, and the corpus needed it the day it gained VARIABLE-class
 instances: a backend with no variable class still answers the wire surface over
 every FIXED instance, and a leg that failed the whole surface for them would say
@@ -495,6 +496,49 @@ promised, and a surface that ran no rows must not print a green cell.
   runs with `strictRows` (`main.go`); `pass 0/0` can no longer appear.
 - **Every skip that remains is ledgered** in `.github/skip-ledger.txt` with its
   class; a skip with no ledger line is red at the pull request that writes it.
+
+## Nothing a driver leaves out reads as a pass
+
+Glenn, 2026-11-22: "Nothing is allowed to fail silently." The spec-only Zig
+port (PR #4726) ran a driver that answered nothing, and the harness printed
+`every registered surface passes`. Every way a driver can say less than it was
+asked is now red and names the leg, the surface and the row, or (for the one
+answer the contract allows, a declared absence) is named in place of the
+success line:
+
+| the driver | what `harness run` does |
+|---|---|
+| `list` exits 0 and names no surface | refuses the leg: `named no surface` (exit 1) |
+| `list` names a surface the harness does not have | refuses the leg, naming it (exit 1) |
+| `list` names a RETIRED surface (`cook-reason`, `block-reason`, `strict-reason`) | prints `conformance IGNORES <name> listed by the <lang> leg` on every run; not run, not scored |
+| leaves a row of a surface unanswered (no file, no `.absent`) | `FAIL`, `<lang> / <surface>: <row>: the driver wrote nothing` |
+| writes a file no row of the surface owns | `FAIL`, `<file>: the driver answered a row the corpus did not send` |
+| writes an answer that is not the row's | `FAIL`, the row and the first difference |
+| dies on a signal, or exits other than 0 or 2 | `FAIL`, how it died and `N of M row(s) unanswered: <rows>` |
+| exits 2 after writing answers, or with a Go panic on stderr | `FAIL`, `a crash, not an absence` (a Go panic exits 2) |
+| answers no row on any surface asked (all absent, all `.absent`, or `--surfaces` selected none it runs) | `FAIL`, `<lang> / (every surface): the leg answered none of the N row(s)` |
+| `--only` names no leg, or `--surfaces` names no surface | refused (exit 1) |
+
+A row is answered by its file `<row>` and anything named `<row>.<suffix>`
+beside it (`.absent`, `.wire`). Every row named in the derived manifest owns its
+answers on any surface — a driver cannot tell from the manifest which `retain`
+rows save, so it answers them all and the harness scores the ones with a golden —
+and anything else in an output directory is a stray answer. The cards runner
+holds its output directories to the same rule over its own manifest.
+
+**A declared absence is still not a pass.** A port's `list` omission, exit 2 or
+`<case>.absent` stays the completion tracker and does not turn the run red (the
+reference leg's does, above), but the cell's denominator is every row SENT
+(`pass 16/20 +4a`, never `pass 16/16 +4a`), and a run with any absence or any
+`--skip`ped leg prints `tables conformance: no failures, and NOT every row was
+answered — absent is not a pass:` followed by each leg and surface, instead of
+`tables conformance: every registered surface passes`. That line now means
+exactly what it says: every surface run, every row answered and passed, no leg
+skipped.
+
+The fast-tier tests in `harness/footgun_test.go` plant each row of the table
+with the test binary itself as the driver (no shell, no toolchain) and are red
+on the old harness.
 
 ## Registering a language
 
