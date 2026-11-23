@@ -525,7 +525,7 @@ fixed table Probe { x int32 }
 Run the native C#, Unity, Java, Lua, Luau, MOO and Squirrel probes with
 
 ```sh
-SCHEMA_SLOW=1 go test -count=1 -v ./internal/codegen/{cstable,unitytable,javatable,luatable,luautable,mootable,squirreltable} -run '^TestAnnouncementEntryBudget$'
+SCHEMA_SLOW=1 go test -count=1 -v ./internal/codegen/{cstable,unitytable,javatable,luatable,luautable,mootable,squirreltable} -run '^TestAnnouncementEntryBudget(CSharp|Unity|Java)?$'
 ```
 
 ### JavaScript read-into names
