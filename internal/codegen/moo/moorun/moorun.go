@@ -181,8 +181,24 @@ func Analyze(t testing.TB, dir string, files ...string) string {
 	}
 	cmd := testproc.Command(t, analyze, files...)
 	cmd.Dir = dir
-	out, _ := cmd.CombinedOutput()
-	return string(out)
+	out, err := cmd.CombinedOutput()
+	text, aerr := AnalyzeOutcome(out, err)
+	if aerr != nil {
+		t.Fatal(aerr)
+	}
+	return text
+}
+
+// AnalyzeOutcome turns one moo-analyze run into its output. A run that failed
+// (did not start, was killed, or exited nonzero) with NO output is an error:
+// silence from a dead analyzer is not a clean result (SF-32). A failed run
+// WITH output returns it, which is non-empty, so the caller empty-output gate
+// fails on it.
+func AnalyzeOutcome(out []byte, err error) (string, error) {
+	if err != nil && len(bytes.TrimSpace(out)) == 0 {
+		return "", fmt.Errorf("moorun: moo-analyze failed with no output (silence is not a clean result): %w", err)
+	}
+	return string(out), nil
 }
 
 // HexLines decodes stdout's hex lines; a line that is not hex fails t.

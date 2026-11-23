@@ -20,6 +20,7 @@
 
 import .load
 import .schema_tables
+import .descriptors
 
 namespace schema_rt
 
@@ -862,16 +863,28 @@ def encode_node_table(e:SaveEncoder, w:SaveOut, g:SaveGraph) -> void:
 // left to the encoder, which names it non_finite_float. The walk covers ONE
 // body and everything it holds by value; save_reasoned runs it over every
 // record the save graph reaches, so a pointer is checked once at its node.
+// wc_non_finite is set by wc_value when it passes a NaN or an infinity in a
+// plain float. The save ignores it (its encoder refuses the value by name);
+// cook_contract_holds clears it before its walk and refuses on it after.
+var wc_non_finite = false
+
 def wc_value(d:FieldDescriptor, kind:int, v:Value) -> bool:
     let s = d.s
     if s == "int" or s == "bool":
         return scalar_admitted(d, kind, v)
     if s == "float":
         if (kind == 10 and not finite_f32(v.f)) or (kind == 11 and not finite_f64(v.f)):
+            // the save names it through its encoder (non_finite_float); the
+            // cook has no encoder, so it reads this flag after its walk (SF-37)
+            wc_non_finite = true
             return true
         return scalar_admitted(d, kind, v)
     if s == "enum":
-        return v.i >= 0 and v.i <= length(d.vs)
+        if v.i < 0 or v.i > length(d.vs):
+            return false
+        // A STRICT WRITE REFUSES A DEPRECATED VARIANT (docs/SPEC-TABLES.md
+        // §2.15), as the fixed, message and JSON writers do
+        return v.i == 0 or not is_deprecated_variant(d.t, d.vs[v.i - 1].name)
     if s == "str":
         return length(v.s) <= d.bound and text_valid(v.s, 0, length(v.s))
     if s == "text":

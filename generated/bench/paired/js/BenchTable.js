@@ -2799,6 +2799,7 @@ export function BenchMixedFixedCheckBody(value) {
     default: break;
   }
   if (!globalThis.Array.isArray(value.loadout) && !(value.loadout instanceof globalThis.Uint8Array)) { return false; }
+  if (value.loadout.length !== 4) { return false; }
   for (let i1 = 0; i1 < 4; i1++) {
     if (typeof value.loadout[i1] !== "number" || !globalThis.Number.isInteger(value.loadout[i1])) { return false; }
     if (value.loadout[i1] < 0 || value.loadout[i1] > 255) { return false; }
@@ -3935,7 +3936,8 @@ export function BenchMixedFixedFromText(src, dst) {
     }
   }
   if (src.gameEvent !== undefined) { dst.gameEvent = src.gameEvent; }
-  if (src.loadout !== null && typeof src.loadout === "object" && typeof src.loadout.length === "number") {
+  if (src.loadout !== null && typeof src.loadout === "object" && typeof src.loadout.length === "number" && src.loadout.length !== 4) { dst.loadout = src.loadout; }
+  else if (src.loadout !== null && typeof src.loadout === "object" && typeof src.loadout.length === "number") {
     const n = globalThis.Math.min(src.loadout.length, 4);
     for (let i = 0; i < n; i++) {
       if (src.loadout[i] !== undefined) { dst.loadout[i] = src.loadout[i]; }
@@ -4001,6 +4003,7 @@ function MixedEntityMessageBodyOk(value) {
   if (typeof value.weapon !== "number" || !globalThis.Number.isInteger(value.weapon)) { return false; }
   if (value.weapon < 0 || value.weapon > 15) { return false; }
   if (typeof value.damage !== "bigint") { return false; }
+  if (value.damage < 0n || value.damage > 255n) { return false; }
   return true;
 }
 
@@ -4731,7 +4734,7 @@ function BenchMixedMessageBodyOk(value) {
       break;
     default: return false;
   }
-  if (value.loadout === null || value.loadout === undefined || typeof value.loadout.length !== "number" || value.loadout.length < 4) { return false; }
+  if (value.loadout === null || value.loadout === undefined || typeof value.loadout.length !== "number" || value.loadout.length !== 4) { return false; }
   for (let _i3 = 0; _i3 < 4; _i3++) {
     if (typeof value.loadout[_i3] !== "number" || !globalThis.Number.isInteger(value.loadout[_i3])) { return false; }
   }

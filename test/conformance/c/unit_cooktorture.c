@@ -131,6 +131,20 @@ int conformance_write_refusal_set_cooktorture( const char * root, void * value, 
             CONFORMANCE_WREF_UNSIGNED( v->bounded_steps[0].type, text );
             return 1;
         }
+        if ( strcmp( path, "opt_bits" ) == 0 && strcmp( kind, "int" ) == 0 )
+        {
+            CONFORMANCE_WREF_UNSIGNED( v->opt_bits, text );
+            v->opt_bits_present = 1;
+            return 1;
+        }
+        if ( strcmp( path, "arr_bits[0].v" ) == 0 && strcmp( kind, "int" ) == 0 )
+        {
+            cooktorture_bits_cell_t * cells;
+            if ( v->arr_bits.count < 1 || v->arr_bits.items.value == 0 ) { return 0; }
+            cells = (cooktorture_bits_cell_t *) (void *) ( (uint8_t *) (void *) &v->arr_bits.items + v->arr_bits.items.value );
+            CONFORMANCE_WREF_UNSIGNED( cells[0].v, text );
+            return 1;
+        }
         return 0;
     }
     return 0;

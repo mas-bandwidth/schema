@@ -597,7 +597,7 @@ local ID_TABLE_BOUND = 4096
 
 -- homeBuild is this unit's own build version, the eight little-endian bytes
 -- MS.unit reads off the unit's announcement: what a strict announcement read
--- compares the peer's against (§3.3).
+-- compares the remote build version against (§3.3).
 local homeBuild: string? = nil
 
 -- buildVersionValue is a build version's eight bytes as the unsigned 64-bit
@@ -741,7 +741,7 @@ local function announceRead(v: any, data: buffer, report: any): boolean
 	end
 	-- STRICT MODE IS OPT-IN (§3.3): with v.strict set, an announcement whose
 	-- build version is not this unit's own is refused build_version_mismatch,
-	-- sets no vocabulary, keeps the peer's build version and names both
+	-- sets no vocabulary, keeps the remote build version and names both
 	-- versions as Uint64 values in report.remote and report.own.
 	if v.strict and version ~= homeBuild then
 		report.remote = buildVersionValue(version)

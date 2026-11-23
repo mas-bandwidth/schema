@@ -1,7 +1,8 @@
 --!strict
 -- serialize_float.luau — float and double, and the float32 narrowing (DESIGN.md
 -- (e) and (h); STANDARD.md, Floating Point, "float", "double" and "Finite
--- values only, every one bit exact").
+-- values only, every one bit exact"), wire compatible with
+-- mas-bandwidth/serialize (C++) v2.1.4.
 --
 -- serializeFloat writes the 32 bits of the IEEE-754 single-precision
 -- representation as one 32-bit group; serializeDouble writes the 64 bits of
@@ -48,46 +49,46 @@ local function doubleBitsAreFinite(hi: number): boolean
 	return bit32.band(hi, EXP64) ~= EXP64
 end
 
+-- SCRATCH is the one 8-byte buffer the five conversions below share. Each
+-- writes it and reads it back before returning and calls nothing in between,
+-- so no conversion holds its contents across another.
+local SCRATCH = buffer.create(8)
+
 -- doubleBits splits a double into the low and high 32-bit halves of its
 -- IEEE-754 pattern, in the wire's order (STANDARD.md, double).
 local function doubleBits(x: number): (number, number)
-	local b = buffer.create(8)
-	buffer.writef64(b, 0, x)
-	return buffer.readu32(b, 0), buffer.readu32(b, 4)
+	buffer.writef64(SCRATCH, 0, x)
+	return buffer.readu32(SCRATCH, 0), buffer.readu32(SCRATCH, 4)
 end
 
 -- doubleFromBits assembles the low and high halves into the double with that
 -- pattern (STANDARD.md, double).
 local function doubleFromBits(lo: number, hi: number): number
-	local b = buffer.create(8)
-	buffer.writeu32(b, 0, lo)
-	buffer.writeu32(b, 4, hi)
-	return buffer.readf64(b, 0)
+	buffer.writeu32(SCRATCH, 0, lo)
+	buffer.writeu32(SCRATCH, 4, hi)
+	return buffer.readf64(SCRATCH, 0)
 end
 
 -- f32frombits is the double holding the float32 with pattern u. The caller
 -- has refused a non-finite u, so the widening is exact.
 local function f32frombits(u: number): number
-	local b = buffer.create(4)
-	buffer.writeu32(b, 0, u)
-	return buffer.readf32(b, 0)
+	buffer.writeu32(SCRATCH, 0, u)
+	return buffer.readf32(SCRATCH, 0)
 end
 
 -- f32bits is the float32 pattern of x narrowed as Go's float32(v) narrows it
 -- (DESIGN.md (e)): round to nearest, ties to even, overflow to the signed
 -- infinity.
 local function f32bits(x: number): number
-	local b = buffer.create(4)
-	buffer.writef32(b, 0, x)
-	return buffer.readu32(b, 0)
+	buffer.writef32(SCRATCH, 0, x)
+	return buffer.readu32(SCRATCH, 0)
 end
 
 -- fround is Go's float32(v) as a double (DESIGN.md (e)): writef32 then
 -- readf32.
 local function fround(x: number): number
-	local b = buffer.create(4)
-	buffer.writef32(b, 0, x)
-	return buffer.readf32(b, 0)
+	buffer.writef32(SCRATCH, 0, x)
+	return buffer.readf32(SCRATCH, 0)
 end
 
 local F = {}

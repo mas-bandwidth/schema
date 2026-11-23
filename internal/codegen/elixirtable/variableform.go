@@ -4645,8 +4645,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp json_field(%{t: :list} = f, elements, depth) when is_list(elements) do
-    if Map.get(f, :array) == :counted and
-         (length(elements) < Map.get(f, :min_count, 0) or length(elements) > f.array_bound),
+    if Map.has_key?(f, :min_count) and
+         (length(elements) < f.min_count or length(elements) > f.array_bound),
        do: throw(:invalid_value)
 
     if Map.has_key?(f, :array_bound) and f.array_bound > 0 and length(elements) > f.array_bound,
@@ -4668,7 +4668,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
-  defp json_field(%{t: :list}, _other, _depth), do: "[]"
+  defp json_field(%{t: :list}, nil, _depth), do: "[]"
+  defp json_field(%{t: :list}, _other, _depth), do: throw(:invalid_value)
 
   defp json_field(%{optional: true}, nil, _depth), do: "null"
 

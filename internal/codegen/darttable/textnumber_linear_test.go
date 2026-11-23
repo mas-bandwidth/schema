@@ -88,14 +88,7 @@ import 'ProbeWire.dart' as w;
 void main(List<String> args) {
   for (final path in args) {
     final r = w.TableTextReport();
-    final w.Root v;
-    try {
-      v = w.rootFromJson(File(path).readAsStringSync(), r);
-    } on FormatException {
-      // a text that is not JSON in this dialect throws: malformed
-      print("1 0 malformed");
-      continue;
-    }
+    final v = w.rootFromJson(File(path).readAsStringSync(), r);
     final hex = w.rootWireSave(v).map((b) => b.toRadixString(16).padLeft(2, '0')).join();
     print('${r.refused ? 1 : 0} ${r.reason == 'kind_mismatch' ? 1 : 0} $hex');
   }
@@ -133,10 +126,6 @@ func dartTextNumberLinearOracle(t *testing.T, cases []dartTextNumberLinearCase) 
 		refused, kind := "0", "0"
 		if !ok {
 			refused = "1"
-		}
-		if strings.HasPrefix(rep.Reason, "malformed") {
-			want = append(want, "1 0 malformed")
-			continue
 		}
 		if strings.HasPrefix(rep.Reason, "kind_mismatch") {
 			kind = "1"

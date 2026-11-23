@@ -6508,6 +6508,14 @@ bool _mutateTortureCookWire(cooktorture.TortureCook w, String path, String vkind
       w.boundedSteps[3].armTag = 4;
       w.boundedSteps[3].label = 'a' * int.parse(text);
       return true;
+    // SILENT-FAILURE ROWS: the variable Save's bits(N) width on every carrier
+    case 'opt_bits int':
+      w.optBits = int.parse(text);
+      w.hasOptBits = true;
+      return true;
+    case 'arr_bits[0].v int':
+      w.arrBits[0].v = int.parse(text);
+      return true;
     default:
       throw StateError('unsupported TortureCook mutation $path $vkind');
   }

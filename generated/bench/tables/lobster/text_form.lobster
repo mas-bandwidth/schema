@@ -515,7 +515,9 @@ def t_set_scalar(p:TextParser, sl:Slot, v:TNode, path:string) -> bool:
             sl.cell.i = 0
         for(f.vs) ev, i:
             if ev.name == v.text:
-                sl.cell.i = i + 1
+                // a variant deprecated in place reads as the field default,
+                // an array element as None, never as itself (§2.15 READ)
+                sl.cell.i = if is_deprecated_variant(f.t, ev.name): enum_default(f) else: i + 1
                 found = true
         if not found:
             t_set_fail(p, "text_unknown_variant")

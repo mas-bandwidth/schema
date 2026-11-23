@@ -237,6 +237,17 @@ jobs:
       - uses: ./.github/actions/eslint
         if: matrix.shard == 'js'
 
+      # The Linux fleet SDK already supplies tsc for js-binding-names.
+      - name: Install TypeScript for the macOS JS shard
+        if: matrix.shard == 'js' && runner.os == 'macOS'
+        env:
+          TYPESCRIPT_VERSION: '5.9.3'
+        run: |
+          prefix="${RUNNER_TEMP}/typescript-${TYPESCRIPT_VERSION}"
+          npm install --no-audit --no-fund --silent --prefix "$prefix" "typescript@${TYPESCRIPT_VERSION}"
+          "$prefix/node_modules/.bin/tsc" --version | grep -Fx "Version ${TYPESCRIPT_VERSION}"
+          echo "$prefix/node_modules/.bin" >> "$GITHUB_PATH"
+
       - uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
         if: matrix.shard == 'dart' && runner.environment == 'github-hosted'
         with:
