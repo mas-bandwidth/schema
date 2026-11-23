@@ -14605,14 +14605,14 @@ in build version (§20.5).
 
   ```
   Measure  MeasureBody  Save  SaveBody  SaveBodyFields  Load  LoadBody
-  SaveInto  Reset  LoadMeasure  LoadMeasureParts  LoadMeasureReason  LoadMeasureWalk  LoadBuilder  TableType  Builder
+  SaveInto  LoadInto  Reset  LoadMeasure  LoadMeasureParts  LoadMeasureReason  LoadMeasureWalk  LoadBuilder  TableType  Builder
   LoadRegion  LoadBuilderRead
   At  Emplace  Pack  PackMeasure  MeasureReason
   Number  NumberFrom  MeasureWire  SaveWire
   NodeStorage  NodePlace  NodeAlloc  NodeBody
   Cook  CookMeasure  CookMeasureReason  CookBody  CookLayout  CookMeasureFrom  CookFrom
   Open  TableFields  TableInfo
-  FromJson  FromJsonBytes  ToJson  ToJsonMeasure  ToJsonMeasureReason  Table
+  FromJson  FromJsonBytes  FromJsonInto  FromJsonBytesInto  ToJson  ToJsonMeasure  ToJsonMeasureReason  Table
   FromJsonWith  ToJsonWith  ToJsonMeasureWith
   SaveText  LoadText  LoadTextForm  SaveTextForm  EditTextForm
   ReadStrict
