@@ -310,6 +310,7 @@ func main() {
 		}
 		opts.results = *resultsOut
 		opts.complete = *complete
+		opts.summary = os.Getenv("GITHUB_STEP_SUMMARY")
 		runSurfaces, err := parseSurfaces(*onlySurfaces)
 		if err != nil {
 			fatalf("%v", err)

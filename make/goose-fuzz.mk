@@ -19,9 +19,8 @@ $(GOOSE_FUZZ_SCHEMA):
 # refused unit is the target's refusal, recorded by build/conformance-goose).
 define goose_fuzz_units
 	@rm -rf $(1) && mkdir -p $(1)
-	@grep '^unit ' $(GOOSE_MANIFEST) | while read -r _ key paths; do \
-		./$(GOOSE_FUZZ_SCHEMA) generate --lang goose --out $(1)/$$key $$paths >/dev/null 2>&1 || rm -rf $(1)/$$key; \
-	done
+	@grep '^unit ' $(GOOSE_MANIFEST) | xargs -P "$${GOOSE_FUZZ_JOBS:-4}" -L 1 sh -c \
+		'shift; key=$$1; shift; ./$(GOOSE_FUZZ_SCHEMA) generate --lang goose --out "$(1)/$$key" "$$@" >/dev/null 2>&1 || rm -rf "$(1)/$$key"' _
 endef
 
 # THE WIRE-FUZZ DIFFERENTIAL (docs/PORTING.md I15; test/conformance/README.md,

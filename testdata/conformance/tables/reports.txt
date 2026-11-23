@@ -131,6 +131,10 @@ scalars_full_as_2  refused
 text_total_and_count refused
 trace_count_past_bound refused
 trace_elem_kind    refused
+twin_a2_root       read
+twin_k1_root       read
+twin_k2_root       read
+twin_scalars2_simstate read
 v1_cfg_as_v2       refused
 v1_seams_as_v2     refused
 v2_cfg_as_v1       refused
