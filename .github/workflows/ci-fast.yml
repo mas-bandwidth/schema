@@ -1642,9 +1642,8 @@ jobs:
           go run ./tools/gotestreport -slowest 0 -skips .github/skip-ledger.txt \
             -provides "platform tool:make tool:git tool:sh tool:elixir" "$PGROUP_GO_TEST_JSON"
 
-  # Use the existing Dart verify conformance job as the producer. When
-  # accounting is selected, the consumer runs the identical claims in full
-  # and the producer retains the packet checks.
+  # The producer builds the Dart driver and runs the selected packet checks.
+  # The consumer runs the full claims, with input accounting when selected.
   verify-dart-conformance:
     needs: plan
     if: startsWith(github.head_ref, 'sprint/') == false && ((contains(needs.plan.outputs.verify_legs, '"dart"') || needs.plan.outputs.dart_corpus_account == 'true') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
@@ -1676,22 +1675,16 @@ jobs:
           cd ..
           rm -rf serialize
           git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
-      - name: verify Dart conformance or build the accounting driver
+      - name: build the Dart claims driver and run selected packet checks
         env:
-          ACCOUNT: ${{ needs.plan.outputs.dart_corpus_account }}
           VERIFY: ${{ contains(needs.plan.outputs.verify_legs, '"dart"') }}
         run: |
           set -euo pipefail
           if [ -f /opt/nova/sdk/env.sh ]; then . /opt/nova/sdk/env.sh; fi
-          if [ "$ACCOUNT" = true ]; then
-            options=()
-            if [ "$VERIFY" = true ]; then options+=(--verify-packets); fi
-            python3 make/conformance-handoff.py produce "$RUNNER_TEMP/dart-conformance.tar.gz" "${options[@]}"
-          else
-            make verify-dart-conformance DART=dart
-          fi
+          options=()
+          if [ "$VERIFY" = true ]; then options+=(--verify-packets); fi
+          python3 make/conformance-handoff.py produce "$RUNNER_TEMP/dart-conformance.tar.gz" "${options[@]}"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: needs.plan.outputs.dart_corpus_account == 'true'
         with:
           name: dart-conformance-aot
           path: ${{ runner.temp }}/dart-conformance.tar.gz
@@ -1707,8 +1700,8 @@ jobs:
 
   input-family-dart-conformance:
     needs: [plan, verify-dart-conformance]
-    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.dart_corpus_account == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
-    name: input-family (conformance-corpus, dart)
+    if: startsWith(github.head_ref, 'sprint/') == false && ((contains(needs.plan.outputs.verify_legs, '"dart"') || needs.plan.outputs.dart_corpus_account == 'true') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    name: ${{ needs.plan.outputs.dart_corpus_account == 'true' && 'input-family (conformance-corpus, dart)' || 'verify-leg (dart, claims)' }}
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
     permissions:
@@ -1743,11 +1736,17 @@ jobs:
           run-id: ${{ github.run_id }}
           path: ${{ env.DART_CONFORMANCE_ARTIFACTS }}
           digest-mismatch: error
-      - name: verify the same-run Dart build and account for conformance inputs
+      - name: verify the same-run Dart build and run the conformance claims
+        env:
+          ACCOUNT: ${{ needs.plan.outputs.dart_corpus_account }}
         run: |
           set -euo pipefail
           if [ -f /opt/nova/sdk/env.sh ]; then . /opt/nova/sdk/env.sh; fi
           python3 make/conformance-handoff.py consume "${DART_CONFORMANCE_ARTIFACTS:?missing artifact directory}/dart-conformance.tar.gz"
+          if [ "$ACCOUNT" != true ]; then
+            make -j"$(nproc)" -o build/conformance-dart _conformance-corpus-dart DART=dart
+            exit 0
+          fi
           go build -o "$RUNNER_TEMP/inputaccount" ./tools/inputaccount
           # -o on the outer make is lost in recipes invoking $(MAKE).
           vars=(DART=dart "VERIFY_JFLAG=-j4 -o build/conformance-dart")
@@ -1760,17 +1759,45 @@ jobs:
             -provides "platform tool:make tool:git tool:sh tool:dart" "$PGROUP_GO_TEST_JSON"
 
   # Build the native executables separately from the I/O-accounted runs.
+  # The C++ build used to spend ~36 s of this job's two-minute budget building
+  # bin/schema before generation could begin (#4843). block-gate already builds
+  # that exact compiler in every run; restore its tree-bound artifact here so
+  # this job's budget covers the C++ producer rather than duplicate Go work.
   build-cpp-conformance-account:
-    needs: plan
+    needs: [plan, block-gate]
     if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.cpp_corpus_account == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
+    permissions:
+      actions: read
+      contents: read
     defaults:
       run:
         shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/merge-main
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: schema-compiler-${{ github.run_id }}
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          path: ${{ runner.temp }}/schema-compiler
+          digest-mismatch: error
+      - name: Restore the same-run compiler for this exact source tree
+        run: |
+          set -euo pipefail
+          artifact="$RUNNER_TEMP/schema-compiler"
+          expected=$(git rev-parse HEAD^{tree})
+          actual=$(cat "$artifact/source-tree")
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::schema compiler source tree $actual, want $expected"
+            exit 1
+          fi
+          (cd "$artifact" && sha256sum -c SHA256SUMS)
+          mkdir -p bin
+          install -m 0755 "$artifact/bin/schema" bin/schema
       - name: Check out the pinned C++ runtime
         run: |
           cd ..
@@ -1779,7 +1806,7 @@ jobs:
       - name: Build the C++ conformance driver and cook companion
         run: |
           if [ -f /opt/nova/sdk/env.sh ]; then . /opt/nova/sdk/env.sh; fi
-          python3 make/conformance-handoff.py produce "$RUNNER_TEMP/cpp-conformance.tar.gz" --leg cpp
+          python3 make/conformance-handoff.py produce "$RUNNER_TEMP/cpp-conformance.tar.gz" --leg cpp --prebuilt-compiler
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: cpp-conformance
@@ -1999,7 +2026,8 @@ jobs:
   # IT TAKES NO CACHE, deliberately, like the job it comes from: this is where
   # "the build did no work" must not be an available explanation for a green.
   block-gate:
-    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    needs: plan
+    if: startsWith(github.head_ref, 'sprint/') == false && (always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # fleet: 38-83 s; hosted builds bin/schema with no cache, by design
     timeout-minutes: 2
@@ -2015,11 +2043,30 @@ jobs:
         with:
           go-version: '1.26'
           cache: false
+      - name: the tables goldens match a fresh generation (the block zero-cost gate, byte-identity half)
+        run: make -j"$(nproc)" tables-block-zero-cost
+      - name: Stage the compiler for the C++ accounting build
+        if: needs.plan.outputs.cpp_corpus_account == 'true'
+        run: |
+          set -euo pipefail
+          artifact="$RUNNER_TEMP/schema-compiler"
+          rm -rf "$artifact"
+          mkdir -p "$artifact/bin"
+          cp bin/schema "$artifact/bin/schema"
+          git rev-parse HEAD^{tree} > "$artifact/source-tree"
+          (cd "$artifact" && sha256sum bin/schema > SHA256SUMS)
       # The three languages write separate trees, so they run side by side:
       # one after another they were the sum of three rows, past the
       # per-commit limit on a busy runner.
-      - name: the tables goldens match a fresh generation (the block zero-cost gate, byte-identity half)
-        run: make -j"$(nproc)" tables-block-zero-cost
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: needs.plan.outputs.cpp_corpus_account == 'true'
+        with:
+          name: schema-compiler-${{ github.run_id }}
+          path: ${{ runner.temp }}/schema-compiler
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+          overwrite: true
 
   # THE NEW-LEG SCAFFOLD'S FIXTURE (#4541). The one SCHEMA_SLOW test this lane
   # runs, for a diff plan's newleg rule selects (THE NEW-LEG SCAFFOLD in
@@ -2969,8 +3016,7 @@ jobs:
               nightly-fast) [ "$(out nightly_rows)" = '[]' ] ;;
               verify-leg) [ "$(out verify_legs)" = '[]' ] ;;
               verify-elixir-conformance) ! grep -qF '"elixir"' <<<"$(out verify_legs)" ;;
-              verify-dart-conformance) [ "$(out dart_corpus_account)" != true ] && ! grep -qF '"dart"' <<<"$(out verify_legs)" ;;
-              input-family-dart-conformance) [ "$(out dart_corpus_account)" != true ] ;;
+              verify-dart-conformance|input-family-dart-conformance) [ "$(out dart_corpus_account)" != true ] && ! grep -qF '"dart"' <<<"$(out verify_legs)" ;;
               build-cpp-conformance-account|input-family-cpp-conformance) [ "$(out cpp_corpus_account)" != true ] ;;
               input-family) [ "$(out input_rows)" = '[]' ] ;;
               go-fixed-corpus) ! grep -qF '"make":"tables-go-fixedform"' <<<"$(out rows)" ;;

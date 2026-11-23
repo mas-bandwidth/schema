@@ -40,6 +40,23 @@ func TestDartConformanceHandoffIncludesGeneratedImports(t *testing.T) {
 	}
 }
 
+func TestCppConformanceProducerReusesTheVerifiedBlockCompiler(t *testing.T) {
+	t.Parallel()
+	wf := readCI(t, repoRoot(t), ".github/workflows/ci-fast.yml")
+	jobs := yamlJobs(wf)
+	block, producer := jobs["block-gate"], jobs["build-cpp-conformance-account"]
+	for _, want := range []string{"tables-block-zero-cost", "needs.plan.outputs.cpp_corpus_account", "git rev-parse HEAD^{tree}", "sha256sum bin/schema", "name: schema-compiler-${{ github.run_id }}"} {
+		if !strings.Contains(block, want) {
+			t.Errorf("block-gate compiler artifact lacks %q", want)
+		}
+	}
+	for _, want := range []string{"needs: [plan, block-gate]", "name: schema-compiler-${{ github.run_id }}", "sha256sum -c SHA256SUMS", "git rev-parse HEAD^{tree}", "--leg cpp --prebuilt-compiler"} {
+		if !strings.Contains(producer, want) {
+			t.Errorf("C++ conformance producer restore lacks %q", want)
+		}
+	}
+}
+
 func TestFastInputAccountingKeepsBothCanaries(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS == "windows" {
@@ -124,8 +141,7 @@ func TestFastPlanSplitsSquirrelCorpusAccountingRows(t *testing.T) {
 	}
 }
 
-// The producer runs for either existing Dart verification or corpus
-// accounting. Only corpus accounting runs the dependent consumer.
+// Both jobs run for Dart verification or corpus accounting.
 func TestDartConformanceHandoffSelection(t *testing.T) {
 	t.Parallel()
 	wf := workflows(t, repoRoot(t))["ci-fast.yml"]
@@ -134,7 +150,7 @@ func TestDartConformanceHandoffSelection(t *testing.T) {
 		produce, consume              bool
 	}{
 		{"unrelated", `["go"]`, "false", "mas-bandwidth/schema", false, false},
-		{"verify only", `["dart"]`, "false", "mas-bandwidth/schema", true, false},
+		{"verify only", `["dart"]`, "false", "mas-bandwidth/schema", true, true},
 		{"corpus only", `[]`, "true", "mas-bandwidth/schema", true, true},
 		{"verify and account", `["dart"]`, "true", "mas-bandwidth/schema", true, true},
 		{"fork", `["dart"]`, "true", "fork/schema", false, false},
