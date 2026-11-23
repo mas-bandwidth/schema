@@ -18301,6 +18301,13 @@ hold only into an empty directory, which is not the directory the verb is
 pointed at. An entry naming NO field is left exactly where it is: it is not
 the tool's, and `pack` refuses it by name (§17.4).
 
+**An entry the filesystem takes for a name `unpack` writes IS that name, and
+the prune passes over it.** On a case-insensitive filesystem an earlier
+`player.json` is the new whole root `Player.json`: it is replaced, the new
+entry lands spelled as written, and the destination ends holding exactly the
+new tree. Pruning the old spelling after the write would delete the entry just
+written.
+
 ### 17.4 Refusals and the report
 
 A tree that does not mirror the table is reported rather than guessed at: a
