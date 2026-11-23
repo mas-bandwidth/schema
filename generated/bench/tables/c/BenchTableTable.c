@@ -329,7 +329,7 @@ static SCHEMA_UNUSED int benchtable_table_json_count_in_contract( const void * b
         return 1;
     }
     memcpy( &count, (const uint8_t *) base + f->count_offset, sizeof( count ) );
-    return count >= 0 && count <= f->array_bound;
+    return count >= f->array_min && count <= f->array_bound;
 }
 
 static SCHEMA_UNUSED int benchtable_table_json_wide_in_contract( const void * storage, const benchtable_table_field_info_t * f )

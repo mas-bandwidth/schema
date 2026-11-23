@@ -407,3 +407,47 @@ const ConformanceCodec * conformance_codecs_graphdemo(int * count)
 
 int conformance_cook_open(const char * root,const uint8_t * data,size_t bytes,int64_t extent,int pointer)
 { return conformance_cook_open_reason(root,data,bytes,extent,pointer,NULL); }
+
+int conformance_write_refusal_set_graphdemo( const char * root, void * value, const char * path,
+                                             const char * kind, const char * text )
+{
+    if ( strcmp( root, "Scene" ) == 0 )
+    {
+        schema_conformance_holder_Scene * holder = (schema_conformance_holder_Scene *) value;
+        graphdemo_scene_t * v = (graphdemo_scene_t *) (uintptr_t) holder->root;
+        if ( v == NULL ) { return 0; }
+        if ( strcmp( path, "version" ) == 0 && strcmp( kind, "int" ) == 0 )
+        {
+            CONFORMANCE_WREF_SIGNED( v->version, text );
+            return 1;
+        }
+        if ( strcmp( path, "ground.depth" ) == 0 && strcmp( kind, "int" ) == 0 )
+        {
+            CONFORMANCE_WREF_SIGNED( v->ground.depth, text );
+            return 1;
+        }
+        if ( strcmp( path, "layers" ) == 0 && strcmp( kind, "count" ) == 0 )
+        {
+            const int32_t cap = (int32_t) ( sizeof( v->layers ) / sizeof( v->layers[0] ) );
+            const int32_t cnt = conformance_write_refusal_count( text );
+            int32_t idx;
+            for ( idx = v->layers_count; idx < cnt && idx < cap; idx++ ) { graphdemo_layer_reset( &v->layers[idx] ); }
+            v->layers_count = cnt;
+            return 1;
+        }
+        if ( strcmp( path, "name" ) == 0 )
+        {
+            return conformance_write_refusal_text( v->name, 24, &v->name_length, kind, text );
+        }
+        return 0;
+    }
+    return 0;
+}
+
+int conformance_write_refusal_write_graphdemo( int surface, const char * root, const void * value, const uint8_t * announcement,
+                                               int64_t announcement_bytes, uint8_t * buffer, int64_t capacity, int64_t * wrote )
+{
+    (void) surface; (void) root; (void) value; (void) announcement; (void) announcement_bytes;
+    (void) buffer; (void) capacity; (void) wrote;
+    return 0;
+}

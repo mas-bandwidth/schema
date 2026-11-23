@@ -68,14 +68,25 @@ func TestGooseHoldsACountMinimumInsideEachCountedChild(t *testing.T) {
 	}
 	// the strict read runs the bounds pass on every landed record, the lineage
 	// read included, so the minimum is held on both paths
-	for _, fn := range []string{"LooseFixedLoad", "ChildFixedEvolveLoad"} {
-		body, ok := fixedFunctionBody(code, fn)
+	for _, pair := range []struct{ pub, walk string }{
+		{"LooseFixedLoad", "_LooseFixedLoadWalk"},
+		{"ChildFixedEvolveLoad", "_ChildFixedEvolveLoadWalk"},
+	} {
+		pubBody, ok := fixedFunctionBody(code, pair.pub)
 		if !ok {
-			t.Errorf("the generated module has no %s", fn)
+			t.Errorf("the generated module has no %s", pair.pub)
 			continue
 		}
-		if !strings.Contains(body, "FixedStrictRefuse(values[k]);") {
-			t.Errorf("%s lands a record without its strict bounds pass:\n%s", fn, body)
+		if !strings.Contains(pubBody, pair.walk+"(") {
+			t.Errorf("%s does not delegate to %s:\n%s", pair.pub, pair.walk, pubBody)
+		}
+		walkBody, ok := fixedFunctionBody(code, pair.walk)
+		if !ok {
+			t.Errorf("the generated module has no %s", pair.walk)
+			continue
+		}
+		if !strings.Contains(walkBody, "FixedStrictRefuse(values[k]);") {
+			t.Errorf("%s lands a record without its strict bounds pass:\n%s", pair.walk, walkBody)
 		}
 	}
 	// the variable read decodes every counted array, a child's included,

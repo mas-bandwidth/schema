@@ -26,6 +26,7 @@ SCHEMA_CONFORMANCE_GRAPH_CODEC(Pairs,pairs)
 SCHEMA_CONFORMANCE_GRAPH_CODEC(Crews,crews)
 SCHEMA_CONFORMANCE_GRAPH_CODEC(Trails,trails)
 SCHEMA_CONFORMANCE_GRAPH_CODEC(Fleet,fleet)
+SCHEMA_CONFORMANCE_GRAPH_CODEC(EdgeRow,edge_row)
 const ConformanceCodec * conformance_codecs_mapdemo(int * count) {
  static const ConformanceCodec codecs[]={
  SCHEMA_CONFORMANCE_GRAPH_ROW(mapdemo,Depth),
@@ -37,6 +38,7 @@ const ConformanceCodec * conformance_codecs_mapdemo(int * count) {
  SCHEMA_CONFORMANCE_GRAPH_ROW(mapdemo,Docs),
  SCHEMA_CONFORMANCE_GRAPH_ROW(mapdemo,Chunks),
  SCHEMA_CONFORMANCE_GRAPH_ROW(mapdemo,Pairs),
+ SCHEMA_CONFORMANCE_GRAPH_ROW(mapdemo,EdgeRow),
  SCHEMA_CONFORMANCE_GRAPH_ROW(mapdemo,Crews),
  SCHEMA_CONFORMANCE_GRAPH_ROW(mapdemo,Trails),
  SCHEMA_CONFORMANCE_GRAPH_ROW(mapdemo,Fleet),

@@ -1250,6 +1250,23 @@ macro_rules! with_root {
                 use mapdemo::{text_from_json_bytes as $from_json, text_load as $load, text_save_checked as $save, text_to_json_checked as $to_json};
                 Some($body)
             }
+            ("mapdemo", "EdgeRow") => {
+                #[allow(unused_imports)]
+                use mapdemo::{edge_row_from_json_bytes as $from_json, edge_row_load as $load, edge_row_save_checked as $save, edge_row_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("shapes", "Bounds") => {
+                #[allow(unused_imports)]
+                use shapes::{bounds_from_json_bytes as $from_json, bounds_load as $load, bounds_save_checked as $save, bounds_to_json_checked as $to_json};
+                Some($body)
+            }
+            ("shapes", "FixedBounds") => {
+                #[allow(unused_imports)]
+                use shapes::{fixed_bounds_from_json_bytes as $from_json, fixed_bounds_load as $load, fixed_bounds_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(shapes, FixedBounds, FixedBoundsRow, fixed_bounds_cook_write, fixed_bounds_fixed_save, fixed_bounds_fixed_measure);
+                Some($body)
+            }
             ("featurewitnesses", "Root") => {
                 #[allow(unused_imports)]
                 use featurewitnesses::{root_from_json_bytes as $from_json, root_load as $load, root_save_checked as $save, root_to_json_checked as $to_json};
@@ -1332,6 +1349,7 @@ fn fixed_read(unit: &str, root: &str, data: &[u8]) -> Option<FixedRead> {
         ("backenddemo", "MatchResult") => fixed_read!(backenddemo, match_result_fixed_load, match_result_fixed_save, match_result_fixed_measure, MatchResultRow, data),
         ("backenddemo", "StorePurchase") => fixed_read!(backenddemo, store_purchase_fixed_load, store_purchase_fixed_save, store_purchase_fixed_measure, StorePurchaseRow, data),
         ("messagedemo", "ToolMessage") => fixed_read!(messagedemo, tool_message_fixed_load, tool_message_fixed_save, tool_message_fixed_measure, ToolMessageRow, data),
+        ("shapes", "FixedBounds") => fixed_read!(shapes, fixed_bounds_fixed_load, fixed_bounds_fixed_save, fixed_bounds_fixed_measure, FixedBoundsRow, data),
         ("scalars", "SimState") => fixed_read!(scalars, sim_state_fixed_load, sim_state_fixed_save, sim_state_fixed_measure, SimStateRow, data),
         ("tblscalars2", "SimState") => fixed_read!(tblscalars2, sim_state_fixed_load, sim_state_fixed_save, sim_state_fixed_measure, SimStateRow, data),
         ("tblfixedevo", "EvoRoot") => fixed_read!(tblfixedevo, evo_root_fixed_load, evo_root_fixed_save, evo_root_fixed_measure, EvoRootRow, data),
@@ -1423,6 +1441,12 @@ macro_rules! with_fixed_value_root {
                 use cooktorture as $k;
                 #[allow(unused_imports)]
                 use $k::{TortureFixedWrefRow as $row, TortureFixedWref as $value, torture_fixed_wref_fixed_load as $load, torture_fixed_wref_fixed_save as $save, torture_fixed_wref_fixed_measure as $measure, torture_fixed_wref_to_json_checked as $to, torture_fixed_wref_from_json_bytes as $from, torture_fixed_wref_cook_write as $cook};
+                Some($body)
+            }
+            ("shapes", "FixedBounds") => {
+                use shapes as $k;
+                #[allow(unused_imports)]
+                use $k::{FixedBoundsRow as $row, FixedBounds as $value, fixed_bounds_fixed_load as $load, fixed_bounds_fixed_save as $save, fixed_bounds_fixed_measure as $measure, fixed_bounds_to_json_checked as $to, fixed_bounds_from_json_bytes as $from, fixed_bounds_cook_write as $cook};
                 Some($body)
             }
             ("tblvarevo1", "EvoMsg") => {
@@ -1643,10 +1667,13 @@ fn instance_is_fixed(f: &[String]) -> bool {
 fn surface_wire(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("instance") {
         let data = slurp(&f[4]);
+        let wire_refused = f.iter().skip(5).any(|m| m == "wire-refused");
         if is_fixed_form(&data) {
             match fixed_read(&f[2], &f[3], &data) {
                 Some(FixedRead { read: true, save: Some(bytes), .. }) => spill(out, &f[1], &bytes),
+                Some(FixedRead { read: true, save: None, .. }) if wire_refused => spill(out, &format!("{}.absent", f[1]), b"refused"),
                 Some(FixedRead { read: true, save: None, .. }) => fail(&format!("{}: the fixed save refused the value", f[1])),
+                Some(_) if wire_refused => spill(out, &format!("{}.absent", f[1]), b"refused"),
                 Some(_) => fail(&format!("{}: fixed load refused {}", f[1], f[4])),
                 None => spill_absent(out, &f[1]),
             }
@@ -2039,6 +2066,9 @@ macro_rules! with_cook_root {
             ("mapdemo", "Text") => { use mapdemo::{text_load as $load, text_cook_write as $cook, text_from_json_bytes as $from}; Some($body) }
             ("mapdemo", "Trails") => { use mapdemo::{trails_load as $load, trails_cook_write as $cook, trails_from_json_bytes as $from}; Some($body) }
             ("mapdemo", "Runs") => { use mapdemo::{runs_load as $load, runs_cook_write as $cook, runs_from_json_bytes as $from}; Some($body) }
+            ("mapdemo", "EdgeRow") => { use mapdemo::{edge_row_load as $load, edge_row_cook_write as $cook, edge_row_from_json_bytes as $from}; Some($body) }
+            ("shapes", "Bounds") => { use shapes::{bounds_load as $load, bounds_cook_write as $cook, bounds_from_json_bytes as $from}; Some($body) }
+            ("shapes", "FixedBounds") => { use shapes::{fixed_bounds_load as $load, fixed_bounds_cook_write as $cook, fixed_bounds_from_json_bytes as $from}; Some($body) }
             ("listdemo", "Save") => { use listdemo::{save_load as $load, save_cook_write as $cook, save_from_json_bytes as $from}; Some($body) }
             ("listdemo", "Mixed") => { use listdemo::{mixed_load as $load, mixed_cook_write as $cook, mixed_from_json_bytes as $from}; Some($body) }
             ("listdemo", "Album") => { use listdemo::{album_load as $load, album_cook_write as $cook, album_from_json_bytes as $from}; Some($body) }
@@ -2188,6 +2218,7 @@ fn message_codec(unit: &str, root: &str, ann: &[u8], wire: &[u8]) -> Option<Opti
         ("tblvarevo1", "EvoMsg") => message_round_trip!(tblvarevo1, EvoMsgRow, evo_msg_load_messages, evo_msg_measure_messages, evo_msg_save_messages, ann, wire),
         ("tblvarevo3", "EvoMsg") => message_round_trip!(tblvarevo3, EvoMsgRow, evo_msg_load_messages, evo_msg_measure_messages, evo_msg_save_messages, ann, wire),
         ("messagedemo", "ToolMessage") => message_round_trip!(messagedemo, ToolMessageRow, tool_message_load_messages, tool_message_measure_messages, tool_message_save_messages, ann, wire),
+        ("tblprior", "Prior") => message_round_trip!(tblprior, PriorRow, prior_load_messages, prior_measure_messages, prior_save_messages, ann, wire),
         _ => return None,
     })
 }
@@ -2218,23 +2249,27 @@ fn message_batch_codec(unit: &str, root: &str, ann: &[u8], wire: &[u8]) -> Optio
     })
 }
 
-fn surface_message(manifest: &Manifest, out: &str) {
-    for f in manifest.of_kind("message-batch") {
-        // message-batch <case> <connection> <root> <wire>
-        let Some(c) = manifest.of_kind("connection").find(|c| c[1] == f[2]) else {
-            fail(&format!("message-batch {} names no connection {}", f[1], f[2]));
-        };
-        let ann = slurp(&c[4]);
-        let wire = slurp(&f[4]);
-        match message_batch_codec(c[2].as_str(), f[3].as_str(), &ann, &wire) {
-            Some(Some(count)) => spill(out, &f[1], format!("count {count}\n").as_bytes()),
-            Some(None) => fail(&format!("{}: the announcement did not read", f[1])),
-            None => fail(&format!("{}: no message-batch codec for {}.{}", f[1], c[2], f[3])),
+fn surface_message(manifest: &Manifest, out: &str, prior: bool) {
+    let conn_kind = if prior { "prior-connection" } else { "connection" };
+    let msg_kind = if prior { "prior-message" } else { "message" };
+    if !prior {
+        for f in manifest.of_kind("message-batch") {
+            // message-batch <case> <connection> <root> <wire>
+            let Some(c) = manifest.of_kind("connection").find(|c| c[1] == f[2]) else {
+                fail(&format!("message-batch {} names no connection {}", f[1], f[2]));
+            };
+            let ann = slurp(&c[4]);
+            let wire = slurp(&f[4]);
+            match message_batch_codec(c[2].as_str(), f[3].as_str(), &ann, &wire) {
+                Some(Some(count)) => spill(out, &f[1], format!("count {count}\n").as_bytes()),
+                Some(None) => fail(&format!("{}: the announcement did not read", f[1])),
+                None => fail(&format!("{}: no message-batch codec for {}.{}", f[1], c[2], f[3])),
+            }
         }
     }
-    for f in manifest.of_kind("message") {
-        let Some(c) = manifest.of_kind("connection").find(|c| c[1] == f[2]) else {
-            fail(&format!("message {} names no connection {}", f[1], f[2]));
+    for f in manifest.of_kind(msg_kind) {
+        let Some(c) = manifest.of_kind(conn_kind).find(|c| c[1] == f[2]) else {
+            fail(&format!("{msg_kind} {} names no {conn_kind} {}", f[1], f[2]));
         };
         if f[5] == "-" {
             // a named refusal row: the root is a variable table, and the
@@ -2246,6 +2281,7 @@ fn surface_message(manifest: &Manifest, out: &str) {
         let wire = slurp(&f[5]);
         match message_codec(c[2].as_str(), f[3].as_str(), &ann, &wire) {
             Some(Some(bytes)) => spill(out, &f[1], &bytes),
+            Some(None) if prior => spill(out, &format!("{}.refused", f[1]), b"refused"),
             Some(None) => fail(&format!("{}: message load/save refused {}", f[1], f[5])),
             None => spill_absent(out, &f[1]),
         }
@@ -2410,6 +2446,76 @@ fn wref_scene(v: &mut graphdemo::tables::Scene, path: &str, kind: &str, value: &
         _ => fail(&format!("write-refusal: Scene names no {kind} path {path}")),
     }
 }
+
+fn wref_bounds(v: &mut shapes::Bounds, path: &str, kind: &str, value: &str) -> Mutation {
+    use shapes::tables::{Pick, Tone};
+    match (path, kind) {
+        ("tenth", "real" | "float") => { v.tenth = wref_float(value); Mutation::Done }
+        ("seventh", "real" | "float") => { v.seventh = wref_float(value); Mutation::Done }
+        ("ranged", "real" | "float") => { v.ranged = wref_float(value); Mutation::Done }
+        ("zero", "real" | "float") => { v.zero = wref_float(value); Mutation::Done }
+        ("octets", "count") => {
+            let n = wref_usize(value);
+            v.octets.resize(n, 0);
+            Mutation::Done
+        }
+        ("recs", "count") => {
+            let n = wref_usize(value);
+            v.recs.resize(n, Default::default());
+            Mutation::Done
+        }
+        ("tones[0]", "ordinal") => {
+            if v.tones.is_empty() {
+                v.tones.push(Tone::None);
+            }
+            v.tones[0] = match value {
+                "0" => Tone::None,
+                "1" => Tone::Low,
+                "2" => Tone::Mid,
+                "3" => Tone::High,
+                _ => return Mutation::Unrepresentable,
+            };
+            Mutation::Done
+        }
+        ("pick", "tag") => {
+            v.pick = match value {
+                "0" => Pick::None,
+                "1" => Pick::Small(0),
+                "2" => Pick::Ratio(0.0),
+                "3" => Pick::On(false),
+                _ => return Mutation::Unrepresentable,
+            };
+            Mutation::Done
+        }
+        _ => fail(&format!("write-refusal: Bounds names no {kind} path {path}")),
+    }
+}
+
+fn wref_fixed_bounds_row(v: &mut shapes::FixedBoundsRow, path: &str, kind: &str, value: &str) -> Mutation {
+    match (path, kind) {
+        ("tenth", "real" | "float") => { v.tenth = wref_float(value); Mutation::Done }
+        ("seventh", "real" | "float") => { v.seventh = wref_float(value); Mutation::Done }
+        ("ranged", "real" | "float") => { v.ranged = wref_float(value); Mutation::Done }
+        ("plain", "real" | "float") => { v.plain = wref_float(value); Mutation::Done }
+        ("octets", "count") => {
+            v.octets_count = wref_usize(value) as i32;
+            Mutation::Done
+        }
+        ("recs", "count") => {
+            v.recs_count = wref_usize(value) as i32;
+            Mutation::Done
+        }
+        ("tones[0]", "ordinal") => {
+            let Ok(n) = value.parse::<u8>() else { return Mutation::Unrepresentable; };
+            v.tones[0] = n;
+            if v.tones_count < 1 { v.tones_count = 1; }
+            Mutation::Done
+        }
+        _ => fail(&format!("write-refusal: FixedBounds names no {kind} path {path}")),
+    }
+}
+
+fn wref_check_fixed_bounds_row(_v: &shapes::FixedBoundsRow, _path: &str, _kind: &str) {}
 
 fn wref_mixed(v: &mut listdemo::tables::Mixed, path: &str, kind: &str, value: &str) -> Mutation {
     use listdemo::tables::{Grade, Hit};
@@ -2804,6 +2910,13 @@ fn wref_fixed_case(f: &[String], data: &[u8]) -> &'static str {
                 Mutation::Unrepresentable => "unrepresentable\n",
             }
         }
+        ("shapes", "FixedBounds") => {
+            let mut row = wref_fixed_row!(shapes, fixed_bounds_fixed_load, FixedBoundsRow, case, wire, data);
+            match wref_fixed_bounds_row(&mut row, path, kind, value) {
+                Mutation::Done => wref_fixed_save(row, |row| wref_check_fixed_bounds_row(row, path, kind), shapes::fixed_bounds_fixed_measure, shapes::fixed_bounds_fixed_save),
+                Mutation::Unrepresentable => "unrepresentable\n",
+            }
+        }
         _ => fail(&format!("write-refusal: no fixed root {unit} {root}")),
     }
 }
@@ -2864,6 +2977,14 @@ fn surface_write_refusal(manifest: &Manifest, out: &str) {
                 let Some(mut v) = listdemo::mixed_load(&data, &mut report) else { fail(&format!("{case}: load refused {wire}")) };
                 match wref_mixed(&mut v, path, kind, value) {
                     Mutation::Done => wref_save(|| listdemo::mixed_save_checked(&v)),
+                    Mutation::Unrepresentable => "unrepresentable\n",
+                }
+            }
+            ("shapes", "Bounds") => {
+                let mut report = shapes::TableReport::default();
+                let Some(mut v) = shapes::bounds_load(&data, &mut report) else { fail(&format!("{case}: load refused {wire}")) };
+                match wref_bounds(&mut v, path, kind, value) {
+                    Mutation::Done => wref_save(|| shapes::bounds_save_checked(&v)),
                     Mutation::Unrepresentable => "unrepresentable\n",
                 }
             }
@@ -3168,6 +3289,7 @@ fn surface_write_refusal_json(manifest: &Manifest, out: &str) {
                 ("tabledemo", "LoadoutConfig") => fixed_json_case!(tabledemo, loadout_config_fixed_load, LoadoutConfigRow, LoadoutConfig, wref_loadout_config_row, loadout_config_to_json_checked),
                 ("scalars", "SimState") => fixed_json_case!(scalars, sim_state_fixed_load, SimStateRow, SimState, wref_sim_state_row, sim_state_to_json_checked),
                 ("cooktorture", "TortureFixedWref") => fixed_json_case!(cooktorture, torture_fixed_wref_fixed_load, TortureFixedWrefRow, TortureFixedWref, wref_torture_fixed_wref_row, torture_fixed_wref_to_json_checked),
+                ("shapes", "FixedBounds") => fixed_json_case!(shapes, fixed_bounds_fixed_load, FixedBoundsRow, FixedBounds, wref_fixed_bounds_row, fixed_bounds_to_json_checked),
                 _ => fail(&format!("write-refusal-json: no fixed root {unit} {root}")),
             };
             spill(out, case, answer.as_bytes());
@@ -3212,6 +3334,14 @@ fn surface_write_refusal_json(manifest: &Manifest, out: &str) {
                     Mutation::Unrepresentable => Err("unrepresentable\n"),
                 }
             }
+            ("shapes", "Bounds") => {
+                let mut report = shapes::TableReport::default();
+                let Some(mut v) = shapes::bounds_load(&data, &mut report) else { fail(&format!("{case}: load refused {wire}")) };
+                match wref_bounds(&mut v, path, kind, value) {
+                    Mutation::Done => Ok(wref_run(|| written(shapes::bounds_to_json_checked(&v)))),
+                    Mutation::Unrepresentable => Err("unrepresentable\n"),
+                }
+            }
             _ => fail(&format!("write-refusal-json: no root {unit} {root}")),
         };
         let answer = match outcome {
@@ -3245,7 +3375,7 @@ fn main() {
             // case ABSENT, one by one; the message surface rides the message form's
             // batch for the fixed roots of backenddemo, vocabdemo and vocab9demo
             // (§3.3); the retaining file rows read through tblrt1 (§6.6).
-            "wire\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write\nmessage\nblock-reason\ncook-reason\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json"
+            "wire\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write\nmessage\nmessage-prior\nblock-reason\ncook-reason\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nunit shapes"
         );
         return;
     }
@@ -3273,7 +3403,8 @@ fn main() {
         "forgery" => surface_forgery(&manifest, out),
         "block-reason" => surface_reason(&manifest, out, "block"),
         "cook-reason" => surface_reason(&manifest, out, "cook"),
-        "message" => surface_message(&manifest, out),
+        "message" => surface_message(&manifest, out, false),
+        "message-prior" => surface_message(&manifest, out, true),
         "write-refusal" => surface_write_refusal(&manifest, out),
         "write-refusal-fixed" => surface_write_refusal_fixed(&manifest, out),
         "write-refusal-message" => surface_write_refusal_message(&manifest, out),

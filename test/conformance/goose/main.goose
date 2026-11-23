@@ -205,6 +205,8 @@ fn surface_wire(lines: const u8[:][:], unit: const u8[:]) {
     for line in lines {
         let f = words(line);
         if f.len < 5 || f[0] != "instance" || f[2] != unit { continue; }
+        var wire_refused = false;
+        for mark in f { if mark == "wire-refused" { wire_refused = true; } }
         var data: u8[>..] = [];
         load_file(f[4], data);
         var out: u8[>..<] = [];
@@ -214,6 +216,10 @@ fn surface_wire(lines: const u8[:][:], unit: const u8[:]) {
             continue;
         }
         if fw < -1 {
+            if wire_refused {
+                absent(f[1], "refused");
+                continue;
+            }
             write_stderr(str("driver: ", f[1], " does not load\n"));
             exit(1);
         }
@@ -226,6 +232,10 @@ fn surface_wire(lines: const u8[:][:], unit: const u8[:]) {
             continue;
         }
         if root < 0 {
+            if wire_refused {
+                absent(f[1], "refused");
+                continue;
+            }
             write_stderr(str("driver: ", f[1], " does not load\n"));
             exit(1);
         }
@@ -582,22 +592,16 @@ fn wref_loaded_f32_bits(s: const u8[:]) -> u64 {
     if s == "nan" { return 0x7fc00000; }
     if s == "inf" { return 0x7f800000; }
     if s == "-inf" { return 0xff800000; }
-    if s == "1.5" { return 0x3fc00000; }
-    if s == "2.5" { return 0x40200000; }
-    if s == "0" || s == "0.0" { return 0; }
-    let n, _ok = parse_int(s);
-    return schema_rt::fixed_f32_bits(n as f32) as u64;
+    let x, _fin = schema_rt::json_token_f32(s);
+    return schema_rt::fixed_f32_bits(x) as u64;
 }
 
 fn wref_loaded_f64_bits(s: const u8[:]) -> u64 {
     if s == "nan" { return 0x7ff8000000000000; }
     if s == "inf" { return 0x7ff0000000000000; }
     if s == "-inf" { return 0xfff0000000000000; }
-    if s == "1.5" { return 0x3ff8000000000000; }
-    if s == "2.5" { return 0x4004000000000000; }
-    if s == "0" || s == "0.0" { return 0; }
-    let n, _ok = parse_int(s);
-    return schema_rt::fixed_f64_bits(n as f64);
+    let x, _fin = schema_rt::json_token_f64(s);
+    return schema_rt::fixed_f64_bits(x);
 }
 
 // wref_loaded_digits answers the decimal magnitude of s with its sign and
@@ -663,7 +667,7 @@ fn wref_loaded_int(vals: schema_rt::LoadVal[>..]&, s: i64, text: const u8[:]) ->
 
 fn wref_loaded_leaf(data: u8[>..]&, vals: schema_rt::LoadVal[>..]&, s: i64, d: schema_rt::FieldDesc, kind: const u8[:], text: const u8[:]) -> i64 {
     vals[s].state = schema_rt::ValPresent;
-    if kind == "float" {
+    if kind == "float" || kind == "real" {
         vals[s].bits = schema_rt::Int128 { lo: if d.is_f32 { wref_loaded_f32_bits(text) } else { wref_loaded_f64_bits(text) }, hi: 0 };
         return 1;
     }
@@ -756,6 +760,19 @@ recursive fn wref_loaded_set(unit: schema_rt::LoadUnit, data: u8[>..]&, vals: sc
                     let widx = vals[es].bits.lo as! i64;
                     return wref_loaded_set(unit, data, vals, nodes, nodes[widx - 2].val, rest, kind, text);
                 }
+                if e.shape == schema_rt::ShapeUnion {
+                    let ui = schema_rt::value_union(unit, e.ref);
+                    if ui < 0 { return 0; }
+                    let arms = unit.unions[ui].arms;
+                    var ai: i64 = 0;
+                    while ai < arms.len {
+                        if arms[ai].name == rest {
+                            return wref_loaded_leaf(data, vals, vals[es].first, arms[ai], kind, text);
+                        }
+                        ai += 1;
+                    }
+                    return 0;
+                }
                 return 0;
             }
             if d.shape == schema_rt::ShapePtr {
@@ -763,6 +780,18 @@ recursive fn wref_loaded_set(unit: schema_rt::LoadUnit, data: u8[>..]&, vals: sc
                 return wref_loaded_set(unit, data, vals, nodes, nodes[widx - 2].val, rest, kind, text);
             }
             if d.shape == schema_rt::ShapeTab {
+                if !vals[s].made {
+                    let ntab = schema_rt::value_table(unit, d.ref);
+                    if ntab < 0 { return 0; }
+                    let nt = unit.tables[ntab];
+                    let nf = schema_rt::value_reserve(vals, nt.fields.len);
+                    var k: i64 = 0;
+                    while k < nt.fields.len {
+                        vals[nf + k] = schema_rt::LoadVal { state: schema_rt::ValEmpty, shape: nt.fields[k].shape, first: -1, .. };
+                        k += 1;
+                    }
+                    vals[s] = schema_rt::LoadVal { state: schema_rt::ValPresent, shape: schema_rt::ShapeTab, made: true, tab: ntab, first: nf, count: nt.fields.len, .. };
+                }
                 return wref_loaded_set(unit, data, vals, nodes, s, rest, kind, text);
             }
             if d.shape == schema_rt::ShapeUnion {
@@ -874,7 +903,7 @@ fn main() {
         exit(1);
     }
     if argv[1] == "list" {
-        write_stdout("wire\nmessage\nmessage-prior\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n");
+        write_stdout("wire\nmessage\nmessage-prior\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nunit shapes\n");
         return;
     }
     if argv.len != 4 {
