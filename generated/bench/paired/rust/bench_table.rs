@@ -3788,7 +3788,7 @@ pub fn bench_mixed_cook_body(v: &BenchMixed, w: &mut TableRegionWriter, at: i64)
     w.put(at + 40, v.world_time as u64, 8);
     w.put(at + 48, v.frame_tick, 8);
     w.put(at + 56, v.server_time as u64, 4);
-    if v.entities.len() < 1 || v.entities.len() > 8 { w.fail(); }
+    if v.entities.is_empty() || v.entities.len() > 8 { w.fail(); }
     w.put(at + 576, v.entities.len() as u64, 4);
     for i in 0..v.entities.len() {
         let ea = at + 64 + i as i64 * 64;
