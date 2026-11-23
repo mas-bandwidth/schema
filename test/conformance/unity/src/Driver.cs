@@ -953,14 +953,10 @@ namespace SchemaUnityConformance
                 object value = codec.Load(wire, rep);
                 if (value == null)
                 {
-                    if (rep.ReasonText != null && rep.ReasonText.Contains("blob_shared", StringComparison.Ordinal))
-                    {
-                        File.WriteAllText(Path.Combine(outDir, f[1]), "refused\n");
-                        continue;
-                    }
                     if (wireRefused)
                     {
-                        File.WriteAllText(Path.Combine(outDir, f[1] + ".absent"), string.IsNullOrEmpty(rep.ReasonText) ? "refused" : rep.ReasonText);
+                        // R13: an actual read refusal answers a wire-refused row.
+                        File.WriteAllText(Path.Combine(outDir, f[1]), "refused\n");
                         continue;
                     }
                     Console.Error.WriteLine("driver: " + f[1] + " does not load (" + rep.ReasonText + ")");
@@ -969,11 +965,6 @@ namespace SchemaUnityConformance
                 long size = codec.Measure(value);
                 if (size < 0)
                 {
-                    if (wireRefused)
-                    {
-                        File.WriteAllText(Path.Combine(outDir, f[1] + ".absent"), "refused");
-                        continue;
-                    }
                     Console.Error.WriteLine("driver: " + f[1] + " measure refused the value");
                     return 1;
                 }
