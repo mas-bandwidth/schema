@@ -638,8 +638,8 @@ func withOnlyVoidArms(runtime string) string {
 	replacements := [][2]string{
 		{"      a -> collect_nodes(%{fields: [a]}, %{a.name => payload}, acc)\n", ""},
 		{"  defp collect_union_nodes(union, {arm, payload}, acc) do\n", "  defp collect_union_nodes(union, {arm, _payload}, acc) do\n"},
-		{"      a -> save_collect_nodes(%{fields: [a]}, %{a.name => payload}, acc, seen)\n", ""},
-		{"  defp save_collect_union_nodes(union, {arm, payload}, acc, seen) do\n", "  defp save_collect_union_nodes(union, {arm, _payload}, acc, seen) do\n"},
+		{"      a -> save_collect_nodes(%{fields: [a]}, %{a.name => payload}, acc, seen, dir)\n", ""},
+		{"  defp save_collect_union_nodes(union, {arm, payload}, acc, seen, dir) do\n", "  defp save_collect_union_nodes(union, {arm, _payload}, acc, seen, _dir) do\n"},
 		{"      a -> tally_field(a, if(payload == nil, do: a.default, else: payload), acc)\n", ""},
 		{"  defp tally_field(%{t: :union, elem: union}, {arm, payload}, acc) do\n", "  defp tally_field(%{t: :union, elem: union}, {arm, _payload}, acc) do\n"},
 		{"        _ -> json_field(a, if(payload == nil, do: a.default, else: payload), depth + 1)\n", ""},
@@ -680,6 +680,7 @@ var unionClauses = []string{
 	"  defp save_collect_list_nodes(%{elem_kind: 15}",
 	"  defp emit_field(%{t: :union}",
 	"  defp emit_element(%{elem_kind: 15}",
+	"  defp element_writes_nothing?(%{elem_kind: 15}",
 	"  defp read_payload(%{t: :union}",
 	"  defp read_list_elements(%{elem_kind: 15}",
 	"  defp tally_field(%{t: :union",
@@ -692,7 +693,7 @@ var unionClauses = []string{
 
 const unionNodeBranch = "          :union ->\n            collect_union_nodes(f.elem, Map.get(value, f.name), acc)\n\n"
 
-const unionNodeBranchSave = "          :union ->\n            save_collect_union_nodes(f.elem, Map.get(value, f.name), acc, seen)\n\n"
+const unionNodeBranchSave = "          :union ->\n            {acc, seen} = state\n            save_collect_union_nodes(f.elem, Map.get(value, f.name), acc, seen, dir)\n\n"
 
 const unionExtentBranch = "          kind == 15 ->\n            union_elements_extent(field.elem, elems, count, ids, at)\n\n"
 
@@ -943,7 +944,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     # holding equal bytes are two records. A blob the strict read found named
     # from two slots refuses the save by name, blob_shared (§2.5).
     try do
-      {nodes, idx_map} = with_save_directory(directory, fn -> collect_root(desc, value) end)
+      {nodes, idx_map} = collect_root(desc, value, directory)
 
       blob_site_begin(:root)
       {_idx_map, ids, order, body} = save_fields(desc, value, idx_map, %{}, [], [])
@@ -966,33 +967,21 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       :invalid_value -> {:error, :invalid_value}
     after
       Process.delete(:elixir_blob_site)
-      Process.delete(:elixir_save_directory)
     end
   end
 
   # collect_root numbers the value's nodes in §3.1's first-visit order. A table
   # node's identity is its stored node number, so a shared node is the one
   # record found by its number, never by scanning collected nodes; a blob is
-  # keyed by the SLOT that holds it (blob_site/1).
-  defp collect_root(desc, value) do
+  # keyed by the SLOT that holds it (blob_site/1). The node directory is passed
+  # directly rather than kept in the process dictionary beside :elixir_blob_site
+  # so a 10-bucket process dictionary collision cannot add cons-cell heap churn
+  # on every node visit.
+  defp collect_root(desc, value, dir) do
     blob_site_begin(:root)
-    {nodes, _seen} = save_collect_nodes(desc, value, [], %{})
+    {nodes, _seen} = save_collect_nodes(desc, value, [], %{}, dir)
     nodes = Enum.reverse(nodes)
     {nodes, node_index(nodes)}
-  end
-
-  # the directory a pointer field's node number names, live only for this save
-  defp with_save_directory(directory, fun) do
-    prior = Process.get(:elixir_save_directory)
-    Process.put(:elixir_save_directory, directory)
-
-    try do
-      fun.()
-    after
-      if prior == nil,
-        do: Process.delete(:elixir_save_directory),
-        else: Process.put(:elixir_save_directory, prior)
-    end
   end
 
   # a pointer field's number must name a table node in the directory
@@ -1058,72 +1047,106 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # index 1, the first node is 2). A node reached twice is one record. A node
   # is {type_id, kind, table_name, number, content}: kind :blob for a byte
   # buffer, :table for a pointer pointee.
-  defp save_collect_nodes(desc, value, acc, seen) do
-    Enum.reduce(desc.fields, {acc, seen}, fn f, {acc, seen} ->
+  defp save_collect_nodes(desc, value, acc, seen, dir) do
+    save_collect_fields(desc.fields, desc, value, {acc, seen}, dir)
+  end
+
+  defp save_collect_fields([], _desc, _value, state, _dir), do: state
+
+  defp save_collect_fields([f | rest], desc, value, state, dir) do
+    state =
       if field_active?(f, desc, value) do
         case f.t do
           :blob ->
             case Map.get(value, f.name) do
-              nil -> {acc, seen}
-              v -> {[{f.type_id, :blob, blob_site(v), v} | acc], seen}
+              nil ->
+                state
+
+              v ->
+                {acc, seen} = state
+                {[{f.type_id, :blob, blob_site(v), v} | acc], seen}
             end
 
           :pointer ->
             case Map.get(value, f.name) do
               nil ->
-                {acc, seen}
+                state
 
               n ->
-                save_push_node(acc, seen, {f.type_id, :table, f.elem, n})
+                {acc, seen} = state
+                save_push_node(acc, seen, {f.type_id, :table, f.elem, n}, dir)
             end
 
           :table ->
             # an absent optional (nil) owns no edge (§2.3), and a by-value
             # table left nil holds its defaults, which name no node
             case Map.get(value, f.name) do
-              nil -> {acc, seen}
-              v -> save_collect_nodes(Map.fetch!(@tables, f.elem), v, acc, seen)
+              nil ->
+                state
+
+              v ->
+                {acc, seen} = state
+                save_collect_nodes(Map.fetch!(@tables, f.elem), v, acc, seen, dir)
             end
 
           :list ->
-            save_collect_list_nodes(f, Map.get(value, f.name) || [], acc, seen)
+            {acc, seen} = state
+            save_collect_list_nodes(f, Map.get(value, f.name) || [], acc, seen, dir)
 
           :map ->
-            Enum.reduce(map_entries(f, Map.get(value, f.name, %{})), {acc, seen}, fn entry,
-                                                                                     {acc, seen} ->
-              save_collect_nodes(Map.fetch!(@tables, f.elem), entry, acc, seen)
-            end)
+            {acc, seen} = state
+
+            save_collect_table_list(
+              Map.fetch!(@tables, f.elem),
+              map_entries(f, Map.get(value, f.name, %{})),
+              acc,
+              seen,
+              dir
+            )
 
           :union ->
-            save_collect_union_nodes(f.elem, Map.get(value, f.name), acc, seen)
+            {acc, seen} = state
+            save_collect_union_nodes(f.elem, Map.get(value, f.name), acc, seen, dir)
 
           :keyed ->
             slots = Map.get(value, f.name) || %{}
 
-            Enum.reduce(f.key_names, {acc, seen}, fn name, {acc, seen} ->
+            Enum.reduce(f.key_names, state, fn name, state ->
               case Map.get(slots, name) do
-                nil -> {acc, seen}
-                v -> save_collect_nodes(%{fields: [f.item]}, %{f.item.name => v}, acc, seen)
+                nil ->
+                  state
+
+                v ->
+                  {acc, seen} = state
+                  save_collect_nodes(%{fields: [f.item]}, %{f.item.name => v}, acc, seen, dir)
               end
             end)
 
           _ ->
-            {acc, seen}
+            state
         end
       else
-        {acc, seen}
+        state
       end
-    end)
+
+    save_collect_fields(rest, desc, value, state, dir)
+  end
+
+  defp save_collect_table_list(_desc, [], acc, seen, _dir), do: {acc, seen}
+
+  defp save_collect_table_list(desc, [e | rest], acc, seen, dir) do
+    {acc, seen} = save_collect_nodes(desc, e, acc, seen, dir)
+    save_collect_table_list(desc, rest, acc, seen, dir)
   end
 
   # a union's selected arm is a field line (docs/SPEC-TABLES.md §2.6, §3.1):
   # its nodes are visited where the union sits, exactly as a field's are.
-  defp save_collect_union_nodes(_union, nil, acc, seen), do: {acc, seen}
+  defp save_collect_union_nodes(_union, nil, acc, seen, _dir), do: {acc, seen}
 
-  defp save_collect_union_nodes(union, {arm, payload}, acc, seen) do
+  defp save_collect_union_nodes(union, {arm, payload}, acc, seen, dir) do
     case Map.fetch!(Map.fetch!(@unions, union).by_name, arm) do
       %{t: :void} -> {acc, seen}
-      a -> save_collect_nodes(%{fields: [a]}, %{a.name => payload}, acc, seen)
+      a -> save_collect_nodes(%{fields: [a]}, %{a.name => payload}, acc, seen, dir)
     end
   end
 
@@ -1135,7 +1158,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # its body is still being walked: a pointer to a node still OPEN is a data
   # cycle, refused by name (§3.1), and a number reached as a second table type
   # is not one node, so it is an invalid value.
-  defp save_push_node(acc, seen, {type_id, :table, elem, n}) do
+  defp save_push_node(acc, seen, {type_id, :table, elem, n}, dir) do
     case Map.get(seen, n) do
       {^elem, :closed} ->
         {acc, seen}
@@ -1144,13 +1167,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         throw(:data_cycle)
 
       nil ->
-        value = save_node_lookup(Process.get(:elixir_save_directory), n)
+        value = save_node_lookup(dir, n)
         node = {type_id, :table, elem, n, value}
         seen = Map.put(seen, n, {elem, :open})
 
         {acc, seen} =
           in_node_holder(node, fn ->
-            save_collect_nodes(Map.fetch!(@tables, elem), value, [node | acc], seen)
+            save_collect_nodes(Map.fetch!(@tables, elem), value, [node | acc], seen, dir)
           end)
 
         {acc, Map.put(seen, n, {elem, :closed})}
@@ -1163,29 +1186,27 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # save_collect_list_nodes numbers an unbounded array's elements: table
   # elements recurse, pointer elements are node numbers, union elements read
   # their set arm.
-  defp save_collect_list_nodes(%{elem_kind: 13} = f, elements, acc, seen) do
-    Enum.reduce(elements, {acc, seen}, fn e, {acc, seen} ->
-      save_collect_nodes(Map.fetch!(@tables, f.elem), e, acc, seen)
-    end)
+  defp save_collect_list_nodes(%{elem_kind: 13} = f, elements, acc, seen, dir) do
+    save_collect_table_list(Map.fetch!(@tables, f.elem), elements, acc, seen, dir)
   end
 
-  defp save_collect_list_nodes(%{elem_kind: 17} = f, elements, acc, seen) do
+  defp save_collect_list_nodes(%{elem_kind: 17} = f, elements, acc, seen, dir) do
     Enum.reduce(elements, {acc, seen}, fn
       nil, {acc, seen} ->
         {acc, seen}
 
       n, {acc, seen} ->
-        save_push_node(acc, seen, {f.elem_type_id, :table, f.elem, n})
+        save_push_node(acc, seen, {f.elem_type_id, :table, f.elem, n}, dir)
     end)
   end
 
-  defp save_collect_list_nodes(%{elem_kind: 15} = f, elements, acc, seen) do
+  defp save_collect_list_nodes(%{elem_kind: 15} = f, elements, acc, seen, dir) do
     Enum.reduce(elements, {acc, seen}, fn e, {acc, seen} ->
-      save_collect_union_nodes(f.elem, e, acc, seen)
+      save_collect_union_nodes(f.elem, e, acc, seen, dir)
     end)
   end
 
-  defp save_collect_list_nodes(_f, _elements, acc, seen), do: {acc, seen}
+  defp save_collect_list_nodes(_f, _elements, acc, seen, _dir), do: {acc, seen}
 
   # collect_nodes is the read side's walk of a decoded record, whose pointer
   # fields still hold private %{__wire_node__: index} markers and whose blobs
@@ -7107,14 +7128,14 @@ const variableRetainSource = `
         _ -> throw(:invalid_value)
       end
 
-    with_save_directory(directory, fn -> save_retain_identity(table, root, retain, report) end)
+    save_retain_identity(table, root, directory, retain, report)
   end
 
-  defp save_retain_identity(table, value, retain, report) do
+  defp save_retain_identity(table, value, directory, retain, report) do
     desc = Map.fetch!(@tables, table)
 
     try do
-      {nodes, idx_map} = collect_root(desc, value)
+      {nodes, idx_map} = collect_root(desc, value, directory)
 
       blob_site_begin(:root)
 
