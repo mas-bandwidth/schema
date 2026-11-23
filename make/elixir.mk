@@ -1084,9 +1084,9 @@ CONFORMANCE_LEGS     += $(call unless_skipped,elixir,build-conformance-elixir)
 REGISTRY_NA          += goldens:elixir
 REGISTRY_NA_WHY.goldens.elixir := no committed table goldens; its packet goldens (testdata/golden/elixir) are rewritten by internal/goldens at the top of update-goldens
 # Packet UTF-8 content validation, including a compiled mutation control.
-build/packet-text/elixir/.stamp: bin/schema test/packet-text/Narrow.schema
+build/packet-text/elixir/.stamp: bin/schema test/packet-text/Text.schema
 	@mkdir -p build/packet-text/elixir/source
-	cp test/packet-text/Narrow.schema build/packet-text/elixir/source/Text.schema
+	cp test/packet-text/Text.schema build/packet-text/elixir/source/Text.schema
 	./bin/schema generate --lang elixir --out build/packet-text/elixir build/packet-text/elixir/source/Text.schema
 	@touch $@
 

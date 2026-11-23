@@ -11,7 +11,7 @@ import (
 // A string aligns against the enclosing stream, including the body count and
 // all earlier fields. Elision probes at bit zero cannot supply its final bits.
 func TestMessageNestedAlignment(t *testing.T) {
-	m := listModel(t, `package alignment
+	m := listModel(t, `package alignmentx
  enum Key { A, B }
  fixed table Child { text string(16) }
  fixed table Root { lead bool

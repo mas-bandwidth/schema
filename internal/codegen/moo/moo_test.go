@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/irtest"
 )
 
 func sha256hex(b []byte) string {
@@ -52,11 +54,15 @@ func TestFixedNumberLiteralIsExact(t *testing.T) {
 // module's name, folding case, is refused by name.
 func TestMooRefusesARuntimeCollision(t *testing.T) {
 	dir := t.TempDir()
-	p := filepath.Join(dir, "Serialize_Stream.schema")
+	p := filepath.Join(dir, "Probe.schema")
 	if err := os.WriteFile(p, []byte("package t\n\ntype A\n{\n    x uint8\n}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err := Generate(unitFromFiles(t, []string{p}))
+	// the checker refuses a serialize_ basename first (SPEC §4.6); this
+	// backend's own guard sits behind it
+	u := unitFromFiles(t, []string{p})
+	irtest.Rebase(t, u, "Probe", "Serialize_Stream")
+	_, err := Generate(u)
 	if err == nil || !strings.Contains(err.Error(), "serialize_stream.moo") {
 		t.Fatalf("want a refusal naming serialize_stream.moo, got %v", err)
 	}

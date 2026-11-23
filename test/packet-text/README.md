@@ -1,6 +1,6 @@
 # Packet text conformance
 
-`Narrow.schema` reproduces the shared serialize corpus's `buffer_size = 16`
+`Text.schema` reproduces the shared serialize corpus's `buffer_size = 16`
 with a `string(15)` field. The Go harness reads the existing
 `testdata/conformance/text/string.txt` directly. It checks every applicable
 row against the generated C++ reader, including the thirteen UTF-8 refusals

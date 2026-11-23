@@ -8,7 +8,7 @@
 -- the read validates it (serialize.moo refuses a zero byte, then malformed
 -- UTF-8) and no decoder substitutes replacement bytes.
 local serialize = require("./serialize")
-local n = require("./Narrow")
+local n = require("./Text")
 local inputs = require("./inputs") :: any
 
 local function hex(s: string): string

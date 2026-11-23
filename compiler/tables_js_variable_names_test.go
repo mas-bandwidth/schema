@@ -28,7 +28,7 @@ func jsVariableRuntimeBindings(files map[string][]byte) map[string]bool {
 }
 func jsVariableNameCorpus(t *testing.T) map[string][]byte {
 	t.Helper()
-	u := unitFromSource(t, `package names
+	u := unitFromSource(t, `package namesx
  enum NameMode { A, B }
  flags NameMask { A, B }
  union NameChoice { number int32

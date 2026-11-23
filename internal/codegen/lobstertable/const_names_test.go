@@ -51,6 +51,9 @@ func TestLobsterTableConstNamesNeverShadowGeneratedLocals(t *testing.T) {
 	}
 	names = uniqueNames(names)
 	plain, underscore := splitTableConstNames(names)
+	// a name schema check refuses for any target (SPEC §4.6, emitter name
+	// rules: Python's builtins, say) never reaches this emitter as a const
+	plain, underscore = acceptedTableConsts(string(src), plain), acceptedTableConsts(string(src), underscore)
 	if len(plain) == 0 {
 		t.Fatal("no generated local can be spelled as a schema const")
 	}
@@ -118,6 +121,17 @@ func tableLocalNamedDeclarations(names []string) string {
 	}
 	b.WriteString("    tail uint8\n}\n")
 	return b.String()
+}
+
+// acceptedTableConsts keeps the names that src accepts as one more const.
+func acceptedTableConsts(src string, names []string) []string {
+	var kept []string
+	for _, name := range names {
+		if tableSchemaGenerates(insertTableConsts(src, []string{name})) {
+			kept = append(kept, name)
+		}
+	}
+	return kept
 }
 
 // tableSchemaGenerates reports whether the compiler accepts src for both
@@ -267,7 +281,8 @@ func tableSchemaCanDeclare(name string) bool {
 		return false
 	}
 	_, reserved := check.ReservedWords()[name]
-	return !reserved
+	_, platform := check.PlatformNames()[name]
+	return !reserved && !platform
 }
 
 func insertTableConsts(src string, names []string) string {

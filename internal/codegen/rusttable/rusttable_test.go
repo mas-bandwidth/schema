@@ -104,7 +104,7 @@ type Point
 // with what a unit declares.
 func TestBlockRuntimeIsUnitIndependent(t *testing.T) {
 	one := generate(t, valueOnly)[BlockRuntimeModule+".rs"]
-	two := generate(t, `package other
+	two := generate(t, `package otherx
 
 flags Perks { Shielded, Cloaked }
 

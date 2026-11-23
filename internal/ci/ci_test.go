@@ -1539,6 +1539,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"schema-moo-nightly-fuzz.yml:wiring",
 		"schema-moo-runs-hostile-corpus.yml:corpus",
 		"schema-moo-runs-hostile-corpus.yml:negative-control",
+		"schema-name-buildability.yml:nightly",
 		"schema-python-nightly-fuzz.yml:nightly",
 		"schema-python-resource-bounds.yml:fast",
 		"schema-python-resource-bounds.yml:nightly",

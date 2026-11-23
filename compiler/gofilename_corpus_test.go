@@ -35,23 +35,30 @@ func TestGoBasenameCorpus(t *testing.T) {
 		named = append(named, path)
 		t.Run(row[0], func(t *testing.T) {
 			c := New()
-			unit, err := c.Load([]string{path})
-			if err != nil {
-				t.Fatal(err)
-			}
 			name := strings.TrimSuffix(row[0], ".schema") + ".go"
-			files, err := c.Generate(unit, "go", Options{})
-			switch row[1] {
-			case "accept":
-				if err != nil || len(files[name]) == 0 {
-					t.Errorf("Go generation: want %s, got error %v", name, err)
-				}
-			case "refuse":
-				if err == nil || !strings.Contains(err.Error(), row[0]) || !strings.Contains(err.Error(), "build constraint") {
-					t.Errorf("Go generation: want a build-constraint refusal naming %s, got %v", row[0], err)
+			unit, loadErr := c.Load([]string{path})
+			switch {
+			case row[1] != "accept" && row[1] != "refuse":
+				t.Fatalf("unknown generation verdict %q", row[1])
+			case loadErr != nil:
+				// A FILE NAME SOME TARGET CANNOT BUILD IS REFUSED AT CHECK, for
+				// every target (SPEC §4.6), before Go generation runs: the
+				// refusal names the file and asks for a rename.
+				if row[1] != "refuse" || !strings.Contains(loadErr.Error(), row[0]) || !strings.Contains(loadErr.Error(), "rename the file") {
+					t.Errorf("check: want %s for %s, got the refusal %v", row[1], row[0], loadErr)
 				}
 			default:
-				t.Fatalf("unknown generation verdict %q", row[1])
+				files, err := c.Generate(unit, "go", Options{})
+				switch row[1] {
+				case "accept":
+					if err != nil || len(files[name]) == 0 {
+						t.Errorf("Go generation: want %s, got error %v", name, err)
+					}
+				case "refuse":
+					if err == nil || !strings.Contains(err.Error(), row[0]) || !strings.Contains(err.Error(), "build constraint") {
+						t.Errorf("Go generation: want a build-constraint refusal naming %s, got %v", row[0], err)
+					}
+				}
 			}
 
 			// Always give Go the candidate filename, including ones Schema

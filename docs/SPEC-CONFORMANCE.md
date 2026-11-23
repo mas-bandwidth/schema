@@ -238,7 +238,6 @@ still owes part of it, takes its own number and its own ids off the entry.
 
 | entry | rule (spec) | held by, as decided | not on main yet | PR | state |
 |---|---|---|---|---|---|
-| FL-31 | names some target cannot build are refused at check (SPEC.md §4.6) | `internal/check` buildable-names cases | `internal/check/buildable_names_test.go` | #4691 | owed |
 | FL-33, FL-34, FL-35 | R2, R5, R9 (SPEC-TABLES §3.4 (the presence entry)) | `internal/ci` `TestRulingsR2R5R9PortRows` | `TestFixedLineageOptionalIntoBareRefusesKindMismatch`, `TestRulingsR2R5R9PortRows` | #4680 | owed |
 | FL-37 | R7 labels in a skipped value (SPEC-TABLES §16.7) | `skipped-label-*` | `skipped-label-fraction`, `skipped-label-misspelled`, `skipped-label-not-first` | #4501, #4636, #4764, #4769, #4773 | owed |
 | FL-38 | R8 id cap (SPEC-TABLES §3 (the id table); §3.3 (the sender)) | `frame_entries_4096`, `frame_entries_4097`; `tablewire.IdCapSchema`, `tablewire.AnnounceSchema` per port, proved by `TestGoAnnouncementRefusesMoreThan4096Entries` and `TestCppAnnouncementRefusesMoreThan4096Entries` (#4685) | `TestCppAnnouncementRefusesMoreThan4096Entries`, `TestGoAnnouncementRefusesMoreThan4096Entries` | #4685 | owed |
@@ -338,6 +337,7 @@ row and test named on main, so they owe nothing:
 | FL-09 | map key length uses its own `string(N)` bound, not `kTableJsonMaxKey` (SPEC-TABLES §16.2) | `TestTextMapKeyAboveNameCapReadsUnderItsOwnBound`, `sp-map-key-256-wide`, `sp-map-key-300-wide`, `sp-map-key-301-wide` (#4688) |
 | FL-27 | non-canonical base64 refuses (SPEC-TABLES §16.8, §16.2) | `base64-padding-*`, `base64-unpadded`, `sp-b64-escaped-noncanonical` (#4688) |
 | FL-12 | the read depth cap counts every container (SPEC-TABLES §16.2) | `rr-depth-*`, `sp-skip-depth-129`, `sp-skip-depth-130` (#4706, #4688) |
+| FL-31 | names some target cannot build are refused at check (SPEC.md §4.6) | `internal/check/buildable_names_test.go` (#4691) |
 
 `GAP-26` and `GAP-27` are a FRONT-END vector, as `GAP-12`'s digest is: both rules
 bind what a port resolves from schema text (a default's bits, a wire id), so a

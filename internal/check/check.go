@@ -38,6 +38,10 @@ type SourceFile struct {
 }
 
 type checker struct {
+	// noEmitterRules skips the registered emitter name rules
+	// (UnitWithoutEmitterRules).
+	noEmitterRules bool
+
 	files []SourceFile
 	unit  *ir.Unit
 	errs  []error
@@ -128,19 +132,32 @@ func oneHeaderPath(v string) bool {
 // arrive in any order; the unit is processed in sorted-basename order, so
 // everything derived from it is deterministic.
 func Unit(files []SourceFile) (*ir.Unit, []error) {
+	return unit(files, false)
+}
+
+// UnitWithoutEmitterRules is Unit without the registered emitter name rules
+// (SPEC §4.6): for the tests that prove an emitter refuses a name itself at
+// generate, which a unit built in memory meets, and for the compiler's
+// control units.
+func UnitWithoutEmitterRules(files []SourceFile) (*ir.Unit, []error) {
+	return unit(files, true)
+}
+
+func unit(files []SourceFile, noEmitterRules bool) (*ir.Unit, []error) {
 	sort.Slice(files, func(i, j int) bool { return files[i].Name < files[j].Name })
 
 	c := &checker{
-		files:         files,
-		astDecls:      map[string]ast.Decl{},
-		declFile:      map[string]string{},
-		constant:      map[string]*constEntry{},
-		enums:         map[string]*ir.Enum{},
-		flagsD:        map[string]*ir.Flags{},
-		structs:       map[string]*ir.Struct{},
-		unions:        map[string]*ir.Union{},
-		tables:        map[string]*ir.Struct{},
-		mapEntriesFor: map[string][]*ir.Struct{},
+		noEmitterRules: noEmitterRules,
+		files:          files,
+		astDecls:       map[string]ast.Decl{},
+		declFile:       map[string]string{},
+		constant:       map[string]*constEntry{},
+		enums:          map[string]*ir.Enum{},
+		flagsD:         map[string]*ir.Flags{},
+		structs:        map[string]*ir.Struct{},
+		unions:         map[string]*ir.Union{},
+		tables:         map[string]*ir.Struct{},
+		mapEntriesFor:  map[string][]*ir.Struct{},
 		unit: &ir.Unit{
 			DeclFile: map[string]string{},
 			Consts:   map[string]*ir.Const{},
@@ -165,6 +182,7 @@ func Unit(files []SourceFile) (*ir.Unit, []error) {
 	c.checkClaimedNames()
 	c.checkNativeMapping()
 	c.checkTargetNames()
+	c.checkPlatformNames()
 	c.assemble()
 	if len(c.errs) == 0 {
 		c.checkZeroBitPacketArrays()
@@ -174,6 +192,10 @@ func Unit(files []SourceFile) (*ir.Unit, []error) {
 		return nil, c.errs
 	}
 	c.checkRetiredNames()
+	if len(c.errs) > 0 {
+		return nil, c.errs
+	}
+	c.checkEmitterNames()
 	if len(c.errs) > 0 {
 		return nil, c.errs
 	}
@@ -202,6 +224,8 @@ func (c *checker) collectPackage() {
 	}
 	c.checkViewFileName()
 	c.checkCHeaderFileName()
+	c.checkFileNames()
+	c.checkDerivedFileNames()
 }
 
 // checkCHeaderFileName refuses a unit base name that spells a C standard
@@ -259,17 +283,20 @@ var cStandardHeaders = map[string]bool{
 // generated name that is not derived from a schema file's own — so a file
 // named TabledemoView.schema in package tabledemo would emit TabledemoView.h
 // from two sources at once. It is a file-name collision rather than a
-// declaration collision, so it is refused naming the FILE.
+// declaration collision, so it is refused naming the FILE. The match ignores
+// case: Lobster names the view <package>View (package probe, probeView), and
+// a case-insensitive file system holds one file for two spellings (SPEC §4.6,
+// File-name safety).
 func (c *checker) checkViewFileName() {
 	if c.unit.Package == "" {
 		return
 	}
 	view := strings.ToUpper(c.unit.Package[:1]) + c.unit.Package[1:] + "View"
 	for _, f := range c.files {
-		if f.Base == view {
+		if strings.EqualFold(f.Base, view) {
 			c.errf(f.AST.PkgPos, "schema file %s.schema generates the same name as the unit's view file %s.h "+
-				"(the registry is one pair per unit, named for the package — docs/SPEC-TABLES.md §8.5) — rename the file",
-				view, view)
+				"(the registry is one pair per unit, named for the package — docs/SPEC-TABLES.md §8.5; Lobster spells it %sView.lobster, and the match ignores case) — rename the file",
+				f.Base, view, c.unit.Package)
 		}
 	}
 }

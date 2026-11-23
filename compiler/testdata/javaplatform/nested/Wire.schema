@@ -1,13 +1,13 @@
 // Wire.schema: a type named for every platform type the Java emitters name,
 // each a nested class of Wire that shadows that simple name in the file, beside
 // fields of every kind and the table forms (compiler/javaplatform_test.go).
+// A name schema check refuses (a Ruby or Python builtin, SPEC §4.6) is no
+// legal type name, so it has no declaration here.
 package javaplatform
 
-type Array { v uint8 }
 type ArrayDeque { v uint8 }
 type ArrayList { v uint8 }
 type Arrays { v uint8 }
-type AssertionError { v uint8 }
 type Base64 { v uint8 }
 type BigDecimal { v uint8 }
 type BigInteger { v uint8 }
@@ -19,7 +19,6 @@ type CharacterCodingException { v uint8 }
 type CodingErrorAction { v uint8 }
 type Consumer { v uint8 }
 type Double { v uint8 }
-type Float { v uint8 }
 type Formatter { v uint8 }
 type HashMap { v uint8 }
 type HashSet { v uint8 }
@@ -28,10 +27,8 @@ type IllegalArgumentException { v uint8 }
 type IllegalStateException { v uint8 }
 type IndexOutOfBoundsException { v uint8 }
 type IntConsumer { v uint8 }
-type Integer { v uint8 }
 type Long { v uint8 }
 type Map { v uint8 }
-type Math { v uint8 }
 type MathContext { v uint8 }
 type MethodHandles { v uint8 }
 type NoSuchFieldException { v uint8 }
@@ -41,7 +38,6 @@ type Override { v uint8 }
 type ReflectiveOperationException { v uint8 }
 type RoundingMode { v uint8 }
 type RuntimeException { v uint8 }
-type Set { v uint8 }
 type StandardCharsets { v uint8 }
 type StringBuilder { v uint8 }
 type Supplier { v uint8 }
@@ -75,11 +71,9 @@ type Holder
     raw     [4]uint8
     words   [3]uint32
     many    [0..4]uint16
-    s0 Array
     s1 ArrayDeque
     s2 ArrayList
     s3 Arrays
-    s4 AssertionError
     s5 Base64
     s6 BigDecimal
     s7 BigInteger
@@ -91,7 +85,6 @@ type Holder
     s13 CodingErrorAction
     s14 Consumer
     s15 Double
-    s16 Float
     s17 Formatter
     s18 HashMap
     s19 HashSet
@@ -100,10 +93,8 @@ type Holder
     s22 IllegalStateException
     s23 IndexOutOfBoundsException
     s24 IntConsumer
-    s25 Integer
     s26 Long
     s27 Map
-    s28 Math
     s29 MathContext
     s30 MethodHandles
     s31 NoSuchFieldException
@@ -113,7 +104,6 @@ type Holder
     s35 ReflectiveOperationException
     s36 RoundingMode
     s37 RuntimeException
-    s38 Set
     s39 StandardCharsets
     s40 StringBuilder
     s41 Supplier

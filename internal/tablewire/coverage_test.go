@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math/big"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -367,7 +368,7 @@ func covFileModel(t *testing.T, path string) *tabletext.Model {
 		t.Fatalf("parse: %v", perrs[0])
 	}
 	u, cerrs := check.Unit([]check.SourceFile{{
-		Path: path, Name: path, Base: path, Bytes: data, AST: f,
+		Path: path, Name: filepath.Base(path), Base: strings.TrimSuffix(filepath.Base(path), ".schema"), Bytes: data, AST: f,
 	}})
 	if len(cerrs) > 0 {
 		t.Fatalf("check: %v", cerrs[0])

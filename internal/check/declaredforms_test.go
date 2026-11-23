@@ -17,7 +17,7 @@ import (
 
 func TestTableFormsDeclarationIsRead(t *testing.T) {
 	t.Parallel()
-	u := buildUnit(t, `package t
+	u := buildUnit(t, `package tx
 
 table Pong | forms = "wire,json"
 {
@@ -66,27 +66,27 @@ func TestTableFormsRefusals(t *testing.T) {
 		src  string
 	}{
 		{name: "a form outside the closed vocabulary", want: "names no form",
-			src: "package t\ntable Tab | forms = \"wire,banana\"\n{\n    x int32\n}\n"},
+			src: "package tx\ntable Tab | forms = \"wire,banana\"\n{\n    x int32\n}\n"},
 		{name: "forms takes a quoted list", want: "forms takes a comma-separated quoted list",
-			src: "package t\ntable Tab | forms = wire\n{\n    x int32\n}\n"},
+			src: "package tx\ntable Tab | forms = wire\n{\n    x int32\n}\n"},
 		{name: "an empty forms list", want: "forms takes a comma-separated quoted list",
-			src: "package t\ntable Tab | forms = \"\"\n{\n    x int32\n}\n"},
+			src: "package tx\ntable Tab | forms = \"\"\n{\n    x int32\n}\n"},
 		{name: "an empty form element in commas", want: "contains an empty form name",
-			src: "package t\ntable Tab | forms = \" , \"\n{\n    x int32\n}\n"},
+			src: "package tx\ntable Tab | forms = \" , \"\n{\n    x int32\n}\n"},
 		{name: "a trailing comma in forms", want: "contains an empty form name",
-			src: "package t\ntable Tab | forms = \"wire,\"\n{\n    x int32\n}\n"},
+			src: "package tx\ntable Tab | forms = \"wire,\"\n{\n    x int32\n}\n"},
 		{name: "a repeated form name", want: `repeats form "wire"`,
-			src: "package t\ntable Tab | forms = \"wire,wire\"\n{\n    x int32\n}\n"},
+			src: "package tx\ntable Tab | forms = \"wire,wire\"\n{\n    x int32\n}\n"},
 		{name: "forms omitting wire (json only)", want: "must include wire",
-			src: "package t\ntable Tab | forms = \"json\"\n{\n    x int32\n}\n"},
+			src: "package tx\ntable Tab | forms = \"json\"\n{\n    x int32\n}\n"},
 		{name: "forms omitting wire (cook only)", want: "must include wire",
-			src: "package t\ntable Tab | forms = \"cook\"\n{\n    x int32\n}\n"},
+			src: "package tx\ntable Tab | forms = \"cook\"\n{\n    x int32\n}\n"},
 		{name: "forms omitting wire (block only)", want: "must include wire",
-			src: "package t\nfixed table Tab | forms = \"block\"\n{\n    x int32\n}\n"},
+			src: "package tx\nfixed table Tab | forms = \"block\"\n{\n    x int32\n}\n"},
 		{name: "forms written bare", want: "attribute forms requires a value",
-			src: "package t\ntable Tab | forms\n{\n    x int32\n}\n"},
+			src: "package tx\ntable Tab | forms\n{\n    x int32\n}\n"},
 		{name: "forms on a type declaration", want: "is not an attribute a type declaration takes",
-			src: "package t\ntype Tab | forms = \"wire\"\n{\n    x int32\n}\n"},
+			src: "package tx\ntype Tab | forms = \"wire\"\n{\n    x int32\n}\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -126,8 +126,8 @@ func TestDeclaredFormsLeaveTheWireAlone(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			base := buildUnit(t, "package t\ntable Pong"+tc.baseTail+"\n{\n    x int32\n}\n")
-			with := buildUnit(t, "package t\ntable Pong"+tc.formsTail+"\n{\n    x int32\n}\n")
+			base := buildUnit(t, "package tx\ntable Pong"+tc.baseTail+"\n{\n    x int32\n}\n")
+			with := buildUnit(t, "package tx\ntable Pong"+tc.formsTail+"\n{\n    x int32\n}\n")
 			bt := base.Tables["Pong"]
 			wt := with.Tables["Pong"]
 			if wt.WasName != tc.wantWas {

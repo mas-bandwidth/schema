@@ -21,6 +21,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `goldens/` | source, id, and wire pins | `go test ./internal/goldens` | `make update-goldens` |
 | `goname/` | Go member spelling (initialisms) | `go test ./internal/goname` | `go test ./internal/goname` |
 | `inputfamilies/` | shared test-input families and derived reader legs | `go test ./internal/inputfamilies` | `go test ./internal/inputfamilies` |
+| `irtest/` | test helper: a unit renamed past the checker | `go vet ./internal/irtest` | `go test ./internal/codegen/luau` |
 | `jsontestsuite/` | JSONTestSuite oracle harness | `go test ./internal/tabletext` | `go test ./internal/tabletext -run JSONTestSuite` |
 | `languages/` | the supported-language list, derived | `go test ./internal/languages` | `go test ./internal/languages` |
 | `listwalk/` | unbounded-array walk | `go test ./internal/listwalk` | `go test ./internal/listwalk` |

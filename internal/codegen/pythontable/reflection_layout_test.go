@@ -298,7 +298,7 @@ func TestPythonReflectionLayoutNegativeControl(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	key := filepath.ToSlash(filepath.Join(u.Package, "Core.py"))
+	key := filepath.ToSlash(filepath.Join(u.Package, "Records.py"))
 	src := string(files[key])
 	anchor := "at=0, pieces=((0, 4), ), elem_size=4"
 	if !strings.Contains(src, anchor) {
@@ -382,7 +382,7 @@ assert r.total == 42, 'field write drift'
 func TestPythonReflectionAccessors(t *testing.T) {
 	t.Parallel()
 	u := loadUnit(t, `package access
-fixed table Data {
+fixed table Sample {
     title string(8)
     raw bytes(4)
     items [2]int32
@@ -395,7 +395,7 @@ fixed table Data {
 	dir := t.TempDir()
 	writeTree(t, dir, files)
 	probe := pyrun.ImportPrelude + `import access
-x=access.Data()
+x=access.Sample()
 for name, original, index, replacement, expected in (
     ('title', 'cat', 1, 'u', 'cut'),
     ('raw', b'cat', 1, ord('u'), b'cut'),
@@ -438,7 +438,7 @@ fixed table Root {
 	if err != nil {
 		t.Fatal(err)
 	}
-	smallSize, largeSize := len(smallFiles["bounded/Core.py"]), len(files["bounded/Core.py"])
+	smallSize, largeSize := len(smallFiles["bounded/Records.py"]), len(files["bounded/Records.py"])
 	if !reflectionArraySourceBounded(smallSize, largeSize) {
 		t.Fatalf("fixed-array source grew with the bound: small=%d large=%d", smallSize, largeSize)
 	}
@@ -483,7 +483,7 @@ fixed table Root {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := "bounded/Core.py"
+	path := "bounded/Records.py"
 	src := string(files[path])
 	for _, tc := range []struct{ name, anchor, element string }{
 		{"nested", `[new_by_name("Leaf") for _s_i in range(2048)]`, `new_by_name("Leaf")`},

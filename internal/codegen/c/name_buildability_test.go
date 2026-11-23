@@ -4,9 +4,8 @@ package c_test
 // cases.tsv names for c generates and compiles, every header included, against
 // the serialize.c sibling, under -Wall -Wextra -Werror. The names are the ones
 // the emitter once rewrote inside its own code (a type named uint8_t, memcpy or
-// NULL). A file base that is not a token (my-file) is no module name most
-// targets can take, so it is not a case here; ccommon's unit test holds the
-// include guard's escape.
+// NULL). A file base that is not a token (my-file) is refused at check
+// (SPEC §4.6), so the include guard's escape is held by ccommon's unit test.
 
 import (
 	"fmt"

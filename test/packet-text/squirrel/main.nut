@@ -11,7 +11,7 @@
 local argv = vargv;
 local dir = argv.len() >= 1 ? argv[0] : "build/packet-text/squirrel";
 local serialize = dofile("internal/codegen/squirrel/serialize/serialize.nut", true);
-local Narrow = dofile(dir + "/schema_module.nut", true).require("Narrow");
+local Narrow = dofile(dir + "/schema_module.nut", true).require("Text");
 
 local HEX = "0123456789abcdef";
 local hexOf = function(b, n) {

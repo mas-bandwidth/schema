@@ -778,7 +778,9 @@ print('descriptor_ns=%.0f generated_ns=%.0f straight_ns=%.0f' % (walk,generated,
 // TestPythonMessagePublicNameCollision preserves a schema's existing class.
 func TestPythonMessagePublicNameCollision(t *testing.T) {
 	t.Parallel()
-	u := loadUnit(t, "package msgcollision\nfixed table MessageVocabulary { value int32 }\n")
+	checkRefuses(t, "package msgcollision\nfixed table MessageVocabulary { value int32 }\n", "the Ruby target cannot express")
+	u := loadUnit(t, "package msgcollision\nfixed table Placeholder { value int32 }\n")
+	renameTable(t, u, "Placeholder", "MessageVocabulary")
 	files, err := Generate(u)
 	if err != nil {
 		t.Fatal(err)

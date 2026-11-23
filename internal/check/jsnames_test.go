@@ -136,8 +136,13 @@ func TestJavaScriptUnbindableNamesRefusedAsDeclarations(t *testing.T) {
 		for kind, source := range forms(name) {
 			errs := compile(source)
 			if (kind == "const" || kind == "flags") && name != "eval" && name != "arguments" && name != "undefined" {
-				if len(errs) != 0 {
-					t.Errorf("TypeScript permits %s %s, which binds no type of that name: %v", kind, name, errs)
+				// another target may still refuse the spelling (Ruby maps
+				// flags symbol to its core constant Symbol, SPEC §4.6); the
+				// JavaScript target must not
+				for _, err := range errs {
+					if strings.Contains(err.Error(), "JavaScript") {
+						t.Errorf("TypeScript permits %s %s, which binds no type of that name: %v", kind, name, err)
+					}
 				}
 				continue
 			}

@@ -181,7 +181,7 @@ func review1121Files(t *testing.T, sources map[string]string) (string, []string)
 // generator's own locals (the module table _M and the runtime _Rt) and is a
 // Luau identifier for any file name schema check admits. Each unit of the
 // committed corpus testdata/review1121/require-alias (files named M, Rt and
-// a-b beside a plain-named control) declares a type and a table another
+// a_b beside a plain-named control) declares a type and a table another
 // file's type and table reach, so the type module, the table module and the
 // cross-file requires all bind those names; every module loads, the check
 // holds, and every module passes luau-analyze.
@@ -194,7 +194,7 @@ func TestLuauRequireAliasNeverCollides(t *testing.T) {
 			t.Parallel()
 			dir, names := review1121Files(t, review1121Sources(t, filepath.Join(corpus, unit)))
 			var main strings.Builder
-			main.WriteString("local Use = require(\"./Use\")\n")
+			main.WriteString("local Root = require(\"./Root\")\n")
 			main.WriteString("assert(" + check + ", \"the cross-file types construct at their defaults\")\n")
 			for _, name := range names {
 				mod := strings.TrimSuffix(name, ".luau")

@@ -8,5 +8,5 @@ _Player.schema	refuse	ignored	ignored
 .Pilot.schema	refuse	ignored	ignored
 Player.v1_test.schema	refuse	test	test
 Player_linux.v1.schema	refuse	go	ignored
-Player_test.v1.schema	accept	go	go
+Player_test.v1.schema	refuse	go	go
 Ship_Windows.schema	accept	go	go

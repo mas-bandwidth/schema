@@ -43,7 +43,7 @@ func TestPythonEvolutionKindsShapeBench(t *testing.T) {
 	dir := t.TempDir()
 	writeTree(t, dir, files)
 	probe := pyrun.ImportPrelude + `import time
-import kindbench.Core as Core
+import kindbench.Records as Records
 from kindbench import Kinds
 from kindbench._schema.load import load_table
 from kindbench._schema.save import save_table
@@ -56,9 +56,9 @@ k.blob = bytes(range(24))
 k.grade = 3
 k.rank = 1
 data = save_table(k)
-if Core._s_save_Kinds(k) != data:
+if Records._s_save_Kinds(k) != data:
     raise SystemExit("the straight-line save differs from the descriptor walk")
-if Core._s_load_Kinds(Kinds, data) != k or load_table(Kinds, data) != k:
+if Records._s_load_Kinds(Kinds, data) != k or load_table(Kinds, data) != k:
     raise SystemExit("the straight-line load differs from the descriptor walk")
 
 N = 10000
@@ -76,13 +76,13 @@ def run(fn):
     return best
 
 def gen_save():
-    Core._s_save_Kinds(k)
+    Records._s_save_Kinds(k)
 
 def desc_save():
     save_table(k)
 
 def gen_load():
-    Core._s_load_Kinds(Kinds, data)
+    Records._s_load_Kinds(Kinds, data)
 
 def desc_load():
     load_table(Kinds, data)

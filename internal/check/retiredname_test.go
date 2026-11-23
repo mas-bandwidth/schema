@@ -68,7 +68,7 @@ func mustRefuseDiskUnit(t *testing.T, dir string, src string, wantSubstrings ...
 func TestRetiredNameReuseRefused(t *testing.T) {
 	t.Run("baseline_retired_field_readded_with_new_type_or_meaning", func(t *testing.T) {
 		dir := t.TempDir()
-		const v1 = `package p
+		const v1 = `package px
 
 table Config
 {
@@ -76,7 +76,7 @@ table Config
     damage  float32 = 21.0
 }
 `
-		const v2Retired = `package p
+		const v2Retired = `package px
 
 table Config
 {
@@ -93,7 +93,7 @@ table Config
 		}
 
 		// Re-added with another type (float32 -> int32).
-		mustRefuseDiskUnit(t, dir, `package p
+		mustRefuseDiskUnit(t, dir, `package px
 
 table Config
 {
@@ -103,7 +103,7 @@ table Config
 `, "Config.damage", "retired")
 
 		// Re-added with another default / meaning (21.0 -> 99.0).
-		mustRefuseDiskUnit(t, dir, `package p
+		mustRefuseDiskUnit(t, dir, `package px
 
 table Config
 {
@@ -113,7 +113,7 @@ table Config
 `, "Config.damage", "retired")
 
 		// Re-added under a new field name riding the retired wire id via `was`.
-		mustRefuseDiskUnit(t, dir, `package p
+		mustRefuseDiskUnit(t, dir, `package px
 
 table Config
 {
@@ -125,7 +125,7 @@ table Config
 
 	t.Run("baseline_retired_table_readded_with_new_meaning", func(t *testing.T) {
 		dir := t.TempDir()
-		const v1 = `package p
+		const v1 = `package px
 
 table Bonus
 {
@@ -138,7 +138,7 @@ table Config
     bonus   *Bonus
 }
 `
-		const v2Retired = `package p
+		const v2Retired = `package px
 
 table Config
 {
@@ -175,7 +175,7 @@ table Config
 		}
 
 		// Re-adding retired table Bonus with a different field type.
-		mustRefuseDiskUnit(t, dir, `package p
+		mustRefuseDiskUnit(t, dir, `package px
 
 table Bonus
 {
@@ -190,7 +190,7 @@ table Config
 `, "Bonus", "retired")
 
 		// Re-adding retired table Bonus with completely different fields.
-		mustRefuseDiskUnit(t, dir, `package p
+		mustRefuseDiskUnit(t, dir, `package px
 
 table Bonus
 {
@@ -205,7 +205,7 @@ table Config
 `, "Bonus", "retired")
 
 		// Re-adding retired table Bonus as an enum in the same unit scope.
-		mustRefuseDiskUnit(t, dir, `package p
+		mustRefuseDiskUnit(t, dir, `package px
 
 enum Bonus { Small, Extra }
 
@@ -217,7 +217,7 @@ table Config
 `, "Bonus", "retired")
 
 		// Re-adding retired table Bonus via `was = "Bonus"` with a new meaning.
-		mustRefuseDiskUnit(t, dir, `package p
+		mustRefuseDiskUnit(t, dir, `package px
 
 table Reward | was = "Bonus"
 {
@@ -234,7 +234,7 @@ table Config
 
 	t.Run("baseline_retired_enum_value_readded_with_new_meaning", func(t *testing.T) {
 		dir := t.TempDir()
-		const v1 = `package p
+		const v1 = `package px
 
 enum Grade { Bronze, Silver, Gold }
 
@@ -248,7 +248,7 @@ table Config
     grade Grade = Bronze
 }
 `
-		const v2Retired = `package p
+		const v2Retired = `package px
 
 enum Grade { Bronze, Silver }
 
@@ -272,7 +272,7 @@ table Config
 		}
 
 		// Re-added with a new wire id via `was`.
-		mustRefuseDiskUnit(t, dir, `package p
+		mustRefuseDiskUnit(t, dir, `package px
 
 enum Grade
 {
@@ -293,7 +293,7 @@ table Config
 `, "Grade.Gold", "retired")
 
 		// Re-added under a new name riding the retired variant's wire id.
-		mustRefuseDiskUnit(t, dir, `package p
+		mustRefuseDiskUnit(t, dir, `package px
 
 enum Grade
 {
@@ -314,7 +314,7 @@ table Config
 `, "Grade.Gold", "retired")
 
 		// Re-added at a different ordinal on an enum reached by a fixed table / packet type.
-		mustRefuseDiskUnit(t, dir, `package p
+		mustRefuseDiskUnit(t, dir, `package px
 
 enum Grade { Bronze, Gold, Silver }
 
@@ -332,7 +332,7 @@ table Config
 
 	t.Run("lock_retired_field_readded_with_new_type_or_meaning", func(t *testing.T) {
 		dir := t.TempDir()
-		const lockedSrc = `package p
+		const lockedSrc = `package px
 
 fixed table ShipConfig
 {
@@ -347,7 +347,7 @@ fixed table ShipConfig
 		}
 
 		// Re-adding / repurposing the retired (`| deprecated`) field with a new type.
-		mustRefuseDiskUnit(t, dir, `package p
+		mustRefuseDiskUnit(t, dir, `package px
 
 fixed table ShipConfig
 {
@@ -358,7 +358,7 @@ fixed table ShipConfig
 `, "ShipConfig", "armor", "retired")
 
 		// Re-adding / repurposing the retired field with a new default.
-		mustRefuseDiskUnit(t, dir, `package p
+		mustRefuseDiskUnit(t, dir, `package px
 
 fixed table ShipConfig
 {
@@ -369,7 +369,7 @@ fixed table ShipConfig
 `, "ShipConfig", "armor", "retired")
 
 		// Re-adding the retired field name at a new slot with a new type.
-		mustRefuseDiskUnit(t, dir, `package p
+		mustRefuseDiskUnit(t, dir, `package px
 
 fixed table ShipConfig
 {
@@ -381,7 +381,7 @@ fixed table ShipConfig
 `, "ShipConfig", "armor", "retired")
 
 		// Reusing the retired field's wire identity under a new field name via `was`.
-		mustRefuseDiskUnit(t, dir, `package p
+		mustRefuseDiskUnit(t, dir, `package px
 
 fixed table ShipConfig
 {
@@ -394,7 +394,7 @@ fixed table ShipConfig
 
 	t.Run("lock_retired_table_readded_with_new_meaning", func(t *testing.T) {
 		dir := t.TempDir()
-		const initial = `package p
+		const initial = `package px
 
 fixed table Row
 {
@@ -415,7 +415,7 @@ fixed table Keep
 		}
 
 		// Dropping the retired table's declaration compiles cleanly.
-		mustCheckDiskUnit(t, dir, `package p
+		mustCheckDiskUnit(t, dir, `package px
 
 fixed table Keep
 {
@@ -424,7 +424,7 @@ fixed table Keep
 `)
 
 		// Re-adding retired table Row with a different field type is refused by name.
-		mustRefuseDiskUnit(t, dir, `package p
+		mustRefuseDiskUnit(t, dir, `package px
 
 fixed table Row
 {
@@ -438,7 +438,7 @@ fixed table Keep
 `, "Row", "retired")
 
 		// Re-adding retired table Row as a variable `table` is refused by name.
-		mustRefuseDiskUnit(t, dir, `package p
+		mustRefuseDiskUnit(t, dir, `package px
 
 table Row
 {
@@ -452,7 +452,7 @@ fixed table Keep
 `, "Row", "retired")
 
 		// Re-adding retired table Row as a packet `type` is refused by name.
-		mustRefuseDiskUnit(t, dir, `package p
+		mustRefuseDiskUnit(t, dir, `package px
 
 type Row
 {
@@ -466,7 +466,7 @@ fixed table Keep
 `, "Row", "retired")
 
 		// Re-adding retired table Row as an `enum` is refused by name.
-		mustRefuseDiskUnit(t, dir, `package p
+		mustRefuseDiskUnit(t, dir, `package px
 
 enum Row { First, Second }
 
@@ -477,7 +477,7 @@ fixed table Keep
 `, "Row", "retired")
 
 		// Re-adding retired table Row via `was = "Row"` is refused by name.
-		mustRefuseDiskUnit(t, dir, `package p
+		mustRefuseDiskUnit(t, dir, `package px
 
 fixed table NewRow | was = "Row"
 {
@@ -493,7 +493,7 @@ fixed table Keep
 
 	t.Run("lock_retired_enum_value_readded_with_new_meaning", func(t *testing.T) {
 		dir := t.TempDir()
-		const initial = `package p
+		const initial = `package px
 
 enum Grade { Bronze, Silver, Gold }
 
@@ -514,7 +514,7 @@ fixed table Keep
 
 		// Case 1: On a live locked enum, keeping the locked variant name Gold
 		// while rebinding its wire identity via `was = "OldGold"` (a new meaning).
-		mustRefuseDiskUnit(t, dir, `package p
+		mustRefuseDiskUnit(t, dir, `package px
 
 enum Grade
 {
@@ -539,7 +539,7 @@ fixed table Keep
 		if _, _, err := lockfile.Retire(u, paths, "Row", "Row is retired"); err != nil {
 			t.Fatal(err)
 		}
-		mustRefuseDiskUnit(t, dir, `package p
+		mustRefuseDiskUnit(t, dir, `package px
 
 enum Grade { Bronze, Gold }
 
@@ -553,7 +553,7 @@ fixed table Keep
 
 	t.Run("same_meaning_allowed_only_where_versioning_md_says_so", func(t *testing.T) {
 		dir := t.TempDir()
-		const v1 = `package p
+		const v1 = `package px
 
 enum Grade { Bronze, Silver, Gold }
 
@@ -564,7 +564,7 @@ table Config
     grade   Grade = Bronze
 }
 `
-		const v2Retired = `package p
+		const v2Retired = `package px
 
 enum Grade { Bronze, Silver }
 
@@ -613,7 +613,7 @@ table Config
 
 		// Even with `revived=...` in `tables.baseline`, changing the revived field or
 		// enum variant to a NEW meaning is refused by name!
-		mustRefuseDiskUnit(t, dir, `package p
+		mustRefuseDiskUnit(t, dir, `package px
 
 enum Grade { Bronze, Silver, Gold }
 
@@ -625,7 +625,7 @@ table Config
 }
 `, "Config.damage", "retired")
 
-		mustRefuseDiskUnit(t, dir, `package p
+		mustRefuseDiskUnit(t, dir, `package px
 
 enum Grade
 {
@@ -645,7 +645,7 @@ table Config
 		// In schema.lock, table retirement is one-way: re-adding a retired fixed table
 		// even with the identical body is refused.
 		lockDir := t.TempDir()
-		const lockV1 = `package p
+		const lockV1 = `package px
 
 fixed table Row
 {

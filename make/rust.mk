@@ -12,8 +12,8 @@ SERIALIZE_RS ?= ../serialize.rs
 # tests under it (go.mod needs go >= 1.26). A cargo or rustc recipe prepends.
 RUSTUP_BIN ?= /opt/homebrew/opt/rustup/bin
 
-build/packet-text/rust/.stamp: bin/schema test/packet-text/Narrow.schema test/packet-text/rust/src/main.rs make/rust.mk
-	./bin/schema generate --lang rust --out build/packet-text/rust/src test/packet-text/Narrow.schema
+build/packet-text/rust/.stamp: bin/schema test/packet-text/Text.schema test/packet-text/rust/src/main.rs make/rust.mk
+	./bin/schema generate --lang rust --out build/packet-text/rust/src test/packet-text/Text.schema
 	cp test/packet-text/rust/src/main.rs build/packet-text/rust/src/main.rs
 	@printf '[package]\nname = "packettext"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "%s/$(SERIALIZE_RS)" }\n' "$(CURDIR)" > build/packet-text/rust/Cargo.toml
 	@touch $@
@@ -29,7 +29,7 @@ packet-utf8-rust-negative-control: packet-utf8-rust
 	@mkdir -p build/packet-text/rust-negative
 	go run ./tools/sabotage -name packet-utf8-rust-read -out build/packet-text/rust-negative/functions.gotext internal/codegen/rust/functions.go
 	@printf '{"Replace":{"%s/internal/codegen/rust/functions.go":"%s/build/packet-text/rust-negative/functions.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-text/rust-negative/overlay.json
-	go run -overlay=build/packet-text/rust-negative/overlay.json ./cmd/schema generate --lang rust --out build/packet-text/rust-negative/src test/packet-text/Narrow.schema
+	go run -overlay=build/packet-text/rust-negative/overlay.json ./cmd/schema generate --lang rust --out build/packet-text/rust-negative/src test/packet-text/Text.schema
 	cp test/packet-text/rust/src/main.rs build/packet-text/rust-negative/src/main.rs
 	cp build/packet-text/rust/Cargo.toml build/packet-text/rust-negative/Cargo.toml
 	PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --release --manifest-path build/packet-text/rust-negative/Cargo.toml

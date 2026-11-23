@@ -414,7 +414,7 @@ print("ok")
 	for _, c := range controls {
 		t.Run(c.name, func(t *testing.T) {
 			copyFiles := maps.Clone(files)
-			path := "reqscalar/Core.py"
+			path := "reqscalar/Records.py"
 			if strings.Count(string(copyFiles[path]), c.from) != 1 {
 				t.Fatalf("%s anchor moved", c.name)
 			}
@@ -562,7 +562,7 @@ assert out==wire and loaded.active is True, "required_guard"
 print("ok")
 `
 	controls := []struct{ name, path, from, to string }{
-		{"fast_write", "reqguard/Core.py", "if f1.required or not f1.is_default(current):", "if not f1.is_default(current):"},
+		{"fast_write", "reqguard/Records.py", "if f1.required or not f1.is_default(current):", "if not f1.is_default(current):"},
 		{"inactive_missing", "reqguard/_schema/load.py", "field.required and field.guard_holds(obj) and field.field_id not in seen", "field.required and field.field_id not in seen"},
 	}
 	for _, c := range controls {

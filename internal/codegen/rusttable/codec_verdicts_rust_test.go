@@ -101,7 +101,7 @@ func TestRustEveryTableCarriesItsCodec(t *testing.T) {
 
 	// a `type` by a standard name (HashMap) stays off the variable wire, and
 	// generation refuses it by name
-	refused := unitFrom(t, "package p\n\ntype HashMap\n{\n    v uint8\n}\n\ntable Holder\n{\n    s HashMap\n}\n")
+	refused := unitFrom(t, "package probe\n\ntype HashMap\n{\n    v uint8\n}\n\ntable Holder\n{\n    s HashMap\n}\n")
 	if _, err := GenerateLineage(refused, nil); err == nil || !strings.Contains(err.Error(), "HashMap") || !strings.Contains(err.Error(), "rust table form") {
 		t.Fatalf("a table reaching `type HashMap` generated without its codec, or refused without naming it: %v", err)
 	}

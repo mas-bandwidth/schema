@@ -1,4 +1,4 @@
-package batch
+package unpackbatch
 
 fixed table Player {
 	level int32 | min = 0, max = 1000

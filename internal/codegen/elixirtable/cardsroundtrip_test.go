@@ -203,7 +203,7 @@ IO.puts("ok")
 
 	// ---- the two-declaration pair: was, unknown, default ----
 	td := filepath.Join("testdata", "cards")
-	newU := loadUnit(t, filepath.Join(td, "new.schema"))
+	newU := loadUnit(t, filepath.Join(td, "card_new.schema"))
 	newFiles := generateElixir(t, newU)
 	newDir := t.TempDir()
 	newNames := writeModuleDir(t, newDir, newFiles)
