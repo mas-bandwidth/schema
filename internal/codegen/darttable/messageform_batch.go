@@ -678,6 +678,7 @@ func (g *fixedModule) emitMessageWriteScalar(f *ir.Field, entry ir.TableVocabula
 		g.pf("%s  final f = %s;\n", ind, expr)
 		g.pf("%s  if (!f.isFinite) return false;\n", ind)
 		g.pf("%s  TableBitWriter._float32Cell[0] = f;\n", ind)
+		g.pf("%s  if ((TableBitWriter._float32Words[0] & 0x7f800000) == 0x7f800000) return false; // past float32 range (FL-23)\n", ind)
 		g.pf("%s  w.put(TableBitWriter._float32Words[0], 32);\n", ind)
 		g.pf("%s}\n", ind)
 		return

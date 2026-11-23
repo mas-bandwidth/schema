@@ -1252,6 +1252,7 @@ typedef struct TableJsonIn
     TableReport * report;
     int bad; /* the text is not JSON: the walk stops and keeps what it placed */
     void * graph;
+    char key_buf[kTableJsonMaxKey];
 } TableJsonIn;
 
 /* A COMMENT IS TEXT (docs/SPEC-TABLES.md §16.2, §16.3): the bytes inside a line
@@ -1906,23 +1907,21 @@ typedef struct TableJsonKey
 typedef struct TableJsonKeys
 {
     TableJsonKey * slots;
-    int64_t capacity; /* a power of two */
+    int64_t capacity; /* 0 until the first unknown key, then a power of two */
     int64_t count;
-    TableJsonKey local[kTableJsonKeysLocal];
 } TableJsonKeys;
 
 static SCHEMA_UNUSED void table_json_keys_init( TableJsonKeys * keys )
 {
-    memset( keys->local, 0, sizeof( keys->local ) );
-    keys->slots = keys->local;
-    keys->capacity = kTableJsonKeysLocal;
+    keys->slots = NULL;
+    keys->capacity = 0;
     keys->count = 0;
 }
 
 static SCHEMA_UNUSED void table_json_keys_free( TableJsonKeys * keys )
 {
-    if ( keys->slots != keys->local ) { schema_release( keys->slots ); }
-    keys->slots = keys->local;
+    if ( keys->slots != NULL ) { schema_release( keys->slots ); }
+    keys->slots = NULL;
 }
 
 /* the key a slot holds, decoded again from the text, against this one */
@@ -1951,7 +1950,7 @@ static SCHEMA_UNUSED int table_json_keys_add( TableJsonIn * in, TableJsonKeys * 
     for ( k = 0; k < length; k++ ) { hash = ( hash ^ (uint64_t) (unsigned char) key[k] ) * 1099511628211ULL; }
     if ( ( keys->count + 1 ) * 2 > keys->capacity )
     {
-        const int64_t capacity = keys->capacity * 2;
+        const int64_t capacity = keys->capacity == 0 ? kTableJsonKeysLocal : keys->capacity * 2;
         TableJsonKey * grown;
         int64_t j;
         if ( (uint64_t) capacity > SIZE_MAX / sizeof( TableJsonKey ) ) { in->bad = 1; return -1; }
@@ -2002,7 +2001,7 @@ static SCHEMA_UNUSED int table_json_skip_members( TableJsonIn * in, char close, 
         int consumed = 0;
         if ( close == '}' )
         {
-            char key[kTableJsonMaxKey];
+            char * key = in->key_buf;
             int32_t length = 0;
             const int64_t quote = in->pos;
             int added;
@@ -2533,12 +2532,20 @@ static SCHEMA_UNUSED int schema_table_json_text_total_keep_( TableJsonIn * in, v
     return 0;
 }
 
+#ifndef SCHEMA_NOINLINE
+#if defined(__GNUC__) || defined(__clang__)
+#define SCHEMA_NOINLINE __attribute__((noinline))
+#elif defined(_MSC_VER)
+#define SCHEMA_NOINLINE __declspec(noinline)
+#else
+#define SCHEMA_NOINLINE
+#endif
+#endif
+
+static SCHEMA_NOINLINE SCHEMA_UNUSED int table_json_read_scalar_leaf( TableJsonIn * in, void * storage, const TableFieldInfo * f, int32_t depth );
+
 static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storage, const TableFieldInfo * f, int32_t depth )
 {
-    const char * token = NULL;
-    int64_t length = 0;
-    int integral = 0;
-    char textbuf[192]; /* a wide fixed's string spelling: 128 fraction digits, a whole part, a sign and a point */
     if ( f->text_list != 0 ) { return schema_table_json_read_text_element_( in, storage, f, depth ); }
     if ( f->kind == 17 )
     {
@@ -2550,12 +2557,14 @@ static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storag
         /* a union is an object with ONE key, the arm's name; {} is None, and
            two keys is a text this walk will not guess at */
         const TableUnionInfo * arms = f->arms;
-        char key[kTableJsonMaxKey];
+        char * key = in->key_buf;
         int32_t key_length = 0;
         int64_t tag = 0;
         int64_t t;
         char c;
         if ( table_json_peek( in ) != '{' ) { in->bad = 1; return 0; }
+        /* THE READ CAP COUNTS EVERY CONTAINER, placed or skipped (§16.2): the union object is one */
+        if ( depth + 1 > kTableJsonMaxDepth ) { in->bad = 1; return 0; }
         in->pos++;
         table_json_set_raw( (uint8_t *) storage + arms->tag_offset, arms->tag_size, 0 );
         if ( table_json_peek( in ) == '}' ) { in->pos++; return 1; }
@@ -2571,7 +2580,7 @@ static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storag
         if ( tag == 0 )
         {
             in->report->unknown++;
-            if ( !table_json_skip_value( in, depth + 1 ) ) { return 0; }
+            if ( !table_json_skip_value( in, depth + 2 ) ) { return 0; }
         }
         else
         {
@@ -2580,14 +2589,14 @@ static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storag
             char want = arm != NULL ? table_json_shape( arm ) : (arms->arms[tag].table != NULL ? 'o' : 'z');
             if ( !( arm != NULL ? table_json_shape_accepts( arm, table_json_value_shape( in ) ) : table_json_value_shape( in ) == want ) && !(arm != NULL && arm->kind == 17 && !arm->is_array && table_json_value_shape(in) == 'z') ) {
                 in->report->refused=1, in->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH;
-                if ( !table_json_skip_value( in, depth+1 ) ) { return 0; }
+                if ( !table_json_skip_value( in, depth+2 ) ) { return 0; }
             } else {
                 if ( arm != NULL ) {
                     memset( payload, 0, arms->arms[tag].size );
                     if ( !table_json_read_field( in, storage, arm, depth+1 ) ) { return 0; }
                 } else if ( arms->arms[tag].table != NULL ) {
                     arms->arms[tag].table->reset( payload );
-                    if ( !table_json_read_table( in, payload, arms->arms[tag].table, depth+1 ) ) { return 0; }
+                    if ( !table_json_read_table( in, payload, arms->arms[tag].table, depth+2 ) ) { return 0; }
                 } else if ( !table_json_literal( in, "null" ) ) { return 0; }
                 table_json_set_raw( (uint8_t *)storage+arms->tag_offset, arms->tag_size, (uint64_t)tag );
             }
@@ -2603,6 +2612,16 @@ static SCHEMA_UNUSED int table_json_read_scalar( TableJsonIn * in, void * storag
         f->table->reset( storage );
         return table_json_read_table( in, storage, f->table, depth + 1 );
     }
+    return table_json_read_scalar_leaf( in, storage, f, depth );
+}
+
+static SCHEMA_NOINLINE SCHEMA_UNUSED int table_json_read_scalar_leaf( TableJsonIn * in, void * storage, const TableFieldInfo * f, int32_t depth )
+{
+    const char * token = NULL;
+    int64_t length = 0;
+    int integral = 0;
+    char textbuf[192]; /* a wide fixed's string spelling: 128 fraction digits, a whole part, a sign and a point */
+    (void) depth;
     if ( table_json_is_enum( f ) )
     {
         char name[kTableJsonMaxKey];
@@ -2866,7 +2885,7 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
         for ( ;; )
         {
             char c = table_json_peek( in );
-            char key[kTableJsonMaxKey];
+            char * key = in->key_buf;
             int32_t key_length = 0;
             int64_t slot = -1;
             int64_t v;
@@ -2906,7 +2925,7 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
                 }
                 if ( ki == unplaced_count && unplaced_count < 64 ) { unplaced[unplaced_count++] = hash; }
                 in->report->unknown++;
-                if ( !table_json_skip_value( in, depth + 1 ) ) { return 0; }
+                if ( !table_json_skip_value( in, depth + 2 ) ) { return 0; }
             }
             else if ( !table_json_element_shape_accepts( f, table_json_value_shape( in ) ) && !(f->kind == 17 && table_json_value_shape(in) == 'z') )
             {
@@ -2935,6 +2954,9 @@ static SCHEMA_UNUSED int table_json_read_field( TableJsonIn * in, void * base, c
            this occurrence's elements are placed — the re-establishment a nested
            table and a union arm already get. */
         int32_t placed = 0;
+        /* the array is a container one level below the table holding it, counted toward
+           the cap whether or not it holds an element (FL-12) */
+        if ( depth + 1 > kTableJsonMaxDepth ) { in->bad = 1; return 0; }
         if ( table_json_peek( in ) != '[' ) { in->bad = 1; return 0; }
         in->pos++;
         int64_t spent = 0;
@@ -3037,12 +3059,12 @@ static SCHEMA_UNUSED int table_json_read_table_members( TableJsonIn * in, void *
     for ( ;; )
     {
         char c = 0;
-        char key[kTableJsonMaxKey];
+        char * key = in->key_buf;
         int32_t key_length = 0;
         int64_t quote = first_quote;
         int32_t index = -1;
         int32_t i;
-        if ( first_key != NULL ) { memcpy(key,first_key,(size_t)first_length); key[first_length] = 0; key_length = first_length; first_key = NULL; }
+        if ( first_key != NULL ) { if ( first_key != key ) { memcpy(key,first_key,(size_t)first_length); } key[first_length] = 0; key_length = first_length; first_key = NULL; }
         else
         {
             c = table_json_peek(in);
