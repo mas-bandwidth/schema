@@ -276,13 +276,15 @@ fn wref_f32(s: const u8[:]) -> f32 {
     if s == "nan" { return wref_f32_bits(0x7fc00000); }
     if s == "inf" { return wref_f32_bits(0x7f800000); }
     if s == "-inf" { return wref_f32_bits(0xff800000); }
-    return wref_parse_f64(s) as f32;
+    let x, _fin = schema_rt::json_token_f32(s);
+    return x;
 }
 fn wref_f64(s: const u8[:]) -> f64 {
     if s == "nan" { return wref_f64_bits(0x7ff8000000000000); }
     if s == "inf" { return wref_f64_bits(0x7ff0000000000000); }
     if s == "-inf" { return wref_f64_bits(0xfff0000000000000); }
-    return wref_parse_f64(s);
+    let x, _fin = schema_rt::json_token_f64(s);
+    return x;
 }
 struct WrefSeg { seg: const u8[:], idx: i64, rest: const u8[:] }
 fn wref_split_seg(path: const u8[:]) -> WrefSeg {
@@ -356,9 +358,27 @@ for my $st (sort keys %structs) {
 					print "            return wref_set_$et(v.$f\[idx], rest, kind, text);\n";
 					print "        }\n";
 				} elsif ($et eq "f32") {
-					print "        if rest.len == 0 && idx >= 0 && idx < $cap && kind == \"float\" { v.$f\[idx] = wref_f32(text); return 1; }\n";
+					print "        if rest.len == 0 && idx >= 0 && idx < $cap && (kind == \"float\" || kind == \"real\") { v.$f\[idx] = wref_f32(text); return 1; }\n";
 				} elsif ($et eq "f64") {
-					print "        if rest.len == 0 && idx >= 0 && idx < $cap && kind == \"float\" { v.$f\[idx] = wref_f64(text); return 1; }\n";
+					print "        if rest.len == 0 && idx >= 0 && idx < $cap && (kind == \"float\" || kind == \"real\") { v.$f\[idx] = wref_f64(text); return 1; }\n";
+				} else {
+					my $raw_t = $enums{$et} || $et;
+					my $cast_t = exists($enums{$et}) ? "${ns}::$et" : $et;
+					if ($raw_t =~ /^(u8|u16|u32|u64|i8|i16|i32|i64)$/) {
+						print "        if rest.len == 0 && idx >= 0 && idx < $cap && (kind == \"int\" || kind == \"ordinal\") {\n";
+						if ($raw_t eq "u64") {
+							print "            if !wref_fits_u64(text) { return 2; }\n";
+							print "            v.$f\[idx] = wref_parse_u64(text) as! $cast_t; return 1;\n";
+						} else {
+							print "            if !wref_fits_i64(text) { return 2; }\n";
+							print "            let n = wref_parse_i64(text);\n";
+							if (my $b = $int_bounds{$raw_t}) {
+								print "            if n < $b->[0] || n > $b->[1] { return 2; }\n";
+							}
+							print "            v.$f\[idx] = n as! $cast_t; return 1;\n";
+						}
+						print "        }\n";
+					}
 				}
 			}
 		} elsif (exists $structs{$ft} && !$unions{$ft}) {
@@ -374,9 +394,9 @@ for my $st (sort keys %structs) {
 			print "            return 1;\n";
 			print "        }\n";
 		} elsif ($ft eq "f32") {
-			print "        if rest.len == 0 && idx < 0 && kind == \"float\" { v.$f = wref_f32(text); return 1; }\n";
+			print "        if rest.len == 0 && idx < 0 && (kind == \"float\" || kind == \"real\") { v.$f = wref_f32(text); return 1; }\n";
 		} elsif ($ft eq "f64") {
-			print "        if rest.len == 0 && idx < 0 && kind == \"float\" { v.$f = wref_f64(text); return 1; }\n";
+			print "        if rest.len == 0 && idx < 0 && (kind == \"float\" || kind == \"real\") { v.$f = wref_f64(text); return 1; }\n";
 		} else {
 			my $raw_t = $enums{$ft} || $ft;
 			my $cast_t = exists($enums{$ft}) ? "${ns}::$ft" : $ft;
