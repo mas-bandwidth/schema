@@ -16,6 +16,8 @@ a2_arm_bytes_as_string refused
 a2_arm_enum_as_int refused
 a2_arm_length_off_width refused
 a2_arm_pointer_as_int refused
+armmin_fix_count_0 refused
+armmin_fix_count_1 refused
 batch_elem_kind    refused
 batch_unknown_arm  refused
 blob_utf8_mid_trunc refused
@@ -61,6 +63,8 @@ p3_empty_as_p1     refused
 parts_count_past_bound refused
 parts_elem_kind    refused
 parts_index_out_of_range refused
+plainmin_fix_count_0 refused
+plainmin_fix_count_1 refused
 previous_form_archive refused
 previous_form_chain_optional refused
 previous_form_chain_optional_empty refused
@@ -132,8 +136,10 @@ text_total_and_count refused
 trace_count_past_bound refused
 trace_elem_kind    refused
 twin_a2_root       read
+twin_armmin_fix_at read
 twin_k1_root       read
 twin_k2_root       read
+twin_plainmin_fix_at read
 twin_scalars2_simstate read
 v1_cfg_as_v2       refused
 v1_seams_as_v2     refused

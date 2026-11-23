@@ -567,11 +567,7 @@ var framingVectors = []framingVector{
 	// word set to 0 or 1 (the second with element 7), as a writer built
 	// without its debug assert leaves it; the bytes are the vector.
 	// In a union arm: tabledemo MinArmFix { pick MinPick }, arm few [2..4]uint32.
-	{name: "armmin_fix_count_0", unit: "tabledemo", root: "MinArmFix", raw: mustHex("0300000000000000a9a24708ca272baf5900000005000000a2206b3c3927f2e20d1500000001000000d8bb13c50dc40bbf0f1500000002000000198ceafe187dc6dc0e14000000010000000000000000000000080400000000000000552a56c261ad240a040400000000000000a9a24708ca272baf010000000000000000000000000000000000000000")},
-	{name: "armmin_fix_count_1", unit: "tabledemo", root: "MinArmFix", raw: mustHex("0300000000000000a9a24708ca272baf5900000005000000a2206b3c3927f2e20d1500000001000000d8bb13c50dc40bbf0f1500000002000000198ceafe187dc6dc0e14000000010000000000000000000000080400000000000000552a56c261ad240a040400000000000000a9a24708ca272baf010100000007000000000000000000000000000000")},
 	// As a plain field: tabledemo MinPlainFix { few [2..4]uint32 }.
-	{name: "plainmin_fix_count_0", unit: "tabledemo", root: "MinPlainFix", raw: mustHex("03000000000000000e364c3ed3e7a68f3700000003000000f41f01e4fc35b7f50d1400000001000000198ceafe187dc6dc0e140000000100000000000000000000000804000000000000000e364c3ed3e7a68f0000000000000000000000000000000000000000")},
-	{name: "plainmin_fix_count_1", unit: "tabledemo", root: "MinPlainFix", raw: mustHex("03000000000000000e364c3ed3e7a68f3700000003000000f41f01e4fc35b7f50d1400000001000000198ceafe187dc6dc0e140000000100000000000000000000000804000000000000000e364c3ed3e7a68f0100000007000000000000000000000000000000")},
 	// T3: node_count 2 over one record.
 	{name: "node_count_disagrees", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(2, listNodeRecord(2)), b(0))},
 	// T2: a record whose length runs past the field.
