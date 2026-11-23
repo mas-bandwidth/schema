@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 # THE DRIVER BUILD'S CONTENT STAMP: a build whose inputs the build tool cannot
 # see is decided by what the inputs CONTAIN, never by what their timestamps say.
 #
@@ -22,7 +22,7 @@
 #   `driver-stamp.sh --hash <input>...` prints the hash alone.
 #
 # Paths hold no whitespace (they are repo-relative build paths).
-set -e
+set -e -o pipefail
 
 if [ "$1" = --hash ]; then
 	shift

@@ -236,6 +236,7 @@ tables-java-generated-fresh: bin/schema
 	@# The stamp's plan is read once, and every reader takes all of its input:
 	@# under pipefail `make -n | grep -q` let make die of SIGPIPE and every unit
 	@# read as missing (the F-067 shape). Zero generate lines is red too.
+# loud-ok: a grep that fails for any reason lists the unit as missing, which the next line refuses
 	@plan=$$($(MAKE) --no-print-directory -n -B build/tables-generated-java/.stamp 2>/dev/null); \
 	dirs=$$(printf '%s\n' "$$plan" | grep -o 'generate --lang java --out build/tables-generated-java/[a-z0-9]*' | sed 's/.* //'); \
 	if [ -z "$$dirs" ]; then echo "tables-java-generated-fresh: the stamp's plan has no generate line"; exit 1; fi; \
@@ -1692,7 +1693,9 @@ build/java-bench/.stamp: generated/bench/java/.stamp bench/java/Main.java
 # on this classpath and does not need to be; the tables-java-compile gate is
 # what proves it builds.
 .PHONY: build-conformance-java
-build-conformance-java: build/tables-generated-java/.stamp test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
+build-conformance-java: build/conformance-java/.stamp
+
+build/conformance-java/.stamp: build/tables-generated-java/.stamp test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
 	@rm -rf build/conformance-java && mkdir -p build/conformance-java
 	$(JAVAC) --release 17 -Xlint:all -Werror -d build/conformance-java \
 		build/tables-generated-java/examples/*.java build/tables-generated-java/pointers/*.java \
@@ -1715,6 +1718,7 @@ build-conformance-java: build/tables-generated-java/.stamp test/conformance/java
 		build/tables-generated-java/vocab9/*.java \
 		$(if $(wildcard testdata/conformance/feature-witnesses/full/Features.schema),build/tables-generated-java/featurewitnesses/*.java) \
 		test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
+	@touch $@
 
 # THE PER-CASE ABSENT GATE (docs/PORTING.md I4; test/conformance/README.md).
 # The Java leg alone through the harness: every surface is green with zero

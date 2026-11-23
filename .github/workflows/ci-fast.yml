@@ -97,7 +97,7 @@ name: CI fast
 # whose test left a child running (the squirrel nightly's `sq`, outliving a
 # `go test -timeout`) holds it after the test is gone. So every self-hosted job
 # in .github/workflows carries `timeout-minutes`, sized from its measured
-# durations, and `defaults.run.shell: go run ./tools/pgroup -- bash -e {0}`,
+# durations, and `defaults.run.shell: go run ./tools/pgroup -- bash -e -o pipefail {0}`,
 # which runs each step as its own process group and kills the whole group when
 # the step ends. internal/ci holds both rules for every workflow file.
 #
@@ -219,7 +219,7 @@ jobs:
     timeout-minutes: 2
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     outputs:
       # the finalized selection the go test rows test (gotestrows -packages-out):
       # go-test-touched is gated on it, never on the pick step's own list, which
@@ -439,8 +439,12 @@ jobs:
             # THE RECIPES. internal/recipescan reads every makefile and shell
             # script; its tree test refuses a makefile off "bash -o pipefail",
             # an early-exit reader in a pipefail condition, an unread wait and a
-            # stamp that skips its work. A diff touching any recipe runs it.
-            if grep -qE '(^|/)(Makefile|GNUmakefile|[^/]*[.]mk|[^/]*[.]sh)$' <<<"$files"; then
+            # stamp that skips its work. Its CI-area test refuses every way a
+            # step can fail and end green (CONTRIBUTING.md, "Nothing fails
+            # silently") in the workflows, the makefiles, and every script
+            # under make/, tools/ and bench/ (extensionless ones too). A diff
+            # touching any of those runs it.
+            if grep -qE '(^|/)(Makefile|GNUmakefile|[^/]*[.]mk|[^/]*[.]sh)$|^[.]github/workflows/|^(make|tools|bench)/([^/]+/)*[^/.]+$' <<<"$files"; then
               case " $packages " in *" ./internal/recipescan "*) ;; *) packages="$packages ./internal/recipescan" ;; esac
             fi
             # THE RUNTIME-ONLY DIFF. A language's emitted runtime (a .lua, .moo,
@@ -789,7 +793,7 @@ jobs:
     timeout-minutes: 2
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/merge-main
@@ -852,8 +856,7 @@ jobs:
       - name: modernize
         run: |
           export PATH="$HOME/sdk/bin:$PATH"
-          bin=$(command -v modernize || true)
-          if [ -z "$bin" ] || ! readlink -f "$bin" | grep 'modernize-0\.23\.0/' >/dev/null; then
+          if ! bin=$(command -v modernize) || ! readlink -f "$bin" | grep 'modernize-0\.23\.0/' >/dev/null; then
             echo "::error::tool missing: modernize 0.23.0 (the fleet install is ~/sdk/bin/modernize -> ~/sdk/modernize-0.23.0/modernize; found: ${bin:-nothing})"
             exit 1
           fi
@@ -890,7 +893,7 @@ jobs:
       GOMAXPROCS: '2'
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     strategy:
       fail-fast: false
       matrix:
@@ -990,7 +993,7 @@ jobs:
     timeout-minutes: 2
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/merge-main
@@ -1012,7 +1015,7 @@ jobs:
     timeout-minutes: 2
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/merge-main
@@ -1061,7 +1064,7 @@ jobs:
     timeout-minutes: 2
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/merge-main
@@ -1090,7 +1093,7 @@ jobs:
     timeout-minutes: 2
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     strategy:
       fail-fast: false
       matrix:
@@ -1158,7 +1161,7 @@ jobs:
               make -j"$(nproc)" tables-c-zero-cost tables-c-clean tables-c-soak-compile-modes SCHEMA_REQUIRE_CLANG_FORMAT=1 CLANG_FORMAT="$cf"
               ;;
             js)
-              if ! command -v eslint >/dev/null 2>&1 || ! eslint --version | grep -qx "v9.39.5"; then
+              if ! command -v eslint >/dev/null 2>&1 || ! eslint --version | grep -x "v9.39.5" >/dev/null; then
                 prefix="$RUNNER_TEMP/eslint-9.39.5"
                 npm install --no-audit --no-fund --silent --prefix "$prefix" "eslint@9.39.5"
                 export PATH="$prefix/node_modules/.bin:$PATH"
@@ -1205,7 +1208,7 @@ jobs:
     timeout-minutes: 2
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     strategy:
       fail-fast: false
       matrix:
@@ -1283,7 +1286,7 @@ jobs:
     timeout-minutes: 2
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     strategy:
       fail-fast: false
       matrix:
@@ -1386,7 +1389,7 @@ jobs:
     timeout-minutes: 2
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     strategy:
       fail-fast: false
       matrix:
@@ -1529,7 +1532,7 @@ jobs:
     timeout-minutes: 2
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     strategy:
       fail-fast: false
       matrix:
@@ -1632,6 +1635,7 @@ jobs:
             js)     vars=(NODE=node) ;;
             elixir) vars=("BEAM_PATH=$(dirname "$(command -v erl)"):$(dirname "$(command -v elixir)")") ;;
           esac
+          rm -rf build
           "$RUNNER_TEMP/inputaccount" -family "$FAMILY" -leg "$LEG" "${vars[@]}"
           "$RUNNER_TEMP/inputaccount" -family "$FAMILY" -leg "$LEG" -canary extra "${vars[@]}"
           "$RUNNER_TEMP/inputaccount" -family "$FAMILY" -leg "$LEG" -canary wrong "${vars[@]}"
@@ -1676,7 +1680,7 @@ jobs:
     timeout-minutes: 2
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/merge-main
@@ -1709,7 +1713,7 @@ jobs:
     timeout-minutes: 2
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/merge-main
@@ -1774,7 +1778,7 @@ jobs:
     timeout-minutes: 2
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/merge-main
@@ -1810,7 +1814,7 @@ jobs:
     timeout-minutes: 2
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     strategy:
       fail-fast: false
       matrix:
@@ -2075,7 +2079,7 @@ jobs:
     timeout-minutes: 2
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     strategy:
       fail-fast: false
       matrix:
@@ -2272,7 +2276,7 @@ jobs:
     timeout-minutes: 2
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     strategy:
       fail-fast: false
       matrix:
@@ -2328,6 +2332,7 @@ jobs:
             gates)
               # test-lobster's prerequisites as make reads them, less the
               # rows above and the nightly pair
+              # loud-ok: make -q exits 1 for a target that is out of date, and the reader's early quit SIGPIPEs make; the empty-result check right below is the loud refusal
               all=$( { make -pq test-lobster 2>/dev/null || true; } | sed -n '/^test-lobster: /{s///p;q;}')
               [ -n "$all" ] || { echo "::error::make printed no prerequisites for test-lobster"; exit 1; }
               rest=""
@@ -2359,7 +2364,7 @@ jobs:
     timeout-minutes: 2
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/merge-main
@@ -2407,7 +2412,7 @@ jobs:
     timeout-minutes: 2
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     strategy:
       fail-fast: false
       matrix:
@@ -2466,7 +2471,7 @@ jobs:
     timeout-minutes: 2
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     strategy:
       fail-fast: false
       matrix:
@@ -2545,7 +2550,7 @@ jobs:
     timeout-minutes: 2
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     strategy:
       fail-fast: false
       matrix:
@@ -2620,7 +2625,7 @@ jobs:
     timeout-minutes: 2
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       # no checkout, so tools/pgroup is not here: plain bash
       - name: every gate of this run passed, or the plan selected nothing for it

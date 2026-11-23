@@ -738,10 +738,6 @@ func main() {
 		run = surfaceBlockDump
 	case "forgery":
 		run = func(lines []line, out string) error { return surfaceForgery("block", lines, out) }
-	case "cook-reason":
-		run = func(lines []line, out string) error { return surfaceForgeryResult("cook", lines, out, true) }
-	case "block-reason":
-		run = func(lines []line, out string) error { return surfaceForgeryResult("block", lines, out, true) }
 	case "cook-forgery":
 		run = func(lines []line, out string) error { return surfaceForgery("cook", lines, out) }
 	case "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json":
