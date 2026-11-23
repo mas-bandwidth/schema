@@ -1112,7 +1112,7 @@ fn surface_read_into(lines: const u8[:][:], unit: const u8[:]) {
 //
 // THE LOCALE: Goose has no process-locale call. Its standard library binds
 // no setlocale, and an `extern fn` cannot hand C the NUL-terminated string
-// setlocale takes (docs/goose_spec.md §7.10: a slice crosses as {data, len}),
+// setlocale takes because Goose passes a slice as a pointer and length,
 // so this driver cannot make SCHEMA_COMMA_LOCALE the process's locale; it
 // says so here and runs the rest (shared ruling 1). The harness's locale
 // name must still arrive: a run without it is an error.
