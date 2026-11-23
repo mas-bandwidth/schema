@@ -1702,6 +1702,8 @@ report varevo_rollback_as_v3   tblvarevo3 EvoDoc testdata/wire/tables/varevo_ret
 retain  varevo_2hop_step1_v1         tblvarevo1 EvoDoc testdata/wire/tables/varevo_2hop_v3_kind31.bin full full refused
 report  varevo_2hop_step2_v2_report  tblvarevo2 EvoDoc testdata/wire/tables/varevo_2hop_after_v1.bin
 retain  varevo_2hop_step2_v2         tblvarevo2 EvoDoc testdata/wire/tables/varevo_2hop_after_v1.bin  full full refused
+# A reader that refuses every v2 EvoDoc must fail the retain control.
+retain  varevo_retain_v2_full         tblvarevo2 EvoDoc testdata/conformance/tables/wire/varevo_v2_full.bin full full testdata/wire/tables/varevo_retain_v2_full.bin
 report  varevo_2hop_step3_v3_report  tblvarevo3 EvoDoc testdata/wire/tables/varevo_2hop_after_v2.bin
 
 # Track C Part 1.2 — Pointer Cycles Hiding Through Unknown-Type Nodes (refused by BOTH Load and LoadRetain):
