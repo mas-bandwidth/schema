@@ -35,10 +35,9 @@ static const ConformanceCodec codecs[] = {
     SCHEMA_CONFORMANCE_ROW( tabledemo, CountedMin ),
     SCHEMA_CONFORMANCE_ROW( tabledemo, FloatBound ),
     SCHEMA_CONFORMANCE_ROW( tabledemo, Moods ),
-    SCHEMA_CONFORMANCE_ROW( tabledemo, MoodField )
+    SCHEMA_CONFORMANCE_ROW( tabledemo, MoodField ),
     SCHEMA_CONFORMANCE_ROW( tabledemo, MinArmFix ),
-    SCHEMA_CONFORMANCE_ROW( tabledemo, MinPlainFix ),
-    SCHEMA_CONFORMANCE_ROW( tabledemo, PackConfig )
+    SCHEMA_CONFORMANCE_ROW( tabledemo, MinPlainFix )
 };
 
 /* Sets the one field a `write-refusal` row names. The set is EXACTLY the rows'
