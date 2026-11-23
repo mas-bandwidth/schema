@@ -148,7 +148,7 @@ func TestFastPlanSelectsConformanceHandoffChanges(t *testing.T) {
 		name, files, dart, cpp, wantPackage string
 	}{
 		{"handoff helper", "make/conformance-handoff.py\n.github/workflows/ci-fast.yml\n", "true", "true", ""},
-		{"C++ driver", "test/conformance/cpp/main.cpp\n", "false", "true", ""},
+		{"C++ driver", "test/conformance/cpp/main.cpp\n", "false", "true", "./test/conformance/harness"},
 		{"Dart driver build", "make/dart.mk\n", "true", "false", ""},
 		{"Dart driver imports", "test/conformance/dart/main.dart\n", "true", "false", "./test/conformance/harness"},
 		{"accounting runtime", "tools/inputaccount/main.go\ntools/inputaccount/watch_linux_test.go\n", "true", "true", ""},
