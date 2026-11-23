@@ -328,10 +328,13 @@ defmodule CookDump do
 end
 
 defmodule Driver do
+  # write-refusal-cook, write-refusal-block, announce and read-into are
+  # implemented below and NOT LISTED yet: each has rows the Elixir runtime
+  # answers wrongly today (2026-11-22 deadline: nothing red is listed)
   # the accelerators' surfaces beside the variable form's: wire, json-read,
   # json-write, json-hostile and report ride the <Unit>.Table codec, the rest
   # the block and cook readers
-  @surfaces ~w(wire message retain retain-save json-read json-write json-hostile report framing cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason write-refusal write-refusal-fixed write-refusal-message write-refusal-json)
+  @surfaces ~w(wire message retain retain-save json-read json-write json-hostile report framing cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason write-refusal write-refusal-fixed write-refusal-message write-refusal-json json-write-into)
 
   def main([manifest, "list"]) do
     _ = manifest
@@ -825,14 +828,28 @@ defmodule Driver do
   # raises. A value this leg's terms cannot hold (a BEAM float holds no NaN or
   # infinity) answers `unrepresentable`, which only a refused row accepts.
   defp run(surface, rows, outdir)
-       when surface in ["write-refusal", "write-refusal-fixed", "write-refusal-json"] do
+       when surface in [
+              "write-refusal",
+              "write-refusal-fixed",
+              "write-refusal-json",
+              "write-refusal-cook"
+            ] do
     for [name, unit, root, wire, path, kind, text | _] <- rows(rows, surface) do
       case table_module(unit) do
         nil ->
           write_absent(outdir, name)
 
         mod ->
-          {:ok, value, _report} = mod.load(root, File.read!(wire))
+          # a <wire> of `-` is the root's fresh value: the codec's empty map,
+          # which every writer reads at the declared defaults
+          value =
+            if wire == "-" do
+              %{}
+            else
+              {:ok, value, _report} = mod.load(root, File.read!(wire))
+              value
+            end
+
           ctx = %{mod: mod, ns: namespace(unit_package(unit)), descs: mod.descriptors()}
 
           answer =
@@ -845,7 +862,7 @@ defmodule Driver do
                   kind == "bytes" and
                     :binary.match(Base.decode16!(text, case: :mixed), <<0>>) != :nomatch
 
-                write_refusal_answer(surface, mod, root, changed, zero)
+                raised(fn -> write_refusal_answer(surface, mod, root, changed, zero) end)
             end
 
           write(outdir, name, answer <> "\n")
@@ -872,11 +889,28 @@ defmodule Driver do
           rows(rows, "write-refusal-message") do
       with {unit, announcement} <- Map.get(connections, connection),
            mod when mod != nil <- message_module(unit),
-           table when table != nil <- table_module(unit),
-           batch when is_binary(batch) <- Map.get(batches, {connection, wire}) do
+           table when table != nil <- table_module(unit) do
         {:ok, announced} = mod.announce_read(File.read!(announcement))
         {:ok, vocab} = mod.for_root(announced, root)
-        {:ok, [body]} = mod.load_messages(vocab, File.read!(batch))
+
+        # the body: the instance's own message where the manifest carries one;
+        # the fresh value (`-`) is the empty body, every field at its default;
+        # otherwise the root's current-form file read through the codec and
+        # spelled as a body under the announced vocabulary
+        body =
+          case {wire, Map.get(batches, {connection, wire})} do
+            {"-", _} ->
+              []
+
+            {_, batch} when is_binary(batch) ->
+              {:ok, [body]} = mod.load_messages(vocab, File.read!(batch))
+              body
+
+            {_, nil} ->
+              {:ok, value, _report} = table.load(root, File.read!(wire))
+              WriteRefusal.table_body(vocab, table.descriptors(), root, value)
+          end
+
         uview_mod = Module.concat([Macro.camelize(unit_package(unit)), "UnitView"])
         unions = if Code.ensure_loaded?(uview_mod) and function_exported?(uview_mod, :unit_view, 0),
           do: Map.new(uview_mod.unit_view().unions, fn u -> {u.name, u} end),
@@ -889,10 +923,12 @@ defmodule Driver do
               "unrepresentable"
 
             {:ok, changed} ->
-              case mod.save_messages(vocab, [changed]) do
-                {:ok, _bytes} -> "wrote"
-                {:error, _reason} -> "refused"
-              end
+              raised(fn ->
+                case mod.save_messages(vocab, [changed]) do
+                  {:ok, _bytes} -> "wrote"
+                  {:error, _reason} -> "refused"
+                end
+              end)
           end
 
         write(outdir, name, answer <> "\n")
@@ -902,10 +938,295 @@ defmodule Driver do
     end
   end
 
+  # ---- THE 2026-11-22 SURFACES (test/conformance/README.md) ----
+
+  # THE BLOCK BUILDER (docs/SPEC-TABLES.md §19.1). Elixir's
+  # block_begin_<root>(counts) is handed the counts of the root's OUT-OF-LINE
+  # arrays and nothing else: it writes the prologue and the triples, and the
+  # rows, the field values, the used lengths and every inline array are the
+  # caller's to fill in the binary it returns. A row whose kind is a value the
+  # builder is never handed (an `int`, the `length` of an inline string, the
+  # `elems` of an inline array) answers `unrepresentable` (the shared ruling of
+  # 2026-11-22); a count of an out-of-line array runs the builder.
+  defp run("write-refusal-block", rows, outdir) do
+    for [name, unit, root, _wire, path, kind, text | _] <- rows(rows, "write-refusal-block") do
+      {mod, begin} = accessor(unit, root, "block_begin", 1)
+      info = apply(mod, String.to_atom("block_info_" <> Macro.underscore(root)), [])
+      f = Enum.find(info.fields, &(&1.name == path))
+
+      answer =
+        cond do
+          f == nil ->
+            raise "write-refusal-block #{name}: #{root} has no block field #{path}"
+
+          kind in ["count", "elems"] and f.out_of_line ->
+            raised(fn ->
+              case apply(mod, begin, [%{path => String.to_integer(text)}]) do
+                {:ok, _block} -> "wrote"
+                {:error, _refusal} -> "refused"
+              end
+            end)
+
+          true ->
+            "unrepresentable"
+        end
+
+      write(outdir, name, answer <> "\n")
+    end
+  end
+
+  # THE ANNOUNCEMENT (docs/SPEC-TABLES.md §3.3). `write` is the unit's
+  # announcement writer, which in Elixir is the constant announce/0 beside its
+  # measure; `strict` and `lenient` read the connection's announcement into a
+  # fresh vocabulary with its `strict` field set or left at its default;
+  # `send` writes one body with SaveMessages through a vocabulary no
+  # announcement was read into. The body's references are spelled through the
+  # unit's own vocabulary, a separate value: nothing is read or written on the
+  # connection the batch goes out on.
+  defp run("announce", rows, outdir) do
+    for [name, unit, root, mode, input] <- rows(rows, "announce") do
+      mod = message_module(unit) || raise "announce #{name}: unit #{unit} has no TableMessage module"
+
+      answer =
+        case mode do
+          "write" ->
+            bytes = mod.announce()
+            measure = mod.announce_measure()
+
+            if byte_size(bytes) != measure,
+              do: raise("announce #{name}: the measure #{measure} is not the announcement's #{byte_size(bytes)} bytes")
+
+            bytes
+
+          m when m in ["strict", "lenient"] ->
+            fresh = if m == "strict", do: %{mod.new() | strict: true}, else: mod.new()
+
+            case mod.announce_read(File.read!(input), fresh) do
+              {:ok, _vocab} -> "read\n"
+              {:error, _reason, _vocab} -> "refused\n"
+            end
+
+          "send" ->
+            table = table_module(unit) || raise "announce #{name}: unit #{unit} has no Table module"
+            {:ok, own} = mod.announce_read(mod.announce())
+            {:ok, own} = mod.for_root(own, root)
+
+            value =
+              if input == "-" do
+                %{}
+              else
+                {:ok, value, _report} = table.load(root, File.read!(input))
+                value
+              end
+
+            body = WriteRefusal.table_body(own, table.descriptors(), root, value)
+            {:ok, unannounced} = mod.for_root(mod.new(), root)
+
+            case mod.save_messages(unannounced, [body]) do
+              {:ok, bytes} -> bytes
+              {:error, _reason} -> "refused\n"
+            end
+        end
+
+      write(outdir, name, answer)
+    end
+  end
+
+  # READ INTO THE CALLER'S VALUES (docs/SPEC-TABLES.md §6.5). AN ELIXIR READ
+  # TAKES NO CALLER VALUES AND NO REPORT: load/2, from_json/2, the fixed load
+  # and load_messages RETURN the values and a fresh report. So the driver holds
+  # its <count> values in a variable (the fresh value is the empty map, every
+  # field at its default): a read that succeeds replaces them with what it
+  # returned, and a refused read returns none, so the values written after it
+  # are the ones the driver holds then (the shared ruling of 2026-11-22). The
+  # driver never resets them itself.
+  defp run("read-into", rows, outdir) do
+    for [name, unit, root, form, lawful, damaged, count, announcement] <- rows(rows, "read-into") do
+      write(outdir, name, read_into(unit, root, form, lawful, damaged, count, announcement))
+    end
+  end
+
+  # THE TEXT WRITER IN A COMMA-DECIMAL LOCALE, INTO A CALLER BUFFER (FL-14,
+  # FL-15). THE BEAM HAS NO PROCESS LOCALE: neither Erlang nor Elixir exposes
+  # setlocale, and the float text to_json writes (:erlang.float_to_binary,
+  # :io_lib_format) never reads one, so there is no call to make; the locale
+  # the harness names is checked present and the row runs. to_json RETURNS A
+  # FRESH BINARY rather than writing into a caller buffer, so there is no tail
+  # to check: the answer is the text it returned.
+  defp run("json-write-into", rows, outdir) do
+    case System.get_env("SCHEMA_COMMA_LOCALE") do
+      nil -> raise "json-write-into: the harness handed no SCHEMA_COMMA_LOCALE"
+      _ -> :ok
+    end
+
+    for [name, unit, root, wire] <- rows(rows, "json-write-into") do
+      mod = table_module(unit) || raise "json-write-into #{name}: unit #{unit} has no Table module"
+
+      answer =
+        case mod.load(root, File.read!(wire)) do
+          {:ok, value, _report} ->
+            case mod.to_json(root, value) do
+              {:ok, text} -> IO.iodata_to_binary(text)
+              _ -> "refused\n"
+            end
+
+          _ ->
+            raise "json-write-into #{name}: the codec refuses #{wire}"
+        end
+
+      write(outdir, name, answer)
+    end
+  end
+
   defp run(surface, _rows, _outdir) do
     IO.puts(:stderr, "the Elixir leg does not implement #{surface}")
     System.halt(2)
   end
+
+  # A writer that RAISES where it should refuse is a defect the row names: the
+  # answer is `raised <exception>`, which scores red against both verdicts and
+  # leaves the rest of the surface running. ArgumentError is the fixed writer's
+  # own refusal and is caught by the writer's answer itself.
+  defp raised(fun) do
+    fun.()
+  rescue
+    e -> "raised " <> inspect(e.__struct__)
+  end
+
+  defp read_into(unit, root, "fixed-nocap", lawful, _damaged, _count, _announcement) do
+    load = fixed_loader(unit, root)
+
+    # NO CAPACITY STATED: the fixed load's own default is what is asked
+    case load.(File.read!(lawful), []) do
+      {:ok, values, _report} -> "read\n#{length(values)}\n"
+      {:error, _reason, _report} -> "refused\n"
+    end
+  rescue
+    e -> "threw " <> inspect(e.__struct__) <> "\n"
+  end
+
+  defp read_into(unit, root, form, lawful, damaged, count, announcement) do
+    n = String.to_integer(count)
+    table = table_module(unit) || raise "read-into: unit #{unit} has no Table module"
+    {read, text} = read_into_form(table, unit, root, form, n, announcement)
+
+    step = fn path, held ->
+      try do
+        case read.(File.read!(path)) do
+          {:ok, values} -> {"read\n", values}
+          :refused -> {"refused\n", held}
+        end
+      rescue
+        _ -> {"threw\n", held}
+      end
+    end
+
+    held = List.duplicate(%{}, n)
+    {first, held} = step.(lawful, held)
+    {second, held} = step.(damaged, held)
+    texts = Enum.map_join(held, "", text)
+    {third, _held} = step.(lawful, held)
+    first <> second <> texts <> third
+  end
+
+  defp read_into_form(table, _unit, root, "variable", _n, _announcement) do
+    read = fn data ->
+      case table.load(root, data) do
+        {:ok, value, report} -> clean(report, [value])
+        {:error, _reason, _report} -> :refused
+      end
+    end
+
+    {read, &json_text(table, root, &1)}
+  end
+
+  defp read_into_form(table, _unit, root, "json", _n, _announcement) do
+    read = fn data ->
+      case table.from_json(root, data) do
+        {:ok, value, report} -> clean(report, [value])
+        {:error, _reason, _report} -> :refused
+        {:error, _reason} -> :refused
+      end
+    end
+
+    {read, &json_text(table, root, &1)}
+  end
+
+  defp read_into_form(table, unit, root, "fixed", n, _announcement) do
+    load = fixed_loader(unit, root)
+
+    read = fn data ->
+      case load.(data, batch_capacity: n) do
+        {:ok, values, report} -> clean(report, Enum.map(values, &fixed_to_table(table, unit, root, &1)))
+        {:error, _reason, _report} -> :refused
+      end
+    end
+
+    {read, &json_text(table, root, &1)}
+  end
+
+  defp read_into_form(table, unit, root, "message", n, announcement) do
+    mod = message_module(unit) || raise "read-into: unit #{unit} has no TableMessage module"
+    {:ok, announced} = mod.announce_read(File.read!(announcement))
+    {:ok, vocab} = mod.for_root(announced, root)
+    unions = if function_exported?(table, :union_descriptors, 0), do: table.union_descriptors(), else: %{}
+    tables = Map.put(table.descriptors(), {:unions}, unions)
+    desc = Map.fetch!(tables, root)
+
+    read = fn data ->
+      case mod.load_messages(vocab, data, n) do
+        {:ok, bodies} -> {:ok, Enum.map(bodies, &WriteRefusal.body_table(vocab, tables, desc, &1))}
+        _ -> :refused
+      end
+    end
+
+    {read, &json_text(table, root, &1)}
+  end
+
+  # a read that returned success with a refusal in its report is refused
+  defp clean(report, values) do
+    case Map.get(report, :reason, "") do
+      r when r in ["", nil] -> {:ok, values}
+      _ -> :refused
+    end
+  end
+
+  defp json_text(table, root, value) do
+    case table.to_json(root, value) do
+      {:ok, text} -> IO.iodata_to_binary(text)
+      other -> "to_json refused the held value: #{inspect(other)}\n"
+    end
+  end
+
+  # a fixed-class value as the codec's table value, through the runtime alone:
+  # the fixed save of a batch of one, read back by the root's own load
+  defp fixed_to_table(table, unit, root, value) do
+    fun = String.to_atom(Macro.underscore(root) <> "_fixed_save")
+    ns = Atom.to_string(namespace(unit_package(unit))) <> "."
+
+    mod =
+      Enum.find(modules(), fn mod ->
+        String.starts_with?(Atom.to_string(mod), ns) and function_exported?(mod, fun, 1)
+      end) || raise "read-into: no module of #{unit} exports #{fun}/1"
+
+    {:ok, back, _report} = table.load(root, IO.iodata_to_binary(apply(mod, fun, [[value]])))
+    back
+  end
+
+  # the fixed form's batch load of a root: <root>_fixed_load/2 in the unit's
+  # <Package>Fixed module
+  defp fixed_loader(unit, root) do
+    fun = String.to_atom(Macro.underscore(root) <> "_fixed_load")
+    ns = Atom.to_string(namespace(unit_package(unit))) <> "."
+
+    mod =
+      Enum.find(modules(), fn mod ->
+        String.starts_with?(Atom.to_string(mod), ns) and function_exported?(mod, fun, 2)
+      end) || raise "read-into: no module of #{unit} exports #{fun}/2"
+
+    fn data, opts -> apply(mod, fun, [data, opts]) end
+  end
+
 
   # ---- the VARIABLE FORM's surfaces (docs/SPEC-TABLES.md §3, §16) ----
 
@@ -916,7 +1237,10 @@ defmodule Driver do
   @unit_packages %{
     "scalars" => "scalardemo",
     "tblscalars2" => "scalardemo2",
-    "widelist" => "widelistdemo"
+    "widelist" => "widelistdemo",
+    "tblsurf" => "surfaces",
+    "tblann4096" => "announce4096",
+    "tblann4097" => "announce4097"
   }
 
   # the namespace a manifest unit key names: the key itself except where the
@@ -1188,6 +1512,23 @@ defmodule Driver do
     ArgumentError -> "refused"
   end
 
+  # THE COOK WRITER (docs/SPEC-TABLES.md §7.6): CookMeasure, then Cook into a
+  # buffer of exactly the measure, little-endian; `wrote` when both complete.
+  defp write_refusal_answer("write-refusal-cook", mod, root, value, _zero) do
+    case mod.cook_measure_reason(root, value) do
+      {size, :ok} when is_integer(size) and size > 0 ->
+        case mod.cook_from(root, value, :binary.copy(<<0>>, size), :little) do
+          {true, _out} -> "wrote"
+          false -> "refused"
+        end
+
+      {_size, _reason} ->
+        "refused"
+    end
+  rescue
+    ArgumentError -> "refused"
+  end
+
   defp write_refusal_answer(_surface, mod, root, value, _zero) do
     case mod.save(root, value) do
       {:ok, _bytes} -> "wrote"
@@ -1344,6 +1685,13 @@ end
 defmodule WriteRefusal do
   @segment ~r/^([A-Za-z_][A-Za-z0-9_]*)(?:\[([0-9]+)\])?$/
 
+  # `point` (FL-28): the pointer at <path> is set to the node the pointer at
+  # path <text> points at; a pointer field holds its node's number
+  def set(_ctx, _root, {root_map, nodes}, path, "point", text) when is_map(root_map) do
+    target = pointer_at(root_map, nodes, String.split(text, "."))
+    {:ok, set_pointer(root_map, nodes, String.split(path, "."), target)}
+  end
+
   def set(ctx, root, {root_map, nodes}, path, kind, text) when is_map(root_map) do
     case set_in(ctx, Map.fetch!(ctx.descs, root), root_map, String.split(path, "."), kind, text) do
       {:ok, changed} -> {:ok, {changed, nodes}}
@@ -1443,14 +1791,168 @@ defmodule WriteRefusal do
     end
   end
 
+  # `elems` of a keyed [E]T: the codec holds it as a map keyed by variant name,
+  # so fewer elements drop the tail's keys; MORE has no key to sit under (a map
+  # holds each variant once), which is unrepresentable here
+  defp leaf(_ctx, %{t: :keyed} = f, current, "elems", text) do
+    n = String.to_integer(text)
+    names = f.key_names
+
+    cond do
+      n > length(names) -> :unrepresentable
+      true -> {:ok, Map.drop(current || %{}, Enum.drop(names, n))}
+    end
+  end
+
+  # `dupkey 1` (FL-22): a map holding one key twice. The codec's map is a BEAM
+  # map, which cannot; the writers take any enumerable of {key, value} pairs,
+  # so the map is handed over as its pairs with the first appended again.
+  # `dupkey 0` leaves the map as loaded.
+  defp leaf(_ctx, %{t: :map}, current, "dupkey", "1") do
+    pairs = Enum.sort_by(Map.to_list(current), &elem(&1, 0))
+    {:ok, pairs ++ [hd(pairs)]}
+  end
+
+  defp leaf(_ctx, %{t: :map}, current, "dupkey", "0"), do: {:ok, current}
+
   defp leaf(_ctx, _f, current, kind, text), do: scalar(current, kind, text)
+
+  defp pointer_at(owner, nodes, [seg]) do
+    _ = nodes
+    Map.fetch!(owner, seg)
+  end
+
+  defp pointer_at(owner, nodes, [seg | rest]) do
+    pointer_at(node(nodes, Map.fetch!(owner, seg)), nodes, rest)
+  end
+
+  defp set_pointer(root_map, nodes, [seg], target), do: {Map.put(root_map, seg, target), nodes}
+
+  defp set_pointer(root_map, nodes, [seg | rest], target) do
+    {root_map, put_node(nodes, Map.fetch!(root_map, seg), rest, target)}
+  end
+
+  defp put_node(nodes, n, [seg], target),
+    do: put_elem(nodes, n - 2, Map.put(node(nodes, n), seg, target))
+
+  defp put_node(nodes, n, [seg | rest], target),
+    do: put_node(nodes, Map.fetch!(node(nodes, n), seg), rest, target)
+
+  defp node(nodes, n) when is_integer(n) and n >= 2, do: elem(nodes, n - 2)
+  defp node(_nodes, n), do: raise("write-refusal: point: #{inspect(n)} is no node")
+
+  # ---- a table value spelled as a message body (§3.3) ----
+
+  # The body of a fixed root's value under <vocab>: its fields in declaration
+  # order, each by the vocabulary entry of its own declaration, a field at its
+  # declared default left out as the writer elides it. The writer judges the
+  # body; this only spells the value it is handed.
+  def table_body(vocab, descs, root, value) do
+    desc = Map.fetch!(descs, root)
+
+    Enum.flat_map(desc.fields, fn f ->
+      v = Map.get(value, f.name, Map.get(f, :default))
+
+      if body_default?(f, v),
+        do: [],
+        else: [{field_ref(vocab, f), body_value(vocab, descs, f, v)}]
+    end)
+  end
+
+  defp body_default?(%{t: :list} = f, v),
+    do: v in [nil, []] or Enum.all?(v, &(&1 == Map.get(f, :elem_default, 0)))
+
+  defp body_default?(%{t: :keyed} = f, v),
+    do: v in [nil, %{}] or Enum.all?(Map.values(v), &(&1 == f.item.default))
+
+  defp body_default?(f, v), do: v == Map.get(f, :default)
+
+  defp body_value(vocab, _descs, %{t: :keyed} = f, v) do
+    Enum.map(f.key_names, fn k ->
+      {ref_of(vocab, Map.fetch!(f.key_ids, k)), Map.get(v, k, f.item.default)}
+    end)
+  end
+
+  defp body_value(vocab, descs, %{t: :list, elem_kind: 13} = f, v),
+    do: Enum.map(v, &table_body(vocab, descs, f.elem, &1))
+
+  defp body_value(vocab, descs, %{t: :table} = f, v), do: table_body(vocab, descs, f.elem, v)
+
+  defp body_value(vocab, _descs, %{t: :enum} = f, v) when is_binary(v),
+    do: ref_of(vocab, Map.fetch!(f.by_name, v))
+
+  defp body_value(_vocab, _descs, _f, v), do: v
+
+  # THE ENTRY OF A FIELD'S OWN DECLARATION: two roots may declare one field
+  # name and kind at different ranges (Narrow.hp, Wide.hp share an id), so an
+  # id with more than one entry is told apart by the entry's shape, the base
+  # and bit width of the field's declared [min, max]
+  def field_ref(vocab, f) do
+    candidates =
+      vocab.entries
+      |> Enum.with_index(1)
+      |> Enum.filter(fn {e, _i} -> e.id == f.id end)
+
+    case candidates do
+      [] ->
+        raise "write-refusal: id #{f.id} (#{f.name}) is not in the announced vocabulary"
+
+      [{_e, i}] ->
+        i
+
+      many ->
+        lo = Map.get(f, :min)
+        hi = Map.get(f, :max)
+
+        Enum.find_value(many, fn {e, i} ->
+          shape = Map.get(e, :shape, %{})
+
+          if is_integer(lo) and is_integer(hi) and Map.get(shape, :base) == lo and
+               Map.get(shape, :bits) == bit_width(hi - lo),
+             do: i
+        end) ||
+          raise "write-refusal: #{f.name} has #{length(many)} entries and none is its declaration's"
+    end
+  end
+
+  # the inverse spelling: a body the message read returned, as the codec's
+  # table value (an enum by its member's name, a keyed array by variant name);
+  # a field the body leaves out is at its default, which the codec fills
+  def body_table(vocab, descs, desc, body) do
+    Enum.reduce(desc.fields, %{}, fn f, acc ->
+      case List.keyfind(body, field_ref(vocab, f), 0) do
+        nil -> acc
+        {_ref, v} -> Map.put(acc, f.name, table_value(vocab, descs, f, v))
+      end
+    end)
+  end
+
+  defp table_value(vocab, _descs, %{t: :enum} = f, ref) when is_integer(ref) do
+    id = Enum.at(vocab.entries, ref - 1).id
+    Enum.find_value(f.by_name, fn {name, mid} -> if mid == id, do: name end) || ref
+  end
+
+  defp table_value(vocab, _descs, %{t: :keyed} = f, pairs) when is_list(pairs) do
+    Map.new(pairs, fn {ref, v} -> {Map.fetch!(f.key_by_id, Enum.at(vocab.entries, ref - 1).id), v} end)
+  end
+
+  defp table_value(vocab, descs, %{t: :list, elem_kind: 13} = f, v),
+    do: Enum.map(v, &body_table(vocab, descs, Map.fetch!(descs, f.elem), &1))
+
+  defp table_value(vocab, descs, %{t: :table} = f, v),
+    do: body_table(vocab, descs, Map.fetch!(descs, f.elem), v)
+
+  defp table_value(_vocab, _descs, _f, v), do: v
+
+  defp bit_width(0), do: 0
+  defp bit_width(n), do: length(Integer.digits(n, 2))
 
   # ---- the message body ----
 
   defp set_body(ctx, desc, body, [seg | rest], kind, text) do
     {name, index} = segment(seg)
     f = field(desc, name)
-    ref = ref_of(ctx.vocab, f.id)
+    ref = field_ref(ctx.vocab, f)
 
     current =
       case List.keyfind(body, ref, 0) do
@@ -1557,7 +2059,18 @@ defmodule WriteRefusal do
 
   defp scalar(_current, "int", text), do: {:ok, String.to_integer(text)}
 
+  # a flags field's raw bits, in decimal (FL-06)
+  defp scalar(_current, "mask", text), do: {:ok, String.to_integer(text)}
+
+  # the element count of a fixed [N]T: more are copies of element 0, fewer
+  # drop the tail (SF-34, SF-35)
+  defp scalar(current, "elems", text), do: scalar(current, "count", text)
+
   # the used count of an array: a new element is a copy of element 0
+  # a NEGATIVE count is a value that is no list (SF-28): the field holds the
+  # integer itself, which every writer must refuse
+  defp scalar(_current, "count", "-" <> _ = text), do: {:ok, String.to_integer(text)}
+
   defp scalar(current, "count", text) do
     n = String.to_integer(text)
     list = current || []
@@ -1612,7 +2125,7 @@ defmodule WriteRefusal do
     order =
       desc.fields
       |> Enum.with_index()
-      |> Map.new(fn {f, i} -> {ref_of(ctx.vocab, f.id), i} end)
+      |> Map.new(fn {f, i} -> {field_ref(ctx.vocab, f), i} end)
 
     Enum.sort_by(body, fn {ref, _} -> Map.get(order, ref, length(desc.fields)) end)
   end
