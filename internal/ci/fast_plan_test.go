@@ -370,6 +370,7 @@ func TestFastPlanSelectsCodegenAndLanguageCleanGates(t *testing.T) {
 		{"ci policy only", "internal/ci/ci_test.go", `no|[]`},
 		{"docs only", "README.md", `no|[]`},
 		{"c format allowlist", "make/c-format-allow.txt", `no|["c"]`},
+		{"c format engine", "make/checks/c-clean-format.sh", `no|["c"]`},
 		{"eslint config", "eslint.config.mjs", `no|["js"]`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -25,7 +25,7 @@ import (
 func TestCFormatGateProvesItRan(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS == "windows" {
-		t.Skip("the engine is a POSIX shell script; the C lane that runs it is Linux and macOS")
+		t.Skip("the Bash engine runs on the C lane’s POSIX hosts (Linux and macOS)")
 	}
 	root := repoRoot(t)
 	script := filepath.Join(root, "make", "checks", "c-clean-format.sh")
@@ -49,7 +49,7 @@ func TestCFormatGateProvesItRan(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		cmd := exec.Command("sh", append([]string{script, "allow.txt"}, trees...)...)
+		cmd := exec.Command("bash", append([]string{script, "allow.txt"}, trees...)...)
 		cmd.Dir = dir
 		cmd.Env = append(os.Environ(), "CLANG_FORMAT="+filepath.Join(dir, "format"), "OUT="+filepath.Join(dir, "out"))
 		out, err := cmd.CombinedOutput()
@@ -66,6 +66,19 @@ func TestCFormatGateProvesItRan(t *testing.T) {
 	}{
 		{"a clean tree is green",
 			tree{"gen/a.h": "int a;\n", "gen/sub/b.c": "int b;\n"}, "cat", "", []string{"gen"}, ""},
+		{"duplicate content and basename share a formatter call",
+			tree{"gen/one/a.h": "int a;\n", "gen/two/a.h": "int a;\n"},
+			`if [ "$2" = "gen/two/a.h" ]; then exit 44; fi
+cat`, "", []string{"gen"}, ""},
+		{"same bytes under a different basename get a separate verdict",
+			tree{"gen/a.c": "int a;\n", "gen/a.h": "int a;\n"},
+			`if [ "$2" = "gen/a.h" ]; then exec tr a-z A-Z < "$2"; fi
+cat`, "gen/a.h\n", []string{"gen"}, ""},
+		{"the shared verdict is checked at every ratchet path",
+			tree{"gen/one/a.h": "int a;\n", "gen/two/a.h": "int a;\n"}, "tr a-z A-Z",
+			"gen/one/a.h\n", []string{"gen"}, "clang-format drift in gen/two/a.h"},
+		{"formatter failure is red even on the ratchet",
+			tree{"gen/a.h": "int a;\n"}, "exit 44", "gen/a.h\n", []string{"gen"}, "clang-format failed on gen/a.h"},
 		{"a drifting file on the ratchet is green",
 			tree{"gen/a.h": "int a;\n"}, "tr a-z A-Z", "# the ratchet\ngen/a.h\n", []string{"gen"}, ""},
 		{"a drifting file off the ratchet is red",

@@ -639,7 +639,7 @@ jobs:
             schema_corpus=yes
           fi
           clean_legs=""
-          if [ "$schema_corpus" = yes ] || case " $touched_legs " in *" c "*) true ;; *) false ;; esac || grep -qE '^(make/c-format-allow\.txt$|\.clang-format$)' <<<"$files"; then
+          if [ "$schema_corpus" = yes ] || case " $touched_legs " in *" c "*) true ;; *) false ;; esac || grep -qE '^(make/c-format-allow\.txt$|make/checks/c-clean-format\.sh$|\.clang-format$)' <<<"$files"; then
             clean_legs="$clean_legs c"
           fi
           if [ "$schema_corpus" = yes ] || case " $touched_legs " in *" elixir "*) true ;; *) false ;; esac || grep -qE '^test/elixir-tables/' <<<"$files"; then
@@ -1143,7 +1143,7 @@ jobs:
           case "$LANG_ROW" in
             c)
               pin="$(sed -n 's/^CLANG_FORMAT_PIN *?= *//p' make/c.mk)"
-              major="$(sed -n 's/^CLANG_FORMAT_MAJOR *?= *//p' make/c.mk)"
+              major="${pin%%.*}"
               cf=""
               if command -v clang-format >/dev/null 2>&1 && [ "$(clang-format --version | sed -n 's/.*version \([0-9][0-9]*\)\..*/\1/p')" = "$major" ]; then
                 cf="$(command -v clang-format)"
