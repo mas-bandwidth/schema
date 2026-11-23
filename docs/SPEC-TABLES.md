@@ -9564,6 +9564,13 @@ does on hostile input — refuse the whole load with one reason and return,
 never crash, never read past its buffer (§4, §6.5) — is the verifier, and this
 subsection is the gate on that claim.
 
+**The pinned vectors are all run, or the run refuses.** `fuzz-vectors/INDEX.txt`
+is the list of the pinned reds, and the directory beside it is the pinned reds
+themselves: a `*.bin` there that the index does not name is a vector nothing
+runs, and an index line whose file is missing is a vector that cannot run. The
+wire fuzzer reads both and refuses the whole run, naming each file, when they
+disagree (`checkWireVectorIndex`); neither is a warning, and neither is skipped.
+
 **The gate is `harness wire-fuzz`**, one command over one corpus for every
 language. Every pinned wire in the conformance manifest — every `instance` and
 every `report` line — is a SEED, framed once so that a mutation can aim at a
