@@ -27,6 +27,12 @@
     <!-- Overridable so packet-clean-cs-negative-control can point this build
          at a planted copy of the generated examples and require it to go red. -->
     <PacketGeneratedDir Condition="'$(PacketGeneratedDir)' == ''">../../generated/cs</PacketGeneratedDir>
+    <!-- make/cs.mk cs_clean_check moves BaseIntermediateOutputPath under build/,
+         which drops this directory's own obj/ and bin/ from the SDK's default
+         excludes: a test/cs/obj left by any ordinary build was then globbed in
+         and its AssemblyInfo.cs duplicated every assembly attribute (CS0579),
+         which hid the negative control's planted CS0169. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj/**;bin/**</DefaultItemExcludes>
   </PropertyGroup>
 
   <!-- packet-finite-cs-negative-control (make/cs.mk): compiles serialize.cs's
