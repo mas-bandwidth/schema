@@ -44,11 +44,21 @@ func emitRootData(g *luau.Gen, root *ir.Struct) {
 	g.Pf("-- %s: fixed form, form byte 3 (docs/SPEC-TABLES.md §3.4)\n", name)
 	g.Pf("%s.%sFixedHash = %s\n", g.Self, name, luau.IntegerLit(new(big.Int).SetUint64(hash)))
 	g.Pf("%s.%sFixedRecordBytes = %d\n", g.Self, name, record)
-	g.Pf("%s.%sFixedLayout = %s.fixed_layout({\n", g.Self, name, g.Require("schema_fixed"))
+	open, close := fixedLayoutLiteral(len(entries))
+	g.Pf("%s.%sFixedLayout = %s.fixed_layout(%s\n", g.Self, name, g.Require("schema_fixed"), open)
 	for _, e := range entries {
 		g.Pf("\t{ id = %s, kind = %d, size = %d, children = %d }, -- %s\n",
 			luau.IntegerLit(new(big.Int).SetUint64(e.ID)), e.Kind, e.Size, e.Children, e.Note)
 	}
-	g.Pf("}, %s)\n\n", g.Self)
+	g.Pf("%s, %s)\n\n", close, g.Self)
 	emitLineage(g, root, FixedLineageEntry{Wire: hash, Layout: layout, Record: fixedHashBytes + record})
+}
+
+// fixedLayoutLiteral supplies an element type for large layouts so strict Luau
+// analysis can check the literal without inferring a distinct type for each row.
+func fixedLayoutLiteral(entries int) (open, close string) {
+	if entries > 256 {
+		return "({", "} :: {{ id: integer, kind: number, size: number, children: number }})"
+	}
+	return "{", "}"
 }

@@ -27,10 +27,11 @@ func init() {
 // other backend emits and the manifest's `connection` rows pin.
 func emitMessageForm(g *luau.Gen) error {
 	msgVocab := tablewire.MessageVocabulary(g.Unit)
+	canAnnounce := len(msgVocab) <= ir.TableVocabularyMaxEntries
 	ann := tablewire.Announce(g.Unit)
 	g.Pf("-- the message form's announcement, form byte 2 (docs/SPEC-TABLES.md §3.3):\n")
 	g.Pf("-- an ordinary form-1 file carrying the build version and the vocabulary.\n")
-	if len(msgVocab) > 4096 {
+	if !canAnnounce {
 		g.Pf("%s.TableMessageAnnouncement = nil\n", g.Self)
 		g.Pf("%s.TableMessageAnnouncementLength = 0\n", g.Self)
 	} else {
@@ -50,7 +51,7 @@ func emitMessageForm(g *luau.Gen) error {
 	}
 	// R8 follow-up: the announcement WRITER refuses a vocabulary past the
 	// readers' default entry maximum (docs/SPEC-TABLES.md §3.3).
-	if len(msgVocab) > ir.TableVocabularyMaxEntries {
+	if !canAnnounce {
 		g.Pf("function %s.AnnounceMeasure(): number return -1 end\n", g.Self)
 		g.Pf("function %s.Announce(): buffer? return nil end\n", g.Self)
 	} else {
@@ -124,7 +125,9 @@ func emitMessageForm(g *luau.Gen) error {
 	}
 	slices.Sort(uNames)
 	st := g.Require(RuntimeModule)
-	g.Pf("%s.messageAnnouncement(%s.TableMessageBuildVersion, %s.TableMessageAnnouncement)\n", st, g.Self, g.Self)
+	if canAnnounce {
+		g.Pf("%s.messageAnnouncement(%s.TableMessageBuildVersion, %s.TableMessageAnnouncement)\n", st, g.Self, g.Self)
+	}
 	g.Pf("%s.messageSlots(%s.TableMessageBuildVersion, {", st, g.Self)
 	for _, name := range cNames {
 		stDef := g.Unit.Tables[name]
