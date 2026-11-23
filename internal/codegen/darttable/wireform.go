@@ -4285,6 +4285,17 @@ func (g *wireGen) emitWireWriteAssert(f *ir.Field, expr, ind string) {
 		default:
 			g.pf("%sassert(%s >= %s && %s <= %s);\n", ind, expr, lo.String(), expr, hi.String())
 		}
+	} else if f.Type.Kind == ir.TInt && f.Type.Width < 64 {
+		// Row 11 (docs/SPEC.md §5.1): Dart's int is 64-bit, so a bare narrow
+		// integer past its declared width is refused by debug assert.
+		if f.Type.Signed {
+			lo := -(int64(1) << uint(f.Type.Width-1))
+			hi := (int64(1) << uint(f.Type.Width-1)) - 1
+			g.pf("%sassert(%s >= %d && %s <= %d);\n", ind, expr, lo, expr, hi)
+		} else {
+			hi := (int64(1) << uint(f.Type.Width)) - 1
+			g.pf("%sassert(%s >= 0 && %s <= %d);\n", ind, expr, expr, hi)
+		}
 	}
 	if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
 		maxv := (int64(1) << uint(f.Type.Width)) - 1

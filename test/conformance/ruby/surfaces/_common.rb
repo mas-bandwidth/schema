@@ -252,7 +252,7 @@ module RubyConformance
       union_val
     when 'bool'
       %w[true 1].include?(token.downcase)
-    when 'float'
+    when 'float', 'real'
       parse_float_token(token)
     when 'bytes'
       raw = [token].pack('H*')

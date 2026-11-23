@@ -42,13 +42,20 @@ func TestDartCompressedFloatStoresAreGuarded(t *testing.T) {
 	plainRef := regexp.MustCompile(`\b(v|value)\.p\b`)
 	guarded, plain := map[string]int{}, map[string]int{}
 	for name, data := range files {
-		for i, line := range strings.Split(string(data), "\n") {
+		lines := strings.Split(string(data), "\n")
+		for i, line := range lines {
 			m := store.FindString(line)
 			if m == "" || define.MatchString(line) {
 				continue
 			}
-			isPlain := plainRef.MatchString(line)
-			isGuarded := strings.Contains(line, " == 0 ? 0.0 : ")
+			// A wrapped dart-format call (`float32Bits(\n  (v.r == 0 ? 0.0 : v.r),\n)`)
+			// places its argument on the following line.
+			exprLine := line
+			if strings.HasSuffix(strings.TrimSpace(line), "(") && i+1 < len(lines) {
+				exprLine = line + " " + strings.TrimSpace(lines[i+1])
+			}
+			isPlain := plainRef.MatchString(exprLine)
+			isGuarded := strings.Contains(exprLine, " == 0 ? 0.0 : ")
 			switch {
 			case isPlain && isGuarded:
 				t.Errorf("%s:%d: the plain float's -0 is normalized: %s", name, i+1, strings.TrimSpace(line))

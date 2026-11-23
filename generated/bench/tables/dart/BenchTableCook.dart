@@ -2733,7 +2733,9 @@ final class TableMixedCookWire {
     if (out != null) {
       out.setUint32(
         at + 56,
-        TableCookWriteReport.float32Bits((value.serverTime == 0 ? 0.0 : value.serverTime)),
+        TableCookWriteReport.float32Bits(
+          (value.serverTime == 0 ? 0.0 : value.serverTime),
+        ),
         order,
       );
     }

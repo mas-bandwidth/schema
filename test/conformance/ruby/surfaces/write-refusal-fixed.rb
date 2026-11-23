@@ -38,7 +38,7 @@ def self.assign_fixed(pkg, root_val, spec, path, rule, token)
     previous = owner[idx]
     assigned = case rule
                when 'int', 'ordinal' then Integer(token, 10)
-               when 'float' then RubyConformance.parse_float_token(token)
+               when 'float', 'real' then RubyConformance.parse_float_token(token)
                when 'length' then field['shape'] == 'string' ? ('x' * Integer(token, 10)) : ("\x00".b * Integer(token, 10))
                when 'bytes'
                  raw = [token].pack('H*')
@@ -53,7 +53,7 @@ def self.assign_fixed(pkg, root_val, spec, path, rule, token)
   case rule
   when 'int', 'ordinal'
     assigned = Integer(token, 10)
-  when 'float'
+  when 'float', 'real'
     assigned = RubyConformance.parse_float_token(token)
   when 'tag'
     previous.type = Integer(token, 10)

@@ -288,7 +288,12 @@ func (g *cookGen) emitCookScalarStore(f *ir.Field, expr, at string, width int64,
 		if len(line) <= 80 {
 			g.pf("%s\n", line)
 		} else {
-			g.pf("%s  out.setUint32(\n%s    %s,\n%s    TableCookWriteReport.float32Bits(%s),\n%s    order,\n%s  );\n", ind, ind, at, ind, expr, ind, ind)
+			argLine := fmt.Sprintf("%s    TableCookWriteReport.float32Bits(%s),", ind, expr)
+			if len(argLine) <= 80 {
+				g.pf("%s  out.setUint32(\n%s    %s,\n%s\n%s    order,\n%s  );\n", ind, ind, at, argLine, ind, ind)
+			} else {
+				g.pf("%s  out.setUint32(\n%s    %s,\n%s    TableCookWriteReport.float32Bits(\n%s      %s,\n%s    ),\n%s    order,\n%s  );\n", ind, ind, at, ind, ind, expr, ind, ind, ind)
+			}
 		}
 	case f.Type.Kind == ir.TFloat64:
 		g.pf("%s  out.setFloat64(%s, %s, order);\n", ind, at, expr)

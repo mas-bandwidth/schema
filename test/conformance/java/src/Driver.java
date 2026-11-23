@@ -1065,7 +1065,11 @@ public final class Driver {
                     Object report = fixed.report();
                     Object values = fixed.newValues();
                     int read = fixed.load(values, Files.readAllBytes(Paths.get(f[4])), report);
-                    if (read < 0 || fixed.flag(report, "refused")) return failInt(f[1] + ": load refused " + f[4] + " (" + fixed.reason(report) + ")");
+                    if (read < 0 || fixed.flag(report, "refused")) {
+                        String reason = fixed.reason(report);
+                        spillAbsentReason(out, f[1], reason != null && !reason.isEmpty() ? reason : "refused");
+                        continue;
+                    }
                     byte[] saved = fixed.save(values, read);
                     if (saved == null) return failInt(f[1] + ": save refused the value");
                     spill(out, f[1], saved);
@@ -1076,16 +1080,15 @@ public final class Driver {
                 Object report = codec.report();
                 Object value = codec.load(Files.readAllBytes(Paths.get(f[4])), report);
                 if (value == null || codec.flag(report, "refused")) {
-                    // SPEC-TABLES §2.5: a blob belongs to one slot, and the one
-                    // strict read refuses a file whose two slots name one blob.
-                    // That refusal is this wire-refused row's answer, written by
-                    // the same absence writer as every other missing answer.
+                    // A codec load refusal writes a non-empty absence marker naming
+                    // the reason (empty marker is reserved for a missing codec).
                     String reason = codec.reason(report);
                     if (reason != null && reason.startsWith("blob_shared")) {
                         spillAbsentReason(out, f[1], "blob_shared");
                         continue;
                     }
-                    return failInt(f[1] + ": load refused " + f[4] + (reason == null ? "" : " (" + reason + ")"));
+                    spillAbsentReason(out, f[1], reason != null && !reason.isEmpty() ? reason : "refused");
+                    continue;
                 }
                 byte[] saved = codec.save(value);
                 if (saved == null) return failInt(f[1] + ": save refused the value");
@@ -1555,7 +1558,7 @@ public final class Driver {
         writeRefusalSetPresent(current, field.getName());
         Object container = field.get(current);
         if (last.indexed) {
-            if (kind.equals("float")) {
+            if (kind.equals("float") || kind.equals("real")) {
                 writeRefusalIndexedFloat(container, last.index, text);
                 return true;
             }
@@ -1618,6 +1621,7 @@ public final class Driver {
                 return writeRefusalOrdinal(tag, fieldValue, tag.get(fieldValue), text);
             }
             case "float":
+            case "real":
                 writeRefusalFloat(field, current, text);
                 return true;
             default:
@@ -2517,6 +2521,48 @@ public final class Driver {
         return 0;
     }
 
+    private static String[] priorConnectionNamed(String key) {
+        for (String[] f : kind("prior-connection")) {
+            if (f[1].equals(key)) { return f; }
+        }
+        return null;
+    }
+
+    private static int surfaceMessagePrior(String out) throws IOException {
+        for (String[] f : kind("prior-message")) {
+            String[] conn = priorConnectionNamed(f[2]);
+            if (conn == null) { return failInt("missing prior-connection " + f[2]); }
+            try {
+                MessageCodec codec = messageCodec(conn[2], f[3]);
+                if (codec == null) { spillAbsentReason(out, f[1], ""); continue; }
+                Object vocab = codec.vocab();
+                Object report = codec.report();
+                if (!codec.announce(vocab, Files.readAllBytes(Paths.get(conn[4])), report)
+                        || codec.flag(report, "damaged") || codec.flag(report, "refused")) {
+                    return failInt(f[1] + ": announceRead refused " + conn[4]);
+                }
+                Object values = codec.newValues(256);
+                int count = codec.load(values, 256, vocab, Files.readAllBytes(Paths.get(f[5])), report);
+                if (count < 1 || codec.flag(report, "damaged") || codec.flag(report, "refused")) {
+                    spill(out, f[1] + ".refused", "refused\n");
+                    continue;
+                }
+                int size = codec.measure(values, count, report);
+                if (size < 1 || codec.flag(report, "refused")) {
+                    return failInt(f[1] + ": measureMessages refused");
+                }
+                byte[] buf = new byte[size];
+                if (codec.save(values, count, buf, report) != size || codec.flag(report, "refused")) {
+                    return failInt(f[1] + ": saveMessages refused");
+                }
+                spill(out, f[1], buf);
+            } catch (ReflectiveOperationException failure) {
+                return failInt(f[1] + ": message-prior codec failed: " + failure);
+            }
+        }
+        return 0;
+    }
+
     // ---- RETAIN-UNKNOWN (docs/SPEC-TABLES.md §6.6; FORMAT.md, `retain`)
     //
     // RT1 loads what RT2 wrote, with retention on, into caller-owned storage:
@@ -2672,11 +2718,12 @@ public final class Driver {
             // §3, §3.1, §16.7) for the roots this leg's variable wire carries —
             // graphdemo's Scene and blobdemo's Catalog — and answer every other
             // case ABSENT, one by one.
-            System.out.print("wire\nreport\nframing\nblock-reason\ncook-reason\njson-read\njson-write\njson-hostile\nmessage\n"
+            System.out.print("wire\nreport\nframing\nblock-reason\ncook-reason\njson-read\njson-write\njson-hostile\nmessage\nmessage-prior\n"
                     + "retain\nretain-save\n"
                     + "block\nblock-foreign\n"
                     + "block-dump\nforgery\ncook\ncook-write\ncook-foreign\ncook-forgery\n"
-                    + "write-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n");
+                    + "write-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n"
+                    + "unit shapes\n");
             return 0;
         }
         if (args.length < 3) {
@@ -2694,6 +2741,7 @@ public final class Driver {
             case "json-write": return surfaceJsonWrite(out);
             case "json-hostile": return surfaceJsonHostile(out);
             case "message": return surfaceMessage(out);
+            case "message-prior": return surfaceMessagePrior(out);
             case "retain": return surfaceRetain(out, false);
             case "retain-save": return surfaceRetain(out, true);
             case "block": return surfaceBlock(out);
