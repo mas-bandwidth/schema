@@ -898,13 +898,11 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			close(jobs)
 			var wg sync.WaitGroup
 			for range min(workers, len(active)) {
-				wg.Add(1)
-				go func() {
-					defer wg.Done()
+				wg.Go(func() {
 					for sr := range jobs {
 						sr.code, sr.stderr, sr.err = runDriver(d, derived, sr.surface, sr.out)
 					}
-				}()
+				})
 			}
 			wg.Wait()
 		}
