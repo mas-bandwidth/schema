@@ -39,12 +39,16 @@ test: packet-defaults-cpp
 
 # Packet defaults are construction only. The C++ oracle and defaultless twin
 # establish the bytes independently of this port's constructors and codecs.
-build/packet-defaults/go/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema make/checks/packet-defaults.mk
+build/packet-defaults/go/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema $(wildcard $(PACKET_CONSTANT_DIR)/*/Defaults.schema) make/checks/packet-defaults.mk
 	@mkdir -p build/packet-defaults/go
 	./bin/schema generate --lang go --out build/packet-defaults/go/defaults test/packet-defaults/Defaults.schema
 	./bin/schema generate --lang go --out build/packet-defaults/go/plain test/packet-defaults/Plain.schema
 	@printf 'module packetdefaults\n\ngo 1.23\n' > build/packet-defaults/go/defaults/go.mod
 	@printf 'module packetplain\n\ngo 1.23\n' > build/packet-defaults/go/plain/go.mod
+	./bin/schema generate --lang go --out build/packet-defaults/go/constant-hexadecimal-addition $(PACKET_CONSTANT_DIR)/hexadecimal-addition/Defaults.schema
+	./bin/schema generate --lang go --out build/packet-defaults/go/constant-unsigned-subtraction $(PACKET_CONSTANT_DIR)/unsigned-subtraction/Defaults.schema
+	@printf 'module constanthexadecimaladdition\n\ngo 1.23\n' > build/packet-defaults/go/constant-hexadecimal-addition/go.mod
+	@printf 'module constantunsignedsubtraction\n\ngo 1.23\n' > build/packet-defaults/go/constant-unsigned-subtraction/go.mod
 	@touch $@
 
 .PHONY: packet-defaults-go
@@ -76,6 +80,13 @@ packet-defaults-go-negative-control: packet-defaults-go
 
 test-go: packet-defaults-go packet-defaults-go-negative-control
 
+# The constant-default pins (hexadecimal-addition, unsigned-subtraction): one C
+# binary per schema of test/conformance/packet/testdata/constant-defaults, each
+# generated into its own directory because every one declares package
+# arithmetic. c-test is told their names and fails on any .bin neither read.
+PACKET_C_CONSTANT_NAMES := $(notdir $(wildcard $(PACKET_CONSTANT_DIR)/*))
+PACKET_C_CONSTANT_BINS := $(addprefix build/packet-defaults/c-constant-,$(PACKET_C_CONSTANT_NAMES))
+
 build/packet-defaults/c/.stamp: bin/schema $(PACKET_DEFAULT_SCHEMAS) make/checks/packet-defaults.mk
 	@mkdir -p build/packet-defaults/c
 	./bin/schema generate --lang c --out build/packet-defaults/c test/packet-defaults/Defaults.schema
@@ -86,9 +97,17 @@ build/packet-defaults/c-test: build/packet-defaults/c/.stamp test/packet-default
 		-O2 -ffp-contract=off -Ibuild/packet-defaults/c -I$(SERIALIZE_C) \
 		test/packet-defaults/c_main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
+build/packet-defaults/c-constant-%: bin/schema $(PACKET_CONSTANT_DIR)/%/Defaults.schema test/packet-defaults/c_constant_main.c $(SERIALIZE_C)/serialize.h $(SERIALIZE_C)/serialize.c make/checks/packet-defaults.mk
+	@mkdir -p build/packet-defaults/c-constant-gen/$*
+	./bin/schema generate --lang c --out build/packet-defaults/c-constant-gen/$* $(PACKET_CONSTANT_DIR)/$*/Defaults.schema
+	$(CC) -std=c99 -Wall -Wextra -Werror -Wtype-limits $(C_TAUTOLOGICAL) \
+		-O2 -ffp-contract=off -DPIN_NAME='"$*"' -Ibuild/packet-defaults/c-constant-gen/$* -I$(SERIALIZE_C) \
+		test/packet-defaults/c_constant_main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
+
 .PHONY: packet-defaults-c packet-defaults-c-negative-control
-packet-defaults-c: build/packet-defaults/c-test packet-defaults-cpp
-	./build/packet-defaults/c-test testdata/wire/packet-defaults
+packet-defaults-c: build/packet-defaults/c-test $(PACKET_C_CONSTANT_BINS) packet-defaults-cpp
+	./build/packet-defaults/c-test testdata/wire/packet-defaults $(PACKET_C_CONSTANT_NAMES)
+	for b in $(PACKET_C_CONSTANT_BINS); do ./$$b testdata/wire/packet-defaults || exit 1; done
 
 packet-defaults-c-negative-control: packet-defaults-c
 	@mkdir -p build/packet-defaults/c-negative
@@ -101,7 +120,7 @@ packet-defaults-c-negative-control: packet-defaults-c
 	$(CC) -std=c99 -Wall -Wextra -Werror -Wtype-limits $(C_TAUTOLOGICAL) \
 		-O2 -ffp-contract=off -Ibuild/packet-defaults/c-negative/generated -I$(SERIALIZE_C) \
 		test/packet-defaults/c_main.c $(SERIALIZE_C)/serialize.c -o build/packet-defaults/c-negative/checker -lm
-	@if ./build/packet-defaults/c-negative/checker testdata/wire/packet-defaults > build/packet-defaults/c-negative/log 2>&1; then \
+	@if ./build/packet-defaults/c-negative/checker testdata/wire/packet-defaults $(PACKET_C_CONSTANT_NAMES) > build/packet-defaults/c-negative/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: missing constructor bytes passed in C'; exit 1; fi
 	@grep -Fxq 'FAILED: packet-default constructor bytes' build/packet-defaults/c-negative/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: C failed for another reason'; cat build/packet-defaults/c-negative/log; exit 1; }

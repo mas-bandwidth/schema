@@ -1,4 +1,4 @@
-// Verify constructor storage and the eight C++ packet goldens on the Goose
+// Verify constructor storage and the ten C++ packet goldens on the Goose
 // packet target: test/packet-defaults/go/main.go block for block. Reads also
 // exercise reused storage: field prefixes overlay, absent branches clear to
 // the zero form, and every union selection constructs its payload with its
@@ -24,11 +24,14 @@ fn check(ok: bool, name: const u8[:]) {
 }
 
 // knownGolden answers whether run() reads the golden named file (a *.bin of
-// the goldens directory). main holds the directory's own listing to it.
+// the goldens directory). The last two are read by constant.goose, one run
+// per constant-default schema (each declares package arithmetic, so each needs
+// its own generated directory and program); the make recipe runs both. main holds the directory's own listing to it.
 fn knownGolden(file: const u8[:]) -> bool {
     return file == "sample-defaults.bin" || file == "zero-count.bin" || file == "batch-defaults.bin"
         || file == "conditional-on.bin" || file == "conditional-off.bin" || file == "choice-sample.bin"
-        || file == "sample-short.bin" || file == "sample-empty.bin";
+        || file == "sample-short.bin" || file == "sample-empty.bin"
+        || file == "hexadecimal-addition.bin" || file == "unsigned-subtraction.bin";
 }
 
 // fixture values, independent of the generated constructors; schema

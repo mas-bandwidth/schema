@@ -40,9 +40,38 @@ func requireSiblings(langs []string) error {
 		if v := os.Getenv(s.env); v != "" {
 			dir = v
 		}
+		dir, err := fromRepoRoot(dir)
+		if err != nil {
+			return err
+		}
 		if _, err := os.Stat(filepath.Join(dir, s.marker)); err != nil {
 			return fmt.Errorf("the %s leg needs the sibling checkout %s (%s is missing): run 'make deps'", lang, dir, s.marker)
 		}
 	}
 	return nil
+}
+
+// fromRepoRoot resolves a relative sibling path against the repository root
+// (the directory holding go.mod, found by walking up from the working
+// directory). make deps stages the siblings beside the repository root, so a
+// relative path is read from there, never from the directory the test or the
+// harness was started in. An absolute path is returned unchanged.
+func fromRepoRoot(dir string) (string, error) {
+	if filepath.IsAbs(dir) {
+		return dir, nil
+	}
+	root, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(root, "go.mod")); err == nil {
+			return filepath.Join(root, dir), nil
+		}
+		parent := filepath.Dir(root)
+		if parent == root {
+			return "", fmt.Errorf("no go.mod above the working directory: cannot find the repository root to resolve the sibling checkout %s", dir)
+		}
+		root = parent
+	}
 }
