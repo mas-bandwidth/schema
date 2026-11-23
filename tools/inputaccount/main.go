@@ -2,7 +2,7 @@
 // naming the input and the leg, when the leg never opened an input of the
 // family that is on disk.
 //
-//	inputaccount -family NAME -leg LEG [-canary extra|wrong] [MAKEVAR=value ...]
+//	inputaccount -family NAME -leg LEG [-check-extra | -canary extra|wrong] [MAKEVAR=value ...]
 //
 // THE RULE (2026-11-22): every test input on disk is consumed and judged by
 // every leg that claims it, or the run fails and names the input. Drivers
@@ -21,6 +21,10 @@
 //     red unless the leg reads it and judges it.
 //   - wrong: the first byte of one input (a .bin when there is one) is
 //     flipped. The leg opens it and must judge it wrong.
+//
+// With -check-extra, the same open trace must prove a passing leg opened
+// every genuine input and would fail an inventory that also owed the
+// physically present extra file. The wrong canary runs independently.
 //
 // A canary exits 0 when the planted run went red, and 1, CANARY FAILED,
 // when it stayed green. Both restore the tree before exiting.
@@ -49,10 +53,19 @@ func run(args []string, stdout, stderr io.Writer) int {
 	family := fs.String("family", "", "the input family (internal/inputfamilies)")
 	leg := fs.String("leg", "", "the reader leg")
 	canary := fs.String("canary", "", "plant a canary: extra or wrong")
+	checkExtra := fs.Bool("check-extra", false, "check the genuine inventory and the extra-file canary in one run")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	say := func(format string, a ...any) { _, _ = fmt.Fprintf(stderr, "inputaccount: "+format+"\n", a...) }
+	if *checkExtra && *canary != "" {
+		say("-check-extra and -canary cannot be used together")
+		return 2
+	}
+	mode := *canary
+	if *checkExtra {
+		mode = "extra"
+	}
 	t, err := inputfamilies.Load(".")
 	if err != nil {
 		say("%v", err)
@@ -73,13 +86,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 		say("%s: enumerated no inputs from disk: a run over 0 inputs is not a pass", *family)
 		return 1
 	}
-	planted, undo, err := plant(*canary, want)
+	planted, undo, err := plant(mode, want)
 	if err != nil {
 		say("%v", err)
 		return 2
 	}
 	defer undo()
-	if *canary == "extra" {
+	if mode == "extra" {
 		want = append(want, planted)
 		sort.Strings(want)
 	}
@@ -100,7 +113,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	// Force make to treat tracked .schema inputs as newly modified so a warm
 	// build/ tree never skips ./bin/schema generate and misses IN_OPEN.
 	for _, p := range want {
-		if strings.HasSuffix(p, ".schema") && (*canary != "extra" || p != planted) {
+		if strings.HasSuffix(p, ".schema") && (mode != "extra" || p != planted) {
 			makeArgs = append(makeArgs, "-W", p)
 		}
 	}
@@ -131,6 +144,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	if runErr != nil {
 		say("leg %s: make %s: %v", *leg, target, runErr)
+	}
+	if *checkExtra {
+		if runErr != nil || len(missing) != 1 || missing[0] != planted {
+			say("FAILED %s %s: the leg must pass and open every genuine input, leaving only %s unread", *family, *leg, planted)
+			return 1
+		}
+		say("%s %s: every one of %d genuine inputs opened, and the leg passed", *family, *leg, len(want)-1)
+		say("canary extra %s %s: the expanded inventory went red for the one unread extra input %s", *family, *leg, planted)
+		return 0
 	}
 	if *canary == "" {
 		if red {

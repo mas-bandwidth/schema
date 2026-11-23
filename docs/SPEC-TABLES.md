@@ -1195,8 +1195,10 @@ The framing is exactly the non-optional field's, which makes `?T` and a
 plain `T` nesting **one framing with two spellings**: for any value that is
 not entirely default, no byte moves between the two, in either direction.
 **The LINEAGE runs one way** (R16, 2026-11-22: *"once a field is optional, it
-must stay optional forever"*): `T` to `?T` is a WIDENING, and every old value
-lands present; `?T` to `T` is a NARROWING, refused at check time by the
+must stay optional forever"*): `T` to `?T` is a WIDENING. On the variable
+form, an old field lands present if it rode on the wire and absent if the
+writer elided it. On the fixed form, the old plain slot is stored and lands
+present (§3.4). `?T` to `T` is a NARROWING, refused at check time by the
 baseline, naming the field (§18.2), by the lock (§21.1) and at read by the
 fixed form (§3.4). The one rule is §4's, THE ONE WIDENING RULE.
 
@@ -1215,7 +1217,11 @@ direction misdecodes — an absent field reads as the declared default by value
 and as absent through an optional, each of which is the right answer — but the
 bytes are not identical for an all-default value, and an implementer should not
 be promised that they are. The corpus holds both directions, and the
-byte-identity of the two writers **over non-default content**.
+byte-identity of the two writers **over non-default content**. For the
+variable form, [`test_optional_three_way_evolution`](../test/tables/main.cpp)
+checks that the elided by-value field loads as absent. The `chain_value_empty`
+and `chain_optional_empty` variable wires in `testdata/wire/tables/` pin the
+different spellings.
 
 **`?` on a bounded array — `?[..N]T` and `?[N]T` — is the same construct
 one shape up**, and every rule above reads through unchanged. The storage is
@@ -8327,7 +8333,10 @@ one FIELD (or union ARM) under a parent path `P`:
      field's or arm's name id, kind = `16` for an enum-keyed array, `14` for any
      other array or a `bytes(N)`, else the field's own layout leaf kind: `13`
      table, `15` union, `12` string, `7` enum, `9` flags, `5` timestamp, the
-     scalar's kind otherwise).
+     scalar's kind otherwise). For `bits(N)`, the kind follows the declared
+     bit count as in the layout entry: `6` for 1–8, `7` for 9–16, `8` for
+     17–32, and `9` for 33–64. A `bits(6)` uses kind `6` in the path and
+     occupies four bytes in the record.
   2. An optional field appends segment `?`, kind `35`, id `0`.
   3. A COUNTED array emits row `C` at that path: the minimum count, `u64`.
   4. An array or keyed array (not a `bytes(N)`, which has no element segment)
@@ -9374,8 +9383,8 @@ diagnostic name, which is not normative and is never compared:
   only allow widening, not narrowing."* and *"If it is a user error, or an
   incorrect use, refuse."*): **a lineage may WIDEN what a field holds and
   never NARROW or RETYPE it.** The widenings are an integer kind to a wider
-  one of the SAME signedness, `f32` to `f64`, and `T` to `?T` (every old value
-  lands present); a bound, a capacity or a range moved outward is the same
+  one of the SAME signedness, `f32` to `f64`, and `T` to `?T` (presence follows the
+  form's field representation, §2.3); a bound, a capacity or a range moved outward is the same
   rule at an extent (§18.1, §21.1). The reverse of each is a narrowing, and
   every other change of a field's type is a RETYPE: `int64` to `string`, a
   field moved to or from `*T`, `int64` to `timestamp` or back, an enum to its
@@ -9683,7 +9692,7 @@ only.
 | a MAP changed to or from `[E]T`, a scalar, a string or a pointer (§2.8) | refuses `kind_mismatch` | **refuses** | **moves** |
 | an array changed between `[]T` and `[..N]T` (§2.9) | silent where the count fits the new bound, refuses `count_over_bound` past it | **warns** on the direction that ADDS a bound, as any capacity shrunk, and passes on the one that removes it | **moves**, because the storage is a reference and a count on one side and the maximum inline on the other |
 | an unbounded array's ELEMENT retyped, or moved to or from `[]*T` (§2.9) | refuses `kind_mismatch` | **refuses**, as any element kind changed | **moves** |
-| a field moved from `T` to `?T` | silent — non-default content shares bytes; present defaults read | **passes** — a widening (§4, THE ONE WIDENING RULE): every old value lands present | **moves** — the presence companion is storage |
+| a field moved from `T` to `?T` | silent — non-default content shares bytes; present defaults read | **passes** — a widening (§4, THE ONE WIDENING RULE); presence follows §2.3 | **moves** — the presence companion is storage |
 | a field moved from `?T` to `T` | silent on the variable form — no byte moves for non-default content; the fixed form refuses it at read (§3.4) | **refuses**, naming the field — a narrowing (R16; §4, THE ONE WIDENING RULE) | **moves** — the presence companion is storage |
 | a field moved to or from `*T` | refuses the whole load `kind_mismatch` (R14) | **refuses** — a pointer is kind 17, so the edit is an ordinary kind change | **moves** |
 | an `if` GUARD added or removed | silent, and the read is faithful; the cost is the next WRITE | passes | no |
@@ -18827,8 +18836,9 @@ byte-identically and the rendering version does not move.
 
 **Presence is RECORDED, and it runs ONE WAY** (R16, 2026-11-22: *"once a
 field is optional, it must stay optional forever"*). A field moved from `T` to
-`?T` passes: it is a widening, every old value lands present, and a present
-optional default is a lawful payload for an older plain reader (§2.3, §4). A
+`?T` passes: it is a widening. On the variable form, presence follows whether
+the field rode, and a present optional default is a lawful payload for an older
+plain reader (§2.3, §4). A
 field moved from `?T` to `T` is a narrowing and is REFUSED, naming the field
 (§4, THE ONE WIDENING RULE), although the variable wire cannot see it: the
 baseline is what holds it. A field moved to or from `*T` is a kind change and
