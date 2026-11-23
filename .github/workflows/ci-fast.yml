@@ -2770,11 +2770,10 @@ jobs:
   # committed pin is REWRITTEN from its generator and `testdata/` is diffed
   # against HEAD, so a hand-written golden (a .bits or .bin typed or edited by
   # a person or a child) fails on the push that adds it instead of at the
-  # nightly. Five rows, each one family's writers, each inside the two-minute
-  # cap on its own (measured on amd-3, warm: source+framing 45 s, wire-packet
-  # 9 s, wire-tables 38 s, wire-tables-forms 20 s, conformance 70 s):
-  #   source              testdata/golden/ (Go goldens, C++/C/C# table copies)
-  #                       and testdata/wire/tables/framing (FRAMING_WRITE=1)
+  # nightly. Each row runs under the two-minute cap:
+  #   source              C++/C/C# table copies and the framing byte proofs
+  #   source-goldens      the Go golden tests, in their own checkout because
+  #                       they also rewrite table pins
   #   wire-packet         testdata/wire/*.bin, *.bits, packet-defaults/,
   #                       bench_*.bin: EMPTIED FIRST (pins-fresh-wire-packet), so
   #                       a file no generator writes shows as a deletion
@@ -2799,7 +2798,9 @@ jobs:
       matrix:
         include:
           - row: source
-            target: pins-source pins-framing
+            target: pins-source-cpp pins-source-c pins-source-cs pins-framing
+          - row: source-goldens
+            target: pins-source-goldens
           - row: wire-packet
             target: pins-fresh-wire-packet
           - row: wire-tables
@@ -2813,7 +2814,7 @@ jobs:
       - uses: ./.github/actions/merge-main
 
       - name: Check out the C++ serialize runtime (pinned release)
-        if: ${{ matrix.row != 'source' }}
+        if: ${{ matrix.row != 'source' && matrix.row != 'source-goldens' }}
         run: |
           set -euo pipefail
           cd ..
@@ -2832,8 +2833,7 @@ jobs:
           TARGETS: ${{ matrix.target }}
         run: |
           set -euo pipefail
-          # the source row's two targets share testdata/golden: serial, as in
-          # the Makefile's own aggregate
+          # Keep the source row's writers serial, as in the Makefile aggregate.
           for t in $TARGETS; do make -j"$(nproc)" "$t"; done
 
       - name: the pins are current
