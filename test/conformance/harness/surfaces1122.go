@@ -150,7 +150,7 @@ type ReadInto struct {
 	Root    string
 	Form    string
 	Lawful  string
-	Damaged string
+	Refused string
 	Count   int
 }
 
@@ -163,7 +163,7 @@ func parseReadInto(f []string, where string) (ReadInto, error) {
 	if len(f) != 8 {
 		return ReadInto{}, fmt.Errorf("%s: read-into takes case, unit, root, form, lawful, damaged, count", where)
 	}
-	r := ReadInto{Name: f[1], Unit: f[2], Root: f[3], Form: f[4], Lawful: f[5], Damaged: f[6]}
+	r := ReadInto{Name: f[1], Unit: f[2], Root: f[3], Form: f[4], Lawful: f[5], Refused: f[6]}
 	if !readIntoForms[r.Form] {
 		return r, fmt.Errorf("%s: %q is not a read-into form (variable, fixed, message, json, fixed-nocap)", where, r.Form)
 	}
@@ -172,7 +172,7 @@ func parseReadInto(f []string, where string) (ReadInto, error) {
 		return r, fmt.Errorf("%s: %q is not a count of values", where, f[7])
 	}
 	r.Count = n
-	if (r.Form == "fixed-nocap") != (r.Damaged == "-") {
+	if (r.Form == "fixed-nocap") != (r.Refused == "-") {
 		return r, fmt.Errorf("%s: a fixed-nocap row, and only it, takes damaged -", where)
 	}
 	if (r.Form == "variable" || r.Form == "json") && n != 1 {
@@ -197,7 +197,7 @@ func (r ReadInto) derivedLine(m *Manifest) (string, error) {
 	if r.Form == "fixed-nocap" {
 		count = "-"
 	}
-	return fmt.Sprintf("read-into %s %s %s %s %s %s %s %s\n", r.Name, unit, r.Root, r.Form, r.Lawful, r.Damaged, count, announcement), nil
+	return fmt.Sprintf("read-into %s %s %s %s %s %s %s %s\n", r.Name, unit, r.Root, r.Form, r.Lawful, r.Refused, count, announcement), nil
 }
 
 // JSONWriteInto is one `json-write-into` row: the instance's text written in
@@ -344,7 +344,7 @@ func generate1122(u *units, m *Manifest) error {
 				for _, c := range []struct {
 					path  string
 					reads bool
-				}{{r.Lawful, true}, {r.Damaged, false}} {
+				}{{r.Lawful, true}, {r.Refused, false}} {
 					wire, err := os.ReadFile(c.path)
 					if err != nil {
 						return fmt.Errorf("read-into %s: %w", r.Name, err)

@@ -72,6 +72,9 @@ func TestSharedFixturesCanonical(t *testing.T) {
 		files = append(files, fileRow{x.Name, x.Unit, x.Root, x.Wire, true, false})
 	}
 	for _, x := range m.WriteRefusals {
+		if x.Wire == "-" {
+			continue
+		}
 		unit := x.Unit
 		if x.Form == "message" {
 			c, e := m.LookupConnection(x.Unit)

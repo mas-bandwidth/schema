@@ -127,16 +127,26 @@ func (m *Model) checkField(owner string, fv *Field, seen *checkWalk) error {
 		return nil
 	}
 	if f.IsMap() {
+		seenKeys := make(map[mapKeyIdentity]bool, len(fv.Entries))
 		for i := range fv.Entries {
-			if err := m.checkInstance(fv.Entries[i].Tab, seen); err != nil {
+			entry := fv.Entries[i].Tab
+			if err := m.checkInstance(entry, seen); err != nil {
 				return err
+			}
+			if entry != nil && len(entry.Fields) > 0 {
+				id := identityOf(f, MapKeyOf(f, entry))
+				if seenKeys[id] {
+					return bad("duplicate map key")
+				}
+				seenKeys[id] = true
 			}
 		}
 		return nil
 	}
 	if f.Array != ir.ArrayNone {
 		cells := fv.Elems
-		if f.CountedOnWire() {
+		switch {
+		case f.CountedOnWire():
 			if fv.Count < 0 || fv.Count > len(cells) || (f.Array == ir.ArrayCounted && int64(fv.Count) > f.ArrayBound) {
 				return bad("count %d past its bound", fv.Count)
 			}
@@ -144,6 +154,10 @@ func (m *Model) checkField(owner string, fv *Field, seen *checkWalk) error {
 				return bad("count %d under its minimum %d", fv.Count, f.ArrayMin)
 			}
 			cells = cells[:fv.Count]
+		case f.Array == ir.ArrayFixed, f.KeyEnum != "":
+			if int64(len(cells)) != f.ArrayBound {
+				return bad("array holds %d elements, declared %d", len(cells), f.ArrayBound)
+			}
 		}
 		for i := range cells {
 			if err := m.checkCell(name, &cells[i], f, seen, bad); err != nil {
