@@ -37,6 +37,7 @@ function TableVariableTextListClamp(fd, report) {
 }
 function TableVariableTextListRead(fd, inp, v, depth, graph, report) {
   if (inp.peek() !== "[") { inp.bad = true; return false; }
+  if (depth + 1 > 128) { inp.bad = true; return false; }
   inp.p++;
   const out = [], vf = fd.e.c.fields[0];
   v[fd.n] = out;
@@ -49,14 +50,14 @@ function TableVariableTextListRead(fd, inp, v, depth, graph, report) {
     if (count >= bound || dropped) {
       // an element past [..N] counts, the total having dropped it or not (§2.13)
       if (count >= bound) { TableVariableTextListClamp(fd, report); }
-      if (!inp.skip(depth + 1, graph, report)) { return false; }
+      if (!inp.skip(depth + 2, graph, report)) { return false; }
     } else {
       const record = fd.e.c.make(), shape = inp.shape();
       if (shape === "z" && vf.opt) {
         if (!inp.literal("null")) { return false; }
       } else if (shape !== "s") {
         report.mismatch++;
-        if (!inp.skip(depth + 1, graph, report)) { return false; }
+        if (!inp.skip(depth + 2, graph, report)) { return false; }
       } else {
         const before = report.oor;
         if (!TableVariableTextField(vf, inp, record, depth + 1, graph, report)) { return false; }

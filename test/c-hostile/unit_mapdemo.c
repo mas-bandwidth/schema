@@ -1,12 +1,15 @@
 /* the mapdemo unit (tables/maps). */
+#include "DepthTable.h"
 #include "TextTable.h"
 #define HC_PACKAGE mapdemo
 #define HC_PACKAGE_UPPER MAPDEMO
 #include "hostile_c.h"
 
+HC_VAR( depth )
 HC_VAR( text )
 
 static const hc_binding_t rows[] = {
+    { HC_VAR_FIELDS( "tables/maps", "Depth", depth ) },
     { HC_VAR_FIELDS( "tables/maps", "Text", text ) },
 };
 

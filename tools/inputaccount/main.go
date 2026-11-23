@@ -109,6 +109,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	makeArgs = append(makeArgs, fs.Args()...)
 	say("%s %s: make %s (%d inputs owed)", *family, *leg, strings.Join(makeArgs, " "), len(want))
 	cmd := exec.Command("make", makeArgs...)
+	if *canary == "wrong" {
+		cmd.Env = append(os.Environ(), "CONFORMANCE_FAIL_FAST=1")
+	}
 	cmd.Stdout, cmd.Stderr = stdout, stderr
 	runErr := cmd.Run()
 	opened, werr := w.stop()
