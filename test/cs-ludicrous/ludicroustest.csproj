@@ -7,6 +7,7 @@
        TreatWarningsAsErrors is the refuser for the generated source; no test
        framework, exit code = verdict (the family rule). -->
   <PropertyGroup>
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj/**;bin/**</DefaultItemExcludes>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>disable</ImplicitUsings>
