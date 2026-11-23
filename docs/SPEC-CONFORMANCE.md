@@ -522,6 +522,9 @@ fixed table Probe { x int32 }
 | Explicit entry budget 1 | Accept, count 0 | Accept, count 1 |
 | Default entry budget and explicit byte budget 0 | Accept, count 0 | Refuse with `vocabulary_too_large` and leave `announced` false |
 
+The reference engine exercises the same limits in `TestAnnouncementEntryBudget`
+under `internal/tablewire`.
+
 Run the native C#, Unity, Java, Lua, Luau, MOO and Squirrel probes with
 
 ```sh
