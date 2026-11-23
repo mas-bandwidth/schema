@@ -351,6 +351,14 @@ and the elements to `dst`**, where a text field's row is the other way round (fi
 from a stranger's layout gets a count destination that is the BUFFER'S FIRST FOUR BYTES and an element
 destination that is the LENGTH FIELD, and no record this build wrote can see it.
 
+**The minimum count of a `bytes(N)` field is zero.** The binary flavour
+`3` is operation metadata and never supplies an array count or bound.
+When a supported older writer's layout is read through a compiled plan,
+the reader accepts every lawful used length from zero through the writer's
+capacity and copies exactly those bytes, preserving the used length. A
+larger reader capacity adds only zero-filled slack. A counted array
+`[Min..N]T` takes its minimum from the declared `Min`.
+
 **The plan is PARTITIONED: every unguarded entry first, then every guarded one, and the plan states where the
 second half starts.** Entries
 are independent and a union's arms mutually exclusive, so the order is free, and the entries that are nearly all

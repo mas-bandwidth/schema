@@ -31,6 +31,15 @@ conformance:
   over zeroed storage. `unsigned-subtraction` is the row for SPEC §4.2's rule
   that a field never shadows a same-named constant: a target that emits
   `half = half` fails to compile (Dart did, caught by this pin).
+- **The fixed byte-buffer lineage pins** (`test/verify-tablegen/pinned.go`):
+  `pin:bytes_lineage:empty` and `pin:bytes_lineage:short`. Both load a
+  supported `bytes(2)` writer's fixed file with a `bytes(6)` reader and
+  compare the reader's fixed save byte for byte with the same value written
+  directly under the reader's layout. The older values are zero bytes and
+  the two bytes `00 ff`. Both must read whole and unchanged
+  ([FIXED-FORM-ALGORITHM §4.1](FIXED-FORM-ALGORITHM.md#41-the-plan)).
+  Run on a target with `make verify-tablegen-<lang>`. To select this pair
+  alone, pass `--only pin:bytes_lineage:` to `build/verify-tablegen-bin`.
 - **The cards corpus**: `tables/cards/conformance/` (`MANIFEST.txt`,
   `FORMAT.md`, `cases/`, `expected/`).
 - **The harness and driver contract**: `test/conformance/` (the harness in
