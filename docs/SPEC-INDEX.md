@@ -1,5 +1,9 @@
 # Spec index, 2026-11-22
 
+See the [2026-11-23 coverage supplement](#2026-11-23-coverage-supplement) for
+the release and integration snapshots. The original index below records its
+2026-11-22 snapshot.
+
 Glenn, 2026-11-22: "the next step I would like to see is you getting the spec
 finalized with everything we have fixed, and the test cases in it."
 
@@ -318,3 +322,61 @@ carries #4638 (FL-31); #4732 and #4733 (H1 to H3); #4658 (SF-W2); #4740
 RV1 to RV4, which also lack rows); #4636 (P4); and this PR (P3). The rows of
 R2, R5 and R9 (#4680) and of R4 (#4690) are per-port tables, not harness rows,
 so those rules are counted under no row.
+
+## 2026-11-23 coverage supplement
+
+Source inventory at the following commits. A registered case here means the
+row exists in the tree. Execution and release claims apply to their own
+commits and surfaces.
+
+| Snapshot | Commit | Evidence |
+|---|---|---|
+| Published v3.0.13 | `27a251c91aa1` | #4501, plus the spec and corpus work already on the release branch, including #4737, #4732, #4733 and #4740 |
+| Main checked for this supplement | `d326bb61b335` | Same four spec documents, table manifest and packet-refusal row file as v3.0.13 |
+| Wave 2 #4843, open | `0d6328812b72` | Its description reports 33,588 credited answers for landing candidate `46cd8a6095a5`; the inspected PR head is later. That total is for the table run described there. |
+| Wave 3 staging `stella/4808-on-wave2` | `4de8f8b11f19` | #4808 source registrations integrated over a Wave 2 predecessor. The current #4843 head is outside this snapshot's history. |
+| #4808 driver integration `emma/4808-merged-drivers` | `cc0b6c62ab68` | Separate driver tree, missing shared rows present in Wave 3 staging, including the Wave 2 R15 pair. Treat each tree's evidence at its own head. |
+
+The table cases below use [the tables manifest](../testdata/conformance/tables/MANIFEST.txt).
+Packet cases use [the packet-refusal row file](../test/conformance/write-refusal-packet/rows.txt).
+The [conformance addendum](SPEC-CONFORMANCE.md) §4 defines the lawful-twin
+and absence scoring rules, and §7 traces the rules to their sources.
+
+### Published clauses and additional Wave 2 evidence
+
+| Index rule and clause | Present in v3.0.13 | Additional cases in Wave 2, also in Wave 3 staging |
+|---|---|---|
+| H1–H3, G7 / R13, addendum §§3–4 and driver protocol | An ordinary refusal says `refused`; an empty `.absent` declares an absence. Same-group lawful twins and explicit absence accounting landed in #4732 and #4733. `TestWireRefusedSpelledRefusedScoresPass` checks the wire verdict. | The later driver registrations apply the published protocol. |
+| R14–R16, SPEC-TABLES §§3.3, 4, 18.2 and VERSIONING | The retype, per-value announcement range and one-way optional rules are in the published wording. | R14 `prior_restring_kind` / `prior_kept64_inside`, `prior_stamp_kind` / `prior_stamped_inside`, and the `r14_*` report rows. R15 `prior_band_past` / `prior_band_inside`. R16 `r16_optional_plain_as_optional` plus `TestBaselineOptionalIsOneWay` for baseline classification. |
+| R17, SPEC-TABLES §§3, 3.3, 4, 18.2 | Widening and held kind 31 are stated. The manifest already has `escape_*` report and `varevo_kind31_*` framing, report and retain rows. | `r17_flags_{past,inside}_width`, `r17_fixed_flags_{past,inside}_width`, and `prior_flags_past` / `prior_flags_inside` cover reader width across the three forms. `TestBaselinePassesEveryWidening` covers baseline classification. |
+| FL-05/09/12/27, SPEC-TABLES §§16.2, 16.8 | The rules and the placed/skipped `rr-depth-*` cases are published. | `sp-enum-none-name`, `sp-map-key-{256,300,301}-wide`, `sp-skip-depth-{129,130}`, and `sp-b64-escaped-noncanonical`. A flags array or text list at the depth boundary still needs a row. |
+| R7, FL-37, G17, SPEC-TABLES §16.7 | Published label grammar and existing skipped-label rows. | `skipped-ampersand-key-variable` and `skipped-label-undefined-pointer-free` cover the pointer-free variable root distinction. |
+| R10, FL-19/25, G19/22, SF-R1 and SF-21, SPEC §5.1 and SPEC-TABLES §§2.15, 16.2, 22.2 | The counted-minimum and deprecated enum rules are published. | `sp-count-min-*`, `sp_count_min_*`, `arm-min-fix-*`, `armmin_fix_count_*`, `plain-min-*`, `plainmin_fix_count_*`, the `sp-enum-*-deprecated` and `sp_enum_*_deprecated` read cases, and the `jref_enum_*deprecated*` JSON write cases. The fixed writer pair is `fref_count_min` / `fref_count_min_ok`. |
+| FL-31/33/34/35 and G26/G27, SPEC §§4.2, 4.6 and SPEC-TABLES §§3.3–3.4, 6.3 | The clauses cover buildable names, float literals, aliases, fixed presence, announcement capacity and measure attribution. | `internal/check/buildable_names_test.go`, `TestRulingsR2R5R9PortRows`, `TestFixedLineageOptionalIntoBareRefusesKindMismatch` and `testdata/conformance/frontend/vector.txt`. The Go tests and compiler vector are reference evidence. R2, R5 and R9 still lack portable driver rows that isolate each contract. |
+
+### Wave 3 registrations
+
+| Rule and clause | Registered case families at `4de8f8b11f19` |
+|---|---|
+| R3/R8b, FL-18/36/38, SPEC-TABLES §3.3 | Seven `announce` cases: `ann_4096_write`, `ann_4097_write`, `ann_strict_peer`, `ann_lenient_peer`, `ann_strict_own`, `ann_send_narrow`, `ann_send_arrays`. R9's explicit zero capacity is a separate boundary. |
+| R4, FL-02/03/17/29, SPEC-TABLES §§3.4, 6.5 | Five `read-into` cases: `ri_variable`, `ri_json`, `ri_fixed`, `ri_message`, `ri_fixed_5000`. |
+| FL-14/15, SPEC-TABLES §16.1 | Five `json-write-into` cases: `jwi_float_misc`, `jwi_float64_ties`, `jwi_float_exp`, `jwi_negative_zero`, `jwi_root_full`. The row inventory alone gives no per-port locale run evidence. |
+| FL-11/16, SPEC-TABLES §§2.3, 16.2 | `surf_chain127_vals`, `surf_chain128_vals`, `graph_chain_past_cap`, `surf_holder_null_required`, `surf_holder_present`. |
+| FL-04/06/22 and SF-20/22/28/34/35/38, SPEC §5.1 and SPEC-TABLES §16.2 | `sref_{int8,uint8,uint32}_*`, `*_mask_{named,unnamed}`, `sref_count_*` / `sjref_count_*`, `sref_map_dupkey*` / `sjref_map_dupkey*`, and short/long/exact fixed-length rows on the variable, fixed, message, JSON and cook write-refusal surfaces. Whether an edit is representable is a driver result. |
+| SF-05/06/17/18/19/23, SPEC §5.1 and SPEC-TABLES §§3.3–3.4 | `smref_big_*` includes the message ceiling, flags and compressed-range rows; `smref_{narrow,wide}_hp_*` covers the two declarations' separate ranges. Packet compression uses a different surface. |
+| FL-28, SF-25/29/37, SPEC-TABLES §7.6 and SPEC §5.1 row 7 | Eleven `write-refusal-cook` rows, including `cref_cycle` / `cref_shared_ok`, `cref_count_*`, `cref_{non_finite,infinite,finite_ok}`, and `cref_fixed_{long,ok}`. No deprecated enum cook-refusal case is registered (SF-26). |
+| SF-31, SPEC-TABLES §19.1 | Six `write-refusal-block` rows in the `bref_length*`, `bref_range*`, and `bref_elems_*` pairs. |
+
+### Reconciliation of #4771 and #4772
+
+| Claim | Exact PR head evidence | State at both Wave heads above |
+|---|---|---|
+| #4771, SF-13/14/15 (SPEC §5.1 rows 1–4, 8) | `5e0a44842e1a` has 14 `TortureVarWref` rows on `write-refusal`: `sfw_opt_arr_{long,ok}`, `sfw_arm_bits_{wide,ok}`, `sfw_arm_range_{high,max,low,min}`, `sfw_arm_str_{long,ok}`, `sfw_slot_{high,max,low,min}`. | All 14 IDs are missing. Existing `sfv_opt_bits_*` and `sfv_elem_bits_*` exercise other carriers. Most retained cases have lawful controls in #4771; that PR's exact-head execution was not independently checked here. |
+| #4771, SF-09/21/26 | #4771's PR description says the bytes, fixed minimum and deprecated-enum cases were withdrawn from its retained set. | Wave 2 carries the separate fixed-minimum pair `fref_count_min` / `fref_count_min_ok`. Wave 3 cook rows do not cover write-time deprecated enum, and the retained carrier rows in #4771 do not cover SF-09 or arm bytes and arm array. |
+| #4772, SF-08 (SPEC §5.1 row 10) | `8b0dd5a18fc4` has six packet rows: four `ratio_{high,low,nan,inf}` refusals and two accepted `ratio_at_{max,min}` controls. The PR reports results for eleven drivers and identifies C, C++, C#, Unity, Rust, Java and Dart probes as owing the ratio operation. | All six IDs are missing from the packet row file. The text rows for SF-07 are present. `smref_big_ratio_*` exercises messages and cannot establish C# or Unity packet coverage. |
+
+There is no row credit for either missing case set merely because #4843 lists
+the PR numbers. The remaining coverage work is to restore the carrier and
+packet case sets through their own surfaces, establish the affected-port
+results, and leave the withdrawn or unexpressed cases open until corresponding
+evidence exists.
