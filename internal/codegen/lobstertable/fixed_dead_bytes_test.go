@@ -19,7 +19,7 @@ import (
 // (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5, §5.3; docs/SPEC-TABLES.md §3.4,
 // §13.10; docs/rulings.json fixed-dead-bytes-are-zero). Each vector the
 // shared corpus marks refused is refused by the generated Lobster load and
-// leaves the caller's destination as it was; each control reads and saves
+// resets the caller's destination to its declared defaults (ruling R4); each control reads and saves
 // back the same bytes.
 func TestFixedDeadBytesAreZero(t *testing.T) {
 	t.Parallel()
@@ -39,6 +39,10 @@ def read_in() -> string:
 let values = [tbldead.NewDeadRoot()]
 let before = hexline(tbldead.DeadRootFixedSave(values))
 print("before " + before)
+values[0].ArrCount = 2
+values[0].Arr[0] = 9
+values[0].Text = write_int8_le(schema_rt.zeros(8), 0, 65)
+values[0].TextLength = 1
 let plan:[schema_rt.TableFixedEntry] = []
 for(4096): push(plan, schema_rt.TableFixedEntry {})
 let report = schema_rt.TableReport {}
@@ -86,7 +90,7 @@ else:
 				t.Fatalf("%s: the load read a record with a non-zero dead byte: %s", vec.File, lines[1])
 			}
 			if saved != before {
-				t.Errorf("%s: the refusal changed the caller's destination:\n got %s\nwas %s", vec.File, saved, before)
+				t.Errorf("%s: the refusal left the caller's destination off its defaults:\n got %s\nwant %s", vec.File, saved, before)
 			}
 		})
 	}

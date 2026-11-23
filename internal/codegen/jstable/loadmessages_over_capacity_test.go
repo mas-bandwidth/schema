@@ -9,7 +9,7 @@ import (
 // TestJsLoadMessagesOverCapacityReturnsZero holds docs/SPEC-TABLES.md §3.3's
 // rule that a batch whose count is above the caller's storage is refused by
 // name and returns 0, as every refused batch does: the report says refused and
-// nothing in the caller's storage changes.
+// (R4) every value handed in is back at its declared default.
 func TestJsLoadMessagesOverCapacityReturnsZero(t *testing.T) {
 	t.Parallel()
 
@@ -37,14 +37,14 @@ const batch = buf.subarray(0, n);
 for (const capacity of [1, 2]) {
   const storage = Array.from({ length: capacity }, () => new Probe());
   for (let i = 0; i < capacity; i++) { storage[i].value = 900 + i; }
-  const before = JSON.stringify(storage);
+  const defaults = JSON.stringify(Array.from({ length: capacity }, () => new Probe()));
   const report = {};
   const count = ProbeLoadMessages(storage, v, batch, report);
   if (count !== 0 || report.Verdict !== 1 || report.Reason !== "batch_too_large" || report.Damaged) {
     fail("LoadMessages above capacity " + capacity + ": count=" + count + " " + JSON.stringify(report));
   }
-  if (JSON.stringify(storage) !== before) {
-    fail("LoadMessages above capacity " + capacity + " changed the caller's storage: " + JSON.stringify(storage));
+  if (JSON.stringify(storage) !== defaults) {
+    fail("LoadMessages above capacity " + capacity + " left the caller's storage off its defaults: " + JSON.stringify(storage));
   }
 }
 

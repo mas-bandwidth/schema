@@ -15,8 +15,12 @@ import (
 // through the generated JavaScript's LoginRequestLoadMessages. Storage for one
 // body whose client_build is the sentinel 17 owes "A refused batch returns a
 // count of `0`" and "refuses before it decodes anything" (docs/SPEC-TABLES.md
-// §3.3): 0, batch_too_large, the sentinel untouched. Storage for two owes 2 and
-// 40 in both. A caller's capacity is a resource limit (§6.5), so this row runs
+// §3.3): 0, batch_too_large, and (R4) every value handed in at its declared
+// default, not the sentinel. Storage for THREE sentinel values owes the same
+// 0 and all three at their defaults after a framing refusal (the form byte
+// changed), a body refusal (the last byte dropped) and a close refusal (a byte
+// past the pad): slot 2 is past the batch's count, so only a reset of the whole
+// array reaches it. Storage for two owes 2 and 40 in both. A caller's capacity is a resource limit (§6.5), so this row runs
 // here, in the leg's own tests, never in the shared suites.
 func TestJsMessageLoadCapacityFixture(t *testing.T) {
 	t.Parallel()
@@ -33,8 +37,25 @@ const one = [new LoginRequest()];
 one[0].clientBuild = 17;
 const report = {};
 const count = LoginRequestLoadMessages(one, v, wire, report);
-if (count !== 0 || report.Verdict !== 1 || report.Reason !== "batch_too_large" || one[0].clientBuild !== 17) {
+if (count !== 0 || report.Verdict !== 1 || report.Reason !== "batch_too_large" || one[0].clientBuild !== new LoginRequest().clientBuild) {
   fail("storage for one: count=" + count + " client_build=" + one[0].clientBuild + " " + JSON.stringify(report));
+}
+const defaultBuild = new LoginRequest().clientBuild;
+if (defaultBuild === 17) { fail("the sentinel is the default"); }
+const damaged = {
+  "framing": Uint8Array.from(wire, (x, i) => (i === 0 ? 3 : x)),
+  "body": wire.subarray(0, wire.length - 1),
+  "close": Uint8Array.from([...wire, 0]),
+};
+for (const name of Object.keys(damaged)) {
+  const three = [new LoginRequest(), new LoginRequest(), new LoginRequest()];
+  three.forEach((x) => { x.clientBuild = 17; });
+  const rep3 = {};
+  const got3 = LoginRequestLoadMessages(three, v, damaged[name], rep3);
+  const dirty = three.map((x) => x.clientBuild).join(",");
+  if (got3 !== 0 || (rep3.Verdict === 0 && !rep3.Damaged) || three.some((x) => x.clientBuild !== defaultBuild)) {
+    fail(name + " refusal: count=" + got3 + " client_build=" + dirty + " " + JSON.stringify(rep3));
+  }
 }
 const two = [new LoginRequest(), new LoginRequest()];
 const loaded = {};

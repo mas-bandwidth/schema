@@ -16,8 +16,8 @@ import (
 
 // The second record is damaged so the range pass has already materialized a
 // valid first record. A refusal of the check pass, before any record lands,
-// leaves the whole caller-owned batch untouched (FIXED-FORM-ALGORITHM §5.3); a
-// refusal the bounds pass meets after landing resets the complete batch.
+// and a refusal the bounds pass meets after landing both reset the complete
+// caller-owned batch to its declared defaults (ruling R4).
 func TestLobsterFixedOneRead(t *testing.T) {
 	t.Parallel()
 	const source = `package strictfixed
@@ -101,8 +101,8 @@ let damaged:[string] = [
     substring(wire, 0, length(wire) - 1),
     ""
 ]
-// 123: refused before landing, untouched; 7: refused after landing, reset.
-let held = [123, 123, 123, 123, 7, 7, 7, 123, 123]
+// every refusal, before or after landing, resets the batch: Seq is back at its declared 7.
+let held = [7, 7, 7, 7, 7, 7, 7, 7, 7]
 var case_index = 0
 for(damaged) bad:
     for(back) r: r.Seq = 123
@@ -114,8 +114,8 @@ for(damaged) bad:
         print("damage case " + string(case_index) + " returned " + string(n) + ": " + report.reason)
     case_index += 1
 // Inactive optional payload and counted-array slack are dead bytes: a
-// non-zero one is refused by the check pass, before any record lands, so it
-// leaves the batch untouched.
+// non-zero one is refused by the check pass, before any record lands, and the
+// refusal resets the batch to its defaults.
 var slack = write_int8_le(copy(wire), second + %[2]d, 0)
 slack = write_int8_le(slack, second + %[2]d + 1, 255)
 slack = write_int32_le(slack, second + %[2]d + 2, 99)
@@ -123,7 +123,7 @@ slack = write_int8_le(slack, second + %[3]d + 4 + 8, 255)
 slack = write_int32_le(slack, second + %[3]d + 4 + 8 + 1, 99)
 for(back) r: r.Seq = 123
 let dead_n = strictfixed.RowFixedLoad(back, slack, plan, report)
-if dead_n == -1 and back[0].Seq == 123 and back[1].Seq == 123 and back[2].Seq == 123:
+if dead_n == -1 and back[0].Seq == 7 and back[1].Seq == 7 and back[2].Seq == 7:
     passed += 1
 else:
     print("dead storage failed: " + report.reason)
@@ -195,7 +195,7 @@ func TestLobsterFixedOneReadEnumWiden(t *testing.T) {
     assert_eq(int(back[0].Tier), 2, "valid ordinal preserved")
     assert_eq(back[0].Seq, 9, "following field preserved")
     assert_eq(enumwide.RowFixedLoad(back, read_in("bad.bin"), plan, report), -1, "forged old ordinal refuses")
-    assert_eq(back[0].Seq, 9, "refusal leaves the destination untouched")
+    assert_eq(back[0].Seq, 7, "refusal resets the destination to its defaults")
     print "PASS"
 `, map[string][]byte{"good.bin": wire, "bad.bin": forged})
 	if strings.TrimSpace(out) != "PASS" {

@@ -1135,6 +1135,7 @@ void hash_cases()
             vnew_floor::Floored back; std::memset( (void *) &back, 0xA5, sizeof( back ) );
             back.a = 101; back.b = 202; back.c = 303;
             vnew_floor::Floored fresh; std::memcpy( (void *) &fresh, &back, sizeof( fresh ) );
+            vnew_floor::FlooredReset( fresh ); // the poison, reset: what a refusal owes (R4)
             vnew_floor::TableReport r;
             std::vector<vnew_floor::TableFixedEntry> plan( 4096 );
             const int64_t n = vnew_floor::FlooredFixedLoad( &back, 1, f.data(), (int64_t) f.size(),
@@ -1147,7 +1148,7 @@ void hash_cases()
             check( r.unknown == 0 && r.widened == 0 && r.retained == 0 && r.retain_lost == 0 && r.layout_hash == 0,
                    "hash_known_bytes_differ: a named refusal moves no counter and reports no hash" );
             check( std::memcmp( &back, &fresh, sizeof( back ) ) == 0,
-                   "hash_known_bytes_differ: nothing decoded" );
+                   "hash_known_bytes_differ: nothing decoded, the row at its declared defaults" );
         }
     }
 }
