@@ -42,3 +42,21 @@ conformance-negative-control-ruby-walk: ruby-toolchain-check build/conformance-h
 	@echo 'conformance-negative-control-ruby-walk: sabotaged JSON bool reader caught on json-read while wire stayed green'
 
 test-ruby: conformance-ruby conformance-negative-control-ruby conformance-negative-control-ruby-walk
+
+# THE WRITE CONTRACT's controls on the Ruby leg (docs/SPEC.md 5.1): Ruby
+# refuses in every build, so each removes one refusal from a COPY of the
+# generated tree and requires its write-refusal surface red while the wire (or
+# message) surface stays green.
+.PHONY: conformance-negative-control-ruby-write-refusal conformance-negative-control-ruby-write-refusal-fixed conformance-negative-control-ruby-write-refusal-message
+
+
+conformance-negative-control-ruby-write-refusal: ruby-toolchain-check build/conformance-harness build/conformance-ruby
+	RUBY=$(RUBY) sh test/conformance/ruby/negative-control-write-refusal write-refusal
+
+conformance-negative-control-ruby-write-refusal-fixed: ruby-toolchain-check build/conformance-harness build/conformance-ruby
+	RUBY=$(RUBY) sh test/conformance/ruby/negative-control-write-refusal write-refusal-fixed
+
+conformance-negative-control-ruby-write-refusal-message: ruby-toolchain-check build/conformance-harness build/conformance-ruby
+	RUBY=$(RUBY) sh test/conformance/ruby/negative-control-write-refusal write-refusal-message
+
+test-ruby: conformance-negative-control-ruby-write-refusal conformance-negative-control-ruby-write-refusal-fixed conformance-negative-control-ruby-write-refusal-message
