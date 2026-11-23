@@ -69,6 +69,21 @@ conformance-rows-java: toolchain-java bin/schema
 		${JAVA} -ea -cp ${CONFORMANCE_ROWS_DIR}/java/classes test/conformance/java/rows/$$row.java; \
 	done
 
+# The standard appendix's small executable witnesses use separate fast CI
+# rows so their toolchain compiles do not extend the conformance jobs.
+.PHONY: appendix-java-announcement-budgets appendix-go-fixed appendix-python-fixed
+appendix-java-announcement-budgets:
+	sh test/slowgate/proof $@ 'TestAnnouncementBudgetsJava' \
+		-count=1 ./internal/codegen/javatable -run '^TestAnnouncementBudgetsJava$$'
+
+appendix-go-fixed:
+	sh test/slowgate/proof $@ 'TestGoFixedLoadCapacityWitness TestDeclaredDeprecatedEnumCook' \
+		-count=1 ./internal/codegen/gotable -run '^Test(GoFixedLoadCapacityWitness|DeclaredDeprecatedEnumCook)$$'
+
+appendix-python-fixed:
+	sh test/slowgate/proof $@ 'TestPythonFixedLoadCapacityWitness' \
+		-count=1 ./internal/codegen/pythontable -run '^TestPythonFixedLoadCapacityWitness$$'
+
 # Rust: F8 reads the block unit's PaddedRow. The row is a cargo integration
 # test of a probe crate over the generated one, built offline: the only
 # dependency is the sibling serialize.rs by path.
