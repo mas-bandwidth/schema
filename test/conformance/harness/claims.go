@@ -322,6 +322,37 @@ func walkCases(m *Manifest, add func(surface, name, unit, root string) error) er
 			return err
 		}
 	}
+	for _, a := range m.Announces {
+		root := a.Root
+		if root == "-" {
+			root = ""
+		}
+		if err := add("announce", a.Name, a.Unit, root); err != nil {
+			return err
+		}
+	}
+	for _, r := range m.ReadIntos {
+		unit := r.Unit
+		if r.Form == "message" {
+			conn, err := m.LookupConnection(r.Unit)
+			if err != nil {
+				return err
+			}
+			unit = conn.Unit
+		}
+		if err := add("read-into", r.Name, unit, r.Root); err != nil {
+			return err
+		}
+	}
+	for _, j := range m.JSONWriteIntos {
+		inst, err := m.LookupInstance(j.Instance)
+		if err != nil {
+			return err
+		}
+		if err := add("json-write-into", j.Name, inst.Unit, inst.Root); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
