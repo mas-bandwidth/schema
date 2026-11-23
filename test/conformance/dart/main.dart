@@ -6693,6 +6693,27 @@ int surfaceWriteRefusal(String outDir, String surface) {
           return tables_fixed.loadoutConfigFixedSave(<tabledemo_fixed.LoadoutConfig>[fx], 1, out) == n ? 0 : -1;
         });
       }
+    } else if ('$unit $root' == 'tabledemo CountedMin') {
+      final fx = _fixedLoadOne(wire, tabledemo_fixed.CountedMin.new, tables_fixed.countedMinFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.countedMinFixedLoad);
+      if (fx == null) return 1;
+      if ('$path $vkind' != 'few count') return 1;
+      final count = int.parse(text);
+      if (surface == 'write-refusal') {
+        final w = tabledemo.CountedMin();
+        _f2w_examples_CountedMin(fx, w);
+        w.few = List<int>.generate(count, (i) => i < w.few.length ? w.few[i] : 0);
+        answer = _catchWrite(() {
+          tabledemo.countedMinWireSave(w);
+          return 0;
+        });
+      } else {
+        fx.fewCount = count;
+        answer = _catchWrite(() {
+          final n = tables_fixed.countedMinFixedMeasure(1);
+          final out = Uint8List(n);
+          return tables_fixed.countedMinFixedSave(<tabledemo_fixed.CountedMin>[fx], 1, out) == n ? 0 : -1;
+        });
+      }
     } else if ('$unit $root' == 'scalars SimState') {
       final fx = _fixedLoadOne(wire, scalardemo_fixed.SimState.new, scalars_fixed.simStateFixedNewPlan, scalardemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, scalars_fixed.simStateFixedLoad);
       if (fx == null) return 1;

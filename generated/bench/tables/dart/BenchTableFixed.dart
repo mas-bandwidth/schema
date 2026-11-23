@@ -6227,6 +6227,9 @@ void tableMixedFixedDecode(
     }
   }
   value.entitiesCount = view.getInt32(at + 54, Endian.little);
+  if (value.entitiesCount < 1) {
+    report.refused = TableFixedRefusal.countOverBound;
+  }
   for (var i = 0; i < value.entitiesCount; i++) {
     tableEntityFixedDecode(
       value.entities[i],
