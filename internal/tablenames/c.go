@@ -140,6 +140,7 @@ func init() {
 		Name{Name: "table_extent_reserve", What: "the C list, map and node-extent runtime"},
 		Name{Name: "table_json_interpret_exact", What: "the C list, map and node-extent runtime"},
 		Name{Name: "table_json_map_hash_add", What: "the C list, map and node-extent runtime"},
+		Name{Name: "table_json_map_key_order", What: "the text map writer compares keys in canonical order (§16.2)"},
 		Name{Name: "table_json_map_key_value", What: "the C list, map and node-extent runtime"},
 		Name{Name: "table_json_read_map_entries", What: "the C list, map and node-extent runtime"},
 		Name{Name: "table_json_read_list", What: "the C list, map and node-extent runtime"},

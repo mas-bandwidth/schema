@@ -172,7 +172,7 @@ func cppRuntimeNames() []Name {
 			"TableJsonReadMap", "TableJsonReadPointer", "TableJsonReadScalar", "TableJsonReadTable",
 			"TableJsonReadTableKeys", "TableJsonReadWide", "TableJsonWrite", "TableJsonWriteBase64",
 			"TableJsonWriteField", "TableJsonWriteFields", "TableJsonWriteFloat", "TableJsonWriteGraph",
-			"TableJsonWriteList", "TableJsonWriteMap", "TableJsonWriteMapIntegerKey", "TableJsonWriteMapKey",
+			"TableJsonWriteList", "TableJsonWriteMap", "TableJsonMapKeyOrder", "TableJsonWriteMapIntegerKey", "TableJsonWriteMapKey",
 			"TableJsonWritePointer", "TableJsonWriteScalar", "TableJsonWriteSigned", "TableJsonWriteString",
 			"TableJsonWriteTimestamp", "TableJsonWriteUnsigned", "TableJsonWriteValue",
 			"TableJsonWriteWide",

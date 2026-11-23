@@ -4670,7 +4670,7 @@ func (c *checker) checkGoEscapeClaims(declNames []string) {
 // validating walk, and §7's Open is a header match with no walk in it, so the
 // name went with the design.
 var tableGeneratedVerbs = []string{
-	"Measure", "MeasureBody", "Save", "SaveInto", "SaveBody", "SaveBodyFields", "Load", "LoadBody",
+	"Measure", "MeasureBody", "Save", "SaveInto", "SaveBody", "SaveBodyFields", "Load", "LoadBody", "LoadInto",
 	// the MESSAGE FORM's three suffixes (docs/SPEC-TABLES.md §3.3), beside the
 	// variable form's own. They are PLURAL because the form's primitive is a BATCH
 	// of bodies of one root and a single message is the batch of one, and the
@@ -4711,7 +4711,7 @@ var tableGeneratedVerbs = []string{
 	// The variable-form JavaScript module also carries the bytes entry beside
 	// the string entry (docs/SPEC-TABLES.md §16.2), so its suffix is claimed
 	// on this list's own rule.
-	"FromJsonBytes",
+	"FromJsonBytes", "FromJsonInto", "FromJsonBytesInto",
 	// docs/SPEC-TABLES.md §16.2's three options ride in the Go backend's With
 	// calls beside the plain three, so their suffixes are claimed on the same rule
 	"FromJsonWith", "ToJsonWith", "ToJsonMeasureWith",

@@ -6,6 +6,7 @@
 package compiler
 
 import (
+	"fmt"
 	"regexp"
 	"sort"
 	"strings"
@@ -213,6 +214,21 @@ func TestJsModuleScopeScanSeesEveryConvention(t *testing.T) {
 	want := []string{"$dollar", "Alpha", "Beta", "TABLE_SCRATCH", "TableReport", "lowerCaseHelper", "oldStyle", "plainFunction"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("the module-scope scan is not seeing what it must:\n got %v\nwant %v", got, want)
+	}
+}
+
+func TestJSReadIntoDeclarationNames(t *testing.T) {
+	const schema = `package probe
+table Config { count int32 }
+type %s { count int32 }
+`
+	collision := checkErrors(t, fmt.Sprintf(schema, "ConfigLoadInto"))
+	if len(collision) != 1 || !strings.Contains(collision[0].Error(), "ConfigLoadInto") {
+		t.Fatalf("ConfigLoadInto must be refused by name: %v", collision)
+	}
+	neighbor := checkErrors(t, fmt.Sprintf(schema, "ConfigApplicationState"))
+	if len(neighbor) != 0 {
+		t.Fatalf("ConfigApplicationState must remain legal: %v", neighbor)
 	}
 }
 

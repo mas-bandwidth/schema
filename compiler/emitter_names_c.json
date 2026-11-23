@@ -359,6 +359,7 @@
   "{p}_table_json_line",
   "{p}_table_json_literal",
   "{p}_table_json_map_hash_add",
+  "{p}_table_json_map_key_order",
   "{p}_table_json_map_key_value",
   "{p}_table_json_out_t",
   "{p}_table_json_peek",
