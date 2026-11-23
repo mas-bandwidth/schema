@@ -23,6 +23,7 @@ import (
 
 	"backenddemo"
 	"cooktorture"
+	countedminvariable "countedminvariable"
 	"listdemo"
 	listdemovariable "listdemovariable"
 	"messagedemo"
@@ -166,6 +167,36 @@ func listdemoBoundedVariableLoad(value any, wire []byte, rep *report) bool {
 	return true
 }
 
+// tabledemoCountedMinVariableLoad reads the form-1 framing cases through the
+// variable-class declaration, then converts into the fixed codec for saving.
+func tabledemoCountedMinVariableLoad(value any, wire []byte, rep *report) bool {
+	counted := value.(*tabledemo.CountedMin)
+	tabledemo.CountedMinReset(counted)
+	n := countedminvariable.CountedMinLoadMeasure(wire)
+	if n < 0 {
+		*rep = report{refused: true}
+		return false
+	}
+	raw := make([]byte, n+63)
+	off := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
+	var inner countedminvariable.TableReport
+	root := countedminvariable.CountedMinLoad(raw[off:off+uintptr(n)], wire, &inner)
+	*rep = snapReport(&inner)
+	rep.err = inner.Err()
+	if root == nil || rep.refused {
+		return false
+	}
+	text := make([]byte, countedminvariable.CountedMinToJSONMeasure(root))
+	if countedminvariable.CountedMinToJSON(root, text) != int64(len(text)) {
+		panic("tabledemo CountedMin: the variable twin's ToJSON did not write ToJSONMeasure's answer")
+	}
+	var crossed tabledemo.TableReport
+	if !tabledemo.CountedMinFromJSON(counted, text, &crossed) {
+		panic("tabledemo CountedMin: the fixed root refused the variable twin's text: " + string(text))
+	}
+	return true
+}
+
 // noFileForm rebinds a declared fixed root past §3.4's 65536-byte record
 // bound, which has no file form: every file read refuses and nothing is
 // saved, while variableLoad keeps the form-1 read for surfaceFraming alone.
@@ -207,7 +238,9 @@ func init() {
 		return fixedForm(c, tabledemo.PackConfigFixedLoad, tabledemo.PackConfigFixedMeasure, tabledemo.PackConfigFixedSave)
 	})
 	bind("tabledemo", "CountedMin", func(c codec) codec {
-		return fixedForm(c, tabledemo.CountedMinFixedLoad, tabledemo.CountedMinFixedMeasure, tabledemo.CountedMinFixedSave)
+		c = fixedForm(c, tabledemo.CountedMinFixedLoad, tabledemo.CountedMinFixedMeasure, tabledemo.CountedMinFixedSave)
+		c.variableLoad = tabledemoCountedMinVariableLoad
+		return c
 	})
 	bind("tabledemo", "FloatBound", func(c codec) codec {
 		return fixedForm(c, tabledemo.FloatBoundFixedLoad, tabledemo.FloatBoundFixedMeasure, tabledemo.FloatBoundFixedSave)
