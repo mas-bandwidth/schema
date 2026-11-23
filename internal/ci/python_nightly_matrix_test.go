@@ -18,7 +18,7 @@ func pythonNightlyRows(wf string) ([]string, error) {
 	for _, line := range []string{
 		"if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'",
 		"PGROUP_GO_TEST_TIMEOUT: '0'", "fail-fast: false", "max-parallel: 4",
-		"shell: go run ./tools/pgroup -- bash -e {0}",
+		"shell: go run ./tools/pgroup -- bash -e -o pipefail {0}",
 		"uses: ./.github/actions/python", "make serialize-siblings", "sh tools/python-ci-corpus.sh build",
 		"FUZZ_SEED: ${{ matrix.seed }}", "FUZZ_PIN: ${{ matrix.pin }}", "FUZZ_MODE: ${{ matrix.mode }}", "FUZZ_ARM: ${{ matrix.arm }}",
 		`run: make "python-wirefuzz-${FUZZ_PIN}-${FUZZ_MODE}-${FUZZ_ARM}" "SEED=${FUZZ_SEED}" N=500000 PYTHON_WIRE_FUZZ_DIR=build/python-wirefuzz-nightly`,

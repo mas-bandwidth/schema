@@ -1,7 +1,7 @@
 #!/bin/sh
 # A CI artifact may replace the producer only for the exact checked-out source.
 # The ordinary local make target still produces and tests its corpus together.
-set -eu
+set -eu -o pipefail
 command=${1:-}
 build_dir=${2:-build}
 corpus="$build_dir/fixedform-corpus"
@@ -24,7 +24,7 @@ case "$command" in
   *) echo 'usage: go-ci-corpus.sh produce|verify [build-dir]' >&2; exit 2 ;;
 esac
 [ -s "$corpus/manifest.txt" ] || { echo 'fixed corpus manifest is missing' >&2; exit 1; }
-find "$corpus" -maxdepth 1 -name '*.bin' -type f | grep -q . || { echo 'fixed corpus has no wire files' >&2; exit 1; }
+[ -n "$(find "$corpus" -maxdepth 1 -name '*.bin' -type f)" ] || { echo 'fixed corpus has no wire files' >&2; exit 1; }
 [ -f "$revision" ] && [ "$(cat "$revision")" = "$(git rev-parse HEAD)" ] || { echo 'fixed corpus revision does not match this checkout' >&2; exit 1; }
 [ -f "$runtime_record" ] && [ "$(cat "$runtime_record")" = "$runtime_pin" ] || { echo "fixed corpus runtime pin mismatch" >&2; exit 1; }
 snapshot=$(mktemp)

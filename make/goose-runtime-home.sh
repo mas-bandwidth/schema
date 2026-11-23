@@ -17,7 +17,7 @@
 # (TableUnit, CookRecords, BlockRecords, MessageAnnouncement), and so is the
 # unit's view module, <Package>View.goose, the one home of the registry. Each
 # module that moved is named; one is red.
-set -u
+set -eu -o pipefail
 
 if [ $# -ne 2 ]; then
 	echo "usage: goose-runtime-home.sh <schema compiler> <workdir>" >&2
@@ -39,7 +39,7 @@ own() { # own <dir> <file>: the file is a schema file's own module
 	[ -f "$1/$b.schema" ]
 }
 
-pkg=$(sed -n 's/^package \([A-Za-z0-9_]*\).*/\1/p' tables/examples/*.schema | head -1)
+pkg=$(sed -n 's/^package \([A-Za-z0-9_]*\).*/\1/p' tables/examples/*.schema | sed -n 1p)
 P=${pkg}_
 # the package modules (internal/codegen/goosetable PackageModule), each with the
 # declaration that is unit-wide data and may live nowhere else
@@ -53,6 +53,11 @@ ishome() {
 	return 1
 }
 
+# which tree holds a module that is in only one of them
+only_in() {
+	if [ -f "$w/base/$1" ]; then echo the base tree; else echo the tree with Aaa.schema; fi
+}
+
 bad=0
 runtime=0
 # the runtime, from both sides, so a module that appears or vanishes is named
@@ -63,7 +68,7 @@ for f in $( (cd "$w/base" && ls *.goose; cd "../added" && ls *.goose) | LC_ALL=C
 	ishome "$f" && continue
 	runtime=$((runtime + 1))
 	if [ ! -f "$w/base/$f" ] || [ ! -f "$w/added/$f" ]; then
-		echo "runtime module $f moved: in $( [ -f "$w/base/$f" ] && echo the base tree || echo the tree with Aaa.schema ) only"
+		echo "runtime module $f moved: in $(only_in "$f") only"
 		bad=1
 	elif ! cmp -s "$w/base/$f" "$w/added/$f"; then
 		echo "runtime module $f moved: its bytes changed when Aaa.schema joined the unit"
@@ -83,7 +88,7 @@ for h in $homes; do
 	if [ -f "$w/base/$m" ] || [ -f "$w/added/$m" ]; then
 		units=$((units + 1))
 		if [ ! -f "$w/base/$m" ] || [ ! -f "$w/added/$m" ]; then
-			echo "package module $m moved: in $( [ -f "$w/base/$m" ] && echo the base tree || echo the tree with Aaa.schema ) only"
+			echo "package module $m moved: in $(only_in "$m") only"
 			bad=1
 		fi
 	fi
@@ -96,7 +101,7 @@ done
 if [ -f "$w/base/$V" ] || [ -f "$w/added/$V" ]; then
 	units=$((units + 1))
 	if [ ! -f "$w/base/$V" ] || [ ! -f "$w/added/$V" ]; then
-		echo "view module $V moved: in $( [ -f "$w/base/$V" ] && echo the base tree || echo the tree with Aaa.schema ) only"
+		echo "view module $V moved: in $(only_in "$V") only"
 		bad=1
 	fi
 fi

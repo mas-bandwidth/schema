@@ -41,7 +41,7 @@ jobs:
     # the nightly rule in the header
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - name: never the host named space
         # before the checkout, so tools/pgroup is not there yet

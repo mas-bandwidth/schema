@@ -27,14 +27,15 @@ vendor-serialize-luau:
 		echo "vendor-serialize-luau: $(LUAU_SERIALIZE_PIN_FILE) does not name a repository and a commit"; \
 		exit 1; \
 	fi
+# loud-ok: a label only: the tag or commit printed beside the build, never a verdict
 	@if [ -n "$(LUAU_SERIALIZE_DIR)" ]; then \
 		src="$(LUAU_SERIALIZE_DIR)"; \
 		commit="$$(git -C "$$src" rev-parse HEAD 2>/dev/null || echo "$(LUAU_SERIALIZE_COMMIT)")"; \
 	else \
 		src="build/serialize.luau"; \
 		rm -rf "$$src"; \
-		git clone --quiet "$(LUAU_SERIALIZE_REPO)" "$$src"; \
-		git -C "$$src" checkout --quiet "$(LUAU_SERIALIZE_COMMIT)"; \
+		git clone --quiet "$(LUAU_SERIALIZE_REPO)" "$$src" || exit 1; \
+		git -C "$$src" checkout --quiet "$(LUAU_SERIALIZE_COMMIT)" || exit 1; \
 		commit="$$(git -C "$$src" rev-parse HEAD)"; \
 	fi; \
 	if [ ! -d "$$src/src" ]; then \
