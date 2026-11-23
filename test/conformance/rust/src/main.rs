@@ -1292,6 +1292,11 @@ macro_rules! with_root {
                 use mapdemo::{text_from_json_bytes as $from_json, text_load as $load, text_save_checked as $save, text_to_json_checked as $to_json};
                 Some($body)
             }
+            ("mapdemo", "EdgeRow") => {
+                #[allow(unused_imports)]
+                use mapdemo::{edge_row_from_json_bytes as $from_json, edge_row_load as $load, edge_row_save_checked as $save, edge_row_to_json_checked as $to_json};
+                Some($body)
+            }
             ("featurewitnesses", "Root") => {
                 #[allow(unused_imports)]
                 use featurewitnesses::{root_from_json_bytes as $from_json, root_load as $load, root_save_checked as $save, root_to_json_checked as $to_json};
