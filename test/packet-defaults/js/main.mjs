@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { WriteStream, ReadStream } from "../../../../serialize.js/src/index.js";
 import * as p from "../../../build/packet-defaults/js/plain/Plain.js";
@@ -7,6 +7,17 @@ const dir = process.argv[2];
 const base = process.argv[3] ? pathToFileURL(process.argv[3] + "/") : new URL("../../../build/packet-defaults/js/defaults/", import.meta.url);
 const d = await import(new URL("Defaults.js", base));
 const flat = await import(new URL("DefaultsFlat.js", base));
+// The constant-default pins: both schemas declare package arithmetic, so each is
+// generated into its own directory (build/packet-defaults/js/constant-<name>/).
+const constantDir = new URL("../../../build/packet-defaults/js/", import.meta.url);
+const constants = {};
+for (const name of ["hexadecimal-addition", "unsigned-subtraction"]) {
+  constants[name] = {
+    runtime: await import(new URL(`constant-${name}/Defaults.js`, constantDir)),
+    flat: await import(new URL(`constant-${name}/DefaultsFlat.js`, constantDir)),
+  };
+}
+const pinsRead = new Set();
 const zero = () => Object.assign(new d.Sample(), {
   name: new Uint8Array(6), nameLength: 0, token: new Uint8Array(4), tokenLength: 0, caps: 0n,
   emptyName: new Uint8Array(3), emptyNameLength: 0, emptyToken: new Uint8Array(2), emptyTokenLength: 0, emptyCaps: 0n,
@@ -48,6 +59,7 @@ function checkRead(tier, type, bytes, bits, initial, want) {
   assert.deepEqual(initial, want, `${tier} ${type}: values and backing storage`);
 }
 function pin(type, name, value, initial, want) {
+  pinsRead.add(name);
   const bytes = new Uint8Array(readFileSync(`${dir}/${name}.bin`));
   const bits = Number(readFileSync(`${dir}/${name}.bits`, "utf8").trim());
   assert.deepEqual(write(d, type, value), { bytes, bits }, `C++ pin ${name}`);
@@ -55,6 +67,31 @@ function pin(type, name, value, initial, want) {
   const size = flat["Write" + flatType(type) + "Flat"](new DataView(buffer.buffer), flatValue(type, value));
   assert.deepEqual(buffer.slice(0, size), bytes, `flat C++ pin ${name}`);
   for (const tier of ["runtime", "flat"]) checkRead(tier, type, bytes, bits, initial(), want());
+}
+
+// A fresh Value (defaults from constants) writes the pinned bytes and bit count
+// in both tiers, and the pin reads back over zeroed storage to a fresh Value.
+function constantPin(name) {
+  const { runtime, flat: flatMod } = constants[name];
+  pinsRead.add(name);
+  const bytes = new Uint8Array(readFileSync(`${dir}/${name}.bin`));
+  const bits = Number(readFileSync(`${dir}/${name}.bits`, "utf8").trim());
+  const fresh = () => new runtime.Value();
+  assert.deepEqual(write(runtime, "Value", fresh()), { bytes, bits }, `C++ pin ${name}`);
+  const buffer = new Uint8Array(4096);
+  const size = flatMod.WriteValueFlat(new DataView(buffer.buffer), fresh());
+  assert.deepEqual(buffer.slice(0, size), bytes, `flat C++ pin ${name}`);
+  const initial = fresh(); runtime.ZeroValue(initial);
+  const stream = new ReadStream(bytes);
+  assert(runtime.ReadValue(stream, initial), `runtime read ${name}`);
+  assert.equal(stream.bitsProcessed(), (bits + 7) & ~7, `${name} read consumed bits`);
+  assert.deepEqual(initial, fresh(), `runtime ${name}: reads back to a fresh Value`);
+  const padded = new Uint8Array(bytes.length + 8); padded.set(bytes);
+  const flatInitial = fresh(); runtime.ZeroValue(flatInitial);
+  assert(flatMod.ReadValueFlat(new DataView(padded.buffer), bits, flatInitial), `flat exact-bit read ${name}`);
+  assert.deepEqual(flatInitial, fresh(), `flat ${name}: reads back to a fresh Value`);
+  const short = fresh(); runtime.ZeroValue(short);
+  assert.equal(flatMod.ReadValueFlat(new DataView(padded.buffer), bits - 1, short), false, `flat one-bit-short refusal ${name}`);
 }
 
 assert.deepEqual(new d.Sample(), sample(), "packet-default constructor bytes");
@@ -118,4 +155,11 @@ for (const tier of ["runtime", "flat"]) {
     checkRead(tier, "Choice", offWire.bytes, offWire.bits, output, want);
   }
 }
-console.log("packet defaults JavaScript: constructors, eight C++ goldens, both tiers and reused storage OK");
+constantPin("hexadecimal-addition");
+constantPin("unsigned-subtraction");
+// Every .bin of the directory must have been read: a pin this driver does not
+// know fails loudly, never skipped.
+const bins = readdirSync(dir).filter((f) => f.endsWith(".bin")).map((f) => f.slice(0, -4));
+assert(bins.length > 0, "the pins directory is not empty");
+for (const name of bins) assert(pinsRead.has(name), `pin ${name} was never read by the driver`);
+console.log("packet defaults JavaScript: constructors, ten C++ goldens, both tiers and reused storage OK");

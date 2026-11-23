@@ -163,15 +163,14 @@ const loudOK = "loud-ok:"
 const RuleStaleLoudOK = "stale-loud-ok"
 
 func excuse(line string) (string, bool) {
-	i := strings.Index(line, loudOK)
-	if i < 0 {
+	before, after, ok := strings.Cut(line, loudOK)
+	if !ok {
 		return "", false
 	}
-	h := strings.LastIndex(line[:i], "#")
-	if h < 0 {
+	if !strings.Contains(before, "#") {
 		return "", false
 	}
-	return strings.TrimSpace(line[i+len(loudOK):]), true
+	return strings.TrimSpace(after), true
 }
 
 func keepUnexcused(root string, scanned []string, fs []Finding, readFile func(string) ([]byte, error)) ([]Finding, error) {

@@ -13,6 +13,7 @@
   <ItemGroup>
     <Compile Include="$(DefaultsDir)/*.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)../../../../build/packet-defaults/unity/plain/*.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)../../../../build/packet-defaults/unity/constant-*/*.cs" />
   </ItemGroup>
 
 </Project>

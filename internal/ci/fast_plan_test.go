@@ -84,9 +84,9 @@ func TestFastPlanSelectsTableFixtures(t *testing.T) {
 }
 
 // TestFastPlanCoversStreamToDevAndSelectsRelevantWork verifies that ci-fast.yml's
-// plan job diffs against the PR's base branch on pull_request (so stream-to-dev
-// PRs diff against origin/dev and main promotion PRs diff against origin/main),
-// defaults to dev on workflow_dispatch, and selects only relevant packages and
+// plan job diffs every pull request against main, whatever its base (a lane PR
+// is checked out merged with current main, .github/actions/merge-main), defaults
+// to dev on workflow_dispatch, and selects only relevant packages and
 // legs without broadening a single-leg change into the full suite.
 func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 	t.Parallel()
@@ -96,7 +96,7 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 	}
 	wf := string(data)
 
-	const wantBaseLine = "BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || 'dev' }}"
+	const wantBaseLine = "BASE: ${{ github.event_name == 'pull_request' && 'main' || 'dev' }}"
 	if !strings.Contains(wf, wantBaseLine) {
 		t.Fatalf("ci-fast.yml plan does not set %q", wantBaseLine)
 	}

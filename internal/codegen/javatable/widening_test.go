@@ -53,8 +53,8 @@ table Rec
 //     `message_form_as_file`, form byte 3 (the fixed form, newer than this one)
 //     and a byte no form defines are `newer_form`, each with refused set and no
 //     counter moved;
-//   - DAMAGE (a list count longer than the bytes left) moves the report and
-//     names no reason, as Go's Load leaves it.
+//   - DAMAGE (a list count longer than the bytes left) sets damaged and
+//     names the one binary-damage reason, wire_damaged (§4, §6.5).
 //
 // The cook's and the block's TableRefuseReason names
 // (internal/codegen/gotable/refusal.go: not_a_cook, foreign_order,
@@ -168,7 +168,7 @@ const wideningProbe = `public final class Probe {
     byte[] unassigned = wire.clone(); unassigned[0] = 7;
     refused(unassigned, "newer_form");
 
-    // Damage names no reason: the list count (LEB 2, just before the two
+    // Damage is refused wire_damaged (§4, §6.5): the list count (LEB 2, just before the two
     // int16 elements fe ff ff 7f) forged to 127 claims more than remains.
     int at = -1;
     for (int i = 1; i + 4 <= wire.length; i++) {
@@ -179,8 +179,8 @@ const wideningProbe = `public final class Probe {
     forged[at - 1] = 0x7f;
     newv.TableVariable.Report damage = new newv.TableVariable.Report();
     newv.RecVariable.load(forged, damage);
-    check(damage.reason == null, "damage reason=" + damage.reason);
-    check(damage.refused || damage.damaged, "damage moved nothing");
+    check(damage.reason != null && damage.reason.startsWith("wire_damaged"), "damage reason=" + damage.reason);
+    check(damage.damaged, "damage did not set damaged: refused=" + damage.refused);
     System.out.println("ok");
   }
 }

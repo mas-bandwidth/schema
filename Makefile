@@ -174,7 +174,8 @@ build/mustrun: $(wildcard tools/mustrun/*.go)
 #
 # A bare `go test -run Typo` matches no test, prints "ok ... [no tests to run]"
 # and exits 0, which reads as a pass. tools/gotestrun runs go test -json and
-# fails when no test ran, or none passed (all skipped). PKG and RUN are both
+# fails when no test ran, or none passed (all skipped); it runs uncached
+# (-count=1 unless EXTRA names a -count). PKG and RUN are both
 # required; EXTRA passes more go test flags (EXTRA='-count=1 -race'). Use this,
 # not bare go test -run, in every brief, recipe and by hand.
 .PHONY: test-run
@@ -5210,7 +5211,7 @@ generated-current: bin/schema build/treelock
 # `go test ./...` runs it too.
 .PHONY: docs-check
 docs-check:
-	go test ./internal/docgate -run TestPagesResolve -count=1
+	go test ./internal/docgate -run '^(TestPagesResolve|TestOwedRowsAreLinked|TestOwedCheckGoesRed|TestOwedLookupIsExact)$$' -count=1
 
 # bench/corpus holds two units (one package per unit, SPEC §3.2), so the
 # corpus commands name each unit's file rather than the directory
@@ -6640,8 +6641,10 @@ test-moo-tagged-table: toolchain-moo build/fixedform-corpus/.stamp
 # tagged build and runs the tagged registration/admission tests: the
 # compiler's Moo tests, the moo table descriptors load under the pinned
 # interpreter, and the harness's tagged-admission test under each tag.
+# The compiler smoke reads the C++ reference's byte oracle (TestMooReadsTheLockedOlderLayout),
+# which is a failure, never a skip, when missing on CI under SCHEMA_SLOW=1, so it builds it.
 .PHONY: test-moo-tagged-compiler-smoke test-moo-tagged-table-smoke test-goose-tagged-harness-smoke
-test-moo-tagged-compiler-smoke: toolchain-moo
+test-moo-tagged-compiler-smoke: toolchain-moo build/fixedform-corpus/.stamp
 	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -tags schema_leg_moo -run '^(TestMoo|TestEachTargetDeclaresWhatItCarries)' ./compiler/
 	sh test/slowgate/proof moo-tagged-goldens 'TestGoldenLudicrousSource TestGoldenSourceEveryTarget TestGoldenDirectoriesBelongToTargets' -count=1 -tags schema_leg_moo -run '^TestGolden' ./internal/goldens/
 test-moo-tagged-table-smoke: toolchain-moo
