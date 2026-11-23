@@ -1323,6 +1323,18 @@ report fixedevo_v1_dep_corrupt  tblfixedevo EvoRoot testdata/conformance/tables/
 report fixedevo_v1_dead_tail    tblfixedevo EvoRoot testdata/conformance/tables/wire/fixedevo_v1_dead_tail.bin
 report fixedevo_v3_utf8_trunc   tblfixedevo EvoRoot testdata/conformance/tables/wire/fixedevo_v3_utf8_trunc.bin
 report fixedevo_v3_batch2       tblfixedevo EvoRoot testdata/conformance/tables/wire/fixedevo_v3_batch2.bin
+report sp_fixed_reserved_byte_1           tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_reserved_byte_1.bin
+report sp_fixed_reserved_byte_4           tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_reserved_byte_4.bin
+report sp_fixed_reserved_byte_7           tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_reserved_byte_7.bin
+report sp_fixed_nineteen_bytes            tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_nineteen_bytes.bin
+report sp_fixed_form_one                  tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_form_one.bin
+report sp_fixed_form_two                  tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_form_two.bin
+report sp_fixed_form_four                 tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_form_four.bin
+report sp_fixed_count_negative            tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_count_negative.bin
+report sp_fixed_count_over_bound          tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_count_over_bound.bin
+report sp_fixed_dead_slot_nonzero         tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_dead_slot_nonzero.bin
+report sp_fixed_text_length_negative      tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_text_length_negative.bin
+report sp_fixed_text_length_over_bound    tblfixedevo EvoRoot testdata/conformance/tables/wire/sp_fixed_text_length_over_bound.bin
 
 # THE COOK'S NODE ALIGNMENT (docs/SPEC-TABLES.md §6.2, THE TWO ALIGNMENT
 # RULES): a 128-bit list element in holders aligned eight, its own unit so no
@@ -1951,18 +1963,6 @@ json-hostile sp-b64-escaped-slash               tabledemo        RootConfig   te
 json-hostile sp-b64-escaped-noncanonical        tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-b64-escaped-noncanonical refused
 json-hostile sp-b64-escaped-invalid             tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-b64-escaped-invalid refused
 json-hostile sp-b64-escaped-newline             tabledemo        RootConfig   testdata/conformance/tables/json-hostile/sp-b64-escaped-newline refused
-framing sp_fixed_reserved_byte_1                 tblfixedevo EvoRoot testdata/wire/tables/framing/sp_fixed_reserved_byte_1.bin refused -
-framing sp_fixed_reserved_byte_4                 tblfixedevo EvoRoot testdata/wire/tables/framing/sp_fixed_reserved_byte_4.bin refused -
-framing sp_fixed_reserved_byte_7                 tblfixedevo EvoRoot testdata/wire/tables/framing/sp_fixed_reserved_byte_7.bin refused -
-framing sp_fixed_nineteen_bytes                  tblfixedevo EvoRoot testdata/wire/tables/framing/sp_fixed_nineteen_bytes.bin refused -
-framing sp_fixed_form_one                        tblfixedevo EvoRoot testdata/wire/tables/framing/sp_fixed_form_one.bin refused -
-framing sp_fixed_form_two                        tblfixedevo EvoRoot testdata/wire/tables/framing/sp_fixed_form_two.bin refused -
-framing sp_fixed_form_four                       tblfixedevo EvoRoot testdata/wire/tables/framing/sp_fixed_form_four.bin refused -
-framing sp_fixed_count_negative                  tblfixedevo EvoRoot testdata/wire/tables/framing/sp_fixed_count_negative.bin refused -
-framing sp_fixed_count_over_bound                tblfixedevo EvoRoot testdata/wire/tables/framing/sp_fixed_count_over_bound.bin refused -
-framing sp_fixed_dead_slot_nonzero               tblfixedevo EvoRoot testdata/wire/tables/framing/sp_fixed_dead_slot_nonzero.bin refused -
-framing sp_fixed_text_length_negative            tblfixedevo EvoRoot testdata/wire/tables/framing/sp_fixed_text_length_negative.bin refused -
-framing sp_fixed_text_length_over_bound          tblfixedevo EvoRoot testdata/wire/tables/framing/sp_fixed_text_length_over_bound.bin refused -
 framing depth_tables_128                         graphdemo Scene testdata/wire/tables/framing/depth_tables_128.bin read testdata/conformance/tables/framing/depth_tables_128.json
 framing depth_arrays_128                         graphdemo Scene testdata/wire/tables/framing/depth_arrays_128.bin read testdata/conformance/tables/framing/depth_arrays_128.json
 framing depth_union_tables_64                    graphdemo Scene testdata/wire/tables/framing/depth_union_tables_64.bin read testdata/conformance/tables/framing/depth_union_tables_64.json
