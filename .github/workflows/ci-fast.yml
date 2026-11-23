@@ -1741,13 +1741,16 @@ jobs:
             js)     vars=(NODE=node) ;;
             elixir) vars=("BEAM_PATH=$(dirname "$(command -v erl)"):$(dirname "$(command -v elixir)")") ;;
           esac
-          if [ "$FAMILY" != "conformance-corpus" ]; then
-            rm -rf "build/$FAMILY" build/java-finite
-          else
+          if [ "$FAMILY" = "conformance-corpus" ]; then
+            # Every leg reads the named MANIFEST.txt and wire pins, so the
+            # extra file beside the manifest is inert to the real run.
             vars+=("VERIFY_JOBS=4")
+            "$RUNNER_TEMP/inputaccount" -family "$FAMILY" -leg "$LEG" -check-extra "${vars[@]}"
+          else
+            rm -rf "build/$FAMILY" build/java-finite
+            "$RUNNER_TEMP/inputaccount" -family "$FAMILY" -leg "$LEG" "${vars[@]}"
+            "$RUNNER_TEMP/inputaccount" -family "$FAMILY" -leg "$LEG" -canary extra "${vars[@]}"
           fi
-          "$RUNNER_TEMP/inputaccount" -family "$FAMILY" -leg "$LEG" "${vars[@]}"
-          "$RUNNER_TEMP/inputaccount" -family "$FAMILY" -leg "$LEG" -canary extra "${vars[@]}"
           "$RUNNER_TEMP/inputaccount" -family "$FAMILY" -leg "$LEG" -canary wrong "${vars[@]}"
 
       # A SKIP NAMES A REASON, AND THIS ROW COUNTS ITS SKIPS. The row has its
