@@ -90,6 +90,20 @@ build/verify-tablegen/corpus/.stamp: build/verify-tablegen-bin bin/schema
 	trap - EXIT INT TERM HUP; \
 	exit $$status
 
+# THE VERIFIERS' OWN CASES: committed fixtures each verifier's corpus check is
+# replayed over, the reviewer's findings beside their controls (F-043 the
+# bitphase roster, F-044 the canonical permutations, F-045 the tablegen
+# sample). Every verify-<kind>-<lang> target runs its kind's cases first, so
+# all 18 targets' lanes do; each reads files only and is red on an empty case
+# folder.
+.PHONY: verify-bitphase-cases verify-canonical-cases verify-tablegen-cases
+verify-bitphase-cases: build/verify-bitphase-bin
+	./build/verify-bitphase-bin --roster-cases test/verify-bitphase/testdata/roster-cases
+verify-canonical-cases: build/verify-canonical-bin
+	./build/verify-canonical-bin --corpus-cases test/verify-canonical/testdata/corpus-cases
+verify-tablegen-cases: build/verify-tablegen-bin
+	./build/verify-tablegen-bin --sample-cases test/verify-tablegen/testdata/sample-cases
+
 VERIFY_WIDEN_DEPS_cpp      := bin/schema
 VERIFY_WIDEN_DEPS_c        := bin/schema
 VERIFY_WIDEN_DEPS_cs       := toolchain-cs bin/schema
@@ -119,26 +133,37 @@ VERIFY_WIDEN_ENV = \
 define verify_widen_18_rules
 .PHONY: verify-bitphase-$(1) verify-canonical-$(1) verify-tablegen-$(1)
 
-verify-bitphase-$(1): build/verify-bitphase-bin build/verify-bitphase/corpus/.stamp $$(VERIFY_WIDEN_DEPS_$(1))
+verify-bitphase-$(1): build/verify-bitphase-bin verify-bitphase-cases build/verify-bitphase/corpus/.stamp $$(VERIFY_WIDEN_DEPS_$(1))
 	$$(VERIFY_WIDEN_ENV) CARGO_TARGET_DIR="$$(CURDIR)/build/verify-bitphase/cargo-$(1)" \
 		./build/verify-bitphase-bin --lang $(1) \
 		--schema ./bin/schema --schema-moo ./build/schema-moo \
 		--work build/verify-bitphase --corpus build/verify-bitphase/corpus
 
-verify-canonical-$(1): build/verify-canonical-bin build/verify-canonical/corpus/.stamp $$(VERIFY_WIDEN_DEPS_$(1))
+verify-canonical-$(1): build/verify-canonical-bin verify-canonical-cases build/verify-canonical/corpus/.stamp $$(VERIFY_WIDEN_DEPS_$(1))
 	$$(VERIFY_WIDEN_ENV) CARGO_TARGET_DIR="$$(CURDIR)/build/verify-canonical/cargo-$(1)" \
 		./build/verify-canonical-bin --lang $(1) \
 		--schema ./bin/schema --schema-moo ./build/schema-moo \
 		--work build/verify-canonical --corpus build/verify-canonical/corpus
 
-verify-tablegen-$(1): build/verify-tablegen-bin build/verify-tablegen/corpus/.stamp $$(VERIFY_WIDEN_DEPS_$(1))
+verify-tablegen-$(1): build/verify-tablegen-bin verify-tablegen-cases build/verify-tablegen/corpus/.stamp $$(VERIFY_WIDEN_DEPS_$(1))
 	$$(VERIFY_WIDEN_ENV) CARGO_TARGET_DIR="$$(CURDIR)/build/verify-tablegen/cargo-$(1)" \
 		./build/verify-tablegen-bin --lang $(1) \
 		--seed $$(VERIFY_TABLEGEN_SEED) --schemas $$(VERIFY_TABLEGEN_SCHEMAS) \
 		--schema ./bin/schema --schema-moo ./build/schema-moo \
 		--work build/verify-tablegen --corpus build/verify-tablegen/corpus
 
-_verify-$(1)-bench: verify-bitphase-$(1) verify-canonical-$(1) verify-tablegen-$(1)
+_verify-$(1)-bench: verify-bitphase-$(1) verify-canonical-$(1)
+
+# THE TABLEGEN GATE IS ITS OWN SHARD (verify-<lang>-tablegen, the fourth
+# verify-leg gate in ci-fast.yml). Inside _verify-cpp-bench it made one job
+# of about 4.5 minutes on a busy runner against the two-minute limit; on its
+# own row it runs beside bench, and verify-<lang> still runs every gate.
+.PHONY: _verify-$(1)-tablegen verify-$(1)-tablegen
+_verify-$(1)-tablegen: verify-tablegen-$(1)
+_verify-$(1)-all: _verify-$(1)-tablegen
+
+verify-$(1)-tablegen:
+	@$$(MAKE) $$(VERIFY_JFLAG) --no-print-directory _verify-$(1)-tablegen
 endef
 
 $(foreach L,$(VERIFY_ALL_18_LEGS),$(eval $(call verify_widen_18_rules,$(L))))
