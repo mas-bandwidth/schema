@@ -194,7 +194,7 @@ public final class MixedEntityMessage {
         assert v.velZ <= 0x7ffL;
         assert v.health >= 0L;
         assert v.health <= 0x3e8L;
-        assert (v.damage & ~0xffL) == 0L;
+        assert (v.damage >>> 8) == 0L;
         return true;
     }
 
@@ -736,7 +736,7 @@ public final class MixedEntityMessage {
                 }
                 int canonUnk = r.report.unknown;
                 {
-                    long v13 = TableMessage.readUnsigned(r, entry.shape, 0L, 0L, false, 0);
+                    long v13 = TableMessage.readUnsigned(r, entry.shape, 0L, 0xffL, true, 0);
                     if (r.err) {
                         r.report.damaged = true;
                         return false;

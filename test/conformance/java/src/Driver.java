@@ -1652,7 +1652,7 @@ public final class Driver {
                 writeRefusalCount(current, field, fieldValue, Integer.parseInt(text));
                 return true;
             case "elems":
-                return writeRefusalElems(fieldValue, Integer.parseInt(text));
+                return writeRefusalElems(field, fieldValue, Integer.parseInt(text));
             case "mask":
                 return writeRefusalInt(field, current, fieldValue, text);
             case "dupkey":
@@ -2832,7 +2832,7 @@ public final class Driver {
     // `elems`: a native [N]T array holds exactly N values, so any other count
     // is unrepresentable; a list takes the count (more are copies of element
     // 0, fewer drop the tail).
-    private static boolean writeRefusalElems(Object fieldValue, int count) throws ReflectiveOperationException {
+    private static boolean writeRefusalElems(java.lang.reflect.Field field, Object fieldValue, int count) throws ReflectiveOperationException {
         if (fieldValue != null && fieldValue.getClass().isArray()) {
             return java.lang.reflect.Array.getLength(fieldValue) == count;
         }
@@ -2840,7 +2840,7 @@ public final class Driver {
             if (list.isEmpty() && count > 0) {
                 throw new IllegalArgumentException("elems: the array holds no element 0 to copy");
             }
-            writeRefusalResize(list, count);
+            writeRefusalResize(list, field, count);
             return true;
         }
         throw new NoSuchFieldException("elems: the field holds no array");

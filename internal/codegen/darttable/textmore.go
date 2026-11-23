@@ -239,12 +239,12 @@ final class _JParse {
     i++;
   }
 
-  // stack guard for raw container nesting; semantic table/skip depth 128 is
-  // enforced by FromJsonFields and _jsonSkipValue (FL-11, SPEC-TABLES §16.14 W2)
+  // container nesting cap (128 levels of nesting = 129 containers; 130th refuses,
+  // docs/SPEC-TABLES.md §16.2, §16.14 W2)
   dynamic value(int depth) {
     if (i >= s.length) throw const FormatException('unexpected end of text');
     final c = s.codeUnitAt(i);
-    if ((c == 0x7B || c == 0x5B) && depth > 256) throw const FormatException('nested past the depth cap of 128');
+    if ((c == 0x7B || c == 0x5B) && depth > 128) throw const FormatException('nested past the depth cap of 128');
     if (c == 0x7B) {
       i++;
       final m = _JObj();
