@@ -5301,7 +5301,21 @@ namespace Benchtable
                 if (bytes.Length < 2) { Damage(report); return 0; }
                 return bytes[1] + 1;
             }
+            // R4: AFTER ANY REFUSAL EVERY ELEMENT HANDED IN HOLDS ITS DECLARED DEFAULT,
+            // the whole array and not 0..count: framing, integrity, batch_too_large,
+            // body, non-finite and trailer refusals all leave the caller no partial
+            // value. A null element has nothing to reset and stays null.
             public static Verdict MessageLoad(object[] values, TableTypeInfo type, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count)
+            {
+                Verdict verdict = MessageLoadWalk(values, type, bytes, vocabulary, report, out count);
+                if (verdict != Verdict.Ok)
+                {
+                    count = 0;
+                    for (int j = 0; j < values.Length; j++) { if (values[j] != null) { type.Reset(values[j]); } }
+                }
+                return verdict;
+            }
+            static Verdict MessageLoadWalk(object[] values, TableTypeInfo type, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count)
             {
                 count = 0; report.Refused = false; report.Reason = null; report.NonFiniteFloat = null;
                 if (type.Integrity && bytes.Length > 0 && bytes[0] == 2)
@@ -5325,20 +5339,19 @@ namespace Benchtable
                     // A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md
                     // §3.3), outranking damage met after it: no body is delivered.
                     if (NonFiniteRefused(report))
-                    { report.Damaged |= damagedBefore; for (int j = 0; j <= count; j++) { type.Reset(values[j]); } count = 0; return Finish(report, Verdict.Refused); }
-                    if (report.Refused) { for (int j = 0; j <= count; j++) { type.Reset(values[j]); } count = 0; return Finish(report, Verdict.Refused); }
-                    if (!good || report.Damaged) { Damage(report); return DiscardBatch(values, type, report, ref count, count); }
+                    { report.Damaged |= damagedBefore; count = 0; return Finish(report, Verdict.Refused); }
+                    if (report.Refused) { count = 0; return Finish(report, Verdict.Refused); }
+                    if (!good || report.Damaged) { Damage(report); return DiscardBatch(report, ref count); }
                 }
-                if (!r.Align() || r.At != r.End) { Damage(report); return DiscardBatch(values, type, report, ref count, count - 1); }
+                if (!r.Align() || r.At != r.End) { Damage(report); return DiscardBatch(report, ref count); }
                 report.Damaged = damagedBefore;
                 return Finish(report, Verdict.Ok);
             }
             // DAMAGE DISCARDS THE WHOLE BATCH (docs/SPEC-TABLES.md §4): every body
             // the read touched goes back to its declared defaults and the count is zero,
             // so nothing decoded before the damage is a value to use.
-            static Verdict DiscardBatch(object[] values, TableTypeInfo type, TableReport report, ref int count, int last)
+            static Verdict DiscardBatch(TableReport report, ref int count)
             {
-                for (int j = 0; j <= last && j < values.Length; j++) { type.Reset(values[j]); }
                 count = 0;
                 return Finish(report, Verdict.Damaged);
             }
@@ -10527,6 +10540,20 @@ namespace Benchtable
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
+            long loaded = TableEntityFixedLoadWalk(values, data, plan, report);
+            if (loaded < 0)
+            {
+                for (int j = 0; j < values.Length; ++j) { if (values[j] != null) { TableReset(values[j]); } }
+            }
+            return loaded;
+        }
+
+        static long TableEntityFixedLoadWalk(
+            Span<TableEntity> values,
+            ReadOnlySpan<byte> data,
+            Span<TableFixedEntry> plan,
+            TableReport report)
+        {
             if (data.Length < 1)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
@@ -10654,7 +10681,6 @@ namespace Benchtable
             {
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
-                    for (int j = 0; j < k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
@@ -10667,7 +10693,6 @@ namespace Benchtable
                 string run_why = TableEntityFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
-                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
@@ -10679,7 +10704,6 @@ namespace Benchtable
                 }
                 if (refused)
                 {
-                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
@@ -11121,6 +11145,20 @@ namespace Benchtable
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
+            long loaded = TableStatFixedLoadWalk(values, data, plan, report);
+            if (loaded < 0)
+            {
+                for (int j = 0; j < values.Length; ++j) { if (values[j] != null) { TableReset(values[j]); } }
+            }
+            return loaded;
+        }
+
+        static long TableStatFixedLoadWalk(
+            Span<TableStat> values,
+            ReadOnlySpan<byte> data,
+            Span<TableFixedEntry> plan,
+            TableReport report)
+        {
             if (data.Length < 1)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
@@ -11248,7 +11286,6 @@ namespace Benchtable
             {
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
-                    for (int j = 0; j < k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
@@ -11261,7 +11298,6 @@ namespace Benchtable
                 string run_why = TableStatFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
-                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
@@ -11273,7 +11309,6 @@ namespace Benchtable
                 }
                 if (refused)
                 {
-                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
@@ -13180,6 +13215,20 @@ namespace Benchtable
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
+            long loaded = TableMixedFixedLoadWalk(values, data, plan, report);
+            if (loaded < 0)
+            {
+                for (int j = 0; j < values.Length; ++j) { if (values[j] != null) { TableReset(values[j]); } }
+            }
+            return loaded;
+        }
+
+        static long TableMixedFixedLoadWalk(
+            Span<TableMixed> values,
+            ReadOnlySpan<byte> data,
+            Span<TableFixedEntry> plan,
+            TableReport report)
+        {
             if (data.Length < 1)
             {
                 if (report != null) { report.Damaged = true; report.Verdict = TableWire.Verdict.Damaged; }
@@ -13307,7 +13356,6 @@ namespace Benchtable
             {
                 if (BinaryPrimitives.ReadUInt64LittleEndian(at) != hash)
                 {
-                    for (int j = 0; j < k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = "no_layout"; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
@@ -13320,14 +13368,12 @@ namespace Benchtable
                 string run_why = TableMixedFixedRun(entries, at.Slice(8), values[k], report, planBytes, ref widenScratch, ref forgedOrdinal);
                 if (run_why != null)
                 {
-                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Widened = 0; report.Refused = true; report.Reason = run_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
                 string finite_why = TableMixedFixedFiniteBody(values[k]);
                 if (finite_why != null)
                 {
-                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Widened = 0; report.Refused = true; report.NonFiniteFloat = finite_why; report.Reason = "non_finite_float: " + finite_why; report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }
@@ -13339,7 +13385,6 @@ namespace Benchtable
                 }
                 if (refused)
                 {
-                    for (int j = 0; j <= k; ++j) { TableReset(values[j]); }
                     if (report != null) { report.Verdict = TableWire.Verdict.Refused; }
                     return -1;
                 }

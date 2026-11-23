@@ -254,7 +254,13 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 	e.p("// %sFixedEvolveLoad reads a fixed-form file through the lineage: the identity\n", n)
 	e.p("// entry uses the fixed form's own scan and run, an append-only older entry the\n")
 	e.p("// old body over a current-layout image born at its defaults (§4.3, §5.3).\n")
+	e.p("// On -1 every value handed in holds its declared defaults (R4, SPEC-TABLES §6.5).\n")
+	// R4: one reset of EVERY row handed in on the walk's refusal exit.
 	e.p("fn %sFixedEvolveLoad(values: %s[:], raw: const u8[:], report: schema_rt::FixedEvolveReport&) -> i64 {\n", n, typ)
+	e.p("    let n = _%sFixedEvolveLoadWalk(values, raw, report);\n", n)
+	e.p("    if n < 0 {\n        var j: i64 = 0;\n        while j < values.len { values[j] = %s { .. }; j += 1; }\n    }\n", typ)
+	e.p("    return n;\n}\n\n")
+	e.p("fn _%sFixedEvolveLoadWalk(values: %s[:], raw: const u8[:], report: schema_rt::FixedEvolveReport&) -> i64 {\n", n, typ)
 	e.p("    report = schema_rt::FixedEvolveReport { .. };\n")
 	if st.Integrity == "crc32c" {
 		e.p("    if schema_rt::fixed_evolve_open_integrity(raw, report) < 0 { return -1; }\n")
@@ -293,7 +299,7 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 	e.p("        let body = rec + 8;\n")
 	e.p("        if pick == 0 {\n")
 	e.p("            let r = _%sFixedScan(data, body);\n", n)
-	e.p("            if r != 0 { var j: i64 = 0; while j < k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, r, false); }\n", typ)
+	e.p("            if r != 0 { return schema_rt::fixed_evolve_refuse(report, r, false); }\n")
 	e.p("            _%sFixedRead(data, body, values[k]);\n", n)
 	e.emitFinite(st, n, typ)
 	e.emitStrictRefuse(n, typ)
@@ -306,10 +312,10 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 		seq := 0
 		e.emitNodes(plan.nodes, "body", "", typ, &seq)
 		e.p("            let r = _%sFixedScan(img, 0);\n", n)
-		e.p("            if r != 0 { var j: i64 = 0; while j < k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, r, false); }\n", typ)
+		e.p("            if r != 0 { return schema_rt::fixed_evolve_refuse(report, r, false); }\n")
 		e.p("            _%sFixedRead(img, 0, values[k]);\n", n)
 		e.emitFinite(st, n, typ)
-		e.p("            if forged != 0 { var j: i64 = 0; while j <= k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseOutOfRange, false); }\n", typ)
+		e.p("            if forged != 0 { return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseOutOfRange, false); }\n")
 		e.emitWriterRefuse(st, olds[i].Ranges)
 		e.emitStrictRefuse(n, typ)
 	}
@@ -339,28 +345,23 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 
 // emitFinite makes a landed record's finite pass the read's answer
 // (SPEC-TABLES §3.3), before any bounds pass: a NaN or an infinity refuses
-// non_finite_float, and every element of the batch already written goes back
-// to its declared defaults.
+// non_finite_float, and the load's refusal exit resets every value handed in.
 func (e *fixedEvolveEmit) emitFinite(st *ir.Struct, n, typ string) {
 	if !finiteStruct(st) {
 		return
 	}
 	e.p("            if !_%sFixedFinite(values[k]) {\n", n)
-	e.p("                var j: i64 = 0;\n")
-	e.p("                while j <= k { values[j] = %s { .. }; j += 1; }\n", typ)
 	e.p("                return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseNonFiniteFloat, false);\n")
 	e.p("            }\n")
 }
 
 // emitStrictRefuse makes a landed record's strict bounds pass the read's
 // answer (docs/FIXED-FORM-ALGORITHM.md §4.6): the first value a read landed
-// outside its declared bounds refuses out_of_range, and every element of the
-// batch already written goes back to its declared defaults.
+// outside its declared bounds refuses out_of_range, and the load's refusal exit
+// resets every value handed in.
 func (e *fixedEvolveEmit) emitStrictRefuse(n, typ string) {
 	e.p("            let why = _%sFixedStrictRefuse(values[k]);\n", n)
 	e.p("            if why != 0 {\n")
-	e.p("                var j: i64 = 0;\n")
-	e.p("                while j <= k { values[j] = %s { .. }; j += 1; }\n", typ)
 	e.p("                return schema_rt::fixed_evolve_refuse(report, why, false);\n")
 	e.p("            }\n")
 }
@@ -386,13 +387,13 @@ func (e *fixedEvolveEmit) emitWriterRefuse(st *ir.Struct, ranges []ir.TableFixed
 				e.p("            while %s < %d {\n", i, f.ArrayBound)
 				val = val + "[" + i + "]"
 				for _, b := range bounds {
-					e.p("                if %s { var j: i64 = 0; while j <= k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseOutOfRange, false); }\n", b.over(val), st.Name)
+					e.p("                if %s { return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseOutOfRange, false); }\n", b.over(val))
 				}
 				e.p("                %s += 1;\n            }\n", i)
 				break
 			}
 			for _, b := range bounds {
-				e.p("            if %s { var j: i64 = 0; while j <= k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseOutOfRange, false); }\n", b.over(val), st.Name)
+				e.p("            if %s { return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseOutOfRange, false); }\n", b.over(val))
 			}
 			break
 		}
@@ -487,31 +488,31 @@ func (e *fixedEvolveEmit) emitNodes(nodes []evolveNode, oldBase, curBase, typ st
 			v := *seq
 			*seq++
 			e.p("            let cg%d: i64 = schema_rt::fixed_i32(data, %s);\n", v, addExpr(oldBase, fmt.Sprintf("%d", n.oldOff)))
-			e.p("            if cg%d < 0 || cg%d > %d { var j: i64 = 0; while j < k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseCountOverBound, false); }\n", v, v, n.count, typ)
+			e.p("            if cg%d < 0 || cg%d > %d { return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseCountOverBound, false); }\n", v, v, n.count)
 			if n.oldSize > 0 && n.oldStride > 0 {
-				e.p("            if cg%d < %d && schema_rt::fixed_scan_zero(data, %s, (%d - cg%d) * %d) != 0 { var j: i64 = 0; while j < k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseWireDamaged, false); }\n",
-					v, n.oldSize, addExpr(oldBase, fmt.Sprintf("%d", n.oldOff+4), fmt.Sprintf("cg%d * %d", v, n.oldStride)), n.oldSize, v, n.oldStride, typ)
+				e.p("            if cg%d < %d && schema_rt::fixed_scan_zero(data, %s, (%d - cg%d) * %d) != 0 { return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseWireDamaged, false); }\n",
+					v, n.oldSize, addExpr(oldBase, fmt.Sprintf("%d", n.oldOff+4), fmt.Sprintf("cg%d * %d", v, n.oldStride)), n.oldSize, v, n.oldStride)
 			}
 		case nodeOptionalGuard:
 			v := *seq
 			*seq++
 			e.p("            let op%d: u8 = data[%s];\n", v, addExpr(oldBase, fmt.Sprintf("%d", n.oldOff)))
-			e.p("            if op%d > 1 { var j: i64 = 0; while j < k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseWireDamaged, false); }\n", v, typ)
+			e.p("            if op%d > 1 { return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseWireDamaged, false); }\n", v)
 			if n.oldSize > 0 {
-				e.p("            if op%d == 0 && schema_rt::fixed_scan_zero(data, %s, %d) != 0 { var j: i64 = 0; while j < k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseWireDamaged, false); }\n",
-					v, addExpr(oldBase, fmt.Sprintf("%d", n.oldOff+1)), n.oldSize, typ)
+				e.p("            if op%d == 0 && schema_rt::fixed_scan_zero(data, %s, %d) != 0 { return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseWireDamaged, false); }\n",
+					v, addExpr(oldBase, fmt.Sprintf("%d", n.oldOff+1)), n.oldSize)
 			}
 		case nodeStringGuard:
 			v := *seq
 			*seq++
 			e.p("            let sl%d: u64 = schema_rt::fixed_u32(data, %s);\n", v, addExpr(oldBase, fmt.Sprintf("%d", n.oldOff)))
-			e.p("            if sl%d > %d { var j: i64 = 0; while j < k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseLengthOverBound, false); }\n", v, n.oldSize, typ)
-			e.p("            if sl%d < %d && schema_rt::fixed_scan_zero(data, %s, %d - (sl%d as! i64)) != 0 { var j: i64 = 0; while j < k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseWireDamaged, false); }\n",
-				v, n.oldSize, addExpr(oldBase, fmt.Sprintf("%d", n.oldOff+4), fmt.Sprintf("(sl%d as! i64)", v)), n.oldSize, v, typ)
+			e.p("            if sl%d > %d { return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseLengthOverBound, false); }\n", v, n.oldSize)
+			e.p("            if sl%d < %d && schema_rt::fixed_scan_zero(data, %s, %d - (sl%d as! i64)) != 0 { return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseWireDamaged, false); }\n",
+				v, n.oldSize, addExpr(oldBase, fmt.Sprintf("%d", n.oldOff+4), fmt.Sprintf("(sl%d as! i64)", v)), n.oldSize, v)
 		case nodeZeroCheck:
 			if n.size > 0 {
-				e.p("            if schema_rt::fixed_scan_zero(data, %s, %d) != 0 { var j: i64 = 0; while j < k { values[j] = %s { .. }; j += 1; } return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseWireDamaged, false); }\n",
-					addExpr(oldBase, fmt.Sprintf("%d", n.oldOff)), n.size, typ)
+				e.p("            if schema_rt::fixed_scan_zero(data, %s, %d) != 0 { return schema_rt::fixed_evolve_refuse(report, schema_rt::FixedRefuseWireDamaged, false); }\n",
+					addExpr(oldBase, fmt.Sprintf("%d", n.oldOff)), n.size)
 			}
 		case nodeZeroFill:
 			if n.size > 0 {
