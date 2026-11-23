@@ -178,6 +178,14 @@ static partial class Program
     {
         return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
     }
+    static Report Copy(Shapes.TableReport r)
+    {
+        return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
+    }
+    static Report Copy(Tblprior.TableReport r)
+    {
+        return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
+    }
     static Report Copy(Cooktorturewide.TableReport r)
     {
         return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
@@ -444,6 +452,15 @@ static partial class Program
         Row<Cooktorture.TortureFixedWref, Cooktorture.TableReport>("cooktorture", "TortureFixedWref", () => new Cooktorture.TableReport(), Copy,
             Cooktorture.Schema.TortureFixedWrefLoad, Cooktorture.Schema.TortureFixedWrefMeasure, Cooktorture.Schema.TortureFixedWrefSave,
             Cooktorture.Schema.TortureFixedWrefFromJson, Cooktorture.Schema.TortureFixedWrefToJsonMeasure, Cooktorture.Schema.TortureFixedWrefToJson),
+        Row<Shapes.Bounds, Shapes.TableReport>("shapes", "Bounds", () => new Shapes.TableReport(), Copy,
+            Shapes.Schema.BoundsLoad, Shapes.Schema.BoundsMeasure, Shapes.Schema.BoundsSave,
+            Shapes.Schema.BoundsFromJson, Shapes.Schema.BoundsToJsonMeasure, Shapes.Schema.BoundsToJson),
+        Row<Shapes.FixedBounds, Shapes.TableReport>("shapes", "FixedBounds", () => new Shapes.TableReport(), Copy,
+            Shapes.Schema.FixedBoundsLoad, Shapes.Schema.FixedBoundsMeasure, Shapes.Schema.FixedBoundsSave,
+            Shapes.Schema.FixedBoundsFromJson, Shapes.Schema.FixedBoundsToJsonMeasure, Shapes.Schema.FixedBoundsToJson),
+        Row<Tblprior.Prior, Tblprior.TableReport>("tblprior", "Prior", () => new Tblprior.TableReport(), Copy,
+            Tblprior.Schema.PriorLoad, Tblprior.Schema.PriorMeasure, Tblprior.Schema.PriorSave,
+            Tblprior.Schema.PriorFromJson, Tblprior.Schema.PriorToJsonMeasure, Tblprior.Schema.PriorToJson),
         Row<Cooktorturewide.TortureWideCook, Cooktorturewide.TableReport>("cooktorturewide", "TortureWideCook", () => new Cooktorturewide.TableReport(), Copy,
             Cooktorturewide.Schema.TortureWideCookLoad, Cooktorturewide.Schema.TortureWideCookMeasure, Cooktorturewide.Schema.TortureWideCookSave,
             Cooktorturewide.Schema.TortureWideCookFromJson, Cooktorturewide.Schema.TortureWideCookToJsonMeasure, Cooktorturewide.Schema.TortureWideCookToJson, Cooktorturewide.Schema.TortureWideCookLoadMeasure),
@@ -708,11 +725,13 @@ static partial class Program
         return 0;
     }
 
-    static int SurfaceMessage(string outDir)
+    static int SurfaceMessage(string outDir, bool prior)
     {
-        foreach (string[] f in Kind("message"))
+        string connKind = prior ? "prior-connection" : "connection";
+        string msgKind = prior ? "prior-message" : "message";
+        foreach (string[] f in Kind(msgKind))
         {
-            string[] connection = lines.Find(c => c[0] == "connection" && c[1] == f[2]);
+            string[] connection = lines.Find(c => c[0] == connKind && c[1] == f[2]);
             Codec codec = Find(connection[2], f[3]);
             // only a fixed table rides the message form: a variable root has no message codec
             if (f[5] == "-" || (codec != null && codec.MessageLoad == null))
@@ -720,22 +739,38 @@ static partial class Program
             if (codec == null) { SpillAbsent(outDir, f[1]); continue; }
             var report = new Report();
             object value = codec.MessageLoad(File.ReadAllBytes(connection[4]), File.ReadAllBytes(f[5]), report);
-            if (report.Malformed || report.Refused) { Console.Error.WriteLine("message read failed: " + f[1]); return 1; }
+            if (report.Malformed || report.Refused)
+            {
+                if (prior) { File.WriteAllText(Path.Combine(outDir, f[1] + ".refused"), "refused"); continue; }
+                Console.Error.WriteLine("message read failed: " + f[1]);
+                return 1;
+            }
             long size = codec.MessageMeasure(value);
-            if (size < 0) { return 1; }
+            if (size < 0)
+            {
+                if (prior) { File.WriteAllText(Path.Combine(outDir, f[1] + ".refused"), "refused"); continue; }
+                return 1;
+            }
             byte[] bytes = new byte[checked((int)size)];
-            if (codec.MessageSave(value, bytes) != size) { return 1; }
+            if (codec.MessageSave(value, bytes) != size)
+            {
+                if (prior) { File.WriteAllText(Path.Combine(outDir, f[1] + ".refused"), "refused"); continue; }
+                return 1;
+            }
             File.WriteAllBytes(Path.Combine(outDir, f[1]), bytes);
         }
-        // message-batch <case> <connection> <root> <wire>: the count
-        // LoadMessages returned with room for every body (FORMAT.md)
-        foreach (string[] f in Kind("message-batch"))
+        if (!prior)
         {
-            string[] connection = lines.Find(c => c[0] == "connection" && c[1] == f[2]);
-            Codec codec = Find(connection[2], f[3]);
-            if (codec == null || codec.MessageBatchCount == null) { Console.Error.WriteLine("driver: no message-batch codec for " + connection[2] + "." + f[3]); return 1; }
-            int count = codec.MessageBatchCount(File.ReadAllBytes(connection[4]), File.ReadAllBytes(f[4]));
-            File.WriteAllText(Path.Combine(outDir, f[1]), "count " + count + "\n");
+            // message-batch <case> <connection> <root> <wire>: the count
+            // LoadMessages returned with room for every body (FORMAT.md)
+            foreach (string[] f in Kind("message-batch"))
+            {
+                string[] connection = lines.Find(c => c[0] == "connection" && c[1] == f[2]);
+                Codec codec = Find(connection[2], f[3]);
+                if (codec == null || codec.MessageBatchCount == null) { Console.Error.WriteLine("driver: no message-batch codec for " + connection[2] + "." + f[3]); return 1; }
+                int count = codec.MessageBatchCount(File.ReadAllBytes(connection[4]), File.ReadAllBytes(f[4]));
+                File.WriteAllText(Path.Combine(outDir, f[1]), "count " + count + "\n");
+            }
         }
         return 0;
     }
@@ -752,6 +787,8 @@ static partial class Program
                 SpillAbsent(outDir, f[1]);
                 continue;
             }
+            bool wireRefused = false;
+            for (int mi = 5; mi < f.Length; mi++) { if (f[mi] == "wire-refused") { wireRefused = true; } }
             byte[] wire = File.ReadAllBytes(f[4]);
             Report report = new Report();
             object value = codec.Load(wire, report);
@@ -762,6 +799,11 @@ static partial class Program
                 if (report.Reason != null && report.Reason.Contains("blob_shared"))
                 {
                     File.WriteAllText(Path.Combine(outDir, f[1] + ".absent"), "blob_shared");
+                    continue;
+                }
+                if (wireRefused)
+                {
+                    File.WriteAllText(Path.Combine(outDir, f[1] + ".absent"), string.IsNullOrEmpty(report.Reason) ? "refused" : report.Reason);
                     continue;
                 }
                 Console.Error.WriteLine("driver: " + f[1] + " does not load");
@@ -777,6 +819,11 @@ static partial class Program
             }
             if (size < 0)
             {
+                if (wireRefused)
+                {
+                    File.WriteAllText(Path.Combine(outDir, f[1] + ".absent"), "refused");
+                    continue;
+                }
                 Console.Error.WriteLine("driver: " + f[1] + " measure refused the value");
                 return 1;
             }
@@ -1914,6 +1961,45 @@ static partial class Program
             c.MessageSave = (value, bytes) => value is Tblvarevo3.EvoMsg[] batch ? Tblvarevo3.Schema.EvoMsgSaveMessages(batch, bytes) : Tblvarevo3.Schema.EvoMsgSaveMessages(new Tblvarevo3.EvoMsg[] { (Tblvarevo3.EvoMsg)value }, bytes);
         }
         {
+            Codec c = Find("shapes", "Bounds");
+            c.CookMeasure = value => Shapes.Schema.BoundsCookMeasure((Shapes.Bounds)value);
+            c.Cook = (value, bytes, big) => Shapes.Schema.BoundsCook((Shapes.Bounds)value, bytes, big ? Shapes.TableByteOrder.Big : Shapes.TableByteOrder.Little);
+        }
+        {
+            Codec c = Find("shapes", "FixedBounds");
+            c.Announcement = Shapes.Schema.Announce().ToArray();
+            c.CookMeasure = value => Shapes.Schema.FixedBoundsCookMeasure((Shapes.FixedBounds)value);
+            c.Cook = (value, bytes, big) => Shapes.Schema.FixedBoundsCook((Shapes.FixedBounds)value, bytes, big ? Shapes.TableByteOrder.Big : Shapes.TableByteOrder.Little);
+            var ownVocabulary = new Shapes.TableVocabulary(); Shapes.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Shapes.TableReport());
+            c.MessageLoad = (announcement, bytes, report) =>
+            {
+                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Shapes.TableVocabulary(); var inner = new Shapes.TableReport();
+                if (!ReferenceEquals(announcement, c.Announcement)) { Shapes.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                var values = new Shapes.FixedBounds[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Shapes.FixedBounds(); }
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Shapes.Schema.FixedBoundsLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
+            };
+            c.MessageMeasure = value => value is Shapes.FixedBounds[] batch ? Shapes.Schema.FixedBoundsMeasureMessages(batch) : Shapes.Schema.FixedBoundsMeasureMessages(new Shapes.FixedBounds[] { (Shapes.FixedBounds)value });
+            c.MessageSave = (value, bytes) => value is Shapes.FixedBounds[] batch ? Shapes.Schema.FixedBoundsSaveMessages(batch, bytes) : Shapes.Schema.FixedBoundsSaveMessages(new Shapes.FixedBounds[] { (Shapes.FixedBounds)value }, bytes);
+        }
+        {
+            Codec c = Find("tblprior", "Prior");
+            c.Announcement = Tblprior.Schema.Announce().ToArray();
+            var ownVocabulary = new Tblprior.TableVocabulary(); Tblprior.Schema.AnnounceRead(ownVocabulary, c.Announcement, new Tblprior.TableReport());
+            c.MessageLoad = (announcement, bytes, report) =>
+            {
+                var vocabulary = ReferenceEquals(announcement, c.Announcement) ? ownVocabulary : new Tblprior.TableVocabulary(); var inner = new Tblprior.TableReport();
+                if (!ReferenceEquals(announcement, c.Announcement)) { Tblprior.Schema.AnnounceRead(vocabulary, announcement, inner); }
+                var values = new Tblprior.Prior[256]; for (int i = 0; i < (bytes.Length >= 2 ? bytes[1] + 1 : 1); i++) { values[i] = new Tblprior.Prior(); }
+                int cnt = 0;
+                if (!inner.Refused && !inner.Damaged) { bool ok = (int)Tblprior.Schema.PriorLoadMessages(values, bytes, vocabulary, inner, out cnt) == 0; if (!ok && !inner.Refused && !inner.Damaged) { inner.Refused = true; } }
+                Fill(report, Copy(inner)); return (!report.Refused && !report.Malformed && cnt > 1) ? (object)values[..cnt] : values[0];
+            };
+            c.MessageMeasure = value => value is Tblprior.Prior[] batch ? Tblprior.Schema.PriorMeasureMessages(batch) : Tblprior.Schema.PriorMeasureMessages(new Tblprior.Prior[] { (Tblprior.Prior)value });
+            c.MessageSave = (value, bytes) => value is Tblprior.Prior[] batch ? Tblprior.Schema.PriorSaveMessages(batch, bytes) : Tblprior.Schema.PriorSaveMessages(new Tblprior.Prior[] { (Tblprior.Prior)value }, bytes);
+        }
+        {
             Codec c = Find("cooktorture", "TortureCook");
             c.CookMeasure = value => Cooktorture.Schema.TortureCookCookMeasure((Cooktorture.TortureCook)value);
             c.Cook = (value, bytes, big) => Cooktorture.Schema.TortureCookCook((Cooktorture.TortureCook)value, bytes, big ? Cooktorture.TableByteOrder.Big : Cooktorture.TableByteOrder.Little);
@@ -2777,7 +2863,7 @@ static partial class Program
         {
             // Form-1 wire and its five conformance surfaces. Unsupported constructs
             // remain explicit per-case absences, as in the other language drivers.
-            Console.Out.Write("wire\nmessage\ncook-write\nreport\nframing\njson-read\njson-write\njson-hostile\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\nretain\nretain-save\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n");
+            Console.Out.Write("wire\nmessage\nmessage-prior\ncook-write\nreport\nframing\njson-read\njson-write\njson-hostile\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\nretain\nretain-save\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nunit shapes\n");
             return 0;
         }
         if (args.Length < 3)
@@ -2791,7 +2877,8 @@ static partial class Program
             case "retain": return SurfaceRetain(outDir,false);
             case "retain-save": return SurfaceRetain(outDir,true);
             case "wire": return SurfaceWire(outDir);
-            case "message": return SurfaceMessage(outDir);
+            case "message": return SurfaceMessage(outDir, false);
+            case "message-prior": return SurfaceMessage(outDir, true);
             case "cook-write": return SurfaceCookWrite(outDir);
             case "report": return SurfaceReport(outDir);
             case "framing": return SurfaceFraming(outDir);

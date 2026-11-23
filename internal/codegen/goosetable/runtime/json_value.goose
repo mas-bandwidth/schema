@@ -1236,7 +1236,7 @@ recursive fn jr_table(c: JvIn&, tab: i64, rec: i64, depth: i64) -> bool {
     let t = c.unit.tables[tab];
     if t.json_array && t.fields.len == 1 {
         if json_shape(c.jr) != 'a' { return json_fail(c.jr); }
-        if !jr_field(c, jv_slot(c.vals, rec, 0), t.fields[0], t.name, 0, depth) {
+        if !jr_field(c, jv_slot(c.vals, rec, 0), t.fields[0], t.name, 0, depth - 1) {
             if c.jr.zero && c.jr.rep.reason == 0 { c.jr.rep.reason = JsonReasonHoldsZero; }
             return false;
         }
@@ -1508,11 +1508,13 @@ recursive fn jr_pointer(c: JvIn&, s: i64, ref: const u8[:], depth: i64) -> bool 
     if !lok { return false; }
     let at = jr_label_at(c, label);
     var next = json_peek(c.jr);
-    if next == ',' {
+    let comma = next == ',';
+    if comma {
         c.jr.pos += 1;
         next = json_peek(c.jr);
     }
     let bare = next == '}';
+    if !bare && !comma { return json_fail(c.jr); }
     if bare != (at >= 0) { return json_fail(c.jr); }
     if bare {
         // a REFERENCE: to an open definition is the cycle §3.1 refuses; to a
@@ -1548,6 +1550,7 @@ recursive fn jr_pointer(c: JvIn&, s: i64, ref: const u8[:], depth: i64) -> bool 
 recursive fn jr_array(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i32, depth: i64) -> bool {
     let e = d.elem;
     guard e else { return json_fail(c.jr); }
+    if depth + 1 > JsonMaxDepth { return json_fail(c.jr); }
     if !json_expect(c.jr, '[') { return false; }
     if depth + 1 > JsonMaxDepth { return json_fail(c.jr); }
     let bound = if d.array == ArrayList { 0x7FFFFFFF } else { d.bound };
@@ -1568,14 +1571,14 @@ recursive fn jr_array(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
         let got = json_shape(c.jr);
         if placed >= bound {
             c.jr.rep.oor += 1;
-            if !jr_skip(c, depth + 1) { ok = false; break; }
+            if !jr_skip(c, depth + 2) { ok = false; break; }
         } else if e.shape == ShapePtr && got == 'z' {
             if !json_literal(c.jr, "null") { ok = false; break; }
             c.scratch.push(-1);
             placed += 1;
         } else if !jr_shape_takes(shape, got) {
             c.jr.rep.mismatch += 1;
-            if !jr_skip(c, depth + 1) { ok = false; break; }
+            if !jr_skip(c, depth + 2) { ok = false; break; }
             c.scratch.push(-1);
             placed += 1;
         } else {
@@ -1609,6 +1612,7 @@ fn jr_text_list(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i64) 
     let et = jv_table(c.unit, e.ref);
     if et < 0 { return json_fail(c.jr); }
     let fd = c.unit.tables[et].fields[0];
+    if depth + 1 > JsonMaxDepth { return json_fail(c.jr); }
     if !json_expect(c.jr, '[') { return false; }
     if depth + 1 > JsonMaxDepth { return json_fail(c.jr); }
     let bound = if d.array == ArrayList { 0x7FFFFFFF } else { d.bound };
@@ -1634,17 +1638,17 @@ fn jr_text_list(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i64) 
             // well, as the wire counts its count clamp (§2.13)
             seen += 1;
             if seen > bound { c.jr.rep.oor += 1; }
-            if !json_skip_value(c.jr, depth + 1) { ok = false; break; }
+            if !json_skip_value(c.jr, depth + 2) { ok = false; break; }
         } else if placed >= bound {
             c.jr.rep.oor += 1;
-            if !json_skip_value(c.jr, depth + 1) { ok = false; break; }
+            if !json_skip_value(c.jr, depth + 2) { ok = false; break; }
         } else if fd.optional && got == 'z' {
             if !json_literal(c.jr, "null") { ok = false; break; }
             c.scratch.push(-1);
             placed += 1;
         } else if got != 's' {
             c.jr.rep.mismatch += 1;
-            if !json_skip_value(c.jr, depth + 1) { ok = false; break; }
+            if !json_skip_value(c.jr, depth + 2) { ok = false; break; }
             c.scratch.push(-1);
             placed += 1;
         } else {
@@ -1682,6 +1686,7 @@ fn jr_text_list(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i64) 
 recursive fn jr_keyed(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i32, depth: i64) -> bool {
     let e = d.elem;
     guard e else { return json_fail(c.jr); }
+    if depth + 1 > JsonMaxDepth { return json_fail(c.jr); }
     if !json_expect(c.jr, '{') { return false; }
     if depth + 1 > JsonMaxDepth { return json_fail(c.jr); }
     let keys = jv_keys(c.unit, owner, d);
@@ -1793,6 +1798,7 @@ fn jr_key_cmp(c: JvIn&, kd: FieldDesc, a: i64, b: i64) -> i64 {
 recursive fn jr_map(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i64) -> bool {
     let et = jv_entry(c.unit, owner, d.slot);
     if et < 0 { return json_fail(c.jr); }
+    if depth + 1 > JsonMaxDepth { return json_fail(c.jr); }
     if !json_expect(c.jr, '{') { return false; }
     if depth + 1 > JsonMaxDepth { return json_fail(c.jr); }
     let kd = c.unit.tables[et].fields[0];
@@ -2040,6 +2046,7 @@ fn jr_place_wide(c: JvIn&, s: i64, d: FieldDesc, pure: bool, tok: const u8[:]) -
 // name; `{}` is None, an unknown arm counted unknown, an arm value of the
 // wrong shape kind_mismatch with the union None, and two keys malformed.
 recursive fn jr_union(c: JvIn&, s: i64, name: const u8[:], depth: i64) -> bool {
+    if depth + 1 > JsonMaxDepth { return json_fail(c.jr); }
     if !json_expect(c.jr, '{') { return false; }
     if depth + 1 > JsonMaxDepth { return json_fail(c.jr); }
     let u = jv_union(c.unit, name);

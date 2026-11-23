@@ -726,6 +726,35 @@ recursive fn put_value(c: SaveCtx&, s: i64, d: const FieldDesc&, kind: u8) {
         if x == 0.0 { v = Int128 { lo: 0, hi: 0 }; }
     }
     if d.shape == ShapeInt {
+        if !d.timestamp && d.ibits == 0 && d.fbits == 0 && d.bits == 0 && d.kw > 0 && d.kw <= 8 {
+            if d.signed {
+                var wlo = Int128 { lo: 0x8000000000000000, hi: 0xffffffffffffffff };
+                var whi = Int128 { lo: 0x7fffffffffffffff, hi: 0 };
+                if d.kw == 1 {
+                    wlo = Int128 { lo: 0xffffffffffffff80, hi: 0xffffffffffffffff };
+                    whi = Int128 { lo: 127, hi: 0 };
+                } else if d.kw == 2 {
+                    wlo = Int128 { lo: 0xffffffffffff8000, hi: 0xffffffffffffffff };
+                    whi = Int128 { lo: 32767, hi: 0 };
+                } else if d.kw == 4 {
+                    wlo = Int128 { lo: 0xffffffff80000000, hi: 0xffffffffffffffff };
+                    whi = Int128 { lo: 2147483647, hi: 0 };
+                }
+                if cmp128(v, true, wlo, true) < 0 || cmp128(v, true, whi, true) > 0 {
+                    refuse(c, SaveRefuseInvalidValue);
+                    return;
+                }
+            } else {
+                var umax: u64 = 0xffffffffffffffff;
+                if d.kw == 1 { umax = 255; }
+                else if d.kw == 2 { umax = 65535; }
+                else if d.kw == 4 { umax = 4294967295; }
+                if v.hi != 0 || v.lo > umax {
+                    refuse(c, SaveRefuseInvalidValue);
+                    return;
+                }
+            }
+        }
         if d.ranged {
             var lo = d.lo;
             var hi = d.hi;
