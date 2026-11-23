@@ -1,6 +1,7 @@
 // W4 — only live elements are read as values; every dead byte is zero
 // (docs/FIXED-FORM-ALGORITHM.md §4.5, §5.3). A non-zero unused array slot
-// refuses the whole load before any destination value changes.
+// refuses the whole load, and every value handed in holds its declared
+// default after the refusal (ruling R4).
 package main
 
 import (
@@ -77,11 +78,15 @@ func TestRowW4(t *testing.T) {
 	// The dead-slot check refuses before the batch lands.
 	back[0].ItemsCount = 3
 	back[0].Items[0] = 23
-	before := back
+	var defaults [1]tblv1.Cfg
+	tblv1.CfgReset(&defaults[0])
+	if reflect.DeepEqual(back, defaults) {
+		t.Fatal("the poison is not visible: the destination already holds its defaults")
+	}
 	if got := tblv1.CfgFixedLoad(back[:], save, plan, &rep); got >= 0 || rep.Err() == nil {
 		t.Fatalf("stained dead slots read: n=%d report=%+v", got, rep)
 	}
-	if !reflect.DeepEqual(back, before) {
-		t.Fatal("dead-slot refusal changed the destination")
+	if !reflect.DeepEqual(back, defaults) {
+		t.Fatalf("dead-slot refusal must leave the destination at its declared defaults (R4): %+v", back[0])
 	}
 }

@@ -19,19 +19,34 @@ import (
 // poisoned with a sentinel (a value compare, never a struct's slack, §5.9 #17),
 // and `total`, which holds the joint answer of §5.3's report table — a refusal
 // by name is n == -1, `refused` is that name, `malformed` is false, every
-// counter is zero and not one destination byte is written.
+// counter is zero and (R4) every row handed in is at its declared default.
 const t01Prelude = `
 import { TableFixedPlan, TableFixedLayoutView, TableFixedParseLayout } from "./@HOME@Table.js";
 const SENT = 0x5A5A5A5A;
 function eight() { const b = []; for (let k = 0; k < 8; k++) { b.push(new T()); InitT(b[k]); } return b; }
+// poisonRow keeps every field's TYPE (a number, a bool, a typed array, a nested
+// row) and gives it a value no default holds, so the reset below has to run.
+function poisonRow(v) {
+  for (const key of Object.keys(v)) {
+    const x = v[key];
+    if (typeof x === "number") { v[key] = SENT; }
+    else if (typeof x === "bigint") { v[key] = 0x5An; }
+    else if (typeof x === "boolean") { v[key] = !x; }
+    else if (ArrayBuffer.isView(x)) { x.fill(typeof x[0] === "bigint" ? 0x5An : 0x5A); }
+    else if (x !== null && typeof x === "object") { poisonRow(x); }
+  }
+}
 function poison(back, plan) {
-  for (const v of back) { for (const key of Object.keys(v)) { v[key] = SENT; } }
+  for (const v of back) { poisonRow(v); }
   if (plan !== null) { plan.image.fill(0x5A); }
 }
-function untouched(label, back, plan) {
-  for (const v of back) { for (const key of Object.keys(v)) {
-    if (v[key] !== SENT) { fail(label + ": a refusal wrote the destination: " + show(v)); return; }
-  } }
+// R4: a refusal hands back NO row. Every row the caller handed in holds what the
+// type's own reset gives: the same poison, then InitT.
+function defaults(label, back, plan) {
+  const ref = new T(); poisonRow(ref); InitT(ref);
+  for (const v of back) {
+    if (show(v) !== show(ref)) { fail(label + ": a refusal left a row off its declared default: " + show(v)); return; }
+  }
   if (plan !== null) { for (let i = 0; i < plan.image.length; i++) {
     if (plan.image[i] !== 0x5A) { fail(label + ": a refusal wrote plan.image[" + i + "]"); return; }
   } }
@@ -51,7 +66,7 @@ function total(label, n, r, name, hash, back, plan) {
   if (hash !== null && r.layoutHash !== hash) {
     fail(label + ": layout_hash is " + hash.toString(16) + ", got " + r.layoutHash.toString(16));
   }
-  untouched(label, back, plan);
+  defaults(label, back, plan);
 }
 function copy(bytes, upto) { return Uint8Array.from(bytes.subarray(0, upto === undefined ? bytes.length : upto)); }
 `
@@ -110,7 +125,7 @@ for (let k = layoutAt; k < layoutAt + L; k++) {
   const r = new TableFixedReport();
   const n = TLoad(back, back.length, cut, cut.length, plan, r);
   if (n !== -1 || !r.damaged || r.refused !== 0) { fail("20 + L == len holds no record and is refused: n=" + n + " " + reason(r)); }
-  untouched("no record", back, plan);
+  defaults("no record", back, plan);
 }
 // the declared L one past the bytes that are there, and the largest u32 (no wrap)
 for (const declared of [data.length - layoutAt + 1, 0xFFFFFFFF]) {

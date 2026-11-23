@@ -57,7 +57,10 @@ func TestFixedDeadBytes(t *testing.T) {
 			dest[i].Pick.Type = DeadPickTypeWide
 			dest[i].Pick.Wide.A = 77
 		}
-		before := append([]DeadRoot(nil), dest...)
+		before := make([]DeadRoot, len(dest)) // R4: a refusal leaves every row handed in at its declared default
+		for i := range before {
+			DeadRootReset(&before[i])
+		}
 		plan := make([]TableFixedEntry, 4096)
 		var report TableReport
 		n := DeadRootFixedLoad(dest, data, plan, &report)
@@ -66,7 +69,7 @@ func TestFixedDeadBytes(t *testing.T) {
 				t.Fatalf("%%s: the generated read accepted a record with a non-zero dead byte: n=%%d report=%%+v", c.file, n, report)
 			}
 			if !reflect.DeepEqual(dest, before) {
-				t.Fatalf("%%s: the refusal wrote the caller's destination", c.file)
+				t.Fatalf("%%s: R4: a row handed in is not its declared default after the refusal", c.file)
 			}
 			continue
 		}
@@ -145,11 +148,12 @@ func TestFixedDeadBytesUseWriterLayout(t *testing.T) {
    if at >= 0 { data[len(clean)+8+at] = 0x7f }
    values := make([]WriterDead, 2)
    for i := range values { WriterDeadReset(&values[i]); values[i].Lead=99; values[i].Trail=88 }
-   before := append([]WriterDead(nil), values...)
+   before := make([]WriterDead, len(values)) // R4: every row handed in at its declared default after a refusal
+   for i := range before { WriterDeadReset(&before[i]) }
    var report TableReport
    n := WriterDeadFixedLoad(values, data, make([]TableFixedEntry, WriterDeadFixedPlanMax), &report)
    if at >= 0 {
-    if n >= 0 || report.Err()==nil || !reflect.DeepEqual(values,before) { t.Fatalf("writer dead offset %%d: n=%%d report=%%+v touched=%%v",at,n,report,!reflect.DeepEqual(values,before)) }
+    if n >= 0 || report.Err()==nil || !reflect.DeepEqual(values,before) { t.Fatalf("writer dead offset %%d: n=%%d report=%%+v not-default=%%v",at,n,report,!reflect.DeepEqual(values,before)) }
    } else {
     if n != 2 || report.Err()!=nil { t.Fatalf("writer control: n=%%d report=%%+v",n,report) }
     if values[0].Lead!=1 || values[0].Trail!=2 || values[0].ValsCount!=1 || values[0].Vals[0]!=7 || values[0].OptPresent || values[0].Pick.Narrow!=3 { t.Fatalf("writer values: %%+v",values[0]) }
@@ -207,11 +211,12 @@ func TestFixedDeadBytesRejectRemovedWriterShape(t *testing.T) {
   data:=[]byte(%q)
   values:=make([]OriginalWriter,2)
   for i:=range values { OriginalWriterReset(&values[i]); values[i].Sentinel=99 }
-  before:=append([]OriginalWriter(nil),values...)
+  before:=make([]OriginalWriter,len(values)) // R4: every row handed in at its declared default after a refusal
+  for i:=range before { OriginalWriterReset(&before[i]) }
   var report TableReport
   n:=OriginalWriterFixedLoad(values,data,make([]TableFixedEntry,4096),&report)
   if n>=0 || report.Err()==nil || report.Unknown!=0 || report.Widened!=0 { t.Fatalf("removed writer shape read: n=%%d report=%%+v",n,report) }
-  if !reflect.DeepEqual(values,before) { t.Fatal("refusal changed destination") }
+  if !reflect.DeepEqual(values,before) { t.Fatal("R4: a row handed in is not its declared default after the refusal") }
  }
  `, string(data))
 			out, err := runVersionProbe(t, reader, []string{older}, src)

@@ -42,8 +42,13 @@ func cT04Header(t *testing.T, files map[string][]byte) string {
 }
 
 // cT04Fn is one emitted function's body, from its `name(` to the column-zero
-// closing brace.
+// closing brace. `<snake>_fixed_load` is a wrapper that resets every row on a
+// refusal (ruling R4); its steps live in the walk it calls,
+// `schema_<pkg>_<snake>_fixed_load_walk_`, so a step is read there.
 func cT04Fn(text, name string) string {
+	if strings.HasSuffix(name, "_fixed_load") && strings.Contains(text, name+"_walk_(") {
+		name += "_walk_"
+	}
 	at := strings.Index(text, name+"(")
 	if at < 0 {
 		return ""
