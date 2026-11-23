@@ -259,16 +259,13 @@ make conformance-port DRIVER=<path-to-driver> NAME=<name>
 make conformance-port DRIVER=<path-to-driver> NAME=<name> CARDS_DRIVER='<cards driver command>'
 ```
 
-The target builds only the harness (it needs a Go toolchain and nothing else
-of any other language), writes a one-line registry naming the port, runs every
-surface the driver lists, prints the matrix and exits nonzero on any failure
-**and on any absence**: the target runs the harness with `--complete`, under
-which an absent case or surface is counted, the line `tables conformance: NOT
-CONFORMING: <n> case(s) answered absent` replaces the success footer, and the
-run fails. A run without `--complete` (the harness's own `run`) still prints
-absences as work left; `make conformance-port` is the claim that a port
-conforms, and a stub that answers nothing can never make it (its test is
-owed: `GAP-9` in §7).
+The target builds the Go harness and writes a registry containing the supplied
+driver. It checks the main tables manifest, then runs the
+[variable-table writer cases](#variable-table-write-bounds) through the same
+driver. Each run uses its own output directory and passes `--complete`.
+An unlisted surface with expected cases, a surface answered absent, or an
+individual case answered absent fails the run. The executable examples are
+in [TestCompleteRunRefusesEveryAbsence](../test/conformance/harness/absence_test.go).
 The second form also runs the cards corpus. `NAME` must not be `cpp`, which is
 the name of the repository's reference leg.
 
