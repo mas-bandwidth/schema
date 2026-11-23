@@ -252,11 +252,12 @@ CS_CONFORMANCE_INPUTS := test/conformance/cs/schemaconformance.csproj test/confo
 	build/tables-generated-cs $(SERIALIZE_CS)/src .github/dotnet-version
 CS_COOK_DLL := test/cs-cook/bin/Debug/net10.0/schemacooktest.dll
 CS_COOK_INPUTS := test/cs-cook/schemacook.csproj test/cs-cook/src \
-	build/tables-generated-cs/pointers .github/dotnet-version
+	build/tables-generated-cs/pointers $(SERIALIZE_CS)/src/Serialize.cs \
+	$(SERIALIZE_CS)/src/Int128Pair.cs .github/dotnet-version
 
 .PHONY: build-cs-cook
-build-cs-cook: build/tables-generated-cs/.stamp
-	@sh make/driver-stamp.sh $(DRIVER_STAMPS)/cs-cook.sha256 $(CS_COOK_DLL) $(CS_COOK_INPUTS) -- \
+build-cs-cook: sibling-cs build/tables-generated-cs/.stamp
+	@SerializeCsDir="$(abspath $(SERIALIZE_CS))" sh make/driver-stamp.sh $(DRIVER_STAMPS)/cs-cook.sha256 $(CS_COOK_DLL) $(CS_COOK_INPUTS) -- \
 		"cd test/cs-cook && $(DOTNET) build -v q --nologo --no-incremental"
 
 .PHONY: tables-cook-open-cs
