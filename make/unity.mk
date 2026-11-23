@@ -73,8 +73,10 @@ build/packet-defaults/unity/.stamp: bin/schema test/packet-defaults/Defaults.sch
 
 .PHONY: packet-defaults-unity packet-defaults-unity-negative-control
 packet-defaults-unity: build/packet-defaults/unity/.stamp
-	$(DOTNET) run --project test/packet-defaults/unity/packet-defaults-unity.csproj -- testdata/wire/packet-defaults
-	$(DOTNET) run --configuration Release --project test/packet-defaults/unity/packet-defaults-unity.csproj -- testdata/wire/packet-defaults
+	$(DOTNET) run --project test/packet-defaults/unity/packet-defaults-unity.csproj \
+		--artifacts-path "$(CURDIR)/build/packet-defaults/unity-artifacts" -- testdata/wire/packet-defaults
+	$(DOTNET) run --configuration Release --project test/packet-defaults/unity/packet-defaults-unity.csproj \
+		--artifacts-path "$(CURDIR)/build/packet-defaults/unity-artifacts" -- testdata/wire/packet-defaults
 
 # Init without its byte defaults must fail the construction-form check.
 UNITY_DEFAULTS_NC := build/packet-defaults/unity-negative
@@ -100,9 +102,11 @@ build/packet-text/unity/.stamp: bin/schema test/packet-text/Narrow.schema
 
 .PHONY: packet-utf8-unity packet-utf8-unity-negative-control
 packet-utf8-unity: build/packet-text/unity/.stamp build/packet-text/cpp/driver build/packet-text/harness
-	$(DOTNET) build test/packet-text/unity/packet-text-unity.csproj -c Debug -o build/packet-text/unity-debug --nologo -v quiet
+	$(DOTNET) build test/packet-text/unity/packet-text-unity.csproj -c Debug -o build/packet-text/unity-debug \
+		-p:ArtifactsPath="$(CURDIR)/build/packet-text/unity-artifacts" --nologo -v quiet
 	./build/packet-text/harness dotnet build/packet-text/unity-debug/packet-text-unity.dll
-	$(DOTNET) build test/packet-text/unity/packet-text-unity.csproj -c Release -o build/packet-text/unity-release --nologo -v quiet
+	$(DOTNET) build test/packet-text/unity/packet-text-unity.csproj -c Release -o build/packet-text/unity-release \
+		-p:ArtifactsPath="$(CURDIR)/build/packet-text/unity-artifacts" --nologo -v quiet
 	./build/packet-text/harness dotnet build/packet-text/unity-release/packet-text-unity.dll
 
 # With the UTF-8 content check removed, the bit-flip sweep must disagree.

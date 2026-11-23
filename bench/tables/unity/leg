@@ -12,6 +12,8 @@ set -e
 
 STAGE=build/tables-bench-unity
 PROJ=bench/tables/unity/schematablesbench.csproj
+# Other Unity verification jobs build the same referenced Serialize project.
+ARTIFACTS="$PWD/$STAGE/artifacts"
 
 case "$1" in
 build)
@@ -26,9 +28,9 @@ build)
     fi
     ./bin/schema generate --lang unity --out "$STAGE/gen" "$STAGE/source/BenchTable.schema"
     if [ -n "$SERIALIZE_CS" ]; then
-        dotnet build "$PROJ" -c Release -o "$STAGE/bin" -v q --nologo -property:UseSharedCompilation=false "-property:SerializeCsRoot=$SERIALIZE_CS" >&2
+        dotnet build "$PROJ" -c Release -o "$STAGE/bin" -v q --nologo -property:UseSharedCompilation=false "-p:ArtifactsPath=$ARTIFACTS" "-property:SerializeCsRoot=$SERIALIZE_CS" >&2
     else
-        dotnet build "$PROJ" -c Release -o "$STAGE/bin" -v q --nologo -property:UseSharedCompilation=false >&2
+        dotnet build "$PROJ" -c Release -o "$STAGE/bin" -v q --nologo -property:UseSharedCompilation=false "-p:ArtifactsPath=$ARTIFACTS" >&2
     fi
     ;;
 run)
