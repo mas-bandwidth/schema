@@ -373,6 +373,17 @@ per-commit rule: a job that runs on every commit finishes in two minutes).
 So a change to the C++ emitters wants a dispatch run on its branch before
 merging, not just a green pull request.
 
+A pull request into a lane (any base that is not `main`: a review lane such as
+`rowan/fix-ledger-1122`, a sprint stream, `dev`) is checked against current
+`main`, not against the lane alone. Every `ci-fast.yml` job runs
+[`.github/actions/merge-main`](../.github/actions/merge-main/merge-main.sh) right
+after its checkout: it merges current `main` into the PR-into-lane checkout,
+says how many commits the lane is behind, and the plan selects by what differs
+from `main`. A lane that does not merge cleanly with `main` fails that step by
+name, with the conflicting paths; the fix is to merge `main` into the lane.
+`internal/ci` `TestEveryFastCheckoutMergesMain` holds every job to it, and
+`merge_main_test.go` plants a drifted lane and a conflicting one.
+
 One more gate is not CI at all. A pull request is not merged until its authors
 have signed the [Contributor Assignment Agreement](#the-contributor-assignment-agreement).
 
