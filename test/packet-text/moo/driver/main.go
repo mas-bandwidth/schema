@@ -79,6 +79,8 @@ func generate(path, dir string) {
 func main() {
 	var schemas, inputs list
 	flag.Var(&schemas, "schema", "a schema file to generate (repeatable; each is its own unit)")
+	var schemasIn list
+	flag.Var(&schemasIn, "schema-in", "subdir=path: a schema file generated into its own subdirectory of the tree (repeatable; for schemas whose package or type names collide)")
 	flag.Var(&inputs, "input", "name=path: a file the main reads as inputs[name] (repeatable)")
 	mainPath := flag.String("main", "", "the gate's moo main")
 	keep := flag.String("keep", "", "generate into this directory and keep it (default: a temporary one)")
@@ -86,7 +88,7 @@ func main() {
 	readStdin := flag.Bool("stdin", false, "pass stdin to the main as inputs.stdin")
 	analyze := flag.Bool("analyze", false, "first require moo-analyze to be silent over the modules and the main")
 	flag.Parse()
-	if *mainPath == "" || len(schemas) == 0 || flag.NArg() != 0 {
+	if *mainPath == "" || len(schemas)+len(schemasIn) == 0 || flag.NArg() != 0 {
 		fail("usage: driver -schema X.schema [-schema ...] [-input name=path ...] [-inputs dir] [-stdin] [-analyze] -main main.moo")
 	}
 	interpreter, why := moorun.Interpreter()
@@ -105,6 +107,18 @@ func main() {
 	}
 	for _, s := range schemas {
 		generate(s, dir)
+	}
+	var subdirs []string
+	for _, in := range schemasIn {
+		sub, path, ok := strings.Cut(in, "=")
+		if !ok || sub == "" || path == "" || strings.ContainsAny(sub, "/\\") {
+			fail("-schema-in %q is not subdir=path", in)
+		}
+		if err := os.MkdirAll(filepath.Join(dir, sub), 0o755); err != nil {
+			fail("%v", err)
+		}
+		generate(path, filepath.Join(dir, sub))
+		subdirs = append(subdirs, sub)
 	}
 	program, err := os.ReadFile(*mainPath)
 	if err != nil {
@@ -161,6 +175,17 @@ func main() {
 		for _, e := range entries {
 			if strings.HasSuffix(e.Name(), ".moo") && e.Name() != "inputs.moo" {
 				mods = append(mods, e.Name())
+			}
+		}
+		for _, sub := range subdirs {
+			subEntries, err := os.ReadDir(filepath.Join(dir, sub))
+			if err != nil {
+				fail("%v", err)
+			}
+			for _, e := range subEntries {
+				if strings.HasSuffix(e.Name(), ".moo") {
+					mods = append(mods, filepath.Join(sub, e.Name()))
+				}
 			}
 		}
 		lint := exec.Command(analyzer, mods...)

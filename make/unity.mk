@@ -56,9 +56,19 @@ unity-wire-negative-control: generated/unity/.stamp generated/unity-ludicrous/.s
 
 # ---- packet defaults: string, bytes and flags defaults, the construction form ----
 
-build/packet-defaults/unity/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema make/unity.mk
+build/packet-defaults/unity/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema $(wildcard test/conformance/packet/testdata/constant-defaults/*/Defaults.schema) make/unity.mk
 	./bin/schema generate --lang unity --out build/packet-defaults/unity/defaults test/packet-defaults/Defaults.schema
 	./bin/schema generate --lang unity --out build/packet-defaults/unity/plain test/packet-defaults/Plain.schema
+	@# Both constant schemas declare package arithmetic: generate each on its own,
+	@# then rename its namespace after the pin so one program compiles both.
+	./bin/schema generate --lang unity --out build/packet-defaults/unity-raw/hexadecimal-addition test/conformance/packet/testdata/constant-defaults/hexadecimal-addition/Defaults.schema
+	@mkdir -p build/packet-defaults/unity/constant-hexadecimal-addition
+	sed 's/^namespace Arithmetic$$/namespace ArithmeticHexadecimalAddition/' build/packet-defaults/unity-raw/hexadecimal-addition/Defaults.cs > build/packet-defaults/unity/constant-hexadecimal-addition/Defaults.cs
+	grep -q '^namespace ArithmeticHexadecimalAddition$$' build/packet-defaults/unity/constant-hexadecimal-addition/Defaults.cs
+	./bin/schema generate --lang unity --out build/packet-defaults/unity-raw/unsigned-subtraction test/conformance/packet/testdata/constant-defaults/unsigned-subtraction/Defaults.schema
+	@mkdir -p build/packet-defaults/unity/constant-unsigned-subtraction
+	sed 's/^namespace Arithmetic$$/namespace ArithmeticUnsignedSubtraction/' build/packet-defaults/unity-raw/unsigned-subtraction/Defaults.cs > build/packet-defaults/unity/constant-unsigned-subtraction/Defaults.cs
+	grep -q '^namespace ArithmeticUnsignedSubtraction$$' build/packet-defaults/unity/constant-unsigned-subtraction/Defaults.cs
 	@touch $@
 
 .PHONY: packet-defaults-unity packet-defaults-unity-negative-control
