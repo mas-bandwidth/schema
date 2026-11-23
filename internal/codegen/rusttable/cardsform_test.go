@@ -58,10 +58,8 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 		field    *ir.Field
 		keywords []string
 	}{
-		// a counted minimum [Min..N]T left this list when the variable wire
-		// learned its birth (codec_verdicts_rust_test.go); an optional pointer
-		// is the checker's refusal, held here as the boundary's own
 		{"optional_pointer", &ir.Field{Name: "some", Type: ir.FieldType{Kind: ir.TNamed, Ref: &ir.Struct{Name: "PathText", IsTable: true}, Pointer: true, Optional: true}}, []string{"optional"}},
+		{"counted_minimum", &ir.Field{Name: "items", Array: ir.ArrayCounted, ArrayMin: 1, ArrayBound: 4, Type: ir.FieldType{Kind: ir.TInt, Width: 32, Signed: true}}, []string{"declared minimum", "card slice"}},
 	}
 
 	for _, tc := range cases {
@@ -98,13 +96,17 @@ func TestFixedClassConstructsAreCarried(t *testing.T) {
 		// the fixed-point family rides as its raw storage integer (§3, kinds
 		// 20–29); TestFixedPointRidesItsRawStorage pins storage and clamp
 		{Name: "rate", Type: ir.FieldType{Kind: ir.TFixed, Width: 32, IntBits: 16, FracBits: 16, Signed: true}},
-		// a counted array with a declared minimum is born at Min elements
-		// (codec_verdicts_rust_test.go holds its bytes to the oracle)
-		{Name: "some", Array: ir.ArrayCounted, ArrayMin: 1, ArrayBound: 4, Type: ir.FieldType{Kind: ir.TInt, Width: 32, Signed: true}},
 	} {
 		if err := refuseCardUnsupportedVariableConstructs(cardUnit(f)); err != nil {
 			t.Errorf("%s: the fixed class's construct was refused: %v", f.Name, err)
 		}
+	}
+
+	// The general table generator carries a counted minimum. The card
+	// module's narrower admission check is covered above.
+	counted := &ir.Field{Name: "items", Array: ir.ArrayCounted, ArrayMin: 1, ArrayBound: 4, Type: ir.FieldType{Kind: ir.TInt, Width: 32, Signed: true}}
+	if err := refuseUncarriedClosure(cardUnit(counted)); err != nil {
+		t.Errorf("the table generator refused a counted minimum: %v", err)
 	}
 }
 
