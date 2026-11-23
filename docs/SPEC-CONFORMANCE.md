@@ -406,3 +406,18 @@ fixed layout determines the size. The writer checks whether the supplied
 value may be emitted. These are the enum and fixed Cook rules in
 [SPEC-TABLES §2.15](SPEC-TABLES.md#215-enum-variants--deprecated-in-place)
 and [§7.6](SPEC-TABLES.md#76-the-write-side-cook-and-cookmeasure).
+
+### Present optional array grown from two elements to three
+
+Load the [variable-form seed](../testdata/conformance/table-write-bounds/torture_var_wref.bin)
+as `TortureVarWref` using the [declaration](../testdata/conformance/table-write-bounds/TableWriteBounds.schema).
+The optional `opt_arr` is present and holds `[1, 2]`. For the conformance
+driver's `count` edit, grow it to its declared maximum of three elements.
+Preserve the prefix and copy element zero into the new slot. Save the root.
+The output must match the complete [252-byte expected file](../testdata/conformance/table-write-bounds/expected/torture_var_wref_resized.bin).
+Loading it must return a present `[1, 2, 1]`, with every other field unchanged.
+A successful save of `[1, 2, 0]` fails this test. The fill rule defines the
+test driver's edit. A port may use any caller API that constructs that value.
+
+Run `make table-optional-array-resize-go` to exercise the generated Go writer
+and reader. The expected file is also the comparison input for a new port.
