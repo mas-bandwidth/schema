@@ -58,9 +58,10 @@ func TestOtherVariableConstructsAreRefusedByName(t *testing.T) {
 		field    *ir.Field
 		keywords []string
 	}{
-		// a counted [A..B] left this list with ruling R10 (it is carried and
-		// holds A: TestFixedClassConstructsAreCarried, armmin_rust_test.go)
-		{"optional_pointer", &ir.Field{Name: "some", Type: ir.FieldType{Kind: ir.TString, Pointer: true, Optional: true}}, []string{"optional ?T"}},
+		// a counted minimum [Min..N]T left this list when the variable wire
+		// learned its birth (codec_verdicts_rust_test.go); an optional pointer
+		// is the checker's refusal, held here as the boundary's own
+		{"optional_pointer", &ir.Field{Name: "some", Type: ir.FieldType{Kind: ir.TNamed, Ref: &ir.Struct{Name: "PathText", IsTable: true}, Pointer: true, Optional: true}}, []string{"optional"}},
 	}
 
 	for _, tc := range cases {
@@ -97,8 +98,8 @@ func TestFixedClassConstructsAreCarried(t *testing.T) {
 		// the fixed-point family rides as its raw storage integer (§3, kinds
 		// 20–29); TestFixedPointRidesItsRawStorage pins storage and clamp
 		{Name: "rate", Type: ir.FieldType{Kind: ir.TFixed, Width: 32, IntBits: 16, FracBits: 16, Signed: true}},
-		// a counted [A..B] holds A wherever it sits (ruling R10); the probe in
-		// armmin_rust_test.go holds every form to it
+		// a counted array with a declared minimum is born at Min elements
+		// (codec_verdicts_rust_test.go holds its bytes to the oracle)
 		{Name: "some", Array: ir.ArrayCounted, ArrayMin: 1, ArrayBound: 4, Type: ir.FieldType{Kind: ir.TInt, Width: 32, Signed: true}},
 	} {
 		if err := refuseCardUnsupportedVariableConstructs(cardUnit(f)); err != nil {
@@ -121,14 +122,14 @@ func TestCardUnitWithOneExcludedConstructIsRefused(t *testing.T) {
 		&ir.Field{Name: "attempt", Type: ir.FieldType{Kind: ir.TInt, Width: 64}},
 		&ir.Field{Name: "paths", Array: ir.ArrayList, Type: ir.FieldType{Kind: ir.TNamed, Ref: &ir.Struct{Name: "PathText", IsTable: true}}},
 		&ir.Field{Name: "body", Type: ir.FieldType{Kind: ir.TString, Pointer: true}},
-		&ir.Field{Name: "samples", Type: ir.FieldType{Kind: ir.TString, Pointer: true, Optional: true}},
+		&ir.Field{Name: "samples", Type: ir.FieldType{Kind: ir.TNamed, Ref: &ir.Struct{Name: "PathText", IsTable: true}, Pointer: true, Optional: true}},
 	)
 
 	err := refuseCardUnsupportedVariableConstructs(unit)
 	if err == nil {
-		t.Fatal("a card unit carrying an optional ?*string was not refused")
+		t.Fatal("a card unit carrying an optional pointer was not refused")
 	}
-	for _, want := range []string{"Card", "samples", "optional ?T"} {
+	for _, want := range []string{"Card", "samples", "optional"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("refusal %q does not name %q", err, want)
 		}

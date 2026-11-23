@@ -18,7 +18,7 @@ internal static unsafe class TableListStorage
         if (worker.Arena.Closed || wanted < 0 || slot->Count < 0) { return false; }
         if (slot->Capacity >= wanted && slot->Capacity != 0) { return true; }
         int old = slot->Capacity == 0 ? slot->Count : slot->Capacity;
-        int capacity = (int)Math.Min(int.MaxValue, Math.Max((long)wanted, Math.Max(64L, (long)old * 2)));
+        int capacity = (int)global::System.Math.Min(int.MaxValue, global::System.Math.Max((long)wanted, global::System.Math.Max(64L, (long)old * 2)));
         if (wanted == 0 && old == 0) { return true; }
         Head* head = slot->Capacity == 0 ? (Head*)worker.Raw(sizeof(Head)) : (Head*)((byte*)slot + slot->Reference);
         byte** items = (byte**)worker.Raw((long)capacity * sizeof(byte*));
@@ -53,7 +53,7 @@ public readonly unsafe struct TableList<T> where T : unmanaged
     internal TableList(TableWorker worker, TableCookList* slot, TableFieldInfo field)
     { this.worker = worker; this.slot = slot; this.field = field; }
     public int Count { get { return worker.Arena.Closed ? 0 : slot->Count; } }
-    public int Capacity { get { return worker.Arena.Closed ? 0 : Math.Max(slot->Capacity, slot->Count); } }
+    public int Capacity { get { return worker.Arena.Closed ? 0 : global::System.Math.Max(slot->Capacity, slot->Count); } }
     public T* At(int index) { return index < 0 || index >= Count ? null : (T*)TableListStorage.At((byte*)slot, index, field.NativeElementSize); }
     public T* Add() { return worker.Arena.Closed ? null : (T*)TableListStorage.Add(worker, slot, field); }
     public bool Reserve(int count) { return TableListStorage.Reserve(worker, slot, field, count); }

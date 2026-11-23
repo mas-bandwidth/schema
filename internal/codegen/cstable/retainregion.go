@@ -58,7 +58,7 @@ func tableRetainRegionSource() string {
         RetainPut(directory, 0, 8);`)
 	s = tableReplace(s, "new RetainValue(data, offset)", "new RetainValue(data, offset, retain, (uint)i + 2)")
 	s = tableReplace(s, "new RetainValue(data, 0)", "new RetainValue(data, 0, retain, 1)")
-	s = tableReplace(s, "                int keep = (int)Math.Min(count, (ulong)f.ArrayBound);", "                RetainDiscard(value.Store, value.Path, f.Ordinal);\n                int keep = (int)Math.Min(count, (ulong)f.ArrayBound);")
+	s = tableReplace(s, "                int keep = (int)global::System.Math.Min(count, (ulong)f.ArrayBound);", "                RetainDiscard(value.Store, value.Path, f.Ordinal);\n                int keep = (int)global::System.Math.Min(count, (ulong)f.ArrayBound);")
 	s = tableReplace(s, "if (f.IsArray) { union.SetTag(f, 0); }", "if (f.IsArray) { union.DiscardUnion(); union.SetTag(f, 0); }")
 	s = tableReplace(s, "if (reference == 0) { union.SetTag(f, 0); return true; }", "if (reference == 0) { union.DiscardUnion(); union.SetTag(f, 0); return true; }")
 	s = tableReplace(s, "            union.SetTag(f, 0);\n            int tag", "            union.DiscardUnion(); union.SetTag(f, 0);\n            int tag")

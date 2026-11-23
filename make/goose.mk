@@ -140,6 +140,26 @@ conformance-negative-control-goose: build/conformance-harness build/conformance-
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	sh test/conformance/goose/negative-control load
 
+# THE WRITE CONTRACT's controls (docs/SPEC.md §5.1). Goose refuses in every
+# build, so each removes one refusal from a copy of the generated units: the
+# fixed writer's ranged-int check (write-refusal), its finite-float check
+# (write-refusal-fixed) and SaveMessages's ranged-int check
+# (write-refusal-message). A fixed root is written through its own form's one
+# checked writer, so the first two turn write-refusal and write-refusal-fixed
+# red together; the message control turns write-refusal-message red alone.
+.PHONY: conformance-negative-control-goose-write-refusal conformance-negative-control-goose-write-refusal-fixed conformance-negative-control-goose-write-refusal-message
+conformance-negative-control-goose-write-refusal: build/conformance-harness build/conformance-goose
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	sh test/conformance/goose/negative-control write-refusal
+
+conformance-negative-control-goose-write-refusal-fixed: build/conformance-harness build/conformance-goose
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	sh test/conformance/goose/negative-control write-refusal-fixed
+
+conformance-negative-control-goose-write-refusal-message: build/conformance-harness build/conformance-goose
+	@test -x "$(GOOSE)" || $(MAKE) dist-goose
+	sh test/conformance/goose/negative-control write-refusal-message
+
 # Whole-load discard (§4), including retaining reads, and the cyclic wire as
 # damage (§3.1). The controls remove the emitted runtime's discard and its
 # cycle check, and require the damaged and the cyclic roots to escape.
@@ -185,3 +205,5 @@ tables-goose-wire-fuzz-verdict: goose-toolchain-ready
 tables-goose-wire-fuzz-verdict-negative-control: goose-toolchain-ready
 	SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 ./internal/codegen/goosetable -run '^TestGooseWireFuzzVerdictPipeNegativeControl$$'
 test-goose: tables-goose-wire-fuzz-verdict tables-goose-wire-fuzz-verdict-negative-control
+
+test-goose: conformance-negative-control-goose-write-refusal conformance-negative-control-goose-write-refusal-fixed conformance-negative-control-goose-write-refusal-message

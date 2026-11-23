@@ -710,6 +710,16 @@ final class WireState {
 
   int mark() => ids.length;
 
+  // THE ID TABLE'S MAXIMUM (docs/SPEC-TABLES.md §3, R8): every reader refuses a
+  // table of more than 4096 entries, so a save refuses a value that needs more
+  // and never writes a file its readers refuse. Checked once, where the table
+  // is written, so an interned id a rollback undoes never refuses.
+  void checkIdBound() {
+    if (ids.length > 4096) {
+      throw StateError('id_table_full: ${ids.length} ids, past the maximum of 4096 (docs/SPEC-TABLES.md §3)');
+    }
+  }
+
   // rollback drops ids interned after mark, so an elided by-value body leaves
   // nothing in the id table (§3).
   void rollback(int m) {
@@ -809,7 +819,7 @@ final class WireState {
     if (r != null) return r;
     if (!_retainKnown.contains(id)) {
       final t = retain;
-      if (t == null || t.idUsed >= t.ids.length) {
+      if (t == null || t.idUsed >= t.ids.length || ids.length >= 4096) {
         lost = true;
         return 0;
       }
@@ -2594,14 +2604,14 @@ func (g *wireGen) emitSaveField(f *ir.Field, ind string, ordinal int) {
 	expr := "v." + name
 	id := fieldId(f)
 	g.pf("%s", requiredRangeCheck(f, expr, ind, "_rangeF32", ""))
-	g.pf("%s", textListWriteCheck(f, expr, ind, "", "throw StateError('invalid_value: text list');"))
+	g.pf("%s", textListWriteCheck(f, expr, ind, "", "assert(false, 'invalid_value: text list');"))
 	if f.Type.TextUnbounded() {
 		guard := ""
 		if f.Type.Optional {
 			guard = "v." + hasMember(f) + " && "
 		}
-		g.pf("%sif(%s!tableTextValueValid(%s,-1))throw StateError('invalid_value: unbounded text');\n", ind, guard, expr)
-		g.pf("%sif(%stableTextByteLength(%s)>0xffffffff)throw StateError('blob_over_size_cap');\n", ind, guard, expr)
+		g.pf("%sif(%s!tableTextValueValid(%s,-1))assert(false,'invalid_value: unbounded text');\n", ind, guard, expr)
+		g.pf("%sif(%stableTextByteLength(%s)>0xffffffff)assert(false,'blob_over_size_cap');\n", ind, guard, expr)
 	}
 	g.emitWireWriteAssert(f, expr, ind)
 	switch {
@@ -2759,44 +2769,11 @@ func (g *wireGen) emitSaveByValue(f *ir.Field, expr, ind string, id uint64) {
 	g.pf("%s}\n", ind)
 }
 
-// countedRides is the condition a counted or unbounded array rides under. An
-// array with no minimum elides when empty. A counted [A..B] elides exactly at
-// its BORN state (docs/SPEC-TABLES.md §2.3, internal/tablewire encodeArray):
-// the live count is A and every element writes nothing, which is a scalar at
-// its default (a float by bits), a None union, a null pointer, or a table
-// whose save body is its terminator alone, judged on a scratch writer with
-// the id table rolled back.
-func (g *wireGen) countedRides(f *ir.Field, expr string, ordinal int) string {
-	min := f.BornCount()
-	if min <= 0 || f.Type.Optional || ir.TextListPlain(f) {
-		return expr + ".isNotEmpty"
-	}
-	var elem string
-	switch listElementKind(f) {
-	case wireKindUnion:
-		elem = "e.armTag != 0"
-	case wireKindPtr:
-		elem = "e != null"
-	case wireKindTable:
-		if f.Type.Pointer {
-			elem = "e != null"
-			break
-		}
-		return fmt.Sprintf("%s.length != %d || %s.asMap().entries.any((x) { final mk = w.state.mark(); final b = w.sub(); b.path = [...w.path, %d, x.key]; %sWireSaveBody(b, x.value); w.state.rollback(mk); return b.buf.length > 1; })",
-			expr, min, expr, ordinal, dartName(f.Type.Name))
-	case wireKindF32, wireKindF64:
-		elem = wireFloatRides(singleOf(f), "e", g.elemDefault(f))
-	default:
-		elem = "e != " + g.elemDefault(f)
-	}
-	return fmt.Sprintf("%s.length != %d || %s.any((e) => %s)", expr, min, expr, elem)
-}
-
 // emitSavePointerList writes a []*T as kind 14 over element kind 17 (§3.1):
 // the count the value decides, then one node index a slot, and a null slot
 // rides as 0. The field id is interned before the body.
 func (g *wireGen) emitSavePointerList(f *ir.Field, expr, ind string, id uint64) {
-	g.pf("%s", rideOpen(ind, f, g.countedRides(f, expr, 0)))
+	g.pf("%s", rideOpen(ind, f, g.countedRides(f, expr)))
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal s = w.sub();\n", ind)
 	g.pf("%s\ts.putByte(%d);\n", ind, wireKindPtr)
@@ -2816,7 +2793,15 @@ func (g *wireGen) emitSavePointerList(f *ir.Field, expr, ind string, id uint64) 
 // field's reference is interned BEFORE the element bodies so the id table
 // stays in first-use order (§3).
 func (g *wireGen) emitSaveTableList(f *ir.Field, expr, ind string, id uint64, ordinal int) {
-	g.pf("%s", rideOpen(ind, f, g.countedRides(f, expr, ordinal)))
+	g.pf("%s", rideOpen(ind, f, expr+".isNotEmpty"))
+	// THE BIRTH VALUE ELIDES (docs/SPEC-TABLES.md §22.2; the engine's
+	// encodeArray `allBirth`): M element bodies that are each their terminator
+	// alone (a retained tail is not) roll the field's ids back, unwritten.
+	born := wireBornElides(f)
+	if born {
+		g.pf("%s\tfinal bornMark = w.state.mark();\n", ind)
+		g.pf("%s\tvar born = %s.length == %d;\n", ind, expr, wireBornCount(f))
+	}
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal s = w.sub();\n", ind)
 	g.pf("%s\ts.putByte(%d);\n", ind, wireKindTable)
@@ -2826,13 +2811,26 @@ func (g *wireGen) emitSaveTableList(f *ir.Field, expr, ind string, id uint64, or
 	g.pf("%s\t\tfinal b = s.sub();\n", ind)
 	g.pf("%s\t\tb.path = [...w.path, %d, i];\n", ind, ordinal)
 	g.pf("%s\t\t%s(b, e);\n", ind, dartName(f.Type.Name)+"WireSaveBody")
+	if born {
+		g.pf("%s\t\tif (b.buf.length > 1) born = false;\n", ind)
+	}
 	g.pf("%s\t\ts.putLeb(b.buf.length);\n", ind)
 	g.pf("%s\t\ts.putBytes(b.buf);\n", ind)
 	g.pf("%s\t}\n", ind)
-	g.pf("%s\tw.putLeb(ref);\n", ind)
-	g.pf("%s\tw.putByte(%d);\n", ind, wireKindArray)
-	g.pf("%s\tw.putLeb(s.buf.length);\n", ind)
-	g.pf("%s\tw.putBytes(s.buf);\n", ind)
+	inner := ind
+	if born {
+		g.pf("%s\tif (born) {\n", ind)
+		g.pf("%s\t\tw.state.rollback(bornMark);\n", ind)
+		g.pf("%s\t} else {\n", ind)
+		inner = ind + "\t"
+	}
+	g.pf("%s\tw.putLeb(ref);\n", inner)
+	g.pf("%s\tw.putByte(%d);\n", inner, wireKindArray)
+	g.pf("%s\tw.putLeb(s.buf.length);\n", inner)
+	g.pf("%s\tw.putBytes(s.buf);\n", inner)
+	if born {
+		g.pf("%s\t}\n", ind)
+	}
 	g.pf("%s}\n", ind)
 }
 
@@ -2842,7 +2840,7 @@ func (g *wireGen) emitSaveTableList(f *ir.Field, expr, ind string, id uint64, or
 // its variant id's reference. The count the value decides, then the payloads.
 func (g *wireGen) emitSaveScalarList(f *ir.Field, expr, ind string, id uint64) {
 	elemKind := listElementKind(f)
-	g.pf("%s", rideOpen(ind, f, g.countedRides(f, expr, 0)))
+	g.pf("%s", rideOpen(ind, f, g.countedRides(f, expr)))
 	g.pf("%s\tfinal ref = w.refFor(%s);\n", ind, dartU64Literal(id))
 	g.pf("%s\tfinal s = w.sub();\n", ind)
 	g.pf("%s\ts.putByte(%d);\n", ind, elemKind)
@@ -3839,6 +3837,7 @@ func (g *wireGen) emitSave(st *ir.Struct) {
 	g.pf("\t%sWireSaveBodyFields(w, v);\n", dartName(n))
 	g.pf("\t_writeNodeTable(w);\n")
 	g.pf("\tw.putByte(0);\n")
+	g.pf("\tstate.checkIdBound();\n")
 	g.pf("\tfor (final id in state.ids) { w.putU64(id); }\n")
 	g.pf("\tw.putU64(state.ids.length);\n")
 	if st.Integrity != "" {
@@ -3858,7 +3857,9 @@ func (g *wireGen) emitLoad(st *ir.Struct) {
 	fn := dartName(n) + "WireLoad"
 	g.pf("%s %s(Uint8List data, [TableWireReport? report]) {\n", n, fn)
 	g.pf("\tfinal v = %s();\n", n)
-	g.pf("\treport ??= TableWireReport();\n\tif (report.integrityMismatch) { report.refusal = ''; report.refused = false; }\n\treport.integrityMismatch = false;\n")
+	// EVERY COUNT IS ZERO AT THE START OF A READ, as Go's load zeroes its report: unknown,
+	// widened and the retain counters never add up across calls.
+	g.pf("\treport ??= TableWireReport();\n\treport.unknown = 0;\n\treport.widened = 0;\n\treport.retained = 0;\n\treport.retainLost = 0;\n\tif (report.integrityMismatch) { report.refusal = ''; report.refused = false; }\n\treport.integrityMismatch = false;\n")
 	g.emitIntegrityRead(st, "report", "v")
 	g.pf("\tfinal r = TableWireReader(data, data.length);\n")
 	bytesBlob, strBlob := ir.PointerReachableBlobs(st)

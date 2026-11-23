@@ -372,10 +372,10 @@ func fieldDefault(f *ir.Field) string {
 	if f.Array == ir.ArrayFixed {
 		return fmt.Sprintf("(0..%d).map(|_| %s).collect::<Vec<_>>()", f.ArrayBound, fieldDefault(scalarOnly(f)))
 	}
-	if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
-		// a counted [A..B] is BORN AT ITS MINIMUM (docs/SPEC.md §4.2): A
-		// default elements, the value an absent field reads (ruling R10)
-		return fmt.Sprintf("(0..%d).map(|_| %s).collect::<Vec<_>>()", f.ArrayMin, fieldDefault(scalarOnly(f)))
+	if f.BornCount() > 0 {
+		// A [Min..N]T is BORN holding Min default elements (SPEC §4.6), and an
+		// absent one reads back as exactly that (docs/SPEC-TABLES.md §4).
+		return fmt.Sprintf("(0..%d).map(|_| %s).collect::<Vec<_>>()", f.BornCount(), fieldDefault(scalarOnly(f)))
 	}
 	if f.Array != ir.ArrayNone {
 		return "Vec::new()"
@@ -659,7 +659,7 @@ func (g *gen) scalarWrite(f *ir.Field, x, dst string) string {
 	kind := scalarWireKind(f)
 	switch f.Type.Kind {
 	case ir.TBool:
-		return fmt.Sprintf("%s.push(if %s { 1 } else { 0 });", dst, x)
+		return fmt.Sprintf("%s.push(if %s { 1 } else { 0 });", dst, cookVal(x))
 	case ir.TFloat32, ir.TFloat64:
 		return fmt.Sprintf("if !%s.is_finite() { table_float_refuse(ids, %q); } %s.extend_from_slice(&%s.to_bits().to_le_bytes());", x, g.floatOwner(f), dst, rustFloatStored(f, x))
 	}
@@ -785,10 +785,32 @@ func enumRef(f *ir.Field, x string) string {
 	var s strings.Builder
 	fmt.Fprintf(&s, "match %s { %s::None => 0", x, e.Name)
 	for i, v := range e.Variants {
+		if variantDeprecated(e, i) {
+			// a deprecated variant is the WRITE rule's refusal
+			// (docs/SPEC-TABLES.md §2.15); Rust write checks are debug asserts
+			fmt.Fprintf(&s, ", %s::%s => { debug_assert!(false, %q); ids.id_ref(0x%016x) }", e.Name, rustVariant(v), "invalid_value: "+e.Name+"."+v+" is deprecated", ir.TableWireId(e.VariantWireName(i)))
+			continue
+		}
 		fmt.Fprintf(&s, ", %s::%s => ids.id_ref(0x%016x)", e.Name, rustVariant(v), ir.TableWireId(e.VariantWireName(i)))
 	}
 	s.WriteString(" }")
 	return s.String()
+}
+
+// variantDeprecated reports a variant's `| deprecated` marker (§2.15).
+func variantDeprecated(e *ir.Enum, i int) bool {
+	return i < len(e.VariantDeprecated) && e.VariantDeprecated[i]
+}
+
+// deprecatedReadDefault is what a read yields for a deprecated variant
+// (docs/SPEC-TABLES.md §2.15): the field's declared default, and None — the
+// element's default — for an array, keyed or map element.
+func deprecatedReadDefault(f *ir.Field) string {
+	e := f.Type.Ref.(*ir.Enum)
+	if f.Array != ir.ArrayNone || f.KeyEnum != "" || f.IsList() || f.IsMap() {
+		return e.Name + "::None"
+	}
+	return enumDefault(f)
 }
 
 // emitVariableSaveField emits the elision guard and the write for one field,
@@ -814,38 +836,55 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 	}
 	if f.Array != ir.ArrayNone {
 		// AN UNBOUNDED ARRAY IS THE COUNTED ARRAY'S OWN BYTES (§2.9): kind 14,
-		// L, the element kind, the live count, the elements; empty elides,
-		// and a counted [A..B] elides at its birth value, A default elements
-		// (docs/SPEC.md §4.2; gotable's emitCountedBirthRides)
-		rides := "!" + x + ".is_empty()"
-		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
-			differs := "true" // a table element is never compared: the array rides
-			if c := classOf(scalarOnly(f)); c != vTable && c != vMap {
-				differs = elemNonDefaultExpr(f, "e")
-			}
-			rides = fmt.Sprintf("(%s.len() != %d || %s.iter().any(|e| %s))", x, f.ArrayMin, x, differs)
+		// L, the element kind, the live count, the elements; empty elides.
+		// A [Min..N]T is BORN at Min default elements (SPEC §4.6): it elides
+		// exactly when it still holds its birth, count Min with every element
+		// at its default (a table element whose body is its terminator alone),
+		// as the oracle's encodeArray does; it rides at every other count,
+		// zero included (docs/SPEC-TABLES.md §3, §4).
+		born := f.BornCount() > 0 && !f.Required
+		if f.BornCount() > 0 {
+			fmt.Fprintf(b, "%s{\n", ind)
+		} else {
+			fmt.Fprintf(b, "%sif %s {\n", ind, requiredWriteGuard(f, "!"+x+".is_empty()"))
 		}
-		fmt.Fprintf(b, "%sif %s {\n", ind, requiredWriteGuard(f, rides))
 		count := x + ".len()"
 		if f.Array == ir.ArrayCounted {
 			count = fmt.Sprintf("%s.len().min(%d)", x, f.ArrayBound)
+			// a count past the declared maximum, or under a declared minimum,
+			// is a debug assert (docs/SPEC.md §5.1, row 3; Rust write checks
+			// are debug asserts only); the writer's storage is held by the
+			// clamp to Max above in every build
 			if f.ArrayMin > 0 {
-				// a writer never produces a count below A (ruling R10): a
-				// debug assert, as Rust write checks are
-				fmt.Fprintf(b, "%sdebug_assert!(%s.len() >= %d, \"%s count below %d\");\n", inner, x, f.ArrayMin, f.Name, f.ArrayMin)
+				fmt.Fprintf(b, "%sdebug_assert!(%s && %s.len() <= %d, \"%s count outside %d..%d\");\n", inner, lenAtLeast(x, f.ArrayMin), x, f.ArrayBound, f.Name, f.ArrayMin, f.ArrayBound)
+			} else {
+				fmt.Fprintf(b, "%sdebug_assert!(%s.len() <= %d, \"%s count past %d\");\n", inner, x, f.ArrayBound, f.Name, f.ArrayBound)
 			}
-			// a count past the declared maximum is a debug assert (docs/SPEC.md
-			// §5.1, row 3; Rust write checks are debug asserts only); the
-			// writer's storage is held by the clamp to Max above in every build
-			fmt.Fprintf(b, "%sdebug_assert!(%s.len() <= %d, \"%s count past %d\");\n", inner, x, f.ArrayBound, f.Name, f.ArrayBound)
+		}
+		if born {
+			fmt.Fprintf(b, "%slet birth_mark = ids.mark();\n", inner)
 		}
 		fmt.Fprintf(b, "%slet r = ids.id_ref(0x%016x);\n", inner, id)
 		fmt.Fprintf(b, "%slet count = %s;\n", inner, count)
 		fmt.Fprintf(b, "%slet mut body = Vec::new();\n", inner)
 		fmt.Fprintf(b, "%sbody.push(%d); // the element kind\n", inner, elemWireKind(f))
 		fmt.Fprintf(b, "%sleb_write(&mut body, count as u64);\n", inner)
+		if born {
+			fmt.Fprintf(b, "%slet mut birth = count == %d;\n", inner, f.BornCount())
+		}
 		fmt.Fprintf(b, "%sfor (j, e) in %s.iter().take(count).enumerate() {\n", inner, x)
 		ein := inner + "    "
+		if born {
+			switch {
+			case classOf(f) == vTable && ir.TextListPlain(f):
+				fmt.Fprintf(b, "%sif !e.value.is_empty() { birth = false; }\n", ein)
+			case classOf(f) == vTable:
+				// a table element is at its birth when its body is its
+				// terminator alone, written below
+			default:
+				fmt.Fprintf(b, "%sif %s { birth = false; }\n", ein, elemNonDefaultExpr(scalarOnly(f), "e"))
+			}
+		}
 		switch classOf(f) {
 		case vTable:
 			if ir.TextListPlain(f) {
@@ -854,6 +893,9 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 			}
 			fmt.Fprintf(b, "%slet mut eb = Vec::new();\n", ein)
 			emitTableBodyInto(b, f, "e", "eb", fmt.Sprintf("path.step(%d, j as u32)", ordinal), ein)
+			if born {
+				fmt.Fprintf(b, "%sif eb.len() != 1 { birth = false; }\n", ein)
+			}
 			fmt.Fprintf(b, "%sleb_write(&mut body, eb.len() as u64);\n", ein)
 			fmt.Fprintf(b, "%sbody.extend_from_slice(&eb);\n", ein)
 		case vPointer:
@@ -871,10 +913,16 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 			fmt.Fprintf(b, "%s%s\n", ein, g.scalarWrite(f, "(*e)", "body"))
 		}
 		fmt.Fprintf(b, "%s}\n", inner)
+		if born {
+			fmt.Fprintf(b, "%sif birth { ids.rollback(birth_mark); } else {\n", inner)
+		}
 		fmt.Fprintf(b, "%sleb_write(out, r);\n", inner)
 		fmt.Fprintf(b, "%sout.push(%d);\n", inner, kind)
 		fmt.Fprintf(b, "%sleb_write(out, body.len() as u64);\n", inner)
 		fmt.Fprintf(b, "%sout.extend_from_slice(&body);\n", inner)
+		if born {
+			fmt.Fprintf(b, "%s}\n", inner)
+		}
 		fmt.Fprintf(b, "%s}\n", ind)
 		return
 	}
@@ -1233,6 +1281,13 @@ func emitEnumDecode(b *strings.Builder, f *ir.Field, dst, bound, onBad, ind stri
 	fmt.Fprintf(b, "%selse {\n", ind)
 	fmt.Fprintf(b, "%s    match ids[vref as usize - 1] {\n", ind)
 	for i, v := range e.Variants {
+		if variantDeprecated(e, i) {
+			// A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT, an
+			// element as the ELEMENT's; it is never unknown (docs/SPEC-TABLES.md
+			// §2.15, the oracle's decode)
+			fmt.Fprintf(b, "%s        0x%016x => %s,\n", ind, ir.TableWireId(e.VariantWireName(i)), deprecatedReadDefault(f))
+			continue
+		}
 		fmt.Fprintf(b, "%s        0x%016x => %s::%s,\n", ind, ir.TableWireId(e.VariantWireName(i)), e.Name, rustVariant(v))
 	}
 	fmt.Fprintf(b, "%s        _ => { report.unknown += 1; if retain.is_some() { report.retain_lost += 1; } %s::None },\n", ind, e.Name)
@@ -1427,6 +1482,11 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	case ir.ArrayList:
 		fmt.Fprintf(b, "%sif count > 0x7fffffff { return nodes.refuse_count(report); }\n%slet keep = count;\n", i4, i4)
 	case ir.ArrayCounted, ir.ArrayFixed:
+		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+			// a count under the declared minimum refuses the load, as one past
+			// the bound does (docs/SPEC-TABLES.md §4; the oracle's count_over_bound)
+			fmt.Fprintf(b, "%sif count < %d { report.damaged = true; }\n", i4, f.ArrayMin)
+		}
 		fmt.Fprintf(b, "%slet keep = if count > %d { report.damaged = true; %d } else { count };\n", i4, f.ArrayBound, f.ArrayBound)
 	default: // bytes(N)
 		fmt.Fprintf(b, "%slet keep = if count > %d { report.damaged = true; %d } else { count };\n", i4, f.Type.Size, f.Type.Size)
@@ -1888,6 +1948,7 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    %s(v, &mut out, &mut ids, &g, None, None, TableRetainPath::default());\n", fn(st.Name, "save_body"))
 	emitNodeTableWrite(b, false)
 	fmt.Fprintf(b, "    // A Vec cannot carry the writer's named refusal (§3): never return a truncated file.\n")
+	fmt.Fprintf(b, "    ids.check_bound();\n")
 	fmt.Fprintf(b, "    if let Some(why) = ids.refused.take() { panic!(\"{}\", why); }\n")
 	fmt.Fprintf(b, "    out.push(0); // the root body's zero reference\n")
 	fmt.Fprintf(b, "    for e in &ids.entries { out.extend_from_slice(&e.to_le_bytes()); }\n")
@@ -1914,6 +1975,7 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    %s(v, &mut out, &mut ids, &g, None, None, TableRetainPath::default());\n", fn(st.Name, "save_body"))
 	fmt.Fprintf(b, "    // every node record's body rides too, and is checked by the same walk\n")
 	emitNodeTableWrite(b, false)
+	fmt.Fprintf(b, "    ids.check_bound();\n")
 	fmt.Fprintf(b, "    if let Some(why) = ids.refused.take() { return Err(why); }\n")
 	fmt.Fprintf(b, "    out.push(0); // the root body's zero reference\n")
 	fmt.Fprintf(b, "    for e in &ids.entries { out.extend_from_slice(&e.to_le_bytes()); }\n")
@@ -1947,6 +2009,7 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	emitNodeTableWrite(b, true)
 	fmt.Fprintf(b, "    retain_count_unplaced(retain, report);\n")
 	fmt.Fprintf(b, "    // A Vec cannot carry the writer's named refusal (§3): never return a truncated file.\n")
+	fmt.Fprintf(b, "    ids.check_bound();\n")
 	fmt.Fprintf(b, "    if let Some(why) = ids.refused.take() { panic!(\"{}\", why); }\n")
 	fmt.Fprintf(b, "    out.push(0); // the root body's zero reference\n")
 	fmt.Fprintf(b, "    for e in &ids.entries { out.extend_from_slice(&e.to_le_bytes()); }\n")
@@ -1991,10 +2054,10 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "/// id-table reader bound and 8192-slot open-addressing distinctness probe with\n")
 	fmt.Fprintf(b, "/// no heap allocation for the id table (docs/SPEC-TABLES.md §3).\n")
 	fmt.Fprintf(b, "pub fn %s_load_inner(wire: &[u8], retain: Option<&mut TableRetain>, report: &mut TableReport) -> Option<%s> {\n", fnName, st.Name)
-	fmt.Fprintf(b, "    // this read's own non-finite float (docs/SPEC-TABLES.md §3.3)\n")
-	fmt.Fprintf(b, "    if report.reason == TableReason::MissingRequired { report.refused = false; report.reason = TableReason::None; } report.missing_required_fields.clear();\n")
-	fmt.Fprintf(b, "    report.non_finite_float = \"\";\n")
-	fmt.Fprintf(b, "    report.non_finite_float_id = None;\n")
+	// EACH READ'S OWN REPORT: the caller's is zeroed first, as the Go
+	// reference's read does (*report = TableReport{}), so no counter, flag or
+	// name accumulates across reads (docs/SPEC-TABLES.md §4, §3.3)
+	fmt.Fprintf(b, "    *report = TableReport::default();\n")
 	fmt.Fprintf(b, "    if wire.is_empty() { report.damaged = true; return None; }\n")
 	fmt.Fprintf(b, "    if wire[0] != TABLE_WIRE_FORM { report.refused = true; report.reason = if wire[0] == 2 { TableReason::MessageFormAsFile } else { TableReason::NewerForm }; return None; }\n")
 	if st.Integrity == "crc32c" {
@@ -2549,4 +2612,14 @@ func rustFloatStored(f *ir.Field, x string) string {
 		return x
 	}
 	return fmt.Sprintf("(if %s == 0.0 { 0.0 } else { %s })", x, x)
+}
+
+// rustFloatStoredArg is rustFloatStored for a bare call argument, where the
+// normalising if-expression needs no parentheses (clippy unused_parens).
+func rustFloatStoredArg(f *ir.Field, x string) string {
+	s := rustFloatStored(f, x)
+	if s != x {
+		return s[1 : len(s)-1]
+	}
+	return unparen(s)
 }

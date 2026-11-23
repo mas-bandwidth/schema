@@ -63,7 +63,7 @@ fixed table Holder
 `
 
 // one case: the root, the engine's text for the value, and the C lines that
-// build the same value in `v` from a reset one
+// build the same value in `v` from a reset one.
 type cCountedMinCase struct {
 	id, table, text, build string
 }

@@ -436,9 +436,9 @@ func (b *fixedRootBuild) scalarOp(f *ir.Field) byte {
 
 func (b *fixedRootBuild) flatSpanSetter(fieldExpr, elemType string, elemBytes int64) string {
 	if elemType == "byte" {
-		return fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr)
+		return fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, global::System.Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr)
 	}
-	return fmt.Sprintf("(t, b, l) => { if (%s != null) TableFixedWire.ReadLittle<%s>(b.Slice(0, Math.Min(b.Length, %s.Length * %d)), %s); }", fieldExpr, elemType, fieldExpr, elemBytes, fieldExpr)
+	return fmt.Sprintf("(t, b, l) => { if (%s != null) TableFixedWire.ReadLittle<%s>(b.Slice(0, global::System.Math.Min(b.Length, %s.Length * %d)), %s); }", fieldExpr, elemType, fieldExpr, elemBytes, fieldExpr)
 }
 
 func (b *fixedRootBuild) countElementSlots(f *ir.Field) int {
@@ -968,7 +968,7 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 		})
 		bufSlot := len(b.slots)
 		b.slots = append(b.slots, fixedSlot{
-			setBytes: fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr),
+			setBytes: fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, global::System.Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr),
 			reset:    bufferReset(f, fieldExpr),
 		})
 		b.entries = append(b.entries, fixedBlockEntry{
@@ -1001,7 +1001,7 @@ func (b *fixedRootBuild) buildPayload(owner *ir.Struct, f *ir.Field, expr string
 		})
 		bufSlot := len(b.slots)
 		b.slots = append(b.slots, fixedSlot{
-			setBytes: fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr),
+			setBytes: fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, global::System.Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr),
 			reset:    bufferReset(f, fieldExpr),
 		})
 		b.entries = append(b.entries, fixedBlockEntry{
@@ -1119,7 +1119,7 @@ func (b *fixedRootBuild) buildElement(f *ir.Field, expr string, baseSlot int, id
 				// `ordinal` land their value and move nothing). A forged ordinal
 				// past the top variant is the BOUNDS PASS's to clamp and count,
 				// on BOTH plans (§5.4, §4.6).
-				setRawReport: fmt.Sprintf("(t, v, rep) => { %s = (%s)v; }", expr, f.Type.Name),
+				setRawReport: fixedEnumReport(f, r, expr),
 				reset:        b.scalarReset(f, expr),
 			})
 			b.entries = append(b.entries, fixedBlockEntry{
@@ -1266,7 +1266,7 @@ func (b *fixedRootBuild) buildElementSlotsAndPlan(f *ir.Field, expr string, base
 				// `ordinal` land their value and move nothing). A forged ordinal
 				// past the top variant is the BOUNDS PASS's to clamp and count,
 				// on BOTH plans (§5.4, §4.6).
-				setRawReport: fmt.Sprintf("(t, v, rep) => { %s = (%s)v; }", expr, f.Type.Name),
+				setRawReport: fixedEnumReport(f, r, expr),
 				reset:        b.scalarReset(f, expr),
 			})
 			b.addPlan(fixedPlanEntry{
@@ -1445,7 +1445,7 @@ func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field,
 		})
 		bufSlot := len(b.slots)
 		b.slots = append(b.slots, fixedSlot{
-			setBytes: fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr),
+			setBytes: fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, global::System.Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr),
 			reset:    bufferReset(f, fieldExpr),
 		})
 		b.addPlan(fixedPlanEntry{
@@ -1468,7 +1468,7 @@ func (b *fixedRootBuild) buildPayloadSlotsAndPlan(owner *ir.Struct, f *ir.Field,
 		})
 		bufSlot := len(b.slots)
 		b.slots = append(b.slots, fixedSlot{
-			setBytes: fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr),
+			setBytes: fmt.Sprintf("(t, b, l) => { if (%s != null) b.Slice(0, global::System.Math.Min(b.Length, %s.Length)).CopyTo(%s); }", fieldExpr, fieldExpr, fieldExpr),
 			reset:    bufferReset(f, fieldExpr),
 		})
 		b.addPlan(fixedPlanEntry{
@@ -1635,9 +1635,9 @@ func (g *tableGen) emitFixedWriteKeyedLoop(owner *ir.Struct, f *ir.Field, base, 
 			slice = buf
 		}
 		if elemType == "byte" {
-			g.pf("%sif (%s != null) { %s.AsSpan(0, Math.Min(%s.Length, %d)).CopyTo(%s); }\n", ind, slotsExpr, slotsExpr, slotsExpr, count, slice)
+			g.pf("%sif (%s != null) { %s.AsSpan(0, global::System.Math.Min(%s.Length, %d)).CopyTo(%s); }\n", ind, slotsExpr, slotsExpr, slotsExpr, count, slice)
 		} else {
-			g.pf("%sif (%s != null) { TableFixedWire.WriteLittle<%s>(%s.AsSpan(0, Math.Min(%s.Length, %d)), %s); }\n", ind, slotsExpr, elemType, slotsExpr, slotsExpr, count, slice)
+			g.pf("%sif (%s != null) { TableFixedWire.WriteLittle<%s>(%s.AsSpan(0, global::System.Math.Min(%s.Length, %d)), %s); }\n", ind, slotsExpr, elemType, slotsExpr, slotsExpr, count, slice)
 		}
 		return
 	}
@@ -1663,9 +1663,9 @@ func (g *tableGen) emitFixedWriteLoop(f *ir.Field, base, bound int64, live, buf,
 			slice = buf
 		}
 		if elemType == "byte" {
-			g.pf("%sif (%s != null) { %s.AsSpan(0, Math.Min(%s.Length, %s)).CopyTo(%s); }\n", ind, expr, expr, expr, nExpr, slice)
+			g.pf("%sif (%s != null) { %s.AsSpan(0, global::System.Math.Min(%s.Length, %s)).CopyTo(%s); }\n", ind, expr, expr, expr, nExpr, slice)
 		} else {
-			g.pf("%sif (%s != null) { TableFixedWire.WriteLittle<%s>(%s.AsSpan(0, Math.Min(%s.Length, %s)), %s); }\n", ind, expr, elemType, expr, expr, nExpr, slice)
+			g.pf("%sif (%s != null) { TableFixedWire.WriteLittle<%s>(%s.AsSpan(0, global::System.Math.Min(%s.Length, %s)), %s); }\n", ind, expr, elemType, expr, expr, nExpr, slice)
 		}
 		return
 	}
@@ -1718,6 +1718,10 @@ func (g *tableGen) emitFixedWriteElement(f *ir.Field, off int64, buf, expr strin
 			g.pf("%s        default: break;\n%s    }\n%s}\n", ind, ind, ind)
 			return
 		case *ir.Enum:
+			if cond := enumDeprecatedCond(r, "(ulong)"+expr); cond != "" {
+				// A STRICT WRITE REFUSES A DEPRECATED VARIANT (docs/SPEC-TABLES.md §2.15); C# is an assert leg
+				g.pf("%sSystem.Diagnostics.Debug.Assert(!(%s), \"a deprecated enum variant is written\");\n", ind, cond)
+			}
 			w := int64(r.StorageBits / 8)
 			switch w {
 			case 1:

@@ -199,6 +199,7 @@ func init() {
 		Name{Name: "table_json_read_table_keys", What: "the C graph, blob and text runtime"},
 		Name{Name: "table_json_scan_label", What: "the C graph, blob and text runtime"},
 		Name{Name: "table_json_skipped_ampersand", What: "the C graph, blob and text runtime"},
+		Name{Name: "table_json_skipped_close", What: "the C graph, blob and text runtime"},
 		Name{Name: "table_json_write_fields", What: "the C graph, blob and text runtime"},
 		Name{Name: "table_json_write_graph", What: "the C graph, blob and text runtime"},
 		Name{Name: "table_json_write_pointer", What: "the C graph, blob and text runtime"},

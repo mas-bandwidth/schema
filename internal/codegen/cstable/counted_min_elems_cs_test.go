@@ -73,7 +73,7 @@ fixed table FRU
 `
 
 // one case: the form, the table, the engine's text for the value, and the C#
-// lines that build the same value in `v` from a fresh one
+// lines that build the same value in `v` from a fresh one.
 type csCountedMinCase struct {
 	id, form, table, text, build string
 }
@@ -136,7 +136,7 @@ func TestCSharpCountedMinElementsElideAtBornState(t *testing.T) {
 	}
 	out := t08RunCS(t, csCountedMinSchema, csCountedMinBody())
 	got := map[string]string{}
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		parts := strings.Fields(line)
 		if len(parts) == 3 && (parts[0] == "wire" || parts[0] == "message") {
 			got[parts[0]+" "+parts[1]] = parts[2]

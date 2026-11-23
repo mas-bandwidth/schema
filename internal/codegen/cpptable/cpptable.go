@@ -930,7 +930,7 @@ struct TableReport
     // from a caller's report that already held one.
     int32_t non_finite_floats = 0;
     // THE STRICT ANNOUNCEMENT'S TWO BUILD VERSIONS (docs/SPEC-TABLES.md §3.3):
-    // on reason build_version_mismatch, the peer's announced build version
+    // on reason build_version_mismatch, the writer's announced build version
     // (remote) and this unit's own (own). Zero on every other path.
     uint64_t build_version_remote = 0;
     uint64_t build_version_own = 0;
@@ -1289,6 +1289,9 @@ struct TableIds
 {
     static const int32_t kCapacity = ` + idCapacity + `;
     static const int32_t kBuckets = ` + idBuckets + `;
+    // THE WRITER'S MAXIMUM (docs/SPEC-TABLES.md §3): no reader accepts an id
+    // table past kTableProbeBound entries, so the 4097th id overflows.
+    static const int32_t kLimit = kCapacity < ` + strconv.Itoa(ir.TableWireIdTableBound) + ` ? kCapacity : ` + strconv.Itoa(ir.TableWireIdTableBound) + `;
 
     uint64_t ids[kCapacity];
     int32_t chain[kCapacity];
@@ -1332,7 +1335,7 @@ struct TableIds
         {
             if ( ids[i] == id ) { return uint64_t( i ) + 1; }
         }
-        if ( count >= kCapacity )
+        if ( count >= kLimit )
         {
             overflow = true;
             return 1;

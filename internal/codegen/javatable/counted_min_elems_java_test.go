@@ -78,7 +78,7 @@ fixed table FRU
 `
 
 // one case: the form, the table, the engine's text for the value, and the
-// Java lines that build the same value in `v` from a fresh one
+// Java lines that build the same value in `v` from a fresh one.
 type javaCountedMinCase struct {
 	id, form, table, text, build string
 }
@@ -185,7 +185,7 @@ func TestJavaCountedMinElementsElideAtBornState(t *testing.T) {
 		t.Fatalf("java: %v\n%s", err, out)
 	}
 	got := map[string]string{}
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		parts := strings.Fields(line)
 		if len(parts) != 3 {
 			t.Fatalf("an unexpected probe line: %q\n%s", line, out)

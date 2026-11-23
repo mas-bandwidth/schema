@@ -1,0 +1,5 @@
+# THE WRITER CONTROL'S CORPUS (F-070; make/schema-dart-runs-hostile-corpus.mk): the stock
+# conformance-base64-empty text case, whose reader accepts. Under a text writer planted to throw
+# after that accept, a finding that records a refusal must not carry the throw.
+# name	carrier	schema	table	input	provenance	verdict	reason	digest
+conformance-base64-empty	text	tables/examples	RootConfig	inputs/conformance-base64-empty.json	conformance hostile vector testdata/conformance/tables/json-hostile/base64-empty/RootConfig.json value golden testdata/conformance/tables/json-hostile/base64-empty.value.json	accept	-	966940247110343240ec9b6a825c22eac0dcb08b3bf0e999a707ad4d0f630110

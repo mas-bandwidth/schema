@@ -269,7 +269,7 @@ struct TableReport
     // from a caller's report that already held one.
     int32_t non_finite_floats = 0;
     // THE STRICT ANNOUNCEMENT'S TWO BUILD VERSIONS (docs/SPEC-TABLES.md §3.3):
-    // on reason build_version_mismatch, the peer's announced build version
+    // on reason build_version_mismatch, the writer's announced build version
     // (remote) and this unit's own (own). Zero on every other path.
     uint64_t build_version_remote = 0;
     uint64_t build_version_own = 0;
@@ -628,6 +628,9 @@ struct TableIds
 {
     static const int32_t kCapacity = 31;
     static const int32_t kBuckets = 64;
+    // THE WRITER'S MAXIMUM (docs/SPEC-TABLES.md §3): no reader accepts an id
+    // table past kTableProbeBound entries, so the 4097th id overflows.
+    static const int32_t kLimit = kCapacity < 4096 ? kCapacity : 4096;
 
     uint64_t ids[kCapacity];
     int32_t chain[kCapacity];
@@ -671,7 +674,7 @@ struct TableIds
         {
             if ( ids[i] == id ) { return uint64_t( i ) + 1; }
         }
-        if ( count >= kCapacity )
+        if ( count >= kLimit )
         {
             overflow = true;
             return 1;
@@ -3356,7 +3359,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
         return false;
     }
     // "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3): refused
-    // by name, the peer's build version kept, no vocabulary set, never damage.
+    // by name, the writer's build version kept, no vocabulary set, never damage.
     // The unit's own build version is spelled here as the literal BuildVersion
     // holds, because the cook runtime that declares BuildVersion follows this one.
     if ( vocabulary.strict && version != 0x0f14e5df2998b840ull )
@@ -6881,10 +6884,10 @@ inline void SimStateReset( SimState & value )
     value.scale = 65536;
     memset( value.samples, 0, sizeof( value.samples ) );
     memset( value.weights, 0, sizeof( value.weights ) );
-    value.weights_count = 0;
+    value.weights_count = 0; // born at Min (docs/SPEC.md §4.2)
     memset( value.axes.slots, 0, sizeof( value.axes.slots ) );
     memset( value.seeds, 0, sizeof( value.seeds ) );
-    value.seeds_count = 0;
+    value.seeds_count = 0; // born at Min (docs/SPEC.md §4.2)
     PoseReset( value.pose );
     PoseReset( value.spawn );
     value.spawn_present = false;
@@ -6943,7 +6946,8 @@ inline int64_t SimStateMeasureBody( TableIds & ids, const SimState & value )
         }
     }
     schema_assert( value.weights_count >= 0 && value.weights_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.weights_count > 0 )
+    bool rides_weights = value.weights_count > 0;
+    if ( rides_weights )
     {
         const uint64_t ref_weights = ids.ref_at( 23, 0xb1494b6ef08a411eull );
         int64_t body_weights = 0;
@@ -6971,7 +6975,8 @@ inline int64_t SimStateMeasureBody( TableIds & ids, const SimState & value )
         else { ids.truncate( mark_axes ); } // an ELIDED field costs nothing in the id table either
     }
     schema_assert( value.seeds_count >= 0 && value.seeds_count <= 2 ); // storage invariant, debug only (§5.1)
-    if ( value.seeds_count > 0 )
+    bool rides_seeds = value.seeds_count > 0;
+    if ( rides_seeds )
     {
         const uint64_t ref_seeds = ids.ref_at( 10, 0x5af1ac301b4ae16dull );
         int64_t body_seeds = 0;
@@ -7114,7 +7119,8 @@ SCALARDEMO_TABLE_INLINE bool SimStateSaveBody( TableWriter & w, TableIds & ids, 
         }
     }
     schema_assert( value.weights_count >= 0 && value.weights_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.weights_count > 0 )
+    bool rides_weights = value.weights_count > 0;
+    if ( rides_weights )
     {
         const uint64_t ref_weights = ids.ref_at( 23, 0xb1494b6ef08a411eull );
         int64_t body_weights = 0;
@@ -7167,7 +7173,8 @@ SCALARDEMO_TABLE_INLINE bool SimStateSaveBody( TableWriter & w, TableIds & ids, 
         else { ids.truncate( mark_axes ); } // an ELIDED field costs nothing in the id table either
     }
     schema_assert( value.seeds_count >= 0 && value.seeds_count <= 2 ); // storage invariant, debug only (§5.1)
-    if ( value.seeds_count > 0 )
+    bool rides_seeds = value.seeds_count > 0;
+    if ( rides_seeds )
     {
         const uint64_t ref_seeds = ids.ref_at( 10, 0x5af1ac301b4ae16dull );
         int64_t body_seeds = 0;
@@ -8480,7 +8487,8 @@ inline int64_t SimStateMeasureMessageBody( int64_t at, const SimState & value )
         }
     }
     schema_assert( value.weights_count >= 0 && value.weights_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.weights_count > 0 )
+    bool rides_weights = value.weights_count > 0;
+    if ( rides_weights )
     {
         bits += kTableMessageRefBitsHere;
         bits += 3;
@@ -8511,7 +8519,8 @@ inline int64_t SimStateMeasureMessageBody( int64_t at, const SimState & value )
         }
     }
     schema_assert( value.seeds_count >= 0 && value.seeds_count <= 2 ); // storage invariant, debug only (§5.1)
-    if ( value.seeds_count > 0 )
+    bool rides_seeds = value.seeds_count > 0;
+    if ( rides_seeds )
     {
         bits += kTableMessageRefBitsHere;
         bits += 2;
@@ -8628,7 +8637,8 @@ inline bool SimStateSaveMessageBody( TableBitWriter & w, const SimState & value 
         }
     }
     schema_assert( value.weights_count >= 0 && value.weights_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.weights_count > 0 )
+    bool rides_weights = value.weights_count > 0;
+    if ( rides_weights )
     {
         w.put( 19, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.weights_count ) - 0, 3 );
@@ -8664,7 +8674,8 @@ inline bool SimStateSaveMessageBody( TableBitWriter & w, const SimState & value 
         }
     }
     schema_assert( value.seeds_count >= 0 && value.seeds_count <= 2 ); // storage invariant, debug only (§5.1)
-    if ( value.seeds_count > 0 )
+    bool rides_seeds = value.seeds_count > 0;
+    if ( rides_seeds )
     {
         w.put( 21, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.seeds_count ) - 0, 2 );

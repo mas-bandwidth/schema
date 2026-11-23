@@ -5,8 +5,8 @@
    AGPL-3.0, its output is not.
    package example — protocol id 0x2bf51af687ac0abd */
 
-#ifndef SCHEMA_EXAMPLE_ENUMS_H
-#define SCHEMA_EXAMPLE_ENUMS_H
+#ifndef SCHEMA_EXAMPLE_Enums_h
+#define SCHEMA_EXAMPLE_Enums_h
 
 #include <stdint.h>
 #include "SchemaRuntime.h"
@@ -210,4 +210,4 @@ static SCHEMA_UNUSED const char * example_flag_names_ship_flags( uint64_t value,
 }
 #endif
 
-#endif /* SCHEMA_EXAMPLE_ENUMS_H */
+#endif /* SCHEMA_EXAMPLE_Enums_h */

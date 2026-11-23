@@ -1,0 +1,2 @@
+# F-079 (Lobster form): the finding records a refusal and the port accepts; the run fails
+wire-valid	refuse	carry control: a refusal the port does not give

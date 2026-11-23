@@ -334,7 +334,7 @@ func TestLuaFixedEvolutionText(t *testing.T) {
 		t.Errorf("the control: %s %v", got.head, got.dump)
 	}
 	gc := luaEvoGen(t, g.unit, nil)
-	gc.plant(t, `  if strfind(s, "\0", 1, true) or utf8len(s) == nil then error("text_ill_formed", 0) end`, "")
+	gc.plant(t, `  if strfind(s, "\0", 1, true) or not D.utf8_ok(s) then error("text_ill_formed", 0) end`, "")
 	if got := gc.load(t, "T", cases[1].file).head; got == cases[1].want {
 		t.Errorf("the negative control: ill-formed text still refuses")
 	}

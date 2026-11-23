@@ -1,0 +1,8 @@
+package probe
+
+table Holder
+{
+    first memcpy
+    list  [..4]memcpy
+    x     float32
+}

@@ -44,14 +44,19 @@ func textListWriteCheck(f *ir.Field, expr, ind, prefix, refusal string) string {
 }
 
 func (g *wireGen) emitSavePlainTextList(f *ir.Field, expr, ind string, id uint64) {
-	g.pf("%sif (%s.isNotEmpty) {\n", ind, expr)
+	rides := expr + ".isNotEmpty"
+	if wireBornElides(f) && !ir.TextListOptional(f) {
+		// the birth value elides: M elements, each the empty text (§22.2)
+		rides = fmt.Sprintf("%s && !(%s.length == %d && %s.every((e) => e.value.isEmpty))", rides, expr, wireBornCount(f), expr)
+	}
+	g.pf("%sif (%s) {\n", ind, rides)
 	g.pf("%s  final ref=w.refFor(%s);final s=w.sub();s.putByte(12);s.putLeb(%s.length);\n", ind, dartU64Literal(id), expr)
 	g.pf("%s  for(final e in %s){final text=utf8.encode(e.value);s.putLeb(text.length);s.putBytes(text);}\n", ind, expr)
 	g.pf("%s  w.putLeb(ref);w.putByte(14);w.putLeb(s.buf.length);w.putBytes(s.buf);\n%s}\n", ind, ind)
 }
 
 func (g *wireGen) emitJsonTextList(f *ir.Field, expr string, d int, ind, where string) {
-	g.pf("%s", textListTotalCheck(f, expr, ind, "throw StateError('invalid_value: text list total');"))
+	g.pf("%s", textListTotalCheck(f, expr, ind, "assert(false, 'invalid_value: text list total');"))
 	g.pf("%sif (%s.isEmpty) {out.raw('[]');} else {\n", ind, expr)
 	g.pf("%s  out.raw('[');var first%d=true;\n", ind, d)
 	g.pf("%s  for(final e%d in %s){if(!first%d)out.raw(',');first%d=false;out.line(%s);\n", ind, d, expr, d, d, depthExpr(d+1))

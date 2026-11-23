@@ -282,7 +282,7 @@ struct TableReport
     // from a caller's report that already held one.
     int32_t non_finite_floats = 0;
     // THE STRICT ANNOUNCEMENT'S TWO BUILD VERSIONS (docs/SPEC-TABLES.md §3.3):
-    // on reason build_version_mismatch, the peer's announced build version
+    // on reason build_version_mismatch, the writer's announced build version
     // (remote) and this unit's own (own). Zero on every other path.
     uint64_t build_version_remote = 0;
     uint64_t build_version_own = 0;
@@ -660,6 +660,9 @@ struct TableIds
 {
     static const int32_t kCapacity = 160;
     static const int32_t kBuckets = 512;
+    // THE WRITER'S MAXIMUM (docs/SPEC-TABLES.md §3): no reader accepts an id
+    // table past kTableProbeBound entries, so the 4097th id overflows.
+    static const int32_t kLimit = kCapacity < 4096 ? kCapacity : 4096;
 
     uint64_t ids[kCapacity];
     int32_t chain[kCapacity];
@@ -703,7 +706,7 @@ struct TableIds
         {
             if ( ids[i] == id ) { return uint64_t( i ) + 1; }
         }
-        if ( count >= kCapacity )
+        if ( count >= kLimit )
         {
             overflow = true;
             return 1;
@@ -4246,7 +4249,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
         return false;
     }
     // "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3): refused
-    // by name, the peer's build version kept, no vocabulary set, never damage.
+    // by name, the writer's build version kept, no vocabulary set, never damage.
     // The unit's own build version is spelled here as the literal BuildVersion
     // holds, because the cook runtime that declares BuildVersion follows this one.
     if ( vocabulary.strict && version != 0x6c28e809cf64f968ull )
@@ -9529,7 +9532,11 @@ struct TableRetainIds
             overflow = true;
             return 1;
         }
-        if ( known.count != before ) { known_slot[(int32_t) k - 1] = ++count; }
+        if ( known.count != before )
+        {
+            if ( count >= kTableProbeBound ) { known.truncate( before ); overflow = true; return 1; }
+            known_slot[(int32_t) k - 1] = ++count;
+        }
         return (uint64_t) known_slot[(int32_t) k - 1];
     }
 
@@ -9562,7 +9569,7 @@ struct TableRetainIds
         {
             if ( retain->ids[i].id == id ) { return (uint64_t) retain->ids[i].slot; }
         }
-        if ( retain->id_used >= retain->id_capacity )
+        if ( retain->id_used >= retain->id_capacity || count >= kTableProbeBound )
         {
             lost = true;
             return 0;
@@ -11179,7 +11186,7 @@ inline void LoadoutConfigReset( LoadoutConfig & value )
 {
     value.grade = Grade::Silver;
     memset( value.grades, 0, sizeof( value.grades ) );
-    value.grades_count = 0;
+    value.grades_count = 0; // born at Min (docs/SPEC.md §4.2)
     memset( value.podium, 0, sizeof( value.podium ) );
     value.perks = 0;
     WeaponConfigReset( value.primary );
@@ -11191,7 +11198,7 @@ inline void LoadoutConfigReset( LoadoutConfig & value )
     {
         AttachmentReset( value.attachments[i] );
     }
-    value.attachments_count = 0;
+    value.attachments_count = 0; // born at Min (docs/SPEC.md §4.2)
 }
 
 inline void ProfileConfigReset( ProfileConfig & value )
@@ -11221,12 +11228,12 @@ inline void RootConfigReset( RootConfig & value )
     {
         WeaponConfigReset( value.weapons[i] );
     }
-    value.weapons_count = 0;
+    value.weapons_count = 0; // born at Min (docs/SPEC.md §4.2)
     for ( int32_t i = 0; i < 4; i++ )
     {
         ProfileConfigReset( value.profiles[i] );
     }
-    value.profiles_count = 0;
+    value.profiles_count = 0; // born at Min (docs/SPEC.md §4.2)
 }
 
 inline void MinArmFixReset( MinArmFix & value )
@@ -11241,7 +11248,7 @@ inline void MinArmFixReset( MinArmFix & value )
 inline void MinPlainFixReset( MinPlainFix & value )
 {
     memset( value.few, 0, sizeof( value.few ) );
-    value.few_count = 2;
+    value.few_count = 2; // born at Min (docs/SPEC.md §4.2)
 }
 
 inline void AttachmentReset( Attachment & value )
@@ -12630,7 +12637,8 @@ inline int64_t LoadoutConfigMeasureBody( TableIds & ids, const LoadoutConfig & v
         bytes += TableLebBytes( ref_grade ) + 1 + TableLebBytes( variant_grade ); // grade: the variant's reference
     }
     schema_assert( value.grades_count >= 0 && value.grades_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.grades_count > 0 )
+    bool rides_grades = value.grades_count > 0;
+    if ( rides_grades )
     {
         const uint64_t ref_grades = ids.ref_at( 133, 0xd90a4e7682f799c5ull );
         int64_t body_grades = 0;
@@ -12682,7 +12690,8 @@ inline int64_t LoadoutConfigMeasureBody( TableIds & ids, const LoadoutConfig & v
         bytes += TableLebBytes( ref_backups ) + 1 + TableLebBytes( (uint64_t) ( body_backups ) ) + ( body_backups ); // backups (fixed [2])
     }
     schema_assert( value.attachments_count >= 0 && value.attachments_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.attachments_count > 0 )
+    bool rides_attachments = value.attachments_count > 0;
+    if ( rides_attachments )
     {
         const uint64_t ref_attachments = ids.ref_at( 150, 0xf901aa0340249a41ull );
         int64_t body_attachments = 0;
@@ -12719,7 +12728,8 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBody( TableWriter & w, TableIds & i
         w.header( ref_grade, 30 ); w.putleb( variant_grade ); // grade
     }
     schema_assert( value.grades_count >= 0 && value.grades_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.grades_count > 0 )
+    bool rides_grades = value.grades_count > 0;
+    if ( rides_grades )
     {
         const uint64_t ref_grades = ids.ref_at( 133, 0xd90a4e7682f799c5ull );
         int64_t body_grades = 0;
@@ -12819,7 +12829,8 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBody( TableWriter & w, TableIds & i
         }
     }
     schema_assert( value.attachments_count >= 0 && value.attachments_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.attachments_count > 0 )
+    bool rides_attachments = value.attachments_count > 0;
+    if ( rides_attachments )
     {
         const uint64_t ref_attachments = ids.ref_at( 150, 0xf901aa0340249a41ull );
         int64_t body_attachments = 0;
@@ -13498,7 +13509,8 @@ inline int64_t LoadoutConfigMeasureMessageBody( int64_t at, const LoadoutConfig 
         bits += kTableMessageRefBitsHere;
     }
     schema_assert( value.grades_count >= 0 && value.grades_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.grades_count > 0 )
+    bool rides_grades = value.grades_count > 0;
+    if ( rides_grades )
     {
         bits += kTableMessageRefBitsHere;
         bits += 3;
@@ -13550,7 +13562,8 @@ inline int64_t LoadoutConfigMeasureMessageBody( int64_t at, const LoadoutConfig 
         }
     }
     schema_assert( value.attachments_count >= 0 && value.attachments_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.attachments_count > 0 )
+    bool rides_attachments = value.attachments_count > 0;
+    if ( rides_attachments )
     {
         bits += kTableMessageRefBitsHere;
         bits += 4;
@@ -13582,7 +13595,8 @@ inline bool LoadoutConfigSaveMessageBody( TableBitWriter & w, const LoadoutConfi
         }
     }
     schema_assert( value.grades_count >= 0 && value.grades_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.grades_count > 0 )
+    bool rides_grades = value.grades_count > 0;
+    if ( rides_grades )
     {
         w.put( 21, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.grades_count ) - 0, 3 );
@@ -13640,7 +13654,8 @@ inline bool LoadoutConfigSaveMessageBody( TableBitWriter & w, const LoadoutConfi
         }
     }
     schema_assert( value.attachments_count >= 0 && value.attachments_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.attachments_count > 0 )
+    bool rides_attachments = value.attachments_count > 0;
+    if ( rides_attachments )
     {
         w.put( 26, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.attachments_count ) - 0, 4 );
@@ -16325,7 +16340,8 @@ inline int64_t RootConfigMeasureBody( TableIds & ids, const RootConfig & value )
     if ( !TableUtf8Valid( (const uint8_t *) value.version_note, (uint64_t) value.version_note_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.version_note_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 73, 0x8a67c9728746d394ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.version_note_length ) ) + ( value.version_note_length ); } // version_note
     schema_assert( value.weapons_count >= 0 && value.weapons_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.weapons_count > 0 )
+    bool rides_weapons = value.weapons_count > 0;
+    if ( rides_weapons )
     {
         const uint64_t ref_weapons = ids.ref_at( 41, 0x41cbd901b87fabb6ull );
         int64_t body_weapons = 0;
@@ -16339,7 +16355,8 @@ inline int64_t RootConfigMeasureBody( TableIds & ids, const RootConfig & value )
         bytes += TableLebBytes( ref_weapons ) + 1 + TableLebBytes( (uint64_t) ( body_weapons ) ) + ( body_weapons ); // weapons
     }
     schema_assert( value.profiles_count >= 0 && value.profiles_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.profiles_count > 0 )
+    bool rides_profiles = value.profiles_count > 0;
+    if ( rides_profiles )
     {
         const uint64_t ref_profiles = ids.ref_at( 71, 0x8181e61fc0436767ull );
         int64_t body_profiles = 0;
@@ -16376,7 +16393,8 @@ TABLEDEMO_TABLE_INLINE bool RootConfigSaveBody( TableWriter & w, TableIds & ids,
         w.raw( value.version_note, value.version_note_length );
     }
     schema_assert( value.weapons_count >= 0 && value.weapons_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.weapons_count > 0 )
+    bool rides_weapons = value.weapons_count > 0;
+    if ( rides_weapons )
     {
         const uint64_t ref_weapons = ids.ref_at( 41, 0x41cbd901b87fabb6ull );
         int64_t body_weapons = 0;
@@ -16407,7 +16425,8 @@ TABLEDEMO_TABLE_INLINE bool RootConfigSaveBody( TableWriter & w, TableIds & ids,
         }
     }
     schema_assert( value.profiles_count >= 0 && value.profiles_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.profiles_count > 0 )
+    bool rides_profiles = value.profiles_count > 0;
+    if ( rides_profiles )
     {
         const uint64_t ref_profiles = ids.ref_at( 71, 0x8181e61fc0436767ull );
         int64_t body_profiles = 0;
@@ -16864,7 +16883,8 @@ inline int64_t RootConfigMeasureMessageBody( int64_t at, const RootConfig & valu
         bits += (int64_t) value.version_note_length * 8;
     }
     schema_assert( value.weapons_count >= 0 && value.weapons_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.weapons_count > 0 )
+    bool rides_weapons = value.weapons_count > 0;
+    if ( rides_weapons )
     {
         bits += kTableMessageRefBitsHere;
         bits += 4;
@@ -16876,7 +16896,8 @@ inline int64_t RootConfigMeasureMessageBody( int64_t at, const RootConfig & valu
         }
     }
     schema_assert( value.profiles_count >= 0 && value.profiles_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.profiles_count > 0 )
+    bool rides_profiles = value.profiles_count > 0;
+    if ( rides_profiles )
     {
         bits += kTableMessageRefBitsHere;
         bits += 3;
@@ -16906,7 +16927,8 @@ inline bool RootConfigSaveMessageBody( TableBitWriter & w, const RootConfig & va
         w.putbytes( (const uint8_t *) value.version_note, value.version_note_length );
     }
     schema_assert( value.weapons_count >= 0 && value.weapons_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.weapons_count > 0 )
+    bool rides_weapons = value.weapons_count > 0;
+    if ( rides_weapons )
     {
         w.put( 88, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.weapons_count ) - 0, 4 );
@@ -16916,7 +16938,8 @@ inline bool RootConfigSaveMessageBody( TableBitWriter & w, const RootConfig & va
         }
     }
     schema_assert( value.profiles_count >= 0 && value.profiles_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.profiles_count > 0 )
+    bool rides_profiles = value.profiles_count > 0;
+    if ( rides_profiles )
     {
         w.put( 89, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.profiles_count ) - 0, 3 );
@@ -18167,10 +18190,17 @@ inline bool MinArmFixLoadMessages( MinArmFix * values, int64_t * count, const Ta
 inline int64_t MinPlainFixMeasureBody( TableIds & ids, const MinPlainFix & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    schema_assert( value.few_count >= 2 && value.few_count <= 4 ); // the declared [2..4] holds, debug only (§5.1)
-    bool born_value_few = value.few_count == 2; // the array at its birth elides (SPEC §4.6)
-    for ( int32_t slot_born_value_few = 0; born_value_few && slot_born_value_few < 2; slot_born_value_few++ ) { if ( value.few[slot_born_value_few] != 0 ) { born_value_few = false; } }
-    if ( !born_value_few )
+    schema_assert( value.few_count >= 2 && value.few_count <= 4 ); // the declared count, debug only (§5.1)
+    bool rides_few = value.few_count > 0;
+    if ( value.few_count == 2 ) // the birth value elides (§22.2)
+    {
+        rides_few = false;
+        for ( int32_t birth_i = 0; birth_i < 2 && !rides_few; birth_i++ )
+        {
+            if ( value.few[birth_i] != 0 ) { rides_few = true; }
+        }
+    }
+    if ( rides_few )
     {
         const uint64_t ref_few = ids.ref_at( 136, 0xdcc67d18feea8c19ull );
         int64_t body_few = 0;
@@ -18191,10 +18221,17 @@ inline int64_t MinPlainFixMeasure( const MinPlainFix & value )
 
 TABLEDEMO_TABLE_INLINE bool MinPlainFixSaveBody( TableWriter & w, TableIds & ids, const MinPlainFix & value )
 {
-    schema_assert( value.few_count >= 2 && value.few_count <= 4 ); // the declared [2..4] holds, debug only (§5.1)
-    bool born_value_few = value.few_count == 2; // the array at its birth elides (SPEC §4.6)
-    for ( int32_t slot_born_value_few = 0; born_value_few && slot_born_value_few < 2; slot_born_value_few++ ) { if ( value.few[slot_born_value_few] != 0 ) { born_value_few = false; } }
-    if ( !born_value_few )
+    schema_assert( value.few_count >= 2 && value.few_count <= 4 ); // the declared count, debug only (§5.1)
+    bool rides_few = value.few_count > 0;
+    if ( value.few_count == 2 ) // the birth value elides (§22.2)
+    {
+        rides_few = false;
+        for ( int32_t birth_i = 0; birth_i < 2 && !rides_few; birth_i++ )
+        {
+            if ( value.few[birth_i] != 0 ) { rides_few = true; }
+        }
+    }
+    if ( rides_few )
     {
         const uint64_t ref_few = ids.ref_at( 136, 0xdcc67d18feea8c19ull );
         int64_t body_few = 0;
@@ -18523,10 +18560,17 @@ inline bool MinPlainFixLoad( MinPlainFix & value, const uint8_t * buffer, int64_
 inline int64_t MinPlainFixMeasureMessageBody( int64_t at, const MinPlainFix & value )
 {
     int64_t bits = 0;
-    schema_assert( value.few_count >= 2 && value.few_count <= 4 ); // the declared [2..4] holds, debug only (§5.1)
-    bool born_value_few = value.few_count == 2; // the array at its birth elides (SPEC §4.6)
-    for ( int32_t slot_born_value_few = 0; born_value_few && slot_born_value_few < 2; slot_born_value_few++ ) { if ( value.few[slot_born_value_few] != 0 ) { born_value_few = false; } }
-    if ( !born_value_few )
+    schema_assert( value.few_count >= 2 && value.few_count <= 4 ); // the declared count, debug only (§5.1)
+    bool rides_few = value.few_count > 0;
+    if ( value.few_count == 2 ) // the birth value elides (§22.2)
+    {
+        rides_few = false;
+        for ( int32_t birth_i = 0; birth_i < 2 && !rides_few; birth_i++ )
+        {
+            if ( value.few[birth_i] != 0 ) { rides_few = true; }
+        }
+    }
+    if ( rides_few )
     {
         bits += kTableMessageRefBitsHere;
         if ( ( value.few_count ) < 2 ) { return -1; } // below the declared [2..4] (R10)
@@ -18543,10 +18587,17 @@ inline int64_t MinPlainFixMeasureMessageBody( int64_t at, const MinPlainFix & va
 // body is self-delimiting: it is written where the VARIABLE form put an L.
 inline bool MinPlainFixSaveMessageBody( TableBitWriter & w, const MinPlainFix & value )
 {
-    schema_assert( value.few_count >= 2 && value.few_count <= 4 ); // the declared [2..4] holds, debug only (§5.1)
-    bool born_value_few = value.few_count == 2; // the array at its birth elides (SPEC §4.6)
-    for ( int32_t slot_born_value_few = 0; born_value_few && slot_born_value_few < 2; slot_born_value_few++ ) { if ( value.few[slot_born_value_few] != 0 ) { born_value_few = false; } }
-    if ( !born_value_few )
+    schema_assert( value.few_count >= 2 && value.few_count <= 4 ); // the declared count, debug only (§5.1)
+    bool rides_few = value.few_count > 0;
+    if ( value.few_count == 2 ) // the birth value elides (§22.2)
+    {
+        rides_few = false;
+        for ( int32_t birth_i = 0; birth_i < 2 && !rides_few; birth_i++ )
+        {
+            if ( value.few[birth_i] != 0 ) { rides_few = true; }
+        }
+    }
+    if ( rides_few )
     {
         w.put( 28, kTableMessageRefBitsHere );
         if ( ( value.few_count ) < 2 ) { return false; } // below the declared [2..4] (R10)
@@ -18751,6 +18802,23 @@ inline bool MinPlainFixLoadMessageBody( TableBitReader & r, const TableVocabular
                         return false;
                     }
                     value.few_count = kept;
+                }
+                if ( same_shape )
+                {
+                    bool rides_few = value.few_count > 0;
+                    if ( value.few_count == 2 ) // the birth value elides (§22.2)
+                    {
+                        rides_few = false;
+                        for ( int32_t birth_i = 0; birth_i < 2 && !rides_few; birth_i++ )
+                        {
+                            if ( value.few[birth_i] != 0 ) { rides_few = true; }
+                        }
+                    }
+                    if ( !rides_few )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                 }
                 break;
             }
@@ -26105,7 +26173,8 @@ inline int64_t LoadoutConfigMeasureBodyRetain( TableRetainIds & ids, const Loado
         bytes += TableLebBytes( ref_grade ) + 1 + TableLebBytes( variant_grade ); // grade: the variant's reference
     }
     schema_assert( value.grades_count >= 0 && value.grades_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.grades_count > 0 )
+    bool rides_grades = value.grades_count > 0;
+    if ( rides_grades )
     {
         const uint64_t ref_grades = ids.ref_at( 133, 0xd90a4e7682f799c5ull );
         int64_t body_grades = 0;
@@ -26157,7 +26226,8 @@ inline int64_t LoadoutConfigMeasureBodyRetain( TableRetainIds & ids, const Loado
         bytes += TableLebBytes( ref_backups ) + 1 + TableLebBytes( (uint64_t) ( body_backups ) ) + ( body_backups ); // backups (fixed [2])
     }
     schema_assert( value.attachments_count >= 0 && value.attachments_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.attachments_count > 0 )
+    bool rides_attachments = value.attachments_count > 0;
+    if ( rides_attachments )
     {
         const uint64_t ref_attachments = ids.ref_at( 150, 0xf901aa0340249a41ull );
         int64_t body_attachments = 0;
@@ -26185,7 +26255,8 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBodyRetain( TableWriter & w, TableR
         w.header( ref_grade, 30 ); w.putleb( variant_grade ); // grade
     }
     schema_assert( value.grades_count >= 0 && value.grades_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.grades_count > 0 )
+    bool rides_grades = value.grades_count > 0;
+    if ( rides_grades )
     {
         const uint64_t ref_grades = ids.ref_at( 133, 0xd90a4e7682f799c5ull );
         int64_t body_grades = 0;
@@ -26280,7 +26351,8 @@ TABLEDEMO_TABLE_INLINE bool LoadoutConfigSaveBodyRetain( TableWriter & w, TableR
         }
     }
     schema_assert( value.attachments_count >= 0 && value.attachments_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.attachments_count > 0 )
+    bool rides_attachments = value.attachments_count > 0;
+    if ( rides_attachments )
     {
         const uint64_t ref_attachments = ids.ref_at( 150, 0xf901aa0340249a41ull );
         int64_t body_attachments = 0;
@@ -27615,7 +27687,8 @@ inline int64_t RootConfigMeasureBodyRetain( TableRetainIds & ids, const RootConf
     if ( !TableUtf8Valid( (const uint8_t *) value.version_note, (uint64_t) value.version_note_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.version_note_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 73, 0x8a67c9728746d394ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.version_note_length ) ) + ( value.version_note_length ); } // version_note
     schema_assert( value.weapons_count >= 0 && value.weapons_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.weapons_count > 0 )
+    bool rides_weapons = value.weapons_count > 0;
+    if ( rides_weapons )
     {
         const uint64_t ref_weapons = ids.ref_at( 41, 0x41cbd901b87fabb6ull );
         int64_t body_weapons = 0;
@@ -27629,7 +27702,8 @@ inline int64_t RootConfigMeasureBodyRetain( TableRetainIds & ids, const RootConf
         bytes += TableLebBytes( ref_weapons ) + 1 + TableLebBytes( (uint64_t) ( body_weapons ) ) + ( body_weapons ); // weapons
     }
     schema_assert( value.profiles_count >= 0 && value.profiles_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.profiles_count > 0 )
+    bool rides_profiles = value.profiles_count > 0;
+    if ( rides_profiles )
     {
         const uint64_t ref_profiles = ids.ref_at( 71, 0x8181e61fc0436767ull );
         int64_t body_profiles = 0;
@@ -27657,7 +27731,8 @@ TABLEDEMO_TABLE_INLINE bool RootConfigSaveBodyRetain( TableWriter & w, TableReta
         w.raw( value.version_note, value.version_note_length );
     }
     schema_assert( value.weapons_count >= 0 && value.weapons_count <= 8 ); // storage invariant, debug only (§5.1)
-    if ( value.weapons_count > 0 )
+    bool rides_weapons = value.weapons_count > 0;
+    if ( rides_weapons )
     {
         const uint64_t ref_weapons = ids.ref_at( 41, 0x41cbd901b87fabb6ull );
         int64_t body_weapons = 0;
@@ -27683,7 +27758,8 @@ TABLEDEMO_TABLE_INLINE bool RootConfigSaveBodyRetain( TableWriter & w, TableReta
         }
     }
     schema_assert( value.profiles_count >= 0 && value.profiles_count <= 4 ); // storage invariant, debug only (§5.1)
-    if ( value.profiles_count > 0 )
+    bool rides_profiles = value.profiles_count > 0;
+    if ( rides_profiles )
     {
         const uint64_t ref_profiles = ids.ref_at( 71, 0x8181e61fc0436767ull );
         int64_t body_profiles = 0;
@@ -28365,10 +28441,17 @@ TABLEDEMO_TABLE_INLINE bool MinArmFixLoadBodyRetain( TableReader & r, MinArmFix 
 inline int64_t MinPlainFixMeasureBodyRetain( TableRetainIds & ids, const MinPlainFix & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
-    schema_assert( value.few_count >= 2 && value.few_count <= 4 ); // the declared [2..4] holds, debug only (§5.1)
-    bool born_value_few = value.few_count == 2; // the array at its birth elides (SPEC §4.6)
-    for ( int32_t slot_born_value_few = 0; born_value_few && slot_born_value_few < 2; slot_born_value_few++ ) { if ( value.few[slot_born_value_few] != 0 ) { born_value_few = false; } }
-    if ( !born_value_few )
+    schema_assert( value.few_count >= 2 && value.few_count <= 4 ); // the declared count, debug only (§5.1)
+    bool rides_few = value.few_count > 0;
+    if ( value.few_count == 2 ) // the birth value elides (§22.2)
+    {
+        rides_few = false;
+        for ( int32_t birth_i = 0; birth_i < 2 && !rides_few; birth_i++ )
+        {
+            if ( value.few[birth_i] != 0 ) { rides_few = true; }
+        }
+    }
+    if ( rides_few )
     {
         const uint64_t ref_few = ids.ref_at( 136, 0xdcc67d18feea8c19ull );
         int64_t body_few = 0;
@@ -28382,10 +28465,17 @@ inline int64_t MinPlainFixMeasureBodyRetain( TableRetainIds & ids, const MinPlai
 
 TABLEDEMO_TABLE_INLINE bool MinPlainFixSaveBodyRetain( TableWriter & w, TableRetainIds & ids, const MinPlainFix & value, TableRetain * retain, const TableRetainPath & path )
 {
-    schema_assert( value.few_count >= 2 && value.few_count <= 4 ); // the declared [2..4] holds, debug only (§5.1)
-    bool born_value_few = value.few_count == 2; // the array at its birth elides (SPEC §4.6)
-    for ( int32_t slot_born_value_few = 0; born_value_few && slot_born_value_few < 2; slot_born_value_few++ ) { if ( value.few[slot_born_value_few] != 0 ) { born_value_few = false; } }
-    if ( !born_value_few )
+    schema_assert( value.few_count >= 2 && value.few_count <= 4 ); // the declared count, debug only (§5.1)
+    bool rides_few = value.few_count > 0;
+    if ( value.few_count == 2 ) // the birth value elides (§22.2)
+    {
+        rides_few = false;
+        for ( int32_t birth_i = 0; birth_i < 2 && !rides_few; birth_i++ )
+        {
+            if ( value.few[birth_i] != 0 ) { rides_few = true; }
+        }
+    }
+    if ( rides_few )
     {
         const uint64_t ref_few = ids.ref_at( 136, 0xdcc67d18feea8c19ull );
         int64_t body_few = 0;

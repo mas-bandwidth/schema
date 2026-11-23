@@ -1,0 +1,13 @@
+package probe
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+table Math
+{
+    a     int32
+    b     float64
+    name  string(16)
+    kind  Kind
+    many  [..4]uint16
+}

@@ -72,7 +72,7 @@ table Ra
 `
 
 // one case: the table, the engine's text for the value, and the Dart lines
-// that build the same value in `v` from a freshly constructed one
+// that build the same value in `v` from a freshly constructed one.
 type dartCountedMinCase struct {
 	id, table, text, build string
 }
@@ -140,7 +140,7 @@ func dartCountedMinRun(t *testing.T, undermine func(map[string][]byte)) map[stri
 		t.Fatalf("the probe did not run: %v\n%s", err, out)
 	}
 	got := map[string]string{}
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		parts := strings.Fields(line)
 		if len(parts) != 2 {
 			t.Fatalf("an unexpected probe line: %q", line)

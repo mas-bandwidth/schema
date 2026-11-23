@@ -229,7 +229,7 @@ func (g *tableGen) cookFieldPayload(f *ir.Field, src, at string, offset int64, i
 		if cArmMin(f) {
 			// the cook is a writer too: a count below A is never produced,
 			// a field or an arm, a debug assert in this leg (ruling R10)
-			g.writeCountBound(src+"_count", f, ind)
+			g.writeCountBound(f, src+"_count", ind)
 		}
 		stride := int64(0)
 		if f.ArrayBound > 0 {

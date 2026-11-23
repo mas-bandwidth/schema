@@ -767,7 +767,7 @@ func (g *cookGen) emitAccessors(st *ir.Struct, ml *ir.MemberLayout) {
 			if f.IsMap() {
 				elem = f.MapEntry.Name + "Row"
 			}
-			g.hf("    public static ReadOnlySpan<%s> %s(%sRow* row) { return new ReadOnlySpan<%s>((byte*)&row->%s + row->%s.Reference, Math.Max(0, row->%s.Count)); }\n\n", elem, accessor, name, elem, member, member, member)
+			g.hf("    public static ReadOnlySpan<%s> %s(%sRow* row) { return new ReadOnlySpan<%s>((byte*)&row->%s + row->%s.Reference, global::System.Math.Max(0, row->%s.Count)); }\n\n", elem, accessor, name, elem, member, member, member)
 		case f.Type.Pointer && f.Array == ir.ArrayNone:
 			continue
 		case f.Type.TextUnbounded():

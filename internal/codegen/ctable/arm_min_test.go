@@ -39,21 +39,21 @@ union MinPick { few [2..4]uint32
 fixed table Holder { pick MinPick }
 `
 
-// the writer of the message case: the same names, a minimum of zero
+// the writer of the message case: the same names, a minimum of zero.
 const cArmMinLooseSchema = `package armmin
 union MinPick { few [..4]uint32
     other int32 }
 fixed table Holder { pick MinPick }
 `
 
-// the arm's SHAPE: how the probe reaches the counted array
+// the arm's SHAPE: how the probe reaches the counted array.
 const cArmMinShape = `#define PREP( v ) ( (v)->pick.type = MIN_PICK_TYPE_FEW )
 #define COUNT( v ) ( (v)->pick.as.few.value_count )
 #define ELEM( v ) ( (v)->pick.as.few.value )
 #define TEXT "{\"pick\":{\"few\":%s}}"
 `
 
-// the same counted [A..B] as a plain field, and its [..4] writer
+// the same counted [A..B] as a plain field, and its [..4] writer.
 const cPlainMinSchema = `package plainmin
 fixed table Holder { few [2..4]uint32 }
 `

@@ -51,6 +51,18 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	if len(u.Tables) == 0 {
 		return nil, nil
 	}
+	// THE RUST ESCAPE (escape.go): a table named after a standard name the
+	// modules spell unqualified is emitted under its escaped spelling, its
+	// declared name kept for every id, so it rides the variable wire.
+	esc := rustEscapeTables(u)
+	lineage = rustEscapeLineage(esc, lineage)
+	u = esc
+	// NOTHING IS LEFT OFF SILENTLY (docs/SPEC-TABLES.md §11): every table of
+	// the closure carries its form-1 codec and its text, so a table this leg
+	// cannot carry refuses generation by name rather than going without.
+	if err := refuseUncarriedClosure(u); err != nil {
+		return nil, err
+	}
 	out := map[string][]byte{}
 	if len(ir.TableIntegrityTables(u)) > 0 {
 		out[integrityRuntimeModule+".rs"] = []byte(header(runtimeSourceName(u), u.Package, "CRC-32C integrity trailers") + integrityRuntimeRust)

@@ -18,6 +18,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/mas-bandwidth/schema/v2/internal/ast"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/ccommon"
 	"github.com/mas-bandwidth/schema/v2/internal/goname"
 	"github.com/mas-bandwidth/schema/v2/internal/tablenames"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -4370,6 +4371,12 @@ func (c *checker) checkClaimedNames() {
 				whyIdentity := fmt.Sprintf("enum %s's generated TABLE-wire identity pair (JavaScript form)", name)
 				add("TableEnumId"+name, whyIdentity, d.Pos)
 				add("TableEnumValue"+name, whyIdentity, d.Pos)
+				// and the JavaScript fixed form's text bridge (op 7): the name
+				// lookup a fixed root's text read takes for an enum, a module-scope
+				// map and its function, claimed on the same rule
+				whyFixedName := fmt.Sprintf("enum %s's generated fixed-form name lookup (JavaScript form)", name)
+				add(name+"FixedByName", whyFixedName, d.Pos)
+				add(name+"FixedFromName", whyFixedName, d.Pos)
 			}
 		case *ast.UnionDecl:
 			// the union's generated surface (SPEC §4.8): the <Name>Type tag
@@ -4725,6 +4732,10 @@ var tableGeneratedVerbs = []string{
 	// the JavaScript backend emits as a module-scope function for every fixed
 	// table, claimed on the same rule.
 	"FixedCheckDead", "FixedCheckRead",
+	// and the fixed root's TEXT BRIDGE (op 7): the JavaScript backend emits
+	// <T>FixedFromText at module scope for every fixed type, claimed on the
+	// same rule (an enum's name lookup is claimed with its identity pair).
+	"FixedFromText",
 	// and the read's FINITE PASS (docs/SPEC-TABLES.md §3.3), run before the
 	// bounds pass: emitted for every fixed type that holds a float, and a
 	// field gains a float as an ordinary edit, so it is claimed on the same rule.
@@ -5067,9 +5078,8 @@ func (c *checker) cReservedMacros() map[string]bool {
 		out["SCHEMA_"+pkg+per] = true
 	}
 	for _, f := range c.files {
-		base := strings.ToUpper(f.Base)
-		for _, suffix := range []string{"_H", "WIRE_H", "TABLE_H", "BLOCK_H"} {
-			out["SCHEMA_"+pkg+"_"+base+suffix] = true
+		for _, part := range []string{"", "wire", "table", "block"} {
+			out[ccommon.HeaderGuard(c.unit.Package, f.Base, part)] = true
 		}
 	}
 	return out

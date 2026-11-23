@@ -49,6 +49,31 @@ func refuseCardUnsupportedVariableConstructs(u *ir.Unit) error {
 	return nil
 }
 
+// refuseUncarriedClosure is the GENERATE path's refusal (docs/SPEC-TABLES.md
+// §11, §3): every table of the closure owes its form-1 codec and its text
+// (Go emits them for every table), so one this leg does not carry refuses the
+// unit BY NAME, `<table>.<field>: <construct>`, rather than generating without
+// it. The checker already refuses every construct the reasons name except a
+// `type` by a standard name the modules spell unqualified (escape.go).
+func refuseUncarriedClosure(u *ir.Unit) error {
+	closure := ir.TableClosure(u)
+	if len(closure) == 0 {
+		return nil
+	}
+	vc := newVariableClass(u)
+	names := make([]string, 0, len(closure))
+	for n := range closure {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		if why := vc.reason[name]; why != "" {
+			return fmt.Errorf("rust table form: %s.%s, so its form-1 codec and its text cannot be emitted (docs/SPEC-TABLES.md §11)", name, why)
+		}
+	}
+	return nil
+}
+
 // variableClass is one unit's answer to "does this leg carry that table on the
 // variable wire" (docs/SPEC-TABLES.md §3, §3.1): per table, "" when it does and
 // `<field>: <construct>` when it does not, and the set the codec emits.
@@ -189,8 +214,8 @@ func (vc *variableClass) carried(name string) bool { return vc.reason[name] == "
 // *bytes blob (§2.5), an enum, a table nested by value
 // or pointed at (§2.1, §3.1), an optional ?T (§2.3), an enum-keyed array [E]T
 // (§2.4), a map[K]V (§2.8), a union or array of unions (§2.6), an unbounded
-// []T, bounded [..N]T or counted [A..B]T array (§2.9; ruling R10: A holds on
-// every read and write, wherever the array sits), and any of these inside an `if` group,
+// []T or bounded [..N]T array (§2.9), a counted array with a declared minimum
+// [Min..N]T born at Min (§3, §22.2), and any of these inside an `if` group,
 // which the walks gate on its branch condition (variableguard.go, §3.1, §4). Whether a referenced TABLE is itself
 // carried is the table-level fixpoint's question ([newVariableClass]).
 func variableFieldConstruct(f *ir.Field) string {

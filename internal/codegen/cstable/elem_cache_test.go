@@ -15,7 +15,7 @@ func TestCsharpRootArrayElemCacheShape(t *testing.T) {
 		"w.Byte(1); WriteBody(ref w, value, type, ref ids, true, rootPayloadSizes, rootElemSizes);",
 		"static long BodySize(object value, TableTypeInfo type, ref Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)",
 		"if (f.IsArray && f.KeyId == null && f.Kind == 13 && !rootElemSizes.IsEmpty)",
-		"int take = Math.Min(c, Math.Max(0, rootElemSizes.Length - elemOffset));",
+		"int take = global::System.Math.Min(c, global::System.Math.Max(0, rootElemSizes.Length - elemOffset));",
 		"elemCache = rootElemSizes.Slice(elemOffset, take);",
 		"elemOffset += take;",
 		"long payload = PayloadSize(value, f, ref ids, elemCache);",

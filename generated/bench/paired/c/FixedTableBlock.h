@@ -14,8 +14,8 @@
    many there are and how far apart they sit — and then those rows, each array
    at a fixed pitch. The other side reads those three facts and points. */
 
-#ifndef SCHEMA_BENCH_FIXEDTABLEBLOCK_H
-#define SCHEMA_BENCH_FIXEDTABLEBLOCK_H
+#ifndef SCHEMA_BENCH_FixedTable_block_h
+#define SCHEMA_BENCH_FixedTable_block_h
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -38,4 +38,4 @@ extern "C" {
 }
 #endif
 
-#endif /* SCHEMA_BENCH_FIXEDTABLEBLOCK_H */
+#endif /* SCHEMA_BENCH_FixedTable_block_h */

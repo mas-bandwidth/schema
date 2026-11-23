@@ -3,7 +3,11 @@
 package compiler
 
 import (
+	"bytes"
 	"fmt"
+	"maps"
+	"slices"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/csharp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cstable"
@@ -48,7 +52,57 @@ func (csTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (m
 		}
 		files[name] = data
 	}
+	csAllowLowercaseTypeNames(u, files)
 	return files, nil
+}
+
+// csAllowLowercaseTypeNames lets a unit's all-lowercase type names build under
+// warnings-as-errors. C# 11 warns CS8981 on a type named only by lowercase
+// ASCII letters (such names "may become reserved for the language"), and the
+// schema grammar leaves case a convention (SPEC §4.6), so `type memcpy` is a
+// legal declaration C# can express: the generated files say so with the one
+// pragma, after their leading comment block. A unit with no such name is
+// emitted as it is.
+func csAllowLowercaseTypeNames(u *ir.Unit, files map[string][]byte) {
+	lower := func(n string) bool {
+		if n == "" {
+			return false
+		}
+		for i := 0; i < len(n); i++ {
+			if n[i] < 'a' || n[i] > 'z' {
+				return false
+			}
+		}
+		return true
+	}
+	found := slices.ContainsFunc(slices.Concat(
+		slices.Collect(maps.Keys(u.Structs)), slices.Collect(maps.Keys(u.Tables)),
+		slices.Collect(maps.Keys(u.Enums)), slices.Collect(maps.Keys(u.Flags)),
+		slices.Collect(maps.Keys(u.Unions)), slices.Collect(maps.Keys(u.TableUnions)),
+	), lower)
+	if !found {
+		return
+	}
+	const pragma = "#pragma warning disable CS8981 // a schema type named in lowercase letters only (SPEC §4.6)\n"
+	for name, data := range files {
+		if !strings.HasSuffix(name, ".cs") {
+			continue
+		}
+		at := 0
+		for at < len(data) && bytes.HasPrefix(data[at:], []byte("//")) {
+			nl := bytes.IndexByte(data[at:], '\n')
+			if nl < 0 {
+				at = len(data)
+				break
+			}
+			at += nl + 1
+		}
+		out := make([]byte, 0, len(data)+len(pragma))
+		out = append(out, data[:at]...)
+		out = append(out, pragma...)
+		out = append(out, data[at:]...)
+		files[name] = out
+	}
 }
 
 // csTableLineage is the lock's lineage in the C# backend's own spelling. Nil in,

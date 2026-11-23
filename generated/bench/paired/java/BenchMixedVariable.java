@@ -22,8 +22,7 @@ public final class BenchMixedVariable {
         public long worldTime = 0L;
         public long frameTick = 0L;
         public int serverTime = 0x00000000;
-        public java.util.List<MixedEntityVariable.Value> entities =
-                new java.util.ArrayList<>(java.util.Arrays.asList(new MixedEntityVariable.Value()));
+        public java.util.List<MixedEntityVariable.Value> entities = new java.util.ArrayList<>();
         public java.util.List<MixedStatVariable.Value> stats = new java.util.ArrayList<>();
         public MixedEventVariable.Value gameEvent = new MixedEventVariable.Value();
         public java.util.List<java.lang.Integer> loadout = new java.util.ArrayList<>();
@@ -42,7 +41,11 @@ public final class BenchMixedVariable {
         public int extra = 0;
         public int idleTicks = 0;
 
-        public Value() {}
+        public Value() {
+            for (int i = 0; i < 1; i++) {
+                entities.add(new MixedEntityVariable.Value());
+            }
+        }
     }
 
     public static final long TYPE_ID = 0xeb80cfd516eb3d5cL;
@@ -1459,17 +1462,13 @@ public final class BenchMixedVariable {
             w.put8(22);
             w.put32(v.serverTime);
         }
-        boolean rides_entities = !v.entities.isEmpty();
-        if (v.entities.size() == 1) {
-            rides_entities = false;
-            for (int i = 0; i < 1; i++) {
-                if (!(MixedEntityVariable.isDefault(v.entities.get(i), w, graph))) {
-                    rides_entities = true;
-                    break;
-                }
+        boolean born_entities = v.entities.size() == 1;
+        for (int i = 0; born_entities && i < 1; i++) {
+            if (!(MixedEntityVariable.isDefault(v.entities.get(i), w, graph))) {
+                born_entities = false;
             }
         }
-        if (rides_entities) {
+        if (!v.entities.isEmpty() && !born_entities) {
             w.putLeb(w.ref(F_entities));
             w.put8(14);
             int list = w.off;
@@ -1772,8 +1771,10 @@ public final class BenchMixedVariable {
         if (report == null) {
             report = new TableVariable.Report();
         }
+        report.reset();
         TableVariable.Reader r = TableVariable.open(data, report);
         if (r == null) {
+            report.settleDamage();
             return null;
         }
         Value v = new Value();
@@ -1836,6 +1837,7 @@ public final class BenchMixedVariable {
         }
         // DAMAGE DISCARDS THE WHOLE LOAD (§4)
         if (report.damaged) {
+            report.settleDamage();
             return null;
         }
         return v;
@@ -2183,6 +2185,7 @@ public final class BenchMixedVariable {
         }
         // DAMAGE DISCARDS THE WHOLE TEXT READ (§4, §16.2)
         if (report.damaged) {
+            report.settleDamage();
             return null;
         }
         return v;
@@ -2919,8 +2922,10 @@ public final class BenchMixedVariable {
                         v.entities = new java.util.ArrayList<>();
                     }
                     if (in.peek() == '[') {
-                        in.p++;
                         v.entities.clear();
+                    }
+                    if (in.peek() == '[') {
+                        in.p++;
                         int idx = 0;
                         int ab = 8;
                         while (true) {
@@ -3472,6 +3477,7 @@ public final class BenchMixedVariable {
         v.frameTick = fixed.frameTick;
         v.serverTime = fixed.serverTime;
         assert fixed.entitiesCount >= 1 && fixed.entitiesCount <= 8;
+        v.entities.clear();
         for (int i = 0; i < fixed.entitiesCount; i++) {
             v.entities.add(MixedEntityVariable.fromFixed(fixed.entities[i]));
         }

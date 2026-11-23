@@ -5,6 +5,64 @@
 // AGPL-3.0, its output is not.
 // package bench — the variable wire's field header constants (docs/SPEC-TABLES.md §3, §5)
 
+// BenchMixed — the card slice of the variable wire (§2.5, §2.9).
+pub mod bench_mixed_variable {
+    /// sequence: id aa38aca481f528a8, kind 7
+    pub const SEQUENCE: (u64, u8) = (0xaa38aca481f528a8, 7);
+    /// ack_sequence: id 0dbe005c56697c3e, kind 4
+    pub const ACK_SEQUENCE: (u64, u8) = (0x0dbe005c56697c3e, 4);
+    /// ack_bits: id 9bae0da8b829ee03, kind 8
+    pub const ACK_BITS: (u64, u8) = (0x9bae0da8b829ee03, 8);
+    /// session_id: id b7d7b5650a590b05, kind 9
+    pub const SESSION_ID: (u64, u8) = (0xb7d7b5650a590b05, 9);
+    /// client_id: id 6d7b98e2d095967e, kind 8
+    pub const CLIENT_ID: (u64, u8) = (0x6d7b98e2d095967e, 8);
+    /// nonce: id 73a94c71d60dc0d8, kind 9
+    pub const NONCE: (u64, u8) = (0x73a94c71d60dc0d8, 9);
+    /// world_time: id 3eee6b51be54fc85, kind 5
+    pub const WORLD_TIME: (u64, u8) = (0x3eee6b51be54fc85, 5);
+    /// frame_tick: id 7bbc035f7b6d0112, kind 9
+    pub const FRAME_TICK: (u64, u8) = (0x7bbc035f7b6d0112, 9);
+    /// server_time: id 3c460475f9be69c6, kind 22
+    pub const SERVER_TIME: (u64, u8) = (0x3c460475f9be69c6, 22);
+    /// entities: id 935d0fb07bb3822a, kind 14
+    pub const ENTITIES: (u64, u8) = (0x935d0fb07bb3822a, 14);
+    /// stats: id ee639cad45b1994c, kind 14
+    pub const STATS: (u64, u8) = (0xee639cad45b1994c, 14);
+    /// game_event: id 2e35dc5321aa5790, kind 15
+    pub const GAME_EVENT: (u64, u8) = (0x2e35dc5321aa5790, 15);
+    /// loadout: id 5759ce7586bbb5a3, kind 14
+    pub const LOADOUT: (u64, u8) = (0x5759ce7586bbb5a3, 14);
+    /// player_name: id 13a62f542cf8e86e, kind 12
+    pub const PLAYER_NAME: (u64, u8) = (0x13a62f542cf8e86e, 12);
+    /// payload: id cfb8a9d063b5e9e5, kind 14
+    pub const PAYLOAD: (u64, u8) = (0xcfb8a9d063b5e9e5, 14);
+    /// aim_x: id dbaf7be5e24296c9, kind 10
+    pub const AIM_X: (u64, u8) = (0xdbaf7be5e24296c9, 10);
+    /// aim_y: id dbaf7ae5e2429516, kind 10
+    pub const AIM_Y: (u64, u8) = (0xdbaf7ae5e2429516, 10);
+    /// aim_z: id dbaf79e5e2429363, kind 10
+    pub const AIM_Z: (u64, u8) = (0xdbaf79e5e2429363, 10);
+    /// recoil: id 9cef31fff7e2e457, kind 10
+    pub const RECOIL: (u64, u8) = (0x9cef31fff7e2e457, 10);
+    /// drift: id 5ab3f9c9341f6c04, kind 11
+    pub const DRIFT: (u64, u8) = (0x5ab3f9c9341f6c04, 11);
+    /// wide_key: id a3348580461faf16, kind 19
+    pub const WIDE_KEY: (u64, u8) = (0xa3348580461faf16, 19);
+    /// flux: id d61bdd7908af2642, kind 18
+    pub const FLUX: (u64, u8) = (0xd61bdd7908af2642, 18);
+    /// ping: id bf30e00dc53307a9, kind 26
+    pub const PING: (u64, u8) = (0xbf30e00dc53307a9, 26);
+    /// crc_hint: id 560d6527ccd8515f, kind 8
+    pub const CRC_HINT: (u64, u8) = (0x560d6527ccd8515f, 8);
+    /// has_extra: id c08292176cfd8672, kind 1
+    pub const HAS_EXTRA: (u64, u8) = (0xc08292176cfd8672, 1);
+    /// extra: id fd29ee12a979cb69, kind 4
+    pub const EXTRA: (u64, u8) = (0xfd29ee12a979cb69, 4);
+    /// idle_ticks: id 78101ac0aa8cbcfe, kind 4
+    pub const IDLE_TICKS: (u64, u8) = (0x78101ac0aa8cbcfe, 4);
+}
+
 // MixedChatEvent — the card slice of the variable wire (§2.5, §2.9).
 pub mod mixed_chat_event_variable {
     /// channel: id a5013e9ad5caeda4, kind 4

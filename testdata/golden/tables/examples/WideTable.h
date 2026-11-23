@@ -282,7 +282,7 @@ struct TableReport
     // from a caller's report that already held one.
     int32_t non_finite_floats = 0;
     // THE STRICT ANNOUNCEMENT'S TWO BUILD VERSIONS (docs/SPEC-TABLES.md §3.3):
-    // on reason build_version_mismatch, the peer's announced build version
+    // on reason build_version_mismatch, the writer's announced build version
     // (remote) and this unit's own (own). Zero on every other path.
     uint64_t build_version_remote = 0;
     uint64_t build_version_own = 0;
@@ -660,6 +660,9 @@ struct TableIds
 {
     static const int32_t kCapacity = 160;
     static const int32_t kBuckets = 512;
+    // THE WRITER'S MAXIMUM (docs/SPEC-TABLES.md §3): no reader accepts an id
+    // table past kTableProbeBound entries, so the 4097th id overflows.
+    static const int32_t kLimit = kCapacity < 4096 ? kCapacity : 4096;
 
     uint64_t ids[kCapacity];
     int32_t chain[kCapacity];
@@ -703,7 +706,7 @@ struct TableIds
         {
             if ( ids[i] == id ) { return uint64_t( i ) + 1; }
         }
-        if ( count >= kCapacity )
+        if ( count >= kLimit )
         {
             overflow = true;
             return 1;
@@ -4246,7 +4249,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
         return false;
     }
     // "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3): refused
-    // by name, the peer's build version kept, no vocabulary set, never damage.
+    // by name, the writer's build version kept, no vocabulary set, never damage.
     // The unit's own build version is spelled here as the literal BuildVersion
     // holds, because the cook runtime that declares BuildVersion follows this one.
     if ( vocabulary.strict && version != 0x6c28e809cf64f968ull )
@@ -9529,7 +9532,11 @@ struct TableRetainIds
             overflow = true;
             return 1;
         }
-        if ( known.count != before ) { known_slot[(int32_t) k - 1] = ++count; }
+        if ( known.count != before )
+        {
+            if ( count >= kTableProbeBound ) { known.truncate( before ); overflow = true; return 1; }
+            known_slot[(int32_t) k - 1] = ++count;
+        }
         return (uint64_t) known_slot[(int32_t) k - 1];
     }
 
@@ -9562,7 +9569,7 @@ struct TableRetainIds
         {
             if ( retain->ids[i].id == id ) { return (uint64_t) retain->ids[i].slot; }
         }
-        if ( retain->id_used >= retain->id_capacity )
+        if ( retain->id_used >= retain->id_capacity || count >= kTableProbeBound )
         {
             lost = true;
             return 0;
@@ -10940,7 +10947,7 @@ inline void WideBlobReset( WideBlob & value )
     memset( value.payload, 0, sizeof( value.payload ) );
     value.payload_length = 0;
     memset( value.samples, 0, sizeof( value.samples ) );
-    value.samples_count = 0;
+    value.samples_count = 0; // born at Min (docs/SPEC.md §4.2)
 }
 
 inline int64_t WideBlobMeasureMessageBody( int64_t at, const WideBlob & value );
@@ -10985,7 +10992,8 @@ inline int64_t WideBlobMeasureBody( TableIds & ids, const WideBlob & value )
         bytes += TableLebBytes( ids.ref_at( 124, 0xcfb8a9d063b5e9e5ull ) ) + 1 + TableLebBytes( (uint64_t) ( body_payload ) ) + ( body_payload ); // payload
     }
     schema_assert( value.samples_count >= 0 && value.samples_count <= 70000 ); // storage invariant, debug only (§5.1)
-    if ( value.samples_count > 0 )
+    bool rides_samples = value.samples_count > 0;
+    if ( rides_samples )
     {
         const uint64_t ref_samples = ids.ref_at( 140, 0xe3b1ca6a3b48dddcull );
         int64_t body_samples = 0;
@@ -11025,7 +11033,8 @@ TABLEDEMO_TABLE_INLINE bool WideBlobSaveBody( TableWriter & w, TableIds & ids, c
         w.raw( value.payload, value.payload_length );
     }
     schema_assert( value.samples_count >= 0 && value.samples_count <= 70000 ); // storage invariant, debug only (§5.1)
-    if ( value.samples_count > 0 )
+    bool rides_samples = value.samples_count > 0;
+    if ( rides_samples )
     {
         const uint64_t ref_samples = ids.ref_at( 140, 0xe3b1ca6a3b48dddcull );
         int64_t body_samples = 0;
@@ -11482,7 +11491,8 @@ inline int64_t WideBlobMeasureMessageBody( int64_t at, const WideBlob & value )
         bits += (int64_t) value.payload_length * 8;
     }
     schema_assert( value.samples_count >= 0 && value.samples_count <= 70000 ); // storage invariant, debug only (§5.1)
-    if ( value.samples_count > 0 )
+    bool rides_samples = value.samples_count > 0;
+    if ( rides_samples )
     {
         bits += kTableMessageRefBitsHere;
         bits += 17;
@@ -11515,7 +11525,8 @@ inline bool WideBlobSaveMessageBody( TableBitWriter & w, const WideBlob & value 
         w.putbytes( (const uint8_t *) value.payload, value.payload_length );
     }
     schema_assert( value.samples_count >= 0 && value.samples_count <= 70000 ); // storage invariant, debug only (§5.1)
-    if ( value.samples_count > 0 )
+    bool rides_samples = value.samples_count > 0;
+    if ( rides_samples )
     {
         w.put( 105, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.samples_count ) - 0, 17 );
@@ -11961,7 +11972,8 @@ inline int64_t WideBlobMeasureBodyRetain( TableRetainIds & ids, const WideBlob &
         bytes += TableLebBytes( ids.ref_at( 124, 0xcfb8a9d063b5e9e5ull ) ) + 1 + TableLebBytes( (uint64_t) ( body_payload ) ) + ( body_payload ); // payload
     }
     schema_assert( value.samples_count >= 0 && value.samples_count <= 70000 ); // storage invariant, debug only (§5.1)
-    if ( value.samples_count > 0 )
+    bool rides_samples = value.samples_count > 0;
+    if ( rides_samples )
     {
         const uint64_t ref_samples = ids.ref_at( 140, 0xe3b1ca6a3b48dddcull );
         int64_t body_samples = 0;
@@ -11994,7 +12006,8 @@ TABLEDEMO_TABLE_INLINE bool WideBlobSaveBodyRetain( TableWriter & w, TableRetain
         w.raw( value.payload, value.payload_length );
     }
     schema_assert( value.samples_count >= 0 && value.samples_count <= 70000 ); // storage invariant, debug only (§5.1)
-    if ( value.samples_count > 0 )
+    bool rides_samples = value.samples_count > 0;
+    if ( rides_samples )
     {
         const uint64_t ref_samples = ids.ref_at( 140, 0xe3b1ca6a3b48dddcull );
         int64_t body_samples = 0;

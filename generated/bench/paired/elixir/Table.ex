@@ -1773,8 +1773,6 @@ defmodule Bench.Table do
     value = fixed_class_from_table("FixedTable", value)
     data = Bench.WrapFixed.fixed_table_fixed_save([value])
     {:ok, IO.iodata_to_binary(data)}
-  rescue
-    ArgumentError -> {:error, :invalid_value}
   end
 
   # ---- the write side (docs/SPEC-TABLES.md §3) ----
@@ -1800,12 +1798,17 @@ defmodule Bench.Table do
     # holding equal bytes are two records. A blob the strict read found named
     # from two slots refuses the save by name, blob_shared (§2.5).
     try do
-      {nodes, idx_map} = with_save_directory(directory, fn -> collect_root(desc, value) end)
+      {nodes, idx_map} = collect_root(desc, value, directory)
 
       blob_site_begin(:root)
       {_idx_map, ids, order, body} = save_fields(desc, value, idx_map, %{}, [], [])
 
       {body, _ids, order} = save_node_table(nodes, idx_map, ids, order, body)
+
+      # THE ID TABLE'S MAXIMUM (docs/SPEC-TABLES.md §3, R8): every reader refuses
+      # a table of more than 4096 entries, so the save refuses a value that
+      # needs more, in every build.
+      if length(order) > 4096, do: throw(:invalid_value)
 
       ids_bytes = for id <- Enum.reverse(order), into: <<>>, do: <<id::little-64>>
 
@@ -1818,33 +1821,21 @@ defmodule Bench.Table do
       :invalid_value -> {:error, :invalid_value}
     after
       Process.delete(:elixir_blob_site)
-      Process.delete(:elixir_save_directory)
     end
   end
 
   # collect_root numbers the value's nodes in §3.1's first-visit order. A table
   # node's identity is its stored node number, so a shared node is the one
   # record found by its number, never by scanning collected nodes; a blob is
-  # keyed by the SLOT that holds it (blob_site/1).
-  defp collect_root(desc, value) do
+  # keyed by the SLOT that holds it (blob_site/1). The node directory is passed
+  # directly rather than kept in the process dictionary beside :elixir_blob_site
+  # so a 10-bucket process dictionary collision cannot add cons-cell heap churn
+  # on every node visit.
+  defp collect_root(desc, value, dir) do
     blob_site_begin(:root)
-    {nodes, _seen} = save_collect_nodes(desc, value, [], %{})
+    {nodes, _seen} = save_collect_nodes(desc, value, [], %{}, dir)
     nodes = Enum.reverse(nodes)
     {nodes, node_index(nodes)}
-  end
-
-  # the directory a pointer field's node number names, live only for this save
-  defp with_save_directory(directory, fun) do
-    prior = Process.get(:elixir_save_directory)
-    Process.put(:elixir_save_directory, directory)
-
-    try do
-      fun.()
-    after
-      if prior == nil,
-        do: Process.delete(:elixir_save_directory),
-        else: Process.put(:elixir_save_directory, prior)
-    end
   end
 
   # a pointer field's number must name a table node in the directory
@@ -1910,71 +1901,105 @@ defmodule Bench.Table do
   # index 1, the first node is 2). A node reached twice is one record. A node
   # is {type_id, kind, table_name, number, content}: kind :blob for a byte
   # buffer, :table for a pointer pointee.
-  defp save_collect_nodes(desc, value, acc, seen) do
-    Enum.reduce(desc.fields, {acc, seen}, fn f, {acc, seen} ->
+  defp save_collect_nodes(desc, value, acc, seen, dir) do
+    save_collect_fields(desc.fields, desc, value, {acc, seen}, dir)
+  end
+
+  defp save_collect_fields([], _desc, _value, state, _dir), do: state
+
+  defp save_collect_fields([f | rest], desc, value, state, dir) do
+    state =
       if field_active?(f, desc, value) do
         case f.t do
           :blob ->
             case Map.get(value, f.name) do
-              nil -> {acc, seen}
-              v -> {[{f.type_id, :blob, blob_site(v), v} | acc], seen}
+              nil ->
+                state
+
+              v ->
+                {acc, seen} = state
+                {[{f.type_id, :blob, blob_site(v), v} | acc], seen}
             end
 
           :pointer ->
             case Map.get(value, f.name) do
               nil ->
-                {acc, seen}
+                state
 
               n ->
-                save_push_node(acc, seen, {f.type_id, :table, f.elem, n})
+                {acc, seen} = state
+                save_push_node(acc, seen, {f.type_id, :table, f.elem, n}, dir)
             end
 
           :table ->
             # an absent optional (nil) owns no edge (§2.3), and a by-value
             # table left nil holds its defaults, which name no node
             case Map.get(value, f.name) do
-              nil -> {acc, seen}
-              v -> save_collect_nodes(Map.fetch!(@tables, f.elem), v, acc, seen)
+              nil ->
+                state
+
+              v ->
+                {acc, seen} = state
+                save_collect_nodes(Map.fetch!(@tables, f.elem), v, acc, seen, dir)
             end
 
           :list ->
-            save_collect_list_nodes(f, Map.get(value, f.name) || [], acc, seen)
+            {acc, seen} = state
+            save_collect_list_nodes(f, Map.get(value, f.name) || [], acc, seen, dir)
 
           :map ->
-            Enum.reduce(map_entries(f, Map.get(value, f.name, %{})), {acc, seen}, fn entry,
-                                                                                     {acc, seen} ->
-              save_collect_nodes(Map.fetch!(@tables, f.elem), entry, acc, seen)
-            end)
+            {acc, seen} = state
+
+            save_collect_table_list(
+              Map.fetch!(@tables, f.elem),
+              map_entries(f, Map.get(value, f.name, %{})),
+              acc,
+              seen,
+              dir
+            )
 
           :union ->
-            save_collect_union_nodes(f.elem, Map.get(value, f.name), acc, seen)
+            {acc, seen} = state
+            save_collect_union_nodes(f.elem, Map.get(value, f.name), acc, seen, dir)
 
           :keyed ->
             slots = Map.get(value, f.name) || %{}
 
-            Enum.reduce(f.key_names, {acc, seen}, fn name, {acc, seen} ->
+            Enum.reduce(f.key_names, state, fn name, state ->
               case Map.get(slots, name) do
-                nil -> {acc, seen}
-                v -> save_collect_nodes(%{fields: [f.item]}, %{f.item.name => v}, acc, seen)
+                nil ->
+                  state
+
+                v ->
+                  {acc, seen} = state
+                  save_collect_nodes(%{fields: [f.item]}, %{f.item.name => v}, acc, seen, dir)
               end
             end)
 
           _ ->
-            {acc, seen}
+            state
         end
       else
-        {acc, seen}
+        state
       end
-    end)
+
+    save_collect_fields(rest, desc, value, state, dir)
+  end
+
+  defp save_collect_table_list(_desc, [], acc, seen, _dir), do: {acc, seen}
+
+  defp save_collect_table_list(desc, [e | rest], acc, seen, dir) do
+    {acc, seen} = save_collect_nodes(desc, e, acc, seen, dir)
+    save_collect_table_list(desc, rest, acc, seen, dir)
   end
 
   # a union's selected arm is a field line (docs/SPEC-TABLES.md §2.6, §3.1):
   # its nodes are visited where the union sits, exactly as a field's are.
-  defp save_collect_union_nodes(_union, nil, acc, seen), do: {acc, seen}
+  defp save_collect_union_nodes(_union, nil, acc, seen, _dir), do: {acc, seen}
 
-  defp save_collect_union_nodes(union, {arm, payload}, acc, seen) do
+  defp save_collect_union_nodes(union, {arm, payload}, acc, seen, dir) do
     case Map.fetch!(Map.fetch!(@unions, union).by_name, arm) do
-      a -> save_collect_nodes(%{fields: [a]}, %{a.name => payload}, acc, seen)
+      a -> save_collect_nodes(%{fields: [a]}, %{a.name => payload}, acc, seen, dir)
     end
   end
 
@@ -1986,7 +2011,7 @@ defmodule Bench.Table do
   # its body is still being walked: a pointer to a node still OPEN is a data
   # cycle, refused by name (§3.1), and a number reached as a second table type
   # is not one node, so it is an invalid value.
-  defp save_push_node(acc, seen, {type_id, :table, elem, n}) do
+  defp save_push_node(acc, seen, {type_id, :table, elem, n}, dir) do
     case Map.get(seen, n) do
       {^elem, :closed} ->
         {acc, seen}
@@ -1995,13 +2020,13 @@ defmodule Bench.Table do
         throw(:data_cycle)
 
       nil ->
-        value = save_node_lookup(Process.get(:elixir_save_directory), n)
+        value = save_node_lookup(dir, n)
         node = {type_id, :table, elem, n, value}
         seen = Map.put(seen, n, {elem, :open})
 
         {acc, seen} =
           in_node_holder(node, fn ->
-            save_collect_nodes(Map.fetch!(@tables, elem), value, [node | acc], seen)
+            save_collect_nodes(Map.fetch!(@tables, elem), value, [node | acc], seen, dir)
           end)
 
         {acc, Map.put(seen, n, {elem, :closed})}
@@ -2014,29 +2039,27 @@ defmodule Bench.Table do
   # save_collect_list_nodes numbers an unbounded array's elements: table
   # elements recurse, pointer elements are node numbers, union elements read
   # their set arm.
-  defp save_collect_list_nodes(%{elem_kind: 13} = f, elements, acc, seen) do
-    Enum.reduce(elements, {acc, seen}, fn e, {acc, seen} ->
-      save_collect_nodes(Map.fetch!(@tables, f.elem), e, acc, seen)
-    end)
+  defp save_collect_list_nodes(%{elem_kind: 13} = f, elements, acc, seen, dir) do
+    save_collect_table_list(Map.fetch!(@tables, f.elem), elements, acc, seen, dir)
   end
 
-  defp save_collect_list_nodes(%{elem_kind: 17} = f, elements, acc, seen) do
+  defp save_collect_list_nodes(%{elem_kind: 17} = f, elements, acc, seen, dir) do
     Enum.reduce(elements, {acc, seen}, fn
       nil, {acc, seen} ->
         {acc, seen}
 
       n, {acc, seen} ->
-        save_push_node(acc, seen, {f.elem_type_id, :table, f.elem, n})
+        save_push_node(acc, seen, {f.elem_type_id, :table, f.elem, n}, dir)
     end)
   end
 
-  defp save_collect_list_nodes(%{elem_kind: 15} = f, elements, acc, seen) do
+  defp save_collect_list_nodes(%{elem_kind: 15} = f, elements, acc, seen, dir) do
     Enum.reduce(elements, {acc, seen}, fn e, {acc, seen} ->
-      save_collect_union_nodes(f.elem, e, acc, seen)
+      save_collect_union_nodes(f.elem, e, acc, seen, dir)
     end)
   end
 
-  defp save_collect_list_nodes(_f, _elements, acc, seen), do: {acc, seen}
+  defp save_collect_list_nodes(_f, _elements, acc, seen, _dir), do: {acc, seen}
 
   # collect_nodes is the read side's walk of a decoded record, whose pointer
   # fields still hold private %{__wire_node__: index} markers and whose blobs
@@ -2476,14 +2499,14 @@ defmodule Bench.Table do
   # live count is A and every element writes nothing, a table element when its
   # save body is empty (judged on a scratch walk whose ids are dropped), a union
   # element when it is None, a scalar element when it is the default.
-  defp list_born?(f, elements, idx_map, ids, order) do
-    min = Map.get(f, :min_count, 0)
-
-    min > 0 and Map.get(f, :array) == :counted and not Map.get(f, :optional, false) and
-      not Map.get(f, :required, false) and not Map.get(f, :text_list, false) and
-      length(elements) == min and
+  defp list_born?(%{min_count: min, array: :counted} = f, elements, idx_map, ids, order)
+       when min > 0 do
+    not Map.get(f, :optional, false) and not Map.get(f, :required, false) and
+      not Map.get(f, :text_list, false) and length(elements) == min and
       Enum.all?(elements, &element_writes_nothing?(f, &1, idx_map, ids, order))
   end
+
+  defp list_born?(_f, _elements, _idx_map, _ids, _order), do: false
 
   defp element_writes_nothing?(%{elem_kind: 13} = f, e, idx_map, ids, order) do
     {_idx, _ids, _order, body} =
@@ -4816,9 +4839,6 @@ defmodule Bench.Table do
   # Storage refusal is terminal and distinct from body damage. Bounded arrays
   # keep their declared clamp contract; unbounded extents must fit int32.
   defp check_wire_count(n, f, report) do
-    # a counted [A..B] below A refuses the whole read (docs/SPEC-TABLES.md §3.3)
-    if n < Map.get(f, :min_count, 0), do: throw(:wire_damaged)
-
     if n > 0x7FFFFFFF and not Map.has_key?(f, :max_count),
       do: throw({:count_over_extent_cap, report})
 
@@ -5303,8 +5323,6 @@ defmodule Bench.Table do
 
     if Map.has_key?(f, :array_bound) and f.array_bound > 0 and n > f.array_bound,
       do: throw(:invalid_value)
-
-    if n < Map.get(f, :min_count, 0), do: throw(:invalid_value)
 
     required_value(f, v)
     if f.elem_kind == 30, do: Enum.each(v, &check_enum(f, &1))
@@ -6715,14 +6733,44 @@ defmodule Bench.Table do
   # (docs/SPEC-TABLES.md §16.2, §16.7).
   defp json_skip_value({:obj, [{"&node", label} | rest]}) when is_integer(label) and label > 0 do
     if Process.get(:elixir_json_variable, false) do
+      # THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): a label alone must
+      # name a definition already closed; fields after one must follow a label
+      # not yet defined, and the definition is open until this object closes.
+      # What the reader does not place is the value.
       defs = Process.get(:elixir_json_defs, %{})
-      Process.put(:elixir_json_defs, Map.put_new(defs, label, :dropped))
-    end
+      open = Process.get(:elixir_json_open, %{})
 
-    Enum.each(rest, fn {k, v} ->
-      json_skip_key(k)
-      json_skip_value(v)
-    end)
+      if rest == [] do
+        if Map.has_key?(open, label) or not Map.has_key?(defs, label) do
+          Process.put(:elixir_json_bad, true)
+          throw(:wire_damaged)
+        end
+      else
+        if Map.has_key?(open, label) or Map.has_key?(defs, label) do
+          Process.put(:elixir_json_bad, true)
+          throw(:wire_damaged)
+        end
+
+        Process.put(:elixir_json_open, Map.put(open, label, true))
+
+        Enum.each(rest, fn {k, v} ->
+          json_skip_key(k)
+          json_skip_value(v)
+        end)
+
+        Process.put(:elixir_json_open, Map.delete(Process.get(:elixir_json_open, %{}), label))
+
+        Process.put(
+          :elixir_json_defs,
+          Map.put(Process.get(:elixir_json_defs, %{}), label, :dropped)
+        )
+      end
+    else
+      Enum.each(rest, fn {k, v} ->
+        json_skip_key(k)
+        json_skip_value(v)
+      end)
+    end
   end
 
   defp json_skip_value({:obj, pairs}) do
@@ -7118,7 +7166,7 @@ defmodule Bench.Table do
     bound = Map.get(f, :array_bound, 0)
     # every element past [..N] refuses the whole read (docs/SPEC-TABLES.md §2.13, §16.2)
 
-    {elements, count, _f, report} =
+    {elements, _count, _f, report} =
       Enum.reduce_while(raw, {[], 0, f, report}, fn raw, {acc, count, f, report} ->
         cond do
           bound > 0 and count >= bound ->
@@ -7137,15 +7185,13 @@ defmodule Bench.Table do
         end
       end)
 
-    if count < Map.get(f, :min_count, 0), do: throw(:wire_damaged)
-
     {Enum.reverse(elements), report}
   end
 
   defp json_read_field(%{t: :list} = f, raw, report) when is_list(raw) do
     bound = Map.get(f, :array_bound, 0)
 
-    {elems, placed, report} =
+    {elems, _placed, report} =
       Enum.reduce(raw, {[], 0, report}, fn e, {acc, placed, report} ->
         if Process.get(:elixir_json_bad, false) do
           {acc, placed, report}
@@ -7165,8 +7211,6 @@ defmodule Bench.Table do
           end
         end
       end)
-
-    if placed < Map.get(f, :min_count, 0), do: throw(:wire_damaged)
 
     {Enum.reverse(elems), report}
   end
@@ -7736,7 +7780,7 @@ defmodule Bench.Table do
   # json_object_val reads one member's value; in a variable-class document
   # a key opening with & is the §16.7 label and only "&node", first, is one.
   defp json_object_val(key, acc, bin, depth) do
-    if String.starts_with?(key, "&") and Process.get(:elixir_json_variable, false) do
+    if String.starts_with?(key, "&") do
       if key != "&node" or acc != [] do
         :error
       else

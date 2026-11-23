@@ -8,8 +8,8 @@
    beside this header to use descriptors or JSON. 128-bit storage uses
    the lane types from serialize.h. */
 
-#ifndef SCHEMA_BENCH_BENCHTABLE_H
-#define SCHEMA_BENCH_BENCHTABLE_H
+#ifndef SCHEMA_BENCH_Bench_table_h
+#define SCHEMA_BENCH_Bench_table_h
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -126,7 +126,7 @@ typedef struct bench_table_report_t
        held one. */
     int32_t non_finite_floats;
     /* THE STRICT ANNOUNCEMENT'S TWO BUILD VERSIONS (docs/SPEC-TABLES.md §3.3):
-       on reason SCHEMA_TABLE_BUILD_VERSION_MISMATCH, the peer's announced
+       on reason SCHEMA_TABLE_BUILD_VERSION_MISMATCH, the writer's announced
        build version (remote) and this unit's own (own). Zero on every other
        path. */
     uint64_t build_version_remote, build_version_own;
@@ -214,7 +214,6 @@ typedef struct bench_table_field_info_t
     int optional;           /* a ?T field: a _present companion decides whether it rides */
     int required;           /* a | required field (docs/SPEC-TABLES.md §2.3) */
     int32_t array_bound;    /* array capacity / string max length; 0 for plain scalars */
-    int32_t array_min;      /* a union arm's counted [A..B] A, held on read and write (ruling R10); 0 otherwise */
     uint32_t offset;        /* offsetof the storage member */
     uint32_t elem_size;     /* sizeof the member (element size for arrays) */
     uint32_t count_offset;  /* offsetof the _count/_length companion, or 0xffffffff */
@@ -365,7 +364,7 @@ static SCHEMA_UNUSED uint64_t bench_table_writer_id( bench_table_writer_t * w, u
     /* AN OVERFLOWED TABLE APPENDS NOTHING and spells no reference: 0 names no
        id, so a caller can tell the miss that took an entry from the one that
        did not. */
-    if(v->count==80) { w->overflow=1; return 0; }
+    if(v->count>=80) { w->overflow=1; return 0; }
     v->ids[v->count]=id; v->positions[v->count]=slot; v->ordinal_of[v->count]=-1; v->count++;
     v->slots[slot]=(uint32_t)v->count; bench_table_writer_leb(w,(uint64_t)v->count);
     return (uint64_t)v->count;
@@ -3595,8 +3594,8 @@ static SCHEMA_UNUSED int bench_table_announce_once(bench_table_vocabulary_t * v,
  }
  if(seen_version!=1||seen_words!=1||r.offset!=r.size||next_ref-1!=r.id_count)goto damaged;
  /* "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3): refused by
-    name, the peer's build version kept, no vocabulary set, never damage. The
-    report carries both versions, the peer's (remote) and this unit's (own). */
+    name, the writer's build version kept, no vocabulary set, never damage. The
+    report carries both versions, the writer's (remote) and this unit's (own). */
  if(v->strict && v->build_version!=SCHEMA_BENCH_BUILD_VERSION_VALUE){
   report->refused=1;
   report->reason=SCHEMA_BENCH_TABLE_BUILD_VERSION_MISMATCH;
@@ -7578,13 +7577,18 @@ static SCHEMA_UNUSED int bench_bench_mixed_save_body( bench_table_writer_t * w, 
     }
     { /* entities */
         schema_assert( 1 <= value->entities_count && value->entities_count <= 8 );
-        int rides = value->entities_count != 1; int32_t born_i;
-        for ( born_i = 0; !rides && born_i < 1; born_i++ )
+        int rides = value->entities_count > 0;
+        if ( value->entities_count == 1 ) /* the birth value of [1..8] elides (§4.2) */
         {
-            bench_table_writer_t default_probe = bench_table_writer_probe( w ); default_probe.check_default = 1;
-            if ( !bench_mixed_entity_save_body( &default_probe, &value->entities[born_i] ) ) { return 0; }
-            bench_table_writer_rewind( &default_probe );
-            rides = default_probe.offset > 1;
+            int32_t i; rides = 0;
+            for ( i = 0; i < 1; i++ )
+            {
+                bench_table_writer_t slot_probe = bench_table_writer_probe( w ); slot_probe.check_default = 1;
+                if ( !bench_mixed_entity_save_body( &slot_probe, &value->entities[i] ) ) { return 0; }
+                bench_table_writer_rewind(&slot_probe);
+                if ( slot_probe.offset == 1 ) { continue; }
+                rides = 1; break;
+            }
         }
         if ( rides )
         {
@@ -8323,7 +8327,6 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                         if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; }
                     }
                 }
-                if ( value->entities_count < 1 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; }
                 break;
             }
             case 0xee639cad45b1994cull: /* stats */
@@ -9102,26 +9105,31 @@ static SCHEMA_UNUSED int bench_bench_mixed_save_message_body(bench_table_bit_wri
  }
  }
  { /* entities */
- schema_assert( 0 <= value->entities_count && value->entities_count <= 8 );
- int rides = value->entities_count != 1;
- int32_t born_i;
- for ( born_i = 0; !rides && born_i < 1; born_i++ )
+ schema_assert( 1 <= value->entities_count && value->entities_count <= 8 );
+ int rides = value->entities_count > 0;
+ if ( value->entities_count == 1 ) /* the birth value of [1..8] elides (§4.2) */
  {
-     bench_table_bit_writer_t probe=*w;
-     probe.buffer=NULL;
-     probe.capacity=INT64_MAX;
-     probe.bits=0;
-     probe.check_default=1;
-     if ( !bench_mixed_entity_save_message_body( &probe, &value->entities[born_i] ) ) { return 0;
+     int32_t i;
+     rides = 0;
+     for ( i = 0; i < 1; i++ )
+     {
+         bench_table_bit_writer_t probe=*w;
+         probe.buffer=NULL;
+         probe.capacity=INT64_MAX;
+         probe.bits=0;
+         probe.check_default=1;
+         if(!bench_mixed_entity_save_message_body(&probe,&value->entities[i])) return 0;
+         if(probe.bits==BENCH_K_TABLE_MESSAGE_REF_BITS_HERE) continue;
+         rides = 1;
+         break;
      }
-     rides = probe.bits > BENCH_K_TABLE_MESSAGE_REF_BITS_HERE;
  }
  if(rides) {
   if(w->check_default) {w->bits=BENCH_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
   bench_table_bit_put(w,10,BENCH_K_TABLE_MESSAGE_REF_BITS_HERE);
-  schema_assert( 1 <= value->entities_count && value->entities_count <= 8 );
+  schema_assert( 0 <= value->entities_count && value->entities_count <= 8 );
   bench_table_bit_put(w,(uint64_t)value->entities_count-1,3);
   { int32_t i;
   for(i=0;i<value->entities_count;i++) {
@@ -9131,7 +9139,7 @@ static SCHEMA_UNUSED int bench_bench_mixed_save_message_body(bench_table_bit_wri
  }
  { /* stats */
  schema_assert( 0 <= value->stats_count && value->stats_count <= 80 );
- if(value->stats_count>0) {
+ if(value->stats_count > 0) {
   if(w->check_default) {w->bits=BENCH_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
@@ -9659,7 +9667,6 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message
   }if(walk<n && !bench_table_message_skip_run(r,n-walk,element_entry->value_bits))goto damaged;
   value->entities_count=(int32_t)kept;
  }
- if(value->entities_count<1)r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE;
  if(same_shape && original_count==0)goto damaged;
  break;
  }
@@ -10395,7 +10402,7 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fix
     bench_table_fixed_put64( b + 32, (uint64_t) value->world_time );
     bench_table_fixed_put64( b + 40, (uint64_t) value->frame_tick );
     bench_table_fixed_put32( b + 48, (uint32_t) value->server_time );
-    schema_assert( value->entities_count >= 1 && value->entities_count <= 8 ); /* the declared [A..B] is the bound (§3.4) */
+    schema_assert( value->entities_count >= 0 && value->entities_count <= 8 ); /* the declared count is the bound (§3.4) */
     bench_table_fixed_put32( b + 52, (uint32_t) value->entities_count );
     {
         int64_t i;
@@ -10539,7 +10546,6 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fix
     /* bits(48) width clamp */
     (*out_of_range) += ( value->frame_tick > 281474976710655ull );
     (*out_of_range) += (int) ( value->server_time < 0 ) | (int) ( value->server_time > 16776960 );
-    if ( value->entities_count < 1 ) { (*out_of_range)++; }
     {
         int64_t i;
         for ( i = 0; i < (int64_t) value->entities_count; ++i )
@@ -10660,7 +10666,6 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fix
     /* bits(48) width clamp */
     (*out_of_range) += ( value->frame_tick > 281474976710655ull );
     (*out_of_range) += (int) ( value->server_time < 0 ) | (int) ( value->server_time > 16776960 );
-    if ( value->entities_count < 1 ) { (*out_of_range)++; }
     {
         int64_t i;
         for ( i = 0; i < ( value->entities_count >= 0 && value->entities_count <= 8 ? (int64_t) value->entities_count : 0 ); ++i )
@@ -10837,7 +10842,6 @@ static SCHEMA_UNUSED int schema_bench_bench_mixed_body_pack_(struct bench_table_
     bench_table_cook_put(at+40,(uint64_t)value->world_time,8,order);
     bench_table_cook_put(at+48,(uint64_t)value->frame_tick,8,order);
     bench_table_cook_put(at+56,(uint64_t)value->server_time,4,order);
-    schema_assert( 1 <= value->entities_count && value->entities_count <= 8 );
     { int32_t cook_i1; for(cook_i1=0;cook_i1<value->entities_count && cook_i1<8;cook_i1++) {
         if(!schema_bench_mixed_entity_body_pack_(n,at+64+cook_i1*64,&value->entities[cook_i1],order)) { return 0; }
     } }
@@ -11120,4 +11124,4 @@ static SCHEMA_UNUSED int64_t bench_bench_mixed_to_json( const bench_bench_mixed_
 }
 #endif
 
-#endif /* SCHEMA_BENCH_BENCHTABLE_H */
+#endif /* SCHEMA_BENCH_Bench_table_h */

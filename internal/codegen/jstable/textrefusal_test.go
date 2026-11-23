@@ -31,7 +31,7 @@ for (const [text, field] of bad) {
  r.unknown = 3;
  const value = m.RootFromJson(text, r);
  if (value !== null || !r.damaged || r.reason !== "text_holds_zero: " + field ||
-     r.oor !== 0 || r.unknown !== 3) {
+     r.oor !== 0 || r.unknown !== 0) {
   fail("stored NUL must refuse before clamping: " + text + " " + JSON.stringify(r));
  }
  if (m.RootFromJson('{"name":"ok"}', r) === null || r.reason || r.refused)

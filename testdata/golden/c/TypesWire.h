@@ -5,8 +5,8 @@
    AGPL-3.0, its output is not.
    package example — protocol id 0x2bf51af687ac0abd */
 
-#ifndef SCHEMA_EXAMPLE_TYPESWIRE_H
-#define SCHEMA_EXAMPLE_TYPESWIRE_H
+#ifndef SCHEMA_EXAMPLE_Types_wire_h
+#define SCHEMA_EXAMPLE_Types_wire_h
 
 #include "Types.h"
 #include <string.h>   /* memset, strlen */
@@ -1279,4 +1279,4 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_extreme_row( serializ
 }
 #endif
 
-#endif /* SCHEMA_EXAMPLE_TYPESWIRE_H */
+#endif /* SCHEMA_EXAMPLE_Types_wire_h */

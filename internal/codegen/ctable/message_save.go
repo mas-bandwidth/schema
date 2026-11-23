@@ -107,10 +107,9 @@ func (g *tableGen) messageValue(f *ir.Field, e ir.TableVocabularyEntry, expr, co
 		g.messageElement(f, e.Shape.Elem, e.Shape.Inner, expr+"[i]", ind+"  ")
 		g.pf("%s } }\n", ind)
 	case f.Array != ir.ArrayNone:
-		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
-			g.writeCountBound(count, f, ind)
-		} else if f.Array == ir.ArrayCounted {
-			g.writeStorageBound(count, f.ArrayBound, ind)
+		if f.Array == ir.ArrayCounted {
+			// a counted [A..B] holds A on union arms too (ruling R10)
+			g.writeCountBound(f, count, ind)
 		}
 		g.pf("%stable_bit_put(w,(uint64_t)%s-%d,%d);\n", ind, count, e.Shape.Min, ir.TableMessageCountBits(e.Shape))
 		if ir.TableMessageAligns(e.Kind, e.Shape) {
@@ -218,14 +217,8 @@ func (g *tableGen) messageFieldPresence(f *ir.Field, expr string) (string, strin
 		condition = g.wireBytesDiffer(f, expr)
 	case f.Array == ir.ArrayCounted:
 		count = expr + "_count"
-		g.writeStorageBound(count, f.ArrayBound, " ")
-		condition = count + ">0"
-		if f.BornCount() > 0 && !f.Required && !f.Type.Optional {
-			// the birth value, A default elements, is elided like any
-			// default (docs/SPEC-TABLES.md §3.3(a), ruling R10); the reader
-			// runs this same predicate and refuses it stored
-			condition = g.countedBirthRides(f, expr, " ", true)
-		}
+		g.writeCountBound(f, count, " ")
+		condition = g.countedRides(f, expr, " ", g.messageKeyedRides)
 	case f.Type.Optional:
 		condition = expr + "_present"
 	case f.KeyEnum != "":

@@ -128,7 +128,7 @@ public sealed class TableVocabulary
     internal bool Attempted;
     internal TableMessageEntry[] Entries = Array.Empty<TableMessageEntry>();
     public int Count { get { return Entries.Length; } }
-    public int RefBits { get { return Math.Max(1, System.Numerics.BitOperations.Log2((uint)Math.Max(1, Count)) + 1); } }
+    public int RefBits { get { return global::System.Math.Max(1, System.Numerics.BitOperations.Log2((uint)global::System.Math.Max(1, Count)) + 1); } }
 }
 internal sealed class TableMessageShape
 {
@@ -196,8 +196,8 @@ const tableMessageSource = `
                 shape.Delta = shape.QMax - shape.QMin;
                 float steps = shape.Delta / shape.QRes;
                 if (!float.IsFinite(shape.Delta) || !float.IsFinite(steps)) { return false; }
-                steps = Math.Clamp(steps, 1f, 4294967040f);
-                shape.Steps = (uint)Math.Ceiling(steps); shape.Bits = BitCount(shape.Steps);
+                steps = global::System.Math.Clamp(steps, 1f, 4294967040f);
+                shape.Steps = (uint)global::System.Math.Ceiling(steps); shape.Bits = BitCount(shape.Steps);
             }
             else if (shape.Packing != 0) { return false; }
         }
@@ -267,7 +267,7 @@ const tableMessageSource = `
         }
         if (!terminated || versions != 1 || vocabularies != 1) { Damage(report); return Finish(report, Verdict.Damaged); }
         // "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3): refused
-        // by name, the peer's build version kept, no vocabulary set, never damage.
+        // by name, the writer's build version kept, no vocabulary set, never damage.
         if (v.Strict && v.BuildVersion != tableOwnVocabulary.BuildVersion)
         {
             report.BuildVersionRemote = v.BuildVersion; report.BuildVersionOwn = tableOwnVocabulary.BuildVersion;
@@ -380,7 +380,7 @@ const tableMessageSource = `
             float normalized = (TableBitsToFloat((uint)bits) - shape.QMin) / shape.Delta;
             if (!(normalized >= 0)) { normalized = 0; } else if (!(normalized <= 1)) { normalized = 1; }
             float scaled = normalized * shape.Steps;
-            bits = Math.Min((uint)Math.Floor((double)(scaled + 0.5f)), shape.Steps);
+            bits = global::System.Math.Min((uint)global::System.Math.Floor((double)(scaled + 0.5f)), shape.Steps);
         }
         else if (shape.Packing == 1) { bits = unchecked(bits - shape.Base); }
         w.Put(bits, ValueBits(f.Kind, shape));

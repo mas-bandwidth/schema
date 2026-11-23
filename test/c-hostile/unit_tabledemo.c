@@ -13,6 +13,8 @@ HC_FIXED( root_config )
 HC_FIXED( pack_config )
 HC_FIXED( global_settings )
 HC_FIXED( ship_entry )
+HC_FIXED( min_arm_fix )
+HC_FIXED( min_plain_fix )
 HC_VAR( patrol )
 HC_ANNOUNCE()
 
@@ -21,6 +23,8 @@ static const hc_binding_t rows[] = {
     { HC_FIXED_FIELDS( "tables/examples", "PackConfig", pack_config ), .announce = hc_announce },
     { HC_FIXED_FIELDS( "tables/examples", "GlobalSettings", global_settings ) },
     { HC_FIXED_FIELDS( "tables/examples", "ShipEntry", ship_entry ) },
+    { HC_FIXED_FIELDS( "tables/examples", "MinArmFix", min_arm_fix ) },
+    { HC_FIXED_FIELDS( "tables/examples", "MinPlainFix", min_plain_fix ) },
     { HC_VAR_FIELDS( "tables/examples/Guarded.schema", "Patrol", patrol ) },
 };
 

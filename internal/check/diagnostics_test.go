@@ -645,7 +645,7 @@ func TestDiagnostics(t *testing.T) {
 		{name: "a constant folding to the table backend's force-inline macro", want: "SILENT REWRITE",
 			src: "package t\nconst SchemaTTableInline = 1\ntype H { x uint8 }\n"},
 		{name: "a declaration spelling a generated include guard", want: "SILENT REWRITE",
-			srcs: map[string]string{"T.schema": "package t\ntype SCHEMA_T_T_H { x uint8 }\n"}},
+			srcs: map[string]string{"T.schema": "package t\ntype SCHEMA_T_T_h { x uint8 }\n"}},
 		{name: "a declaration carrying the reserved lowercase prefix", want: "reserves for the names the",
 			src: "package t\ntype schema_thing { x uint8 }\n"},
 

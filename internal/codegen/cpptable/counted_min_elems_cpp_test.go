@@ -53,7 +53,7 @@ fixed table RU
 `
 
 // one case: the table, the engine's text for the value, and the C++ lines
-// that build the same value in `v` from a default-constructed one
+// that build the same value in `v` from a default-constructed one.
 type cppCountedMinCase struct {
 	id, table, text, build string
 }
@@ -133,7 +133,7 @@ func cppCountedMinRun(t *testing.T, undermine func(map[string][]byte)) map[strin
 		t.Fatalf("the probe exited %d\n%s", code, out)
 	}
 	got := map[string]string{}
-	for _, line := range strings.Split(strings.TrimSpace(out), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
 		parts := strings.Fields(line)
 		if len(parts) != 3 {
 			t.Fatalf("an unexpected probe line: %q", line)

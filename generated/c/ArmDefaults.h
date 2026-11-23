@@ -5,8 +5,8 @@
    AGPL-3.0, its output is not.
    package example — protocol id 0x2bf51af687ac0abd */
 
-#ifndef SCHEMA_EXAMPLE_ARM_DEFAULTS_H
-#define SCHEMA_EXAMPLE_ARM_DEFAULTS_H
+#ifndef SCHEMA_EXAMPLE_ArmDefaults_h
+#define SCHEMA_EXAMPLE_ArmDefaults_h
 
 #include <stdint.h>
 #include "SchemaRuntime.h"
@@ -188,4 +188,4 @@ static SCHEMA_UNUSED example_default_bulk_arm_t * example_default_bulk_choice_se
 }
 #endif
 
-#endif /* SCHEMA_EXAMPLE_ARM_DEFAULTS_H */
+#endif /* SCHEMA_EXAMPLE_ArmDefaults_h */

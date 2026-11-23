@@ -329,7 +329,7 @@ end
 			t.Fatalf("probe failed: %v\n%s", err, out)
 		}
 		got := map[string]string{}
-		for _, line := range strings.Split(out, "\n") {
+		for line := range strings.SplitSeq(out, "\n") {
 			if parts := strings.Fields(line); len(parts) == 3 && parts[0] == "CROSS" {
 				got[parts[1]] = parts[2]
 			}

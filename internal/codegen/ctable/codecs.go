@@ -260,7 +260,7 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 	case f.Array == ir.ArrayFixed:
 		g.pf("    %s %s[%d];\n", typ, f.Name, f.ArrayBound)
 	case f.Array == ir.ArrayCounted:
-		g.pf("    %s %s[%d]; /* used count beside it; count in [0, %d] */\n", typ, f.Name, f.ArrayBound, f.ArrayBound)
+		g.pf("    %s %s[%d]; /* used count beside it; count in [%d, %d] */\n", typ, f.Name, f.ArrayBound, f.ArrayMin, f.ArrayBound)
 		g.pf("    int32_t %s_count;\n", f.Name)
 	default:
 		g.pf("    %s %s;\n", typ, f.Name)
@@ -339,8 +339,8 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 		g.emitTableResetArray("value->"+f.Name, strconv.FormatInt(f.ArrayBound, 10), typ, selfInit, f)
 	case f.Array == ir.ArrayCounted:
 		g.emitTableResetArray("value->"+f.Name, strconv.FormatInt(f.ArrayBound, 10), typ, selfInit, f)
-		// a counted [A..B] is born holding A default elements (docs/SPEC-TABLES.md
-		// §3.4, ruling R10), so a fresh value is one a writer may save
+		// a [Min..N]T is BORN at Min default elements (docs/SPEC.md §4.2,
+		// ir.Field.BornCount), and the slots above already hold them
 		g.pf("    value->%s_count = %d;\n", f.Name, f.BornCount())
 	case selfInit:
 		g.emitTableResetOne("value->"+f.Name, typ, f)
@@ -379,7 +379,7 @@ func (g *tableGen) emitTableResetOne(expr, typ string, f *ir.Field) {
 			g.emitTableResetArm(expr, v)
 		}
 		// SELECTING A COUNTED [A..B] ARM ESTABLISHES IT AT COUNT A
-		// (docs/SPEC-TABLES.md §4.6, ruling R10), as the Go oracle's arm
+		// (docs/SPEC.md §4.6, ruling R10), as the Go oracle's arm
 		// default does: the count is stated after every arm's reset, since
 		// the arms share their storage, so a reset value whose tag is then
 		// set to the arm holds A default elements, a value a writer saves.

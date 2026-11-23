@@ -229,7 +229,7 @@ int main( int argc, char ** argv )
 
 var cppArmMinWriteModes = []string{"wire", "message", "fixed", "cook", "json", "plain-wire", "plain-message", "plain-fixed", "plain-cook"}
 
-// the modes that must pass (exit 0) on the fixed code and go red when planted
+// the modes that must pass (exit 0) on the fixed code and go red when planted.
 var cppArmMinGreenModes = []string{"read", "arm-select", "plain-read", "plain-born", "plain-message-guard"}
 
 // cppArmMinBuild generates the unit, lets undermine plant a fault in the real

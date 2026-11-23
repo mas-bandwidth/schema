@@ -268,7 +268,7 @@ struct TableReport
     // from a caller's report that already held one.
     int32_t non_finite_floats = 0;
     // THE STRICT ANNOUNCEMENT'S TWO BUILD VERSIONS (docs/SPEC-TABLES.md §3.3):
-    // on reason build_version_mismatch, the peer's announced build version
+    // on reason build_version_mismatch, the writer's announced build version
     // (remote) and this unit's own (own). Zero on every other path.
     uint64_t build_version_remote = 0;
     uint64_t build_version_own = 0;
@@ -627,6 +627,9 @@ struct TableIds
 {
     static const int32_t kCapacity = 88;
     static const int32_t kBuckets = 256;
+    // THE WRITER'S MAXIMUM (docs/SPEC-TABLES.md §3): no reader accepts an id
+    // table past kTableProbeBound entries, so the 4097th id overflows.
+    static const int32_t kLimit = kCapacity < 4096 ? kCapacity : 4096;
 
     uint64_t ids[kCapacity];
     int32_t chain[kCapacity];
@@ -670,7 +673,7 @@ struct TableIds
         {
             if ( ids[i] == id ) { return uint64_t( i ) + 1; }
         }
-        if ( count >= kCapacity )
+        if ( count >= kLimit )
         {
             overflow = true;
             return 1;
@@ -3491,7 +3494,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
         return false;
     }
     // "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3): refused
-    // by name, the peer's build version kept, no vocabulary set, never damage.
+    // by name, the writer's build version kept, no vocabulary set, never damage.
     // The unit's own build version is spelled here as the literal BuildVersion
     // holds, because the cook runtime that declares BuildVersion follows this one.
     if ( vocabulary.strict && version != 0xbf7128181c3025bcull )
@@ -7659,47 +7662,47 @@ inline void RenderFrameReset( RenderFrame & value )
 {
     value.version = 0;
     RenderCameraReset( value.cameras[0] );
-    value.cameras_count = 0;
+    value.cameras_count = 0; // born at Min (docs/SPEC.md §4.2)
     for ( int32_t i = 0; i < 4096; i++ )
     {
         RenderShipReset( value.ships[i] );
     }
-    value.ships_count = 0;
+    value.ships_count = 0; // born at Min (docs/SPEC.md §4.2)
     for ( int32_t i = 0; i < 1024; i++ )
     {
         RenderTurretReset( value.turrets[i] );
     }
-    value.turrets_count = 0;
+    value.turrets_count = 0; // born at Min (docs/SPEC.md §4.2)
     for ( int32_t i = 0; i < 4096; i++ )
     {
         RenderMissileReset( value.missiles[i] );
     }
-    value.missiles_count = 0;
+    value.missiles_count = 0; // born at Min (docs/SPEC.md §4.2)
     for ( int32_t i = 0; i < 4096; i++ )
     {
         RenderDynamicPropReset( value.dynamic_props[i] );
     }
-    value.dynamic_props_count = 0;
+    value.dynamic_props_count = 0; // born at Min (docs/SPEC.md §4.2)
     for ( int32_t i = 0; i < 20000; i++ )
     {
         RenderStaticPropReset( value.static_props[i] );
     }
-    value.static_props_count = 0;
+    value.static_props_count = 0; // born at Min (docs/SPEC.md §4.2)
     for ( int32_t i = 0; i < 8192; i++ )
     {
         RenderCosmeticPropReset( value.cosmetic_props[i] );
     }
-    value.cosmetic_props_count = 0;
+    value.cosmetic_props_count = 0; // born at Min (docs/SPEC.md §4.2)
     for ( int32_t i = 0; i < 32000; i++ )
     {
         RenderLaserReset( value.lasers[i] );
     }
-    value.lasers_count = 0;
+    value.lasers_count = 0; // born at Min (docs/SPEC.md §4.2)
     for ( int32_t i = 0; i < 32000; i++ )
     {
         RenderExplosionReset( value.explosions[i] );
     }
-    value.explosions_count = 0;
+    value.explosions_count = 0; // born at Min (docs/SPEC.md §4.2)
 }
 
 inline void RenderVector3Reset( RenderVector3 & value )
@@ -18860,7 +18863,8 @@ inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     if ( value.version != 0 ) { bytes += TableLebBytes( ids.ref_at( 59, 0xbb62c62c9808ea37ull ) ) + 1 + 8; } // version
     schema_assert( value.cameras_count >= 0 && value.cameras_count <= 1 ); // storage invariant, debug only (§5.1)
-    if ( value.cameras_count > 0 )
+    bool rides_cameras = value.cameras_count > 0;
+    if ( rides_cameras )
     {
         const uint64_t ref_cameras = ids.ref_at( 4, 0x0f9222d2ba7aa2a7ull );
         int64_t body_cameras = 0;
@@ -18874,7 +18878,8 @@ inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value
         bytes += TableLebBytes( ref_cameras ) + 1 + TableLebBytes( (uint64_t) ( body_cameras ) ) + ( body_cameras ); // cameras
     }
     schema_assert( value.ships_count >= 0 && value.ships_count <= 4096 ); // storage invariant, debug only (§5.1)
-    if ( value.ships_count > 0 )
+    bool rides_ships = value.ships_count > 0;
+    if ( rides_ships )
     {
         const uint64_t ref_ships = ids.ref_at( 12, 0x294a5c4913e1ad44ull );
         int64_t body_ships = 0;
@@ -18888,7 +18893,8 @@ inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value
         bytes += TableLebBytes( ref_ships ) + 1 + TableLebBytes( (uint64_t) ( body_ships ) ) + ( body_ships ); // ships
     }
     schema_assert( value.turrets_count >= 0 && value.turrets_count <= 1024 ); // storage invariant, debug only (§5.1)
-    if ( value.turrets_count > 0 )
+    bool rides_turrets = value.turrets_count > 0;
+    if ( rides_turrets )
     {
         const uint64_t ref_turrets = ids.ref_at( 38, 0x84f8260bc283608cull );
         int64_t body_turrets = 0;
@@ -18902,7 +18908,8 @@ inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value
         bytes += TableLebBytes( ref_turrets ) + 1 + TableLebBytes( (uint64_t) ( body_turrets ) ) + ( body_turrets ); // turrets
     }
     schema_assert( value.missiles_count >= 0 && value.missiles_count <= 4096 ); // storage invariant, debug only (§5.1)
-    if ( value.missiles_count > 0 )
+    bool rides_missiles = value.missiles_count > 0;
+    if ( rides_missiles )
     {
         const uint64_t ref_missiles = ids.ref_at( 9, 0x1c3027194b1ba4d0ull );
         int64_t body_missiles = 0;
@@ -18916,7 +18923,8 @@ inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value
         bytes += TableLebBytes( ref_missiles ) + 1 + TableLebBytes( (uint64_t) ( body_missiles ) ) + ( body_missiles ); // missiles
     }
     schema_assert( value.dynamic_props_count >= 0 && value.dynamic_props_count <= 4096 ); // storage invariant, debug only (§5.1)
-    if ( value.dynamic_props_count > 0 )
+    bool rides_dynamic_props = value.dynamic_props_count > 0;
+    if ( rides_dynamic_props )
     {
         const uint64_t ref_dynamic_props = ids.ref_at( 19, 0x43125398a9903d27ull );
         int64_t body_dynamic_props = 0;
@@ -18930,7 +18938,8 @@ inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value
         bytes += TableLebBytes( ref_dynamic_props ) + 1 + TableLebBytes( (uint64_t) ( body_dynamic_props ) ) + ( body_dynamic_props ); // dynamic_props
     }
     schema_assert( value.static_props_count >= 0 && value.static_props_count <= 20000 ); // storage invariant, debug only (§5.1)
-    if ( value.static_props_count > 0 )
+    bool rides_static_props = value.static_props_count > 0;
+    if ( rides_static_props )
     {
         const uint64_t ref_static_props = ids.ref_at( 62, 0xc1f8d7edff7fcfd2ull );
         int64_t body_static_props = 0;
@@ -18944,7 +18953,8 @@ inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value
         bytes += TableLebBytes( ref_static_props ) + 1 + TableLebBytes( (uint64_t) ( body_static_props ) ) + ( body_static_props ); // static_props
     }
     schema_assert( value.cosmetic_props_count >= 0 && value.cosmetic_props_count <= 8192 ); // storage invariant, debug only (§5.1)
-    if ( value.cosmetic_props_count > 0 )
+    bool rides_cosmetic_props = value.cosmetic_props_count > 0;
+    if ( rides_cosmetic_props )
     {
         const uint64_t ref_cosmetic_props = ids.ref_at( 14, 0x33408e39f5f480ffull );
         int64_t body_cosmetic_props = 0;
@@ -18958,7 +18968,8 @@ inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value
         bytes += TableLebBytes( ref_cosmetic_props ) + 1 + TableLebBytes( (uint64_t) ( body_cosmetic_props ) ) + ( body_cosmetic_props ); // cosmetic_props
     }
     schema_assert( value.lasers_count >= 0 && value.lasers_count <= 32000 ); // storage invariant, debug only (§5.1)
-    if ( value.lasers_count > 0 )
+    bool rides_lasers = value.lasers_count > 0;
+    if ( rides_lasers )
     {
         const uint64_t ref_lasers = ids.ref_at( 74, 0xd982b77b3e92d16dull );
         int64_t body_lasers = 0;
@@ -18972,7 +18983,8 @@ inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value
         bytes += TableLebBytes( ref_lasers ) + 1 + TableLebBytes( (uint64_t) ( body_lasers ) ) + ( body_lasers ); // lasers
     }
     schema_assert( value.explosions_count >= 0 && value.explosions_count <= 32000 ); // storage invariant, debug only (§5.1)
-    if ( value.explosions_count > 0 )
+    bool rides_explosions = value.explosions_count > 0;
+    if ( rides_explosions )
     {
         const uint64_t ref_explosions = ids.ref_at( 39, 0x876a8c1a85806a69ull );
         int64_t body_explosions = 0;
@@ -19004,7 +19016,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
         w.put64( uint64_t( value.version ) );
     }
     schema_assert( value.cameras_count >= 0 && value.cameras_count <= 1 ); // storage invariant, debug only (§5.1)
-    if ( value.cameras_count > 0 )
+    bool rides_cameras = value.cameras_count > 0;
+    if ( rides_cameras )
     {
         const uint64_t ref_cameras = ids.ref_at( 4, 0x0f9222d2ba7aa2a7ull );
         int64_t body_cameras = 0;
@@ -19035,7 +19048,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
         }
     }
     schema_assert( value.ships_count >= 0 && value.ships_count <= 4096 ); // storage invariant, debug only (§5.1)
-    if ( value.ships_count > 0 )
+    bool rides_ships = value.ships_count > 0;
+    if ( rides_ships )
     {
         const uint64_t ref_ships = ids.ref_at( 12, 0x294a5c4913e1ad44ull );
         int64_t body_ships = 0;
@@ -19066,7 +19080,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
         }
     }
     schema_assert( value.turrets_count >= 0 && value.turrets_count <= 1024 ); // storage invariant, debug only (§5.1)
-    if ( value.turrets_count > 0 )
+    bool rides_turrets = value.turrets_count > 0;
+    if ( rides_turrets )
     {
         const uint64_t ref_turrets = ids.ref_at( 38, 0x84f8260bc283608cull );
         int64_t body_turrets = 0;
@@ -19097,7 +19112,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
         }
     }
     schema_assert( value.missiles_count >= 0 && value.missiles_count <= 4096 ); // storage invariant, debug only (§5.1)
-    if ( value.missiles_count > 0 )
+    bool rides_missiles = value.missiles_count > 0;
+    if ( rides_missiles )
     {
         const uint64_t ref_missiles = ids.ref_at( 9, 0x1c3027194b1ba4d0ull );
         int64_t body_missiles = 0;
@@ -19128,7 +19144,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
         }
     }
     schema_assert( value.dynamic_props_count >= 0 && value.dynamic_props_count <= 4096 ); // storage invariant, debug only (§5.1)
-    if ( value.dynamic_props_count > 0 )
+    bool rides_dynamic_props = value.dynamic_props_count > 0;
+    if ( rides_dynamic_props )
     {
         const uint64_t ref_dynamic_props = ids.ref_at( 19, 0x43125398a9903d27ull );
         int64_t body_dynamic_props = 0;
@@ -19159,7 +19176,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
         }
     }
     schema_assert( value.static_props_count >= 0 && value.static_props_count <= 20000 ); // storage invariant, debug only (§5.1)
-    if ( value.static_props_count > 0 )
+    bool rides_static_props = value.static_props_count > 0;
+    if ( rides_static_props )
     {
         const uint64_t ref_static_props = ids.ref_at( 62, 0xc1f8d7edff7fcfd2ull );
         int64_t body_static_props = 0;
@@ -19190,7 +19208,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
         }
     }
     schema_assert( value.cosmetic_props_count >= 0 && value.cosmetic_props_count <= 8192 ); // storage invariant, debug only (§5.1)
-    if ( value.cosmetic_props_count > 0 )
+    bool rides_cosmetic_props = value.cosmetic_props_count > 0;
+    if ( rides_cosmetic_props )
     {
         const uint64_t ref_cosmetic_props = ids.ref_at( 14, 0x33408e39f5f480ffull );
         int64_t body_cosmetic_props = 0;
@@ -19221,7 +19240,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
         }
     }
     schema_assert( value.lasers_count >= 0 && value.lasers_count <= 32000 ); // storage invariant, debug only (§5.1)
-    if ( value.lasers_count > 0 )
+    bool rides_lasers = value.lasers_count > 0;
+    if ( rides_lasers )
     {
         const uint64_t ref_lasers = ids.ref_at( 74, 0xd982b77b3e92d16dull );
         int64_t body_lasers = 0;
@@ -19252,7 +19272,8 @@ BLOCKDEMO_TABLE_INLINE bool RenderFrameSaveBody( TableWriter & w, TableIds & ids
         }
     }
     schema_assert( value.explosions_count >= 0 && value.explosions_count <= 32000 ); // storage invariant, debug only (§5.1)
-    if ( value.explosions_count > 0 )
+    bool rides_explosions = value.explosions_count > 0;
+    if ( rides_explosions )
     {
         const uint64_t ref_explosions = ids.ref_at( 39, 0x876a8c1a85806a69ull );
         int64_t body_explosions = 0;
@@ -20366,7 +20387,8 @@ inline int64_t RenderFrameMeasureMessageBody( int64_t at, const RenderFrame & va
         bits += 64;
     }
     schema_assert( value.cameras_count >= 0 && value.cameras_count <= 1 ); // storage invariant, debug only (§5.1)
-    if ( value.cameras_count > 0 )
+    bool rides_cameras = value.cameras_count > 0;
+    if ( rides_cameras )
     {
         bits += kTableMessageRefBitsHere;
         bits += 1;
@@ -20378,7 +20400,8 @@ inline int64_t RenderFrameMeasureMessageBody( int64_t at, const RenderFrame & va
         }
     }
     schema_assert( value.ships_count >= 0 && value.ships_count <= 4096 ); // storage invariant, debug only (§5.1)
-    if ( value.ships_count > 0 )
+    bool rides_ships = value.ships_count > 0;
+    if ( rides_ships )
     {
         bits += kTableMessageRefBitsHere;
         bits += 13;
@@ -20390,7 +20413,8 @@ inline int64_t RenderFrameMeasureMessageBody( int64_t at, const RenderFrame & va
         }
     }
     schema_assert( value.turrets_count >= 0 && value.turrets_count <= 1024 ); // storage invariant, debug only (§5.1)
-    if ( value.turrets_count > 0 )
+    bool rides_turrets = value.turrets_count > 0;
+    if ( rides_turrets )
     {
         bits += kTableMessageRefBitsHere;
         bits += 11;
@@ -20402,7 +20426,8 @@ inline int64_t RenderFrameMeasureMessageBody( int64_t at, const RenderFrame & va
         }
     }
     schema_assert( value.missiles_count >= 0 && value.missiles_count <= 4096 ); // storage invariant, debug only (§5.1)
-    if ( value.missiles_count > 0 )
+    bool rides_missiles = value.missiles_count > 0;
+    if ( rides_missiles )
     {
         bits += kTableMessageRefBitsHere;
         bits += 13;
@@ -20414,7 +20439,8 @@ inline int64_t RenderFrameMeasureMessageBody( int64_t at, const RenderFrame & va
         }
     }
     schema_assert( value.dynamic_props_count >= 0 && value.dynamic_props_count <= 4096 ); // storage invariant, debug only (§5.1)
-    if ( value.dynamic_props_count > 0 )
+    bool rides_dynamic_props = value.dynamic_props_count > 0;
+    if ( rides_dynamic_props )
     {
         bits += kTableMessageRefBitsHere;
         bits += 13;
@@ -20426,7 +20452,8 @@ inline int64_t RenderFrameMeasureMessageBody( int64_t at, const RenderFrame & va
         }
     }
     schema_assert( value.static_props_count >= 0 && value.static_props_count <= 20000 ); // storage invariant, debug only (§5.1)
-    if ( value.static_props_count > 0 )
+    bool rides_static_props = value.static_props_count > 0;
+    if ( rides_static_props )
     {
         bits += kTableMessageRefBitsHere;
         bits += 15;
@@ -20438,7 +20465,8 @@ inline int64_t RenderFrameMeasureMessageBody( int64_t at, const RenderFrame & va
         }
     }
     schema_assert( value.cosmetic_props_count >= 0 && value.cosmetic_props_count <= 8192 ); // storage invariant, debug only (§5.1)
-    if ( value.cosmetic_props_count > 0 )
+    bool rides_cosmetic_props = value.cosmetic_props_count > 0;
+    if ( rides_cosmetic_props )
     {
         bits += kTableMessageRefBitsHere;
         bits += 14;
@@ -20450,7 +20478,8 @@ inline int64_t RenderFrameMeasureMessageBody( int64_t at, const RenderFrame & va
         }
     }
     schema_assert( value.lasers_count >= 0 && value.lasers_count <= 32000 ); // storage invariant, debug only (§5.1)
-    if ( value.lasers_count > 0 )
+    bool rides_lasers = value.lasers_count > 0;
+    if ( rides_lasers )
     {
         bits += kTableMessageRefBitsHere;
         bits += 15;
@@ -20462,7 +20491,8 @@ inline int64_t RenderFrameMeasureMessageBody( int64_t at, const RenderFrame & va
         }
     }
     schema_assert( value.explosions_count >= 0 && value.explosions_count <= 32000 ); // storage invariant, debug only (§5.1)
-    if ( value.explosions_count > 0 )
+    bool rides_explosions = value.explosions_count > 0;
+    if ( rides_explosions )
     {
         bits += kTableMessageRefBitsHere;
         bits += 15;
@@ -20489,7 +20519,8 @@ inline bool RenderFrameSaveMessageBody( TableBitWriter & w, const RenderFrame & 
         w.put( (uint64_t) ( value.version ), 64 );
     }
     schema_assert( value.cameras_count >= 0 && value.cameras_count <= 1 ); // storage invariant, debug only (§5.1)
-    if ( value.cameras_count > 0 )
+    bool rides_cameras = value.cameras_count > 0;
+    if ( rides_cameras )
     {
         w.put( 32, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.cameras_count ) - 0, 1 );
@@ -20499,7 +20530,8 @@ inline bool RenderFrameSaveMessageBody( TableBitWriter & w, const RenderFrame & 
         }
     }
     schema_assert( value.ships_count >= 0 && value.ships_count <= 4096 ); // storage invariant, debug only (§5.1)
-    if ( value.ships_count > 0 )
+    bool rides_ships = value.ships_count > 0;
+    if ( rides_ships )
     {
         w.put( 33, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.ships_count ) - 0, 13 );
@@ -20509,7 +20541,8 @@ inline bool RenderFrameSaveMessageBody( TableBitWriter & w, const RenderFrame & 
         }
     }
     schema_assert( value.turrets_count >= 0 && value.turrets_count <= 1024 ); // storage invariant, debug only (§5.1)
-    if ( value.turrets_count > 0 )
+    bool rides_turrets = value.turrets_count > 0;
+    if ( rides_turrets )
     {
         w.put( 34, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.turrets_count ) - 0, 11 );
@@ -20519,7 +20552,8 @@ inline bool RenderFrameSaveMessageBody( TableBitWriter & w, const RenderFrame & 
         }
     }
     schema_assert( value.missiles_count >= 0 && value.missiles_count <= 4096 ); // storage invariant, debug only (§5.1)
-    if ( value.missiles_count > 0 )
+    bool rides_missiles = value.missiles_count > 0;
+    if ( rides_missiles )
     {
         w.put( 35, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.missiles_count ) - 0, 13 );
@@ -20529,7 +20563,8 @@ inline bool RenderFrameSaveMessageBody( TableBitWriter & w, const RenderFrame & 
         }
     }
     schema_assert( value.dynamic_props_count >= 0 && value.dynamic_props_count <= 4096 ); // storage invariant, debug only (§5.1)
-    if ( value.dynamic_props_count > 0 )
+    bool rides_dynamic_props = value.dynamic_props_count > 0;
+    if ( rides_dynamic_props )
     {
         w.put( 36, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.dynamic_props_count ) - 0, 13 );
@@ -20539,7 +20574,8 @@ inline bool RenderFrameSaveMessageBody( TableBitWriter & w, const RenderFrame & 
         }
     }
     schema_assert( value.static_props_count >= 0 && value.static_props_count <= 20000 ); // storage invariant, debug only (§5.1)
-    if ( value.static_props_count > 0 )
+    bool rides_static_props = value.static_props_count > 0;
+    if ( rides_static_props )
     {
         w.put( 37, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.static_props_count ) - 0, 15 );
@@ -20549,7 +20585,8 @@ inline bool RenderFrameSaveMessageBody( TableBitWriter & w, const RenderFrame & 
         }
     }
     schema_assert( value.cosmetic_props_count >= 0 && value.cosmetic_props_count <= 8192 ); // storage invariant, debug only (§5.1)
-    if ( value.cosmetic_props_count > 0 )
+    bool rides_cosmetic_props = value.cosmetic_props_count > 0;
+    if ( rides_cosmetic_props )
     {
         w.put( 38, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.cosmetic_props_count ) - 0, 14 );
@@ -20559,7 +20596,8 @@ inline bool RenderFrameSaveMessageBody( TableBitWriter & w, const RenderFrame & 
         }
     }
     schema_assert( value.lasers_count >= 0 && value.lasers_count <= 32000 ); // storage invariant, debug only (§5.1)
-    if ( value.lasers_count > 0 )
+    bool rides_lasers = value.lasers_count > 0;
+    if ( rides_lasers )
     {
         w.put( 39, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.lasers_count ) - 0, 15 );
@@ -20569,7 +20607,8 @@ inline bool RenderFrameSaveMessageBody( TableBitWriter & w, const RenderFrame & 
         }
     }
     schema_assert( value.explosions_count >= 0 && value.explosions_count <= 32000 ); // storage invariant, debug only (§5.1)
-    if ( value.explosions_count > 0 )
+    bool rides_explosions = value.explosions_count > 0;
+    if ( rides_explosions )
     {
         w.put( 40, kTableMessageRefBitsHere );
         w.put( (uint64_t) ( value.explosions_count ) - 0, 15 );
