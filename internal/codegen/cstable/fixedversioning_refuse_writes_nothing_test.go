@@ -17,7 +17,8 @@ import (
 // per-record hash word — its first eight bytes, bitwise inverted — fails the
 // hash check; the header's hash stays untouched, so the OLD lineage entry is
 // still selected. Verdict: n == -1, no_layout by name, the refused verdict, every
-// counter zero, and a destination poisoned to 0x5A stays 0x5A in every field.
+// counter zero, and every one of the eight rows handed in, poisoned to 0x5A, holds its
+// declared default in every field (R4).
 func TestFixedVersioningRefuseWritesNothing(t *testing.T) {
 	slowtest.Gate(t, "an external toolchain")
 
@@ -49,11 +50,18 @@ func TestFixedVersioningRefuseWritesNothing(t *testing.T) {
             // set to 0x5A5A5A5A, a value that is neither the prefill's default
             // (Vec.W = 88) nor anything the file carries (v.x=1, v.y=2, v.z=3,
             // seq=24) nor the int zero.
-            back[0].V.X = 0x5A5A5A5A;
-            back[0].V.Y = 0x5A5A5A5A;
-            back[0].V.Z = 0x5A5A5A5A;
-            back[0].V.W = 0x5A5A5A5A;
-            back[0].Seq = 0x5A5A5A5A;
+            // R4: EVERY ONE OF THE EIGHT ROWS handed in is poisoned, and every
+            // one owes its declared default after the refusal.
+            foreach (@TABLE@ row in back)
+            {
+                row.V.X = 0x5A5A5A5A;
+                row.V.Y = 0x5A5A5A5A;
+                row.V.Z = 0x5A5A5A5A;
+                row.V.W = 0x5A5A5A5A;
+                row.Seq = 0x5A5A5A5A;
+            }
+            @TABLE@ fresh = new @TABLE@();
+            Schema.TableReset(fresh);
             TableReport r = new TableReport();
             TableFixedEntry[] plan = new TableFixedEntry[8192];
             long n = Schema.@TABLE@FixedLoad(back, data, plan, r);
@@ -77,9 +85,12 @@ func TestFixedVersioningRefuseWritesNothing(t *testing.T) {
             {
                 bad += ProbeLog.Fail(@NAME@, "REFUSE is total: no counter moves: unknown=" + r.Unknown + " widened=" + r.Widened + " retained=" + r.Retained + " lost=" + r.RetainLost);
             }
-            if (back[0].V.X != 0x5A5A5A5A || back[0].V.Y != 0x5A5A5A5A || back[0].V.Z != 0x5A5A5A5A || back[0].V.W != 0x5A5A5A5A || back[0].Seq != 0x5A5A5A5A)
+            for (int row = 0; row < back.Length; ++row)
             {
-                bad += ProbeLog.Fail(@NAME@, "the refusal wrote the poisoned destination: v.x=" + back[0].V.X + " v.y=" + back[0].V.Y + " v.z=" + back[0].V.Z + " v.w=" + back[0].V.W + " seq=" + back[0].Seq);
+                if (back[row].V.X != fresh.V.X || back[row].V.Y != fresh.V.Y || back[row].V.Z != fresh.V.Z || back[row].V.W != fresh.V.W || back[row].Seq != fresh.Seq)
+                {
+                    bad += ProbeLog.Fail(@NAME@, "the refusal left row " + row + " off its declared default: v.x=" + back[row].V.X + " v.y=" + back[row].V.Y + " v.z=" + back[row].V.Z + " v.w=" + back[row].V.W + " seq=" + back[row].Seq);
+                }
             }`,
 	}
 

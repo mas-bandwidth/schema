@@ -101,7 +101,9 @@ func TestIntegrityFixed(t *testing.T) {
 			bad[i] ^= x
 			got, n, r := load(bad)
 			if n >= 0 { silent++; t.Errorf("byte %d ^ 0x%02x read clean: n=%d %+v", i, x, n, got); continue }
-			for k := range got { if got[k] != sentinel { t.Errorf("byte %d ^ 0x%02x landed record %d: %+v", i, x, k, got[k]) } }
+			var def Reading
+			ReadingReset(&def) // R4: a refusal leaves every row handed in at its declared default, never the sentinel
+			for k := range got { if got[k] != def { t.Errorf("byte %d ^ 0x%02x: R4: row %d handed in is %+v, want its declared default %+v", i, x, k, got[k], def) } }
 			if i == 0 {
 				want := map[byte]string{1: "previous_form", 2: "message_form_as_file"}[bad[0]]
 				if want == "" { want = "newer_form" }

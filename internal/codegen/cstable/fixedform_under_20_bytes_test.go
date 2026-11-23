@@ -23,7 +23,7 @@ import (
 // `TableWire.Verdict.Damaged` alongside `Malformed`. k == 0 is guarded by its own
 // earlier clause (`data.Length < 1`) rather than the twenty-byte clause, so I
 // measure both and require the same answer. The destination is poisoned to a
-// recognisable sentinel before each short read and compared back afterwards. The
+// recognisable sentinel before each short read and every row handed in must hold its declared default afterwards (R4). The
 // whole value of this card is CONTROL 2, which deletes the twenty-byte guard and
 // must turn the row red with an out-of-range exception out of the reserved-byte
 // loop.
@@ -61,10 +61,17 @@ func TestFixedFormUnder20Bytes(t *testing.T) {
                 // sentinel, so a read that returns -1 can be told apart from one
                 // that wrote the destination. 0x5A5A5A5A is neither the lead,
                 // the trail, nor any declared default.
-                back[0].Lead = 0x5A5A5A5Au;
-                back[0].ValsCount = 0x5A5A5A5A;
-                for (int i = 0; i < 8; ++i) { back[0].Vals[i] = 0x5A5A5A5A; }
-                back[0].Trail = 0x5A5A5A5Au;
+                // R4: EVERY ROW handed in is poisoned, and every row owes its
+                // declared default after the refusal.
+                @TABLE@ fresh = new @TABLE@();
+                Schema.TableReset(fresh);
+                foreach (@TABLE@ row in back)
+                {
+                    row.Lead = 0x5A5A5A5Au;
+                    row.ValsCount = 0x5A5A5A5A;
+                    for (int i = 0; i < 8; ++i) { row.Vals[i] = 0x5A5A5A5A; }
+                    row.Trail = 0x5A5A5A5Au;
+                }
                 TableReport r = new TableReport();
                 TableFixedEntry[] plan = new TableFixedEntry[8192];
                 long n = Schema.@TABLE@FixedLoad(back, data.AsSpan(0, k), plan, r);
@@ -97,15 +104,18 @@ func TestFixedFormUnder20Bytes(t *testing.T) {
                 {
                     bad += ProbeLog.Fail(@NAME@, "malformed publishes no hash: k=" + k + " hash=0x" + r.LayoutHash.ToString("x16"));
                 }
-                if (back[0].Lead != 0x5A5A5A5Au || back[0].ValsCount != 0x5A5A5A5A || back[0].Trail != 0x5A5A5A5Au)
+                for (int row = 0; row < back.Length; ++row)
                 {
-                    bad += ProbeLog.Fail(@NAME@, "the malformed read wrote the destination: k=" + k + " lead=" + back[0].Lead + " valsCount=" + back[0].ValsCount + " trail=" + back[0].Trail);
-                }
-                for (int i = 0; i < 8; ++i)
-                {
-                    if (back[0].Vals[i] != 0x5A5A5A5A)
+                    if (back[row].Lead != fresh.Lead || back[row].ValsCount != fresh.ValsCount || back[row].Trail != fresh.Trail)
                     {
-                        bad += ProbeLog.Fail(@NAME@, "the malformed read wrote vals[" + i + "]: k=" + k + " v=" + back[0].Vals[i]);
+                        bad += ProbeLog.Fail(@NAME@, "the refusal left row " + row + " off its declared default: k=" + k + " lead=" + back[row].Lead + " valsCount=" + back[row].ValsCount + " trail=" + back[row].Trail);
+                    }
+                    for (int i = 0; i < 8; ++i)
+                    {
+                        if (back[row].Vals[i] != fresh.Vals[i])
+                        {
+                            bad += ProbeLog.Fail(@NAME@, "the refusal left row " + row + " vals[" + i + "] off its declared default: k=" + k + " v=" + back[row].Vals[i]);
+                        }
                     }
                 }
             }`},
