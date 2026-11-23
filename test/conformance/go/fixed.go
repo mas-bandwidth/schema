@@ -217,6 +217,7 @@ func init() {
 	})
 	bind("tabledemo", "MoodField", func(c codec) codec {
 		return fixedForm(c, tabledemo.MoodFieldFixedLoad, tabledemo.MoodFieldFixedMeasure, tabledemo.MoodFieldFixedSave)
+	})
 	bind("tabledemo", "MinArmFix", func(c codec) codec {
 		return fixedForm(c, tabledemo.MinArmFixFixedLoad, tabledemo.MinArmFixFixedMeasure, tabledemo.MinArmFixFixedSave)
 	})
