@@ -1,9 +1,14 @@
 /* Constructor storage and the C++ packet oracle, including reused storage. */
+#define _POSIX_C_SOURCE 200809L
+#include <dirent.h>
 #include <stdio.h>
 #include <string.h>
 #include "DefaultsWire.h"
 
 static int failed;
+#define MAX_READ 32
+static char pins_read[MAX_READ][128];
+static int pins_read_count;
 static const uint8_t name_bytes[] = { 0xc3, 0xa9, 0xf0, 0x90, 0x80, 0x80 };
 static const uint8_t token_bytes[] = { 0x5c, 0x6e, 0x5c, 0x74 };
 
@@ -118,6 +123,8 @@ static void golden( const char * directory, const char * name, const void * valu
     FILE * file;
     int bits = -1;
     size_t bytes;
+    if ( pins_read_count < MAX_READ ) snprintf( pins_read[pins_read_count++], sizeof( pins_read[0] ), "%s", name );
+    else check( 0, "too many pins for the read ledger" );
     serialize_write_stream_init( &stream, written, sizeof( written ) );
     if ( !check( write( &stream, value ), name ) ) return;
     serialize_write_flush( &stream );
@@ -282,11 +289,37 @@ static void run( const char * directory )
     }
 }
 
+/* Every .bin of the directory must have been read: by golden() here, or by a
+   constant-pin binary named on the command line (c_constant_main.c, which
+   itself fails on a missing or short pin). */
+static void check_every_pin_read( const char * directory, int count, char ** others )
+{
+    DIR * dir = opendir( directory );
+    struct dirent * entry;
+    int seen = 0;
+    if ( !check( dir != NULL, "open the pins directory" ) ) return;
+    while ( ( entry = readdir( dir ) ) != NULL )
+    {
+        char name[128];
+        size_t length = strlen( entry->d_name );
+        int i, found = 0;
+        if ( length < 5 || strcmp( entry->d_name + length - 4, ".bin" ) != 0 ) continue;
+        snprintf( name, sizeof( name ), "%.*s", (int) ( length - 4 ), entry->d_name );
+        seen++;
+        for ( i = 0; i < pins_read_count; i++ ) if ( strcmp( pins_read[i], name ) == 0 ) found = 1;
+        for ( i = 0; i < count; i++ ) if ( strcmp( others[i], name ) == 0 ) found = 1;
+        if ( !found ) { fprintf( stderr, "FAILED: pin %s was never read by the driver\n", name ); failed = 1; }
+    }
+    closedir( dir );
+    check( seen > 0, "the pins directory is not empty" );
+}
+
 int main( int argc, char ** argv )
 {
-    if ( argc != 2 ) { fprintf( stderr, "usage: %s <golden-directory>\n", argv[0] ); return 2; }
+    if ( argc < 2 ) { fprintf( stderr, "usage: %s <golden-directory> [constant-pin-name...]\n", argv[0] ); return 2; }
     run( argv[1] );
+    check_every_pin_read( argv[1], argc - 2, argv + 2 );
     if ( failed ) return 1;
-    puts( "packet defaults C: constructors, eight C++ goldens and reused storage OK" );
+    puts( "packet defaults C: constructors, ten C++ goldens and reused storage OK" );
     return 0;
 }
