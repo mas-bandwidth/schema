@@ -19,13 +19,23 @@ func TestMessageEnumKeyedArrayKeepsOmittedDefaults(t *testing.T) {
 
 enum Slot { Alpha, Beta, Gamma }
 
+type Cell
+{
+    score int32 = 17 | min = 0, max = 100
+}
+
+fixed table Wrapper
+{
+    cells [Slot]Cell
+}
+
 fixed table Root
 {
-    scores [Slot]int32
+    nested Wrapper
 }
 `)
 	model := tabletext.NewModel(unit)
-	inst := mqInstance(t, unit, `{"scores":{"Beta":22}}`)
+	inst := mqInstance(t, unit, `{"nested":{"cells":{"Beta":{"score":22}}}}`)
 	batch, err := tablewire.EncodeMessages(model, []*tabletext.Instance{inst})
 	if err != nil {
 		t.Fatal(err)
@@ -39,9 +49,10 @@ local vocab = {}
 assert(T.AnnounceRead(vocab, inputs.announce, report), "announce")
 local values = assert(T.LoadMessages("Root", vocab, inputs.batch, report), "load")
 assert(#values == 1, "count")
-assert(values[1].scores[1] == 0, "Alpha default")
-assert(values[1].scores[2] == 22, "Beta value")
-assert(values[1].scores[3] == 0, "Gamma default")
+local cells = values[1].nested.cells
+assert(cells[1].score == 17, "Alpha default")
+assert(cells[2].score == 22, "Beta value")
+assert(cells[3].score == 17, "Gamma default")
 assert(T.SaveMessages("Root", vocab, values), "save")
 print("keyed-defaults-ok")
 `
