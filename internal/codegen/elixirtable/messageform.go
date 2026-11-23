@@ -29,6 +29,7 @@ package elixirtable
 
 import (
 	"fmt"
+	"maps"
 	"math"
 	"math/big"
 	"slices"
@@ -133,7 +134,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
     if n < 1 or n > @batch_max do
       {:error, :batch_too_large}
     else
-      case encode_bodies(vocab, values, {0, 0}, own_record(vocab)) do
+      case encode_bodies(vocab, values, {0, 0}, vocab.root) do
         {:ok, {_acc, nbits}} -> {:ok, 2 + div(nbits + 7, 8)}
         :error -> {:error, :malformed}
       end
@@ -158,7 +159,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
     if n < 1 or n > @batch_max do
       {:error, :batch_too_large}
     else
-      case encode_bodies(vocab, values, {0, 0}, own_record(vocab)) do
+      case encode_bodies(vocab, values, {0, 0}, vocab.root) do
         {:ok, bits} -> {:ok, frame_batch(n, bits)}
         :error -> {:error, :malformed}
       end
@@ -627,17 +628,19 @@ const messageBatchRuntimeBody = `  @batch_max 256
 
   defp align_write({acc, nbits}), do: {acc, nbits + rem(8 - rem(nbits, 8), 8)}
 
-  defp encode_bodies(_vocab, [], acc, _rec), do: {:ok, acc}
+  # owner is the name of the table or struct whose body is written (the bound
+  # root, then each nested record), the key of its own write rules
+  defp encode_bodies(_vocab, [], acc, _owner), do: {:ok, acc}
 
-  defp encode_bodies(vocab, [body | rest], acc, rec) do
-    case encode_body(vocab, body, acc, rec) do
-      {:ok, acc2} -> encode_bodies(vocab, rest, acc2, rec)
+  defp encode_bodies(vocab, [body | rest], acc, owner) do
+    case encode_body(vocab, body, acc, owner) do
+      {:ok, acc2} -> encode_bodies(vocab, rest, acc2, owner)
       :error -> :error
     end
   end
 
-  defp encode_body(vocab, body, acc, rec) do
-    case encode_fields(vocab, body, acc, rec, -1) do
+  defp encode_body(vocab, body, acc, owner) do
+    case encode_fields(vocab, body, acc, owner, -1) do
       {:ok, acc2} -> {:ok, put_bits(acc2, 0, vocab.ref_bits)}
       :error -> :error
     end
@@ -649,16 +652,16 @@ const messageBatchRuntimeBody = `  @batch_max 256
   # field the record does not declare, a field out of its declaration order and
   # a field stored at the default the writer elides are refused, each by
   # :invalid_value in every build. Nothing is reordered or dropped.
-  defp encode_fields(_vocab, [], acc, _rec, _last), do: {:ok, acc}
+  defp encode_fields(_vocab, [], acc, _owner, _last), do: {:ok, acc}
 
-  defp encode_fields(vocab, [{ref, value} | rest], acc, rec, last) do
+  defp encode_fields(vocab, [{ref, value} | rest], acc, owner, last) do
     case entry_at(vocab, ref) do
       {:ok, entry} ->
-        check_field(vocab, entry, value)
+        check_field(vocab, entry, value, owner)
         check(not (entry.kind == 15 and value == :none))
 
         decl =
-          case write_decl(rec, entry, last, vocab) do
+          case write_decl(record(owner), entry, last, vocab) do
             {:ok, decl} -> decl
             _ -> throw(:invalid_value)
           end
@@ -669,7 +672,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
         case encode_value(vocab, entry.kind, entry.shape, elem, value, acc2, sub_of(decl)) do
           {:ok, acc3} ->
             check(not written_at_default?(vocab, decl, entry, value))
-            encode_fields(vocab, rest, acc3, rec, next_last(decl, last))
+            encode_fields(vocab, rest, acc3, owner, next_last(decl, last))
 
           :error ->
             :error
@@ -700,7 +703,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
     do: encode_string(shape, value, acc)
 
   defp encode_value(vocab, 13, _shape, _elem, value, acc, sub),
-    do: encode_body(vocab, value, acc, record(sub))
+    do: encode_body(vocab, value, acc, sub)
 
   defp encode_value(vocab, 14, shape, elem, value, acc, sub),
     do: encode_array(vocab, shape, elem, value, acc, sub)
@@ -852,7 +855,7 @@ const messageBatchRuntimeBody = `  @batch_max 256
 
     case entry_at(vocab, ref) do
       {:ok, entry} ->
-        check_field(vocab, entry, value)
+        check_field(vocab, entry, value, sub)
         elem = Map.get(entry, :element)
         encode_value(vocab, entry.kind, entry.shape, elem, value, acc2, arm_sub(sub, entry.id))
 
@@ -871,8 +874,20 @@ const messageBatchRuntimeBody = `  @batch_max 256
   # by the compiler as write_rule_rows/0 and keyed by the {id, kind} a
   # vocabulary entry carries; a field no declaration of this unit names
   # carries no rule.
-  defp check_field(vocab, entry, value) do
-    case Map.get(write_rules(), {entry.id, entry.kind}) do
+  #
+  # A value is held to the rule of the declaration that owns it (the owner: a
+  # table or struct name, or {:union, name} for an arm), never to the looser
+  # rule a same-named field of another declaration shares its wire entry with.
+  # Only a field the owner declares no rule for falls back to the rule merged
+  # over every declaration of its {id, kind}.
+  defp check_field(vocab, entry, value, owner) do
+    rule =
+      case Map.fetch(owner_rules(), {owner, entry.id, entry.kind}) do
+        {:ok, rule} -> rule
+        :error -> Map.get(write_rules(), {entry.id, entry.kind})
+      end
+
+    case rule do
       %{min: lo, max: hi} ->
         check(is_integer(value) and value >= lo and value <= hi)
 
@@ -929,6 +944,27 @@ const messageBatchRuntimeBody = `  @batch_max 256
   end
 
   defp named?(_vocab, _ids, _ref), do: false
+
+  defp owner_rules do
+    case :persistent_term.get({__MODULE__, :owner_rules}, nil) do
+      nil ->
+        rules =
+          Enum.reduce(write_owner_rows(), %{}, fn {owner, id, kind, what, v}, acc ->
+            Map.update(
+              acc,
+              {owner, id, kind},
+              add_rule(%{}, what, v),
+              &add_rule(&1, what, v)
+            )
+          end)
+
+        :persistent_term.put({__MODULE__, :owner_rules}, rules)
+        rules
+
+      rules ->
+        rules
+    end
+  end
 
   defp write_rules do
     case :persistent_term.get({__MODULE__, :write_rules}, nil) do
@@ -2734,7 +2770,24 @@ func messageWriteRuleRows(u *ir.Unit) string {
 		conflict bool
 	}
 	rules := map[key]*rule{}
+	// the same rules keyed by the DECLARATION that owns them (a table, a
+	// struct, or {:union, name}), never merged: two declarations that share a
+	// field name and kind share one entry on the wire, but each holds its
+	// own value to its own range (SPEC.md section 5.1 row 1; SF-23)
+	type okey struct {
+		owner string
+		key
+	}
+	owned := map[okey]*rule{}
+	owner := ""
+	clone := func(r *rule) *rule {
+		c := *r
+		c.ids = maps.Clone(r.ids)
+		c.retired = maps.Clone(r.retired)
+		return &c
+	}
 	add := func(k key, r *rule) {
+		owned[okey{owner, k}] = clone(r)
 		old := rules[k]
 		if old == nil {
 			rules[k] = r
@@ -2828,6 +2881,8 @@ func messageWriteRuleRows(u *ir.Unit) string {
 				continue
 			}
 			seenUnion[un] = true
+			tableOwner := owner
+			owner = fmt.Sprintf("{:union, %q}", un.Name)
 			for _, v := range un.Variants {
 				if v.F == nil {
 					continue
@@ -2837,6 +2892,7 @@ func messageWriteRuleRows(u *ir.Unit) string {
 					add(key{arm.Id, arm.Kind}, r)
 				}
 			}
+			owner = tableOwner
 		}
 	}
 	closure := tablewire.MessageClosure(u)
@@ -2851,6 +2907,7 @@ func messageWriteRuleRows(u *ir.Unit) string {
 			st = u.Structs[name]
 		}
 		if st != nil {
+			owner = fmt.Sprintf("%q", name)
 			fields(st.Fields)
 		}
 	}
@@ -2867,10 +2924,9 @@ func messageWriteRuleRows(u *ir.Unit) string {
 		}
 		return keys[i].kind < keys[j].kind
 	})
-	var rows []string
-	for _, k := range keys {
-		r := rules[k]
-		head := fmt.Sprintf("{0x%016X, %d, ", k.id, k.kind)
+	// ruleRows renders one rule as its {head, rule, value} rows
+	ruleRows := func(head string, r *rule) []string {
+		var rows []string
 		switch r.what {
 		case "int":
 			rows = append(rows, head+":min, "+fixedIntLiteral(r.lo)+"}", head+":max, "+fixedIntLiteral(r.hi)+"}")
@@ -2900,23 +2956,49 @@ func messageWriteRuleRows(u *ir.Unit) string {
 				}
 			}
 		}
+		return rows
+	}
+	var rows []string
+	for _, k := range keys {
+		rows = append(rows, ruleRows(fmt.Sprintf("{0x%016X, %d, ", k.id, k.kind), rules[k])...)
+	}
+	okeys := make([]okey, 0, len(owned))
+	for k := range owned {
+		okeys = append(okeys, k)
+	}
+	sort.Slice(okeys, func(i, j int) bool {
+		if okeys[i].owner != okeys[j].owner {
+			return okeys[i].owner < okeys[j].owner
+		}
+		if okeys[i].id != okeys[j].id {
+			return okeys[i].id < okeys[j].id
+		}
+		return okeys[i].kind < okeys[j].kind
+	})
+	var ownedRows []string
+	for _, k := range okeys {
+		ownedRows = append(ownedRows, ruleRows(fmt.Sprintf("{%s, 0x%016X, %d, ", k.owner, k.id, k.kind), owned[k])...)
 	}
 
 	var b strings.Builder
-	b.WriteString("\n  # this unit's own write rules, one {id, kind, rule, value} row each\n")
-	if len(rows) == 0 {
-		b.WriteString("  defp write_rule_rows, do: []\n")
-		return b.String()
-	}
-	b.WriteString("  defp write_rule_rows do\n    [\n")
-	for i, row := range rows {
-		b.WriteString("      " + row)
-		if i < len(rows)-1 {
-			b.WriteString(",")
+	emit := func(name, doc string, rows []string) {
+		b.WriteString("\n  # " + doc + "\n")
+		if len(rows) == 0 {
+			b.WriteString("  defp " + name + ", do: []\n")
+			return
 		}
-		b.WriteString("\n")
+		b.WriteString("  defp " + name + " do\n    [\n")
+		for i, row := range rows {
+			b.WriteString("      " + row)
+			if i < len(rows)-1 {
+				b.WriteString(",")
+			}
+			b.WriteString("\n")
+		}
+		b.WriteString("    ]\n  end\n")
 	}
-	b.WriteString("    ]\n  end\n")
+	emit("write_rule_rows", "this unit's own write rules, one {id, kind, rule, value} row each", rows)
+	emit("write_owner_rows", "the same rules per DECLARING table, struct or {:union, name}, one {owner, id, kind, rule, value} row each: a value is held to its own declaration, never to the looser rule a same-named field of another declaration shares its wire entry with", ownedRows)
 	return b.String()
 }
 

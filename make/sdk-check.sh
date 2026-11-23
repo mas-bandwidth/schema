@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# make/bench-check.sh -- this machine has every variable and tool schema's CI and legs expect, or it fails by name.
+# make/sdk-check.sh -- this machine has every variable and tool schema's CI and legs expect, or it fails by name.
 # `make bench-check` runs it; run it on a bench or CI runner after a toolchain change (nova-fleet sdk-toolchain).
 #
 # It takes the machine's SDK environment the way a login or job does (the SDK's env.sh, path differing per host:
@@ -28,7 +28,7 @@ eslint_pin=$(sed -n 's/.*"eslint@\([0-9][0-9.]*\)".*/\1/p' "$root/.github/workfl
 modernize_pin=$(sed -n 's/.*modernize@v\([0-9][0-9.]*\).*/\1/p' "$root/.github/workflows/ci-full.yml" | sed -n 1p)
 for p in golangci_pin:golangci-lint luacheck_pin:luacheck eslint_pin:eslint modernize_pin:modernize; do
 	eval "v=\$${p%%:*}"
-	[ -n "$v" ] || miss "${p#*:}" "its pin is not found where the gates read it; fix make/bench-check.sh"
+	[ -n "$v" ] || miss "${p#*:}" "its pin is not found where the gates read it; fix make/sdk-check.sh"
 done
 
 py_cur=$(pin PYTHON_CURRENT_VERSION python-toolchain.mk); py_floor=$(pin PYTHON_FLOOR_VERSION python-toolchain.mk)

@@ -109,9 +109,7 @@ func gooseRetainingDriverFrames(t *testing.T, key, rootName string, frames [][]b
 	delete(files, "main.goose")
 	// The leg's message-form glue (make/goose-wirefuzz-build.sh writes one arm
 	// per root that carries the form); this probe drives the file form only.
-	files["conformance_unit.goose"] = append(files["conformance_unit.goose"], []byte(
-		"fn conformance_message_root(root: const u8[:]) -> bool { return false; }\n"+
-			"fn conformance_message_fuzz(root: const u8[:], data: const u8[:], out: u8[>..]&, rep: schema_rt::MsgReport&) -> i64 { return -1; }\n")...)
+	addFileOnlyWireFuzzGlue(files)
 	for _, name := range []string{"wirefuzz.goose", "wirefuzz.build", "wirefuzz_io.c"} {
 		b, err := os.ReadFile(filepath.Join(root, "test/conformance/goose", name))
 		if err != nil {
@@ -156,6 +154,16 @@ func gooseRetainingDriverFrames(t *testing.T, key, rootName string, frames [][]b
 		t.Fatalf("run driver: %v\n%s", err, stderr.Bytes())
 	}
 	return stdout.Bytes()
+}
+
+// addFileOnlyWireFuzzGlue supplies the driver symbols for tests that exercise
+// file form only. The root predicate keeps both message modes disabled.
+func addFileOnlyWireFuzzGlue(files map[string][]byte) {
+	const glue = `fn conformance_message_root(root: const u8[:]) -> bool { return false; }
+fn conformance_message_fuzz(root: const u8[:], data: const u8[:], out: u8[>..]&, rep: schema_rt::MsgReport&) -> i64 { return -1; }
+fn conformance_message_framed_fuzz(root: const u8[:], ann: const u8[:], has_ann: bool, batch: const u8[:], out: u8[>..]&, rep: schema_rt::MsgReport&) -> i64 { return -2; }
+`
+	files["conformance_unit.goose"] = append(files["conformance_unit.goose"], glue...)
 }
 
 // A MAP WHOSE KEY IS DAMAGED, repeated or not, refuses the retaining read

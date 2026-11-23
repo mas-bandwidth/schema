@@ -5948,6 +5948,8 @@ static SCHEMA_UNUSED int tabledemo_patrol_save_body( tabledemo_table_writer_t * 
         if ( !( value->target_id == 0 ) )
         {
             tabledemo_table_writer_header_at( w, 103, 0xb7bc9ac015a25050ull, 4 );
+            schema_assert( !( value->target_id < 0 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->target_id > 1000 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->target_id ) );
         }
     }
@@ -6217,6 +6219,10 @@ static SCHEMA_UNUSED int tabledemo_patrol_save_body_retain( tabledemo_table_writ
         {
             tabledemo_table_retain_writer_id( w, 0xb7bc9ac015a25050ull , retention);
             tabledemo_table_writer_put8( w, 4 );
+            schema_assert( !( value->target_id < 0 ) );
+            /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->target_id > 1000 ) );
+            /* off its max, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->target_id ) );
         }
     }

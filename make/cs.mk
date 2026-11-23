@@ -107,64 +107,69 @@ tables-cs-json-walk: build/tables-generated-cs/.stamp
 # the zero-cost gate's block-less arm regenerates the whole corpus from a
 # sabotaged emitter, and a second copy of these lines would be a second corpus.
 define tables_generate_cs
+	$(1) generate --lang cs --out $(2)/examples tables/examples
+	$(1) generate --lang cs --out $(2)/pointers tables/pointers
+	$(1) generate --lang cs --out $(2)/block tables/block
+	$(1) generate --lang cs --out $(2)/blockhome tables/blockhome
+	$(1) generate --lang cs --out $(2)/v1 test/tables/V1.schema
+	$(1) generate --lang cs --out $(2)/v2 test/tables/V2.schema
+	$(1) generate --lang cs --out $(2)/p1 test/tables/P1.schema
+	$(1) generate --lang cs --out $(2)/p3 test/tables/P3.schema
+	$(1) generate --lang cs --out $(2)/fx1 test/tables/FX1.schema
+	$(1) generate --lang cs --out $(2)/fx2 test/tables/FX2.schema
+	$(1) generate --lang cs --out $(2)/k1 test/tables/K1.schema
+	$(1) generate --lang cs --out $(2)/k2 test/tables/K2.schema
+	$(1) generate --lang cs --out $(2)/csids test/tables/CsIds.schema
+	$(1) generate --lang cs --out $(2)/csunions test/tables/CsUnions.schema
+	$(1) generate --lang cs --out $(2)/csview test/tables/CsView.schema
+	$(1) generate --lang cs --out $(2)/messages tables/messages
+	$(1) generate --lang cs --out $(2)/m1 test/tables/M1.schema
+	$(1) generate --lang cs --out $(2)/m2 test/tables/M2.schema
+	$(1) generate --lang cs --out $(2)/a1 test/tables/A1.schema
+	$(1) generate --lang cs --out $(2)/a2 test/tables/A2.schema
+	$(1) generate --lang cs --out $(2)/scalars tables/scalars
+	$(1) generate --lang cs --out $(2)/scalars2 test/tables/Scalars2.schema
+	$(1) generate --lang cs --out $(2)/fixedevo test/tables/fixedevo
+	$(1) generate --lang cs --out $(2)/varevo1 test/tables/varevo/VarEvo1.schema
+	$(1) generate --lang cs --out $(2)/varevo2 test/tables/varevo/VarEvo2.schema
+	$(1) generate --lang cs --out $(2)/varevo3 test/tables/varevo/VarEvo3.schema
+	$(1) generate --lang cs --out $(2)/cooktorture test/tables/cooktorture/CookTorture.schema
+	$(1) generate --lang cs --out $(2)/cooktorturewide test/tables/cooktorturewide/CookTortureWide.schema
+	$(1) generate --lang cs --out $(2)/blobs tables/blobs
+	$(1) generate --lang cs --out $(2)/p2 test/tables/P2.schema
+	$(1) generate --lang cs --out $(2)/w1 test/tables/W1.schema
+	$(1) generate --lang cs --out $(2)/w2 test/tables/W2.schema
+	$(1) generate --lang cs --out $(2)/lists tables/lists
+	$(1) generate --lang cs --out $(2)/widelist tables/widelist
+	$(1) generate --lang cs --out $(2)/maps tables/maps
+	$(1) generate --lang cs --out $(2)/stream tables/stream
+	$(1) generate --lang cs --out $(2)/g1 test/tables/G1.schema
+	$(1) generate --lang cs --out $(2)/backend tables/backend
+	$(1) generate --lang cs --out $(2)/vocab tables/vocab
+	$(1) generate --lang cs --out $(2)/vocab9 tables/vocab9
+	$(1) generate --lang cs --out $(2)/r1 test/tables/R1.schema
+	$(1) generate --lang cs --out $(2)/r2 test/tables/R2.schema
+	$(1) generate --lang cs --out $(2)/rt1 test/tables/RT1.schema
+	$(1) generate --lang cs --out $(2)/rt2 test/tables/RT2.schema
+	$(1) generate --lang cs --out $(2)/rt3 test/tables/RT3.schema
+	$(1) generate --lang cs --out $(2)/csretain1 test/tables/CsRetain1.schema
+	$(1) generate --lang cs --out $(2)/csretain2 test/tables/CsRetain2.schema
+	$(1) generate --lang cs --out $(2)/cscollections1 test/tables/CsCollections1.schema
+	$(1) generate --lang cs --out $(2)/cscollections2 test/tables/CsCollections2.schema
+	$(1) generate --lang cs --out $(2)/ut test/tables/UT.schema
+	$(1) generate --lang cs --out $(2)/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema
+endef
+
+# Direct recipes run the same command list in parallel and wait for its jobs.
+define tables_generate_cs_parallel
 	@set -e; pids=""; \
-	$(1) generate --lang cs --out $(2)/examples tables/examples & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/pointers tables/pointers & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/block tables/block & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/blockhome tables/blockhome & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/v1 test/tables/V1.schema & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/v2 test/tables/V2.schema & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/p1 test/tables/P1.schema & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/p3 test/tables/P3.schema & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/fx1 test/tables/FX1.schema & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/fx2 test/tables/FX2.schema & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/k1 test/tables/K1.schema & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/k2 test/tables/K2.schema & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/csids test/tables/CsIds.schema & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/csunions test/tables/CsUnions.schema & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/csview test/tables/CsView.schema & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/messages tables/messages & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/m1 test/tables/M1.schema & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/m2 test/tables/M2.schema & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/a1 test/tables/A1.schema & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/a2 test/tables/A2.schema & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/scalars tables/scalars & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/scalars2 test/tables/Scalars2.schema & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/fixedevo test/tables/fixedevo & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/varevo1 test/tables/varevo/VarEvo1.schema & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/varevo2 test/tables/varevo/VarEvo2.schema & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/varevo3 test/tables/varevo/VarEvo3.schema & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/cooktorture test/tables/cooktorture/CookTorture.schema & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/cooktorturewide test/tables/cooktorturewide/CookTortureWide.schema & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/blobs tables/blobs & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/p2 test/tables/P2.schema & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/w1 test/tables/W1.schema & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/w2 test/tables/W2.schema & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/lists tables/lists & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/widelist tables/widelist & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/maps tables/maps & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/stream tables/stream & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/g1 test/tables/G1.schema & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/backend tables/backend & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/vocab tables/vocab & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/vocab9 tables/vocab9 & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/r1 test/tables/R1.schema & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/r2 test/tables/R2.schema & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/rt1 test/tables/RT1.schema & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/rt2 test/tables/RT2.schema & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/rt3 test/tables/RT3.schema & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/csretain1 test/tables/CsRetain1.schema & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/csretain2 test/tables/CsRetain2.schema & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/cscollections1 test/tables/CsCollections1.schema & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/cscollections2 test/tables/CsCollections2.schema & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/ut test/tables/UT.schema & pids="$$pids $$!"; \
-	$(1) generate --lang cs --out $(2)/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema & pids="$$pids $$!"; \
+	$(subst $(tables_zero_cost_nl), & pids="$$pids $$!"; ,$(call tables_generate_cs,$(1),$(2))) & pids="$$pids $$!"; \
 	for pid in $$pids; do wait $$pid; done
 endef
 
 build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/K1.schema test/tables/K2.schema test/tables/CsIds.schema test/tables/CsUnions.schema test/tables/CsView.schema $(SCHEMAS_TABLES_MESSAGES) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema tables/scalars test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema tables/pointers tables/blobs test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema tables/lists tables/widelist tables/maps tables/stream test/tables/G1.schema tables/backend tables/vocab tables/vocab9 test/tables/R1.schema test/tables/R2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/CsRetain1.schema test/tables/CsRetain2.schema test/tables/CsCollections1.schema test/tables/CsCollections2.schema test/tables/UT.schema testdata/conformance/feature-witnesses/full/Features.schema
 	@mkdir -p build/tables-generated-cs
-	$(call tables_generate_cs,./bin/schema,build/tables-generated-cs)
+	$(call tables_generate_cs_parallel,./bin/schema,build/tables-generated-cs)
 	@touch $@
 
 # The C# twin of the C++ "no serialize include path" build: a generated
@@ -669,7 +674,7 @@ define cs_leg_sabotage
 	@printf '{"Replace":{"%s/internal/codegen/cstable/$(2)":"%s/build/cs-leg-$(1)/source.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/cs-leg-$(1)/overlay.json
 	@go build -overlay=build/cs-leg-$(1)/overlay.json -o build/cs-leg-$(1)/schema ./cmd/schema
-	$(call tables_generate_cs,./build/cs-leg-$(1)/schema,build/cs-leg-$(1)/gen)
+	$(call tables_generate_cs_parallel,./build/cs-leg-$(1)/schema,build/cs-leg-$(1)/gen)
 	@( cd test/cs-tables && $(DOTNET) build -v q --nologo -p:TablesGeneratedDir=$(CURDIR)/build/cs-leg-$(1)/gen \
 		-p:BaseOutputPath=$(CURDIR)/build/cs-leg-$(1)/bin/ -p:BaseIntermediateOutputPath=$(CURDIR)/build/cs-leg-$(1)/obj/ ) \
 		> build/cs-leg-$(1)/build.log 2>&1 || \
@@ -694,7 +699,7 @@ define cs_leg_sabotage2
 	@printf '{"Replace":{"%s/internal/codegen/cstable/$(2)":"%s/build/cs-leg-$(1)/a.gotext","%s/internal/codegen/cstable/$(4)":"%s/build/cs-leg-$(1)/b.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" "$(CURDIR)" "$(CURDIR)" > build/cs-leg-$(1)/overlay.json
 	@go build -overlay=build/cs-leg-$(1)/overlay.json -o build/cs-leg-$(1)/schema ./cmd/schema
-	$(call tables_generate_cs,./build/cs-leg-$(1)/schema,build/cs-leg-$(1)/gen)
+	$(call tables_generate_cs_parallel,./build/cs-leg-$(1)/schema,build/cs-leg-$(1)/gen)
 	@( cd test/cs-tables && $(DOTNET) build -v q --nologo -p:TablesGeneratedDir=$(CURDIR)/build/cs-leg-$(1)/gen \
 		-p:BaseOutputPath=$(CURDIR)/build/cs-leg-$(1)/bin/ -p:BaseIntermediateOutputPath=$(CURDIR)/build/cs-leg-$(1)/obj/ ) \
 		> build/cs-leg-$(1)/build.log 2>&1 || \

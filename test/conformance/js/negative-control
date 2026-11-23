@@ -46,8 +46,8 @@ write-refusal-fixed)
     ;;
 write-refusal-message)
     file=backend/BackendTable.js
-    anchor='    if (values[i] !== null && values[i] !== undefined && !StorePurchaseFixedCheckBody(values[i])) { TableMessageRefuse(report, "invalid_value"); return -1; }'
-    patch='    // SABOTAGED: no message preflight'
+    anchor='    if (value !== null && value !== undefined && !StorePurchaseFixedCheckBody(value)) {'
+    patch='    if (false) { // SABOTAGED: no message preflight'
     want=2 red=write-refusal-message green=message
     ;;
 *)

@@ -104,7 +104,7 @@ define wfr_leg
 .PHONY: tables-wire-fuzz-release-$(1) $(call wfr_runs,$(1))
 $(call wfr_runs,$(1)): build/conformance-harness build/wirefuzzrelease wire-fuzz-release-cases $$(if $$(WFR_DRIVER_$(1)),$$(WFR_DEPS_$(1)))
 	@WFR_DRIVER="$$(strip $$(WFR_DRIVER_$(1)))" WFR_FLAGS="$$(WFR_FLAGS_$(1))" WFR_ENV="$$(WFR_ENV_$(1))" WFR_TOOL=./build/wirefuzzrelease \
-		sh make/checks/wire-fuzz-release-run.sh $(1) $$(word 4,$$(subst -, ,$$@)) $$(word 5,$$(subst -, ,$$@)) \
+		bash make/checks/wire-fuzz-release-run.sh $(1) $$(word 4,$$(subst -, ,$$@)) $$(word 5,$$(subst -, ,$$@)) \
 		$$(WIRE_FUZZ_RELEASE_N) $$(WIRE_FUZZ_RELEASE_DIR)
 tables-wire-fuzz-release-$(1): $(call wfr_runs,$(1))
 	@./build/wirefuzzrelease table -leg $(1) -dir $$(WIRE_FUZZ_RELEASE_DIR) -arms "$$(WIRE_FUZZ_RELEASE_ARMS)" -seeds "$$(WIRE_FUZZ_RELEASE_SEEDS)" -n $$(WIRE_FUZZ_RELEASE_N)
@@ -156,7 +156,7 @@ tables-wire-fuzz-release-negative-control: build/conformance-harness build/wiref
 	@# each seed's run waited on by its pid, never a bare wait (F-068)
 	@pids=; for s in $(WIRE_FUZZ_RELEASE_SEEDS); do \
 		WFR_DRIVER="$(CURDIR)/build/conformance-dart-negative-mapheader/conformance-dart wire-fuzz" WFR_FLAGS="$(WFR_FLAGS_dart)" WFR_ENV= WFR_TOOL=./build/wirefuzzrelease \
-		sh make/checks/wire-fuzz-release-run.sh dart plain $$s $(WIRE_FUZZ_RELEASE_N) build/wire-fuzz-release-nc & pids="$$pids $$!"; done; \
+		bash make/checks/wire-fuzz-release-run.sh dart plain $$s $(WIRE_FUZZ_RELEASE_N) build/wire-fuzz-release-nc & pids="$$pids $$!"; done; \
 	failed=0; for p in $$pids; do wait "$$p" || failed=1; done; \
 	if test "$$failed" -ne 0; then echo "NEGATIVE CONTROL FAILED: a release wire-fuzz run exited non-zero" >&2; exit 1; fi
 	@cat build/wire-fuzz-release-nc/*.row | awk -F'\t' '{ print $$1 " | " $$2 " | " $$3 " | " $$4 }'

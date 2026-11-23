@@ -263,9 +263,7 @@ func TestGooseIntegrityWireFuzzLeg(t *testing.T) {
 	slowtest.Gate(t, "the Goose toolchain (it builds and runs the wire-fuzz leg)")
 	files := integrityFiles(t, nil)
 	delete(files, "main.goose")
-	files["conformance_unit.goose"] = append(files["conformance_unit.goose"], []byte(
-		"fn conformance_message_root(root: const u8[:]) -> bool { return false; }\n"+
-			"fn conformance_message_fuzz(root: const u8[:], data: const u8[:], out: u8[>..]&, rep: schema_rt::MsgReport&) -> i64 { return -1; }\n")...)
+	addFileOnlyWireFuzzGlue(files)
 	for _, name := range []string{"wirefuzz.goose", "wirefuzz.build", "wirefuzz_io.c"} {
 		files[name] = readRepo(t, filepath.Join("test/conformance/goose", name))
 	}

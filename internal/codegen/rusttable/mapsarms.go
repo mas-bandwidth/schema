@@ -245,6 +245,9 @@ func (g *gen) emitOptionalSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%slet vref = %s;\n", inner, enumRef(f, "*opt"))
 		fmt.Fprintf(b, "%sleb_write(out, vref);\n", inner)
 	default:
+		// a present optional scalar owes the write contract as a plain one
+		// does (docs/SPEC.md §5.1, rows 1–2)
+		b.WriteString(g.scalarSaveRefusal(f, "(*opt)", inner))
 		fmt.Fprintf(b, "%sleb_write(out, ids.id_ref(0x%016x));\n", inner, id)
 		fmt.Fprintf(b, "%sout.push(%d);\n", inner, kind)
 		fmt.Fprintf(b, "%s%s\n", inner, g.scalarWrite(f, "(*opt)", "out"))
@@ -359,6 +362,9 @@ func (g *gen) emitKeyedSave(b *strings.Builder, f *ir.Field, ordinal int, x, ind
 		case vString:
 			fmt.Fprintf(b, "%seb.extend_from_slice(e.as_bytes());\n", ein)
 		default:
+			// a keyed slot owes the write contract as a field does
+			// (docs/SPEC.md §5.1, rows 1–2)
+			b.WriteString(g.scalarSaveRefusal(f, "(*e)", ein))
 			fmt.Fprintf(b, "%s%s\n", ein, g.scalarWrite(f, "(*e)", "eb"))
 		}
 	}
@@ -499,6 +505,7 @@ func (g *gen) emitArmPayload(b *strings.Builder, v ir.UnionVariant, arm string, 
 		}
 		fmt.Fprintf(b, "%sleb_write(&mut payload, index);\n", ind)
 	case f.Type.Kind == ir.TString && f.Array == ir.ArrayNone:
+		b.WriteString(rustBoundedTextAsserts(f, arm, ind))
 		fmt.Fprintf(b, "%spayload.extend_from_slice(%s.as_bytes());\n", ind, arm)
 	case classOf(f) == vUnion && f.Array == ir.ArrayNone:
 		g.emitUnionElement(b, f, arm, "payload", ordinal, ind)
@@ -508,6 +515,9 @@ func (g *gen) emitArmPayload(b *strings.Builder, v ir.UnionVariant, arm string, 
 		fmt.Fprintf(b, "%slet vref = %s;\n", ind, enumRef(f, "*"+arm))
 		fmt.Fprintf(b, "%sleb_write(&mut payload, vref);\n", ind)
 	default:
+		// an arm's scalar payload owes the write contract as a field does
+		// (docs/SPEC.md §5.1, rows 1–2)
+		b.WriteString(g.scalarSaveRefusal(f, "(*"+arm+")", ind))
 		fmt.Fprintf(b, "%s%s\n", ind, g.scalarWrite(f, "(*"+arm+")", "payload"))
 	}
 }
@@ -525,20 +535,29 @@ func (g *gen) emitArrayBodyWrite(b *strings.Builder, f *ir.Field, x, dst string,
 		count = fmt.Sprintf("%d", f.ArrayBound)
 	case f.Array == ir.ArrayCounted:
 		count = fmt.Sprintf("%s.len().min(%d)", x, f.ArrayBound)
+		// a count past Max, or under a declared Min, is a debug assert
+		// (docs/SPEC.md §5.1, row 3; Rust write checks are debug asserts
+		// only); the clamp to Max holds the storage in every build
 		if f.ArrayMin > 0 {
-			// Rust write checks are debug asserts only (docs/SPEC.md §5.1, row 3)
-			fmt.Fprintf(b, "%sdebug_assert!(%s, \"%s count under %d\");\n", ind, lenAtLeast(x, f.ArrayMin), f.Name, f.ArrayMin)
+			fmt.Fprintf(b, "%sdebug_assert!(%s && %s.len() <= %d, \"%s count outside %d..%d\");\n", ind, lenAtLeast(x, f.ArrayMin), x, f.ArrayBound, f.Name, f.ArrayMin, f.ArrayBound)
+		} else {
+			fmt.Fprintf(b, "%sdebug_assert!(%s.len() <= %d, \"%s count past %d\");\n", ind, x, f.ArrayBound, f.Name, f.ArrayBound)
 		}
 	case f.Type.Kind == ir.TBytes && !f.Type.Pointer:
 		count = fmt.Sprintf("%s.len().min(%d)", x, f.Type.Size)
+		// a bytes(N) length past N is a debug assert (docs/SPEC.md §5.1, row 4)
+		b.WriteString(rustBoundedLenAssert(f, x, ind))
 	}
 	fmt.Fprintf(b, "%s%s.push(%d);\n", ind, dst, ek)
 	fmt.Fprintf(b, "%slet count = %s;\n", ind, count)
 	fmt.Fprintf(b, "%sleb_write(&mut %s, count as u64);\n", ind, dst)
 	fmt.Fprintf(b, "%sfor (j, e) in %s.iter().take(count).enumerate() {\n", ind, x)
-	// a fixed array's compressed elements hold the float32 range on write, as
-	// a counted array's do (docs/SPEC-TABLES.md §3.3)
-	b.WriteString(rustFloatRangeAssert(f, "(*e)", ind+"    "))
+	// a scalar element owes the write contract as a field does: a ranged
+	// integer off its min/max, a bits(N) value past its width, a ranged float
+	// off its range (docs/SPEC.md §5.1, rows 1–2; docs/SPEC-TABLES.md §3.3)
+	if classOf(f) == vScalar {
+		b.WriteString(g.scalarSaveRefusal(f, "(*e)", ind+"    "))
+	}
 	g.emitElementWrite(b, f, "e", dst, ordinal, ind+"    ")
 	fmt.Fprintf(b, "%s}\n", ind)
 	if f.Array == ir.ArrayFixed {
@@ -1479,4 +1498,29 @@ func orElse(def string) string {
 		return ".unwrap_or(" + def + ")"
 	}
 	return ".unwrap_or_else(|| " + def + ")"
+}
+
+// rustBoundedLenAssert is the debug assert a bounded string(N) or bytes(N)
+// value owes on write: a length past N (docs/SPEC.md §5.1, row 4; Rust write
+// checks are debug asserts only). "" for a value with no declared N.
+func rustBoundedLenAssert(f *ir.Field, x, ind string) string {
+	if f.Type.Pointer || (f.Type.Kind != ir.TString && f.Type.Kind != ir.TBytes) || f.Type.TextUnbounded() || f.Type.Size <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%sdebug_assert!(%s.len() <= %d, \"%s length past %d\");\n", ind, x, f.Type.Size, f.Name, f.Type.Size)
+}
+
+// rustBoundedTextAsserts is what a bounded string(N) owes on write wherever it
+// rides (a field, an optional, a keyed slot, a union arm): a length past N and
+// a zero byte are debug asserts (docs/SPEC.md §5.1, rows 4 and 8), exactly as
+// the plain field's save emits them.
+func rustBoundedTextAsserts(f *ir.Field, x, ind string) string {
+	if f.Type.Kind != ir.TString {
+		return ""
+	}
+	a := rustBoundedLenAssert(f, x, ind)
+	if a == "" {
+		return ""
+	}
+	return a + fmt.Sprintf("%sdebug_assert!(!%s.as_bytes().contains(&0), \"%s holds a zero byte\");\n", ind, x, f.Name)
 }
