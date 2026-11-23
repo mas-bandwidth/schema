@@ -19,4 +19,6 @@ JAVA=${JAVA:-dist/jdk-21.0.12.1/Contents/Home/bin/java}
 
 # THE WRITE-REFUSAL SURFACES answer from their debug build: the generated
 # writer's contract checks are assertions, so the driver runs with -ea.
-exec "$JAVA" -ea -cp build/conformance-java Driver "$@"
+# HotSpot can print a perf-data lock warning before Driver starts. Stdout
+# belongs to the harness protocol, so this JVM does not use perf-data files.
+exec "$JAVA" -XX:-UsePerfData -ea -cp build/conformance-java Driver "$@"

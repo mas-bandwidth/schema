@@ -819,19 +819,26 @@ VIEW_CORPUS := examples:tabledemo pointers:graphdemo block:blockdemo blockhome:b
 	messages:messagedemo stream:streamdemo blobs:blobdemo scalars:scalardemo \
 	maps:mapdemo lists:listdemo arms:armdemo backend:backenddemo vocab:vocabdemo vocab9:vocab9demo
 
-.PHONY: tables-view
-tables-view: build/tables-generated/.stamp test/tables/view_main.cpp
-	@rm -rf build/view && mkdir -p build/view
-	@set -e; for entry in $(VIEW_CORPUS); do \
-		dir=$${entry%%:*}; pkg=$${entry##*:}; \
-		cap=$$(printf '%s' "$$pkg" | cut -c1 | tr 'a-z' 'A-Z')$$(printf '%s' "$$pkg" | cut -c2-); \
-		$(CXX) $(CXXFLAGS) -Ibuild/tables-generated/$$dir -Itest/tables \
-			-DVIEW_HEADER="\"$${cap}View.h\"" -DVIEW_NAMESPACE=$$pkg \
-			test/tables/view_main.cpp build/tables-generated/$$dir/$${cap}View.cpp -o build/view/prog-$$pkg; \
-		./build/view/prog-$$pkg > build/view/$$pkg.listing; \
-	done
+VIEW_LISTINGS := $(foreach entry,$(VIEW_CORPUS),build/view/$(word 2,$(subst :, ,$(entry))).listing)
+
+# Each listing compiles an independent unit. Use the make jobserver for the
+# compile pass, then compare the complete corpus against the compiler IR.
+.PHONY: tables-view tables-view-prepare $(VIEW_LISTINGS)
+tables-view: $(VIEW_LISTINGS)
 	SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view go test ./internal/viewlisting -run TestUnitViewListingMatchesTheIR
 	@echo "unit registry corpus gate: $(words $(VIEW_CORPUS)) units listed from UnitView() and byte-identical to the compiler's own"
+
+tables-view-prepare:
+	@rm -rf build/view && mkdir -p build/view
+
+$(foreach entry,$(VIEW_CORPUS),$(eval VIEW_UNIT_DIR.$(word 2,$(subst :, ,$(entry))) := $(word 1,$(subst :, ,$(entry)))))
+
+$(VIEW_LISTINGS): build/view/%.listing: build/tables-generated/.stamp test/tables/view_main.cpp | tables-view-prepare
+	@cap=$$(printf '%s' '$*' | cut -c1 | tr 'a-z' 'A-Z')$$(printf '%s' '$*' | cut -c2-); \
+		$(CXX) $(CXXFLAGS) -Ibuild/tables-generated/$(VIEW_UNIT_DIR.$*) -Itest/tables \
+			-DVIEW_HEADER="\"$${cap}View.h\"" -DVIEW_NAMESPACE=$* \
+			test/tables/view_main.cpp build/tables-generated/$(VIEW_UNIT_DIR.$*)/$${cap}View.cpp -o build/view/prog-$* && \
+		./build/view/prog-$* > $@
 
 # THE NEGATIVE CONTROLS for the corpus gate (docs/SPEC-TABLES.md §8.7). A gate
 # that cannot go red proves nothing, so each claim is broken in a throwaway

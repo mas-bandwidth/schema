@@ -88,11 +88,19 @@ def identity(leg, dart):
     return common
 
 
-def produce(archive, leg, dart, verify_packets):
+def produce(archive, leg, dart, verify_packets, prebuilt_compiler):
     paths = CPP_PATHS if leg == "cpp" else DART_PATHS
     scratch = CPP_BUILD_TREE if leg == "cpp" else ()
-    if any(path.exists() or path.is_symlink() for path in (*paths, *scratch, Path("bin/schema"))):
-        raise ValueError("conformance handoff producer requires a fresh compiler, generated tree, and executable")
+    if any(path.exists() or path.is_symlink() for path in (*paths, *scratch)):
+        raise ValueError("conformance handoff producer requires a fresh generated tree and executable")
+    compiler = Path("bin/schema")
+    if prebuilt_compiler:
+        if leg != "cpp":
+            raise ValueError("a prebuilt compiler applies only to the C++ handoff")
+        if not compiler.is_file() or not os.access(compiler, os.X_OK):
+            raise ValueError("prebuilt compiler is missing or not executable")
+    elif compiler.exists() or compiler.is_symlink():
+        raise ValueError("conformance handoff producer requires a fresh compiler")
     info = identity(leg, dart)
     targets = list(map(str, paths)) if leg == "cpp" else ["build/conformance-dart"]
     if verify_packets:
@@ -174,12 +182,15 @@ if __name__ == "__main__":
     parser.add_argument("dart", default="dart", nargs="?")
     parser.add_argument("--leg", choices=("dart", "cpp"), default="dart")
     parser.add_argument("--verify-packets", action="store_true", help="also run the producer’s ordinary packet checks")
+    parser.add_argument("--prebuilt-compiler", action="store_true", help="use a separately verified compiler restored at bin/schema (C++ only)")
     args = parser.parse_args()
     try:
         if args.verify_packets and args.leg != "dart":
             parser.error("--verify-packets applies only to Dart")
+        if args.prebuilt_compiler and (args.operation != "produce" or args.leg != "cpp"):
+            parser.error("--prebuilt-compiler applies only to C++ produce")
         if args.operation == "produce":
-            produce(args.artifact, args.leg, args.dart, args.verify_packets)
+            produce(args.artifact, args.leg, args.dart, args.verify_packets, args.prebuilt_compiler)
         elif args.verify_packets:
             parser.error("--verify-packets applies only to produce")
         else:

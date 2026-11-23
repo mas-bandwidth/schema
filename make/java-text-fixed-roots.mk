@@ -35,7 +35,7 @@ conformance-java-text-fixed-roots-negative-control: build/conformance-harness bu
 	@test "$$(grep -c SABOTAGED $(JAVA_TEXT_FIXED_ROOTS_SABOTAGE)/src/RootConfigVariable.java)" = 1 || \
 		{ echo "NEGATIVE CONTROL: the field-drop sabotage did not apply to the fixed root's text writer"; exit 1; }
 	$(JAVAC) --release 17 -nowarn -cp build/conformance-java -d $(JAVA_TEXT_FIXED_ROOTS_SABOTAGE)/classes $(JAVA_TEXT_FIXED_ROOTS_SABOTAGE)/src/RootConfigVariable.java
-	@printf '#!/bin/sh\nexec %s -cp %s/classes:%s/build/conformance-java Driver "$$@"\n' "$(JAVA)" "$(CURDIR)/$(JAVA_TEXT_FIXED_ROOTS_SABOTAGE)" "$(CURDIR)" > $(JAVA_TEXT_FIXED_ROOTS_SABOTAGE)/driver
+	@printf '#!/bin/sh\nexec %s $(JAVA_CONFORMANCE_JVM_FLAGS) -cp %s/classes:%s/build/conformance-java Driver "$$@"\n' "$(JAVA)" "$(CURDIR)/$(JAVA_TEXT_FIXED_ROOTS_SABOTAGE)" "$(CURDIR)" > $(JAVA_TEXT_FIXED_ROOTS_SABOTAGE)/driver
 	@chmod +x $(JAVA_TEXT_FIXED_ROOTS_SABOTAGE)/driver
 	@printf 'java %s/driver\n' "$(CURDIR)/$(JAVA_TEXT_FIXED_ROOTS_SABOTAGE)" > $(JAVA_TEXT_FIXED_ROOTS_SABOTAGE)/drivers.txt
 # loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
