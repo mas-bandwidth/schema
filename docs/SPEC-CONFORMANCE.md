@@ -199,24 +199,6 @@ case must fail on the affected implementation before the fix and pass after
 it. If the shared suite cannot express the difference yet, record the missing
 case and keep the regression open until a port can run it through the suite.
 
-### Regressions and independent implementations
-
-Every fix to observable Schema behavior adds or strengthens an executable
-case in the shared corpus named in §1. Give the case a stable identifier and
-cite the governing specification section. Record the input, the operation,
-and the expected result in the corpus format for that surface. For a wire
-result, include the exact bytes and meaningful bit count where applicable.
-For a refusal, specify the observable outcome required by that surface and
-language's contract. A new implementation must be able to derive the
-expected result from the specification without consulting another port.
-
-If two implementations could reasonably derive different answers, clarify
-the governing rule in the same change and include a case that distinguishes
-those answers. Verify that the case detects the original defect and passes
-with the fix. If the shared harness cannot express the distinction yet,
-record the missing case and keep conformance coverage open until the case
-can run.
-
 ## 7. Rules decided 2026-11-20..22, and the rows they owe
 
 Every rule decided or fixed from 2026-11-20 to 2026-11-22 is stated in the
