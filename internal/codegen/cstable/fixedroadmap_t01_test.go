@@ -65,13 +65,21 @@ const t01Common = `            byte[] Corpus(string f) { return System.IO.File.R
                 foreach (@TABLE@ e in a) { if (!(@UNTOUCHED@)) { return false; } }
                 return true;
             }
+            // R4: after a refusal EVERY ROW handed in holds its declared default.
+            bool Defaulted(@TABLE@[] a)
+            {
+                @TABLE@ d = new @TABLE@();
+                Schema.TableReset(d);
+                foreach (@TABLE@ e in a) { if (!(@DEFAULTED@)) { return false; } }
+                return true;
+            }
             bool Counters(TableReport r)
             {
                 return r.Unknown != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0;
             }
             // Expect: the read REFUSES by name (reason != null) or is MALFORMED
             // (reason == null), and in both cases returns -1, never sets both
-            // answers, moves no counter and leaves every poisoned byte as it was.
+            // answers, moves no counter and resets every row handed in to its declared default.
             void Expect(string label, byte[] file, int cap, string reason, ulong wantHash)
             {
                 @TABLE@[] back = Fresh(cap);
@@ -97,7 +105,7 @@ const t01Common = `            byte[] Corpus(string f) { return System.IO.File.R
                 }
                 if (r.LayoutHash != wantHash) { bad += ProbeLog.Fail(@NAME@, label + ": layout hash 0x" + r.LayoutHash.ToString("x16") + ", want 0x" + wantHash.ToString("x16")); }
                 if (Counters(r)) { bad += ProbeLog.Fail(@NAME@, label + ": a counter moved on a refusal: unknown=" + r.Unknown + " widened=" + r.Widened + " retained=" + r.Retained + " lost=" + r.RetainLost); }
-                if (!Untouched(back)) { bad += ProbeLog.Fail(@NAME@, label + ": the refused read wrote the destination"); }
+                if (!Defaulted(back)) { bad += ProbeLog.Fail(@NAME@, label + ": the refused read left a row off its declared default"); }
             }
             // ReadsClean: the control that keeps every refusal above honest — the
             // unbroken fixture reads, and lands something over the poison.
@@ -119,16 +127,19 @@ const t01Common = `            byte[] Corpus(string f) { return System.IO.File.R
 const (
 	t01PoisonLineage    = `e.X = 0x5A5A5A5A; e.Y = 0x5A5A5A5A; e.Z = 0x5A5A5A5A; e.W = 0x5A5A5A5A;`
 	t01UntouchedLineage = `e.X == 0x5A5A5A5A && e.Y == 0x5A5A5A5A && e.Z == 0x5A5A5A5A && e.W == 0x5A5A5A5A`
+	t01DefaultedLineage = `e.X == d.X && e.Y == d.Y && e.Z == d.Z && e.W == d.W`
 	t01PoisonCensus     = `e.Lead = 0x5A5A5A5Au; e.Trail = 0x5A5A5A5Au; for (int i = 0; i < 4; ++i) { e.Items[i].A = 0x5A5A5A5A; }`
 	t01UntouchedCensus  = `e.Lead == 0x5A5A5A5Au && e.Trail == 0x5A5A5A5Au && e.Items[0].A == 0x5A5A5A5A && e.Items[1].A == 0x5A5A5A5A && e.Items[2].A == 0x5A5A5A5A && e.Items[3].A == 0x5A5A5A5A`
+	t01DefaultedCensus  = `e.Lead == d.Lead && e.Trail == d.Trail && e.Items[0].A == d.Items[0].A && e.Items[1].A == d.Items[1].A && e.Items[2].A == d.Items[2].A && e.Items[3].A == d.Items[3].A`
 	t01PoisonFloor      = `e.A = 0x5A5A5A5A; e.B = 0x5A5A5A5A; e.C = 0x5A5A5A5A;`
 	t01UntouchedFloor   = `e.A == 0x5A5A5A5A && e.B == 0x5A5A5A5A && e.C == 0x5A5A5A5A`
+	t01DefaultedFloor   = `e.A == d.A && e.B == d.B && e.C == d.C`
 )
 
 // t01Body splices a probe's table-specific poison into the common helpers and
 // puts the probe's own steps after them.
-func t01Body(poison, untouched, steps string) string {
-	common := strings.NewReplacer("@POISON@", poison, "@UNTOUCHED@", untouched).Replace(t01Common)
+func t01Body(poison, untouched, defaulted, steps string) string {
+	common := strings.NewReplacer("@POISON@", poison, "@UNTOUCHED@", untouched, "@DEFAULTED@", defaulted).Replace(t01Common)
 	return common + steps
 }
 
@@ -171,12 +182,12 @@ func t01Probes() []csVersionProbe {
 	lineage := func(name, steps string) csVersionProbe {
 		return csVersionProbe{name: name, reader: "VNEW_field_append", older: []string{"VOLD_field_append"},
 			suffix: strings.NewReplacer("cs/", "", "_", "").Replace(strings.ToLower(name)),
-			file:   "new_field_append.bin", body: t01Body(t01PoisonLineage, t01UntouchedLineage, steps)}
+			file:   "new_field_append.bin", body: t01Body(t01PoisonLineage, t01UntouchedLineage, t01DefaultedLineage, steps)}
 	}
 	census := func(name, steps string) csVersionProbe {
 		return csVersionProbe{name: name, reader: "VNEW_unknown_census", older: []string{"VOLD_unknown_census"},
 			suffix: strings.NewReplacer("cs/", "", "_", "").Replace(strings.ToLower(name)),
-			file:   "old_unknown_census.bin", body: t01Body(t01PoisonCensus, t01UntouchedCensus, steps)}
+			file:   "old_unknown_census.bin", body: t01Body(t01PoisonCensus, t01UntouchedCensus, t01DefaultedCensus, steps)}
 	}
 	files := `"new_field_append.bin", "old_field_append.bin"`
 	return []csVersionProbe{
@@ -325,7 +336,7 @@ func t01Probes() []csVersionProbe {
 `+strings.Replace(t01Refusals, "@FILES@", `"old_unknown_census.bin"`, 1)),
 		// R13 for layout_unsupported: below the floor, over a retired entry.
 		{name: "cs/R13_floor", reader: "VNEW_floor", older: []string{"VOLD_floor", "VMID_floor"}, retire: 1, suffix: "r1",
-			file: "old_floor.bin", body: t01Body(t01PoisonFloor, t01UntouchedFloor, `            byte[] g = Corpus("old_floor.bin");
+			file: "old_floor.bin", body: t01Body(t01PoisonFloor, t01UntouchedFloor, t01DefaultedFloor, `            byte[] g = Corpus("old_floor.bin");
             Expect("below the floor", g, 1, "layout_unsupported", HashOf(g));
 `)},
 	}

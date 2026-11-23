@@ -9,8 +9,8 @@ import (
 // shorter than the fixed-form header is a MALFORMED read, named `truncated`
 // (docs/FIXED-FORM-ALGORITHM.md §5.3): the reader sets Malformed and the
 // Reason name together, never silently. The destination is filled with a
-// sentinel Point and proved still the sentinel, so "no byte is written" is
-// observed rather than assumed. The whole report is compared against
+// sentinel Point and proved to hold its declared default after the refusal
+// (R4, docs/SPEC-TABLES.md §6.5), so the reset is observed rather than assumed. The whole report is compared against
 // TableReport{Refusal: TableRefuseWireDamaged, Reason: "truncated"} in one !=, pinning every
 // counter, Reason, the verdict and any field added later to its zero value at
 // once.
@@ -36,10 +36,12 @@ func TestUnder20Bytes(t *testing.T) {
 	if n := PointFixedLoad(good, buf, plan, &r); n != 1 || r != (TableReport{}) || good[0] != one {
 		t.Fatalf("the good file does not read back: n=%d got=%+v report=%+v", n, good[0], r)
 	}
+	var def Point
+	PointReset(&def) // R4: a refusal leaves every value handed in at its declared default
 	for k := 0; k < TableFixedHeaderBytes+4; k++ {
 		got := []Point{{X: -1, Y: -1}}
 		r = TableReport{}
-		if n := PointFixedLoad(got, buf[:k], plan, &r); n != -1 || r != (TableReport{Refusal: TableRefuseWireDamaged, Reason: "truncated"}) || got[0] != (Point{X: -1, Y: -1}) {
+		if n := PointFixedLoad(got, buf[:k], plan, &r); n != -1 || r != (TableReport{Refusal: TableRefuseWireDamaged, Reason: "truncated"}) || got[0] != def {
 			t.Fatalf("k=%d: n=%d report=%+v dest=%+v", k, n, r, got[0])
 		}
 	}

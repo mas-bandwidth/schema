@@ -39,10 +39,12 @@ func TestFixedFormRaggedTail(t *testing.T) {
   final recordBytes = t.lineageFixedRecordBytes;
   for (var extra = 1; extra < recordBytes; extra++) {
     final rep = t.TableFixedReport();
-    values[0].x = 0x5A5A5A5A;
-    values[0].y = 0x5A5A5A5A;
-    values[0].z = 0x5A5A5A5A;
-    values[0].w = 0x5A5A5A5A;
+    for (final v in values) {
+      v.x = 0x5A5A5A5A;
+      v.y = 0x5A5A5A5A;
+      v.z = 0x5A5A5A5A;
+      v.w = 0x5A5A5A5A;
+    }
     final ragged = Uint8List(data.length + extra);
     ragged.setRange(0, data.length, data);
     final n = LOAD(values, values.length, ragged, ragged.length, plan, rep);
@@ -51,9 +53,10 @@ func TestFixedFormRaggedTail(t *testing.T) {
         'a ragged tail refuses wire_damaged, not clean: ${why(rep)}');
     check(rep.unknown == 0 && rep.widened == 0 && rep.layoutHash == 0,
         'a refused read moves no counter and no reported hash: ${why(rep)}');
-    check(values[0].x == 0x5A5A5A5A && values[0].y == 0x5A5A5A5A &&
-        values[0].z == 0x5A5A5A5A && values[0].w == 0x5A5A5A5A,
-        'a ragged read wrote a destination byte: ${why(rep)}');
+    for (var r = 0; r < values.length; r++) {
+      check(fresh(values[r]),
+          'R4: a ragged read left row $r off its declared default: ${why(rep)}');
+    }
   }`
 
 	out, err := runVersionProbe(t, dartBin, "VNEW_field_append", nil, 0, file, body)
