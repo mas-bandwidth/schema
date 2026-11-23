@@ -447,7 +447,7 @@ const unityRetainWireSource = `    internal const int RetainMaxDepth = @DEPTH@;
             {
                 if (Values[i] == id) { return (ulong)Slots[i]; }
             }
-            if (KnownCount == Values.Length) { Overflow = true; return 0; }
+            if (KnownCount == Values.Length || Count >= 4096) { Overflow = true; return 0; }
             Values[KnownCount] = id;
             Slots[KnownCount++] = ++Count;
             return (ulong)Count;
@@ -462,7 +462,7 @@ const unityRetainWireSource = `    internal const int RetainMaxDepth = @DEPTH@;
             {
                 if (Store.Ids[i].Value == id) { return (ulong)Store.Ids[i].Slot; }
             }
-            if (Store.Ids == null || Store.IdUsed >= idCap) { Lost = true; return 0; }
+            if (Store.Ids == null || Store.IdUsed >= idCap || Count >= 4096) { Lost = true; return 0; }
             Store.Ids[Store.IdUsed++] = new TableRetain.Id { Value = id, Slot = ++Count };
             return (ulong)Count;
         }

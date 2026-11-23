@@ -251,7 +251,8 @@ func TestLuauEveryTypeHasAViewNegativeControl(t *testing.T) {
 // compiler's URL and how to regenerate); with that line removed the bytes
 // hash to the previous digest, 0ad731512f0efcd8. Moved again when the locals a
 // module binds its requires to became _F_<base> (LUAU-2, review 2026-11-21).
-const wantTableDigest = "ec1622ca9ab437e91d02e8597b4ee3195a2780a09ef3ef2c3d244c1bdbafdba8"
+// Moved again by the R8 follow-up: Announce and AnnounceMeasure.
+const wantTableDigest = "7c1e87e8e90c2ab25d088fe8b551e07c640373b007202c8e810cc646f4402a66"
 
 // declaredViewNames is every `type`, `union`, `enum` and `flags` the unit
 // declares, the set §8.2 says every one of has a view.
