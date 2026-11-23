@@ -326,11 +326,31 @@ func emitFixedWrite(m *Module, st *ir.Struct, w *fixedWalk) {
 	m.Printf("};\n\n")
 }
 
+// emitFixedRead emits <T>FixedLoad over <T>FixedLoadWalk, as the Go reference
+// spells its fixed read. EVERY REFUSAL RESETS EVERY ROW HANDED IN (ruling R4):
+// the walk answers -1 on any refusal (header, reserved bytes, layout, hash
+// selection, plan_too_large, batch_too_large, a ragged tail, a record hash,
+// dead bytes, text, bool, run, non-finite, out-of-range), and the public read
+// then puts every row of out, its whole length whatever cap is, back to the
+// constructor's declared defaults member by member, so out[k] keeps its
+// identity as the commit keeps it. A null row is given a fresh default row; a
+// null out (a caller error) has nothing to reset.
 func emitFixedRead(m *Module, st *ir.Struct) {
 	m.Printf("_M.%sFixedLoad <- function(b, out, cap) {\n", st.Name)
 	m.Printf("  _M.FixedReason <- null;\n")
 	m.Printf("  _M.FixedField <- null;\n")
 	m.Printf("  _M.FixedWidened <- 0;\n")
+	m.Printf("  local n = _M.%sFixedLoadWalk(b, out, cap);\n", st.Name)
+	m.Printf("  if (n >= 0 || out == null) return n;\n")
+	m.Printf("  for (local k = 0; k < out.len(); k++) {\n")
+	m.Printf("    local o = out[k], v = _M.%s();\n", st.Name)
+	m.Printf("    if (o == null) { out[k] = v; continue; }\n")
+	emitFixedRowCopy(m, st)
+	m.Printf("  }\n")
+	m.Printf("  return n;\n")
+	m.Printf("};\n\n")
+	// the walk: the public read above has set the three counters
+	m.Printf("_M.%sFixedLoadWalk <- function(b, out, cap) {\n", st.Name)
 	// EVERY REFUSAL OF THE LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS INCLUDED
 	// (docs/FIXED-FORM-ALGORITHM.md §5.3, docs/SPEC-TABLES.md §3.4): the
 	// reasons answer the Go fixed reader's in its order — the form byte and the
@@ -386,8 +406,9 @@ func emitFixedRead(m *Module, st *ir.Struct) {
 	// a FRESH row of the scratch batch, and only when the last record has
 	// passed does the commit loop land the scratch rows into out[0..count-1]
 	// (FIXED-FORM-VERSIONING-TESTS row 9: a forged hash on the LAST record
-	// writes not one destination byte). A refusal on record k leaves every row of the caller's `out` untouched,
-	// out[0..k-1] exactly as much as out[k], and the counters zero. A fresh
+	// writes not one destination byte). A refusal on record k lands no scratch
+	// row, and the public <T>FixedLoad then resets every row of `out` to its
+	// declared defaults (ruling R4), with the counters zero. A fresh
 	// row also holds a field an older writer did not carry at the
 	// constructor's declared default (§5.2), never at a reused row's value.
 	m.Printf("  local d = e.decode;\n")
@@ -404,6 +425,16 @@ func emitFixedRead(m *Module, st *ir.Struct) {
 	// the landed values) and a nested row is the scratch row's own.
 	m.Printf("  for (local k = 0; k < count; k++) {\n")
 	m.Printf("    local o = out[k], v = s[k];\n")
+	emitFixedRowCopy(m, st)
+	m.Printf("  }\n")
+	m.Printf("  return count;\n")
+	m.Printf("};\n\n")
+}
+
+// emitFixedRowCopy lands v into the caller's row o member by member, the
+// optional fields' presence included: the commit's copy and the refusal's
+// reset are the same lines.
+func emitFixedRowCopy(m *Module, st *ir.Struct) {
 	for _, f := range st.Fields {
 		mem := squirrel.Member(f)
 		m.Printf("    o.%s = v.%s;\n", mem, mem)
@@ -411,9 +442,6 @@ func emitFixedRead(m *Module, st *ir.Struct) {
 			m.Printf("    o.%sPresent = v.%sPresent;\n", mem, mem)
 		}
 	}
-	m.Printf("  }\n")
-	m.Printf("  return count;\n")
-	m.Printf("};\n\n")
 }
 
 // emitFixedWriteBody emits the straight line of stores for one type: the

@@ -68,7 +68,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 		say("%s is not a reader of %s (readers: %s)", *leg, *family, strings.Join(readers, " "))
 		return 2
 	}
-	want := inputfamilies.AccountFiles(t, *family)
+	want := inputfamilies.AccountFilesForLeg(t, *family, *leg)
 	if len(want) == 0 {
 		say("%s: enumerated no inputs from disk: a run over 0 inputs is not a pass", *family)
 		return 1
@@ -96,6 +96,13 @@ func run(args []string, stdout, stderr io.Writer) int {
 	makeArgs := []string{}
 	for _, o := range f.OtherTargets(t, *leg) {
 		makeArgs = append(makeArgs, "-o", o)
+	}
+	// Force make to treat tracked .schema inputs as newly modified so a warm
+	// build/ tree never skips ./bin/schema generate and misses IN_OPEN.
+	for _, p := range want {
+		if strings.HasSuffix(p, ".schema") && (*canary != "extra" || p != planted) {
+			makeArgs = append(makeArgs, "-W", p)
+		}
 	}
 	target := f.RunTarget(*leg)
 	makeArgs = append(makeArgs, target)
