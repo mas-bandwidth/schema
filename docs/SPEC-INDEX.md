@@ -333,7 +333,7 @@ commits and surfaces.
 |---|---|---|
 | Published v3.0.13 | `27a251c91aa1` | #4501, plus the spec and corpus work already on the release branch, including #4737, #4732, #4733 and #4740 |
 | Main checked for this supplement | `d326bb61b335` | Same four spec documents, table manifest and packet-refusal row file as v3.0.13 |
-| Wave 2 #4843, open | `0d6328812b72` | Its description reports 33,588 credited answers for landing candidate `46cd8a6095a5`; the inspected PR head is later. That total is for the table run described there. |
+| Wave 2 #4843, open | `0d6328812b72` | The complete table run on predecessor `f3fbb8af` credited 33,588 answers. Five VM targets were checked again on landing candidate `46cd8a6095a5`. The inspected PR head is later. |
 | Wave 3 staging `stella/4808-on-wave2` | `4de8f8b11f19` | #4808 source registrations integrated over a Wave 2 predecessor. The current #4843 head is outside this snapshot's history. |
 | #4808 driver integration `emma/4808-merged-drivers` | `cc0b6c62ab68` | Separate driver tree, missing shared rows present in Wave 3 staging, including the Wave 2 R15 pair. Treat each tree's evidence at its own head. |
 
