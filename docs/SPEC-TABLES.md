@@ -9564,6 +9564,13 @@ does on hostile input — refuse the whole load with one reason and return,
 never crash, never read past its buffer (§4, §6.5) — is the verifier, and this
 subsection is the gate on that claim.
 
+**The pinned vectors are all run, or the run refuses.** `fuzz-vectors/INDEX.txt`
+is the list of the pinned reds, and the directory beside it is the pinned reds
+themselves: a `*.bin` there that the index does not name is a vector nothing
+runs, and an index line whose file is missing is a vector that cannot run. The
+wire fuzzer reads both and refuses the whole run, naming each file, when they
+disagree (`checkWireVectorIndex`); neither is a warning, and neither is skipped.
+
 **The gate is `harness wire-fuzz`**, one command over one corpus for every
 language. Every pinned wire in the conformance manifest — every `instance` and
 every `report` line — is a SEED, framed once so that a mutation can aim at a
@@ -10916,6 +10923,16 @@ the storage and the codec never allocates.
   degrades to the default behavior one record at a time. `MeasureRetain` and
   `SaveRetain` drop the same records under the same walk, so the measure sees
   the same overflow and its answer is the size the save writes.
+- **THE MERGED TRAILER IS BOUNDED BY THE WIRE, NEVER BY THE GENERATED
+  TABLE.** The two stores together number at most `id_table_max` = 4096
+  entries (§3), the bound every reader holds the file to; the generated
+  table's own capacity, the distinct ids this build's codec can spell, bounds
+  the ids THAT table holds and nothing else. A port that stops the merged
+  count at the generated capacity drops every retained record past it with
+  `retain_lost` on a file the reader accepted whole. With both caller stores
+  large enough, a retaining save of a file holding 4096 retained ids writes
+  the file back byte for byte (pinned by `id_table_4096` under the retain
+  arm).
 - **`C / 8` IS THE COUNT BOUND, AND IT IS AN UPPER BOUND NO CALLER MEETS.**
   Every id a retained record names rides in that record as a reference widened
   to eight bytes (THE SECURITY BOUND, below), and no record is placed unless
@@ -16957,6 +16974,13 @@ without touching a stored file.
   text against the pinned wire. A backend without the form prints ABSENT
   rather than passing vacuously, which is the distinction that keeps a
   missing feature and a failing test apart.
+
+- **A STRICT C COMPILE.** The C unit converts numbers in the "C" locale
+  (newlocale and uselocale, POSIX.1-2008). Generated `<Name>Table.c` sets
+  `_POSIX_C_SOURCE 200809L` itself before its first include, and compiles
+  under `-std=c11 -Wall -Wextra -Werror`. A unit that includes the file after
+  its own system headers sets the macro first, or the file refuses with a
+  named `#error` on glibc: never an unknown type name.
 
 ### 16.6 What this is not
 
