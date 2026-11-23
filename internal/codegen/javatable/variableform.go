@@ -4082,7 +4082,6 @@ public final class TableJson {
                             bad = true;
                             return;
                         }
-                        LabelEntry entry = labels.get(labelId);
                         if (c == ',') {
                             p++;
                             c = peek();
@@ -4107,7 +4106,6 @@ public final class TableJson {
                         continue;
                     }
                 }
-                first = false;
                 skipValue(depth + 1);
                 if (bad) {
                     return;
@@ -4483,12 +4481,6 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct, fixed fixedClosure) (strin
 				fmt.Fprintf(&b, "                %sIdx.add(0L);\n", varMember(f))
 			}
 			b.WriteString("            }\n")
-		}
-		if n := variableBornCount(f); n > 0 {
-			// A [A..B]T COUNT IS BORN AT A, its declared minimum, each slot
-			// value-initialized (docs/SPEC.md §4.2; ir.Field.BornCount): the
-			// value fromJson("{}") and an absent field land on, as Go's does.
-			fmt.Fprintf(&b, "            for (int i = 0; i < %d; i++) {\n                %s.add(%s);\n            }\n", n, varMember(f), variableDefault(variableBornElement(f)))
 		}
 	}
 	b.WriteString("        }\n")

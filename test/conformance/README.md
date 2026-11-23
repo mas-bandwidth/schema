@@ -89,8 +89,32 @@ language" below, where both shapes are stated.
 - **`list`** prints the surfaces this backend implements, one per line, to
   stdout.
 - **A surface run** writes ONE FILE PER CASE into `<outdir>`, named by the case,
-  and prints nothing that matters. The harness holds the expectations and does
-  the comparing.
+  and prints NOTHING on stdout. The harness holds the expectations and does the
+  comparing.
+
+### The driver's stdout
+
+Stdout is protocol and nothing else. `list` prints surface names, one per line
+(`[a-z][a-z0-9-]*`); a surface run prints nothing. **Compiler, interpreter and
+runtime diagnostics (warnings included) go to stderr**, which the harness prints
+when a driver fails. A non-blank stdout line outside that grammar fails the
+driver with `driver printed non-protocol line: <line>`: never a wrong answer,
+and never a surface that fails 0/N with nothing naming why (a Lobster
+`unused variable recs` warning once did exactly that). `harness/run.go`
+(`parseSurfaceList`, `checkRunStdout`) enforces it for every leg, and
+`harness/driverstdout_test.go` holds it.
+
+Four legs have a program that can only answer on stdout (Lobster, Luau, Goose
+and Moo: the interpreter has no file API the driver can rely on), so their
+driver script turns the program's stdout into the files. That script is ONE
+shared parser, `test/conformance/answer-lines.pl`, and its grammar is the whole
+of the protocol: `<case> <lowercase hex, an even number of digits, maybe none>`
+or `<case> absent [<reason>]`, with `<case>` in `[A-Za-z0-9_.-]+`. Any other
+line stops the driver with the message above. Lobster prints its own compiler
+warnings and errors on stdout and cannot be told otherwise, so
+`lobster/main.lobster` opens its output with a marker line and
+`lobster/driver` sends everything before the marker to stderr (no marker means
+the program never started, which is a failure).
 
 ### Exit codes
 
@@ -176,6 +200,41 @@ same way would be telling a port to implement nothing in particular. The C#
 leg is the worked example: it registered with `json-read` and `json-write`
 ABSENT, and both cells moved to `pass 18/18` when the C# walk landed — nothing
 in the data or in this contract moved with them.
+
+**A ROW THAT CANNOT FAIL IS NOT CREDITED: THE LAWFUL TWIN**
+(`harness/discriminate.go`). A must-refuse row passes when the leg refuses,
+and a leg that refuses the whole FORM refuses it too: a fixed root read
+through the wrong reader, a root the leg refuses every file of, a construct it
+has no reader for. That refusal is the answer the leg gives the lawful value as
+well, so it proves nothing about the rule the row was written for. Seen on
+2026-11-22: the Go leg read listdemo Bounded's framing vectors through the
+plain `BoundedLoad`, which refuses every form-1 file at a fixed root, and
+`array_elem_terminator_early` and `array_elem_L_past_body` passed for that
+reason alone. Two rules close it, both in the harness:
+
+1. **Every must-refuse row has a lawful twin in the corpus**: a row of the same
+   group (surface, unit and root; the base image for `block-foreign`,
+   `cook-foreign` and the forgeries) that must be ACCEPTED. A group with none
+   of its own falls back to the surface that drives the same entry point at
+   that root (`report` to `wire`, `json-hostile` to `json-read`,
+   `write-refusal-json` to `json-write`; a root read nowhere to the unit's
+   `wire` rows); `framing` has no fallback, since at a fixed root it reads
+   through the variable entry point no other surface drives. `harness run`
+   refuses a corpus with a twinless refusal and names the row, and
+   `TestEveryMustRefuseRowHasALawfulTwin` holds the committed one. The
+   `twin_*` rows in `MANIFEST.txt` are the twins that were missing.
+2. **A refusal is credited only beside an answered twin.** A must-refuse row
+   the leg refused, where the same leg answered none of the row's lawful twins
+   correctly, is REFUSAL-ONLY: never a pass, counted in the cell as `+Nr`
+   (`pass 10/10 +2r`), and named in a REFUSAL-ONLY block under the matrix. For
+   the reference leg it is a failure, as an absence is.
+
+**THE SCORE** (docs/SPEC-CONFORMANCE.md §4) prints under the matrix, one line
+per leg — `credited C of T; absent A; refusal-only R; failed F` — and the same
+block is appended to `$GITHUB_STEP_SUMMARY` when CI sets it, so every job that
+runs the matrix shows the legs that score by refusing. **Absent and
+refusal-only are counted apart and never credited**: a leg that answers
+nothing, or refuses everything, scores zero however its cells read.
 
 **A DRIVER MAY TAKE ITS GENERATED TREE FROM THE ENVIRONMENT**, and the
 JavaScript leg does (`SCHEMA_JS_GENERATED`). That is not a contract change — the
@@ -712,6 +771,34 @@ SCHEMA_SLOW=1 go test ./test/conformance/packet/ -run TestPacketCarrier
 
 A seed is a schema directory under `packet/testdata/`, one entry in `Seeds`,
 and one codec in every driver.
+
+## The pins are written by generators, never by hand
+
+Every committed pin is regenerated in CI and diffed, so a hand-written golden
+fails on the pull request that adds it. The `pins` job of
+`.github/workflows/ci-fast.yml` runs when the diff touches `testdata/`, a pin
+writer or anything the broad rule names, and has five rows, each a make target
+that rewrites one family in place followed by `git diff --exit-code` on
+`testdata/` and a check for uncommitted new files:
+
+| row | target | family |
+|---|---|---|
+| source | `pins-source pins-framing` | `testdata/golden/` (Go goldens, C++/C/C# table copies); the framing vectors, written by `FRAMING_WRITE=1` tests in `test/conformance/harness` |
+| wire-packet | `pins-fresh-wire-packet` | `testdata/wire/*.bin`, `*.bits`, `packet-defaults/`, `bench_*.bin`, EMPTIED FIRST so a file no generator writes shows as a deletion |
+| wire-tables | `pins-wire-tables` | `testdata/wire/tables/` from `test/tables/main.cpp` |
+| wire-tables-forms | `pins-wire-tables-forms` | block, maps, lists, arms and retain wire pins; the harness `generate` half of `testdata/conformance/tables` |
+| conformance | `pins-conformance` | the cook node dumps and the block forgeries, written by the reference leg (`harness pin`) |
+
+The generated tree (`generated/`) is `generated-current` in the same file. The
+whole of it is one local command, `make update-goldens`, which runs the same
+writers and is all or nothing: it snapshots `testdata/` (`test/goldens/transact`)
+and restores the snapshot on any failure, interrupt or kill, so an abort (a debug
+assert in a reference binary, a failing `go test`) leaves the tree exactly as it
+was. A snapshot left by a run killed outright is put back at the start of the
+next one. Not generated, by design, and so not in the rewrite: the hostile and
+fuzz corpora (`testdata/wire/tables/fuzz-vectors/`, `testdata/jsontestsuite/`)
+and the feature witnesses, which are authored inputs that the conformance matrix
+reads.
 
 ## The budget
 

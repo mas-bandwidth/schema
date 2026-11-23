@@ -2569,12 +2569,6 @@ class TableVariableTextIn {
     if (depth > 128) { this.bad = true; return false; }
     this.p++;
     let first = true;
-    let opened = null;
-    const closed = () => {
-      this.p++;
-      if (opened !== null) { graph.set(opened, { node: null, c: null, open: false }); }
-      return true;
-    };
     // a skipped object's keys are held to the layer's rule too: a repeated
     // key refuses in every object of the text (§16.2, §16.12)
     const keys = close === "}" ? new globalThis.Set() : null;
@@ -2591,7 +2585,7 @@ class TableVariableTextIn {
         this.p++;
         if (keys.has(key)) { this.bad = true; return false; }
         keys.add(key);
-        if (key.length > 0 && key[0] === "&" && graph !== null) {
+        if (key.length > 0 && key[0] === "&") {
           if (!first || key !== "&node") { this.bad = true; return false; }
           const label = this.label();
           if (label === null) { return false; }

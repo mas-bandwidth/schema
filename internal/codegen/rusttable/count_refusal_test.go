@@ -181,7 +181,7 @@ func TestCountRefusalDiscardsTheWholeLoadRust(t *testing.T) {
                 let result = if retaining { %s_load_retain(wire, &mut store, &mut report) } else { %s_load(wire, &mut report) };
                 check!(result.is_none(), "%s/%d partial value");
                 check!(report.refused && report.reason == TableReason::CountOverExtentCap, "%s/%d named count refusal");
-                check!(report.damaged == old_damage && report.cycle_on_save, "%s/%d damage history");
+                check!(!report.damaged && !report.cycle_on_save, "%s/%d the read zeroes the report first: no damage or cycle history survives");
                 check!(!retaining || (store.bytes.is_empty() && store.ids.is_empty()), "%s/%d retained partial state");
             }
         }
@@ -217,8 +217,8 @@ func TestCountRefusalDiscardsTheWholeLoadRust(t *testing.T) {
             let mut store = TableRetain { bytes: Vec::with_capacity(4096), ids: Vec::new(), nodes: Default::default() };
             let result = if retaining { %s_load_retain(wire, &mut store, &mut report) } else { %s_load(wire, &mut report) };
             check!(result.is_some(), "%s prior refusal is not current control state");
-            check!(report.refused && report.reason == TableReason::CountOverExtentCap &&
-                report.damaged && report.cycle_on_save, "%s history preserved after good read");
+            check!(!report.refused && report.reason == TableReason::None &&
+                !report.damaged && !report.cycle_on_save, "%s a good read zeroes the prior refusal and history");
         }
     }
 `, rustBytes(wire), load, load, shape, shape)
@@ -257,7 +257,7 @@ func TestCountRefusalDiscardsTheWholeLoadRust(t *testing.T) {
     for (form, reason) in [(2, TableReason::MessageFormAsFile), (255, TableReason::NewerForm)] {
         let mut report = TableReport { damaged: true, unknown: 7, ..Default::default() };
         check!(leaf_load(&[form], &mut report).is_none() && report.refused && report.reason == reason, "form refusal name");
-        check!(report.damaged && report.unknown == 7, "form preserves history");
+        check!(!report.damaged && report.unknown == 0, "form refusal zeroes the report first");
     }
     if failures != 0 { std::process::exit(1); }
 `, rustBytes(short))

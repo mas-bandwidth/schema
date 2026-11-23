@@ -6025,6 +6025,7 @@ final class _Share {
   final Map<Object, int> count = <Object, int>{};
   final Map<Object, int> label = <Object, int>{};
   final Map<int, Object> defined = <int, Object>{};
+  final Set<int> pending = <int>{};
   int next = 0;
 
   void see(Object obj) {
@@ -6091,10 +6092,7 @@ Object? _readPtr(dynamic val, _Share sh, TableTextReport r, Object Function() ma
     if (raw is! int || raw < 1) {
       throw const FormatException('invalid node label');
     }
-    // a label alone REFERS: the text must have defined it before this point
-    // and closed that definition; one a skipped value defined reads null
     if (entries.length == 1) {
-      if (r.textLabels[raw] != false) throw const FormatException('undefined node label');
       final have = sh.defined[raw];
       if (have == null) {
         // a definition the walk dropped reads null; one still open is a cycle
@@ -6235,7 +6233,7 @@ double _jsonRangedFloat(double x, double lo, double hi, TableTextReport r) {
 // §16.2: comments and trailing commas are layout, not values. The
 // a repeated key is judged before jsonDecode folds an object's repeated key.
 // String tokens are copied byte-for-byte so comment marks inside them stay text.
-String _jsonPrepare(String text) {
+String _jsonPrepare(String text, TableTextReport r) {
   final source = text.codeUnits;
   final stripped = <int>[];
   var quoted = false;
@@ -8088,7 +8086,7 @@ TableEntity tableEntityFromJson(String text, [TableTextReport? report]) {
   r.variableRoot = false;
   final v = TableEntity();
   try {
-  final root = _jsonDecodeExact(_jsonPrepare(text));
+  final root = _jsonDecodeExact(_jsonPrepare(text, r));
   if (_jsonEntries(root) == null) throw const FormatException('json_root_not_object: TableEntity');
   if (_jsonEntries(root) != null) {
     tableEntityFromJsonFields(v, root, r, _Share());
@@ -8125,7 +8123,7 @@ TableStat tableStatFromJson(String text, [TableTextReport? report]) {
   r.variableRoot = false;
   final v = TableStat();
   try {
-  final root = _jsonDecodeExact(_jsonPrepare(text));
+  final root = _jsonDecodeExact(_jsonPrepare(text, r));
   if (_jsonEntries(root) == null) throw const FormatException('json_root_not_object: TableStat');
   if (_jsonEntries(root) != null) {
     tableStatFromJsonFields(v, root, r, _Share());
@@ -8162,7 +8160,7 @@ TableMixed tableMixedFromJson(String text, [TableTextReport? report]) {
   r.variableRoot = false;
   final v = TableMixed();
   try {
-  final root = _jsonDecodeExact(_jsonPrepare(text));
+  final root = _jsonDecodeExact(_jsonPrepare(text, r));
   if (_jsonEntries(root) == null) throw const FormatException('json_root_not_object: TableMixed');
   if (_jsonEntries(root) != null) {
     tableMixedFromJsonFields(v, root, r, _Share());
