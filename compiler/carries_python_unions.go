@@ -8,8 +8,11 @@ package compiler
 // the shared refusal chain refuseUnported passes both by registration. Its
 // codec is internal/codegen/pythontable/runtime/_schema/kind_union.py.
 //
-// An array of PACKET unions (a union whose arms are all packet types) still
-// waits for the packet layer: pythonRefusePacketUnionArrays names it.
+// The registration covers every array of unions in a table closure: a union
+// with a table or general arm, and a PACKET union whose arms are all packet
+// types, which the table frame registers through the same UnionDesc
+// (pythontable.go, emitUnionDescriptor) and carries through the same codec on
+// the variable, fixed, message and text forms (test/tables/packetunions).
 func init() {
 	unionArrayTargets = append(unionArrayTargets, "python")
 }
