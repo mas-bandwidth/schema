@@ -8,13 +8,13 @@
 # Copies the unit's generated modules into <out dir>, writes the glue module
 # naming the unit's registry, puts the leg and its C sidecar beside them, and
 # builds <out dir>/wirefuzz with `goose build -O2` (the machine's C compiler).
-set -u
+set -eu -o pipefail
 goose=$1
 src=$2
 out=$3
 rm -rf "$out" && mkdir -p "$out" || exit 1
 cp "$src"/*.goose "$out"/ || exit 1
-ns=$(sed -n 's/^namespace \(.*\);$/\1/p' "$out"/*Table.goose | head -1)
+ns=$(sed -n 's/^namespace \(.*\);$/\1/p' "$out"/*Table.goose | sed -n 1p)
 if [ -z "$ns" ]; then
 	echo "goose-wirefuzz-build: $src has no table module" >&2
 	exit 1
