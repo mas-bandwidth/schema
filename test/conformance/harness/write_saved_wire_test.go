@@ -38,7 +38,7 @@ func TestWriteRefusalSavedWireScoredByHarness(t *testing.T) {
 	if err := deriveManifest(m, derivedPath); err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.TrimSpace(string(read(derivedPath))); got != line+" save-wire" {
+	if got := strings.TrimSpace(string(read(derivedPath))); !strings.HasSuffix(got, "\n"+line+" save-wire") || strings.Contains(got, pin) {
 		t.Fatalf("driver sees %q, want the neutral save-wire flag only", got)
 	}
 	cases, err := expectations(m, "write-refusal", nil, dir)
