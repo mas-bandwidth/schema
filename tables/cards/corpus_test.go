@@ -228,6 +228,9 @@ func TestCorpusFixtureWrite(t *testing.T) {
 	if os.Getenv("CARDS_UPDATE_CORPUS") != "1" {
 		t.Skip("corpus fixture update requires CARDS_UPDATE_CORPUS=1")
 	}
+	if os.Getenv("CI") != "" {
+		t.Fatal("CARDS_UPDATE_CORPUS=1 under CI: a lane that rewrites the committed evidence compares nothing against it; unset it")
+	}
 	src := filepath.Join("..", "..", "..", "tables", "cards", "corpus")
 	write := func(caseName, fixture string, wire, json []byte) {
 		dir := filepath.Join(src, caseName)

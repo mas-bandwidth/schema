@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -43,7 +44,7 @@ func TestOrphanCycleVectorPinned(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(root, "testdata/wire/tables/fuzz-vectors/pointer_orphan_cycle.bin")
-	if os.Getenv("FRAMING_WRITE") == "1" {
+	if slowtest.Rewriting(t, "FRAMING_WRITE") {
 		if err := os.WriteFile(path, want, 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -112,7 +113,7 @@ func TestBlobNullWitnessPins(t *testing.T) {
 			t.Fatal(err)
 		}
 		want := hex.EncodeToString(wire)
-		if os.Getenv("FRAMING_WRITE") == "1" {
+		if slowtest.Rewriting(t, "FRAMING_WRITE") {
 			c.Wire = want
 		} else if c.Wire != want {
 			t.Errorf("%s: witness differs from canonical null generator", c.Name)
@@ -123,7 +124,7 @@ func TestBlobNullWitnessPins(t *testing.T) {
 			t.Errorf("missing witness %s", name)
 		}
 	}
-	if os.Getenv("FRAMING_WRITE") == "1" {
+	if slowtest.Rewriting(t, "FRAMING_WRITE") {
 		out, err := json.MarshalIndent(cases, "", "  ")
 		if err != nil {
 			t.Fatal(err)
@@ -174,7 +175,7 @@ func TestGraphChainPastCapPinned(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(root, "testdata/wire/tables/graph_chain_past_cap.bin")
-	if os.Getenv("FRAMING_WRITE") == "1" {
+	if slowtest.Rewriting(t, "FRAMING_WRITE") {
 		if err := os.WriteFile(path, want, 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -254,7 +255,7 @@ func TestRetainingFuzzCanonicalPins(t *testing.T) {
 				t.Fatal(fault)
 			}
 			path := filepath.Join(root, "testdata/wire/tables/fuzz-vectors/"+tc.name+".bin")
-			if os.Getenv("FRAMING_WRITE") == "1" {
+			if slowtest.Rewriting(t, "FRAMING_WRITE") {
 				if err := os.WriteFile(path, wire, 0o644); err != nil {
 					t.Fatal(err)
 				}
@@ -278,7 +279,7 @@ func TestRetainingFuzzCanonicalPins(t *testing.T) {
 			t.Fatal(err)
 		}
 		path := filepath.Join(root, "testdata/wire/tables/fuzz-vectors/retain_union_arm_frame.bin")
-		if os.Getenv("FRAMING_WRITE") == "1" {
+		if slowtest.Rewriting(t, "FRAMING_WRITE") {
 			if err := os.WriteFile(path, wire, 0o644); err != nil {
 				t.Fatal(err)
 			}
@@ -319,7 +320,7 @@ func TestNestedArmTrailingPins(t *testing.T) {
 				t.Fatal(err)
 			}
 			path := filepath.Join(root, "testdata/wire/tables", tc.name+".bin")
-			if os.Getenv("FRAMING_WRITE") == "1" {
+			if slowtest.Rewriting(t, "FRAMING_WRITE") {
 				if err := os.WriteFile(path, wire, 0o644); err != nil {
 					t.Fatal(err)
 				}
@@ -413,7 +414,7 @@ func TestRetainedArrayDuplicatePins(t *testing.T) {
 				t.Fatal(err)
 			}
 			path := filepath.Join(root, "testdata/wire/tables/fuzz-vectors", tc.name+".bin")
-			if os.Getenv("FRAMING_WRITE") == "1" {
+			if slowtest.Rewriting(t, "FRAMING_WRITE") {
 				if err := os.WriteFile(path, wire, 0o644); err != nil {
 					t.Fatal(err)
 				}
@@ -531,7 +532,7 @@ func TestBlobDuplicateOwnerPin(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(root, "testdata/wire/tables/fuzz-vectors/blob_table_owner_replaced.bin")
-	if os.Getenv("FRAMING_WRITE") == "1" {
+	if slowtest.Rewriting(t, "FRAMING_WRITE") {
 		if err := os.WriteFile(path, wire, 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -603,7 +604,7 @@ func TestNegativeZeroListPin(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(root, "testdata/wire/tables/fuzz-vectors/list_float_minus_zero_default.bin")
-	if os.Getenv("FRAMING_WRITE") == "1" {
+	if slowtest.Rewriting(t, "FRAMING_WRITE") {
 		if err := os.WriteFile(path, wire, 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -672,7 +673,7 @@ func TestListDamagedChildPins(t *testing.T) {
 				t.Fatal(err)
 			}
 			path := filepath.Join(root, "testdata/wire/tables/fuzz-vectors", tc.name+".bin")
-			if os.Getenv("FRAMING_WRITE") == "1" {
+			if slowtest.Rewriting(t, "FRAMING_WRITE") {
 				if err := os.WriteFile(path, wire, 0o644); err != nil {
 					t.Fatal(err)
 				}
@@ -746,7 +747,7 @@ func TestUnknownArmTextPin(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(root, "testdata/wire/tables/fuzz-vectors/unknown_arm_text_nul.bin")
-	if os.Getenv("FRAMING_WRITE") == "1" {
+	if slowtest.Rewriting(t, "FRAMING_WRITE") {
 		if err := os.WriteFile(path, wire, 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -818,7 +819,7 @@ func TestMapDepthRootKindPin(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(root, "testdata/wire/tables/fuzz-vectors/map_depth_root_kind.bin")
-	if os.Getenv("FRAMING_WRITE") == "1" {
+	if slowtest.Rewriting(t, "FRAMING_WRITE") {
 		if err := os.WriteFile(path, wire, 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -862,7 +863,7 @@ func TestVariableArmKindPins(t *testing.T) {
 				t.Fatal(err)
 			}
 			path := filepath.Join(root, "testdata/wire/tables", tc.name+".bin")
-			if os.Getenv("FRAMING_WRITE") == "1" {
+			if slowtest.Rewriting(t, "FRAMING_WRITE") {
 				if err := os.WriteFile(path, wire, 0o644); err != nil {
 					t.Fatal(err)
 				}
@@ -943,7 +944,7 @@ func TestFixedRootVariablePointerArmPin(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(root, "testdata/wire/tables/a2_arm_pointer_as_int.bin")
-	if os.Getenv("FRAMING_WRITE") == "1" {
+	if slowtest.Rewriting(t, "FRAMING_WRITE") {
 		if err := os.WriteFile(path, wire, 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -980,7 +981,7 @@ func TestMessageTruncatedBytesPin(t *testing.T) {
 	}
 	wire := build(33, []byte{1, 2, 3}, false)
 	path := filepath.Join(root, "testdata/wire/tables/fuzz-vectors/message_bytes_truncated_isolated.bin")
-	if os.Getenv("FRAMING_WRITE") == "1" {
+	if slowtest.Rewriting(t, "FRAMING_WRITE") {
 		if err := os.WriteFile(path, wire, 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -1115,7 +1116,7 @@ func TestUnknownNodeFixedReaderPin(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(root, framingDir, v.name+".bin")
-	if os.Getenv("FRAMING_WRITE") == "1" {
+	if slowtest.Rewriting(t, "FRAMING_WRITE") {
 		if err := os.WriteFile(path, wire, 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -1163,7 +1164,7 @@ func TestCollectionKindMismatchPins(t *testing.T) {
 			t.Fatal(err)
 		}
 		path := filepath.Join(root, framingDir, name+".bin")
-		if os.Getenv("FRAMING_WRITE") == "1" {
+		if slowtest.Rewriting(t, "FRAMING_WRITE") {
 			if err := os.WriteFile(path, wire, 0o644); err != nil {
 				t.Fatal(err)
 			}
@@ -1229,7 +1230,7 @@ func TestNodeFieldWrongKindPin(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(root, framingDir, v.name+".bin")
-	if os.Getenv("FRAMING_WRITE") == "1" {
+	if slowtest.Rewriting(t, "FRAMING_WRITE") {
 		if err := os.WriteFile(path, wire, 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -1300,7 +1301,7 @@ func TestNestedDamageMidwayPin(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(root, framingDir, v.name+".bin")
-	if os.Getenv("FRAMING_WRITE") == "1" {
+	if slowtest.Rewriting(t, "FRAMING_WRITE") {
 		if err := os.WriteFile(path, wire, 0o644); err != nil {
 			t.Fatal(err)
 		}

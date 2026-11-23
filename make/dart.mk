@@ -40,8 +40,10 @@ test-dart: tables-dart-view
 .PHONY: toolchain-dart
 toolchain-dart:
 	@$(call toolchain_probe,dart,DART,$(DART))
-build/packet-defaults/dart/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema make/dart.mk
+build/packet-defaults/dart/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema $(wildcard test/conformance/packet/testdata/constant-defaults/*/Defaults.schema) make/dart.mk
 	./bin/schema generate --lang dart --out build/packet-defaults/dart/defaults test/packet-defaults/Defaults.schema
+	./bin/schema generate --lang dart --out build/packet-defaults/dart/constant-hexadecimal-addition test/conformance/packet/testdata/constant-defaults/hexadecimal-addition/Defaults.schema
+	./bin/schema generate --lang dart --out build/packet-defaults/dart/constant-unsigned-subtraction test/conformance/packet/testdata/constant-defaults/unsigned-subtraction/Defaults.schema
 	./bin/schema generate --lang dart --out build/packet-defaults/dart/plain test/packet-defaults/Plain.schema
 	@touch $@
 
@@ -693,6 +695,7 @@ define dart-cookwrite-nc-leg
 		test/conformance/dart/main.dart > $(DART_COOKWRITE_NC)/$(1)/main.dart
 	$(DART) compile exe -o $(DART_COOKWRITE_NC)/$(1)/driver-bin $(DART_COOKWRITE_NC)/$(1)/main.dart >/dev/null
 	@printf 'dart %s/build/conformance-dart\n' "$(CURDIR)" > $(DART_COOKWRITE_NC)/$(1)/clean-drivers.txt
+	@# loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
 	@./build/conformance-harness run --drivers $(DART_COOKWRITE_NC)/$(1)/clean-drivers.txt \
 			--work $(DART_COOKWRITE_NC)/$(1)/clean-work > $(DART_COOKWRITE_NC)/$(1)/clean-log 2>&1 || true
 	@awk '/^FAILURES/ { f = 1; next } f && /^  / { sub(/^  /, ""); print }' \
@@ -1051,6 +1054,7 @@ endef
 .PHONY: tables-dart-float-jit-negative-control
 tables-dart-float-jit-negative-control: toolchain-dart generated/dart/.stamp
 	@mkdir -p $(FLOATJIT_DIR)
+# loud-ok: defines the pin and run shell functions; every call below reads its status
 	@$(FLOATJIT_RUN); \
 	if run planted-exit 1 --verbose_gc -blade >$(FLOATJIT_DIR)/blade-exit.log; then \
 		echo "tables-dart-float-jit: BLADE LOST: a planted run that exits 3 was accepted"; exit 1; fi; \
@@ -1065,6 +1069,7 @@ tables-dart-float-jit-negative-control: toolchain-dart generated/dart/.stamp
 .PHONY: tables-dart-float-jit-boxing-negative-control
 tables-dart-float-jit-boxing-negative-control: toolchain-dart generated/dart/.stamp
 	@mkdir -p $(FLOATJIT_DIR)
+# loud-ok: defines the pin and run shell functions; every call below reads its status
 	@$(FLOATJIT_RUN); \
 	pin $(DART) || exit 1; \
 	run planted-box $(FLOATJIT_N) '$(FLOATJIT_FLAGS)' '' || { echo "tables-dart-float-jit: BLADE LOST: the planted boxing run was refused"; exit 1; }; \
@@ -1102,6 +1107,7 @@ tables-dart-float-jit-sdk-negative-control:
 .PHONY: tables-dart-float-jit
 tables-dart-float-jit: toolchain-dart generated/dart/.stamp tables-dart-float-jit-negative-control tables-dart-float-jit-sdk-negative-control tables-dart-float-jit-boxing-negative-control
 	@mkdir -p $(FLOATJIT_DIR)
+# loud-ok: defines the pin and run shell functions; every call below reads its status
 	@$(FLOATJIT_RUN); \
 	pin $(DART) || exit 1; \
 	fail=0; tier=0; for s in generated inlined twocallers; do \

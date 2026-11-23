@@ -3795,9 +3795,9 @@ pub fn bench_mixed_cook_body(v: &BenchMixed, w: &mut TableRegionWriter, at: i64)
     }
     w.put_text(at + 1248, v.player_name.as_bytes(), 15, at + 1264);
     w.put_text(at + 1268, &v.payload, 16, at + 1284);
-    w.put_f32(at + 1288, v.aim_x);
-    w.put_f32(at + 1292, v.aim_y);
-    w.put_f32(at + 1296, v.aim_z);
+    w.put_f32(at + 1288, if v.aim_x == 0.0 { 0.0 } else { v.aim_x });
+    w.put_f32(at + 1292, if v.aim_y == 0.0 { 0.0 } else { v.aim_y });
+    w.put_f32(at + 1296, if v.aim_z == 0.0 { 0.0 } else { v.aim_z });
     w.put_f32(at + 1300, v.recoil);
     w.put_f64(at + 1304, v.drift);
     w.put_wide(at + 1312, v.wide_key);

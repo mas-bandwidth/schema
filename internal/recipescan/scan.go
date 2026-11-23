@@ -65,6 +65,7 @@ const (
 	RuleStamp         = "stamp"
 	RuleUnchecked     = "unchecked"
 	RuleEarlyExit     = "early-exit"
+	RuleToolSkip      = "tool-skip"
 )
 
 // utilities are commands whose exit status is housekeeping or a question, not
@@ -102,6 +103,8 @@ type Stats struct {
 	Recipes   int // recipe logical lines
 	Scripts   int
 	Pipes     int
+	Workflows int
+	Steps     int // workflow run steps read
 }
 
 // scanShell applies the shell rules to one piece of shell text.
@@ -137,6 +140,10 @@ func scanShell(text string, ctx shellContext, st *Stats) []Finding {
 				if ctx.makefile && k > 0 && toks[k-1].op && toks[k-1].text == "&&" && k+1 < len(toks) &&
 					(toks[k+1].text == "$@" || toks[k+1].text == `"$@"`) && !onlyClosersAfterStatement(toks, k+1) {
 					add(t, RuleStamp, "the status of the command that guards \"touch $@\" is lost: later statements decide the recipe's status")
+				}
+			case "command", "which", "hash":
+				if msg := toolSkip(toks, k); msg != "" {
+					add(t, RuleToolSkip, msg)
 				}
 			case "case":
 				// the pattern list starts after "in"
@@ -467,6 +474,11 @@ func swallowAfterOr(toks []token, k int) string {
 			}
 		}
 	}
+	// "( cd dir && build ) || true": the subshell's status is its last
+	// command's, a build, though its first word is the utility cd.
+	if k > 0 && toks[k-1].op && toks[k-1].text == ")" {
+		return swallow + " after a subshell: " + clip(leftText(toks, k))
+	}
 	cmd := leftCommand(toks, k)
 	if cmd == "" {
 		return swallow + " after a compound command: " + clip(leftText(toks, k))
@@ -611,21 +623,38 @@ func ScanMakefile(file, src string, root, errexit bool, st *Stats) []Finding {
 			Text: "an included makefile sets SHELL or .SHELLFLAGS: only the root makefile may"})
 	}
 	inDefine := false
+	// DATA DEFINES. A define whose only use is "$(file >PATH,$(NAME))" is a
+	// file's text (a Lua program, a manifest), not a recipe: unless its first
+	// line is a shell's #! it is not read as shell.
+	written := map[string]bool{}
+	for _, m := range fileWrite.FindAllStringSubmatch(src, -1) {
+		written[m[1]] = true
+	}
+	lines := joinLines(src)
+	skipDefine := false
 	// prereqs is the number of normal prerequisites of the rule the recipe
 	// lines belong to, or -1 when it is not known (a canned recipe in a
 	// define that a $(call) expands).
 	prereqs := -1
-	for _, ll := range joinLines(src) {
+	for i, ll := range lines {
 		text := ll.text
 		trim := strings.TrimSpace(text)
+		if trim == "endef" && inDefine {
+			inDefine = false
+			skipDefine = false
+			continue
+		}
+		if skipDefine {
+			continue
+		}
 		if !strings.HasPrefix(text, "\t") {
 			if strings.HasPrefix(trim, "define ") {
 				inDefine = true
 				prereqs = -1
-				continue
-			}
-			if trim == "endef" {
-				inDefine = false
+				name := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(strings.TrimPrefix(trim, "define ")), "="))
+				if written[name] && (i+1 >= len(lines) || !ShellShebang(lines[i+1].text)) {
+					skipDefine = true
+				}
 				continue
 			}
 			if n, ok := ruleHeader(trim); ok {
@@ -665,6 +694,10 @@ func ScanMakefile(file, src string, root, errexit bool, st *Stats) []Finding {
 	}
 	return out
 }
+
+// fileWrite is make's "$(file >PATH,$(NAME))" (or >>), naming the define
+// whose text is written.
+var fileWrite = regexp.MustCompile(`\$\(file\s*>>?[^,]*,\$\(([A-Za-z0-9_.-]+)\)\)`)
 
 var (
 	setLine  = regexp.MustCompile(`(?m)^\s*set\s+(-[A-Za-z]+(\s+-[A-Za-z]+)*)(\s+-o\s+pipefail)?`)

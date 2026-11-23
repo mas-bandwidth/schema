@@ -7,7 +7,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/check"
@@ -41,32 +40,33 @@ table Shelf
 
 var stringLiteral = regexp.MustCompile(`"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'`)
 
-// shadowedCall reports a code line calling, by its plain name, a builtin the
-// module binds a class of the same name over — string
-// literals aside, which only quote names.
 // bindsName reports a module declaring or importing name at module scope.
 func bindsName(module, name string) bool {
 	return regexp.MustCompile(`(?m)^(?:export\s+)?class\s+`+name+`\b`).MatchString(module) ||
 		regexp.MustCompile(`(?m)^import\s*\{[^}]*\b`+name+`\b[^}]*\}`).MatchString(module)
 }
 
-var plainCalls sync.Map // name -> *regexp.Regexp, compiled once
-
-func plainCall(name string) *regexp.Regexp {
-	if re, ok := plainCalls.Load(name); ok {
-		return re.(*regexp.Regexp)
+// shadowCalls returns, for each of names the module binds a class of the same
+// name over, the pattern of code calling that builtin by its plain name. The
+// module is scanned for its bindings once here, never once per line: a
+// per-line scan of the whole module was quadratic in its length.
+func shadowCalls(module string, names ...string) []*regexp.Regexp {
+	var calls []*regexp.Regexp
+	for _, n := range names {
+		if bindsName(module, n) {
+			calls = append(calls, regexp.MustCompile(`(?:^|[^.$\w])`+n+`\.`))
+		}
 	}
-	re := regexp.MustCompile(`(?:^|[^.$\w])` + name + `\.`)
-	plainCalls.Store(name, re)
-	return re
+	return calls
 }
 
-func shadowedCall(module, code string, names ...string) bool {
+// shadowedCall reports a code line calling, by its plain name, a builtin the
+// module binds a class of the same name over (calls, from shadowCalls) —
+// string literals aside, which only quote names.
+func shadowedCall(code string, calls []*regexp.Regexp) bool {
 	code = stringLiteral.ReplaceAllString(code, `""`)
-	for _, n := range names {
-		// the cheap per-line match first: the module scan runs only for a line
-		// that calls the name, never for every line of every module
-		if plainCall(n).MatchString(code) && bindsName(module, n) {
+	for _, c := range calls {
+		if c.MatchString(code) {
 			return true
 		}
 	}
@@ -135,6 +135,7 @@ func TestJsTableBuiltinsSurviveSameNamedSchemaTypes(t *testing.T) {
 			continue
 		}
 		text := string(out[name])
+		calls := shadowCalls(text, "Number", "Math", "Map", "Set")
 		for i, line := range strings.Split(text, "\n") {
 			code := line
 			if at := strings.Index(code, "//"); at >= 0 {
@@ -143,7 +144,7 @@ func TestJsTableBuiltinsSurviveSameNamedSchemaTypes(t *testing.T) {
 			if strings.HasPrefix(strings.TrimSpace(code), "*") {
 				continue
 			}
-			if shadowedCall(text, code, "Number", "Math", "Map", "Set") {
+			if shadowedCall(code, calls) {
 				t.Errorf("%s:%d: a builtin the module's imported class shadows is called by its plain name: %s", name, i+1, strings.TrimSpace(line))
 			}
 		}

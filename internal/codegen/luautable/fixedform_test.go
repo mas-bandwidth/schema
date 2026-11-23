@@ -176,7 +176,7 @@ func TestLuauFixedFormAgreesWithTheByteOracle(t *testing.T) {
 			t.Parallel()
 			oracle, err := os.ReadFile(filepath.Join(corpus, v.file))
 			if err != nil {
-				if os.Getenv("SCHEMA_REQUIRE_CORPUS") == "" {
+				if !slowtest.CorpusRequired() {
 					t.Skip("the oracle is absent; SCHEMA_REQUIRE_CORPUS unset")
 				}
 				t.Fatalf("the oracle file %s is absent: build it with make tables-fixedform-corpus: %v", v.file, err)
@@ -273,14 +273,14 @@ func TestLuauFixedFormVersioning(t *testing.T) {
 	corpus := filepath.Join(root, "build", "fixedform-corpus")
 	oldOracle, err := os.ReadFile(filepath.Join(corpus, "fu1.bin"))
 	if err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") == "" {
+		if !slowtest.CorpusRequired() {
 			t.Skip("the FU1 oracle is absent; SCHEMA_REQUIRE_CORPUS unset")
 		}
 		t.Fatalf("the FU1 oracle is absent: make tables-fixedform-corpus: %v", err)
 	}
 	newOracle, err := os.ReadFile(filepath.Join(corpus, "fu2.bin"))
 	if err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") == "" {
+		if !slowtest.CorpusRequired() {
 			t.Skip("the FU2 oracle is absent; SCHEMA_REQUIRE_CORPUS unset")
 		}
 		t.Fatalf("the FU2 oracle is absent: make tables-fixedform-corpus: %v", err)
@@ -391,7 +391,7 @@ func TestLuauFixedFormRefusals(t *testing.T) {
 	corpus := filepath.Join(root, "build", "fixedform-corpus")
 	oracle, err := os.ReadFile(filepath.Join(corpus, "fx1.bin"))
 	if err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") == "" {
+		if !slowtest.CorpusRequired() {
 			t.Skip("the FX1 oracle is absent; SCHEMA_REQUIRE_CORPUS unset")
 		}
 		t.Fatalf("the FX1 oracle is absent: make tables-fixedform-corpus: %v", err)
@@ -473,7 +473,7 @@ func TestLuauFixedFormNegativeControl(t *testing.T) {
 	corpus := filepath.Join(root, "build", "fixedform-corpus")
 	oracle, err := os.ReadFile(filepath.Join(corpus, "fx1.bin"))
 	if err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") == "" {
+		if !slowtest.CorpusRequired() {
 			t.Skip("the FX1 oracle is absent; SCHEMA_REQUIRE_CORPUS unset")
 		}
 		t.Fatalf("the FX1 oracle is absent: make tables-fixedform-corpus: %v", err)

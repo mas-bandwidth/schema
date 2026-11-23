@@ -52,10 +52,42 @@ class TextParser:
     spans:[TextSpan] = []
     depth:int = 0
     labels:[JsonLabel] = []
+    tokens:int = 0
+    nodes:int = 0
+    alloc:int = 0
+
+// THE CONTRACT'S LIMITS (docs/SPEC-TABLES.md §16.9.4): the document's bytes,
+// its tokens (atoms and parentheses), its nodes (lists), the bytes its strings
+// decode to, and its list depth; one past any of them is text_limit, never a
+// prefix read. They are the defaults the reference takes.
+let text_max_bytes = 65536
+let text_max_tokens = 8192
+let text_max_nodes = 4096
+let text_max_alloc = 65536
 
 def t_set_fail(p:TextParser, name:string):
     if p.fail == "":
         p.fail = name
+
+// t_token counts one token (an atom, a string or a parenthesis); false and
+// text_limit when it is past the contract's count.
+def t_token(p:TextParser) -> bool:
+    p.tokens++
+    if p.tokens > text_max_tokens:
+        t_set_fail(p, "text_limit")
+        return false
+    return true
+
+// t_delimited: an atom ends at a gap, a parenthesis, a quote, a comment or
+// the end (§16.9.1); two atoms need a gap between them.
+def t_delimited(p:TextParser) -> bool:
+    if p.i >= p.n:
+        return true
+    let c = p.s[p.i]
+    if c == 32 or c == 9 or c == 10 or c == 13 or c == 59 or c == 40 or c == 41 or c == 34:
+        return true
+    t_set_fail(p, "text_syntax")
+    return false
 
 def t_gap(p:TextParser):
     while p.i < p.n:
@@ -84,6 +116,10 @@ def t_string(p:TextParser) -> TNode?:
         t_set_fail(p, "text_encoding")
         return nil
     p.i = r.pos
+    p.alloc += length(out)
+    if p.alloc > text_max_alloc:
+        t_set_fail(p, "text_limit")
+        return nil
     return TNode { kind: "str", lo: lo, hi: p.i, text: out }
 
 
@@ -94,10 +130,18 @@ def t_parse_value(p:TextParser) -> TNode?:
     if p.i >= p.n:
         t_set_fail(p, "text_unterminated")
         return nil
+    if not t_token(p):
+        return nil
     let c = p.s[p.i]
     if c == 40:
-        if p.depth > json_max_depth:
-            t_set_fail(p, "text_depth")
+        // THE DEPTH CAP IS 128 LISTS, the root included: the 129th is
+        // text_limit (§16.9.4)
+        if p.depth + 1 > json_max_depth:
+            t_set_fail(p, "text_limit")
+            return nil
+        p.nodes++
+        if p.nodes > text_max_nodes:
+            t_set_fail(p, "text_limit")
             return nil
         p.depth++
         let lo = p.i
@@ -109,6 +153,8 @@ def t_parse_value(p:TextParser) -> TNode?:
                 t_set_fail(p, "text_unterminated")
                 return nil
             if p.s[p.i] == 41:
+                if not t_token(p):
+                    return nil
                 p.i++
                 p.depth--
                 return TNode { kind: "list", lo: lo, hi: p.i, items: items }
@@ -130,12 +176,16 @@ def t_parse_value(p:TextParser) -> TNode?:
         if p.i == ns:
             t_set_fail(p, "text_syntax")
             return nil
+        if not t_delimited(p):
+            return nil
         return TNode { kind: "kw", lo: lo, hi: p.i, text: substring(p.s, ns, p.i - ns) }
     if t_name_char(c) or c == 45:
         let lo = p.i
         while p.i < p.n and (t_name_char(p.s[p.i]) or p.s[p.i] == 43):
             p.i++
         let tok = substring(p.s, lo, p.i - lo)
+        if not t_delimited(p):
+            return nil
         if tok == "true" or tok == "false":
             return TNode { kind: "bool", lo: lo, hi: p.i, text: tok }
         if tok == "null":
@@ -655,26 +705,38 @@ def t_fill(p:TextParser, n:TNode, d:TableDescriptor, path:string) -> Record?:
 // text_load reads one hand-editable document (§16.9.1-§16.9.2): the document
 // AND its typed Record, or nil with no usable pair (§16.9.4).
 def text_load(root:string, text:string) -> TextDoc?:
+    let doc, _ = text_read(root, text)
+    return doc
+
+def t_why(p:TextParser) -> string:
+    return if p.fail == "": "text_syntax" else: p.fail
+
+// text_read is text_load with the refusal's name: "" when it read (or the
+// root has no text form), else the §16.9.4 name (text_limit, text_syntax, ...).
+def text_read(root:string, text:string) -> TextDoc?, string:
     let d = lookup_table(root)
     if not d or not d.json_form:
-        return nil
+        return nil, ""
+    // THE BYTE LIMIT is checked before anything is read (§16.9.4)
+    if length(text) > text_max_bytes:
+        return nil, "text_limit"
     var at = 0
     while at < length(text):
         let width = j_utf8_sequence(text, at)
         if width <= 0:
-            return nil
+            return nil, "text_encoding"
         at += width
     let p = TextParser { s: text, n: length(text), i: 0 }
     let node = t_parse_value(p)
     if not node or p.fail != "":
-        return nil
+        return nil, t_why(p)
     t_gap(p)
     if p.i != p.n or p.fail != "":
-        return nil
+        return nil, t_why(p)
     let rec = t_fill(p, node, d, "")
     if not rec or p.fail != "":
-        return nil
-    return TextDoc { text: text, rec: rec, spans: p.spans, root: root }
+        return nil, t_why(p)
+    return TextDoc { text: text, rec: rec, spans: p.spans, root: root }, ""
 
 // text_save writes a document back: the retained bytes (§16.9.3).
 def text_save(doc:TextDoc) -> string:

@@ -264,7 +264,9 @@ C_CONFORMANCE_OBJECTS = $(addprefix $(C_CONFORMANCE_OBJDIR)/,$(C_CONFORMANCE_SOU
 
 $(filter build/tables-generated-c/%,$(C_CONFORMANCE_SOURCES)): build/tables-generated-c/.stamp ;
 
-$(C_CONFORMANCE_OBJDIR)/%.o: %.c build/tables-generated-c/.stamp $(wildcard test/conformance/c/*.h)
+# the serialize.c runtime is a sibling checkout the compiler reads through -I:
+# a header edited there must rebuild the objects that include it
+$(C_CONFORMANCE_OBJDIR)/%.o: %.c build/tables-generated-c/.stamp $(wildcard test/conformance/c/*.h) $(wildcard $(SERIALIZE_C)/*.h)
 	@mkdir -p $(@D)
 	$(CC) $(TABLES_CFLAGS) $(C_CONFORMANCE_INCLUDES) -c $< -o $@
 
@@ -317,7 +319,8 @@ tables-c-json-walk: build/tables-generated-c/.stamp
 		pkg=$$(grep -o 'package [a-z0-9_]*' $$f | sed -n 1p | cut -d' ' -f2); \
 		PKG=$$(printf '%s' "$$pkg" | tr 'a-z' 'A-Z'); \
 		awk '/---- json walk: begin ----/,/---- json walk: end ----/' $$f \
-			| perl -pe "s/\bSCHEMA_$${PKG}_/SCHEMA_\@P\@_/g; s/\bschema_$${pkg}_/schema_\@p\@_/g; s/\b$${PKG}_/\@P\@_/g; s/\b$${pkg}_/\@p\@_/g" > $$out; \
+			| perl -pe "s/\bSCHEMA_$${PKG}_/SCHEMA_\@P\@_/g; s/\bschema_$${pkg}_/schema_\@p\@_/g; s/\b$${PKG}_/\@P\@_/g; s/\b$${pkg}_/\@p\@_/g" > $$out || \
+			{ echo "json walk: extracting the walk from $$f failed"; exit 1; }; \
 		if [ ! -s $$out ]; then \
 			if grep -q "VARIABLE-LENGTH. Its text form reads through the builder" $${f%.c}.h; then rm -f $$out; continue; fi; \
 			echo "GENERIC-WALK GATE FAILED: no walker in $$f"; exit 1; \
@@ -2119,7 +2122,7 @@ tables-c-two-units-negative-controls: build/c-two-units/main
 	@grep -q 'generated against a different SchemaRuntime.h' build/c-two-units/runtime/log || { cat build/c-two-units/runtime/log; exit 1; }
 	@echo 'negative control: a SchemaRuntime.h version mismatch stops the build by name'
 	@rm -rf build/c-two-units/qualify && mkdir -p build/c-two-units/qualify
-	@sed 's|return cqualify.Qualify(files, u.Package)|_ = cqualify.Qualify; return files, nil // SABOTAGED|' compiler/target_c.go > build/c-two-units/qualify/target_c.go.txt
+	@sed 's|return cqualify.QualifyEscaped(files, u.Package, table)|_ = cqualify.QualifyEscaped; for n, d := range files { files[n] = []byte(table.Unescape(string(d))) }; return files, nil // SABOTAGED|' compiler/target_c.go > build/c-two-units/qualify/target_c.go.txt
 	@n=$$(grep -c SABOTAGED build/c-two-units/qualify/target_c.go.txt); \
 		if [ "$$n" != "1" ]; then echo "NEGATIVE CONTROL: the sabotage patched $$n lines, expected exactly 1"; exit 1; fi
 	@printf '{"Replace":{"%s/compiler/target_c.go":"%s/build/c-two-units/qualify/target_c.go.txt"}}\n' "$(CURDIR)" "$(CURDIR)" > build/c-two-units/qualify/overlay.json

@@ -217,7 +217,7 @@ public abstract unsafe class TableBuilder : IDisposable
 `
 
 func tableBuilderWireSource(u *ir.Unit) string {
-	cap := ir.TableWireIdCapacity(u)
+	cap := min(ir.TableWireIdCapacity(u), ir.TableWireIdTableBound)
 	return `
     public static void ResetNative(IntPtr pointer, TableTypeInfo type) { NativeReset(new NativeValue((byte*)pointer, 0), type); }
     public static long MeasureBuilder(IntPtr root, TableTypeInfo type, TableAllocator allocator, bool mutable = false)

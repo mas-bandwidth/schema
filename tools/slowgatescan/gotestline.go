@@ -308,7 +308,12 @@ func parseGoTestLine(cmd string) goTestLine {
 		if m == nil {
 			l.unreadEnv = "GOTOOLCHAIN=" + tc + " does not pin one toolchain, so its release tags cannot be read"
 		} else {
-			l.releaseMinor, _ = strconv.Atoi(m[1])
+			minor, err := strconv.Atoi(m[1])
+			if err != nil {
+				l.unreadEnv = "GOTOOLCHAIN=" + tc + " names a minor version too wide to read"
+			} else {
+				l.releaseMinor = minor
+			}
 		}
 	}
 	for _, name := range untrackedContext {

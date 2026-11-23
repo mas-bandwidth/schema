@@ -308,11 +308,13 @@ func main() {
 			opts.claims = set
 		}
 		opts.results = *resultsOut
+		opts.summary = os.Getenv("GITHUB_STEP_SUMMARY")
 		runSurfaces, err := parseSurfaces(*onlySurfaces)
 		if err != nil {
 			fatalf("%v", err)
 		}
 		opts.only = runSurfaces
+		opts.strictRows = true
 		ok, err := runWith(os.Stdout, m, *manifest, *jsonDir, *reports, *drivers, *work, *only, *skip, opts)
 		if err != nil {
 			fatalf("%v", err)
