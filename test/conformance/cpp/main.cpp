@@ -61,6 +61,8 @@
 // the SHAPES unit (test/tables/shapes): bounds a float32 cannot hold exactly,
 // -0, counted arrays with a Min, a degenerate fixed field, scalar union arms
 #include "ShapesTable.h"
+// an ARRAY OF PACKET UNIONS in a variable and a fixed table (docs/SPEC-TABLES.md §2.6)
+#include "PacketUnionsTable.h"
 // the MESSAGE FORM's units (docs/SPEC-TABLES.md §3.3): the three backend
 // messages the ruling measured, and the WIDE-VOCABULARY unit whose slots fall
 // on both sides of the one-byte boundary
@@ -399,6 +401,7 @@ static const Codec codecs[] = {
     CODEC( "cooktorture", cooktorture, TortureFixedWref ),
     // the SHAPES unit (test/tables/shapes), opted in by `list` below
     CODEC( "shapes", shapes, FixedBounds ),
+    CODEC( "packetunions", tblpacketunions, ShapeMsg ),
 };
 
 // ---------------------------------------------------------------------------
@@ -511,6 +514,7 @@ static const VarCodec var_codecs[] = {
     VARCODEC( "cooktorture", cooktorture, TortureCook ),
     VARCODEC( "cooktorturewide", cooktorturewide, TortureWideCook ),
     VARCODEC( "shapes", shapes, Bounds ),
+    VARCODEC( "packetunions", tblpacketunions, ShapeDoc ),
 
     VARCODEC( "graphdemo", graphdemo, Scene ),
     VARCODEC( "graphdemo", graphdemo, ListNode ),
@@ -598,6 +602,7 @@ static const MsgCodec msg_codecs[] = {
     // ranged value takes, read against an earlier release's announcement
     MSGCODEC( "tblprior", tblprior, Prior ),
     MSGCODEC( "messagedemo", messagedemo, ToolMessage ),
+    MSGCODEC( "packetunions", tblpacketunions, ShapeMsg ),
 };
 
 // ---------------------------------------------------------------------------
