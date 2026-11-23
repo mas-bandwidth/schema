@@ -8327,7 +8327,10 @@ one FIELD (or union ARM) under a parent path `P`:
      field's or arm's name id, kind = `16` for an enum-keyed array, `14` for any
      other array or a `bytes(N)`, else the field's own layout leaf kind: `13`
      table, `15` union, `12` string, `7` enum, `9` flags, `5` timestamp, the
-     scalar's kind otherwise).
+     scalar's kind otherwise). For `bits(N)`, the kind follows the declared
+     bit count as in the layout entry: `6` for 1–8, `7` for 9–16, `8` for
+     17–32, and `9` for 33–64. A `bits(6)` uses kind `6` in the path and
+     occupies four bytes in the record.
   2. An optional field appends segment `?`, kind `35`, id `0`.
   3. A COUNTED array emits row `C` at that path: the minimum count, `u64`.
   4. An array or keyed array (not a `bytes(N)`, which has no element segment)

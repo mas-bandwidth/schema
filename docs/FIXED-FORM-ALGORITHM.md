@@ -828,9 +828,10 @@ tag, held by `compiler/fixed_digest_vector_test.go`):
   tags are the ASCII bytes `C`, `R`, `D`, `Q`, `B`, `X`, `F`.
 - **The kind in a path segment and in an `R`/`D` payload is the LEAF kind**, `TableFixedLeafKind`: the variable
   wire's scalar kind with `timestamp` taken as `5`. An ENUM's leaf kind is `7` — the enum's VARIABLE-wire kind —
-  never the layout's `30`; a `flags` is `9`; a `bits(N)` is its storage's unsigned kind; a nested table or type is
-  `13`, a union `15`. A field segment of an array or `bytes(N)` field carries `14` and of a keyed array `16`; its
-  `e` segment then carries the element's leaf kind.
+  never the layout's `30`; a `flags` is `9`; a nested table or type is `13`, a union `15`. For `bits(N)`, use
+  `6` for 1–8 bits, `7` for 9–16, `8` for 17–32, and `9` for 33–64, as in the layout entry. For example,
+  `bits(6)` uses kind `6` in the path and occupies four bytes in the record. A field segment of an array or
+  `bytes(N)` carries `14` and of a keyed array `16`; its `e` segment then carries the element's leaf kind.
 - **Order inside one field**: the field segment (and its `?` segment), then the `C` row, then the `e` segment
   for an array or keyed array, then `R` — or `D` followed by `Q` — then `B`, then `X`, then `F`, then the rows of a
   nested table's fields or of each union arm's payload in declared order. A payload-free arm emits nothing.
