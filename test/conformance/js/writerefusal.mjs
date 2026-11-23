@@ -301,7 +301,7 @@ function writes(name, write) {
 // root's cook writer beside it), `messageUnit(unit, root)` the root's message
 // verbs, and `fixedValueOf(unit, root, wire)` the generated fixed class loaded
 // from the wire, or fresh where the wire is `-`.
-export async function surfaceWriteRefusal(surface, lines, outDir, codecFor, messageUnit, fixedValueOf) {
+export async function surfaceWriteRefusal(surface, lines, outDir, codecFor, messageUnit, fixedValueOf, blockUnit) {
   for (const f of lines) {
     if (f[0] !== surface) { continue; }
     // <surface> <case> <unit> <root> <wire> <path> <kind> <value>
@@ -318,6 +318,20 @@ export async function surfaceWriteRefusal(surface, lines, outDir, codecFor, mess
       answer = !setFixed(x, path, kind, text) ? "unrepresentable" : writes(name, () => {
         const size = m.measure([x], {});
         return size >= 0 && m.save([x], new Uint8Array(size), {}) === size;
+      });
+      writeFileSync(join(outDir, name), answer + "\n");
+      continue;
+    }
+    if (surface === "write-refusal-block") {
+      const blk = await blockUnit(unit, root);
+      if (blk === null || typeof blk.BeginFrom !== "function") {
+        absent(outDir, name, "the generated unit " + unit + " carries no " + root + "Block.BeginFrom: docs/SPEC-TABLES.md §19.1");
+        continue;
+      }
+      const x = await fixedValueOf(unit, root, wirePath);
+      if (x === null) { absent(outDir, name, "no fixed class for " + unit + "." + root + " on this leg"); continue; }
+      answer = !setFixed(x, path, kind, text) ? "unrepresentable" : writes(name, () => {
+        return blk.BeginFrom(new Uint8Array(blk.MaxBytes), x) >= 0;
       });
       writeFileSync(join(outDir, name), answer + "\n");
       continue;

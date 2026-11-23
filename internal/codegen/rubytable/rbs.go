@@ -502,6 +502,7 @@ func emitRBS(u *ir.Unit, mod string, plans []*filePlan, surfaces Surfaces, hasMe
 			if surfaceCarries(surfaces, st, "block") {
 				b.WriteString("    def self.block_open: (untyped data, ?build_version: untyped, ?base_offset: Integer) -> SchemaTable::Block\n")
 				b.WriteString("    def self.block_begin: (?untyped counts) -> SchemaTable::Block\n")
+				b.WriteString("    def self.block_begin_from: (untyped value) -> SchemaTable::Block\n")
 				b.WriteString("    def self.block_max_bytes: () -> Integer\n")
 			}
 			if surfaceCarries(surfaces, st, "cook") {

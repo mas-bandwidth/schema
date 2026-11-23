@@ -140,6 +140,7 @@
     def self.attach_text_comments: (untyped, untyped, untyped, untyped) -> untyped
     def self.binary_input: (untyped) -> untyped
     def self.block_begin: (untyped, ?untyped) -> untyped
+    def self.block_begin_from: (untyped, untyped) -> untyped
     def self.block_buffer_bytes: (untyped) -> untyped
     def self.block_dump: (untyped) -> untyped
     def self.block_dump_record: (untyped, untyped, untyped, untyped, untyped) -> untyped
