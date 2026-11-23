@@ -1,9 +1,9 @@
-#!/bin/sh
+#!/bin/bash
 # make/checks/wire-fuzz-release-run.sh — ONE RUN of the release-tier wire-fuzz
 # gate (make/wire-fuzz-release.mk): one leg, one arm, one seed, through the
 # shared harness, written as one row of the gate's table.
 #
-#   sh make/checks/wire-fuzz-release-run.sh <leg> <arm> <seed> <n> <dir>
+#   bash make/checks/wire-fuzz-release-run.sh <leg> <arm> <seed> <n> <dir>
 #
 # <arm> is `plain` or `retain` (the harness's --retain). The leg's driver
 # command, extra harness flags and environment arrive as WFR_DRIVER, WFR_FLAGS
@@ -54,10 +54,11 @@ fi
 retain=
 [ "$arm" = retain ] && retain=--retain
 start=$(date +%s)
+# A failed harness is a scored run. Save its status for the row writer.
+status=0
 # shellcheck disable=SC2086 # WFR_ENV and WFR_FLAGS are word lists by design
 env ${WFR_ENV:-} ./build/conformance-harness wire-fuzz ${WFR_FLAGS:-} $retain \
-	--driver "$WFR_DRIVER" --seed "$seed" --n "$n" --failed "$base.bin" > "$log" 2>&1
-status=$?
+	--driver "$WFR_DRIVER" --seed "$seed" --n "$n" --failed "$base.bin" > "$log" 2>&1 || status=$?
 secs=$(( $(date +%s) - start ))
 # shellcheck disable=SC2086
 $tool row -leg "$leg" -arm "$arm" -seed "$seed" -dir "$dir" -owed "$owedfile" -absent "$absentfile" -status "$status" -secs "$secs" -n "$n" || exit 2
