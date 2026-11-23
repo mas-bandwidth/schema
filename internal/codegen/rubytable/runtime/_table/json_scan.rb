@@ -182,7 +182,7 @@ module SchemaRuntimeUnit
       def scan_value(depth)
         b = peek
         if b == 123 || b == 91
-          fail_scan if depth > 256
+          fail_scan if depth > MAX_DEPTH
           @pos += 1
           return b == 123 ? scan_object(depth) : scan_array(depth)
         end

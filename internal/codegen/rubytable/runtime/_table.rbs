@@ -105,6 +105,7 @@
     FLOAT32_MAX: untyped
     FLOAT32_OVERFLOW: untyped
     FORM: untyped
+    HELD_KINDS: untyped
     HEX_DIGITS: untyped
     HOST_BIG_ENDIAN: untyped
     ID_BOUND: untyped
@@ -202,7 +203,7 @@
     def self.encode_retain_table: (untyped, untyped, untyped, untyped) -> untyped
     def self.encode_table: (untyped, untyped) -> untyped
     def self.encode_text: (untyped) -> untyped
-    def self.fill_json_object: (untyped, untyped, untyped, untyped, ?untyped) -> untyped
+    def self.fill_json_object: (untyped, untyped, untyped, untyped) -> untyped
     def self.finite_float32: (untyped, untyped) -> untyped
     def self.float32_bits: (untyped) -> untyped
     def self.float32_bits_eq?: (untyped, untyped) -> untyped
@@ -278,11 +279,11 @@
     def self.read_field_codec: (untyped, untyped, untyped) -> untyped
     def self.read_float_element: (untyped, untyped) -> untyped
     def self.read_int_element: (untyped, untyped) -> untyped
-    def self.read_json_field: (untyped, untyped, untyped, untyped, ?untyped) -> untyped
+    def self.read_json_field: (untyped, untyped, untyped, untyped) -> untyped
     def self.read_json_fixed: (untyped, untyped) -> untyped
     def self.read_json_float: (untyped, untyped) -> untyped
     def self.read_json_integer: (untyped, untyped) -> untyped
-    def self.read_json_keyed: (untyped, untyped, untyped, untyped, untyped, ?untyped) -> untyped
+    def self.read_json_keyed: (untyped, untyped, untyped, untyped, untyped) -> untyped
     def self.read_json_timestamp: (untyped, untyped) -> untyped
     def self.read_keyed_field: (untyped, untyped, untyped) -> untyped
     def self.read_map_field: (untyped, untyped, untyped) -> untyped
@@ -329,7 +330,7 @@
     def self.skip_array: (untyped, untyped, untyped) -> untyped
     def self.skip_body: (untyped, untyped, untyped) -> untyped
     def self.skip_content: (untyped, untyped, untyped, untyped) -> untyped
-    def self.skip_json_unknown: (untyped, untyped, ?untyped) -> untyped
+    def self.skip_json_unknown: (untyped, untyped) -> untyped
     def self.skip_keyed: (untyped, untyped, untyped) -> untyped
     def self.skip_payload: (untyped, untyped, untyped, untyped) -> untyped
     def self.skip_union: (untyped, untyped, untyped) -> untyped

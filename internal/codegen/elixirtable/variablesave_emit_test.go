@@ -46,7 +46,7 @@ fixed table Fx
 	want := []struct{ what, needle string }{
 		{"every active field is held, not only required ones", "        if Map.get(f, :text_list, false), do: validate_text_list(f, v)\n        write_value(f, v)\n"},
 		{"a union arm payload is held", "{:ok, a} -> write_value(a, if(payload == nil, do: a.default, else: payload))"},
-		{"an over-long [N]T refuses", "if Map.has_key?(f, :fixed_array) and n > f.fixed_array, do: throw(:invalid_value)"},
+		{"an off-length [N]T refuses", "if Map.has_key?(f, :fixed_array) and n != f.fixed_array, do: throw(:invalid_value)"},
 		{"a counted array's Min is held on write", "(n < Map.get(f, :min_count, 0) or n > f.array_bound)"},
 		{"a counted array's Min is held on read", "defp clamp_count(n, %{min_count: min}, _report) when n < min,"},
 		{"an enum name outside the set, or a retired one, refuses", `(not Map.has_key?(f.by_name, name) or name in Map.get(f, :retired, [])),`},

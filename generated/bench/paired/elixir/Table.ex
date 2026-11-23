@@ -251,7 +251,6 @@ defmodule Bench.Table do
           array: :counted,
           min_count: 1,
           max_count: 8,
-          min_count: 1,
           elem_t: :record,
           shape: :table,
           bound: nil,
@@ -4976,9 +4975,6 @@ defmodule Bench.Table do
   # a count past a bounded array's declared bound reads the first bound
   # elements and counts one refusal, before any element is read, so the
   # elements past the bound are never asked of the body (docs/SPEC-TABLES.md §4)
-  defp clamp_count(n, %{min_count: min}, _report) when n < min,
-    do: {min, throw(:wire_damaged)}
-
   defp clamp_count(n, %{max_count: max}, _report) when n > max,
     do: {max, throw(:wire_damaged)}
 
@@ -5354,6 +5350,8 @@ defmodule Bench.Table do
   # EVERY field it writes to its declaration, required or not, and every
   # union arm payload and array element with it, before a byte is built.
   defp validate_record(desc, value) do
+    value = Map.merge(defaults(desc), value)
+
     Enum.each(desc.fields, fn f ->
       if field_active?(f, desc, value) do
         v = Map.get(value, f.name, f.default)
@@ -5385,9 +5383,9 @@ defmodule Bench.Table do
       true ->
         n = length(values)
 
-        # a [N]T carries exactly N elements: a shorter value is padded with the
-        # element default (pad_fixed/2), a longer one refuses, never cut
-        if Map.has_key?(f, :fixed_array) and n > f.fixed_array, do: throw(:invalid_value)
+        # a [N]T carries exactly N elements: shorter or longer refuses, never
+        # padded or cut (docs/SPEC.md §5.1, SF-34)
+        if Map.has_key?(f, :fixed_array) and n != f.fixed_array, do: throw(:invalid_value)
 
         if Map.get(f, :array) == :counted and
              (n < Map.get(f, :min_count, 0) or n > f.array_bound),
@@ -5407,7 +5405,8 @@ defmodule Bench.Table do
 
       true ->
         Enum.each(f.key_names, fn name ->
-          write_value(f.item, Map.get(slots, name, f.item.default))
+          if not Map.has_key?(slots, name), do: throw(:invalid_value)
+          write_value(f.item, Map.fetch!(slots, name))
         end)
     end
   end
@@ -8009,10 +8008,7 @@ defmodule Bench.Table do
         json_label(bin)
       end
     else
-      case json_skip(bin) do
-        <<"[", rest::binary>> -> json_array_p(rest, depth)
-        other -> json_value(other, depth + 1)
-      end
+      json_value(bin, depth + 1)
     end
   end
 
