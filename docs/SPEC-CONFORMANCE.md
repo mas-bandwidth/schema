@@ -31,6 +31,13 @@ conformance:
   over zeroed storage. `unsigned-subtraction` is the row for SPEC §4.2's rule
   that a field never shadows a same-named constant: a target that emits
   `half = half` fails to compile (Dart did, caught by this pin).
+- **Variable-form optional evolution** ([SPEC-TABLES §2.3](SPEC-TABLES.md)):
+  the shared table cases `chain_value` and `chain_optional` pin identical
+  nondefault encodings. `chain_value_empty` elides the default plain field,
+  while `chain_optional_empty` encodes a present optional with default
+  contents. When the plain field widens to optional, the newer reader
+  observes the elided field as absent. The cross-version report cases are
+  `p1_empty_as_p3` and `p3_empty_as_p1`.
 - **The cards corpus**: `tables/cards/conformance/` (`MANIFEST.txt`,
   `FORMAT.md`, `cases/`, `expected/`).
 - **The harness and driver contract**: `test/conformance/` (the harness in
