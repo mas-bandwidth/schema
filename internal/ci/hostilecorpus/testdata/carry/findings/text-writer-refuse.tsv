@@ -1,0 +1,1 @@
+conformance-base64-empty	carry-writer	inputs/conformance-base64-empty.json	refuse	carry control: a writer that throws after the reader accepts is not a refusal

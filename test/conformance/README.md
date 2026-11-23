@@ -220,7 +220,7 @@ One process per surface, so a runtime starts once rather than once per case.
 `wire` and `json-read` write a file named by the instance; `json-write` writes
 `<instance>.json`; the others write a file named by the case.
 
-**FOUR RULES A PORT READS HERE AND NOWHERE ELSE** (docs/SPEC-CONFORMANCE.md §8):
+**FOUR RULES A PORT READS HERE AND NOWHERE ELSE** (docs/SPEC-CONFORMANCE.md §7):
 
 - **The `framing` surface reads its root through the root's VARIABLE TWIN.**
   Its vectors are form-`1` files, and every one names `tblr1 Cfg`, a declared

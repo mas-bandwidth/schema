@@ -30,7 +30,7 @@ func init() {
 // stays, and nothing in _jsonText sees a zero.
 func init() {
 	sabotages["table-dart-text-zero"] = []edit{{
-		old: "  if (!_wideValid(s.codeUnits)) throw const FormatException('string_lone_surrogate (docs/SPEC-TABLES.md §16.3)');\n  if (s.contains('\\u0000')) throw const FormatException('text_holds_zero (docs/SPEC-TABLES.md §16.3)');\n  return s;",
+		old: "  if (s.contains('\\u0000')) throw const FormatException('text_holds_zero (docs/SPEC-TABLES.md §16.3)');\n  if (!_wideValid(s.codeUnits)) throw const FormatException('string_lone_surrogate (docs/SPEC-TABLES.md §16.3)');\n  return s;",
 		new: "  if (!_wideValid(s.replaceAll('\\u0000', '').codeUnits)) throw const FormatException('string_lone_surrogate (docs/SPEC-TABLES.md §16.3)');\n  return s; // SABOTAGED: text_holds_zero removed",
 	}}
 }
