@@ -2208,7 +2208,9 @@ inline bool TableJsonWriteScalar( TableJsonOut & out, const void * storage, cons
         if ( (int64_t) value > f->enum_max ) { return false; }
         // A DEPRECATED VARIANT IS NEVER WRITTEN (docs/SPEC-TABLES.md §2.15):
         // a write-side check, so a debug assert in this language (SPEC.md §5.1)
+#ifdef schema_assert
         schema_assert( f->enum_deprecated == NULL || !f->enum_deprecated( value ) );
+#endif
         if ( value != 0 && f->variant_id( value ) == 0 ) { return false; }
         const char * name = f->enum_name( value );
         if ( !TableJsonNamed( name ) ) { return false; }

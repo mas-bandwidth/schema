@@ -3513,6 +3513,7 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 		if f.Type.Kind == ir.TNamed {
 			enumMax = fmt.Sprintf("%d", ref.Max)
 			if lambda := enumDeprecatedLambda(ref); lambda != "" {
+				g.storageAsserts = true
 				enumDefault = fmt.Sprintf("%d", enumDefaultOrdinal(f, ref))
 				enumDeprecated = lambda
 			}
