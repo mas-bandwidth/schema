@@ -678,13 +678,6 @@ independent measure require it to complete too. The paired caller
 values outside the declared bound require the target’s write refusal
 ([SPEC §5.1](SPEC.md#51-the-write-contract)).
 
-The `sfw_opt_arr_ok` edit grows the present array from `[1, 2]` to
-`[1, 2, 1]`. The driver preserves the existing elements and copies element
-zero into the new slot. Its save must match the
-[canonical resized file](../testdata/conformance/table-write-bounds/expected/torture_var_wref_resized.bin),
-which decodes to that array with the other fields unchanged. Run `make table-optional-array-resize-go` for the
-standalone generated Go test. An observed `[1, 2, 0]` fails even when the save succeeds.
-
 | Carrier | Accepted cases | Refused cases |
 |---|---|---|
 | Present optional counted array, maximum 3 | `sfw_opt_arr_ok` | `sfw_opt_arr_long` |
@@ -705,6 +698,16 @@ byte in a string arm. Targets beyond the eight registered drivers still owe shar
 
 Existing fixed writer cases `fref_count_min` and `fref_count_min_ok` cover
 SF-21 below and at the minimum.
+
+#### Present optional array grown from two elements to three
+
+Load the [seed](../testdata/conformance/table-write-bounds/torture_var_wref.bin)
+as `TortureVarWref`. The `sfw_opt_arr_ok` edit grows the present array from `[1, 2]` to
+`[1, 2, 1]`. The driver preserves the existing elements and copies element
+zero into the new slot. Its save must match the
+[252-byte canonical resized file](../testdata/conformance/table-write-bounds/expected/torture_var_wref_resized.bin),
+which decodes to that array with the other fields unchanged. Run `make table-optional-array-resize-go` for the
+standalone generated Go test. An observed `[1, 2, 0]` fails even when the save succeeds.
 
 #### Maximum Form 1 payloads
 
