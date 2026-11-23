@@ -24,6 +24,7 @@ module RubyConformanceMain
   def self.main(argv)
     if argv.length == 2 && argv[1] == 'list'
       surface_names.each { |name| puts name }
+      puts 'unit shapes'
       return 0
     end
     if argv.length == 3

@@ -38,6 +38,7 @@ def main(argv):
     if len(argv) == 3 and argv[2] == "list":
         for name in surface_names():
             print(name)
+        print("unit shapes")
         return 0
     if len(argv) == 4:
         name = argv[2]

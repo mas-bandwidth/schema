@@ -212,6 +212,8 @@ build/tables-generated-java/.stamp: bin/schema make/java.mk $(wildcard testdata/
 	rm -rf build/tables-generated-java/backend && ./bin/schema generate --lang java --out build/tables-generated-java/backend tables/backend
 	rm -rf build/tables-generated-java/vocab && ./bin/schema generate --lang java --out build/tables-generated-java/vocab tables/vocab
 	rm -rf build/tables-generated-java/vocab9 && ./bin/schema generate --lang java --out build/tables-generated-java/vocab9 tables/vocab9
+	rm -rf build/tables-generated-java/prior && ./bin/schema generate --lang java --out build/tables-generated-java/prior test/tables/prior/PriorNarrow.schema
+	rm -rf build/tables-generated-java/shapes && ./bin/schema generate --lang java --out build/tables-generated-java/shapes test/tables/shapes/Shapes.schema
 	@touch $@
 
 # THE GENERATED TREE IS FRESH (a stale file is not the emitter's output). Every
@@ -1717,6 +1719,7 @@ build/conformance-java/.stamp: build/tables-generated-java/.stamp test/conforman
 		build/tables-generated-java/k1/*.java build/tables-generated-java/k2/*.java \
 		build/tables-generated-java/backend/*.java build/tables-generated-java/vocab/*.java \
 		build/tables-generated-java/vocab9/*.java \
+		build/tables-generated-java/prior/*.java build/tables-generated-java/shapes/*.java \
 		$(if $(wildcard testdata/conformance/feature-witnesses/full/Features.schema),build/tables-generated-java/featurewitnesses/*.java) \
 		test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
 	@touch $@

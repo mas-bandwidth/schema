@@ -16,7 +16,7 @@ def _convert_scalar(current, rule, token):
         return int(token)
     if rule == "bool":
         return token.lower() in ("true", "1")
-    if rule == "float":
+    if rule in ("float", "real"):
         return float(token)
     if rule == "bytes":
         raw = bytes.fromhex(token)

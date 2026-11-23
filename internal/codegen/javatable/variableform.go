@@ -5903,8 +5903,16 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	case f.Type.Kind == ir.TBool:
 		fmt.Fprintf(b, "        b.append(v.%s ? \"true\" : \"false\");\n", m)
 	case f.Type.Kind == ir.TFloat32:
+		if f.HasFloatRange {
+			lo, hi, _ := fixedFloatRange(f)
+			fmt.Fprintf(b, "        if (v.%s < %s || v.%s > %s) { throw new TableJson.Refused(\"out_of_range\"); }\n", m, lo, m, hi)
+		}
 		fmt.Fprintf(b, "        TableJson.writeFloat(b, %s, true);\n", javaStoredFloat(f, "v."+m))
 	case f.Type.Kind == ir.TFloat64:
+		if f.HasFloatRange {
+			lo, hi, _ := fixedFloatRange(f)
+			fmt.Fprintf(b, "        if (v.%s < %s || v.%s > %s) { throw new TableJson.Refused(\"out_of_range\"); }\n", m, lo, m, hi)
+		}
 		fmt.Fprintf(b, "        TableJson.writeFloat(b, %s, false);\n", javaStoredFloat(f, "v."+m))
 	case (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits) && f.Type.Width <= 32:
 		if f.Type.Kind == ir.TBits {

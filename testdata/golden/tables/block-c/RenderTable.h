@@ -8376,7 +8376,6 @@ static SCHEMA_UNUSED int blockdemo_render_static_prop_save_body( blockdemo_table
             blockdemo_table_writer_header_at( w, 32, 0x6aacb9fbb71a1d91ull, 11 );
             if ( !blockdemo_table_double_finite( value->scale ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->scale ) );
-            blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->scale ) );
         }
     }
     { /* flags */
@@ -9136,7 +9135,6 @@ static SCHEMA_UNUSED int blockdemo_render_cosmetic_prop_save_body( blockdemo_tab
         {
             blockdemo_table_writer_header_at( w, 32, 0x6aacb9fbb71a1d91ull, 11 );
             if ( !blockdemo_table_double_finite( value->scale ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
-            blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->scale ) );
             blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->scale ) );
         }
     }
@@ -9954,7 +9952,6 @@ static SCHEMA_UNUSED int blockdemo_render_laser_save_body( blockdemo_table_write
             blockdemo_table_writer_header_at( w, 50, 0xaf63e94c860202a3ull, 11 );
             if ( !blockdemo_table_double_finite( value->t ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->t ) );
-            blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->t ) );
         }
     }
     { /* laser_id */
@@ -10616,7 +10613,6 @@ static SCHEMA_UNUSED int blockdemo_render_explosion_save_body( blockdemo_table_w
         {
             blockdemo_table_writer_header_at( w, 50, 0xaf63e94c860202a3ull, 11 );
             if ( !blockdemo_table_double_finite( value->t ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
-            blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->t ) );
             blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->t ) );
         }
     }
@@ -12964,7 +12960,6 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_save_body( blockdemo_table_wri
             blockdemo_table_writer_header_at( w, 53, 0xaf63f54c86021707ull, 11 );
             if ( !blockdemo_table_double_finite( value->x ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->x ) );
-            blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->x ) );
         }
     }
     { /* y */
@@ -12974,7 +12969,6 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_save_body( blockdemo_table_wri
             blockdemo_table_writer_header_at( w, 52, 0xaf63f44c86021554ull, 11 );
             if ( !blockdemo_table_double_finite( value->y ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->y ) );
-            blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->y ) );
         }
     }
     { /* z */
@@ -12983,7 +12977,6 @@ static SCHEMA_UNUSED int blockdemo_render_vector3_save_body( blockdemo_table_wri
             if ( w->check_default ) { w->offset = 2; return 1; }
             blockdemo_table_writer_header_at( w, 54, 0xaf63f74c86021a6dull, 11 );
             if ( !blockdemo_table_double_finite( value->z ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
-            blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->z ) );
             blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->z ) );
         }
     }
@@ -13455,7 +13448,6 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_save_body( blockdemo_table_
             blockdemo_table_writer_header_at( w, 53, 0xaf63f54c86021707ull, 11 );
             if ( !blockdemo_table_double_finite( value->x ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->x ) );
-            blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->x ) );
         }
     }
     { /* y */
@@ -13464,7 +13456,6 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_save_body( blockdemo_table_
             if ( w->check_default ) { w->offset = 2; return 1; }
             blockdemo_table_writer_header_at( w, 52, 0xaf63f44c86021554ull, 11 );
             if ( !blockdemo_table_double_finite( value->y ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
-            blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->y ) );
             blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->y ) );
         }
     }
@@ -13475,7 +13466,6 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_save_body( blockdemo_table_
             blockdemo_table_writer_header_at( w, 54, 0xaf63f74c86021a6dull, 11 );
             if ( !blockdemo_table_double_finite( value->z ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->z ) );
-            blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->z ) );
         }
     }
     { /* w */
@@ -13484,7 +13474,6 @@ static SCHEMA_UNUSED int blockdemo_render_quaternion_save_body( blockdemo_table_
             if ( w->check_default ) { w->offset = 2; return 1; }
             blockdemo_table_writer_header_at( w, 51, 0xaf63ea4c86020456ull, 11 );
             if ( !blockdemo_table_double_finite( value->w ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
-            blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->w ) );
             blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->w ) );
         }
     }

@@ -4110,7 +4110,6 @@ static SCHEMA_UNUSED int blockdemo_padded_row_save_body( blockdemo_table_writer_
             blockdemo_table_writer_header_at( w, 36, 0x7ce4fd9430e80ceaull, 11 );
             if ( !blockdemo_table_double_finite( value->value ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->value ) );
-            blockdemo_table_writer_put64( w, blockdemo_table_double_to_bits( value->value ) );
         }
     }
     { /* flag */

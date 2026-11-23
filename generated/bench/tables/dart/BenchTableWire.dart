@@ -3053,6 +3053,7 @@ void tablePickupEventWireSaveBody(TableWireWriter w, TablePickupEvent v) {
 }
 
 void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
+  assert(v.protocolMagic >= 0 && v.protocolMagic <= 65535);
   if (v.protocolMagic != 0) {
     w.putLeb(w.refFor(7663561793681298941));
     w.putByte(7);
@@ -3081,6 +3082,7 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
     w.putByte(9);
     w.putU64(v.sessionId);
   }
+  assert(v.clientId >= 0 && v.clientId <= 4294967295);
   if (v.clientId != 0) {
     w.putLeb(w.refFor(7889067272199050878));
     w.putByte(8);
@@ -3167,6 +3169,9 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
     if (v.gameEvent.armTag == 0) { w.putLeb(0); } else { _tableEventSaveArm(w, v.gameEvent); }
   }
   assert(v.loadout.length == 4);
+  for (final assertElem in v.loadout) {
+    assert(assertElem >= 0 && assertElem <= 255);
+  }
   if (v.loadout.any((e) => e != 0)) {
     final ref = w.refFor(6294288958393922979);
     final s = w.sub();

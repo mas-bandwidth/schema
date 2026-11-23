@@ -331,16 +331,12 @@ defmodule Driver do
   # the accelerators' surfaces beside the variable form's: wire, json-read,
   # json-write, json-hostile and report ride the <Unit>.Table codec, the rest
   # the block and cook readers
-  @surfaces ~w(wire message retain retain-save json-read json-write json-hostile report framing cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason write-refusal write-refusal-fixed write-refusal-message write-refusal-json)
+  @surfaces ~w(wire message message-prior retain retain-save json-read json-write json-hostile report framing cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason write-refusal write-refusal-fixed write-refusal-message write-refusal-json)
 
   def main([manifest, "list"]) do
     _ = manifest
     Enum.each(@surfaces, &IO.puts/1)
-    # the shapes unit (MANIFEST.txt `opt-in shapes`) is compiled into the ebin
-    # for the case-outcomes fixture, but not yet named here: its fixed writer
-    # does not yet refuse a ranged float32 past its bound
-    # (fref_shapes_seventh_below, fref_shapes_tenth_past), so its rows count
-    # absent on this leg until that lands
+    IO.puts("unit shapes")
   end
 
   def main([manifest, "block-lead"]) do
@@ -823,6 +819,26 @@ defmodule Driver do
           write_absent(outdir, name)
       end
     end
+  end
+
+  defp run("message-prior", rows, outdir) do
+    connections =
+      Map.new(rows(rows, "prior-connection"), fn [key, unit, _hash, announcement | _] ->
+        {key, {unit, announcement}}
+      end)
+
+    each_case("message-prior", rows(rows, "prior-message"), fn [name, connection, root, _file, batch | _] ->
+      case message_answer(Map.get(connections, connection), root, batch) do
+        {:refused, why} ->
+          write(outdir, "#{name}.refused", "#{why}\n")
+
+        {:ok, bytes} ->
+          write(outdir, name, bytes)
+
+        :absent ->
+          write_absent(outdir, name)
+      end
+    end)
   end
 
   # THE WRITE-REFUSAL SURFACES (docs/SPEC.md §5.1, test/conformance/README.md).
@@ -1376,9 +1392,10 @@ defmodule Driver do
                {:save_messages, mod.save_messages(save_vocab, save_values)} do
           {:ok, bytes}
         else
-          # a step's {:error, ...} is the present codec's refusal, and the case
-          # answers it; any other answer is no contract's, and raises
-          {verb, answer} when elem(answer, 0) == :error ->
+          # a step's {:error, ...} or {:malformed, ...} is the present codec's
+          # refusal, and the case answers it; any other answer is no contract's,
+          # and raises
+          {verb, answer} when elem(answer, 0) in [:error, :malformed] ->
             {:refused, "#{root}: #{verb} answered #{inspect(answer)}"}
         end
     end

@@ -2132,8 +2132,27 @@ defmodule Benchtable.TableMessage do
             do: :out_of_order,
             else: {:ok, {index, exact, rule, sub}}
         else
-          {:ok, {index, false, rule, sub}}
+          if peer_kind_compatible?(entry.kind, raw) do
+            {:ok, {index, false, rule, sub}}
+          else
+            :kind_mismatch
+          end
         end
+    end
+  end
+
+  defp peer_kind_compatible?(from, raw) do
+    case :binary.encode_unsigned(raw) do
+      <<1, _id::little-unsigned-64, to, _::binary>> ->
+        from == to or
+          (from >= 2 and from <= 5 and ((to > from and to <= 5) or to == 18)) or
+          (from >= 6 and from <= 9 and ((to > from and to <= 9) or to == 19)) or
+          (from >= 20 and from <= 24 and to > from and to <= 24) or
+          (from >= 25 and from <= 29 and to > from and to <= 29) or
+          (from == 10 and to == 11)
+
+      _ ->
+        true
     end
   end
 
