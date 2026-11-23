@@ -62,11 +62,11 @@ func javaNameRule(u *ir.Unit) error {
 	if err := javatable.CheckNames(u); err != nil {
 		return err
 	}
-	files, err := java.Generate(u)
+	files, err := java.OutputFileNames(u)
 	if err != nil {
 		return nil // not a name refusal
 	}
-	tables, err := javatable.GenerateLineage(u, nil)
+	tables, err := javatable.GenerateLineageRaw(u, nil)
 	if err != nil {
 		return nil
 	}

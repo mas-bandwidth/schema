@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"os"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // TestCNamespaceCurrent: emitter_names_c.json is what the C target writes
@@ -23,7 +25,7 @@ func TestCNamespaceCurrent(t *testing.T) {
 	if bytes.Equal(want, cNamespaceJSON) {
 		return
 	}
-	if os.Getenv("SCHEMA_UPDATE_EMITTER_TABLES") == "1" {
+	if slowtest.Rewriting(t, "SCHEMA_UPDATE_EMITTER_TABLES") {
 		if err := os.WriteFile("emitter_names_c.json", want, 0o644); err != nil {
 			t.Fatal(err)
 		}

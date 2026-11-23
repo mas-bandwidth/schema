@@ -269,6 +269,12 @@ func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[st
 	return generateLineage(u, lineage, javapkt.Canonical)
 }
 
+// GenerateLineageRaw emits the exact same file set as GenerateLineage without
+// running java.Canonical layout formatting, for check-time file-collision checks.
+func GenerateLineageRaw(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
+	return generateLineage(u, lineage, func(b []byte) []byte { return b })
+}
+
 // generateLineage is GenerateLineage with the last pass named: canon puts each
 // file in the formatter's shape (java.Canonical), and a test passes the
 // identity to hold that the pass moves layout and never a token.
