@@ -1147,9 +1147,8 @@ public final class TableVocabulary {
                     return false;
                 }
                 // A VOCABULARY PAST A BOUND IS REFUSED BEFORE ANYTHING IS
-                // ALLOCATED: the BYTE bound is 64 KiB, checked from the field's
+                // ALLOCATED: the caller's byte bound, checked from the field's
                 // own L before an entry is touched (§3.3).
-                // 0 refuses, never the default (R9)
                 long limit = v.maxBytes < 0 ? 0L : (long) v.maxBytes;
                 if (java.lang.Long.compareUnsigned(n, limit) > 0) {
                     report.refused = true;
@@ -1197,7 +1196,7 @@ public final class TableVocabulary {
         // vocabulary in its constructed state has declared no storage, so its
         // bound is zero and the first entry is refused by name.
         int entryBound = v.entries == null ? 0 : v.entries.length;
-        if (v.maxEntries > 0 && v.maxEntries < entryBound) {
+        if (v.maxEntries >= 0 && v.maxEntries < entryBound) {
             entryBound = v.maxEntries;
         }
         Reader src = new Reader(vocab, 0);

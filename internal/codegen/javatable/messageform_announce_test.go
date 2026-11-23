@@ -247,6 +247,70 @@ func TestMessageFormAnnounceJava(t *testing.T) {
 	})
 }
 
+func TestAnnouncementBudgetsJava(t *testing.T) {
+	t.Parallel()
+	root, err := filepath.Abs("../../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := loadUnitDir(t, root, "tables/backend")
+	emptyUnit := loadUnitDir(t, root, "tables/blobs")
+	vocabulary := tablewire.MessageVocabulary(u)
+	vocabularyBytes := ir.TableVocabularyBytes(vocabulary)
+	if len(vocabulary) < 2 || len(vocabularyBytes) < 2 || len(tablewire.MessageVocabulary(emptyUnit)) != 0 {
+		t.Fatal("announcement budget test requires nonempty and empty vocabularies with distinct zero and one-below bounds")
+	}
+	t.Logf("nonempty vocabulary: %d entries, %d bytes", len(vocabulary), len(vocabularyBytes))
+	main := fmt.Sprintf(announceBudgetsMain, len(vocabulary), len(vocabularyBytes), hexOf(tablewire.Announce(emptyUnit)))
+	if got := strings.TrimSpace(runMessageJava(t, u, main)); got != "" {
+		t.Fatal(got)
+	}
+}
+
+const announceBudgetsMain = `    public static void main(String[] args) {
+        final int entries = %d;
+        final int bytes = %d;
+        final byte[] ann = new byte[TableVocabulary.announceMeasure()];
+        if (TableVocabulary.announce(ann) != ann.length) { fail("announce"); }
+        checkBudget("defaults", ann, -1, -1, entries);
+        checkBudget("entry zero", ann, 0, -1, -1);
+        checkBudget("entry exact", ann, entries, -1, entries);
+        checkBudget("entry one below", ann, entries - 1, -1, -1);
+        checkBudget("byte zero", ann, -1, 0, -1);
+        checkBudget("byte exact", ann, -1, bytes, entries);
+        checkBudget("byte one below", ann, -1, bytes - 1, -1);
+        checkBudget("both zero", ann, 0, 0, -1);
+
+        final byte[] empty = fromHex("%s");
+        checkBudget("empty defaults", empty, -1, -1, 0);
+        checkBudget("empty entry zero", empty, 0, -1, 0);
+        checkBudget("empty entry exact", empty, entries, -1, 0);
+        checkBudget("empty entry one below", empty, entries - 1, -1, 0);
+        checkBudget("empty byte zero", empty, -1, 0, 0);
+        checkBudget("empty byte exact", empty, -1, bytes, 0);
+        checkBudget("empty byte one below", empty, -1, bytes - 1, 0);
+        checkBudget("empty both zero", empty, 0, 0, 0);
+    }
+
+    // Negative arguments leave the receiver's reset defaults in place.
+    // A negative expected count means the receiver must refuse by name.
+    private static void checkBudget(String name, byte[] announcement, int entries, int bytes, int expectedCount) {
+        final TableVocabulary reader = new TableVocabulary();
+        reader.reset(4096);
+        if (entries >= 0) { reader.maxEntries = entries; }
+        if (bytes >= 0) { reader.maxBytes = bytes; }
+        final TableVocabulary.Report report = new TableVocabulary.Report();
+        final boolean accepted = TableVocabulary.announceRead(reader, announcement, report);
+        final boolean correct = expectedCount >= 0
+            ? accepted && reader.announced && reader.count == expectedCount && !report.refused
+            : !accepted && !reader.announced && report.refused && "vocabulary_too_large".equals(report.reason);
+        if (!correct || report.damaged) {
+            System.out.println(name + ": accepted=" + accepted + ", count=" + reader.count
+                + ", refused=" + report.refused + ", reason=" + report.reason + ", damaged=" + report.damaged);
+        }
+    }
+`
+
 const announceMain = `    public static void main(String[] args) {
         final byte[] buffer = new byte[TableVocabulary.announceMeasure()];
         final int n = TableVocabulary.announce(buffer);

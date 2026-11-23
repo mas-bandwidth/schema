@@ -1,0 +1,5 @@
+# id operation record_capacity expected
+fixed_capacity_omitted load omitted read:1
+fixed_capacity_zero load 0 batch_too_large
+fixed_capacity_one load 1 read:1
+fixed_capacity_empty_save save-empty - invalid_value
