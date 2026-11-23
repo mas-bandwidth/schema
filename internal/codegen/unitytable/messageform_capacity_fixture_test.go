@@ -17,7 +17,10 @@ import (
 // through the generated C# (unity) LoginRequestLoadMessages. Storage for one
 // body whose ClientBuild is the sentinel 17 owes "A refused batch returns a
 // count of `0`" and "refuses before it decodes anything" (docs/SPEC-TABLES.md
-// §3.3): false, count 0, the sentinel untouched. Storage for two owes 2 and 40.
+// §3.3): false, count 0. R4: every value handed in holds its declared default
+// (client_build 0) after ANY refusal, the whole array and not 0..count: storage
+// for three with the form byte changed, and with the last byte dropped, owe the
+// same (slot 2 is past the batch's count of 2). Storage for two owes 2 and 40.
 // A caller's capacity is a resource limit (§6.5), so this row runs here, in
 // the leg's own tests, never in the shared suites.
 func TestUnityMessageLoadCapacityFixture(t *testing.T) {
@@ -59,7 +62,21 @@ static class ProbeMain
         var rep = new Backenddemo.Schema.TableReport();
         bool ok = Backenddemo.Schema.LoginRequestLoadMessages(one, wire, voc, ref rep, out int count);
         if (ok || count != 0) { Console.WriteLine("ROW capacity_fixture: FAILED two bodies into storage for one: ok=" + ok + " count=" + count + ", and a refused batch returns 0"); return 1; }
-        if (one[0].ClientBuild != 17) { Console.WriteLine("ROW capacity_fixture: FAILED ClientBuild reads " + one[0].ClientBuild + ", not the sentinel 17"); return 1; }
+        if (one[0].ClientBuild != 0) { Console.WriteLine("ROW capacity_fixture: FAILED ClientBuild reads " + one[0].ClientBuild + ", not its declared default 0"); return 1; }
+        byte[] form = (byte[])wire.Clone(); form[0] = 3;
+        byte[] cut = new byte[wire.Length - 1]; Array.Copy(wire, cut, cut.Length);
+        foreach (byte[] bad in new byte[][] { form, cut })
+        {
+            var three = new Backenddemo.LoginRequest[] { Backenddemo.Schema.NewLoginRequest(), Backenddemo.Schema.NewLoginRequest(), Backenddemo.Schema.NewLoginRequest() };
+            for (int i = 0; i < 3; i++) { three[i].ClientBuild = 17; }
+            var badRep = new Backenddemo.Schema.TableReport();
+            bool badOk = Backenddemo.Schema.LoginRequestLoadMessages(three, bad, voc, ref badRep, out int badCount);
+            if (badOk || badCount != 0) { Console.WriteLine("ROW capacity_fixture: FAILED refused batch: ok=" + badOk + " count=" + badCount); return 1; }
+            for (int i = 0; i < 3; i++)
+            {
+                if (three[i].ClientBuild != 0) { Console.WriteLine("ROW capacity_fixture: FAILED value " + i + " ClientBuild reads " + three[i].ClientBuild + ", not its declared default 0"); return 1; }
+            }
+        }
         var two = new Backenddemo.LoginRequest[] { Backenddemo.Schema.NewLoginRequest(), Backenddemo.Schema.NewLoginRequest() };
         var loaded = new Backenddemo.Schema.TableReport();
         bool ok2 = Backenddemo.Schema.LoginRequestLoadMessages(two, wire, voc, ref loaded, out int got);

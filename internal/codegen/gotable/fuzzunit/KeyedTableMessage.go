@@ -280,9 +280,9 @@ func tableMessageBodyTeamConfig(r *TableMessageReader, value *TeamConfig, starts
 }
 
 // TeamConfigLoadMessages is the message read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3, §6.5): the whole batch, or ok false with a
-// count of 0 and every value it had written reset. A supplied report receives this read's report;
-// report.Err() is the reason.
-func TeamConfigLoadMessages(values []TeamConfig, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
+// count of 0 and every value handed in reset to its declared defaults. A supplied report receives this
+// read's report; report.Err() is the reason.
+func TeamConfigLoadMessages(values []TeamConfig, vocabulary *TableVocabulary, data []byte, report *TableReport) (loaded int64, ok bool) {
 	read := report
 	if read == nil {
 		read = &TableReport{}
@@ -295,6 +295,7 @@ func TeamConfigLoadMessages(values []TeamConfig, vocabulary *TableVocabulary, da
 		if read.Refused() {
 			tableRefused(read)
 		}
+		tableResetIf(func() bool { return !ok }, values, TeamConfigReset)
 	}()
 	if count < 0 {
 		return 0, false
@@ -305,16 +306,10 @@ func TeamConfigLoadMessages(values []TeamConfig, vocabulary *TableVocabulary, da
 	}
 	for i := range count {
 		if !TeamConfigLoadMessageBody(&r, &values[i]) || r.Report.Refused() {
-			for j := range i + 1 {
-				TeamConfigReset(&values[j])
-			}
 			return 0, false
 		}
 	}
 	if !tableMessageBatchClose(&r) {
-		for j := range count {
-			TeamConfigReset(&values[j])
-		}
 		return 0, false
 	}
 	return count, true
@@ -545,9 +540,9 @@ func tableMessageBodyGunnerConfig(r *TableMessageReader, value *GunnerConfig, st
 }
 
 // GunnerConfigLoadMessages is the message read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3, §6.5): the whole batch, or ok false with a
-// count of 0 and every value it had written reset. A supplied report receives this read's report;
-// report.Err() is the reason.
-func GunnerConfigLoadMessages(values []GunnerConfig, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
+// count of 0 and every value handed in reset to its declared defaults. A supplied report receives this
+// read's report; report.Err() is the reason.
+func GunnerConfigLoadMessages(values []GunnerConfig, vocabulary *TableVocabulary, data []byte, report *TableReport) (loaded int64, ok bool) {
 	read := report
 	if read == nil {
 		read = &TableReport{}
@@ -560,6 +555,7 @@ func GunnerConfigLoadMessages(values []GunnerConfig, vocabulary *TableVocabulary
 		if read.Refused() {
 			tableRefused(read)
 		}
+		tableResetIf(func() bool { return !ok }, values, GunnerConfigReset)
 	}()
 	if count < 0 {
 		return 0, false
@@ -570,16 +566,10 @@ func GunnerConfigLoadMessages(values []GunnerConfig, vocabulary *TableVocabulary
 	}
 	for i := range count {
 		if !GunnerConfigLoadMessageBody(&r, &values[i]) || r.Report.Refused() {
-			for j := range i + 1 {
-				GunnerConfigReset(&values[j])
-			}
 			return 0, false
 		}
 	}
 	if !tableMessageBatchClose(&r) {
-		for j := range count {
-			GunnerConfigReset(&values[j])
-		}
 		return 0, false
 	}
 	return count, true
@@ -852,9 +842,9 @@ func tableMessageBodyTurretConfig(r *TableMessageReader, value *TurretConfig, st
 }
 
 // TurretConfigLoadMessages is the message read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3, §6.5): the whole batch, or ok false with a
-// count of 0 and every value it had written reset. A supplied report receives this read's report;
-// report.Err() is the reason.
-func TurretConfigLoadMessages(values []TurretConfig, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
+// count of 0 and every value handed in reset to its declared defaults. A supplied report receives this
+// read's report; report.Err() is the reason.
+func TurretConfigLoadMessages(values []TurretConfig, vocabulary *TableVocabulary, data []byte, report *TableReport) (loaded int64, ok bool) {
 	read := report
 	if read == nil {
 		read = &TableReport{}
@@ -867,6 +857,7 @@ func TurretConfigLoadMessages(values []TurretConfig, vocabulary *TableVocabulary
 		if read.Refused() {
 			tableRefused(read)
 		}
+		tableResetIf(func() bool { return !ok }, values, TurretConfigReset)
 	}()
 	if count < 0 {
 		return 0, false
@@ -877,16 +868,10 @@ func TurretConfigLoadMessages(values []TurretConfig, vocabulary *TableVocabulary
 	}
 	for i := range count {
 		if !TurretConfigLoadMessageBody(&r, &values[i]) || r.Report.Refused() {
-			for j := range i + 1 {
-				TurretConfigReset(&values[j])
-			}
 			return 0, false
 		}
 	}
 	if !tableMessageBatchClose(&r) {
-		for j := range count {
-			TurretConfigReset(&values[j])
-		}
 		return 0, false
 	}
 	return count, true
@@ -1260,9 +1245,9 @@ func tableMessageBodyHullConfig(r *TableMessageReader, value *HullConfig, starts
 }
 
 // HullConfigLoadMessages is the message read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3, §6.5): the whole batch, or ok false with a
-// count of 0 and every value it had written reset. A supplied report receives this read's report;
-// report.Err() is the reason.
-func HullConfigLoadMessages(values []HullConfig, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
+// count of 0 and every value handed in reset to its declared defaults. A supplied report receives this
+// read's report; report.Err() is the reason.
+func HullConfigLoadMessages(values []HullConfig, vocabulary *TableVocabulary, data []byte, report *TableReport) (loaded int64, ok bool) {
 	read := report
 	if read == nil {
 		read = &TableReport{}
@@ -1275,6 +1260,7 @@ func HullConfigLoadMessages(values []HullConfig, vocabulary *TableVocabulary, da
 		if read.Refused() {
 			tableRefused(read)
 		}
+		tableResetIf(func() bool { return !ok }, values, HullConfigReset)
 	}()
 	if count < 0 {
 		return 0, false
@@ -1285,16 +1271,10 @@ func HullConfigLoadMessages(values []HullConfig, vocabulary *TableVocabulary, da
 	}
 	for i := range count {
 		if !HullConfigLoadMessageBody(&r, &values[i]) || r.Report.Refused() {
-			for j := range i + 1 {
-				HullConfigReset(&values[j])
-			}
 			return 0, false
 		}
 	}
 	if !tableMessageBatchClose(&r) {
-		for j := range count {
-			HullConfigReset(&values[j])
-		}
 		return 0, false
 	}
 	return count, true
@@ -1719,9 +1699,9 @@ func tableMessageBodyKeyedConfig(r *TableMessageReader, value *KeyedConfig, star
 }
 
 // KeyedConfigLoadMessages is the message read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3, §6.5): the whole batch, or ok false with a
-// count of 0 and every value it had written reset. A supplied report receives this read's report;
-// report.Err() is the reason.
-func KeyedConfigLoadMessages(values []KeyedConfig, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
+// count of 0 and every value handed in reset to its declared defaults. A supplied report receives this
+// read's report; report.Err() is the reason.
+func KeyedConfigLoadMessages(values []KeyedConfig, vocabulary *TableVocabulary, data []byte, report *TableReport) (loaded int64, ok bool) {
 	read := report
 	if read == nil {
 		read = &TableReport{}
@@ -1734,6 +1714,7 @@ func KeyedConfigLoadMessages(values []KeyedConfig, vocabulary *TableVocabulary, 
 		if read.Refused() {
 			tableRefused(read)
 		}
+		tableResetIf(func() bool { return !ok }, values, KeyedConfigReset)
 	}()
 	if count < 0 {
 		return 0, false
@@ -1744,16 +1725,10 @@ func KeyedConfigLoadMessages(values []KeyedConfig, vocabulary *TableVocabulary, 
 	}
 	for i := range count {
 		if !KeyedConfigLoadMessageBody(&r, &values[i]) || r.Report.Refused() {
-			for j := range i + 1 {
-				KeyedConfigReset(&values[j])
-			}
 			return 0, false
 		}
 	}
 	if !tableMessageBatchClose(&r) {
-		for j := range count {
-			KeyedConfigReset(&values[j])
-		}
 		return 0, false
 	}
 	return count, true

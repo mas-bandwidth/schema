@@ -73,7 +73,7 @@ func TestNamedSkipIsPrintedAndTheLegIsNotRun(t *testing.T) {
 	mustSay(t, out,
 		[]string{
 			"conformance SKIPS the zz leg: --skip names it (SCHEMA_SKIP_LEGS)",
-			footer,
+			notAllAnswered, "  zz: SKIPPED, no surface run (--skip)",
 		},
 		[]string{
 			fmt.Sprintf(loudLeg, "zz"), // it was named, not merely tolerated
@@ -106,7 +106,7 @@ func TestSkipIsMatchedByName(t *testing.T) {
 			t.Errorf("--skip named zz around blanks and the harness stayed red:\n%s", out)
 		}
 		mustSay(t, out,
-			[]string{"conformance SKIPS the zz leg: --skip names it (SCHEMA_SKIP_LEGS)", footer},
+			[]string{"conformance SKIPS the zz leg: --skip names it (SCHEMA_SKIP_LEGS)", notAllAnswered, "  zz: SKIPPED"},
 			[]string{fmt.Sprintf(loudLeg, "zz")})
 	})
 
