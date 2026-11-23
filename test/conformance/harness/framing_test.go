@@ -53,6 +53,33 @@ func TestFramingVectorBytesArePinned(t *testing.T) {
 	}
 }
 
+// TestFramingDirHasNoHandWrittenFiles holds testdata/wire/tables/framing to
+// files written by a Go vector script (framingVectors or noWriterVectors), so
+// a hand-written file cannot sit beside them without a script that regenerates
+// and compares it.
+func TestFramingDirHasNoHandWrittenFiles(t *testing.T) {
+	t.Parallel()
+	known := make(map[string]bool, len(framingVectors)+len(noWriterVectors))
+	for _, v := range framingVectors {
+		known[v.name+".bin"] = true
+	}
+	for _, v := range noWriterVectors {
+		known[v.name+".bin"] = true
+	}
+	entries, err := os.ReadDir(filepath.Join(conformanceRoot(t), framingDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) == 0 {
+		t.Fatalf("%s holds no files", framingDir)
+	}
+	for _, e := range entries {
+		if !known[e.Name()] {
+			t.Errorf("%s/%s has no Go vector script in framingVectors or noWriterVectors: written by hand; delete it or add its vector script", framingDir, e.Name())
+		}
+	}
+}
+
 // TestFramingRowsNameEveryVector holds the manifest and the scripts to one
 // list: every vector not held out has a `framing` row, every row names a
 // vector, and a held-out vector has none.

@@ -48,6 +48,11 @@ build/conformance-ruby: build/schema-ruby testdata/conformance/tables/MANIFEST.t
 	@mkdir -p $@/tblr1/_framing/source $@/tblr1/_framing/tblr1
 	@sed -e 's/^fixed table Cfg$$/table Cfg/' -e 's/^package tblr1$$/package tblr1_framing/' test/tables/R1.schema > $@/tblr1/_framing/source/R1.schema
 	./build/schema-ruby generate --lang ruby --out $@/tblr1/_framing/tblr1 $@/tblr1/_framing/source/R1.schema
+	@test "$$(grep -c '^fixed table Bounded$$' tables/lists/Migrate.schema)" = 1
+	@test "$$(grep -c '^package listdemo$$' tables/lists/Migrate.schema)" = 1
+	@mkdir -p $@/listdemo/_framing/source $@/listdemo/_framing/listdemo
+	@sed -e 's/^fixed table Bounded$$/table Bounded/' -e 's/^package listdemo$$/package listdemo_framing/' tables/lists/Migrate.schema > $@/listdemo/_framing/source/Migrate.schema
+	./build/schema-ruby generate --lang ruby --out $@/listdemo/_framing/listdemo $@/listdemo/_framing/source/Migrate.schema
 
 generated/bench/ruby/.stamp: build/schema-ruby $(SCHEMAS_BENCH)
 	@rm -rf generated/bench/ruby && mkdir -p generated/bench/ruby
