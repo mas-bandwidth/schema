@@ -9,15 +9,16 @@ package javatable
 //
 // The NEW build reads it: the HEADER's hash selects the OLD lineage entry, so a
 // COMPILED plan with a NONEMPTY fill list is in hand when §5.3 step 11 compares
-// the RECORD's hash. The refusal is `no_layout`, and §5.3's plainest promise is
-// that it writes NOTHING: the caller's storage, poisoned with 0x5A before the
-// load, is 0x5A in every byte after it — not the prefill's 88 in `v.w`, not a
-// zero anywhere. REFUSE IS TOTAL, the prefill included, and every counter is 0.
+// the RECORD's hash. The refusal is `no_layout`, and what it owes is
+// (ruling R4, which replaces "writes nothing") that every row the caller
+// handed in, poisoned with 0x5A before the load, holds its declared default
+// after it (v.w at 88, no 0x5A left). REFUSE IS TOTAL: every counter is 0.
 import (
 	"encoding/binary"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
@@ -99,16 +100,38 @@ func TestFixedVersioningRefuseWritesNothing(t *testing.T) {
 			r.unknown, r.widened)
 	}
 
-	// THE DESTINATION, WHICH IS THE ROW. Every field of the poisoned value must
-	// still read 0x5A5A5A5A: not the prefill's 88 in v.w, not a zero anywhere.
-	for _, field := range []string{"v.x", "v.y", "v.z", "v.w", "seq"} {
-		got, ok := r.value[field]
-		if !ok {
-			t.Errorf("the probe dumped no %s at all", field)
+	// THE DESTINATION, WHICH IS EVERY ROW HANDED IN (ruling R4, which replaces
+	// "writes nothing"): every one of the 64 poisoned rows holds its declared
+	// default after the refusal — every field equal to a FRESH value's, the
+	// appended v.w at its declared 88, and no 0x5A poison left anywhere.
+	if got := r.value["v.w"]; got != "88" {
+		t.Errorf("v.w=%s after the refusal, want its declared default 88", got)
+	}
+	rows := map[string]map[string]string{"VALUE": r.value}
+	for line := range strings.SplitSeq(string(out), "\n") {
+		tag, rest, ok := strings.Cut(line, " ")
+		if !ok || !strings.HasPrefix(tag, "ROW") {
 			continue
 		}
-		if got != poison32 {
-			t.Errorf("refuse wrote the destination: %s=%s, want the 0x5A poison %s everywhere", field, got, poison32)
+		k, v, _ := strings.Cut(rest, "=")
+		if rows[tag] == nil {
+			rows[tag] = map[string]string{}
+		}
+		rows[tag][k] = v
+	}
+	if len(rows) != 64 {
+		t.Fatalf("the probe dumped %d rows, want all 64 handed in", len(rows))
+	}
+	for tag, row := range rows {
+		for _, field := range []string{"v.x", "v.y", "v.z", "v.w", "seq"} {
+			got, ok := row[field]
+			if !ok {
+				t.Errorf("%s: the probe dumped no %s at all", tag, field)
+				continue
+			}
+			if want := r.fresh[field]; got != want || got == poison32 {
+				t.Errorf("%s: %s=%s after the refusal, want its declared default %s", tag, field, got, want)
+			}
 		}
 	}
 }

@@ -8688,10 +8688,11 @@ inline int64_t PaddedRowSaveMessages( const PaddedRow * values, int64_t count, u
 // `count` is IN and OUT: in, the storage the caller has room for, and out,
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
 // batch_too_large, found from the count before a body is decoded: count
-// comes back 0, as for every refused batch, and the storage is untouched; a
-// caller that needs room reads the wire's M itself. DAMAGE ANYWHERE IN THE BATCH
-// DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
-// and every body the walk touched is reset to its declared defaults.
+// comes back 0, as for every refused batch; a caller that needs room reads
+// the wire's M itself. DAMAGE ANYWHERE IN THE BATCH DELIVERS NO BODY
+// (docs/SPEC-TABLES.md §4): count says 0 and malformed is set. EVERY REFUSAL
+// HAS ONE EXIT (R4): every value handed in, all `capacity` of them, is reset
+// to its declared defaults, so no partial value survives.
 inline bool PaddedRowLoadMessages( PaddedRow * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
@@ -8703,20 +8704,21 @@ inline bool PaddedRowLoadMessages( PaddedRow * values, int64_t * count, const Ta
     }
     const int64_t capacity = *count;
     *count = 0;
+    auto refuse = [&]() -> bool { for ( int64_t k = 0; k < capacity; k++ ) { PaddedRowReset( values[k] ); } return false; };
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
-    if ( bodies < 0 ) { return false; }
+    if ( bodies < 0 ) { return refuse(); }
     if ( bodies > capacity )
     {
         TableMessageRefuseBatch( to ); // a refused batch returns a count of 0 (§3.3)
-        return false;
+        return refuse();
     }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !PaddedRowLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { PaddedRowReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
+        if ( !PaddedRowLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { return refuse(); } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
         br.remaining--;
     }
-    if ( !TableMessageBatchClose( br ) ) { for ( int64_t k = 0; k < bodies; k++ ) { PaddedRowReset( values[k] ); } return false; } // damage after the last body discards the batch too (§4)
+    if ( !TableMessageBatchClose( br ) ) { return refuse(); } // damage after the last body discards the batch too (§4)
     *count = bodies;
     return true;
 }
@@ -9655,10 +9657,11 @@ inline int64_t PaddedFrameSaveMessages( const PaddedFrame * values, int64_t coun
 // `count` is IN and OUT: in, the storage the caller has room for, and out,
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
 // batch_too_large, found from the count before a body is decoded: count
-// comes back 0, as for every refused batch, and the storage is untouched; a
-// caller that needs room reads the wire's M itself. DAMAGE ANYWHERE IN THE BATCH
-// DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
-// and every body the walk touched is reset to its declared defaults.
+// comes back 0, as for every refused batch; a caller that needs room reads
+// the wire's M itself. DAMAGE ANYWHERE IN THE BATCH DELIVERS NO BODY
+// (docs/SPEC-TABLES.md §4): count says 0 and malformed is set. EVERY REFUSAL
+// HAS ONE EXIT (R4): every value handed in, all `capacity` of them, is reset
+// to its declared defaults, so no partial value survives.
 inline bool PaddedFrameLoadMessages( PaddedFrame * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
@@ -9670,20 +9673,21 @@ inline bool PaddedFrameLoadMessages( PaddedFrame * values, int64_t * count, cons
     }
     const int64_t capacity = *count;
     *count = 0;
+    auto refuse = [&]() -> bool { for ( int64_t k = 0; k < capacity; k++ ) { PaddedFrameReset( values[k] ); } return false; };
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
-    if ( bodies < 0 ) { return false; }
+    if ( bodies < 0 ) { return refuse(); }
     if ( bodies > capacity )
     {
         TableMessageRefuseBatch( to ); // a refused batch returns a count of 0 (§3.3)
-        return false;
+        return refuse();
     }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !PaddedFrameLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { PaddedFrameReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
+        if ( !PaddedFrameLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { return refuse(); } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
         br.remaining--;
     }
-    if ( !TableMessageBatchClose( br ) ) { for ( int64_t k = 0; k < bodies; k++ ) { PaddedFrameReset( values[k] ); } return false; } // damage after the last body discards the batch too (§4)
+    if ( !TableMessageBatchClose( br ) ) { return refuse(); } // damage after the last body discards the batch too (§4)
     *count = bodies;
     return true;
 }
@@ -10129,9 +10133,27 @@ inline int64_t PaddedRowFixedSave( const PaddedRow * values, int64_t count, uint
 // layout is never parsed: unknown hash is TableFixedReason::layout_unknown, known hash with
 // different bytes is TableMessageReason::layout_malformed, a hash below the floor is
 // TableMessageReason::layout_unsupported. Identity is a PLAN walked by the same loop.
-// PaddedRowFixedLoadWalk is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
-// every recovered record, with the counters counted onto the report passed.
+// R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
+// holds the same rule as FixedLoad. The body below is the walk itself.
+inline int64_t PaddedRowFixedLoadWalkBody( PaddedRow * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t PaddedRowFixedLoadWalk( PaddedRow * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+{
+    TableReport local;
+    if ( report == NULL ) { report = &local; }
+    const int64_t n = PaddedRowFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
+    if ( n < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { PaddedRowReset( values[k] ); } }
+        return -1;
+    }
+    return n;
+}
+
+// PaddedRowFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
+// every recovered record, with the counters counted onto the report passed.
+inline int64_t PaddedRowFixedLoadWalkBody( PaddedRow * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
@@ -10411,7 +10433,8 @@ inline int64_t PaddedRowFixedLoadWalk( PaddedRow * values, int64_t capacity, con
 // The PLAIN PaddedRowFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
 // every refusal of PaddedRowFixedLoadWalk and for a read the strict rule refuses —
 // malformed, oor_count, kind-mismatched or refused — with every value it had
-// written reset to its declared defaults. A supplied report receives THIS
+// been handed reset to its declared defaults: EVERY ROW, all `capacity` of
+// them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t PaddedRowFixedLoad( PaddedRow * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
@@ -10420,10 +10443,9 @@ inline int64_t PaddedRowFixedLoad( PaddedRow * values, int64_t capacity, const u
     TableReport * out = report != NULL ? report : &local;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const int64_t n = PaddedRowFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
-    if ( n < 0 ) { return -1; }
-    if ( out->damaged || out->refused )
+    if ( n < 0 || out->damaged || out->refused )
     {
-        for ( int64_t k = 0; k < n; ++k ) { PaddedRowReset( values[k] ); }
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { PaddedRowReset( values[k] ); } }
         return -1;
     }
     return n;
@@ -11879,9 +11901,27 @@ inline int64_t PaddedFrameFixedSave( const PaddedFrame * values, int64_t count, 
 // layout is never parsed: unknown hash is TableFixedReason::layout_unknown, known hash with
 // different bytes is TableMessageReason::layout_malformed, a hash below the floor is
 // TableMessageReason::layout_unsupported. Identity is a PLAN walked by the same loop.
-// PaddedFrameFixedLoadWalk is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
-// every recovered record, with the counters counted onto the report passed.
+// R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
+// holds the same rule as FixedLoad. The body below is the walk itself.
+inline int64_t PaddedFrameFixedLoadWalkBody( PaddedFrame * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t PaddedFrameFixedLoadWalk( PaddedFrame * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+{
+    TableReport local;
+    if ( report == NULL ) { report = &local; }
+    const int64_t n = PaddedFrameFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
+    if ( n < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { PaddedFrameReset( values[k] ); } }
+        return -1;
+    }
+    return n;
+}
+
+// PaddedFrameFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
+// every recovered record, with the counters counted onto the report passed.
+inline int64_t PaddedFrameFixedLoadWalkBody( PaddedFrame * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
@@ -12161,7 +12201,8 @@ inline int64_t PaddedFrameFixedLoadWalk( PaddedFrame * values, int64_t capacity,
 // The PLAIN PaddedFrameFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
 // every refusal of PaddedFrameFixedLoadWalk and for a read the strict rule refuses —
 // malformed, oor_count, kind-mismatched or refused — with every value it had
-// written reset to its declared defaults. A supplied report receives THIS
+// been handed reset to its declared defaults: EVERY ROW, all `capacity` of
+// them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t PaddedFrameFixedLoad( PaddedFrame * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
@@ -12170,10 +12211,9 @@ inline int64_t PaddedFrameFixedLoad( PaddedFrame * values, int64_t capacity, con
     TableReport * out = report != NULL ? report : &local;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const int64_t n = PaddedFrameFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
-    if ( n < 0 ) { return -1; }
-    if ( out->damaged || out->refused )
+    if ( n < 0 || out->damaged || out->refused )
     {
-        for ( int64_t k = 0; k < n; ++k ) { PaddedFrameReset( values[k] ); }
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { PaddedFrameReset( values[k] ); } }
         return -1;
     }
     return n;

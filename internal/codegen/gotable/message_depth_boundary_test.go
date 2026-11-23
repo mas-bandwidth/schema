@@ -215,6 +215,7 @@ func depthBoundaryGoSource(ann []byte, cases []depthBoundaryCase) string {
 
 import (
 	"fmt"
+	"reflect"
 	"testing"
 )
 
@@ -228,6 +229,10 @@ func TestDepthBoundaryProbe(t *testing.T) {
 		t.Fatalf("AnnounceRead failed: %+v", arep)
 	}
 	failed := false
+	// R4 (docs/SPEC-TABLES.md §6.5): a refused batch leaves EVERY value handed
+	// in at its declared default, not only the values the walk had reached.
+	var def Root
+	RootReset(&def)
 	check := func(name string, wire []byte, expectOK bool) {
 		values := [2]Root{{A: -7}, {A: -7}}
 		var rep TableReport
@@ -240,7 +245,7 @@ func TestDepthBoundaryProbe(t *testing.T) {
 				failed = true
 			}
 		} else {
-			if !ok && n == 0 && (rep.Refusal.Error() == "wire_damaged" || rep.Refusal.Error() == "malformed") && (values[0].A == 0 || values[0].A == -7) && values[1].A == -7 {
+			if !ok && n == 0 && (rep.Refusal.Error() == "wire_damaged" || rep.Refusal.Error() == "malformed") && reflect.DeepEqual(values[0], def) && reflect.DeepEqual(values[1], def) {
 				fmt.Println("PASS " + name)
 			} else {
 				fmt.Printf("FAIL %s: ok=%v n=%d rep=%+v v0=%d v1=%d\n", name, ok, n, rep, values[0].A, values[1].A)

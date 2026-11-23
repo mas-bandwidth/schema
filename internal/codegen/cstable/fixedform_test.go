@@ -100,7 +100,7 @@ fixed table Config {
     extra int32 = 9
 }
 `)
-	load := csFn(src, "public static long ConfigFixedLoad(")
+	load := csFn(src, "static long ConfigFixedLoadWalk(")
 	if load == "" {
 		t.Fatal("ConfigFixedLoad was not emitted")
 	}

@@ -332,10 +332,10 @@ for _, c in ipairs(nonfinite) do
     local m = patch_bits(msg, is32 and 32 or 64, from, to)
     r = report()
     local values = T.LoadMessages("Root", vocab, m, r)
-    check("msg-" .. width .. tail .. "tolerant", values ~= nil and #values == 0 and r.nonFiniteFloat == s.owner and r.reason == named, r.reason)
+    check("msg-" .. width .. tail .. "tolerant", values == nil and r.nonFiniteFloat == s.owner and r.reason == named, r.reason)
     r = report()
     values = T.LoadMessages("Root", vocab, m, r)
-    check("msg-" .. width .. tail .. "strict", values ~= nil and #values == 0 and r.reason == named, r.reason)
+    check("msg-" .. width .. tail .. "strict", values == nil and r.reason == named, r.reason)
 
     local fx = patch_bytes(fixed, is32, from, to)
     ok, err = pcall(T.ReadFixed, "Root", fx)

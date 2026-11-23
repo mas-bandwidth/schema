@@ -394,9 +394,9 @@ func (g *gen) fixedCeilingRoots() []*ir.Struct {
 // emitFixedCeilingRoot emits only the refusing fixed loader for a table past
 // the ceiling: form 3 is refused as layout_record_too_large, the older forms
 // are refused by name as at every fixed root, and an empty file is damage.
-// Nothing is decoded on any path and a named refusal leaves the caller's
-// values untouched; damage resets them to the declared defaults, which for
-// a Row is its Default.
+// Nothing is decoded on any path, and every path is a refusal, so (ruling R4)
+// every row handed in goes back to its declared default, which for a Row is
+// its Default, before the refusal is named.
 func (g *gen) emitFixedCeilingRoot(st *ir.Struct) {
 	name := ir.RustSnake(st.Name)
 	body := ir.TableFixedTypeBytes(st)
@@ -416,11 +416,11 @@ func (g *gen) emitFixedCeilingRoot(st *ir.Struct) {
 	g.pf("    report: &mut TableFixedReport,\n")
 	g.pf(") -> Option<usize> {\n")
 	g.pf("    let _ = (plan, remap);\n")
+	g.pf("    for value in values.iter_mut() {\n")
+	g.pf("        *value = %sRow::default();\n", st.Name)
+	g.pf("    }\n")
 	g.pf("    if data.is_empty() {\n")
 	g.pf("        report.damaged = true;\n")
-	g.pf("        for value in values.iter_mut() {\n")
-	g.pf("            *value = %sRow::default();\n", st.Name)
-	g.pf("        }\n")
 	g.pf("        return None;\n    }\n")
 	g.pf("    if data[0] == TABLE_FIXED_FORM {\n")
 	g.pf("        return report.refuse(TableFixedReason::LayoutRecordTooLarge);\n    }\n")
@@ -1667,6 +1667,9 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("/// meets damage anywhere answers None with `malformed` set, and every record\n")
 	g.pf("/// in `values` goes back to its declared defaults, so nothing the read\n")
 	g.pf("/// decoded before or after the damage is a value to use.\n")
+	g.pf("///\n")
+	g.pf("/// RULING R4: EVERY refusal, damage or named, before any record lands or\n")
+	g.pf("/// after, leaves every row handed in at its declared default.\n")
 	g.pf("pub fn %s_fixed_load(\n", name)
 	g.pf("    values: &mut [%sRow],\n", st.Name)
 	g.pf("    data: &[u8],\n")
@@ -1676,11 +1679,9 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf(") -> Option<usize> {\n")
 	g.pf("    let damaged_before = report.damaged;\n")
 	g.pf("    report.damaged = false;\n")
-	g.pf("    let mut untouched = false;\n")
-	g.pf("    let read = %s(values, data, plan, remap, report, &mut untouched);\n", fn(st.Name, "fixed_load_records"))
-	g.pf("    let damaged = report.damaged;\n")
+	g.pf("    let read = %s(values, data, plan, remap, report);\n", fn(st.Name, "fixed_load_records"))
 	g.pf("    report.damaged |= damaged_before;\n")
-	g.pf("    if damaged && !untouched {\n")
+	g.pf("    if read.is_none() {\n")
 	g.pf("        for value in values.iter_mut() {\n")
 	g.pf("            %s(&%s_FIXED_DEFAULTS, value, &mut TableFixedReport::default());\n", fn(st.Name, "fixed_scatter"), up)
 	g.pf("        }\n")
@@ -1693,7 +1694,6 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    plan: &mut [TableFixedEntry],\n")
 	g.pf("    remap: &mut [u16],\n")
 	g.pf("    report: &mut TableFixedReport,\n")
-	g.pf("    untouched: &mut bool,\n")
 	g.pf(") -> Option<usize> {\n")
 	g.pf("    if data.is_empty() {\n        report.damaged = true;\n        return None;\n    }\n")
 	g.pf("    // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):\n")
@@ -1823,7 +1823,6 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("%sfor k in 0..n {\n", deadInd)
 	g.pf("%s    if %s(&rest[k * record_bytes + 8..(k + 1) * record_bytes]) {\n", deadInd, fn(st.Name, "fixed_dead"))
 	g.pf("%s        report.damaged = true;\n", deadInd)
-	g.pf("%s        *untouched = true;\n", deadInd)
 	g.pf("%s        return None;\n", deadInd)
 	g.pf("%s    }\n", deadInd)
 	g.pf("%s}\n", deadInd)
@@ -1832,7 +1831,6 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf("        for k in 0..n {\n")
 		g.pf("            if table_fixed_dead(entries, guards, &rest[k * record_bytes + 8..(k + 1) * record_bytes]) {\n")
 		g.pf("                report.damaged = true;\n")
-		g.pf("                *untouched = true;\n")
 		g.pf("                return None;\n")
 		g.pf("            }\n")
 		g.pf("        }\n")
@@ -1851,9 +1849,6 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    for k in 0..n {\n")
 	g.pf("        let record = &rest[k * record_bytes..(k + 1) * record_bytes];\n")
 	g.pf("        if u64::from_le_bytes(record[..8].try_into().expect(\"eight bytes\")) != hash {\n")
-	g.pf("            for value in values.iter_mut().take(k) {\n")
-	g.pf("                %s(&%s_FIXED_DEFAULTS, value, &mut TableFixedReport::default());\n", fn(st.Name, "fixed_scatter"), up)
-	g.pf("            }\n")
 	g.pf("            report.widened = widened_before;\n")
 	g.pf("            return report.refuse(TableFixedReason::NoBlock);\n        }\n")
 	g.pf("        for h in holes {\n")
@@ -1871,12 +1866,9 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf("        // FIRST, before the bounds pass, over the storage the run just wrote,\n")
 		g.pf("        // and a NaN or an infinity refuses the whole batch as\n")
 		g.pf("        // non_finite_float, naming the field. Nothing of the batch is kept:\n")
-		g.pf("        // every record this call wrote goes back to its declared defaults.\n")
+		g.pf("        // the caller resets every row handed in (R4).\n")
 		g.pf("        let why = %s(&values[k]);\n", fn(st.Name, "fixed_finite_body"))
 		g.pf("        if !why.is_empty() {\n")
-		g.pf("            for value in values.iter_mut().take(k + 1) {\n")
-		g.pf("                %s(&%s_FIXED_DEFAULTS, value, &mut TableFixedReport::default());\n", fn(st.Name, "fixed_scatter"), up)
-		g.pf("            }\n")
 		g.pf("            report.widened = widened_before;\n")
 		g.pf("            return report.refuse_non_finite(why);\n")
 		g.pf("        }\n")
@@ -1911,9 +1903,6 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 		g.pf("            // having no `L` to continue past. REFUSE is total, so the refusal\n")
 		g.pf("            // is taken before any counter is added.\n")
 		g.pf("            if damaged != 0 {\n")
-		g.pf("                for value in values.iter_mut().take(k + 1) {\n")
-		g.pf("                    %s(&%s_FIXED_DEFAULTS, value, &mut TableFixedReport::default());\n", fn(st.Name, "fixed_scatter"), up)
-		g.pf("                }\n")
 		g.pf("                report.widened = widened_before;\n")
 		g.pf("                return report.refuse(TableFixedReason::TextIllFormed);\n            }\n")
 		g.pf("            report.held += oor as u32;\n")
@@ -1921,11 +1910,8 @@ func (g *gen) emitFixedRoot(st *ir.Struct) {
 	}
 	// STRICT-ONLY (docs/plans/strict-only.md): a count, a length, an ordinal,
 	// a tag or a value past its bound refuses the whole batch, and every
-	// record this call wrote goes back to its declared defaults.
+	// record of the batch goes back to its declared default (R4, in the caller).
 	g.pf("        if report.held != 0 {\n")
-	g.pf("            for value in values.iter_mut().take(k + 1) {\n")
-	g.pf("                %s(&%s_FIXED_DEFAULTS, value, &mut TableFixedReport::default());\n", fn(st.Name, "fixed_scatter"), up)
-	g.pf("            }\n")
 	g.pf("            report.widened = widened_before;\n")
 	g.pf("            return report.refuse(TableFixedReason::OutOfRange);\n")
 	g.pf("        }\n")
