@@ -230,6 +230,9 @@ func GunnerSettingsBlockBytes(b *GunnerSettingsBlock) int64 {
 		return 0
 	}
 	used := int64(64)
+	if b.Projection.CallsignLength < 0 || b.Projection.CallsignLength > 24 {
+		return -1
+	}
 	return (used + 63) &^ int64(63)
 }
 
@@ -352,6 +355,9 @@ func ShipEntryBlockBytes(b *ShipEntryBlock) int64 {
 		return 0
 	}
 	used := int64(136)
+	if (b.Projection.DisplayNameLength < 0 || b.Projection.DisplayNameLength > 32) || (b.Projection.HardpointsCount < 0 || b.Projection.HardpointsCount > 4) {
+		return -1
+	}
 	return (used + 63) &^ int64(63)
 }
 
@@ -474,6 +480,9 @@ func GlobalSettingsBlockBytes(b *GlobalSettingsBlock) int64 {
 		return 0
 	}
 	used := int64(96)
+	if (uint64(b.Projection.TickRate) < 1 || uint64(b.Projection.TickRate) > 240) || (b.Projection.BuildNoteLength < 0 || b.Projection.BuildNoteLength > 48) {
+		return -1
+	}
 	return (used + 63) &^ int64(63)
 }
 
@@ -665,6 +674,9 @@ func PackConfigBlockBytes(b *PackConfigBlock) int64 {
 		return 0
 	}
 	used := int64(456)
+	if int64(b.Projection.Reserves.Count) > 3 {
+		return -1
+	}
 	if end := int64(b.Projection.Reserves.OffsetOf) + int64(b.Projection.Reserves.Count)*int64(b.Projection.Reserves.Stride); end > used {
 		used = end
 	}
