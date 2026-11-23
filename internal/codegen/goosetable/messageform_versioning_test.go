@@ -123,7 +123,8 @@ func TestGooseMessageFormVersioning(t *testing.T) {
 				if r.announced != "1 ok 0 0" {
 					t.Fatalf("AnnounceRead of the writer's announcement answered %q:\n%s", r.announced, r.raw)
 				}
-				if r.loadN >= 0 || r.loadReason != reason {
+				// a refused batch returns a count of 0 (docs/SPEC-TABLES.md §3.3)
+				if r.loadN != 0 || r.loadReason != reason {
 					t.Fatalf("the Go reference refused %s (n=%d ok=%v err=%v); Goose answered n=%d %s:\n%s", reason, got, ok, err, r.loadN, r.loadReason, r.raw)
 				}
 				// a refused row ran and moved no counter: record it, so the
