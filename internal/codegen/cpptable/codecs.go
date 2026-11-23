@@ -355,8 +355,10 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 	case f.Array == ir.ArrayFixed:
 		g.pf("    %s%s %s[%d]%s;\n", align16, typ, f.Name, f.ArrayBound, tableArrayInit(selfInit))
 	case f.Array == ir.ArrayCounted:
-		g.pf("    %s%s %s[%d]%s; // used count beside it; count in [0, %d]\n", align16, typ, f.Name, f.ArrayBound, tableArrayInit(selfInit), f.ArrayBound)
-		g.pf("    int32_t %s_count = 0;\n", f.Name)
+		// a [Min..N]T is BORN at Min default elements (docs/SPEC.md §4.2,
+		// ir.Field.BornCount): the slots already hold their defaults
+		g.pf("    %s%s %s[%d]%s; // used count beside it; count in [%d, %d]\n", align16, typ, f.Name, f.ArrayBound, tableArrayInit(selfInit), f.ArrayMin, f.ArrayBound)
+		g.pf("    int32_t %s_count = %d;\n", f.Name, f.BornCount())
 	default:
 		init := ""
 		if !selfInit {
@@ -494,7 +496,7 @@ func (g *tableGen) emitTableResetAt(expr string, f *ir.Field) {
 		g.emitTableResetArray(expr, f.ArrayBound, typ, selfInit, f)
 	case f.Array == ir.ArrayCounted:
 		g.emitTableResetArray(expr, f.ArrayBound, typ, selfInit, f)
-		g.pf("    %s_count = 0;\n", expr)
+		g.pf("    %s_count = %d; // born at Min (docs/SPEC.md §4.2)\n", expr, f.BornCount())
 	case selfInit:
 		g.emitTableResetOne(expr, typ, f)
 	default:
@@ -877,6 +879,63 @@ func framed(length string) string {
 func (g *tableGen) storageAssert(ind, expr string, bound int64) {
 	g.storageAsserts = true
 	g.pf("%sschema_assert( %s >= 0 && %s <= %d ); // storage invariant, debug only (§5.1)\n", ind, expr, expr, bound)
+}
+
+// countAssert is a counted array's write check: the live count lies in the
+// declared [Min, Max], checked before the elision test (docs/SPEC.md §5.1 row
+// 3), so a count under a positive minimum is a caller error the debug build
+// stops on. Write checks on this leg are debug asserts only.
+func (g *tableGen) countAssert(ind string, f *ir.Field) {
+	if f.ArrayMin <= 0 {
+		g.storageAssert(ind, "value."+f.Name+"_count", f.ArrayBound)
+		return
+	}
+	g.storageAsserts = true
+	g.pf("%sschema_assert( value.%s_count >= %d && value.%s_count <= %d ); // the declared count, debug only (§5.1)\n", ind, f.Name, f.ArrayMin, f.Name, f.ArrayBound)
+}
+
+// emitCountedRides declares rides_<name>: whether a counted array rides. An
+// empty one elides, and so does a [Min..N]T holding its BIRTH VALUE — exactly
+// Min elements, each at its default (docs/SPEC-TABLES.md §22.2; the reference
+// is internal/tablewire encodeArray's allBirth and messageElides). A table
+// element is at its default when its body is its terminator alone, which
+// `tableAtDefault` answers for one element expression; the probe leaves
+// nothing behind.
+func (g *tableGen) emitCountedRides(f *ir.Field, ind string, tableAtDefault func(expr, ind string)) {
+	g.pf("%sbool rides_%s = value.%s_count > 0;\n", ind, f.Name, f.Name)
+	if !f.ElidesAtBirth() {
+		return
+	}
+	born := f.BornCount()
+	elem := fmt.Sprintf("value.%s[birth_i]", f.Name)
+	g.pf("%sif ( value.%s_count == %d ) // the birth value elides (§22.2)\n%s{\n", ind, f.Name, born, ind)
+	g.pf("%s    rides_%s = false;\n", ind, f.Name)
+	g.pf("%s    for ( int32_t birth_i = 0; birth_i < %d && !rides_%s; birth_i++ )\n%s    {\n", ind, born, f.Name, ind)
+	switch tableScalarKind(f) {
+	case tkTable:
+		was := g.elemIndex
+		g.elemIndex = "birth_i"
+		tableAtDefault(elem, ind+"        ")
+		g.elemIndex = was
+		g.pf("%s        if ( !birth_default ) { rides_%s = true; }\n", ind, f.Name)
+	case tkUnion:
+		g.pf("%s        if ( %s.type != %sType::None ) { rides_%s = true; }\n", ind, elem, f.Type.Name, f.Name)
+	default:
+		g.pf("%s        if ( %s ) { rides_%s = true; }\n", ind, g.fieldDiffers(f, elem), f.Name)
+	}
+	g.pf("%s    }\n%s}\n", ind, ind)
+}
+
+// variableTableAtDefault is the variable form's element probe: the element's
+// body measured and the ids it interned rolled back, a body of one byte (the
+// zero reference) being the default one.
+func (g *tableGen) variableTableAtDefault(f *ir.Field) func(expr, ind string) {
+	return func(expr, ind string) {
+		g.pf("%sconst int32_t birth_mark = ids.count;\n", ind)
+		g.pf("%sconst int64_t birth_bytes = %s;\n", ind, g.measureCall(f, f.Type.Name, expr))
+		g.pf("%sids.truncate( birth_mark );\n", ind)
+		g.pf("%sconst bool birth_default = birth_bytes == 1; // a refused body rides, and the write refuses it\n", ind)
+	}
 }
 
 func (g *tableGen) emitTableMeasure(st *ir.Struct) {
@@ -1297,11 +1356,12 @@ func (g *tableGen) emitTableMeasureField(f *ir.Field) {
 		g.pf("        bytes += %s + %s; // %s\n", g.hdrBytes(id), framed("body_"+f.Name), f.Name)
 		g.pf("    }\n")
 	case f.Array == ir.ArrayCounted:
-		g.storageAssert("    ", "value."+f.Name+"_count", f.ArrayBound)
+		g.countAssert("    ", f)
 		if f.Required {
 			g.pf("    if ( true ) // | required: the field always rides (§2.3)\n    {\n")
 		} else {
-			g.pf("    if ( value.%s_count > 0 )\n    {\n", f.Name)
+			g.emitCountedRides(f, "    ", g.variableTableAtDefault(f))
+			g.pf("    if ( rides_%s )\n    {\n", f.Name)
 		}
 		g.pf("        const uint64_t ref_%s = %s;\n", f.Name, g.wireRef(id))
 		g.pf("        int64_t body_%s = 0;\n", f.Name)
@@ -1885,11 +1945,12 @@ func (g *tableGen) emitTableWriteField(f *ir.Field) {
 		g.pf("        w.put8( %[1]d );\n        w.putleb( (uint64_t) value.%[2]s_length );\n", tkU8, f.Name)
 		g.pf("        w.raw( value.%s, value.%s_length );\n    }\n", f.Name, f.Name)
 	case f.Array == ir.ArrayCounted:
-		g.storageAssert("    ", "value."+f.Name+"_count", f.ArrayBound)
+		g.countAssert("    ", f)
 		if f.Required {
 			g.pf("    if ( true ) // | required: the field always rides (§2.3)\n    {\n")
 		} else {
-			g.pf("    if ( value.%s_count > 0 )\n    {\n", f.Name)
+			g.emitCountedRides(f, "    ", g.variableTableAtDefault(f))
+			g.pf("    if ( rides_%s )\n    {\n", f.Name)
 		}
 		g.emitArrayField(f, id, elemKind, fmt.Sprintf("value.%s_count", f.Name), "value."+f.Name+"[%s]", "        ")
 		g.pf("    }\n")

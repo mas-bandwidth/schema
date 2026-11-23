@@ -1,0 +1,17 @@
+{
+  "about": "THE MESSAGE-LOAD VERDICT CASES (test/conformance/js/messageverdict.mjs). Each case is what <Root>LoadMessages returned (n), the report it filled, and the verdict the wire-fuzz adapters owe it: delivered, refused or malformed. The verdict is the public API's, never a counter's (F-112). Read by messageverdict.test.mjs under make js-message-verdict-test (test-js).",
+  "refusedVerdict": 2,
+  "cases": [
+    {"id": "delivered", "n": 1, "report": {}, "verdict": "delivered", "what": "control: a plain delivered batch"},
+    {"id": "delivered-oor", "n": 1, "report": {"Oor": 1, "Reason": ""}, "verdict": "delivered", "what": "F-112: the public API delivered count 1 (item 50) with Oor 1; the adapter answered loaded 0, refused 1"},
+    {"id": "delivered-mismatch", "n": 1, "report": {"Mismatch": 1, "Reason": ""}, "verdict": "delivered", "what": "F-112: the public API delivered count 1 with Mismatch 1"},
+    {"id": "delivered-both-counters", "n": 2, "report": {"Mismatch": 1, "Oor": 3}, "verdict": "delivered", "what": "F-112: a delivered batch of two with both counters"},
+    {"id": "delivered-widened", "n": 1, "report": {"Widened": 1}, "verdict": "delivered", "what": "control: a widened value was always delivered"},
+    {"id": "refused-verdict", "n": 0, "report": {"Verdict": 2, "Reason": "out_of_range"}, "verdict": "refused", "what": "control: the report names the refusal"},
+    {"id": "refused-verdict-with-oor", "n": 0, "report": {"Verdict": 2, "Oor": 1, "Reason": "out_of_range"}, "verdict": "refused", "what": "control: a named refusal stays one whatever the counters say"},
+    {"id": "non-finite-float", "n": -1, "report": {"NonFiniteFloat": "Root.f"}, "verdict": "refused", "what": "control: a non-finite float refuses the batch"},
+    {"id": "damaged", "n": -1, "report": {"Damaged": true}, "verdict": "malformed", "what": "control: damage"},
+    {"id": "damaged-with-oor", "n": 0, "report": {"Damaged": true, "Oor": 1}, "verdict": "malformed", "what": "control: damage stays damage beside a counter"},
+    {"id": "nothing-delivered", "n": 0, "report": {}, "verdict": "malformed", "what": "control: no body delivered and no refusal named"}
+  ]
+}

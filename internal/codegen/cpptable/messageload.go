@@ -124,6 +124,18 @@ func (g *tableGen) emitMessageReadField(f *ir.Field, gate string) {
 		g.emitMessageReadTextFromChecked(f, "value."+name, fmt.Sprintf("value.%s_length", name), ind, "entry", gate)
 	case f.Array != ir.ArrayNone:
 		g.emitMessageReadArrayFromChecked(f, "value."+name, fmt.Sprintf("value.%s_count", name), ind, "entry", false, gate)
+		if gate != "" && f.CountedOnWire() && f.ElidesAtBirth() {
+			// A STORED BIRTH VALUE IS DAMAGE at this build's own shape
+			// (docs/SPEC-TABLES.md §22.2, §3.3): a [Min..N]T holding Min
+			// default elements elides, so a writer of this build never spells
+			// it, the same test the writer's elision makes (emitCountedRides)
+			g.pf("%sif ( %s )\n%s{\n", ind, gate, ind)
+			g.emitCountedRides(f, ind+"    ", func(expr, ind string) {
+				g.pf("%sconst int64_t birth_bits = %s;\n", ind, g.msgMeasureCall(f.Type.Name, "0", expr))
+				g.pf("%sconst bool birth_default = birth_bits >= 0 && birth_bits <= %s;\n", ind, msgRefBits)
+			})
+			g.pf("%s    if ( !rides_%s )\n%s    {\n%s        report->damaged = true;\n%s        return false;\n%s    }\n%s}\n", ind, name, ind, ind, ind, ind, ind)
+		}
 	case tableScalarKind(f) == tkUnion:
 		// (c) the explicit empty arm is refused from the announcement alone,
 		// so it needs no build-version gate (§3.3)
