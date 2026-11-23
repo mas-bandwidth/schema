@@ -476,15 +476,15 @@ values outside the declared bound require the target’s write refusal
 | Direct string union arm, maximum length 8 | `sfw_arm_str_ok` | `sfw_arm_str_long` |
 | Enum-keyed `Beta` slot, 0 through 50 | `sfw_slot_min`, `sfw_slot_max` | `sfw_slot_low`, `sfw_slot_high` |
 
-Go runs the fourteen shared cases through `make table-write-bounds-go`. The
-driver reports refusal if measurement or saving refuses the caller value. Rust’s
+Run the fourteen shared cases with `make table-write-bounds-<leg>` for
+`c`, `cpp`, `cs`, `unity`, `go`, `rust`, `js`, or `dart`. The harness
+checks the outcome of the generated public writer. In targets with debug
+assertions, run the caller probes with assertions enabled. Rust’s
 `TestRustWriteRefusalReachesEveryCarrier` and its `Native` twin check the
 emitted assertions and exercise these carrier shapes through the generated
 variable save in a debug build. The Rust tests also check the plain byte
 buffer, an array count in an arm, a byte-buffer length in an arm, and a zero
-byte in a string arm. Go is the registered driver for this shared manifest. Other targets still
-owe driver registrations. For the assert targets the refusal rows require
-assertions enabled. Other targets owe the refusal in every build.
+byte in a string arm. Targets beyond the eight registered drivers still owe shared execution.
 
 Existing fixed writer cases `fref_count_min` and `fref_count_min_ok` cover
 SF-21 below and at the minimum. Existing JSON writer cases

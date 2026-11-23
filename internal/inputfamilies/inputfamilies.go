@@ -92,7 +92,7 @@ var Families = []Family{
 		Target:  "packet-cfloat-endpoints-{leg}",
 		Drivers: `^test/packet-cfloat-endpoints/([a-z]+)/`},
 	{Name: "table-write-bounds", PR: true,
-		Inputs: []string{"testdata/conformance/table-write-bounds/", "make/go-table-write-bounds.mk"},
+		Inputs: []string{"testdata/conformance/table-write-bounds/", "make/go-table-write-bounds.mk", "make/native-table-write-bounds.mk"},
 		Target: "table-write-bounds-{leg}"},
 	{Name: "packet-write-text", PR: true,
 		Inputs:  []string{"test/packet-write-text/*"},

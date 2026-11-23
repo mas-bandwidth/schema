@@ -194,17 +194,19 @@ func TestAccountFilesForLegResolvesPerLegSchemasAndExclusions(t *testing.T) {
 	}
 }
 
-func TestWriterBoundsSelectOnlyTheirGoReaders(t *testing.T) {
+func TestWriterBoundsSelectTheirRegisteredReaders(t *testing.T) {
 	t.Parallel()
 	tree := repoTree(t)
 	for _, tc := range []struct {
 		family   string
 		neighbor string
+		legs     []string
 		inputs   []string
 	}{
 		{
 			family:   "packet-cfloat-endpoints",
 			neighbor: "packet-write-cfloat",
+			legs:     []string{"go"},
 			inputs: []string{
 				"test/packet-cfloat-endpoints/PacketRatio.schema",
 				"test/packet-cfloat-endpoints/ratio-endpoints.txt",
@@ -213,6 +215,7 @@ func TestWriterBoundsSelectOnlyTheirGoReaders(t *testing.T) {
 		{
 			family:   "table-write-bounds",
 			neighbor: "conformance-corpus",
+			legs:     []string{"cpp", "c", "go", "rust", "js", "cs", "unity", "dart"},
 			inputs: []string{
 				"testdata/conformance/table-write-bounds/TableWriteBounds.schema",
 				"testdata/conformance/table-write-bounds/WRITE-BOUNDS.txt",
@@ -221,11 +224,14 @@ func TestWriterBoundsSelectOnlyTheirGoReaders(t *testing.T) {
 		},
 	} {
 		t.Run(tc.family, func(t *testing.T) {
-			if got := AccountFilesForLeg(tree, tc.family, "go"); !slices.Equal(got, tc.inputs) {
-				t.Errorf("accounted files = %v, want %v", got, tc.inputs)
+			var want []Row
+			for _, leg := range tc.legs {
+				if got := AccountFilesForLeg(tree, tc.family, leg); !slices.Equal(got, tc.inputs) {
+					t.Errorf("%s accounted files = %v, want %v", leg, got, tc.inputs)
+				}
+				want = append(want, Row{Leg: leg, Family: tc.family, Target: tc.family + "-" + leg})
 			}
 			for _, input := range tc.inputs {
-				want := []Row{{Leg: "go", Family: tc.family, Target: tc.family + "-go"}}
 				if got := Select(tree, []string{input}, false, true).Rows; !slices.Equal(got, want) {
 					t.Errorf("%s selected %v, want %v", input, got, want)
 				}
