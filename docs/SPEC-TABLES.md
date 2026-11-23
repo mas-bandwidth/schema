@@ -7531,8 +7531,9 @@ caller's array of values is the whole of its storage.
   `E <= entry_limit` and `L <= byte_limit`. Equality fits. The outer
   announcement framing contributes to neither count.
 
-  A new vocabulary takes its construction defaults described above. If
-  the caller supplies either limit, use that integer, including zero.
+  A new vocabulary takes its construction defaults described above. A
+  portable entry or byte limit is a nonnegative count. When supplied,
+  use its value verbatim, including zero.
   Changing one limit leaves the other limit in effect.
   A configured entry limit of zero permits only `E = 0`, even when the
   backing storage has room. A configured byte limit of zero permits only
