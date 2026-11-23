@@ -378,7 +378,9 @@ static int surface_framing( const char * out )
 
 static int surface_json_read( const char * out )
 {
+    const char * json_dir = getenv( "SCHEMA_CONFORMANCE_JSON_INPUT_DIR" );
     int i;
+    if ( json_dir == NULL || json_dir[0] == '\0' ) { json_dir = "testdata/conformance/tables/json"; }
     for ( i = 0; i < num_lines; i++ )
     {
         const Line * f = &lines[i];
@@ -392,7 +394,7 @@ static int surface_json_read( const char * out )
         codec = find_codec( f->field[2], f->field[3] );
         /* the C port carries no text form for a pointered unit (16.7), and says so per case */
         if ( codec == NULL || codec->from_json == NULL ) { if ( !spill_absent( out, f->field[1] ) ) { return 1; } continue; }
-        snprintf( path, sizeof( path ), "testdata/conformance/tables/json/%s.json", f->field[1] );
+        snprintf( path, sizeof( path ), "%s/%s.json", json_dir, f->field[1] );
         text = slurp( path, &bytes );
         if ( text == NULL ) { fprintf( stderr, "driver: cannot read %s\n", path ); return 1; }
         value = codec->storage();

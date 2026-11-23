@@ -1401,13 +1401,15 @@ static bool no_text( const std::vector<std::string> & f )
 
 static int surface_json_read( const std::string & out )
 {
+    const char * json_dir = getenv( "SCHEMA_CONFORMANCE_JSON_INPUT_DIR" );
+    if ( json_dir == NULL || json_dir[0] == '\0' ) json_dir = "testdata/conformance/tables/json";
     for ( size_t i = 0; i < manifest_lines.size(); i++ )
     {
         const std::vector<std::string> & f = manifest_lines[i].field;
         if ( f[0] != "instance" ) continue;
         if ( no_text( f ) ) continue;
         std::vector<uint8_t> text;
-        std::string path = "testdata/conformance/tables/json/" + f[1] + ".json";
+        std::string path = std::string( json_dir ) + "/" + f[1] + ".json";
         if ( !slurp( path.c_str(), text ) ) { fprintf( stderr, "driver: cannot read %s\n", path.c_str() ); return 1; }
         const VarCodec * variable = find_var_codec( f[2], f[3] );
         if ( variable != NULL )
