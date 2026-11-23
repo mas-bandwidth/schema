@@ -74,9 +74,9 @@ construction rule when a packet union arm is selected. The shared
 `make packet-defaults-python` runs these pins. The public Python compiler
 entry is covered by `TestPythonDriverCarriesPacketValueDefault`.
 
-[SPEC §4.3](SPEC.md#43-field-types-and-their-wire-encodings) also requires
-packet `const`, `reserved`, and `align` items when a unit declares tables.
-They occupy packet bits and contribute no table field. The
+[SPEC §4.3](SPEC.md#43-field-types-and-their-wire-encodings) also applies
+to `const`, `reserved`, and `align` in packet types in units that declare
+tables. These items occupy packet bits and contribute no table field. The
 [hosted packet probe](../internal/codegen/pythontable/hosted_items_test.go)
 checks this distinction in `TestPythonTableHostedPacketItemsGenerate` and
 `TestPythonTableHostedPacketItems`.
