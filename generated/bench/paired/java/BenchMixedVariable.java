@@ -45,9 +45,6 @@ public final class BenchMixedVariable {
             for (int i = 0; i < 1; i++) {
                 entities.add(new MixedEntityVariable.Value());
             }
-            for (int i = 0; i < 1; i++) {
-                entities.add(new MixedEntityVariable.Value());
-            }
         }
     }
 

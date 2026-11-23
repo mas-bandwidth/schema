@@ -177,11 +177,14 @@ build/mustrun: $(wildcard tools/mustrun/*.go)
 # fails when no test ran, or none passed (all skipped); it runs uncached
 # (-count=1 unless EXTRA names a -count). PKG and RUN are both
 # required; EXTRA passes more go test flags (EXTRA='-count=1 -race'). Use this,
-# not bare go test -run, in every brief, recipe and by hand.
+# not bare go test -run, in every brief, recipe and by hand. A test of the
+# selection that skips because SCHEMA_SLOW is unset is printed SKIPPED-SLOW and
+# makes the run red: set SCHEMA_SLOW=1 to run it, or SKIP_SLOW_OK=1 to accept
+# the skip by name (a local pass that ran nothing is not a pass, 2026-11-22).
 .PHONY: test-run
 test-run:
 	@[ -n "$(PKG)" ] && [ -n "$(RUN)" ] || { echo 'usage: make test-run PKG=./pkg RUN='"'"'^TestName$$'"'"' [EXTRA=-count=1]' >&2; exit 2; }
-	go run ./tools/gotestrun $(EXTRA) -run '$(RUN)' $(PKG)
+	SKIP_SLOW_OK='$(SKIP_SLOW_OK)' go run ./tools/gotestrun $(EXTRA) -run '$(RUN)' $(PKG)
 
 # bin-schema-embeds: for one embedded file of every package that embeds
 # (go list's EmbedFiles, so the list cannot drift from the go:embed lines), a
@@ -4968,10 +4971,28 @@ tables-arms-negative-controls: tables-arms-list-edge-negative-control \
 # Re-pin the goldens DELIBERATELY (SPEC §7.2 gates 1, 2, 7). A wire golden
 # breaking under an unchanged schema is stop-the-line, never a quiet re-pin
 # (SPEC §3.1) — this target is for intentional emitter/schema changes only.
+#
+# ALL OR NOTHING (test/goldens/transact): the writers below rewrite testdata/ in
+# place, so a step that failed (a debug assert in a C++ reference binary, a
+# failing go test) used to leave the families before it re-pinned and the ones
+# after it stale. The recipe now runs every step inside a snapshot of
+# testdata/ and puts the snapshot back on ANY failure or interrupt, so the tree
+# is wholly re-pinned or exactly as it was. It also writes the packet-defaults
+# and conformance pins, which the `pins` jobs of ci-full.yml and ci-fast.yml
+# rewrite and diff, so one command re-pins everything those two check and
+# `git status` afterwards is the whole change.
 update-goldens: build/schema_test_retain build/schema_test build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/schema_test_tables build/schema_test_block build/schema_test_maps build/schema_test_lists build/schema_test_arms build/conformance-harness
+	@test/goldens/transact $(MAKE) --no-print-directory update-goldens-steps
+
+# the steps update-goldens runs inside its snapshot; not a target to run alone
+# (a failure here leaves testdata/ half re-pinned, which is what the snapshot
+# is for)
+.PHONY: update-goldens-steps
+update-goldens-steps: packet-defaults-goldens conformance-pin
 	@mkdir -p testdata/golden testdata/golden/tables testdata/wire testdata/wire/tables
 	go test ./internal/goldens -update -run 'TestGolden'
 	go test -tags schema_leg_moo ./internal/goldens -update -run 'TestGolden'
+	FRAMING_WRITE=1 sh test/slowgate/proof pins-framing 'TestFramingRowsNameEveryVector TestNoWriterFramingVectorsRefused' -count=1 ./test/conformance/harness -run '$(PINS_FRAMING_RUN)'
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_tables
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_block
@@ -7896,6 +7917,18 @@ slow-gate-scan:
 
 test: slow-gate-scan
 
+# NOTHING FAILS SILENTLY (2026-11-22). No Go program under cmd/ or tools/
+# drops an error (assigned to _, or a call whose error nobody reads) unless
+# its line names why in an `// errdiscard: <reason>` comment. It type-checks
+# from the build cache, so it costs about a second; the lint-fast job of
+# ci-fast.yml runs it after modernize. `go run ./tools/errdiscard -all` lists
+# the kept ones.
+.PHONY: errdiscard
+errdiscard:
+	go run ./tools/errdiscard
+
+test: errdiscard
+
 # AND THE ACCOUNTING, test by test rather than target by target: a plain
 # `go test -v ./...` transcript (the DEFAULT half — no SCHEMA_SLOW, which is the
 # point) is read back and every test that skipped at the gate is placed in one
@@ -8148,6 +8181,36 @@ pins-wire-packet: packet-defaults-goldens build/schema_test build/schema_test_lu
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_ludicrous
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_bench
 	./build/schema_test_bench_table pin
+
+# THE WIRE PINS FROM NOTHING. A hand-written .bits or .bin sitting beside the
+# generated ones is the mistake `git diff` after a rewrite cannot see: the
+# writer never touches a file it does not own, so the stray one diffs clean.
+# This row empties the family first (every top-level testdata/wire pin and
+# packet-defaults/ is written by pins-wire-packet's writers and nothing else),
+# so a file no generator writes shows as a deletion in the row's `git diff`.
+# It deletes tracked files: run it on a tree you can `git checkout testdata`.
+.PHONY: pins-fresh-wire-packet
+pins-fresh-wire-packet:
+	rm -f testdata/wire/*.bin testdata/wire/*.bits
+	rm -rf testdata/wire/packet-defaults
+	$(MAKE) --no-print-directory pins-wire-packet
+
+# THE FRAMING VECTORS: testdata/wire/tables/framing/ and the shared wire
+# vectors under testdata/wire/tables/ are written from the byte scripts in
+# test/conformance/harness (FRAMING_WRITE=1), never by hand. PINS_FRAMING_RUN
+# selects every test that carries a FRAMING_WRITE writer; a test that writes and
+# is not selected here is a Go test (TestFramingWritersAreAllSelected) that
+# fails, so a new writer cannot sit outside the rewrite-and-diff.
+PINS_FRAMING_RUN := Pin|FramingRows|HeldDepth|NoWriter|FramingVector
+
+.PHONY: pins-framing
+pins-framing:
+	@# Emptying the directory first fails the writers (they report a missing file), so
+	@# the family is aged instead: every file is set to the epoch, the writers run, and a
+	@# file still at the epoch was written by no writer (a hand-written one) and fails.
+	find testdata/wire/tables/framing -type f -exec touch -d @0 {} +
+	FRAMING_WRITE=1 sh test/slowgate/proof pins-framing 'TestFramingRowsNameEveryVector TestNoWriterFramingVectorsRefused' -count=1 ./test/conformance/harness -run '$(PINS_FRAMING_RUN)'
+	@stale=$$(find testdata/wire/tables/framing -type f ! -newermt @1); 	if [ -n "$$stale" ]; then echo "$$stale"; echo "pins-framing: the files above are in testdata/wire/tables/framing but no FRAMING_WRITE writer produces them: written by hand. Delete them, or add the vector script."; exit 1; fi
 
 PINS_WIRE_TABLES_DIRS := examples pointers v1 v2 p1 p2 p3 jsonkeys messages stream blobs m1 m2 a1 a2 g1 k1 k2 w1 w2 r1 r2 f1 scalars backend vocab vocab9 bases
 

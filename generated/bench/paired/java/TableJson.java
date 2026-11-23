@@ -1152,7 +1152,6 @@ public final class TableJson {
                             bad = true;
                             return;
                         }
-                        LabelEntry entry = labels.get(labelId);
                         if (c == ',') {
                             p++;
                             c = peek();
@@ -1177,7 +1176,6 @@ public final class TableJson {
                         continue;
                     }
                 }
-                first = false;
                 skipValue(depth + 1);
                 if (bad) {
                     return;

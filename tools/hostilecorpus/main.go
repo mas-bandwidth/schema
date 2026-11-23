@@ -53,7 +53,7 @@ func run(command, root, dir string) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = os.RemoveAll(tmp) }()
+	defer func() { _ = os.RemoveAll(tmp) }() // errdiscard: a scratch directory the verdict never reads
 	switch command {
 	case "verify":
 		return hostilecorpus.Verify(root, tmp, dir, manifest)

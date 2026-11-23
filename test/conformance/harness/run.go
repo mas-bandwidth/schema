@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -47,8 +48,11 @@ type result struct {
 	// writer refuses the value by that name (docs/SPEC-TABLES.md §2.5), so the
 	// answer is the refusal and not a feature the leg lacks, and the reference
 	// leg may give it.
-	named    int
-	failures []string
+	named int
+	// uncredited names the must-refuse cases the leg refused while answering
+	// none of their lawful twins (discriminate.go): refusal-only, never a pass.
+	uncredited []string
+	failures   []string
 	// outcome is what each CASE came to, by the file the driver writes:
 	// outcomePass, outcomeFail, outcomeAbsent or outcomeNamed. The nightly's
 	// claims and its coverage table read it (test/conformance/README.md, "The
@@ -716,6 +720,11 @@ type runOptions struct {
 	// a case whose unit uses a registered construct the leg's target carries
 	// (compiler/carries.go), on a surface the leg runs.
 	claims *claimSet
+	// summary, when set, is a file the SCORE and REFUSAL-ONLY block is
+	// appended to: `harness run` passes $GITHUB_STEP_SUMMARY, so every CI job
+	// that runs the matrix shows on its summary page which legs score only by
+	// refusing (discriminate.go).
+	summary string
 	// coverage, when set, receives one row per leg, surface and class.
 	coverage *[]coverageRow
 	// results, when set, is where every case's verdict is written
@@ -821,6 +830,17 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			return false, err
 		}
 		want[s] = e
+	}
+
+	// THE DISCRIMINATION PROOF (discriminate.go): a must-refuse row with no
+	// lawful twin is a row a leg passes by refusing everything, and the run
+	// refuses the corpus rather than score it.
+	disc, err := buildDiscrimination(m, reports)
+	if err != nil {
+		return false, err
+	}
+	if problems := disc.problems(); len(problems) > 0 {
+		return false, fmt.Errorf("the corpus has %d must-refuse row(s) that cannot fail:\n  %s", len(problems), strings.Join(problems, "\n  "))
 	}
 
 	wireRefusals := map[string]Instance{}
@@ -974,6 +994,7 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 				opts.claims.enforce(d.lang, s, legWant, r)
 			}
 		}
+		disc.credit(d.lang, results[d.lang], reference)
 	}
 
 	// A run that compared no leg proved nothing: --only naming no registered
@@ -999,7 +1020,26 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			return false, err
 		}
 	}
-	return report(w, langs, results), nil
+	ok := report(w, langs, results)
+	if opts.summary != "" {
+		if err := appendSummary(opts.summary, langs, results); err != nil {
+			return false, err
+		}
+	}
+	return ok, nil
+}
+
+// appendSummary writes the score block to a CI step summary, in Markdown.
+func appendSummary(path string, langs []string, results map[string]map[string]*result) error {
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		return err
+	}
+	_, werr := fmt.Fprintf(f, "### Tables conformance score\n\n```\n%s```\n", scoreBlock(langs, results))
+	if cerr := f.Close(); werr == nil {
+		werr = cerr
+	}
+	return werr
 }
 
 // scorePrior scores one prior-writer row (FORMAT.md, `message-prior`). A leg
@@ -1347,6 +1387,47 @@ func absentReference(surface, how string) string {
 			"against a surface nothing pins", surface, how)
 }
 
+// surfaceName is the grammar of one line of a driver's `list`: a surface's name.
+var surfaceName = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
+
+// nonProtocolLine is the failure for a line a driver printed on stdout that its
+// protocol has no place for. The protocol: `<driver> <manifest> list` prints
+// surface names, one per line; `<driver> <manifest> <surface> <outdir>` prints
+// NOTHING on stdout, its answers are the files in <outdir>. A compiler,
+// interpreter or runtime diagnostic on stdout is therefore a failed driver
+// with the line named, never a wrong answer (test/conformance/README.md, "The
+// driver's stdout"). The diagnostics belong on stderr.
+func nonProtocolLine(line string) error {
+	return fmt.Errorf("driver printed non-protocol line: %s", line)
+}
+
+// parseSurfaceList reads a driver's `list` output strictly: every non-blank
+// line is a surface name, or the whole list is refused naming the line.
+func parseSurfaceList(stdout string) (map[string]bool, error) {
+	out := map[string]bool{}
+	for line := range strings.SplitSeq(stdout, "\n") {
+		s := strings.TrimSpace(line)
+		if s == "" {
+			continue
+		}
+		if !surfaceName.MatchString(s) {
+			return nil, nonProtocolLine(s)
+		}
+		out[s] = true
+	}
+	return out, nil
+}
+
+// checkRunStdout refuses any non-blank line on the stdout of a surface run.
+func checkRunStdout(stdout string) error {
+	for line := range strings.SplitSeq(stdout, "\n") {
+		if s := strings.TrimSpace(line); s != "" {
+			return nonProtocolLine(s)
+		}
+	}
+	return nil
+}
+
 func listSurfaces(d driver, manifest string) (map[string]bool, error) {
 	argv := append(append([]string{}, d.argv...), manifest, "list")
 	cmd := exec.Command(argv[0], argv[1:]...)
@@ -1356,11 +1437,9 @@ func listSurfaces(d driver, manifest string) (map[string]bool, error) {
 	if err := cmd.Run(); err != nil {
 		return nil, fmt.Errorf("`%s list` failed: %w\n%s", strings.Join(argv, " "), err, stderr.String())
 	}
-	out := map[string]bool{}
-	for line := range strings.SplitSeq(stdout.String(), "\n") {
-		if s := strings.TrimSpace(line); s != "" {
-			out[s] = true
-		}
+	out, err := parseSurfaceList(stdout.String())
+	if err != nil {
+		return nil, fmt.Errorf("`%s list`: %w", strings.Join(argv, " "), err)
 	}
 	return out, nil
 }
@@ -1368,10 +1447,15 @@ func listSurfaces(d driver, manifest string) (map[string]bool, error) {
 func runDriver(d driver, manifest, surface, out string) (int, string, error) {
 	argv := append(append([]string{}, d.argv...), manifest, surface, out)
 	cmd := exec.Command(argv[0], argv[1:]...)
-	var stderr bytes.Buffer
+	var stdout, stderr bytes.Buffer
 	cmd.Stderr = &stderr
-	cmd.Stdout = os.Stdout
+	cmd.Stdout = &stdout
 	err := cmd.Run()
+	if perr := checkRunStdout(stdout.String()); perr != nil {
+		// the driver failed, whatever its exit status said: nothing it wrote
+		// beside the line can be trusted
+		return 1, perr.Error() + "\n" + stderr.String(), nil
+	}
 	if err == nil {
 		return 0, stderr.String(), nil
 	}
@@ -1446,11 +1530,18 @@ func report(w io.Writer, langs []string, results map[string]map[string]*result) 
 				cell = fmt.Sprintf("FAIL %d/%d", r.pass, r.total)
 			case r.absent:
 				cell = "absent"
-			case r.missing > 0:
+			case r.missing > 0 || len(r.uncredited) > 0:
 				// what it answered, and what it said it cannot: the cell is the
 				// completion tracker, so an absence stays visible rather than
-				// being rounded away into a smaller total
-				cell = fmt.Sprintf("pass %d/%d +%da", r.pass, r.total-r.missing, r.missing)
+				// being rounded away into a smaller total. A REFUSAL-ONLY row
+				// (discriminate.go) is the same kind of work left: `+Nr`.
+				cell = fmt.Sprintf("pass %d/%d", r.pass, r.total-r.missing-len(r.uncredited))
+				if r.missing > 0 {
+					cell += fmt.Sprintf(" +%da", r.missing)
+				}
+				if len(r.uncredited) > 0 {
+					cell += fmt.Sprintf(" +%dr", len(r.uncredited))
+				}
 			default:
 				cell = fmt.Sprintf("pass %d/%d", r.pass, r.total)
 			}
@@ -1459,6 +1550,8 @@ func report(w io.Writer, langs []string, results map[string]map[string]*result) 
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
+
+	b.WriteString(scoreBlock(langs, results))
 
 	var lines []string
 	for _, l := range langs {
@@ -1481,4 +1574,53 @@ func report(w io.Writer, langs []string, results map[string]map[string]*result) 
 	// not a verdict this gate can improve on
 	_, _ = io.WriteString(w, b.String())
 	return len(lines) == 0
+}
+
+// scoreBlock is the addendum's scoring (docs/SPEC-CONFORMANCE.md §4), one line
+// per leg, and the REFUSAL-ONLY list. CREDITED is a correct answer, a refusal
+// only when the leg also answered a lawful twin (discriminate.go). ABSENT and
+// REFUSAL-ONLY are counted apart and NEVER credited: a leg that refuses
+// everything, or answers nothing, scores zero, however green its cells read.
+func scoreBlock(langs []string, results map[string]map[string]*result) string {
+	var b strings.Builder
+	b.WriteString("SCORE (docs/SPEC-CONFORMANCE.md §4: absent and refusal-only are never credited)\n")
+	var refusalOnly []string
+	for _, l := range langs {
+		var total, credited, absent, uncredited int
+		for _, s := range surfaces {
+			r := results[l][s]
+			if r == nil {
+				continue
+			}
+			total += r.total
+			if r.absent {
+				absent += r.total
+				continue
+			}
+			credited += r.pass + r.named
+			absent += r.missing - r.named
+			uncredited += len(r.uncredited)
+			if len(r.uncredited) > 0 {
+				refusalOnly = append(refusalOnly, fmt.Sprintf("  %s / %s: %d row(s) refused while no lawful twin was answered: %s",
+					l, s, len(r.uncredited), firstNames(r.uncredited, 6)))
+			}
+		}
+		failed := total - credited - absent - uncredited
+		fmt.Fprintf(&b, "  %-12s credited %d of %d; absent %d; refusal-only %d; failed %d\n", l, credited, total, absent, uncredited, failed)
+	}
+	b.WriteString("\n")
+	if len(refusalOnly) > 0 {
+		b.WriteString("REFUSAL-ONLY (not credited: the leg refuses the form, so these rows never reached their rule)\n")
+		b.WriteString(strings.Join(refusalOnly, "\n"))
+		b.WriteString("\n\n")
+	}
+	return b.String()
+}
+
+// firstNames joins up to n names and says how many more there are.
+func firstNames(names []string, n int) string {
+	if len(names) <= n {
+		return strings.Join(names, ", ")
+	}
+	return strings.Join(names[:n], ", ") + fmt.Sprintf(", and %d more", len(names)-n)
 }

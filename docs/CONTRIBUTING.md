@@ -280,6 +280,25 @@ reason and fails on a skip the job provides for: a missing toolchain in the
 lane that installs it, a `SCHEMA_SLOW` skip under a make target that sets
 `SCHEMA_SLOW=1`.
 
+Nothing fails silently, in the tests or in the tools that run them:
+
+- **A golden rewrite is never a pass in CI.** A test that rewrites its
+  golden when a variable is set reads it with `slowtest.Rewriting(t, name)`,
+  which fails under CI and on any value but `1`, and logs that a local
+  rewrite compared nothing. `go test ./internal/ci` refuses a test that reads
+  a `*_UPDATE*` or `*_WRITE*` variable any other way.
+- **A test knob that is not a number is refused by name.** Read an integer
+  knob with `slowtest.EnvInt`, and the random-table seed range with
+  `slowtest.EnvSeedRange`, which also refuses a range that holds no seed: read
+  as 0 or as the default, a typo runs zero cases and passes.
+- **No program under `cmd/` or `tools/` drops an error.** `make errdiscard`
+  (`go run ./tools/errdiscard`, about a second, in `ci-fast.yml`'s
+  `lint-fast`) type-checks them and refuses an error assigned to `_`, or a
+  call whose error nobody reads, unless its line names why in an
+  `// errdiscard: <reason>` comment. Writes into memory, to the process's own
+  stdout and stderr, `Parse` on an `ExitOnError` flag set and `Close` on a
+  read-only `os.Open` handle need no reason; `-all` lists the kept ones.
+
 The per-leg make gates, measured on an M-series Studio:
 
 | gate | time |
@@ -503,6 +522,20 @@ expected — but **moving a golden is a claim that the new output is correct**,
 not a step to get CI green. Say in the pull request why the wire changed and
 whether it is a breaking change for anyone who has already shipped data.
 
+**A golden is written by its generator and never by hand.** Every pin under
+`testdata/` that a generator owns (the `.bin` and `.bits` wire pins, the
+packet-defaults pins, the table and source goldens, the framing vectors, the
+cook dumps) is rewritten from that generator on every pull request that touches
+`testdata/` or a writer, and the tree is diffed against your commit: a file that
+is not exactly what its generator writes goes red (the `pins` job of
+`ci-fast.yml`; the wire-packet row empties its family first, so a stray
+hand-written file shows as a deletion). To re-pin, run `make update-goldens` and
+commit what changes. It is all or nothing: the writers run inside a snapshot of
+`testdata/` (`test/goldens/transact`) and a failing step, an interrupt or a kill
+puts the snapshot back, so a failure never leaves half the families re-pinned.
+A new `FRAMING_WRITE` test must be named so `PINS_FRAMING_RUN` (Makefile)
+selects it; `TestFramingWritersAreAllSelected` fails if it is not.
+
 If a change alters the wire, it changes the protocol id, which means every
 deployment built on the old one has to redeploy both sides. That is a real cost
 to somebody, so it needs to be worth it.
@@ -652,6 +685,8 @@ hook acts only in a clone whose `user.email` is that rowan-claude address: there
 refuses a push when any pushed commit has an author or committer other than
 rowan-claude, and prints the offending commits and the one-line fix. In every
 other clone the hook does nothing; the CAA check on GitHub covers those.
+
+Never push with --no-verify: it bypasses this hook. If the hook refuses a push wrongly, fix the hook.
 
 ## License
 

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -86,7 +87,7 @@ func TestMessageVerdictNeedsANamedRefusal(t *testing.T) {
 	}
 	r := roots[ri]
 	historical, unchanged := buildMessageVerdictFrames(t, r, u)
-	if os.Getenv("SCHEMA_UPDATE_MESSAGE_VERDICT") != "" {
+	if slowtest.Rewriting(t, "SCHEMA_UPDATE_MESSAGE_VERDICT") {
 		if err := os.MkdirAll(messageVerdictCorpus, 0o755); err != nil {
 			t.Fatal(err)
 		}
