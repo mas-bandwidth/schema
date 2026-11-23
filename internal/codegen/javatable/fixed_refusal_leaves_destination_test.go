@@ -3,10 +3,11 @@ package javatable
 // REFUSE IS TOTAL OVER THE BATCH (docs/FIXED-FORM-ALGORITHM.md §5.3, §7 item
 // 3): the generated Java load checks every record — its hash, its live
 // counts, lengths and text — before the first record lands, so a refusal at
-// record k leaves out[0..k-1] exactly as untouched as out[k]. The caller's
-// values are filled with a sentinel, a two-record file is forged twice (the
-// second record's hash, then the second record's count past its bound), and
-// every value must still hold its sentinel after each refusal.
+// record k lands nothing from the file. Ruling R4: every value handed in then
+// holds its declared default. The caller's THREE values are filled with a
+// sentinel, a two-record file is forged twice (the second record's hash, then
+// the second record's count past its bound), and every value, slot 2 past the
+// batch's count included, must hold its declared default after each refusal.
 
 import (
 	"os"
@@ -37,7 +38,8 @@ public final class Untouched {
     static final int sentinel = 0x5A5A5A5A;
 
     static PairFixed.Value[] sentinels() {
-        final PairFixed.Value[] v = { new PairFixed.Value(), new PairFixed.Value() };
+        // THREE values for a two-record file: slot 2 is past the batch's count.
+        final PairFixed.Value[] v = { new PairFixed.Value(), new PairFixed.Value(), new PairFixed.Value() };
         for (PairFixed.Value x : v) {
             x.seq = sentinel;
             x.marksCount = 3;
@@ -46,12 +48,15 @@ public final class Untouched {
         return v;
     }
 
-    static String untouched(PairFixed.Value[] v) {
+    // RULING R4: after a refusal every value handed in holds its declared
+    // default, field for field what a fresh value holds.
+    static String defaulted(PairFixed.Value[] v) {
+        final PairFixed.Value d = new PairFixed.Value();
         for (int k = 0; k < v.length; k++) {
-            if (v[k].seq != sentinel) { return "values[" + k + "].seq=" + v[k].seq; }
-            if (v[k].marksCount != 3) { return "values[" + k + "].marksCount=" + v[k].marksCount; }
+            if (v[k].seq != d.seq) { return "values[" + k + "].seq=" + v[k].seq; }
+            if (v[k].marksCount != d.marksCount) { return "values[" + k + "].marksCount=" + v[k].marksCount; }
             for (int i = 0; i < v[k].marks.length; i++) {
-                if (v[k].marks[i] != sentinel) { return "values[" + k + "].marks[" + i + "]=" + v[k].marks[i]; }
+                if (v[k].marks[i] != d.marks[i]) { return "values[" + k + "].marks[" + i + "]=" + v[k].marks[i]; }
             }
         }
         return "";
@@ -97,7 +102,7 @@ public final class Untouched {
         final PairFixed.Value[] v = sentinels();
         final TableFixed.Report r = new TableFixed.Report();
         final int n = load(v, file, r);
-        System.out.println("CASE " + what + " n=" + n + " refused=" + (r.refused || r.damaged) + " widened=" + r.widened + " untouched=" + untouched(v));
+        System.out.println("CASE " + what + " n=" + n + " refused=" + (r.refused || r.damaged) + " widened=" + r.widened + " defaulted=" + defaulted(v));
     }
 }
 `
@@ -154,8 +159,8 @@ func TestFixedRefusalLeavesDestination(t *testing.T) {
 			t.Errorf("%s: the driver printed no case\n%s", name, out)
 			continue
 		}
-		if want := "n=-1 refused=true widened=0 untouched="; line != want {
-			t.Errorf("%s: %s, want %s (every value still holds its sentinel)", name, line, want)
+		if want := "n=-1 refused=true widened=0 defaulted="; line != want {
+			t.Errorf("%s: %s, want %s (every value handed in at its declared default, R4)", name, line, want)
 		}
 	}
 }
