@@ -198,12 +198,11 @@ func TestWriterBoundsSelectTheirRegisteredReaders(t *testing.T) {
 	t.Parallel()
 	tree := repoTree(t)
 	for _, tc := range []struct {
-		family         string
-		neighbor       string
-		legs           []string
-		inputs         []string
-		readbackInputs []string
-		watched        []string
+		family   string
+		neighbor string
+		legs     []string
+		inputs   []string
+		watched  []string
 	}{
 		{
 			family:   "packet-cfloat-endpoints",
@@ -223,8 +222,6 @@ func TestWriterBoundsSelectTheirRegisteredReaders(t *testing.T) {
 				"testdata/conformance/table-write-bounds/TableWriteBounds.schema",
 				"testdata/conformance/table-write-bounds/WRITE-BOUNDS.txt",
 				"testdata/conformance/table-write-bounds/torture_var_wref.bin",
-			},
-			readbackInputs: []string{
 				"testdata/conformance/table-write-bounds/wire/sfw_arm_arr_payload.bin",
 				"testdata/conformance/table-write-bounds/wire/sfw_arm_raw_payload.bin",
 				"testdata/conformance/table-write-bounds/wire/sfw_raw_payload.bin",
@@ -237,18 +234,14 @@ func TestWriterBoundsSelectTheirRegisteredReaders(t *testing.T) {
 	} {
 		t.Run(tc.family, func(t *testing.T) {
 			var want []Row
+			slices.Sort(tc.inputs)
 			for _, leg := range tc.legs {
-				wantInputs := tc.inputs
-				if (leg == "go" || leg == "js") && len(tc.readbackInputs) > 0 {
-					wantInputs = slices.Concat(tc.inputs, tc.readbackInputs)
-					slices.Sort(wantInputs)
-				}
-				if got := AccountFilesForLeg(tree, tc.family, leg); !slices.Equal(got, wantInputs) {
-					t.Errorf("%s accounted files = %v, want %v", leg, got, wantInputs)
+				if got := AccountFilesForLeg(tree, tc.family, leg); !slices.Equal(got, tc.inputs) {
+					t.Errorf("%s accounted files = %v, want %v", leg, got, tc.inputs)
 				}
 				want = append(want, Row{Leg: leg, Family: tc.family, Target: tc.family + "-" + leg})
 			}
-			for _, input := range slices.Concat(tc.inputs, tc.readbackInputs, tc.watched) {
+			for _, input := range slices.Concat(tc.inputs, tc.watched) {
 				if got := Select(tree, []string{input}, false, true).Rows; !slices.Equal(got, want) {
 					t.Errorf("%s selected %v, want %v", input, got, want)
 				}

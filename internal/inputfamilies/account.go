@@ -2,7 +2,6 @@ package inputfamilies
 
 import (
 	"path"
-	"slices"
 	"sort"
 	"strings"
 )
@@ -27,10 +26,16 @@ var Account = map[string][]string{
 	"packet-write-bareint":    {"test/packet-write-bareint/*.schema", "test/packet-write-bareint/cases.txt"},
 	"packet-write-cfloat":     {"test/packet-write-cfloat/*.schema", "test/packet-write-cfloat/cases.txt"},
 	"packet-cfloat-endpoints": {"test/packet-cfloat-endpoints/*.schema", "test/packet-cfloat-endpoints/ratio-endpoints.txt"},
-	"table-write-bounds":      {"testdata/conformance/table-write-bounds/*.schema", "testdata/conformance/table-write-bounds/*.bin", "testdata/conformance/table-write-bounds/WRITE-BOUNDS.txt"},
-	"packet-write-text":       {"test/packet-write-text/*.schema", "test/packet-write-text/cases.txt"},
-	"conformance-corpus":      {"testdata/conformance/tables/MANIFEST.txt", "testdata/conformance/tables/wire/*.bin"},
-	"hostile-corpus":          {"internal/ci/hostilecorpus/corpus/manifest.tsv", "internal/ci/hostilecorpus/corpus/inputs/*"},
+	"table-write-bounds": {
+		"testdata/conformance/table-write-bounds/*.schema",
+		"testdata/conformance/table-write-bounds/WRITE-BOUNDS.txt",
+		"testdata/conformance/table-write-bounds/*.bin",
+		"testdata/conformance/table-write-bounds/*.json",
+		"testdata/conformance/table-write-bounds/wire/*.bin",
+	},
+	"packet-write-text":  {"test/packet-write-text/*.schema", "test/packet-write-text/cases.txt"},
+	"conformance-corpus": {"testdata/conformance/tables/MANIFEST.txt", "testdata/conformance/tables/wire/*.bin"},
+	"hostile-corpus":     {"internal/ci/hostilecorpus/corpus/manifest.tsv", "internal/ci/hostilecorpus/corpus/inputs/*"},
 }
 
 // AccountExclude names files that sit inside an accounted directory but
@@ -61,19 +66,6 @@ var AccountLegSchemaOverride = map[string]map[string]string{
 	"packet-finite": {"java": "test/java/Finite.schema"},
 }
 
-var tableWriteBoundsReadback = []string{
-	"testdata/conformance/table-write-bounds/*.json",
-	"testdata/conformance/table-write-bounds/wire/*.bin",
-}
-
-// accountPerLegPatterns extends a family for a leg with additional surfaces.
-var accountPerLegPatterns = map[string]map[string][]string{
-	"table-write-bounds": {
-		"go": tableWriteBoundsReadback,
-		"js": tableWriteBoundsReadback,
-	},
-}
-
 // AccountFiles is every file of the tree a reader of family f must open,
 // sorted.
 func AccountFiles(t Tree, f string) []string {
@@ -95,7 +87,7 @@ func AccountFilesForLeg(t Tree, f, leg string) []string {
 		seen[p] = true
 		out = append(out, p)
 	}
-	for _, pat := range slices.Concat(Account[f], accountPerLegPatterns[f][leg]) {
+	for _, pat := range Account[f] {
 		effPat := pat
 		if leg != "" && perLegSchemaFamilies[f] && strings.HasSuffix(pat, "/*.schema") {
 			if ov, ok := AccountLegSchemaOverride[f][leg]; ok {
