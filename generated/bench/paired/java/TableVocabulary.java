@@ -1197,7 +1197,7 @@ public final class TableVocabulary {
         // vocabulary in its constructed state has declared no storage, so its
         // bound is zero and the first entry is refused by name.
         int entryBound = v.entries == null ? 0 : v.entries.length;
-        if (v.maxEntries > 0 && v.maxEntries < entryBound) {
+        if (v.maxEntries >= 0 && v.maxEntries < entryBound) {
             entryBound = v.maxEntries;
         }
         Reader src = new Reader(vocab, 0);

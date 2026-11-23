@@ -4759,7 +4759,7 @@ namespace Blockhome
                     if (id == ulong.MaxValue) { node = true; }
                     if (!keys.Add(Convert.ToHexString(payload.Buffer.Slice(start, payload.Offset - start)))) { Damage(report); return Finish(report, Verdict.Damaged); }
                     entries.Add(new TableMessageEntry { Id = id, Kind = kind, Shape = shape });
-                    if (entries.Count > (v.MaxEntries > 0 ? v.MaxEntries : 4096)) { return Refuse(report, "vocabulary_too_large"); }
+                    if (entries.Count > (v.MaxEntries >= 0 ? v.MaxEntries : 4096)) { return Refuse(report, "vocabulary_too_large"); }
                 }
                 v.Entries = entries.ToArray(); v.Announced = true; return Finish(report, Verdict.Ok);
             }
