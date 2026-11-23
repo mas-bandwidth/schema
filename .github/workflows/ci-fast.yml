@@ -1635,7 +1635,11 @@ jobs:
             js)     vars=(NODE=node) ;;
             elixir) vars=("BEAM_PATH=$(dirname "$(command -v erl)"):$(dirname "$(command -v elixir)")") ;;
           esac
-          rm -rf build
+          if [ "$FAMILY" != "conformance-corpus" ]; then
+            rm -rf "build/$FAMILY" build/java-finite
+          else
+            vars+=("VERIFY_JOBS=4")
+          fi
           "$RUNNER_TEMP/inputaccount" -family "$FAMILY" -leg "$LEG" "${vars[@]}"
           "$RUNNER_TEMP/inputaccount" -family "$FAMILY" -leg "$LEG" -canary extra "${vars[@]}"
           "$RUNNER_TEMP/inputaccount" -family "$FAMILY" -leg "$LEG" -canary wrong "${vars[@]}"

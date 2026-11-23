@@ -1275,6 +1275,11 @@ func (in *reader) readArray(fv *Field, depth int) bool {
 		in.bad = true
 		return false
 	}
+	if depth+1 > maxJsonDepth {
+		// THE READ CAP COUNTS EVERY CONTAINER, placed or skipped (§16.2)
+		in.bad = true
+		return false
+	}
 	in.pos++
 	// an ARRAY re-establishes before placing: a fixed array writes every slot,
 	// so a second, shorter occurrence overlaying a prefix would leave the
@@ -1358,6 +1363,11 @@ func (in *reader) readArray(fv *Field, depth int) bool {
 func (in *reader) readTextList(fv *Field, depth int) bool {
 	f := fv.Def
 	if in.peek() != '[' {
+		in.bad = true
+		return false
+	}
+	if depth+1 > maxJsonDepth {
+		// THE READ CAP COUNTS EVERY CONTAINER, placed or skipped (§16.2)
 		in.bad = true
 		return false
 	}
@@ -1456,6 +1466,11 @@ func (in *reader) readKeyed(fv *Field, depth int) bool {
 		in.bad = true
 		return false
 	}
+	if depth+1 > maxJsonDepth {
+		// THE READ CAP COUNTS EVERY CONTAINER, placed or skipped (§16.2)
+		in.bad = true
+		return false
+	}
 	in.pos++
 	// every slot back to its declared defaults ONCE, so a key the text omits
 	// keeps them and a repeated field key cannot leave an earlier occurrence's
@@ -1504,7 +1519,7 @@ func (in *reader) readKeyed(fv *Field, depth int) bool {
 		switch {
 		case slot < 0:
 			in.report.Unknown++ // a key this enum cannot name
-			if !in.skipValue(depth + 1) {
+			if !in.skipValue(depth + 2) {
 				return false
 			}
 		case !shapeMatches(shape, in.valueShape()):
@@ -1865,6 +1880,11 @@ func (in *reader) readUnion(cell *Cell, un *ir.Union, depth int) bool {
 		in.bad = true
 		return false
 	}
+	if depth+1 > maxJsonDepth {
+		// THE READ CAP COUNTS EVERY CONTAINER, placed or skipped (§16.2)
+		in.bad = true
+		return false
+	}
 	in.pos++
 	cell.U = 0
 	cell.Tab = nil
@@ -1894,7 +1914,7 @@ func (in *reader) readUnion(cell *Cell, un *ir.Union, depth int) bool {
 	}
 	if tag == 0 {
 		in.report.Unknown++
-		if !in.skipValue(depth + 1) {
+		if !in.skipValue(depth + 2) {
 			return false
 		}
 	} else if arm := un.Variants[tag-1]; arm.Void() {
@@ -1918,7 +1938,7 @@ func (in *reader) readUnion(cell *Cell, un *ir.Union, depth int) bool {
 			return in.fail("kind_mismatch: " + un.Name)
 		} else {
 			payload := in.m.New(arm.Ref)
-			if !in.readTable(payload, depth+1) {
+			if !in.readTable(payload, depth+2) {
 				return false
 			}
 			cell.U = uint64(tag)
@@ -1963,6 +1983,11 @@ func (in *reader) readUnion(cell *Cell, un *ir.Union, depth int) bool {
 
 func (in *reader) readFlags(cell *Cell, fl *ir.Flags, depth int) bool {
 	if in.peek() != '[' {
+		in.bad = true
+		return false
+	}
+	if depth+1 > maxJsonDepth {
+		// THE READ CAP COUNTS EVERY CONTAINER, placed or skipped (§16.2)
 		in.bad = true
 		return false
 	}
@@ -2414,6 +2439,11 @@ func (in *reader) readMap(fv *Field, depth int) bool {
 		in.bad = true
 		return false
 	}
+	if depth+1 > maxJsonDepth {
+		// THE READ CAP COUNTS EVERY CONTAINER, placed or skipped (§16.2)
+		in.bad = true
+		return false
+	}
 	in.pos++
 	fv.Entries = nil
 	keyField := ir.MapKeyField(f)
@@ -2466,7 +2496,7 @@ func (in *reader) readMap(fv *Field, depth int) bool {
 			return in.fail("kind_mismatch: " + f.Name)
 		case !MapKeyFits(f, MapKeyOf(f, entry)):
 			return in.fail("length_over_bound: " + f.Name)
-		case !in.readMapValue(&entry.Fields[1], depth):
+		case !in.readMapValue(&entry.Fields[1], depth+1):
 			return false
 		default:
 			id := identityOf(f, MapKeyOf(f, entry))

@@ -2484,6 +2484,8 @@ inline double TableJsonTokenDouble( const char * token, int32_t length, bool sin
         }
         if ( !nonzero )
         {
+            // an all-zero mantissa is a zero of the token's own sign: -0.000... is -0 (§16.2)
+            if ( negative ) { work[n++] = '-'; }
             work[n++] = '0';
         }
         else
@@ -3348,6 +3350,12 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
             in.bad = true;
             return false;
         }
+        if ( depth + 1 > kTableJsonMaxDepth )
+        {
+            // THE READ CAP COUNTS EVERY CONTAINER, placed or skipped (§16.2): the union object is one
+            in.bad = true;
+            return false;
+        }
         in.pos++;
         TableJsonSetRaw( (uint8_t *) storage + arms->tag_offset, arms->tag_size, 0 );
         if ( TableJsonPeek( in ) == '}' )
@@ -3377,7 +3385,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         if ( tag == 0 )
         {
             in.report->unknown++;
-            if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+            if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
         }
         else
         {
@@ -3402,7 +3410,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
                 {
                     in.report->refused = true;
                     in.report->refuse_reason = kind_mismatch;
-                    if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                    if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
                     placed = false;
                 }
                 else if ( arm->kind == 17 && !arm->is_array )
@@ -3427,13 +3435,13 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
                 {
                     in.report->refused = true;
                     in.report->refuse_reason = kind_mismatch;
-                    if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                    if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
                     placed = false;
                 }
                 else
                 {
                     arms->arms[tag].table->reset( payload );
-                    if ( !TableJsonReadTable( in, payload, arms->arms[tag].table, depth + 1 ) ) { return false; }
+                    if ( !TableJsonReadTable( in, payload, arms->arms[tag].table, depth + 2 ) ) { return false; }
                 }
             }
             else
@@ -3444,7 +3452,7 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
                 {
                     in.report->refused = true;
                     in.report->refuse_reason = kind_mismatch;
-                    if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                    if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
                     placed = false;
                 }
                 else if ( !TableJsonLiteral( in, "null" ) )
@@ -4034,7 +4042,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             if ( slot < 0 )
             {
                 in.report->unknown++;
-                if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
             }
             else if ( !TableJsonElementShapeFits( f, TableJsonValueShape( in ) ) )
             {
@@ -4064,6 +4072,9 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
     }
     if ( f->is_array )
     {
+        // the array is a container one level below the table holding it, counted toward
+        // the cap whether or not it holds an element (FL-12)
+        if ( depth + 1 > kTableJsonMaxDepth ) { in.bad = true; return false; }
         if ( TableJsonPeek( in ) != '[' )
         {
             in.bad = true;
@@ -4638,7 +4649,20 @@ struct TableTextFormReader
             while ( i < n && ( s[i] == ' ' || s[i] == '\t' || s[i] == '\n' || s[i] == '\r' ) ) { i++; }
             if ( i < n && s[i] == ';' )
             {
+                // A COMMENT HOLDS ONLY WELL-FORMED UTF-8 AND NO NUL OR BARE CR
+                // (docs/SPEC-TABLES.md §16.9.1): ill-formed bytes refuse
+                // text_encoding, a NUL or a CR that does not end the line
+                // text_syntax. The cursor stays on the semicolon, so nothing after it
+                // is read.
+                const int64_t start = i;
                 while ( i < n && s[i] != '\n' ) { i++; }
+                int64_t end = i;
+                if ( end < n && end > start && s[end - 1] == '\r' ) { end--; }
+                for ( int64_t k = start; k < end; k++ )
+                {
+                    if ( s[k] == '\0' || s[k] == '\r' ) { i = start; return fail( "text_syntax" ); }
+                }
+                if ( !TableUtf8Valid( (const uint8_t *) s + start, (uint64_t) ( end - start ) ) ) { i = start; return fail( "text_encoding" ); }
                 continue;
             }
             return true;
@@ -6017,7 +6041,7 @@ inline bool tableTextFormParse( const char * text, int64_t bytes, const TableTyp
     r.gap();
     TableTextFormNode root;
     if ( !r.value( root, 0 ) ) { return false; }
-    r.gap();
+    if ( !r.gap() ) { return false; }
     if ( r.i != r.n )
     {
         *why = "text_syntax";
