@@ -1,0 +1,1 @@
+wire-fuzz: seed 1, 384 seeds over 74 roots, 335047 enumerated + 100000 random = 435047 mutants, 0 divergences, 41.0 s, 10610 mutants/s

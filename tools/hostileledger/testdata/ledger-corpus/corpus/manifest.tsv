@@ -1,0 +1,4 @@
+# name	carrier	schema	table	input	provenance	verdict	reason	digest
+t-one	text	s	Root	inputs/t-one.bin	ledger corpus	refuse	damaged	-
+t-two	text	s	Root	inputs/t-two.bin	ledger corpus	refuse	damaged	-
+w-one	wire	s	Root	inputs/w-one.bin	ledger corpus	refuse	damaged	-

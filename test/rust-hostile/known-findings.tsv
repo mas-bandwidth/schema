@@ -1,3 +1,4 @@
-# carried findings: name	slug	input	one line
+# carried findings: name	slug	input	answer	one line
+# the answer is what this port gives the case today, `accept <digest>` or `refuse`; a finding carries that answer and no other (F-079)
 # every line is a FIX-CARD the rust port owes; the runner fails if one goes green (test/rust-hostile/src/main.rs)
 # a name of the form <case>@release or <case>@debug is owed in that build profile only

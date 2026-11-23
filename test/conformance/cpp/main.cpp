@@ -2157,6 +2157,19 @@ static bool write_refusal_set( const std::string & root, void * value, const std
         {
             return v.str_arr_count >= 1 && write_refusal_text( v.str_arr[0].value, 16, v.str_arr[0].value_length, kind, text );
         }
+        // SILENT-FAILURE ROWS: the variable Save's bits(N) width on every carrier
+        if ( kind == "int" )
+        {
+            if ( path == "b_bits13" ) { v.b_bits13 = (uint32_t) n; return true; }
+            if ( path == "opt_bits" ) { v.opt_bits = (uint64_t) n; v.opt_bits_present = true; return true; }
+            if ( path == "arr_bits[0].v" )
+            {
+                if ( v.arr_bits.count < 1 || v.arr_bits.elements.value == 0 ) return false;
+                cooktorture::BitsCell * cells = (cooktorture::BitsCell *) ( (uint8_t *) &v.arr_bits.elements + v.arr_bits.elements.value );
+                cells[0].v = (uint64_t) n;
+                return true;
+            }
+        }
     }
     if ( root == "StorePurchase" )
     {
