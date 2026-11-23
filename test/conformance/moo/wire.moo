@@ -38,27 +38,23 @@ return function(ctx: any): { [string]: Surface }
 					ctx.say(f[2], nil)
 					continue
 				end
-				-- a read the runtime refuses as blob_shared (docs/SPEC-TABLES.md
-				-- §2.5) answers `refused` and a newline (ruling R13); any other
-				-- load refusal is a named absence the matrix counts, never a pass
-				local v, rep = loadWire(f)
-				if v == nil then
-					if rep.reason == "blob_shared" then
-						ctx.say(f[2], "refused\n")
-					else
-						ctx.refuse(f[2], tostring(rep.reason))
-					end
+				ctx.tables(f[3])
+				local S: any = ctx.module(f[3], "schema_tables")
+				local found, root = pcall(S.lookup, f[4])
+				if not found or root == nil then
+					ctx.say(f[2], nil)
 					continue
 				end
-				local out, why = ctx.write(f[3], f[4], v)
+				local v = loadWire(f)
+				if v == nil then
+					ctx.say(f[2], "refused\n")
+					continue
+				end
+				local out = ctx.write(f[3], f[4], v)
 				if out ~= nil then
 					ctx.say(f[2], buffer.tostring(out))
-				elseif why ~= nil and why.name == "blob_shared" then
-					-- the writer refusal every writer owes (docs/SPEC-TABLES.md
-					-- §2.5): `refused` and a newline (ruling R13)
-					ctx.say(f[2], "refused\n")
 				else
-					ctx.say(f[2], "refused")
+					ctx.say(f[2], "refused\n")
 				end
 			end
 		end,

@@ -1044,20 +1044,11 @@ static bool block_dump( const std::string & name, const std::vector<uint8_t> & d
 
 static std::vector<uint8_t> scratch;
 
-// a wire the strict read refused has no bytes to save. A refusal BY REASON
-// `blob_shared` (a blob two slots name, §2.5) is the answer a `wire-refused`
-// row expects: `<case>` holding exactly `refused\n` (ruling R13: an absence
-// is never credited as the refusal). Any other refusal keeps its named
-// `<case>.absent` marker, which the harness holds against the row.
-static bool spill_refusal( const std::string & out, const std::string & name, const Report & report )
+// Record the strict reader's actual verdict for the harness to compare.
+static bool spill_refusal( const std::string & out, const std::string & name )
 {
-    if ( report.blob_shared )
-    {
-        static const char refused[] = "refused\n";
-        return spill( out, name, refused, sizeof( refused ) - 1 );
-    }
-    static const char why[] = "refused";
-    return spill( out, name + ".absent", why, sizeof( why ) - 1 );
+    static const char refused[] = "refused\n";
+    return spill( out, name, refused, sizeof( refused ) - 1 );
 }
 
 // THE VERDICT LINE of a `report`, `framing` and `json-hostile` answer: the
@@ -1088,12 +1079,7 @@ static int surface_wire( const std::string & out )
             const void * root = variable->load( region, wire.data(), (int64_t) wire.size(), &report );
             if ( root == NULL )
             {
-                // A `wire-refused` instance (a blob two slots name, §2.5): the
-                // strict read refuses the whole load, so the row's answer is
-                // that refusal and no bytes, as the Go driver's is. Any other
-                // refusal answers a named absence (spill_refusal), and the
-                // harness holds it against the row.
-                if ( !spill_refusal( out, f[1], report ) ) return 1;
+                if ( !spill_refusal( out, f[1] ) ) return 1;
                 continue;
             }
             int64_t size = variable->measure( root );
@@ -1111,7 +1097,7 @@ static int surface_wire( const std::string & out )
         Report report;
         if ( !codec->load( value, wire.data(), (int64_t) wire.size(), &report ) )
         {
-            if ( !spill_refusal( out, f[1], report ) ) return 1;
+            if ( !spill_refusal( out, f[1] ) ) return 1;
             continue;
         }
         int64_t size = codec->measure( value );

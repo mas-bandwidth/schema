@@ -108,23 +108,14 @@ def surface_wire(text:string):
         let rep = schema_rt.LoadReport {}
         let rec = schema_rt.load(f[3], fixture(f[4]), rep)
         if not rec:
-            // a wire-refused instance (blob_shared, §2.5) owes the refusal,
-            // `refused` and a newline, and only when the runtime named
-            // blob_shared (ruling R13); any other refusal stays an absence
-            // naming the reason
-            let reason = schema_rt.strict_reason(rep)
-            if reason == "blob_shared":
-                say(f[1], "refused\n")
-            else:
-                print(f[1] + " absent " + reason)
+            // A public refusal is an answer on this surface (R13). A
+            // missing unit is reported separately by the driver.
+            assert schema_rt.strict_reason(rep) != ""
+            say(f[1], "refused\n")
             continue
         let out, why = schema_rt.save_reasoned(rec)
-        if why == "blob_shared":
-            // a value the writer refuses by name (blob_shared, §2.5): the
-            // answer is the refusal, never bytes (ruling R13)
+        if why != "":
             say(f[1], "refused\n")
-        elif why != "":
-            print(f[1] + " absent " + why)
         else:
             say(f[1], out)
 

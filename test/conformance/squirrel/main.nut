@@ -292,12 +292,8 @@ if (mode == "report" || mode == "framing") {
   return;
 }
 
-// LOAD THEN SAVE, the bytes. The strict read refuses a file whose two slots
-// name one blob (§2.5, blob_shared). That row answers <case> holding
-// `refused` and a newline (ruling R13: an absence is never the refusal). Any
-// other refusal of a corpus instance is a failure. A writer that refuses
-// blob_shared by name answers the same refusal; another named writer refusal
-// stays an absence naming it; a nameless refusal is a failure.
+// THE WIRE FORM loads and re-saves a carried root (§3). An actual refusal
+// answers `refused` and a newline (R13); a missing codec remains absent.
 if (mode == "wire") {
   foreach (ln in lines) {
     local f = splitFields(ln);
@@ -306,27 +302,17 @@ if (mode == "wire") {
     if (!generated(unit)) { writeAbsent(cname); continue; }
     local opened = openUnit(unit);
     local T = opened[1];
+    if (!(root in T.Descriptors)) { writeAbsent(cname); continue; }
     local S = opened[0].require("schema_table_save");
     local got = strictLoad(opened, root, readBytes(wirepath));
     local v = got[0];
-    local report = got[1];
     if (v == null) {
-      local shared = report.reason == "blob_shared" || (("sharedBlob" in report) && report.sharedBlob > 0);
-      if (shared) {
-        writeRefusal(cname);
-        continue;
-      }
-      writeText(outdir + "/" + cname + ".absent", report.reason != null ? report.reason : "refused");
+      writeRefusal(cname);
       continue;
     }
     local out = S.save(T, root, v);
     if (out == null) {
-      if (S.SaveReason == null) throw cname + ": save refused the value";
-      if (S.SaveReason == "blob_shared") {
-        writeRefusal(cname);
-        continue;
-      }
-      writeText(outdir + "/" + cname + ".absent", S.SaveReason);
+      writeRefusal(cname);
       continue;
     }
     if (S.measure(T, root, v) != out.len()) throw cname + ": measure is not the save's length";

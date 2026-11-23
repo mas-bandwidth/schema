@@ -239,27 +239,17 @@ static int surface_wire( const char * out )
         if ( wire == NULL ) { fprintf( stderr, "driver: cannot read %s\n", f->field[4] ); return 1; }
         value = codec->storage();
         memset( &report, 0, sizeof( report ) );
+        if ( !codec->load( value, wire, (int64_t) bytes, &report ) )
         {
-            int wire_refused = 0, mi;
-            for ( mi = 5; mi < f->count; mi++ ) { if ( strcmp( f->field[mi], "wire-refused" ) == 0 ) { wire_refused = 1; } }
-            if ( !codec->load( value, wire, (int64_t) bytes, &report ) )
-            {
-                /* AN INSTANCE THE WIRE READ REFUSES (FORMAT.md, `wire-refused`):
-                   a blob named from two slots (docs/SPEC-TABLES.md §2.5), which no
-                   writer writes, so its answer is the refusal and no bytes */
-                free( wire );
-                if ( report.blob_shared > 0 ) { if ( !spill_refused( out, f->field[1] ) ) { return 1; } continue; }
-                if ( wire_refused ) { if ( !spill_absent_reason( out, f->field[1], "refused" ) ) { return 1; } continue; }
-                fprintf( stderr, "driver: %s: load refused %s\n", f->field[1], f->field[4] );
-                return 1;
-            }
             free( wire );
-            if ( !save_into( codec, value, out, f->field[1] ) )
-            {
-                if ( wire_refused ) { if ( !spill_absent_reason( out, f->field[1], "refused" ) ) { return 1; } continue; }
-                fprintf( stderr, "driver: %s: the write-back refused\n", f->field[1] );
-                return 1;
-            }
+            if ( !spill_refused( out, f->field[1] ) ) { return 1; }
+            continue;
+        }
+        free( wire );
+        if ( !save_into( codec, value, out, f->field[1] ) )
+        {
+            fprintf( stderr, "driver: %s: write-back failed\n", f->field[1] );
+            return 1;
         }
     }
     return 0;

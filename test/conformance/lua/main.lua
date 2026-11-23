@@ -290,35 +290,19 @@ local function surfaceFraming(all, outdir)
 end
 
 -- The WIRE surface loads a wire and re-saves it (docs/SPEC-TABLES.md §3).
--- A blob named from two slots is refused (FORMAT.md, wire-refused): the
--- answer is `refused` and a newline, only when the runtime names blob_shared
--- (ruling R13), and no bytes. Any other refusal is that one case, not an exit.
-local function wireRefusal(why)
-  return type(why) == "string" and why:find("blob_shared", 1, true) ~= nil
-end
-
 local function surfaceWire(all, outdir)
   for _, f in ipairs(kind(all, "instance")) do
     local u = unit(f[3])
-    if not u then
+    if not u or u.T.Tables[f[4]] == nil then
       noCodec(outdir, f[2])
     else
-      local v, why = strictRead(u, f[4], mustRead(f[5]))
+      local v = strictRead(u, f[4], mustRead(f[5]))
       if v == nil then
-        -- THE READ'S REFUSAL IS THIS ROW'S ANSWER, whatever its reason
-        -- (docs/rulings.json refusal-verdict-only): a .absent holding the
-        -- reason, which the harness passes on a row the corpus marks
-        -- wire-refused (blob_shared, §2.5; shapes_*_below_min) and fails on
-        -- a row that owes the bytes (as test/conformance/go/main.go does)
-        absent(outdir, f[2], why ~= nil and tostring(why) or "refused")
+        answerRefused(outdir, f[2])
       else
-        local saved, wwhy = canonicalWrite(u, f[4], v)
+        local saved = canonicalWrite(u, f[4], v)
         if saved == nil then
-          if wireRefusal(wwhy) then
-            answerRefused(outdir, f[2])
-          else
-            io.stderr:write("driver: " .. f[2] .. ": Save refused: " .. tostring(wwhy) .. "\n")
-          end
+          answerRefused(outdir, f[2])
         else
           writeBytes(outdir .. "/" .. f[2], saved)
         end

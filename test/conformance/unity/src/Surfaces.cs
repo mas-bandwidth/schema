@@ -251,6 +251,8 @@ namespace SchemaUnityConformance
                 }
                 if (kind == "ordinal")
                 {
+                    // an enum array element: the same raw ordinal the scalar case stores,
+                    // set on the element so the real JSON writer is what judges it
                     object existing = BufferGet(arr, elemIdx.Value);
                     Type et = existing.GetType();
                     ulong raw = ulong.Parse(text, CultureInfo.InvariantCulture);
@@ -301,27 +303,6 @@ namespace SchemaUnityConformance
                     object elem = BufferGet(arr, elemIdx.Value);
                     if (!MutatePath(codec, wire, elem, new[] { "value" }, 0, kind, text)) { return false; }
                     BufferSet(arr, elemIdx.Value, elem);
-                    f.SetValue(holder, arr);
-                    return true;
-                }
-                if (kind == "ordinal")
-                {
-                    // an enum array element: the same raw ordinal the scalar case stores,
-                    // set on the element so the real JSON writer is what judges it
-                    object arr = f.GetValue(holder);
-                    object existing = BufferGet(arr, elemIdx.Value);
-                    Type et = existing.GetType();
-                    ulong raw = ulong.Parse(text, CultureInfo.InvariantCulture);
-                    Type under = Enum.GetUnderlyingType(et);
-                    object rawVal = under == typeof(byte) ? (object)checked((byte)raw)
-                        : under == typeof(ushort) ? checked((ushort)raw)
-                        : under == typeof(uint) ? checked((uint)raw)
-                        : under == typeof(ulong) ? raw
-                        : under == typeof(sbyte) ? checked((sbyte)raw)
-                        : under == typeof(short) ? checked((short)raw)
-                        : under == typeof(int) ? checked((int)raw)
-                        : checked((long)raw);
-                    BufferSet(arr, elemIdx.Value, Enum.ToObject(et, rawVal));
                     f.SetValue(holder, arr);
                     return true;
                 }

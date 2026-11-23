@@ -4001,6 +4001,17 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
 
 String? loadReport(String unit, String root, Uint8List wire, {bool framing = false}) {
   switch ('$unit $root') {
+    case 'shapes Bounds':
+      final rep = shapes.TableWireReport();
+      shapes.boundsWireLoad(wire, rep);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
+    case 'shapes FixedBounds':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = shapes.TableWireReport();
+        shapes.fixedBoundsWireLoad(wire, rep);
+        return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
+      }
+      return _fixedReportLine(wire, shapes_fixed.FixedBounds.new, shapes_fixed.fixedBoundsFixedNewPlan, shapes_fixed.TableFixedReport.new, (rep) => (rep.unknown, rep.widened, rep.refused != 0), shapes_fixed.fixedBoundsFixedLoad);
     case 'featurewitnesses Root':
       final rep = feature.TableWireReport();
       feature.rootWireLoad(wire, rep);

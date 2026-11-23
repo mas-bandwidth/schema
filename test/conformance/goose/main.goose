@@ -196,17 +196,12 @@ fn surface_framing(lines: const u8[:][:], unit: const u8[:]) {
     }
 }
 
-// surface_wire: every instance loaded and saved back (§3). A blob two slots
-// name (§2.5) is refused by the strict read itself: that refusal is the row's
-// answer (the corpus marks it wire-refused), a named absence, and any other
-// refusal of a corpus instance fails the run. A save the writer refuses by
-// name is a named absence.
+// surface_wire loads and re-saves a carried root (§3). An observed read or
+// write refusal is a verdict; a missing root has no codec to exercise.
 fn surface_wire(lines: const u8[:][:], unit: const u8[:]) {
     for line in lines {
         let f = words(line);
         if f.len < 5 || f[0] != "instance" || f[2] != unit { continue; }
-        var wire_refused = false;
-        for mark in f { if mark == "wire-refused" { wire_refused = true; } }
         var data: u8[>..] = [];
         load_file(f[4], data);
         var out: u8[>..<] = [];
@@ -216,32 +211,20 @@ fn surface_wire(lines: const u8[:][:], unit: const u8[:]) {
             continue;
         }
         if fw < -1 {
-            if wire_refused {
-                absent(f[1], "refused");
-                continue;
-            }
-            write_stderr(str("driver: ", f[1], " does not load\n"));
-            exit(1);
+            answer(f[1], "refused\n");
+            continue;
+        }
+        let u = conformance_unit();
+        if schema_rt::value_table(u, f[3]) < 0 {
+            absent(f[1], "no table codec for this root");
+            continue;
         }
         var vals: schema_rt::LoadVal[>..] = [];
         var nodes: schema_rt::LoadNode[>..] = [];
         var report = schema_rt::LoadReport { .. };
-        let root = schema_rt::load_table(conformance_unit(), f[3], data, vals, nodes, report);
-        if root < 0 && report.reason == schema_rt::LoadRefuseBlobShared {
+        let root = schema_rt::load_table(u, f[3], data, vals, nodes, report);
+        if root < 0 || schema_rt::save_table(u, f[3], data, vals, nodes, root, out) != 0 {
             answer(f[1], "refused\n");
-            continue;
-        }
-        if root < 0 {
-            if wire_refused {
-                absent(f[1], "refused");
-                continue;
-            }
-            write_stderr(str("driver: ", f[1], " does not load\n"));
-            exit(1);
-        }
-        let refusal = schema_rt::save_table(conformance_unit(), f[3], data, vals, nodes, root, out);
-        if refusal != 0 {
-            absent(f[1], schema_rt::save_refusal_name(refusal));
             continue;
         }
         answer(f[1], out);

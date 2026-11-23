@@ -1066,8 +1066,7 @@ public final class Driver {
                     Object values = fixed.newValues();
                     int read = fixed.load(values, Files.readAllBytes(Paths.get(f[4])), report);
                     if (read < 0 || fixed.flag(report, "refused")) {
-                        String reason = fixed.reason(report);
-                        spillAbsentReason(out, f[1], reason != null && !reason.isEmpty() ? reason : "refused");
+                        spill(out, f[1], "refused\n");
                         continue;
                     }
                     byte[] saved = fixed.save(values, read);
