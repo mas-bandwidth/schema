@@ -390,9 +390,11 @@ func (g *tableGen) wireReadFieldPayload(f *ir.Field, kind int, dst, bounded stri
 		if f.Array == ir.ArrayCounted {
 			g.wireCountedTailReset(f, dst, ind+"        ")
 		}
-		if bounded == "" {
-			g.pf("%s        if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; }\n", ind)
-		}
+		// Arm reads set arm.offset = arm.size up front, so the caller's
+		// arm.offset != arm.size check cannot see bytes left inside L.
+		// Field arrays and arm arrays both refuse that slack
+		// (docs/SPEC-TABLES.md section 3 and section 4).
+		g.pf("%s        if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_WIRE_DAMAGED; }\n", ind)
 		g.pf("%s    }\n%s}\n", ind, ind)
 	case kind == tkUnion:
 		g.pf("%sif ( !%s( r, &%s, 0 ) ) { return 0; }\n", ind, g.unionWireName(f.Type.Ref.(*ir.Union), "load"), dst)
