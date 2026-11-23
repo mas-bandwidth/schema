@@ -6847,7 +6847,11 @@ width and is not walked, as on the file form.
 ORDINARY kind mismatch, AND IT REFUSES AT `AnnounceRead`**, for every entry this
 reader names, up front: the announcement is refused, no vocabulary is set, and
 no batch under it is read. That is the fastest place to find it, and a kind is
-a fact of the announcement, not of a body. A widening is not a mismatch (§4). **A field whose
+a fact of the announcement, not of a body. A widening is not a mismatch (§4). **A reader that
+meets such an entry in a batch instead** — the reference's `AnnounceRead` holds no
+root, so it meets the entry at the field or arm that names it — **REFUSES THE
+WHOLE BATCH `kind_mismatch`**: the count is `0` and every body holds its declared
+defaults. It never skips the entry, counts it and delivers the batch. **A field whose
 announced kind AGREES and whose announced RANGE differs decodes**, and refuses
 `out_of_range` where the value falls outside this reader's bound, which is §4's
 rule for a range change on the variable form and is why the shapes carry ranges
