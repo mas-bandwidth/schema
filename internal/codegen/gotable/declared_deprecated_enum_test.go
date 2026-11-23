@@ -20,7 +20,7 @@ func TestDeclaredDeprecatedEnumCook(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := make(map[string]string)
-	for _, line := range strings.Split(string(cases), "\n") {
+	for line := range strings.SplitSeq(string(cases), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) == 0 || strings.HasPrefix(fields[0], "#") {
 			continue
