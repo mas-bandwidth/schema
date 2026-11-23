@@ -7915,6 +7915,18 @@ slow-gate-scan:
 
 test: slow-gate-scan
 
+# NOTHING FAILS SILENTLY (2026-11-22). No Go program under cmd/ or tools/
+# drops an error (assigned to _, or a call whose error nobody reads) unless
+# its line names why in an `// errdiscard: <reason>` comment. It type-checks
+# from the build cache, so it costs about a second; the lint-fast job of
+# ci-fast.yml runs it after modernize. `go run ./tools/errdiscard -all` lists
+# the kept ones.
+.PHONY: errdiscard
+errdiscard:
+	go run ./tools/errdiscard
+
+test: errdiscard
+
 # AND THE ACCOUNTING, test by test rather than target by target: a plain
 # `go test -v ./...` transcript (the DEFAULT half — no SCHEMA_SLOW, which is the
 # point) is read back and every test that skipped at the gate is placed in one
@@ -8187,16 +8199,14 @@ pins-fresh-wire-packet:
 # selects every test that carries a FRAMING_WRITE writer; a test that writes and
 # is not selected here is a Go test (TestFramingWritersAreAllSelected) that
 # fails, so a new writer cannot sit outside the rewrite-and-diff.
-PINS_FRAMING_RUN := Pin|FramingRows|HeldDepth|NoWriter|FramingVector
+PINS_FRAMING_RUN := Pin|FramingRows|FramingDir|HeldDepth|NoWriter|FramingVector
 
 .PHONY: pins-framing
 pins-framing:
-	@# Emptying the directory first fails the writers (they report a missing file), so
-	@# the family is aged instead: every file is set to the epoch, the writers run, and a
-	@# file still at the epoch was written by no writer (a hand-written one) and fails.
-	find testdata/wire/tables/framing -type f -exec touch -d @0 {} +
-	FRAMING_WRITE=1 sh test/slowgate/proof pins-framing 'TestFramingRowsNameEveryVector TestNoWriterFramingVectorsRefused' -count=1 ./test/conformance/harness -run '$(PINS_FRAMING_RUN)'
-	@stale=$$(find testdata/wire/tables/framing -type f ! -newermt @1); 	if [ -n "$$stale" ]; then echo "$$stale"; echo "pins-framing: the files above are in testdata/wire/tables/framing but no FRAMING_WRITE writer produces them: written by hand. Delete them, or add the vector script."; exit 1; fi
+	@# Compare every committed framing pin against its Go vector script and
+	@# reject any hand-written file under testdata/wire/tables/framing, without
+	@# setting FRAMING_WRITE=1 (which slowtest.Rewriting forbids under CI).
+	sh test/slowgate/proof pins-framing 'TestFramingRowsNameEveryVector TestFramingVectorBytesArePinned TestFramingDirHasNoHandWrittenFiles TestNoWriterFramingVectorsRefused' -count=1 ./test/conformance/harness -run '$(PINS_FRAMING_RUN)' -skip '^TestPopulatedFeatureWitnessNativePins$$'
 
 PINS_WIRE_TABLES_DIRS := examples pointers v1 v2 p1 p2 p3 jsonkeys messages stream blobs m1 m2 a1 a2 g1 k1 k2 w1 w2 r1 r2 f1 scalars backend vocab vocab9 bases
 
