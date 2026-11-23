@@ -302,7 +302,7 @@ namespace SchemaUnityConformance
                     int cap = BufferCapacity(buf);
                     for (int i = oldCount; i < Math.Min(n, cap); i++)
                     {
-                        object freshRoot = codec.Load(wire, new DriverReport());
+                        object freshRoot = FreshRoot(codec, wire);
                         object freshBuf = f.GetValue(freshRoot);
                         BufferSet(buf, i, BufferGet(freshBuf, 0));
                     }
@@ -331,6 +331,9 @@ namespace SchemaUnityConformance
                     lf.SetValue(holder, rawBytes.Length);
                     return true;
                 }
+                case "elems": return MutateElems(codec, wire, holder, f, text);
+                case "mask": return MutateMask(holder, f, text);
+                case "dupkey": return MutateDupkey(codec, wire, holder, f, text);
                 case "units":
                 {
                     // Unity C# stores wstring as UTF-8 bytes, so unpaired UTF-16 code units are unrepresentable unless char[]
@@ -343,6 +346,7 @@ namespace SchemaUnityConformance
 
         private static bool WriteRefusalSet(ICodec codec, byte[] wire, object value, string path, string kind, string text)
         {
+            if (kind == "point") { return MutatePoint(value, path, text); }
             try
             {
                 string[] segments = path.Split('.');
@@ -396,8 +400,10 @@ namespace SchemaUnityConformance
                     SpillAbsent(outDir, f[1]);
                     continue;
                 }
-                byte[] wire = File.ReadAllBytes(f[4]);
-                object value = codec.Load(wire, new DriverReport());
+                // a wire of `-` is the root's fresh value: a root with no
+                // file form (SF-05, SF-06) starts from its declared defaults
+                byte[] wire = f[4] == "-" ? null : File.ReadAllBytes(f[4]);
+                object value = FreshRoot(codec, wire);
                 if (value == null)
                 {
                     Console.Error.WriteLine("driver: " + f[1] + " does not load");
@@ -421,6 +427,12 @@ namespace SchemaUnityConformance
                             break;
                         case "write-refusal-json":
                             verdict = WriteRefusalJsonVerdict(codec, value, f[6], f[7]);
+                            break;
+                        case "write-refusal-cook":
+                            verdict = WriteRefusalCookVerdict(codec, value, f[1]);
+                            break;
+                        case "write-refusal-block":
+                            verdict = WriteRefusalBlockVerdict(codec, f[1]);
                             break;
                         default:
                             verdict = WriteRefusalBinaryVerdict(() => codec.VariableSave(value, buffer));
