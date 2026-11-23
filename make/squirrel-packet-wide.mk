@@ -53,7 +53,7 @@ packet-defaults-squirrel-negative-control: packet-defaults-squirrel
 	@grep -Fxm1 'FAILED: packet-default constructor bytes' build/packet-defaults/squirrel-negative/log
 	@echo 'packet defaults Squirrel negative control: missing constructor bytes fail the runtime check'
 
-test-squirrel: packet-utf8-squirrel packet-utf8-squirrel-negative-control packet-defaults-squirrel packet-defaults-squirrel-negative-control packet-end-squirrel packet-end-squirrel-negative-control
+test-squirrel: packet-finite-squirrel packet-utf8-squirrel packet-utf8-squirrel-negative-control packet-defaults-squirrel packet-defaults-squirrel-negative-control packet-end-squirrel packet-end-squirrel-negative-control
 
 build/packet-end/squirrel/.stamp: bin/schema test/packet-end/End.schema make/squirrel-packet-wide.mk
 	@rm -rf build/packet-end/squirrel
@@ -114,3 +114,21 @@ packet-write-bareint-squirrel-negative-control: packet-write-bareint-squirrel
 	@echo 'packet write bare-int Squirrel negative control: an unchecked width fails the shared cases'
 
 test-squirrel: packet-write-bareint-squirrel packet-write-bareint-squirrel-negative-control
+
+
+# THE PACKET FINITE-FLOAT DRIVER, run as a make target like every other
+# language's packet-finite-<lang> (SPEC §4.3, serialize format 2.0). The Go test
+# TestSquirrelPacketFloatsAreFinite generates the same schema and runs the same
+# main.nut; this target runs it under mustrun so a run that checked nothing, or
+# a check that stopped running, is red by name. main.nut loads its modules from
+# its own directory, so it and the vendored serialize runtime (the files the Go
+# test adds with squirrel.Serialize()) are copied into the generated output.
+build/packet-finite/squirrel/.stamp: bin/schema test/packet-finite/squirrel/Finite.schema test/packet-finite/squirrel/main.nut make/squirrel-packet-wide.mk
+	@rm -rf build/packet-finite/squirrel && mkdir -p build/packet-finite/squirrel
+	./bin/schema generate --lang squirrel --out build/packet-finite/squirrel/generated test/packet-finite/squirrel/Finite.schema
+	@cp internal/codegen/squirrel/serialize/*.nut test/packet-finite/squirrel/main.nut build/packet-finite/squirrel/generated/
+	@touch $@
+
+.PHONY: packet-finite-squirrel
+packet-finite-squirrel: build/packet-finite/squirrel/.stamp toolchain-squirrel build/mustrun
+	cd build/packet-finite/squirrel/generated && $(CURDIR)/$(MUSTRUN) -name packet-finite-squirrel -count 137 -- "$(SQ)" main.nut
