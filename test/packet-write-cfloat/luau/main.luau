@@ -1,6 +1,6 @@
 --!strict
 local serialize = require("./serialize")
-local c = require("./CFloat")
+local c = require("./PacketCFloat")
 local cases: { { name: string, value: number, written: boolean, expected: number } } = require("./cases") :: any
 local ran = 0
 for _, case in cases do

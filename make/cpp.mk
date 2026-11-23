@@ -555,9 +555,9 @@ conformance-negative-control-cpp-write-refusal-message: build/conformance-harnes
 # twin; every case runs in a child because the refusal aborts.
 PACKET_WRITE_CFLOAT_CPP_DIR := build/packet-write-cfloat/cpp
 
-$(PACKET_WRITE_CFLOAT_CPP_DIR)/.stamp: bin/schema test/packet-write-cfloat/CFloat.schema make/cpp.mk
+$(PACKET_WRITE_CFLOAT_CPP_DIR)/.stamp: bin/schema test/packet-write-cfloat/PacketCFloat.schema make/cpp.mk
 	@mkdir -p $(PACKET_WRITE_CFLOAT_CPP_DIR)
-	./bin/schema generate --lang cpp --out $(PACKET_WRITE_CFLOAT_CPP_DIR) test/packet-write-cfloat/CFloat.schema
+	./bin/schema generate --lang cpp --out $(PACKET_WRITE_CFLOAT_CPP_DIR) test/packet-write-cfloat/PacketCFloat.schema
 	@touch $@
 
 build/schema_test_packet_write_cfloat_cpp: $(PACKET_WRITE_CFLOAT_CPP_DIR)/.stamp test/packet-write-cfloat/cpp/main.cpp $(SERIALIZE)/serialize.h make/cpp.mk
@@ -578,7 +578,7 @@ packet-write-cfloat-cpp-negative-control: packet-write-cfloat-cpp
 	@printf '{"Replace":{"%s/internal/codegen/cpp/functions.go":"%s/$(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/functions.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/overlay.json
 	go build -overlay $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/overlay.json -o $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/schema ./cmd/schema
-	$(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/schema generate --lang cpp --out $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/generated test/packet-write-cfloat/CFloat.schema
+	$(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/schema generate --lang cpp --out $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/generated test/packet-write-cfloat/PacketCFloat.schema
 	$(CXX) $(CXXFLAGS) -I$(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/generated test/packet-write-cfloat/cpp/main.cpp -o $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/driver
 	@if ./$(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/driver test/packet-write-cfloat/cases.txt > $(PACKET_WRITE_CFLOAT_CPP_NEGATIVE)/log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: the compressed-float write passed without its range assert"; \

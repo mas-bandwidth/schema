@@ -2351,9 +2351,9 @@ conformance-negative-control-c-write-refusal-message: build/conformance-harness 
 # docs/PACKET-WIRE-ALGORITHM.md §2.5): the generated writer asserts the value
 # finite and inside [min, max] before quantizing. The driver runs one child per
 # shared case and reads the debug assert's abort as the refusal.
-build/packet-write-cfloat/c/.stamp: bin/schema test/packet-write-cfloat/CFloat.schema
+build/packet-write-cfloat/c/.stamp: bin/schema test/packet-write-cfloat/PacketCFloat.schema
 	@mkdir -p build/packet-write-cfloat/c
-	./bin/schema generate --lang c --out build/packet-write-cfloat/c test/packet-write-cfloat/CFloat.schema
+	./bin/schema generate --lang c --out build/packet-write-cfloat/c test/packet-write-cfloat/PacketCFloat.schema
 	@touch $@
 
 build/packet-write-cfloat/c-test: build/packet-write-cfloat/c/.stamp test/packet-write-cfloat/c/main.c $(SERIALIZE_C)/serialize.h $(SERIALIZE_C)/serialize.c
@@ -2371,7 +2371,7 @@ packet-write-cfloat-c-negative-control: packet-write-cfloat-c
 		-out build/packet-write-cfloat/c-negative/fields.gotext internal/codegen/c/fields.go
 	@printf '{"Replace":{"%s/internal/codegen/c/fields.go":"%s/build/packet-write-cfloat/c-negative/fields.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/packet-write-cfloat/c-negative/overlay.json
-	go run -overlay=build/packet-write-cfloat/c-negative/overlay.json ./cmd/schema generate --lang c --out build/packet-write-cfloat/c-negative/generated test/packet-write-cfloat/CFloat.schema
+	go run -overlay=build/packet-write-cfloat/c-negative/overlay.json ./cmd/schema generate --lang c --out build/packet-write-cfloat/c-negative/generated test/packet-write-cfloat/PacketCFloat.schema
 	$(CC) -std=c99 -Wall -Wextra -Werror -Wtype-limits $(C_TAUTOLOGICAL) \
 		-O2 -ffp-contract=off -Ibuild/packet-write-cfloat/c-negative/generated -I$(SERIALIZE_C) \
 		test/packet-write-cfloat/c/main.c $(SERIALIZE_C)/serialize.c -o build/packet-write-cfloat/c-negative/checker -lm

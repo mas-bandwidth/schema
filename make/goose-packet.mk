@@ -163,7 +163,7 @@ test-goose: packet-end-goose packet-end-goose-negative-control
 .PHONY: packet-write-cfloat-goose packet-write-cfloat-goose-negative-control
 packet-write-cfloat-goose: goose-packet-ready build/mustrun
 	@rm -rf build/packet-write-cfloat/goose && mkdir -p build/packet-write-cfloat/goose
-	./build/schema-goose-packet generate --lang goose --out build/packet-write-cfloat/goose test/packet-write-cfloat/CFloat.schema
+	./build/schema-goose-packet generate --lang goose --out build/packet-write-cfloat/goose test/packet-write-cfloat/PacketCFloat.schema
 	cp test/goose/driverlib.goose test/packet-write-cfloat/goose/main.goose build/packet-write-cfloat/goose/
 	go run ./test/packet-write-cfloat/goose/cases.go test/packet-write-cfloat/cases.txt > build/packet-write-cfloat/goose/cases
 	$(MUSTRUN) -name packet-write-cfloat-goose -count 10 -- $(GOOSE) run build/packet-write-cfloat/goose/main.goose < build/packet-write-cfloat/goose/cases
@@ -171,7 +171,7 @@ packet-write-cfloat-goose: goose-packet-ready build/mustrun
 packet-write-cfloat-goose-negative-control: packet-write-cfloat-goose
 	$(call goose-packet-sabotaged,build/packet-write-cfloat/goose-negative,packet-write-cfloat-goose,internal/codegen/goose/write.go)
 	@rm -rf build/packet-write-cfloat/goose-negative/generated && mkdir -p build/packet-write-cfloat/goose-negative/generated
-	./build/packet-write-cfloat/goose-negative/schema generate --lang goose --out build/packet-write-cfloat/goose-negative/generated test/packet-write-cfloat/CFloat.schema
+	./build/packet-write-cfloat/goose-negative/schema generate --lang goose --out build/packet-write-cfloat/goose-negative/generated test/packet-write-cfloat/PacketCFloat.schema
 	cp test/goose/driverlib.goose test/packet-write-cfloat/goose/main.goose build/packet-write-cfloat/goose-negative/generated/
 	@if $(GOOSE) run build/packet-write-cfloat/goose-negative/generated/main.goose < build/packet-write-cfloat/goose/cases > build/packet-write-cfloat/goose-negative/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: range check removal passed'; exit 1; fi

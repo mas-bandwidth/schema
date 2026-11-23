@@ -6,7 +6,7 @@ local fixtures = assert(arg[2], "usage: lua main.lua <generated dir> <fixture di
 package.path = generated .. "/?.lua;" .. package.path
 
 local serialize = require("serialize")
-local CFloat = require("CFloat")
+local CFloat = require("PacketCFloat")
 local failures = 0
 local count = 0
 

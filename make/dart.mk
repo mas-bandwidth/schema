@@ -1991,8 +1991,8 @@ test-dart: packet-end-dart packet-end-dart-negative-control
 # stays. The shared cases run on the checked twin, where every refused case
 # must fire the assert; the release twin trusts the caller by design, so it
 # only writes the lawful cases and reads them back.
-build/packet-write-cfloat/dart/.stamp: bin/schema test/packet-write-cfloat/CFloat.schema make/dart.mk
-	./bin/schema generate --lang dart --out build/packet-write-cfloat/dart test/packet-write-cfloat/CFloat.schema
+build/packet-write-cfloat/dart/.stamp: bin/schema test/packet-write-cfloat/PacketCFloat.schema make/dart.mk
+	./bin/schema generate --lang dart --out build/packet-write-cfloat/dart test/packet-write-cfloat/PacketCFloat.schema
 	@touch $@
 
 .PHONY: packet-write-cfloat-dart packet-write-cfloat-dart-negative-control
@@ -2007,7 +2007,7 @@ packet-write-cfloat-dart-negative-control: packet-write-cfloat-dart
 	@rm -rf build/packet-write-cfloat/dart-negative && mkdir -p build/packet-write-cfloat/dart-negative
 	go run ./tools/sabotage -name packet-write-cfloat-dart-range -out build/packet-write-cfloat/dart-negative/functions.gotext internal/codegen/dart/functions.go
 	@printf '{"Replace":{"%s/internal/codegen/dart/functions.go":"%s/build/packet-write-cfloat/dart-negative/functions.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-write-cfloat/dart-negative/overlay.json
-	go run -overlay=build/packet-write-cfloat/dart-negative/overlay.json ./cmd/schema generate --lang dart --out build/packet-write-cfloat/dart-negative/generated test/packet-write-cfloat/CFloat.schema
+	go run -overlay=build/packet-write-cfloat/dart-negative/overlay.json ./cmd/schema generate --lang dart --out build/packet-write-cfloat/dart-negative/generated test/packet-write-cfloat/PacketCFloat.schema
 	@sed 's|../../../build/packet-write-cfloat/dart/|$(CURDIR)/build/packet-write-cfloat/dart-negative/generated/|' test/packet-write-cfloat/dart/main.dart > build/packet-write-cfloat/dart-negative/main.dart
 	@if $(DART) --enable-asserts build/packet-write-cfloat/dart-negative/main.dart test/packet-write-cfloat/cases.txt > build/packet-write-cfloat/dart-negative/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: the range check is removed and the driver stayed green'; \
