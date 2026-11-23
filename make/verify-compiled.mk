@@ -68,25 +68,38 @@ VERIFY_FUZZ_DEPS_elixir := toolchain-elixir build/elixir-tables-ebin/.stamp buil
 VERIFY_FUZZ_EXTRA_go    := SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/golang
 
 define verify_compiled_fuzz_rules
-.PHONY: _verify-$(1)-fuzz verify-$(1)-fuzz
-_verify-$(1)-fuzz: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
-	@mkdir -p build/verify
+.PHONY: _verify-$(1)-fuzz _verify-$(1)-fuzz-extra _verify-$(1)-fuzz-plain _verify-$(1)-fuzz-retain _verify-$(1)-fuzz-json _verify-$(1)-fuzz-message verify-$(1)-fuzz
+_verify-$(1)-fuzz-extra: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
 	$$(if $$(VERIFY_FUZZ_EXTRA_$(1)),$$(VERIFY_FUZZ_EXTRA_$(1)),@:)
+
+_verify-$(1)-fuzz-plain: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
+	@mkdir -p build/verify
 	$$(WFR_ENV_$(1)) ./build/conformance-harness wire-fuzz \
 		--driver "$$(WFR_DRIVER_$(1))" $$(WFR_FLAGS_$(1)) \
 		--seed $$(VERIFY_FUZZ_SEED) --n $$(VERIFY_FUZZ_RANDOM_N) --max-mutants $$(VERIFY_FUZZ_MAX) \
 		--failed build/verify/fuzz-$(1)-plain.bin
+
+_verify-$(1)-fuzz-retain: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
+	@mkdir -p build/verify
 	$$(WFR_ENV_$(1)) ./build/conformance-harness wire-fuzz --retain \
 		--driver "$$(WFR_DRIVER_$(1))" $$(WFR_FLAGS_$(1)) \
 		--seed $$(VERIFY_FUZZ_SEED) --n $$(VERIFY_FUZZ_RANDOM_N) --max-mutants $$(VERIFY_FUZZ_MAX) \
 		--failed build/verify/fuzz-$(1)-retain.bin
+
+_verify-$(1)-fuzz-json: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
+	@mkdir -p build/verify
 	./build/conformance-harness json-fuzz --only $(1) \
 		--seed $$(VERIFY_FUZZ_SEED) --n $$(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-$(1)
+
+_verify-$(1)-fuzz-message: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
+	@mkdir -p build/verify
 	DOTNET="$$(DOTNET)" JAVA="$$(JAVA)" BEAM_PATH="$$(BEAM_PATH)" $$(WFR_ENV_$(1)) \
 		./build/conformance-harness message-fuzz --only $(1) \
 		--seed $$(VERIFY_FUZZ_SEED) --n $$(VERIFY_MESSAGE_FUZZ_N) \
 		--failed build/verify/message-fuzz-$(1)
+
+_verify-$(1)-fuzz: _verify-$(1)-fuzz-extra _verify-$(1)-fuzz-plain _verify-$(1)-fuzz-retain _verify-$(1)-fuzz-json _verify-$(1)-fuzz-message
 
 verify-$(1)-fuzz:
 	@$$(MAKE) $$(VERIFY_JFLAG) --no-print-directory _verify-$(1)-fuzz
@@ -236,10 +249,14 @@ _verify-dart-bench: toolchain-dart bin/schema generated/bench/dart/.stamp genera
 
 # ---- elixir ----
 
-.PHONY: _verify-elixir-conformance _verify-elixir-bench
-_verify-elixir-conformance: build/mustrun toolchain-elixir build/conformance-harness build-conformance-elixir generated/elixir/.stamp generated/elixir-ludicrous/.stamp packet-defaults-elixir packet-utf8-elixir packet-finite-elixir
+.PHONY: _verify-elixir-conformance _verify-elixir-bench _verify-elixir-packet-main _verify-elixir-packet-ludicrous
+_verify-elixir-packet-main: build/mustrun toolchain-elixir generated/elixir/.stamp
 	cd test/elixir && "$(CURDIR)/$(MUSTRUN)" -name test-elixir-main -count $(ELIXIR_MAIN_CHECKS) -- $(ELIXIR) main.exs
+
+_verify-elixir-packet-ludicrous: build/mustrun toolchain-elixir generated/elixir-ludicrous/.stamp
 	cd test/elixir-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-elixir-ludicrous -count $(ELIXIR_LUDICROUS_CHECKS) -- $(ELIXIR) main.exs
+
+_verify-elixir-conformance: build/conformance-harness build-conformance-elixir _verify-elixir-packet-main _verify-elixir-packet-ludicrous packet-defaults-elixir packet-utf8-elixir packet-finite-elixir
 	@rm -rf build/verify/conformance-elixir && mkdir -p build/verify/conformance-elixir $(VERIFY_RESULTS_DIR)
 	BEAM_PATH="$(BEAM_PATH)" ELIXIR_TABLES_EBIN="$(CURDIR)/build/elixir-tables-ebin" ./build/conformance-harness run --only elixir --claims --work build/verify/conformance-elixir --results $(VERIFY_RESULTS_DIR)/elixir.json
 
