@@ -146,6 +146,7 @@ import '../../../build/tables-generated-dart-scalars/varevo3/Tblvarevo3Fixed.dar
 import '../../../build/tables-generated-dart-scalars/varevo3/VarEvo3Fixed.dart' as varevo3_fixed;
 import '../../../build/tables-generated-dart-scalars/varevo3/VarEvo3Cook.dart' as varevo3cook;
 import '../../../build/tables-generated-dart/cooktorture/CookTortureWire.dart' as cooktorture;
+import '../../../build/tables-generated-dart/writebounds/WriteboundsWire.dart' as writebounds;
 import '../../../build/tables-generated-dart/cooktorture/CookTortureFixed.dart' as cooktorture_fixed;
 import '../../../build/tables-generated-dart/cooktorture/CookTortureCook.dart' as cooktorturecook;
 import '../../../build/tables-generated-dart-scalars/cooktorturewide/CookTortureWideWire.dart' as cooktorturewide;
@@ -7403,6 +7404,30 @@ void _mutateSimStateWire(scalardemo.SimState w, String path, String vkind, Strin
   }
 }
 
+void _mutateWriteBounds(writebounds.TortureVarWref value, String path, String kind, String text) {
+  final n = int.parse(text);
+  switch ('$path $kind') {
+    case 'opt_arr count':
+      value.hasOptArr = true;
+      value.optArr = List<int>.filled(n, 0);
+      break;
+    case 'arm_bits.a_bits int':
+      value.armBits.aBits = n;
+      break;
+    case 'arm_range.a_range int':
+      value.armRange.aRange = n;
+      break;
+    case 'arm_str.a_str length':
+      value.armStr.aStr = 'a' * n;
+      break;
+    case 'chan_lim[1] int':
+      value.chanLim[1] = n;
+      break;
+    default:
+      throw StateError('unsupported writebounds edit: $path $kind');
+  }
+}
+
 int surfaceWriteRefusal(String outDir, String surface) {
   for (final f in kind(surface)) {
     final name = f[1];
@@ -7535,6 +7560,15 @@ int surfaceWriteRefusal(String outDir, String surface) {
           stderr.writeln('$surface $name: unsupported $unit.$root');
           return 1;
       }
+    } else if (surface == 'write-refusal' && '$unit $root' == 'writebounds TortureVarWref') {
+      final rep = writebounds.TableWireReport();
+      final value = writebounds.tortureVarWrefWireLoad(wire, rep);
+      if (rep.refused) return 1;
+      _mutateWriteBounds(value, path, vkind, text);
+      answer = _catchWrite(() {
+        writebounds.tortureVarWrefWireSave(value);
+        return 0;
+      });
     } else if ('$unit $root' == 'tabledemo RootConfig') {
       final fx = _fixedLoadOne(wire, tabledemo_fixed.RootConfig.new, tables_fixed.rootConfigFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.rootConfigFixedLoad);
       if (fx == null) return 1;

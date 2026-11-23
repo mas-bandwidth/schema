@@ -91,6 +91,7 @@ build/tables-generated-js/.stamp: make/js.mk bin/schema testdata/conformance/fea
 	@mkdir -p build/tables-generated-js
 	./bin/schema generate --lang js --out build/tables-generated-js/features testdata/conformance/feature-witnesses/full/Features.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/examples tables/examples
+	./bin/schema generate --lang js --out build/tables-generated-js/writebounds testdata/conformance/table-write-bounds/TableWriteBounds.schema
 	# the POINTERED unit: its FIXED surface is refused by name for every
 	# pointered table (§3.4, §11), its two ACCELERATORS are emitted all the same
 	# (§7, §19) — this is where the cook's JS read side comes from — and its
@@ -1878,7 +1879,17 @@ test-js: tables-js-helper-closure
 
 # the leg's generated units move with every unit schema the conformance
 # manifest names, not only with the ones listed above
-build/tables-generated-js/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)
+build/tables-generated-js/.stamp: $(CONFORMANCE_UNIT_SCHEMAS) testdata/conformance/table-write-bounds/TableWriteBounds.schema
+
+.PHONY: table-write-bounds-js
+table-write-bounds-js: build/conformance-harness build/tables-generated-js/.stamp
+	NODE="$(NODE)" ./build/conformance-harness run --only js --surfaces write-refusal --complete \
+		--manifest testdata/conformance/table-write-bounds/WRITE-BOUNDS.txt \
+		--json testdata/conformance/table-write-bounds \
+		--work build/conformance-write-bounds-js
+
+test-js: table-write-bounds-js
+
 
 # THE PER-COMMIT SMOKE COUNT (card green-fit-fuzz-smoke): ci-full.yml's js-fuzz
 # rows run the enumerated pass and JS_FUZZ_SMOKE_N seeded random mutants per
