@@ -194,6 +194,10 @@ func mutateWriteRefusalGo(value any, path, kind, text string) error {
 			return err
 		}
 	}
+	if fv.Kind() == reflect.Struct && fv.FieldByName("Value").IsValid() {
+		// An arm accessor groups its payload and any count or length.
+		return writeRefusalGoSet(fv, fv.FieldByName("Value"), "value", kind, text)
+	}
 	return writeRefusalGoSet(cur, fv, name, kind, text)
 }
 

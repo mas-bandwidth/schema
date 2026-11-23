@@ -265,10 +265,12 @@ _verify-java-bench: toolchain-java bin/schema generated/bench/java/.stamp cards-
 
 # ---- dart ----
 
-.PHONY: _verify-dart-conformance _verify-dart-bench
-_verify-dart-conformance: build/mustrun toolchain-dart build/conformance-harness build/conformance-dart generated/dart/.stamp generated/dart-ludicrous/.stamp packet-defaults-dart packet-utf8-dart packet-finite-dart conformance-rows-dart
+.PHONY: _verify-dart-conformance _verify-dart-packets _verify-dart-bench
+_verify-dart-packets: build/mustrun toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp packet-defaults-dart packet-utf8-dart packet-finite-dart conformance-rows-dart
 	cd test/dart && "$(CURDIR)/$(MUSTRUN)" -name test-dart-main -count $(DART_MAIN_CHECKS) -- $(DART) --enable-asserts main.dart
 	cd test/dart-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-dart-ludicrous -count $(DART_LUDICROUS_CHECKS) -- $(DART) --enable-asserts main.dart
+
+_verify-dart-conformance: build/conformance-harness build/conformance-dart _verify-dart-packets
 	@rm -rf build/verify/conformance-dart && mkdir -p build/verify/conformance-dart $(VERIFY_RESULTS_DIR)
 	DART="$(DART)" ./build/conformance-harness run --only dart --claims --work build/verify/conformance-dart --results $(VERIFY_RESULTS_DIR)/dart.json
 

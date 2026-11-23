@@ -3,8 +3,10 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -80,5 +82,53 @@ func TestPlantRestores(t *testing.T) {
 	}
 	if _, _, err := plant("other", inputs); err == nil {
 		t.Error("an unknown canary was accepted")
+	}
+}
+
+// The joined check succeeds only when a real Make invocation passes, opens
+// the genuine inputs, and leaves exactly the extra file unread.
+func TestCheckExtraOnePass(t *testing.T) {
+	const dir = "testdata/wire/packet-defaults"
+	const extra = dir + "/zz-inputaccount-canary.bin"
+	const real = dir + "/sample.bin"
+	for _, tc := range []struct {
+		name   string
+		recipe string
+		code   int
+		want   string
+	}{
+		{"only the extra is unread", "cat " + real, 0, "the expanded inventory went red"},
+		{"the genuine input is unread", "true", 1, "UNREAD " + real},
+		{"the extra is read", "cat " + real + " " + extra, 1, "leaving only " + extra + " unread"},
+		{"the reader fails", "cat " + real + "; exit 1", 1, "leg c: make packet-defaults-c"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Chdir(t.TempDir())
+			write := func(name, data string) {
+				t.Helper()
+				if err := os.MkdirAll(filepath.Dir(name), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(name, []byte(data), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			write(real, "sample")
+			write("test/packet-defaults/c_main.c", "")
+			write("Makefile", ".PHONY: packet-defaults-c\n"+
+				"packet-defaults-c:\n\t@test -f "+extra+"\n\t@echo ran >> count\n\t@"+tc.recipe+"\n")
+			var stdout, stderr bytes.Buffer
+			code := run([]string{"-family", "packet-defaults", "-leg", "c", "-check-extra"}, &stdout, &stderr)
+			if code != tc.code || !strings.Contains(stderr.String(), tc.want) {
+				t.Fatalf("exit = %d, want %d and %q; log:\n%s", code, tc.code, tc.want, &stderr)
+			}
+			count, err := os.ReadFile("count")
+			if err != nil || string(count) != "ran\n" {
+				t.Fatalf("Make invocations = %q, %v; want one", count, err)
+			}
+			if _, err := os.Stat(extra); !os.IsNotExist(err) {
+				t.Fatalf("extra input cleanup: got %v, want no matching file", err)
+			}
+		})
 	}
 }

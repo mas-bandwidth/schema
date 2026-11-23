@@ -15,7 +15,8 @@ conformance:
   (`MANIFEST.txt` is the manifest, `FORMAT.md` states every file shape; the
   wires, JSON texts, goldens, framing vectors, cook inputs and outputs, block
   images, hostile JSON and report expectations live in the directories
-  beside it). The wider fixtures it names are under `testdata/conformance/`
+  beside it). The [accepted variable-table write bounds](#accepted-variable-table-write-bounds)
+  run through the same harness with a focused manifest. The wider fixtures it names are under `testdata/conformance/`
   (`feature-witnesses`, `text`, `write-refusal-int`, `r19`,
   `cook-authored-optional-map`) and `testdata/golden`, `testdata/wire` and
   `testdata/jsontestsuite`.
@@ -40,8 +41,10 @@ conformance:
   ([FIXED-FORM-ALGORITHM §4.1](FIXED-FORM-ALGORITHM.md#41-the-plan)).
   Run on a target with `make verify-tablegen-<lang>`. To select this pair
   alone, pass `--only pin:bytes_lineage:` to `build/verify-tablegen-bin`.
-- **The compressed-float endpoint pins**: [`ratio-endpoints.txt`](../test/packet-write-cfloat/ratio-endpoints.txt)
+- **The compressed-float endpoint pins**: [`ratio-endpoints.txt`](../test/packet-cfloat-endpoints/ratio-endpoints.txt)
   gives the packet bytes for both [accepted endpoints](#compressed-float-packet-endpoints).
+- **The packet end pins**: [packet-end](../testdata/wire/packet-end/README.md)
+  includes the [logical bit count case](#packet-end-and-the-logical-bit-count).
 - **The cards corpus**: `tables/cards/conformance/` (`MANIFEST.txt`,
   `FORMAT.md`, `cases/`, `expected/`).
 - **The harness and driver contract**: `test/conformance/` (the harness in
@@ -50,6 +53,15 @@ conformance:
 A port is **conforming only if it passes every case on every surface it
 carries.** A case it cannot answer is an absence (sections 2 and 3), never a pass; a
 wrong answer is a failure whatever the reason.
+
+### Packet end and the logical bit count
+
+The public reader accepts [`packet-end/exact.bin`](../testdata/wire/packet-end/exact.bin)
+(the byte `03`) as `packetend.End` with `value = 3`. The declaration uses
+three bits and [`exact.bits`](../testdata/wire/packet-end/exact.bits) records
+that count. The reader checks the final five bits as padding. An API that
+reports bits consumed reports **3** after success. The C++ reference
+driver asserts the value and count in [`make packet-end-cpp`](../test/packet-end/cpp/main.cpp).
 
 ## 2. The surfaces
 
@@ -316,6 +328,7 @@ per-port check where no shared case exercises it.
 | SF-27 | the text read maps a deprecated enum variant to the field default (an element: None) (SPEC-TABLES §2.15 READ) | owed: the text-form corpus (`testdata/conformance/text`) carries strings only, so an enum text case needs the text surface extended (#4740) |
 | SF-32, SF-33 | tooling (moo-analyze run with no output, Luau bitpacker probe) (none: not a wire rule) | none (#4740) |
 | SF-09 to SF-15 | a write check reaches every carrier: a plain field, an optional, an array element, a union arm, a keyed slot (SPEC.md §5.1 rows 1–4, 8) | `write-refusal` (`wref_*`, `wref_var_*`, `wref_shapes_*`); on `TortureCook`, `sfv_opt_bits_wide` / `sfv_opt_bits_ok`, `sfv_elem_bits_wide` / `sfv_elem_bits_ok`, and `TestRustWriteRefusalReachesEveryCarrier` (#4501, #4740) |
+| SF-13–SF-15 accepted bounds | Variable table writers accept each carrier at its declared boundary (SPEC.md §5.1 rows 1–4 and 8) | [Accepted variable-table write bounds](#accepted-variable-table-write-bounds) |
 | R14 | R14: a field whose type changed refuses the WHOLE load `kind_mismatch`; only a widening reads (SPEC-TABLES.md opening, §2.3, §2.11, kind `36`, §4 THE ONE WIDENING RULE and its edits table) | refuses `message-prior prior_restring_kind` (int64 read as string), twin `message-prior prior_kept64_inside` (int64 read as int64); refuses `message-prior prior_stamp_kind` (int64 read as timestamp), twin `message-prior prior_stamped_inside`; refuses `report r14_at_int64_as_timestamp` (int64 read as timestamp, file form), twin `report r14_features_twin`; refuses `report r14_optional_pointer_as_optional` (from `*T`), twin `report r16_optional_plain_as_optional`; refuses `report r14_child_value_as_pointer` (to `*T`), twin `report r14_features_twin` (#4764) |
 | R15 | R15: a ranged announcement is checked per value: the base at the announcement, each value on the body (SPEC-TABLES.md §3.3, A RANGED ANNOUNCEMENT IS CHECKED PER VALUE) | refuses `message-prior prior_band_past` (245 against the reader's 200..240), twin `message-prior prior_band_inside` (the writer announces `uint8 \| min = 200, max = 250`, and 230 reads) (#4764) |
 | R16 | R16: optional is a widening and runs one way: `T` to `?T` passes, `?T` to `T` is refused by the baseline naming the field (SPEC-TABLES.md §2.3, §4, §18.2, §21.1; VERSIONING.md) | refuses `internal/baseline` `TestBaselineOptionalIsOneWay`, `TestRefusals/an_optional_field_made_plain`, `TestEvolutionTableFrames`; the lock, `TestLockOptionalAddRefuses`, twin `report r16_optional_plain_as_optional` (`Part` read as `?Part`, present) (#4764) |
@@ -356,7 +369,7 @@ vector's test holds, so no language leg can differ on them.
 | gap | where the text says it |
 |---|---|
 | Sw10, a present optional table rides even when empty | SPEC-TABLES §22.2 |
-| Sw13, an `[E]T` arm payload | refused at check: SPEC-TABLES §2 ("What an arm may not be"); its grammar row is owed with `GAP-1` |
+| Sw13, an `[E]T` arm payload | SPEC-TABLES §2.6 refuses the union arm and §2.4 permits a table field. `TestGrammarCorpus` checks [`refuse/ArmKeyed.schema`](../testdata/conformance/grammar/refuse/ArmKeyed.schema) and [`accept/FieldKeyed.schema`](../testdata/conformance/grammar/accept/FieldKeyed.schema). |
 | Hs6, Li5, kind `16`'s header lies inside its own `L` | SPEC-TABLES §3; `framing keyed_header_crosses_L` |
 | Li7, a count under the minimum on the wire | SPEC-TABLES §22.2 (`count_over_bound` in every form) |
 | Li9, the read depth cap | SPEC-TABLES §16.2 (129 containers read, the 130th refuses); its rows are owed with `FL-12` |
@@ -378,9 +391,26 @@ name, lawfully.
 
 ### Compressed float packet endpoints
 
-[`RatioEndpoint`](../test/packet-write-cfloat/PacketRatio.schema) declares a closed
+[`RatioEndpoint`](../test/packet-cfloat-endpoints/PacketRatio.schema) declares a closed
 `[0, 1]` range at resolution `0.01` ([packet wire §2.5](PACKET-WIRE-ALGORITHM.md#25-compressed-float-write)).
-The [endpoint cases](../test/packet-write-cfloat/ratio-endpoints.txt) pin the seven-bit
+The [endpoint cases](../test/packet-cfloat-endpoints/ratio-endpoints.txt) pin the seven-bit
 step indices 0 and 100 and their zero-padded packet bytes `00` and `64`.
 `make packet-cfloat-endpoints-go` writes each endpoint through the generated Go
 packet writer, checks the exact byte, and reads back the original value.
+
+
+### Accepted variable-table write bounds
+
+[The focused manifest](../testdata/conformance/table-write-bounds/ACCEPTED-WRITE-BOUNDS.txt)
+loads the lawful `TortureVarWref` seed, changes one field or arm per case, and
+requires its variable-form measure and save to complete.
+
+| Carrier | Accepted cases |
+|---|---|
+| Present optional counted array of maximum length 3 | `sfw_opt_arr_ok` |
+| Direct `bits(13)` union arm at 8191 | `sfw_arm_bits_ok` |
+| Direct ranged integer union arm at 0 and 10 | `sfw_arm_range_min`, `sfw_arm_range_max` |
+| Direct string union arm of maximum length 8 | `sfw_arm_str_ok` |
+| Enum-keyed `Beta` slot at 0 and 50 | `sfw_slot_min`, `sfw_slot_max` |
+
+Run these cases with `make table-write-bounds-go`.

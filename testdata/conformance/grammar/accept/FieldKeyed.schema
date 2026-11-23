@@ -1,0 +1,16 @@
+// The same enum-keyed array that ArmKeyed.schema rejects as a union payload
+// is legal as a table field (docs/SPEC-TABLES.md §2.6, §2.4).
+package grammararmkeyed
+
+enum Slot { A, B }
+
+union U
+{
+    scalar int32
+}
+
+table T
+{
+    u     U
+    keyed [Slot]int32
+}
