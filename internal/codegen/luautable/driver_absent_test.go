@@ -18,8 +18,9 @@ import (
 // The driver runs in a scratch tree under a stand-in interpreter that prints
 // one absent line and one answer, so no conformance run's files are touched.
 
-// driverAbsentRun runs a copy of the committed driver, edited by patch, over
-// the stand-in's two lines and reports what landed in the out directory.
+// driverAbsentRun runs a copy of the committed driver and of the shared answer
+// parser it hands the answers to (test/conformance/answer-lines.pl), the parser
+// edited by patch, over the stand-in's two lines and reports what landed in the out directory.
 func driverAbsentRun(t *testing.T, patch func(string) string) (absent string, absentOK bool, answer []byte) {
 	t.Helper()
 	root := repoRoot(t)
@@ -28,8 +29,13 @@ func driverAbsentRun(t *testing.T, patch func(string) string) (absent string, ab
 		t.Fatal(err)
 	}
 	driver := string(src)
+	parser, err := os.ReadFile(filepath.Join(root, "test", "conformance", "answer-lines.pl"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	parserText := string(parser)
 	if patch != nil {
-		driver = patch(driver)
+		parserText = patch(parserText)
 	}
 	dir := t.TempDir()
 	leg := filepath.Join(dir, "test", "conformance", "luau")
@@ -37,6 +43,9 @@ func driverAbsentRun(t *testing.T, patch func(string) string) (absent string, ab
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(leg, "driver"), []byte(driver), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "test", "conformance", "answer-lines.pl"), []byte(parserText), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(leg, "main.luau"), []byte("-- stand-in\n"), 0o644); err != nil {
@@ -54,7 +63,7 @@ func driverAbsentRun(t *testing.T, patch func(string) string) (absent string, ab
 	cmd := testproc.Command(t, "sh", filepath.Join(leg, "driver"), manifest, "wire", out)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "LUAU="+stand)
-	if b, err := cmd.CombinedOutput(); err != nil {
+	if b, err := cmd.CombinedOutput(); err != nil && patch == nil {
 		t.Fatalf("the driver failed: %v\n%s", err, b)
 	}
 	if b, err := os.ReadFile(filepath.Join(out, "case_a.absent")); err == nil {
@@ -79,20 +88,20 @@ func TestLuauDriverWritesAbsentPerCase(t *testing.T) {
 	}
 }
 
-// TestLuauDriverAbsentNegativeControl removes the driver's absent branch and
-// requires the gate's first check to see it: the absent line then lands as an
-// answer, and no case_a.absent is written.
+// TestLuauDriverAbsentNegativeControl removes the parser's absent branch and
+// requires the gate's first check to see it: the absent line is then refused as
+// a non-protocol line, and no case_a.absent is written.
 func TestLuauDriverAbsentNegativeControl(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "sh and perl (it runs the Luau conformance driver)")
-	const anchor = `if (defined $h && $h eq "absent") {`
+	const anchor = `elsif ($rest =~ /\Aabsent(?: (.+))?\z/s) {`
 	_, ok, _ := driverAbsentRun(t, func(s string) string {
 		if strings.Count(s, anchor) != 1 {
-			t.Fatalf("the absent branch is not in the driver exactly once")
+			t.Fatalf("the absent branch is not in the parser exactly once")
 		}
-		return strings.Replace(s, anchor, `if (0) {`, 1)
+		return strings.Replace(s, anchor, `elsif (0) {`, 1)
 	})
 	if ok {
-		t.Fatal("with the absent branch removed the driver still wrote case_a.absent: the gate cannot see the branch")
+		t.Fatal("with the absent branch removed the parser still wrote case_a.absent: the gate cannot see the branch")
 	}
 }
