@@ -64,6 +64,37 @@ const msgBad = "{ report.damaged = true; return false; }"
 // may not" (§3.3), so a variable table grows no verb.
 func (g *gen) messageModule() []byte {
 	reach, _ := unitFixedClosure(g.unit, g.closure)
+	var addReach func(st *ir.Struct)
+	addReach = func(st *ir.Struct) {
+		if st == nil || reach[st.Name] || !g.rowable(st.Name) {
+			return
+		}
+		reach[st.Name] = true
+		for _, f := range st.Fields {
+			if f.Type.Kind != ir.TNamed {
+				continue
+			}
+			switch r := f.Type.Ref.(type) {
+			case *ir.Struct:
+				addReach(r)
+			case *ir.Union:
+				for _, v := range r.Variants {
+					if v.F != nil && v.F.Type.Kind == ir.TNamed {
+						if sub, ok := v.F.Type.Ref.(*ir.Struct); ok {
+							addReach(sub)
+						}
+					}
+				}
+			}
+		}
+	}
+	for _, f := range g.unit.Files {
+		for _, st := range f.Tables {
+			if st.FixedDeclared && !ir.TableFixedEmitted(g.unit, st) && g.rowable(st.Name) {
+				addReach(st)
+			}
+		}
+	}
 	var members []*ir.Struct
 	for _, st := range g.cookRoots() {
 		if reach[st.Name] {
@@ -104,6 +135,42 @@ use crate::*;
 // declared default (§3.3, SPEC §4.2).
 func (m *msgGen) emitDefaults(st *ir.Struct) {
 	snake := ir.RustSnake(st.Name)
+	if !ir.TableFixedEmitted(m.u, st) {
+		m.pf("/// %s at its declared defaults (SPEC §4.2): the value a body that carries\n/// no field of it decodes to (§3.3).\n", st.Name)
+		m.pf("pub fn %s_message_default() -> %sRow {\n", snake, st.Name)
+		var assigns []string
+		for _, f := range st.Fields {
+			if f.Type.Optional || f.Array != ir.ArrayNone || f.KeyEnum != "" {
+				continue
+			}
+			if f.HasDefault {
+				switch f.Type.Kind {
+				case ir.TBool:
+					if f.DefBool {
+						assigns = append(assigns, fmt.Sprintf("    value.%s = 1;\n", f.Name))
+					}
+				case ir.TInt:
+					if f.DefInt != nil && f.DefInt.Sign() != 0 && f.Type.Width <= 64 {
+						assigns = append(assigns, fmt.Sprintf("    value.%s = %s;\n", f.Name, f.DefInt.String()))
+					}
+				case ir.TFloat32, ir.TFloat64:
+					if f.DefFloat != 0 {
+						assigns = append(assigns, fmt.Sprintf("    value.%s = %s;\n", f.Name, fixedFloatLit(f.DefFloat)))
+					}
+				}
+			}
+		}
+		if len(assigns) == 0 {
+			m.pf("    %sRow::default()\n}\n\n", st.Name)
+			return
+		}
+		m.pf("    let mut value = %sRow::default();\n", st.Name)
+		for _, line := range assigns {
+			m.pf("%s", line)
+		}
+		m.pf("    value\n}\n\n")
+		return
+	}
 	up := strings.ToUpper(snake)
 	img := fixedDefaultImage(st)
 	m.pf("const %s_MESSAGE_DEFAULTS: [u8; %d] = [", up, len(img))
@@ -344,7 +411,12 @@ func (m *msgGen) scalarWriteCheck(f *ir.Field, expr, ind string) {
 		return
 	}
 	switch f.Type.Kind {
-	case ir.TBool, ir.TFloat32, ir.TFloat64, ir.TNamed:
+	case ir.TBool, ir.TFloat32, ir.TFloat64:
+		return
+	case ir.TNamed:
+		if fl, ok := f.Type.Ref.(*ir.Flags); ok && len(fl.Variants) < 64 {
+			m.pf("%sdebug_assert!((%s as u64) >> %d == 0, \"flags %s bits name no variant\");\n", ind, expr, len(fl.Variants), fl.Name)
+		}
 		return
 	}
 	x := expr
@@ -1049,10 +1121,7 @@ pub fn %[1]s_save_messages(values: &[%[2]s], buffer: &mut [u8], report: &mut Tab
 /// A VALUE OUTSIDE ITS DECLARED RANGE, met before any damage, refuses the
 /// batch the same way BY NAME as out_of_range (§3.3), the field in oor_field.
 pub fn %[1]s_load_messages(values: &mut [%[2]s], vocabulary: &TableVocabulary, data: &[u8], report: &mut TableReport) -> (usize, bool) {
-    report.non_finite_float = "";
-    report.non_finite_float_id = None;
-    report.oor_field = "";
-    report.damaged = false;
+    *report = TableReport::default();
 %[6]s    let Some(count) = table_message_batch_open(vocabulary, data, report) else {
         return (0, false);
     };

@@ -348,6 +348,51 @@ func (b *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 	b.pf("    }\n")
 	b.pf("    let _ = off;\n")
 	b.pf("    Some(used)\n}\n")
+	b.pf("/// %s validates the filled projection and returns the used extent, or None on refusal (§19.1, SF-31).\n", fn(n, "block_bytes"))
+	b.pf("///\n/// # Safety\n/// `buf` must point at `capacity` readable bytes beginning with a `%sBlockProjection`.\n", n)
+	b.pf("#[allow(unused_comparisons)]\npub unsafe fn %s(buf: *const u8, capacity: i64) -> Option<i64> {\n", fn(n, "block_bytes"))
+	b.pf("    if buf.is_null() || capacity < %d {\n        return None;\n    }\n", bl.Projection.Size)
+	b.pf("    let p = unsafe { &*(buf as *const %sBlockProjection) };\n", n)
+	b.pf("    let _ = p;\n")
+	for _, f := range bl.Table.Fields {
+		if bl.ArrayByName(f.Name) != nil {
+			continue
+		}
+		m := "p." + f.Name
+		guard, closeGuard := "", ""
+		if f.Type.Optional {
+			guard, closeGuard = "if "+m+"_present != 0 { ", " }"
+		}
+		switch {
+		case f.Array == ir.ArrayNone && !f.Type.Pointer && !f.Type.TextUnbounded() && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes):
+			b.pf("    %sif %s_length < 0 || %s_length > %d { return None; }%s\n", guard, m, m, f.Type.Size, closeGuard)
+		case f.Array == ir.ArrayCounted:
+			b.pf("    %sif %s_count < %d || %s_count > %d { return None; }%s\n", guard, m, f.ArrayMin, m, f.ArrayBound, closeGuard)
+		case f.Array == ir.ArrayNone && f.HasIntRange && f.Type.Kind == ir.TInt && f.Type.Width <= 64:
+			if f.Type.Signed {
+				b.pf("    %sif (%s as i64) < %s || (%s as i64) > %s { return None; }%s\n", guard, m, f.IntMin.String(), m, f.IntMax.String(), closeGuard)
+			} else if f.IntMin.Sign() > 0 {
+				b.pf("    %sif (%s as u64) < %s || (%s as u64) > %s { return None; }%s\n", guard, m, f.IntMin.String(), m, f.IntMax.String(), closeGuard)
+			} else {
+				b.pf("    %sif (%s as u64) > %s { return None; }%s\n", guard, m, f.IntMax.String(), closeGuard)
+			}
+		case f.Array == ir.ArrayNone && f.HasFloatRange:
+			b.pf("    %sif !(%s >= %s && %s <= %s) { return None; }%s\n", guard, m, fixedFloatLit(f.FMin), m, fixedFloatLit(f.FMax), closeGuard)
+		}
+	}
+	if len(bl.Arrays) > 0 {
+		b.pf("    let mut used: i64 = %d;\n", bl.Projection.Size)
+	} else {
+		b.pf("    let used: i64 = %d;\n", bl.Projection.Size)
+	}
+	for _, a := range bl.Arrays {
+		b.pf("    if p.%s.count as i64 > %d { return None; }\n", a.Field.Name, a.Max)
+		b.pf("    let end = p.%s.offset_of as i64 + p.%s.count as i64 * p.%s.stride as i64;\n", a.Field.Name, a.Field.Name, a.Field.Name)
+		b.pf("    if end > used { used = end; }\n")
+	}
+	b.pf("    let total = (used + 63) / 64 * 64;\n")
+	b.pf("    if total > capacity { return None; }\n")
+	b.pf("    Some(total)\n}\n")
 }
 
 // emitBlockTypeInfo is the block's own descriptor: the PROJECTION as data

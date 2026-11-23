@@ -139,6 +139,7 @@ fn fleet_value(case: &str, wire: &str) -> mapdemo::Fleet {
 
 // A row's answer: the verdict the writer gave, or a per-case absence with
 // its reason when this leg carries no writer for the row's root.
+#[allow(dead_code)]
 pub(crate) enum Answer {
     Verdict(&'static str),
     Absent(String),
@@ -268,7 +269,8 @@ pub(crate) fn write_refusal(manifest: &Manifest, form: &str, f: &[String]) -> Op
                     p.quantity = row.quantity;
                     p.price_minor = row.price_minor;
                     p.currency = row.currency;
-                    Some(used)
+                    let _ = used;
+                    backenddemo::store_purchase_block_bytes(buf, capacity)
                 })
             })
         }
@@ -285,7 +287,8 @@ pub(crate) fn write_refusal(manifest: &Manifest, form: &str, f: &[String]) -> Op
                     let p = &mut *(buf as *mut backenddemo::MatchResultBlockProjection);
                     p.match_id = row.match_id;
                     p.players = row.players;
-                    Some(used)
+                    let _ = used;
+                    backenddemo::match_result_block_bytes(buf, capacity)
                 })
             })
         }
@@ -377,7 +380,14 @@ fn write_refusal_message(manifest: &Manifest, f: &[String]) -> Option<Answer> {
         // big_save_messages for a fixed table past the fixed form's ceiling,
         // so there is no message writer to hand the value to
         "Big" => {
-            Some(Answer::Absent(String::from("the Rust leg emits no message verbs (big_measure_messages, big_save_messages) for Big, a fixed table past the 65536-byte fixed-form ceiling")))
+            let mut row = tblsurf::big_message_default();
+            let m = match (path, kind) {
+                ("hp", "int") => wref_int(value, &mut row.hp),
+                ("mask", "int") => wref_int(value, &mut row.mask),
+                ("ratio", "float") => { row.ratio = wref_float(value); Mutation::Done }
+                _ => fail(&format!("write-refusal-message: Big names no {kind} path {path}")),
+            };
+            answer(m, || send_one!(row, big_measure_messages, big_save_messages))
         }
         _ => fail(&format!("write-refusal-message: no root tblsurf {root}")),
     }
@@ -424,13 +434,18 @@ macro_rules! announce_read_mode {
 macro_rules! announce_write {
     ($k:ident) => {{
         use $k as k;
-        let mut buffer = vec![0u8; k::announce_measure()];
-        let n = k::announce(&mut buffer);
-        if n < 0 {
+        let need = k::announce_measure();
+        if need < 0 {
             b"refused\n".to_vec()
         } else {
-            buffer.truncate(n as usize);
-            buffer
+            let mut buffer = vec![0u8; need as usize];
+            let n = k::announce(&mut buffer);
+            if n < 0 {
+                b"refused\n".to_vec()
+            } else {
+                buffer.truncate(n as usize);
+                buffer
+            }
         }
     }};
 }
@@ -592,7 +607,38 @@ pub(crate) fn surface_read_into(manifest: &Manifest, out: &str) {
             // (Option<T>); neither is handed a caller value to read into, so
             // there is no "values the call was handed" for this surface to
             // hold (SPEC-TABLES §6.5)
-            ("variable" | "json", _, _) => spill(out, &format!("{case}.absent"), format!("the Rust {form} read returns a fresh value and takes no caller value to read into").as_bytes()),
+            ("variable", "tblsurf", "Counted") => {
+                let lawful = slurp(lawful);
+                let damaged = slurp(damaged);
+                let mut value = tblsurf::Counted::default();
+                let mut report = tblsurf::TableReport::default();
+                let mut text = String::new();
+                let read = |data: &[u8], value: &mut tblsurf::Counted, report: &mut tblsurf::TableReport| -> &'static str {
+                    let got = catch(|| tblsurf::counted_load_into(value, data, report));
+                    read_line(got, report.refused || report.damaged)
+                };
+                text.push_str(read(&lawful, &mut value, &mut report));
+                text.push_str(read(&damaged, &mut value, &mut report));
+                text.push_str(&tblsurf::counted_to_json_checked(&value).unwrap_or_else(|| fail(&format!("{case}: ToJson refused value"))));
+                text.push_str(read(&lawful, &mut value, &mut report));
+                spill(out, case, text.as_bytes());
+            }
+            ("json", "tblsurf", "Counted") => {
+                let lawful = slurp(lawful);
+                let damaged = slurp(damaged);
+                let mut value = tblsurf::Counted::default();
+                let mut report = tblsurf::TableReport::default();
+                let mut text = String::new();
+                let read = |data: &[u8], value: &mut tblsurf::Counted, report: &mut tblsurf::TableReport| -> &'static str {
+                    let got = catch(|| tblsurf::counted_from_json_into(value, data, report));
+                    read_line(got, report.refused || report.damaged)
+                };
+                text.push_str(read(&lawful, &mut value, &mut report));
+                text.push_str(read(&damaged, &mut value, &mut report));
+                text.push_str(&tblsurf::counted_to_json_checked(&value).unwrap_or_else(|| fail(&format!("{case}: ToJson refused value"))));
+                text.push_str(read(&lawful, &mut value, &mut report));
+                spill(out, case, text.as_bytes());
+            }
             _ => fail(&format!("read-into {case}: no {form} read for {unit} {root}")),
         }
     }
