@@ -48,6 +48,7 @@ table Probe
     gs   [..2]Grade
     e    Effect
     next *Inner
+    r    float64
 }
 `
 
@@ -69,6 +70,9 @@ var cookContractCases = []struct{ name, set, want string }{
 	{"enum_live_high", `slot(rec, "g").cell.i = 3`, "measure ok cook ok save ok"},
 	{"element_deprecated", `wc_grades(rec, 2)`, "measure -1 cook refused save invalid_value"},
 	{"element_live", `wc_grades(rec, 3)`, "measure ok cook ok save ok"},
+	{"float_nan", `slot(rec, "r").cell.f = 0.0 / 0.0`, "measure -1 cook refused save non_finite_float"},
+	{"float_inf", `slot(rec, "r").cell.f = 1.0 / 0.0`, "measure -1 cook refused save non_finite_float"},
+	{"float_ok", `slot(rec, "r").cell.f = 2.5`, "measure ok cook ok save ok"},
 	{"pointed_string_long", `wc_next(rec, "abcdef")`, "measure -1 cook refused save invalid_value"},
 	{"pointed_string_ok", `wc_next(rec, "abcd")`, "measure ok cook ok save ok"},
 }

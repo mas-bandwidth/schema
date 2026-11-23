@@ -389,15 +389,28 @@ def bscalar_elem(v:Value, fd:FieldDescriptor?, bf:BlockField) -> string:
 def balign(at:int, a:int) -> int:
     return (at + a - 1) / a * a
 
-// block_build is §19.1's builder: one storage sized from the declared maxima,
-// the prologue and every triple written once, then the rows. It refuses a
-// count past its array's maximum by asserting, exactly as Begin returns false,
-// and a NaN or an infinity in any float by answering "" with the field named
-// in block_non_finite (docs/SPEC-TABLES.md §3.3).
+// block_refusal names the first field the last block_build refused for a
+// count or a used length past its declared maximum, with the length (SF-31).
+// It is a named refusal, never an assert: --runtime-no-asserts removes an
+// assert, and the writer would then write past the field into the next one.
+var block_refusal = ""
+
+def block_refuse(bf:BlockField, n:int):
+    if block_refusal == "":
+        block_refusal = "{bf.name} holds {n}, outside [ 0, {bf.bound} ]"
+
+// block_build is the builder of §19.1: one storage sized from the declared
+// maxima, the prologue and every triple written once, then the rows. It
+// refuses a count or a used length past its field maximum by answering ""
+// with the field named in block_refusal, exactly as Begin returns false
+// (§19.1: Begin does not clamp, it refuses), and a NaN or an infinity in any
+// float by answering "" with the field named in block_non_finite
+// (docs/SPEC-TABLES.md §3.3).
 def block_build(root:string, rec:Record) -> string:
     block_non_finite = ""
+    block_refusal = ""
     let data = block_build_all(root, rec)
-    if block_non_finite != "":
+    if block_non_finite != "" or block_refusal != "":
         return ""
     return data
 
@@ -416,7 +429,9 @@ def block_build_all(root:string, rec:Record) -> string:
             let a = if sub and sub.align > 64: sub.align else: 64
             offset = balign(offset, a)
             let count = length(sl.elems)
-            assert count <= bf.bound
+            if count > bf.bound:
+                block_refuse(bf, count)
+                return ""
             data = write_int64_le(data, bf.offset, offset)
             data = write_int32_le(data, bf.offset + 8, count)
             data = write_int32_le(data, bf.offset + 12, bf.stride)
@@ -448,6 +463,9 @@ def block_write_field(bl:BlockLayout, bf:BlockField, sl:Slot, data:string, at:in
     let base = at + bf.offset
     let s = f.s
     if bf.counted and (s == "str" or s == "text" or s == "bytes"):
+        if length(sl.cell.s) > bf.bound or sl.count < 0 or sl.count > bf.bound:
+            block_refuse(bf, if length(sl.cell.s) > bf.bound: length(sl.cell.s) else: sl.count)
+            return data
         data = write_substring(data, base, sl.cell.s, false)
         data = write_int32_le(data, at + bf.count_offset, sl.count)
     elif bf.is_array and s == "arr":

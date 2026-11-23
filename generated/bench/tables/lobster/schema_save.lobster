@@ -863,12 +863,20 @@ def encode_node_table(e:SaveEncoder, w:SaveOut, g:SaveGraph) -> void:
 // left to the encoder, which names it non_finite_float. The walk covers ONE
 // body and everything it holds by value; save_reasoned runs it over every
 // record the save graph reaches, so a pointer is checked once at its node.
+// wc_non_finite is set by wc_value when it passes a NaN or an infinity in a
+// plain float. The save ignores it (its encoder refuses the value by name);
+// cook_contract_holds clears it before its walk and refuses on it after.
+var wc_non_finite = false
+
 def wc_value(d:FieldDescriptor, kind:int, v:Value) -> bool:
     let s = d.s
     if s == "int" or s == "bool":
         return scalar_admitted(d, kind, v)
     if s == "float":
         if (kind == 10 and not finite_f32(v.f)) or (kind == 11 and not finite_f64(v.f)):
+            // the save names it through its encoder (non_finite_float); the
+            // cook has no encoder, so it reads this flag after its walk (SF-37)
+            wc_non_finite = true
             return true
         return scalar_admitted(d, kind, v)
     if s == "enum":

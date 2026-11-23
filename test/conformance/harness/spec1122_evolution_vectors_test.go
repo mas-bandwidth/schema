@@ -109,7 +109,7 @@ func spEvoBytes(m *Manifest, row spEvoRow) ([]byte, error) {
 		}
 		lb, err := tablewire.Encode(lw, lv)
 		if err != nil || len(lb) != len(body) {
-			return nil, fmt.Errorf("longer write: len %d vs %d err %v", len(lb), len(body), err)
+			return nil, fmt.Errorf("longer write: len %d vs %d err %w", len(lb), len(body), err)
 		}
 		pos := -1
 		for i := range body {

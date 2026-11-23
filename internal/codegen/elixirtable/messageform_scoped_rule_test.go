@@ -41,7 +41,7 @@ fixed table R
 }
 `
 
-func TestElixirSaveMessagesHoldsEachDeclarationToItsOwnRange(t *testing.T) {
+func TestElixirSaveMessagesScopedRuleHoldsEachDeclarationToItsOwnRange(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "an external toolchain")
 	u := unitFrom(t, scopedRuleSchema)
