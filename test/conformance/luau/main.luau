@@ -36,6 +36,7 @@ local SURFACES = {
 	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery",
 	"cook-forgery", "cook-reason", "block-reason",
 	"write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json",
+	"write-refusal-cook", "write-refusal-block", "announce", "read-into", "json-write-into",
 }
 local listed: { [string]: boolean } = {}
 for _, s in SURFACES do
@@ -1229,6 +1230,48 @@ local function wrefSet(u: any, root: string, v: any, path: string, what: string,
 		holder[key] = tonumber(text) :: number
 	elseif what == "float" then
 		holder[key] = wrefFloat(text)
+	elseif (what == "count" or what == "elems") and (tonumber(text) :: number) < 0 then
+		-- A NEGATIVE COUNT (SF-28): a counted array's count slot holds it;
+		-- an array with no count slot is a plain list, and the number itself,
+		-- a value that is no list, is handed to the writer
+		if owner[fd.slot .. "Count"] ~= nil then
+			owner[fd.slot .. "Count"] = tonumber(text) :: number
+		else
+			holder[key] = tonumber(text) :: number
+		end
+	elseif what == "elems" then
+		-- a fixed [N]T or keyed [E]T is a plain list: more elements are copies
+		-- of element 1, fewer drop the tail
+		local n = tonumber(text) :: number
+		local arr = holder[key]
+		for i = #arr + 1, n do
+			arr[i] = wrefDeepCopy(arr[1])
+		end
+		for i = #arr, n + 1, -1 do
+			arr[i] = nil
+		end
+	elseif what == "mask" then
+		-- a flags value is its raw bits, in the field's own domain
+		local n = tonumber(text) :: number
+		holder[key] = if d.dom == "integer" then integer.create(n) else n
+	elseif what == "dupkey" then
+		-- A LUAU MAP IS A LIST OF ENTRIES, so one key held twice is a copy of
+		-- the first entry appended; `dupkey 0` leaves the map as loaded
+		if fd.s ~= "map" then error(path .. ": dupkey on a field that is no map") end
+		if text == "1" then
+			local entries = holder[key]
+			entries[#entries + 1] = wrefDeepCopy(entries[1])
+		elseif text ~= "0" then
+			error(path .. ": dupkey takes 0 or 1, not " .. text)
+		end
+	elseif what == "point" then
+		-- the pointer at `path` is set to the node the pointer at path `text`
+		-- points at: the same Luau table, so a node enclosing `path` is a cycle
+		local towner, tfd, tidx = wrefWalk(u, root, v, text)
+		local target = towner[tfd.slot]
+		if tidx ~= nil then target = target[tidx] end
+		if type(target) ~= "table" then error(path .. ": the pointer at " .. text .. " points at no node") end
+		holder[key] = target
 	elseif what == "count" then
 		local n = tonumber(text) :: number
 		local arr = holder[key]
@@ -1289,14 +1332,45 @@ local function surfaceWriteRefusal(lines: { { string } }, kindName: string)
 		if u == nil or d == nil then
 			say(name, nil)
 		else
-			local r = report()
-			local v = u.load.load(root, file(wire), r)
-			if v == nil then
-				error(name .. ": load refused " .. wire .. " (" .. tostring(r.reason) .. ")")
+			local v: any
+			if wire == "-" then
+				-- THE ROOT'S FRESH VALUE (SF-05, SF-06): a root with no file form
+				v = d.new()
+			else
+				local r = report()
+				v = u.load.load(root, file(wire), r)
+				if v == nil then
+					error(name .. ": load refused " .. wire .. " (" .. tostring(r.reason) .. ")")
+				end
 			end
 			wrefSet(u, root, v, path, what, text)
 			local answer = "refused\n"
-			if kindName == "write-refusal" or kindName == "write-refusal-fixed" then
+			if kindName == "write-refusal-cook" then
+				-- THE COOK WRITER (SPEC-TABLES §7.6): CookMeasure, then Cook in
+				-- little-endian order (1); `wrote` when both complete into the
+				-- measure. A refusal is a size below 1, nil, or a raised error.
+				if #u.modules == 0 then error(name .. ": the unit has no table module for the build version") end
+				u.cook.BuildVersion = u.modules[1].TableMessageBuildVersion
+				local okm, size = pcall(u.cook.CookMeasure, d, v)
+				if okm and size ~= nil and size >= 1 then
+					local okc, out = pcall(u.cook.Cook, d, v, 1)
+					if okc and out ~= nil then
+						answer = if buffer.len(out) == size then "wrote\n" else "wrote " .. buffer.len(out) .. " bytes against a measure of " .. size .. "\n"
+					end
+				end
+			elseif kindName == "write-refusal-block" then
+				-- THE BLOCK BUILDER (SPEC-TABLES §19.1) is schema_block's Begin,
+				-- which takes the COUNT of each out-of-line array and writes the
+				-- prologue and the triples, never a row: a field value, an inline
+				-- text's used length and an inline fixed array's element count
+				-- are never handed to it, and those rows are `unrepresentable`
+				local _, bfd = wrefWalk(u, root, v, path)
+				if what ~= "count" or string.find(path, "[.%[]") ~= nil or bfd.s ~= "arr" or bfd.array == "fixed" then
+					answer = "unrepresentable\n"
+				else
+					error(name .. ": a count row on an out-of-line array: the Luau unit emits no block-builder parameters for schema_block.Begin, so this row has no generated call to make")
+				end
+			elseif kindName == "write-refusal" or kindName == "write-refusal-fixed" then
 				if kindName == "write-refusal-fixed" and not d.fixed then
 					error(name .. ": " .. root .. " has no fixed form")
 				end
@@ -1335,6 +1409,187 @@ local function surfaceWriteRefusal(lines: { { string } }, kindName: string)
 				end
 			end
 			sayText(name, answer)
+		end
+	end
+end
+
+-- ---- THE 2026-11-22 SURFACES (test/conformance/README.md; docs/SPEC-CONFORMANCE.md §2)
+
+-- announce <case> <unit> <root> <mode> <input>
+--
+-- `write`: THE LUAU LEG HAS NO RUNTIME ANNOUNCEMENT WRITER (no AnnounceMeasure,
+-- no Announce): the emitter writes the unit's announcement as the table
+-- module's constant TableMessageAnnouncement, which is what this side sends.
+-- The answer is those bytes, or `refused` where the unit carries none.
+-- `strict` and `lenient`: NewVocabulary with the unit's own build version,
+-- its `strict` field set or left at its default, reads the file. `send`:
+-- SaveMessages of one value against a vocabulary no announcement was read
+-- into.
+local function surfaceAnnounce(lines: { { string } })
+	for _, f in kind(lines, "announce") do
+		local name, key, root, mode, input = f[2], f[3], f[4], f[5], f[6]
+		local u = unit(key)
+		local M = u and optional(u, "schema_message")
+		if u == nil or #u.modules == 0 then
+			print(name .. " absent the unit did not load for luau")
+		elseif mode == "write" then
+			local ann = u.modules[1].TableMessageAnnouncement
+			if ann == nil then
+				sayText(name, "refused\n")
+			else
+				say(name, ann)
+			end
+		elseif M == nil then
+			print(name .. " absent the unit emits no schema_message")
+		elseif mode == "strict" or mode == "lenient" then
+			local voc = M.NewVocabulary(u.modules[1].TableMessageBuildVersion)
+			if mode == "strict" then voc.strict = true end
+			local ok, read = pcall(M.AnnounceRead, voc, file(input), report())
+			sayText(name, if not ok then "threw\n" elseif read then "read\n" else "refused\n")
+		elseif mode == "send" then
+			local d = rootOf(u, root)
+			if d == nil then error(name .. ": no root " .. root) end
+			local v: any
+			if input == "-" then
+				v = d.new()
+			else
+				local r = report()
+				v = u.load.load(root, file(input), r)
+				if v == nil then error(name .. ": load refused " .. input .. " (" .. tostring(r.reason) .. ")") end
+			end
+			local ok, out, n = pcall(M.SaveMessages, M.NewVocabulary(), root, { v }, report())
+			if ok and out ~= nil and n == buffer.len(out) then
+				say(name, out)
+			else
+				sayText(name, "refused\n")
+			end
+		else
+			error(name .. ": " .. mode .. " is not an announce mode")
+		end
+	end
+end
+
+-- read-into <case> <unit> <root> <form> <lawful> <damaged> <count> <announcement>
+--
+-- NO LUAU READ TAKES THE CALLER'S VALUE: schema_load's load, schema_json's
+-- FromJson, schema_fixed's read and schema_message's LoadMessages each answer
+-- fresh values beside the caller's report. So the driver holds its values in
+-- a list, a read that succeeds replaces them with what it answered, and a
+-- refused read answers none, leaving the list as it was. The report is ONE
+-- table handed to all three reads.
+local function surfaceReadInto(lines: { { string } })
+	for _, f in kind(lines, "read-into") do
+		local name, key, root, form, lawful, damaged, count, announcement =
+			f[2], f[3], f[4], f[5], f[6], f[7], f[8], f[9]
+		local u = unit(key)
+		local d = if u ~= nil then rootOf(u, root) else nil
+		local Fx = u and optional(u, "schema_fixed")
+		if u == nil or d == nil then
+			say(name, nil)
+		elseif form == "fixed-nocap" then
+			-- FL-17: no capacity argument at all; the omitted capacity is the file's
+			if Fx == nil then error(name .. ": the unit emits no schema_fixed") end
+			local r = report()
+			local ok, out = pcall(Fx.read, d, nil, file(lawful), r)
+			if not ok then
+				sayText(name, "threw\n")
+			elseif out == nil then
+				sayText(name, "refused\n")
+			else
+				sayText(name, "read\n" .. tostring(#out) .. "\n")
+			end
+		else
+			local n = tonumber(count)
+			if n == nil or n < 1 then error(name .. ": " .. tostring(count) .. " is not a count") end
+			local values: { any } = {}
+			for i = 1, n :: number do
+				values[i] = d.new()
+			end
+			local r = report()
+			local M: any = nil
+			local voc: any = nil
+			if form == "message" then
+				M = optional(u, "schema_message")
+				if M == nil then error(name .. ": the unit emits no schema_message") end
+				voc = M.NewVocabulary()
+				if not M.AnnounceRead(voc, file(announcement), report()) then
+					error(name .. ": the announcement was refused: " .. announcement)
+				end
+			end
+			local function readOnce(path: string): string
+				local bytes = file(path)
+				local ok: boolean, got: any
+				if form == "variable" then
+					ok, got = pcall(u.load.load, root, bytes, r)
+				elseif form == "json" then
+					ok, got = pcall(u.json.FromJson, root, bytes, r)
+				elseif form == "fixed" then
+					if Fx == nil then error(name .. ": the unit emits no schema_fixed") end
+					ok, got = pcall(Fx.read, d, nil, bytes, r, n)
+				elseif form == "message" then
+					local c: any, bodies: any
+					ok, c, bodies = pcall(M.LoadMessages, voc, root, bytes, n, r)
+					got = if ok and c ~= nil and c >= 1 then bodies else nil
+				else
+					error(name .. ": " .. form .. " is not a read-into form")
+				end
+				if not ok then return "threw\n" end
+				local reason = r.reason
+				if got == nil or (reason ~= nil and reason ~= "") or r.malformed == true or (r.verdict or 0) ~= 0 then
+					return "refused\n"
+				end
+				if form == "variable" or form == "json" then
+					values[1] = got
+				else
+					values = got
+				end
+				return "read\n"
+			end
+			local parts = {}
+			parts[#parts + 1] = readOnce(lawful)
+			parts[#parts + 1] = readOnce(damaged)
+			if form == "message" then
+				-- LoadMessages answers opaque message BODIES (bit ranges and
+				-- their transcoded tree), not values of the root: there is no
+				-- value for ToJson to write, and the row says so
+				parts[#parts + 1] = "LoadMessages answers bodies, not values of the root\n"
+				values = {}
+			end
+			for i, value in values do
+				local jr = report()
+				local text = u.json.ToJson(root, value, jr)
+				if text == nil then error(name .. ": ToJson refused value " .. i .. " (" .. tostring(jr.reason) .. ")") end
+				parts[#parts + 1] = buffer.tostring(text)
+			end
+			parts[#parts + 1] = readOnce(lawful)
+			sayText(name, table.concat(parts))
+		end
+	end
+end
+
+-- json-write-into <case> <unit> <root> <wire>
+--
+-- LUAU HAS NO PROCESS LOCALE CALL (its os library has no setlocale), so the
+-- harness's SCHEMA_COMMA_LOCALE cannot be made this process's own; the rows
+-- still run. The Luau text writer answers a fresh buffer, never into a caller
+-- buffer, so there is no tail to check (FL-15): the answer is the text
+-- ToJson returned.
+local function surfaceJsonWriteInto(lines: { { string } })
+	for _, f in kind(lines, "json-write-into") do
+		local name, key, root, wire = f[2], f[3], f[4], f[5]
+		local u = unit(key)
+		if u == nil or rootOf(u, root) == nil then
+			say(name, nil)
+		else
+			local r = report()
+			local v = u.load.load(root, file(wire), r)
+			if v == nil then error(name .. ": load refused " .. wire .. " (" .. tostring(r.reason) .. ")") end
+			local text = u.json.ToJson(root, v, r)
+			if text == nil then
+				sayText(name, "refused\n")
+			else
+				say(name, text)
+			end
 		end
 	end
 end
@@ -1388,4 +1643,10 @@ elseif surface == "block-reason" then
 	surfaceForgery(lines, "block", true)
 elseif string.sub(surface, 1, 13) == "write-refusal" then
 	surfaceWriteRefusal(lines, surface)
+elseif surface == "announce" then
+	surfaceAnnounce(lines)
+elseif surface == "read-into" then
+	surfaceReadInto(lines)
+elseif surface == "json-write-into" then
+	surfaceJsonWriteInto(lines)
 end
