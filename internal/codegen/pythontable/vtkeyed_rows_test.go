@@ -62,7 +62,7 @@ var pyKeyedRowCases = []string{
 	// the scalar state's keyed fields, and its narrower writer
 	"scalars_full", "scalars_default", "scalars_edges", "scalars_uint128_max",
 	"previous_form_scalars_full", "previous_form_scalars_default", "previous_form_scalars_edges",
-	"scalars_full_as_2", "scalars_edges_as_2", "field_scalar_widen",
+	"scalars_full_as_2", "scalars_edges_as_2", "field_scalar_widen", "twin_scalars2_simstate",
 	// the versioned config pair
 	"v1_cfg", "v1_seams", "v2_cfg", "v2_seams", "v1_cfg_as_v2", "v1_seams_as_v2", "v2_cfg_as_v1", "v2_seams_as_v1",
 	"previous_form_v1_cfg", "previous_form_v1_seams", "previous_form_v2_cfg", "previous_form_v2_seams",
@@ -70,6 +70,7 @@ var pyKeyedRowCases = []string{
 	// keyed arrays inside map values
 	"map_depth", "map_slots", "map_depth_root_kind",
 	// cooktorture and varevo keyed rows
+	"fixed_array_rides_default", "fixed_array_rides_live",
 	"torture_cook_empty", "torture_cook_extremes", "torture_cook_full",
 	"torture_fixed_wref", "torture_fixed_wref_str",
 	"torture_wide_cook", "torture_wide_cook_extremes",
