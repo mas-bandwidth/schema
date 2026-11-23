@@ -18,7 +18,8 @@ packet-write-text-squirrel-negative-control: packet-write-text-squirrel
 	go run ./tools/sabotage -name packet-write-text-squirrel-write -out build/packet-write-text/squirrel-negative/write.gotext internal/codegen/squirrel/write.go
 	@printf '{"Replace":{"%s/internal/codegen/squirrel/write.go":"%s/build/packet-write-text/squirrel-negative/write.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-write-text/squirrel-negative/overlay.json
 	go run -overlay=build/packet-write-text/squirrel-negative/overlay.json ./cmd/schema generate --lang squirrel --out build/packet-write-text/squirrel-negative/gen test/packet-write-text/Text.schema
-	"$(SQ)" test/packet-write-text/squirrel/main.nut build/packet-write-text/squirrel-negative/gen > build/packet-write-text/squirrel-negative/log 2>&1 || true
+	@if "$(SQ)" test/packet-write-text/squirrel/main.nut build/packet-write-text/squirrel-negative/gen > build/packet-write-text/squirrel-negative/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the sabotaged Squirrel write text check exited 0'; cat build/packet-write-text/squirrel-negative/log; exit 1; fi
 	@grep -Fq 'FAILED: packet write text interior-null writer accepted ill-formed text' build/packet-write-text/squirrel-negative/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: Squirrel write text check removal did not red interior-null'; cat build/packet-write-text/squirrel-negative/log; exit 1; }
 	@grep -Fm1 'FAILED: packet write text interior-null writer accepted ill-formed text' build/packet-write-text/squirrel-negative/log

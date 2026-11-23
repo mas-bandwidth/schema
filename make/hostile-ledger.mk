@@ -18,7 +18,7 @@
 # the folder on every run; no recipe carries a number.
 define hostile_ledgered
 	@mkdir -p $(dir $(2))
-	@set +e; { $(3); } > $(2) 2>&1; rc=$$?; cat $(2); [ $$rc -eq 0 ] || exit $$rc; \
+	@rc=0; if { $(3); } > $(2) 2>&1; then :; else rc=$$?; fi; cat $(2); [ $$rc -eq 0 ] || exit $$rc; \
 	go run ./tools/hostileledger -port $(1) -corpus "$(4)" -log $(2) $(5)
 endef
 

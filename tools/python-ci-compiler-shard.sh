@@ -1,6 +1,6 @@
 #!/bin/sh
 # Every planner-selected compiler test must actually pass under SCHEMA_SLOW.
-set -eu
+set -eu -o pipefail
 group=${1:?missing compiler shard}
 case "$group" in *[!A-Za-z0-9_+]*|+*|*+|*++*) echo "invalid compiler shard" >&2; exit 1 ;; esac
 names=$(printf '%s' "$group" | tr '+' ' ')
