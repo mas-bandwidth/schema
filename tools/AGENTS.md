@@ -18,7 +18,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `moofuzzhost/` | moo wire-fuzz native host (C++) | `make tables-moo-wire-fuzz` | `make tables-moo-wire-fuzz` |
 | `mustrun/` | harness wrapper: exit status plus a registered ran N count | `go test ./tools/mustrun` | `build/mustrun -name X -count N -- cmd` |
 | `negativecontrols/` | negative-control enumerator | `go test ./tools/negativecontrols` | `go run ./tools/negativecontrols check` |
-| `nightlyrows/` | nightly-fast workflow row generator CLI | `go test ./internal/nightlyrows` | `go run ./tools/nightlyrows` |
+| `nightlyrows/` | ci-fast nightly-fast matrix row selector | `go test ./internal/nightlyrows` | `go run ./tools/nightlyrows -files diff-files.txt -broad no` |
 | `pgroup/` | process-group runner for CI steps | `go test ./tools/pgroup` | `go run ./tools/pgroup -- make test` |
 | `recipescan/` | CLI for internal/recipescan | `go test ./internal/recipescan` | `go run ./tools/recipescan` |
 | `releasebin/` | release binaries for six platforms | `go test ./tools/releasebin` | `make release-binaries` |

@@ -1856,7 +1856,6 @@ func (in *tableJSONIn) skipContainer(closing byte, depth int32) bool {
 			return false
 		}
 		if closing == '}' {
-			ampersand, labelKey := false, false
 			_ = in.peek()
 			keyStart := in.pos
 			decodedLen, ok := in.scanSkipped(nil)
@@ -1961,7 +1960,6 @@ func (in *tableJSONIn) skipContainer(closing byte, depth int32) bool {
 				continue
 			}
 		}
-		first = false
 		if !in.skipValue(depth + 1) {
 			return false
 		}
