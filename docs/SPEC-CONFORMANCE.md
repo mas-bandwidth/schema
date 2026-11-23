@@ -238,8 +238,6 @@ still owes part of it, takes its own number and its own ids off the entry.
 
 | entry | rule (spec) | held by, as decided | not on main yet | PR | state |
 |---|---|---|---|---|---|
-| FL-33, FL-34, FL-35 | R2, R5, R9 (SPEC-TABLES §3.4 (the presence entry)) | `internal/ci` `TestRulingsR2R5R9PortRows` | `TestFixedLineageOptionalIntoBareRefusesKindMismatch`, `TestRulingsR2R5R9PortRows` | #4680 | owed |
-| FL-37 | R7 labels in a skipped value (SPEC-TABLES §16.7) | `skipped-label-*` | `skipped-label-fraction`, `skipped-label-misspelled`, `skipped-label-not-first` | #4501, #4636, #4764, #4769, #4773 | owed |
 | FL-38 | R8 id cap (SPEC-TABLES §3 (the id table); §3.3 (the sender)) | `frame_entries_4096`, `frame_entries_4097`; `tablewire.IdCapSchema`, `tablewire.AnnounceSchema` per port, proved by `TestGoAnnouncementRefusesMoreThan4096Entries` and `TestCppAnnouncementRefusesMoreThan4096Entries` (#4685) | `TestCppAnnouncementRefusesMoreThan4096Entries`, `TestGoAnnouncementRefusesMoreThan4096Entries` | #4685 | owed |
 | GAP-17 | A skipped value: label rules at every variable root, label grammar only at a fixed root; any other `&` key refuses at every root (SPEC-TABLES §16.7, R7); gaps OC8, OC12, ObjC5, ObjC9, Zig7, Hs10, Li10 | `reserved-ampersand-in-skipped-value`, `skipped-label-*`, `skipped-ampersand-stray-key`, `skipped-ampersand-node-not-first` | `skipped-label-fraction`, `skipped-label-misspelled`, `skipped-label-not-first` | #4501, #4636, #4764, #4769, #4773 | owed |
 | GAP-19 | A deprecated variant where no default is declared reads `None`, in every form (SPEC-TABLES §16.2; FIXED-FORM-ALGORITHM §4); gaps OC13, ObjC7, Li11 | `sp-enum-elem-deprecated-array` (#4689) | `sp-enum-elem-deprecated-array` | #4689, #4753 | owed |
@@ -338,6 +336,7 @@ row and test named on main, so they owe nothing:
 | FL-27 | non-canonical base64 refuses (SPEC-TABLES §16.8, §16.2) | `base64-padding-*`, `base64-unpadded`, `sp-b64-escaped-noncanonical` (#4688) |
 | FL-12 | the read depth cap counts every container (SPEC-TABLES §16.2) | `rr-depth-*`, `sp-skip-depth-129`, `sp-skip-depth-130` (#4706, #4688) |
 | FL-31 | names some target cannot build are refused at check (SPEC.md §4.6) | `internal/check/buildable_names_test.go` (#4691) |
+| FL-33, FL-34, FL-35 | R2, R5, R9 (SPEC-TABLES §3.4 (the presence entry)) | `internal/ci` `TestRulingsR2R5R9PortRows`, `TestFixedLineageOptionalIntoBareRefusesKindMismatch` (#4680) |
 
 `GAP-26` and `GAP-27` are a FRONT-END vector, as `GAP-12`'s digest is: both rules
 bind what a port resolves from schema text (a default's bits, a wire id), so a

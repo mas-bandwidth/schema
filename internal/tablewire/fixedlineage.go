@@ -198,6 +198,11 @@ func (d *lineageDecoder) table(w *fixedNode, b []byte, inst *tabletext.Instance)
 
 func (d *lineageDecoder) field(w *fixedNode, b []byte, fv *tabletext.Field) string {
 	if w.kind == ir.TableKindOptional {
+		// A writer's `?T` read into a reader's bare `T` refuses kind_mismatch
+		// (rulings 2026-11-22, R2): the reader cannot hold an absent value.
+		if !fv.Def.Type.Optional {
+			return FixedReasonKindMismatch
+		}
 		if b[0] > 1 {
 			return ReasonWireDamaged // a present byte other than 0 or 1 (§3.4)
 		}

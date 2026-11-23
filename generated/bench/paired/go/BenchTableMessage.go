@@ -399,11 +399,7 @@ func tableAnnounceRead(v *TableVocabulary, data []byte, report *TableReport) boo
 				report.Refuse(TableRefuseWireDamaged, "")
 				return false
 			}
-			limit := v.MaxBytes
-			if limit == 0 {
-				limit = 64 * 1024
-			}
-			if int64(n) > limit {
+			if int64(n) > v.MaxBytes {
 				return tableMessageRefuse(report, "vocabulary_too_large")
 			}
 			words = sub.Buffer[sub.Offset:]

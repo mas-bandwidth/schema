@@ -113,6 +113,7 @@ func TestMessageFormAnnounceRust(t *testing.T) {
 			"second_announcement",
 			"second_announcement_terminal",
 			"vocabulary_too_large_bytes",
+			"vocabulary_too_large_bytes_zero",
 			"vocabulary_too_large_entries",
 			"malformed_missing_version",
 			"malformed_missing_vocabulary",
@@ -386,6 +387,11 @@ func announceProbe(u *announceUnit) string {
 	b.WriteString("        let mut vocab = TableVocabulary::new(&mut storage);\n        vocab.max_bytes = 16;\n        let mut report = TableReport::default();\n")
 	b.WriteString("        let ok = announce_read(&mut vocab, &ANNOUNCE, &mut report);\n")
 	b.WriteString("        say(\"vocabulary_too_large_bytes\", !ok && report.refused && report.reason == TableReason::VocabularyTooLarge, \"a vocabulary past the byte bound is not refused by name\");\n    }\n")
+	// A caller's max_bytes of 0 refuses and never means the default (R9).
+	b.WriteString("    {\n        let mut storage = vec![TableMessageEntry::default(); 4096];\n")
+	b.WriteString("        let mut vocab = TableVocabulary::new(&mut storage);\n        vocab.max_bytes = 0;\n        let mut report = TableReport::default();\n")
+	b.WriteString("        let ok = announce_read(&mut vocab, &ANNOUNCE, &mut report);\n")
+	b.WriteString("        say(\"vocabulary_too_large_bytes_zero\", !ok && report.refused && report.reason == TableReason::VocabularyTooLarge, \"a max_bytes of 0 is not refused by name\");\n    }\n")
 	// 2.3: vocabulary_too_large, the entry bound.
 	b.WriteString("    {\n        let mut storage = vec![TableMessageEntry::default(); 4];\n")
 	b.WriteString("        let mut vocab = TableVocabulary::new(&mut storage);\n        let mut report = TableReport::default();\n")

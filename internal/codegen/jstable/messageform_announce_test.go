@@ -182,6 +182,14 @@ const byteReport = {};
 if (AnnounceRead(bytes, data, byteReport) || byteReport.Verdict !== 1 || byteReport.Reason !== "vocabulary_too_large" || byteReport.Damaged || bytes.Announced) {
   fail("vocabulary byte bound: " + JSON.stringify(byteReport));
 }
+// A caller's MaxBytes of 0 refuses and never means the default (R9).
+const zero = new TableVocabulary();
+zero.Init(new Array(64));
+zero.MaxBytes = 0;
+const zeroReport = {};
+if (AnnounceRead(zero, data, zeroReport) || zeroReport.Verdict !== 1 || zeroReport.Reason !== "vocabulary_too_large" || zero.Announced) {
+  fail("a MaxBytes of 0 must refuse: " + JSON.stringify(zeroReport));
+}
 `
 		out, err := jsRunAnnounceProbe(t, node, u, map[string][]byte{"ann.bin": announcementOf["backenddemo"]}, probe)
 		if err != nil {
