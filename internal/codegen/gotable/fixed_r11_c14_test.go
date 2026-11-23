@@ -217,14 +217,17 @@ func TestProbe(t *testing.T) {
 	for i := range back[0].Vals {
 		back[0].Vals[i] = 0x33333333
 	}
-	before := back[0]
+	var want ArrayBoundedGrow
+	ArrayBoundedGrowReset(&want)
 	var r TableReport
 	n := ArrayBoundedGrowFixedLoad(back, data, make([]TableFixedEntry, ArrayBoundedGrowFixedPlanMax), &r)
 	if n != -1 || r.Verdict != TableOpenRefused || r.Reason != "count_over_bound" {
 		t.Fatalf("a count past the WRITING plan's bound 4 must refuse count_over_bound, not the reader's 8 or the distractor's 6: n=%%d %%+v", n, r)
 	}
-	if back[0] != before {
-		t.Fatalf("a named refusal writes no destination byte: before=%%+v after=%%+v", before, back[0])
+	for k := range back {
+		if back[k] != want {
+			t.Fatalf("R4: after a refusal every row handed in holds its declared default: row %%d=%%+v want %%+v", k, back[k], want)
+		}
 	}
 	if r.Unknown != 0 || r.Widened != 0 || r.Retained != 0 || r.RetainLost != 0 {
 		t.Fatalf("REFUSE is total: it moves no counter: %%+v", r)
@@ -334,8 +337,10 @@ func TestProbe(t *testing.T) {
 		if n := LiveFixedLoad(got, hostile, make([]TableFixedEntry, 256), &r); n != -1 || r.Err() == nil {
 			t.Fatalf("%s: a non-zero dead byte did not refuse: n=%d %+v", tc.name, n, r)
 		}
-		if got[0].Tail != 0xDEADBEEF {
-			t.Fatalf("%s: the refused load wrote the destination: %+v", tc.name, got[0])
+		var want Live
+		LiveReset(&want)
+		if got[0] != want {
+			t.Fatalf("%s: R4: the value handed in is not its declared default after the refusal: %+v want %+v", tc.name, got[0], want)
 		}
 	}
 

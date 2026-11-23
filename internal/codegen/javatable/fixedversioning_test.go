@@ -435,7 +435,12 @@ public final class %s {
         // that ran from one that never did.
         poison(vals[0]);
         // Row 9 of 5.8 asks for a TOTAL poison; every other row keeps the shallow one.
-        if (args.length > 1 && args[1].equals("deep")) { poisonFinals(vals[0]); }
+        // Under "deep" EVERY row handed in is poisoned, and the rows past
+        // vals[0] are dumped as ROW<i> after the load, so a refusal's reset of
+        // every row (ruling R4) is checked over all of them, not only vals[0].
+        if (args.length > 1 && args[1].equals("deep")) {
+            for (int i = 0; i < vals.length; i++) { poison(vals[i]); poisonFinals(vals[i]); }
+        }
 `)
 	}
 	fmt.Fprintf(&b, `        int n = %s.%sFixed.load(vals, vals.length, data, plan, remap, image, report);
@@ -449,6 +454,9 @@ public final class %s {
            .append(" nonFiniteFloat=").append(report.nonFiniteFloat)
            .append('\n');
         dump("VALUE", vals[0]);
+        if (args.length > 1 && args[1].equals("deep")) {
+            for (int i = 1; i < vals.length; i++) { dump("ROW" + i, vals[i]); }
+        }
         System.out.print(out);
     }
 
@@ -1479,8 +1487,9 @@ public final class ArmProbe {
 // TestFixedVersioningPlanTooLarge proves the retired plan_too_large negative
 // control on the lineage harness (§5.9 #5, #39, #45): a one-entry plan slice
 // handed to a reader whose selected lineage plan requires more than one entry
-// is refused as planTooLarge with no counter moved and the poisoned destination
-// untouched, while the same file reads cleanly at sufficient capacity.
+// is refused as planTooLarge with no counter moved and (ruling R4) every
+// poisoned row handed in back at its declared default, while the same file
+// reads cleanly at sufficient capacity.
 func TestFixedVersioningPlanTooLarge(t *testing.T) {
 	slowtest.Gate(t, "an external toolchain")
 
@@ -1541,9 +1550,12 @@ public final class PlanCapProbe {
             new tblfu2.FuRootFixed.Value(),
             new tblfu2.FuRootFixed.Value(),
         };
-        vals[0].tail = 0x5A5A5A5A;
-        vals[0].extra = 0x5A5A5A5A;
-        vals[0].pick.labelled.lead = 0x5A5A5A5A;
+        for (tblfu2.FuRootFixed.Value v : vals) {
+            v.tail = 0x5A5A5A5A;
+            v.extra = 0x5A5A5A5A;
+            v.pick.labelled.lead = 0x5A5A5A5A;
+        }
+        final tblfu2.FuRootFixed.Value fresh = new tblfu2.FuRootFixed.Value();
 
         final tblfu2.TableFixed.Report r = new tblfu2.TableFixed.Report();
         final int n = tblfu2.FuRootFixed.load(vals, vals.length, data,
@@ -1554,8 +1566,22 @@ public final class PlanCapProbe {
         if (r.damaged || r.unknown != 0 || r.widened != 0 || r.layoutHash != 0) {
             fail("planTooLarge moved a counter or set malformed/layoutHash");
         }
-        if (vals[0].tail != 0x5A5A5A5A || vals[0].extra != 0x5A5A5A5A || vals[0].pick.labelled.lead != 0x5A5A5A5A) {
-            fail("planTooLarge wrote into poisoned destination");
+        // RULING R4: every row handed in is back at its declared default. The
+        // comparison is the VALUE's, through save, which writes an unselected
+        // arm (pick.labelled under the default tag) as the template's zeros.
+        final byte[] want = new byte[tblfu2.FuRootFixed.measure(1)];
+        if (tblfu2.FuRootFixed.save(new tblfu2.FuRootFixed.Value[] { fresh }, 1, want) <= 0) { fail("save a fresh value"); }
+        for (int k = 0; k < vals.length; k++) {
+            final byte[] got = new byte[want.length];
+            int w;
+            try {
+                w = tblfu2.FuRootFixed.save(new tblfu2.FuRootFixed.Value[] { vals[k] }, 1, got);
+            } catch (Throwable e) {
+                w = -1;
+            }
+            if (w != want.length || !java.util.Arrays.equals(got, want)) {
+                fail("planTooLarge left row " + k + " off its declared default");
+            }
         }
 
         // Same file reads cleanly when given sufficient plan capacity.

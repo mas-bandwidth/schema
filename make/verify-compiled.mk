@@ -110,12 +110,15 @@ _verify-$(1)-all: _verify-$(1)-conformance _verify-$(1)-bench _verify-$(1)-fuzz
 verify-$(1):
 	@$$(MAKE) $$(VERIFY_JFLAG) --no-print-directory _verify-$(1)-all
 
-.PHONY: verify-$(1)-conformance verify-$(1)-bench
+.PHONY: verify-$(1)-conformance verify-$(1)-bench conformance-corpus-$(1)
 verify-$(1)-conformance:
 	@$$(MAKE) $$(VERIFY_JFLAG) --no-print-directory _verify-$(1)-conformance
 
 verify-$(1)-bench:
 	@$$(MAKE) $$(VERIFY_JFLAG) --no-print-directory _verify-$(1)-bench
+
+conformance-corpus-$(1):
+	@$$(MAKE) $$(VERIFY_JFLAG) --no-print-directory _conformance-corpus-$(1)
 endef
 
 $(foreach leg,$(VERIFY_COMPILED_LEGS),$(eval $(call verify_compiled_fuzz_rules,$(leg))))
@@ -282,3 +285,45 @@ _verify-elixir-bench: toolchain-elixir bin/schema generated/bench/elixir/.stamp 
 	@beam_extra="$$(dirname "$$(PATH="$(BEAM_PATH):$$PATH" command -v elixir 2>/dev/null || echo /nonexistent)"):$$(dirname "$$(PATH="$(BEAM_PATH):$$PATH" command -v erl 2>/dev/null || echo /nonexistent)")"; \
 		BEAM_PATH="$(BEAM_PATH):$$beam_extra" bench/run.sh --quick --bare --only elixir --out build/verify/bench-elixir.csv
 	@test -s build/verify/bench-elixir.csv
+
+# ---- conformance-corpus (tables conformance harness only, for input-family accounting) ----
+
+.PHONY: _conformance-corpus-cpp _conformance-corpus-c _conformance-corpus-cs \
+	_conformance-corpus-unity _conformance-corpus-go _conformance-corpus-rust \
+	_conformance-corpus-java _conformance-corpus-dart _conformance-corpus-elixir
+
+_conformance-corpus-cpp: build/conformance-harness build/conformance-cpp build/schema_test_cook
+	@rm -rf build/verify/conformance-corpus-cpp && mkdir -p build/verify/conformance-corpus-cpp $(VERIFY_RESULTS_DIR)
+	./build/conformance-harness run --only cpp --claims --work build/verify/conformance-corpus-cpp --results $(VERIFY_RESULTS_DIR)/cpp.json
+
+_conformance-corpus-c: build/conformance-harness build/conformance-c
+	@rm -rf build/verify/conformance-corpus-c && mkdir -p build/verify/conformance-corpus-c $(VERIFY_RESULTS_DIR)
+	./build/conformance-harness run --only c --claims --work build/verify/conformance-corpus-c --results $(VERIFY_RESULTS_DIR)/c.json
+
+_conformance-corpus-cs: toolchain-cs build/conformance-harness build-conformance-cs build-cs-cook
+	@rm -rf build/verify/conformance-corpus-cs && mkdir -p build/verify/conformance-corpus-cs $(VERIFY_RESULTS_DIR)
+	./build/conformance-harness run --only cs --claims --work build/verify/conformance-corpus-cs --results $(VERIFY_RESULTS_DIR)/cs.json
+
+_conformance-corpus-unity: toolchain-unity build/conformance-harness build/conformance-unity/.stamp
+	@rm -rf build/verify/conformance-corpus-unity && mkdir -p build/verify/conformance-corpus-unity $(VERIFY_RESULTS_DIR)
+	./build/conformance-harness run --only unity --claims --work build/verify/conformance-corpus-unity --results $(VERIFY_RESULTS_DIR)/unity.json
+
+_conformance-corpus-go: build/conformance-harness build/conformance-go
+	@rm -rf build/verify/conformance-corpus-go && mkdir -p build/verify/conformance-corpus-go $(VERIFY_RESULTS_DIR)
+	./build/conformance-harness run --only go --claims --work build/verify/conformance-corpus-go --results $(VERIFY_RESULTS_DIR)/go.json
+
+_conformance-corpus-rust: build/conformance-harness build/conformance-rust
+	@rm -rf build/verify/conformance-corpus-rust && mkdir -p build/verify/conformance-corpus-rust $(VERIFY_RESULTS_DIR)
+	./build/conformance-harness run --only rust --claims --work build/verify/conformance-corpus-rust --results $(VERIFY_RESULTS_DIR)/rust.json
+
+_conformance-corpus-java: toolchain-java build/conformance-harness build-conformance-java
+	@rm -rf build/verify/conformance-corpus-java && mkdir -p build/verify/conformance-corpus-java $(VERIFY_RESULTS_DIR)
+	JAVA="$(JAVA)" JAVAC="$(JAVAC)" ./build/conformance-harness run --only java --claims --work build/verify/conformance-corpus-java --results $(VERIFY_RESULTS_DIR)/java.json
+
+_conformance-corpus-dart: toolchain-dart build/conformance-harness build/conformance-dart
+	@rm -rf build/verify/conformance-corpus-dart && mkdir -p build/verify/conformance-corpus-dart $(VERIFY_RESULTS_DIR)
+	DART="$(DART)" ./build/conformance-harness run --only dart --claims --work build/verify/conformance-corpus-dart --results $(VERIFY_RESULTS_DIR)/dart.json
+
+_conformance-corpus-elixir: toolchain-elixir build/conformance-harness build-conformance-elixir
+	@rm -rf build/verify/conformance-corpus-elixir && mkdir -p build/verify/conformance-corpus-elixir $(VERIFY_RESULTS_DIR)
+	BEAM_PATH="$(BEAM_PATH)" ELIXIR_TABLES_EBIN="$(CURDIR)/build/elixir-tables-ebin" ./build/conformance-harness run --only elixir --claims --work build/verify/conformance-corpus-elixir --results $(VERIFY_RESULTS_DIR)/elixir.json

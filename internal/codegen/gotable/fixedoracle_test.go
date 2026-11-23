@@ -6,8 +6,9 @@ package gotable
 // docs/FIXED-FORM-ALGORITHM.md §7 rows 1 and 3 — "Read EACH of the nine and
 // save it back; the bytes must be identical", and each negative control "under
 // ITS OWN NAME, nothing decoded, no counter moved, and every byte of the
-// caller's destination as it was before the load" — and §5.3's "TOTAL OVER THE
-// BATCH, TOO". TestFixedRoadmapGoT12ConformanceHostile holds fx1.bin alone;
+// caller's destination as it was before the load" (R4, docs/SPEC-TABLES.md
+// §6.5, replaces that last clause: every row handed in holds its declared
+// default) — and §5.3's "TOTAL OVER THE BATCH, TOO". TestFixedRoadmapGoT12ConformanceHostile holds fx1.bin alone;
 // this gate holds all nine of the reference's corpus files, and cuts its
 // hostile images from those same reference bytes rather than from a file the
 // leg's own writer produced.
@@ -226,12 +227,27 @@ import (
 	"bytes"
 	"encoding/binary"
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 	"unsafe"
 )
 
 const poison = 0x5A
+
+// defaulted is R4 (docs/SPEC-TABLES.md §6.5): after any refusal every row
+// handed in holds its declared default, compared with a zero value put
+// through Reset (not raw bytes: Reset does not write padding).
+func defaulted(v []ROOT) bool {
+	var d ROOT
+	ROOTReset(&d)
+	for i := range v {
+		if !reflect.DeepEqual(v[i], d) {
+			return false
+		}
+	}
+	return true
+}
 
 func poisoned(n int) ([]ROOT, []byte) {
 	v := make([]ROOT, n+1)
@@ -297,9 +313,9 @@ func TestOracleAndHostile(t *testing.T) {
 
 	// §7 row 3, the negative controls, cut from the reference bytes: each is
 	// one break in a file that reads clean, refused under its own name with
-	// the whole report otherwise zero, and every byte of the destination —
-	// one slot past the batch included — still the poison (§5.3, TOTAL OVER
-	// THE BATCH, TOO).
+	// the whole report otherwise zero, every row handed in at its declared
+	// default (R4, docs/SPEC-TABLES.md §6.5), and the one slot past the batch,
+	// never handed in, still the poison (§5.3, TOTAL OVER THE BATCH, TOO).
 	layoutAt := TableFixedHeaderBytes + 4
 	recordsAt := layoutAt + lb
 	recordAt := func(k int) int { return recordsAt + k*int(ROOTFixedRecordBytes) }
@@ -363,8 +379,11 @@ func TestOracleAndHostile(t *testing.T) {
 		if n != -1 || r != c.want {
 			t.Errorf("%s: n=%d %+v, want -1 %+v", c.name, n, r, c.want)
 		}
-		if !untouched(raw) {
-			t.Errorf("%s: the refused image wrote the caller's destination", c.name)
+		if !defaulted(dst) {
+			t.Errorf("%s: a row handed in is not its declared default after the refusal (R4)", c.name)
+		}
+		if !untouched(raw[len(dst)*int(unsafe.Sizeof(dst[:1][0])):]) {
+			t.Errorf("%s: the refused image wrote the slot past the rows handed in", c.name)
 		}
 	}
 }

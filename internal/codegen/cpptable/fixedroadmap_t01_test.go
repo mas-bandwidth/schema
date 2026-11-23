@@ -167,8 +167,8 @@ const cppT01F12 = cppT01Preface + `
 // ---- F9: TableMessageReason::batch_too_large ---------------------------------------------------
 //
 // Four records against a capacity of three is a refusal by name, found from the
-// count before a body is decoded: REFUSE total, the destination poisoned 0x5A
-// stays 0x5A.
+// count before a body is decoded: REFUSE total, and the destination poisoned
+// 0x5A holds its declared defaults in every row handed in (ruling R4).
 const cppT01F9 = cppT01Preface + `
     {
         static uint8_t dest[1 << 16];
@@ -179,9 +179,10 @@ const cppT01F9 = cppT01Preface + `
             { printf( "F9: m=%lld refused=%d reason=%d malformed=%d\n", (long long) m, (int) lr.refused, (int) lr.reason, (int) lr.damaged ); return 1; }
         if ( lr.unknown != 0 || lr.widened != 0 )
             { printf( "F9: a counter moved\n" ); return 1; }
-        const uint8_t * p = dest;
-        for ( int64_t i = 0; i < (int64_t) sizeof( Lineage ) * 3; ++i )
-            if ( p[i] != 0x5A ) { printf( "F9: byte %lld is 0x%02x, not the poison: TableMessageReason::batch_too_large wrote a destination byte\n", (long long) i, p[i] ); return 1; }
+        static Lineage expect[3]; /* R4: every row handed in at its declared defaults, over the same poison */
+        memset( expect, 0x5A, sizeof( expect ) );
+        for ( int k = 0; k < 3; ++k ) { LineageReset( expect[k] ); }
+        if ( memcmp( dest, expect, sizeof( expect ) ) != 0 ) { printf( "F9: a row handed in is not its declared defaults after the refusal\n" ); return 1; }
     }
 `
 
@@ -229,7 +230,8 @@ const cppT01R7 = cppT01Preface + `
 // ---- R8: a hash in no lineage entry -> TableFixedReason::layout_unknown ----------------------
 //
 // The header's hash names no entry: TableFixedReason::layout_unknown, reporting the file's hash AND
-// NOTHING ELSE, refused, no counter moved, not one destination byte written.
+// NOTHING ELSE, refused, no counter moved, every row handed in at its declared
+// defaults (ruling R4).
 const cppT01R8 = cppT01Preface + `
     {
         static uint8_t f[1 << 16];
@@ -246,9 +248,10 @@ const cppT01R8 = cppT01Preface + `
             { printf( "R8: reported hash 0x%llx, not the file's 0x%llx\n", (unsigned long long) lr.layout_hash, (unsigned long long) forged ); return 1; }
         if ( lr.unknown != 0 || lr.widened != 0 || lr.retained != 0 || lr.retain_lost != 0 )
             { printf( "R8: TableFixedReason::layout_unknown reports the hash AND NOTHING ELSE; a counter moved\n" ); return 1; }
-        const uint8_t * p = dest;
-        for ( int64_t i = 0; i < (int64_t) sizeof( Lineage ) * 4; ++i )
-            if ( p[i] != 0x5A ) { printf( "R8: byte %lld is 0x%02x: a refusal wrote a destination byte\n", (long long) i, p[i] ); return 1; }
+        static Lineage expect[4]; /* R4: every row handed in at its declared defaults, over the same poison */
+        memset( expect, 0x5A, sizeof( expect ) );
+        for ( int k = 0; k < 4; ++k ) { LineageReset( expect[k] ); }
+        if ( memcmp( dest, expect, sizeof( expect ) ) != 0 ) { printf( "R8: a row handed in is not its declared defaults after the refusal\n" ); return 1; }
     }
 `
 
@@ -315,8 +318,8 @@ const cppT01R9 = cppT01Preface + `
 // The same old file's header hash selects the OLD lineage entry, so a compiled
 // plan with a NONEMPTY fill list (w = 77) is in hand when step 11 compares the
 // record's own hash. Invert that record hash; the refusal is TableMessageReason::no_layout and the
-// destination, poisoned 0x5A after Reset and before the load, is still 0x5A in
-// every byte — not the prefill's 77, not a zero.
+// destination, poisoned 0x5A before the load, holds its declared defaults in
+// every row handed in (ruling R4).
 const cppT01R12 = cppT01Preface + `
     {
         const uint64_t H0 = LineageFixedLineage[0];
@@ -345,16 +348,17 @@ const cppT01R12 = cppT01Preface + `
             { printf( "R12: m=%lld refused=%d reason=%d malformed=%d\n", (long long) m, (int) r2.refused, (int) r2.reason, (int) r2.damaged ); return 1; }
         if ( r2.unknown != 0 || r2.widened != 0 )
             { printf( "R12: a counter moved\n" ); return 1; }
-        const uint8_t * p = dest;
-        for ( int64_t i = 0; i < (int64_t) sizeof( Lineage ) * 2; ++i )
-            if ( p[i] != 0x5A ) { printf( "R12: byte %lld is 0x%02x — the prefill ran before the record hash check\n", (long long) i, p[i] ); return 1; }
+        static Lineage expect[2]; /* R4: every row handed in at its declared defaults, over the same poison */
+        memset( expect, 0x5A, sizeof( expect ) );
+        for ( int k = 0; k < 2; ++k ) { LineageReset( expect[k] ); }
+        if ( memcmp( dest, expect, sizeof( expect ) ) != 0 ) { printf( "R12: a row handed in is not its declared defaults after the refusal\n" ); return 1; }
     }
 `
 
 // ---- R13: REFUSE is total --------------------------------------------------
 //
-// A refusal by name is never also `malformed`; every counter stays zero and not
-// one destination byte is written. The TableFixedReason::layout_unknown refusal is the witness.
+// A refusal by name is never also `malformed`; every counter stays zero and
+// every row handed in holds its declared defaults (ruling R4). The TableFixedReason::layout_unknown refusal is the witness.
 const cppT01R13 = cppT01Preface + `
     {
         static uint8_t f[1 << 16];
@@ -369,9 +373,10 @@ const cppT01R13 = cppT01Preface + `
         if ( lr.reason != TableFixedReason::layout_unknown ) { printf( "R13: reason=%d, not TableFixedReason::layout_unknown\n", (int) lr.reason ); return 1; }
         if ( lr.unknown != 0 || lr.widened != 0 || lr.retained != 0 || lr.retain_lost != 0 )
             { printf( "R13: a counter moved on a refusal\n" ); return 1; }
-        const uint8_t * p = dest;
-        for ( int64_t i = 0; i < (int64_t) sizeof( Lineage ) * 4; ++i )
-            if ( p[i] != 0xA5 ) { printf( "R13: byte %lld is 0x%02x — REFUSE wrote a destination byte\n", (long long) i, p[i] ); return 1; }
+        static Lineage expect[4]; /* R4: every row handed in at its declared defaults, over the same poison */
+        memset( expect, 0xA5, sizeof( expect ) );
+        for ( int k = 0; k < 4; ++k ) { LineageReset( expect[k] ); }
+        if ( memcmp( dest, expect, sizeof( expect ) ) != 0 ) { printf( "R13: a row handed in is not its declared defaults after the refusal\n" ); return 1; }
     }
 `
 
