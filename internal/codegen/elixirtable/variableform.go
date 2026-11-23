@@ -1375,7 +1375,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       elements ->
         elements = stored_floats(f, pad_fixed(f, elements))
 
-        if list_elides?(f, elements) do
+        if list_born?(f, elements, idx_map, ids, order) or list_elides?(f, elements) do
           {idx_map, ids, order, acc}
         else
           {ref, ids, order} = intern(ids, order, f.id)
@@ -1621,6 +1621,34 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         elements == []
     end
   end
+
+  # A COUNTED [A..B] ELIDES AT ITS BORN STATE (docs/SPEC-TABLES.md §2.3): the
+  # live count is A and every element writes nothing, a table element when its
+  # save body is empty (judged on a scratch walk whose ids are dropped), a union
+  # element when it is None, a scalar element when it is the default.
+  defp list_born?(f, elements, idx_map, ids, order) do
+    min = Map.get(f, :min_count, 0)
+
+    min > 0 and Map.get(f, :array) == :counted and not Map.get(f, :optional, false) and
+      not Map.get(f, :required, false) and not Map.get(f, :text_list, false) and
+      length(elements) == min and
+      Enum.all?(elements, &element_writes_nothing?(f, &1, idx_map, ids, order))
+  end
+
+  defp element_writes_nothing?(%{elem_kind: 13} = f, e, idx_map, ids, order) do
+    {_idx, _ids, _order, body} =
+      save_fields(Map.fetch!(@tables, f.elem), e || %{}, idx_map, ids, order, [])
+
+    IO.iodata_length(body) == 0
+  end
+
+  defp element_writes_nothing?(%{elem_kind: 15}, e, _idx_map, _ids, _order), do: e == nil
+
+  defp element_writes_nothing?(%{elem_kind: 10, elem_default: d}, e, _i, _d, _o),
+    do: float_bytes(e, 4) == float_bytes(d, 4)
+
+  defp element_writes_nothing?(%{elem_default: d}, e, _i, _d, _o), do: same?(e, d)
+  defp element_writes_nothing?(_f, _e, _i, _d, _o), do: false
 
   # a [N]T always carries N elements (docs/SPEC-TABLES.md §3): a shorter
   # value is padded with the element default, and a longer one is refused
@@ -7191,7 +7219,8 @@ const variableRetainSource = `
     {idx_map, ids, order, retain, report} = s
     elements = pad_fixed(f, Map.get(value, f.name, Map.get(f, :default)))
 
-    if elements == nil or list_elides?(f, elements) do
+    if elements == nil or list_born?(f, elements, idx_map, ids, order) or
+         list_elides?(f, elements) do
       {s, acc}
     else
       {ref, ids, order} = intern(ids, order, f.id)
@@ -9005,6 +9034,16 @@ func fieldDescriptor(u *ir.Unit, owner string, f *ir.Field, ordinal int, fl *ir.
 		if f.Array != ir.ArrayList {
 			fmt.Fprintf(&b, ", array_bound: %d", f.ArrayBound)
 		}
+		if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+			// a counted [A..B] is born with A elements and elides there (SPEC-TABLES §2.3)
+			fmt.Fprintf(&b, ", min_count: %d", f.ArrayMin)
+			elem := *f
+			elem.Array = ir.ArrayNone
+			elem.ArrayBound = 0
+			elem.ArrayMin = 0
+			elem.Type.Optional = false
+			fmt.Fprintf(&b, ", elem_default: %s", variableFieldDefault(&elem))
+		}
 		if f.Array == ir.ArrayFixed {
 			// SPEC-TABLES §3: a [N]T writes all N elements; a table element
 			// array is never elided, any other is elided when every element
@@ -9127,6 +9166,20 @@ func variableFieldDefault(f *ir.Field) string {
 	switch {
 	case f.KeyEnum != "":
 		return "%{}"
+	case f.Array == ir.ArrayCounted && f.ArrayMin > 0:
+		// A COUNTED [A..B] BORN: A elements, each at its default (SPEC-TABLES
+		// section 2.3), wherever the array stands, a union arm included.
+		elem := *f
+		elem.Array = ir.ArrayNone
+		elem.ArrayBound = 0
+		elem.ArrayMin = 0
+		elem.Type.Optional = false
+		def := variableFieldDefault(&elem)
+		items := make([]string, f.ArrayMin)
+		for i := range items {
+			items[i] = def
+		}
+		return "[" + strings.Join(items, ", ") + "]"
 	case f.Array != ir.ArrayNone:
 		return "[]"
 	case f.IsMap():
