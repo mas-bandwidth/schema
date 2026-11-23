@@ -238,6 +238,7 @@ jobs:
       newleg: ${{ steps.pick.outputs.newleg }}
       input_rows: ${{ steps.pick.outputs.input_rows }}
       dart_corpus_account: ${{ steps.pick.outputs.dart_corpus_account }}
+      cpp_corpus_account: ${{ steps.pick.outputs.cpp_corpus_account }}
       rows: ${{ steps.rows.outputs.rows }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -345,7 +346,7 @@ jobs:
               internal/codegen/javatable/*|internal/codegen/java/*|generated/java/*|test/java-tables/*|test/java-fixedform/*|make/java.mk|make/java-*.mk) add_leg java ;;
             esac
             case "$f" in
-              internal/codegen/darttable/*|internal/codegen/dart/*|generated/dart/*|test/dart-tables/*|make/dart.mk|make/dart-*.mk|make/dart-aot-handoff.py) add_leg dart ;;
+              internal/codegen/darttable/*|internal/codegen/dart/*|generated/dart/*|test/dart-tables/*|make/dart.mk|make/dart-*.mk|make/conformance-handoff.py) add_leg dart ;;
             esac
             case "$f" in
               internal/codegen/elixirtable/*|internal/codegen/elixir/*|generated/elixir/*|test/elixir-tables/*|test/elixir-fixedform/*|make/elixir.mk|make/elixir-*.mk|make/elixir-handoff.py) add_leg elixir ;;
@@ -723,13 +724,19 @@ jobs:
           # from its verify producer. Other readers remain independent.
           dart_corpus_account=$(jq -r 'any(.[]; .family == "conformance-corpus" and .leg == "dart")' <<<"$input_rows")
           # Verify the real handoff when its producer or Linux consumer changes.
-          if grep -Eqx 'make/dart-aot-handoff\.py|make/dart\.mk|test/conformance/dart/main\.dart|tools/inputaccount/(main|watch_linux)\.go' "$RUNNER_TEMP/diff-files.txt"; then
+          if grep -Eqx 'make/conformance-handoff\.py|make/dart\.mk|test/conformance/dart/main\.dart|tools/inputaccount/(main|watch_linux)\.go' "$RUNNER_TEMP/diff-files.txt"; then
             dart_corpus_account=true
           fi
           input_rows=$(jq -c 'map(select(.family != "conformance-corpus" or .leg != "dart"))' <<<"$input_rows")
           # Keep Squirrel's independent wrong-input control within its own job budget.
           input_rows=$(jq -c '. + [.[] | select(.family == "conformance-corpus" and .leg == "squirrel") | . + {account_control:"wrong"}]' <<<"$input_rows")
           echo "dart_corpus_account=$dart_corpus_account" >> "$GITHUB_OUTPUT"
+          cpp_corpus_account=$(jq -r 'any(.[]; .family == "conformance-corpus" and .leg == "cpp")' <<<"$input_rows")
+          if grep -Eqx 'make/conformance-handoff\.py|test/conformance/cpp/(main\.cpp|driver)|test/tables/cook_main\.cpp|tools/inputaccount/(main|watch_linux)\.go' "$RUNNER_TEMP/diff-files.txt"; then
+            cpp_corpus_account=true
+          fi
+          input_rows=$(jq -c 'map(select(.family != "conformance-corpus" or .leg != "cpp"))' <<<"$input_rows")
+          echo "cpp_corpus_account=$cpp_corpus_account" >> "$GITHUB_OUTPUT"
           for p in $(sed -n 's/^input_packages=//p' "$RUNNER_TEMP/input-families.txt"); do
             case " $packages " in *" $p "*) ;; *) packages="$packages $p" ;; esac
           done
@@ -1679,7 +1686,7 @@ jobs:
           if [ "$ACCOUNT" = true ]; then
             options=()
             if [ "$VERIFY" = true ]; then options+=(--verify-packets); fi
-            python3 make/dart-aot-handoff.py produce "$RUNNER_TEMP/dart-conformance.tar.gz" "${options[@]}"
+            python3 make/conformance-handoff.py produce "$RUNNER_TEMP/dart-conformance.tar.gz" "${options[@]}"
           else
             make verify-dart-conformance DART=dart
           fi
@@ -1740,7 +1747,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -f /opt/nova/sdk/env.sh ]; then . /opt/nova/sdk/env.sh; fi
-          python3 make/dart-aot-handoff.py consume "${DART_CONFORMANCE_ARTIFACTS:?missing artifact directory}/dart-conformance.tar.gz"
+          python3 make/conformance-handoff.py consume "${DART_CONFORMANCE_ARTIFACTS:?missing artifact directory}/dart-conformance.tar.gz"
           go build -o "$RUNNER_TEMP/inputaccount" ./tools/inputaccount
           # -o on the outer make is lost in recipes invoking $(MAKE).
           vars=(DART=dart "VERIFY_JFLAG=-j4 -o build/conformance-dart")
@@ -1751,6 +1758,74 @@ jobs:
         run: |
           go run ./tools/gotestreport -slowest 0 -skips .github/skip-ledger.txt \
             -provides "platform tool:make tool:git tool:sh tool:dart" "$PGROUP_GO_TEST_JSON"
+
+  # Build the native executables separately from the I/O-accounted runs.
+  build-cpp-conformance-account:
+    needs: plan
+    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.cpp_corpus_account == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 2
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
+      - name: Check out the pinned C++ runtime
+        run: |
+          cd ..
+          rm -rf serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
+      - name: Build the C++ conformance driver and cook companion
+        run: |
+          if [ -f /opt/nova/sdk/env.sh ]; then . /opt/nova/sdk/env.sh; fi
+          python3 make/conformance-handoff.py produce "$RUNNER_TEMP/cpp-conformance.tar.gz" --leg cpp
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: cpp-conformance
+          path: ${{ runner.temp }}/cpp-conformance.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+          overwrite: true
+
+  input-family-cpp-conformance:
+    needs: [plan, build-cpp-conformance-account]
+    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.cpp_corpus_account == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    name: input-family (conformance-corpus, cpp)
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 2
+    permissions:
+      actions: read
+      contents: read
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
+      - name: Check out the pinned C++ runtime
+        run: |
+          cd ..
+          rm -rf serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: cpp-conformance
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          path: ${{ runner.temp }}/cpp-conformance
+          digest-mismatch: error
+      - name: Verify the same-run C++ build and account for inputs
+        run: |
+          if [ -f /opt/nova/sdk/env.sh ]; then . /opt/nova/sdk/env.sh; fi
+          python3 make/conformance-handoff.py consume "$RUNNER_TEMP/cpp-conformance/cpp-conformance.tar.gz" --leg cpp
+          go build -o "$RUNNER_TEMP/inputaccount" ./tools/inputaccount
+          # Pass -o to the recursive make only after verifying the executables.
+          vars=("VERIFY_JFLAG=-j4 -o build/conformance-cpp -o build/schema_test_cook")
+          "$RUNNER_TEMP/inputaccount" -family conformance-corpus -leg cpp -check-extra "${vars[@]}"
+          "$RUNNER_TEMP/inputaccount" -family conformance-corpus -leg cpp -canary wrong "${vars[@]}"
 
   # THE INPUT FAMILIES (tools/inputfamilies, tools/inputaccount; 2026-11-22).
   # One row per reader leg of each input family the diff touches (every
@@ -2869,7 +2944,7 @@ jobs:
   # ci-policy, lint-fast, vet, block-gate) may never skip. `verdict` is the
   # check to require on main.
   verdict:
-    needs: [fork-pull-request, plan, lint-fast, ci-policy, vet, golangci-lint-fast, generated-current, lang-clean, lang-lint, verify-leg, verify-elixir-conformance, verify-dart-conformance, input-family, input-family-dart-conformance, block-gate, go-fixed-corpus, go-test-touched, leg-gate, leg-gate-lobster, leg-gate-rust, leg-gate-squirrel, leg-gate-cpp, newleg-scaffold, nightly-fast, pins]
+    needs: [fork-pull-request, plan, lint-fast, ci-policy, vet, golangci-lint-fast, generated-current, lang-clean, lang-lint, verify-leg, verify-elixir-conformance, verify-dart-conformance, input-family, input-family-dart-conformance, build-cpp-conformance-account, input-family-cpp-conformance, block-gate, go-fixed-corpus, go-test-touched, leg-gate, leg-gate-lobster, leg-gate-rust, leg-gate-squirrel, leg-gate-cpp, newleg-scaffold, nightly-fast, pins]
     if: startsWith(github.head_ref, 'sprint/') == false && (always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # jq over the needs context: seconds
@@ -2901,6 +2976,7 @@ jobs:
               verify-elixir-conformance) ! grep -qF '"elixir"' <<<"$(out verify_legs)" ;;
               verify-dart-conformance) [ "$(out dart_corpus_account)" != true ] && ! grep -qF '"dart"' <<<"$(out verify_legs)" ;;
               input-family-dart-conformance) [ "$(out dart_corpus_account)" != true ] ;;
+              build-cpp-conformance-account|input-family-cpp-conformance) [ "$(out cpp_corpus_account)" != true ] ;;
               input-family) [ "$(out input_rows)" = '[]' ] ;;
               go-fixed-corpus) ! grep -qF '"make":"tables-go-fixedform"' <<<"$(out rows)" ;;
               go-test-touched) [ -z "$(out packages)" ] ;;
