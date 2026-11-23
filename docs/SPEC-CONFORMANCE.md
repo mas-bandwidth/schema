@@ -376,7 +376,7 @@ vector's test holds, so no language leg can differ on them.
 | gap | where the text says it |
 |---|---|
 | Sw10, a present optional table rides even when empty | SPEC-TABLES §22.2 |
-| Sw13, an `[E]T` arm payload | refused at check: SPEC-TABLES §2 ("What an arm may not be"); its grammar row is owed with `GAP-1` |
+| Sw13, an `[E]T` arm payload | SPEC-TABLES §2.6 refuses the union arm and §2.4 permits a table field. `TestGrammarCorpus` checks [`refuse/ArmKeyed.schema`](../testdata/conformance/grammar/refuse/ArmKeyed.schema) and [`accept/FieldKeyed.schema`](../testdata/conformance/grammar/accept/FieldKeyed.schema). |
 | Hs6, Li5, kind `16`'s header lies inside its own `L` | SPEC-TABLES §3; `framing keyed_header_crosses_L` |
 | Li7, a count under the minimum on the wire | SPEC-TABLES §22.2 (`count_over_bound` in every form) |
 | Li9, the read depth cap | SPEC-TABLES §16.2 (129 containers read, the 130th refuses); its rows are owed with `FL-12` |
