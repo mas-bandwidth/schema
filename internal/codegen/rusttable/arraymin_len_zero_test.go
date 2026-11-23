@@ -2,6 +2,7 @@ package rusttable
 
 import (
 	"regexp"
+	"strings"
 	"testing"
 )
 
@@ -30,5 +31,23 @@ func TestRustArrayMinOfOneIsAnEmptinessTest(t *testing.T) {
 	}
 	if twos == 0 {
 		t.Errorf("no items.len() < 2 hold: the [2..3]int32 minimum is not held at all")
+	}
+
+	// The by-value conversion into a fixed Row is a separate emitter path from
+	// the variable wire and text paths above. It holds the same minimum before
+	// copying the live elements.
+	fixed := generate(t, `package minfixed
+
+fixed table Root
+{
+    rows [1..3]int32
+}
+`)
+	fixedValues := string(fixed["probe_fixed_values.rs"])
+	if loc := lenOne.FindStringIndex(fixedValues); loc != nil {
+		t.Fatalf("fixed value conversion compares a length with 1: %q", fixedValues[loc[0]:loc[1]])
+	}
+	if !strings.Contains(fixedValues, "!value.rows.is_empty()") {
+		t.Fatal("fixed value conversion does not hold [1..3] with an emptiness test")
 	}
 }

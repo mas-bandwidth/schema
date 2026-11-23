@@ -1947,7 +1947,7 @@ pub fn table_keyed_iter<T>(slots: &[T]) -> impl Iterator<Item = (usize, &T)> {
 		b.WriteString("    pub fn keyed_mut<T>(self, slots: &mut [T]) -> &mut T {\n        table_keyed_mut(slots, self as usize)\n    }\n\n")
 		fmt.Fprintf(b, "    /// Every slot of a `[%s]T` keyed array beside the key that owns it.\n", e.Name)
 		fmt.Fprintf(b, "    pub fn keyed_iter<T>(slots: &[T]) -> impl Iterator<Item = (%s, &T)> {\n", e.Name)
-		fmt.Fprintf(b, "        const KEYS: [%s; %d] = [", e.Name, len(e.Variants))
+		fmt.Fprintf(b, "        static KEYS: [%s; %d] = [", e.Name, len(e.Variants))
 		for i, v := range e.Variants {
 			if i > 0 {
 				b.WriteString(", ")

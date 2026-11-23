@@ -69,7 +69,7 @@ impl From<&BenchMixed> for super::BenchMixedRow {
             idle_ticks: value.idle_ticks,
             ..Self::default()
         };
-        debug_assert!(value.entities.len() >= 1 && value.entities.len() <= 8);
+        debug_assert!(!value.entities.is_empty() && value.entities.len() <= 8);
         row.entities_count = value.entities.len() as i32;
         for (slot, element) in row.entities.iter_mut().zip(value.entities.iter()) {
             *slot = super::MixedEntityRow::from(element);

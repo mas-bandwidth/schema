@@ -999,7 +999,17 @@ read_value = function(R, T, f, holder, key, ctx, e)
       if e ~= nil and e.max ~= nil and n > e.max then return false end
       local exactKeyed = ctx.vocab.buildVersion == T.BuildVersion and e ~= nil and entry_matches_field(e, d)
       local lastKidx = 0
+      -- A keyed array has one storage slot per declared enum variant. Fields
+      -- omitted from this message body keep the slot's declared default just
+      -- as an omitted scalar does; starting from an empty table made a lawful
+      -- sparse keyed body produce holes that the ordinary writer then had to
+      -- refuse. Copy the freshly-constructed value's slots before replacing
+      -- the keys carried on the wire.
       local out, seen = {}, {}
+      local defaults = holder[key]
+      for i = 1, d.bound do
+        out[i] = defaults[i]
+      end
       for _ = 1, n do
         local kref, kok = R:get(ctx.refBits)
         if not kok or kref == 0 then return false end

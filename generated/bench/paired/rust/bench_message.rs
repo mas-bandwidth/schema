@@ -122,7 +122,7 @@ pub fn mixed_entity_save_message_body(w: &mut TableBitWriter, value: &MixedEntit
     {
         if value.damage != dflt.damage {
             w.put(42, TABLE_MESSAGE_REF_BITS);
-            debug_assert!((value.damage as u64) >> 8 == 0, "flags MixedDamage bits name no variant");
+            debug_assert!(value.damage >> 8 == 0, "flags MixedDamage bits name no variant");
             table_message_write_scalar(w, &TableMessageShape { packing: 1, bits: 8, base_lo: 0x0, base_hi: 0x0, min: 0, max: 0, elem: 0, qmin: f32::from_bits(0x0), qdelta: f32::from_bits(0x0), qcount: 0 }, value.damage, 0);
         }
     }

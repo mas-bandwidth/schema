@@ -86,7 +86,7 @@ impl MixedWeapon {
 
     /// Every slot of a `[MixedWeapon]T` keyed array beside the key that owns it.
     pub fn keyed_iter<T>(slots: &[T]) -> impl Iterator<Item = (MixedWeapon, &T)> {
-        const KEYS: [MixedWeapon; 15] = [MixedWeapon::Fists, MixedWeapon::Pistol, MixedWeapon::Shotgun, MixedWeapon::Rifle, MixedWeapon::Sniper, MixedWeapon::Smg, MixedWeapon::Rocket, MixedWeapon::Grenade, MixedWeapon::Plasma, MixedWeapon::Railgun, MixedWeapon::Flamer, MixedWeapon::Mine, MixedWeapon::Turret, MixedWeapon::Drone, MixedWeapon::Repair];
+        static KEYS: [MixedWeapon; 15] = [MixedWeapon::Fists, MixedWeapon::Pistol, MixedWeapon::Shotgun, MixedWeapon::Rifle, MixedWeapon::Sniper, MixedWeapon::Smg, MixedWeapon::Rocket, MixedWeapon::Grenade, MixedWeapon::Plasma, MixedWeapon::Railgun, MixedWeapon::Flamer, MixedWeapon::Mine, MixedWeapon::Turret, MixedWeapon::Drone, MixedWeapon::Repair];
         KEYS.iter().copied().zip(slots.iter())
     }
 }
