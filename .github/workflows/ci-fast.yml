@@ -727,6 +727,8 @@ jobs:
             dart_corpus_account=true
           fi
           input_rows=$(jq -c 'map(select(.family != "conformance-corpus" or .leg != "dart"))' <<<"$input_rows")
+          # Keep Squirrel's independent wrong-input control within its own job budget.
+          input_rows=$(jq -c '. + [.[] | select(.family == "conformance-corpus" and .leg == "squirrel") | . + {account_control:"wrong"}]' <<<"$input_rows")
           echo "dart_corpus_account=$dart_corpus_account" >> "$GITHUB_OUTPUT"
           for p in $(sed -n 's/^input_packages=//p' "$RUNNER_TEMP/input-families.txt"); do
             case " $packages " in *" $p "*) ;; *) packages="$packages $p" ;; esac
@@ -1762,7 +1764,7 @@ jobs:
   input-family:
     needs: plan
     if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.input_rows != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
-    name: input-family (${{ matrix.family }}, ${{ matrix.leg }})
+    name: input-family (${{ matrix.family }}, ${{ matrix.leg }}${{ matrix.account_control == 'wrong' && ', wrong control' || '' }})
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
     defaults:
@@ -1856,6 +1858,7 @@ jobs:
         env:
           FAMILY: ${{ matrix.family }}
           LEG: ${{ matrix.leg }}
+          ACCOUNT_CONTROL: ${{ matrix.account_control }}
         run: |
           set -euo pipefail
           if [ -f /opt/nova/sdk/env.sh ]; then
@@ -1874,7 +1877,12 @@ jobs:
             # Every leg reads the named MANIFEST.txt and wire pins, so the
             # extra file beside the manifest is inert to the real run.
             vars+=("VERIFY_JOBS=4")
-            "$RUNNER_TEMP/inputaccount" -family "$FAMILY" -leg "$LEG" -check-extra "${vars[@]}"
+            if [ "$ACCOUNT_CONTROL" != wrong ]; then
+              "$RUNNER_TEMP/inputaccount" -family "$FAMILY" -leg "$LEG" -check-extra "${vars[@]}"
+              if [ "$LEG" = squirrel ]; then
+                exit 0 # The sibling matrix row runs the wrong-input control.
+              fi
+            fi
           else
             rm -rf "build/$FAMILY" build/java-finite
             "$RUNNER_TEMP/inputaccount" -family "$FAMILY" -leg "$LEG" "${vars[@]}"

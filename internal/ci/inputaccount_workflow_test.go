@@ -62,16 +62,21 @@ func TestFastInputAccountingKeepsBothCanaries(t *testing.T) {
 		t.Fatal("the end of the input-accounting recipe is missing")
 	}
 	for _, tc := range []struct {
-		family string
-		want   string
+		family, leg, control string
+		want                 string
 	}{
-		{"conformance-corpus", "-family conformance-corpus -leg lobster -check-extra VERIFY_JOBS=4\n" +
+		{"conformance-corpus", "lobster", "", "-family conformance-corpus -leg lobster -check-extra VERIFY_JOBS=4\n" +
 			"-family conformance-corpus -leg lobster -canary wrong VERIFY_JOBS=4\n"},
-		{"packet-defaults", "-family packet-defaults -leg lobster\n" +
+		{"conformance-corpus", "squirrel", "", "-family conformance-corpus -leg squirrel -check-extra VERIFY_JOBS=4\n"},
+		{"conformance-corpus", "squirrel", "wrong", "-family conformance-corpus -leg squirrel -canary wrong VERIFY_JOBS=4\n"},
+		{"packet-defaults", "lobster", "", "-family packet-defaults -leg lobster\n" +
 			"-family packet-defaults -leg lobster -canary extra\n" +
 			"-family packet-defaults -leg lobster -canary wrong\n"},
+		{"packet-defaults", "squirrel", "", "-family packet-defaults -leg squirrel\n" +
+			"-family packet-defaults -leg squirrel -canary extra\n" +
+			"-family packet-defaults -leg squirrel -canary wrong\n"},
 	} {
-		t.Run(tc.family, func(t *testing.T) {
+		t.Run(tc.family+"/"+tc.leg+"/"+tc.control, func(t *testing.T) {
 			dir := t.TempDir()
 			bin := filepath.Join(dir, "inputaccount")
 			stub := "#!/bin/sh\nprintf '%s\\n' \"$*\"\n"
@@ -80,10 +85,40 @@ func TestFastInputAccountingKeepsBothCanaries(t *testing.T) {
 			}
 			cmd := exec.Command("bash", "-euo", "pipefail", "-c", "vars=()\n"+script)
 			cmd.Dir = dir
-			cmd.Env = append(os.Environ(), "RUNNER_TEMP="+dir, "FAMILY="+tc.family, "LEG=lobster")
+			cmd.Env = append(os.Environ(), "RUNNER_TEMP="+dir, "FAMILY="+tc.family, "LEG="+tc.leg, "ACCOUNT_CONTROL="+tc.control)
 			out, err := cmd.CombinedOutput()
 			if err != nil || string(out) != tc.want {
 				t.Fatalf("accounting arguments = %q, %v; want %q", out, err, tc.want)
+			}
+		})
+	}
+}
+
+func TestFastPlanSplitsOnlySquirrelCorpusWrongControl(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("the Linux input accounting lane runs its recipe in a POSIX host's Bash")
+	}
+	data := readCI(t, repoRoot(t), ".github/workflows/ci-fast.yml")
+	_, plan, ok := strings.Cut(data, "# Keep Squirrel's independent wrong-input control within its own job budget.\n")
+	line, _, found := strings.Cut(plan, "\n")
+	if !ok || !found {
+		t.Fatal("the input-family matrix split is missing")
+	}
+	const corpusRow = `{"family":"conformance-corpus","leg":"squirrel"}`
+	const otherRows = `{"family":"conformance-corpus","leg":"lobster"},{"family":"packet-defaults","leg":"squirrel"}`
+	for _, tc := range []struct{ name, rows, want string }{
+		{"empty", "[]", "[]"},
+		{"unselected", "[" + otherRows + "]", "[" + otherRows + "]"},
+		{"selected", "[" + corpusRow + "," + otherRows + "]",
+			"[" + corpusRow + "," + otherRows + `,{"family":"conformance-corpus","leg":"squirrel","account_control":"wrong"}]`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cmd := exec.Command("bash", "-euo", "pipefail", "-c", line+"\nprintf '%s\\n' \"$input_rows\"")
+			cmd.Env = append(os.Environ(), "input_rows="+tc.rows)
+			out, err := cmd.CombinedOutput()
+			if err != nil || strings.TrimSpace(string(out)) != tc.want {
+				t.Fatalf("input-family matrix = %q, %v; want %s", out, err, tc.want)
 			}
 		})
 	}
