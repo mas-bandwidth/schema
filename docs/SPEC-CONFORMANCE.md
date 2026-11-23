@@ -443,6 +443,7 @@ observable:
 | Exact golden comparison | `store_full` loads and re-saves byte-for-byte as `testdata/wire/tables/store_full_message.bin`. |
 | Declared enum value survives the public read/write path | `store_full` carries `Currency.EUR`; substituting the default `USD`, accepting an out-of-domain ordinal, or indexing the enum from the wrong base changes the saved golden and fails the row. |
 | A lawful multi-body batch is actually delivered | `batch_delivered` loads both `StorePurchase` bodies and answers `count 2`; `batch_range_in_second`, `batch_cut_in_second`, and `batch_byte_after_pad` each answer `count 0`. |
+| Omitted enum-keyed slots keep their declared defaults | `batch8-tabledemo.KeyedConfig` loads through the ordinary public reader and its returned values save successfully; sparse entries on the wire do not turn the fixed keyed array into a sparse caller value. |
 
 The batch-count rows deliberately judge only the public loader's returned
 count. After a refusal, caller storage and the implementation's reason are not
