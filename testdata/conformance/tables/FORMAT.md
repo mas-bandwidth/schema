@@ -110,8 +110,12 @@ json-write-into <case> <instance>
   count of the array at `<path>` (preserve the original prefix, dropping the
   tail on shrink; on growth append copies of element 0, or the element's
   declared default when the array was empty),
-  `length` the used length of the text at `<path>` (filled with `a`), `ordinal`
-  an enum by its raw ordinal, `tag` a union by its raw tag — `0` is None, `1`
+  `length` the used length at `<path>`. Fill text with `a`. For a
+  `bytes(N)` field the length is a byte count and the fill byte is `0x61`.
+  With fixed-capacity backing storage, set the used length to the requested
+  number and fill only the available bytes. The `wref_bytes_length_ok` and
+  `wref_bytes_length` cases request 16 and 17 bytes for a 16-byte buffer.
+  `ordinal` sets an enum by its raw ordinal, `tag` a union by its raw tag — `0` is None, `1`
   the first declared arm, `n` the `n`-th; a lawful tag takes its arm at the
   arm's declared defaults, and a tag past the last arm holds no payload and is
   the value the writer refuses (rows `wref_union_tag_none`, `fref_`, `mref_`,
