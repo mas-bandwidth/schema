@@ -983,6 +983,22 @@ fn json_number(jr: JsonIn&) -> i64, i64, bool, bool {
     return start, jr.pos, whole, true;
 }
 
+// json_skip_label takes a label in a skipped value: a positive decimal that
+// fits 64 bits, as the graph reader takes it (docs/SPEC-TABLES.md §16.7)
+fn json_skip_label(jr: JsonIn&) -> bool {
+    json_space(jr);
+    let t = jr.text;
+    if jr.pos >= t.len || t[jr.pos] < '1' || t[jr.pos] > '9' { return json_fail(jr); }
+    var v: u64 = 0;
+    while jr.pos < t.len && t[jr.pos] >= '0' && t[jr.pos] <= '9' {
+        let digit = (t[jr.pos] - '0') as u64;
+        if v > (0xFFFFFFFFFFFFFFFF - digit) / 10 { return json_fail(jr); }
+        v = v * 10 + digit;
+        jr.pos += 1;
+    }
+    return true;
+}
+
 // json_skip_value consumes one value of any shape, to the depth cap.
 recursive fn json_skip_value(jr: JsonIn&, depth: i64) -> bool {
     var kset = json_keyset_start(jr.kset_slots);
@@ -991,6 +1007,8 @@ recursive fn json_skip_value(jr: JsonIn&, depth: i64) -> bool {
         if depth > JsonMaxDepth { return json_fail(jr); }
         let closing: u8 = if c == '{' { '}' } else { ']' };
         jr.pos += 1;
+        var first = true;
+        var labelled = false;
         loop {
             let d = json_peek(jr);
             if d == closing {
@@ -1009,8 +1027,19 @@ recursive fn json_skip_value(jr: JsonIn&, depth: i64) -> bool {
                     return json_fail(jr);
                 }
                 if !json_expect(jr, ':') { return false; }
+                if n > 0 && key[0] == '&' {
+                    // THE LABEL GRAMMAR HOLDS INSIDE A SKIPPED VALUE in a unit with
+                    // no pointer too (docs/SPEC-TABLES.md §16.7, R7): the one
+                    // prefixed key is a first "&node" naming a well-formed label,
+                    // and the rest of the value is skipped whole
+                    if !first || key[..n] != "&node" { return json_fail(jr); }
+                    if !json_skip_label(jr) { return false; }
+                    labelled = true;
+                }
+                first = false;
             }
-            if !json_skip_value(jr, depth + 1) { return false; }
+            if !labelled && !json_skip_value(jr, depth + 1) { return false; }
+            labelled = false;
             let e = json_peek(jr);
             if e == ',' {
                 jr.pos += 1;

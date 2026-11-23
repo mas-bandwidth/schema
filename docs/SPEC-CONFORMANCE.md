@@ -112,3 +112,12 @@ that changes what a conforming implementation does is incomplete without a
 matching row in the corpus (a case, a golden, a refusal row); a case added
 to the corpus without a matching statement in the specification is likewise
 incomplete. A port states the spec version it passes the suite of.
+
+## 7. Shared rows a new port is held to
+
+Each row names a rule a port has got wrong, the spec sentence that states it,
+and the shared corpus entry or gate that holds every port to it.
+
+| row | rule | spec | held by |
+|---|---|---|---|
+| `skipped-ampersand-in-a-pointer-free-unit` | the label grammar holds inside an unknown key's skipped value in a unit with no pointer too: an `&`-prefixed key that is not its object's first `&node`, or an `&node` whose label is not a positive decimal, refuses the read (Goose's pointer-free skip read past both) | SPEC-TABLES.md §16.7, THE LABEL GRAMMAR AND THE DEFINITION RULES APPLY EVERYWHERE | json-hostile `skipped-ampersand-stray-key` and `skipped-ampersand-node-not-first` (tabledemo RootConfig), every leg |
