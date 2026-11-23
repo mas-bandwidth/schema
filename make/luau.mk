@@ -245,22 +245,22 @@ generated/bench/tables/luau/.stamp: bin/schema bench/corpus/BenchTable.schema
 # (v2.1.3), refusing a NaN or an infinity on its raw bits as non_finite_float,
 # and on write through the generated writer, which returns false (LUAU-4); -0
 # and the subnormals ride bit exact. test/packet-finite/luau/main.luau runs every bare-float position
-# of Finite.schema at both widths, plus the quantized float's write refusal.
+# of PacketFinite.schema at both widths, plus the quantized float's write refusal.
 # The read control sabotages the runtime the generator emits beside the
 # module; the write control builds the generator without its finite guards
 # (tools/sabotage through -overlay). Each must fail exactly the vectors its
 # .expected names.
 build/packet-finite/luau/.stamp: $(GO_SOURCES) $(wildcard internal/codegen/luau/runtime/*) \
-	test/packet-finite/luau/Finite.schema test/packet-finite/luau/main.luau
+	test/packet-finite/luau/PacketFinite.schema test/packet-finite/luau/main.luau make/luau.mk
 	@rm -rf build/packet-finite/luau && mkdir -p build/packet-finite/luau
 	go build -o build/packet-finite/luau/schema ./cmd/schema
-	./build/packet-finite/luau/schema generate --lang luau --out build/packet-finite/luau/generated test/packet-finite/luau/Finite.schema
+	./build/packet-finite/luau/schema generate --lang luau --out build/packet-finite/luau/generated test/packet-finite/luau/PacketFinite.schema
 	@cp test/packet-finite/luau/main.luau build/packet-finite/luau/generated/main.luau
 	@touch $@
 
 .PHONY: packet-finite-luau packet-finite-luau-negative-control
 packet-finite-luau: toolchain-luau build/packet-finite/luau/.stamp build/mustrun
-	cd build/packet-finite/luau/generated && $(LUAU_ANALYZE) main.luau Finite.luau
+	cd build/packet-finite/luau/generated && $(LUAU_ANALYZE) main.luau PacketFinite.luau
 	cd build/packet-finite/luau/generated && $(CURDIR)/$(MUSTRUN) -name packet-finite-luau -count 121 -- $(LUAU) main.luau
 
 # $(1) is the direction: read or write.
@@ -283,7 +283,7 @@ packet-finite-luau-negative-control: packet-finite-luau
 	go run ./tools/sabotage -name packet-finite-luau-write -out build/packet-finite/luau-negative-write/write.gotext internal/codegen/luau/write.go
 	@printf '{"Replace":{"%s/internal/codegen/luau/write.go":"%s/build/packet-finite/luau-negative-write/write.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-finite/luau-negative-write/overlay.json
 	go build -overlay=build/packet-finite/luau-negative-write/overlay.json -o build/packet-finite/luau-negative-write/schema ./cmd/schema
-	./build/packet-finite/luau-negative-write/schema generate --lang luau --out build/packet-finite/luau-negative-write/generated test/packet-finite/luau/Finite.schema
+	./build/packet-finite/luau-negative-write/schema generate --lang luau --out build/packet-finite/luau-negative-write/generated test/packet-finite/luau/PacketFinite.schema
 	@cp test/packet-finite/luau/main.luau build/packet-finite/luau-negative-write/generated/main.luau
 	@if (cd build/packet-finite/luau-negative-write/generated && $(LUAU) main.luau) > build/packet-finite/luau-negative-write/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: the Luau writer finite guards were removed and the finite gate stayed green'; exit 1; fi

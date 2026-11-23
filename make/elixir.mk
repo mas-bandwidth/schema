@@ -1151,8 +1151,9 @@ test-elixir: packet-utf8-elixir packet-utf8-elixir-negative-control
 # non_finite_float, reads refuse a NaN or an infinity on its raw bits, and -0
 # and subnormals ride bit exact. The control removes the runtime's read checks
 # and requires the crafted-bytes vectors to red.
-build/packet-finite/elixir/.stamp: bin/schema test/packet-finite/elixir/Finite.schema
-	./bin/schema generate --lang elixir --out build/packet-finite/elixir test/packet-finite/elixir/Finite.schema
+build/packet-finite/elixir/.stamp: bin/schema test/packet-finite/elixir/PacketFinite.schema make/elixir.mk
+	@rm -rf build/packet-finite/elixir build/packet-finite/elixir-beam
+	./bin/schema generate --lang elixir --out build/packet-finite/elixir test/packet-finite/elixir/PacketFinite.schema
 	@touch $@
 
 .PHONY: packet-finite-elixir packet-finite-elixir-negative-control
@@ -1163,10 +1164,11 @@ packet-finite-elixir: build/packet-finite/elixir/.stamp
 	$(ELIXIR) test/packet-finite/elixir/main.exs
 
 packet-finite-elixir-negative-control: packet-finite-elixir
+	@rm -rf build/packet-finite/elixir-negative
 	@mkdir -p build/packet-finite/elixir-negative/beam
 	go run ./tools/sabotage -name packet-finite-elixir-read -out build/packet-finite/elixir-negative/runtime.gotext internal/codegen/elixir/runtime.go
 	@printf '{"Replace":{"%s/internal/codegen/elixir/runtime.go":"%s/build/packet-finite/elixir-negative/runtime.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-finite/elixir-negative/overlay.json
-	go run -overlay=build/packet-finite/elixir-negative/overlay.json ./cmd/schema generate --lang elixir --out build/packet-finite/elixir-negative/generated test/packet-finite/elixir/Finite.schema
+	go run -overlay=build/packet-finite/elixir-negative/overlay.json ./cmd/schema generate --lang elixir --out build/packet-finite/elixir-negative/generated test/packet-finite/elixir/PacketFinite.schema
 	$(ELIXIRC_STRICT) -o build/packet-finite/elixir-negative/beam build/packet-finite/elixir-negative/generated/*.ex
 	@if $(ELIXIR) test/packet-finite/elixir/main.exs "$(CURDIR)/build/packet-finite/elixir-negative/generated" > build/packet-finite/elixir-negative/log 2>&1; then echo 'NEGATIVE CONTROL FAILED: Elixir non_finite_float read check removal passed'; exit 1; fi
 	@grep -Fq 'FAILED: non_finite_float read ' build/packet-finite/elixir-negative/log || { cat build/packet-finite/elixir-negative/log; exit 1; }

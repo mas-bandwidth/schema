@@ -161,13 +161,13 @@ generated/bench/tables/lua/.stamp: ;
 # enforces the rule through its vendored serialize.lua runtime: a NaN or an
 # infinity traps on write naming non_finite_float, refuses on read on its raw
 # bits, and -0 and the subnormals ride bit exact. test/packet-finite/lua/main.lua
-# runs every bare-float position of Finite.schema at both widths, plus the
+# runs every bare-float position of PacketFinite.schema at both widths, plus the
 # quantized float's write refusal. The generator emits the runtime beside the
 # module, so each control sabotages that emitted copy (tools/sabotage, one
 # direction at a time) and must fail exactly the vectors its .expected names.
-build/packet-finite/lua/.stamp: bin/schema test/packet-finite/lua/Finite.schema
+build/packet-finite/lua/.stamp: bin/schema test/packet-finite/lua/PacketFinite.schema make/lua.mk
 	@rm -rf build/packet-finite/lua && mkdir -p build/packet-finite/lua
-	./bin/schema generate --lang lua --out build/packet-finite/lua/generated test/packet-finite/lua/Finite.schema
+	./bin/schema generate --lang lua --out build/packet-finite/lua/generated test/packet-finite/lua/PacketFinite.schema
 	@touch $@
 
 .PHONY: packet-finite-lua packet-finite-lua-negative-control

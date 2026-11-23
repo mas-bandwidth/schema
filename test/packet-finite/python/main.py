@@ -1,6 +1,6 @@
 """The Python packet finite-float gate (SPEC §4.3, serialize format 2.0).
 
-Imports the generated finite package (test/packet-finite/python/Finite.schema)
+Imports the generated finite package (test/packet-finite/python/PacketFinite.schema)
 and its vendored runtime from the directory given as the first argument (the
 negative controls pass their sabotaged copy), then checks every way a bare
 float reaches the Python packet wire: a float64 on a byte boundary and one

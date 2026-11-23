@@ -3,7 +3,7 @@ defmodule PacketFiniteTest do
 
   alias Packetfinite.Finite, as: F
   alias Packetfinite.Pair, as: P
-  alias Packetfinite.FiniteFile, as: W
+  alias Packetfinite.PacketFinite, as: W
 
   # Wire bit offsets of the base instance (one element in each list): the
   # aligned float64 at 0, the float32 at 64, the flag at 96, the unaligned

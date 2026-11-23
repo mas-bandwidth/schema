@@ -48,7 +48,7 @@ python-packet-core-negative-control: python-toolchain-check
 
 # packet-finite-python: test/packet-finite, SPEC §4.3's finite floats, on the
 # Python packet wire. test/packet-finite/python/main.py runs every bare-float
-# position of its Finite.schema under both pinned interpreters: a NaN or an
+# position of its PacketFinite.schema under both pinned interpreters: a NaN or an
 # infinity is refused on write as InvalidValue naming the field and on read by
 # its raw bits as Refused (non_finite_float); -0, the subnormals and the
 # largest finite values ride bit exact.
@@ -66,7 +66,7 @@ python-packet-core-negative-control: python-toolchain-check
 python-ci-finite: packet-finite-python
 packet-finite-python: build/schema-python python-toolchain-check
 	@rm -rf build/packet-finite/python && mkdir -p build/packet-finite/python
-	./build/schema-python generate --lang python --out build/packet-finite/python/generated test/packet-finite/python/Finite.schema
+	./build/schema-python generate --lang python --out build/packet-finite/python/generated test/packet-finite/python/PacketFinite.schema
 	$(PYTHON) -W error -I -B test/packet-finite/python/main.py build/packet-finite/python/generated
 	$(PYTHON_FLOOR) -W error -I -B test/packet-finite/python/main.py build/packet-finite/python/generated
 
