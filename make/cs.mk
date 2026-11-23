@@ -22,9 +22,19 @@ DOTNET ?= dotnet
 toolchain-cs:
 	@$(call toolchain_probe,cs,DOTNET,$(DOTNET))
 # Packet defaults consume the shared C++ oracle in both build modes.
-build/packet-defaults/cs/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema make/cs.mk
+build/packet-defaults/cs/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema $(wildcard test/conformance/packet/testdata/constant-defaults/*/Defaults.schema) make/cs.mk
 	./bin/schema generate --lang cs --out build/packet-defaults/cs/defaults test/packet-defaults/Defaults.schema
 	./bin/schema generate --lang cs --out build/packet-defaults/cs/plain test/packet-defaults/Plain.schema
+	@# Both constant schemas declare package arithmetic: generate each on its own,
+	@# then rename its namespace after the pin so one program compiles both.
+	./bin/schema generate --lang cs --out build/packet-defaults/cs-raw/hexadecimal-addition test/conformance/packet/testdata/constant-defaults/hexadecimal-addition/Defaults.schema
+	@mkdir -p build/packet-defaults/cs/constant-hexadecimal-addition
+	sed 's/^namespace Arithmetic$$/namespace ArithmeticHexadecimalAddition/' build/packet-defaults/cs-raw/hexadecimal-addition/Defaults.cs > build/packet-defaults/cs/constant-hexadecimal-addition/Defaults.cs
+	grep -q '^namespace ArithmeticHexadecimalAddition$$' build/packet-defaults/cs/constant-hexadecimal-addition/Defaults.cs
+	./bin/schema generate --lang cs --out build/packet-defaults/cs-raw/unsigned-subtraction test/conformance/packet/testdata/constant-defaults/unsigned-subtraction/Defaults.schema
+	@mkdir -p build/packet-defaults/cs/constant-unsigned-subtraction
+	sed 's/^namespace Arithmetic$$/namespace ArithmeticUnsignedSubtraction/' build/packet-defaults/cs-raw/unsigned-subtraction/Defaults.cs > build/packet-defaults/cs/constant-unsigned-subtraction/Defaults.cs
+	grep -q '^namespace ArithmeticUnsignedSubtraction$$' build/packet-defaults/cs/constant-unsigned-subtraction/Defaults.cs
 	@touch $@
 
 .PHONY: packet-defaults-cs packet-defaults-cs-negative-control

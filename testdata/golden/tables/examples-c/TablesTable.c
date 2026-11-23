@@ -23,6 +23,9 @@
 #if defined(__APPLE__)
 #include <xlocale.h> /* newlocale, uselocale */
 #endif
+#if defined(__GLIBC__) && !defined(__USE_XOPEN2K8)
+#error "locale_t needs POSIX.1-2008: define _POSIX_C_SOURCE 200809L before the first #include of the translation unit that includes this file"
+#endif
 
 #include <assert.h> /* the text writer's zero-byte refusal, in a debug build */
 #ifndef schema_assert
