@@ -100,3 +100,51 @@ func TestNonFiniteBatchRefusalDiscardsEarlierBodies(t *testing.T) {
 		}
 	}
 }
+
+// TestEveryBatchRefusalResetsEveryInstance holds R4 on the engine's message
+// read: after ANY refusal — a framing refusal before the count, a batch larger
+// than the caller's storage, and damage in a body — EVERY instance handed in
+// holds its declared defaults, the ones past the wire's count included. Every
+// slot starts off its defaults (x 5, f 3.5).
+func TestEveryBatchRefusalResetsEveryInstance(t *testing.T) {
+	m := listModel(t, "package rollback\nfixed table Root\n{\n x int32 = 9\n f float64\n}\n")
+	first := place(t, m, "Root", `{"x":7,"f":1.25}`)
+	second := place(t, m, "Root", `{"x":8,"f":2.5}`)
+	wire, err := tablewire.EncodeMessages(m, []*tabletext.Instance{first, second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vocabulary tablewire.Vocabulary
+	var announcement tabletext.Report
+	if err := vocabulary.AnnounceRead(tablewire.Announce(m.Unit), &announcement); err != nil {
+		t.Fatal(err)
+	}
+	newerForm := append([]byte(nil), wire...)
+	newerForm[0] = 9
+	cases := []struct {
+		name  string
+		slots int
+		data  []byte
+	}{
+		{"newer_form", 3, newerForm},
+		{"batch_too_large", 1, wire},
+		{"non_finite body", 3, replacedBits(t, wire, math.Float64bits(2.5), 0x7ff0000000000000, 64)},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			out := make([]*tabletext.Instance, c.slots)
+			for i := range out {
+				out[i] = place(t, m, "Root", `{"x":5,"f":3.5}`)
+			}
+			var report tabletext.Report
+			if n, ok, _ := tablewire.DecodeMessages(m, out, c.data, &vocabulary, &report); n != 0 || ok {
+				t.Fatalf("refused batch delivered %d bodies, ok=%v", n, ok)
+			}
+			for i, inst := range out {
+				if !reflect.DeepEqual(inst, m.New(inst.Def)) {
+					t.Errorf("refusal left instance %d of %d off its declared defaults", i, len(out))
+				}
+			}
+		})
+	}
+}

@@ -11,7 +11,10 @@ import (
 // (the appended nested `Vec.w = 88` is the one nonzero prefill) when record 0's
 // per-record hash word — its first eight bytes, bitwise INVERTED — fails the hash
 // check; the header's hash at file+8 stays untouched. The verdict is `n == -1`,
-// `no_layout`, `malformed` false, every counter EXACTLY zero, every byte still 0x5A.
+// `no_layout`, `malformed` false, every counter EXACTLY zero, every byte still 0x5A,
+// and (R4) every row handed in at its declared default: the eight rows are
+// filled by a lawful read first, so a refusal that leaves them as they were
+// leaves eight dirty rows.
 // A `>= 1` passes the read this row catches: a prefill run before the hash check moves no counter.
 func TestJSFixedVersioningRefuseWritesNothing(t *testing.T) {
 	corpus := jsFixedCorpus(t)
@@ -26,8 +29,15 @@ const view = new DataView(data.buffer, data.byteOffset, data.length);
 if (data.length < 20) { fail("the corpus file is too short for a header"); }
 const rec0 = 20 + view.getUint32(16, true);
 if (rec0 + 8 > data.length) { fail("record 0 does not fit the corpus file"); }
+const good = Uint8Array.from(data);
 for (let i = 0; i < 8; i++) { data[rec0 + i] ^= 0xff; } // the forge: record 0's per-record hash, inverted
 const back = []; for (let k = 0; k < 8; k++) { back.push(new T()); InitT(back[k]); }
+const snap = (x) => JSON.stringify(x, (_, v) => (typeof v === "bigint" ? v.toString() : ArrayBuffer.isView(v) ? Array.from(v) : v));
+const fresh = new T(); InitT(fresh);
+for (let k = 0; k < 8; k++) {
+  const filled = TLoad([back[k]], 1, good, good.length, TNewPlan(4096, 4096), new TableFixedReport());
+  if (filled !== 1 || snap(back[k]) === snap(fresh)) { fail("the lawful read did not fill row " + k + ": " + filled); }
+}
 const report = new TableFixedReport();
 const plan = TNewPlan(4096, 4096);
 // THE POISON, through the byte destination this leg writes (§5.7, §5.9 #17).
@@ -41,6 +51,9 @@ if (r.refused !== TableFixedRefusal.NoLayout) {
 if (r.damaged) { fail("a refusal by name never sets malformed too (§5.3): " + reason(r)); }
 if (r.unknown !== 0 || r.mismatch !== 0 || r.oor !== 0 || r.widened !== 0 || r.repeated !== 0) {
   fail("REFUSE is total: no counter moves: " + reason(r));
+}
+for (let k = 0; k < back.length; k++) {
+  if (snap(back[k]) !== snap(fresh)) { fail("R4: row " + k + " is not at its declared default after the refusal"); }
 }
 for (let i = 0; i < plan.image.length; i++) {
   if (plan.image[i] !== 0x5A) {

@@ -11,7 +11,7 @@ package cstable
 // hash whose bytes differ from the held layout as layout_malformed. The card
 // adds no refusal name: both corruptions answer `layout_malformed`, as a
 // refusal by name, before any record is parsed, and the destination is
-// untouched.
+// reset to its declared default (R4).
 //
 // The behaviour is already in the C# reader (fixedruntime.go's load, and the
 // emitted TFixedLoad at fixedform.go) and only its assertion is missing here, so
@@ -77,6 +77,8 @@ const t13Body = `
             }
             void Poison(T[] a) { foreach (T e in a) { e.X = 0x5A5A5A5A; e.Y = 0x5A5A5A5A; } }
             bool Untouched(T[] a) { foreach (T e in a) { if (e.X != 0x5A5A5A5A || e.Y != 0x5A5A5A5A) { return false; } } return true; }
+            // R4: after a refusal EVERY ROW handed in holds its declared default.
+            bool Defaulted(T[] a) { T d = new T(); Schema.TableReset(d); foreach (T e in a) { if (e.X != d.X || e.Y != d.Y) { return false; } } return true; }
 
             // the control: the unbroken file reads its two records and lands them
             {
@@ -102,7 +104,7 @@ const t13Body = `
                 if (r.Damaged) { bad += ProbeLog.Fail(@NAME@, label + ": refused+reason and malformed are never both set"); }
                 if (r.LayoutHash != 0) { bad += ProbeLog.Fail(@NAME@, label + ": layout_malformed publishes no hash: 0x" + r.LayoutHash.ToString("x16")); }
                 if (Counters(r)) { bad += ProbeLog.Fail(@NAME@, label + ": a counter moved on a refusal"); }
-                if (!Untouched(back)) { bad += ProbeLog.Fail(@NAME@, label + ": the refused read wrote the destination"); }
+                if (!Defaulted(back)) { bad += ProbeLog.Fail(@NAME@, label + ": the refused read left a row off its declared default"); }
             }
 
             // a second layout under the held hash: same length, other layout bytes

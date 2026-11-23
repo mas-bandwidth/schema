@@ -84,10 +84,19 @@ func csStrictText(files map[string]string) string {
 	return b.String()
 }
 
-// csStrictFixedLoadBody extracts the body of `public static long <T>FixedLoad(`:
-// the one strict read. It returns "" if the entry is absent.
+// csStrictFixedLoadBody extracts the bodies of `public static long <T>FixedLoad(`
+// (the reset-all entry) and `<T>FixedLoadWalk(` (the one strict read). It returns "" if the entry is absent.
 func csStrictFixedLoadBody(text, table string) string {
-	needle := "static long " + table + "FixedLoad("
+	walk := csBraceBodyAfter(text, "static long "+table+"FixedLoadWalk(")
+	if walk == "" {
+		return ""
+	}
+	// R4: the public span entry resets EVERY row handed in on a refusal; the
+	// strict read is that entry's body followed by the walk's.
+	return csBraceBodyAfter(text, "static long "+table+"FixedLoad(") + walk
+}
+
+func csBraceBodyAfter(text, needle string) string {
 	i := strings.Index(text, needle)
 	if i < 0 {
 		return ""
@@ -115,7 +124,7 @@ func csStrictFixedLoadBody(text, table string) string {
 // csMutateFixedLoadBody replaces substrings inside the strict read's body and
 // splices the edited body back into the artifact.
 func csMutateFixedLoadBody(text, table, from, to string) string {
-	needle := "static long " + table + "FixedLoad("
+	needle := "static long " + table + "FixedLoadWalk("
 	i := strings.Index(text, needle)
 	if i < 0 {
 		return text
@@ -224,8 +233,8 @@ func csCheckStrictContract(body string) []string {
 	if !strings.Contains(body, "return -1;") {
 		bad = append(bad, "the strict read never refuses with -1")
 	}
-	if !strings.Contains(body, "TableReset(") {
-		bad = append(bad, "a read never resets the destination before refusing")
+	if !strings.Contains(body, "for (int j = 0; j < values.Length; ++j) { if (values[j] != null) { TableReset(values[j]); } }") {
+		bad = append(bad, "a read never resets EVERY row handed in before refusing")
 	}
 	return bad
 }
