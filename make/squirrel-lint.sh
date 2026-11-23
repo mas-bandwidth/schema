@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # make/squirrel-lint.sh SQ DIR... — the Squirrel port's lint of GENERATED code
 # (make/schema-squirrel-generated-lint-gate.mk carries the why).
 #

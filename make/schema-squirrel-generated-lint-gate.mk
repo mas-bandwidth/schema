@@ -52,7 +52,7 @@ $(SQUIRREL_LINT_DIR)/tables/.stamp: bin/schema make/schema-squirrel-generated-li
 schema-squirrel-generated-lint-gate: dist-squirrel generated/squirrel/.stamp \
 		generated/squirrel-ludicrous/.stamp $(SQUIRREL_LINT_DIR)/tables/.stamp \
 		build/conformance-squirrel
-	sh make/squirrel-lint.sh "$(SQ)" generated/squirrel generated/squirrel-ludicrous \
+	bash make/squirrel-lint.sh "$(SQ)" generated/squirrel generated/squirrel-ludicrous \
 		$(SQUIRREL_LINT_DIR)/tables build/conformance-squirrel
 
 # PROOF THE GATE FIRES, AND ON EXACTLY ITS ROWS. A copy of the committed packet
@@ -66,7 +66,7 @@ schema-squirrel-generated-lint-gate-negative-control: dist-squirrel generated/sq
 	@rm -rf $(SQUIRREL_LINT_NC_DIR) && mkdir -p $(SQUIRREL_LINT_NC_DIR)
 	@cp -R generated/squirrel $(SQUIRREL_LINT_NC_DIR)/squirrel
 	@rm -f $(SQUIRREL_LINT_NC_DIR)/squirrel/.stamp
-	@sh make/squirrel-lint.sh "$(SQ)" $(SQUIRREL_LINT_NC_DIR)/squirrel > $(SQUIRREL_LINT_NC_DIR)/clean.log 2>&1 || \
+	@bash make/squirrel-lint.sh "$(SQ)" $(SQUIRREL_LINT_NC_DIR)/squirrel > $(SQUIRREL_LINT_NC_DIR)/clean.log 2>&1 || \
 		{ echo 'NEGATIVE CONTROL FAILED: the unplanted copy of generated/squirrel is already red, so a red below proves nothing'; \
 		  cat $(SQUIRREL_LINT_NC_DIR)/clean.log; exit 1; }
 	@printf '%s\n' '// PLANTED by make/schema-squirrel-generated-lint-gate.mk: the compiler must refuse this.' \
@@ -75,7 +75,7 @@ schema-squirrel-generated-lint-gate-negative-control: dist-squirrel generated/sq
 		>> $(SQUIRREL_LINT_NC_DIR)/squirrel/Enums.nut
 	@printf '%s\n' '' '' '// PLANTED by make/schema-squirrel-generated-lint-gate.mk: two blank lines above.' \
 		>> $(SQUIRREL_LINT_NC_DIR)/squirrel/Constants.nut
-	@if sh make/squirrel-lint.sh "$(SQ)" $(SQUIRREL_LINT_NC_DIR)/squirrel > $(SQUIRREL_LINT_NC_DIR)/planted.log 2>&1; then \
+	@if bash make/squirrel-lint.sh "$(SQ)" $(SQUIRREL_LINT_NC_DIR)/squirrel > $(SQUIRREL_LINT_NC_DIR)/planted.log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: the Squirrel lint gate stayed green with three planted defects'; \
 		cat $(SQUIRREL_LINT_NC_DIR)/planted.log; exit 1; \
 	fi
