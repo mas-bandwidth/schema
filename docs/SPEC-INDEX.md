@@ -371,14 +371,15 @@ and absence scoring rules, and §7 traces the rules to their sources.
 
 | Claim | Exact PR head evidence | Wave integration coverage |
 |---|---|---|
-| #4771, SF-13/14/15 (SPEC §5.1 rows 1–4, 8) | `5e0a44842e1a` has 14 `TortureVarWref` rows on `write-refusal`: `sfw_opt_arr_{long,ok}`, `sfw_arm_bits_{wide,ok}`, `sfw_arm_range_{high,max,low,min}`, `sfw_arm_str_{long,ok}`, `sfw_slot_{high,max,low,min}`. | All fourteen IDs now share one focused manifest. The [normative appendix](SPEC-CONFORMANCE.md#variable-table-write-bounds) records the Go shared gate, the Rust debug assertions, and remaining driver registrations. |
+| #4771, SF-13/14/15 (SPEC §5.1 rows 1–4, 8) | `5e0a44842e1a` has 14 `TortureVarWref` rows on `write-refusal`: `sfw_opt_arr_{long,ok}`, `sfw_arm_bits_{wide,ok}`, `sfw_arm_range_{high,max,low,min}`, `sfw_arm_str_{long,ok}`, `sfw_slot_{high,max,low,min}`. | All fourteen IDs now share one focused manifest. The [normative appendix](SPEC-CONFORMANCE.md#variable-table-write-bounds) lists the eight registered driver gates and the Rust debug assertions. |
 | #4771, SF-09/21/26 | #4771's PR description says the bytes, fixed minimum and deprecated-enum cases were withdrawn from its retained set. | The appendix names the existing fixed-minimum pair and JSON deprecated-variant twins. Rust’s caller-side check covers the plain byte buffer, the arm byte buffer and the arm array. Shared rows for those additional carriers and binary and cook rows for SF-26 remain owed. |
-| #4772, SF-08 (SPEC §5.1 row 10) | `8b0dd5a18fc4` has six packet rows: four `ratio_{high,low,nan,inf}` refusals and two accepted `ratio_at_{max,min}` controls. The PR reports results for eleven drivers and identifies C, C++, C#, Unity, Rust, Java and Dart probes as owing the ratio operation. | The accepted Go endpoints run through `make packet-cfloat-endpoints-go`. The four refusal IDs and current affected-port packet results remain owed. `smref_big_ratio_*` exercises the message writer. |
+| #4772, SF-08 (SPEC §5.1 row 10) | `8b0dd5a18fc4` has six packet rows: four `ratio_{high,low,nan,inf}` refusals and two accepted `ratio_at_{max,min}` controls. The PR reports results for eleven drivers and identifies C, C++, C#, Unity, Rust, Java and Dart probes as owing the ratio operation. | The accepted Go endpoints run through `make packet-cfloat-endpoints-go`. The shared packet caller cases exercise the four refusal classes under the names listed in the appendix. `smref_big_ratio_*` exercises the message writer. |
 
-The focused carrier manifest credits the Go driver. The Rust debug caller
-probes cover their own writer operations. Other #4771 port registrations,
-the remaining arm cases, and the binary and cook deprecated-enum cases
-still require evidence.
+The fourteen carrier cases passed on C, C++, C#, Unity, Go, Rust and
+JavaScript. The Dart gate is registered. At the audited Wave 3 revision
+`9c039ca6a7`, a clean Dart driver build stopped at missing generated copy
+helpers before it could run those cases. Targets outside these eight and
+the remaining arm and deprecated-enum cases still need shared execution.
 
 For #4772, the [packet conformance inventory](SPEC-CONFORMANCE.md#compressed-float-packet-writes)
 names the shared packet caller gates and the Python packet tests. The exact
