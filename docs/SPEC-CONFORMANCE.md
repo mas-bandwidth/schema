@@ -106,6 +106,25 @@ file shapes of every surface, the absence rules and the reference-leg rule.
 - **Accepted values are judged by the value** the golden states, in the
   canonical text form.
 
+- **A refusal counts only beside an accepted twin.** Every case that requires
+  a refusal has a lawful twin in the corpus: a case of the same group (the
+  same surface, unit and root) that requires acceptance. A port's refusal is
+  credited only when the same port also answers at least one of its twins
+  correctly; otherwise the case is REFUSAL-ONLY. A port that refuses a whole
+  form (reads a root through the wrong reader, or has no reader for it)
+  refuses the lawful value too, and has not reached the rule the refusal case
+  tests. `test/conformance/README.md` states the groups and the harness
+  enforces both halves: it refuses a corpus with a refusal case that has no
+  twin, and scores refusal-only cases apart.
+
+**The score.** For each port the suite prints `credited C of T; absent A;
+refusal-only R; failed F` over every case of every surface it was asked.
+CREDITED is a correct answer (a refusal only as above). ABSENT (a surface the
+port does not list, exit code 2, or `<case>.absent`) and REFUSAL-ONLY are
+reported separately and are **never counted as passes**: a port conforms only
+when every case is credited except the absences section 2 lets it declare, and
+it has no refusal-only case and no failure.
+
 Expected answers come from the committed goldens and manifests, never from
 another language's leg.
 
@@ -240,6 +259,7 @@ row and test named on main, so they owe nothing:
 |---|---|---|
 | INDEX | every pinned wire-fuzz vector is run: `harness wire-fuzz` refuses a vector on disk and not in the index, or in the index and not on disk, naming the file (§2; SPEC-TABLES.md §4.2) | `TestWireVectorIndexAndDirectoryAgree` (#4765, merged) |
 | retain-id-bound-is-the-wires | a retaining save numbers the generated table's ids and the retained ids into one trailer bounded by `id_table_max` = 4096, never by the generated table's own capacity; a file of 4096 retained ids saves back byte for byte (SPEC-TABLES.md §6.6, THE MERGED TRAILER IS BOUNDED BY THE WIRE) | `wire-fuzz --retain` on the pinned seed `id_table_4096` (graphdemo.Scene); C++ `TestCppRetainIdTableBoundIsTheWires` (#4767, merged) |
+| counted-born-elides | a plain counted `[Min..N]T` is born with `Min` elements each at its default, and a save of that born state elides the field, whether the value was born fresh or read back from text or wire at it; the shared rows of FL-25 add the refusals below `Min` (SPEC-TABLES §2.3, §22.2) | the verify-tablegen pinned matrix (`test/verify-tablegen/pinned.go`): `pin:c<elem>:fresh:*` and `pin:c<elem>:min_default:*` on every leg; Elixir also `TestCountedBornStateElides` |
 | FL-01 | compressed -0 stored as +0 (SPEC-TABLES §3.3; rulings `fixed-compressed-negzero`) | `testdata/conformance/feature-witnesses/compressed-negzero-go` |
 | FL-08 | announcement over capacity refused before any entry (SPEC-TABLES §3.3 (the announcement)) | hostile corpus `announce-entries-too-large` |
 | FL-10 | the JSON read holds bytes to the UTF-8 rules (SPEC-TABLES §16.2, §16.3) | `str-illformed-at-bound`, `str-raw-non-ascii`, `str-lone-lead-surrogate` |
@@ -255,6 +275,10 @@ row and test named on main, so they owe nothing:
 | GAP-24 | A float32 field is written as a float32 (SPEC-TABLES §16.2); gaps Sw11 | the `text_float*` rows |
 | GAP-25 | A node is reached along every kind-17 edge from the root (SPEC-TABLES §4); gaps Hs7 | `framing varevo_cycle_*` |
 | message-kind-mismatch-refuses-the-batch | a message-form batch whose announced kind at a field or union arm is not the one this reader declares (and is no widening) refuses the whole batch `kind_mismatch`, count `0`, every body at its declared defaults; the entry is never skipped and counted into a delivered batch (SPEC-TABLES.md §3.3, A FIELD WHOSE ANNOUNCED KIND IS NOT THE ONE THIS READER DECLARES) | `message-fuzz` seed 1, `cross-tbla1-to-tbla2.Root` (test/tables/A1.schema written, A2.schema read); JS `TestJsMessageLoadRefusesKindMismatchBatch` (#4809) |
+| json-int128-every-root | a 128-bit integer field is carried by the text form in every root that has one, fixed or variable, at a field, an array element and a table element alike: written as a string of decimal digits, read from that string only (a bare number refuses `kind_mismatch`), exact over all 128 bits, and a value past the kind or off its declared range refused (SPEC-TABLES.md §16.2, the `int128`, `uint128` row) | `verify-tablegen` pin rows `pin:{f,c}{i128,u128,wrec}:*:fix_json` (op 7); Goose `TestGooseJsonWideIntegersAreStrings` rows `typed128-*` (#4810) |
+| generated-code-lint-clean | generated code compiles clean under the warnings-as-errors build of its leg: a Rust bool element written through its binding is `if *e`, never `if (*e)` (`unused_parens`) (SPEC-TABLES.md §16.2, §3) | `verify-tablegen` pin rows `pin:{f,c}bool:*` on the Rust leg; Rust `TestRustBoolElementConditionHasNoParens` (#4810) |
+| unsigned-top-bit-round-trips | an unsigned value with its top bit set (`bits(64)`, `uint64`, ranged or not) is 2^63 and up, never negative: the variable load places it zero-extended, and a save of what the load read writes the same bytes, never `invalid_value` (SPEC-TABLES.md §4, A VALUE OUTSIDE THE READER RANGE) | `verify-tablegen` pin row `pin:fwrec:first:var_wire` (`mask = 2^63`); Goose `TestGooseWireLoadZeroExtendsUnsignedTopBit` (#4810) |
+| unsigned-64-top-bit-is-in-width | a `bits(64)` or `uint64` value at 2^63 and up is inside its width: a reader carrying it in a wider slot extends it with zeros, and the save writes it back byte for byte, never refusing it as wider than its bits (Goose sign-extended it and refused `invalid_value`) (SPEC.md §5.1, ROWS 2 AND 11 READ AN UNSIGNED VALUE UNSIGNED) | verify-tablegen pinned case `pin:fwrec:first` (`verify-<lang>-tablegen` for every leg) (#4762) |
 | FL-07 | comment bytes are well-formed UTF-8 with no NUL (SPEC-TABLES §16.2 (COMMENTS)) | `rr-comment-illformed-utf8`, `rr-comment-lone-surrogate`, `rr-comment-nul`, `rr-comment-wellformed-utf8` (#4706) |
 | FL-13 | the sign of zero survives a long token (SPEC-TABLES §16.2) | `rr-num-negative-zero-long-token` (#4706) |
 | FL-20 | labels are exact 64-bit values (SPEC-TABLES §16.7) | `rr-label-past-2-53-distinct`, `rr-label-past-2-53-undefined`, `label-overflow` (#4706) |

@@ -618,8 +618,12 @@ func framingValues(u *units, framings []FramingCase, jsonDir string) error {
 		if err != nil {
 			return err
 		}
+		wire, err := os.ReadFile(fc.Wire)
+		if err != nil {
+			return fmt.Errorf("%s: %w", fc.Name, err)
+		}
 		var fixed *ir.Struct
-		if st := unit.Tables[fc.Root]; st != nil && st.FixedDeclared {
+		if st := unit.Tables[fc.Root]; st != nil && st.FixedDeclared && (len(wire) == 0 || wire[0] != 3) {
 			key := fc.Unit + "." + fc.Root
 			if variable[key] == nil {
 				variable[key], err = framingVariableUnit(u.m, fc.Unit, fc.Root)
@@ -629,10 +633,6 @@ func framingValues(u *units, framings []FramingCase, jsonDir string) error {
 			}
 			unit = variable[key]
 			fixed = unit.Tables[fc.Root]
-		}
-		wire, err := os.ReadFile(fc.Wire)
-		if err != nil {
-			return fmt.Errorf("%s: %w", fc.Name, err)
 		}
 		root := unit.Tables[fc.Root]
 		if root == nil {

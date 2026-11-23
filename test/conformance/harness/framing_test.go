@@ -151,7 +151,8 @@ func TestFramingVectorsReadThroughTheEngine(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if st := unit.Tables[fc.Root]; st != nil && st.FixedDeclared {
+		fixedForm := len(data) > 0 && data[0] == 3
+		if st := unit.Tables[fc.Root]; st != nil && st.FixedDeclared && !fixedForm {
 			key := fc.Unit + "." + fc.Root
 			if variable[key] == nil {
 				var err error
@@ -166,7 +167,7 @@ func TestFramingVectorsReadThroughTheEngine(t *testing.T) {
 		if def == nil {
 			t.Fatalf("%s: the unit declares no root %q", fc.Name, fc.Root)
 		}
-		if def.FixedDeclared {
+		if def.FixedDeclared && !fixedForm {
 			t.Fatalf("%s: %s.%s still reads as a fixed root", fc.Name, fc.Unit, fc.Root)
 		}
 		inst := model.New(def)
