@@ -160,12 +160,20 @@ build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk testdata/conform
 # manifest names, not only with the ones listed above
 build/tables-generated-elixir/.stamp: $(CONFORMANCE_UNIT_SCHEMAS)
 
+ELIXIR_TABLE_UNIT_NAMES = $(sort $(foreach u,$(ELIXIR_TABLE_UNITS),$(firstword $(subst :, ,$(u)))))
 ELIXIR_TABLE_UNIT_SOURCES = $(foreach u,$(sort $(ELIXIR_TABLE_UNITS)),build/tables-generated-elixir/$(firstword $(subst :, ,$(u)))/*.ex)
 
+# Compile each generated unit (and driver_impl.ex) in parallel with bounded BEAM
+# schedulers (+S 2:2 per VM, nproc/2 workers): every unit has a distinct package
+# namespace, so splitting avoids single-VM ETS/scheduler lock contention while
+# preserving full ELIXIRC_STRICT warning-as-error checks and byte-identical ebin.
 build/elixir-tables-ebin/.stamp: build/tables-generated-elixir/.stamp test/conformance/elixir/driver_impl.ex
 	@rm -rf build/elixir-tables-ebin && mkdir -p build/elixir-tables-ebin
-	$(ELIXIRC_STRICT) -o build/elixir-tables-ebin $(ELIXIR_TABLE_UNIT_SOURCES) \
-		test/conformance/elixir/driver_impl.ex
+	@cpus=$$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4); \
+	jobs=$$(( cpus / 2 )); if [ "$$jobs" -lt 2 ]; then jobs=2; fi; \
+	printf '%s\n' $(ELIXIR_TABLE_UNIT_NAMES) __driver_impl__ | \
+		ELIXIR_ERL_OPTIONS="$${ELIXIR_ERL_OPTIONS:+$$ELIXIR_ERL_OPTIONS }+S 2:2" \
+		xargs -P "$$jobs" -n 1 sh -c 'if [ "$$1" = "__driver_impl__" ]; then $(ELIXIRC_STRICT) -o build/elixir-tables-ebin test/conformance/elixir/driver_impl.ex || exit 255; else $(ELIXIRC_STRICT) -o build/elixir-tables-ebin build/tables-generated-elixir/"$$1"/*.ex || exit 255; fi' _
 	@touch $@
 
 # THE STANDALONE GATE, Elixir — the M4b twin of the gates above

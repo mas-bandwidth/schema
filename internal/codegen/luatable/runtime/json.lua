@@ -527,7 +527,6 @@ local function skip_container(inp, close, depth, graph)
   end
   inp.p = inp.p + 1
   local first = true
-  local defined = nil
   local seen = close == "}" and {} or nil
   local definition = nil -- the label entry this object defines, open until it closes
   while true do

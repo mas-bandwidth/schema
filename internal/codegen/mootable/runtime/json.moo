@@ -1888,7 +1888,6 @@ local function skipContainer(r: Reader, close: number, depth: number): boolean
 	end
 	r.pos += 1
 	local first = true
-	local defined: any = nil
 	-- a skipped object's keys are held to the layer's rule too: a repeated
 	-- key refuses in every object of the text (§16.2, §16.12)
 	local keys: { [string]: boolean }? = nil
@@ -1934,12 +1933,6 @@ local function skipContainer(r: Reader, close: number, depth: number): boolean
 					r.bad = true
 					return false
 				end
-				local label = skippedAmpersand(r, key)
-				if label == nil then
-					r.bad = true
-					return false
-				end
-				local graph = r.graph :: any
 				first = false
 				local label = scanLabel(r)
 				if label == nil then

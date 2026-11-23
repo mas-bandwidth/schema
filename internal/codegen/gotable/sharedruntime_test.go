@@ -35,7 +35,7 @@ func TestGoSharedRuntimePackageIsCurrent(t *testing.T) {
 	}
 	for name, want := range files {
 		path := filepath.Join(sharedRuntimeDir, name)
-		if os.Getenv("SCHEMA_WRITE_GORUNTIME") == "1" {
+		if slowtest.Rewriting(t, "SCHEMA_WRITE_GORUNTIME") {
 			if err := os.MkdirAll(sharedRuntimeDir, 0o755); err != nil {
 				t.Fatal(err)
 			}

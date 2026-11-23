@@ -1412,11 +1412,8 @@ func verifyGoose(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec
 `, u.Pkg, r, u.Pkg, r, u.Pkg, r)
 				}
 				if r == u.FixRoot && !gooseDefines(udir, "fn "+r+"FromJson(") {
-					// a root Goose emits no text codec for has no text half
-					// to feed its message writer: the case fails by name
-					// rather than breaking the unit's build
-					jsonFixedBlock += fmt.Sprintf(`        if op == 7 { die(c_id, "goose emits no %sFromJson"); }
-`, r)
+					// no typed FromJson: op 7 reads the text through the variable class
+					jsonFixedBlock += gooseOp7Loaded(udir, u.Pkg, r)
 				} else if r == u.FixRoot {
 					// op 7: the fixed root's native message writer, fed by text
 					jsonFixedBlock += fmt.Sprintf(`        if op == 7 {
@@ -1495,6 +1492,9 @@ func verifyGoose(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec
 			}
 			if fileExists(filepath.Join(udir, u.FileBase+"Cook.goose")) {
 				optImports += fmt.Sprintf("import .%sCook;\n", u.FileBase)
+			}
+			if !gooseDefines(udir, "fn "+u.FixRoot+"FromJson(") && fileExists(filepath.Join(udir, u.Pkg+"_cook.goose")) {
+				optImports += fmt.Sprintf("import .%s_cook;\n", u.Pkg)
 			}
 
 			gooseSrc := fmt.Sprintf(`import os;
@@ -1873,4 +1873,37 @@ print("UNIT_OK " + ran)
 		return fmt.Errorf("lobster ran %d cases, want %d", ran.Load(), caseCount)
 	}
 	return nil
+}
+
+// gooseOp7Loaded is op 7 (the native message writer, fed by text)
+// for a fixed root Goose emits no typed FromJson for: its closure holds a kind
+// the typed accessors do not carry (a 128-bit kind and the rest named in
+// internal/codegen/goosetable/json_form.go), so its text reads through the
+// variable class (json_load_table, which answers every table of the unit) and
+// the cook bridge <T>CookFromLoaded lifts that flat value into the typed
+// record the message writer takes. A unit with neither fails the case by name.
+func gooseOp7Loaded(udir, pkg, root string) string {
+	if !gooseDefines(udir, "fn "+root+"CookFromLoaded(") {
+		return fmt.Sprintf("        if op == 7 { die(c_id, \"goose emits no %sFromJson and no %sCookFromLoaded\"); }\n", root, root)
+	}
+	return fmt.Sprintf(`        if op == 7 {
+            var data: u8[>..] = [];
+            var vals: schema_rt::LoadVal[>..] = [];
+            var nodes: schema_rt::LoadNode[>..] = [];
+            var jrep = schema_rt::json_report();
+            let jr = schema_rt::json_load_table(%[1]s::TableUnit, %[1]s::TextUnit, c_root, c_in, data, vals, nodes, jrep);
+            if jr < 0 || jrep.damaged { die(c_id, "json_load_table fix"); }
+            var jout: u8[>..] = [];
+            if schema_rt::json_save_table(%[1]s::TableUnit, %[1]s::TextUnit, c_root, data, vals, nodes, jr, jout) < 0 { die(c_id, "json_save_table fix"); }
+            check_bytes(c_id, jout, c_w1);
+            var one: %[1]s::%[2]s[1] = [%[1]s::New%[2]s()];
+            %[1]s::%[2]sCookFromLoaded(one[0], data, vals, jr);
+            var mout: u8[>..] = [];
+            var srep = schema_rt::MsgReport { .. };
+            let sn = %[1]s::%[2]sSaveMessages(one[0 .. 1], mout, srep);
+            if sn != mout.len || srep.damaged || srep.reason != 0 { die(c_id, "SaveMessages after json_load_table"); }
+            check_bytes(c_id, mout, c_w2);
+            return;
+        }
+`, pkg, root)
 }

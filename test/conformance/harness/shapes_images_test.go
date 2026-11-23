@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 // GOOSE-3 (review 2026-11-21): a fixed-form image whose plain float32 or
@@ -114,7 +116,7 @@ func TestShapesImagesArePinned(t *testing.T) {
 		t.Fatal("fixed_octets_below_min: the two bases do not differ in exactly one count byte")
 	}
 	images["fixed_octets_below_min"] = below
-	write := os.Getenv("SHAPES_WRITE") == "1"
+	write := slowtest.Rewriting(t, "SHAPES_WRITE")
 	for name, want := range images {
 		path := filepath.Join(root, shapesWireDir, name+".bin")
 		if write {

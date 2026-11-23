@@ -69,6 +69,11 @@ require tblr1variable v0.0.0
 
 replace tblr1variable => ../../../build/tables-generated-go-framing/r1variable
 
+// the framing vectors' variable-class twin of listdemo Bounded (make/go.mk, fixed.go)
+require listdemovariable v0.0.0
+
+replace listdemovariable => ../../../build/tables-generated-go-framing/listsvariable
+
 require tblr2 v0.0.0
 
 replace tblr2 => ../../../build/tables-generated-go/r2

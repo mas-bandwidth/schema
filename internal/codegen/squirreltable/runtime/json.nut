@@ -2133,6 +2133,7 @@ readKeyed = function(T, c, fd, r, v, depth) {
 // last-wins and counted. The entries are sorted into ASCENDING KEY ORDER, the
 // order the wire and the writer hold (§2.8).
 readMap = function(T, c, fd, r, v, depth) {
+  if (depth + 1 > MAX_DEPTH) { r.bad = true; return false; }
   if (peek(r) != '{') { r.bad = true; return false; }
   r.p++;
   local kd = fd.mapkey, vd = fd.mapvalue;
@@ -2178,7 +2179,7 @@ readMap = function(T, c, fd, r, v, depth) {
     }
     local valueOk = false;
     if (!placed) {
-      if (!skipValue(r, depth + 1)) return false;
+      if (!skipValue(r, depth + 2)) return false;
     } else {
       local shape = valueShape(r);
       if (shape == 'z' && takesNull(vd)) {
@@ -2190,8 +2191,8 @@ readMap = function(T, c, fd, r, v, depth) {
         valueOk = true;
       } else if (!shapeMatches(shapeOf(T, vd), shape)) {
         r.report.mismatch++;
-        if (!skipValue(r, depth + 1)) return false;
-      } else if (!readField(T, ed, vd, r, ent, depth)) {
+        if (!skipValue(r, depth + 2)) return false;
+      } else if (!readField(T, ed, vd, r, ent, depth + 1)) {
         return false;
       } else {
         if (vd.optional) ent[vd.member + "Present"] = true;
@@ -2253,6 +2254,7 @@ readPointerCell = function(T, c, r, holder, key, depth) {
   if (label == null) return false;
   local defined = label in r.graph;
   ch = peek(r);
+  if (ch != ',' && ch != '}') { r.bad = true; return false; }
   if (ch == ',') { r.p++; ch = peek(r); }
   local bare = ch == '}';
   if (bare != defined) { r.bad = true; return false; }
@@ -2566,6 +2568,7 @@ readScalar = function(T, d, r, holder, key, depth, where) {
 // is None; two keys is malformed. The arm's value takes the arm's own row;
 // a value of the wrong shape is a kind mismatch and the union reads None.
 readUnion = function(T, u, r, holder, key, depth) {
+  if (depth + 1 > MAX_DEPTH) { r.bad = true; return false; }
   if (peek(r) != '{') { r.bad = true; return false; }
   r.p++;
   local inst = u.make();
@@ -2579,12 +2582,12 @@ readUnion = function(T, u, r, holder, key, depth) {
   foreach (a in u.arms) if (a.name == name) { arm = a; break; }
   if (arm == null) {
     r.report.unknown++;
-    if (!skipValue(r, depth + 1)) return false;
+    if (!skipValue(r, depth + 2)) return false;
   } else if (arm.payload == null) {
     // A PAYLOAD-FREE ARM'S VALUE IS null: the name selects it
     if (valueShape(r) != 'z') {
       r.report.mismatch++;
-      if (!skipValue(r, depth + 1)) return false;
+      if (!skipValue(r, depth + 2)) return false;
     } else {
       if (!literal(r, "null")) return false;
       inst.Type = arm.tag;
@@ -2593,11 +2596,11 @@ readUnion = function(T, u, r, holder, key, depth) {
     local p = arm.payload;
     if (valueShape(r) != 'o') {
       r.report.mismatch++;
-      if (!skipValue(r, depth + 1)) return false;
+      if (!skipValue(r, depth + 2)) return false;
     } else {
       local pc = tableDesc(T, p.table);
       local payload = pc.make();
-      if (!readTable(T, pc, r, payload, depth + 1)) return false;
+      if (!readTable(T, pc, r, payload, depth + 2)) return false;
       inst.Type = arm.tag;
       inst[p.member] = payload;
     }
@@ -2613,7 +2616,7 @@ readUnion = function(T, u, r, holder, key, depth) {
       inst[p.member] = fresh[p.member];
     } else if (!shapeMatches(shapeOf(T, p), shape)) {
       r.report.mismatch++;
-      if (!skipValue(r, depth + 1)) return false;
+      if (!skipValue(r, depth + 2)) return false;
     } else {
       if (!readField(T, u, p, r, fresh, depth + 1)) return false;
       inst.Type = arm.tag;
