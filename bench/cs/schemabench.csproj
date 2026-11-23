@@ -6,6 +6,7 @@
        bench/cpp/bench_main.cpp. Same property choices as the test project;
        see that file for the Nullable=annotations reasoning. -->
   <PropertyGroup>
+    <DefaultItemExcludes>$(DefaultItemExcludes);obj/**;bin/**</DefaultItemExcludes>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>disable</ImplicitUsings>
