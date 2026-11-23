@@ -1,0 +1,18 @@
+package depr
+
+enum Phase
+{
+    Live
+    Old | deprecated
+    Next
+}
+
+table VarRoot
+{
+    phase Phase
+}
+
+fixed table FixedRoot
+{
+    phase Phase
+}

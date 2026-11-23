@@ -1,6 +1,7 @@
 package darttable
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,25 +15,12 @@ import (
 // a live variant still writes through the same generated API.
 func TestDartWriteAssertsDeprecatedEnumVariant(t *testing.T) {
 	t.Parallel()
-	u := unitFrom(t, `package depr
-
-enum Phase
-{
-    Live
-    Old | deprecated
-    Next
-}
-
-table VarRoot
-{
-    phase Phase
-}
-
-fixed table FixedRoot
-{
-    phase Phase
-}
-`)
+	fixture := filepath.Join("..", "..", "..", "testdata", "conformance", "feature-witnesses", "declared-deprecated-enum")
+	schema, err := os.ReadFile(filepath.Join(fixture, "Probe.schema"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := unitFrom(t, string(schema))
 	files, err := Generate(u)
 	if err != nil {
 		t.Fatal(err)
@@ -47,72 +35,72 @@ fixed table FixedRoot
 		dir := t.TempDir()
 		writeFiles(t, dir, packetFiles(t, u))
 		writeFiles(t, dir, files)
-		for _, probe := range []struct {
-			name   string
-			source string
-		}{
-			{"variable", deprecatedVariableProbe},
-			{"fixed", deprecatedFixedProbe},
-		} {
-			t.Run(probe.name, func(t *testing.T) {
-				file := probe.name + "_deprecated_probe.dart"
-				body := probe.source + deprecatedAssertHelper
-				if err := os.WriteFile(filepath.Join(dir, file), []byte(body), 0o600); err != nil {
-					t.Fatal(err)
-				}
-				cmd := testproc.Command(t, dartBinary(t), "--enable-asserts", file)
-				cmd.Dir = dir
-				if out, err := cmd.CombinedOutput(); err != nil {
-					t.Fatalf("Dart deprecated enum writer probe: %v\n%s", err, out)
-				}
-			})
+		want, err := os.ReadFile(filepath.Join(fixture, "cases.txt"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		const file = "deprecated_probe.dart"
+		if err := os.WriteFile(filepath.Join(dir, file), []byte(deprecatedProbe), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		cmd := testproc.Command(t, dartBinary(t), "--enable-asserts", file)
+		cmd.Dir = dir
+		out, err := cmd.CombinedOutput()
+		if err != nil || !bytes.Equal(out, want) {
+			t.Fatalf("Dart deprecated enum writer probe: %v\ngot:\n%swant:\n%s", err, out, want)
 		}
 	})
 }
 
-const deprecatedAssertHelper = `
-void assertDeprecated(String form, void Function() write) {
+const deprecatedProbe = `import 'dart:typed_data';
+
+import 'Probe.dart' as p;
+import 'DeprWire.dart' as w;
+import 'DeprFixed.dart' as types;
+import 'ProbeCook.dart' as c;
+import 'ProbeFixed.dart' as f;
+
+void emit(String id, Uint8List bytes) {
+  print('$id ${bytes.map((v) => v.toRadixString(16).padLeft(2, '0')).join()}');
+}
+
+void refuse(String id, void Function() write) {
   try {
     write();
   } on AssertionError catch (error) {
     if (error.message != 'deprecated enum variant Phase.Old') {
       rethrow;
     }
+    print('$id refused');
     return;
   }
-  throw StateError('$form wrote Phase.Old');
+  throw StateError('$id wrote Phase.Old');
 }
-`
-
-const deprecatedVariableProbe = `import 'Probe.dart' as p;
-import 'DeprWire.dart' as w;
 
 void main() {
-  final value = w.VarRoot()..phase = p.Phase.next;
-  final bytes = w.varRootWireSave(value);
-  if (bytes.isEmpty || bytes[0] != 1) {
-    throw StateError('variable writer refused Phase.Next');
-  }
-  value.phase = p.Phase.old;
-  assertDeprecated('Form 1', () => w.varRootWireSave(value));
-}
-`
+  final variable = w.VarRoot()..phase = p.Phase.next;
+  emit('sf26_form1_next', w.varRootWireSave(variable));
+  variable.phase = p.Phase.old;
+  refuse('sf26_form1_old', () => w.varRootWireSave(variable));
 
-const deprecatedFixedProbe = `import 'dart:typed_data';
-
-import 'DeprFixed.dart' as types;
-import 'Probe.dart' as p;
-import 'ProbeFixed.dart' as f;
-
-void main() {
-  final value = types.FixedRoot()..phase = p.Phase.next;
-  final values = <types.FixedRoot>[value];
+  final fixed = types.FixedRoot()..phase = p.Phase.next;
+  final values = <types.FixedRoot>[fixed];
   final out = Uint8List(f.fixedRootFixedMeasure(values.length));
-  if (f.fixedRootFixedSave(values, values.length, out) != out.length ||
-      out.isEmpty || out[0] != 3) {
-    throw StateError('fixed writer refused Phase.Next');
+  if (f.fixedRootFixedSave(values, values.length, out) != out.length) {
+    throw StateError('Form 3 refused Phase.Next');
   }
-  value.phase = p.Phase.old;
-  assertDeprecated('Form 3', () => f.fixedRootFixedSave(values, values.length, out));
+  emit('sf26_form3_next', out);
+  fixed.phase = p.Phase.old;
+  refuse('sf26_form3_old', () => f.fixedRootFixedSave(values, values.length, out));
+
+  fixed.phase = p.Phase.next;
+  final size = c.FixedRootCook.cookMeasure(fixed);
+  for (final order in [Endian.little, Endian.big]) {
+    final cooked = Uint8List(size);
+    if (!c.FixedRootCook.cook(fixed, cooked, order)) {
+      throw StateError('Cook refused Phase.Next');
+    }
+    emit(order == Endian.little ? 'sf26_cook_next_le' : 'sf26_cook_next_be', cooked);
+  }
 }
 `

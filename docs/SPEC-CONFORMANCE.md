@@ -392,7 +392,8 @@ per-port check where no shared case exercises it.
 | SF-17 | `SaveMessages` checks row 10 and never moves an off-range float onto an endpoint (SPEC.md §5.1 row 10) | `smref_big_ratio_high`, `smref_big_ratio_max` (#4808 source registrations) |
 | SF-18, SF-19 | the message form refuses a flags value above its declared width and never masks it (SPEC.md §5.1 row 9; SPEC-TABLES §3.3) | `smref_big_mask_max`, `smref_big_mask_wide`, `smref_mask_named`, `smref_mask_unnamed` (#4808 source registrations) |
 | SF-20 | a writer refuses a `[N]T` or `[E]T` whose length is not N and never cuts or pads it (SPEC.md §5.1) | `sref_fixed_long`, `sref_fixed_ok`, `sref_fixed_short`, `sref_keyed_long`, `sref_keyed_ok`, `sref_keyed_short`, `sfref_fixed_long`, `sfref_fixed_ok`, `sfref_fixed_short`, `sfref_keyed_long`, `sfref_keyed_ok`, `sfref_keyed_short`, `sjref_fixed_long`, `sjref_fixed_ok`, `sjref_fixed_short`, `sjref_keyed_long`, `sjref_keyed_ok`, `sjref_keyed_short`, `smref_fixed_long`, `smref_fixed_ok`, `smref_fixed_short`, `smref_keyed_long`, `smref_keyed_ok`, `smref_keyed_short`, `cref_fixed_long`, `cref_fixed_ok` (#4808 source registrations) |
-| SF-25, SF-26 | `Cook` and `CookMeasure` hold the write contract that `Save` holds; a deprecated enum variant is refused on write (SPEC-TABLES §7.6, §2.15) | `cref_count_at_max`, `cref_count_at_min`, `cref_count_below_min`, `cref_count_over`, `cref_cycle`, `cref_shared_ok`, `cref_finite_ok`, `cref_infinite`, `cref_non_finite` (#4808 source registrations) |
+| SF-25 | `Cook` and `CookMeasure` hold the write contract that `Save` holds (SPEC-TABLES §7.6) | `cref_count_at_max`, `cref_count_at_min`, `cref_count_below_min`, `cref_count_over`, `cref_cycle`, `cref_shared_ok`, `cref_finite_ok`, `cref_infinite`, `cref_non_finite` (#4808 source registrations) |
+| SF-26 | A writer refuses a declared deprecated enum variant (SPEC-TABLES §2.15) | [Declared deprecated enum writers](#declared-deprecated-enum-writers) covers Form 1 and Form 3 in Rust and Dart; the live Cook cases pin output in both byte orders. |
 | SF-22, SF-28 | a variable save and a text (JSON) writer refuse a counted array below its `Min`, and a list field holding a non-list (SPEC.md §5.1 row 3 and "A writer refuses in EVERY form") | `sref_count_at_min`, `sref_count_below_min`, `sref_count_not_list`, `sjref_count_at_min`, `sjref_count_below_min`, `sjref_count_not_list` (#4808 source registrations) |
 | SF-23 | `SaveMessages` holds a value to the rule of the declaration it is written under, not to the looser rule of a same-named field elsewhere (SPEC-TABLES §3.3) | `smref_narrow_hp_5`, `smref_narrow_hp_6`, `smref_wide_hp_10`, `smref_wide_hp_11` (#4808 source registrations) |
 | SF-29, SF-37 | a cook refuses a loaded count outside `[Min, bound]` and a NaN or an infinity in a plain float (SPEC-TABLES §7.6; SPEC.md §5.1 row 7) | `cref_count_at_min`, `cref_count_below_min`, `cref_count_over`, `cref_finite_ok`, `cref_infinite`, `cref_non_finite` (#4808 source registrations) |
@@ -484,10 +485,39 @@ buffer, an array count in an arm, a byte-buffer length in an arm, and a zero
 byte in a string arm. Targets beyond the eight registered drivers still owe shared execution.
 
 Existing fixed writer cases `fref_count_min` and `fref_count_min_ok` cover
-SF-21 below and at the minimum. Existing JSON writer cases
-`jref_enum_deprecated` and `jref_enum_scalar_deprecated` and their accepted twins
-cover deprecated-variant refusal in JSON. Dedicated binary and cook writer
-rows for SF-26 remain owed.
+SF-21 below and at the minimum.
+
+### Declared deprecated enum writers
+
+The [declaration](../testdata/conformance/feature-witnesses/declared-deprecated-enum/Probe.schema)
+keeps `Phase.Old` at ordinal 2 and `Phase.Next` at ordinal 3.
+Each case assigns `phase` through the typed caller value. Form 1 emits a
+field entry for the non-default `Next` and names its variant by reference
+([SPEC-TABLES §3](SPEC-TABLES.md#3-the-wire)).
+Form 3 saves one fixed record and stores ordinal 3 in its enum slot
+([SPEC-TABLES §3.4](SPEC-TABLES.md#34-the-fixed-form-a-record-of-values-under-a-layout)).
+For `Old`, both forms refuse the write under
+[SPEC-TABLES §2.15](SPEC-TABLES.md#215-enum-variants--deprecated-in-place).
+The [expected outcomes](../testdata/conformance/feature-witnesses/declared-deprecated-enum/cases.txt)
+give each case ID followed by its complete output in hex or `refused`.
+
+| Case | Typed operation |
+|---|---|
+| `sf26_form1_next`, `sf26_form1_old` | Save `VarRoot` with `Next` or `Old` |
+| `sf26_form3_next`, `sf26_form3_old` | Measure room for one `FixedRoot` and save with `Next` or `Old` |
+| `sf26_cook_next_le`, `sf26_cook_next_be` | Cook a `FixedRoot` holding `Next` in each byte order ([SPEC-TABLES §7.6](SPEC-TABLES.md#76-the-write-side-cook-and-cookmeasure)) |
+
+The Rust and Dart generator tests run these shared cases with assertions enabled.
+
+```sh
+SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 \
+  ./internal/codegen/rusttable ./internal/codegen/darttable \
+  -run 'TestRustDeclaredEnumWriteWitness|TestDartWriteAssertsDeprecatedEnumVariant'
+```
+
+The central table manifest's JSON writer cases `jref_enum_deprecated` and
+`jref_enum_scalar_deprecated` and their accepted twins cover the same rule
+on the text writer. A typed Cook refusal for `Old` still needs a shared case.
 
 ### Packet union arrays in table closures
 
