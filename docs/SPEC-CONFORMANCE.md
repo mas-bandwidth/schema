@@ -206,6 +206,13 @@ case must fail on the affected implementation before the fix and pass after
 it. If the shared suite cannot express the difference yet, record the missing
 case and keep the regression open until a port can run it through the suite.
 
+When a public API accepts an optional numeric limit, its contract must
+identify the unit, the source of the default, and the result of explicitly
+supplying zero. The regression cases must distinguish omission (where
+supported), zero, exact fit and one over capacity using otherwise valid
+inputs. Where several limits apply, vary each independently. Include an
+empty-input case when the format admits one.
+
 ## 7. Rules decided 2026-11-20..22, and the rows they owe
 
 Every rule decided or fixed from 2026-11-20 to 2026-11-22 is stated in the
@@ -378,3 +385,41 @@ evolution", the close of §4's counters and the opening of §6.6; USAGE.md's enu
 width; COMPETITION.md's never-clobber line. Each now promises a newer reader
 on older data and no more: an older reader given newer data may refuse it by
 name, lawfully.
+
+### Explicit zero and omitted limits
+
+Use a fresh receiving vocabulary for each [§3.3 announcement case](SPEC-TABLES.md#33-the-message-form-a-batch-of-bitpacked-bodies-under-one-announced-vocabulary).
+Use an ordinary empty vocabulary and an ordinary nonempty vocabulary
+that fits the defaults. Let `E` and `L` be the nonempty vocabulary's entry
+count and payload length in bytes. Keep the other limit sufficient while
+varying the limit under test. Use the same announcement bytes throughout
+each column.
+
+| Receiver setting | Empty vocabulary | Nonempty vocabulary |
+|---|---|---|
+| Construction defaults, sufficient storage | Accept, count 0 | Accept, count `E` |
+| Explicit entry limit 0 | Accept, count 0 | Refuse |
+| Explicit entry limit `E` | Accept, count 0 | Accept, count `E` |
+| Explicit entry limit `E - 1` | Accept, count 0 | Refuse |
+| Explicit byte limit 0 | Accept, count 0 | Refuse |
+| Explicit byte limit `L` | Accept, count 0 | Accept, count `E` |
+| Explicit byte limit `L - 1` | Accept, count 0 | Refuse |
+| Both limits explicitly 0 | Accept, count 0 | Refuse |
+
+A refused first announcement leaves `announced` false. Its outer framing
+still occupies bytes for the empty vocabulary. Measure `L` inside that
+framing. On APIs with separately allocated storage, keep enough storage
+for the nonempty vocabulary even in the explicit-zero tests.
+
+For [§3.4 fixed-file reads](SPEC-TABLES.md#34-the-fixed-form-a-record-of-values-under-a-layout),
+use the same valid one-record file in every row. This file format requires
+at least one record.
+
+| Fixed reader capacity | Result on one record |
+|---|---|
+| Omitted, on an API that permits omission | Accept, return one record |
+| Explicit 0 | Refuse for insufficient capacity |
+| Explicit 1 | Accept, return one record |
+
+An implementation whose fixed reader requires a caller-provided destination
+runs the explicit-capacity cases with room for zero and one record respectively.

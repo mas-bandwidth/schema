@@ -7489,11 +7489,22 @@ caller's array of values is the whole of its storage.
   resolved vocabulary the receiver declared** (the storage shape, above), with
   **4096 the conforming default where storage is grown rather than declared**,
   and **the BYTE bound is 64 KiB**, checked from the field's own `L` before an
-  entry is touched. **Both are defaults a vocabulary holds when it is made,
-  and a bound the caller states is taken AS STATED**: a byte bound of `0` is
-  a bound of zero bytes, so an announcement of one byte or more refuses
-  (recommended name `vocabulary_too_large`; reason names are recommended
-  only), and `0` never means "take the default" in any port. 4096 entries is eight times the 500-entry unit that is
+  entry is touched. **Apply the entry and byte limits independently.** Let `E` be the
+  number of vocabulary entries and `L` the vocabulary field's payload
+  length in bytes. An otherwise valid announcement fits exactly when
+  `E <= entry_limit` and `L <= byte_limit`. Equality fits. The outer
+  announcement framing contributes to neither count.
+
+  A new vocabulary takes its construction defaults described above. If
+  the caller supplies either limit, use that integer, including zero.
+  Supplying one limit leaves the other at its declared or default value.
+  A configured entry limit of zero permits only `E = 0`, even when the
+  backing storage has room. A configured byte limit of zero permits only
+  `L = 0`. A valid empty vocabulary has `E = L = 0` and fits both zero
+  limits. A nonempty vocabulary exceeds either zero limit. Refuse an
+  over-budget announcement (recommended reason `vocabulary_too_large`).
+  The [conformance cases](SPEC-CONFORMANCE.md#explicit-zero-and-omitted-limits)
+  exercise the two limits separately. 4096 entries is eight times the 500-entry unit that is
   already a large one. A receiver holds ONE vocabulary a direction for the life
   of the connection, so its memory is that bound and nothing else.
   **The sender holds the same default**: `Announce` and `AnnounceMeasure`
@@ -8814,7 +8825,13 @@ holds its declared defaults** (§6.5, THE CALLER'S VALUES AFTER A REFUSAL).
 **A CALLER THAT STATES NO CAPACITY IS BOUNDED BY THE FILE.** Where a port's
 fixed load lets the caller omit the capacity (step 10), the omitted capacity
 is the file's own record count, so a lawful file of any record count reads;
-no port invents a default capacity of its own, 4096 records or any other.
+no port invents a default capacity of its own, 4096 records or any other. An explicit capacity
+of zero provides room for zero records. For an otherwise valid file of
+`n` records, an explicit capacity `c` passes the capacity check exactly
+when `n <= c`. Form 3 requires `n >= 1` (step 9), so every valid file
+exceeds an explicit zero capacity. An API with a required capacity can
+exercise the explicit cases. An API that also permits omission must
+distinguish it from zero. See the [conformance cases](SPEC-CONFORMANCE.md#explicit-zero-and-omitted-limits).
 
 **A PLAN IS PARTITIONED: EVERY UNGUARDED ENTRY FIRST, THEN THE UNION ARMS',
 AND THE PLAN SAYS WHERE THE SECOND HALF STARTS.** Entries are independent —
