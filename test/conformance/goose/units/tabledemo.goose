@@ -65,6 +65,8 @@ fn unit_json_verdict(root: const u8[:], text: const u8[:], out: u8[>..]&) -> boo
     if root == "MoodField" {
         var v = tabledemo::NewMoodField();
         verdict_of(v, text, out, tabledemo::MoodFieldFromJson, tabledemo::MoodFieldToJson);
+        return true;
+    }
     if root == "MinArmFix" {
         var v = tabledemo::NewMinArmFix();
         verdict_of(v, text, out, tabledemo::MinArmFixFromJson, tabledemo::MinArmFixToJson);
