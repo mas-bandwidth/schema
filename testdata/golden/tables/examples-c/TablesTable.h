@@ -10343,7 +10343,7 @@ static SCHEMA_UNUSED int tabledemo_min_plain_fix_save_body( tabledemo_table_writ
     (void) value;
     { /* few */
         schema_assert( 2 <= value->few_count && value->few_count <= 4 );
-        int rides = value->few_count > 0;
+        int rides = 1;
         if ( value->few_count == 2 ) /* the birth value of [2..4] elides (§4.2) */
         {
             int32_t i; rides = 0;
@@ -10513,7 +10513,7 @@ static SCHEMA_UNUSED int tabledemo_min_plain_fix_save_message_body(tabledemo_tab
  (void)value;
  { /* few */
  schema_assert( 2 <= value->few_count && value->few_count <= 4 );
- int rides = value->few_count > 0;
+ int rides = 1;
  if ( value->few_count == 2 ) /* the birth value of [2..4] elides (§4.2) */
  {
      int32_t i;
@@ -10632,7 +10632,7 @@ static SCHEMA_UNUSED int tabledemo_min_plain_fix_load_message_body(tabledemo_tab
  tabledemo_table_bit_writer_t * w=&default_writer;
  (void)w;
  schema_assert( 2 <= value->few_count && value->few_count <= 4 );
- int rides = value->few_count > 0;
+ int rides = 1;
  if ( value->few_count == 2 ) /* the birth value of [2..4] elides (§4.2) */
  {
      int32_t i;
@@ -19130,7 +19130,7 @@ static SCHEMA_UNUSED int tabledemo_min_plain_fix_save_body_retain( tabledemo_tab
     { /* few */
     retention=tabledemo_table_retain_step(body_keep,0,0);
         schema_assert( 2 <= value->few_count && value->few_count <= 4 );
-        int rides = value->few_count > 0;
+        int rides = 1;
         if ( value->few_count == 2 ) /* the birth value of [2..4] elides (§4.2) */
         {
             int32_t i;

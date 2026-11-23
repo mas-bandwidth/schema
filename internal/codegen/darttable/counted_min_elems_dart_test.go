@@ -166,11 +166,14 @@ func TestDartCountedMinElementsElideNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "dart")
 	t.Parallel()
 	want := dartCountedMinEngine(t)
-	born := regexp.MustCompile(`(?m)^(\s*)if \(([\w.]+)\.length != 2 \|\| .*\) \{$`)
+	bornScalar := regexp.MustCompile(` && !\([\w.]+\.length == 2 && [\w.]+\.every\(\(e\) => [^\n]+\)\)\) \{`)
+	bornTable := regexp.MustCompile(`var born = ([\w.]+)\.length == 2;`)
 	got := dartCountedMinRun(t, func(files map[string][]byte) {
 		planted := 0
 		for name, data := range files {
-			if text := born.ReplaceAllString(string(data), "${1}if (${2}.isNotEmpty) {"); text != string(data) {
+			text := bornScalar.ReplaceAllString(string(data), ") {")
+			text = bornTable.ReplaceAllString(text, "var born = false;")
+			if text != string(data) {
 				files[name] = []byte(text)
 				planted++
 			}

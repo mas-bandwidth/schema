@@ -159,11 +159,11 @@ func TestCppCountedMinElementsElideNegativeControl(t *testing.T) {
 	slowtest.Gate(t, "the C++ compiler (the leg's own toolchain)")
 	t.Parallel()
 	want := cppCountedMinEngine(t)
-	born := regexp.MustCompile(`(bool born_value_[a-z]+ = )`)
+	born := regexp.MustCompile(`(if \( )(value\.[a-z]+_count == 2 \) // the birth value elides)`)
 	got := cppCountedMinRun(t, func(files map[string][]byte) {
 		planted := 0
 		for name, data := range files {
-			if text := born.ReplaceAllString(string(data), "${1}false && "); text != string(data) {
+			if text := born.ReplaceAllString(string(data), "${1}false && ${2}"); text != string(data) {
 				files[name] = []byte(text)
 				planted++
 			}

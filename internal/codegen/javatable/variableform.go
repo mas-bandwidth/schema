@@ -4447,7 +4447,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct, fixed fixedClosure) (strin
 	// The value class
 	fmt.Fprintf(&b, "    public static final class Value {\n")
 	for _, f := range st.Fields {
-		fmt.Fprintf(&b, "        public %s %s = %s;\n", variableValueType(f), varMember(f), variableBorn(f))
+		fmt.Fprintf(&b, "        public %s %s = %s;\n", variableValueType(f), varMember(f), variableDefault(f))
 		if f.Type.Optional {
 			fmt.Fprintf(&b, "        public boolean %sPresent;\n", varMember(f))
 		}

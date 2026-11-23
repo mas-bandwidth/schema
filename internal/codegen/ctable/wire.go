@@ -805,7 +805,7 @@ func (g *tableGen) countedRides(f *ir.Field, expr, ind string, keyed func(f *ir.
 	if !countedBirth(f) {
 		return expr + "_count > 0"
 	}
-	g.pf("%sint rides = %s_count > 0;\n", ind, expr)
+	g.pf("%sint rides = 1;\n", ind)
 	g.pf("%sif ( %s_count == %d ) /* the birth value of [%d..%d] elides (§4.2) */\n%s{\n", ind, expr, f.BornCount(), f.ArrayMin, f.ArrayBound, ind)
 	g.pf("%s    int32_t i; rides = 0;\n%s    for ( i = 0; i < %d; i++ )\n%s    {\n", ind, ind, f.BornCount(), ind)
 	keyed(f, expr+"[i]", ind+"        ")

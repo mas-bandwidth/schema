@@ -22,8 +22,7 @@ public final class BenchMixedVariable {
         public long worldTime = 0L;
         public long frameTick = 0L;
         public int serverTime = 0x00000000;
-        public java.util.List<MixedEntityVariable.Value> entities =
-                new java.util.ArrayList<>(java.util.Arrays.asList(new MixedEntityVariable.Value()));
+        public java.util.List<MixedEntityVariable.Value> entities = new java.util.ArrayList<>();
         public java.util.List<MixedStatVariable.Value> stats = new java.util.ArrayList<>();
         public MixedEventVariable.Value gameEvent = new MixedEventVariable.Value();
         public java.util.List<java.lang.Integer> loadout = new java.util.ArrayList<>();

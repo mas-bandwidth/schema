@@ -7578,7 +7578,7 @@ static SCHEMA_UNUSED int bench_bench_mixed_save_body( bench_table_writer_t * w, 
     }
     { /* entities */
         schema_assert( 1 <= value->entities_count && value->entities_count <= 8 );
-        int rides = value->entities_count > 0;
+        int rides = 1;
         if ( value->entities_count == 1 ) /* the birth value of [1..8] elides (§4.2) */
         {
             int32_t i; rides = 0;
@@ -9108,7 +9108,7 @@ static SCHEMA_UNUSED int bench_bench_mixed_save_message_body(bench_table_bit_wri
  }
  { /* entities */
  schema_assert( 1 <= value->entities_count && value->entities_count <= 8 );
- int rides = value->entities_count > 0;
+ int rides = 1;
  if ( value->entities_count == 1 ) /* the birth value of [1..8] elides (§4.2) */
  {
      int32_t i;
