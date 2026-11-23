@@ -66,10 +66,10 @@ func TestFixedRoadmapCppT12PlansEvolution(t *testing.T) {
 	// the VOLD_ file, so its lineage is the identity entry and nothing else) and handed
 	// the NEW writer's file. The NEW hash is in no lineage entry: REFUSE
 	// TableFixedReason::layout_unknown, reporting the file's hash AND NOTHING ELSE (ALGORITHM §5.3
-	// step 5 and its outcome table). REFUSE is total — no counter moves and not
-	// one destination byte is written, the prefill included (ALGORITHM §5.3,
-	// "REFUSE is total"): the storage is poisoned 0x5A AFTER the Reset and must
-	// be 0x5A in every byte after the load.
+	// step 5 and its outcome table). REFUSE is total — no counter moves — and
+	// ruling R4 puts every row handed in back to its declared defaults: the
+	// storage is poisoned 0x5A AFTER the Reset and must equal the same poisoned
+	// bytes reset, all 8 rows, after the load.
 	t.Run("cpp/E3/fixed-array-element/old-refuses-new", func(t *testing.T) {
 		t.Parallel()
 		older := loadUnit(t, vold)
@@ -102,9 +102,11 @@ func TestFixedRoadmapCppT12PlansEvolution(t *testing.T) {
     if ( r.widened != 0 || r.unknown != 0 || r.retained != 0 || r.retain_lost != 0 )
         { printf( "REFUSE is total, no counter moves: w=%%d u=%%d km=%%d c=%%d d=%%d\n", r.widened, r.unknown, r.refused, r.refused, r.refused ); return 1; }
     {
-        const uint8_t * p = (const uint8_t *) back;
-        for ( size_t i = 0; i < sizeof( back ); ++i )
-            if ( p[i] != 0x5A ) { printf( "byte %%zu is 0x%%02x: REFUSE wrote a destination byte\n", i, p[i] ); return 1; }
+        static %[1]s expect[8];
+        memset( expect, 0x5A, sizeof( expect ) );
+        for ( int k = 0; k < 8; ++k ) %[1]sReset( expect[k] );
+        for ( int k = 0; k < 8; ++k )
+            if ( memcmp( &back[k], &expect[k], sizeof( back[k] ) ) != 0 ) { printf( "row %%d is not its declared defaults after the refusal (R4)\n", k ); return 1; }
     }
 `, root, file)
 		// cppRunUnit is cppRunCapability with the sibling serialize checkout on

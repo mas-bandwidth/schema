@@ -589,6 +589,7 @@ func init() {
 		Name{Name: "TableTextFormLimit", What: "the hand-editable text form (docs/SPEC-TABLES.md §16.9), the textform surface: a stable refusal name (§16.9.4)"},
 		Name{Name: "TableTextFormEditConflict", What: "the hand-editable text form (docs/SPEC-TABLES.md §16.9), the textform surface: a stable refusal name (§16.9.4)"},
 		Name{Name: "tableTextFormApply", What: "the hand-editable text form (docs/SPEC-TABLES.md §16.9), the textform surface"},
+		Name{Name: "tableResetIf", What: "resets the receiver on any read refusal (ruling R4; docs/SPEC-TABLES.md §4)"},
 		Name{Name: "tableTextFormArrayRoot", What: "the hand-editable text form (docs/SPEC-TABLES.md §16.9), the textform surface"},
 		Name{Name: "tableTextFormAttach", What: "the hand-editable text form (docs/SPEC-TABLES.md §16.9), the textform surface"},
 		Name{Name: "tableTextFormDigit", What: "the hand-editable text form (docs/SPEC-TABLES.md §16.9), the textform surface"},

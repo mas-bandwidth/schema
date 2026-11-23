@@ -7158,10 +7158,10 @@ func RootConfigFixedSaveReason(values []RootConfig, buffer []byte) (int64, error
 	return -1, TableRefuseInvalidValue
 }
 
-// RootConfigFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count,
-// or -1 with every value it had written reset. A supplied report receives this read's report,
-// and report.Err() is the reason (tla/FixedLive.tla).
-func RootConfigFixedLoad(values []RootConfig, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
+// RootConfigFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count, or -1 with
+// every value handed in reset to its declared defaults; report.Err() is the reason (tla/FixedBatch.tla).
+func RootConfigFixedLoad(values []RootConfig, data []byte, plan []TableFixedEntry, report *TableReport) (fixedN int64) {
+	defer tableResetIf(func() bool { return fixedN < 0 }, values, RootConfigReset)
 	if report == nil {
 		var local TableReport
 		report = &local
@@ -7271,9 +7271,6 @@ func RootConfigFixedLoad(values []RootConfig, data []byte, plan []TableFixedEntr
 			return tableFixedRefuse(report, why)
 		}
 		if why := RootConfigFixedFiniteBody(&values[k : k+1][0]); why != "" {
-			for j := range values[:k+1] {
-				RootConfigReset(&values[j])
-			}
 			tableFixedRefuse(report, TableRefuseNonFiniteFloat.Error())
 			report.Field = why
 			return -1
@@ -7281,9 +7278,6 @@ func RootConfigFixedLoad(values []RootConfig, data []byte, plan []TableFixedEntr
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
 		if !RootConfigFixedBounds(&values[k : k+1][0]) {
-			for j := range values[:k+1] {
-				RootConfigReset(&values[j])
-			}
 			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
 		}
 		at = at[recordBytes:]
@@ -7487,10 +7481,10 @@ func WeaponConfigFixedSaveReason(values []WeaponConfig, buffer []byte) (int64, e
 	return -1, TableRefuseInvalidValue
 }
 
-// WeaponConfigFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count,
-// or -1 with every value it had written reset. A supplied report receives this read's report,
-// and report.Err() is the reason (tla/FixedLive.tla).
-func WeaponConfigFixedLoad(values []WeaponConfig, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
+// WeaponConfigFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count, or -1 with
+// every value handed in reset to its declared defaults; report.Err() is the reason (tla/FixedBatch.tla).
+func WeaponConfigFixedLoad(values []WeaponConfig, data []byte, plan []TableFixedEntry, report *TableReport) (fixedN int64) {
+	defer tableResetIf(func() bool { return fixedN < 0 }, values, WeaponConfigReset)
 	if report == nil {
 		var local TableReport
 		report = &local
@@ -7600,9 +7594,6 @@ func WeaponConfigFixedLoad(values []WeaponConfig, data []byte, plan []TableFixed
 			return tableFixedRefuse(report, why)
 		}
 		if why := WeaponConfigFixedFiniteBody(&values[k : k+1][0]); why != "" {
-			for j := range values[:k+1] {
-				WeaponConfigReset(&values[j])
-			}
 			tableFixedRefuse(report, TableRefuseNonFiniteFloat.Error())
 			report.Field = why
 			return -1
@@ -7610,18 +7601,12 @@ func WeaponConfigFixedLoad(values []WeaponConfig, data []byte, plan []TableFixed
 		switch pick {
 		case 0:
 			if !WeaponConfigFixedBoundsKnown0(&values[k : k+1][0]) {
-				for j := range values[:k+1] {
-					WeaponConfigReset(&values[j])
-				}
 				return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
 			}
 		}
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
 		if !WeaponConfigFixedBounds(&values[k : k+1][0]) {
-			for j := range values[:k+1] {
-				WeaponConfigReset(&values[j])
-			}
 			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
 		}
 		at = at[recordBytes:]
@@ -7950,10 +7935,10 @@ func LoadoutConfigFixedSaveReason(values []LoadoutConfig, buffer []byte) (int64,
 	return -1, TableRefuseInvalidValue
 }
 
-// LoadoutConfigFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count,
-// or -1 with every value it had written reset. A supplied report receives this read's report,
-// and report.Err() is the reason (tla/FixedLive.tla).
-func LoadoutConfigFixedLoad(values []LoadoutConfig, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
+// LoadoutConfigFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count, or -1 with
+// every value handed in reset to its declared defaults; report.Err() is the reason (tla/FixedBatch.tla).
+func LoadoutConfigFixedLoad(values []LoadoutConfig, data []byte, plan []TableFixedEntry, report *TableReport) (fixedN int64) {
+	defer tableResetIf(func() bool { return fixedN < 0 }, values, LoadoutConfigReset)
 	if report == nil {
 		var local TableReport
 		report = &local
@@ -8063,9 +8048,6 @@ func LoadoutConfigFixedLoad(values []LoadoutConfig, data []byte, plan []TableFix
 			return tableFixedRefuse(report, why)
 		}
 		if why := LoadoutConfigFixedFiniteBody(&values[k : k+1][0]); why != "" {
-			for j := range values[:k+1] {
-				LoadoutConfigReset(&values[j])
-			}
 			tableFixedRefuse(report, TableRefuseNonFiniteFloat.Error())
 			report.Field = why
 			return -1
@@ -8073,9 +8055,6 @@ func LoadoutConfigFixedLoad(values []LoadoutConfig, data []byte, plan []TableFix
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
 		if !LoadoutConfigFixedBounds(&values[k : k+1][0]) {
-			for j := range values[:k+1] {
-				LoadoutConfigReset(&values[j])
-			}
 			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
 		}
 		at = at[recordBytes:]
@@ -8467,10 +8446,10 @@ func ProfileConfigFixedSaveReason(values []ProfileConfig, buffer []byte) (int64,
 	return -1, TableRefuseInvalidValue
 }
 
-// ProfileConfigFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count,
-// or -1 with every value it had written reset. A supplied report receives this read's report,
-// and report.Err() is the reason (tla/FixedLive.tla).
-func ProfileConfigFixedLoad(values []ProfileConfig, data []byte, plan []TableFixedEntry, report *TableReport) int64 {
+// ProfileConfigFixedLoad is the fixed-form read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.4, §6.5): the record count, or -1 with
+// every value handed in reset to its declared defaults; report.Err() is the reason (tla/FixedBatch.tla).
+func ProfileConfigFixedLoad(values []ProfileConfig, data []byte, plan []TableFixedEntry, report *TableReport) (fixedN int64) {
+	defer tableResetIf(func() bool { return fixedN < 0 }, values, ProfileConfigReset)
 	if report == nil {
 		var local TableReport
 		report = &local
@@ -8580,9 +8559,6 @@ func ProfileConfigFixedLoad(values []ProfileConfig, data []byte, plan []TableFix
 			return tableFixedRefuse(report, why)
 		}
 		if why := ProfileConfigFixedFiniteBody(&values[k : k+1][0]); why != "" {
-			for j := range values[:k+1] {
-				ProfileConfigReset(&values[j])
-			}
 			tableFixedRefuse(report, TableRefuseNonFiniteFloat.Error())
 			report.Field = why
 			return -1
@@ -8590,9 +8566,6 @@ func ProfileConfigFixedLoad(values []ProfileConfig, data []byte, plan []TableFix
 		// AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
 		// storage it just wrote: the same pass for either plan (§3.4, §4.6).
 		if !ProfileConfigFixedBounds(&values[k : k+1][0]) {
-			for j := range values[:k+1] {
-				ProfileConfigReset(&values[j])
-			}
 			return tableFixedRefuse(report, TableRefuseOutOfRange.Error())
 		}
 		at = at[recordBytes:]

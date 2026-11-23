@@ -6,9 +6,9 @@ package squirreltable_test
 // body is delivered. Each row below is one condition on a hand-built batch,
 // read through the plain <Root>LoadMessages into storage the probe poisons
 // first; each row's NEGATIVE CONTROL takes that one check out of the runtime
-// and requires the row's verdict to move. The rows the read resets are the Go
-// engine's: every row it wrote (the refused one included) returns to its
-// declared defaults, and a row it never reached is untouched.
+// and requires the row's verdict to move. A refusal resets EVERY row of the
+// storage handed in to its declared defaults (ruling R4), the rows it never
+// reached included; a delivered batch leaves the rows past its count alone.
 //
 // Functional tests, not unit tests: both run the pinned Squirrel interpreter
 // (sqrun). The negative control plants its one fault in the generated runtime
@@ -217,7 +217,7 @@ func messageStrictRows() []messageStrictRow {
 			b.ref(0)
 			return b.done()
 		},
-		want:    "0 kind_mismatch 0 222 333",
+		want:    "0 kind_mismatch 0 0 0",
 		control: [2]string{"if(c<0){refuseRead(r,\"kind_mismatch\");return;}\n    if(c>0)r.widened++;\n    if(fd.optional)", "if(c<0)c=0;\n    if(c>0)r.widened++;\n    if(fd.optional)"},
 	}, {
 		name: "kind_mismatch_arm",
@@ -233,7 +233,7 @@ func messageStrictRows() []messageStrictRow {
 			b.ref(0)
 			return b.done()
 		},
-		want:    "0 kind_mismatch 0 222 333",
+		want:    "0 kind_mismatch 0 0 0",
 		control: [2]string{"if(c<0){refuseRead(r,\"kind_mismatch\");return;}\n    if(c>0)r.widened++;\n    u.Type", "if(c<0)c=0;\n    if(c>0)r.widened++;\n    u.Type"},
 	}, {
 		name: "out_of_range_int",
@@ -247,7 +247,7 @@ func messageStrictRows() []messageStrictRow {
 			b.ref(0)
 			return b.done()
 		},
-		want:    "0 out_of_range 0 222 333",
+		want:    "0 out_of_range 0 0 0",
 		control: [2]string{"    } else if (!fd.signed) {\n      local MIN = 0x8000000000000000;\n      if ((x ^ MIN) < (fd.lo ^ MIN) || (x ^ MIN) > (fd.hi ^ MIN)) { refuseRead(r, \"out_of_range\"); return 0; }\n    } else if (x < fd.lo || x > fd.hi) { refuseRead(r, \"out_of_range\"); return 0; }", "    }"},
 	}, {
 		name: "out_of_range_float",
@@ -264,7 +264,7 @@ func messageStrictRows() []messageStrictRow {
 			b.ref(0)
 			return b.done()
 		},
-		want:    "0 out_of_range 0 222 333",
+		want:    "0 out_of_range 0 0 0",
 		control: [2]string{"  if (v < fd.fmin || v > fd.fmax) { refuseRead(r, \"out_of_range\"); return 0.0; }\n", ""},
 	}, {
 		name: "length_over_bound",
@@ -283,7 +283,7 @@ func messageStrictRows() []messageStrictRow {
 			b.ref(0)
 			return b.done()
 		},
-		want:    "0 length_over_bound 0 222 333",
+		want:    "0 length_over_bound 0 0 0",
 		control: [2]string{"if(n>fd.bound){refuseRead(r,\"length_over_bound\");return;}\n    local s=joinText(r.b,at,at+n);", "local s=joinText(r.b,at,at+n);"},
 	}, {
 		name: "count_over_bound",
@@ -303,7 +303,7 @@ func messageStrictRows() []messageStrictRow {
 			b.ref(0)
 			return b.done()
 		},
-		want:    "0 count_over_bound 0 222 333",
+		want:    "0 count_over_bound 0 0 0",
 		control: [2]string{"if(n>fd.bound){refuseRead(r,\"count_over_bound\");return;}", ""},
 	}, {
 		name: "repeated_field_id",
@@ -314,7 +314,7 @@ func messageStrictRows() []messageStrictRow {
 			b.ref(0)
 			return b.done()
 		},
-		want:    "0 wire_damaged 0 222 333",
+		want:    "0 wire_damaged 0 0 0",
 		control: [2]string{"if(reservedId(id)||seen.find(id)!=null){r.bad=true;return;}", "if(reservedId(id)){r.bad=true;return;}"},
 	}, {
 		name: "repeated_field_id_skipped",
@@ -330,7 +330,7 @@ func messageStrictRows() []messageStrictRow {
 			b.ref(0)
 			return b.done()
 		},
-		want:    "0 wire_damaged 0 222 333",
+		want:    "0 wire_damaged 0 0 0",
 		control: [2]string{"if(reservedId(entry.Id)||seen.find(entry.Id)!=null){r.bad=true;return;}", "if(reservedId(entry.Id)){r.bad=true;return;}"},
 	}, {
 		name: "repeated_keyed_slot",
@@ -346,7 +346,7 @@ func messageStrictRows() []messageStrictRow {
 			b.ref(0)
 			return b.done()
 		},
-		want:    "0 wire_damaged 0 222 333",
+		want:    "0 wire_damaged 0 0 0",
 		control: [2]string{"||keys.find(ke.Id)!=null){r.bad=true;return;}\n      keys.append(ke.Id);\n      local index=-1;for(local j=0;j<fd.keyvariants.len();j++)if(fd.keyvariants[j][1]==ke.Id){index=j;break;}\n      local depSlot=r.depCount,unkSlot=r.unknown,bitsSlot=r.bits;\n      r.enumAtDefault=false;\n      readPayload(T,v,r,fd.elem,holder,\"value\",depth+1,element);if(r.bad)return;\n      if(index<0)r.unknown++;\n      else{\n        if(exactKeyed&&index<=lastSlot){r.bad=true;return;}", "){r.bad=true;return;}\n      keys.append(ke.Id);\n      local index=-1;for(local j=0;j<fd.keyvariants.len();j++)if(fd.keyvariants[j][1]==ke.Id){index=j;break;}\n      local depSlot=r.depCount,unkSlot=r.unknown,bitsSlot=r.bits;\n      r.enumAtDefault=false;\n      readPayload(T,v,r,fd.elem,holder,\"value\",depth+1,element);if(r.bad)return;\n      if(index<0)r.unknown++;\n      else{"},
 	}, {
 		name: "ill_formed_text",
@@ -359,7 +359,7 @@ func messageStrictRows() []messageStrictRow {
 			b.ref(0)
 			return b.done()
 		},
-		want:    "0 wire_damaged 0 222 333",
+		want:    "0 wire_damaged 0 0 0",
 		control: [2]string{"if(!messageTextOk(r.b,at,n)){r.bad=true;return;}", ""},
 	}, {
 		name: "ill_formed_text_skipped",
@@ -375,7 +375,7 @@ func messageStrictRows() []messageStrictRow {
 			b.ref(0)
 			return b.done()
 		},
-		want:    "0 wire_damaged 0 222 333",
+		want:    "0 wire_damaged 0 0 0",
 		control: [2]string{"if(!messageTextOk(r.b,r.bits/8,n)){r.bad=true;return;}", ""},
 	}, {
 		name: "non_finite_skipped",
@@ -389,7 +389,7 @@ func messageStrictRows() []messageStrictRow {
 			b.ref(0)
 			return b.done()
 		},
-		want:    "0 non_finite_float 0 222 333",
+		want:    "0 non_finite_float 0 0 0",
 		control: [2]string{"if(k==10){local raw=get(r,32);if(!r.bad&&(raw&0x7f800000)==0x7f800000)refuseRead(r,\"non_finite_float\");return;}", "if(k==10){local raw=get(r,32);return;}"},
 	}, {
 		name: "bytes_after_pad",
@@ -399,7 +399,7 @@ func messageStrictRows() []messageStrictRow {
 			b.ref(0)
 			return append(b.done(), 0)
 		},
-		want:    "0 wire_damaged 0 222 333",
+		want:    "0 wire_damaged 0 0 0",
 		control: [2]string{"return alignRead(r)&&r.bits==r.b.len()*8;", "return alignRead(r)&&r.bits<=r.b.len()*8;"},
 	}, {
 		name: "nonzero_pad",
@@ -419,10 +419,11 @@ func messageStrictRows() []messageStrictRow {
 			out[len(out)-1] |= 0x80
 			return out
 		},
-		want:    "0 wire_damaged 0 222 333",
+		want:    "0 wire_damaged 0 0 0",
 		control: [2]string{"return alignRead(r)&&r.bits==r.b.len()*8;", "return (alignRead(r)||true)&&r.bits==r.b.len()*8;"},
 	}, {
-		// the refusal in body 1 resets body 0, which the read had written
+		// the refusal in body 1 resets body 0, which the read had written, and
+		// row 2, which it never reached (ruling R4)
 		name: "second_body_refused",
 		batch: func(v *messageStrictVocab) []byte {
 			b := newMsgBits(2, v.refBits())
@@ -433,8 +434,8 @@ func messageStrictRows() []messageStrictRow {
 			b.ref(0)
 			return b.done()
 		},
-		want:    "0 wire_damaged 0 0 333",
-		control: [2]string{"  for(local i=0;i<r.written;i++)storage[i]=d.make();\n", ""},
+		want:    "0 wire_damaged 0 0 0",
+		control: [2]string{"  if(d!=null)for(local i=0;i<storage.len();i++)storage[i]=d.make();\n", ""},
 	}}
 }
 

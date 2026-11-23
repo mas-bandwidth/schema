@@ -372,9 +372,9 @@ func tableMessageBodyWideBlob(r *TableMessageReader, value *WideBlob, starts []u
 }
 
 // WideBlobLoadMessages is the message read (mas-bandwidth/schema docs/SPEC-TABLES.md §3.3, §6.5): the whole batch, or ok false with a
-// count of 0 and every value it had written reset. A supplied report receives this read's report;
-// report.Err() is the reason.
-func WideBlobLoadMessages(values []WideBlob, vocabulary *TableVocabulary, data []byte, report *TableReport) (int64, bool) {
+// count of 0 and every value handed in reset to its declared defaults. A supplied report receives this
+// read's report; report.Err() is the reason.
+func WideBlobLoadMessages(values []WideBlob, vocabulary *TableVocabulary, data []byte, report *TableReport) (loaded int64, ok bool) {
 	read := report
 	if read == nil {
 		read = &TableReport{}
@@ -387,6 +387,7 @@ func WideBlobLoadMessages(values []WideBlob, vocabulary *TableVocabulary, data [
 		if read.Refused() {
 			tableRefused(read)
 		}
+		tableResetIf(func() bool { return !ok }, values, WideBlobReset)
 	}()
 	if count < 0 {
 		return 0, false
@@ -397,16 +398,10 @@ func WideBlobLoadMessages(values []WideBlob, vocabulary *TableVocabulary, data [
 	}
 	for i := range count {
 		if !WideBlobLoadMessageBody(&r, &values[i]) || r.Report.Refused() {
-			for j := range i + 1 {
-				WideBlobReset(&values[j])
-			}
 			return 0, false
 		}
 	}
 	if !tableMessageBatchClose(&r) {
-		for j := range count {
-			WideBlobReset(&values[j])
-		}
 		return 0, false
 	}
 	return count, true
