@@ -359,9 +359,12 @@ func (m *msgGen) scalarWriteCheck(f *ir.Field, expr, ind string) {
 			what = f.Name + " raw value out of range"
 		}
 		low, high := lo.Cmp(minBits) > 0, hi.Cmp(maxBits) < 0
-		if low && high && !strings.ContainsAny(x, ".[*") {
+		switch {
+		case low && high && lo.Cmp(hi) == 0:
+			conds = append(conds, fmt.Sprintf("%s == %s", x, lo.String()))
+		case low && high && !strings.ContainsAny(x, ".[*"):
 			conds = append(conds, fmt.Sprintf("(%s..=%s).contains(&%s)", lo.String(), hi.String(), x))
-		} else {
+		default:
 			if low {
 				conds = append(conds, fmt.Sprintf("%s >= %s", x, lo.String()))
 			}
@@ -868,7 +871,11 @@ func (m *msgGen) convertScalar(f *ir.Field, expr, entry, ind string) {
 			}
 			// ONE PAST AN END REFUSES out_of_range BY NAME (§3.3), as the Go
 			// reference's message read does.
-			m.pf("%sif x < %s { x = %s; report.out_of_range(%q); } else if x > %s { x = %s; report.out_of_range(%q); }\n", ind, lo, lo, owner, hi, hi, owner)
+			if lo == hi {
+				m.pf("%sif x != %s { x = %s; report.out_of_range(%q); }\n", ind, lo, lo, owner)
+			} else {
+				m.pf("%sif x < %s { x = %s; report.out_of_range(%q); } else if x > %s { x = %s; report.out_of_range(%q); }\n", ind, lo, lo, owner, hi, hi, owner)
+			}
 			// a compressed float's -0 lands as +0 (docs/rulings.json
 			// fixed-compressed-negzero): a plain float32 announced for it
 			// carries the sign bit
@@ -901,7 +908,11 @@ func (m *msgGen) convertScalar(f *ir.Field, expr, entry, ind string) {
 			m.pf("%sif x > %s { x = %s; report.out_of_range(%q); }\n", ind, h, h, owner)
 		} else {
 			l := rustBig(rlo, signed)
-			m.pf("%sif x < %s { x = %s; report.out_of_range(%q); } else if x > %s { x = %s; report.out_of_range(%q); }\n", ind, l, l, owner, h, h, owner)
+			if l == h {
+				m.pf("%sif x != %s { x = %s; report.out_of_range(%q); }\n", ind, l, l, owner)
+			} else {
+				m.pf("%sif x < %s { x = %s; report.out_of_range(%q); } else if x > %s { x = %s; report.out_of_range(%q); }\n", ind, l, l, owner, h, h, owner)
+			}
 		}
 	}
 	if bitsClamp {

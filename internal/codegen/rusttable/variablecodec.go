@@ -692,9 +692,12 @@ func (g *gen) scalarSaveRefusal(f *ir.Field, x, ind string) string {
 		minBits, maxBits, _ := storageLimits(f)
 		var conds []string
 		low, high := lo.Cmp(minBits) > 0, hi.Cmp(maxBits) < 0
-		if low && high && !strings.ContainsAny(x, ".[*") {
+		switch {
+		case low && high && lo.Cmp(hi) == 0:
+			conds = append(conds, fmt.Sprintf("%s == %s", x, lo.String()))
+		case low && high && !strings.ContainsAny(x, ".[*"):
 			conds = append(conds, fmt.Sprintf("(%s..=%s).contains(&%s)", lo.String(), hi.String(), x))
-		} else {
+		default:
 			if low {
 				conds = append(conds, fmt.Sprintf("%s >= %s", x, lo.String()))
 			}
@@ -1074,6 +1077,8 @@ func clampStmt(f *ir.Field, bits int, signed bool, suffix, counter, ind string) 
 	low := fmt.Sprintf("if x < %s%s { x = %s%s; %s = true; }", lo, suffix, lo, suffix, counter)
 	high := fmt.Sprintf("if x > %s%s { x = %s%s; %s = true; }", hi, suffix, hi, suffix, counter)
 	switch canLow, canHigh := rlo.Cmp(localMin) > 0, rhi.Cmp(localMax) < 0; {
+	case canLow && canHigh && rlo.Cmp(rhi) == 0:
+		return fmt.Sprintf("%sif x != %s%s { x = %s%s; %s = true; }\n", ind, lo, suffix, lo, suffix, counter)
 	case canLow && canHigh:
 		return ind + low + " else " + high + "\n"
 	case canLow:
@@ -2589,7 +2594,11 @@ func emitVariableFloatClamp(b *strings.Builder, f *ir.Field, value, counter, ind
 	}
 	lo, hi := rustFloatBounds(f)
 	value = strings.TrimPrefix(value, "let mut ")
-	fmt.Fprintf(b, "%sif %s < %s { %s = %s; %s = true; } else if %s > %s { %s = %s; %s = true; }\n", ind, value, lo, value, lo, counter, value, hi, value, hi, counter)
+	if lo == hi {
+		fmt.Fprintf(b, "%sif %s != %s { %s = %s; %s = true; }\n", ind, value, lo, value, lo, counter)
+	} else {
+		fmt.Fprintf(b, "%sif %s < %s { %s = %s; %s = true; } else if %s > %s { %s = %s; %s = true; }\n", ind, value, lo, value, lo, counter, value, hi, value, hi, counter)
+	}
 	fmt.Fprintf(b, "%sif %s == 0.0 { %s = 0.0; }\n", ind, value, value)
 }
 

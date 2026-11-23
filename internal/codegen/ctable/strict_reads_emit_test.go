@@ -51,8 +51,8 @@ func TestCStrictReadsEmitted(t *testing.T) {
 		{"the file writer stores +0 for a compressed -0", values, "table_writer_put32( w, table_stored_float_bits( value->f ) );"},
 		{"the fixed writer stores +0 for a compressed -0", values, "table_stored_float_bits( value->f ) );"},
 		// the variable save asserts SPEC.md §5.1 rows 1, 2, 3 and 10 in a debug build
-		{"row 1 is a debug assert on a field, element and arm", writes, "(§5.1 row 1) */"},
-		{"row 2 is a debug assert", writes, "(§5.1 row 2) */"},
+		{"row 1 is a debug assert on a field, element and arm", writes, "§5.1 row 1) */"},
+		{"row 2 is a debug assert", writes, "§5.1 row 2) */"},
 		{"row 3 below Min is a debug assert", writes, "(§5.1 row 3) */"},
 		{"row 10 is a debug assert", writes, "§5.1 row 10) */"},
 		// C-4: a later record's hash refusal leaves records 0..k-1 untouched:
