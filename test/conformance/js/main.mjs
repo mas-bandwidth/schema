@@ -742,6 +742,15 @@ async function messageVerbs(unit, root) {
   return { measure, save };
 }
 
+async function blockUnit(unit, root) {
+  const row = fixedRoots.find((r) => r[0] === unit && r[1] === root) ?? null;
+  if (row === null) { return null; }
+  const blockPath = row[2].replace(/Table\.js$/, "Block.js");
+  if (!existsSync(resolve(generated, blockPath))) { return null; }
+  const m = await load(blockPath);
+  return m[root + "Block"] ?? null;
+}
+
 // ---- the WIRE-CARRYING surfaces (docs/SPEC-TABLES.md §3, §3.1, §4, §16, §16.7)
 //
 // The variable form, form byte 1, over the roots this leg's variable wire
@@ -1705,7 +1714,7 @@ if (surface === "list") {
   // counts rather than reading as a feature the leg lacks. The retain surfaces
   // answer every row whose unit this leg generates, and name the reason beside
   // a row it cannot reach.
-  process.stdout.write("wire\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\nmessage\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nannounce\nread-into\njson-write-into\n");
+  process.stdout.write("wire\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\nmessage\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nannounce\nread-into\njson-write-into\n");
   process.exit(0);
 }
 if (surface === "block-lead") {
@@ -1742,16 +1751,8 @@ switch (surface) {
   case "write-refusal-message":
   case "write-refusal-json":
   case "write-refusal-cook":
-    await surfaceWriteRefusal(surface, lines, outDir, textCodec, messageVerbs, fixedValueOf);
-    break;
-  // THE BLOCK BUILDER IS NOT IN THIS LEG (docs/SPEC-TABLES.md §19.1): a
-  // generated <Root>Block carries Open, OpenReason, the row readers and
-  // Begin(bytes), which writes the prologue alone; nothing builds a root's
-  // block from a value (no count, used-length or row setter), so the surface
-  // is ABSENT and stays out of `list`.
   case "write-refusal-block":
-    process.stderr.write("write-refusal-block: absent: the JavaScript block form has no builder from a value (only Begin, which writes the prologue)\n");
-    process.exit(2);
+    await surfaceWriteRefusal(surface, lines, outDir, textCodec, messageVerbs, fixedValueOf, blockUnit);
     break;
   case "announce": await surfaceAnnounce(lines, outDir, load, messageVerbs, fixedValueOf); break;
   case "read-into": await surfaceReadInto(lines, outDir, load); break;
