@@ -1477,6 +1477,11 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 		fmt.Fprintf(b, "%slet prior = %s.clone();\n", i4, field)
 	}
 	fmt.Fprintf(b, "%s%s.clear();\n", i4, field)
+	if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+		// a count below the declared minimum A is out of range as one past
+		// B is: damage, so the load refuses (ruling R10, docs/SPEC-TABLES.md §3.3)
+		fmt.Fprintf(b, "%sif count < %d { report.damaged = true; }\n", i4, f.ArrayMin)
+	}
 	switch f.Array {
 	case ir.ArrayList:
 		fmt.Fprintf(b, "%sif count > 0x7fffffff { return nodes.refuse_count(report); }\n%slet keep = count;\n", i4, i4)

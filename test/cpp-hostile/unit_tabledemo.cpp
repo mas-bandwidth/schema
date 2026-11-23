@@ -17,6 +17,8 @@ HC_FIXED( CountedMin )
 HC_FIXED( FloatBound )
 HC_FIXED( Moods )
 HC_FIXED( MoodField )
+HC_FIXED( MinArmFix )
+HC_FIXED( MinPlainFix )
 HC_VAR( Patrol )
 HC_ANNOUNCE()
 
@@ -33,6 +35,8 @@ extern "C" const hc_binding_t * hc_bindings_tabledemo( int * count )
         { HC_FIXED_ROW( "tables/examples", "FloatBound", FloatBound ); rows.push_back( row ); }
         { HC_FIXED_ROW( "tables/examples", "Moods", Moods ); rows.push_back( row ); }
         { HC_FIXED_ROW( "tables/examples", "MoodField", MoodField ); rows.push_back( row ); }
+        { HC_FIXED_ROW( "tables/examples", "MinArmFix", MinArmFix ); rows.push_back( row ); }
+        { HC_FIXED_ROW( "tables/examples", "MinPlainFix", MinPlainFix ); rows.push_back( row ); }
         { HC_VAR_ROW( "tables/examples/Guarded.schema", "Patrol", Patrol ); rows.push_back( row ); }
     }
     *count = (int) rows.size();

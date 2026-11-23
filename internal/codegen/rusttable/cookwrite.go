@@ -409,7 +409,13 @@ func (g *gen) emitCookFieldValue(b *strings.Builder, f *ir.Field, x, base string
 		elem.HasDefault = false
 		elem.Type.Pointer = f.Type.Pointer
 		if f.Array == ir.ArrayCounted {
-			fmt.Fprintf(b, "%sif %s.len() > %d { w.fail(); }\n", ind, x, bound)
+			if f.ArrayMin > 0 {
+				// a used count below the declared minimum A refuses as one
+				// past B does (ruling R10; gotable's cook writer)
+				fmt.Fprintf(b, "%sif %s.len() < %d || %s.len() > %d { w.fail(); }\n", ind, x, f.ArrayMin, x, bound)
+			} else {
+				fmt.Fprintf(b, "%sif %s.len() > %d { w.fail(); }\n", ind, x, bound)
+			}
 			fmt.Fprintf(b, "%sw.put(%s, %s.len() as u64, 4);\n", ind, cookAt(base, pieces[1].Offset), x)
 		}
 		count := fmt.Sprintf("%d_usize", bound)

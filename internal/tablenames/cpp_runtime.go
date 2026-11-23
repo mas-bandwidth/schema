@@ -151,7 +151,7 @@ func cppRuntimeNames() []Name {
 			"TableAppendText", "TableUtf8Clamp",
 		}},
 		{what: "the text form's JSON layer: descriptor classification and raw storage access (§16)", names: []string{
-			"TableJsonCount", "TableJsonCountInContract", "TableJsonDecimalPoint", "TableJsonElementShape", "TableJsonFinite", "TableJsonGetRaw",
+			"TableJsonCount", "TableJsonCountInContract", "TableJsonCountMeetsMin", "TableJsonDecimalPoint", "TableJsonElementShape", "TableJsonFinite", "TableJsonGetRaw",
 			"TableJsonGetSigned", "TableJsonGuardHolds", "TableJsonIntegerInDomain", "TableJsonIntegerOf",
 			"TableJsonInterpret", "TableJsonInterpretExact", "TableJsonIsBytes", "TableJsonIsEnum",
 			"TableJsonIsFlags", "TableJsonIsKeyed", "TableJsonIsList", "TableJsonIsMap", "TableJsonKeyedSlotKey",

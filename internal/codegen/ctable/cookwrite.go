@@ -226,6 +226,11 @@ func (g *tableGen) cookFieldPayload(f *ir.Field, src, at string, offset int64, i
 		if f.Array == ir.ArrayCounted {
 			count = fmt.Sprintf("%s_count && %s<%d", src, i, f.ArrayBound)
 		}
+		if cArmMin(f) {
+			// the cook is a writer too: a count below A is never produced,
+			// a field or an arm, a debug assert in this leg (ruling R10)
+			g.writeCountBound(f, src+"_count", ind)
+		}
 		stride := int64(0)
 		if f.ArrayBound > 0 {
 			stride = pieces[0].Size / f.ArrayBound

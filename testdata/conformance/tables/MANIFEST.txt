@@ -2139,3 +2139,22 @@ rewrite sp_enum_scalar_evolved_deprecated tabledemo MoodField  testdata/conforma
 instance sp_enum_moodfield                      tabledemo MoodField testdata/conformance/tables/save-wire/sp-enum-scalar-deprecated.bin
 write-refusal-json jref_enum_scalar_deprecated    tabledemo MoodField testdata/conformance/tables/save-wire/sp-enum-scalar-deprecated.bin mood ordinal 2 refused
 write-refusal-json jref_enum_scalar_deprecated_ok tabledemo MoodField testdata/conformance/tables/save-wire/sp-enum-scalar-deprecated.bin mood ordinal 3 wrote
+# ARM MIN (R10, 1122): a counted [A..B] inside a union arm holds A wherever the field sits: count below A refuses on read in every form (tables/examples/ArmMin.schema); A through B reads.
+json-hostile arm-min-fix-below   tabledemo MinArmFix testdata/conformance/tables/json-hostile/arm-min-fix-below   refused
+json-hostile arm-min-fix-empty   tabledemo MinArmFix testdata/conformance/tables/json-hostile/arm-min-fix-empty   refused
+json-hostile arm-min-fix-at      tabledemo MinArmFix testdata/conformance/tables/json-hostile/arm-min-fix-at      read
+json-hostile arm-min-fix-max     tabledemo MinArmFix testdata/conformance/tables/json-hostile/arm-min-fix-max     read
+report  armmin_fix_count_0       tabledemo MinArmFix testdata/conformance/tables/wire/armmin_fix_count_0.bin
+report  armmin_fix_count_1       tabledemo MinArmFix testdata/conformance/tables/wire/armmin_fix_count_1.bin
+report  twin_armmin_fix_at       tabledemo MinArmFix testdata/conformance/tables/wire/twin_armmin_fix_at.bin
+rewrite twin_armmin_fix_at       tabledemo MinArmFix testdata/conformance/tables/wire/twin_armmin_fix_at.bin
+
+# PLAIN MIN (R10, 1122): the same counted [A..B] as a plain field holds A: count below A refuses on read in every form (tables/examples/Tables.schema MinPlainFix); A through B reads. The framing rows are form-3 files read through the fixed load.
+json-hostile plain-min-below     tabledemo MinPlainFix testdata/conformance/tables/json-hostile/plain-min-below     refused
+json-hostile plain-min-empty     tabledemo MinPlainFix testdata/conformance/tables/json-hostile/plain-min-empty     refused
+json-hostile plain-min-at        tabledemo MinPlainFix testdata/conformance/tables/json-hostile/plain-min-at        read
+json-hostile plain-min-max       tabledemo MinPlainFix testdata/conformance/tables/json-hostile/plain-min-max       read
+report  plainmin_fix_count_0     tabledemo MinPlainFix testdata/conformance/tables/wire/plainmin_fix_count_0.bin
+report  plainmin_fix_count_1     tabledemo MinPlainFix testdata/conformance/tables/wire/plainmin_fix_count_1.bin
+report  twin_plainmin_fix_at     tabledemo MinPlainFix testdata/conformance/tables/wire/twin_plainmin_fix_at.bin
+rewrite twin_plainmin_fix_at     tabledemo MinPlainFix testdata/conformance/tables/wire/twin_plainmin_fix_at.bin

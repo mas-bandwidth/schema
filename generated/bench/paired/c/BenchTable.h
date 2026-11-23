@@ -214,6 +214,7 @@ typedef struct bench_table_field_info_t
     int optional;           /* a ?T field: a _present companion decides whether it rides */
     int required;           /* a | required field (docs/SPEC-TABLES.md §2.3) */
     int32_t array_bound;    /* array capacity / string max length; 0 for plain scalars */
+    int32_t array_min;      /* a union arm's counted [A..B] A, held on read and write (ruling R10); 0 otherwise */
     uint32_t offset;        /* offsetof the storage member */
     uint32_t elem_size;     /* sizeof the member (element size for arrays) */
     uint32_t count_offset;  /* offsetof the _count/_length companion, or 0xffffffff */
@@ -7573,7 +7574,7 @@ static SCHEMA_UNUSED int bench_bench_mixed_save_body( bench_table_writer_t * w, 
     }
     { /* entities */
         schema_assert( 1 <= value->entities_count && value->entities_count <= 8 );
-        int rides = value->entities_count > 0;
+        int rides = 1;
         if ( value->entities_count == 1 ) /* the birth value of [1..8] elides (§4.2) */
         {
             int32_t i; rides = 0;
@@ -8324,6 +8325,7 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_body( bench_table_reader_t * r, 
                         if ( sub.offset != sub.size ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_WIRE_DAMAGED; }
                     }
                 }
+                if ( value->entities_count < 1 ) { r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE; }
                 break;
             }
             case 0xee639cad45b1994cull: /* stats */
@@ -9103,7 +9105,7 @@ static SCHEMA_UNUSED int bench_bench_mixed_save_message_body(bench_table_bit_wri
  }
  { /* entities */
  schema_assert( 1 <= value->entities_count && value->entities_count <= 8 );
- int rides = value->entities_count > 0;
+ int rides = 1;
  if ( value->entities_count == 1 ) /* the birth value of [1..8] elides (§4.2) */
  {
      int32_t i;
@@ -9126,7 +9128,7 @@ static SCHEMA_UNUSED int bench_bench_mixed_save_message_body(bench_table_bit_wri
   return 1;
   }
   bench_table_bit_put(w,10,BENCH_K_TABLE_MESSAGE_REF_BITS_HERE);
-  schema_assert( 0 <= value->entities_count && value->entities_count <= 8 );
+  schema_assert( 1 <= value->entities_count && value->entities_count <= 8 );
   bench_table_bit_put(w,(uint64_t)value->entities_count-1,3);
   { int32_t i;
   for(i=0;i<value->entities_count;i++) {
@@ -9664,6 +9666,7 @@ static SCHEMA_UNUSED int bench_bench_mixed_load_message_body(bench_table_message
   }if(walk<n && !bench_table_message_skip_run(r,n-walk,element_entry->value_bits))goto damaged;
   value->entities_count=(int32_t)kept;
  }
+ if(value->entities_count<1)r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCH_TABLE_REFUSE_OUT_OF_RANGE;
  if(same_shape && original_count==0)goto damaged;
  break;
  }
@@ -10396,7 +10399,7 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fix
     bench_table_fixed_put64( b + 32, (uint64_t) value->world_time );
     bench_table_fixed_put64( b + 40, (uint64_t) value->frame_tick );
     bench_table_fixed_put32( b + 48, (uint32_t) value->server_time );
-    schema_assert( value->entities_count >= 0 && value->entities_count <= 8 ); /* the declared count is the bound (§3.4) */
+    schema_assert( value->entities_count >= 1 && value->entities_count <= 8 ); /* the declared [A..B] is the bound (§3.4) */
     bench_table_fixed_put32( b + 52, (uint32_t) value->entities_count );
     {
         int64_t i;
@@ -10540,6 +10543,7 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fix
     /* bits(48) width clamp */
     (*out_of_range) += ( value->frame_tick > 281474976710655ull );
     (*out_of_range) += (int) ( value->server_time < 0 ) | (int) ( value->server_time > 16776960 );
+    if ( value->entities_count < 1 ) { (*out_of_range)++; }
     {
         int64_t i;
         for ( i = 0; i < (int64_t) value->entities_count; ++i )
@@ -10660,6 +10664,7 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fix
     /* bits(48) width clamp */
     (*out_of_range) += ( value->frame_tick > 281474976710655ull );
     (*out_of_range) += (int) ( value->server_time < 0 ) | (int) ( value->server_time > 16776960 );
+    if ( value->entities_count < 1 ) { (*out_of_range)++; }
     {
         int64_t i;
         for ( i = 0; i < ( value->entities_count >= 0 && value->entities_count <= 8 ? (int64_t) value->entities_count : 0 ); ++i )
@@ -10836,6 +10841,7 @@ static SCHEMA_UNUSED int schema_bench_bench_mixed_body_pack_(struct bench_table_
     bench_table_cook_put(at+40,(uint64_t)value->world_time,8,order);
     bench_table_cook_put(at+48,(uint64_t)value->frame_tick,8,order);
     bench_table_cook_put(at+56,(uint64_t)value->server_time,4,order);
+    schema_assert( 1 <= value->entities_count && value->entities_count <= 8 );
     { int32_t cook_i1; for(cook_i1=0;cook_i1<value->entities_count && cook_i1<8;cook_i1++) {
         if(!schema_bench_mixed_entity_body_pack_(n,at+64+cook_i1*64,&value->entities[cook_i1],order)) { return 0; }
     } }

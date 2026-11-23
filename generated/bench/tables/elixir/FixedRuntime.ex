@@ -292,6 +292,13 @@ defmodule Benchtable.FixedRuntime do
   def clamps(acc, _v, _lo, _hi), do: acc
 
   @doc """
+  A COUNTED [A..B] HOLDS A wherever it stands, a union arm included: a count
+  below the declared minimum REFUSES count_over_bound and lands nothing.
+  """
+  def held_min(_acc, v, min) when v < min, do: throw({:refuse, :count_over_bound})
+  def held_min(acc, _v, _min), do: acc
+
+  @doc """
   A COMPILED LANE'S IMAGE HELD TO ITS WRITER'S OWN RANGES, before the projection
   holds this reader's own (docs/FIXED-FORM-ALGORITHM.md §4.6, bill §12.5). Each
   bound is {offset, bits, sign, lo, hi} on the raw scale; a value past one lands

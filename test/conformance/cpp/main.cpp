@@ -360,6 +360,8 @@ static const Codec codecs[] = {
     CODEC( "tabledemo", tabledemo, FloatBound ),
     CODEC( "tabledemo", tabledemo, Moods ),
     CODEC( "tabledemo", tabledemo, MoodField ),
+    CODEC( "tabledemo", tabledemo, MinArmFix ),
+    CODEC( "tabledemo", tabledemo, MinPlainFix ),
     CODEC( "tblv1", tblv1, Cfg ),
     CODEC( "tblv2", tblv2, Cfg ),
     CODEC( "tblp1", tblp1, Chain ),

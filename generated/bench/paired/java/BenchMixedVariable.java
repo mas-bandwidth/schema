@@ -2929,6 +2929,7 @@ public final class BenchMixedVariable {
                         in.skipValue();
                     } else if (in.peek() == '[') {
                         in.p++;
+                        v.entities.clear();
                         int idx = 0;
                         int ab = 8;
                         while (true) {

@@ -569,6 +569,16 @@ var framingVectors = []framingVector{
 	// an empty layout) at a plain variable root refuses: a variable table has no
 	// fixed form. Its accepted form-1 twin on the same root is node_clean.
 	{name: "frame_form_three_at_variable_root", unit: "graphdemo", root: "ListNode", raw: cat(b(3, 0, 0, 0, 0, 0, 0, 0), u64(0x7b8a31b17495f6d5), b(0, 0, 0, 0))},
+
+	// ---------------------------------------------------------------- R10. counted minimum, fixed form
+	// A counted [A..B] holds A in the fixed form too (docs/SPEC-TABLES.md
+	// §3.4, ruling R10): a form-3 file whose count is below A=2 refuses. The
+	// file is form 3, so a fixed root reads it through its fixed load
+	// (framingFixedFile). Each is the root's own fixed-form layout, the count
+	// word set to 0 or 1 (the second with element 7), as a writer built
+	// without its debug assert leaves it; the bytes are the vector.
+	// In a union arm: tabledemo MinArmFix { pick MinPick }, arm few [2..4]uint32.
+	// As a plain field: tabledemo MinPlainFix { few [2..4]uint32 }.
 	// T3: node_count 2 over one record.
 	{name: "node_count_disagrees", unit: "graphdemo", root: "ListNode", ids: listNodeIds, body: cat(rootValue1, nextIs2, nodeTable(2, listNodeRecord(2)), b(0))},
 	// T2: a record whose length runs past the field.

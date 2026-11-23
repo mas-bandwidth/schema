@@ -65,6 +65,14 @@ fn unit_json_verdict(root: const u8[:], text: const u8[:], out: u8[>..]&) -> boo
     if root == "MoodField" {
         var v = tabledemo::NewMoodField();
         verdict_of(v, text, out, tabledemo::MoodFieldFromJson, tabledemo::MoodFieldToJson);
+    if root == "MinArmFix" {
+        var v = tabledemo::NewMinArmFix();
+        verdict_of(v, text, out, tabledemo::MinArmFixFromJson, tabledemo::MinArmFixToJson);
+        return true;
+    }
+    if root == "MinPlainFix" {
+        var v = tabledemo::NewMinPlainFix();
+        verdict_of(v, text, out, tabledemo::MinPlainFixFromJson, tabledemo::MinPlainFixToJson);
         return true;
     }
     if root == "ProfileConfig" {

@@ -4318,6 +4318,28 @@ func variableValueType(f *ir.Field) string {
 	return "java.lang.Object"
 }
 
+// variableBornCounted says whether f is a plain counted [A..B] array with a
+// positive minimum: its BORN state is A default elements (ir.Field.BornCount,
+// docs/SPEC.md §4.2), and the writer elides it exactly there (SPEC-TABLES §2.3).
+func variableBornCounted(f *ir.Field) bool {
+	return f.Array == ir.ArrayCounted && f.BornCount() > 0 && !f.Type.Optional && f.KeyEnum == "" &&
+		!f.IsMap() && !f.Type.Pointer && !ir.TextListPlain(f)
+}
+
+// variableBorn is a field's initializer: a counted [A..B] array is born
+// holding A default elements, every other field at variableDefault.
+func variableBorn(f *ir.Field) string {
+	if !variableBornCounted(f) {
+		return variableDefault(f)
+	}
+	one := variableDefault(variableElement(f))
+	elems := make([]string, f.BornCount())
+	for i := range elems {
+		elems[i] = one
+	}
+	return "new java.util.ArrayList<>(java.util.Arrays.asList(" + strings.Join(elems, ", ") + "))"
+}
+
 func variableDefault(f *ir.Field) string {
 	if f.Array != ir.ArrayNone {
 		return "new java.util.ArrayList<>()"
@@ -5603,10 +5625,20 @@ func writeJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	b.WriteString("        }\n")
 }
 
+// writeJsonBornClear empties a counted [A..B] array before its JSON elements
+// are placed: the value is born holding A elements (variableBorn), and the
+// text's elements replace them rather than follow them.
+func writeJsonBornClear(b *strings.Builder, f *ir.Field, m string) {
+	if variableBornCounted(f) {
+		fmt.Fprintf(b, "                    v.%s.clear();\n", m)
+	}
+}
+
 func readJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field, depth string) {
 	m := varMember(f)
 	fmt.Fprintf(b, "                if (%s + 1 > TableJson.In.MAX_JSON_DEPTH) { in.bad = true; in.skipValue(); } else if (in.peek() == '[') {\n", depth)
 	b.WriteString("                    in.p++;\n")
+	writeJsonBornClear(b, f, m)
 	b.WriteString("                    int idx = 0;\n")
 	if f.Array != ir.ArrayList {
 		fmt.Fprintf(b, "                    int ab = %d;\n", f.ArrayBound)
@@ -6088,6 +6120,7 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		target := f.Type.Ref.(*ir.Struct)
 		fmt.Fprintf(b, "                if (%s + 1 > TableJson.In.MAX_JSON_DEPTH) { in.bad = true; in.skipValue(); } else if (in.peek() == '[') {\n", depth)
 		b.WriteString("                    in.p++;\n")
+		writeJsonBornClear(b, f, m)
 		b.WriteString("                    int idx = 0;\n")
 		if f.Array != ir.ArrayList {
 			fmt.Fprintf(b, "                    int ab = %d;\n", f.ArrayBound)

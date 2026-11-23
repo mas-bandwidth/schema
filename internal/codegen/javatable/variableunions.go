@@ -85,7 +85,9 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union, fixed fixedClosure) string 
 	writeVariableKeyedHelpers(&b, u, st)
 	b.WriteString("    public static final class Value {public int tag;\n")
 	for _, f := range st.Fields {
-		fmt.Fprintf(&b, "        public %s %s=%s;\n", variableValueType(f), varMember(f), variableDefault(f))
+		// a counted [A..B] arm is born at A default elements, so selecting
+		// the arm holds A (docs/SPEC.md §4.2, R10)
+		fmt.Fprintf(&b, "        public %s %s=%s;\n", variableValueType(f), varMember(f), variableBorn(f))
 		if f.Type.Pointer {
 			if f.Array != ir.ArrayNone {
 				fmt.Fprintf(&b, "        public java.util.List<java.lang.Long> %sIdx=new java.util.ArrayList<>();\n", varMember(f))

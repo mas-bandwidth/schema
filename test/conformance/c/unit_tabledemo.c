@@ -21,6 +21,8 @@ SCHEMA_CONFORMANCE_CODEC( CountedMin, counted_min )
 SCHEMA_CONFORMANCE_CODEC( FloatBound, float_bound )
 SCHEMA_CONFORMANCE_CODEC( Moods, moods )
 SCHEMA_CONFORMANCE_CODEC( MoodField, mood_field )
+SCHEMA_CONFORMANCE_CODEC( MinArmFix, min_arm_fix )
+SCHEMA_CONFORMANCE_CODEC( MinPlainFix, min_plain_fix )
 
 static const ConformanceCodec codecs[] = {
     SCHEMA_CONFORMANCE_ROW( tabledemo, RootConfig ),
@@ -34,6 +36,9 @@ static const ConformanceCodec codecs[] = {
     SCHEMA_CONFORMANCE_ROW( tabledemo, FloatBound ),
     SCHEMA_CONFORMANCE_ROW( tabledemo, Moods ),
     SCHEMA_CONFORMANCE_ROW( tabledemo, MoodField )
+    SCHEMA_CONFORMANCE_ROW( tabledemo, MinArmFix ),
+    SCHEMA_CONFORMANCE_ROW( tabledemo, MinPlainFix ),
+    SCHEMA_CONFORMANCE_ROW( tabledemo, PackConfig )
 };
 
 /* Sets the one field a `write-refusal` row names. The set is EXACTLY the rows'

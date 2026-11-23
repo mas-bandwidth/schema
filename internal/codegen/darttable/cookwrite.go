@@ -166,7 +166,7 @@ func (g *cookGen) emitCookFixedFieldPayload(f *ir.Field, offset int64, expr, ind
 		// is the programmer's error, caught by `assert` and gone in release.
 		g.cookAssert(ind, fmt.Sprintf("%s.length >= %d", expr, bound))
 		if f.Array == ir.ArrayCounted {
-			g.cookAssert(ind, fmt.Sprintf("%sCount >= 0", expr))
+			g.cookAssert(ind, fmt.Sprintf("%sCount >= %d", expr, max(f.ArrayMin, 0)))
 			g.cookAssert(ind, fmt.Sprintf("%sCount <= %d", expr, bound))
 			g.pf("%sif (out != null) out.setInt32(at + %d, %sCount, order);\n", ind, pieces[1].Offset, expr)
 		}
@@ -1138,7 +1138,11 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 			stride = pieces[0].Size / bound
 		}
 		ref := tableRef(f)
-		// THE STORAGE CHECKS ARE DEBUG ASSERTS (docs/SPEC.md §5.1)
+		// THE STORAGE CHECKS ARE DEBUG ASSERTS (docs/SPEC.md §5.1); the
+		// minimum A holds wherever the field sits (ruling R10)
+		if f.ArrayMin > 0 {
+			g.cookAssert(ind, fmt.Sprintf("%s.length >= %d", expr, f.ArrayMin))
+		}
 		g.cookAssert(ind, fmt.Sprintf("%s.length <= %d", expr, bound))
 		g.pf("%sout?.setInt32(at + %d, %s.length, order);\n", ind, pieces[1].Offset, expr)
 		g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, bound)
