@@ -345,7 +345,7 @@ per-port check where no shared case exercises it.
 | message-kind-mismatch-refuses-the-batch | a message-form batch whose announced kind at a field or union arm is not the one this reader declares (and is no widening) refuses the whole batch `kind_mismatch`, count `0`, every body at its declared defaults; the entry is never skipped and counted into a delivered batch (SPEC-TABLES.md §3.3, A FIELD WHOSE ANNOUNCED KIND IS NOT THE ONE THIS READER DECLARES) | `message-fuzz` seed 1, `cross-tbla1-to-tbla2.Root` (test/tables/A1.schema written, A2.schema read); JS `TestJsMessageLoadRefusesKindMismatchBatch` (#4809) |
 | json-int128-every-root | a 128-bit integer field is carried by the text form in every root that has one, fixed or variable, at a field, an array element and a table element alike: written as a string of decimal digits, read from that string only (a bare number refuses `kind_mismatch`), exact over all 128 bits, and a value past the kind or off its declared range refused (SPEC-TABLES.md §16.2, the `int128`, `uint128` row) | `verify-tablegen` pin rows `pin:{f,c}{i128,u128,wrec}:*:fix_json` (op 7); Goose `TestGooseJsonWideIntegersAreStrings` rows `typed128-*` (#4810) |
 | fixed-keyed-lineage-default | when appending a key enum variant grows a fixed enum-keyed array, a newer reader retains the older slots and supplies the declared element default in the new slot. The resulting value saves under the current layout (FIXED-FORM-ALGORITHM.md §5.9) | `keyed_array_enum_append` versioning fixture, Lua `TestLuaFixedFormReadsItsLineage/keyed_array_enum_append`, and `verify-tablegen` seed 1, `tg01:v1_to_v2_fixed_lineage` |
-| generated-code-lint-clean | generated code compiles clean under the warnings-as-errors build of its leg: a Rust bool element written through its binding is `if *e`, never `if (*e)` (`unused_parens`); a declared `true` message default is emitted as `true`, not integer `1`; and the message form's compile-time wire arrays carry the narrow `large_const_arrays` allowance their normative const storage requires (SPEC-TABLES.md §§3, 3.3, 16.2) | `verify-tablegen` pin rows `pin:{f,c}bool:*` on the Rust leg; Rust `TestRustBoolElementConditionHasNoParens` and `TestRustMessageGeneratedLintShapes`; `tables-rust-clippy` over every generated unit (#4810) |
+| generated-code-lint-clean | generated code compiles clean under the warnings-as-errors build of its leg: Rust emits boolean expressions and defaults at their native type, keeps compiler-settled message byte images out of the stack, spells a minimum count of one as an emptiness test, and does not cast a flags mask that is already `u64` (SPEC-TABLES.md §§3, 3.3, 16.2) | `verify-tablegen` pin rows `pin:{f,c}bool:*` on the Rust leg; Rust `TestRustBoolElementConditionHasNoParens`, `TestRustMessageGeneratedLintShapes` and `TestRustArrayMinOfOneIsAnEmptinessTest`; `tables-rust-clippy` over every generated unit (#4810) |
 | lua-lineage-source-lint | generated Lua fixed lineage descriptors keep writer range tables within the Lua source line limit | `make tables-lua-luacheck` checks the generated table corpus, including `tables/examples` and `tables/scalars` |
 | unsigned-top-bit-round-trips | an unsigned value with its top bit set (`bits(64)`, `uint64`, ranged or not) is 2^63 and up, never negative: the variable load places it zero-extended, and a save of what the load read writes the same bytes, never `invalid_value` (SPEC-TABLES.md §4, A VALUE OUTSIDE THE READER RANGE) | `verify-tablegen` pin row `pin:fwrec:first:var_wire` (`mask = 2^63`); Goose `TestGooseWireLoadZeroExtendsUnsignedTopBit` (#4810) |
 | unsigned-64-top-bit-is-in-width | a `bits(64)` or `uint64` value at 2^63 and up is inside its width: a reader carrying it in a wider slot extends it with zeros, and the save writes it back byte for byte, never refusing it as wider than its bits (Goose sign-extended it and refused `invalid_value`) (SPEC.md §5.1, ROWS 2 AND 11 READ AN UNSIGNED VALUE UNSIGNED) | verify-tablegen pinned case `pin:fwrec:first` (`verify-<lang>-tablegen` for every leg) (#4762) |
@@ -459,6 +459,37 @@ applies to the vocabulary payload. Run the generated Java example with
 
 ```sh
 SCHEMA_SLOW=1 go test -count=1 -v ./internal/codegen/javatable -run '^TestMessageFormAnnounceJavaR9MaxBytes$'
+```
+
+### Ordinary message-driver round trips
+
+The Java, Rust, and Lua conformance drivers exercise the message form through
+the generated public API. For each ordinary round-trip `message` row
+they read the row's `connection` announcement into one fresh receiving
+vocabulary, load the batch against that same vocabulary, and save the loaded
+values through the root's message writer. The harness compares every saved
+byte with the committed message golden.
+
+Use the following fixtures to check the public results.
+
+| Contract | Shared fixture and required answer |
+|---|---|
+| Exact golden comparison | `store_full` loads and re-saves byte-for-byte as `testdata/wire/tables/store_full_message.bin`. |
+| Declared enum value survives the public read/write path | `store_full` carries `Currency.EUR`; the reader must preserve that value and the writer must reproduce its encoded ordinal. |
+| A lawful multi-body batch is actually delivered | `batch_delivered` loads both `StorePurchase` bodies and answers `count 2`; `batch_range_in_second`, `batch_cut_in_second`, and `batch_byte_after_pad` each answer `count 0`. |
+| Omitted enum-keyed slots keep their declared defaults | `batch8-tabledemo.KeyedConfig` loads through the ordinary public reader and its returned values save successfully; each keyed slot absent from the wire has its declared default. `internal/codegen/luatable` `TestMessageEnumKeyedArrayKeepsOmittedDefaults` runs the same rule through the generated Lua API. |
+| A nested fixed-point field distinguishes explicit zero from its declared default | In `scalars.SimState`, the default of `spawn.x` is 0.5 at 16 fractional bits (raw 32768). The `scalars_uint128_max` fixture supplies zero and must load raw 0. A present `spawn` with `x` omitted must load raw 32768. Both batches must save back byte for byte. `internal/codegen/rusttable` `TestRustMessageNestedFixedDefault` runs both cases. |
+
+The batch-count rows deliberately judge only the public loader's returned
+count. After a refusal, caller storage and the implementation's reason are not
+part of the shared contract (SPEC-TABLES.md §§3.3 and 6.5). Run the focused
+driver checks after `make conformance-generate` and the corresponding driver
+build:
+
+```sh
+./build/conformance-harness run --only java --surfaces message
+./build/conformance-harness run --only rust --surfaces message
+./build/conformance-harness run --only lua --surfaces message
 ```
 
 ### JavaScript read-into names
