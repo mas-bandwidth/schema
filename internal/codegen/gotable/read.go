@@ -493,7 +493,7 @@ func (g *tableGen) emitReadArmArray(f *ir.Field, expr, rdr, ind string) {
 		g.pf("%sif count < %d { %s }\n", ind, f.ArrayMin, refuse(over, owner, "return false"))
 	}
 	g.pf("%sif count > %d { %s }\n", ind, bound, refuse(over, owner, "return false"))
-	g.pf("%sfor i:=uint64(0); i<count; i++ {\n", ind)
+	g.pf("%sfor i := range count {\n", ind)
 	j := ind + "\t"
 	switch {
 	case isStructRef(f.Type) && !f.Type.Pointer:
