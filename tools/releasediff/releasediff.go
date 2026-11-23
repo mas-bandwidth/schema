@@ -334,7 +334,7 @@ func TablesOwed(prev string) bool {
 	if m == nil {
 		return true
 	}
-	major, _ := strconv.ParseUint(m[1], 10, 64)
+	major, _ := strconv.ParseUint(m[1], 10, 64) // errdiscard: versionForm admits only digits, and past 64 bits ParseUint saturates at the largest major
 	return major >= 3
 }
 
@@ -580,33 +580,33 @@ const TableFormsNote = "the table forms are compared from 3.0.0 on; before 3.0.0
 
 // Print writes the report: what was compared, what was listed and why, and
 // every difference.
-func (r *Report) Print(w io.Writer, oldName, newName string) {
-	_, _ = fmt.Fprintf(w, "release-differential: %s -> %s, wire bytes under an equal protocol id\n", oldName, newName)
+func (r *Report) Print(stdout io.Writer, oldName, newName string) {
+	_, _ = fmt.Fprintf(stdout, "release-differential: %s -> %s, wire bytes under an equal protocol id\n", oldName, newName)
 	section := func(title string, lines []string) {
 		for _, l := range lines {
-			_, _ = fmt.Fprintf(w, "  %-12s %s\n", title, l)
+			_, _ = fmt.Fprintf(stdout, "  %-12s %s\n", title, l)
 		}
 	}
-	_, _ = fmt.Fprintf(w, "  %-12s %s\n", "note", TableFormsNote)
+	_, _ = fmt.Fprintf(stdout, "  %-12s %s\n", "note", TableFormsNote)
 	section("compared", r.Compared)
 	section("id moved", r.Moved)
 	section("unreadable", r.Unreadable)
 	section("uncompared", r.Uncompared)
 	for _, d := range r.Differences {
-		_, _ = fmt.Fprintf(w, "DIFFERENCE under an equal protocol id: %s\n", d)
+		_, _ = fmt.Fprintf(stdout, "DIFFERENCE under an equal protocol id: %s\n", d)
 	}
 	for _, n := range r.Nothing {
-		_, _ = fmt.Fprintf(w, "NOTHING COMPARED: %s\n", n)
+		_, _ = fmt.Fprintf(stdout, "NOTHING COMPARED: %s\n", n)
 	}
 	if len(r.Differences) > 0 {
-		_, _ = fmt.Fprintf(w, "release-differential: REFUSED, %d encoding(s) differ under an equal protocol id\n", len(r.Differences))
+		_, _ = fmt.Fprintf(stdout, "release-differential: REFUSED, %d encoding(s) differ under an equal protocol id\n", len(r.Differences))
 		return
 	}
 	if len(r.Nothing) > 0 {
-		_, _ = fmt.Fprintf(w, "release-differential: REFUSED, %d wire(s) compared nothing, so the run proves nothing about them\n", len(r.Nothing))
+		_, _ = fmt.Fprintf(stdout, "release-differential: REFUSED, %d wire(s) compared nothing, so the run proves nothing about them\n", len(r.Nothing))
 		return
 	}
-	_, _ = fmt.Fprintf(w, "release-differential: ok, every encoding compared is the same bytes (%d comparison line(s), %d unit(s) with a moved id)\n", len(r.Compared), len(r.Moved))
+	_, _ = fmt.Fprintf(stdout, "release-differential: ok, every encoding compared is the same bytes (%d comparison line(s), %d unit(s) with a moved id)\n", len(r.Compared), len(r.Moved))
 }
 
 // binary is a schema compiler binary, run with the corpus root as its
@@ -703,7 +703,7 @@ func (b binary) Pack(unit []string, root, json string, message bool) ([]byte, er
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = os.RemoveAll(dir) }()
+	defer func() { _ = os.RemoveAll(dir) }() // errdiscard: a scratch directory under the run's work dir; the verdict never reads it
 	tree := filepath.Join(dir, "tree")
 	if err := os.MkdirAll(tree, 0o755); err != nil {
 		return nil, err
@@ -752,7 +752,7 @@ func NewestRelease(tags []string) (string, bool) {
 		}
 		var v [3]uint64
 		for i := range v {
-			v[i], _ = strconv.ParseUint(m[i+1], 10, 64)
+			v[i], _ = strconv.ParseUint(m[i+1], 10, 64) // errdiscard: versionForm admits only digits, and past 64 bits ParseUint saturates at the largest part
 		}
 		if !found || slices.Compare(best[:], v[:]) < 0 {
 			best, name, found = v, t, true
@@ -799,7 +799,7 @@ func extract(rev, dir string) error {
 				return err
 			}
 			if _, err := io.Copy(f, tr); err != nil {
-				_ = f.Close()
+				_ = f.Close() // errdiscard: the copy's error is the one returned
 				return err
 			}
 			if err := f.Close(); err != nil {
@@ -892,8 +892,17 @@ func runJudgeCorpora(dirs []string, work string, out io.Writer) error {
 // errRefused is the verdict's own exit: the report has already said why.
 var errRefused = errors.New("refused")
 
-func run(prev, rev, oldBin, newBin, corpus, serialize, work string, jobs int) error {
-	work, err := filepath.Abs(work)
+// removeTree removes an extracted tree when run returns, and makes a removal
+// that failed run's error: a second repository left under build/ is a
+// second repository to every later walk of this one.
+func removeTree(dir string, err *error) {
+	if rerr := os.RemoveAll(dir); rerr != nil {
+		*err = errors.Join(*err, fmt.Errorf("removing the extracted tree %s: %w", dir, rerr))
+	}
+}
+
+func run(prev, rev, oldBin, newBin, corpus, serialize, work string, jobs int) (err error) {
+	work, err = filepath.Abs(work)
 	if err != nil {
 		return err
 	}
@@ -926,7 +935,7 @@ func run(prev, rev, oldBin, newBin, corpus, serialize, work string, jobs int) er
 		if err := extract(rev, src); err != nil {
 			return fmt.Errorf("extracting %s: %w", rev, err)
 		}
-		defer func() { _ = os.RemoveAll(src) }()
+		defer removeTree(src, &err)
 		if corpus == "" {
 			corpus = src
 		}
@@ -946,7 +955,7 @@ func run(prev, rev, oldBin, newBin, corpus, serialize, work string, jobs int) er
 		if err := extract(prev, src); err != nil {
 			return fmt.Errorf("extracting %s: %w", prev, err)
 		}
-		defer func() { _ = os.RemoveAll(src) }()
+		defer removeTree(src, &err)
 		oldBin = filepath.Join(work, "schema-old")
 		if err := build(src, oldBin); err != nil {
 			return fmt.Errorf("building %s's compiler: %w", prev, err)

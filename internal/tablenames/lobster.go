@@ -201,7 +201,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"save_elem_is_default", "save_element", "save_enum_ref", "save_is_default", "save_keyed",
 		"save_live_count", "save_raw_width", "save_reasoned", "save_walked", "save_wide_raw", "sg_add_blob",
 		"sg_add_rec", "sg_blob_index", "sg_clear", "sg_map_order", "sg_rec_index", "sg_visit_edges", "sg_visit_union",
-		"sg_visit_value", "sg_walk", "sid_mark", "sid_ref", "sid_rollback", "so_bytes", "so_grow", "so_leb", "so_take",
+		"sg_visit_value", "sg_walk", "sid_full", "sid_mark", "sid_ref", "sid_rollback", "so_bytes", "so_grow", "so_leb", "so_take",
 		"so_u32", "so_u64", "so_u8", "wc_body", "wc_slot", "wc_value",
 	},
 	"schema_tables.lobster": {
@@ -213,7 +213,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"load_strict",
 	},
 	"text_form.lobster": {
-		"TNode", "TextDoc", "TextFlags", "TextParser", "TextSpan", "i128_cmp",
+		"TNode", "t_delimited", "t_token", "t_why", "text_max_alloc", "text_max_bytes", "text_max_nodes", "text_max_tokens", "text_read", "TextDoc", "TextFlags", "TextParser", "TextSpan", "i128_cmp",
 		"t_b64_val", "t_base64",
 		"t_field_of", "t_fill", "t_fill_record", "t_pointer", "t_gap", "t_int_store",
 		"t_key_text", "t_name_char", "t_parse_value", "t_set_fail", "t_set_flags", "t_set_keyed", "t_set_scalar",

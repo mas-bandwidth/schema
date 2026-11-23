@@ -343,6 +343,13 @@ var framingVectors = []framingVector{
 	{name: "frame_empty_table", unit: "tblr1", root: "Cfg", ids: nil, body: b(0)},
 	// a [N]T of tables NEVER elides (docs/SPEC-TABLES.md §3): bytes that lack the field read as N default elements, and the canonical write-back carries them (fixed_array_rides_default)
 	{name: "fixed_array_rides_absent", unit: "tblvarevo1", root: "EvoDoc", ids: nil, body: b(0)},
+	// LAWFUL TWINS (discriminate.go): the ten-byte empty table at each listdemo
+	// root whose framing rows all refuse, so a leg that refuses the root's
+	// whole form cannot pass them (test/conformance/README.md).
+	{name: "twin_listdemo_ints_empty", unit: "listdemo", root: "Ints", ids: nil, body: b(0)},
+	{name: "twin_listdemo_bounded_empty", unit: "listdemo", root: "Bounded", ids: nil, body: b(0)},
+	{name: "twin_listdemo_squad_empty", unit: "listdemo", root: "Squad", ids: nil, body: b(0)},
+	{name: "twin_listdemo_army_empty", unit: "listdemo", root: "Army", ids: nil, body: b(0)},
 	// F5: fewer than eight bytes in the file.
 	{name: "frame_seven_bytes", unit: "tblr1", root: "Cfg", raw: b(1, 0, 0, 0, 0, 0, 0)},
 	// F5: eight bytes, the count would have to begin at the form byte.

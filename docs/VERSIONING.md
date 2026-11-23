@@ -20,12 +20,16 @@ at 3.0.0. The packet wire's promises are held within a release by the pinned
 goldens, and across releases by the previous-release differential (#463),
 named in its section below.
 
-1. **From 3.0.0, data written by any build reads in any other build of the
-   same major, in either direction, and never crashes.** A table wire from a
-   newer build reads in an older one and the other way round. Every
-   difference lands in the read report; none is fatal.
+1. **From 3.0.0, a newer build reads the data of every older build of the
+   same major, and nothing crashes on any input.** A table wire from an older
+   build reads in a newer one across every lawful edit; an older build given a
+   newer build's data may refuse it by name, which is lawful (R17, 2026-11-22:
+   "the newer reader can read old data, but never the other way"). On the
+   newer reader: an unknown field is skipped and counted, a widening is
+   counted, and an edit the reader cannot honour (a changed kind, a value
+   past a tightened bound) refuses the whole load by name and never crashes.
 2. **Nothing is misdecoded.** A value is read as what it was written as, or
-   it is skipped and counted. The edits the wire cannot report, the *silent
+   the load refuses by name. The edits the wire cannot report, the *silent
    class* (the bold cells in the table below), are refused at compile time by
    a committed baseline, so commit one before the first build whose data
    leaves the building; the one the repository could not refuse until the
@@ -50,10 +54,11 @@ named in its section below.
    exactly the build version that wrote it, by a header match, and otherwise
    refuses: `Open` returns null, and the tool's `uncook` names the mismatch.
    They are never read across a version.
-6. **The kind set is closed within a major, and every future kind is
-   skippable.** Kind `31` is the escape: its payload is a length and that
-   many bytes, a kind added in a later major rides inside it, and a reader of
-   this major skips it, counts it as unknown, and continues (#434).
+6. **The kind set is closed within a major, and the newer reader reads old
+   data, never the other way** (R17). A kind outside the set is damage to a
+   reader of this major wherever it is met, and the whole load refuses. Kind
+   `31`, once the escape a later major would have ridden for an older reader
+   to skip (#434), is held by name and never written.
 7. **Ids are 64 bits, and the wire form is versioned.** Every id on the table
    wire is a 64-bit name hash, carried in an id table and named by a
    reference: once per FILE under the variable form, and once per CONNECTION under
@@ -115,8 +120,8 @@ skips what it does not know, defaults what it does not find, and refuses
 everything else by name (SPEC-TABLES.md §4, §6.5). It costs bytes for that,
 deliberately: this is the wire for data that outlives the build that wrote it,
 whether on disk or crossing a connection between builds. A five-year-old file
-reads in today's build, today's file reads in the five-year-old build, and
-each side learns exactly what it could not understand.
+reads in today's build, and the reader learns exactly what it could not
+understand.
 
 **Anything that outlives a build rides tables.** A replay recorded as packet
 streams dies with the first type edit; a replay recorded as tables reads for
@@ -242,11 +247,13 @@ the node table. A REFERENCE names a slot of the id table the wire carries once
 (the layout section below), and the **id** in that slot is the hash of the
 declared name. That one decision produces the whole evolution story:
 
-- **Add a field anywhere.** An old reader meets an id it does not know, skips
-  the payload by its kind, counts one `unknown`, and continues. A new reader
-  meets a file without the field and reads the declared default.
-- **Remove a field.** The reverse: the old file's field is unknown to the new
-  reader, skipped and counted. Nothing else moves.
+- **Add a field anywhere.** A new reader meets an old file without the field
+  and reads the declared default.
+- **Remove a field.** The old file's field is unknown to the new reader, which
+  skips the payload by its kind, counts one `unknown`, and continues. Nothing
+  else moves. That skip is what the rule exists for (a new reader of old
+  data), and what the message form and retain-unknown stand on; an old reader
+  skipping a field added after it is incidental and not promised (R17).
 - **Reorder freely.** Position carries nothing.
 - **Rename with `was`.** `speed float32 | was = "velocity"` keeps the wire id
   `hash("velocity")` forever; the source name is for people. **`was` names the
@@ -282,6 +289,9 @@ field for it; the layout is in the wire form section below.
 identity is its bit. The rule for flags is *append at the end*; insert,
 reorder and rename-in-place are the silent class and the baseline refuses
 them. Removing a variant frees no bit: retire the name, keep the position.
+The newer reader reads old data, and never the other way (R17, 2026-11-22): a
+mask carrying a bit at or above the reader's own width W refuses the load
+`out_of_range`, which only new data meeting an old reader can produce.
 
 **Defaults are part of the wire contract.** A field equal to its declared
 default is elided from the wire, and an absent field reads as the default. So
@@ -332,9 +342,9 @@ committed rule and say what the repository does today.
 | a bound raised or lowered, a capacity or array bound grown | refuses `count_over_bound` or `length_over_bound` where a stored value exceeds it | passes; warns on a shrink | moves |
 | a range tightened | refuses `out_of_range` where a stored value is past it | warns | moves |
 | a field's kind changed (`T`→`*T`, `string`→`bytes`, `int64`→`int32`) | refuses `kind_mismatch` | **refuses** | moves |
-| a field's kind WIDENED (`int32`→`int64`, `uint8`→`uint32`, `bits(8)`→`bits(9)`, `float32`→`float64`) | `widened`, and the value decodes exactly (SPEC-TABLES.md §4) | **refuses**: the tolerance runs one way, and the OLD build reading the new file still kind-mismatches | moves |
-| `T`→`?T` | nothing at the bytes; a newer writer's present field at its defaults is a field stored at its declared default, refused by the old build (SPEC-TABLES.md §4) | **refuses**: the tolerance runs one way, and the OLD build reading the new file refuses a now-optional field stored at its default | moves (the presence flag is storage) |
-| `?T`→`T` | nothing: one framing. An old file's elided default reads as *absent* under `?T` | passes | moves (the presence flag is storage) |
+| a field's kind WIDENED (`int32`→`int64`, `uint8`→`uint32`, `bits(8)`→`bits(9)`, `float32`→`float64`) | `widened`, and the value decodes exactly (SPEC-TABLES.md §4) | **passes**: a widening, and the new reader reads every old value exactly; an OLD build given the new file stops on it, `kind_mismatch` by name, which is lawful and never promised to work (R17; SPEC-TABLES.md §4 THE ONE WIDENING RULE, §18.2) | moves |
+| `T`→`?T` | nothing: non-default content shares bytes, and a present field at its defaults reads (SPEC-TABLES.md §4.1) | passes: a widening, and every old value lands present (SPEC-TABLES.md §4 THE ONE WIDENING RULE, §18.2) | moves (the presence flag is storage) |
+| `?T`→`T` | nothing on the variable form: one framing (the fixed form is SPEC-TABLES.md §3.4's) | **refuses**, naming the field: a narrowing, and once a field is optional it stays optional (R16; SPEC-TABLES.md §4 THE ONE WIDENING RULE, §18.2) | moves (the presence flag is storage) |
 | an enum variant added or removed | `unknown` where a stored name is gone | passes; warns on a removal | moves, and the protocol id with it where a `type` reaches the enum |
 | an enum variant reordered | nothing | passes | moves, and the protocol id with it where a `type` reaches the enum |
 | an enum variant renamed | the old name reads `None`, counted | warns | moves, and the protocol id with it where a `type` reaches the enum: order is spelled in names |
@@ -418,10 +428,14 @@ no existing caller sees a number move.
 **The never-clobber rule, and the opt-in that lifts it.** Unknown fields are
 dropped on rewrite BY DEFAULT: everything in schema has a schema, and a tool
 built from an older schema that rewrites a newer file drops what it does not
-know and counts it. That default has one consequence every studio with a mixed
-fleet must write into its own code before the first staged rollout: **a save
-cycle or a rewriting tool never overwrites a newer program's file without
-retention.** Write beside the file, retain, or refuse the rewrite. The read
+know and counts it. That is a SHARP EDGE, not a promise: nothing promises that
+an older build reads a newer file (R17), and one that does may drop what it
+cannot name or refuse the file by name. A studio that runs old builds against
+new files anyway (a rollback, a staged rollout) takes the edge on itself, and
+the never-clobber rule is the guard it writes if it does: **a save cycle or a
+rewriting tool never overwrites a newer program's file without retention.**
+Write beside the file, retain, or refuse the rewrite; retain-unknown stays the
+opt-in. The read
 counters (`unknown` among them) are per-language diagnostics a caller may
 consult to decide; they are not compared across languages and no rule depends
 on their exact value.
@@ -604,27 +618,26 @@ the integers by width and sign, the floats, string, table, array,
 union, keyed array, pointer index, the 128-bit integers, the fixed-point
 widths, a
 kind of its own for enums so that an enum and its raw integer can never be
-confused on the wire, the escape kind, and the payload-free kind a union arm
+confused on the wire, and the payload-free kind a union arm
 takes. **A kind is spent only to close a silent
-edit**; blocks spend none. Two numbers outside the set are HELD BY NAME and
-never written. `33` is RETIRED: wide text is not part of schema, and text is
+edit**; blocks spend none. Three numbers outside the set are HELD BY NAME and
+never written. `31` was the escape a later major would have ridden for an
+older reader to skip; the newer reader reads old data and never the other way
+(R17), so it is gone. `33` is RETIRED: wide text is not part of schema, and text is
 UTF-8 `string` (SPEC.md §4.12), so the number that once named it is never
 reused. `34` is RESERVED for `float16` (SPEC.md §4.10), so the construct a
 later major adds has its number written down before it is built. A reader of
-this major meets either one only as damage.
+this major meets any of the three only as damage.
 
 **A reader that does not know a kind cannot skip it.** That is the nature of
-a closed set, and it is why a new kind is a wire change. Two rules make that
-survivable across a major. First, **kind `31` is reserved, its payload `L`
-then `L` bytes**, opaque; a kind added in a later major is introduced as that
-framing carrying its own inner encoding, so a reader of this major skips it,
-counts it `unknown`, and continues (#434). Second, **the file's first byte is
-the wire form's version**, so a reader can say "newer form" rather than
-"malformed" when it meets one (#435). Neither is an
+a closed set, and it is why a new kind is a wire change: a later major's
+reader reads it, and a reader of this major refuses it (R17). **The file's
+first byte is the wire form's version**, so a reader can say "newer form"
+rather than "malformed" when it meets one (#435). It is not an
 envelope: no identity, no magic and no content hash ride on the table wire,
 and a file that needs to say what it is puts a field on its root table,
-`format uint32 = 3`, which an older reader still reads, a foreign file
-defaults, and that default is the provenance signal.
+`format uint32 = 3`, which a foreign file defaults, and that default is the
+provenance signal.
 
 **The layout.** After the form byte comes the body, every id a reference and
 every width variable: a field is `ref, kind, payload`, and the field list ends
@@ -794,10 +807,11 @@ spent, no payload of the variable form changes, no skip rule of the variable for
 changes. The protocol id does not move, the build version does not move, the
 baseline does not move, the text form does not move, the cook and the block do
 not move, no EVOLUTION row of the table above moves, and neither does the
-damage rule. ONE row does, in this form only: the MASK ROUND-TRIP row: a `flags` mask rides at its declared W bits here rather than as
-a raw `uint64`, which is the packet wire's rule taken for the packet wire's
-reason, so a bit a newer build appended survives a file round trip and not a
-message one. Sixty-four bits for a three-bit mask is the largest fixed overspend
+damage rule. A `flags` mask rides at its declared W bits here rather than
+as a raw `uint64`, the packet wire's rule taken for the packet wire's reason,
+and it moves no row, because both forms hold a mask to W: a load refuses a bit
+at or above the reader's W `out_of_range` and a save refuses to write one
+(SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH). Sixty-four bits for a three-bit mask is the largest fixed overspend
 a small message has, and a mask is the one payload whose file width comes from
 its storage rather than from anything the schema declares. The read report keeps
 its counters and their meanings. The packet wire is
@@ -1042,15 +1056,16 @@ years, and several of the answers are patterns rather than syntax.
 
 - **Widen a field.** A NEW build reads an OLD file's narrower integer of the
   same signedness, and its `float32` as a `float64`, exactly, counting
-  `widened` (SPEC-TABLES.md §4). What is free besides, for the NEW reader:
-  growing an array bound, a string or bytes capacity, loosening a range; an
-  OLD reader refuses a value or a count past its own bound by name. **What the widening does not
-  do is run backwards**, and that is the whole of the pattern: the OLD build
-  meets `int64` where it declares `int32`, which is a narrowing, and it
-  refuses `kind_mismatch`. So `int32` to `int64` is a one-way
-  edit, safe the moment every reader is on the new build and lossy for every
-  reader that is not. Flip the whole fleet first and the edit is one line.
-  Where a reader can still be old, the pattern is unchanged: `gold2 ?int64`
+  `widened` (SPEC-TABLES.md §4), and the baseline passes the edit. What is
+  free besides, for the NEW reader: growing an array bound, a string or bytes
+  capacity, loosening a range; an OLD reader refuses a value or a count past
+  its own bound by name. **The widening does not run backwards, and nothing
+  promises that it does** (R17, 2026-11-22: "the newer reader can read old
+  data, but never the other way"): the OLD build meets `int64` where it
+  declares `int32` and refuses the file `kind_mismatch` by name, which is
+  lawful. So `int32` to `int64` is one line, and what it asks of a fleet is
+  an order: put every reader on the new build before a new file can reach it.
+  Where an old reader must still read the new files, keep the old field: `gold2 ?int64`
   beside `gold`, old saves read `gold2` absent, the load shim copies `gold`
   across, new saves write it present, retire `gold` after the horizon. Nothing
   widens across the signed and unsigned ladders, out of the fixed-point kinds,
@@ -1072,13 +1087,16 @@ years, and several of the answers are patterns rather than syntax.
 - **Ship a schema change to a mixed fleet.** A table-body edit never forces a
   redeploy, and neither does an edit to an enum or a union no `type` reaches,
   which is where content lives. A type or flags edit always does, and so does
-  an enum or union edit a `type` reaches. Write the never-clobber rule before
-  the first staged rollout, or turn retain-unknown on and check `retain_lost`.
-  Roll back freely: the old build reads the new files and counts what it
-  cannot use, and under retention it writes the unknown fields back out
-  unharmed.
-- **Debug an old file.** `unpack` renders a wire file of a newer version to
-  text and reports what it did not understand, and a damaged file is refused,
+  an enum or union edit a `type` reaches. Running an old build against new
+  files is a sharp edge, because only the newer reader is promised the older
+  data (R17): the old build may read a new file and drop what it cannot name,
+  or refuse it by name, as it refuses a WIDENED field `kind_mismatch`,
+  lawfully (SPEC-TABLES.md §4). If you roll back anyway, write the
+  never-clobber rule first, or turn retain-unknown on and check
+  `retain_lost`. Put every reader on the new build before any writer widens.
+- **Debug an old file.** A newer `unpack` renders any older wire file to text
+  and reports what it did not understand; an older `unpack` given a newer file
+  may refuse it by name (R17). A damaged file is refused,
   because a bit with no name has no text spelling. `uncook` renders a cook written by
   this build's version and refuses any other. The baseline history says what
   changed and why, by date. The `format` field on the root table says which
@@ -1113,13 +1131,15 @@ still open.
 - **Retention covers `unknown` and nothing else**, and nothing else needs it:
   every other condition refuses the load, so there is no partial value to
   rewrite.
-- **The widening path runs FORWARD only.** A new build reads an old file's
-  narrower integer of the same signedness, and its `float32` as a `float64`,
-  exactly, counting `widened`. An OLD build reading a NEW file gets nothing:
-  the narrowing refuses the load `kind_mismatch`. A rolling deploy that widens
-  a field therefore stops every peer still running the old build from reading
-  the new files, and the baseline refuses the edit until a `--reason`
-  says the fleet is flipped. The pairs are the two integer ladders and the one
+- **The widening path runs FORWARD only, and that is the promise** (R17,
+  2026-11-22: "the newer reader can read old data, but never the other
+  way"). A new build reads an old file's narrower integer of the same
+  signedness, and its `float32` as a `float64`, exactly, counting `widened`,
+  so the baseline passes the edit. An OLD build reading a NEW file refuses
+  the load `kind_mismatch` by name, which is lawful and never promised to
+  work. A rolling deploy that widens a field therefore stops every peer still
+  running the old build from reading the new files: put the readers on the
+  new build first. The pairs are the two integer ladders and the one
   float rung and no others (SPEC-TABLES.md §4), which is what keeps the rest of
   the kind space refusing loudly instead of guessing.
 - **A variant or union arm reordered or renamed is a lockstep redeploy**
@@ -1154,13 +1174,23 @@ still open.
 - **`bits(N)` grows freely, and across a storage width it now costs a
   counter rather than the values**: `bits(9)` to `bits(16)` is one kind and is
   silent, and `bits(8)` to `bits(9)` moves kind `6` to kind `7`, which the
-  widening rule decodes exactly and counts `widened`. Old builds reading the
-  new file refuse it `kind_mismatch`, on the row above.
+  widening rule decodes exactly and counts `widened`, and the baseline passes
+  it. Old builds reading the new file refuse it `kind_mismatch` by name,
+  which is lawful (R17), on the row above.
 - **`string(N)` and `bytes(N)` are different kinds** on the table wire though
   the packet wire treats them as one construct; respelling one as the other
   is a kind change.
-- **The baseline refuses `T`→`?T`.** A new optional writer can store a
-  present field at its defaults, which an old plain reader refuses (§4).
+- **Optional is a widening, and it runs one way** (R16, 2026-11-22: "once a
+  field is optional, it must stay optional forever"). **`T`→`?T` passes the
+  baseline**: every old value lands present, so the new reader reads every
+  old file (SPEC-TABLES.md §2.3, §4.1). **`?T`→`T` is refused by the baseline**,
+  naming the field: it is a narrowing, the one the variable wire cannot see,
+  so the check holds it (SPEC-TABLES.md §4 THE ONE WIDENING RULE, §18.2).
+- **A field whose type changed refuses the whole load** (R14, 2026-11-22):
+  `int64` to `string`, a field moved to or from `*T`, and `int64` to
+  `timestamp` are not widenings, and every reader refuses them
+  `kind_mismatch`, never defaulting the field and reading on. Only the
+  widenings of SPEC-TABLES.md §4 THE ONE WIDENING RULE read.
 - **A tightened range refuses every stored file holding a value past it.** A
   narrowing is a data edit; migrate or back the files up first. A committed
   baseline warns on it, from either end and on a range declared where the
@@ -1240,8 +1270,9 @@ repository not yet behind it. The 3.0.0 release holds the list at zero.
   form 2 write refuses by name and whose form 2 read is not built.
 - #554: the `column` projection token, reserved by name on the packet wire and
   emitted nowhere.
-- #434: the reserved escape kind. The C++ reference and `internal/tablewire`
-  carry it; what is owed is the eight ports (#511 to #518).
+- #434: the reserved escape kind, REMOVED by R17 (2026-11-22): the newer
+  reader reads old data, never the other way, so kind `31` is held by name
+  and every reader refuses it.
 - #432: the cook triple, and the byte-order sentences in five places.
 - #525: retain-unknown in the eight ports. The C++ reference, the two report
   counters, `internal/tablewire`'s own retention, the wire fuzzer's retention

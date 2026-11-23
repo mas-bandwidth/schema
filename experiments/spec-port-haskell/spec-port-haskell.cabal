@@ -1,0 +1,28 @@
+cabal-version:      2.4
+name:               spec-port-haskell
+version:            0.1.0
+synopsis:           A tables-layer port written from the spec alone (an experiment)
+build-type:         Simple
+
+common shared
+  default-language: Haskell2010
+  ghc-options:      -O1 -Wall -Wno-name-shadowing -Wno-unused-matches -Wno-incomplete-uni-patterns
+  build-depends:    base >=4.18, bytestring, containers, mtl, directory, filepath
+
+library
+  import:           shared
+  hs-source-dirs:   src
+  exposed-modules:  Syntax, Schema, FloatBits, Utf8, Wire, Json
+
+executable spec-port-haskell-driver
+  import:           shared
+  hs-source-dirs:   app
+  main-is:          Driver.hs
+  build-depends:    spec-port-haskell
+
+test-suite unit
+  import:           shared
+  type:             exitcode-stdio-1.0
+  hs-source-dirs:   test
+  main-is:          Unit.hs
+  build-depends:    spec-port-haskell

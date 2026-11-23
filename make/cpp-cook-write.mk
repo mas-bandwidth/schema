@@ -18,6 +18,7 @@ CPP_COOK_WRITE_NC_OBJECTS = $(patsubst build/tables-generated/%.cpp,$(CPP_COOK_W
 .PHONY: conformance-cpp-cook-write conformance-cpp-cook-write-negative-control
 conformance-cpp-cook-write: build/tables-generated/.stamp build/conformance-harness build/conformance-cpp build/schema_test_cook
 	@rm -rf $(CPP_COOK_WRITE) && mkdir -p $(CPP_COOK_WRITE)
+# loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
 	./build/conformance-harness run --only cpp --work $(CPP_COOK_WRITE)/run > $(CPP_COOK_WRITE)/log 2>&1 || true
 	@awk '$$1=="cook-write" && $$2=="pass" { split($$3, n, "/"); if (n[1] != "" && n[1] == n[2] && $$4 == "") ok=1 } END { exit(ok ? 0 : 1) }' \
 		$(CPP_COOK_WRITE)/log || { cat $(CPP_COOK_WRITE)/log; echo "conformance-cpp-cook-write FAILED: cook-write is not pass N/N with the same N twice and no +Ka absence suffix"; exit 1; }
@@ -53,6 +54,7 @@ conformance-cpp-cook-write-negative-control: build/tables-generated/.stamp build
 		"$(CURDIR)/$(CPP_COOK_WRITE_NC)" > $(CPP_COOK_WRITE_NC)/driver
 	@chmod +x $(CPP_COOK_WRITE_NC)/driver
 	@printf 'cpp %s/driver\n' "$(CURDIR)/$(CPP_COOK_WRITE_NC)" > $(CPP_COOK_WRITE_NC)/drivers
+# loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
 	./build/conformance-harness run --drivers $(CPP_COOK_WRITE_NC)/drivers --work $(CPP_COOK_WRITE_NC)/run > $(CPP_COOK_WRITE_NC)/log 2>&1 || true
 	@if awk '$$1=="cook-write" && $$2=="pass" { split($$3, n, "/"); if (n[1] != "" && n[1] == n[2] && $$4 == "") ok=1 } END { exit(ok ? 0 : 1) }' \
 		$(CPP_COOK_WRITE_NC)/log; then \

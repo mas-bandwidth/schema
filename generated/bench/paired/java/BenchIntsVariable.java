@@ -1005,8 +1005,10 @@ public final class BenchIntsVariable {
         if (report == null) {
             report = new TableVariable.Report();
         }
+        report.reset();
         TableVariable.Reader r = TableVariable.open(data, report);
         if (r == null) {
+            report.settleDamage();
             return null;
         }
         Value v = new Value();
@@ -1069,6 +1071,7 @@ public final class BenchIntsVariable {
         }
         // DAMAGE DISCARDS THE WHOLE LOAD (§4)
         if (report.damaged) {
+            report.settleDamage();
             return null;
         }
         return v;
@@ -1221,6 +1224,7 @@ public final class BenchIntsVariable {
         }
         // DAMAGE DISCARDS THE WHOLE TEXT READ (§4, §16.2)
         if (report.damaged) {
+            report.settleDamage();
             return null;
         }
         return v;

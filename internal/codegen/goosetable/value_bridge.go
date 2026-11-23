@@ -177,6 +177,15 @@ func (e *valueEmit) scalar(ind int, f *ir.Field, pl place, desc, s string, pack 
 			return
 		}
 	}
+	// a 128-bit integer is the value's own two lanes
+	if t.Kind == ir.TInt && t.Width > 64 {
+		if pack {
+			e.p(ind, "vals[%s].bits = %s;", s, pl.val)
+		} else {
+			e.p(ind, "%s = vals[%s].bits;", pl.val, s)
+		}
+		return
+	}
 	bits := fmt.Sprintf("vals[%s].bits.lo", s)
 	if pack {
 		lo, hi := pl.val, "0"

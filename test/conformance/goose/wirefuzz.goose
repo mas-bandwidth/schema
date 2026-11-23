@@ -91,6 +91,7 @@ fn main() {
     var roots: i64[>..] = [];
     var retaining: bool[>..] = [];
     var message: bool[>..] = [];
+    var message_framed: bool[>..] = [];
     var fixed: bool[>..] = [];
     var reply: u8[>..] = [];
     for _ in count {
@@ -113,12 +114,20 @@ fn main() {
                 if d.name == root && !d.variable { t = i; break; }
             }
         }
+        // the framed message form, form byte 5 (announcement + batch), on the fixed arm
+        let msg_framed = key == argv[1] && fr[0] == 5 && fr[1] == 0 && !builder && conformance_message_root(root);
+        if msg_framed {
+            for d, i in unit.tables {
+                if d.name == root { t = i; break; }
+            }
+        }
         roots.push(t);
         retaining.push(fr[1] == 1);
         message.push(msg);
+        message_framed.push(msg_framed);
         // the fixed form of a root the unit emits <Root>FixedLoad for, on the
         // fixed arm: chosen by the root, whatever form the roster names
-        fixed.push(t >= 0 && !msg && !builder && conformance_fixed_root(root));
+        fixed.push(t >= 0 && !msg && !msg_framed && !builder && conformance_fixed_root(root));
         reply.push(if t >= 0 { 1 } else { 0 });
     }
     write_stdout(reply);
@@ -140,6 +149,46 @@ fn main() {
             exit(1);
         }
         let name = unit.tables[roots[idx]].name;
+        if message_framed[idx] {
+            var mrep = schema_rt::MsgReport { .. };
+            var msaved: u8[>..] = [];
+            var mn: i64 = -2;
+            let size = data.len;
+            if size < 4 {
+                mrep.damaged = true;
+            } else {
+                let alen = le(data, 0, 4) as! i64;
+                if alen < 0 || 4 + alen > size {
+                    mrep.damaged = true;
+                } else {
+                    let ann = data[4..4 + alen];
+                    let batch = data[4 + alen..size];
+                    mn = conformance_message_framed_fuzz(name, ann, alen > 0, batch, msaved, mrep);
+                }
+            }
+            let accepted = mn >= 0 && !mrep.damaged && mrep.reason == 0;
+            var mout: u8[>..] = [];
+            mout.push(if accepted { 1 } else { 0 });
+            put_i32(mout, mrep.unknown);
+            put_i32(mout, mrep.mismatch);
+            put_i32(mout, mrep.widened);
+            put_i32(mout, mrep.oor);
+            put_i32(mout, mrep.repeated);
+            mout.push(flag(mrep.damaged) as! u8);
+            mout.push(flag(!accepted) as! u8);
+            put_le(mout, 0xFFFFFFFFFFFFFFFF, 8);
+            put_i32(mout, 0);
+            put_i32(mout, 0);
+            if !accepted {
+                put_le(mout, 0xFFFFFFFFFFFFFFFF, 8);
+            } else {
+                put_le(mout, msaved.len as! u64, 8);
+                mout.append(msaved);
+            }
+            write_stdout(mout);
+            flush_stdout();
+            continue;
+        }
         if message[idx] {
             // THE MESSAGE FORM (docs/SPEC-TABLES.md §3.3): the batch read
             // against the unit's own announcement, every body it delivered

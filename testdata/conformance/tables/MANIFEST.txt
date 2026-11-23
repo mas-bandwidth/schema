@@ -686,6 +686,9 @@ json-hostile comment-slash-star-slash      tabledemo  RootConfig  testdata/confo
 # and reading a shared graph as a tree with an empty object at every reference.
 json-hostile reserved-ampersand-key        tabledemo  RootConfig  testdata/conformance/tables/json-hostile/reserved-ampersand-key refused
 json-hostile reserved-ampersand-in-skipped-value tabledemo  RootConfig  testdata/conformance/tables/json-hostile/reserved-ampersand-in-skipped-value read
+# R7: in a unit with no pointer a skipped value still refuses a stray & key or an &node not first
+json-hostile skipped-ampersand-stray-key             tabledemo  RootConfig  testdata/conformance/tables/json-hostile/skipped-ampersand-stray-key refused
+json-hostile skipped-ampersand-node-not-first        tabledemo  RootConfig  testdata/conformance/tables/json-hostile/skipped-ampersand-node-not-first refused
 json-hostile dup-key                       tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key            refused
 json-hostile dup-key-array                 tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key-array      refused
 json-hostile dup-key-placeable             tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key-placeable  refused
@@ -853,6 +856,15 @@ json-hostile label-self-reference          graphdemo  Scene       testdata/confo
 json-hostile label-type-mismatch           graphdemo  Scene       testdata/conformance/tables/json-hostile/label-type-mismatch refused
 json-hostile label-dropped-definition      graphdemo  Scene       testdata/conformance/tables/json-hostile/label-dropped-definition refused
 json-hostile label-in-unknown-key          graphdemo  Scene       testdata/conformance/tables/json-hostile/label-in-unknown-key read
+# R7 (2026-11-22): a label inside a value this reader SKIPS obeys the label rules (§16.7): a duplicate, a
+# reference before its definition and a reference to a definition still open all refuse.
+json-hostile skipped-label-defined-twice             graphdemo  Scene       testdata/conformance/tables/json-hostile/skipped-label-defined-twice refused
+json-hostile skipped-label-defined-twice-nested      graphdemo  Scene       testdata/conformance/tables/json-hostile/skipped-label-defined-twice-nested refused
+json-hostile skipped-label-defined-after-placed      graphdemo  Scene       testdata/conformance/tables/json-hostile/skipped-label-defined-after-placed refused
+json-hostile skipped-label-forward-reference         graphdemo  Scene       testdata/conformance/tables/json-hostile/skipped-label-forward-reference refused
+json-hostile skipped-label-undefined-reference       graphdemo  Scene       testdata/conformance/tables/json-hostile/skipped-label-undefined-reference refused
+json-hostile skipped-label-self-reference            graphdemo  Scene       testdata/conformance/tables/json-hostile/skipped-label-self-reference refused
+json-hostile skipped-label-reference-defined         graphdemo  Scene       testdata/conformance/tables/json-hostile/skipped-label-reference-defined read
 json-hostile shared-node-by-label          graphdemo  Scene       testdata/conformance/tables/json-hostile/shared-node-by-label read
 
 # THE WIDE SCALARS (docs/SPEC-TABLES.md §3, §16.2): every scalar the type wire
@@ -1457,6 +1469,14 @@ rewrite array_L2_empty tblr1 Cfg testdata/wire/tables/framing/array_L2_empty.bin
 rewrite union_arm_zero_in_field tblr1 Cfg testdata/wire/tables/framing/union_arm_zero_in_field.bin
 rewrite node_index_null graphdemo ListNode testdata/wire/tables/framing/node_index_null.bin
 rewrite node_type_undeclared graphdemo ListNode testdata/wire/tables/framing/node_type_undeclared.bin
+rewrite twin_a2_root tbla2 Root testdata/conformance/tables/wire/twin_a2_root.bin
+rewrite twin_k1_root tblk1 Root testdata/conformance/tables/wire/twin_k1_root.bin
+rewrite twin_k2_root tblk2 Root testdata/conformance/tables/wire/twin_k2_root.bin
+rewrite twin_scalars2_simstate tblscalars2 SimState testdata/conformance/tables/wire/twin_scalars2_simstate.bin
+rewrite twin_listdemo_ints_empty listdemo Ints testdata/wire/tables/framing/twin_listdemo_ints_empty.bin
+rewrite twin_listdemo_bounded_empty listdemo Bounded testdata/wire/tables/framing/twin_listdemo_bounded_empty.bin
+rewrite twin_listdemo_squad_empty listdemo Squad testdata/wire/tables/framing/twin_listdemo_squad_empty.bin
+rewrite twin_listdemo_army_empty listdemo Army testdata/wire/tables/framing/twin_listdemo_army_empty.bin
 
 rewrite rewrite_fields_reversed tblw1 Fleet testdata/wire/tables/rewrite_fields_reversed.bin
 
@@ -1874,3 +1894,20 @@ rewrite widenbound_evodoc         tblvarevo1  EvoDoc       testdata/conformance/
 unit widenboundpeer test/tables/widenbound/WidenBoundPeer.schema
 connection widenbound_conn widenboundpeer 0x500563706e877710 testdata/conformance/tables/wire/widenbound_conn.bin
 message-drift widenbound_msg messagedemo widenbound_conn ToolMessage testdata/conformance/tables/wire/widenbound_msg.bin testdata/conformance/tables/wire/widenbound_msg_peer.bin testdata/conformance/tables/wire/widenbound_msg_as_reader.bin
+
+# LAWFUL TWINS (test/conformance/harness/discriminate.go, 2026-11-22): every
+# must-refuse row needs a row in its group that must be ACCEPTED, or a leg that
+# refuses the whole form passes it without reaching its rule. These roots had
+# refusals alone: the evolution reports below read form-1 files at FIXED roots
+# (refused as previous_form before any arm or width rule runs), and the
+# listdemo framing vectors had no readable vector at their roots. Each twin
+# is the root's default value: form 3 for a fixed root's report, the empty
+# form-1 table for a framing root (read as the variable class, generate.go).
+report  twin_a2_root            tbla2       Root     testdata/conformance/tables/wire/twin_a2_root.bin
+report  twin_k1_root            tblk1       Root     testdata/conformance/tables/wire/twin_k1_root.bin
+report  twin_k2_root            tblk2       Root     testdata/conformance/tables/wire/twin_k2_root.bin
+report  twin_scalars2_simstate  tblscalars2 SimState testdata/conformance/tables/wire/twin_scalars2_simstate.bin
+framing twin_listdemo_ints_empty    listdemo Ints    testdata/wire/tables/framing/twin_listdemo_ints_empty.bin read testdata/conformance/tables/framing/listdemo_ints_default.json
+framing twin_listdemo_bounded_empty listdemo Bounded testdata/wire/tables/framing/twin_listdemo_bounded_empty.bin read testdata/conformance/tables/framing/listdemo_bounded_default.json
+framing twin_listdemo_squad_empty   listdemo Squad   testdata/wire/tables/framing/twin_listdemo_squad_empty.bin read testdata/conformance/tables/framing/listdemo_squad_default.json
+framing twin_listdemo_army_empty    listdemo Army    testdata/wire/tables/framing/twin_listdemo_army_empty.bin read testdata/conformance/tables/framing/listdemo_army_default.json

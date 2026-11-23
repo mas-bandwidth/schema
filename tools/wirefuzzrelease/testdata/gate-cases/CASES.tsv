@@ -1,0 +1,17 @@
+# THE RELEASE WIRE-FUZZ GATE CASES (tools/wirefuzzrelease/cases.go):
+# id <TAB> verdict <TAB> kind <TAB> spec <TAB> what the case is.
+# A row case's harness log is <id>.log; its spec is leg, arm, seed, exit status, n asked.
+# A table case's spec is the leg and the one row of its six taken away (or -).
+go-whole	pass	row	go plain 1 0 100000	control: the budget asked for, on Go
+python-whole	pass	row	python plain 1 0 100000	control: the budget asked for, on Python
+go-zero-mutants	red:empty wire-fuzz mutation count	row	go plain 1 0 100000	a Go run of zero mutants scored pass; Python rejected it
+go-absent-seed	red:incomplete wire-fuzz roster: 1 seeds absent	row	go plain 1 0 100000	a Go run with an absent seed scored pass; Python rejected it
+go-one-mutant	red:short wire-fuzz run: 1 random mutants ran and the gate asked for 100000	row	go plain 1 0 100000	F-064: one mutant under a budget of 100000 certified the Go row
+python-one-mutant	red:short wire-fuzz run: 1 random mutants ran and the gate asked for 100000	row	python plain 1 0 100000	F-064: one mutant under a budget of 100000 certified the Python row
+go-no-count	red:missing wire-fuzz mutation count	row	go plain 1 0 100000	F-064: a Go report with no mutation count scored pass
+go-other-seed	red:the summary is not seed 1	row	go plain 1 0 100000	F-064: the run coordinates: another seed's summary
+go-other-arm	red:the summary is not the plain arm	row	go plain 1 0 100000	F-064: the run coordinates: the retain arm's summary
+go-failing-process	red:exit 1	row	go plain 1 1 100000	control: a failing process was always rejected
+go-six-rows	pass	table	go -	control: all six rows of the roster
+go-first-row-gone	red:the run left no row (go.plain.1.row)	table	go go.plain.1.row	F-065: go.plain.1.row never written and the leg printed that every arm passes
+go-last-row-gone	red:the run left no row (go.retain.3.row)	table	go go.retain.3.row	control: the last row missing always failed

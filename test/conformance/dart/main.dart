@@ -1854,6 +1854,67 @@ void _f2w_p3_Chain(tblp3_fixed.Chain f, tblp3.Chain w) {
   w.hasLink = f.linkPresent;
   _f2w_p3_Link(f.link, w.link);
 }
+void _w2f_lists_Bounded(listdemo.Bounded w, listdemo_fixed.Bounded f) {
+  f.itemsCount = w.items.length;
+  for (var i = 0; i < w.items.length && i < f.items.length; i++) {
+    f.items[i].v = w.items[i].v;
+  }
+  f.tag = w.tag;
+}
+void _f2w_lists_Bounded(listdemo_fixed.Bounded f, listdemo.Bounded w) {
+  w.items = List<listdemo.Unit>.generate(f.itemsCount, (i) {
+    final u = listdemo.Unit();
+    u.v = f.items[i].v;
+    return u;
+  });
+  w.tag = f.tag;
+}
+void _f2w_a2_Root(tbla2_fixed.Root f, tbla2.Root w) {
+  w.id = f.id;
+  w.value.armTag = (f.value.type as int);
+  w.value.a = f.value.a;
+  w.value.b = f.value.b;
+  w.value.c = _f2wUtf8(f.value.c, f.value.cLength);
+  w.value.d.n = f.value.d.n;
+  w.value.e.n = f.value.e.n;
+  w.tail = f.tail;
+}
+void _f2w_k1_Root(tblk1_fixed.Root f, tblk1.Root w) {
+  w.grade = f.grade;
+  w.raw = f.raw;
+}
+void _f2w_k2_Root(tblk2_fixed.Root f, tblk2.Root w) {
+  w.grade = f.grade;
+  w.raw = f.raw;
+}
+BigInt _f2wDynInt128(dynamic x) => ((BigInt.from(x.hi as int).toUnsigned(64) << 64) | BigInt.from(x.lo as int).toUnsigned(64)).toSigned(128);
+BigInt _f2wDynUInt128(dynamic x) => (BigInt.from(x.hi as int).toUnsigned(64) << 64) | BigInt.from(x.lo as int).toUnsigned(64);
+void _f2w_scalars2_Pose(dynamic f, scalardemo2.Pose w) {
+  w.x = BigInt.from(f.x as int);
+  w.y = BigInt.from(f.y as int);
+  w.heading = BigInt.from(f.heading as int).toUnsigned(64);
+}
+void _f2w_scalars2_SimState(scalardemo2_fixed.SimState f, scalardemo2.SimState w) {
+  w.tilt = BigInt.from(f.tilt);
+  w.angle = f.angle;
+  w.position = BigInt.from(f.position);
+  w.reach = _f2wDynInt128(f.reach);
+  w.ratio = BigInt.from(f.ratio).toUnsigned(64);
+  w.speed = BigInt.from(f.speed).toUnsigned(64);
+  w.span = BigInt.from(f.span).toUnsigned(64);
+  w.mass = _f2wDynUInt128(f.mass);
+  w.frames = BigInt.from(f.frames).toUnsigned(64);
+  w.flux = f.flux;
+  w.energy = _f2wDynInt128(f.energy);
+  w.scale = BigInt.from(f.scale);
+  for (var i = 0; i < 3; i++) w.samples[i] = BigInt.from(f.samples[i]);
+  w.weights = List<BigInt>.generate(f.weightsCount, (i) => BigInt.from(f.weights[i]).toUnsigned(64));
+  for (var i = 0; i < 3; i++) w.axes[i] = BigInt.from(f.axes[i]);
+  w.seeds = List<BigInt>.generate(f.seedsCount, (i) => _f2wDynUInt128(f.seeds[i]));
+  _f2w_scalars2_Pose(f.pose, w.pose);
+  w.hasSpawn = f.spawnPresent;
+  _f2w_scalars2_Pose(f.spawn, w.spawn);
+}
 void _w2f_r1_Boost(tblr1.Boost w, dynamic f) {
   f.power = w.power;
 }
@@ -2330,7 +2391,15 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
     case 'graphdemo ListNode':
       return _wireResaveOne(wire, graphdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), graphdemo.listNodeWireLoad, graphdemo.listNodeWireSave);
     case 'listdemo Bounded':
-      return _wireResaveOne(wire, listdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), listdemo.boundedWireLoad, listdemo.boundedWireSave);
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = listdemo.TableWireReport();
+        final w = listdemo.boundedWireLoad(wire, rep);
+        if (rep.refused) return null;
+        final f = listdemo_fixed.Bounded();
+        _w2f_lists_Bounded(w, f);
+        return _fixedSaveOne(f, migrate_fixed.boundedFixedMeasure, migrate_fixed.boundedFixedSave);
+      }
+      return _fixedResave(wire, listdemo_fixed.Bounded.new, migrate_fixed.boundedFixedNewPlan, listdemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, migrate_fixed.boundedFixedLoad, migrate_fixed.boundedFixedMeasure, migrate_fixed.boundedFixedSave);
     case 'listdemo Ints':
       return _wireResaveOne(wire, listdemo.TableWireReport.new, (rep) => (rep.refused, rep.refusal), listdemo.intsWireLoad, listdemo.intsWireSave);
     case 'listdemo Squad':
@@ -2519,6 +2588,14 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
         return _fixedSaveOne(f, p3_fixed.chainFixedMeasure, p3_fixed.chainFixedSave);
       }
       return _fixedResave(wire, tblp3_fixed.Chain.new, p3_fixed.chainFixedNewPlan, tblp3_fixed.TableFixedReport.new, (rep) => rep.refused != 0, p3_fixed.chainFixedLoad, p3_fixed.chainFixedMeasure, p3_fixed.chainFixedSave);
+    case 'tbla2 Root':
+      return _fixedResave(wire, tbla2_fixed.Root.new, a2_fixed.rootFixedNewPlan, tbla2_fixed.TableFixedReport.new, (rep) => rep.refused != 0, a2_fixed.rootFixedLoad, a2_fixed.rootFixedMeasure, a2_fixed.rootFixedSave);
+    case 'tblk1 Root':
+      return _fixedResave(wire, tblk1_fixed.Root.new, k1_fixed.rootFixedNewPlan, tblk1_fixed.TableFixedReport.new, (rep) => rep.refused != 0, k1_fixed.rootFixedLoad, k1_fixed.rootFixedMeasure, k1_fixed.rootFixedSave);
+    case 'tblk2 Root':
+      return _fixedResave(wire, tblk2_fixed.Root.new, k2_fixed.rootFixedNewPlan, tblk2_fixed.TableFixedReport.new, (rep) => rep.refused != 0, k2_fixed.rootFixedLoad, k2_fixed.rootFixedMeasure, k2_fixed.rootFixedSave);
+    case 'tblscalars2 SimState':
+      return _fixedResave(wire, scalardemo2_fixed.SimState.new, scalars2_fixed.simStateFixedNewPlan, scalardemo2_fixed.TableFixedReport.new, (rep) => rep.refused != 0, scalars2_fixed.simStateFixedLoad, scalars2_fixed.simStateFixedMeasure, scalars2_fixed.simStateFixedSave);
     case 'tblr1 Cfg':
       if (wire.isNotEmpty && wire[0] == 1) {
         final rep = tblr1.TableWireReport();
@@ -3418,6 +3495,54 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
       final w = tblp3.Chain();
       _f2w_p3_Chain(f, w);
       return tblp3.chainToJson(w);
+    case 'tbla2 Root':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tbla2.TableWireReport();
+        final w = tbla2.rootWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return tbla2.rootToJson(w);
+      }
+      final fA2 = _fixedLoadOne(wire, tbla2_fixed.Root.new, a2_fixed.rootFixedNewPlan, tbla2_fixed.TableFixedReport.new, (rep) => rep.refused != 0, a2_fixed.rootFixedLoad);
+      if (fA2 == null) return null;
+      final wA2 = tbla2.Root();
+      _f2w_a2_Root(fA2, wA2);
+      return tbla2.rootToJson(wA2);
+    case 'tblk1 Root':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tblk1.TableWireReport();
+        final w = tblk1.rootWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return tblk1.rootToJson(w);
+      }
+      final fK1 = _fixedLoadOne(wire, tblk1_fixed.Root.new, k1_fixed.rootFixedNewPlan, tblk1_fixed.TableFixedReport.new, (rep) => rep.refused != 0, k1_fixed.rootFixedLoad);
+      if (fK1 == null) return null;
+      final wK1 = tblk1.Root();
+      _f2w_k1_Root(fK1, wK1);
+      return tblk1.rootToJson(wK1);
+    case 'tblk2 Root':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = tblk2.TableWireReport();
+        final w = tblk2.rootWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return tblk2.rootToJson(w);
+      }
+      final fK2 = _fixedLoadOne(wire, tblk2_fixed.Root.new, k2_fixed.rootFixedNewPlan, tblk2_fixed.TableFixedReport.new, (rep) => rep.refused != 0, k2_fixed.rootFixedLoad);
+      if (fK2 == null) return null;
+      final wK2 = tblk2.Root();
+      _f2w_k2_Root(fK2, wK2);
+      return tblk2.rootToJson(wK2);
+    case 'tblscalars2 SimState':
+      if (wire.isNotEmpty && wire[0] == 1) {
+        final rep = scalardemo2.TableWireReport();
+        final w = scalardemo2.simStateWireLoad(wire, rep);
+        if (rep.refused) return null;
+        return scalardemo2.simStateToJson(w);
+      }
+      final fS2 = _fixedLoadOne(wire, scalardemo2_fixed.SimState.new, scalars2_fixed.simStateFixedNewPlan, scalardemo2_fixed.TableFixedReport.new, (rep) => rep.refused != 0, scalars2_fixed.simStateFixedLoad);
+      if (fS2 == null) return null;
+      final wS2 = scalardemo2.SimState();
+      _f2w_scalars2_SimState(fS2, wS2);
+      return scalardemo2.simStateToJson(wS2);
     case 'tblr1 Cfg':
       if (wire.isNotEmpty && wire[0] == 1) {
         final rep = tblr1.TableWireReport();
@@ -4386,6 +4511,9 @@ int surfaceJsonWrite(String outDir) {
           break;
       }
     } on StateError {
+      outText = 'refused\n';
+    } on AssertionError {
+      // an assert leg's write check: a debug assert, the driver runs under --enable-asserts
       outText = 'refused\n';
     }
     if (outText == null) {

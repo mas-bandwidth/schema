@@ -1475,11 +1475,12 @@ func (in *tableJSONIn) skipContainer(closing byte, depth int32) bool {
 	var keyLen [64]int
 	keyCount := 0
 	var overflow map[string]struct{}
+	firstKey, amp, isNode, definition := true, false, false, uint64(0) // isNode: the first key is &node; definition: the label this object opens (§16.7)
 	for {
 		c := in.peek()
 		if c == closing {
 			in.pos++
-			return true
+			return in.closeSkippedLabel(definition)
 		}
 		if c == 0 {
 			in.bad = true
@@ -1509,6 +1510,7 @@ func (in *tableJSONIn) skipContainer(closing byte, depth int32) bool {
 					return false
 				}
 				key := keyArena[arenaLen : arenaLen+int(n)]
+				amp, isNode = len(key) > 0 && key[0] == '&', firstKey && string(key) == "&node"
 				dup := false
 				for i := 0; i < keyCount; i++ {
 					if keyLen[i] != len(key) {
@@ -1550,6 +1552,7 @@ func (in *tableJSONIn) skipContainer(closing byte, depth int32) bool {
 					return false
 				}
 				key := string(buf[:n])
+				amp, isNode = len(key) > 0 && key[0] == '&', firstKey && key == "&node"
 				if _, dup := overflow[key]; dup {
 					if in.report != nil {
 						in.report.Refuse(TableRefuseMalformed, "")
@@ -1564,6 +1567,29 @@ func (in *tableJSONIn) skipContainer(closing byte, depth int32) bool {
 				return false
 			}
 			in.pos++
+			firstKey = false
+			if amp {
+				// §16.7 in a skipped value: a bare label names a closed definition, fields after one open it until this object closes
+				label, ok := uint64(0), isNode
+				if ok {
+					label, ok = tableJSONReadLabel(in) // it leaves ',' or '}' next
+				}
+				if ok && in.peek() == ',' {
+					in.pos++
+				}
+				if bare := in.peek() == '}'; ok && in.graph != nil {
+					entry, defined := in.graph.getLabel(label)
+					ok = bare == defined && !(bare && entry.open) && (bare || in.graph.setLabel(label, tableJSONLabel{open: true}))
+					if !bare {
+						definition = label
+					}
+				}
+				if !ok {
+					in.bad = true
+					return false
+				}
+				continue
+			}
 		}
 		if !in.skipValue(depth + 1) {
 			return false
@@ -1575,15 +1601,21 @@ func (in *tableJSONIn) skipContainer(closing byte, depth int32) bool {
 		}
 		if c == closing {
 			in.pos++
-			return true
+			return in.closeSkippedLabel(definition)
 		}
 		in.bad = true
 		return false
 	}
 }
 
+// closeSkippedLabel closes the definition a skipped object opened, if any: the label stays, with no node, so a reference to it reads null.
+func (in *tableJSONIn) closeSkippedLabel(label uint64) bool {
+	ok := label == 0 || in.graph.setLabel(label, tableJSONLabel{})
+	in.bad = in.bad || !ok
+	return ok
+}
+
 func (in *tableJSONIn) skipValue(depth int32) bool {
-	tableJSONDropLabel(in)
 	switch in.peek() {
 	case '{':
 		return in.skipContainer('}', depth)
@@ -3140,37 +3172,6 @@ func tableJSONReadBlob(in *tableJSONIn, slot *int64, f *TableFieldInfo) bool {
 	return true
 }
 
-// A skipped definition keeps its label, without imposing graph syntax on a
-// value this reader is skipping. The ordinary JSON scanner still validates it.
-func tableJSONDropLabel(in *tableJSONIn) {
-	if in.graph == nil || in.peek() != '{' {
-		return
-	}
-	probe := *in
-	probe.pos++
-	keyStart := probe.pos
-	length, ok := probe.scanString(nil)
-	if !ok || length != int32(len("&node")) {
-		return
-	}
-	probe.pos = keyStart
-	var key [16]byte
-	n, ok := probe.scanKey(key[:])
-	if !ok || string(key[:n]) != "&node" || probe.peek() != ':' {
-		return
-	}
-	probe.pos++
-	label, ok := tableJSONReadLabel(&probe)
-	if !ok || probe.peek() != ',' {
-		return
-	}
-	if _, exists := in.graph.getLabel(label); !exists {
-		if !in.graph.setLabel(label, tableJSONLabel{}) {
-			in.bad = true
-		}
-	}
-}
-
 func tableJSONWriteList(out *tableJSONOut, holder unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
 	count := *(*int32)(unsafe.Add(holder, 8))
 	if count < 0 {
@@ -3366,7 +3367,6 @@ func tableJSONReadMap(in *tableJSONIn, p unsafe.Pointer, f *TableFieldInfo, dept
 		}
 		in.pos++
 		if !good {
-			tableJSONDropLabel(in)
 			if !in.skipValue(depth + 1) {
 				return false
 			}
@@ -3388,7 +3388,6 @@ func tableJSONReadMap(in *tableJSONIn, p unsafe.Pointer, f *TableFieldInfo, dept
 				}
 			} else if !tableJSONShapeMatches(tableJSONShape(value), shape) && !(value.Pointer && shape == 'z') {
 				in.report.Refuse(TableRefuseKindMismatch, "")
-				tableJSONDropLabel(in)
 				if !in.skipValue(depth + 1) {
 					return false
 				}

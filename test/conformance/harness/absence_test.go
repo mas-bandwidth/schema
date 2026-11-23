@@ -249,27 +249,33 @@ func TestReferenceCaseAbsent(t *testing.T) {
 // TestPortAbsenceStaysAllowed is the other direction, and the half a one-sided
 // rule would break: absent is not failure for a port. The same three answers
 // from a leg that is not the reference stay green and stay PRINTED, because
-// the matrix is the completion tracker.
+// the matrix is the completion tracker. They are not a pass either: the
+// success footer gives way to the list of what was not answered. Each leg here
+// still answers something — a leg that answers NOTHING is red (footgun_test.go).
 func TestPortAbsenceStaysAllowed(t *testing.T) {
 	needShell(t)
-	absences := fakeLeg{unlisted: "json-write", exitTwo: "json-read", caseGone: true}
+	surfacesGone := fakeLeg{unlisted: "json-write", exitTwo: "json-read"} // answers wire
+	caseGone := fakeLeg{caseGone: true}                                   // answers json-write
 
 	t.Run("a second leg of the committed registry", func(t *testing.T) {
 		c := newFakeCorpus(t)
 		out, ok := c.runHarness(t, c.committed(t, map[string]fakeLeg{
 			referenceLang: {},
-			"zz":          absences,
+			"zy":          caseGone,
+			"zz":          surfacesGone,
 		}))
 		if !ok {
 			t.Errorf("a PORT's absences turned the harness red:\n%s", out)
 		}
 		mustSay(t, out,
 			[]string{
-				footer,
-				"absent",       // the surfaces zz does not implement, named where they can be seen
-				"pass 0/0 +1a", // and the case it said it cannot answer
+				notAllAnswered,
+				"zz / json-write: ABSENT, the whole surface (1 row(s) not answered)", // `list` leaves it out
+				"zz / json-read: ABSENT, the whole surface (1 row(s) not answered)",  // exit 2
+				"zy / wire: 1 of 1 row(s) ABSENT",                                    // `<case>.absent`
+				"pass 0/1 +1a",                                                       // the denominator is the rows SENT
 			},
-			[]string{"REFERENCE leg", "FAIL"})
+			[]string{"REFERENCE leg", "FAIL", footer})
 	})
 
 	// A run handed a SUBSTITUTED registry is one leg of a port and not the
@@ -279,12 +285,14 @@ func TestPortAbsenceStaysAllowed(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Run("the first leg of a substituted registry", func(t *testing.T) {
-		c := newFakeCorpus(t)
-		out, ok := c.runHarness(t, c.substituted(t, referenceLang, absences))
-		if !ok {
-			t.Errorf("absences under a SUBSTITUTED registry turned the harness red:\n%s", out)
+		for _, leg := range []fakeLeg{surfacesGone, caseGone} {
+			c := newFakeCorpus(t)
+			out, ok := c.runHarness(t, c.substituted(t, referenceLang, leg))
+			if !ok {
+				t.Errorf("absences under a SUBSTITUTED registry turned the harness red:\n%s", out)
+			}
+			mustSay(t, out, []string{notAllAnswered, "ABSENT"}, []string{"REFERENCE leg", "FAIL", footer})
 		}
-		mustSay(t, out, []string{footer, "absent"}, []string{"REFERENCE leg", "FAIL"})
 	})
 	after, err := os.Getwd()
 	if err != nil {

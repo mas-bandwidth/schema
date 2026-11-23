@@ -1,0 +1,41 @@
+name: green
+on: [push]
+defaults:
+  run:
+    shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: tests
+        run: |
+          go test ./... | tee log
+          rm -f build/stale || true
+      - name: a required tool
+        shell: bash
+        run: |
+          if ! command -v golangci-lint >/dev/null 2>&1; then
+            echo "::error::tool missing: golangci-lint"; exit 1
+          fi
+          golangci-lint run
+      - name: a deliberate one
+        # loud-ok: the next step reads the report this one leaves and fails on a missing row
+        continue-on-error: true
+        run: make report
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: log
+          path: log
+  verdict:
+    needs: [test]
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    steps:
+      - shell: bash
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          bad=$(jq -r 'to_entries[] | select(.value.result != "success") | .key' <<<"$NEEDS")
+          [ -z "$bad" ] || { echo "::error::$bad"; exit 1; }

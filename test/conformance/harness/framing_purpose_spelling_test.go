@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -382,7 +383,7 @@ func TestMessageFieldOrderVectorPinned(t *testing.T) {
 	body.put(0, 3)
 	want := batchOf(body)
 	path := filepath.Join(conformanceRoot(t), "testdata/wire/message-one-encoding/fields-reordered.bin")
-	if os.Getenv("FRAMING_WRITE") == "1" {
+	if slowtest.Rewriting(t, "FRAMING_WRITE") {
 		if err := os.WriteFile(path, want, 0o644); err != nil {
 			t.Fatal(err)
 		}

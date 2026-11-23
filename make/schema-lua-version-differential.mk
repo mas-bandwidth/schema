@@ -128,25 +128,25 @@ dist-lua-differential:
 	$(call lua_diff_fetch,$(LUA_DIFF_LUA51_TARBALL),$(LUA_DIFF_LUA51_URL),$(LUA_DIFF_LUA51_SHA256))
 	@if [ ! -x "$(LUA_DIFF_LUA51)" ]; then \
 		rm -rf dist/lua-$(LUA_DIFF_LUA51_VERSION); \
-		tar -xzf dist/$(LUA_DIFF_LUA51_TARBALL) -C dist; \
+		tar -xzf dist/$(LUA_DIFF_LUA51_TARBALL) -C dist || exit 1; \
 		$(MAKE) -C dist/lua-$(LUA_DIFF_LUA51_VERSION) posix; \
 	fi
 	$(call lua_diff_fetch,$(LUA_DIFF_LUA53_TARBALL),$(LUA_DIFF_LUA53_URL),$(LUA_DIFF_LUA53_SHA256))
 	@if [ ! -x "$(LUA_DIFF_LUA53)" ]; then \
 		rm -rf dist/lua-$(LUA_DIFF_LUA53_VERSION); \
-		tar -xzf dist/$(LUA_DIFF_LUA53_TARBALL) -C dist; \
+		tar -xzf dist/$(LUA_DIFF_LUA53_TARBALL) -C dist || exit 1; \
 		$(MAKE) -C dist/lua-$(LUA_DIFF_LUA53_VERSION) posix; \
 	fi
 	$(call lua_diff_fetch,$(LUA_DIFF_LUA54_TARBALL),$(LUA_DIFF_LUA54_URL),$(LUA_DIFF_LUA54_SHA256))
 	@if [ ! -x "$(LUA_DIFF_LUA54)" ]; then \
 		rm -rf dist/lua-$(LUA_DIFF_LUA54_VERSION); \
-		tar -xzf dist/$(LUA_DIFF_LUA54_TARBALL) -C dist; \
+		tar -xzf dist/$(LUA_DIFF_LUA54_TARBALL) -C dist || exit 1; \
 		$(MAKE) -C dist/lua-$(LUA_DIFF_LUA54_VERSION) linux; \
 	fi
 	$(call lua_diff_fetch,$(LUA_DIFF_JIT_TARBALL),$(LUA_DIFF_JIT_URL),$(LUA_DIFF_JIT_SHA256))
 	@if [ ! -x "$(LUA_DIFF_LUAJIT)" ]; then \
 		rm -rf dist/LuaJIT-$(LUA_DIFF_JIT_COMMIT); \
-		tar -xzf dist/$(LUA_DIFF_JIT_TARBALL) -C dist; \
+		tar -xzf dist/$(LUA_DIFF_JIT_TARBALL) -C dist || exit 1; \
 		$(MAKE) -C dist/LuaJIT-$(LUA_DIFF_JIT_COMMIT); \
 	fi
 	@for tool in "$(LUA_DIFF_LUA51)" "$(LUA_DIFF_LUA53)" "$(LUA_DIFF_LUA54)" "$(LUA_DIFF_LUAJIT)"; do \

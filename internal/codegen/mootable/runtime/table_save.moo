@@ -843,6 +843,50 @@ local function at_default(fd: any, val: any): boolean
 	return V.sameStorage(fd, val, fd.def)
 end
 
+-- A COUNTED ARRAY IS BORN AT ITS MINIMUM (docs/SPEC-TABLES.md §3.3 and the
+-- §22.2 [M..N]T row, the Go engine's encodeArray): a plain counted field (not
+-- optional, not required) holding exactly its minimum count of elements, each
+-- at its default (a float by its bits; a table by a body that is its
+-- terminator alone), stays off the wire.
+local function born_elides(c: any, fd: any, holder: any, val: any, n: number): boolean
+	local min = fd.min or 0
+	if min <= 0 or n ~= min or fd.required == true or fd.present ~= nil or fd.ek == 12 then
+		return false
+	end
+	local e = fd.e
+	if e.s == "tab" then
+		local m = mark(c.ids)
+		local all = true
+		for i = 1, n do
+			local x = elem_at(val, i)
+			if type(x) ~= "table" then
+				all = false
+				break
+			end
+			local b = body_of(c, St.lookup(e.t), x)
+			if b == nil or b.n > 1 then
+				all = false
+			end
+			rollback(c.ids, m)
+			if not all then
+				break
+			end
+		end
+		return all
+	end
+	local lens = holder[fd.slot .. "Length"]
+	for i = 1, n do
+		local len: number? = nil
+		if type(lens) == "table" then
+			len = lens[i]
+		end
+		if not elem_is_default(e, elem_at(val, i), len) then
+			return false
+		end
+	end
+	return true
+end
+
 -- ONE FIELD, elided at its declared default (§3): a pointer and a blob at
 -- null, a scalar at its default, a string at its default bytes, an array when
 -- empty (a fixed one when every element is at its default; a fixed array of
@@ -992,6 +1036,9 @@ local function write_field(c: any, fd: any, w: any, v: any): boolean
 			if n == 0 and not required then
 				return true
 			end
+			if fd.array == "counted" and born_elides(c, fd, v, val, n) then
+				return true
+			end
 			return write_array(c, fd, w, v, val, n)
 		end
 		if fd.e.s == "tab" then
@@ -1119,6 +1166,11 @@ local function walk(d: any, v: any, count: boolean): (any, any?)
 		w_sub(w, p)
 	end
 	w_u8(w, 0)
+	-- THE ID TABLE'S MAXIMUM (docs/SPEC-TABLES.md §3): every reader refuses more
+	-- than 4096 entries, so the writer refuses a value that needs more
+	if #c.ids.list > 4096 then
+		return nil, { name = "id_table_over_bound" }
+	end
 	-- THE ID TABLE IS THE LAST THING IN THE FILE: the entries, then the count
 	for _, id in c.ids.list do
 		w_str(w, id)
