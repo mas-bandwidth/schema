@@ -12,9 +12,7 @@ package main
 
 func init() {
 	sabotages["fixed-form-java-text-length"] = []edit{{
-		old: "g.pf(\"%sTableFixed.put32(%s, %s + %d, %s.%sLength);\\n\", ind, buf, at, base, val, name)\n" +
-			"\t\tg.pf(\"%sSystem.arraycopy(",
-		new: "g.pf(\"%sTableFixed.put32(%s, %s + %d, %s.%sLength + 1);\\n\", ind, buf, at, base, val, name) // SABOTAGED: a text length one too high\n" +
-			"\t\tg.pf(\"%sSystem.arraycopy(",
+		old: "g.pf(\"%sTableFixed.put32(%s, %s + %d, %s.%sLength);\\n\", ind, buf, at, base, val, name)",
+		new: "g.pf(\"%sTableFixed.put32(%s, %s + %d, %s.%sLength + 1);\\n\", ind, buf, at, base, val, name) // SABOTAGED: a text length one too high",
 	}}
 }
