@@ -201,7 +201,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"save_elem_is_default", "save_element", "save_enum_ref", "save_is_default", "save_keyed",
 		"save_live_count", "save_raw_width", "save_reasoned", "save_walked", "save_wide_raw", "sg_add_blob",
 		"sg_add_rec", "sg_blob_index", "sg_clear", "sg_map_order", "sg_rec_index", "sg_visit_edges", "sg_visit_union",
-		"sg_visit_value", "sg_walk", "sid_mark", "sid_ref", "sid_rollback", "so_bytes", "so_grow", "so_leb", "so_take",
+		"sg_visit_value", "sg_walk", "sid_full", "sid_mark", "sid_ref", "sid_rollback", "so_bytes", "so_grow", "so_leb", "so_take",
 		"so_u32", "so_u64", "so_u8", "wc_body", "wc_slot", "wc_value",
 	},
 	"schema_tables.lobster": {

@@ -456,13 +456,16 @@ public final class TableVariable {
                 }
             }
             if (count >= entries.length) {
-                if (!growable || entries.length >= 65536) {
+                // THE ID TABLE'S MAXIMUM (docs/SPEC-TABLES.md §3): every reader
+                // refuses more than 4096 entries, so the writer refuses to grow
+                // past it and never writes a file its readers refuse.
+                if (!growable || entries.length >= 4096) {
                     overflow = true;
                     return 0;
                 }
                 entries =
                         java.util.Arrays.copyOf(
-                                entries, java.lang.Math.min(65536, entries.length * 2));
+                                entries, java.lang.Math.min(4096, entries.length * 2));
             }
             entries[count++] = id;
             return count;

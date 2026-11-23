@@ -3,13 +3,14 @@
 #
 #   cpp, c, cs, unity, go, rust, java, dart, elixir
 #
-# Each language exposes three independent sub-targets sized for ci-fast.yml's
+# Each language exposes four independent sub-targets sized for ci-fast.yml's
 # strict 2-minute job ceiling (cold-verified <= 85s), plus one umbrella target:
 #
 #   make verify-<lang>-conformance   all 21 table surfaces (--claims) + packet wire + 128-bit/UTF-8/defaults/finite
 #   make verify-<lang>-bench         packet & table 64-variant bench gates + 9-surface cards conformance + UnitView/descriptors + packet write/end contracts
 #   make verify-<lang>-fuzz          deterministic wire-fuzz smoke (plain + --retain, 6-step shrinking reuse + multi-body batches + all 64 roots)
-#   make verify-<lang>               runs all three in a single parallel Make DAG
+#   make verify-<lang>-tablegen      generated-schema table round trips (make/verify-widen-18.mk)
+#   make verify-<lang>               runs all four in a single parallel Make DAG
 
 VERIFY_COMPILED_LEGS := cpp c cs unity go rust java dart elixir
 VERIFY_JOBS          ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
@@ -28,7 +29,33 @@ cards-go-conformance: cards-conformance-go
 # Explicit per-leg wire-fuzz and json-fuzz build prerequisites (make/verify-compiled.mk
 # sorts before make/wire-fuzz-release.mk in the Makefile's wildcard include, so target
 # prerequisites must not rely on WFR_DEPS_* being defined at parse time).
-VERIFY_FUZZ_DEPS_cpp    := build/wire-fuzz-cpp build/conformance-cpp
+# Build both C++ fuzz binaries once from a single parallel compile pass:
+# build/conformance-cpp and build/wire-fuzz-cpp in Makefile each invoke
+# $(MAKE) $(CONFORMANCE_OBJECTS), so listing both as parallel prerequisites of
+# _verify-cpp-fuzz compiled all 62 generated table objects twice simultaneously
+# (racing on identical .o outputs) and delayed the two slowest main TUs until
+# after the object pass finished. Compiling both main TUs first alongside one
+# shared $(CONFORMANCE_OBJECTS) pass eliminates the duplicate work and file race
+# and overlaps the main TUs with the generated objects.
+build/conformance-cpp-objs/_main/conformance_main.o: test/conformance/cpp/main.cpp build/tables-generated/.stamp $(wildcard $(SERIALIZE)/*.h)
+	@mkdir -p $(@D)
+	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) -c $< -o $@
+
+.PHONY: _verify-cpp-fuzz-bins
+_verify-cpp-fuzz-bins: build/tables-generated/.stamp test/conformance/cpp/main.cpp test/tables/wire_fuzz_main.cpp
+	@mkdir -p build
+	@$(MAKE) --no-print-directory \
+		build/conformance-cpp-objs/_main/conformance_main.o \
+		build/conformance-cpp-objs/_main/wire_fuzz_main.o \
+		$(CONFORMANCE_OBJECTS)
+	@set -e; \
+		$(CXX) $(TABLES_CXXFLAGS) build/conformance-cpp-objs/_main/conformance_main.o \
+			$(CONFORMANCE_OBJECTS) -o build/conformance-cpp & p1=$$!; \
+		$(CXX) $(TABLES_CXXFLAGS) build/conformance-cpp-objs/_main/wire_fuzz_main.o \
+			$(CONFORMANCE_OBJECTS) -o build/wire-fuzz-cpp & p2=$$!; \
+		wait $$p1; wait $$p2
+
+VERIFY_FUZZ_DEPS_cpp    := _verify-cpp-fuzz-bins
 VERIFY_FUZZ_DEPS_c      := build/wire-fuzz-c build/conformance-c tables-c-view
 VERIFY_FUZZ_DEPS_cs     := toolchain-cs build-conformance-cs tables-cs-view packet-end-cs packet-write-cfloat-cs packet-write-text-cs
 VERIFY_FUZZ_DEPS_unity  := toolchain-unity build/conformance-unity/.stamp
@@ -41,25 +68,38 @@ VERIFY_FUZZ_DEPS_elixir := toolchain-elixir build/elixir-tables-ebin/.stamp buil
 VERIFY_FUZZ_EXTRA_go    := SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/golang
 
 define verify_compiled_fuzz_rules
-.PHONY: _verify-$(1)-fuzz verify-$(1)-fuzz
-_verify-$(1)-fuzz: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
-	@mkdir -p build/verify
+.PHONY: _verify-$(1)-fuzz _verify-$(1)-fuzz-extra _verify-$(1)-fuzz-plain _verify-$(1)-fuzz-retain _verify-$(1)-fuzz-json _verify-$(1)-fuzz-message verify-$(1)-fuzz
+_verify-$(1)-fuzz-extra: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
 	$$(if $$(VERIFY_FUZZ_EXTRA_$(1)),$$(VERIFY_FUZZ_EXTRA_$(1)),@:)
+
+_verify-$(1)-fuzz-plain: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
+	@mkdir -p build/verify
 	$$(WFR_ENV_$(1)) ./build/conformance-harness wire-fuzz \
 		--driver "$$(WFR_DRIVER_$(1))" $$(WFR_FLAGS_$(1)) \
 		--seed $$(VERIFY_FUZZ_SEED) --n $$(VERIFY_FUZZ_RANDOM_N) --max-mutants $$(VERIFY_FUZZ_MAX) \
 		--failed build/verify/fuzz-$(1)-plain.bin
+
+_verify-$(1)-fuzz-retain: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
+	@mkdir -p build/verify
 	$$(WFR_ENV_$(1)) ./build/conformance-harness wire-fuzz --retain \
 		--driver "$$(WFR_DRIVER_$(1))" $$(WFR_FLAGS_$(1)) \
 		--seed $$(VERIFY_FUZZ_SEED) --n $$(VERIFY_FUZZ_RANDOM_N) --max-mutants $$(VERIFY_FUZZ_MAX) \
 		--failed build/verify/fuzz-$(1)-retain.bin
+
+_verify-$(1)-fuzz-json: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
+	@mkdir -p build/verify
 	./build/conformance-harness json-fuzz --only $(1) \
 		--seed $$(VERIFY_FUZZ_SEED) --n $$(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-$(1)
+
+_verify-$(1)-fuzz-message: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
+	@mkdir -p build/verify
 	DOTNET="$$(DOTNET)" JAVA="$$(JAVA)" BEAM_PATH="$$(BEAM_PATH)" $$(WFR_ENV_$(1)) \
 		./build/conformance-harness message-fuzz --only $(1) \
 		--seed $$(VERIFY_FUZZ_SEED) --n $$(VERIFY_MESSAGE_FUZZ_N) \
 		--failed build/verify/message-fuzz-$(1)
+
+_verify-$(1)-fuzz: _verify-$(1)-fuzz-extra _verify-$(1)-fuzz-plain _verify-$(1)-fuzz-retain _verify-$(1)-fuzz-json _verify-$(1)-fuzz-message
 
 verify-$(1)-fuzz:
 	@$$(MAKE) $$(VERIFY_JFLAG) --no-print-directory _verify-$(1)-fuzz
@@ -171,11 +211,20 @@ _verify-rust-conformance: build/conformance-harness build/conformance-rust gener
 		./build/conformance-harness run --only rust --claims --work build/verify/conformance-rust --results $(VERIFY_RESULTS_DIR)/rust.json & p3=$$!; \
 		wait $$p1; wait $$p2; wait $$p3
 
-_verify-rust-bench: bin/schema generated/bench/rust/.stamp generated/bench/paired/rust/.stamp packet-defaults-rust packet-end-rust packet-write-cfloat-rust packet-write-text-rust cards-rust-conformance tables-rust-view
+# Run the Rust quick bench (--round 0, matching _verify-go-bench-quick) and
+# paired gate as parallel prerequisites beside packet-*, cards, and view gates
+# instead of serially after all six prerequisites finish.
+.PHONY: _verify-rust-bench-quick _verify-rust-bench-paired
+_verify-rust-bench-quick: generated/bench/rust/.stamp
 	@mkdir -p build/verify build/bench && rm -f build/verify/bench-rust.csv
-	PATH="$(RUSTUP_BIN):$$PATH" bench/run.sh --quick --bare --only rust --out build/verify/bench-rust.csv
+	PATH="$(RUSTUP_BIN):$$PATH" bench/run.sh --quick --round 0 --bare --only rust --out build/verify/bench-rust.csv
 	@test -s build/verify/bench-rust.csv
+
+_verify-rust-bench-paired: generated/bench/paired/rust/.stamp
 	PATH="$(RUSTUP_BIN):$$PATH" go run ./bench/paired -mode gate -langs rust
+
+_verify-rust-bench: bin/schema generated/bench/rust/.stamp generated/bench/paired/rust/.stamp packet-defaults-rust packet-end-rust packet-write-cfloat-rust packet-write-text-rust cards-rust-conformance tables-rust-view _verify-rust-bench-quick _verify-rust-bench-paired
+	@test -s build/verify/bench-rust.csv
 
 # ---- java ----
 
@@ -209,10 +258,14 @@ _verify-dart-bench: toolchain-dart bin/schema generated/bench/dart/.stamp genera
 
 # ---- elixir ----
 
-.PHONY: _verify-elixir-conformance _verify-elixir-bench
-_verify-elixir-conformance: build/mustrun toolchain-elixir build/conformance-harness build-conformance-elixir generated/elixir/.stamp generated/elixir-ludicrous/.stamp packet-defaults-elixir packet-utf8-elixir packet-finite-elixir
+.PHONY: _verify-elixir-conformance _verify-elixir-bench _verify-elixir-packet-main _verify-elixir-packet-ludicrous
+_verify-elixir-packet-main: build/mustrun toolchain-elixir generated/elixir/.stamp
 	cd test/elixir && "$(CURDIR)/$(MUSTRUN)" -name test-elixir-main -count $(ELIXIR_MAIN_CHECKS) -- $(ELIXIR) main.exs
+
+_verify-elixir-packet-ludicrous: build/mustrun toolchain-elixir generated/elixir-ludicrous/.stamp
 	cd test/elixir-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-elixir-ludicrous -count $(ELIXIR_LUDICROUS_CHECKS) -- $(ELIXIR) main.exs
+
+_verify-elixir-conformance: build/conformance-harness build-conformance-elixir _verify-elixir-packet-main _verify-elixir-packet-ludicrous packet-defaults-elixir packet-utf8-elixir packet-finite-elixir
 	@rm -rf build/verify/conformance-elixir && mkdir -p build/verify/conformance-elixir $(VERIFY_RESULTS_DIR)
 	BEAM_PATH="$(BEAM_PATH)" ELIXIR_TABLES_EBIN="$(CURDIR)/build/elixir-tables-ebin" ./build/conformance-harness run --only elixir --claims --work build/verify/conformance-elixir --results $(VERIFY_RESULTS_DIR)/elixir.json
 

@@ -1416,7 +1416,7 @@ internal static partial class TableWire
         }
         if (!terminated || versions != 1 || vocabularies != 1) { Damage(report); return Finish(report, Verdict.Damaged); }
         // "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3): refused
-        // by name, the peer's build version kept, no vocabulary set, never damage.
+        // by name, the writer's build version kept, no vocabulary set, never damage.
         if (v.Strict && v.BuildVersion != tableOwnVocabulary.BuildVersion)
         {
             report.BuildVersionRemote = v.BuildVersion; report.BuildVersionOwn = tableOwnVocabulary.BuildVersion;
@@ -2325,10 +2325,12 @@ internal static partial class TableWire
         {
             int n = f.GetCount(value);
             if (f.DefaultBytes != null) { return n != f.DefaultBytes.Length || !f.GetBuffer(value).AsSpan(0, n).SequenceEqual(f.DefaultBytes); }
+            // BORN AT ITS MIN: Min default elements elide, a table element at its
+            // default when its body is its terminator alone (Empty), as the
+            // reference judges it (internal/tablewire encodeArray)
             if (f.ArrayMin > 0)
             {
                 if (n != f.ArrayMin) { return true; }
-                if (f.Kind == 13 && f.KeyId == null) { return true; }
                 for (int i = 0; i < n; i++) { if (!DefaultElement(value, f, i)) { return true; } }
                 return false;
             }

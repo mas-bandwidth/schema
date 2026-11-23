@@ -15,7 +15,7 @@ func emitTableSurfaces(b *strings.Builder, u *ir.Unit, st *ir.Struct, msgStructs
 	qual := typeRefInSchema(pkg, st.Name)
 	fixed := isFixedStruct(u, st)
 	variable := ir.VariableTables(u)[st.Name]
-	idCap := ir.TableWireIdCapacity(u)
+	idCap := min(ir.TableWireIdCapacity(u), ir.TableWireIdTableBound)
 
 	if st.CarriesForm("wire") {
 		if variable {

@@ -282,7 +282,7 @@ struct TableReport
     // from a caller's report that already held one.
     int32_t non_finite_floats = 0;
     // THE STRICT ANNOUNCEMENT'S TWO BUILD VERSIONS (docs/SPEC-TABLES.md §3.3):
-    // on reason build_version_mismatch, the peer's announced build version
+    // on reason build_version_mismatch, the writer's announced build version
     // (remote) and this unit's own (own). Zero on every other path.
     uint64_t build_version_remote = 0;
     uint64_t build_version_own = 0;
@@ -673,6 +673,9 @@ struct TableIds
 {
     static const int32_t kCapacity = 60;
     static const int32_t kBuckets = 128;
+    // THE WRITER'S MAXIMUM (docs/SPEC-TABLES.md §3): no reader accepts an id
+    // table past kTableProbeBound entries, so the 4097th id overflows.
+    static const int32_t kLimit = kCapacity < 4096 ? kCapacity : 4096;
 
     uint64_t ids[kCapacity];
     int32_t chain[kCapacity];
@@ -716,7 +719,7 @@ struct TableIds
         {
             if ( ids[i] == id ) { return uint64_t( i ) + 1; }
         }
-        if ( count >= kCapacity )
+        if ( count >= kLimit )
         {
             overflow = true;
             return 1;
@@ -2951,7 +2954,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
         return false;
     }
     // "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3): refused
-    // by name, the peer's build version kept, no vocabulary set, never damage.
+    // by name, the writer's build version kept, no vocabulary set, never damage.
     // The unit's own build version is spelled here as the literal BuildVersion
     // holds, because the cook runtime that declares BuildVersion follows this one.
     if ( vocabulary.strict && version != 0x210f4f7c70e9078dull )
@@ -8075,7 +8078,11 @@ struct TableRetainIds
             overflow = true;
             return 1;
         }
-        if ( known.count != before ) { known_slot[(int32_t) k - 1] = ++count; }
+        if ( known.count != before )
+        {
+            if ( count >= kTableProbeBound ) { known.truncate( before ); overflow = true; return 1; }
+            known_slot[(int32_t) k - 1] = ++count;
+        }
         return (uint64_t) known_slot[(int32_t) k - 1];
     }
 
@@ -8108,7 +8115,7 @@ struct TableRetainIds
         {
             if ( retain->ids[i].id == id ) { return (uint64_t) retain->ids[i].slot; }
         }
-        if ( retain->id_used >= retain->id_capacity )
+        if ( retain->id_used >= retain->id_capacity || count >= kTableProbeBound )
         {
             lost = true;
             return 0;
@@ -11290,7 +11297,7 @@ inline void DeckReset( Deck & value )
     {
         RowReset( value.hands[i] );
     }
-    value.hands_count = 0;
+    value.hands_count = 0; // born at Min (docs/SPEC.md §4.2)
     value.past = 0;
 }
 
@@ -14098,7 +14105,8 @@ inline int64_t DeckMeasureBody( const Ctx & ctx, const TableNumbering & numberin
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.hands_count >= 0 && value.hands_count <= 3 ); // storage invariant, debug only (§5.1)
-    if ( value.hands_count > 0 )
+    bool rides_hands = value.hands_count > 0;
+    if ( rides_hands )
     {
         const uint64_t ref_hands = ids.ref_at( 30, 0x81b46a69304ee2c9ull );
         int64_t body_hands = 0;
@@ -14121,7 +14129,8 @@ inline bool DeckSaveBodyFields( const Ctx & ctx, const TableNumbering & numberin
     (void) ctx;
     (void) numbering;
     schema_assert( value.hands_count >= 0 && value.hands_count <= 3 ); // storage invariant, debug only (§5.1)
-    if ( value.hands_count > 0 )
+    bool rides_hands = value.hands_count > 0;
+    if ( rides_hands )
     {
         const uint64_t ref_hands = ids.ref_at( 30, 0x81b46a69304ee2c9ull );
         int64_t body_hands = 0;
@@ -23530,7 +23539,8 @@ inline int64_t DeckMeasureBodyRetain( const Ctx & ctx, const TableNumbering & nu
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
     schema_assert( value.hands_count >= 0 && value.hands_count <= 3 ); // storage invariant, debug only (§5.1)
-    if ( value.hands_count > 0 )
+    bool rides_hands = value.hands_count > 0;
+    if ( rides_hands )
     {
         const uint64_t ref_hands = ids.ref_at( 30, 0x81b46a69304ee2c9ull );
         int64_t body_hands = 0;
@@ -23554,7 +23564,8 @@ inline bool DeckSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & nu
     (void) ctx;
     (void) numbering;
     schema_assert( value.hands_count >= 0 && value.hands_count <= 3 ); // storage invariant, debug only (§5.1)
-    if ( value.hands_count > 0 )
+    bool rides_hands = value.hands_count > 0;
+    if ( rides_hands )
     {
         const uint64_t ref_hands = ids.ref_at( 30, 0x81b46a69304ee2c9ull );
         int64_t body_hands = 0;

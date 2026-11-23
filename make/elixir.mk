@@ -46,9 +46,20 @@ toolchain-elixir:
 	@$(call toolchain_probe,elixir,ELIXIR,$(ELIXIR),PATH="$(BEAM_PATH):$$PATH" command -v $(lastword $(ELIXIR)))
 	@$(call toolchain_probe,elixir,ELIXIRC,$(ELIXIRC),PATH="$(BEAM_PATH):$$PATH" command -v $(lastword $(ELIXIRC)))
 	@$(call toolchain_probe,elixir,MIX,$(MIX),PATH="$(BEAM_PATH):$$PATH" command -v $(lastword $(MIX)))
-build/packet-defaults/elixir/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema make/elixir.mk
+build/packet-defaults/elixir/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema $(wildcard test/conformance/packet/testdata/constant-defaults/*/Defaults.schema) make/elixir.mk
 	./bin/schema generate --lang elixir --out build/packet-defaults/elixir/defaults test/packet-defaults/Defaults.schema
 	./bin/schema generate --lang elixir --out build/packet-defaults/elixir/plain test/packet-defaults/Plain.schema
+	@# Both constant schemas declare package arithmetic: generate each on its own,
+	@# then rename its modules after the pin so one VM loads both.
+	@for pin in hexadecimal-addition unsigned-subtraction; do \
+		if [ $$pin = hexadecimal-addition ]; then ns=ArithmeticHexadecimalAddition; else ns=ArithmeticUnsignedSubtraction; fi; \
+		./bin/schema generate --lang elixir --out build/packet-defaults/elixir-raw/$$pin test/conformance/packet/testdata/constant-defaults/$$pin/Defaults.schema || exit 1; \
+		mkdir -p build/packet-defaults/elixir/constant-$$pin || exit 1; \
+		for f in build/packet-defaults/elixir-raw/$$pin/*.ex; do \
+			sed "s/Arithmetic\./$$ns./g" $$f > build/packet-defaults/elixir/constant-$$pin/$${f##*/} || exit 1; \
+		done; \
+		grep -q "defmodule $$ns.Value" build/packet-defaults/elixir/constant-$$pin/Defaults.ex || { echo "rename to $$ns failed"; exit 1; }; \
+	done
 	@touch $@
 
 .PHONY: packet-defaults-elixir packet-defaults-elixir-negative-control
@@ -141,12 +152,20 @@ build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk testdata/conform
 	# the stamp formats nothing: tables-elixir-clean checks the raw output.
 	@touch $@
 
+ELIXIR_TABLE_UNIT_NAMES = $(sort $(foreach u,$(ELIXIR_TABLE_UNITS),$(firstword $(subst :, ,$(u)))))
 ELIXIR_TABLE_UNIT_SOURCES = $(foreach u,$(sort $(ELIXIR_TABLE_UNITS)),build/tables-generated-elixir/$(firstword $(subst :, ,$(u)))/*.ex)
 
+# Compile each generated unit (and driver_impl.ex) in parallel with bounded BEAM
+# schedulers (+S 2:2 per VM, nproc/2 workers): every unit has a distinct package
+# namespace, so splitting avoids single-VM ETS/scheduler lock contention while
+# preserving full ELIXIRC_STRICT warning-as-error checks and byte-identical ebin.
 build/elixir-tables-ebin/.stamp: build/tables-generated-elixir/.stamp test/conformance/elixir/driver_impl.ex
 	@rm -rf build/elixir-tables-ebin && mkdir -p build/elixir-tables-ebin
-	$(ELIXIRC_STRICT) -o build/elixir-tables-ebin $(ELIXIR_TABLE_UNIT_SOURCES) \
-		test/conformance/elixir/driver_impl.ex
+	@cpus=$$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4); \
+	jobs=$$(( cpus / 2 )); if [ "$$jobs" -lt 2 ]; then jobs=2; fi; \
+	printf '%s\n' $(ELIXIR_TABLE_UNIT_NAMES) __driver_impl__ | \
+		ELIXIR_ERL_OPTIONS="$${ELIXIR_ERL_OPTIONS:+$$ELIXIR_ERL_OPTIONS }+S 2:2" \
+		xargs -P "$$jobs" -n 1 sh -c 'if [ "$$1" = "__driver_impl__" ]; then $(ELIXIRC_STRICT) -o build/elixir-tables-ebin test/conformance/elixir/driver_impl.ex || exit 255; else $(ELIXIRC_STRICT) -o build/elixir-tables-ebin build/tables-generated-elixir/"$$1"/*.ex || exit 255; fi' _
 	@touch $@
 
 # THE STANDALONE GATE, Elixir — the M4b twin of the gates above

@@ -51,24 +51,26 @@ defmodule PacketDefaultTest do
     }
   end
 
-  def pin(dir, name, value, want, type) do
+  def pin(dir, name, value, want, type, mod \\ D) do
+    # every pin read is recorded; run/1 fails on a .bin never read
+    Process.put(:pins_read, [name | Process.get(:pins_read, [])])
     bytes = File.read!(Path.join(dir, name <> ".bin"))
     bits = File.read!(Path.join(dir, name <> ".bits")) |> String.trim() |> String.to_integer()
-    wire = apply(D, String.to_atom("write_" <> type <> "!"), [value])
+    wire = apply(mod, String.to_atom("write_" <> type <> "!"), [value])
     check(wire == bytes, name <> " C++ bytes")
 
     check(
-      bits_of(wire, &apply(D, String.to_atom("read_" <> type <> "_bits"), [&1, &2])) == bits,
+      bits_of(wire, &apply(mod, String.to_atom("read_" <> type <> "_bits"), [&1, &2])) == bits,
       name <> " C++ bits"
     )
 
     check(
-      apply(D, String.to_atom("read_" <> type), [bytes, bits]) == {:ok, want},
+      apply(mod, String.to_atom("read_" <> type), [bytes, bits]) == {:ok, want},
       name <> " exact-bit read values"
     )
 
     check(
-      apply(D, String.to_atom("read_" <> type), [bytes, bits - 1]) == :error,
+      apply(mod, String.to_atom("read_" <> type), [bytes, bits - 1]) == :error,
       name <> " one-bit-short refusal"
     )
   end
@@ -168,8 +170,26 @@ defmodule PacketDefaultTest do
       )
     end
 
-    IO.puts(
-      "packet defaults Elixir: constructors, eight C++ goldens and immutable read values OK"
-    )
+    # The constant-default pins: a fresh Value (defaults from constants) writes the
+    # pinned bytes and bits and reads back. Both schemas declare package
+    # arithmetic, so the make recipe renames each one's modules after its pin.
+    for {name, ns} <- [
+          {"hexadecimal-addition", ArithmeticHexadecimalAddition},
+          {"unsigned-subtraction", ArithmeticUnsignedSubtraction}
+        ] do
+      fresh = struct(Module.concat(ns, Value))
+      pin(dir, name, fresh, fresh, "value", Module.concat(ns, Defaults))
+    end
+
+    pins = dir |> File.ls!() |> Enum.filter(&String.ends_with?(&1, ".bin"))
+    read = Process.get(:pins_read, [])
+
+    for file <- pins do
+      check(Path.rootname(file) in read, "pin " <> file <> " was never read")
+    end
+
+    check(length(pins) == 10 and length(Enum.uniq(read)) == 10, "ten pins read")
+
+    IO.puts("packet defaults Elixir: constructors, ten C++ goldens and immutable read values OK")
   end
 end

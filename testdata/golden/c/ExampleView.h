@@ -109,7 +109,7 @@ typedef struct example_table_report_t
        held one. */
     int32_t non_finite_floats;
     /* THE STRICT ANNOUNCEMENT'S TWO BUILD VERSIONS (docs/SPEC-TABLES.md §3.3):
-       on reason SCHEMA_TABLE_BUILD_VERSION_MISMATCH, the peer's announced
+       on reason SCHEMA_TABLE_BUILD_VERSION_MISMATCH, the writer's announced
        build version (remote) and this unit's own (own). Zero on every other
        path. */
     uint64_t build_version_remote, build_version_own;
@@ -1053,7 +1053,7 @@ static SCHEMA_UNUSED void example_probe_sample_reset( example_probe_sample_t * v
     value->target_id = 0;
     value->idle_ticks = 0;
     memset( value->samples, 0, sizeof( value->samples ) );
-    value->samples_count = 0;
+    value->samples_count = 1;
 }
 
 static SCHEMA_UNUSED void schema_example_probe_sample_reset_raw_( void * storage ) { example_probe_sample_reset( (example_probe_sample_t *) storage ); }

@@ -40,7 +40,7 @@ type spEvoRow struct {
 	root string
 	// retire marks Old live in the writer's Mood; bound narrows Moods.row;
 	// countB narrows CountedMin.few's maximum
-	live  bool
+	live bool
 	// older drops the root's last field from the writer: a build from before
 	// it was appended, whose layout the reader compiles a plan for (a scalar
 	// root has no array bound to narrow)
@@ -119,7 +119,7 @@ func spEvoBytes(m *Manifest, row spEvoRow) ([]byte, error) {
 		}
 		lb, err := tablewire.Encode(lw, lv)
 		if err != nil || len(lb) != len(body) {
-			return nil, fmt.Errorf("longer write: len %d vs %d err %v", len(lb), len(body), err)
+			return nil, fmt.Errorf("longer write: len %d vs %d err %w", len(lb), len(body), err)
 		}
 		pos := -1
 		for i := range body {

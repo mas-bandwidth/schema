@@ -122,7 +122,7 @@ typedef struct tabledemo_table_report_t
        held one. */
     int32_t non_finite_floats;
     /* THE STRICT ANNOUNCEMENT'S TWO BUILD VERSIONS (docs/SPEC-TABLES.md §3.3):
-       on reason SCHEMA_TABLE_BUILD_VERSION_MISMATCH, the peer's announced
+       on reason SCHEMA_TABLE_BUILD_VERSION_MISMATCH, the writer's announced
        build version (remote) and this unit's own (own). Zero on every other
        path. */
     uint64_t build_version_remote, build_version_own;
@@ -377,7 +377,7 @@ static SCHEMA_UNUSED uint64_t tabledemo_table_writer_id( tabledemo_table_writer_
     /* AN OVERFLOWED TABLE APPENDS NOTHING and spells no reference: 0 names no
        id, so a caller can tell the miss that took an entry from the one that
        did not. */
-    if(v->count==168) { w->overflow=1; return 0; }
+    if(v->count>=168) { w->overflow=1; return 0; }
     v->ids[v->count]=id; v->positions[v->count]=slot; v->ordinal_of[v->count]=-1; v->count++;
     v->slots[slot]=(uint32_t)v->count; tabledemo_table_writer_leb(w,(uint64_t)v->count);
     return (uint64_t)v->count;
@@ -4824,8 +4824,8 @@ static SCHEMA_UNUSED int tabledemo_table_announce_once(tabledemo_table_vocabular
  }
  if(seen_version!=1||seen_words!=1||r.offset!=r.size||next_ref-1!=r.id_count)goto damaged;
  /* "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3): refused by
-    name, the peer's build version kept, no vocabulary set, never damage. The
-    report carries both versions, the peer's (remote) and this unit's (own). */
+    name, the writer's build version kept, no vocabulary set, never damage. The
+    report carries both versions, the writer's (remote) and this unit's (own). */
  if(v->strict && v->build_version!=SCHEMA_TABLEDEMO_BUILD_VERSION_VALUE){
   report->refused=1;
   report->reason=SCHEMA_TABLEDEMO_TABLE_BUILD_VERSION_MISMATCH;
@@ -5362,7 +5362,7 @@ static SCHEMA_UNUSED uint64_t tabledemo_table_retain_ref(tabledemo_table_retain_
   if(!r){ids->lost=1;
   return 0;
   }for(i=0;i<r->id_used;i++)if(r->ids[i].id==id)return (uint64_t)r->ids[i].slot;
-  if(!r->ids||r->id_used>=r->id_capacity||ids->count==INT32_MAX){ids->lost=1;
+  if(!r->ids||r->id_used>=r->id_capacity||ids->count>=4096){ids->lost=1;
   return 0;
   }
   r->ids[r->id_used].id=id;
@@ -5370,7 +5370,7 @@ static SCHEMA_UNUSED uint64_t tabledemo_table_retain_ref(tabledemo_table_retain_
   return (uint64_t)ids->count;
  }
  for(i=0;i<v->count;i++)if(v->ids[i]==id)return (uint64_t)ids->slots[i];
- if(v->count==(int)(sizeof(v->ids)/sizeof(v->ids[0]))||ids->count==INT32_MAX){*overflow=1;
+ if(v->count==(int)(sizeof(v->ids)/sizeof(v->ids[0]))||ids->count>=4096){*overflow=1;
  return 0;
  }
  v->ids[v->count]=id;
@@ -5922,7 +5922,7 @@ typedef struct tabledemo_root_config_t {
    initializers, so the declared defaults live in counted_min_reset and nowhere
    else — one definition of what a default is (docs/SPEC-TABLES.md) */
 typedef struct tabledemo_counted_min_t {
-    uint32_t few[5]; /* used count beside it; count in [0, 5] */
+    uint32_t few[5]; /* used count beside it; count in [2, 5] */
     int32_t few_count;
 } tabledemo_counted_min_t;
 
@@ -6044,7 +6044,7 @@ static SCHEMA_UNUSED void schema_tabledemo_root_config_reset_raw_( void * storag
 static SCHEMA_UNUSED void tabledemo_counted_min_reset( tabledemo_counted_min_t * value )
 {
     memset( value->few, 0, sizeof( value->few ) );
-    value->few_count = 0;
+    value->few_count = 2;
 }
 
 static SCHEMA_UNUSED void schema_tabledemo_counted_min_reset_raw_( void * storage ) { tabledemo_counted_min_reset( (tabledemo_counted_min_t *) storage ); }
@@ -7530,7 +7530,7 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_save_message_body(tabledemo_ta
  }
  { /* grades */
  schema_assert( 0 <= value->grades_count && value->grades_count <= 4 );
- if(value->grades_count>0) {
+ if(value->grades_count > 0) {
   if(w->check_default) {w->bits=TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
@@ -7622,7 +7622,7 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_save_message_body(tabledemo_ta
  }
  { /* attachments */
  schema_assert( 0 <= value->attachments_count && value->attachments_count <= 8 );
- if(value->attachments_count>0) {
+ if(value->attachments_count > 0) {
   if(w->check_default) {w->bits=TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
@@ -7769,7 +7769,7 @@ static SCHEMA_UNUSED int tabledemo_loadout_config_load_message_body(tabledemo_ta
  tabledemo_table_bit_writer_t * w=&default_writer;
  (void)w;
  schema_assert( 0 <= value->grades_count && value->grades_count <= 4 );
- if(!(value->grades_count>0))goto damaged;
+ if(!(value->grades_count > 0))goto damaged;
  }
  break;
  }
@@ -9620,7 +9620,7 @@ static SCHEMA_UNUSED int tabledemo_root_config_save_message_body(tabledemo_table
  }
  { /* weapons */
  schema_assert( 0 <= value->weapons_count && value->weapons_count <= 8 );
- if(value->weapons_count>0) {
+ if(value->weapons_count > 0) {
   if(w->check_default) {w->bits=TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
@@ -9635,7 +9635,7 @@ static SCHEMA_UNUSED int tabledemo_root_config_save_message_body(tabledemo_table
  }
  { /* profiles */
  schema_assert( 0 <= value->profiles_count && value->profiles_count <= 4 );
- if(value->profiles_count>0) {
+ if(value->profiles_count > 0) {
   if(w->check_default) {w->bits=TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE+1;
   return 1;
   }
@@ -9853,7 +9853,7 @@ static SCHEMA_UNUSED int tabledemo_root_config_load_messages(tabledemo_root_conf
 }
 static SCHEMA_UNUSED int schema_tabledemo_counted_min_wire_few_( tabledemo_table_writer_t * w, const tabledemo_counted_min_t * value )
 {
-    schema_assert( 0 <= value->few_count && value->few_count <= 5 );
+    schema_assert( 2 <= value->few_count && value->few_count <= 5 );
     int32_t i;
     tabledemo_table_writer_put8( w, 8 ); tabledemo_table_writer_leb( w, (uint64_t) value->few_count );
     for ( i = 0; i < value->few_count; i++ )
@@ -9867,8 +9867,18 @@ static SCHEMA_UNUSED int tabledemo_counted_min_save_body( tabledemo_table_writer
 {
     (void) value;
     { /* few */
-        schema_assert( 0 <= value->few_count && value->few_count <= 5 );
-        if ( value->few_count > 0 )
+        schema_assert( 2 <= value->few_count && value->few_count <= 5 );
+        int rides = value->few_count > 0;
+        if ( value->few_count == 2 ) /* the birth value of [2..5] elides (§4.2) */
+        {
+            int32_t i; rides = 0;
+            for ( i = 0; i < 2; i++ )
+            {
+                if ( value->few[i] == 0 ) { continue; }
+                rides = 1; break;
+            }
+        }
+        if ( rides )
         {
             tabledemo_table_writer_header_at( w, 143, 0xdcc67d18feea8c19ull, 14 );
             if ( w->buffer == NULL )
@@ -10026,8 +10036,20 @@ static SCHEMA_UNUSED int tabledemo_counted_min_save_message_body(tabledemo_table
 {
  (void)value;
  { /* few */
- schema_assert( 0 <= value->few_count && value->few_count <= 5 );
- if(value->few_count>0) {
+ schema_assert( 2 <= value->few_count && value->few_count <= 5 );
+ int rides = value->few_count > 0;
+ if ( value->few_count == 2 ) /* the birth value of [2..5] elides (§4.2) */
+ {
+     int32_t i;
+     rides = 0;
+     for ( i = 0; i < 2; i++ )
+     {
+         if(value->few[i] == 0) continue;
+         rides = 1;
+         break;
+     }
+ }
+ if(rides) {
   tabledemo_table_bit_put(w,6,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   schema_assert( 0 <= value->few_count && value->few_count <= 5 );
   tabledemo_table_bit_put(w,(uint64_t)value->few_count-2,2);
@@ -10124,8 +10146,20 @@ static SCHEMA_UNUSED int tabledemo_counted_min_load_message_body(tabledemo_table
  tabledemo_table_bit_writer_t default_writer=tabledemo_table_bit_writer(NULL,INT64_MAX);
  tabledemo_table_bit_writer_t * w=&default_writer;
  (void)w;
- schema_assert( 0 <= value->few_count && value->few_count <= 5 );
- if(!(value->few_count>0))goto damaged;
+ schema_assert( 2 <= value->few_count && value->few_count <= 5 );
+ int rides = value->few_count > 0;
+ if ( value->few_count == 2 ) /* the birth value of [2..5] elides (§4.2) */
+ {
+     int32_t i;
+     rides = 0;
+     for ( i = 0; i < 2; i++ )
+     {
+         if(value->few[i] == 0) continue;
+         rides = 1;
+         break;
+     }
+ }
+ if(!(rides))goto damaged;
  }
  break;
  }
@@ -10608,7 +10642,7 @@ static SCHEMA_UNUSED int tabledemo_moods_save_message_body(tabledemo_table_bit_w
  (void)value;
  { /* row */
  schema_assert( 0 <= value->row_count && value->row_count <= 4 );
- if(value->row_count>0) {
+ if(value->row_count > 0) {
   tabledemo_table_bit_put(w,31,TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE);
   schema_assert( 0 <= value->row_count && value->row_count <= 4 );
   tabledemo_table_bit_put(w,(uint64_t)value->row_count-0,3);
@@ -10729,7 +10763,7 @@ static SCHEMA_UNUSED int tabledemo_moods_load_message_body(tabledemo_table_messa
  tabledemo_table_bit_writer_t * w=&default_writer;
  (void)w;
  schema_assert( 0 <= value->row_count && value->row_count <= 4 );
- if(!(value->row_count>0))goto damaged;
+ if(!(value->row_count > 0))goto damaged;
  }
  break;
  }
@@ -13107,11 +13141,8 @@ static SCHEMA_UNUSED int64_t tabledemo_weapon_config_fixed_load( tabledemo_weapo
        caller's own stack and this codec allocates nothing. */
     /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
        absent payload reads as this Reset image, never as the wire's slack. */
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        tabledemo_weapon_config_reset( &defaults );
-    }
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    if ( fill_count > 0 ) { tabledemo_weapon_config_reset( &defaults ); }
     read_widened = report->widened;
     /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,
        'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]
@@ -13828,11 +13859,8 @@ static SCHEMA_UNUSED int64_t tabledemo_loadout_config_fixed_load( tabledemo_load
        caller's own stack and this codec allocates nothing. */
     /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
        absent payload reads as this Reset image, never as the wire's slack. */
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        tabledemo_loadout_config_reset( &defaults );
-    }
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    if ( fill_count > 0 ) { tabledemo_loadout_config_reset( &defaults ); }
     read_widened = report->widened;
     /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,
        'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]
@@ -14606,11 +14634,8 @@ static SCHEMA_UNUSED int64_t tabledemo_profile_config_fixed_load( tabledemo_prof
        caller's own stack and this codec allocates nothing. */
     /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
        absent payload reads as this Reset image, never as the wire's slack. */
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        tabledemo_profile_config_reset( &defaults );
-    }
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    if ( fill_count > 0 ) { tabledemo_profile_config_reset( &defaults ); }
     read_widened = report->widened;
     /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,
        'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]
@@ -15790,11 +15815,8 @@ static SCHEMA_UNUSED int64_t tabledemo_root_config_fixed_load( tabledemo_root_co
        caller's own stack and this codec allocates nothing. */
     /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
        absent payload reads as this Reset image, never as the wire's slack. */
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        tabledemo_root_config_reset( &defaults );
-    }
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    if ( fill_count > 0 ) { tabledemo_root_config_reset( &defaults ); }
     read_widened = report->widened;
     /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,
        'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]
@@ -16277,11 +16299,8 @@ static SCHEMA_UNUSED int64_t tabledemo_counted_min_fixed_load( tabledemo_counted
        caller's own stack and this codec allocates nothing. */
     /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
        absent payload reads as this Reset image, never as the wire's slack. */
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        tabledemo_counted_min_reset( &defaults );
-    }
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    if ( fill_count > 0 ) { tabledemo_counted_min_reset( &defaults ); }
     /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,
        'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]
        as untouched as values[k]. */
@@ -16623,11 +16642,8 @@ static SCHEMA_UNUSED int64_t tabledemo_float_bound_fixed_load( tabledemo_float_b
        caller's own stack and this codec allocates nothing. */
     /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
        absent payload reads as this Reset image, never as the wire's slack. */
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        tabledemo_float_bound_reset( &defaults );
-    }
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    if ( fill_count > 0 ) { tabledemo_float_bound_reset( &defaults ); }
     read_widened = report->widened;
     /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,
        'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]
@@ -17154,11 +17170,8 @@ static SCHEMA_UNUSED int64_t tabledemo_moods_fixed_load( tabledemo_moods_t * val
        caller's own stack and this codec allocates nothing. */
     /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
        absent payload reads as this Reset image, never as the wire's slack. */
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        tabledemo_moods_reset( &defaults );
-    }
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    if ( fill_count > 0 ) { tabledemo_moods_reset( &defaults ); }
     /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,
        'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]
        as untouched as values[k]. */
@@ -17670,11 +17683,8 @@ static SCHEMA_UNUSED int64_t tabledemo_mood_field_fixed_load( tabledemo_mood_fie
        caller's own stack and this codec allocates nothing. */
     /* THE PREFILL'S IMAGE IS ALSO THE ABSENT OPTIONAL'S DEFAULTS (§3.4): an
        absent payload reads as this Reset image, never as the wire's slack. */
-    if ( fill_count > 0 )
-    {
-        memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
-        tabledemo_mood_field_reset( &defaults );
-    }
+    memset( (void *) &defaults, 0, sizeof( defaults ) ); /* padding included, so the prefill is deterministic */
+    if ( fill_count > 0 ) { tabledemo_mood_field_reset( &defaults ); }
     /* EVERY RECORD'S HASH IS CHECKED BEFORE ANY RECORD LANDS (§5.3 step 11,
        'TOTAL OVER THE BATCH, TOO'): a mismatch at record k leaves values[0..k-1]
        as untouched as values[k]. */
@@ -20343,7 +20353,7 @@ static SCHEMA_UNUSED int schema_tabledemo_counted_min_wire_few__retain( tabledem
 {
     (void)retention;
 
-    schema_assert( 0 <= value->few_count && value->few_count <= 5 );
+    schema_assert( 2 <= value->few_count && value->few_count <= 5 );
     int32_t i;
     tabledemo_table_writer_put8( w, 8 );
     tabledemo_table_writer_leb( w, (uint64_t) value->few_count );
@@ -20362,8 +20372,21 @@ static SCHEMA_UNUSED int tabledemo_counted_min_save_body_retain( tabledemo_table
     tabledemo_table_retain_walk_t body_keep=retention;
     { /* few */
     retention=tabledemo_table_retain_step(body_keep,0,0);
-        schema_assert( 0 <= value->few_count && value->few_count <= 5 );
-        if ( value->few_count > 0 )
+        schema_assert( 2 <= value->few_count && value->few_count <= 5 );
+        int rides = value->few_count > 0;
+        if ( value->few_count == 2 ) /* the birth value of [2..5] elides (§4.2) */
+        {
+            int32_t i;
+            rides = 0;
+            for ( i = 0; i < 2; i++ )
+            {
+                if ( value->few[i] == 0 ) { continue;
+                }
+                rides = 1;
+                break;
+            }
+        }
+        if ( rides )
         {
             tabledemo_table_retain_writer_id( w, 0xdcc67d18feea8c19ull , retention);
             tabledemo_table_writer_put8( w, 14 );

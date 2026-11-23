@@ -19,6 +19,12 @@ make conformance-pin                 rewrite the half the reference leg writes
 make conformance-negative-control    prove the harness can go red
 ```
 
+A fresh clone needs `make deps` first (it stages the sibling runtime checkouts
+beside the worktree). Without it `make conformance` and the harness's `run`
+stop at once with one line, `the <leg> leg needs the sibling checkout <path>
+(<file> is missing): run 'make deps'`, and not with a compile error from the
+middle of a leg. A leg in `SCHEMA_SKIP_LEGS` does not need its sibling.
+
 **Negative controls stand behind it, and each localises a different
 thing** — a harness that has never gone red is watching nothing, and one that
 goes red everywhere localises nothing:
@@ -160,6 +166,23 @@ harness still hands a manifest, a surface and an output directory and nothing
 else — but it is what lets `conformance-negative-control-js` point the SAME
 driver at a sabotaged copy of the generated modules and require the matrix to go
 red. A leg whose generated tree is baked in has nothing for a control to aim at.
+
+## A filter that selects nothing is red
+
+`run` takes filters: `--only <lang>`, `--skip <langs>` and `--surfaces <list>`.
+A filter that leaves nothing to compare must never print a green matrix, so the
+harness exits non-zero, naming the filters, when:
+
+- no leg ran (`--only` names no registered driver, or `--skip` removed every leg);
+- the surfaces selected hold zero rows (`--surfaces` names surfaces with no
+  expectation in the corpus): `conformance selected ZERO rows`;
+- every selected cell was absent, so no leg answered one case (`--only <lang>`
+  with a `--surfaces` list the leg leaves out of `list`): `conformance ran ZERO legs`;
+- `--surfaces` names a word that is not a surface (a typo).
+
+The same footgun in Go's own runner (`go test -run` matching no test and
+printing ok) is closed by `make test-run`, see docs/CONTRIBUTING.md.
+`emptyselection_test.go` holds the proofs.
 
 ## The surfaces
 
@@ -354,6 +377,29 @@ text a third implementation wrote; `json-read` proves the writer against an
 instance the driver did not build. A dump parser would add a component to every
 port and cover nothing those three do not. Where a backend has no text form, the
 gap is real and the matrix says so rather than a parser papering over it.
+
+## A skip, or a surface of 0 rows, is never a pass
+
+A test that cannot find its prerequisite must fail where the prerequisite is
+promised, and a surface that ran no rows must not print a green cell.
+
+- **A missing oracle corpus fails in CI.** The fixed-form byte oracle
+  (`build/fixedform-corpus`, `make tables-fixedform-corpus`) cannot be built by a
+  test. A test that needs it fails, by name, when `SCHEMA_REQUIRE_CORPUS` is set
+  (every make leg gate sets it) or when `CI` is set and the slow half was asked
+  for (`SCHEMA_SLOW=1`): `slowtest.CorpusRequired()`. It skips only on a
+  developer's machine or in a default run, with the reason the skip ledger
+  (`.github/skip-ledger.txt`) reads. A new test that reads the corpus calls
+  `slowtest.CorpusRequired()` rather than reading the variable itself.
+- **A leg's driver names what it was not built with.** The C# driver checks
+  `test/conformance/cs/.../schemaconformance.dll` and
+  `test/cs-cook/.../schemacooktest.dll` and exits 1 naming the make target
+  (`build-conformance-cs`, `build-cs-cook`) instead of running `dotnet` over a
+  missing file and printing `FAIL 0/N` with no cause. `make conformance` builds both.
+- **A surface a leg lists and the corpus gave 0 rows is `FAIL 0/0`.** The gate
+  runs with `strictRows` (`main.go`); `pass 0/0` can no longer appear.
+- **Every skip that remains is ledgered** in `.github/skip-ledger.txt` with its
+  class; a skip with no ledger line is red at the pull request that writes it.
 
 ## Registering a language
 

@@ -18,7 +18,7 @@ func TestUnityFixedFormGrownBound(t *testing.T) {
 	repo := filepath.Join("..", "..", "..")
 	corpus := filepath.Join(repo, "build", "fixedform-corpus")
 	if _, err := os.Stat(filepath.Join(corpus, "manifest.txt")); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
+		if slowtest.CorpusRequired() {
 			t.Fatalf("the fixed-form corpus is absent: %v (run make tables-fixedform-corpus)", err)
 		}
 		t.Skipf("the fixed-form corpus is not built (make tables-fixedform-corpus): %v", err)

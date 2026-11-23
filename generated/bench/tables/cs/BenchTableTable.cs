@@ -51,7 +51,7 @@ namespace Benchtable
         // field whose kind changed, counted once per endpoint while a lineage
         // plan is compiled — never a read counter on a returned load
         // THE STRICT ANNOUNCEMENT'S TWO BUILD VERSIONS (docs/SPEC-TABLES.md
-        // §3.3): on Reason "build_version_mismatch", the peer's announced build
+        // §3.3): on Reason "build_version_mismatch", the writer's announced build
         // version and this unit's own. Zero on every other path.
         public ulong BuildVersionRemote, BuildVersionOwn;
         // LayoutHash is THE FILE'S hash, and it is LAST on the report (§5.9 #15) —
@@ -2561,10 +2561,12 @@ namespace Benchtable
                 // key refuses in every object of the text (docs/SPEC-TABLES.md §16.2,
                 // §16.12), the objects this walk skips included
                 System.Collections.Generic.HashSet<string> keys = null;
+                bool defining = false; // this object defines a label, open until it closes
+                ulong definition = 0;
                 for (; ; )
                 {
                     byte c = Peek(text, ref input);
-                    if (c == close) { input.Pos++; return true; }
+                    if (c == close) { input.Pos++; if (defining) { input.Labels[definition] = new Label(); } return true; }
                     if (c == 0) { input.Bad = true; return false; }
                     if (close == '}')
                     {
@@ -2573,21 +2575,43 @@ namespace Benchtable
                         input.Pos++;
                         keys ??= new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
                         if (!keys.Add(System.Text.Encoding.UTF8.GetString(key.Slice(0, used)))) { return RefuseText(ref input, "duplicate"); }
-                        if (used > 0 && key[0] == '&' && input.Labels != null)
+                        if (used > 0 && key[0] == '&')
                         {
                             if (!first || !Same(key.Slice(0, used), "&node") || !ScanLabel(text, ref input, out ulong label)) { input.Bad = true; return false; }
-                            if (!input.Labels.ContainsKey(label)) { input.Labels.Add(label, new Label()); }
+                            // THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): a label alone
+                            // must name a definition already closed; fields after one must
+                            // follow a label not yet defined, and the definition is open
+                            // until this object closes. What the reader does not place is
+                            // the value, never the label.
                             first = false; c = Peek(text, ref input);
-                            if (c == ',') { input.Pos++; continue; }
-                            if (c == close) { input.Pos++; return true; }
-                            input.Bad = true; return false;
+                            if (c != ',' && c != close) { input.Bad = true; return false; }
+                            if (input.Labels == null)
+                            {
+                                // a unit with no pointer has no label table: the prefix is still
+                                // held to its grammar, and the value is skipped whole
+                                input.Pos++;
+                                if (c == close) { return true; }
+                                continue;
+                            }
+                            bool known = input.Labels.TryGetValue(label, out Label held);
+                            if (c == ',') { input.Pos++; c = Peek(text, ref input); }
+                            bool bare = c == close;
+                            if (bare != known) { input.Bad = true; return false; }
+                            if (bare)
+                            {
+                                if (held.Open) { input.Bad = true; return false; }
+                                input.Pos++; return true;
+                            }
+                            input.Labels.Add(label, new Label { Open = true });
+                            defining = true; definition = label;
+                            continue;
                         }
                     }
                     first = false;
                     if (!SkipValue(text, ref input, depth + 1)) { return false; }
                     c = Peek(text, ref input);
                     if (c == ',') { input.Pos++; continue; }   // a trailing comma is accepted
-                    if (c == close) { input.Pos++; return true; }
+                    if (c == close) { input.Pos++; if (defining) { input.Labels[definition] = new Label(); } return true; }
                     input.Bad = true;
                     return false;
                 }
@@ -4713,7 +4737,7 @@ namespace Benchtable
                 }
                 if (!terminated || versions != 1 || vocabularies != 1) { Damage(report); return Finish(report, Verdict.Damaged); }
                 // "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3): refused
-                // by name, the peer's build version kept, no vocabulary set, never damage.
+                // by name, the writer's build version kept, no vocabulary set, never damage.
                 if (v.Strict && v.BuildVersion != tableOwnVocabulary.BuildVersion)
                 {
                     report.BuildVersionRemote = v.BuildVersion; report.BuildVersionOwn = tableOwnVocabulary.BuildVersion;
@@ -5578,7 +5602,9 @@ namespace Benchtable
                     int n = f.GetCount(value);
                     if (f.DefaultBytes != null) { return n != f.DefaultBytes.Length || !f.GetBuffer(value).AsSpan(0, n).SequenceEqual(f.DefaultBytes); }
                     // BORN AT ITS MIN (docs/SPEC.md §4.2): a [A..B] array's birth value
-                    // is A default elements, and that is what the writer elides
+                    // is A default elements, and that is what the writer elides; a table
+                    // element is at its default when its body is its terminator alone
+                    // (Empty), as the reference judges it (internal/tablewire encodeArray)
                     if (f.ArrayMin > 0)
                     {
                         if (n != f.ArrayMin) { return true; }

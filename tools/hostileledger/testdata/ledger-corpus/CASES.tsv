@@ -1,0 +1,15 @@
+# THE LEDGER CORPUS (tools/hostileledger/corpus.go): id <TAB> verdict <TAB> flags <TAB> what the case is.
+# The registry every log is held to is corpus/: two text cases (t-one, t-two) and one wire case (w-one).
+whole	pass	-	control: every registered case ran once
+held-case	pass	skips	control: one case held by name, the other two ran
+displaced-case	red:t-one (text) is registered and was not run	skips	F-061: the held case ran in place of an owed one on the same carrier; the count matches
+missing-answer	red:t-one (text) is registered and was not run	skips	control for F-061: the owed text case did not run and nothing stood in for it
+rows-whole	pass	rows=wire=runtime-dev,flat-dev	control: a case read as two rows ran both, each by its id
+zero-rows	red:w-one (wire) is registered and was not run	rows=wire=runtime-dev,flat-dev	F-062: the enumerator of the runner made no row for a case and its own summary exited 0
+tier-twice	red:the row w-one@flat-dev ran 0 time(s) and owes 1	rows=wire=runtime-dev,flat-dev	F-071: one tier ran twice and the other never; the case name occurs the owed number of times
+one-tier-only	red:the row w-one@flat-dev ran 0 time(s) and owes 1	rows=wire=runtime-dev,flat-dev	control for F-071: one tier alone was already red
+crlf	pass	skips crlf	F-073: a healthy log with CRLF line endings passes, the negative controls included
+nothing	red:no case ran	-	control: a run of nothing
+name-collision	red:carries @, which spells a row id	registry rows=packet=runtime-development,runtime-production,flat-development,flat-production	F-076: a wire case named like the packet case's first row; the wire case never dispatched, the four packet rows credited it
+name-distinct	pass	registry rows=packet=runtime-development,runtime-production,flat-development,flat-production	control for F-076: the same rows under distinct names, every one ran
+name-distinct-wire-missing	red:audit-wire (wire) is registered and was not run	registry rows=packet=runtime-development,runtime-production,flat-development,flat-production	control for F-076: under distinct names the undispatched wire case is red by name

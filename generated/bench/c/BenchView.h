@@ -101,7 +101,7 @@ typedef struct bench_table_report_t
        held one. */
     int32_t non_finite_floats;
     /* THE STRICT ANNOUNCEMENT'S TWO BUILD VERSIONS (docs/SPEC-TABLES.md §3.3):
-       on reason SCHEMA_TABLE_BUILD_VERSION_MISMATCH, the peer's announced
+       on reason SCHEMA_TABLE_BUILD_VERSION_MISMATCH, the writer's announced
        build version (remote) and this unit's own (own). Zero on every other
        path. */
     uint64_t build_version_remote, build_version_own;
@@ -505,7 +505,7 @@ static SCHEMA_UNUSED void bench_bench_mixed_reset( bench_bench_mixed_t * value )
     value->server_time = 0;
     bench_mixed_entity_reset( &value->entities[0] );
     { int32_t i; for ( i = 1; i < (int32_t) ( 8 ); i++ ) { value->entities[i] = value->entities[0]; } }
-    value->entities_count = 0;
+    value->entities_count = 1;
     bench_mixed_stat_reset( &value->stats[0] );
     { int32_t i; for ( i = 1; i < (int32_t) ( 80 ); i++ ) { value->stats[i] = value->stats[0]; } }
     value->stats_count = 0;
