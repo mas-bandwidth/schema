@@ -199,7 +199,7 @@ jobs:
       SCHEMA_REQUIRE_TSC: '1'
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     # MANY ROWS, because this job was 650 s median (2026-09-11) and a matrix
     # row is a job: the emitter packages, the compiler package in 15 rows,
     # everything else, the Elixir emitter alone, the slow-gate accounting in
@@ -433,11 +433,14 @@ jobs:
       # THE PYTHON PINS for unit-rest-ci: internal/ci/python_usage_fragments_test.go
       # runs the tutorial fragments under both pinned CPython interpreters
       # (internal/codegen/python/pyrun) and fails, never skips, without them.
+      # unit-rest runs test/conformance/python and test/conformance/ruby (the
+      # write-refusal packet surfaces), which run generated code under the
+      # pinned PYTHON and RUBY and fail, never skip, without them.
       - uses: ./.github/actions/python
-        if: startsWith(matrix.group, 'unit-codegen-python-') || startsWith(matrix.group, 'unit-rest-ci') || matrix.group == 'unit-rest-cmd-2' || matrix.group == 'unit-compiler-18'
+        if: startsWith(matrix.group, 'unit-codegen-python-') || startsWith(matrix.group, 'unit-rest-ci') || matrix.group == 'unit-rest-cmd-2' || matrix.group == 'unit-compiler-18' || matrix.group == 'unit-rest'
 
       - uses: ./.github/actions/ruby
-        if: startsWith(matrix.group, 'unit-codegen-ruby-') || startsWith(matrix.group, 'unit-rest-ci') || matrix.group == 'unit-compiler-18'
+        if: startsWith(matrix.group, 'unit-codegen-ruby-') || startsWith(matrix.group, 'unit-rest-ci') || matrix.group == 'unit-compiler-18' || matrix.group == 'unit-rest'
 
       # THE Goose PIN for the test steps below: internal/codegen/goose and
       # internal/codegen/goosetable run generated Goose under the pinned compiler
@@ -497,8 +500,16 @@ jobs:
           fi
           make dist-lobster
 
-      - name: build the C++ fixed-form byte oracle for the emitter packages
-        if: startsWith(matrix.group, 'unit-codegen') && !startsWith(matrix.group, 'unit-codegen-cpp-') && !startsWith(matrix.group, 'unit-codegen-python-')
+      # THE ORACLE ON EVERY ROW THAT READS IT. Under SCHEMA_SLOW=1 on CI a
+      # missing build/fixedform-corpus is a failure, never a skip
+      # (slowtest.CorpusRequired, 2fa95aed58), so every row whose tests read it
+      # builds it here: the emitter rows (the C++ rows too: cpptable's fixed
+      # versioning and roadmap tests read the reference's bytes), the Elixir
+      # rows (elixirtable's strict harness and probes), unit-rest
+      # (internal/fixedvector) and unit-compiler-18 (the Goose lineage test).
+      # The Python rows build it in the step below.
+      - name: build the C++ fixed-form byte oracle for the rows that read it
+        if: (startsWith(matrix.group, 'unit-codegen') && !startsWith(matrix.group, 'unit-codegen-python-')) || startsWith(matrix.group, 'unit-elixir-') || matrix.group == 'unit-rest' || matrix.group == 'unit-compiler-18'
         run: make -j"$(getconf _NPROCESSORS_ONLN)" tables-fixedform-corpus
 
       - name: build the C++ fixed-form byte oracle and Python conformance corpus
@@ -978,6 +989,7 @@ jobs:
         if: matrix.group == 'unit-codegen-lobster-3'
         run: |
           set -euo pipefail
+          # loud-ok: make -q exits 1 for a target that is out of date, and the reader's early quit SIGPIPEs make; the empty-result check right below is the loud refusal
           all=$( { make -pq test-lobster 2>/dev/null || true; } | sed -n '/^test-lobster: /{s///p;q;}')
           [ -n "$all" ] || { echo "::error::make printed no prerequisites for test-lobster"; exit 1; }
           targets=()
@@ -1183,6 +1195,17 @@ jobs:
         env:
           SCHEMA_SLOW: '1'
         run: go test ./bench/tools ./test/conformance/harness ./test/conformance/packet
+
+      # THE OWED TABLE READS MERGED PULL REQUESTS FROM HISTORY
+      # (internal/docgate TestOwedRowsAreLinked, docs/SPEC-CONFORMANCE.md
+      # §7): fetch it blobless (commits and trees only) so that half runs.
+      - name: the history the owed-table check reads
+        if: matrix.group == 'unit-rest-check'
+        run: |
+          set -euo pipefail
+          if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
+            git fetch --quiet --unshallow --filter=blob:none origin
+          fi
 
       - name: go test the checker, the doc gate, the lockfile, the text form and the baseline
         if: matrix.group == 'unit-rest-check'
@@ -1557,7 +1580,7 @@ jobs:
       # corpus it reads is the one the step above already built, and
       # SCHEMA_REQUIRE_CORPUS=1 makes a missing corpus or a missing SDK a
       # failure rather than a silent skip.
-      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+      - uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
         if: matrix.group == 'versioning-dart' && runner.environment == 'github-hosted'
         with:
           sdk: 3.13.2
@@ -1771,7 +1794,7 @@ jobs:
       PGROUP_WALL: ''
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -1876,7 +1899,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     outputs:
       pins: ${{ steps.pick.outputs.pins }}
       cs: ${{ steps.pick.outputs.cs }}
@@ -1981,7 +2004,7 @@ jobs:
             target: tables-block-zero-cost-c-rest
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
@@ -2104,7 +2127,7 @@ jobs:
             target: pins-conformance
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -2199,7 +2222,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     outputs:
       matrix: ${{ steps.discover.outputs.matrix }}
     steps:
@@ -2259,7 +2282,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.conformance-matrix.outputs.matrix) }}
@@ -2358,12 +2381,12 @@ jobs:
           components: clippy, rustfmt
         if: matrix.rust != '' && runner.environment == 'github-hosted'
 
-      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+      - uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
         if: matrix.dart != ''
         with:
           sdk: ${{ matrix.dart }}
 
-      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         if: matrix.java != ''
         with:
           distribution: 'temurin'
@@ -2526,7 +2549,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     permissions:
       contents: read
       actions: read
@@ -2577,7 +2600,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     strategy:
       fail-fast: false
       matrix:
@@ -2637,9 +2660,10 @@ jobs:
             bin/schema
             build/conformance-harness
             build/tables-generated-cs
+            build/driver-stamps
             test/conformance/cs/bin
             test/conformance/cs/obj
-          key: cs-fuzz-driver-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ env.DOTNET_SDK_PIN }}-${{ env.SERIALIZE_CS_TAG }}-${{ hashFiles('cmd/schema/**', 'compiler/**', 'internal/**', 'ir/**', 'test/conformance/harness/**', 'test/conformance/cs/**', 'tables/**', 'test/tables/**', 'testdata/conformance/feature-witnesses/full/Features.schema', 'make/cs.mk', 'Makefile', 'go.mod') }}
+          key: cs-fuzz-driver-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ env.DOTNET_SDK_PIN }}-${{ env.SERIALIZE_CS_TAG }}-${{ hashFiles('cmd/schema/**', 'compiler/**', 'internal/**', 'ir/**', 'test/conformance/harness/**', 'test/conformance/cs/**', 'tables/**', 'test/tables/**', 'testdata/conformance/**', 'make/**', 'Makefile', 'go.mod') }}
 
       - name: stand cached C# fuzz inputs newer than this checkout
         if: steps.cs-fuzz-cache.outputs.cache-hit == 'true'
@@ -2660,6 +2684,7 @@ jobs:
             bin/schema
             build/conformance-harness
             build/tables-generated-cs
+            build/driver-stamps
             test/conformance/cs/bin
             test/conformance/cs/obj
           key: ${{ steps.cs-fuzz-cache.outputs.cache-primary-key }}
@@ -2691,7 +2716,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     strategy:
       fail-fast: false
       matrix:
@@ -2753,7 +2778,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     strategy:
       fail-fast: false
       matrix:
@@ -2783,7 +2808,7 @@ jobs:
           key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
           restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
 
-      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+      - uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
         with:
           sdk: '3.13.2'
 
@@ -2864,7 +2889,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     strategy:
       fail-fast: false
       matrix:
@@ -2928,7 +2953,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     strategy:
       fail-fast: false
       matrix:
@@ -3096,6 +3121,7 @@ jobs:
           fi
 
       - name: what the pins resolved to
+        shell: bash
         run: |
           if [ "${{ matrix.leg }}" != "go" ]; then
             s390x-linux-gnu-g++-13 --version | head -1
@@ -3150,7 +3176,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # PINNED to the module's own Go version, and it moves WITH the
@@ -3268,7 +3294,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
@@ -3529,6 +3555,7 @@ jobs:
           } > build/msvc/negative.cmd
 
       - name: cl /W4 /WX over the generated corpus, one translation unit at a time
+        # loud-ok: cmd is the MSVC toolchain's own shell; every command that decides the step ends in || exit /b 1 or asserts its own ERRORLEVEL
         shell: cmd
         run: |
           call build\msvc\vc.cmd || exit /b 1
@@ -3541,6 +3568,7 @@ jobs:
       # proves nothing. The planted extension must make cl refuse, and if cl
       # accepts it the step goes red saying exactly why that matters.
       - name: negative control — cl must REFUSE a GNU extension in a generated header
+        # loud-ok: cmd is the MSVC toolchain's own shell; every command that decides the step ends in || exit /b 1 or asserts its own ERRORLEVEL
         shell: cmd
         run: |
           call build\msvc\vc.cmd || exit /b 1
@@ -3566,7 +3594,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
@@ -3614,7 +3642,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -3753,7 +3781,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
     steps:
@@ -3808,7 +3836,7 @@ jobs:
       PGROUP_WALL: ''
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.negative-controls-matrix.outputs.matrix) }}
@@ -3878,12 +3906,12 @@ jobs:
       - uses: ./.github/actions/eslint
         if: matrix.node != ''
 
-      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+      - uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
         if: matrix.dart != ''
         with:
           sdk: ${{ matrix.dart }}
 
-      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         if: matrix.java != ''
         with:
           distribution: 'temurin'
@@ -4043,7 +4071,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       # no checkout, so tools/pgroup is not here: plain bash
       - name: every job of this run succeeded (failed, cancelled or skipped is red)

@@ -58,7 +58,10 @@ GOOSE_ACCEL_FUZZ_N    ?= 20000
 # rule writes them before either starts, never two at once.
 .PHONY: goose-accel-fixtures
 goose-accel-fixtures: build/conformance-harness
-	./build/conformance-harness run --drivers /dev/null --work build/goose-accel-work > /dev/null 2>&1 || true
+	@# loud-ok: with no drivers every leg reads absent, so the harness exits 1 by design; the fixtures it writes are what this rule wants, and the next line refuses none
+	./build/conformance-harness run --drivers /dev/null --work build/goose-accel-work > build/goose-accel-work.log 2>&1 || true
+	@test -n "$$(ls -A build/goose-accel-work/fixtures 2>/dev/null)" || \
+		{ cat build/goose-accel-work.log; echo "goose-accel-fixtures: the harness wrote no fixtures under build/goose-accel-work/fixtures"; exit 1; }
 
 .PHONY: tables-goose-fuzz
 tables-goose-fuzz: build/conformance-harness build/conformance-goose goose-accel-fixtures

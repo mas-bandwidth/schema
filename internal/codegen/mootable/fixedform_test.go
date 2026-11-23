@@ -30,7 +30,7 @@ func fixedCorpus(t *testing.T) string {
 	t.Helper()
 	dir := filepath.Join(root, "build", "fixedform-corpus")
 	if _, err := os.Stat(filepath.Join(dir, "manifest.txt")); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") == "" {
+		if !slowtest.CorpusRequired() {
 			t.Skip("the C++ reference's fixed-form corpus is absent (make tables-fixedform-corpus); SCHEMA_REQUIRE_CORPUS unset")
 		}
 		t.Fatalf("the fixed-form corpus is absent: build it with make tables-fixedform-corpus: %v", err)

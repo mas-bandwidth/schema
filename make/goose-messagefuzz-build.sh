@@ -1,11 +1,11 @@
 #!/bin/sh
-set -u
+set -eu -o pipefail
 goose=$1
 src=$2
 out=$3
 rm -rf "$out" && mkdir -p "$out" || exit 1
 cp "$src"/*.goose "$out"/ || exit 1
-ns=$(sed -n 's/^namespace \(.*\);$/\1/p' "$out"/*Table.goose | head -1)
+ns=$(sed -n 's/^namespace \(.*\);$/\1/p' "$out"/*Table.goose | sed -n 1p)
 if [ -z "$ns" ]; then
 	echo "goose-messagefuzz-build: $src has no table module" >&2
 	exit 1

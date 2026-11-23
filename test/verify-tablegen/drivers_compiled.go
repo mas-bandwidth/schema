@@ -89,8 +89,12 @@ func verifyCPP(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec, 
 	var inc strings.Builder
 	var disp strings.Builder
 	var cppFiles []string
+	var unitFiles []string
+	var decls, calls strings.Builder
 
-	for _, u := range units {
+	for ui, u := range units {
+		inc.Reset()
+		disp.Reset()
 		fmt.Fprintf(&inc, "#include \"%s/%sTable.h\"\n", u.Pkg, u.FileBase)
 		if fileExists(filepath.Join(genRoot, u.Pkg, u.FileBase+"Block.h")) {
 			fmt.Fprintf(&inc, "#include \"%s/%sBlock.h\"\n", u.Pkg, u.FileBase)
@@ -231,33 +235,21 @@ func verifyCPP(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec, 
 			)
 		}
 		disp.WriteString("    }\n")
+		// One translation unit per unit: it includes only that unit's headers,
+		// so the units compile in parallel. One main.cpp that included every
+		// unit's headers was a single 94 s compile on one core (amd-2, -O1).
+		unitCPP := filepath.Join(workDir, fmt.Sprintf("unit_%03d.cpp", ui))
+		unitSrc := cppTablegenPrelude + inc.String() + fmt.Sprintf("\nbool run_unit_%03d( const Case & c ) {\n%s    return false;\n}\n", ui, strings.ReplaceAll(disp.String(), "return;", "return true;"))
+		if err := os.WriteFile(unitCPP, []byte(unitSrc), 0o644); err != nil {
+			return err
+		}
+		unitFiles = append(unitFiles, unitCPP)
+		fmt.Fprintf(&decls, "bool run_unit_%03d( const Case & c );\n", ui)
+		fmt.Fprintf(&calls, "    if ( run_unit_%03d( c ) ) return;\n", ui)
 	}
 
-	cppSrc := fmt.Sprintf(`#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <fstream>
-#include <string>
-#include <vector>
+	cppSrc := cppTablegenPrelude + fmt.Sprintf(`
 %s
-
-struct Case {
-    std::string id, pkg, root;
-    uint8_t op;
-    std::vector<uint8_t> aux, in, want1, want2;
-};
-
-static void die( const std::string & id, const char * why ) {
-    std::fprintf( stderr, "FAILED: %%s: %%s\n", id.c_str(), why );
-    std::exit( 1 );
-}
-
-static void check_bytes( const std::string & id, const uint8_t * got, size_t n, const std::vector<uint8_t> & want ) {
-    if ( n != want.size() || ( n > 0 && std::memcmp( got, want.data(), n ) != 0 ) ) {
-        std::fprintf( stderr, "FAILED: %%s: byte mismatch got=%%zu want=%%zu\n", id.c_str(), n, want.size() );
-        std::exit( 1 );
-    }
-}
 
 static uint32_t ru32( const uint8_t * p ) {
     return (uint32_t)p[0] | ( (uint32_t)p[1] << 8 ) | ( (uint32_t)p[2] << 16 ) | ( (uint32_t)p[3] << 24 );
@@ -300,7 +292,7 @@ int main( int argc, char ** argv ) {
     std::printf( "TABLEGEN_OK cpp %%u\n", cnt );
     return 0;
 }
-`, inc.String(), disp.String())
+`, decls.String(), calls.String())
 
 	mainCPP := filepath.Join(workDir, "main.cpp")
 	if err := os.WriteFile(mainCPP, []byte(cppSrc), 0o644); err != nil {
@@ -309,7 +301,7 @@ int main( int argc, char ** argv ) {
 	binPath := filepath.Join(workDir, "runner")
 	cxx := envOr("CXX", "c++")
 	compileFlags := []string{"-std=c++17", "-O1", "-ffp-contract=off", "-Wall", "-Wextra", "-Werror", "-I" + serDir, "-I" + genRoot}
-	objs, err := compileObjectsParallel(workDir, cxx, compileFlags, append([]string{mainCPP}, cppFiles...))
+	objs, err := compileObjectsParallel(workDir, cxx, compileFlags, append(append(unitFiles, mainCPP), cppFiles...))
 	if err != nil {
 		return fmt.Errorf("compile cpp: %w", err)
 	}
@@ -2165,3 +2157,33 @@ end
 	out, err := runChecked(workDir, extraEnv, elixirBin, "-pa", ebinDir, "-e", "TablegenRunner.unpack_and_run(File.read!(hd(System.argv())))", "--", packFile)
 	return requireToken(out, err, "elixir", caseCount)
 }
+
+// cppTablegenPrelude opens every C++ translation unit verifyCPP writes:
+// main.cpp and one unit_NNN.cpp per unit. die and check_bytes are static,
+// so each translation unit has its own copy; main.cpp uses only die.
+const cppTablegenPrelude = `#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <fstream>
+#include <string>
+#include <vector>
+
+struct Case {
+    std::string id, pkg, root;
+    uint8_t op;
+    std::vector<uint8_t> aux, in, want1, want2;
+};
+
+[[maybe_unused]] static void die( const std::string & id, const char * why ) {
+    std::fprintf( stderr, "FAILED: %s: %s\n", id.c_str(), why );
+    std::exit( 1 );
+}
+
+[[maybe_unused]] static void check_bytes( const std::string & id, const uint8_t * got, size_t n, const std::vector<uint8_t> & want ) {
+    if ( n != want.size() || ( n > 0 && std::memcmp( got, want.data(), n ) != 0 ) ) {
+        std::fprintf( stderr, "FAILED: %s: byte mismatch got=%zu want=%zu\n", id.c_str(), n, want.size() );
+        std::exit( 1 );
+    }
+}
+`

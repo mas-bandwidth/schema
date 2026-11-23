@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -343,7 +344,7 @@ func TestLimitIDTablePins(t *testing.T) {
 	} {
 		path := filepath.Join(root, "testdata/wire/tables/fuzz-vectors", tc.name+".bin")
 		want := limitIDTableWire(tc.n)
-		if os.Getenv("FRAMING_WRITE") == "1" {
+		if slowtest.Rewriting(t, "FRAMING_WRITE") {
 			if err := os.WriteFile(path, want, 0o644); err != nil {
 				t.Fatal(err)
 			}

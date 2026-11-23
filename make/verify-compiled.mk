@@ -3,13 +3,14 @@
 #
 #   cpp, c, cs, unity, go, rust, java, dart, elixir
 #
-# Each language exposes three independent sub-targets sized for ci-fast.yml's
+# Each language exposes four independent sub-targets sized for ci-fast.yml's
 # strict 2-minute job ceiling (cold-verified <= 85s), plus one umbrella target:
 #
 #   make verify-<lang>-conformance   all 21 table surfaces (--claims) + packet wire + 128-bit/UTF-8/defaults/finite
 #   make verify-<lang>-bench         packet & table 64-variant bench gates + 9-surface cards conformance + UnitView/descriptors + packet write/end contracts
 #   make verify-<lang>-fuzz          deterministic wire-fuzz smoke (plain + --retain, 6-step shrinking reuse + multi-body batches + all 64 roots)
-#   make verify-<lang>               runs all three in a single parallel Make DAG
+#   make verify-<lang>-tablegen      generated-schema table round trips (make/verify-widen-18.mk)
+#   make verify-<lang>               runs all four in a single parallel Make DAG
 
 VERIFY_COMPILED_LEGS := cpp c cs unity go rust java dart elixir
 VERIFY_JOBS          ?= $(shell nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
@@ -28,9 +29,35 @@ cards-go-conformance: cards-conformance-go
 # Explicit per-leg wire-fuzz and json-fuzz build prerequisites (make/verify-compiled.mk
 # sorts before make/wire-fuzz-release.mk in the Makefile's wildcard include, so target
 # prerequisites must not rely on WFR_DEPS_* being defined at parse time).
-VERIFY_FUZZ_DEPS_cpp    := build/wire-fuzz-cpp build/conformance-cpp
+# Build both C++ fuzz binaries once from a single parallel compile pass:
+# build/conformance-cpp and build/wire-fuzz-cpp in Makefile each invoke
+# $(MAKE) $(CONFORMANCE_OBJECTS), so listing both as parallel prerequisites of
+# _verify-cpp-fuzz compiled all 62 generated table objects twice simultaneously
+# (racing on identical .o outputs) and delayed the two slowest main TUs until
+# after the object pass finished. Compiling both main TUs first alongside one
+# shared $(CONFORMANCE_OBJECTS) pass eliminates the duplicate work and file race
+# and overlaps the main TUs with the generated objects.
+build/conformance-cpp-objs/_main/conformance_main.o: test/conformance/cpp/main.cpp build/tables-generated/.stamp $(wildcard $(SERIALIZE)/*.h)
+	@mkdir -p $(@D)
+	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) -c $< -o $@
+
+.PHONY: _verify-cpp-fuzz-bins
+_verify-cpp-fuzz-bins: build/tables-generated/.stamp test/conformance/cpp/main.cpp test/tables/wire_fuzz_main.cpp
+	@mkdir -p build
+	@$(MAKE) --no-print-directory \
+		build/conformance-cpp-objs/_main/conformance_main.o \
+		build/conformance-cpp-objs/_main/wire_fuzz_main.o \
+		$(CONFORMANCE_OBJECTS)
+	@set -e; \
+		$(CXX) $(TABLES_CXXFLAGS) build/conformance-cpp-objs/_main/conformance_main.o \
+			$(CONFORMANCE_OBJECTS) -o build/conformance-cpp & p1=$$!; \
+		$(CXX) $(TABLES_CXXFLAGS) build/conformance-cpp-objs/_main/wire_fuzz_main.o \
+			$(CONFORMANCE_OBJECTS) -o build/wire-fuzz-cpp & p2=$$!; \
+		wait $$p1; wait $$p2
+
+VERIFY_FUZZ_DEPS_cpp    := _verify-cpp-fuzz-bins
 VERIFY_FUZZ_DEPS_c      := build/wire-fuzz-c build/conformance-c tables-c-view
-VERIFY_FUZZ_DEPS_cs     := toolchain-cs build-conformance-cs tables-cs-view packet-end-cs packet-write-cfloat-cs packet-write-text-cs packet-write-refusal-cs
+VERIFY_FUZZ_DEPS_cs     := toolchain-cs build-conformance-cs tables-cs-view packet-end-cs packet-write-cfloat-cs packet-write-text-cs
 VERIFY_FUZZ_DEPS_unity  := toolchain-unity build/conformance-unity/.stamp
 VERIFY_FUZZ_DEPS_go     := build/conformance-go
 VERIFY_FUZZ_DEPS_rust   := build/conformance-rust-all build/conformance-rust
@@ -41,25 +68,38 @@ VERIFY_FUZZ_DEPS_elixir := toolchain-elixir build/elixir-tables-ebin/.stamp buil
 VERIFY_FUZZ_EXTRA_go    := SCHEMA_SLOW=1 go test -count=1 ./internal/codegen/golang
 
 define verify_compiled_fuzz_rules
-.PHONY: _verify-$(1)-fuzz verify-$(1)-fuzz
-_verify-$(1)-fuzz: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
-	@mkdir -p build/verify
+.PHONY: _verify-$(1)-fuzz _verify-$(1)-fuzz-extra _verify-$(1)-fuzz-plain _verify-$(1)-fuzz-retain _verify-$(1)-fuzz-json _verify-$(1)-fuzz-message verify-$(1)-fuzz
+_verify-$(1)-fuzz-extra: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
 	$$(if $$(VERIFY_FUZZ_EXTRA_$(1)),$$(VERIFY_FUZZ_EXTRA_$(1)),@:)
+
+_verify-$(1)-fuzz-plain: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
+	@mkdir -p build/verify
 	$$(WFR_ENV_$(1)) ./build/conformance-harness wire-fuzz \
 		--driver "$$(WFR_DRIVER_$(1))" $$(WFR_FLAGS_$(1)) \
 		--seed $$(VERIFY_FUZZ_SEED) --n $$(VERIFY_FUZZ_RANDOM_N) --max-mutants $$(VERIFY_FUZZ_MAX) \
 		--failed build/verify/fuzz-$(1)-plain.bin
+
+_verify-$(1)-fuzz-retain: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
+	@mkdir -p build/verify
 	$$(WFR_ENV_$(1)) ./build/conformance-harness wire-fuzz --retain \
 		--driver "$$(WFR_DRIVER_$(1))" $$(WFR_FLAGS_$(1)) \
 		--seed $$(VERIFY_FUZZ_SEED) --n $$(VERIFY_FUZZ_RANDOM_N) --max-mutants $$(VERIFY_FUZZ_MAX) \
 		--failed build/verify/fuzz-$(1)-retain.bin
+
+_verify-$(1)-fuzz-json: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
+	@mkdir -p build/verify
 	./build/conformance-harness json-fuzz --only $(1) \
 		--seed $$(VERIFY_FUZZ_SEED) --n $$(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-$(1)
+
+_verify-$(1)-fuzz-message: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
+	@mkdir -p build/verify
 	DOTNET="$$(DOTNET)" JAVA="$$(JAVA)" BEAM_PATH="$$(BEAM_PATH)" $$(WFR_ENV_$(1)) \
 		./build/conformance-harness message-fuzz --only $(1) \
 		--seed $$(VERIFY_FUZZ_SEED) --n $$(VERIFY_MESSAGE_FUZZ_N) \
 		--failed build/verify/message-fuzz-$(1)
+
+_verify-$(1)-fuzz: _verify-$(1)-fuzz-extra _verify-$(1)-fuzz-plain _verify-$(1)-fuzz-retain _verify-$(1)-fuzz-json _verify-$(1)-fuzz-message
 
 verify-$(1)-fuzz:
 	@$$(MAKE) $$(VERIFY_JFLAG) --no-print-directory _verify-$(1)-fuzz
@@ -83,14 +123,15 @@ $(foreach leg,$(VERIFY_COMPILED_LEGS),$(eval $(call verify_compiled_fuzz_rules,$
 # ---- cpp ----
 
 .PHONY: _verify-cpp-conformance _verify-cpp-bench
-_verify-cpp-conformance: build/conformance-harness build/conformance-cpp build/schema_test_cook build/schema_test build/schema_test_ludicrous packet-defaults-cpp packet-void-cpp table-base64-cpp build/packet-text/cpp/driver build/packet-text/harness
+_verify-cpp-conformance: build/conformance-harness build/conformance-cpp build/schema_test_cook build/schema_test build/schema_test_ludicrous packet-defaults-cpp packet-void-cpp table-base64-cpp build/packet-text/cpp/driver build/packet-text/harness conformance-rows-cpp build/schema_test_tables
 	./build/schema_test
+	./build/schema_test_tables
 	./build/schema_test_ludicrous
 	./build/packet-text/harness ./build/packet-text/cpp/driver
 	@rm -rf build/verify/conformance-cpp && mkdir -p build/verify/conformance-cpp $(VERIFY_RESULTS_DIR)
 	./build/conformance-harness run --only cpp --claims --work build/verify/conformance-cpp --results $(VERIFY_RESULTS_DIR)/cpp.json
 
-_verify-cpp-bench: bin/schema generated/bench/cpp/.stamp generated/bench/tables/cpp/.stamp tables-cpp-bench-gate cards-cpp-conformance tables-view packet-end-cpp packet-write-cfloat-cpp packet-write-text-cpp packet-write-refusal-cpp
+_verify-cpp-bench: bin/schema generated/bench/cpp/.stamp generated/bench/tables/cpp/.stamp tables-cpp-bench-gate cards-cpp-conformance tables-view packet-end-cpp packet-write-cfloat-cpp packet-write-text-cpp
 	@mkdir -p build/verify build/bench && rm -f build/verify/bench-cpp.csv
 	bench/run.sh --quick --bare --only cpp --out build/verify/bench-cpp.csv
 	@test -s build/verify/bench-cpp.csv
@@ -98,13 +139,13 @@ _verify-cpp-bench: bin/schema generated/bench/cpp/.stamp generated/bench/tables/
 # ---- c ----
 
 .PHONY: _verify-c-conformance _verify-c-bench
-_verify-c-conformance: build/conformance-harness build/conformance-c build/schema_test_c build/schema_test_c_ludicrous packet-defaults-c packet-utf8-c packet-void-c table-base64-c
+_verify-c-conformance: build/conformance-harness build/conformance-c build/schema_test_c build/schema_test_c_ludicrous packet-defaults-c packet-utf8-c packet-void-c table-base64-c conformance-rows-c
 	cd test/c && ../../build/schema_test_c
 	cd test/c-ludicrous && ../../build/schema_test_c_ludicrous
 	@rm -rf build/verify/conformance-c && mkdir -p build/verify/conformance-c $(VERIFY_RESULTS_DIR)
 	./build/conformance-harness run --only c --claims --work build/verify/conformance-c --results $(VERIFY_RESULTS_DIR)/c.json
 
-_verify-c-bench: bin/schema generated/bench/c/.stamp generated/bench/tables/c/.stamp tables-c-bench-gate cards-c-conformance packet-end-c packet-write-cfloat-c packet-write-text-c packet-write-refusal-c
+_verify-c-bench: bin/schema generated/bench/c/.stamp generated/bench/tables/c/.stamp tables-c-bench-gate cards-c-conformance packet-end-c packet-write-cfloat-c packet-write-text-c
 	@mkdir -p build/verify build/bench && rm -f build/verify/bench-c.csv
 	bench/run.sh --quick --bare --only c --out build/verify/bench-c.csv
 	@test -s build/verify/bench-c.csv
@@ -132,7 +173,7 @@ _verify-unity-conformance: toolchain-unity build/conformance-harness build/confo
 	@rm -rf build/verify/conformance-unity && mkdir -p build/verify/conformance-unity $(VERIFY_RESULTS_DIR)
 	./build/conformance-harness run --only unity --claims --work build/verify/conformance-unity --results $(VERIFY_RESULTS_DIR)/unity.json
 
-_verify-unity-bench: toolchain-unity bin/schema tables-unity-bench-gate cards-unity-conformance packet-defaults-unity packet-utf8-unity packet-write-refusal-unity
+_verify-unity-bench: toolchain-unity bin/schema tables-unity-bench-gate cards-unity-conformance packet-defaults-unity packet-utf8-unity
 	SCHEMA_SLOW=1 go test -count=1 -run '^TestUnityVTReflectionDocTagsAndUnitView$$' ./internal/codegen/unitytable
 
 # ---- go ----
@@ -163,7 +204,7 @@ _verify-go-bench: bin/schema generated/bench/go/.stamp generated/bench/tables/go
 # ---- rust ----
 
 .PHONY: _verify-rust-conformance _verify-rust-bench
-_verify-rust-conformance: build/conformance-harness build/conformance-rust generated/rust/.stamp generated/rust-ludicrous/.stamp packet-utf8-rust
+_verify-rust-conformance: build/conformance-harness build/conformance-rust generated/rust/.stamp generated/rust-ludicrous/.stamp packet-utf8-rust conformance-rows-rust
 	@rm -rf build/verify/conformance-rust && mkdir -p build/verify/conformance-rust $(VERIFY_RESULTS_DIR)
 	@set -e; \
 		(cd test/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release) & p1=$$!; \
@@ -171,23 +212,38 @@ _verify-rust-conformance: build/conformance-harness build/conformance-rust gener
 		./build/conformance-harness run --only rust --claims --work build/verify/conformance-rust --results $(VERIFY_RESULTS_DIR)/rust.json & p3=$$!; \
 		wait $$p1; wait $$p2; wait $$p3
 
-_verify-rust-bench: bin/schema generated/bench/rust/.stamp generated/bench/paired/rust/.stamp packet-defaults-rust packet-end-rust packet-write-cfloat-rust packet-write-text-rust packet-write-refusal-rust cards-rust-conformance tables-rust-view
+# Run the Rust quick bench (--round 0, matching _verify-go-bench-quick) and
+# paired gate as parallel prerequisites beside packet-*, cards, and view gates
+# instead of serially after all six prerequisites finish.
+.PHONY: _verify-rust-bench-quick _verify-rust-bench-paired
+_verify-rust-bench-quick: generated/bench/rust/.stamp
 	@mkdir -p build/verify build/bench && rm -f build/verify/bench-rust.csv
-	PATH="$(RUSTUP_BIN):$$PATH" bench/run.sh --quick --bare --only rust --out build/verify/bench-rust.csv
+	PATH="$(RUSTUP_BIN):$$PATH" bench/run.sh --quick --round 0 --bare --only rust --out build/verify/bench-rust.csv
 	@test -s build/verify/bench-rust.csv
+
+_verify-rust-bench-paired: generated/bench/paired/rust/.stamp
 	PATH="$(RUSTUP_BIN):$$PATH" go run ./bench/paired -mode gate -langs rust
+
+_verify-rust-bench: bin/schema generated/bench/rust/.stamp generated/bench/paired/rust/.stamp packet-defaults-rust packet-end-rust packet-write-cfloat-rust packet-write-text-rust packet-write-refusal-rust cards-rust-conformance tables-rust-view _verify-rust-bench-quick _verify-rust-bench-paired
+	@test -s build/verify/bench-rust.csv
 
 # ---- java ----
 
-.PHONY: _verify-java-conformance _verify-java-bench
-_verify-java-conformance: toolchain-java build/conformance-harness build-conformance-java build/java-test/.stamp build/java-test-ludicrous/.stamp packet-defaults-java packet-utf8-java packet-finite-java
+.PHONY: _verify-java-conformance _verify-java-packet-main-ea _verify-java-packet-main _verify-java-packet-ludicrous _verify-java-bench
+_verify-java-packet-main-ea: toolchain-java build/java-test/.stamp
 	cd test/java && $(JAVA) -ea -cp ../../build/java-test Main
+
+_verify-java-packet-main: toolchain-java build/java-test/.stamp
 	cd test/java && $(JAVA) -cp ../../build/java-test Main
+
+_verify-java-packet-ludicrous: toolchain-java build/java-test-ludicrous/.stamp
 	cd test/java-ludicrous && $(JAVA) -ea -cp ../../build/java-test-ludicrous Main
+
+_verify-java-conformance: toolchain-java build/conformance-harness build-conformance-java _verify-java-packet-main-ea _verify-java-packet-main _verify-java-packet-ludicrous packet-defaults-java packet-utf8-java packet-finite-java conformance-rows-java
 	@rm -rf build/verify/conformance-java && mkdir -p build/verify/conformance-java $(VERIFY_RESULTS_DIR)
 	JAVA="$(JAVA)" JAVAC="$(JAVAC)" ./build/conformance-harness run --only java --claims --work build/verify/conformance-java --results $(VERIFY_RESULTS_DIR)/java.json
 
-_verify-java-bench: toolchain-java bin/schema generated/bench/java/.stamp cards-java-conformance tables-java-view packet-end-java packet-write-cfloat-java packet-write-text-java packet-write-refusal-java
+_verify-java-bench: toolchain-java bin/schema generated/bench/java/.stamp cards-java-conformance tables-java-view packet-end-java packet-write-cfloat-java packet-write-text-java
 	@mkdir -p build/verify build/bench && rm -f build/verify/bench-java.csv
 	JAVA="$(JAVA)" JAVAC="$(JAVAC)" bench/run.sh --quick --bare --only java --out build/verify/bench-java.csv
 	@test -s build/verify/bench-java.csv
@@ -196,7 +252,7 @@ _verify-java-bench: toolchain-java bin/schema generated/bench/java/.stamp cards-
 # ---- dart ----
 
 .PHONY: _verify-dart-conformance _verify-dart-bench
-_verify-dart-conformance: build/mustrun toolchain-dart build/conformance-harness build/conformance-dart generated/dart/.stamp generated/dart-ludicrous/.stamp packet-defaults-dart packet-utf8-dart packet-finite-dart
+_verify-dart-conformance: build/mustrun toolchain-dart build/conformance-harness build/conformance-dart generated/dart/.stamp generated/dart-ludicrous/.stamp packet-defaults-dart packet-utf8-dart packet-finite-dart conformance-rows-dart
 	cd test/dart && "$(CURDIR)/$(MUSTRUN)" -name test-dart-main -count $(DART_MAIN_CHECKS) -- $(DART) --enable-asserts main.dart
 	cd test/dart-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-dart-ludicrous -count $(DART_LUDICROUS_CHECKS) -- $(DART) --enable-asserts main.dart
 	@rm -rf build/verify/conformance-dart && mkdir -p build/verify/conformance-dart $(VERIFY_RESULTS_DIR)
@@ -209,15 +265,20 @@ _verify-dart-bench: toolchain-dart bin/schema generated/bench/dart/.stamp genera
 
 # ---- elixir ----
 
-.PHONY: _verify-elixir-conformance _verify-elixir-bench
-_verify-elixir-conformance: build/mustrun toolchain-elixir build/conformance-harness build-conformance-elixir generated/elixir/.stamp generated/elixir-ludicrous/.stamp packet-defaults-elixir packet-utf8-elixir packet-finite-elixir
+.PHONY: _verify-elixir-conformance _verify-elixir-bench _verify-elixir-packet-main _verify-elixir-packet-ludicrous
+_verify-elixir-packet-main: build/mustrun toolchain-elixir generated/elixir/.stamp
 	cd test/elixir && "$(CURDIR)/$(MUSTRUN)" -name test-elixir-main -count $(ELIXIR_MAIN_CHECKS) -- $(ELIXIR) main.exs
+
+_verify-elixir-packet-ludicrous: build/mustrun toolchain-elixir generated/elixir-ludicrous/.stamp
 	cd test/elixir-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-elixir-ludicrous -count $(ELIXIR_LUDICROUS_CHECKS) -- $(ELIXIR) main.exs
+
+_verify-elixir-conformance: build/conformance-harness build-conformance-elixir _verify-elixir-packet-main _verify-elixir-packet-ludicrous packet-defaults-elixir packet-utf8-elixir packet-finite-elixir
 	@rm -rf build/verify/conformance-elixir && mkdir -p build/verify/conformance-elixir $(VERIFY_RESULTS_DIR)
 	BEAM_PATH="$(BEAM_PATH)" ELIXIR_TABLES_EBIN="$(CURDIR)/build/elixir-tables-ebin" ./build/conformance-harness run --only elixir --claims --work build/verify/conformance-elixir --results $(VERIFY_RESULTS_DIR)/elixir.json
 
 _verify-elixir-bench: toolchain-elixir bin/schema generated/bench/elixir/.stamp generated/bench/tables/elixir/.stamp tables-elixir-bench-gate cards-elixir-conformance tables-elixir-view packet-end-elixir packet-write-cfloat-elixir packet-write-text-elixir packet-write-bareint-elixir
 	@mkdir -p build/verify build/bench && rm -f build/verify/bench-elixir.csv
+# loud-ok: PATH additions for the bench; a missing elixir or erl fails toolchain-elixir (a prerequisite) and the bench run by name
 	@beam_extra="$$(dirname "$$(PATH="$(BEAM_PATH):$$PATH" command -v elixir 2>/dev/null || echo /nonexistent)"):$$(dirname "$$(PATH="$(BEAM_PATH):$$PATH" command -v erl 2>/dev/null || echo /nonexistent)")"; \
 		BEAM_PATH="$(BEAM_PATH):$$beam_extra" bench/run.sh --quick --bare --only elixir --out build/verify/bench-elixir.csv
 	@test -s build/verify/bench-elixir.csv

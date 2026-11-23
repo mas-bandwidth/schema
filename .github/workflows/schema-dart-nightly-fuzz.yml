@@ -48,14 +48,14 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
           go-version-file: go.mod
-      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+      - uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
         with:
           sdk: 3.13.2
       - name: replay
@@ -69,14 +69,14 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
           go-version-file: go.mod
-      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+      - uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
         with:
           sdk: 3.13.2
       - name: fuzz

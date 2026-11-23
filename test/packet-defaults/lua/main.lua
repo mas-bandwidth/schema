@@ -52,9 +52,9 @@ local function write(mod, name, value)
   return w:data(), bits
 end
 
-local function checkRead(name, bytes, bits, initial, want)
+local function checkRead(name, bytes, bits, initial, want, mod)
   local r = serialize.ReadStream.new(bytes)
-  check(d["Read" .. name](r, initial), "Read" .. name)
+  check((mod or d)["Read" .. name](r, initial), "Read" .. name)
   -- The one-packet read ends with the runtime's end check, which consumes the
   -- final byte's unused bits (SPEC §5), so the cursor rests on the byte after
   -- the object.
@@ -69,6 +69,27 @@ local function pin(typeName, pinName, value, initial, want)
   local gotBytes, gotBits = write(d, typeName, value)
   check(gotBytes == bytes and gotBits == bits, "C++ pin " .. pinName)
   checkRead(typeName, bytes, bits, initial(), want())
+end
+
+-- constantPin: a fresh Value whose defaults come from constants writes the
+-- pinned bytes and bit count, and reads them back over zeroed storage. Each
+-- constant-default schema declares package arithmetic, so each is generated
+-- into its own directory (generated/constant-<pin>) and loaded from there.
+local function constantPin(pinName)
+  pinned[pinName .. ".bin"] = true
+  local saved = package.path
+  package.loaded["Defaults"] = nil
+  package.path = dir .. "/constant-" .. pinName .. "/?.lua;" .. saved
+  local mod = require("Defaults")
+  package.path = saved
+  package.loaded["Defaults"] = nil
+  local bytes = readFile(goldens .. "/" .. pinName .. ".bin")
+  local bits = tonumber((readFile(goldens .. "/" .. pinName .. ".bits"):gsub("%s+", "")))
+  local gotBytes, gotBits = write(mod, "Value", mod.NewValue())
+  check(gotBytes == bytes and gotBits == bits, "C++ pin " .. pinName)
+  local initial = mod.NewValue()
+  mod.ZeroValue(initial)
+  checkRead("Value", bytes, bits, initial, mod.NewValue(), mod)
 end
 
 local function zero()
@@ -223,6 +244,8 @@ for _ = 1, 2 do
   want.Conditional.Value = zero()
   checkRead("Choice", offBytes, offBits, output, want)
 end
+constantPin("hexadecimal-addition")
+constantPin("unsigned-subtraction")
 local listed = {}
 for i = 3, #arg do
   listed[arg[i]] = true
@@ -233,5 +256,5 @@ for name in pairs(pinned) do
   check(listed[name], "pinned golden " .. name .. " is not in the directory listing")
 end
 
-print("packet defaults Lua: constructors, Zero, eight C++ goldens and reused storage OK")
+print("packet defaults Lua: constructors, Zero, ten C++ goldens and reused storage OK")
 print(string.format("packet defaults Lua: ran %d, failed 0", ran))

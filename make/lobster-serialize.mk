@@ -27,14 +27,15 @@ vendor-serialize-lobster:
 		echo "vendor-serialize-lobster: $(LOBSTER_SERIALIZE_PIN_FILE) does not name a repository and a commit"; \
 		exit 1; \
 	fi
+# loud-ok: a label only: the tag or commit printed beside the build, never a verdict
 	@if [ -n "$(LOBSTER_SERIALIZE_DIR)" ]; then \
 		src="$(LOBSTER_SERIALIZE_DIR)"; \
 		commit="$$(git -C "$$src" rev-parse HEAD 2>/dev/null || echo "$(LOBSTER_SERIALIZE_COMMIT)")"; \
 	else \
 		src="build/serialize.lobster"; \
 		rm -rf "$$src"; \
-		git clone --quiet "$(LOBSTER_SERIALIZE_REPO)" "$$src"; \
-		git -C "$$src" checkout --quiet "$(LOBSTER_SERIALIZE_COMMIT)"; \
+		git clone --quiet "$(LOBSTER_SERIALIZE_REPO)" "$$src" || exit 1; \
+		git -C "$$src" checkout --quiet "$(LOBSTER_SERIALIZE_COMMIT)" || exit 1; \
 		commit="$$(git -C "$$src" rev-parse HEAD)"; \
 	fi; \
 	if [ ! -d "$$src/src" ]; then \

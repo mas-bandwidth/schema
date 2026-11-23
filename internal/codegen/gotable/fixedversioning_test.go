@@ -825,8 +825,8 @@ func TestFixedFormCorpusBuildsOnTheBench(t *testing.T) {
 	}
 	info, err := os.Stat(path)
 	if err != nil || info.Size() == 0 {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the C++ reference's byte oracle has no manifest at %s (make tables-fixedform-corpus): %v", path, err)
+		if slowtest.CorpusRequired() {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the C++ reference's byte oracle has no manifest at %s (make tables-fixedform-corpus): %v", path, err)
 		}
 		t.Skip("the C++ reference's byte oracle is not built: make tables-fixedform-corpus")
 	}
@@ -848,8 +848,8 @@ func fixedCorpus(t *testing.T) string {
 		// missing file means the build did not do what the target says it did
 		// — and a suite that skips itself there would report green over §5
 		// having never run, which is the whole reason this gate exists.
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the reference's byte oracle is not in %s: %v", dir, err)
+		if slowtest.CorpusRequired() {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the reference's byte oracle is not in %s: %v", dir, err)
 		}
 		t.Skip("the reference's byte oracle is not built: make tables-fixedform-corpus")
 	}

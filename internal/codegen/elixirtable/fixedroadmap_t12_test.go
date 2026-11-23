@@ -51,8 +51,8 @@ func t12R27(t *testing.T) {
 	corpus := fixedCorpus(t)
 	manifestPath := filepath.Join(corpus, "manifest.txt")
 	if _, err := os.Stat(manifestPath); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the corpus manifest is not in %s: %v", manifestPath, err)
+		if slowtest.CorpusRequired() {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the corpus manifest is not in %s: %v", manifestPath, err)
 		}
 		t.Skip("the tree carries no corpus manifest: make tables-fixedform-corpus")
 	}
