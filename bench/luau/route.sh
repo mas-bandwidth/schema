@@ -20,7 +20,7 @@
 # labels say so. LUAU overrides the interpreter. `csv ` lines go to stdout,
 # `log ` lines to stderr, and ANY other line on the program's stdout is
 # refused, so a stray print fails the leg.
-set -e
+set -e -o pipefail
 
 ROOT="$(pwd -P)"
 LUAU="${LUAU:-$ROOT/dist/luau-0.741/luau}"
@@ -50,9 +50,9 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-STAGE="$ROOT/build/bench-luau/$NAME"
-rm -rf "$STAGE"
-mkdir -p "$STAGE"
+mkdir -p "$ROOT/build/bench-luau"
+STAGE="$(mktemp -d "$ROOT/build/bench-luau/$NAME.XXXXXX")"
+trap 'rm -rf "$STAGE"' EXIT
 cp "$GEN"/*.luau "$STAGE/"
 cp bench/luau/harness.luau "$STAGE/harness.luau"
 cp "$PROGRAM" "$STAGE/main.luau"

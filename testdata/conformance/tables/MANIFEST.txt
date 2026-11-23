@@ -1469,6 +1469,14 @@ rewrite array_L2_empty tblr1 Cfg testdata/wire/tables/framing/array_L2_empty.bin
 rewrite union_arm_zero_in_field tblr1 Cfg testdata/wire/tables/framing/union_arm_zero_in_field.bin
 rewrite node_index_null graphdemo ListNode testdata/wire/tables/framing/node_index_null.bin
 rewrite node_type_undeclared graphdemo ListNode testdata/wire/tables/framing/node_type_undeclared.bin
+rewrite twin_a2_root tbla2 Root testdata/conformance/tables/wire/twin_a2_root.bin
+rewrite twin_k1_root tblk1 Root testdata/conformance/tables/wire/twin_k1_root.bin
+rewrite twin_k2_root tblk2 Root testdata/conformance/tables/wire/twin_k2_root.bin
+rewrite twin_scalars2_simstate tblscalars2 SimState testdata/conformance/tables/wire/twin_scalars2_simstate.bin
+rewrite twin_listdemo_ints_empty listdemo Ints testdata/wire/tables/framing/twin_listdemo_ints_empty.bin
+rewrite twin_listdemo_bounded_empty listdemo Bounded testdata/wire/tables/framing/twin_listdemo_bounded_empty.bin
+rewrite twin_listdemo_squad_empty listdemo Squad testdata/wire/tables/framing/twin_listdemo_squad_empty.bin
+rewrite twin_listdemo_army_empty listdemo Army testdata/wire/tables/framing/twin_listdemo_army_empty.bin
 
 rewrite rewrite_fields_reversed tblw1 Fleet testdata/wire/tables/rewrite_fields_reversed.bin
 
@@ -1887,6 +1895,22 @@ unit widenboundpeer test/tables/widenbound/WidenBoundPeer.schema
 connection widenbound_conn widenboundpeer 0x500563706e877710 testdata/conformance/tables/wire/widenbound_conn.bin
 message-drift widenbound_msg messagedemo widenbound_conn ToolMessage testdata/conformance/tables/wire/widenbound_msg.bin testdata/conformance/tables/wire/widenbound_msg_peer.bin testdata/conformance/tables/wire/widenbound_msg_as_reader.bin
 
+# LAWFUL TWINS (test/conformance/harness/discriminate.go, 2026-11-22): every
+# must-refuse row needs a row in its group that must be ACCEPTED, or a leg that
+# refuses the whole form passes it without reaching its rule. These roots had
+# refusals alone: the evolution reports below read form-1 files at FIXED roots
+# (refused as previous_form before any arm or width rule runs), and the
+# listdemo framing vectors had no readable vector at their roots. Each twin
+# is the root's default value: form 3 for a fixed root's report, the empty
+# form-1 table for a framing root (read as the variable class, generate.go).
+report  twin_a2_root            tbla2       Root     testdata/conformance/tables/wire/twin_a2_root.bin
+report  twin_k1_root            tblk1       Root     testdata/conformance/tables/wire/twin_k1_root.bin
+report  twin_k2_root            tblk2       Root     testdata/conformance/tables/wire/twin_k2_root.bin
+report  twin_scalars2_simstate  tblscalars2 SimState testdata/conformance/tables/wire/twin_scalars2_simstate.bin
+framing twin_listdemo_ints_empty    listdemo Ints    testdata/wire/tables/framing/twin_listdemo_ints_empty.bin read testdata/conformance/tables/framing/listdemo_ints_default.json
+framing twin_listdemo_bounded_empty listdemo Bounded testdata/wire/tables/framing/twin_listdemo_bounded_empty.bin read testdata/conformance/tables/framing/listdemo_bounded_default.json
+framing twin_listdemo_squad_empty   listdemo Squad   testdata/wire/tables/framing/twin_listdemo_squad_empty.bin read testdata/conformance/tables/framing/listdemo_squad_default.json
+framing twin_listdemo_army_empty    listdemo Army    testdata/wire/tables/framing/twin_listdemo_army_empty.bin read testdata/conformance/tables/framing/listdemo_army_default.json
 # SPEC ROWS ROOTS 1122: three rules no earlier root carries (tables/examples/Spec1122.schema): a counted array below its minimum A, a compressed float32 bound compared against the declared float64 bound, and an enum element naming a deprecated variant.
 json-hostile sp-count-min-below                 tabledemo        CountedMin   testdata/conformance/tables/json-hostile/sp-count-min-below refused
 json-hostile sp-count-min-empty                 tabledemo        CountedMin   testdata/conformance/tables/json-hostile/sp-count-min-empty refused

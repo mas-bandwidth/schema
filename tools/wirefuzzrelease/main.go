@@ -88,7 +88,7 @@ func main() {
 			os.Exit(2)
 		}
 		lines, err := runGateCases(dir, scratch)
-		_ = os.RemoveAll(scratch)
+		_ = os.RemoveAll(scratch) // errdiscard: best-effort cleanup of temp scratch dir after replay
 		for _, line := range lines {
 			fmt.Println(line)
 		}
@@ -215,10 +215,13 @@ func runRed(leg, arm, seed, log string, status, asked int, held absentHold, abse
 		if f := failedRE.FindStringSubmatch(log); f != nil {
 			// THE FIRST DIVERGENCE: the root, the mutant after the ones that
 			// passed, and what differs
-			passed, _ := strconv.Atoi(f[1])
 			where := ""
 			if w := whereRE.FindStringSubmatch(log); w != nil {
 				where = w[1] + ", pass " + w[2]
+			}
+			passed, err := strconv.Atoi(f[1])
+			if err != nil {
+				return fmt.Sprintf("RED: %s, mutant after %s: %s", where, f[1], f[2])
 			}
 			return fmt.Sprintf("RED: %s, mutant %d: %s", where, passed+1, f[2])
 		}
@@ -246,8 +249,14 @@ func runRed(leg, arm, seed, log string, status, asked int, held absentHold, abse
 		return fmt.Sprintf("RED: the summary is not seed %s's: %s", seed, summary)
 	}
 	s := summaryRE.FindStringSubmatch(summary)
-	seeds, _ := strconv.Atoi(s[1])
-	roots, _ := strconv.Atoi(s[2])
+	seeds, err := strconv.Atoi(s[1])
+	if err != nil {
+		return "RED: malformed wire-fuzz seed count: " + summary
+	}
+	roots, err := strconv.Atoi(s[2])
+	if err != nil {
+		return "RED: malformed wire-fuzz root count: " + summary
+	}
 	if seeds == 0 || roots == 0 {
 		return fmt.Sprintf("RED: empty wire-fuzz roster: %d seeds over %d roots", seeds, roots)
 	}
@@ -255,9 +264,18 @@ func runRed(leg, arm, seed, log string, status, asked int, held absentHold, abse
 	if m == nil {
 		return "RED: missing wire-fuzz mutation count: " + summary
 	}
-	enumerated, _ := strconv.Atoi(m[1])
-	random, _ := strconv.Atoi(m[2])
-	total, _ := strconv.Atoi(m[3])
+	enumerated, err := strconv.Atoi(m[1])
+	if err != nil {
+		return "RED: malformed wire-fuzz enumerated count: " + m[0]
+	}
+	random, err := strconv.Atoi(m[2])
+	if err != nil {
+		return "RED: malformed wire-fuzz random count: " + m[0]
+	}
+	total, err := strconv.Atoi(m[3])
+	if err != nil {
+		return "RED: malformed wire-fuzz total count: " + m[0]
+	}
 	switch {
 	case total == 0:
 		return "RED: empty wire-fuzz mutation count: 0 mutants over " + s[0]
@@ -270,7 +288,10 @@ func runRed(leg, arm, seed, log string, status, asked int, held absentHold, abse
 	}
 	absent := 0
 	if a := absentRE.FindStringSubmatch(summary); a != nil {
-		absent, _ = strconv.Atoi(a[1])
+		absent, err = strconv.Atoi(a[1])
+		if err != nil {
+			return "RED: malformed wire-fuzz absent count: " + summary
+		}
 	}
 	switch {
 	case absent > 0 && held.count < 0:

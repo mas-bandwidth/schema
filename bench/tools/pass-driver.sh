@@ -53,7 +53,7 @@
 # installs, JAVA/JAVAC/DART/BEAM_PATH overriding, again as bench/run.sh.
 # The SERIALIZE* paths are §3.5-verified against each toolchain's own
 # resolution before the first leg runs, and the pass refuses on mismatch.
-set -u
+set -eu -o pipefail
 
 cd "$(dirname "$0")/../.."      # repo root
 
@@ -137,7 +137,7 @@ loadavg() {
 # count of non-bench processes above 5% cpu (both platforms). "Ours" is the
 # benchmark tooling itself, which is allowed to be busy.
 foreign_procs() {
-    ps -A -o pcpu=,comm= 2>/dev/null | awk '
+    ps -A -o pcpu=,comm= | awk '
         {
             n = split($2, parts, "/"); name = parts[n]
             if ($1 + 0 > 5 &&
@@ -156,9 +156,13 @@ core_stat() {
 
 # benchmark tooling that must NOT be running between legs
 ours() {
-    ps -A -o pid=,pcpu=,etime=,comm= 2>/dev/null \
+    # a ps that fails is an error, never "none of ours running"; only
+    # grep's "no line matched" (status 1) is the quiet answer
+    local procs
+    procs="$(ps -A -o pid=,pcpu=,etime=,comm=)"
+    printf '%s\n' "$procs" \
       | grep -E "schema_bench|benchgo|benchrust|schemabench|cargo|rustc|cc1plus|clang\+\+|dotnet|bench_main" \
-      | grep -vE "grep|pass-driver|VBCSCompiler|MSBuild" || true
+      | grep -vE "grep|pass-driver|VBCSCompiler|MSBuild" || [ $? = 1 ]
 }
 
 pscheck() {
@@ -190,6 +194,7 @@ leg() {
         FAILED_LEGS="$FAILED_LEGS $name"
     fi
     case "$name" in
+        # loud-ok: housekeeping between legs; a build server that is already gone has nothing to shut down, and pscheck refuses a lingering one by name
         *-cs) dotnet build-server shutdown >> "$LOG" 2>&1 || true ;;
     esac
 }
@@ -206,7 +211,7 @@ CORE_STAT_START="$(core_stat)"
 sample_boundary() {
     local one fg
     one="$(loadavg | awk '{print $1}')"
-    LOAD_MAX="$(printf '%s\n%s\n' "$LOAD_MAX" "$one" | sort -rn | head -1)"
+    LOAD_MAX="$(printf '%s\n%s\n' "$LOAD_MAX" "$one" | sort -rn | sed -n 1p)"
     fg="$(foreign_procs)"
     [ "$fg" -gt "$FOREIGN_MAX" ] && FOREIGN_MAX="$fg"
     log "boundary: load1=$one foreign=$fg"
@@ -234,7 +239,7 @@ one_leg() {
     if [ "$twin" = b ]; then
         SUF="-b"; STAMP=$((K + ROUNDS)); REUSE_FLAG="--reuse-build"
         # twin b never runs before twin a has built (round 0 is a-first)
-        echo " $AVAILABLE " | grep -q " $lang " || return 0
+        case " $AVAILABLE " in *" $lang "*) ;; *) return 0 ;; esac
     else
         [ "$K" -gt 0 ] && REUSE_FLAG="--reuse-build"
         # cpp reuses from ROUND 0 as well: control leg A just built this
@@ -243,8 +248,8 @@ one_leg() {
         # rebuilds it. (Round 0 still builds every OTHER language — the
         # control legs build only cpp.)
         [ "$lang" = cpp ] && REUSE_FLAG="--reuse-build"
-        if [ "$K" -gt 0 ] && ! echo " $AVAILABLE " | grep -q " $lang "; then
-            return 0        # went missing in round 0; recorded below
+        if [ "$K" -gt 0 ]; then
+            case " $AVAILABLE " in *" $lang "*) ;; *) return 0 ;; esac   # went missing in round 0; recorded below
         fi
     fi
     leg "round-$K-$lang$SUF" --only "$lang" --compiler "$COMPILER" --bare \
@@ -329,7 +334,10 @@ TWIN_VERDICT=""
 TWIN_SUSPECTS=""
 if [ "$TWINS" = 1 ]; then
     A_FILES="$(ls "$W"/round-*.csv | grep -v -- '-b\.csv$')"
-    B_FILES="$(ls "$W"/round-*-b.csv 2>/dev/null || true)"
+    B_FILES=""
+    for f in "$W"/round-*-b.csv; do
+        if [ -e "$f" ]; then B_FILES="$B_FILES $f"; fi
+    done
     if [ -z "$B_FILES" ]; then
         echo "twin gate: no twin-b legs produced rows — gate cannot run" >&2
         TWIN_VERDICT="UNKNOWN (no twin-b rows)"
@@ -342,7 +350,7 @@ if [ "$TWINS" = 1 ]; then
             TWIN_VERDICT="OK"
         else
             TWIN_VERDICT="SUSPECT"
-            TWIN_SUSPECTS="$(grep '^state-suspect:' "$W/twingate.txt" | sed 's/^state-suspect: //' | tr '\n' ';' | sed 's/;$//')"
+            TWIN_SUSPECTS="$(sed -n 's/^state-suspect: //p' "$W/twingate.txt" | tr '\n' ';' | sed 's/;$//')"
         fi
         cat "$W/twingate.txt" >> "$LOG"
         log "twin gate: $TWIN_VERDICT ${TWIN_SUSPECTS:+suspects: $TWIN_SUSPECTS}"
@@ -374,11 +382,13 @@ log "===== interleaved pass DONE $(date -u +%FT%TZ) window=$WINDOW out=$OUT ====
 
 # ---- inline verdict pass (§4.1/§4.2), backfilling the final CSV ----
 
+INLINE_FAILED=""
 if [ "$INLINE" = 1 ]; then
     for lang in $(echo "$AVAILABLE" | tr -s ' '); do
         if ! bench/tools/inline-verdict.sh "$lang" "$OUT" >> "$LOG" 2>&1; then
             log "inline verdict FAILED for $lang — inline stays unknown (un-ratioable)"
             echo "inline verdict failed for $lang — see $LOG" >&2
+            INLINE_FAILED="$INLINE_FAILED $lang"
         fi
     done
 fi
@@ -392,5 +402,11 @@ if [ "$TWIN_VERDICT" = SUSPECT ]; then
 fi
 if [ -n "$(echo "$FAILED_LEGS" | tr -d ' ')" ]; then
     echo "failed legs:$FAILED_LEGS — see $LOG" >&2
+    exit 1
+fi
+# --inline asked for the verdict: a language that could not get one fails
+# the pass by name, never a green pass with inline=unknown rows
+if [ -n "$INLINE_FAILED" ]; then
+    echo "FAIL: the inline verdict pass failed for:$INLINE_FAILED — see $LOG" >&2
     exit 1
 fi

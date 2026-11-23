@@ -108,6 +108,11 @@ build/conformance-python: build/schema-python testdata/conformance/tables/MANIFE
 	@mkdir -p $@/tblr1/_framing/source $@/tblr1/_framing/tblr1
 	@sed -e 's/^fixed table Cfg$$/table Cfg/' -e 's/^package tblr1$$/package tblr1_framing/' test/tables/R1.schema > $@/tblr1/_framing/source/R1.schema
 	./build/schema-python generate --lang python --out $@/tblr1/_framing/tblr1 $@/tblr1/_framing/source/R1.schema
+	@test "$$(grep -c '^fixed table Bounded$$' tables/lists/Migrate.schema)" = 1
+	@test "$$(grep -c '^package listdemo$$' tables/lists/Migrate.schema)" = 1
+	@mkdir -p $@/listdemo/_framing/source $@/listdemo/_framing/listdemo
+	@sed -e 's/^fixed table Bounded$$/table Bounded/' -e 's/^package listdemo$$/package listdemo_framing/' tables/lists/Migrate.schema > $@/listdemo/_framing/source/Migrate.schema
+	./build/schema-python generate --lang python --out $@/listdemo/_framing/listdemo $@/listdemo/_framing/source/Migrate.schema
 
 # The table core's negative control: the generated runtime's form byte is
 # moved in a copy, and the interpreter probe must go red by name. It needs the

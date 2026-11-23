@@ -9,6 +9,7 @@ DART_COOK_WRITE := build/conformance-dart-cook-write
 .PHONY: conformance-dart-cook-write conformance-dart-cook-write-negative-control
 conformance-dart-cook-write: build/conformance-harness build/conformance-dart
 	@rm -rf $(DART_COOK_WRITE) && mkdir -p $(DART_COOK_WRITE)
+# loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
 	./build/conformance-harness run --only dart --work $(DART_COOK_WRITE)/work > $(DART_COOK_WRITE)/log 2>&1 || true
 	@grep -E '^cook-write ' $(DART_COOK_WRITE)/log || \
 		{ cat $(DART_COOK_WRITE)/log; echo "conformance-dart-cook-write: the run printed no cook-write line"; exit 1; }
@@ -36,6 +37,7 @@ conformance-dart-cook-write-negative-control: build/conformance-harness build/co
 		test/conformance/dart/main.dart > $(DART_COOK_WRITE_NC)/main.dart
 	$(DART) compile exe -o $(DART_COOK_WRITE_NC)/driver-bin $(DART_COOK_WRITE_NC)/main.dart >/dev/null
 	@printf 'dart %s/%s/driver-bin\n' "$(CURDIR)" "$(DART_COOK_WRITE_NC)" > $(DART_COOK_WRITE_NC)/drivers.txt
+# loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
 	./build/conformance-harness run --drivers $(DART_COOK_WRITE_NC)/drivers.txt \
 		--work $(DART_COOK_WRITE_NC)/work > $(DART_COOK_WRITE_NC)/log 2>&1 || true
 	@if grep -qE '^cook-write +pass ([0-9]+)/\1 *$$' $(DART_COOK_WRITE_NC)/log; then \

@@ -13,7 +13,6 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -462,13 +461,7 @@ func runJsonPlantsSeed(t *testing.T, r *rand.Rand, seed int, sabotage bool) (une
 func TestRandomTableJsonPlants(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the Go toolchain (it compiles and runs generated units)")
-	from, to := 0, 4
-	if v := os.Getenv("SCHEMA_TABLE_DIFF_FROM"); v != "" {
-		from, _ = strconv.Atoi(v)
-	}
-	if v := os.Getenv("SCHEMA_TABLE_DIFF_TO"); v != "" {
-		to, _ = strconv.Atoi(v)
-	}
+	from, to := slowtest.EnvSeedRange(t, 0, 4)
 	for _, c := range expectedClasses {
 		t.Logf("expected class owned by %s: %s", c.id, c.why)
 	}

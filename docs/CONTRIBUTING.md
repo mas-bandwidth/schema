@@ -280,6 +280,25 @@ reason and fails on a skip the job provides for: a missing toolchain in the
 lane that installs it, a `SCHEMA_SLOW` skip under a make target that sets
 `SCHEMA_SLOW=1`.
 
+Nothing fails silently, in the tests or in the tools that run them:
+
+- **A golden rewrite is never a pass in CI.** A test that rewrites its
+  golden when a variable is set reads it with `slowtest.Rewriting(t, name)`,
+  which fails under CI and on any value but `1`, and logs that a local
+  rewrite compared nothing. `go test ./internal/ci` refuses a test that reads
+  a `*_UPDATE*` or `*_WRITE*` variable any other way.
+- **A test knob that is not a number is refused by name.** Read an integer
+  knob with `slowtest.EnvInt`, and the random-table seed range with
+  `slowtest.EnvSeedRange`, which also refuses a range that holds no seed: read
+  as 0 or as the default, a typo runs zero cases and passes.
+- **No program under `cmd/` or `tools/` drops an error.** `make errdiscard`
+  (`go run ./tools/errdiscard`, about a second, in `ci-fast.yml`'s
+  `lint-fast`) type-checks them and refuses an error assigned to `_`, or a
+  call whose error nobody reads, unless its line names why in an
+  `// errdiscard: <reason>` comment. Writes into memory, to the process's own
+  stdout and stderr, `Parse` on an `ExitOnError` flag set and `Close` on a
+  read-only `os.Open` handle need no reason; `-all` lists the kept ones.
+
 The per-leg make gates, measured on an M-series Studio:
 
 | gate | time |
@@ -386,6 +405,52 @@ name, with the conflicting paths; the fix is to merge `main` into the lane.
 
 One more gate is not CI at all. A pull request is not merged until its authors
 have signed the [Contributor Assignment Agreement](#the-contributor-assignment-agreement).
+
+## Nothing fails silently
+
+Glenn, 2026-11-22: "Nothing is allowed to fail silently." In the CI area (every
+workflow under `.github/workflows/`, the root `Makefile` and every makefile
+and script under `make/`, `tools/` and `bench/`) a step that fails ends red,
+nonzero, naming its cause. `internal/recipescan` reads all of it, parse only,
+and its test `TestCIAreaFailsLoudly` refuses any of these (the fast lane runs
+it on every diff that touches the area):
+
+- `|| true`, `|| :`, `|| exit 0`, `|| echo ...` or `; true` after anything but
+  housekeeping (`rm`, `kill`, `mkdir`, ...): **swallow**;
+- a `-` prefixed recipe line: **ignore-prefix**;
+- a script without `set -e` or, if it pipes, without `set -o pipefail`; a
+  workflow shell (a step's, a job's or the workflow's default) that is not
+  bash with `-e -o pipefail`, a step that pipes under GitHub's own default
+  (`bash -e {0}`), and `shell: cmd`: **no-strict-shell**;
+- `set +e` / `set +o pipefail`: **unset-strict**;
+- a command whose status nothing reads (a recipe runs under
+  `bash -o pipefail` without `-e`, so `a; b` loses `a`): **unchecked**;
+- a background job, or a `wait`, whose status is lost: **background**;
+- `grep -q`, `head` or `sed q` reading a pipe in a condition: **early-exit**;
+- a `command -v` / `which` / `hash` probe whose absence branch never exits
+  nonzero, so a missing tool skips the work and passes: **tool-skip**;
+- `continue-on-error`: **continue-on-error**;
+- a job that runs under `always()` / `!cancelled()` / `failure()` after its
+  needs, does no work of its own and never reads `needs.<job>.result` (or
+  `toJSON(needs)`): it reports success over a red dependency:
+  **unchecked-needs**.
+
+Make it loud: read the status (`st=0; cmd || st=$?`), refuse by name, assert
+a negative control's failure with `if cmd; then echo "...exited 0"; exit 1;
+fi`, and make a skip a failure under `SCHEMA_REQUIRE_CORPUS=1`. Where losing a
+status is deliberate and correct (cleanup, a version label, a harness run
+whose verdict is the named row read from its log right after), say why on
+the line above:
+
+```
+# loud-ok: <why losing this status loses nothing>
+```
+
+(`@# loud-ok: ...` as a recipe line inside a `define`). The excuse covers the
+logical line under it; a bare `loud-ok:` excuses nothing, and a loud-ok with
+no finding under it is itself a finding (**stale-loud-ok**), so an excuse
+cannot outlive its code. Run the scan with `go run ./tools/recipescan`
+(the whole tree, the CI area and beyond).
 
 ## Negative controls
 
@@ -502,6 +567,20 @@ Any change to a backend's emitted code will move the goldens, and that is
 expected — but **moving a golden is a claim that the new output is correct**,
 not a step to get CI green. Say in the pull request why the wire changed and
 whether it is a breaking change for anyone who has already shipped data.
+
+**A golden is written by its generator and never by hand.** Every pin under
+`testdata/` that a generator owns (the `.bin` and `.bits` wire pins, the
+packet-defaults pins, the table and source goldens, the framing vectors, the
+cook dumps) is rewritten from that generator on every pull request that touches
+`testdata/` or a writer, and the tree is diffed against your commit: a file that
+is not exactly what its generator writes goes red (the `pins` job of
+`ci-fast.yml`; the wire-packet row empties its family first, so a stray
+hand-written file shows as a deletion). To re-pin, run `make update-goldens` and
+commit what changes. It is all or nothing: the writers run inside a snapshot of
+`testdata/` (`test/goldens/transact`) and a failing step, an interrupt or a kill
+puts the snapshot back, so a failure never leaves half the families re-pinned.
+A new `FRAMING_WRITE` test must be named so `PINS_FRAMING_RUN` (Makefile)
+selects it; `TestFramingWritersAreAllSelected` fails if it is not.
 
 If a change alters the wire, it changes the protocol id, which means every
 deployment built on the old one has to redeploy both sides. That is a real cost

@@ -358,7 +358,10 @@ func damageOps(wire []byte, fullFlips bool) [][]byte {
 
 func TestProbe(t *testing.T) {
 	dir := os.Getenv("SCHEMA_TABLE_DIFF_DIR")
-	n, _ := strconv.Atoi(os.Getenv("SCHEMA_TABLE_DIFF_N"))
+	n, err := strconv.Atoi(os.Getenv("SCHEMA_TABLE_DIFF_N"))
+	if err != nil || n <= 0 {
+		t.Fatalf("SCHEMA_TABLE_DIFF_N=%q: the probe needs the count of instances the parent wrote", os.Getenv("SCHEMA_TABLE_DIFF_N"))
+	}
 	phase := os.Getenv("SCHEMA_TABLE_DIFF_PHASE")
 	sabotage := os.Getenv("SCHEMA_TABLE_DIFF_SABOTAGE") == "1"
 	sabotageIntegrity := os.Getenv("SCHEMA_TABLE_DIFF_SABOTAGE_INTEGRITY") == "1"
@@ -786,13 +789,7 @@ func tableDiffOptedIn(getenv func(string) string) bool {
 func TestRandomTableDifferential(t *testing.T) {
 	t.Parallel()
 	tableDiffOptIn(t)
-	from, to := 0, 4
-	if v := os.Getenv("SCHEMA_TABLE_DIFF_FROM"); v != "" {
-		from, _ = strconv.Atoi(v)
-	}
-	if v := os.Getenv("SCHEMA_TABLE_DIFF_TO"); v != "" {
-		to, _ = strconv.Atoi(v)
-	}
+	from, to := slowtest.EnvSeedRange(t, 0, 4)
 	for _, c := range expectedClasses {
 		t.Logf("expected class owned by %s: %s", c.id, c.why)
 	}
