@@ -433,11 +433,14 @@ jobs:
       # THE PYTHON PINS for unit-rest-ci: internal/ci/python_usage_fragments_test.go
       # runs the tutorial fragments under both pinned CPython interpreters
       # (internal/codegen/python/pyrun) and fails, never skips, without them.
+      # unit-rest runs test/conformance/python and test/conformance/ruby (the
+      # write-refusal packet surfaces), which run generated code under the
+      # pinned PYTHON and RUBY and fail, never skip, without them.
       - uses: ./.github/actions/python
-        if: startsWith(matrix.group, 'unit-codegen-python-') || startsWith(matrix.group, 'unit-rest-ci') || matrix.group == 'unit-rest-cmd-2' || matrix.group == 'unit-compiler-18'
+        if: startsWith(matrix.group, 'unit-codegen-python-') || startsWith(matrix.group, 'unit-rest-ci') || matrix.group == 'unit-rest-cmd-2' || matrix.group == 'unit-compiler-18' || matrix.group == 'unit-rest'
 
       - uses: ./.github/actions/ruby
-        if: startsWith(matrix.group, 'unit-codegen-ruby-') || startsWith(matrix.group, 'unit-rest-ci') || matrix.group == 'unit-compiler-18'
+        if: startsWith(matrix.group, 'unit-codegen-ruby-') || startsWith(matrix.group, 'unit-rest-ci') || matrix.group == 'unit-compiler-18' || matrix.group == 'unit-rest'
 
       # THE Goose PIN for the test steps below: internal/codegen/goose and
       # internal/codegen/goosetable run generated Goose under the pinned compiler
@@ -497,8 +500,16 @@ jobs:
           fi
           make dist-lobster
 
-      - name: build the C++ fixed-form byte oracle for the emitter packages
-        if: startsWith(matrix.group, 'unit-codegen') && !startsWith(matrix.group, 'unit-codegen-cpp-') && !startsWith(matrix.group, 'unit-codegen-python-')
+      # THE ORACLE ON EVERY ROW THAT READS IT. Under SCHEMA_SLOW=1 on CI a
+      # missing build/fixedform-corpus is a failure, never a skip
+      # (slowtest.CorpusRequired, 2fa95aed58), so every row whose tests read it
+      # builds it here: the emitter rows (the C++ rows too: cpptable's fixed
+      # versioning and roadmap tests read the reference's bytes), the Elixir
+      # rows (elixirtable's strict harness and probes), unit-rest
+      # (internal/fixedvector) and unit-compiler-18 (the Goose lineage test).
+      # The Python rows build it in the step below.
+      - name: build the C++ fixed-form byte oracle for the rows that read it
+        if: (startsWith(matrix.group, 'unit-codegen') && !startsWith(matrix.group, 'unit-codegen-python-')) || startsWith(matrix.group, 'unit-elixir-') || matrix.group == 'unit-rest' || matrix.group == 'unit-compiler-18'
         run: make -j"$(getconf _NPROCESSORS_ONLN)" tables-fixedform-corpus
 
       - name: build the C++ fixed-form byte oracle and Python conformance corpus
