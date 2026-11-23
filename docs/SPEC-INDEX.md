@@ -375,11 +375,10 @@ and absence scoring rules, and §7 traces the rules to their sources.
 | #4771, SF-09/21/26 | #4771's PR description says the bytes, fixed minimum and deprecated-enum cases were withdrawn from its retained set. | The appendix names the existing fixed-minimum pair and JSON deprecated-variant twins. Rust’s caller-side check covers the plain byte buffer, the arm byte buffer and the arm array. Shared rows for those additional carriers and binary and cook rows for SF-26 remain owed. |
 | #4772, SF-08 (SPEC §5.1 row 10) | `8b0dd5a18fc4` has six packet rows: four `ratio_{high,low,nan,inf}` refusals and two accepted `ratio_at_{max,min}` controls. The PR reports results for eleven drivers and identifies C, C++, C#, Unity, Rust, Java and Dart probes as owing the ratio operation. | The accepted Go endpoints run through `make packet-cfloat-endpoints-go`. The shared packet caller cases exercise the four refusal classes under the names listed in the appendix. `smref_big_ratio_*` exercises the message writer. |
 
-The fourteen carrier cases passed on C, C++, C#, Unity, Go, Rust and
-JavaScript. The Dart gate is registered. At the audited Wave 3 revision
-`9c039ca6a7`, a clean Dart driver build stopped at missing generated copy
-helpers before it could run those cases. Targets outside these eight and
-the remaining arm and deprecated-enum cases still need shared execution.
+All fourteen carrier cases passed on C, C++, C#, Unity, Go, Rust,
+JavaScript and Dart. The Dart result used a fresh AOT build after the
+Wave 3 generated-copy correction. Targets outside these eight and the
+remaining arm and deprecated-enum cases still need shared execution.
 
 For #4772, the [packet conformance inventory](SPEC-CONFORMANCE.md#compressed-float-packet-writes)
 names the shared packet caller gates and the Python packet tests. The exact
