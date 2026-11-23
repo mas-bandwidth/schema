@@ -42,7 +42,7 @@ RUBY_FLOOR ?= $(CURDIR)/dist/ruby-$(RUBY_FLOOR_VERSION)/bin/ruby
 RUBY       ?= $(CURDIR)/dist/ruby-$(RUBY_CURRENT_VERSION)/bin/ruby
 # the analyzers sit beside the interpreter in use: dist/ruby-<v>/bin by default,
 # and beside $RUBY when a login exports it (the fleet SDK env.sh exports RUBY and
-# RUBY_FLOOR, never the analyzers). make/bench-check.sh holds the same rule: it
+# RUBY_FLOOR, never the analyzers). make/sdk-check.sh holds the same rule: it
 # reads rubocop, steep and rbs beside RUBY and RUBY_FLOOR.
 RUBOCOP    ?= $(dir $(RUBY))rubocop
 STEEP      ?= $(dir $(RUBY))steep
