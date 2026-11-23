@@ -369,11 +369,12 @@ func (b *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 		case f.Array == ir.ArrayCounted:
 			b.pf("    %sif %s_count < %d || %s_count > %d { return None; }%s\n", guard, m, f.ArrayMin, m, f.ArrayBound, closeGuard)
 		case f.Array == ir.ArrayNone && f.HasIntRange && f.Type.Kind == ir.TInt && f.Type.Width <= 64:
-			if f.Type.Signed {
+			switch {
+			case f.Type.Signed:
 				b.pf("    %sif (%s as i64) < %s || (%s as i64) > %s { return None; }%s\n", guard, m, f.IntMin.String(), m, f.IntMax.String(), closeGuard)
-			} else if f.IntMin.Sign() > 0 {
+			case f.IntMin.Sign() > 0:
 				b.pf("    %sif (%s as u64) < %s || (%s as u64) > %s { return None; }%s\n", guard, m, f.IntMin.String(), m, f.IntMax.String(), closeGuard)
-			} else {
+			default:
 				b.pf("    %sif (%s as u64) > %s { return None; }%s\n", guard, m, f.IntMax.String(), closeGuard)
 			}
 		case f.Array == ir.ArrayNone && f.HasFloatRange:

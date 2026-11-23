@@ -77,11 +77,12 @@ func (g *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 		case f.Array == ir.ArrayCounted:
 			cond = fmt.Sprintf("(%sCount < %d || %sCount > %d)", m, f.ArrayMin, m, f.ArrayBound)
 		case f.Array == ir.ArrayNone && f.HasIntRange && f.Type.Kind == ir.TInt && f.Type.Width <= 64:
-			if f.Type.Signed {
+			switch {
+			case f.Type.Signed:
 				cond = fmt.Sprintf("(int64(%s) < %s || int64(%s) > %s)", m, f.IntMin.String(), m, f.IntMax.String())
-			} else if f.IntMin.Sign() > 0 {
+			case f.IntMin.Sign() > 0:
 				cond = fmt.Sprintf("(uint64(%s) < %s || uint64(%s) > %s)", m, f.IntMin.String(), m, f.IntMax.String())
-			} else {
+			default:
 				cond = fmt.Sprintf("(uint64(%s) > %s)", m, f.IntMax.String())
 			}
 		case f.Array == ir.ArrayNone && f.HasFloatRange:

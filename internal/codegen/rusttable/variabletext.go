@@ -1280,16 +1280,19 @@ func (g *gen) emitTextWriteValue(b *strings.Builder, f *ir.Field, x, d, ind stri
 		return
 	}
 	if f.Array != ir.ArrayNone {
-		if f.Array == ir.ArrayCounted {
+		switch f.Array {
+		case ir.ArrayCounted:
 			if f.ArrayMin > 0 {
 				fmt.Fprintf(b, "%sif %s || %s.len() > %d { w.refused = true; }\n", ind, lenUnder(x, f.ArrayMin), x, f.ArrayBound)
 			} else if f.ArrayBound > 0 {
 				fmt.Fprintf(b, "%sif %s.len() > %d { w.refused = true; }\n", ind, x, f.ArrayBound)
 			}
-		} else if f.Array == ir.ArrayFixed {
+		case ir.ArrayFixed:
 			fmt.Fprintf(b, "%sif %s.len() != %d { w.refused = true; }\n", ind, x, f.ArrayBound)
-		} else if f.Array == ir.ArrayList && f.ArrayBound > 0 {
-			fmt.Fprintf(b, "%sif %s.len() > %d { w.refused = true; }\n", ind, x, f.ArrayBound)
+		case ir.ArrayList:
+			if f.ArrayBound > 0 {
+				fmt.Fprintf(b, "%sif %s.len() > %d { w.refused = true; }\n", ind, x, f.ArrayBound)
+			}
 		}
 		fmt.Fprintf(b, "%sif %s.is_empty() {\n", ind, x)
 		fmt.Fprintf(b, "%s    w.out.push_str(\"[]\");\n", ind)

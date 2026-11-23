@@ -701,11 +701,12 @@ func (g *tableGen) emitBlockFillPath(bl *ir.BlockLayout) {
 		case f.Array == ir.ArrayCounted:
 			g.pf("    %sif ( %s_count < %d || %s_count > %d ) { return -1; }%s\n", guard, m, f.ArrayMin, m, f.ArrayBound, closeGuard)
 		case f.Array == ir.ArrayNone && f.HasIntRange && f.Type.Kind == ir.TInt && f.Type.Width <= 64:
-			if f.Type.Signed {
+			switch {
+			case f.Type.Signed:
 				g.pf("    %sif ( (int64_t) %s < %sll || (int64_t) %s > %sll ) { return -1; }%s\n", guard, m, f.IntMin.String(), m, f.IntMax.String(), closeGuard)
-			} else if f.IntMin.Sign() > 0 {
+			case f.IntMin.Sign() > 0:
 				g.pf("    %sif ( (uint64_t) %s < %sull || (uint64_t) %s > %sull ) { return -1; }%s\n", guard, m, f.IntMin.String(), m, f.IntMax.String(), closeGuard)
-			} else {
+			default:
 				g.pf("    %sif ( (uint64_t) %s > %sull ) { return -1; }%s\n", guard, m, f.IntMax.String(), closeGuard)
 			}
 		case f.Array == ir.ArrayNone && f.HasFloatRange:

@@ -353,7 +353,7 @@ func (g *tableGen) emitCookWriteFieldAs(st *ir.Struct, f *ir.Field, offset int64
 				// zeroed, so only the live slots are written and a slot past
 				// the count keeps that zero.
 				g.pf("    schema_assert( %s_count >= %d && %s_count <= %d ); // storage invariant, debug only (§5.1)\n", name, f.ArrayMin, name, f.ArrayBound)
-			g.pf("    if ( %s_count < %d || %s_count > %d ) { return false; }\n", name, f.ArrayMin, name, f.ArrayBound)
+				g.pf("    if ( %s_count < %d || %s_count > %d ) { return false; }\n", name, f.ArrayMin, name, f.ArrayBound)
 				bound = name + "_count"
 				slots = "the live slots, the rest zero"
 			}
