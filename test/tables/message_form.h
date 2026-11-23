@@ -1590,7 +1590,9 @@ static void test_message_form_quantized()
         // the message: the q field alone, so the body is its reference, ten bits and the terminator
         basesdemo::Bases value;
         basesdemo::BasesReset( value );
-        value.q = values[i];
+        // THE WRITE CONTRACT ADMITS THE DECLARED RANGE ONLY (SPEC.md §5.1, a debug assert in BasesSaveMessages), so the
+        // message carries the value the packet wire clamps 11.0 to; the packet side above still proves the clamp itself
+        value.q = values[i] > 10.0f ? 10.0f : values[i];
         uint8_t message[64];
         basesdemo::TableReport report;
         const int64_t bytes = basesdemo::BasesSaveMessages( &value, 1, message, sizeof( message ), &report );
