@@ -413,14 +413,47 @@ static SCHEMA_UNUSED TableJsonInteger table_json_interpret_exact( const char * t
     return out;
 }
 
+static SCHEMA_UNUSED int table_json_map_key_order(const uint8_t * ea,const uint8_t * eb,const TableFieldInfo * key)
+{
+    if(key->kind==12) {
+        int32_t la=0,lb=0,n; const char * pa=NULL; const char * pb=NULL; int c;
+#ifdef SCHEMA_TABLE_UNBOUNDED_TEXT_RUNTIME
+        if(!key->counted) {
+            pa=schema_table_text_at_(NULL,(const TableRef *)(const void *)(ea+key->offset),&la);
+            pb=schema_table_text_at_(NULL,(const TableRef *)(const void *)(eb+key->offset),&lb);
+        } else
+#endif
+        {
+            pa=(const char *)(ea+key->offset); pb=(const char *)(eb+key->offset);
+            la=table_json_count(ea,key); lb=table_json_count(eb,key);
+        }
+        if(la<0 || lb<0) { return 0; }
+        n=la<lb ? la : lb; c=n>0 ? memcmp(pa,pb,(size_t)n) : 0;
+        if(c!=0) { return c<0 ? -1 : 1; }
+        return la<lb ? -1 : (la>lb ? 1 : 0);
+    }
+    if(key->kind>=2 && key->kind<=5) {
+        int64_t a=table_json_get_signed(ea+key->offset,key->elem_size);
+        int64_t b=table_json_get_signed(eb+key->offset,key->elem_size);
+        return a<b ? -1 : (a>b ? 1 : 0);
+    }
+    {
+        uint64_t a=table_json_get_raw(ea+key->offset,key->elem_size);
+        uint64_t b=table_json_get_raw(eb+key->offset,key->elem_size);
+        return a<b ? -1 : (a>b ? 1 : 0);
+    }
+}
 static SCHEMA_UNUSED int table_json_write_map(TableJsonOut * out,const void * storage,const TableFieldInfo * f,int32_t depth)
 {
     const TableSequence * map=(const TableSequence *)storage;
     TableSequenceCursor cursor=table_sequence_cursor(NULL,map,f->elem_size); int32_t i;
+    const uint8_t * prev=NULL;
     const TableFieldInfo * key=&f->table->fields[0]; const TableFieldInfo * value=&f->table->fields[1];
     if(!cursor.ok) { return 0; } table_json_put(out,'{');
     for(i=0;i<map->count;i++) {
         const uint8_t * entry=(const uint8_t *)table_sequence_next(&cursor); if(entry==NULL) { return 0; }
+        if(i && table_json_map_key_order(prev,entry,key)>=0) { return 0; }
+        prev=entry;
         if(i) { table_json_put(out,','); } table_json_line(out,depth+1);
         if(key->kind==12) {
 #ifdef SCHEMA_TABLE_UNBOUNDED_TEXT_RUNTIME

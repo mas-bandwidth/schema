@@ -592,11 +592,36 @@ func (g *tableGen) emitBlockFillPath(bl *ir.BlockLayout) {
 	g.pf("   exists to avoid. */\n")
 	g.pf("static SCHEMA_UNUSED int64_t %s( const %sBlock * block )\n{\n", g.api(name, "block_bytes"), name)
 	g.pf("    int64_t used = %d;\n", bl.Projection.Size)
-	if len(bl.Arrays) == 0 {
-		g.pf("    (void) block; /* no out-of-line array: the extent is the projection's own */\n")
+	g.pf("    if ( block == NULL || block->projection == NULL ) { return -1; }\n")
+	for _, f := range bl.Table.Fields {
+		if bl.ArrayByName(f.Name) != nil {
+			continue
+		}
+		m := "block->projection->" + f.Name
+		guard, closeGuard := "", ""
+		if f.Type.Optional {
+			guard, closeGuard = "if ( "+m+"_present ) { ", " }"
+		}
+		switch {
+		case f.Array == ir.ArrayNone && !f.Type.Pointer && !f.Type.TextUnbounded() && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes):
+			g.pf("    %sif ( %s_length < 0 || %s_length > %d ) { return -1; }%s\n", guard, m, m, f.Type.Size, closeGuard)
+		case f.Array == ir.ArrayCounted:
+			g.pf("    %sif ( %s_count < %d || %s_count > %d ) { return -1; }%s\n", guard, m, f.ArrayMin, m, f.ArrayBound, closeGuard)
+		case f.Array == ir.ArrayNone && f.HasIntRange && f.Type.Kind == ir.TInt && f.Type.Width <= 64:
+			if f.Type.Signed {
+				g.pf("    %sif ( (int64_t) %s < %sll || (int64_t) %s > %sll ) { return -1; }%s\n", guard, m, f.IntMin.String(), m, f.IntMax.String(), closeGuard)
+			} else if f.IntMin.Sign() > 0 {
+				g.pf("    %sif ( (uint64_t) %s < %sull || (uint64_t) %s > %sull ) { return -1; }%s\n", guard, m, f.IntMin.String(), m, f.IntMax.String(), closeGuard)
+			} else {
+				g.pf("    %sif ( (uint64_t) %s > %sull ) { return -1; }%s\n", guard, m, f.IntMax.String(), closeGuard)
+			}
+		case f.Array == ir.ArrayNone && f.HasFloatRange:
+			g.pf("    %sif ( !( %s >= %g && %s <= %g ) ) { return -1; }%s\n", guard, m, f.FMin, m, f.FMax, closeGuard)
+		}
 	}
 	for _, a := range bl.Arrays {
 		g.pf("    {\n")
+		g.pf("        if ( (int64_t) block->projection->%s.count > %d ) { return -1; }\n", a.Field.Name, a.Max)
 		g.pf("        const int64_t end = (int64_t) block->projection->%s.offset_of + (int64_t) block->projection->%s.count * (int64_t) block->projection->%s.stride;\n",
 			a.Field.Name, a.Field.Name, a.Field.Name)
 		g.pf("        if ( end > used ) { used = end; }\n")

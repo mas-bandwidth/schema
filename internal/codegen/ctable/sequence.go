@@ -75,7 +75,13 @@ static SCHEMA_UNUSED TableSequenceCursor table_sequence_order(const TableCtx * c
 {
     TableSequenceCursor cursor=table_sequence_cursor(ctx,value,width);
     TableSequenceOrder * order; int64_t i;
-    if(!cursor.ok || value->count==0 || ctx==NULL || ctx->arena==NULL) { return cursor; }
+    if(!cursor.ok || value->count==0) { return cursor; }
+    if(ctx==NULL || ctx->arena==NULL) {
+        for(i=1;i<value->count;i++) {
+            if(compare(cursor.array+(i-1)*width,cursor.array+i*width)>=0) { cursor.ok=0; return cursor; }
+        }
+        return cursor;
+    }
     for(order=*orders;order!=NULL;order=order->next) {
         if(order->value==value) { cursor.ordered=order->entries; return cursor; }
     }
@@ -91,6 +97,9 @@ static SCHEMA_UNUSED TableSequenceCursor table_sequence_order(const TableCtx * c
     for(i=(int64_t)value->count-1;i>0;i--) {
         const void * swap=order->entries[0]; order->entries[0]=order->entries[i]; order->entries[i]=swap;
         table_sequence_sift(order->entries,0,i,compare);
+    }
+    for(i=1;i<value->count;i++) {
+        if(compare(order->entries[i-1],order->entries[i])>=0) { table_release(allocator,order->entries); table_release(allocator,order); cursor.ok=0; return cursor; }
     }
     order->value=value; order->next=*orders; *orders=order;
     cursor=table_sequence_cursor(ctx,value,width); cursor.ordered=order->entries; return cursor;
@@ -233,6 +242,8 @@ func tableSequenceRuntime(anyUnboundedText bool) string {
 		`if(child+1<count && compare(ctx,entries[child],entries[child+1])<0) { child++; }
         if(compare(ctx,entries[at],entries[child])>=0) { return; }`, 1)
 	s = strings.ReplaceAll(s, "table_sequence_sift(order->entries,", "table_sequence_sift(ctx,order->entries,")
+	s = strings.Replace(s, "compare(cursor.array+(i-1)*width,cursor.array+i*width)", "compare(ctx,cursor.array+(i-1)*width,cursor.array+i*width)", 1)
+	s = strings.Replace(s, "compare(order->entries[i-1],order->entries[i])", "compare(ctx,order->entries[i-1],order->entries[i])", 1)
 	s = strings.Replace(s, "\n#endif\n", tableUnboundedTextSequenceRuntime+"\n#endif\n", 1)
 	return s
 }
