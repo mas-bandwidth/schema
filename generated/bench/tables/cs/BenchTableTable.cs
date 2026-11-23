@@ -1705,7 +1705,7 @@ namespace Benchtable
                     object empty = f.Table.Create(); f.SetChild(owner, index, empty);
                     return ReadTable(text, ref input, empty, f.Table, depth + 1);
                 }
-                Span<byte> key = stackalloc byte[MaxName];
+                Span<byte> key = input.KeyBuf;
                 if (!ScanString(text, ref input, key, true, out int used, stored: true)) { return false; }
                 if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
                 input.Pos++;
@@ -2031,6 +2031,7 @@ namespace Benchtable
                 public TableReport Report;
                 public bool Bad; // the text is not JSON: the whole read is discarded
                 internal string TextField;
+                internal byte[] KeyBuf;
             }
 
             static void Space(ReadOnlySpan<byte> text, ref In input)
@@ -2553,7 +2554,7 @@ namespace Benchtable
                 if (depth > MaxDepth) { input.Bad = true; return false; }
                 input.Pos++; // the opening bracket
                 bool first = true;
-                Span<byte> key = stackalloc byte[MaxName];
+                Span<byte> key = input.KeyBuf;
                 // a skipped object's keys are held to the layer's rule too: a repeated
                 // key refuses in every object of the text (docs/SPEC-TABLES.md §16.2,
                 // §16.12), the objects this walk skips included
@@ -2689,7 +2690,7 @@ namespace Benchtable
                     input.Pos++;
                     f.Arms.SetTag(union, 0);
                     if (Peek(text, ref input) == '}') { input.Pos++; return true; }
-                    Span<byte> key = stackalloc byte[MaxName];
+                    Span<byte> key = input.KeyBuf;
                     int keyLength;
                     if (!ScanString(text, ref input, key, true, out keyLength, stored: true)) { return false; }
                     if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
@@ -2745,6 +2746,12 @@ namespace Benchtable
                     f.Table.Reset(child);
                     return ReadTable(text, ref input, child, f.Table, depth + 1);
                 }
+                return ReadScalarLeaf(text, ref input, owner, f, index, depth);
+            }
+
+            [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+            static bool ReadScalarLeaf(ReadOnlySpan<byte> text, ref In input, object owner, TableFieldInfo f, int index, int depth)
+            {
                 if (IsEnum(f))
                 {
                     Span<byte> name = stackalloc byte[MaxName];
@@ -3085,9 +3092,9 @@ namespace Benchtable
                     // The schema fixes the vocabulary size. Small schemas use the
                     // stack; larger ones still count every duplicate exactly.
                     int words = (f.ArrayBound + 63) / 64;
-                    Span<ulong> seen = words <= 8 ? stackalloc ulong[words] : new ulong[words];
-                    seen.Clear();
-                    Span<byte> key = stackalloc byte[MaxName];
+                    ulong seen0 = 0;
+                    ulong[] seenBig = words > 1 ? new ulong[words] : null;
+                    Span<byte> key = input.KeyBuf;
                     System.Collections.Generic.HashSet<string> unplaced = null;
                     for (; ; )
                     {
@@ -3110,8 +3117,8 @@ namespace Benchtable
                         if (slot >= 0)
                         {
                             ulong bit = 1ul << (slot & 63);
-                            if ((seen[slot >> 6] & bit) != 0) { return RefuseText(ref input, "duplicate"); }
-                            seen[slot >> 6] |= bit;
+                            if (seenBig == null) { if ((seen0 & bit) != 0) { return RefuseText(ref input, "duplicate"); } seen0 |= bit; }
+                            else { if ((seenBig[slot >> 6] & bit) != 0) { return RefuseText(ref input, "duplicate"); } seenBig[slot >> 6] |= bit; }
                         }
                         if (slot < 0)
                         {
@@ -3200,6 +3207,15 @@ namespace Benchtable
             // counted, a repeated key (known or unknown) is damage. The instance is already
             // at its declared defaults when this is entered, so a key the text never
             // mentions keeps the default an absent field takes on the wire (§4).
+            [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+            static bool RequireSeenMask(object value, TableTypeInfo info, ulong seen0, ulong[] seenBig, TableReport report)
+            {
+                if (seenBig != null) { return TableWire.RequireSeen(value, info, seenBig, report); }
+                Span<ulong> s = stackalloc ulong[1];
+                s[0] = seen0;
+                return TableWire.RequireSeen(value, info, s, report);
+            }
+
             static bool ReadTable(ReadOnlySpan<byte> text, ref In input, object value, TableTypeInfo info, int depth, bool opened = false)
             {
                 if (depth > MaxDepth) { input.Bad = true; return false; }
@@ -3216,14 +3232,14 @@ namespace Benchtable
                 // The descriptor fixes this size; input cannot grow it. Keep common
                 // tables on the stack, and track every field even beyond 512.
                 int words = (info.NumFields + 63) / 64;
-                Span<ulong> seen = words <= 8 ? stackalloc ulong[words] : new ulong[words];
-                seen.Clear();
-                Span<byte> key = stackalloc byte[MaxName];
+                ulong seen0 = 0;
+                ulong[] seenBig = words > 1 ? new ulong[words] : null;
+                Span<byte> key = input.KeyBuf;
                 System.Collections.Generic.HashSet<string> unknown = null;
                 for (; ; )
                 {
                     byte c = Peek(text, ref input);
-                    if (c == '}') { input.Pos++; return TableWire.RequireSeen(value, info, seen, input.Report); }
+                    if (c == '}') { input.Pos++; return RequireSeenMask(value, info, seen0, seenBig, input.Report); }
                     if (c == 0) { input.Bad = true; return false; }
                     int keyLength;
                     if (!ScanString(text, ref input, key, true, out keyLength, stored: true)) { return false; }
@@ -3259,8 +3275,8 @@ namespace Benchtable
                         if (index < info.NumFields)
                         {
                             ulong bit = 1ul << (index & 63);
-                            if ((seen[index >> 6] & bit) != 0) { return RefuseText(ref input, "duplicate"); }
-                            seen[index >> 6] |= bit;
+                            if (seenBig == null) { if ((seen0 & bit) != 0) { return RefuseText(ref input, "duplicate"); } seen0 |= bit; }
+                            else { if ((seenBig[index >> 6] & bit) != 0) { return RefuseText(ref input, "duplicate"); } seenBig[index >> 6] |= bit; }
                         }
                         // PRESENCE OF THE KEY IS THE PRESENCE (§16.2): reaching this
                         // line is the key being present, so an optional is set present
@@ -3296,7 +3312,7 @@ namespace Benchtable
                     }
                     c = Peek(text, ref input);
                     if (c == ',') { input.Pos++; continue; } // a trailing comma is accepted
-                    if (c == '}') { input.Pos++; return TableWire.RequireSeen(value, info, seen, input.Report); }
+                    if (c == '}') { input.Pos++; return RequireSeenMask(value, info, seen0, seenBig, input.Report); }
                     input.Bad = true;
                     return false;
                 }
@@ -3314,6 +3330,7 @@ namespace Benchtable
                 input.Report = report != null ? report : new TableReport();
                 input.Report.Zero();
                 input.Bad = false;
+                input.KeyBuf = new byte[MaxName];
                 if (info.Variable) { input.Labels = new System.Collections.Generic.Dictionary<ulong, Label>(); }
                 info.Reset(value);
                 // C++ refuses a null pointer and a negative length here before it walks.

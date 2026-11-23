@@ -3351,6 +3351,8 @@ inline double TableJsonTokenDouble( const char * token, int32_t length, bool sin
         }
         if ( !nonzero )
         {
+            // an all-zero mantissa is a zero of the token's own sign: -0.000... is -0 (§16.2)
+            if ( negative ) { work[n++] = '-'; }
             work[n++] = '0';
         }
         else
@@ -4907,7 +4909,7 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
             if ( slot < 0 )
             {
                 in.report->unknown++;
-                if ( !TableJsonSkipValue( in, depth + 1 ) ) { return false; }
+                if ( !TableJsonSkipValue( in, depth + 2 ) ) { return false; }
             }
             else if ( !TableJsonElementShapeFits( f, TableJsonValueShape( in ) ) )
             {
@@ -4937,6 +4939,9 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
     }
     if ( f->is_array )
     {
+        // the array is a container one level below the table holding it, counted toward
+        // the cap whether or not it holds an element (FL-12)
+        if ( depth + 1 > kTableJsonMaxDepth ) { in.bad = true; return false; }
         if ( TableJsonPeek( in ) != '[' )
         {
             in.bad = true;
