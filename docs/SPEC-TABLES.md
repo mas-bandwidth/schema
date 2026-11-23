@@ -7370,7 +7370,15 @@ is the checkout's emitters, not a claim that a release tag already said so.
   register the fixed tables of the unit, and what they reach, as the message
   roots and slots, and a variable table registers none, so the batch verbs
   answer for fixed roots only.
-- **Goose** emits no message form.
+- **Goose** (`internal/codegen/goosetable/messageform.go`) emits the unit's
+  announcement as `MessageAnnouncement` when the unit declares a fixed root.
+  Each declared fixed root exposes `<Root>Announce`, `<Root>AnnounceRefused`,
+  `<Root>MeasureMessages`, `<Root>SaveMessages`, and `<Root>LoadMessages`.
+  The announcement is a byte slice. Its root-level refusal flag is true and
+  the slice is empty when the vocabulary exceeds 4096 entries. The generated
+  runtime's `schema_rt::announce_read` resolves a peer announcement into a
+  `MsgVocabulary` for the batch reader. Variable roots expose no batch verbs.
+  See the [Goose fixed-root message example](SPEC-CONFORMANCE.md#goose-fixed-root-messages).
 - **Elixir** (`internal/codegen/elixirtable/elixirtable.go`, `messageform.go`)
   emits `<Package>.TableMessage` when the unit has a fixed root and does not
   emit it otherwise. The module carries the announcement (`announce`,

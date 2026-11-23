@@ -528,6 +528,20 @@ Run the native C#, Unity, Java, Lua, Luau, MOO and Squirrel probes with
 SCHEMA_SLOW=1 go test -count=1 -v ./internal/codegen/{cstable,unitytable,javatable,luatable,luautable,mootable,squirreltable} -run '^TestAnnouncementEntryBudget(CSharp|Unity|Java)?$'
 ```
 
+### Goose fixed-root messages
+
+The manifest's `login_full` message row uses the `LoginRequest` fixed root in
+`tables/backend`. The generated `LoginRequestAnnounce` bytes match
+`testdata/wire/tables/backend_conn.bin`. The reader accepts that announcement
+with the default budgets. `LoginRequestMeasureMessages` returns the size of
+the pinned batch, `LoginRequestSaveMessages` writes the pinned bytes, and
+`LoginRequestLoadMessages` restores the bodies so saving them again gives the
+same bytes.
+
+```sh
+SCHEMA_SLOW=1 go test -count=1 -v ./internal/codegen/goosetable -run '^TestGooseMessageFormMatchesTheGoldens$/^login_full$'
+```
+
 ### JavaScript read-into names
 
 The shape checker refuses `ConfigLoadInto` because the JavaScript table
