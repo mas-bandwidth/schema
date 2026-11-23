@@ -16,8 +16,10 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `fixedvector/` | fixed form's shared cross-version vectors | `go test ./internal/fixedvector` | `go test ./internal/fixedvector` |
 | `format/` | schemafmt | `go test ./internal/format` | `go test ./internal/format` |
 | `fuzz/` | seeded fuzz corpus | `go test ./internal/fuzz` | `go test ./internal/fuzz` |
+| `githooks/` | temp-repo tests for the .githooks/pre-push hook range and no-verify rules | `go test ./internal/githooks` | `go test ./internal/githooks` |
 | `goldens/` | source, id, and wire pins | `go test ./internal/goldens` | `make update-goldens` |
 | `goname/` | Go member spelling (initialisms) | `go test ./internal/goname` | `go test ./internal/goname` |
+| `inputfamilies/` | shared test-input families and derived reader legs | `go test ./internal/inputfamilies` | `go test ./internal/inputfamilies` |
 | `jsontestsuite/` | JSONTestSuite oracle harness | `go test ./internal/tabletext` | `go test ./internal/tabletext -run JSONTestSuite` |
 | `languages/` | the supported-language list, derived | `go test ./internal/languages` | `go test ./internal/languages` |
 | `listwalk/` | unbounded-array walk | `go test ./internal/listwalk` | `go test ./internal/listwalk` |
@@ -26,6 +28,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `memceiling/` | memory ceiling for allocating tests | `go test ./internal/memceiling` | `go test ./internal/memceiling` |
 | `modulemove/` | pin and release boundary of the /v3 module move | `go test ./internal/modulemove` | `go test ./internal/modulemove` |
 | `nameemit/` | name-corpus reader for the emit legs | `go test ./internal/codegen/c ./internal/codegen/cpp ./internal/codegen/csharp ./internal/codegen/elixir -run TestNameCorpusBuilds` | `SCHEMA_SLOW=1 go test ./internal/codegen/c ./internal/codegen/cpp ./internal/codegen/csharp ./internal/codegen/elixir -run TestNameCorpusBuilds` |
+| `nightlyrows/` | PR-tier nightly-fast row parser and selector | `go test ./internal/nightlyrows` | `go test ./internal/nightlyrows` |
 | `parser/` | recursive-descent parser | `go test ./internal/parser` | `go test ./internal/parser` |
 | `pathid/` | where a path lands, by the file system's identity | `go test ./internal/pathid` | `go test ./internal/pathid` |
 | `provesran/` | zero-match and unknown-candidate refusal for scans | `go test ./internal/provesran` | `go test ./internal/provesran` |

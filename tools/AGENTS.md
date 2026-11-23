@@ -13,11 +13,14 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `hostilecorpus/` | shared hostile-input corpus generator | `make schema-shared-hostile-corpus` | `make schema-shared-hostile-corpus-generate` |
 | `hostilecorpusexec/` | native-port hostile-corpus driver | `make schema-c-runs-hostile-corpus` | `make schema-c-runs-hostile-corpus` |
 | `hostileledger/` | hostile-corpus runner ledger check | `go test ./tools/hostileledger` | `go run ./tools/hostileledger` |
+| `inputaccount/` | inotify input-file accounting wrapper for reader legs | `go test ./tools/inputaccount` | `go run ./tools/inputaccount -family NAME -leg LEG` |
+| `inputfamilies/` | ci-fast input-family matrix selector and checker | `go test ./internal/inputfamilies` | `go run ./tools/inputfamilies check` |
 | `luaufuzzhost/` | Luau nightly fuzz host (C++) | `make luau-nightly-fuzz-replay` | `make luau-nightly-fuzz` |
 | `matrix/` | 3.0.0 proof gate | `go test ./tools/matrix` | `make proof` |
 | `moofuzzhost/` | moo wire-fuzz native host (C++) | `make tables-moo-wire-fuzz` | `make tables-moo-wire-fuzz` |
 | `mustrun/` | harness wrapper: exit status plus a registered ran N count | `go test ./tools/mustrun` | `build/mustrun -name X -count N -- cmd` |
 | `negativecontrols/` | negative-control enumerator | `go test ./tools/negativecontrols` | `go run ./tools/negativecontrols check` |
+| `nightlyrows/` | ci-fast nightly-fast matrix row selector | `go test ./internal/nightlyrows` | `go run ./tools/nightlyrows -files diff-files.txt -broad no` |
 | `pgroup/` | process-group runner for CI steps | `go test ./tools/pgroup` | `go run ./tools/pgroup -- make test` |
 | `recipescan/` | CLI for internal/recipescan | `go test ./internal/recipescan` | `go run ./tools/recipescan` |
 | `releasebin/` | release binaries for six platforms | `go test ./tools/releasebin` | `make release-binaries` |

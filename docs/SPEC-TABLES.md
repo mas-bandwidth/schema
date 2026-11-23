@@ -6916,7 +6916,11 @@ width and is not walked, as on the file form.
 ORDINARY kind mismatch, AND IT REFUSES AT `AnnounceRead`**, for every entry this
 reader names, up front: the announcement is refused, no vocabulary is set, and
 no batch under it is read. That is the fastest place to find it, and a kind is
-a fact of the announcement, not of a body. A widening is not a mismatch (§4). **A field whose
+a fact of the announcement, not of a body. A widening is not a mismatch (§4). **A reader that
+meets such an entry in a batch instead** — the reference's `AnnounceRead` holds no
+root, so it meets the entry at the field or arm that names it — **REFUSES THE
+WHOLE BATCH `kind_mismatch`**: the count is `0` and every body holds its declared
+defaults. It never skips the entry, counts it and delivers the batch. **A field whose
 announced kind AGREES and whose announced RANGE differs decodes**, and refuses
 `out_of_range` where the value falls outside this reader's bound, which is §4's
 rule for a range change on the variable form and is why the shapes carry ranges
@@ -9399,7 +9403,7 @@ diagnostic name, which is not normative and is never compared:
   rules**, because it carries its own kind byte (§3).
 - **A VALUE OUTSIDE THE READER'S RANGE — `out_of_range`** (a range tightened
   since the writer, or a hostile value): a scalar outside the reader's
-  declared `[min, max]`, a `bits(N)` value past `2^N − 1`. **A fixed field
+  declared `[min, max]`, a `bits(N)` value past `2^N − 1`. **An unsigned value is its unsigned magnitude**: a `uint64` or `bits(64)` with its top bit set is `2^63` or more, never negative, and a load that reads it hands the save the same value. **A fixed field
   is judged on the RAW scale**: its declared bounds are whole units (SPEC.md
   §4.6) and the wire carries units × 2^F, so the bounds are `[A << F,
   B << F]`. A 128-bit integer is judged in 128 bits; a bare `uint128`
@@ -16678,7 +16682,7 @@ Per kind:
 | integers, `bits(N)` | number, or a string of digits | a kind of 32 bits and under — `int8` … `int32`, `uint8` … `uint32`, `bits(1..32)` — is a number; a kind WIDER than 32 bits — `int64`, `uint64`, `bits(33..64)` — is written as a JSON string of decimal digits and reads as that STRING only; a bare number token there refuses `kind_mismatch`. See **Numbers** below; a `bits(N)` value over its implied `[0, 2^N − 1]` refuses `out_of_range` |
 | `float32`, `float64`, compressed floats | number | **A `float32` field is written as a float32**: a leg whose storage holds a wider float rounds it to float32 (ties to even) before it spells it, in the shortest spelling that reads back to that float32 (§16.14). A value a float32 field cannot hold, one past float32's own range, refuses `out_of_range` (the recommended name; `kind_mismatch` conforms too, below), never clamped and never stored as infinity. A compressed float's `-0` reads as `+0`, uncounted, and a NaN or an infinity in one is refused at write (§3.3, the special values). A PLAIN float's `-0` is written `-0` and reads as `-0`, sign kept and uncounted, and a NaN or an infinity in one is refused at write; every binary read refuses one by name, `non_finite_float`, so a value it accepts always writes (§3.3, a plain float's special values) |
 | `fixed(I, F)`, `ufixed(I, F)` | number, in WHOLE UNITS, or a string holding one | a fixed kind whose storage is 32 bits or under is a number; one whose storage is wider than 32 bits — 64- or 128-bit — is written as a JSON STRING whose content is the same decimal spelling W11 gives (`"1.0"`, `"-0.25"`; never an exponent on write), and reads as that STRING only, its content one RFC 8259 number token (**Numbers**, below); a bare number token there refuses `kind_mismatch`. The spelling SPEC.md §4.6 gives a fixed default: `1.0`, `-0.25`, `3.0000152587890625`. A fixed kind of 32 bits and under is written as the shortest EXACT decimal with at least one fractional digit and read from any number token whose value is exactly representable in Q I.F — `2`, `15e-1` and `1.5` are the same value — and a finer fraction refuses `kind_mismatch`, the wrong shape for the field, never rounded. See **Numbers** |
-| `int128`, `uint128` | string of digits | a decimal integer, exact past 2^53 in both directions: `"340282366920938463463374607431768211455"` reads back as itself. Reads as that STRING only; a bare number token there refuses `kind_mismatch` |
+| `int128`, `uint128` | string of digits | a decimal integer, exact past 2^53 in both directions: `"340282366920938463463374607431768211455"` reads back as itself. Reads as that STRING only; a bare number token there refuses `kind_mismatch`. Every port carries it in every root that has a text form, fixed or variable, at a field, an array element and a table element alike: a port that writes the variable root but not the fixed one is not conformant |
 | `bool` | `true` / `false` | |
 | `string(N)` | string | longer than N bytes refuses `length_over_bound` |
 | `bytes(N)` | string, base64 | CANONICAL base64 on write and on read, the text §16.8 defines: the standard alphabet, padded, pad bits zero, and exactly the spelling the writer writes for those bytes. Longer than N bytes refuses `length_over_bound`. Any other spelling that decodes refuses the read (recommended name `base64_not_canonical`). A string that is valid JSON but not base64 at all (a byte outside the alphabet, misplaced padding, no decoding at all) refuses `kind_mismatch` (recommended name; the verdict is the contract, §16.8). The JSON layer decides FIRST: a raw byte below `0x20`, a `\` that begins no escape, or a lone byte at or above `0x80` (not UTF-8, `string_not_utf8`, §16.3) inside the string refuses the read `malformed`, as does a `"` that ends the string early (proved by `make table-base64-go`, test/table-base64/harness, rows `invalid-XX`). **The base64 rules above judge the string's DECODED content, after the JSON layer has undone every escape**: `"QQ=="` is the content `QQ==` and reads exactly as `"QQ=="` does, and an escaped character outside the alphabet is outside it still |

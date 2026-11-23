@@ -81,8 +81,8 @@ Probe.check(Probe.hex(again) == %q, %q <> " reloaded: " <> Probe.hex(again))
 	}
 
 	// the reversed witness
-	const fixed = "            case Map.get(value, f.name) do\n              nil -> {acc, seen}\n              v -> save_collect_nodes(Map.fetch!(@tables, f.elem), v, acc, seen)\n            end\n"
-	const old = "          save_collect_nodes(Map.fetch!(@tables, f.elem), Map.get(value, f.name, %{}), acc, seen)\n"
+	const fixed = "            case Map.get(value, f.name) do\n              nil ->\n                state\n\n              v ->\n                {acc, seen} = state\n                save_collect_nodes(Map.fetch!(@tables, f.elem), v, acc, seen, dir)\n            end\n"
+	const old = "          {acc, seen} = state\n          save_collect_nodes(Map.fetch!(@tables, f.elem), Map.get(value, f.name, %{}), acc, seen, dir)\n"
 	planted := map[string][]byte{}
 	n := 0
 	for name, data := range files {

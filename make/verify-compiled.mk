@@ -29,7 +29,33 @@ cards-go-conformance: cards-conformance-go
 # Explicit per-leg wire-fuzz and json-fuzz build prerequisites (make/verify-compiled.mk
 # sorts before make/wire-fuzz-release.mk in the Makefile's wildcard include, so target
 # prerequisites must not rely on WFR_DEPS_* being defined at parse time).
-VERIFY_FUZZ_DEPS_cpp    := build/wire-fuzz-cpp build/conformance-cpp
+# Build both C++ fuzz binaries once from a single parallel compile pass:
+# build/conformance-cpp and build/wire-fuzz-cpp in Makefile each invoke
+# $(MAKE) $(CONFORMANCE_OBJECTS), so listing both as parallel prerequisites of
+# _verify-cpp-fuzz compiled all 62 generated table objects twice simultaneously
+# (racing on identical .o outputs) and delayed the two slowest main TUs until
+# after the object pass finished. Compiling both main TUs first alongside one
+# shared $(CONFORMANCE_OBJECTS) pass eliminates the duplicate work and file race
+# and overlaps the main TUs with the generated objects.
+build/conformance-cpp-objs/_main/conformance_main.o: test/conformance/cpp/main.cpp build/tables-generated/.stamp $(wildcard $(SERIALIZE)/*.h)
+	@mkdir -p $(@D)
+	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) -c $< -o $@
+
+.PHONY: _verify-cpp-fuzz-bins
+_verify-cpp-fuzz-bins: build/tables-generated/.stamp test/conformance/cpp/main.cpp test/tables/wire_fuzz_main.cpp
+	@mkdir -p build
+	@$(MAKE) --no-print-directory \
+		build/conformance-cpp-objs/_main/conformance_main.o \
+		build/conformance-cpp-objs/_main/wire_fuzz_main.o \
+		$(CONFORMANCE_OBJECTS)
+	@set -e; \
+		$(CXX) $(TABLES_CXXFLAGS) build/conformance-cpp-objs/_main/conformance_main.o \
+			$(CONFORMANCE_OBJECTS) -o build/conformance-cpp & p1=$$!; \
+		$(CXX) $(TABLES_CXXFLAGS) build/conformance-cpp-objs/_main/wire_fuzz_main.o \
+			$(CONFORMANCE_OBJECTS) -o build/wire-fuzz-cpp & p2=$$!; \
+		wait $$p1; wait $$p2
+
+VERIFY_FUZZ_DEPS_cpp    := _verify-cpp-fuzz-bins
 VERIFY_FUZZ_DEPS_c      := build/wire-fuzz-c build/conformance-c tables-c-view
 VERIFY_FUZZ_DEPS_cs     := toolchain-cs build-conformance-cs tables-cs-view packet-end-cs packet-write-cfloat-cs packet-write-text-cs
 VERIFY_FUZZ_DEPS_unity  := toolchain-unity build/conformance-unity/.stamp
@@ -172,11 +198,20 @@ _verify-rust-conformance: build/conformance-harness build/conformance-rust gener
 		./build/conformance-harness run --only rust --claims --work build/verify/conformance-rust --results $(VERIFY_RESULTS_DIR)/rust.json & p3=$$!; \
 		wait $$p1; wait $$p2; wait $$p3
 
-_verify-rust-bench: bin/schema generated/bench/rust/.stamp generated/bench/paired/rust/.stamp packet-defaults-rust packet-end-rust packet-write-cfloat-rust packet-write-text-rust cards-rust-conformance tables-rust-view
+# Run the Rust quick bench (--round 0, matching _verify-go-bench-quick) and
+# paired gate as parallel prerequisites beside packet-*, cards, and view gates
+# instead of serially after all six prerequisites finish.
+.PHONY: _verify-rust-bench-quick _verify-rust-bench-paired
+_verify-rust-bench-quick: generated/bench/rust/.stamp
 	@mkdir -p build/verify build/bench && rm -f build/verify/bench-rust.csv
-	PATH="$(RUSTUP_BIN):$$PATH" bench/run.sh --quick --bare --only rust --out build/verify/bench-rust.csv
+	PATH="$(RUSTUP_BIN):$$PATH" bench/run.sh --quick --round 0 --bare --only rust --out build/verify/bench-rust.csv
 	@test -s build/verify/bench-rust.csv
+
+_verify-rust-bench-paired: generated/bench/paired/rust/.stamp
 	PATH="$(RUSTUP_BIN):$$PATH" go run ./bench/paired -mode gate -langs rust
+
+_verify-rust-bench: bin/schema generated/bench/rust/.stamp generated/bench/paired/rust/.stamp packet-defaults-rust packet-end-rust packet-write-cfloat-rust packet-write-text-rust cards-rust-conformance tables-rust-view _verify-rust-bench-quick _verify-rust-bench-paired
+	@test -s build/verify/bench-rust.csv
 
 # ---- java ----
 
