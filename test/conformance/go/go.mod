@@ -191,6 +191,10 @@ require cooktorturewide v0.0.0
 
 replace cooktorturewide => ../../../build/tables-generated-go/cooktorturewide
 
+require writebounds v0.0.0
+
+replace writebounds => ../../../build/tables-generated-go/writebounds
+
 require shapes v0.0.0
 
 replace shapes => ../../../build/tables-generated-go/shapes

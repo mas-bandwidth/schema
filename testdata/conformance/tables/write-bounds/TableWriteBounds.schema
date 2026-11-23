@@ -1,0 +1,34 @@
+package writebounds
+
+enum Channel { Alpha, Beta, Gamma }
+
+// Accepted boundary values on variable-table carriers in the shared corpus.
+enum Phase
+{
+    Live
+    Old  | deprecated
+    Next
+}
+
+union WrefArm
+{
+    a_none
+    a_bits  bits(13)
+    a_range int32      | min = 0, max = 10
+    a_str   string(8)
+    a_arr   [..3]int32
+    a_raw   bytes(4)
+}
+
+table TortureVarWref
+{
+    raw       bytes(4)
+    opt_arr   ?[..3]int32
+    arm_bits  WrefArm
+    arm_range WrefArm
+    arm_str   WrefArm
+    arm_arr   WrefArm
+    arm_raw   WrefArm
+    chan_lim  [Channel]int32 | min = 0, max = 50
+    phase     Phase
+}
