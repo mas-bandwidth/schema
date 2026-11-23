@@ -1360,7 +1360,7 @@ $(C_VIEW_OUT)/$(2).listing: test/c-tables/view_main.c build/tables-generated-c/.
 	cap=$$$$(printf '%s' "$$$$pkg" | cut -c1 | tr 'a-z' 'A-Z')$$$$(printf '%s' "$$$$pkg" | cut -c2-); \
 	$(CC) $(TABLES_CFLAGS) -Ibuild/tables-generated-c/$(1) -I$(SERIALIZE_C) \
 		-DVIEW_HEADER="\"$$$${cap}View.h\"" -DVIEW_PACKAGE=$$$$pkg -DVIEW_PACKAGE_UPPER=$$$$(printf '%s' "$$$$pkg" | tr 'a-z' 'A-Z') \
-		test/c-tables/view_main.c build/tables-generated-c/$(1)/*View.c $(call C_VIEW_TABLE_OBJECTS,$(1)) -o $(C_VIEW_OUT)/prog-$(2) -lm; \
+		test/c-tables/view_main.c "build/tables-generated-c/$(1)/$$$${cap}View.c" $(call C_VIEW_TABLE_OBJECTS,$(1)) -o $(C_VIEW_OUT)/prog-$(2) -lm; \
 	$(C_VIEW_OUT)/prog-$(2) > $$@.tmp; mv $$@.tmp $$@
 endef
 $(foreach entry,$(VIEW_CORPUS),$(eval $(call tables_c_view_unit,$(word 1,$(subst :, ,$(entry))),$(word 2,$(subst :, ,$(entry))))))
