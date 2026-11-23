@@ -1,0 +1,9 @@
+package probe
+
+enum Kind
+{ Alpha, Beta }
+
+table kind
+{
+    a uint32
+}

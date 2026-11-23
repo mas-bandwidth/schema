@@ -99,7 +99,7 @@ GO_SOURCES   := $(shell find cmd internal ir compiler -name '*.go') go.mod
 # prints (cmd/schema/help/). Without them an edit to a runtime left
 # bin/schema stale and every generate re-emitted the old runtime.
 # bin-schema-embeds checks it against `go list`'s own EmbedFiles.
-EMBED_SOURCES := $(shell find internal/codegen -type f \( -path '*/runtime/*' -o -path '*/serialize/*' \) -not -name '*.go') $(wildcard cmd/schema/help/*)
+EMBED_SOURCES := $(shell find internal/codegen -type f \( -path '*/runtime/*' -o -path '*/serialize/*' \) -not -name '*.go') $(wildcard cmd/schema/help/*) $(wildcard compiler/*.json)
 # every .schema file the tables conformance manifest's units name (a unit path
 # is a file or a directory of them): the input of each build/conformance-<leg>
 # that generates the units itself, beside the compiler and the runtimes it
@@ -8176,7 +8176,7 @@ pins-source-cs: bin/schema
 	done
 
 .PHONY: pins-source-goldens
-pins-source-goldens: bin/schema
+pins-source-goldens:
 	@mkdir -p testdata/golden
 	go test ./internal/goldens -update -run '^TestGolden'
 	go test -tags schema_leg_moo ./internal/goldens -update -run '^TestGolden'

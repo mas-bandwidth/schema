@@ -831,6 +831,11 @@ public final class MixedEntityVariable {
                             r.fail = true;
                         }
                     }
+                    if (!r.fail) {
+                        if ((v.damage >>> 8) != 0L) {
+                            report.refuse("out_of_range");
+                        }
+                    }
                 } else {
                     r.skip(kind);
                     report.refuse("kind_mismatch");
@@ -1096,6 +1101,7 @@ public final class MixedEntityVariable {
         assert v.velZ >= -2048 && v.velZ <= 2047 : "MixedEntity.vel_z";
         assert v.health >= 0 && v.health <= 1000 : "MixedEntity.health";
         assert v.weapon >= 0 && v.weapon <= 15 : "MixedEntity.weapon";
+        assert (v.damage >>> 8) == 0L : "MixedEntity.damage";
         return true;
     }
 
@@ -1328,6 +1334,17 @@ public final class MixedEntityVariable {
         return loadMeasure(data, new TableVariable.Measure());
     }
 
+    // loadMeasureParts reports the DATA bytes and the ATTRIBUTION bytes
+    // separately, {data, attribution}; a refusal answers {-1, 0}.
+    public static long[] loadMeasureParts(byte[] data) {
+        TableVariable.Measure m = new TableVariable.Measure();
+        long total = loadMeasure(data, m, true);
+        if (total < 0) {
+            return new long[] {-1, 0};
+        }
+        return new long[] {m.dataBytes, m.attributionBytes};
+    }
+
     public static long loadMeasure(byte[] data, TableVariable.Measure m) {
         return loadMeasure(data, m, true);
     }
@@ -1360,7 +1377,9 @@ public final class MixedEntityVariable {
             records = m.nodeRecords;
             total += m.nodeBlobBytes + m.nodeTableBytes;
         }
-        total += (records + 1) * 16;
+        m.attributionBytes = (records + 1) * 16;
+        total += m.attributionBytes;
+        m.dataBytes = total - m.attributionBytes;
         return total;
     }
 

@@ -867,7 +867,7 @@ table Root { least [2..4]Pick }
 	if err != nil {
 		t.Fatal(err)
 	}
-	const path = "unionbirth/Core.py"
+	const path = "unionbirth/Records.py"
 	// Both the original literal and the bounded-size comprehension allocate
 	// distinct union elements; sabotage whichever form the emitter uses.
 	forms := []string{

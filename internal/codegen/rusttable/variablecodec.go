@@ -725,6 +725,12 @@ func (g *gen) scalarSaveRefusal(f *ir.Field, x, ind string) string {
 		maxv := (uint64(1) << f.Type.Width) - 1
 		return fmt.Sprintf("%sdebug_assert!(%s <= %d, \"%s exceeds bits(%d) width\");\n", ind, x, maxv, f.Name, f.Type.Width)
 	}
+	if fl := isFlags(f); fl != nil && fl.WireBits < 64 {
+		// A FLAGS MASK IS HELD TO W (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS
+		// A MASK TO ITS WIDTH): its own reader refuses a bit at or above W, so
+		// a writer never writes one.
+		return fmt.Sprintf("%sdebug_assert!(%s >> %d == 0, \"%s has a flags bit at or above its width %d\");\n", ind, x, fl.WireBits, f.Name, fl.WireBits)
+	}
 	return ""
 }
 
@@ -1159,6 +1165,13 @@ func emitScalarConvert(b *strings.Builder, f *ir.Field, owner, dst, kvar, ind st
 	}
 	fmt.Fprintf(b, "%slet %sx = %s;\n", ind, mut(clamp), from)
 	b.WriteString(clamp)
+	if fl := isFlags(f); fl != nil && fl.WireBits < 64 {
+		// A MASK BIT AT OR ABOVE THE READER'S W REFUSES THE LOAD
+		// (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH):
+		// flags append at the end, so old data never carries one, and an old
+		// reader does not read new data. The widened kinds are held the same.
+		fmt.Fprintf(b, "%sif x >> %d != 0 { report.damaged = true; }\n", ind, fl.WireBits)
+	}
 	fmt.Fprintf(b, "%s%s = %s;\n", ind, dst, rustCastStmt("x", suffix, scalarRust(f)))
 }
 
@@ -1476,10 +1489,19 @@ func (g *gen) emitArrayLoad(b *strings.Builder, f *ir.Field, ordinal int, field,
 	if cls == vTable || cls == vUnion {
 		fmt.Fprintf(b, "%sif let Some(ret) = retain.as_deref_mut() { retain_discard(ret, path, %d); }\n", i4, ordinal)
 	}
+	if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+		// a present array below its minimum refuses the load (SPEC §4.6)
+		fmt.Fprintf(b, "%sif count < %d { return nodes.refuse_count(report); }\n", i4, f.ArrayMin)
+	}
 	if f.Array == ir.ArrayFixed {
 		fmt.Fprintf(b, "%slet prior = %s.clone();\n", i4, field)
 	}
 	fmt.Fprintf(b, "%s%s.clear();\n", i4, field)
+	if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+		// a count below the declared minimum A is out of range as one past
+		// B is: damage, so the load refuses (ruling R10, docs/SPEC-TABLES.md §3.3)
+		fmt.Fprintf(b, "%sif count < %d { report.damaged = true; }\n", i4, f.ArrayMin)
+	}
 	switch f.Array {
 	case ir.ArrayList:
 		fmt.Fprintf(b, "%sif count > 0x7fffffff { return nodes.refuse_count(report); }\n%slet keep = count;\n", i4, i4)
@@ -2187,13 +2209,13 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 		fmt.Fprintf(b, "    // A fixed-class root does not own the node table: §4 reads it as an unknown field.\n")
 		// It holds no pointer, so no edge is ever noted: wire_edges stays empty
 		// and the load allocates nothing (make/rust.mk tables-rust-alloc).
-		fmt.Fprintf(b, "    let mut nodes = TableNodeReader { good: true, count_refused: false, root_type: 0x%016x, retaining: retain.is_some(), retain_capacity: retain.as_ref().map_or(0, |r| r.bytes.capacity()), retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new(), root_open: true, stubs: Vec::new(), stub_index: HashMap::new(), decoded: Vec::new(), wire_edges: Vec::new(), wire_edge_owner: 0, wire_blob_names: Vec::new() };\n", ir.TableWireId(st.WireName()))
+		fmt.Fprintf(b, "    let mut nodes = TableNodeReader { good: true, count_refused: false, root_type: 0x%016x, retaining: retain.is_some(), retain_capacity: retain.as_ref().map_or(0, |r| r.bytes.capacity()), retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new(), blob_twice: false, root_open: true, stubs: Vec::new(), stub_index: HashMap::new(), decoded: Vec::new(), wire_edges: Vec::new(), wire_edge_owner: 0, wire_blob_names: Vec::new() };\n", ir.TableWireId(st.WireName()))
 	} else {
 		fmt.Fprintf(b, "    let placeable: &[u64] = &[%s];\n", strings.Join(placeable, ", "))
 		fmt.Fprintf(b, "    let declared: &[u64] = &[%s];\n", strings.Join(declared, ", "))
 		fmt.Fprintf(b, "    let mut nodes = match TableNodeReader::scan(wire, end, ids, 0x%016x, placeable, declared, %v, %v, retain.is_some(), retain.as_ref().map_or(0, |r| r.bytes.capacity()), report) {\n", ir.TableWireId(st.WireName()), bytesEdge, stringEdge)
 		fmt.Fprintf(b, "        Some(nodes) => nodes,\n")
-		fmt.Fprintf(b, "        None if probe => TableNodeReader { good: false, count_refused: false, root_type: 0x%016x, retaining: retain.is_some(), retain_capacity: 0, retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new(), root_open: true, stubs: Vec::new(), stub_index: HashMap::new(), decoded: Vec::new(), wire_edges: vec![Vec::new()], wire_edge_owner: 0, wire_blob_names: Vec::new() },\n", ir.TableWireId(st.WireName()))
+		fmt.Fprintf(b, "        None if probe => TableNodeReader { good: false, count_refused: false, root_type: 0x%016x, retaining: retain.is_some(), retain_capacity: 0, retained: Vec::new(), recs: Vec::new(), slots: Vec::new(), blob_named: Vec::new(), blob_twice: false, root_open: true, stubs: Vec::new(), stub_index: HashMap::new(), decoded: Vec::new(), wire_edges: vec![Vec::new()], wire_edge_owner: 0, wire_blob_names: Vec::new() },\n", ir.TableWireId(st.WireName()))
 		fmt.Fprintf(b, "        None => return None,\n")
 		fmt.Fprintf(b, "    };\n")
 	}
@@ -2271,6 +2293,10 @@ func (g *gen) emitVariableGraphPass(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    let mut off = 1usize;\n")
 	fmt.Fprintf(b, "    let _ = %s(wire, &mut off, end, ids, &mut v, &mut nodes, report, TableRetainPath::default(), retain.as_deref_mut(), false);\n", fn(st.Name, "load_body"))
 	fmt.Fprintf(b, "    if nodes.count_refused || !report.missing_required_fields.is_empty() { return None; }\n")
+	fmt.Fprintf(b, "    // ONE BLOB NAMED FROM TWO SLOTS IS REFUSED BY NAME, blob_shared\n")
+	fmt.Fprintf(b, "    // (docs/SPEC-TABLES.md §2.5, §6.5): after the damage the bodies met and\n")
+	fmt.Fprintf(b, "    // before a cycle or an unreached record, in the oracle's order.\n")
+	fmt.Fprintf(b, "    if nodes.blob_twice && !report.damaged { report.refuse(TableReason::BlobShared); return None; }\n")
 	fmt.Fprintf(b, "    nodes.root_open = false;\n")
 	fmt.Fprintf(b, "    let mut edges: Vec<Vec<usize>> = vec![Vec::new(); nodes.slots.len() + 1];\n")
 	fmt.Fprintf(b, "    v.__table_edges(&nodes, &mut edges[0]);\n")
@@ -2306,18 +2332,36 @@ func (g *gen) emitVariableMeasure(b *strings.Builder, st *ir.Struct) {
 			lists = append(lists, f)
 		}
 	}
-	fmt.Fprintf(b, "/// %s_load_measure — the region bytes the framing commands\n", fnName)
-	fmt.Fprintf(b, "/// (docs/SPEC-TABLES.md §3, §3.1, §6.5): -1 when the file cannot be opened.\n")
-	fmt.Fprintf(b, "#[allow(clippy::single_match)] // one arm per placeable type or list field: one is a real shape\n")
+	// THE WALK answers the sum and writes its attribution term to `attr`: the
+	// directory of one 16-byte entry per node record plus the root (§6.3). The
+	// public names are its two answers: the sum, and the two parts apart.
+	fmt.Fprintf(b, "/// %s_load_measure_parts — the DATA bytes and the ATTRIBUTION bytes\n", fnName)
+	fmt.Fprintf(b, "/// separately, (data, attribution), as C and C++ report them (§6.3, §6.5); the\n")
+	fmt.Fprintf(b, "/// sum is `%s_load_measure`'s. A refusal answers (-1, 0).\n", fnName)
 	if st.Integrity == "crc32c" {
+		fmt.Fprintf(b, "pub fn %s_load_measure_parts(wire: &[u8]) -> (i64, i64) {\n", fnName)
+		fmt.Fprintf(b, "    if wire.is_empty() || wire[0] != TABLE_WIRE_FORM { return (-1, 0); }\n")
+		fmt.Fprintf(b, "    let Some(wire) = table_integrity_body(wire, 5) else { return (-1, 0); };\n")
+		fmt.Fprintf(b, "    let mut attr = 0i64;\n    let total = %s_load_measure_walk(wire, &mut attr);\n", fnName)
+		fmt.Fprintf(b, "    if total < 0 { (-1, 0) } else { (total - attr, attr) }\n}\n\n")
+		fmt.Fprintf(b, "/// %s_load_measure — the region bytes the framing commands\n", fnName)
+		fmt.Fprintf(b, "/// (docs/SPEC-TABLES.md §3, §3.1, §6.5): -1 when the file cannot be opened.\n")
 		fmt.Fprintf(b, "pub fn %s_load_measure(wire: &[u8]) -> i64 {\n", fnName)
 		fmt.Fprintf(b, "    if wire.is_empty() || wire[0] != TABLE_WIRE_FORM { return -1; }\n")
 		fmt.Fprintf(b, "    let Some(wire) = table_integrity_body(wire, 5) else { return -1; };\n")
 		fmt.Fprintf(b, "    %s_load_measure_body(wire)\n}\n\n", fnName)
-		fmt.Fprintf(b, "fn %s_load_measure_body(wire: &[u8]) -> i64 {\n", fnName)
+		fmt.Fprintf(b, "fn %s_load_measure_body(wire: &[u8]) -> i64 {\n    let mut attr = 0i64;\n    %s_load_measure_walk(wire, &mut attr)\n}\n\n", fnName, fnName)
 	} else {
+		fmt.Fprintf(b, "pub fn %s_load_measure_parts(wire: &[u8]) -> (i64, i64) {\n", fnName)
+		fmt.Fprintf(b, "    let mut attr = 0i64;\n    let total = %s_load_measure_walk(wire, &mut attr);\n", fnName)
+		fmt.Fprintf(b, "    if total < 0 { (-1, 0) } else { (total - attr, attr) }\n}\n\n")
+		fmt.Fprintf(b, "/// %s_load_measure — the region bytes the framing commands\n", fnName)
+		fmt.Fprintf(b, "/// (docs/SPEC-TABLES.md §3, §3.1, §6.5): -1 when the file cannot be opened.\n")
 		fmt.Fprintf(b, "pub fn %s_load_measure(wire: &[u8]) -> i64 {\n", fnName)
+		fmt.Fprintf(b, "    let mut attr = 0i64;\n    %s_load_measure_walk(wire, &mut attr)\n}\n\n", fnName)
 	}
+	fmt.Fprintf(b, "#[allow(clippy::single_match)] // one arm per placeable type or list field: one is a real shape\n")
+	fmt.Fprintf(b, "fn %s_load_measure_walk(wire: &[u8], attr: &mut i64) -> i64 {\n", fnName)
 	fmt.Fprintf(b, "    if wire.is_empty() || wire[0] != TABLE_WIRE_FORM { return -1; }\n")
 	fmt.Fprintf(b, "    if wire.len() < 9 { return -1; }\n")
 	fmt.Fprintf(b, "    let count = u64::from_le_bytes(wire[wire.len() - 8..].try_into().unwrap());\n")
@@ -2502,7 +2546,8 @@ func (g *gen) emitVariableMeasure(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    }\n")
 	fmt.Fprintf(b, "    let root_at = nested_measure(0x%016x, &wire[1..end], ids, 0);\n", ir.TableWireId(st.WireName()))
 	fmt.Fprintf(b, "    if root_at < 0 { return -1; }\n")
-	fmt.Fprintf(b, "    round(round(%d) + root_at) + blob_total + (records + 1) * 16\n", rootSize)
+	fmt.Fprintf(b, "    *attr = (records + 1) * 16;\n")
+	fmt.Fprintf(b, "    round(round(%d) + root_at) + blob_total + *attr\n", rootSize)
 	fmt.Fprintf(b, "}\n\n")
 }
 

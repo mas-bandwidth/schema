@@ -228,7 +228,7 @@ func frameRows(t *testing.T) []frameRow {
 			edited:   framesSrc,
 			instance: `{"chunk":{"seq":7}}`,
 			read:     "0,0",
-			baseline: "pass",
+			baseline: "refuse", // R16: a narrowing, refused naming the field
 			build:    "moves",
 		},
 		{
@@ -246,8 +246,9 @@ func frameRows(t *testing.T) []frameRow {
 			edited:   frameEdit(t, "    hits   int32\n", "    hits   int64\n"),
 			instance: `{"hits":5}`,
 			read:     "0,1",
-			baseline: "refuse",
-			build:    "moves",
+			baseline: "pass", // R17: the new reader reads the old value exactly
+
+			build: "moves",
 		},
 		{
 			name:     "a specified default changed",
@@ -744,11 +745,15 @@ func TestEvolutionTableDocsAgreeWithTheGolden(t *testing.T) {
 	if strings.Contains(refuses, "a field moved from `T` to `?T`") {
 		t.Error("§18.2 REFUSES must not invent a T to ?T break")
 	}
-	if !strings.Contains(passes, "`T` and `?T`") {
-		// R16 makes optional one-way; the code that refuses `?T` to `T`
-		// lands with #4764. Until then the sentence is accepted only on
-		// its owed entry, and said so loudly.
-		owedOrFail(t, "R16", "§18.2 PASSES must name both optional directions")
+	if !strings.Contains(passes, "`T` to `?T`") {
+		t.Error("§18.2 PASSES must name the optional widening, `T` to `?T`")
+	}
+	if strings.Contains(passes, "`?T` to `T`") || !strings.Contains(refuses, "`?T` to `T`") {
+		t.Error("§18.2 must REFUSE the optional narrowing, `?T` to `T` (R16), and not pass it")
+	}
+	plainRow := tableRow(t, text, "a field moved from `?T` to `T`")
+	if cell := tableCell(t, plainRow, 3); !strings.Contains(cell, "refuse") {
+		t.Errorf("?T -> T baseline cell = %q, want refuses (R16)", cell)
 	}
 	if strings.Contains(passes, "`T`, `?T` and `*T`") {
 		t.Error("§18.2 PASSES must not include *T: a pointer is a kind change")
@@ -830,10 +835,7 @@ func TestVersioningEvolutionTableAgreesWithTheGolden(t *testing.T) {
 		fixtures[f.name] = f
 	}
 
-	owedRule := map[string]string{
-		"| `?T`→`T` |":               "R16",
-		"| a field's kind WIDENED (": "R17 (widening)",
-	}
+	owedRule := map[string]string{}
 	covered := map[string]bool{}
 	for fragment, names := range versioningRows {
 		row := evolutionRow(t, rows, fragment)

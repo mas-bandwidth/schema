@@ -9,7 +9,7 @@ local casesPath = argv[0];
 local generatedDir = argv[1];
 
 local serialize = dofile("internal/codegen/squirrel/serialize/serialize.nut", true);
-local CFloat = dofile(generatedDir + "/schema_module.nut", true).require("CFloat");
+local CFloat = dofile(generatedDir + "/schema_module.nut", true).require("PacketCFloat");
 
 local readText = function(path) {
   local f = file(path, "rb");

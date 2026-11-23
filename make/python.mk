@@ -48,7 +48,7 @@ python-packet-core-negative-control: python-toolchain-check
 
 # packet-finite-python: test/packet-finite, SPEC §4.3's finite floats, on the
 # Python packet wire. test/packet-finite/python/main.py runs every bare-float
-# position of its Finite.schema under both pinned interpreters: a NaN or an
+# position of its PacketFinite.schema under both pinned interpreters: a NaN or an
 # infinity is refused on write as InvalidValue naming the field and on read by
 # its raw bits as Refused (non_finite_float); -0, the subnormals and the
 # largest finite values ride bit exact.
@@ -66,7 +66,7 @@ python-packet-core-negative-control: python-toolchain-check
 python-ci-finite: packet-finite-python
 packet-finite-python: build/schema-python python-toolchain-check
 	@rm -rf build/packet-finite/python && mkdir -p build/packet-finite/python
-	./build/schema-python generate --lang python --out build/packet-finite/python/generated test/packet-finite/python/Finite.schema
+	./build/schema-python generate --lang python --out build/packet-finite/python/generated test/packet-finite/python/PacketFinite.schema
 	$(PYTHON) -W error -I -B test/packet-finite/python/main.py build/packet-finite/python/generated
 	$(PYTHON_FLOOR) -W error -I -B test/packet-finite/python/main.py build/packet-finite/python/generated
 
@@ -102,7 +102,7 @@ build/conformance-python: build/schema-python testdata/conformance/tables/MANIFE
 		fi; \
 	done
 	@echo "conformance-python: $$(ls -d $@/*/ 2>/dev/null | wc -l | tr -d " ") units generated, $$(ls $@/*.refused 2>/dev/null | wc -l | tr -d " ") refused by name"
-	# Framing exercises form 1 for Cfg, whose source also declares a fixed class.
+	# Framing exercises form 1 for roots that also declare a fixed class.
 	@test "$$(grep -c '^fixed table Cfg$$' test/tables/R1.schema)" = 1
 	@test "$$(grep -c '^package tblr1$$' test/tables/R1.schema)" = 1
 	@mkdir -p $@/tblr1/_framing/source $@/tblr1/_framing/tblr1
@@ -113,6 +113,11 @@ build/conformance-python: build/schema-python testdata/conformance/tables/MANIFE
 	@mkdir -p $@/listdemo/_framing/source $@/listdemo/_framing/listdemo
 	@sed -e 's/^fixed table Bounded$$/table Bounded/' -e 's/^package listdemo$$/package listdemo_framing/' tables/lists/Migrate.schema > $@/listdemo/_framing/source/Migrate.schema
 	./build/schema-python generate --lang python --out $@/listdemo/_framing/listdemo $@/listdemo/_framing/source/Migrate.schema
+	@test "$$(grep -c '^fixed table CountedMin$$' tables/examples/Tables.schema)" = 1
+	@test "$$(grep -c '^package tabledemo$$' tables/examples/Tables.schema)" = 1
+	@mkdir -p $@/tabledemo/_framing/source $@/tabledemo/_framing/tabledemo
+	@sed -e 's/^fixed table CountedMin$$/table CountedMin/' -e 's/^package tabledemo$$/package tabledemo_framing/' tables/examples/Tables.schema > $@/tabledemo/_framing/source/Tables.schema
+	./build/schema-python generate --lang python --out $@/tabledemo/_framing/tabledemo $@/tabledemo/_framing/source/Tables.schema
 
 # The table core's negative control: the generated runtime's form byte is
 # moved in a copy, and the interpreter probe must go red by name. It needs the

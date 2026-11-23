@@ -389,7 +389,7 @@ func firstUseSource() string {
     end
   end
 
-  defp first_use_payload(bin, kind, ids, acc, d) when kind in [12, 13, 14, 16, 31, 32] do
+  defp first_use_payload(bin, kind, ids, acc, d) when kind in [12, 13, 14, 16, 32] do
     with {:ok, content, rest} <- first_use_framed(bin),
          {:ok, acc} <- first_use_content(content, kind, ids, acc, d + 1) do
       {:ok, rest, acc}
@@ -891,6 +891,7 @@ func dropTopLevel(src string, drop func(head string) bool) string {
 // `table` as unused). Such a unit is emitted without them.
 var uncarriedClauses = []string{
 	"  def load_measure(table, _data) when table in @uncarried, do: -1\n\n",
+	"  def load_measure_parts(table, _data) when table in @uncarried, do: {-1, 0}\n\n",
 }
 
 // withoutUncarriedClauses is the runtime source for a unit whose @uncarried is
@@ -898,7 +899,10 @@ var uncarriedClauses = []string{
 // that moves it fails the emitter's tests rather than silently shipping the
 // guard.
 func withoutUncarriedClauses(runtime string) string {
-	return replaceOnce(runtime, uncarriedClauses[0], "")
+	for _, clause := range uncarriedClauses {
+		runtime = replaceOnce(runtime, clause, "")
+	}
+	return runtime
 }
 
 // replaceOnce replaces the one occurrence of old, and panics when old is not
@@ -1622,6 +1626,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # must write even its zero/default value, while nil never becomes a payload.
   # An optional enum has two zero states: absent nil and present reserved None.
   defp enum_none(f), do: if(Map.get(f, :optional, false), do: "None", else: nil)
+
+  # A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT, and an ARRAY
+  # ELEMENT as the ELEMENT's default, None; it is never counted unknown
+  # (docs/SPEC-TABLES.md section 2.15). The writer refuses it (check_enum).
+  defp retire(f, name, fallback),
+    do: if(name in Map.get(f, :retired, []), do: fallback, else: name)
 
   defp emit_scalar?(%{required: true}, _v), do: true
   defp emit_scalar?(%{optional: true}, v), do: v != nil
@@ -2773,7 +2783,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
           variant_id ->
             case Map.fetch(f.by_id, variant_id) do
-              {:ok, name} -> {:cont, name, report}
+              {:ok, name} -> {:cont, retire(f, name, Map.get(f, :default)), report}
               :error -> {:cont, enum_none(f), %{report | unknown: report.unknown + 1}}
             end
         end
@@ -3343,6 +3353,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # a count past a bounded array's declared bound reads the first bound
   # elements and counts one refusal, before any element is read, so the
   # elements past the bound are never asked of the body (docs/SPEC-TABLES.md §4)
+  defp clamp_count(n, %{min_count: min}, _report) when n < min,
+    do: {min, throw(:wire_damaged)}
+
   defp clamp_count(n, %{max_count: max}, _report) when n > max,
     do: {max, throw(:wire_damaged)}
 
@@ -3571,7 +3584,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           variant_id ->
             {value, report} =
               case Map.fetch(f.by_id, variant_id) do
-                {:ok, name} -> {name, report}
+                {:ok, name} -> {retire(f, name, nil), report}
                 :error -> {nil, %{report | unknown: report.unknown + 1}}
               end
 
@@ -3781,6 +3794,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
     case f do
       %{min: lo, max: hi} when is_number(v) and (v < lo or v > hi) -> throw(:invalid_value)
+      %{flags_bits: bits} when v > Bitwise.bsl(1, bits) - 1 -> throw(:invalid_value)
       _ -> :ok
     end
 
@@ -3840,6 +3854,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     if not is_integer(e), do: throw(:invalid_value)
 
     if Map.has_key?(f, :elem_min) and (e < f.elem_min or e > f.elem_max),
+      do: throw(:invalid_value)
+
+    if Map.has_key?(f, :elem_flags_bits) and e > Bitwise.bsl(1, f.elem_flags_bits) - 1,
       do: throw(:invalid_value)
 
     bits = Map.get(f, :elem_bits, kind_width(kind) * 8)
@@ -4025,7 +4042,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp slice(bin, kind) when kind in [5, 9, 11, 23, 28, 36], do: take(bin, 8)
   defp slice(bin, kind) when kind in [18, 19, 24, 29], do: take(bin, 16)
   defp slice(bin, kind) when kind in [17, 30], do: leb_rest(bin)
-  defp slice(bin, kind) when kind in [12, 13, 14, 16, 31, 32], do: body(bin)
+  defp slice(bin, kind) when kind in [12, 13, 14, 16, 32], do: body(bin)
 
   defp slice(bin, 15) do
     case leb(bin) do
@@ -4160,10 +4177,23 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       else: {v, report}
   end
 
+  # A FLAGS MASK HOLDS TO W, its declaration's wire width (docs/SPEC-TABLES.md
+  # §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH): a bit at or above W refuses
+  # the whole load, out_of_range, naming the field, on the raw u64 and on
+  # every widening alike. The newer reader reads old data, never the reverse.
+  defp clamp_int(v, %{flags_bits: bits, name: name}, report) do
+    if v > Bitwise.bsl(1, bits) - 1,
+      do: throw({:out_of_range, name}),
+      else: {v, report}
+  end
+
   defp clamp_int(v, _f, report), do: {v, report}
 
   defp clamp_list_int(v, %{elem_min: lo, elem_max: hi}, report),
     do: clamp_int(v, %{min: lo, max: hi}, report)
+
+  defp clamp_list_int(v, %{elem_flags_bits: bits, name: name}, report),
+    do: clamp_int(v, %{flags_bits: bits, name: name}, report)
 
   defp clamp_list_int(v, f, report), do: clamp_int(v, f, report)
 
@@ -4645,8 +4675,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp json_field(%{t: :list} = f, elements, depth) when is_list(elements) do
-    if Map.has_key?(f, :min_count) and
-         (length(elements) < f.min_count or length(elements) > f.array_bound),
+    if Map.get(f, :array) == :counted and
+         (length(elements) < Map.get(f, :min_count, 0) or length(elements) > f.array_bound),
        do: throw(:invalid_value)
 
     if Map.has_key?(f, :array_bound) and f.array_bound > 0 and length(elements) > f.array_bound,
@@ -4669,6 +4699,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp json_field(%{t: :list}, nil, _depth), do: "[]"
+
+  # a list field holding anything but a list or nil is a value off the contract:
+  # the writer refuses it and never writes [] over it (docs/SPEC.md section 5.1)
   defp json_field(%{t: :list}, _other, _depth), do: throw(:invalid_value)
 
   defp json_field(%{optional: true}, nil, _depth), do: "null"
@@ -5441,7 +5474,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
       _ ->
         case Map.fetch(f.by_name, raw) do
-          {:ok, _id} -> {raw, report}
+          {:ok, _id} -> {retire(f, raw, Map.get(f, :default)), report}
           :error -> {enum_none(f), %{report | unknown: report.unknown + 1}}
         end
     end
@@ -5742,7 +5775,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_read_field(%{t: :list} = f, raw, report) when is_list(raw) do
     bound = Map.get(f, :array_bound, 0)
 
-    {elems, _placed, report} =
+    {elems, placed, report} =
       Enum.reduce(raw, {[], 0, report}, fn e, {acc, placed, report} ->
         if Process.get(:elixir_json_bad, false) do
           {acc, placed, report}
@@ -5764,7 +5797,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       end)
 
     # a counted array below its Min refuses (docs/SPEC.md §5.1 row 3)
-    if length(elems) < Map.get(f, :min_count, 0), do: throw(:wire_damaged)
+    if placed < Map.get(f, :min_count, 0), do: throw(:wire_damaged)
     {Enum.reverse(elems), report}
   end
 
@@ -6069,7 +6102,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
       _ ->
         case Map.fetch(f.by_name, e) do
-          {:ok, _id} -> {e, report}
+          {:ok, _id} -> {retire(f, e, nil), report}
           :error -> {nil, %{report | unknown: report.unknown + 1}}
         end
     end
@@ -6782,18 +6815,32 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   def load_measure(table, _data) when table in @uncarried, do: -1
 
   def load_measure(table, data) when is_binary(data) do
+    case load_measure_parts(table, data) do
+      {-1, 0} -> -1
+      {data_bytes, attribution_bytes} -> data_bytes + attribution_bytes
+    end
+  end
+
+  # load_measure_parts/2 answers {data, attribution} apart, as C and C++ report
+  # them (docs/SPEC-TABLES.md §6.3, §6.5): the attribution is the directory of
+  # one 16-byte entry per node record plus the root, which a caller may place
+  # apart and release once Load returns. The sum is load_measure/2's. A refusal
+  # answers {-1, 0}.
+  def load_measure_parts(table, _data) when table in @uncarried, do: {-1, 0}
+
+  def load_measure_parts(table, data) when is_binary(data) do
     desc = Map.fetch!(@tables, table)
 
     case open(data) do
       {:error, _} ->
-        -1
+        {-1, 0}
 
       {:ok, body, ids} ->
         with {:ok, at} <- extent(desc, body, ids),
              {:ok, count, blobs} <- measure_nodes(body, ids, desc) do
-          region_round(region_round(desc.size) + at) + blobs + (count + 1) * 16
+          {region_round(region_round(desc.size) + at) + blobs, (count + 1) * 16}
         else
-          _ -> -1
+          _ -> {-1, 0}
         end
     end
   end
@@ -7992,7 +8039,7 @@ const variableRetainSource = `
           variant_id ->
             case Map.fetch(f.by_id, variant_id) do
               {:ok, name} ->
-                {:cont, name, report, retain}
+                {:cont, retire(f, name, Map.get(f, :default)), report, retain}
 
               :error ->
                 # an unknown ENUM variant in a KNOWN field is excluded (§6.6):
@@ -8652,7 +8699,7 @@ const variableRetainSource = `
       n != nil and byte_size(payload) >= n ->
         {:ok, n}
 
-      kind in [12, 31, 32] ->
+      kind in [12, 32] ->
         case leb(payload) do
           {len, rest} when byte_size(rest) >= len ->
             {:ok, byte_size(payload) - byte_size(rest) + len}
@@ -9229,6 +9276,10 @@ func fieldDescriptor(u *ir.Unit, owner string, f *ir.Field, ordinal int, fl *ir.
 				fmt.Fprintf(&b, "%q, ", v)
 			}
 			b.WriteString("]")
+			if fl.WireBits < 64 {
+				// each element holds to W (docs/SPEC-TABLES.md §4)
+				fmt.Fprintf(&b, ", elem_flags_bits: %d", fl.WireBits)
+			}
 		}
 		if f.Array != ir.ArrayList {
 			fmt.Fprintf(&b, ", array_bound: %d", f.ArrayBound)
@@ -9236,8 +9287,9 @@ func fieldDescriptor(u *ir.Unit, owner string, f *ir.Field, ordinal int, fl *ir.
 		if born := f.BornCount(); born > 0 {
 			// docs/SPEC.md §4.2, §5.1 row 3: a [Min..N]T count is born at Min,
 			// every writer refuses a count below it, every read refuses one,
-			// and an array holding its Min elements at their default elides
-			fmt.Fprintf(&b, ", min_count: %d, elem_default: %s", born, variableBornElementDefault(f))
+			// and an array holding its Min elements at their default elides.
+			// writeCookLayout emits the shared minimum.
+			fmt.Fprintf(&b, ", elem_default: %s", variableBornElementDefault(f))
 		}
 		if f.Array == ir.ArrayFixed {
 			// SPEC-TABLES §3: a [N]T writes all N elements; a table element
@@ -9290,6 +9342,11 @@ func fieldDescriptor(u *ir.Unit, owner string, f *ir.Field, ordinal int, fl *ir.
 			fmt.Fprintf(&b, "%q, ", v)
 		}
 		b.WriteString("]")
+		if w := flagsRef(f).WireBits; w < 64 {
+			// the mask holds to W (docs/SPEC-TABLES.md §4): clamp_int refuses a
+			// bit at or above it out_of_range and write_value invalid_value
+			fmt.Fprintf(&b, ", flags_bits: %d", w)
+		}
 	case f.Type.Kind == ir.TString:
 		b.WriteString(", t: :string")
 		fmt.Fprintf(&b, ", size: %d, unbounded: %v", f.Type.Size, f.Type.TextUnbounded())

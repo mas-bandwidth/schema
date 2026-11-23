@@ -436,7 +436,7 @@ def skip(r:Reader, kind:int) -> bool:
     if kind == 17 or kind == 30:
         let v, ok = leb(r)
         return ok or v != 0
-    if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32:
+    if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 32:
         let n, ok = leb(r)
         if not ok or not has(r, n):
             return false
@@ -2246,7 +2246,7 @@ def wire_payload(c:WireCheck, r:Reader, kind:int) -> bool:
             return false
         r.off += n
         return true
-    if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32:
+    if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 32:
         let n, ok = leb(r)
         if not ok or not has(r, n):
             return read_refuse(c.st.report, "wire_damaged")
@@ -2275,8 +2275,6 @@ def wire_content_at(c:WireCheck, r:Reader, kind:int) -> bool:
         if not text_valid(r.b, r.off, r.hi - r.off):
             return read_refuse(c.st.report, "wire_damaged")
         return true
-    if kind == 31:
-        return true // escape is the one intentionally opaque wire kind
     if kind == 32:
         return r.off == r.hi or read_refuse(c.st.report, "wire_damaged")
     if kind == 13:

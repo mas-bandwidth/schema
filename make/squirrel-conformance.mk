@@ -151,12 +151,31 @@ tables-squirrel-release:
 	$(MAKE) tables-squirrel-release-negative-control
 
 # I4, PER-CASE ABSENT (docs/PORTING.md): the leg answers a case it cannot
-# carry with `<case>.absent`, and the harness counts it. The control runs the
-# driver with those answers written under another name and requires the wire
-# surface to go red (test/conformance/squirrel/absent-negative-control).
+# carry with `<case>.absent`, and the harness counts it; a must-refuse row it
+# answers `refused` and a newline (ruling R13). The control runs the driver
+# with both kinds of answer written under another name and requires the wire
+# and message surfaces to go red
+# (test/conformance/squirrel/absent-negative-control).
 .PHONY: conformance-negative-control-squirrel-absent
 conformance-negative-control-squirrel-absent: build/conformance-harness build/conformance-squirrel toolchain-squirrel
 	@SQ="$(SQ)" sh test/conformance/squirrel/absent-negative-control
+
+# THE WRITE CONTRACT's controls on the Squirrel leg (docs/SPEC.md 5.1):
+# Squirrel refuses in every build, so each removes one refusal from a COPY of
+# the generated corpus and requires its write-refusal surface red while the wire
+# (or message) surface stays green. test/conformance/squirrel/write-refusal-control
+# says what each plants.
+.PHONY: conformance-negative-control-squirrel-write-refusal conformance-negative-control-squirrel-write-refusal-fixed conformance-negative-control-squirrel-write-refusal-message
+conformance-negative-control-squirrel-write-refusal: build/conformance-harness build/conformance-squirrel toolchain-squirrel
+	@sh test/conformance/squirrel/write-refusal-control write-refusal
+
+conformance-negative-control-squirrel-write-refusal-fixed: build/conformance-harness build/conformance-squirrel toolchain-squirrel
+	@sh test/conformance/squirrel/write-refusal-control write-refusal-fixed
+
+conformance-negative-control-squirrel-write-refusal-message: build/conformance-harness build/conformance-squirrel toolchain-squirrel
+	@sh test/conformance/squirrel/write-refusal-control write-refusal-message
+
+test-squirrel: conformance-negative-control-squirrel-write-refusal conformance-negative-control-squirrel-write-refusal-fixed conformance-negative-control-squirrel-write-refusal-message
 
 # THE WIRE LIBRARY'S OWN TEST (test/conformance/squirrel/lib/wire_test.nut):
 # the assertions over lib/wire.nut. No recipe or Go test ran this file before

@@ -14,6 +14,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
+	"github.com/mas-bandwidth/schema/v2/internal/irtest"
 )
 
 const root = "../../.."
@@ -217,7 +218,10 @@ func prefix(paths []string) []string {
 // collide with a runtime module beside it is refused by name.
 func TestLuauRefusesByName(t *testing.T) {
 	t.Parallel()
-	load := func(files map[string]string) error {
+	// rename is from, to basename pairs applied after the check, for a name
+	// the checker refuses first (SPEC §4.6) and this surface's own guard
+	// still has to refuse behind it
+	load := func(files map[string]string, rename ...string) error {
 		dir := t.TempDir()
 		var paths []string
 		for name, src := range files {
@@ -231,6 +235,9 @@ func TestLuauRefusesByName(t *testing.T) {
 		u, err := compiler.New().Load(paths)
 		if err != nil {
 			t.Fatalf("the unit does not load: %v", err)
+		}
+		for i := 0; i+1 < len(rename); i += 2 {
+			irtest.Rebase(t, u, rename[i], rename[i+1])
 		}
 		if _, err := luau.Generate(u); err != nil {
 			return err
@@ -248,7 +255,7 @@ func TestLuauRefusesByName(t *testing.T) {
 	if err := load(map[string]string{"A.schema": "package cyc\ntable Ta\n{\n    b *Tb\n}\ntable Tb\n{\n    a *Ta\n}\n"}); err != nil {
 		t.Errorf("the control, both tables in one file: %v", err)
 	}
-	err := load(map[string]string{"schema_runtime.schema": "package clash\ntype T\n{\n    x uint8\n}\n"})
+	err := load(map[string]string{"Probe.schema": "package clash\ntype T\n{\n    x uint8\n}\n"}, "Probe", "schema_runtime")
 	if err == nil || !strings.Contains(err.Error(), "schema_runtime.luau (claimed by the Luau runtime) are equal ignoring case") {
 		t.Errorf("a schema file named for the runtime: want the collision refused, got %v", err)
 	}

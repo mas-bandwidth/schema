@@ -302,7 +302,7 @@ func uncarried(file, owner, what, name, kind string) error {
 }
 
 func (m *rbModule) emitCodecStruct(d *ir.Struct) {
-	m.emitEntryPoints(d.Name)
+	m.emitEntryPoints(ClassName(d.Name))
 	m.emitReadStruct(d)
 	m.emitWriteStruct(d)
 	m.emitValidateStruct(d)
@@ -310,7 +310,7 @@ func (m *rbModule) emitCodecStruct(d *ir.Struct) {
 }
 
 func (m *rbModule) emitCodecUnion(d *ir.Union) {
-	m.emitEntryPoints(d.Name)
+	m.emitEntryPoints(ClassName(d.Name))
 	m.emitReadUnion(d)
 	m.emitWriteUnion(d)
 	m.emitValidateUnion(d)

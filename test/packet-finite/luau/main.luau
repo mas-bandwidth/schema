@@ -1,6 +1,6 @@
 --!strict
 -- The Luau packet finite-float gate (SPEC §4.3, serialize format 2.0). Copied
--- into the directory the generator wrote Finite.schema's module and its
+-- into the directory the generator wrote PacketFinite.schema's module and its
 -- vendored serialize.luau runtime to (the negative controls copy it beside
 -- their sabotaged runtime), then run there. It checks every way a bare float
 -- reaches the Luau packet wire: a float32 and a float64 each alone, a float64
@@ -20,7 +20,7 @@
 -- controls compare the set of failing vector names against the .expected list
 -- in test/packet-finite/luau. Prints OK, or ends with an error.
 local serialize = require("./serialize")
-local F = require("./Finite")
+local F = require("./PacketFinite")
 
 local failures = 0
 local function fail(name: string, detail: string)

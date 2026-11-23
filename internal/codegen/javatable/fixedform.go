@@ -46,6 +46,7 @@ import (
 	"math"
 	"math/big"
 	"sort"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -232,6 +233,15 @@ func fixedWalkElement(w *fixedWalk, f *ir.Field, id uint64, note string, at int6
 			return
 		case *ir.Enum:
 			fixedWalkEnum(w, r, id, note, at)
+			// §2.15: a deprecated variant's entry carries, in its aux lane, the
+			// ordinal the compiled plan lands it on PLUS ONE (the field's declared
+			// default, or None for an array element); zero is "not deprecated".
+			land, _ := strconv.Atoi(deprecatedLanding(f))
+			for i := range r.Variants {
+				if variantDeprecated(r, i) {
+					w.dst[len(w.dst)-len(r.Variants)+i].aux = int64(land) + 1
+				}
+			}
 			return
 		}
 	}
@@ -1129,7 +1139,7 @@ func fixedCheckField(f *ir.Field, val, ind string) []string {
 // packet emitter's emitCheck128Ranged — and every other slot is one assert
 // of fixedCheckElement, or no lines when the slot admits every value its
 // storage holds (a bool, an unranged float — row 7 is the save's finite pass — a bare
-// uint128, a flags mask, a nested table or union, which assert their own).
+// uint128, a flags mask of 64 bits, a nested table or union, which assert their own).
 func fixedCheckSlot(f *ir.Field, e, ind string) []string {
 	typ := fixedScalarType(f.Type)
 	if typ == "Int128" || typ == "UInt128" {
@@ -1191,6 +1201,11 @@ func fixedCheckElement(f *ir.Field, e string) string {
 	if f.Type.Kind == ir.TNamed {
 		if r, ok := f.Type.Ref.(*ir.Enum); ok {
 			return fmt.Sprintf("%s >= 0 && %s <= %d", e, e, len(r.Variants))
+		}
+		// A FLAGS MASK HOLDS TO ITS WIDTH W (docs/SPEC-TABLES.md §4): a save never
+		// stores a bit its own load refuses
+		if r, ok := f.Type.Ref.(*ir.Flags); ok && r.WireBits < 64 {
+			return fmt.Sprintf("(%s >>> %d) == 0L", e, r.WireBits)
 		}
 		return ""
 	}
@@ -1744,10 +1759,29 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 			g.pf("%s{\n", ind)
 			g.pf("%s    long q = %s;\n", ind, fixedLoad(buf, at, off, int64(r.StorageBits/8), false))
 			g.pf("%s    if (q > %dL) { q = 0L; %s }\n", ind, len(r.Variants), scatterRefuse(rep, walked, "outOfRange"))
+			for i := range r.Variants {
+				if variantDeprecated(r, i) {
+					// §2.15: a deprecated variant reads as the default, uncounted
+					g.pf("%s    if (q == %dL) { q = %sL; }\n", ind, i+1, deprecatedLanding(f))
+				}
+			}
 			g.pf("%s    %s = %s;\n", ind, expr, fixedNarrow(fixedIntType(r.StorageBits), "q"))
 			g.pf("%s}\n", ind)
 			return
 		case *ir.Flags:
+			if r.WireBits < 64 {
+				// A MASK BIT AT OR ABOVE THE READER'S W REFUSES out_of_range
+				// (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH),
+				// on the identity plan and a compiled one alike. The bits past W
+				// are dropped only so the refused record holds no bit its type
+				// cannot name, as an ordinal past the last variant lands None.
+				g.pf("%s{\n", ind)
+				g.pf("%s    long q = TableFixed.get64(%s, %s + %d);\n", ind, buf, at, off)
+				g.pf("%s    if ((q >>> %d) != 0L) { q &= 0x%xL; %s }\n", ind, r.WireBits, (uint64(1)<<uint(r.WireBits))-1, scatterRefuse(rep, walked, "outOfRange"))
+				g.pf("%s    %s = q;\n", ind, expr)
+				g.pf("%s}\n", ind)
+				return
+			}
 			g.pf("%s%s = TableFixed.get64(%s, %s + %d);\n", ind, expr, buf, at, off)
 			return
 		}

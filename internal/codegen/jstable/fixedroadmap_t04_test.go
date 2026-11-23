@@ -194,7 +194,7 @@ func t04R29(t *testing.T) {
 	t04Has(t, n, "export const TableFixedRecordMaxBytes = 65536;", "R29 the band's ceiling is 65536")
 	t04Has(t, n, "if (size > TableFixedRecordMaxBytes) { TableFixedFail(b, TableFixedRefusal.LayoutRecordTooLarge); return 0; }",
 		"R29 a record past the ceiling is refused by name")
-	t04Has(t, n, "if (v < 0 || v > size) { report.refused = TableFixedRefusal.CountOverBound; return; }",
+	t04Has(t, n, "if (v < 0 || v < e[b + TableFixedLaneMeta] || v > size) { report.refused = TableFixedRefusal.CountOverBound; return; }",
 		"R29 a live count past the writer's bound refuses count_over_bound")
 	t04Has(t, n, "if (v < 0 || v > cap) { report.refused = TableFixedRefusal.LengthOverBound; return; }",
 		"R29 a text length past the writer's cap refuses length_over_bound")

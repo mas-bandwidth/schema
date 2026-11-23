@@ -116,9 +116,11 @@ func entryLines(text string) string {
 // declare resets the whole map to EMPTY and counts one kind_mismatch (§2.8) —
 // every entry gone, and nothing on the wire says which key was meant.
 func TestTheKeyKindIsFixed(t *testing.T) {
-	edited := editOf(t, mapFixtureSrc, "by_id map[uint32]int32", "by_id map[uint64]int32")
+	// a NARROWED key: uint32 to uint64 is a widening and passes (R17,
+	// TestBaselinePassesEveryWidening)
+	edited := editOf(t, mapFixtureSrc, "by_id map[uint32]int32", "by_id map[uint16]int32")
 	fs := mapDiff(t, mapFixtureSrc, edited, baseline.DefaultTokenPolicy)
-	if !find(fs, baseline.Refuse, "Fleet.by_id", "map key kind 8 -> 9") {
+	if !find(fs, baseline.Refuse, "Fleet.by_id", "map key kind 8 -> 7") {
 		t.Errorf("a changed key kind is not refused on the map's own line: %s", summary(fs))
 	}
 	// ATTRIBUTION: drop the keykind row and the map's own line goes quiet.

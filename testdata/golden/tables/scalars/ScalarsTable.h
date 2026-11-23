@@ -459,10 +459,17 @@ struct TableFieldInfo
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
-    // a [A..B]T count's declared minimum A (docs/SPEC.md §4.2, §5.1 row 3):
-    // the count it is born at and the least a read accepts; 0 on every other
-    // field
+    // A COUNTED ARRAY'S MINIMUM (docs/SPEC.md §5.1, docs/SPEC-TABLES.md §16.2):
+    // the A of [A..B]T, 0 on every other field. A text read that
+    // places fewer elements refuses, as the wire read does.
     int32_t array_min;
+    // A DEPRECATED VARIANT (docs/SPEC-TABLES.md §2.15): enum_deprecated says
+    // whether a value names a variant marked "| deprecated", NULL when
+    // the enum carries none. A read naming one stores enum_default instead —
+    // the field's declared default, None for an element — and is never
+    // counted unknown.
+    uint64_t enum_default;
+    bool ( *enum_deprecated )( uint64_t value );
 };
 
 struct TableTypeInfo
@@ -962,7 +969,6 @@ struct TableReader
                 return false;
             }
             case 12:
-            case 31:
             case 32:
             {
                 uint64_t n = 0;
@@ -1082,7 +1088,7 @@ struct TableReader
 
     // skip one payload by kind; false = framing damage. FOUR RULES COVER THE
     // SET (docs/SPEC-TABLES.md §3), and a kind outside it is not skippable —
-    // which is why the set is closed and why kind 31 exists.
+    // which is why the set is closed.
     bool skip( uint8_t kind, int depth = 0 )
     {
         switch ( kind )
@@ -1124,8 +1130,7 @@ struct TableReader
                 return getleb( ignored );
             }
             case 12: // a string body: its L is opaque here
-            case 31:
-            case 32: // 31 is the ESCAPE, 32 the payload-free kind
+            case 32: // the payload-free kind
             {
                 uint64_t n = 0;
                 if ( !getleb( n ) ) return false;
@@ -1156,10 +1161,11 @@ struct TableReader
                 offset += (int64_t) n;
                 return !badElementKindContent( arm_kind, b, (int64_t) n, depth );
             }
-            // KIND 34 IS RESERVED FOR float16 AND IS NOT PART OF THIS MAJOR (§3):
-            // no writer emits it and no reader has a rule for it, so a reader
-            // meets it only as DAMAGE, exactly as it meets 35 or 200. A bare 34
-            // is a writer that ignored the escape kind 31.
+            // KIND 31 IS HELD BY NAME AND NEVER WRITTEN (R17) AND KIND 34 IS
+            // RESERVED FOR float16; NEITHER IS PART OF THIS MAJOR (§3): no writer
+            // emits them and no reader has a rule for them, so a reader meets them
+            // only as DAMAGE, exactly as it meets 35 or 200.
+            case 31:
             case 34: return false;
         }
         return false;
@@ -1626,7 +1632,7 @@ inline bool TableStrictContent( TableStrict & s, const uint8_t * b, int64_t n, u
     switch ( kind )
     {
         case 12: return TableUtf8Valid( b, (uint64_t) n ); // ill-formed text is damage
-        case 31: return true; // the escape: opaque by rule (§3)
+        case 31: return false; // KIND 31 IS HELD BY NAME AND NEVER WRITTEN (R17): damage, as 33 and 34
         case 32: return n == 0; // kind 32 with a nonzero L is damage
         case 13:
         {
@@ -1689,7 +1695,7 @@ inline bool TableStrictPayload( TableStrict & s, TableReader & r, uint8_t kind, 
         }
         case 15:
             return TableStrictUnion( s, r, depth );
-        case 12: case 31: case 32: case 13: case 14: case 16:
+        case 12: case 32: case 13: case 14: case 16:
         {
             uint64_t n = 0;
             if ( !r.getleb( n ) || !r.room( n ) ) { return false; } // L4
@@ -2225,8 +2231,10 @@ inline bool TableMessageFixedKind( uint8_t kind ) { return kind >= 20 && kind <=
 inline bool TableMessageKnownKind( uint8_t kind )
 {
     // 36 is the TIMESTAMP: a closed-set kind with no shape bytes and a
-    // sixty-four bit raw payload (docs/SPEC-TABLES.md §2.11, §3.3).
-    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 32 ) || kind == 36;
+    // sixty-four bit raw payload (docs/SPEC-TABLES.md §2.11, §3.3). 31 is held by
+    // name and never written (R17): an announcement naming it is malformed,
+    // as one naming 33 or 34 is.
+    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || kind == 30 || kind == 32 || kind == 36;
 }
 
 // A CANONICAL LEB128, which is the announcement's own integer: the
@@ -3817,14 +3825,7 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
             if ( !TableUtf8Valid( text, n ) ) { return false; }
             return r.skip( (int64_t) n * 8 );
         }
-        case 31:
-        {
-            // THE ESCAPE: align, a thirty-two bit L, then L bytes, opaque. It is
-            // the one path a later-major writer has on this form (§3.3)
-            uint64_t n = 0;
-            if ( !r.align() || !r.get( n, 32 ) ) { return false; }
-            return r.skip( (int64_t) n * 8 );
-        }
+        case 31: return false; // held by name and never written (R17): no announcement names it
         case 10:
         {
             if ( entry.packing == 2 )
@@ -5478,7 +5479,7 @@ inline bool TableFixedOrdinalWidth( uint32_t n ) { return n == 1u || n == 2u || 
 
 // THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
 // the no-payload variant 32, and the ONE kind this form's layout adds, the
-// optional wrapper 35. 31 is §3's BODY framing escape, 33 is retired and 34 is
+// optional wrapper 35. 31 is held by name and never written (R17), 33 is retired and 34 is
 // reserved: none is a kind a declaration spells, so none is ever an entry's
 // kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a leaf to step over
 // — see the note above TableFixedCheck.
@@ -7453,7 +7454,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 if ( kind != 20 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -7483,7 +7484,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 if ( kind != 22 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -7519,7 +7520,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 if ( kind != 23 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -7555,7 +7556,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 if ( kind != 24 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -7593,7 +7594,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 if ( kind != 22 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -7629,7 +7630,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 if ( kind != 25 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -7659,7 +7660,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 if ( kind != 27 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -7689,7 +7690,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 if ( kind != 28 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -7719,7 +7720,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 if ( kind != 29 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -7751,7 +7752,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 if ( kind != 27 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -7802,7 +7803,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -7867,7 +7868,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -7920,7 +7921,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -7946,7 +7947,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 if ( kind != 22 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -7982,7 +7983,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -8072,7 +8073,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -8164,7 +8165,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 if ( kind != 16 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -8277,7 +8278,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -8395,7 +8396,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -8428,7 +8429,7 @@ SCALARDEMO_TABLE_INLINE bool SimStateLoadBody( TableReader & r, SimState & value
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -10613,7 +10614,7 @@ SCALARDEMO_TABLE_INLINE bool PoseLoadBody( TableReader & r, Pose & value )
                 if ( kind != 23 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -10649,7 +10650,7 @@ SCALARDEMO_TABLE_INLINE bool PoseLoadBody( TableReader & r, Pose & value )
                 if ( kind != 23 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -10685,7 +10686,7 @@ SCALARDEMO_TABLE_INLINE bool PoseLoadBody( TableReader & r, Pose & value )
                 if ( kind != 27 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -12576,26 +12577,26 @@ inline const TableTypeInfo * SimStateTableType()
     static const TableWideRange SimState_weights_wide = { { 0ull, 0ull }, { 25600ull, 0ull } };
     static const TableWideRange SimState_axes_wide = { { 18446743644212822016ull, 18446744073709551615ull }, { 429496729600ull, 0ull } };
     static const TableFieldInfo fields[] = {
-        { "tilt", "tilt", "fixed(4, 4)", 0x1e5088ef2e9bafc6ull, 20, false, false, false, 0, (uint32_t) offsetof( SimState, tilt ), (uint32_t) sizeof( SimState::tilt ), 0xffffffffu, 0xffffffffu, NULL, true, -8.0, 7.0, 0, 0, 0, 0, 4, &SimState_tilt_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "angle", "angle", "fixed(16, 16)", 0x401ab8cd06158638ull, 22, false, false, false, 0, (uint32_t) offsetof( SimState, angle ), (uint32_t) sizeof( SimState::angle ), 0xffffffffu, 0xffffffffu, NULL, true, -180.0, 180.0, 0, 0, 0, 0, 16, &SimState_angle_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "position", "position", "fixed(48, 16)", 0x4cbf3a26fca1d74aull, 23, false, false, false, 0, (uint32_t) offsetof( SimState, position ), (uint32_t) sizeof( SimState::position ), 0xffffffffu, 0xffffffffu, NULL, true, -30000.0, 30000.0, 0, 0, 0, 0, 16, &SimState_position_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "reach", "reach", "fixed(112, 16)", 0x891da1f305deb858ull, 24, false, false, false, 0, (uint32_t) offsetof( SimState, reach ), (uint32_t) sizeof( SimState::reach ), 0xffffffffu, 0xffffffffu, NULL, true, -1e+06, 1e+06, 0, 0, 0, 0, 16, &SimState_reach_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "ticks", "ticks", "fixed(32, 0)", 0x7fd9266c6a3e25b5ull, 22, false, false, false, 0, (uint32_t) offsetof( SimState, ticks ), (uint32_t) sizeof( SimState::ticks ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1e+06, 0, 0, 0, 0, 0, &SimState_ticks_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "ratio", "ratio", "ufixed(4, 4)", 0xfbc924118177ade4ull, 25, false, false, false, 0, (uint32_t) offsetof( SimState, ratio ), (uint32_t) sizeof( SimState::ratio ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 15.0, 0, 0, 0, 0, 4, &SimState_ratio_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "speed", "speed", "ufixed(16, 16)", 0x2281498aa0200e40ull, 27, false, false, false, 0, (uint32_t) offsetof( SimState, speed ), (uint32_t) sizeof( SimState::speed ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, 0, 0, 0, 16, &SimState_speed_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "span", "span", "ufixed(48, 16)", 0x8b7dc019093cd0e1ull, 28, false, false, false, 0, (uint32_t) offsetof( SimState, span ), (uint32_t) sizeof( SimState::span ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 2.81474976710655e+14, 0, 0, 0, 0, 16, &SimState_span_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "mass", "mass", "ufixed(112, 16)", 0x1f3757a2ce7b0ab1ull, 29, false, false, false, 0, (uint32_t) offsetof( SimState, mass ), (uint32_t) sizeof( SimState::mass ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 2e+06, 0, 0, 0, 0, 16, &SimState_mass_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "frames", "frames", "ufixed(32, 0)", 0x23e5906728b4e66full, 27, false, false, false, 0, (uint32_t) offsetof( SimState, frames ), (uint32_t) sizeof( SimState::frames ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4.294967295e+09, 0, 0, 0, 0, 0, &SimState_frames_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "flux", "flux", "int128", 0xd61bdd7908af2642ull, 18, false, false, false, 0, (uint32_t) offsetof( SimState, flux ), (uint32_t) sizeof( SimState::flux ), 0xffffffffu, 0xffffffffu, NULL, true, -1.2676506002282294e+30, 1.2676506002282294e+30, 0, 0, 0, 0, 0, &SimState_flux_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "energy", "energy", "int128", 0xf2fd4f9140ef2f15ull, 18, false, false, false, 0, (uint32_t) offsetof( SimState, energy ), (uint32_t) sizeof( SimState::energy ), 0xffffffffu, 0xffffffffu, NULL, true, -5e+09, 5e+09, 0, 0, 0, 0, 0, &SimState_energy_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "entity_id", "entity_id", "uint128", 0x23fcfd6678e36712ull, 19, false, false, false, 0, (uint32_t) offsetof( SimState, entity_id ), (uint32_t) sizeof( SimState::entity_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "scale", "scale", "fixed(16, 16)", 0x6aacb9fbb71a1d91ull, 22, false, false, false, 0, (uint32_t) offsetof( SimState, scale ), (uint32_t) sizeof( SimState::scale ), 0xffffffffu, 0xffffffffu, NULL, true, -8.0, 8.0, 0, 0, 0, 0, 16, &SimState_scale_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "samples", "samples", "fixed(16, 16)", 0xe3b1ca6a3b48dddcull, 22, true, false, false, 3, (uint32_t) offsetof( SimState, samples ), (uint32_t) sizeof( SimState::samples[0] ), 0xffffffffu, 0xffffffffu, NULL, true, -8.0, 8.0, 0, 0, 0, 0, 16, &SimState_samples_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "weights", "weights", "ufixed(8, 8)", 0xb1494b6ef08a411eull, 26, true, true, false, 4, (uint32_t) offsetof( SimState, weights ), (uint32_t) sizeof( SimState::weights[0] ), (uint32_t) offsetof( SimState, weights_count ), 0xffffffffu, NULL, true, 0.0, 100.0, 0, 0, 0, 0, 8, &SimState_weights_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "axes", "axes", "fixed(32, 32)", 0x32969e840d9c67b8ull, 23, true, false, false, (int32_t) Axis::Max, (uint32_t) offsetof( SimState, axes ), (uint32_t) sizeof( SimState::axes.slots[0] ), 0xffffffffu, 0xffffffffu, NULL, true, -100.0, 100.0, 0, 0, 0, 0, 32, &SimState_axes_wide, -1, NULL, NULL, "Axis", +[]( uint64_t v ) { return EnumName( Axis( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Axis( v ), id ); return id; }, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "seeds", "seeds", "uint128", 0x5af1ac301b4ae16dull, 19, true, true, false, 2, (uint32_t) offsetof( SimState, seeds ), (uint32_t) sizeof( SimState::seeds[0] ), (uint32_t) offsetof( SimState, seeds_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "pose", "pose", "Pose", 0x8c2fd80da8957064ull, 13, false, false, false, 0, (uint32_t) offsetof( SimState, pose ), (uint32_t) sizeof( SimState::pose ), 0xffffffffu, 0xffffffffu, PoseTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "spawn", "spawn", "Pose", 0x4328f78ab20e1f98ull, 13, false, false, true, 0, (uint32_t) offsetof( SimState, spawn ), (uint32_t) sizeof( SimState::spawn ), 0xffffffffu, (uint32_t) offsetof( SimState, spawn_present ), PoseTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "tilt", "tilt", "fixed(4, 4)", 0x1e5088ef2e9bafc6ull, 20, false, false, false, 0, (uint32_t) offsetof( SimState, tilt ), (uint32_t) sizeof( SimState::tilt ), 0xffffffffu, 0xffffffffu, NULL, true, -8.0, 7.0, 0, 0, 0, 0, 4, &SimState_tilt_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "angle", "angle", "fixed(16, 16)", 0x401ab8cd06158638ull, 22, false, false, false, 0, (uint32_t) offsetof( SimState, angle ), (uint32_t) sizeof( SimState::angle ), 0xffffffffu, 0xffffffffu, NULL, true, -180.0, 180.0, 0, 0, 0, 0, 16, &SimState_angle_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "position", "position", "fixed(48, 16)", 0x4cbf3a26fca1d74aull, 23, false, false, false, 0, (uint32_t) offsetof( SimState, position ), (uint32_t) sizeof( SimState::position ), 0xffffffffu, 0xffffffffu, NULL, true, -30000.0, 30000.0, 0, 0, 0, 0, 16, &SimState_position_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "reach", "reach", "fixed(112, 16)", 0x891da1f305deb858ull, 24, false, false, false, 0, (uint32_t) offsetof( SimState, reach ), (uint32_t) sizeof( SimState::reach ), 0xffffffffu, 0xffffffffu, NULL, true, -1e+06, 1e+06, 0, 0, 0, 0, 16, &SimState_reach_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "ticks", "ticks", "fixed(32, 0)", 0x7fd9266c6a3e25b5ull, 22, false, false, false, 0, (uint32_t) offsetof( SimState, ticks ), (uint32_t) sizeof( SimState::ticks ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1e+06, 0, 0, 0, 0, 0, &SimState_ticks_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "ratio", "ratio", "ufixed(4, 4)", 0xfbc924118177ade4ull, 25, false, false, false, 0, (uint32_t) offsetof( SimState, ratio ), (uint32_t) sizeof( SimState::ratio ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 15.0, 0, 0, 0, 0, 4, &SimState_ratio_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "speed", "speed", "ufixed(16, 16)", 0x2281498aa0200e40ull, 27, false, false, false, 0, (uint32_t) offsetof( SimState, speed ), (uint32_t) sizeof( SimState::speed ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, 0, 0, 0, 16, &SimState_speed_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "span", "span", "ufixed(48, 16)", 0x8b7dc019093cd0e1ull, 28, false, false, false, 0, (uint32_t) offsetof( SimState, span ), (uint32_t) sizeof( SimState::span ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 2.81474976710655e+14, 0, 0, 0, 0, 16, &SimState_span_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "mass", "mass", "ufixed(112, 16)", 0x1f3757a2ce7b0ab1ull, 29, false, false, false, 0, (uint32_t) offsetof( SimState, mass ), (uint32_t) sizeof( SimState::mass ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 2e+06, 0, 0, 0, 0, 16, &SimState_mass_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "frames", "frames", "ufixed(32, 0)", 0x23e5906728b4e66full, 27, false, false, false, 0, (uint32_t) offsetof( SimState, frames ), (uint32_t) sizeof( SimState::frames ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 4.294967295e+09, 0, 0, 0, 0, 0, &SimState_frames_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "flux", "flux", "int128", 0xd61bdd7908af2642ull, 18, false, false, false, 0, (uint32_t) offsetof( SimState, flux ), (uint32_t) sizeof( SimState::flux ), 0xffffffffu, 0xffffffffu, NULL, true, -1.2676506002282294e+30, 1.2676506002282294e+30, 0, 0, 0, 0, 0, &SimState_flux_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "energy", "energy", "int128", 0xf2fd4f9140ef2f15ull, 18, false, false, false, 0, (uint32_t) offsetof( SimState, energy ), (uint32_t) sizeof( SimState::energy ), 0xffffffffu, 0xffffffffu, NULL, true, -5e+09, 5e+09, 0, 0, 0, 0, 0, &SimState_energy_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "entity_id", "entity_id", "uint128", 0x23fcfd6678e36712ull, 19, false, false, false, 0, (uint32_t) offsetof( SimState, entity_id ), (uint32_t) sizeof( SimState::entity_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "scale", "scale", "fixed(16, 16)", 0x6aacb9fbb71a1d91ull, 22, false, false, false, 0, (uint32_t) offsetof( SimState, scale ), (uint32_t) sizeof( SimState::scale ), 0xffffffffu, 0xffffffffu, NULL, true, -8.0, 8.0, 0, 0, 0, 0, 16, &SimState_scale_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "samples", "samples", "fixed(16, 16)", 0xe3b1ca6a3b48dddcull, 22, true, false, false, 3, (uint32_t) offsetof( SimState, samples ), (uint32_t) sizeof( SimState::samples[0] ), 0xffffffffu, 0xffffffffu, NULL, true, -8.0, 8.0, 0, 0, 0, 0, 16, &SimState_samples_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "weights", "weights", "ufixed(8, 8)", 0xb1494b6ef08a411eull, 26, true, true, false, 4, (uint32_t) offsetof( SimState, weights ), (uint32_t) sizeof( SimState::weights[0] ), (uint32_t) offsetof( SimState, weights_count ), 0xffffffffu, NULL, true, 0.0, 100.0, 0, 0, 0, 0, 8, &SimState_weights_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "axes", "axes", "fixed(32, 32)", 0x32969e840d9c67b8ull, 23, true, false, false, (int32_t) Axis::Max, (uint32_t) offsetof( SimState, axes ), (uint32_t) sizeof( SimState::axes.slots[0] ), 0xffffffffu, 0xffffffffu, NULL, true, -100.0, 100.0, 0, 0, 0, 0, 32, &SimState_axes_wide, -1, NULL, NULL, "Axis", +[]( uint64_t v ) { return EnumName( Axis( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Axis( v ), id ); return id; }, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "seeds", "seeds", "uint128", 0x5af1ac301b4ae16dull, 19, true, true, false, 2, (uint32_t) offsetof( SimState, seeds ), (uint32_t) sizeof( SimState::seeds[0] ), (uint32_t) offsetof( SimState, seeds_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "pose", "pose", "Pose", 0x8c2fd80da8957064ull, 13, false, false, false, 0, (uint32_t) offsetof( SimState, pose ), (uint32_t) sizeof( SimState::pose ), 0xffffffffu, 0xffffffffu, PoseTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "spawn", "spawn", "Pose", 0x4328f78ab20e1f98ull, 13, false, false, true, 0, (uint32_t) offsetof( SimState, spawn ), (uint32_t) sizeof( SimState::spawn ), 0xffffffffu, (uint32_t) offsetof( SimState, spawn_present ), PoseTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
     };
     static const TableTypeInfo info = { "SimState", (uint32_t) sizeof( SimState ), 20, fields, +[]( void * p ) { SimStateReset( *(SimState *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
@@ -12607,9 +12608,9 @@ inline const TableTypeInfo * PoseTableType()
     static const TableWideRange Pose_y_wide = { { 18446744071743471616ull, 18446744073709551615ull }, { 1966080000ull, 0ull } };
     static const TableWideRange Pose_heading_wide = { { 0ull, 0ull }, { 23592960ull, 0ull } };
     static const TableFieldInfo fields[] = {
-        { "x", "x", "fixed(48, 16)", 0xaf63f54c86021707ull, 23, false, false, false, 0, (uint32_t) offsetof( Pose, x ), (uint32_t) sizeof( Pose::x ), 0xffffffffu, 0xffffffffu, NULL, true, -30000.0, 30000.0, 0, 0, 0, 0, 16, &Pose_x_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "y", "y", "fixed(48, 16)", 0xaf63f44c86021554ull, 23, false, false, false, 0, (uint32_t) offsetof( Pose, y ), (uint32_t) sizeof( Pose::y ), 0xffffffffu, 0xffffffffu, NULL, true, -30000.0, 30000.0, 0, 0, 0, 0, 16, &Pose_y_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-        { "heading", "heading", "ufixed(16, 16)", 0xb128829190ca0f75ull, 27, false, false, false, 0, (uint32_t) offsetof( Pose, heading ), (uint32_t) sizeof( Pose::heading ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 360.0, 0, 0, 0, 0, 16, &Pose_heading_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "x", "x", "fixed(48, 16)", 0xaf63f54c86021707ull, 23, false, false, false, 0, (uint32_t) offsetof( Pose, x ), (uint32_t) sizeof( Pose::x ), 0xffffffffu, 0xffffffffu, NULL, true, -30000.0, 30000.0, 0, 0, 0, 0, 16, &Pose_x_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "y", "y", "fixed(48, 16)", 0xaf63f44c86021554ull, 23, false, false, false, 0, (uint32_t) offsetof( Pose, y ), (uint32_t) sizeof( Pose::y ), 0xffffffffu, 0xffffffffu, NULL, true, -30000.0, 30000.0, 0, 0, 0, 0, 16, &Pose_y_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+        { "heading", "heading", "ufixed(16, 16)", 0xb128829190ca0f75ull, 27, false, false, false, 0, (uint32_t) offsetof( Pose, heading ), (uint32_t) sizeof( Pose::heading ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 360.0, 0, 0, 0, 0, 16, &Pose_heading_wide, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
     };
     static const TableTypeInfo info = { "Pose", (uint32_t) sizeof( Pose ), 3, fields, +[]( void * p ) { PoseReset( *(Pose *) p ); }, TableDocNone, 0, NULL, false };
     return &info;

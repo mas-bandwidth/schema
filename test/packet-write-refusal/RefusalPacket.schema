@@ -1,0 +1,42 @@
+package packetwriterefusal
+
+// The shared write-refusal-packet shape (docs/SPEC.md §5.1): one field per
+// row the packet Write must refuse, and the same Go-leg schema that
+// TestWriteRefusalPacket generates. The cases beside it name each row's
+// refused value and its lawful twin at the same boundary.
+enum Grade
+{
+    Bronze
+    Silver
+    Gold
+}
+
+type Laser
+{
+    power uint32
+}
+
+type Missile
+{
+    fuel uint32
+}
+
+union Shot
+{
+    laser Laser
+    missile Missile
+}
+
+type PacketWriteRefusal
+{
+    scalar         int32   | min = 0, max = 10
+    narrow         bits(7)
+    grade          Grade
+    window         [2..8]uint32
+    text           string(8)
+    shot           Shot
+    fixed_constant int32 = 5 | min = 5, max = 5
+    reserved_zero  int32 = 0 | min = 0, max = 0
+    const(0xAB, 8)
+    reserved(5)
+}

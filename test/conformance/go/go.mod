@@ -74,6 +74,11 @@ require listdemovariable v0.0.0
 
 replace listdemovariable => ../../../build/tables-generated-go-framing/listsvariable
 
+// The framing vectors' variable-class twin of tabledemo CountedMin.
+require countedminvariable v0.0.0
+
+replace countedminvariable => ../../../build/tables-generated-go-framing/countedminvariable
+
 require tblr2 v0.0.0
 
 replace tblr2 => ../../../build/tables-generated-go/r2
@@ -185,6 +190,10 @@ replace cooktorture => ../../../build/tables-generated-go/cooktorture
 require cooktorturewide v0.0.0
 
 replace cooktorturewide => ../../../build/tables-generated-go/cooktorturewide
+
+require writebounds v0.0.0
+
+replace writebounds => ../../../build/tables-generated-go/writebounds
 
 require shapes v0.0.0
 

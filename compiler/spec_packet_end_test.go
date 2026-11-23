@@ -159,10 +159,10 @@ func TestSpecPacketEndIsChecked(t *testing.T) {
 		t.Errorf("packet-canonical-end source does not name the canonical-read rule: %q", end.Source)
 	}
 
-	schema := readPacketEndFile(t, "../test/packet-end/End.schema")
+	schema := readPacketEndFile(t, "../test/packet-end/PacketEnd.schema")
 	if !strings.Contains(schema, "type End") ||
 		!strings.Contains(schema, "uint8 | max = 5") {
-		t.Errorf("test/packet-end/End.schema is not the three-bit End type: %q", schema)
+		t.Errorf("test/packet-end/PacketEnd.schema is not the three-bit End type: %q", schema)
 	}
 
 	vectorDir := "../testdata/wire/packet-end"

@@ -52,14 +52,14 @@ endef
 .PHONY: packet-utf8-goose packet-utf8-goose-negative-control
 packet-utf8-goose: goose-packet-ready build/packet-text/cpp/driver build/packet-text/harness
 	@rm -rf build/packet-text/goose && mkdir -p build/packet-text/goose
-	./build/schema-goose-packet generate --lang goose --out build/packet-text/goose test/packet-text/Narrow.schema
+	./build/schema-goose-packet generate --lang goose --out build/packet-text/goose test/packet-text/Text.schema
 	cp test/goose/driverlib.goose test/packet-text/goose/main.goose build/packet-text/goose/
 	./build/packet-text/harness env $(GOOSE) run build/packet-text/goose/main.goose
 
 packet-utf8-goose-negative-control: packet-utf8-goose
 	$(call goose-packet-sabotaged,build/packet-text/goose-negative,packet-utf8-goose-read,internal/codegen/goose/read.go)
 	@rm -rf build/packet-text/goose-negative/generated && mkdir -p build/packet-text/goose-negative/generated
-	./build/packet-text/goose-negative/schema generate --lang goose --out build/packet-text/goose-negative/generated test/packet-text/Narrow.schema
+	./build/packet-text/goose-negative/schema generate --lang goose --out build/packet-text/goose-negative/generated test/packet-text/Text.schema
 	cp test/goose/driverlib.goose test/packet-text/goose/main.goose build/packet-text/goose-negative/generated/
 	@if ./build/packet-text/harness -mutations-only env $(GOOSE) run build/packet-text/goose-negative/generated/main.goose > build/packet-text/goose-negative/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: Goose UTF-8 removal passed'; exit 1; fi
@@ -139,7 +139,7 @@ test-goose: packet-utf8-goose packet-utf8-goose-negative-control \
 PACKET_END_GOOSE_VECTORS = $(sort $(notdir $(wildcard testdata/wire/packet-end/*.bin)))
 packet-end-goose: goose-packet-ready build/mustrun
 	@rm -rf build/packet-end/goose && mkdir -p build/packet-end/goose
-	./build/schema-goose-packet generate --lang goose --out build/packet-end/goose test/packet-end/End.schema
+	./build/schema-goose-packet generate --lang goose --out build/packet-end/goose test/packet-end/PacketEnd.schema
 	cp test/packet-end/goose/main.goose build/packet-end/goose/
 	env -u SCHEMA_UPDATE_WIRE_GOLDENS $(MUSTRUN) -name packet-end-goose -count 3 -- $(GOOSE) run build/packet-end/goose/main.goose -- testdata/wire/packet-end $(PACKET_END_GOOSE_VECTORS)
 
@@ -149,7 +149,7 @@ packet-end-goose: goose-packet-ready build/mustrun
 packet-end-goose-negative-control: packet-end-goose
 	$(call goose-packet-sabotaged,build/packet-end/goose-negative,packet-end-goose,internal/codegen/goose/wire.go)
 	@rm -rf build/packet-end/goose-negative/generated && mkdir -p build/packet-end/goose-negative/generated
-	./build/packet-end/goose-negative/schema generate --lang goose --out build/packet-end/goose-negative/generated test/packet-end/End.schema
+	./build/packet-end/goose-negative/schema generate --lang goose --out build/packet-end/goose-negative/generated test/packet-end/PacketEnd.schema
 	cp test/packet-end/goose/main.goose build/packet-end/goose-negative/generated/
 	@if env -u SCHEMA_UPDATE_WIRE_GOLDENS $(GOOSE) run build/packet-end/goose-negative/generated/main.goose -- testdata/wire/packet-end $(PACKET_END_GOOSE_VECTORS) > build/packet-end/goose-negative/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: the end check was removed and the Goose packet-end driver stayed green'; exit 1; fi
@@ -163,7 +163,7 @@ test-goose: packet-end-goose packet-end-goose-negative-control
 .PHONY: packet-write-cfloat-goose packet-write-cfloat-goose-negative-control
 packet-write-cfloat-goose: goose-packet-ready build/mustrun
 	@rm -rf build/packet-write-cfloat/goose && mkdir -p build/packet-write-cfloat/goose
-	./build/schema-goose-packet generate --lang goose --out build/packet-write-cfloat/goose test/packet-write-cfloat/CFloat.schema
+	./build/schema-goose-packet generate --lang goose --out build/packet-write-cfloat/goose test/packet-write-cfloat/PacketCFloat.schema
 	cp test/goose/driverlib.goose test/packet-write-cfloat/goose/main.goose build/packet-write-cfloat/goose/
 	go run ./test/packet-write-cfloat/goose/cases.go test/packet-write-cfloat/cases.txt > build/packet-write-cfloat/goose/cases
 	$(MUSTRUN) -name packet-write-cfloat-goose -count 10 -- $(GOOSE) run build/packet-write-cfloat/goose/main.goose < build/packet-write-cfloat/goose/cases
@@ -171,7 +171,7 @@ packet-write-cfloat-goose: goose-packet-ready build/mustrun
 packet-write-cfloat-goose-negative-control: packet-write-cfloat-goose
 	$(call goose-packet-sabotaged,build/packet-write-cfloat/goose-negative,packet-write-cfloat-goose,internal/codegen/goose/write.go)
 	@rm -rf build/packet-write-cfloat/goose-negative/generated && mkdir -p build/packet-write-cfloat/goose-negative/generated
-	./build/packet-write-cfloat/goose-negative/schema generate --lang goose --out build/packet-write-cfloat/goose-negative/generated test/packet-write-cfloat/CFloat.schema
+	./build/packet-write-cfloat/goose-negative/schema generate --lang goose --out build/packet-write-cfloat/goose-negative/generated test/packet-write-cfloat/PacketCFloat.schema
 	cp test/goose/driverlib.goose test/packet-write-cfloat/goose/main.goose build/packet-write-cfloat/goose-negative/generated/
 	@if $(GOOSE) run build/packet-write-cfloat/goose-negative/generated/main.goose < build/packet-write-cfloat/goose/cases > build/packet-write-cfloat/goose-negative/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: range check removal passed'; exit 1; fi

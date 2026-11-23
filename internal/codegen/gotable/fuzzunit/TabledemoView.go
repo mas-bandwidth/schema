@@ -164,14 +164,20 @@ var tableUnitView = UnitViewInfo{Package: "tabledemo", ProtocolID: 0x5c9bc571714
 		{Name: "Debuff", File: "Tables.schema", Table: false, Type: &DebuffTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "ScoreBoard", File: "Keyed.schema", Table: false, Type: &ScoreBoardTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 	},
-	NumTables: 19, Tables: []ViewType{
+	NumTables: 25, Tables: []ViewType{
 		{Name: "ArchiveConfig", File: "Nested.schema", Table: true, Type: &ArchiveConfigTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
+		{Name: "CountedMin", File: "Tables.schema", Table: true, Type: &CountedMinTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
+		{Name: "FloatBound", File: "Tables.schema", Table: true, Type: &FloatBoundTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "GlobalSettings", File: "Pack.schema", Table: true, Type: &GlobalSettingsTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "GunnerConfig", File: "Keyed.schema", Table: true, Type: &GunnerConfigTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "GunnerSettings", File: "Pack.schema", Table: true, Type: &GunnerSettingsTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "HullConfig", File: "Keyed.schema", Table: true, Type: &HullConfigTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "KeyedConfig", File: "Keyed.schema", Table: true, Type: &KeyedConfigTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "LoadoutConfig", File: "Tables.schema", Table: true, Type: &LoadoutConfigTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
+		{Name: "MinArmFix", File: "Tables.schema", Table: true, Type: &MinArmFixTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
+		{Name: "MinPlainFix", File: "Tables.schema", Table: true, Type: &MinPlainFixTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
+		{Name: "MoodField", File: "Tables.schema", Table: true, Type: &MoodFieldTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
+		{Name: "Moods", File: "Tables.schema", Table: true, Type: &MoodsTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "PackConfig", File: "Pack.schema", Table: true, Type: &PackConfigTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "Patrol", File: "Guarded.schema", Table: true, Type: &PatrolTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "ProfileConfig", File: "Tables.schema", Table: true, Type: &ProfileConfigTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -185,7 +191,7 @@ var tableUnitView = UnitViewInfo{Package: "tabledemo", ProtocolID: 0x5c9bc571714
 		{Name: "WeaponConfig", File: "Tables.schema", Table: true, Type: &WeaponConfigTableInfo, Doc: "One weapon's tuning. A designer edits this table and nothing else.", NumTags: 1, Tags: []string{"designer_facing"}},
 		{Name: "WideBlob", File: "Wide.schema", Table: true, Type: &WideBlobTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 	},
-	NumEnums: 6, Enums: []ViewVocabulary{
+	NumEnums: 7, Enums: []ViewVocabulary{
 		{Name: "Difficulty", File: "Pack.schema", Max: 3, StorageBits: 8, NumVariants: 4, Doc: TableDocNone, NumTags: 0, Tags: nil, Variants: []ViewVariant{
 			{Name: "None", Doc: TableDocNone, NumTags: 0, Tags: nil},
 			{Value: 1, Name: "Easy", ID: 0x483d9e6c1ccd1f9b, Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -203,6 +209,12 @@ var tableUnitView = UnitViewInfo{Package: "tabledemo", ProtocolID: 0x5c9bc571714
 			{Value: 1, Name: "Interceptor", ID: 0xae61a6cbe88c2cf4, Doc: TableDocNone, NumTags: 0, Tags: nil},
 			{Value: 2, Name: "Gunship", ID: 0x334d24e1420dbc1f, Doc: TableDocNone, NumTags: 0, Tags: nil},
 			{Value: 3, Name: "Freighter", ID: 0x6c2321a3d00e23db, Doc: TableDocNone, NumTags: 0, Tags: nil},
+		}},
+		{Name: "Mood", File: "Tables.schema", Max: 3, StorageBits: 8, NumVariants: 4, Doc: TableDocNone, NumTags: 0, Tags: nil, Variants: []ViewVariant{
+			{Name: "None", Doc: TableDocNone, NumTags: 0, Tags: nil},
+			{Value: 1, Name: "Calm", ID: 0xdfa47a9ce9ac16d6, Doc: TableDocNone, NumTags: 0, Tags: nil},
+			{Value: 2, Name: "Old", ID: 0x3018cd19bf898cd6, Doc: TableDocNone, NumTags: 1, Tags: []string{"deprecated"}},
+			{Value: 3, Name: "Fierce", ID: 0x199c482b49ef9acb, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		}},
 		{Name: "ShipType", File: "Pack.schema", Max: 3, StorageBits: 8, NumVariants: 4, Doc: TableDocNone, NumTags: 0, Tags: nil, Variants: []ViewVariant{
 			{Name: "None", Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -230,11 +242,16 @@ var tableUnitView = UnitViewInfo{Package: "tabledemo", ProtocolID: 0x5c9bc571714
 			{Value: 2, Name: "Turbo", ID: 0x0000000000000000, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		}},
 	},
-	NumUnions: 1, Unions: []ViewVocabulary{
+	NumUnions: 2, Unions: []ViewVocabulary{
 		{Name: "Effect", File: "Tables.schema", Max: 2, StorageBits: 8, NumVariants: 3, Doc: "What a weapon does to a target beyond its damage.", NumTags: 1, Tags: []string{"gameplay"}, Variants: []ViewVariant{
 			{Name: "None", Doc: TableDocNone, NumTags: 0, Tags: nil},
 			{Value: 1, Name: "buff", ID: 0xffb5be9be2e469cc, PayloadName: "Buff", Payload: BuffTableType, Doc: "A multiplier that rides while the effect is live.", NumTags: 1, Tags: []string{"positive"}},
 			{Value: 2, Name: "debuff", ID: 0x13cdc5ede73d2fd7, PayloadName: "Debuff", Payload: DebuffTableType, Doc: TableDocNone, NumTags: 0, Tags: nil},
+		}},
+		{Name: "MinPick", File: "Tables.schema", Max: 2, StorageBits: 8, NumVariants: 3, PayloadOffset: uint32(unsafe.Offsetof(MinPickRow{}.Payload)), Doc: TableDocNone, NumTags: 0, Tags: nil, Variants: []ViewVariant{
+			{Name: "None", Doc: TableDocNone, NumTags: 0, Tags: nil},
+			{Value: 1, Name: "few", ID: 0xdcc67d18feea8c19, PayloadName: "[2..4]uint32", Field: func() *TableFieldInfo { return &tableUnionArms[1].Arms[1].Field }, Doc: TableDocNone, NumTags: 0, Tags: nil},
+			{Value: 2, Name: "other", ID: 0x0a24ad61c2562a55, PayloadName: "int32", Field: func() *TableFieldInfo { return &tableUnionArms[1].Arms[2].Field }, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		}},
 	},
 	NumConstants: 3, Constants: []ViewConstant{

@@ -1,0 +1,6 @@
+package probe
+
+type Holder
+{
+    x uint8
+}

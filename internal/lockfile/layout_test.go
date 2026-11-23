@@ -324,7 +324,7 @@ func TestRecordedLayoutRule2KindUnknown(t *testing.T) {
 	testMalformedLayoutAtBoundary(t, badKind, "layout_kind_unknown", true)
 	testMalformedLayoutAtBoundary(t, badKind, "layout_kind_unknown", false)
 
-	// Kind 31 (§3 framing escape) is outside closed kind set
+	// Kind 31 (held by name, never written: R17) is outside the closed kind set
 	badEscape := makeLayoutBytes(
 		makeLayoutEntry(1, 13, 4, 1),
 		makeLayoutEntry(2, 31, 4, 0),

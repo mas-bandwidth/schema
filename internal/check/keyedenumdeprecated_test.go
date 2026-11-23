@@ -80,7 +80,7 @@ table Witness
 		t.Fatalf("scalar, array and map-value uses of a deprecated variant must be accepted: %v", errs)
 	}
 
-	live := `package t
+	live := `package tx
 
 enum Live
 {

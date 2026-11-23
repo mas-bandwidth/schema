@@ -1009,6 +1009,12 @@ func scalarBounds(f *ir.Field) []scalarBound {
 		if r, ok := t.Ref.(*ir.Enum); ok {
 			return []scalarBound{{test: func(v string) string { return fmt.Sprintf("(%s as u64) > %d", v, r.Max) }, land: "0"}}
 		}
+		// A MASK BIT AT OR ABOVE W REFUSES out_of_range on the read and is refused
+		// on the write (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS
+		// WIDTH): the bound is the mask of the W low bits
+		if m, ok := flagsMask(f); ok {
+			return []scalarBound{{test: func(v string) string { return fmt.Sprintf("(%s as u64) > %s", v, m) }, land: m}}
+		}
 		return nil
 	}
 	w := ir.TableFixedStorageBytes(t)
@@ -1046,6 +1052,21 @@ func scalarBounds(f *ir.Field) []scalarBound {
 		out = append(out, scalarBound{test: func(v string) string { return fmt.Sprintf("%s > %s", v, m) }, land: m})
 	}
 	return out
+}
+
+// flagsMask is the literal 2^W - 1 of a flags set whose wire width W (the
+// variant count, or K under `| max = K`) is below 64, the largest mask a table
+// read and write admit (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO
+// ITS WIDTH); false for any other field.
+func flagsMask(f *ir.Field) (string, bool) {
+	if f.Type.Kind != ir.TNamed {
+		return "", false
+	}
+	fl, ok := f.Type.Ref.(*ir.Flags)
+	if !ok || fl.WireBits >= 64 {
+		return "", false
+	}
+	return goose.IntLit(new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(fl.WireBits)), big.NewInt(1))), true
 }
 
 // elemNeedsClamp / elemNeedsCheck / elemNeedsScan answer whether a pass has

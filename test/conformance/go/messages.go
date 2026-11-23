@@ -200,10 +200,16 @@ func messageSurface(lines []line, out string, prior bool) error {
 		}
 		codec := findMessageCodec(unit, f[3])
 		if codec == nil {
+			if prior {
+				if err := spillAbsent(out, f[1]); err != nil {
+					return err
+				}
+				continue
+			}
 			// A message row whose root is a variable table carries no message
 			// verbs (docs/SPEC-TABLES.md §3.3: the message form is fixed tables
-			// only), so the driver answers ABSENT and names the reason.
-			if err := spillAbsentReason(out, f[1], "variable table: the message form is fixed tables only (SPEC-TABLES §3.3)"); err != nil {
+			// only), so the row's answer is the refusal (ruling R13).
+			if err := spill(out, f[1], []byte("refused\n")); err != nil {
 				return err
 			}
 			continue

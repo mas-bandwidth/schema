@@ -196,8 +196,8 @@ func TestMessageReadRefusesEveryKindTheWriterElides(t *testing.T) {
 // is refused.
 func TestMessageOrderIsTheSendersDeclarationOrder(t *testing.T) {
 	t.Parallel()
-	reader := covModel(t, "package order\n\nfixed table Root\n{\n    a uint8\n    b uint8\n}\n")
-	writer := covModel(t, "package order\n\nfixed table Root\n{\n    b uint8\n    a uint8\n}\n")
+	reader := covModel(t, "package orderx\n\nfixed table Root\n{\n    a uint8\n    b uint8\n}\n")
+	writer := covModel(t, "package orderx\n\nfixed table Root\n{\n    b uint8\n    a uint8\n}\n")
 	var wvoc Vocabulary
 	if err := wvoc.AnnounceRead(Announce(writer.Unit), &tabletext.Report{}); err != nil {
 		t.Fatal(err)
@@ -225,7 +225,7 @@ func TestMessageOrderIsTheSendersDeclarationOrder(t *testing.T) {
 		t.Errorf("reordered body under the same build read: ok=%v err=%v", ok, err)
 	}
 	// Vocabulary slots are shared across records; slot order is not body order.
-	both := covModel(t, `package order
+	both := covModel(t, `package orderx
     fixed table A {x uint16
  y uint32}
     fixed table B {y uint32

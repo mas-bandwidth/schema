@@ -1,6 +1,6 @@
 defmodule PacketWriteCFloatTest do
   alias Cfloat.CFloat, as: C
-  alias Cfloat.CFloatFile, as: W
+  alias Cfloat.PacketCFloat, as: W
 
   def fail(what) do
     IO.puts("FAILED: packet-write-cfloat #{what}")

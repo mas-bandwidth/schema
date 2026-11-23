@@ -113,7 +113,7 @@ func elemArrayPayload(kind int) ([]byte, bool) {
 		return []byte{1, 0}, true // L = 1 and an empty body's terminator
 	case ir.TableKindUnion, ir.TableKindPointer, ir.TableKindEnum:
 		return []byte{0}, true // None, null, and the zero variant reference
-	case ir.TableKindEscape, ir.TableKindNoPayload:
+	case ir.TableKindHeldEscape, ir.TableKindNoPayload:
 		return elemLeb(0), true // an empty payload under its own L
 	case ir.TableKindArray, ir.TableKindKeyed:
 		// an element framed by its own L: a body over element kind 6, count 0
@@ -136,7 +136,7 @@ func elemKeyedPayload(kind int) ([]byte, bool) {
 		return []byte{0}, true // an empty body's terminator
 	case ir.TableKindUnion, ir.TableKindPointer, ir.TableKindEnum:
 		return []byte{0}, true
-	case ir.TableKindEscape, ir.TableKindNoPayload:
+	case ir.TableKindHeldEscape, ir.TableKindNoPayload:
 		return nil, true
 	case ir.TableKindArray, ir.TableKindKeyed:
 		return []byte{byte(ir.TableKindU8), 0}, true
@@ -249,6 +249,38 @@ func TestArrayElementKindsClosed(t *testing.T) {
 		}
 		if ok, err := read(elemKeyedWire(elemKeyedIDs(by, triples), 1, ir.TableKindI32, count, triples...)); ok != want {
 			t.Errorf("declared keyed control count %d: accepted=%v want=%v (%v)", count, ok, want, err)
+		}
+	}
+}
+
+// TestKindHeldEscapeRefuses: kind 31 is held by name and never written (R17,
+// docs/SPEC-TABLES.md §3: the newer reader reads old data, never the other
+// way). A reader meets it only as damage, at a field it cannot name, at one it
+// declares and under retain-unknown, exactly as it meets 33 and 34. Red on the
+// old escape, which skipped an unnamed 31 by its L and counted it unknown.
+func TestKindHeldEscapeRefuses(t *testing.T) {
+	t.Parallel()
+	m := covModel(t, elementKindsClosedUnit)
+	root := m.Lookup("Root")
+	unknown, nums := ir.TableWireId("zzz"), ir.TableWireId("nums")
+	cases := []struct {
+		name string
+		data []byte
+	}{
+		{"unnamed field", elemFile([]uint64{unknown}, elemField(1, ir.TableKindHeldEscape, []byte{0xAA, 0xBB}))},
+		{"unnamed field, L 0", elemFile([]uint64{unknown}, elemField(1, ir.TableKindHeldEscape, nil))},
+		{"named field", elemFile([]uint64{nums}, elemField(1, ir.TableKindHeldEscape, []byte{0}))},
+	}
+	for _, c := range cases {
+		var report tabletext.Report
+		ok, err := Decode(m, m.New(root), c.data, &report)
+		if ok || RefusalReason(err) != ReasonWireDamaged {
+			t.Errorf("%s: kind 31 read accepted=%t reason %q, want refused %q", c.name, ok, RefusalReason(err), ReasonWireDamaged)
+		}
+		var kept tabletext.Report
+		ok, err = DecodeRetain(m, m.New(root), c.data, &Retain{Capacity: 1 << 16, IdCapacity: 64}, &kept)
+		if ok || RefusalReason(err) != ReasonWireDamaged {
+			t.Errorf("%s: kind 31 retain accepted=%t reason %q, want refused %q", c.name, ok, RefusalReason(err), ReasonWireDamaged)
 		}
 	}
 }

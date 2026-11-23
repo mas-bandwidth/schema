@@ -33,7 +33,14 @@ module SchemaRuntimeUnit
     ).to_h { |k| [k, true] }.freeze
 
     STRUCTURAL_KINDS = { 13 => true, 14 => true, 15 => true, 16 => true }.freeze
-    LENGTH_KINDS = { 12 => true, 13 => true, 14 => true, 16 => true, 31 => true, 32 => true }.freeze
+    LENGTH_KINDS = { 12 => true, 13 => true, 14 => true, 16 => true, 32 => true }.freeze
+    # THE KINDS HELD BY NAME AND NEVER WRITTEN (docs/SPEC-TABLES.md §3): 31 was
+    # the escape a later major would have written for an older reader to skip,
+    # and the newer reader reads old data but never the other way (R17), 33 is
+    # retired and 34 is reserved for float16. No writer of this major emits one,
+    # so a reader meets them only as damage, at a field or arm it names as at
+    # one it cannot, never as a kind mismatch.
+    HELD_KINDS = { 31 => true, 33 => true, 34 => true }.freeze
 
     SIGNED_WIDEN = [2, 3, 4, 5, 18].freeze
     UNSIGNED_WIDEN = [6, 7, 8, 9, 19].freeze
@@ -318,6 +325,10 @@ module SchemaRuntimeUnit
         if kind == field.kind
           val = read_field_codec(reader, field, ctx)
         else
+          if HELD_KINDS[kind]
+            raise Refused.new('wire_damaged', "kind #{kind} is held by name and never written")
+          end
+
           unless widens?(kind, field.kind)
             raise Refused.new('kind_mismatch', "#{desc.name}.#{field.name} rides under kind #{kind}, not #{field.kind}")
           end
@@ -1133,6 +1144,9 @@ module SchemaRuntimeUnit
         return un_cls.new
       end
       if kind != arm.kind
+        if HELD_KINDS[kind]
+          raise Refused.new('wire_damaged', "kind #{kind} is held by name and never written")
+        end
         if arm.field.nil? || !widens?(kind, arm.kind)
           raise Refused.new('kind_mismatch',
                             "#{un_cls.descriptor.name}.#{arm.name} rides under kind #{kind}, not #{arm.kind}")
@@ -1361,7 +1375,7 @@ module SchemaRuntimeUnit
         reader.id_at(ref) if ref.positive?
       when 15
         skip_union(reader, ctx, depth)
-      when 12, 13, 14, 16, 31, 32
+      when 12, 13, 14, 16, 32
         len = reader.varint
         skip_content(reader.take(len), kind, ctx, depth)
       else
@@ -1380,8 +1394,6 @@ module SchemaRuntimeUnit
       case kind
       when 12
         decode_wire_text(data, 'ill-formed text')
-      when 31
-        nil
       when 32
         raise Refused.new('wire_damaged', 'kind 32 with a nonzero L') unless data.bytesize.zero?
       when 13, 14, 16

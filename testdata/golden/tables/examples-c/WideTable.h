@@ -262,7 +262,17 @@ typedef struct tabledemo_table_field_info_t
     uint8_t text_list; /* 0 none, 1 string(M) elements, 2 ?string(M) elements (SPEC-TABLES 2.13) */
     int64_t text_total; /* | total = N byte cap across text-list elements, or 0 (SPEC-TABLES 2.13) */
     void * ( *place )( void * worker, void * slot, const char * key, int32_t length, int64_t number, int fresh );
-    int32_t array_min; /* a [A..B]T count's declared minimum A (docs/SPEC.md §4.2), else 0 */
+    /* A COUNTED ARRAY'S MINIMUM (docs/SPEC.md §5.1, docs/SPEC-TABLES.md §16.2):
+       the A of [A..B]T, 0 on every other field. A text read that places
+       fewer elements refuses, as the wire read does. */
+    int32_t array_min;
+    /* A DEPRECATED VARIANT (docs/SPEC-TABLES.md §2.15): enum_deprecated is one
+       flag per value in [0, enum_max], 1 where the variant is marked
+       "| deprecated", NULL when the enum carries none. A read naming one
+       stores enum_default instead — the field's declared default, None for
+       an element — and is never counted unknown. */
+    uint64_t enum_default;
+    const uint8_t * enum_deprecated;
 } tabledemo_table_field_info_t;
 
 typedef struct tabledemo_table_type_info_t
@@ -298,19 +308,19 @@ typedef struct tabledemo_table_type_info_t
    preserves every earlier open-addressing chain and first-use wire reference. */
 typedef struct tabledemo_table_write_ids_t
 {
-    uint64_t ids[156];
-    uint32_t slots[512], positions[156];
+    uint64_t ids[172];
+    uint32_t slots[512], positions[172];
     /* THE ORDINAL SLOT CACHE (docs/SPEC-TABLES.md §3). Every id a generated
        field header, union arm header or blob header names is a COMPILE-TIME
        CONSTANT of the unit, so it has an ORDINAL: its index in the unit's id
-       vocabulary, the ascending set 156 counts. slot holds the ENTRY
+       vocabulary, the ascending set 172 counts. slot holds the ENTRY
        that ordinal's id took, -1 for one not interned yet, and ordinal_of is
        its inverse over the entries — the ordinal an entry was taken under, -1
        for an entry a RUNTIME id took, which has no ordinal. The pair is what
        lets a rewind undo the cache in O(popped) rather than walking the whole
        vocabulary. */
-    int32_t slot[156];
-    int16_t ordinal_of[156];
+    int32_t slot[172];
+    int16_t ordinal_of[172];
     int count;
 } tabledemo_table_write_ids_t;
 
@@ -336,7 +346,7 @@ static SCHEMA_UNUSED tabledemo_table_writer_t tabledemo_table_writer_make( uint8
        that makes an entry, and read only below count. The ordinal slots are
        the one column with a non-zero empty value. */
     memset( vocabulary->slots, 0, sizeof( vocabulary->slots ) );
-    for ( i = 0; i < 156; i++ ) { vocabulary->slot[i] = -1; }
+    for ( i = 0; i < 172; i++ ) { vocabulary->slot[i] = -1; }
     vocabulary->count = 0;
     return w;
 }
@@ -402,7 +412,7 @@ static SCHEMA_UNUSED uint64_t tabledemo_table_writer_id( tabledemo_table_writer_
     /* AN OVERFLOWED TABLE APPENDS NOTHING and spells no reference: 0 names no
        id, so a caller can tell the miss that took an entry from the one that
        did not. */
-    if ( v->count >= 156 )
+    if ( v->count >= 172 )
     {
         w->overflow = 1;
         return 0;
@@ -697,7 +707,6 @@ static SCHEMA_UNUSED int tabledemo_table_reader_skip( tabledemo_table_reader_t *
         case 13:
         case 14:
         case 16:
-        case 31:
         case 32:
             if ( !tabledemo_table_reader_leb( r, &n ) || !tabledemo_table_reader_room( r, n ) ) { return 0; }
             r->offset += (int64_t) n;
@@ -765,7 +774,8 @@ static SCHEMA_UNUSED int tabledemo_table_skip_framed( tabledemo_table_reader_t s
     switch ( kind )
     {
         case 12: return tabledemo_table_skip_utf8( sub.buffer, (uint64_t) sub.size );
-        case 31: return 1;
+        case 31:
+            return 0; /* KIND 31 IS HELD BY NAME AND NEVER WRITTEN (R17): met only as damage, as 33 and 34 are */
         case 32: return sub.size == 0;
         case 13: return depth < 128 && tabledemo_table_skip_body( sub, nodes, depth + 1, 0 ) == sub.size;
         case 14:
@@ -945,7 +955,6 @@ static SCHEMA_UNUSED int tabledemo_table_skip_value( tabledemo_table_reader_t * 
         case 13:
         case 14:
         case 16:
-        case 31:
         case 32:
         {
             tabledemo_table_reader_t sub;
@@ -2507,7 +2516,7 @@ static SCHEMA_UNUSED int tabledemo_table_fixed_ordinal_width( uint32_t n ) { ret
 
 /* THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
    the no-payload variant 32, and the ONE kind this form's layout adds, the
-   optional wrapper 35. 31 is §3's BODY framing escape, 33 is retired and 34 is
+   optional wrapper 35. 31 is held by name and never written (R17), 33 is retired and 34 is
    reserved: none is a kind a declaration spells, so none is ever an entry's
    kind. */
 static SCHEMA_UNUSED int tabledemo_table_fixed_known_kind( uint8_t kind )
@@ -4796,7 +4805,6 @@ static SCHEMA_UNUSED void tabledemo_table_mark_value( tabledemo_table_reader_t *
             return;
         }
         case 12:
-        case 31:
         case 32:
         {
             tabledemo_table_reader_t sub;
@@ -5183,7 +5191,7 @@ static SCHEMA_UNUSED int tabledemo_table_cycle_acyclic( tabledemo_table_node_map
    PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
    what everything cooked or blocked is keyed by. A table edit moves this and
    never the protocol id; a type edit moves both. */
-#define SCHEMA_TABLEDEMO_BUILD_VERSION_VALUE 0x3684616af27a45c9ull
+#define SCHEMA_TABLEDEMO_BUILD_VERSION_VALUE 0x74f8a79e113ca9dfull
 
 #endif /* SCHEMA_TABLEDEMO_BUILD_VERSION */
 
@@ -5379,9 +5387,9 @@ static SCHEMA_UNUSED void tabledemo_table_cook_header( uint8_t * raw, uint64_t v
 #define SCHEMA_TABLEDEMO_TABLE_MESSAGE
 enum
 {
-    TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE = 7,
-    TABLEDEMO_K_TABLE_MESSAGE_ENTRIES_HERE = 123,
-    TABLEDEMO_K_TABLE_ANNOUNCE_BYTES = 1460,
+    TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE = 8,
+    TABLEDEMO_K_TABLE_MESSAGE_ENTRIES_HERE = 134,
+    TABLEDEMO_K_TABLE_ANNOUNCE_BYTES = 1585,
     TABLEDEMO_K_TABLE_ANNOUNCE_TOO_LARGE = 0,
     TABLEDEMO_K_TABLE_MESSAGE_BATCH_MAX = 256,
     TABLEDEMO_K_TABLE_MESSAGE_SEEN_REFS = 8192
@@ -5390,21 +5398,21 @@ static const uint8_t TABLEDEMO_K_TABLE_ANNOUNCE[TABLEDEMO_K_TABLE_ANNOUNCE_BYTES
     0x01,
     0x01,
     0x09,
-    0xc9,
-    0x45,
-    0x7a,
-    0xf2,
-    0x6a,
-    0x61,
-    0x84,
-    0x36,
+    0xdf,
+    0xa9,
+    0x3c,
+    0x11,
+    0x9e,
+    0xa7,
+    0xf8,
+    0x74,
     0x02,
     0x0e,
-    0x8c,
-    0x0b,
-    0x06,
     0x89,
-    0x0b,
+    0x0c,
+    0x06,
+    0x86,
+    0x0c,
     0xc5,
     0x67,
     0xc4,
@@ -5458,6 +5466,19 @@ static const uint8_t TABLEDEMO_K_TABLE_ANNOUNCE[TABLEDEMO_K_TABLE_ANNOUNCE_BYTES
     0x9a,
     0x0a,
     0x00,
+    0x19,
+    0x8c,
+    0xea,
+    0xfe,
+    0x18,
+    0x7d,
+    0xc6,
+    0xdc,
+    0x0e,
+    0x02,
+    0x05,
+    0x08,
+    0x00,
     0x69,
     0x69,
     0xb1,
@@ -5470,6 +5491,28 @@ static const uint8_t TABLEDEMO_K_TABLE_ANNOUNCE[TABLEDEMO_K_TABLE_ANNOUNCE_BYTES
     0x01,
     0x07,
     0x00,
+    0x9d,
+    0x70,
+    0x7c,
+    0x9d,
+    0x0a,
+    0xc9,
+    0xdd,
+    0xe8,
+    0x0a,
+    0x02,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0xcd,
+    0xcc,
+    0xcc,
+    0x3d,
+    0x0a,
+    0xd7,
+    0x23,
+    0x3c,
     0xf3,
     0xea,
     0x7d,
@@ -5683,6 +5726,59 @@ static const uint8_t TABLEDEMO_K_TABLE_ANNOUNCE[TABLEDEMO_K_TABLE_ANNOUNCE_BYTES
     0x00,
     0x08,
     0x0d,
+    0xd8,
+    0xbb,
+    0x13,
+    0xc5,
+    0x0d,
+    0xc4,
+    0x0b,
+    0xbf,
+    0x0f,
+    0x19,
+    0x8c,
+    0xea,
+    0xfe,
+    0x18,
+    0x7d,
+    0xc6,
+    0xdc,
+    0x0e,
+    0x02,
+    0x04,
+    0x08,
+    0x00,
+    0xbe,
+    0x77,
+    0x38,
+    0xc4,
+    0xa2,
+    0xfa,
+    0x5c,
+    0x0d,
+    0x1e,
+    0x23,
+    0xd7,
+    0x98,
+    0x07,
+    0xef,
+    0x56,
+    0x4c,
+    0xd9,
+    0x07,
+    0x00,
+    0x9b,
+    0xad,
+    0x11,
+    0x61,
+    0x19,
+    0xc1,
+    0x0b,
+    0x8a,
+    0x0e,
+    0x00,
+    0x04,
+    0x1e,
     0x37,
     0xea,
     0x08,
@@ -6723,6 +6819,33 @@ static const uint8_t TABLEDEMO_K_TABLE_ANNOUNCE[TABLEDEMO_K_TABLE_ANNOUNCE_BYTES
     0x23,
     0x6c,
     0x00,
+    0xd6,
+    0x16,
+    0xac,
+    0xe9,
+    0x9c,
+    0x7a,
+    0xa4,
+    0xdf,
+    0x00,
+    0xd6,
+    0x8c,
+    0x89,
+    0xbf,
+    0x19,
+    0xcd,
+    0x18,
+    0x30,
+    0x00,
+    0xcb,
+    0x9a,
+    0xef,
+    0x49,
+    0x2b,
+    0x48,
+    0x9c,
+    0x19,
+    0x00,
     0xc2,
     0x85,
     0x52,
@@ -6822,6 +6945,16 @@ static const uint8_t TABLEDEMO_K_TABLE_ANNOUNCE[TABLEDEMO_K_TABLE_ANNOUNCE_BYTES
     0xcd,
     0x13,
     0x0d,
+    0x55,
+    0x2a,
+    0x56,
+    0xc2,
+    0x61,
+    0xad,
+    0x24,
+    0x0a,
+    0x04,
+    0x00,
     0x00,
     0xfe,
     0xff,
@@ -6902,6 +7035,19 @@ static const uint8_t TABLEDEMO_K_TABLE_MESSAGE_ENTRY_KEY_BYTES[] = {
     0x9a,
     0x0a,
     0x00,
+    0x19,
+    0x8c,
+    0xea,
+    0xfe,
+    0x18,
+    0x7d,
+    0xc6,
+    0xdc,
+    0x0e,
+    0x02,
+    0x05,
+    0x08,
+    0x00,
     0x69,
     0x69,
     0xb1,
@@ -6914,6 +7060,28 @@ static const uint8_t TABLEDEMO_K_TABLE_MESSAGE_ENTRY_KEY_BYTES[] = {
     0x01,
     0x07,
     0x00,
+    0x9d,
+    0x70,
+    0x7c,
+    0x9d,
+    0x0a,
+    0xc9,
+    0xdd,
+    0xe8,
+    0x0a,
+    0x02,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0xcd,
+    0xcc,
+    0xcc,
+    0x3d,
+    0x0a,
+    0xd7,
+    0x23,
+    0x3c,
     0xf3,
     0xea,
     0x7d,
@@ -7127,6 +7295,59 @@ static const uint8_t TABLEDEMO_K_TABLE_MESSAGE_ENTRY_KEY_BYTES[] = {
     0x00,
     0x08,
     0x0d,
+    0xd8,
+    0xbb,
+    0x13,
+    0xc5,
+    0x0d,
+    0xc4,
+    0x0b,
+    0xbf,
+    0x0f,
+    0x19,
+    0x8c,
+    0xea,
+    0xfe,
+    0x18,
+    0x7d,
+    0xc6,
+    0xdc,
+    0x0e,
+    0x02,
+    0x04,
+    0x08,
+    0x00,
+    0xbe,
+    0x77,
+    0x38,
+    0xc4,
+    0xa2,
+    0xfa,
+    0x5c,
+    0x0d,
+    0x1e,
+    0x23,
+    0xd7,
+    0x98,
+    0x07,
+    0xef,
+    0x56,
+    0x4c,
+    0xd9,
+    0x07,
+    0x00,
+    0x9b,
+    0xad,
+    0x11,
+    0x61,
+    0x19,
+    0xc1,
+    0x0b,
+    0x8a,
+    0x0e,
+    0x00,
+    0x04,
+    0x1e,
     0x37,
     0xea,
     0x08,
@@ -8167,6 +8388,33 @@ static const uint8_t TABLEDEMO_K_TABLE_MESSAGE_ENTRY_KEY_BYTES[] = {
     0x23,
     0x6c,
     0x00,
+    0xd6,
+    0x16,
+    0xac,
+    0xe9,
+    0x9c,
+    0x7a,
+    0xa4,
+    0xdf,
+    0x00,
+    0xd6,
+    0x8c,
+    0x89,
+    0xbf,
+    0x19,
+    0xcd,
+    0x18,
+    0x30,
+    0x00,
+    0xcb,
+    0x9a,
+    0xef,
+    0x49,
+    0x2b,
+    0x48,
+    0x9c,
+    0x19,
+    0x00,
     0xc2,
     0x85,
     0x52,
@@ -8266,6 +8514,16 @@ static const uint8_t TABLEDEMO_K_TABLE_MESSAGE_ENTRY_KEY_BYTES[] = {
     0xcd,
     0x13,
     0x0d,
+    0x55,
+    0x2a,
+    0x56,
+    0xc2,
+    0x61,
+    0xad,
+    0x24,
+    0x0a,
+    0x04,
+    0x00,
 };
 static const int32_t TABLEDEMO_K_TABLE_MESSAGE_ENTRY_KEY_OFFSETS[] = {
     0,
@@ -8274,124 +8532,135 @@ static const int32_t TABLEDEMO_K_TABLE_MESSAGE_ENTRY_KEY_OFFSETS[] = {
     33,
     43,
     53,
-    65,
-    77,
-    86,
-    96,
-    109,
-    119,
-    128,
-    138,
-    148,
-    158,
-    169,
-    180,
-    191,
-    200,
-    209,
-    221,
-    233,
-    245,
-    254,
-    266,
-    278,
-    288,
-    297,
-    308,
+    66,
+    78,
+    100,
+    112,
+    121,
+    131,
+    144,
+    154,
+    163,
+    173,
+    183,
+    193,
+    204,
+    215,
+    226,
+    235,
+    244,
+    256,
+    268,
+    280,
+    289,
+    301,
+    313,
     322,
-    334,
+    335,
     344,
-    357,
-    367,
-    377,
-    387,
-    397,
-    407,
-    417,
-    427,
-    436,
-    449,
-    458,
-    467,
-    480,
-    493,
-    506,
-    519,
-    533,
-    547,
-    561,
-    575,
-    591,
+    354,
+    366,
+    376,
+    385,
+    396,
+    410,
+    422,
+    432,
+    445,
+    455,
+    465,
+    475,
+    485,
+    495,
+    505,
+    515,
+    524,
+    537,
+    546,
+    555,
+    568,
+    581,
+    594,
     607,
-    623,
-    639,
-    660,
-    681,
-    702,
-    723,
-    740,
-    752,
-    764,
-    776,
-    788,
-    800,
-    812,
-    824,
-    836,
-    848,
-    860,
-    872,
-    884,
-    896,
-    908,
-    920,
-    932,
-    947,
-    959,
-    971,
-    983,
-    995,
-    1007,
-    1019,
-    1029,
-    1041,
-    1053,
-    1067,
-    1077,
-    1092,
-    1101,
-    1113,
-    1123,
-    1133,
-    1143,
-    1153,
+    621,
+    635,
+    649,
+    663,
+    679,
+    695,
+    711,
+    727,
+    748,
+    769,
+    790,
+    811,
+    828,
+    840,
+    852,
+    864,
+    876,
+    888,
+    900,
+    912,
+    924,
+    936,
+    948,
+    960,
+    972,
+    984,
+    996,
+    1008,
+    1020,
+    1035,
+    1047,
+    1059,
+    1071,
+    1083,
+    1095,
+    1107,
+    1117,
+    1129,
+    1141,
+    1155,
     1165,
-    1177,
-    1186,
-    1195,
-    1207,
-    1222,
-    1237,
-    1246,
-    1255,
-    1264,
-    1273,
-    1282,
-    1291,
-    1300,
-    1309,
-    1318,
-    1327,
-    1336,
-    1345,
-    1354,
-    1363,
-    1372,
-    1381,
-    1390,
-    1399,
-    1408,
-    1417,
+    1180,
+    1189,
+    1201,
+    1211,
+    1221,
+    1231,
+    1241,
+    1253,
+    1265,
+    1274,
+    1283,
+    1295,
+    1310,
+    1325,
+    1334,
+    1343,
+    1352,
+    1361,
+    1370,
+    1379,
+    1388,
+    1397,
+    1406,
+    1415,
+    1424,
+    1433,
+    1442,
+    1451,
+    1460,
+    1469,
+    1478,
+    1487,
+    1496,
+    1505,
+    1514,
+    1523,
+    1532,
+    1542,
 };
 static SCHEMA_UNUSED uint16_t tabledemo_table_message_own_slot( const uint8_t * raw, int64_t length )
 {
@@ -8671,7 +8940,8 @@ static SCHEMA_UNUSED int tabledemo_table_message_fixed_kind( uint8_t kind )
 
 static SCHEMA_UNUSED int tabledemo_table_message_known_kind( uint8_t kind )
 {
-    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 32 ) || kind == 36;
+    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || kind == 30 || kind == 32 || kind == 36;
+    /* 31 is held by name and never written (R17): an announcement naming it is refused, as one naming 33 or 34 is */
 }
 
 
@@ -9258,8 +9528,8 @@ static SCHEMA_UNUSED int tabledemo_table_message_skip( tabledemo_table_message_r
             r->bits.offset += (int64_t) n * 8;
             return 1;
         case 31:
-            if ( !tabledemo_table_bit_align_read( &r->bits ) || !tabledemo_table_bit_get( &r->bits, &n, 32 ) ) return 0;
-            return tabledemo_table_message_skip_run( r, n, 8 );
+            return 0;
+            /* held by name and never written (R17): no announcement names it */
         case 10:
             /* A PLAIN FLOAT IS FINITE, AND A QUANTIZED INDEX IS AT MOST ITS COUNT
      (§3.3): the same raw-bits rule a named float read applies. */
@@ -9564,11 +9834,15 @@ static const uint64_t tabledemo_table_retain_known[] = {
     UINT64_C( 0x065ee827cf99fbb4 ),
     UINT64_C( 0x08a60c07b54d8dc7 ),
     UINT64_C( 0x09ae5613b0051271 ),
+    UINT64_C( 0x0a24ad61c2562a55 ),
+    UINT64_C( 0x0d5cfaa2c43877be ),
     UINT64_C( 0x0f8897557f37c021 ),
     UINT64_C( 0x10bda981fe095518 ),
     UINT64_C( 0x13cdc5ede73d2fd7 ),
     UINT64_C( 0x14ec921cc2549d60 ),
     UINT64_C( 0x1733055702acb1d2 ),
+    UINT64_C( 0x19212a5b5b3ccb4b ),
+    UINT64_C( 0x199c482b49ef9acb ),
     UINT64_C( 0x19fffcb7859da778 ),
     UINT64_C( 0x1c182e1c2529027b ),
     UINT64_C( 0x1cb2c073a6f5844d ),
@@ -9583,12 +9857,15 @@ static const uint64_t tabledemo_table_retain_known[] = {
     UINT64_C( 0x288427f5babd05f7 ),
     UINT64_C( 0x294a5c4913e1ad44 ),
     UINT64_C( 0x2a43bfa7e454ddac ),
+    UINT64_C( 0x2c8168f122124937 ),
     UINT64_C( 0x2d21d7cd66bd5a5d ),
     UINT64_C( 0x2e17553f8200a2a1 ),
     UINT64_C( 0x2f2ec0474f1c4fe4 ),
+    UINT64_C( 0x3018cd19bf898cd6 ),
     UINT64_C( 0x3066b130dfbd7890 ),
     UINT64_C( 0x32a89b2977c48ad4 ),
     UINT64_C( 0x334d24e1420dbc1f ),
+    UINT64_C( 0x33de720d0bcfd78a ),
     UINT64_C( 0x36c1c83b51f24394 ),
     UINT64_C( 0x38b429bf239b38db ),
     UINT64_C( 0x39f7fcec8fcb623d ),
@@ -9628,6 +9905,7 @@ static const uint64_t tabledemo_table_retain_known[] = {
     UINT64_C( 0x8113fe7ea2b16969 ),
     UINT64_C( 0x8181e61fc0436767 ),
     UINT64_C( 0x84f8260bc283608c ),
+    UINT64_C( 0x8a0bc1196111ad9b ),
     UINT64_C( 0x8a67c9728746d394 ),
     UINT64_C( 0x8c2cdb0da8933fa6 ),
     UINT64_C( 0x8dc515fc082e3c0e ),
@@ -9650,6 +9928,7 @@ static const uint64_t tabledemo_table_retain_known[] = {
     UINT64_C( 0xa8216aa1c554cb8a ),
     UINT64_C( 0xab6a6961d3366451 ),
     UINT64_C( 0xab8b6d521f80b969 ),
+    UINT64_C( 0xad3596f9de08e3b7 ),
     UINT64_C( 0xad6587bc602e3f59 ),
     UINT64_C( 0xae61a6cbe88c2cf4 ),
     UINT64_C( 0xb128829190ca0f75 ),
@@ -9666,6 +9945,7 @@ static const uint64_t tabledemo_table_retain_known[] = {
     UINT64_C( 0xbb62c62c9808ea37 ),
     UINT64_C( 0xbca0dab1c7a00ccf ),
     UINT64_C( 0xbeecef11dbdf8973 ),
+    UINT64_C( 0xbf0bc40dc513bbd8 ),
     UINT64_C( 0xbf31137ff783e939 ),
     UINT64_C( 0xbf59694e9e4f5ed7 ),
     UINT64_C( 0xc341febe5aae51e5 ),
@@ -9688,12 +9968,17 @@ static const uint64_t tabledemo_table_retain_known[] = {
     UINT64_C( 0xd363dfa465acf27a ),
     UINT64_C( 0xd6633ae4e94deecf ),
     UINT64_C( 0xd90a4e7682f799c5 ),
+    UINT64_C( 0xd94c56ef0798d723 ),
     UINT64_C( 0xdbff4cc56c2092f0 ),
     UINT64_C( 0xdc2cbe6953343d48 ),
+    UINT64_C( 0xdcc67d18feea8c19 ),
     UINT64_C( 0xddfc86d2b1251528 ),
     UINT64_C( 0xde28f0f5118acc24 ),
+    UINT64_C( 0xdfa47a9ce9ac16d6 ),
+    UINT64_C( 0xe2f227393c6b20a2 ),
     UINT64_C( 0xe3b1ca6a3b48dddc ),
     UINT64_C( 0xe693bd88532c91d6 ),
+    UINT64_C( 0xe8ddc90a9d7c709d ),
     UINT64_C( 0xec79751dda28be2e ),
     UINT64_C( 0xecf3d3a7c1693e2d ),
     UINT64_C( 0xeef9d1358ae7b4e6 ),
@@ -9701,6 +9986,7 @@ static const uint64_t tabledemo_table_retain_known[] = {
     UINT64_C( 0xf10fad739a0e1660 ),
     UINT64_C( 0xf252136836b04cb2 ),
     UINT64_C( 0xf2b45af3b50689db ),
+    UINT64_C( 0xf5b735fce4011ff4 ),
     UINT64_C( 0xf901aa0340249a41 ),
     UINT64_C( 0xfc9697d1196e6ba6 ),
     UINT64_C( 0xff8b681912a535a1 ),
@@ -10032,6 +10318,9 @@ static SCHEMA_UNUSED int tabledemo_table_retain_in_content( tabledemo_table_reta
             if ( !tabledemo_table_retain_in_payload( s, kind, depth ) ) return 0;
             break;
         case 17: return 0;
+        case 31:
+            return 0;
+            /* held by name and never written (R17): damage */
         default:
             if ( !tabledemo_table_retain_raw( s, r->buffer + r->offset, length ) ) return 0;
             r->offset += length;
@@ -10084,7 +10373,6 @@ static SCHEMA_UNUSED int tabledemo_table_retain_in_payload( tabledemo_table_reta
     switch ( kind )
     {
         case 12:
-        case 31:
         case 32:
             if ( !tabledemo_table_reader_leb( r, &length ) || !tabledemo_table_reader_room( r, length ) || !tabledemo_table_retain_leb( s, length ) || !tabledemo_table_retain_raw( s, r->buffer + r->offset, (int64_t) length ) ) return 0;
             r->offset += (int64_t) length;
@@ -10316,6 +10604,9 @@ static SCHEMA_UNUSED int tabledemo_table_retain_out_content( tabledemo_table_ret
             if ( !tabledemo_table_retain_out_payload( s, kind, depth ) ) return 0;
             break;
         case 17: return 0;
+        case 31:
+            return 0;
+            /* held by name and never written (R17): damage */
         default:
             if ( !tabledemo_table_retain_out_raw( s, s->input + s->at, length ) ) return 0;
             s->at += length;
@@ -10336,7 +10627,6 @@ static SCHEMA_UNUSED int tabledemo_table_retain_out_payload( tabledemo_table_ret
     switch ( kind )
     {
         case 12:
-        case 31:
         case 32:
             if ( !tabledemo_table_retain_out_leb_read( s, &length ) || length > (uint64_t) ( s->size - s->at ) || !tabledemo_table_retain_out_leb( s, length ) || !tabledemo_table_retain_out_raw( s, s->input + s->at, (int64_t) length ) ) return 0;
             s->at += (int64_t) length;
@@ -10616,7 +10906,7 @@ static SCHEMA_UNUSED int tabledemo_wide_blob_save_body( tabledemo_table_writer_t
         schema_assert( 0 <= value->label_length && value->label_length <= 70000 );
         if ( value->label_length != 0 )
         {
-            tabledemo_table_writer_header_at( w, 35, 0x39f7fcec8fcb623dull, 12 );
+            tabledemo_table_writer_header_at( w, 42, 0x39f7fcec8fcb623dull, 12 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -10637,7 +10927,7 @@ static SCHEMA_UNUSED int tabledemo_wide_blob_save_body( tabledemo_table_writer_t
         schema_assert( 0 <= value->payload_length && value->payload_length <= 70000 );
         if ( value->payload_length != 0 )
         {
-            tabledemo_table_writer_header_at( w, 122, 0xcfb8a9d063b5e9e5ull, 14 );
+            tabledemo_table_writer_header_at( w, 132, 0xcfb8a9d063b5e9e5ull, 14 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -10658,7 +10948,7 @@ static SCHEMA_UNUSED int tabledemo_wide_blob_save_body( tabledemo_table_writer_t
         schema_assert( 0 <= value->samples_count && value->samples_count <= 70000 );
         if ( value->samples_count > 0 )
         {
-            tabledemo_table_writer_header_at( w, 136, 0xe3b1ca6a3b48dddcull, 14 );
+            tabledemo_table_writer_header_at( w, 150, 0xe3b1ca6a3b48dddcull, 14 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -11007,7 +11297,7 @@ static SCHEMA_UNUSED int tabledemo_wide_blob_save_message_body( tabledemo_table_
         schema_assert( 0 <= value->label_length && value->label_length <= 70000 );
         if ( value->label_length != 0 )
         {
-            tabledemo_table_bit_put( w, 101, TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE );
+            tabledemo_table_bit_put( w, 108, TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE );
             schema_assert( 0 <= value->label_length && value->label_length <= 70000 );
             tabledemo_table_bit_put( w, (uint64_t) value->label_length, 17 );
             tabledemo_table_bit_align_write( w );
@@ -11018,7 +11308,7 @@ static SCHEMA_UNUSED int tabledemo_wide_blob_save_message_body( tabledemo_table_
         schema_assert( 0 <= value->payload_length && value->payload_length <= 70000 );
         if ( value->payload_length != 0 )
         {
-            tabledemo_table_bit_put( w, 102, TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE );
+            tabledemo_table_bit_put( w, 109, TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE );
             schema_assert( 0 <= value->payload_length && value->payload_length <= 70000 );
             tabledemo_table_bit_put( w, (uint64_t) value->payload_length, 17 );
             tabledemo_table_bit_align_write( w );
@@ -11029,7 +11319,7 @@ static SCHEMA_UNUSED int tabledemo_wide_blob_save_message_body( tabledemo_table_
         schema_assert( 0 <= value->samples_count && value->samples_count <= 70000 );
         if ( value->samples_count > 0 )
         {
-            tabledemo_table_bit_put( w, 103, TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE );
+            tabledemo_table_bit_put( w, 110, TABLEDEMO_K_TABLE_MESSAGE_REF_BITS_HERE );
             schema_assert( 0 <= value->samples_count && value->samples_count <= 70000 );
             tabledemo_table_bit_put( w, (uint64_t) value->samples_count - 0, 17 );
             {
@@ -11108,7 +11398,7 @@ static SCHEMA_UNUSED int tabledemo_wide_blob_load_message_body( tabledemo_table_
         {
             case UINT64_C( 0x39f7fcec8fcb623d ):
             {
-                int same_shape = same_build && entry->own_slot == 101;
+                int same_shape = same_build && entry->own_slot == 108;
                 if ( same_shape && 1 <= last_field_ord ) goto damaged;
                 if ( same_shape ) last_field_ord = 1;
                 int32_t unknown_before = r->report->unknown;
@@ -11155,7 +11445,7 @@ static SCHEMA_UNUSED int tabledemo_wide_blob_load_message_body( tabledemo_table_
             }
             case UINT64_C( 0xcfb8a9d063b5e9e5 ):
             {
-                int same_shape = same_build && entry->own_slot == 102;
+                int same_shape = same_build && entry->own_slot == 109;
                 if ( same_shape && 2 <= last_field_ord ) goto damaged;
                 if ( same_shape ) last_field_ord = 2;
                 int32_t unknown_before = r->report->unknown;
@@ -11197,7 +11487,7 @@ static SCHEMA_UNUSED int tabledemo_wide_blob_load_message_body( tabledemo_table_
             }
             case UINT64_C( 0xe3b1ca6a3b48dddc ):
             {
-                int same_shape = same_build && entry->own_slot == 103;
+                int same_shape = same_build && entry->own_slot == 110;
                 if ( same_shape && 3 <= last_field_ord ) goto damaged;
                 if ( same_shape ) last_field_ord = 3;
                 int32_t unknown_before = r->report->unknown;

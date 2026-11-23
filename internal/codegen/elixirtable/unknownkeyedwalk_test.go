@@ -6,7 +6,8 @@ package elixirtable
 // (kind 14) includes the closed element-kind lists: a body whose element kind
 // is off the list, whose key references no id or names one twice, whose slot
 // length crosses its L, or that leaves bytes after its last pair is damage
-// and refuses the whole read. The engine is the oracle; only its verdict is
+// and refuses the whole read, as is a field riding under kind 31, held by
+// name and never written (R17). The engine is the oracle; only its verdict is
 // compared, never a refusal's name.
 //
 // Functional (elixirBinary): run with SCHEMA_REQUIRE_CORPUS=1.
@@ -110,16 +111,22 @@ table Root { a int32 = 0 }
 		{"bytes-after-pairs", ukwFramed(2, ir.TableKindKeyed, ukwCat(ukwKeyed(ir.TableKindU8, 1, ukwPair(2, []byte{1})), []byte{9})), "bytes after the last pair"},
 		{"keyed-header-short", ukwFramed(2, ir.TableKindKeyed, []byte{byte(ir.TableKindU8)}), "a body too short for its header"},
 		{"keyed-element-string", ukwFramed(2, ir.TableKindKeyed, ukwKeyed(ir.TableKindString, 1, ukwPair(2, []byte("hi")))), "string is off the keyed list"},
+		// KIND 31 IS HELD BY NAME AND NEVER WRITTEN (R17: the newer reader reads
+		// old data, never the other way): the escape an older reader once
+		// skipped by its L is damage, at the top level and inside an unknown body
+		{"unnamed-held-escape", ukwFramed(2, ir.TableKindHeldEscape, []byte{0xAA, 0xBB}), "kind 31 is held, never skipped"},
+		{"unnamed-held-escape-empty", ukwFramed(2, ir.TableKindHeldEscape, nil), "kind 31 is held, never skipped"},
+		{"nested-held-escape", ukwFramed(2, ir.TableKindTable, ukwCat(ukwFramed(2, ir.TableKindHeldEscape, nil), []byte{0})), "kind 31 is held, never skipped"},
 		{"keyed-element-array", ukwFramed(2, ir.TableKindKeyed, ukwKeyed(ir.TableKindArray, 1, ukwPair(2, nestedArray))), "array is off the keyed list"},
 		{"keyed-element-union", ukwFramed(2, ir.TableKindKeyed, ukwKeyed(ir.TableKindUnion, 1, ukwPair(2, []byte{0}))), "union is off the keyed list"},
 		{"keyed-element-keyed", ukwFramed(2, ir.TableKindKeyed, ukwKeyed(ir.TableKindKeyed, 1, ukwPair(2, nestedKeyed))), "keyed is off the keyed list"},
 		{"keyed-element-pointer", ukwFramed(2, ir.TableKindKeyed, ukwKeyed(ir.TableKindPointer, 1, ukwPair(2, []byte{0}))), "pointer is off the keyed list"},
-		{"keyed-element-escape", ukwFramed(2, ir.TableKindKeyed, ukwKeyed(ir.TableKindEscape, 1, ukwPair(2, []byte{}))), "escape is off the keyed list"},
+		{"keyed-element-escape", ukwFramed(2, ir.TableKindKeyed, ukwKeyed(ir.TableKindHeldEscape, 1, ukwPair(2, []byte{}))), "escape is off the keyed list"},
 		{"keyed-element-no-payload", ukwFramed(2, ir.TableKindKeyed, ukwKeyed(ir.TableKindNoPayload, 1, ukwPair(2, []byte{}))), "no-payload is off the keyed list"},
 		{"keyed-element-timestamp", ukwFramed(2, ir.TableKindKeyed, ukwKeyed(ir.TableKindTimestamp, 1, ukwPair(2, make([]byte, 8)))), "timestamp is off the keyed list"},
 		{"array-element-array", ukwFramed(2, ir.TableKindArray, ukwArray(ir.TableKindArray, 1, nestedArray)), "array is off the array list"},
 		{"array-element-keyed", ukwFramed(2, ir.TableKindArray, ukwArray(ir.TableKindKeyed, 1, nestedKeyed)), "keyed is off the array list"},
-		{"array-element-escape", ukwFramed(2, ir.TableKindArray, ukwArray(ir.TableKindEscape, 1, ukwLeb(0))), "escape is off the array list"},
+		{"array-element-escape", ukwFramed(2, ir.TableKindArray, ukwArray(ir.TableKindHeldEscape, 1, ukwLeb(0))), "escape is off the array list"},
 		{"array-element-no-payload", ukwFramed(2, ir.TableKindArray, ukwArray(ir.TableKindNoPayload, 1, ukwLeb(0))), "no-payload is off the array list"},
 		{"array-element-timestamp", ukwFramed(2, ir.TableKindArray, ukwArray(ir.TableKindTimestamp, 1, make([]byte, 8))), "timestamp is off the array list"},
 	}

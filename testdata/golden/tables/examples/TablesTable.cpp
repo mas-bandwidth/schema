@@ -11,7 +11,10 @@
 
 #include <stdio.h> // the text form: number formatting
 #include <stdlib.h> // the text form: exact number conversion
-#include <locale.h> // the text form: the runtime's decimal point
+#include <locale.h> // the text form: numbers convert in the "C" locale
+#if defined(__APPLE__)
+#include <xlocale.h> // newlocale, uselocale
+#endif
 #include <string> // the hand-editable text form (§16.9)
 #include <vector> // the hand-editable text form (§16.9)
 #include <string.h> // the hand-editable text form (§16.9)
@@ -110,20 +113,64 @@ static const int32_t kTableJsonMaxKey = 256;
 // never the token.
 static const int32_t kTableJsonMaxNumber = 1024;
 
-// The decimal point the C runtime is CURRENTLY using. Number conversion is
-// the one locale-sensitive corner of the grammar — JSON's point is always
-// '.', the runtime's is whatever the program set — so every number crosses
-// this one character on the way out and on the way back in. Nothing else in
-// the walk consults the locale.
-inline char TableJsonDecimalPoint()
+// Number conversion is the one locale-sensitive corner of the grammar: JSON's
+// point is always '.', the runtime's is whatever the program set, and it may
+// be more than one byte. The walk never reads that setting and never swaps
+// bytes of a number's text. Each conversion runs with THIS THREAD's locale
+// switched to the "C" locale for the call and restored after it, so a number
+// reads and writes the same under any locale the program set, and another
+// thread's locale (or the global one) is never touched.
+#if defined(_WIN32)
+inline _locale_t TableJsonCLocale()
 {
-    const struct lconv * conv = localeconv();
-    if ( conv != NULL && conv->decimal_point != NULL && conv->decimal_point[0] != 0 )
-    {
-        return conv->decimal_point[0];
-    }
-    return '.';
+    static _locale_t c = _create_locale( LC_ALL, "C" );
+    return c;
 }
+inline double TableJsonStrtod( const char * text ) { return _strtod_l( text, NULL, TableJsonCLocale() ); }
+inline float TableJsonStrtof( const char * text ) { return _strtof_l( text, NULL, TableJsonCLocale() ); }
+inline int TableJsonFormatG( char * text, size_t size, int digits, double value )
+{
+    return _snprintf_l( text, size, "%.*g", TableJsonCLocale(), digits, value );
+}
+#else
+inline locale_t TableJsonCLocale()
+{
+    static locale_t c = newlocale( LC_ALL_MASK, "C", (locale_t) 0 );
+    return c;
+}
+struct TableJsonCNumbers
+{
+    locale_t previous;
+    bool swapped;
+    TableJsonCNumbers() : previous( (locale_t) 0 ), swapped( false )
+    {
+        const locale_t c = TableJsonCLocale();
+        if ( c != (locale_t) 0 )
+        {
+            previous = uselocale( c );
+            swapped = previous != (locale_t) 0;
+        }
+    }
+    ~TableJsonCNumbers() { if ( swapped ) { uselocale( previous ); } }
+    TableJsonCNumbers( const TableJsonCNumbers & ) = delete;
+    TableJsonCNumbers & operator=( const TableJsonCNumbers & ) = delete;
+};
+inline double TableJsonStrtod( const char * text )
+{
+    TableJsonCNumbers scope;
+    return strtod( text, NULL );
+}
+inline float TableJsonStrtof( const char * text )
+{
+    TableJsonCNumbers scope;
+    return strtof( text, NULL );
+}
+inline int TableJsonFormatG( char * text, size_t size, int digits, double value )
+{
+    TableJsonCNumbers scope;
+    return snprintf( text, size, "%.*g", digits, value );
+}
+#endif
 
 // ---- storage access: the descriptors give an offset and a width, and the
 // ---- storage is the HOST's, so every load and store goes through a width
@@ -1136,26 +1183,16 @@ inline bool TableJsonWriteFloat( TableJsonOut & out, double value, bool single )
     int length = 0;
     for ( int digits = low;; digits++ )
     {
-        length = snprintf( text, sizeof( text ), "%.*g", digits, value );
+        length = TableJsonFormatG( text, sizeof( text ), digits, value );
         if ( length <= 0 || length >= (int) sizeof( text ) ) { return false; }
         if ( digits >= high ) { break; }
-        // the round-trip check runs BEFORE the decimal point is normalised:
-        // the token still carries whatever point snprintf just produced
         if ( single )
         {
-            if ( (double) strtof( text, NULL ) == value ) { break; }
+            if ( (double) TableJsonStrtof( text ) == value ) { break; }
         }
         else
         {
-            if ( strtod( text, NULL ) == value ) { break; }
-        }
-    }
-    char point = TableJsonDecimalPoint();
-    if ( point != '.' )
-    {
-        for ( int i = 0; i < length; i++ )
-        {
-            if ( text[i] == point ) { text[i] = '.'; }
+            if ( TableJsonStrtod( text ) == value ) { break; }
         }
     }
     out.raw( text, length );
@@ -1341,6 +1378,11 @@ inline bool TableJsonWriteScalar( TableJsonOut & out, const void * storage, cons
         // wire identity: the writer REFUSES rather than writing None over it,
         // the rule measure and save already apply (docs/SPEC-TABLES.md §5)
         if ( (int64_t) value > f->enum_max ) { return false; }
+        // A DEPRECATED VARIANT IS NEVER WRITTEN (docs/SPEC-TABLES.md §2.15):
+        // a write-side check, so a debug assert in this language (SPEC.md §5.1)
+#ifdef schema_assert
+        schema_assert( f->enum_deprecated == NULL || !f->enum_deprecated( value ) );
+#endif
         if ( value != 0 && f->variant_id( value ) == 0 ) { return false; }
         const char * name = f->enum_name( value );
         if ( !TableJsonNamed( name ) ) { return false; }
@@ -2496,9 +2538,8 @@ inline bool TableJsonIntegerTokenOnly( const char * token, int32_t length )
     return true;
 }
 
-// the token's exact double, through the runtime's own converter — which
-// speaks the LOCALE's decimal point, so the token crosses back over that
-// character on its way in.
+// the token's exact double, through the runtime's own converter run in the
+// "C" locale (TableJsonStrtod), so the token's '.' is read as written.
 //
 // A MANTISSA LONGER THAN THE WORKING BUFFER IS NORMALIZED, not refused: the
 // value does not depend on how many bytes spell it (§16.2), so the significant
@@ -2598,16 +2639,8 @@ inline double TableJsonTokenDouble( const char * token, int32_t length, bool sin
         }
     }
     work[n] = 0;
-    char point = TableJsonDecimalPoint();
-    if ( point != '.' )
-    {
-        for ( int32_t i = 0; i < n; i++ )
-        {
-            if ( work[i] == '.' ) { work[i] = point; }
-        }
-    }
-    if ( single ) { return (double) strtof( work, NULL ); }
-    return strtod( work, NULL );
+    if ( single ) { return (double) TableJsonStrtof( work ); }
+    return TableJsonStrtod( work );
 }
 
 // ---- ONE CHECKED NUMERIC INTERPRETATION (docs/SPEC-TABLES.md §16.2) ----
@@ -3576,7 +3609,11 @@ inline bool TableJsonReadScalar( TableJsonIn & in, void * storage, const TableFi
         {
             if ( TableJsonKeyEquals( f->enum_name( (uint64_t) v ), name, name_length ) )
             {
-                TableJsonSetRaw( storage, f->elem_size, (uint64_t) v );
+                // A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT,
+                // and an element's as None (docs/SPEC-TABLES.md §2.15); it is
+                // never counted unknown
+                const bool retired = f->enum_deprecated != NULL && f->enum_deprecated( (uint64_t) v );
+                TableJsonSetRaw( storage, f->elem_size, retired ? f->enum_default : (uint64_t) v );
                 return true;
             }
         }
@@ -4277,6 +4314,13 @@ inline bool TableJsonReadField( TableJsonIn & in, void * base, const TableFieldI
         // a fixed array's tail keeps the defaults the prefill left there,
         // exactly as a short wire count does
         TableJsonSetCount( base, f, placed );
+        // A COUNT BELOW THE DECLARED MIN IS REFUSED (docs/SPEC.md §5.1,
+        // docs/SPEC-TABLES.md §16.2), the wire's rule for the same count
+        if ( placed < f->array_min )
+        {
+            in.report->refused = true;
+            in.report->refuse_reason = out_of_range;
+        }
         return true;
     }
     return TableJsonReadScalar( in, storage, f, depth );
@@ -4535,7 +4579,6 @@ inline int64_t TableJsonWrite( const void * value, const TableTypeInfo * info, c
     // buffer whose last byte is a closing brace is the one shape that is not.
     out.put( '\n' );
     if ( out.overflow ) { return -1; }
-    if ( out.buffer != NULL && out.offset < out.capacity ) { out.buffer[out.offset] = 0; }
     return out.offset;
 }
 
@@ -5219,7 +5262,6 @@ inline int64_t TableJsonWriteGraph( const void * root, const TableTypeInfo * inf
     if ( !ok ) { return -1; }
     out.put( '\n' ); // the canonical text ends with exactly one newline (§16.1)
     if ( out.overflow ) { return -1; }
-    if ( out.buffer != NULL && out.offset < out.capacity ) { out.buffer[out.offset] = 0; }
     return out.offset;
 }
 
@@ -5784,13 +5826,13 @@ inline std::string tableTextFormCanonFloat( const std::string & token, bool wide
     char buffer[32];
     if ( !wide )
     {
-        const float value = (float) strtod( token.c_str(), NULL );
+        const float value = (float) TableJsonStrtod( token.c_str() );
         uint32_t bits = 0;
         memcpy( &bits, &value, sizeof( bits ) );
         snprintf( buffer, sizeof( buffer ), "%llx", (unsigned long long) bits );
         return std::string( buffer );
     }
-    const double value = strtod( token.c_str(), NULL );
+    const double value = TableJsonStrtod( token.c_str() );
     uint64_t bits = 0;
     memcpy( &bits, &value, sizeof( bits ) );
     snprintf( buffer, sizeof( buffer ), "%llx", (unsigned long long) bits );
@@ -6444,7 +6486,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
     // THE RANGE IS HELD AT FLOAT32 (docs/SPEC-TABLES.md §3.3): a float32
     // token is narrowed to float32 before its ends are tested, the value
     // the JSON read lands, so a text this test passes reads back.
-    double d = f->kind == 10 ? (double) strtof( n.text.c_str(), NULL ) : strtod( n.text.c_str(), NULL );
+    double d = f->kind == 10 ? (double) TableJsonStrtof( n.text.c_str() ) : TableJsonStrtod( n.text.c_str() );
     if ( f->has_range )
     {
         if ( d < f->range_min || d > f->range_max )
@@ -7036,6 +7078,192 @@ int64_t RootConfigToJson( const RootConfig & value, char * buffer, int64_t capac
     return TableJsonWrite( &value, RootConfigTableType(), buffer, capacity );
 }
 
+bool CountedMinFromJson( CountedMin & value, const char * text, int64_t bytes, TableReport * report )
+{
+    TableReport read;
+    bool ok = TableJsonRead( &value, CountedMinTableType(), text, bytes, &read );
+    if ( !ok || read.refused || read.damaged || read.missing_required != 0 )
+    {
+        // the walk names the condition it refused where it met it; what it
+        // left unnamed is malformed text or a missing required field
+        if ( read.refuse_reason == TableRefuseReason::ok )
+        {
+            read.refuse_reason = read.missing_required != 0 && !read.damaged ? TableRefuseReason::missing_required : TableRefuseReason::malformed;
+        }
+        CountedMinTableType()->reset( &value );
+        if ( report != NULL ) { *report = read; }
+        return false;
+    }
+    read.refuse_reason = TableRefuseReason::ok;
+    if ( report != NULL ) { *report = read; }
+    return true;
+}
+
+int64_t CountedMinToJsonMeasure( const CountedMin & value )
+{
+    return TableJsonWrite( &value, CountedMinTableType(), NULL, 0 );
+}
+
+int64_t CountedMinToJson( const CountedMin & value, char * buffer, int64_t capacity )
+{
+    return TableJsonWrite( &value, CountedMinTableType(), buffer, capacity );
+}
+
+bool FloatBoundFromJson( FloatBound & value, const char * text, int64_t bytes, TableReport * report )
+{
+    TableReport read;
+    bool ok = TableJsonRead( &value, FloatBoundTableType(), text, bytes, &read );
+    if ( !ok || read.refused || read.damaged || read.missing_required != 0 )
+    {
+        // the walk names the condition it refused where it met it; what it
+        // left unnamed is malformed text or a missing required field
+        if ( read.refuse_reason == TableRefuseReason::ok )
+        {
+            read.refuse_reason = read.missing_required != 0 && !read.damaged ? TableRefuseReason::missing_required : TableRefuseReason::malformed;
+        }
+        FloatBoundTableType()->reset( &value );
+        if ( report != NULL ) { *report = read; }
+        return false;
+    }
+    read.refuse_reason = TableRefuseReason::ok;
+    if ( report != NULL ) { *report = read; }
+    return true;
+}
+
+int64_t FloatBoundToJsonMeasure( const FloatBound & value )
+{
+    return TableJsonWrite( &value, FloatBoundTableType(), NULL, 0 );
+}
+
+int64_t FloatBoundToJson( const FloatBound & value, char * buffer, int64_t capacity )
+{
+    return TableJsonWrite( &value, FloatBoundTableType(), buffer, capacity );
+}
+
+bool MoodsFromJson( Moods & value, const char * text, int64_t bytes, TableReport * report )
+{
+    TableReport read;
+    bool ok = TableJsonRead( &value, MoodsTableType(), text, bytes, &read );
+    if ( !ok || read.refused || read.damaged || read.missing_required != 0 )
+    {
+        // the walk names the condition it refused where it met it; what it
+        // left unnamed is malformed text or a missing required field
+        if ( read.refuse_reason == TableRefuseReason::ok )
+        {
+            read.refuse_reason = read.missing_required != 0 && !read.damaged ? TableRefuseReason::missing_required : TableRefuseReason::malformed;
+        }
+        MoodsTableType()->reset( &value );
+        if ( report != NULL ) { *report = read; }
+        return false;
+    }
+    read.refuse_reason = TableRefuseReason::ok;
+    if ( report != NULL ) { *report = read; }
+    return true;
+}
+
+int64_t MoodsToJsonMeasure( const Moods & value )
+{
+    return TableJsonWrite( &value, MoodsTableType(), NULL, 0 );
+}
+
+int64_t MoodsToJson( const Moods & value, char * buffer, int64_t capacity )
+{
+    return TableJsonWrite( &value, MoodsTableType(), buffer, capacity );
+}
+
+bool MoodFieldFromJson( MoodField & value, const char * text, int64_t bytes, TableReport * report )
+{
+    TableReport read;
+    bool ok = TableJsonRead( &value, MoodFieldTableType(), text, bytes, &read );
+    if ( !ok || read.refused || read.damaged || read.missing_required != 0 )
+    {
+        // the walk names the condition it refused where it met it; what it
+        // left unnamed is malformed text or a missing required field
+        if ( read.refuse_reason == TableRefuseReason::ok )
+        {
+            read.refuse_reason = read.missing_required != 0 && !read.damaged ? TableRefuseReason::missing_required : TableRefuseReason::malformed;
+        }
+        MoodFieldTableType()->reset( &value );
+        if ( report != NULL ) { *report = read; }
+        return false;
+    }
+    read.refuse_reason = TableRefuseReason::ok;
+    if ( report != NULL ) { *report = read; }
+    return true;
+}
+
+int64_t MoodFieldToJsonMeasure( const MoodField & value )
+{
+    return TableJsonWrite( &value, MoodFieldTableType(), NULL, 0 );
+}
+
+int64_t MoodFieldToJson( const MoodField & value, char * buffer, int64_t capacity )
+{
+    return TableJsonWrite( &value, MoodFieldTableType(), buffer, capacity );
+}
+
+bool MinArmFixFromJson( MinArmFix & value, const char * text, int64_t bytes, TableReport * report )
+{
+    TableReport read;
+    bool ok = TableJsonRead( &value, MinArmFixTableType(), text, bytes, &read );
+    if ( !ok || read.refused || read.damaged || read.missing_required != 0 )
+    {
+        // the walk names the condition it refused where it met it; what it
+        // left unnamed is malformed text or a missing required field
+        if ( read.refuse_reason == TableRefuseReason::ok )
+        {
+            read.refuse_reason = read.missing_required != 0 && !read.damaged ? TableRefuseReason::missing_required : TableRefuseReason::malformed;
+        }
+        MinArmFixTableType()->reset( &value );
+        if ( report != NULL ) { *report = read; }
+        return false;
+    }
+    read.refuse_reason = TableRefuseReason::ok;
+    if ( report != NULL ) { *report = read; }
+    return true;
+}
+
+int64_t MinArmFixToJsonMeasure( const MinArmFix & value )
+{
+    return TableJsonWrite( &value, MinArmFixTableType(), NULL, 0 );
+}
+
+int64_t MinArmFixToJson( const MinArmFix & value, char * buffer, int64_t capacity )
+{
+    return TableJsonWrite( &value, MinArmFixTableType(), buffer, capacity );
+}
+
+bool MinPlainFixFromJson( MinPlainFix & value, const char * text, int64_t bytes, TableReport * report )
+{
+    TableReport read;
+    bool ok = TableJsonRead( &value, MinPlainFixTableType(), text, bytes, &read );
+    if ( !ok || read.refused || read.damaged || read.missing_required != 0 )
+    {
+        // the walk names the condition it refused where it met it; what it
+        // left unnamed is malformed text or a missing required field
+        if ( read.refuse_reason == TableRefuseReason::ok )
+        {
+            read.refuse_reason = read.missing_required != 0 && !read.damaged ? TableRefuseReason::missing_required : TableRefuseReason::malformed;
+        }
+        MinPlainFixTableType()->reset( &value );
+        if ( report != NULL ) { *report = read; }
+        return false;
+    }
+    read.refuse_reason = TableRefuseReason::ok;
+    if ( report != NULL ) { *report = read; }
+    return true;
+}
+
+int64_t MinPlainFixToJsonMeasure( const MinPlainFix & value )
+{
+    return TableJsonWrite( &value, MinPlainFixTableType(), NULL, 0 );
+}
+
+int64_t MinPlainFixToJson( const MinPlainFix & value, char * buffer, int64_t capacity )
+{
+    return TableJsonWrite( &value, MinPlainFixTableType(), buffer, capacity );
+}
+
 bool AttachmentFromJson( Attachment & value, const char * text, int64_t bytes, TableReport * report )
 {
     TableReport read;
@@ -7302,6 +7530,276 @@ bool RootConfigEditTextForm( const char * document, int64_t document_bytes, cons
     if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }
     TableReport report;
     if ( !RootConfigFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
+    {
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
+        return false;
+    }
+    return true;
+}
+
+bool CountedMinLoadTextForm( const char * text, int64_t bytes, CountedMin & value, const char ** refusal )
+{
+    std::string json;
+    if ( !TableTextFormToJson( text, bytes, CountedMinTableType(), json, refusal ) ) { return false; }
+    TableReport report;
+    if ( !CountedMinFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
+    {
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
+        return false;
+    }
+    return true;
+}
+
+bool CountedMinLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, CountedMin & value, const char ** refusal )
+{
+    if ( !CountedMinLoadTextForm( text, bytes, value, refusal ) ) { return false; }
+    if ( document != NULL ) { *document = text; }
+    if ( document_bytes != NULL ) { *document_bytes = bytes; }
+    return true;
+}
+
+int64_t CountedMinSaveTextForm( const char * document, int64_t document_bytes, char * buffer, int64_t capacity )
+{
+    if ( document == NULL || document_bytes < 0 || buffer == NULL || capacity < document_bytes ) { return -1; }
+    if ( document_bytes > 0 ) { memcpy( buffer, document, (size_t) document_bytes ); }
+    return document_bytes;
+}
+
+bool CountedMinEditTextForm( const char * document, int64_t document_bytes, const TableTextFormEdit * edits, int64_t count, char * buffer, int64_t capacity, int64_t * edited_bytes, CountedMin & value, const char ** refusal )
+{
+    std::string edited;
+    std::string json;
+    if ( !tableTextFormEditText( std::string( document, (size_t) document_bytes ), CountedMinTableType(), edits, count, edited, json, refusal ) ) { return false; }
+    if ( edited_bytes != NULL ) { *edited_bytes = (int64_t) edited.size(); }
+    if ( buffer == NULL || capacity < (int64_t) edited.size() ) { return false; }
+    if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }
+    TableReport report;
+    if ( !CountedMinFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
+    {
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
+        return false;
+    }
+    return true;
+}
+
+bool FloatBoundLoadTextForm( const char * text, int64_t bytes, FloatBound & value, const char ** refusal )
+{
+    std::string json;
+    if ( !TableTextFormToJson( text, bytes, FloatBoundTableType(), json, refusal ) ) { return false; }
+    TableReport report;
+    if ( !FloatBoundFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
+    {
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
+        return false;
+    }
+    return true;
+}
+
+bool FloatBoundLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, FloatBound & value, const char ** refusal )
+{
+    if ( !FloatBoundLoadTextForm( text, bytes, value, refusal ) ) { return false; }
+    if ( document != NULL ) { *document = text; }
+    if ( document_bytes != NULL ) { *document_bytes = bytes; }
+    return true;
+}
+
+int64_t FloatBoundSaveTextForm( const char * document, int64_t document_bytes, char * buffer, int64_t capacity )
+{
+    if ( document == NULL || document_bytes < 0 || buffer == NULL || capacity < document_bytes ) { return -1; }
+    if ( document_bytes > 0 ) { memcpy( buffer, document, (size_t) document_bytes ); }
+    return document_bytes;
+}
+
+bool FloatBoundEditTextForm( const char * document, int64_t document_bytes, const TableTextFormEdit * edits, int64_t count, char * buffer, int64_t capacity, int64_t * edited_bytes, FloatBound & value, const char ** refusal )
+{
+    std::string edited;
+    std::string json;
+    if ( !tableTextFormEditText( std::string( document, (size_t) document_bytes ), FloatBoundTableType(), edits, count, edited, json, refusal ) ) { return false; }
+    if ( edited_bytes != NULL ) { *edited_bytes = (int64_t) edited.size(); }
+    if ( buffer == NULL || capacity < (int64_t) edited.size() ) { return false; }
+    if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }
+    TableReport report;
+    if ( !FloatBoundFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
+    {
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
+        return false;
+    }
+    return true;
+}
+
+bool MoodsLoadTextForm( const char * text, int64_t bytes, Moods & value, const char ** refusal )
+{
+    std::string json;
+    if ( !TableTextFormToJson( text, bytes, MoodsTableType(), json, refusal ) ) { return false; }
+    TableReport report;
+    if ( !MoodsFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
+    {
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
+        return false;
+    }
+    return true;
+}
+
+bool MoodsLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, Moods & value, const char ** refusal )
+{
+    if ( !MoodsLoadTextForm( text, bytes, value, refusal ) ) { return false; }
+    if ( document != NULL ) { *document = text; }
+    if ( document_bytes != NULL ) { *document_bytes = bytes; }
+    return true;
+}
+
+int64_t MoodsSaveTextForm( const char * document, int64_t document_bytes, char * buffer, int64_t capacity )
+{
+    if ( document == NULL || document_bytes < 0 || buffer == NULL || capacity < document_bytes ) { return -1; }
+    if ( document_bytes > 0 ) { memcpy( buffer, document, (size_t) document_bytes ); }
+    return document_bytes;
+}
+
+bool MoodsEditTextForm( const char * document, int64_t document_bytes, const TableTextFormEdit * edits, int64_t count, char * buffer, int64_t capacity, int64_t * edited_bytes, Moods & value, const char ** refusal )
+{
+    std::string edited;
+    std::string json;
+    if ( !tableTextFormEditText( std::string( document, (size_t) document_bytes ), MoodsTableType(), edits, count, edited, json, refusal ) ) { return false; }
+    if ( edited_bytes != NULL ) { *edited_bytes = (int64_t) edited.size(); }
+    if ( buffer == NULL || capacity < (int64_t) edited.size() ) { return false; }
+    if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }
+    TableReport report;
+    if ( !MoodsFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
+    {
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
+        return false;
+    }
+    return true;
+}
+
+bool MoodFieldLoadTextForm( const char * text, int64_t bytes, MoodField & value, const char ** refusal )
+{
+    std::string json;
+    if ( !TableTextFormToJson( text, bytes, MoodFieldTableType(), json, refusal ) ) { return false; }
+    TableReport report;
+    if ( !MoodFieldFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
+    {
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
+        return false;
+    }
+    return true;
+}
+
+bool MoodFieldLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, MoodField & value, const char ** refusal )
+{
+    if ( !MoodFieldLoadTextForm( text, bytes, value, refusal ) ) { return false; }
+    if ( document != NULL ) { *document = text; }
+    if ( document_bytes != NULL ) { *document_bytes = bytes; }
+    return true;
+}
+
+int64_t MoodFieldSaveTextForm( const char * document, int64_t document_bytes, char * buffer, int64_t capacity )
+{
+    if ( document == NULL || document_bytes < 0 || buffer == NULL || capacity < document_bytes ) { return -1; }
+    if ( document_bytes > 0 ) { memcpy( buffer, document, (size_t) document_bytes ); }
+    return document_bytes;
+}
+
+bool MoodFieldEditTextForm( const char * document, int64_t document_bytes, const TableTextFormEdit * edits, int64_t count, char * buffer, int64_t capacity, int64_t * edited_bytes, MoodField & value, const char ** refusal )
+{
+    std::string edited;
+    std::string json;
+    if ( !tableTextFormEditText( std::string( document, (size_t) document_bytes ), MoodFieldTableType(), edits, count, edited, json, refusal ) ) { return false; }
+    if ( edited_bytes != NULL ) { *edited_bytes = (int64_t) edited.size(); }
+    if ( buffer == NULL || capacity < (int64_t) edited.size() ) { return false; }
+    if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }
+    TableReport report;
+    if ( !MoodFieldFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
+    {
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
+        return false;
+    }
+    return true;
+}
+
+bool MinArmFixLoadTextForm( const char * text, int64_t bytes, MinArmFix & value, const char ** refusal )
+{
+    std::string json;
+    if ( !TableTextFormToJson( text, bytes, MinArmFixTableType(), json, refusal ) ) { return false; }
+    TableReport report;
+    if ( !MinArmFixFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
+    {
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
+        return false;
+    }
+    return true;
+}
+
+bool MinArmFixLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, MinArmFix & value, const char ** refusal )
+{
+    if ( !MinArmFixLoadTextForm( text, bytes, value, refusal ) ) { return false; }
+    if ( document != NULL ) { *document = text; }
+    if ( document_bytes != NULL ) { *document_bytes = bytes; }
+    return true;
+}
+
+int64_t MinArmFixSaveTextForm( const char * document, int64_t document_bytes, char * buffer, int64_t capacity )
+{
+    if ( document == NULL || document_bytes < 0 || buffer == NULL || capacity < document_bytes ) { return -1; }
+    if ( document_bytes > 0 ) { memcpy( buffer, document, (size_t) document_bytes ); }
+    return document_bytes;
+}
+
+bool MinArmFixEditTextForm( const char * document, int64_t document_bytes, const TableTextFormEdit * edits, int64_t count, char * buffer, int64_t capacity, int64_t * edited_bytes, MinArmFix & value, const char ** refusal )
+{
+    std::string edited;
+    std::string json;
+    if ( !tableTextFormEditText( std::string( document, (size_t) document_bytes ), MinArmFixTableType(), edits, count, edited, json, refusal ) ) { return false; }
+    if ( edited_bytes != NULL ) { *edited_bytes = (int64_t) edited.size(); }
+    if ( buffer == NULL || capacity < (int64_t) edited.size() ) { return false; }
+    if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }
+    TableReport report;
+    if ( !MinArmFixFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
+    {
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
+        return false;
+    }
+    return true;
+}
+
+bool MinPlainFixLoadTextForm( const char * text, int64_t bytes, MinPlainFix & value, const char ** refusal )
+{
+    std::string json;
+    if ( !TableTextFormToJson( text, bytes, MinPlainFixTableType(), json, refusal ) ) { return false; }
+    TableReport report;
+    if ( !MinPlainFixFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
+    {
+        *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
+        return false;
+    }
+    return true;
+}
+
+bool MinPlainFixLoadTextForm( const char * text, int64_t bytes, const char ** document, int64_t * document_bytes, MinPlainFix & value, const char ** refusal )
+{
+    if ( !MinPlainFixLoadTextForm( text, bytes, value, refusal ) ) { return false; }
+    if ( document != NULL ) { *document = text; }
+    if ( document_bytes != NULL ) { *document_bytes = bytes; }
+    return true;
+}
+
+int64_t MinPlainFixSaveTextForm( const char * document, int64_t document_bytes, char * buffer, int64_t capacity )
+{
+    if ( document == NULL || document_bytes < 0 || buffer == NULL || capacity < document_bytes ) { return -1; }
+    if ( document_bytes > 0 ) { memcpy( buffer, document, (size_t) document_bytes ); }
+    return document_bytes;
+}
+
+bool MinPlainFixEditTextForm( const char * document, int64_t document_bytes, const TableTextFormEdit * edits, int64_t count, char * buffer, int64_t capacity, int64_t * edited_bytes, MinPlainFix & value, const char ** refusal )
+{
+    std::string edited;
+    std::string json;
+    if ( !tableTextFormEditText( std::string( document, (size_t) document_bytes ), MinPlainFixTableType(), edits, count, edited, json, refusal ) ) { return false; }
+    if ( edited_bytes != NULL ) { *edited_bytes = (int64_t) edited.size(); }
+    if ( buffer == NULL || capacity < (int64_t) edited.size() ) { return false; }
+    if ( !edited.empty() ) { memcpy( buffer, edited.data(), edited.size() ); }
+    TableReport report;
+    if ( !MinPlainFixFromJson( value, json.data(), (int64_t) json.size(), &report ) || report.damaged || report.unknown != 0 || report.refused )
     {
         *refusal = report.refuse_reason == TableRefuseReason::out_of_range ? "text_bound" : "text_kind_mismatch";
         return false;

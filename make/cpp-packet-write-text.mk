@@ -5,10 +5,10 @@
 # target's name check refuses.
 PACKET_WRITE_TEXT_CPP := build/packet-write-text/cpp
 PACKET_WRITE_TEXT_CPP_NEGATIVE := build/packet-write-text/cpp-negative
-PACKET_WRITE_TEXT_CPP_SCHEMA := test/packet-write-text/cpp/TextPacket.schema
+PACKET_WRITE_TEXT_CPP_SCHEMA := test/packet-write-text/cpp/TextPacketCases.schema
 PACKET_WRITE_TEXT_CPP_CASES := test/packet-write-text/cases.txt
 
-build/packet-write-text/cpp/.stamp: bin/schema test/packet-write-text/cpp/TextPacket.schema make/cpp-packet-write-text.mk
+build/packet-write-text/cpp/.stamp: bin/schema $(PACKET_WRITE_TEXT_CPP_SCHEMA) make/cpp-packet-write-text.mk
 	@mkdir -p $(PACKET_WRITE_TEXT_CPP)
 	./bin/schema generate --lang cpp --out $(PACKET_WRITE_TEXT_CPP) $(PACKET_WRITE_TEXT_CPP_SCHEMA)
 	@touch $@
@@ -34,7 +34,7 @@ packet-write-text-cpp-negative-control: packet-write-text-cpp
 		"$(CURDIR)" "$(CURDIR)" "$(PACKET_WRITE_TEXT_CPP_NEGATIVE)" > $(PACKET_WRITE_TEXT_CPP_NEGATIVE)/overlay.json
 	go run -overlay=$(PACKET_WRITE_TEXT_CPP_NEGATIVE)/overlay.json ./cmd/schema generate --lang cpp \
 		--out $(PACKET_WRITE_TEXT_CPP_NEGATIVE)/generated $(PACKET_WRITE_TEXT_CPP_SCHEMA)
-	@grep -q 'SABOTAGED: no string UTF-8 write check' $(PACKET_WRITE_TEXT_CPP_NEGATIVE)/generated/TextPacketWire.h || \
+	@grep -q 'SABOTAGED: no string UTF-8 write check' $(PACKET_WRITE_TEXT_CPP_NEGATIVE)/generated/TextPacketCasesWire.h || \
 		{ echo "NEGATIVE CONTROL FAILED: the UTF-8 write check sabotage did not apply"; exit 1; }
 	$(CXX) $(CXXFLAGS) -I$(PACKET_WRITE_TEXT_CPP_NEGATIVE)/generated test/packet-write-text/cpp/main.cpp \
 		-o $(PACKET_WRITE_TEXT_CPP_NEGATIVE)/driver

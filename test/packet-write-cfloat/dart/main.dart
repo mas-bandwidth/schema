@@ -11,7 +11,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import '../../../build/packet-write-cfloat/dart/CFloat.dart';
+import '../../../build/packet-write-cfloat/dart/PacketCFloat.dart';
 
 var failed = 0;
 

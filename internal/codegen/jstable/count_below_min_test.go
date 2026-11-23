@@ -44,7 +44,11 @@ func TestJsCountBelowMinRefused(t *testing.T) {
 	if !strings.Contains(rt, "} else if (count < (fd.min || 0)) {") {
 		t.Errorf("the variable read must refuse a count below the declared Min")
 	}
-	if !strings.Contains(runtimeFunction(t, rt, "TableVariableTextArray"), "if (placed < (fd.min || 0)) { report.oor++; }") {
+	if !strings.Contains(runtimeFunction(t, rt, "TableVariableTextArray"), `if (fd.min > 0 && placed < fd.min) {
+      report.refused = 1;
+      if (!report.reason) { report.reason = "count_over_bound: " + fd.n; }
+      return true;
+    }`) {
 		t.Errorf("the JSON read must refuse an array shorter than the declared Min")
 	}
 	fr := unitFrom(t, jsCountMinFixedReader)

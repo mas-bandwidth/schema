@@ -630,13 +630,13 @@ inline std::string tableTextFormCanonFloat( const std::string & token, bool wide
     char buffer[32];
     if ( !wide )
     {
-        const float value = (float) strtod( token.c_str(), NULL );
+        const float value = (float) TableJsonStrtod( token.c_str() );
         uint32_t bits = 0;
         memcpy( &bits, &value, sizeof( bits ) );
         snprintf( buffer, sizeof( buffer ), "%llx", (unsigned long long) bits );
         return std::string( buffer );
     }
-    const double value = strtod( token.c_str(), NULL );
+    const double value = TableJsonStrtod( token.c_str() );
     uint64_t bits = 0;
     memcpy( &bits, &value, sizeof( bits ) );
     snprintf( buffer, sizeof( buffer ), "%llx", (unsigned long long) bits );
@@ -1290,7 +1290,7 @@ inline bool TableTextFormScalar( const TableTextFormNode & n, const TableFieldIn
     // THE RANGE IS HELD AT FLOAT32 (docs/SPEC-TABLES.md §3.3): a float32
     // token is narrowed to float32 before its ends are tested, the value
     // the JSON read lands, so a text this test passes reads back.
-    double d = f->kind == 10 ? (double) strtof( n.text.c_str(), NULL ) : strtod( n.text.c_str(), NULL );
+    double d = f->kind == 10 ? (double) TableJsonStrtof( n.text.c_str() ) : TableJsonStrtod( n.text.c_str() );
     if ( f->has_range )
     {
         if ( d < f->range_min || d > f->range_max )

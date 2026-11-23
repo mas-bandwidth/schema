@@ -1,0 +1,6 @@
+package kind
+
+type Inner
+{
+    a uint8
+}

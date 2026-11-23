@@ -73,7 +73,7 @@ type loadUnit struct {
 // error is the surface's refusal.
 func generateLoadUnit(t *testing.T, paths []string) (*loadUnit, error) {
 	t.Helper()
-	u, err := compiler.New().Load(paths)
+	u, err := compiler.New().LoadWithoutEmitterRules(paths)
 	if err != nil {
 		t.Fatalf("the unit does not load: %v", err)
 	}

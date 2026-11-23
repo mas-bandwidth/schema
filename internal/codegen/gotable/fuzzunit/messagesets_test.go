@@ -511,3 +511,24 @@ func TestGeneratedMessageCountsHeldToAnnouncedMax(t *testing.T) {
 		}
 	}
 }
+
+// TestGeneratedAnnouncementRefusesHeldEscape: kind 31 is held by name and never
+// written (R17), so an announcement entry naming it is malformed and the whole
+// announcement is refused, as one naming the retired 33 or the reserved 34 is
+// (docs/SPEC-TABLES.md §3.3). Red on the old escape, which announced 31 and
+// skipped its body slot by a thirty-two bit L. The control is kind 32.
+func TestGeneratedAnnouncementRefusesHeldEscape(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		kind   uint8
+		accept bool
+	}{{ir.TableKindHeldEscape, false}, {ir.TableKindRetiredWstring, false}, {ir.TableKindReservedFloat16, false}, {ir.TableKindNoPayload, true}} {
+		entries := []ir.TableVocabularyEntry{{Id: setUnknownId, Kind: c.kind}}
+		v := &TableVocabulary{}
+		v.Init(make([]TableMessageEntry, len(entries)+1))
+		var report TableReport
+		if got := AnnounceRead(v, setAnnouncement(entries), &report); got != c.accept {
+			t.Errorf("kind %d: the announcement read %t, want %t (%+v)", c.kind, got, c.accept, report)
+		}
+	}
+}

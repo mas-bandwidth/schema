@@ -56,14 +56,14 @@ func TestGoPacketReadEndsWithEndCheck(t *testing.T) {
 	})
 }
 
-// runPacketEndProbe compiles the generated Go for test/packet-end/End.schema
+// runPacketEndProbe compiles the generated Go for test/packet-end/PacketEnd.schema
 // and reads the three shared packets with the exported read, then compiles
 // the nested unit and reads a packet whose inner values are read whole.
 func runPacketEndProbe(t *testing.T) {
 	t.Helper()
 	slowtest.Gate(t, "the Go toolchain (it compiles and runs the generated reader)")
 	const root = "../../../"
-	src, err := os.ReadFile(filepath.Join(root, "test", "packet-end", "End.schema"))
+	src, err := os.ReadFile(filepath.Join(root, "test", "packet-end", "PacketEnd.schema"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +95,7 @@ func TestPacketEnd(t *testing.T) {
 	}
 }
 `
-	runGoProbe(t, root, generateGo(t, "End", string(src)), endProbe)
+	runGoProbe(t, root, generateGo(t, "PacketEnd", string(src)), endProbe)
 
 	const nestProbe = `package nest
 

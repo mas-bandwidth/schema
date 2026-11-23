@@ -15,7 +15,9 @@ for pin in "$PYTHON" "$PYTHON_FLOOR"; do
     PYTHON="$pin" test/conformance/python/driver "$manifest" write-refusal-message "$out/refusal"
     awk '$1 == "message" {print $2, $6}' "$manifest" | while read -r name golden; do
         if [ "$golden" = '-' ]; then
-            test -s "$out/message/$name.absent"
+            # a variable root must refuse (ruling R13): `refused`, never absent
+            test "$(cat "$out/message/$name")" = refused
+            test ! -e "$out/message/$name.absent"
         else
             cmp "$out/message/$name" "$golden"
         fi

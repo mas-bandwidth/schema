@@ -7,7 +7,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/mootable"
 )
 
-const nestedCountMinSchema = `package nested
+const nestedCountMinSchema = `package nestcount
 
 fixed table Child
 {

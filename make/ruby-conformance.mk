@@ -79,3 +79,20 @@ conformance-ruby-empty-tree: ruby-toolchain-check build/conformance-harness buil
 	echo "conformance-ruby-empty-tree: $$answers cases, every one an EMPTY .absent, run green"
 
 test-ruby: conformance-ruby-case-outcomes conformance-ruby-empty-tree
+# THE WRITE CONTRACT's controls on the Ruby leg (docs/SPEC.md 5.1): Ruby
+# refuses in every build, so each removes one refusal from a COPY of the
+# generated tree and requires its write-refusal surface red while the wire (or
+# message) surface stays green.
+.PHONY: conformance-negative-control-ruby-write-refusal conformance-negative-control-ruby-write-refusal-fixed conformance-negative-control-ruby-write-refusal-message
+
+
+conformance-negative-control-ruby-write-refusal: ruby-toolchain-check build/conformance-harness build/conformance-ruby
+	RUBY=$(RUBY) sh test/conformance/ruby/negative-control-write-refusal write-refusal
+
+conformance-negative-control-ruby-write-refusal-fixed: ruby-toolchain-check build/conformance-harness build/conformance-ruby
+	RUBY=$(RUBY) sh test/conformance/ruby/negative-control-write-refusal write-refusal-fixed
+
+conformance-negative-control-ruby-write-refusal-message: ruby-toolchain-check build/conformance-harness build/conformance-ruby
+	RUBY=$(RUBY) sh test/conformance/ruby/negative-control-write-refusal write-refusal-message
+
+test-ruby: conformance-negative-control-ruby-write-refusal conformance-negative-control-ruby-write-refusal-fixed conformance-negative-control-ruby-write-refusal-message

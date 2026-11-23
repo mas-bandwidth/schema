@@ -1,7 +1,7 @@
 
 # ---------------------------------------------------------------- compressed float write
 define luau-cfloat-tree
-	$(call luau-packet-generate,$(1),test/packet-write-cfloat/CFloat.schema,$(2))
+	$(call luau-packet-generate,$(1),test/packet-write-cfloat/PacketCFloat.schema,$(2))
 	cp test/packet-write-cfloat/luau/main.luau $(1)/main.luau
 	awk 'BEGIN {print "return {"} /^[^#[:space:]]/ {v=$$2; if(v=="NaN") v="(0/0)"; else if(v=="+Inf") v="math.huge"; else if(v=="-Inf") v="-math.huge"; expected=($$4=="reads-back" ? $$5 : $$2); if(expected=="NaN" || expected=="+Inf" || expected=="-Inf") expected="0"; sub(/^\+/, "", expected); printf "{ name = \"%s\", value = %s, written = %s, expected = %s },\n", $$1,v,($$3=="written" ? "true":"false"),expected} END {print "}"}' test/packet-write-cfloat/cases.txt > $(1)/cases.luau
 endef

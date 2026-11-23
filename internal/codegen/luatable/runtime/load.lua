@@ -297,6 +297,7 @@ end
 
 -- skipping a field the reader cannot name (§3): fixed widths first, then
 -- references, then lengths, and a unknown kind is damage (not skippable).
+-- Kind 31 is held by name and never written (R17): it is met only as damage.
 local function skip(r, kind)
   local w = width_of(kind)
   if w > 0 then
@@ -308,7 +309,7 @@ local function skip(r, kind)
     r_leb(r)
     return not r.bad
   end
-  if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 31 or kind == 32 then
+  if kind == 12 or kind == 13 or kind == 14 or kind == 16 or kind == 32 then
     local n = r_leb(r)
     if r.bad or not fits(r, n) then return false end
     r.at = r.at + n
@@ -695,10 +696,15 @@ local function scalar_at(r, d, kind, report, ctx)
   -- fixed-compressed-negzero).
   if d.fmin ~= nil and D.float_off_range(d, x) then report.outOfRange = report.outOfRange + 1 end
   if d.fmin ~= nil and x == 0 then x = 0.0 end
+  -- A MASK BIT AT OR ABOVE THE READER'S W REFUSES THE LOAD out_of_range
+  -- (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH; decode.go
+  -- scalarAt): d.bits is W, and a mask widened from a narrower unsigned kind is
+  -- held the same way. An old reader does not read new data.
+  if d.shape == "flags" and d.bits ~= nil and d.bits < 64 and x >> d.bits ~= 0 then
+    report.outOfRange = report.outOfRange + 1
+  end
   -- THE bits(N) CLAMP is a bits(N) field's alone (decode.go scalarAt: the
-  -- declared kind is TBits): a flags field's descriptor carries its wire bits
-  -- for the JSON writer, and an undeclared flag bit on the wire lands as it
-  -- rode, uncounted (§4).
+  -- declared kind is TBits).
   if d.shape == "int" and d.bits ~= nil and d.bits > 0 and d.bits < w * 8 then
     local bmax = (1 << d.bits) - 1
     if kind ~= 1 and less_than({ signed = false }, bmax, x) then
@@ -2547,7 +2553,7 @@ wc_payload = function(c, b, at, lim, kind)
     return nx
   elseif kind == 15 then
     return wc_union(c, b, at, lim)
-  elseif kind == 12 or kind == 31 or kind == 32 or kind == 13 or kind == 14 or kind == 16 then
+  elseif kind == 12 or kind == 32 or kind == 13 or kind == 14 or kind == 16 then
     local n, nx = wc_leb(b, at, lim)
     if n == nil or above(n, lim - nx) then return wc_fail(c, "wire_damaged") end
     if not wc_content(c, b, nx, nx + n, kind) then return nil end
@@ -2565,8 +2571,6 @@ wc_content = function(c, b, at, lim, kind)
   end
   if kind == 12 then
     if not wc_text(b, at, lim) then return wc_fail(c, "wire_damaged") end
-    return true
-  elseif kind == 31 then
     return true
   elseif kind == 32 then
     if lim ~= at then return wc_fail(c, "wire_damaged") end
@@ -3009,7 +3013,7 @@ measure_union = function(T, ids, scan, un, r)
   return true
 end
 
-function L.LoadMeasure(T, name, bytes)
+local function measure_parts(T, name, bytes)
   local desc = T.Tables[name]
   if desc == nil then return nil end
   -- THE TRAILER IS OUTSIDE THE REGION MEASURE (§2.14, §3.4): a declaring
@@ -3049,7 +3053,24 @@ function L.LoadMeasure(T, name, bytes)
       total = total + round_region(n, align)
     end
   end
-  return total + (#raw + 1) * 16
+  return total, (#raw + 1) * 16
+end
+
+-- LoadMeasureParts answers the DATA bytes and the ATTRIBUTION bytes apart, as C
+-- and C++ report them (docs/SPEC-TABLES.md §6.3, §6.5): the attribution is the
+-- directory of one 16-byte entry per node record plus the root, which a caller
+-- may place apart and release once Load returns. nil on a refusal.
+function L.LoadMeasureParts(T, name, bytes)
+  local data, attribution = measure_parts(T, name, bytes)
+  if data == nil then return nil end
+  return data, attribution
+end
+
+-- LoadMeasure answers their sum, or nil on a refusal.
+function L.LoadMeasure(T, name, bytes)
+  local data, attribution = measure_parts(T, name, bytes)
+  if data == nil then return nil end
+  return data + attribution
 end
 
 return L

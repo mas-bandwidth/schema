@@ -1,0 +1,13 @@
+package Integer
+
+type Holder
+{
+    first  Inner
+    many   [..4]Inner
+    x      float64
+    y      float32
+    wide   uint128
+    label  string(16)
+    quad   [4]float64
+    list   [..MaxItems]uint32
+}

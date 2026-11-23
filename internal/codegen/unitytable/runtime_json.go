@@ -1018,7 +1018,7 @@ internal static class TableJson
     static bool ScanPointerKey(ReadOnlySpan<byte> text, ref In input, out bool isNode)
     {
         isNode = false;
-        Span<byte> key = stackalloc byte[MaxName];
+        Span<byte> key = input.KeyBuf;
         if (!ScanString(text, ref input, key, true, out int used, stored: true)) { return false; }
         if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
         input.Pos++;
@@ -1200,7 +1200,7 @@ internal static class TableJson
             if (c == '}') { input.Pos++; break; }
             input.TextField = mapField;
             ReadOnlySpan<byte> actual; int used;
-            if (key.Unbounded)
+            if (key.Unbounded || (key.Kind == 12 && key.ArrayBound >= MaxKey))
             {
                 if (!DecodedStringBody(text, ref input, out actual)) { return false; }
                 if (!TableWire.TextValid(actual)) { return RefuseText(ref input, "text_holds_zero"); }
@@ -2029,7 +2029,7 @@ internal static class TableJson
     static bool ScanUnionKey(ReadOnlySpan<byte> text, ref In input, TableFieldInfo f, out int tag)
     {
         tag = 0;
-        Span<byte> key = stackalloc byte[MaxName];
+        Span<byte> key = input.KeyBuf;
         int keyLength;
         if (!ScanString(text, ref input, key, true, out keyLength, stored: true)) { return false; }
         if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
@@ -2517,9 +2517,9 @@ internal static class TableJson
         // The schema fixes the vocabulary size. Small schemas use the
         // stack; larger ones still count every duplicate exactly.
         int words = (f.ArrayBound + 63) / 64;
-        Span<ulong> seen = words <= 8 ? stackalloc ulong[words] : new ulong[words];
-        seen.Clear();
-        Span<byte> key = stackalloc byte[MaxName];
+        ulong seen0 = 0;
+        ulong[] seenBig = words > 1 ? new ulong[words] : null;
+        Span<byte> key = input.KeyBuf;
         System.Collections.Generic.HashSet<string> unplaced = null;
         for (; ; )
         {
@@ -2542,8 +2542,16 @@ internal static class TableJson
             if (slot >= 0)
             {
                 ulong bit = 1ul << (slot & 63);
-                if ((seen[slot >> 6] & bit) != 0) { return RefuseText(ref input, "duplicate"); }
-                seen[slot >> 6] |= bit;
+                if (seenBig == null)
+                {
+                    if ((seen0 & bit) != 0) { return RefuseText(ref input, "duplicate"); }
+                    seen0 |= bit;
+                }
+                else
+                {
+                    if ((seenBig[slot >> 6] & bit) != 0) { return RefuseText(ref input, "duplicate"); }
+                    seenBig[slot >> 6] |= bit;
+                }
             }
             if (slot < 0)
             {
@@ -2578,7 +2586,7 @@ internal static class TableJson
     static bool ScanTableKey(ReadOnlySpan<byte> text, ref In input, TableTypeInfo info, out int index, out bool isAmp, out string unknownKey)
     {
         index = -1; isAmp = false; unknownKey = null;
-        Span<byte> key = stackalloc byte[MaxName];
+        Span<byte> key = input.KeyBuf;
         int keyLength;
         if (!ScanString(text, ref input, key, true, out keyLength, stored: true)) { return false; }
         if (Peek(text, ref input) != ':') { input.Bad = true; return false; }

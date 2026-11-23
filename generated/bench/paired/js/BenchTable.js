@@ -98,7 +98,7 @@ const TableFixedLaneGuardCount = 10;
 // THE OPS ARE THE WHOLE SET. The IDENTITY plan carries only the first; the
 // others are what a plan compiled from another writer's layout adds.
 const TableFixedOpCopy = 0;    // move size bytes
-const TableFixedOpCount = 1;   // a count: clamp it to the reader's own bound
+const TableFixedOpCount = 1;   // a count: refuse it outside the reader's own min..bound
 const TableFixedOpText = 2;    // a length, then the units
 const TableFixedOpOrdinal = 3; // a variant ordinal, remapped through the plan's own table
 const TableFixedOpWiden = 4;   // a narrower source into a wider destination
@@ -168,6 +168,9 @@ export const TableFixedRefusal = globalThis.Object.freeze({
   // §4, §6.5, §4.5): no writer emits one, and 0x02 is neither stored verbatim
   // nor normalized to true. It is a check-loop refusal, not a bounds-pass one.
   WireDamaged: 23,
+  // A WRITER'S OPTIONAL READ INTO A READER'S BARE FIELD refuses the lineage by
+  // name: the reader cannot hold an absent value (rulings 2026-11-22, R2).
+  KindMismatch: 24,
 });
 
 // THE REFUSAL'S OWN NAME, matching the C++ reference's spellings exactly.
@@ -197,6 +200,7 @@ export function TableFixedRefusalName(r) {
     case TableFixedRefusal.LengthOverBound: return "length_over_bound";
     case TableFixedRefusal.OutOfRange: return "out_of_range";
     case TableFixedRefusal.WireDamaged: return "wire_damaged";
+    case TableFixedRefusal.KindMismatch: return "kind_mismatch";
     default: return "???";
   }
 }
@@ -267,6 +271,7 @@ export class TableFixedPlan {
     this.ready = false;
     this.overflow = false;
     this.hostile = false;
+    this.absentIntoBare = false;
     // the CURRENT union's tag width, stamped onto every push — C++'s c.argw
     this.argw = 1;
     // THE GUARD CHAIN being compiled, OUTERMOST FIRST (§4.1): one
@@ -473,7 +478,8 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
         // forged count is not a number this writer could have written. It
         // refuses before any destination byte is written.
         const v = TableFixedGetU32(src, s) | 0;
-        if (v < 0 || v > size) { report.refused = TableFixedRefusal.CountOverBound; return; }
+        // BELOW THE READER'S OWN MINIMUM A is a refusal too (SPEC-TABLES.md 22.2): the meta lane carries A.
+        if (v < 0 || v < e[b + TableFixedLaneMeta] || v > size) { report.refused = TableFixedRefusal.CountOverBound; return; }
         dst[d] = v & 0xff; dst[d + 1] = (v >>> 8) & 0xff;
         dst[d + 2] = (v >>> 16) & 0xff; dst[d + 3] = (v >>> 24) & 0xff;
         break;
@@ -827,8 +833,8 @@ function TableFixedOrdinalWidth(n) { return n === 1 || n === 2 || n === 4 || n =
 
 // THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
 // the no-payload variant 32, and the ONE kind this form's layout adds, the
-// optional wrapper 35. 31 is §3's BODY framing escape, 33 is retired and 34 is
-// reserved: none is a kind a declaration spells, so none is ever an entry's
+// optional wrapper 35. 31 is held by name and never written (R17), 33 is retired
+// and 34 is reserved: none is a kind a declaration spells, so none is ever an entry's
 // kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a leaf to step over.
 function TableFixedKnownKind(kind) {
   if (kind >= 1 && kind <= 30) { return true; }
@@ -1175,6 +1181,10 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
   // constant in its VALUE and still carrying the row's own guard/arg (§5.9 #13),
   // and the payload is compiled against the writer's own entry under the same
   // guard and ordinal. It is not a kind that moved.
+  if (theirKind === 35 && myKind !== 35) {
+    plan.absentIntoBare = true;
+    return;
+  }
   if (myKind === 35 && theirKind !== 35) {
     TableFixedPush(plan, TableFixedOpConst, theirAt, auxAt, 1, 1, guard, arg, 0);
     TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi + 1, dst, myAt, guard, arg, report);
@@ -1233,7 +1243,7 @@ function TableFixedCompileEntry(plan, theirs, ti, theirAt, mine, mi, dst, myAt, 
         // bill §12.5): a count forged past what THAT endpoint could have written
         // clamps and counts, and a reader whose own bound merely grew does not
         // let the forgery through. The reader's storage has room by §5.1.
-        TableFixedPush(plan, TableFixedOpCount, theirAt, auxAt, theirN, 0, guard, arg, 0);
+        TableFixedPush(plan, TableFixedOpCount, theirAt, auxAt, theirN, 0, guard, arg, dst[row + TableFixedDstArg] >>> 8);
         // THE ELEMENT SLOTS PAST THE COUNT ARE DEAD (§4.5).
         if (theirN > 0 && theirElem > 0) {
           TableFixedPush(plan, TableFixedOpDeadCounted, theirAt, 0, theirN, theirElem, guard, arg, 0);
@@ -1545,6 +1555,11 @@ export function TableFixedLineagePlans(known, ownLo, ownHi, myLayout, myDst, ima
         lane.why = TableFixedRefusal.LayoutRecordTooLarge;
         break;
       }
+      if (made === -3) {
+        lane = new TableFixedPlan(1, imageBytes, 1);
+        lane.why = TableFixedRefusal.KindMismatch;
+        break;
+      }
       if (made < 0) { continue; }
       plan.recordBytes = k.recordBytes;
       // THE CENSUS IS THE PLAN'S OWN NUMBER, fixed when the plan was built, and
@@ -1574,6 +1589,7 @@ export function TableFixedCompile(theirs, myLayout, myDst, plan, report) {
   plan.remapUsed = 0;
   plan.overflow = false;
   plan.hostile = false;
+  plan.absentIntoBare = false;
   plan.argw = 1;
   // THE WRITER'S OWN DECLARED RECORD (the root's body size) bounds every entry
   // (docs/FIXED-FORM-ALGORITHM.md §5.2 PLAN, fix 3).
@@ -1591,6 +1607,7 @@ export function TableFixedCompile(theirs, myLayout, myDst, plan, report) {
   TableFixedCoalesce(plan, plan.split);
   plan.pass = 0;
   if (plan.hostile) { return -2; }
+  if (plan.absentIntoBare) { return -3; }
   if (plan.overflow) { return -1; }
   return plan.count;
 }
@@ -1706,7 +1723,7 @@ class TableMessageReader {
     if (fixed !== 0) { if (!this.Has(fixed)) { return false; } this.Offset += fixed; return true; }
     switch (kind) {
       case 17: case 30: { const [, ok] = this.Leb(); return ok; }
-      case 12: case 13: case 14: case 16: case 31: case 32: { const [, ok] = this.Body(); return ok; }
+      case 12: case 13: case 14: case 16: case 32: { const [, ok] = this.Body(); return ok; }
       case 15: {
         const [ref, ok] = this.Leb();
         if (!ok) { return false; }
@@ -1763,7 +1780,9 @@ function TableMessageOpenFramed(data) {
   return [r, verdict];
 }
 function TableMessageBits(n) { let count = 0; while (n !== 0n) { count++; n >>= 1n; } return count; }
-function TableMessageKnownKind(k) { return k <= 32 || k === 36; }
+// 31 is held by name and never written (R17): an announcement naming it is
+// malformed, as one naming 33 or 34 is.
+function TableMessageKnownKind(k) { return k <= 30 || k === 32 || k === 36; }
 function TableMessageKindBits(k) {
   if (k === 0 || k === 32) { return 0; }
   if (k === 1) { return 1; }
@@ -1938,9 +1957,7 @@ function TableAnnounceRead(v, data, report) {
       if (!bok || !sub.Has(1) || sub.Get8() !== 6) { report.Damaged = true; return false; }
       const [n, nok] = sub.Leb();
       if (!nok || n > globalThis.BigInt(sub.Buffer.length) || n !== globalThis.BigInt(sub.Buffer.length - sub.Offset)) { report.Damaged = true; return false; }
-      let limit = v.MaxBytes;
-      if (!limit) { limit = 64 * 1024; }
-      if (n > globalThis.BigInt(limit)) { return TableMessageRefuse(report, "vocabulary_too_large"); }
+      if (n > globalThis.BigInt(v.MaxBytes)) { return TableMessageRefuse(report, "vocabulary_too_large"); }
       words = sub.Buffer.subarray(sub.Offset);
       wordsCount++;
     } else {
@@ -2239,11 +2256,8 @@ export function tableMessageSkip(r, v, indexBits, e, depth, atField = false) {
       const at = r.Offset >> 3;
       return r.Skip(globalThis.Number(n) * 8) && tableMessageUtf8Valid(r.Buffer, at, globalThis.Number(n));
     }
-    case 31: {
-      if (!r.Align()) { return false; }
-      const [n, ok] = r.Get(32);
-      return ok && r.Skip(globalThis.Number(n) * 8);
-    }
+    // 31 is held by name and never written (R17): met only as damage
+    case 31: { return false; }
     case 10: {
       if (s.Packing === 2) {
         const [v, ok] = tableMessageReadScalar(r, s);
@@ -2460,7 +2474,7 @@ export function MixedEntityFixedCheckBody(value) {
   if (typeof value.health !== "number" || !globalThis.Number.isInteger(value.health)) { return false; }
   if (value.health < 0 || value.health > 1000) { return false; }
   if (!globalThis.Number.isInteger(value.weapon) || value.weapon < 0 || value.weapon > 15) { return false; }
-  if (typeof value.damage !== "bigint") { return false; }
+  if (typeof value.damage !== "bigint" || (value.damage >> 8n) !== 0n) { return false; }
   return true;
 }
 
@@ -2510,6 +2524,10 @@ export function MixedEntityFixedDecode(value, view, at, report) {
   { let tag = 0;
     tag = view.getUint8(at + 40);
     if (tag > 15) { report.refused = TableFixedRefusal.OutOfRange; return; } }
+  { let n;
+    n = view.getBigUint64(at + 41, true);
+    if ((n >> 8n) !== 0n) { report.refused = TableFixedRefusal.OutOfRange; return; }
+  }
   { const b = view.getUint8(at + 49); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
   { const b = view.getUint8(at + 50); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
   value.entityId = view.getUint32(at, true);
@@ -2535,6 +2553,7 @@ export function MixedEntityFixedDecode(value, view, at, report) {
   value.weapon = view.getUint8(at + 40);
   if (value.weapon > 15) { report.refused = TableFixedRefusal.OutOfRange; return; }
   value.damage = view.getBigUint64(at + 41, true);
+  if ((value.damage >> 8n) !== 0n) { report.refused = TableFixedRefusal.OutOfRange; return; }
   value.moving = view.getUint8(at + 49) !== 0;
   value.firing = view.getUint8(at + 50) !== 0;
 }
@@ -2905,6 +2924,10 @@ export function BenchMixedFixedDecode(value, view, at, report) {
       { let tag = 0;
         tag = view.getUint8(at + 56 + i * 51 + 40);
         if (tag > 15) { report.refused = TableFixedRefusal.OutOfRange; return; } }
+      { let n;
+        n = view.getBigUint64(at + 56 + i * 51 + 41, true);
+        if ((n >> 8n) !== 0n) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
       { const b = view.getUint8(at + 56 + i * 51 + 49); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
       { const b = view.getUint8(at + 56 + i * 51 + 50); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
     }
@@ -3069,6 +3092,7 @@ export function BenchMixedFixedDecode(value, view, at, report) {
         e1.weapon = view.getUint8(oi + 40);
         if (e1.weapon > 15) { report.refused = TableFixedRefusal.OutOfRange; return; }
         e1.damage = view.getBigUint64(oi + 41, true);
+        if ((e1.damage >> 8n) !== 0n) { report.refused = TableFixedRefusal.OutOfRange; return; }
         e1.moving = view.getUint8(oi + 49) !== 0;
         e1.firing = view.getUint8(oi + 50) !== 0;
       }
@@ -3318,6 +3342,10 @@ export function FixedTableFixedDecode(value, view, at, report) {
       { let tag = 0;
         tag = view.getUint8(at + 56 + i * 51 + 40);
         if (tag > 15) { report.refused = TableFixedRefusal.OutOfRange; return; } }
+      { let n;
+        n = view.getBigUint64(at + 56 + i * 51 + 41, true);
+        if ((n >> 8n) !== 0n) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
       { const b = view.getUint8(at + 56 + i * 51 + 49); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
       { const b = view.getUint8(at + 56 + i * 51 + 50); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
     }
@@ -3484,6 +3512,7 @@ export function FixedTableFixedDecode(value, view, at, report) {
           e2.weapon = view.getUint8(oi + 40);
           if (e2.weapon > 15) { report.refused = TableFixedRefusal.OutOfRange; return; }
           e2.damage = view.getBigUint64(oi + 41, true);
+          if ((e2.damage >> 8n) !== 0n) { report.refused = TableFixedRefusal.OutOfRange; return; }
           e2.moving = view.getUint8(oi + 49) !== 0;
           e2.firing = view.getUint8(oi + 50) !== 0;
         }
@@ -3657,6 +3686,10 @@ export function FixedTableFixedCheckRead(view, at, report) {
       { let tag = 0;
         tag = view.getUint8(at + 56 + i * 51 + 40);
         if (tag > 15) { report.refused = TableFixedRefusal.OutOfRange; return; } }
+      { let n;
+        n = view.getBigUint64(at + 56 + i * 51 + 41, true);
+        if ((n >> 8n) !== 0n) { report.refused = TableFixedRefusal.OutOfRange; return; }
+      }
       { const b = view.getUint8(at + 56 + i * 51 + 49); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
       { const b = view.getUint8(at + 56 + i * 51 + 50); if (b > 1) { report.refused = TableFixedRefusal.WireDamaged; return; } }
     }
@@ -3928,14 +3961,14 @@ export function BenchMixedFixedFromText(src, dst) {
     for (let i = 0; i < n; i++) {
       MixedEntityFixedFromText(src.entities[i], dst.entities[i]);
     }
-  }
+  } else if (src.entities !== undefined && src.entities !== null) { dst.entities = src.entities; }
   if (src.stats !== null && typeof src.stats === "object" && typeof src.stats.length === "number") {
     const n = globalThis.Math.min(src.stats.length, 80);
     dst.statsCount = typeof src.statsCount === "number" ? src.statsCount : src.stats.length;
     for (let i = 0; i < n; i++) {
       MixedStatFixedFromText(src.stats[i], dst.stats[i]);
     }
-  }
+  } else if (src.stats !== undefined && src.stats !== null) { dst.stats = src.stats; }
   if (src.gameEvent !== undefined) { dst.gameEvent = src.gameEvent; }
   if (src.loadout !== null && typeof src.loadout === "object" && typeof src.loadout.length === "number" && src.loadout.length !== 4) { dst.loadout = src.loadout; }
   else if (src.loadout !== null && typeof src.loadout === "object" && typeof src.loadout.length === "number") {
@@ -3943,7 +3976,7 @@ export function BenchMixedFixedFromText(src, dst) {
     for (let i = 0; i < n; i++) {
       if (src.loadout[i] !== undefined) { dst.loadout[i] = src.loadout[i]; }
     }
-  }
+  } else if (src.loadout !== undefined && src.loadout !== null) { dst.loadout = src.loadout; }
   if (src.playerName !== undefined) { dst.playerName = src.playerName; }
   if (src.playerNameLength !== undefined) { dst.playerNameLength = src.playerNameLength; }
   if (src.payload !== undefined) { dst.payload = src.payload; }
@@ -4297,6 +4330,7 @@ export function MixedEntityLoadMessageBody(r, value, elideEmpty) {
         { const [v, ok, holds] = tableMessageReadInteger(r.Bits, entry.Shape); if (!ok) { r.Report.Damaged = true; return false; } let x = v;
           if (!holds) { TableMessageRefuse(r.Report, "out_of_range"); return false; }
           x = globalThis.BigInt.asUintN(64, x);
+          if ((x >> 8n) !== 0n) { TableMessageRefuse(r.Report, "out_of_range"); return false; }
           value.damage = x;
         }
         if (!widened && r.Vocabulary.BuildVersion === 0xba2dad78ebdbfff0n && entry.Shape.Packing === 1 && entry.Shape.Bits === 8 && r.Report.Unknown + (r.Substituted ?? 0) === subBefore && (value.damage === 0n)) { r.Report.Damaged = true; return false; }

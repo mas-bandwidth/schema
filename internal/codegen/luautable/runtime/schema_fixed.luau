@@ -523,6 +523,12 @@ local function bounds(f: any, v: any, cx: Cx, wr: any): any
 		end
 		if lessThan(top, v, false) then error(outOfRange(f), 0) end
 	end
+	-- A MASK BIT AT OR ABOVE W REFUSES out_of_range, on every fixed read and
+	-- write, the older-layout read included (docs/SPEC-TABLES.md §4, A TABLE
+	-- LOAD HOLDS A MASK TO ITS WIDTH)
+	if f.fw ~= nil and f.fw < 64 and typeof(v) == "integer" and integer.rshift(v, integer.create(f.fw)) ~= 0i then
+		error(outOfRange(f), 0)
+	end
 	return v
 end
 

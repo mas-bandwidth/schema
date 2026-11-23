@@ -18,7 +18,7 @@ import (
 // present-at-zero differ on the wire; Holder (Root.h, by value) and Node
 // (behind *Node) carry ?T inside a nested table and a pointer node. Nothing
 // here needs a kind a later card owns.
-const optionalSchema = `package optional
+const optionalSchema = `package optionalx
 
 table Pair
 {
@@ -309,7 +309,7 @@ func TestPythonVtOptional(t *testing.T) {
 	if out, err := pyrun.Analyze(t, dir, "optional"); err != nil {
 		t.Fatalf("mypy --strict over the generated package:\n%s", out)
 	}
-	if out, err := pyrun.Analyze(t, dir, "optional/_schema"); err != nil {
+	if out, err := pyrun.Analyze(t, dir, "optionalx/_schema"); err != nil {
 		t.Fatalf("mypy --strict over the runtime:\n%s", out)
 	}
 }
@@ -327,7 +327,7 @@ func TestPythonVtOptionalNegativeControl(t *testing.T) {
 	}
 	sabotaged := make(map[string][]byte, len(files))
 	maps.Copy(sabotaged, files)
-	const path = "optional/_schema/kind_optional.py"
+	const path = "optionalx/_schema/kind_optional.py"
 	const anchor = "self._inner(fd).write(w, fd, value, ctx)"
 	text := string(sabotaged[path])
 	if !strings.Contains(text, anchor) {

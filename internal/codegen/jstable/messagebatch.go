@@ -271,11 +271,8 @@ export function tableMessageSkip(r, v, indexBits, e, depth, atField = false) {
       const at = r.Offset >> 3;
       return r.Skip(globalThis.Number(n) * 8) && tableMessageUtf8Valid(r.Buffer, at, globalThis.Number(n));
     }
-    case 31: {
-      if (!r.Align()) { return false; }
-      const [n, ok] = r.Get(32);
-      return ok && r.Skip(globalThis.Number(n) * 8);
-    }
+    // 31 is held by name and never written (R17): met only as damage
+    case 31: { return false; }
     case 10: {
       if (s.Packing === 2) {
         const [v, ok] = tableMessageReadScalar(r, s);
@@ -1322,6 +1319,12 @@ func (g *fixedModule) emitMessageReadScalar(f *ir.Field, mem, ind, shape string)
 	} else {
 		g.pf("%s  if (!holds) { %s; }\n", ind, messageOutOfRange)
 		g.pf("%s  x = %s;\n", ind, narrowInt("x", signed, int64(width)))
+	}
+	if fl, ok := f.Type.Ref.(*ir.Flags); ok && f.Type.Kind == ir.TNamed && fl.WireBits < 64 {
+		// A NEWER WRITER ANNOUNCES A WIDER MASK, and the reader holds each
+		// value to its OWN W (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK
+		// TO ITS WIDTH): a bit at or above it refuses the batch out_of_range.
+		g.pf("%s  if ((x >> %dn) !== 0n) { %s; }\n", ind, fl.WireBits, messageOutOfRange)
 	}
 	g.emitMessageIntRange(f, "x", ind+"  ")
 	g.pf("%s  %s = %s;\n%s}\n", ind, mem, numOrBig("x", big), ind)

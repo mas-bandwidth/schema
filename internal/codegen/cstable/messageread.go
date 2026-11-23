@@ -102,8 +102,6 @@ const tableMessageReadSource = `
                 if (!r.Get(BitCount(shape.Max), out UInt128 length) || !r.Align() || length > (ulong)((r.End - r.At) / 8)) { return false; }
                 if (!TextValid(r.Bytes.Slice((int)(r.At / 8), (int)length))) { return false; }
                 r.At += (long)length * 8; return true;
-            case 31:
-                return r.Align() && r.Get(32, out UInt128 opaque) && r.Skip((long)opaque * 8);
             case 14:
             case 16:
                 ulong min = kind == 16 ? 0 : shape.Min;

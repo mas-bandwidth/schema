@@ -1,0 +1,13 @@
+package probe
+
+type Holder
+{
+    first  Int8List
+    many   [..4]Int8List
+    x      float64
+    y      float32
+    wide   uint128
+    label  string(16)
+    quad   [4]float64
+    list   [..MaxItems]uint32
+}

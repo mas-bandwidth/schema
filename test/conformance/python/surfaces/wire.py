@@ -1,6 +1,6 @@
 """The wire surface: observe the public read/save or its refusal."""
 
-from _common import absent, answering, entries, no_codec, read_bytes, root_class, supported, unit_package, write_bytes
+from _common import answering, entries, no_codec, read_bytes, root_class, supported, unit_package, write_bytes
 
 
 def observed_wire(outdir, case, unit, root, wire):
@@ -13,11 +13,9 @@ def observed_wire(outdir, case, unit, root, wire):
     package = unit_package(unit)
     try:
         value = cls.load(read_bytes(wire))
-    except package.Refused as err:
-        # THE PUBLIC REFUSAL IS THE ANSWER, whatever its reason: the harness
-        # compares the verdict (docs/rulings.json refusal-verdict-only) and
-        # judges whether this particular input owes it.
-        absent(outdir, case, err.reason)
+    except package.Refused:
+        # The harness compares the public verdict independently of its reason.
+        write_bytes(outdir, case, b"refused\n")
         return
     write_bytes(outdir, case, value.save())
 

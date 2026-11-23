@@ -1,0 +1,17 @@
+package probe
+
+const max_items = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..max_items]uint16
+    kind    Kind
+}

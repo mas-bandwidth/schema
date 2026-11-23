@@ -379,8 +379,8 @@ func cookFieldLiteral(u *ir.Unit, f *ir.Field, offset int64, variable bool) stri
 			}
 		}
 		elem := cookElemLiteral(u, f, variable)
-		return fmt.Sprintf("{k:\"arr\",n:%s,at:%d,countAt:%d,countFrom:%q,bound:%d,stride:%d,elem:%s}",
-			qn, pieces[0].Offset, countAt, countFrom, f.ArrayBound, stride, elem)
+		return fmt.Sprintf("{k:\"arr\",n:%s,at:%d,countAt:%d,countFrom:%q,bound:%d,min:%d,stride:%d,elem:%s}",
+			qn, pieces[0].Offset, countAt, countFrom, f.ArrayBound, f.ArrayMin, stride, elem)
 	}
 	if f.Type.TextUnbounded() {
 		return fmt.Sprintf("{k:\"textref\",n:%s,at:%d}", qn, pieces[0].Offset)
@@ -714,7 +714,7 @@ const cookEngineShared = `  // A TABLE FLOAT IS FINITE (docs/SPEC-TABLES.md §3.
       if (!globalThis.Array.isArray(arr)) { return false; }
       count = arr.length;
     } else { count = parent[fd.n + "Count"]; }
-    if (!globalThis.Number.isInteger(count) || count < 0 || count > fd.bound) { return false; }
+    if (!globalThis.Number.isInteger(count) || count < (fd.min || 0) || count > fd.bound) { return false; }
     if (fd.countAt >= 0 && !putWidth(view, base + fd.countAt, 4, count, true, le)) { return false; }
     // a counted array's slots past the live count are DEAD BYTES and stay the
     // buffer's zero (docs/SPEC-TABLES.md §7.2, §7.4; docs/rulings.json

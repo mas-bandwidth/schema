@@ -1,0 +1,116 @@
+#!/bin/sh
+# THE LUAU LEG's write-refusal negative controls (docs/SPEC.md 5.1,
+# test/conformance/README.md; docs/PORTING.md I11).
+#
+# Luau refuses in every build, so each control removes ONE refusal from a COPY
+# of the generated units, under a mirror of the repository (the units-control
+# builds its mirror the same way: main.luau finds its units and staged inputs by
+# paths relative to itself), never in place. The matrix must go red on the one
+# surface the statement serves while the surface that does not run it stays
+# green.
+#
+#   write-refusal          schema_fixed.luau: the fixed writer no longer holds
+#                          an integer to its declared range: write-refusal red
+#                          (wref_range_*), wire green.
+#   write-refusal-fixed    schema_fixed.luau: the fixed writer no longer holds
+#                          a bits(N) leaf to 2^N - 1: write-refusal-fixed red
+#                          (fref_bits_wide), wire green.
+#   write-refusal-message  schema_message.luau: a message's integer rule no
+#                          longer holds the field's declared range:
+#                          write-refusal-message red (mref_range_*), message
+#                          green.
+#
+# usage: sh test/conformance/luau/write-refusal-control <mode>
+set -eu
+
+mode=${1:-}
+case "$mode" in
+write-refusal)
+	file=schema_fixed.luau
+	anchor='		elseif lessThan(v, lo, isSigned) or lessThan(hi, v, isSigned) then'
+	patch='		elseif false then -- SABOTAGED: no fixed range check'
+	red=write-refusal green=wire
+	;;
+write-refusal-fixed)
+	file=schema_fixed.luau
+	anchor='		if lessThan(top, v, false) then error(outOfRange(f), 0) end'
+	patch='		if false then error(outOfRange(f), 0) end -- SABOTAGED: no bits-width check'
+	red=write-refusal-fixed green=wire
+	;;
+write-refusal-message)
+	file=schema_message.luau
+	anchor='			if mCmpLt(val, lo, isSigned) or mCmpLt(hi, val, isSigned) then return false, "invalid_value" end'
+	patch='			if false then return false, "invalid_value" end -- SABOTAGED: no message range check'
+	red=write-refusal-message green=message
+	;;
+*) echo "usage: $0 write-refusal|write-refusal-fixed|write-refusal-message" >&2; exit 2 ;;
+esac
+
+root=$(pwd)
+out=build/luau-wref-control-$mode
+rm -rf "$out"
+mkdir -p "$out"
+for need in build/conformance-harness build/conformance-luau build/luau-driver/units.luau; do
+	if [ ! -e "$need" ]; then
+		echo "negative control failed: $need is missing (make conformance-negative-control-luau-$mode builds it)" >&2
+		exit 1
+	fi
+done
+
+mirror=$root/$out/mirror
+mkdir -p "$mirror/build/luau-driver" "$mirror/test/conformance/luau"
+for entry in "$root"/* "$root"/.[!.]*; do
+	name=$(basename "$entry")
+	case "$name" in build | test | .git) continue ;; esac
+	[ -e "$entry" ] && ln -s "$entry" "$mirror/$name"
+done
+for entry in "$root"/build/*; do
+	name=$(basename "$entry")
+	case "$name" in conformance-luau | luau-driver) continue ;; esac
+	ln -s "$entry" "$mirror/build/$name"
+done
+cp test/conformance/luau/driver test/conformance/luau/main.luau "$mirror/test/conformance/luau/"
+cp build/luau-driver/units.luau "$mirror/build/luau-driver/units.luau"
+gen=$mirror/build/conformance-luau
+mkdir -p "$gen"
+for d in build/conformance-luau/*; do
+	case "$(basename "$d")" in driver) continue ;; esac
+	cp -R "$d" "$gen/"
+done
+
+patched=0
+for f in "$gen"/*/"$file"; do
+	[ -f "$f" ] || continue
+	grep -qxF -e "$anchor" "$f" || continue
+	awk -v a="$anchor" -v p="$patch" '$0 == a { print p; next } { print }' "$f" > "$f.new"
+	mv "$f.new" "$f"
+	patched=$((patched + 1))
+done
+if [ "$patched" = 0 ]; then
+	echo "NEGATIVE CONTROL FAILED: $mode anchor matched nothing in the generated $file" >&2
+	exit 1
+fi
+
+luau="${LUAU:-$root/dist/luau-0.741/luau}"
+case "$luau" in /*) ;; *) luau=$root/$luau ;; esac
+cat > "$out/driver" <<EOF
+#!/bin/sh
+abs() { case "\$1" in /*) echo "\$1" ;; *) echo "$root/\$1" ;; esac; }
+m=\$(abs "\$1")
+if [ "\$2" = list ]; then cd "$mirror" && exec env LUAU="$luau" sh test/conformance/luau/driver "\$m" list; fi
+o=\$(abs "\$3")
+cd "$mirror" && exec env LUAU="$luau" sh test/conformance/luau/driver "\$m" "\$2" "\$o"
+EOF
+chmod +x "$out/driver"
+printf 'luau %s/%s/driver\n' "$root" "$out" > "$out/drivers.txt"
+
+if build/conformance-harness run --drivers "$out/drivers.txt" --work "$out/work" > "$out/log" 2>&1; then
+	echo "NEGATIVE CONTROL FAILED: $mode left Luau conformance green" >&2
+	exit 1
+fi
+grep -q "luau / $red" "$out/log" || { cat "$out/log"; echo "NEGATIVE CONTROL FAILED: $red did not go red"; exit 1; }
+grep -Eq "^ *$red +FAIL" "$out/log" || { cat "$out/log"; echo "NEGATIVE CONTROL FAILED: $red is not marked FAIL"; exit 1; }
+for s in $green; do
+	grep -Eq "^ *$s +pass" "$out/log" || { cat "$out/log"; echo "NEGATIVE CONTROL FAILED: $s did not stay green"; exit 1; }
+done
+echo "Luau $mode negative control: detected by luau / $red"

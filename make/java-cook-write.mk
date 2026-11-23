@@ -33,7 +33,7 @@ conformance-java-cook-write-negative-control: build/conformance-harness build-co
 	@test "$$(grep -c SABOTAGED $(JAVA_COOK_WRITE_SABOTAGE)/src/TableCookWrite.java)" = 1 || \
 		{ echo "NEGATIVE CONTROL: the dead-slot sabotage did not apply to the cook writer"; exit 1; }
 	$(JAVAC) --release 17 -nowarn -cp build/conformance-java -d $(JAVA_COOK_WRITE_SABOTAGE)/classes $(JAVA_COOK_WRITE_SABOTAGE)/src/TableCookWrite.java
-	@printf '#!/bin/sh\nexec %s -cp %s/classes:%s/build/conformance-java Driver "$$@"\n' "$(JAVA)" "$(CURDIR)/$(JAVA_COOK_WRITE_SABOTAGE)" "$(CURDIR)" > $(JAVA_COOK_WRITE_SABOTAGE)/driver
+	@printf '#!/bin/sh\nexec %s $(JAVA_CONFORMANCE_JVM_FLAGS) -cp %s/classes:%s/build/conformance-java Driver "$$@"\n' "$(JAVA)" "$(CURDIR)/$(JAVA_COOK_WRITE_SABOTAGE)" "$(CURDIR)" > $(JAVA_COOK_WRITE_SABOTAGE)/driver
 	@chmod +x $(JAVA_COOK_WRITE_SABOTAGE)/driver
 	@printf 'java %s/driver\n' "$(CURDIR)/$(JAVA_COOK_WRITE_SABOTAGE)" > $(JAVA_COOK_WRITE_SABOTAGE)/drivers.txt
 # loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red

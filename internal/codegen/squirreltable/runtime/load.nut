@@ -334,6 +334,11 @@ local rangeScalar = function(fd, kind, x, report) {
     local MIN = 0x8000000000000000;
     if ((x ^ MIN) > (max ^ MIN)) { x = max; report.oor = report.oor + 1; }
   }
+  // A MASK BIT AT OR ABOVE THE READER'S W REFUSES THE LOAD out_of_range
+  // (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH; decode.go
+  // scalarAt): a mask widened from a narrower unsigned kind is held the same way
+  if (fd.shape == "flags" && fd.flagbits != null && fd.flagbits < 64 && (x >>> fd.flagbits) != 0)
+    report.oor = report.oor + 1;
   return x;
 };
 
@@ -358,7 +363,8 @@ local retainedFinite = function(b, from, to, kind) {
   return true;
 };
 
-// skipping a field the reader cannot name (docs/SPEC-TABLES.md §3)
+// skipping a field the reader cannot name (docs/SPEC-TABLES.md §3). Kind 31 is
+// held by name and never written (R17): like 33 and 34 it is damage, not skipped.
 local skipField = function(r, kind) {
   local width = kindWidth(kind);
   if (width > 0) {
@@ -367,7 +373,7 @@ local skipField = function(r, kind) {
     return true;
   }
   switch (kind) {
-    case 12: case 13: case 14: case 16: case 31: case 32: {
+    case 12: case 13: case 14: case 16: case 32: {
       local L = leb(r);
       if (r.bad || r.at + L > r.end) return false;
       r.at += L;
@@ -677,7 +683,7 @@ wcPayload = function(c, stack, at, end, kind) {
     }
     case 15:
       return wcUnion(c, stack, at, end, -1);
-    case 12: case 31: case 32: case 13: case 14: case 16: {
+    case 12: case 32: case 13: case 14: case 16: {
       local n = wcLeb(c, at, end);
       if (n < 0 || n > end - c.pos) { wcDamage(c); return -1; }
       local s = c.pos;
@@ -698,8 +704,6 @@ wcContent = function(c, stack, at, end, kind) {
   switch (kind) {
     case 12:
       return utf8Ok(c.b, at, end - at) ? true : wcDamage(c);
-    case 31:
-      return true; // opaque: the one kind whose meaning a reader may not know (§3)
     case 32:
       return end == at ? true : wcDamage(c);
     case 13: case 14: case 16:
@@ -1888,7 +1892,10 @@ fixedElement = function(T, e, fd, bytes, off, isElement, report, st, set) {
     return null;
   }
   if (e.shape == "flags") {
-    set(u64At(bytes, off));
+    // a mask bit at or above W refuses out_of_range (docs/SPEC-TABLES.md §4)
+    local m = u64At(bytes, off);
+    if (e.flagbits != null && e.flagbits < 64 && (m >>> e.flagbits) != 0) report.oor = report.oor + 1;
+    set(m);
     return null;
   }
   if (e.shape == "bool") {

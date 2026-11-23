@@ -15,7 +15,8 @@ conformance:
   (`MANIFEST.txt` is the manifest, `FORMAT.md` states every file shape; the
   wires, JSON texts, goldens, framing vectors, cook inputs and outputs, block
   images, hostile JSON and report expectations live in the directories
-  beside it). The wider fixtures it names are under `testdata/conformance/`
+  beside it). The [accepted variable-table write bounds](#accepted-variable-table-write-bounds)
+  run through the same harness with a focused manifest. The wider fixtures it names are under `testdata/conformance/`
   (`feature-witnesses`, `text`, `write-refusal-int`, `r19`,
   `cook-authored-optional-map`) and `testdata/golden`, `testdata/wire` and
   `testdata/jsontestsuite`.
@@ -31,6 +32,19 @@ conformance:
   over zeroed storage. `unsigned-subtraction` is the row for SPEC §4.2's rule
   that a field never shadows a same-named constant: a target that emits
   `half = half` fails to compile (Dart did, caught by this pin).
+- **The fixed byte-buffer lineage pins** (`test/verify-tablegen/pinned.go`):
+  `pin:bytes_lineage:empty` and `pin:bytes_lineage:short`. Both load a
+  supported `bytes(2)` writer's fixed file with a `bytes(6)` reader and
+  compare the reader's fixed save byte for byte with the same value written
+  directly under the reader's layout. The older values are zero bytes and
+  the two bytes `00 ff`. Both must read whole and unchanged
+  ([FIXED-FORM-ALGORITHM §4.1](FIXED-FORM-ALGORITHM.md#41-the-plan)).
+  Run on a target with `make verify-tablegen-<lang>`. To select this pair
+  alone, pass `--only pin:bytes_lineage:` to `build/verify-tablegen-bin`.
+- **The compressed-float endpoint pins**: [`ratio-endpoints.txt`](../test/packet-cfloat-endpoints/ratio-endpoints.txt)
+  gives the packet bytes for both [accepted endpoints](#compressed-float-packet-endpoints).
+- **The packet end pins**: [packet-end](../testdata/wire/packet-end/README.md)
+  includes the [logical bit count case](#packet-end-and-the-logical-bit-count).
 - **Variable-form optional evolution** ([SPEC-TABLES §2.3](SPEC-TABLES.md)):
   the shared table cases `chain_value` and `chain_optional` pin identical
   nondefault encodings. `chain_value_empty` elides the default plain field,
@@ -46,6 +60,15 @@ conformance:
 A port is **conforming only if it passes every case on every surface it
 carries.** A case it cannot answer is an absence (sections 2 and 3), never a pass; a
 wrong answer is a failure whatever the reason.
+
+### Packet end and the logical bit count
+
+The public reader accepts [`packet-end/exact.bin`](../testdata/wire/packet-end/exact.bin)
+(the byte `03`) as `packetend.End` with `value = 3`. The declaration uses
+three bits and [`exact.bits`](../testdata/wire/packet-end/exact.bits) records
+that count. The reader checks the final five bits as padding. An API that
+reports bits consumed reports **3** after success. The C++ reference
+driver asserts the value and count in [`make packet-end-cpp`](../test/packet-end/cpp/main.cpp).
 
 ## 2. The surfaces
 
@@ -269,38 +292,16 @@ still owes part of it, takes its own number and its own ids off the entry.
 
 | entry | rule (spec) | held by, as decided | not on main yet | PR | state |
 |---|---|---|---|---|---|
-| FL-05 | enum `null` and `"None"` are one value (SPEC-TABLES §16.2 (enum row)) | `sp-enum-none-name` | `sp-enum-none-name` | #4688 | owed |
-| FL-09 | map key bounded by its own `string(N)` (SPEC-TABLES §16.2 (A SCHEMA-NAME STRING IS CAPPED AT 255 BYTES; map row)) | `sp-map-key-256-wide`, `sp-map-key-300-wide`, `sp-map-key-301-wide` | `TestTextMapKeyAboveNameCapReadsUnderItsOwnBound`, `sp-map-key-256-wide`, `sp-map-key-300-wide`, `sp-map-key-301-wide` | #4688 | owed |
-| FL-12 | the read depth cap counts every container (SPEC-TABLES §16.2) | `rr-depth-placed-union-map-128`, `rr-depth-placed-union-map-129`, `rr-depth-placed-keyed-map-128`, `rr-depth-placed-keyed-map-129`, `sp-skip-depth-129`, `sp-skip-depth-130`, **ADDED** `rr-depth-skipped-union-arm-128`, `-129`, `rr-depth-skipped-keyed-slot-128`, `-129` (a skipped value under an unknown union arm or enum key), **ADDED** `rr-depth-placed-table-map`, `rr-depth-placed-array-map`, `rr-depth-placed-list-map`, `rr-depth-placed-pointer-chain`, `rr-depth-placed-pointer-array`, `rr-depth-skipped-table-key-array`, `rr-depth-skipped-table-key-object` (each `-128` reads, `-129` refuses); every kind of container counts: a by-value table, an array, a list, a map, an enum-keyed object, a union, a pointer and an array of pointers, and a value skipped under an unknown table key, enum key or union arm. A flags array or text list is a container too, but has NO row yet: no registered root nests one 128 deep, so it needs a recursive root registered in every driver | `sp-skip-depth-129`, `sp-skip-depth-130` | #4688, #4751, #4752, #4754, #4757 | owed |
-| FL-19 | deprecated enum variant (owned by #4689) (SPEC-TABLES §2.15) | `sp-enum-elem-deprecated-array` | `sp-enum-elem-deprecated-array` | #4689, #4753 | owed |
-| FL-25 | counted arrays born at their minimum (#4689; R10 inside a union arm, owned elsewhere) (SPEC-TABLES §22.2, §2.13) | `test/verify-tablegen` op 7; `feature-witnesses/counted-minimum-message`; `sp-count-min-*` | `sp-count-min-at`, `sp-count-min-below`, `sp-count-min-empty`, `sp-count-min-max`, `sp-count-min-over` | #4689, #4753 | owed |
-| FL-27 | non-canonical base64 refuses (SPEC-TABLES §16.8, §16.2) | `base64-padding-*`, `base64-unpadded`, `sp-b64-escaped-noncanonical` | `sp-b64-escaped-noncanonical` | #4688 | owed |
-| FL-31 | names some target cannot build are refused at check (SPEC.md §4.6) | `internal/check` buildable-names cases | `internal/check/buildable_names_test.go` | #4691 | owed |
-| FL-33, FL-34, FL-35 | R2, R5, R9 (SPEC-TABLES §3.4 (the presence entry)) | `internal/ci` `TestRulingsR2R5R9PortRows` | `TestFixedLineageOptionalIntoBareRefusesKindMismatch`, `TestRulingsR2R5R9PortRows` | #4680 | owed |
-| FL-37 | R7 labels in a skipped value (SPEC-TABLES §16.7) | `skipped-label-*` | `skipped-label-undefined-pointer-free` | #4636, #4757, #4764, #4769, #4773 | owed |
-| GAP-17 | A skipped value: label rules at every variable root, label grammar only at a fixed root; any other `&` key refuses at every root (SPEC-TABLES §16.7, R7); gaps OC8, OC12, ObjC5, ObjC9, Zig7, Hs10, Li10 | `reserved-ampersand-in-skipped-value`, `skipped-label-*`, `skipped-ampersand-stray-key`, `skipped-ampersand-node-not-first`, `skipped-ampersand-key-variable`, `skipped-label-undefined-pointer-free` | `skipped-ampersand-key-variable`, `skipped-label-undefined-pointer-free` | #4636, #4757, #4764, #4769, #4773 | owed |
-| GAP-19 | A deprecated variant where no default is declared reads `None`, in every form (SPEC-TABLES §16.2; FIXED-FORM-ALGORITHM §4); gaps OC13, ObjC7, Li11 | `sp-enum-elem-deprecated-array` (#4689) | `sp-enum-elem-deprecated-array` | #4689, #4753 | owed |
-| GAP-22 | A JSON array under its counted minimum refuses (SPEC-TABLES §16.2, R10); gaps Hs11 | `sp-count-min-*` (#4689) | `sp-count-min-at`, `sp-count-min-below`, `sp-count-min-empty`, `sp-count-min-max`, `sp-count-min-over` | #4689, #4753 | owed |
-| GAP-26 | A float literal is a float64 first, then the field's width (SPEC.md §4.2); gaps Hs4 | `testdata/conformance/frontend/vector.txt` (`TestFrontEndVector`): a literal just past a float32 tie, as a default, a range end and inside an expression | `TestFrontEndVector`, `testdata/conformance/frontend/vector.txt` | #4757 | owed |
-| GAP-27 | Names are ASCII; a `was` alias hashes its UTF-8 bytes (SPEC.md §4.2); gaps Li1 | `testdata/conformance/frontend/vector.txt`: non-ASCII `was` on a table, a field and an arm | `testdata/conformance/frontend/vector.txt` | #4757 | owed |
 | SF-17 | `SaveMessages` checks row 10 and never moves an off-range float onto an endpoint (SPEC.md §5.1 row 10) | `write-refusal-message`; a float case is owed: no corpus unit declares a ranged or compressed float, so no row can carry one | `smref_big_ratio_high`, `smref_big_ratio_max` | #4808 | owed |
 | SF-18, SF-19 | the message form refuses a flags value above its declared width and never masks it (SPEC.md §5.1 row 9; SPEC-TABLES §3.3) | a `write-refusal-message` flags case is owed: the only message-capable root with a flags field is `messagedemo` `ToolMessage` (the `caps` arm), which has no `connection` row and no write-refusal-message root in the hand-coded legs (C, C++, Rust, Dart) | `smref_big_mask_max`, `smref_big_mask_wide`, `smref_mask_named`, `smref_mask_unnamed` | #4743, #4744, #4753, #4771, #4772, #4808 | owed |
 | SF-20 | a writer refuses a `[N]T` or `[E]T` whose length is not N and never cuts or pads it (SPEC.md §5.1) | a case on `write-refusal-fixed` and `write-refusal-message` is owed: the `count` kind needs a companion count field and a `[N]T` has none, so every leg's `count` handler must first learn to answer `unrepresentable` or resize a fixed array | `sref_fixed_long`, `sref_fixed_ok`, `sref_fixed_short`, `sref_keyed_long`, `sref_keyed_ok`, `sref_keyed_short`, `sfref_fixed_long`, `sfref_fixed_ok`, `sfref_fixed_short`, `sfref_keyed_long`, `sfref_keyed_ok`, `sfref_keyed_short`, `sjref_fixed_long`, `sjref_fixed_ok`, `sjref_fixed_short`, `sjref_keyed_long`, `sjref_keyed_ok`, `sjref_keyed_short`, `smref_fixed_long`, `smref_fixed_ok`, `smref_fixed_short`, `smref_keyed_long`, `smref_keyed_ok`, `smref_keyed_short`, `cref_fixed_long`, `cref_fixed_ok` | #4743, #4744, #4753, #4771, #4772, #4808 | owed |
-| SF-21 | a writer refuses a counted array below its `Min` (SPEC.md §5.1 row 3) | a case on `write-refusal-fixed` is owed (`sp-count-min-*` carries the read side): no corpus unit declares a `[Min..N]T` | `sp-count-min-at`, `sp-count-min-below`, `sp-count-min-empty`, `sp-count-min-max`, `sp-count-min-over` | #4689, #4743, #4744, #4753, #4771, #4772 | owed |
-| SF-25, SF-26 | `Cook` and `CookMeasure` hold the write contract that `Save` holds; a deprecated enum variant is refused on write (SPEC-TABLES §7.6, §2.15) | `cook-write`; the [SF-26 typed Cook case](#declared-deprecated-enum-writers) exercises deprecated enum refusal independently of this surface | `cref_count_at_max`, `cref_count_at_min`, `cref_count_below_min`, `cref_count_over`, `cref_cycle`, `cref_shared_ok`, `cref_finite_ok`, `cref_infinite`, `cref_non_finite` | #4743, #4744, #4753, #4771, #4772, #4808 | owed |
+| SF-25, SF-26 | `Cook` and `CookMeasure` hold the write contract that `Save` holds; a deprecated enum variant is refused on write (SPEC-TABLES §7.6, §2.15) | `cook-write`; a refusal case is owed: `cook-write` has no refusal verdict and no corpus unit declares a deprecated enum variant | `cref_count_at_max`, `cref_count_at_min`, `cref_count_below_min`, `cref_count_over`, `cref_cycle`, `cref_shared_ok`, `cref_finite_ok`, `cref_infinite`, `cref_non_finite` | #4743, #4744, #4753, #4771, #4772, #4808 | owed |
 | SF-22, SF-28 | a variable save and a text (JSON) writer refuse a counted array below its `Min`, and a list field holding a non-list (SPEC.md §5.1 row 3 and "A writer refuses in EVERY form") | a `write-refusal` `count` row below a `[Min..N]` Min is owed: no corpus unit declares a counted array with `Min > 0` on a variable root, so it needs a new unit; SF-28 cannot be a row (a statically typed leg cannot hold a list field that is no list) and is held per port | `sref_count_at_min`, `sref_count_below_min`, `sref_count_not_list`, `sjref_count_at_min`, `sjref_count_below_min`, `sjref_count_not_list` | #4771, #4772, #4808 | owed |
 | SF-23 | `SaveMessages` holds a value to the rule of the declaration it is written under, not to the looser rule of a same-named field elsewhere (SPEC-TABLES §3.3) | a `write-refusal-message` `int` row on two declarations that share a field name and kind at different ranges is owed (new unit) | `smref_narrow_hp_5`, `smref_narrow_hp_6`, `smref_wide_hp_10`, `smref_wide_hp_11` | #4753, #4771, #4772, #4808 | owed |
 | SF-29, SF-37 | a cook refuses a loaded count outside `[Min, bound]` and a NaN or an infinity in a plain float (SPEC-TABLES §7.6; SPEC.md §5.1 row 7) | `cook-write`; a refusal case is owed; SF-29 cannot be a row (a caller-edited loaded value, not an instance) | `cref_count_at_min`, `cref_count_below_min`, `cref_count_over`, `cref_finite_ok`, `cref_infinite`, `cref_non_finite` | #4743, #4744, #4753, #4771, #4772, #4808 | owed |
 | SF-31 | the block builder refuses a count or a used length past its maximum by name in every build (SPEC-TABLES §19.1) | none: no corpus surface builds a block from values (`block` surfaces read images) | `bref_elems_long`, `bref_elems_ok`, `bref_length`, `bref_length_ok`, `bref_range`, `bref_range_ok` | #4771, #4772, #4808 | owed |
-| R14 | R14: a field whose type changed refuses the WHOLE load `kind_mismatch`; only a widening reads (SPEC-TABLES.md opening, §2.3, §2.11, kind `36`, §4 THE ONE WIDENING RULE and its edits table) | refuses `message-prior prior_restring_kind` (int64 read as string), twin `message-prior prior_kept64_inside` (int64 read as int64); refuses `message-prior prior_stamp_kind` (int64 read as timestamp), twin `message-prior prior_stamped_inside`; refuses `report r14_at_int64_as_timestamp` (int64 read as timestamp, file form), twin `report r14_features_twin`; refuses `report r14_optional_pointer_as_optional` (from `*T`), twin `report r16_optional_plain_as_optional`; refuses `report r14_child_value_as_pointer` (to `*T`), twin `report r14_features_twin` | `prior_kept64_inside`, `prior_restring_kind`, `prior_stamp_kind`, `prior_stamped_inside`, `r14_at_int64_as_timestamp`, `r14_child_value_as_pointer`, `r14_features_twin`, `r14_optional_pointer_as_optional`, `r16_optional_plain_as_optional` | #4764, #4769, #4773 | owed |
-| R15 | R15: a ranged announcement is checked per value: the base at the announcement, each value on the body (SPEC-TABLES.md §3.3, A RANGED ANNOUNCEMENT IS CHECKED PER VALUE) | refuses `message-prior prior_band_past` (245 against the reader's 200..240), twin `message-prior prior_band_inside` (the writer announces `uint8 \| min = 200, max = 250`, and 230 reads) | `prior_band_inside`, `prior_band_past` | #4764, #4769, #4773 | owed |
-| R16 | R16: optional is a widening and runs one way: `T` to `?T` passes, `?T` to `T` is refused by the baseline naming the field (SPEC-TABLES.md §2.3, §4, §18.2, §21.1; VERSIONING.md) | refuses `internal/baseline` `TestBaselineOptionalIsOneWay`, `TestRefusals/an_optional_field_made_plain`, `TestEvolutionTableFrames`; the lock, `TestLockOptionalAddRefuses`, twin `report r16_optional_plain_as_optional` (`Part` read as `?Part`, present) | `TestBaselineOptionalIsOneWay`, `r16_optional_plain_as_optional` | #4764, #4769, #4773 | owed |
-| R17 (widening) | R17: a new reader reads old data, never the other way: the baseline passes every widening of §4 (an integer kind to a wider one of the same signedness, `f32` to `f64`, `T` to `?T`; at a field, an arm, an element and a map key) and refuses a narrowing, a retype and `?T` to `T`; an old reader given a widened file refuses it `kind_mismatch` by name, lawfully (SPEC-TABLES.md §4 THE ONE WIDENING RULE and its edits table, §18.2; VERSIONING.md) | refuses `internal/baseline` `TestBaselinePassesEveryWidening` (every narrowing and retype refuses, naming the field; with the old refusal planted, every widening refuses), `TestRefusals/a_field's_kind_changed`, twin `internal/baseline` `TestBaselinePassesEveryWidening` (every widening passes in silence), `TestEvolutionTableFrames/a_scalar_kind_widened` (the read counts `widened`, the baseline passes) | `TestBaselinePassesEveryWidening`; the verdict passes on every widening row named | #4769, #4773 | owed |
-| R17 (kind 31) | R17: the newer reader reads old data, never the other way, so kind `31` (the escape) is HELD BY NAME AND NEVER WRITTEN, and a reader that meets it ANYWHERE (a field it cannot name, one it names, an arm, an element kind, a message announcement or body, under retain-unknown) refuses the WHOLE load, as for `33` and `34` (SPEC-TABLES.md §3 kind table, `31` IS HELD BY NAME, WHERE THE READER MEETS KIND `32`, §3.3 entry shapes; VERSIONING.md promise 6) | refuses `framing varevo_kind31_escape` (unnamed field, `refused`); `report escape_unnamed_field`, `escape_named_field`, `escape_arm`, `escape_element`, `varevo_kind31_report`, twin `framing fixed_array_rides_absent` (same unit and root, reads); refuses `retain varevo_kind31_retain`, `retain varevo_2hop_step1_v1`, `retain varevo_2hop_step2_v2` (owe `refused`), twin `retain varevo_retain_v3_via_v1`; refuses an announcement entry under kind `31`: `test/conformance/harness` `TestTheRetiredAndReservedKindsRefuseTheAnnouncement`; the engine, `internal/tablewire` `TestKindHeldEscapeRefuses`, twin `report varevo_v3_compat_as_v1`; `instance message_open` (`messagedemo ToolMessage`, the escape rows' unit, reads) | `TestKindHeldEscapeRefuses`; the verdict refused on every kind-31 row named | #4773 | owed |
-| R17 (flags) | R17: a mask bit at or above the reader's W refuses the load, file and message (SPEC-TABLES.md §4, §3.3; SPEC.md §4.2) | refuses `report r17_flags_past_width` (VarEvo2's Read and Exec read by tblvarevo1, variable form), twin `report r17_flags_inside_width` (Read and Write from the same writer); refuses `report r17_fixed_flags_past_width` (bit 17 of a 17-variant mask, fixed form), twin `report r17_fixed_flags_inside_width` (the unforged file); refuses `message-prior prior_flags_past` (the writer's Exec, message form), twin `message-prior prior_flags_inside` | `prior_flags_inside`, `prior_flags_past`, `r17_fixed_flags_inside_width`, `r17_fixed_flags_past_width`, `r17_flags_inside_width`, `r17_flags_past_width`; the R17 flag verdicts above | #4773 | owed |
 
-**Held on main.** These rules, decided in the same days, already have every
-row and test named on main, so they owe nothing:
+**Linked rows.** The corpus and tests in this tree hold these rules:
 
 | entry | rule (spec) | held by |
 |---|---|---|
@@ -339,21 +340,44 @@ row and test named on main, so they owe nothing:
 | GAP-3 | `fixed table`, `[]T`, `[N]?T`, bare `string`, `*bytes`, `*string` are productions (SPEC.md §4.2); gaps OC2, Zig2, Hs3 | grammar `accept/TypeSpellings` (#4706) |
 | GAP-4 | An `if` with no `else` ends at its `}`; `else` may open the next line (SPEC.md §4.2, If); gaps Sw14 | grammar `accept/IfBlocks` (#4706) |
 | GAP-5 | A table's qualification takes `integrity` and `json` too (SPEC.md §4.2); gaps Hs5 | grammar `accept/QualifiedBrace` (#4706) |
-| GAP-7 | A refusal is `refused\n` on every surface, a wire-refused row and a message row with no message wire included; a `.absent` there is an absence and never the refusal (ruling R13; test/conformance/README.md); gaps Sw4, OC6, ObjC3, Zig8, Hs12 | `TestWireRefusedSpelledRefusedScoresPass`; `blob_shared`, `blob_shared_string` (#4706) |
+| GAP-7 | An ordinary read refusal is `refused\n`, including a wire-refused row and a message row with no message wire. An empty `.absent` declares absence (ruling R13; test/conformance/README.md); gaps Sw4, OC6, ObjC3, Zig8, Hs12 | `TestWireRefusedSpelledRefusedScoresPass`; `blob_shared`, `blob_shared_string` (#4706) |
 | GAP-8 | The json-write absence marker is `<case>.json.absent` (README); gaps Sw12, Hs13 | `TestJsonWriteAbsentMarkerIsTheAnswerNamePlusAbsent` (#4706) |
 | GAP-9 | `make conformance-port` fails on any absence (§5); a port declares its gated keys by answering absent (README); gaps Zig3, OC14 | `TestCompleteRunRefusesEveryAbsence` (#4706) |
 | GAP-10 | First use counts every reference, skipped bytes included (SPEC-TABLES §3); gaps Sw5 | `framing skipped_ids_first_use`, `skipped_ids_out_of_order` (#4706) |
 | GAP-11 | A `tag` edit: `0` None, `n` the `n`-th arm; path steps through maps, keyed arrays and arms; `count` on an empty array takes the element default; `wide:`/`units` retired (FORMAT.md); gaps Sw6, Sw7, OC10, OC15, Zig10, Zig11, Zig12, Zig17 | `wref_`/`fref_`/`mref_`/`jref_union_tag_none`; the `write-refusal` rows' map, keyed and arm paths (#4706) |
 | GAP-12 | The definitions digest, pinned: leaf kinds (enum `7`), roles, row order, one-sided fill, `was` ids (FIXED-FORM-ALGORITHM §5.2; SPEC-TABLES §21); gaps Sw8, OC4, Zig15 | `testdata/conformance/fixed-digest/vector.txt` (`TestFixedDefinitionsDigestVector`) (#4706) |
 | GAP-13 | Synthetic layout ids; a timestamp lays as kind `5`; the union tag width (FIXED-FORM-ALGORITHM §1); gaps OC3, OC5, ObjC10 | the digest vector's layout; every `schema.lock` `layout=` (#4706) |
+| GAP-17 | A skipped value: label rules at every variable root, label grammar only at a fixed root; any other `&` key refuses at every root (SPEC-TABLES §16.7, R7); gaps OC8, OC12, ObjC5, ObjC9, Zig7, Hs10, Li10 | `skipped-label-fraction`, `skipped-label-misspelled`, `skipped-label-not-first` (#4501); `skipped-ampersand-key-variable`, `skipped-label-undefined-pointer-free` (#4757) |
+| FL-37 | R7 labels in a skipped value (SPEC-TABLES §16.7) | `skipped-label-undefined-pointer-free` (#4757) |
 | GAP-18 | Every key in a skipped value is capped at 255 bytes (SPEC-TABLES §16.2); gaps ObjC4, Zig9, Hs9, Li8 | `skipped-key-255-bytes`, `skipped-key-256-bytes` (#4706) |
 | GAP-20 | A union and its structural payload are two levels (SPEC-TABLES §4); gaps Zig5, Hs8, Li4 | `rr-depth-placed-union-map-128`, `-129` (#4706) |
 | SF-03, SF-04 | the variable `Save` and `Measure` check rows 1–2 on every field, not only on `\| required` fields (SPEC.md §5.1 rows 1–2) | `write-refusal` (`wref_range_*`, `wref_bits_wide*` on a fixed root); `sfv_bits_wide` / `sfv_bits_ok` on the variable root `TortureCook` (a plain non-required `bits(13)`, 8192 refused and 8191 written); a ranged non-required `int` on a variable root is owed: no corpus unit with a `min` / `max` on a variable root has a write-refusal path in the hand-coded legs (#4740) |
-| SF-07, SF-08 | the packet `Write` checks row 8 (text) and row 10 (compressed float) in every C# target, unity included (SPEC.md §5.1 rows 8, 10) | `write-refusal-packet` (`text_illformed`, `text_zero`, `text_long`); a compressed-float row (SF-08) is owed: `PacketWriteRefusal` declares no compressed float, and no C# leg runs this surface yet (#4740) |
+| SF-05, SF-06 | C and C++ debug builds assert the message save and measure write contract even when the fixed table exceeds the fixed-file record ceiling (SPEC.md §5.1 rows 1, 2, 10 and SPEC-TABLES §3.4) | `TestCMessageCeilingWriteAssert`, `TestCppMessageCeilingWriteAssert` and their `Compiled` twins. The compiled checks save and measure the same table with lawful values. A shared `write-refusal-message` case is owed until the harness has an initialized-value seed mode. The current surface seeds each value by loading a file, and this table has no file form (#4744). |
+| SF-07, SF-08 | the packet `Write` checks row 8 (text) and row 10 (compressed float) in every C# target, unity included (SPEC.md §5.1 rows 8, 10) | `write-refusal-packet` (`text_illformed`, `text_zero`, `text_long`); a compressed-float row (SF-08) is owed: `PacketWriteRefusal` declares no compressed float, and no C# leg runs this surface yet (#4740); Go runs the [accepted compressed-float endpoints](#compressed-float-packet-endpoints) |
 | SF-27 | the text read maps a deprecated enum variant to the field default (an element: None) (SPEC-TABLES §2.15 READ) | owed: the text-form corpus (`testdata/conformance/text`) carries strings only, so an enum text case needs the text surface extended (#4740) |
 | SF-32, SF-33 | tooling (moo-analyze run with no output, Luau bitpacker probe) (none: not a wire rule) | none (#4740) |
 | SF-09 to SF-15 | a write check reaches every carrier: a plain field, an optional, an array element, a union arm, a keyed slot (SPEC.md §5.1 rows 1–4, 8) | `write-refusal` (`wref_*`, `wref_var_*`, `wref_shapes_*`); on `TortureCook`, `sfv_opt_bits_wide` / `sfv_opt_bits_ok`, `sfv_elem_bits_wide` / `sfv_elem_bits_ok`, and `TestRustWriteRefusalReachesEveryCarrier` (#4501, #4740) |
+| SF-13–SF-15 accepted bounds | Variable table writers accept each carrier at its declared boundary (SPEC.md §5.1 rows 1–4 and 8) | [Accepted variable-table write bounds](#accepted-variable-table-write-bounds) |
+| R14 | R14: a field whose type changed refuses the WHOLE load `kind_mismatch`; only a widening reads (SPEC-TABLES.md opening, §2.3, §2.11, kind `36`, §4 THE ONE WIDENING RULE and its edits table) | refuses `message-prior prior_restring_kind` (int64 read as string), twin `message-prior prior_kept64_inside` (int64 read as int64); refuses `message-prior prior_stamp_kind` (int64 read as timestamp), twin `message-prior prior_stamped_inside`; refuses `report r14_at_int64_as_timestamp` (int64 read as timestamp, file form), twin `report r14_features_twin`; refuses `report r14_optional_pointer_as_optional` (from `*T`), twin `report r16_optional_plain_as_optional`; refuses `report r14_child_value_as_pointer` (to `*T`), twin `report r14_features_twin` (#4764) |
+| R15 | R15: a ranged announcement is checked per value: the base at the announcement, each value on the body (SPEC-TABLES.md §3.3, A RANGED ANNOUNCEMENT IS CHECKED PER VALUE) | refuses `message-prior prior_band_past` (245 against the reader's 200..240), twin `message-prior prior_band_inside` (the writer announces `uint8 \| min = 200, max = 250`, and 230 reads) (#4764) |
+| R16 | R16: optional is a widening and runs one way: `T` to `?T` passes, `?T` to `T` is refused by the baseline naming the field (SPEC-TABLES.md §2.3, §4, §18.2, §21.1; VERSIONING.md) | refuses `internal/baseline` `TestBaselineOptionalIsOneWay`, `TestRefusals/an_optional_field_made_plain`, `TestEvolutionTableFrames`; the lock, `TestLockOptionalAddRefuses`, twin `report r16_optional_plain_as_optional` (`Part` read as `?Part`, present) (#4764) |
+| R17 (widening) | R17: a new reader reads old data, never the other way: the baseline passes every widening of §4 (an integer kind to a wider one of the same signedness, `f32` to `f64`, `T` to `?T`; at a field, an arm, an element and a map key) and refuses a narrowing, a retype and `?T` to `T`; an old reader given a widened file refuses it `kind_mismatch` by name, lawfully (SPEC-TABLES.md §4 THE ONE WIDENING RULE and its edits table, §18.2; VERSIONING.md) | refuses `internal/baseline` `TestBaselinePassesEveryWidening` (every narrowing and retype refuses, naming the field; with the old refusal planted, every widening refuses), `TestRefusals/a_field's_kind_changed`, twin `internal/baseline` `TestBaselinePassesEveryWidening` (every widening passes in silence), `TestEvolutionTableFrames/a_scalar_kind_widened` (the read counts `widened`, the baseline passes) (#4769) |
+| R17 (kind 31) | R17: the newer reader reads old data, never the other way, so kind `31` (the escape) is HELD BY NAME AND NEVER WRITTEN, and a reader that meets it ANYWHERE (a field it cannot name, one it names, an arm, an element kind, a message announcement or body, under retain-unknown) refuses the WHOLE load, as for `33` and `34` (SPEC-TABLES.md §3 kind table, `31` IS HELD BY NAME, WHERE THE READER MEETS KIND `32`, §3.3 entry shapes; VERSIONING.md promise 6) | refuses `framing varevo_kind31_escape` (unnamed field, `refused`); `report escape_unnamed_field`, `escape_named_field`, `escape_arm`, `escape_element`, `varevo_kind31_report`, twin `framing fixed_array_rides_absent` (same unit and root, reads); refuses `retain varevo_kind31_retain`, `retain varevo_2hop_step1_v1`, `retain varevo_2hop_step2_v2` (owe `refused`), twin `retain varevo_retain_v3_via_v1`; refuses an announcement entry under kind `31`: `test/conformance/harness` `TestTheRetiredAndReservedKindsRefuseTheAnnouncement`; the engine, `internal/tablewire` `TestKindHeldEscapeRefuses`, twin `report varevo_v3_compat_as_v1`; `instance message_open` (`messagedemo ToolMessage`, the escape rows' unit, reads) (#4773) |
+| R17 (flags) | R17: a mask bit at or above the reader's W refuses the load, file and message (SPEC-TABLES.md §4, §3.3; SPEC.md §4.2) | refuses `report r17_flags_past_width` (VarEvo2's Read and Exec read by tblvarevo1, variable form), twin `report r17_flags_inside_width` (Read and Write from the same writer); refuses `report r17_fixed_flags_past_width` (bit 17 of a 17-variant mask, fixed form), twin `report r17_fixed_flags_inside_width` (the unforged file); refuses `message-prior prior_flags_past` (the writer's Exec, message form), twin `message-prior prior_flags_inside` (#4773) |
 | FL-38 | R8 id cap (SPEC-TABLES §3 (the id table); §3.3 (the sender)) | `frame_entries_4096`, `frame_entries_4097`; `tablewire.IdCapSchema`, `tablewire.AnnounceSchema`, `TestGoAnnouncementRefusesMoreThan4096Entries`, `TestCppAnnouncementRefusesMoreThan4096Entries` (#4685) |
+| FL-19 | deprecated enum element on the fixed form and compiled plan (SPEC-TABLES §2.15) | `sp-enum-elem-deprecated-array` (#4753) |
+| FL-25 | counted arrays born at their minimum (SPEC-TABLES §22.2, §2.13) | `sp-count-min-at`, `sp-count-min-below`, `sp-count-min-empty`, `sp-count-min-max`, `sp-count-min-over` (#4753) |
+| GAP-19 | A deprecated variant where no default is declared reads `None`, in every form (SPEC-TABLES §16.2; FIXED-FORM-ALGORITHM §4); gaps OC13, ObjC7, Li11 | `sp-enum-elem-deprecated-array`, `sp_enum_fixed_deprecated`, `sp_enum_evolved_deprecated` (#4689) |
+| GAP-22 | A JSON array under its counted minimum refuses (SPEC-TABLES §16.2, R10); gaps Hs11 | `sp-count-min-at`, `sp-count-min-below`, `sp-count-min-empty`, `sp-count-min-max`, `sp-count-min-over` (#4689, #4753) |
+| SF-21 | a writer refuses a counted array below its `Min` (SPEC.md §5.1 row 3) | `write-refusal-fixed` (`fref_count_min`, `fref_count_min_ok`) (#4753) |
+| GAP-26 | A float literal is a float64 first, then the field's width (SPEC.md §4.2); gaps Hs4 | `testdata/conformance/frontend/vector.txt` (`TestFrontEndVector`) (#4757) |
+| GAP-27 | Names are ASCII; a `was` alias hashes its UTF-8 bytes (SPEC.md §4.2); gaps Li1 | `testdata/conformance/frontend/vector.txt` (#4757) |
+| FL-05 | enum `null` and `"None"` are one value (SPEC-TABLES §16.2 (enum row)) | `sp-enum-none-name` (#4688) |
+| FL-09 | map key length uses its own `string(N)` bound, not `kTableJsonMaxKey` (SPEC-TABLES §16.2) | `TestTextMapKeyAboveNameCapReadsUnderItsOwnBound`, `sp-map-key-256-wide`, `sp-map-key-300-wide`, `sp-map-key-301-wide` (#4688) |
+| FL-27 | non-canonical base64 refuses (SPEC-TABLES §16.8, §16.2) | `base64-padding-*`, `base64-unpadded`, `sp-b64-escaped-noncanonical` (#4688) |
+| FL-12 | the read depth cap counts every container (SPEC-TABLES §16.2) | `rr-depth-*`, `sp-skip-depth-129`, `sp-skip-depth-130` (#4706, #4688); a flags array or text list nested at the depth limit still needs a shared row |
+| FL-31 | names some target cannot build are refused at check (SPEC.md §4.6) | `internal/check/buildable_names_test.go` (#4691) |
+| FL-33, FL-34, FL-35 | R2, R5, R9 (SPEC-TABLES §3.4 (the presence entry)) | `internal/ci` `TestRulingsR2R5R9PortRows`, `TestFixedLineageOptionalIntoBareRefusesKindMismatch` (#4680) |
 
 `GAP-26` and `GAP-27` are a FRONT-END vector, as `GAP-12`'s digest is: both rules
 bind what a port resolves from schema text (a default's bits, a wire id), so a
@@ -366,7 +390,7 @@ vector's test holds, so no language leg can differ on them.
 | gap | where the text says it |
 |---|---|
 | Sw10, a present optional table rides even when empty | SPEC-TABLES §22.2 |
-| Sw13, an `[E]T` arm payload | refused at check: SPEC-TABLES §2 ("What an arm may not be"); its grammar row is owed with `GAP-1` |
+| Sw13, an `[E]T` arm payload | SPEC-TABLES §2.6 refuses the union arm and §2.4 permits a table field. `TestGrammarCorpus` checks [`refuse/ArmKeyed.schema`](../testdata/conformance/grammar/refuse/ArmKeyed.schema) and [`accept/FieldKeyed.schema`](../testdata/conformance/grammar/accept/FieldKeyed.schema). |
 | Hs6, Li5, kind `16`'s header lies inside its own `L` | SPEC-TABLES §3; `framing keyed_header_crosses_L` |
 | Li7, a count under the minimum on the wire | SPEC-TABLES §22.2 (`count_over_bound` in every form) |
 | Li9, the read depth cap | SPEC-TABLES §16.2 (129 containers read, the 130th refuses); its rows are owed with `FL-12` |
@@ -385,6 +409,32 @@ evolution", the close of §4's counters and the opening of §6.6; USAGE.md's enu
 width; COMPETITION.md's never-clobber line. Each now promises a newer reader
 on older data and no more: an older reader given newer data may refuse it by
 name, lawfully.
+
+### Compressed float packet endpoints
+
+[`RatioEndpoint`](../test/packet-cfloat-endpoints/PacketRatio.schema) declares a closed
+`[0, 1]` range at resolution `0.01` ([packet wire §2.5](PACKET-WIRE-ALGORITHM.md#25-compressed-float-write)).
+The [endpoint cases](../test/packet-cfloat-endpoints/ratio-endpoints.txt) pin the seven-bit
+step indices 0 and 100 and their zero-padded packet bytes `00` and `64`.
+`make packet-cfloat-endpoints-go` writes each endpoint through the generated Go
+packet writer, checks the exact byte, and reads back the original value.
+
+
+### Accepted variable-table write bounds
+
+[The focused manifest](../testdata/conformance/table-write-bounds/ACCEPTED-WRITE-BOUNDS.txt)
+loads the lawful `TortureVarWref` seed, changes one field or arm per case, and
+requires its variable-form measure and save to complete.
+
+| Carrier | Accepted cases |
+|---|---|
+| Present optional counted array of maximum length 3 | `sfw_opt_arr_ok` |
+| Direct `bits(13)` union arm at 8191 | `sfw_arm_bits_ok` |
+| Direct ranged integer union arm at 0 and 10 | `sfw_arm_range_min`, `sfw_arm_range_max` |
+| Direct string union arm of maximum length 8 | `sfw_arm_str_ok` |
+| Enum-keyed `Beta` slot at 0 and 50 | `sfw_slot_min`, `sfw_slot_max` |
+
+Run these cases with `make table-write-bounds-go`.
 
 ### Declared deprecated enum writers
 

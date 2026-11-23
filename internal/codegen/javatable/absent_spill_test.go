@@ -16,9 +16,9 @@ import (
 // TestJavaAbsentSpillEveryMarkerGoesThroughTheAbsenceWriters holds the
 // conformance driver's one absence path: a case this leg cannot answer is
 // written by spillAbsent or its named sibling spillAbsentReason, and no
-// surface writes a `.absent` marker itself. The named sibling is what carries
-// blob_shared (docs/SPEC-TABLES.md §2.5), so the blob refusal is not a fourth,
-// unsabotaged writer beside the two the absent negative control disables.
+// surface writes an absence marker itself. On the wire surface, fixed and
+// variable codecs emit the explicit R13 answer when the public read refuses.
+// A missing codec writes an empty absence marker.
 func TestJavaAbsentSpillEveryMarkerGoesThroughTheAbsenceWriters(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
@@ -41,8 +41,17 @@ func TestJavaAbsentSpillEveryMarkerGoesThroughTheAbsenceWriters(t *testing.T) {
 	if strings.Contains(body, ".absent") {
 		t.Error("surfaceWire writes an absence marker itself instead of calling an absence writer")
 	}
-	if !strings.Contains(body, `spillAbsentReason(out, f[1], "blob_shared")`) {
-		t.Error("surfaceWire does not answer the strict blob_shared refusal by its name")
+	for _, guard := range []string{
+		`read < 0 || fixed.flag(report, "refused")`,
+		`value == null || codec.flag(report, "refused")`,
+	} {
+		answer := regexp.MustCompile(`if \(` + regexp.QuoteMeta(guard) + `\) \{\s*(?://[^\n]*\n\s*)?spill\(out, f\[1\], "refused\\n"\);\s*continue;\s*\}`)
+		if !answer.MatchString(body) {
+			t.Errorf("surfaceWire does not emit the explicit R13 answer when %s", guard)
+		}
+	}
+	if !strings.Contains(body, `if (codec == null) { spillAbsent(out, f[1]); continue; }`) {
+		t.Error("surfaceWire does not declare the missing codec absent")
 	}
 
 	surfaces := regexp.MustCompile(`private static int (surface[A-Za-z]+)\(`).FindAllStringSubmatch(driver, -1)
@@ -59,8 +68,8 @@ func TestJavaAbsentSpillEveryMarkerGoesThroughTheAbsenceWriters(t *testing.T) {
 
 // TestJavaBlobSharedConformanceDriverAnswersTheWireRefusal runs the real
 // conformance driver over a manifest with one strict blob_shared instance and
-// one instance whose unit is off the classpath. The first must answer the
-// named absence blob_shared, the second the unnamed absence, and the wire
+// one instance whose unit is off the classpath. The first must answer
+// `refused` (ruling R13), the second the unnamed absence, and the wire
 // surface must be green: the strict read's refusal (docs/SPEC-TABLES.md §2.5)
 // is the wire-refused row's answer, never a failed case.
 func TestJavaBlobSharedConformanceDriverAnswersTheWireRefusal(t *testing.T) {
@@ -141,15 +150,15 @@ func TestJavaBlobSharedConformanceDriverAnswersTheWireRefusal(t *testing.T) {
 		t.Fatalf("the wire surface failed: %v\n%s", err, run)
 	}
 
-	named, err := os.ReadFile(filepath.Join(out, "blob_shared.absent"))
+	refused, err := os.ReadFile(filepath.Join(out, "blob_shared"))
 	if err != nil {
-		t.Fatalf("the strict blob_shared refusal wrote no named absence: %v", err)
+		t.Fatalf("the strict blob_shared refusal wrote no answer: %v", err)
 	}
-	if string(named) != "blob_shared" {
-		t.Errorf("blob_shared.absent = %q, want %q", named, "blob_shared")
+	if string(refused) != "refused\n" {
+		t.Errorf("blob_shared = %q, want %q", refused, "refused\n")
 	}
-	if _, err := os.Stat(filepath.Join(out, "blob_shared")); err == nil {
-		t.Error("blob_shared wrote bytes beside its refusal")
+	if _, err := os.Stat(filepath.Join(out, "blob_shared.absent")); err == nil {
+		t.Error("blob_shared wrote an absence beside its refusal")
 	}
 	missing, err := os.ReadFile(filepath.Join(out, "missing_leg.absent"))
 	if err != nil {

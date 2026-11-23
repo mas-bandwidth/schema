@@ -205,6 +205,10 @@ abstract final class TableFixedRefusal {
   static const int countOverBound = 22; // a count past its bound (§4)
   static const int lengthOverBound = 23; // a length past its bound (§4)
 
+  /// A WRITER'S OPTIONAL READ INTO A READER'S BARE FIELD refuses by name: the
+  /// reader cannot hold an absent value (rulings 2026-11-22, R2).
+  static const int wrongKind = 24;
+
   /// The refusal's own name, for a report a person reads.
   static String name(int refusal) {
     switch (refusal) {
@@ -256,6 +260,8 @@ abstract final class TableFixedRefusal {
         return 'count_over_bound';
       case lengthOverBound:
         return 'length_over_bound';
+      case wrongKind:
+        return 'kind_mismatch';
       default:
         return '???';
     }
@@ -425,7 +431,7 @@ final class TableFixedLayout {
 
   /// THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
   /// the no-payload variant 32, and the ONE kind this form's layout adds, the
-  /// optional wrapper 35. 31 is §3's body framing escape, 33 is retired and 34
+  /// optional wrapper 35. 31 is held by name and never written (R17), 33 is retired and 34
   /// is reserved: none is a kind a declaration spells. A KIND OUTSIDE
   /// THIS SET IS A REFUSAL, not a leaf to step over — the form byte versions
   /// the kinds too, so a kind this build does not know means a form byte this
@@ -822,6 +828,10 @@ final class TableFixedPlan {
   /// layout_record_too_large (§5.2) and never lands a short read
   bool tooLarge = false;
 
+  /// A WRITER'S OPTIONAL READ INTO A BARE FIELD: refuses the plan whole as
+  /// kind_mismatch (rulings 2026-11-22, R2)
+  bool optionalIntoBare = false;
+
   /// the sixteen-byte conversion scratch the float rung widens through
   final ByteData conv = ByteData(16);
 }
@@ -988,6 +998,18 @@ List<TableFixedLineagePlan> tableFixedLineagePlans(
           empty,
           0,
           TableFixedRefusal.layoutRecordTooLarge,
+        );
+        break;
+      }
+      if (made == -4) {
+        lane = TableFixedLineagePlan(
+          empty,
+          0,
+          empty,
+          0,
+          empty,
+          0,
+          TableFixedRefusal.wrongKind,
         );
         break;
       }
@@ -1599,6 +1621,10 @@ abstract final class TableFixedCompiler {
     // still carrying the row's own guard and ordinal (§5.9 #13), so an optional
     // under a union arm never reports present for an arm the tag did not name —
     // and then the payload lands under that same guard.
+    if (theirKind == 35 && myKind != 35) {
+      plan.optionalIntoBare = true;
+      return;
+    }
     if (myKind == 35 && theirKind != 35) {
       push(plan, TableFixedOp.present, theirAt, auxAt, 1, 0, guard, arg, 0);
       compileEntry(
@@ -2140,6 +2166,7 @@ abstract final class TableFixedCompiler {
     plan.remapUsed = 0;
     plan.overflow = false;
     plan.tooLarge = false;
+    plan.optionalIntoBare = false;
     // THE WRITER'S DECLARED RECORD (§5.2's record := x.root.size): every
     // entry this compile pushes is bounded by it and by nothing the file
     // said. theirs is parsed by the caller, from the lock's own bytes.
@@ -2175,6 +2202,9 @@ abstract final class TableFixedCompiler {
     // caller names the entry's lane rather than growing and retrying.
     if (plan.tooLarge) {
       return -3;
+    }
+    if (plan.optionalIntoBare) {
+      return -4;
     }
     if (plan.overflow) {
       return -1;
@@ -2728,7 +2758,9 @@ bool announceRead(TableVocabulary vocabulary, Uint8List bytes, TableReport repor
 }
 
 /// tableMessageKnownKind reports whether a kind is one of the closed set.
-bool tableMessageKnownKind(int kind) => kind >= 0 && (kind <= 32 || kind == 36);
+/// 31 is held by name and never written (R17): an announcement naming it is
+/// malformed, as one naming 33 or 34 is.
+bool tableMessageKnownKind(int kind) => kind >= 0 && (kind <= 30 || kind == 32 || kind == 36);
 
 /// tableMessageSameEntry reports whether ONE entry's wire bytes equal an
 /// earlier entry's signature (docs/SPEC-TABLES.md §3.3): a repeated entry is
@@ -2787,7 +2819,7 @@ int tableMessageKindWidth(int kind) {
 /// tableMessageSkipField steps over ONE unknown body field's payload by its
 /// kind (docs/SPEC-TABLES.md §3.3), the reference's Skip(kind) rule: a
 /// fixed-width scalar is its width, a reference or a union is a LEB, and a
-/// length-prefixed slice — 12, 13, 14, 16, 31, 32 — is a LEB length then
+/// length-prefixed slice — 12, 13, 14, 16, 32 — is a LEB length then
 /// that many bytes. Answers the offset past the payload, or -1
 /// where the bytes run out or a kind this reader cannot step is named.
 bool tableMessageAnnounceUtf8(Uint8List b, int start, int end) {
@@ -2815,7 +2847,6 @@ bool tableMessageAnnounceUtf8(Uint8List b, int start, int end) {
 
 int tableMessageSkipFramed(Uint8List bytes, ByteData view, int start, int end, int kind, List<int> ids, List<int> nextRef, int depth) {
   if (kind == 12) return tableMessageAnnounceUtf8(bytes, start, end) ? end : -1;
-  if (kind == 31) return end;
   if (kind == 32) return start == end ? end : -1;
   if (kind == 13) {
     if (depth >= 128) return -1;
@@ -2907,7 +2938,6 @@ int tableMessageSkipChecked(Uint8List bytes, ByteData view, int at, int end, int
     case 13:
     case 14:
     case 16:
-    case 31:
     case 32:
       final n = tableMessageLeb(bytes, at, end);
       if (!n.$3 || n.$1 < 0 || n.$2 + n.$1 > end) return -1;
@@ -3318,11 +3348,6 @@ bool tableMessageSkip(TableMessageReader r, int kind, TableMessageShape s, [int 
       // ILL-FORMED TEXT, OR A ZERO BYTE, IS DAMAGE ON THE SKIP PATH TOO
       // (docs/SPEC-TABLES.md §3.3, §4): reuse the named read's own check.
       return tableTextValid(r.bits.buffer, start, n);
-    case 31:
-      if (!r.bits.align()) return false;
-      final n = r.bits.get(32);
-      if (r.bits.failed) return false;
-      return r.bits.skip(n * 8);
     case 10:
       // A FLOAT IS FINITE ON THE SKIP PATH TOO (docs/SPEC-TABLES.md §3.3):
       // a raw NaN or infinity is refused on its bits, and a quantized index
@@ -3675,6 +3700,7 @@ bool mixedEntitySaveMessageBody(TableBitWriter w, MixedEntity value) {
   {
     if (value.damage != 0) {
       w.put(42, tableMessageRefBits);
+      assert((value.damage >>> 8) == 0);
       w.put(value.damage - 0, 8);
     }
   }
@@ -4005,6 +4031,7 @@ bool mixedEntityLoadMessageBody(TableMessageReader r, MixedEntity value) {
             if (!tableMessageRangedHolds(entry.kind, shape.base, value.damage)) { r.report.Refuse('out_of_range'); return false; }
           }
         }
+        if ((value.damage >>> 8) != 0) { r.report.Refuse('out_of_range'); return false; }
         if (exact && !(value.damage != 0)) { r.report.Damage(); return false; } // a field stored at its default (§4)
         break;
       }
@@ -5734,6 +5761,7 @@ void mixedEntityFixedWriteBody(
   view.setInt32(at + 36, value.health, Endian.little);
   assert(value.weapon >= 0 && value.weapon <= 15);
   view.setUint8(at + 40, value.weapon);
+  assert((value.damage >>> 8) == 0);
   view.setUint64(at + 41, value.damage, Endian.little);
   view.setUint8(at + 49, value.moving ? 1 : 0);
   view.setUint8(at + 50, value.firing ? 1 : 0);
@@ -5837,6 +5865,10 @@ void mixedEntityFixedDecode(
     report.refused = TableFixedRefusal.outOfRange;
   }
   value.damage = view.getUint64(at + 41, Endian.little);
+  if ((value.damage >>> 8) != 0) {
+    value.damage &= 0xff;
+    report.refused = TableFixedRefusal.outOfRange;
+  }
   {
     final b = view.getUint8(at + 49);
     if (b > 1) {

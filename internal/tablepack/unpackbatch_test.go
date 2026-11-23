@@ -21,7 +21,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
-const batchSchema = "package batch\n\nfixed table Player {\n\tlevel int32 | min = 0, max = 1000\n}\n"
+const batchSchema = "package unpackbatch\n\nfixed table Player {\n\tlevel int32 | min = 0, max = 1000\n}\n"
 
 func put(t *testing.T, path, data string) {
 	t.Helper()

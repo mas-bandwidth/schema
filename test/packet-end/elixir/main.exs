@@ -11,6 +11,6 @@ base =
     Path.expand("../../../build/packet-end/elixir", __DIR__)
 
 Code.require_file("PacketRuntime.ex", base)
-Code.require_file("End.ex", base)
+Code.require_file("PacketEnd.ex", base)
 Code.require_file("suite.exs", __DIR__)
 PacketEndTest.run(vectors)

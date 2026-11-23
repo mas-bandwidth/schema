@@ -1,5 +1,5 @@
 defmodule PacketEndTest do
-  alias Packetend.{End, EndFile}
+  alias Packetend.{End, PacketEnd}
 
   def check(true, _what), do: :ok
 
@@ -27,12 +27,12 @@ defmodule PacketEndTest do
 
     for {name, packet, verdict} <- cases do
       check(
-        EndFile.read_end(packet, bits(dir, name)) == verdict,
+        PacketEnd.read_end(packet, bits(dir, name)) == verdict,
         "#{name} at its bit count"
       )
 
       check(
-        EndFile.read_end(packet, byte_size(packet) * 8) == verdict,
+        PacketEnd.read_end(packet, byte_size(packet) * 8) == verdict,
         "#{name} at its byte length"
       )
     end
@@ -40,7 +40,7 @@ defmodule PacketEndTest do
     trailing = vector(dir, "trailing.bin")
 
     check(
-      EndFile.read_end_bits(trailing, 3) == {:ok, %End{value: 3}, 3},
+      PacketEnd.read_end_bits(trailing, 3) == {:ok, %End{value: 3}, 3},
       "read_end_bits/2 reports the bits consumed without ending the packet"
     )
 

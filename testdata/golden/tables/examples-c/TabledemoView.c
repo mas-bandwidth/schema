@@ -2,6 +2,12 @@
    Schema: https://github.com/mas-bandwidth/schema — to change this file, edit the .schema source and run `schema generate`.
    SPDX-License-Identifier: NONE — this generated output is yours. */
 #include "TabledemoView.h"
+static const tabledemo_table_field_info_t schema_tabledemo_min_pick_arm_field_few_[] = {
+    { "few", "few", "uint32", 0xdcc67d18feea8c19ull, 8, 1, 0, 1, 0, 0, 4, (uint32_t) offsetof( tabledemo_min_pick_t, as.few.value ), (uint32_t) sizeof( ( (tabledemo_min_pick_t *) 0 )->as.few.value[0] ), (uint32_t) offsetof( tabledemo_min_pick_t, as.few.value_count ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 2, 0, NULL },
+};
+static const tabledemo_table_field_info_t schema_tabledemo_min_pick_arm_field_other_[] = {
+    { "other", "other", "int32", 0x0a24ad61c2562a55ull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_min_pick_t, as.other ), (uint32_t) sizeof( ( (tabledemo_min_pick_t *) 0 )->as.other ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
+};
 const tabledemo_unit_view_info_t * schema_tabledemo_unit_view_( void )
 {
     static const tabledemo_view_variant_t Difficulty_view_variants[] = {
@@ -23,6 +29,13 @@ const tabledemo_unit_view_info_t * schema_tabledemo_unit_view_( void )
         { 1, "Interceptor", 0xae61a6cbe88c2cf4ull, NULL, NULL, NULL, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { 2, "Gunship", 0x334d24e1420dbc1full, NULL, NULL, NULL, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { 3, "Freighter", 0x6c2321a3d00e23dbull, NULL, NULL, NULL, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
+    };
+    static const char * const Mood_view_variant1_tags[] = { "deprecated" };
+    static const tabledemo_view_variant_t Mood_view_variants[] = {
+        { 0, "None", 0, NULL, NULL, NULL, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
+        { 1, "Calm", 0xdfa47a9ce9ac16d6ull, NULL, NULL, NULL, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
+        { 2, "Old", 0x3018cd19bf898cd6ull, NULL, NULL, NULL, TABLEDEMO_TABLE_DOC_NONE, 1, Mood_view_variant1_tags },
+        { 3, "Fierce", 0x199c482b49ef9acbull, NULL, NULL, NULL, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
     };
     static const tabledemo_view_variant_t ShipType_view_variants[] = {
         { 0, "None", 0, NULL, NULL, NULL, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
@@ -54,10 +67,16 @@ const tabledemo_unit_view_info_t * schema_tabledemo_unit_view_( void )
         { 1, "buff", 0xffb5be9be2e469ccull, "Buff", &schema_tabledemo_buff_info_, NULL, "A multiplier that rides while the effect is live.", 1, Effect_view_variant0_tags },
         { 2, "debuff", 0x13cdc5ede73d2fd7ull, "Debuff", &schema_tabledemo_debuff_info_, NULL, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
     };
+    static const tabledemo_view_variant_t MinPick_view_variants[] = {
+        { 0, "None", 0, NULL, NULL, NULL, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
+        { 1, "few", 0xdcc67d18feea8c19ull, "[2..4]uint32", NULL, schema_tabledemo_min_pick_arm_field_few_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
+        { 2, "other", 0x0a24ad61c2562a55ull, "int32", NULL, schema_tabledemo_min_pick_arm_field_other_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
+    };
     static const tabledemo_view_vocabulary_t enums[] = {
         { "Difficulty", "Pack.schema", 3, 8, 4, Difficulty_view_variants, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { "Grade", "Tables.schema", 3, 8, 4, Grade_view_variants, "A profile's standing, ranked low to high.", 1, Grade_view_tags },
         { "Hull", "Keyed.schema", 3, 8, 4, Hull_view_variants, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
+        { "Mood", "Tables.schema", 3, 8, 4, Mood_view_variants, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { "ShipType", "Pack.schema", 3, 8, 4, ShipType_view_variants, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { "Team", "Keyed.schema", 3, 8, 4, Team_view_variants, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { "Weapon", "Keyed.schema", 3, 8, 4, Weapon_view_variants, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
@@ -67,6 +86,7 @@ const tabledemo_unit_view_info_t * schema_tabledemo_unit_view_( void )
     };
     static const tabledemo_view_vocabulary_t unions[] = {
         { "Effect", "Tables.schema", 2, 8, 3, Effect_view_variants, "What a weapon does to a target beyond its damage.", 1, Effect_view_tags },
+        { "MinPick", "Tables.schema", 2, 8, 3, MinPick_view_variants, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
     };
     static const tabledemo_view_type_t types[] = {
         { "Attachment", "Tables.schema", 0, &schema_tabledemo_attachment_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
@@ -77,12 +97,18 @@ const tabledemo_unit_view_info_t * schema_tabledemo_unit_view_( void )
     static const char * const WeaponConfig_view_tags[] = { "designer_facing" };
     static const tabledemo_view_type_t tables[] = {
         { "ArchiveConfig", "Nested.schema", 1, &schema_tabledemo_archive_config_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
+        { "CountedMin", "Tables.schema", 1, &schema_tabledemo_counted_min_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
+        { "FloatBound", "Tables.schema", 1, &schema_tabledemo_float_bound_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { "GlobalSettings", "Pack.schema", 1, &schema_tabledemo_global_settings_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { "GunnerConfig", "Keyed.schema", 1, &schema_tabledemo_gunner_config_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { "GunnerSettings", "Pack.schema", 1, &schema_tabledemo_gunner_settings_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { "HullConfig", "Keyed.schema", 1, &schema_tabledemo_hull_config_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { "KeyedConfig", "Keyed.schema", 1, &schema_tabledemo_keyed_config_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { "LoadoutConfig", "Tables.schema", 1, &schema_tabledemo_loadout_config_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
+        { "MinArmFix", "Tables.schema", 1, &schema_tabledemo_min_arm_fix_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
+        { "MinPlainFix", "Tables.schema", 1, &schema_tabledemo_min_plain_fix_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
+        { "MoodField", "Tables.schema", 1, &schema_tabledemo_mood_field_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
+        { "Moods", "Tables.schema", 1, &schema_tabledemo_moods_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { "PackConfig", "Pack.schema", 1, &schema_tabledemo_pack_config_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { "Patrol", "Guarded.schema", 1, &schema_tabledemo_patrol_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
         { "ProfileConfig", "Tables.schema", 1, &schema_tabledemo_profile_config_info_, TABLEDEMO_TABLE_DOC_NONE, 0, NULL },
@@ -104,10 +130,10 @@ const tabledemo_unit_view_info_t * schema_tabledemo_unit_view_( void )
     };
     static const tabledemo_unit_view_info_t info = { "tabledemo", 0x5c9bc5717146f630ull,
         4, types,
-        19, tables,
-        6, enums,
+        25, tables,
+        7, enums,
         1, flags_decls,
-        1, unions,
+        2, unions,
         3, constants };
     return &info;
 }

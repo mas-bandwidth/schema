@@ -21,6 +21,101 @@
 
 package tabledemo
 
+import (
+	"unsafe"
+)
+
+// The BLITTABLE records: one per record the block form touches, laid out to
+// the C ABI with GENERATED PADDING FIELDS wherever the layout has interior
+// padding (mas-bandwidth/schema docs/SPEC-TABLES.md §19.3). Explicit padding is chosen over relying
+// on Go's own inter-field padding matching C's, because that is an
+// assumption, and an assumption is what this form exists to delete: the
+// padding puts every field where the model says, and the init below proves
+// this runtime agrees.
+//
+// They take a CLAIMED SUFFIX — <Name>Row for a row and <Table>BlockProjection
+// for a projection (§11) — because the package already holds a struct of each
+// declaration's name, which is the table wire's storage, and one declaration
+// cannot be two types.
+
+// CountedMinBlockProjection — the block PROJECTION: the table's own instance as it
+// sits at the front of a block, opening with the generated PROLOGUE and
+// carrying, per out-of-line array, the triple that says where its rows are.
+// It is a record like any other and follows the same C ABI rule (§19.3).
+//
+// It is a SEPARATE record from CountedMinRow: a table can be both a block root and
+// another block's row, and the two differ by the prologue.
+type CountedMinBlockProjection struct {
+	Magic        uint64 // generated: identifies a schema block
+	BuildVersion uint64 // generated: the unit's build version (mas-bandwidth/schema docs/SPEC-TABLES.md §20)
+	ByteOrder    uint64 // generated: 1 little, 2 big
+	Few          [5]uint32
+	FewCount     int32
+}
+
+// FloatBoundBlockProjection — the block PROJECTION: the table's own instance as it
+// sits at the front of a block, opening with the generated PROLOGUE and
+// carrying, per out-of-line array, the triple that says where its rows are.
+// It is a record like any other and follows the same C ABI rule (§19.3).
+//
+// It is a SEPARATE record from FloatBoundRow: a table can be both a block root and
+// another block's row, and the two differ by the prologue.
+type FloatBoundBlockProjection struct {
+	Magic        uint64 // generated: identifies a schema block
+	BuildVersion uint64 // generated: the unit's build version (mas-bandwidth/schema docs/SPEC-TABLES.md §20)
+	ByteOrder    uint64 // generated: 1 little, 2 big
+	Level        float32
+	_            [4]byte // generated padding
+}
+
+// MoodsBlockProjection — the block PROJECTION: the table's own instance as it
+// sits at the front of a block, opening with the generated PROLOGUE and
+// carrying, per out-of-line array, the triple that says where its rows are.
+// It is a record like any other and follows the same C ABI rule (§19.3).
+//
+// It is a SEPARATE record from MoodsRow: a table can be both a block root and
+// another block's row, and the two differ by the prologue.
+type MoodsBlockProjection struct {
+	Magic        uint64 // generated: identifies a schema block
+	BuildVersion uint64 // generated: the unit's build version (mas-bandwidth/schema docs/SPEC-TABLES.md §20)
+	ByteOrder    uint64 // generated: 1 little, 2 big
+	Row          [4]Mood
+	RowCount     int32
+}
+
+// MoodFieldBlockProjection — the block PROJECTION: the table's own instance as it
+// sits at the front of a block, opening with the generated PROLOGUE and
+// carrying, per out-of-line array, the triple that says where its rows are.
+// It is a record like any other and follows the same C ABI rule (§19.3).
+//
+// It is a SEPARATE record from MoodFieldRow: a table can be both a block root and
+// another block's row, and the two differ by the prologue.
+type MoodFieldBlockProjection struct {
+	Magic        uint64 // generated: identifies a schema block
+	BuildVersion uint64 // generated: the unit's build version (mas-bandwidth/schema docs/SPEC-TABLES.md §20)
+	ByteOrder    uint64 // generated: 1 little, 2 big
+	Mood         Mood
+	_            [1]byte // generated padding
+	Tail         uint16
+	_            [4]byte // generated padding
+}
+
+// MinPlainFixBlockProjection — the block PROJECTION: the table's own instance as it
+// sits at the front of a block, opening with the generated PROLOGUE and
+// carrying, per out-of-line array, the triple that says where its rows are.
+// It is a record like any other and follows the same C ABI rule (§19.3).
+//
+// It is a SEPARATE record from MinPlainFixRow: a table can be both a block root and
+// another block's row, and the two differ by the prologue.
+type MinPlainFixBlockProjection struct {
+	Magic        uint64 // generated: identifies a schema block
+	BuildVersion uint64 // generated: the unit's build version (mas-bandwidth/schema docs/SPEC-TABLES.md §20)
+	ByteOrder    uint64 // generated: 1 little, 2 big
+	Few          [4]uint32
+	FewCount     int32
+	_            [4]byte // generated padding
+}
+
 // table RootConfig has NO block form: WeaponConfig.effect is a union, and a block's blittable C# form is Sequential with generated padding, which cannot overlay arms (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
@@ -36,3 +131,617 @@ package tabledemo
 // table ProfileConfig has NO block form: WeaponConfig.effect is a union, and a block's blittable C# form is Sequential with generated padding, which cannot overlay arms (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
 // Its wire (§3) is unaffected — only this projection is absent, and it is
 // absent by construction rather than by refusal.
+
+// CountedMinBlockMaxBytes is the storage a PRODUCER of this block allocates, sized
+// from the declared maxima (mas-bandwidth/schema docs/SPEC-TABLES.md §19.1). A Go consumer does
+// not allocate a block — the bytes are handed to it — but it caps by this: a
+// playback buffer, a recording, a scratch copy all size from the generated
+// constant rather than from a number a person wrote down beside it.
+const CountedMinBlockMaxBytes int64 = 64
+
+// CountedMinBlock is CountedMin's block: a pointer and a length, and then rows in place.
+// Opening one is ONE check and no copy; reading a row is one add (§19.2).
+//
+// The bytes belong to the CONSUMER — a []byte it owns, an mmap, or memory a
+// producer handed across. Nothing here allocates.
+//
+// A block is valid until the next fill over the SAME storage, which
+// invalidates every block over it and every row pointer taken from one.
+type CountedMinBlock struct {
+	Base       unsafe.Pointer             // the extent's base, 64-byte aligned
+	Projection *CountedMinBlockProjection // the projection, at offset 0
+	Bytes      int64                      // the extent in use
+}
+
+// ---- block fill path: begin ----
+// ---- block fill path: end ----
+// CountedMinBlockOpen is the bool convenience for the handle's typed Open error.
+func CountedMinBlockOpen(block *CountedMinBlock, base unsafe.Pointer, bytes int64) bool {
+	return block.Open(base, bytes) == nil
+}
+
+// Open reads all prologue and layout words bytewise before the final base
+// alignment check. Every refusal names the first failed clause in SPEC §19.2.
+func (block *CountedMinBlock) Open(base unsafe.Pointer, bytes int64) error {
+	*block = CountedMinBlock{}
+	if _, err := tableBlockOpenHeader(base, bytes, 48); err != nil {
+		return err
+	}
+	used := int64(48)
+	padding := (64 - (used % 64)) % 64
+	if padding > bytes-used {
+		return TableRefuseTruncated
+	}
+	used += padding
+	if uintptr(base)%64 != 0 {
+		return TableRefuseUnalignedBase
+	}
+	block.Base = base
+	block.Projection = (*CountedMinBlockProjection)(base)
+	block.Bytes = used
+	return nil
+}
+
+// CountedMinCounts is gathered before Begin; clamping is the caller's policy.
+type CountedMinCounts struct {
+}
+
+// CountedMinBlockStorage owns a maximum-sized extent. Do not copy an initialized storage.
+type CountedMinBlockStorage struct {
+	base       unsafe.Pointer
+	allocation []byte
+	allocator  TableBlockAllocator
+}
+
+func (s *CountedMinBlockStorage) Create(a TableBlockAllocator) bool {
+	if s == nil || s.allocation != nil || a.Alloc == nil || a.Free == nil {
+		return false
+	}
+	raw := a.Alloc(CountedMinBlockMaxBytes + 63)
+	if int64(len(raw)) < CountedMinBlockMaxBytes+63 {
+		if raw != nil {
+			a.Free(raw)
+		}
+		return false
+	}
+	s.allocation = raw
+	s.allocator = a
+	s.base = tableBlockAlign64(raw)
+	return true
+}
+func (s *CountedMinBlockStorage) Destroy() {
+	if s != nil && s.allocation != nil {
+		s.allocator.Free(s.allocation)
+		*s = CountedMinBlockStorage{}
+	}
+}
+
+// ---- block fill path: begin ----
+// CountedMinBlockBegin writes only the prologue and triples, never rows or padding.
+// Storage and all counts are checked before any byte of the extent changes.
+func CountedMinBlockBegin(b *CountedMinBlock, s *CountedMinBlockStorage, c CountedMinCounts, refusal *TableBlockRefusal) bool {
+	if refusal != nil {
+		*refusal = TableBlockRefusal{}
+	}
+	if b == nil {
+		return false
+	}
+	if s == nil || s.base == nil {
+		return false
+	}
+	p := (*CountedMinBlockProjection)(s.base)
+	p.Magic = TableBlockMagic
+	p.BuildVersion = BuildVersion
+	p.ByteOrder = TableBlockByteOrder
+	offset := int64(48)
+	*b = CountedMinBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}
+	return true
+}
+
+func CountedMinBlockBytes(b *CountedMinBlock) int64 {
+	if b == nil || b.Projection == nil {
+		return 0
+	}
+	used := int64(48)
+	return (used + 63) &^ int64(63)
+}
+
+// ---- block fill path: end ----
+
+// Type is this block's descriptors: constant data, so a reflective read costs
+// a lookup and not a parse. The row layouts hang off the element column
+// rather than taking names of their own, so a walker reaches every record
+// through the graph.
+func (b *CountedMinBlock) Type() *TableBlockInfo { return &tableBlockRecords[0] }
+
+// FloatBoundBlockMaxBytes is the storage a PRODUCER of this block allocates, sized
+// from the declared maxima (mas-bandwidth/schema docs/SPEC-TABLES.md §19.1). A Go consumer does
+// not allocate a block — the bytes are handed to it — but it caps by this: a
+// playback buffer, a recording, a scratch copy all size from the generated
+// constant rather than from a number a person wrote down beside it.
+const FloatBoundBlockMaxBytes int64 = 64
+
+// FloatBoundBlock is FloatBound's block: a pointer and a length, and then rows in place.
+// Opening one is ONE check and no copy; reading a row is one add (§19.2).
+//
+// The bytes belong to the CONSUMER — a []byte it owns, an mmap, or memory a
+// producer handed across. Nothing here allocates.
+//
+// A block is valid until the next fill over the SAME storage, which
+// invalidates every block over it and every row pointer taken from one.
+type FloatBoundBlock struct {
+	Base       unsafe.Pointer             // the extent's base, 64-byte aligned
+	Projection *FloatBoundBlockProjection // the projection, at offset 0
+	Bytes      int64                      // the extent in use
+}
+
+// ---- block fill path: begin ----
+// ---- block fill path: end ----
+// FloatBoundBlockOpen is the bool convenience for the handle's typed Open error.
+func FloatBoundBlockOpen(block *FloatBoundBlock, base unsafe.Pointer, bytes int64) bool {
+	return block.Open(base, bytes) == nil
+}
+
+// Open reads all prologue and layout words bytewise before the final base
+// alignment check. Every refusal names the first failed clause in SPEC §19.2.
+func (block *FloatBoundBlock) Open(base unsafe.Pointer, bytes int64) error {
+	*block = FloatBoundBlock{}
+	if _, err := tableBlockOpenHeader(base, bytes, 32); err != nil {
+		return err
+	}
+	used := int64(32)
+	padding := (64 - (used % 64)) % 64
+	if padding > bytes-used {
+		return TableRefuseTruncated
+	}
+	used += padding
+	if uintptr(base)%64 != 0 {
+		return TableRefuseUnalignedBase
+	}
+	block.Base = base
+	block.Projection = (*FloatBoundBlockProjection)(base)
+	block.Bytes = used
+	return nil
+}
+
+// FloatBoundCounts is gathered before Begin; clamping is the caller's policy.
+type FloatBoundCounts struct {
+}
+
+// FloatBoundBlockStorage owns a maximum-sized extent. Do not copy an initialized storage.
+type FloatBoundBlockStorage struct {
+	base       unsafe.Pointer
+	allocation []byte
+	allocator  TableBlockAllocator
+}
+
+func (s *FloatBoundBlockStorage) Create(a TableBlockAllocator) bool {
+	if s == nil || s.allocation != nil || a.Alloc == nil || a.Free == nil {
+		return false
+	}
+	raw := a.Alloc(FloatBoundBlockMaxBytes + 63)
+	if int64(len(raw)) < FloatBoundBlockMaxBytes+63 {
+		if raw != nil {
+			a.Free(raw)
+		}
+		return false
+	}
+	s.allocation = raw
+	s.allocator = a
+	s.base = tableBlockAlign64(raw)
+	return true
+}
+func (s *FloatBoundBlockStorage) Destroy() {
+	if s != nil && s.allocation != nil {
+		s.allocator.Free(s.allocation)
+		*s = FloatBoundBlockStorage{}
+	}
+}
+
+// ---- block fill path: begin ----
+// FloatBoundBlockBegin writes only the prologue and triples, never rows or padding.
+// Storage and all counts are checked before any byte of the extent changes.
+func FloatBoundBlockBegin(b *FloatBoundBlock, s *FloatBoundBlockStorage, c FloatBoundCounts, refusal *TableBlockRefusal) bool {
+	if refusal != nil {
+		*refusal = TableBlockRefusal{}
+	}
+	if b == nil {
+		return false
+	}
+	if s == nil || s.base == nil {
+		return false
+	}
+	p := (*FloatBoundBlockProjection)(s.base)
+	p.Magic = TableBlockMagic
+	p.BuildVersion = BuildVersion
+	p.ByteOrder = TableBlockByteOrder
+	offset := int64(32)
+	*b = FloatBoundBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}
+	return true
+}
+
+func FloatBoundBlockBytes(b *FloatBoundBlock) int64 {
+	if b == nil || b.Projection == nil {
+		return 0
+	}
+	used := int64(32)
+	return (used + 63) &^ int64(63)
+}
+
+// ---- block fill path: end ----
+
+// Type is this block's descriptors: constant data, so a reflective read costs
+// a lookup and not a parse. The row layouts hang off the element column
+// rather than taking names of their own, so a walker reaches every record
+// through the graph.
+func (b *FloatBoundBlock) Type() *TableBlockInfo { return &tableBlockRecords[1] }
+
+// MoodsBlockMaxBytes is the storage a PRODUCER of this block allocates, sized
+// from the declared maxima (mas-bandwidth/schema docs/SPEC-TABLES.md §19.1). A Go consumer does
+// not allocate a block — the bytes are handed to it — but it caps by this: a
+// playback buffer, a recording, a scratch copy all size from the generated
+// constant rather than from a number a person wrote down beside it.
+const MoodsBlockMaxBytes int64 = 64
+
+// MoodsBlock is Moods's block: a pointer and a length, and then rows in place.
+// Opening one is ONE check and no copy; reading a row is one add (§19.2).
+//
+// The bytes belong to the CONSUMER — a []byte it owns, an mmap, or memory a
+// producer handed across. Nothing here allocates.
+//
+// A block is valid until the next fill over the SAME storage, which
+// invalidates every block over it and every row pointer taken from one.
+type MoodsBlock struct {
+	Base       unsafe.Pointer        // the extent's base, 64-byte aligned
+	Projection *MoodsBlockProjection // the projection, at offset 0
+	Bytes      int64                 // the extent in use
+}
+
+// ---- block fill path: begin ----
+// ---- block fill path: end ----
+// MoodsBlockOpen is the bool convenience for the handle's typed Open error.
+func MoodsBlockOpen(block *MoodsBlock, base unsafe.Pointer, bytes int64) bool {
+	return block.Open(base, bytes) == nil
+}
+
+// Open reads all prologue and layout words bytewise before the final base
+// alignment check. Every refusal names the first failed clause in SPEC §19.2.
+func (block *MoodsBlock) Open(base unsafe.Pointer, bytes int64) error {
+	*block = MoodsBlock{}
+	if _, err := tableBlockOpenHeader(base, bytes, 32); err != nil {
+		return err
+	}
+	used := int64(32)
+	padding := (64 - (used % 64)) % 64
+	if padding > bytes-used {
+		return TableRefuseTruncated
+	}
+	used += padding
+	if uintptr(base)%64 != 0 {
+		return TableRefuseUnalignedBase
+	}
+	block.Base = base
+	block.Projection = (*MoodsBlockProjection)(base)
+	block.Bytes = used
+	return nil
+}
+
+// MoodsCounts is gathered before Begin; clamping is the caller's policy.
+type MoodsCounts struct {
+}
+
+// MoodsBlockStorage owns a maximum-sized extent. Do not copy an initialized storage.
+type MoodsBlockStorage struct {
+	base       unsafe.Pointer
+	allocation []byte
+	allocator  TableBlockAllocator
+}
+
+func (s *MoodsBlockStorage) Create(a TableBlockAllocator) bool {
+	if s == nil || s.allocation != nil || a.Alloc == nil || a.Free == nil {
+		return false
+	}
+	raw := a.Alloc(MoodsBlockMaxBytes + 63)
+	if int64(len(raw)) < MoodsBlockMaxBytes+63 {
+		if raw != nil {
+			a.Free(raw)
+		}
+		return false
+	}
+	s.allocation = raw
+	s.allocator = a
+	s.base = tableBlockAlign64(raw)
+	return true
+}
+func (s *MoodsBlockStorage) Destroy() {
+	if s != nil && s.allocation != nil {
+		s.allocator.Free(s.allocation)
+		*s = MoodsBlockStorage{}
+	}
+}
+
+// ---- block fill path: begin ----
+// MoodsBlockBegin writes only the prologue and triples, never rows or padding.
+// Storage and all counts are checked before any byte of the extent changes.
+func MoodsBlockBegin(b *MoodsBlock, s *MoodsBlockStorage, c MoodsCounts, refusal *TableBlockRefusal) bool {
+	if refusal != nil {
+		*refusal = TableBlockRefusal{}
+	}
+	if b == nil {
+		return false
+	}
+	if s == nil || s.base == nil {
+		return false
+	}
+	p := (*MoodsBlockProjection)(s.base)
+	p.Magic = TableBlockMagic
+	p.BuildVersion = BuildVersion
+	p.ByteOrder = TableBlockByteOrder
+	offset := int64(32)
+	*b = MoodsBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}
+	return true
+}
+
+func MoodsBlockBytes(b *MoodsBlock) int64 {
+	if b == nil || b.Projection == nil {
+		return 0
+	}
+	used := int64(32)
+	return (used + 63) &^ int64(63)
+}
+
+// ---- block fill path: end ----
+
+// Type is this block's descriptors: constant data, so a reflective read costs
+// a lookup and not a parse. The row layouts hang off the element column
+// rather than taking names of their own, so a walker reaches every record
+// through the graph.
+func (b *MoodsBlock) Type() *TableBlockInfo { return &tableBlockRecords[9] }
+
+// MoodFieldBlockMaxBytes is the storage a PRODUCER of this block allocates, sized
+// from the declared maxima (mas-bandwidth/schema docs/SPEC-TABLES.md §19.1). A Go consumer does
+// not allocate a block — the bytes are handed to it — but it caps by this: a
+// playback buffer, a recording, a scratch copy all size from the generated
+// constant rather than from a number a person wrote down beside it.
+const MoodFieldBlockMaxBytes int64 = 64
+
+// MoodFieldBlock is MoodField's block: a pointer and a length, and then rows in place.
+// Opening one is ONE check and no copy; reading a row is one add (§19.2).
+//
+// The bytes belong to the CONSUMER — a []byte it owns, an mmap, or memory a
+// producer handed across. Nothing here allocates.
+//
+// A block is valid until the next fill over the SAME storage, which
+// invalidates every block over it and every row pointer taken from one.
+type MoodFieldBlock struct {
+	Base       unsafe.Pointer            // the extent's base, 64-byte aligned
+	Projection *MoodFieldBlockProjection // the projection, at offset 0
+	Bytes      int64                     // the extent in use
+}
+
+// ---- block fill path: begin ----
+// ---- block fill path: end ----
+// MoodFieldBlockOpen is the bool convenience for the handle's typed Open error.
+func MoodFieldBlockOpen(block *MoodFieldBlock, base unsafe.Pointer, bytes int64) bool {
+	return block.Open(base, bytes) == nil
+}
+
+// Open reads all prologue and layout words bytewise before the final base
+// alignment check. Every refusal names the first failed clause in SPEC §19.2.
+func (block *MoodFieldBlock) Open(base unsafe.Pointer, bytes int64) error {
+	*block = MoodFieldBlock{}
+	if _, err := tableBlockOpenHeader(base, bytes, 32); err != nil {
+		return err
+	}
+	used := int64(32)
+	padding := (64 - (used % 64)) % 64
+	if padding > bytes-used {
+		return TableRefuseTruncated
+	}
+	used += padding
+	if uintptr(base)%64 != 0 {
+		return TableRefuseUnalignedBase
+	}
+	block.Base = base
+	block.Projection = (*MoodFieldBlockProjection)(base)
+	block.Bytes = used
+	return nil
+}
+
+// MoodFieldCounts is gathered before Begin; clamping is the caller's policy.
+type MoodFieldCounts struct {
+}
+
+// MoodFieldBlockStorage owns a maximum-sized extent. Do not copy an initialized storage.
+type MoodFieldBlockStorage struct {
+	base       unsafe.Pointer
+	allocation []byte
+	allocator  TableBlockAllocator
+}
+
+func (s *MoodFieldBlockStorage) Create(a TableBlockAllocator) bool {
+	if s == nil || s.allocation != nil || a.Alloc == nil || a.Free == nil {
+		return false
+	}
+	raw := a.Alloc(MoodFieldBlockMaxBytes + 63)
+	if int64(len(raw)) < MoodFieldBlockMaxBytes+63 {
+		if raw != nil {
+			a.Free(raw)
+		}
+		return false
+	}
+	s.allocation = raw
+	s.allocator = a
+	s.base = tableBlockAlign64(raw)
+	return true
+}
+func (s *MoodFieldBlockStorage) Destroy() {
+	if s != nil && s.allocation != nil {
+		s.allocator.Free(s.allocation)
+		*s = MoodFieldBlockStorage{}
+	}
+}
+
+// ---- block fill path: begin ----
+// MoodFieldBlockBegin writes only the prologue and triples, never rows or padding.
+// Storage and all counts are checked before any byte of the extent changes.
+func MoodFieldBlockBegin(b *MoodFieldBlock, s *MoodFieldBlockStorage, c MoodFieldCounts, refusal *TableBlockRefusal) bool {
+	if refusal != nil {
+		*refusal = TableBlockRefusal{}
+	}
+	if b == nil {
+		return false
+	}
+	if s == nil || s.base == nil {
+		return false
+	}
+	p := (*MoodFieldBlockProjection)(s.base)
+	p.Magic = TableBlockMagic
+	p.BuildVersion = BuildVersion
+	p.ByteOrder = TableBlockByteOrder
+	offset := int64(32)
+	*b = MoodFieldBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}
+	return true
+}
+
+func MoodFieldBlockBytes(b *MoodFieldBlock) int64 {
+	if b == nil || b.Projection == nil {
+		return 0
+	}
+	used := int64(32)
+	return (used + 63) &^ int64(63)
+}
+
+// ---- block fill path: end ----
+
+// Type is this block's descriptors: constant data, so a reflective read costs
+// a lookup and not a parse. The row layouts hang off the element column
+// rather than taking names of their own, so a walker reaches every record
+// through the graph.
+func (b *MoodFieldBlock) Type() *TableBlockInfo { return &tableBlockRecords[8] }
+
+// table MinArmFix has NO block form: MinArmFix.pick is a union, and a block's blittable C# form is Sequential with generated padding, which cannot overlay arms (mas-bandwidth/schema docs/SPEC-TABLES.md §19).
+// Its wire (§3) is unaffected — only this projection is absent, and it is
+// absent by construction rather than by refusal.
+
+// MinPlainFixBlockMaxBytes is the storage a PRODUCER of this block allocates, sized
+// from the declared maxima (mas-bandwidth/schema docs/SPEC-TABLES.md §19.1). A Go consumer does
+// not allocate a block — the bytes are handed to it — but it caps by this: a
+// playback buffer, a recording, a scratch copy all size from the generated
+// constant rather than from a number a person wrote down beside it.
+const MinPlainFixBlockMaxBytes int64 = 64
+
+// MinPlainFixBlock is MinPlainFix's block: a pointer and a length, and then rows in place.
+// Opening one is ONE check and no copy; reading a row is one add (§19.2).
+//
+// The bytes belong to the CONSUMER — a []byte it owns, an mmap, or memory a
+// producer handed across. Nothing here allocates.
+//
+// A block is valid until the next fill over the SAME storage, which
+// invalidates every block over it and every row pointer taken from one.
+type MinPlainFixBlock struct {
+	Base       unsafe.Pointer              // the extent's base, 64-byte aligned
+	Projection *MinPlainFixBlockProjection // the projection, at offset 0
+	Bytes      int64                       // the extent in use
+}
+
+// ---- block fill path: begin ----
+// ---- block fill path: end ----
+// MinPlainFixBlockOpen is the bool convenience for the handle's typed Open error.
+func MinPlainFixBlockOpen(block *MinPlainFixBlock, base unsafe.Pointer, bytes int64) bool {
+	return block.Open(base, bytes) == nil
+}
+
+// Open reads all prologue and layout words bytewise before the final base
+// alignment check. Every refusal names the first failed clause in SPEC §19.2.
+func (block *MinPlainFixBlock) Open(base unsafe.Pointer, bytes int64) error {
+	*block = MinPlainFixBlock{}
+	if _, err := tableBlockOpenHeader(base, bytes, 48); err != nil {
+		return err
+	}
+	used := int64(48)
+	padding := (64 - (used % 64)) % 64
+	if padding > bytes-used {
+		return TableRefuseTruncated
+	}
+	used += padding
+	if uintptr(base)%64 != 0 {
+		return TableRefuseUnalignedBase
+	}
+	block.Base = base
+	block.Projection = (*MinPlainFixBlockProjection)(base)
+	block.Bytes = used
+	return nil
+}
+
+// MinPlainFixCounts is gathered before Begin; clamping is the caller's policy.
+type MinPlainFixCounts struct {
+}
+
+// MinPlainFixBlockStorage owns a maximum-sized extent. Do not copy an initialized storage.
+type MinPlainFixBlockStorage struct {
+	base       unsafe.Pointer
+	allocation []byte
+	allocator  TableBlockAllocator
+}
+
+func (s *MinPlainFixBlockStorage) Create(a TableBlockAllocator) bool {
+	if s == nil || s.allocation != nil || a.Alloc == nil || a.Free == nil {
+		return false
+	}
+	raw := a.Alloc(MinPlainFixBlockMaxBytes + 63)
+	if int64(len(raw)) < MinPlainFixBlockMaxBytes+63 {
+		if raw != nil {
+			a.Free(raw)
+		}
+		return false
+	}
+	s.allocation = raw
+	s.allocator = a
+	s.base = tableBlockAlign64(raw)
+	return true
+}
+func (s *MinPlainFixBlockStorage) Destroy() {
+	if s != nil && s.allocation != nil {
+		s.allocator.Free(s.allocation)
+		*s = MinPlainFixBlockStorage{}
+	}
+}
+
+// ---- block fill path: begin ----
+// MinPlainFixBlockBegin writes only the prologue and triples, never rows or padding.
+// Storage and all counts are checked before any byte of the extent changes.
+func MinPlainFixBlockBegin(b *MinPlainFixBlock, s *MinPlainFixBlockStorage, c MinPlainFixCounts, refusal *TableBlockRefusal) bool {
+	if refusal != nil {
+		*refusal = TableBlockRefusal{}
+	}
+	if b == nil {
+		return false
+	}
+	if s == nil || s.base == nil {
+		return false
+	}
+	p := (*MinPlainFixBlockProjection)(s.base)
+	p.Magic = TableBlockMagic
+	p.BuildVersion = BuildVersion
+	p.ByteOrder = TableBlockByteOrder
+	offset := int64(48)
+	*b = MinPlainFixBlock{Base: s.base, Projection: p, Bytes: (offset + 63) &^ int64(63)}
+	return true
+}
+
+func MinPlainFixBlockBytes(b *MinPlainFixBlock) int64 {
+	if b == nil || b.Projection == nil {
+		return 0
+	}
+	used := int64(48)
+	return (used + 63) &^ int64(63)
+}
+
+// ---- block fill path: end ----
+
+// Type is this block's descriptors: constant data, so a reflective read costs
+// a lookup and not a parse. The row layouts hang off the element column
+// rather than taking names of their own, so a walker reaches every record
+// through the graph.
+func (b *MinPlainFixBlock) Type() *TableBlockInfo { return &tableBlockRecords[7] }

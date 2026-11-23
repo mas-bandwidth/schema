@@ -17,6 +17,12 @@ SCHEMA_CONFORMANCE_CODEC_NOFORM( WideBlob, wide_blob ) /* past the ceiling: no f
 SCHEMA_CONFORMANCE_CODEC( ArchiveConfig, archive_config )
 SCHEMA_CONFORMANCE_CODEC( KeyedConfig, keyed_config )
 SCHEMA_CONFORMANCE_CODEC( PackConfig, pack_config )
+SCHEMA_CONFORMANCE_CODEC( CountedMin, counted_min )
+SCHEMA_CONFORMANCE_CODEC( FloatBound, float_bound )
+SCHEMA_CONFORMANCE_CODEC( Moods, moods )
+SCHEMA_CONFORMANCE_CODEC( MoodField, mood_field )
+SCHEMA_CONFORMANCE_CODEC( MinArmFix, min_arm_fix )
+SCHEMA_CONFORMANCE_CODEC( MinPlainFix, min_plain_fix )
 
 static const ConformanceCodec codecs[] = {
     SCHEMA_CONFORMANCE_ROW( tabledemo, RootConfig ),
@@ -25,7 +31,13 @@ static const ConformanceCodec codecs[] = {
     SCHEMA_CONFORMANCE_ROW( tabledemo, WideBlob ),
     SCHEMA_CONFORMANCE_ROW( tabledemo, ArchiveConfig ),
     SCHEMA_CONFORMANCE_ROW( tabledemo, KeyedConfig ),
-    SCHEMA_CONFORMANCE_ROW( tabledemo, PackConfig )
+    SCHEMA_CONFORMANCE_ROW( tabledemo, PackConfig ),
+    SCHEMA_CONFORMANCE_ROW( tabledemo, CountedMin ),
+    SCHEMA_CONFORMANCE_ROW( tabledemo, FloatBound ),
+    SCHEMA_CONFORMANCE_ROW( tabledemo, Moods ),
+    SCHEMA_CONFORMANCE_ROW( tabledemo, MoodField ),
+    SCHEMA_CONFORMANCE_ROW( tabledemo, MinArmFix ),
+    SCHEMA_CONFORMANCE_ROW( tabledemo, MinPlainFix )
 };
 
 /* Sets the one field a `write-refusal` row names. The set is EXACTLY the rows'
@@ -34,6 +46,11 @@ static const ConformanceCodec codecs[] = {
 int conformance_write_refusal_set_tabledemo( const char * root, void * value, const char * path,
                                              const char * kind, const char * text )
 {
+    if ( strcmp( root, "CountedMin" ) == 0 && strcmp( path, "few" ) == 0 && strcmp( kind, "count" ) == 0 )
+    {
+        ((tabledemo_counted_min_t *) value)->few_count = conformance_write_refusal_count( text );
+        return 1;
+    }
     if ( strcmp( root, "RootConfig" ) == 0 )
     {
         tabledemo_root_config_t * v = (tabledemo_root_config_t *) value;
@@ -99,6 +116,16 @@ int conformance_write_refusal_set_tabledemo( const char * root, void * value, co
         tabledemo_loadout_config_t * v = (tabledemo_loadout_config_t *) value;
         if ( strcmp( path, "grade" ) == 0 && strcmp( kind, "ordinal" ) == 0 ) { return CONFORMANCE_WREF_UNSIGNED( v->grade, text ); }
     }
+    if ( strcmp( root, "Moods" ) == 0 )
+    {
+        tabledemo_moods_t * v = (tabledemo_moods_t *) value;
+        if ( strcmp( path, "row[0]" ) == 0 && strcmp( kind, "ordinal" ) == 0 && v->row_count >= 1 ) { return CONFORMANCE_WREF_UNSIGNED( v->row[0], text ); }
+    }
+    if ( strcmp( root, "MoodField" ) == 0 )
+    {
+        tabledemo_mood_field_t * v = (tabledemo_mood_field_t *) value;
+        if ( strcmp( path, "mood" ) == 0 && strcmp( kind, "ordinal" ) == 0 ) { return CONFORMANCE_WREF_UNSIGNED( v->mood, text ); }
+    }
     return 0;
 }
 
@@ -109,6 +136,7 @@ int conformance_write_refusal_write_tabledemo( int surface, const char * root, c
 {
     (void) announcement; (void) announcement_bytes;
     if ( surface != CONFORMANCE_WRITE_FIXED ) { return 0; }
+    if ( strcmp( root, "CountedMin" ) == 0 ) { *wrote = tabledemo_counted_min_fixed_save( (const tabledemo_counted_min_t *) value, 1, buffer, capacity ); return 1; }
     if ( strcmp( root, "RootConfig" ) == 0 ) { *wrote = tabledemo_root_config_fixed_save( (const tabledemo_root_config_t *) value, 1, buffer, capacity ); return 1; }
     if ( strcmp( root, "LoadoutConfig" ) == 0 ) { *wrote = tabledemo_loadout_config_fixed_save( (const tabledemo_loadout_config_t *) value, 1, buffer, capacity ); return 1; }
     return 0;

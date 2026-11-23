@@ -1316,6 +1316,9 @@ static SCHEMA_UNUSED int graphdemo_table_json_write_scalar( graphdemo_table_json
            wire identity: the writer REFUSES rather than writing None over it,
            the rule measure and save already apply (docs/SPEC-TABLES.md §5) */
         if ( (int64_t) value > f->enum_max ) { return 0; }
+        /* A DEPRECATED VARIANT IS NEVER WRITTEN (docs/SPEC-TABLES.md §2.15):
+           a write-side check, so a debug assert in this language (SPEC.md §5.1) */
+        schema_assert( f->enum_deprecated == NULL || f->enum_deprecated[value] == 0 );
         if ( value != 0 && graphdemo_table_json_variant_name( f, value ) == NULL ) { return 0; }
         name = graphdemo_table_json_variant_name( f, value );
         if ( name == NULL ) { return 0; }
@@ -3382,6 +3385,7 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_JSON_NOINLINE int graphdemo_table_json_rea
     int64_t length = 0;
     int integral = 0;
     char textbuf[192]; /* a wide fixed's string spelling: 128 fraction digits, a whole part, a sign and a point */
+    (void) depth;
     if ( graphdemo_table_json_is_enum( f ) )
     {
         char name[GRAPHDEMO_K_TABLE_JSON_MAX_KEY];
@@ -3394,7 +3398,11 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_JSON_NOINLINE int graphdemo_table_json_rea
             const char * variant = graphdemo_table_json_variant_name( f, (uint64_t) v );
             if ( variant != NULL && (int32_t) strlen( variant ) == name_length && memcmp( variant, name, (size_t) name_length ) == 0 )
             {
-                graphdemo_table_json_set_raw( storage, f->elem_size, (uint64_t) v );
+                /* A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT,
+                   and an element's as None (docs/SPEC-TABLES.md §2.15); it is
+                   never counted unknown */
+                const int retired = f->enum_deprecated != NULL && f->enum_deprecated[v] != 0;
+                graphdemo_table_json_set_raw( storage, f->elem_size, retired ? f->enum_default : (uint64_t) v );
                 return 1;
             }
         }
@@ -3933,6 +3941,9 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_JSON_NOINLINE int graphdemo_table_json_rea
         /* a fixed array's tail keeps the defaults the prefill left there,
            exactly as a short wire count does */
         graphdemo_table_json_set_count( base, f, placed );
+        /* A COUNT BELOW THE DECLARED MIN IS REFUSED (docs/SPEC.md §5.1,
+           docs/SPEC-TABLES.md §16.2), the wire's rule for the same count */
+        if ( placed < f->array_min ) { in->report->refused = 1, in->report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE; }
         return 1;
     }
 }
@@ -5225,16 +5236,16 @@ static SCHEMA_UNUSED int schema_graphdemo_table_json_read_unbounded_text_( graph
 }
 #endif
 static const graphdemo_table_field_info_t schema_graphdemo_stamp_fields_[] = {
-    { "tag", "tag", "string", 0x56d7ab194448a4f3ull, 12, 0, 0, 1, 0, 0, 8, (uint32_t) offsetof( graphdemo_stamp_t, tag ), (uint32_t) sizeof( ( (graphdemo_stamp_t *) 0 )->tag ), (uint32_t) offsetof( graphdemo_stamp_t, tag_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
-    { "seq", "seq", "int32", 0x823b8a195ce2133cull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_stamp_t, seq ), (uint32_t) sizeof( ( (graphdemo_stamp_t *) 0 )->seq ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1000.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "tag", "tag", "string", 0x56d7ab194448a4f3ull, 12, 0, 0, 1, 0, 0, 8, (uint32_t) offsetof( graphdemo_stamp_t, tag ), (uint32_t) sizeof( ( (graphdemo_stamp_t *) 0 )->tag ), (uint32_t) offsetof( graphdemo_stamp_t, tag_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
+    { "seq", "seq", "int32", 0x823b8a195ce2133cull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_stamp_t, seq ), (uint32_t) sizeof( ( (graphdemo_stamp_t *) 0 )->seq ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1000.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
 };
 
 const graphdemo_table_type_info_t schema_graphdemo_stamp_info_ = { "Stamp", (uint32_t) sizeof( graphdemo_stamp_t ), 2, schema_graphdemo_stamp_fields_, schema_graphdemo_stamp_reset_raw_, 0, GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const graphdemo_table_field_info_t schema_graphdemo_colour_fields_[] = {
-    { "r", "r", "uint8", 0xaf63ef4c86020cd5ull, 6, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_colour_t, r ), (uint32_t) sizeof( ( (graphdemo_colour_t *) 0 )->r ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
-    { "g", "g", "uint8", 0xaf63da4c8601e926ull, 6, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_colour_t, g ), (uint32_t) sizeof( ( (graphdemo_colour_t *) 0 )->g ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
-    { "b", "b", "uint8", 0xaf63df4c8601f1a5ull, 6, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_colour_t, b ), (uint32_t) sizeof( ( (graphdemo_colour_t *) 0 )->b ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "r", "r", "uint8", 0xaf63ef4c86020cd5ull, 6, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_colour_t, r ), (uint32_t) sizeof( ( (graphdemo_colour_t *) 0 )->r ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
+    { "g", "g", "uint8", 0xaf63da4c8601e926ull, 6, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_colour_t, g ), (uint32_t) sizeof( ( (graphdemo_colour_t *) 0 )->g ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
+    { "b", "b", "uint8", 0xaf63df4c8601f1a5ull, 6, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_colour_t, b ), (uint32_t) sizeof( ( (graphdemo_colour_t *) 0 )->b ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0, 0, NULL },
 };
 
 const graphdemo_table_type_info_t schema_graphdemo_colour_info_ = { "Colour", (uint32_t) sizeof( graphdemo_colour_t ), 3, schema_graphdemo_colour_fields_, schema_graphdemo_colour_reset_raw_, 0, GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0 };

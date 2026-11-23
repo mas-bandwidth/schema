@@ -473,7 +473,7 @@ func TestPythonPacketFloats(t *testing.T) {
 	finiteDir := filepath.Join(root, "test", "packet-finite", "python")
 	finiteFiles := func(t *testing.T) (map[string][]byte, []byte) {
 		t.Helper()
-		u := loadPythonUnit(t, filepath.Join(finiteDir, "Finite.schema"))
+		u := loadPythonUnit(t, filepath.Join(finiteDir, "PacketFinite.schema"))
 		files, err := Generate(u)
 		if err != nil {
 			t.Fatal(err)

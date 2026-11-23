@@ -1,6 +1,6 @@
 # Packet end conformance vectors
 
-`End.schema` declares one type, `End`, whose only field is
+`PacketEnd.schema` declares one type, `End`, whose only field is
 `value uint8 | max = 5`: three wire bits. Each port reads these packets
 with its generated public `Read<T>` and holds the verdict.
 

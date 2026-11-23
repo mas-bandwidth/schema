@@ -55,10 +55,10 @@ func (m *Model) CheckValue(inst *Instance) error {
 }
 
 // CheckFileValue is CheckValue for the VARIABLE file form, which
-// carries a flags mask whole as a u64 (docs/SPEC-TABLES.md §3, §3.4): a mask
-// bit above the declared variants is kept, as the read keeps it (§4, A TABLE
-// LOAD DOES NOT JUDGE A MASK AGAINST A RANGE), so a file an older build read
-// writes back byte for byte. A FILE writer also refuses a zero byte or unit
+// carries a flags mask as a u64 (docs/SPEC-TABLES.md §3, §3.4) and holds it to
+// W, the declaration's wire width: a mask bit at or above W is refused, as the
+// read refuses it (§4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH), so a writer
+// never writes a mask its own reader refuses. A FILE writer also refuses a zero byte or unit
 // (docs/SPEC.md §5.1 row 8): its reader calls that text_ill_formed, so a
 // writer never produces bytes its own reader refuses. The VARIABLE form never
 // writes a deprecated field, so its walk skips it (§3.4, §22.6).
@@ -207,6 +207,12 @@ func (m *Model) checkCell(name string, cell *Cell, f *ir.Field, seen *checkWalk,
 		return nil
 	}
 	if fl := FlagsOf(f); fl != nil {
+		// A FILE WRITER (variable or fixed) holds a mask to W, the width its own
+		// reader holds it to (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO
+		// ITS WIDTH); the text and message writers hold it to the named variants
+		if seen.wholeMasks && FlagsPastWidth(fl, cell.U) {
+			return bad("flags %s bits %#x are at or above its width %d", fl.Name, cell.U>>uint(fl.WireBits)<<uint(fl.WireBits), fl.WireBits)
+		}
 		if n := len(fl.Variants); !seen.wholeMasks && n < 64 && cell.U>>uint(n) != 0 {
 			return bad("flags %s bits %#x name no variant", fl.Name, cell.U&^(uint64(1)<<uint(n)-1))
 		}

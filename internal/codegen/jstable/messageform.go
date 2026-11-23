@@ -159,7 +159,7 @@ class TableMessageReader {
     if (fixed !== 0) { if (!this.Has(fixed)) { return false; } this.Offset += fixed; return true; }
     switch (kind) {
       case 17: case 30: { const [, ok] = this.Leb(); return ok; }
-      case 12: case 13: case 14: case 16: case 31: case 32: { const [, ok] = this.Body(); return ok; }
+      case 12: case 13: case 14: case 16: case 32: { const [, ok] = this.Body(); return ok; }
       case 15: {
         const [ref, ok] = this.Leb();
         if (!ok) { return false; }
@@ -216,7 +216,9 @@ function TableMessageOpenFramed(data) {
   return [r, verdict];
 }
 function TableMessageBits(n) { let count = 0; while (n !== 0n) { count++; n >>= 1n; } return count; }
-function TableMessageKnownKind(k) { return k <= 32 || k === 36; }
+// 31 is held by name and never written (R17): an announcement naming it is
+// malformed, as one naming 33 or 34 is.
+function TableMessageKnownKind(k) { return k <= 30 || k === 32 || k === 36; }
 function TableMessageKindBits(k) {
   if (k === 0 || k === 32) { return 0; }
   if (k === 1) { return 1; }
@@ -391,9 +393,7 @@ function TableAnnounceRead(v, data, report) {
       if (!bok || !sub.Has(1) || sub.Get8() !== 6) { report.Damaged = true; return false; }
       const [n, nok] = sub.Leb();
       if (!nok || n > globalThis.BigInt(sub.Buffer.length) || n !== globalThis.BigInt(sub.Buffer.length - sub.Offset)) { report.Damaged = true; return false; }
-      let limit = v.MaxBytes;
-      if (!limit) { limit = 64 * 1024; }
-      if (n > globalThis.BigInt(limit)) { return TableMessageRefuse(report, "vocabulary_too_large"); }
+      if (n > globalThis.BigInt(v.MaxBytes)) { return TableMessageRefuse(report, "vocabulary_too_large"); }
       words = sub.Buffer.subarray(sub.Offset);
       wordsCount++;
     } else {

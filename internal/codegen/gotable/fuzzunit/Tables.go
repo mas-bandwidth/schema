@@ -293,3 +293,40 @@ const EffectMaxBytes = 8
 
 // read reads value's fields from stream without the packet's end check: a
 // Effect nested in another value is read through it.
+
+// Mood is an enum: None = 0, then the variants densely from 1; the wire carries
+// [0, 3].
+type Mood uint8
+
+// The Mood variants. MoodMax is the highest value a read accepts.
+const (
+	MoodNone Mood = 0
+	MoodCalm Mood = 1
+	// Deprecated: Old is retired in place; a reader lands the field default and a strict write refuses it.
+	MoodOld    Mood = 2
+	MoodFierce Mood = 3
+	MoodMax    Mood = 3
+)
+
+// String returns the variant name of v, or "???" for a value outside the
+// declared variants (wire-legal up to MoodMax).
+func (v Mood) String() string {
+	switch v {
+	case MoodNone:
+		return "None"
+	case MoodCalm:
+		return "Calm"
+	case MoodOld:
+		return "Old"
+	case MoodFierce:
+		return "Fierce"
+	}
+	return "???"
+}
+
+// EnumNameMood returns the variant name of value, or "???" for a value outside
+// the declared variants. It is value.String() under the name every target gives
+// its debug-name function.
+func EnumNameMood(value Mood) string {
+	return value.String()
+}

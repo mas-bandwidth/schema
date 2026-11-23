@@ -479,10 +479,17 @@ struct TableFieldInfo
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
-    // a [A..B]T count's declared minimum A (docs/SPEC.md §4.2, §5.1 row 3):
-    // the count it is born at and the least a read accepts; 0 on every other
-    // field
+    // A COUNTED ARRAY'S MINIMUM (docs/SPEC.md §5.1, docs/SPEC-TABLES.md §16.2):
+    // the A of [A..B]T, 0 on every other field. A text read that
+    // places fewer elements refuses, as the wire read does.
     int32_t array_min;
+    // A DEPRECATED VARIANT (docs/SPEC-TABLES.md §2.15): enum_deprecated says
+    // whether a value names a variant marked "| deprecated", NULL when
+    // the enum carries none. A read naming one stores enum_default instead —
+    // the field's declared default, None for an element — and is never
+    // counted unknown.
+    uint64_t enum_default;
+    bool ( *enum_deprecated )( uint64_t value );
 };
 
 struct TableTypeInfo
@@ -987,7 +994,6 @@ struct TableReader
                 return false;
             }
             case 12:
-            case 31:
             case 32:
             {
                 uint64_t n = 0;
@@ -1107,7 +1113,7 @@ struct TableReader
 
     // skip one payload by kind; false = framing damage. FOUR RULES COVER THE
     // SET (docs/SPEC-TABLES.md §3), and a kind outside it is not skippable —
-    // which is why the set is closed and why kind 31 exists.
+    // which is why the set is closed.
     bool skip( uint8_t kind, int depth = 0 )
     {
         switch ( kind )
@@ -1149,8 +1155,7 @@ struct TableReader
                 return getleb( ignored );
             }
             case 12: // a string body: its L is opaque here
-            case 31:
-            case 32: // 31 is the ESCAPE, 32 the payload-free kind
+            case 32: // the payload-free kind
             {
                 uint64_t n = 0;
                 if ( !getleb( n ) ) return false;
@@ -1181,10 +1186,11 @@ struct TableReader
                 offset += (int64_t) n;
                 return !badElementKindContent( arm_kind, b, (int64_t) n, depth );
             }
-            // KIND 34 IS RESERVED FOR float16 AND IS NOT PART OF THIS MAJOR (§3):
-            // no writer emits it and no reader has a rule for it, so a reader
-            // meets it only as DAMAGE, exactly as it meets 35 or 200. A bare 34
-            // is a writer that ignored the escape kind 31.
+            // KIND 31 IS HELD BY NAME AND NEVER WRITTEN (R17) AND KIND 34 IS
+            // RESERVED FOR float16; NEITHER IS PART OF THIS MAJOR (§3): no writer
+            // emits them and no reader has a rule for them, so a reader meets them
+            // only as DAMAGE, exactly as it meets 35 or 200.
+            case 31:
             case 34: return false;
         }
         return false;
@@ -1686,7 +1692,7 @@ inline bool TableStrictContent( TableStrict & s, const uint8_t * b, int64_t n, u
     switch ( kind )
     {
         case 12: return TableUtf8Valid( b, (uint64_t) n ); // ill-formed text is damage
-        case 31: return true; // the escape: opaque by rule (§3)
+        case 31: return false; // KIND 31 IS HELD BY NAME AND NEVER WRITTEN (R17): damage, as 33 and 34
         case 32: return n == 0; // kind 32 with a nonzero L is damage
         case 13:
         {
@@ -1749,7 +1755,7 @@ inline bool TableStrictPayload( TableStrict & s, TableReader & r, uint8_t kind, 
         }
         case 15:
             return TableStrictUnion( s, r, depth );
-        case 12: case 31: case 32: case 13: case 14: case 16:
+        case 12: case 32: case 13: case 14: case 16:
         {
             uint64_t n = 0;
             if ( !r.getleb( n ) || !r.room( n ) ) { return false; } // L4
@@ -2248,8 +2254,10 @@ inline bool TableMessageFixedKind( uint8_t kind ) { return kind >= 20 && kind <=
 inline bool TableMessageKnownKind( uint8_t kind )
 {
     // 36 is the TIMESTAMP: a closed-set kind with no shape bytes and a
-    // sixty-four bit raw payload (docs/SPEC-TABLES.md §2.11, §3.3).
-    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 32 ) || kind == 36;
+    // sixty-four bit raw payload (docs/SPEC-TABLES.md §2.11, §3.3). 31 is held by
+    // name and never written (R17): an announcement naming it is malformed,
+    // as one naming 33 or 34 is.
+    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || kind == 30 || kind == 32 || kind == 36;
 }
 
 // A CANONICAL LEB128, which is the announcement's own integer: the
@@ -3715,14 +3723,7 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
             if ( !TableUtf8Valid( text, n ) ) { return false; }
             return r.skip( (int64_t) n * 8 );
         }
-        case 31:
-        {
-            // THE ESCAPE: align, a thirty-two bit L, then L bytes, opaque. It is
-            // the one path a later-major writer has on this form (§3.3)
-            uint64_t n = 0;
-            if ( !r.align() || !r.get( n, 32 ) ) { return false; }
-            return r.skip( (int64_t) n * 8 );
-        }
+        case 31: return false; // held by name and never written (R17): no announcement names it
         case 10:
         {
             if ( entry.packing == 2 )
@@ -5266,7 +5267,7 @@ inline bool TableFixedOrdinalWidth( uint32_t n ) { return n == 1u || n == 2u || 
 
 // THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
 // the no-payload variant 32, and the ONE kind this form's layout adds, the
-// optional wrapper 35. 31 is §3's BODY framing escape, 33 is retired and 34 is
+// optional wrapper 35. 31 is held by name and never written (R17), 33 is retired and 34 is
 // reserved: none is a kind a declaration spells, so none is ever an entry's
 // kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a leaf to step over
 // — see the note above TableFixedCheck.
@@ -7815,7 +7816,7 @@ inline bool TableGraphPayload( TableGraphCollect & c, TableReader & r, uint8_t k
         }
         case 15:
             return TableGraphUnion( c, r, depth );
-        case 12: case 31: case 32: case 13: case 14: case 16:
+        case 12: case 32: case 13: case 14: case 16:
         {
             uint64_t n = 0;
             if ( !r.getleb( n ) || !r.room( n ) ) { c.damaged = true; return false; }
@@ -7866,8 +7867,9 @@ inline bool TableGraphContent( TableGraphCollect & c, const uint8_t * b, int64_t
         case 12:
             if ( !TableUtf8Valid( b, (uint64_t) n ) ) { c.damaged = true; return false; }
             return true;
-        case 31:
-            return true; // opaque: the one kind whose meaning a reader may not know (§3)
+        case 31: // KIND 31 IS HELD BY NAME AND NEVER WRITTEN (R17): damage, as 33 and 34
+            c.damaged = true;
+            return false;
         case 32:
             if ( n != 0 ) { c.damaged = true; return false; }
             return true;
@@ -8790,8 +8792,9 @@ inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t le
             if ( TableRetainInPayload( s, kind, depth ) < 0 ) { return -1; }
             break;
         case 17: return -1; // A NODE INDEX ANYWHERE DROPS THE WHOLE RECORD (§6.6)
+        case 31: return -1; // held by name and never written (R17): damage
         default:
-            // every other content is bytes: a string, an escape, a
+            // every other content is bytes: a string, a
             // payload-free kind, a scalar under a keyed slot's own length
             TableRetainInRaw( s, s.in + s.at, length );
             s.at += length;
@@ -8863,7 +8866,6 @@ inline int64_t TableRetainInPayload( TableRetainIn & s, uint8_t kind, int32_t de
             break;
         }
         case 12:
-        case 31:
         case 32: // L, then L bytes, nothing framed inside
         {
             uint64_t length = 0;
@@ -9256,6 +9258,7 @@ inline bool TableRetainOutContent( TableRetainOut & s, uint8_t kind, int64_t len
             // variant reference resolve as a framed content too
             if ( !TableRetainOutPayload( s, kind, depth ) ) { return false; }
             break;
+        case 31: return false; // held by name and never written (R17): damage
         default:
             TableRetainOutRaw( s, s.in + s.at, length );
             s.at += length;
@@ -9325,7 +9328,6 @@ inline bool TableRetainOutPayload( TableRetainOut & s, uint8_t kind, int32_t dep
             break;
         }
         case 12:
-        case 31:
         case 32:
         {
             uint64_t length = 0;
@@ -10697,7 +10699,7 @@ MESSAGEDEMO_TABLE_INLINE bool UserLoadBody( TableReader & r, User & value )
                 if ( kind != 12 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -11196,7 +11198,7 @@ MESSAGEDEMO_TABLE_INLINE bool ScriptLoadBody( TableReader & r, Script & value )
                 if ( kind != 12 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -11255,7 +11257,7 @@ MESSAGEDEMO_TABLE_INLINE bool ScriptLoadBody( TableReader & r, Script & value )
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -11853,7 +11855,7 @@ MESSAGEDEMO_TABLE_INLINE bool SelectionLoadBody( TableReader & r, Selection & va
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -11886,7 +11888,7 @@ MESSAGEDEMO_TABLE_INLINE bool SelectionLoadBody( TableReader & r, Selection & va
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -12767,7 +12769,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -12800,7 +12802,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                 if ( kind != 12 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -12844,7 +12846,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                 if ( kind != 15 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -13032,7 +13034,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -13261,7 +13263,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBody( TableReader & r, InsertText & 
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -14603,7 +14605,7 @@ MESSAGEDEMO_TABLE_INLINE bool RemoveTextLoadBody( TableReader & r, RemoveText & 
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -15247,7 +15249,7 @@ MESSAGEDEMO_TABLE_INLINE bool EditLoadBody( TableReader & r, Edit & value )
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -15271,7 +15273,7 @@ MESSAGEDEMO_TABLE_INLINE bool EditLoadBody( TableReader & r, Edit & value )
                 if ( kind != 15 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -16596,7 +16598,7 @@ MESSAGEDEMO_TABLE_INLINE bool OpenDocumentLoadBody( TableReader & r, OpenDocumen
                 if ( kind != 12 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -16640,7 +16642,7 @@ MESSAGEDEMO_TABLE_INLINE bool OpenDocumentLoadBody( TableReader & r, OpenDocumen
                 if ( kind != 30 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -16668,7 +16670,7 @@ MESSAGEDEMO_TABLE_INLINE bool OpenDocumentLoadBody( TableReader & r, OpenDocumen
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -17282,7 +17284,7 @@ MESSAGEDEMO_TABLE_INLINE bool SaveDocumentLoadBody( TableReader & r, SaveDocumen
                 if ( kind != 12 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -17326,7 +17328,7 @@ MESSAGEDEMO_TABLE_INLINE bool SaveDocumentLoadBody( TableReader & r, SaveDocumen
                 if ( kind != 1 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -18230,7 +18232,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                 if ( kind != 12 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -18274,7 +18276,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -18369,7 +18371,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -18726,7 +18728,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -18831,7 +18833,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBody( TableReader & r, Transaction 
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -20554,6 +20556,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                 arm_payload += 8; // Capabilities
                 w.header( arm_ref, 9 );
                 w.putleb( (uint64_t) arm_payload ); // caps
+                schema_assert( ( uint64_t( value.body.caps ) >> 2 ) == 0 ); // the write contract, debug only: a mask bit at or above W (docs/SPEC-TABLES.md §4)
                 w.put64( uint64_t( value.body.caps ) );
                 break;
             }
@@ -20929,6 +20932,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBody( TableWriter & w, TableIds & i
                         arm_payloadu += 8; // Capabilities
                         w.header( arm_refu, 9 );
                         w.putleb( (uint64_t) arm_payloadu ); // caps
+                        schema_assert( ( uint64_t( value.history[elem_i].caps ) >> 2 ) == 0 ); // the write contract, debug only: a mask bit at or above W (docs/SPEC-TABLES.md §4)
                         w.put64( uint64_t( value.history[elem_i].caps ) );
                         break;
                     }
@@ -21213,7 +21217,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -21237,7 +21241,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                 if ( kind != 15 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -21365,6 +21369,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                         break;
                                     }
                                     uint64_t decoded_v = (uint64_t) widened_v;
+                                    if ( ( (uint64_t) decoded_v >> 2 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                                    {
+                                        decoded_v &= 0x3ull;
+                                        r.report->refused = true;
+                                        r.report->refuse_reason = out_of_range;
+                                    }
                                     value.body.caps = decoded_v;
                                     value.body.type = ToolBodyType::Caps;
                                     r.report->widened++;
@@ -21386,6 +21396,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                 break;
                             }
                             uint64_t decoded_v = uint64_t( sub.get64() );
+                            if ( ( (uint64_t) decoded_v >> 2 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                            {
+                                decoded_v &= 0x3ull;
+                                r.report->refused = true;
+                                r.report->refuse_reason = out_of_range;
+                            }
                             value.body.caps = decoded_v;
                             break;
                         }
@@ -21679,7 +21695,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -21839,6 +21855,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                                         break;
                                                     }
                                                     uint64_t decoded_v = (uint64_t) widened_v;
+                                                    if ( ( (uint64_t) decoded_v >> 2 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                                                    {
+                                                        decoded_v &= 0x3ull;
+                                                        r.report->refused = true;
+                                                        r.report->refuse_reason = out_of_range;
+                                                    }
                                                     value.history[(int32_t) i].caps = decoded_v;
                                                     value.history[(int32_t) i].type = ToolBodyType::Caps;
                                                     r.report->widened++;
@@ -21855,6 +21877,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                                                 break;
                                             }
                                             uint64_t decoded_v = uint64_t( elem_arm.get64() );
+                                            if ( ( (uint64_t) decoded_v >> 2 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                                            {
+                                                decoded_v &= 0x3ull;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = out_of_range;
+                                            }
                                             value.history[(int32_t) i].caps = decoded_v;
                                             break;
                                         }
@@ -22149,7 +22177,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -22245,7 +22273,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBody( TableReader & r, ToolMessage 
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -23241,6 +23269,12 @@ inline bool ToolMessageLoadMessageBody( TableBitReader & r, const TableVocabular
                                             }
                                             int64_t decoded_wide_2 = (int64_t) raw_2;
                                             if ( arm.packing == 1 && !past_2 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) arm.base_lo ); }
+                                            if ( ( (uint64_t) decoded_wide_2 >> 2 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                                            {
+                                                decoded_wide_2 &= 0x3ull;
+                                                report->refused = true;
+                                                report->refuse_reason = out_of_range;
+                                            }
                                             uint64_t decoded_v_2 = (uint64_t) decoded_wide_2;
                                             value.body.caps = decoded_v_2;
                                         }
@@ -23274,6 +23308,12 @@ inline bool ToolMessageLoadMessageBody( TableBitReader & r, const TableVocabular
                                     }
                                     int64_t decoded_wide_2 = (int64_t) raw_2;
                                     if ( arm.packing == 1 && !past_2 ) { decoded_wide_2 = (int64_t) ( raw_2 + (uint64_t) arm.base_lo ); }
+                                    if ( ( (uint64_t) decoded_wide_2 >> 2 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                                    {
+                                        decoded_wide_2 &= 0x3ull;
+                                        report->refused = true;
+                                        report->refuse_reason = out_of_range;
+                                    }
                                     uint64_t decoded_v_2 = (uint64_t) decoded_wide_2;
                                     value.body.caps = decoded_v_2;
                                 }
@@ -23767,6 +23807,12 @@ inline bool ToolMessageLoadMessageBody( TableBitReader & r, const TableVocabular
                                                     }
                                                     int64_t decoded_wide_3 = (int64_t) raw_3;
                                                     if ( arm_2.packing == 1 && !past_3 ) { decoded_wide_3 = (int64_t) ( raw_3 + (uint64_t) arm_2.base_lo ); }
+                                                    if ( ( (uint64_t) decoded_wide_3 >> 2 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                                                    {
+                                                        decoded_wide_3 &= 0x3ull;
+                                                        report->refused = true;
+                                                        report->refuse_reason = out_of_range;
+                                                    }
                                                     uint64_t decoded_v_3 = (uint64_t) decoded_wide_3;
                                                     ( in_bounds ? value.history[i] : scratch ).caps = decoded_v_3;
                                                 }
@@ -23800,6 +23846,12 @@ inline bool ToolMessageLoadMessageBody( TableBitReader & r, const TableVocabular
                                             }
                                             int64_t decoded_wide_3 = (int64_t) raw_3;
                                             if ( arm_2.packing == 1 && !past_3 ) { decoded_wide_3 = (int64_t) ( raw_3 + (uint64_t) arm_2.base_lo ); }
+                                            if ( ( (uint64_t) decoded_wide_3 >> 2 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                                            {
+                                                decoded_wide_3 &= 0x3ull;
+                                                report->refused = true;
+                                                report->refuse_reason = out_of_range;
+                                            }
                                             uint64_t decoded_v_3 = (uint64_t) decoded_wide_3;
                                             ( in_bounds ? value.history[i] : scratch ).caps = decoded_v_3;
                                         }
@@ -24604,6 +24656,7 @@ inline bool ToolEnvelopeSaveBodyFields( const Ctx & ctx, const TableNumbering & 
                 arm_payload += 8; // Capabilities
                 w.header( arm_ref, 9 );
                 w.putleb( (uint64_t) arm_payload ); // caps
+                schema_assert( ( uint64_t( value.body.caps ) >> 2 ) == 0 ); // the write contract, debug only: a mask bit at or above W (docs/SPEC-TABLES.md §4)
                 w.put64( uint64_t( value.body.caps ) );
                 break;
             }
@@ -24828,7 +24881,7 @@ inline bool ToolEnvelopeLoadBody( TableReader & r, const TableNodeMap & nodes, T
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -24852,7 +24905,7 @@ inline bool ToolEnvelopeLoadBody( TableReader & r, const TableNodeMap & nodes, T
                 if ( kind != 15 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -24980,6 +25033,12 @@ inline bool ToolEnvelopeLoadBody( TableReader & r, const TableNodeMap & nodes, T
                                         break;
                                     }
                                     uint64_t decoded_v = (uint64_t) widened_v;
+                                    if ( ( (uint64_t) decoded_v >> 2 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                                    {
+                                        decoded_v &= 0x3ull;
+                                        r.report->refused = true;
+                                        r.report->refuse_reason = out_of_range;
+                                    }
                                     value.body.caps = decoded_v;
                                     value.body.type = ToolBodyType::Caps;
                                     r.report->widened++;
@@ -25001,6 +25060,12 @@ inline bool ToolEnvelopeLoadBody( TableReader & r, const TableNodeMap & nodes, T
                                 break;
                             }
                             uint64_t decoded_v = uint64_t( sub.get64() );
+                            if ( ( (uint64_t) decoded_v >> 2 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                            {
+                                decoded_v &= 0x3ull;
+                                r.report->refused = true;
+                                r.report->refuse_reason = out_of_range;
+                            }
                             value.body.caps = decoded_v;
                             break;
                         }
@@ -25415,7 +25480,7 @@ MESSAGEDEMO_TABLE_INLINE bool CursorLoadBody( TableReader & r, Cursor & value )
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -25454,7 +25519,7 @@ MESSAGEDEMO_TABLE_INLINE bool CursorLoadBody( TableReader & r, Cursor & value )
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -26055,7 +26120,7 @@ MESSAGEDEMO_TABLE_INLINE bool PingLoadBody( TableReader & r, Ping & value )
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -27608,6 +27673,11 @@ TABLE_FIXED_INLINE bool ToolMessageFixedInRange( const ToolMessage & value )
             bad |= (int) !TransactionFixedInRange( value.body.transact );
             break;
         }
+        case ToolBodyType::Caps:
+        {
+            bad |= (int) ( ( (uint64_t) value.body.caps >> 2 ) != 0 ); // a fixed flags mask held to W (docs/SPEC-TABLES.md §4)
+            break;
+        }
         case ToolBodyType::Origin:
         {
             bad |= (int) ( (uint64_t) value.body.origin.type > 4u );
@@ -27657,6 +27727,11 @@ TABLE_FIXED_INLINE bool ToolMessageFixedInRange( const ToolMessage & value )
             case ToolBodyType::Transact:
             {
                 bad |= (int) !TransactionFixedInRange( value.history[i].transact );
+                break;
+            }
+            case ToolBodyType::Caps:
+            {
+                bad |= (int) ( ( (uint64_t) value.history[i].caps >> 2 ) != 0 ); // a fixed flags mask held to W (docs/SPEC-TABLES.md §4)
                 break;
             }
             case ToolBodyType::Origin:
@@ -27732,6 +27807,11 @@ inline bool ToolMessageFixedWriteAdmits( const ToolMessage & value )
             bad |= (int) !TransactionFixedWriteAdmits( value.body.transact );
             break;
         }
+        case ToolBodyType::Caps:
+        {
+            bad |= (int) ( ( (uint64_t) value.body.caps >> 2 ) != 0 ); // a fixed flags mask held to W (docs/SPEC-TABLES.md §4)
+            break;
+        }
         case ToolBodyType::Origin:
         {
             bad |= (int) ( (uint64_t) value.body.origin.type > 4u );
@@ -27781,6 +27861,11 @@ inline bool ToolMessageFixedWriteAdmits( const ToolMessage & value )
             case ToolBodyType::Transact:
             {
                 bad |= (int) !TransactionFixedWriteAdmits( value.history[i].transact );
+                break;
+            }
+            case ToolBodyType::Caps:
+            {
+                bad |= (int) ( ( (uint64_t) value.history[i].caps >> 2 ) != 0 ); // a fixed flags mask held to W (docs/SPEC-TABLES.md §4)
                 break;
             }
             case ToolBodyType::Origin:
@@ -27856,6 +27941,11 @@ inline void ToolMessageFixedClampBody( ToolMessage & value, int32_t & TABLE_CLAM
             TransactionFixedClampBody( value.body.transact, oor_count, damaged );
             break;
         }
+        case ToolBodyType::Caps:
+        {
+            if ( ( (uint64_t) value.body.caps >> 2 ) != 0 ) { value.body.caps &= 0x3ull; oor_count++; } // a mask bit at or above W (docs/SPEC-TABLES.md §4)
+            break;
+        }
         case ToolBodyType::Origin:
         {
             if ( (uint64_t) value.body.origin.type > 4u ) { value.body.origin.type = OriginType::None; oor_count++; }
@@ -27909,6 +27999,11 @@ inline void ToolMessageFixedClampBody( ToolMessage & value, int32_t & TABLE_CLAM
             case ToolBodyType::Transact:
             {
                 TransactionFixedClampBody( value.history[i].transact, oor_count, damaged );
+                break;
+            }
+            case ToolBodyType::Caps:
+            {
+                if ( ( (uint64_t) value.history[i].caps >> 2 ) != 0 ) { value.history[i].caps &= 0x3ull; oor_count++; } // a mask bit at or above W (docs/SPEC-TABLES.md §4)
                 break;
             }
             case ToolBodyType::Origin:
@@ -38627,7 +38722,7 @@ MESSAGEDEMO_TABLE_INLINE bool UserLoadBodyRetain( TableReader & r, User & value,
                 if ( kind != 12 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -38761,7 +38856,7 @@ MESSAGEDEMO_TABLE_INLINE bool ScriptLoadBodyRetain( TableReader & r, Script & va
                 if ( kind != 12 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -38820,7 +38915,7 @@ MESSAGEDEMO_TABLE_INLINE bool ScriptLoadBodyRetain( TableReader & r, Script & va
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -38959,7 +39054,7 @@ MESSAGEDEMO_TABLE_INLINE bool SelectionLoadBodyRetain( TableReader & r, Selectio
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -38993,7 +39088,7 @@ MESSAGEDEMO_TABLE_INLINE bool SelectionLoadBodyRetain( TableReader & r, Selectio
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -39474,7 +39569,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBodyRetain( TableReader & r, InsertT
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -39508,7 +39603,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBodyRetain( TableReader & r, InsertT
                 if ( kind != 12 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -39552,7 +39647,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBodyRetain( TableReader & r, InsertT
                 if ( kind != 15 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -39741,7 +39836,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBodyRetain( TableReader & r, InsertT
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -39973,7 +40068,7 @@ MESSAGEDEMO_TABLE_INLINE bool InsertTextLoadBodyRetain( TableReader & r, InsertT
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -40160,7 +40255,7 @@ MESSAGEDEMO_TABLE_INLINE bool RemoveTextLoadBodyRetain( TableReader & r, RemoveT
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -40458,7 +40553,7 @@ MESSAGEDEMO_TABLE_INLINE bool EditLoadBodyRetain( TableReader & r, Edit & value,
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -40482,7 +40577,7 @@ MESSAGEDEMO_TABLE_INLINE bool EditLoadBodyRetain( TableReader & r, Edit & value,
                 if ( kind != 15 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -40943,7 +41038,7 @@ MESSAGEDEMO_TABLE_INLINE bool OpenDocumentLoadBodyRetain( TableReader & r, OpenD
                 if ( kind != 12 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -40987,7 +41082,7 @@ MESSAGEDEMO_TABLE_INLINE bool OpenDocumentLoadBodyRetain( TableReader & r, OpenD
                 if ( kind != 30 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -41015,7 +41110,7 @@ MESSAGEDEMO_TABLE_INLINE bool OpenDocumentLoadBodyRetain( TableReader & r, OpenD
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -41139,7 +41234,7 @@ MESSAGEDEMO_TABLE_INLINE bool SaveDocumentLoadBodyRetain( TableReader & r, SaveD
                 if ( kind != 12 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -41183,7 +41278,7 @@ MESSAGEDEMO_TABLE_INLINE bool SaveDocumentLoadBodyRetain( TableReader & r, SaveD
                 if ( kind != 1 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -41671,7 +41766,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBodyRetain( TableReader & r, Transa
                 if ( kind != 12 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -41715,7 +41810,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBodyRetain( TableReader & r, Transa
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -41813,7 +41908,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBodyRetain( TableReader & r, Transa
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -42173,7 +42268,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBodyRetain( TableReader & r, Transa
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -42278,7 +42373,7 @@ MESSAGEDEMO_TABLE_INLINE bool TransactionLoadBodyRetain( TableReader & r, Transa
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -42779,6 +42874,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBodyRetain( TableWriter & w, TableR
                 arm_payload += 8; // Capabilities
                 w.header( arm_ref, 9 );
                 w.putleb( (uint64_t) arm_payload ); // caps
+                schema_assert( ( uint64_t( value.body.caps ) >> 2 ) == 0 ); // the write contract, debug only: a mask bit at or above W (docs/SPEC-TABLES.md §4)
                 w.put64( uint64_t( value.body.caps ) );
                 break;
             }
@@ -43154,6 +43250,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageSaveBodyRetain( TableWriter & w, TableR
                         arm_payloadu += 8; // Capabilities
                         w.header( arm_refu, 9 );
                         w.putleb( (uint64_t) arm_payloadu ); // caps
+                        schema_assert( ( uint64_t( value.history[elem_i].caps ) >> 2 ) == 0 ); // the write contract, debug only: a mask bit at or above W (docs/SPEC-TABLES.md §4)
                         w.put64( uint64_t( value.history[elem_i].caps ) );
                         break;
                     }
@@ -43428,7 +43525,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBodyRetain( TableReader & r, ToolMe
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -43452,7 +43549,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBodyRetain( TableReader & r, ToolMe
                 if ( kind != 15 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -43581,6 +43678,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBodyRetain( TableReader & r, ToolMe
                                         break;
                                     }
                                     uint64_t decoded_v = (uint64_t) widened_v;
+                                    if ( ( (uint64_t) decoded_v >> 2 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                                    {
+                                        decoded_v &= 0x3ull;
+                                        r.report->refused = true;
+                                        r.report->refuse_reason = out_of_range;
+                                    }
                                     value.body.caps = decoded_v;
                                     value.body.type = ToolBodyType::Caps;
                                     r.report->widened++;
@@ -43602,6 +43705,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBodyRetain( TableReader & r, ToolMe
                                 break;
                             }
                             uint64_t decoded_v = uint64_t( sub.get64() );
+                            if ( ( (uint64_t) decoded_v >> 2 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                            {
+                                decoded_v &= 0x3ull;
+                                r.report->refused = true;
+                                r.report->refuse_reason = out_of_range;
+                            }
                             value.body.caps = decoded_v;
                             break;
                         }
@@ -43895,7 +44004,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBodyRetain( TableReader & r, ToolMe
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -44058,6 +44167,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBodyRetain( TableReader & r, ToolMe
                                                         break;
                                                     }
                                                     uint64_t decoded_v = (uint64_t) widened_v;
+                                                    if ( ( (uint64_t) decoded_v >> 2 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                                                    {
+                                                        decoded_v &= 0x3ull;
+                                                        r.report->refused = true;
+                                                        r.report->refuse_reason = out_of_range;
+                                                    }
                                                     value.history[(int32_t) i].caps = decoded_v;
                                                     value.history[(int32_t) i].type = ToolBodyType::Caps;
                                                     r.report->widened++;
@@ -44074,6 +44189,12 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBodyRetain( TableReader & r, ToolMe
                                                 break;
                                             }
                                             uint64_t decoded_v = uint64_t( elem_arm.get64() );
+                                            if ( ( (uint64_t) decoded_v >> 2 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                                            {
+                                                decoded_v &= 0x3ull;
+                                                r.report->refused = true;
+                                                r.report->refuse_reason = out_of_range;
+                                            }
                                             value.history[(int32_t) i].caps = decoded_v;
                                             break;
                                         }
@@ -44368,7 +44489,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBodyRetain( TableReader & r, ToolMe
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -44467,7 +44588,7 @@ MESSAGEDEMO_TABLE_INLINE bool ToolMessageLoadBodyRetain( TableReader & r, ToolMe
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -44790,6 +44911,7 @@ inline bool ToolEnvelopeSaveBodyFieldsRetain( const Ctx & ctx, const TableNumber
                 arm_payload += 8; // Capabilities
                 w.header( arm_ref, 9 );
                 w.putleb( (uint64_t) arm_payload ); // caps
+                schema_assert( ( uint64_t( value.body.caps ) >> 2 ) == 0 ); // the write contract, debug only: a mask bit at or above W (docs/SPEC-TABLES.md §4)
                 w.put64( uint64_t( value.body.caps ) );
                 break;
             }
@@ -45020,7 +45142,7 @@ inline bool ToolEnvelopeLoadBodyRetain( TableReader & r, const TableNodeMap & no
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -45044,7 +45166,7 @@ inline bool ToolEnvelopeLoadBodyRetain( TableReader & r, const TableNodeMap & no
                 if ( kind != 15 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -45173,6 +45295,12 @@ inline bool ToolEnvelopeLoadBodyRetain( TableReader & r, const TableNodeMap & no
                                         break;
                                     }
                                     uint64_t decoded_v = (uint64_t) widened_v;
+                                    if ( ( (uint64_t) decoded_v >> 2 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                                    {
+                                        decoded_v &= 0x3ull;
+                                        r.report->refused = true;
+                                        r.report->refuse_reason = out_of_range;
+                                    }
                                     value.body.caps = decoded_v;
                                     value.body.type = ToolBodyType::Caps;
                                     r.report->widened++;
@@ -45194,6 +45322,12 @@ inline bool ToolEnvelopeLoadBodyRetain( TableReader & r, const TableNodeMap & no
                                 break;
                             }
                             uint64_t decoded_v = uint64_t( sub.get64() );
+                            if ( ( (uint64_t) decoded_v >> 2 ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)
+                            {
+                                decoded_v &= 0x3ull;
+                                r.report->refused = true;
+                                r.report->refuse_reason = out_of_range;
+                            }
                             value.body.caps = decoded_v;
                             break;
                         }
@@ -45596,7 +45730,7 @@ MESSAGEDEMO_TABLE_INLINE bool CursorLoadBodyRetain( TableReader & r, Cursor & va
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -45635,7 +45769,7 @@ MESSAGEDEMO_TABLE_INLINE bool CursorLoadBodyRetain( TableReader & r, Cursor & va
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -45753,7 +45887,7 @@ MESSAGEDEMO_TABLE_INLINE bool PingLoadBodyRetain( TableReader & r, Ping & value,
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -48202,99 +48336,99 @@ extern const TableTypeInfo CursorTableInfo;
 extern const TableTypeInfo PingTableInfo;
 
 inline const TableFieldInfo UserTableFields[] = {
-    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, false, NULL, NULL, true, false, 16, (uint32_t) offsetof( User, name ), (uint32_t) sizeof( User::name ), (uint32_t) offsetof( User, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, false, NULL, NULL, true, false, 16, (uint32_t) offsetof( User, name ), (uint32_t) sizeof( User::name ), (uint32_t) offsetof( User, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
 };
 inline const TableTypeInfo UserTableInfo = { "User", (uint32_t) sizeof( User ), 1, UserTableFields, +[]( void * p ) { UserReset( *(User *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * UserTableType() { return &UserTableInfo; }
 
 inline const TableFieldInfo ScriptTableFields[] = {
-    { "path", "path", "string", 0x03c52d0debd70676ull, 12, false, false, NULL, NULL, true, false, 64, (uint32_t) offsetof( Script, path ), (uint32_t) sizeof( Script::path ), (uint32_t) offsetof( Script, path_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-    { "line", "line", "uint32", 0xbf4ba5ad694f5907ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Script, line ), (uint32_t) sizeof( Script::line ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "path", "path", "string", 0x03c52d0debd70676ull, 12, false, false, NULL, NULL, true, false, 64, (uint32_t) offsetof( Script, path ), (uint32_t) sizeof( Script::path ), (uint32_t) offsetof( Script, path_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "line", "line", "uint32", 0xbf4ba5ad694f5907ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Script, line ), (uint32_t) sizeof( Script::line ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
 };
 inline const TableTypeInfo ScriptTableInfo = { "Script", (uint32_t) sizeof( Script ), 2, ScriptTableFields, +[]( void * p ) { ScriptReset( *(Script *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * ScriptTableType() { return &ScriptTableInfo; }
 
 inline const TableFieldInfo SelectionTableFields[] = {
-    { "start", "start", "Cursor", 0xee5d97ad45ad251full, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Selection, start ), (uint32_t) sizeof( Selection::start ), 0xffffffffu, 0xffffffffu, &CursorTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-    { "stop", "stop", "Cursor", 0xc2f00318f053500aull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Selection, stop ), (uint32_t) sizeof( Selection::stop ), 0xffffffffu, 0xffffffffu, &CursorTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "start", "start", "Cursor", 0xee5d97ad45ad251full, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Selection, start ), (uint32_t) sizeof( Selection::start ), 0xffffffffu, 0xffffffffu, &CursorTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "stop", "stop", "Cursor", 0xc2f00318f053500aull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Selection, stop ), (uint32_t) sizeof( Selection::stop ), 0xffffffffu, 0xffffffffu, &CursorTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
 };
 inline const TableTypeInfo SelectionTableInfo = { "Selection", (uint32_t) sizeof( Selection ), 2, SelectionTableFields, +[]( void * p ) { SelectionReset( *(Selection *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * SelectionTableType() { return &SelectionTableInfo; }
 
 inline const TableFieldInfo InsertTextTableFields[] = {
-    { "at", "at", "Cursor", 0x089c4e07b545a968ull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( InsertText, at ), (uint32_t) sizeof( InsertText::at ), 0xffffffffu, 0xffffffffu, &CursorTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-    { "text", "text", "string", 0xfa04f4ef1995407eull, 12, false, false, NULL, NULL, true, false, 32, (uint32_t) offsetof( InsertText, text ), (uint32_t) sizeof( InsertText::text ), (uint32_t) offsetof( InsertText, text_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-    { "origin", "origin", "Origin", 0xb9eae4fe785a14cfull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( InsertText, origin ), (uint32_t) sizeof( InsertText::origin ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "user"; case 2: return "script"; case 3: return "pid"; case 4: return "note"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x7d6780e4032b48f2ull; case 2: return 0xacfc82293c04634aull; case 3: return 0x77af701956600122ull; case 4: return 0x3bf8fbbad1587cddull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Origin[] = { { "pid", "pid", "uint32", 0x77af701956600122ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Origin, pid ), (uint32_t) sizeof( Origin::pid ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, 0, 0ull, 1000ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, { "note", "note", "string", 0x3bf8fbbad1587cddull, 12, false, false, NULL, NULL, true, false, 24, (uint32_t) offsetof( Origin, note.value ), (uint32_t) sizeof( Origin::note.value ), (uint32_t) offsetof( Origin, note.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Origin, user ), &UserTableInfo, NULL, 24 }, { (uint32_t) offsetof( Origin, script ), &ScriptTableInfo, NULL, 76 }, { (uint32_t) offsetof( Origin, pid ), NULL, &arm_fields_Origin[0], 4 }, { (uint32_t) offsetof( Origin, note ), NULL, &arm_fields_Origin[1], 32 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Origin, type ), (uint32_t) sizeof( Origin::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-    { "origins", "origins", "Origin", 0x4437d86681113b74ull, 15, true, false, NULL, NULL, true, false, 2, (uint32_t) offsetof( InsertText, origins ), (uint32_t) sizeof( InsertText::origins[0] ), (uint32_t) offsetof( InsertText, origins_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "user"; case 2: return "script"; case 3: return "pid"; case 4: return "note"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x7d6780e4032b48f2ull; case 2: return 0xacfc82293c04634aull; case 3: return 0x77af701956600122ull; case 4: return 0x3bf8fbbad1587cddull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Origin[] = { { "pid", "pid", "uint32", 0x77af701956600122ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Origin, pid ), (uint32_t) sizeof( Origin::pid ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, 0, 0ull, 1000ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, { "note", "note", "string", 0x3bf8fbbad1587cddull, 12, false, false, NULL, NULL, true, false, 24, (uint32_t) offsetof( Origin, note.value ), (uint32_t) sizeof( Origin::note.value ), (uint32_t) offsetof( Origin, note.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Origin, user ), &UserTableInfo, NULL, 24 }, { (uint32_t) offsetof( Origin, script ), &ScriptTableInfo, NULL, 76 }, { (uint32_t) offsetof( Origin, pid ), NULL, &arm_fields_Origin[0], 4 }, { (uint32_t) offsetof( Origin, note ), NULL, &arm_fields_Origin[1], 32 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Origin, type ), (uint32_t) sizeof( Origin::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-    { "modes", "modes", "Mode", 0x9de526933e6e3ef3ull, 30, true, false, NULL, NULL, true, true, 2, (uint32_t) offsetof( InsertText, modes ), (uint32_t) sizeof( InsertText::modes[0] ), (uint32_t) offsetof( InsertText, modes_count ), (uint32_t) offsetof( InsertText, modes_present ), NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( Mode( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Mode( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "at", "at", "Cursor", 0x089c4e07b545a968ull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( InsertText, at ), (uint32_t) sizeof( InsertText::at ), 0xffffffffu, 0xffffffffu, &CursorTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "text", "text", "string", 0xfa04f4ef1995407eull, 12, false, false, NULL, NULL, true, false, 32, (uint32_t) offsetof( InsertText, text ), (uint32_t) sizeof( InsertText::text ), (uint32_t) offsetof( InsertText, text_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "origin", "origin", "Origin", 0xb9eae4fe785a14cfull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( InsertText, origin ), (uint32_t) sizeof( InsertText::origin ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "user"; case 2: return "script"; case 3: return "pid"; case 4: return "note"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x7d6780e4032b48f2ull; case 2: return 0xacfc82293c04634aull; case 3: return 0x77af701956600122ull; case 4: return 0x3bf8fbbad1587cddull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Origin[] = { { "pid", "pid", "uint32", 0x77af701956600122ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Origin, pid ), (uint32_t) sizeof( Origin::pid ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, 0, 0ull, 1000ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL }, { "note", "note", "string", 0x3bf8fbbad1587cddull, 12, false, false, NULL, NULL, true, false, 24, (uint32_t) offsetof( Origin, note.value ), (uint32_t) sizeof( Origin::note.value ), (uint32_t) offsetof( Origin, note.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Origin, user ), &UserTableInfo, NULL, 24 }, { (uint32_t) offsetof( Origin, script ), &ScriptTableInfo, NULL, 76 }, { (uint32_t) offsetof( Origin, pid ), NULL, &arm_fields_Origin[0], 4 }, { (uint32_t) offsetof( Origin, note ), NULL, &arm_fields_Origin[1], 32 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Origin, type ), (uint32_t) sizeof( Origin::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "origins", "origins", "Origin", 0x4437d86681113b74ull, 15, true, false, NULL, NULL, true, false, 2, (uint32_t) offsetof( InsertText, origins ), (uint32_t) sizeof( InsertText::origins[0] ), (uint32_t) offsetof( InsertText, origins_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "user"; case 2: return "script"; case 3: return "pid"; case 4: return "note"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x7d6780e4032b48f2ull; case 2: return 0xacfc82293c04634aull; case 3: return 0x77af701956600122ull; case 4: return 0x3bf8fbbad1587cddull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Origin[] = { { "pid", "pid", "uint32", 0x77af701956600122ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Origin, pid ), (uint32_t) sizeof( Origin::pid ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, 0, 0ull, 1000ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL }, { "note", "note", "string", 0x3bf8fbbad1587cddull, 12, false, false, NULL, NULL, true, false, 24, (uint32_t) offsetof( Origin, note.value ), (uint32_t) sizeof( Origin::note.value ), (uint32_t) offsetof( Origin, note.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Origin, user ), &UserTableInfo, NULL, 24 }, { (uint32_t) offsetof( Origin, script ), &ScriptTableInfo, NULL, 76 }, { (uint32_t) offsetof( Origin, pid ), NULL, &arm_fields_Origin[0], 4 }, { (uint32_t) offsetof( Origin, note ), NULL, &arm_fields_Origin[1], 32 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Origin, type ), (uint32_t) sizeof( Origin::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "modes", "modes", "Mode", 0x9de526933e6e3ef3ull, 30, true, false, NULL, NULL, true, true, 2, (uint32_t) offsetof( InsertText, modes ), (uint32_t) sizeof( InsertText::modes[0] ), (uint32_t) offsetof( InsertText, modes_count ), (uint32_t) offsetof( InsertText, modes_present ), NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( Mode( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Mode( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
 };
 inline const TableTypeInfo InsertTextTableInfo = { "InsertText", (uint32_t) sizeof( InsertText ), 5, InsertTextTableFields, +[]( void * p ) { InsertTextReset( *(InsertText *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * InsertTextTableType() { return &InsertTextTableInfo; }
 
 inline const TableFieldInfo RemoveTextTableFields[] = {
-    { "span", "span", "Selection", 0x8b7dc019093cd0e1ull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RemoveText, span ), (uint32_t) sizeof( RemoveText::span ), 0xffffffffu, 0xffffffffu, &SelectionTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "span", "span", "Selection", 0x8b7dc019093cd0e1ull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RemoveText, span ), (uint32_t) sizeof( RemoveText::span ), 0xffffffffu, 0xffffffffu, &SelectionTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
 };
 inline const TableTypeInfo RemoveTextTableInfo = { "RemoveText", (uint32_t) sizeof( RemoveText ), 1, RemoveTextTableFields, +[]( void * p ) { RemoveTextReset( *(RemoveText *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * RemoveTextTableType() { return &RemoveTextTableInfo; }
 
 inline const TableFieldInfo EditTableFields[] = {
-    { "revision", "revision", "uint32", 0xd6a4dbc46c8e8658ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Edit, revision ), (uint32_t) sizeof( Edit::revision ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-    { "body", "body", "EditBody", 0xcd4de79bc6c93295ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Edit, body ), (uint32_t) sizeof( Edit::body ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 6, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "insert"; case 2: return "remove"; case 3: return "tally"; case 4: return "marks"; case 5: return "blob"; case 6: return "mode"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x7271c68759916228ull; case 2: return 0xfff83d536a1d457dull; case 3: return 0xb1e5e28e4479a274ull; case 4: return 0x9077d4a4e1726e29ull; case 5: return 0xc573b39bc29148caull; case 6: return 0x0d3deba2c41dadb2ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_EditBody[] = { { "tally", "tally", "int32", 0xb1e5e28e4479a274ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( EditBody, tally ), (uint32_t) sizeof( EditBody::tally ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100.0, 0ll, 100ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, { "marks", "marks", "uint16", 0x9077d4a4e1726e29ull, 7, true, false, NULL, NULL, true, false, 3, (uint32_t) offsetof( EditBody, marks.value ), (uint32_t) sizeof( EditBody::marks.value[0] ), (uint32_t) offsetof( EditBody, marks.value_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, { "blob", "blob", "bytes", 0xc573b39bc29148caull, 6, true, false, NULL, NULL, true, false, 4, (uint32_t) offsetof( EditBody, blob.value ), (uint32_t) sizeof( EditBody::blob.value[0] ), (uint32_t) offsetof( EditBody, blob.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, { "mode", "mode", "Mode", 0x0d3deba2c41dadb2ull, 30, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( EditBody, mode ), (uint32_t) sizeof( EditBody::mode ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( Mode( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Mode( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( EditBody, insert ), &InsertTextTableInfo, NULL, 304 }, { (uint32_t) offsetof( EditBody, remove ), &RemoveTextTableInfo, NULL, 16 }, { (uint32_t) offsetof( EditBody, tally ), NULL, &arm_fields_EditBody[0], 4 }, { (uint32_t) offsetof( EditBody, marks ), NULL, &arm_fields_EditBody[1], 12 }, { (uint32_t) offsetof( EditBody, blob ), NULL, &arm_fields_EditBody[2], 8 }, { (uint32_t) offsetof( EditBody, mode ), NULL, &arm_fields_EditBody[3], 1 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( EditBody, type ), (uint32_t) sizeof( EditBody::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "revision", "revision", "uint32", 0xd6a4dbc46c8e8658ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Edit, revision ), (uint32_t) sizeof( Edit::revision ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "body", "body", "EditBody", 0xcd4de79bc6c93295ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Edit, body ), (uint32_t) sizeof( Edit::body ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 6, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "insert"; case 2: return "remove"; case 3: return "tally"; case 4: return "marks"; case 5: return "blob"; case 6: return "mode"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x7271c68759916228ull; case 2: return 0xfff83d536a1d457dull; case 3: return 0xb1e5e28e4479a274ull; case 4: return 0x9077d4a4e1726e29ull; case 5: return 0xc573b39bc29148caull; case 6: return 0x0d3deba2c41dadb2ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_EditBody[] = { { "tally", "tally", "int32", 0xb1e5e28e4479a274ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( EditBody, tally ), (uint32_t) sizeof( EditBody::tally ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100.0, 0ll, 100ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL }, { "marks", "marks", "uint16", 0x9077d4a4e1726e29ull, 7, true, false, NULL, NULL, true, false, 3, (uint32_t) offsetof( EditBody, marks.value ), (uint32_t) sizeof( EditBody::marks.value[0] ), (uint32_t) offsetof( EditBody, marks.value_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL }, { "blob", "blob", "bytes", 0xc573b39bc29148caull, 6, true, false, NULL, NULL, true, false, 4, (uint32_t) offsetof( EditBody, blob.value ), (uint32_t) sizeof( EditBody::blob.value[0] ), (uint32_t) offsetof( EditBody, blob.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL }, { "mode", "mode", "Mode", 0x0d3deba2c41dadb2ull, 30, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( EditBody, mode ), (uint32_t) sizeof( EditBody::mode ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( Mode( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Mode( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( EditBody, insert ), &InsertTextTableInfo, NULL, 304 }, { (uint32_t) offsetof( EditBody, remove ), &RemoveTextTableInfo, NULL, 16 }, { (uint32_t) offsetof( EditBody, tally ), NULL, &arm_fields_EditBody[0], 4 }, { (uint32_t) offsetof( EditBody, marks ), NULL, &arm_fields_EditBody[1], 12 }, { (uint32_t) offsetof( EditBody, blob ), NULL, &arm_fields_EditBody[2], 8 }, { (uint32_t) offsetof( EditBody, mode ), NULL, &arm_fields_EditBody[3], 1 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( EditBody, type ), (uint32_t) sizeof( EditBody::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
 };
 inline const TableTypeInfo EditTableInfo = { "Edit", (uint32_t) sizeof( Edit ), 2, EditTableFields, +[]( void * p ) { EditReset( *(Edit *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * EditTableType() { return &EditTableInfo; }
 
 inline const TableFieldInfo OpenDocumentTableFields[] = {
-    { "path", "path", "string", 0x03c52d0debd70676ull, 12, false, false, NULL, NULL, true, false, 64, (uint32_t) offsetof( OpenDocument, path ), (uint32_t) sizeof( OpenDocument::path ), (uint32_t) offsetof( OpenDocument, path_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-    { "mode", "mode", "Mode", 0x0d3deba2c41dadb2ull, 30, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( OpenDocument, mode ), (uint32_t) sizeof( OpenDocument::mode ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( Mode( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Mode( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-    { "cursor", "cursor", "Cursor", 0xf927453fbe6252efull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( OpenDocument, cursor ), (uint32_t) sizeof( OpenDocument::cursor ), 0xffffffffu, 0xffffffffu, &CursorTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "path", "path", "string", 0x03c52d0debd70676ull, 12, false, false, NULL, NULL, true, false, 64, (uint32_t) offsetof( OpenDocument, path ), (uint32_t) sizeof( OpenDocument::path ), (uint32_t) offsetof( OpenDocument, path_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "mode", "mode", "Mode", 0x0d3deba2c41dadb2ull, 30, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( OpenDocument, mode ), (uint32_t) sizeof( OpenDocument::mode ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( Mode( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Mode( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "cursor", "cursor", "Cursor", 0xf927453fbe6252efull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( OpenDocument, cursor ), (uint32_t) sizeof( OpenDocument::cursor ), 0xffffffffu, 0xffffffffu, &CursorTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
 };
 inline const TableTypeInfo OpenDocumentTableInfo = { "OpenDocument", (uint32_t) sizeof( OpenDocument ), 3, OpenDocumentTableFields, +[]( void * p ) { OpenDocumentReset( *(OpenDocument *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * OpenDocumentTableType() { return &OpenDocumentTableInfo; }
 
 inline const TableFieldInfo SaveDocumentTableFields[] = {
-    { "path", "path", "string", 0x03c52d0debd70676ull, 12, false, false, NULL, NULL, true, false, 64, (uint32_t) offsetof( SaveDocument, path ), (uint32_t) sizeof( SaveDocument::path ), (uint32_t) offsetof( SaveDocument, path_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-    { "force", "force", "bool", 0xe75ad8afb3eeebe4ull, 1, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( SaveDocument, force ), (uint32_t) sizeof( SaveDocument::force ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "path", "path", "string", 0x03c52d0debd70676ull, 12, false, false, NULL, NULL, true, false, 64, (uint32_t) offsetof( SaveDocument, path ), (uint32_t) sizeof( SaveDocument::path ), (uint32_t) offsetof( SaveDocument, path_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "force", "force", "bool", 0xe75ad8afb3eeebe4ull, 1, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( SaveDocument, force ), (uint32_t) sizeof( SaveDocument::force ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
 };
 inline const TableTypeInfo SaveDocumentTableInfo = { "SaveDocument", (uint32_t) sizeof( SaveDocument ), 2, SaveDocumentTableFields, +[]( void * p ) { SaveDocumentReset( *(SaveDocument *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * SaveDocumentTableType() { return &SaveDocumentTableInfo; }
 
 inline const TableFieldInfo TransactionTableFields[] = {
-    { "reason", "reason", "string", 0x65e8d7f3474f2639ull, 12, false, false, NULL, NULL, true, false, 16, (uint32_t) offsetof( Transaction, reason ), (uint32_t) sizeof( Transaction::reason ), (uint32_t) offsetof( Transaction, reason_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-    { "edits", "edits", "Edit", 0x9478d06b697549e6ull, 13, true, false, NULL, NULL, true, false, 3, (uint32_t) offsetof( Transaction, edits ), (uint32_t) sizeof( Transaction::edits[0] ), (uint32_t) offsetof( Transaction, edits_count ), 0xffffffffu, &EditTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-    { "pending", "pending", "EditBody", 0x52dea0d6eeb5083cull, 15, true, false, NULL, NULL, false, false, 2, (uint32_t) offsetof( Transaction, pending ), (uint32_t) sizeof( Transaction::pending[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 6, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "insert"; case 2: return "remove"; case 3: return "tally"; case 4: return "marks"; case 5: return "blob"; case 6: return "mode"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x7271c68759916228ull; case 2: return 0xfff83d536a1d457dull; case 3: return 0xb1e5e28e4479a274ull; case 4: return 0x9077d4a4e1726e29ull; case 5: return 0xc573b39bc29148caull; case 6: return 0x0d3deba2c41dadb2ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_EditBody[] = { { "tally", "tally", "int32", 0xb1e5e28e4479a274ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( EditBody, tally ), (uint32_t) sizeof( EditBody::tally ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100.0, 0ll, 100ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, { "marks", "marks", "uint16", 0x9077d4a4e1726e29ull, 7, true, false, NULL, NULL, true, false, 3, (uint32_t) offsetof( EditBody, marks.value ), (uint32_t) sizeof( EditBody::marks.value[0] ), (uint32_t) offsetof( EditBody, marks.value_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, { "blob", "blob", "bytes", 0xc573b39bc29148caull, 6, true, false, NULL, NULL, true, false, 4, (uint32_t) offsetof( EditBody, blob.value ), (uint32_t) sizeof( EditBody::blob.value[0] ), (uint32_t) offsetof( EditBody, blob.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, { "mode", "mode", "Mode", 0x0d3deba2c41dadb2ull, 30, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( EditBody, mode ), (uint32_t) sizeof( EditBody::mode ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( Mode( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Mode( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( EditBody, insert ), &InsertTextTableInfo, NULL, 304 }, { (uint32_t) offsetof( EditBody, remove ), &RemoveTextTableInfo, NULL, 16 }, { (uint32_t) offsetof( EditBody, tally ), NULL, &arm_fields_EditBody[0], 4 }, { (uint32_t) offsetof( EditBody, marks ), NULL, &arm_fields_EditBody[1], 12 }, { (uint32_t) offsetof( EditBody, blob ), NULL, &arm_fields_EditBody[2], 8 }, { (uint32_t) offsetof( EditBody, mode ), NULL, &arm_fields_EditBody[3], 1 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( EditBody, type ), (uint32_t) sizeof( EditBody::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-    { "checkpoints", "checkpoints", "uint32", 0x028afa1c4d757704ull, 8, true, false, NULL, NULL, false, true, 2, (uint32_t) offsetof( Transaction, checkpoints ), (uint32_t) sizeof( Transaction::checkpoints[0] ), 0xffffffffu, (uint32_t) offsetof( Transaction, checkpoints_present ), NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-    { "snapshots", "snapshots", "Selection", 0x99dc6354a681403aull, 13, true, false, NULL, NULL, false, true, 2, (uint32_t) offsetof( Transaction, snapshots ), (uint32_t) sizeof( Transaction::snapshots[0] ), 0xffffffffu, (uint32_t) offsetof( Transaction, snapshots_present ), &SelectionTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "reason", "reason", "string", 0x65e8d7f3474f2639ull, 12, false, false, NULL, NULL, true, false, 16, (uint32_t) offsetof( Transaction, reason ), (uint32_t) sizeof( Transaction::reason ), (uint32_t) offsetof( Transaction, reason_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "edits", "edits", "Edit", 0x9478d06b697549e6ull, 13, true, false, NULL, NULL, true, false, 3, (uint32_t) offsetof( Transaction, edits ), (uint32_t) sizeof( Transaction::edits[0] ), (uint32_t) offsetof( Transaction, edits_count ), 0xffffffffu, &EditTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "pending", "pending", "EditBody", 0x52dea0d6eeb5083cull, 15, true, false, NULL, NULL, false, false, 2, (uint32_t) offsetof( Transaction, pending ), (uint32_t) sizeof( Transaction::pending[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 6, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "insert"; case 2: return "remove"; case 3: return "tally"; case 4: return "marks"; case 5: return "blob"; case 6: return "mode"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x7271c68759916228ull; case 2: return 0xfff83d536a1d457dull; case 3: return 0xb1e5e28e4479a274ull; case 4: return 0x9077d4a4e1726e29ull; case 5: return 0xc573b39bc29148caull; case 6: return 0x0d3deba2c41dadb2ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_EditBody[] = { { "tally", "tally", "int32", 0xb1e5e28e4479a274ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( EditBody, tally ), (uint32_t) sizeof( EditBody::tally ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100.0, 0ll, 100ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL }, { "marks", "marks", "uint16", 0x9077d4a4e1726e29ull, 7, true, false, NULL, NULL, true, false, 3, (uint32_t) offsetof( EditBody, marks.value ), (uint32_t) sizeof( EditBody::marks.value[0] ), (uint32_t) offsetof( EditBody, marks.value_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL }, { "blob", "blob", "bytes", 0xc573b39bc29148caull, 6, true, false, NULL, NULL, true, false, 4, (uint32_t) offsetof( EditBody, blob.value ), (uint32_t) sizeof( EditBody::blob.value[0] ), (uint32_t) offsetof( EditBody, blob.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL }, { "mode", "mode", "Mode", 0x0d3deba2c41dadb2ull, 30, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( EditBody, mode ), (uint32_t) sizeof( EditBody::mode ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( Mode( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Mode( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( EditBody, insert ), &InsertTextTableInfo, NULL, 304 }, { (uint32_t) offsetof( EditBody, remove ), &RemoveTextTableInfo, NULL, 16 }, { (uint32_t) offsetof( EditBody, tally ), NULL, &arm_fields_EditBody[0], 4 }, { (uint32_t) offsetof( EditBody, marks ), NULL, &arm_fields_EditBody[1], 12 }, { (uint32_t) offsetof( EditBody, blob ), NULL, &arm_fields_EditBody[2], 8 }, { (uint32_t) offsetof( EditBody, mode ), NULL, &arm_fields_EditBody[3], 1 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( EditBody, type ), (uint32_t) sizeof( EditBody::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "checkpoints", "checkpoints", "uint32", 0x028afa1c4d757704ull, 8, true, false, NULL, NULL, false, true, 2, (uint32_t) offsetof( Transaction, checkpoints ), (uint32_t) sizeof( Transaction::checkpoints[0] ), 0xffffffffu, (uint32_t) offsetof( Transaction, checkpoints_present ), NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "snapshots", "snapshots", "Selection", 0x99dc6354a681403aull, 13, true, false, NULL, NULL, false, true, 2, (uint32_t) offsetof( Transaction, snapshots ), (uint32_t) sizeof( Transaction::snapshots[0] ), 0xffffffffu, (uint32_t) offsetof( Transaction, snapshots_present ), &SelectionTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
 };
 inline const TableTypeInfo TransactionTableInfo = { "Transaction", (uint32_t) sizeof( Transaction ), 5, TransactionTableFields, +[]( void * p ) { TransactionReset( *(Transaction *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * TransactionTableType() { return &TransactionTableInfo; }
 
 inline const TableFieldInfo ToolMessageTableFields[] = {
-    { "sequence", "sequence", "uint32", 0xaa38aca481f528a8ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ToolMessage, sequence ), (uint32_t) sizeof( ToolMessage::sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-    { "body", "body", "ToolBody", 0xcd4de79bc6c93295ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ToolMessage, body ), (uint32_t) sizeof( ToolMessage::body ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 8, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "open"; case 2: return "save"; case 3: return "transact"; case 4: return "ping"; case 5: return "caps"; case 6: return "spans"; case 7: return "origin"; case 8: return "ack"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0xf84f97b4633670e9ull; case 2: return 0x096a5e18bf857c28ull; case 3: return 0xed96bbf4dc6ff587ull; case 4: return 0xbf30e00dc53307a9ull; case 5: return 0xb55a6b90e87557f8ull; case 6: return 0x437dfc8ab2566816ull; case 7: return 0xb9eae4fe785a14cfull; case 8: return 0xe723c21905457682ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_ToolBody[] = { { "caps", "caps", "Capabilities", 0xb55a6b90e87557f8ull, 9, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ToolBody, caps ), (uint32_t) sizeof( ToolBody::caps ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 1, +[]( uint64_t v ) { return FlagNameCapabilities( (int) v ); }, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, { "spans", "spans", "int32", 0x437dfc8ab2566816ull, 4, true, false, NULL, NULL, false, false, 2, (uint32_t) offsetof( ToolBody, spans ), (uint32_t) sizeof( ToolBody::spans[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, { "origin", "origin", "Origin", 0xb9eae4fe785a14cfull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ToolBody, origin ), (uint32_t) sizeof( ToolBody::origin ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "user"; case 2: return "script"; case 3: return "pid"; case 4: return "note"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x7d6780e4032b48f2ull; case 2: return 0xacfc82293c04634aull; case 3: return 0x77af701956600122ull; case 4: return 0x3bf8fbbad1587cddull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Origin[] = { { "pid", "pid", "uint32", 0x77af701956600122ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Origin, pid ), (uint32_t) sizeof( Origin::pid ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, 0, 0ull, 1000ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, { "note", "note", "string", 0x3bf8fbbad1587cddull, 12, false, false, NULL, NULL, true, false, 24, (uint32_t) offsetof( Origin, note.value ), (uint32_t) sizeof( Origin::note.value ), (uint32_t) offsetof( Origin, note.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Origin, user ), &UserTableInfo, NULL, 24 }, { (uint32_t) offsetof( Origin, script ), &ScriptTableInfo, NULL, 76 }, { (uint32_t) offsetof( Origin, pid ), NULL, &arm_fields_Origin[0], 4 }, { (uint32_t) offsetof( Origin, note ), NULL, &arm_fields_Origin[1], 32 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Origin, type ), (uint32_t) sizeof( Origin::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( ToolBody, open ), &OpenDocumentTableInfo, NULL, 84 }, { (uint32_t) offsetof( ToolBody, save ), &SaveDocumentTableInfo, NULL, 76 }, { (uint32_t) offsetof( ToolBody, transact ), &TransactionTableInfo, NULL, 1628 }, { (uint32_t) offsetof( ToolBody, ping ), &PingTableInfo, NULL, 4 }, { (uint32_t) offsetof( ToolBody, caps ), NULL, &arm_fields_ToolBody[0], 8 }, { (uint32_t) offsetof( ToolBody, spans ), NULL, &arm_fields_ToolBody[1], 8 }, { (uint32_t) offsetof( ToolBody, origin ), NULL, &arm_fields_ToolBody[2], 80 }, { 8, NULL, NULL, 0 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( ToolBody, type ), (uint32_t) sizeof( ToolBody::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-    { "history", "history", "ToolBody", 0x33428945bbd5f2ffull, 15, true, false, NULL, NULL, true, false, 2, (uint32_t) offsetof( ToolMessage, history ), (uint32_t) sizeof( ToolMessage::history[0] ), (uint32_t) offsetof( ToolMessage, history_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 8, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "open"; case 2: return "save"; case 3: return "transact"; case 4: return "ping"; case 5: return "caps"; case 6: return "spans"; case 7: return "origin"; case 8: return "ack"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0xf84f97b4633670e9ull; case 2: return 0x096a5e18bf857c28ull; case 3: return 0xed96bbf4dc6ff587ull; case 4: return 0xbf30e00dc53307a9ull; case 5: return 0xb55a6b90e87557f8ull; case 6: return 0x437dfc8ab2566816ull; case 7: return 0xb9eae4fe785a14cfull; case 8: return 0xe723c21905457682ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_ToolBody[] = { { "caps", "caps", "Capabilities", 0xb55a6b90e87557f8ull, 9, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ToolBody, caps ), (uint32_t) sizeof( ToolBody::caps ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 1, +[]( uint64_t v ) { return FlagNameCapabilities( (int) v ); }, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, { "spans", "spans", "int32", 0x437dfc8ab2566816ull, 4, true, false, NULL, NULL, false, false, 2, (uint32_t) offsetof( ToolBody, spans ), (uint32_t) sizeof( ToolBody::spans[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, { "origin", "origin", "Origin", 0xb9eae4fe785a14cfull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ToolBody, origin ), (uint32_t) sizeof( ToolBody::origin ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "user"; case 2: return "script"; case 3: return "pid"; case 4: return "note"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x7d6780e4032b48f2ull; case 2: return 0xacfc82293c04634aull; case 3: return 0x77af701956600122ull; case 4: return 0x3bf8fbbad1587cddull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Origin[] = { { "pid", "pid", "uint32", 0x77af701956600122ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Origin, pid ), (uint32_t) sizeof( Origin::pid ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, 0, 0ull, 1000ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, { "note", "note", "string", 0x3bf8fbbad1587cddull, 12, false, false, NULL, NULL, true, false, 24, (uint32_t) offsetof( Origin, note.value ), (uint32_t) sizeof( Origin::note.value ), (uint32_t) offsetof( Origin, note.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Origin, user ), &UserTableInfo, NULL, 24 }, { (uint32_t) offsetof( Origin, script ), &ScriptTableInfo, NULL, 76 }, { (uint32_t) offsetof( Origin, pid ), NULL, &arm_fields_Origin[0], 4 }, { (uint32_t) offsetof( Origin, note ), NULL, &arm_fields_Origin[1], 32 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Origin, type ), (uint32_t) sizeof( Origin::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( ToolBody, open ), &OpenDocumentTableInfo, NULL, 84 }, { (uint32_t) offsetof( ToolBody, save ), &SaveDocumentTableInfo, NULL, 76 }, { (uint32_t) offsetof( ToolBody, transact ), &TransactionTableInfo, NULL, 1628 }, { (uint32_t) offsetof( ToolBody, ping ), &PingTableInfo, NULL, 4 }, { (uint32_t) offsetof( ToolBody, caps ), NULL, &arm_fields_ToolBody[0], 8 }, { (uint32_t) offsetof( ToolBody, spans ), NULL, &arm_fields_ToolBody[1], 8 }, { (uint32_t) offsetof( ToolBody, origin ), NULL, &arm_fields_ToolBody[2], 80 }, { 8, NULL, NULL, 0 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( ToolBody, type ), (uint32_t) sizeof( ToolBody::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-    { "trace", "trace", "Script", 0xdec59ea6c4eb9aeeull, 13, true, false, NULL, NULL, true, true, 3, (uint32_t) offsetof( ToolMessage, trace ), (uint32_t) sizeof( ToolMessage::trace[0] ), (uint32_t) offsetof( ToolMessage, trace_count ), (uint32_t) offsetof( ToolMessage, trace_present ), &ScriptTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-    { "marks", "marks", "Mode", 0x9077d4a4e1726e29ull, 30, true, false, NULL, NULL, false, true, 2, (uint32_t) offsetof( ToolMessage, marks ), (uint32_t) sizeof( ToolMessage::marks[0] ), 0xffffffffu, (uint32_t) offsetof( ToolMessage, marks_present ), NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( Mode( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Mode( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "sequence", "sequence", "uint32", 0xaa38aca481f528a8ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ToolMessage, sequence ), (uint32_t) sizeof( ToolMessage::sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "body", "body", "ToolBody", 0xcd4de79bc6c93295ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ToolMessage, body ), (uint32_t) sizeof( ToolMessage::body ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 8, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "open"; case 2: return "save"; case 3: return "transact"; case 4: return "ping"; case 5: return "caps"; case 6: return "spans"; case 7: return "origin"; case 8: return "ack"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0xf84f97b4633670e9ull; case 2: return 0x096a5e18bf857c28ull; case 3: return 0xed96bbf4dc6ff587ull; case 4: return 0xbf30e00dc53307a9ull; case 5: return 0xb55a6b90e87557f8ull; case 6: return 0x437dfc8ab2566816ull; case 7: return 0xb9eae4fe785a14cfull; case 8: return 0xe723c21905457682ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_ToolBody[] = { { "caps", "caps", "Capabilities", 0xb55a6b90e87557f8ull, 9, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ToolBody, caps ), (uint32_t) sizeof( ToolBody::caps ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 1, +[]( uint64_t v ) { return FlagNameCapabilities( (int) v ); }, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL }, { "spans", "spans", "int32", 0x437dfc8ab2566816ull, 4, true, false, NULL, NULL, false, false, 2, (uint32_t) offsetof( ToolBody, spans ), (uint32_t) sizeof( ToolBody::spans[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL }, { "origin", "origin", "Origin", 0xb9eae4fe785a14cfull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ToolBody, origin ), (uint32_t) sizeof( ToolBody::origin ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "user"; case 2: return "script"; case 3: return "pid"; case 4: return "note"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x7d6780e4032b48f2ull; case 2: return 0xacfc82293c04634aull; case 3: return 0x77af701956600122ull; case 4: return 0x3bf8fbbad1587cddull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Origin[] = { { "pid", "pid", "uint32", 0x77af701956600122ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Origin, pid ), (uint32_t) sizeof( Origin::pid ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, 0, 0ull, 1000ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL }, { "note", "note", "string", 0x3bf8fbbad1587cddull, 12, false, false, NULL, NULL, true, false, 24, (uint32_t) offsetof( Origin, note.value ), (uint32_t) sizeof( Origin::note.value ), (uint32_t) offsetof( Origin, note.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Origin, user ), &UserTableInfo, NULL, 24 }, { (uint32_t) offsetof( Origin, script ), &ScriptTableInfo, NULL, 76 }, { (uint32_t) offsetof( Origin, pid ), NULL, &arm_fields_Origin[0], 4 }, { (uint32_t) offsetof( Origin, note ), NULL, &arm_fields_Origin[1], 32 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Origin, type ), (uint32_t) sizeof( Origin::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( ToolBody, open ), &OpenDocumentTableInfo, NULL, 84 }, { (uint32_t) offsetof( ToolBody, save ), &SaveDocumentTableInfo, NULL, 76 }, { (uint32_t) offsetof( ToolBody, transact ), &TransactionTableInfo, NULL, 1628 }, { (uint32_t) offsetof( ToolBody, ping ), &PingTableInfo, NULL, 4 }, { (uint32_t) offsetof( ToolBody, caps ), NULL, &arm_fields_ToolBody[0], 8 }, { (uint32_t) offsetof( ToolBody, spans ), NULL, &arm_fields_ToolBody[1], 8 }, { (uint32_t) offsetof( ToolBody, origin ), NULL, &arm_fields_ToolBody[2], 80 }, { 8, NULL, NULL, 0 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( ToolBody, type ), (uint32_t) sizeof( ToolBody::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "history", "history", "ToolBody", 0x33428945bbd5f2ffull, 15, true, false, NULL, NULL, true, false, 2, (uint32_t) offsetof( ToolMessage, history ), (uint32_t) sizeof( ToolMessage::history[0] ), (uint32_t) offsetof( ToolMessage, history_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 8, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "open"; case 2: return "save"; case 3: return "transact"; case 4: return "ping"; case 5: return "caps"; case 6: return "spans"; case 7: return "origin"; case 8: return "ack"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0xf84f97b4633670e9ull; case 2: return 0x096a5e18bf857c28ull; case 3: return 0xed96bbf4dc6ff587ull; case 4: return 0xbf30e00dc53307a9ull; case 5: return 0xb55a6b90e87557f8ull; case 6: return 0x437dfc8ab2566816ull; case 7: return 0xb9eae4fe785a14cfull; case 8: return 0xe723c21905457682ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_ToolBody[] = { { "caps", "caps", "Capabilities", 0xb55a6b90e87557f8ull, 9, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ToolBody, caps ), (uint32_t) sizeof( ToolBody::caps ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 1, +[]( uint64_t v ) { return FlagNameCapabilities( (int) v ); }, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL }, { "spans", "spans", "int32", 0x437dfc8ab2566816ull, 4, true, false, NULL, NULL, false, false, 2, (uint32_t) offsetof( ToolBody, spans ), (uint32_t) sizeof( ToolBody::spans[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL }, { "origin", "origin", "Origin", 0xb9eae4fe785a14cfull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ToolBody, origin ), (uint32_t) sizeof( ToolBody::origin ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "user"; case 2: return "script"; case 3: return "pid"; case 4: return "note"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x7d6780e4032b48f2ull; case 2: return 0xacfc82293c04634aull; case 3: return 0x77af701956600122ull; case 4: return 0x3bf8fbbad1587cddull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Origin[] = { { "pid", "pid", "uint32", 0x77af701956600122ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Origin, pid ), (uint32_t) sizeof( Origin::pid ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, 0, 0ull, 1000ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL }, { "note", "note", "string", 0x3bf8fbbad1587cddull, 12, false, false, NULL, NULL, true, false, 24, (uint32_t) offsetof( Origin, note.value ), (uint32_t) sizeof( Origin::note.value ), (uint32_t) offsetof( Origin, note.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Origin, user ), &UserTableInfo, NULL, 24 }, { (uint32_t) offsetof( Origin, script ), &ScriptTableInfo, NULL, 76 }, { (uint32_t) offsetof( Origin, pid ), NULL, &arm_fields_Origin[0], 4 }, { (uint32_t) offsetof( Origin, note ), NULL, &arm_fields_Origin[1], 32 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Origin, type ), (uint32_t) sizeof( Origin::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( ToolBody, open ), &OpenDocumentTableInfo, NULL, 84 }, { (uint32_t) offsetof( ToolBody, save ), &SaveDocumentTableInfo, NULL, 76 }, { (uint32_t) offsetof( ToolBody, transact ), &TransactionTableInfo, NULL, 1628 }, { (uint32_t) offsetof( ToolBody, ping ), &PingTableInfo, NULL, 4 }, { (uint32_t) offsetof( ToolBody, caps ), NULL, &arm_fields_ToolBody[0], 8 }, { (uint32_t) offsetof( ToolBody, spans ), NULL, &arm_fields_ToolBody[1], 8 }, { (uint32_t) offsetof( ToolBody, origin ), NULL, &arm_fields_ToolBody[2], 80 }, { 8, NULL, NULL, 0 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( ToolBody, type ), (uint32_t) sizeof( ToolBody::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "trace", "trace", "Script", 0xdec59ea6c4eb9aeeull, 13, true, false, NULL, NULL, true, true, 3, (uint32_t) offsetof( ToolMessage, trace ), (uint32_t) sizeof( ToolMessage::trace[0] ), (uint32_t) offsetof( ToolMessage, trace_count ), (uint32_t) offsetof( ToolMessage, trace_present ), &ScriptTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "marks", "marks", "Mode", 0x9077d4a4e1726e29ull, 30, true, false, NULL, NULL, false, true, 2, (uint32_t) offsetof( ToolMessage, marks ), (uint32_t) sizeof( ToolMessage::marks[0] ), 0xffffffffu, (uint32_t) offsetof( ToolMessage, marks_present ), NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) { return EnumName( Mode( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Mode( v ), id ); return id; }, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
 };
 inline const TableTypeInfo ToolMessageTableInfo = { "ToolMessage", (uint32_t) sizeof( ToolMessage ), 5, ToolMessageTableFields, +[]( void * p ) { ToolMessageReset( *(ToolMessage *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * ToolMessageTableType() { return &ToolMessageTableInfo; }
 
 inline const TableFieldInfo ToolEnvelopeTableFields[] = {
-    { "sequence", "sequence", "uint32", 0xaa38aca481f528a8ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ToolEnvelope, sequence ), (uint32_t) sizeof( ToolEnvelope::sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-    { "body", "body", "ToolBody", 0xcd4de79bc6c93295ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ToolEnvelope, body ), (uint32_t) sizeof( ToolEnvelope::body ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 8, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "open"; case 2: return "save"; case 3: return "transact"; case 4: return "ping"; case 5: return "caps"; case 6: return "spans"; case 7: return "origin"; case 8: return "ack"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0xf84f97b4633670e9ull; case 2: return 0x096a5e18bf857c28ull; case 3: return 0xed96bbf4dc6ff587ull; case 4: return 0xbf30e00dc53307a9ull; case 5: return 0xb55a6b90e87557f8ull; case 6: return 0x437dfc8ab2566816ull; case 7: return 0xb9eae4fe785a14cfull; case 8: return 0xe723c21905457682ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_ToolBody[] = { { "caps", "caps", "Capabilities", 0xb55a6b90e87557f8ull, 9, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ToolBody, caps ), (uint32_t) sizeof( ToolBody::caps ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 1, +[]( uint64_t v ) { return FlagNameCapabilities( (int) v ); }, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, { "spans", "spans", "int32", 0x437dfc8ab2566816ull, 4, true, false, NULL, NULL, false, false, 2, (uint32_t) offsetof( ToolBody, spans ), (uint32_t) sizeof( ToolBody::spans[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, { "origin", "origin", "Origin", 0xb9eae4fe785a14cfull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ToolBody, origin ), (uint32_t) sizeof( ToolBody::origin ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "user"; case 2: return "script"; case 3: return "pid"; case 4: return "note"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x7d6780e4032b48f2ull; case 2: return 0xacfc82293c04634aull; case 3: return 0x77af701956600122ull; case 4: return 0x3bf8fbbad1587cddull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Origin[] = { { "pid", "pid", "uint32", 0x77af701956600122ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Origin, pid ), (uint32_t) sizeof( Origin::pid ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, 0, 0ull, 1000ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, { "note", "note", "string", 0x3bf8fbbad1587cddull, 12, false, false, NULL, NULL, true, false, 24, (uint32_t) offsetof( Origin, note.value ), (uint32_t) sizeof( Origin::note.value ), (uint32_t) offsetof( Origin, note.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Origin, user ), &UserTableInfo, NULL, 24 }, { (uint32_t) offsetof( Origin, script ), &ScriptTableInfo, NULL, 76 }, { (uint32_t) offsetof( Origin, pid ), NULL, &arm_fields_Origin[0], 4 }, { (uint32_t) offsetof( Origin, note ), NULL, &arm_fields_Origin[1], 32 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Origin, type ), (uint32_t) sizeof( Origin::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( ToolBody, open ), &OpenDocumentTableInfo, NULL, 84 }, { (uint32_t) offsetof( ToolBody, save ), &SaveDocumentTableInfo, NULL, 76 }, { (uint32_t) offsetof( ToolBody, transact ), &TransactionTableInfo, NULL, 1628 }, { (uint32_t) offsetof( ToolBody, ping ), &PingTableInfo, NULL, 4 }, { (uint32_t) offsetof( ToolBody, caps ), NULL, &arm_fields_ToolBody[0], 8 }, { (uint32_t) offsetof( ToolBody, spans ), NULL, &arm_fields_ToolBody[1], 8 }, { (uint32_t) offsetof( ToolBody, origin ), NULL, &arm_fields_ToolBody[2], 80 }, { 8, NULL, NULL, 0 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( ToolBody, type ), (uint32_t) sizeof( ToolBody::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "sequence", "sequence", "uint32", 0xaa38aca481f528a8ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ToolEnvelope, sequence ), (uint32_t) sizeof( ToolEnvelope::sequence ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "body", "body", "ToolBody", 0xcd4de79bc6c93295ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ToolEnvelope, body ), (uint32_t) sizeof( ToolEnvelope::body ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 8, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "open"; case 2: return "save"; case 3: return "transact"; case 4: return "ping"; case 5: return "caps"; case 6: return "spans"; case 7: return "origin"; case 8: return "ack"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0xf84f97b4633670e9ull; case 2: return 0x096a5e18bf857c28ull; case 3: return 0xed96bbf4dc6ff587ull; case 4: return 0xbf30e00dc53307a9ull; case 5: return 0xb55a6b90e87557f8ull; case 6: return 0x437dfc8ab2566816ull; case 7: return 0xb9eae4fe785a14cfull; case 8: return 0xe723c21905457682ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_ToolBody[] = { { "caps", "caps", "Capabilities", 0xb55a6b90e87557f8ull, 9, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ToolBody, caps ), (uint32_t) sizeof( ToolBody::caps ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 1, +[]( uint64_t v ) { return FlagNameCapabilities( (int) v ); }, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL }, { "spans", "spans", "int32", 0x437dfc8ab2566816ull, 4, true, false, NULL, NULL, false, false, 2, (uint32_t) offsetof( ToolBody, spans ), (uint32_t) sizeof( ToolBody::spans[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL }, { "origin", "origin", "Origin", 0xb9eae4fe785a14cfull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ToolBody, origin ), (uint32_t) sizeof( ToolBody::origin ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 4, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "user"; case 2: return "script"; case 3: return "pid"; case 4: return "note"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x7d6780e4032b48f2ull; case 2: return 0xacfc82293c04634aull; case 3: return 0x77af701956600122ull; case 4: return 0x3bf8fbbad1587cddull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Origin[] = { { "pid", "pid", "uint32", 0x77af701956600122ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Origin, pid ), (uint32_t) sizeof( Origin::pid ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0, 0, 0ull, 1000ull, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL }, { "note", "note", "string", 0x3bf8fbbad1587cddull, 12, false, false, NULL, NULL, true, false, 24, (uint32_t) offsetof( Origin, note.value ), (uint32_t) sizeof( Origin::note.value ), (uint32_t) offsetof( Origin, note.value_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Origin, user ), &UserTableInfo, NULL, 24 }, { (uint32_t) offsetof( Origin, script ), &ScriptTableInfo, NULL, 76 }, { (uint32_t) offsetof( Origin, pid ), NULL, &arm_fields_Origin[0], 4 }, { (uint32_t) offsetof( Origin, note ), NULL, &arm_fields_Origin[1], 32 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Origin, type ), (uint32_t) sizeof( Origin::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( ToolBody, open ), &OpenDocumentTableInfo, NULL, 84 }, { (uint32_t) offsetof( ToolBody, save ), &SaveDocumentTableInfo, NULL, 76 }, { (uint32_t) offsetof( ToolBody, transact ), &TransactionTableInfo, NULL, 1628 }, { (uint32_t) offsetof( ToolBody, ping ), &PingTableInfo, NULL, 4 }, { (uint32_t) offsetof( ToolBody, caps ), NULL, &arm_fields_ToolBody[0], 8 }, { (uint32_t) offsetof( ToolBody, spans ), NULL, &arm_fields_ToolBody[1], 8 }, { (uint32_t) offsetof( ToolBody, origin ), NULL, &arm_fields_ToolBody[2], 80 }, { 8, NULL, NULL, 0 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( ToolBody, type ), (uint32_t) sizeof( ToolBody::type ), arms }; return &info; }, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
 };
 inline const TableTypeInfo ToolEnvelopeTableInfo = { "ToolEnvelope", (uint32_t) sizeof( ToolEnvelope ), 2, ToolEnvelopeTableFields, +[]( void * p ) { ToolEnvelopeReset( *(ToolEnvelope *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * ToolEnvelopeTableType() { return &ToolEnvelopeTableInfo; }
 
 inline const TableFieldInfo CursorTableFields[] = {
-    { "line", "line", "uint32", 0xbf4ba5ad694f5907ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Cursor, line ), (uint32_t) sizeof( Cursor::line ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-    { "column", "column", "uint32", 0x5f531287628bf287ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Cursor, column ), (uint32_t) sizeof( Cursor::column ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "line", "line", "uint32", 0xbf4ba5ad694f5907ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Cursor, line ), (uint32_t) sizeof( Cursor::line ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "column", "column", "uint32", 0x5f531287628bf287ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Cursor, column ), (uint32_t) sizeof( Cursor::column ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
 };
 inline const TableTypeInfo CursorTableInfo = { "Cursor", (uint32_t) sizeof( Cursor ), 2, CursorTableFields, +[]( void * p ) { CursorReset( *(Cursor *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * CursorTableType() { return &CursorTableInfo; }
 
 inline const TableFieldInfo PingTableFields[] = {
-    { "nonce", "nonce", "uint32", 0x73a94c71d60dc0d8ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Ping, nonce ), (uint32_t) sizeof( Ping::nonce ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "nonce", "nonce", "uint32", 0x73a94c71d60dc0d8ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Ping, nonce ), (uint32_t) sizeof( Ping::nonce ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
 };
 inline const TableTypeInfo PingTableInfo = { "Ping", (uint32_t) sizeof( Ping ), 1, PingTableFields, +[]( void * p ) { PingReset( *(Ping *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * PingTableType() { return &PingTableInfo; }

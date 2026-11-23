@@ -6,15 +6,11 @@ import (
 	"testing"
 )
 
-// A must-refuse row (message wire `-`, `wire-refused`) is answered by a
-// refusal. An EMPTY `<case>.absent` is the driver contract's per-case
-// absence: the leg has no codec for the root. It is a missing feature, and
-// must never score the PASS the refusal earns, or a leg that cannot read the
-// root at all passes every must-refuse row on it. A `.absent` that names a
-// reason still transports the refusal.
-func TestEmptyAbsentOnARefusalRowIsMissingNotPass(t *testing.T) {
+// R13 requires the explicit refusal on a must-refuse row. Missing codecs and
+// driver failures are reported separately, regardless of the refusal owed.
+func TestRefusalRowsDistinguishAnswerAbsenceAndDriverError(t *testing.T) {
 	t.Parallel()
-	for _, tc := range []struct {
+	for _, row := range []struct {
 		name, surface string
 		inst          Instance
 		want          []byte
@@ -22,32 +18,32 @@ func TestEmptyAbsentOnARefusalRowIsMissingNotPass(t *testing.T) {
 		{"message refusal", "message", Instance{}, nil},
 		{"wire refusal", "wire", Instance{WireRefused: true}, []byte("old bytes")},
 	} {
-		for _, body := range []string{"", "\n", " \n"} {
-			t.Run(tc.name+"/empty", func(t *testing.T) {
+		for _, answer := range []struct {
+			name, file, body, outcome string
+			pass, missing, failures   int
+		}{
+			{"explicit refusal", "case", "refused\n", outcomePass, 1, 0, 0},
+			{"empty marker", "case.absent", "", outcomeAbsent, 0, 1, 0},
+			{"whitespace marker", "case.absent", " \n", outcomeAbsent, 0, 1, 0},
+			{"reasoned marker", "case.absent", "a local diagnostic", outcomeAbsent, 0, 1, 0},
+			{"no output", "", "", outcomeFail, 0, 0, 1},
+			{"value output", "case", "old bytes", outcomeFail, 0, 0, 1},
+		} {
+			t.Run(row.name+"/"+answer.name, func(t *testing.T) {
 				t.Parallel()
 				dir := t.TempDir()
-				if err := os.WriteFile(filepath.Join(dir, "case.absent"), []byte(body), 0o644); err != nil {
-					t.Fatal(err)
+				if answer.file != "" {
+					if err := os.WriteFile(filepath.Join(dir, answer.file), []byte(answer.body), 0o644); err != nil {
+						t.Fatal(err)
+					}
 				}
 				r := &result{total: 1}
-				scoreAnswer("go", tc.surface, dir, expectation{name: "case", want: tc.want}, tc.inst, r)
-				if r.pass != 0 || r.missing != 1 || len(r.failures) != 0 || r.outcome["case"] != outcomeAbsent {
-					t.Fatalf("an empty .absent on a must-refuse row scored %+v, want one missing case and no pass", r)
+				scoreAnswer("go", row.surface, dir, expectation{name: "case", want: row.want}, row.inst, r)
+				if r.pass != answer.pass || r.missing != answer.missing || len(r.failures) != answer.failures || r.outcome["case"] != answer.outcome {
+					t.Fatalf("scored %+v, want %d pass, %d missing and %d failure", r, answer.pass, answer.missing, answer.failures)
 				}
 			})
 		}
-		t.Run(tc.name+"/reason", func(t *testing.T) {
-			t.Parallel()
-			dir := t.TempDir()
-			if err := os.WriteFile(filepath.Join(dir, "case.absent"), []byte("a local diagnostic"), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			r := &result{total: 1}
-			scoreAnswer("go", tc.surface, dir, expectation{name: "case", want: tc.want}, tc.inst, r)
-			if r.pass != 1 || r.missing != 0 || len(r.failures) != 0 || r.outcome["case"] != outcomePass {
-				t.Fatalf("a named refusal scored %+v, want PASS", r)
-			}
-		})
 	}
 }
 

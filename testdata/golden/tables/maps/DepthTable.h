@@ -496,10 +496,17 @@ struct TableFieldInfo
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
-    // a [A..B]T count's declared minimum A (docs/SPEC.md §4.2, §5.1 row 3):
-    // the count it is born at and the least a read accepts; 0 on every other
-    // field
+    // A COUNTED ARRAY'S MINIMUM (docs/SPEC.md §5.1, docs/SPEC-TABLES.md §16.2):
+    // the A of [A..B]T, 0 on every other field. A text read that
+    // places fewer elements refuses, as the wire read does.
     int32_t array_min;
+    // A DEPRECATED VARIANT (docs/SPEC-TABLES.md §2.15): enum_deprecated says
+    // whether a value names a variant marked "| deprecated", NULL when
+    // the enum carries none. A read naming one stores enum_default instead —
+    // the field's declared default, None for an element — and is never
+    // counted unknown.
+    uint64_t enum_default;
+    bool ( *enum_deprecated )( uint64_t value );
 };
 
 struct TableTypeInfo
@@ -1004,7 +1011,6 @@ struct TableReader
                 return false;
             }
             case 12:
-            case 31:
             case 32:
             {
                 uint64_t n = 0;
@@ -1124,7 +1130,7 @@ struct TableReader
 
     // skip one payload by kind; false = framing damage. FOUR RULES COVER THE
     // SET (docs/SPEC-TABLES.md §3), and a kind outside it is not skippable —
-    // which is why the set is closed and why kind 31 exists.
+    // which is why the set is closed.
     bool skip( uint8_t kind, int depth = 0 )
     {
         switch ( kind )
@@ -1166,8 +1172,7 @@ struct TableReader
                 return getleb( ignored );
             }
             case 12: // a string body: its L is opaque here
-            case 31:
-            case 32: // 31 is the ESCAPE, 32 the payload-free kind
+            case 32: // the payload-free kind
             {
                 uint64_t n = 0;
                 if ( !getleb( n ) ) return false;
@@ -1198,10 +1203,11 @@ struct TableReader
                 offset += (int64_t) n;
                 return !badElementKindContent( arm_kind, b, (int64_t) n, depth );
             }
-            // KIND 34 IS RESERVED FOR float16 AND IS NOT PART OF THIS MAJOR (§3):
-            // no writer emits it and no reader has a rule for it, so a reader
-            // meets it only as DAMAGE, exactly as it meets 35 or 200. A bare 34
-            // is a writer that ignored the escape kind 31.
+            // KIND 31 IS HELD BY NAME AND NEVER WRITTEN (R17) AND KIND 34 IS
+            // RESERVED FOR float16; NEITHER IS PART OF THIS MAJOR (§3): no writer
+            // emits them and no reader has a rule for them, so a reader meets them
+            // only as DAMAGE, exactly as it meets 35 or 200.
+            case 31:
             case 34: return false;
         }
         return false;
@@ -1703,7 +1709,7 @@ inline bool TableStrictContent( TableStrict & s, const uint8_t * b, int64_t n, u
     switch ( kind )
     {
         case 12: return TableUtf8Valid( b, (uint64_t) n ); // ill-formed text is damage
-        case 31: return true; // the escape: opaque by rule (§3)
+        case 31: return false; // KIND 31 IS HELD BY NAME AND NEVER WRITTEN (R17): damage, as 33 and 34
         case 32: return n == 0; // kind 32 with a nonzero L is damage
         case 13:
         {
@@ -1766,7 +1772,7 @@ inline bool TableStrictPayload( TableStrict & s, TableReader & r, uint8_t kind, 
         }
         case 15:
             return TableStrictUnion( s, r, depth );
-        case 12: case 31: case 32: case 13: case 14: case 16:
+        case 12: case 32: case 13: case 14: case 16:
         {
             uint64_t n = 0;
             if ( !r.getleb( n ) || !r.room( n ) ) { return false; } // L4
@@ -2265,8 +2271,10 @@ inline bool TableMessageFixedKind( uint8_t kind ) { return kind >= 20 && kind <=
 inline bool TableMessageKnownKind( uint8_t kind )
 {
     // 36 is the TIMESTAMP: a closed-set kind with no shape bytes and a
-    // sixty-four bit raw payload (docs/SPEC-TABLES.md §2.11, §3.3).
-    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || ( kind >= 30 && kind <= 32 ) || kind == 36;
+    // sixty-four bit raw payload (docs/SPEC-TABLES.md §2.11, §3.3). 31 is held by
+    // name and never written (R17): an announcement naming it is malformed,
+    // as one naming 33 or 34 is.
+    return kind == 0 || ( kind >= 1 && kind <= 17 ) || ( kind >= 18 && kind <= 29 ) || kind == 30 || kind == 32 || kind == 36;
 }
 
 // A CANONICAL LEB128, which is the announcement's own integer: the
@@ -3476,14 +3484,7 @@ inline bool TableMessageSkip( TableBitReader & r, const TableVocabulary & vocabu
             if ( !TableUtf8Valid( text, n ) ) { return false; }
             return r.skip( (int64_t) n * 8 );
         }
-        case 31:
-        {
-            // THE ESCAPE: align, a thirty-two bit L, then L bytes, opaque. It is
-            // the one path a later-major writer has on this form (§3.3)
-            uint64_t n = 0;
-            if ( !r.align() || !r.get( n, 32 ) ) { return false; }
-            return r.skip( (int64_t) n * 8 );
-        }
+        case 31: return false; // held by name and never written (R17): no announcement names it
         case 10:
         {
             if ( entry.packing == 2 )
@@ -5137,7 +5138,7 @@ inline bool TableFixedOrdinalWidth( uint32_t n ) { return n == 1u || n == 2u || 
 
 // THE CLOSED KIND SET (docs/SPEC-TABLES.md §3, §3.4): §3's own kinds 1..30,
 // the no-payload variant 32, and the ONE kind this form's layout adds, the
-// optional wrapper 35. 31 is §3's BODY framing escape, 33 is retired and 34 is
+// optional wrapper 35. 31 is held by name and never written (R17), 33 is retired and 34 is
 // reserved: none is a kind a declaration spells, so none is ever an entry's
 // kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a leaf to step over
 // — see the note above TableFixedCheck.
@@ -7750,7 +7751,7 @@ inline bool TableGraphPayload( TableGraphCollect & c, TableReader & r, uint8_t k
         }
         case 15:
             return TableGraphUnion( c, r, depth );
-        case 12: case 31: case 32: case 13: case 14: case 16:
+        case 12: case 32: case 13: case 14: case 16:
         {
             uint64_t n = 0;
             if ( !r.getleb( n ) || !r.room( n ) ) { c.damaged = true; return false; }
@@ -7801,8 +7802,9 @@ inline bool TableGraphContent( TableGraphCollect & c, const uint8_t * b, int64_t
         case 12:
             if ( !TableUtf8Valid( b, (uint64_t) n ) ) { c.damaged = true; return false; }
             return true;
-        case 31:
-            return true; // opaque: the one kind whose meaning a reader may not know (§3)
+        case 31: // KIND 31 IS HELD BY NAME AND NEVER WRITTEN (R17): damage, as 33 and 34
+            c.damaged = true;
+            return false;
         case 32:
             if ( n != 0 ) { c.damaged = true; return false; }
             return true;
@@ -8739,8 +8741,9 @@ inline int64_t TableRetainInContent( TableRetainIn & s, uint8_t kind, int64_t le
             if ( TableRetainInPayload( s, kind, depth ) < 0 ) { return -1; }
             break;
         case 17: return -1; // A NODE INDEX ANYWHERE DROPS THE WHOLE RECORD (§6.6)
+        case 31: return -1; // held by name and never written (R17): damage
         default:
-            // every other content is bytes: a string, an escape, a
+            // every other content is bytes: a string, a
             // payload-free kind, a scalar under a keyed slot's own length
             TableRetainInRaw( s, s.in + s.at, length );
             s.at += length;
@@ -8812,7 +8815,6 @@ inline int64_t TableRetainInPayload( TableRetainIn & s, uint8_t kind, int32_t de
             break;
         }
         case 12:
-        case 31:
         case 32: // L, then L bytes, nothing framed inside
         {
             uint64_t length = 0;
@@ -9205,6 +9207,7 @@ inline bool TableRetainOutContent( TableRetainOut & s, uint8_t kind, int64_t len
             // variant reference resolve as a framed content too
             if ( !TableRetainOutPayload( s, kind, depth ) ) { return false; }
             break;
+        case 31: return false; // held by name and never written (R17): damage
         default:
             TableRetainOutRaw( s, s.in + s.at, length );
             s.at += length;
@@ -9274,7 +9277,6 @@ inline bool TableRetainOutPayload( TableRetainOut & s, uint8_t kind, int32_t dep
             break;
         }
         case 12:
-        case 31:
         case 32:
         {
             uint64_t length = 0;
@@ -11999,7 +12001,7 @@ MAPDEMO_TABLE_INLINE bool SquadRosterEntryLoadBody( TableReader & r, SquadRoster
                 if ( kind != 6 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -12023,7 +12025,7 @@ MAPDEMO_TABLE_INLINE bool SquadRosterEntryLoadBody( TableReader & r, SquadRoster
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -12198,7 +12200,7 @@ inline bool SquadLoadBody( TableReader & r, const TableNodeMap & nodes, Squad & 
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -12648,7 +12650,7 @@ inline bool DepthLoadBody( TableReader & r, const TableNodeMap & nodes, Depth & 
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -12682,7 +12684,7 @@ inline bool DepthLoadBody( TableReader & r, const TableNodeMap & nodes, Depth & 
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -12778,7 +12780,7 @@ inline bool DepthLoadBody( TableReader & r, const TableNodeMap & nodes, Depth & 
                 if ( kind != 16 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -12878,7 +12880,7 @@ inline bool DepthLoadBody( TableReader & r, const TableNodeMap & nodes, Depth & 
                 if ( kind != 15 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -13018,7 +13020,7 @@ inline bool DepthLoadBody( TableReader & r, const TableNodeMap & nodes, Depth & 
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -15946,7 +15948,7 @@ MAPDEMO_TABLE_INLINE bool SquadRosterEntryLoadBodyRetain( TableReader & r, Squad
                 if ( kind != 6 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -15970,7 +15972,7 @@ MAPDEMO_TABLE_INLINE bool SquadRosterEntryLoadBodyRetain( TableReader & r, Squad
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -16153,7 +16155,7 @@ inline bool SquadLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Sq
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -16608,7 +16610,7 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
                 if ( kind != 13 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -16643,7 +16645,7 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
                 if ( kind != 14 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -16742,7 +16744,7 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
                 if ( kind != 16 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -16842,7 +16844,7 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
                 if ( kind != 15 )
                 {
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -16983,7 +16985,7 @@ inline bool DepthLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, De
                         break;
                     }
                     // AT A POSITION THE READER DOES NAME, a field under
-                    // kind 31 or kind 32 takes this same rule and no other (§3)
+                    // kind 32 takes this same rule and no other (§3)
                     r.report->refused = true;
                     r.report->refuse_reason = kind_mismatch;
                     if ( !r.skip( kind ) )
@@ -18586,24 +18588,24 @@ extern const TableTypeInfo SquadTableInfo;
 extern const TableTypeInfo DepthTableInfo;
 
 inline const TableFieldInfo SquadRosterEntryTableFields[] = {
-    { "key", "key", "uint8", 0x3dc94a19365b10ecull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( SquadRosterEntry, key ), (uint32_t) sizeof( SquadRosterEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( SquadRosterEntry, value ), (uint32_t) sizeof( SquadRosterEntry::value ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "key", "key", "uint8", 0x3dc94a19365b10ecull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( SquadRosterEntry, key ), (uint32_t) sizeof( SquadRosterEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( SquadRosterEntry, value ), (uint32_t) sizeof( SquadRosterEntry::value ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
 };
 inline const TableTypeInfo SquadRosterEntryTableInfo = { "SquadRosterEntry", (uint32_t) sizeof( SquadRosterEntry ), 2, SquadRosterEntryTableFields, +[]( void * p ) { SquadRosterEntryReset( *(SquadRosterEntry *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * SquadRosterEntryTableType() { return &SquadRosterEntryTableInfo; }
 
 inline const TableFieldInfo SquadTableFields[] = {
-    { "roster", "roster", "map[uint8]Item", 0x1c84390d304f4f42ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Squad, roster ), (uint32_t) sizeof( SquadRosterEntry ), (uint32_t) offsetof( Squad, roster.count ), 0xffffffffu, &SquadRosterEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value, bool fresh ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<SquadRosterEntry> *) slot, (uint8_t) key_value, fresh ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false, 0 },
+    { "roster", "roster", "map[uint8]Item", 0x1c84390d304f4f42ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Squad, roster ), (uint32_t) sizeof( SquadRosterEntry ), (uint32_t) offsetof( Squad, roster.count ), 0xffffffffu, &SquadRosterEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value, bool fresh ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<SquadRosterEntry> *) slot, (uint8_t) key_value, fresh ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false, 0, 0, NULL },
 };
 inline const TableTypeInfo SquadTableInfo = { "Squad", (uint32_t) sizeof( Squad ), 1, SquadTableFields, +[]( void * p ) { SquadReset( *(Squad *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * SquadTableType() { return &SquadTableInfo; }
 
 inline const TableFieldInfo DepthTableFields[] = {
-    { "one", "one", "Squad", 0x1a08aa1921ca5cafull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Depth, one ), (uint32_t) sizeof( Depth::one ), 0xffffffffu, 0xffffffffu, &SquadTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-    { "many", "many", "Squad", 0x1f6459a2cea1fc02ull, 13, true, false, NULL, NULL, true, false, 3, (uint32_t) offsetof( Depth, many ), (uint32_t) sizeof( Depth::many[0] ), (uint32_t) offsetof( Depth, many_count ), 0xffffffffu, &SquadTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-    { "keyed", "keyed", "Squad", 0x70551ff29550f15dull, 13, true, false, NULL, NULL, false, false, (int32_t) Slot::Max, (uint32_t) offsetof( Depth, keyed ), (uint32_t) sizeof( Depth::keyed.slots[0] ), 0xffffffffu, 0xffffffffu, &SquadTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, "Slot", +[]( uint64_t v ) { return EnumName( Slot( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Slot( v ), id ); return id; }, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-    { "arm", "arm", "Force", 0xe756c0190570ccb5ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Depth, arm ), (uint32_t) sizeof( Depth::arm ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "squad"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0xd5c2bb95d63e6331ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Force[] = { { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Force, plain ), (uint32_t) sizeof( Force::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Force, squad ), &SquadTableInfo, NULL, 16 }, { (uint32_t) offsetof( Force, plain ), NULL, &arm_fields_Force[0], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Force, type ), (uint32_t) sizeof( Force::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Depth, past ), (uint32_t) sizeof( Depth::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "one", "one", "Squad", 0x1a08aa1921ca5cafull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Depth, one ), (uint32_t) sizeof( Depth::one ), 0xffffffffu, 0xffffffffu, &SquadTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "many", "many", "Squad", 0x1f6459a2cea1fc02ull, 13, true, false, NULL, NULL, true, false, 3, (uint32_t) offsetof( Depth, many ), (uint32_t) sizeof( Depth::many[0] ), (uint32_t) offsetof( Depth, many_count ), 0xffffffffu, &SquadTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "keyed", "keyed", "Squad", 0x70551ff29550f15dull, 13, true, false, NULL, NULL, false, false, (int32_t) Slot::Max, (uint32_t) offsetof( Depth, keyed ), (uint32_t) sizeof( Depth::keyed.slots[0] ), 0xffffffffu, 0xffffffffu, &SquadTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, "Slot", +[]( uint64_t v ) { return EnumName( Slot( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Slot( v ), id ); return id; }, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "arm", "arm", "Force", 0xe756c0190570ccb5ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Depth, arm ), (uint32_t) sizeof( Depth::arm ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "squad"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0xd5c2bb95d63e6331ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Force[] = { { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Force, plain ), (uint32_t) sizeof( Force::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Force, squad ), &SquadTableInfo, NULL, 16 }, { (uint32_t) offsetof( Force, plain ), NULL, &arm_fields_Force[0], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Force, type ), (uint32_t) sizeof( Force::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Depth, past ), (uint32_t) sizeof( Depth::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0, 0, NULL },
 };
 inline const TableTypeInfo DepthTableInfo = { "Depth", (uint32_t) sizeof( Depth ), 5, DepthTableFields, +[]( void * p ) { DepthReset( *(Depth *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * DepthTableType() { return &DepthTableInfo; }

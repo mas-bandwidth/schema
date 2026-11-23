@@ -94,7 +94,7 @@ type fixedDst struct {
 	stride  int64 // an array entry's element stride
 	aux     int64 // a text field's buffer offset, a counted array's count, a present flag
 	counted int   // an array that carries a live count
-	arg     int   // a text field's flavour
+	arg     int   // a text field's flavour or a counted array's minimum
 }
 
 // imageDstRows renders ir's destination spec into this port's image offsets,
@@ -124,7 +124,17 @@ func imageDstRow(u *ir.Unit, e ir.TableFixedLayoutEntry) fixedDst {
 		// the tag leads that storage, so the two offsets are the same byte
 		aux = dst + imageTerms(u, d.Aux)
 	}
-	return fixedDst{dst: dst, stride: stride, aux: aux, counted: d.Counted, arg: d.Meta}
+	arg := d.Meta
+	if d.Counted == 1 {
+		// The evolved-reader array plan reads this slot as the reader's
+		// minimum count. A bytes(N) row has no declared floor. Its IR Meta
+		// holds the identity walk's binary flavour, not a minimum.
+		arg = 0
+		if d.Stride != nil && d.Stride.Array == ir.ArrayCounted {
+			arg = int(d.Stride.ArrayMin)
+		}
+	}
+	return fixedDst{dst: dst, stride: stride, aux: aux, counted: d.Counted, arg: arg}
 }
 
 func imageTerms(u *ir.Unit, terms []ir.TableFixedTerm) int64 {

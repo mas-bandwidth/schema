@@ -529,7 +529,9 @@ public final class TableVocabulary {
     }
 
     static boolean knownKind(int kind) {
-        return kind <= 32 || kind == 36;
+        // 31 is held by name, never written (R17): an announcement naming it is
+        // refused, as one naming 33 or 34 is
+        return kind <= 30 || kind == 32 || kind == 36;
     }
 
     static int kindWidth(int kind) {
@@ -1193,12 +1195,6 @@ public final class TableMessage {
                 // this reader does not keep are still damage when ill-formed.
                 final int start = r.atByte();
                 return r.skipBits(n * 8L) && utf8Valid(r.buf, start, (int) n);
-            }
-            case 31: {
-                if (!r.align()) { return false; }
-                long n = r.get(32);
-                if (r.err) { return false; }
-                return r.skipBits(n * 8L);
             }
             case 14: case 16: {
                 // AN ARRAY OR KEYED BODY IS ONE LEVEL DEEPER (§4): a body past
@@ -2143,6 +2139,29 @@ func (g *messageGen) emitMessageRides(f *ir.Field, owner string, indent int) str
 		}
 		return fmt.Sprintf("!TableMessage.bytesEqual(%s, %sLength, %s)", expr, expr, javaByteArrayLiteral(f.DefBytes))
 	}
+	if f.Array == ir.ArrayCounted && f.BornCount() > 0 && !f.Required {
+		// a [A..B] array BORN at A elements, each writing nothing, elides
+		// (docs/SPEC-TABLES.md §2.3, §22.2; the engine's messageElides); a
+		// table element writes nothing when its body is the terminator alone
+		rides := g.nextTemp("rides")
+		idx := g.nextTemp("i")
+		g.pf("%sboolean %s = %sCount > 0;\n", ind, rides, expr)
+		g.pf("%sif (%sCount == %d) {\n", ind, expr, f.BornCount())
+		g.pf("%s    %s = false;\n", ind, rides)
+		g.pf("%s    for (int %s = 0; %s < %d; %s++) {\n", ind, idx, idx, f.BornCount(), idx)
+		if isStructType(f.Type) {
+			st := f.Type.Ref.(*ir.Struct)
+			probe := g.nextTemp("probe")
+			g.pf("%s        TableMessage.Writer %s = new TableMessage.Writer(null, 0, true);\n", ind, probe)
+			g.pf("%s        if (!%s.saveMessageBody(%s, %s[%s])) { return false; }\n", ind, messageClass(st.Name), probe, expr, idx)
+			g.pf("%s        if (%s.bits > %dL) { %s = true; break; }\n", ind, probe, g.refBits, rides)
+		} else {
+			g.pf("%s        if (%s) { %s = true; break; }\n", ind, g.scalarOrUnionRidesExpr(f, fmt.Sprintf("%s[%s]", expr, idx)), rides)
+		}
+		g.pf("%s    }\n", ind)
+		g.pf("%s}\n", ind)
+		return rides
+	}
 	if f.Array == ir.ArrayCounted {
 		if f.ElidesAtBirth() {
 			// THE BIRTH VALUE ELIDES (docs/SPEC-TABLES.md §22.2, the message
@@ -2818,6 +2837,14 @@ func (g *messageGen) emitLoadElement(f *ir.Field, targetExpr, shapeExpr string, 
 				// masked in the cell.
 				minLit = 0
 				maxLit = (uint64(1) << uint(f.Type.Width)) - 1
+				hasRange = true
+			}
+			if fl, ok := f.Type.Ref.(*ir.Flags); ok && !hasRange && fl.WireBits < 64 {
+				// A MASK BIT AT OR ABOVE THE READER'S W REFUSES (docs/SPEC-TABLES.md
+				// §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH): a newer writer announces
+				// a wider mask, and each value is held to this reader's own W
+				minLit = 0
+				maxLit = (uint64(1) << uint(fl.WireBits)) - 1
 				hasRange = true
 			}
 			bitsWidth := 0

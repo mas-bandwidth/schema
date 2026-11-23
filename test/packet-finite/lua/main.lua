@@ -1,5 +1,5 @@
 -- The Lua packet finite-float gate (SPEC §4.3, serialize format 2.0). Loads the
--- generated Finite.schema module and its vendored serialize.lua runtime from
+-- generated PacketFinite.schema module and its vendored serialize.lua runtime from
 -- the directory given as the first argument (the negative controls pass their
 -- sabotaged copy), then checks every way a bare float reaches the Lua packet
 -- wire: a float32 and a float64 each alone, a float64 on a byte and one behind
@@ -20,7 +20,7 @@ local dir = assert(arg[1], "usage: lua main.lua <generated dir>")
 package.path = dir .. "/?.lua;" .. package.path
 
 local serialize = require("serialize")
-local F = require("Finite")
+local F = require("PacketFinite")
 
 local failures = 0
 local function fail(name, detail)

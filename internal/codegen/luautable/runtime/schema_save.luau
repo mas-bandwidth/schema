@@ -392,6 +392,9 @@ local function valid_scalar(e: any, v: any): boolean
   local max = if ty == "integer" then integer.sub(integer.lshift(1i, integer.create(e.bits)), 1i) else 2 ^ e.bits - 1
   if ucmp_gt(v, max) then return false end
  end
+ -- a mask is held to W, the width its reader holds it to (docs/SPEC-TABLES.md
+ -- §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH)
+ if e.fw ~= nil and e.fw < 64 and ty == "integer" and integer.rshift(v, integer.create(e.fw)) ~= 0i then return false end
  return true
 end
 
