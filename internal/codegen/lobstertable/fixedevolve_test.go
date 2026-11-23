@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"maps"
 	"os"
 	"path/filepath"
@@ -962,8 +963,8 @@ func lobsterFixedCorpus(t *testing.T) string {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "manifest.txt")); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and the reference's byte oracle is not in %s: %v", dir, err)
+		if slowtest.CorpusRequired() {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the reference's byte oracle is not in %s: %v", dir, err)
 		}
 		t.Skip("the reference's byte oracle is not built: make tables-fixedform-corpus")
 	}

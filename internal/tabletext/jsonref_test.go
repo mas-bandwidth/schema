@@ -266,15 +266,21 @@ func TestJsonrefSkippedLabelsAgreeWithGeneratedGo(t *testing.T) {
 			t.Errorf("Patrol %s: reference read=%v (%+v), generated Go read=%v (%v), spec %v", c.text, refOK, r, goOK, gr.Err(), c.accept)
 		}
 	}
-	for _, text := range []string{`{"mystery": {"&node": 1}}`, `{"mystery": {"x": 1, "&node": 1.5}}`} {
+	for _, tc := range []struct {
+		text   string
+		accept bool
+	}{
+		{`{"mystery": {"&node": 1}}`, true},
+		{`{"mystery": {"x": 1, "&node": 1.5}}`, false},
+	} {
 		inst := m.New(m.Lookup("PackConfig"))
 		var r tabletext.Report
-		refOK := m.Read(inst, []byte(text), &r)
+		refOK := m.Read(inst, []byte(tc.text), &r)
 		var v tabledemo.PackConfig
 		var gr tabledemo.TableReport
-		goOK := tabledemo.PackConfigFromJSON(&v, []byte(text), &gr)
-		if !refOK || !goOK {
-			t.Errorf("fixed PackConfig %s: reference read=%v (%+v), generated Go read=%v (%v), want both read", text, refOK, r, goOK, gr.Err())
+		goOK := tabledemo.PackConfigFromJSON(&v, []byte(tc.text), &gr)
+		if refOK != tc.accept || goOK != tc.accept {
+			t.Errorf("fixed PackConfig %s: reference read=%v (%+v), generated Go read=%v (%v), want %v", tc.text, refOK, r, goOK, gr.Err(), tc.accept)
 		}
 	}
 }

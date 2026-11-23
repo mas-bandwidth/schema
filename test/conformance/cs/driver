@@ -20,8 +20,18 @@ out=$3
 CONF_DLL="test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll"
 COOK_DLL="test/cs-cook/bin/Debug/net10.0/schemacooktest.dll"
 
+# A PREREQUISITE THAT WAS NOT BUILT IS NAMED, NOT RUN INTO: `dotnet <missing>.dll`
+# exits non-zero with a message about a missing command, and the harness then
+# prints `FAIL 0/N` over the cook surfaces with nothing saying why. `make
+# conformance` builds both (CONFORMANCE_LEGS: build-conformance-cs build-cs-cook).
+need() {
+    [ -f "$1" ] || { echo "the C# leg needs $1, which is not built: run \`make $2\` (\`make conformance\` builds it)" >&2; exit 1; }
+}
+
 case "$surface" in
 list)
+    need "$CONF_DLL" build-conformance-cs
+    need "$COOK_DLL" build-cs-cook
     dotnet "$CONF_DLL" "$manifest" list
     echo cook
     echo cook-foreign
@@ -29,25 +39,30 @@ list)
     echo cook-forgery
     ;;
 cook)
+    need "$COOK_DLL" build-cs-cook
     # cook <case> <unit> <root> <file>
     grep '^cook ' "$manifest" | while read -r _ cookcase _ cookroot file; do
         dotnet "$COOK_DLL" dump "$cookroot" "$file" > "$out/$cookcase"
     done
     ;;
 cook-foreign)
+    need "$COOK_DLL" build-cs-cook
     # the cross-endian refusal, in ONE runtime start-up over the derived manifest
     dotnet "$COOK_DLL" foreign "$manifest" "$out"
     ;;
 cook-reason)
+    need "$COOK_DLL" build-cs-cook
     dotnet "$COOK_DLL" reason "$manifest" "$out"
     ;;
 cook-forgery)
+    need "$COOK_DLL" build-cs-cook
     # the whole 111-row battery in ONE runtime start-up, over the derived
     # manifest — the cook dump above is the one surface that cannot be
     # (its walk takes one root per invocation)
     dotnet "$COOK_DLL" conformance "$manifest" "$out"
     ;;
 *)
+    need "$CONF_DLL" build-conformance-cs
     exec dotnet "$CONF_DLL" "$manifest" "$surface" "$out"
     ;;
 esac

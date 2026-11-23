@@ -214,7 +214,8 @@ func (vc *variableClass) carried(name string) bool { return vc.reason[name] == "
 // *bytes blob (§2.5), an enum, a table nested by value
 // or pointed at (§2.1, §3.1), an optional ?T (§2.3), an enum-keyed array [E]T
 // (§2.4), a map[K]V (§2.8), a union or array of unions (§2.6), an unbounded
-// []T or bounded [..N]T array (§2.9), and any of these inside an `if` group,
+// []T or bounded [..N]T array (§2.9), a counted array with a declared minimum
+// [Min..N]T born at Min (§3, §22.2), and any of these inside an `if` group,
 // which the walks gate on its branch condition (variableguard.go, §3.1, §4). Whether a referenced TABLE is itself
 // carried is the table-level fixpoint's question ([newVariableClass]).
 func variableFieldConstruct(f *ir.Field) string {
@@ -236,21 +237,6 @@ func variableFieldConstruct(f *ir.Field) string {
 		return unionFieldConstruct(ref, map[*ir.Union]bool{})
 	}
 	return ""
-}
-
-// countedMinCarried reports a [Min..N]T whose element this leg's variable
-// codec carries at its birth count (ir.Field.BornCount, SPEC §4.6): a scalar,
-// an enum or a table by value. A fresh value holds Min elements at their
-// zero, the save elides exactly that, and a read below Min refuses.
-func countedMinCarried(f *ir.Field) bool {
-	if f.IsTextList() || f.Type.Pointer || f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes {
-		return false
-	}
-	switch classOf(f) {
-	case vScalar, vEnum, vTable:
-		return true
-	}
-	return false
 }
 
 func unionFieldConstruct(un *ir.Union, seen map[*ir.Union]bool) string {

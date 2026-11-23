@@ -141,6 +141,17 @@ name: CI fast
 # #1127, and a branch with no protection and no merge queue is exactly where
 # that gate must not go quiet. The leg gates run on dispatch only (above).
 #
+# A LANE PULL REQUEST IS CHECKED AGAINST CURRENT MAIN (2026-11-22). A pull
+# request into a lane (rowan/fix-ledger-1122, a sprint stream, dev) used to be
+# checked out as the PR merged into the LANE only, so a lane that had drifted
+# from main was green on every PR into it and red only when it landed. Every
+# job below now runs .github/actions/merge-main right after actions/checkout:
+# for a pull request whose base is not main it fetches main blobless and merges
+# it into the checkout, and a lane that does not merge cleanly fails there by
+# name with the conflicting paths. The plan diffs every pull request against
+# main. internal/ci TestEveryFastCheckoutMergesMain holds every checkout to it;
+# merge_main_test.go plants the drifted lane and the conflicting one.
+#
 # SPACE IS NOT IN THE POOL: it is the game server only (owner, 2026-10-15), and
 # its old `space-x64` registration is gone with it. No job here names it.
 #
@@ -222,6 +233,7 @@ jobs:
       codegen_touched: ${{ steps.pick.outputs.codegen_touched }}
       broad: ${{ steps.pick.outputs.broad }}
       lints: ${{ steps.pick.outputs.lints }}
+      nightly_rows: ${{ steps.pick.outputs.nightly_rows }}
       newleg: ${{ steps.pick.outputs.newleg }}
       rows: ${{ steps.rows.outputs.rows }}
     steps:
@@ -234,11 +246,16 @@ jobs:
           # 42491594592, 42451891639); a blobless one is a few seconds.
           fetch-depth: 0
           filter: blob:none
+      - uses: ./.github/actions/merge-main
 
       - name: the diff, the packages and the legs
         id: pick
         env:
-          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.ref || 'dev' }}
+          # A PULL REQUEST DIFFS AGAINST MAIN, whatever its base: a lane PR is
+          # checked out merged with current main (.github/actions/merge-main),
+          # so what differs from main, the lane and the PR together, is what
+          # this run has to cover.
+          BASE: ${{ github.event_name == 'pull_request' && 'main' || 'dev' }}
           BEFORE: ${{ github.event_name == 'push' && github.event.before || '' }}
         run: |
           set -euo pipefail
@@ -577,7 +594,7 @@ jobs:
           # diff touches (including C++ and ccommon optimizations, which set
           # broad=yes for leg-gate's oracle rule), while keeping shared root
           # edits (ir/, compiler/, Makefile, ci-fast.yml) and > 4 language
-          # sweeps bounded so a single push never dispatches 18 * 3 = 54 jobs.
+          # sweeps bounded so a single push never dispatches 18 * 4 = 72 jobs.
           shared_broad=no
           if grep -qE '^(ir/|compiler/|tables/|Makefile$|go\.mod$|docs/FIXED-FORM-|test/tables/.*\.schema$|\.github/workflows/ci-fast\.yml$)' <<<"$files"; then
             shared_broad=yes
@@ -635,6 +652,13 @@ jobs:
           echo "codegen_touched=$codegen_touched" >> "$GITHUB_OUTPUT"
           echo "lints=$lints_json"          >> "$GITHUB_OUTPUT"
 
+          # THE NIGHTLY GATES' PULL-REQUEST FORMS (the nightly-fast job,
+          # docs/CI-TIERS.md): the .github/nightly-fast-rows.txt rows this diff
+          # selects, by the legs it touched, the files it touched and the broad
+          # rule. tools/nightlyrows fails by name on a malformed registry.
+          nightly_rows=$(go run ./tools/nightlyrows -files "$RUNNER_TEMP/diff-files.txt" -legs "$touched_legs" -broad "$broad")
+          echo "nightly_rows=$nightly_rows" >> "$GITHUB_OUTPUT"
+
           # THE NEW-LEG SCAFFOLD (newleg-scaffold, #4541). `schema new-leg`
           # lays down a package that imports the compiler's own packages, the
           # ones its templates in compiler/newleg.go name. Its fixture test,
@@ -674,6 +698,7 @@ jobs:
             echo "* clean-legs: \`$clean_legs_json\`"
             echo "* codegen-touched: **$codegen_touched**"
             echo "* language lints: \`$lints_json\`"
+            echo "* nightly gates' fast forms: \`$nightly_rows\`"
             echo "* new-leg scaffold: **$newleg**"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -728,6 +753,7 @@ jobs:
         shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
       # A skipped or failed policy job must fail the existing required check.
       - name: require CI policy success
         env:
@@ -832,6 +858,7 @@ jobs:
             select: -skip '^(TestFastPlan|TestOptVerify|TestPython|TestConformance|TestCertify|TestNo)'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
       # the gate runs hosted, so setup-go always runs here; the guard keeps the
       # step correct on a fleet runner too
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
@@ -921,6 +948,7 @@ jobs:
         shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
@@ -942,6 +970,7 @@ jobs:
         shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
@@ -990,6 +1019,7 @@ jobs:
         shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
@@ -1022,6 +1052,7 @@ jobs:
         lang: ${{ fromJSON(needs.plan.outputs.clean_legs) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
       - name: Check out the Rust runtime sibling (rust clippy)
         if: matrix.lang == 'rust'
         run: |
@@ -1136,13 +1167,14 @@ jobs:
         lint: ${{ fromJSON(needs.plan.outputs.lints) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
       # hosted, as above
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
           go-version: '1.26'
           cache: false
-      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+      - uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
         if: matrix.lint == 'dart' && runner.environment == 'github-hosted'
         with:
           sdk: 3.13.2
@@ -1187,11 +1219,120 @@ jobs:
           make tables-lua-format
           make tables-lua-format-negative-control
 
+  # THE NIGHTLY GATES' PULL-REQUEST FORMS (docs/CI-TIERS.md; 2026-11-22: the
+  # strict Ruby gate ran only in nightly workflows, and a RuboCop offense in
+  # the generated Ruby reached main). One row per .github/nightly-fast-rows.txt
+  # line the plan selected (its nightly_rows output, internal/nightlyrows): the
+  # fast form of a gate whose own workflow runs only on a schedule or on
+  # dispatch, run when the diff touches the row's leg or files, or the broad
+  # rule. Every row fits two minutes (its nightly job time is in
+  # docs/CI-TIERS.md); the nightly workflows still run the whole gates and
+  # their planted controls. internal/ci TestEveryNightlyOnlyGateHasAPRTierForm
+  # holds every nightly-only workflow to a row here or to a named job of this
+  # file that already catches what it catches.
+  nightly-fast:
+    needs: plan
+    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.nightly_rows != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    name: nightly-fast (${{ matrix.name }})
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 2
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.nightly_rows) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
+
+      - name: Check out the sibling runtimes this row needs (pinned releases)
+        env:
+          LEG: ${{ matrix.leg }}
+        run: |
+          set -euo pipefail
+          cd ..
+          rm -rf serialize serialize.go serialize.c serialize.rs serialize.cs serialize.js
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
+          case "$LEG" in
+            c)                git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG"  https://github.com/mas-bandwidth/serialize.c.git  serialize.c ;;
+            rust)             git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs ;;
+            cs|unity)         git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs ;;
+            js)               git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js ;;
+            go|lobster|moo)   git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go ;;
+          esac
+
+      # hosted fallbacks only: a fleet runner has every toolchain on its PATH
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - name: read the .NET SDK pin
+        if: matrix.leg == 'cs' || matrix.leg == 'unity'
+        run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        if: (matrix.leg == 'cs' || matrix.leg == 'unity') && runner.environment == 'github-hosted'
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_PIN }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: matrix.leg == 'js' && runner.environment == 'github-hosted'
+        with:
+          node-version: '26'
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
+        with:
+          components: clippy, rustfmt
+        if: matrix.leg == 'rust' && runner.environment == 'github-hosted'
+      - uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
+        if: matrix.leg == 'dart' && runner.environment == 'github-hosted'
+        with:
+          sdk: 3.13.2
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        if: matrix.leg == 'java' && runner.environment == 'github-hosted'
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        if: matrix.leg == 'elixir' && runner.environment == 'github-hosted'
+        with:
+          otp-version: '27'
+          elixir-version: '1.18'
+      - name: hosted GL dependencies for Lobster
+        if: matrix.leg == 'lobster' && runner.environment == 'github-hosted'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+      # the pinned interpreters, from the runner's store as the other jobs do
+      - uses: ./.github/actions/dist-pins
+        if: matrix.leg == 'lua' || matrix.leg == 'luau' || matrix.leg == 'lobster'
+        with:
+          pins: ${{ matrix.leg }}
+      - uses: ./.github/actions/python
+        if: matrix.leg == 'python'
+      - uses: ./.github/actions/ruby
+        if: matrix.leg == 'ruby'
+      - uses: ./.github/actions/moo
+        if: matrix.leg == 'moo'
+
+      - name: the row, as .github/nightly-fast-rows.txt names it
+        env:
+          ROW_NAME: ${{ matrix.name }}
+          ROW_RUN: ${{ matrix.run }}
+        run: |
+          set -euo pipefail
+          if [ -f /opt/nova/sdk/env.sh ]; then
+            . /opt/nova/sdk/env.sh
+          fi
+          echo "nightly-fast $ROW_NAME: $ROW_RUN"
+          eval "$ROW_RUN"
+
   # PER-LANGUAGE OPTIMIZATION VERIFICATION GATE (make verify-<lang>-<gate>).
-  # Three parallel < 2m jobs per touched language across all 18 ports:
+  # Four parallel < 2m jobs per touched language across all 18 ports:
   #   conformance — all 21 table surfaces (--claims) + packet wire + defaults/UTF-8
   #   bench       — packet wire 64-variant byte-checked hot loop + table wire gate
   #   fuzz        — deterministic wire-fuzz smoke (plain + --retain, stateful reuse)
+  #   tablegen    — generated-schema table round trips (make/verify-widen-18.mk)
   verify-leg:
     needs: plan
     if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.verify_legs != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
@@ -1205,9 +1346,10 @@ jobs:
       fail-fast: false
       matrix:
         leg: ${{ fromJSON(needs.plan.outputs.verify_legs) }}
-        gate: [conformance, bench, fuzz]
+        gate: [conformance, bench, fuzz, tablegen]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
 
       # THE SKIP LEDGER'S RECORD (.github/skip-ledger.txt). With
       # PGROUP_GO_TEST_JSON set, tools/pgroup records the `go test -json`
@@ -1254,11 +1396,11 @@ jobs:
         with:
           components: clippy, rustfmt
         if: matrix.leg == 'rust' && runner.environment == 'github-hosted'
-      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+      - uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
         if: matrix.leg == 'dart' && runner.environment == 'github-hosted'
         with:
           sdk: 3.13.2
-      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         if: matrix.leg == 'java' && runner.environment == 'github-hosted'
         with:
           distribution: temurin
@@ -1343,6 +1485,7 @@ jobs:
         shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
       # hosted, as above
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
@@ -1375,6 +1518,7 @@ jobs:
         shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
       # the runner's own pinned go already satisfies go.mod; hosted fallback only
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
@@ -1439,6 +1583,7 @@ jobs:
         shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         if: runner.environment == 'github-hosted'
         with:
@@ -1478,6 +1623,7 @@ jobs:
         include: ${{ fromJSON(needs.plan.outputs.rows) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
 
       # THE GO TESTS LINK SIBLING RUNTIMES, so this job clones them exactly as
       # ci-full.yml's `go-test` does. A dozen tests under compiler/ and
@@ -1602,6 +1748,19 @@ jobs:
         if: matrix.packages != ''
         with:
           pins: ${{ steps.pins.outputs.pins }}
+
+      # THE OWED TABLE READS MERGED PULL REQUESTS FROM HISTORY
+      # (internal/docgate TestOwedRowsAreLinked, docs/SPEC-CONFORMANCE.md
+      # §7). The checkout is one commit deep, so a row that tests docgate
+      # fetches the history first, blobless (commits and trees only, about
+      # 9 s), and the merged-PR half runs: in CI it is never NOT RUN.
+      - name: the history the owed-table check reads
+        if: contains(matrix.packages, 'internal/docgate')
+        run: |
+          set -euo pipefail
+          if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
+            git fetch --quiet --unshallow --filter=blob:none origin
+          fi
 
       - name: go test this row's packages
         if: matrix.packages != ''
@@ -1730,6 +1889,7 @@ jobs:
         leg: ${{ fromJSON(needs.plan.outputs.legs) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
 
       # THE C++ REFERENCE IS EVERY LEG'S ORACLE: build/fixedform-corpus is dumped
       # by ../serialize, so every row clones it. The leg's own sibling runtime
@@ -1792,11 +1952,11 @@ jobs:
         with:
           components: clippy, rustfmt
         if: matrix.leg == 'rust' && runner.environment == 'github-hosted'
-      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+      - uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
         if: matrix.leg == 'dart' && runner.environment == 'github-hosted'
         with:
           sdk: 3.13.2
-      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         if: matrix.leg == 'java' && runner.environment == 'github-hosted'
         with:
           distribution: temurin
@@ -1926,6 +2086,7 @@ jobs:
         part: [ conformance-a, conformance-b, conformance-c, wire-fuzz, packages, gates ]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
 
       # the C++ reference dumps build/fixedform-corpus, every leg's oracle
       - name: Check out the C++ serialize reference (pinned release)
@@ -2008,6 +2169,7 @@ jobs:
         shell: go run ./tools/pgroup -- bash -e {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
 
       # the C++ reference dumps build/fixedform-corpus, the probes' oracle, and
       # the probes link the Rust runtime beside this tree
@@ -2059,6 +2221,7 @@ jobs:
         part: [ conformance, negative ]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
 
       # the C++ reference dumps build/fixedform-corpus, every leg's oracle
       - name: Check out the C++ serialize reference (pinned release)
@@ -2117,6 +2280,7 @@ jobs:
         part: [ asan, clean ]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
 
       # the C++ reference dumps build/fixedform-corpus and compiles against
       # the serialize headers
@@ -2173,7 +2337,7 @@ jobs:
   # ci-policy, lint-fast, vet, block-gate) may never skip. `verdict` is the
   # check to require on main.
   verdict:
-    needs: [fork-pull-request, plan, lint-fast, ci-policy, vet, golangci-lint-fast, generated-current, lang-clean, lang-lint, verify-leg, block-gate, go-fixed-corpus, go-test-touched, leg-gate, leg-gate-lobster, leg-gate-rust, leg-gate-squirrel, leg-gate-cpp, newleg-scaffold]
+    needs: [fork-pull-request, plan, lint-fast, ci-policy, vet, golangci-lint-fast, generated-current, lang-clean, lang-lint, verify-leg, block-gate, go-fixed-corpus, go-test-touched, leg-gate, leg-gate-lobster, leg-gate-rust, leg-gate-squirrel, leg-gate-cpp, newleg-scaffold, nightly-fast]
     if: startsWith(github.head_ref, 'sprint/') == false && (always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # jq over the needs context: seconds
@@ -2200,6 +2364,7 @@ jobs:
               generated-current) [ "$(out codegen_touched)" != yes ] ;;
               lang-clean) [ "$(out clean_legs)" = '[]' ] ;;
               lang-lint) [ "$(out lints)" = '[]' ] ;;
+              nightly-fast) [ "$(out nightly_rows)" = '[]' ] ;;
               verify-leg) [ "$(out verify_legs)" = '[]' ] ;;
               go-fixed-corpus) ! grep -qF '"make":"tables-go-fixedform"' <<<"$(out rows)" ;;
               go-test-touched) [ -z "$(out packages)" ] ;;

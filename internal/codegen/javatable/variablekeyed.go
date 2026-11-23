@@ -19,15 +19,6 @@ func variableElement(f *ir.Field) *ir.Field {
 	return &one
 }
 
-// variableBornCount is the count a variable value's [A..B]T list is born
-// with: A (ir.Field.BornCount). Maps and keyed arrays are not counted lists.
-func variableBornCount(f *ir.Field) int64 {
-	if f.Array != ir.ArrayCounted || f.KeyEnum != "" || f.IsMap() {
-		return 0
-	}
-	return f.BornCount()
-}
-
 // variableBornElement is one value-initialized slot of a born list: the
 // element type at zero, whatever default the field itself declares, as Go's
 // reset clears a counted array's storage.

@@ -349,11 +349,12 @@ local function skip_container(inp: Input, close: string, depth: number, graph: a
   -- object (docs/SPEC-TABLES.md §16.2): the strict read refuses the whole
   -- value rather than guessing which occurrence wins.
   local keys: { [string]: boolean } = {}
+  local definition: any = nil -- the label entry this object defines, open until it closes
   while true do
     local c = peek(inp)
     if c == close then
       inp.p = inp.p + 1
-      if defined ~= nil then defined.open = false end
+      if definition ~= nil then definition.open = false end
       return true
     end
     if c == nil then inp.bad = true; return false end
@@ -366,29 +367,35 @@ local function skip_container(inp: Input, close: string, depth: number, graph: a
       keys[key] = true
       if peek(inp) ~= ':' then inp.bad = true; return false end
       inp.p = inp.p + 1
-      if key ~= "" and key:sub(1, 1) == "&" and graph ~= nil then
+      if key ~= "" and key:sub(1, 1) == "&" then
         if not first or key ~= "&node" then inp.bad = true; return false end
         local label = scan_label(inp)
         if label == nil then return false end
+        -- THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): a label alone
+        -- must name a definition already closed; fields after one must follow a
+        -- label not yet defined, and the definition is open until this object
+        -- closes. What the reader does not place is the value.
         first = false
         labelled = true
         c = peek(inp)
-        if c == ',' then
+        if c ~= close and c ~= ',' then inp.bad = true; return false end
+        if graph == nil then
+          -- a unit with no pointer has no label table: the prefix is still held
+          -- to its grammar, and the value is skipped whole
           inp.p = inp.p + 1
-          c = peek(inp)
-          if c ~= close then
-            if graph[label] ~= nil then inp.bad = true; return false end
-            defined = { node = nil, st = nil, open = true }
-            graph[label] = defined
-          end
-        elseif c ~= close then
-          inp.bad = true; return false
-        end
-        if c == close then
+          if c == close then return true end
+        else
+          if c == ',' then inp.p = inp.p + 1; c = peek(inp) end
           local entry = graph[label]
-          if entry == nil or entry.open then inp.bad = true; return false end
-          inp.p = inp.p + 1
-          return true
+          local bare = c == close
+          if bare ~= (entry ~= nil) then inp.bad = true; return false end
+          if bare then
+            if entry.open then inp.bad = true; return false end
+            inp.p = inp.p + 1
+            return true
+          end
+          definition = { node = nil, st = nil, open = true }
+          graph[label] = definition
         end
       end
     end
@@ -400,7 +407,7 @@ local function skip_container(inp: Input, close: string, depth: number, graph: a
         inp.p = inp.p + 1
       elseif c == close then
         inp.p = inp.p + 1
-        if defined ~= nil then defined.open = false end
+        if definition ~= nil then definition.open = false end
         return true
       else
         inp.bad = true

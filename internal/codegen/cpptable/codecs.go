@@ -904,6 +904,38 @@ func (g *tableGen) storageAssert(ind, expr string, bound int64) {
 	g.pf("%sschema_assert( %s >= 0 && %s <= %d ); // storage invariant, debug only (§5.1)\n", ind, expr, expr, bound)
 }
 
+// emitCountedRides declares rides_<name>: whether a counted array rides. An
+// empty one elides, and so does a [Min..N]T holding its BIRTH VALUE — exactly
+// Min elements, each at its default (docs/SPEC-TABLES.md §22.2; the reference
+// is internal/tablewire encodeArray's allBirth and messageElides). A table
+// element is at its default when its body is its terminator alone, which
+// `tableAtDefault` answers for one element expression; the probe leaves
+// nothing behind.
+func (g *tableGen) emitCountedRides(f *ir.Field, ind string, tableAtDefault func(expr, ind string)) {
+	g.pf("%sbool rides_%s = value.%s_count > 0;\n", ind, f.Name, f.Name)
+	if !f.ElidesAtBirth() {
+		return
+	}
+	born := f.BornCount()
+	elem := fmt.Sprintf("value.%s[birth_i]", f.Name)
+	g.pf("%sif ( value.%s_count == %d ) // the birth value elides (§22.2)\n%s{\n", ind, f.Name, born, ind)
+	g.pf("%s    rides_%s = false;\n", ind, f.Name)
+	g.pf("%s    for ( int32_t birth_i = 0; birth_i < %d && !rides_%s; birth_i++ )\n%s    {\n", ind, born, f.Name, ind)
+	switch tableScalarKind(f) {
+	case tkTable:
+		was := g.elemIndex
+		g.elemIndex = "birth_i"
+		tableAtDefault(elem, ind+"        ")
+		g.elemIndex = was
+		g.pf("%s        if ( !birth_default ) { rides_%s = true; }\n", ind, f.Name)
+	case tkUnion:
+		g.pf("%s        if ( %s.type != %sType::None ) { rides_%s = true; }\n", ind, elem, f.Type.Name, f.Name)
+	default:
+		g.pf("%s        if ( %s ) { rides_%s = true; }\n", ind, g.fieldDiffers(f, elem), f.Name)
+	}
+	g.pf("%s    }\n%s}\n", ind, ind)
+}
+
 func (g *tableGen) emitTableMeasure(st *ir.Struct) {
 	if g.isVar(st.Name) {
 		g.pf("template <typename Ctx>\ninline int64_t %s( const Ctx & ctx, const TableNumbering & numbering, %s & ids, const %s & value%s )\n{\n",

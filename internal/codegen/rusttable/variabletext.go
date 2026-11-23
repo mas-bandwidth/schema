@@ -365,10 +365,8 @@ pub struct Jr<'a> {
     pub missing_required: u64,
     pub missing_required_fields: String,
     pub labels: HashMap<u64, JsonLabel>,
-    /// the root is a VARIABLE table (docs/SPEC-TABLES.md §16.7): its text
-    /// carries &node labels, and the label rules hold in a skipped value
-    /// too. A fixed table root's text has no labels, and a skipped value
-    /// there is skipped whole.
+    /// the root is a VARIABLE table, whose text carries the label construct
+    /// (§16.7); a pointer-free root holds the prefix to its grammar and skips whole
     pub graph: bool,
 }
 
@@ -960,9 +958,7 @@ impl<'a> Jr<'a> {
                  self.depth += 1;
                  let mut seen = std::collections::HashSet::new();
                  let mut first = true;
-                 // the label a definition this skipped object opened: it
-                 // closes with the object, and a later reference reads null
-                 let mut opened: Option<u64> = None;
+                 let mut defining: Option<u64> = None;
                  loop {
                      self.space();
                      if self.p >= self.b.len() {
@@ -973,7 +969,8 @@ impl<'a> Jr<'a> {
                      if self.b[self.p] == b'}' {
                          self.p += 1;
                          self.depth -= 1;
-                         if let Some(label) = opened {
+                         // a definition closes here: the label stays, with no node
+                         if let Some(label) = defining {
                              self.labels.insert(label, JsonLabel::Dropped);
                          }
                          return;
@@ -999,14 +996,19 @@ impl<'a> Jr<'a> {
                         return;
                     }
                     self.p += 1;
-                    // THE LABEL RULES HOLD IN A SKIPPED VALUE (§16.7), under a
-                    // variable root: an &-prefixed key is &node and the
-                    // object's first key, its label is a label; a label alone
-                    // (a trailing comma allowed) REFERS and must name a closed
-                    // definition; a label with fields DEFINES, must be new,
-                    // and stays open until this object closes, then reads null.
-                    if self.graph && key.as_deref().is_some_and(|k| k.starts_with('&')) {
-                        if !first || key.as_deref() != Some("&node") {
+                    // THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): a
+                    // definition (the label first, fields after it) takes a label
+                    // not yet defined, keeps it as Dropped once its object closes
+                    // so a reference reads null, and is Open until then; a label
+                    // alone must name a definition already closed. An & key
+                    // anywhere else is the reserved prefix out of place.
+                    let was_first = first;
+                    first = false;
+                    let mut labelled = false;
+                    if let Some(k) = &key
+                        && k.starts_with('&')
+                    {
+                        if !was_first || k != "&node" {
                             self.damaged = true;
                             self.depth -= 1;
                             return;
@@ -1016,30 +1018,26 @@ impl<'a> Jr<'a> {
                             self.depth -= 1;
                             return;
                         };
-                        let defined = self.labels.get(&label).map(|e| !matches!(e, JsonLabel::Open));
-                        if self.peek() == b',' {
-                            self.p += 1;
-                        }
-                        if self.peek() == b'}' {
-                            self.p += 1;
-                            self.depth -= 1;
-                            if defined != Some(true) {
+                        labelled = true;
+                        self.space();
+                        if self.graph {
+                            let bare = self.p < self.b.len() && self.b[self.p] == b'}';
+                            let defined = self.labels.contains_key(&label);
+                            let closed = matches!(self.labels.get(&label), Some(JsonLabel::Dropped | JsonLabel::Node(_)));
+                            if bare != defined || (bare && !closed) {
                                 self.damaged = true;
+                                self.depth -= 1;
+                                return;
                             }
-                            return;
+                            if !bare {
+                                self.labels.insert(label, JsonLabel::Open);
+                                defining = Some(label);
+                            }
                         }
-                        if defined.is_some() {
-                            self.damaged = true;
-                            self.depth -= 1;
-                            return;
-                        }
-                        self.labels.insert(label, JsonLabel::Open);
-                        opened = Some(label);
-                        first = false;
-                        continue;
                     }
-                    first = false;
-                    self.skip_value();
+                    if !labelled {
+                        self.skip_value();
+                    }
                     if self.damaged {
                         self.depth -= 1;
                         return;
@@ -2029,9 +2027,7 @@ func (g *gen) emitTextRoots(b *strings.Builder, st *ir.Struct) {
 	// reference's read does (*report = TableReport{}), so nothing accumulates
 	fmt.Fprintf(b, "    *report = TableReport::default();\n")
 	fmt.Fprintf(b, "    let mut jr = Jr::new(text);\n")
-	if !st.FixedDeclared {
-		// a VARIABLE root's text carries labels (§16.7), so the label rules
-		// hold in every value it skips
+	if ir.VariableTables(g.unit)[st.Name] {
 		fmt.Fprintf(b, "    jr.graph = true;\n")
 	}
 	fmt.Fprintf(b, "    let mut v = %s::default();\n", st.Name)

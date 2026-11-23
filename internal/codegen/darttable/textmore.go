@@ -138,37 +138,44 @@ int? _jsonSkippedLabel(dynamic raw) {
   return null;
 }
 
-// _jsonSkipObject walks one skipped object's entries in text order. In a
-// pointered root the label rules apply here as everywhere (§16.7): an &node key
-// is first or it is the reserved prefix out of place; a label alone REFERS, and
-// the text must have defined it and closed that definition; a label with fields
-// DEFINES, must be new to the text, and stays open until this object closes, so
-// a later reference reads null and a second definition refuses.
-void _jsonSkipObject(List<MapEntry<dynamic, dynamic>> entries, TableTextReport r) {
-  int? opened;
+// _jsonSkipObject holds one skipped object to the label rules a placed one is
+// (docs/SPEC-TABLES.md §16.7): a label alone must name a definition already
+// closed, fields after one must follow a label not yet defined, and the
+// definition is open until this object closes. A dropped definition keeps its
+// label with no node, so a reference to it reads null. What the reader does
+// not place is the value, never the label.
+void _jsonSkipObject(List<MapEntry<String, dynamic>> entries, TableTextReport r) {
+  int? definition;
   for (var idx = 0; idx < entries.length; idx++) {
     final key = entries[idx].key;
-    if (key is! String) throw const FormatException('kind_mismatch');
     final val = entries[idx].value;
     _jsonText(key);
     _jsonName(key, r);
-    if (r.variableRoot && key.startsWith('&')) {
+    if (key.startsWith('&')) {
       final label = idx == 0 && key == '&node' ? _jsonSkippedLabel(val) : null;
       if (label == null) {
         throw const FormatException('reserved ampersand prefix');
       }
+      // a unit with no pointer has no label table: the prefix is still held to
+      // its grammar, and the value is skipped whole
+      if (!r.variableRoot) continue;
       if (entries.length == 1) {
-        if (r.textLabels[label] != false) throw const FormatException('undefined node label');
-        return;
+        if (!r.labelsSeen.contains(label) || r.labelsOpen.contains(label)) {
+          throw const FormatException('undefined node label');
+        }
+      } else {
+        if (r.labelsSeen.contains(label)) {
+          throw const FormatException('node label defined twice');
+        }
+        r.labelsSeen.add(label);
+        r.labelsOpen.add(label);
+        definition = label;
       }
-      if (r.textLabels.containsKey(label)) throw const FormatException('node label defined twice');
-      r.textLabels[label] = true;
-      opened = label;
     } else {
       _jsonSkipValue(val, r);
     }
   }
-  if (opened != null) r.textLabels[opened] = false;
+  if (definition != null) r.labelsOpen.remove(definition);
 }
 
 void _jsonSkipValue(dynamic val, TableTextReport r) {
@@ -187,7 +194,13 @@ void _jsonSkipValue(dynamic val, TableTextReport r) {
     return;
   }
   if (val is Map) {
-    _jsonSkipObject(val.entries.toList(), r);
+    final entries = <MapEntry<String, dynamic>>[];
+    for (final entry in val.entries) {
+      final key = entry.key;
+      if (key is! String) throw const FormatException('kind_mismatch');
+      entries.add(MapEntry<String, dynamic>(key, entry.value));
+    }
+    _jsonSkipObject(entries, r);
   }
 }
 
