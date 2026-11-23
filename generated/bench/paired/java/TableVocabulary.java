@@ -1147,9 +1147,9 @@ public final class TableVocabulary {
                     return false;
                 }
                 // A VOCABULARY PAST A BOUND IS REFUSED BEFORE ANYTHING IS
-                // ALLOCATED: the BYTE bound is 64 KiB, checked from the field's
+                // ALLOCATED: the caller's byte bound, checked from the field's
                 // own L before an entry is touched (§3.3).
-                // 0 refuses, never the default (R9)
+                // The explicit byte limit also applies when zero (R9).
                 long limit = v.maxBytes < 0 ? 0L : (long) v.maxBytes;
                 if (java.lang.Long.compareUnsigned(n, limit) > 0) {
                     report.refused = true;
