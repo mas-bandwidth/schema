@@ -10423,7 +10423,7 @@ static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table
     benchtable_table_fixed_put64( b + 34, (uint64_t) value->world_time );
     benchtable_table_fixed_put64( b + 42, (uint64_t) value->frame_tick );
     benchtable_table_fixed_put32( b + 50, benchtable_table_stored_float_bits( value->server_time ) );
-    schema_assert( value->entities_count >= 0 && value->entities_count <= 8 ); /* the declared count is the bound (§3.4) */
+    schema_assert( value->entities_count >= 1 && value->entities_count <= 8 ); /* the declared [A..B] is the bound (§3.4) */
     benchtable_table_fixed_put32( b + 54, (uint32_t) value->entities_count );
     {
         int64_t i;

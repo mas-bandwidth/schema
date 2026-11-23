@@ -17805,7 +17805,7 @@ inline void TableMixedFixedWriteBody( uint8_t * b, const TableMixed & value )
     TableFixedPut64( b + 34, (uint64_t) value.world_time );
     TableFixedPut64( b + 42, (uint64_t) value.frame_tick );
     TableFixedPut32( b + 50, TableStoredFloatBits( value.server_time ) );
-    schema_assert( value.entities_count >= 0 && value.entities_count <= 8 ); // the declared count is the bound (§3.4)
+    schema_assert( value.entities_count >= 1 && value.entities_count <= 8 ); // the declared [1..8] is the bound (§3.4)
     TableFixedPut32( b + 54, (uint32_t) value.entities_count );
     for ( int64_t i = 0; i < (int64_t) value.entities_count; ++i )
     {

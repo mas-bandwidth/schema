@@ -21147,7 +21147,7 @@ inline void CountedMinFixedWriteBody( uint8_t * b, const CountedMin & value )
 {
     (void) b;
     (void) value;
-    schema_assert( value.few_count >= 0 && value.few_count <= 5 ); // the declared count is the bound (§3.4)
+    schema_assert( value.few_count >= 2 && value.few_count <= 5 ); // the declared [2..5] is the bound (§3.4)
     TableFixedPut32( b + 0, (uint32_t) value.few_count );
     for ( int64_t i = 0; i < (int64_t) value.few_count; ++i )
     {

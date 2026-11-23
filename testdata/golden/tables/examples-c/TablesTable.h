@@ -11887,7 +11887,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_root_co
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_counted_min_fixed_write_body_( uint8_t * b, const tabledemo_counted_min_t * value )
 {
     (void) b; (void) value;
-    schema_assert( value->few_count >= 0 && value->few_count <= 5 ); /* the declared count is the bound (§3.4) */
+    schema_assert( value->few_count >= 2 && value->few_count <= 5 ); /* the declared [A..B] is the bound (§3.4) */
     tabledemo_table_fixed_put32( b + 0, (uint32_t) value->few_count );
     {
         int64_t i;
