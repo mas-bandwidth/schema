@@ -2214,6 +2214,7 @@ static bool write_refusal_set( const std::string & root, void * value, const std
 // The fixed form's FixedSave, a batch of one, for the roots the rows name.
 static bool write_refusal_fixed_save( const std::string & root, const void * value, uint8_t * buffer, int64_t capacity, int64_t & wrote )
 {
+    if ( root == "CountedMin" ) { wrote = tabledemo::CountedMinFixedSave( (const tabledemo::CountedMin *) value, 1, buffer, capacity ); return true; }
     if ( root == "RootConfig" ) { wrote = tabledemo::RootConfigFixedSave( (const tabledemo::RootConfig *) value, 1, buffer, capacity ); return true; }
     if ( root == "LoadoutConfig" ) { wrote = tabledemo::LoadoutConfigFixedSave( (const tabledemo::LoadoutConfig *) value, 1, buffer, capacity ); return true; }
     if ( root == "SimState" ) { wrote = scalardemo::SimStateFixedSave( (const scalardemo::SimState *) value, 1, buffer, capacity ); return true; }
