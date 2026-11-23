@@ -486,6 +486,7 @@ struct TableFieldInfo
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
+    int32_t array_min;
 };
 
 struct TableTypeInfo
@@ -4613,14 +4614,14 @@ inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vo
 
 // AnnounceMeasure is the announcement's byte count, which is a constant of the
 // unit and not a walk.
-inline int64_t AnnounceMeasure() { return kTableAnnounceBytes; }
+inline int64_t AnnounceMeasure() { return kTableMessageEntriesHere > 4096 ? -1 : kTableAnnounceBytes; }
 
 // Announce writes the announcement into the caller's buffer and answers the
 // bytes written, which is exactly AnnounceMeasure's answer, or -1 when the
 // buffer is too small. It allocates nothing and walks nothing.
 inline int64_t Announce( uint8_t * buffer, int64_t capacity )
 {
-    if ( buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
+    if ( kTableMessageEntriesHere > 4096 || buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
     memcpy( buffer, kTableAnnounce, (size_t) kTableAnnounceBytes );
     return kTableAnnounceBytes;
 }
@@ -9457,7 +9458,7 @@ struct TableRetainIds
         }
         if ( known.count != before )
         {
-            if ( count >= TableIds::kLimit ) { known.truncate( before ); overflow = true; return 1; }
+            if ( count >= 4096 ) { known.truncate( before ); overflow = true; return 1; }
             known_slot[(int32_t) k - 1] = ++count;
         }
         return (uint64_t) known_slot[(int32_t) k - 1];
@@ -9492,7 +9493,7 @@ struct TableRetainIds
         {
             if ( retain->ids[i].id == id ) { return (uint64_t) retain->ids[i].slot; }
         }
-        if ( retain->id_used >= retain->id_capacity || count >= TableIds::kLimit )
+        if ( retain->id_used >= retain->id_capacity || count >= 4096 )
         {
             lost = true;
             return 0;
@@ -13347,12 +13348,12 @@ inline const TableTypeInfo * PatrolTableType();
 extern const TableTypeInfo PatrolTableInfo;
 
 inline const TableFieldInfo PatrolTableFields[] = {
-    { "active", "active", "bool", 0x6580790b036f0c6full, 1, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, active ), (uint32_t) sizeof( Patrol::active ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "speed", "speed", "float32", 0x2281498aa0200e40ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, speed ), (uint32_t) sizeof( Patrol::speed ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "has_target", "has_target", "bool", 0x247f0e7f55aacfbdull, 1, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, has_target ), (uint32_t) sizeof( Patrol::has_target ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "target_id", "target_id", "int32", 0xb7bc9ac015a25050ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, target_id ), (uint32_t) sizeof( Patrol::target_id ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0ll, 1000ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active && has_target", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "wander", "wander", "float32", 0xb8c758d8bd1845d4ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, wander ), (uint32_t) sizeof( Patrol::wander ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active && !has_target", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "note", "note", "string", 0x3bf8fbbad1587cddull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( Patrol, note ), (uint32_t) sizeof( Patrol::note ), (uint32_t) offsetof( Patrol, note_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "!active", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "active", "active", "bool", 0x6580790b036f0c6full, 1, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, active ), (uint32_t) sizeof( Patrol::active ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "speed", "speed", "float32", 0x2281498aa0200e40ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, speed ), (uint32_t) sizeof( Patrol::speed ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "has_target", "has_target", "bool", 0x247f0e7f55aacfbdull, 1, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, has_target ), (uint32_t) sizeof( Patrol::has_target ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "target_id", "target_id", "int32", 0xb7bc9ac015a25050ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, target_id ), (uint32_t) sizeof( Patrol::target_id ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 1000.0, 0ll, 1000ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active && has_target", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "wander", "wander", "float32", 0xb8c758d8bd1845d4ull, 10, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Patrol, wander ), (uint32_t) sizeof( Patrol::wander ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "active && !has_target", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "note", "note", "string", 0x3bf8fbbad1587cddull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( Patrol, note ), (uint32_t) sizeof( Patrol::note ), (uint32_t) offsetof( Patrol, note_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "!active", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo PatrolTableInfo = { "Patrol", (uint32_t) sizeof( Patrol ), 6, PatrolTableFields, +[]( void * p ) { PatrolReset( *(Patrol *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * PatrolTableType() { return &PatrolTableInfo; }

@@ -252,6 +252,7 @@ typedef struct tabledemo_table_field_info_t
     uint8_t text_list; /* 0 none, 1 string(M) elements, 2 ?string(M) elements (SPEC-TABLES 2.13) */
     int64_t text_total; /* | total = N byte cap across text-list elements, or 0 (SPEC-TABLES 2.13) */
     void * (*place)(void * worker,void * slot,const char * key,int32_t length,int64_t number);
+    int32_t array_min;
 } tabledemo_table_field_info_t;
 
 typedef struct tabledemo_table_type_info_t
@@ -4509,10 +4510,10 @@ static SCHEMA_UNUSED int tabledemo_table_bit_getbytes(tabledemo_table_bit_reader
  if((r->offset&7)==0){if(n>0)memcpy(target,r->buffer+r->offset/8,(size_t)n);r->offset+=n*8;return 1;}
  for(i=0;i<n;i++){if(!tabledemo_table_bit_get(r,&by,8))return 0;target[i]=(uint8_t)by;}return 1;
 }
-static SCHEMA_UNUSED int64_t tabledemo_announce_measure(void) {return TABLEDEMO_K_TABLE_ANNOUNCE_BYTES;
+static SCHEMA_UNUSED int64_t tabledemo_announce_measure(void) {return TABLEDEMO_K_TABLE_MESSAGE_ENTRIES_HERE>4096 ? -1 : TABLEDEMO_K_TABLE_ANNOUNCE_BYTES;
 }
 static SCHEMA_UNUSED int64_t tabledemo_announce(uint8_t * buffer,int64_t capacity)
-{if(buffer==NULL || capacity<TABLEDEMO_K_TABLE_ANNOUNCE_BYTES)return -1;
+{if(TABLEDEMO_K_TABLE_MESSAGE_ENTRIES_HERE>4096 || buffer==NULL || capacity<TABLEDEMO_K_TABLE_ANNOUNCE_BYTES)return -1;
 memcpy(buffer,TABLEDEMO_K_TABLE_ANNOUNCE,TABLEDEMO_K_TABLE_ANNOUNCE_BYTES);
 return TABLEDEMO_K_TABLE_ANNOUNCE_BYTES;
 }
@@ -5975,6 +5976,7 @@ static SCHEMA_UNUSED int tabledemo_wide_blob_save_body( tabledemo_table_writer_t
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_tabledemo_wide_blob_write_admits_( const tabledemo_wide_blob_t * value );
 static SCHEMA_UNUSED int64_t tabledemo_wide_blob_measure( const tabledemo_wide_blob_t * value )
 {
     tabledemo_table_write_ids_t vocabulary; tabledemo_table_writer_t w = tabledemo_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -6216,7 +6218,11 @@ static SCHEMA_UNUSED int64_t tabledemo_wide_blob_measure_messages(const tabledem
  w=tabledemo_table_bit_writer(NULL,INT64_MAX);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!tabledemo_wide_blob_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!tabledemo_wide_blob_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_tabledemo_wide_blob_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  tabledemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -6233,7 +6239,11 @@ static SCHEMA_UNUSED int64_t tabledemo_wide_blob_save_messages(const tabledemo_w
  w=tabledemo_table_bit_writer(buffer,capacity);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!tabledemo_wide_blob_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!tabledemo_wide_blob_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_tabledemo_wide_blob_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  tabledemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -6401,6 +6411,41 @@ static SCHEMA_UNUSED int tabledemo_wide_blob_load_messages(tabledemo_wide_blob_t
  }
  return ok;
 }
+/* ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----
+
+   A record is an eight-byte hash of the writer's LAYOUT and then
+   the values in declared order, every field at its declared storage width.
+   The writer is the constant bytes memcpy'd and then stores; the reader is
+   ONE loop over ONE plan, the identity plan here and a plan compiled from
+   the writer's own layout for anybody else. There is no second reader. */
+
+/* THE C ABI AGREES WITH THE PLAN. C has no constexpr, so the offsets in the
+   plans below were computed by the schema compiler rather than folded by
+   this one; these are that arithmetic checked against the compiler's own,
+   at build time, one line per fact the plans rest on. */
+
+
+/* WideBlob's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_wide_blob_fixed_write_check_body_( const tabledemo_wide_blob_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    if ( value->label_length >= 0 && value->label_length <= 70000 && !tabledemo_table_wire_utf8( (const uint8_t *) value->label, (uint64_t) value->label_length ) )
+    {
+        (*damaged)++;
+    }
+}
+
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value WideBlob holds is
+   one its declaration admits. Every writer of WideBlob asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_tabledemo_wide_blob_write_admits_( const tabledemo_wide_blob_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_tabledemo_wide_blob_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
 static SCHEMA_UNUSED int tabledemo_wide_blob_save_body_retain(tabledemo_table_writer_t *,const tabledemo_wide_blob_t *, tabledemo_table_retain_walk_t retention);
 static SCHEMA_UNUSED int tabledemo_wide_blob_load_body_retain(tabledemo_table_reader_t *,tabledemo_wide_blob_t *, tabledemo_table_retain_walk_t retention);
 static SCHEMA_UNUSED int schema_tabledemo_wide_blob_wire_label__retain( tabledemo_table_writer_t * w, const tabledemo_wide_blob_t * value , tabledemo_table_retain_walk_t retention)
@@ -6807,6 +6852,7 @@ static SCHEMA_UNUSED int schema_tabledemo_wide_blob_body_pack_(struct tabledemo_
     tabledemo_table_cook_put(at+0+70004,(uint32_t)value->label_length,4,order);
     tabledemo_table_cook_bytes(at+70008,value->payload,value->payload_length,70000);
     tabledemo_table_cook_put(at+70008+70000,(uint32_t)value->payload_length,4,order);
+    if(value->samples_count<0 || value->samples_count>70000) { return 0; }
     { int32_t cook_i1; for(cook_i1=0;cook_i1<value->samples_count && cook_i1<70000;cook_i1++) {
         tabledemo_table_cook_put(at+140012+cook_i1*2,(uint64_t)value->samples[cook_i1],2,order);
     } }

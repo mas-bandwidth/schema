@@ -114,6 +114,7 @@ pub const TABLE_ANNOUNCEMENT: [u8; 887] = [
 
 /// The width of a reference on a body this build WRITES: bits_required(0, n)
 /// over its own announced vocabulary of n entries (§3.3).
+pub const TABLE_MESSAGE_ENTRIES_HERE: usize = 70;
 pub const TABLE_MESSAGE_REF_BITS: u32 = 7;
 
 // ---- the entry triple -------------------------------------------------------
@@ -235,14 +236,17 @@ const ID_TABLE_PROBE_SLOTS: usize = 8192;
 
 /// The announcement's byte count and the copy that hands it out (§3.3): both
 /// are the constant, never a walk. Nothing here allocates.
-pub fn announce_measure() -> usize {
-    TABLE_ANNOUNCEMENT.len()
+pub fn announce_measure() -> i64 {
+    if TABLE_MESSAGE_ENTRIES_HERE > ID_TABLE_PROBE_BOUND {
+        return -1;
+    }
+    TABLE_ANNOUNCEMENT.len() as i64
 }
 
 /// Copy the announcement into the caller's buffer and answer its byte count, or
-/// -1 when the buffer is short (§3.3).
+/// -1 when the buffer is short or the vocabulary exceeds 4096 entries (§3.3).
 pub fn announce(buffer: &mut [u8]) -> i64 {
-    if buffer.len() < TABLE_ANNOUNCEMENT.len() {
+    if TABLE_MESSAGE_ENTRIES_HERE > ID_TABLE_PROBE_BOUND || buffer.len() < TABLE_ANNOUNCEMENT.len() {
         return -1;
     }
     buffer[..TABLE_ANNOUNCEMENT.len()].copy_from_slice(&TABLE_ANNOUNCEMENT);

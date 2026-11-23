@@ -380,7 +380,7 @@ inline bool TableJsonCountInContract( const void * base, const TableFieldInfo * 
     }
     int32_t count = 0;
     memcpy( &count, (const uint8_t *) base + f->count_offset, sizeof( count ) );
-    return count >= 0 && count <= f->array_bound;
+    return count >= f->array_min && count <= f->array_bound;
 }
 
 inline bool TableJsonWideInContract( const void * storage, const TableFieldInfo * f )
@@ -4418,7 +4418,6 @@ inline int64_t TableJsonWrite( const void * value, const TableTypeInfo * info, c
     // buffer whose last byte is a closing brace is the one shape that is not.
     out.put( '\n' );
     if ( out.overflow ) { return -1; }
-    if ( out.buffer != NULL && out.offset < out.capacity ) { out.buffer[out.offset] = 0; }
     return out.offset;
 }
 

@@ -487,6 +487,7 @@ struct TableFieldInfo
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
+    int32_t array_min;
 };
 
 struct TableTypeInfo
@@ -4614,14 +4615,14 @@ inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vo
 
 // AnnounceMeasure is the announcement's byte count, which is a constant of the
 // unit and not a walk.
-inline int64_t AnnounceMeasure() { return kTableAnnounceBytes; }
+inline int64_t AnnounceMeasure() { return kTableMessageEntriesHere > 4096 ? -1 : kTableAnnounceBytes; }
 
 // Announce writes the announcement into the caller's buffer and answers the
 // bytes written, which is exactly AnnounceMeasure's answer, or -1 when the
 // buffer is too small. It allocates nothing and walks nothing.
 inline int64_t Announce( uint8_t * buffer, int64_t capacity )
 {
-    if ( buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
+    if ( kTableMessageEntriesHere > 4096 || buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
     memcpy( buffer, kTableAnnounce, (size_t) kTableAnnounceBytes );
     return kTableAnnounceBytes;
 }
@@ -9458,7 +9459,7 @@ struct TableRetainIds
         }
         if ( known.count != before )
         {
-            if ( count >= TableIds::kLimit ) { known.truncate( before ); overflow = true; return 1; }
+            if ( count >= 4096 ) { known.truncate( before ); overflow = true; return 1; }
             known_slot[(int32_t) k - 1] = ++count;
         }
         return (uint64_t) known_slot[(int32_t) k - 1];
@@ -9493,7 +9494,7 @@ struct TableRetainIds
         {
             if ( retain->ids[i].id == id ) { return (uint64_t) retain->ids[i].slot; }
         }
-        if ( retain->id_used >= retain->id_capacity || count >= TableIds::kLimit )
+        if ( retain->id_used >= retain->id_capacity || count >= 4096 )
         {
             lost = true;
             return 0;
@@ -11519,6 +11520,7 @@ inline bool ArchiveConfigLoadMessages( ArchiveConfig * values, int64_t * count, 
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -13375,8 +13377,8 @@ inline const TableTypeInfo * ArchiveConfigTableType();
 extern const TableTypeInfo ArchiveConfigTableInfo;
 
 inline const TableFieldInfo ArchiveConfigTableFields[] = {
-    { "root", "root", "RootConfig", 0xa354fd1ff0c467c5ull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ArchiveConfig, root ), (uint32_t) sizeof( ArchiveConfig::root ), 0xffffffffu, 0xffffffffu, &RootConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "count", "count", "int32", 0xb1e5e28e4479a274ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ArchiveConfig, count ), (uint32_t) sizeof( ArchiveConfig::count ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100.0, 0ll, 100ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "root", "root", "RootConfig", 0xa354fd1ff0c467c5ull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ArchiveConfig, root ), (uint32_t) sizeof( ArchiveConfig::root ), 0xffffffffu, 0xffffffffu, &RootConfigTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "count", "count", "int32", 0xb1e5e28e4479a274ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( ArchiveConfig, count ), (uint32_t) sizeof( ArchiveConfig::count ), 0xffffffffu, 0xffffffffu, NULL, true, 0.0, 100.0, 0ll, 100ll, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo ArchiveConfigTableInfo = { "ArchiveConfig", (uint32_t) sizeof( ArchiveConfig ), 2, ArchiveConfigTableFields, +[]( void * p ) { ArchiveConfigReset( *(ArchiveConfig *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * ArchiveConfigTableType() { return &ArchiveConfigTableInfo; }

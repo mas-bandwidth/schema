@@ -380,7 +380,7 @@ inline bool TableJsonCountInContract( const void * base, const TableFieldInfo * 
     }
     int32_t count = 0;
     memcpy( &count, (const uint8_t *) base + f->count_offset, sizeof( count ) );
-    return count >= 0 && count <= f->array_bound;
+    return count >= f->array_min && count <= f->array_bound;
 }
 
 inline bool TableJsonWideInContract( const void * storage, const TableFieldInfo * f )
@@ -4418,7 +4418,6 @@ inline int64_t TableJsonWrite( const void * value, const TableTypeInfo * info, c
     // buffer whose last byte is a closing brace is the one shape that is not.
     out.put( '\n' );
     if ( out.overflow ) { return -1; }
-    if ( out.buffer != NULL && out.offset < out.capacity ) { out.buffer[out.offset] = 0; }
     return out.offset;
 }
 
@@ -5092,7 +5091,6 @@ inline int64_t TableJsonWriteGraph( const void * root, const TableTypeInfo * inf
     if ( !ok ) { return -1; }
     out.put( '\n' ); // the canonical text ends with exactly one newline (§16.1)
     if ( out.overflow ) { return -1; }
-    if ( out.buffer != NULL && out.offset < out.capacity ) { out.buffer[out.offset] = 0; }
     return out.offset;
 }
 
@@ -5193,9 +5191,62 @@ inline void TableJsonWriteMapKey( TableJsonOut & out, const void * entry, const 
 // ToJson WRITES ENTRIES IN ASCENDING KEY ORDER, so unpack then pack is
 // byte-stable and a diff of two texts is a diff of two maps (§2.8, §17.2).
 // A region holds them in that order already, so this is the array in place.
+inline int TableJsonMapKeyOrder( const void * ea, const void * eb, const TableFieldInfo * key )
+{
+    const uint8_t * sa = (const uint8_t *) ea + key->offset;
+    const uint8_t * sb = (const uint8_t *) eb + key->offset;
+    if ( TableJsonMapKeyIsString( key ) )
+    {
+        int32_t la = 0, lb = 0;
+        const char * pa = NULL;
+        const char * pb = NULL;
+        if ( key->unbounded )
+        {
+            pa = schema_table_json_unbounded_text_at_( sa, la );
+            pb = schema_table_json_unbounded_text_at_( sb, lb );
+        }
+        else
+        {
+            pa = (const char *) sa;
+            pb = (const char *) sb;
+            la = *(const int32_t *) ( (const uint8_t *) ea + key->count_offset );
+            lb = *(const int32_t *) ( (const uint8_t *) eb + key->count_offset );
+        }
+        if ( la < 0 || lb < 0 ) { return 0; }
+        const int32_t n = la < lb ? la : lb;
+        const int c = n > 0 ? memcmp( pa, pb, (size_t) n ) : 0;
+        if ( c != 0 ) { return c < 0 ? -1 : 1; }
+        return la < lb ? -1 : ( la > lb ? 1 : 0 );
+    }
+    if ( TableJsonMapKeySigned( key ) )
+    {
+        int64_t a = 0, b = 0;
+        switch ( key->kind )
+        {
+            case 2: a = *(const int8_t *) sa; b = *(const int8_t *) sb; break;
+            case 3: a = *(const int16_t *) sa; b = *(const int16_t *) sb; break;
+            case 4: a = *(const int32_t *) sa; b = *(const int32_t *) sb; break;
+            case 5: a = *(const int64_t *) sa; b = *(const int64_t *) sb; break;
+            default: break;
+        }
+        return a < b ? -1 : ( a > b ? 1 : 0 );
+    }
+    uint64_t a = 0, b = 0;
+    switch ( key->kind )
+    {
+        case 6: a = *(const uint8_t *) sa; b = *(const uint8_t *) sb; break;
+        case 7: a = *(const uint16_t *) sa; b = *(const uint16_t *) sb; break;
+        case 8: a = *(const uint32_t *) sa; b = *(const uint32_t *) sb; break;
+        case 9: a = *(const uint64_t *) sa; b = *(const uint64_t *) sb; break;
+        default: break;
+    }
+    return a < b ? -1 : ( a > b ? 1 : 0 );
+}
+
 inline bool TableJsonWriteMap( TableJsonOut & out, const void * slot, const TableFieldInfo * f, int32_t depth )
 {
     const int32_t count = TableJsonExtentCount( slot );
+    if ( count < 0 ) { out.invalid = true; return false; }
     if ( count == 0 )
     {
         out.raw( "{}", 2 );
@@ -5204,12 +5255,16 @@ inline bool TableJsonWriteMap( TableJsonOut & out, const void * slot, const Tabl
     const TableFieldInfo * key = TableJsonMapKeyField( f );
     const TableFieldInfo * value = TableJsonMapValueField( f );
     const uint8_t * entries = TableJsonExtentElements( slot );
+    if ( entries == NULL ) { out.invalid = true; return false; }
     out.put( '{' );
+    const void * prev = NULL;
     for ( int32_t i = 0; i < count; i++ )
     {
         if ( i > 0 ) { out.put( ',' ); }
         out.line( depth + 1 );
         const void * entry = (const void *) ( entries + (int64_t) i * f->elem_size );
+        if ( i > 0 && TableJsonMapKeyOrder( prev, entry, key ) >= 0 ) { out.invalid = true; return false; }
+        prev = entry;
         TableJsonWriteMapKey( out, entry, key );
         out.raw( ": ", 2 );
         // A map entry cannot omit its value: an absent optional is null,

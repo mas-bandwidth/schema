@@ -252,6 +252,7 @@ typedef struct tabledemo_table_field_info_t
     uint8_t text_list; /* 0 none, 1 string(M) elements, 2 ?string(M) elements (SPEC-TABLES 2.13) */
     int64_t text_total; /* | total = N byte cap across text-list elements, or 0 (SPEC-TABLES 2.13) */
     void * (*place)(void * worker,void * slot,const char * key,int32_t length,int64_t number);
+    int32_t array_min;
 } tabledemo_table_field_info_t;
 
 typedef struct tabledemo_table_type_info_t
@@ -4509,10 +4510,10 @@ static SCHEMA_UNUSED int tabledemo_table_bit_getbytes(tabledemo_table_bit_reader
  if((r->offset&7)==0){if(n>0)memcpy(target,r->buffer+r->offset/8,(size_t)n);r->offset+=n*8;return 1;}
  for(i=0;i<n;i++){if(!tabledemo_table_bit_get(r,&by,8))return 0;target[i]=(uint8_t)by;}return 1;
 }
-static SCHEMA_UNUSED int64_t tabledemo_announce_measure(void) {return TABLEDEMO_K_TABLE_ANNOUNCE_BYTES;
+static SCHEMA_UNUSED int64_t tabledemo_announce_measure(void) {return TABLEDEMO_K_TABLE_MESSAGE_ENTRIES_HERE>4096 ? -1 : TABLEDEMO_K_TABLE_ANNOUNCE_BYTES;
 }
 static SCHEMA_UNUSED int64_t tabledemo_announce(uint8_t * buffer,int64_t capacity)
-{if(buffer==NULL || capacity<TABLEDEMO_K_TABLE_ANNOUNCE_BYTES)return -1;
+{if(TABLEDEMO_K_TABLE_MESSAGE_ENTRIES_HERE>4096 || buffer==NULL || capacity<TABLEDEMO_K_TABLE_ANNOUNCE_BYTES)return -1;
 memcpy(buffer,TABLEDEMO_K_TABLE_ANNOUNCE,TABLEDEMO_K_TABLE_ANNOUNCE_BYTES);
 return TABLEDEMO_K_TABLE_ANNOUNCE_BYTES;
 }
@@ -6853,12 +6854,12 @@ static SCHEMA_UNUSED int tabledemo_patrol_load_builder(tabledemo_patrol_builder_
 {
     tabledemo_table_report_t ignored; tabledemo_table_reader_t reader; tabledemo_table_node_map_t nodes; tabledemo_table_node_dir_entry_t * directory; tabledemo_table_sink_t sink; tabledemo_table_node_scan_t scan; tabledemo_table_reader_t body; uint64_t id; int64_t records=0; tabledemo_patrol_t * root; int ok,refused_before; int32_t non_finite_before;
     memset(&ignored,0,sizeof(ignored)); if(report==NULL) { report=&ignored; } memset(report,0,sizeof(*report)); refused_before=0; non_finite_before=report->non_finite_floats; report->refused=0;
-    if(!tabledemo_table_wire_open(&reader,wire,wire_bytes,report)) { report->refused=report->refused||refused_before; return 0; }
+    root=builder!=NULL ? tabledemo_patrol_builder_root(builder) : NULL; if(root==NULL) { report->refused=1, report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+    if(!tabledemo_table_wire_open(&reader,wire,wire_bytes,report)) { report->refused=report->refused||refused_before; tabledemo_patrol_reset(root); return 0; }
     scan=tabledemo_table_node_scan_begin(&reader); while(tabledemo_table_node_scan_next(&scan,&id,&body)) { records++; }
-    if(records>=INT64_MAX/(int64_t)sizeof(tabledemo_table_node_dir_entry_t)-1) { report->refused=1, report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
-    root=tabledemo_patrol_builder_root(builder); if(root==NULL) { report->refused=1, report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+    if(records>=INT64_MAX/(int64_t)sizeof(tabledemo_table_node_dir_entry_t)-1) { report->refused=1, report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; tabledemo_patrol_reset(root); return 0; }
     directory=(tabledemo_table_node_dir_entry_t *)tabledemo_table_allocate(builder->arena.allocator,(records+1)*(int64_t)sizeof(tabledemo_table_node_dir_entry_t));
-    if(directory==NULL) { report->refused=1, report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; return 0; }
+    if(directory==NULL) { report->refused=1, report->refuse_reason=SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED; tabledemo_patrol_reset(root); return 0; }
     directory[0].offset=(uint64_t)builder->root_ref.value; directory[0].type_id=UINT64_C(0x1c182e1c2529027b);
     nodes.base=NULL; nodes.entries=directory; nodes.count=(uint64_t)records+1; nodes.good=0; nodes.arena=1; nodes.refused=0; nodes.sink=NULL; nodes.blob_named=NULL;
     sink.region=NULL; sink.worker=&builder->main;

@@ -452,6 +452,7 @@ struct TableFieldInfo
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
+    int32_t array_min;
 };
 
 struct TableTypeInfo
@@ -3360,14 +3361,14 @@ inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vo
 
 // AnnounceMeasure is the announcement's byte count, which is a constant of the
 // unit and not a walk.
-inline int64_t AnnounceMeasure() { return kTableAnnounceBytes; }
+inline int64_t AnnounceMeasure() { return kTableMessageEntriesHere > 4096 ? -1 : kTableAnnounceBytes; }
 
 // Announce writes the announcement into the caller's buffer and answers the
 // bytes written, which is exactly AnnounceMeasure's answer, or -1 when the
 // buffer is too small. It allocates nothing and walks nothing.
 inline int64_t Announce( uint8_t * buffer, int64_t capacity )
 {
-    if ( buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
+    if ( kTableMessageEntriesHere > 4096 || buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
     memcpy( buffer, kTableAnnounce, (size_t) kTableAnnounceBytes );
     return kTableAnnounceBytes;
 }
@@ -7010,6 +7011,7 @@ inline bool PartRowLoadMessages( PartRow * values, int64_t * count, const TableV
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -7717,6 +7719,7 @@ inline bool PartFrameLoadMessages( PartFrame * values, int64_t * count, const Ta
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -12108,6 +12111,7 @@ inline bool PartFrameCookBody( uint8_t * at, const PartFrame & value, TableByteO
     table_cook_put( at + 0, (uint64_t) value.version, 8, order );
     // 32 slots of storage, value.parts_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.parts_count >= 0 && value.parts_count <= 32 ); // storage invariant, debug only (§5.1)
+    if ( value.parts_count < 0 || value.parts_count > 32 ) { return false; }
     for ( int32_t i = 0; i < value.parts_count; i++ )
     {
         if ( !PartRowCookBody( at + 8 + i * 352, value.parts[i], order ) ) { return false; }
@@ -12269,10 +12273,10 @@ inline const TableTypeInfo * PartFrameTableType();
 inline const TableTypeInfo * PartRowTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "armor", "armor", "ArmorConfig", 0xd19988b67e699194ull, 13, false, false, false, 0, (uint32_t) offsetof( PartRow, armor ), (uint32_t) sizeof( PartRow::armor ), 0xffffffffu, 0xffffffffu, ArmorConfigTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "gunner", "gunner", "GunnerSettings", 0x40dbb648c0cd44aaull, 13, false, false, false, 0, (uint32_t) offsetof( PartRow, gunner ), (uint32_t) sizeof( PartRow::gunner ), 0xffffffffu, 0xffffffffu, GunnerSettingsTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "part_id", "part_id", "uint32", 0x04d6206b33415104ull, 8, false, false, false, 0, (uint32_t) offsetof( PartRow, part_id ), (uint32_t) sizeof( PartRow::part_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "slot", "slot", "uint8", 0x6a771618f6fe31d1ull, 6, false, false, false, 0, (uint32_t) offsetof( PartRow, slot ), (uint32_t) sizeof( PartRow::slot ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "armor", "armor", "ArmorConfig", 0xd19988b67e699194ull, 13, false, false, false, 0, (uint32_t) offsetof( PartRow, armor ), (uint32_t) sizeof( PartRow::armor ), 0xffffffffu, 0xffffffffu, ArmorConfigTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "gunner", "gunner", "GunnerSettings", 0x40dbb648c0cd44aaull, 13, false, false, false, 0, (uint32_t) offsetof( PartRow, gunner ), (uint32_t) sizeof( PartRow::gunner ), 0xffffffffu, 0xffffffffu, GunnerSettingsTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "part_id", "part_id", "uint32", 0x04d6206b33415104ull, 8, false, false, false, 0, (uint32_t) offsetof( PartRow, part_id ), (uint32_t) sizeof( PartRow::part_id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "slot", "slot", "uint8", 0x6a771618f6fe31d1ull, 6, false, false, false, 0, (uint32_t) offsetof( PartRow, slot ), (uint32_t) sizeof( PartRow::slot ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
     };
     static const TableTypeInfo info = { "PartRow", (uint32_t) sizeof( PartRow ), 4, fields, +[]( void * p ) { PartRowReset( *(PartRow *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
@@ -12281,8 +12285,8 @@ inline const TableTypeInfo * PartRowTableType()
 inline const TableTypeInfo * PartFrameTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "version", "version", "uint64", 0xbb62c62c9808ea37ull, 9, false, false, false, 0, (uint32_t) offsetof( PartFrame, version ), (uint32_t) sizeof( PartFrame::version ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "parts", "parts", "PartRow", 0x0c519da7a1f958c5ull, 13, true, true, false, 32, (uint32_t) offsetof( PartFrame, parts ), (uint32_t) sizeof( PartFrame::parts[0] ), (uint32_t) offsetof( PartFrame, parts_count ), 0xffffffffu, PartRowTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "version", "version", "uint64", 0xbb62c62c9808ea37ull, 9, false, false, false, 0, (uint32_t) offsetof( PartFrame, version ), (uint32_t) sizeof( PartFrame::version ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "parts", "parts", "PartRow", 0x0c519da7a1f958c5ull, 13, true, true, false, 32, (uint32_t) offsetof( PartFrame, parts ), (uint32_t) sizeof( PartFrame::parts[0] ), (uint32_t) offsetof( PartFrame, parts_count ), 0xffffffffu, PartRowTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
     };
     static const TableTypeInfo info = { "PartFrame", (uint32_t) sizeof( PartFrame ), 2, fields, +[]( void * p ) { PartFrameReset( *(PartFrame *) p ); }, TableDocNone, 0, NULL, false };
     return &info;

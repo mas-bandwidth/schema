@@ -494,6 +494,7 @@ struct TableFieldInfo
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
+    int32_t array_min;
 };
 
 struct TableTypeInfo
@@ -3447,14 +3448,14 @@ inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vo
 
 // AnnounceMeasure is the announcement's byte count, which is a constant of the
 // unit and not a walk.
-inline int64_t AnnounceMeasure() { return kTableAnnounceBytes; }
+inline int64_t AnnounceMeasure() { return kTableMessageEntriesHere > 4096 ? -1 : kTableAnnounceBytes; }
 
 // Announce writes the announcement into the caller's buffer and answers the
 // bytes written, which is exactly AnnounceMeasure's answer, or -1 when the
 // buffer is too small. It allocates nothing and walks nothing.
 inline int64_t Announce( uint8_t * buffer, int64_t capacity )
 {
-    if ( buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
+    if ( kTableMessageEntriesHere > 4096 || buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
     memcpy( buffer, kTableAnnounce, (size_t) kTableAnnounceBytes );
     return kTableAnnounceBytes;
 }
@@ -8274,7 +8275,7 @@ struct TableRetainIds
         }
         if ( known.count != before )
         {
-            if ( count >= TableIds::kLimit ) { known.truncate( before ); overflow = true; return 1; }
+            if ( count >= 4096 ) { known.truncate( before ); overflow = true; return 1; }
             known_slot[(int32_t) k - 1] = ++count;
         }
         return (uint64_t) known_slot[(int32_t) k - 1];
@@ -8309,7 +8310,7 @@ struct TableRetainIds
         {
             if ( retain->ids[i].id == id ) { return (uint64_t) retain->ids[i].slot; }
         }
-        if ( retain->id_used >= retain->id_capacity || count >= TableIds::kLimit )
+        if ( retain->id_used >= retain->id_capacity || count >= 4096 )
         {
             lost = true;
             return 0;
@@ -9900,6 +9901,11 @@ inline TableMapCursor<Entry> TableMapOrder( const TableRegionCtx &, const TableM
     TableMapCursor<Entry> cursor;
     cursor.entries = map.Entries();
     cursor.count = map.count;
+    if ( cursor.count < 0 || ( cursor.count > 0 && cursor.entries == NULL ) ) { return cursor; }
+    for ( int32_t i = 1; i < cursor.count; i++ )
+    {
+        if ( TableEntryOrder( NULL, cursor.entries[i - 1], cursor.entries[i] ) >= 0 ) { return cursor; }
+    }
     cursor.ok = true;
     return cursor;
 }
@@ -9940,6 +9946,14 @@ inline TableMapCursor<Entry> TableMapOrder( const TableArena & arena, const Tabl
         return cursor;
     }
     TableMapSort( arena, order, map.count );
+    for ( int32_t i = 1; i < map.count; i++ )
+    {
+        if ( TableEntryOrder( &arena, *order[i - 1], *order[i] ) >= 0 )
+        {
+            table_release( arena.allocator, order );
+            return cursor;
+        }
+    }
     cursor.order = order;
     cursor.ok = true;
     return cursor;
@@ -17931,6 +17945,7 @@ inline bool DepthCookBody( const Ctx & ctx, const TableCookRegion & region, uint
     if ( !SquadCookBody( ctx, region, at + 0, value.one, order ) ) { return false; }
     // 3 slots of storage, value.many_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.many_count >= 0 && value.many_count <= 3 ); // storage invariant, debug only (§5.1)
+    if ( value.many_count < 0 || value.many_count > 3 ) { return false; }
     for ( int32_t i = 0; i < value.many_count; i++ )
     {
         if ( !SquadCookBody( ctx, region, at + 16 + i * 16, value.many[i], order ) ) { return false; }
@@ -18439,24 +18454,24 @@ extern const TableTypeInfo SquadTableInfo;
 extern const TableTypeInfo DepthTableInfo;
 
 inline const TableFieldInfo SquadRosterEntryTableFields[] = {
-    { "key", "key", "uint8", 0x3dc94a19365b10ecull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( SquadRosterEntry, key ), (uint32_t) sizeof( SquadRosterEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( SquadRosterEntry, value ), (uint32_t) sizeof( SquadRosterEntry::value ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "key", "key", "uint8", 0x3dc94a19365b10ecull, 6, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( SquadRosterEntry, key ), (uint32_t) sizeof( SquadRosterEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( SquadRosterEntry, value ), (uint32_t) sizeof( SquadRosterEntry::value ), 0xffffffffu, 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo SquadRosterEntryTableInfo = { "SquadRosterEntry", (uint32_t) sizeof( SquadRosterEntry ), 2, SquadRosterEntryTableFields, +[]( void * p ) { SquadRosterEntryReset( *(SquadRosterEntry *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * SquadRosterEntryTableType() { return &SquadRosterEntryTableInfo; }
 
 inline const TableFieldInfo SquadTableFields[] = {
-    { "roster", "roster", "map[uint8]Item", 0x1c84390d304f4f42ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Squad, roster ), (uint32_t) sizeof( SquadRosterEntry ), (uint32_t) offsetof( Squad, roster.count ), 0xffffffffu, &SquadRosterEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<SquadRosterEntry> *) slot, (uint8_t) key_value ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
+    { "roster", "roster", "map[uint8]Item", 0x1c84390d304f4f42ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Squad, roster ), (uint32_t) sizeof( SquadRosterEntry ), (uint32_t) offsetof( Squad, roster.count ), 0xffffffffu, &SquadRosterEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<SquadRosterEntry> *) slot, (uint8_t) key_value ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo SquadTableInfo = { "Squad", (uint32_t) sizeof( Squad ), 1, SquadTableFields, +[]( void * p ) { SquadReset( *(Squad *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * SquadTableType() { return &SquadTableInfo; }
 
 inline const TableFieldInfo DepthTableFields[] = {
-    { "one", "one", "Squad", 0x1a08aa1921ca5cafull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Depth, one ), (uint32_t) sizeof( Depth::one ), 0xffffffffu, 0xffffffffu, &SquadTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "many", "many", "Squad", 0x1f6459a2cea1fc02ull, 13, true, false, NULL, NULL, true, false, 3, (uint32_t) offsetof( Depth, many ), (uint32_t) sizeof( Depth::many[0] ), (uint32_t) offsetof( Depth, many_count ), 0xffffffffu, &SquadTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "keyed", "keyed", "Squad", 0x70551ff29550f15dull, 13, true, false, NULL, NULL, false, false, (int32_t) Slot::Max, (uint32_t) offsetof( Depth, keyed ), (uint32_t) sizeof( Depth::keyed.slots[0] ), 0xffffffffu, 0xffffffffu, &SquadTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, "Slot", +[]( uint64_t v ) { return EnumName( Slot( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Slot( v ), id ); return id; }, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "arm", "arm", "Force", 0xe756c0190570ccb5ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Depth, arm ), (uint32_t) sizeof( Depth::arm ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "squad"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0xd5c2bb95d63e6331ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Force[] = { { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Force, plain ), (uint32_t) sizeof( Force::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Force, squad ), &SquadTableInfo, NULL, 16 }, { (uint32_t) offsetof( Force, plain ), NULL, &arm_fields_Force[0], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Force, type ), (uint32_t) sizeof( Force::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Depth, past ), (uint32_t) sizeof( Depth::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "one", "one", "Squad", 0x1a08aa1921ca5cafull, 13, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Depth, one ), (uint32_t) sizeof( Depth::one ), 0xffffffffu, 0xffffffffu, &SquadTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "many", "many", "Squad", 0x1f6459a2cea1fc02ull, 13, true, false, NULL, NULL, true, false, 3, (uint32_t) offsetof( Depth, many ), (uint32_t) sizeof( Depth::many[0] ), (uint32_t) offsetof( Depth, many_count ), 0xffffffffu, &SquadTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "keyed", "keyed", "Squad", 0x70551ff29550f15dull, 13, true, false, NULL, NULL, false, false, (int32_t) Slot::Max, (uint32_t) offsetof( Depth, keyed ), (uint32_t) sizeof( Depth::keyed.slots[0] ), 0xffffffffu, 0xffffffffu, &SquadTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, "Slot", +[]( uint64_t v ) { return EnumName( Slot( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Slot( v ), id ); return id; }, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "arm", "arm", "Force", 0xe756c0190570ccb5ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Depth, arm ), (uint32_t) sizeof( Depth::arm ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "squad"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0xd5c2bb95d63e6331ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Force[] = { { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Force, plain ), (uint32_t) sizeof( Force::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Force, squad ), &SquadTableInfo, NULL, 16 }, { (uint32_t) offsetof( Force, plain ), NULL, &arm_fields_Force[0], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Force, type ), (uint32_t) sizeof( Force::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Depth, past ), (uint32_t) sizeof( Depth::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo DepthTableInfo = { "Depth", (uint32_t) sizeof( Depth ), 5, DepthTableFields, +[]( void * p ) { DepthReset( *(Depth *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * DepthTableType() { return &DepthTableInfo; }

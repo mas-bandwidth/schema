@@ -326,7 +326,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_count_in_contract( const void * ba
         return 1;
     }
     memcpy( &count, (const uint8_t *) base + f->count_offset, sizeof( count ) );
-    return count >= 0 && count <= f->array_bound;
+    return count >= f->array_min && count <= f->array_bound;
 }
 
 static SCHEMA_UNUSED int tabledemo_table_json_wide_in_contract( const void * storage, const tabledemo_table_field_info_t * f )
@@ -3564,14 +3564,47 @@ static SCHEMA_UNUSED tabledemo_table_json_integer_t tabledemo_table_json_interpr
     return out;
 }
 
+static SCHEMA_UNUSED int tabledemo_table_json_map_key_order(const uint8_t * ea,const uint8_t * eb,const tabledemo_table_field_info_t * key)
+{
+    if(key->kind==12) {
+        int32_t la=0,lb=0,n; const char * pa=NULL; const char * pb=NULL; int c;
+#ifdef SCHEMA_TABLEDEMO_TABLE_UNBOUNDED_TEXT_RUNTIME
+        if(!key->counted) {
+            pa=schema_tabledemo_table_text_at_(NULL,(const tabledemo_table_ref_t *)(const void *)(ea+key->offset),&la);
+            pb=schema_tabledemo_table_text_at_(NULL,(const tabledemo_table_ref_t *)(const void *)(eb+key->offset),&lb);
+        } else
+#endif
+        {
+            pa=(const char *)(ea+key->offset); pb=(const char *)(eb+key->offset);
+            la=tabledemo_table_json_count(ea,key); lb=tabledemo_table_json_count(eb,key);
+        }
+        if(la<0 || lb<0) { return 0; }
+        n=la<lb ? la : lb; c=n>0 ? memcmp(pa,pb,(size_t)n) : 0;
+        if(c!=0) { return c<0 ? -1 : 1; }
+        return la<lb ? -1 : (la>lb ? 1 : 0);
+    }
+    if(key->kind>=2 && key->kind<=5) {
+        int64_t a=tabledemo_table_json_get_signed(ea+key->offset,key->elem_size);
+        int64_t b=tabledemo_table_json_get_signed(eb+key->offset,key->elem_size);
+        return a<b ? -1 : (a>b ? 1 : 0);
+    }
+    {
+        uint64_t a=tabledemo_table_json_get_raw(ea+key->offset,key->elem_size);
+        uint64_t b=tabledemo_table_json_get_raw(eb+key->offset,key->elem_size);
+        return a<b ? -1 : (a>b ? 1 : 0);
+    }
+}
 static SCHEMA_UNUSED int tabledemo_table_json_write_map(tabledemo_table_json_out_t * out,const void * storage,const tabledemo_table_field_info_t * f,int32_t depth)
 {
     const TableSequence * map=(const TableSequence *)storage;
     TableSequenceCursor cursor=table_sequence_cursor(NULL,map,f->elem_size); int32_t i;
+    const uint8_t * prev=NULL;
     const tabledemo_table_field_info_t * key=&f->table->fields[0]; const tabledemo_table_field_info_t * value=&f->table->fields[1];
     if(!cursor.ok) { return 0; } tabledemo_table_json_put(out,'{');
     for(i=0;i<map->count;i++) {
         const uint8_t * entry=(const uint8_t *)table_sequence_next(&cursor); if(entry==NULL) { return 0; }
+        if(i && tabledemo_table_json_map_key_order(prev,entry,key)>=0) { return 0; }
+        prev=entry;
         if(i) { tabledemo_table_json_put(out,','); } tabledemo_table_json_line(out,depth+1);
         if(key->kind==12) {
 #ifdef SCHEMA_TABLEDEMO_TABLE_UNBOUNDED_TEXT_RUNTIME
@@ -3685,8 +3718,8 @@ static SCHEMA_UNUSED int schema_tabledemo_table_json_read_unbounded_text_(tabled
 }
 #endif
 static const tabledemo_table_field_info_t schema_tabledemo_archive_config_fields_[] = {
-    { "root", "root", "RootConfig", 0xa354fd1ff0c467c5ull, 13, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_archive_config_t, root ), (uint32_t) sizeof( ( (tabledemo_archive_config_t *) 0 )->root ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_root_config_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "count", "count", "int32", 0xb1e5e28e4479a274ull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_archive_config_t, count ), (uint32_t) sizeof( ( (tabledemo_archive_config_t *) 0 )->count ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 100.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "root", "root", "RootConfig", 0xa354fd1ff0c467c5ull, 13, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_archive_config_t, root ), (uint32_t) sizeof( ( (tabledemo_archive_config_t *) 0 )->root ), 0xffffffffu, 0xffffffffu, &schema_tabledemo_root_config_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "count", "count", "int32", 0xb1e5e28e4479a274ull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( tabledemo_archive_config_t, count ), (uint32_t) sizeof( ( (tabledemo_archive_config_t *) 0 )->count ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 100.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
 };
 
 const tabledemo_table_type_info_t schema_tabledemo_archive_config_info_ = { "ArchiveConfig", (uint32_t) sizeof( tabledemo_archive_config_t ), 2, schema_tabledemo_archive_config_fields_, schema_tabledemo_archive_config_reset_raw_, 0, TABLEDEMO_TABLE_DOC_NONE, 0, NULL, 0 };

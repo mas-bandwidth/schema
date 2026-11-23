@@ -251,6 +251,7 @@ typedef struct blockdemo_table_field_info_t
     uint8_t text_list; /* 0 none, 1 string(M) elements, 2 ?string(M) elements (SPEC-TABLES 2.13) */
     int64_t text_total; /* | total = N byte cap across text-list elements, or 0 (SPEC-TABLES 2.13) */
     void * (*place)(void * worker,void * slot,const char * key,int32_t length,int64_t number);
+    int32_t array_min;
 } blockdemo_table_field_info_t;
 
 typedef struct blockdemo_table_type_info_t
@@ -3262,10 +3263,10 @@ static SCHEMA_UNUSED int blockdemo_table_bit_getbytes(blockdemo_table_bit_reader
  if((r->offset&7)==0){if(n>0)memcpy(target,r->buffer+r->offset/8,(size_t)n);r->offset+=n*8;return 1;}
  for(i=0;i<n;i++){if(!blockdemo_table_bit_get(r,&by,8))return 0;target[i]=(uint8_t)by;}return 1;
 }
-static SCHEMA_UNUSED int64_t blockdemo_announce_measure(void) {return BLOCKDEMO_K_TABLE_ANNOUNCE_BYTES;
+static SCHEMA_UNUSED int64_t blockdemo_announce_measure(void) {return BLOCKDEMO_K_TABLE_MESSAGE_ENTRIES_HERE>4096 ? -1 : BLOCKDEMO_K_TABLE_ANNOUNCE_BYTES;
 }
 static SCHEMA_UNUSED int64_t blockdemo_announce(uint8_t * buffer,int64_t capacity)
-{if(buffer==NULL || capacity<BLOCKDEMO_K_TABLE_ANNOUNCE_BYTES)return -1;
+{if(BLOCKDEMO_K_TABLE_MESSAGE_ENTRIES_HERE>4096 || buffer==NULL || capacity<BLOCKDEMO_K_TABLE_ANNOUNCE_BYTES)return -1;
 memcpy(buffer,BLOCKDEMO_K_TABLE_ANNOUNCE,BLOCKDEMO_K_TABLE_ANNOUNCE_BYTES);
 return BLOCKDEMO_K_TABLE_ANNOUNCE_BYTES;
 }
@@ -11839,6 +11840,7 @@ static SCHEMA_UNUSED int blockdemo_render_frame_save_body( blockdemo_table_write
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_blockdemo_render_frame_write_admits_( const blockdemo_render_frame_t * value );
 static SCHEMA_UNUSED int64_t blockdemo_render_frame_measure( const blockdemo_render_frame_t * value )
 {
     blockdemo_table_write_ids_t vocabulary; blockdemo_table_writer_t w = blockdemo_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -12473,7 +12475,11 @@ static SCHEMA_UNUSED int64_t blockdemo_render_frame_measure_messages(const block
  w=blockdemo_table_bit_writer(NULL,INT64_MAX);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!blockdemo_render_frame_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!blockdemo_render_frame_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_blockdemo_render_frame_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  blockdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -12490,7 +12496,11 @@ static SCHEMA_UNUSED int64_t blockdemo_render_frame_save_messages(const blockdem
  w=blockdemo_table_bit_writer(buffer,capacity);
  blockdemo_table_bit_put(&w,2,8);
  blockdemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!blockdemo_render_frame_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!blockdemo_render_frame_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_blockdemo_render_frame_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  blockdemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -14432,6 +14442,79 @@ static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_
     (void) value; (void) out_of_range; (void) damaged;
     if ( (uint64_t) value->explosion_type > 2u ) { (*out_of_range)++; }
     if ( (uint64_t) value->team > 4u ) { (*out_of_range)++; }
+}
+
+/* RenderFrame's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_BLOCKDEMO_TABLE_INLINE void schema_blockdemo_render_frame_fixed_write_check_body_( const blockdemo_render_frame_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    {
+        int64_t i;
+        for ( i = 0; i < ( value->ships_count >= 0 && value->ships_count <= 4096 ? (int64_t) value->ships_count : 0 ); ++i )
+        {
+            schema_blockdemo_render_ship_fixed_write_check_body_( &value->ships[i], out_of_range, damaged );
+        }
+    }
+    {
+        int64_t i;
+        for ( i = 0; i < ( value->turrets_count >= 0 && value->turrets_count <= 1024 ? (int64_t) value->turrets_count : 0 ); ++i )
+        {
+            schema_blockdemo_render_turret_fixed_write_check_body_( &value->turrets[i], out_of_range, damaged );
+        }
+    }
+    {
+        int64_t i;
+        for ( i = 0; i < ( value->missiles_count >= 0 && value->missiles_count <= 4096 ? (int64_t) value->missiles_count : 0 ); ++i )
+        {
+            schema_blockdemo_render_missile_fixed_write_check_body_( &value->missiles[i], out_of_range, damaged );
+        }
+    }
+    {
+        int64_t i;
+        for ( i = 0; i < ( value->dynamic_props_count >= 0 && value->dynamic_props_count <= 4096 ? (int64_t) value->dynamic_props_count : 0 ); ++i )
+        {
+            schema_blockdemo_render_dynamic_prop_fixed_write_check_body_( &value->dynamic_props[i], out_of_range, damaged );
+        }
+    }
+    {
+        int64_t i;
+        for ( i = 0; i < ( value->static_props_count >= 0 && value->static_props_count <= 20000 ? (int64_t) value->static_props_count : 0 ); ++i )
+        {
+            schema_blockdemo_render_static_prop_fixed_write_check_body_( &value->static_props[i], out_of_range, damaged );
+        }
+    }
+    {
+        int64_t i;
+        for ( i = 0; i < ( value->cosmetic_props_count >= 0 && value->cosmetic_props_count <= 8192 ? (int64_t) value->cosmetic_props_count : 0 ); ++i )
+        {
+            schema_blockdemo_render_cosmetic_prop_fixed_write_check_body_( &value->cosmetic_props[i], out_of_range, damaged );
+        }
+    }
+    {
+        int64_t i;
+        for ( i = 0; i < ( value->lasers_count >= 0 && value->lasers_count <= 32000 ? (int64_t) value->lasers_count : 0 ); ++i )
+        {
+            schema_blockdemo_render_laser_fixed_write_check_body_( &value->lasers[i], out_of_range, damaged );
+        }
+    }
+    {
+        int64_t i;
+        for ( i = 0; i < ( value->explosions_count >= 0 && value->explosions_count <= 32000 ? (int64_t) value->explosions_count : 0 ); ++i )
+        {
+            schema_blockdemo_render_explosion_fixed_write_check_body_( &value->explosions[i], out_of_range, damaged );
+        }
+    }
+}
+
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value RenderFrame holds is
+   one its declaration admits. Every writer of RenderFrame asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_blockdemo_render_frame_write_admits_( const blockdemo_render_frame_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_blockdemo_render_frame_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
 }
 
 /* ---- RenderCamera, the fixed form ---- */
@@ -20260,38 +20343,47 @@ static SCHEMA_UNUSED int schema_blockdemo_render_frame_body_pack_(struct blockde
     const blockdemo_render_frame_t * value=(const blockdemo_render_frame_t *)storage;
     (void)n; (void)at; (void)value; (void)order;
     blockdemo_table_cook_put(at+0,(uint64_t)value->version,8,order);
+    if(value->cameras_count<0 || value->cameras_count>1) { return 0; }
     { int32_t cook_i1; for(cook_i1=0;cook_i1<value->cameras_count && cook_i1<1;cook_i1++) {
         if(!schema_blockdemo_render_camera_body_pack_(n,at+8+cook_i1*72,&value->cameras[cook_i1],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+8+72,(uint32_t)value->cameras_count,4,order);
+    if(value->ships_count<0 || value->ships_count>4096) { return 0; }
     { int32_t cook_i2; for(cook_i2=0;cook_i2<value->ships_count && cook_i2<4096;cook_i2++) {
         if(!schema_blockdemo_render_ship_body_pack_(n,at+88+cook_i2*88,&value->ships[cook_i2],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+88+360448,(uint32_t)value->ships_count,4,order);
+    if(value->turrets_count<0 || value->turrets_count>1024) { return 0; }
     { int32_t cook_i3; for(cook_i3=0;cook_i3<value->turrets_count && cook_i3<1024;cook_i3++) {
         if(!schema_blockdemo_render_turret_body_pack_(n,at+360544+cook_i3*64,&value->turrets[cook_i3],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+360544+65536,(uint32_t)value->turrets_count,4,order);
+    if(value->missiles_count<0 || value->missiles_count>4096) { return 0; }
     { int32_t cook_i4; for(cook_i4=0;cook_i4<value->missiles_count && cook_i4<4096;cook_i4++) {
         if(!schema_blockdemo_render_missile_body_pack_(n,at+426088+cook_i4*72,&value->missiles[cook_i4],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+426088+294912,(uint32_t)value->missiles_count,4,order);
+    if(value->dynamic_props_count<0 || value->dynamic_props_count>4096) { return 0; }
     { int32_t cook_i5; for(cook_i5=0;cook_i5<value->dynamic_props_count && cook_i5<4096;cook_i5++) {
         if(!schema_blockdemo_render_dynamic_prop_body_pack_(n,at+721008+cook_i5*72,&value->dynamic_props[cook_i5],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+721008+294912,(uint32_t)value->dynamic_props_count,4,order);
+    if(value->static_props_count<0 || value->static_props_count>20000) { return 0; }
     { int32_t cook_i6; for(cook_i6=0;cook_i6<value->static_props_count && cook_i6<20000;cook_i6++) {
         if(!schema_blockdemo_render_static_prop_body_pack_(n,at+1015928+cook_i6*80,&value->static_props[cook_i6],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+1015928+1600000,(uint32_t)value->static_props_count,4,order);
+    if(value->cosmetic_props_count<0 || value->cosmetic_props_count>8192) { return 0; }
     { int32_t cook_i7; for(cook_i7=0;cook_i7<value->cosmetic_props_count && cook_i7<8192;cook_i7++) {
         if(!schema_blockdemo_render_cosmetic_prop_body_pack_(n,at+2615936+cook_i7*80,&value->cosmetic_props[cook_i7],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+2615936+655360,(uint32_t)value->cosmetic_props_count,4,order);
+    if(value->lasers_count<0 || value->lasers_count>32000) { return 0; }
     { int32_t cook_i8; for(cook_i8=0;cook_i8<value->lasers_count && cook_i8<32000;cook_i8++) {
         if(!schema_blockdemo_render_laser_body_pack_(n,at+3271304+cook_i8*64,&value->lasers[cook_i8],order)) { return 0; }
     } }
     blockdemo_table_cook_put(at+3271304+2048000,(uint32_t)value->lasers_count,4,order);
+    if(value->explosions_count<0 || value->explosions_count>32000) { return 0; }
     { int32_t cook_i9; for(cook_i9=0;cook_i9<value->explosions_count && cook_i9<32000;cook_i9++) {
         if(!schema_blockdemo_render_explosion_body_pack_(n,at+5319312+cook_i9*80,&value->explosions[cook_i9],order)) { return 0; }
     } }

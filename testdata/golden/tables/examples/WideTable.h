@@ -486,6 +486,7 @@ struct TableFieldInfo
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
+    int32_t array_min;
 };
 
 struct TableTypeInfo
@@ -4613,14 +4614,14 @@ inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vo
 
 // AnnounceMeasure is the announcement's byte count, which is a constant of the
 // unit and not a walk.
-inline int64_t AnnounceMeasure() { return kTableAnnounceBytes; }
+inline int64_t AnnounceMeasure() { return kTableMessageEntriesHere > 4096 ? -1 : kTableAnnounceBytes; }
 
 // Announce writes the announcement into the caller's buffer and answers the
 // bytes written, which is exactly AnnounceMeasure's answer, or -1 when the
 // buffer is too small. It allocates nothing and walks nothing.
 inline int64_t Announce( uint8_t * buffer, int64_t capacity )
 {
-    if ( buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
+    if ( kTableMessageEntriesHere > 4096 || buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
     memcpy( buffer, kTableAnnounce, (size_t) kTableAnnounceBytes );
     return kTableAnnounceBytes;
 }
@@ -9457,7 +9458,7 @@ struct TableRetainIds
         }
         if ( known.count != before )
         {
-            if ( count >= TableIds::kLimit ) { known.truncate( before ); overflow = true; return 1; }
+            if ( count >= 4096 ) { known.truncate( before ); overflow = true; return 1; }
             known_slot[(int32_t) k - 1] = ++count;
         }
         return (uint64_t) known_slot[(int32_t) k - 1];
@@ -9492,7 +9493,7 @@ struct TableRetainIds
         {
             if ( retain->ids[i].id == id ) { return (uint64_t) retain->ids[i].slot; }
         }
-        if ( retain->id_used >= retain->id_capacity || count >= TableIds::kLimit )
+        if ( retain->id_used >= retain->id_capacity || count >= 4096 )
         {
             lost = true;
             return 0;
@@ -10927,6 +10928,8 @@ inline int64_t WideBlobMeasureBody( TableIds & ids, const WideBlob & value )
     return bytes;
 }
 
+inline bool WideBlobFixedWriteAdmits( const WideBlob & value );
+
 inline int64_t WideBlobMeasure( const WideBlob & value )
 {
     TableIds ids;
@@ -11801,6 +11804,7 @@ inline int64_t WideBlobMeasureMessages( const WideBlob * values, int64_t count, 
     {
         const int64_t body = WideBlobMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( WideBlobFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -11819,6 +11823,7 @@ inline int64_t WideBlobSaveMessages( const WideBlob * values, int64_t count, uin
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !WideBlobSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( WideBlobFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == WideBlobMeasureMessages( values, count, report )
@@ -11841,6 +11846,7 @@ inline bool WideBlobLoadMessages( WideBlob * values, int64_t * count, const Tabl
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -11881,6 +11887,38 @@ inline bool WideBlobLoadMessages( WideBlob * values, int64_t * count, const Tabl
 // schema compiler rather than folded by this one, because they are the same
 // offsets every other port needs; these are that arithmetic checked against
 // this compiler's own, at build time, one line per fact the plans rest on.
+
+// WideBlob's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool WideBlobFixedInRange( const WideBlob & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length );
+    return bad == 0;
+}
+
+// WideBlob's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool WideBlobFixedWriteAdmits( const WideBlob & value )
+{
+    (void) value;
+    int bad = 0;
+    bad |= (int) ( value.label_length >= 0 && value.label_length <= 70000 && !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) );
+    return bad == 0;
+}
+
+// WideBlob's read-side bounds.
+inline void WideBlobFixedClampBody( WideBlob & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
+{
+    (void) value;
+    (void) oor_count;
+    (void) damaged;
+    if ( !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) )
+    {
+        damaged++;
+    }
+}
 
 inline int64_t WideBlobMeasureBodyRetain( TableRetainIds & ids, const WideBlob & value, TableRetain * retain, const TableRetainPath & path )
 {
@@ -12352,6 +12390,7 @@ inline bool WideBlobCookBody( uint8_t * at, const WideBlob & value, TableByteOrd
     table_cook_put( at + 140008, (uint64_t) (uint32_t) value.payload_length, 4, order );
     // 70000 slots of storage, value.samples_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.samples_count >= 0 && value.samples_count <= 70000 ); // storage invariant, debug only (§5.1)
+    if ( value.samples_count < 0 || value.samples_count > 70000 ) { return false; }
     for ( int32_t i = 0; i < value.samples_count; i++ )
     {
         table_cook_put( at + 140012 + i * 2, (uint64_t) value.samples[i], 2, order );
@@ -12458,9 +12497,9 @@ inline const TableTypeInfo * WideBlobTableType();
 extern const TableTypeInfo WideBlobTableInfo;
 
 inline const TableFieldInfo WideBlobTableFields[] = {
-    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, false, false, NULL, NULL, true, false, 70000, (uint32_t) offsetof( WideBlob, label ), (uint32_t) sizeof( WideBlob::label ), (uint32_t) offsetof( WideBlob, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "payload", "payload", "bytes", 0xcfb8a9d063b5e9e5ull, 6, true, false, NULL, NULL, true, false, 70000, (uint32_t) offsetof( WideBlob, payload ), (uint32_t) sizeof( WideBlob::payload[0] ), (uint32_t) offsetof( WideBlob, payload_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "samples", "samples", "uint16", 0xe3b1ca6a3b48dddcull, 7, true, false, NULL, NULL, true, false, 70000, (uint32_t) offsetof( WideBlob, samples ), (uint32_t) sizeof( WideBlob::samples[0] ), (uint32_t) offsetof( WideBlob, samples_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, false, false, NULL, NULL, true, false, 70000, (uint32_t) offsetof( WideBlob, label ), (uint32_t) sizeof( WideBlob::label ), (uint32_t) offsetof( WideBlob, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "payload", "payload", "bytes", 0xcfb8a9d063b5e9e5ull, 6, true, false, NULL, NULL, true, false, 70000, (uint32_t) offsetof( WideBlob, payload ), (uint32_t) sizeof( WideBlob::payload[0] ), (uint32_t) offsetof( WideBlob, payload_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "samples", "samples", "uint16", 0xe3b1ca6a3b48dddcull, 7, true, false, NULL, NULL, true, false, 70000, (uint32_t) offsetof( WideBlob, samples ), (uint32_t) sizeof( WideBlob::samples[0] ), (uint32_t) offsetof( WideBlob, samples_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo WideBlobTableInfo = { "WideBlob", (uint32_t) sizeof( WideBlob ), 3, WideBlobTableFields, +[]( void * p ) { WideBlobReset( *(WideBlob *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * WideBlobTableType() { return &WideBlobTableInfo; }

@@ -252,6 +252,7 @@ typedef struct tabledemo_table_field_info_t
     uint8_t text_list; /* 0 none, 1 string(M) elements, 2 ?string(M) elements (SPEC-TABLES 2.13) */
     int64_t text_total; /* | total = N byte cap across text-list elements, or 0 (SPEC-TABLES 2.13) */
     void * (*place)(void * worker,void * slot,const char * key,int32_t length,int64_t number);
+    int32_t array_min;
 } tabledemo_table_field_info_t;
 
 typedef struct tabledemo_table_type_info_t
@@ -4509,10 +4510,10 @@ static SCHEMA_UNUSED int tabledemo_table_bit_getbytes(tabledemo_table_bit_reader
  if((r->offset&7)==0){if(n>0)memcpy(target,r->buffer+r->offset/8,(size_t)n);r->offset+=n*8;return 1;}
  for(i=0;i<n;i++){if(!tabledemo_table_bit_get(r,&by,8))return 0;target[i]=(uint8_t)by;}return 1;
 }
-static SCHEMA_UNUSED int64_t tabledemo_announce_measure(void) {return TABLEDEMO_K_TABLE_ANNOUNCE_BYTES;
+static SCHEMA_UNUSED int64_t tabledemo_announce_measure(void) {return TABLEDEMO_K_TABLE_MESSAGE_ENTRIES_HERE>4096 ? -1 : TABLEDEMO_K_TABLE_ANNOUNCE_BYTES;
 }
 static SCHEMA_UNUSED int64_t tabledemo_announce(uint8_t * buffer,int64_t capacity)
-{if(buffer==NULL || capacity<TABLEDEMO_K_TABLE_ANNOUNCE_BYTES)return -1;
+{if(TABLEDEMO_K_TABLE_MESSAGE_ENTRIES_HERE>4096 || buffer==NULL || capacity<TABLEDEMO_K_TABLE_ANNOUNCE_BYTES)return -1;
 memcpy(buffer,TABLEDEMO_K_TABLE_ANNOUNCE,TABLEDEMO_K_TABLE_ANNOUNCE_BYTES);
 return TABLEDEMO_K_TABLE_ANNOUNCE_BYTES;
 }
@@ -9786,6 +9787,7 @@ static SCHEMA_UNUSED int tabledemo_attachment_save_body( tabledemo_table_writer_
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_tabledemo_attachment_write_admits_( const tabledemo_attachment_t * value );
 static SCHEMA_UNUSED int64_t tabledemo_attachment_measure( const tabledemo_attachment_t * value )
 {
     tabledemo_table_write_ids_t vocabulary; tabledemo_table_writer_t w = tabledemo_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -9954,7 +9956,11 @@ static SCHEMA_UNUSED int64_t tabledemo_attachment_measure_messages(const tablede
  w=tabledemo_table_bit_writer(NULL,INT64_MAX);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!tabledemo_attachment_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!tabledemo_attachment_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_tabledemo_attachment_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  tabledemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -9971,7 +9977,11 @@ static SCHEMA_UNUSED int64_t tabledemo_attachment_save_messages(const tabledemo_
  w=tabledemo_table_bit_writer(buffer,capacity);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!tabledemo_attachment_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!tabledemo_attachment_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_tabledemo_attachment_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  tabledemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -10374,6 +10384,7 @@ static SCHEMA_UNUSED int tabledemo_debuff_save_body( tabledemo_table_writer_t * 
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_tabledemo_debuff_write_admits_( const tabledemo_debuff_t * value );
 static SCHEMA_UNUSED int64_t tabledemo_debuff_measure( const tabledemo_debuff_t * value )
 {
     tabledemo_table_write_ids_t vocabulary; tabledemo_table_writer_t w = tabledemo_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -10518,7 +10529,11 @@ static SCHEMA_UNUSED int64_t tabledemo_debuff_measure_messages(const tabledemo_d
  w=tabledemo_table_bit_writer(NULL,INT64_MAX);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!tabledemo_debuff_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!tabledemo_debuff_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_tabledemo_debuff_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  tabledemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -10535,7 +10550,11 @@ static SCHEMA_UNUSED int64_t tabledemo_debuff_save_messages(const tabledemo_debu
  w=tabledemo_table_bit_writer(buffer,capacity);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!tabledemo_debuff_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!tabledemo_debuff_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_tabledemo_debuff_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  tabledemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -11145,6 +11164,28 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_root_co
             schema_tabledemo_profile_config_fixed_write_check_body_( &value->profiles[i], out_of_range, damaged );
         }
     }
+}
+
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value Attachment holds is
+   one its declaration admits. Every writer of Attachment asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_tabledemo_attachment_write_admits_( const tabledemo_attachment_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_tabledemo_attachment_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value Debuff holds is
+   one its declaration admits. Every writer of Debuff asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_tabledemo_debuff_write_admits_( const tabledemo_debuff_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_tabledemo_debuff_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
 }
 
 /* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value WeaponConfig holds is
@@ -17607,6 +17648,7 @@ static SCHEMA_UNUSED int schema_tabledemo_loadout_config_body_pack_(struct table
     const tabledemo_loadout_config_t * value=(const tabledemo_loadout_config_t *)storage;
     (void)n; (void)at; (void)value; (void)order;
     tabledemo_table_cook_put(at+0,(uint64_t)value->grade,1,order);
+    if(value->grades_count<0 || value->grades_count>4) { return 0; }
     { int32_t cook_i1; for(cook_i1=0;cook_i1<value->grades_count && cook_i1<4;cook_i1++) {
         tabledemo_table_cook_put(at+1+cook_i1*1,(uint64_t)value->grades[cook_i1],1,order);
     } }
@@ -17619,6 +17661,7 @@ static SCHEMA_UNUSED int schema_tabledemo_loadout_config_body_pack_(struct table
     { int32_t cook_i3; for(cook_i3=0;cook_i3<2;cook_i3++) {
         if(!schema_tabledemo_weapon_config_body_pack_(n,at+52+cook_i3*28,&value->backups[cook_i3],order)) { return 0; }
     } }
+    if(value->attachments_count<0 || value->attachments_count>8) { return 0; }
     { int32_t cook_i4; for(cook_i4=0;cook_i4<value->attachments_count && cook_i4<8;cook_i4++) {
         if(!schema_tabledemo_attachment_body_pack_(n,at+108+cook_i4*8,&value->attachments[cook_i4],order)) { return 0; }
     } }
@@ -17674,10 +17717,12 @@ static SCHEMA_UNUSED int schema_tabledemo_root_config_body_pack_(struct tabledem
     (void)n; (void)at; (void)value; (void)order;
     tabledemo_table_cook_bytes(at+0,value->version_note,value->version_note_length,17);
     tabledemo_table_cook_put(at+0+20,(uint32_t)value->version_note_length,4,order);
+    if(value->weapons_count<0 || value->weapons_count>8) { return 0; }
     { int32_t cook_i1; for(cook_i1=0;cook_i1<value->weapons_count && cook_i1<8;cook_i1++) {
         if(!schema_tabledemo_weapon_config_body_pack_(n,at+24+cook_i1*28,&value->weapons[cook_i1],order)) { return 0; }
     } }
     tabledemo_table_cook_put(at+24+224,(uint32_t)value->weapons_count,4,order);
+    if(value->profiles_count<0 || value->profiles_count>4) { return 0; }
     { int32_t cook_i2; for(cook_i2=0;cook_i2<value->profiles_count && cook_i2<4;cook_i2++) {
         if(!schema_tabledemo_profile_config_body_pack_(n,at+256+cook_i2*304,&value->profiles[cook_i2],order)) { return 0; }
     } }

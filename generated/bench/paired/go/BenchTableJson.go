@@ -3259,6 +3259,7 @@ func tableJSONWriteMap(out *tableJSONOut, p unsafe.Pointer, f *TableFieldInfo, d
 		base := unsafe.Add(p, ref)
 		entry := f.Table()
 		key, value := &entry.Fields[0], &entry.Fields[1]
+		var prev tableMapKey
 		for i := range count {
 			if i > 0 {
 				out.put(',')
@@ -3266,9 +3267,10 @@ func tableJSONWriteMap(out *tableJSONOut, p unsafe.Pointer, f *TableFieldInfo, d
 			out.line(depth + 1)
 			at := unsafe.Add(base, int64(i)*int64(f.ElemSize))
 			k := tableMapStoredKey(at, key)
-			if !tableMapKeyValid(k, key) {
+			if !tableMapKeyValid(k, key) || i > 0 && tableMapKeyOrder(prev, k, key) >= 0 {
 				return false
 			}
+			prev = k
 			if key.Kind == 12 {
 				tableJSONWriteString(out, k.text)
 			} else {

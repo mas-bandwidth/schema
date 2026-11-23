@@ -326,7 +326,7 @@ static SCHEMA_UNUSED int graphdemo_table_json_count_in_contract( const void * ba
         return 1;
     }
     memcpy( &count, (const uint8_t *) base + f->count_offset, sizeof( count ) );
-    return count >= 0 && count <= f->array_bound;
+    return count >= f->array_min && count <= f->array_bound;
 }
 
 static SCHEMA_UNUSED int graphdemo_table_json_wide_in_contract( const void * storage, const graphdemo_table_field_info_t * f )
@@ -3564,14 +3564,47 @@ static SCHEMA_UNUSED graphdemo_table_json_integer_t graphdemo_table_json_interpr
     return out;
 }
 
+static SCHEMA_UNUSED int graphdemo_table_json_map_key_order(const uint8_t * ea,const uint8_t * eb,const graphdemo_table_field_info_t * key)
+{
+    if(key->kind==12) {
+        int32_t la=0,lb=0,n; const char * pa=NULL; const char * pb=NULL; int c;
+#ifdef SCHEMA_GRAPHDEMO_TABLE_UNBOUNDED_TEXT_RUNTIME
+        if(!key->counted) {
+            pa=schema_graphdemo_table_text_at_(NULL,(const graphdemo_table_ref_t *)(const void *)(ea+key->offset),&la);
+            pb=schema_graphdemo_table_text_at_(NULL,(const graphdemo_table_ref_t *)(const void *)(eb+key->offset),&lb);
+        } else
+#endif
+        {
+            pa=(const char *)(ea+key->offset); pb=(const char *)(eb+key->offset);
+            la=graphdemo_table_json_count(ea,key); lb=graphdemo_table_json_count(eb,key);
+        }
+        if(la<0 || lb<0) { return 0; }
+        n=la<lb ? la : lb; c=n>0 ? memcmp(pa,pb,(size_t)n) : 0;
+        if(c!=0) { return c<0 ? -1 : 1; }
+        return la<lb ? -1 : (la>lb ? 1 : 0);
+    }
+    if(key->kind>=2 && key->kind<=5) {
+        int64_t a=graphdemo_table_json_get_signed(ea+key->offset,key->elem_size);
+        int64_t b=graphdemo_table_json_get_signed(eb+key->offset,key->elem_size);
+        return a<b ? -1 : (a>b ? 1 : 0);
+    }
+    {
+        uint64_t a=graphdemo_table_json_get_raw(ea+key->offset,key->elem_size);
+        uint64_t b=graphdemo_table_json_get_raw(eb+key->offset,key->elem_size);
+        return a<b ? -1 : (a>b ? 1 : 0);
+    }
+}
 static SCHEMA_UNUSED int graphdemo_table_json_write_map(graphdemo_table_json_out_t * out,const void * storage,const graphdemo_table_field_info_t * f,int32_t depth)
 {
     const TableSequence * map=(const TableSequence *)storage;
     TableSequenceCursor cursor=table_sequence_cursor(NULL,map,f->elem_size); int32_t i;
+    const uint8_t * prev=NULL;
     const graphdemo_table_field_info_t * key=&f->table->fields[0]; const graphdemo_table_field_info_t * value=&f->table->fields[1];
     if(!cursor.ok) { return 0; } graphdemo_table_json_put(out,'{');
     for(i=0;i<map->count;i++) {
         const uint8_t * entry=(const uint8_t *)table_sequence_next(&cursor); if(entry==NULL) { return 0; }
+        if(i && graphdemo_table_json_map_key_order(prev,entry,key)>=0) { return 0; }
+        prev=entry;
         if(i) { graphdemo_table_json_put(out,','); } graphdemo_table_json_line(out,depth+1);
         if(key->kind==12) {
 #ifdef SCHEMA_GRAPHDEMO_TABLE_UNBOUNDED_TEXT_RUNTIME
@@ -3685,52 +3718,52 @@ static SCHEMA_UNUSED int schema_graphdemo_table_json_read_unbounded_text_(graphd
 }
 #endif
 static const graphdemo_table_field_info_t schema_graphdemo_meta_fields_[] = {
-    { "build", "build", "int32", 0x802517e298c70b03ull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_meta_t, build ), (uint32_t) sizeof( ( (graphdemo_meta_t *) 0 )->build ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1000.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "tag", "tag", "string", 0x56d7ab194448a4f3ull, 12, 0, 0, 1, 0, 0, 8, (uint32_t) offsetof( graphdemo_meta_t, tag ), (uint32_t) sizeof( ( (graphdemo_meta_t *) 0 )->tag ), (uint32_t) offsetof( graphdemo_meta_t, tag_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "build", "build", "int32", 0x802517e298c70b03ull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_meta_t, build ), (uint32_t) sizeof( ( (graphdemo_meta_t *) 0 )->build ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 1000.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "tag", "tag", "string", 0x56d7ab194448a4f3ull, 12, 0, 0, 1, 0, 0, 8, (uint32_t) offsetof( graphdemo_meta_t, tag ), (uint32_t) sizeof( ( (graphdemo_meta_t *) 0 )->tag ), (uint32_t) offsetof( graphdemo_meta_t, tag_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
 };
 
 const graphdemo_table_type_info_t schema_graphdemo_meta_info_ = { "Meta", (uint32_t) sizeof( graphdemo_meta_t ), 2, schema_graphdemo_meta_fields_, schema_graphdemo_meta_reset_raw_, 0, GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const graphdemo_table_field_info_t schema_graphdemo_settings_fields_[] = {
-    { "quality", "quality", "int32", 0x7a8060916400fe66ull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_settings_t, quality ), (uint32_t) sizeof( ( (graphdemo_settings_t *) 0 )->quality ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, 0, 0, 1, 0, 0, 16, (uint32_t) offsetof( graphdemo_settings_t, label ), (uint32_t) sizeof( ( (graphdemo_settings_t *) 0 )->label ), (uint32_t) offsetof( graphdemo_settings_t, label_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "quality", "quality", "int32", 0x7a8060916400fe66ull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_settings_t, quality ), (uint32_t) sizeof( ( (graphdemo_settings_t *) 0 )->quality ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 4.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, 0, 0, 1, 0, 0, 16, (uint32_t) offsetof( graphdemo_settings_t, label ), (uint32_t) sizeof( ( (graphdemo_settings_t *) 0 )->label ), (uint32_t) offsetof( graphdemo_settings_t, label_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
 };
 
 const graphdemo_table_type_info_t schema_graphdemo_settings_info_ = { "Settings", (uint32_t) sizeof( graphdemo_settings_t ), 2, schema_graphdemo_settings_fields_, schema_graphdemo_settings_reset_raw_, 0, GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const graphdemo_table_field_info_t schema_graphdemo_list_node_fields_[] = {
-    { "value", "value", "int32", 0x7ce4fd9430e80ceaull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_list_node_t, value ), (uint32_t) sizeof( ( (graphdemo_list_node_t *) 0 )->value ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, 0, 0, 1, 0, 0, 12, (uint32_t) offsetof( graphdemo_list_node_t, name ), (uint32_t) sizeof( ( (graphdemo_list_node_t *) 0 )->name ), (uint32_t) offsetof( graphdemo_list_node_t, name_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "next", "next", "ListNode", 0xe5316cbaa025f028ull, 17, 0, 1, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_list_node_t, next ), (uint32_t) sizeof( graphdemo_table_ref_t ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_list_node_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "value", "value", "int32", 0x7ce4fd9430e80ceaull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_list_node_t, value ), (uint32_t) sizeof( ( (graphdemo_list_node_t *) 0 )->value ), 0xffffffffu, 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, 0, 0, 1, 0, 0, 12, (uint32_t) offsetof( graphdemo_list_node_t, name ), (uint32_t) sizeof( ( (graphdemo_list_node_t *) 0 )->name ), (uint32_t) offsetof( graphdemo_list_node_t, name_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "next", "next", "ListNode", 0xe5316cbaa025f028ull, 17, 0, 1, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_list_node_t, next ), (uint32_t) sizeof( graphdemo_table_ref_t ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_list_node_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
 };
 
 const graphdemo_table_type_info_t schema_graphdemo_list_node_info_ = { "ListNode", (uint32_t) sizeof( graphdemo_list_node_t ), 3, schema_graphdemo_list_node_fields_, schema_graphdemo_list_node_reset_raw_, 1, GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const graphdemo_table_field_info_t schema_graphdemo_tree_node_fields_[] = {
-    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, 0, 0, 1, 0, 0, 12, (uint32_t) offsetof( graphdemo_tree_node_t, label ), (uint32_t) sizeof( ( (graphdemo_tree_node_t *) 0 )->label ), (uint32_t) offsetof( graphdemo_tree_node_t, label_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "left", "left", "TreeNode", 0x24b070ada2041cb0ull, 17, 0, 1, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_tree_node_t, left ), (uint32_t) sizeof( graphdemo_table_ref_t ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_tree_node_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "right", "right", "TreeNode", 0x76aaaa535714d805ull, 17, 0, 1, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_tree_node_t, right ), (uint32_t) sizeof( graphdemo_table_ref_t ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_tree_node_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, 0, 0, 1, 0, 0, 12, (uint32_t) offsetof( graphdemo_tree_node_t, label ), (uint32_t) sizeof( ( (graphdemo_tree_node_t *) 0 )->label ), (uint32_t) offsetof( graphdemo_tree_node_t, label_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "left", "left", "TreeNode", 0x24b070ada2041cb0ull, 17, 0, 1, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_tree_node_t, left ), (uint32_t) sizeof( graphdemo_table_ref_t ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_tree_node_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "right", "right", "TreeNode", 0x76aaaa535714d805ull, 17, 0, 1, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_tree_node_t, right ), (uint32_t) sizeof( graphdemo_table_ref_t ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_tree_node_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
 };
 
 const graphdemo_table_type_info_t schema_graphdemo_tree_node_info_ = { "TreeNode", (uint32_t) sizeof( graphdemo_tree_node_t ), 3, schema_graphdemo_tree_node_fields_, schema_graphdemo_tree_node_reset_raw_, 1, GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const graphdemo_table_field_info_t schema_graphdemo_layer_fields_[] = {
-    { "depth", "depth", "int32", 0x75d8e97600b296eaull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_layer_t, depth ), (uint32_t) sizeof( ( (graphdemo_layer_t *) 0 )->depth ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 64.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "head", "head", "ListNode", 0x0a8f12cc5f9a0c03ull, 17, 0, 1, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_layer_t, head ), (uint32_t) sizeof( graphdemo_table_ref_t ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_list_node_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "depth", "depth", "int32", 0x75d8e97600b296eaull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_layer_t, depth ), (uint32_t) sizeof( ( (graphdemo_layer_t *) 0 )->depth ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 64.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "head", "head", "ListNode", 0x0a8f12cc5f9a0c03ull, 17, 0, 1, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_layer_t, head ), (uint32_t) sizeof( graphdemo_table_ref_t ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_list_node_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
 };
 
 const graphdemo_table_type_info_t schema_graphdemo_layer_info_ = { "Layer", (uint32_t) sizeof( graphdemo_layer_t ), 2, schema_graphdemo_layer_fields_, schema_graphdemo_layer_reset_raw_, 1, GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const graphdemo_table_field_info_t schema_graphdemo_scene_fields_[] = {
-    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, 0, 0, 1, 0, 0, 24, (uint32_t) offsetof( graphdemo_scene_t, name ), (uint32_t) sizeof( ( (graphdemo_scene_t *) 0 )->name ), (uint32_t) offsetof( graphdemo_scene_t, name_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "version", "version", "int32", 0xbb62c62c9808ea37ull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_scene_t, version ), (uint32_t) sizeof( ( (graphdemo_scene_t *) 0 )->version ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 99.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "head", "head", "ListNode", 0x0a8f12cc5f9a0c03ull, 17, 0, 1, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_scene_t, head ), (uint32_t) sizeof( graphdemo_table_ref_t ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_list_node_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "tree", "tree", "TreeNode", 0x5b25b8ef511eb395ull, 17, 0, 1, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_scene_t, tree ), (uint32_t) sizeof( graphdemo_table_ref_t ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_tree_node_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "settings", "settings", "Settings", 0xee5f6d7b48b44de8ull, 17, 0, 1, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_scene_t, settings ), (uint32_t) sizeof( graphdemo_table_ref_t ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_settings_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "alias", "alias", "ListNode", 0x509220bb65a646b7ull, 17, 0, 1, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_scene_t, alias ), (uint32_t) sizeof( graphdemo_table_ref_t ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_list_node_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "ground", "ground", "Layer", 0x60839e2395be697eull, 13, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_scene_t, ground ), (uint32_t) sizeof( ( (graphdemo_scene_t *) 0 )->ground ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_layer_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "layers", "layers", "Layer", 0x4554e34a747022dfull, 13, 1, 0, 1, 0, 0, 4, (uint32_t) offsetof( graphdemo_scene_t, layers ), (uint32_t) sizeof( ( (graphdemo_scene_t *) 0 )->layers[0] ), (uint32_t) offsetof( graphdemo_scene_t, layers_count ), 0xffffffffu, &schema_graphdemo_layer_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "meta", "meta", "Meta", 0x4320e9a2e32eac38ull, 13, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_scene_t, meta ), (uint32_t) sizeof( ( (graphdemo_scene_t *) 0 )->meta ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_meta_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, 0, 0, 1, 0, 0, 24, (uint32_t) offsetof( graphdemo_scene_t, name ), (uint32_t) sizeof( ( (graphdemo_scene_t *) 0 )->name ), (uint32_t) offsetof( graphdemo_scene_t, name_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "version", "version", "int32", 0xbb62c62c9808ea37ull, 4, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_scene_t, version ), (uint32_t) sizeof( ( (graphdemo_scene_t *) 0 )->version ), 0xffffffffu, 0xffffffffu, NULL, 1, 0.0, 99.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "head", "head", "ListNode", 0x0a8f12cc5f9a0c03ull, 17, 0, 1, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_scene_t, head ), (uint32_t) sizeof( graphdemo_table_ref_t ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_list_node_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "tree", "tree", "TreeNode", 0x5b25b8ef511eb395ull, 17, 0, 1, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_scene_t, tree ), (uint32_t) sizeof( graphdemo_table_ref_t ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_tree_node_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "settings", "settings", "Settings", 0xee5f6d7b48b44de8ull, 17, 0, 1, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_scene_t, settings ), (uint32_t) sizeof( graphdemo_table_ref_t ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_settings_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "alias", "alias", "ListNode", 0x509220bb65a646b7ull, 17, 0, 1, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_scene_t, alias ), (uint32_t) sizeof( graphdemo_table_ref_t ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_list_node_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "ground", "ground", "Layer", 0x60839e2395be697eull, 13, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_scene_t, ground ), (uint32_t) sizeof( ( (graphdemo_scene_t *) 0 )->ground ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_layer_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "layers", "layers", "Layer", 0x4554e34a747022dfull, 13, 1, 0, 1, 0, 0, 4, (uint32_t) offsetof( graphdemo_scene_t, layers ), (uint32_t) sizeof( ( (graphdemo_scene_t *) 0 )->layers[0] ), (uint32_t) offsetof( graphdemo_scene_t, layers_count ), 0xffffffffu, &schema_graphdemo_layer_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "meta", "meta", "Meta", 0x4320e9a2e32eac38ull, 13, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_scene_t, meta ), (uint32_t) sizeof( ( (graphdemo_scene_t *) 0 )->meta ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_meta_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
 };
 
 const graphdemo_table_type_info_t schema_graphdemo_scene_info_ = { "Scene", (uint32_t) sizeof( graphdemo_scene_t ), 9, schema_graphdemo_scene_fields_, schema_graphdemo_scene_reset_raw_, 1, GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
@@ -3741,21 +3774,21 @@ static const graphdemo_table_variant_info_t schema_graphdemo_depot_banks_keys_[]
     { "High", 0x9deeefd89ca8a81dull },
 };
 static const graphdemo_table_field_info_t schema_graphdemo_depot_fields_[] = {
-    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, 0, 0, 1, 0, 0, 12, (uint32_t) offsetof( graphdemo_depot_t, name ), (uint32_t) sizeof( ( (graphdemo_depot_t *) 0 )->name ), (uint32_t) offsetof( graphdemo_depot_t, name_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "banks", "banks", "Layer", 0xdd9eb981e152e90cull, 13, 1, 0, 0, 0, 0, (int32_t) GRAPHDEMO_TIER_MAX, (uint32_t) offsetof( graphdemo_depot_t, banks ), (uint32_t) sizeof( ( (graphdemo_depot_t *) 0 )->banks[0] ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_layer_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, "Tier", schema_graphdemo_depot_banks_keys_, 2, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "spare", "spare", "Meta", 0x4339ee8ab21c8380ull, 13, 0, 0, 0, 1, 0, 0, (uint32_t) offsetof( graphdemo_depot_t, spare ), (uint32_t) sizeof( ( (graphdemo_depot_t *) 0 )->spare ), 0xffffffffu, (uint32_t) offsetof( graphdemo_depot_t, spare_present ), &schema_graphdemo_meta_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "head", "head", "ListNode", 0x0a8f12cc5f9a0c03ull, 17, 0, 1, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_depot_t, head ), (uint32_t) sizeof( graphdemo_table_ref_t ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_list_node_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, 0, 0, 1, 0, 0, 12, (uint32_t) offsetof( graphdemo_depot_t, name ), (uint32_t) sizeof( ( (graphdemo_depot_t *) 0 )->name ), (uint32_t) offsetof( graphdemo_depot_t, name_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "banks", "banks", "Layer", 0xdd9eb981e152e90cull, 13, 1, 0, 0, 0, 0, (int32_t) GRAPHDEMO_TIER_MAX, (uint32_t) offsetof( graphdemo_depot_t, banks ), (uint32_t) sizeof( ( (graphdemo_depot_t *) 0 )->banks[0] ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_layer_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, "Tier", schema_graphdemo_depot_banks_keys_, 2, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "spare", "spare", "Meta", 0x4339ee8ab21c8380ull, 13, 0, 0, 0, 1, 0, 0, (uint32_t) offsetof( graphdemo_depot_t, spare ), (uint32_t) sizeof( ( (graphdemo_depot_t *) 0 )->spare ), 0xffffffffu, (uint32_t) offsetof( graphdemo_depot_t, spare_present ), &schema_graphdemo_meta_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "head", "head", "ListNode", 0x0a8f12cc5f9a0c03ull, 17, 0, 1, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_depot_t, head ), (uint32_t) sizeof( graphdemo_table_ref_t ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_list_node_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
 };
 
 const graphdemo_table_type_info_t schema_graphdemo_depot_info_ = { "Depot", (uint32_t) sizeof( graphdemo_depot_t ), 4, schema_graphdemo_depot_fields_, schema_graphdemo_depot_reset_raw_, 1, GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0 };
 
 static const graphdemo_table_field_info_t schema_graphdemo_album_fields_[] = {
-    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, 0, 0, 1, 0, 0, 16, (uint32_t) offsetof( graphdemo_album_t, name ), (uint32_t) sizeof( ( (graphdemo_album_t *) 0 )->name ), (uint32_t) offsetof( graphdemo_album_t, name_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "tint", "tint", "Colour", 0x1e4984ef2e958a4cull, 13, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_album_t, tint ), (uint32_t) sizeof( ( (graphdemo_album_t *) 0 )->tint ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_colour_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "stamp", "stamp", "Stamp", 0xee7ba9ad45c64144ull, 13, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_album_t, stamp ), (uint32_t) sizeof( ( (graphdemo_album_t *) 0 )->stamp ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_stamp_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "marker", "marker", "Marker", 0xeddcb72b15486e77ull, 13, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_album_t, marker ), (uint32_t) sizeof( ( (graphdemo_album_t *) 0 )->marker ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_marker_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "pin", "pin", "Marker", 0x77af761956600b54ull, 17, 0, 1, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_album_t, pin ), (uint32_t) sizeof( graphdemo_table_ref_t ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_marker_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
-    { "head", "head", "ListNode", 0x0a8f12cc5f9a0c03ull, 17, 0, 1, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_album_t, head ), (uint32_t) sizeof( graphdemo_table_ref_t ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_list_node_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL },
+    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, 0, 0, 1, 0, 0, 16, (uint32_t) offsetof( graphdemo_album_t, name ), (uint32_t) sizeof( ( (graphdemo_album_t *) 0 )->name ), (uint32_t) offsetof( graphdemo_album_t, name_length ), 0xffffffffu, NULL, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "tint", "tint", "Colour", 0x1e4984ef2e958a4cull, 13, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_album_t, tint ), (uint32_t) sizeof( ( (graphdemo_album_t *) 0 )->tint ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_colour_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "stamp", "stamp", "Stamp", 0xee7ba9ad45c64144ull, 13, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_album_t, stamp ), (uint32_t) sizeof( ( (graphdemo_album_t *) 0 )->stamp ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_stamp_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "marker", "marker", "Marker", 0xeddcb72b15486e77ull, 13, 0, 0, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_album_t, marker ), (uint32_t) sizeof( ( (graphdemo_album_t *) 0 )->marker ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_marker_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "pin", "pin", "Marker", 0x77af761956600b54ull, 17, 0, 1, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_album_t, pin ), (uint32_t) sizeof( graphdemo_table_ref_t ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_marker_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
+    { "head", "head", "ListNode", 0x0a8f12cc5f9a0c03ull, 17, 0, 1, 0, 0, 0, 0, (uint32_t) offsetof( graphdemo_album_t, head ), (uint32_t) sizeof( graphdemo_table_ref_t ), 0xffffffffu, 0xffffffffu, &schema_graphdemo_list_node_info_, 0, 0.0, 0.0, NULL, 0, -1, NULL, 0, NULL, NULL, -1, NULL, "", GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0, 0, 0, NULL, 0 },
 };
 
 const graphdemo_table_type_info_t schema_graphdemo_album_info_ = { "Album", (uint32_t) sizeof( graphdemo_album_t ), 6, schema_graphdemo_album_fields_, schema_graphdemo_album_reset_raw_, 1, GRAPHDEMO_TABLE_DOC_NONE, 0, NULL, 0 };

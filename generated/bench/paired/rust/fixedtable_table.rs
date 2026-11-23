@@ -374,6 +374,10 @@ pub fn fixed_table_load(wire: &[u8], report: &mut TableReport) -> Option<FixedTa
     fixed_table_load_inner(wire, None, report)
 }
 
+pub fn fixed_table_load_into(value: &mut FixedTable, wire: &[u8], report: &mut TableReport) -> bool {
+    match fixed_table_load(wire, report) { Some(v) => { *value = v; true } None => { *value = FixedTable::default(); false } }
+}
+
 /// fixed_table_load_retain — the retaining read of the same file (docs/SPEC-TABLES.md
 /// §6.6): the next load into the store resets both of its stores, and every
 /// unknown field it can keep is captured whole.
@@ -804,6 +808,10 @@ pub fn fixed_table_to_json_checked(v: &FixedTable) -> Option<String> {
 /// fixed_table_from_json — the strict read of one text into one FixedTable (docs/SPEC-TABLES.md §16.2).
 pub fn fixed_table_from_json(text: &str, report: &mut TableReport) -> Option<FixedTable> {
     fixed_table_from_json_bytes(text.as_bytes(), report)
+}
+
+pub fn fixed_table_from_json_into(value: &mut FixedTable, text: &[u8], report: &mut TableReport) -> bool {
+    match fixed_table_from_json_bytes(text, report) { Some(v) => { *value = v; true } None => { *value = FixedTable::default(); false } }
 }
 
 /// fixed_table_from_json_bytes — the same read over the text's raw bytes, which a `&str` cannot

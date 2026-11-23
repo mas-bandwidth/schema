@@ -479,6 +479,7 @@ struct TableFieldInfo
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
+    int32_t array_min;
 };
 
 struct TableTypeInfo
@@ -3162,14 +3163,14 @@ inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vo
 
 // AnnounceMeasure is the announcement's byte count, which is a constant of the
 // unit and not a walk.
-inline int64_t AnnounceMeasure() { return kTableAnnounceBytes; }
+inline int64_t AnnounceMeasure() { return kTableMessageEntriesHere > 4096 ? -1 : kTableAnnounceBytes; }
 
 // Announce writes the announcement into the caller's buffer and answers the
 // bytes written, which is exactly AnnounceMeasure's answer, or -1 when the
 // buffer is too small. It allocates nothing and walks nothing.
 inline int64_t Announce( uint8_t * buffer, int64_t capacity )
 {
-    if ( buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
+    if ( kTableMessageEntriesHere > 4096 || buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
     memcpy( buffer, kTableAnnounce, (size_t) kTableAnnounceBytes );
     return kTableAnnounceBytes;
 }
@@ -7768,7 +7769,7 @@ struct TableRetainIds
         }
         if ( known.count != before )
         {
-            if ( count >= TableIds::kLimit ) { known.truncate( before ); overflow = true; return 1; }
+            if ( count >= 4096 ) { known.truncate( before ); overflow = true; return 1; }
             known_slot[(int32_t) k - 1] = ++count;
         }
         return (uint64_t) known_slot[(int32_t) k - 1];
@@ -7803,7 +7804,7 @@ struct TableRetainIds
         {
             if ( retain->ids[i].id == id ) { return (uint64_t) retain->ids[i].slot; }
         }
-        if ( retain->id_used >= retain->id_capacity || count >= TableIds::kLimit )
+        if ( retain->id_used >= retain->id_capacity || count >= 4096 )
         {
             lost = true;
             return 0;
@@ -14422,21 +14423,21 @@ extern const TableTypeInfo AssetTableInfo;
 extern const TableTypeInfo CatalogTableInfo;
 
 inline const TableFieldInfo AssetTableFields[] = {
-    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, false, NULL, NULL, true, false, 32, (uint32_t) offsetof( Asset, name ), (uint32_t) sizeof( Asset::name ), (uint32_t) offsetof( Asset, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "kind", "kind", "uint32", 0xef9c96d721673243ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Asset, kind ), (uint32_t) sizeof( Asset::kind ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "data", "data", "bytes", 0x855b556730a34a05ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TableBlobAt( *(const TableRef *) slot ); }, NULL, false, false, 0, (uint32_t) offsetof( Asset, data ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "caption", "caption", "string", 0x5daa28eb864c02a5ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TableBlobAt( *(const TableRef *) slot ); }, NULL, false, false, 0, (uint32_t) offsetof( Asset, caption ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "next", "next", "Asset", 0xe5316cbaa025f028ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) AssetAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) AssetEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Asset, next ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &AssetTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, false, NULL, NULL, true, false, 32, (uint32_t) offsetof( Asset, name ), (uint32_t) sizeof( Asset::name ), (uint32_t) offsetof( Asset, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "kind", "kind", "uint32", 0xef9c96d721673243ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Asset, kind ), (uint32_t) sizeof( Asset::kind ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "data", "data", "bytes", 0x855b556730a34a05ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TableBlobAt( *(const TableRef *) slot ); }, NULL, false, false, 0, (uint32_t) offsetof( Asset, data ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "caption", "caption", "string", 0x5daa28eb864c02a5ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TableBlobAt( *(const TableRef *) slot ); }, NULL, false, false, 0, (uint32_t) offsetof( Asset, caption ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "next", "next", "Asset", 0xe5316cbaa025f028ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) AssetAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) AssetEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Asset, next ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &AssetTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo AssetTableInfo = { "Asset", (uint32_t) sizeof( Asset ), 5, AssetTableFields, +[]( void * p ) { AssetReset( *(Asset *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * AssetTableType() { return &AssetTableInfo; }
 
 inline const TableFieldInfo CatalogTableFields[] = {
-    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, false, NULL, NULL, true, false, 32, (uint32_t) offsetof( Catalog, name ), (uint32_t) sizeof( Catalog::name ), (uint32_t) offsetof( Catalog, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "head", "head", "Asset", 0x0a8f12cc5f9a0c03ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) AssetAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) AssetEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Catalog, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &AssetTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "thumb", "thumb", "bytes", 0x613b19720ff4b203ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TableBlobAt( *(const TableRef *) slot ); }, NULL, false, false, 0, (uint32_t) offsetof( Catalog, thumb ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "note", "note", "string", 0x3bf8fbbad1587cddull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TableBlobAt( *(const TableRef *) slot ); }, NULL, false, false, 0, (uint32_t) offsetof( Catalog, note ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "alias", "alias", "bytes", 0x509220bb65a646b7ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TableBlobAt( *(const TableRef *) slot ); }, NULL, false, false, 0, (uint32_t) offsetof( Catalog, alias ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "name", "name", "string", 0xc4bcadba8e631b86ull, 12, false, false, NULL, NULL, true, false, 32, (uint32_t) offsetof( Catalog, name ), (uint32_t) sizeof( Catalog::name ), (uint32_t) offsetof( Catalog, name_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "head", "head", "Asset", 0x0a8f12cc5f9a0c03ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) AssetAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) AssetEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Catalog, head ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &AssetTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "thumb", "thumb", "bytes", 0x613b19720ff4b203ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TableBlobAt( *(const TableRef *) slot ); }, NULL, false, false, 0, (uint32_t) offsetof( Catalog, thumb ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "note", "note", "string", 0x3bf8fbbad1587cddull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TableBlobAt( *(const TableRef *) slot ); }, NULL, false, false, 0, (uint32_t) offsetof( Catalog, note ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "alias", "alias", "bytes", 0x509220bb65a646b7ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TableBlobAt( *(const TableRef *) slot ); }, NULL, false, false, 0, (uint32_t) offsetof( Catalog, alias ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo CatalogTableInfo = { "Catalog", (uint32_t) sizeof( Catalog ), 5, CatalogTableFields, +[]( void * p ) { CatalogReset( *(Catalog *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * CatalogTableType() { return &CatalogTableInfo; }

@@ -493,6 +493,7 @@ struct TableFieldInfo
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
+    int32_t array_min;
 };
 
 struct TableTypeInfo
@@ -3232,14 +3233,14 @@ inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vo
 
 // AnnounceMeasure is the announcement's byte count, which is a constant of the
 // unit and not a walk.
-inline int64_t AnnounceMeasure() { return kTableAnnounceBytes; }
+inline int64_t AnnounceMeasure() { return kTableMessageEntriesHere > 4096 ? -1 : kTableAnnounceBytes; }
 
 // Announce writes the announcement into the caller's buffer and answers the
 // bytes written, which is exactly AnnounceMeasure's answer, or -1 when the
 // buffer is too small. It allocates nothing and walks nothing.
 inline int64_t Announce( uint8_t * buffer, int64_t capacity )
 {
-    if ( buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
+    if ( kTableMessageEntriesHere > 4096 || buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
     memcpy( buffer, kTableAnnounce, (size_t) kTableAnnounceBytes );
     return kTableAnnounceBytes;
 }
@@ -7907,7 +7908,7 @@ struct TableRetainIds
         }
         if ( known.count != before )
         {
-            if ( count >= TableIds::kLimit ) { known.truncate( before ); overflow = true; return 1; }
+            if ( count >= 4096 ) { known.truncate( before ); overflow = true; return 1; }
             known_slot[(int32_t) k - 1] = ++count;
         }
         return (uint64_t) known_slot[(int32_t) k - 1];
@@ -7942,7 +7943,7 @@ struct TableRetainIds
         {
             if ( retain->ids[i].id == id ) { return (uint64_t) retain->ids[i].slot; }
         }
-        if ( retain->id_used >= retain->id_capacity || count >= TableIds::kLimit )
+        if ( retain->id_used >= retain->id_capacity || count >= 4096 )
         {
             lost = true;
             return 0;
@@ -10869,6 +10870,7 @@ inline bool OnlyLoadMessages( Only * values, int64_t * count, const TableVocabul
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -14829,14 +14831,14 @@ extern const TableTypeInfo OnlyTableInfo;
 extern const TableTypeInfo GateTableInfo;
 
 inline const TableFieldInfo OnlyTableFields[] = {
-    { "w", "w", "int32", 0xaf63ea4c86020456ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Only, w ), (uint32_t) sizeof( Only::w ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "w", "w", "int32", 0xaf63ea4c86020456ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Only, w ), (uint32_t) sizeof( Only::w ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo OnlyTableInfo = { "Only", (uint32_t) sizeof( Only ), 1, OnlyTableFields, +[]( void * p ) { OnlyReset( *(Only *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * OnlyTableType() { return &OnlyTableInfo; }
 
 inline const TableFieldInfo GateTableFields[] = {
-    { "reach", "reach", "Reach", 0x891da1f305deb858ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Gate, reach ), (uint32_t) sizeof( Gate::reach ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "only"; case 2: return "text"; case 3: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x072ddab46af04ab7ull; case 2: return 0xfa04f4ef1995407eull; case 3: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Reach[] = { { "only", "only", "Only", 0x072ddab46af04ab7ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) OnlyAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) OnlyEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Reach, only ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &OnlyTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "text", "text", "string", 0xfa04f4ef1995407eull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TableBlobAt( *(const TableRef *) slot ); }, NULL, false, false, 0, (uint32_t) offsetof( Reach, text ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Reach, plain ), (uint32_t) sizeof( Reach::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Reach, only ), NULL, &arm_fields_Reach[0], 8 }, { (uint32_t) offsetof( Reach, text ), NULL, &arm_fields_Reach[1], 8 }, { (uint32_t) offsetof( Reach, plain ), NULL, &arm_fields_Reach[2], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Reach, type ), (uint32_t) sizeof( Reach::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Gate, past ), (uint32_t) sizeof( Gate::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "reach", "reach", "Reach", 0x891da1f305deb858ull, 15, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Gate, reach ), (uint32_t) sizeof( Gate::reach ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 3, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "only"; case 2: return "text"; case 3: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x072ddab46af04ab7ull; case 2: return 0xfa04f4ef1995407eull; case 3: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Reach[] = { { "only", "only", "Only", 0x072ddab46af04ab7ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) OnlyAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) OnlyEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Reach, only ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &OnlyTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, { "text", "text", "string", 0xfa04f4ef1995407eull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TableBlobAt( *(const TableRef *) slot ); }, NULL, false, false, 0, (uint32_t) offsetof( Reach, text ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Reach, plain ), (uint32_t) sizeof( Reach::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Reach, only ), NULL, &arm_fields_Reach[0], 8 }, { (uint32_t) offsetof( Reach, text ), NULL, &arm_fields_Reach[1], 8 }, { (uint32_t) offsetof( Reach, plain ), NULL, &arm_fields_Reach[2], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Reach, type ), (uint32_t) sizeof( Reach::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Gate, past ), (uint32_t) sizeof( Gate::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo GateTableInfo = { "Gate", (uint32_t) sizeof( Gate ), 2, GateTableFields, +[]( void * p ) { GateReset( *(Gate *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * GateTableType() { return &GateTableInfo; }

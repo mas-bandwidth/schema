@@ -252,6 +252,7 @@ typedef struct blockdemo_table_field_info_t
     uint8_t text_list; /* 0 none, 1 string(M) elements, 2 ?string(M) elements (SPEC-TABLES 2.13) */
     int64_t text_total; /* | total = N byte cap across text-list elements, or 0 (SPEC-TABLES 2.13) */
     void * (*place)(void * worker,void * slot,const char * key,int32_t length,int64_t number);
+    int32_t array_min;
 } blockdemo_table_field_info_t;
 
 typedef struct blockdemo_table_type_info_t
@@ -3263,10 +3264,10 @@ static SCHEMA_UNUSED int blockdemo_table_bit_getbytes(blockdemo_table_bit_reader
  if((r->offset&7)==0){if(n>0)memcpy(target,r->buffer+r->offset/8,(size_t)n);r->offset+=n*8;return 1;}
  for(i=0;i<n;i++){if(!blockdemo_table_bit_get(r,&by,8))return 0;target[i]=(uint8_t)by;}return 1;
 }
-static SCHEMA_UNUSED int64_t blockdemo_announce_measure(void) {return BLOCKDEMO_K_TABLE_ANNOUNCE_BYTES;
+static SCHEMA_UNUSED int64_t blockdemo_announce_measure(void) {return BLOCKDEMO_K_TABLE_MESSAGE_ENTRIES_HERE>4096 ? -1 : BLOCKDEMO_K_TABLE_ANNOUNCE_BYTES;
 }
 static SCHEMA_UNUSED int64_t blockdemo_announce(uint8_t * buffer,int64_t capacity)
-{if(buffer==NULL || capacity<BLOCKDEMO_K_TABLE_ANNOUNCE_BYTES)return -1;
+{if(BLOCKDEMO_K_TABLE_MESSAGE_ENTRIES_HERE>4096 || buffer==NULL || capacity<BLOCKDEMO_K_TABLE_ANNOUNCE_BYTES)return -1;
 memcpy(buffer,BLOCKDEMO_K_TABLE_ANNOUNCE,BLOCKDEMO_K_TABLE_ANNOUNCE_BYTES);
 return BLOCKDEMO_K_TABLE_ANNOUNCE_BYTES;
 }
@@ -8163,6 +8164,7 @@ static SCHEMA_UNUSED int schema_blockdemo_padded_frame_body_pack_(struct blockde
     (void)n; (void)at; (void)value; (void)order;
     blockdemo_table_cook_put(at+0,(uint64_t)value->marker,1,order);
     blockdemo_table_cook_put(at+8,(uint64_t)value->stamp,8,order);
+    if(value->rows_count<0 || value->rows_count>64) { return 0; }
     { int32_t cook_i1; for(cook_i1=0;cook_i1<value->rows_count && cook_i1<64;cook_i1++) {
         if(!schema_blockdemo_padded_row_body_pack_(n,at+16+cook_i1*64,&value->rows[cook_i1],order)) { return 0; }
     } }

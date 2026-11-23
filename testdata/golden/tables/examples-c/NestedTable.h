@@ -253,6 +253,7 @@ typedef struct tabledemo_table_field_info_t
     uint8_t text_list; /* 0 none, 1 string(M) elements, 2 ?string(M) elements (SPEC-TABLES 2.13) */
     int64_t text_total; /* | total = N byte cap across text-list elements, or 0 (SPEC-TABLES 2.13) */
     void * (*place)(void * worker,void * slot,const char * key,int32_t length,int64_t number);
+    int32_t array_min;
 } tabledemo_table_field_info_t;
 
 typedef struct tabledemo_table_type_info_t
@@ -4510,10 +4511,10 @@ static SCHEMA_UNUSED int tabledemo_table_bit_getbytes(tabledemo_table_bit_reader
  if((r->offset&7)==0){if(n>0)memcpy(target,r->buffer+r->offset/8,(size_t)n);r->offset+=n*8;return 1;}
  for(i=0;i<n;i++){if(!tabledemo_table_bit_get(r,&by,8))return 0;target[i]=(uint8_t)by;}return 1;
 }
-static SCHEMA_UNUSED int64_t tabledemo_announce_measure(void) {return TABLEDEMO_K_TABLE_ANNOUNCE_BYTES;
+static SCHEMA_UNUSED int64_t tabledemo_announce_measure(void) {return TABLEDEMO_K_TABLE_MESSAGE_ENTRIES_HERE>4096 ? -1 : TABLEDEMO_K_TABLE_ANNOUNCE_BYTES;
 }
 static SCHEMA_UNUSED int64_t tabledemo_announce(uint8_t * buffer,int64_t capacity)
-{if(buffer==NULL || capacity<TABLEDEMO_K_TABLE_ANNOUNCE_BYTES)return -1;
+{if(TABLEDEMO_K_TABLE_MESSAGE_ENTRIES_HERE>4096 || buffer==NULL || capacity<TABLEDEMO_K_TABLE_ANNOUNCE_BYTES)return -1;
 memcpy(buffer,TABLEDEMO_K_TABLE_ANNOUNCE,TABLEDEMO_K_TABLE_ANNOUNCE_BYTES);
 return TABLEDEMO_K_TABLE_ANNOUNCE_BYTES;
 }

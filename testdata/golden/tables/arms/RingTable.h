@@ -493,6 +493,7 @@ struct TableFieldInfo
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
+    int32_t array_min;
 };
 
 struct TableTypeInfo
@@ -3232,14 +3233,14 @@ inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vo
 
 // AnnounceMeasure is the announcement's byte count, which is a constant of the
 // unit and not a walk.
-inline int64_t AnnounceMeasure() { return kTableAnnounceBytes; }
+inline int64_t AnnounceMeasure() { return kTableMessageEntriesHere > 4096 ? -1 : kTableAnnounceBytes; }
 
 // Announce writes the announcement into the caller's buffer and answers the
 // bytes written, which is exactly AnnounceMeasure's answer, or -1 when the
 // buffer is too small. It allocates nothing and walks nothing.
 inline int64_t Announce( uint8_t * buffer, int64_t capacity )
 {
-    if ( buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
+    if ( kTableMessageEntriesHere > 4096 || buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
     memcpy( buffer, kTableAnnounce, (size_t) kTableAnnounceBytes );
     return kTableAnnounceBytes;
 }
@@ -7907,7 +7908,7 @@ struct TableRetainIds
         }
         if ( known.count != before )
         {
-            if ( count >= TableIds::kLimit ) { known.truncate( before ); overflow = true; return 1; }
+            if ( count >= 4096 ) { known.truncate( before ); overflow = true; return 1; }
             known_slot[(int32_t) k - 1] = ++count;
         }
         return (uint64_t) known_slot[(int32_t) k - 1];
@@ -7942,7 +7943,7 @@ struct TableRetainIds
         {
             if ( retain->ids[i].id == id ) { return (uint64_t) retain->ids[i].slot; }
         }
-        if ( retain->id_used >= retain->id_capacity || count >= TableIds::kLimit )
+        if ( retain->id_used >= retain->id_capacity || count >= 4096 )
         {
             lost = true;
             return 0;
@@ -11005,6 +11006,7 @@ inline bool NodeLoadMessages( Node * values, int64_t * count, const TableVocabul
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -20604,6 +20606,7 @@ inline bool TrayCookBody( const Ctx & ctx, const TableCookRegion & region, uint8
 {
     // 2 slots of storage, value.entries_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.entries_count >= 0 && value.entries_count <= 2 ); // storage invariant, debug only (§5.1)
+    if ( value.entries_count < 0 || value.entries_count > 2 ) { return false; }
     for ( int32_t i = 0; i < value.entries_count; i++ )
     {
         {
@@ -20613,6 +20616,7 @@ inline bool TrayCookBody( const Ctx & ctx, const TableCookRegion & region, uint8
                 case SlotsType::Many:
                 {
                     schema_assert( value.entries[i].many.value_count >= 0 && value.entries[i].many.value_count <= 2 ); // storage invariant, debug only (§5.1)
+                    if ( value.entries[i].many.value_count < 0 || value.entries[i].many.value_count > 2 ) { return false; }
                     for ( int32_t ia = 0; ia < value.entries[i].many.value_count; ia++ ) // many: an array of pointers, the live slots, the rest zero
                     {
                         if ( !table_cook_ref( region, at + 0 + i * 32 + 8 + ia * 8, (const void *) NodeAt( ctx, value.entries[i].many.value[ia] ), order ) ) { return false; }
@@ -20724,6 +20728,7 @@ inline bool RackCookExtent( const Ctx & ctx, const TableCookRegion & region, uin
                     case SlotsType::Many:
                     {
                         schema_assert( cursor[i].many.value_count >= 0 && cursor[i].many.value_count <= 2 ); // storage invariant, debug only (§5.1)
+                        if ( cursor[i].many.value_count < 0 || cursor[i].many.value_count > 2 ) { return false; }
                         for ( int32_t i_itemsa = 0; i_itemsa < cursor[i].many.value_count; i_itemsa++ ) // many: an array of pointers, the live slots, the rest zero
                         {
                             if ( !table_cook_ref( region, array + i * 32 + 8 + i_itemsa * 8, (const void *) NodeAt( ctx, cursor[i].many.value[i_itemsa] ), order ) ) { return false; }
@@ -21464,28 +21469,28 @@ extern const TableTypeInfo RackTableInfo;
 extern const TableTypeInfo TrayTableInfo;
 
 inline const TableFieldInfo NodeTableFields[] = {
-    { "v", "v", "int32", 0xaf63eb4c86020609ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Node, v ), (uint32_t) sizeof( Node::v ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "v", "v", "int32", 0xaf63eb4c86020609ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Node, v ), (uint32_t) sizeof( Node::v ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo NodeTableInfo = { "Node", (uint32_t) sizeof( Node ), 1, NodeTableFields, +[]( void * p ) { NodeReset( *(Node *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * NodeTableType() { return &NodeTableInfo; }
 
 inline const TableFieldInfo RingTableFields[] = {
-    { "items", "items", "Slot", 0x3e7884bf4f412c6full, 15, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Ring, items ), (uint32_t) sizeof( Slot ), (uint32_t) offsetof( Ring, items.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "vertex"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x3c2f1bbad18642adull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Slot[] = { { "vertex", "vertex", "Node", 0x3c2f1bbad18642adull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) NodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) NodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Slot, vertex ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &NodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Slot, plain ), (uint32_t) sizeof( Slot::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Slot, vertex ), NULL, &arm_fields_Slot[0], 8 }, { (uint32_t) offsetof( Slot, plain ), NULL, &arm_fields_Slot[1], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Slot, type ), (uint32_t) sizeof( Slot::type ), arms }; return &info; }, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<Slot> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<Slot> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Ring, past ), (uint32_t) sizeof( Ring::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "items", "items", "Slot", 0x3e7884bf4f412c6full, 15, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Ring, items ), (uint32_t) sizeof( Slot ), (uint32_t) offsetof( Ring, items.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "vertex"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x3c2f1bbad18642adull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Slot[] = { { "vertex", "vertex", "Node", 0x3c2f1bbad18642adull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) NodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) NodeEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Slot, vertex ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &NodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Slot, plain ), (uint32_t) sizeof( Slot::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Slot, vertex ), NULL, &arm_fields_Slot[0], 8 }, { (uint32_t) offsetof( Slot, plain ), NULL, &arm_fields_Slot[1], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Slot, type ), (uint32_t) sizeof( Slot::type ), arms }; return &info; }, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<Slot> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<Slot> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false, 0 },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Ring, past ), (uint32_t) sizeof( Ring::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo RingTableInfo = { "Ring", (uint32_t) sizeof( Ring ), 2, RingTableFields, +[]( void * p ) { RingReset( *(Ring *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * RingTableType() { return &RingTableInfo; }
 
 inline const TableFieldInfo RackTableFields[] = {
-    { "items", "items", "Slots", 0x3e7884bf4f412c6full, 15, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Rack, items ), (uint32_t) sizeof( Slots ), (uint32_t) offsetof( Rack, items.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "many"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x1f6459a2cea1fc02ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Slots[] = { { "many", "many", "Node", 0x1f6459a2cea1fc02ull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) NodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) NodeEmplace( worker, *(TableRef *) slot ); }, true, false, 2, (uint32_t) offsetof( Slots, many.value ), (uint32_t) sizeof( Slots::many.value[0] ), (uint32_t) offsetof( Slots, many.value_count ), 0xffffffffu, &NodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Slots, plain ), (uint32_t) sizeof( Slots::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Slots, many ), NULL, &arm_fields_Slots[0], 24 }, { (uint32_t) offsetof( Slots, plain ), NULL, &arm_fields_Slots[1], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Slots, type ), (uint32_t) sizeof( Slots::type ), arms }; return &info; }, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<Slots> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<Slots> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Rack, past ), (uint32_t) sizeof( Rack::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "items", "items", "Slots", 0x3e7884bf4f412c6full, 15, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Rack, items ), (uint32_t) sizeof( Slots ), (uint32_t) offsetof( Rack, items.count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "many"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x1f6459a2cea1fc02ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Slots[] = { { "many", "many", "Node", 0x1f6459a2cea1fc02ull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) NodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) NodeEmplace( worker, *(TableRef *) slot ); }, true, false, 2, (uint32_t) offsetof( Slots, many.value ), (uint32_t) sizeof( Slots::many.value[0] ), (uint32_t) offsetof( Slots, many.value_count ), 0xffffffffu, &NodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Slots, plain ), (uint32_t) sizeof( Slots::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Slots, many ), NULL, &arm_fields_Slots[0], 24 }, { (uint32_t) offsetof( Slots, plain ), NULL, &arm_fields_Slots[1], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Slots, type ), (uint32_t) sizeof( Slots::type ), arms }; return &info; }, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<Slots> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<Slots> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false, 0 },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Rack, past ), (uint32_t) sizeof( Rack::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo RackTableInfo = { "Rack", (uint32_t) sizeof( Rack ), 2, RackTableFields, +[]( void * p ) { RackReset( *(Rack *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * RackTableType() { return &RackTableInfo; }
 
 inline const TableFieldInfo TrayTableFields[] = {
-    { "entries", "entries", "Slots", 0xc5b2a72c0845a253ull, 15, true, false, NULL, NULL, true, false, 2, (uint32_t) offsetof( Tray, entries ), (uint32_t) sizeof( Tray::entries[0] ), (uint32_t) offsetof( Tray, entries_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "many"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x1f6459a2cea1fc02ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Slots[] = { { "many", "many", "Node", 0x1f6459a2cea1fc02ull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) NodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) NodeEmplace( worker, *(TableRef *) slot ); }, true, false, 2, (uint32_t) offsetof( Slots, many.value ), (uint32_t) sizeof( Slots::many.value[0] ), (uint32_t) offsetof( Slots, many.value_count ), 0xffffffffu, &NodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Slots, plain ), (uint32_t) sizeof( Slots::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Slots, many ), NULL, &arm_fields_Slots[0], 24 }, { (uint32_t) offsetof( Slots, plain ), NULL, &arm_fields_Slots[1], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Slots, type ), (uint32_t) sizeof( Slots::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Tray, past ), (uint32_t) sizeof( Tray::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "entries", "entries", "Slots", 0xc5b2a72c0845a253ull, 15, true, false, NULL, NULL, true, false, 2, (uint32_t) offsetof( Tray, entries ), (uint32_t) sizeof( Tray::entries[0] ), (uint32_t) offsetof( Tray, entries_count ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, 2, +[]( uint64_t v ) -> const char * { switch ( v ) { case 0: return "None"; case 1: return "many"; case 2: return "plain"; default: return "???"; } }, +[]( uint64_t v ) -> uint64_t { switch ( v ) { case 0: return 0; case 1: return 0x1f6459a2cea1fc02ull; case 2: return 0xfd4d194e1652b207ull; default: return 0; } }, NULL, NULL, NULL, +[]() -> const TableUnionInfo * { static const TableFieldInfo arm_fields_Slots[] = { { "many", "many", "Node", 0x1f6459a2cea1fc02ull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) NodeAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) NodeEmplace( worker, *(TableRef *) slot ); }, true, false, 2, (uint32_t) offsetof( Slots, many.value ), (uint32_t) sizeof( Slots::many.value[0] ), (uint32_t) offsetof( Slots, many.value_count ), 0xffffffffu, &NodeTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, { "plain", "plain", "int32", 0xfd4d194e1652b207ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Slots, plain ), (uint32_t) sizeof( Slots::plain ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 }, }; static const TableUnionArmInfo arms[] = { { 0, NULL, NULL, 0 }, { (uint32_t) offsetof( Slots, many ), NULL, &arm_fields_Slots[0], 24 }, { (uint32_t) offsetof( Slots, plain ), NULL, &arm_fields_Slots[1], 4 }, }; static const TableUnionInfo info = { (uint32_t) offsetof( Slots, type ), (uint32_t) sizeof( Slots::type ), arms }; return &info; }, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Tray, past ), (uint32_t) sizeof( Tray::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo TrayTableInfo = { "Tray", (uint32_t) sizeof( Tray ), 2, TrayTableFields, +[]( void * p ) { TrayReset( *(Tray *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * TrayTableType() { return &TrayTableInfo; }

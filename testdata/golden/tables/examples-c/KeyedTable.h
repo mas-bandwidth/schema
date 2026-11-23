@@ -252,6 +252,7 @@ typedef struct tabledemo_table_field_info_t
     uint8_t text_list; /* 0 none, 1 string(M) elements, 2 ?string(M) elements (SPEC-TABLES 2.13) */
     int64_t text_total; /* | total = N byte cap across text-list elements, or 0 (SPEC-TABLES 2.13) */
     void * (*place)(void * worker,void * slot,const char * key,int32_t length,int64_t number);
+    int32_t array_min;
 } tabledemo_table_field_info_t;
 
 typedef struct tabledemo_table_type_info_t
@@ -4509,10 +4510,10 @@ static SCHEMA_UNUSED int tabledemo_table_bit_getbytes(tabledemo_table_bit_reader
  if((r->offset&7)==0){if(n>0)memcpy(target,r->buffer+r->offset/8,(size_t)n);r->offset+=n*8;return 1;}
  for(i=0;i<n;i++){if(!tabledemo_table_bit_get(r,&by,8))return 0;target[i]=(uint8_t)by;}return 1;
 }
-static SCHEMA_UNUSED int64_t tabledemo_announce_measure(void) {return TABLEDEMO_K_TABLE_ANNOUNCE_BYTES;
+static SCHEMA_UNUSED int64_t tabledemo_announce_measure(void) {return TABLEDEMO_K_TABLE_MESSAGE_ENTRIES_HERE>4096 ? -1 : TABLEDEMO_K_TABLE_ANNOUNCE_BYTES;
 }
 static SCHEMA_UNUSED int64_t tabledemo_announce(uint8_t * buffer,int64_t capacity)
-{if(buffer==NULL || capacity<TABLEDEMO_K_TABLE_ANNOUNCE_BYTES)return -1;
+{if(TABLEDEMO_K_TABLE_MESSAGE_ENTRIES_HERE>4096 || buffer==NULL || capacity<TABLEDEMO_K_TABLE_ANNOUNCE_BYTES)return -1;
 memcpy(buffer,TABLEDEMO_K_TABLE_ANNOUNCE,TABLEDEMO_K_TABLE_ANNOUNCE_BYTES);
 return TABLEDEMO_K_TABLE_ANNOUNCE_BYTES;
 }
@@ -8340,6 +8341,7 @@ static SCHEMA_UNUSED int tabledemo_score_board_save_body( tabledemo_table_writer
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_tabledemo_score_board_write_admits_( const tabledemo_score_board_t * value );
 static SCHEMA_UNUSED int64_t tabledemo_score_board_measure( const tabledemo_score_board_t * value )
 {
     tabledemo_table_write_ids_t vocabulary; tabledemo_table_writer_t w = tabledemo_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -8537,7 +8539,11 @@ static SCHEMA_UNUSED int64_t tabledemo_score_board_measure_messages(const tabled
  w=tabledemo_table_bit_writer(NULL,INT64_MAX);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!tabledemo_score_board_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!tabledemo_score_board_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_tabledemo_score_board_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  tabledemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -8554,7 +8560,11 @@ static SCHEMA_UNUSED int64_t tabledemo_score_board_save_messages(const tabledemo
  w=tabledemo_table_bit_writer(buffer,capacity);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!tabledemo_score_board_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!tabledemo_score_board_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_tabledemo_score_board_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  tabledemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -8950,6 +8960,17 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_keyed_c
         }
     }
     schema_tabledemo_score_board_fixed_write_check_body_( &value->scores, out_of_range, damaged );
+}
+
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value ScoreBoard holds is
+   one its declaration admits. Every writer of ScoreBoard asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_tabledemo_score_board_write_admits_( const tabledemo_score_board_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_tabledemo_score_board_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
 }
 
 /* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value TeamConfig holds is

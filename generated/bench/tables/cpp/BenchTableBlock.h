@@ -495,7 +495,14 @@ inline bool TableEntityBlockBegin( TableEntityBlock & block, TableEntityBlockSto
 // exists to avoid.
 inline int64_t TableEntityBlockBytes( const TableEntityBlock & block )
 {
-    (void) block; // no out-of-line array: the extent is the projection's own
+    if ( block.projection == NULL ) { return -1; }
+    if ( (int64_t) block.projection->pos_x < -16383ll || (int64_t) block.projection->pos_x > 16383ll ) { return -1; }
+    if ( (int64_t) block.projection->pos_y < -16383ll || (int64_t) block.projection->pos_y > 16383ll ) { return -1; }
+    if ( (int64_t) block.projection->pos_z < -16383ll || (int64_t) block.projection->pos_z > 16383ll ) { return -1; }
+    if ( (int64_t) block.projection->vel_x < -2048ll || (int64_t) block.projection->vel_x > 2047ll ) { return -1; }
+    if ( (int64_t) block.projection->vel_y < -2048ll || (int64_t) block.projection->vel_y > 2047ll ) { return -1; }
+    if ( (int64_t) block.projection->vel_z < -2048ll || (int64_t) block.projection->vel_z > 2047ll ) { return -1; }
+    if ( (int64_t) block.projection->health < 0ll || (int64_t) block.projection->health > 1000ll ) { return -1; }
     int64_t used = 88;
     return table_block_align( used, 64 );
 }
@@ -694,7 +701,8 @@ inline bool TableStatBlockBegin( TableStatBlock & block, TableStatBlockStorage &
 // exists to avoid.
 inline int64_t TableStatBlockBytes( const TableStatBlock & block )
 {
-    (void) block; // no out-of-line array: the extent is the projection's own
+    if ( block.projection == NULL ) { return -1; }
+    if ( (int64_t) block.projection->delta < -512ll || (int64_t) block.projection->delta > 511ll ) { return -1; }
     int64_t used = 32;
     return table_block_align( used, 64 );
 }

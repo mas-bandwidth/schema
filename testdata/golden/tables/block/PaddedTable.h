@@ -459,6 +459,7 @@ struct TableFieldInfo
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
+    int32_t array_min;
 };
 
 struct TableTypeInfo
@@ -3926,14 +3927,14 @@ inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vo
 
 // AnnounceMeasure is the announcement's byte count, which is a constant of the
 // unit and not a walk.
-inline int64_t AnnounceMeasure() { return kTableAnnounceBytes; }
+inline int64_t AnnounceMeasure() { return kTableMessageEntriesHere > 4096 ? -1 : kTableAnnounceBytes; }
 
 // Announce writes the announcement into the caller's buffer and answers the
 // bytes written, which is exactly AnnounceMeasure's answer, or -1 when the
 // buffer is too small. It allocates nothing and walks nothing.
 inline int64_t Announce( uint8_t * buffer, int64_t capacity )
 {
-    if ( buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
+    if ( kTableMessageEntriesHere > 4096 || buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
     memcpy( buffer, kTableAnnounce, (size_t) kTableAnnounceBytes );
     return kTableAnnounceBytes;
 }
@@ -8694,6 +8695,7 @@ inline bool PaddedRowLoadMessages( PaddedRow * values, int64_t * count, const Ta
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -9661,6 +9663,7 @@ inline bool PaddedFrameLoadMessages( PaddedFrame * values, int64_t * count, cons
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -12369,6 +12372,7 @@ inline bool PaddedFrameCookBody( uint8_t * at, const PaddedFrame & value, TableB
     table_cook_put( at + 8, (uint64_t) value.stamp, 8, order );
     // 64 slots of storage, value.rows_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.rows_count >= 0 && value.rows_count <= 64 ); // storage invariant, debug only (§5.1)
+    if ( value.rows_count < 0 || value.rows_count > 64 ) { return false; }
     for ( int32_t i = 0; i < value.rows_count; i++ )
     {
         if ( !PaddedRowCookBody( at + 16 + i * 64, value.rows[i], order ) ) { return false; }
@@ -12538,14 +12542,14 @@ inline const TableTypeInfo * PaddedFrameTableType();
 inline const TableTypeInfo * PaddedRowTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "tag", "tag", "uint8", 0x56d7ab194448a4f3ull, 6, false, false, false, 0, (uint32_t) offsetof( PaddedRow, tag ), (uint32_t) sizeof( PaddedRow::tag ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "value", "value", "float64", 0x7ce4fd9430e80ceaull, 11, false, false, false, 0, (uint32_t) offsetof( PaddedRow, value ), (uint32_t) sizeof( PaddedRow::value ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "flag", "flag", "bool", 0xd5f2d079088c0b17ull, 1, false, false, false, 0, (uint32_t) offsetof( PaddedRow, flag ), (uint32_t) sizeof( PaddedRow::flag ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "id", "id", "uint32", 0x08b72e07b55c3ac0ull, 8, false, false, false, 0, (uint32_t) offsetof( PaddedRow, id ), (uint32_t) sizeof( PaddedRow::id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, false, true, false, 15, (uint32_t) offsetof( PaddedRow, label ), (uint32_t) sizeof( PaddedRow::label ), (uint32_t) offsetof( PaddedRow, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "slots", "slots", "uint16", 0xe68c2e6bb1ee5646ull, 7, true, false, false, 4, (uint32_t) offsetof( PaddedRow, slots ), (uint32_t) sizeof( PaddedRow::slots[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "teams", "teams", "uint8", 0xbaaeb048a5a8fa6dull, 6, true, false, false, (int32_t) Team::Max, (uint32_t) offsetof( PaddedRow, teams ), (uint32_t) sizeof( PaddedRow::teams.slots[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, "Team", +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "counter", "counter", "int32", 0x77976c7416517c63ull, 4, false, false, true, 0, (uint32_t) offsetof( PaddedRow, counter ), (uint32_t) sizeof( PaddedRow::counter ), 0xffffffffu, (uint32_t) offsetof( PaddedRow, counter_present ), NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "tag", "tag", "uint8", 0x56d7ab194448a4f3ull, 6, false, false, false, 0, (uint32_t) offsetof( PaddedRow, tag ), (uint32_t) sizeof( PaddedRow::tag ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "value", "value", "float64", 0x7ce4fd9430e80ceaull, 11, false, false, false, 0, (uint32_t) offsetof( PaddedRow, value ), (uint32_t) sizeof( PaddedRow::value ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "flag", "flag", "bool", 0xd5f2d079088c0b17ull, 1, false, false, false, 0, (uint32_t) offsetof( PaddedRow, flag ), (uint32_t) sizeof( PaddedRow::flag ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "id", "id", "uint32", 0x08b72e07b55c3ac0ull, 8, false, false, false, 0, (uint32_t) offsetof( PaddedRow, id ), (uint32_t) sizeof( PaddedRow::id ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "label", "label", "string", 0x39f7fcec8fcb623dull, 12, false, true, false, 15, (uint32_t) offsetof( PaddedRow, label ), (uint32_t) sizeof( PaddedRow::label ), (uint32_t) offsetof( PaddedRow, label_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "slots", "slots", "uint16", 0xe68c2e6bb1ee5646ull, 7, true, false, false, 4, (uint32_t) offsetof( PaddedRow, slots ), (uint32_t) sizeof( PaddedRow::slots[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "teams", "teams", "uint8", 0xbaaeb048a5a8fa6dull, 6, true, false, false, (int32_t) Team::Max, (uint32_t) offsetof( PaddedRow, teams ), (uint32_t) sizeof( PaddedRow::teams.slots[0] ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, "Team", +[]( uint64_t v ) { return EnumName( Team( v ) ); }, +[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( Team( v ), id ); return id; }, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "counter", "counter", "int32", 0x77976c7416517c63ull, 4, false, false, true, 0, (uint32_t) offsetof( PaddedRow, counter ), (uint32_t) sizeof( PaddedRow::counter ), 0xffffffffu, (uint32_t) offsetof( PaddedRow, counter_present ), NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
     };
     static const TableTypeInfo info = { "PaddedRow", (uint32_t) sizeof( PaddedRow ), 8, fields, +[]( void * p ) { PaddedRowReset( *(PaddedRow *) p ); }, TableDocNone, 0, NULL, false };
     return &info;
@@ -12554,10 +12558,10 @@ inline const TableTypeInfo * PaddedRowTableType()
 inline const TableTypeInfo * PaddedFrameTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "marker", "marker", "uint8", 0xeddcb72b15486e77ull, 6, false, false, false, 0, (uint32_t) offsetof( PaddedFrame, marker ), (uint32_t) sizeof( PaddedFrame::marker ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "stamp", "stamp", "uint64", 0xee7ba9ad45c64144ull, 9, false, false, false, 0, (uint32_t) offsetof( PaddedFrame, stamp ), (uint32_t) sizeof( PaddedFrame::stamp ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "rows", "rows", "PaddedRow", 0xa3a7061ff10a8138ull, 13, true, true, false, 64, (uint32_t) offsetof( PaddedFrame, rows ), (uint32_t) sizeof( PaddedFrame::rows[0] ), (uint32_t) offsetof( PaddedFrame, rows_count ), 0xffffffffu, PaddedRowTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-        { "blob", "blob", "bytes", 0xc573b39bc29148caull, 6, true, true, false, 12, (uint32_t) offsetof( PaddedFrame, blob ), (uint32_t) sizeof( PaddedFrame::blob[0] ), (uint32_t) offsetof( PaddedFrame, blob_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "marker", "marker", "uint8", 0xeddcb72b15486e77ull, 6, false, false, false, 0, (uint32_t) offsetof( PaddedFrame, marker ), (uint32_t) sizeof( PaddedFrame::marker ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "stamp", "stamp", "uint64", 0xee7ba9ad45c64144ull, 9, false, false, false, 0, (uint32_t) offsetof( PaddedFrame, stamp ), (uint32_t) sizeof( PaddedFrame::stamp ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "rows", "rows", "PaddedRow", 0xa3a7061ff10a8138ull, 13, true, true, false, 64, (uint32_t) offsetof( PaddedFrame, rows ), (uint32_t) sizeof( PaddedFrame::rows[0] ), (uint32_t) offsetof( PaddedFrame, rows_count ), 0xffffffffu, PaddedRowTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+        { "blob", "blob", "bytes", 0xc573b39bc29148caull, 6, true, true, false, 12, (uint32_t) offsetof( PaddedFrame, blob ), (uint32_t) sizeof( PaddedFrame::blob[0] ), (uint32_t) offsetof( PaddedFrame, blob_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
     };
     static const TableTypeInfo info = { "PaddedFrame", (uint32_t) sizeof( PaddedFrame ), 4, fields, +[]( void * p ) { PaddedFrameReset( *(PaddedFrame *) p ); }, TableDocNone, 0, NULL, false };
     return &info;

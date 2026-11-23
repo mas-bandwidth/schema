@@ -453,6 +453,7 @@ struct TableFieldInfo
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
+    int32_t array_min;
 };
 
 struct TableTypeInfo
@@ -4039,14 +4040,14 @@ inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vo
 
 // AnnounceMeasure is the announcement's byte count, which is a constant of the
 // unit and not a walk.
-inline int64_t AnnounceMeasure() { return kTableAnnounceBytes; }
+inline int64_t AnnounceMeasure() { return kTableMessageEntriesHere > 4096 ? -1 : kTableAnnounceBytes; }
 
 // Announce writes the announcement into the caller's buffer and answers the
 // bytes written, which is exactly AnnounceMeasure's answer, or -1 when the
 // buffer is too small. It allocates nothing and walks nothing.
 inline int64_t Announce( uint8_t * buffer, int64_t capacity )
 {
-    if ( buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
+    if ( kTableMessageEntriesHere > 4096 || buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
     memcpy( buffer, kTableAnnounce, (size_t) kTableAnnounceBytes );
     return kTableAnnounceBytes;
 }
@@ -7348,6 +7349,7 @@ inline bool FixedTableLoadMessages( FixedTable * values, int64_t * count, const 
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -8776,7 +8778,7 @@ inline const TableTypeInfo * FixedTableTableType();
 inline const TableTypeInfo * FixedTableTableType()
 {
     static const TableFieldInfo fields[] = {
-        { "value", "value", "BenchMixed", 0x7ce4fd9430e80ceaull, 13, false, false, false, 0, (uint32_t) offsetof( FixedTable, value ), (uint32_t) sizeof( FixedTable::value ), 0xffffffffu, 0xffffffffu, BenchMixedTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+        { "value", "value", "BenchMixed", 0x7ce4fd9430e80ceaull, 13, false, false, false, 0, (uint32_t) offsetof( FixedTable, value ), (uint32_t) sizeof( FixedTable::value ), 0xffffffffu, 0xffffffffu, BenchMixedTableType(), false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
     };
     static const TableTypeInfo info = { "FixedTable", (uint32_t) sizeof( FixedTable ), 1, fields, +[]( void * p ) { FixedTableReset( *(FixedTable *) p ); }, TableDocNone, 0, NULL, false };
     return &info;

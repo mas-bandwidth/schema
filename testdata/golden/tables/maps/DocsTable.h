@@ -493,6 +493,7 @@ struct TableFieldInfo
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
+    int32_t array_min;
 };
 
 struct TableTypeInfo
@@ -3446,14 +3447,14 @@ inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vo
 
 // AnnounceMeasure is the announcement's byte count, which is a constant of the
 // unit and not a walk.
-inline int64_t AnnounceMeasure() { return kTableAnnounceBytes; }
+inline int64_t AnnounceMeasure() { return kTableMessageEntriesHere > 4096 ? -1 : kTableAnnounceBytes; }
 
 // Announce writes the announcement into the caller's buffer and answers the
 // bytes written, which is exactly AnnounceMeasure's answer, or -1 when the
 // buffer is too small. It allocates nothing and walks nothing.
 inline int64_t Announce( uint8_t * buffer, int64_t capacity )
 {
-    if ( buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
+    if ( kTableMessageEntriesHere > 4096 || buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
     memcpy( buffer, kTableAnnounce, (size_t) kTableAnnounceBytes );
     return kTableAnnounceBytes;
 }
@@ -8273,7 +8274,7 @@ struct TableRetainIds
         }
         if ( known.count != before )
         {
-            if ( count >= TableIds::kLimit ) { known.truncate( before ); overflow = true; return 1; }
+            if ( count >= 4096 ) { known.truncate( before ); overflow = true; return 1; }
             known_slot[(int32_t) k - 1] = ++count;
         }
         return (uint64_t) known_slot[(int32_t) k - 1];
@@ -8308,7 +8309,7 @@ struct TableRetainIds
         {
             if ( retain->ids[i].id == id ) { return (uint64_t) retain->ids[i].slot; }
         }
-        if ( retain->id_used >= retain->id_capacity || count >= TableIds::kLimit )
+        if ( retain->id_used >= retain->id_capacity || count >= 4096 )
         {
             lost = true;
             return 0;
@@ -9899,6 +9900,11 @@ inline TableMapCursor<Entry> TableMapOrder( const TableRegionCtx &, const TableM
     TableMapCursor<Entry> cursor;
     cursor.entries = map.Entries();
     cursor.count = map.count;
+    if ( cursor.count < 0 || ( cursor.count > 0 && cursor.entries == NULL ) ) { return cursor; }
+    for ( int32_t i = 1; i < cursor.count; i++ )
+    {
+        if ( TableEntryOrder( NULL, cursor.entries[i - 1], cursor.entries[i] ) >= 0 ) { return cursor; }
+    }
     cursor.ok = true;
     return cursor;
 }
@@ -9939,6 +9945,14 @@ inline TableMapCursor<Entry> TableMapOrder( const TableArena & arena, const Tabl
         return cursor;
     }
     TableMapSort( arena, order, map.count );
+    for ( int32_t i = 1; i < map.count; i++ )
+    {
+        if ( TableEntryOrder( &arena, *order[i - 1], *order[i] ) >= 0 )
+        {
+            table_release( arena.allocator, order );
+            return cursor;
+        }
+    }
     cursor.order = order;
     cursor.ok = true;
     return cursor;
@@ -15237,15 +15251,15 @@ extern const TableTypeInfo DocsPagesEntryTableInfo;
 extern const TableTypeInfo DocsTableInfo;
 
 inline const TableFieldInfo DocsPagesEntryTableFields[] = {
-    { "key", "key", "string", 0x3dc94a19365b10ecull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( DocsPagesEntry, key ), (uint32_t) sizeof( DocsPagesEntry::key ), (uint32_t) offsetof( DocsPagesEntry, key_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "value", "value", "string", 0x7ce4fd9430e80ceaull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TableBlobAt( *(const TableRef *) slot ); }, NULL, false, false, 0, (uint32_t) offsetof( DocsPagesEntry, value ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "key", "key", "string", 0x3dc94a19365b10ecull, 12, false, false, NULL, NULL, true, false, 8, (uint32_t) offsetof( DocsPagesEntry, key ), (uint32_t) sizeof( DocsPagesEntry::key ), (uint32_t) offsetof( DocsPagesEntry, key_length ), 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "value", "value", "string", 0x7ce4fd9430e80ceaull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) TableBlobAt( *(const TableRef *) slot ); }, NULL, false, false, 0, (uint32_t) offsetof( DocsPagesEntry, value ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo DocsPagesEntryTableInfo = { "DocsPagesEntry", (uint32_t) sizeof( DocsPagesEntry ), 2, DocsPagesEntryTableFields, +[]( void * p ) { DocsPagesEntryReset( *(DocsPagesEntry *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * DocsPagesEntryTableType() { return &DocsPagesEntryTableInfo; }
 
 inline const TableFieldInfo DocsTableFields[] = {
-    { "pages", "pages", "map[string(8)]*string", 0xab01daa76a48769full, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Docs, pages ), (uint32_t) sizeof( DocsPagesEntry ), (uint32_t) offsetof( Docs, pages.count ), 0xffffffffu, &DocsPagesEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * { if ( key == NULL ) { return NULL; } return (void *) TableMapPlace( worker, *(TableMap<DocsPagesEntry> *) slot, TableMapKeyRef{ key, key_length } ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Docs, past ), (uint32_t) sizeof( Docs::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "pages", "pages", "map[string(8)]*string", 0xab01daa76a48769full, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Docs, pages ), (uint32_t) sizeof( DocsPagesEntry ), (uint32_t) offsetof( Docs, pages.count ), 0xffffffffu, &DocsPagesEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char * key, int32_t key_length, int64_t ) -> void * { if ( key == NULL ) { return NULL; } return (void *) TableMapPlace( worker, *(TableMap<DocsPagesEntry> *) slot, TableMapKeyRef{ key, key_length } ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false, 0 },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Docs, past ), (uint32_t) sizeof( Docs::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo DocsTableInfo = { "Docs", (uint32_t) sizeof( Docs ), 2, DocsTableFields, +[]( void * p ) { DocsReset( *(Docs *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * DocsTableType() { return &DocsTableInfo; }

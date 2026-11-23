@@ -494,6 +494,7 @@ struct TableFieldInfo
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
+    int32_t array_min;
 };
 
 struct TableTypeInfo
@@ -3447,14 +3448,14 @@ inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vo
 
 // AnnounceMeasure is the announcement's byte count, which is a constant of the
 // unit and not a walk.
-inline int64_t AnnounceMeasure() { return kTableAnnounceBytes; }
+inline int64_t AnnounceMeasure() { return kTableMessageEntriesHere > 4096 ? -1 : kTableAnnounceBytes; }
 
 // Announce writes the announcement into the caller's buffer and answers the
 // bytes written, which is exactly AnnounceMeasure's answer, or -1 when the
 // buffer is too small. It allocates nothing and walks nothing.
 inline int64_t Announce( uint8_t * buffer, int64_t capacity )
 {
-    if ( buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
+    if ( kTableMessageEntriesHere > 4096 || buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
     memcpy( buffer, kTableAnnounce, (size_t) kTableAnnounceBytes );
     return kTableAnnounceBytes;
 }
@@ -8274,7 +8275,7 @@ struct TableRetainIds
         }
         if ( known.count != before )
         {
-            if ( count >= TableIds::kLimit ) { known.truncate( before ); overflow = true; return 1; }
+            if ( count >= 4096 ) { known.truncate( before ); overflow = true; return 1; }
             known_slot[(int32_t) k - 1] = ++count;
         }
         return (uint64_t) known_slot[(int32_t) k - 1];
@@ -8309,7 +8310,7 @@ struct TableRetainIds
         {
             if ( retain->ids[i].id == id ) { return (uint64_t) retain->ids[i].slot; }
         }
-        if ( retain->id_used >= retain->id_capacity || count >= TableIds::kLimit )
+        if ( retain->id_used >= retain->id_capacity || count >= 4096 )
         {
             lost = true;
             return 0;
@@ -9900,6 +9901,11 @@ inline TableMapCursor<Entry> TableMapOrder( const TableRegionCtx &, const TableM
     TableMapCursor<Entry> cursor;
     cursor.entries = map.Entries();
     cursor.count = map.count;
+    if ( cursor.count < 0 || ( cursor.count > 0 && cursor.entries == NULL ) ) { return cursor; }
+    for ( int32_t i = 1; i < cursor.count; i++ )
+    {
+        if ( TableEntryOrder( NULL, cursor.entries[i - 1], cursor.entries[i] ) >= 0 ) { return cursor; }
+    }
     cursor.ok = true;
     return cursor;
 }
@@ -9940,6 +9946,14 @@ inline TableMapCursor<Entry> TableMapOrder( const TableArena & arena, const Tabl
         return cursor;
     }
     TableMapSort( arena, order, map.count );
+    for ( int32_t i = 1; i < map.count; i++ )
+    {
+        if ( TableEntryOrder( &arena, *order[i - 1], *order[i] ) >= 0 )
+        {
+            table_release( arena.allocator, order );
+            return cursor;
+        }
+    }
     cursor.order = order;
     cursor.ok = true;
     return cursor;
@@ -14697,6 +14711,7 @@ inline bool RunsSpansEntryCookBody( uint8_t * at, const RunsSpansEntry & value, 
     table_cook_put( at + 0, (uint64_t) value.key, 2, order );
     // 4 slots of storage, value.value_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.value_count >= 0 && value.value_count <= 4 ); // storage invariant, debug only (§5.1)
+    if ( value.value_count < 0 || value.value_count > 4 ) { return false; }
     for ( int32_t i = 0; i < value.value_count; i++ )
     {
         if ( !ItemCookBody( at + 4 + i * 4, value.value[i], order ) ) { return false; }
@@ -14986,15 +15001,15 @@ extern const TableTypeInfo RunsSpansEntryTableInfo;
 extern const TableTypeInfo RunsTableInfo;
 
 inline const TableFieldInfo RunsSpansEntryTableFields[] = {
-    { "key", "key", "uint16", 0x3dc94a19365b10ecull, 7, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RunsSpansEntry, key ), (uint32_t) sizeof( RunsSpansEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, true, false, NULL, NULL, true, false, 4, (uint32_t) offsetof( RunsSpansEntry, value ), (uint32_t) sizeof( RunsSpansEntry::value[0] ), (uint32_t) offsetof( RunsSpansEntry, value_count ), 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "key", "key", "uint16", 0x3dc94a19365b10ecull, 7, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( RunsSpansEntry, key ), (uint32_t) sizeof( RunsSpansEntry::key ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "value", "value", "Item", 0x7ce4fd9430e80ceaull, 13, true, false, NULL, NULL, true, false, 4, (uint32_t) offsetof( RunsSpansEntry, value ), (uint32_t) sizeof( RunsSpansEntry::value[0] ), (uint32_t) offsetof( RunsSpansEntry, value_count ), 0xffffffffu, &ItemTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo RunsSpansEntryTableInfo = { "RunsSpansEntry", (uint32_t) sizeof( RunsSpansEntry ), 2, RunsSpansEntryTableFields, +[]( void * p ) { RunsSpansEntryReset( *(RunsSpansEntry *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * RunsSpansEntryTableType() { return &RunsSpansEntryTableInfo; }
 
 inline const TableFieldInfo RunsTableFields[] = {
-    { "spans", "spans", "map[uint16]Item", 0x437dfc8ab2566816ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Runs, spans ), (uint32_t) sizeof( RunsSpansEntry ), (uint32_t) offsetof( Runs, spans.count ), 0xffffffffu, &RunsSpansEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<RunsSpansEntry> *) slot, (uint16_t) key_value ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
-    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Runs, past ), (uint32_t) sizeof( Runs::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "spans", "spans", "map[uint16]Item", 0x437dfc8ab2566816ull, 13, true, false, NULL, NULL, true, false, 0, (uint32_t) offsetof( Runs, spans ), (uint32_t) sizeof( RunsSpansEntry ), (uint32_t) offsetof( Runs, spans.count ), 0xffffffffu, &RunsSpansEntryTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t key_value ) -> void * { return (void *) TableMapPlace( worker, *(TableMap<RunsSpansEntry> *) slot, (uint16_t) key_value ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false, 0 },
+    { "past", "past", "int32", 0xbf82010f6f71eae9ull, 4, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Runs, past ), (uint32_t) sizeof( Runs::past ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo RunsTableInfo = { "Runs", (uint32_t) sizeof( Runs ), 2, RunsTableFields, +[]( void * p ) { RunsReset( *(Runs *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * RunsTableType() { return &RunsTableInfo; }

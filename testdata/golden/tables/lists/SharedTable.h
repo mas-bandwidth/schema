@@ -493,6 +493,7 @@ struct TableFieldInfo
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
+    int32_t array_min;
 };
 
 struct TableTypeInfo
@@ -3379,14 +3380,14 @@ inline bool TableMessageSkipBody( TableBitReader & r, const TableVocabulary & vo
 
 // AnnounceMeasure is the announcement's byte count, which is a constant of the
 // unit and not a walk.
-inline int64_t AnnounceMeasure() { return kTableAnnounceBytes; }
+inline int64_t AnnounceMeasure() { return kTableMessageEntriesHere > 4096 ? -1 : kTableAnnounceBytes; }
 
 // Announce writes the announcement into the caller's buffer and answers the
 // bytes written, which is exactly AnnounceMeasure's answer, or -1 when the
 // buffer is too small. It allocates nothing and walks nothing.
 inline int64_t Announce( uint8_t * buffer, int64_t capacity )
 {
-    if ( buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
+    if ( kTableMessageEntriesHere > 4096 || buffer == NULL || capacity < kTableAnnounceBytes ) { return -1; }
     memcpy( buffer, kTableAnnounce, (size_t) kTableAnnounceBytes );
     return kTableAnnounceBytes;
 }
@@ -8069,7 +8070,7 @@ struct TableRetainIds
         }
         if ( known.count != before )
         {
-            if ( count >= TableIds::kLimit ) { known.truncate( before ); overflow = true; return 1; }
+            if ( count >= 4096 ) { known.truncate( before ); overflow = true; return 1; }
             known_slot[(int32_t) k - 1] = ++count;
         }
         return (uint64_t) known_slot[(int32_t) k - 1];
@@ -8104,7 +8105,7 @@ struct TableRetainIds
         {
             if ( retain->ids[i].id == id ) { return (uint64_t) retain->ids[i].slot; }
         }
-        if ( retain->id_used >= retain->id_capacity || count >= TableIds::kLimit )
+        if ( retain->id_used >= retain->id_capacity || count >= 4096 )
         {
             lost = true;
             return 0;
@@ -9695,6 +9696,11 @@ inline TableMapCursor<Entry> TableMapOrder( const TableRegionCtx &, const TableM
     TableMapCursor<Entry> cursor;
     cursor.entries = map.Entries();
     cursor.count = map.count;
+    if ( cursor.count < 0 || ( cursor.count > 0 && cursor.entries == NULL ) ) { return cursor; }
+    for ( int32_t i = 1; i < cursor.count; i++ )
+    {
+        if ( TableEntryOrder( NULL, cursor.entries[i - 1], cursor.entries[i] ) >= 0 ) { return cursor; }
+    }
     cursor.ok = true;
     return cursor;
 }
@@ -9735,6 +9741,14 @@ inline TableMapCursor<Entry> TableMapOrder( const TableArena & arena, const Tabl
         return cursor;
     }
     TableMapSort( arena, order, map.count );
+    for ( int32_t i = 1; i < map.count; i++ )
+    {
+        if ( TableEntryOrder( &arena, *order[i - 1], *order[i] ) >= 0 )
+        {
+            table_release( arena.allocator, order );
+            return cursor;
+        }
+    }
     cursor.order = order;
     cursor.ok = true;
     return cursor;
@@ -11901,6 +11915,7 @@ inline bool PhotoLoadMessages( Photo * values, int64_t * count, const TableVocab
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -15716,15 +15731,15 @@ extern const TableTypeInfo PhotoTableInfo;
 extern const TableTypeInfo AlbumTableInfo;
 
 inline const TableFieldInfo PhotoTableFields[] = {
-    { "width", "width", "uint32", 0xdbdacd932fd1e9bfull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Photo, width ), (uint32_t) sizeof( Photo::width ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
-    { "height", "height", "uint32", 0x17720bf67d347222ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Photo, height ), (uint32_t) sizeof( Photo::height ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "width", "width", "uint32", 0xdbdacd932fd1e9bfull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Photo, width ), (uint32_t) sizeof( Photo::width ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
+    { "height", "height", "uint32", 0x17720bf67d347222ull, 8, false, false, NULL, NULL, false, false, 0, (uint32_t) offsetof( Photo, height ), (uint32_t) sizeof( Photo::height ), 0xffffffffu, 0xffffffffu, NULL, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo PhotoTableInfo = { "Photo", (uint32_t) sizeof( Photo ), 2, PhotoTableFields, +[]( void * p ) { PhotoReset( *(Photo *) p ); }, false, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * PhotoTableType() { return &PhotoTableInfo; }
 
 inline const TableFieldInfo AlbumTableFields[] = {
-    { "photos", "photos", "Photo", 0x40b1d94aff3ab130ull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) PhotoAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) PhotoEmplace( worker, *(TableRef *) slot ); }, true, false, 0, (uint32_t) offsetof( Album, photos ), (uint32_t) sizeof( TableRef ), (uint32_t) offsetof( Album, photos.count ), 0xffffffffu, &PhotoTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<Photo *> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<Photo *> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false },
-    { "cover", "cover", "Photo", 0xaa19a78e404dea20ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) PhotoAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) PhotoEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Album, cover ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &PhotoTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false },
+    { "photos", "photos", "Photo", 0x40b1d94aff3ab130ull, 17, true, true, []( const void * slot ) -> const void * { return (const void *) PhotoAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) PhotoEmplace( worker, *(TableRef *) slot ); }, true, false, 0, (uint32_t) offsetof( Album, photos ), (uint32_t) sizeof( TableRef ), (uint32_t) offsetof( Album, photos.count ), 0xffffffffu, &PhotoTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, []( TableWorker & worker, void * slot, const char *, int32_t, int64_t cmd ) -> void * { if ( cmd < 0 ) { schema_table_list_drop_last_( *worker.arena, *(TableList<Photo *> *) slot ); return NULL; } return (void *) TableListPlace( worker, *(TableList<Photo *> *) slot ); }, "", TableDocNone, 0, NULL, true, false, 0, 0, false, 0 },
+    { "cover", "cover", "Photo", 0xaa19a78e404dea20ull, 17, false, true, []( const void * slot ) -> const void * { return (const void *) PhotoAt( *(const TableRef *) slot ); }, []( TableWorker & worker, void * slot ) -> void * { return (void *) PhotoEmplace( worker, *(TableRef *) slot ); }, false, false, 0, (uint32_t) offsetof( Album, cover ), (uint32_t) sizeof( TableRef ), 0xffffffffu, 0xffffffffu, &PhotoTableInfo, false, 0.0, 0.0, 0, 0, 0, 0, 0, NULL, -1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, "", TableDocNone, 0, NULL, false, false, 0, 0, false, 0 },
 };
 inline const TableTypeInfo AlbumTableInfo = { "Album", (uint32_t) sizeof( Album ), 2, AlbumTableFields, +[]( void * p ) { AlbumReset( *(Album *) p ); }, true, TableDocNone, 0, NULL, false };
 inline const TableTypeInfo * AlbumTableType() { return &AlbumTableInfo; }

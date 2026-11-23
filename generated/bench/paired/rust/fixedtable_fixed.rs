@@ -377,12 +377,10 @@ pub fn fixed_table_fixed_load(
     remap: &mut [u16],
     report: &mut TableFixedReport,
 ) -> Option<usize> {
-    let damaged_before = report.damaged;
-    report.damaged = false;
+    *report = TableFixedReport::default();
     let mut untouched = false;
     let read = fixed_table_fixed_load_records(values, data, plan, remap, report, &mut untouched);
     let damaged = report.damaged;
-    report.damaged |= damaged_before;
     if damaged && !untouched {
         for value in values.iter_mut() {
             fixed_table_fixed_scatter(&FIXED_TABLE_FIXED_DEFAULTS, value, &mut TableFixedReport::default());
