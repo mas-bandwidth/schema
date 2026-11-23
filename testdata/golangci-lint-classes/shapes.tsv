@@ -22,6 +22,10 @@ tables	LanesTable.go	2	2	G115	w\.putI64\(value\.I64\)
 tables	LanesTable.go	0	0	G115	w\.Put64\(uint64\(value\.I64\)\)
 tables	LanesTable.go	6	6	G115	w\.Put(8|16|32)\(uint(8|16|32)\(int64\(value\.I(8|16|32)\) & 0x(ff|ffff|ffffffff)\)\)
 tables	LanesTable.go	0	0	G115	w\.Put(8|16|32)\(uint(8|16|32)\(value\.I(8|16|32)\)\)
+# G115, signed map ordering: flipping the sign bit maps two's-complement signed
+# order onto unsigned order, without converting stored uint64 keys to int64.
+tables	LintlanesTable.go	1	1	G115	ar, br := a\.raw\^sign, b\.raw\^sign
+tables	LintlanesTable.go	0	0	G115	int64\(a\.raw\).+int64\(b\.raw\)
 # G115, narrowing: a 64-bit value behind a runtime wire kind lands in a
 # narrower field with a folded mask (unsigned) or the kind check's #nosec
 # (signed), never a bare narrowing cast. The bare casts left are the 14 whose
