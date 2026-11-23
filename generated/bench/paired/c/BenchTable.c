@@ -1191,6 +1191,7 @@ typedef struct bench_table_json_in_t
     bench_table_report_t * report;
     int bad; /* the text is not JSON: the walk stops and keeps what it placed */
     void * graph;
+    char key_buf[BENCH_K_TABLE_JSON_MAX_KEY];
 } bench_table_json_in_t;
 
 /* A COMMENT IS TEXT (docs/SPEC-TABLES.md §16.2, §16.3): the bytes inside a line
@@ -1845,23 +1846,21 @@ typedef struct bench_table_json_key_t
 typedef struct bench_table_json_keys_t
 {
     bench_table_json_key_t * slots;
-    int64_t capacity; /* a power of two */
+    int64_t capacity; /* 0 until the first unknown key, then a power of two */
     int64_t count;
-    bench_table_json_key_t local[BENCH_K_TABLE_JSON_KEYS_LOCAL];
 } bench_table_json_keys_t;
 
 static SCHEMA_UNUSED void bench_table_json_keys_init( bench_table_json_keys_t * keys )
 {
-    memset( keys->local, 0, sizeof( keys->local ) );
-    keys->slots = keys->local;
-    keys->capacity = BENCH_K_TABLE_JSON_KEYS_LOCAL;
+    keys->slots = NULL;
+    keys->capacity = 0;
     keys->count = 0;
 }
 
 static SCHEMA_UNUSED void bench_table_json_keys_free( bench_table_json_keys_t * keys )
 {
-    if ( keys->slots != keys->local ) { schema_release( keys->slots ); }
-    keys->slots = keys->local;
+    if ( keys->slots != NULL ) { schema_release( keys->slots ); }
+    keys->slots = NULL;
 }
 
 /* the key a slot holds, decoded again from the text, against this one */
@@ -1890,7 +1889,7 @@ static SCHEMA_UNUSED int bench_table_json_keys_add( bench_table_json_in_t * in, 
     for ( k = 0; k < length; k++ ) { hash = ( hash ^ (uint64_t) (unsigned char) key[k] ) * 1099511628211ULL; }
     if ( ( keys->count + 1 ) * 2 > keys->capacity )
     {
-        const int64_t capacity = keys->capacity * 2;
+        const int64_t capacity = keys->capacity == 0 ? BENCH_K_TABLE_JSON_KEYS_LOCAL : keys->capacity * 2;
         bench_table_json_key_t * grown;
         int64_t j;
         if ( (uint64_t) capacity > SIZE_MAX / sizeof( bench_table_json_key_t ) ) { in->bad = 1; return -1; }
@@ -1941,7 +1940,7 @@ static SCHEMA_UNUSED int bench_table_json_skip_members( bench_table_json_in_t * 
         int consumed = 0;
         if ( close == '}' )
         {
-            char key[BENCH_K_TABLE_JSON_MAX_KEY];
+            char * key = in->key_buf;
             int32_t length = 0;
             const int64_t quote = in->pos;
             int added;
@@ -2472,12 +2471,20 @@ static SCHEMA_UNUSED int schema_bench_table_json_text_total_keep_( bench_table_j
     return 0;
 }
 
+#ifndef SCHEMA_BENCH_NOINLINE
+#if defined(__GNUC__) || defined(__clang__)
+#define SCHEMA_BENCH_NOINLINE __attribute__((noinline))
+#elif defined(_MSC_VER)
+#define SCHEMA_BENCH_NOINLINE __declspec(noinline)
+#else
+#define SCHEMA_BENCH_NOINLINE
+#endif
+#endif
+
+static SCHEMA_BENCH_NOINLINE SCHEMA_UNUSED int bench_table_json_read_scalar_leaf( bench_table_json_in_t * in, void * storage, const bench_table_field_info_t * f, int32_t depth );
+
 static SCHEMA_UNUSED int bench_table_json_read_scalar( bench_table_json_in_t * in, void * storage, const bench_table_field_info_t * f, int32_t depth )
 {
-    const char * token = NULL;
-    int64_t length = 0;
-    int integral = 0;
-    char textbuf[192]; /* a wide fixed's string spelling: 128 fraction digits, a whole part, a sign and a point */
     if ( f->text_list != 0 ) { return schema_bench_table_json_read_text_element_( in, storage, f, depth ); }
     if ( f->kind == 17 )
     {
@@ -2489,7 +2496,7 @@ static SCHEMA_UNUSED int bench_table_json_read_scalar( bench_table_json_in_t * i
         /* a union is an object with ONE key, the arm's name; {} is None, and
            two keys is a text this walk will not guess at */
         const bench_table_union_info_t * arms = f->arms;
-        char key[BENCH_K_TABLE_JSON_MAX_KEY];
+        char * key = in->key_buf;
         int32_t key_length = 0;
         int64_t tag = 0;
         int64_t t;
@@ -2544,6 +2551,16 @@ static SCHEMA_UNUSED int bench_table_json_read_scalar( bench_table_json_in_t * i
         f->table->reset( storage );
         return bench_table_json_read_table( in, storage, f->table, depth + 1 );
     }
+    return bench_table_json_read_scalar_leaf( in, storage, f, depth );
+}
+
+static SCHEMA_BENCH_NOINLINE SCHEMA_UNUSED int bench_table_json_read_scalar_leaf( bench_table_json_in_t * in, void * storage, const bench_table_field_info_t * f, int32_t depth )
+{
+    const char * token = NULL;
+    int64_t length = 0;
+    int integral = 0;
+    char textbuf[192]; /* a wide fixed's string spelling: 128 fraction digits, a whole part, a sign and a point */
+    (void) depth;
     if ( bench_table_json_is_enum( f ) )
     {
         char name[BENCH_K_TABLE_JSON_MAX_KEY];
@@ -2807,7 +2824,7 @@ static SCHEMA_UNUSED int bench_table_json_read_field( bench_table_json_in_t * in
         for ( ;; )
         {
             char c = bench_table_json_peek( in );
-            char key[BENCH_K_TABLE_JSON_MAX_KEY];
+            char * key = in->key_buf;
             int32_t key_length = 0;
             int64_t slot = -1;
             int64_t v;
@@ -2981,12 +2998,12 @@ static SCHEMA_UNUSED int bench_table_json_read_table_members( bench_table_json_i
     for ( ;; )
     {
         char c = 0;
-        char key[BENCH_K_TABLE_JSON_MAX_KEY];
+        char * key = in->key_buf;
         int32_t key_length = 0;
         int64_t quote = first_quote;
         int32_t index = -1;
         int32_t i;
-        if ( first_key != NULL ) { memcpy(key,first_key,(size_t)first_length); key[first_length] = 0; key_length = first_length; first_key = NULL; }
+        if ( first_key != NULL ) { if ( first_key != key ) { memcpy(key,first_key,(size_t)first_length); } key[first_length] = 0; key_length = first_length; first_key = NULL; }
         else
         {
             c = bench_table_json_peek(in);
