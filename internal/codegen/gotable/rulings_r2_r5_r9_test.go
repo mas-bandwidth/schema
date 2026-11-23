@@ -62,7 +62,7 @@ func TestRulingR2OptionalIntoBareRefusesKindMismatchGo(t *testing.T) {
 	text := rulingEmitted(t)
 	for _, want := range []string{
 		"c.unlawful = 3 - 2*int8(min(1, te.Kind^35))",
-		"return -1 - int(c.unlawful)",
+		"return -1 - int32(c.unlawful)",
 		"if made == -4 {", "out[i].Why = TableRefuseKindMismatch.Error()",
 	} {
 		if !strings.Contains(text, want) {
