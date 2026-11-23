@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -37,7 +39,7 @@ func TestAnnounceGoldenAtTheBound(t *testing.T) {
 	sum := sha256.Sum256(ann)
 	got := fmt.Sprintf("entries %d\nbytes %d\nsha256 %s\n", ir.TableVocabularyMaxEntries, len(ann), hex.EncodeToString(sum[:]))
 	path := filepath.Join("..", "..", "testdata", "conformance", "announce-cap", "announce-4096.txt")
-	if os.Getenv("SCHEMA_UPDATE_ANNOUNCE_GOLDEN") == "1" {
+	if slowtest.Rewriting(t, "SCHEMA_UPDATE_ANNOUNCE_GOLDEN") {
 		if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
 			t.Fatal(err)
 		}
