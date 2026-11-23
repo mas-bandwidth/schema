@@ -430,6 +430,26 @@ width; COMPETITION.md's never-clobber line. Each now promises a newer reader
 on older data and no more: an older reader given newer data may refuse it by
 name, lawfully.
 
+### Announcement vocabulary with a zero-byte budget
+
+R9 in [SPEC-TABLES §3.3](SPEC-TABLES.md#33-the-message-form-a-batch-of-bitpacked-bodies-under-one-announced-vocabulary)
+limits the vocabulary entries' bytes. Use a fresh connection for each
+case. Read the ordinary nonempty announcement produced by `tables/backend`
+and the empty vocabulary produced by the variable-only `tables/blobs` unit.
+
+| Reader configuration | Empty vocabulary | Nonempty vocabulary |
+|---|---|---|
+| Default byte limit | Accept, count 0 | Accept, count greater than 0 |
+| Explicit byte limit sufficient for the announcement | Accept, count 0 | Accept, count greater than 0 |
+| Explicit byte limit 0 | Accept, count 0 | Refuse with `vocabulary_too_large` and leave `announced` false |
+
+The empty announcement still carries its framing bytes. The zero limit
+applies to the vocabulary payload. Run the generated Java example with
+
+```sh
+SCHEMA_SLOW=1 go test -count=1 -v ./internal/codegen/javatable -run '^TestMessageFormAnnounceJavaR9MaxBytes$'
+```
+
 ### JavaScript read-into names
 
 The shape checker refuses `ConfigLoadInto` because the JavaScript table
