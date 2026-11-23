@@ -74,9 +74,20 @@ func squirrelDriverStrict(src, jsonRuntime string) error {
 		}
 		return nil
 	}
-	if err := check(`if (mode == "wire")`, "wire",
-		[]string{"strictLoad(", "writeRefusal("}, []string{"loadWalk"}); err != nil {
+	// R13 handles actual reader and writer refusals uniformly. The fixture's
+	// refusal reason is the runtime's business, not a branch in the driver.
+	if err := check(`if (mode == "wire")`, "wire", []string{
+		"strictLoad(",
+		"if (v == null) {\n      writeRefusal(cname);",
+		"local out = S.save(T, root, v);",
+		"if (out == null) {\n      writeRefusal(cname);",
+		"S.measure(T, root, v) != out.len()",
+		`writeBytes(outdir + "/" + cname, out);`,
+	}, []string{"loadWalk"}); err != nil {
 		return err
+	}
+	if !strings.Contains(src, `writeText(outdir + "/" + name, "refused\n");`) {
+		return fmt.Errorf("wire: the refusal helper must write the R13 refusal reply")
 	}
 	if err := check(`if (mode == "report" || mode == "framing")`, "report/framing",
 		[]string{"strictLoad(", "writeReadBack("}, []string{"loadWalk"}); err != nil {
@@ -137,6 +148,15 @@ func TestSquirrelDriverReadsStrictAndWritesBackNegativeControl(t *testing.T) {
 	}
 	if err := squirrelDriverStrict(planted, jsonRuntime); err == nil {
 		t.Fatal("NEGATIVE CONTROL FAILED: planting loadWalk in the real wire surface left the check green")
+	}
+	const refusalCall = "if (v == null) {\n      writeRefusal(cname);"
+	const absenceCall = "if (v == null) {\n      writeAbsent(cname);"
+	if !strings.Contains(src[at:], refusalCall) {
+		t.Fatal("wire surface has no strict read refusal to replace")
+	}
+	plantedAbsence := src[:at] + strings.Replace(src[at:], refusalCall, absenceCall, 1)
+	if err := squirrelDriverStrict(plantedAbsence, jsonRuntime); err == nil {
+		t.Fatal("NEGATIVE CONTROL FAILED: replacing a wire refusal with an absence left the check green")
 	}
 	marker2 := `if (mode == "json-read" || mode == "json-write")`
 	at2 := strings.Index(src, marker2)

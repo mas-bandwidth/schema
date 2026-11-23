@@ -605,6 +605,7 @@ type ciEvent struct {
 	PlanLegs       string   // needs.plan.outputs.legs
 	PlanVerifyLegs string   // needs.plan.outputs.verify_legs
 	PlanDartCorpus string   // needs.plan.outputs.dart_corpus_account
+	PlanCppCorpus  string   // needs.plan.outputs.cpp_corpus_account
 	PlanRows       string   // needs.plan.outputs.rows
 	PlanResult     string   // needs.plan.result, success when omitted
 	GoCorpusResult string   // needs.go-fixed-corpus.result, success when omitted
@@ -1007,6 +1008,8 @@ func resolveCIToken(tok string, ev ciEvent) (string, error) {
 		return ev.PlanVerifyLegs, nil
 	case "needs.plan.outputs.dart_corpus_account":
 		return ev.PlanDartCorpus, nil
+	case "needs.plan.outputs.cpp_corpus_account":
+		return ev.PlanCppCorpus, nil
 	case "needs.plan.outputs.codegen_touched", "needs.plan.outputs.pins":
 		for pkg := range strings.FieldsSeq(ev.PlanPkgs) {
 			if strings.HasPrefix(pkg, "./internal/codegen") || pkg == "./ir" || pkg == "./compiler" || pkg == "./..." {
@@ -1396,6 +1399,7 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		PlanLegs:       `["cpp","go","lobster","rust","squirrel"]`,
 		PlanVerifyLegs: `["dart","elixir"]`,
 		PlanDartCorpus: "true",
+		PlanCppCorpus:  "true",
 	}
 	for _, sh := range shJobs {
 		if !workflowTriggersOn(wfs[sh.Workflow], dispatchEv) {
@@ -1446,12 +1450,14 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"certify.yml:verdict",
 		"certify.yml:vuln",
 		"ci-fast.yml:block-gate",
+		"ci-fast.yml:build-cpp-conformance-account",
 		"ci-fast.yml:ci-policy",
 		"ci-fast.yml:generated-current",
 		"ci-fast.yml:go-fixed-corpus",
 		"ci-fast.yml:go-test-touched",
 		"ci-fast.yml:golangci-lint-fast",
 		"ci-fast.yml:input-family",
+		"ci-fast.yml:input-family-cpp-conformance",
 		"ci-fast.yml:input-family-dart-conformance",
 		"ci-fast.yml:lang-clean",
 		"ci-fast.yml:lang-lint",

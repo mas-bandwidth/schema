@@ -2433,8 +2433,10 @@ tables-java-view: bin/schema test/java-view/View.java
 	@mkdir -p build/java-view/classes
 	$(JAVAC) --release 17 -Xlint:all -Werror -d build/java-view/classes \
 		$(foreach entry,$(VIEW_CORPUS),build/java-view/generated/$(firstword $(subst :, ,$(entry)))/*.java build/java-view/src-$(lastword $(subst :, ,$(entry)))/View.java)
+	@# HotSpot can report shared perf-data lock warnings on stdout. Disable its
+	@# perf-data files for the listing JVMs to keep stdout byte-exact.
 	@set -e; pids=""; for entry in $(VIEW_CORPUS); do pkg=$${entry##*:}; \
-		$(JAVA) -cp build/java-view/classes view_$$pkg.View > build/java-view/$$pkg.listing & pids="$$pids $$!"; \
+		$(JAVA) -XX:-UsePerfData -cp build/java-view/classes view_$$pkg.View > build/java-view/$$pkg.listing & pids="$$pids $$!"; \
 	done; for pid in $$pids; do wait $$pid; done
 	SCHEMA_VIEW_LISTING_DIR="$(CURDIR)/build/java-view" go test -count=1 -timeout 600s ./internal/viewlisting -run TestUnitViewListingMatchesTheIR
 	@mkdir -p build/java-view/negative

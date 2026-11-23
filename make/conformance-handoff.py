@@ -1,4 +1,4 @@
-"""Package or verify a same-run Dart conformance build from the checkout root."""
+"""Package or verify a same-run conformance build from the checkout root."""
 
 import argparse
 import hashlib
@@ -11,7 +11,7 @@ import tarfile
 import tempfile
 
 
-BUILD_PATHS = tuple(
+DART_PATHS = tuple(
     Path("build") / name
     for name in (
         "conformance-dart",
@@ -20,6 +20,10 @@ BUILD_PATHS = tuple(
         "tables-generated-dart-scalars",
     )
 )
+
+
+CPP_PATHS = (Path("build/conformance-cpp"), Path("build/schema_test_cook"))
+CPP_BUILD_TREE = (Path("build/tables-generated"), Path("build/conformance-cpp-objs"))
 
 
 def command(*args):
@@ -40,63 +44,91 @@ def fingerprint(paths, root):
     return result
 
 
-def identity(dart):
-    executable = shutil.which(dart)
-    if executable is None:
-        raise ValueError(f"Dart executable is unavailable: {dart}")
-    sdk = Path(executable).resolve().parent.parent
+def runtime_digest(name):
+    path = Path(command("c++", f"-print-file-name={name}"))
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def identity(leg, dart):
     if command("git", "status", "--porcelain", "--untracked-files=no"):
-        raise ValueError("tracked Dart handoff checkout must be clean")
+        raise ValueError("tracked conformance handoff checkout must be clean")
     run_id = os.environ.get("GITHUB_RUN_ID")
     if not run_id or not run_id.isdecimal():
         raise ValueError("GITHUB_RUN_ID must name the workflow run")
-    return {
+    common = {
         "run_id": run_id,
         "tree": command("git", "rev-parse", "HEAD^{tree}"),
-        "sdk_version": command(dart, "--version"),
-        "sdk_inputs": fingerprint((sdk / "bin", sdk / "lib", sdk / "version"), sdk),
         "host": [command("uname", "-sm"), command("getconf", "GNU_LIBC_VERSION")],
         "go": command("go", "version"),
     }
+    if leg == "cpp":
+        sibling = Path("../serialize")
+        if command("git", "-C", str(sibling), "status", "--porcelain", "--untracked-files=no"):
+            raise ValueError("tracked C++ runtime checkout must be clean")
+        common.update(
+            leg=leg,
+            compiler=command("c++", "--version"),
+            runtime_tree=command("git", "-C", str(sibling), "rev-parse", "HEAD^{tree}"),
+            runtime_headers=fingerprint(sorted(sibling.glob("*.h")), sibling),
+            linker_runtime=[
+                runtime_digest(name)
+                for name in ("libstdc++.so.6", "libgcc_s.so.1")
+            ],
+        )
+    else:
+        executable = shutil.which(dart)
+        if executable is None:
+            raise ValueError(f"Dart executable is unavailable: {dart}")
+        sdk = Path(executable).resolve().parent.parent
+        common.update(
+            sdk_version=command(dart, "--version"),
+            sdk_inputs=fingerprint((sdk / "bin", sdk / "lib", sdk / "version"), sdk),
+        )
+    return common
 
 
-def produce(archive, dart, verify_packets):
-    if any(path.exists() or path.is_symlink() for path in (*BUILD_PATHS, Path("bin/schema"))):
-        raise ValueError("Dart handoff producer requires a fresh compiler, generated tree, and executable")
-    info = identity(dart)
-    targets = ["build/conformance-dart"]
+def produce(archive, leg, dart, verify_packets):
+    paths = CPP_PATHS if leg == "cpp" else DART_PATHS
+    scratch = CPP_BUILD_TREE if leg == "cpp" else ()
+    if any(path.exists() or path.is_symlink() for path in (*paths, *scratch, Path("bin/schema"))):
+        raise ValueError("conformance handoff producer requires a fresh compiler, generated tree, and executable")
+    info = identity(leg, dart)
+    targets = list(map(str, paths)) if leg == "cpp" else ["build/conformance-dart"]
     if verify_packets:
         targets.append("_verify-dart-packets")
-    subprocess.run(["make", f"-j{command('nproc')}", *targets, f"DART={dart}"], check=True)
-    if info != identity(dart):
-        raise ValueError("producer identity changed during the Dart build")
+    variables = ["CXX=c++"] if leg == "cpp" else [f"DART={dart}"]
+    jobs = min(4, int(command("nproc"))) if leg == "cpp" else int(command("nproc"))
+    subprocess.run(["make", f"-j{jobs}", *targets, *variables], check=True)
+    if info != identity(leg, dart):
+        raise ValueError("producer identity changed during the conformance build")
     with tempfile.TemporaryDirectory(dir=archive.parent) as tmp:
         directory = Path(tmp)
-        for path in BUILD_PATHS:
+        for path in paths:
             destination = directory / path
             destination.parent.mkdir(exist_ok=True)
             if path.is_dir():
                 shutil.copytree(path, destination, symlinks=True, ignore=shutil.ignore_patterns(".stamp"))
             else:
                 shutil.copy2(path, destination)
-        info["outputs"] = fingerprint((directory / path for path in BUILD_PATHS), directory)
+        info["outputs"] = fingerprint((directory / path for path in paths), directory)
         (directory / "receipt.json").write_text(json.dumps(info, sort_keys=True) + "\n")
         temporary = directory / "handoff.tar.gz"
         with tarfile.open(temporary, "w:gz", compresslevel=1) as bundle:
             bundle.add(directory / "receipt.json", arcname="receipt.json")
-            for path in BUILD_PATHS:
+            for path in paths:
                 bundle.add(directory / path, arcname=str(path))
         temporary.replace(archive)
 
 
-def unpack(archive, directory):
+def unpack(archive, directory, paths):
     root = directory.resolve()
     with tarfile.open(archive, "r:gz") as bundle:
         seen = set()
         for member in bundle:
             path = Path(member.name)
             allowed = path == Path("receipt.json") or any(
-                path == base or base in path.parents for base in BUILD_PATHS
+                path == base or base in path.parents for base in paths
             )
             if path.is_absolute() or ".." in path.parts or not allowed or path in seen or path.name == ".stamp":
                 raise ValueError(f"unexpected artifact path: {path}")
@@ -113,23 +145,25 @@ def unpack(archive, directory):
                 raise ValueError(f"unsupported artifact member type: {path}")
 
 
-def consume(archive, dart):
-    if any(path.exists() or path.is_symlink() for path in BUILD_PATHS):
-        raise ValueError("Dart handoff destination is not empty")
-    expected = identity(dart)
+def consume(archive, leg, dart):
+    paths = CPP_PATHS if leg == "cpp" else DART_PATHS
+    if any(path.exists() or path.is_symlink() for path in paths):
+        raise ValueError("conformance handoff destination is not empty")
+    expected = identity(leg, dart)
     Path("build").mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(dir="build") as tmp:
         directory = Path(tmp)
-        unpack(archive, directory)
+        unpack(archive, directory, paths)
         receipt = json.loads((directory / "receipt.json").read_text())
         outputs = receipt.pop("outputs")
         if receipt != expected:
-            raise ValueError("Dart handoff producer run, checkout, SDK, or runtime does not match")
-        if outputs != fingerprint((directory / path for path in BUILD_PATHS), directory):
-            raise ValueError("Dart handoff output digest or inventory does not match")
-        if not os.access(directory / BUILD_PATHS[0], os.X_OK):
-            raise ValueError("Dart handoff executable has lost its execute permission")
-        for path in BUILD_PATHS:
+            raise ValueError("conformance handoff producer run, checkout, SDK, or runtime does not match")
+        if outputs != fingerprint((directory / path for path in paths), directory):
+            raise ValueError("conformance handoff output digest or inventory does not match")
+        for executable in CPP_PATHS if leg == "cpp" else DART_PATHS[:1]:
+            if not os.access(directory / executable, os.X_OK):
+                raise ValueError(f"handoff executable has lost its execute permission: {executable}")
+        for path in paths:
             (directory / path).replace(path)
 
 
@@ -138,14 +172,17 @@ if __name__ == "__main__":
     parser.add_argument("operation", choices=("produce", "consume"))
     parser.add_argument("artifact", type=Path)
     parser.add_argument("dart", default="dart", nargs="?")
+    parser.add_argument("--leg", choices=("dart", "cpp"), default="dart")
     parser.add_argument("--verify-packets", action="store_true", help="also run the producer’s ordinary packet checks")
     args = parser.parse_args()
     try:
+        if args.verify_packets and args.leg != "dart":
+            parser.error("--verify-packets applies only to Dart")
         if args.operation == "produce":
-            produce(args.artifact, args.dart, args.verify_packets)
+            produce(args.artifact, args.leg, args.dart, args.verify_packets)
         elif args.verify_packets:
             parser.error("--verify-packets applies only to produce")
         else:
-            consume(args.artifact, args.dart)
+            consume(args.artifact, args.leg, args.dart)
     except (OSError, ValueError, KeyError, tarfile.TarError, subprocess.CalledProcessError) as exc:
-        parser.exit(1, f"Dart AOT handoff: {exc}\n")
+        parser.exit(1, f"conformance handoff: {exc}\n")
