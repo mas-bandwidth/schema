@@ -3027,7 +3027,7 @@ func BenchMixedSaveMessageBody(w *TableMessageWriter, value *BenchMixed) bool {
 		}
 		allBirth := value.EntitiesCount == 1
 		if allBirth {
-			for i := 0; i < 1; i++ {
+			for i := range 1 {
 				probe := TableMessageWriter{TableBitWriter: TableBitWriter{Measuring: true}}
 				if !MixedEntitySaveMessageBody(&probe, &value.Entities[i]) {
 					return false

@@ -320,6 +320,9 @@ boundary values. Do not fold `normalized * steps + 0.5` into one expression. Do 
 force-round barrier. The C and C++ conformance builds compile `-ffp-contract=off`; a port that
 contracts this arithmetic writes different bytes on arm64 than on x86.
 
+The [compressed-float endpoint cases](SPEC-CONFORMANCE.md#compressed-float-packet-endpoints)
+exercise both ends of a closed `[0, 1]` range at resolution `0.01`.
+
 ### 2.6 Union (write)
 
 Tag in `bits_required(0, variant_count)` bits, then **the selected arm's payload only**. Tag 0

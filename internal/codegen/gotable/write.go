@@ -367,7 +367,7 @@ func (g *tableGen) emitFieldRides(f *ir.Field, expr, ind string) string {
 // emitCountedBirthRides compares only live birth slots. Composite defaults use
 // their existing measured bodies, including retained content on file writes.
 func (g *tableGen) emitCountedBirthRides(f *ir.Field, expr, ind string, message bool) string {
-	g.pf("%sallBirth := %sCount == %d\n%sif allBirth { for i := 0; i < %d; i++ {\n", ind, expr, f.BornCount(), ind, f.BornCount())
+	g.pf("%sallBirth := %sCount == %d\n%sif allBirth { for i := range %d {\n", ind, expr, f.BornCount(), ind, f.BornCount())
 	elem := messageElement(f)
 	if isStructRef(f.Type) && !f.Type.Pointer {
 		if message {

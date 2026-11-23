@@ -5060,7 +5060,7 @@ func CountedMinSaveBodyFields(w *TableWriter, value *CountedMin) bool {
 		}
 		allBirth := value.FewCount == 2
 		if allBirth {
-			for i := 0; i < 2; i++ {
+			for i := range 2 {
 				if value.Few[i] != 0 {
 					allBirth = false
 					break
@@ -5302,7 +5302,7 @@ func CountedMinSaveBodyFieldsRetain(w *TableRetainWriter, value *CountedMin) boo
 		}
 		allBirth := value.FewCount == 2
 		if allBirth {
-			for i := 0; i < 2; i++ {
+			for i := range 2 {
 				if value.Few[i] != 0 {
 					allBirth = false
 					break
@@ -6998,7 +6998,7 @@ func MinArmFixLoadBody(r *TableReader, value *MinArmFix) bool {
 							r.Report.Refuse(TableRefuseCountOverBound, "MinPick.few")
 							return false
 						}
-						for i := uint64(0); i < count; i++ {
+						for i := range count {
 							if !payload64.Has(tableKindBytes(elemKind)) {
 								r.Report.Refuse(TableRefuseWireDamaged, "")
 								return false
@@ -7377,7 +7377,7 @@ func MinArmFixLoadBodyRetain(r *TableRetainReader, value *MinArmFix) bool {
 							r.Report.Refuse(TableRefuseCountOverBound, "MinPick.few")
 							return false
 						}
-						for i := uint64(0); i < count; i++ {
+						for i := range count {
 							if !payload12.Has(tableKindBytes(elemKind)) {
 								r.Report.Refuse(TableRefuseWireDamaged, "")
 								return false
@@ -7481,7 +7481,7 @@ func MinPlainFixSaveBodyFields(w *TableWriter, value *MinPlainFix) bool {
 		}
 		allBirth := value.FewCount == 2
 		if allBirth {
-			for i := 0; i < 2; i++ {
+			for i := range 2 {
 				if value.Few[i] != 0 {
 					allBirth = false
 					break
@@ -7723,7 +7723,7 @@ func MinPlainFixSaveBodyFieldsRetain(w *TableRetainWriter, value *MinPlainFix) b
 		}
 		allBirth := value.FewCount == 2
 		if allBirth {
-			for i := 0; i < 2; i++ {
+			for i := range 2 {
 				if value.Few[i] != 0 {
 					allBirth = false
 					break

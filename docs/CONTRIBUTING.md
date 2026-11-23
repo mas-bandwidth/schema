@@ -49,6 +49,11 @@ yours**, by an explicit permanent grant in [LICENSE](../LICENSE).
    truth for the type wire and [SPEC-TABLES.md](SPEC-TABLES.md) for
    the table wire. Where the code and a spec disagree, one of them has a bug and
    the tests decide which. **Read the spec before the code.**
+   For a behavior fix, include the normative section and the shared regression
+   case ID in the pull request, with the result before and after the fix.
+   Update the clause wherever a new port would otherwise have to consult an
+   existing implementation to choose the correct behavior. See the
+   [test appendix’s regression requirements](SPEC-CONFORMANCE.md#regression-cases-for-implementation-fixes).
 2. **C++ is the reference.** C++ writes the pins in `testdata/wire/` and
    `testdata/golden/`; every other leg byte-compares against
    them. Cross-language wire identity is a standing gate, and so is

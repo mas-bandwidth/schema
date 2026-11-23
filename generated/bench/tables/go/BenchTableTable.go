@@ -5300,7 +5300,7 @@ func TableMixedSaveBody(w *TableWriter, value *TableMixed) bool {
 		}
 		allBirth := value.EntitiesCount == 1
 		if allBirth {
-			for i := 0; i < 1; i++ {
+			for i := range 1 {
 				mark := w.Ids.Count
 				n := TableEntityMeasureBody(&value.Entities[i], w.Ids)
 				w.Ids.Truncate(mark)

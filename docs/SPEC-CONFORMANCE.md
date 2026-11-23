@@ -31,6 +31,17 @@ conformance:
   over zeroed storage. `unsigned-subtraction` is the row for SPEC §4.2's rule
   that a field never shadows a same-named constant: a target that emits
   `half = half` fails to compile (Dart did, caught by this pin).
+- **The fixed byte-buffer lineage pins** (`test/verify-tablegen/pinned.go`):
+  `pin:bytes_lineage:empty` and `pin:bytes_lineage:short`. Both load a
+  supported `bytes(2)` writer's fixed file with a `bytes(6)` reader and
+  compare the reader's fixed save byte for byte with the same value written
+  directly under the reader's layout. The older values are zero bytes and
+  the two bytes `00 ff`. Both must read whole and unchanged
+  ([FIXED-FORM-ALGORITHM §4.1](FIXED-FORM-ALGORITHM.md#41-the-plan)).
+  Run on a target with `make verify-tablegen-<lang>`. To select this pair
+  alone, pass `--only pin:bytes_lineage:` to `build/verify-tablegen-bin`.
+- **The compressed-float endpoint pins**: [`ratio-endpoints.txt`](../test/packet-write-cfloat/ratio-endpoints.txt)
+  gives the packet bytes for both [accepted endpoints](#compressed-float-packet-endpoints).
 - **The cards corpus**: `tables/cards/conformance/` (`MANIFEST.txt`,
   `FORMAT.md`, `cases/`, `expected/`).
 - **The harness and driver contract**: `test/conformance/` (the harness in
@@ -214,6 +225,23 @@ matching row in the corpus (a case, a golden, a refusal row); a case added
 to the corpus without a matching statement in the specification is likewise
 incomplete. A port states the spec version it passes the suite of.
 
+### Regression cases for implementation fixes
+
+Every fix to observable Schema behavior adds or extends a case in the shared
+corpus listed in §1. Give the case a stable identifier and cite the rule it
+tests. State the input and the expected result precisely enough for a new
+implementation to produce its answer from the specification alone. For wire
+output, include the bytes and significant bit count when the format requires
+both. For a refusal, identify the operation and the outcome the specification
+requires for that target. If the rule admits more than one answer, say which
+answers a port may return and how the case is judged.
+
+When two readings of a rule would produce different observable results,
+clarify the normative clause and choose a case that distinguishes them. The
+case must fail on the affected implementation before the fix and pass after
+it. If the shared suite cannot express the difference yet, record the missing
+case and keep the regression open until a port can run it through the suite.
+
 ## 7. Conformance evidence for rules decided 2026-11-20..22
 
 The source registrations for these rulings are linked below. Each evidence
@@ -284,7 +312,7 @@ per-port check where no shared case exercises it.
 | GAP-20 | A union and its structural payload are two levels (SPEC-TABLES §4); gaps Zig5, Hs8, Li4 | `rr-depth-placed-union-map-128`, `-129` (#4706) |
 | SF-03, SF-04 | the variable `Save` and `Measure` check rows 1–2 on every field, not only on `\| required` fields (SPEC.md §5.1 rows 1–2) | `write-refusal` (`wref_range_*`, `wref_bits_wide*` on a fixed root); `sfv_bits_wide` / `sfv_bits_ok` on the variable root `TortureCook` (a plain non-required `bits(13)`, 8192 refused and 8191 written); a ranged non-required `int` on a variable root is owed: no corpus unit with a `min` / `max` on a variable root has a write-refusal path in the hand-coded legs (#4740) |
 | SF-05, SF-06 | C and C++ debug builds assert the message save and measure write contract even when the fixed table exceeds the fixed-file record ceiling (SPEC.md §5.1 rows 1, 2, 10 and SPEC-TABLES §3.4) | `TestCMessageCeilingWriteAssert`, `TestCppMessageCeilingWriteAssert` and their `Compiled` twins. The compiled checks save and measure the same table with lawful values. A shared `write-refusal-message` case is owed until the harness has an initialized-value seed mode. The current surface seeds each value by loading a file, and this table has no file form (#4744). |
-| SF-07, SF-08 | the packet `Write` checks row 8 (text) and row 10 (compressed float) in every C# target, unity included (SPEC.md §5.1 rows 8, 10) | `write-refusal-packet` (`text_illformed`, `text_zero`, `text_long`); a compressed-float row (SF-08) is owed: `PacketWriteRefusal` declares no compressed float, and no C# leg runs this surface yet (#4740) |
+| SF-07, SF-08 | the packet `Write` checks row 8 (text) and row 10 (compressed float) in every C# target, unity included (SPEC.md §5.1 rows 8, 10) | `write-refusal-packet` (`text_illformed`, `text_zero`, `text_long`); a compressed-float row (SF-08) is owed: `PacketWriteRefusal` declares no compressed float, and no C# leg runs this surface yet (#4740); Go runs the [accepted compressed-float endpoints](#compressed-float-packet-endpoints) |
 | SF-27 | the text read maps a deprecated enum variant to the field default (an element: None) (SPEC-TABLES §2.15 READ) | owed: the text-form corpus (`testdata/conformance/text`) carries strings only, so an enum text case needs the text surface extended (#4740) |
 | SF-32, SF-33 | tooling (moo-analyze run with no output, Luau bitpacker probe) (none: not a wire rule) | none (#4740) |
 | SF-09 to SF-15 | a write check reaches every carrier: a plain field, an optional, an array element, a union arm, a keyed slot (SPEC.md §5.1 rows 1–4, 8) | `write-refusal` (`wref_*`, `wref_var_*`, `wref_shapes_*`); on `TortureCook`, `sfv_opt_bits_wide` / `sfv_opt_bits_ok`, `sfv_elem_bits_wide` / `sfv_elem_bits_ok`, and `TestRustWriteRefusalReachesEveryCarrier` (#4501, #4740) |
@@ -347,3 +375,12 @@ evolution", the close of §4's counters and the opening of §6.6; USAGE.md's enu
 width; COMPETITION.md's never-clobber line. Each now promises a newer reader
 on older data and no more: an older reader given newer data may refuse it by
 name, lawfully.
+
+### Compressed float packet endpoints
+
+[`RatioEndpoint`](../test/packet-write-cfloat/PacketRatio.schema) declares a closed
+`[0, 1]` range at resolution `0.01` ([packet wire §2.5](PACKET-WIRE-ALGORITHM.md#25-compressed-float-write)).
+The [endpoint cases](../test/packet-write-cfloat/ratio-endpoints.txt) pin the seven-bit
+step indices 0 and 100 and their zero-padded packet bytes `00` and `64`.
+`make packet-cfloat-endpoints-go` writes each endpoint through the generated Go
+packet writer, checks the exact byte, and reads back the original value.

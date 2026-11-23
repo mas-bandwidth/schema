@@ -2628,7 +2628,7 @@ func CountedMinSaveMessageBody(w *TableMessageWriter, value *CountedMin) bool {
 		}
 		allBirth := value.FewCount == 2
 		if allBirth {
-			for i := 0; i < 2; i++ {
+			for i := range 2 {
 				if value.Few[i] != 0 {
 					allBirth = false
 					break
@@ -3903,7 +3903,7 @@ func MinPlainFixSaveMessageBody(w *TableMessageWriter, value *MinPlainFix) bool 
 		}
 		allBirth := value.FewCount == 2
 		if allBirth {
-			for i := 0; i < 2; i++ {
+			for i := range 2 {
 				if value.Few[i] != 0 {
 					allBirth = false
 					break

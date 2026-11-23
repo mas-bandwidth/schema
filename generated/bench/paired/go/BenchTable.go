@@ -6042,7 +6042,7 @@ func BenchMixedSaveBody(w *TableWriter, value *BenchMixed) bool {
 		}
 		allBirth := value.EntitiesCount == 1
 		if allBirth {
-			for i := 0; i < 1; i++ {
+			for i := range 1 {
 				mark := w.Ids.Count
 				n := MixedEntityMeasureBody(&value.Entities[i], w.Ids)
 				w.Ids.Truncate(mark)

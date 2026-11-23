@@ -65,7 +65,7 @@ type CorpusMeta struct {
 	Schemas   int        `json:"schemas"`
 	CaseCount int        `json:"case_count"`
 	Pairs     []PairMeta `json:"pairs"`
-	// Pinned is the hand-written array-default matrix's units (pinned.go)
+	// Pinned is the hand-written corpus's units (pinned.go)
 	Pinned []PinnedUnit `json:"pinned"`
 	// PinnedVersion is pinned.go's case layout; a cached corpus of another
 	// layout is generated again
@@ -370,7 +370,7 @@ func ensureTablegenCorpus(corpusDir string, seed uint64, schemas int, forceGen b
 		praw, err2 := os.ReadFile(packPath)
 		if err1 == nil && err2 == nil {
 			var meta CorpusMeta
-			if json.Unmarshal(mraw, &meta) == nil && meta.Seed == seed && meta.Schemas == schemas && len(meta.Pairs) == schemas && len(meta.Pinned) == len(pinnedShapes()) && meta.PinnedVersion == pinnedVersion {
+			if json.Unmarshal(mraw, &meta) == nil && meta.Seed == seed && meta.Schemas == schemas && len(meta.Pairs) == schemas && len(meta.Pinned) == len(pinnedShapes())+1 && meta.PinnedVersion == pinnedVersion {
 				allExist := true
 				for _, pu := range meta.Pinned {
 					if !fileExists(pu.Dir) {
