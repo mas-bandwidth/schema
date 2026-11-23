@@ -42,8 +42,16 @@ fixed table ArmFix { pick Pick }
 		{"table", "value.pick.fewCount < 2 || value.pick.fewCount > 4) { return false; }", "the writer's preflight refuses a count below A"},
 		{"variable", "bound:4,min:2,", "the cook writer's descriptor carries A"},
 		{"variable", "count < (fd.min || 0)", "the cook writer refuses a count below A"},
-		{"variable", "if (fd.min && count < fd.min) { report.oor++;", "the variable wire reader counts a count below A"},
-		{"variable", "if (fd.min && placed < fd.min) { report.oor++; }", "the text reader counts an array shorter than A"},
+		{"variable", `if (!fd.list && !fd.fixed && fd.min > 0 && count < fd.min) {
+      report.refused = 1;
+      if (!report.reason) { report.reason = "count_over_bound: " + fd.n; }
+      return false;
+    }`, "the variable wire reader refuses a count below A"},
+		{"variable", `if (fd.min > 0 && placed < fd.min) {
+      report.refused = 1;
+      if (!report.reason) { report.reason = "count_over_bound: " + fd.n; }
+      return true;
+    }`, "the text reader refuses an array shorter than A"},
 	} {
 		body := table
 		if want.where == "variable" {

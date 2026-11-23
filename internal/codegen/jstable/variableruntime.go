@@ -698,7 +698,7 @@ function TableVariableOpen(bytes, report) {
 // whose type id this root cannot place keeps its index and counts one unknown;
 // every pointer naming it reads null.
 function TableVariableCountRefused(report) {
-  return report.refused && (report.reason === "count_over_extent_cap" || String(report.reason).startsWith("count_over_bound"));
+  return report.refused && (report.reason === "count_over_extent_cap" || globalThis.String(report.reason).startsWith("count_over_bound"));
 }
 
 // A reference joins the id-table sequence at the moment the bytes name it.
