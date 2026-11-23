@@ -58,8 +58,7 @@ func TestFastInputAccountingKeepsBothCanaries(t *testing.T) {
 	}
 }
 
-// The producer runs for either existing Dart verification or corpus
-// accounting. Only corpus accounting runs the dependent consumer.
+// Both jobs run for Dart verification or corpus accounting.
 func TestDartConformanceHandoffSelection(t *testing.T) {
 	t.Parallel()
 	wf := workflows(t, repoRoot(t))["ci-fast.yml"]
@@ -68,7 +67,7 @@ func TestDartConformanceHandoffSelection(t *testing.T) {
 		produce, consume              bool
 	}{
 		{"unrelated", `["go"]`, "false", "mas-bandwidth/schema", false, false},
-		{"verify only", `["dart"]`, "false", "mas-bandwidth/schema", true, false},
+		{"verify only", `["dart"]`, "false", "mas-bandwidth/schema", true, true},
 		{"corpus only", `[]`, "true", "mas-bandwidth/schema", true, true},
 		{"verify and account", `["dart"]`, "true", "mas-bandwidth/schema", true, true},
 		{"fork", `["dart"]`, "true", "fork/schema", false, false},
