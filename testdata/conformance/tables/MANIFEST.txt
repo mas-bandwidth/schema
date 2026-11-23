@@ -2528,12 +2528,15 @@ unit tblann4096 test/tables/announce4096/Announce.schema
 unit tblann4097 test/tables/announce4097/Announce.schema
 connection surfaces_conn tblsurf 0xd4e8971dbc849333 testdata/conformance/tables/wire/surfaces_conn.bin
 
-# FL-11 (SPEC-TABLES §16.14 W2): the text writer judges its depth cap at table
-# and type values only. 128 Links put the last at depth 128 and its `vals`
-# array at depth 129, and it is written; one Link more is refused
-# (graph_chain_past_cap, above). FL-16 (§2.3): a null `*T | required` is
-# written as index 0 and reads back null; its twin points at a node.
-instance surf_chain128_vals        tblsurf Chain   testdata/conformance/tables/wire/surf_chain128_vals.bin
+# FL-11 (SPEC-TABLES §16.2, §16.14 W2): the JSON read cap counts every
+# container (root=0, depth 128 = 129 nested containers max; 130th refuses
+# malformed), while the write cap counts table/type values only. 128 Links put
+# `vals` at container depth 129 (130th container), so `surf_chain128_vals` is
+# `no-text` on the positive round-trip corpus and `surf_chain127_vals` (depth
+# 128 = 129 containers) is the positive round-trip witness; one Link past the
+# write cap is refused (`graph_chain_past_cap`, above). FL-16 (§2.3): a null
+# `*T | required` is written as index 0 and reads back null; its twin points at a node.
+instance surf_chain128_vals        tblsurf Chain   testdata/conformance/tables/wire/surf_chain128_vals.bin no-text
 instance surf_chain127_vals        tblsurf Chain   testdata/conformance/tables/wire/surf_chain127_vals.bin
 instance surf_holder_null_required tblsurf Holder  testdata/conformance/tables/wire/surf_holder_null_required.bin
 instance surf_holder_present       tblsurf Holder  testdata/conformance/tables/wire/surf_holder_present.bin
@@ -2571,10 +2574,10 @@ write-refusal-json    sjref_keyed_short    tblsurf       Arrays testdata/conform
 write-refusal-json    sjref_keyed_ok       tblsurf       Arrays testdata/conformance/tables/wire/surf_arrays_full.bin per  elems 3 wrote
 
 # FL-06 (docs/SPEC.md §5.1 row 9): Marks names bits 1, 2 and 4. A bit no
-# variant names (8) is KEPT by the file writers, refused by the text writer
-# and refused by the message writer, where it is above the 3-bit width.
-write-refusal         sref_mask_unnamed    tblsurf       Arrays testdata/conformance/tables/wire/surf_arrays_full.bin marks mask 8 wrote
-write-refusal-fixed   sfref_mask_unnamed   tblsurf       Arrays testdata/conformance/tables/wire/surf_arrays_full.bin marks mask 8 wrote
+# variant names (8, bit 3 >= W = 3) is REFUSED by every writer under R17
+# (SPEC-TABLES §3.3, §4: A TABLE LOAD HOLDS A MASK TO ITS WIDTH).
+write-refusal         sref_mask_unnamed    tblsurf       Arrays testdata/conformance/tables/wire/surf_arrays_full.bin marks mask 8 refused
+write-refusal-fixed   sfref_mask_unnamed   tblsurf       Arrays testdata/conformance/tables/wire/surf_arrays_full.bin marks mask 8 refused
 write-refusal-message smref_mask_unnamed   surfaces_conn Arrays testdata/conformance/tables/wire/surf_arrays_full.bin marks mask 8 refused
 write-refusal-message smref_mask_named     surfaces_conn Arrays testdata/conformance/tables/wire/surf_arrays_full.bin marks mask 7 wrote
 write-refusal-json    sjref_mask_unnamed   tblsurf       Arrays testdata/conformance/tables/wire/surf_arrays_full.bin marks mask 8 refused

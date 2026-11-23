@@ -93,7 +93,7 @@ the refusal (`MANIFEST.txt`, "THE 2026-11-22 SURFACES"):
 | FL-38, FL-36, FL-18: 4096 entries announced, 4097 refused; strict mode; a send with no announcement | `announce` | `ann_*` |
 | FL-02, FL-03, FL-17, FL-29: a read zeroes its report, a refusal leaves the caller's values at their defaults, an omitted fixed capacity is the file's own, a read never throws | `read-into` | `ri_*` |
 | FL-14, FL-15: float text ignores the process locale; a caller-buffer writer writes nothing past its text | `json-write-into` | `jwi_*` |
-| FL-11: the text writer's depth cap counts table and type values only | `wire`, `json-read`, `json-write` | `surf_chain128_vals`, `surf_chain127_vals`; refusal `graph_chain_past_cap` |
+| FL-11: the text depth cap (read counts every container; write counts table/type values) | `wire`, `json-read`, `json-write` | `surf_chain127_vals` (`wire`/`json-read`/`json-write`), `surf_chain128_vals` (`wire`, `no-text`); refusal `graph_chain_past_cap` |
 | FL-16: a null `*T \| required` is written as index 0 and reads back null | `wire`, `json-read`, `json-write` | `surf_holder_null_required`, `surf_holder_present` |
 
 ## 3. The driver protocol
