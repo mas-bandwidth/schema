@@ -127,9 +127,10 @@ local tableModuleName = function(dir) {
   local tmp = getenv("TMPDIR");
   if (tmp == null || tmp.len() == 0) tmp = getenv("TMP");
   if (tmp == null || tmp.len() == 0) tmp = dir;
+  local key = (outdir != null ? outdir : "") + ":" + mode + ":" + dir;
   local h = 2166136261;
-  for (local i = 0; i < dir.len(); i++) h = ((h ^ (dir[i] & 0xff)) * 16777619) & 0xffffffff;
-  local listing = tmp + "/schema-tables-" + format("%08x", h) + ".txt";
+  for (local i = 0; i < key.len(); i++) h = ((h ^ (key[i] & 0xff)) * 16777619) & 0xffffffff;
+  local listing = tmp + "/schema-tables-" + mode + "-" + format("%08x", h) + ".txt";
   local name = null;
   try {
     system("ls -1 -- " + shq(dir) + "/*Tables.nut > " + shq(listing) + " 2>/dev/null");
