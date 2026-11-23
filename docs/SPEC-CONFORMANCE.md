@@ -261,6 +261,13 @@ case must fail on the affected implementation before the fix and pass after
 it. If the shared suite cannot express the difference yet, record the missing
 case and keep the regression open until a port can run it through the suite.
 
+When a public API accepts an optional numeric limit, its contract must
+identify the unit, the source of the default, and the result of explicitly
+supplying zero. The regression cases must distinguish omission (where
+supported), zero, exact fit and one over capacity using otherwise valid
+inputs. Where several limits apply, vary each independently. Include an
+empty-input case when the format admits one.
+
 ## 7. Conformance evidence for rules decided 2026-11-20..22
 
 The source registrations for these rulings are linked below. Each evidence
@@ -509,3 +516,69 @@ test driver's edit. A port may use any caller API that constructs that value.
 
 Run `make table-optional-array-resize-go` to exercise the generated Go writer
 and reader. The expected file is also the comparison input for a new port.
+
+### Explicit zero and omitted limits
+
+Use a fresh receiving vocabulary for each [§3.3 announcement case](SPEC-TABLES.md#33-the-message-form-a-batch-of-bitpacked-bodies-under-one-announced-vocabulary).
+Use an ordinary empty vocabulary and an ordinary nonempty vocabulary
+that fits the defaults. Let `E` and `L` be the nonempty vocabulary's entry
+count and payload length in bytes. Keep the other limit sufficient while
+varying the limit under test. Use the same announcement bytes throughout
+each column.
+
+| Receiver setting | Empty vocabulary | Nonempty vocabulary |
+|---|---|---|
+| Construction defaults, sufficient storage | Accept, count 0 | Accept, count `E` |
+| Explicit entry limit 0 | Accept, count 0 | Refuse |
+| Explicit entry limit `E` | Accept, count 0 | Accept, count `E` |
+| Explicit entry limit `E - 1` | Accept, count 0 | Refuse |
+| Explicit byte limit 0 | Accept, count 0 | Refuse |
+| Explicit byte limit `L` | Accept, count 0 | Accept, count `E` |
+| Explicit byte limit `L - 1` | Accept, count 0 | Refuse |
+| Both limits explicitly 0 | Accept, count 0 | Refuse |
+
+A refused first announcement leaves `announced` false. Its outer framing
+still occupies bytes for the empty vocabulary. Measure `L` inside that
+framing. On APIs with separately allocated storage, keep enough storage
+for the nonempty vocabulary even in the explicit-zero tests.
+
+The generated Java witness derives `E` and `L` from a compiler-produced
+nonempty vocabulary and exercises the same empty and nonempty announcements
+under independent entry and byte limits. Run it with a JDK available:
+
+```sh
+SCHEMA_SLOW=1 go test -count=1 -v ./internal/codegen/javatable -run '^TestAnnouncementBudgetsJava$'
+```
+
+For [§3.4 fixed-file reads](SPEC-TABLES.md#34-the-fixed-form-a-record-of-values-under-a-layout),
+use the same [one-record file](../testdata/wire/fixed-empty-batch/one-record.bin)
+in every row. It stores `a = 7` and `name = "hello"` in the
+[Batch declaration](../test/fixed-empty-batch/Batch.schema). This file
+format requires at least one record.
+
+| Fixed reader capacity | Result on one record |
+|---|---|
+| Omitted, on an API that permits omission | Accept, return one record |
+| Explicit 0 | Refuse for insufficient capacity |
+| Explicit 1 | Accept, return one record |
+
+An implementation whose fixed reader requires a caller-provided destination
+runs the explicit-capacity cases with room for zero and one record respectively.
+
+The [fixed-capacity cases](../testdata/conformance/feature-witnesses/fixed-load-capacity/cases.txt)
+also exercise the typed empty-save call, which must refuse before emitting a
+file. Python exercises omission and both explicit capacities. Go uses the
+length of the required destination slice and also checks that the empty
+save leaves the supplied buffer intact.
+
+Run this command from the repository root after preparing the Go runtime
+with `make deps` and the pinned interpreters with `make dist-python`.
+An existing `../serialize.go` checkout or an absolute `SERIALIZE_GO` path
+also supplies the Go runtime. Set `PYTHON` and `PYTHON_FLOOR` to existing
+pinned executables to use them in place of the local Python builds.
+
+```sh
+SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -v \
+  ./internal/codegen/gotable ./internal/codegen/pythontable \
+  -run 'Test(Go|Python)FixedLoadCapacityWitness'
+```
