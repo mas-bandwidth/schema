@@ -1,0 +1,5 @@
+# THE RELEASE WIRE-FUZZ GATE'S ABSENT SEEDS (make/wire-fuzz-release.mk,
+# tools/wirefuzzrelease). One line per leg and arm whose roster has seeds the
+# leg has no codec for: `<leg> <arm> <count> <why>`. The harness counts them
+# ("N seeds absent"); a run with any is RED unless a line here holds that exact
+# count, and a line whose leg now answers every seed is RED until it is removed.

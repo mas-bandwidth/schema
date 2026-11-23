@@ -208,6 +208,20 @@ reads beside the worktree (path, clone URL, tag, commit), as data a tool can
 stage without running the build; `make deps` stages any that are missing at
 those pins and leaves a present one alone.
 
+**A missing sibling stops the run at once, in one line.** A fresh clone has no
+siblings until `make deps` stages them. A goal that needs one (`test-<leg>`,
+`build/conformance-<leg>`, `conformance`, and `make sibling-<leg>` on its own)
+stops when the Makefile is read, before any recipe runs, and says which leg
+needs which checkout and the command to run:
+
+```
+Makefile:7219: *** the cs leg needs the sibling checkout ../serialize.cs (src/Serialize.cs is missing): run 'make deps'.  Stop.
+```
+
+`conformance-harness run` refuses the same way for every leg it is about to
+run. Nothing else is needed after `make deps`: it is the whole setup for the
+sibling runtimes. A leg named in `SCHEMA_SKIP_LEGS` does not need its sibling.
+
 ## How to run the tests, and the rule that sets their shape
 
 The owner's rule, said twice in one day:
@@ -358,6 +372,17 @@ per-commit rule: a job that runs on every commit finishes in two minutes).
 
 So a change to the C++ emitters wants a dispatch run on its branch before
 merging, not just a green pull request.
+
+A pull request into a lane (any base that is not `main`: a review lane such as
+`rowan/fix-ledger-1122`, a sprint stream, `dev`) is checked against current
+`main`, not against the lane alone. Every `ci-fast.yml` job runs
+[`.github/actions/merge-main`](../.github/actions/merge-main/merge-main.sh) right
+after its checkout: it merges current `main` into the PR-into-lane checkout,
+says how many commits the lane is behind, and the plan selects by what differs
+from `main`. A lane that does not merge cleanly with `main` fails that step by
+name, with the conflicting paths; the fix is to merge `main` into the lane.
+`internal/ci` `TestEveryFastCheckoutMergesMain` holds every job to it, and
+`merge_main_test.go` plants a drifted lane and a conflicting one.
 
 One more gate is not CI at all. A pull request is not merged until its authors
 have signed the [Contributor Assignment Agreement](#the-contributor-assignment-agreement).

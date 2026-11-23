@@ -10,6 +10,7 @@
   <ItemGroup>
     <Compile Include="$(DefaultsDir)/*.cs" />
     <Compile Include="../../../build/packet-defaults/cs/plain/*.cs" />
+    <Compile Include="../../../build/packet-defaults/cs/constant-*/*.cs" />
     <Compile Include="../../../../serialize.cs/src/Serialize.cs" />
     <Compile Include="../../../../serialize.cs/src/Int128Pair.cs" />
   </ItemGroup>
