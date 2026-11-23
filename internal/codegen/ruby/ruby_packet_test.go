@@ -686,12 +686,39 @@ func packetDefaultsProbe(t *testing.T, fault bool) {
 		t.Fatal(err)
 	}
 	inputs := map[string][]byte{"main.rb": driver}
-	for _, name := range []string{"sample-defaults", "sample-empty", "sample-short", "batch-defaults", "zero-count", "conditional-on", "conditional-off", "choice-sample"} {
-		data, err := os.ReadFile(filepath.Join(root, "testdata", "wire", "packet-defaults", name+".bin"))
+	// Every .bin of the pin directory goes to the driver, which fails on any it
+	// did not read: a pin added to the directory is never skipped.
+	bins, err := filepath.Glob(filepath.Join(root, "testdata", "wire", "packet-defaults", "*.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bins) == 0 {
+		t.Fatal("no pins in testdata/wire/packet-defaults")
+	}
+	for _, bin := range bins {
+		data, err := os.ReadFile(bin)
 		if err != nil {
 			t.Fatal(err)
 		}
-		inputs[name+".bin"] = data
+		inputs[filepath.Base(bin)] = data
+	}
+	// The constant-default pins: both schemas declare package arithmetic, so each
+	// generates into its own tree, constant-<name>/, beside the driver.
+	constantSchemas, err := filepath.Glob(filepath.Join(root, "test", "conformance", "packet", "testdata", "constant-defaults", "*", "Defaults.schema"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(constantSchemas) != 2 {
+		t.Fatalf("want the 2 constant-default schemas, found %d", len(constantSchemas))
+	}
+	for _, schema := range constantSchemas {
+		additional, err := Generate(loadRubyUnit(t, schema))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for rel, data := range additional {
+			files["constant-"+filepath.Base(filepath.Dir(schema))+"/"+rel] = data
+		}
 	}
 	for _, pin := range []struct {
 		name string

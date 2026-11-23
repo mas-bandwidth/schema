@@ -34,9 +34,11 @@ export NODE
 toolchain-js:
 	@$(call toolchain_probe,js,NODE,$(NODE))
 	@$(call toolchain_probe,js,ESLINT,$(ESLINT))
-build/packet-defaults/js/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema make/js.mk
+build/packet-defaults/js/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema $(wildcard test/conformance/packet/testdata/constant-defaults/*/Defaults.schema) make/js.mk
 	./bin/schema generate --lang js --out build/packet-defaults/js/defaults test/packet-defaults/Defaults.schema
 	./bin/schema generate --lang js --out build/packet-defaults/js/plain test/packet-defaults/Plain.schema
+	./bin/schema generate --lang js --out build/packet-defaults/js/constant-hexadecimal-addition test/conformance/packet/testdata/constant-defaults/hexadecimal-addition/Defaults.schema
+	./bin/schema generate --lang js --out build/packet-defaults/js/constant-unsigned-subtraction test/conformance/packet/testdata/constant-defaults/unsigned-subtraction/Defaults.schema
 	@touch $@
 
 .PHONY: packet-defaults-js packet-defaults-js-negative-control

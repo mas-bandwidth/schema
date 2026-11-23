@@ -65,7 +65,7 @@ $(JAVA_HOSTILE_BUILD)/packet/.stamp: bin/schema make/hostile-packet-units.sh mak
 # where N is every case the port answered (a SKIP is not run), and
 # build/mustrun holds N to this number, so a manifest that loses cases or a case
 # that starts skipping is red. A commit that adds a hostile case changes it.
-JAVA_HOSTILE_CASES ?= 192
+JAVA_HOSTILE_CASES ?= $(shell grep -vc '^#' $(JAVA_HOSTILE_CORPUS)/manifest.tsv)
 .PHONY: schema-java-runs-hostile-corpus
 schema-java-runs-hostile-corpus: build/mustrun $(JAVA_HOSTILE_BUILD)/classes/.stamp $(JAVA_HOSTILE_BUILD)/packet/.stamp
 	$(JAVA) -cp $(JAVA_HOSTILE_BUILD)/classes Runner --scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv
