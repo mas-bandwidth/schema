@@ -45,7 +45,7 @@ func TestCppConformanceProducerReusesTheVerifiedBlockCompiler(t *testing.T) {
 	wf := readCI(t, repoRoot(t), ".github/workflows/ci-fast.yml")
 	jobs := yamlJobs(wf)
 	block, producer := jobs["block-gate"], jobs["build-cpp-conformance-account"]
-	for _, want := range []string{"make bin/schema", "git rev-parse HEAD^{tree}", "sha256sum bin/schema", "name: schema-compiler-${{ github.run_id }}"} {
+	for _, want := range []string{"tables-block-zero-cost", "needs.plan.outputs.cpp_corpus_account", "git rev-parse HEAD^{tree}", "sha256sum bin/schema", "name: schema-compiler-${{ github.run_id }}"} {
 		if !strings.Contains(block, want) {
 			t.Errorf("block-gate compiler artifact lacks %q", want)
 		}

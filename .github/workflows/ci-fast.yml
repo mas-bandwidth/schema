@@ -2026,7 +2026,8 @@ jobs:
   # IT TAKES NO CACHE, deliberately, like the job it comes from: this is where
   # "the build did no work" must not be an available explanation for a green.
   block-gate:
-    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    needs: plan
+    if: always() && !cancelled() && startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # fleet: 38-83 s; hosted builds bin/schema with no cache, by design
     timeout-minutes: 2
@@ -2042,13 +2043,12 @@ jobs:
         with:
           go-version: '1.26'
           cache: false
-      # The compiler is already a prerequisite of tables-block-zero-cost. Stage
-      # it before that gate and publish only after the gate passes, binding the
-      # binary to this post-merge source tree and its own digest.
-      - name: Build the compiler once for this checkout
+      - name: the tables goldens match a fresh generation (the block zero-cost gate, byte-identity half)
+        run: make -j"$(nproc)" tables-block-zero-cost
+      - name: Stage the compiler for the C++ accounting build
+        if: needs.plan.outputs.cpp_corpus_account == 'true'
         run: |
           set -euo pipefail
-          make bin/schema
           artifact="$RUNNER_TEMP/schema-compiler"
           rm -rf "$artifact"
           mkdir -p "$artifact/bin"
@@ -2058,9 +2058,8 @@ jobs:
       # The three languages write separate trees, so they run side by side:
       # one after another they were the sum of three rows, past the
       # per-commit limit on a busy runner.
-      - name: the tables goldens match a fresh generation (the block zero-cost gate, byte-identity half)
-        run: make -j"$(nproc)" tables-block-zero-cost
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: needs.plan.outputs.cpp_corpus_account == 'true'
         with:
           name: schema-compiler-${{ github.run_id }}
           path: ${{ runner.temp }}/schema-compiler
