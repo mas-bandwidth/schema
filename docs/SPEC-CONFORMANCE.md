@@ -429,21 +429,20 @@ SCHEMA_SLOW=1 go test -count=1 -v ./internal/codegen/javatable -run '^TestMessag
 ### Ordinary message-driver round trips
 
 The Java, Rust, and Lua conformance drivers exercise the message form through
-the generated public API, not an internal decoder. For every `message` row
+the generated public API. For each ordinary round-trip `message` row
 they read the row's `connection` announcement into one fresh receiving
 vocabulary, load the batch against that same vocabulary, and save the loaded
 values through the root's message writer. The harness compares every saved
 byte with the committed message golden.
 
-The shared backend fixtures make three otherwise easy-to-miss driver mistakes
-observable:
+Use the following fixtures to check the public results.
 
 | Contract | Shared fixture and required answer |
 |---|---|
 | Exact golden comparison | `store_full` loads and re-saves byte-for-byte as `testdata/wire/tables/store_full_message.bin`. |
-| Declared enum value survives the public read/write path | `store_full` carries `Currency.EUR`; substituting the default `USD`, accepting an out-of-domain ordinal, or indexing the enum from the wrong base changes the saved golden and fails the row. |
+| Declared enum value survives the public read/write path | `store_full` carries `Currency.EUR`; the reader must preserve that value and the writer must reproduce its encoded ordinal. |
 | A lawful multi-body batch is actually delivered | `batch_delivered` loads both `StorePurchase` bodies and answers `count 2`; `batch_range_in_second`, `batch_cut_in_second`, and `batch_byte_after_pad` each answer `count 0`. |
-| Omitted enum-keyed slots keep their declared defaults | `batch8-tabledemo.KeyedConfig` loads through the ordinary public reader and its returned values save successfully; sparse entries on the wire do not turn the fixed keyed array into a sparse caller value. |
+| Omitted enum-keyed slots keep their declared defaults | `batch8-tabledemo.KeyedConfig` loads through the ordinary public reader and its returned values save successfully; each keyed slot absent from the wire has its declared default. `internal/codegen/luatable` `TestMessageEnumKeyedArrayKeepsOmittedDefaults` runs the same rule through the generated Lua API. |
 
 The batch-count rows deliberately judge only the public loader's returned
 count. After a refusal, caller storage and the implementation's reason are not
