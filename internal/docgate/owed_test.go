@@ -13,6 +13,7 @@ import (
 // PR has merged, or whose ids are all in the tree, can no longer say owed.
 // It reads git and the tree, never the network.
 func TestOwedRowsAreLinked(t *testing.T) {
+	t.Parallel()
 	root, err := FindRoot(".")
 	if err != nil {
 		t.Fatal(err)
@@ -32,6 +33,11 @@ func TestOwedRowsAreLinked(t *testing.T) {
 	}
 	merged, err := MergedPRs(root)
 	switch {
+	case errors.Is(err, ErrShallow) && os.Getenv("GITHUB_ACTIONS") == "true":
+		// CI fetches the history for this check (ci-fast.yml and
+		// ci-full.yml, "the history the owed-table check reads"); a CI run
+		// without it is a broken job, never a pass.
+		t.Fatalf("%v: in CI the job must fetch the history before this test", err)
 	case errors.Is(err, ErrShallow):
 		// A shallow checkout (a CI job at fetch-depth 1) has no history to
 		// read. The tree half below still runs; the merged half is named
@@ -68,6 +74,7 @@ func TestOwedRowsAreLinked(t *testing.T) {
 // TestOwedCheckGoesRed plants each failure the check exists to catch and
 // asserts it is caught, so the gate above cannot pass by checking nothing.
 func TestOwedCheckGoesRed(t *testing.T) {
+	t.Parallel()
 	page := func(rows ...string) string {
 		return "# x\n\n" + OwedHeading + "\n\nprose\n\n" + OwedHeader + "\n|---|---|---|---|---|---|\n" + strings.Join(rows, "\n") + "\n\n## 8. next\n"
 	}

@@ -17,9 +17,11 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"unicode"
 )
 
@@ -187,24 +189,57 @@ func CheckCounted(root string) ([]Problem, Counts, error) {
 	sort.Strings(files)
 	counts.Pages = len(pages)
 
+	// Every file is read and checked on its own, so the files are spread
+	// over one worker per CPU; pages and byBase are only read here. The
+	// results are gathered per file and summed in file order, then sorted
+	// below, so the output is the serial walk exactly.
+	type result struct {
+		problems     []Problem
+		links, cites int
+		err          error
+	}
+	results := make([]result, len(files))
+	next := make(chan int)
+	var wg sync.WaitGroup
+	for w := 0; w < runtime.GOMAXPROCS(0); w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range next {
+				rel := files[i]
+				data, err := os.ReadFile(filepath.Join(root, rel))
+				if err != nil {
+					results[i].err = err
+					continue
+				}
+				if isBinary(data) {
+					continue
+				}
+				text := string(data)
+				if _, ok := pages[rel]; ok {
+					found, n := checkLinks(rel, text, root, pages)
+					results[i].problems = append(results[i].problems, found...)
+					results[i].links = n
+				}
+				found, n := checkCitations(rel, text, pages, byBase)
+				results[i].problems = append(results[i].problems, found...)
+				results[i].cites = n
+			}
+		}()
+	}
+	for i := range files {
+		next <- i
+	}
+	close(next)
+	wg.Wait()
 	var problems []Problem
-	for _, rel := range files {
-		data, err := os.ReadFile(filepath.Join(root, rel))
-		if err != nil {
-			return nil, counts, err
+	for _, r := range results {
+		if r.err != nil {
+			return nil, counts, r.err
 		}
-		if isBinary(data) {
-			continue
-		}
-		text := string(data)
-		if _, ok := pages[rel]; ok {
-			found, n := checkLinks(rel, text, root, pages)
-			problems = append(problems, found...)
-			counts.Links += n
-		}
-		found, n := checkCitations(rel, text, pages, byBase)
-		problems = append(problems, found...)
-		counts.Citations += n
+		problems = append(problems, r.problems...)
+		counts.Links += r.links
+		counts.Citations += r.cites
 	}
 	sort.Slice(problems, func(i, j int) bool {
 		if problems[i].File != problems[j].File {

@@ -1184,6 +1184,17 @@ jobs:
           SCHEMA_SLOW: '1'
         run: go test ./bench/tools ./test/conformance/harness ./test/conformance/packet
 
+      # THE OWED TABLE READS MERGED PULL REQUESTS FROM HISTORY
+      # (internal/docgate TestOwedRowsAreLinked, docs/SPEC-CONFORMANCE.md
+      # §7): fetch it blobless (commits and trees only) so that half runs.
+      - name: the history the owed-table check reads
+        if: matrix.group == 'unit-rest-check'
+        run: |
+          set -euo pipefail
+          if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
+            git fetch --quiet --unshallow --filter=blob:none origin
+          fi
+
       - name: go test the checker, the doc gate, the lockfile, the text form and the baseline
         if: matrix.group == 'unit-rest-check'
         env:
