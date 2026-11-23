@@ -38,6 +38,7 @@ import (
 	"tblm2"
 	"tblp1"
 	"tblp3"
+	"tblpacketunions"
 	"tblr1"
 	tblr1variable "tblr1variable"
 	"tblr2"
@@ -325,6 +326,9 @@ func init() {
 	})
 	bind("tblvaluedefaults", "FixedDefaults", func(c codec) codec {
 		return fixedForm(c, tblvaluedefaults.FixedDefaultsFixedLoad, tblvaluedefaults.FixedDefaultsFixedMeasure, tblvaluedefaults.FixedDefaultsFixedSave)
+	})
+	bind("packetunions", "ShapeMsg", func(c codec) codec {
+		return fixedForm(c, tblpacketunions.ShapeMsgFixedLoad, tblpacketunions.ShapeMsgFixedMeasure, tblpacketunions.ShapeMsgFixedSave)
 	})
 	bind("cooktorture", "TortureFixedWref", func(c codec) codec {
 		return fixedForm(c, cooktorture.TortureFixedWrefFixedLoad, cooktorture.TortureFixedWrefFixedMeasure, cooktorture.TortureFixedWrefFixedSave)

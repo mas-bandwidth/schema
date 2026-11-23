@@ -424,6 +424,11 @@ generated class per table and per map entry, each with its descriptor
   - unions with table arms, and arrays of them: carried
     ([the table unions](port-python/table-unions.md))
 
+  - arrays of a union whose arms are all packet types: carried on the
+    variable, fixed, message and text forms, through the same descriptor-driven
+    `union_array` codec. The [canonical cases](SPEC-CONFORMANCE.md#packet-union-arrays-in-table-closures)
+    cover counted and fixed arrays in the table closure.
+
 - **A packet-typed field is carried by value.** A packet `type` in a table
   field, array element, map value or union arm is carried
   ([the table packet types](port-python/table-packet-types.md)).

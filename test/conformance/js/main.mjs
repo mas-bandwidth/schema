@@ -582,6 +582,7 @@ const messageRows = [
   ["tblvarevo3", "EvoMsg", "varevo3/Tblvarevo3Table.js", "varevo3/VarEvo3Table.js"],
   ["tblprior", "Prior", "prior/TblpriorTable.js", "prior/PriorNarrowTable.js"],
   ["messagedemo", "ToolMessage", "messages/MessagedemoTable.js", "messages/MessagesTable.js"],
+  ["packetunions", "ShapeMsg", "packetunions/TblpacketunionsTable.js", "packetunions/PacketUnionsTable.js"],
 ];
 
 const messageFuzzRows = [
@@ -804,6 +805,8 @@ const wireRows = [
   // string, bytes and flags defaults in every carried field shape (SPEC §4.2)
   ["tblvaluedefaults", "VarDefaults", "valuedefaults/TblvaluedefaultsVariable.js"],
   ["tblvaluedefaults", "FixedDefaults", "valuedefaults/TblvaluedefaultsVariable.js"],
+  ["packetunions", "ShapeDoc", "packetunions/TblpacketunionsVariable.js"],
+  ["packetunions", "ShapeMsg", "packetunions/TblpacketunionsVariable.js"],
   // the message corpus's root on the variable wire: union arms of every
   // carried field type, wide text among them (§2.6, §3)
   ["messagedemo", "ToolMessage", "messages/MessagedemoVariable.js"],
@@ -1013,6 +1016,7 @@ const textUnits = {
   tblvarevo3: "varevo3/Tblvarevo3Variable.js",
   cooktorture: "cooktorture/CookTortureVariable.js",
   cooktorturewide: "cooktorturewide/CookTortureWideVariable.js",
+  packetunions: "packetunions/TblpacketunionsVariable.js",
   backenddemo: "backend/BackenddemoVariable.js",
   vocabdemo: "vocab/VocabdemoVariable.js",
   vocab9demo: "vocab9/Vocab9demoVariable.js",

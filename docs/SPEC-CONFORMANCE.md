@@ -456,3 +456,19 @@ requires its variable-form measure and save to complete.
 | Enum-keyed `Beta` slot at 0 and 50 | `sfw_slot_min`, `sfw_slot_max` |
 
 Run these cases with `make table-write-bounds-go`.
+
+
+### Packet union arrays in table closures
+
+[The packet union fixture](../test/tables/packetunions/PacketUnions.schema) covers
+arrays of a union whose arms are packet types ([SPEC §4.8](SPEC.md) and
+[SPEC-TABLES §§2.6, 3, 3.3, 3.4 and 16](SPEC-TABLES.md)). The shared manifest
+registers these canonical cases across the variable, fixed, message and text forms.
+
+| Cases | Form and values |
+|---|---|
+| `packetunions_doc_full`, `packetunions_doc_empty` | Form 1 document with a full or empty counted array, together with a fixed array. |
+| `packetunions_msg_full`, `packetunions_msg_one` | Form 3 records with full or single-element counted arrays. Each also has a form 2 pin over `packetunions_conn`. |
+
+The full cases carry a live `None` between selected packet arms. The counted
+array's length includes that element.
