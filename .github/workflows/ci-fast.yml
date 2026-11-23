@@ -1607,6 +1607,19 @@ jobs:
         with:
           pins: ${{ steps.pins.outputs.pins }}
 
+      # THE OWED TABLE READS MERGED PULL REQUESTS FROM HISTORY
+      # (internal/docgate TestOwedRowsAreLinked, docs/SPEC-CONFORMANCE.md
+      # §7). The checkout is one commit deep, so a row that tests docgate
+      # fetches the history first, blobless (commits and trees only, about
+      # 9 s), and the merged-PR half runs: in CI it is never NOT RUN.
+      - name: the history the owed-table check reads
+        if: contains(matrix.packages, 'internal/docgate')
+        run: |
+          set -euo pipefail
+          if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
+            git fetch --quiet --unshallow --filter=blob:none origin
+          fi
+
       - name: go test this row's packages
         if: matrix.packages != ''
         env:

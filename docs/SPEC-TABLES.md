@@ -28,8 +28,13 @@ tool output are one case, not two, and the whole of this document serves
 it. The hardcoded wire (`type`, SPEC.md) is the same-build contract,
 guarded by the protocol id: same-or-refuse. Packets are its loudest user,
 not its definition — any data whose writer and reader share a schema build
-belongs there. The table wire is the opposite contract: **any reader reads
-any data**, and the differences are reported, never fatal.
+belongs there. The table wire is the opposite contract: **any lawful lineage
+reads, and a breaking edit refuses by name.** A reader reads another build's
+data across every lawful edit and reports the differences; an edit that is not
+lawful, a field whose type changed among them, refuses the whole load by name
+and is never defaulted, counted and read on (§4, THE ONE WIDENING RULE). The
+principle is the owner's (2026-11-22): *"If it is a user error, or an
+incorrect use, refuse."*
 
 The two contracts never mix. Flatbuffers- and protobuf-class evolution
 ideas apply here, to tables — they do not apply to `type`, whose wire is
@@ -128,7 +133,13 @@ there, while C, C++, C#, Dart, Java, JavaScript and Rust still read form `1`
 through their plain load. The tool's engine now writes and reads form `3` at an
 admitted fixed root; the conformance corpus's historical form-1 fixed-root
 files are now `previous_form` refusal rows that owe `refused`, and its
-fixed-root positives are form `3`. A
+fixed-root positives are form `3`. **The `framing` battery is no exception**:
+its form-`1` vectors name the fixed `tblr1 Cfg`, and its surface reads each one
+through the VARIABLE TWIN of that declaration — the same declaration with its
+class variable, which is a variable root and reads form `1` — then answers the
+fixed root's text and form-`3` write-back (test/conformance/README.md, The
+surfaces; Go's `tblr1CfgVariableLoad`). One answer per surface: `report` reads
+at the fixed root and refuses, `framing` reads at the variable twin and reads. A
 declared fixed table past one of §3.4's bounds (a union in a regional unit, a
 record over 65536 bytes, depth past the walk bound, or the leaf cap) carries
 no form `3` at all. A declared root above the record ceiling has no file
@@ -201,8 +212,8 @@ reason, and the reasons do not transfer:
   frame time because everything was decided at build time.
 
 **And the self-describing wire (§3) is slower on purpose**, because it is the
-one form that CROSSES VERSIONS in both directions: ids, kinds, lengths and a
-read report are what let a reader read data written years apart, and every one of them is a byte
+one form that CROSSES VERSIONS: ids, kinds, lengths and a
+read report are what let a newer reader read data written years before it (an older reader given a newer file may refuse it by name, lawfully: R17), and every one of them is a byte
 the three fast paths do not spend. That is the trade this document exists to
 make, and it is why the fast paths are accelerators BESIDE the wire rather
 than replacements for it.
@@ -868,16 +879,19 @@ refuses a table today is a gap, named in §15, not a design.
   enough to walk, print, diff, edit or bind any table value at runtime
   with no RTTI and no schema files on hand.
 - **The wire carries evolution** (§4), so tools and games on different
-  builds exchange data along a lawful lineage: old readers skip what they
-  cannot name, new readers default what old writers never wrote, and anything
-  else is refused by name.
+  builds exchange data along a lawful lineage: a new reader defaults what an
+  old writer never wrote and skips a removed field it cannot name (what the
+  message form and retained unknowns also rest on), and anything else is
+  refused by name. An old reader skipping a field added after it is
+  incidental, not promised: an old build reading a new file may refuse it by
+  name, lawfully (R17).
 
 ## 2. Declaration
 
 ```
 fixed table Physics
 {
-    mass float32 | min = 0.1, max = 100000.0
+    mass float32 = 1.0 | min = 0.1, max = 100000.0, resolution = 0.01
     drag float32
 }
 
@@ -1179,15 +1193,18 @@ defaults.
 
 The framing is exactly the non-optional field's, which makes `?T` and a
 plain `T` nesting **one framing with two spellings**: for any value that is
-not entirely default, a schema may move a field between the two and no byte
-moves, in either direction.
+not entirely default, no byte moves between the two, in either direction.
+**The LINEAGE runs one way** (R16, 2026-11-22: *"once a field is optional, it
+must stay optional forever"*): `T` to `?T` is a WIDENING, and every old value
+lands present; `?T` to `T` is a NARROWING, refused at check time by the
+baseline, naming the field (§18.2), by the lock (§21.1) and at read by the
+fixed form (§3.4). The one rule is §4's, THE ONE WIDENING RULE.
 
 **`*T` IS NOT IN THAT FAMILY, and the difference is deliberate.** A pointer
 rides as a node index under its own kind `17` (§3.1), because a body that may
 be named twice cannot also sit inline at one of its names. So moving a field
-between a pointer and either of the other two is a REPORTED edit: §4's kind
-mismatch, counted, with the field taking its declared default and the rest of
-the body reading on. A shared kind would have made that edit silent — a stored
+between a pointer and either of the other two is a REFUSED edit: §4's kind
+mismatch, and the whole load refuses `kind_mismatch`. A shared kind would have made that edit silent — a stored
 index reading back as a plausible length — and the wire spends a kind rather
 than allow it.
 
@@ -1336,6 +1353,9 @@ table Player
 - **The writer ALWAYS writes it.** A required field never elides at its
   default: it rides on every record, and a variable table's writer emits it
   even when it holds zero. Absence is no longer expressible for the field.
+  A `*T | required` pointer that is null rides as its null index (`0`), and
+  its reader reads it back null and present: a null pointer is a value, not
+  an absence.
 - **The reader REFUSES a record missing it.** An older record written before
   the field was required lacks it; reading it is refused with the event
   `missing_required`, naming the field. The record does not silently fall
@@ -1435,6 +1455,7 @@ enum is keyed.
   from. **The shift is never written at a call site**: the accessor is the
   only place it appears.
 
+<!-- example: fragment -->
   ```cpp
   fleet.ships[ ship_type ]   // runtime key: refuses None and past Max, reads slots[ key - 1 ]
   ```
@@ -1509,6 +1530,7 @@ enum is keyed.
   `1 .. E.Max` over storage `0 .. E.Max − 1` — yielding the KEY beside the
   ELEMENT:
 
+<!-- example: fragment -->
   ```cpp
   for ( auto [ ship_type, ship ] : fleet.ships )   // ship_type is the KEY, never an index
   {
@@ -1978,7 +2000,7 @@ each the one it inherits, and §3 states them: a `None` element is the arm id
 `0` in its place; elision is the by-value array's — an empty counted array and
 a fixed array of `None` elide, and a live `None` element rides; and element
 kind `15` is held apart from `13` by the element-kind rule, so `[N]Body` ⇄
-`[N]Table` is a reported edit. The arms may be types, tables or a mix, and a
+`[N]Table` is refused by name, `kind_mismatch`. The arms may be types, tables or a mix, and a
 VARIABLE arm makes the holder variable through an array exactly as through a
 field. The enum-KEYED spelling `[E]Body` is a named follow-on (§15): a keyed
 body elides slots by name (§3.2), and a `None` slot there wants its rule
@@ -2697,6 +2719,7 @@ red:
 
 **THE C++ SURFACE**, in the dialect (§13.9), a builder and a reader.
 
+<!-- example: fragment -->
 ```cpp
 FleetBuilder builder;                                   // the arena, and the root
 Fleet * fleet = builder.GetRoot();
@@ -2808,7 +2831,7 @@ binary-searching it. Row by row, with the section that holds each:
 |---|---|---|---|
 | enum keys | `[E]T`, complete, positional, fixed class, refuses `None` (§2.4) — better than a map, so the map refuses them by name | refused, ride as the number | a sorted vector on the ordinal |
 | bounded-string and integer keys | `string(N)` and every integer kind, fixed storage, byte order (§2.8) | string and integral | string and scalar `(key)` fields |
-| evolution by name | a key or value type change is reported, never misdecoded; the map reads empty and says so (§2.8, §4) | a type change misdecodes or drops by field number | none; a vtable slot's type is trusted |
+| evolution by name | a key or value type change refuses the whole load by name, `kind_mismatch`, never misdecoded (§2.8, §4) | a type change misdecodes or drops by field number | none; a vtable slot's type is trusted |
 | a shared node as a value | `map[K]*T`: two keys, one node, on the wire, in a region and in the text as `&node` (§3.1, §16.7) | tree only; a value is copied per key | an `Offset` may be reused by the builder; nothing preserves it through text |
 | a map as a value | `map[K]map[K2]V`, by value, recursing (§2.8) | a map value may not be a map | a vector of tables of vectors, by hand |
 | zero allocation on `Load` and `Find`, every language | the region load allocates nothing and `Find` is in place (§6.5, §2.8); **Elixir emits no table wire today** and has no `Load` to measure (schema#515) | a hash map is allocated on parse in every runtime | `LookupByKey` allocates nothing; in C++, Swift and C |
@@ -3096,9 +3119,9 @@ to see it. **Editing a VALUE in place invalidates nothing.** A list gets no
 exemption here and asks for none.
 
 **§4.1'S SILENT CLASS STAYS AT FOUR, and the construct adds nothing to it.**
-Changing the element's TYPE moves the element kind and is reported. Changing
-its POINTER-NESS moves the element kind between `13` and `17` and is reported,
-which is what kind `17` was spent for (§3.1). Removing or adding the BOUND
+Changing the element's TYPE moves the element kind and refuses the whole load
+`kind_mismatch`. Changing its POINTER-NESS moves the element kind between `13`
+and `17` and refuses the same way, which is what kind `17` was spent for (§3.1). Removing or adding the BOUND
 moves no byte and loses no value, so it is not silent, it is nothing. What is
 silent about a `[]T` is exactly what is silent about any array: the element's
 REFERENT swapped for a twin that carries the same field ids under different
@@ -3328,6 +3351,7 @@ corpus row or instance that meets it, and the one instrument that goes red.
 
 **THE C++ SURFACE**, in the dialect (§13.9), a builder and a reader.
 
+<!-- example: fragment -->
 ```cpp
 SaveBuilder builder;                                    // the arena, and the root
 Save * save = builder.GetRoot();
@@ -3418,7 +3442,7 @@ each:
 | zero allocation on `Load` and on read, every language | the region load allocates nothing and indexing is in place (§6.5); **Elixir emits no table wire today** and has no `Load` to measure (schema#515) | a repeated field is allocated on parse in every runtime | reading allocates nothing, in C++, Swift and C |
 | a cook read in place | `Open` is O(1) and the elements are the mapped bytes (§7) | none, parse first | yes, the vector is the buffer |
 | a shared node as an element | `[]*T`: two slots, one node, on the wire, in a region and in the text as `&node` (§3.1, §16.7) | tree only, a message is copied per slot | an `Offset` may be reused by the builder, nothing preserves it through text |
-| element evolution by name | an element's type change is reported, never misdecoded (§3, §4) | a type change misdecodes or drops by field number | none, a vtable slot's type is trusted |
+| element evolution by name | an element's type change refuses the whole load by name, `kind_mismatch`, never misdecoded (§3, §4) | a type change misdecodes or drops by field number | none, a vtable slot's type is trusted |
 | byte-stable output | `measure == save`, index order, one image from one value (§9) | field order is the writer's | the builder's order |
 | a fixed-table user pays nothing | a list-free unit carries no list machinery, held by the zero-cost gate's header scan (§2.2) | every runtime carries the repeated codec | every runtime carries the vector |
 
@@ -3615,7 +3639,7 @@ fixed table ShipConfig
 }
 ```
 
-New locks start with `schema-lock 9`, use the prospective full-width, path-addressed definitions digest, and include complete `writer=<hex>` snapshots (the fixed-form algorithm §5.2). Rendering6/7/8 histories are salvaged without changing their saved wire keys; relocking appends the prospective current identity. Historical snapshots are checked against each entry’s recorded digest scheme. The supported rendering-7 example below remains readable unchanged; its absent snapshots are legacy-unknown.
+New locks start with `schema-lock 10`, use the prospective full-width, path-addressed definitions digest, and include complete `writer=<hex>` snapshots (the fixed-form algorithm §5.2). Rendering6/7/8 histories are salvaged without changing their saved wire keys; relocking appends the prospective current identity. Historical snapshots are checked against each entry’s recorded digest scheme. The supported rendering-7 example below remains readable unchanged; its absent snapshots are legacy-unknown.
 
 ```
 schema-lock 7
@@ -3724,7 +3748,7 @@ under a new name:
   and append a new one"*
 - a **moved range, resolution or fixed-point scale**, none of which moves a
   byte and all of which change what the bytes say: *"… is [1, 240] in the lock
-  and [1, 480] in the declaration — a field already in the lock keeps its
+  and [1, 120] in the declaration — a field already in the lock keeps its
   range: the bounds and the resolution are the scale a stored value is read
   back at, so moving them reads every record already written as a different
   number (docs/SPEC-TABLES.md §2.10); deprecate this field and append a new
@@ -3825,9 +3849,9 @@ schema lock [--print] [--verbose] [--retire Table[@0x...] --reason <text>] [dir|
 Apart from `--retire`, it only ever APPENDS entries and values, adds blocks and
 flips `deprecated` on:
 it runs the check's own comparison first and **refuses everything the check
-refuses** — a reorder, a removal, a widening, a kind change, a held type that
-moved, an array element that moved, a union arm's payload type that moved, a
-moved default, a moved range, a flipped `?`, a reordered value list, an
+refuses** — a reorder, a removal, a narrowing, a kind change, a held type that
+moved, an array element that moved, a union arm whose payload names a
+different declaration, a moved default, a narrowed range, a flipped `?`, a reordered value list, an
 un-deprecation, a table withdrawn without a retirement, a type gone from the closure, a hand-edited
 file — so the one command that moves the file cannot be the one that breaks
 the rule. The ONE
@@ -3930,8 +3954,9 @@ still wins.
 **Its kind is its own and it widens into nothing.** On the variable wire a
 field respelled between `int64` and `timestamp` is a kind mismatch in both
 directions: the whole load refuses `kind_mismatch` (§4; the old skip-and-count
-rule is overturned, §4's strict read), and the widening family is closed to the
-pair: refused, by name, until it is ruled. What the kind buys over the bare
+rule is overturned, §4's strict read). Neither spelling is a widening of the
+other, so the pair is refused by name (R14, 2026-11-22; §4, THE ONE WIDENING
+RULE). What the kind buys over the bare
 `int64` is exactly that refusal, plus the value a target holds — `time.Time`
 in Go, UTC on read, with a time outside `Time.UnixNano`'s domain refused by
 name rather than wrapped — and its text form, an RFC 3339 string (§16.2).
@@ -4146,8 +4171,8 @@ declaration `?string(N)` stays the follow-on §15 names.
   the zero reference when it is ABSENT. That is exactly the bytes of a bounded
   array of a one-field table, so it needs no rule at all.
 - Respelling an element between `string(M)` and `?string(M)` moves the element
-  kind between `12` and `13` and is a reported edit under §4's element-kind rule
-  (§3), never a silent one.
+  kind between `12` and `13` and refuses the whole load `kind_mismatch` under
+  §4's element-kind rule (§3), never a silent one.
 
 **BOUNDS, on the write side.** The Go builder and `Save` hold the count to `N`
 and each element to `M` exactly as a bounded array of tables and a `string(N)`
@@ -4613,8 +4638,8 @@ MEANS, never where it is.
 refused. And undeprecating — taking `| deprecated` off again — is refused by
 the lock and by §21.1's monotone check, naming the enum and the variant. A
 deprecated field keeps this same one-way rule today; the field's own refusal is
-stated once, in `internal/lockfile/monotone.go:465` and pinned by
-TestLockFieldUndeprecateRefuses and TestUnDepRecateRefused. The variant is the
+stated once, in `monotoneAt` (`internal/lockfile/monotone.go`) and pinned by
+TestLockFieldUndeprecateRefuses and TestUnDeprecateRefused. The variant is the
 same rule one level in, not a second one.
 
 **READ.** A reader that meets a deprecated variant's id — on any form — yields
@@ -4628,6 +4653,11 @@ covers the SCALAR enum field, and the ARRAY and MAP forms whose elements (for
 a map, whose VALUES) are enum values. It does NOT cover a keyed `[Enum]T`:
 a deprecated variant's slot does not apply there. A text-list spelling
 (`[Enum]string(M)`) follows §2.13's existing text-list refusal instead.
+
+**The text form is a form.** The hand-editable text (§16.9) and the JSON text
+read a deprecated variant by its name the same way every other form reads its
+id: the fields declared default, an array or map elements default, and never
+the variant itself.
 
 **WRITE.** A strict write refuses a value holding a deprecated variant with
 `invalid_value`, the Reason naming `<Table>.<field>` and the variant. A
@@ -4779,11 +4809,12 @@ registry.
   there is nothing to count. **The form byte is read FIRST**, before the
   trailer and before any body, so a file that is both a newer form and damaged
   is a refusal and never damage. On a form the reader knows, a trailer it
-  cannot read is `wire_damaged` (below). The ESCAPE KIND (below) covers a new
-  KIND inside this form, and the form byte covers a new FRAMING. **Nothing else rides in
+  cannot read is `wire_damaged` (below). A kind this major does not name is
+  damage too (below): the newer reader reads old data, never the other way
+  (R17), and the form byte covers a new FRAMING. **Nothing else rides in
   front**: no magic, no identity, no content hash, no build version. A file
   that must say what it is puts a field on its root table, `format uint32 = 3`,
-  which an older reader reads like any other field.
+  which a file written without it defaults like any other field.
 - **The ROOT BODY follows the form byte and ENDS AT ITS OWN ZERO
   REFERENCE**, wherever that falls.
 - **The ID TABLE is the trailer**, and a reader locates it from the END of
@@ -4851,8 +4882,20 @@ bit, is malformed on the same rule.
 i8, `3` i16, `4` i32, `5` i64, `6` u8, `7` u16, `8` u32, `9` u64, `10` f32,
 `11` f64, `12` string, `13` table, `14` array, `15` union, `16` enum-keyed
 array, `17` pointer index, `18` i128, `19` u128, `20`–`24`
-fixed8/16/32/64/128, `25`–`29` ufixed8/16/32/64/128, `30` enum, `31` escape,
-`32` no payload, `36` timestamp.
+fixed8/16/32/64/128, `25`–`29` ufixed8/16/32/64/128, `30` enum,
+`32` no payload, `36` timestamp. `31` is held (below).
+
+**`31` IS HELD BY NAME AND NEVER WRITTEN** (R17; the maintainer,
+2026-11-22: "the newer reader can read old data, but never the other
+way"). It was the ESCAPE, a kind a later major's writer could carry so that a
+reader of this major stepped over it by its `L`. That served only an OLDER
+reader meeting NEWER data, which is not a requirement, and no writer of this
+major emits it, so no reader ever meets it in data this major wrote. **A
+reader meets `31` ANYWHERE only as DAMAGE** — at a field it cannot name, at
+one it declares, as an arm's kind, as an element kind, in a message
+announcement or body, and under retain-unknown — and refuses the WHOLE load,
+on the terms `33` and `34` take below. The number is held so that it is
+never reused.
 
 **`33` IS RETIRED: wide text is not part of schema; text is UTF-8 `string`**
 (SPEC.md §4.12). The number is HELD BY NAME AND NEVER REUSED, no writer emits
@@ -4865,14 +4908,11 @@ AND NOTHING ELSE** (SPEC.md §4.10). It is not part of this major's set, no
 writer emits it, and no reader has a rule for it. The construct is declined
 here, the spelling a program uses today is `bits(16)` with the conversion in
 application code, and the number is held only so that the kind a LATER MAJOR
-spends on half floats is the one every page already names. **A conforming
-later-major writer that wants this major to survive its file carries the new
-kind under the ESCAPE KIND `31`** (#434), which is what the escape is for, so
-a reader of this major skips it by its `L` and counts it `unknown`. **A
-reader of this major therefore meets `34` only as DAMAGE** — a kind it cannot
-skip, exactly as it meets `37` or `200` — and that is the correct answer,
-because a bare `34` on the wire is a writer that ignored the escape rather
-than a value this reader was ever meant to read. Reserving a number costs no
+spends on half floats is the one every page already names. **A reader of this
+major meets `34` only as DAMAGE** — a kind it cannot skip, exactly as it meets
+`31`, `37` or `200` — and that is the correct answer: the newer reader reads
+old data and never the other way (R17), so a file carrying a later major's
+kind is not one this reader was ever meant to read. Reserving a number costs no
 byte and no rule, and it keeps the kind table and the declined-construct list
 one document rather than two.
 
@@ -4894,9 +4934,9 @@ one document rather than two.
   | `20`–`24` fixed8/16/32/64/128 | 1/2/4/8/16 bytes, the RAW scaled integer of a `fixed(I, F)` whose storage is that width (I + F bits), two's complement |
   | `25`–`29` ufixed8/16/32/64/128 | 1/2/4/8/16 bytes, the raw scaled integer of a `ufixed(I, F)` of that width, unsigned |
   | `30` enum | the VARIANT ID reference, `0` for `None` |
-  | `31` escape | `L`, then `L` bytes, opaque |
+  | `31` held by name | none: no writer emits it, and a reader meets it only as damage (R17) |
   | `32` no payload | `L`, then `L` bytes, and this form writes `L = 0` |
-  | `36` timestamp | 8 bytes, two's complement, little-endian: NANOSECONDS SINCE THE UNIX EPOCH, `0` being the zero time `1970-01-01T00:00:00Z` (SPEC.md §4.13). The payload is the `i64`'s and the KIND is not `5`: a field respelled between `int64` and `timestamp` is a kind mismatch, counted, never reinterpreted, and NEITHER SPELLING WIDENS INTO THE OTHER (§4). Every count is a legal value — the wire has no range to check — and what a target refuses is a time its own time type holds and no count names, at the point a time enters the field, by name (SPEC.md §4.13). **`35` IS NOT THIS KIND'S NUMBER:** `35` is the fixed layout's optional wrapper (§3.4), a LAYOUT kind that never rides a record, and the next number the wire has free is `36` |
+  | `36` timestamp | 8 bytes, two's complement, little-endian: NANOSECONDS SINCE THE UNIX EPOCH, `0` being the zero time `1970-01-01T00:00:00Z` (SPEC.md §4.13). The payload is the `i64`'s and the KIND is not `5`: a field respelled between `int64` and `timestamp` is a kind mismatch that refuses the WHOLE load `kind_mismatch`, never reinterpreted, defaulted or counted, and NEITHER SPELLING WIDENS INTO THE OTHER (R14; §4, THE ONE WIDENING RULE). Every count is a legal value — the wire has no range to check — and what a target refuses is a time its own time type holds and no count names, at the point a time enters the field, by name (SPEC.md §4.13). **`35` IS NOT THIS KIND'S NUMBER:** `35` is the fixed layout's optional wrapper (§3.4), a LAYOUT kind that never rides a record, and the next number the wire has free is `36` |
 
   **A `1` BOOL'S PAYLOAD IS ONE BYTE, AND `0` AND `1` ARE THE ONLY LEGAL VALUES.**
   A writer writes only `0` or `1`. On the VARIABLE wire any OTHER byte is
@@ -4932,8 +4972,8 @@ one document rather than two.
   its sixteen bytes, low half first. **The kinds are distinct from the
   integers' for the reason kind `17` is distinct from `8`**: a `fixed(16, 16)`
   and an `int32` are the same four bytes and not the same number, so a field
-  moved between them is a reported edit, `kind_mismatch` (§4), rather than a
-  value read at the wrong scale. There is one kind per storage width and
+  moved between them refuses the whole load by name, `kind_mismatch` (§4),
+  rather than a value read at the wrong scale. There is one kind per storage width and
   signedness because a skipper knows a scalar's width from its kind byte
   alone (below), and nothing about `F` rides. `F` is a declaration-side fact,
   invisible on the wire like a compressed float's resolution, and the
@@ -4987,20 +5027,19 @@ one document rather than two.
   `wire_damaged` (§4, §6.5), exactly as for a fixed-width arm whose
   `L` is not its width.
 
-  **KIND `31` IS THE ESCAPE, and no declaration maps to it.** Its payload is
-  `L` and `L` bytes, opaque, and this major never writes one. It exists so
-  that the closed set can be added to across a major without the addition
-  reading as damage: a kind introduced in a later major rides as this framing
-  carrying its own inner encoding, and a reader of this major steps over it
-  cleanly and says so. It is the only kind whose meaning a reader is licensed
-  not to know.
+  **KIND `31` IS HELD BY NAME AND NEVER WRITTEN, and no declaration maps to
+  it** (R17). It was the escape that let a later major add a kind for a
+  reader of this major to step over; the newer reader reads old data and never
+  the other way, so there is no kind whose meaning a reader is licensed not to
+  know. A later major's kind is read by a later major's reader.
 
-  **WHERE THE READER MEETS KINDS `31` AND `32` DECIDES WHAT IT ANSWERS.** At a position the reader CANNOT name, kind `31` is skipped by its
-  `L` and counted `unknown`, exactly as a field whose id the reader cannot
-  name is. At a position the reader DOES name, a field or an arm that arrives
-  under kind `31` or kind `32` where the declaration says otherwise is an
-  ordinary kind mismatch, and the read refuses `kind_mismatch` (§4). One rule decides it, and it is the
-  rule every other kind already takes.
+  **WHERE THE READER MEETS KIND `32` DECIDES WHAT IT ANSWERS; KIND `31` IS
+  DAMAGE WHEREVER IT IS MET.** At a position the reader DOES name, a field or
+  an arm that arrives under kind `32` where the declaration says otherwise is
+  an ordinary kind mismatch, and the read refuses `kind_mismatch` (§4), the
+  rule every other kind already takes. Kind `31` at ANY position — a field
+  the reader cannot name, one it does, an arm, an element — is DAMAGE, and the
+  whole load refuses `wire_damaged` (§4), exactly as for `33` and `34`.
 
   **An array's ELEMENT KIND is part of its identity, not only its framing.**
   For kinds `14` and `16` a reader first holds the body's element kind to the
@@ -5095,8 +5134,9 @@ one document rather than two.
   are ONE FRAMING under two declaration spellings. **`*T` naming a TABLE is
   the exception**: it rides as a node index under its own kind `17` (§3.1),
   because a body that may be named twice cannot also sit inline at one of its
-  names. The distinct kind is what makes moving a field to or from `*T` a
-  REPORTED edit rather than a quiet one, for the same reason kind `16` exists
+  names. The distinct kind is what makes moving a field to or from `*T` an
+  edit REFUSED BY NAME, `kind_mismatch` on the whole load (R14), rather than a
+  quiet one, for the same reason kind `16` exists
   (§3.2): a node index and a plain `uint32` are two different things, and
   only the kind can tell a reader which it is holding.
 
@@ -5154,7 +5194,7 @@ one document rather than two.
     or keyed body without this check. **No declaration produces `14`, `16`,
     `31`, `32`, `33`, `34`, `35` or `36`** under either body kind: arrays of
     arrays are refused, so no element is an array or a keyed body; `31` is
-    the escape, `32` the payload-free kind, `33` is retired, `34` is
+    held by name and never written, `32` the payload-free kind, `33` is retired, `34` is
     reserved, `35` is the fixed layout's wrapper and never a wire kind, and
     `36` (timestamp) is a bare table field with no array spelling. A kind ON
     the body kind's list that differs from the reader's own element kind
@@ -5176,7 +5216,7 @@ one document rather than two.
 - **Skipping a field you cannot name** needs the kind byte and nothing else,
   which is what makes an unknown field survivable (§4). Four rules cover the
   set. Kinds `1`–`11`, `18`–`29` and `36` skip their fixed width. Kinds `17` and
-  `30` read one LEB128 value and stop. Kinds `12`, `13`, `14`, `16`, `31`
+  `30` read one LEB128 value and stop. Kinds `12`, `13`, `14`, `16`
   and `32` read `L` and skip `L` bytes. Kind `15` reads the arm id reference
   and stops there if it is `0`, else reads the kind byte, then `L`, and skips
   `L` bytes.
@@ -5185,8 +5225,9 @@ one document rather than two.
   rather than an addition. At a position the reader names and at one it
   cannot alike, the failed skip is damage and the whole load is discarded (§4),
   so no counter the read moved on the way is defined
-  (`frame_kind_unknown_37`, `frame_kind_unknown_37_named`). Kind `31` is the one way a later major adds one
-  without becoming that change (above).
+  (`frame_kind_unknown_37`, `frame_kind_unknown_37_named`). Kind `31` is one of
+  these: held by name, never written, and damage wherever it is met (above;
+  R17).
 
 **The id table is the last thing in the file, and a reader finds it from the
 END.** The final eight bytes are the ENTRY COUNT, a fixed little-endian u64.
@@ -5207,7 +5248,13 @@ little-endian u64, and the body ends where the first entry begins.
   carries one id twice is malformed (below). **A reader refuses a table whose
   entries are not in first-use order**: an id-table entry that is unused, or
   out of first-use order, is a spelling no conforming writer produces, and the
-  read refuses it rather than re-encoding it (§4).
+  read refuses it rather than re-encoding it (§4). **First use counts EVERY
+  reference in the file, a reader's skipped bytes included**: an unknown
+  field's header and body, a field of a kind this reader steps over, an arm or
+  a record it does not decode. The writer's walk named those ids, so the
+  order a reader checks is the order of the whole scan (rows `framing
+  skipped_ids_first_use`, which reads, and `framing skipped_ids_out_of_order`,
+  which refuses).
 - **The table is why the wire pays for 64-bit identity once.** A file that
   names forty distinct ids across ten thousand fields carries forty ids, and
   every field header spends one byte on the reference where an inline id
@@ -5368,7 +5415,8 @@ twenty unnameable entries counts nothing at all if no body references them.
   Elision makes the DECLARED DEFAULT part of the wire contract: see §4.
   **Elision is the writer's rule, not a variable-file read predicate.** A
   file carries neither the writer's build nor its Required/optional declaration.
-  Removing `required` or moving between `T` and `?T` is lawful (§2.3, §4),
+  Removing `required` or moving from `T` to `?T` is lawful (§2.3, §4; the
+  reverse, `?T` to `T`, is refused by the baseline, not by this read),
   so a field stored at its declared default may come from an older Required
   writer or a present optional. It reads, including empty collections,
   all-default fixed arrays and nested bodies. A current plain declaration
@@ -5424,7 +5472,6 @@ under 128, two under 16,384, and so on.
 | a union holding a set arm of `L` bytes | header + the arm reference + one kind byte + `L` + `L` bytes |
 | a union holding `None` | nothing: it elides |
 | a pointer | header + the index |
-| the escape kind | header + `L` + `L` bytes |
 | a payload-free arm | the arm reference + one kind byte + one zero byte |
 | the whole file's framing | 1 for the form byte, 8 for the entry count, 8 an entry |
 
@@ -5479,14 +5526,15 @@ that instrument goes red.
   writes one id into two entries, and leaves a byte between the root's
   terminator and the first entry. Red if a leg decodes a body under any of
   them rather than refusing `wire_damaged` once for the wire.
-- **The kind set, the enum kind and the escape kind.** The fuzzer's kind-swap
+- **The kind set, the enum kind and the held kind `31`.** The fuzzer's kind-swap
   pass writes every kind byte to every other value, `0` and one past the last
   kind included, at field positions, at arm positions and in an array header's
   element-kind byte. A `report` row plants kind `31` at a field the reader
   cannot name, at a field it CAN name, at an arm, and as an element kind, one
   at each of the three depths at which `tables/messages` carries a union
-  (§2.6). Red if the unnameable position does not read (the value written back
-  equals the canonical bytes), or if a named position reads.
+  (§2.6), and the `varevo_kind31_*` and `varevo_2hop_*` rows plant it under
+  framing, report and retain-unknown. Red if ANY of them reads: kind `31` is
+  held by name and refused wherever it is met (R17).
 - **The enum kind against the raw integer.** A `report` row written with an
   enum field and read with the field respelled `uint16`, and the reverse.
   Red if either direction reads; each refuses, writes nothing.
@@ -6110,7 +6158,7 @@ as every enum-extent array would, is ruled on schema#606.
 **And the two spellings do not decode each other.** A `16` body read as a
 `14`, or the reverse, would take keys for values and values for keys — the
 same silent corruption in a different costume — so the distinct kind is
-what makes changing spelling a REPORTED edit (§4) rather than a quiet one.
+what makes changing spelling an edit REFUSED BY NAME (§4) rather than a quiet one.
 A reader meeting the other kind refuses `kind_mismatch`.
 
 The same bytes serve every use: a file on disk, a blob in memory, a
@@ -6143,6 +6191,13 @@ byte, no byte length and no alignment inside a message or between messages.
 **FORM BYTE `2` IS THE MESSAGE FORM, and form byte `1` does not move.** A
 form-`1` wire is the three parts §3 describes and every rule above holds over it
 unchanged. Nothing in this subsection touches a file.
+
+**A VALUE IS HELD TO ITS OWN DECLARATION.** Two declarations that share a
+field name and kind may share one announced entry, and an entry carries the
+looser of their spans. The writer still holds a value to the rule of the
+declaration it is written under (the table, the struct or the union that
+owns the field), never to the looser rule of a same-named field elsewhere:
+`A.hp = 6` is refused on `A.hp` being `0..5` whatever `B.hp` admits.
 
 **THE FORM IS A FIXED TABLE'S, and that is a declaration, not a derivation**
 (§2.2). A message is a bitpacked body under a vocabulary announced once, so the
@@ -6252,6 +6307,14 @@ time."*
 `MeasureMessages` sizes the buffer. There is no singular verb, because a caller
 with one message passes one and pays a count of eight bits for it.
 
+**The writer needs no announcement in hand.** `SaveMessages` and
+`MeasureMessages` write every body under the sender's OWN vocabulary, the one
+its own announcement carries, so a sender that has not announced, or has not
+yet read its peer's announcement, still writes; no port refuses or returns
+nothing for want of a vocabulary. **A refused `SaveMessages` writes nothing
+into the caller's buffer**: it measures the whole batch before its first byte,
+so a refusal leaves no partial batch behind.
+
 **THE BATCH SURFACE'S FOUR ANSWERS, each stated rather than left to a codec.**
 
 - **`M` ABOVE 256 ON THE WRITE SIDE IS A REFUSAL BY NAME.** `MeasureMessages`
@@ -6347,7 +6410,7 @@ zero pad to the next byte boundary                 (verified zero)
   the pad is zero**, which is the packet wire's rule for the same reason (SPEC.md
   §4.3). A batch's length in bytes is `ceil(bits / 8)`.
 - **EVERY ALIGN'S PAD BITS INSIDE A BATCH ARE VERIFIED ZERO, NOT ONLY THE FINAL
-  PAD.** A `string(N)`, a `bytes(N)` and an escape each align to
+  PAD.** A `string(N)` and a `bytes(N)` each align to
   the next byte boundary, and a reader that finds a non-zero pad bit at any of
   them refuses the batch as `wire_damaged`, not only at the final flush.
 
@@ -6464,22 +6527,17 @@ bits by the array row's own rule. **An entry of kind `17` met in a body is
 damage**: a fixed root numbers no node, so a node index has no width to be
 stepped over at.
 
-**A `flags` MASK'S APPENDED BITS SURVIVE A FILE ROUND TRIP AND NOT A MESSAGE
-ONE, and that is §4's round-trip row MOVED for this form.** §4 states it for the
-packet wire and the reason carries over unchanged: a file rides a mask as a raw
-`uint64` under kind `9`, so an older build loads the bits a newer one appended,
-holds them, and writes them back unharmed, and a message rides a mask at W bits,
-W being the writer's own variant count, so a build that loaded appended bits out
-of a file and then puts that same mask on a message has bits the message cannot
-carry: **the message save REFUSES it** (a writer never truncates), and so
-does the JSON write, which has no name for such a bit (§16.3). The file save
-writes the mask whole, so a file read then written back is byte-identical. **The reason the row moves is
-BANDWIDTH**, which is this form's whole design statement: sixty-four bits for a
-three-bit mask is the single largest fixed overspend a small message has, and a
-mask is the one payload whose file width comes from its storage rather than from
-anything the schema declares. A build that ferries masks between the forms keeps
-its own bits inside its own W, or carries the mask in a file. **This is the
-ONE row of §4 this form moves**, and there is no second.
+**A `flags` MASK IS HELD TO W ON BOTH FORMS, so file and message agree.** A
+file rides a mask as a raw `uint64` under kind `9` and a message rides it at
+its declared W bits, and both hold it to W: a file load refuses a bit at or above
+the reader's W `out_of_range` (§4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH), the
+file save refuses to write one, **the message save REFUSES it** (a writer never
+truncates), and so does the JSON write, which has no name for such a bit (§16.3).
+So every mask a file read lands fits a message, and no row of §4 moves for it.
+**The reason the widths differ is BANDWIDTH**, which is this form's whole design
+statement: sixty-four bits for a three-bit mask is the single largest fixed
+overspend a small message has, and a mask is the one payload whose file width
+comes from its storage rather than from anything the schema declares.
 
 **EVERY ALIGN ON THIS WIRE IS RELATIVE TO THE BATCH BUFFER'S BYTE `0`**, which
 is the form byte's own first byte, and never to a body's start or to anything
@@ -6580,7 +6638,7 @@ and that is its integer.
   | `16` enum-keyed array | `slots`, `element kind (u8)`, the element's own shape | the present-slot count is `bits_required(0, slots)` bits, then a key reference and an element a slot |
   | `17` pointer index | nothing | announced as the unit's vocabulary describes it, and never in a body: a fixed root numbers no node, so a kind-`17` entry met in a body is damage |
   | `30` enum | nothing | a reference naming the variant's name, `0` for `None` |
-  | `31` escape | nothing | align, a thirty-two bit `L`, then `L` bytes, opaque. No writer of this major emits one |
+  | `31` held by name | none | no entry names it: an announcement entry under `31` is malformed and refused whole, as one under `33` or `34` is (R17) |
   | `32` no payload | nothing | nothing rides |
 
 **AN ARRAY OR KEYED SHAPE'S ELEMENT KIND IS NEVER `14` OR `16`, and an
@@ -6654,6 +6712,16 @@ the float already lies on the announced grid, because the file carries the raw
 float and the message carries its nearest grid point, and an off-grid value and a
 rounding tie each come back as the grid point the rule chose (the round-trip paragraph, below).
 
+**A RANGED ANNOUNCEMENT IS CHECKED PER VALUE** (R15, 2026-11-22). The BASE is
+held at the announcement: it lies inside the announced kind, and nothing more is
+asked of the entry, so `uint8 | min = 200, max = 250`, whose six-bit width
+spells offsets past 255, announces lawfully. EACH VALUE is held on the body:
+`base + offset` is held to the announced kind and to the declared `min` and
+`max`, the writer's on write and the reader's on read, and a value outside
+them refuses by name and is never clamped or wrapped. An incorrect value is the
+error, not the lawful range that could spell it (the owner: *"If it is a user
+error, or an incorrect use, refuse."*).
+
 **A RANGED OFFSET IS HELD TO THE DOMAIN THE READER CAN KNOW.** A ranged
 value's `bits` can spell offsets above the writer's declared maximum whenever
 `max - min` is not one less than a power of two. The announcement carries the
@@ -6667,11 +6735,11 @@ different build it cannot infer that maximum from the shape alone. A quantized
 float's index above `count` refuses as the packet wire refuses it (the
 quantization paragraph, above).
 
-**THE ESCAPE KIND `31` IS THE ONLY PATH A LATER-MAJOR WRITER HAS ON THIS FORM**,
-because an announcement carrying a kind outside the closed set is malformed and
-refused WHOLE (below), so a later major cannot introduce a kind and be read at
-all, and what it can do is ride a payload this reader steps over by an explicit
-length.
+**A LATER MAJOR HAS NO PATH ONTO THIS FORM'S READER**, and needs none: the
+newer reader reads old data and never the other way (R17). An announcement
+carrying a kind outside the closed set is malformed and refused WHOLE (below),
+and kind `31`, which was the escape a later major would have ridden, is held by
+name and refused there exactly as `33` and `34` are.
 
 **THE TWO RESERVED IDS OF THE ANNOUNCEMENT ITSELF ARE NOT IN THE VOCABULARY.**
 The build version and the vocabulary are the announcement's own transport, they
@@ -6830,7 +6898,8 @@ FORM TOO (§4):** the skipped payload is held to the conditions the wire and the
 announcement decide — an enum-keyed array's key names a declared no-payload
 entry and no key repeats, a string's bytes are well-formed UTF-8 with no zero
 byte, a float is finite and a quantized float's index is at most its `count`, an
-array's or keyed array's count is within `[min, max]` and a ranged integer's
+array's or keyed array's count is within `[min, max]`, a string's length is at
+most its announced `max`, and a ranged integer's
 reconstructed value is within its announced kind's storage domain, and a nested body names no field id twice
 and no reserved id — and a failure refuses the batch. **The skip walk is bounded
 at depth 128**, §4's binary bound (`tableMessageSkip`, `tableMessageSkipBody`): a nested body, array, keyed or map body, or a union whose arm is structural, past 128 levels refuses (recommended name `wire_damaged`); a scalar arm adds no level, as on the file form. <!-- limit name=message_skip_depth value=128 -->
@@ -6890,7 +6959,7 @@ The ways a batch is damaged, at bit granularity:
   to keep the value, because it is the next bit's meaning that is in doubt and
   not the value's.
 - **A LENGTH OR COUNT WHOSE PAYLOAD RUNS PAST THE BATCH.** A string
-  length, an array count or an escape's `L` that would read beyond
+  length or an array count that would read beyond
   the batch's bits is damage at the field that carried it.
 - **EXHAUSTION, AND ITS OPPOSITE.** The bits run out inside a field, or the
   count promised `M` bodies and fewer terminators arrive, or the trailing pad to
@@ -6910,7 +6979,11 @@ property every wire shares.
 
 **A STRING OR AN ARRAY LONGER THAN THIS READER'S BOUND REFUSES**,
 `length_over_bound` or `count_over_bound`, exactly as §4 states. Nothing is cut,
-and no surplus is walked to find where a kept prefix ends.
+and no surplus is walked to find where a kept prefix ends. **So does one longer
+than the ANNOUNCED `max`**, whatever this reader's own bound: a string's length
+rides at `bits_required(0, max)` and an array's count at `bits_required(min,
+max)`, so their bits can spell more than `max`, which no conforming writer
+emits. The named read and the skip path give it the same verdict.
 
 ---
 
@@ -6967,16 +7040,14 @@ W bits and not as the file's raw `uint64` (above). An enum variant and a union
 arm ride by NAME at a reference's width and not by the packet wire's ordinal or
 tag (above). And a compressed float rides as its QUANTIZED INDEX under SPEC.md
 §4.3's rule (the announcement, above), where the file carries the raw float
-and holds it to its bounds. The first and the third are the two exceptions to
-the round trip, and each is stated: a file carrying a mask's bits above the
-writer's W cannot be saved as a message (the message save refuses it, never
-truncating it), and a file carrying a compressed float OFF the announced grid,
+and holds it to its bounds. The third is the one exception to the round trip,
+and it is stated: a file carrying a compressed float OFF the announced grid,
 saved as a message, carries the nearest grid point, so file to message to file
-reproduces a mask only inside W and a float only when it already lies on the
-grid. The second is not an
-exception, because a name is the value on both forms and the variable form already
-carries it. A value that is on the grid and inside W reproduces its file byte
-for byte, which is what every vector below is.
+reproduces a float only when it already lies on the grid. The first is not an
+exception, because both forms hold a mask to W (above), so every mask a file
+holds fits its W bits; the second is not one, because a name is the value on
+both forms and the variable form already carries it. A value that is on the
+grid reproduces its file byte for byte, which is what every vector below is.
 
 **A COMPRESSED FLOAT'S SPECIAL VALUES TAKE ONE RULE, IN EVERY FORM.** A
 compressed float is defined for the FINITE values in `[min, max]`.
@@ -7042,7 +7113,12 @@ In general `-0` and `+0` take the index of the grid point the rule chooses for
 `0`, and decode to that point; it is index `0` only when `min` is `0`. The index
 never leaves `[0, count]` and a decoded value never leaves `[min, max]`, so in
 every form a compressed float lands inside its declared range and a NaN or an
-infinity never lands at all. The rule is held on the Go leg and in the Go
+infinity never lands at all. **The range ends are compared AT THE FIELD'S WIDTH**:
+each end is its literal's float64 rounded to the field's float kind (SPEC.md
+§4.2, a float literal is a float64 first), and the stored value is compared with
+those exactly, never with the decimal and never with the float64 (the reference:
+`ir.CompressedFloatInRange`; corpus
+`testdata/conformance/feature-witnesses/compressed-f32-ends`). The rule is held on the Go leg and in the Go
 oracle by `internal/codegen/gotable/cfloat_special_values_test.go` (every
 form, both shapes: the refusals, `-0`, `+0` and a finite value past each end)
 and `internal/codegen/gotable/fixedcfloat_test.go`
@@ -7184,9 +7260,8 @@ counts them. It follows that the wire fuzzer's widen pass has no purchase on
 this form, because a mutant would have to forge the announcement both sides
 read from their own unit, so the row is held by a PEER WHOSE DECLARATION HAS MOVED
 instead, which is the shape every other §4 row on this form is held by.
-**§4's MASK ROUND-TRIP ROW is the one row of §4 this form moves**: a mask rides at its
-declared W bits here rather than as a raw `uint64`, so a bit a newer build
-appended survives a file round trip and not a message one (above). The
+A mask rides at its declared W bits here rather than as a raw `uint64`, and
+both forms hold it to W (above), so no row of §4 moves for it either. The
 compressed float's quantization is not a §4 row, because §4 has none for it: it
 is the third of the three ways this form changes a value across the forms
 (above), and it is pinned by the round trip's own rows rather than by §4's.
@@ -7336,10 +7411,12 @@ caller's array of values is the whole of its storage.
     its entry table (kind `13`) whatever its value is;
   - an array's `min` is at most its `max`;
   - a packed `bits` and a `max` sit inside what the kind holds;
-  - a RANGED integer's `base` is such that `base + 2^bits - 1` lies inside the
-    announced kind: a width the kind holds is not enough, because under a base
-    near the kind's edge a lawful-looking width names values the kind cannot
-    hold.
+  - a RANGED integer's `base` lies inside the announced kind. The sum is not
+    held here, because `uint8 | min = 200, max = 250` is lawful and announces a
+    six-bit width whose top offsets pass the kind's edge: `base + offset` is
+    held to the announced kind's storage domain on the body, at a named field
+    and on the skip path alike, exactly and never wrapped (A RANGED OFFSET IS
+    HELD TO THE DOMAIN THE READER CAN KNOW, above).
 
   Two rules on the body complete it. An array element that consumes no bits is
   refused where it is walked (A WALKED ARRAY ELEMENT THAT CONSUMES NO BITS
@@ -7394,6 +7471,10 @@ caller's array of values is the whole of its storage.
   only), and `0` never means "take the default" in any port. 4096 entries is eight times the 500-entry unit that is
   already a large one. A receiver holds ONE vocabulary a direction for the life
   of the connection, so its memory is that bound and nothing else.
+  **The sender holds the same default**: `Announce` and `AnnounceMeasure`
+  refuse a vocabulary of more than 4096 entries and write one of exactly
+  4096, so no sender produces an announcement a receiver at the defaults
+  refuses.
 - **THERE IS NO ANNOUNCEMENT STORM, because there is no second announcement.**
   One announcement a direction is the whole of the resolve work a connection can
   ask for, and a peer that sends a second is refused by name, the application
@@ -7708,9 +7789,10 @@ entries announces about 5 KB once.
   the variable form and saving the message form must reproduce the message form's
   pinned bytes, and the reverse must reproduce the variable form's. Red if one byte
   differs in either direction, which is the negative control on every rule here
-  that says the VALUE does not move. The two exceptions the round-trip
-  paragraph states, a mask's bits above W and a compressed float off the grid,
-  each have a row of their own below and never ride this one.
+  that says the VALUE does not move. The one exception the round-trip
+  paragraph states, a compressed float off the grid, has a row of its own below
+  and never rides this one; a mask's bits above W never reach a round trip,
+  because the file load refuses them.
 - **The batch.** One vector of three `Envelope` bodies, each arm a different
   message, written as a batch and as three batches of one, whose byte counts
   are both pinned, and a vector of 256
@@ -7785,10 +7867,9 @@ entries announces about 5 KB once.
   or delivers any body of the damaged batch.
 - **The mask's width.** A `flags` field of three variants in a message and in a
   file, whose message payload is three bits and whose file payload is eight
-  bytes, and a file load carrying a bit above the reader's W saved into a
-  message, which must drop it. Red if a leg writes sixty-four bits on a message,
-  or keeps the appended bit through the message round trip and so contradicts the
-  row §4 states as moved.
+  bytes, and a file carrying a bit above the reader's W, whose load must refuse
+  `out_of_range`. Red if a leg writes sixty-four bits on a message, or loads a
+  file carrying a bit above its W.
 - **A reference of the wrong sort.** An enum reference naming a field-name entry,
   and a union arm reference naming a kind-`0` entry. Each refuses, writes nothing. Red if a leg reads either.
   Beside them the same two on the SKIP path: a body naming an enum entry the
@@ -8626,6 +8707,17 @@ entries. **The rows above are the normative meaning of every op**; how a port
 lays its plan entries out in memory (offset widths, guard lanes, partitioning)
 is its own, and only the verdicts and the landed values below are compared.
 
+**A `?T` IN AN OLDER LAYOUT NEVER LANDS IN A PLAIN `T`** (ruling R2,
+2026-11-22). A lineage entry whose layout holds a field as `?T`, where this
+build declares that field as plain `T`, has no lawful plan: the load refuses
+`kind_mismatch` (recommended name) and lands nothing, in every port, and never
+drops the present byte to land the payload alone. The other direction is
+lawful: a plain `T` in the older layout, read into the `?T` this build
+declares, lands PRESENT and holds the value the writer wrote. A conforming
+lock never holds the first shape (FIXED-FORM-ALGORITHM.md §5.1 refuses it as
+"optional removed"), so only a hand-made lineage meets it, and the per-port
+table `TestRulingsR2R5R9PortRows` (#4680) holds every port to the refusal.
+
 **THE LOAD, IN ORDER.** Every fixed-form read is these steps, and every
 refusal is TOTAL: no record lands and no counter moves, and every row the
 call was handed holds its declared defaults (§6.5, THE CALLER'S VALUES AFTER
@@ -8690,6 +8782,11 @@ FixedBounds( rows, report );          // the bounds pass, after either plan: ref
 The prefill runs only once every check has passed, so a refused load never
 leaves a partly landed row: **after ANY refusal, every row the call was handed
 holds its declared defaults** (§6.5, THE CALLER'S VALUES AFTER A REFUSAL).
+
+**A CALLER THAT STATES NO CAPACITY IS BOUNDED BY THE FILE.** Where a port's
+fixed load lets the caller omit the capacity (step 10), the omitted capacity
+is the file's own record count, so a lawful file of any record count reads;
+no port invents a default capacity of its own, 4096 records or any other.
 
 **A PLAN IS PARTITIONED: EVERY UNGUARDED ENTRY FIRST, THEN THE UNION ARMS',
 AND THE PLAN SAYS WHERE THE SECOND HALF STARTS.** Entries are independent —
@@ -8865,7 +8962,11 @@ switches on the reason sees each by name (§5.3).
   in this file*, a record's says *which layout stamped this record*. **NO
   RUNTIME RECOMPUTES EITHER HASH** — the definitions digest is folded into it
   and the digest is not on the wire, so a hash derived from a file's bytes
-  would be a hash of a different thing. The header's hash is taken as GIVEN and
+  would be a hash of a different thing. A port that reads `.schema` text
+  (SPEC.md §4.2) computes the layout and the definitions digest FROM THE
+  DECLARATION, once, as the compiler does — FIXED-FORM-ALGORITHM.md §1 and
+  §5.2 define both byte for byte, and `testdata/conformance/fixed-digest`
+  holds a vector of every digest row — and never from a file's bytes. The header's hash is taken as GIVEN and
   the header is held to the layout behind it by a BYTE COMPARISON instead:
   **a known hash whose layout bytes are not the lock's own bytes for that hash
   is refused**, `layout_malformed`; a hash in no lineage entry is `layout_unknown`
@@ -9091,7 +9192,11 @@ hand-editable text form alone refuses an unknown name, §6.5):
   STRUCTURAL payload inside it is one level deeper: a table body, an array, a
   keyed or map body, and a union whose arm holds one of those or another union
   (so union inside union nests). A union whose arm is a scalar or None adds no
-  level. A keyed entry's framing adds nothing by itself; what it frames is
+  level. **A union and the structural payload its arm holds are TWO levels**,
+  one for the union and one for the payload: a table arm's body sits two
+  below the body that holds the union, in every binary form and in the JSON
+  read alike (rows `json-hostile rr-depth-placed-union-map-128`, which reads,
+  and `-129`, which refuses; the binary form's own bound is held per leg). A keyed entry's framing adds nothing by itself; what it frames is
   its element, and the one structural element a keyed body carries is a
   table body (element kind `13`; THE ELEMENT KINDS ARE CLOSED, §3), which is
   one level deeper like any other. So a keyed body of keyed bodies nests
@@ -9202,7 +9307,11 @@ diagnostic name, which is not normative and is never compared:
   carries a zero byte — the same refusal SPEC.md §4.7 puts on the packet
   wire), a node table that cannot be read whole, a cycle (a loaded
   graph in which a pointer names a node whose descent is still open, which no
-  writer produces, §3.1), a node record no pointer reaches, a pointer naming
+  writer produces, §3.1), a node record no pointer reaches (REACHED means
+  reachable from the root along every kind-`17` edge the wire holds, edges
+  inside unknown fields and inside records of undeclared types included; a
+  record named only by records that are themselves unreached is not reached,
+  rows `varevo_cycle_*`), a pointer naming
   a record of a type the reader declares that is not the type its slot
   requires, kind `32` with a
   nonzero `L` at any position, a reserved id out of place, and every case
@@ -9222,8 +9331,9 @@ diagnostic name, which is not normative and is never compared:
   with arm reference `0` at a message field also refuses, since message
   closures prohibit Required and optional unions (§2.3).
   **Variable files cannot establish the writer's elision policy.** Removing
-  `required` is free and moving between `T` and `?T` reads correctly in both
-  directions (§2.3). A current non-required declaration therefore does not
+  `required` is free and a field moved between `T` and `?T` reads correctly
+  in both directions (§2.3; the lineage itself runs one way, `T` to `?T`, and
+  the baseline refuses `?T` to `T`, §18.2). A current non-required declaration therefore does not
   establish that an older lawful writer was non-required. An explicit null
   pointer, a union written with arm reference `0`, or a field stored at its
   declared default reads, including after widening. Unknown and deprecated
@@ -9239,7 +9349,31 @@ diagnostic name, which is not normative and is never compared:
   FROM TWO SLOTS — `blob_shared`** (§2.5). Neither is a value a writer emits.
 - **A COUNT PAST THE STORAGE CAP — `count_over_extent_cap`** (§2.9).
 - **KIND MISMATCH — `kind_mismatch`** (a field changed type between builds
-  and the pair is not a widening). The kinds are a coarser vocabulary than
+  and the pair is not a widening). **THE ONE WIDENING RULE**, stated here
+  once and cited by §2.3, §2.11, §3.3, §4.1, §18.2, §21.1 and VERSIONING.md
+  (R14 and R16, the owner, 2026-11-22: *"think of optional like a widening. we
+  only allow widening, not narrowing."* and *"If it is a user error, or an
+  incorrect use, refuse."*): **a lineage may WIDEN what a field holds and
+  never NARROW or RETYPE it.** The widenings are an integer kind to a wider
+  one of the SAME signedness, `f32` to `f64`, and `T` to `?T` (every old value
+  lands present); a bound, a capacity or a range moved outward is the same
+  rule at an extent (§18.1, §21.1). The reverse of each is a narrowing, and
+  every other change of a field's type is a RETYPE: `int64` to `string`, a
+  field moved to or from `*T`, `int64` to `timestamp` or back, an enum to its
+  raw integer, a float to an integer. **A retype or a narrowing the wire can
+  see REFUSES THE WHOLE LOAD `kind_mismatch`**, in every form and every port;
+  the field is never defaulted, counted and read past. `?T` to `T` is the one
+  narrowing the variable form cannot see, because both spellings share one
+  framing (§2.3), so the baseline check refuses it at check time, naming the
+  field (§18.2); the lock refuses it for a fixed table (§21.1) and the fixed
+  form refuses it at read (§3.4). **THE DIRECTION RULE** (R17, the owner,
+  2026-11-22: *"the newer reader can read old data, but never the other
+  way."*): a NEW reader reads OLD data, and that is the promise; an OLD
+  reader given a NEW file whose field widened refuses it by name,
+  `kind_mismatch`, which is lawful and never promised to work. So the
+  baseline PASSES every widening, a kind widening as well as `T` to `?T`, and
+  refuses only what a new reader cannot read from old data: a narrowing, a
+  retype, and `?T` to `T` (§18.2). The kinds are a coarser vocabulary than
   the declaration side, so this catches a change of KIND, not every change of
   type. **The reverse of every widening is a kind mismatch**: a narrowing
   loses what does not fit. Across the ladders, signed into unsigned or
@@ -9307,8 +9441,9 @@ in its own language (VERSIONING.md), and `widened` says the bytes will change
 shape on the next save. What crosses languages is the VALUE a read returns and
 the BYTES a save writes: the never-clobber guarantee is held by retained
 unknowns saved back byte-exact (§6.6), not by a count. Nothing
-crashes on data from a different schema version, in either direction, and
-that property is held by a both-directions evolution test in the corpus.
+crashes on any input. Evolution is promised one way, a newer reader on older
+data, and the evolution rows of the corpus hold it; the other way, an older
+reader on newer data, reads or refuses by name, and both are lawful (R17).
 
 **THE ARM EVOLUTION ROWS, each red for one reason** (§2.6, §3). Each is a
 `report` row of the conformance manifest, one wire written under one
@@ -9357,35 +9492,29 @@ flags Perks { Shielded, Hardened, Cloaked, Turbo } // v2: WRONG — an insert
 // Cloaked. The compiler retains no history and cannot see this.
 
 flags Perks { Shielded, Cloaked, Turbo, Hardened } // v2: RIGHT — appended
-// every stored bit keeps its meaning; an old reader keeps bit 3 and writes it
-// back in a file, a new reader sees it clear in old data.
+// every stored bit keeps its meaning; a new reader sees bit 3 clear in old
+// data, and an old reader that meets bit 3 refuses the load out_of_range.
 ```
 
 Removing a flags variant frees no bit either: retire the name, keep the
 position (a spent bit stays spent). The 64-bit storage is the ceiling.
 
-**A TABLE LOAD DOES NOT JUDGE A MASK AGAINST A RANGE.** A `flags` field rides
-as a raw `uint64`, kind `9` (§3), and a bit above the reader's own W is KEPT,
-not cleared and not refused: a mask field's domain is all subsets, so there is
-no range for it to fall outside. That is the whole reason the storage is
-`uint64` in every target at the full width rather than at the declared variant
-count (SPEC.md §4.2) — an older build loads the bits a newer one appended,
-holds them, and writes them back on its next save unharmed, which is the one
-thing that keeps append-at-the-end worth having across a mixed fleet.
-
-**The bits survive a FILE round trip and NOT a packet one, and NOT a MESSAGE
-one, and the cost is named rather than left to be discovered.** The packet wire
-carries a mask in W raw bits, W being the reader's own variant count (SPEC.md
-§4.2, §4.3), so an older build that loaded appended bits out of a file and then
-puts that same mask on a packet DROPS them by width, silently, with no counter
-on either wire able to say so. **The MESSAGE FORM takes the packet wire's rule
-here** (§3.3), for the packet wire's reason, bandwidth: a form-`2` body writes a
-mask at its declared W bits rather than as kind `9`'s raw `uint64`, so a mask with
-appended bits cannot ride a message: the message save REFUSES it rather than
-drop them, because a table writer never truncates. This is the
-one row of this table the message form moves, and §3.3
-states it as a departure. A build that ferries masks between the forms keeps its
-own bits inside its own W, or carries the mask in a FILE.
+**A TABLE LOAD HOLDS A MASK TO ITS WIDTH.** A `flags` field rides as a raw
+`uint64`, kind `9` (§3), and every table read holds it to the reader's own W
+(the variant count, or K under `| max = K`): **a bit at or above W refuses the
+WHOLE load `out_of_range`**, on the variable form, the fixed form and the
+message form alike, and a mask that arrived WIDENED from a narrower kind is held
+the same way. Every table writer holds the same rule, so a same-build round trip
+never writes what its own reader refuses: the variable and fixed savers refuse a
+mask past W (by debug assert in C, C++, C#, Rust, Java and Dart; in every build
+in Go, JavaScript, Elixir, Lua, Luau, Squirrel, MOO, Goose, Python, Ruby and
+Lobster), the message saver refuses it (§3.3), and the text writer refuses a bit
+no variant names (§16.3). **The newer reader reads old data, and never the other
+way** (R17, 2026-11-22): append-at-the-end, and a spent bit staying spent, mean
+old data never carries a bit past a newer reader's W, so the rule costs no
+lawful read; an old reader that meets new data refuses it by name, and that is
+lawful. The `uint64` storage is the 64-variant ceiling and the API type
+(SPEC.md §4.2), not a versioning device.
 
 **A DEFAULT IS PART OF THE WIRE CONTRACT.** A field holding its declared
 default is elided (§3), so the reader's default is what the absence means —
@@ -9435,7 +9564,8 @@ the one the committed baseline (§18) exists to refuse:
 Everything else is either reported or safe. Fields may be added, removed,
 reordered and renamed under `was`; enum variants and union arms may be
 added anywhere, removed, reordered and renamed under `was`; array bounds may move; a field may
-change from `?T` to `T` — all of it either invisible to the wire or
+change from `T` to `?T`, the widening (`?T` to `T` is the narrowing the
+baseline refuses, §4 THE ONE WIDENING RULE) — all of it either invisible to the wire or
 answered by the read: counted as evolution or refused by name. Moving a field
 to or from `*T` is a kind change and is refused `kind_mismatch` (§3.1).
 
@@ -9512,8 +9642,8 @@ only.
 | a specified DEFAULT changed, added or removed | silent | **refuses** | **moves** |
 | a FLAGS variant inserted, removed, reordered or renamed in place | silent | **refuses** | **moves**: the cook projection carries each variant's bit position (§20.1), and the protocol id moves too, because the bit positions are the declaration's variant names and they ride in the wire-shape projection (SPEC.md §3.1) |
 | a field's REFERENT dropped, or swapped for one that cannot stand in | silent | **refuses** | **moves** |
-| a field's wire KIND, or an array's ELEMENT kind, changed | refuses `kind_mismatch` | **refuses** | **moves** |
-| a field's, an arm's, an element's or a map key's kind WIDENED: an integer kind to a wider one of the same signedness, or `f32` to `f64` (§4) | `widened`, and the value is the writer's own, exactly | **refuses**, as any kind change does (§18.2): the widening runs ONE WAY, so the old build reading the NEW file refuses `kind_mismatch`, and a mixed fleet has readers on both sides | **moves** |
+| a field's wire KIND, or an array's ELEMENT kind, changed, other than by a widening: a narrowing or a retype (§4) | refuses `kind_mismatch` | **refuses** | **moves** |
+| a field's, an arm's, an element's or a map key's kind WIDENED: an integer kind to a wider one of the same signedness, or `f32` to `f64` (§4) | `widened`, and the value is the writer's own, exactly | **passes** — a widening (§4, THE ONE WIDENING RULE; R17): the new reader reads every old value exactly, and the old build given the NEW file refuses it `kind_mismatch` by name, which is lawful and never promised to work | **moves** |
 | an array changed between keyed and positional | refuses `kind_mismatch` | **refuses** | **moves** |
 | an enum-keyed array's KEY enum swapped for another (§2.4) | `unknown` for each stored slot keyed by a variant name the new enum does not declare, and the slot is dropped; the new enum's unreached slots read their defaults | **refuses**, unless the new enum declares every variant name the old one did (§18.2) | **moves** |
 | a counted array's MINIMUM count moved, or gained or lost with the array's shape (SPEC §4.6) | refuses `count_over_bound` on a count below a raised minimum; silent on an array the writer elided at its born count, which reads back as the READER's minimum of default elements | **refuses** — the `mincount=` token is the array's born count as well as its floor (§18.1) | **moves** |
@@ -9534,9 +9664,9 @@ only.
 | a MAP changed to or from `[E]T`, a scalar, a string or a pointer (§2.8) | refuses `kind_mismatch` | **refuses** | **moves** |
 | an array changed between `[]T` and `[..N]T` (§2.9) | silent where the count fits the new bound, refuses `count_over_bound` past it | **warns** on the direction that ADDS a bound, as any capacity shrunk, and passes on the one that removes it | **moves**, because the storage is a reference and a count on one side and the maximum inline on the other |
 | an unbounded array's ELEMENT retyped, or moved to or from `[]*T` (§2.9) | refuses `kind_mismatch` | **refuses**, as any element kind changed | **moves** |
-| a field moved from `T` to `?T` | silent — non-default content shares bytes; present defaults read | **passes** — both presence spellings share variable framing | **moves** — the presence companion is storage |
-| a field moved from `?T` to `T` | silent — no byte moves for non-default content | passes | **moves** — the presence companion is storage |
-| a field moved to or from `*T` | refuses `kind_mismatch` | **refuses** — a pointer is kind 17, so the edit is an ordinary kind change | **moves** |
+| a field moved from `T` to `?T` | silent — non-default content shares bytes; present defaults read | **passes** — a widening (§4, THE ONE WIDENING RULE): every old value lands present | **moves** — the presence companion is storage |
+| a field moved from `?T` to `T` | silent on the variable form — no byte moves for non-default content; the fixed form refuses it at read (§3.4) | **refuses**, naming the field — a narrowing (R16; §4, THE ONE WIDENING RULE) | **moves** — the presence companion is storage |
+| a field moved to or from `*T` | refuses the whole load `kind_mismatch` (R14) | **refuses** — a pointer is kind 17, so the edit is an ordinary kind change | **moves** |
 | an `if` GUARD added or removed | silent, and the read is faithful; the cost is the next WRITE | passes | no |
 | a DECLARATION renamed — a `type`, or a table held BY VALUE | silent: a name held by value is not on the wire | **warns** when a table closure reaches it, naming what carries its contents on and how many identities that candidate carries (§18.3) | **moves** |
 | a TABLE renamed where it is a POINTER TARGET | **not silent**: a table's own name is its node's type id on the wire (§5), so every node of the old name is unnameable — skipped by its length and counted `unknown`, with every pointer to it reading null (§3.1) | as the row above | **moves** |
@@ -9596,10 +9726,10 @@ has:
   kind, because kind `15` is the one payload whose framing a skipper has to
   know (§3);
 - **a kind swap**, every kind byte to every other value, `0` and one past the
-  last kind included, the escape kind `31` and the payload-free kind `32`
-  planted at every field position, and the RESERVED kind `34` planted there
+  last kind included, the payload-free kind `32` planted at every field
+  position, and the HELD kind `31` and the RESERVED kind `34` planted there
   too, which no writer emits and which a reader of this major cannot skip, so
-  it must land as damage and never as an escape (§3);
+  they must land as damage and never as a skip (§3, R17);
 - **a WIDENING and its reverse at every integer and `f32` position — a FIELD,
   a union ARM, an array's ELEMENT KIND and a map's KEY KIND**, the payload
   rewritten at the other kind's width at each, because the rule is the kind
@@ -9958,6 +10088,7 @@ the same struct is §19's.
 
 Its whole surface is three free functions, name first:
 
+<!-- example: fragment -->
 ```cpp
 ChatMessage msg;
 int64_t size = ChatMessageMeasure( msg );          // exact wire bytes
@@ -10044,6 +10175,7 @@ A file-format-scale structure is not a struct you copy. It is built
 mutable, then locked const, and read through a region and a root pointer.
 The state machine is MONOTONIC — there is no unlock:
 
+<!-- example: fragment -->
 ```cpp
 SceneBuilder builder;                        // MUTABLE: an arena
 Scene * root = builder.GetRoot();
@@ -10140,6 +10272,7 @@ functions, no overloading and no templates, so the same surface is free
 functions under the root's own name, and the two things C++ distinguishes by
 TYPE are distinguished by a nullable member here:
 
+<!-- example: fragment -->
 ```c
 SceneBuilder builder;                       /* the mutable life */
 scene_builder_init( &builder );               /* the arena, and the root node */
@@ -10715,6 +10848,15 @@ the class. A Go fixed refusal is a typed
   refusal with one shape for every reason (a framing refusal and a body
   refusal look alike to the caller), and a read that fills a caller's list
   resets it after the refusal is decided, never empties it before any check.
+  **A read that is handed no instance** — it builds a fresh value and returns
+  it, as JavaScript's `<Name>Load` and every fresh-return read do — returns
+  NO value on a refusal, never a partial one, and has no caller's value to
+  reset: the rule binds what the call was HANDED, and a variable the caller
+  later assigns the result to was not handed to the call. A port describes no
+  refusal as leaving a handed instance "as it was" or "untouched": every
+  instance a call is handed holds its declared defaults after a refusal, and a
+  call handed none returns none (docs/SPEC-CONFORMANCE.md §7; the per-leg
+  rows of docs/fix-ledger-1122.md FL-03).
   The region read hands back no root, and a builder read leaves a
   builder whose root the caller does not use and shuts down. **There is no
   `*Tolerant` entry point**: `LoadTolerant`, `LoadBuilderTolerant`,
@@ -10744,9 +10886,10 @@ nowhere either.
 ### 6.6 Retain-unknown: an opt-in that keeps what this build cannot name
 
 **By default a rewrite drops what the reader could not name**, and the
-never-clobber rule (VERSIONING.md) is the consequence a studio writes into its
-own code. This subsection is the opt-in that answers the case the rule exists
-for: a player on a newer build rolls back, through a beta opt-out, a
+never-clobber rule (VERSIONING.md) is the guard a studio writes if it runs old
+builds against new files, which nothing promises will read (R17): a sharp edge
+the studio takes on itself. This subsection is the opt-in for that edge, the
+case the rule exists for: a player on a newer build rolls back, through a beta opt-out, a
 certification lag or a store rollout paused, saves, and every field the newer
 build added is gone from that file forever.
 
@@ -10806,6 +10949,7 @@ load and save outcomes; `SaveRetain` requires a report.
 
 **THE SURFACE: the caller's buffer, threaded through three calls.**
 
+<!-- example: fragment -->
 ```cpp
 uint8_t storage[ 64 * 1024 ];              // the caller owns it and sizes it
 TableRetain::Id ids[ 64 * 1024 / 8 ];      // an id and its slot, an entry
@@ -11041,7 +11185,8 @@ where the element kind is `13`, `15` or `30`. And **kind `16` at EVERY element
 kind**, because an enum-keyed array's body carries a KEY REFERENCE per slot
 whatever the elements are (§3.2), so its keys resolve even when the elements
 carry no reference of their own. Every other payload is copied verbatim, which
-is every scalar, every fixed-point and 128-bit kind, and kinds `12` and `31`.
+is every scalar, every fixed-point and 128-bit kind, and kind `12` (kind `31`
+is held by name and refused before the walk, R17).
 **Kind `17` is what the walk is LOOKING FOR as much as a reference is**: the
 outer-kind exclusion above catches a `17` field and an array of `17` before
 the walk begins, and the walk catches every other one, a `17` field or an
@@ -11382,6 +11527,7 @@ and have it work.
 that can be memory mapped, endian-fixed and loaded quickly by a build at
 the exact version it was cooked to. That is cooking.
 
+<!-- example: fragment -->
 ```cpp
 const Scene * scene = SceneOpen( bytes, length ); // point at it, or NULL
 ```
@@ -11704,6 +11850,7 @@ the wire, and keeps the flexibility that comes with it.
   spelling and not a description of one.** One free function per root, name
   first (§6.1), taking the caller's bytes and returning the root or `NULL`:
 
+<!-- example: fragment -->
   ```cpp
   const Scene * SceneOpen( const void * bytes, uint64_t length );
   ```
@@ -11742,6 +11889,7 @@ the wire, and keeps the flexibility that comes with it.
   pointer target and is the same call in a locked region and an opened cook,
   because they are the same encoding (§6.3):
 
+<!-- example: fragment -->
   ```cpp
   const Node * next = NodeAt( node->next );   // one add; NULL when the delta is zero
   ```
@@ -11800,6 +11948,7 @@ the wire, and keeps the flexibility that comes with it.
   form's accessors — and the type is `<Root>Cook`, a name §11's list has claimed
   on every closure member all along:
 
+<!-- example: fragment -->
   ```csharp
   if ( !SceneCook.Open( out SceneCook cook, pointer, length ) )
       return;                       // wrong build, corrupt, truncated, foreign order
@@ -11834,6 +11983,7 @@ the wire, and keeps the flexibility that comes with it.
   not its value, because a self-relative delta means nothing without the address
   it is relative to:
 
+<!-- example: fragment -->
   ```csharp
   ListNodeRow * next = ListNodeCook.At( &node->Next );   // one add; null when the delta is zero
   ```
@@ -12578,6 +12728,14 @@ every clause above by construction.
 
 ### 7.6 The write side: `Cook` and `CookMeasure`
 
+**A COOK NEVER CLAMPS AND NEVER LETS A NON-FINITE FLOAT THROUGH.** The write
+contract (SPEC §5.1) runs before a byte is placed. A loaded value whose live
+count lies below its array's `Min` or above its bound, or whose length is
+negative, is REFUSED (`Cook` writes nothing, `CookMeasure` answers `-1`); it is
+never clamped to the bound and written. A NaN or an infinity in a plain float
+is refused (row 7), as the save refuses it. A leg whose measure and write
+share one body refuses in both.
+
 **A BUILD CAN WRITE A COOK, AND THE BYTES ARE THE TOOL'S.** `schema cook` is
 the reference and stays it: a generated writer is held to the tool's output
 BYTE FOR BYTE, in both byte orders, over every instance the conformance harness
@@ -12595,6 +12753,7 @@ language and a runtime in any other."*
 **THE C++ SURFACE**, name first (§6.1), one pair per table beside `<Root>Open`
 — a FIXED table's takes the value:
 
+<!-- example: fragment -->
 ```cpp
 int64_t SettingsCookMeasure( const Settings & value );
 bool    SettingsCook( const Settings & value, void * out, uint64_t capacity, TableByteOrder order );
@@ -12603,6 +12762,7 @@ bool    SettingsCook( const Settings & value, void * out, uint64_t capacity, Tab
 **THE C SURFACE** uses pointers and explicit contexts, retaining the same
 measure/write contract:
 
+<!-- example: fragment -->
 ```c
 int64_t settings_cook_measure(const Settings * value);
 int settings_cook(const Settings * value, void * out, uint64_t capacity, TableByteOrder order);
@@ -12620,6 +12780,7 @@ names one, and the `schema_allocate`/`schema_release` hooks otherwise.
 **THE GO SURFACE** is the claimed name-first triple, and it is held to the
 tool's bytes byte for byte as the C and C++ writers are:
 
+<!-- example: fragment -->
 ```go
 func SettingsCookMeasure(value *Settings) int64
 func SettingsCookMeasureReason(value *Settings) (int64, error)
@@ -12686,6 +12847,7 @@ and the surface takes the two forms the wire's own entries take (§6.2) — a
 region root, or a builder — never a value, because a pointered root is a region
 and a root pointer rather than a struct you copy:
 
+<!-- example: fragment -->
 ```cpp
 int64_t SceneCookMeasure( const Scene * root, TableAllocator allocator = TableDefaultAllocator() );
 bool    SceneCook( const Scene * root, void * out, uint64_t capacity, TableByteOrder order,
@@ -12735,6 +12897,16 @@ bool    SceneCook( const SceneBuilder & builder, void * out, uint64_t capacity, 
   the TOOL's refusal and not the runtime writer's (§7.2): the Go writer lays
   out the entry arrays, and §7.2 names the independent layout test that holds
   them.
+- **THE LOBSTER WRITER REFUSES IN EVERY BUILD** (docs/SPEC.md §5.1: Lobster's
+  table writers refuse in every build). `<Name>Cook` and `<Name>CookMeasure`
+  run the variable save's write-contract walk over every record the
+  numbering reached, and check a `*string` node's text, before a byte is
+  placed: a value SPEC.md §5.1 does not admit (rows 1–6, 8 and 10 — a `string(N)` or
+  `bytes(N)` past `N`, a counted array's count past its bound, a union tag
+  past its arms among them) or a deprecated enum variant (§2.15) makes
+  `CookMeasure` answer `-1` and `Cook` answer `""`. Nothing is cut to fit: a
+  string past its buffer is refused, never written as its first `N` bytes.
+  A fixed root's `CookMeasure` stays the layout constant; its `Cook` checks.
 - **WHAT ALLOCATES, AND THROUGH WHAT.** The caller still owns the OUTPUT
   buffer and nothing is allocated toward it. What the pointered writer
   allocates is the NUMBERING — the identity map, the entry array, and one
@@ -13352,6 +13524,7 @@ in declaration-name order. Its native `TestLobsterUnitViewListing` compares ever
 table-manifest unit against the shared §8.7 listing (`make tables-lobster-view`). Other ports'
 registries remain follow-ons (§15).
 
+<!-- example: fragment -->
 ```cpp
 struct ViewConstant
 {
@@ -16281,6 +16454,7 @@ unit's mode — but paying for it is a build decision, not an include.
 
 For every FIXED-SIZE table in a unit's closure, name first, C++:
 
+<!-- example: fragment -->
 ```cpp
 TableReport report;
 ShipConfig ship;
@@ -16293,6 +16467,14 @@ if ( !ShipConfigFromJson( ship, text, text_bytes, &report ) )
 int64_t size = ShipConfigToJsonMeasure( ship );      // exact bytes, writes nothing
 ShipConfigToJson( ship, buffer, size );              // returns size; -1 = refused
 ```
+
+**A text writer into a caller's buffer writes the bytes it returns and nothing
+else**: no terminating NUL and no byte past the returned size, so the caller's
+buffer past that size is untouched. **Float text never reads the process
+locale**: every conversion, read and write, runs under the C locale on the
+calling thread alone, so a program whose locale spells the decimal point as a
+comma or as a multi-byte sequence reads and writes the same bytes, and no other
+thread's locale changes.
 
 **These are declarations in `<Base>Table.h` and definitions in
 `<Base>Table.cpp`** (§6.1, §13.5). Compile the generated `.cpp` to call
@@ -16308,6 +16490,7 @@ includes the walk needs.
 
 The same three, in C#:
 
+<!-- example: fragment -->
 ```csharp
 TableReport report = new TableReport();
 ShipConfig ship = new ShipConfig();
@@ -16344,6 +16527,7 @@ that text.
 A VARIABLE-LENGTH table reads through its builder, because that is where
 its storage comes from (§6.5):
 
+<!-- example: fragment -->
 ```cpp
 SceneFromJson( builder, text, text_bytes, &report );
 ```
@@ -16492,17 +16676,17 @@ Per kind:
 | declaration | JSON | notes |
 |---|---|---|
 | integers, `bits(N)` | number, or a string of digits | a kind of 32 bits and under — `int8` … `int32`, `uint8` … `uint32`, `bits(1..32)` — is a number; a kind WIDER than 32 bits — `int64`, `uint64`, `bits(33..64)` — is written as a JSON string of decimal digits and reads as that STRING only; a bare number token there refuses `kind_mismatch`. See **Numbers** below; a `bits(N)` value over its implied `[0, 2^N − 1]` refuses `out_of_range` |
-| `float32`, `float64`, compressed floats | number | a value a float32 field cannot hold, one past float32's own range, refuses `out_of_range` (the recommended name; `kind_mismatch` conforms too, below), never clamped and never stored as infinity. A compressed float's `-0` reads as `+0`, uncounted, and a NaN or an infinity in one is refused at write (§3.3, the special values). A PLAIN float's `-0` is written `-0` and reads as `-0`, sign kept and uncounted, and a NaN or an infinity in one is refused at write; every binary read refuses one by name, `non_finite_float`, so a value it accepts always writes (§3.3, a plain float's special values) |
+| `float32`, `float64`, compressed floats | number | **A `float32` field is written as a float32**: a leg whose storage holds a wider float rounds it to float32 (ties to even) before it spells it, in the shortest spelling that reads back to that float32 (§16.14). A value a float32 field cannot hold, one past float32's own range, refuses `out_of_range` (the recommended name; `kind_mismatch` conforms too, below), never clamped and never stored as infinity. A compressed float's `-0` reads as `+0`, uncounted, and a NaN or an infinity in one is refused at write (§3.3, the special values). A PLAIN float's `-0` is written `-0` and reads as `-0`, sign kept and uncounted, and a NaN or an infinity in one is refused at write; every binary read refuses one by name, `non_finite_float`, so a value it accepts always writes (§3.3, a plain float's special values) |
 | `fixed(I, F)`, `ufixed(I, F)` | number, in WHOLE UNITS, or a string holding one | a fixed kind whose storage is 32 bits or under is a number; one whose storage is wider than 32 bits — 64- or 128-bit — is written as a JSON STRING whose content is the same decimal spelling W11 gives (`"1.0"`, `"-0.25"`; never an exponent on write), and reads as that STRING only, its content one RFC 8259 number token (**Numbers**, below); a bare number token there refuses `kind_mismatch`. The spelling SPEC.md §4.6 gives a fixed default: `1.0`, `-0.25`, `3.0000152587890625`. A fixed kind of 32 bits and under is written as the shortest EXACT decimal with at least one fractional digit and read from any number token whose value is exactly representable in Q I.F — `2`, `15e-1` and `1.5` are the same value — and a finer fraction refuses `kind_mismatch`, the wrong shape for the field, never rounded. See **Numbers** |
 | `int128`, `uint128` | string of digits | a decimal integer, exact past 2^53 in both directions: `"340282366920938463463374607431768211455"` reads back as itself. Reads as that STRING only; a bare number token there refuses `kind_mismatch` |
 | `bool` | `true` / `false` | |
 | `string(N)` | string | longer than N bytes refuses `length_over_bound` |
 | `bytes(N)` | string, base64 | CANONICAL base64 on write and on read, the text §16.8 defines: the standard alphabet, padded, pad bits zero, and exactly the spelling the writer writes for those bytes. Longer than N bytes refuses `length_over_bound`. Any other spelling that decodes refuses the read (recommended name `base64_not_canonical`). A string that is valid JSON but not base64 at all (a byte outside the alphabet, misplaced padding, no decoding at all) refuses `kind_mismatch` (recommended name; the verdict is the contract, §16.8). The JSON layer decides FIRST: a raw byte below `0x20`, a `\` that begins no escape, or a lone byte at or above `0x80` (not UTF-8, `string_not_utf8`, §16.3) inside the string refuses the read `malformed`, as does a `"` that ends the string early (proved by `make table-base64-go`, test/table-base64/harness, rows `invalid-XX`). **The base64 rules above judge the string's DECODED content, after the JSON layer has undone every escape**: `"QQ=="` is the content `QQ==` and reads exactly as `"QQ=="` does, and an escaped character outside the alphabet is outside it still |
 | `timestamp` | string, strict RFC 3339 §5.6 date-time | `"2026-10-15T12:34:05.123456789Z"`, the zero time `"1970-01-01T00:00:00Z"`; written with a `Z` offset and read from any spelling RFC 3339 §5.6 accepts of the same instant, which lands as its UTC nanosecond count. The spelling is EXACTLY the `date-time` production: four-digit year `0000`–`9999`; month `01`–`12`; day valid for that month and year; `T` or `t`; hour `00`–`23`; minute `00`–`59`; second `00`–`59`; a fraction of one or more digits after a dot, truncated to nanoseconds; and `Z`, `z`, or an offset whose hours are `00`–`23` and minutes `00`–`59`; nothing before or after. A comma is not a fraction separator, and second `60` is refused (§2.11). **A string outside that spelling — or one naming an instant outside `Time.UnixNano`'s domain, exactly `1677-09-21T00:12:43.145224192Z` through `2262-04-11T23:47:16.854775807Z` inclusive after conversion to UTC and truncation to nanoseconds (§2.11) — is REFUSED BY NAME**: the read returns false and its one reason is `timestamp_not_rfc3339: <field>`. A NUMBER token is the wrong JSON type and refuses `kind_mismatch`, never coerced, so a file handing the raw count cannot land a silent value (SPEC.md §4.13). The writer drops a fraction's trailing zeros and omits it on a whole second, as `RFC3339Nano` spells it; the text form writes any count, and a time outside the years 1678–2262 is refused only where it enters through the accessor that stores a `time.Time`, as `timestamp_out_of_range` (§2.11) |
-| enum | string, the variant NAME | `"Silver"`; `None` writes as `"None"`, and **`"None"` read is None and is NOT counted `unknown`**: it is a name every enum carries (value `0`); an unknown name → None, counted `unknown`. A deprecated variant keeps its name and reads as the field's declared default, never as unknown, and a writer refuses a value that holds one (§2.15) |
+| enum | string, the variant NAME | `"Silver"`; `None` writes as `"None"`, and **`"None"` read is None and is NOT counted `unknown`**: it is a name every enum carries (value `0`); an unknown name → None, counted `unknown`. A deprecated variant keeps its name and reads as the field's declared default, never as unknown, and a writer refuses a value that holds one (§2.15); **at a position with no declared default of its own** — an array or keyed element, a map value, an arm payload, an optional's payload — it reads as `None`, the enum's default, and a present optional stays present. The binary forms land the same value (§2.15) |
 | flags | array of variant names | `["Shielded", "Turbo"]`; an empty mask writes as `[]`; an unknown name is skipped, counted `unknown`; a flags element that is not a string refuses `kind_mismatch`; **a KNOWN variant named twice in one array refuses `malformed`, as a repeated key does** (a conforming writer writes each set bit's name once; an unknown name keeps the skip-and-count treatment above, and this rule does not reach one) |
 | `[N]T` fixed array | array | fewer elements pad with defaults (an older writer's shorter bound); more refuse `count_over_bound` |
-| `[..N]T` bounded array | array | count = length; **an array of MORE than N elements refuses the read** (recommended name `out_of_range`, which is Go's; the verdict is the contract, §16.8, and the name is not) |
+| `[..N]T` bounded array | array | count = length; **an array of MORE than N elements refuses the read** (recommended name `out_of_range`, which is Go's; the verdict is the contract, §16.8, and the name is not); for `[Min..N]T`, **an array of FEWER than Min elements refuses the read too**, wherever the field sits, a union arm included (ruling R10; §22.2's born-count row) |
 | `[Min..N]T` bounded array with a minimum | array | the `[..N]T` row, and **an array of FEWER than Min elements refuses the read** (recommended name `out_of_range`; the verdict is the contract, §16.8): the elements are placed and the count is judged when the array closes, so `[]` refuses for any Min above zero. An ABSENT key is not such an array: it keeps the field's born state, Min default elements (§2.3) |
 | `[E]T` enum-keyed array | object keyed by VARIANT NAME | `{ "Fighter": {...}, "Bomber": {...} }`; an absent key keeps that slot's defaults; a **repeated variant key refuses `malformed`**, as any repeated key does; an unknown key is skipped and counted `unknown`, and **`"None"` is such a key** — it names no slot (§2.4) |
 | nested `type` / `table` | object | the same walk, recursively |
@@ -16570,7 +16754,11 @@ the 255 counts the name's DECODED bytes, after its escapes are resolved, and
 a longer one refuses the read (the generated Go: `out_of_range`, §6.5), and an unknown enum name over 255 bytes refuses
 and never reads `None`. The cap never reaches a map key or a string value —
 those are data a conforming writer emits — and the `map[string]V` row's "no
-key is refused for its length" stands (§2.13.1).
+key is refused for its length" stands (§2.13.1). **Inside a SKIPPED value
+EVERY object key is capped at 255 decoded bytes**: the reader holds no
+declaration there to tell a table's object from a map's, and the strict reading
+is the one rule every reader can apply (rows `json-hostile skipped-key-255-bytes`,
+which reads, and `skipped-key-256-bytes`, which refuses).
 
 **Every JSON read is handed BYTES and validates UTF-8 itself.** A leg whose
 read takes its language's string also offers a bytes entry, and that string
@@ -16598,7 +16786,10 @@ document's own size bound. There is no separate number-length limit, so a
 `1.` followed by six hundred zeros is the float `1.0` and a `1` followed by
 six hundred zeros is an out-of-range integer, refused `out_of_range`, not a
 `malformed` token. Every engine gives the same answer for one, as it does for
-every other token.
+every other token. **The sign of a zero survives a token of any length**: `-0.`
+followed by a thousand zeros reads negative zero into a float field, exactly as
+`-0.0` does, and a reader that hands a long token to a second path never drops
+the sign there (conformance row `rr-num-negative-zero-long-token`).
 
 **The wide kinds convert EXACTLY, and nothing on their path is a double.**
 A wide integer — `int64`, `uint64`, `int128`, `uint128`, and a fixed kind
@@ -16785,6 +16976,12 @@ written as something else.
 - **A `&node` definition that would hold no field** — an empty or all-absent
   table named twice — because a definition holding no field is not one
   (§16.2, §16.7).
+- **A `float32` field holding a value past float32's own range.** A
+  language whose number is wider than float32 holds the value as it was set;
+  the writer rounds it to float32 first, writes that float32's text, and
+  refuses one that rounds to an infinity (`non_finite_float`), as every binary
+  writer does (rows `rr_wref_f32_past_range`, `rr_fref_f32_past_range`,
+  `rr_jref_f32_past_range`).
 - **A non-finite float.** The read path cannot produce one (above), so an
   instance that came from a text is always writable; one built in code with
   an infinity in it is refused, and says so.
@@ -17129,12 +17326,39 @@ reader does not place is the VALUE: an unknown key's value is skipped, because
 that is §4's evolution, and a newer schema's pointer field arriving at an older
 reader is exactly the unknown key §4 exists to survive.
 
+**WHICH READS HOLD A SKIPPED VALUE TO WHICH RULE** (ruling R7, 2026-11-22; one
+answer for every port):
+
+- **Every read at a VARIABLE root** holds a skipped value to the label grammar
+  AND the definition rules above, whether or not its unit declares a pointer
+  (rows `skipped-label-*` on `graphdemo Scene`, and
+  `skipped-label-undefined-pointer-free` on the pointer-free `listdemo Army`).
+- **A read at a FIXED root** holds a skipped value to the label GRAMMAR only.
+  The fixed class is pointer-free by construction (§2.2), so its read defines
+  and resolves no node and keeps no label set: an `&node` first key whose
+  label is a well-formed positive integer is skipped with the value, and a
+  reference to a label the text never defined is not refused there. That, and
+  only that, is why `reserved-ampersand-in-skipped-value` (`{ "mystery": {
+  "&node": 1 } }` at the fixed `tabledemo RootConfig`) reads.
+- **Any OTHER `&`-prefixed key inside a skipped value refuses `malformed`, at
+  every root**: a key that is not `&node`, and `&node` anywhere but its
+  object's first key. The prefix is reserved for `&node` in every object a
+  schema could own, and a skipped object might be one; an `&` that begins a
+  map key is ordinary data only where the reader PLACES the map (§16.2's map
+  row) (rows `skipped-ampersand-stray-key` and
+  `skipped-ampersand-node-not-first` at `tabledemo RootConfig`, and
+  `skipped-ampersand-key-variable` at `graphdemo Scene`).
+
 **The rules, in full.**
 
 - **The label is a positive integer, spelled as one**: digits, no sign, no
   fraction, no exponent, no leading zero. `1`, never `1.0` or `01`. A writer
   numbers the nodes it shares from `1` in the order it first writes them, and
-  a reader takes whatever it is given.
+  a reader takes whatever it is given. **A label is its exact unsigned 64-bit
+  value**, read and compared as an integer and never through a double:
+  `9007199254740992` and `9007199254740993` are two labels, and a label past
+  `2^64 − 1` refuses (rows `rr-label-past-2-53-distinct`,
+  `rr-label-past-2-53-undefined`, `label-overflow`).
 - **`&node` is the FIRST key of a pointer's object.** After a field it is
   `malformed`.
 - **A label the text has not defined, followed by the node's fields, DEFINES
@@ -17204,6 +17428,7 @@ its text form reads through the BUILDER, and writes from the CONST root of a
 region — what `Lock` and `Load` both produce. The surface is §16.1's with the
 class's own forms in the first argument:
 
+<!-- example: fragment -->
 ```cpp
 SceneBuilder builder;
 TableReport report;
@@ -18581,13 +18806,14 @@ tightened total is a data edit exactly as a tightened range is. A list that
 declares none records no token, so every committed baseline regenerates
 byte-identically and the rendering version does not move.
 
-**Presence is RECORDED but is absorbed in both variable-wire directions.**
-A field moved between `T` and `?T` passes: a present optional default is a
-lawful payload for the plain reader, and an elided plain field reads as absent
-through the optional declaration (§2.3, §4). A field moved to or from `*T`
-is a kind change and is refused (§4.1). This restores the pre-existing
-presence evolution contract rather than adding a ban to justify read-side
-elision.
+**Presence is RECORDED, and it runs ONE WAY** (R16, 2026-11-22: *"once a
+field is optional, it must stay optional forever"*). A field moved from `T` to
+`?T` passes: it is a widening, every old value lands present, and a present
+optional default is a lawful payload for an older plain reader (§2.3, §4). A
+field moved from `?T` to `T` is a narrowing and is REFUSED, naming the field
+(§4, THE ONE WIDENING RULE), although the variable wire cannot see it: the
+baseline is what holds it. A field moved to or from `*T` is a kind change and
+is refused (§4.1).
 
 It carries no protocol id, and ONE packet fact: the type wire, the
 wire-shape projection and the protocol id are untouched by all of it (§10).
@@ -18640,7 +18866,8 @@ committed file whenever one is there, and:
   or RENAMED IN PLACE (a rename moves no byte, and a new meaning on a spent
   bit remaps every stored file; nothing distinguishes the two, so the
   author says which); a field's wire kind or an array's ELEMENT kind
-  changed; a `| required` marker added to a shipped field (`required=true`),
+  NARROWED or RETYPED (a widening passes, below); a field moved from `?T` to `T` (`optional=true` removed), the
+  narrowing of THE ONE WIDENING RULE (§4; R16); a `| required` marker added to a shipped field (`required=true`),
   or a new field carrying it — records written before it lack the field and a
   newer reader refuses them as `missing_required` — while removing it passes;
   a byte buffer's `type=string` or `type=bytes` moved between the two, or
@@ -18678,7 +18905,11 @@ committed file whenever one is there, and:
   entries already are (§2.8), because the read gains the order check and a
   wire whose pairs were not ascending refuses `wire_damaged`; a declared
   RANGE tightened, from either end, or declared where the field or the ARM
-  had none; a text list's `total=` lowered, or declared where the list had
+  had none; a `bits(N)` narrowed inside one storage bucket (`bits(12)` to
+  `bits(9)`, both kind `7`), and an unsigned integer moved to a `bits(N)` of
+  the same kind whose `N` is below the bit length of its declared `max`, or
+  of its kind's width where it declares none (`uint16` to `bits(9)` warns,
+  `uint16 | max = 300` to `bits(9)` does not); a text list's `total=` lowered, or declared where the list had
   none (§2.13); an
   enum variant or a union arm removed; an enum variant DEPRECATED in place
   (§2.15), because stored values naming it then read as the field's declared
@@ -18703,8 +18934,13 @@ committed file whenever one is there, and:
   ranges and a text list's `total=` grown or removed, **a bounded array's bound REMOVED for `[]T` included** (§2.9),
   which is the largest growth there is; a bounded array that declares no
   minimum made fixed, or the reverse; an enum variant's `deprecated` marker
-  taken off; a field moved between `T` and `?T` (a field moved to or from `*T` is a
-  kind change and is refused above, because a pointer is kind 17).
+  taken off; a field's, an arm's, an element's or a map key's kind
+  WIDENED (an integer kind to a wider one of the same signedness, `f32` to
+  `f64`) and a field moved from `T` to `?T`, the widenings of §4 THE ONE
+  WIDENING RULE: the new reader reads every old value, and an old reader
+  given the new file refuses it by name, which is lawful (R17) (the reverse
+  of each is a narrowing refused above, and a field moved to or from `*T` is a kind change
+  refused above, because a pointer is kind 17).
 
 **The CLI enforces the same file, by name.** `--reason` without `--update`
 is refused: it records why a baseline MOVED, and a read has nothing for it to
@@ -18917,8 +19153,8 @@ A field REPOINTED at another union carries a pair too (§18.3): a
 replacement whose shared arm holds a twin payload refuses on `default=`, one
 whose shared arm holds a scalar refuses on `payload=`, and a union carrying
 every arm of the old one under the same facts stands in.
-`TestBaselineRefusesTToOptional` holds the one-way optional edit and a new
-optional field. The projection over the corpus regenerates byte-identical. The warn class
+`TestBaselineOptionalIsOneWay` holds the optional edit one way: `T` to `?T`
+and a new optional field pass, and `?T` to `T` refuses naming the field (R16). The projection over the corpus regenerates byte-identical. The warn class
 warns and does not refuse. A tightened range
 warns from either end and a loosened one is silent, over a ranged integer, a
 fixed field's whole-unit bounds and a compressed float's. The `was` chain
@@ -19077,6 +19313,14 @@ out when both are asked of one table.
 
 ### 19.1 The builder
 
+**EVERY REFUSAL OF THE BUILDER IS A NAMED REFUSAL, IN EVERY BUILD.** A count
+past an array's maximum, a text or bytes used length outside its field's
+`[0, N]` and a NaN or an infinity in a float make the builder fail by name
+(`Begin` returns false; a leg without a boolean answers its empty value and
+names the field). A refusal held only by a build-removable assert is not one:
+with the assert compiled away the writer would write past the field into the
+next one.
+
 **One extent, 64-byte aligned at its base**, laid out in this order:
 
 - **The PROJECTION at offset 0** (above). It opens with a generated PROLOGUE
@@ -19137,6 +19381,7 @@ estate's usual shape — allocates `<Table>BlockMaxBytes + 63` bytes through it,
 and aligns the 64-byte base inside them, because a malloc guarantee is not a
 cache line's. `Destroy` releases through the same pair.
 
+<!-- example: fragment -->
 ```cpp
 struct TableBlockAllocator
 {
@@ -19179,6 +19424,7 @@ happens once and is never grown.
 **The LAYOUT is settled once per block, from the counts**, before any worker
 starts:
 
+<!-- example: fragment -->
 ```cpp
 RenderFrameBlockStorage storage;              // the allocation: max-sized, 64-aligned
 if ( !storage.Create( TableBlockDefaultAllocator() ) )
@@ -19213,6 +19459,7 @@ page says so here rather than leaving a caller to find it at sixty hertz.
 
 **Then the fill, and the fill is the requirement:**
 
+<!-- example: fragment -->
 ```cpp
 RenderShip * ships = RenderFrameShips( block );   // the array's typed base
 
@@ -19305,6 +19552,7 @@ declaration, the contract of §19.3 is asserted either way, and a consumer
 picks by what it is doing: reflection to walk anything, the struct to read
 one thing fast.
 
+<!-- example: fragment -->
 ```csharp
 if ( !RenderFrameBlock.Open( out RenderFrameBlock block, pointer, bytes ) )
     return;               // and the caller falls back, or reports
@@ -19321,6 +19569,7 @@ ReadOnlySpan<RenderShipRow> ships = block.ShipsSpan;   // contiguous: the pitch 
 spelling and Go's differs where §11 leaves it free to: the claimed verbs stay
 free functions, and the row accessors and per-array constants are members.
 
+<!-- example: fragment -->
 ```go
 var block blockdemo.RenderFrameBlock
 if !blockdemo.RenderFrameBlockOpen( &block, pointer, bytes ) {
@@ -20615,8 +20864,8 @@ widening.
 | a compressed float | it RIDES AS THE FLOAT here (§3.4), so min, max and resolution are DEFINITIONS and never wire: the range moved OUTWARD or REMOVED like any ranged scalar's, and the resolution moved FINER — a writer quantizes to its own step, so an older file's values sit on a COARSER grid this reader lands exactly | a range moved inward, or ADDED where none was; a resolution COARSENED (the old values are off this reader's grid); anything else |
 | `bits(N)` | a larger N | smaller |
 | `fixed(I,F)` | a larger I | F changed |
-| an optional | `T` to `?T` (old values land present) | `?T` to `T` |
-| a field's kind | — | changed |
+| an optional | `T` to `?T` (old values land present): §4's ONE WIDENING RULE, the same rule the baseline holds on the variable form (§18.2) | `?T` to `T`, refused by `schema check` naming the field (`TestLockOptionalAddRefuses`) |
+| a field's kind | — | changed: a retype, `int64` to `string`, to or from `*T` (refused by §2.2 in this closure), `int64` to `timestamp` (R14) |
 | a specified default | — | changed (§18: it defines what every old file means) |
 | the `fixed` keyword | — | added or removed (a different form, not a version) |
 | a reader-side limit a table declares (RESERVED: no table spelling of one exists yet, and a compiler flag is outside the law) | larger | smaller |
@@ -20629,6 +20878,15 @@ take the ELEMENT DEFAULT, which is what a fresh value holds there. A shorter `[.
 and count land, and the slack past the count is zeros, as is a text field's slack past its length — nobody
 wrote those bytes and nothing reads them. An older enum: its ordinals are the reader's, the list being a
 prefix. Everything else: copied.
+
+**A GROWN `[N]T` BOUND GIVES EACH NEW SLOT A DEFAULT ELEMENT OF ITS OWN, IN
+EVERY FORM.** Where the reader declares a wider `[N]T` than the writer did, the
+elements the writer wrote land in the first slots and each slot past them holds
+a fresh default element: a scalar at the declared default of the element, a
+table or a type at its declared defaults, a union with no arm. The message
+form, the text form and this form do the same; no slot shares a value with
+another, and no slot holds a value the writer of this build would refuse
+(F-092; rows `message-drift widenbound_msg` and `rewrite widenbound_evodoc`).
 
 ### 21.3 What an older reader does with a newer file
 
@@ -20783,7 +21041,7 @@ fixed form writes it as held too, and §22.6 says so.
 | `[N]T` whose element is NOT kind `13` | EVERY element equals its default, a plain float element compared by BIT PATTERN as above | all `N` elements |
 | `[N]T` whose element is kind `13` (a `type` or a `table`) | NEVER: position is identity, so the field always rides | all `N` elements, each its own `L` and body, an all-default element as `L = 1` and its terminator |
 | `[..N]T`, `[]T`, a text list | the live count is `0` | the live count and that many elements |
-| `[Min..N]T` with Min above zero (born at Min, SPEC §4.6), neither `required` nor `?` | it is at its BORN state: the live count is exactly Min AND each of those Min elements is at its default, judged as that element's own row above (a table element whose body is its terminator alone; an enum or union element at the zero reference). A field elides at birth exactly when both hold, and at no other count | the live count and that many elements. A reader meeting a count below Min refuses `count_over_bound` in EVERY form (table, message and fixed), and an elided field reads back as Min default elements; so Min elements of which one is live, and Min + 1 default elements, both ride |
+| `[Min..N]T` with Min above zero (born at Min, SPEC §4.6), neither `required` nor `?` | it is at its BORN state: the live count is exactly Min AND each of those Min elements is at its default, judged as that element's own row above (a table element whose body is its terminator alone; an enum or union element at the zero reference; a pointer element at null). A field elides at birth exactly when both hold, and at no other count | the live count and that many elements. A reader meeting a count below Min refuses `count_over_bound` in EVERY form (table, message and fixed), and an elided field reads back as Min default elements; so Min elements of which one is live, and Min + 1 default elements, both ride |
 | `bytes(N)` | its bytes equal the declared default's (empty when none is declared) | kind `14` over element kind `6`: `L`, `0x06`, `N`, the bytes, so two bytes `01 02` are `ref 0E 04 06 02 01 02` |
 | `[E]T` (enum-keyed) | no slot is present | the present slots in ascending ORDINAL of the key enum, each `key reference, L, element`; a slot holding its default (a table slot whose body is its terminator alone) is not present (§3.2) |
 | a union | it is `None` | the arm reference, the arm's kind byte, `L`, the arm payload (§3's arm table); a SET arm is never elided, whatever it holds |
@@ -20821,8 +21079,8 @@ and the conformance corpus holds each row with a pinned wire (§22.7).
   other assert legs refuse in their debug builds, where a release build's
   bytes for a broken contract are outside it ("In low level languages like
   C/C++ our intent is to do this at debug time for speed", the project owner).
-- **KIND `31` IS NEVER WRITTEN** by a writer of this major, and kind `32` is
-  written only as a payload-free arm, `L = 0` (§3).
+- **KIND `31` IS NEVER WRITTEN** by a writer of this major and is refused by
+  every reader wherever it is met (R17), and kind `32` is written only as a payload-free arm, `L = 0` (§3).
 
 #### 22.2.1 Arrays, unions and maps
 
