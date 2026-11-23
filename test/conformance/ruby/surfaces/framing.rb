@@ -3,11 +3,13 @@
 def self.run(manifest, outdir)
   RubyConformance.entries(manifest, 'framing').each do |row|
     case_name, unit, root, wire = row[1, 4]
-    is_fixed_twin = (unit == 'tblr1' && root == 'Cfg') || (unit == 'listdemo' && root == 'Bounded')
+    # Read form 1 with the variable-class sibling and save with the fixed class.
     tree = if unit == 'tblr1' && root == 'Cfg'
              ENV['RUBY_FRAMING_GENERATED'] || File.join(RubyConformance::ROOT, 'tblr1', '_framing')
            elsif unit == 'listdemo' && root == 'Bounded'
              File.join(RubyConformance::ROOT, 'listdemo', '_framing')
+           elsif unit == 'tabledemo' && root == 'CountedMin'
+             File.join(RubyConformance::ROOT, 'tabledemo', '_framing')
            end
     pkg = RubyConformance.unit_package(unit, tree)
     cls = RubyConformance.root_class(unit, root, tree)
@@ -23,7 +25,7 @@ def self.run(manifest, outdir)
       next
     end
     text = value.to_json
-    if is_fixed_twin
+    if tree
       fixed_pkg = RubyConformance.unit_package(unit)
       fixed_cls = RubyConformance.root_class(unit, root)
       if fixed_pkg.nil? || fixed_cls.nil? || !RubyConformance.fixed_carried?(fixed_pkg, fixed_cls)
