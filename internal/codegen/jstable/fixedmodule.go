@@ -172,6 +172,10 @@ func (g *fixedModule) emit(closure []*ir.Struct, roots []*ir.Struct, tables []*i
 			g.gen.emitReadCheckBody(st)
 			g.gen.emitDeadCheckBody(st)
 		}
+		g.gen.emitFromTextEnums(g.messageClosure)
+		for _, st := range g.messageClosure {
+			g.gen.emitFromTextBody(st)
+		}
 		g.pf("%s", g.gen.body.String())
 		// THE MESSAGE FORM'S BODY VERBS RIDE THE MESSAGE ROOTS' WHOLE CLOSURE,
 		// not just the roots (docs/SPEC-TABLES.md §3.3): a root's body may hold

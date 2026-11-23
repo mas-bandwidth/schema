@@ -13,6 +13,7 @@ bin/schema check <dir>
 | dir | purpose | guard | command |
 | --- | --- | --- | --- |
 | `.claude-plugin/` | plugin marketplace entry for skills/ | `none` | `none` |
+| `.githooks/` | git hooks for agent clones (pre-push identity guard) | `go test ./internal/ci -run PrePush` | `make setup` |
 | `.github/` | CI workflows | `go test ./internal/ci` | `make test` |
 | [bench/](bench/AGENTS.md) | cross-language serialize bench | `go test ./bench/corpus` | `bench/run.sh` |
 | `cmd/` | schema CLI | `go test ./cmd/schema` | `go test ./cmd/schema` |
@@ -22,6 +23,7 @@ bin/schema check <dir>
 | `editors/` | TextMate grammar, VS Code, Linguist kit | `go test ./editors/...` | `go test ./editors/...` |
 | `examples/` | type-wire corpus | `go test ./internal/goldens` | `make check` |
 | `examples128/` | int128/fixed corpus | `go test ./internal/goldens` | `make check` |
+| `experiments/` | spec-only port experiments, one folder per language | `none` | `none` |
 | `generated/` | committed per-language output | `test/generated-tree/verify` | `make generated-current` |
 | `images/` | README art | `none` | `none` |
 | [internal/](internal/AGENTS.md) | compiler internals | `go test ./internal/...` | `go test ./internal/...` |

@@ -25,7 +25,7 @@ import (
 	"testing"
 )
 
-// the warning of the footgun, as lobster prints it
+// the warning of the footgun, as lobster prints it.
 const lobsterWarning = "conformance_main.lobster(112): warning: unused variable `recs`"
 
 // wantNonProtocol is the whole message a refusal of line carries.

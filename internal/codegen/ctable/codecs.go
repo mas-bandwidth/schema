@@ -260,7 +260,7 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 	case f.Array == ir.ArrayFixed:
 		g.pf("    %s %s[%d];\n", typ, f.Name, f.ArrayBound)
 	case f.Array == ir.ArrayCounted:
-		g.pf("    %s %s[%d]; /* used count beside it; count in [0, %d] */\n", typ, f.Name, f.ArrayBound, f.ArrayBound)
+		g.pf("    %s %s[%d]; /* used count beside it; count in [%d, %d] */\n", typ, f.Name, f.ArrayBound, f.ArrayMin, f.ArrayBound)
 		g.pf("    int32_t %s_count;\n", f.Name)
 	default:
 		g.pf("    %s %s;\n", typ, f.Name)
@@ -339,7 +339,9 @@ func (g *tableGen) emitTableResetField(f *ir.Field) {
 		g.emitTableResetArray("value->"+f.Name, strconv.FormatInt(f.ArrayBound, 10), typ, selfInit, f)
 	case f.Array == ir.ArrayCounted:
 		g.emitTableResetArray("value->"+f.Name, strconv.FormatInt(f.ArrayBound, 10), typ, selfInit, f)
-		g.pf("    value->%s_count = 0;\n", f.Name)
+		// a [Min..N]T is BORN at Min default elements (docs/SPEC.md §4.2,
+		// ir.Field.BornCount), and the slots above already hold them
+		g.pf("    value->%s_count = %d;\n", f.Name, f.BornCount())
 	case selfInit:
 		g.emitTableResetOne("value->"+f.Name, typ, f)
 	default:

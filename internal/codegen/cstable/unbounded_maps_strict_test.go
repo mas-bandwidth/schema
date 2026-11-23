@@ -62,14 +62,15 @@ const unboundedMapsStrictProbe = `
   throw new System.Exception("ill-formed UTF-8 in JSON text was not refused reason=" + badReport.Reason);
  if (badValue.NamesCount != 0) throw new System.Exception("refused JSON text read landed entries");
 
- // A repeated map key on the wire refuses the whole load. The wire is
+ // A repeated map key on the wire is damage (not a named refusal) and the
+ // whole load is discarded (SPEC-TABLES §4; FL-26). The wire is
  // built by the neutral Go writer from a value holding one key twice;
  // the C# authoring save refuses such a value, so this hand-built wire
  // is the only way the read side can be held to the same rule.
  byte[] dupWire = System.Convert.FromHexString("DUPWIRE");
  var dupRead = new Probe.Root(); var dupWireReport = new Probe.TableReport();
- if (Probe.Schema.RootLoad(dupRead, dupWire, dupWireReport) || !dupWireReport.Refused)
-  throw new System.Exception("repeated map key on the wire was not refused reason=" + dupWireReport.Reason);
+ if (Probe.Schema.RootLoad(dupRead, dupWire, dupWireReport) || !dupWireReport.Damaged || dupWireReport.Refused || dupWireReport.Verdict != Probe.Schema.TableWire.Verdict.Damaged)
+  throw new System.Exception("repeated map key on the wire was not damage: damaged=" + dupWireReport.Damaged + " refused=" + dupWireReport.Refused + " reason=" + dupWireReport.Reason);
  if (dupRead.ByNameCount != 0) throw new System.Exception("refused duplicate wire read landed entries");
 }
 `
