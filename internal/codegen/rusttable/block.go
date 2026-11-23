@@ -369,13 +369,24 @@ func (b *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 		case f.Array == ir.ArrayCounted:
 			b.pf("    %sif %s_count < %d || %s_count > %d { return None; }%s\n", guard, m, f.ArrayMin, m, f.ArrayBound, closeGuard)
 		case f.Array == ir.ArrayNone && f.HasIntRange && f.Type.Kind == ir.TInt && f.Type.Width <= 64:
-			switch {
-			case f.Type.Signed:
-				b.pf("    %sif (%s as i64) < %s || (%s as i64) > %s { return None; }%s\n", guard, m, f.IntMin.String(), m, f.IntMax.String(), closeGuard)
-			case f.IntMin.Sign() > 0:
-				b.pf("    %sif (%s as u64) < %s || (%s as u64) > %s { return None; }%s\n", guard, m, f.IntMin.String(), m, f.IntMax.String(), closeGuard)
-			default:
-				b.pf("    %sif (%s as u64) > %s { return None; }%s\n", guard, m, f.IntMax.String(), closeGuard)
+			wide := m
+			if f.Type.Width < 64 {
+				if f.Type.Signed {
+					wide = "(" + m + " as i64)"
+				} else {
+					wide = "(" + m + " as u64)"
+				}
+			}
+			storageMin, storageMax, _ := storageLimits(f)
+			var outside []string
+			if f.IntMin.Cmp(storageMin) > 0 {
+				outside = append(outside, fmt.Sprintf("%s < %s", wide, f.IntMin.String()))
+			}
+			if f.IntMax.Cmp(storageMax) < 0 {
+				outside = append(outside, fmt.Sprintf("%s > %s", wide, f.IntMax.String()))
+			}
+			if len(outside) > 0 {
+				b.pf("    %sif %s { return None; }%s\n", guard, strings.Join(outside, " || "), closeGuard)
 			}
 		case f.Array == ir.ArrayNone && f.HasFloatRange:
 			b.pf("    %sif !(%s >= %s && %s <= %s) { return None; }%s\n", guard, m, fixedFloatLit(f.FMin), m, fixedFloatLit(f.FMax), closeGuard)

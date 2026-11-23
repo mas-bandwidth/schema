@@ -174,14 +174,16 @@ func (m *msgGen) emitDefaults(st *ir.Struct) {
 		for _, line := range assigns {
 			m.pf("%s", line)
 		}
-		m.pf("        ..Default::default()\n    }\n}\n\n")
+		if len(assigns) < len(st.Fields) {
+			m.pf("        ..Default::default()\n")
+		}
+		m.pf("    }\n}\n\n")
 		return
 	}
 	up := strings.ToUpper(snake)
 	img := fixedDefaultImage(st)
-	m.pf("// This wire image is a compile-time constant of the form (§3.3).\n")
-	m.pf("#[allow(clippy::large_const_arrays)]\n")
-	m.pf("const %s_MESSAGE_DEFAULTS: [u8; %d] = [", up, len(img))
+	m.pf("// This immutable wire image is compiler-settled data of the form (§3.3).\n")
+	m.pf("static %s_MESSAGE_DEFAULTS: [u8; %d] = [", up, len(img))
 	for i, v := range img {
 		if i%16 == 0 {
 			m.pf("\n    ")
@@ -423,7 +425,7 @@ func (m *msgGen) scalarWriteCheck(f *ir.Field, expr, ind string) {
 		return
 	case ir.TNamed:
 		if fl, ok := f.Type.Ref.(*ir.Flags); ok && len(fl.Variants) < 64 {
-			m.pf("%sdebug_assert!((%s as u64) >> %d == 0, \"flags %s bits name no variant\");\n", ind, expr, len(fl.Variants), fl.Name)
+			m.pf("%sdebug_assert!(%s >> %d == 0, \"flags %s bits name no variant\");\n", ind, expr, len(fl.Variants), fl.Name)
 		}
 		return
 	}

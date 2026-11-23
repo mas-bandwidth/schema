@@ -332,7 +332,7 @@ func (g *gen) emitKeyedSave(b *strings.Builder, f *ir.Field, ordinal int, x, ind
 	// count is a debug assert, never a drop (audit SF-35)
 	fmt.Fprintf(b, "%sdebug_assert!(%s.len() == %d, \"%s length is not %d\");\n", ind, x, len(f.KeyEnumRef.Variants), f.Name, len(f.KeyEnumRef.Variants))
 	fmt.Fprintf(b, "%s{\n", ind)
-	fmt.Fprintf(b, "%sconst KEYS: [u64; %d] = [", inner, len(f.KeyEnumRef.Variants))
+	fmt.Fprintf(b, "%sstatic KEYS: [u64; %d] = [", inner, len(f.KeyEnumRef.Variants))
 	for i := range f.KeyEnumRef.Variants {
 		if i > 0 {
 			b.WriteString(", ")
