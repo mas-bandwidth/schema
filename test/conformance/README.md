@@ -89,8 +89,32 @@ language" below, where both shapes are stated.
 - **`list`** prints the surfaces this backend implements, one per line, to
   stdout.
 - **A surface run** writes ONE FILE PER CASE into `<outdir>`, named by the case,
-  and prints nothing that matters. The harness holds the expectations and does
-  the comparing.
+  and prints NOTHING on stdout. The harness holds the expectations and does the
+  comparing.
+
+### The driver's stdout
+
+Stdout is protocol and nothing else. `list` prints surface names, one per line
+(`[a-z][a-z0-9-]*`); a surface run prints nothing. **Compiler, interpreter and
+runtime diagnostics (warnings included) go to stderr**, which the harness prints
+when a driver fails. A non-blank stdout line outside that grammar fails the
+driver with `driver printed non-protocol line: <line>`: never a wrong answer,
+and never a surface that fails 0/N with nothing naming why (a Lobster
+`unused variable recs` warning once did exactly that). `harness/run.go`
+(`parseSurfaceList`, `checkRunStdout`) enforces it for every leg, and
+`harness/driverstdout_test.go` holds it.
+
+Four legs have a program that can only answer on stdout (Lobster, Luau, Goose
+and Moo: the interpreter has no file API the driver can rely on), so their
+driver script turns the program's stdout into the files. That script is ONE
+shared parser, `test/conformance/answer-lines.pl`, and its grammar is the whole
+of the protocol: `<case> <lowercase hex, an even number of digits, maybe none>`
+or `<case> absent [<reason>]`, with `<case>` in `[A-Za-z0-9_.-]+`. Any other
+line stops the driver with the message above. Lobster prints its own compiler
+warnings and errors on stdout and cannot be told otherwise, so
+`lobster/main.lobster` opens its output with a marker line and
+`lobster/driver` sends everything before the marker to stderr (no marker means
+the program never started, which is a failure).
 
 ### Exit codes
 
@@ -765,6 +789,34 @@ SCHEMA_SLOW=1 go test ./test/conformance/packet/ -run TestPacketCarrier
 
 A seed is a schema directory under `packet/testdata/`, one entry in `Seeds`,
 and one codec in every driver.
+
+## The pins are written by generators, never by hand
+
+Every committed pin is regenerated in CI and diffed, so a hand-written golden
+fails on the pull request that adds it. The `pins` job of
+`.github/workflows/ci-fast.yml` runs when the diff touches `testdata/`, a pin
+writer or anything the broad rule names, and has five rows, each a make target
+that rewrites one family in place followed by `git diff --exit-code` on
+`testdata/` and a check for uncommitted new files:
+
+| row | target | family |
+|---|---|---|
+| source | `pins-source pins-framing` | `testdata/golden/` (Go goldens, C++/C/C# table copies); the framing vectors, written by `FRAMING_WRITE=1` tests in `test/conformance/harness` |
+| wire-packet | `pins-fresh-wire-packet` | `testdata/wire/*.bin`, `*.bits`, `packet-defaults/`, `bench_*.bin`, EMPTIED FIRST so a file no generator writes shows as a deletion |
+| wire-tables | `pins-wire-tables` | `testdata/wire/tables/` from `test/tables/main.cpp` |
+| wire-tables-forms | `pins-wire-tables-forms` | block, maps, lists, arms and retain wire pins; the harness `generate` half of `testdata/conformance/tables` |
+| conformance | `pins-conformance` | the cook node dumps and the block forgeries, written by the reference leg (`harness pin`) |
+
+The generated tree (`generated/`) is `generated-current` in the same file. The
+whole of it is one local command, `make update-goldens`, which runs the same
+writers and is all or nothing: it snapshots `testdata/` (`test/goldens/transact`)
+and restores the snapshot on any failure, interrupt or kill, so an abort (a debug
+assert in a reference binary, a failing `go test`) leaves the tree exactly as it
+was. A snapshot left by a run killed outright is put back at the start of the
+next one. Not generated, by design, and so not in the rewrite: the hostile and
+fuzz corpora (`testdata/wire/tables/fuzz-vectors/`, `testdata/jsontestsuite/`)
+and the feature witnesses, which are authored inputs that the conformance matrix
+reads.
 
 ## The budget
 

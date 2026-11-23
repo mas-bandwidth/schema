@@ -61,4 +61,4 @@ if [ "$(head -n 1 "$stage/out")" = "!surface-absent" ]; then
 	exit 2
 fi
 mkdir -p "$3" || exit 1
-perl test/conformance/moo/split.pl "$stage/out" "$3"
+perl test/conformance/answer-lines.pl "$3" "$stage/out"

@@ -10,13 +10,13 @@
    law and not layout_newer (hash outside the lineage) or layout_malformed
    (a known hash over different layout bytes).
 
-   VECTOR DERIVATION. A clean one-record V1 `Cell` file is what the generated
-   writer itself lays down; `cell_fixed_save` stamps every record's per-record
+   VECTOR DERIVATION. A clean one-record V1 `tblv1_cell_t` file is what the generated
+   writer itself lays down; `tblv1_cell_fixed_save` stamps every record's per-record
    hash with the header's own hash, LE-encoded. That record hash sits at:
 
-       header (kTableFixedHeaderBytes = 16)
+       header (TBLV1_K_TABLE_FIXED_HEADER_BYTES = 16)
      + the layout's u32 length (4)
-     + the layout itself (cell_fixed_layout_bytes)
+     + the layout itself (tblv1_cell_fixed_layout_bytes)
      = rec_at
 
    Inverting one byte there makes LE(8, at) != h while every earlier check
@@ -37,37 +37,37 @@
 
 int main( void )
 {
-    Cell source;
-    Cell back;
-    TableReport r;
+    tblv1_cell_t source;
+    tblv1_cell_t back;
+    tblv1_table_report_t r;
     uint8_t wire[256];
     int64_t bytes, rec_at, i, n;
 
-    cell_reset( &source );
+    tblv1_cell_reset( &source );
     source.power = 7;
     memcpy( source.label, "hello", 6 );
     source.label_length = 5;
 
-    bytes = cell_fixed_measure( 1 );
+    bytes = tblv1_cell_fixed_measure( 1 );
     if ( bytes < 0 || bytes > (int64_t) sizeof( wire ) )
     {
         printf( "F10 no_layout: measure out of range: %lld\n", (long long) bytes );
         return 1;
     }
-    if ( cell_fixed_save( &source, 1, wire, bytes ) != bytes )
+    if ( tblv1_cell_fixed_save( &source, 1, wire, bytes ) != bytes )
     {
         printf( "F10 no_layout: the clean save failed\n" );
         return 1;
     }
 
     /* the forge: record 0's own hash, one byte inverted */
-    rec_at = kTableFixedHeaderBytes + 4 + cell_fixed_layout_bytes;
+    rec_at = TBLV1_K_TABLE_FIXED_HEADER_BYTES + 4 + tblv1_cell_fixed_layout_bytes;
     wire[rec_at] ^= 0xff;
 
     memset( &back, 0x5A, sizeof( back ) );
     memset( &r, 0, sizeof( r ) );
 
-    n = cell_fixed_load( &back, 1, wire, bytes, NULL, 0, NULL, &r );
+    n = tblv1_cell_fixed_load( &back, 1, wire, bytes, NULL, 0, NULL, &r );
 
     if ( n != -1 )
     {
@@ -79,7 +79,7 @@ int main( void )
         printf( "F10 no_layout: refused not set\n" );
         return 1;
     }
-    if ( r.reason != SCHEMA_TABLE_NO_LAYOUT )
+    if ( r.reason != SCHEMA_TBLV1_TABLE_NO_LAYOUT )
     {
         printf( "F10 no_layout: reason=%d, not no_layout\n", r.reason );
         return 1;

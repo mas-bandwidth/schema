@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -77,7 +78,7 @@ func TestCompressedRangeWriteCorpus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	update := os.Getenv("SCHEMA_UPDATE_RANGE_WRITE_CORPUS") == "1"
+	update := slowtest.Rewriting(t, "SCHEMA_UPDATE_RANGE_WRITE_CORPUS")
 	refused, written := map[string]int{}, map[string]int{}
 	for i, line := range strings.Split(string(text), "\n") {
 		if line == "" || strings.HasPrefix(line, "#") {
