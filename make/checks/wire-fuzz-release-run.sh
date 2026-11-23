@@ -32,7 +32,7 @@
 # <why>`. The harness counts the seeds a leg has no codec for; a run with any
 # is RED unless the list holds that exact count for the leg and arm, and a
 # line whose leg now answers every seed is RED until it is removed.
-set -u
+set -eu -o pipefail
 leg=$1 arm=$2 seed=$3 n=$4 dir=$5
 owedfile=${WFR_OWED:-test/conformance/wire-fuzz-owed.txt}
 absentfile=${WFR_ABSENT:-test/conformance/wire-fuzz-absent.txt}

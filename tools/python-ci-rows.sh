@@ -6,7 +6,7 @@
 # unit still runs both interpreters and strict mypy. New tests are added automatically.
 # The unsplit make target stays the local/nightly
 # contract; each support target is one named portion of its prerequisites.
-set -eu
+set -eu -o pipefail
 rows=$(mktemp)
 packages=$(mktemp)
 trap 'rm -f "$rows" "$packages"' EXIT HUP INT TERM
@@ -20,9 +20,9 @@ printf '%s\n' "$support" | while IFS= read -r target; do
     names=$(printf '%s\n' "$listed" | awk '/^(Test|Example|Fuzz)[A-Za-z0-9_]*$/ { print }')
     [ -n "$names" ] || { echo "no Python compiler tests discovered" >&2; exit 1; }
     selected=$(printf '%s\n' "$names" | while IFS= read -r test; do
-      if [ "$test" = TestPythonRequiredPublicShapes ] && printf '%s\n' "$support" | grep -qx python-ci-required-shape-0; then
+      if [ "$test" = TestPythonRequiredPublicShapes ] && printf '%s\n' "$support" | grep -x python-ci-required-shape-0 >/dev/null; then
         for part in 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-          printf '%s\n' "$support" | grep -qx "python-ci-required-shape-$part" || { echo "missing required shape shard $part" >&2; exit 1; }
+          printf '%s\n' "$support" | grep -x "python-ci-required-shape-$part" >/dev/null || { echo "missing required shape shard $part" >&2; exit 1; }
         done
         continue
       fi
@@ -66,7 +66,7 @@ while IFS= read -r package; do
   fi
   skip=
   if [ "$package" = "github.com/mas-bandwidth/schema/v2/internal/codegen/python" ]; then
-    printf '%s\n' "$names" | grep -qx TestPythonPacketCore || { echo "missing TestPythonPacketCore" >&2; exit 1; }
+    printf '%s\n' "$names" | grep -x TestPythonPacketCore >/dev/null || { echo "missing TestPythonPacketCore" >&2; exit 1; }
     for part in 0 1 2 3 4 5 6 7; do
       [ "$(printf '%s\n' "$support" | grep -cx "python-ci-packet-core-$part")" -eq 1 ] || { echo "missing or duplicate packet core shard $part" >&2; exit 1; }
     done
@@ -74,9 +74,9 @@ while IFS= read -r package; do
   fi
   if [ "$package" = "github.com/mas-bandwidth/schema/v2/internal/codegen/pythontable" ]; then
     names=$(printf '%s\n' "$names" | sed '/^TestPythonVtEvolution$/d')
-    printf '%s\n' "$names" | grep -qx TestPythonVtFixedClassBuildVersionImports || { echo "missing TestPythonVtFixedClassBuildVersionImports" >&2; exit 1; }
+    printf '%s\n' "$names" | grep -x TestPythonVtFixedClassBuildVersionImports >/dev/null || { echo "missing TestPythonVtFixedClassBuildVersionImports" >&2; exit 1; }
     for delegated in TestPythonScalarWidenHistorical TestPythonContainerWidenHistorical TestPythonMapShapeBench TestPythonReflectionStrictTypes; do
-      printf '%s\n' "$names" | grep -qx "$delegated" || { echo "missing $delegated" >&2; exit 1; }
+      printf '%s\n' "$names" | grep -x "$delegated" >/dev/null || { echo "missing $delegated" >&2; exit 1; }
     done
     for target in python-ci-map-bench-current python-ci-map-bench-floor python-ci-widen-container python-ci-widen-scalar-0 python-ci-widen-scalar-1 python-ci-widen-scalar-2 python-ci-widen-scalar-3 python-ci-widen-scalar-4 python-ci-widen-scalar-5 python-ci-widen-scalar-6 python-ci-widen-scalar-7; do
       [ "$(printf '%s\n' "$support" | grep -cx "$target")" -eq 1 ] || { echo "missing or duplicate support row $target" >&2; exit 1; }
@@ -89,7 +89,7 @@ while IFS= read -r package; do
     skip=TestPythonVtFixedClassBuildVersionImports
     units=$(awk '$1 == "unit" { print $2 }' testdata/conformance/tables/MANIFEST.txt)
     [ -n "$units" ] || { echo "missing table corpus units" >&2; exit 1; }
-    if printf '%s\n' "$units" | grep -qv '^[A-Za-z0-9_]*$'; then echo "invalid table corpus unit name" >&2; exit 1; fi
+    if printf '%s\n' "$units" | grep -v '^[A-Za-z0-9_]*$' >/dev/null; then echo "invalid table corpus unit name" >&2; exit 1; fi
     part=0
     while [ "$part" -lt 8 ]; do
       selected=$(printf '%s\n' "$units" | awk -v part="$part" '(NR-1)%8 == part' | paste -sd '|' -)
