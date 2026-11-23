@@ -16,8 +16,8 @@ const generated = process.argv[3]
   ? pathToFileURL(process.argv[3] + "/")
   : new URL("../../../build/packet-write-cfloat/js/", import.meta.url);
 
-const runtime = await import(new URL("CFloat.js", generated));
-const flat = await import(new URL("CFloatFlat.js", generated));
+const runtime = await import(new URL("PacketCFloat.js", generated));
+const flat = await import(new URL("PacketCFloatFlat.js", generated));
 const mode = process.env.NODE_ENV === "production" ? "production" : "checked";
 
 let failures = 0;

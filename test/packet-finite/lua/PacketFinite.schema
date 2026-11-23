@@ -1,4 +1,4 @@
-// Finite.schema — the packet finite-float rule (SPEC §4.3): every way a bare
+// PacketFinite.schema — the packet finite-float rule (SPEC §4.3): every way a bare
 // float reaches the Lua packet wire, at both widths. `aligned` is a float64
 // on a byte boundary, `unaligned` one behind a bool; the lists carry floats as
 // elements, Pair a fixed array, and `quantized` is the compressed float, whose

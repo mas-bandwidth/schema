@@ -549,7 +549,7 @@ func t03GoR20(t *testing.T) {
 	// An older writer's undeclared field makes the lineage unlawful; the
 	// compiler lays no plan and no Unknown census (§5.2 MATCH, §5.8 rule 6).
 	t03GoHas(t, tableFixedRuntime, "if !tableFixedChildrenNamed(theirs, ti, mine, mi) {", "R20 every writer field is retained")
-	t03GoHas(t, tableFixedRuntime, "if c.unlawful {", "R20 an unlawful lineage refuses instead of skipping fields")
+	t03GoHas(t, tableFixedRuntime, "if c.unlawful != 0 {\n\t\treturn -1 - int32(c.unlawful)\n\t}", "R20 an unlawful lineage refuses instead of skipping fields")
 	t03GoHasNot(t, tableFixedRuntime, "c.report.Unknown++", "R20 no compile census is counted")
 	t03GoHasNot(t, load, "report.Unknown++", "R20 no census lands per record")
 	// A NARROWER INTEGER OR FLOAT: widened exactly, and counted.

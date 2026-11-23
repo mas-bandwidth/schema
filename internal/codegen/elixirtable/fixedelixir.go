@@ -861,6 +861,9 @@ func (g *fixedGen) readPayload(out *rseg, f *ir.Field, v string, present node) {
 		// row 3, §4.2): no writer sends it.
 		seg := "n_" + v + "::little-signed-32"
 		out.match = append(out.match, seg)
+		if f.ArrayMin > 0 {
+			out.stmt("c", rawf("R.held_min(c, n_%s, %d)", v, f.ArrayMin))
+		}
 		out.stmt("c", rawf("R.clamps(c, n_%s, %d, %d)", v, f.ArrayMin, f.ArrayBound))
 		g.readElements(out, f, v, rawf("min(max(n_%s, 0), %d)", v, f.ArrayBound))
 	case f.Type.Kind == ir.TString:

@@ -62,7 +62,7 @@ func TestDartArmMinShape(t *testing.T) {
 		// variable wire: the arm, its inert payload, and the plain field
 		"if (count < 2) { p.report.refuse('count_over_bound'); return false; }",
 		"if (p.limit - p.pos < 2) { p.report.refuse('count_over_bound'); return false; }",
-		"if (keep < 2) { r.report.refuse('count_over_bound'); return; }",
+		"if (keep < 2 || keep > 4) { r.report.refuse('count_over_bound'); return; }",
 		// JSON read: the arm (through jsonReadExpr) and the plain field
 		"v.few = _jsonAtLeast(_jsonList<int>(",
 		"if (v.xs.length < 2) { r.refuse('count_over_bound'); }",

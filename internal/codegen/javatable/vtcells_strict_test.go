@@ -58,14 +58,17 @@ var javaVarCellAnchors = map[string]struct {
 			`spill(out, f[1] + ".wire", saved);`,
 		},
 	},
-	// vt/fixed-class/java: the conformance driver's wire surface answers the
-	// strict blob_shared refusal as a named absence instead of exiting, and
-	// picks the fixed or variable reader by the file's form byte.
+	// vt/fixed-class/java: the conformance driver uses the root's fixed-file
+	// codec when available. R13 credits a present codec's refusal only as an
+	// explicit answer, and a missing codec as absence.
 	"vt/fixed-class/java": {
 		src: "test/conformance/java/src/Driver.java",
 		want: []string{
-			`spillAbsentReason(out, f[1], "blob_shared");`,
-			`FixedCodec fixed = wire.length > 0 && wire[0] == 3 ? fixedCodec(f[2], f[3]) : null;`,
+			`FixedCodec fixed = fixedCodec(f[2], f[3]);`,
+			`if (read < 0 || fixed.flag(report, "refused")) {`,
+			`if (value == null || codec.flag(report, "refused")) {`,
+			`spill(out, f[1], "refused\n");`,
+			`if (codec == null) { spillAbsent(out, f[1]); continue; }`,
 		},
 	},
 	// vt/defaults-and-table-rename/java: writeBackWire carries a variable-form

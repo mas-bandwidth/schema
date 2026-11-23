@@ -165,7 +165,7 @@ func TestAccountFilesForLegResolvesPerLegSchemasAndExclusions(t *testing.T) {
 		{"packet-void", "python", "test/packet-void/python/Python.schema"},
 		{"packet-void", "ruby", "test/packet-void/ruby/Ruby.schema"},
 		{"packet-write-text", "rust", "test/packet-write-text/Text.schema"},
-		{"packet-write-text", "cpp", "test/packet-write-text/cpp/TextPacket.schema"},
+		{"packet-write-text", "cpp", "test/packet-write-text/cpp/TextPacketCases.schema"},
 		{"packet-write-text", "c", "test/packet-write-text/c/Text.schema"},
 		{"packet-write-text", "dart", "test/packet-write-text/dart/PacketText.schema"},
 		{"packet-write-text", "java", "test/packet-write-text/java/PacketText.schema"},

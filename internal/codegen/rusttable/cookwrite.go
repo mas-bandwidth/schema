@@ -412,7 +412,7 @@ func (g *gen) emitCookFieldValue(b *strings.Builder, f *ir.Field, x, base string
 			if f.ArrayMin > 0 {
 				// a used count below the declared minimum A refuses as one
 				// past B does (ruling R10; gotable's cook writer)
-				fmt.Fprintf(b, "%sif %s.len() < %d || %s.len() > %d { w.fail(); }\n", ind, x, f.ArrayMin, x, bound)
+				fmt.Fprintf(b, "%sif %s || %s.len() > %d { w.fail(); }\n", ind, lenUnder(x, f.ArrayMin), x, bound)
 			} else {
 				fmt.Fprintf(b, "%sif %s.len() > %d { w.fail(); }\n", ind, x, bound)
 			}

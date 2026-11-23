@@ -25,7 +25,8 @@ cards-unity-test: build/mustrun toolchain-unity cards-unity-generate
 
 cards-unity-driver: toolchain-unity cards-unity-generate
 	@mkdir -p build/cards-driver-unity
-	$(DOTNET) build tables/cards/unity/Driver/Driver.csproj -c Release -o build/cards-driver-unity --nologo -v quiet
+	$(DOTNET) build tables/cards/unity/Driver/Driver.csproj -c Release -o build/cards-driver-unity \
+		-p:ArtifactsPath="$(CURDIR)/build/cards-driver-unity-artifacts" --nologo -v quiet
 
 cards-unity-conformance: build/conformance-harness cards-unity-driver
 	./build/conformance-harness cards --work build/cards-unity-work --corpus tables/cards/conformance --driver tables/cards/unity/cards-driver --require $(CARDS_UNITY_SURFACES)

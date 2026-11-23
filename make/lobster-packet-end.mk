@@ -1,7 +1,7 @@
 # ---- packet end: SPEC §5's one end check after the top-level object ----
 #
 # packet-end-lobster reads the shared vectors under testdata/wire/packet-end
-# (test/packet-end/End.schema) through the generated public ReadEnd:
+# (test/packet-end/PacketEnd.schema) through the generated public ReadEnd:
 # TestLobsterPacketEnd generates the schema and runs the driver
 # test/packet-end/lobster/main.lobster under the pinned toolchain. The exact
 # packet is accepted as 3; a whole trailing byte and set padding in the final

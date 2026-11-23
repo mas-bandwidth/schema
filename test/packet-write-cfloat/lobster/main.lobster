@@ -2,7 +2,7 @@
 // gate runs (test/packet-write-cfloat/cases.txt, SPEC §5.1 row 10): one case
 // per run, because a refusal ends the process. It takes the case's float32 bit
 // pattern and prints the bits a read returns.
-import .CFloat
+import .PacketCFloat
 import .serialize
 
 let args = command_line_arguments()

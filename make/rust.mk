@@ -1968,9 +1968,9 @@ conformance-negative-control-rust-write-refusal-message: build/conformance-harne
 # unused bits in the final byte are refused. The driver reads the three shared
 # vectors under testdata/wire/packet-end with that public read.
 PACKET_END_RUST := build/packet-end/rust
-build/packet-end/rust/.stamp: bin/schema test/packet-end/End.schema make/rust.mk
+build/packet-end/rust/.stamp: bin/schema test/packet-end/PacketEnd.schema make/rust.mk
 	@mkdir -p $(PACKET_END_RUST)/generated/src
-	./bin/schema generate --lang rust --out $(PACKET_END_RUST)/generated/src test/packet-end/End.schema
+	./bin/schema generate --lang rust --out $(PACKET_END_RUST)/generated/src test/packet-end/PacketEnd.schema
 	@printf '[package]\nname = "packetend"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "%s/$(SERIALIZE_RS)" }\n' "$(CURDIR)" > $(PACKET_END_RUST)/generated/Cargo.toml
 	@touch $@
 
@@ -1986,7 +1986,7 @@ packet-end-rust-negative-control: packet-end-rust
 	@printf '{"Replace":{"%s/internal/codegen/rust/functions.go":"%s/$(PACKET_END_RUST)-negative/functions.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > $(PACKET_END_RUST)-negative/overlay.json
 	go build -overlay=$(PACKET_END_RUST)-negative/overlay.json -o $(PACKET_END_RUST)-negative/schema ./cmd/schema
-	$(PACKET_END_RUST)-negative/schema generate --lang rust --out $(PACKET_END_RUST)-negative/generated/src test/packet-end/End.schema
+	$(PACKET_END_RUST)-negative/schema generate --lang rust --out $(PACKET_END_RUST)-negative/generated/src test/packet-end/PacketEnd.schema
 	@printf '[package]\nname = "packetend"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "%s/$(SERIALIZE_RS)" }\n' "$(CURDIR)" > $(PACKET_END_RUST)-negative/generated/Cargo.toml
 	@mkdir -p $(PACKET_END_RUST)-negative/checker/src
 	cp test/packet-end/rust/src/main.rs $(PACKET_END_RUST)-negative/checker/src/main.rs

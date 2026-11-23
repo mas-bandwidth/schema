@@ -38,11 +38,16 @@ fixed table Big
 }
 `
 
-const cppMessageCeilingProbe = `#include <cstdio>
+// Every generated translation unit includes the shim. A failed write check
+// exits 3 so the test can distinguish it from a crash.
+const cppMessageCeilingAssert = `
+#include <cstdio>
 #include <cstdlib>
-#include <cstring>
-// a failed write check exits 3, so the test can tell it from a crash
 #define schema_assert( x ) do { if ( !( x ) ) { std::fprintf( stderr, "write check: %s\n", #x ); std::exit( 3 ); } } while ( 0 )
+`
+
+const cppMessageCeilingProbe = `#include <cstdio>
+#include <cstring>
 #include "ProbeTable.h"
 using namespace probe;
 
@@ -115,11 +120,13 @@ func TestCppMessageCeilingWriteAssert(t *testing.T) {
 	t.Parallel()
 	body := cppMessageCeilingBody(t)
 	for _, want := range []string{
-		"schema_assert( !( value.hp < 0 || value.hp > 10 ) );",
+		"schema_assert( value.hp >= 0 );",
+		"schema_assert( value.hp <= 10 );",
 		"schema_assert( value.mask <= 63ull );",
 		"schema_assert( !( value.ratio < 0.0f ) && !( value.ratio > 1.0f ) );",
-		"schema_assert( !( value.ids[",
-		"schema_assert( !( value.reach <",
+		"schema_assert( value.ids[i] <= 5 );",
+		"schema_assert( value.reach >= serialize::int128_t( ( serialize::uint128_t( 18446744073709551615ull ) << 64 ) | serialize::uint128_t( 18446744073709551611ull ) ) );",
+		"schema_assert( value.reach <= serialize::int128_t( ( serialize::uint128_t( 0ull ) << 64 ) | serialize::uint128_t( 5ull ) ) );",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("the message body of a fixed table past the ceiling does not hold:\n%s", want)
@@ -170,7 +177,7 @@ func TestCppMessageCeilingWriteAssertCompiled(t *testing.T) {
 	// serialize.h is a sibling checkout the wall does not stage: the probe
 	// carries the shim of the 128-bit storage type
 	shim := t.TempDir()
-	if err := os.WriteFile(filepath.Join(shim, "serialize.h"), []byte(cppJsonIntegersSerialize), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(shim, "serialize.h"), []byte(cppJsonIntegersSerialize+cppMessageCeilingAssert), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	mainPath := filepath.Join(dir, "main.cpp")

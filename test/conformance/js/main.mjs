@@ -808,6 +808,8 @@ const wireRows = [
   ["tabledemo", "ArchiveConfig", "examples/TabledemoVariable.js"],
   ["tabledemo", "KeyedConfig", "examples/TabledemoVariable.js"],
   ["tabledemo", "CountedMin", "examples/TabledemoVariable.js"],
+  ["tabledemo", "MinArmFix", "examples/TabledemoVariable.js"],
+  ["tabledemo", "MinPlainFix", "examples/TabledemoVariable.js"],
   ["tabledemo", "Moods", "examples/TabledemoVariable.js"],
   ["tabledemo", "MoodField", "examples/TabledemoVariable.js"],
   ["tblv1", "Cfg", "v1/Tblv1Variable.js"],

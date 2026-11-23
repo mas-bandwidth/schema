@@ -1588,8 +1588,9 @@ write-refusal-storage-debug-cs-negative-control: bin/schema $(STORAGE_RELEASE_SC
 .PHONY: packet-end-cs packet-end-cs-negative-control
 PACKET_END_CS := build/packet-end/cs
 
-build/packet-end/cs/.stamp: bin/schema test/packet-end/End.schema make/cs.mk
-	./bin/schema generate --lang cs --out $(PACKET_END_CS) test/packet-end/End.schema
+build/packet-end/cs/.stamp: bin/schema test/packet-end/PacketEnd.schema make/cs.mk
+	@rm -f $(PACKET_END_CS)/End.cs
+	./bin/schema generate --lang cs --out $(PACKET_END_CS) test/packet-end/PacketEnd.schema
 	@touch $@
 
 packet-end-cs: build/mustrun build/packet-end/cs/.stamp
@@ -1608,7 +1609,7 @@ packet-end-cs-negative-control: build/packet-end/cs/.stamp
 	@printf '{"Replace":{"%s/internal/codegen/csharp/functions.go":"%s/%s/functions.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" "$(PACKET_END_CS_NEG)" > $(PACKET_END_CS_NEG)/overlay.json
 	go build -overlay=$(PACKET_END_CS_NEG)/overlay.json -o $(PACKET_END_CS_NEG)/schema ./cmd/schema
-	./$(PACKET_END_CS_NEG)/schema generate --lang cs --out $(PACKET_END_CS_NEG)/generated test/packet-end/End.schema
+	./$(PACKET_END_CS_NEG)/schema generate --lang cs --out $(PACKET_END_CS_NEG)/generated test/packet-end/PacketEnd.schema
 	$(DOTNET) build test/packet-end/cs/packet-end.csproj \
 		-p:GeneratedDir="$(CURDIR)/$(PACKET_END_CS_NEG)/generated" -o $(PACKET_END_CS_NEG)/checker --nologo
 	@if $(DOTNET) $(PACKET_END_CS_NEG)/checker/packet-end.dll testdata/wire/packet-end > $(PACKET_END_CS_NEG)/log 2>&1; then \
@@ -1635,9 +1636,9 @@ test-cs: packet-end-cs packet-end-cs-negative-control
 .PHONY: packet-write-cfloat-cs packet-write-cfloat-cs-negative-control
 PACKET_WRITE_CFLOAT_CS := build/packet-write-cfloat/cs
 
-$(PACKET_WRITE_CFLOAT_CS)/.stamp: bin/schema test/packet-write-cfloat/CFloat.schema make/cs.mk
-	@mkdir -p $(PACKET_WRITE_CFLOAT_CS)
-	./bin/schema generate --lang cs --out $(PACKET_WRITE_CFLOAT_CS) test/packet-write-cfloat/CFloat.schema
+$(PACKET_WRITE_CFLOAT_CS)/.stamp: bin/schema test/packet-write-cfloat/PacketCFloat.schema make/cs.mk
+	@rm -rf $(PACKET_WRITE_CFLOAT_CS) && mkdir -p $(PACKET_WRITE_CFLOAT_CS)
+	./bin/schema generate --lang cs --out $(PACKET_WRITE_CFLOAT_CS) test/packet-write-cfloat/PacketCFloat.schema
 	@touch $@
 
 packet-write-cfloat-cs: build/mustrun $(PACKET_WRITE_CFLOAT_CS)/.stamp
@@ -1654,7 +1655,7 @@ packet-write-cfloat-cs-negative-control: $(PACKET_WRITE_CFLOAT_CS)/.stamp
 	@printf '{"Replace":{"%s/internal/codegen/csharp/functions.go":"%s/%s/functions.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" "$(PACKET_WRITE_CFLOAT_CS_NEG)" > $(PACKET_WRITE_CFLOAT_CS_NEG)/overlay.json
 	go build -overlay=$(PACKET_WRITE_CFLOAT_CS_NEG)/overlay.json -o $(PACKET_WRITE_CFLOAT_CS_NEG)/schema ./cmd/schema
-	./$(PACKET_WRITE_CFLOAT_CS_NEG)/schema generate --lang cs --out $(PACKET_WRITE_CFLOAT_CS_NEG)/generated test/packet-write-cfloat/CFloat.schema
+	./$(PACKET_WRITE_CFLOAT_CS_NEG)/schema generate --lang cs --out $(PACKET_WRITE_CFLOAT_CS_NEG)/generated test/packet-write-cfloat/PacketCFloat.schema
 	$(DOTNET) build test/packet-write-cfloat/cs/packet-write-cfloat.csproj \
 		-p:GeneratedDir="$(CURDIR)/$(PACKET_WRITE_CFLOAT_CS_NEG)/generated" -o $(PACKET_WRITE_CFLOAT_CS_NEG)/checker --nologo
 	@if $(DOTNET) $(PACKET_WRITE_CFLOAT_CS_NEG)/checker/packet-write-cfloat.dll test/packet-write-cfloat > $(PACKET_WRITE_CFLOAT_CS_NEG)/log 2>&1; then \

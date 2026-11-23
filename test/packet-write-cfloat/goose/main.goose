@@ -1,6 +1,6 @@
 // Test the packet Write of a ranged float32 against the shared cases.
 import os;
-import .CFloat;
+import .PacketCFloat;
 import .driverlib;
 import .serialize;
 

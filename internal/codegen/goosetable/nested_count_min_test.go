@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-const nestedCountMinSchema = `package nested
+const nestedCountMinSchema = `package nestcount
 
 fixed table Child
 {

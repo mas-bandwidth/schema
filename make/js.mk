@@ -1894,8 +1894,8 @@ tables-js-wire-fuzz-retain-smoke: build/conformance-harness build/tables-generat
 # THE PACKET END CHECK (docs/SPEC.md §5, "Read termination"; make/negative-controls.json).
 # Both generated read tiers must accept the exact packet and refuse a whole byte
 # left after the top-level object and non-zero unused bits in the final byte.
-build/packet-end/js/.stamp: bin/schema test/packet-end/End.schema make/js.mk
-	./bin/schema generate --lang js --out build/packet-end/js test/packet-end/End.schema
+build/packet-end/js/.stamp: bin/schema test/packet-end/PacketEnd.schema make/js.mk
+	./bin/schema generate --lang js --out build/packet-end/js test/packet-end/PacketEnd.schema
 	@touch $@
 
 .PHONY: packet-end-js packet-end-js-negative-control
@@ -1910,9 +1910,9 @@ packet-end-js-negative-control: packet-end-js
 	@printf '{"Replace":{"%s/internal/codegen/js/flat.go":"%s/build/packet-end/js-negative/js.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/packet-end/js-negative/overlay.json
 	go build -overlay=build/packet-end/js-negative/overlay.json -o build/packet-end/js-negative/schema ./cmd/schema
-	./build/packet-end/js-negative/schema generate --lang js --out build/packet-end/js-negative/generated test/packet-end/End.schema
-	$(NODE) --check build/packet-end/js-negative/generated/End.js
-	$(NODE) --check build/packet-end/js-negative/generated/EndFlat.js
+	./build/packet-end/js-negative/schema generate --lang js --out build/packet-end/js-negative/generated test/packet-end/PacketEnd.schema
+	$(NODE) --check build/packet-end/js-negative/generated/PacketEnd.js
+	$(NODE) --check build/packet-end/js-negative/generated/PacketEndFlat.js
 	@if $(NODE) test/packet-end/js/main.mjs testdata/wire/packet-end "$(CURDIR)/build/packet-end/js-negative/generated" > build/packet-end/js-negative/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: missing packet end check passed in JavaScript'; exit 1; fi
 	@grep -Fq 'FAILED: packet end flat trailing.bin' build/packet-end/js-negative/log || \
@@ -1924,8 +1924,8 @@ packet-end-js-negative-control: packet-end-js
 # test/packet-write-cfloat is written through the flat tier and the runtime
 # tier, checked and production, and every refused case must be refused and
 # every lawful one read back to its quantized value.
-build/packet-write-cfloat/js/.stamp: bin/schema test/packet-write-cfloat/CFloat.schema make/js.mk
-	./bin/schema generate --lang js --out build/packet-write-cfloat/js test/packet-write-cfloat/CFloat.schema
+build/packet-write-cfloat/js/.stamp: bin/schema test/packet-write-cfloat/PacketCFloat.schema make/js.mk
+	./bin/schema generate --lang js --out build/packet-write-cfloat/js test/packet-write-cfloat/PacketCFloat.schema
 	@touch $@
 
 .PHONY: packet-write-cfloat-js packet-write-cfloat-js-negative-control
@@ -1940,9 +1940,9 @@ packet-write-cfloat-js-negative-control: packet-write-cfloat-js
 	@printf '{"Replace":{"%s/internal/codegen/js/flat.go":"%s/build/packet-write-cfloat/js-negative-flat/flat.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/packet-write-cfloat/js-negative-flat/overlay.json
 	go build -overlay=build/packet-write-cfloat/js-negative-flat/overlay.json -o build/packet-write-cfloat/js-negative-flat/schema ./cmd/schema
-	./build/packet-write-cfloat/js-negative-flat/schema generate --lang js --out build/packet-write-cfloat/js-negative-flat/generated test/packet-write-cfloat/CFloat.schema
-	$(NODE) --check build/packet-write-cfloat/js-negative-flat/generated/CFloat.js
-	$(NODE) --check build/packet-write-cfloat/js-negative-flat/generated/CFloatFlat.js
+	./build/packet-write-cfloat/js-negative-flat/schema generate --lang js --out build/packet-write-cfloat/js-negative-flat/generated test/packet-write-cfloat/PacketCFloat.schema
+	$(NODE) --check build/packet-write-cfloat/js-negative-flat/generated/PacketCFloat.js
+	$(NODE) --check build/packet-write-cfloat/js-negative-flat/generated/PacketCFloatFlat.js
 	@if $(NODE) test/packet-write-cfloat/js/main.mjs test/packet-write-cfloat/cases.txt "$(CURDIR)/build/packet-write-cfloat/js-negative-flat/generated" > build/packet-write-cfloat/js-negative-flat/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: missing compressed-float range check passed in the flat tier'; exit 1; fi
 	@grep -Fq 'FAILED: cfloat checked/flat above-max: wrote a value the range refuses' build/packet-write-cfloat/js-negative-flat/log || \
@@ -1954,9 +1954,9 @@ packet-write-cfloat-js-negative-control: packet-write-cfloat-js
 	@printf '{"Replace":{"%s/internal/codegen/js/functions.go":"%s/build/packet-write-cfloat/js-negative-runtime/functions.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/packet-write-cfloat/js-negative-runtime/overlay.json
 	go build -overlay=build/packet-write-cfloat/js-negative-runtime/overlay.json -o build/packet-write-cfloat/js-negative-runtime/schema ./cmd/schema
-	./build/packet-write-cfloat/js-negative-runtime/schema generate --lang js --out build/packet-write-cfloat/js-negative-runtime/generated test/packet-write-cfloat/CFloat.schema
-	$(NODE) --check build/packet-write-cfloat/js-negative-runtime/generated/CFloat.js
-	$(NODE) --check build/packet-write-cfloat/js-negative-runtime/generated/CFloatFlat.js
+	./build/packet-write-cfloat/js-negative-runtime/schema generate --lang js --out build/packet-write-cfloat/js-negative-runtime/generated test/packet-write-cfloat/PacketCFloat.schema
+	$(NODE) --check build/packet-write-cfloat/js-negative-runtime/generated/PacketCFloat.js
+	$(NODE) --check build/packet-write-cfloat/js-negative-runtime/generated/PacketCFloatFlat.js
 	@if $(NODE) test/packet-write-cfloat/js/main.mjs test/packet-write-cfloat/cases.txt "$(CURDIR)/build/packet-write-cfloat/js-negative-runtime/generated" > build/packet-write-cfloat/js-negative-runtime/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: missing compressed-float range check passed in the runtime tier'; exit 1; fi
 	@grep -Fq 'FAILED: cfloat checked/runtime above-max: wrote a value the range refuses' build/packet-write-cfloat/js-negative-runtime/log || \

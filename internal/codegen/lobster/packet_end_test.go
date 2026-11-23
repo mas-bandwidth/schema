@@ -1,5 +1,5 @@
 // The packet's end on the Lobster type wire (SPEC §5, "Read termination"),
-// the Lobster row of packet-end (make/lobster.mk). test/packet-end/End.schema
+// the Lobster row of packet-end (make/lobster.mk). test/packet-end/PacketEnd.schema
 // is generated and test/packet-end/lobster/main.lobster reads the shared
 // vectors under testdata/wire/packet-end through the generated public
 // ReadEnd: the exact packet is accepted, a whole trailing byte and set
@@ -20,11 +20,11 @@ import (
 func TestLobsterPacketEnd(t *testing.T) {
 	t.Parallel()
 	src := t.TempDir()
-	schema, err := os.ReadFile(filepath.Join("..", "..", "..", "test", "packet-end", "End.schema"))
+	schema, err := os.ReadFile(filepath.Join("..", "..", "..", "test", "packet-end", "PacketEnd.schema"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeFile(t, src, "End.schema", string(schema))
+	writeFile(t, src, "PacketEnd.schema", string(schema))
 	files, err := Generate(unitFromDir(t, src))
 	if err != nil {
 		t.Fatal(err)

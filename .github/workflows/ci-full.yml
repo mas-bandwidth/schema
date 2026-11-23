@@ -2854,6 +2854,7 @@ jobs:
             build/conformance-harness
             build/tables-generated-dart
             build/tables-generated-dart-scalars
+            build/tables-generated-dart-framing
             build/conformance-dart
           key: dart-fuzz-driver-${{ runner.os }}-${{ env.GO_CACHE_ID }}-3.13.2-${{ hashFiles('cmd/schema/**', 'compiler/**', 'internal/**', 'ir/**', 'test/conformance/harness/**', 'test/conformance/dart/**', 'tables/**', 'test/tables/**', 'testdata/conformance/feature-witnesses/full/Features.schema', 'make/dart.mk', 'Makefile', 'go.mod') }}
 
@@ -2864,6 +2865,7 @@ jobs:
           touch build/conformance-harness
           touch build/tables-generated-dart/.stamp
           touch build/tables-generated-dart/cards/.stamp
+          touch build/tables-generated-dart-framing/countedmin/.stamp
           touch build/conformance-dart
 
       - name: build the harness and the Dart driver
@@ -2877,6 +2879,7 @@ jobs:
             build/conformance-harness
             build/tables-generated-dart
             build/tables-generated-dart-scalars
+            build/tables-generated-dart-framing
             build/conformance-dart
           key: ${{ steps.dart-fuzz-cache.outputs.cache-primary-key }}
 

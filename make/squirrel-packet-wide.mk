@@ -57,9 +57,9 @@ packet-defaults-squirrel-negative-control: packet-defaults-squirrel
 
 test-squirrel: packet-finite-squirrel packet-utf8-squirrel packet-utf8-squirrel-negative-control packet-defaults-squirrel packet-defaults-squirrel-negative-control packet-end-squirrel packet-end-squirrel-negative-control
 
-build/packet-end/squirrel/.stamp: bin/schema test/packet-end/End.schema make/squirrel-packet-wide.mk
+build/packet-end/squirrel/.stamp: bin/schema test/packet-end/PacketEnd.schema make/squirrel-packet-wide.mk
 	@rm -rf build/packet-end/squirrel
-	./bin/schema generate --lang squirrel --out build/packet-end/squirrel test/packet-end/End.schema
+	./bin/schema generate --lang squirrel --out build/packet-end/squirrel test/packet-end/PacketEnd.schema
 	@touch $@
 
 PACKET_END_SQUIRREL_VECTORS = $(sort $(notdir $(wildcard testdata/wire/packet-end/*.bin)))
@@ -75,7 +75,7 @@ packet-end-squirrel-negative-control: packet-end-squirrel
 	@mkdir -p build/packet-end/squirrel-negative
 	go run ./tools/sabotage -name packet-end-squirrel-end -out build/packet-end/squirrel-negative/read.gotext internal/codegen/squirrel/read.go
 	@printf '{"Replace":{"%s/internal/codegen/squirrel/read.go":"%s/build/packet-end/squirrel-negative/read.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-end/squirrel-negative/overlay.json
-	go run -overlay=build/packet-end/squirrel-negative/overlay.json ./cmd/schema generate --lang squirrel --out build/packet-end/squirrel-negative/gen test/packet-end/End.schema
+	go run -overlay=build/packet-end/squirrel-negative/overlay.json ./cmd/schema generate --lang squirrel --out build/packet-end/squirrel-negative/gen test/packet-end/PacketEnd.schema
 	@if "$(SQ)" test/packet-end/squirrel/main.nut testdata/wire/packet-end build/packet-end/squirrel-negative/gen --vectors $(PACKET_END_SQUIRREL_VECTORS) > build/packet-end/squirrel-negative/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: the sabotaged Squirrel end check exited 0'; cat build/packet-end/squirrel-negative/log; exit 1; fi
 	@grep -Fq 'FAILED: trailing packet accepted' build/packet-end/squirrel-negative/log || \

@@ -1,5 +1,5 @@
 # The Elixir packet compressed-float write gate (SPEC §5.1 row 10). Loads the
-# generated CFloat.schema modules from build/packet-write-cfloat/elixir, or
+# generated PacketCFloat.schema modules from build/packet-write-cfloat/elixir, or
 # from the directory given as the first argument (the negative control's
 # sabotaged build), then runs suite.exs, which compiles after them because it
 # holds struct literals. Prints OK and exits 0; prints a FAILED line per broken
@@ -10,6 +10,6 @@ base =
 cases = Path.expand("../cases.txt", __DIR__)
 
 Code.require_file("PacketRuntime.ex", base)
-Code.require_file("CFloat.ex", base)
+Code.require_file("PacketCFloat.ex", base)
 Code.require_file("suite.exs", __DIR__)
 PacketWriteCFloatTest.run(cases)

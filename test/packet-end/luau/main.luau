@@ -4,7 +4,7 @@
 -- one-packet read, so it holds the accepted value and both refusals. pins.luau
 -- carries the shared cases in as source (the interpreter has no io library).
 local serialize = require("./serialize")
-local End = require("./End")
+local End = require("./PacketEnd")
 local pins: { [string]: string } = require("./pins") :: any
 -- used holds the pins this driver read, missing the ones it asked for that
 -- the make recipe did not carry in from testdata/wire/packet-end.

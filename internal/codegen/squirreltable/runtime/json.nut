@@ -416,6 +416,10 @@ local parseWide = function(tok, kind, frac) {
     return [lim[1], true, true];
   }
   if (point < -40) return [null, false, false];
+  // With trailing zeros stripped (decimalOf), a dyadic fraction of F bits has
+  // at most F fractional decimal digits; refusing a longer fraction here keeps
+  // a hostile token out of the quadratic limb conversion below (TABLETEXT-5).
+  if (digits.len() - point > frac) return [null, false, false];
   local m = [];
   foreach (c in digits) m = bnMulSmall(m, 10, c - '0');
   local scale = point - digits.len();

@@ -3,8 +3,8 @@
 # endpoint or interior value writes and reads back to its quantized value.
 # The recipes use $(MIX), $(ELIXIR) and $(ELIXIRC_STRICT) from make/elixir.mk,
 # expanded when they run.
-build/packet-write-cfloat/elixir/.stamp: bin/schema test/packet-write-cfloat/CFloat.schema
-	./bin/schema generate --lang elixir --out build/packet-write-cfloat/elixir test/packet-write-cfloat/CFloat.schema
+build/packet-write-cfloat/elixir/.stamp: bin/schema test/packet-write-cfloat/PacketCFloat.schema
+	./bin/schema generate --lang elixir --out build/packet-write-cfloat/elixir test/packet-write-cfloat/PacketCFloat.schema
 	@touch $@
 
 .PHONY: packet-write-cfloat-elixir packet-write-cfloat-elixir-negative-control
@@ -17,7 +17,7 @@ packet-write-cfloat-elixir-negative-control: packet-write-cfloat-elixir
 	go run ./tools/sabotage -name packet-write-cfloat-elixir-range -out build/packet-write-cfloat/elixir-negative/functions.gotext internal/codegen/elixir/functions.go
 	@printf '{"Replace":{"%s/internal/codegen/elixir/functions.go":"%s/build/packet-write-cfloat/elixir-negative/functions.gotext"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/packet-write-cfloat/elixir-negative/overlay.json
-	go run -overlay=build/packet-write-cfloat/elixir-negative/overlay.json ./cmd/schema generate --lang elixir --out build/packet-write-cfloat/elixir-negative/generated test/packet-write-cfloat/CFloat.schema
+	go run -overlay=build/packet-write-cfloat/elixir-negative/overlay.json ./cmd/schema generate --lang elixir --out build/packet-write-cfloat/elixir-negative/generated test/packet-write-cfloat/PacketCFloat.schema
 	$(ELIXIRC_STRICT) -o build/packet-write-cfloat/elixir-negative/beam build/packet-write-cfloat/elixir-negative/generated/*.ex
 	@if $(ELIXIR) test/packet-write-cfloat/elixir/main.exs "$(CURDIR)/build/packet-write-cfloat/elixir-negative/generated" > build/packet-write-cfloat/elixir-negative/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: Elixir compressed-float range refusal removal passed'; exit 1; fi

@@ -680,7 +680,7 @@ build/tables-generated-dart-framing/countedmin/.stamp: bin/schema make/dart.mk t
 	./bin/schema generate --lang dart --out build/tables-generated-dart-framing/countedmin build/tables-dart-counted-min-variable/CountedMin.schema
 	@touch $@
 
-build/conformance-dart: build/tables-generated-dart/.stamp build/tables-generated-dart-framing/countedmin/.stamp $(CARDS_DART_STAMP) test/conformance/dart/main.dart
+build/conformance-dart: build/tables-generated-dart/.stamp $(CARDS_DART_STAMP) build/tables-generated-dart-framing/countedmin/.stamp test/conformance/dart/main.dart
 	@mkdir -p build
 	$(DART) compile exe -o $@ test/conformance/dart/main.dart >/dev/null
 
@@ -1953,8 +1953,8 @@ write-refusal-storage-debug-dart-negative-control: write-refusal-storage-debug-d
 # one-packet read: exact accepted as 3, trailing refused, padding refused. The
 # control removes the emitted end check and requires the trailing and padding
 # verdicts to go red while the exact packet stays accepted.
-build/packet-end/dart/.stamp: bin/schema test/packet-end/End.schema
-	./bin/schema generate --lang dart --out build/packet-end/dart test/packet-end/End.schema
+build/packet-end/dart/.stamp: bin/schema test/packet-end/PacketEnd.schema
+	./bin/schema generate --lang dart --out build/packet-end/dart test/packet-end/PacketEnd.schema
 	@touch $@
 
 .PHONY: packet-end-dart packet-end-dart-negative-control
@@ -1969,7 +1969,7 @@ packet-end-dart-negative-control: packet-end-dart
 	@rm -rf build/packet-end/dart-negative && mkdir -p build/packet-end/dart-negative
 	go run ./tools/sabotage -name packet-end-dart-read -out build/packet-end/dart-negative/functions.gotext internal/codegen/dart/functions.go
 	@printf '{"Replace":{"%s/internal/codegen/dart/functions.go":"%s/build/packet-end/dart-negative/functions.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-end/dart-negative/overlay.json
-	go run -overlay=build/packet-end/dart-negative/overlay.json ./cmd/schema generate --lang dart --out build/packet-end/dart-negative/generated test/packet-end/End.schema
+	go run -overlay=build/packet-end/dart-negative/overlay.json ./cmd/schema generate --lang dart --out build/packet-end/dart-negative/generated test/packet-end/PacketEnd.schema
 	@sed 's|../../../build/packet-end/dart/|$(CURDIR)/build/packet-end/dart-negative/generated/|' test/packet-end/dart/main.dart > build/packet-end/dart-negative/main.dart
 	@if $(DART) --enable-asserts build/packet-end/dart-negative/main.dart testdata/wire/packet-end > build/packet-end/dart-negative/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: the packet end check is removed and the driver stayed green'; \
@@ -1996,8 +1996,8 @@ test-dart: packet-end-dart packet-end-dart-negative-control
 # stays. The shared cases run on the checked twin, where every refused case
 # must fire the assert; the release twin trusts the caller by design, so it
 # only writes the lawful cases and reads them back.
-build/packet-write-cfloat/dart/.stamp: bin/schema test/packet-write-cfloat/CFloat.schema make/dart.mk
-	./bin/schema generate --lang dart --out build/packet-write-cfloat/dart test/packet-write-cfloat/CFloat.schema
+build/packet-write-cfloat/dart/.stamp: bin/schema test/packet-write-cfloat/PacketCFloat.schema make/dart.mk
+	./bin/schema generate --lang dart --out build/packet-write-cfloat/dart test/packet-write-cfloat/PacketCFloat.schema
 	@touch $@
 
 .PHONY: packet-write-cfloat-dart packet-write-cfloat-dart-negative-control
@@ -2012,7 +2012,7 @@ packet-write-cfloat-dart-negative-control: packet-write-cfloat-dart
 	@rm -rf build/packet-write-cfloat/dart-negative && mkdir -p build/packet-write-cfloat/dart-negative
 	go run ./tools/sabotage -name packet-write-cfloat-dart-range -out build/packet-write-cfloat/dart-negative/functions.gotext internal/codegen/dart/functions.go
 	@printf '{"Replace":{"%s/internal/codegen/dart/functions.go":"%s/build/packet-write-cfloat/dart-negative/functions.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-write-cfloat/dart-negative/overlay.json
-	go run -overlay=build/packet-write-cfloat/dart-negative/overlay.json ./cmd/schema generate --lang dart --out build/packet-write-cfloat/dart-negative/generated test/packet-write-cfloat/CFloat.schema
+	go run -overlay=build/packet-write-cfloat/dart-negative/overlay.json ./cmd/schema generate --lang dart --out build/packet-write-cfloat/dart-negative/generated test/packet-write-cfloat/PacketCFloat.schema
 	@sed 's|../../../build/packet-write-cfloat/dart/|$(CURDIR)/build/packet-write-cfloat/dart-negative/generated/|' test/packet-write-cfloat/dart/main.dart > build/packet-write-cfloat/dart-negative/main.dart
 	@if $(DART) --enable-asserts build/packet-write-cfloat/dart-negative/main.dart test/packet-write-cfloat/cases.txt > build/packet-write-cfloat/dart-negative/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: the range check is removed and the driver stayed green'; \

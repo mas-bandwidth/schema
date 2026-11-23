@@ -96,7 +96,7 @@ func cMessageCeilingBody(t *testing.T) string {
 		t.Fatal(err)
 	}
 	src := string(files["ProbeTable.h"])
-	start := strings.Index(src, "int big_save_message_body(TableBitWriter * w")
+	start := strings.Index(src, "int big_save_message_body( TableBitWriter * w, const Big * value )\n{")
 	if start < 0 {
 		t.Fatal("no message body is generated for Big")
 	}
@@ -114,7 +114,7 @@ func TestCMessageCeilingWriteAssert(t *testing.T) {
 	for _, want := range []string{
 		"schema_assert( !( value->hp < 0 ) );",
 		"schema_assert( !( value->hp > 10 ) );",
-		"schema_assert( (uint64_t)( value->mask ) <= 0x3full );",
+		"schema_assert( (uint64_t) ( value->mask ) <= 0x3full );",
 		"schema_assert( !( value->ratio < 0.0f ) && !( value->ratio > 1.0f ) );",
 		"schema_assert( !( value->ids[i] > 5 ) );",
 		"schema_assert( wr_hi == 0ull && wr_lo <= 10ull );",

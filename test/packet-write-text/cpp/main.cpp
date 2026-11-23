@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 
-#include "TextPacketWire.h"
+#include "TextPacketCasesWire.h"
 
 using namespace packetwritetext;
 

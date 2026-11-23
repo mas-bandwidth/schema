@@ -85,11 +85,11 @@ func readPacketWriteCFloatCases(t *testing.T) []packetWriteCFloatCase {
 func generatePacketWriteCFloat(t *testing.T) map[string][]byte {
 	t.Helper()
 	src := t.TempDir()
-	data, err := os.ReadFile(filepath.Join("..", "..", "..", "test", "packet-write-cfloat", "CFloat.schema"))
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", "test", "packet-write-cfloat", "PacketCFloat.schema"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeFile(t, src, "CFloat.schema", string(data))
+	writeFile(t, src, "PacketCFloat.schema", string(data))
 	files, err := Generate(unitFromDir(t, src))
 	if err != nil {
 		t.Fatal(err)
