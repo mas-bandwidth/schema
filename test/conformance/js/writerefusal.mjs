@@ -5,8 +5,14 @@
 // (`write-refusal`; a fixed root's own form is the fixed form, as the Go leg
 // writes it), the fixed form's FixedSave (`write-refusal-fixed`), the message
 // form's SaveMessages against the connection's unit (`write-refusal-message`),
-// or the text writer (`write-refusal-json`). The answer is what that writer
-// did: `refused` when it answered its refusal, `wrote` when it completed.
+// the text writer (`write-refusal-json`), or the cook writer
+// (`write-refusal-cook`: CookMeasure, then CookFrom little-endian, over the
+// variable value). The answer is what that writer did: `refused` when it
+// answered its refusal, `wrote` when it completed, and `threw` when it raised
+// instead of answering (the row is then red, and the throw is on stderr).
+// `unrepresentable` is answered only where the storage the writer reads cannot
+// hold the value at all (a JavaScript Map holds a key once; a typed array has
+// one length).
 //
 // JavaScript refuses in every build (docs/rulings.json `write-refusal`), so
 // this leg answers from its ordinary build and the generated writer is the
@@ -69,7 +75,20 @@ function own(owner, p, path) {
   return p;
 }
 
-// setFixed sets the one field a row names in the generated fixed class.
+// resize answers `arr` at `n` elements, more being copies of element 0 and
+// fewer dropping the tail (the `elems` kind), or false where the storage has
+// one length (a typed array).
+function resize(arr, n, path) {
+  if (ArrayBuffer.isView(arr)) { return false; }
+  if (!Array.isArray(arr)) { throw new Error(path + ": elems names no array"); }
+  if (!Number.isInteger(n) || n < 0) { throw new Error(path + ": " + n + " is not an element count"); }
+  while (arr.length < n) { arr.push(structuredClone(arr[0])); }
+  arr.length = n;
+  return true;
+}
+
+// setFixed sets the one field a row names in the generated fixed class; it
+// answers false where that class cannot hold the value.
 export function setFixed(value, path, kind, text) {
   const { owner, last } = walk(value, path, camel);
   const p = own(owner, camel(last.name), path);
@@ -78,7 +97,13 @@ export function setFixed(value, path, kind, text) {
   switch (kind) {
     case "count":
       owner[own(owner, p + "Count", path)] = Number(text);
-      return;
+      return true;
+    case "elems":
+      return resize(get(), Number(text), path);
+    case "mask":
+      // a flags field's raw bits, in decimal (FL-06)
+      set(typeof get() === "bigint" ? BigInt(text) : Number(text));
+      return true;
     case "length": {
       // the used length the row names, over storage filled with `a` as far
       // as it reaches: a length past the storage is the row's point
@@ -86,30 +111,30 @@ export function setFixed(value, path, kind, text) {
       const storage = owner[p];
       for (let i = 0; i < n && i < storage.length; i++) { storage[i] = 0x61; }
       owner[own(owner, p + "Length", path)] = n;
-      return;
+      return true;
     }
     case "bytes": {
       const b = hexBytes(text);
       const storage = owner[p];
       for (let i = 0; i < b.length && i < storage.length; i++) { storage[i] = b[i]; }
       owner[own(owner, p + "Length", path)] = b.length;
-      return;
+      return true;
     }
     case "int":
       set(typeof get() === "bigint" ? BigInt(text) : Number(text));
-      return;
+      return true;
     case "ordinal":
       set(Number(text));
-      return;
+      return true;
     case "tag": {
       const u = get();
       if (u === null || typeof u !== "object" || !("type" in u)) { throw new Error(path + ": carries no union tag"); }
       u.type = Number(text);
-      return;
+      return true;
     }
     case "float":
       set(floatOf(text));
-      return;
+      return true;
     default:
       throw new Error(path + ": kind " + kind + " has no spelling in this leg's fixed storage");
   }
@@ -134,6 +159,8 @@ function decodeVariableLeaf(cur, kind, text) {
       return { ok: true, v: typeof cur === "bigint" ? BigInt(text) : Number(text) };
     case "float":
       return { ok: true, v: floatOf(text) };
+    case "mask":
+      return { ok: true, v: typeof cur === "bigint" ? BigInt(text) : Number(text) };
     case "ordinal": {
       const n = Number(text);
       return { ok: true, v: n === 0 ? null : "__invalid_ordinal_" + text };
@@ -144,6 +171,10 @@ function decodeVariableLeaf(cur, kind, text) {
     }
     case "count": {
       const n = Number(text);
+      // A NEGATIVE COUNT IS A VALUE THAT IS NO LIST (SF-28): the variable
+      // value's array is a native Array, and a dynamically typed field can
+      // hold the row's number where the list was.
+      if (n < 0) { return { ok: true, v: n }; }
       const arr = Array.isArray(cur) ? cur.slice(0, n) : [];
       while (arr.length < n) { arr.push(structuredClone(cur[0])); }
       return { ok: true, v: arr };
@@ -153,7 +184,55 @@ function decodeVariableLeaf(cur, kind, text) {
   }
 }
 
+// variableSlot answers the getter and setter of the field `path` names in the
+// variable value, where a field is held under its declared name.
+function variableSlot(value, path) {
+  const segments = path.split(".");
+  let cur = value;
+  for (const s of segments.slice(0, -1)) {
+    const { name, index } = segmentOf(s);
+    if (cur === null || typeof cur !== "object" || !(name in cur)) { throw new Error(path + ": no field " + name); }
+    cur = index < 0 ? cur[name] : cur[name][index];
+  }
+  const last = segmentOf(segments[segments.length - 1]);
+  if (cur === null || typeof cur !== "object" || !(last.name in cur)) { throw new Error(path + ": no field " + last.name); }
+  const owner = cur;
+  return {
+    get: () => (last.index < 0 ? owner[last.name] : owner[last.name][last.index]),
+    set: (v) => { if (last.index < 0) { owner[last.name] = v; } else { owner[last.name][last.index] = v; } },
+  };
+}
+
+// setStructural sets the 2026-11-22 kinds that change a value's shape rather
+// than one scalar: `elems` (a fixed or keyed array's element count), `dupkey`
+// (a map's first entry held twice) and `point` (a pointer aimed at the node
+// another pointer reaches, a cycle when that node encloses it).
+function setStructural(value, path, kind, text) {
+  const slot = variableSlot(value, path);
+  switch (kind) {
+    case "elems":
+      return resize(slot.get(), Number(text), path);
+    case "dupkey": {
+      const map = slot.get();
+      if (text === "0") { return true; }
+      if (text !== "1") { throw new Error(path + ": dupkey takes 0 or 1, not " + text); }
+      // a Map holds each key once: the duplicate has no spelling here
+      if (map instanceof Map) { return false; }
+      throw new Error(path + ": dupkey names no map");
+    }
+    case "point": {
+      const node = variableSlot(value, text).get();
+      if (node === null || typeof node !== "object") { throw new Error(text + ": points at no node"); }
+      slot.set(node);
+      return true;
+    }
+    default:
+      throw new Error(path + ": " + kind + " is not a structural kind");
+  }
+}
+
 export function setVariable(value, path, kind, text) {
+  if (kind === "elems" || kind === "dupkey" || kind === "point") { return setStructural(value, path, kind, text); }
   const segments = path.split(".");
   let cur = value;
   for (let i = 0; i < segments.length - 1; i++) {
@@ -205,55 +284,74 @@ function absent(outDir, name, why) {
   writeFileSync(join(outDir, name + ".absent"), why + "\n");
 }
 
-// surfaceWriteRefusal answers one of the four surfaces. `codecFor(unit, root)`
-// is main.mjs's text codec (the fixed form bound in for a fixed root), and
-// `messageUnit(unit, root)` the module carrying the root's message verbs.
-export async function surfaceWriteRefusal(surface, lines, outDir, codecFor, messageUnit) {
+// writes answers what one writer did with the value, catching ONLY to say it
+// threw: a writer refuses by its answer, never by raising, so a throw is
+// answered `threw` (red against either verdict) and named on stderr.
+function writes(name, write) {
+  try {
+    return write() ? "wrote" : "refused";
+  } catch (e) {
+    process.stderr.write(name + ": the writer threw: " + (e && e.stack ? e.stack : String(e)) + "\n");
+    return "threw";
+  }
+}
+
+// surfaceWriteRefusal answers one of the five surfaces. `codecFor(unit, root)`
+// is main.mjs's text codec (the fixed form bound in for a fixed root, and the
+// root's cook writer beside it), `messageUnit(unit, root)` the root's message
+// verbs, and `fixedValueOf(unit, root, wire)` the generated fixed class loaded
+// from the wire, or fresh where the wire is `-`.
+export async function surfaceWriteRefusal(surface, lines, outDir, codecFor, messageUnit, fixedValueOf) {
   for (const f of lines) {
     if (f[0] !== surface) { continue; }
     // <surface> <case> <unit> <root> <wire> <path> <kind> <value>
     const [, name, unitName, root, wirePath, path, kind, text] = f;
     const unit = surface === "write-refusal-message" ? connectionUnit(lines, unitName) : unitName;
     if (unit === null) { throw new Error(name + ": connection " + unitName + " names no unit"); }
+    let answer;
+    if (surface === "write-refusal-message") {
+      // the message writer takes the generated fixed class, as a batch of one
+      const m = await messageUnit(unit, root);
+      if (m === null) { absent(outDir, name, "the generated unit " + unit + " carries no " + root + "SaveMessages: docs/SPEC-TABLES.md §3.3, §3.4"); continue; }
+      const x = await fixedValueOf(unit, root, wirePath);
+      if (x === null) { absent(outDir, name, "no fixed class for " + unit + "." + root + " on this leg"); continue; }
+      answer = !setFixed(x, path, kind, text) ? "unrepresentable" : writes(name, () => {
+        const size = m.measure([x], {});
+        return size >= 0 && m.save([x], new Uint8Array(size), {}) === size;
+      });
+      writeFileSync(join(outDir, name), answer + "\n");
+      continue;
+    }
     const codec = await codecFor(unit, root);
     if (codec === null) { absent(outDir, name, "no generated unit carries " + unit + "." + root + ": docs/SPEC-TABLES.md §11"); continue; }
+    if (wirePath === "-") { throw new Error(name + ": a fresh-value row (wire -) on " + surface + ": this leg starts only the message writer from the fresh value"); }
     const wire = new Uint8Array(readFileSync(wirePath));
-    let answer;
-    if (surface === "write-refusal-json") {
+    const variable = surface === "write-refusal-json" || surface === "write-refusal-cook" || (surface === "write-refusal" && codec.fixedValue === undefined);
+    if (variable) {
+      // the variable value: the text writer's and the cook writer's input, and
+      // a variable root's own save. A fixed root's read here is its fixed load,
+      // bridged to the variable value (fixed.mjs).
+      if (surface === "write-refusal-cook" && codec.cook === null) { absent(outDir, name, unit + "." + root + " has no cook writer on this leg: docs/SPEC-TABLES.md §7.6"); continue; }
       const v = codec.load(wire, codec.report());
       if (v === null || v === undefined) { throw new Error(name + ": load refused " + wirePath); }
       if (!setVariable(v, path, kind, text)) {
         answer = "unrepresentable";
+      } else if (surface === "write-refusal-json") {
+        answer = writes(name, () => codec.toJson(v) !== null);
+      } else if (surface === "write-refusal-cook") {
+        // CookMeasure, then CookFrom in little-endian order (1); `wrote` when both complete
+        answer = writes(name, () => {
+          const size = codec.cook.measure(v);
+          return typeof size === "number" && size >= 1 && codec.cook.from(v, new Uint8Array(size), 1) === true;
+        });
       } else {
-        answer = codec.toJson(v) === null ? "refused" : "wrote";
+        answer = writes(name, () => codec.save(v) !== null);
       }
     } else {
-      if (codec.fixedValue === undefined) {
-        if (surface !== "write-refusal") {
-          absent(outDir, name, unit + "." + root + " is not a fixed root");
-          continue;
-        }
-        const v = codec.load(wire, codec.report());
-        if (v === null || v === undefined) { throw new Error(name + ": load refused " + wirePath); }
-        if (!setVariable(v, path, kind, text)) {
-          answer = "unrepresentable";
-        } else {
-          answer = codec.save(v) === null ? "refused" : "wrote";
-        }
-        writeFileSync(join(outDir, name), answer + "\n");
-        continue;
-      }
+      if (codec.fixedValue === undefined) { absent(outDir, name, unit + "." + root + " is not a fixed root"); continue; }
       const x = codec.fixedValue.load(wire);
       if (x === null) { throw new Error(name + ": load refused " + wirePath); }
-      setFixed(x, path, kind, text);
-      if (surface === "write-refusal-message") {
-        const m = await messageUnit(unit, root);
-        if (m === null) { absent(outDir, name, "no message form for " + unit + "." + root + ": docs/SPEC-TABLES.md §3.3"); continue; }
-        const size = m.measure([x], {});
-        answer = size < 0 || m.save([x], new Uint8Array(size), {}) !== size ? "refused" : "wrote";
-      } else {
-        answer = codec.fixedValue.save(x) < 0 ? "refused" : "wrote";
-      }
+      answer = !setFixed(x, path, kind, text) ? "unrepresentable" : writes(name, () => codec.fixedValue.save(x) >= 0);
     }
     writeFileSync(join(outDir, name), answer + "\n");
   }

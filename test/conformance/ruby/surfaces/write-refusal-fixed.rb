@@ -16,6 +16,8 @@ def self.default_for_spec(pkg, spec)
 end
 
 def self.assign_fixed(pkg, root_val, spec, path, rule, token)
+  return if RubyConformance.assign_whole(root_val, path, rule, token)
+
   parts = path.tr('[', '.').delete(']').split('.').reject(&:empty?)
   owner = root_val
   current = spec
@@ -85,10 +87,15 @@ def self.run(manifest, outdir)
     end
     # A committed wire the reader refuses is a reader failure, never a missing
     # feature: let it raise, so the surface is red and not absent.
-    value = cls.load(RubyConformance.read_bytes(wire))
+    value = RubyConformance.load_or_fresh(cls, wire)
     # only the save may refuse: an InvalidValue raised while assigning the
     # mutation is a driver failure, never the verdict under test
-    assign_fixed(pkg, value, pkg._s_fixed_roots[root]['spec'], path, rule, token)
+    begin
+      assign_fixed(pkg, value, pkg._s_fixed_roots[root]['spec'], path, rule, token)
+    rescue RubyConformance::Unrepresentable
+      RubyConformance.write_bytes(outdir, case_name, "unrepresentable\n".b)
+      next
+    end
     begin
       cls.fixed_save([value])
       RubyConformance.write_bytes(outdir, case_name, "wrote\n".b)

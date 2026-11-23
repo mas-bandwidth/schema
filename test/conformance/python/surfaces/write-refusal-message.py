@@ -1,6 +1,7 @@
 """Exercise whole-batch write refusal after changing a loaded value."""
 
-from _common import absent, entries, read_bytes, root_class, unit_package, write_bytes
+from _common import absent, entries, root_class, unit_package, write_bytes
+from _mutate import UNREPRESENTABLE, apply, fresh_or_load
 
 
 def _target(value, path):
@@ -25,37 +26,13 @@ def run(manifest, outdir):
         if package is None or cls is None or message is None:
             absent(outdir, case, "message form is not emitted for this root")
             continue
-        value = cls.load(read_bytes(wire))
-        parts = path.replace("[", ".").replace("]", "").split(".")
-        owner = _target(value, ".".join(parts[:-1])) if len(parts) > 1 else value
-        last = parts[-1]
-        if last.isdigit():
-            slots = owner._values if hasattr(owner, "_values") else owner
-            current = slots[int(last)]
-        else:
-            current = getattr(owner, last)
-        if kind in ("int", "ordinal"):
-            converted = int(token)
-        elif kind == "tag":
-            u = type(current)()
-            u.type = int(token)
-            converted = u
-        elif kind == "length":
-            converted = "x" * int(token) if isinstance(current, str) else bytes(int(token))
-        elif kind == "float":
-            converted = float(token)
-        elif kind == "bytes":
-            raw = bytes.fromhex(token)
-            converted = raw.decode("utf-8", "surrogateescape") if isinstance(current, str) else raw
-        elif kind == "bool":
-            converted = token.lower() in ("true", "1")
-        else:
-            converted = token
-        if last.isdigit():
-            slots = owner._values if hasattr(owner, "_values") else owner
-            slots[int(last)] = converted
-        else:
-            setattr(owner, last, converted)
+        value = fresh_or_load(cls, wire)
+        special = apply(value, path, kind, token)
+        if special is UNREPRESENTABLE:
+            write_bytes(outdir, case, b"unrepresentable\n")
+            continue
+        if not special:
+            _convert(value, path, kind, token)
         refused = []
         for verb in (message.measure_messages, message.save_messages):
             try:
@@ -67,3 +44,36 @@ def run(manifest, outdir):
         if refused[0] != refused[1]:
             raise AssertionError("message measure and save disagree")
         write_bytes(outdir, case, b"refused\n" if refused[0] else b"wrote\n")
+
+
+def _convert(value, path, kind, token):
+    parts = path.replace("[", ".").replace("]", "").split(".")
+    owner = _target(value, ".".join(parts[:-1])) if len(parts) > 1 else value
+    last = parts[-1]
+    if last.isdigit():
+        slots = owner._values if hasattr(owner, "_values") else owner
+        current = slots[int(last)]
+    else:
+        current = getattr(owner, last)
+    if kind in ("int", "ordinal"):
+        converted = int(token)
+    elif kind == "tag":
+        u = type(current)()
+        u.type = int(token)
+        converted = u
+    elif kind == "length":
+        converted = "x" * int(token) if isinstance(current, str) else bytes(int(token))
+    elif kind == "float":
+        converted = float(token)
+    elif kind == "bytes":
+        raw = bytes.fromhex(token)
+        converted = raw.decode("utf-8", "surrogateescape") if isinstance(current, str) else raw
+    elif kind == "bool":
+        converted = token.lower() in ("true", "1")
+    else:
+        converted = token
+    if last.isdigit():
+        slots = owner._values if hasattr(owner, "_values") else owner
+        slots[int(last)] = converted
+    else:
+        setattr(owner, last, converted)
