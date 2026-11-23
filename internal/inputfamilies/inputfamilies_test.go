@@ -194,7 +194,7 @@ func TestAccountFilesForLegResolvesPerLegSchemasAndExclusions(t *testing.T) {
 	}
 }
 
-func TestAcceptedBoundsSelectOnlyTheirGoReaders(t *testing.T) {
+func TestWriterBoundsSelectOnlyTheirGoReaders(t *testing.T) {
 	t.Parallel()
 	tree := repoTree(t)
 	for _, tc := range []struct {
@@ -214,8 +214,8 @@ func TestAcceptedBoundsSelectOnlyTheirGoReaders(t *testing.T) {
 			family:   "table-write-bounds",
 			neighbor: "conformance-corpus",
 			inputs: []string{
-				"testdata/conformance/table-write-bounds/ACCEPTED-WRITE-BOUNDS.txt",
 				"testdata/conformance/table-write-bounds/TableWriteBounds.schema",
+				"testdata/conformance/table-write-bounds/WRITE-BOUNDS.txt",
 				"testdata/conformance/table-write-bounds/torture_var_wref.bin",
 			},
 		},

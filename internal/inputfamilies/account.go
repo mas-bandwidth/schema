@@ -26,7 +26,7 @@ var Account = map[string][]string{
 	"packet-write-bareint":    {"test/packet-write-bareint/*.schema", "test/packet-write-bareint/cases.txt"},
 	"packet-write-cfloat":     {"test/packet-write-cfloat/*.schema", "test/packet-write-cfloat/cases.txt"},
 	"packet-cfloat-endpoints": {"test/packet-cfloat-endpoints/*.schema", "test/packet-cfloat-endpoints/ratio-endpoints.txt"},
-	"table-write-bounds":      {"testdata/conformance/table-write-bounds/*.schema", "testdata/conformance/table-write-bounds/*.bin", "testdata/conformance/table-write-bounds/ACCEPTED-WRITE-BOUNDS.txt"},
+	"table-write-bounds":      {"testdata/conformance/table-write-bounds/*.schema", "testdata/conformance/table-write-bounds/*.bin", "testdata/conformance/table-write-bounds/WRITE-BOUNDS.txt"},
 	"packet-write-text":       {"test/packet-write-text/*.schema", "test/packet-write-text/cases.txt"},
 	"conformance-corpus":      {"testdata/conformance/tables/MANIFEST.txt", "testdata/conformance/tables/wire/*.bin"},
 	"hostile-corpus":          {"internal/ci/hostilecorpus/corpus/manifest.tsv", "internal/ci/hostilecorpus/corpus/inputs/*"},
