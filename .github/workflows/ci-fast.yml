@@ -2027,7 +2027,7 @@ jobs:
   # "the build did no work" must not be an available explanation for a green.
   block-gate:
     needs: plan
-    if: always() && !cancelled() && startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    if: startsWith(github.head_ref, 'sprint/') == false && (always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # fleet: 38-83 s; hosted builds bin/schema with no cache, by design
     timeout-minutes: 2
