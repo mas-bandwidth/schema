@@ -54,6 +54,9 @@ yours**, by an explicit permanent grant in [LICENSE](../LICENSE).
    Update the clause wherever a new port would otherwise have to consult an
    existing implementation to choose the correct behavior. See the
    [test appendix’s regression requirements](SPEC-CONFORMANCE.md#regression-cases-for-implementation-fixes).
+   For every observable behavior fix, include the shared regression case ID,
+   its specification clause, and the before-and-after result in the pull
+   request. Follow the [conformance addendum's regression rule](SPEC-CONFORMANCE.md#regressions-and-independent-implementations).
 2. **C++ is the reference.** C++ writes the pins in `testdata/wire/` and
    `testdata/golden/`; every other leg byte-compares against
    them. Cross-language wire identity is a standing gate, and so is
