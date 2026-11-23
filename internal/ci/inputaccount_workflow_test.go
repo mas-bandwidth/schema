@@ -83,7 +83,7 @@ func TestFastInputAccountingKeepsBothCanaries(t *testing.T) {
 			if err := os.WriteFile(bin, []byte(stub), 0o755); err != nil {
 				t.Fatal(err)
 			}
-			cmd := exec.Command("bash", "-euo", "pipefail", "-c", "vars=()\n"+script)
+			cmd := exec.Command("bash", "-eo", "pipefail", "-c", "vars=()\n"+script)
 			cmd.Dir = dir
 			cmd.Env = append(os.Environ(), "RUNNER_TEMP="+dir, "FAMILY="+tc.family, "LEG="+tc.leg, "ACCOUNT_CONTROL="+tc.control)
 			out, err := cmd.CombinedOutput()
@@ -94,7 +94,7 @@ func TestFastInputAccountingKeepsBothCanaries(t *testing.T) {
 	}
 }
 
-func TestFastPlanSplitsOnlySquirrelCorpusWrongControl(t *testing.T) {
+func TestFastPlanSplitsSquirrelCorpusAccountingRows(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("the Linux input accounting lane runs its recipe in a POSIX host's Bash")
