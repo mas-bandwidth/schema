@@ -1280,6 +1280,16 @@ TEST_LEGS         += test-cs
 TOOLCHAIN_LEGS    += cs
 TOOLCHAIN_PINS_cs  := DOTNET
 CONFORMANCE_LEGS  += $(call unless_skipped,cs,build-conformance-cs build-cs-cook)
+
+.PHONY: table-write-bounds-cs
+table-write-bounds-cs: build/conformance-harness build-conformance-cs
+	./build/conformance-harness run --only cs --surfaces write-refusal --complete \
+		--manifest testdata/conformance/table-write-bounds/WRITE-BOUNDS.txt \
+		--json testdata/conformance/table-write-bounds \
+		--work build/conformance-write-bounds-cs
+
+test-cs: table-write-bounds-cs
+
 BENCH_TABLES_LEGS += generated/bench/tables/cs/.stamp
 GOLDENS_LEGS      += update-goldens-cs
 # Packet UTF-8 content validation, including a compiled mutation control.

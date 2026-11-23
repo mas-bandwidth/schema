@@ -244,6 +244,16 @@ build/conformance-unity/.stamp: bin/schema testdata/conformance/tables/MANIFEST.
 
 CONFORMANCE_LEGS   += $(call unless_skipped,unity,build/conformance-unity/.stamp)
 
+.PHONY: table-write-bounds-unity
+table-write-bounds-unity: build/conformance-harness build/conformance-unity/.stamp
+	./build/conformance-harness run --only unity --surfaces write-refusal --complete \
+		--manifest testdata/conformance/table-write-bounds/WRITE-BOUNDS.txt \
+		--json testdata/conformance/table-write-bounds \
+		--work build/conformance-write-bounds-unity
+
+test-unity: table-write-bounds-unity
+
+
 # THE WRITE CONTRACT's controls (docs/SPEC.md §5.1), on the C# leg's pattern
 # (make/cs.mk): write checks are Debug.Assert, so the Debug unit is rebuilt
 # from a copy of its generated source with ONE assert removed
