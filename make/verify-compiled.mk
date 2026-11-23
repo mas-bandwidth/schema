@@ -198,11 +198,20 @@ _verify-rust-conformance: build/conformance-harness build/conformance-rust gener
 		./build/conformance-harness run --only rust --claims --work build/verify/conformance-rust --results $(VERIFY_RESULTS_DIR)/rust.json & p3=$$!; \
 		wait $$p1; wait $$p2; wait $$p3
 
-_verify-rust-bench: bin/schema generated/bench/rust/.stamp generated/bench/paired/rust/.stamp packet-defaults-rust packet-end-rust packet-write-cfloat-rust packet-write-text-rust cards-rust-conformance tables-rust-view
+# Run the Rust quick bench (--round 0, matching _verify-go-bench-quick) and
+# paired gate as parallel prerequisites beside packet-*, cards, and view gates
+# instead of serially after all six prerequisites finish.
+.PHONY: _verify-rust-bench-quick _verify-rust-bench-paired
+_verify-rust-bench-quick: generated/bench/rust/.stamp
 	@mkdir -p build/verify build/bench && rm -f build/verify/bench-rust.csv
-	PATH="$(RUSTUP_BIN):$$PATH" bench/run.sh --quick --bare --only rust --out build/verify/bench-rust.csv
+	PATH="$(RUSTUP_BIN):$$PATH" bench/run.sh --quick --round 0 --bare --only rust --out build/verify/bench-rust.csv
 	@test -s build/verify/bench-rust.csv
+
+_verify-rust-bench-paired: generated/bench/paired/rust/.stamp
 	PATH="$(RUSTUP_BIN):$$PATH" go run ./bench/paired -mode gate -langs rust
+
+_verify-rust-bench: bin/schema generated/bench/rust/.stamp generated/bench/paired/rust/.stamp packet-defaults-rust packet-end-rust packet-write-cfloat-rust packet-write-text-rust cards-rust-conformance tables-rust-view _verify-rust-bench-quick _verify-rust-bench-paired
+	@test -s build/verify/bench-rust.csv
 
 # ---- java ----
 
