@@ -6,4 +6,6 @@ edition = "2024"
 [dependencies]
 packetdefaults = { path = "../../../build/packet-defaults/rust/defaults" }
 packetplain = { path = "../../../build/packet-defaults/rust/plain" }
+packetconstant-hexadecimal-addition = { path = "../../../build/packet-defaults/rust/constant-hexadecimal-addition" }
+packetconstant-unsigned-subtraction = { path = "../../../build/packet-defaults/rust/constant-unsigned-subtraction" }
 serialize = { package = "serialize-official", path = "../../../../serialize.rs" }
