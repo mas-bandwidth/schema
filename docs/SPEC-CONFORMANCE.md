@@ -499,10 +499,10 @@ SF-21 below and at the minimum.
 #### Maximum Form 1 payloads
 
 The same manifest pins the accepted maxima for a plain buffer and two
-selected union arms ([SPEC-TABLES §3](SPEC-TABLES.md#3-the-wire)). The Go
-gate runs their wire and JSON surfaces. It writes each value from its JSON
-golden and compares the full Form 1 file, then reads the pinned file back
-and compares the complete JSON value and the saved wire bytes.
+selected union arms ([SPEC-TABLES §3](SPEC-TABLES.md#3-the-wire)). The Go and
+JavaScript gates run their wire and JSON surfaces. The harness compares the
+full Form 1 files written from the JSON inputs, the complete JSON written
+from the pinned files, and the wire bytes after load and save.
 
 | Case | Payload at its declared maximum |
 |---|---|
@@ -510,8 +510,8 @@ and compares the complete JSON value and the saved wire bytes.
 | `sfw_arm_raw_payload` | Selected `arm_raw.a_raw bytes(4)`, bytes `01 fe 00 55` |
 | `sfw_arm_arr_payload` | Selected `arm_arr.a_arr [..3]int32`, elements `-7, 0, 2147483647` |
 
-The other registered drivers run the fourteen writer-argument cases above.
-Their execution of these readback goldens remains owed.
+C, C++, C#, Unity, Rust and Dart still owe shared execution of these
+readback goldens. Their writer-argument gates run the cases above.
 
 ### Declared deprecated enum writers
 

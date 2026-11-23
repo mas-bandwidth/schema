@@ -61,10 +61,16 @@ var AccountLegSchemaOverride = map[string]map[string]string{
 	"packet-finite": {"java": "test/java/Finite.schema"},
 }
 
+var tableWriteBoundsReadback = []string{
+	"testdata/conformance/table-write-bounds/*.json",
+	"testdata/conformance/table-write-bounds/wire/*.bin",
+}
+
 // accountPerLegPatterns extends a family for a leg with additional surfaces.
 var accountPerLegPatterns = map[string]map[string][]string{
 	"table-write-bounds": {
-		"go": {"testdata/conformance/table-write-bounds/*.json", "testdata/conformance/table-write-bounds/wire/*.bin"},
+		"go": tableWriteBoundsReadback,
+		"js": tableWriteBoundsReadback,
 	},
 }
 

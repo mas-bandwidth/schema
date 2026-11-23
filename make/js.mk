@@ -1883,7 +1883,7 @@ build/tables-generated-js/.stamp: $(CONFORMANCE_UNIT_SCHEMAS) testdata/conforman
 
 .PHONY: table-write-bounds-js
 table-write-bounds-js: build/conformance-harness build/tables-generated-js/.stamp
-	NODE="$(NODE)" ./build/conformance-harness run --only js --surfaces write-refusal --complete \
+	NODE="$(NODE)" ./build/conformance-harness run --only js --surfaces write-refusal,wire,json-read,json-write --complete \
 		--manifest testdata/conformance/table-write-bounds/WRITE-BOUNDS.txt \
 		--json testdata/conformance/table-write-bounds \
 		--work build/conformance-write-bounds-js

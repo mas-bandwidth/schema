@@ -851,6 +851,7 @@ const wireRows = [
   ["tblvarevo3", "EvoMsg", "varevo3/Tblvarevo3Variable.js"],
   ["cooktorture", "TortureCook", "cooktorture/CookTortureVariable.js"],
   ["cooktorture", "TortureFixedWref", "cooktorture/CookTortureVariable.js"],
+  ["writebounds", "TortureVarWref", "writebounds/WriteboundsVariable.js"],
   ["cooktorturewide", "TortureWideCook", "cooktorturewide/CookTortureWideVariable.js"],
   // string, bytes and flags defaults in every carried field shape (SPEC §4.2)
   ["tblvaluedefaults", "VarDefaults", "valuedefaults/TblvaluedefaultsVariable.js"],
@@ -1196,12 +1197,13 @@ async function surfaceFraming(lines, outDir) {
 }
 
 async function surfaceJsonRead(lines, outDir) {
+  const jsonDir = process.env.SCHEMA_CONFORMANCE_JSON_INPUT_DIR || "testdata/conformance/tables/json";
   for (const f of kind(lines, "instance")) {
     if (noText(f)) { continue; }
     const codec = await textCodec(f[2], f[3]);
     if (codec === null) { wireAbsent(outDir, f[1]); continue; }
     const r = (codec.variableReport ?? codec.report)(); // the text read reports on the variable form
-    const text = readJsonTextFile(join("testdata/conformance/tables/json", f[1] + ".json"));
+    const text = readJsonTextFile(join(jsonDir, f[1] + ".json"));
     if (text === null) { fail(f[1] + ": invalid UTF-8 in JSON"); }
     const v = codec.fromJson(text, r);
     if (v === null || v === undefined || r.damaged || r.refused) { fail(f[1] + ": FromJson refused the text"); }
