@@ -659,7 +659,7 @@ func (g *gen) scalarWrite(f *ir.Field, x, dst string) string {
 	kind := scalarWireKind(f)
 	switch f.Type.Kind {
 	case ir.TBool:
-		return fmt.Sprintf("%s.push(if %s { 1 } else { 0 });", dst, x)
+		return fmt.Sprintf("%s.push(if %s { 1 } else { 0 });", dst, cookVal(x))
 	case ir.TFloat32, ir.TFloat64:
 		return fmt.Sprintf("if !%s.is_finite() { table_float_refuse(ids, %q); } %s.extend_from_slice(&%s.to_bits().to_le_bytes());", x, g.floatOwner(f), dst, rustFloatStored(f, x))
 	}
@@ -1943,6 +1943,7 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    %s(v, &mut out, &mut ids, &g, None, None, TableRetainPath::default());\n", fn(st.Name, "save_body"))
 	emitNodeTableWrite(b, false)
 	fmt.Fprintf(b, "    // A Vec cannot carry the writer's named refusal (§3): never return a truncated file.\n")
+	fmt.Fprintf(b, "    ids.check_bound();\n")
 	fmt.Fprintf(b, "    if let Some(why) = ids.refused.take() { panic!(\"{}\", why); }\n")
 	fmt.Fprintf(b, "    out.push(0); // the root body's zero reference\n")
 	fmt.Fprintf(b, "    for e in &ids.entries { out.extend_from_slice(&e.to_le_bytes()); }\n")
@@ -1969,6 +1970,7 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "    %s(v, &mut out, &mut ids, &g, None, None, TableRetainPath::default());\n", fn(st.Name, "save_body"))
 	fmt.Fprintf(b, "    // every node record's body rides too, and is checked by the same walk\n")
 	emitNodeTableWrite(b, false)
+	fmt.Fprintf(b, "    ids.check_bound();\n")
 	fmt.Fprintf(b, "    if let Some(why) = ids.refused.take() { return Err(why); }\n")
 	fmt.Fprintf(b, "    out.push(0); // the root body's zero reference\n")
 	fmt.Fprintf(b, "    for e in &ids.entries { out.extend_from_slice(&e.to_le_bytes()); }\n")
@@ -2002,6 +2004,7 @@ func (g *gen) emitVariableRoot(b *strings.Builder, st *ir.Struct) {
 	emitNodeTableWrite(b, true)
 	fmt.Fprintf(b, "    retain_count_unplaced(retain, report);\n")
 	fmt.Fprintf(b, "    // A Vec cannot carry the writer's named refusal (§3): never return a truncated file.\n")
+	fmt.Fprintf(b, "    ids.check_bound();\n")
 	fmt.Fprintf(b, "    if let Some(why) = ids.refused.take() { panic!(\"{}\", why); }\n")
 	fmt.Fprintf(b, "    out.push(0); // the root body's zero reference\n")
 	fmt.Fprintf(b, "    for e in &ids.entries { out.extend_from_slice(&e.to_le_bytes()); }\n")

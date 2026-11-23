@@ -20,7 +20,7 @@
 # is a named absence, counted. A disagreement the known-findings file names is
 # carried by name; one it does not name is red, and a named one gone green is
 # red too.
-set -u
+set -eu -o pipefail
 
 # grade holds one answer (got_verdict, got, text; got_verdict empty when the
 # runner printed no line) to its manifest row (name, carrier, schema_path,
@@ -53,6 +53,7 @@ grade() {
 			fi
 		fi
 	fi
+	return 0
 }
 
 # --scorer grades the shared scorer outcome cases through grade, the
@@ -92,6 +93,7 @@ manifest=$corpus/manifest.tsv
 rm -rf "$work" && mkdir -p "$work" || exit 2
 abs_corpus=$(cd "$corpus" && pwd)
 : >"$work/lines"
+: >"$work/ran"
 for s in $(awk -F'\t' '!/^#/ && NF >= 9 { print $3 }' "$manifest" | LC_ALL=C sort -u); do
 	slug=$(echo "$s" | tr '/.' '__')
 	src=$s
@@ -113,7 +115,7 @@ for s in $(awk -F'\t' '!/^#/ && NF >= 9 { print $3 }' "$manifest" | LC_ALL=C sor
 			echo "goose hostile corpus: the packet schema $s did not generate"
 			exit 1
 		fi
-		ns=$(sed -n 's/^namespace \(.*\);$/\1/p' "$u"/*.goose | head -1)
+		ns=$(sed -n 's/^namespace \(.*\);$/\1/p' "$u"/*.goose | sed -n 1p)
 		{
 			for f in "$u"/*.goose; do echo "import .$(basename "$f" .goose);"; done
 			echo "fn conformance_packet(root: const u8[:], data: const u8[:], saved: u8[>..]&) -> i64 {"
@@ -154,7 +156,7 @@ for s in $(awk -F'\t' '!/^#/ && NF >= 9 { print $3 }' "$manifest" | LC_ALL=C sor
 		sed "$SCHEMA_GOOSE_HOSTILE_SABOTAGE" "$u/wire_load.goose" >"$u/wire_load.sabotaged" && mv "$u/wire_load.sabotaged" "$u/wire_load.goose" || exit 2
 		grep -q SABOTAGED "$u/wire_load.goose" || { echo "goose hostile corpus: the sabotage patched nothing in $s"; exit 2; }
 	fi
-	ns=$(sed -n 's/^namespace \(.*\);$/\1/p' "$u"/*Table.goose | head -1)
+	ns=$(sed -n 's/^namespace \(.*\);$/\1/p' "$u"/*Table.goose | sed -n 1p)
 	{
 		for f in "$u"/*.goose; do echo "import .$(basename "$f" .goose);"; done
 		echo "fn conformance_unit() -> schema_rt::LoadUnit { return $ns::TableUnit; }"
@@ -194,7 +196,7 @@ done
 fail=0 pass=0 absent=0 carried=0
 while IFS='	' read -r name carrier schema_path table input _ verdict reason digest; do
 	case "$name" in '#'* | '') continue ;; esac
-	line=$(grep -m1 "^$name " "$work/lines")
+	line=$(awk -v n="$name " 'index($0, n) == 1 { print; exit }' "$work/lines")
 	if [ -z "$line" ]; then
 		echo "FAIL $name: the runner printed no line"
 		fail=1
@@ -206,6 +208,10 @@ while IFS='	' read -r name carrier schema_path table input _ verdict reason dige
 		absent=$((absent + 1))
 		continue
 	fi
+	# THE LEDGER (docs/HOSTILE-CORPUS.md): the cases a reader answered, by
+	# name, which tools/hostileledger holds to the corpus folder. An absent
+	# row and a row with no line are cases not run.
+	echo "hostile-ledger ran $name" >>"$work/ran"
 	grade
 	row=$(awk -F'\t' -v n="$name" '$1 == n { print $2 }' "$known")
 	if [ $ok -eq 1 ]; then
@@ -224,6 +230,8 @@ while IFS='	' read -r name carrier schema_path table input _ verdict reason dige
 	fi
 done <"$manifest"
 echo "goose hostile corpus: $pass agree with the engine, $carried carried by name, $absent absent (carriers or schemas the port does not read yet)"
+cat "$work/ran"
+echo "hostile-ledger end"
 if [ $pass -eq 0 ]; then
 	echo "goose hostile corpus REFUSES: no case ran"
 	exit 2

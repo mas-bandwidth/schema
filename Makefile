@@ -168,6 +168,24 @@ build/mustrun: $(wildcard tools/mustrun/*.go)
 	@mkdir -p build
 	go build -o $@ ./tools/mustrun
 
+# test-run: run ONE go test selection and refuse it when nothing ran.
+#
+#   make test-run PKG=./internal/foo RUN='^TestBar$$'
+#
+# A bare `go test -run Typo` matches no test, prints "ok ... [no tests to run]"
+# and exits 0, which reads as a pass. tools/gotestrun runs go test -json and
+# fails when no test ran, or none passed (all skipped); it runs uncached
+# (-count=1 unless EXTRA names a -count). PKG and RUN are both
+# required; EXTRA passes more go test flags (EXTRA='-count=1 -race'). Use this,
+# not bare go test -run, in every brief, recipe and by hand. A test of the
+# selection that skips because SCHEMA_SLOW is unset is printed SKIPPED-SLOW and
+# makes the run red: set SCHEMA_SLOW=1 to run it, or SKIP_SLOW_OK=1 to accept
+# the skip by name (a local pass that ran nothing is not a pass, 2026-11-22).
+.PHONY: test-run
+test-run:
+	@[ -n "$(PKG)" ] && [ -n "$(RUN)" ] || { echo 'usage: make test-run PKG=./pkg RUN='"'"'^TestName$$'"'"' [EXTRA=-count=1]' >&2; exit 2; }
+	SKIP_SLOW_OK='$(SKIP_SLOW_OK)' go run ./tools/gotestrun $(EXTRA) -run '$(RUN)' $(PKG)
+
 # bin-schema-embeds: for one embedded file of every package that embeds
 # (go list's EmbedFiles, so the list cannot drift from the go:embed lines), a
 # newer mtime on that file makes bin/schema out of date. `make -q` asks
@@ -2327,8 +2345,12 @@ conformance-negative-control-absent: build/conformance-harness build/tables-gene
 	@mkdir -p build
 	@perl -0pe 's|(static int surface_wire\(.*?        )if \( variable != NULL \)|$${1}if ( variable != NULL && !spill( out, f[1] + ".absent", "", 0 ) ) { return 1; } /* SABOTAGED */\n        if ( variable != NULL ) { continue; }\n        if ( false )|s' \
 		test/conformance/cpp/main.cpp > build/conformance-cpp-absent.cpp
-	@cmp -s build/conformance-cpp-absent.cpp test/conformance/cpp/main.cpp && \
-		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; } || true
+	@st=0; cmp -s build/conformance-cpp-absent.cpp test/conformance/cpp/main.cpp || st=$$?; \
+	case $$st in \
+		0) echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1 ;; \
+		1) ;; \
+		*) echo "NEGATIVE CONTROL FAILED: cmp could not compare the sabotaged driver (exit $$st)"; exit 1 ;; \
+	esac
 	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) build/conformance-cpp-absent.cpp \
 		$(CONFORMANCE_SOURCES) -o build/conformance-cpp
 	@rm -rf build/conformance-absent-work
@@ -3061,6 +3083,7 @@ BE_RUN ?= qemu-s390x
 # and the emulator invocation is just the binary.
 build/schema_test_tables_be: build/tables-generated-be/.stamp build/tables-main-be-smoke.cpp
 	@mkdir -p build
+# loud-ok: picks the cross compiler on PATH, else names the default; a missing compiler fails this compile by name
 	$$(command -v $(BE_CXX) || echo s390x-linux-gnu-g++) $(TABLES_CXXFLAGS) -static $(call tables_includes,build/tables-generated-be) -Wno-unused-function build/tables-main-be-smoke.cpp -o $@
 
 # THE MAP GATE, for a BIG-ENDIAN target (docs/SPEC-TABLES.md §2.8, §3). Its
@@ -3136,6 +3159,7 @@ build/schema_test_fixed_endian: build/fixed-endian/.stamp test/tables/fixed_endi
 	$(CXX) $(TABLES_CXXFLAGS) -Ibuild/fixed-endian -I$(SERIALIZE) test/tables/fixed_endian_main.cpp $$(ls build/fixed-endian/*.cpp 2>/dev/null) -o $@
 
 build/schema_test_fixed_endian_be: build/fixed-endian/.stamp test/tables/fixed_endian_main.cpp
+# loud-ok: picks the cross compiler on PATH, else names the default; a missing compiler fails this compile by name
 	$$(command -v $(BE_CXX) || echo s390x-linux-gnu-g++) $(TABLES_CXXFLAGS) -static -Ibuild/fixed-endian -I$(SERIALIZE) test/tables/fixed_endian_main.cpp $$(ls build/fixed-endian/*.cpp 2>/dev/null) -o $@
 
 .PHONY: tables-big-endian-collections
@@ -3245,6 +3269,7 @@ tables-big-endian-control-only: build/tables-main-be-control.cpp
 	@./build/schema-host-order generate --lang cpp --out build/tables-host-order/examples tables/examples
 	@# Both compilers at once, each waited on by its own pid (F-068): a bare
 	@# wait returned 0 when either compile failed.
+# loud-ok: picks the cross compiler on PATH, else names the default; a missing compiler fails this compile by name
 	@set -e; \
 	$(CXX) $(TABLES_CXXFLAGS) $(call tables_includes,build/tables-host-order) -Wno-unused-function build/tables-main-be-control.cpp -o build/schema_test_tables_host_order & host=$$!; \
 	$$(command -v $(BE_CXX) || echo s390x-linux-gnu-g++) $(TABLES_CXXFLAGS) -static $(call tables_includes,build/tables-host-order) -Wno-unused-function build/tables-main-be-control.cpp -o build/schema_test_tables_host_order_be & be=$$!; \
@@ -3379,9 +3404,9 @@ tables-hostile-negative-control: tables-hostile-values
 	else \
 		echo "NEGATIVE CONTROL FAILED: relaxing the number grammar left num-leading-plus refused"; exit 1; \
 	fi
-	@./bin/schema pack --root RootConfig --out build/loose.bin \
-		testdata/conformance/tables/json-hostile/num-leading-plus tables/examples > /dev/null 2>&1 && \
-		{ echo "NEGATIVE CONTROL FAILED: the real engine accepts a leading + too"; exit 1; } || true
+	@if ./bin/schema pack --root RootConfig --out build/loose.bin \
+		testdata/conformance/tables/json-hostile/num-leading-plus tables/examples > /dev/null 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the real engine accepts a leading + too"; exit 1; fi
 
 # The NEGATIVE CONTROL for that golden: break ONE framing rule in the Go
 # encoder — elide a present `?T`, which §2.3 forbids — and the golden must go
@@ -4497,6 +4522,7 @@ tables-lists-preorder-negative-control: bin/schema build/tables-generated/.stamp
 	@grep -q "^FAIL.*list_of_maps_cook" build/list-preorder.log || \
 		{ echo "NEGATIVE CONTROL FAILED: the pinned list_of_maps_cook byte compare stayed GREEN"; cat build/list-preorder.log; exit 1; }
 	@rm -rf build/tables-list-preorder/cooks && mkdir -p build/tables-list-preorder/cooks
+# loud-ok: the sabotaged writer is meant to fail; cook-check below must refuse the cook it laid, by name, and a run that laid no cook fails that check too
 	@SCHEMA_LIST_COOK_DIR=build/tables-list-preorder/cooks ./build/schema_test_lists_preorder > /dev/null 2>&1 || true
 	@if ./bin/schema cook-check --root Army build/tables-list-preorder/cooks/army.cook tables/lists > build/list-preorder-check.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: cook-check accepted the cook the sabotaged writer laid"; exit 1; \
@@ -4951,10 +4977,28 @@ tables-arms-negative-controls: tables-arms-list-edge-negative-control \
 # Re-pin the goldens DELIBERATELY (SPEC §7.2 gates 1, 2, 7). A wire golden
 # breaking under an unchanged schema is stop-the-line, never a quiet re-pin
 # (SPEC §3.1) — this target is for intentional emitter/schema changes only.
+#
+# ALL OR NOTHING (test/goldens/transact): the writers below rewrite testdata/ in
+# place, so a step that failed (a debug assert in a C++ reference binary, a
+# failing go test) used to leave the families before it re-pinned and the ones
+# after it stale. The recipe now runs every step inside a snapshot of
+# testdata/ and puts the snapshot back on ANY failure or interrupt, so the tree
+# is wholly re-pinned or exactly as it was. It also writes the packet-defaults
+# and conformance pins, which the `pins` jobs of ci-full.yml and ci-fast.yml
+# rewrite and diff, so one command re-pins everything those two check and
+# `git status` afterwards is the whole change.
 update-goldens: build/schema_test_retain build/schema_test build/schema_test_ludicrous build/schema_test_bench build/schema_test_bench_table build/schema_test_tables build/schema_test_block build/schema_test_maps build/schema_test_lists build/schema_test_arms build/conformance-harness
+	@test/goldens/transact $(MAKE) --no-print-directory update-goldens-steps
+
+# the steps update-goldens runs inside its snapshot; not a target to run alone
+# (a failure here leaves testdata/ half re-pinned, which is what the snapshot
+# is for)
+.PHONY: update-goldens-steps
+update-goldens-steps: packet-defaults-goldens conformance-pin
 	@mkdir -p testdata/golden testdata/golden/tables testdata/wire testdata/wire/tables
 	go test ./internal/goldens -update -run 'TestGolden'
 	go test -tags schema_leg_moo ./internal/goldens -update -run 'TestGolden'
+	FRAMING_WRITE=1 sh test/slowgate/proof pins-framing 'TestFramingRowsNameEveryVector TestNoWriterFramingVectorsRefused' -count=1 ./test/conformance/harness -run '$(PINS_FRAMING_RUN)'
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_tables
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_block
@@ -5188,7 +5232,7 @@ generated-current: bin/schema build/treelock
 # `go test ./...` runs it too.
 .PHONY: docs-check
 docs-check:
-	go test ./internal/docgate -run TestPagesResolve -count=1
+	go test ./internal/docgate -run '^(TestPagesResolve|TestOwedRowsAreLinked|TestOwedCheckGoesRed|TestOwedLookupIsExact)$$' -count=1
 
 # bench/corpus holds two units (one package per unit, SPEC §3.2), so the
 # corpus commands name each unit's file rather than the directory
@@ -5334,7 +5378,9 @@ build/conformance-harness: $(wildcard test/conformance/harness/*.go) $(GO_SOURCE
 # the maps, lists and widelist tables.
 CONFORMANCE_OBJECTS = $(patsubst build/tables-generated/%.cpp,build/conformance-cpp-objs/%.o,$(CONFORMANCE_SOURCES))
 
-build/conformance-cpp-objs/%.o: build/tables-generated/%.cpp build/tables-generated/.stamp
+# the serialize runtime is a sibling checkout read through -I: a header edited
+# there must rebuild the objects that include it
+build/conformance-cpp-objs/%.o: build/tables-generated/%.cpp build/tables-generated/.stamp $(wildcard $(SERIALIZE)/*.h)
 	@mkdir -p $(@D)
 	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) -c $< -o $@
 
@@ -6616,8 +6662,10 @@ test-moo-tagged-table: toolchain-moo build/fixedform-corpus/.stamp
 # tagged build and runs the tagged registration/admission tests: the
 # compiler's Moo tests, the moo table descriptors load under the pinned
 # interpreter, and the harness's tagged-admission test under each tag.
+# The compiler smoke reads the C++ reference's byte oracle (TestMooReadsTheLockedOlderLayout),
+# which is a failure, never a skip, when missing on CI under SCHEMA_SLOW=1, so it builds it.
 .PHONY: test-moo-tagged-compiler-smoke test-moo-tagged-table-smoke test-goose-tagged-harness-smoke
-test-moo-tagged-compiler-smoke: toolchain-moo
+test-moo-tagged-compiler-smoke: toolchain-moo build/fixedform-corpus/.stamp
 	SCHEMA_SLOW=1 go test -count=1 -timeout 60m -tags schema_leg_moo -run '^(TestMoo|TestEachTargetDeclaresWhatItCarries)' ./compiler/
 	sh test/slowgate/proof moo-tagged-goldens 'TestGoldenLudicrousSource TestGoldenSourceEveryTarget TestGoldenDirectoriesBelongToTargets' -count=1 -tags schema_leg_moo -run '^TestGolden' ./internal/goldens/
 test-moo-tagged-table-smoke: toolchain-moo
@@ -6649,6 +6697,27 @@ include make/checks/schema-shared-hostile-corpus.mk
 # (issue #599): --skip takes the same names, and the harness prints each one it
 # passes over. The reference leg cannot be skipped.
 .PHONY: conformance
+# THE SUITE RUN ALONE (docs/SPEC-CONFORMANCE.md): one driver, no other language.
+# `make conformance` builds every leg first; a new port written from the spec
+# has no sibling checkouts and no other legs. This builds ONLY the harness (Go)
+# and runs every surface against the one driver named. Expected answers come
+# from the committed manifests and goldens under testdata/conformance, never
+# from another leg: a substituted registry has no reference leg, so no other
+# driver is asked anything. The driver is the port's own and is built by the
+# caller beforehand. CARDS_DRIVER (optional) also runs the cards corpus.
+#
+#   make conformance-port DRIVER=path/to/driver NAME=clisp [CARDS_DRIVER='cmd']
+.PHONY: conformance-port
+conformance-port: build/conformance-harness
+	@test -n "$(DRIVER)" || { echo "conformance-port: DRIVER=<command> is required (docs/SPEC-CONFORMANCE.md)"; exit 2; }
+	@test -n "$(NAME)" || { echo "conformance-port: NAME=<language> is required"; exit 2; }
+	@test "$(NAME)" != cpp || { echo "conformance-port: NAME=cpp is the reference leg's name; pick the port's own"; exit 2; }
+	@mkdir -p build/conformance-port-$(NAME)
+	@printf '%s %s\n' '$(NAME)' '$(DRIVER)' > build/conformance-port-$(NAME)/drivers.txt
+	./build/conformance-harness run --drivers build/conformance-port-$(NAME)/drivers.txt \
+		--work build/conformance-port-$(NAME)/work
+	$(if $(CARDS_DRIVER),./build/conformance-harness cards --corpus tables/cards/conformance --driver '$(CARDS_DRIVER)' --require $(CARDS_REQUIRE))
+
 # A separate four-case whole-text entry gate, not four new global corpus rows.
 # The caller builds the selected driver first; nightly already has that build.
 CONFORMANCE_BOM_LANG ?= cpp
@@ -6768,12 +6837,13 @@ TOOLCHAIN_GREEN = toolchain gate: $(words $(PROBED_TOOLCHAIN_LEGS)) of $(words $
 .PHONY: toolchain
 toolchain: toolchain-names
 	@rm -rf build/toolchain && mkdir -p build/toolchain
+# loud-ok: each leg's status is collected into $missing and refused by name below
 	@missing=""; \
 	$(foreach leg,$(PROBED_TOOLCHAIN_LEGS), \
 		$(MAKE) --no-print-directory toolchain-$(leg) \
 			> build/toolchain/$(leg).log 2> build/toolchain/$(leg).err \
 			|| missing="$$missing $(leg)"; \
-		cat build/toolchain/$(leg).log; \
+		cat build/toolchain/$(leg).log || exit 1; \
 		grep -q "REFUSES: the $(leg) leg" build/toolchain/$(leg).log \
 			|| cat build/toolchain/$(leg).err;) \
 	$(foreach leg,$(SKIPPED_TOOLCHAIN_LEGS), \
@@ -7182,12 +7252,64 @@ if test ! -e "$(4)"; then \
 fi
 endef
 
+# THE SIBLING GATE. A leg that compiles against a sibling runtime checkout
+# (../serialize, ../serialize.c, ../serialize.cs, ../serialize.go,
+# ../serialize.rs, ../serialize.js) used to fail in the middle of a compile
+# when `make deps` had not staged it: CS2001 source not found, a missing -I
+# path, a cargo path error, a Go module replace that points nowhere. Each of
+# those names a symptom and never the cause. Now every entry point that needs a
+# sibling stops at once, before any recipe runs, with ONE line naming the
+# command to run:
+#   - a goal that is test-<leg>, build/conformance-<leg>, build-conformance-<leg>
+#     or `conformance` (for every leg SCHEMA_SKIP_LEGS does not name) is
+#     checked when the Makefile is read, below. It is a parse-time check
+#     because the prerequisite order of a goal whose rules sit in several
+#     files is not ours to set. A goal beside `deps` is not checked (deps
+#     stages the siblings first), and `test-go` is not either: it lists deps;
+#   - make sibling-<leg> says the same for one leg, as a target;
+#   - each sibling's marker file has a rule that says the same line, so any
+#     other target that lists one as a prerequisite (
+#     serialize.h is named by most legs) fails with the cause and not with
+#     "No rule to make target";
+#   - test/conformance/harness refuses the same way for `run`.
+# `make deps` stages the default paths; a path named on the command line or in
+# the environment (SERIALIZE_C=... and the like) is checked where it points.
+# internal/ci/siblinggate_test.go holds the wiring.
+SERIALIZE_JS ?= ../serialize.js
+sibling_specs := cpp:SERIALIZE:serialize.h c:SERIALIZE_C:serialize.c cs:SERIALIZE_CS:src/Serialize.cs unity:SERIALIZE_CS:src/Serialize.cs go:SERIALIZE_GO:go.mod rust:SERIALIZE_RS:Cargo.toml js:SERIALIZE_JS:src/index.js
+sibling_leg    = $(word 1,$(subst :, ,$(1)))
+sibling_var    = $(word 2,$(subst :, ,$(1)))
+sibling_file   = $(word 3,$(subst :, ,$(1)))
+sibling_dir    = $($(call sibling_var,$(1)))
+sibling_line   = the $(call sibling_leg,$(1)) leg needs the sibling checkout $(call sibling_dir,$(1)) ($(call sibling_file,$(1)) is missing): run 'make deps'
+# a goal names the leg when it is the leg's test or conformance build, or the
+# aggregate conformance and the leg is run; test-go lists deps and so stages
+sibling_named  = $(or $(filter $(if $(filter go,$(1)),,test-$(1)) build/conformance-$(1) build-conformance-$(1),$(MAKECMDGOALS)),$(and $(filter conformance,$(MAKECMDGOALS)),$(if $(filter cpp,$(1)),yes,$(call unless_skipped,$(1),yes))))
+sibling_absent = $(if $(wildcard $(call sibling_dir,$(1))/$(call sibling_file,$(1))),,$(1))
+$(foreach s,$(sibling_specs),$(if $(filter deps,$(MAKECMDGOALS)),,$(if $(call sibling_named,$(call sibling_leg,$(s))),$(if $(call sibling_absent,$(s)),$(error $(call sibling_line,$(s)))))))
+define sibling_gate
+.PHONY: sibling-$(call sibling_leg,$(1))
+sibling-$(call sibling_leg,$(1)):
+	@test -f "$$($(call sibling_var,$(1)))/$(call sibling_file,$(1))" || { echo "make: $(call sibling_line,$(1))" >&2; exit 1; }
+endef
+$(foreach s,$(sibling_specs),$(eval $(call sibling_gate,$(s))))
+define sibling_marker_rule
+$(1)/$(2):
+	@echo "make: the sibling checkout $(1) is missing ($(2) not found): run 'make deps'" >&2; exit 1
+endef
+$(eval $(call sibling_marker_rule,$(SERIALIZE_C),serialize.c))
+$(eval $(call sibling_marker_rule,$(SERIALIZE_C),serialize.h))
+$(eval $(call sibling_marker_rule,$(SERIALIZE_CS),src/Serialize.cs))
+$(eval $(call sibling_marker_rule,$(SERIALIZE_RS),Cargo.toml))
+$(eval $(call sibling_marker_rule,$(SERIALIZE_JS),src/index.js))
+
 # DEPS-GO owns the Go sibling: it stages the checkout under a temporary name,
 # verifies the pinned tag's commit, and publishes it only after a placement
 # race check (internal/ci/serializefetch_test.go). Keeping it separate from
 # deps lets the sibling staging hang off deps without running first.
 .PHONY: deps-go
 deps-go:
+# loud-ok: a label only: the tag or commit printed beside the build, never a verdict
 	@if test -f "$(SERIALIZE_GO)/go.mod"; then \
 		actual=$$(git -C "$(SERIALIZE_GO)" describe --tags --exact-match 2>/dev/null || echo untagged); \
 		if test "$$actual" != "$(SERIALIZE_GO_PIN)"; then \
@@ -7232,8 +7354,14 @@ serialize-siblings: deps-go
 	@$(call stage-sibling,$(SERIALIZE_RS_PIN),mas-bandwidth/serialize.rs.git,https://github.com/mas-bandwidth/serialize.rs.git,../serialize.rs,Rust)
 	@$(call stage-sibling,$(SERIALIZE_JS_PIN),mas-bandwidth/serialize.js.git,https://github.com/mas-bandwidth/serialize.js.git,../serialize.js,JS)
 
+.PHONY: setup
+# Wire the tracked git hooks (.githooks/pre-push, active only in agent clones:
+# it refuses a push whose author or committer is not rowan-claude). Run by deps.
+setup:
+	@if git rev-parse --git-dir >/dev/null 2>&1; then git config core.hooksPath .githooks && echo "make setup: core.hooksPath = .githooks (pre-push guards agent clones)"; fi
+
 .PHONY: deps
-deps: serialize-siblings
+deps: setup serialize-siblings
 	@echo "make deps: serialize.go $(SERIALIZE_GO_PIN) at $(SERIALIZE_GO)"
 
 $(SERIALIZE_GO_RUNTIME)/go.mod:
@@ -7707,6 +7835,7 @@ proof-negative-control: build/conformance-harness build/conformance-go table-bas
 		{ echo "proof-negative-control: the clean Go leg failed"; cat $(PROOF_CONTROL)/clean.out; exit 1; }
 	@go run ./tools/matrix proof -results $(PROOF_CONTROL)/clean.json -cell 'surface wire/go' || \
 		{ echo "NEGATIVE CONTROL FAILED: the clean Go leg's surface wire cell is not proven"; exit 1; }
+# loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
 	@./build/conformance-harness run --drivers $(PROOF_CONTROL)/sabotaged.txt --work $(PROOF_CONTROL)/sabotaged-work --results $(PROOF_CONTROL)/sabotaged.json > $(PROOF_CONTROL)/sabotaged.out 2>&1 || true
 	@if go run ./tools/matrix proof -results $(PROOF_CONTROL)/sabotaged.json -cell 'surface wire/go' > $(PROOF_CONTROL)/cell.out 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: with go's wire/root_full answer deleted, the cell stayed proven"; cat $(PROOF_CONTROL)/cell.out; exit 1; fi
@@ -7796,6 +7925,18 @@ slow-gate-scan:
 	go run ./tools/slowgatescan
 
 test: slow-gate-scan
+
+# NOTHING FAILS SILENTLY (2026-11-22). No Go program under cmd/ or tools/
+# drops an error (assigned to _, or a call whose error nobody reads) unless
+# its line names why in an `// errdiscard: <reason>` comment. It type-checks
+# from the build cache, so it costs about a second; the lint-fast job of
+# ci-fast.yml runs it after modernize. `go run ./tools/errdiscard -all` lists
+# the kept ones.
+.PHONY: errdiscard
+errdiscard:
+	go run ./tools/errdiscard
+
+test: errdiscard
 
 # AND THE ACCOUNTING, test by test rather than target by target: a plain
 # `go test -v ./...` transcript (the DEFAULT half — no SCHEMA_SLOW, which is the
@@ -7921,6 +8062,7 @@ tables-go-checked-cook:
 #   - pins-conformance:       testdata/conformance/tables/cook/ and forgeries.txt
 
 define pins_generate_dirs
+	@# loud-ok: a core count for the job width (nproc, else sysctl, else 4); the work decides the status
 	@set -eu; \
 	tmp="build/pins-tmp/$(3)"; \
 	rm -rf "$$tmp" && mkdir -p "$$tmp"; \
@@ -7955,6 +8097,7 @@ define pins_generate_dirs
 endef
 
 define pins_compile_cxx
+	@# loud-ok: a core count for the job width (nproc, else sysctl, else 4); the work decides the status
 	@set -eu; \
 	objdir="build/pins-tmp/$(4)-objs"; \
 	rm -rf "$$objdir" && mkdir -p "$$objdir"; \
@@ -8050,6 +8193,34 @@ pins-wire-packet: packet-defaults-goldens build/schema_test build/schema_test_lu
 	SCHEMA_UPDATE_WIRE_GOLDENS=1 ./build/schema_test_bench
 	./build/schema_test_bench_table pin
 
+# THE WIRE PINS FROM NOTHING. A hand-written .bits or .bin sitting beside the
+# generated ones is the mistake `git diff` after a rewrite cannot see: the
+# writer never touches a file it does not own, so the stray one diffs clean.
+# This row empties the family first (every top-level testdata/wire pin and
+# packet-defaults/ is written by pins-wire-packet's writers and nothing else),
+# so a file no generator writes shows as a deletion in the row's `git diff`.
+# It deletes tracked files: run it on a tree you can `git checkout testdata`.
+.PHONY: pins-fresh-wire-packet
+pins-fresh-wire-packet:
+	rm -f testdata/wire/*.bin testdata/wire/*.bits
+	rm -rf testdata/wire/packet-defaults
+	$(MAKE) --no-print-directory pins-wire-packet
+
+# THE FRAMING VECTORS: testdata/wire/tables/framing/ and the shared wire
+# vectors under testdata/wire/tables/ are written from the byte scripts in
+# test/conformance/harness (FRAMING_WRITE=1), never by hand. PINS_FRAMING_RUN
+# selects every test that carries a FRAMING_WRITE writer; a test that writes and
+# is not selected here is a Go test (TestFramingWritersAreAllSelected) that
+# fails, so a new writer cannot sit outside the rewrite-and-diff.
+PINS_FRAMING_RUN := Pin|FramingRows|FramingDir|HeldDepth|NoWriter|FramingVector
+
+.PHONY: pins-framing
+pins-framing:
+	@# Compare every committed framing pin against its Go vector script and
+	@# reject any hand-written file under testdata/wire/tables/framing, without
+	@# setting FRAMING_WRITE=1 (which slowtest.Rewriting forbids under CI).
+	sh test/slowgate/proof pins-framing 'TestFramingRowsNameEveryVector TestFramingVectorBytesArePinned TestFramingDirHasNoHandWrittenFiles TestNoWriterFramingVectorsRefused' -count=1 ./test/conformance/harness -run '$(PINS_FRAMING_RUN)' -skip '^TestPopulatedFeatureWitnessNativePins$$'
+
 PINS_WIRE_TABLES_DIRS := examples pointers v1 v2 p1 p2 p3 jsonkeys messages stream blobs m1 m2 a1 a2 g1 k1 k2 w1 w2 r1 r2 f1 scalars backend vocab vocab9 bases
 
 .PHONY: pins-wire-tables
@@ -8127,7 +8298,7 @@ define tables_run_arm
 		echo "ZERO-COST GATE FAILED: $(2) expanded to no generate commands"; \
 		exit 1; \
 	fi; \
-	procs=$$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4); \
+	if ! procs=$$(nproc 2>/dev/null); then if ! procs=$$(sysctl -n hw.ncpu 2>/dev/null); then procs=4; fi; fi; \
 	if [ "$$procs" -gt 8 ]; then procs=8; fi; \
 	slot=0; pids=''; fail=0; \
 	for b in "$$tmp"/b.*; do \
@@ -8151,8 +8322,7 @@ endef
 # was the row. Overlap them. $(1) blockful env, $(3) blockless env,
 # $(2) label, $(4) heavy|rest|empty.
 define tables_run_both_arms
-	@set +e; \
-	( $(call tables_run_arm,$(1),$(2) blockful,$(4)) ) & p1=$$!; \
+	@( $(call tables_run_arm,$(1),$(2) blockful,$(4)) ) & p1=$$!; \
 	( $(call tables_run_arm,$(3),$(2) blockless,$(4)) ) & p2=$$!; \
 	e1=0; e2=0; \
 	wait $$p1 || e1=$$?; \
@@ -8327,6 +8497,7 @@ build/tables-main-be-control.cpp: test/tables/main.cpp
 
 build/schema_test_tables_be_full: build/tables-generated/.stamp test/tables/main.cpp test/tables/message_form.h
 	@mkdir -p build
+# loud-ok: picks the cross compiler on PATH, else names the default; a missing compiler fails this compile by name
 	$$(command -v $(BE_CXX) || echo s390x-linux-gnu-g++) $(TABLES_CXXFLAGS) -static $(TABLES_INCLUDES) test/tables/main.cpp $(TABLES_JSON_SOURCES) -o $@
 
 .PHONY: tables-big-endian-tables-full tables-big-endian-control-full
@@ -8347,6 +8518,7 @@ tables-big-endian-control-full:
 	$(call tables_generate,./build/schema-host-order,build/tables-host-order)
 	$(CXX) $(TABLES_CXXFLAGS) $(call tables_includes,build/tables-host-order) \
 		test/tables/main.cpp $$(ls build/tables-host-order/*/*Table.cpp) -o build/schema_test_tables_host_order
+# loud-ok: picks the cross compiler on PATH, else names the default; a missing compiler fails this compile by name
 	$$(command -v $(BE_CXX) || echo s390x-linux-gnu-g++) $(TABLES_CXXFLAGS) -static $(call tables_includes,build/tables-host-order) \
 		test/tables/main.cpp $$(ls build/tables-host-order/*/*Table.cpp) -o build/schema_test_tables_host_order_be
 	@./build/schema_test_tables_host_order > build/host-order-host.log 2>&1 || \

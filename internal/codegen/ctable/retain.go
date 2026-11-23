@@ -144,11 +144,11 @@ static SCHEMA_UNUSED uint64_t table_retain_ref(TableRetainIds * ids,uint64_t id,
  int32_t i;TableRetain * r=ids->retain;TableWriteIds * v=&ids->known;
  if(record&&!table_retain_nameable(id)){
   if(!r){ids->lost=1;return 0;}for(i=0;i<r->id_used;i++)if(r->ids[i].id==id)return (uint64_t)r->ids[i].slot;
-  if(!r->ids||r->id_used>=r->id_capacity||ids->count==INT32_MAX){ids->lost=1;return 0;}
+  if(!r->ids||r->id_used>=r->id_capacity||ids->count>=4096){ids->lost=1;return 0;}
   r->ids[r->id_used].id=id;r->ids[r->id_used++].slot=++ids->count;return (uint64_t)ids->count;
  }
  for(i=0;i<v->count;i++)if(v->ids[i]==id)return (uint64_t)ids->slots[i];
- if(v->count==(int)(sizeof(v->ids)/sizeof(v->ids[0]))||ids->count==INT32_MAX){*overflow=1;return 0;}
+ if(v->count==(int)(sizeof(v->ids)/sizeof(v->ids[0]))||ids->count>=4096){*overflow=1;return 0;}
  v->ids[v->count]=id;ids->slots[v->count++]=++ids->count;return (uint64_t)ids->count;
 }
 static SCHEMA_UNUSED void table_retain_truncate(TableRetainIds * ids,int32_t mark)

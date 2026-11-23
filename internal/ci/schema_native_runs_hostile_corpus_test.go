@@ -69,8 +69,8 @@ func TestSchemaNativeRunsHostileCorpusWiring(t *testing.T) {
 				continue
 			}
 			f := strings.Split(line, "\t")
-			if len(f) != 4 {
-				t.Errorf("%s carried finding has %d fields, want 4: %q", port, len(f), line)
+			if len(f) != 5 {
+				t.Errorf("%s carried finding has %d fields, want 5 (name, slug, input, answer, one line): %q", port, len(f), line)
 				continue
 			}
 			input, ok := cases[f[0]]

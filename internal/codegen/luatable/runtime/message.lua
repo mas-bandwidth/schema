@@ -444,7 +444,23 @@ local function elem_rides(T, d, v)
       end
       return false
     end
+    -- A COUNTED ARRAY IS BORN AT ITS MINIMUM (docs/SPEC-TABLES.md §22.2,
+    -- internal/tablewire messageElides): `[2..4]T` stays off the wire at
+    -- exactly two elements that each stay off it (a table by its body), and
+    -- rides at any other count; zero is refused by the write contract first.
+    if not d.list and (d.min or 0) > 0 then
+      if #v ~= d.min then return true end
+      for i = 1, d.min do
+        if elem_rides(T, d.elem, v[i]) then return true end
+      end
+      return false
+    end
     return #v > 0
+  elseif s == "wide" then
+    -- an int128/uint128 element (or a fixed-point one past 64 bits) is at its
+    -- zero when both halves are (docs/PORT-LUA.md, 64-BIT AND 128-BIT
+    -- INTEGERS); without this it fell through to "rides" (F-167)
+    return type(v) ~= "table" or v.lo ~= 0 or v.hi ~= 0
   elseif s == "union" then
     return v.tag ~= nil and v.tag ~= 0
   elseif s == "enum" then
@@ -1594,7 +1610,7 @@ end
 -- STRICT MODE IS OPT-IN (docs/SPEC-TABLES.md §3.3): with vocab.strict set
 -- before the first announcement, one whose build version is not the unit's
 -- own is refused `build_version_mismatch`, sets no vocabulary, keeps the
--- peer's build version and names both versions in report.remote and
+-- writer's build version and names both versions in report.remote and
 -- report.own; unset, the read tolerates the difference as the wire does.
 function M.announceRead(T, vocab, data, report, maxBytes, maxEntries)
   report = report or {}

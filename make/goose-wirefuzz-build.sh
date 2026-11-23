@@ -8,13 +8,13 @@
 # Copies the unit's generated modules into <out dir>, writes the glue module
 # naming the unit's registry, puts the leg and its C sidecar beside them, and
 # builds <out dir>/wirefuzz with `goose build -O2` (the machine's C compiler).
-set -u
+set -eu -o pipefail
 goose=$1
 src=$2
 out=$3
 rm -rf "$out" && mkdir -p "$out" || exit 1
 cp "$src"/*.goose "$out"/ || exit 1
-ns=$(sed -n 's/^namespace \(.*\);$/\1/p' "$out"/*Table.goose | head -1)
+ns=$(sed -n 's/^namespace \(.*\);$/\1/p' "$out"/*Table.goose | sed -n 1p)
 if [ -z "$ns" ]; then
 	echo "goose-wirefuzz-build: $src has no table module" >&2
 	exit 1
@@ -49,6 +49,27 @@ fi
 		echo "    }"
 	done
 	echo "    return -1;"
+	echo "}"
+	echo "fn conformance_message_framed_fuzz(root: const u8[:], ann: const u8[:], has_ann: bool, batch: const u8[:], out: u8[>..]&, rep: schema_rt::MsgReport&) -> i64 {"
+	for r in $msg_roots; do
+		echo "    if root == \"$r\" {"
+		echo "        var voc = schema_rt::MsgVocabulary { .. };"
+		echo "        if has_ann {"
+		echo "            if !schema_rt::announce_read(voc, ann, rep) || rep.damaged || rep.reason != 0 { return -2; }"
+		echo "        } else {"
+		echo "            var arep = schema_rt::MsgReport { .. };"
+		echo "            if !schema_rt::announce_read(voc, $ns::${r}Announce, arep) { return -2; }"
+		echo "        }"
+		echo "        var values: $ns::$r[256] = [$ns::$r { .. }; 256];"
+		echo "        let n = $ns::${r}LoadMessages(values[0..256], voc, batch, rep);"
+		echo "        if n < 1 || rep.damaged || rep.reason != 0 { return -2; }"
+		echo "        var srep = schema_rt::MsgReport { .. };"
+		echo "        let sz = $ns::${r}SaveMessages(values[0..n], out, srep);"
+		echo "        if sz < 0 { return -1; }"
+		echo "        return sz;"
+		echo "    }"
+	done
+	echo "    return -2;"
 	echo "}"
 	# THE FIXED FORM, one arm per root the unit emits <Root>FixedLoad for
 	# (form byte 3, docs/SPEC-TABLES.md §3.4), routed by the root as the
