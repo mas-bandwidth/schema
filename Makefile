@@ -5410,11 +5410,18 @@ build/conformance-cpp-objs/%.o: build/tables-generated/%.cpp build/tables-genera
 conformance-cpp-objects: build/tables-generated/.stamp
 	@$(MAKE) --no-print-directory $(CONFORMANCE_OBJECTS)
 
-build/conformance-cpp: build/tables-generated/.stamp test/conformance/cpp/main.cpp
+# Enter a fresh make only after the stamp has written the collection sources:
+# expanding their wildcards in this make can freeze an empty first-build list.
+# The outer file target keeps the ordinary schema, driver and runtime-header
+# incremental triggers; the inner target restores the complete object graph.
+build/conformance-cpp: build/tables-generated/.stamp test/conformance/cpp/main.cpp $(wildcard $(SERIALIZE)/*.h)
+	@$(MAKE) --no-print-directory _conformance-cpp-binary
+
+.PHONY: _conformance-cpp-binary
+_conformance-cpp-binary: test/conformance/cpp/main.cpp $(CONFORMANCE_OBJECTS)
 	@mkdir -p build
-	@$(MAKE) --no-print-directory $(CONFORMANCE_OBJECTS)
 	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) test/conformance/cpp/main.cpp \
-		$(CONFORMANCE_OBJECTS) -o $@
+		$(CONFORMANCE_OBJECTS) -o build/conformance-cpp
 
 # ---- THE WIRE FUZZER (docs/SPEC-TABLES.md §4.2; docs/SECURITY.md) -------------
 #
