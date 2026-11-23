@@ -156,12 +156,13 @@ func TestCTableFloatRungIsTheFiniteTestAndTheConversion(t *testing.T) {
 	}
 	// the file wire's widened scalar and the message form's f32-shaped entry
 	// read into the f64 field: the finite test, then the conversion
+	floatRungs := strings.Join(strings.Fields(with), " ")
 	for _, want := range []string{
 		"if ( !table_bits_finite32( widened_bits ) ) { table_non_finite_float( r->report ); break; }",
 		"double decoded_wide = (double) table_bits_to_float( widened_bits );",
-		"decoded=(double)narrow;",
+		"decoded = (double) narrow;",
 	} {
-		if !strings.Contains(with, want) {
+		if !strings.Contains(floatRungs, want) {
 			t.Errorf("the f64 field's float rung must read %q", want)
 		}
 	}
