@@ -1173,7 +1173,7 @@ func tableSource(u *ir.Unit, f *ir.File, g *tableGen, cg *tableGen, members []*i
 	c.WriteString("#include <stdio.h>  /* the text form: number formatting */\n")
 	c.WriteString("#include <stdlib.h> /* the text form: exact number conversion */\n")
 	c.WriteString("#include <locale.h> /* the text form: numbers convert in the \"C\" locale */\n")
-	c.WriteString("#if defined(__APPLE__)\n#include <xlocale.h> /* newlocale, uselocale */\n#endif\n\n")
+	c.WriteString("#if defined(__APPLE__)\n#include <xlocale.h> /* newlocale, uselocale */\n#endif\n#if defined(__GLIBC__) && !defined(__USE_XOPEN2K8)\n#error \"locale_t needs POSIX.1-2008: define _POSIX_C_SOURCE 200809L before the first #include of the translation unit that includes this file\"\n#endif\n\n")
 	if len(members) > 0 && jsonAllowed {
 		// THE TEXT WRITER'S ZERO-BYTE CHECK IS A DEBUG ASSERT (docs/SPEC.md
 		// §5.1 row 8): the unit takes <assert.h> and defines schema_assert

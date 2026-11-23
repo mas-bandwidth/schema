@@ -9,6 +9,11 @@
 local serialize = require("./serialize")
 local d = require("./Defaults")
 local p = require("./plain/Plain")
+-- The constant-default pins: one generated tree per schema of
+-- test/conformance/packet/testdata/constant-defaults, each declaring package
+-- arithmetic, so each has its own directory.
+local hexadecimalAddition = require("./constant-hexadecimal-addition/Defaults")
+local unsignedSubtraction = require("./constant-unsigned-subtraction/Defaults")
 local pins: { [string]: { hex: string, bits: number } } = require("./pins") :: any
 
 local function bytes(n: number, list: { number }): buffer
@@ -137,9 +142,9 @@ local function write(mod: any, name: string, value: any): (string, number)
 	return hex(stream:data()), bits
 end
 
-local function checkRead(name: string, wire: string, bits: number, initial: any, want: any)
+local function checkRead(name: string, wire: string, bits: number, initial: any, want: any, mod: any?)
 	local stream = serialize.ReadStream.new(unhex(wire))
-	check((d :: any)["Read" .. name](stream, initial), "runtime read " .. name)
+	check(((mod or d) :: any)["Read" .. name](stream, initial), "runtime read " .. name)
 	-- The public read is the one-packet read: it ends with the runtime's end
 	-- check, which consumes the final byte's padding (SPEC §5), so a read of a
 	-- non-byte-aligned write reports the pin's bits rounded up to a whole byte.
@@ -155,6 +160,19 @@ local function pin(name: string, file: string, value: any, initial: () -> any, w
 	local got, bits = write(d, name, value)
 	check(got == pinned.hex and bits == pinned.bits, "C++ pin " .. file .. ": " .. got .. " " .. bits)
 	checkRead(name, pinned.hex, pinned.bits, initial(), want())
+end
+
+-- constantPin: a fresh Value whose defaults come from constants writes the
+-- pinned bytes and bit count, and reads them back over zeroed storage.
+local function constantPin(file: string, mod: any)
+	local pinned = pins[file]
+	check(pinned ~= nil, "the pin " .. file .. " is carried in")
+	read[file] = true
+	local got, bits = write(mod, "Value", mod.NewValue())
+	check(got == pinned.hex and bits == pinned.bits, "C++ pin " .. file .. ": " .. got .. " " .. bits)
+	local initial = mod.NewValue()
+	mod.ZeroValue(initial)
+	checkRead("Value", pinned.hex, pinned.bits, initial, mod.NewValue(), mod)
 end
 
 check(deepEqual(d.NewSample(), sample()), "packet-default constructor bytes")
@@ -289,6 +307,8 @@ for _ = 1, 2 do
 	want.Conditional.Value = zero()
 	checkRead("Choice", offWire, offBits, output, want)
 end
+constantPin("hexadecimal-addition", hexadecimalAddition)
+constantPin("unsigned-subtraction", unsignedSubtraction)
 do
 	local carried = 0
 	for name in pins :: any do
@@ -297,5 +317,5 @@ do
 	end
 	check(carried > 0, "the pins directory is not empty")
 end
-print("packet defaults Luau: constructors, Init, eight C++ goldens and reused storage OK")
+print("packet defaults Luau: constructors, Init, ten C++ goldens and reused storage OK")
 print(string.format("packet defaults Luau: ran %d, failed 0", ran))

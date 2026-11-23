@@ -3,6 +3,12 @@ import 'dart:typed_data';
 
 import '../../../build/packet-defaults/dart/defaults/Defaults.dart' as d;
 import '../../../build/packet-defaults/dart/plain/Plain.dart' as p;
+// The constant-default pins: both schemas declare package arithmetic, so each
+// generates into its own directory.
+import '../../../build/packet-defaults/dart/constant-hexadecimal-addition/Defaults.dart'
+    as ha;
+import '../../../build/packet-defaults/dart/constant-unsigned-subtraction/Defaults.dart'
+    as us;
 
 void check(bool ok, String name) {
   if (!ok) throw StateError(name);
@@ -31,6 +37,8 @@ Object shape(Object value) {
     return [value.name, value.nameLength, value.token, value.tokenLength];
   if (value is d.WideMask) return [value.high, value.all];
   if (value is d.SplitMask) return [value.lead, value.mask, value.tail];
+  if (value is ha.Value) return [value.ticks];
+  if (value is us.Value) return [value.difference, value.half];
   if (value is num || value is bool || value is Iterable) return value;
   throw StateError('No storage comparison for ${value.runtimeType}');
 }
@@ -156,6 +164,9 @@ void read<T extends Object>(
   check(equal(initial, want), 'read values and backing storage');
 }
 
+// Every pin golden reads is recorded; main fails on a .bin never read.
+final Set<String> pinsRead = {};
+
 void golden<T extends Object>(
   String dir,
   String name,
@@ -165,6 +176,7 @@ void golden<T extends Object>(
   int Function(T, ByteData) encode,
   bool Function(T, ByteData, int) decode,
 ) {
+  pinsRead.add(name);
   final bytes = File('$dir/$name.bin').readAsBytesSync();
   final bits = int.parse(File('$dir/$name.bits').readAsStringSync().trim());
   final wrote = write(value, encode);
@@ -441,7 +453,47 @@ void main(List<String> args) {
     );
     read(wire, bits, output, want, d.readChoice);
   }
+  ha.Value hexInitial() {
+    final v = ha.Value();
+    ha.zeroValue(v);
+    return v;
+  }
+
+  us.Value subInitial() {
+    final v = us.Value();
+    us.zeroValue(v);
+    return v;
+  }
+
+  golden(
+    dir,
+    'hexadecimal-addition',
+    ha.Value(),
+    hexInitial,
+    ha.Value.new,
+    ha.writeValue,
+    ha.readValue,
+  );
+  golden(
+    dir,
+    'unsigned-subtraction',
+    us.Value(),
+    subInitial,
+    us.Value.new,
+    us.writeValue,
+    us.readValue,
+  );
+  final pins = Directory(dir)
+      .listSync()
+      .map((f) => f.path.split('/').last)
+      .where((f) => f.endsWith('.bin'))
+      .map((f) => f.substring(0, f.length - 4))
+      .toList();
+  for (final pin in pins) {
+    check(pinsRead.contains(pin), 'pin $pin was never read');
+  }
+  check(pins.length == 10 && pinsRead.length == 10, 'ten pins read');
   print(
-    'packet defaults Dart: constructors, eight C++ goldens and reused storage OK',
+    'packet defaults Dart: constructors, ten C++ goldens and reused storage OK',
   );
 }

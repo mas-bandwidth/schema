@@ -1,7 +1,7 @@
 // test/packet-defaults/squirrel/main.nut — the SQUIRREL leg of the packet
 // value-defaults fixture (test/packet-defaults/README.md; SPEC §4.2, §4.8, §5).
 //
-// usage: sq main.nut [golden-dir] [defaults-dir] [plain-dir] --vectors <golden .bin file>...
+// usage: sq main.nut [golden-dir] [defaults-dir] [plain-dir] [hexadecimal-addition-dir] [unsigned-subtraction-dir] --vectors <golden .bin file>...
 //
 // The arguments after "--vectors" are the vector directory's own listing of
 // *.bin (the make recipe passes it): a vector on disk this driver does not
@@ -20,9 +20,16 @@ local goldenDir = argv.len() >= 1 ? argv[0] : "testdata/wire/packet-defaults";
 local defaultsDir = argv.len() >= 2 ? argv[1] : "build/packet-defaults/squirrel/defaults";
 local plainDir = argv.len() >= 3 ? argv[2] : "build/packet-defaults/squirrel/plain";
 
+local hexAddDir = argv.len() >= 4 ? argv[3] : "build/packet-defaults/squirrel/constant-hexadecimal-addition";
+local unsSubDir = argv.len() >= 5 ? argv[4] : "build/packet-defaults/squirrel/constant-unsigned-subtraction";
+
 local serialize = dofile("internal/codegen/squirrel/serialize/serialize.nut", true);
 local d = dofile(defaultsDir + "/schema_module.nut", true).require("Defaults");
 local p = dofile(plainDir + "/schema_module.nut", true).require("Plain");
+// The constant-default pins: each schema declares package arithmetic, so each
+// is generated into its own directory and loaded on its own.
+local hexAdd = dofile(hexAddDir + "/schema_module.nut", true).require("Defaults");
+local unsSub = dofile(unsSubDir + "/schema_module.nut", true).require("Defaults");
 
 local failed = 0;
 local ran = 0;
@@ -163,9 +170,9 @@ local write = function(mod, name, value) {
   return { bytes = stream.data(), bits = bits };
 };
 
-local checkRead = function(name, wire, bits, initial, want) {
+local checkRead = function(name, wire, bits, initial, want, mod = null) {
   local stream = serialize.ReadStream(wire);
-  check(d["Read" + name](stream, initial), "runtime read " + name);
+  check((mod == null ? d : mod)["Read" + name](stream, initial), "runtime read " + name);
   local wantBits = ((bits + 7) / 8) * 8;
   check(stream.bitsProcessed() == wantBits, "read consumed bits " + name);
   if (name == "Choice") {
@@ -190,6 +197,23 @@ local pin = function(name, fileName, value, initialFn, wantFn) {
   local w = write(d, name, value);
   check(deepEqual(w.bytes, wantBytes) && w.bits == wantBits, "C++ pin " + fileName);
   checkRead(name, wantBytes, wantBits, initialFn(), wantFn());
+};
+
+// constantPin: a fresh Value whose defaults come from constants writes the
+// pinned bytes and bit count, and reads them back over zeroed storage.
+local constantPin = function(fileName, mod) {
+  check(listed != null && (fileName + ".bin") in listed, "pinned golden " + fileName + ".bin is not in the directory listing");
+  listed[fileName + ".bin"] <- true;
+  local wantBytes = readBytes(goldenDir + "/" + fileName + ".bin");
+  local wantBits = readText(goldenDir + "/" + fileName + ".bits").tointeger();
+  local w = write(mod, "Value", mod.Value());
+  check(deepEqual(w.bytes, wantBytes) && w.bits == wantBits, "C++ pin " + fileName);
+  local initial = mod.Value();
+  // zeroed storage: every field of the type is an int64 counter here
+  foreach (k, mv in initial.getclass()) {
+    if (typeof mv != "function") initial[k] = 0;
+  }
+  checkRead("Value", wantBytes, wantBits, initial, mod.Value(), mod);
 };
 
 // Keep this marker exact: the negative control sabotages constructor bytes.
@@ -317,6 +341,9 @@ for (local attempt = 0; attempt < 2; attempt++) {
   checkRead("Choice", offW.bytes, offW.bits, output, want);
 }
 
+constantPin("hexadecimal-addition", hexAdd);
+constantPin("unsigned-subtraction", unsSub);
+
 if (listed == null || listed.len() == 0) {
   check(false, "the vector directory listing is empty");
 } else {
@@ -325,5 +352,5 @@ if (listed == null || listed.len() == 0) {
 print("packet defaults Squirrel: ran " + ran + ", failed " + failed + "\n");
 // sq exits 0 after a throw, so a failed or empty run returns 1: the status.
 if (failed > 0 || ran == 0) return 1;
-print("packet defaults Squirrel: constructors, eight C++ goldens and reused storage OK\n");
+print("packet defaults Squirrel: constructors, ten C++ goldens and reused storage OK\n");
 return 0;

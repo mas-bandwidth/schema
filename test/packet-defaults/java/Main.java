@@ -4,9 +4,14 @@ import packetplain.Plain;
 import java.lang.reflect.Array;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
+import java.lang.reflect.Method;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 
 public final class Main {
     // the Bits writer from offset 0 returns the exact wire bits (SPEC §6.1: no measure)
@@ -72,11 +77,34 @@ public final class Main {
         T truncated = (T) initial.getClass().getConstructor().newInstance();
         check(!decode.run(truncated, bytes, bits - 1), "one-bit-short read refuses");
     }
+    // every pin the driver reads is recorded; main fails on a .bin never read
+    static final Set<String> READ = new HashSet<>();
     static <T> void golden(String dir, String name, T value, T initial, T want, Writer<T> encode, Reader<T> decode, Measure<T> measure) throws Exception {
+        READ.add(name);
         byte[] bytes = Files.readAllBytes(Path.of(dir, name + ".bin"));
         int bits = Integer.parseInt(Files.readString(Path.of(dir, name + ".bits")).trim());
         check(Arrays.equals(write(value, encode), bytes) && measure.run(value) == bits, "C++ byte/bit pin " + name);
         read(bytes, bits, initial, want, decode);
+    }
+    // constantPin: the pin's schema declares package arithmetic, as does the other
+    // constant-default schema, so each is generated and compiled into its own
+    // class directory (args: name=classes) and loaded by its own class loader.
+    static Object call(Method m, Object... args) {
+        try { return m.invoke(null, args); } catch (Exception e) { throw new RuntimeException(e); }
+    }
+    static void constantPin(String dir, String name, String classes) throws Exception {
+        try (URLClassLoader loader = new URLClassLoader(new URL[]{Path.of(classes).toUri().toURL()}, null)) {
+            Class<?> defaults = loader.loadClass("arithmetic.Defaults");
+            Class<?> type = loader.loadClass("arithmetic.Defaults$Value");
+            Method write = defaults.getMethod("writeValue", type, byte[].class);
+            Method writeBits = defaults.getMethod("writeValueBits", type, byte[].class, int.class);
+            Method read = defaults.getMethod("readValue", type, byte[].class, int.class);
+            Method zero = defaults.getMethod("zeroValue", type);
+            Object initial = type.getConstructor().newInstance(); zero.invoke(null, initial);
+            golden(dir, name, type.getConstructor().newInstance(), initial, type.getConstructor().newInstance(),
+                (v, data) -> (Integer) call(write, v, data), (v, data, bits) -> (Boolean) call(read, v, data, bits),
+                v -> (Integer) call(writeBits, v, BITS, 0));
+        }
     }
     public static void main(String[] args) throws Exception {
         String dir = args[0];
@@ -140,6 +168,19 @@ public final class Main {
             copy(falseOut.conditional.value, dirty()); falseOut.conditional.enabled = true;
             read(falseWire, Defaults.writeChoiceBits(falseChoice, BITS, 0), falseOut, falseWant, Defaults::readChoice);
         }
-        System.out.println("packet defaults Java: constructors, eight C++ goldens and reused storage OK");
+        for (int i = 1; i < args.length; i++) {
+            int eq = args[i].indexOf('='); check(eq > 0, "argument name=classes: " + args[i]);
+            constantPin(dir, args[i].substring(0, eq), args[i].substring(eq + 1));
+        }
+        int pins = 0;
+        try (var files = Files.list(Path.of(dir))) {
+            for (Path f : (Iterable<Path>) files::iterator) {
+                String file = f.getFileName().toString();
+                if (!file.endsWith(".bin")) continue;
+                pins++; check(READ.contains(file.substring(0, file.length() - 4)), "pin " + file + " was never read");
+            }
+        }
+        check(pins == 10 && READ.size() == pins, "ten pins read, read " + READ.size() + " of " + pins);
+        System.out.println("packet defaults Java: constructors, ten C++ goldens and reused storage OK");
     }
 }
