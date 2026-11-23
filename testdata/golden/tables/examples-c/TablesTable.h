@@ -9867,6 +9867,7 @@ static SCHEMA_UNUSED int tabledemo_counted_min_save_body( tabledemo_table_writer
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_tabledemo_counted_min_write_admits_( const tabledemo_counted_min_t * value );
 static SCHEMA_UNUSED int64_t tabledemo_counted_min_measure( const tabledemo_counted_min_t * value )
 {
     tabledemo_table_write_ids_t vocabulary; tabledemo_table_writer_t w = tabledemo_table_writer_make( NULL, INT64_MAX, &vocabulary );
@@ -10041,7 +10042,11 @@ static SCHEMA_UNUSED int64_t tabledemo_counted_min_measure_messages(const tabled
  w=tabledemo_table_bit_writer(NULL,INT64_MAX);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!tabledemo_counted_min_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!tabledemo_counted_min_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_tabledemo_counted_min_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  tabledemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -10058,7 +10063,11 @@ static SCHEMA_UNUSED int64_t tabledemo_counted_min_save_messages(const tabledemo
  w=tabledemo_table_bit_writer(buffer,capacity);
  tabledemo_table_bit_put(&w,2,8);
  tabledemo_table_bit_put(&w,(uint64_t)(count-1),8);
- for(i=0;i<count;i++) if(!tabledemo_counted_min_save_message_body(&w,values+i)) return -1;
+ for(i=0;i<count;i++) {
+  if(!tabledemo_counted_min_save_message_body(&w,values+i)) return -1;
+  schema_assert(schema_tabledemo_counted_min_write_admits_(values+i));
+  /* the write contract, debug only (docs/SPEC.md §5.1) */
+ }
  tabledemo_table_bit_align_write(&w);
  return w.overflow ? -1 : w.bits/8;
 }
@@ -12120,6 +12129,19 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_root_co
     }
 }
 
+/* CountedMin's read-side bounds. */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_counted_min_fixed_clamp_body_( tabledemo_counted_min_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    if ( value->few_count < 2 ) { (*out_of_range)++; }
+    {
+        int64_t i;
+        for ( i = 0; i < (int64_t) value->few_count; ++i )
+        {
+        }
+    }
+}
+
 /* FloatBound's read-side bounds. */
 static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_float_bound_fixed_clamp_body_( tabledemo_float_bound_t * value, int32_t * out_of_range, int32_t * damaged )
 {
@@ -12241,6 +12263,19 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_root_co
         for ( i = 0; i < ( value->profiles_count >= 0 && value->profiles_count <= 4 ? (int64_t) value->profiles_count : 0 ); ++i )
         {
             schema_tabledemo_profile_config_fixed_write_check_body_( &value->profiles[i], out_of_range, damaged );
+        }
+    }
+}
+
+/* CountedMin's write check (docs/SPEC.md §5.1). */
+static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_counted_min_fixed_write_check_body_( const tabledemo_counted_min_t * value, int32_t * out_of_range, int32_t * damaged )
+{
+    (void) value; (void) out_of_range; (void) damaged;
+    if ( value->few_count < 2 ) { (*out_of_range)++; }
+    {
+        int64_t i;
+        for ( i = 0; i < ( value->few_count >= 0 && value->few_count <= 5 ? (int64_t) value->few_count : 0 ); ++i )
+        {
         }
     }
 }
@@ -15520,6 +15555,38 @@ static SCHEMA_UNUSED int64_t tabledemo_root_config_fixed_load( tabledemo_root_co
     return n;
 }
 
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value CountedMin holds is
+   one its declaration admits. Every writer of CountedMin asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_tabledemo_counted_min_write_admits_( const tabledemo_counted_min_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_tabledemo_counted_min_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
+/* THE READ-SIDE BOUNDS (docs/SPEC-TABLES.md §3.4): a ranged scalar's
+   declared min and max, and an ORDINAL's set — a union tag past the arm
+   count, an enum ordinal past the enum's top value. Straight-line, after
+   the copy, over STORAGE, so the identity plan and a plan compiled from a
+   stranger's layout are held to the same numbers by the same pass. Every
+   clamp COUNTS, and a content rule refuses by name. */
+static SCHEMA_UNUSED int schema_tabledemo_counted_min_fixed_clamp_( tabledemo_counted_min_t * value, tabledemo_table_report_t * report )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_tabledemo_counted_min_fixed_clamp_body_( value, &out_of_range, &damaged );
+    /* ILL-FORMED TEXT REFUSES BY NAME (docs/FIXED-FORM-ALGORITHM.md §4.5,
+       fix 11): nothing is decoded, no counter moves, and the flag that
+       carries the verdict is `refused` + the name, never `damaged`. A
+       refusal is total (§5.8): the clamp count reaches the report only on
+       a read that lands values, never beside a refusal. */
+    if ( damaged != 0 ) { report->refused = 1; report->reason = SCHEMA_TABLEDEMO_TABLE_TEXT_ILL_FORMED; return -1; }
+    if ( out_of_range != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_OUT_OF_RANGE; return -1; }
+    return 0;
+}
+
 /* ---- CountedMin, the fixed form ---- */
 
 /* THE BODY IS ONE CONSTANT on this form: it is the same size for every
@@ -15753,6 +15820,10 @@ static SCHEMA_UNUSED int64_t tabledemo_counted_min_fixed_save( const tabledemo_c
        the header and layout are never written with no record behind them, and
        an empty batch is the programmer's error, held as a debug assert (§5.1). */
     schema_assert( count > 0 );
+    for ( k = 0; k < count; ++k )
+    {
+        schema_assert( schema_tabledemo_counted_min_write_admits_( values + k ) ); /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     memset( buffer, 0, (size_t) TABLEDEMO_K_TABLE_FIXED_HEADER_BYTES ); /* the seven reserved bytes, and the rest of the header */
     buffer[0] = TABLEDEMO_K_TABLE_FIXED_FORM;
     tabledemo_table_fixed_put64( buffer + TABLEDEMO_K_TABLE_FIXED_HASH_AT, tabledemo_counted_min_fixed_hash );
@@ -15908,6 +15979,7 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_counted_min_fixed_load_walk_( tabl
     }
     for ( k = 0; k < count; ++k )
     {
+        int32_t rec_widened = report->widened;
         /* EVERY DEAD BYTE IS ZERO (docs/FIXED-FORM-ALGORITHM.md §3.1, §4.5,
            §5.3 step 11): a non-zero one refuses the whole load as
            wire_damaged in this check pass, before any byte of the record lands. */
@@ -15968,6 +16040,15 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_counted_min_fixed_load_walk_( tabl
         }
         tabledemo_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
         if ( report->refused ) { return -1; }
+        /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
+           storage it just wrote: the same pass for either plan (§3.4). A
+           content rule that refuses ends the read here, nothing decoded,
+           and the plan's counters are committed only past it (§5.8). */
+        if ( schema_tabledemo_counted_min_fixed_clamp_( values + k, report ) != 0 )
+        {
+            report->widened = rec_widened;
+            return -1;
+        }
         at += record_bytes;
     }
     /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */

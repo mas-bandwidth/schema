@@ -10571,6 +10571,7 @@ static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table
     (*out_of_range) += ( value->frame_tick > 281474976710655ull );
     (*out_of_range) += (int) ( value->server_time < 0.0f ) | (int) ( value->server_time > 65535.0f );
     value->server_time = value->server_time + 0.0f;
+    if ( value->entities_count < 1 ) { (*out_of_range)++; }
     {
         int64_t i;
         for ( i = 0; i < (int64_t) value->entities_count; ++i )
@@ -10693,6 +10694,7 @@ static SCHEMA_UNUSED SCHEMA_BENCHTABLE_TABLE_INLINE void schema_benchtable_table
     /* bits(48) width clamp */
     (*out_of_range) += ( value->frame_tick > 281474976710655ull );
     (*out_of_range) += (int) ( benchtable_table_float_finite( value->server_time ) && ( value->server_time < 0.0f || value->server_time > 65535.0f ) );
+    if ( value->entities_count < 1 ) { (*out_of_range)++; }
     {
         int64_t i;
         for ( i = 0; i < ( value->entities_count >= 0 && value->entities_count <= 8 ? (int64_t) value->entities_count : 0 ); ++i )
