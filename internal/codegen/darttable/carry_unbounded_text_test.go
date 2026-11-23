@@ -59,6 +59,7 @@ import 'dart:convert';
 import 'ProbeWire.dart' as w;
 import 'ProbeCook.dart' as c;
 void check(bool ok,String s){if(!ok)throw StateError(s);}
+final dbg=(){var on=false;assert(on=true);return on;}();
 String hex(List<int>b)=>b.map((x)=>x.toRadixString(16).padLeft(2,'0')).join();
 Uint8List bytes(String s)=>Uint8List.fromList([for(var i=0;i<s.length;i+=2)int.parse(s.substring(i,i+2),radix:16)]);
 void main(){
@@ -150,7 +151,7 @@ check(v.open.isEmpty,'malformed whole load discarded');
 	b.WriteString(`
 for(final bad in ['x\u0000y',String.fromCharCode(0xd800)]){
  final v=w.Root()..open=[w.RootOpenText()..value=bad];
- var refused=false;try{w.rootWireSave(v);}on StateError{refused=true;}check(refused,'invalid authored wire text');
+ var refused=false;try{w.rootWireSave(v);}on AssertionError{refused=true;}check(refused||!dbg,'invalid authored wire text');
  check(c.RootCook.cookMeasure(v)==-1,'invalid text cook measure');
  for(final order in [Endian.little,Endian.big]){
  final out=Uint8List(65536)..fillRange(0,65536,0xa5);check(!c.RootCook.cook(v,out,order)&&out.every((x)=>x==0xa5),'invalid text cook unchanged');

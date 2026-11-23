@@ -830,8 +830,10 @@ public final class BenchBitsVariable {
         if (report == null) {
             report = new TableVariable.Report();
         }
+        report.reset();
         TableVariable.Reader r = TableVariable.open(data, report);
         if (r == null) {
+            report.settleDamage();
             return null;
         }
         Value v = new Value();
@@ -894,6 +896,7 @@ public final class BenchBitsVariable {
         }
         // DAMAGE DISCARDS THE WHOLE LOAD (§4)
         if (report.damaged) {
+            report.settleDamage();
             return null;
         }
         return v;
@@ -1032,7 +1035,6 @@ public final class BenchBitsVariable {
 
     public static Value fromJson(byte[] text, TableVariable.Report report) {
         TableJson.In in = new TableJson.In(text, report);
-        in.graph = false;
         in.byteOrderMark();
         Value v = new Value();
         jsonReadFields(in, v, 0);
@@ -1047,6 +1049,7 @@ public final class BenchBitsVariable {
         }
         // DAMAGE DISCARDS THE WHOLE TEXT READ (§4, §16.2)
         if (report.damaged) {
+            report.settleDamage();
             return null;
         }
         return v;

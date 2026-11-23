@@ -370,6 +370,9 @@ def em_ref(em:Emitter, w:SaveOut, id:int):
                 em.bad = true
                 return
             push(em.retain.ids, id)
+    if sid_full(em.e.ids, id):
+        em.bad = true
+        return
     so_leb(w, sid_ref(em.e.ids, id))
 
 def em_resolved(em:Emitter, c:Cursor) -> int:

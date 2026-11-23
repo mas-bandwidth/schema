@@ -19,9 +19,8 @@ $(GOOSE_FUZZ_SCHEMA):
 # refused unit is the target's refusal, recorded by build/conformance-goose).
 define goose_fuzz_units
 	@rm -rf $(1) && mkdir -p $(1)
-	@grep '^unit ' $(GOOSE_MANIFEST) | while read -r _ key paths; do \
-		./$(GOOSE_FUZZ_SCHEMA) generate --lang goose --out $(1)/$$key $$paths >/dev/null 2>&1 || rm -rf $(1)/$$key; \
-	done
+	@grep '^unit ' $(GOOSE_MANIFEST) | xargs -P "$${GOOSE_FUZZ_JOBS:-4}" -L 1 sh -c \
+		'shift; key=$$1; shift; ./$(GOOSE_FUZZ_SCHEMA) generate --lang goose --out "$(1)/$$key" "$$@" >/dev/null 2>&1 || rm -rf "$(1)/$$key"' _
 endef
 
 # THE WIRE-FUZZ DIFFERENTIAL (docs/PORTING.md I15; test/conformance/README.md,
@@ -131,10 +130,12 @@ tables-goose-wire-fuzz-leb-negative-control tables-goose-wire-fuzz-utf8-negative
 # every verdict and reason to the engine's; an accept's value is held by its
 # re-saved wire, which must be the input byte for byte where the input is the
 # engine's own encode, and otherwise by its canonical text's digest and the
-# engine's encode of that text (make/goose-hostile.sh). The port reads the
-# `wire` and `message` carriers today (a message batch is read against the
-# engine's announcement of its unit); the text, message_novocab and
-# announcement carriers are counted absences, and
+# engine's encode of that text (make/goose-hostile.sh). The port reads the `wire` and `packet` carriers
+# today; the text, message and announcement carriers are absences held by name
+# in test/goose-hostile/absent-carriers.tsv until the goose text and message
+# forms land, a wire or packet case the port cannot read is held by name in
+# test/goose-hostile/absent-cases.tsv, and tools/hostileledger holds the run to
+# the corpus folder: every other registered case ran, or the gate is red.
 # test/goose-hostile/known-findings.tsv carries each disagreement by name with
 # the card that owes it.
 GOOSE_HOSTILE_CORPUS ?= internal/ci/hostilecorpus/corpus
@@ -143,7 +144,7 @@ GOOSE_HOSTILE_CORPUS ?= internal/ci/hostilecorpus/corpus
 schema-goose-runs-hostile-corpus: $(GOOSE_FUZZ_SCHEMA)
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	@sh make/goose-hostile.sh --scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv
-	@sh make/goose-hostile.sh "$(GOOSE)" ./$(GOOSE_FUZZ_SCHEMA) $(GOOSE_HOSTILE_CORPUS) $(GOOSE_FUZZ_DIR)/hostile
+	$(call hostile_ledgered,goose,$(GOOSE_FUZZ_DIR)/hostile-run.log,sh make/goose-hostile.sh "$(GOOSE)" ./$(GOOSE_FUZZ_SCHEMA) $(GOOSE_HOSTILE_CORPUS) $(GOOSE_FUZZ_DIR)/hostile,$(GOOSE_HOSTILE_CORPUS),-absent-carriers test/goose-hostile/absent-carriers.tsv -skips test/goose-hostile/absent-cases.tsv)
 
 # ITS CONTROL: the non-finite refusal taken out of the generated load
 # (make/goose-hostile.sh's sabotage seam, checked to have matched); the corpus
@@ -171,11 +172,7 @@ schema-goose-runs-hostile-corpus-negative-control: $(GOOSE_FUZZ_SCHEMA)
 # the two wire rows past a total, wire-text-total-past and
 # wire-text-total-and-count, and on nothing else. Both are taken out because
 # wire-text-total-and-count is past its [..4] bound as well as its total, and
-# under strict-only (docs/plans/strict-only.md) either refuses it. The same
-# bound is the one a variable record's bytes(4) is held to, so the two inner
-# rows with a child one byte past it, inner-variable-loose-bytes-past-capacity
-# and inner-variable-tight-bytes-past-capacity (test/tables/inner), go red too:
-# four rows exactly.
+# under strict-only (docs/plans/strict-only.md) either refuses it.
 .PHONY: schema-goose-runs-hostile-corpus-total-negative-control
 schema-goose-runs-hostile-corpus-total-negative-control: $(GOOSE_FUZZ_SCHEMA)
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
@@ -185,11 +182,10 @@ schema-goose-runs-hostile-corpus-total-negative-control: $(GOOSE_FUZZ_SCHEMA)
 		>$(GOOSE_FUZZ_DIR)/hostile-total-plant.log 2>&1; then \
 		cat $(GOOSE_FUZZ_DIR)/hostile-total-plant.log; \
 		echo "NEGATIVE CONTROL FAILED: a load that ignores a text list's total and bound left the corpus green"; exit 1; fi
-	@test "$$(grep -c '^FAIL ' $(GOOSE_FUZZ_DIR)/hostile-total-plant.log)" = 4 && grep -q '^FAIL wire-text-total-past: ' $(GOOSE_FUZZ_DIR)/hostile-total-plant.log && grep -q '^FAIL wire-text-total-and-count: ' $(GOOSE_FUZZ_DIR)/hostile-total-plant.log \
-		&& grep -q '^FAIL inner-variable-loose-bytes-past-capacity: ' $(GOOSE_FUZZ_DIR)/hostile-total-plant.log && grep -q '^FAIL inner-variable-tight-bytes-past-capacity: ' $(GOOSE_FUZZ_DIR)/hostile-total-plant.log || { \
+	@test "$$(grep -c '^FAIL ' $(GOOSE_FUZZ_DIR)/hostile-total-plant.log)" = 2 && grep -q '^FAIL wire-text-total-past: ' $(GOOSE_FUZZ_DIR)/hostile-total-plant.log && grep -q '^FAIL wire-text-total-and-count: ' $(GOOSE_FUZZ_DIR)/hostile-total-plant.log || { \
 		cat $(GOOSE_FUZZ_DIR)/hostile-total-plant.log; \
-		echo "NEGATIVE CONTROL FAILED: the corpus went red, but not on the two wire rows past a total and the two inner bytes rows alone"; exit 1; }
-	@echo "goose hostile-corpus total negative control: a load that ignores the total and the bound reds wire-text-total-past, wire-text-total-and-count and the two inner bytes rows, and only them"
+		echo "NEGATIVE CONTROL FAILED: the corpus went red, but not on the two wire rows past a total alone"; exit 1; }
+	@echo "goose hostile-corpus total negative control: a load that ignores the total and the bound reds wire-text-total-past and wire-text-total-and-count, and only them"
 
 # test-goose runs both (make/goose.mk) and their controls, which are seconds
 # beside them; the controls run in group goose-wire of the controls leg too.

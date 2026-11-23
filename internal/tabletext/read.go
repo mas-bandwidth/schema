@@ -667,14 +667,13 @@ func (in *reader) skipContainer(close byte, depth int) bool {
 	// a skipped object's keys are held to the layer's rule too: a repeated
 	// key refuses in every object of the text (§16.2, §16.12)
 	var keys map[string]struct{}
-	// a definition this skipped object opened: its label closes with it
-	var opened uint64
+	definition := uint64(0) // the label this object defines, open until it closes
 	for {
 		c := in.peek()
 		if c == close {
 			in.pos++
-			if opened != 0 {
-				in.graph[opened] = labelEntry{}
+			if definition != 0 {
+				in.graph[definition] = labelEntry{}
 			}
 			return true
 		}
@@ -707,20 +706,56 @@ func (in *reader) skipContainer(close byte, depth int) bool {
 				return in.fail("malformed: a repeated key")
 			}
 			keys[string(key)] = struct{}{}
-			if len(key) > 0 && key[0] == '&' && in.graph != nil {
-				if !first {
+			if len(key) > 0 && key[0] == '&' {
+				if !first || string(key) != "&node" {
 					in.bad = true
 					return false
 				}
-				reference, label, ok := in.skippedAmpersand(string(key))
+				first = false
+				// THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): what the
+				// reader does not place is the value, never the label. A label
+				// alone must name a definition already closed, fields after one
+				// must follow a label not yet defined, and the definition stays
+				// OPEN until this object closes.
+				label, ok := in.scanLabel()
 				if !ok {
 					return false
 				}
-				if reference {
+				if in.graph == nil {
+					// a unit with no pointer has no label table: the prefix is
+					// still held to its grammar (a well-formed &node, first), and
+					// the value is skipped whole
+					c = in.peek()
+					if c == ',' {
+						in.pos++
+						continue
+					}
+					if c == close {
+						in.pos++
+						return true
+					}
+					in.bad = true
+					return false
+				}
+				entry, defined := in.graph[label]
+				c = in.peek()
+				if c == ',' {
+					in.pos++
+					c = in.peek()
+				} else if c != close {
+					in.bad = true
+					return false
+				}
+				if bare := c == close; bare != defined || (bare && entry.open) {
+					in.bad = true
+					return false
+				}
+				if c == close {
+					in.pos++
 					return true
 				}
-				first = false
-				opened = label
+				in.graph[label] = labelEntry{open: true}
+				definition = label
 				continue
 			}
 		}
@@ -735,8 +770,8 @@ func (in *reader) skipContainer(close byte, depth int) bool {
 		}
 		if c == close {
 			in.pos++
-			if opened != 0 {
-				in.graph[opened] = labelEntry{}
+			if definition != 0 {
+				in.graph[definition] = labelEntry{}
 			}
 			return true
 		}
@@ -1126,51 +1161,6 @@ func (in *reader) readPointerCell(cell *Cell, st *ir.Struct, depth int) bool {
 	}
 	in.graph[label] = labelEntry{node: cell.Node, st: st}
 	return true
-}
-
-// skippedAmpersand handles an `&`-prefixed key opening an object the walk is
-// SKIPPING — a value past an array's bound, an unknown key's value, a value of
-// the wrong shape. THE LABEL RULES APPLY THERE AS EVERYWHERE (§16.7): the
-// grammar, and what follows the label says which half it is. A label alone
-// (a trailing comma allowed) REFERS, and refuses unless the text has defined
-// it and its definition has closed; a label with fields after it DEFINES, and
-// refuses if the text has defined it already. A definition in a skipped value
-// still takes its label, so the numbering survives whatever the storage could
-// not hold: the label is registered with no node and stays OPEN until the
-// skipped object closes, and a reference to it after that reads null. Any
-// other prefixed key is the reserved prefix out of place. A FIXED root never
-// reaches this: what a reader does not place it does not police, and the
-// value is skipped whole.
-//
-// It answers whether the object was a reference (and is now closed, its `}`
-// consumed), the label a definition opened, and whether the walk goes on.
-func (in *reader) skippedAmpersand(key string) (reference bool, label uint64, ok bool) {
-	if in.graph == nil || key != "&node" {
-		in.bad = true
-		return false, 0, false
-	}
-	label, ok = in.scanLabel()
-	if !ok {
-		return false, 0, false
-	}
-	entry, defined := in.graph[label]
-	if in.peek() == ',' {
-		in.pos++
-	}
-	if in.peek() == '}' {
-		in.pos++
-		if !defined || entry.open {
-			in.bad = true
-			return false, 0, false
-		}
-		return true, 0, true
-	}
-	if defined {
-		in.bad = true
-		return false, 0, false
-	}
-	in.graph[label] = labelEntry{open: true}
-	return false, label, true
 }
 
 // readBase64 decodes a `bytes(N)` body six bits at a time with the padding

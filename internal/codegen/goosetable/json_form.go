@@ -165,8 +165,6 @@ func jsonUncarried(st *ir.Struct) string {
 			return at + ": a timestamp"
 		case t.Kind == ir.TFixed:
 			return at + ": a fixed-point kind"
-		case t.Kind == ir.TInt && t.Width > 64:
-			return at + ": a 128-bit kind"
 		case t.Optional && f.Array != ir.ArrayNone:
 			return at + ": an optional array"
 		}
@@ -389,6 +387,9 @@ func (e *jsonEmit) declareNames(f *ir.Field) {
 // own defaults, every other kind at zero, as the Go walk clears it.
 func (e *jsonEmit) zero(f *ir.Field) string {
 	t := f.Type
+	if t.Kind == ir.TInt && t.Width > 64 {
+		return "schema_rt::Int128 { lo: 0, hi: 0 }"
+	}
 	switch t.Kind {
 	case ir.TBool:
 		return "false"
@@ -443,6 +444,9 @@ func (e *jsonEmit) read(f *ir.Field, pl place, desc, depth string, tail bool) []
 			return []string{ret(fmt.Sprintf("schema_rt::json_read_union(jr, %s, %sDescriptor, _%sJsonShapes, %s, _%sJsonRead)", pl.val, r.Name, r.Name, depth, r.Name))}
 		}
 	}
+	if t.Kind == ir.TInt && t.Width > 64 {
+		return []string{ret(fmt.Sprintf("schema_rt::json_read_int128(jr, %s, %s)", pl.val, desc))}
+	}
 	return []string{ret(fmt.Sprintf("schema_rt::json_read_int(jr, %s, %s)", pl.val, desc))}
 }
 
@@ -471,6 +475,9 @@ func (e *jsonEmit) write(f *ir.Field, pl place, desc, depth string) string {
 			e.unionType(r)
 			return fmt.Sprintf("schema_rt::json_write_union(out, %s, %sDescriptor, %s.Type, %s, _%sJsonWrite)", pl.val, r.Name, pl.val, depth, r.Name)
 		}
+	}
+	if t.Kind == ir.TInt && t.Width > 64 {
+		return fmt.Sprintf("schema_rt::json_write_int128(out, %s, %s)", pl.val, desc)
 	}
 	return fmt.Sprintf("schema_rt::json_write_int(out, %s, %s)", pl.val, desc)
 }

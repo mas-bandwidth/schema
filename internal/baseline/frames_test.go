@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/baseline"
+	"github.com/mas-bandwidth/schema/v2/internal/docgate"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -833,6 +834,9 @@ func TestVersioningEvolutionTableAgreesWithTheGolden(t *testing.T) {
 		fixtures[f.name] = f
 	}
 
+	owedRule := map[string]string{
+		"| a field's kind WIDENED (": "R17 (widening)",
+	}
 	covered := map[string]bool{}
 	for fragment, names := range versioningRows {
 		row := evolutionRow(t, rows, fragment)
@@ -846,7 +850,12 @@ func TestVersioningEvolutionTableAgreesWithTheGolden(t *testing.T) {
 				continue
 			}
 			if !strings.Contains(base, verdictWord[f.baseline]) {
-				t.Errorf("VERSIONING.md row %q: the baseline cell is %q, and fixture %q pins %s", fragment, base, name, f.baseline)
+				msg := fmt.Sprintf("VERSIONING.md row %q: the baseline cell is %q, and fixture %q pins %s", fragment, base, name, f.baseline)
+				if rule, ok := owedRule[fragment]; ok {
+					owedOrFail(t, rule, msg)
+				} else {
+					t.Error(msg)
+				}
 			}
 			refusedBase = refusedBase || f.baseline == "refuse"
 			switch f.build {
@@ -864,7 +873,12 @@ func TestVersioningEvolutionTableAgreesWithTheGolden(t *testing.T) {
 			}
 		}
 		if !refusedBase && strings.Contains(base, "refuse") {
-			t.Errorf("VERSIONING.md row %q: the baseline cell says it refuses (%q), and no fixture it names refuses", fragment, base)
+			msg := fmt.Sprintf("VERSIONING.md row %q: the baseline cell says it refuses (%q), and no fixture it names refuses", fragment, base)
+			if rule, ok := owedRule[fragment]; ok {
+				owedOrFail(t, rule, msg)
+			} else {
+				t.Error(msg)
+			}
 		}
 		if refusedRead && !strings.Contains(read, "refuse") {
 			t.Errorf("VERSIONING.md row %q: the read cell is %q, and a fixture it names refuses the read", fragment, read)
@@ -883,6 +897,67 @@ func TestVersioningEvolutionTableAgreesWithTheGolden(t *testing.T) {
 		if !covered[row] {
 			t.Errorf("VERSIONING.md evolution row has no fixture and no named holder: %s", row)
 		}
+	}
+}
+
+// owedVerdict decides a doc sentence that disagrees with the code on main.
+// It is let through only when rule has an entry in the owed table
+// (docs/SPEC-CONFORMANCE.md §7) that names the PR bringing the code: then
+// owed is the line to print, OWED <rule> <PR>. Otherwise fail is the
+// failure. When that PR merges, docgate TestOwedRowsAreLinked fails until
+// the entry goes, and then this gate checks the code again.
+func owedVerdict(entries []docgate.OwedEntry, rule, msg string) (owed, fail string) {
+	for _, e := range entries {
+		if e.Entry != rule || e.State != "owed" || len(e.PRs) == 0 {
+			continue
+		}
+		var prs []string
+		for _, pr := range e.PRs {
+			prs = append(prs, fmt.Sprintf("#%d", pr))
+		}
+		return fmt.Sprintf("OWED %s %s: %s", rule, strings.Join(prs, ","), msg), ""
+	}
+	return "", msg + " (no owed entry for " + rule + " in docs/SPEC-CONFORMANCE.md §7 names the PR that brings the code)"
+}
+
+func owedOrFail(t *testing.T, rule, msg string) {
+	t.Helper()
+	page, err := os.ReadFile("../../" + docgate.OwedPage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := docgate.ParseOwed(string(page))
+	if err != nil {
+		t.Fatal(err)
+	}
+	owed, fail := owedVerdict(entries, rule, msg)
+	if fail != "" {
+		t.Error(fail)
+		return
+	}
+	t.Log(owed)
+	fmt.Println(owed)
+}
+
+// TestOwedVerdictGoesRed plants an owed-exempt sentence whose rule has no
+// owed entry, and one whose entry names no PR: both fail.
+func TestOwedVerdictGoesRed(t *testing.T) {
+	msg := "a sentence the code does not do yet"
+	if _, fail := owedVerdict(nil, "R16", msg); fail == "" {
+		t.Error("a sentence with no owed entry was let through")
+	}
+	noPR := []docgate.OwedEntry{{Entry: "R16", State: "owed"}}
+	if _, fail := owedVerdict(noPR, "R16", msg); fail == "" {
+		t.Error("an owed entry naming no PR let a sentence through")
+	}
+	other := []docgate.OwedEntry{{Entry: "R14", State: "owed", PRs: []int{4764}}}
+	if _, fail := owedVerdict(other, "R16", msg); fail == "" {
+		t.Error("an entry for another rule let the sentence through")
+	}
+	ok := []docgate.OwedEntry{{Entry: "R16", State: "owed", PRs: []int{4764}}}
+	owed, fail := owedVerdict(ok, "R16", msg)
+	if fail != "" || !strings.HasPrefix(owed, "OWED R16 #4764") {
+		t.Errorf("an owed entry naming its PR: owed %q, fail %q", owed, fail)
 	}
 }
 

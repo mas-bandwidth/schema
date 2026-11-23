@@ -529,11 +529,12 @@ local function skip_container(inp, close, depth, graph)
   local first = true
   local defined = nil
   local seen = close == "}" and {} or nil
+  local definition = nil -- the label entry this object defines, open until it closes
   while true do
     local c = peek(inp)
     if c == close then
       inp.p = inp.p + 1
-      if defined ~= nil then defined.open = false end
+      if definition ~= nil then definition.open = false end
       return true
     end
     if c == nil then
@@ -560,39 +561,51 @@ local function skip_container(inp, close, depth, graph)
         return false
       end
       inp.p = inp.p + 1
-      if key ~= "" and key:sub(1, 1) == "&" and graph ~= nil then
+      if key ~= "" and key:sub(1, 1) == "&" then
         if not first or key ~= "&node" then
           inp.bad = true
           return false
         end
+        -- THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): a label alone
+        -- must name a definition already closed; fields after one must follow
+        -- a label not yet defined, and the definition is open until this
+        -- object closes. What the reader does not place is the value.
         local label = scan_label(inp)
         if label == nil then return false end
         first = false
         c = peek(inp)
+        if c ~= close and c ~= "," then
+          inp.bad = true
+          return false
+        end
+        if graph == nil then
+          -- a unit with no pointer has no label table: the prefix is still held
+          -- to its grammar, and the value is skipped whole
+          inp.p = inp.p + 1
+          if c == close then return true end
+          goto continue
+        end
         if c == "," then
           inp.p = inp.p + 1
           c = peek(inp)
-          if c ~= close then
-            if graph[label] ~= nil then
-              inp.bad = true
-              return false
-            end
-            defined = { node = nil, st = nil, open = true }
-            graph[label] = defined
-            goto continue
-          end
         end
-        if c == close then
-          local entry = graph[label]
-          if entry == nil or entry.open then
+        local entry = graph[label]
+        local bare = c == close
+        if bare ~= (entry ~= nil) then
+          inp.bad = true
+          return false
+        end
+        if bare then
+          if entry.open then
             inp.bad = true
             return false
           end
           inp.p = inp.p + 1
           return true
         end
-        inp.bad = true
-        return false
+        definition = { node = nil, st = nil, open = true }
+        graph[label] = definition
+        goto continue
       end
     end
     first = false
@@ -602,7 +615,7 @@ local function skip_container(inp, close, depth, graph)
       inp.p = inp.p + 1
     elseif c == close then
       inp.p = inp.p + 1
-      if defined ~= nil then defined.open = false end
+      if definition ~= nil then definition.open = false end
       return true
     else
       inp.bad = true
@@ -2135,7 +2148,13 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
     local out = read_base64(inp, -1, report)
     if out == nil then return false end
     if report.kindChanged ~= before then
-      holder[key] = elem and false or nil
+      -- an element stores false (a sequence cannot hold nil), a field nil:
+      -- an explicit branch, since `elem and false or nil` is always nil
+      if elem then
+        holder[key] = false
+      else
+        holder[key] = nil
+      end
     else
       holder[key] = { value = out == false and "" or out }
     end
@@ -2191,7 +2210,13 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
       return false
     end
     if name == "None" then
-      holder[key] = elem and false or nil
+      -- an element stores false (a sequence cannot hold nil), a field nil:
+      -- an explicit branch, since `elem and false or nil` is always nil
+      if elem then
+        holder[key] = false
+      else
+        holder[key] = nil
+      end
       return true
     end
     for _, v in ipairs(d.variants) do
@@ -2210,7 +2235,13 @@ read_value = function(T, d, inp, holder, key, depth, graph, report, elem, table_
         return true
       end
     end
-    holder[key] = elem and false or nil
+    -- an element stores false (a sequence cannot hold nil), a field nil:
+    -- an explicit branch, since `elem and false or nil` is always nil
+    if elem then
+      holder[key] = false
+    else
+      holder[key] = nil
+    end
     report.unknown = report.unknown + 1
     return true
   elseif s == "flags" then

@@ -80,6 +80,16 @@ def sid_ref(t:SaveIds, id:int) -> int:
     push(t.ids, id)
     return length(t.ids)
 
+// sid_full is true when the id table already holds its maximum (docs/SPEC-TABLES.md
+// §3: every reader refuses more than 4096 entries) and id is not one of them.
+def sid_full(t:SaveIds, id:int) -> bool:
+    if length(t.ids) < 4096:
+        return false
+    for(t.ids) x:
+        if x == id:
+            return false
+    return true
+
 def sid_mark(t:SaveIds) -> int:
     return length(t.ids)
 
@@ -981,6 +991,10 @@ def save_walked(g:SaveGraph, rec:Record) -> string, string:
         encode_node_table(e, fields, g)
     if e.non_finite != "":
         return "", "non_finite_float"
+    // THE ID TABLE'S MAXIMUM (docs/SPEC-TABLES.md §3): a value that needs more
+    // than 4096 ids has no file its readers accept
+    if length(e.ids.ids) > 4096:
+        return "", "id_table_over_bound"
     let out = SaveOut {}
     so_u8(out, 1) // THE FORM BYTE
     so_bytes(out, so_take(fields))

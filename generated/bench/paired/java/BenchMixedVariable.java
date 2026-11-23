@@ -45,6 +45,9 @@ public final class BenchMixedVariable {
             for (int i = 0; i < 1; i++) {
                 entities.add(new MixedEntityVariable.Value());
             }
+            for (int i = 0; i < 1; i++) {
+                entities.add(new MixedEntityVariable.Value());
+            }
         }
     }
 
@@ -1773,8 +1776,10 @@ public final class BenchMixedVariable {
         if (report == null) {
             report = new TableVariable.Report();
         }
+        report.reset();
         TableVariable.Reader r = TableVariable.open(data, report);
         if (r == null) {
+            report.settleDamage();
             return null;
         }
         Value v = new Value();
@@ -1837,6 +1842,7 @@ public final class BenchMixedVariable {
         }
         // DAMAGE DISCARDS THE WHOLE LOAD (§4)
         if (report.damaged) {
+            report.settleDamage();
             return null;
         }
         return v;
@@ -2170,7 +2176,6 @@ public final class BenchMixedVariable {
 
     public static Value fromJson(byte[] text, TableVariable.Report report) {
         TableJson.In in = new TableJson.In(text, report);
-        in.graph = false;
         in.byteOrderMark();
         Value v = new Value();
         jsonReadFields(in, v, 0);
@@ -2185,6 +2190,7 @@ public final class BenchMixedVariable {
         }
         // DAMAGE DISCARDS THE WHOLE TEXT READ (§4, §16.2)
         if (report.damaged) {
+            report.settleDamage();
             return null;
         }
         return v;
@@ -2919,6 +2925,9 @@ public final class BenchMixedVariable {
                 } else {
                     if (in.peek() != 'n' || (repeated && in.peek() != 'n')) {
                         v.entities = new java.util.ArrayList<>();
+                    }
+                    if (in.peek() == '[') {
+                        v.entities.clear();
                     }
                     if (in.peek() == '[') {
                         in.p++;

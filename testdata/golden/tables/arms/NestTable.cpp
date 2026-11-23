@@ -54,9 +54,9 @@ inline bool TableJsonWritePointer( TableJsonOut & out, const void * slot, const 
 // the FIRST key of an object the walk is skipping begins with `&`: the cursor is
 // on its value. A dropped definition still takes its label (§16.7); a fixed reader
 // skips the value whole, as it skips everything else it does not place.
-inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32_t key_length, int32_t depth, bool & reference, uint64_t & opened );
-// the skipped object that opened a definition (opened, from the call above) closes
-inline void TableJsonSkippedClose( TableJsonIn & in, uint64_t opened );
+inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32_t key_length, int32_t depth, char close, uint64_t & opened );
+// the object that opened a definition in a skipped value has closed: the label stays, with no node
+inline void TableJsonSkippedClose( TableJsonIn & in, uint64_t label );
 
 // ---- the map and list adapters (docs/SPEC-TABLES.md §2.8, §2.9, §16) ----
 //
@@ -3084,14 +3084,14 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
     in.pos++; // the opening bracket
     TableJsonKeyScope keys( in ); // this object's keys, bounded by the text's own length
     bool first = true;
-    uint64_t opened = 0; // the label a definition this skipped object opened
+    uint64_t opened = 0; // the label this object defines, open until it closes
     for ( ;; )
     {
         char c = TableJsonPeek( in );
         if ( c == close )
         {
             in.pos++;
-            TableJsonSkippedClose( in, opened );
+            if ( opened != 0 ) { TableJsonSkippedClose( in, opened ); }
             return true;
         }
         if ( c == 0 )
@@ -3117,7 +3117,7 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
             }
             in.pos++;
             if ( !TableJsonKeyTrack( in, key, key_length ) ) { return false; }
-            if ( key[0] == '&' && in.graph != NULL )
+            if ( key[0] == '&' )
             {
                 if ( !first )
                 {
@@ -3125,9 +3125,7 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
                     in.bad = true;
                     return false;
                 }
-                bool reference = false;
-                if ( !TableJsonSkippedAmpersand( in, key, key_length, depth, reference, opened ) ) { return false; }
-                if ( reference ) { return true; } // consumed whole, its } included
+                if ( !TableJsonSkippedAmpersand( in, key, key_length, depth, close, opened ) ) { return false; }
                 first = false;
                 c = TableJsonPeek( in );
                 if ( c == ',' )
@@ -3138,7 +3136,6 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
                 if ( c == close )
                 {
                     in.pos++;
-                    TableJsonSkippedClose( in, opened );
                     return true;
                 }
                 in.bad = true;
@@ -3156,7 +3153,7 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
         if ( c == close )
         {
             in.pos++;
-            TableJsonSkippedClose( in, opened );
+            if ( opened != 0 ) { TableJsonSkippedClose( in, opened ); }
             return true;
         }
         in.bad = true;
@@ -4960,20 +4957,15 @@ inline bool TableJsonReadPointer( TableJsonIn & in, void * slot, const TableFiel
 }
 
 // An `&`-prefixed key opening an object the walk is SKIPPING — a value past an
-// array's bound, an unknown key's value, a value of the wrong shape. THE LABEL
-// RULES HOLD IN A SKIPPED VALUE (§16.7): a label alone (a trailing comma
-// allowed) REFERS, so the text must have defined it and closed that
-// definition, and the object is consumed whole (reference). A label with
-// fields DEFINES, so the text must not have defined it; the definition still
-// takes its label, so the numbering survives whatever the storage could not
-// hold: the label is registered with no node, open until the skipped object
-// closes (opened), and a later reference to it reads null. Any other prefixed
-// key is the reserved prefix out of place.
-inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32_t key_length, int32_t, bool & reference, uint64_t & opened )
+// array's bound, an unknown key's value, a value of the wrong shape. A
+// definition in there still takes its label, so the numbering survives whatever
+// the storage could not hold (§16.7): the label is registered with no node, and a
+// reference to it reads null. Any other prefixed key is the reserved prefix
+// out of place.
+inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32_t key_length, int32_t, char close, uint64_t & opened )
 {
-    reference = false;
     TableJsonGraphIn * graph = (TableJsonGraphIn *) in.graph;
-    if ( graph == NULL || !TableJsonKeyEquals( "&node", key, key_length ) )
+    if ( !TableJsonKeyEquals( "&node", key, key_length ) )
     {
         in.report->damaged = true;
         in.bad = true;
@@ -4981,53 +4973,46 @@ inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32
     }
     uint64_t label = 0;
     if ( !TableJsonScanLabel( in, label ) ) { return false; }
-    TableJsonGraphEntry * entry = TableJsonGraphMapFind( graph->labels, label );
-    const int64_t mark = in.pos;
-    if ( TableJsonPeek( in ) == ',' ) { in.pos++; }
-    if ( TableJsonPeek( in ) != '}' )
-    {
-        in.pos = mark; // a definition: the comma is the skipped object's to read
-    }
-    else
-    {
-        in.pos++;
-        if ( entry == NULL || entry->open != 0 )
-        {
-            in.report->damaged = true;
-            in.bad = true;
-            return false;
-        }
-        reference = true;
-        return true;
-    }
-    if ( entry != NULL )
-    {
-        in.report->damaged = true;
-        in.bad = true;
-        return false;
-    }
+    if ( graph == NULL ) { return true; } // a fixed root in a pointered unit: no label table, the value skipped whole
     bool taken = false;
-    entry = TableJsonGraphMapReach( graph->labels, label, taken );
+    TableJsonGraphEntry * entry = TableJsonGraphMapReach( graph->labels, label, taken );
     if ( entry == NULL )
     {
         in.report->damaged = true;
         in.bad = true;
         return false;
     }
-    entry->open = 1;
-    entry->node = 0;
-    entry->type = NULL;
-    opened = label;
-    return true;
+    // THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): a label alone must
+    // name a definition already closed; fields after one must follow a label
+    // not yet defined, and the definition is open until its object closes. The
+    // caller owns the comma and the close: this only looks past the comma.
+    char c = TableJsonPeek( in );
+    if ( c == ',' )
+    {
+        const int64_t mark = in.pos;
+        in.pos++;
+        c = TableJsonPeek( in );
+        in.pos = mark;
+    }
+    const bool bare = c == close;
+    if ( bare == taken || ( bare && entry->open != 0 ) )
+    {
+        in.report->damaged = true;
+        in.bad = true;
+        return false;
+    }
+    if ( !bare )
+    {
+        entry->open = 1;
+        opened = label;
+    }
+    return true; // a fresh entry is node 0, type NULL: a definition with no node
 }
 
-// the skipped object that opened a definition closes, and the definition
-// with it: a later reference reads null
-inline void TableJsonSkippedClose( TableJsonIn & in, uint64_t opened )
+inline void TableJsonSkippedClose( TableJsonIn & in, uint64_t label )
 {
     TableJsonGraphIn * graph = (TableJsonGraphIn *) in.graph;
-    if ( graph == NULL || opened == 0 ) { return; }
-    TableJsonGraphEntry * entry = TableJsonGraphMapFind( graph->labels, opened );
+    TableJsonGraphEntry * entry = TableJsonGraphMapFind( graph->labels, label );
     if ( entry != NULL ) { entry->open = 0; }
 }
 

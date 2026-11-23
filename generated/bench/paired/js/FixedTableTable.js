@@ -25,7 +25,7 @@
 // Nothing throws: a write answers its byte count or -1, a read answers its
 // record count or -1 with the reason named in the report.
 
-import { FixedTableFixedCheckBody, FixedTableFixedCheckDead, FixedTableFixedCheckRead, FixedTableFixedDecode, FixedTableFixedWriteBody, FixedTableLoadMessageBody, FixedTableSaveMessageBody, InitFixedTable, TableBitWriter, TableFixedForm, TableFixedHashAt, TableFixedHeaderBytes, TableFixedHoles, TableFixedKnownLayout, TableFixedLayoutHeaderBytes, TableFixedLineagePlans, TableFixedMessageForm, TableFixedPlan, TableFixedRefusal, TableFixedRefuseHash, TableFixedResetReport, TableFixedRun, TableFixedSelect, TableFixedVariableForm, TableMessageBatchMax, TableMessageRefuse, TableMessageResetReport, tableMessageBatchClose, tableMessageBatchOpen } from "./BenchTable.js";
+import { FixedTable, FixedTableFixedCheckBody, FixedTableFixedCheckDead, FixedTableFixedCheckRead, FixedTableFixedDecode, FixedTableFixedFromText, FixedTableFixedWriteBody, FixedTableLoadMessageBody, FixedTableSaveMessageBody, InitFixedTable, TableBitWriter, TableFixedForm, TableFixedHashAt, TableFixedHeaderBytes, TableFixedHoles, TableFixedKnownLayout, TableFixedLayoutHeaderBytes, TableFixedLineagePlans, TableFixedMessageForm, TableFixedPlan, TableFixedRefusal, TableFixedRefuseHash, TableFixedResetReport, TableFixedRun, TableFixedSelect, TableFixedVariableForm, TableMessageBatchMax, TableMessageRefuse, TableMessageResetReport, tableMessageBatchClose, tableMessageBatchOpen } from "./BenchTable.js";
 
 // ---- FixedTable, THE FIXED FORM (docs/SPEC-TABLES.md §3.4) ----
 //
@@ -544,12 +544,19 @@ export function FixedTableMeasureMessages(values, report) {
   if (report === undefined || report === null) { report = {}; }
   TableMessageResetReport(report);
   if (values.length < 1 || values.length > TableMessageBatchMax) { TableMessageRefuse(report, "batch_too_large"); return -1; }
+  let vals = values;
   for (let i = 0; i < values.length; i++) {
-    if (values[i] !== null && values[i] !== undefined && !FixedTableFixedCheckBody(values[i])) { TableMessageRefuse(report, "invalid_value"); return -1; }
+    let value = values[i];
+    if (value !== null && value !== undefined && !FixedTableFixedCheckBody(value)) {
+      value = FixedTableFixedFromText(value, new FixedTable());
+      if (!FixedTableFixedCheckBody(value)) { TableMessageRefuse(report, "invalid_value"); return -1; }
+      if (vals === values) { vals = values.slice(); }
+      vals[i] = value;
+    }
   }
   const w = new TableBitWriter(null, true);
   for (let i = 0; i < values.length; i++) {
-    if (values[i] === null || values[i] === undefined || !FixedTableSaveMessageBody(w, values[i])) { TableMessageRefuse(report, "invalid_value"); return -1; }
+    if (vals[i] === null || vals[i] === undefined || !FixedTableSaveMessageBody(w, vals[i])) { TableMessageRefuse(report, "invalid_value"); return -1; }
   }
   w.Align();
   if (w.Overflow) { return -1; }
@@ -561,14 +568,21 @@ export function FixedTableSaveMessages(values, buffer, report) {
   TableMessageResetReport(report);
   if (values.length < 1 || values.length > TableMessageBatchMax) { TableMessageRefuse(report, "batch_too_large"); return -1; }
   if (buffer.length < 2) { return -1; }
+  let vals = values;
   for (let i = 0; i < values.length; i++) {
-    if (values[i] !== null && values[i] !== undefined && !FixedTableFixedCheckBody(values[i])) { TableMessageRefuse(report, "invalid_value"); return -1; }
+    let value = values[i];
+    if (value !== null && value !== undefined && !FixedTableFixedCheckBody(value)) {
+      value = FixedTableFixedFromText(value, new FixedTable());
+      if (!FixedTableFixedCheckBody(value)) { TableMessageRefuse(report, "invalid_value"); return -1; }
+      if (vals === values) { vals = values.slice(); }
+      vals[i] = value;
+    }
   }
   buffer[0] = 2;
   buffer[1] = values.length - 1;
   const w = new TableBitWriter(buffer.subarray(2), false);
   for (let i = 0; i < values.length; i++) {
-    if (values[i] === null || values[i] === undefined || !FixedTableSaveMessageBody(w, values[i])) { TableMessageRefuse(report, "invalid_value"); return -1; }
+    if (vals[i] === null || vals[i] === undefined || !FixedTableSaveMessageBody(w, vals[i])) { TableMessageRefuse(report, "invalid_value"); return -1; }
   }
   w.Align();
   if (w.Overflow) { return -1; }
@@ -602,14 +616,23 @@ export function FixedTableLoadMessages(values, vocabulary, data, report) {
       for (let j = 0; j <= i; j++) { InitFixedTable(values[j]); }
       return 0;
     }
-    // A VALUE, A COUNT OR A LENGTH PAST ITS BOUND, OR A KIND MISMATCH, IN
-    // ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md §4, the strict read):
-    // the body walk counts it, at any depth, and a body handed back cut to
-    // its bound would be a value the Go engine refuses (messagedecode.go);
-    // a refused batch returns a count of 0 (§3.3), as every refused batch does.
-    if (report.Oor > 0 || report.Mismatch > 0) {
-      for (let j = 0; j <= i; j++) { InitFixedTable(values[j]); }
-      TableMessageRefuse(report, report.Oor > 0 ? "out_of_range" : "kind_mismatch");
+    // A KIND MISMATCH MET IN ANY BODY REFUSES THE BATCH BY NAME as
+    // kind_mismatch (docs/SPEC-TABLES.md §3.3, §4), as the Go reference does:
+    // an announced kind this reader declares otherwise is never skipped and
+    // counted into a delivered batch. The count is 0 and every body of the
+    // batch goes back to its declared defaults.
+    if (report.Mismatch > 0) {
+      for (let j = 0; j < count; j++) { InitFixedTable(values[j]); }
+      TableMessageRefuse(report, "kind_mismatch");
+      return 0;
+    }
+    // A VALUE OUTSIDE ITS DECLARED RANGE (or a length past its bound) REFUSES THE
+    // BATCH BY NAME as out_of_range (docs/SPEC-TABLES.md §3.3), as the Go
+    // reference and the Rust port do: the count is 0 and
+    // every body of the batch goes back to its declared defaults.
+    if (report.Oor > 0) {
+      for (let j = 0; j < count; j++) { InitFixedTable(values[j]); }
+      TableMessageRefuse(report, "out_of_range");
       return 0;
     }
   }

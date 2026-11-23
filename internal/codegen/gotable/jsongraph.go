@@ -67,21 +67,4 @@ func tableJSONReadBlob(in *tableJSONIn,slot *int64,f *TableFieldInfo) bool {
  p,ref:=in.graph.alloc(8+int64(size)+1);if p==nil{in.bad=true;return false};data:=unsafe.Slice((*byte)(unsafe.Add(p,8)),int(size));length,ok:=in.scanString(data);if !ok{return false};*(*uint32)(p)=uint32(length);*(*uint32)(unsafe.Add(p,4))=0;*slot=ref;return true
 }
 
-// tableJSONDropLabel reads the label of an "&node" key that opens an object
-// the walk is SKIPPING, the key and its colon already consumed. The label
-// rules apply there as everywhere (docs/SPEC-TABLES.md §16.7): the grammar,
-// then a label alone (a trailing "," allowed) REFERS and refuses unless the
-// text defined it and the definition closed, its "}" consumed here; a label
-// with fields after it DEFINES and refuses if already defined. A skipped
-// definition keeps its label, with no node, OPEN until the skipping walk
-// closes its object, so a reference to it after that reads null.
-func tableJSONDropLabel(in *tableJSONIn) (reference bool, label uint64, ok bool) {
- label,ok=tableJSONReadLabel(in);if !ok{return false,0,false}
- entry,exists:=in.graph.getLabel(label)
- if in.peek()==','{in.pos++}
- if in.peek()=='}' {in.pos++;if !exists||entry.open{in.bad=true;return false,0,false};return true,0,true}
- if exists{in.bad=true;return false,0,false}
- if !in.graph.setLabel(label,tableJSONLabel{open:true}){in.bad=true;return false,0,false}
- return false,label,true
-}
 `
