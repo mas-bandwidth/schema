@@ -51,7 +51,7 @@ func TestUntickedAbsentIsCoverage(t *testing.T) {
 			if !ok {
 				t.Fatalf("an absence on an unticked row turned the run red:\n%s", out)
 			}
-			mustSay(t, out, []string{footer, "pass 0/0 +1a"}, []string{"TICKED"})
+			mustSay(t, out, []string{notAllAnswered, "pass 0/1 +1a"}, []string{"TICKED", footer})
 			if r, _ := findRow(rows, "zz", "wire"); r.NotCarried != 1 || r.AbsentClaimed != 0 {
 				t.Errorf("the coverage row does not count the absence as not carried: %+v", r)
 			}
