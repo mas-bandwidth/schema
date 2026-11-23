@@ -6307,8 +6307,8 @@ static SCHEMA_UNUSED int tabledemo_weapon_config_save_body( tabledemo_table_writ
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             tabledemo_table_writer_header_at( w, 47, 0x4f31c5309e13e932ull, 4 );
-            schema_assert( value->penetration >= 0 ); /* a ranged value inside its declaration (§5.1 row 1) */
-            schema_assert( value->penetration <= 10 ); /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( !( value->penetration < 0 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->penetration > 10 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->penetration ) );
         }
     }
@@ -6317,7 +6317,7 @@ static SCHEMA_UNUSED int tabledemo_weapon_config_save_body( tabledemo_table_writ
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             tabledemo_table_writer_header_at( w, 86, 0xa5013e9ad5caeda4ull, 6 );
-            schema_assert( (uint64_t)( value->channel ) <= 0x3full ); /* bits(6) no wider than 6 bits (§5.1 row 2) */
+            schema_assert( (uint64_t)( value->channel ) <= 0x3full ); /* bits(6) wider than 6 bits, debug only (SPEC.md §5.1 row 2) */
             tabledemo_table_writer_put8( w, (uint8_t) ( value->channel ) );
         }
     }
@@ -9837,8 +9837,8 @@ static SCHEMA_UNUSED int tabledemo_attachment_save_body( tabledemo_table_writer_
         if ( !( value->slot == 0 ) )
         {
             tabledemo_table_writer_header_at( w, 59, 0x6a771618f6fe31d1ull, 4 );
-            schema_assert( value->slot >= 0 ); /* a ranged value inside its declaration (§5.1 row 1) */
-            schema_assert( value->slot <= 7 ); /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( !( value->slot < 0 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->slot > 7 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->slot ) );
         }
     }
@@ -10429,8 +10429,8 @@ static SCHEMA_UNUSED int tabledemo_debuff_save_body( tabledemo_table_writer_t * 
         if ( !( value->amount == 0 ) )
         {
             tabledemo_table_writer_header_at( w, 69, 0x8113fe7ea2b16969ull, 4 );
-            schema_assert( value->amount >= 0 ); /* a ranged value inside its declaration (§5.1 row 1) */
-            schema_assert( value->amount <= 100 ); /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( !( value->amount < 0 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->amount > 100 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->amount ) );
         }
     }
@@ -14664,10 +14664,10 @@ static SCHEMA_UNUSED int tabledemo_weapon_config_save_body_retain( tabledemo_tab
             }
             tabledemo_table_retain_writer_id( w, 0x4f31c5309e13e932ull , retention);
             tabledemo_table_writer_put8( w, 4 );
-            schema_assert( value->penetration >= 0 );
-            /* a ranged value inside its declaration (§5.1 row 1) */
-            schema_assert( value->penetration <= 10 );
-            /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( !( value->penetration < 0 ) );
+            /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->penetration > 10 ) );
+            /* off its max, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->penetration ) );
         }
     }
@@ -14681,7 +14681,7 @@ static SCHEMA_UNUSED int tabledemo_weapon_config_save_body_retain( tabledemo_tab
             tabledemo_table_retain_writer_id( w, 0xa5013e9ad5caeda4ull , retention);
             tabledemo_table_writer_put8( w, 6 );
             schema_assert( (uint64_t)( value->channel ) <= 0x3full );
-            /* bits(6) no wider than 6 bits (§5.1 row 2) */
+            /* bits(6) wider than 6 bits, debug only (SPEC.md §5.1 row 2) */
             tabledemo_table_writer_put8( w, (uint8_t) ( value->channel ) );
         }
     }
@@ -17044,10 +17044,10 @@ static SCHEMA_UNUSED int tabledemo_attachment_save_body_retain( tabledemo_table_
         {
             tabledemo_table_retain_writer_id( w, 0x6a771618f6fe31d1ull , retention);
             tabledemo_table_writer_put8( w, 4 );
-            schema_assert( value->slot >= 0 );
-            /* a ranged value inside its declaration (§5.1 row 1) */
-            schema_assert( value->slot <= 7 );
-            /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( !( value->slot < 0 ) );
+            /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->slot > 7 ) );
+            /* off its max, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->slot ) );
         }
     }
@@ -17330,10 +17330,10 @@ static SCHEMA_UNUSED int tabledemo_debuff_save_body_retain( tabledemo_table_writ
         {
             tabledemo_table_retain_writer_id( w, 0x8113fe7ea2b16969ull , retention);
             tabledemo_table_writer_put8( w, 4 );
-            schema_assert( value->amount >= 0 );
-            /* a ranged value inside its declaration (§5.1 row 1) */
-            schema_assert( value->amount <= 100 );
-            /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( !( value->amount < 0 ) );
+            /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->amount > 100 ) );
+            /* off its max, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->amount ) );
         }
     }

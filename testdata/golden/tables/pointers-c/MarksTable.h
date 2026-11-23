@@ -6085,8 +6085,8 @@ static SCHEMA_UNUSED int graphdemo_tally_save_body( graphdemo_table_writer_t * w
         if ( !( value->hits == 0 ) )
         {
             graphdemo_table_writer_header_at( w, 19, 0x732dfbcc9b0cf0bbull, 4 );
-            schema_assert( value->hits >= 0 ); /* a ranged value inside its declaration (§5.1 row 1) */
-            schema_assert( value->hits <= 10000 ); /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( !( value->hits < 0 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->hits > 10000 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             graphdemo_table_writer_put32( w, (uint32_t) ( value->hits ) );
         }
     }
@@ -7037,10 +7037,10 @@ static SCHEMA_UNUSED int graphdemo_tally_save_body_retain( graphdemo_table_write
         {
             graphdemo_table_retain_writer_id( w, 0x732dfbcc9b0cf0bbull , retention);
             graphdemo_table_writer_put8( w, 4 );
-            schema_assert( value->hits >= 0 );
-            /* a ranged value inside its declaration (§5.1 row 1) */
-            schema_assert( value->hits <= 10000 );
-            /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( !( value->hits < 0 ) );
+            /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->hits > 10000 ) );
+            /* off its max, debug only (SPEC.md §5.1 row 1) */
             graphdemo_table_writer_put32( w, (uint32_t) ( value->hits ) );
         }
     }

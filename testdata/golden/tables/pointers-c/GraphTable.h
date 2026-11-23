@@ -6335,8 +6335,8 @@ static SCHEMA_UNUSED int graphdemo_meta_save_body( graphdemo_table_writer_t * w,
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             graphdemo_table_writer_header_at( w, 26, 0x802517e298c70b03ull, 4 );
-            schema_assert( value->build >= 0 ); /* a ranged value inside its declaration (§5.1 row 1) */
-            schema_assert( value->build <= 1000 ); /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( !( value->build < 0 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->build > 1000 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             graphdemo_table_writer_put32( w, (uint32_t) ( value->build ) );
         }
     }
@@ -6711,8 +6711,8 @@ static SCHEMA_UNUSED int graphdemo_settings_save_body( graphdemo_table_writer_t 
         if ( !( value->quality == 2 ) )
         {
             graphdemo_table_writer_header_at( w, 23, 0x7a8060916400fe66ull, 4 );
-            schema_assert( value->quality >= 0 ); /* a ranged value inside its declaration (§5.1 row 1) */
-            schema_assert( value->quality <= 4 ); /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( !( value->quality < 0 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->quality > 4 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             graphdemo_table_writer_put32( w, (uint32_t) ( value->quality ) );
         }
     }
@@ -7349,8 +7349,8 @@ static SCHEMA_UNUSED int graphdemo_layer_save_body( graphdemo_table_writer_t * w
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             graphdemo_table_writer_header_at( w, 20, 0x75d8e97600b296eaull, 4 );
-            schema_assert( value->depth >= 0 ); /* a ranged value inside its declaration (§5.1 row 1) */
-            schema_assert( value->depth <= 64 ); /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( !( value->depth < 0 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->depth > 64 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             graphdemo_table_writer_put32( w, (uint32_t) ( value->depth ) );
         }
     }
@@ -7520,8 +7520,8 @@ static SCHEMA_UNUSED int graphdemo_scene_save_body( graphdemo_table_writer_t * w
         if ( !( value->version == 1 ) )
         {
             graphdemo_table_writer_header_at( w, 36, 0xbb62c62c9808ea37ull, 4 );
-            schema_assert( value->version >= 0 ); /* a ranged value inside its declaration (§5.1 row 1) */
-            schema_assert( value->version <= 99 ); /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( !( value->version < 0 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->version > 99 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             graphdemo_table_writer_put32( w, (uint32_t) ( value->version ) );
         }
     }
@@ -9513,10 +9513,10 @@ static SCHEMA_UNUSED int graphdemo_meta_save_body_retain( graphdemo_table_writer
             }
             graphdemo_table_retain_writer_id( w, 0x802517e298c70b03ull , retention);
             graphdemo_table_writer_put8( w, 4 );
-            schema_assert( value->build >= 0 );
-            /* a ranged value inside its declaration (§5.1 row 1) */
-            schema_assert( value->build <= 1000 );
-            /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( !( value->build < 0 ) );
+            /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->build > 1000 ) );
+            /* off its max, debug only (SPEC.md §5.1 row 1) */
             graphdemo_table_writer_put32( w, (uint32_t) ( value->build ) );
         }
     }
@@ -9742,10 +9742,10 @@ static SCHEMA_UNUSED int graphdemo_settings_save_body_retain( graphdemo_table_wr
         {
             graphdemo_table_retain_writer_id( w, 0x7a8060916400fe66ull , retention);
             graphdemo_table_writer_put8( w, 4 );
-            schema_assert( value->quality >= 0 );
-            /* a ranged value inside its declaration (§5.1 row 1) */
-            schema_assert( value->quality <= 4 );
-            /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( !( value->quality < 0 ) );
+            /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->quality > 4 ) );
+            /* off its max, debug only (SPEC.md §5.1 row 1) */
             graphdemo_table_writer_put32( w, (uint32_t) ( value->quality ) );
         }
     }
@@ -10384,10 +10384,10 @@ static SCHEMA_UNUSED int graphdemo_layer_save_body_retain( graphdemo_table_write
             }
             graphdemo_table_retain_writer_id( w, 0x75d8e97600b296eaull , retention);
             graphdemo_table_writer_put8( w, 4 );
-            schema_assert( value->depth >= 0 );
-            /* a ranged value inside its declaration (§5.1 row 1) */
-            schema_assert( value->depth <= 64 );
-            /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( !( value->depth < 0 ) );
+            /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->depth > 64 ) );
+            /* off its max, debug only (SPEC.md §5.1 row 1) */
             graphdemo_table_writer_put32( w, (uint32_t) ( value->depth ) );
         }
     }
@@ -10645,10 +10645,10 @@ static SCHEMA_UNUSED int graphdemo_scene_save_body_retain( graphdemo_table_write
         {
             graphdemo_table_retain_writer_id( w, 0xbb62c62c9808ea37ull , retention);
             graphdemo_table_writer_put8( w, 4 );
-            schema_assert( value->version >= 0 );
-            /* a ranged value inside its declaration (§5.1 row 1) */
-            schema_assert( value->version <= 99 );
-            /* a ranged value inside its declaration (§5.1 row 1) */
+            schema_assert( !( value->version < 0 ) );
+            /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->version > 99 ) );
+            /* off its max, debug only (SPEC.md §5.1 row 1) */
             graphdemo_table_writer_put32( w, (uint32_t) ( value->version ) );
         }
     }

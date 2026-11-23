@@ -2415,14 +2415,13 @@ static bool write_refusal_set( const std::string & root, void * value, const std
         // SILENT-FAILURE ROWS: the variable Save's bits(N) width on every carrier
         if ( kind == "int" )
         {
-            if ( path == "b_bits13" ) { v.b_bits13 = (uint32_t) n; return true; }
-            if ( path == "opt_bits" ) { v.opt_bits = (uint64_t) n; v.opt_bits_present = true; return true; }
+            if ( path == "b_bits13" ) return wref_store_int( v.b_bits13, text );
+            if ( path == "opt_bits" ) { v.opt_bits_present = true; return wref_store_int( v.opt_bits, text ); }
             if ( path == "arr_bits[0].v" )
             {
                 if ( v.arr_bits.count < 1 || v.arr_bits.elements.value == 0 ) return false;
                 cooktorture::BitsCell * cells = (cooktorture::BitsCell *) ( (uint8_t *) &v.arr_bits.elements + v.arr_bits.elements.value );
-                cells[0].v = (uint64_t) n;
-                return true;
+                return wref_store_int( cells[0].v, text );
             }
         }
     }
