@@ -1000,7 +1000,7 @@ func resolveCIToken(tok string, ev ciEvent) (string, error) {
 		return ev.PlanPkgs, nil
 	case "needs.plan.outputs.legs":
 		return ev.PlanLegs, nil
-	case "needs.plan.outputs.codegen_touched":
+	case "needs.plan.outputs.codegen_touched", "needs.plan.outputs.pins":
 		for pkg := range strings.FieldsSeq(ev.PlanPkgs) {
 			if strings.HasPrefix(pkg, "./internal/codegen") || pkg == "./ir" || pkg == "./compiler" || pkg == "./..." {
 				return "yes", nil
@@ -1442,6 +1442,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:go-fixed-corpus",
 		"ci-fast.yml:go-test-touched",
 		"ci-fast.yml:golangci-lint-fast",
+		"ci-fast.yml:input-family",
 		"ci-fast.yml:lang-clean",
 		"ci-fast.yml:lang-lint",
 		"ci-fast.yml:leg-gate",
@@ -1451,6 +1452,8 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:leg-gate-squirrel",
 		"ci-fast.yml:lint-fast",
 		"ci-fast.yml:newleg-scaffold",
+		"ci-fast.yml:nightly-fast",
+		"ci-fast.yml:pins",
 		"ci-fast.yml:plan",
 		"ci-fast.yml:verdict",
 		"ci-fast.yml:verify-leg",

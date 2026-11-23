@@ -343,7 +343,18 @@ static class Runner
         var findings = new Dictionary<string, string[]>();
         if (File.Exists(findingsPath))
         {
-            foreach (string[] f in Rows(findingsPath, 4)) { findings[f[0]] = f; }
+            // known findings: name<TAB>slug<TAB>input<TAB>answer<TAB>one line,
+            // where the answer is what this port gives the case today,
+            // `accept <digest>` or `refuse` (docs/HOSTILE-CORPUS.md). A finding
+            // carries that answer and no other (F-079).
+            foreach (string[] f in Rows(findingsPath, 5))
+            {
+                if (f[3] != "refuse" && !(f[3].StartsWith("accept ", StringComparison.Ordinal) && f[3].Length > 7 && f[3].IndexOf(' ', 7) < 0))
+                {
+                    throw new InvalidDataException(findingsPath + ": a finding's answer is `accept <digest>` or `refuse`: " + string.Join("\t", f));
+                }
+                findings[f[0]] = f;
+            }
         }
         var cases = new List<Case>();
         foreach (string[] f in Rows(Path.Combine(corpus, "manifest.tsv"), 9))
@@ -379,8 +390,16 @@ static class Runner
         int passed = 0, carried = 0, skipped = 0;
         var bad = new List<string>();
         var stale = new List<string>();
+        // THE LEDGER (docs/HOSTILE-CORPUS.md): the cases a reader answered, by
+        // name, which tools/hostileledger holds to the corpus folder. A skip
+        // is no answer, so a skipped case is a case not run.
+        var ranNames = new List<string>();
         foreach (Case c in cases)
         {
+            if (c.Got != null && !c.Got.StartsWith("skip: ", StringComparison.Ordinal))
+            {
+                ranNames.Add(c.Name);
+            }
             string want = H.Want(c.Verdict, c.Carrier, c.Reason, c.Digest);
             findings.TryGetValue(c.Name, out string[] finding);
             if (c.Got.StartsWith("skip: ", StringComparison.Ordinal))
@@ -409,9 +428,13 @@ static class Runner
                     passed++;
                 }
             }
-            else if (finding != null)
+            // A FINDING CARRIES THE ANSWER IT RECORDS, and no other: never an
+            // execution failure (F-070: a timeout, a crash or a runner error),
+            // and never a different verdict or digest (F-079: a refusal under
+            // a finding for a wrong digest).
+            else if (finding != null && (finding[3] == "refuse" ? c.Got.StartsWith("refuse ", StringComparison.Ordinal) : c.Got == finding[3]))
             {
-                Console.WriteLine("FIX-CARD: " + finding[1] + ": " + finding[2] + " " + finding[3]);
+                Console.WriteLine("FIX-CARD: " + finding[1] + ": " + finding[2] + " " + finding[4] + " (got " + c.Got + ")");
                 carried++;
             }
             else
@@ -430,6 +453,11 @@ static class Runner
         }
         Console.WriteLine(cases.Count + " cases: " + passed + " pass, " + carried + " carried as FIX-CARD, " + skipped + " skipped, "
             + bad.Count + " unexplained, " + stale.Count + " stale");
+        foreach (string name in ranNames)
+        {
+            Console.WriteLine("hostile-ledger ran " + name);
+        }
+        Console.WriteLine("hostile-ledger end");
         // The count line build/mustrun reads: a case is RUN when the port
         // answered it (a pass or a carried FIX-CARD). A SKIP is not run, so a
         // case that starts skipping moves the count off the one the recipe

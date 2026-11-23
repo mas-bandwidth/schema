@@ -183,236 +183,6 @@ fn jv_guard(unit: LoadUnit, vals: const LoadVal[:], tab: i64, rec: i64, i: i64) 
     return true;
 }
 
-// ---- THE WIDE KINDS (§16.2; internal/tabletext wide.go): exact decimal
-// conversion over 32-bit limbs, never through a double ----
-
-let JvLimbs: i64 = 32;
-
-struct JvBig { w: u32[32], over: bool }
-
-fn jv_big() -> JvBig { JvBig { w: [0; 32], over: false } }
-
-fn jv_big_zero(a: const JvBig&) -> bool {
-    for x in a.w { if x != 0 { return false; } }
-    return true;
-}
-
-fn jv_big_mul(a: JvBig&, m: u64, add: u64) {
-    var carry: u64 = add;
-    var i: i64 = 0;
-    while i < JvLimbs {
-        let x: u64 = a.w[i];
-        let p = x * m + carry;
-        a.w[i] = (p & 0xFFFFFFFF) as! u32;
-        carry = p >> 32;
-        i += 1;
-    }
-    if carry != 0 { a.over = true; }
-}
-
-fn jv_big_shl(a: JvBig&, n: i64) {
-    var k: i64 = 0;
-    while k < n {
-        jv_big_mul(a, 2, 0);
-        k += 1;
-    }
-}
-
-// jv_big_div divides by a small d and answers the remainder.
-fn jv_big_div(a: JvBig&, d: u64) -> u64 {
-    var rem: u64 = 0;
-    var i = JvLimbs - 1;
-    while i >= 0 {
-        let x: u64 = a.w[i];
-        let cur = (rem << 32) | x;
-        a.w[i] = (cur / d) as! u32;
-        rem = cur % d;
-        i -= 1;
-    }
-    return rem;
-}
-
-fn jv_big_of(v: Int128) -> JvBig {
-    var a = jv_big();
-    a.w[0] = (v.lo & 0xFFFFFFFF) as! u32;
-    a.w[1] = (v.lo >> 32) as! u32;
-    a.w[2] = (v.hi & 0xFFFFFFFF) as! u32;
-    a.w[3] = (v.hi >> 32) as! u32;
-    return a;
-}
-
-// jv_big_fits128: the magnitude is below 2^128 (lanes), or below 2^127 + 1
-// (half) for a negative value of a signed kind.
-fn jv_big_lanes(a: const JvBig&) -> Int128, bool {
-    if a.over { return Int128 { lo: 0, hi: 0 }, false; }
-    var i: i64 = 4;
-    while i < JvLimbs {
-        if a.w[i] != 0 { return Int128 { lo: 0, hi: 0 }, false; }
-        i += 1;
-    }
-    let w0: u64 = a.w[0];
-    let w1: u64 = a.w[1];
-    let w2: u64 = a.w[2];
-    let w3: u64 = a.w[3];
-    let lo = w0 | (w1 << 32);
-    let hi = w2 | (w3 << 32);
-    return Int128 { lo: lo, hi: hi }, true;
-}
-
-fn jv_neg128(v: Int128) -> Int128 {
-    let lo = (~v.lo) + 1;
-    let hi = (~v.hi) + (if lo == 0 { 1 } else { 0 });
-    return Int128 { lo: lo, hi: hi };
-}
-
-// jv_digit is digit j of a number token's digit run: the integer part's
-// digits, then the fraction's.
-fn jv_digit(tok: const u8[:], i0: i64, n_int: i64, f0: i64, j: i64) -> u64 {
-    let at = if j < n_int { i0 + j } else { f0 + j - n_int };
-    let digit: u64 = tok[at] - '0';
-    return digit;
-}
-
-// jv_parse_wide is ParseWide: a token's value times 2^frac, exact or nothing;
-// saturated when the magnitude was held to the kind's 128-bit domain.
-fn jv_parse_wide(tok: const u8[:], signed: bool, frac: i64) -> Int128, bool, bool {
-    var i: i64 = 0;
-    var neg = false;
-    if i < tok.len && (tok[i] == '-' || tok[i] == '+') {
-        neg = tok[i] == '-';
-        i += 1;
-    }
-    let i0 = i;
-    while i < tok.len && tok[i] >= '0' && tok[i] <= '9' { i += 1; }
-    let n_int = i - i0;
-    var f0 = i;
-    var n_frac: i64 = 0;
-    if i < tok.len && tok[i] == '.' {
-        i += 1;
-        f0 = i;
-        while i < tok.len && tok[i] >= '0' && tok[i] <= '9' { i += 1; }
-        n_frac = i - f0;
-    }
-    var exp: i64 = 0;
-    if i < tok.len && (tok[i] == 'e' || tok[i] == 'E') {
-        i += 1;
-        var eneg = false;
-        if i < tok.len && (tok[i] == '-' || tok[i] == '+') {
-            eneg = tok[i] == '-';
-            i += 1;
-        }
-        while i < tok.len && tok[i] >= '0' && tok[i] <= '9' {
-            let digit: i64 = tok[i] - '0';
-            if exp < 100000 { exp = exp * 10 + digit; }
-            i += 1;
-        }
-        if eneg { exp = -exp; }
-    }
-    let total = n_int + n_frac;
-    var first: i64 = 0;
-    while first < total && jv_digit(tok, i0, n_int, f0, first) == 0 { first += 1; }
-    var last = total;
-    while last > first && jv_digit(tok, i0, n_int, f0, last - 1) == 0 { last -= 1; }
-    let zero = Int128 { lo: 0, hi: 0 };
-    let high = if signed { Int128 { lo: 0xFFFFFFFFFFFFFFFF, hi: 0x7FFFFFFFFFFFFFFF } } else { Int128 { lo: 0xFFFFFFFFFFFFFFFF, hi: 0xFFFFFFFFFFFFFFFF } };
-    let low = if signed { Int128 { lo: 0, hi: 0x8000000000000000 } } else { zero };
-    if last == first { return zero, true, false; }
-    let point = n_int + exp - first;
-    let digits = last - first;
-    if point > 40 {
-        if neg { return low, true, true; }
-        return high, true, true;
-    }
-    if point < -40 { return zero, false, false; }
-    let scale = point - digits;
-    if scale < 0 && -scale > frac { return zero, false, false; }
-    var a = jv_big();
-    var j = first;
-    while j < last {
-        jv_big_mul(a, 10, jv_digit(tok, i0, n_int, f0, j));
-        j += 1;
-    }
-    jv_big_shl(a, frac);
-    if scale >= 0 {
-        var k: i64 = 0;
-        while k < scale {
-            jv_big_mul(a, 10, 0);
-            k += 1;
-        }
-    } else {
-        var k: i64 = 0;
-        while k < -scale {
-            if jv_big_div(a, 10) != 0 { return zero, false, false; }
-            k += 1;
-        }
-    }
-    let mag, fits = jv_big_lanes(a);
-    if neg {
-        // the magnitude may reach 2^127 for a signed kind, 0 for an unsigned one
-        if !signed { return zero, true, true; }
-        if !fits || mag.hi > 0x8000000000000000 || (mag.hi == 0x8000000000000000 && mag.lo != 0) { return low, true, true; }
-        return jv_neg128(mag), true, false;
-    }
-    if !fits { return high, true, true; }
-    if signed && (mag.hi >> 63) != 0 { return high, true, true; }
-    return mag, true, false;
-}
-
-// jv_put_wide is FormatWide: a 128-bit integer as its decimal digits, a fixed
-// value as the shortest exact decimal in whole units with at least one
-// fractional digit.
-fn jv_put_wide(out: u8[>..]&, v: Int128, signed: bool, fixed: bool, frac: i64) {
-    var mag = v;
-    if signed && (v.hi >> 63) != 0 {
-        out.push('-');
-        mag = jv_neg128(v);
-    }
-    var a = jv_big_of(mag);
-    // the fraction's bits, masked off before the whole part is printed
-    var f = jv_big();
-    var b: i64 = 0;
-    while b < frac {
-        let limb = b / 32;
-        let bit = (b % 32) as! u32;
-        f.w[limb] |= a.w[limb] & ((1 as u32) << bit);
-        b += 1;
-    }
-    var k: i64 = 0;
-    while k < frac {
-        jv_big_div(a, 2);
-        k += 1;
-    }
-    var digits: u8[48] = [0; 48];
-    var n: i64 = 48;
-    loop {
-        n -= 1;
-        digits[n] = (jv_big_div(a, 10) as! u8) + '0';
-        if jv_big_zero(a) { break; }
-    }
-    out.append(digits[n..]);
-    if !fixed { return; }
-    out.push('.');
-    if jv_big_zero(f) {
-        out.push('0');
-        return;
-    }
-    while !jv_big_zero(f) {
-        jv_big_mul(f, 10, 0);
-        // the digit is what rose above the fraction's bits
-        var d: u64 = 0;
-        var t: i64 = 0;
-        while t < 4 {
-            let at = frac + t;
-            let limb = at / 32;
-            let bit = (at % 32) as! u32;
-            if (f.w[limb] & ((1 as u32) << bit)) != 0 { d |= (1 as u64) << (t as! u64); }
-            f.w[limb] &= ~((1 as u32) << bit);
-            t += 1;
-        }
-        out.push((d as! u8) + '0');
-    }
-}
-
 // ---- timestamps (§2.11, §16.2; internal/rfc3339) ----
 
 fn jv_days_from_civil(y0: i64, m: i64, d: i64) -> i64 {
@@ -1393,14 +1163,15 @@ recursive fn jr_skip(c: JvIn&, depth: i64) -> bool {
     let closing: u8 = if ch == '{' { '}' } else { ']' };
     c.jr.pos += 1;
     var first = true;
+    var definition: i64 = -1; // the label this object defines, open until it closes
     loop {
         let d = json_peek(c.jr);
         if d == closing {
             c.jr.pos += 1;
+            if definition >= 0 { c.labels[definition].open = false; }
             return true;
         }
         if d == 0 { return json_fail(c.jr); }
-        var amp = false;
         if closing == '}' {
             var key: u8[256] = [0; 256];
             let n, ok = jr_key(c, key);
@@ -1409,20 +1180,51 @@ recursive fn jr_skip(c: JvIn&, depth: i64) -> bool {
                 c.jr.rep.repeated += 1;
                 return json_fail(c.jr);
             }
-            if n > 0 && key[0] == '&' && c.graph {
-                // a definition in a dropped value keeps its label, with no node
+            if n > 0 && key[0] == '&' {
+                // THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): a label
+                // alone must name a definition already closed; fields after
+                // one must follow a label not yet defined, and the definition
+                // is open until this object closes. A dropped definition keeps
+                // its label, with no node.
                 if !first || key[..n] != "&node" { return json_fail(c.jr); }
                 let label, lok = jr_scan_label(c);
                 if !lok { return false; }
-                if jr_label_at(c, label) < 0 { c.labels.push(JsonLabel { label: label, wire: 0, tab: -1, open: false }); }
-                amp = true;
+                var next = json_peek(c.jr);
+                if next != ',' && next != '}' { return json_fail(c.jr); }
+                if !c.graph {
+                    // a unit with no pointer has no label table: the prefix is
+                    // still held to its grammar, and the value is skipped whole
+                    c.jr.pos += 1;
+                    if next == '}' { return true; }
+                    first = false;
+                    continue;
+                }
+                let at = jr_label_at(c, label);
+                if next == ',' {
+                    c.jr.pos += 1;
+                    next = json_peek(c.jr);
+                }
+                let bare = next == '}';
+                if bare != (at >= 0) { return json_fail(c.jr); }
+                if bare {
+                    if c.labels[at].open { return json_fail(c.jr); }
+                    c.jr.pos += 1;
+                    return true;
+                }
+                definition = c.labels.len;
+                c.labels.push(JsonLabel { label: label, wire: 0, tab: -1, open: true });
+                first = false;
+                continue;
             }
         }
         first = false;
-        if !amp && !jr_skip(c, depth + 1) { return false; }
+        if !jr_skip(c, depth + 1) { return false; }
         let r = jr_after(c, closing);
         if r < 0 { return false; }
-        if r == 0 { return true; }
+        if r == 0 {
+            if definition >= 0 { c.labels[definition].open = false; }
+            return true;
+        }
     }
 }
 
@@ -2332,8 +2134,14 @@ fn json_load_table(unit: LoadUnit, text_unit: JsonUnit, root: const u8[:], text:
     var labels: JsonLabel[>..] = [];
     var scratch: i64[>..<] = [];
     var c = JvIn { jr: jr, unit: unit, text: text_unit, data: data, vals: vals, nodes: nodes, labels: labels, scratch: scratch, graph: unit.tables[t].variable, kset_entries: kset_entries, kset_slots: kset_slots };
+    let slots = vals.len;
+    let held = nodes.len;
     let rec = jr_new_record(c, t);
     let ok = jr_table(c, t, rec, 0);
-    if !json_finish(jr, ok, report) { return -1; }
+    // a refused read restores the caller's value and node tables, as <T>ToLoaded
+    // does. The data buffer is not shrunk: a u8 shrink in a callee bars every
+    // caller holding an args() slice from calling it (goose spec 5.1), and no
+    // restored table names the bytes the read appended.
+    if !json_finish(jr, ok, report) { vals.resize(slots); nodes.resize(held); return -1; }
     return rec;
 }

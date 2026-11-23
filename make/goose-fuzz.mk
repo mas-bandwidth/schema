@@ -19,9 +19,8 @@ $(GOOSE_FUZZ_SCHEMA):
 # refused unit is the target's refusal, recorded by build/conformance-goose).
 define goose_fuzz_units
 	@rm -rf $(1) && mkdir -p $(1)
-	@grep '^unit ' $(GOOSE_MANIFEST) | while read -r _ key paths; do \
-		./$(GOOSE_FUZZ_SCHEMA) generate --lang goose --out $(1)/$$key $$paths >/dev/null 2>&1 || rm -rf $(1)/$$key; \
-	done
+	@grep '^unit ' $(GOOSE_MANIFEST) | xargs -P "$${GOOSE_FUZZ_JOBS:-4}" -L 1 sh -c \
+		'shift; key=$$1; shift; ./$(GOOSE_FUZZ_SCHEMA) generate --lang goose --out "$(1)/$$key" "$$@" >/dev/null 2>&1 || rm -rf "$(1)/$$key"' _
 endef
 
 # THE WIRE-FUZZ DIFFERENTIAL (docs/PORTING.md I15; test/conformance/README.md,
@@ -131,17 +130,21 @@ tables-goose-wire-fuzz-leb-negative-control tables-goose-wire-fuzz-utf8-negative
 # every verdict and reason to the engine's; an accept's value is held by its
 # re-saved wire, which must be the input byte for byte where the input is the
 # engine's own encode, and otherwise by its canonical text's digest and the
-# engine's encode of that text (make/goose-hostile.sh). The port reads the `wire` carrier today; the
-# text, message and announcement carriers are counted absences until the
-# goose text and message forms land, and test/goose-hostile/known-findings.tsv
-# carries each disagreement by name with the card that owes it.
+# engine's encode of that text (make/goose-hostile.sh). The port reads the `wire` and `packet` carriers
+# today; the text, message and announcement carriers are absences held by name
+# in test/goose-hostile/absent-carriers.tsv until the goose text and message
+# forms land, a wire or packet case the port cannot read is held by name in
+# test/goose-hostile/absent-cases.tsv, and tools/hostileledger holds the run to
+# the corpus folder: every other registered case ran, or the gate is red.
+# test/goose-hostile/known-findings.tsv carries each disagreement by name with
+# the card that owes it.
 GOOSE_HOSTILE_CORPUS ?= internal/ci/hostilecorpus/corpus
 
 .PHONY: schema-goose-runs-hostile-corpus
 schema-goose-runs-hostile-corpus: $(GOOSE_FUZZ_SCHEMA)
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	@sh make/goose-hostile.sh --scorer tools/hostilecorpusexec/testdata/scorer-outcomes.tsv
-	@sh make/goose-hostile.sh "$(GOOSE)" ./$(GOOSE_FUZZ_SCHEMA) $(GOOSE_HOSTILE_CORPUS) $(GOOSE_FUZZ_DIR)/hostile
+	$(call hostile_ledgered,goose,$(GOOSE_FUZZ_DIR)/hostile-run.log,sh make/goose-hostile.sh "$(GOOSE)" ./$(GOOSE_FUZZ_SCHEMA) $(GOOSE_HOSTILE_CORPUS) $(GOOSE_FUZZ_DIR)/hostile,$(GOOSE_HOSTILE_CORPUS),-absent-carriers test/goose-hostile/absent-carriers.tsv -skips test/goose-hostile/absent-cases.tsv)
 
 # ITS CONTROL: the non-finite refusal taken out of the generated load
 # (make/goose-hostile.sh's sabotage seam, checked to have matched); the corpus

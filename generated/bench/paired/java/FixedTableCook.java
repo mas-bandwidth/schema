@@ -249,10 +249,16 @@ public final class FixedTableCook {
 
     public static MeasureReason cookMeasureReason(java.lang.Object value) {
         boolean[] nonFinite = new boolean[1];
-        TableCookWrite.Plan p = TableCookWrite.plan(value, type(), nonFinite);
+        boolean[] cycle = new boolean[1];
+        TableCookWrite.Plan p = TableCookWrite.plan(value, type(), nonFinite, cycle);
         long bytes = p == null ? -1 : p.total;
         return new MeasureReason(
-                bytes, bytes >= 0 ? "ok" : nonFinite[0] ? "non_finite_float" : "invalid_value");
+                bytes,
+                bytes >= 0
+                        ? "ok"
+                        : nonFinite[0]
+                                ? "non_finite_float"
+                                : cycle[0] ? "data_cycle" : "invalid_value");
     }
 
     public static boolean cookFrom(java.lang.Object value, byte[] buffer, int order) {

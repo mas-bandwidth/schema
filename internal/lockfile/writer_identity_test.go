@@ -52,7 +52,7 @@ func TestLockWriterV2PreservesV1HistoryAndWideWidening(t *testing.T) {
 	}
 	got := readLock(t, path)
 	es := got.Table("Row").Lineage
-	if got.Version != 9 || len(es) != 2 || es[0].Wire != old.Wire || !bytes.Equal(es[0].Layout, old.Layout) || !bytes.Equal(es[0].Digest, old.Digest) || es[0].Record != old.Record || !es[0].Retired || es[0].Reason != "old deployment retired" || es[0].Writer == nil || es[1].Writer == nil || lockfile.Floor(got, "Row") != 1 {
+	if got.Version != lockfile.Version || len(es) != 2 || es[0].Wire != old.Wire || !bytes.Equal(es[0].Layout, old.Layout) || !bytes.Equal(es[0].Digest, old.Digest) || es[0].Record != old.Record || !es[0].Retired || es[0].Reason != "old deployment retired" || es[0].Writer == nil || es[1].Writer == nil || lockfile.Floor(got, "Row") != 1 {
 		t.Fatal("v9 migration changed historical facts or failed to append new current identity")
 	}
 	if es[0].Wire == es[1].Wire || !bytes.Equal(es[0].Layout, es[1].Layout) {

@@ -82,7 +82,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     strategy:
       fail-fast: false
       matrix:
@@ -237,12 +237,12 @@ jobs:
       - uses: ./.github/actions/eslint
         if: matrix.shard == 'js'
 
-      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+      - uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
         if: matrix.shard == 'dart' && runner.environment == 'github-hosted'
         with:
           sdk: '3.13.2'
 
-      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         if: matrix.shard == 'java' && runner.environment == 'github-hosted'
         with:
           distribution: 'temurin'
@@ -310,6 +310,7 @@ jobs:
             "MIX=mix"
             "NODE=node"
           )
+          # loud-ok: make -q exits 1 for a target that is out of date, and the reader's early quit SIGPIPEs make; the empty-result check right below is the loud refusal
           PREREQS=$({ make -qp "${MAKE_VARS[@]}" 2>/dev/null || true; } | awk '/^test:/{for(i=2;i<=NF;i++) if($i != "toolchain") print $i; exit}')
           if [ -z "$PREREQS" ]; then
             echo "::error::make -qp printed no prerequisites for test:"
@@ -479,8 +480,10 @@ jobs:
             local leg_target="$1" idx="$2" total="$3" filter_mode="$4"
             local all_prereqs
             if [ "$leg_target" = "test-python" ]; then
+              # loud-ok: make -q exits 1 for a target that is out of date, and the reader's early quit SIGPIPEs make; the empty-result check right below is the loud refusal
               all_prereqs=$({ make -qp "${MAKE_VARS[@]}" 2>/dev/null || true; } | awk '$1 == "test-python:" || $1 == "python-ci-support:" {for(i=2;i<=NF;i++) if($i != "python-ci-support") print $i}')
             else
+              # loud-ok: make -q exits 1 for a target that is out of date, and the reader's early quit SIGPIPEs make; the empty-result check right below is the loud refusal
               all_prereqs=$({ make -qp "${MAKE_VARS[@]}" 2>/dev/null || true; } | awk -v tgt="${leg_target}:" '$1 == tgt {for(i=2;i<=NF;i++) print $i; exit}')
             fi
             if [ -z "$all_prereqs" ]; then
@@ -549,6 +552,7 @@ jobs:
               make python-ci-packages "${MAKE_VARS[@]}"
               make python-ci-compiler "${MAKE_VARS[@]}"
             elif [ "$SHARD_IDX" = "2" ]; then
+              # loud-ok: make -q exits 1 for a target that is out of date, and the reader's early quit SIGPIPEs make; the empty-result check right below is the loud refusal
               WF_SHARDS=$({ make -qp "${MAKE_VARS[@]}" 2>/dev/null || true; } | awk '$1 == "test-python:" {for(i=2;i<=NF;i++) if($i ~ /^python-wirefuzz-.*-shard-[0-9]+$/) print $i; exit}')
               if [ -z "$WF_SHARDS" ]; then
                 echo "::error::no python-wirefuzz-*-shard-* targets found on test-python:"
@@ -572,6 +576,7 @@ jobs:
               make conformance SCHEMA_SKIP_LEGS="$OTHER_LEGS" "${MAKE_VARS[@]}"
               make test-ruby-recipe "${MAKE_VARS[@]}"
             elif [ "$SHARD_IDX" = "2" ]; then
+              # loud-ok: make -q exits 1 for a target that is out of date, and the reader's early quit SIGPIPEs make; the empty-result check right below is the loud refusal
               WF_SHARDS=$({ make -qp "${MAKE_VARS[@]}" 2>/dev/null || true; } | awk '$1 == "test-ruby:" {for(i=2;i<=NF;i++) if($i ~ /^ruby-wirefuzz-.*-shard-[0-9]+$/) print $i; exit}')
               if [ -z "$WF_SHARDS" ]; then
                 echo "::error::no ruby-wirefuzz-*-shard-* targets found on test-ruby:"
@@ -617,7 +622,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     outputs:
       targets: ${{ steps.list.outputs.targets }}
     steps:
@@ -655,7 +660,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     strategy:
       fail-fast: false
       matrix:
@@ -712,11 +717,11 @@ jobs:
       # The pinned eslint the JS leg's tables-js-clean gate requires (make/js.mk).
       - uses: ./.github/actions/eslint
 
-      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+      - uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
         with:
           sdk: '3.13.2'
 
-      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         with:
           distribution: 'temurin'
           java-version: '21'
@@ -818,7 +823,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     strategy:
       fail-fast: false
       matrix:
@@ -900,7 +905,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
@@ -942,7 +947,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -996,7 +1001,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
     steps:
@@ -1020,7 +1025,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.negative-controls-nightly-matrix.outputs.matrix) }}
@@ -1084,12 +1089,12 @@ jobs:
       - uses: ./.github/actions/eslint
         if: matrix.node != ''
 
-      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+      - uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
         if: matrix.dart != ''
         with:
           sdk: ${{ matrix.dart }}
 
-      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         if: matrix.java != ''
         with:
           distribution: 'temurin'
@@ -1262,6 +1267,7 @@ jobs:
             qemu-user=1:8.2.2+ds-0ubuntu1.18
 
       - name: what the pins resolved to
+        shell: bash
         run: |
           s390x-linux-gnu-g++-13 --version | head -1
           qemu-s390x --version | head -1
@@ -1291,7 +1297,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       # no checkout, so tools/pgroup is not here: plain bash
       - name: every job of this run succeeded (failed, cancelled or skipped is red)

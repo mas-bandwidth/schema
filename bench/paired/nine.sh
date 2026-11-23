@@ -62,7 +62,7 @@
 # published table's shape: reduced iteration counts, no bracketing drift
 # controls, no quiet-window seal. The certified sitting stays `-mode run` on
 # Space inside the quiet window (bench/README.md, bench/paired/README.md).
-set -e
+set -e -o pipefail
 
 LANE=
 PINCORE=
@@ -107,7 +107,9 @@ if [ -n "$READ_ARM" ]; then
     [ -n "$RECEIPT" ] || { echo "nine.sh: --read-arm needs --receipt (the operator's READY/START record)" >&2; exit 2; }
     [ -z "$LANE" ] || { echo "nine.sh: --read-arm does not take --lane (use --pin)" >&2; exit 2; }
     [ -z "$PLANREAD" ] || { echo "nine.sh: --read-arm and --plan-read are two sittings; pass one" >&2; exit 2; }
-    if [ -n "$(git status --porcelain 2>/dev/null | grep -v '^ M generated/')" ]; then
+    # a failed git status is a refusal, never a clean tree
+    porcelain=$(git status --porcelain) || { echo "nine.sh: git status failed: the read arm measures a named checkpoint of a git checkout" >&2; exit 2; }
+    if [ -n "$(printf '%s\n' "$porcelain" | grep -v -e '^ M generated/' -e '^$')" ]; then
         echo "nine.sh: the tree is dirty outside generated/, and the read arm measures a named checkpoint:" >&2
         git status --porcelain >&2
         exit 2
@@ -129,7 +131,8 @@ if [ -n "$READ_ARM" ]; then
     exec bin/schema-paired -mode plan-read -langs "$LEG" -quiet-window "$RECEIPT" -out "$OUT"
 fi
 
-if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+porcelain=$(git status --porcelain) || { echo "nine.sh: git status failed: table mode measures a named checkpoint of a git checkout" >&2; exit 2; }
+if [ -n "$porcelain" ]; then
     echo "nine.sh: the tree is not clean, and table mode measures a named checkpoint." >&2
     echo "         Commit or stash first, and keep logs outside the working tree:" >&2
     git status --porcelain >&2

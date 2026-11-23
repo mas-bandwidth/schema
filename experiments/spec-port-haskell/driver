@@ -1,0 +1,5 @@
+#!/bin/sh
+# The conformance driver entry (test/conformance/README.md): a copy of this
+# file at test/conformance/haskell/driver runs the binary built here.
+here=$(cd "$(dirname "$0")" && pwd)
+exec "${SPEC_PORT_HASKELL_DRIVER:-$here/build/driver}" "$@"

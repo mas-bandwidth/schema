@@ -1,0 +1,5 @@
+#!/bin/sh
+# The conformance driver command (test/conformance/README.md); run from the repo root.
+here=$(cd "$(dirname "$0")" && pwd)
+test -x "$here/_build/driver.exe" || sh "$here/build.sh" >&2 || exit 3
+exec "$here/_build/driver.exe" "$@"

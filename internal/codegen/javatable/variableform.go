@@ -119,6 +119,14 @@ public final class TableVariable {
             wireNonFinite = false;
         }
 
+        // settleDamage names framing damage on the report, as Go does: a
+        // damaged read answers reason wire_damaged unless a refusal named one.
+        public void settleDamage() {
+            if (damaged && reason == null) {
+                reason = "wire_damaged";
+            }
+        }
+
         public void refuse(java.lang.String why) {
             if (!refused) {
                 refused = true;
@@ -466,11 +474,14 @@ public final class TableVariable {
                 }
             }
             if (count >= entries.length) {
-                if (!growable || entries.length >= 65536) {
+                // THE ID TABLE'S MAXIMUM (docs/SPEC-TABLES.md §3): every reader
+                // refuses more than 4096 entries, so the writer refuses to grow
+                // past it and never writes a file its readers refuse.
+                if (!growable || entries.length >= 4096) {
                     overflow = true;
                     return 0;
                 }
-                entries = java.util.Arrays.copyOf(entries, java.lang.Math.min(65536, entries.length * 2));
+                entries = java.util.Arrays.copyOf(entries, java.lang.Math.min(4096, entries.length * 2));
             }
             entries[count++] = id;
             return count;
@@ -3392,6 +3403,9 @@ public final class TableJson {
         // refused rather than read.
         static final int MAX_JSON_DEPTH = 128;
         public final java.util.Map<java.lang.Long, LabelEntry> labels = new java.util.HashMap<>();
+        // graph: the root is a VARIABLE table, whose text carries the label
+        // construct (§16.7). A fixed root skips a value it does not place whole.
+        public boolean graph;
 
         final byte[] t;
         int p;
@@ -3993,10 +4007,15 @@ public final class TableJson {
             }
             p++; // the opening bracket
             java.util.Set<java.lang.String> seenKey = null;
+            boolean firstKey = true;
+            long definition = 0L; // the label this object defines, open until it closes
             while (true) {
                 int c = peek();
                 if (c == closing) {
                     p++;
+                    if (definition != 0L) {
+                        labels.get(definition).open = false;
+                    }
                     return;
                 }
                 if (c == 0) {
@@ -4023,28 +4042,61 @@ public final class TableJson {
                         return;
                     }
                     p++;
-                    // A DEFINITION IN A SKIPPED VALUE STILL TAKES ITS LABEL, with no
-                    // node, so a later reference reads null rather than refusing
-                    // (docs/SPEC-TABLES.md §16.7, §17.5; read.go's skippedAmpersand).
-                    if ("&node".equals(key)) {
+                    // THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (docs/SPEC-TABLES.md
+                    // §16.7): a label alone must name a definition already closed;
+                    // fields after one must follow a label not yet defined, and the
+                    // definition is open until this object closes. A dropped
+                    // definition keeps its label, with no node, so a reference to
+                    // it reads null. What the reader does not place is the value,
+                    // never the label.
+                    boolean wasFirst = firstKey;
+                    firstKey = false;
+                    if (key.startsWith("&")) {
+                        if (!wasFirst || !"&node".equals(key)) {
+                            bad = true;
+                            return;
+                        }
                         long labelId = scanLabel();
                         if (bad) {
                             return;
                         }
-                        if (!labels.containsKey(labelId)) {
-                            labels.put(labelId, new LabelEntry(null, 0L, false));
+                        if (!graph) {
+                            // a unit with no pointer has no label table: the prefix
+                            // is still held to its grammar, and the value is
+                            // skipped whole
+                            c = peek();
+                            if (c == ',') {
+                                p++;
+                                continue;
+                            }
+                            if (c == closing) {
+                                p++;
+                                return;
+                            }
+                            bad = true;
+                            return;
                         }
+                        LabelEntry entry = labels.get(labelId);
                         c = peek();
                         if (c == ',') {
                             p++;
-                            continue;
+                            c = peek();
+                        } else if (c != closing) {
+                            bad = true;
+                            return;
                         }
-                        if (c == closing) {
+                        boolean bare = c == closing;
+                        if (bare != (entry != null) || (bare && entry.open)) {
+                            bad = true;
+                            return;
+                        }
+                        if (bare) {
                             p++;
                             return;
                         }
-                        bad = true;
-                        return;
+                        labels.put(labelId, new LabelEntry(null, 0L, true));
+                        definition = labelId;
+                        continue;
                     }
                 }
                 skipValue(depth + 1);
@@ -4058,6 +4110,9 @@ public final class TableJson {
                 }
                 if (c == closing) {
                     p++;
+                    if (definition != 0L) {
+                        labels.get(definition).open = false;
+                    }
                     return;
                 }
                 bad = true;
@@ -4382,6 +4437,16 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct, fixed fixedClosure) (strin
 	}
 	b.WriteString("\n        public Value() {\n")
 	for _, f := range st.Fields {
+		if variableBornCount(f) > 0 {
+			// A `[M..N]T` IS BORN HOLDING M DEFAULT ELEMENTS (docs/SPEC-TABLES.md
+			// §22.2, ir.Field.BornCount), never zero: a fresh value is a value
+			// its own writer may write, and the one it elides.
+			fmt.Fprintf(&b, "            for (int i = 0; i < %d; i++) {\n                %s.add(%s);\n", variableBornCount(f), varMember(f), variableDefault(variableElement(f)))
+			if isPointerArray(f) {
+				fmt.Fprintf(&b, "                %sIdx.add(0L);\n", varMember(f))
+			}
+			b.WriteString("            }\n")
+		}
 		if f.KeyEnum != "" {
 			fmt.Fprintf(&b, "            for (int i = 0; i < %d; i++) {\n                %s.add(%s);\n", f.ArrayBound, varMember(f), variableDefault(variableElement(f)))
 			if f.Type.Pointer {
@@ -4612,14 +4677,15 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct, fixed fixedClosure) (strin
 	// load
 	fmt.Fprintf(&b, "    public static Value load(byte[] data, TableVariable.Report report) {\n")
 	fmt.Fprintf(&b, "        if (report == null) { report = new TableVariable.Report(); }\n")
+	fmt.Fprintf(&b, "        report.reset();\n")
 	if st.Integrity != "" {
 		fmt.Fprintf(&b, "        byte[] wire = TableVariable.integrityOpen(data, report);\n")
-		fmt.Fprintf(&b, "        if (wire == null) { return null; }\n")
+		fmt.Fprintf(&b, "        if (wire == null) { report.settleDamage(); return null; }\n")
 		fmt.Fprintf(&b, "        TableVariable.Reader r = TableVariable.open(wire, report);\n")
 	} else {
 		fmt.Fprintf(&b, "        TableVariable.Reader r = TableVariable.open(data, report);\n")
 	}
-	fmt.Fprintf(&b, "        if (r == null) { return null; }\n")
+	fmt.Fprintf(&b, "        if (r == null) { report.settleDamage(); return null; }\n")
 	fmt.Fprintf(&b, "        Value v = new Value();\n")
 	if st.FixedDeclared {
 		if !hasFixedFile(u, st) {
@@ -4635,7 +4701,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct, fixed fixedClosure) (strin
 			fmt.Fprintf(&b, "        TableVariable.settleNonFinite(report);\n")
 			fmt.Fprintf(&b, "        if (report.refused) { return null; }\n")
 			fmt.Fprintf(&b, "        // DAMAGE DISCARDS THE WHOLE LOAD (§4)\n")
-			fmt.Fprintf(&b, "        if (report.damaged) { return null; }\n")
+			fmt.Fprintf(&b, "        if (report.damaged) { report.settleDamage(); return null; }\n")
 			fmt.Fprintf(&b, "        return v;\n")
 		}
 		fmt.Fprintf(&b, "    }\n\n")
@@ -4706,7 +4772,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct, fixed fixedClosure) (strin
 		fmt.Fprintf(&b, "            }\n")
 		fmt.Fprintf(&b, "        }\n")
 		fmt.Fprintf(&b, "        // DAMAGE DISCARDS THE WHOLE LOAD (§4)\n")
-		fmt.Fprintf(&b, "        if (report.damaged) { return null; }\n")
+		fmt.Fprintf(&b, "        if (report.damaged) { report.settleDamage(); return null; }\n")
 		fmt.Fprintf(&b, "        return v;\n")
 		fmt.Fprintf(&b, "    }\n\n")
 	}
@@ -5174,6 +5240,9 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 
 		fmt.Fprintf(b, "    public static Value fromJson(byte[] text, TableVariable.Report report) {\n")
 		fmt.Fprintf(b, "        TableJson.In in = new TableJson.In(text, report);\n")
+		if ir.VariableTables(u)[st.Name] {
+			fmt.Fprintf(b, "        in.graph = true;\n")
+		}
 		fmt.Fprintf(b, "        in.byteOrderMark();\n")
 		fmt.Fprintf(b, "        Value v = new Value();\n")
 		fmt.Fprintf(b, "        jsonReadFields(in, v, 0);\n")
@@ -5183,7 +5252,7 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		fmt.Fprintf(b, "        if (in.bad || in.p != text.length) { report.damaged = true; }\n")
 		fmt.Fprintf(b, "        if (report.refused) { return null; }\n")
 		fmt.Fprintf(b, "        // DAMAGE DISCARDS THE WHOLE TEXT READ (§4, §16.2)\n")
-		fmt.Fprintf(b, "        if (report.damaged) { return null; }\n")
+		fmt.Fprintf(b, "        if (report.damaged) { report.settleDamage(); return null; }\n")
 		fmt.Fprintf(b, "        return v;\n")
 		fmt.Fprintf(b, "    }\n\n")
 	}
@@ -5894,6 +5963,11 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		return
 	}
 	m := varMember(f)
+	if variableBornCount(f) > 0 {
+		// the text names the array whole: the born elements a fresh value
+		// holds (§22.2) are replaced, never appended to
+		fmt.Fprintf(b, "                if (in.peek() == '[') { v.%s.clear(); }\n", m)
+	}
 	switch {
 	case isPointerArray(f):
 		target := f.Type.Ref.(*ir.Struct)
@@ -6579,10 +6653,54 @@ func writeArrayFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	writeArrayFieldSaveRef(b, f, "F_"+varMember(f))
 }
 
+// variableBornCount is the element count a fresh value of f holds: a counted
+// array's minimum (ir.Field.BornCount), else 0. An optional array is absent
+// at birth, and a keyed array has its own pre-filled slots.
+func variableBornCount(f *ir.Field) int64 {
+	if f.Array != ir.ArrayCounted || f.KeyEnum != "" || f.Type.Optional {
+		return 0
+	}
+	return f.BornCount()
+}
+
+// variableBornElemDefault is the test that one element of a counted array,
+// read from expr, is at its default: a scalar by its value (a float by its
+// bits), an enum or a union by the zero reference, a pointer by null, a
+// table by a body that is its terminator alone.
+func variableBornElemDefault(f *ir.Field, expr string) string {
+	one := variableElement(f)
+	switch {
+	case isPointerArray(f):
+		return expr + "==null"
+	case ir.TextListPlain(f):
+		return "(" + expr + "==null||" + expr + ".value==null||" + expr + ".value.isEmpty())"
+	}
+	return variableDefaultTest(one, expr)
+}
+
+// variableRidesGuard emits, at the method body's level, the birth test of
+// the array field f held in owner, and returns the condition under which the
+// field rides. THE BIRTH VALUE ELIDES (docs/SPEC-TABLES.md §22.2; the
+// engine's encodeArray `allBirth`): a `[M..N]T`, not optional and not
+// required, holding exactly M elements every one at its default rides
+// nothing, as an empty array does; M+1 default elements, or M with one live,
+// ride.
+func variableRidesGuard(b *strings.Builder, f *ir.Field, owner string) string {
+	m := varMember(f)
+	list := owner + "." + m
+	if variableBornCount(f) == 0 || f.Required {
+		return "!" + list + ".isEmpty()"
+	}
+	born := "born_" + m
+	fmt.Fprintf(b, "        boolean %s = %s.size() == %d;\n", born, list, f.BornCount())
+	fmt.Fprintf(b, "        for (int i = 0; %s && i < %d; i++) { if (!(%s)) { %s = false; } }\n", born, f.BornCount(), variableBornElemDefault(f, list+".get(i)"), born)
+	return "!" + list + ".isEmpty() && !" + born
+}
+
 func writeArrayFieldSaveRef(b *strings.Builder, f *ir.Field, fieldRef string) {
 	m := varMember(f)
 	ek := variableElemWireKind(f)
-	fmt.Fprintf(b, "        if (!v.%s.isEmpty()) {\n", m)
+	fmt.Fprintf(b, "        if (%s) {\n", variableRidesGuard(b, f, "v"))
 	fmt.Fprintf(b, "            w.putLeb(w.ref(%s)); w.put8(14);\n", fieldRef)
 	fmt.Fprintf(b, "            int list = w.off;\n")
 	fmt.Fprintf(b, "            w.put8(%d); w.putLeb(v.%s.size());\n", ek, m)
@@ -6696,7 +6814,7 @@ func writeFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) 
 	switch {
 	case isPointerArray(f):
 		target := f.Type.Ref.(*ir.Struct)
-		fmt.Fprintf(b, "        if (!v.%s.isEmpty()) {\n", m)
+		fmt.Fprintf(b, "        if (%s) {\n", variableRidesGuard(b, f, "v"))
 		fmt.Fprintf(b, "            w.putLeb(w.ref(F_%s)); w.put8(14);\n", m)
 		fmt.Fprintf(b, "            int list = w.off;\n")
 		fmt.Fprintf(b, "            w.put8(17); w.putLeb(v.%s.size());\n", m)
@@ -6708,7 +6826,7 @@ func writeFieldSave(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) 
 		fmt.Fprintf(b, "        }\n")
 	case isStructArray(f):
 		target := f.Type.Ref.(*ir.Struct)
-		fmt.Fprintf(b, "        if (!v.%s.isEmpty()) {\n", m)
+		fmt.Fprintf(b, "        if (%s) {\n", variableRidesGuard(b, f, "v"))
 		fmt.Fprintf(b, "            w.putLeb(w.ref(F_%s)); w.put8(14);\n", m)
 		fmt.Fprintf(b, "            int list = w.off;\n")
 		if ir.TextListPlain(f) {
