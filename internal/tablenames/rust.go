@@ -74,6 +74,7 @@ func init() {
 		Name{Name: "TableNodeTableId", What: "the reserved node-table id (§3.1)", RustConst: true},
 		Name{Name: "TableBuildVersionFieldId", What: "the reserved id the announcement's build-version field rides under (§3.3)", RustConst: true},
 		Name{Name: "TableMessageVocabularyFieldId", What: "the reserved id the announcement's vocabulary field rides under (§3.3)", RustConst: true},
+		Name{Name: "TableAnnouncementTooLarge", What: "whether the vocabulary is past the readers' entry maximum, so the writer refuses (§3.3)", RustConst: true},
 		Name{Name: "TableMessageMaxBytes", What: "the announcement's conforming byte bound (§3.3)", RustConst: true},
 		Name{Name: "TableReason", What: "the message form's refusal reasons, each one by name"},
 		Name{Name: "TableFiniteF32", What: "the raw-bits test every read runs before a float32's bits become a value (§3.3)", Scoped: true},

@@ -23,7 +23,7 @@ const Luau Backend = 1 << 10
 // emits, by the file that returns the table.
 var luauModuleKeys = map[string][]string{
 	"a schema file's table module (<Base>Table.luau)": {
-		"TableMessageAnnouncement", "TableMessageAnnouncementLength", "TableMessageBuildVersion",
+		"Announce", "AnnounceMeasure", "TableMessageAnnouncement", "TableMessageAnnouncementLength", "TableMessageBuildVersion",
 		"TableMessageEntriesHere", "TableMessageRefBits",
 	},
 	"schema_block.luau":     {"BLOCK_ALIGN", "Begin", "alignUp", "elemAlign"},

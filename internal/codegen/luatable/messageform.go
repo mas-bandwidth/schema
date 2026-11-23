@@ -58,6 +58,16 @@ func emitMessageForm(m *Module) error {
 	m.Printf("_M.MessageRefBits = %d\n", refBits)
 	m.Printf("_M.MessageEntries = %d\n", len(vocab))
 	m.Printf("_M.Announcement = %s\n\n", lua.ByteString(announce))
+	// R8 follow-up: the announcement WRITER refuses a vocabulary past the
+	// readers' default entry maximum (docs/SPEC-TABLES.md §3.3): Announce
+	// answers nil and the reason, AnnounceMeasure answers -1.
+	if len(tablewire.MessageVocabulary(u)) > ir.TableVocabularyMaxEntries {
+		m.Printf("function _M.AnnounceMeasure()\n  return -1\nend\n")
+		m.Printf("function _M.Announce()\n  return nil, \"vocabulary_too_large\"\nend\n\n")
+	} else {
+		m.Printf("function _M.AnnounceMeasure()\n  return #_M.Announcement\nend\n")
+		m.Printf("function _M.Announce()\n  return _M.Announcement\nend\n\n")
+	}
 	m.Printf("_M.MessageVersionId = %s\n", idLit(messageVersionID))
 	m.Printf("_M.MessageVocabularyId = %s\n", idLit(messageVocabularyID))
 	m.Printf("_M.MessageNodeId = %s\n", idLit(messageNodeID))

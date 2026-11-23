@@ -298,7 +298,11 @@ macro_rules! message_ops {
             let mut entries = vec![$k::TableMessageEntry::default(); 4096];
             let mut vocab = $k::TableVocabulary::new(&mut entries);
             if announced {
-                let mut own = vec![0u8; $k::announce_measure()];
+                let own_len = $k::announce_measure();
+                if own_len < 0 {
+                    return "error: the unit's own announcement measure refused".to_string();
+                }
+                let mut own = vec![0u8; own_len as usize];
                 $k::announce(&mut own);
                 let mut ar = $k::TableReport::default();
                 if !$k::announce_read(&mut vocab, &own, &mut ar) || ar.damaged {
