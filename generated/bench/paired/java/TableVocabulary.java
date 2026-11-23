@@ -914,13 +914,13 @@ public final class TableVocabulary {
     private static final long tableBuildVersion = 0xba2dad78ebdbfff0L;
 
     public static int announceMeasure() {
-        return tableAnnouncement.length;
+        return false ? -1 : tableAnnouncement.length;
     }
 
     // Copy the announcement into the caller's buffer and answer its length, or
     // -1 when the buffer is too small (the C++ reference's `-1`, §3.3).
     public static int announce(byte[] buffer) {
-        if (buffer == null || buffer.length < tableAnnouncement.length) {
+        if (false || buffer == null || buffer.length < tableAnnouncement.length) {
             return -1;
         }
         java.lang.System.arraycopy(tableAnnouncement, 0, buffer, 0, tableAnnouncement.length);

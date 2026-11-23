@@ -42,6 +42,15 @@ func emitMessageForm(g *Gen) error {
 	g.Pf("-- compile-time constant, registered once with the message runtime.\n")
 	g.Pf("%s.TableMessageAnnouncement = %s.unit(%s)\n", g.Self, ms, luaString(ann))
 	g.Pf("%s.TableMessageAnnouncementLength = %d\n", g.Self, len(ann))
+	// R8 follow-up: the announcement WRITER refuses a vocabulary past the
+	// readers' default entry maximum (docs/SPEC-TABLES.md §3.3).
+	if len(tablewire.MessageVocabulary(g.Unit)) > ir.TableVocabularyMaxEntries {
+		g.Pf("function %s.AnnounceMeasure() return -1 end\n", g.Self)
+		g.Pf("function %s.Announce() return nil, \"vocabulary_too_large\" end\n", g.Self)
+	} else {
+		g.Pf("function %s.AnnounceMeasure() return %s.TableMessageAnnouncementLength end\n", g.Self, g.Self)
+		g.Pf("function %s.Announce() return %s.TableMessageAnnouncement end\n", g.Self, g.Self)
+	}
 	g.Pf("%s.TableMessageRefBits = %d\n", g.Self, ir.TableMessageRefBits(len(vocabulary)))
 	g.Pf("%s.TableMessageEntriesHere = %d\n", g.Self, len(vocabulary))
 	g.Pf("%s.TableMessageBuildVersion = %s -- the eight little-endian bytes of the build version\n\n", g.Self, IdLit(ir.BuildVersion(g.Unit)))

@@ -92,6 +92,15 @@ func tableMessageRuntime(u *ir.Unit) string {
 	}
 	b.WriteString("}\n")
 	runtime := goMessageRuntime
+	// R8 follow-up: the announcement WRITER refuses a vocabulary past the
+	// readers' default entry maximum (docs/SPEC-TABLES.md §3.3). The refusing
+	// unit swaps in two writers that answer -1; every other unit keeps the
+	// runtime byte for byte (one per-unit text, so the shared runtime hoists
+	// nothing and the size budget does not move).
+	if len(tablewire.MessageVocabulary(u)) > ir.TableVocabularyMaxEntries {
+		runtime = tableSourceReplace(runtime, "func AnnounceMeasure()int64{return int64(len(tableAnnouncement))}", "func AnnounceMeasure()int64{return -1}", 1)
+		runtime = tableSourceReplace(runtime, "func Announce(buffer []byte)int64{if len(buffer)<len(tableAnnouncement){return -1};copy(buffer,tableAnnouncement[:]);return int64(len(tableAnnouncement))}", "func Announce(buffer []byte)int64{return -1}", 1)
+	}
 	// THE MESSAGE FORM'S TRAILER (docs/SPEC-TABLES.md §2.14, §3.3): when a
 	// table of the unit declares `integrity`, the batch open also checks the
 	// batch's CRC-32C trailer before any body is decoded. A unit with no

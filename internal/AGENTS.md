@@ -20,6 +20,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `githooks/` | temp-repo tests for the .githooks/pre-push hook range and no-verify rules | `go test ./internal/githooks` | `go test ./internal/githooks` |
 | `goldens/` | source, id, and wire pins | `go test ./internal/goldens` | `make update-goldens` |
 | `goname/` | Go member spelling (initialisms) | `go test ./internal/goname` | `go test ./internal/goname` |
+| `idcapwire/` | the retain-writer id cap test file builder | `go test ./internal/tablewire` | `go test ./internal/tablewire` |
 | `inputfamilies/` | shared test-input families and derived reader legs | `go test ./internal/inputfamilies` | `go test ./internal/inputfamilies` |
 | `jsontestsuite/` | JSONTestSuite oracle harness | `go test ./internal/tabletext` | `go test ./internal/tabletext -run JSONTestSuite` |
 | `languages/` | the supported-language list, derived | `go test ./internal/languages` | `go test ./internal/languages` |

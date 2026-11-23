@@ -35,8 +35,10 @@ func emitMessageForm(g *lobster.Gen) error {
 	g.Import("message")
 	g.Pf("// %sMessageUnit — the unit's announcement and build version, the message\n", base)
 	g.Pf("// form's compile-time constants (docs/SPEC-TABLES.md §3.3)\n")
-	g.Pf("let _%sMessageUnit = %s.message_unit(%s, %s)\n", base, rt, lobster.StringLit(tablewire.Announce(u)),
-		lobster.IntLit(new(big.Int).SetUint64(ir.BuildVersion(u))))
+	// R8 follow-up: the announcement WRITER refuses a vocabulary past the
+	// readers' default entry maximum (docs/SPEC-TABLES.md §3.3).
+	g.Pf("let _%sMessageUnit = %s.message_unit(%s, %s, %t)\n", base, rt, lobster.StringLit(tablewire.Announce(u)),
+		lobster.IntLit(new(big.Int).SetUint64(ir.BuildVersion(u))), len(tablewire.MessageVocabulary(u)) > ir.TableVocabularyMaxEntries)
 	var structs []*ir.Struct
 	for _, st := range g.File.Tables {
 		if reach[st.Name] {
