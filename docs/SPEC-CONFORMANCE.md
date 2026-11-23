@@ -42,7 +42,7 @@ conformance:
   Run on a target with `make verify-tablegen-<lang>`. To select this pair
   alone, pass `--only pin:bytes_lineage:` to `build/verify-tablegen-bin`.
 - **The compressed-float packet writer cases**: the [shared caller cases](../test/packet-write-cfloat/cases.txt)
-  and the Go-only [endpoint pins](../test/packet-cfloat-endpoints/ratio-endpoints.txt)
+  and the Go and JavaScript [endpoint pins](../test/packet-cfloat-endpoints/ratio-endpoints.txt)
   are listed under [compressed float packet writes](#compressed-float-packet-writes).
 - **The packet end pins**: [packet-end](../testdata/wire/packet-end/README.md)
   includes the [logical bit count case](#packet-end-and-the-logical-bit-count).
@@ -454,7 +454,9 @@ positive zero.
 The [endpoint cases](../test/packet-cfloat-endpoints/ratio-endpoints.txt) pin the seven-bit
 step indices 0 and 100 and their zero-padded packet bytes `00` and `64`.
 `make packet-cfloat-endpoints-go` writes each endpoint through the generated Go
-packet writer, checks the exact byte, and reads back the original value.
+packet writer. `make packet-cfloat-endpoints-js` does the same independently
+through the generated JavaScript runtime and flat writers and readers. Both
+gates check seven logical bits, the exact padded byte, and the original readback.
 
 
 ### Variable-table write bounds
