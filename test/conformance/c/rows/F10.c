@@ -68,7 +68,7 @@ int main( void )
 
     memset( &back, 0x5A, sizeof( back ) );
     memset( &defaults, 0x5A, sizeof( defaults ) );
-    cell_reset( &defaults );
+    tblv1_cell_reset( &defaults );
     memset( &r, 0, sizeof( r ) );
 
     n = tblv1_cell_fixed_load( &back, 1, wire, bytes, NULL, 0, NULL, &r );
