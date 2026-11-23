@@ -4842,6 +4842,11 @@ String? jsonHostileReport(String unit, String root, String text) {
         final v = mapdemo.textFromJson(text, r);
         encode = () => mapdemo.textToJson(v);
         break;
+      case 'mapdemo EdgeRow':
+        r = mapdemo.TableTextReport();
+        final v = mapdemo.edgeRowFromJson(text, r);
+        encode = () => mapdemo.edgeRowToJson(v);
+        break;
       case 'mapdemo Depth':
         r = mapdemo.TableTextReport();
         final v = mapdemo.depthFromJson(text, r);
