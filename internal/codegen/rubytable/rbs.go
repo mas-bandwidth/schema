@@ -93,6 +93,8 @@ func emitRBS(u *ir.Unit, mod string, plans []*filePlan, surfaces Surfaces, hasMe
     attr_accessor widened: Integer
     attr_accessor retained: Integer
     attr_accessor retain_lost: Integer
+    attr_accessor refused: bool
+    attr_accessor reason: String
     def initialize: () -> void
     def reset: () -> void
   end
@@ -133,6 +135,7 @@ func emitRBS(u *ir.Unit, mod string, plans []*filePlan, surfaces Surfaces, hasMe
   def self._s_fixed_measure: (String cls_name, untyped count) -> Integer
   def self._s_fixed_save: (String cls_name, untyped cls_obj, untyped values) -> String
   def self._s_fixed_load: (String cls_name, untyped data, ?untyped capacity, ?LoadReport? report, ?untyped plan_capacity) -> ::Array[untyped]
+  def self._s_fixed_load_into: (String cls_name, untyped targets, untyped data, ?untyped capacity, ?LoadReport? report, ?untyped plan_capacity) -> Integer
 `)
 	}
 	b.WriteString(`
@@ -278,6 +281,8 @@ func emitRBS(u *ir.Unit, mod string, plans []*filePlan, surfaces Surfaces, hasMe
 
 	if hasMessage {
 		b.WriteString("\n  ANNOUNCEMENT: String\n")
+		b.WriteString("  ANNOUNCE_ENTRIES: Integer\n")
+		b.WriteString("  ANNOUNCE_TOO_LARGE: bool\n")
 		b.WriteString("  class MessageVocabulary < SchemaTable::MessageVocabulary\n")
 		b.WriteString("    def initialize: (?strict: bool) -> void\n")
 		b.WriteString("  end\n")
@@ -287,6 +292,7 @@ func emitRBS(u *ir.Unit, mod string, plans []*filePlan, surfaces Surfaces, hasMe
 		b.WriteString("  def self.save_messages: (untyped root, untyped values) -> String\n")
 		b.WriteString("  def self.measure_messages: (untyped root, untyped values) -> Integer\n")
 		b.WriteString("  def self.load_messages: (untyped root, untyped vocab, untyped data, ?Integer capacity, ?untyped report) -> ::Array[untyped]\n")
+		b.WriteString("  def self.load_messages_into: (untyped root, untyped targets, untyped vocab, untyped data, ?Integer capacity, ?untyped report) -> Integer\n")
 	}
 	if surfaces.View {
 		b.WriteString("\n  def self.unit_view: () -> SchemaTable::UnitViewInfo\n")
@@ -467,6 +473,7 @@ func emitRBS(u *ir.Unit, mod string, plans []*filePlan, surfaces Surfaces, hasMe
 			b.WriteString("    def ==: (untyped other) -> bool\n")
 			b.WriteString("    def inspect: () -> String\n")
 			fmt.Fprintf(&b, "    def self.load: (untyped data, ?untyped report) -> %s\n", ruby.ClassName(st.Name))
+			fmt.Fprintf(&b, "    def self.load_into: (%s target, untyped data, ?untyped report) -> bool\n", ruby.ClassName(st.Name))
 			b.WriteString("    def save: () -> String\n")
 			b.WriteString("    def measure: () -> Integer\n")
 			fmt.Fprintf(&b, "    def self.measure: (%s value) -> Integer\n", ruby.ClassName(st.Name))
@@ -476,6 +483,7 @@ func emitRBS(u *ir.Unit, mod string, plans []*filePlan, surfaces Surfaces, hasMe
 			}
 			if surfaces.Fixed && fixedRootAdmitted(u, st) {
 				fmt.Fprintf(&b, "    def self.fixed_load: (untyped data, ?untyped capacity, ?untyped report, ?untyped plan_capacity, **untyped opts) -> ::Array[%s]\n", ruby.ClassName(st.Name))
+				fmt.Fprintf(&b, "    def self.fixed_load_into: (untyped targets, untyped data, ?untyped capacity, ?untyped report, ?untyped plan_capacity, **untyped opts) -> Integer\n")
 				fmt.Fprintf(&b, "    def self.fixed_save: (untyped values) -> String\n")
 				b.WriteString("    def self.fixed_measure: (untyped count) -> Integer\n")
 			}
@@ -486,6 +494,7 @@ func emitRBS(u *ir.Unit, mod string, plans []*filePlan, surfaces Surfaces, hasMe
 			}
 			if surfaceCarries(surfaces, st, "json") {
 				fmt.Fprintf(&b, "    def self.from_json: (untyped text, ?untyped report) -> %s\n", ruby.ClassName(st.Name))
+				fmt.Fprintf(&b, "    def self.from_json_into: (%s target, untyped text, ?untyped report) -> bool\n", ruby.ClassName(st.Name))
 				b.WriteString("    def to_json: (*untyped) -> String\n")
 				if surfaces.TextForm {
 					b.WriteString("    def self.from_text_form: (untyped text, ?max_bytes: Integer, ?max_tokens: Integer, ?max_nodes: Integer, ?max_allocation: Integer, ?max_depth: Integer) -> SchemaTable::TextDocument\n")
@@ -497,6 +506,7 @@ func emitRBS(u *ir.Unit, mod string, plans []*filePlan, surfaces Surfaces, hasMe
 			if surfaceCarries(surfaces, st, "block") {
 				b.WriteString("    def self.block_open: (untyped data, ?build_version: untyped, ?base_offset: Integer) -> SchemaTable::Block\n")
 				b.WriteString("    def self.block_begin: (?untyped counts) -> SchemaTable::Block\n")
+				b.WriteString("    def self.block_begin_from: (untyped value) -> SchemaTable::Block\n")
 				b.WriteString("    def self.block_max_bytes: () -> Integer\n")
 			}
 			if surfaceCarries(surfaces, st, "cook") {

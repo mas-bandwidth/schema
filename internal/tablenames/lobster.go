@@ -137,7 +137,7 @@ var lobsterRuntimeNames = map[string][]string{
 		"json_text_list_registry", "json_text_total", "json_text_total_registry", "json_write",
 	},
 	"load.lobster": {
-		"IdSet", "float_in_range", "idset_add", "idset_has",
+		"IdSet", "float_in_range", "idset_add", "idset_has", "load_into",
 		"declares",
 		"FixedRecordCodec", "fixed_record_codecs", "fixed_record_codec", "register_fixed_record_codec",
 		"ArrayShape", "EnumShape", "KeyedKeys", "KeyedShape", "LoadReport", "LoadState", "MapShape", "Node",

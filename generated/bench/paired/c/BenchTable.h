@@ -7370,6 +7370,7 @@ static SCHEMA_UNUSED int bench_mixed_entity_save_body( bench_table_writer_t * w,
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_bench_mixed_entity_write_admits_( const bench_mixed_entity_t * value );
 static SCHEMA_UNUSED int64_t bench_mixed_entity_measure( const bench_mixed_entity_t * value )
 {
     bench_table_write_ids_t vocabulary;
@@ -8877,7 +8878,11 @@ static SCHEMA_UNUSED int64_t bench_mixed_entity_measure_messages( const bench_mi
     bench_table_bit_put( &w, 2, 8 );
     bench_table_bit_put( &w, (uint64_t) ( count - 1 ), 8 );
     for ( i = 0; i < count; i++ )
+    {
         if ( !bench_mixed_entity_save_message_body( &w, values + i ) ) return -1;
+        schema_assert( schema_bench_mixed_entity_write_admits_( values + i ) );
+        /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     bench_table_bit_align_write( &w );
     return w.overflow ? -1 : w.bits / 8;
 }
@@ -8900,7 +8905,11 @@ static SCHEMA_UNUSED int64_t bench_mixed_entity_save_messages( const bench_mixed
     bench_table_bit_put( &w, 2, 8 );
     bench_table_bit_put( &w, (uint64_t) ( count - 1 ), 8 );
     for ( i = 0; i < count; i++ )
+    {
         if ( !bench_mixed_entity_save_message_body( &w, values + i ) ) return -1;
+        schema_assert( schema_bench_mixed_entity_write_admits_( values + i ) );
+        /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     bench_table_bit_align_write( &w );
     return w.overflow ? -1 : w.bits / 8;
 }
@@ -9659,6 +9668,7 @@ static SCHEMA_UNUSED int bench_mixed_stat_save_body( bench_table_writer_t * w, c
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_bench_mixed_stat_write_admits_( const bench_mixed_stat_t * value );
 static SCHEMA_UNUSED int64_t bench_mixed_stat_measure( const bench_mixed_stat_t * value )
 {
     bench_table_write_ids_t vocabulary;
@@ -9928,7 +9938,11 @@ static SCHEMA_UNUSED int64_t bench_mixed_stat_measure_messages( const bench_mixe
     bench_table_bit_put( &w, 2, 8 );
     bench_table_bit_put( &w, (uint64_t) ( count - 1 ), 8 );
     for ( i = 0; i < count; i++ )
+    {
         if ( !bench_mixed_stat_save_message_body( &w, values + i ) ) return -1;
+        schema_assert( schema_bench_mixed_stat_write_admits_( values + i ) );
+        /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     bench_table_bit_align_write( &w );
     return w.overflow ? -1 : w.bits / 8;
 }
@@ -9951,7 +9965,11 @@ static SCHEMA_UNUSED int64_t bench_mixed_stat_save_messages( const bench_mixed_s
     bench_table_bit_put( &w, 2, 8 );
     bench_table_bit_put( &w, (uint64_t) ( count - 1 ), 8 );
     for ( i = 0; i < count; i++ )
+    {
         if ( !bench_mixed_stat_save_message_body( &w, values + i ) ) return -1;
+        schema_assert( schema_bench_mixed_stat_write_admits_( values + i ) );
+        /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     bench_table_bit_align_write( &w );
     return w.overflow ? -1 : w.bits / 8;
 }
@@ -10183,6 +10201,7 @@ static SCHEMA_UNUSED int bench_mixed_hit_event_save_body( bench_table_writer_t *
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_bench_mixed_hit_event_write_admits_( const bench_mixed_hit_event_t * value );
 static SCHEMA_UNUSED int64_t bench_mixed_hit_event_measure( const bench_mixed_hit_event_t * value )
 {
     bench_table_write_ids_t vocabulary;
@@ -10645,7 +10664,11 @@ static SCHEMA_UNUSED int64_t bench_mixed_hit_event_measure_messages( const bench
     bench_table_bit_put( &w, 2, 8 );
     bench_table_bit_put( &w, (uint64_t) ( count - 1 ), 8 );
     for ( i = 0; i < count; i++ )
+    {
         if ( !bench_mixed_hit_event_save_message_body( &w, values + i ) ) return -1;
+        schema_assert( schema_bench_mixed_hit_event_write_admits_( values + i ) );
+        /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     bench_table_bit_align_write( &w );
     return w.overflow ? -1 : w.bits / 8;
 }
@@ -10668,7 +10691,11 @@ static SCHEMA_UNUSED int64_t bench_mixed_hit_event_save_messages( const bench_mi
     bench_table_bit_put( &w, 2, 8 );
     bench_table_bit_put( &w, (uint64_t) ( count - 1 ), 8 );
     for ( i = 0; i < count; i++ )
+    {
         if ( !bench_mixed_hit_event_save_message_body( &w, values + i ) ) return -1;
+        schema_assert( schema_bench_mixed_hit_event_write_admits_( values + i ) );
+        /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     bench_table_bit_align_write( &w );
     return w.overflow ? -1 : w.bits / 8;
 }
@@ -10954,6 +10981,7 @@ static SCHEMA_UNUSED int bench_mixed_chat_event_save_body( bench_table_writer_t 
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_bench_mixed_chat_event_write_admits_( const bench_mixed_chat_event_t * value );
 static SCHEMA_UNUSED int64_t bench_mixed_chat_event_measure( const bench_mixed_chat_event_t * value )
 {
     bench_table_write_ids_t vocabulary;
@@ -11271,7 +11299,11 @@ static SCHEMA_UNUSED int64_t bench_mixed_chat_event_measure_messages( const benc
     bench_table_bit_put( &w, 2, 8 );
     bench_table_bit_put( &w, (uint64_t) ( count - 1 ), 8 );
     for ( i = 0; i < count; i++ )
+    {
         if ( !bench_mixed_chat_event_save_message_body( &w, values + i ) ) return -1;
+        schema_assert( schema_bench_mixed_chat_event_write_admits_( values + i ) );
+        /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     bench_table_bit_align_write( &w );
     return w.overflow ? -1 : w.bits / 8;
 }
@@ -11294,7 +11326,11 @@ static SCHEMA_UNUSED int64_t bench_mixed_chat_event_save_messages( const bench_m
     bench_table_bit_put( &w, 2, 8 );
     bench_table_bit_put( &w, (uint64_t) ( count - 1 ), 8 );
     for ( i = 0; i < count; i++ )
+    {
         if ( !bench_mixed_chat_event_save_message_body( &w, values + i ) ) return -1;
+        schema_assert( schema_bench_mixed_chat_event_write_admits_( values + i ) );
+        /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     bench_table_bit_align_write( &w );
     return w.overflow ? -1 : w.bits / 8;
 }
@@ -11500,6 +11536,7 @@ static SCHEMA_UNUSED int bench_mixed_pickup_event_save_body( bench_table_writer_
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_bench_mixed_pickup_event_write_admits_( const bench_mixed_pickup_event_t * value );
 static SCHEMA_UNUSED int64_t bench_mixed_pickup_event_measure( const bench_mixed_pickup_event_t * value )
 {
     bench_table_write_ids_t vocabulary;
@@ -11817,7 +11854,11 @@ static SCHEMA_UNUSED int64_t bench_mixed_pickup_event_measure_messages( const be
     bench_table_bit_put( &w, 2, 8 );
     bench_table_bit_put( &w, (uint64_t) ( count - 1 ), 8 );
     for ( i = 0; i < count; i++ )
+    {
         if ( !bench_mixed_pickup_event_save_message_body( &w, values + i ) ) return -1;
+        schema_assert( schema_bench_mixed_pickup_event_write_admits_( values + i ) );
+        /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     bench_table_bit_align_write( &w );
     return w.overflow ? -1 : w.bits / 8;
 }
@@ -11840,7 +11881,11 @@ static SCHEMA_UNUSED int64_t bench_mixed_pickup_event_save_messages( const bench
     bench_table_bit_put( &w, 2, 8 );
     bench_table_bit_put( &w, (uint64_t) ( count - 1 ), 8 );
     for ( i = 0; i < count; i++ )
+    {
         if ( !bench_mixed_pickup_event_save_message_body( &w, values + i ) ) return -1;
+        schema_assert( schema_bench_mixed_pickup_event_write_admits_( values + i ) );
+        /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     bench_table_bit_align_write( &w );
     return w.overflow ? -1 : w.bits / 8;
 }
@@ -12571,6 +12616,7 @@ static SCHEMA_UNUSED int bench_bench_mixed_save_body( bench_table_writer_t * w, 
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_bench_bench_mixed_write_admits_( const bench_bench_mixed_t * value );
 static SCHEMA_UNUSED int64_t bench_bench_mixed_measure( const bench_bench_mixed_t * value )
 {
     bench_table_write_ids_t vocabulary;
@@ -15068,7 +15114,11 @@ static SCHEMA_UNUSED int64_t bench_bench_mixed_measure_messages( const bench_ben
     bench_table_bit_put( &w, 2, 8 );
     bench_table_bit_put( &w, (uint64_t) ( count - 1 ), 8 );
     for ( i = 0; i < count; i++ )
+    {
         if ( !bench_bench_mixed_save_message_body( &w, values + i ) ) return -1;
+        schema_assert( schema_bench_bench_mixed_write_admits_( values + i ) );
+        /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     bench_table_bit_align_write( &w );
     return w.overflow ? -1 : w.bits / 8;
 }
@@ -15091,7 +15141,11 @@ static SCHEMA_UNUSED int64_t bench_bench_mixed_save_messages( const bench_bench_
     bench_table_bit_put( &w, 2, 8 );
     bench_table_bit_put( &w, (uint64_t) ( count - 1 ), 8 );
     for ( i = 0; i < count; i++ )
+    {
         if ( !bench_bench_mixed_save_message_body( &w, values + i ) ) return -1;
+        schema_assert( schema_bench_bench_mixed_write_admits_( values + i ) );
+        /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     bench_table_bit_align_write( &w );
     return w.overflow ? -1 : w.bits / 8;
 }
@@ -16923,6 +16977,72 @@ static SCHEMA_UNUSED SCHEMA_BENCH_TABLE_INLINE void schema_bench_bench_mixed_fix
     ( *out_of_range ) += (int) ( value->idle_ticks < 0 ) | (int) ( value->idle_ticks > 15 );
 }
 
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value MixedEntity holds is
+   one its declaration admits. Every writer of MixedEntity asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_bench_mixed_entity_write_admits_( const bench_mixed_entity_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_bench_mixed_entity_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value MixedStat holds is
+   one its declaration admits. Every writer of MixedStat asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_bench_mixed_stat_write_admits_( const bench_mixed_stat_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_bench_mixed_stat_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value MixedHitEvent holds is
+   one its declaration admits. Every writer of MixedHitEvent asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_bench_mixed_hit_event_write_admits_( const bench_mixed_hit_event_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_bench_mixed_hit_event_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value MixedChatEvent holds is
+   one its declaration admits. Every writer of MixedChatEvent asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_bench_mixed_chat_event_write_admits_( const bench_mixed_chat_event_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_bench_mixed_chat_event_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value MixedPickupEvent holds is
+   one its declaration admits. Every writer of MixedPickupEvent asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_bench_mixed_pickup_event_write_admits_( const bench_mixed_pickup_event_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_bench_mixed_pickup_event_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value BenchMixed holds is
+   one its declaration admits. Every writer of BenchMixed asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_bench_bench_mixed_write_admits_( const bench_bench_mixed_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_bench_bench_mixed_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
 #define bench_mixed_entity_load_retain( ... ) ( (void) sizeof( struct { int retention_requires_variable_region_root : -1; } ) )
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */
@@ -17068,6 +17188,7 @@ static SCHEMA_UNUSED int schema_bench_bench_mixed_body_pack_( struct bench_table
     bench_table_cook_put( at + 40, (uint64_t) value->world_time, 8, order );
     bench_table_cook_put( at + 48, (uint64_t) value->frame_tick, 8, order );
     bench_table_cook_put( at + 56, (uint64_t) value->server_time, 4, order );
+    if ( value->entities_count < 1 || value->entities_count > 8 ) { return 0; }
     schema_assert( 1 <= value->entities_count && value->entities_count <= 8 );
     {
         int32_t cook_i1;
@@ -17077,6 +17198,7 @@ static SCHEMA_UNUSED int schema_bench_bench_mixed_body_pack_( struct bench_table
         }
     }
     bench_table_cook_put( at + 64 + 512, (uint32_t) value->entities_count, 4, order );
+    if ( value->stats_count < 0 || value->stats_count > 80 ) { return 0; }
     {
         int32_t cook_i2;
         for ( cook_i2 = 0; cook_i2 < value->stats_count && cook_i2 < 80; cook_i2++ )

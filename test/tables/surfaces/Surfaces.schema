@@ -1,0 +1,83 @@
+package surfaces
+
+// THE UNIT OF THE 2026-11-22 SURFACES (docs/SPEC-CONFORMANCE.md §2): roots
+// that no other registered unit declares, each the shape one rule needs.
+
+// FL-11 (SPEC-TABLES §16.14 W2): the text writer judges its depth cap at each
+// table or type value only. A chain of 128 Links puts the last Link at depth
+// 128 and its `vals` array at depth 129: the array is written, and one Link
+// more is refused.
+table Link
+{
+    value int32
+    vals  [..4]int32
+    next  *Link
+}
+
+table Chain
+{
+    head *Link
+}
+
+// FL-16 (SPEC-TABLES §2.3): a null `*T | required` pointer is written as
+// index 0 and reads back null and present.
+table Leaf
+{
+    v int32
+}
+
+table Holder
+{
+    must  *Leaf | required
+    other int32
+}
+
+// SF-05, SF-06 (docs/SPEC.md §5.1 rows 1, 2, 10): a `fixed table` whose
+// record is past the fixed form's 65536-byte ceiling still rides the message
+// form, and its writer still checks every value.
+fixed table Big
+{
+    filler [70000]uint8
+    hp     int32 = 1 | min = 0, max = 10
+    mask   bits(6)
+    ratio  float32 | min = 0.0, max = 1.0, resolution = 0.01
+}
+
+// SF-22, SF-29 (docs/SPEC.md §5.1 row 3): a counted array below its Min is
+// refused by the variable save, the text writer and the cook; SF-28: a list
+// field holding no list is refused where a leg can hold one.
+table Counted
+{
+    few  [2..4]int32
+    tag  int32
+}
+
+// SF-23 (SPEC-TABLES §3.3): two declarations share the field name and kind
+// `hp int32` at different ranges; SaveMessages holds each value to its own
+// declaration's range.
+fixed table Narrow
+{
+    hp int32 = 1 | min = 0, max = 5
+}
+
+fixed table Wide
+{
+    hp int32 = 1 | min = 0, max = 10
+}
+
+// SF-34, SF-35, FL-22 (docs/SPEC.md §5.1; SPEC-TABLES §3 "never cut at N"): a
+// `[N]T` holds exactly N values and a `[E]T` one per variant, in every
+// writer. FL-06 (§5.1 row 9): a flags value with a bit no variant names is
+// kept by the file writers, refused by the text writer, and refused by the
+// message writer above the declared width.
+enum Hue { Red, Green, Blue }
+
+flags Marks { A, B, C }
+
+fixed table Arrays
+{
+    trio  [3]int32
+    per   [Hue]int32
+    marks Marks
+    name  string(8)
+}

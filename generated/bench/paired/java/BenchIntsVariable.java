@@ -1077,6 +1077,37 @@ public final class BenchIntsVariable {
         return v;
     }
 
+    static void copyInto(Value src, Value dst) {
+        dst.f0 = src.f0;
+        dst.f1 = src.f1;
+        dst.f2 = src.f2;
+        dst.f3 = src.f3;
+        dst.f4 = src.f4;
+        dst.f5 = src.f5;
+        dst.f6 = src.f6;
+        dst.f7 = src.f7;
+        dst.f8 = src.f8;
+        dst.f9 = src.f9;
+    }
+
+    public static boolean loadInto(Value target, byte[] data, TableVariable.Report report) {
+        if (report == null) {
+            report = new TableVariable.Report();
+        }
+        report.reset();
+        Value loaded = load(data, report);
+        if (loaded == null || report.refused || report.damaged) {
+            if (target != null) {
+                copyInto(new Value(), target);
+            }
+            return false;
+        }
+        if (target != null) {
+            copyInto(loaded, target);
+        }
+        return true;
+    }
+
     // loadMeasure sizes the region a strict load would need (docs/SPEC-TABLES.md §6.5).
     private static final long ALIGN = 16;
     private static final long RECORD_SIZE = 40;
@@ -1241,6 +1272,24 @@ public final class BenchIntsVariable {
             return null;
         }
         return v;
+    }
+
+    public static boolean fromJsonInto(Value target, byte[] text, TableVariable.Report report) {
+        if (report == null) {
+            report = new TableVariable.Report();
+        }
+        report.reset();
+        Value loaded = fromJson(text, report);
+        if (loaded == null || report.refused || report.damaged) {
+            if (target != null) {
+                copyInto(new Value(), target);
+            }
+            return false;
+        }
+        if (target != null) {
+            copyInto(loaded, target);
+        }
+        return true;
     }
 
     static void jsonFields(

@@ -7104,6 +7104,7 @@ inline bool ArmorPlateLoadMessages( ArmorPlate * values, int64_t * count, const 
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -7894,6 +7895,7 @@ inline bool ArmorConfigLoadMessages( ArmorConfig * values, int64_t * count, cons
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -8513,6 +8515,7 @@ inline bool FiringGroupLoadMessages( FiringGroup * values, int64_t * count, cons
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -9580,6 +9583,7 @@ inline bool GunnerSettingsLoadMessages( GunnerSettings * values, int64_t * count
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -9936,6 +9940,7 @@ inline bool GunnerSettingsCookBody( uint8_t * at, const GunnerSettings & value, 
 {
     // 32 slots of storage, value.firing_groups_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.firing_groups_count >= 0 && value.firing_groups_count <= 32 ); // storage invariant, debug only (§5.1)
+    if ( value.firing_groups_count < 0 || value.firing_groups_count > 32 ) { return false; }
     for ( int32_t i = 0; i < value.firing_groups_count; i++ )
     {
         if ( !FiringGroupCookBody( at + 0 + i * 8, value.firing_groups[i], order ) ) { return false; }
@@ -9943,6 +9948,7 @@ inline bool GunnerSettingsCookBody( uint8_t * at, const GunnerSettings & value, 
     table_cook_put( at + 256, (uint64_t) (uint32_t) value.firing_groups_count, 4, order );
     // 4 slots of storage, value.missile_groups_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.missile_groups_count >= 0 && value.missile_groups_count <= 4 ); // storage invariant, debug only (§5.1)
+    if ( value.missile_groups_count < 0 || value.missile_groups_count > 4 ) { return false; }
     for ( int32_t i = 0; i < value.missile_groups_count; i++ )
     {
         if ( !FiringGroupCookBody( at + 260 + i * 8, value.missile_groups[i], order ) ) { return false; }

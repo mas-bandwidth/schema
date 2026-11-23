@@ -10049,6 +10049,11 @@ inline TableMapCursor<Entry> TableMapOrder( const TableRegionCtx &, const TableM
     TableMapCursor<Entry> cursor;
     cursor.entries = map.Entries();
     cursor.count = map.count;
+    if ( cursor.count < 0 || ( cursor.count > 0 && cursor.entries == NULL ) ) { return cursor; }
+    for ( int32_t i = 1; i < cursor.count; i++ )
+    {
+        if ( TableEntryOrder( NULL, cursor.entries[i - 1], cursor.entries[i] ) >= 0 ) { return cursor; }
+    }
     cursor.ok = true;
     return cursor;
 }
@@ -10089,6 +10094,14 @@ inline TableMapCursor<Entry> TableMapOrder( const TableArena & arena, const Tabl
         return cursor;
     }
     TableMapSort( arena, order, map.count );
+    for ( int32_t i = 1; i < map.count; i++ )
+    {
+        if ( TableEntryOrder( &arena, *order[i - 1], *order[i] ) >= 0 )
+        {
+            table_release( arena.allocator, order );
+            return cursor;
+        }
+    }
     cursor.order = order;
     cursor.ok = true;
     return cursor;
@@ -15176,6 +15189,7 @@ inline bool CrewsMembersEntryCookBody( const Ctx & ctx, const TableCookRegion & 
 {
     table_cook_put( at + 0, (uint64_t) value.key, 4, order );
     schema_assert( value.value_count >= 0 && value.value_count <= 2 ); // storage invariant, debug only (§5.1)
+    if ( value.value_count < 0 || value.value_count > 2 ) { return false; }
     for ( int32_t i = 0; i < value.value_count; i++ ) // value: an array of pointers, the live slots, the rest zero
     {
         if ( !table_cook_ref( region, at + 8 + i * 8, (const void *) ItemAt( ctx, value.value[i] ), order ) ) { return false; }

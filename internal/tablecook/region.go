@@ -314,10 +314,19 @@ func (w *regionWriter) field(at int64, f *ir.Field, fv *tabletext.Field) error {
 		// index k-1, and nothing for None (§2.4). The wire rides them BY NAME
 		// (§3.2); the region rides them at the storage's own shifted positions,
 		// and the two meet in the enum's own values.
+		if int64(len(fv.Elems)) != f.ArrayBound {
+			return fmt.Errorf("field %s: keyed array holds %d elements, declared %d", f.Name, len(fv.Elems), f.ArrayBound)
+		}
 		return w.slots(value.Offset, f, fv.Elems, len(fv.Elems))
 	case f.Array == ir.ArrayFixed:
+		if int64(len(fv.Elems)) != f.ArrayBound {
+			return fmt.Errorf("field %s: fixed array holds %d elements, declared %d", f.Name, len(fv.Elems), f.ArrayBound)
+		}
 		return w.slots(value.Offset, f, fv.Elems, len(fv.Elems))
 	case f.Array == ir.ArrayCounted:
+		if fv.Count < 0 || int64(fv.Count) < f.ArrayMin || int64(fv.Count) > f.ArrayBound || fv.Count > len(fv.Elems) {
+			return fmt.Errorf("field %s: count %d outside [%d, %d]", f.Name, fv.Count, f.ArrayMin, f.ArrayBound)
+		}
 		// the live elements are written; a slot past the count is DEAD BYTES
 		// and stays the buffer's zero, and a pointer stored there is never
 		// followed (docs/SPEC-TABLES.md §7.2;

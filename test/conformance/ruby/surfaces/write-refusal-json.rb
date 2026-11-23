@@ -9,8 +9,13 @@ def self.run(manifest, outdir)
       RubyConformance.no_codec(outdir, case_name)
       next
     end
-    value = cls.load(RubyConformance.read_bytes(wire))
-    RubyConformance.assign_mutation(value, path, rule, token)
+    value = RubyConformance.load_or_fresh(cls, wire)
+    begin
+      RubyConformance.assign_mutation(value, path, rule, token)
+    rescue RubyConformance::Unrepresentable
+      RubyConformance.write_bytes(outdir, case_name, "unrepresentable\n".b)
+      next
+    end
     out = begin
       value.to_json
       "wrote\n".b

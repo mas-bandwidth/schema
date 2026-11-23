@@ -249,8 +249,8 @@ defmodule Bench.Table do
           count_off: 576,
           present_off: -1,
           array: :counted,
-          max_count: 8,
           min_count: 1,
+          max_count: 8,
           elem_t: :record,
           shape: :table,
           bound: nil,
@@ -1621,11 +1621,11 @@ defmodule Bench.Table do
     Enum.reduce(desc.fields, %{}, fn f, acc ->
       atom = String.to_atom(f.name)
 
-      raw =
+      {has_key, raw} =
         cond do
-          Map.has_key?(value, f.name) -> Map.get(value, f.name)
-          Map.has_key?(value, atom) -> Map.get(value, atom)
-          true -> Map.get(f, :default)
+          Map.has_key?(value, f.name) -> {true, Map.get(value, f.name)}
+          Map.has_key?(value, atom) -> {true, Map.get(value, atom)}
+          true -> {false, Map.get(f, :default)}
         end
 
       if Map.get(f, :optional, false) do
@@ -1640,22 +1640,69 @@ defmodule Bench.Table do
         |> Map.put(atom, payload)
         |> Map.put(present, raw != nil)
       else
-        Map.put(acc, atom, fixed_class_value_from_table(f, raw))
+        val =
+          if has_key,
+            do: fixed_class_value_from_table(f, raw),
+            else: fixed_class_default_value(f)
+
+        Map.put(acc, atom, val)
       end
     end)
   end
 
+  defp fixed_class_default_value(f) do
+    case Map.get(f, :t) do
+      :list ->
+        case Map.get(f, :fixed_array) do
+          n when is_integer(n) ->
+            List.duplicate(fixed_class_elem_from_table(f, Map.get(f, :elem_default)), n)
+
+          _ ->
+            fixed_class_value_from_table(f, Map.get(f, :default))
+        end
+
+      :keyed ->
+        fixed_class_keyed_default(f)
+
+      _ ->
+        fixed_class_value_from_table(f, Map.get(f, :default))
+    end
+  end
+
   defp fixed_class_absent_payload(f) do
     case Map.get(f, :t) do
-      :table -> fixed_class_from_table(Map.fetch!(f, :elem), %{})
-      :list -> []
-      :enum -> :none
-      :keyed -> fixed_class_keyed_from_table(f, %{})
-      :string -> <<>>
-      :bytes -> <<>>
-      :bool -> false
-      :float -> 0.0
-      _ -> 0
+      :table ->
+        fixed_class_from_table(Map.fetch!(f, :elem), %{})
+
+      :list ->
+        case Map.get(f, :fixed_array) do
+          n when is_integer(n) ->
+            List.duplicate(fixed_class_elem_from_table(f, Map.get(f, :elem_default)), n)
+
+          _ ->
+            []
+        end
+
+      :enum ->
+        :none
+
+      :keyed ->
+        fixed_class_keyed_default(f)
+
+      :string ->
+        <<>>
+
+      :bytes ->
+        <<>>
+
+      :bool ->
+        false
+
+      :float ->
+        0.0
+
+      _ ->
+        0
     end
   end
 
@@ -1669,7 +1716,7 @@ defmodule Bench.Table do
       :list ->
         if is_list(value),
           do: fixed_class_list_from_table(f, value),
-          else: []
+          else: raise(ArgumentError, "expected list for #{f.name}")
 
       :union ->
         fixed_class_union_from_table(f, value)
@@ -1686,21 +1733,7 @@ defmodule Bench.Table do
   end
 
   defp fixed_class_list_from_table(f, value) do
-    elems = Enum.map(value, fn e -> fixed_class_elem_from_table(f, e) end)
-
-    case Map.get(f, :fixed_array) do
-      n when is_integer(n) ->
-        kept = Enum.take(elems, n)
-
-        kept ++
-          List.duplicate(
-            fixed_class_elem_from_table(f, Map.get(f, :elem_default)),
-            max(n - length(kept), 0)
-          )
-
-      _ ->
-        elems
-    end
+    Enum.map(value, fn e -> fixed_class_elem_from_table(f, e) end)
   end
 
   defp fixed_class_elem_from_table(f, value) do
@@ -1737,20 +1770,25 @@ defmodule Bench.Table do
 
   defp fixed_class_enum_from_table(_f, value), do: value
 
+  defp fixed_class_keyed_default(f) do
+    item = Map.fetch!(f, :item)
+
+    Enum.map(Map.fetch!(f, :key_names), fn _name ->
+      fixed_class_value_from_table(item, Map.get(item, :default))
+    end)
+  end
+
   defp fixed_class_keyed_from_table(f, value) when is_map(value) do
     item = Map.fetch!(f, :item)
 
     Enum.map(Map.fetch!(f, :key_names), fn name ->
+      atom = String.to_atom(fixed_class_snake(name))
+
       raw =
         cond do
-          Map.has_key?(value, name) ->
-            Map.get(value, name)
-
-          Map.has_key?(value, String.to_atom(fixed_class_snake(name))) ->
-            Map.get(value, String.to_atom(fixed_class_snake(name)))
-
-          true ->
-            Map.get(item, :default)
+          Map.has_key?(value, name) -> Map.get(value, name)
+          Map.has_key?(value, atom) -> Map.get(value, atom)
+          true -> raise ArgumentError, "missing keyed slot #{name}"
         end
 
       fixed_class_value_from_table(item, raw)
@@ -1762,12 +1800,8 @@ defmodule Bench.Table do
     Enum.map(value, fn v -> fixed_class_value_from_table(item, v) end)
   end
 
-  defp fixed_class_keyed_from_table(f, _value) do
-    item = Map.fetch!(f, :item)
-
-    Enum.map(Map.fetch!(f, :key_names), fn _name ->
-      fixed_class_value_from_table(item, Map.get(item, :default))
-    end)
+  defp fixed_class_keyed_from_table(_f, _value) do
+    raise ArgumentError, "expected map or list for keyed array"
   end
 
   def save("FixedTable", value) when is_map(value) do
@@ -2164,7 +2198,13 @@ defmodule Bench.Table do
   # that names the same integer as another ("7" beside 7) is refused, so no
   # key is written twice and none raises.
   defp check_map_keys(%{key_kind: 12}, values) do
-    Enum.each(values, fn {key, _v} -> if not is_binary(key), do: throw(:invalid_value) end)
+    keys =
+      Enum.map(values, fn {key, _v} ->
+        if not is_binary(key), do: throw(:invalid_value)
+        key
+      end)
+
+    if length(Enum.uniq(keys)) != length(keys), do: throw(:invalid_value)
   end
 
   defp check_map_keys(_f, values) do
@@ -4310,13 +4350,13 @@ defmodule Bench.Table do
 
   # A positional fixed array updates its received prefix; an enum-keyed
   # occurrence updates only the slots it names. Other fields replace normally.
-  defp put_wire_field(value, %{t: :list, fixed_array: _} = f, incoming) do
-    prior = Map.get(value, f.name) || []
+  defp put_wire_field(value, %{t: :list, fixed_array: n} = f, incoming) do
+    prior = Map.get(value, f.name) || List.duplicate(json_element_default(f), n)
     Map.put(value, f.name, incoming ++ Enum.drop(prior, length(incoming)))
   end
 
   defp put_wire_field(value, %{t: :keyed} = f, incoming) do
-    prior = Map.get(value, f.name) || %{}
+    prior = Map.get(value, f.name) || keyed_defaults(f)
     Map.put(value, f.name, Map.merge(prior, incoming))
   end
 
@@ -4789,10 +4829,22 @@ defmodule Bench.Table do
     # every other arm reads its payload exactly as a field does
     payload = if a.arm_kind in [12, 13, 14, 16], do: framed, else: inner
 
-    case read_payload(a, payload, nodes, ids, report) do
-      {:cont, v, report} -> {:cont, {name, v}, report}
-      {:halt, v, report} -> {:halt, {name, v}, report}
-    end
+    {status, v, report} = read_payload(a, payload, nodes, ids, report)
+    n = Map.get(a, :fixed_array)
+
+    v =
+      cond do
+        is_integer(n) and is_list(v) and length(v) < n ->
+          v ++ List.duplicate(json_element_default(a), n - length(v))
+
+        Map.get(a, :t) == :keyed and is_map(v) ->
+          Map.merge(keyed_defaults(a), v)
+
+        true ->
+          v
+      end
+
+    {status, {name, v}, report}
   end
 
   # arm_framing_damaged? is §3's length rule for an arm whose kind byte
@@ -4923,9 +4975,6 @@ defmodule Bench.Table do
   # a count past a bounded array's declared bound reads the first bound
   # elements and counts one refusal, before any element is read, so the
   # elements past the bound are never asked of the body (docs/SPEC-TABLES.md §4)
-  defp clamp_count(n, %{min_count: min}, _report) when n < min,
-    do: {min, throw(:wire_damaged)}
-
   defp clamp_count(n, %{max_count: max}, _report) when n > max,
     do: {max, throw(:wire_damaged)}
 
@@ -5301,6 +5350,8 @@ defmodule Bench.Table do
   # EVERY field it writes to its declaration, required or not, and every
   # union arm payload and array element with it, before a byte is built.
   defp validate_record(desc, value) do
+    value = Map.merge(defaults(desc), value)
+
     Enum.each(desc.fields, fn f ->
       if field_active?(f, desc, value) do
         v = Map.get(value, f.name, f.default)
@@ -5332,9 +5383,9 @@ defmodule Bench.Table do
       true ->
         n = length(values)
 
-        # a [N]T carries exactly N elements: a shorter value is padded with the
-        # element default (pad_fixed/2), a longer one refuses, never cut
-        if Map.has_key?(f, :fixed_array) and n > f.fixed_array, do: throw(:invalid_value)
+        # a [N]T carries exactly N elements: shorter or longer refuses, never
+        # padded or cut (docs/SPEC.md §5.1, SF-34)
+        if Map.has_key?(f, :fixed_array) and n != f.fixed_array, do: throw(:invalid_value)
 
         if Map.get(f, :array) == :counted and
              (n < Map.get(f, :min_count, 0) or n > f.array_bound),
@@ -5354,7 +5405,8 @@ defmodule Bench.Table do
 
       true ->
         Enum.each(f.key_names, fn name ->
-          write_value(f.item, Map.get(slots, name, f.item.default))
+          if not Map.has_key?(slots, name), do: throw(:invalid_value)
+          write_value(f.item, Map.fetch!(slots, name))
         end)
     end
   end
@@ -5545,11 +5597,23 @@ defmodule Bench.Table do
         case f do
           %{optional: true} -> Map.get(f, :default)
           %{t: :table, elem: name} -> defaults(Map.fetch!(@tables, name))
+          %{t: :list, fixed_array: n} -> List.duplicate(json_element_default(f), n)
+          %{t: :list, min_count: m} when m > 0 -> List.duplicate(json_element_default(f), m)
+          %{t: :keyed} -> keyed_defaults(f)
           _ -> Map.get(f, :default)
         end
 
       {f.name, value}
     end)
+  end
+
+  defp keyed_defaults(f) do
+    def_val =
+      if f.item.t == :table,
+        do: defaults(Map.fetch!(@tables, f.item.elem)),
+        else: Map.get(f.item, :default)
+
+    Map.new(f.key_names, fn name -> {name, def_val} end)
   end
 
   # intern assigns a reference in first-use order and returns it.
@@ -7049,7 +7113,8 @@ defmodule Bench.Table do
   # keyed by variant name; a name the key enum does not have counts unknown.
   defp json_read_field(%{t: :keyed} = f, {:obj, pairs}, report) do
     {values, _seen, report} =
-      Enum.reduce(pairs, {%{}, MapSet.new(), report}, fn {name, input}, {acc, seen, report} ->
+      Enum.reduce(pairs, {keyed_defaults(f), MapSet.new(), report}, fn {name, input},
+                                                                       {acc, seen, report} ->
         if Process.get(:elixir_json_bad, false) do
           {acc, seen, report}
         else
@@ -7354,7 +7419,18 @@ defmodule Bench.Table do
 
     # a counted array below its Min refuses (docs/SPEC.md §5.1 row 3)
     if placed < Map.get(f, :min_count, 0), do: throw(:wire_damaged)
-    {Enum.reverse(elems), report}
+    list = Enum.reverse(elems)
+
+    list =
+      case Map.get(f, :fixed_array) do
+        n when is_integer(n) and length(list) < n ->
+          list ++ List.duplicate(json_element_default(f), n - length(list))
+
+        _ ->
+          list
+      end
+
+    {list, report}
   end
 
   defp json_read_field(%{t: :list}, raw, _report) do
@@ -7421,8 +7497,8 @@ defmodule Bench.Table do
   defp json_present_default(_f), do: 0
 
   # Array elements are positional: a rejected element keeps its default slot.
-  defp json_element_default(%{elem_default: value}), do: value
   defp json_element_default(%{elem_kind: 13, elem: name}), do: defaults(Map.fetch!(@tables, name))
+  defp json_element_default(%{elem_default: value}), do: value
   defp json_element_default(%{elem_kind: kind}) when kind in [15, 17, 30], do: nil
   defp json_element_default(%{elem_kind: 12}), do: ""
   defp json_element_default(%{elem_kind: 1}), do: false
@@ -7898,7 +7974,7 @@ defmodule Bench.Table do
              :ok <- json_key_ok(key),
              <<":", r2::binary>> <- json_skip(r1),
              false <- MapSet.member?(seen, key),
-             {:ok, val, r3} <- json_object_val(key, acc, r2, depth + 1) do
+             {:ok, val, r3} <- json_object_val(key, acc, r2, depth) do
           seen = MapSet.put(seen, key)
 
           case json_skip(r3) do
@@ -7932,7 +8008,7 @@ defmodule Bench.Table do
         json_label(bin)
       end
     else
-      json_value(bin, depth)
+      json_value(bin, depth + 1)
     end
   end
 

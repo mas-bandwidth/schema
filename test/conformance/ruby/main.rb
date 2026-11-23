@@ -6,6 +6,11 @@
 # in surfaces/ named for the surface; list prints the ones present. The
 # generated tree is RUBY_CONFORMANCE_GENERATED, default build/conformance-ruby,
 # so a negative control can point the same driver at a sabotaged copy.
+#
+# ABSENT here, by having no script: `write-refusal-block`. The Ruby block
+# builder (SchemaTable.block_begin) takes only the out-of-line array counts and
+# returns a zeroed block; no Ruby API builds a block from a value, so no row's
+# value can be handed to it.
 
 require 'fileutils'
 

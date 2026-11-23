@@ -405,6 +405,29 @@ static const ConformanceCodec graph_codecs[] = { SCHEMA_CONFORMANCE_GRAPH_ROW(gr
 const ConformanceCodec * conformance_codecs_graphdemo(int * count)
 { *count=(int)(sizeof(graph_codecs)/sizeof(graph_codecs[0])); return graph_codecs; }
 
+/* `point` (README, `write-refusal-cook`): the pointer at `path` is aimed at the
+   node the pointer at `text` points at. A region slot is SELF-RELATIVE
+   (docs/SPEC-TABLES.md §6.3), so the slot holds the delta from its own
+   address. head.next aimed at head is a cycle; alias aimed at head is the
+   lawful sharing of one node. */
+static int set_scene_point( const char * root, void * value, const char * path,
+                                             const char * kind, const char * text )
+{
+    schema_conformance_holder_Scene * holder = (schema_conformance_holder_Scene *) value;
+    graphdemo_scene_t * v;
+    uint8_t * target;
+    graphdemo_table_ref_t * slot;
+    if ( strcmp( root, "Scene" ) != 0 || strcmp( kind, "point" ) != 0 || strcmp( text, "head" ) != 0 ) { return 0; }
+    v = (graphdemo_scene_t *) (void *) holder->root;
+    if ( v->head.value == 0 ) { return 0; }
+    target = (uint8_t *) &v->head + v->head.value;
+    if ( strcmp( path, "head.next" ) == 0 ) { slot = &( (graphdemo_list_node_t *) (void *) target )->next; }
+    else if ( strcmp( path, "alias" ) == 0 ) { slot = &v->alias; }
+    else { return 0; }
+    slot->value = (int64_t) ( target - (uint8_t *) slot );
+    return 1;
+}
+
 int conformance_cook_open(const char * root,const uint8_t * data,size_t bytes,int64_t extent,int pointer)
 { return conformance_cook_open_reason(root,data,bytes,extent,pointer,NULL); }
 
@@ -416,6 +439,7 @@ int conformance_write_refusal_set_graphdemo( const char * root, void * value, co
         schema_conformance_holder_Scene * holder = (schema_conformance_holder_Scene *) value;
         graphdemo_scene_t * v = (graphdemo_scene_t *) (uintptr_t) holder->root;
         if ( v == NULL ) { return 0; }
+        if ( strcmp( kind, "point" ) == 0 ) { return set_scene_point( root, value, path, kind, text ); }
         if ( strcmp( path, "version" ) == 0 && strcmp( kind, "int" ) == 0 )
         {
             CONFORMANCE_WREF_SIGNED( v->version, text );

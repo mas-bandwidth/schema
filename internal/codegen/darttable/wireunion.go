@@ -1058,6 +1058,11 @@ List<T> _stableSortedBy<T, K>(List<T> l, K Function(T) keyOf, int Function(K a, 
     from = to;
     to = swap;
   }
+  for (var i = 1; i < n; i++) {
+    if (cmp(keys[from[i - 1]], keys[from[i]]) == 0) {
+      throw StateError('repeated map key');
+    }
+  }
   return List<T>.generate(n, (i) => l[from[i]]);
 }
 

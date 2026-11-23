@@ -5019,7 +5019,7 @@ class TableMixedFixedRecordCodec : schema_rt.FixedRecordCodec
             row·.GameEvent.Pickup.Amount = bridge_44·.cell.i
         let bridge_45· = rec·.fields[13]
         if bridge_45·.fd.id != 0x5759ce7586bbb5a3: return "", "invalid_value"
-        if length(bridge_45·.elems) < 4: return "", "invalid_value"
+        if length(bridge_45·.elems) != 4: return "", "invalid_value"
         row·.Loadout = schema_rt.zeros(4)
         for(4) bridge_46·:
             if bridge_45·.elems[bridge_46·].i < 0 or bridge_45·.elems[bridge_46·].i > 255: return "", "invalid_value"

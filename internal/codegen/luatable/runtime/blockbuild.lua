@@ -16,6 +16,8 @@
 -- out-of-line array starting at max(64, alignof(element)), and the used extent
 -- rounded up to 64. The descriptors carry the record sizes and alignments, so
 -- this walk needs no second model.
+local D = require("descriptor")
+
 local B = {}
 
 -- the magic is 0x4B4C42414D484353, "SCHMABLK" in a little-endian store
@@ -263,6 +265,24 @@ end
 function B.BlockBytes(block)
   if block == nil or block.bytes == nil then return 0 end
   return #block.bytes
+end
+
+-- B.Build validates a root value against the write contract (SF-31: scalar
+-- ranges, inline text lengths, fixed/keyed array element counts, out-of-line
+-- array counts) and builds the root's block via B.Begin.
+function B.Build(T, root, value)
+  local desc = T.Tables[root]
+  if desc == nil then return nil, "blockbuild: no table descriptor for " .. tostring(root) end
+  local refused = D.refuse_write(T, root, value)
+  if refused ~= nil then return nil, refused end
+  local counts = {}
+  for _, d in ipairs(desc.fields) do
+    if out_of_line(d) then
+      local arr = value ~= nil and value[d.name] or nil
+      counts[d.name] = type(arr) == "table" and #arr or 0
+    end
+  end
+  return B.Begin(T, root, counts)
 end
 
 return B

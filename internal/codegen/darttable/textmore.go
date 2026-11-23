@@ -144,7 +144,8 @@ int? _jsonSkippedLabel(dynamic raw) {
 // definition is open until this object closes. A dropped definition keeps its
 // label with no node, so a reference to it reads null. What the reader does
 // not place is the value, never the label.
-void _jsonSkipObject(List<MapEntry<String, dynamic>> entries, TableTextReport r) {
+void _jsonSkipObject(List<MapEntry<String, dynamic>> entries, TableTextReport r, [int depth = 0]) {
+  if (depth > 128) throw const FormatException('nested past the depth cap of 128');
   int? definition;
   for (var idx = 0; idx < entries.length; idx++) {
     final key = entries[idx].key;
@@ -172,24 +173,25 @@ void _jsonSkipObject(List<MapEntry<String, dynamic>> entries, TableTextReport r)
         definition = label;
       }
     } else {
-      _jsonSkipValue(val, r);
+      _jsonSkipValue(val, r, depth + 1);
     }
   }
   if (definition != null) r.labelsOpen.remove(definition);
 }
 
-void _jsonSkipValue(dynamic val, TableTextReport r) {
+void _jsonSkipValue(dynamic val, TableTextReport r, [int depth = 0]) {
   if (val is String) {
     _jsonText(val);
     return;
   }
   if (val is _JObj) {
-    _jsonSkipObject(val.entries, r);
+    _jsonSkipObject(val.entries, r, depth);
     return;
   }
   if (val is List) {
+    if (depth > 128) throw const FormatException('nested past the depth cap of 128');
     for (final item in val) {
-      _jsonSkipValue(item, r);
+      _jsonSkipValue(item, r, depth + 1);
     }
     return;
   }
@@ -200,7 +202,7 @@ void _jsonSkipValue(dynamic val, TableTextReport r) {
       if (key is! String) throw const FormatException('kind_mismatch');
       entries.add(MapEntry<String, dynamic>(key, entry.value));
     }
-    _jsonSkipObject(entries, r);
+    _jsonSkipObject(entries, r, depth);
   }
 }
 
@@ -237,8 +239,8 @@ final class _JParse {
     i++;
   }
 
-  // the depth cap counts containers (§16.14 W2): a scalar, a string or a
-  // null at depth 129 nests nothing
+  // container nesting cap (128 levels of nesting = 129 containers; 130th refuses,
+  // docs/SPEC-TABLES.md §16.2, §16.14 W2)
   dynamic value(int depth) {
     if (i >= s.length) throw const FormatException('unexpected end of text');
     final c = s.codeUnitAt(i);
@@ -785,7 +787,8 @@ func (g *wireGen) emitTextMoreDecls() {
 		g.pf("\tthrow StateError('union %s: tag ${v.armTag} names no arm — the writer refuses it (docs/SPEC-TABLES.md §5)');\n", un.Name)
 		g.pf("}\n\n")
 
-		g.pf("%s %s(dynamic val, TableTextReport r, _Share sh, [%s? def]) {\n", un.Name, unionFn(un, "FromJson"), un.Name)
+		g.pf("%s %s(dynamic val, TableTextReport r, _Share sh, [%s? def, int depth = 0]) {\n", un.Name, unionFn(un, "FromJson"), un.Name)
+		g.pf("\tif (depth > 128) throw const FormatException('nested past the depth cap of 128');\n")
 		g.pf("\tfinal entries = _jsonEntries(val);\n")
 		g.pf("\tif (entries == null) { r.refuse('kind_mismatch'); return def ?? %s(); }\n", un.Name)
 		g.pf("\tfinal v = %s();\n", un.Name)
@@ -808,7 +811,7 @@ func (g *wireGen) emitTextMoreDecls() {
 				g.pf("\t\t\t}\n")
 			}
 		}
-		g.pf("\t\tdefault:\n\t\t\tr.unknown++;\n\t\t\t_jsonSkipValue(item, r);\n")
+		g.pf("\t\tdefault:\n\t\t\tr.unknown++;\n\t\t\t_jsonSkipValue(item, r, depth + 1);\n")
 		g.pf("\t}\n")
 		g.pf("\treturn v;\n")
 		g.pf("}\n\n")
@@ -827,10 +830,10 @@ func (g *wireGen) emitTextMoreDecls() {
 		g.pf("}\n\n")
 	}
 	for _, st := range g.closure {
-		g.pf("%s _%sFromJsonValue(dynamic val, TableTextReport r, _Share sh, [%s? def]) {\n", st.Name, dartName(st.Name), st.Name)
+		g.pf("%s _%sFromJsonValue(dynamic val, TableTextReport r, _Share sh, [%s? def, int depth = 0]) {\n", st.Name, dartName(st.Name), st.Name)
 		g.pf("\tif (%s) {\n", jsonTableShape(st, "val"))
 		g.pf("\t\tfinal v = %s();\n", st.Name)
-		g.pf("\t\t%sFromJsonFields(v, val, r, sh);\n", dartName(st.Name))
+		g.pf("\t\t%sFromJsonFields(v, val, r, sh, false, depth);\n", dartName(st.Name))
 		g.pf("\t\treturn v;\n")
 		g.pf("\t}\n")
 		g.pf("\tr.refuse('kind_mismatch');\n")
@@ -883,6 +886,7 @@ func (g *wireGen) emitJsonValue(f *ir.Field, expr string, d int, ind, where stri
 		g.pf("%s}\n", ind)
 	case isKeyed(f):
 		en := f.KeyEnumRef
+		g.pf("%sif (%s.length != %d) throw StateError('count_over_bound: %s');\n", ind, expr, len(en.Variants), where)
 		if f.ArrayBound == 0 {
 			g.pf("%sout.raw('{}');\n", ind)
 			return
@@ -900,6 +904,9 @@ func (g *wireGen) emitJsonValue(f *ir.Field, expr string, d int, ind, where stri
 		g.pf("%sout.line(%s);\n", ind, depthExpr(d))
 		g.pf("%sout.raw('}');\n", ind)
 	case f.Array != ir.ArrayNone:
+		if f.Array == ir.ArrayFixed {
+			g.pf("%sif (%s.length != %d) throw StateError('count_over_bound: %s');\n", ind, expr, f.ArrayBound, where)
+		}
 		g.pf("%sif (%s.isEmpty) {\n", ind, expr)
 		g.pf("%s\tout.raw('[]');\n", ind)
 		g.pf("%s} else {\n", ind)
@@ -1071,12 +1078,20 @@ func (g *wireGen) jsonReadExpr(f *ir.Field, val string, d int, fallback ...strin
 		return fmt.Sprintf("_jsonBytesBlob(%s, r%s)", val, fbArg)
 	case isPointerTable(f):
 		ref := tableRef(f)
-		return fmt.Sprintf("_readPtr(%s, sh, r, () => %s(), (obj, m) { %sFromJsonFields(obj as %s, m, r, sh, true); }%s) as %s?",
+		return fmt.Sprintf("_readPtr(%s, sh, r, () => %s(), (obj, m) { %sFromJsonFields(obj as %s, m, r, sh, true, depth + 1); }%s) as %s?",
 			val, ref.Name, dartName(ref.Name), ref.Name, fbArg, ref.Name)
 	case isByValueTable(f):
-		return fmt.Sprintf("_%sFromJsonValue(%s, r, sh%s)", dartName(tableRef(f).Name), val, fbArg)
+		defArg := "null"
+		if fb != "" {
+			defArg = fb
+		}
+		return fmt.Sprintf("_%sFromJsonValue(%s, r, sh, %s, depth + 1)", dartName(tableRef(f).Name), val, defArg)
 	case unionRef(f) != nil:
-		return fmt.Sprintf("%s(%s, r, sh%s)", unionFn(unionRef(f), "FromJson"), val, fbArg)
+		defArg := "null"
+		if fb != "" {
+			defArg = fb
+		}
+		return fmt.Sprintf("%s(%s, r, sh, %s, depth + 1)", unionFn(unionRef(f), "FromJson"), val, defArg)
 	case isWide(f):
 		lo, hi := "null", "null"
 		if l, h, ok := ir.TableRawRange(singleOf(f)); ok {

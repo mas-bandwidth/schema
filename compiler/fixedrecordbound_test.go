@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -41,6 +42,14 @@ func readWideSchema(t *testing.T) string {
 
 var fixedBoundTableMark = regexp.MustCompile(`(?i)(?:\b|_)(probe_fixed|ProbeFixed|probeFixed|PROBE_FIXED)[A-Za-z_]*\b`)
 
+// Dart and JavaScript also emit fixed storage or helpers for forms other
+// than 3. Match the public form-3 file operations and caller plan's
+// declarations, not the shared storage module or message helper names.
+var fixedBoundFileOperation = map[string]*regexp.Regexp{
+	"dart": regexp.MustCompile(`(?m)^(?:int|TableFixedPlan) (probeFixed(?:Load|Measure|NewPlan|Save))\(`),
+	"js":   regexp.MustCompile(`(?m)^export function (ProbeFixed(?:Load|Measure|NewPlan|Save))\(`),
+}
+
 func fixedBoundMarks(t *testing.T, lang string, u *ir.Unit) []string {
 	t.Helper()
 	files, err := New().Generate(u, lang, Options{})
@@ -49,6 +58,12 @@ func fixedBoundMarks(t *testing.T, lang string, u *ir.Unit) []string {
 	}
 	seen := map[string]bool{}
 	for _, content := range files {
+		if operation := fixedBoundFileOperation[lang]; operation != nil {
+			for _, match := range operation.FindAllStringSubmatch(string(content), -1) {
+				seen[match[1]] = true
+			}
+			continue
+		}
 		for _, m := range fixedBoundTableMark.FindAllString(string(content), -1) {
 			seen[strings.TrimPrefix(m, "_")] = true
 		}
@@ -57,26 +72,37 @@ func fixedBoundMarks(t *testing.T, lang string, u *ir.Unit) []string {
 	for m := range seen {
 		marks = append(marks, m)
 	}
+	slices.Sort(marks)
 	return marks
 }
 
 // TestFixedRecordBoundAtTheCeilingEmitsOnAllNineLegs: a fixed table whose
 // record is exactly 65536 bytes (docs/SPEC-TABLES.md §3.4, fixed_record_bound =
-// 65536) is at the wire ceiling and emits the fixed form on all nine legs; one
+// 65536) is at the wire ceiling and emits the fixed form on all tested legs; one
 // byte past the ceiling emits no fixed form on any leg.
 func TestFixedRecordBoundAtTheCeilingEmitsOnAllNineLegs(t *testing.T) {
 	t.Parallel()
-	atUnit := fixedBoundUnit(t, "package probe\nfixed table Probe { payload bytes(65532) }\n")
-	at := atUnit.Tables["Probe"]
-	if ir.TableFixedTypeBytes(at) != ir.TableFixedRecordMaxBytes {
-		t.Fatalf("Probe at bound is %d bytes; want %d", ir.TableFixedTypeBytes(at), ir.TableFixedRecordMaxBytes)
-	}
-	if !ir.TableFixedEmitted(atUnit, at) {
-		t.Fatal("a 65536-byte fixed table must emit the fixed form")
-	}
-	for _, lang := range fixedDepthLegs {
-		if got := fixedBoundMarks(t, lang, atUnit); len(got) == 0 {
-			t.Errorf("%s emitted no fixed-form symbols for a 65536-byte table at the record bound", lang)
+	for _, body := range []int{ir.TableFixedRecordMaxBytes - 1, ir.TableFixedRecordMaxBytes} {
+		source := fmt.Sprintf("package probe\nfixed table Probe { payload bytes(%d) }\n", body-4)
+		unit := fixedBoundUnit(t, source)
+		table := unit.Tables["Probe"]
+		if ir.TableFixedTypeBytes(table) != int64(body) || !ir.TableFixedEmitted(unit, table) {
+			t.Fatalf("Probe at %d bytes must emit the fixed form (size=%d)", body, ir.TableFixedTypeBytes(table))
+		}
+		for _, lang := range fixedDepthLegs {
+			got := fixedBoundMarks(t, lang, unit)
+			if fixedBoundFileOperation[lang] != nil {
+				prefix := "ProbeFixed"
+				if lang == "dart" {
+					prefix = "probeFixed"
+				}
+				want := []string{prefix + "Load", prefix + "Measure", prefix + "NewPlan", prefix + "Save"}
+				if !slices.Equal(got, want) {
+					t.Errorf("%s at %d bytes: fixed file operations %v, want %v", lang, body, got, want)
+				}
+			} else if len(got) == 0 {
+				t.Errorf("%s emitted no fixed-form symbols for a %d-byte table", lang, body)
+			}
 		}
 	}
 

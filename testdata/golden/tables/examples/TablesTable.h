@@ -13080,6 +13080,7 @@ inline bool WeaponConfigLoadMessages( WeaponConfig * values, int64_t * count, co
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -14752,6 +14753,7 @@ inline bool LoadoutConfigLoadMessages( LoadoutConfig * values, int64_t * count, 
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -16900,6 +16902,7 @@ inline bool ProfileConfigLoadMessages( ProfileConfig * values, int64_t * count, 
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -17841,6 +17844,7 @@ inline bool RootConfigLoadMessages( RootConfig * values, int64_t * count, const 
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -18606,6 +18610,7 @@ inline bool CountedMinLoadMessages( CountedMin * values, int64_t * count, const 
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -19119,6 +19124,7 @@ inline bool FloatBoundLoadMessages( FloatBound * values, int64_t * count, const 
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -19731,6 +19737,7 @@ inline bool MoodsLoadMessages( Moods * values, int64_t * count, const TableVocab
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -20356,6 +20363,7 @@ inline bool MoodFieldLoadMessages( MoodField * values, int64_t * count, const Ta
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -21288,6 +21296,7 @@ inline bool MinArmFixLoadMessages( MinArmFix * values, int64_t * count, const Ta
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -22053,6 +22062,7 @@ inline bool MinPlainFixLoadMessages( MinPlainFix * values, int64_t * count, cons
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -22089,6 +22099,8 @@ inline int64_t AttachmentMeasureBody( TableIds & ids, const Attachment & value )
     if ( table_float_to_bits( value.power ) != table_float_to_bits( 1.0f ) ) { bytes += TableLebBytes( ids.ref_at( 155, 0xeef9d1358ae7b4e6ull ) ) + 1 + 4; } // power
     return bytes;
 }
+
+inline bool AttachmentFixedWriteAdmits( const Attachment & value );
 
 inline int64_t AttachmentMeasure( const Attachment & value )
 {
@@ -22681,6 +22693,7 @@ inline int64_t AttachmentMeasureMessages( const Attachment * values, int64_t cou
     {
         const int64_t body = AttachmentMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( AttachmentFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -22699,6 +22712,7 @@ inline int64_t AttachmentSaveMessages( const Attachment * values, int64_t count,
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !AttachmentSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( AttachmentFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == AttachmentMeasureMessages( values, count, report )
@@ -22722,6 +22736,7 @@ inline bool AttachmentLoadMessages( Attachment * values, int64_t * count, const 
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -23200,6 +23215,7 @@ inline bool BuffLoadMessages( Buff * values, int64_t * count, const TableVocabul
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -23234,6 +23250,8 @@ inline int64_t DebuffMeasureBody( TableIds & ids, const Debuff & value )
     if ( value.amount != 0 ) { bytes += TableLebBytes( ids.ref_at( 76, 0x8113fe7ea2b16969ull ) ) + 1 + 4; } // amount
     return bytes;
 }
+
+inline bool DebuffFixedWriteAdmits( const Debuff & value );
 
 inline int64_t DebuffMeasure( const Debuff & value )
 {
@@ -23714,6 +23732,7 @@ inline int64_t DebuffMeasureMessages( const Debuff * values, int64_t count, Tabl
     {
         const int64_t body = DebuffMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( DebuffFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -23732,6 +23751,7 @@ inline int64_t DebuffSaveMessages( const Debuff * values, int64_t count, uint8_t
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !DebuffSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( DebuffFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == DebuffMeasureMessages( values, count, report )
@@ -23755,6 +23775,7 @@ inline bool DebuffLoadMessages( Debuff * values, int64_t * count, const TableVoc
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -36264,6 +36285,7 @@ inline bool LoadoutConfigCookBody( uint8_t * at, const LoadoutConfig & value, Ta
     table_cook_put( at + 0, (uint64_t) value.grade, 1, order );
     // 4 slots of storage, value.grades_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.grades_count >= 0 && value.grades_count <= 4 ); // storage invariant, debug only (§5.1)
+    if ( value.grades_count < 0 || value.grades_count > 4 ) { return false; }
     for ( int32_t i = 0; i < value.grades_count; i++ )
     {
         table_cook_put( at + 1 + i * 1, (uint64_t) value.grades[i], 1, order );
@@ -36281,6 +36303,7 @@ inline bool LoadoutConfigCookBody( uint8_t * at, const LoadoutConfig & value, Ta
     }
     // 8 slots of storage, value.attachments_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.attachments_count >= 0 && value.attachments_count <= 8 ); // storage invariant, debug only (§5.1)
+    if ( value.attachments_count < 0 || value.attachments_count > 8 ) { return false; }
     for ( int32_t i = 0; i < value.attachments_count; i++ )
     {
         if ( !AttachmentCookBody( at + 108 + i * 8, value.attachments[i], order ) ) { return false; }
@@ -36320,6 +36343,7 @@ inline bool RootConfigCookBody( uint8_t * at, const RootConfig & value, TableByt
     table_cook_put( at + 20, (uint64_t) (uint32_t) value.version_note_length, 4, order );
     // 8 slots of storage, value.weapons_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.weapons_count >= 0 && value.weapons_count <= 8 ); // storage invariant, debug only (§5.1)
+    if ( value.weapons_count < 0 || value.weapons_count > 8 ) { return false; }
     for ( int32_t i = 0; i < value.weapons_count; i++ )
     {
         if ( !WeaponConfigCookBody( at + 24 + i * 28, value.weapons[i], order ) ) { return false; }
@@ -36327,6 +36351,7 @@ inline bool RootConfigCookBody( uint8_t * at, const RootConfig & value, TableByt
     table_cook_put( at + 248, (uint64_t) (uint32_t) value.weapons_count, 4, order );
     // 4 slots of storage, value.profiles_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.profiles_count >= 0 && value.profiles_count <= 4 ); // storage invariant, debug only (§5.1)
+    if ( value.profiles_count < 0 || value.profiles_count > 4 ) { return false; }
     for ( int32_t i = 0; i < value.profiles_count; i++ )
     {
         if ( !ProfileConfigCookBody( at + 256 + i * 304, value.profiles[i], order ) ) { return false; }
@@ -36339,6 +36364,7 @@ inline bool CountedMinCookBody( uint8_t * at, const CountedMin & value, TableByt
 {
     // 5 slots of storage, value.few_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.few_count >= 2 && value.few_count <= 5 ); // the declared [2..5] holds, debug only (§5.1)
+    if ( value.few_count < 2 || value.few_count > 5 ) { return false; }
     for ( int32_t i = 0; i < value.few_count; i++ )
     {
         table_cook_put( at + 0 + i * 4, (uint64_t) value.few[i], 4, order );
@@ -36358,6 +36384,7 @@ inline bool MoodsCookBody( uint8_t * at, const Moods & value, TableByteOrder ord
 {
     // 4 slots of storage, value.row_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.row_count >= 0 && value.row_count <= 4 ); // storage invariant, debug only (§5.1)
+    if ( value.row_count < 0 || value.row_count > 4 ) { return false; }
     for ( int32_t i = 0; i < value.row_count; i++ )
     {
         table_cook_put( at + 0 + i * 1, (uint64_t) value.row[i], 1, order );
@@ -36383,6 +36410,7 @@ inline bool MinArmFixCookBody( uint8_t * at, const MinArmFix & value, TableByteO
             {
                 // 4 slots of storage, value.pick.few.value_count live: a slot past the count keeps the extent's zero (§7.2)
                 schema_assert( value.pick.few.value_count >= 2 && value.pick.few.value_count <= 4 ); // the declared [2..4] holds, debug only (§5.1)
+                if ( value.pick.few.value_count < 2 || value.pick.few.value_count > 4 ) { return false; }
                 for ( int32_t ia = 0; ia < value.pick.few.value_count; ia++ )
                 {
                     table_cook_put( at + 0 + 4 + ia * 4, (uint64_t) value.pick.few.value[ia], 4, order );
@@ -36405,6 +36433,7 @@ inline bool MinPlainFixCookBody( uint8_t * at, const MinPlainFix & value, TableB
 {
     // 4 slots of storage, value.few_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.few_count >= 2 && value.few_count <= 4 ); // the declared [2..4] holds, debug only (§5.1)
+    if ( value.few_count < 2 || value.few_count > 4 ) { return false; }
     for ( int32_t i = 0; i < value.few_count; i++ )
     {
         table_cook_put( at + 0 + i * 4, (uint64_t) value.few[i], 4, order );

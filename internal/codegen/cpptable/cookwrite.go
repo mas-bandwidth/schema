@@ -366,6 +366,7 @@ func (g *tableGen) emitCookWriteFieldAs(st *ir.Struct, f *ir.Field, offset int64
 				// zeroed, so only the live slots are written and a slot past
 				// the count keeps that zero.
 				g.cookCountAssert(st, f, name)
+				g.pf("    if ( %s_count < %d || %s_count > %d ) { return false; }\n", name, f.ArrayMin, name, f.ArrayBound)
 				bound = name + "_count"
 				slots = "the live slots, the rest zero"
 			}
@@ -401,6 +402,7 @@ func (g *tableGen) emitCookWriteFieldAs(st *ir.Struct, f *ir.Field, offset int64
 			// are written and a slot past the count keeps that zero.
 			g.pf("    // %d slots of storage, %s_count live: a slot past the count keeps the extent's zero (§7.2)\n", f.ArrayBound, name)
 			g.cookCountAssert(st, f, name)
+			g.pf("    if ( %s_count < %d || %s_count > %d ) { return false; }\n", name, f.ArrayMin, name, f.ArrayBound)
 			bound := name + "_count"
 			g.pf("    for ( int32_t i%s = 0; i%s < %s; i%s++ )\n    {\n", sfx, sfx, bound, sfx)
 		} else {

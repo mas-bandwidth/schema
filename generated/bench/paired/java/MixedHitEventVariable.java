@@ -736,6 +736,31 @@ public final class MixedHitEventVariable {
         return v;
     }
 
+    static void copyInto(Value src, Value dst) {
+        dst.targetId = src.targetId;
+        dst.damage = src.damage;
+        dst.hitKind = src.hitKind;
+        dst.crit = src.crit;
+    }
+
+    public static boolean loadInto(Value target, byte[] data, TableVariable.Report report) {
+        if (report == null) {
+            report = new TableVariable.Report();
+        }
+        report.reset();
+        Value loaded = load(data, report);
+        if (loaded == null || report.refused || report.damaged) {
+            if (target != null) {
+                copyInto(new Value(), target);
+            }
+            return false;
+        }
+        if (target != null) {
+            copyInto(loaded, target);
+        }
+        return true;
+    }
+
     // loadMeasure sizes the region a strict load would need (docs/SPEC-TABLES.md §6.5).
     private static final long ALIGN = 16;
     private static final long RECORD_SIZE = 16;
@@ -900,6 +925,24 @@ public final class MixedHitEventVariable {
             return null;
         }
         return v;
+    }
+
+    public static boolean fromJsonInto(Value target, byte[] text, TableVariable.Report report) {
+        if (report == null) {
+            report = new TableVariable.Report();
+        }
+        report.reset();
+        Value loaded = fromJson(text, report);
+        if (loaded == null || report.refused || report.damaged) {
+            if (target != null) {
+                copyInto(new Value(), target);
+            }
+            return false;
+        }
+        if (target != null) {
+            copyInto(loaded, target);
+        }
+        return true;
     }
 
     static void jsonFields(

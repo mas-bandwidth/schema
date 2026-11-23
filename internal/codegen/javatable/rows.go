@@ -573,6 +573,9 @@ func (g *rowGen) cookFieldInfo(fl ir.FieldLayout) string {
 	if f.HasFloatRange && (f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64) {
 		compressed = ".compressed()"
 	}
+	if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
+		compressed += fmt.Sprintf(".minCount(%d)", f.ArrayMin)
+	}
 	return fmt.Sprintf("TableCookFieldInfo.of(%q, %q, %d, %d, %d, %v, %d, %v, %d, %d, TableCookStorage.%s, %s)%s",
 		f.Name, varMember(f), fl.Offset, fl.Size, elemSize, isArray, bound, f.Type.Pointer, countOffset, presentOffset,
 		cookStorageKind(f), names, compressed)

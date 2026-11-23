@@ -948,11 +948,11 @@ const fixedClassHelperTail = `
     Enum.reduce(desc.fields, %{}, fn f, acc ->
       atom = String.to_atom(f.name)
 
-      raw =
+      {has_key, raw} =
         cond do
-          Map.has_key?(value, f.name) -> Map.get(value, f.name)
-          Map.has_key?(value, atom) -> Map.get(value, atom)
-          true -> Map.get(f, :default)
+          Map.has_key?(value, f.name) -> {true, Map.get(value, f.name)}
+          Map.has_key?(value, atom) -> {true, Map.get(value, atom)}
+          true -> {false, Map.get(f, :default)}
         end
 
       if Map.get(f, :optional, false) do
@@ -967,22 +967,69 @@ const fixedClassHelperTail = `
         |> Map.put(atom, payload)
         |> Map.put(present, raw != nil)
       else
-        Map.put(acc, atom, fixed_class_value_from_table(f, raw))
+        val =
+          if has_key,
+            do: fixed_class_value_from_table(f, raw),
+            else: fixed_class_default_value(f)
+
+        Map.put(acc, atom, val)
       end
     end)
   end
 
+  defp fixed_class_default_value(f) do
+    case Map.get(f, :t) do
+      :list ->
+        case Map.get(f, :fixed_array) do
+          n when is_integer(n) ->
+            List.duplicate(fixed_class_elem_from_table(f, Map.get(f, :elem_default)), n)
+
+          _ ->
+            fixed_class_value_from_table(f, Map.get(f, :default))
+        end
+
+      :keyed ->
+        fixed_class_keyed_default(f)
+
+      _ ->
+        fixed_class_value_from_table(f, Map.get(f, :default))
+    end
+  end
+
   defp fixed_class_absent_payload(f) do
     case Map.get(f, :t) do
-      :table -> fixed_class_from_table(Map.fetch!(f, :elem), %{})
-      :list -> []
-      :enum -> :none
-      :keyed -> fixed_class_keyed_from_table(f, %{})
-      :string -> <<>>
-      :bytes -> <<>>
-      :bool -> false
-      :float -> 0.0
-      _ -> 0
+      :table ->
+        fixed_class_from_table(Map.fetch!(f, :elem), %{})
+
+      :list ->
+        case Map.get(f, :fixed_array) do
+          n when is_integer(n) ->
+            List.duplicate(fixed_class_elem_from_table(f, Map.get(f, :elem_default)), n)
+
+          _ ->
+            []
+        end
+
+      :enum ->
+        :none
+
+      :keyed ->
+        fixed_class_keyed_default(f)
+
+      :string ->
+        <<>>
+
+      :bytes ->
+        <<>>
+
+      :bool ->
+        false
+
+      :float ->
+        0.0
+
+      _ ->
+        0
     end
   end
 
@@ -996,7 +1043,7 @@ const fixedClassHelperTail = `
       :list ->
         if is_list(value),
           do: fixed_class_list_from_table(f, value),
-          else: []
+          else: raise(ArgumentError, "expected list for #{f.name}")
 
       :union ->
         fixed_class_union_from_table(f, value)
@@ -1013,21 +1060,7 @@ const fixedClassHelperTail = `
   end
 
   defp fixed_class_list_from_table(f, value) do
-    elems = Enum.map(value, fn e -> fixed_class_elem_from_table(f, e) end)
-
-    case Map.get(f, :fixed_array) do
-      n when is_integer(n) ->
-        kept = Enum.take(elems, n)
-
-        kept ++
-          List.duplicate(
-            fixed_class_elem_from_table(f, Map.get(f, :elem_default)),
-            max(n - length(kept), 0)
-          )
-
-      _ ->
-        elems
-    end
+    Enum.map(value, fn e -> fixed_class_elem_from_table(f, e) end)
   end
 
   defp fixed_class_elem_from_table(f, value) do
@@ -1064,20 +1097,25 @@ const fixedClassHelperTail = `
 
   defp fixed_class_enum_from_table(_f, value), do: value
 
+  defp fixed_class_keyed_default(f) do
+    item = Map.fetch!(f, :item)
+
+    Enum.map(Map.fetch!(f, :key_names), fn _name ->
+      fixed_class_value_from_table(item, Map.get(item, :default))
+    end)
+  end
+
   defp fixed_class_keyed_from_table(f, value) when is_map(value) do
     item = Map.fetch!(f, :item)
 
     Enum.map(Map.fetch!(f, :key_names), fn name ->
+      atom = String.to_atom(fixed_class_snake(name))
+
       raw =
         cond do
-          Map.has_key?(value, name) ->
-            Map.get(value, name)
-
-          Map.has_key?(value, String.to_atom(fixed_class_snake(name))) ->
-            Map.get(value, String.to_atom(fixed_class_snake(name)))
-
-          true ->
-            Map.get(item, :default)
+          Map.has_key?(value, name) -> Map.get(value, name)
+          Map.has_key?(value, atom) -> Map.get(value, atom)
+          true -> raise ArgumentError, "missing keyed slot #{name}"
         end
 
       fixed_class_value_from_table(item, raw)
@@ -1089,12 +1127,8 @@ const fixedClassHelperTail = `
     Enum.map(value, fn v -> fixed_class_value_from_table(item, v) end)
   end
 
-  defp fixed_class_keyed_from_table(f, _value) do
-    item = Map.fetch!(f, :item)
-
-    Enum.map(Map.fetch!(f, :key_names), fn _name ->
-      fixed_class_value_from_table(item, Map.get(item, :default))
-    end)
+  defp fixed_class_keyed_from_table(_f, _value) do
+    raise ArgumentError, "expected map or list for keyed array"
   end
 
 `

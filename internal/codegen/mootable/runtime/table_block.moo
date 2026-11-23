@@ -26,6 +26,7 @@
 -- partly filled: discard it.
 -- SPDX-License-Identifier: NONE — emitted output, yours under terms of your choice.
 
+local S = require("./schema_tables")
 local V = require("./table_values")
 
 local B = {}
@@ -120,6 +121,21 @@ local function scalar(buf: buffer, owner: string, f: any, at: number, v: any): a
 	if n == 0 then
 		n = f.size
 	end
+	local d = S.lookup(owner)
+	if d ~= nil then
+		for _, fd in d.fields do
+			if fd.name == f.name then
+				local check = if fd.s == "arr" then fd.e else fd
+				if check ~= nil and check.s == "int" and check.lo ~= nil then
+					local raw = V.toRaw(check, v)
+					if raw == nil or V.rawCmp(raw, check.lo, check.kw, check.signed == true) < 0 or V.rawCmp(raw, check.hi, check.kw, check.signed == true) > 0 then
+						return refuse("out_of_range", owner, f.name)
+					end
+				end
+				break
+			end
+		end
+	end
 	local signed = (k >= 2 and k <= 5) or k == 18 or (k >= 20 and k <= 24)
 	if n == 1 then
 		if signed then
@@ -180,6 +196,9 @@ local function writeField(block: any, info: any, f: any, at: number, v: any): an
 		return nil
 	end
 	if f.isArray then
+		if type(v) ~= "table" or #v ~= f.arrayBound then
+			return refuse("row_count", info.name, f.name)
+		end
 		for s = 0, f.arrayBound - 1 do
 			local one = slot + s * f.elemSize
 			local why

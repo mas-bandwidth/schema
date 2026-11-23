@@ -8,13 +8,9 @@
        and dump modes CROSS-IMPLEMENTATION gates rather than one implementation
        agreeing with itself.
 
-       It is its own project rather than a slice of test/cs-block because it
-       opens a POINTERED unit, whose C# WIRE surface is refused by name (§11)
-       and whose two accelerators are emitted all the same — so this project
-       compiles the cook and block sources of tables/pointers and nothing else
-       of that unit. Compiling it IS half the gate: a backend that emitted a
-       blittable record in a file with no Cook source, or the shared runtime
-       twice, produces a unit that does not compile at all.
+       It is its own project because it opens the pointered tables/pointers
+       unit. Compile that unit together so the Block.Begin overloads can use
+       the managed table classes and their packet type and enum declarations.
 
        No test framework, exit code = verdict (the family rule), and
        TreatWarningsAsErrors is the refuser for the generated source. Sources
@@ -32,13 +28,14 @@
          sabotaged copy of the generated sources and require it to go red
          (docs/SPEC-TABLES.md §7.5's negative-control rule). -->
     <CookGeneratedDir Condition="'$(CookGeneratedDir)' == ''">../../build/tables-generated-cs/pointers</CookGeneratedDir>
+    <SerializeCsDir Condition="'$(SerializeCsDir)' == ''">../../../serialize.cs</SerializeCsDir>
   </PropertyGroup>
 
   <ItemGroup>
     <Compile Include="src/*.cs" />
-    <Compile Include="$(CookGeneratedDir)/*Cook.cs" />
-    <Compile Include="$(CookGeneratedDir)/*Refuse.cs" />
-    <Compile Include="$(CookGeneratedDir)/*Block.cs" />
+    <Compile Include="$(CookGeneratedDir)/*.cs" />
+    <Compile Include="$(SerializeCsDir)/src/Serialize.cs" />
+    <Compile Include="$(SerializeCsDir)/src/Int128Pair.cs" />
   </ItemGroup>
 
 </Project>

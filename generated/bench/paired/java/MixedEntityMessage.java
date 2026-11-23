@@ -194,6 +194,7 @@ public final class MixedEntityMessage {
         assert v.velZ <= 0x7ffL;
         assert v.health >= 0L;
         assert v.health <= 0x3e8L;
+        assert (v.damage >>> 8) == 0L;
         return true;
     }
 

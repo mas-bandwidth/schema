@@ -966,16 +966,28 @@ local function writeOne(f: any, n: Node, value: any, buf: buffer)
 			end
 			shift(c, -(COUNT + count * c.size))
 		elseif f.array == "keyed" then
+			local arr = value[slot]
+			if typeof(arr) == "buffer" then
+				if buffer.len(arr) ~= (f.bound or 0) then error(refuse("count_over_bound"), 0) end
+			elseif typeof(arr) ~= "table" or #arr ~= (f.bound or 0) then
+				error(refuse("count_over_bound"), 0)
+			end
 			local c = childAt(n, 2) :: Node
 			for i = 1, f.bound or 0 do
-				writeOne(e, c, slotAt(value[slot], i), buf)
+				writeOne(e, c, slotAt(arr, i), buf)
 				shift(c, c.size)
 			end
 			shift(c, -(f.bound or 0) * c.size)
 		else
+			local arr = value[slot]
+			if typeof(arr) == "buffer" then
+				if buffer.len(arr) ~= (f.bound or 0) then error(refuse("count_over_bound"), 0) end
+			elseif typeof(arr) ~= "table" or #arr ~= (f.bound or 0) then
+				error(refuse("count_over_bound"), 0)
+			end
 			local c = childAt(n, 1) :: Node
 			for i = 1, f.bound or 0 do
-				writeOne(e, c, slotAt(value[slot], i), buf)
+				writeOne(e, c, slotAt(arr, i), buf)
 				shift(c, c.size)
 			end
 			shift(c, -(f.bound or 0) * c.size)
@@ -1317,6 +1329,24 @@ function F.fixed_layout(entries: { any }, mod: any?): { any }
 	end
 	table.freeze(entries :: any)
 	return entries
+end
+
+function F.readInto(d: any, fixed: any, file: buffer, report: any?, into: { any }): { any }?
+	local got = F.read(d, fixed, file, report, #into)
+	if got == nil then
+		for i = 1, #into do
+			local fresh = d.new()
+			for k in into[i] do into[i][k] = nil end
+			for k, val in fresh do into[i][k] = val end
+		end
+		return nil
+	end
+	for i = 1, #got do
+		if into[i] == nil then into[i] = d.new() end
+		for k in into[i] do into[i][k] = nil end
+		for k, val in got[i] do into[i][k] = val end
+	end
+	return into
 end
 
 return table.freeze(F)

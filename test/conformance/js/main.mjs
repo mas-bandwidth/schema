@@ -29,6 +29,7 @@ import { pathToFileURL } from "node:url";
 import { fixedCodec, fixedRoots } from "./fixed.mjs";
 import { surfaceWriteRefusal } from "./writerefusal.mjs";
 import { messageLoadVerdict } from "./messageverdict.mjs";
+import { surfaceAnnounce, surfaceReadInto, surfaceJsonWriteInto } from "./surfaces1122.mjs";
 
 // The generated tree is a PATH, not a static import, for one reason: the
 // harness's negative control points this same driver at a sabotaged copy of
@@ -722,15 +723,64 @@ async function surfaceMessage(lines, outDir, prior) {
   }
 }
 
+// THE 2026-11-22 CONNECTION's roots (surfaces_conn, tblsurf's own
+// announcement): no `message` line names them, so they stay out of
+// messageRows, which TestMessageFormConformanceJavaScript holds to the
+// manifest's message lines; the write-refusal-message and announce rows reach
+// their verbs here. Big's verbs are looked up like the rest, and its rows are
+// `<case>.absent` where the generated unit carries none (§3.4: no fixed form
+// past the 65536-byte ceiling, so no message form either).
+const surfacesConnRows = [
+  ["tblsurf", "Narrow", "surfaces/SurfacesTable.js", "surfaces/SurfacesTable.js"],
+  ["tblsurf", "Wide", "surfaces/SurfacesTable.js", "surfaces/SurfacesTable.js"],
+  ["tblsurf", "Arrays", "surfaces/SurfacesTable.js", "surfaces/SurfacesTable.js"],
+  ["tblsurf", "Big", "surfaces/SurfacesTable.js", "surfaces/SurfacesTable.js"],
+];
+
+// fixedValueOf answers the generated fixed class a binary writer takes for a
+// row: loaded from the root's form-3 wire, or the root's fresh value where the
+// wire is `-`; null where the root has no fixed codec on this leg.
+async function fixedValueOf(unit, root, wirePath) {
+  const codec = await textCodec(unit, root);
+  if (codec !== null && codec.fixedValue !== undefined) {
+    if (wirePath === "-") { return codec.fixedValue.fresh(); }
+    const x = codec.fixedValue.load(new Uint8Array(readFileSync(wirePath)));
+    if (x === null) { fail(unit + "." + root + ": the fixed load refused " + wirePath); }
+    return x;
+  }
+  if (wirePath === "-") {
+    const row = messageRow(unit, root) ?? surfacesConnRows.find((r) => r[0] === unit && r[1] === root) ?? null;
+    if (row !== null) {
+      const home = await load(row[2]);
+      const Class = home[root], init = home["Init" + root];
+      if (typeof Class === "function" && typeof init === "function") {
+        const x = new Class();
+        init(x);
+        return x;
+      }
+    }
+  }
+  return null;
+}
+
 // messageVerbs answers a message row's Measure/Save pair for the write-refusal
 // message surface (writerefusal.mjs), or null where the root has no message form.
 async function messageVerbs(unit, root) {
-  const row = messageRow(unit, root);
+  const row = messageRow(unit, root) ?? surfacesConnRows.find((r) => r[0] === unit && r[1] === root) ?? null;
   if (row === null) { return null; }
   const m = await load(row[3]);
   const measure = m[root + "MeasureMessages"], save = m[root + "SaveMessages"];
   if (typeof measure !== "function" || typeof save !== "function") { return null; }
   return { measure, save };
+}
+
+async function blockUnit(unit, root) {
+  const row = fixedRoots.find((r) => r[0] === unit && r[1] === root) ?? null;
+  if (row === null) { return null; }
+  const blockPath = row[2].replace(/Table\.js$/, "Block.js");
+  if (!existsSync(resolve(generated, blockPath))) { return null; }
+  const m = await load(blockPath);
+  return m[root + "Block"] ?? null;
 }
 
 // ---- the WIRE-CARRYING surfaces (docs/SPEC-TABLES.md §3, §3.1, §4, §16, §16.7)
@@ -845,6 +895,16 @@ const wireRows = [
   // variable table and a fixed one
   ["shapes", "Bounds", "shapes/ShapesVariable.js"],
   ["shapes", "FixedBounds", "shapes/ShapesVariable.js"],
+  // the 2026-11-22 unit (test/tables/surfaces): the text writer's depth cap
+  // (Chain), a null required pointer (Holder), a counted array with a Min
+  // (Counted), and the three fixed roots with a file form (Narrow, Wide,
+  // Arrays; fixed.mjs)
+  ["tblsurf", "Chain", "surfaces/SurfacesVariable.js"],
+  ["tblsurf", "Holder", "surfaces/SurfacesVariable.js"],
+  ["tblsurf", "Counted", "surfaces/SurfacesVariable.js"],
+  ["tblsurf", "Narrow", "surfaces/SurfacesVariable.js"],
+  ["tblsurf", "Wide", "surfaces/SurfacesVariable.js"],
+  ["tblsurf", "Arrays", "surfaces/SurfacesVariable.js"],
 ];
 
 // fuzzUnits binds the roster units no text surface names (tbla2, tblk1,
@@ -962,6 +1022,10 @@ async function codecOf(unit, root, path) {
     report: () => new m.TableVariableReport(),
   };
   if (Object.values(codec).some((f) => typeof f !== "function")) { fail(unit + "." + root + ": the variable surface is missing from " + path); }
+  // the root's cook writer over the variable value (§7.6), where the unit
+  // emits one: the write-refusal-cook surface's writer
+  const cookMeasure = m[root + "CookMeasure"], cookFrom = m[root + "CookFrom"];
+  codec.cook = typeof cookMeasure === "function" && typeof cookFrom === "function" ? { measure: cookMeasure, from: cookFrom } : null;
   return fixedCodec(generated, load, unit, root, path, codec);
 }
 
@@ -1021,6 +1085,7 @@ const textUnits = {
   listdemo: "lists/ListdemoVariable.js",
   widelist: "widelist/WidelistdemoVariable.js",
   shapes: "shapes/ShapesVariable.js",
+  tblsurf: "surfaces/SurfacesVariable.js",
 };
 
 // unitView binds a unit's variable module and its View (<Pkg>View.js beside
@@ -1706,7 +1771,7 @@ if (surface === "list") {
   // counts rather than reading as a feature the leg lacks. The retain surfaces
   // answer every row whose unit this leg generates, and name the reason beside
   // a row it cannot reach.
-  process.stdout.write("wire\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\nmessage\nmessage-prior\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n");
+  process.stdout.write("wire\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\nmessage\nmessage-prior\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nannounce\nread-into\njson-write-into\n");
   // the opt-in units this leg answers (MANIFEST.txt `opt-in`)
   process.stdout.write("unit shapes\n");
   process.exit(0);
@@ -1745,7 +1810,12 @@ switch (surface) {
   case "write-refusal-fixed":
   case "write-refusal-message":
   case "write-refusal-json":
-    await surfaceWriteRefusal(surface, lines, outDir, textCodec, messageVerbs, unitView);
+  case "write-refusal-cook":
+  case "write-refusal-block":
+    await surfaceWriteRefusal(surface, lines, outDir, textCodec, messageVerbs, unitView, fixedValueOf, blockUnit);
     break;
+  case "announce": await surfaceAnnounce(lines, outDir, load, messageVerbs, fixedValueOf); break;
+  case "read-into": await surfaceReadInto(lines, outDir, load); break;
+  case "json-write-into": await surfaceJsonWriteInto(lines, outDir, textCodec, readOf); break;
   default: process.exit(2);
 }

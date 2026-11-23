@@ -11,7 +11,7 @@ import re
 import struct
 from typing import Any, Callable, TypeVar
 
-from . import BlobRef, InvalidValue, LoadReport, Refused
+from . import BlobRef, InvalidValue, LoadReport, Refused, _copy_instance
 from .descriptor import FieldDesc, by_name, new_union_by_name
 from .json_scan import Number, parse
 from .kind_map import _entry_fields
@@ -461,11 +461,26 @@ def from_json(cls: type[_T], text: str | bytes | bytearray | memoryview, report:
         else:
             fill(value, data, graph, unknown)
     if report is not None:
+        report.reset()
         report.unknown = unknown[0]
-        report.widened = 0
-        report.retained = 0
-        report.retain_lost = 0
     return value
+
+
+def from_json_into(cls: type[_T], target: _T, text: str | bytes | bytearray | memoryview, report: LoadReport | None = None, fill: _Fill | None = None) -> bool:
+    """Read one value into target, resetting target and report on refusal (FL-02, FL-03, FL-29)."""
+    if report is not None:
+        report.reset()
+    try:
+        loaded = from_json(cls, text, report, fill)
+    except Refused as err:
+        _copy_instance(target, cls())
+        if report is not None:
+            report.reset()
+            report.refused = True
+            report.reason = err.reason
+        return False
+    _copy_instance(target, loaded)
+    return True
 
 
 def _read_keyed(field: FieldDesc, item: Any, container: Any, graph: dict[int, tuple[Any, bool]] | None, unknown: list[int]) -> None:

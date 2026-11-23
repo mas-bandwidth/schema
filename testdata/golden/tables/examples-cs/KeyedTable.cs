@@ -1774,6 +1774,7 @@ namespace Tabledemo
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
+            if (report != null) { report.Zero(); }
             long loaded = TeamConfigFixedLoadWalk(values, data, plan, report);
             if (loaded < 0)
             {
@@ -2369,6 +2370,7 @@ namespace Tabledemo
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
+            if (report != null) { report.Zero(); }
             long loaded = GunnerConfigFixedLoadWalk(values, data, plan, report);
             if (loaded < 0)
             {
@@ -2992,6 +2994,7 @@ namespace Tabledemo
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
+            if (report != null) { report.Zero(); }
             long loaded = TurretConfigFixedLoadWalk(values, data, plan, report);
             if (loaded < 0)
             {
@@ -3706,6 +3709,7 @@ namespace Tabledemo
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
+            if (report != null) { report.Zero(); }
             long loaded = HullConfigFixedLoadWalk(values, data, plan, report);
             if (loaded < 0)
             {
@@ -4736,6 +4740,7 @@ namespace Tabledemo
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
+            if (report != null) { report.Zero(); }
             long loaded = KeyedConfigFixedLoadWalk(values, data, plan, report);
             if (loaded < 0)
             {

@@ -26,33 +26,39 @@ func init() {
 // "The announcement"). The bytes are tablewire.Announce, the same bytes every
 // other backend emits and the manifest's `connection` rows pin.
 func emitMessageForm(g *luau.Gen) error {
+	msgVocab := tablewire.MessageVocabulary(g.Unit)
 	ann := tablewire.Announce(g.Unit)
 	g.Pf("-- the message form's announcement, form byte 2 (docs/SPEC-TABLES.md §3.3):\n")
 	g.Pf("-- an ordinary form-1 file carrying the build version and the vocabulary.\n")
-	g.Pf("%s.TableMessageAnnouncement = (function()\n", g.Self)
-	g.Pf("\tlocal b = buffer.create(%d)\n", len(ann))
-	g.Pf("\tlocal v = {")
-	for i, c := range ann {
-		if i%24 == 0 {
-			g.Pf("\n\t\t")
+	if len(msgVocab) > 4096 {
+		g.Pf("%s.TableMessageAnnouncement = nil\n", g.Self)
+		g.Pf("%s.TableMessageAnnouncementLength = 0\n", g.Self)
+	} else {
+		g.Pf("%s.TableMessageAnnouncement = (function()\n", g.Self)
+		g.Pf("\tlocal b = buffer.create(%d)\n", len(ann))
+		g.Pf("\tlocal v = {")
+		for i, c := range ann {
+			if i%24 == 0 {
+				g.Pf("\n\t\t")
+			}
+			g.Pf("%d,", c)
 		}
-		g.Pf("%d,", c)
+		g.Pf("\n\t}\n")
+		g.Pf("\tfor i = 1, #v do buffer.writeu8(b, i - 1, v[i]) end\n")
+		g.Pf("\treturn b\nend)()\n")
+		g.Pf("%s.TableMessageAnnouncementLength = %d\n", g.Self, len(ann))
 	}
-	g.Pf("\n\t}\n")
-	g.Pf("\tfor i = 1, #v do buffer.writeu8(b, i - 1, v[i]) end\n")
-	g.Pf("\treturn b\nend)()\n")
-	g.Pf("%s.TableMessageAnnouncementLength = %d\n", g.Self, len(ann))
 	// R8 follow-up: the announcement WRITER refuses a vocabulary past the
 	// readers' default entry maximum (docs/SPEC-TABLES.md §3.3).
-	if len(tablewire.MessageVocabulary(g.Unit)) > ir.TableVocabularyMaxEntries {
+	if len(msgVocab) > ir.TableVocabularyMaxEntries {
 		g.Pf("function %s.AnnounceMeasure(): number return -1 end\n", g.Self)
 		g.Pf("function %s.Announce(): buffer? return nil end\n", g.Self)
 	} else {
 		g.Pf("function %s.AnnounceMeasure(): number return %s.TableMessageAnnouncementLength end\n", g.Self, g.Self)
 		g.Pf("function %s.Announce(): buffer? return %s.TableMessageAnnouncement end\n", g.Self, g.Self)
 	}
-	g.Pf("%s.TableMessageRefBits = %d\n", g.Self, ir.TableMessageRefBits(len(tablewire.MessageVocabulary(g.Unit))))
-	g.Pf("%s.TableMessageEntriesHere = %d\n", g.Self, len(tablewire.MessageVocabulary(g.Unit)))
+	g.Pf("%s.TableMessageRefBits = %d\n", g.Self, ir.TableMessageRefBits(len(msgVocab)))
+	g.Pf("%s.TableMessageEntriesHere = %d\n", g.Self, len(msgVocab))
 	g.Pf("%s.TableMessageBuildVersion = %s\n\n", g.Self, luau.IntegerLit(new(big.Int).SetUint64(ir.BuildVersion(g.Unit))))
 	// the build version under each table the message form carries (a fixed
 	// table, §3.3: the form is fixed tables only, so no variable table is

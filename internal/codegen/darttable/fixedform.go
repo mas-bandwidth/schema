@@ -160,7 +160,7 @@ func FixedTableClosureSupported(u *ir.Unit) bool {
 // not emit the form for gets a line in the generated library saying which
 // table and why, so a consumer reaching for Save gets a missing name from the
 // analyzer beside a file that says the reason.
-func fixedRefusal(st *ir.Struct) string {
+func fixedRefusalWithoutSize(st *ir.Struct) string {
 	// THE WALK'S DEPTH BOUND GOES FIRST, AND IT IS ITS OWN SENTENCE: past
 	// ir.TableFixedMaxDepth no conforming reader takes the walk
 	// (docs/FIXED-FORM-ALGORITHM.md §5.2's `layout_malformed`), which is a fact
@@ -182,10 +182,33 @@ func fixedRefusal(st *ir.Struct) string {
 		// would be this backend adding storage to a class another emitter owns.
 		return "field " + n + " is OPTIONAL inside a `type`, whose Dart class internal/codegen/dart owns and which carries no presence member for the present flag (docs/SPEC-TABLES.md §3.4, §2.3)"
 	}
+	return ""
+}
+
+func fixedRefusal(st *ir.Struct) string {
+	if r := fixedRefusalWithoutSize(st); r != "" {
+		return r
+	}
 	if fixedTypeBytes(st) > ir.TableFixedRecordMaxBytes {
 		return "its record body is past §3.4's 65536-byte ceiling, so no conforming reader would decode it (`layout_record_too_large`)"
 	}
 	return ""
+}
+
+// messageOnlyRoots is every fixed-declared table whose record body exceeds the
+// 65536-byte fixed file ceiling (so form 3 is omitted) but which still carries
+// its storage class and message form (SF-05, SF-06; docs/SPEC-TABLES.md §3.3).
+func messageOnlyRoots(tables []*ir.Struct) []*ir.Struct {
+	var out []*ir.Struct
+	for _, st := range tables {
+		if !st.IsTable || !st.FixedDeclared || st.IsMapEntry() {
+			continue
+		}
+		if fixedRefusalWithoutSize(st) == "" && fixedRefusal(st) != "" {
+			out = append(out, st)
+		}
+	}
+	return out
 }
 
 // fixedOptionalInPacketType names the first optional field declared in a

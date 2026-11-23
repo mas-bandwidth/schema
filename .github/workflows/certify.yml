@@ -410,8 +410,7 @@ jobs:
           unset MAKEFLAGS
           make test-core-tables-3 "${MAKE_VARS[@]}"
 
-      # TestOwedRowsAreLinked reads merged pull requests from Git history.
-      - name: fetch the history the core-go doc gate reads
+      - name: fetch Git history for Go checks
         if: matrix.shard == 'core-go'
         run: |
           if [ "$(git rev-parse --is-shallow-repository)" = true ]; then

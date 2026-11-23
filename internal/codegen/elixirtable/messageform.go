@@ -147,6 +147,11 @@ const messageBatchRuntimeBody = `  @batch_max 256
     :invalid_value -> {:error, :invalid_value}
   end
 
+  def measure_messages(%__MODULE__{announced: false, refused: false, root: root}, values)
+      when is_binary(root) and is_list(values) do
+    with {:ok, own} <- own_vocab(root), do: measure_messages(own, values)
+  end
+
   def measure_messages(_vocab, _values), do: {:error, :no_vocabulary}
 
   @doc """
@@ -171,7 +176,29 @@ const messageBatchRuntimeBody = `  @batch_max 256
     :invalid_value -> {:error, :invalid_value}
   end
 
+  def save_messages(%__MODULE__{announced: false, refused: false, root: root}, values)
+      when is_binary(root) and is_list(values) do
+    with {:ok, own} <- own_vocab(root), do: save_messages(own, values)
+  end
+
   def save_messages(_vocab, _values), do: {:error, :no_vocabulary}
+
+  defp own_vocab(root) do
+    case :persistent_term.get({__MODULE__, :own_vocab}, nil) do
+      nil ->
+        case announce_read(@announcement) do
+          {:ok, vocab} ->
+            :persistent_term.put({__MODULE__, :own_vocab}, vocab)
+            for_root(vocab, root)
+
+          _ ->
+            {:error, :no_vocabulary}
+        end
+
+      vocab ->
+        for_root(vocab, root)
+    end
+  end
 
   @doc false
   def rebind_messages(from_vocab, %__MODULE__{announced: true, root: root} = to_vocab, bodies)
@@ -1855,7 +1882,8 @@ const messageRuntimeBody = `  defstruct announced: false,
   The unit's announcement, byte for byte the compiler settled (docs/SPEC-TABLES.md
   §3.3): a form-` + "`" + `1` + "`" + ` file whose body carries the build version and the vocabulary.
   """
-  def announce, do: if(@announcement_too_large, do: {:error, :vocabulary_too_large}, else: @announcement)
+  def announce,
+    do: if(@announcement_too_large, do: {:error, :vocabulary_too_large}, else: @announcement)
 
   @doc "The announcement's byte count, a constant of the unit."
   def announce_measure, do: if(@announcement_too_large, do: -1, else: byte_size(@announcement))
@@ -2947,10 +2975,7 @@ func messageWriteRuleRows(u *ir.Unit) string {
 	}
 	b.WriteString("  defp write_rule_rows do\n    [\n")
 	for i, row := range rows {
-		b.WriteString("      " + row)
-		if i < len(rows)-1 {
-			b.WriteString(",")
-		}
+		b.WriteString(formatMessageRuleRow(row, i < len(rows)-1))
 		b.WriteString("\n")
 	}
 	b.WriteString("    ]\n  end\n")
@@ -3108,14 +3133,26 @@ func messageScopedRuleRows(u *ir.Unit) string {
 	}
 	b.WriteString("  defp scoped_write_rule_rows do\n    [\n")
 	for i, row := range rows {
-		b.WriteString("      " + row)
-		if i < len(rows)-1 {
-			b.WriteString(",")
-		}
+		b.WriteString(formatMessageRuleRow(row, i < len(rows)-1))
 		b.WriteString("\n")
 	}
 	b.WriteString("    ]\n  end\n")
 	return b.String()
+}
+
+func formatMessageRuleRow(row string, trailingComma bool) string {
+	comma := ""
+	if trailingComma {
+		comma = ","
+	}
+	line := "      " + row + comma
+	if len(line) <= 98 {
+		return line
+	}
+	if cut := strings.LastIndex(row, ", "); cut >= 0 {
+		return "      " + row[:cut+1] + "\n       " + row[cut+2:] + comma
+	}
+	return line
 }
 
 // messageIntBounds is an integer leaf's write domain: its declared range,

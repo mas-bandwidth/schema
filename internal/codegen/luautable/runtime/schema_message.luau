@@ -2291,12 +2291,17 @@ local function mEncodeFieldPayload(c: any, owner: string, fd: any, entrySlot: nu
 		return mEncodeEnum(c, owner, fd, val, fd.name)
 	elseif s == "arr" then
 		if fd.array == "keyed" then
+			if typeof(val) == "buffer" then
+				if buffer.len(val) ~= (fd.bound or 0) then return mFail(c, "invalid_value", owner, fd.name) end
+			elseif typeof(val) ~= "table" or #val ~= (fd.bound or 0) then
+				return mFail(c, "invalid_value", owner, fd.name)
+			end
 			local present = {}
 			for slotIdx = 1, fd.bound do
 				local x = val[slotIdx]
 				local pair = fd.keyvs[slotIdx]
 				if pair == nil then continue end
-				local probe = { w = mNewWriter(true), refBits = c.refBits, byId = c.byId, entries = c.entries, reason = nil, field = nil }
+				local probe = { w = mNewWriter(true), refBits = c.refBits, byId = c.byId, entries = c.entries, rootName = c.rootName, useOwnSlots = c.useOwnSlots, reason = nil, field = nil }
 				if not mEncodeElem(probe, owner, fd, shape, x) then
 					c.reason, c.field = probe.reason, probe.field
 					return false
@@ -2324,6 +2329,12 @@ local function mEncodeFieldPayload(c: any, owner: string, fd: any, entrySlot: nu
 			if typeof(count) ~= "number" or count ~= math.floor(count) or count < (fd.min or 0) or count > (fd.bound or 0) then
 				return mFail(c, "invalid_value", owner, fd.name)
 			end
+		elseif fd.array == "fixed" then
+			if typeof(val) == "buffer" then
+				if buffer.len(val) ~= count then return mFail(c, "invalid_value", owner, fd.name) end
+			elseif typeof(val) ~= "table" or #val ~= count then
+				return mFail(c, "invalid_value", owner, fd.name)
+			end
 		end
 		local cb = mCountBits(shape)
 		if cb > 0 then mPut(c.w, count - shape.min, cb) end
@@ -2341,7 +2352,8 @@ mEncodeArm = function(c: any, owner: string, un: any, u: any, fname: string): bo
 	local tag = u.Type or 0
 	local arm = un.arms[tag]
 	if arm == nil then return mFail(c, "invalid_value", owner, fname) end
-	local slot = c.byId[arm.id]
+	local ownSlot = if c.rootName ~= nil then S.messageSlotOf(c.rootName, un.name, tag) else 0
+	local slot = if ownSlot > 0 and c.entries[ownSlot] ~= nil and c.entries[ownSlot].id == arm.id then ownSlot else c.byId[arm.id]
 	if slot == nil then return mFail(c, "invalid_value", owner, fname) end
 	mPut(c.w, slot, c.refBits)
 	if arm.s == "void" then return true end
@@ -2351,7 +2363,7 @@ end
 
 mEncodeBody = function(c: any, desc: any, rec: any): boolean
 	if typeof(rec) ~= "table" then return mFail(c, "invalid_value", desc.name, "") end
-	for _, fd in desc.fields do
+	for fidx, fd in desc.fields do
 		if fd.guard ~= nil then
 			local active = true
 			for _, g in fd.guard do
@@ -2359,7 +2371,8 @@ mEncodeBody = function(c: any, desc: any, rec: any): boolean
 			end
 			if not active then continue end
 		end
-		local slot = c.byId[fd.id]
+		local ownSlot = if c.rootName ~= nil then S.messageSlotOf(c.rootName, desc.name, fidx) else 0
+		local slot = if ownSlot > 0 and c.entries[ownSlot] ~= nil and c.entries[ownSlot].id == fd.id then ownSlot else c.byId[fd.id]
 		if slot == nil then return mFail(c, "invalid_value", desc.name, fd.name) end
 		local entry = c.entries[slot]
 		if fd.present ~= nil then
@@ -2368,7 +2381,7 @@ mEncodeBody = function(c: any, desc: any, rec: any): boolean
 			if not mEncodeFieldPayload(c, desc.name, fd, slot, entry, rec) then return false end
 			continue
 		end
-		local probe = { w = mNewWriter(true), refBits = c.refBits, byId = c.byId, entries = c.entries, reason = nil, field = nil }
+		local probe = { w = mNewWriter(true), refBits = c.refBits, byId = c.byId, entries = c.entries, rootName = c.rootName, useOwnSlots = c.useOwnSlots, reason = nil, field = nil }
 		if not mEncodeFieldPayload(probe, desc.name, fd, slot, entry, rec) then
 			c.reason, c.field = probe.reason, probe.field
 			return false
@@ -2402,7 +2415,7 @@ mEncodeBody = function(c: any, desc: any, rec: any): boolean
 						for i = 1, n do
 							local el = if typeof(val) == "buffer" then buffer.readu8(val, i - 1) else val[i]
 							if fd.e.s == "tab" then
-								local ep = { w = mNewWriter(true), refBits = c.refBits, byId = c.byId, entries = c.entries, reason = nil, field = nil }
+								local ep = { w = mNewWriter(true), refBits = c.refBits, byId = c.byId, entries = c.entries, rootName = c.rootName, useOwnSlots = c.useOwnSlots, reason = nil, field = nil }
 								if not mEncodeBody(ep, S.lookup(fd.e.t), el) then
 									c.reason, c.field = ep.reason, ep.field
 									return false
@@ -2442,15 +2455,16 @@ end
 
 local function mWriteRecordBatch(v: any, desc: any, bodies: any, measuring: boolean, report: any): (buffer?, number)
 	reset(report)
-	if not v.announced then
+	local useV = if v ~= nil and v.announced then v else getOwnVocab(desc.name)
+	if useV == nil then
 		refuse(report, "no_vocabulary")
 		return nil, -1
 	end
 	local byId: { [integer]: number } = {}
-	for idx, e in v.entries do
+	for idx, e in useV.entries do
 		if byId[e.id] == nil then byId[e.id] = idx end
 	end
-	local c: any = { w = mNewWriter(measuring), refBits = v.refBits, byId = byId, entries = v.entries, reason = nil, field = nil }
+	local c: any = { w = mNewWriter(measuring), refBits = useV.refBits, byId = byId, entries = useV.entries, rootName = desc.name, useOwnSlots = not (v ~= nil and v.announced), reason = nil, field = nil }
 	for _, rec in bodies do
 		if not mEncodeBody(c, desc, rec) then
 			if c.reason == "non_finite_float" then
@@ -2582,6 +2596,157 @@ function M.SaveMessages(v: any, root: string, bodies: any, report: any?): (buffe
 		buffer.writeu32(out, batchBytes, crc32c(out, batchBytes))
 	end
 	return out, size
+end
+
+local function mCopyInto(dst: any, src: any)
+	if typeof(dst) ~= "table" or typeof(src) ~= "table" or dst == src then return end
+	for k in dst do dst[k] = nil end
+	for k, val in src do dst[k] = val end
+end
+
+local mDecodeOwnValue: any
+local function mDecodeOwnBody(ov: any, desc: any, fields: { any }): any
+	local rec = desc.new()
+	local byId: { [integer]: any } = {}
+	for _, fd in desc.fields do
+		byId[fd.id] = fd
+	end
+	for _, it in fields do
+		local entry = ov.entries[it.ref]
+		if entry == nil then continue end
+		local fd = byId[entry.id]
+		if fd == nil then continue end
+		if fd.present ~= nil then rec[fd.present] = true end
+		local val, extra = mDecodeOwnValue(ov, fd, it.node, rec[fd.slot])
+		rec[fd.slot] = val
+		if fd.s == "str" or fd.s == "bytes" then
+			rec[fd.slot .. "Length"] = extra or 0
+		elseif fd.s == "arr" and fd.array == "counted" then
+			rec[fd.slot .. "Count"] = extra or 0
+		end
+	end
+	return rec
+end
+
+mDecodeOwnValue = function(ov: any, fd: any, node: any, existing: any): (any, number?)
+	local k = node.kind
+	if k == 1 then
+		return node.bit ~= 0, nil
+	elseif k == 10 then
+		if node.packing == 2 then
+			return dequantizeF32(node.shape or { qmin = 0, qmax = 0, qres = 0 }, node.idx), nil
+		end
+		buffer.writeu32(msgScratch, 0, node.raw32)
+		return buffer.readf32(msgScratch, 0), nil
+	elseif k == 11 then
+		buffer.writeu32(msgScratch, 0, node.lo)
+		buffer.writeu32(msgScratch, 4, node.hi)
+		return buffer.readf64(msgScratch, 0), nil
+	elseif k == 12 then
+		local s = node.str or ""
+		local cap = math.max(#s, fd.bound or 0)
+		local b = if typeof(existing) == "buffer" and buffer.len(existing) >= #s then existing else buffer.create(cap)
+		if #s > 0 then buffer.writestring(b, 0, s, #s) end
+		return b, #s
+	elseif k == 13 then
+		return mDecodeOwnBody(ov, S.lookup(fd.t), node.fields), nil
+	elseif k == 14 then
+		local elems = node.elems or {}
+		local n = #elems
+		if typeof(existing) == "buffer" then
+			local b = buffer.create(math.max(n, fd.bound or n))
+			for i = 1, n do
+				local ev = mDecodeOwnValue(ov, fd.e, elems[i], nil)
+				buffer.writeu8(b, i - 1, if typeof(ev) == "number" then ev else 0)
+			end
+			return b, n
+		end
+		local arr: { any } = if typeof(existing) == "table" then table.clone(existing) else {}
+		for i = 1, n do
+			arr[i] = mDecodeOwnValue(ov, fd.e, elems[i], arr[i])
+		end
+		return arr, n
+	elseif k == 16 then
+		local arr: { any } = if typeof(existing) == "table" then table.clone(existing) else {}
+		local keyById: { [integer]: number } = {}
+		if fd.keyvs ~= nil then
+			for idx, pair in fd.keyvs do keyById[pair[2]] = idx end
+		end
+		for _, p in node.pairs or {} do
+			local ke = ov.entries[p.keyRef]
+			local slotIdx = if ke ~= nil then keyById[ke.id] else nil
+			if slotIdx ~= nil then
+				arr[slotIdx] = mDecodeOwnValue(ov, fd.e, p.val, arr[slotIdx])
+			end
+		end
+		return arr, nil
+	elseif k == 30 then
+		if node.ref == 0 then return 0, nil end
+		local ee = ov.entries[node.ref]
+		if ee ~= nil and fd.vs ~= nil then
+			for idx, pair in fd.vs do
+				if pair[2] == ee.id then return idx, nil end
+			end
+		end
+		return 0, nil
+	elseif k == 15 then
+		local un = S.lookup(fd.t)
+		local u = if typeof(existing) == "table" then table.clone(existing) else { Type = 0 }
+		if node.armRef == 0 then u.Type = 0; return u, nil end
+		local ae = ov.entries[node.armRef]
+		if ae ~= nil then
+			for idx, arm in un.arms do
+				if arm.id == ae.id then
+					u.Type = idx
+					if arm.s ~= "void" and node.payload ~= nil then
+						local av, aex = mDecodeOwnValue(ov, arm, node.payload, u[arm.slot])
+						u[arm.slot] = av
+						if arm.s == "str" or arm.s == "bytes" then u[arm.slot .. "Length"] = aex or 0 end
+						if arm.s == "arr" and arm.array == "counted" then u[arm.slot .. "Count"] = aex or 0 end
+					end
+					break
+				end
+			end
+		end
+		return u, nil
+	elseif node.raw16 ~= nil then
+		-- scalar integer from 16-byte little-endian raw16
+		local lo = buffer.readinteger(node.raw16, 0)
+		local hi = buffer.readinteger(node.raw16, 8)
+		if fd.kw == 16 then
+			return { lo = lo, hi = hi }, nil
+		end
+		if fd.kw == 8 then
+			return lo, nil
+		end
+		local num = integer.tonumber(lo)
+		if fd.signed and fd.kw ~= nil and fd.kw < 8 then
+			local bits = fd.kw * 8
+			local signBit = 2 ^ (bits - 1)
+			if num >= signBit then num = num - (2 ^ bits) end
+		end
+		return num, nil
+	end
+	return existing, nil
+end
+
+function M.LoadMessagesInto(v: any, root: string, data: buffer, into: { any }, report: any?): number
+	local desc = messageRoot(root)
+	local rep: any = report or {}
+	local count, bodies = M.LoadMessages(v, root, data, #into, rep)
+	if count < 1 or (rep.reason ~= nil and rep.reason ~= "") or rep.malformed or (rep.verdict or 0) ~= 0 then
+		for i = 1, #into do
+			mCopyInto(into[i], desc.new())
+		end
+		return 0
+	end
+	for i = 1, count do
+		local b = bodies[i]
+		if b ~= nil and b.ownTree ~= nil and b.ownVocab ~= nil then
+			mCopyInto(into[i], mDecodeOwnBody(b.ownVocab, desc, b.ownTree))
+		end
+	end
+	return count
 end
 
 return table.freeze(M)

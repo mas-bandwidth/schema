@@ -8889,6 +8889,7 @@ inline bool PaddedRowLoadMessages( PaddedRow * values, int64_t * count, const Ta
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -9878,6 +9879,7 @@ inline bool PaddedFrameLoadMessages( PaddedFrame * values, int64_t * count, cons
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -12623,6 +12625,7 @@ inline bool PaddedFrameCookBody( uint8_t * at, const PaddedFrame & value, TableB
     table_cook_put( at + 8, (uint64_t) value.stamp, 8, order );
     // 64 slots of storage, value.rows_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.rows_count >= 0 && value.rows_count <= 64 ); // storage invariant, debug only (§5.1)
+    if ( value.rows_count < 0 || value.rows_count > 64 ) { return false; }
     for ( int32_t i = 0; i < value.rows_count; i++ )
     {
         if ( !PaddedRowCookBody( at + 16 + i * 64, value.rows[i], order ) ) { return false; }

@@ -3,7 +3,8 @@
 import sys
 from copy import deepcopy
 
-from _common import answering, no_codec, entries, read_bytes, root_class, supported, write_bytes
+from _common import answering, entries, no_codec, root_class, supported, write_bytes
+from _mutate import UNREPRESENTABLE, apply, fresh_or_load
 
 
 def _convert_scalar(current, rule, token):
@@ -22,6 +23,7 @@ def _convert_scalar(current, rule, token):
         raw = bytes.fromhex(token)
         return raw.decode("utf-8", "surrogateescape") if isinstance(current, str) else raw
     raise ValueError("unknown write-refusal mutation: " + rule)
+
 
 
 _ELEMENT_DEFAULTS = {"bool": False, "float32": 0.0, "float64": 0.0, "string": "", "bytes": b"", "int": 0, "enum": 0}
@@ -54,6 +56,13 @@ def _with_tag(current, token):
 
 
 def _set(value, path, rule, token):
+    """Set the row's value. Returns UNREPRESENTABLE when this leg's storage
+    cannot hold it (_mutate.apply), and None once it is set."""
+    special = apply(value, path, rule, token)
+    if special is UNREPRESENTABLE:
+        return UNREPRESENTABLE
+    if special:
+        return None
     parts = path.replace("[", ".").replace("]", "").split(".")
     node = value
     i = 0
@@ -118,8 +127,10 @@ def run(manifest, outdir):
             if not supported(cls):
                 no_codec(outdir, case)
                 continue
-            value = cls.load(read_bytes(wire))
-            _set(value, path, rule, token)
+            value = fresh_or_load(cls, wire)
+            if _set(value, path, rule, token) is UNREPRESENTABLE:
+                write_bytes(outdir, case, b"unrepresentable\n")
+                continue
             try:
                 value.measure()
                 value.save()

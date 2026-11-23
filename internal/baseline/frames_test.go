@@ -903,8 +903,7 @@ func TestVersioningEvolutionTableAgreesWithTheGolden(t *testing.T) {
 // It is let through only when rule has an entry in the owed table
 // (docs/SPEC-CONFORMANCE.md §7) that names the PR bringing the code: then
 // owed is the line to print, OWED <rule> <PR>. Otherwise fail is the
-// failure. When that PR merges, docgate TestOwedRowsAreLinked fails until
-// the entry goes, and then this gate checks the code again.
+// failure. When the source evidence is linked, this gate checks the code again.
 func owedVerdict(entries []docgate.OwedEntry, rule, msg string) (owed, fail string) {
 	for _, e := range entries {
 		if e.Entry != rule || e.State != "owed" || len(e.PRs) == 0 {

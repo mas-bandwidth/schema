@@ -224,6 +224,7 @@ func (g *tableGen) cookFieldPayload(f *ir.Field, src, at string, offset int64, i
 		// docs/rulings.json fixed-dead-bytes-are-zero)
 		count := fmt.Sprint(f.ArrayBound)
 		if f.Array == ir.ArrayCounted {
+			g.pf("%sif(%s_count<%d || %s_count>%d) { return 0; }\n", ind, src, f.ArrayMin, src, f.ArrayBound)
 			count = fmt.Sprintf("%s_count && %s<%d", src, i, f.ArrayBound)
 		}
 		if cArmMin(f) {

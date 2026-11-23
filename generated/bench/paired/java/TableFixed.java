@@ -341,6 +341,19 @@ public final class TableFixed {
         return out;
     }
 
+    public static int[] ints(java.lang.String... parts) {
+        final byte[] b = bytes(parts);
+        final int[] out = new int[b.length / 4];
+        for (int i = 0; i < out.length; i++) {
+            final int at = i * 4;
+            out[i] = (b[at] & 0xff)
+                    | ((b[at + 1] & 0xff) << 8)
+                    | ((b[at + 2] & 0xff) << 16)
+                    | ((b[at + 3] & 0xff) << 24);
+        }
+        return out;
+    }
+
     /**
      * A PLAN ENTRY. src is a byte offset into the record's BODY and dst one into this reader's own
      * record IMAGE; guard is the byte offset of the writer's union tag when the entry belongs to an

@@ -252,7 +252,7 @@ public final class TableCookWrite {
         }
         if (f.isArray) {
             int used = count(value, f, source);
-            assert used >= 0 && used <= f.arrayBound && (f.countOffset < 0 || length(source) >= used);
+            assert used >= f.arrayMin && used <= f.arrayBound && (f.countOffset < 0 ? length(source) <= f.arrayBound : length(source) >= used);
             // a FIXED array's value may hold fewer than N elements: the slots
             // past it are value-initialized (§7.2) and reach no node
             used = java.lang.Math.min(used, length(source));
@@ -584,7 +584,7 @@ public final class TableCookWrite {
             put(out, order, at + f.countOffset, used, 4);
         } else if (f.isArray) {
             int used = count(source, f, v);
-            assert used >= 0 && used <= f.arrayBound && (f.countOffset < 0 || length(v) >= used);
+            assert used >= f.arrayMin && used <= f.arrayBound && (f.countOffset < 0 ? length(v) <= f.arrayBound : length(v) >= used);
             if (f.countOffset >= 0) { put(out, order, at + f.countOffset, used, 4); }
             // §7.2: a COUNTED array writes its live elements, and a slot past
             // the count is DEAD BYTES that stay the zero write() laid down

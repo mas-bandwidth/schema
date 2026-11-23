@@ -1045,6 +1045,7 @@ function TableVariableFieldEdges(fd, v, out, everyGuard) {
       TableVariableUnionEdges(fd.u, val, out, everyGuard);
       break;
     case "keyed":
+      if (!globalThis.Array.isArray(val) || val.length !== fd.slots.length) { out.push({ invalid: true }); return; }
       if (fd.e.s === "tab") { for (let i = 0; i < val.length; i++) { TableVariableEdges(fd.e.c, val[i], out, everyGuard); } }
       break;
     case "arr": {
@@ -3009,6 +3010,7 @@ function TableVariableWriteMap(fd, w, ids, nodes, val, retain, path) {
 // per slot that does not hold its default, ascending by variant; none present
 // elides the field and its id
 function TableVariableWriteKeyed(fd, w, ids, nodes, val, retain, path) {
+  if (!globalThis.Array.isArray(val) || val.length !== fd.slots.length) { return false; }
   const mark = ids.mark();
   const ref = ids.ref(fd.id);
   const body = new TableVariableWriter();
@@ -4137,6 +4139,36 @@ class TableVariableTextIn {
 // UTF-8 itself — well-formed, no overlong form, no surrogate code point and
 // nothing above U+10FFFF — before a byte reaches the text walk. A caller's
 // error is the non-Uint8Array; data that is not UTF-8 refuses the whole read.
+function TableVariableCopyInto(c, dst, src) {
+  for (const fd of c.fields) { dst[fd.n] = src[fd.n]; }
+}
+function TableVariableLoadInto(c, target, bytes, report) {
+  const v = TableVariableLoad(c, bytes, report, null);
+  if (v === null) {
+    TableVariableCopyInto(c, target, c.make());
+    return false;
+  }
+  TableVariableCopyInto(c, target, v);
+  return true;
+}
+function TableVariableFromJsonInto(c, target, text, report) {
+  const v = TableVariableFromJson(c, text, report);
+  if (v === null) {
+    TableVariableCopyInto(c, target, c.make());
+    return false;
+  }
+  TableVariableCopyInto(c, target, v);
+  return true;
+}
+function TableVariableFromJsonBytesInto(c, target, bytes, report) {
+  const v = TableVariableFromJsonBytes(c, bytes, report);
+  if (v === null) {
+    TableVariableCopyInto(c, target, c.make());
+    return false;
+  }
+  TableVariableCopyInto(c, target, v);
+  return true;
+}
 function TableVariableFromJsonBytes(c, bytes, report) {
   if (!(bytes instanceof globalThis.Uint8Array)) {
     throw new globalThis.TypeError("TableVariableFromJsonBytes takes the text's bytes as a Uint8Array, not " + (bytes === null ? "null" : typeof bytes));
@@ -4721,6 +4753,7 @@ function TableVariableJsonMap(fd, val, depth, g, out) {
 }
 
 function TableVariableJsonKeyed(fd, val, depth, g, out) {
+  if (!globalThis.Array.isArray(val) || val.length !== fd.slots.length) { return false; }
   if (fd.slots.length === 0) { out.push("{}"); return true; }
   const ind = "\n" + "  ".repeat(depth + 1);
   out.push("{");
@@ -5871,6 +5904,10 @@ export function FixedTableLoad(bytes, report) {
   return TableVariableLoad(TableVariableCodecs.FixedTable, bytes, report, null);
 }
 
+export function FixedTableLoadInto(target, bytes, report) {
+  return TableVariableLoadInto(TableVariableCodecs.FixedTable, target, bytes, report);
+}
+
 export function FixedTableToJson(v) {
   return TableVariableToJson(TableVariableCodecs.FixedTable, v);
 }
@@ -5879,8 +5916,16 @@ export function FixedTableFromJson(text, report) {
   return TableVariableFromJson(TableVariableCodecs.FixedTable, text, report);
 }
 
+export function FixedTableFromJsonInto(target, text, report) {
+  return TableVariableFromJsonInto(TableVariableCodecs.FixedTable, target, text, report);
+}
+
 export function FixedTableFromJsonBytes(bytes, report) {
   return TableVariableFromJsonBytes(TableVariableCodecs.FixedTable, bytes, report);
+}
+
+export function FixedTableFromJsonBytesInto(target, bytes, report) {
+  return TableVariableFromJsonBytesInto(TableVariableCodecs.FixedTable, target, bytes, report);
 }
 
 function FixedTableLoadMeasureWalk(bytes, out) {

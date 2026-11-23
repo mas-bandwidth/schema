@@ -190,6 +190,23 @@ module SchemaRuntimeUnit
       Block.new(name, buf, version, layout.projection, arrays, used, 0)
     end
 
+    def self.block_begin_from(cls, value)
+      layout = u(cls.respond_to?(:block) ? cls.block : nil)
+      name = cls.respond_to?(:descriptor) ? cls.descriptor.name : cls.to_s
+      raise InvalidValue.new(name, 'the table has no block form') unless layout.is_a?(BlockTable)
+      raise InvalidValue.new(name, "expected #{name}") unless value.is_a?(cls)
+
+      validate_table_graph(value, cls.descriptor, name, SchemaTable.map_h)
+      counts = SchemaTable.map_h
+      layout.arrays.each do |a|
+        items = value.public_send(a.name)
+        raise InvalidValue.new(a.name, 'expected Array') unless items.instance_of?(Array)
+
+        counts[a.name] = items.length
+      end
+      block_begin(cls, counts)
+    end
+
     def self.format_cook_text(raw, at, used)
       out = String.new('"', encoding: Encoding::UTF_8)
       used.times do |i|

@@ -230,7 +230,8 @@ defmodule Bench.TableMessage do
   The unit's announcement, byte for byte the compiler settled (docs/SPEC-TABLES.md
   §3.3): a form-`1` file whose body carries the build version and the vocabulary.
   """
-  def announce, do: if(@announcement_too_large, do: {:error, :vocabulary_too_large}, else: @announcement)
+  def announce,
+    do: if(@announcement_too_large, do: {:error, :vocabulary_too_large}, else: @announcement)
 
   @doc "The announcement's byte count, a constant of the unit."
   def announce_measure, do: if(@announcement_too_large, do: -1, else: byte_size(@announcement))
@@ -1192,6 +1193,11 @@ defmodule Bench.TableMessage do
     :invalid_value -> {:error, :invalid_value}
   end
 
+  def measure_messages(%__MODULE__{announced: false, refused: false, root: root}, values)
+      when is_binary(root) and is_list(values) do
+    with {:ok, own} <- own_vocab(root), do: measure_messages(own, values)
+  end
+
   def measure_messages(_vocab, _values), do: {:error, :no_vocabulary}
 
   @doc """
@@ -1216,7 +1222,29 @@ defmodule Bench.TableMessage do
     :invalid_value -> {:error, :invalid_value}
   end
 
+  def save_messages(%__MODULE__{announced: false, refused: false, root: root}, values)
+      when is_binary(root) and is_list(values) do
+    with {:ok, own} <- own_vocab(root), do: save_messages(own, values)
+  end
+
   def save_messages(_vocab, _values), do: {:error, :no_vocabulary}
+
+  defp own_vocab(root) do
+    case :persistent_term.get({__MODULE__, :own_vocab}, nil) do
+      nil ->
+        case announce_read(@announcement) do
+          {:ok, vocab} ->
+            :persistent_term.put({__MODULE__, :own_vocab}, vocab)
+            for_root(vocab, root)
+
+          _ ->
+            {:error, :no_vocabulary}
+        end
+
+      vocab ->
+        for_root(vocab, root)
+    end
+  end
 
   @doc false
   def rebind_messages(from_vocab, %__MODULE__{announced: true, root: root} = to_vocab, bodies)
@@ -2985,7 +3013,8 @@ defmodule Bench.TableMessage do
       {"BenchMixed", 0x5759CE7586BBB5A3, 14, :each_max, 255},
       {"BenchMixed", 0x13A62F542CF8E86E, 12, :text, 15},
       {"BenchMixed", 0xA3348580461FAF16, 19, :min, 0},
-      {"BenchMixed", 0xA3348580461FAF16, 19, :max, 340_282_366_920_938_463_463_374_607_431_768_211_455},
+      {"BenchMixed", 0xA3348580461FAF16, 19, :max,
+       340_282_366_920_938_463_463_374_607_431_768_211_455},
       {"BenchMixed", 0xD61BDD7908AF2642, 18, :min, -1_267_650_600_228_229_401_496_703_205_376},
       {"BenchMixed", 0xD61BDD7908AF2642, 18, :max, 1_267_650_600_228_229_401_496_703_205_376},
       {"BenchMixed", 0xBF30E00DC53307A9, 26, :min, 0},

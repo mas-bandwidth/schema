@@ -379,6 +379,7 @@ function TableVariableWriteMap(fd, w, ids, nodes, val, retain, path) {
 // per slot that does not hold its default, ascending by variant; none present
 // elides the field and its id
 function TableVariableWriteKeyed(fd, w, ids, nodes, val, retain, path) {
+  if (!globalThis.Array.isArray(val) || val.length !== fd.slots.length) { return false; }
   const mark = ids.mark();
   const ref = ids.ref(fd.id);
   const body = new TableVariableWriter();
@@ -831,6 +832,7 @@ function TableVariableJsonMap(fd, val, depth, g, out) {
 }
 
 function TableVariableJsonKeyed(fd, val, depth, g, out) {
+  if (!globalThis.Array.isArray(val) || val.length !== fd.slots.length) { return false; }
   if (fd.slots.length === 0) { out.push("{}"); return true; }
   const ind = "\n" + "  ".repeat(depth + 1);
   out.push("{");

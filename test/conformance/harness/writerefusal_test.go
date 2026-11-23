@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -82,7 +83,8 @@ func TestWriteRefusalSurfaceHoldsTheGoEngine(t *testing.T) {
 // name, and it loads at the row's root through the root's own form read (form
 // 3 at a declared fixed root, form 1 at a variable one). The historical
 // form-1 files beside the current-form instances are different rows, and a
-// write-refusal row names the current form.
+// write-refusal row names the current form. A row with wire "-" requests a
+// fresh value and still has to name a declared root.
 func TestWriteRefusalRowsLoadACurrentFormInstance(t *testing.T) {
 	t.Parallel()
 	root := conformanceRoot(t)
@@ -108,7 +110,7 @@ func TestWriteRefusalRowsLoadACurrentFormInstance(t *testing.T) {
 	for _, wr := range m.WriteRefusals {
 		t.Run(wr.Surface()+"/"+wr.Name, func(t *testing.T) {
 			t.Parallel()
-			if !current[filepath.Clean(wr.Wire)] {
+			if wr.Wire != "-" && !current[filepath.Clean(wr.Wire)] {
 				t.Fatalf("%s: the row's wire %s is not an instance the manifest carries", wr.Name, wr.Wire)
 			}
 			unitKey := wr.Unit
@@ -127,6 +129,12 @@ func TestWriteRefusalRowsLoadACurrentFormInstance(t *testing.T) {
 			def := model.Lookup(wr.Root)
 			if def == nil {
 				t.Fatalf("%s: unit %s declares no root %q", wr.Name, unitKey, wr.Root)
+			}
+			if wr.Wire == "-" {
+				if !def.FixedDeclared || ir.TableFixedEmitted(unit, def) {
+					t.Fatalf("%s: wire - is only for a fixed root past the fixed-form ceiling", wr.Name)
+				}
+				return
 			}
 			wire, err := os.ReadFile(filepath.Join(root, wr.Wire))
 			if err != nil {
@@ -222,25 +230,27 @@ func writeRefusalAnswer(root string, m *Manifest, u *units, wr WriteRefusal) (st
 	if wr.Form == "fixed" && !ir.TableFixedEmitted(unit, def) {
 		return "absent", nil
 	}
-	wirePath := wr.Wire
-	if !filepath.IsAbs(wirePath) {
-		wirePath = filepath.Join(root, wirePath)
-	}
-	wire, err := os.ReadFile(wirePath)
-	if err != nil {
-		return "", fmt.Errorf("%s: %w", wr.Name, err)
-	}
 	inst := model.New(def)
-	var report tabletext.Report
-	// THE ROOT'S OWN FILE-FORM READ: form 3 at a declared fixed root, form 1
-	// at a variable one. A previous-form file beside the current-form instance
-	// is a different row, and a write-refusal row names the current form.
-	ok, err := tablewire.Decode(model, inst, wire, &report)
-	if err != nil {
-		return "", fmt.Errorf("%s: the wire did not load as its root's own form: %w %+v", wr.Name, err, report)
-	}
-	if !ok {
-		return "", fmt.Errorf("%s: the wire did not load as its root's own form: %+v", wr.Name, report)
+	if wr.Wire != "-" {
+		wirePath := wr.Wire
+		if !filepath.IsAbs(wirePath) {
+			wirePath = filepath.Join(root, wirePath)
+		}
+		wire, err := os.ReadFile(wirePath)
+		if err != nil {
+			return "", fmt.Errorf("%s: %w", wr.Name, err)
+		}
+		var report tabletext.Report
+		// THE ROOT'S OWN FILE-FORM READ: form 3 at a declared fixed root, form 1
+		// at a variable one. A previous-form file beside the current-form instance
+		// is a different row, and a write-refusal row names the current form.
+		ok, err := tablewire.Decode(model, inst, wire, &report)
+		if err != nil {
+			return "", fmt.Errorf("%s: the wire did not load as its root's own form: %w %+v", wr.Name, err, report)
+		}
+		if !ok {
+			return "", fmt.Errorf("%s: the wire did not load as its root's own form: %+v", wr.Name, report)
+		}
 	}
 	held, err := mutateWriteRefusal(model, inst, wr.Path, wr.Kind, wr.Value)
 	if err != nil {
@@ -273,6 +283,16 @@ func writeRefusalAnswer(root string, m *Manifest, u *units, wr WriteRefusal) (st
 		return "wrote", nil
 	case "json":
 		if _, err := model.Write(inst); err != nil {
+			return "refused", nil
+		}
+		return "wrote", nil
+	case "cook":
+		if _, err := tablecook.Cook(model, inst, tablecook.Options{}); err != nil {
+			return "refused", nil
+		}
+		return "wrote", nil
+	case "block":
+		if err := model.CheckFixedValue(inst); err != nil {
 			return "refused", nil
 		}
 		return "wrote", nil
@@ -367,6 +387,59 @@ func mutateWriteRefusal(model *tabletext.Model, inst *tabletext.Instance, path, 
 			return false, err
 		}
 		cell.F = fv
+		return true, nil
+	case "elems":
+		n, err := strconv.Atoi(text)
+		if err != nil {
+			return false, err
+		}
+		if n < 0 {
+			return false, fmt.Errorf("%s: negative elems %d", path, n)
+		}
+		if n <= len(fv.Elems) {
+			fv.Elems = fv.Elems[:n]
+		} else {
+			var pad tabletext.Cell
+			if len(fv.Elems) > 0 {
+				pad = fv.Elems[0]
+			}
+			for len(fv.Elems) < n {
+				fv.Elems = append(fv.Elems, pad)
+			}
+		}
+		if fv.Def.CountedOnWire() {
+			fv.Count = n
+		}
+		return true, nil
+	case "mask":
+		n, err := strconv.ParseUint(text, 10, 64)
+		if err != nil {
+			return false, err
+		}
+		cell.U = n
+		return true, nil
+	case "dupkey":
+		n, err := strconv.Atoi(text)
+		if err != nil {
+			return false, err
+		}
+		if n == 0 {
+			return true, nil
+		}
+		if len(fv.Entries) == 0 {
+			return false, fmt.Errorf("%s: map has no entry to repeat", path)
+		}
+		fv.Entries = append(fv.Entries, fv.Entries[0])
+		return true, nil
+	case "point":
+		_, srcCell, _, err := writeRefusalTarget(inst, text)
+		if err != nil {
+			return false, err
+		}
+		if srcCell.Node == nil {
+			return false, fmt.Errorf("%s: source pointer %q is null", path, text)
+		}
+		cell.Node = srcCell.Node
 		return true, nil
 	}
 	return false, fmt.Errorf("%s: unknown kind %q", path, kind)
@@ -472,10 +545,14 @@ func writeRefusalTarget(inst *tabletext.Instance, path string) (*tabletext.Field
 				elem.Required = false
 				return armFv, &armFv.Elems[lastIdx], &elem, nil
 			}
-			if fv.Cell.Tab == nil {
+			switch {
+			case fv.Cell.Tab != nil:
+				cur = fv.Cell.Tab
+			case fv.Cell.Node != nil:
+				cur = fv.Cell.Node
+			default:
 				return nil, nil, nil, fmt.Errorf("%s: %q is not a nested value", path, name)
 			}
-			cur = fv.Cell.Tab
 			continue
 		}
 		slots := fv.Elems

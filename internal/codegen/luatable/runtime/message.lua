@@ -1254,6 +1254,9 @@ local function write_scalar(W, d, v)
     local width, base = int_bits(d)
     if s == "flags" then
       width, base = d.bits, 0
+      if math.type(v) ~= "integer" or v < 0 or (width < 64 and math.ult((1 << width) - 1, v)) then
+        return false
+      end
     end
     W:put(v - base, width)
   elseif s == "wide" then
@@ -1873,11 +1876,8 @@ local function message_root(T, root)
 end
 
 -- loadMessages is the strict batch read (docs/SPEC-TABLES.md §6.5).
--- Damage discards every body (§4). EVERY REFUSAL ANSWERS nil (ruling R4): a
--- framing refusal and a body or trailer refusal hand back the same shape, so a
--- caller tests `values == nil` and never `#values == 0`; a read that lands
--- returns a fresh list and touches nothing the caller holds.
-function M.loadMessages(T, root, vocab, data, report)
+-- Damage discards every body (§4).
+local function load_messages_impl(T, root, vocab, data, report)
   message_root(T, root)
   report = report or {}
   -- THE PLAIN NAME'S REPORT IS THIS READ'S ALONE (docs/SPEC-TABLES.md §6.5):
@@ -1956,6 +1956,32 @@ end
 
 -- the first value of a batch holding a retired variant (docs/SPEC-TABLES.md
 -- §2.15) or a value off the write contract (docs/SPEC.md §5.1), refused by name
+function M.loadMessages(T, root, vocab, data, report, _strict, into)
+  local out = load_messages_impl(T, root, vocab, data, report)
+  if into ~= nil then
+    local new = T["New" .. root]
+    local refused = out == nil or #out == 0
+      or (
+        report ~= nil
+        and (report.damaged or (report.refused or 0) ~= 0 or (report.reason ~= nil and report.reason ~= ""))
+      )
+    if refused then
+      for i = 1, #into do
+        D.copy_into(into[i], new())
+      end
+      return nil
+    end
+    local n = #out
+    for i = 1, n do
+      if into[i] == nil then into[i] = new() end
+      D.copy_into(into[i], out[i])
+    end
+    for i = n + 1, #into do into[i] = nil end
+    return into
+  end
+  return out
+end
+
 local function refuse_batch(T, root, values)
   for i = 1, #values do
     local refused = D.refuse_write(T, root, values[i])

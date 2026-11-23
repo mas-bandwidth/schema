@@ -77,7 +77,7 @@ SPEC, 15 of VERSIONING, 29 of the driver contract and 278 manifest rows that
 | R7 | labels inside a skipped JSON value obey the label rules | SPEC-TABLES §16.7 (main); which root holds which rule: §16.7 (#4737) | `skipped-label-*`, `reserved-ampersand-in-skipped-value`, `skipped-ampersand-stray-key`, `skipped-ampersand-node-not-first` (main) | **main** |
 | R8 | the id table holds 4096 ids on read and on write; a 4097th retained id is lost and counted | SPEC-TABLES §3, THE WRITER HOLDS THE SAME BOUND (main) | `frame_entries_4096`, `frame_entries_4097`; `tablewire.IdCapSchema` per port (main) | **main** |
 | R8b | a sender refuses an announcement of more than 4096 entries | SPEC-TABLES §3.3, the sender holds the same default (#4737) | `tablewire.AnnounceSchema` per port (#4685); no harness row | **PR** |
-| R9 | a caller bound of 0 bytes refuses and never means the default | SPEC-TABLES §3.3, the announcement bounds (main) | *none*: `TestRulingsR2R5R9PortRows` (#4680); the Go, JS, Rust and Java changes are #4680 | **no row** |
+| R9 | a caller bound of 0 bytes refuses a nonempty vocabulary and never means the default | SPEC-TABLES §3.3, the announcement bounds (main) | *none* in the shared harness: `TestRulingsR2R5R9PortRows` (#4680); Java's `TestMessageFormAnnounceJavaR9MaxBytes` checks default, positive and zero limits with compiler-generated nonempty and empty vocabularies | **no row** |
 | R10 | a counted `[A..B]` minimum holds inside a union arm, every form | SPEC-TABLES §3, the union payload rows, and §8.1 (#4712); §16.2, the `[..N]T` row (#4737) | `arm-min-*`, `armmin_*`, `plain-min-*`, `plainmin_*` (#4712) | **PR** |
 
 ## The fix ledger (FL)

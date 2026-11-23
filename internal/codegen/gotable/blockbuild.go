@@ -1,6 +1,9 @@
 package gotable
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/mas-bandwidth/schema/v2/internal/goname"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -60,7 +63,45 @@ func (g *blockGen) emitBlockBuild(bl *ir.BlockLayout) {
 		g.hf("p.%s=TableBlockTriple{OffsetOf:uint64(offset),Count:uint32(c.%s),Stride:%d};offset+=int64(c.%s)*%d\n", field, field, a.Stride, field, a.Stride)
 	}
 	g.hf("*b=%sBlock{Base:s.base,Projection:p,Bytes:(offset+63)&^int64(63)};return true\n}\n\n", n)
-	g.hf("func %sBlockBytes(b *%sBlock) int64 {if b==nil || b.Projection==nil {return 0};used:=int64(%d)\n", n, n, bl.Projection.Size)
+	g.hf("func %sBlockBytes(b *%sBlock) int64 {if b==nil || b.Projection==nil {return 0};used:=int64(%d)", n, n, bl.Projection.Size)
+	var bad []string
+	for _, f := range bl.Table.Fields {
+		if bl.ArrayByName(f.Name) != nil {
+			continue
+		}
+		m := "b.Projection." + goname.Member(f.Name)
+		var cond string
+		switch {
+		case f.Array == ir.ArrayNone && !f.Type.Pointer && !f.Type.TextUnbounded() && (f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes):
+			cond = fmt.Sprintf("(%sLength < 0 || %sLength > %d)", m, m, f.Type.Size)
+		case f.Array == ir.ArrayCounted:
+			cond = fmt.Sprintf("(%sCount < %d || %sCount > %d)", m, f.ArrayMin, m, f.ArrayBound)
+		case f.Array == ir.ArrayNone && f.HasIntRange && f.Type.Kind == ir.TInt && f.Type.Width <= 64:
+			switch {
+			case f.Type.Signed:
+				cond = fmt.Sprintf("(int64(%s) < %s || int64(%s) > %s)", m, f.IntMin.String(), m, f.IntMax.String())
+			case f.IntMin.Sign() > 0:
+				cond = fmt.Sprintf("(uint64(%s) < %s || uint64(%s) > %s)", m, f.IntMin.String(), m, f.IntMax.String())
+			default:
+				cond = fmt.Sprintf("(uint64(%s) > %s)", m, f.IntMax.String())
+			}
+		case f.Array == ir.ArrayNone && f.HasFloatRange:
+			cond = fmt.Sprintf("!(%s >= %g && %s <= %g)", m, f.FMin, m, f.FMax)
+		}
+		if cond != "" {
+			if f.Type.Optional {
+				cond = fmt.Sprintf("(%sPresent && %s)", m, cond)
+			}
+			bad = append(bad, cond)
+		}
+	}
+	for _, a := range bl.Arrays {
+		bad = append(bad, fmt.Sprintf("int64(b.Projection.%s.Count) > %d", goname.Member(a.Field.Name), a.Max))
+	}
+	if len(bad) > 0 {
+		g.hf(";if %s {return -1}", strings.Join(bad, " || "))
+	}
+	g.hf("\n")
 	for _, a := range bl.Arrays {
 		field := goname.Member(a.Field.Name)
 		g.hf("if end:=int64(b.Projection.%s.OffsetOf)+int64(b.Projection.%s.Count)*int64(b.Projection.%s.Stride);end>used {used=end}\n", field, field, field)

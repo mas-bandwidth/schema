@@ -10134,9 +10134,16 @@ static SCHEMA_UNUSED int graphdemo_marker_load_builder( graphdemo_marker_builder
     refused_before = 0;
     non_finite_before = report->non_finite_floats;
     report->refused = 0;
+    root = builder != NULL ? graphdemo_marker_builder_root( builder ) : NULL;
+    if ( root == NULL )
+    {
+        report->refused = 1, report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+        return 0;
+    }
     if ( !graphdemo_table_wire_open( &reader, wire, wire_bytes, report ) )
     {
         report->refused = report->refused || refused_before;
+        graphdemo_marker_reset( root );
         return 0;
     }
     scan = graphdemo_table_node_scan_begin( &reader );
@@ -10144,18 +10151,14 @@ static SCHEMA_UNUSED int graphdemo_marker_load_builder( graphdemo_marker_builder
     if ( records >= INT64_MAX / (int64_t) sizeof( graphdemo_table_node_dir_entry_t ) - 1 )
     {
         report->refused = 1, report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
-        return 0;
-    }
-    root = graphdemo_marker_builder_root( builder );
-    if ( root == NULL )
-    {
-        report->refused = 1, report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+        graphdemo_marker_reset( root );
         return 0;
     }
     directory = (graphdemo_table_node_dir_entry_t *) graphdemo_table_allocate( builder->arena.allocator, ( records + 1 ) * (int64_t) sizeof( graphdemo_table_node_dir_entry_t ) );
     if ( directory == NULL )
     {
         report->refused = 1, report->refuse_reason = SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+        graphdemo_marker_reset( root );
         return 0;
     }
     directory[0].offset = (uint64_t) builder->root_ref.value;

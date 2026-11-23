@@ -467,6 +467,9 @@ func TableEntityBlockBytes(b *TableEntityBlock) int64 {
 		return 0
 	}
 	used := int64(88)
+	if (int64(b.Projection.PosX) < -16383 || int64(b.Projection.PosX) > 16383) || (int64(b.Projection.PosY) < -16383 || int64(b.Projection.PosY) > 16383) || (int64(b.Projection.PosZ) < -16383 || int64(b.Projection.PosZ) > 16383) || (int64(b.Projection.VelX) < -2048 || int64(b.Projection.VelX) > 2047) || (int64(b.Projection.VelY) < -2048 || int64(b.Projection.VelY) > 2047) || (int64(b.Projection.VelZ) < -2048 || int64(b.Projection.VelZ) > 2047) || (int64(b.Projection.Health) < 0 || int64(b.Projection.Health) > 1000) {
+		return -1
+	}
 	return (used + 63) &^ int64(63)
 }
 
@@ -589,6 +592,9 @@ func TableStatBlockBytes(b *TableStatBlock) int64 {
 		return 0
 	}
 	used := int64(32)
+	if int64(b.Projection.Delta) < -512 || int64(b.Projection.Delta) > 511 {
+		return -1
+	}
 	return (used + 63) &^ int64(63)
 }
 

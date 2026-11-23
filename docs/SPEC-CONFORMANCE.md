@@ -77,7 +77,8 @@ The tables surfaces are `wire`, `message`, `report`, `framing`, `retain`,
 `retain-save`, `json-read`, `json-write`, `json-hostile`, `cook`,
 `cook-write`, `cook-foreign`, `block`, `block-foreign`, `block-dump`,
 `forgery`, `cook-forgery`, `write-refusal`, `write-refusal-fixed`,
-`write-refusal-message` and `write-refusal-json`. The cards surfaces are
+`write-refusal-message`, `write-refusal-json`, `write-refusal-cook`,
+`write-refusal-block`, `announce`, `read-into` and `json-write-into`. The cards surfaces are
 `load`, `save`, `render`, `parse`, `bounds`, `upgrade`, `edit`, `taskhash`
 and `view`. `test/conformance/README.md` states what each one asks.
 
@@ -105,6 +106,25 @@ OWES) and is repeated here as the rule for the suite:
   `harness wire-fuzz` refuses the run, naming the file, when a vector is on disk
   and not in the index or in the index and not on disk (SPEC-TABLES.md §4.2).
   A new vector is added to the index in the commit that adds the file.
+
+**The rules the 2026-11-22 surfaces carry**, each with its lawful twin beside
+the refusal (`MANIFEST.txt`, "THE 2026-11-22 SURFACES"):
+
+| rule | surface | rows |
+|---|---|---|
+| SF-34, SF-35, FL-22: a `[N]T` holds exactly N values and a `[E]T` one per variant, in every writer; a map holding one key twice is refused | `write-refusal`, `-fixed`, `-message`, `-json`, `-cook`, `-block` (`elems`, `dupkey`) | `sref_fixed_*`, `sref_keyed_*`, `sfref_*`, `smref_fixed_*`, `smref_keyed_*`, `sjref_*`, `cref_fixed_*`, `bref_elems_*`, `sref_map_dupkey*`, `sjref_map_dupkey*` |
+| FL-06: a flags bit no variant names is kept by the file writers, refused by the text writer, refused by the message writer above the width | `write-refusal*` (`mask`) | `*_mask_unnamed`, `*_mask_named` |
+| FL-04: a bare `intN`/`uintN` value outside its width | `write-refusal` (`int`) | `sref_int8_*`, `sref_uint8_*`, `sref_uint32_*` |
+| SF-22, SF-28: a counted array below its Min, and a list field holding no list | `write-refusal`, `-json` (`count`) | `sref_count_*`, `sjref_count_*` |
+| SF-23: `SaveMessages` holds a value to its own declaration's range | `write-refusal-message` | `smref_narrow_hp_*`, `smref_wide_hp_*` |
+| SF-05, SF-06: a fixed table past the size ceiling is checked by `SaveMessages` | `write-refusal-message` | `smref_big_*` |
+| FL-28, SF-29, SF-37: the cook refuses a cycle, a count outside `[Min, bound]`, a NaN or an infinity | `write-refusal-cook` | `cref_*` |
+| SF-31: the block builder refuses a count or a used length past its maximum | `write-refusal-block` | `bref_*` |
+| FL-38, FL-36, FL-18: 4096 entries announced, 4097 refused; strict mode; a send with no announcement | `announce` | `ann_*` |
+| FL-02, FL-03, FL-17, FL-29: a read zeroes its report, a refusal leaves the caller's values at their defaults, an omitted fixed capacity is the file's own, a read never throws | `read-into` | `ri_*` |
+| FL-14, FL-15: float text ignores the process locale; a caller-buffer writer writes nothing past its text | `json-write-into` | `jwi_*` |
+| FL-11: the text depth cap (read counts every container; write counts table/type values) | `wire`, `json-read`, `json-write` | `surf_chain127_vals` (`wire`/`json-read`/`json-write`), `surf_chain128_vals` (`wire`, `no-text`); refusal `graph_chain_past_cap` |
+| FL-16: a null `*T \| required` is written as index 0 and reads back null | `wire`, `json-read`, `json-write` | `surf_holder_null_required`, `surf_holder_present` |
 
 ## 3. The driver protocol
 
@@ -143,6 +163,18 @@ row sent (`pass 16/20 +4a`), and a run that has any absence prints what was not
 answered instead of the success line. `test/conformance/README.md` ("Nothing a
 driver leaves out reads as a pass") and `harness/footgun_test.go` hold the
 same table.
+
+Three surfaces run more than one call per case. `read-into` hands ONE report
+and one set of values to three reads in a row and answers one line per read
+(`read`, `refused`, or `threw` when the read raised instead of refusing)
+with the values' text after the refused read. `announce` answers the
+announcement's bytes, a SaveMessages batch's bytes, or a verdict line.
+`json-write-into` runs under the comma-decimal locale the harness names in
+`SCHEMA_COMMA_LOCALE` (and `LOCPATH`), which the driver must make the
+process's own locale before it writes. On the `write-refusal*` and
+`read-into` (`fixed-nocap`) surfaces a driver may answer `unrepresentable`
+where its own types or API cannot hold the case; that answer is credited only
+where the README says so.
 
 ## 4. How answers are judged
 
@@ -229,14 +261,11 @@ case must fail on the affected implementation before the fix and pass after
 it. If the shared suite cannot express the difference yet, record the missing
 case and keep the regression open until a port can run it through the suite.
 
-## 7. Rules decided 2026-11-20..22, and the rows they owe
+## 7. Conformance evidence for rules decided 2026-11-20..22
 
-Every rule decided or fixed from 2026-11-20 to 2026-11-22 is stated in the
-specification now. The code that implements it, and the shared row or test
-that holds every port to it, land later, in the pull requests named below.
-Until they land this table is the ONE place that links each rule to them: a
-row the corpus does not hold yet is never cited as a holding row anywhere
-else in this addendum.
+The source registrations for these rulings are linked below. Each evidence
+entry identifies a shared corpus row or a test present in the tree. The
+conformance matrix records runtime results separately by language and surface.
 
 - **entry** names the rule. `FL-nn` is a row of the fix ledger
   (`docs/fix-ledger-1122.md`, carried by #4757); `GAP-n` is a question a
@@ -246,55 +275,11 @@ else in this addendum.
   silent-failure audit (`docs/silent-failure-audit-1122.md`, carried by
   #4740); `Rnn` is a ruling; `INDEX` and `retain-id-bound-is-the-wires` are
   single rules.
-- **rule (spec)** is the rule and the section that states it.
-- **held by, as decided** is the shared row or test that holds the rule once
-  its PR lands, as the PR states it.
-- **not on main yet** names every id the PR adds, or the verdict it changes.
-- **PR** names every pull request whose head carries an id of that column.
-- **state** is `owed` while any of it is.
-
-**THE TABLE IS HELD BY TEST, OFFLINE** (`internal/docgate`
-`TestOwedRowsAreLinked`, which reads git and the tree, never the network):
-
-- An entry that names no PR fails, and so does one that owes no id.
-- Every owed id is one of three kinds, matched whole and only where the
-  repository defines that kind: a corpus ROW, as the case field of
-  `testdata/conformance/tables/MANIFEST.txt`, the first field of
-  `internal/ci/hostilecorpus/corpus/manifest.tsv` or of a
-  `test/conformance/<surface>/rows.txt`; a `Test` func, as `func Name(` at
-  the start of a line of a `_test.go` file; a PATH, as a tracked file or
-  directory. A backticked word of no kind fails as malformed and is never
-  looked up. One known looseness: a `func Name(` that starts a line inside a
-  `/* */` comment or a raw string also counts as present. It errs toward
-  failing an entry, never toward passing one.
-- The PR column names EVERY open PR whose head holds an id the entry owes,
-  stacked PRs included, derived from the heads and never by hand.
-- An `owed` entry fails once a PR it names has merged, read from the
-  FIRST-PARENT history of `HEAD` only: a merge commit `Merge pull request #N
-  from ...`, or a squash commit ending `(#N)`. A commit of a merged branch
-  never counts. A REBASE MERGE carries no number and is NOT detected this
-  way; the repository allows rebase merging, so the next rule is what
-  catches it.
-- An `owed` entry fails once ANY id it owes is in the tree. Every owed id is
-  absent from main when the entry is written, so an id that appears means
-  its code landed, by whatever merge method.
-
-So the PR that lands a row links it in the same change: it cites the row
-where the rule is stated and deletes the entry, or, while another PR named
-still owes part of it, takes its own number and its own ids off the entry.
-
-| entry | rule (spec) | held by, as decided | not on main yet | PR | state |
-|---|---|---|---|---|---|
-| SF-17 | `SaveMessages` checks row 10 and never moves an off-range float onto an endpoint (SPEC.md §5.1 row 10) | `write-refusal-message`; a float case is owed: no corpus unit declares a ranged or compressed float, so no row can carry one | `smref_big_ratio_high`, `smref_big_ratio_max` | #4808 | owed |
-| SF-18, SF-19 | the message form refuses a flags value above its declared width and never masks it (SPEC.md §5.1 row 9; SPEC-TABLES §3.3) | a `write-refusal-message` flags case is owed: the only message-capable root with a flags field is `messagedemo` `ToolMessage` (the `caps` arm), which has no `connection` row and no write-refusal-message root in the hand-coded legs (C, C++, Rust, Dart) | `smref_big_mask_max`, `smref_big_mask_wide`, `smref_mask_named`, `smref_mask_unnamed` | #4743, #4744, #4753, #4771, #4772, #4808 | owed |
-| SF-20 | a writer refuses a `[N]T` or `[E]T` whose length is not N and never cuts or pads it (SPEC.md §5.1) | a case on `write-refusal-fixed` and `write-refusal-message` is owed: the `count` kind needs a companion count field and a `[N]T` has none, so every leg's `count` handler must first learn to answer `unrepresentable` or resize a fixed array | `sref_fixed_long`, `sref_fixed_ok`, `sref_fixed_short`, `sref_keyed_long`, `sref_keyed_ok`, `sref_keyed_short`, `sfref_fixed_long`, `sfref_fixed_ok`, `sfref_fixed_short`, `sfref_keyed_long`, `sfref_keyed_ok`, `sfref_keyed_short`, `sjref_fixed_long`, `sjref_fixed_ok`, `sjref_fixed_short`, `sjref_keyed_long`, `sjref_keyed_ok`, `sjref_keyed_short`, `smref_fixed_long`, `smref_fixed_ok`, `smref_fixed_short`, `smref_keyed_long`, `smref_keyed_ok`, `smref_keyed_short`, `cref_fixed_long`, `cref_fixed_ok` | #4743, #4744, #4753, #4771, #4772, #4808 | owed |
-| SF-25, SF-26 | `Cook` and `CookMeasure` hold the write contract that `Save` holds; a deprecated enum variant is refused on write (SPEC-TABLES §7.6, §2.15) | `cook-write`; a refusal case is owed: `cook-write` has no refusal verdict and no corpus unit declares a deprecated enum variant | `cref_count_at_max`, `cref_count_at_min`, `cref_count_below_min`, `cref_count_over`, `cref_cycle`, `cref_shared_ok`, `cref_finite_ok`, `cref_infinite`, `cref_non_finite` | #4743, #4744, #4753, #4771, #4772, #4808 | owed |
-| SF-22, SF-28 | a variable save and a text (JSON) writer refuse a counted array below its `Min`, and a list field holding a non-list (SPEC.md §5.1 row 3 and "A writer refuses in EVERY form") | a `write-refusal` `count` row below a `[Min..N]` Min is owed: no corpus unit declares a counted array with `Min > 0` on a variable root, so it needs a new unit; SF-28 cannot be a row (a statically typed leg cannot hold a list field that is no list) and is held per port | `sref_count_at_min`, `sref_count_below_min`, `sref_count_not_list`, `sjref_count_at_min`, `sjref_count_below_min`, `sjref_count_not_list` | #4771, #4772, #4808 | owed |
-| SF-23 | `SaveMessages` holds a value to the rule of the declaration it is written under, not to the looser rule of a same-named field elsewhere (SPEC-TABLES §3.3) | a `write-refusal-message` `int` row on two declarations that share a field name and kind at different ranges is owed (new unit) | `smref_narrow_hp_5`, `smref_narrow_hp_6`, `smref_wide_hp_10`, `smref_wide_hp_11` | #4753, #4771, #4772, #4808 | owed |
-| SF-29, SF-37 | a cook refuses a loaded count outside `[Min, bound]` and a NaN or an infinity in a plain float (SPEC-TABLES §7.6; SPEC.md §5.1 row 7) | `cook-write`; a refusal case is owed; SF-29 cannot be a row (a caller-edited loaded value, not an instance) | `cref_count_at_min`, `cref_count_below_min`, `cref_count_over`, `cref_finite_ok`, `cref_infinite`, `cref_non_finite` | #4743, #4744, #4753, #4771, #4772, #4808 | owed |
-| SF-31 | the block builder refuses a count or a used length past its maximum by name in every build (SPEC-TABLES §19.1) | none: no corpus surface builds a block from values (`block` surfaces read images) | `bref_elems_long`, `bref_elems_ok`, `bref_length`, `bref_length_ok`, `bref_range`, `bref_range_ok` | #4771, #4772, #4808 | owed |
-
-**Linked rows.** The corpus and tests in this tree hold these rules:
+**Linked rows.** The references below record source coverage. Runtime
+verification of the #4808 write-refusal surfaces is still pending for
+individual language legs. The shared cook cases cover counts, repeated nodes
+and non-finite floats. Deprecated enum rejection in the cook remains a
+per-port check where no shared case exercises it.
 
 | entry | rule (spec) | held by |
 |---|---|---|
@@ -369,8 +354,16 @@ still owes part of it, takes its own number and its own ids off the entry.
 | FL-09 | map key length uses its own `string(N)` bound, not `kTableJsonMaxKey` (SPEC-TABLES §16.2) | `TestTextMapKeyAboveNameCapReadsUnderItsOwnBound`, `sp-map-key-256-wide`, `sp-map-key-300-wide`, `sp-map-key-301-wide` (#4688) |
 | FL-27 | non-canonical base64 refuses (SPEC-TABLES §16.8, §16.2) | `base64-padding-*`, `base64-unpadded`, `sp-b64-escaped-noncanonical` (#4688) |
 | FL-12 | the read depth cap counts every container (SPEC-TABLES §16.2) | `rr-depth-*`, `sp-skip-depth-129`, `sp-skip-depth-130` (#4706, #4688); a flags array or text list nested at the depth limit still needs a shared row |
-| FL-31 | names some target cannot build are refused at check (SPEC.md §4.6) | `internal/check/buildable_names_test.go` (#4691) |
+| FL-31 | names some target cannot build are refused at check (SPEC.md §4.6) | `internal/check/buildable_names_test.go` (#4691), [JavaScript read-into names](#javascript-read-into-names) |
 | FL-33, FL-34, FL-35 | R2, R5, R9 (SPEC-TABLES §3.4 (the presence entry)) | `internal/ci` `TestRulingsR2R5R9PortRows`, `TestFixedLineageOptionalIntoBareRefusesKindMismatch` (#4680) |
+| SF-17 | `SaveMessages` checks row 10 and never moves an off-range float onto an endpoint (SPEC.md §5.1 row 10) | `smref_big_ratio_high`, `smref_big_ratio_max` (#4808 source registrations) |
+| SF-18, SF-19 | the message form refuses a flags value above its declared width and never masks it (SPEC.md §5.1 row 9; SPEC-TABLES §3.3) | `smref_big_mask_max`, `smref_big_mask_wide`, `smref_mask_named`, `smref_mask_unnamed` (#4808 source registrations) |
+| SF-20 | a writer refuses a `[N]T` or `[E]T` whose length is not N and never cuts or pads it (SPEC.md §5.1) | `sref_fixed_long`, `sref_fixed_ok`, `sref_fixed_short`, `sref_keyed_long`, `sref_keyed_ok`, `sref_keyed_short`, `sfref_fixed_long`, `sfref_fixed_ok`, `sfref_fixed_short`, `sfref_keyed_long`, `sfref_keyed_ok`, `sfref_keyed_short`, `sjref_fixed_long`, `sjref_fixed_ok`, `sjref_fixed_short`, `sjref_keyed_long`, `sjref_keyed_ok`, `sjref_keyed_short`, `smref_fixed_long`, `smref_fixed_ok`, `smref_fixed_short`, `smref_keyed_long`, `smref_keyed_ok`, `smref_keyed_short`, `cref_fixed_long`, `cref_fixed_ok` (#4808 source registrations) |
+| SF-25, SF-26 | `Cook` and `CookMeasure` hold the write contract that `Save` holds; a deprecated enum variant is refused on write (SPEC-TABLES §7.6, §2.15) | `cref_count_at_max`, `cref_count_at_min`, `cref_count_below_min`, `cref_count_over`, `cref_cycle`, `cref_shared_ok`, `cref_finite_ok`, `cref_infinite`, `cref_non_finite` (#4808 source registrations) |
+| SF-22, SF-28 | a variable save and a text (JSON) writer refuse a counted array below its `Min`, and a list field holding a non-list (SPEC.md §5.1 row 3 and "A writer refuses in EVERY form") | `sref_count_at_min`, `sref_count_below_min`, `sref_count_not_list`, `sjref_count_at_min`, `sjref_count_below_min`, `sjref_count_not_list` (#4808 source registrations) |
+| SF-23 | `SaveMessages` holds a value to the rule of the declaration it is written under, not to the looser rule of a same-named field elsewhere (SPEC-TABLES §3.3) | `smref_narrow_hp_5`, `smref_narrow_hp_6`, `smref_wide_hp_10`, `smref_wide_hp_11` (#4808 source registrations) |
+| SF-29, SF-37 | a cook refuses a loaded count outside `[Min, bound]` and a NaN or an infinity in a plain float (SPEC-TABLES §7.6; SPEC.md §5.1 row 7) | `cref_count_at_min`, `cref_count_below_min`, `cref_count_over`, `cref_finite_ok`, `cref_infinite`, `cref_non_finite` (#4808 source registrations) |
+| SF-31 | the block builder refuses a count or a used length past its maximum by name in every build (SPEC-TABLES §19.1) | `bref_elems_long`, `bref_elems_ok`, `bref_length`, `bref_length_ok`, `bref_range`, `bref_range_ok` (#4808 source registrations) |
 
 `GAP-26` and `GAP-27` are a FRONT-END vector, as `GAP-12`'s digest is: both rules
 bind what a port resolves from schema text (a default's bits, a wire id), so a
@@ -402,6 +395,45 @@ evolution", the close of §4's counters and the opening of §6.6; USAGE.md's enu
 width; COMPETITION.md's never-clobber line. Each now promises a newer reader
 on older data and no more: an older reader given newer data may refuse it by
 name, lawfully.
+
+### Announcement vocabulary with a zero-byte budget
+
+R9 in [SPEC-TABLES §3.3](SPEC-TABLES.md#33-the-message-form-a-batch-of-bitpacked-bodies-under-one-announced-vocabulary)
+limits the vocabulary entries' bytes. Use a fresh connection for each
+case. Read the ordinary nonempty announcement produced by `tables/backend`
+and the empty vocabulary produced by the variable-only `tables/blobs` unit.
+
+| Reader configuration | Empty vocabulary | Nonempty vocabulary |
+|---|---|---|
+| Default byte limit | Accept, count 0 | Accept, count greater than 0 |
+| Explicit byte limit sufficient for the announcement | Accept, count 0 | Accept, count greater than 0 |
+| Explicit byte limit 0 | Accept, count 0 | Refuse with `vocabulary_too_large` and leave `announced` false |
+
+The empty announcement still carries its framing bytes. The zero limit
+applies to the vocabulary payload. Run the generated Java example with
+
+```sh
+SCHEMA_SLOW=1 go test -count=1 -v ./internal/codegen/javatable -run '^TestMessageFormAnnounceJavaR9MaxBytes$'
+```
+
+### JavaScript read-into names
+
+The shape checker refuses `ConfigLoadInto` because the JavaScript table
+emitter binds that name for `Config` ([SPEC §4.6](SPEC.md#46-shape-checks),
+[SPEC-TABLES §11](SPEC-TABLES.md#11-refused-by-name)).
+
+```schema
+package probe
+table Config { count int32 }
+type ConfigLoadInto { count int32 }
+```
+
+Replace the final line with `type ConfigApplicationState { count int32 }`
+for an accepted schema. `TestJSReadIntoDeclarationNames` checks both outcomes.
+`TestJsTableModuleScopeNamesAreClaimed` and
+`TestJavaScriptVariableRuntimeNamesAreClaimed` inventory the emitted bindings.
+The Python, Lua, Luau, Squirrel, and Lobster runtime-name tests inventory
+their module or namespace entries separately from the schema-level claims.
 
 ### Compressed float packet endpoints
 

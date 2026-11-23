@@ -81,4 +81,14 @@ R.ReadStrictNames = table.freeze({
 	wire_damaged = true,
 })
 
+function R.ReadStrictInto(T: any, root: string, bytes: buffer?, report: any?, into: any): any
+	local d = S.lookup(root)
+	local res = R.ReadStrict(T, root, bytes, report)
+	if into == nil then return res end
+	local src = if res ~= nil then res else d.new()
+	for k in into do into[k] = nil end
+	for k, val in src do into[k] = val end
+	return if res ~= nil then into else nil
+end
+
 return table.freeze(R)

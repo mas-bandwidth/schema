@@ -22549,6 +22549,7 @@ static SCHEMA_UNUSED int schema_tabledemo_ship_entry_body_pack_( struct tabledem
         if ( !tabledemo_table_bits_finite32( bits ) ) { return 0; }
         tabledemo_table_cook_put( at + 44, bits, 4, order );
     }
+    if ( value->hardpoints_count < 0 || value->hardpoints_count > 4 ) { return 0; }
     {
         int32_t cook_i1;
         for ( cook_i1 = 0; cook_i1 < value->hardpoints_count && cook_i1 < 4; cook_i1++ )
@@ -22650,6 +22651,7 @@ static SCHEMA_UNUSED int schema_tabledemo_pack_config_body_pack_( struct tablede
             tabledemo_table_cook_put( at + 400 + cook_i2 * 4, (uint64_t) value->thresholds[cook_i2], 4, order );
         }
     }
+    if ( value->reserves_count < 0 || value->reserves_count > 3 ) { return 0; }
     {
         int32_t cook_i3;
         for ( cook_i3 = 0; cook_i3 < value->reserves_count && cook_i3 < 3; cook_i3++ )
