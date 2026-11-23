@@ -17,6 +17,15 @@ local serialize = require("./serialize")
 local d = require("./Defaults")
 local p = require("./Plain")
 local inputs = require("./inputs")
+-- The constant-default pins: each schema of test/conformance/packet/testdata/
+-- constant-defaults declares package arithmetic, so each is generated into its
+-- own subdirectory.
+-- Each subdirectory carries its own serialize module (its own Int64 and
+-- Uint64 classes), so the pin runs on that tree own streams.
+local hexadecimalAddition = require("./constant-hexadecimal-addition/Defaults")
+local hexadecimalAdditionRuntime = require("./constant-hexadecimal-addition/serialize")
+local unsignedSubtraction = require("./constant-unsigned-subtraction/Defaults")
+local unsignedSubtractionRuntime = require("./constant-unsigned-subtraction/serialize")
 
 local U64 = serialize.Uint64
 local failed = 0
@@ -131,17 +140,17 @@ local function overlay(initial: any, sent: any): any
 	return initial
 end
 
-local function write(mod: any, name: string, value: any): (string, number)
-	local stream = serialize.WriteStream.new(buffer.create(4096))
+local function write(mod: any, name: string, value: any, runtime: any?): (string, number)
+	local stream = ((runtime or serialize) :: any).WriteStream.new(buffer.create(4096))
 	check(mod["Write" .. name](stream, value), "write " .. name)
 	local bits = stream:bitsProcessed()
 	stream:flush()
 	return buffer.tostring(stream:data()), bits
 end
 
-local function checkRead(name: string, bytes: string, bits: number, initial: any, want: any, what: string)
-	local stream = serialize.ReadStream.new(buffer.fromstring(bytes))
-	check((d :: any)["Read" .. name](stream, initial), what .. ": read " .. name)
+local function checkRead(name: string, bytes: string, bits: number, initial: any, want: any, what: string, mod: any?, runtime: any?)
+	local stream = ((runtime or serialize) :: any).ReadStream.new(buffer.fromstring(bytes))
+	check(((mod or d) :: any)["Read" .. name](stream, initial), what .. ": read " .. name)
 	check(stream:bitsProcessed() == bits, what .. ": read consumed bits")
 	check(stream:serializeEnd(), what .. ": serializeEnd")
 	check(same(initial, want), what .. ": values and backing storage")
@@ -155,6 +164,22 @@ local function pin(name: string, golden: string, value: any, initial: () -> any,
 	check(got == bytes, "C++ pin " .. golden .. ": bytes")
 	check(gotBits == bits, "C++ pin " .. golden .. ": bits")
 	checkRead(name, bytes, bits, initial(), want(), "C++ pin " .. golden)
+end
+
+-- constantPin: a fresh Value whose defaults come from constants writes the
+-- pinned bytes and bit count, and reads them back over zeroed storage.
+local function constantPin(golden: string, mod: any, runtime: any)
+	read[golden .. ".bin"] = true
+	local bytes = buffer.tostring((inputs :: any)[golden .. ".bin"])
+	local bitsFile = (inputs :: any)[golden .. ".bits"]
+	check(bitsFile ~= nil, "C++ pin " .. golden .. ": the .bits file is carried in")
+	local bits = tonumber(string.match(buffer.tostring(bitsFile), "%d+")) :: number
+	local got, gotBits = write(mod, "Value", mod.NewValue(), runtime)
+	check(got == bytes, "C++ pin " .. golden .. ": bytes")
+	check(gotBits == bits, "C++ pin " .. golden .. ": bits")
+	local initial = mod.NewValue()
+	mod.ZeroValue(initial)
+	checkRead("Value", bytes, bits, initial, mod.NewValue(), "C++ pin " .. golden, mod, runtime)
 end
 
 -- Construction, in-place reset (storage kept) and the zero form.
@@ -197,7 +222,7 @@ local plainBytes, plainBits = write(p, "Sample", sample())
 local defaultBytes, defaultBits = write(d, "Sample", d.NewSample())
 check(plainBytes == defaultBytes and plainBits == defaultBits, "defaultless twin")
 
--- The eight C++ pins.
+-- The ten C++ pins.
 pin("Sample", "sample-defaults", d.NewSample(), zero, sample)
 
 local batch = d.NewBatch()
@@ -254,6 +279,9 @@ pin("Sample", "sample-empty", zero(), dirty, function(): any
 	return overlay(dirty(), zero())
 end)
 
+constantPin("hexadecimal-addition", hexadecimalAddition, hexadecimalAdditionRuntime)
+constantPin("unsigned-subtraction", unsignedSubtraction, unsignedSubtractionRuntime)
+
 -- Repeated selection: every read of the Sample arm takes fresh defaults
 -- before its payload, in the same arm table and buffers, twice.
 for _, sent in { short(), zero() } do
@@ -295,8 +323,11 @@ end
 do
 	local carried = 0
 	for name in inputs :: any do
-		if string.sub(name, -4) == ".bin" then
+		if string.sub(name, -5) == ".bits" then
+			check(read[string.sub(name, 1, -6) .. ".bin"] == true, "pin " .. name .. " has no pin that reads its .bin")
+		elseif string.sub(name, -4) == ".bin" then
 			carried += 1
+			check((inputs :: any)[string.sub(name, 1, -5) .. ".bits"] ~= nil, "golden " .. name .. " has no .bits")
 			check(read[name] == true, "golden " .. name .. " is in the directory and this main does not read it")
 		end
 	end
@@ -306,4 +337,4 @@ print(string.format("packet defaults moo: ran %d, failed %d", ran, failed))
 if failed > 0 or ran == 0 then
 	error(string.format("packet defaults moo: %d check(s) failed", failed), 0)
 end
-print("packet defaults moo: constructors, eight C++ goldens and reused storage OK")
+print("packet defaults moo: constructors, ten C++ goldens and reused storage OK")

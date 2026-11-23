@@ -209,6 +209,6 @@ int main( int argc, char ** argv )
     }
     if ( !run( argv[1], argc == 3 ) )
         return 1;
-    std::puts( "packet defaults C++: construction, defaultless twins and eight wire goldens OK" );
+    std::puts( "packet defaults C++: construction, defaultless twins and eight wire goldens OK (the two constant-default pins run in their own binaries)" );
     return 0;
 }
