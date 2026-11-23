@@ -486,6 +486,11 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
       if (fd.tl && !TableVariableTextListValid(fd, val)) { return false; }
       const n = TableVariableCount(fd, val);
       if (n === 0) { return true; }
+      // THE BIRTH VALUE ELIDES (docs/SPEC-TABLES.md §22.2; the engine's
+      // encodeArray allBirth): a [M..N]T holding exactly M elements, each at
+      // its default (a table element by a body that is its terminator alone),
+      // rides nothing, its id rolled back with it
+      const born = !fd.fixed && fd.min > 0 && n === fd.min;
       if (fd.fixed && fd.e.s !== "tab") {
         let allDef = true;
         for (let i = 0; i < n; i++) {
@@ -493,27 +498,27 @@ function TableVariableWriteField(fd, w, ids, nodes, v, retain, path) {
         }
         if (allDef) { return true; }
       }
-      // A COUNTED ARRAY AT ITS BIRTH ELIDES (§3; tablewire encodeArray): Min
-      // elements, each at its default — a table element's body the terminator
-      // alone — is the value a fresh holder has, so it is not written, exactly
-      // as a scalar at its default is not
-      let birth = (fd.min || 0) > 0 && n === fd.min && !fd.req && !fd.opt;
+      if (born && fd.e.s !== "tab") {
+        // a union or a pointer element is at its default at null (None, no node)
+        const nul = fd.e.s === "union" || fd.e.s === "ptr";
+        let allDef = true;
+        for (let i = 0; i < n; i++) {
+          if (nul ? val[i] !== null : !TableVariableElemIsDefault(fd.e, val[i])) { allDef = false; break; }
+        }
+        if (allDef) { return true; }
+      }
       const mark = ids.mark();
       const ref = ids.ref(fd.id);
       const body = new TableVariableWriter();
       body.u8(fd.ek);
       body.leb(n);
+      let allBirth = born && fd.e.s === "tab";
       for (let i = 0; i < n; i++) {
         const at = body.len;
         if (!TableVariableWriteElement(fd, body, ids, nodes, val[i], retain, path, i)) { return false; }
-        if (birth) {
-          const s = fd.e.s;
-          birth = s === "tab" ? body.len - at === 2 && body.b[at] === 1 && body.b[at + 1] === 0
-            : s === "union" || s === "ptr" ? val[i] === null
-            : !fd.tl && TableVariableElemIsDefault(fd.e, val[i]);
-        }
+        if (allBirth && !(body.len - at === 2 && body.b[at] === 1 && body.b[at + 1] === 0)) { allBirth = false; }
       }
-      if (birth) { ids.rollback(mark); return true; }
+      if (allBirth) { ids.rollback(mark); return true; }
       w.leb(ref);
       w.u8(14);
       w.leb(body.len);
@@ -631,6 +636,12 @@ function TableVariableSaveWalk(c, v, retain, why) {
     w.raw(sub.b);
   }
   w.u8(0);
+  // THE ID TABLE'S MAXIMUM (docs/SPEC-TABLES.md §3): every reader refuses more
+  // than 4096 entries, so the writer refuses the value and writes nothing.
+  if (globalThis.BigInt(ids.list.length) > TableVariableEntryBound) {
+    if (why !== undefined && why !== null && why.reason === null) { why.reason = "invalid_value"; }
+    return null;
+  }
   for (const id of ids.list) { w.u64(id); }
   w.u64(globalThis.BigInt(ids.list.length));
   if (c.integrity) { w.u32(c.integrity.sum(w.b, w.len)); }
@@ -2567,9 +2578,10 @@ class TableVariableTextIn {
     // a skipped object's keys are held to the layer's rule too: a repeated
     // key refuses in every object of the text (§16.2, §16.12)
     const keys = close === "}" ? new globalThis.Set() : null;
+    let definition = null; // the label entry this object defines, open until it closes
     for (;;) {
       let ch = this.peek();
-      if (ch === close) { return closed(); }
+      if (ch === close) { this.p++; if (definition !== null) { definition.open = false; } return true; }
       if (ch === "") { this.bad = true; return false; }
       if (close === "}") {
         const key = this.name();
@@ -2583,19 +2595,33 @@ class TableVariableTextIn {
           if (!first || key !== "&node") { this.bad = true; return false; }
           const label = this.label();
           if (label === null) { return false; }
+          // THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): a label alone
+          // must name a definition already closed; fields after one must follow
+          // a label not yet defined, and the definition is open until this
+          // object closes. What the reader does not place is the value.
+          first = false;
+          if (graph === null) {
+            // a unit with no pointer has no label table: the prefix is still
+            // held to its grammar, and the value is skipped whole
+            ch = this.peek();
+            if (ch === ",") { this.p++; continue; }
+            if (ch === close) { this.p++; return true; }
+            this.bad = true;
+            return false;
+          }
           const entry = graph.get(label);
           ch = this.peek();
-          if (ch !== "," && ch !== close) { this.bad = true; return false; }
           if (ch === ",") { this.p++; ch = this.peek(); }
-          if (ch === close) {
+          else if (ch !== close) { this.bad = true; return false; }
+          const bare = ch === close;
+          if (bare !== (entry !== undefined)) { this.bad = true; return false; }
+          if (bare) {
+            if (entry.open) { this.bad = true; return false; }
             this.p++;
-            if (entry === undefined || entry.open) { this.bad = true; return false; }
             return true;
           }
-          if (entry !== undefined) { this.bad = true; return false; }
-          graph.set(label, { node: null, c: null, open: true });
-          opened = label;
-          first = false;
+          definition = { node: null, c: null, open: true };
+          graph.set(label, definition);
           continue;
         }
       }
@@ -2603,7 +2629,7 @@ class TableVariableTextIn {
       if (!this.skip(depth + 1, graph, report)) { return false; }
       ch = this.peek();
       if (ch === ",") { this.p++; continue; }
-      if (ch === close) { return closed(); }
+      if (ch === close) { this.p++; if (definition !== null) { definition.open = false; } return true; }
       this.bad = true;
       return false;
     }
@@ -2641,9 +2667,6 @@ function TableVariableFromJson(c, text, report) {
   // The dialect accepts exactly one BOM at byte zero, never as whitespace.
   if (text.charCodeAt(0) === 0xfeff) { inp.p = 1; }
   const v = c.make();
-  // the label graph exists for a VARIABLE root only (§2.2, §16.7): a fixed
-  // root has no pointer, so an "&node" in a value it skips is a key like any
-  // other and the value is skipped whole
   const ok = TableVariableReadTable(c, inp, v, 0, c.variable ? new globalThis.Map() : null, report);
   if (ok) {
     inp.space();

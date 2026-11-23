@@ -93,6 +93,39 @@ function ru32() { const v = dv.getUint32(at, true); at += 4; return v; }
 function rstr() { const n = dv.getUint16(at, true); at += 2; const s = dec.decode(raw.subarray(at, at + n)); at += n; return s; }
 function rvec() { const n = ru32(); const b = new Uint8Array(n); b.set(raw.subarray(at, at + n)); at += n; return b; }
 
+// carry moves a text-placed value (a fixed root's text form reads into the
+// variable module's value, docs/SPEC-TABLES.md §16) into the fixed module's
+// value, so op 7 hands the MESSAGE writer the value the text names. The two
+// carry the same fields under the same names; a counted array sets its
+// <name>Count, and an enum named by text (a string, or null for None) becomes
+// the number the fixed module stores.
+function enumNumber(u, name) {
+  if (name === null) return 0;
+  for (const e of Object.values(u.P)) {
+    if (e !== null && typeof e === "object" && Object.isFrozen(e) && typeof e[name] === "number") return e[name];
+  }
+  return name;
+}
+function carried(u, v, cur) {
+  if (v !== null && typeof v === "object" && !Array.isArray(v) && cur !== null && typeof cur === "object") {
+    carry(u, v, cur);
+    return cur;
+  }
+  if ((v === null || typeof v === "string") && typeof cur === "number") return enumNumber(u, v);
+  return v;
+}
+function carry(u, src, dst) {
+  for (const k of Object.keys(src)) {
+    const sv = src[k];
+    if (Array.isArray(sv) && dst[k] && typeof dst[k].length === "number") {
+      for (let i = 0; i < sv.length; i++) dst[k][i] = carried(u, sv[i], dst[k][i]);
+      if ((k + "Count") in dst) dst[k + "Count"] = sv.length;
+    } else {
+      dst[k] = carried(u, sv, dst[k]);
+    }
+  }
+}
+
 const total = ru32();
 for (let idx = 0; idx < total; idx++) {
   const id = rstr(), pkg = rstr(), root = rstr();
@@ -151,16 +184,28 @@ for (let idx = 0; idx < total; idx++) {
     if (cnt >= 0 && !rep.damaged && !rep.refused && !rep.Damaged && (!rep.Verdict || rep.Verdict === 0)) {
       die(id, "FixedLoad accepted writer-bound breach");
     }
-  } else if (op === 6) {
+  } else if (op === 6 || op === 7) {
     const rep = new u.V.TableVariableReport();
     const txt = dec.decode(inp);
     const val = u.V[root + "FromJson"](txt, rep);
     const jtxt = u.V[root + "ToJson"](val);
     if (jtxt === null || jtxt === undefined) die(id, "ToJson");
     checkBytes(id, enc.encode(jtxt), want1);
-    if (want2.length > 0) {
+    if (op === 6 && want2.length > 0) {
       const wout = u.V[root + "Save"](val);
       checkBytes(id + ":save", wout, want2);
+    }
+    if (op === 7) {
+      const fv = u.UT[root] ? new u.UT[root]() : new u.P[root]();
+      carry(u, val, fv);
+      const mrep = new u.UT.TableFixedReport();
+      const mlen = u.FT[root + "MeasureMessages"]([fv], mrep);
+      if (mlen < 0 || mrep.Damaged || (mrep.Verdict && mrep.Verdict !== 0)) die(id, "MeasureMessages after FromJson");
+      const out = new Uint8Array(mlen);
+      const srep = new u.UT.TableFixedReport();
+      const wn = u.FT[root + "SaveMessages"]([fv], out, srep);
+      if (wn !== mlen || srep.Damaged || (srep.Verdict && srep.Verdict !== 0)) die(id, "SaveMessages after FromJson");
+      checkBytes(id, out, want2);
     }
   } else {
     die(id, "unknown op " + op);
@@ -331,6 +376,21 @@ for _ in range(total):
         check_bytes(cid, jtxt, want1)
         if len(want2) > 0:
             check_bytes(cid + ":save", v.save(), want2)
+    elif op == 7:
+        rep = m.LoadReport()
+        try:
+            v = cls.from_json(inp.decode("utf-8"), rep)
+            if is_bad(rep):
+                die(cid, "from_json refused")
+            jtxt = v.to_json().encode("utf-8")
+        except Exception as exc:
+            die(cid, f"json raised {exc!r}")
+        check_bytes(cid, jtxt, want1)
+        try:
+            out = m.save_messages(cls, [v])
+        except Exception as exc:
+            die(cid, f"save_messages after from_json raised {exc!r}")
+        check_bytes(cid + ":save_messages", out, want2)
     else:
         die(cid, f"unknown op {op}")
 
@@ -473,6 +533,21 @@ total.times do
     end
     check_bytes(cid, jtxt, want1)
     check_bytes("#{cid}:save", v.save, want2) if want2.bytesize > 0
+  when 7
+    begin
+      rep = mod::LoadReport.new
+      v = cls.from_json(inp.dup.force_encoding("UTF-8"), rep)
+      jtxt = v.to_json
+    rescue StandardError => e
+      die(cid, "json raised #{e.class}: #{e.message}")
+    end
+    check_bytes(cid, jtxt, want1)
+    begin
+      out = mod.save_messages(cls, [v])
+    rescue StandardError => e
+      die(cid, "save_messages after from_json raised #{e.class}: #{e.message}")
+    end
+    check_bytes("#{cid}:save_messages", out, want2)
   else
     die(cid, "unknown op #{op}")
   end
@@ -664,6 +739,16 @@ for _ = 1, total do
       local wout = u.S.Save(u.T, root, v)
       check_bytes(cid .. ":save", wout, want2)
     end
+  elseif op == 7 then
+    local rep = {}
+    local v = u.J.FromJson(u.T, root, inp, rep)
+    if v == nil or is_bad(rep) then die(cid, "FromJson") end
+    local jtxt, jwhy = u.J.ToJson(u.T, root, v)
+    if jtxt == nil then die(cid, "ToJson: " .. tostring(jwhy)) end
+    check_bytes(cid, jtxt, want1)
+    local out, owhy = u.T.SaveMessages(root, u.own_voc, { v })
+    if out == nil then die(cid, "SaveMessages after FromJson: " .. tostring(owhy)) end
+    check_bytes(cid .. ":save_messages", out, want2)
   else
     die(cid, "unknown op " .. tostring(op))
   end
@@ -750,9 +835,15 @@ func verifyLuau(repoRoot, schemaBin, workDir string, units []UnitSpec, cases []C
 			if fileExists(filepath.Join(udir, u.FileBase+"Block.luau")) {
 				blockReq = fmt.Sprintf("local _RB = require(\"./%sBlock\")\n", u.FileBase)
 			}
+			// the unit's type module is emitted only when the unit declares a
+			// type (a pinned unit of a scalar array declares none), so the
+			// probe loads it only where it exists, as it does the block module
+			typesReq := ""
+			if fileExists(filepath.Join(udir, u.FileBase+".luau")) {
+				typesReq = fmt.Sprintf("local _P = require(\"./%s\")\n", u.FileBase)
+			}
 			src := fmt.Sprintf(`--!strict
-local P = require("./%s")
-local T = require("./%sTable")
+%slocal T = require("./%sTable")
 %slocal L = require("./schema_load")
 local S = require("./schema_save")
 local R = require("./schema_retain")
@@ -760,7 +851,6 @@ local M = require("./schema_message")
 local FX = require("./schema_fixed")
 local J = require("./schema_json")
 local F = require("./cases_fix")
-local _ = P
 
 local function die(cid: string, why: string)
 	error("FAILED: " .. cid .. ": " .. why)
@@ -853,12 +943,24 @@ for _, c in ipairs(F.cases) do
 			local wout = S.save(desc, v)
 			if not bufEq(wout, c.want2) then die(c.id, "Save after FromJson") end
 		end
+	elseif c.op == 7 then
+		local rep: {[string]: any} = {}
+		local v = J.FromJson(root, c.inp, rep)
+		if v == nil or isBad(rep) then die(c.id, "FromJson") end
+		local jrep: {[string]: any} = {}
+		local jtxt = J.ToJson(root, v, jrep)
+		if jtxt == nil or isBad(jrep) then die(c.id, "ToJson") end
+		local jbuf = if type(jtxt) == "string" then buffer.fromstring(jtxt :: string) else (jtxt :: buffer)
+		if not bufEq(jbuf, c.want1) then die(c.id, "ToJson mismatch") end
+		local srep: {[string]: any} = {}
+		local out, _ = M.SaveMessages(ownVocab, root, { v }, srep)
+		if out == nil or isBad(srep) or not bufEq(out, c.want2) then die(c.id, "SaveMessages after FromJson") end
 	else
 		die(c.id, "unknown op")
 	end
 end
 print("UNIT_OK " .. tostring(#F.cases))
-`, u.FileBase, u.FileBase, blockReq)
+`, typesReq, u.FileBase, blockReq)
 			if err := os.WriteFile(filepath.Join(udir, "probe.luau"), []byte(src), 0o644); err != nil {
 				errs <- err
 				return
@@ -1055,6 +1157,19 @@ for (local idx = 0; idx < total; idx++) {
       local wout = T[root + "Save"](v);
       check_blob(cid + ":save", wout, wout.len(), want2);
     }
+  } else if (op == 7) {
+    local rep = {};
+    local v = u.J.FromJson(T, root, inp, rep);
+    if (v == null || is_bad(rep)) die(cid, "FromJson fix");
+    check_str_blob(cid, T[root + "ToJson"](v), want1);
+    local mrep = {};
+    local mlen = T[root + "MeasureMessages"]([v], mrep);
+    if (mlen < 0 || is_bad(mrep)) die(cid, "MeasureMessages after FromJson");
+    local out = blob(mlen);
+    local srep = {};
+    local sn = T[root + "SaveMessages"]([v], out, srep);
+    if (sn != mlen || is_bad(srep)) die(cid, "SaveMessages after FromJson");
+    check_blob(cid + ":msg", out, sn, want2);
   } else {
     die(cid, "unknown op " + op);
   }
@@ -1202,6 +1317,20 @@ for idx = 1, #F.cases do
 			local wout, _ = S.save(desc, rec)
 			if not bufEq(wout, c.want2) then die(c.id, "save after fromJson") end
 		end
+	elseif c.op == 7 then
+		local d: any = (ST :: any).lookup(root)
+		local rec = d.new()
+		local rep: {[string]: any} = {}
+		if not (J :: any).fromJson(d, rec, buffer.tostring(c.inp), rep) or isBad(rep) then
+			die(c.id, "fromJson fix")
+		end
+		local jtxt: string? = (J :: any).toJson(d, rec)
+		if jtxt == nil or not bufEq(buffer.fromstring(jtxt :: string), c.want1) then
+			die(c.id, "toJson fix")
+		end
+		local srep = L.newReport()
+		local out, _ = MS.SaveMessages(root, {rec}, srep)
+		if out == nil or isBad(srep) or not bufEq(out, c.want2) then die(c.id, "SaveMessages after fromJson") end
 	else
 		die(c.id, "unknown op")
 	end
@@ -1281,6 +1410,30 @@ func verifyGoose(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec
             return;
         }
 `, u.Pkg, r, u.Pkg, r, u.Pkg, r)
+				}
+				if r == u.FixRoot && !gooseDefines(udir, "fn "+r+"FromJson(") {
+					// a root Goose emits no text codec for has no text half
+					// to feed its message writer: the case fails by name
+					// rather than breaking the unit's build
+					jsonFixedBlock += fmt.Sprintf(`        if op == 7 { die(c_id, "goose emits no %sFromJson"); }
+`, r)
+				} else if r == u.FixRoot {
+					// op 7: the fixed root's native message writer, fed by text
+					jsonFixedBlock += fmt.Sprintf(`        if op == 7 {
+            var one: %s::%s[1] = [%s::New%s()];
+            var jrep = schema_rt::json_report();
+            if !%s::%sFromJson(one[0], c_in, jrep) || jrep.damaged { die(c_id, "FromJson fix"); }
+            var jout: u8[>..] = [];
+            if %s::%sToJson(one[0], jout) < 0 { die(c_id, "ToJson fix"); }
+            check_bytes(c_id, jout, c_w1);
+            var mout: u8[>..] = [];
+            var srep = schema_rt::MsgReport { .. };
+            let sn = %s::%sSaveMessages(one[0 .. 1], mout, srep);
+            if sn != mout.len || srep.damaged || srep.reason != 0 { die(c_id, "SaveMessages after FromJson"); }
+            check_bytes(c_id, mout, c_w2);
+            return;
+        }
+`, u.Pkg, r, u.Pkg, r, u.Pkg, r, u.Pkg, r, u.Pkg, r)
 				}
 				fmt.Fprintf(&fixDisp, `    if same(c_root, %q) {
         if op == 3 {
@@ -1512,6 +1665,18 @@ fn main() {
 // 18. Lobster (per-unit compile + execute)
 // ============================================================================
 
+// gooseDefines reports whether any generated Goose file of a unit carries
+// decl, a function the probe may call only when the emitter wrote it.
+func gooseDefines(udir, decl string) bool {
+	files, _ := filepath.Glob(filepath.Join(udir, "*.goose"))
+	for _, f := range files {
+		if b, err := os.ReadFile(f); err == nil && strings.Contains(string(b), decl) {
+			return true
+		}
+	}
+	return false
+}
+
 func verifyLobster(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec, caseCount int) error {
 	genRoot := filepath.Join(workDir, "gen")
 	if err := generateAllUnits(repoRoot, schemaBin, "", "lobster", units, genRoot); err != nil {
@@ -1648,6 +1813,17 @@ def run_one(c_id:string, c_rt:string, op:int, c_ax:string, c_in:string, c_w1:str
             if length(c_w2) > 0:
                 let wout, wwhy = schema_rt.save_reasoned(rec)
                 if wwhy != "" or wout != c_w2: die(c_id, "save after json_read: " + wwhy)
+        return
+    if op == 7:
+        let rep = schema_rt.LoadReport {}
+        let rec = schema_rt.json_read(c_rt, c_in, rep)
+        if rec == nil or rep.damaged or rep.refused: die(c_id, "json_read fix")
+        if rec:
+            let jtxt, jwhy = schema_rt.json_write(rec)
+            if jwhy != "" or jtxt != c_w1: die(c_id, "json_write fix: " + jwhy)
+            let srep = schema_rt.LoadReport {}
+            let out, sn = schema_rt.save_messages([rec], srep)
+            if srep.damaged or srep.refused or sn != length(c_w2) or out != c_w2: die(c_id, "save_messages after json_read")
         return
     die(c_id, "unknown op")
 

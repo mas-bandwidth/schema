@@ -1,1 +1,1 @@
-{"head": {"&node": 1, "value": 1}, "zz": {"&node": 1, "value": 2}}
+{ "mystery": { "&node": 1, "value": 1 }, "other": { "&node": 1, "value": 2 } }

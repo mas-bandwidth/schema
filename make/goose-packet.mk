@@ -9,7 +9,7 @@
 #
 #   packet-utf8-goose      test/packet-text: the narrow string corpus and every
 #                          bit flip against the C++ reader
-#   packet-defaults-goose  test/packet-defaults: constructors and the eight C++
+#   packet-defaults-goose  test/packet-defaults: constructors and the ten C++
 #                          byte and bit pins, reused storage
 #   packet-finite-goose    test/packet-finite: SPEC §4.3's finite floats, both
 #                          directions, a control per direction
@@ -78,7 +78,13 @@ packet-defaults-goose: goose-packet-ready packet-defaults-cpp build/mustrun
 	./build/schema-goose-packet generate --lang goose --out build/packet-defaults/goose test/packet-defaults/Defaults.schema
 	./build/schema-goose-packet generate --lang goose --out build/packet-defaults/goose test/packet-defaults/Plain.schema
 	cp test/packet-defaults/goose/main.goose build/packet-defaults/goose/
-	env -u SCHEMA_UPDATE_WIRE_GOLDENS $(MUSTRUN) -name packet-defaults-goose -count 76 -- $(GOOSE) run build/packet-defaults/goose/main.goose -- testdata/wire/packet-defaults $(PACKET_DEFAULTS_GOOSE_GOLDENS)
+	env -u SCHEMA_UPDATE_WIRE_GOLDENS $(MUSTRUN) -name packet-defaults-goose -count 78 -- $(GOOSE) run build/packet-defaults/goose/main.goose -- testdata/wire/packet-defaults $(PACKET_DEFAULTS_GOOSE_GOLDENS)
+	for n in hexadecimal-addition unsigned-subtraction; do \
+		d=build/packet-defaults/goose-constant-$$n; rm -rf $$d && mkdir -p $$d || exit 1; \
+		./build/schema-goose-packet generate --lang goose --out $$d test/conformance/packet/testdata/constant-defaults/$$n/Defaults.schema || exit 1; \
+		cp test/packet-defaults/goose/constant.goose $$d/main.goose || exit 1; \
+		env -u SCHEMA_UPDATE_WIRE_GOLDENS $(MUSTRUN) -name packet-defaults-goose-constant-$$n -count 9 -- $(GOOSE) run $$d/main.goose -- testdata/wire/packet-defaults $$n || exit 1; \
+	done
 
 # Removes only the constructor's byte literal, its length kept: the program
 # must compile and fail the exact constructor-bytes marker.

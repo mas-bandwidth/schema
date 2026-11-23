@@ -300,6 +300,11 @@ fn em_ref(c: SaveCtx&, id: u64) -> bool {
             c.retain.ids.push(id);
         }
     }
+    if c.ids.len >= 4096 {
+        var held = false;
+        for x in c.ids { if x == id { held = true; break; } }
+        if !held { return false; }
+    }
     put_leb(c, id_ref(c, id));
     return true;
 }

@@ -93,8 +93,8 @@ func t18RequireCompiler(t *testing.T) {
 		cxx = "c++"
 	}
 	if _, err := exec.LookPath(cxx); err != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and no C++ compiler (%s) is on PATH: %v", cxx, err)
+		if slowtest.CorpusRequired() {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and no C++ compiler (%s) is on PATH: %v", cxx, err)
 		}
 		t.Skipf("no C++ compiler (%s) is on PATH: %v", cxx, err)
 	}

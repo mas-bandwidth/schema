@@ -341,6 +341,7 @@ public final class FixedTableFixed {
             short[] remap,
             byte[] image,
             TableFixed.Report report) {
+        report.reset();
         // STEPS 1 TO 3: the bytes are there at all, the form byte is this form,
         // and 20 + L is inside the file. The first is framing damage and has no
         // name; the other two refuse by name.

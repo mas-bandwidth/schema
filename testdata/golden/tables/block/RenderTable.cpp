@@ -54,9 +54,9 @@ inline bool TableJsonWritePointer( TableJsonOut & out, const void * slot, const 
 // the FIRST key of an object the walk is skipping begins with `&`: the cursor is
 // on its value. A dropped definition still takes its label (§16.7); a fixed reader
 // skips the value whole, as it skips everything else it does not place.
-inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32_t key_length, int32_t depth, bool & reference, uint64_t & opened );
-// the skipped object that opened a definition (opened, from the call above) closes
-inline void TableJsonSkippedClose( TableJsonIn & in, uint64_t opened );
+inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32_t key_length, int32_t depth, char close, uint64_t & opened );
+// the object that opened a definition in a skipped value has closed: the label stays, with no node
+inline void TableJsonSkippedClose( TableJsonIn & in, uint64_t label );
 
 // ---- the map and list adapters (docs/SPEC-TABLES.md §2.8, §2.9, §16) ----
 //
@@ -3084,14 +3084,14 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
     in.pos++; // the opening bracket
     TableJsonKeyScope keys( in ); // this object's keys, bounded by the text's own length
     bool first = true;
-    uint64_t opened = 0; // the label a definition this skipped object opened
+    uint64_t opened = 0; // the label this object defines, open until it closes
     for ( ;; )
     {
         char c = TableJsonPeek( in );
         if ( c == close )
         {
             in.pos++;
-            TableJsonSkippedClose( in, opened );
+            if ( opened != 0 ) { TableJsonSkippedClose( in, opened ); }
             return true;
         }
         if ( c == 0 )
@@ -3117,7 +3117,7 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
             }
             in.pos++;
             if ( !TableJsonKeyTrack( in, key, key_length ) ) { return false; }
-            if ( key[0] == '&' && in.graph != NULL )
+            if ( key[0] == '&' )
             {
                 if ( !first )
                 {
@@ -3125,9 +3125,7 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
                     in.bad = true;
                     return false;
                 }
-                bool reference = false;
-                if ( !TableJsonSkippedAmpersand( in, key, key_length, depth, reference, opened ) ) { return false; }
-                if ( reference ) { return true; } // consumed whole, its } included
+                if ( !TableJsonSkippedAmpersand( in, key, key_length, depth, close, opened ) ) { return false; }
                 first = false;
                 c = TableJsonPeek( in );
                 if ( c == ',' )
@@ -3138,7 +3136,6 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
                 if ( c == close )
                 {
                     in.pos++;
-                    TableJsonSkippedClose( in, opened );
                     return true;
                 }
                 in.bad = true;
@@ -3156,7 +3153,7 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
         if ( c == close )
         {
             in.pos++;
-            TableJsonSkippedClose( in, opened );
+            if ( opened != 0 ) { TableJsonSkippedClose( in, opened ); }
             return true;
         }
         in.bad = true;
@@ -4553,15 +4550,40 @@ inline bool TableJsonWritePointer( TableJsonOut &, const void *, const TableFiel
     return false;
 }
 
-inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char *, int32_t, int32_t depth, bool & reference, uint64_t & )
+inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32_t key_length, int32_t, char, uint64_t & )
 {
-    reference = false;
-    return TableJsonSkipValue( in, depth + 1 );
+    // no pointer, so no label table: the prefix is still held to its grammar
+    // (a well-formed first &node), and the value is skipped whole
+    if ( !TableJsonKeyEquals( "&node", key, key_length ) )
+    {
+        in.report->damaged = true;
+        in.bad = true;
+        return false;
+    }
+    TableJsonSpace( in );
+    if ( in.pos >= in.size || in.text[in.pos] < '1' || in.text[in.pos] > '9' )
+    {
+        in.report->damaged = true;
+        in.bad = true;
+        return false;
+    }
+    uint64_t value = 0;
+    while ( in.pos < in.size && in.text[in.pos] >= '0' && in.text[in.pos] <= '9' )
+    {
+        const uint64_t digit = (uint64_t) ( in.text[in.pos] - '0' );
+        if ( value > ( UINT64_MAX - digit ) / 10 )
+        {
+            in.report->damaged = true;
+            in.bad = true;
+            return false;
+        }
+        value = value * 10 + digit;
+        in.pos++;
+    }
+    return true;
 }
 
-inline void TableJsonSkippedClose( TableJsonIn &, uint64_t )
-{
-}
+inline void TableJsonSkippedClose( TableJsonIn &, uint64_t ) {}
 
 inline bool schema_table_json_read_unbounded_text_( TableJsonIn & in, void *, int32_t * )
 {

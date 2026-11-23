@@ -78,11 +78,10 @@ func TestCppJsonLabelIsFollowedByCommaOrClose(t *testing.T) {
 func TestCppSkippedLabelFollowsTheLabelRules(t *testing.T) {
 	t.Parallel()
 	src := hostileRulesEmitted(t, hostileRulesGraphSchema)
-	skipped := hostileFunction(t, src, "inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32_t key_length, int32_t, bool & reference, uint64_t & opened )")
+	skipped := hostileFunction(t, src, "inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32_t key_length, int32_t, char close, uint64_t & opened )")
 	for _, want := range []string{
-		"if ( entry == NULL || entry->open != 0 )", // a bare label names a closed definition
-		"if ( entry != NULL )",                     // a label with fields is new
-		"entry->open = 1;",                         // and open until its object closes
+		"if ( bare == taken || ( bare && entry->open != 0 ) )", // a bare label names a closed definition; a definition is new
+		"entry->open = 1;", // and open until its object closes
 		"opened = label;",
 	} {
 		if !strings.Contains(skipped, want) {
@@ -90,11 +89,8 @@ func TestCppSkippedLabelFollowsTheLabelRules(t *testing.T) {
 		}
 	}
 	container := hostileFunction(t, src, "inline bool TableJsonSkipContainer(")
-	if n := strings.Count(container, "TableJsonSkippedClose( in, opened );"); n != 3 {
-		t.Fatalf("a skipped object closes the definition it opened at %d of its 3 closes:\n%s", n, container)
-	}
-	if !strings.Contains(container, "if ( reference ) { return true; }") {
-		t.Fatalf("a skipped reference is not consumed whole:\n%s", container)
+	if n := strings.Count(container, "TableJsonSkippedClose( in, opened );"); n != 2 {
+		t.Fatalf("a skipped object closes the definition it opened at %d of its 2 closes:\n%s", n, container)
 	}
 }
 
