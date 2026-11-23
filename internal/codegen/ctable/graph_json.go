@@ -125,7 +125,8 @@ static SCHEMA_UNUSED SCHEMA_JSON_NOINLINE int table_json_read_pointer( TableJson
 {
     TableJsonGraphIn * graph = (TableJsonGraphIn *)in->graph;
     TableJsonGraphEntry * entry;
-    char key[kTableJsonMaxKey], c;
+    char * key = in->key_buf;
+    char c;
     int32_t length = 0;
     int64_t quote;
     uint64_t label = 0;
@@ -463,7 +464,7 @@ static SCHEMA_UNUSED int table_json_map_hash_add(TableJsonIn * in,TableJsonKeys 
     uint64_t hash=1469598103934665603ULL; int64_t mask,i; int32_t k;
     for(k=0;k<length;k++) { hash=(hash^(uint64_t)(unsigned char)key[k])*1099511628211ULL; }
     if((keys->count+1)*2>keys->capacity) {
-        const int64_t capacity=keys->capacity*2; TableJsonKey * grown; int64_t j;
+        const int64_t capacity=keys->capacity==0 ? kTableJsonKeysLocal : keys->capacity*2; TableJsonKey * grown; int64_t j;
         if((uint64_t)capacity>SIZE_MAX/sizeof(TableJsonKey)) { in->bad=1; return -1; }
         grown=(TableJsonKey *)schema_allocate(capacity*(int64_t)sizeof(TableJsonKey));
         if(grown==NULL) { in->bad=1; return -1; }

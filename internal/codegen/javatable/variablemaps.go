@@ -127,7 +127,7 @@ func readJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field
 	case key.Type.Width > 32:
 		hashType = "java.lang.Long"
 	}
-	fmt.Fprintf(b, "                if(in.peek()!='{'){in.bad=true;return;} in.p++; v.%s.clear(); java.util.HashSet<%s> seen_%s=new java.util.HashSet<>();\n", m, hashType, m)
+	fmt.Fprintf(b, "                if(in.peek()!='{'){in.bad=true;return;} if((%s)+1>TableJson.In.MAX_JSON_DEPTH){in.bad=true;return;} in.p++; v.%s.clear(); java.util.HashSet<%s> seen_%s=new java.util.HashSet<>();\n", depth, m, hashType, m)
 	fmt.Fprintf(b, "                while(in.peek()!='}') { if(in.peek()==0){in.bad=true;return;} java.lang.String mapKey=in.scanStored(); if(in.bad)return; if(in.peek()!=':'){in.bad=true;return;} in.p++; %s entry=new %s(); boolean accepted=true;\n", entry, entry)
 	if key.Type.Kind == ir.TString {
 		if key.Type.TextUnbounded() {
@@ -158,7 +158,7 @@ func readJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field
 	b.WriteString("                    if(!accepted){in.skipValue();}else {\n")
 	// THE MAP OBJECT IS A LEVEL (§16.2; internal/tabletext readMap): an
 	// entry's value is read at depth+1, as the engine reads it.
-	fmt.Fprintf(b, "                    %sVariable.readMapValue_%s(in,entry,%s + 1);\n", st.Name, m, depth)
+	fmt.Fprintf(b, "                    %sVariable.readMapValue_%s(in,entry,(%s) + 1);\n", st.Name, m, depth)
 	fmt.Fprintf(b, "                    if(in.bad)return; if(!seen_%s.add(entry.key)){in.rep.refuse(\"text_damaged\");}else v.%s.add(entry); }\n", m, m)
 	b.WriteString("                    int separator=in.peek();if(separator==','){in.p++;continue;}if(separator=='}')break;in.bad=true;return; } in.p++;\n")
 }

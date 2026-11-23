@@ -2569,6 +2569,10 @@ local function readUnion(r: Reader, t: string, holder: any, key: any, depth: num
 		r.bad = true
 		return false
 	end
+	if depth + 1 > MAX_DEPTH then
+		r.bad = true
+		return false
+	end
 	r.pos += 1
 	local ud = St.lookup(t)
 	local u = ud.new()
@@ -2665,6 +2669,10 @@ local function readFlags(r: Reader, names: { string }, holder: any, key: any, de
 		return false
 	end
 	if peek(r) ~= 91 then
+		r.bad = true
+		return false
+	end
+	if depth + 1 > MAX_DEPTH then
 		r.bad = true
 		return false
 	end
@@ -2870,6 +2878,10 @@ local function readArray(r: Reader, fd: any, rec: any, depth: number): boolean
 		r.bad = true
 		return false
 	end
+	if depth + 1 > MAX_DEPTH then
+		r.bad = true
+		return false
+	end
 	r.pos += 1
 	local e = fd.e
 	local slot = fd.slot
@@ -2983,6 +2995,10 @@ local function readTextList(r: Reader, fd: any, tl: any, rec: any, depth: number
 		return false
 	end
 	if peek(r) ~= 91 then
+		r.bad = true
+		return false
+	end
+	if depth + 1 > MAX_DEPTH then
 		r.bad = true
 		return false
 	end
@@ -3113,6 +3129,10 @@ local function readKeyed(r: Reader, fd: any, rec: any, depth: number): boolean
 		return false
 	end
 	if peek(r) ~= 123 then
+		r.bad = true
+		return false
+	end
+	if depth + 1 > MAX_DEPTH then
 		r.bad = true
 		return false
 	end

@@ -1704,6 +1704,12 @@ defmodule WriteRefusal do
              is_map_key(f, :default) and f.default == nil and v in [0, :none] ->
         {:ok, List.keydelete(body, ref, 0)}
 
+      # a union at tag 0 is None, which the message form spells by leaving the
+      # field out (the writer refuses a union field at arm 0; row
+      # mref_union_tag_none, docs/SPEC-CONFORMANCE.md §7)
+      {:ok, :none} when rest == [] and index == nil and f.t == :union ->
+        {:ok, List.keydelete(body, ref, 0)}
+
       {:ok, v} ->
         {:ok, in_declaration_order(ctx, desc, List.keystore(body, ref, 0, {ref, v}))}
 

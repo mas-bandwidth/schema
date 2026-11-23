@@ -1,0 +1,20 @@
+{
+  "one": {
+    "roster": {}
+  },
+  "many": [],
+  "keyed": {
+    "Alpha": {
+      "roster": {
+        "5": {
+          "count": 1
+        }
+      }
+    },
+    "Beta": {
+      "roster": {}
+    }
+  },
+  "arm": {},
+  "past": 0
+}

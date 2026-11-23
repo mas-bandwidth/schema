@@ -503,6 +503,10 @@ public final class MixedEventVariable {
             in.bad = true;
             return v;
         }
+        if (depth + 1 > TableJson.In.MAX_JSON_DEPTH) {
+            in.bad = true;
+            return v;
+        }
         in.p++;
         if (in.peek() == '}') {
             in.p++;
