@@ -58,6 +58,11 @@ OWES) and is repeated here as the rule for the suite:
   `-std=c11 -Wall -Wextra -Werror` alone and when included by a unit that
   sets `_POSIX_C_SOURCE 200809L` first; included late without it, it refuses
   by name (SPEC-TABLES.md §16.5, A STRICT C COMPILE).
+- Every pinned wire-fuzz vector is RUN. `testdata/wire/tables/fuzz-vectors/INDEX.txt`
+  names every `*.bin` beside it, and every line of it names a file that exists;
+  `harness wire-fuzz` refuses the run, naming the file, when a vector is on disk
+  and not in the index or in the index and not on disk (SPEC-TABLES.md §4.2).
+  A new vector is added to the index in the commit that adds the file.
 
 ## 3. The driver protocol
 
@@ -116,3 +121,12 @@ that changes what a conforming implementation does is incomplete without a
 matching row in the corpus (a case, a golden, a refusal row); a case added
 to the corpus without a matching statement in the specification is likewise
 incomplete. A port states the spec version it passes the suite of.
+
+## 7. Shared rows a new port is held to
+
+Each row names a rule a port has got wrong, the spec sentence that states it,
+and the shared corpus entry or gate that holds every port to it.
+
+| row | rule | spec | held by |
+|---|---|---|---|
+| `retain-id-bound-is-the-wires` | a retaining save numbers the generated table's ids and the retained ids into one trailer bounded by `id_table_max` = 4096, never by the generated table's own capacity; a file of 4096 retained ids saves back byte for byte | SPEC-TABLES.md §6.6, THE MERGED TRAILER IS BOUNDED BY THE WIRE | `wire-fuzz --retain` on the pinned seed `id_table_4096` (graphdemo.Scene); C++ `TestCppRetainIdTableBoundIsTheWires` |
