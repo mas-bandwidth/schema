@@ -2,15 +2,15 @@
 -- serialize.luau — the entry: returns the API table (DESIGN.md (a)).
 --
 -- serialize.luau is a bitpacking serializer for Luau, wire compatible with
--- serialize (C++, STANDARD.md, format version 2.0) and serialize.go v2.0.0:
+-- mas-bandwidth/serialize (C++) v2.1.4 (STANDARD.md, format version 2.0):
 -- the same values produce the same bytes. Load it as require("./serialize")
 -- from a file in the same directory; every module it loads is required as
 -- "./serialize_<name>" from this directory alone (DESIGN.md (f)).
 --
 -- The streams live in serialize_stream.luau. Every function here that belongs
 -- to a family forwards to that family's module, loaded lazily on the first
--- call (DESIGN.md (h)); while the file is absent the call raises
--- `serialize: <name> not implemented`.
+-- call (DESIGN.md (h)); while the file is absent the call raises the
+-- require error naming that module.
 --
 -- Copyright © 2016 - 2026, Más Bandwidth LLC. BSD 3-Clause (see LICENSE).
 

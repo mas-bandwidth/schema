@@ -31,7 +31,9 @@ func TestMissingSiblingStopsMakeWithOneLine(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.goal, func(t *testing.T) {
 			t.Parallel()
-			cmd := exec.Command("make", "-n", c.goal, c.variable+"="+absent)
+			// GNU Make adds directory banners when the Go test is run from
+			// a Make recipe. Check the diagnostic independently of that logging.
+			cmd := exec.Command("make", "--no-print-directory", "-n", c.goal, c.variable+"="+absent)
 			cmd.Dir = root
 			out, err := cmd.CombinedOutput()
 			if err == nil {

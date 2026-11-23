@@ -241,14 +241,15 @@ generated/bench/tables/luau/.stamp: bin/schema bench/corpus/BenchTable.schema
 	@touch $@
 
 # PACKET FINITE FLOATS (SPEC §4.3, serialize format 2.0). The Luau packet target
-# enforces the rule through its vendored serialize.luau runtime (v2.1.3): a NaN
-# or an infinity traps on write (IMPLEMENTING.md U9, "must be finite"), refuses
-# on read on its raw bits as non_finite_float, and -0 and the subnormals ride
-# bit exact. test/packet-finite/luau/main.luau runs every bare-float position
+# enforces the rule on read through its vendored serialize.luau runtime
+# (v2.1.3), refusing a NaN or an infinity on its raw bits as non_finite_float,
+# and on write through the generated writer, which returns false (LUAU-4); -0
+# and the subnormals ride bit exact. test/packet-finite/luau/main.luau runs every bare-float position
 # of Finite.schema at both widths, plus the quantized float's write refusal.
-# The generator emits the runtime beside the module, so each control sabotages
-# that emitted copy (tools/sabotage, one direction at a time) and must fail
-# exactly the vectors its .expected names.
+# The read control sabotages the runtime the generator emits beside the
+# module; the write control builds the generator without its finite guards
+# (tools/sabotage through -overlay). Each must fail exactly the vectors its
+# .expected names.
 build/packet-finite/luau/.stamp: $(GO_SOURCES) $(wildcard internal/codegen/luau/runtime/*) \
 	test/packet-finite/luau/Finite.schema test/packet-finite/luau/main.luau
 	@rm -rf build/packet-finite/luau && mkdir -p build/packet-finite/luau
@@ -278,7 +279,18 @@ endef
 
 packet-finite-luau-negative-control: packet-finite-luau
 	$(call packet-finite-luau-control,read)
-	$(call packet-finite-luau-control,write)
+	@rm -rf build/packet-finite/luau-negative-write && mkdir -p build/packet-finite/luau-negative-write
+	go run ./tools/sabotage -name packet-finite-luau-write -out build/packet-finite/luau-negative-write/write.gotext internal/codegen/luau/write.go
+	@printf '{"Replace":{"%s/internal/codegen/luau/write.go":"%s/build/packet-finite/luau-negative-write/write.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/packet-finite/luau-negative-write/overlay.json
+	go build -overlay=build/packet-finite/luau-negative-write/overlay.json -o build/packet-finite/luau-negative-write/schema ./cmd/schema
+	./build/packet-finite/luau-negative-write/schema generate --lang luau --out build/packet-finite/luau-negative-write/generated test/packet-finite/luau/Finite.schema
+	@cp test/packet-finite/luau/main.luau build/packet-finite/luau-negative-write/generated/main.luau
+	@if (cd build/packet-finite/luau-negative-write/generated && $(LUAU) main.luau) > build/packet-finite/luau-negative-write/log 2>&1; then \
+		echo 'NEGATIVE CONTROL FAILED: the Luau writer finite guards were removed and the finite gate stayed green'; exit 1; fi
+	@sed -n 's|^FAILED: \([^:]*\):.*|\1|p' build/packet-finite/luau-negative-write/log | LC_ALL=C sort > build/packet-finite/luau-negative-write/failed
+	@diff -u test/packet-finite/luau/write.expected build/packet-finite/luau-negative-write/failed || \
+		{ echo 'NEGATIVE CONTROL FAILED: the Luau float write sabotage did not fail exactly its vectors'; cat build/packet-finite/luau-negative-write/log; exit 1; }
+	@echo "packet finite Luau negative control (write): the removed writer guards fail exactly $$(wc -l < build/packet-finite/luau-negative-write/failed | tr -d ' ') vectors"
 
 # FINITE TABLE FLOATS (docs/SPEC-TABLES.md §3.3; Glenn, 2026-10-27: "Tables go
 # finite-only too, same rule as packets"). Every Luau table read refuses a NaN

@@ -309,8 +309,8 @@ func testPythonHandtextCorpus(t *testing.T, fixed bool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(paths) != 24 {
-		t.Fatalf("expected 24 refusal vectors, got %d", len(paths))
+	if len(paths) != 25 {
+		t.Fatalf("expected 25 refusal vectors, got %d", len(paths))
 	}
 	names := make([]string, 0, len(paths))
 	for _, path := range paths {

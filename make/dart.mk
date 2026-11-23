@@ -676,8 +676,9 @@ build/conformance-dart: build/tables-generated-dart/.stamp $(CARDS_DART_STAMP) t
 # against it, and requires the harness to go red on that unit's cook-write rows
 # and on nothing else. The clean driver's own failure set is the baseline, so a
 # row another group already owns is not read as this plant's; every row this
-# plant adds beyond its own still fails the control. No tracked file is written
-# to.
+# plant adds beyond its own still fails the control. Compare failure rows only:
+# indented Dart stack frames refer to different paths in the two drivers. No
+# tracked file is written to.
 DART_COOKWRITE_NC := build/dart-cookwrite-nc
 # $(1) leg, $(2) emitter file, $(3) sed sabotage, $(4) unit dir in the tree,
 # $(5) schema source, $(6) the failing rows' name prefix
@@ -695,9 +696,10 @@ define dart-cookwrite-nc-leg
 		test/conformance/dart/main.dart > $(DART_COOKWRITE_NC)/$(1)/main.dart
 	$(DART) compile exe -o $(DART_COOKWRITE_NC)/$(1)/driver-bin $(DART_COOKWRITE_NC)/$(1)/main.dart >/dev/null
 	@printf 'dart %s/build/conformance-dart\n' "$(CURDIR)" > $(DART_COOKWRITE_NC)/$(1)/clean-drivers.txt
+	@# loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
 	@./build/conformance-harness run --drivers $(DART_COOKWRITE_NC)/$(1)/clean-drivers.txt \
 			--work $(DART_COOKWRITE_NC)/$(1)/clean-work > $(DART_COOKWRITE_NC)/$(1)/clean-log 2>&1 || true
-	@awk '/^FAILURES/ { f = 1; next } f && /^  / { sub(/^  /, ""); print }' \
+	@awk '/^FAILURES$$/ { f = 1; next } f && /^  dart \/ / { sub(/^  /, ""); print }' \
 		$(DART_COOKWRITE_NC)/$(1)/clean-log | LC_ALL=C sort > $(DART_COOKWRITE_NC)/$(1)/clean-failures.txt
 	@if grep -q "dart / cook-write: $(6)" $(DART_COOKWRITE_NC)/$(1)/clean-failures.txt; then \
 		echo "NEGATIVE CONTROL FAILED: the clean leg is already red on a $(6) cook-write row"; \
@@ -712,7 +714,7 @@ define dart-cookwrite-nc-leg
 	@grep -q "dart / cook-write: $(6)" $(DART_COOKWRITE_NC)/$(1)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the harness went red, but not on a $(6) cook-write row"; \
 		  tail -30 $(DART_COOKWRITE_NC)/$(1)/log; exit 1; }
-	@awk '/^FAILURES/ { f = 1; next } f && /^  / { sub(/^  /, ""); print }' \
+	@awk '/^FAILURES$$/ { f = 1; next } f && /^  dart \/ / { sub(/^  /, ""); print }' \
 		$(DART_COOKWRITE_NC)/$(1)/log | grep -v "dart / cook-write: $(6)" \
 		| LC_ALL=C sort > $(DART_COOKWRITE_NC)/$(1)/other-failures.txt
 	@if grep -v -F -x -f $(DART_COOKWRITE_NC)/$(1)/clean-failures.txt \
@@ -1053,6 +1055,7 @@ endef
 .PHONY: tables-dart-float-jit-negative-control
 tables-dart-float-jit-negative-control: toolchain-dart generated/dart/.stamp
 	@mkdir -p $(FLOATJIT_DIR)
+# loud-ok: defines the pin and run shell functions; every call below reads its status
 	@$(FLOATJIT_RUN); \
 	if run planted-exit 1 --verbose_gc -blade >$(FLOATJIT_DIR)/blade-exit.log; then \
 		echo "tables-dart-float-jit: BLADE LOST: a planted run that exits 3 was accepted"; exit 1; fi; \
@@ -1067,6 +1070,7 @@ tables-dart-float-jit-negative-control: toolchain-dart generated/dart/.stamp
 .PHONY: tables-dart-float-jit-boxing-negative-control
 tables-dart-float-jit-boxing-negative-control: toolchain-dart generated/dart/.stamp
 	@mkdir -p $(FLOATJIT_DIR)
+# loud-ok: defines the pin and run shell functions; every call below reads its status
 	@$(FLOATJIT_RUN); \
 	pin $(DART) || exit 1; \
 	run planted-box $(FLOATJIT_N) '$(FLOATJIT_FLAGS)' '' || { echo "tables-dart-float-jit: BLADE LOST: the planted boxing run was refused"; exit 1; }; \
@@ -1104,6 +1108,7 @@ tables-dart-float-jit-sdk-negative-control:
 .PHONY: tables-dart-float-jit
 tables-dart-float-jit: toolchain-dart generated/dart/.stamp tables-dart-float-jit-negative-control tables-dart-float-jit-sdk-negative-control tables-dart-float-jit-boxing-negative-control
 	@mkdir -p $(FLOATJIT_DIR)
+# loud-ok: defines the pin and run shell functions; every call below reads its status
 	@$(FLOATJIT_RUN); \
 	pin $(DART) || exit 1; \
 	fail=0; tier=0; for s in generated inlined twocallers; do \

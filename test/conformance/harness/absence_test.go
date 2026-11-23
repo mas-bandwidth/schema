@@ -249,36 +249,34 @@ func TestReferenceCaseAbsent(t *testing.T) {
 // TestPortAbsenceStaysAllowed is the other direction, and the half a one-sided
 // rule would break: absent is not failure for a port. The same three answers
 // from a leg that is not the reference stay green and stay PRINTED, because
-// the matrix is the completion tracker.
+// the matrix is the completion tracker. They are not a pass either: the
+// success footer gives way to the list of what was not answered. Each leg here
+// still answers something — a leg that answers NOTHING is red (footgun_test.go).
 func TestPortAbsenceStaysAllowed(t *testing.T) {
 	needShell(t)
-	// Two sets, because a leg that answers NO case at all is not an absence
-	// but a leg that was not run (proveRan, silent_run_test.go): each set
-	// leaves the port one case it does answer.
-	sets := []struct {
-		name string
-		leg  fakeLeg
-		says []string
-	}{
-		{"whole surfaces", fakeLeg{unlisted: "json-write", exitTwo: "json-read"}, []string{footer, "absent"}},
-		{"one case", fakeLeg{caseGone: true}, []string{footer, "pass 0/0 +1a"}},
-	}
+	surfacesGone := fakeLeg{unlisted: "json-write", exitTwo: "json-read"} // answers wire
+	caseGone := fakeLeg{caseGone: true}                                   // answers json-write
 
-	for _, set := range sets {
-		t.Run("a second leg of the committed registry, "+set.name, func(t *testing.T) {
-			c := newFakeCorpus(t)
-			out, ok := c.runHarness(t, c.committed(t, map[string]fakeLeg{
-				referenceLang: {},
-				"zz":          set.leg,
-			}))
-			if !ok {
-				t.Errorf("a PORT's absences turned the harness red:\n%s", out)
-			}
-			// the surfaces zz does not implement are named where they can be
-			// seen, and so is the case it said it cannot answer
-			mustSay(t, out, set.says, []string{"REFERENCE leg", "FAIL"})
-		})
-	}
+	t.Run("a second leg of the committed registry", func(t *testing.T) {
+		c := newFakeCorpus(t)
+		out, ok := c.runHarness(t, c.committed(t, map[string]fakeLeg{
+			referenceLang: {},
+			"zy":          caseGone,
+			"zz":          surfacesGone,
+		}))
+		if !ok {
+			t.Errorf("a PORT's absences turned the harness red:\n%s", out)
+		}
+		mustSay(t, out,
+			[]string{
+				notAllAnswered,
+				"zz / json-write: ABSENT, the whole surface (1 row(s) not answered)", // `list` leaves it out
+				"zz / json-read: ABSENT, the whole surface (1 row(s) not answered)",  // exit 2
+				"zy / wire: 1 of 1 row(s) ABSENT",                                    // `<case>.absent`
+				"pass 0/1 +1a",                                                       // the denominator is the rows SENT
+			},
+			[]string{"REFERENCE leg", "FAIL", footer})
+	})
 
 	// A run handed a SUBSTITUTED registry is one leg of a port and not the
 	// matrix, so its first line is not the reference however it goes absent.
@@ -286,16 +284,16 @@ func TestPortAbsenceStaysAllowed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, set := range sets {
-		t.Run("the first leg of a substituted registry, "+set.name, func(t *testing.T) {
+	t.Run("the first leg of a substituted registry", func(t *testing.T) {
+		for _, leg := range []fakeLeg{surfacesGone, caseGone} {
 			c := newFakeCorpus(t)
-			out, ok := c.runHarness(t, c.substituted(t, referenceLang, set.leg))
+			out, ok := c.runHarness(t, c.substituted(t, referenceLang, leg))
 			if !ok {
 				t.Errorf("absences under a SUBSTITUTED registry turned the harness red:\n%s", out)
 			}
-			mustSay(t, out, set.says, []string{"REFERENCE leg", "FAIL"})
-		})
-	}
+			mustSay(t, out, []string{notAllAnswered, "ABSENT"}, []string{"REFERENCE leg", "FAIL", footer})
+		}
+	})
 	after, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
@@ -303,4 +301,42 @@ func TestPortAbsenceStaysAllowed(t *testing.T) {
 	if after != cwd {
 		t.Fatalf("substituted registry leaked its working directory: got %q, want %q", after, cwd)
 	}
+}
+
+// TestCompleteRunRefusesEveryAbsence is `make conformance-port`'s rule
+// (--complete): a port's own conformance run is a claim of conformance, so an
+// absence at any grain fails it and the success footer never prints. The Zig
+// spec port's gap 3 (2026-11-22, docs/SPEC-CONFORMANCE.md §7): a stub driver
+// that answered nothing printed "every registered surface passes".
+func TestCompleteRunRefusesEveryAbsence(t *testing.T) {
+	needShell(t)
+	for name, leg := range map[string]fakeLeg{
+		"a surface left out of list": {unlisted: "json-write"},
+		"a surface exiting 2":        {exitTwo: "json-read"},
+		"a case answered absent":     {caseGone: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			c := newFakeCorpus(t)
+			var out bytes.Buffer
+			ok, err := runWith(&out, c.m, c.manifest, c.jsonDir, c.reports, c.substituted(t, "zz", leg),
+				filepath.Join(t.TempDir(), "work"), "", "", runOptions{complete: true})
+			if err != nil {
+				t.Fatalf("harness run: %v\n%s", err, out.String())
+			}
+			if ok {
+				t.Errorf("a --complete run with an absence stayed green:\n%s", out.String())
+			}
+			mustSay(t, out.String(), []string{"NOT CONFORMING"}, []string{footer})
+		})
+	}
+	t.Run("a driver that answers every case", func(t *testing.T) {
+		c := newFakeCorpus(t)
+		var out bytes.Buffer
+		ok, err := runWith(&out, c.m, c.manifest, c.jsonDir, c.reports, c.substituted(t, "zz", fakeLeg{}),
+			filepath.Join(t.TempDir(), "work"), "", "", runOptions{complete: true})
+		if err != nil || !ok {
+			t.Errorf("a --complete run with no absence failed (%v):\n%s", err, out.String())
+		}
+		mustSay(t, out.String(), []string{footer}, []string{"NOT CONFORMING"})
+	})
 }

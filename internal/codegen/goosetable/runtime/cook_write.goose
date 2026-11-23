@@ -135,9 +135,12 @@ fn cook_live(c: CookCtx&, s: i64, d: const FieldDesc&) -> i64 {
         if d.array == ArrayCounted { return d.min; }
         return 0;
     }
+    // a caller-edited length outside [Min, bound] is a refusal, never a clamp
+    // to a length the caller did not give (SPEC-TABLES §7.6; SF-29)
     var n = c.vals[s].len;
-    if n < 0 { n = 0; }
-    if d.array == ArrayCounted && n > d.bound { n = d.bound; }
+    if n < 0 { c.refused = true; n = 0; }
+    if d.array == ArrayCounted && n > d.bound { c.refused = true; n = d.bound; }
+    if d.array == ArrayCounted && n < d.min { c.refused = true; n = d.min; }
     return n;
 }
 

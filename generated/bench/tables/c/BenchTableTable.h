@@ -4288,6 +4288,7 @@ static SCHEMA_UNUSED int benchtable_table_entity_save_body( benchtable_table_wri
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             benchtable_table_writer_header_at( w, 11, 0x23fcfd6678e36712ull, 7 );
+            schema_assert( (uint64_t)( value->entity_id ) <= 0xfffull ); /* bits(12) wider than 12 bits, debug only (SPEC.md §5.1 row 2) */
             benchtable_table_writer_put16( w, (uint16_t) ( value->entity_id ) );
         }
     }
@@ -4296,6 +4297,8 @@ static SCHEMA_UNUSED int benchtable_table_entity_save_body( benchtable_table_wri
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             benchtable_table_writer_header_at( w, 65, 0xcb4b37357667310eull, 4 );
+            schema_assert( !( value->pos_x < -16383 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->pos_x > 16383 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             benchtable_table_writer_put32( w, (uint32_t) ( value->pos_x ) );
         }
     }
@@ -4304,6 +4307,8 @@ static SCHEMA_UNUSED int benchtable_table_entity_save_body( benchtable_table_wri
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             benchtable_table_writer_header_at( w, 66, 0xcb4b3835766732c1ull, 4 );
+            schema_assert( !( value->pos_y < -16383 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->pos_y > 16383 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             benchtable_table_writer_put32( w, (uint32_t) ( value->pos_y ) );
         }
     }
@@ -4312,6 +4317,8 @@ static SCHEMA_UNUSED int benchtable_table_entity_save_body( benchtable_table_wri
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             benchtable_table_writer_header_at( w, 64, 0xcb4b353576672da8ull, 4 );
+            schema_assert( !( value->pos_z < -16383 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->pos_z > 16383 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             benchtable_table_writer_put32( w, (uint32_t) ( value->pos_z ) );
         }
     }
@@ -4320,6 +4327,7 @@ static SCHEMA_UNUSED int benchtable_table_entity_save_body( benchtable_table_wri
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             benchtable_table_writer_header_at( w, 59, 0xb54d8e19798e16e8ull, 7 );
+            schema_assert( (uint64_t)( value->yaw ) <= 0x1ffull ); /* bits(9) wider than 9 bits, debug only (SPEC.md §5.1 row 2) */
             benchtable_table_writer_put16( w, (uint16_t) ( value->yaw ) );
         }
     }
@@ -4328,6 +4336,7 @@ static SCHEMA_UNUSED int benchtable_table_entity_save_body( benchtable_table_wri
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             benchtable_table_writer_header_at( w, 24, 0x53a9f665a90cc1b1ull, 7 );
+            schema_assert( (uint64_t)( value->pitch ) <= 0x1ffull ); /* bits(9) wider than 9 bits, debug only (SPEC.md §5.1 row 2) */
             benchtable_table_writer_put16( w, (uint16_t) ( value->pitch ) );
         }
     }
@@ -4336,6 +4345,8 @@ static SCHEMA_UNUSED int benchtable_table_entity_save_body( benchtable_table_wri
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             benchtable_table_writer_header_at( w, 30, 0x6cede6b6eb60ee67ull, 4 );
+            schema_assert( !( value->vel_x < -2048 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->vel_x > 2047 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             benchtable_table_writer_put32( w, (uint32_t) ( value->vel_x ) );
         }
     }
@@ -4344,6 +4355,8 @@ static SCHEMA_UNUSED int benchtable_table_entity_save_body( benchtable_table_wri
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             benchtable_table_writer_header_at( w, 29, 0x6cede5b6eb60ecb4ull, 4 );
+            schema_assert( !( value->vel_y < -2048 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->vel_y > 2047 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             benchtable_table_writer_put32( w, (uint32_t) ( value->vel_y ) );
         }
     }
@@ -4352,6 +4365,8 @@ static SCHEMA_UNUSED int benchtable_table_entity_save_body( benchtable_table_wri
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             benchtable_table_writer_header_at( w, 31, 0x6cede8b6eb60f1cdull, 4 );
+            schema_assert( !( value->vel_z < -2048 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->vel_z > 2047 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             benchtable_table_writer_put32( w, (uint32_t) ( value->vel_z ) );
         }
     }
@@ -4360,6 +4375,8 @@ static SCHEMA_UNUSED int benchtable_table_entity_save_body( benchtable_table_wri
         {
             if ( w->check_default ) { w->offset = 2; return 1; }
             benchtable_table_writer_header_at( w, 41, 0x7f69d4b5288ba9cfull, 4 );
+            schema_assert( !( value->health < 0 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->health > 1000 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             benchtable_table_writer_put32( w, (uint32_t) ( value->health ) );
         }
     }
@@ -5777,7 +5794,8 @@ static SCHEMA_UNUSED int benchtable_table_entity_load_message_body(benchtable_ta
  damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
 }
-/* table_entity_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+/* table_entity_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report.
+   EVERY REFUSAL HAS ONE EXIT (R4): count 0 and every value handed in, all `capacity` of them, at its declared defaults. */
 static SCHEMA_UNUSED int benchtable_table_entity_load_messages(benchtable_table_entity_t * values,int64_t * count,const benchtable_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,benchtable_table_report_t * report)
 {
  benchtable_table_report_t ignored={0};
@@ -5792,27 +5810,23 @@ static SCHEMA_UNUSED int benchtable_table_entity_load_messages(benchtable_table_
  }capacity=*count;
  *count=0;
  bodies=benchtable_table_message_open(&r,vocabulary,buffer,bytes,report);
- if(bodies<0)return 0;
- /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies<0)goto refuse;
  if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_BENCHTABLE_TABLE_BATCH_TOO_LARGE;
- return 0;
+ goto refuse;
  }
  non_finite_before=report->non_finite_floats;
  for(i=0;i<bodies;i++){if(!benchtable_table_entity_load_message_body(&r,values+i))break;
  (*count)++;
  }ok=i==bodies&&benchtable_table_message_close(&r);
- /* a NaN or an infinity refuses the whole batch, the strict read too: count 0 and every value it wrote reset (§3.3) */
- if(benchtable_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)benchtable_table_entity_reset(values+i);
- *count=0;
- return 0;
- }
- /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
- if(!ok||benchtable_table_report_finish(report,ok)){for(i=0;i<bodies;i++)benchtable_table_entity_reset(values+i);
- *count=0;
- return 0;
- }
+ /* a NaN or an infinity refuses the whole batch, the strict read too (§3.3) */
+ if(benchtable_table_non_finite_refused(report,non_finite_before))goto refuse;
+ /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included (§3.3, §4) */
+ if(!ok||benchtable_table_report_finish(report,ok))goto refuse;
  return ok;
+ refuse:for(i=0;i<capacity;i++)benchtable_table_entity_reset(values+i);
+ *count=0;
+ return 0;
 }
 static SCHEMA_UNUSED int benchtable_table_stat_save_body( benchtable_table_writer_t * w, const benchtable_table_stat_t * value )
 {
@@ -5845,6 +5859,8 @@ static SCHEMA_UNUSED int benchtable_table_stat_save_body( benchtable_table_write
         if ( !( value->delta == 0 ) )
         {
             benchtable_table_writer_header_at( w, 23, 0x52076675ec13a0c1ull, 4 );
+            schema_assert( !( value->delta < -512 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->delta > 511 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             benchtable_table_writer_put32( w, (uint32_t) ( value->delta ) );
         }
     }
@@ -6124,7 +6140,8 @@ static SCHEMA_UNUSED int benchtable_table_stat_load_message_body(benchtable_tabl
  damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
 }
-/* table_stat_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+/* table_stat_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report.
+   EVERY REFUSAL HAS ONE EXIT (R4): count 0 and every value handed in, all `capacity` of them, at its declared defaults. */
 static SCHEMA_UNUSED int benchtable_table_stat_load_messages(benchtable_table_stat_t * values,int64_t * count,const benchtable_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,benchtable_table_report_t * report)
 {
  benchtable_table_report_t ignored={0};
@@ -6139,27 +6156,23 @@ static SCHEMA_UNUSED int benchtable_table_stat_load_messages(benchtable_table_st
  }capacity=*count;
  *count=0;
  bodies=benchtable_table_message_open(&r,vocabulary,buffer,bytes,report);
- if(bodies<0)return 0;
- /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies<0)goto refuse;
  if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_BENCHTABLE_TABLE_BATCH_TOO_LARGE;
- return 0;
+ goto refuse;
  }
  non_finite_before=report->non_finite_floats;
  for(i=0;i<bodies;i++){if(!benchtable_table_stat_load_message_body(&r,values+i))break;
  (*count)++;
  }ok=i==bodies&&benchtable_table_message_close(&r);
- /* a NaN or an infinity refuses the whole batch, the strict read too: count 0 and every value it wrote reset (§3.3) */
- if(benchtable_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)benchtable_table_stat_reset(values+i);
- *count=0;
- return 0;
- }
- /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
- if(!ok||benchtable_table_report_finish(report,ok)){for(i=0;i<bodies;i++)benchtable_table_stat_reset(values+i);
- *count=0;
- return 0;
- }
+ /* a NaN or an infinity refuses the whole batch, the strict read too (§3.3) */
+ if(benchtable_table_non_finite_refused(report,non_finite_before))goto refuse;
+ /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included (§3.3, §4) */
+ if(!ok||benchtable_table_report_finish(report,ok))goto refuse;
  return ok;
+ refuse:for(i=0;i<capacity;i++)benchtable_table_stat_reset(values+i);
+ *count=0;
+ return 0;
 }
 static SCHEMA_UNUSED int schema_benchtable_table_mixed_wire_entities_( benchtable_table_writer_t * w, const benchtable_table_mixed_t * value, int64_t * element_sizes )
 {
@@ -6293,6 +6306,8 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_body( benchtable_table_writ
         if ( !( value->ack_sequence == 0 ) )
         {
             benchtable_table_writer_header_at( w, 4, 0x0dbe005c56697c3eull, 4 );
+            schema_assert( !( value->ack_sequence < 0 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->ack_sequence > 65535 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             benchtable_table_writer_put32( w, (uint32_t) ( value->ack_sequence ) );
         }
     }
@@ -6321,6 +6336,8 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_body( benchtable_table_writ
         if ( !( value->nonce == 1ull ) )
         {
             benchtable_table_writer_header_at( w, 34, 0x73a94c71d60dc0d8ull, 9 );
+            schema_assert( !( value->nonce < 1ull ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->nonce > 9223372036854775807ull ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             benchtable_table_writer_put64( w, (uint64_t) ( value->nonce ) );
         }
     }
@@ -6328,6 +6345,8 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_body( benchtable_table_writ
         if ( !( value->world_time == 0 ) )
         {
             benchtable_table_writer_header_at( w, 21, 0x3eee6b51be54fc85ull, 5 );
+            schema_assert( !( value->world_time < -1000000000000ll ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->world_time > 1000000000000ll ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             benchtable_table_writer_put64( w, (uint64_t) ( value->world_time ) );
         }
     }
@@ -6335,6 +6354,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_body( benchtable_table_writ
         if ( !( value->frame_tick == 0 ) )
         {
             benchtable_table_writer_header_at( w, 39, 0x7bbc035f7b6d0112ull, 9 );
+            schema_assert( (uint64_t)( value->frame_tick ) <= 0xffffffffffffull ); /* bits(48) wider than 48 bits, debug only (SPEC.md §5.1 row 2) */
             benchtable_table_writer_put64( w, (uint64_t) ( value->frame_tick ) );
         }
     }
@@ -6524,6 +6544,8 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_body( benchtable_table_writ
         if ( !( value->flux == 0 ) )
         {
             benchtable_table_writer_header_at( w, 68, 0xd61bdd7908af2642ull, 5 );
+            schema_assert( !( value->flux < -1000000000000000000ll ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->flux > 1000000000000000000ll ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             benchtable_table_writer_put64( w, (uint64_t) ( value->flux ) );
         }
     }
@@ -6540,6 +6562,7 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_body( benchtable_table_writ
         if ( !( value->crc_hint == 0 ) )
         {
             benchtable_table_writer_header_at( w, 25, 0x560d6527ccd8515full, 8 );
+            schema_assert( (uint64_t)( value->crc_hint ) <= 0xffffffull ); /* bits(24) wider than 24 bits, debug only (SPEC.md §5.1 row 2) */
             benchtable_table_writer_put32( w, (uint32_t) ( value->crc_hint ) );
         }
     }
@@ -6554,6 +6577,8 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_body( benchtable_table_writ
         if ( !( value->extra == 0 ) )
         {
             benchtable_table_writer_header_at( w, 76, 0xfd29ee12a979cb69ull, 4 );
+            schema_assert( !( value->extra < 0 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->extra > 255 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             benchtable_table_writer_put32( w, (uint32_t) ( value->extra ) );
         }
     }
@@ -6561,6 +6586,8 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_body( benchtable_table_writ
         if ( !( value->idle_ticks == 0 ) )
         {
             benchtable_table_writer_header_at( w, 37, 0x78101ac0aa8cbcfeull, 4 );
+            schema_assert( !( value->idle_ticks < 0 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->idle_ticks > 15 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             benchtable_table_writer_put32( w, (uint32_t) ( value->idle_ticks ) );
         }
     }
@@ -8930,7 +8957,8 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_message_body(benchtable_tab
  damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
 }
-/* table_mixed_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+/* table_mixed_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report.
+   EVERY REFUSAL HAS ONE EXIT (R4): count 0 and every value handed in, all `capacity` of them, at its declared defaults. */
 static SCHEMA_UNUSED int benchtable_table_mixed_load_messages(benchtable_table_mixed_t * values,int64_t * count,const benchtable_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,benchtable_table_report_t * report)
 {
  benchtable_table_report_t ignored={0};
@@ -8945,27 +8973,23 @@ static SCHEMA_UNUSED int benchtable_table_mixed_load_messages(benchtable_table_m
  }capacity=*count;
  *count=0;
  bodies=benchtable_table_message_open(&r,vocabulary,buffer,bytes,report);
- if(bodies<0)return 0;
- /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies<0)goto refuse;
  if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_BENCHTABLE_TABLE_BATCH_TOO_LARGE;
- return 0;
+ goto refuse;
  }
  non_finite_before=report->non_finite_floats;
  for(i=0;i<bodies;i++){if(!benchtable_table_mixed_load_message_body(&r,values+i))break;
  (*count)++;
  }ok=i==bodies&&benchtable_table_message_close(&r);
- /* a NaN or an infinity refuses the whole batch, the strict read too: count 0 and every value it wrote reset (§3.3) */
- if(benchtable_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)benchtable_table_mixed_reset(values+i);
- *count=0;
- return 0;
- }
- /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
- if(!ok||benchtable_table_report_finish(report,ok)){for(i=0;i<bodies;i++)benchtable_table_mixed_reset(values+i);
- *count=0;
- return 0;
- }
+ /* a NaN or an infinity refuses the whole batch, the strict read too (§3.3) */
+ if(benchtable_table_non_finite_refused(report,non_finite_before))goto refuse;
+ /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included (§3.3, §4) */
+ if(!ok||benchtable_table_report_finish(report,ok))goto refuse;
  return ok;
+ refuse:for(i=0;i<capacity;i++)benchtable_table_mixed_reset(values+i);
+ *count=0;
+ return 0;
 }
 static SCHEMA_UNUSED int benchtable_table_hit_event_save_body( benchtable_table_writer_t * w, const benchtable_table_hit_event_t * value )
 {
@@ -9001,6 +9025,7 @@ static SCHEMA_UNUSED int benchtable_table_hit_event_save_body( benchtable_table_
         if ( !( value->target_id == 0 ) )
         {
             benchtable_table_writer_header_at( w, 60, 0xb7bc9ac015a25050ull, 7 );
+            schema_assert( (uint64_t)( value->target_id ) <= 0xfffull ); /* bits(12) wider than 12 bits, debug only (SPEC.md §5.1 row 2) */
             benchtable_table_writer_put16( w, (uint16_t) ( value->target_id ) );
         }
     }
@@ -9008,6 +9033,8 @@ static SCHEMA_UNUSED int benchtable_table_hit_event_save_body( benchtable_table_
         if ( !( value->damage == 0 ) )
         {
             benchtable_table_writer_header_at( w, 40, 0x7f6308be8ab37fc0ull, 4 );
+            schema_assert( !( value->damage < 0 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->damage > 4095 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             benchtable_table_writer_put32( w, (uint32_t) ( value->damage ) );
         }
     }
@@ -9015,6 +9042,8 @@ static SCHEMA_UNUSED int benchtable_table_hit_event_save_body( benchtable_table_
         if ( !( value->hit_kind == 0 ) )
         {
             benchtable_table_writer_header_at( w, 1, 0x01fbc365b059b925ull, 4 );
+            schema_assert( !( value->hit_kind < 0 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->hit_kind > 7 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             benchtable_table_writer_put32( w, (uint32_t) ( value->hit_kind ) );
         }
     }
@@ -9457,7 +9486,8 @@ static SCHEMA_UNUSED int benchtable_table_hit_event_load_message_body(benchtable
  damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
 }
-/* table_hit_event_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+/* table_hit_event_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report.
+   EVERY REFUSAL HAS ONE EXIT (R4): count 0 and every value handed in, all `capacity` of them, at its declared defaults. */
 static SCHEMA_UNUSED int benchtable_table_hit_event_load_messages(benchtable_table_hit_event_t * values,int64_t * count,const benchtable_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,benchtable_table_report_t * report)
 {
  benchtable_table_report_t ignored={0};
@@ -9472,27 +9502,23 @@ static SCHEMA_UNUSED int benchtable_table_hit_event_load_messages(benchtable_tab
  }capacity=*count;
  *count=0;
  bodies=benchtable_table_message_open(&r,vocabulary,buffer,bytes,report);
- if(bodies<0)return 0;
- /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies<0)goto refuse;
  if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_BENCHTABLE_TABLE_BATCH_TOO_LARGE;
- return 0;
+ goto refuse;
  }
  non_finite_before=report->non_finite_floats;
  for(i=0;i<bodies;i++){if(!benchtable_table_hit_event_load_message_body(&r,values+i))break;
  (*count)++;
  }ok=i==bodies&&benchtable_table_message_close(&r);
- /* a NaN or an infinity refuses the whole batch, the strict read too: count 0 and every value it wrote reset (§3.3) */
- if(benchtable_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)benchtable_table_hit_event_reset(values+i);
- *count=0;
- return 0;
- }
- /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
- if(!ok||benchtable_table_report_finish(report,ok)){for(i=0;i<bodies;i++)benchtable_table_hit_event_reset(values+i);
- *count=0;
- return 0;
- }
+ /* a NaN or an infinity refuses the whole batch, the strict read too (§3.3) */
+ if(benchtable_table_non_finite_refused(report,non_finite_before))goto refuse;
+ /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included (§3.3, §4) */
+ if(!ok||benchtable_table_report_finish(report,ok))goto refuse;
  return ok;
+ refuse:for(i=0;i<capacity;i++)benchtable_table_hit_event_reset(values+i);
+ *count=0;
+ return 0;
 }
 static SCHEMA_UNUSED int benchtable_table_chat_event_save_body( benchtable_table_writer_t * w, const benchtable_table_chat_event_t * value )
 {
@@ -9518,6 +9544,8 @@ static SCHEMA_UNUSED int benchtable_table_chat_event_save_body( benchtable_table
         if ( !( value->channel == 0 ) )
         {
             benchtable_table_writer_header_at( w, 56, 0xa5013e9ad5caeda4ull, 4 );
+            schema_assert( !( value->channel < 0 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->channel > 3 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             benchtable_table_writer_put32( w, (uint32_t) ( value->channel ) );
         }
     }
@@ -9525,6 +9553,7 @@ static SCHEMA_UNUSED int benchtable_table_chat_event_save_body( benchtable_table
         if ( !( value->speaker == 0 ) )
         {
             benchtable_table_writer_header_at( w, 75, 0xfbf1ac4d96ebd022ull, 7 );
+            schema_assert( (uint64_t)( value->speaker ) <= 0xfffull ); /* bits(12) wider than 12 bits, debug only (SPEC.md §5.1 row 2) */
             benchtable_table_writer_put16( w, (uint16_t) ( value->speaker ) );
         }
     }
@@ -9823,7 +9852,8 @@ static SCHEMA_UNUSED int benchtable_table_chat_event_load_message_body(benchtabl
  damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
 }
-/* table_chat_event_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+/* table_chat_event_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report.
+   EVERY REFUSAL HAS ONE EXIT (R4): count 0 and every value handed in, all `capacity` of them, at its declared defaults. */
 static SCHEMA_UNUSED int benchtable_table_chat_event_load_messages(benchtable_table_chat_event_t * values,int64_t * count,const benchtable_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,benchtable_table_report_t * report)
 {
  benchtable_table_report_t ignored={0};
@@ -9838,27 +9868,23 @@ static SCHEMA_UNUSED int benchtable_table_chat_event_load_messages(benchtable_ta
  }capacity=*count;
  *count=0;
  bodies=benchtable_table_message_open(&r,vocabulary,buffer,bytes,report);
- if(bodies<0)return 0;
- /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies<0)goto refuse;
  if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_BENCHTABLE_TABLE_BATCH_TOO_LARGE;
- return 0;
+ goto refuse;
  }
  non_finite_before=report->non_finite_floats;
  for(i=0;i<bodies;i++){if(!benchtable_table_chat_event_load_message_body(&r,values+i))break;
  (*count)++;
  }ok=i==bodies&&benchtable_table_message_close(&r);
- /* a NaN or an infinity refuses the whole batch, the strict read too: count 0 and every value it wrote reset (§3.3) */
- if(benchtable_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)benchtable_table_chat_event_reset(values+i);
- *count=0;
- return 0;
- }
- /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
- if(!ok||benchtable_table_report_finish(report,ok)){for(i=0;i<bodies;i++)benchtable_table_chat_event_reset(values+i);
- *count=0;
- return 0;
- }
+ /* a NaN or an infinity refuses the whole batch, the strict read too (§3.3) */
+ if(benchtable_table_non_finite_refused(report,non_finite_before))goto refuse;
+ /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included (§3.3, §4) */
+ if(!ok||benchtable_table_report_finish(report,ok))goto refuse;
  return ok;
+ refuse:for(i=0;i<capacity;i++)benchtable_table_chat_event_reset(values+i);
+ *count=0;
+ return 0;
 }
 static SCHEMA_UNUSED int benchtable_table_pickup_event_save_body( benchtable_table_writer_t * w, const benchtable_table_pickup_event_t * value )
 {
@@ -9884,6 +9910,7 @@ static SCHEMA_UNUSED int benchtable_table_pickup_event_save_body( benchtable_tab
         if ( !( value->item_id == 0 ) )
         {
             benchtable_table_writer_header_at( w, 51, 0x9e7fd06d864fbd56ull, 7 );
+            schema_assert( (uint64_t)( value->item_id ) <= 0x3ffull ); /* bits(10) wider than 10 bits, debug only (SPEC.md §5.1 row 2) */
             benchtable_table_writer_put16( w, (uint16_t) ( value->item_id ) );
         }
     }
@@ -9891,6 +9918,8 @@ static SCHEMA_UNUSED int benchtable_table_pickup_event_save_body( benchtable_tab
         if ( !( value->amount == 0 ) )
         {
             benchtable_table_writer_header_at( w, 43, 0x8113fe7ea2b16969ull, 4 );
+            schema_assert( !( value->amount < 0 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
+            schema_assert( !( value->amount > 255 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             benchtable_table_writer_put32( w, (uint32_t) ( value->amount ) );
         }
     }
@@ -10189,7 +10218,8 @@ static SCHEMA_UNUSED int benchtable_table_pickup_event_load_message_body(benchta
  damaged:r->report->refused=1, r->report->refuse_reason=SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED;
  return 0;
 }
-/* table_pickup_event_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report. */
+/* table_pickup_event_load_messages is the STRICT batch read (docs/SPEC-TABLES.md §6.5): every recovered record and the report.
+   EVERY REFUSAL HAS ONE EXIT (R4): count 0 and every value handed in, all `capacity` of them, at its declared defaults. */
 static SCHEMA_UNUSED int benchtable_table_pickup_event_load_messages(benchtable_table_pickup_event_t * values,int64_t * count,const benchtable_table_vocabulary_t * vocabulary,const uint8_t * buffer,int64_t bytes,benchtable_table_report_t * report)
 {
  benchtable_table_report_t ignored={0};
@@ -10204,27 +10234,23 @@ static SCHEMA_UNUSED int benchtable_table_pickup_event_load_messages(benchtable_
  }capacity=*count;
  *count=0;
  bodies=benchtable_table_message_open(&r,vocabulary,buffer,bytes,report);
- if(bodies<0)return 0;
- /* a refused batch returns a count of 0, the storage untouched (§3.3) */
+ if(bodies<0)goto refuse;
  if(bodies>capacity){report->refused=1;
  report->reason=SCHEMA_BENCHTABLE_TABLE_BATCH_TOO_LARGE;
- return 0;
+ goto refuse;
  }
  non_finite_before=report->non_finite_floats;
  for(i=0;i<bodies;i++){if(!benchtable_table_pickup_event_load_message_body(&r,values+i))break;
  (*count)++;
  }ok=i==bodies&&benchtable_table_message_close(&r);
- /* a NaN or an infinity refuses the whole batch, the strict read too: count 0 and every value it wrote reset (§3.3) */
- if(benchtable_table_non_finite_refused(report,non_finite_before)){for(i=0;i<bodies;i++)benchtable_table_pickup_event_reset(values+i);
- *count=0;
- return 0;
- }
- /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included: count 0 and every value reset (§3.3, §4) */
- if(!ok||benchtable_table_report_finish(report,ok)){for(i=0;i<bodies;i++)benchtable_table_pickup_event_reset(values+i);
- *count=0;
- return 0;
- }
+ /* a NaN or an infinity refuses the whole batch, the strict read too (§3.3) */
+ if(benchtable_table_non_finite_refused(report,non_finite_before))goto refuse;
+ /* a refusal anywhere in the batch discards the whole batch, bytes after the pad included (§3.3, §4) */
+ if(!ok||benchtable_table_report_finish(report,ok))goto refuse;
  return ok;
+ refuse:for(i=0;i<capacity;i++)benchtable_table_pickup_event_reset(values+i);
+ *count=0;
+ return 0;
 }
 /* ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----
 
@@ -10942,10 +10968,10 @@ static SCHEMA_UNUSED int64_t benchtable_table_entity_fixed_save( const benchtabl
    built from the lock's bytes. The signature keeps both so every caller in
    test/c-tables and the paired bench still compiles (§5.6 retires mechanisms,
    not API). */
-/* table_entity_fixed_load is the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
+/* schema_benchtable_table_entity_fixed_load_walk_ is the walk of the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
    returns every record, or refuses the whole load at the first
-   condition it meets and lands nothing. */
-static SCHEMA_UNUSED int64_t benchtable_table_entity_fixed_load( benchtable_table_entity_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+   condition it meets; table_entity_fixed_load resets every row on that refusal. */
+static SCHEMA_UNUSED int64_t schema_benchtable_table_entity_fixed_load_walk_( benchtable_table_entity_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  benchtable_table_fixed_entry_t * plan, int32_t plan_capacity, benchtable_table_fixed_plan_cache_t * cache, benchtable_table_report_t * report )
 {
     benchtable_table_report_t local;
@@ -11047,8 +11073,6 @@ static SCHEMA_UNUSED int64_t benchtable_table_entity_fixed_load( benchtable_tabl
            wire_damaged in this check pass, before any byte of the record lands. */
         if ( benchtable_table_fixed_dead_refuses( entries, entry_count, entry_guarded, at + 8, entry_guards ) )
         {
-            int64_t j;
-            for ( j = 0; j < k; ++j ) { benchtable_table_entity_reset( values + j ); }
             memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED;
             return -1;
         }
@@ -11090,8 +11114,6 @@ static SCHEMA_UNUSED int64_t benchtable_table_entity_fixed_load( benchtable_tabl
                 {
                     if ( ( at + 8 )[p->src + b] > 1u )
                     {
-                        int64_t j;
-                        for ( j = 0; j < k; ++j ) { benchtable_table_entity_reset( values + j ); }
                         memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED;
                         return -1;
                     }
@@ -11105,15 +11127,13 @@ static SCHEMA_UNUSED int64_t benchtable_table_entity_fixed_load( benchtable_tabl
             return -1;
         }
         benchtable_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
-        if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { benchtable_table_entity_reset( values + j ); } return -1; }
+        if ( report->refused ) { return -1; }
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
            storage it just wrote: the same pass for either plan (§3.4). A
            content rule that refuses ends the read here, nothing decoded,
            and the plan's counters are committed only past it (§5.8). */
         if ( schema_benchtable_table_entity_fixed_clamp_( values + k, report ) != 0 )
         {
-            int64_t j;
-            for ( j = 0; j <= k; ++j ) { benchtable_table_entity_reset( values + j ); }
             report->widened = rec_widened;
             return -1;
         }
@@ -11121,8 +11141,21 @@ static SCHEMA_UNUSED int64_t benchtable_table_entity_fixed_load( benchtable_tabl
     }
     /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
     report->unknown += census_unknown;
-    if ( census_kind != 0 ) { int64_t j; for ( j = 0; j < count; ++j ) { benchtable_table_entity_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH; return -1; }
+    if ( census_kind != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH; return -1; }
     return count;
+}
+
+/* table_entity_fixed_load is the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
+   returns every record, or refuses the whole load. EVERY REFUSAL HAS ONE
+   EXIT (R4): every row handed in, all `capacity` of them, is reset to its
+   declared defaults, so no partial value survives. */
+static SCHEMA_UNUSED int64_t benchtable_table_entity_fixed_load( benchtable_table_entity_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                                 benchtable_table_fixed_entry_t * plan, int32_t plan_capacity, benchtable_table_fixed_plan_cache_t * cache, benchtable_table_report_t * report )
+{
+    int64_t k;
+    const int64_t n = schema_benchtable_table_entity_fixed_load_walk_( values, capacity, data, bytes, plan, plan_capacity, cache, report );
+    if ( n < 0 && values != NULL ) { for ( k = 0; k < capacity; ++k ) { benchtable_table_entity_reset( values + k ); } }
+    return n;
 }
 
 /* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value TableStat holds is
@@ -11295,10 +11328,10 @@ static SCHEMA_UNUSED int64_t benchtable_table_stat_fixed_save( const benchtable_
    built from the lock's bytes. The signature keeps both so every caller in
    test/c-tables and the paired bench still compiles (§5.6 retires mechanisms,
    not API). */
-/* table_stat_fixed_load is the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
+/* schema_benchtable_table_stat_fixed_load_walk_ is the walk of the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
    returns every record, or refuses the whole load at the first
-   condition it meets and lands nothing. */
-static SCHEMA_UNUSED int64_t benchtable_table_stat_fixed_load( benchtable_table_stat_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+   condition it meets; table_stat_fixed_load resets every row on that refusal. */
+static SCHEMA_UNUSED int64_t schema_benchtable_table_stat_fixed_load_walk_( benchtable_table_stat_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  benchtable_table_fixed_entry_t * plan, int32_t plan_capacity, benchtable_table_fixed_plan_cache_t * cache, benchtable_table_report_t * report )
 {
     benchtable_table_report_t local;
@@ -11400,8 +11433,6 @@ static SCHEMA_UNUSED int64_t benchtable_table_stat_fixed_load( benchtable_table_
            wire_damaged in this check pass, before any byte of the record lands. */
         if ( benchtable_table_fixed_dead_refuses( entries, entry_count, entry_guarded, at + 8, entry_guards ) )
         {
-            int64_t j;
-            for ( j = 0; j < k; ++j ) { benchtable_table_stat_reset( values + j ); }
             memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED;
             return -1;
         }
@@ -11443,8 +11474,6 @@ static SCHEMA_UNUSED int64_t benchtable_table_stat_fixed_load( benchtable_table_
                 {
                     if ( ( at + 8 )[p->src + b] > 1u )
                     {
-                        int64_t j;
-                        for ( j = 0; j < k; ++j ) { benchtable_table_stat_reset( values + j ); }
                         memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED;
                         return -1;
                     }
@@ -11458,15 +11487,13 @@ static SCHEMA_UNUSED int64_t benchtable_table_stat_fixed_load( benchtable_table_
             return -1;
         }
         benchtable_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
-        if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { benchtable_table_stat_reset( values + j ); } return -1; }
+        if ( report->refused ) { return -1; }
         /* AND THE BOUNDS THE LOOP DOES NOT HOLD, straight-line over the
            storage it just wrote: the same pass for either plan (§3.4). A
            content rule that refuses ends the read here, nothing decoded,
            and the plan's counters are committed only past it (§5.8). */
         if ( schema_benchtable_table_stat_fixed_clamp_( values + k, report ) != 0 )
         {
-            int64_t j;
-            for ( j = 0; j <= k; ++j ) { benchtable_table_stat_reset( values + j ); }
             report->widened = rec_widened;
             return -1;
         }
@@ -11474,8 +11501,21 @@ static SCHEMA_UNUSED int64_t benchtable_table_stat_fixed_load( benchtable_table_
     }
     /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
     report->unknown += census_unknown;
-    if ( census_kind != 0 ) { int64_t j; for ( j = 0; j < count; ++j ) { benchtable_table_stat_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH; return -1; }
+    if ( census_kind != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH; return -1; }
     return count;
+}
+
+/* table_stat_fixed_load is the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
+   returns every record, or refuses the whole load. EVERY REFUSAL HAS ONE
+   EXIT (R4): every row handed in, all `capacity` of them, is reset to its
+   declared defaults, so no partial value survives. */
+static SCHEMA_UNUSED int64_t benchtable_table_stat_fixed_load( benchtable_table_stat_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                                 benchtable_table_fixed_entry_t * plan, int32_t plan_capacity, benchtable_table_fixed_plan_cache_t * cache, benchtable_table_report_t * report )
+{
+    int64_t k;
+    const int64_t n = schema_benchtable_table_stat_fixed_load_walk_( values, capacity, data, bytes, plan, plan_capacity, cache, report );
+    if ( n < 0 && values != NULL ) { for ( k = 0; k < capacity; ++k ) { benchtable_table_stat_reset( values + k ); } }
+    return n;
 }
 
 /* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value TableMixed holds is
@@ -12121,10 +12161,10 @@ static SCHEMA_UNUSED int64_t benchtable_table_mixed_fixed_save( const benchtable
    built from the lock's bytes. The signature keeps both so every caller in
    test/c-tables and the paired bench still compiles (§5.6 retires mechanisms,
    not API). */
-/* table_mixed_fixed_load is the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
+/* schema_benchtable_table_mixed_fixed_load_walk_ is the walk of the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
    returns every record, or refuses the whole load at the first
-   condition it meets and lands nothing. */
-static SCHEMA_UNUSED int64_t benchtable_table_mixed_fixed_load( benchtable_table_mixed_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+   condition it meets; table_mixed_fixed_load resets every row on that refusal. */
+static SCHEMA_UNUSED int64_t schema_benchtable_table_mixed_fixed_load_walk_( benchtable_table_mixed_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                                  benchtable_table_fixed_entry_t * plan, int32_t plan_capacity, benchtable_table_fixed_plan_cache_t * cache, benchtable_table_report_t * report )
 {
     benchtable_table_report_t local;
@@ -12228,8 +12268,6 @@ static SCHEMA_UNUSED int64_t benchtable_table_mixed_fixed_load( benchtable_table
            wire_damaged in this check pass, before any byte of the record lands. */
         if ( benchtable_table_fixed_dead_refuses( entries, entry_count, entry_guarded, at + 8, entry_guards ) )
         {
-            int64_t j;
-            for ( j = 0; j < k; ++j ) { benchtable_table_mixed_reset( values + j ); }
             memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED;
             return -1;
         }
@@ -12271,8 +12309,6 @@ static SCHEMA_UNUSED int64_t benchtable_table_mixed_fixed_load( benchtable_table
                 {
                     if ( ( at + 8 )[p->src + b] > 1u )
                     {
-                        int64_t j;
-                        for ( j = 0; j < k; ++j ) { benchtable_table_mixed_reset( values + j ); }
                         memset( report, 0, sizeof( *report ) ); report->refused = 1; report->refuse_reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_WIRE_DAMAGED;
                         return -1;
                     }
@@ -12286,14 +12322,12 @@ static SCHEMA_UNUSED int64_t benchtable_table_mixed_fixed_load( benchtable_table
             return -1;
         }
         benchtable_table_fixed_run( entries, entry_count, entry_guarded, at + 8, (uint8_t *) ( values + k ), report, entry_guards, NULL );
-        if ( report->refused ) { int64_t j; for ( j = 0; j <= k; ++j ) { benchtable_table_mixed_reset( values + j ); } return -1; }
+        if ( report->refused ) { return -1; }
         /* A NaN OR AN INFINITY REFUSES THE WHOLE BATCH (§3.3), before the
            bounds pass: every record this call wrote is reset and no
            counter moves. */
         if ( !schema_benchtable_table_mixed_fixed_finite_body_( values + k ) )
         {
-            int64_t j;
-            for ( j = 0; j <= k; ++j ) { benchtable_table_mixed_reset( values + j ); }
             report->widened = read_widened;
             benchtable_table_non_finite_float( report );
             return -1;
@@ -12304,8 +12338,6 @@ static SCHEMA_UNUSED int64_t benchtable_table_mixed_fixed_load( benchtable_table
            and the plan's counters are committed only past it (§5.8). */
         if ( schema_benchtable_table_mixed_fixed_clamp_( values + k, report ) != 0 )
         {
-            int64_t j;
-            for ( j = 0; j <= k; ++j ) { benchtable_table_mixed_reset( values + j ); }
             report->widened = rec_widened;
             return -1;
         }
@@ -12313,8 +12345,21 @@ static SCHEMA_UNUSED int64_t benchtable_table_mixed_fixed_load( benchtable_table
     }
     /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
     report->unknown += census_unknown;
-    if ( census_kind != 0 ) { int64_t j; for ( j = 0; j < count; ++j ) { benchtable_table_mixed_reset( values + j ); } report->refused = 1; report->refuse_reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH; return -1; }
+    if ( census_kind != 0 ) { report->refused = 1; report->refuse_reason = SCHEMA_BENCHTABLE_TABLE_REFUSE_KIND_MISMATCH; return -1; }
     return count;
+}
+
+/* table_mixed_fixed_load is the one fixed-form read (docs/SPEC-TABLES.md §6.5): it
+   returns every record, or refuses the whole load. EVERY REFUSAL HAS ONE
+   EXIT (R4): every row handed in, all `capacity` of them, is reset to its
+   declared defaults, so no partial value survives. */
+static SCHEMA_UNUSED int64_t benchtable_table_mixed_fixed_load( benchtable_table_mixed_t * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                                 benchtable_table_fixed_entry_t * plan, int32_t plan_capacity, benchtable_table_fixed_plan_cache_t * cache, benchtable_table_report_t * report )
+{
+    int64_t k;
+    const int64_t n = schema_benchtable_table_mixed_fixed_load_walk_( values, capacity, data, bytes, plan, plan_capacity, cache, report );
+    if ( n < 0 && values != NULL ) { for ( k = 0; k < capacity; ++k ) { benchtable_table_mixed_reset( values + k ); } }
+    return n;
 }
 
 /* Retention requires a variable root loaded into a region (SPEC-TABLES section 6.6). */

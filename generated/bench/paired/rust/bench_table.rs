@@ -368,6 +368,7 @@ pub fn bench_mixed_save_body(v: &BenchMixed, out: &mut Vec<u8>, ids: &mut IdTabl
         leb_write(out, v.player_name.len() as u64);
         out.extend_from_slice(v.player_name.as_bytes());
     }
+    debug_assert!(v.payload.len() <= 16, "payload length past 16");
     if !v.payload.is_empty() {
         let r = ids.id_ref(0xcfb8a9d063b5e9e5);
         let mut body = Vec::new();
@@ -2703,7 +2704,7 @@ pub fn bench_mixed_json_fields(jr: &mut Jr, v: &mut BenchMixed, first: Option<St
             "entities" => {
                 if seen[9] { jr.damaged = true; }
                 seen[9] = true;
-                if jr.peek() == b'[' {
+                if jr.depth > JSON_DEPTH_CAP { jr.damaged = true; jr.skip_value(); } else if jr.peek() == b'[' {
                     jr.p += 1;
                     jr.depth += 1;
                     v.entities.clear();
@@ -2730,7 +2731,7 @@ pub fn bench_mixed_json_fields(jr: &mut Jr, v: &mut BenchMixed, first: Option<St
             "stats" => {
                 if seen[10] { jr.damaged = true; }
                 seen[10] = true;
-                if jr.peek() == b'[' {
+                if jr.depth > JSON_DEPTH_CAP { jr.damaged = true; jr.skip_value(); } else if jr.peek() == b'[' {
                     jr.p += 1;
                     jr.depth += 1;
                     v.stats.clear();
@@ -2761,7 +2762,7 @@ pub fn bench_mixed_json_fields(jr: &mut Jr, v: &mut BenchMixed, first: Option<St
             "loadout" => {
                 if seen[12] { jr.damaged = true; }
                 seen[12] = true;
-                if jr.peek() == b'[' {
+                if jr.depth > JSON_DEPTH_CAP { jr.damaged = true; jr.skip_value(); } else if jr.peek() == b'[' {
                     jr.p += 1;
                     jr.depth += 1;
                     v.loadout.clear();
@@ -3249,7 +3250,7 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
             "damage" => {
                 if seen[11] { jr.damaged = true; }
                 seen[11] = true;
-                if jr.peek() == b'[' {
+                if jr.depth > JSON_DEPTH_CAP { jr.damaged = true; jr.skip_value(); } else if jr.peek() == b'[' {
                     jr.p += 1;
                     jr.depth += 1;
                     let mut bits: u64 = 0;

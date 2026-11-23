@@ -426,15 +426,18 @@ static std::vector<uint8_t> file_of( const std::vector<uint8_t> & layout )
 // known hash whose layout bytes differ is REFUSE layout_malformed, and "REFUSE
 // is total: no counter moves, nothing is decoded, and not one destination byte
 // is written — the prefill included"). One: the read refuses under the one
-// name. Two: the DESTINATION IS PRESERVED — the storage is poisoned 0x5A AFTER
-// the Reset (before it, the Reset would erase the poison and the sweep would
-// prove nothing) and every byte is still 0x5A after the load. Three: no
+// name. Two: the DESTINATION IS AT ITS DECLARED DEFAULTS (ruling R4) — the
+// storage is poisoned 0x5A AFTER the Reset, so a refusal that left the row as
+// it was is caught, and it is compared with the same poison reset. Three: no
 // counter moved and damaged stays false (the joint answer).
 static void refuses( std::vector<uint8_t> & broken, tblfx1::TableMessageReason want, const char * what )
 {
     tblfx1::FxRoot v;
     tblfx1::FxRootReset( v );
     std::memset( (void *) &v, 0x5A, sizeof( v ) ); // the poison, after the Reset
+    tblfx1::FxRoot defaults;
+    std::memset( (void *) &defaults, 0x5A, sizeof( defaults ) );
+    tblfx1::FxRootReset( defaults ); // the same poison, reset: padding matches
     tblfx1::TableReport r;
     std::vector<tblfx1::TableFixedEntry> plan( 1024 );
     const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, broken.data(), (int64_t) broken.size(), plan.data(), 1024, NULL, &r );
@@ -443,17 +446,19 @@ static void refuses( std::vector<uint8_t> & broken, tblfx1::TableMessageReason w
     // record would be the damage the refusal exists to prevent.
     check( r.unknown == 0 && r.widened == 0 && !r.damaged,
            "a layout refusal sets nothing and counts nothing" );
-    // AND WROTE NOTHING: the sweep, every byte of the destination.
+    // AND THE ROW HANDED IN HOLDS ITS DECLARED DEFAULTS: the sweep, every byte.
     {
         const uint8_t * p = (const uint8_t *) (const void *) &v;
+        const uint8_t * d = (const uint8_t *) (const void *) &defaults;
         size_t first = sizeof( v );
         for ( size_t i = 0; i < sizeof( v ); ++i )
         {
-            if ( p[i] != 0x5Au ) { first = i; break; }
+            if ( p[i] != d[i] ) { first = i; break; }
         }
         if ( first != sizeof( v ) )
-            std::printf( "  refuses(): byte %zu of the destination is 0x%02x after: %s\n", first, (unsigned) p[first], what );
-        check( first == sizeof( v ), "a layout refusal writes nothing into the destination" );
+            std::printf( "  refuses(): byte %zu of the destination is 0x%02x after, want 0x%02x: %s\n", first,
+                         (unsigned) p[first], (unsigned) d[first], what );
+        check( first == sizeof( v ), "a layout refusal leaves the row at its declared defaults" );
     }
 }
 
@@ -616,8 +621,9 @@ static void layout_validation()
 // on a FULL-LENGTH buffer would prove nothing about the order, so each uses the
 // exact input and nothing longer.
 //
-// EVERY CASE ALSO ASSERTS THE REPORT'S TWO ANSWERS JOINTLY and that REFUSE
-// writes nothing: the destination is poisoned first and compared unchanged.
+// EVERY CASE ALSO ASSERTS THE REPORT'S TWO ANSWERS JOINTLY and that a refusal
+// leaves the row at its declared defaults (ruling R4): the destination is
+// poisoned first and compared with the same poison reset.
 static void form_header_cases()
 {
     tblfx1::FxRoot own;
@@ -632,14 +638,15 @@ static void form_header_cases()
     {
         tblfx1::FxRoot v;
         std::memset( (void *) &v, 0xAB, sizeof( v ) );
-        const tblfx1::FxRoot poison = v;
+        tblfx1::FxRoot defaults = v;
+        tblfx1::FxRootReset( defaults ); // the poison, reset: what a refusal owes (R4)
         tblfx1::TableReport r;
         const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, good.data(), 0, plan.data(), 1024, NULL, &r );
         check( n < 0 && r.damaged && !r.refused, "empty-file: zero bytes is damage" );
         check( r.unknown == 0 && r.widened == 0,
                "empty-file: damage moves no counter" );
-        check( std::memcmp( &v, &poison, sizeof( v ) ) == 0,
-               "empty-file: damage writes nothing to the destination" );
+        check( std::memcmp( &v, &defaults, sizeof( v ) ) == 0,
+               "empty-file: damage leaves the row at its declared defaults" );
     }
 
     // SHORT-FORM1 — a committed form-1 file is TEN bytes: `previous_form`, the
@@ -648,15 +655,16 @@ static void form_header_cases()
         const uint8_t short1[10] = { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
         tblfx1::FxRoot v;
         std::memset( (void *) &v, 0xAB, sizeof( v ) );
-        const tblfx1::FxRoot poison = v;
+        tblfx1::FxRoot defaults = v;
+        tblfx1::FxRootReset( defaults ); // the poison, reset: what a refusal owes (R4)
         tblfx1::TableReport r;
         const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, short1, 10, plan.data(), 1024, NULL, &r );
         check( n < 0 && r.refused && r.reason == tblfx1::previous_form && !r.damaged,
                "short-form1: a ten-byte form-1 file is previous_form, not damage" );
         check( r.unknown == 0 && r.widened == 0,
                "short-form1: the refusal moves no counter" );
-        check( std::memcmp( &v, &poison, sizeof( v ) ) == 0,
-               "short-form1: the refusal writes nothing to the destination" );
+        check( std::memcmp( &v, &defaults, sizeof( v ) ) == 0,
+               "short-form1: the refusal leaves the row at its declared defaults" );
     }
 
     // SHORT-FORM2 — a form-2 batch is THREE bytes: `message_form_as_file`, not
@@ -665,15 +673,16 @@ static void form_header_cases()
         const uint8_t short2[3] = { 2, 1, 0 };
         tblfx1::FxRoot v;
         std::memset( (void *) &v, 0xAB, sizeof( v ) );
-        const tblfx1::FxRoot poison = v;
+        tblfx1::FxRoot defaults = v;
+        tblfx1::FxRootReset( defaults ); // the poison, reset: what a refusal owes (R4)
         tblfx1::TableReport r;
         const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, short2, 3, plan.data(), 1024, NULL, &r );
         check( n < 0 && r.refused && r.reason == tblfx1::message_form_as_file && !r.damaged,
                "short-form2: a three-byte form-2 batch is message_form_as_file, not damage" );
         check( r.unknown == 0 && r.widened == 0,
                "short-form2: the refusal moves no counter" );
-        check( std::memcmp( &v, &poison, sizeof( v ) ) == 0,
-               "short-form2: the refusal writes nothing to the destination" );
+        check( std::memcmp( &v, &defaults, sizeof( v ) ) == 0,
+               "short-form2: the refusal leaves the row at its declared defaults" );
     }
 
     // UNASSIGNED-FORM0 — the byte `0` is one no form defines, and the registry
@@ -684,15 +693,16 @@ static void form_header_cases()
         zero[0] = 0;
         tblfx1::FxRoot v;
         std::memset( (void *) &v, 0xAB, sizeof( v ) );
-        const tblfx1::FxRoot poison = v;
+        tblfx1::FxRoot defaults = v;
+        tblfx1::FxRootReset( defaults ); // the poison, reset: what a refusal owes (R4)
         tblfx1::TableReport r;
         const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, zero.data(), (int64_t) zero.size(), plan.data(), 1024, NULL, &r );
         check( n < 0 && r.refused && r.reason == tblfx1::newer_form && !r.damaged,
                "unassigned-form0: form byte 0 is newer_form, not damage" );
         check( r.unknown == 0 && r.widened == 0,
                "unassigned-form0: the refusal moves no counter" );
-        check( std::memcmp( &v, &poison, sizeof( v ) ) == 0,
-               "unassigned-form0: the refusal writes nothing to the destination" );
+        check( std::memcmp( &v, &defaults, sizeof( v ) ) == 0,
+               "unassigned-form0: the refusal leaves the row at its declared defaults" );
     }
 
     // RESERVED-BYTE3 — the seven bytes after the form byte are refused and not
@@ -703,15 +713,16 @@ static void form_header_cases()
         reserved[3] = 1;
         tblfx1::FxRoot v;
         std::memset( (void *) &v, 0xAB, sizeof( v ) );
-        const tblfx1::FxRoot poison = v;
+        tblfx1::FxRoot defaults = v;
+        tblfx1::FxRootReset( defaults ); // the poison, reset: what a refusal owes (R4)
         tblfx1::TableReport r;
         const int64_t n = tblfx1::FxRootFixedLoad( &v, 1, reserved.data(), (int64_t) reserved.size(), plan.data(), 1024, NULL, &r );
         check( n < 0 && r.damaged && !r.refused,
                "reserved-byte3: a nonzero reserved byte 3 is damage, not a named refusal" );
         check( r.unknown == 0 && r.widened == 0,
                "reserved-byte3: damage moves no counter" );
-        check( std::memcmp( &v, &poison, sizeof( v ) ) == 0,
-               "reserved-byte3: damage writes nothing to the destination" );
+        check( std::memcmp( &v, &defaults, sizeof( v ) ) == 0,
+               "reserved-byte3: damage leaves the row at its declared defaults" );
     }
 }
 
@@ -1233,8 +1244,9 @@ static void owed8_width8_ordinal_read_whole_case()
            "owed 8: the loop names out_of_range — a uint32_t temp would have read 0 and named nothing" );
 }
 
-// OWED 10: a record whose hash names nothing writes nothing to the caller's
-// storage. Poison it first; REFUSE is total.
+// OWED 10: a record whose hash names nothing leaves the caller's storage at
+// its declared defaults (ruling R4). Poison it first, so a refusal that left
+// it as it was is caught.
 static void owed10_no_layout_writes_nothing_case()
 {
     tblfu1::FuRoot v;
@@ -1251,15 +1263,16 @@ static void owed10_no_layout_writes_nothing_case()
 
     tblfu2::FuRoot back;
     std::memset( (void *) &back, 0xAB, sizeof( back ) );
-    const tblfu2::FuRoot poison = back;
+    tblfu2::FuRoot defaults = back;
+    tblfu2::FuRootReset( defaults ); // the poison, reset: what a refusal owes (R4)
     tblfu2::TableReport r;
     std::vector<tblfu2::TableFixedEntry> plan( 1024 );
     const int64_t n = tblfu2::FuRootFixedLoad( &back, 1, w.data(), (int64_t) w.size(),
                                                plan.data(), 1024, NULL, &r );
     check( n < 0 && r.refused && r.reason == tblfu2::no_layout,
            "owed 10: a record hash naming nothing is no_layout" );
-    check( std::memcmp( &back, &poison, sizeof( back ) ) == 0,
-           "owed 10: REFUSE writes nothing; the caller's storage is still poison" );
+    check( std::memcmp( &back, &defaults, sizeof( back ) ) == 0,
+           "owed 10: the refusal leaves the caller's storage at its declared defaults" );
 }
 
 // OWED 13: a forged ordinal past the writer's variant count REFUSES the whole

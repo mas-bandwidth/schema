@@ -187,7 +187,7 @@ func TestGooseFixedVersioningFloor(t *testing.T) {
 	t.Run("floor_below", func(t *testing.T) {
 		t.Parallel()
 		got := gooseVersionProbe(t, gooseVersionCase{reader: newer, older: []*ir.Unit{older, mid}, retire: 1, root: "Floored",
-			capacity: 1, data: oldData, fresh: true})
+			capacity: 1, poison: true, data: oldData, fresh: true})
 		got.refuses(t, "layout_unsupported", true, gooseFileHash(oldData))
 		line := manifest.line(t, "mid_floor.bin")
 		at := gooseVersionProbe(t, gooseVersionCase{reader: newer, older: []*ir.Unit{older, mid}, retire: 1, root: line.root,
@@ -198,7 +198,7 @@ func TestGooseFixedVersioningFloor(t *testing.T) {
 	t.Run("floor_raise_live", func(t *testing.T) {
 		t.Parallel()
 		got := gooseVersionProbe(t, gooseVersionCase{reader: newer, older: []*ir.Unit{older, mid}, retire: 2, root: "Floored",
-			capacity: 1, data: midData, fresh: true})
+			capacity: 1, poison: true, data: midData, fresh: true})
 		got.refuses(t, "layout_unsupported", true, gooseFileHash(midData))
 	})
 }
@@ -220,14 +220,14 @@ func TestGooseFixedVersioningHash(t *testing.T) {
 		for i := range 8 {
 			data[8+i] = byte(forged >> (8 * i))
 		}
-		got := gooseVersionProbe(t, gooseVersionCase{reader: newer, older: []*ir.Unit{older}, root: "Lineage", capacity: 1, data: data, fresh: true})
+		got := gooseVersionProbe(t, gooseVersionCase{reader: newer, older: []*ir.Unit{older}, root: "Lineage", capacity: 1, poison: true, data: data, fresh: true})
 		got.refuses(t, "layout_unknown", true, forged)
 	})
 	t.Run("hash_known_bytes_differ", func(t *testing.T) {
 		t.Parallel()
 		data := append([]byte(nil), old...)
 		data[20+4] ^= 0xFF
-		got := gooseVersionProbe(t, gooseVersionCase{reader: newer, older: []*ir.Unit{older}, root: "Lineage", capacity: 1, data: data, fresh: true})
+		got := gooseVersionProbe(t, gooseVersionCase{reader: newer, older: []*ir.Unit{older}, root: "Lineage", capacity: 1, poison: true, data: data, fresh: true})
 		got.refuses(t, "layout_malformed", false, 0)
 	})
 	t.Run("hash_identity", func(t *testing.T) {
@@ -272,7 +272,8 @@ func TestGooseFixedVersioningLineageMerge(t *testing.T) {
 // forged under an untouched header hash, so the OLD entry is selected and its
 // compiled plan has a nonempty fill (Vec.w = 88). The hash check runs BEFORE
 // the prefill, so the refusal is total: no_layout, malformed false, every
-// counter 0, and the poisoned destination still the poison.
+// counter 0, and EVERY one of the rows handed in (8, all poisoned) back at its
+// declared defaults: R4 replaced "writes nothing" (the old rule left the poison).
 func TestGooseFixedVersioningRefuseWritesNothing(t *testing.T) {
 	t.Parallel()
 	corpus := fixedCorpus(t)
@@ -284,7 +285,7 @@ func TestGooseFixedVersioningRefuseWritesNothing(t *testing.T) {
 	for i := range 8 {
 		data[off+i] = ^data[off+i]
 	}
-	got := gooseVersionProbe(t, gooseVersionCase{reader: newer, older: []*ir.Unit{older}, root: "Lineage", capacity: 1,
+	got := gooseVersionProbe(t, gooseVersionCase{reader: newer, older: []*ir.Unit{older}, root: "Lineage", capacity: 8,
 		poison: true, data: data, fresh: true})
 	got.refuses(t, "no_layout", false, 0)
 }
@@ -348,7 +349,7 @@ func TestGooseFixedVersioningForgedOrdinalBothPlans(t *testing.T) {
 		t.Run(plan.name, func(t *testing.T) {
 			t.Parallel()
 			got := gooseVersionProbe(t, gooseVersionCase{reader: plan.reader, older: plan.older, root: "Lineage", capacity: 1,
-				fresh: true, data: data})
+				poison: true, fresh: true, data: data})
 			got.refuses(t, "out_of_range", false, 0)
 		})
 	}
@@ -378,7 +379,7 @@ func TestGooseFixedVersioningUnionTagBothPlans(t *testing.T) {
 		t.Run(plan.name, func(t *testing.T) {
 			t.Parallel()
 			got := gooseVersionProbe(t, gooseVersionCase{reader: plan.reader, older: plan.older, root: "Lineage", capacity: 1,
-				fresh: true, data: data})
+				poison: true, fresh: true, data: data})
 			got.refuses(t, "out_of_range", false, 0)
 		})
 	}
@@ -443,8 +444,8 @@ type gooseVersionCase struct {
 	// want, when it names a file: the manifest line whose values the reader
 	// owes, compared as record images
 	want gooseManifestLine
-	// fresh: print the destination's record image beside a fresh value's and
-	// a poisoned one's, for a refusal's "wrote nothing"
+	// fresh: print every row handed in after the load beside a fresh value's
+	// and a poisoned one's, for a refusal's "every row at its defaults" (R4)
 	fresh bool
 	// twice: read the file a second time into the same storage
 	twice bool
@@ -461,7 +462,8 @@ type gooseVersionResult struct {
 	hash                                    uint64
 	secondUnknown                           int64
 	got, want                               []string // record images, one per record
-	dest, fresh, poison                     string
+	fresh, poison                           string
+	dests                                   []string // every row handed in after the load, in order
 	printed                                 []string
 	file                                    string
 }
@@ -487,7 +489,8 @@ func (r gooseVersionResult) owes(t *testing.T) {
 
 // refuses holds a refusal to §5.3's joint answer: the name, -1, no counter
 // moved, malformed false, the file's hash where check says one is owed, and
-// the destination still what it was.
+// EVERY row handed in at its declared defaults (R4, SPEC-TABLES §6.5): a
+// refusal resets the whole batch, whatever the rows held before.
 func (r gooseVersionResult) refuses(t *testing.T, name string, check bool, hash uint64) {
 	t.Helper()
 	if r.n != -1 || r.reason != name {
@@ -502,19 +505,17 @@ func (r gooseVersionResult) refuses(t *testing.T, name string, check bool, hash 
 	if check && r.hash != hash {
 		t.Fatalf("%s: %s reports THE FILE'S hash 0x%016x, not 0x%016x", r.file, name, hash, r.hash)
 	}
-	if r.dest == "" {
+	if len(r.dests) == 0 || r.fresh == "" {
 		t.Fatalf("%s: the probe printed no destination image", r.file)
 	}
-	if r.dest != r.before() {
-		t.Fatalf("%s: REFUSE wrote the destination\n got  %s\n was  %s", r.file, r.dest, r.before())
+	if r.poison != "" && r.poison == r.fresh {
+		t.Fatalf("%s: the poison does not show in the record image, so a reset proves nothing: %s", r.file, r.raw)
 	}
-}
-
-func (r gooseVersionResult) before() string {
-	if r.poison != "" {
-		return r.poison
+	for k, d := range r.dests {
+		if d != r.fresh {
+			t.Fatalf("%s: REFUSE left row %d of %d handed in off its declared defaults (R4)\n got  %s\n want %s", r.file, k, len(r.dests), d, r.fresh)
+		}
 	}
-	return r.fresh
 }
 
 func gooseFileHash(data []byte) uint64 {
@@ -622,7 +623,9 @@ func gooseVersionProbe(t *testing.T, c gooseVersionCase) gooseVersionResult {
 		b.WriteString("    print(\"again \", n2, \" \", again.unknown);\n")
 	}
 	if c.fresh {
-		b.WriteString("    print(\"dest\");\n    image(values[0]);\n")
+		for k := 0; k < c.capacity; k++ {
+			fmt.Fprintf(&b, "    print(\"dest\");\n    image(values[%d]);\n", k)
+		}
 	}
 	for _, p := range c.print {
 		fmt.Fprintf(&b, "    print(\"value \", %s);\n", p)
@@ -695,7 +698,7 @@ func gooseVersionParse(t *testing.T, out, file string) gooseVersionResult {
 			r.want = append(r.want, next(i))
 			i++
 		case l == "dest":
-			r.dest = next(i)
+			r.dests = append(r.dests, next(i))
 			i++
 		case l == "fresh":
 			r.fresh = next(i)

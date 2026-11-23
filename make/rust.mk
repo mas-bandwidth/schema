@@ -199,8 +199,11 @@ RUST_BE_TARGET ?= s390x-unknown-linux-gnu
 
 .PHONY: tables-rust-big-endian
 tables-rust-big-endian: build/tables-generated-rust/.stamp
+# loud-ok: rustc answers nothing for a target that is not installed; the empty answer is the skip below, named, and a failure under SCHEMA_REQUIRE_CORPUS=1
 	@libdir="$$(PATH="$(RUSTUP_BIN):$$PATH" rustc --print target-libdir --target $(RUST_BE_TARGET) 2>/dev/null || true)"; \
 	if [ -z "$$libdir" ] || ! ls "$$libdir"/libstd* >/dev/null 2>&1; then \
+		if [ "$(SCHEMA_REQUIRE_CORPUS)" = 1 ]; then \
+			echo "FAIL tables-rust-big-endian: $(RUST_BE_TARGET) is not installed and SCHEMA_REQUIRE_CORPUS=1 (rustup target add $(RUST_BE_TARGET))"; exit 1; fi; \
 		echo "SKIP tables-rust-big-endian: $(RUST_BE_TARGET) is not installed"; \
 		echo "  rustup target add $(RUST_BE_TARGET)"; \
 		exit 0; \
@@ -1397,10 +1400,12 @@ RUST_WIDE_ROWS := scalars_|field_scalar_widen|fixed-|ufixed-|int128-|uint128-
 .PHONY: tables-rust-wide-clamp-negative-control tables-rust-wide-text-negative-control
 tables-rust-wide-clamp-negative-control: build/conformance-harness build/conformance-rust
 	$(call rust-wide-control,clamp,$(RUST_WIDE_CLAMP_SED),variabletext.go)
-	@grep -q '^  rust / json-hostile: fixed-at-bound' $(RUST_WIDE_CONTROL)/clamp/log || \
+	@# The refusal-only score lists uncredited rows separately from failed rows.
+	@sed -n '/^FAILURES$$/,$$p' $(RUST_WIDE_CONTROL)/clamp/log > $(RUST_WIDE_CONTROL)/clamp/failures
+	@grep -q '^  rust / json-hostile: fixed-at-bound' $(RUST_WIDE_CONTROL)/clamp/failures || \
 		{ echo "NEGATIVE CONTROL FAILED: the matrix went red, but not on json-hostile fixed-at-bound"; cat $(RUST_WIDE_CONTROL)/clamp/log; exit 1; }
-	@if grep '^  rust / ' $(RUST_WIDE_CONTROL)/clamp/log | grep -v -E '^  rust / [a-z-]+: ($(RUST_WIDE_ROWS)|the driver exited [0-9]+$$)' | grep . >/dev/null || \
-	    grep '^    driver: ' $(RUST_WIDE_CONTROL)/clamp/log | grep -v -E '^    driver: ($(RUST_WIDE_ROWS))' | grep . >/dev/null; then \
+	@if grep '^  rust / ' $(RUST_WIDE_CONTROL)/clamp/failures | grep -v -E '^  rust / [a-z-]+: ($(RUST_WIDE_ROWS)|the driver exited [0-9]+(; [0-9]+ of [0-9]+ row\(s\) unanswered: .*)?$$)' | grep . >/dev/null || \
+	    grep '^    driver: ' $(RUST_WIDE_CONTROL)/clamp/failures | grep -v -E '^    driver: ($(RUST_WIDE_ROWS))' | grep . >/dev/null; then \
 		echo "NEGATIVE CONTROL FAILED: a row outside the wide scalars went red"; cat $(RUST_WIDE_CONTROL)/clamp/log; exit 1; fi
 	@echo "rust wide-scalar clamp negative control: a fixed range left on the whole-unit scale turns exactly the wide-scalar rows red"
 

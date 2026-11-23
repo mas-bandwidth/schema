@@ -269,6 +269,14 @@ func (e *msgEmit) putScalar(ind int, f *ir.Field, kind uint8, shape ir.TableMess
 	for _, b := range scalarBounds(f) {
 		e.p(ind, "if %s { return schema_rt::msg_refuse(w, schema_rt::MsgRefuseInvalidValue); }", b.over(expr))
 	}
+	// A flags mask rides at its declared width W (§3.3), narrower than its
+	// u64 storage: a held bit at or above W is outside the message domain and
+	// is refused, never masked off by msg_put (docs/SPEC-TABLES.md §3.3,
+	// docs/rulings.json message-flags-width-is-caller-error). The fixed form
+	// keeps such a bit (§4.1); only this form refuses it.
+	if fl, ok := f.Type.Ref.(*ir.Flags); f.Type.Kind == ir.TNamed && ok && fl.WireBits < 64 {
+		e.p(ind, "if (%s >> %d) != 0 { return schema_rt::msg_refuse(w, schema_rt::MsgRefuseInvalidValue); }", expr, fl.WireBits)
+	}
 	bits := ir.TableMessageValueBits(kind, shape)
 	if e.fx.kindOf(f) == kInt128 {
 		// a 128-bit value is its two lanes, low first, as the wire's
@@ -1367,7 +1375,16 @@ func (e *msgEmit) emitRoot(st *ir.Struct) {
 	e.p(0, "// decoded; damage anywhere in the batch discards the whole batch with every body at its")
 	e.p(0, "// declared defaults and malformed set; a non-finite float refuses the batch (§3.3, §4).")
 	e.p(0, "// A delivered batch is never empty (M is at least 1), so 0 says refused; the report names why.")
+	e.p(0, "// On 0 EVERY value handed in holds its declared defaults, whatever refused (R4, SPEC-TABLES §6.5).")
 	e.p(0, "fn %sLoadMessages(values: %s[:], voc: const schema_rt::MsgVocabulary&, data: const u8[:], report: schema_rt::MsgReport&) -> i64 {", n, typ)
+	e.p(1, "let n = _%sLoadMessagesWalk(values, voc, data, report);", n)
+	e.p(1, "if n == 0 {")
+	e.p(2, "var j: i64 = 0;")
+	e.p(2, "while j < values.len { values[j] = %s { .. }; j += 1; }", typ)
+	e.p(1, "}")
+	e.p(1, "return n;")
+	e.p(0, "}\n")
+	e.p(0, "fn _%sLoadMessagesWalk(values: %s[:], voc: const schema_rt::MsgVocabulary&, data: const u8[:], report: schema_rt::MsgReport&) -> i64 {", n, typ)
 	e.p(1, "report = schema_rt::MsgReport { .. };")
 	e.p(1, "if data.len < 1 {")
 	e.p(2, "report.damaged = true;")
@@ -1418,11 +1435,6 @@ func (e *msgEmit) emitRoot(st *ir.Struct) {
 	e.p(1, "}")
 	e.p(1, "if !reasoned && !report.damaged && (!schema_rt::msg_align_read(r) || r.pos != r.end) { report.damaged = true; }")
 	e.p(1, "if reasoned || report.damaged {")
-	e.p(2, "var j: i64 = 0;")
-	e.p(2, "while j < count {")
-	e.p(3, "values[j] = %s { .. };", typ)
-	e.p(3, "j += 1;")
-	e.p(2, "}")
 	e.p(2, "return 0;")
 	e.p(1, "}")
 	e.p(1, "report.unknown = r.unknown;")

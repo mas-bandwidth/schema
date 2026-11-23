@@ -319,7 +319,8 @@ tables-c-json-walk: build/tables-generated-c/.stamp
 		pkg=$$(grep -o 'package [a-z0-9_]*' $$f | sed -n 1p | cut -d' ' -f2); \
 		PKG=$$(printf '%s' "$$pkg" | tr 'a-z' 'A-Z'); \
 		awk '/---- json walk: begin ----/,/---- json walk: end ----/' $$f \
-			| perl -pe "s/\bSCHEMA_$${PKG}_/SCHEMA_\@P\@_/g; s/\bschema_$${pkg}_/schema_\@p\@_/g; s/\b$${PKG}_/\@P\@_/g; s/\b$${pkg}_/\@p\@_/g" > $$out; \
+			| perl -pe "s/\bSCHEMA_$${PKG}_/SCHEMA_\@P\@_/g; s/\bschema_$${pkg}_/schema_\@p\@_/g; s/\b$${PKG}_/\@P\@_/g; s/\b$${pkg}_/\@p\@_/g" > $$out || \
+			{ echo "json walk: extracting the walk from $$f failed"; exit 1; }; \
 		if [ ! -s $$out ]; then \
 			if grep -q "VARIABLE-LENGTH. Its text form reads through the builder" $${f%.c}.h; then rm -f $$out; continue; fi; \
 			echo "GENERIC-WALK GATE FAILED: no walker in $$f"; exit 1; \
@@ -1335,21 +1336,38 @@ update-goldens-c: build/tables-generated-c/.stamp
 	done
 
 # The same registry listing oracle as the reference, through the C surface.
+# Use the conformance corpus's identical generated sources and Table objects.
+# Each package still links and runs its own view driver, under Make's jobserver.
+C_VIEW_OUT := build/c-view
+C_VIEW_BLOCKHOME_TABLES := $(addprefix build/tables-generated-c/blockhome/,DataTable.c FrameTable.c)
+C_VIEW_TABLE_SOURCES = $(filter %Table.c,$(filter build/tables-generated-c/$(1)/%,$(C_CONFORMANCE_SOURCES) $(C_VIEW_BLOCKHOME_TABLES)))
+C_VIEW_TABLE_OBJECTS = $(addprefix $(C_CONFORMANCE_OBJDIR)/,$(patsubst %.c,%.o,$(call C_VIEW_TABLE_SOURCES,$(1))))
+C_VIEW_PACKAGES := $(foreach entry,$(VIEW_CORPUS),$(word 2,$(subst :, ,$(entry))))
+C_VIEW_DIRS := $(foreach entry,$(VIEW_CORPUS),$(word 1,$(subst :, ,$(entry))))
+C_VIEW_COLLECTION_DIRS := maps lists arms
+c_view_lineage = $(foreach dir,$(1),tables/$(dir) $(wildcard tables/$(dir)/schema.lock tables/$(dir)/tables.baseline))
+
+# The generator reads the lineage files in each directory it loads.
+build/tables-generated-c/.stamp: $(call c_view_lineage,$(filter-out $(C_VIEW_COLLECTION_DIRS),$(C_VIEW_DIRS)))
+build/tables-generated-c/collections.stamp: $(call c_view_lineage,$(C_VIEW_COLLECTION_DIRS))
+$(C_VIEW_BLOCKHOME_TABLES): build/tables-generated-c/.stamp ;
+
+define tables_c_view_unit
+.PHONY: $(C_VIEW_OUT)/$(2).listing
+$(C_VIEW_OUT)/$(2).listing: test/c-tables/view_main.c build/tables-generated-c/.stamp $(call C_VIEW_TABLE_OBJECTS,$(1))
+	@mkdir -p $$(@D)
+	@set -e; pkg='$(2)'; \
+	cap=$$$$(printf '%s' "$$$$pkg" | cut -c1 | tr 'a-z' 'A-Z')$$$$(printf '%s' "$$$$pkg" | cut -c2-); \
+	$(CC) $(TABLES_CFLAGS) -Ibuild/tables-generated-c/$(1) -I$(SERIALIZE_C) \
+		-DVIEW_HEADER="\"$$$${cap}View.h\"" -DVIEW_PACKAGE=$$$$pkg -DVIEW_PACKAGE_UPPER=$$$$(printf '%s' "$$$$pkg" | tr 'a-z' 'A-Z') \
+		test/c-tables/view_main.c "build/tables-generated-c/$(1)/$$$${cap}View.c" $(call C_VIEW_TABLE_OBJECTS,$(1)) -o $(C_VIEW_OUT)/prog-$(2) -lm; \
+	$(C_VIEW_OUT)/prog-$(2) > $$@.tmp; mv $$@.tmp $$@
+endef
+$(foreach entry,$(VIEW_CORPUS),$(eval $(call tables_c_view_unit,$(word 1,$(subst :, ,$(entry))),$(word 2,$(subst :, ,$(entry))))))
+
 .PHONY: tables-c-view
-tables-c-view: bin/schema test/c-tables/view_main.c
-	@rm -rf build/c-view
-	@mkdir -p build/c-view
-	@set -e; pids=""; for entry in $(VIEW_CORPUS); do ( \
-		set -e; dir=$${entry%%:*}; pkg=$${entry##*:}; \
-		cap=$$(printf '%s' "$$pkg" | cut -c1 | tr 'a-z' 'A-Z')$$(printf '%s' "$$pkg" | cut -c2-); \
-		source=tables/$$dir; \
-		./bin/schema generate --lang c --out build/c-view/$$dir $$source; \
-		$(CC) $(TABLES_CFLAGS) -Ibuild/c-view/$$dir -I$(SERIALIZE_C) \
-			-DVIEW_HEADER="\"$${cap}View.h\"" -DVIEW_PACKAGE=$$pkg -DVIEW_PACKAGE_UPPER=$$(printf '%s' "$$pkg" | tr 'a-z' 'A-Z') test/c-tables/view_main.c \
-			build/c-view/$$dir/*Table.c build/c-view/$$dir/*View.c -o build/c-view/prog-$$pkg -lm; \
-		./build/c-view/prog-$$pkg > build/c-view/$$pkg.listing \
-	) & pids="$$pids $$!"; done; for pid in $$pids; do wait $$pid; done
-	SCHEMA_VIEW_LISTING_DIR="$(CURDIR)/build/c-view" go test ./internal/viewlisting -run TestUnitViewListingMatchesTheIR
+tables-c-view: $(addprefix $(C_VIEW_OUT)/,$(addsuffix .listing,$(C_VIEW_PACKAGES)))
+	SCHEMA_VIEW_LISTING_DIR="$(CURDIR)/$(C_VIEW_OUT)" go test ./internal/viewlisting -run TestUnitViewListingMatchesTheIR
 	@echo "C unit registry: $(words $(VIEW_CORPUS)) units match the independent listing"
 
 test-c tables-c: tables-c-view

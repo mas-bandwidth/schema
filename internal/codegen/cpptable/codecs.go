@@ -1088,19 +1088,21 @@ func (g *tableGen) emitFloatCheck(kind int, expr, ind, onBad string) {
 }
 
 // emitRequiredRangeCheck is the writer's range check. A `| required` field's
-// is a refusal in every build; any other compressed float's is ROW 10 of the
-// write contract (docs/SPEC.md §5.1), which in this assert leg is a debug
-// assert, against the float32 ends (docs/SPEC-TABLES.md §3.3).
+// is a refusal in every build. Any other field's is a debug assert, this
+// assert leg's mechanism (docs/SPEC.md §5.1): ROW 1, a ranged integer or a
+// fixed/ufixed raw value off its min/max; ROW 2, a bits(N) value wider than N;
+// ROW 10, a compressed float off its float32 ends (docs/SPEC-TABLES.md §3.3).
 func (g *tableGen) emitRequiredRangeCheck(f *ir.Field, expr, ind, onBad string) {
 	if !f.Required && f.HasFloatRange && f.Type.Kind == ir.TFloat32 {
+		g.storageAsserts = true // the header takes the schema_assert hook
 		g.pf("%sschema_assert( !( %s < %s ) && !( %s > %s ) ); // a compressed float off its float32 range, debug only (SPEC.md §5.1 row 10)\n",
 			ind, expr, formatFloat(f.FMin, true), expr, formatFloat(f.FMax, true))
 		return
 	}
-	if !f.Required {
-		return
-	}
 	if f.HasFloatRange {
+		if !f.Required {
+			return
+		}
 		isF32 := f.Type.Kind == ir.TFloat32
 		g.pf("%sif ( %s < %s || %s > %s ) { %s } // | required: out-of-range value refused (§2.3)\n",
 			ind, expr, formatFloat(f.FMin, isF32), expr, formatFloat(f.FMax, isF32), onBad)
@@ -1118,15 +1120,25 @@ func (g *tableGen) emitRequiredRangeCheck(f *ir.Field, expr, ind, onBad string) 
 		if high {
 			conds = append(conds, fmt.Sprintf("%s > %s", expr, tableIntLit(rhi, signed, width)))
 		}
-		if len(conds) > 0 {
+		if len(conds) > 0 && f.Required {
 			g.pf("%sif ( %s ) { %s } // | required: out-of-range value refused (§2.3)\n",
 				ind, strings.Join(conds, " || "), onBad)
+		} else if len(conds) > 0 {
+			g.storageAsserts = true
+			g.pf("%sschema_assert( !( %s ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)\n",
+				ind, strings.Join(conds, " || "))
 		}
 	}
 	if f.Type.Kind == ir.TBits && f.Type.Width < width*8 {
 		maxv := (uint64(1) << f.Type.Width) - 1
-		g.pf("%sif ( %s > %dull ) { %s } // | required: bits(%d) width check (§2.3)\n",
-			ind, expr, maxv, onBad, f.Type.Width)
+		if f.Required {
+			g.pf("%sif ( %s > %dull ) { %s } // | required: bits(%d) width check (§2.3)\n",
+				ind, expr, maxv, onBad, f.Type.Width)
+		} else {
+			g.storageAsserts = true
+			g.pf("%sschema_assert( %s <= %dull ); // bits(%d) wider than %d bits, debug only (SPEC.md §5.1 row 2)\n",
+				ind, expr, maxv, f.Type.Width, f.Type.Width)
+		}
 	}
 }
 

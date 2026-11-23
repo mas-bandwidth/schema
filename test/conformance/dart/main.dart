@@ -4567,6 +4567,11 @@ String? jsonHostileReport(String unit, String root, String text) {
         final v = mapdemo.textFromJson(text, r);
         encode = () => mapdemo.textToJson(v);
         break;
+      case 'mapdemo Depth':
+        r = mapdemo.TableTextReport();
+        final v = mapdemo.depthFromJson(text, r);
+        encode = () => mapdemo.depthToJson(v);
+        break;
       case 'listdemo Army':
         r = listdemo.TableTextReport();
         final v = listdemo.armyFromJson(text, r);
@@ -6293,6 +6298,17 @@ bool _mutateTortureCookWire(cooktorture.TortureCook w, String path, String vkind
       return true;
     case 'str_arr[0] length':
       w.strArr[0].value = 'a' * int.parse(text);
+      return true;
+    // SILENT-FAILURE ROWS: the variable Save's bits(N) width on every carrier
+    case 'b_bits13 int':
+      w.bBits13 = int.parse(text);
+      return true;
+    case 'opt_bits int':
+      w.optBits = int.parse(text);
+      w.hasOptBits = true;
+      return true;
+    case 'arr_bits[0].v int':
+      w.arrBits[0].v = int.parse(text);
       return true;
     default:
       throw StateError('unsupported TortureCook mutation $path $vkind');

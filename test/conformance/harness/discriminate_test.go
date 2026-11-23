@@ -116,7 +116,7 @@ func TestARefusalIsCreditedOnlyBesideAnAnsweredTwin(t *testing.T) {
 	var out strings.Builder
 	report(&out, []string{"lobster"}, map[string]map[string]*result{"lobster": {"framing": refusesAll}})
 	text := out.String()
-	for _, want := range []string{"pass 0/1 +1r", "REFUSAL-ONLY", "lobster / framing: 1 row(s)", "credited 0 of 2; absent 0; refusal-only 1; failed 1"} {
+	for _, want := range []string{"pass 0/2 +1r", "REFUSAL-ONLY", "lobster / framing: 1 row(s)", "credited 0 of 2; absent 0; refusal-only 1; failed 1"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the matrix does not say %q:\n%s", want, text)
 		}

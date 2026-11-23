@@ -5,8 +5,8 @@ package main
 // must fail its own marker.
 func init() {
 	sabotages["packet-write-cfloat-luau"] = []edit{{
-		old: `g.Pf("%sif %s == %s and %s ~= math.huge and %s ~= -math.huge and (%s < %s or %s > %s) then return false end\n", indent, val, val, val, val, val, FloatLiteral(f.FMin), val, FloatLiteral(f.FMax))`,
-		new: `g.Pf("-- SABOTAGED %s %s %s %s %s %s %s %s %s\n", indent, val, val, val, val, val, FloatLiteral(f.FMin), val, FloatLiteral(f.FMax))`,
+		old: `g.Pf("%sif %s < %s or %s > %s then return false end\n", indent, val, FloatLiteral(f.FMin), val, FloatLiteral(f.FMax))`,
+		new: `g.Pf("%s-- SABOTAGED: no range check %s %s %s %s\n", indent, val, FloatLiteral(f.FMin), val, FloatLiteral(f.FMax))`,
 	}}
 	sabotages["packet-utf8-luau-read"] = []edit{{
 		old: `if not utf8valid(%s, n) then return false end`,

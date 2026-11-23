@@ -145,7 +145,7 @@ ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 
 build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk testdata/conformance/feature-witnesses/full/Features.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema $(wildcard tables/stream/*.schema) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/widenbound/WidenBoundPeer.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/G1.schema $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_BACKEND) $(wildcard tables/widelist/*.schema)
 	@mkdir -p build/tables-generated-elixir
-	@jobs=$$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4); \
+	@if ! jobs=$$(nproc 2>/dev/null); then if ! jobs=$$(sysctl -n hw.ncpu 2>/dev/null); then jobs=4; fi; fi; \
 	printf '%s\n' $(ELIXIR_TABLE_UNITS) | xargs -P "$$jobs" -n 4 sh -c 'for unit in "$$@"; do name=$${unit%%:*}; path=$${unit#*:}; rm -rf "build/tables-generated-elixir/$$name"; ./bin/schema generate --lang elixir --out "build/tables-generated-elixir/$$name" $$path || exit 255; done' _
 	# Elixir 1.20.4 is the formatting authority (issue #424), and every table
 	# emitter writes its shape (issue #547, tables-elixir-emit-format-clean), so
@@ -161,7 +161,7 @@ ELIXIR_TABLE_UNIT_SOURCES = $(foreach u,$(sort $(ELIXIR_TABLE_UNITS)),build/tabl
 # preserving full ELIXIRC_STRICT warning-as-error checks and byte-identical ebin.
 build/elixir-tables-ebin/.stamp: build/tables-generated-elixir/.stamp test/conformance/elixir/driver_impl.ex
 	@rm -rf build/elixir-tables-ebin && mkdir -p build/elixir-tables-ebin
-	@cpus=$$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4); \
+	@if ! cpus=$$(nproc 2>/dev/null); then if ! cpus=$$(sysctl -n hw.ncpu 2>/dev/null); then cpus=4; fi; fi; \
 	jobs=$$(( cpus / 2 )); if [ "$$jobs" -lt 2 ]; then jobs=2; fi; \
 	printf '%s\n' $(ELIXIR_TABLE_UNIT_NAMES) __driver_impl__ | \
 		ELIXIR_ERL_OPTIONS="$${ELIXIR_ERL_OPTIONS:+$$ELIXIR_ERL_OPTIONS }+S 2:2" \
@@ -409,6 +409,7 @@ ELIXIR_WREF_MESSAGE_SED := -e 's|check(is_integer(value) and value >= lo and val
 # $(call ELIXIR_WREF_CONTROL,dir,file,sedvar,surface,rows,green,what)
 define ELIXIR_WREF_CONTROL
 	$(call ELIXIR_SABOTAGED_BUILD,$(1),$(2),$(3))
+	@# loud-ok: the harness's status covers every surface of the leg; this target's verdict is the named row read from the log below, and a missing row is red
 	@ELIXIR_TABLES_EBIN=$(CURDIR)/$(1)/ebin ./build/conformance-harness run --only elixir \
 		--work $(1)/work > $(1)/log 2>&1 || true
 	@got=$$(sed -n 's|^  elixir / $(4): \([^:]*\):.*|\1|p' $(1)/log | sort | tr '\n' ' '); \
@@ -687,15 +688,9 @@ tables-elixir-accessor-descriptor-agreement: build/elixir-tables-ebin/.stamp
 # two-minute cap. Shard K of ELIXIR_AGREEMENT_SHARDS strictly compiles every
 # Nth table unit (sorted by name, starting at the Kth) into its own ebin and
 # walks those modules; the shards together compile and walk every unit the
-# whole-corpus target does. WHAT THE SHARDS DROP from the per-commit lane is
-# the one strict compile of the whole corpus with the conformance driver
-# (build/elixir-tables-ebin/.stamp: test/conformance/elixir/driver_impl.ex,
-# which needs every unit, and the check that no module is defined in two
-# units, which only a compile of every unit together sees). A pull request
-# whose Elixir verify-leg rows run still compiles it there; one that touches
-# shared files (ci-fast.yml's shared_broad: ir/, compiler/, tables/, the
-# Makefile, test/tables schemas) or more than four legs runs no verify-leg
-# rows, so for it that compile runs only in Certify's nightly test-elixir.
+# whole-corpus target does. The fast Elixir conformance job combines these
+# optimized builds after verifying their identity and compiles its driver
+# locally. Other conformance and nightly builds use the ordinary build target.
 ELIXIR_AGREEMENT_SHARDS := 4
 
 .PHONY: tables-elixir-accessor-descriptor-agreement-shard-%
@@ -711,6 +706,26 @@ tables-elixir-accessor-descriptor-agreement-shard-%: build/tables-generated-elix
 		echo "agreement shard $*/$(ELIXIR_AGREEMENT_SHARDS): $$(echo $$units | wc -w | tr -d ' ') units:" $$units; \
 		$(ELIXIRC_STRICT) -o build/elixir-agreement-ebin-$* $$srcs
 	ELIXIR_TABLES_EBIN=$(CURDIR)/build/elixir-agreement-ebin-$* $(ELIXIR) test/elixir-tables/accessor_descriptor.exs
+
+# The same-run verification job reuses the strict optimized builds made by
+# the agreement shards. Package only after the normal agreement gate passes.
+ELIXIR_HANDOFF_EBIN := build/elixir-verified-ebin
+ELIXIR_HANDOFF_PY := PATH="$(BEAM_PATH):$$PATH" python3 make/elixir-handoff.py
+ELIXIR_HANDOFF_PIN := env -u SCHEMA_ELIXIR_ANY_OTP $(ELIXIR) test/elixir/runtime_pin.exs $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR)
+
+.PHONY: elixir-agreement-artifact-% build-conformance-elixir-from-shards
+elixir-agreement-artifact-%: tables-elixir-accessor-descriptor-agreement-shard-%
+	@test -n "$(ELIXIR_ARTIFACT_DIR)" || { echo "elixir agreement artifact: ELIXIR_ARTIFACT_DIR is required" >&2; exit 1; }
+	$(ELIXIR_HANDOFF_PIN)
+	$(ELIXIR_HANDOFF_PY) give "$(ELIXIR_ARTIFACT_DIR)" "build/elixir-agreement-ebin-$*" $(ELIXIR_AGREEMENT_SHARDS) $(ELIXIR_TABLE_UNIT_NAMES) --shard "$*"
+
+# The artifact contains only the generated modules. Compile the driver here,
+# using the normal strict compiler, and keep the assembled ebin separate.
+build-conformance-elixir-from-shards: build/tables-generated-elixir/.stamp test/conformance/elixir/driver_impl.ex
+	$(ELIXIR_HANDOFF_PIN)
+	@rm -rf $(ELIXIR_HANDOFF_EBIN)
+	$(ELIXIR_HANDOFF_PY) take "$(ELIXIR_AGREEMENT_ARTIFACTS)" $(ELIXIR_HANDOFF_EBIN) $(ELIXIR_AGREEMENT_SHARDS) $(ELIXIR_TABLE_UNIT_NAMES)
+	ELIXIR_ERL_OPTIONS="+S 2:2" $(ELIXIRC_STRICT) -o $(ELIXIR_HANDOFF_EBIN) test/conformance/elixir/driver_impl.ex
 
 # The two controls for that gate, on the EMITTER for the fuzz control's reason:
 # each moves ONE derivation — a generated block scalar accessor four bytes, a

@@ -987,7 +987,9 @@ func (g *gen) emitVariableSaveField(b *strings.Builder, f *ir.Field, ordinal int
 		fmt.Fprintf(b, "%s}\n", ind)
 	case vBytes:
 		// bytes(N) rides as an array of u8 (§2.5): kind 14, L = 2 + n, element
-		// kind 6, the count, the bytes; at its default it elides
+		// kind 6, the count, the bytes; at its default it elides. A length
+		// past N is a debug assert (docs/SPEC.md §5.1, row 4)
+		b.WriteString(rustBoundedLenAssert(f, x, ind))
 		guard := "!" + x + ".is_empty()"
 		if len(f.DefBytes) > 0 {
 			guard = x + ".as_slice() != " + rustByteArray(f.DefBytes)

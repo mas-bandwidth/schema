@@ -270,7 +270,8 @@ static void check_case(const char * name, const TableVocabulary & vocab, const u
             failed = true;
         }
     } else {
-        if (!ok && count == 0 && rep.damaged && !rep.refused && (values[0].a == 0 || values[0].a == -7) && values[1].a == -7) {
+        Root defaults; RootReset(defaults); // R4: every value handed in at its declared defaults
+        if (!ok && count == 0 && rep.damaged && !rep.refused && values[0].a == defaults.a && values[1].a == defaults.a) {
             printf("PASS %s\n", name);
         } else {
             printf("FAIL %s: ok=%d count=%lld malformed=%d refused=%d a0=%d a1=%d\n",

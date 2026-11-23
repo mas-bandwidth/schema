@@ -1753,7 +1753,7 @@ namespace Tabledemo
                     object empty = f.Table.Create(); f.SetChild(owner, index, empty);
                     return ReadTable(text, ref input, empty, f.Table, depth + 1);
                 }
-                Span<byte> key = stackalloc byte[MaxName];
+                Span<byte> key = input.KeyBuf;
                 if (!ScanString(text, ref input, key, true, out int used, stored: true)) { return false; }
                 if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
                 input.Pos++;
@@ -1902,7 +1902,7 @@ namespace Tabledemo
             }
             static bool ReadMap(ReadOnlySpan<byte> text, ref In input, object owner, TableFieldInfo f, int depth)
             {
-                if (Peek(text, ref input) != '{') { input.Bad = true; return false; }
+                if (Peek(text, ref input) != '{' || depth + 1 > MaxDepth) { input.Bad = true; return false; } // THE READ CAP COUNTS EVERY CONTAINER, placed or skipped (docs/SPEC-TABLES.md 16.2)
                 input.Pos++; f.ResetField(owner);
                 TableFieldInfo key = f.Table.Fields[0], field = f.Table.Fields[1];
                 int count = 0;
@@ -1945,7 +1945,7 @@ namespace Tabledemo
                         }
                         if (probe.Report.Refused) { return RefuseText(ref input, "kind_mismatch"); }
                     }
-                    if (drop) { if (!SkipValue(text, ref input, depth)) { return false; } }
+                    if (drop) { if (!SkipValue(text, ref input, depth + 1)) { return false; } }
                     else
                     {
                         char shape = ValueShape(text, ref input);
@@ -1964,7 +1964,7 @@ namespace Tabledemo
                             {
                                 return RefuseText(ref input, "kind_mismatch");
                             }
-                            else if (!ReadField(text, ref input, entry, field, depth)) { return false; }
+                            else if (!ReadField(text, ref input, entry, field, depth + 1)) { return false; }
                         }
                         int at = 0;
                         while (at < count && TableWire.CompareKey(f.GetChild(owner, at), entry, key) < 0) { at++; }
@@ -2079,6 +2079,7 @@ namespace Tabledemo
                 public TableReport Report;
                 public bool Bad; // the text is not JSON: the whole read is discarded
                 internal string TextField;
+                internal byte[] KeyBuf;
             }
 
             static void Space(ReadOnlySpan<byte> text, ref In input)
@@ -2601,7 +2602,7 @@ namespace Tabledemo
                 if (depth > MaxDepth) { input.Bad = true; return false; }
                 input.Pos++; // the opening bracket
                 bool first = true;
-                Span<byte> key = stackalloc byte[MaxName];
+                Span<byte> key = input.KeyBuf;
                 // a skipped object's keys are held to the layer's rule too: a repeated
                 // key refuses in every object of the text (docs/SPEC-TABLES.md §16.2,
                 // §16.12), the objects this walk skips included
@@ -2733,11 +2734,11 @@ namespace Tabledemo
                     // a union is an object with ONE key, the arm's name; {} is None,
                     // and two keys is a text this walk will not guess at
                     object union = f.GetChild(owner, index);
-                    if (Peek(text, ref input) != '{') { input.Bad = true; return false; }
+                    if (Peek(text, ref input) != '{' || depth + 1 > MaxDepth) { input.Bad = true; return false; } // THE READ CAP COUNTS EVERY CONTAINER, placed or skipped (docs/SPEC-TABLES.md 16.2)
                     input.Pos++;
                     f.Arms.SetTag(union, 0);
                     if (Peek(text, ref input) == '}') { input.Pos++; return true; }
-                    Span<byte> key = stackalloc byte[MaxName];
+                    Span<byte> key = input.KeyBuf;
                     int keyLength;
                     if (!ScanString(text, ref input, key, true, out keyLength, stored: true)) { return false; }
                     if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
@@ -2750,7 +2751,7 @@ namespace Tabledemo
                     if (tag == 0)
                     {
                         input.Report.Unknown++;
-                        if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                        if (!SkipValue(text, ref input, depth + 2)) { return false; }
                     }
                     else
                     {
@@ -2771,7 +2772,7 @@ namespace Tabledemo
                             {
                                 object body = arm.Payload(union);
                                 arm.Table.Reset(body);
-                                if (!ReadTable(text, ref input, body, arm.Table, depth + 1)) { return false; }
+                                if (!ReadTable(text, ref input, body, arm.Table, depth + 2)) { return false; }
                             }
                             else
                             {
@@ -2793,6 +2794,12 @@ namespace Tabledemo
                     f.Table.Reset(child);
                     return ReadTable(text, ref input, child, f.Table, depth + 1);
                 }
+                return ReadScalarLeaf(text, ref input, owner, f, index, depth);
+            }
+
+            [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+            static bool ReadScalarLeaf(ReadOnlySpan<byte> text, ref In input, object owner, TableFieldInfo f, int index, int depth)
+            {
                 if (IsEnum(f))
                 {
                     Span<byte> name = stackalloc byte[MaxName];
@@ -2819,7 +2826,7 @@ namespace Tabledemo
                 }
                 if (IsFlags(f))
                 {
-                    if (Peek(text, ref input) != '[') { input.Bad = true; return false; }
+                    if (Peek(text, ref input) != '[' || depth + 1 > MaxDepth) { input.Bad = true; return false; } // THE READ CAP COUNTS EVERY CONTAINER, placed or skipped (docs/SPEC-TABLES.md 16.2)
                     input.Pos++;
                     ulong bits = 0;
                     Span<byte> name = stackalloc byte[MaxName];
@@ -3121,7 +3128,7 @@ namespace Tabledemo
                 }
                 if (IsKeyed(f))
                 {
-                    if (Peek(text, ref input) != '{') { input.Bad = true; return false; }
+                    if (Peek(text, ref input) != '{' || depth + 1 > MaxDepth) { input.Bad = true; return false; } // THE READ CAP COUNTS EVERY CONTAINER, placed or skipped (docs/SPEC-TABLES.md 16.2)
                     input.Pos++;
                     // every slot back to its declared defaults first, so a key the text
                     // omits keeps them and a repeated field key cannot leave an earlier
@@ -3133,9 +3140,9 @@ namespace Tabledemo
                     // The schema fixes the vocabulary size. Small schemas use the
                     // stack; larger ones still count every duplicate exactly.
                     int words = (f.ArrayBound + 63) / 64;
-                    Span<ulong> seen = words <= 8 ? stackalloc ulong[words] : new ulong[words];
-                    seen.Clear();
-                    Span<byte> key = stackalloc byte[MaxName];
+                    ulong seen0 = 0;
+                    ulong[] seenBig = words > 1 ? new ulong[words] : null;
+                    Span<byte> key = input.KeyBuf;
                     System.Collections.Generic.HashSet<string> unplaced = null;
                     for (; ; )
                     {
@@ -3158,8 +3165,8 @@ namespace Tabledemo
                         if (slot >= 0)
                         {
                             ulong bit = 1ul << (slot & 63);
-                            if ((seen[slot >> 6] & bit) != 0) { return RefuseText(ref input, "duplicate"); }
-                            seen[slot >> 6] |= bit;
+                            if (seenBig == null) { if ((seen0 & bit) != 0) { return RefuseText(ref input, "duplicate"); } seen0 |= bit; }
+                            else { if ((seenBig[slot >> 6] & bit) != 0) { return RefuseText(ref input, "duplicate"); } seenBig[slot >> 6] |= bit; }
                         }
                         if (slot < 0)
                         {
@@ -3171,7 +3178,7 @@ namespace Tabledemo
                             unplaced ??= new System.Collections.Generic.HashSet<string>(System.StringComparer.Ordinal);
                             if (!unplaced.Add(System.Text.Encoding.UTF8.GetString(key.Slice(0, keyLength)))) { return RefuseText(ref input, "duplicate"); }
                             input.Report.Unknown++;
-                            if (!SkipValue(text, ref input, depth + 1)) { return false; }
+                            if (!SkipValue(text, ref input, depth + 2)) { return false; }
                         }
                         else if (!TableShapeMatches(shape, ValueShape(text, ref input)))
                         {
@@ -3191,7 +3198,7 @@ namespace Tabledemo
                 }
                 if (f.IsArray)
                 {
-                    if (Peek(text, ref input) != '[') { input.Bad = true; return false; }
+                    if (Peek(text, ref input) != '[' || depth + 1 > MaxDepth) { input.Bad = true; return false; } // THE READ CAP COUNTS EVERY CONTAINER, placed or skipped (docs/SPEC-TABLES.md 16.2)
                     input.Pos++;
                     // LAST WINS has to be true of a repeated ARRAY key too, and it is
                     // wire-visible: a fixed array writes every slot, so a second,
@@ -3248,6 +3255,15 @@ namespace Tabledemo
             // counted, a repeated key (known or unknown) is damage. The instance is already
             // at its declared defaults when this is entered, so a key the text never
             // mentions keeps the default an absent field takes on the wire (§4).
+            [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+            static bool RequireSeenMask(object value, TableTypeInfo info, ulong seen0, ulong[] seenBig, TableReport report)
+            {
+                if (seenBig != null) { return TableWire.RequireSeen(value, info, seenBig, report); }
+                Span<ulong> s = stackalloc ulong[1];
+                s[0] = seen0;
+                return TableWire.RequireSeen(value, info, s, report);
+            }
+
             static bool ReadTable(ReadOnlySpan<byte> text, ref In input, object value, TableTypeInfo info, int depth, bool opened = false)
             {
                 if (depth > MaxDepth) { input.Bad = true; return false; }
@@ -3264,14 +3280,14 @@ namespace Tabledemo
                 // The descriptor fixes this size; input cannot grow it. Keep common
                 // tables on the stack, and track every field even beyond 512.
                 int words = (info.NumFields + 63) / 64;
-                Span<ulong> seen = words <= 8 ? stackalloc ulong[words] : new ulong[words];
-                seen.Clear();
-                Span<byte> key = stackalloc byte[MaxName];
+                ulong seen0 = 0;
+                ulong[] seenBig = words > 1 ? new ulong[words] : null;
+                Span<byte> key = input.KeyBuf;
                 System.Collections.Generic.HashSet<string> unknown = null;
                 for (; ; )
                 {
                     byte c = Peek(text, ref input);
-                    if (c == '}') { input.Pos++; return TableWire.RequireSeen(value, info, seen, input.Report); }
+                    if (c == '}') { input.Pos++; return RequireSeenMask(value, info, seen0, seenBig, input.Report); }
                     if (c == 0) { input.Bad = true; return false; }
                     int keyLength;
                     if (!ScanString(text, ref input, key, true, out keyLength, stored: true)) { return false; }
@@ -3307,8 +3323,8 @@ namespace Tabledemo
                         if (index < info.NumFields)
                         {
                             ulong bit = 1ul << (index & 63);
-                            if ((seen[index >> 6] & bit) != 0) { return RefuseText(ref input, "duplicate"); }
-                            seen[index >> 6] |= bit;
+                            if (seenBig == null) { if ((seen0 & bit) != 0) { return RefuseText(ref input, "duplicate"); } seen0 |= bit; }
+                            else { if ((seenBig[index >> 6] & bit) != 0) { return RefuseText(ref input, "duplicate"); } seenBig[index >> 6] |= bit; }
                         }
                         // PRESENCE OF THE KEY IS THE PRESENCE (§16.2): reaching this
                         // line is the key being present, so an optional is set present
@@ -3344,7 +3360,7 @@ namespace Tabledemo
                     }
                     c = Peek(text, ref input);
                     if (c == ',') { input.Pos++; continue; } // a trailing comma is accepted
-                    if (c == '}') { input.Pos++; return TableWire.RequireSeen(value, info, seen, input.Report); }
+                    if (c == '}') { input.Pos++; return RequireSeenMask(value, info, seen0, seenBig, input.Report); }
                     input.Bad = true;
                     return false;
                 }
@@ -3362,6 +3378,7 @@ namespace Tabledemo
                 input.Report = report != null ? report : new TableReport();
                 input.Report.Zero();
                 input.Bad = false;
+                input.KeyBuf = new byte[MaxName];
                 if (info.Variable) { input.Labels = new System.Collections.Generic.Dictionary<ulong, Label>(); }
                 info.Reset(value);
                 // C++ refuses a null pointer and a negative length here before it walks.
@@ -5349,7 +5366,21 @@ namespace Tabledemo
                 if (bytes.Length < 2) { Damage(report); return 0; }
                 return bytes[1] + 1;
             }
+            // R4: AFTER ANY REFUSAL EVERY ELEMENT HANDED IN HOLDS ITS DECLARED DEFAULT,
+            // the whole array and not 0..count: framing, integrity, batch_too_large,
+            // body, non-finite and trailer refusals all leave the caller no partial
+            // value. A null element has nothing to reset and stays null.
             public static Verdict MessageLoad(object[] values, TableTypeInfo type, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count)
+            {
+                Verdict verdict = MessageLoadWalk(values, type, bytes, vocabulary, report, out count);
+                if (verdict != Verdict.Ok)
+                {
+                    count = 0;
+                    for (int j = 0; j < values.Length; j++) { if (values[j] != null) { type.Reset(values[j]); } }
+                }
+                return verdict;
+            }
+            static Verdict MessageLoadWalk(object[] values, TableTypeInfo type, ReadOnlySpan<byte> bytes, TableVocabulary vocabulary, TableReport report, out int count)
             {
                 count = 0; report.Refused = false; report.Reason = null; report.NonFiniteFloat = null;
                 if (type.Integrity && bytes.Length > 0 && bytes[0] == 2)
@@ -5373,20 +5404,19 @@ namespace Tabledemo
                     // A NON-FINITE FLOAT IN ANY BODY REFUSES THE BATCH (docs/SPEC-TABLES.md
                     // §3.3), outranking damage met after it: no body is delivered.
                     if (NonFiniteRefused(report))
-                    { report.Damaged |= damagedBefore; for (int j = 0; j <= count; j++) { type.Reset(values[j]); } count = 0; return Finish(report, Verdict.Refused); }
-                    if (report.Refused) { for (int j = 0; j <= count; j++) { type.Reset(values[j]); } count = 0; return Finish(report, Verdict.Refused); }
-                    if (!good || report.Damaged) { Damage(report); return DiscardBatch(values, type, report, ref count, count); }
+                    { report.Damaged |= damagedBefore; count = 0; return Finish(report, Verdict.Refused); }
+                    if (report.Refused) { count = 0; return Finish(report, Verdict.Refused); }
+                    if (!good || report.Damaged) { Damage(report); return DiscardBatch(report, ref count); }
                 }
-                if (!r.Align() || r.At != r.End) { Damage(report); return DiscardBatch(values, type, report, ref count, count - 1); }
+                if (!r.Align() || r.At != r.End) { Damage(report); return DiscardBatch(report, ref count); }
                 report.Damaged = damagedBefore;
                 return Finish(report, Verdict.Ok);
             }
             // DAMAGE DISCARDS THE WHOLE BATCH (docs/SPEC-TABLES.md §4): every body
             // the read touched goes back to its declared defaults and the count is zero,
             // so nothing decoded before the damage is a value to use.
-            static Verdict DiscardBatch(object[] values, TableTypeInfo type, TableReport report, ref int count, int last)
+            static Verdict DiscardBatch(TableReport report, ref int count)
             {
-                for (int j = 0; j <= last && j < values.Length; j++) { type.Reset(values[j]); }
                 count = 0;
                 return Finish(report, Verdict.Damaged);
             }

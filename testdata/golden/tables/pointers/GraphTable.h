@@ -9971,6 +9971,7 @@ inline bool AlbumLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, Al
 inline int64_t MetaMeasureBody( TableIds & ids, const Meta & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    schema_assert( !( value.build < 0 || value.build > 1000 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.build != 1 ) { bytes += TableLebBytes( ids.ref_at( 26, 0x802517e298c70b03ull ) ) + 1 + 4; } // build
     schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( !TableUtf8Valid( (const uint8_t *) value.tag, (uint64_t) value.tag_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
@@ -9993,6 +9994,7 @@ GRAPHDEMO_TABLE_INLINE bool MetaSaveBody( TableWriter & w, TableIds & ids, const
     if ( value.build != 1 )
     {
         w.header( ids.ref_at( 26, 0x802517e298c70b03ull ), 4 ); // build
+        schema_assert( !( value.build < 0 || value.build > 1000 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.build ) );
     }
     schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // storage invariant, debug only (§5.1)
@@ -10601,10 +10603,11 @@ inline int64_t MetaSaveMessages( const Meta * values, int64_t count, uint8_t * b
 // `count` is IN and OUT: in, the storage the caller has room for, and out,
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
 // batch_too_large, found from the count before a body is decoded: count
-// comes back 0, as for every refused batch, and the storage is untouched; a
-// caller that needs room reads the wire's M itself. DAMAGE ANYWHERE IN THE BATCH
-// DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
-// and every body the walk touched is reset to its declared defaults.
+// comes back 0, as for every refused batch; a caller that needs room reads
+// the wire's M itself. DAMAGE ANYWHERE IN THE BATCH DELIVERS NO BODY
+// (docs/SPEC-TABLES.md §4): count says 0 and malformed is set. EVERY REFUSAL
+// HAS ONE EXIT (R4): every value handed in, all `capacity` of them, is reset
+// to its declared defaults, so no partial value survives.
 inline bool MetaLoadMessages( Meta * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
@@ -10616,20 +10619,21 @@ inline bool MetaLoadMessages( Meta * values, int64_t * count, const TableVocabul
     }
     const int64_t capacity = *count;
     *count = 0;
+    auto refuse = [&]() -> bool { for ( int64_t k = 0; k < capacity; k++ ) { MetaReset( values[k] ); } return false; };
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
-    if ( bodies < 0 ) { return false; }
+    if ( bodies < 0 ) { return refuse(); }
     if ( bodies > capacity )
     {
         TableMessageRefuseBatch( to ); // a refused batch returns a count of 0 (§3.3)
-        return false;
+        return refuse();
     }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !MetaLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { MetaReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
+        if ( !MetaLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { return refuse(); } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
         br.remaining--;
     }
-    if ( !TableMessageBatchClose( br ) ) { for ( int64_t k = 0; k < bodies; k++ ) { MetaReset( values[k] ); } return false; } // damage after the last body discards the batch too (§4)
+    if ( !TableMessageBatchClose( br ) ) { return refuse(); } // damage after the last body discards the batch too (§4)
     *count = bodies;
     return true;
 }
@@ -10637,6 +10641,7 @@ inline bool MetaLoadMessages( Meta * values, int64_t * count, const TableVocabul
 inline int64_t SettingsMeasureBody( TableIds & ids, const Settings & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    schema_assert( !( value.quality < 0 || value.quality > 4 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.quality != 2 ) { bytes += TableLebBytes( ids.ref_at( 23, 0x7a8060916400fe66ull ) ) + 1 + 4; } // quality
     schema_assert( value.label_length >= 0 && value.label_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
@@ -10659,6 +10664,7 @@ GRAPHDEMO_TABLE_INLINE bool SettingsSaveBody( TableWriter & w, TableIds & ids, c
     if ( value.quality != 2 )
     {
         w.header( ids.ref_at( 23, 0x7a8060916400fe66ull ), 4 ); // quality
+        schema_assert( !( value.quality < 0 || value.quality > 4 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.quality ) );
     }
     schema_assert( value.label_length >= 0 && value.label_length <= 16 ); // storage invariant, debug only (§5.1)
@@ -11267,10 +11273,11 @@ inline int64_t SettingsSaveMessages( const Settings * values, int64_t count, uin
 // `count` is IN and OUT: in, the storage the caller has room for, and out,
 // what it got. M ABOVE THE CALLER'S CAPACITY IS A REFUSAL BY NAME,
 // batch_too_large, found from the count before a body is decoded: count
-// comes back 0, as for every refused batch, and the storage is untouched; a
-// caller that needs room reads the wire's M itself. DAMAGE ANYWHERE IN THE BATCH
-// DELIVERS NO BODY (docs/SPEC-TABLES.md §4): count says 0, malformed is set,
-// and every body the walk touched is reset to its declared defaults.
+// comes back 0, as for every refused batch; a caller that needs room reads
+// the wire's M itself. DAMAGE ANYWHERE IN THE BATCH DELIVERS NO BODY
+// (docs/SPEC-TABLES.md §4): count says 0 and malformed is set. EVERY REFUSAL
+// HAS ONE EXIT (R4): every value handed in, all `capacity` of them, is reset
+// to its declared defaults, so no partial value survives.
 inline bool SettingsLoadMessages( Settings * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )
 {
     TableReport ignored;
@@ -11282,20 +11289,21 @@ inline bool SettingsLoadMessages( Settings * values, int64_t * count, const Tabl
     }
     const int64_t capacity = *count;
     *count = 0;
+    auto refuse = [&]() -> bool { for ( int64_t k = 0; k < capacity; k++ ) { SettingsReset( values[k] ); } return false; };
     TableMessageBatchReader br;
     const int64_t bodies = TableMessageBatchOpen( br, vocabulary, buffer, bytes, to );
-    if ( bodies < 0 ) { return false; }
+    if ( bodies < 0 ) { return refuse(); }
     if ( bodies > capacity )
     {
         TableMessageRefuseBatch( to ); // a refused batch returns a count of 0 (§3.3)
-        return false;
+        return refuse();
     }
     for ( int64_t i = 0; i < bodies; i++ )
     {
-        if ( !SettingsLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { for ( int64_t k = 0; k <= i; k++ ) { SettingsReset( values[k] ); } return false; } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
+        if ( !SettingsLoadMessageBody( br.r, vocabulary, to, 0, values[i] ) ) { return refuse(); } // a fixed root numbers no node: no index width; damage or a non-finite float refuses the whole batch (§3.3, §4)
         br.remaining--;
     }
-    if ( !TableMessageBatchClose( br ) ) { for ( int64_t k = 0; k < bodies; k++ ) { SettingsReset( values[k] ); } return false; } // damage after the last body discards the batch too (§4)
+    if ( !TableMessageBatchClose( br ) ) { return refuse(); } // damage after the last body discards the batch too (§4)
     *count = bodies;
     return true;
 }
@@ -11798,6 +11806,7 @@ inline int64_t LayerMeasureBody( const Ctx & ctx, const TableNumbering & numberi
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    schema_assert( !( value.depth < 0 || value.depth > 64 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.depth != 0 ) { bytes += TableLebBytes( ids.ref_at( 20, 0x75d8e97600b296eaull ) ) + 1 + 4; } // depth
     {
         const ListNode * pointee_head = ListNodeAt( ctx, value.head ); // *ListNode
@@ -11824,6 +11833,7 @@ inline bool LayerSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
     if ( value.depth != 0 )
     {
         w.header( ids.ref_at( 20, 0x75d8e97600b296eaull ), 4 ); // depth
+        schema_assert( !( value.depth < 0 || value.depth > 64 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.depth ) );
     }
     {
@@ -12012,6 +12022,7 @@ inline int64_t SceneMeasureBody( const Ctx & ctx, const TableNumbering & numberi
     schema_assert( value.name_length >= 0 && value.name_length <= 24 ); // storage invariant, debug only (§5.1)
     if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
+    schema_assert( !( value.version < 0 || value.version > 99 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.version != 1 ) { bytes += TableLebBytes( ids.ref_at( 36, 0xbb62c62c9808ea37ull ) ) + 1 + 4; } // version
     {
         const ListNode * pointee_head = ListNodeAt( ctx, value.head ); // *ListNode
@@ -12119,6 +12130,7 @@ inline bool SceneSaveBodyFields( const Ctx & ctx, const TableNumbering & numberi
     if ( value.version != 1 )
     {
         w.header( ids.ref_at( 36, 0xbb62c62c9808ea37ull ), 4 ); // version
+        schema_assert( !( value.version < 0 || value.version > 99 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.version ) );
     }
     {
@@ -13808,9 +13820,27 @@ inline int64_t MetaFixedSave( const Meta * values, int64_t count, uint8_t * buff
 // layout is never parsed: unknown hash is TableFixedReason::layout_unknown, known hash with
 // different bytes is TableMessageReason::layout_malformed, a hash below the floor is
 // TableMessageReason::layout_unsupported. Identity is a PLAN walked by the same loop.
-// MetaFixedLoadWalk is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
-// every recovered record, with the counters counted onto the report passed.
+// R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
+// holds the same rule as FixedLoad. The body below is the walk itself.
+inline int64_t MetaFixedLoadWalkBody( Meta * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t MetaFixedLoadWalk( Meta * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+{
+    TableReport local;
+    if ( report == NULL ) { report = &local; }
+    const int64_t n = MetaFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
+    if ( n < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { MetaReset( values[k] ); } }
+        return -1;
+    }
+    return n;
+}
+
+// MetaFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
+// every recovered record, with the counters counted onto the report passed.
+inline int64_t MetaFixedLoadWalkBody( Meta * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
@@ -14086,7 +14116,8 @@ inline int64_t MetaFixedLoadWalk( Meta * values, int64_t capacity, const uint8_t
 // The PLAIN MetaFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
 // every refusal of MetaFixedLoadWalk and for a read the strict rule refuses —
 // malformed, oor_count, kind-mismatched or refused — with every value it had
-// written reset to its declared defaults. A supplied report receives THIS
+// been handed reset to its declared defaults: EVERY ROW, all `capacity` of
+// them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t MetaFixedLoad( Meta * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
@@ -14095,10 +14126,9 @@ inline int64_t MetaFixedLoad( Meta * values, int64_t capacity, const uint8_t * d
     TableReport * out = report != NULL ? report : &local;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const int64_t n = MetaFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
-    if ( n < 0 ) { return -1; }
-    if ( out->damaged || out->refused )
+    if ( n < 0 || out->damaged || out->refused )
     {
-        for ( int64_t k = 0; k < n; ++k ) { MetaReset( values[k] ); }
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { MetaReset( values[k] ); } }
         return -1;
     }
     return n;
@@ -14282,9 +14312,27 @@ inline int64_t SettingsFixedSave( const Settings * values, int64_t count, uint8_
 // layout is never parsed: unknown hash is TableFixedReason::layout_unknown, known hash with
 // different bytes is TableMessageReason::layout_malformed, a hash below the floor is
 // TableMessageReason::layout_unsupported. Identity is a PLAN walked by the same loop.
-// SettingsFixedLoadWalk is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
-// every recovered record, with the counters counted onto the report passed.
+// R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
+// holds the same rule as FixedLoad. The body below is the walk itself.
+inline int64_t SettingsFixedLoadWalkBody( Settings * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
 inline int64_t SettingsFixedLoadWalk( Settings * values, int64_t capacity, const uint8_t * data, int64_t bytes,
+                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
+{
+    TableReport local;
+    if ( report == NULL ) { report = &local; }
+    const int64_t n = SettingsFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
+    if ( n < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { SettingsReset( values[k] ); } }
+        return -1;
+    }
+    return n;
+}
+
+// SettingsFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
+// every recovered record, with the counters counted onto the report passed.
+inline int64_t SettingsFixedLoadWalkBody( Settings * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
@@ -14560,7 +14608,8 @@ inline int64_t SettingsFixedLoadWalk( Settings * values, int64_t capacity, const
 // The PLAIN SettingsFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
 // every refusal of SettingsFixedLoadWalk and for a read the strict rule refuses —
 // malformed, oor_count, kind-mismatched or refused — with every value it had
-// written reset to its declared defaults. A supplied report receives THIS
+// been handed reset to its declared defaults: EVERY ROW, all `capacity` of
+// them, on EVERY refusal (R4), so no partial value survives. A supplied report receives THIS
 // read's report. unknown and widened alone never refuse.
 inline int64_t SettingsFixedLoad( Settings * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
@@ -14569,10 +14618,9 @@ inline int64_t SettingsFixedLoad( Settings * values, int64_t capacity, const uin
     TableReport * out = report != NULL ? report : &local;
     *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const int64_t n = SettingsFixedLoadWalk( values, capacity, data, bytes, plan, plan_capacity, cache, out );
-    if ( n < 0 ) { return -1; }
-    if ( out->damaged || out->refused )
+    if ( n < 0 || out->damaged || out->refused )
     {
-        for ( int64_t k = 0; k < n; ++k ) { SettingsReset( values[k] ); }
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { SettingsReset( values[k] ); } }
         return -1;
     }
     return n;
@@ -21318,6 +21366,7 @@ inline const Album * AlbumReadStrict( const uint8_t * wire_file, int64_t wire_fi
 inline int64_t MetaMeasureBodyRetain( TableRetainIds & ids, const Meta & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    schema_assert( !( value.build < 0 || value.build > 1000 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.build != 1 ) { bytes += TableLebBytes( ids.ref_at( 26, 0x802517e298c70b03ull ) ) + 1 + 4; } // build
     schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( !TableUtf8Valid( (const uint8_t *) value.tag, (uint64_t) value.tag_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
@@ -21331,6 +21380,7 @@ GRAPHDEMO_TABLE_INLINE bool MetaSaveBodyRetain( TableWriter & w, TableRetainIds 
     if ( value.build != 1 )
     {
         w.header( ids.ref_at( 26, 0x802517e298c70b03ull ), 4 ); // build
+        schema_assert( !( value.build < 0 || value.build > 1000 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.build ) );
     }
     schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // storage invariant, debug only (§5.1)
@@ -21515,6 +21565,7 @@ GRAPHDEMO_TABLE_INLINE bool MetaLoadBodyRetain( TableReader & r, Meta & value, T
 inline int64_t SettingsMeasureBodyRetain( TableRetainIds & ids, const Settings & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    schema_assert( !( value.quality < 0 || value.quality > 4 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.quality != 2 ) { bytes += TableLebBytes( ids.ref_at( 23, 0x7a8060916400fe66ull ) ) + 1 + 4; } // quality
     schema_assert( value.label_length >= 0 && value.label_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( !TableUtf8Valid( (const uint8_t *) value.label, (uint64_t) value.label_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
@@ -21528,6 +21579,7 @@ GRAPHDEMO_TABLE_INLINE bool SettingsSaveBodyRetain( TableWriter & w, TableRetain
     if ( value.quality != 2 )
     {
         w.header( ids.ref_at( 23, 0x7a8060916400fe66ull ), 4 ); // quality
+        schema_assert( !( value.quality < 0 || value.quality > 4 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.quality ) );
     }
     schema_assert( value.label_length >= 0 && value.label_length <= 16 ); // storage invariant, debug only (§5.1)
@@ -22221,6 +22273,7 @@ inline int64_t LayerMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
     (void) ctx;
     (void) numbering;
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    schema_assert( !( value.depth < 0 || value.depth > 64 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.depth != 0 ) { bytes += TableLebBytes( ids.ref_at( 20, 0x75d8e97600b296eaull ) ) + 1 + 4; } // depth
     {
         const ListNode * pointee_head = ListNodeAt( ctx, value.head ); // *ListNode
@@ -22248,6 +22301,7 @@ inline bool LayerSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
     if ( value.depth != 0 )
     {
         w.header( ids.ref_at( 20, 0x75d8e97600b296eaull ), 4 ); // depth
+        schema_assert( !( value.depth < 0 || value.depth > 64 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.depth ) );
     }
     {
@@ -22442,6 +22496,7 @@ inline int64_t SceneMeasureBodyRetain( const Ctx & ctx, const TableNumbering & n
     schema_assert( value.name_length >= 0 && value.name_length <= 24 ); // storage invariant, debug only (§5.1)
     if ( !TableUtf8Valid( (const uint8_t *) value.name, (uint64_t) value.name_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.name_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 37, 0xc4bcadba8e631b86ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.name_length ) ) + ( value.name_length ); } // name
+    schema_assert( !( value.version < 0 || value.version > 99 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.version != 1 ) { bytes += TableLebBytes( ids.ref_at( 36, 0xbb62c62c9808ea37ull ) ) + 1 + 4; } // version
     {
         const ListNode * pointee_head = ListNodeAt( ctx, value.head ); // *ListNode
@@ -22550,6 +22605,7 @@ inline bool SceneSaveBodyFieldsRetain( const Ctx & ctx, const TableNumbering & n
     if ( value.version != 1 )
     {
         w.header( ids.ref_at( 36, 0xbb62c62c9808ea37ull ), 4 ); // version
+        schema_assert( !( value.version < 0 || value.version > 99 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.version ) );
     }
     {
