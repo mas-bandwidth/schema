@@ -1713,12 +1713,15 @@ defmodule WriteRefusal do
       {:ok, v} when rest == [] and index == nil and is_map_key(f, :default) and v == f.default ->
         {:ok, List.keydelete(body, ref, 0)}
 
-      # None is the declared default of an enum or a union whose descriptor
-      # default is nil, and the body spells None as the zero reference or
-      # :none, so that too is the default the writer elides
+      # a union at tag 0 is None, which the message form spells by leaving the
+      # field out (the writer refuses a union field at arm 0; row
+      # mref_union_tag_none, docs/SPEC-CONFORMANCE.md §7), and None is the
+      # declared default of an enum or union whose descriptor default is nil
       {:ok, v}
-      when rest == [] and index == nil and f.t in [:enum, :union] and
-             is_map_key(f, :default) and f.default == nil and v in [0, :none] ->
+      when rest == [] and index == nil and
+             ((f.t == :union and v == :none) or
+                (f.t in [:enum, :union] and is_map_key(f, :default) and f.default == nil and
+                   v in [0, :none])) ->
         {:ok, List.keydelete(body, ref, 0)}
 
       {:ok, v} ->

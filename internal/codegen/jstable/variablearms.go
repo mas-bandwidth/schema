@@ -902,6 +902,7 @@ function TableVariableTextValue(fd, inp, holder, depth, graph, report) {
 
 function TableVariableTextMap(fd, inp, v, depth, graph, report) {
   if (inp.peek() !== "{") { inp.bad = true; return false; }
+  if (depth + 1 > 128) { inp.bad = true; return false; }
   inp.p++;
   const kd = fd.c.fields[0], vd = fd.c.fields[1];
   const ents = [];
@@ -956,6 +957,7 @@ function TableVariableTextMap(fd, inp, v, depth, graph, report) {
 
 function TableVariableTextKeyed(fd, inp, v, depth, graph, report) {
   if (inp.peek() !== "{") { inp.bad = true; return false; }
+  if (depth + 1 > 128) { inp.bad = true; return false; }
   inp.p++;
   const arr = fd.slots.map(() => TableVariableElemDefault(fd.e));
   v[fd.n] = arr;
@@ -977,10 +979,10 @@ function TableVariableTextKeyed(fd, inp, v, depth, graph, report) {
     const slot = fd.slotByName.get(key);
     if (slot === undefined) {
       report.unknown++;
-      if (!inp.skip(depth + 1, graph, report)) { return false; }
+      if (!inp.skip(depth + 2, graph, report)) { return false; }
     } else if (!TableVariableShapeMatches(fd.e.js, inp.shape())) {
       report.mismatch++;
-      if (!inp.skip(depth + 1, graph, report)) { return false; }
+      if (!inp.skip(depth + 2, graph, report)) { return false; }
     } else if (!TableVariableTextScalar(fd.e, inp, arr, slot, depth + 1, graph, report)) {
       return false;
     }
@@ -996,6 +998,7 @@ function TableVariableTextKeyed(fd, inp, v, depth, graph, report) {
 // key is a text this walk will not guess at
 function TableVariableTextUnion(d, inp, holder, key, depth, graph, report) {
   if (inp.peek() !== "{") { inp.bad = true; return false; }
+  if (depth + 1 > 128) { inp.bad = true; return false; }
   inp.p++;
   holder[key] = null;
   if (inp.peek() === "}") { inp.p++; return true; }

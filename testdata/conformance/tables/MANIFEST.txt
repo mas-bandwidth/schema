@@ -689,6 +689,11 @@ json-hostile reserved-ampersand-in-skipped-value tabledemo  RootConfig  testdata
 # R7: in a unit with no pointer a skipped value still refuses a stray & key or an &node not first
 json-hostile skipped-ampersand-stray-key             tabledemo  RootConfig  testdata/conformance/tables/json-hostile/skipped-ampersand-stray-key refused
 json-hostile skipped-ampersand-node-not-first        tabledemo  RootConfig  testdata/conformance/tables/json-hostile/skipped-ampersand-node-not-first refused
+# THE SPEC-PORT GAPS (docs/SPEC-CONFORMANCE.md §7, docs/SPEC-TABLES.md §16.2):
+# every key inside a skipped value is capped at 255 decoded bytes, a map's
+# key included, because a skipped value has no declaration to tell one apart.
+json-hostile skipped-key-255-bytes         tabledemo  RootConfig  testdata/conformance/tables/json-hostile/skipped-key-255-bytes read
+json-hostile skipped-key-256-bytes         tabledemo  RootConfig  testdata/conformance/tables/json-hostile/skipped-key-256-bytes refused
 json-hostile dup-key                       tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key            refused
 json-hostile dup-key-array                 tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key-array      refused
 json-hostile dup-key-placeable             tabledemo  RootConfig  testdata/conformance/tables/json-hostile/dup-key-placeable  refused
@@ -1184,6 +1189,10 @@ report map_depth_root_kind mapdemo Depth testdata/wire/tables/fuzz-vectors/map_d
 # bytes, and the verdict and the value on each row were derived from the law-home
 # and never from a leg. The `framing` surface runs them through every leg, and
 # the harness runs them through the engine (framing_test.go).
+# EVERY VECTOR IS FORM 1 AT tblr1 Cfg, A DECLARED FIXED TABLE, AND IS READ
+# THROUGH THAT DECLARATION'S VARIABLE TWIN (test/conformance/README.md, The
+# surfaces): the answer is the fixed root's text and form-3 write-back. A
+# read AT the fixed root refuses form 1 (`report previous_form_*`).
 #
 #   framing <case> <unit> <root> <wire> <verdict> <value file or ->
 #
@@ -1294,6 +1303,10 @@ framing node_table_twice                        graphdemo ListNode testdata/wire
 # the two vectors held on it are refusal rows.
 framing nested_terminator_missing               tblr1 Cfg testdata/wire/tables/framing/nested_terminator_missing.bin        refused -
 framing nested_damage_midway                    tblr1 Cfg testdata/wire/tables/framing/nested_damage_midway.bin             refused -
+# FIRST-USE ORDER COUNTS EVERY REFERENCE IN THE FILE, a skipped payload's
+# included (docs/SPEC-TABLES.md §3; docs/SPEC-CONFORMANCE.md §7, gap 5).
+framing skipped_ids_first_use                   tblr1 Cfg testdata/wire/tables/framing/skipped_ids_first_use.bin            read    testdata/conformance/tables/framing/cfg_silver.json
+framing skipped_ids_out_of_order                tblr1 Cfg testdata/wire/tables/framing/skipped_ids_out_of_order.bin         refused -
 # T8 (docs/LAYERS/1-framing.md): a cyclic wire is damage (§3.1, §4; Glenn,
 # 2026-10-31); a chain, and a diamond chain of 82 SHARED nodes and 2^40 paths
 # that a reader must load in linear time, are legal.
@@ -1323,6 +1336,48 @@ report fixedevo_v1_dep_corrupt  tblfixedevo EvoRoot testdata/conformance/tables/
 report fixedevo_v1_dead_tail    tblfixedevo EvoRoot testdata/conformance/tables/wire/fixedevo_v1_dead_tail.bin
 report fixedevo_v3_utf8_trunc   tblfixedevo EvoRoot testdata/conformance/tables/wire/fixedevo_v3_utf8_trunc.bin
 report fixedevo_v3_batch2       tblfixedevo EvoRoot testdata/conformance/tables/wire/fixedevo_v3_batch2.bin
+report rr_fixed_zero_records    tblfixedevo EvoRoot testdata/conformance/tables/wire/rr_fixed_zero_records.bin
+
+# REGRESSION ROWS 1122 (docs/fix-ledger-1122.md): one shared row per rule a
+# 2026-11-22 per-language fix established, so a new port is held to it
+# (docs/SPEC-CONFORMANCE.md, Regression rows). Expected answers from the Go
+# oracle (`harness generate`).
+json-hostile rr-comment-illformed-utf8       tabledemo  RootConfig  testdata/conformance/tables/json-hostile/rr-comment-illformed-utf8 refused
+json-hostile rr-comment-lone-surrogate       tabledemo  RootConfig  testdata/conformance/tables/json-hostile/rr-comment-lone-surrogate refused
+json-hostile rr-comment-nul                  tabledemo  RootConfig  testdata/conformance/tables/json-hostile/rr-comment-nul refused
+json-hostile rr-comment-wellformed-utf8      tabledemo  RootConfig  testdata/conformance/tables/json-hostile/rr-comment-wellformed-utf8 read
+json-hostile rr-num-negative-zero-long-token tabledemo  RootConfig  testdata/conformance/tables/json-hostile/rr-num-negative-zero-long-token read
+json-hostile rr-label-past-2-53-distinct     graphdemo  Scene       testdata/conformance/tables/json-hostile/rr-label-past-2-53-distinct read
+json-hostile rr-label-past-2-53-undefined    graphdemo  Scene       testdata/conformance/tables/json-hostile/rr-label-past-2-53-undefined refused
+json-hostile rr-depth-placed-union-map-128   mapdemo    Depth       testdata/conformance/tables/json-hostile/rr-depth-placed-union-map-128 read
+json-hostile rr-depth-placed-union-map-129   mapdemo    Depth       testdata/conformance/tables/json-hostile/rr-depth-placed-union-map-129 refused
+json-hostile rr-depth-placed-keyed-map-128   mapdemo    Depth       testdata/conformance/tables/json-hostile/rr-depth-placed-keyed-map-128 read
+json-hostile rr-depth-placed-keyed-map-129   mapdemo    Depth       testdata/conformance/tables/json-hostile/rr-depth-placed-keyed-map-129 refused
+json-hostile rr-depth-skipped-union-arm-128     mapdemo    Depth       testdata/conformance/tables/json-hostile/rr-depth-skipped-union-arm-128 read
+json-hostile rr-depth-skipped-union-arm-129     mapdemo    Depth       testdata/conformance/tables/json-hostile/rr-depth-skipped-union-arm-129 refused
+json-hostile rr-depth-skipped-keyed-slot-128    mapdemo    Depth       testdata/conformance/tables/json-hostile/rr-depth-skipped-keyed-slot-128 read
+json-hostile rr-depth-skipped-keyed-slot-129    mapdemo    Depth       testdata/conformance/tables/json-hostile/rr-depth-skipped-keyed-slot-129 refused
+json-hostile rr-depth-placed-table-map-128 mapdemo Depth testdata/conformance/tables/json-hostile/rr-depth-placed-table-map-128 read
+json-hostile rr-depth-placed-table-map-129 mapdemo Depth testdata/conformance/tables/json-hostile/rr-depth-placed-table-map-129 refused
+json-hostile rr-depth-placed-array-map-128 mapdemo Depth testdata/conformance/tables/json-hostile/rr-depth-placed-array-map-128 read
+json-hostile rr-depth-placed-array-map-129 mapdemo Depth testdata/conformance/tables/json-hostile/rr-depth-placed-array-map-129 refused
+json-hostile rr-depth-placed-list-map-128 listdemo Army testdata/conformance/tables/json-hostile/rr-depth-placed-list-map-128 read
+json-hostile rr-depth-placed-list-map-129 listdemo Army testdata/conformance/tables/json-hostile/rr-depth-placed-list-map-129 refused
+json-hostile rr-depth-skipped-table-key-array-128 mapdemo Depth testdata/conformance/tables/json-hostile/rr-depth-skipped-table-key-array-128 read
+json-hostile rr-depth-skipped-table-key-array-129 mapdemo Depth testdata/conformance/tables/json-hostile/rr-depth-skipped-table-key-array-129 refused
+json-hostile rr-depth-skipped-table-key-object-128 mapdemo Depth testdata/conformance/tables/json-hostile/rr-depth-skipped-table-key-object-128 read
+json-hostile rr-depth-skipped-table-key-object-129 mapdemo Depth testdata/conformance/tables/json-hostile/rr-depth-skipped-table-key-object-129 refused
+json-hostile rr-depth-placed-pointer-chain-128 streamdemo Feed testdata/conformance/tables/json-hostile/rr-depth-placed-pointer-chain-128 read
+json-hostile rr-depth-placed-pointer-chain-129 streamdemo Feed testdata/conformance/tables/json-hostile/rr-depth-placed-pointer-chain-129 refused
+json-hostile rr-depth-placed-pointer-array-128 streamdemo Feed testdata/conformance/tables/json-hostile/rr-depth-placed-pointer-array-128 read
+json-hostile rr-depth-placed-pointer-array-129 streamdemo Feed testdata/conformance/tables/json-hostile/rr-depth-placed-pointer-array-129 refused
+framing rr_map_key_repeated     listdemo    Squad   testdata/wire/tables/framing/rr_map_key_repeated.bin refused -
+write-refusal      rr_wref_f32_past_range tabledemo RootConfig testdata/conformance/tables/wire/root_full.bin weapons[0].damage float 1e39 refused
+write-refusal      rr_wref_f32_max        tabledemo RootConfig testdata/conformance/tables/wire/root_full.bin weapons[0].damage float 3.4028234663852886e38 wrote
+write-refusal-fixed rr_fref_f32_past_range tabledemo RootConfig testdata/conformance/tables/wire/root_full.bin weapons[0].damage float 1e39 refused
+write-refusal-fixed rr_fref_f32_max        tabledemo RootConfig testdata/conformance/tables/wire/root_full.bin weapons[0].damage float 3.4028234663852886e38 wrote
+write-refusal-json rr_jref_f32_past_range tabledemo RootConfig testdata/conformance/tables/wire/root_full.bin weapons[0].damage float 1e39 refused
+write-refusal-json rr_jref_f32_max        tabledemo RootConfig testdata/conformance/tables/wire/root_full.bin weapons[0].damage float 3.4028234663852886e38 wrote
 
 # THE COOK'S NODE ALIGNMENT (docs/SPEC-TABLES.md §6.2, THE TWO ALIGNMENT
 # RULES): a 128-bit list element in holders aligned eight, its own unit so no
@@ -1469,6 +1524,7 @@ rewrite array_L2_empty tblr1 Cfg testdata/wire/tables/framing/array_L2_empty.bin
 rewrite union_arm_zero_in_field tblr1 Cfg testdata/wire/tables/framing/union_arm_zero_in_field.bin
 rewrite node_index_null graphdemo ListNode testdata/wire/tables/framing/node_index_null.bin
 rewrite node_type_undeclared graphdemo ListNode testdata/wire/tables/framing/node_type_undeclared.bin
+rewrite skipped_ids_first_use tblr1 Cfg testdata/wire/tables/framing/skipped_ids_first_use.bin
 rewrite twin_a2_root tbla2 Root testdata/conformance/tables/wire/twin_a2_root.bin
 rewrite twin_k1_root tblk1 Root testdata/conformance/tables/wire/twin_k1_root.bin
 rewrite twin_k2_root tblk2 Root testdata/conformance/tables/wire/twin_k2_root.bin
@@ -1538,6 +1594,8 @@ write-refusal wref_union_tag_1_ok         tabledemo RootConfig    testdata/confo
 write-refusal wref_union_tag_9            tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].effect tag     9          refused
 write-refusal wref_union_tag_256          tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].effect tag     256        refused
 write-refusal wref_union_tag_4294967296   tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].effect tag     4294967296 refused
+# tag 0 is None, arms count from 1 (FORMAT.md; docs/SPEC-CONFORMANCE.md §7, gap 6)
+write-refusal wref_union_tag_none  tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].effect      tag     0   wrote
 write-refusal wref_non_finite      tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].damage      float   nan refused
 write-refusal wref_infinite        tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].damage      float   inf refused
 
@@ -1570,6 +1628,7 @@ write-refusal-fixed fref_enum            tabledemo LoadoutConfig testdata/confor
 write-refusal-fixed fref_enum_ok         tabledemo LoadoutConfig testdata/conformance/tables/wire/loadout_full.bin grade                  ordinal 3                wrote
 write-refusal-fixed fref_union_tag       tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].effect      tag     3                refused
 write-refusal-fixed fref_union_tag_ok    tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].effect      tag     2                wrote
+write-refusal-fixed fref_union_tag_none  tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].effect      tag     0                wrote
 write-refusal-fixed fref_non_finite      tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].damage      float   nan              refused
 write-refusal-fixed fref_infinite        tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    weapons[0].damage      float   inf              refused
 write-refusal-fixed fref_text_illformed  tabledemo RootConfig    testdata/conformance/tables/wire/root_full.bin    version_note           bytes   61FF62           refused
@@ -1913,6 +1972,7 @@ write-refusal-message mref_unionstr_nul       varevo3_conn EvoMsg        testdat
 write-refusal-message mref_unionstr_ok        varevo3_conn EvoMsg        testdata/conformance/tables/wire/varevo3_msg_notice.bin payload.notice bytes   61C3A962     wrote
 write-refusal-message mref_union_tag          varevo3_conn EvoMsg        testdata/conformance/tables/wire/varevo3_msg.bin        payload        tag     5            refused
 write-refusal-message mref_union_tag_ok       varevo3_conn EvoMsg        testdata/conformance/tables/wire/varevo3_msg.bin        payload        tag     1            wrote
+write-refusal-message mref_union_tag_none     varevo3_conn EvoMsg        testdata/conformance/tables/wire/varevo3_msg.bin        payload        tag     0            wrote
 write-refusal-message mref_bytes_length       backend_conn LoginRequest  testdata/conformance/tables/wire/login_full.bin         session_token  length  33           refused
 write-refusal-message mref_bytes_length_ok    backend_conn LoginRequest  testdata/conformance/tables/wire/login_full.bin         session_token  length  32           wrote
 
@@ -1944,6 +2004,7 @@ write-refusal-json jref_fx16_low           scalars     SimState         testdata
 write-refusal-json jref_ufx16_high         scalars     SimState         testdata/conformance/tables/wire/scalars_full.bin           speed                                    int     65536001     refused
 write-refusal-json jref_enum               tabledemo   LoadoutConfig    testdata/conformance/tables/wire/loadout_full.bin           grade                                    ordinal 4            refused
 write-refusal-json jref_union_tag          tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              weapons[0].effect                        tag     3            refused
+write-refusal-json jref_union_tag_none     tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              weapons[0].effect                        tag     0            wrote
 write-refusal-json jref_count              tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              weapons                                  count   9            refused
 write-refusal-json jref_length             tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              version_note                             length  17           refused
 write-refusal-json jref_bytes_length       tabledemo   RootConfig       testdata/conformance/tables/wire/root_full.bin              profiles[0].icon                         length  17           refused

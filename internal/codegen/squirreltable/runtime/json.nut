@@ -1942,6 +1942,7 @@ readField = function(T, c, fd, r, v, depth) {
 // an array of pointers is a null slot
 readArray = function(T, c, fd, r, v, depth) {
   if (peek(r) != '[') { r.bad = true; return false; }
+  if (depth + 1 > MAX_DEPTH) { r.bad = true; return false; } // THE READ CAP COUNTS EVERY CONTAINER, placed or skipped (§16.2)
   r.p++;
   local e = fd.elem;
   local fixed = !fd.list && !fd.counted;
@@ -1963,14 +1964,14 @@ readArray = function(T, c, fd, r, v, depth) {
     local vs = valueShape(r);
     if (placed >= bound) {
       r.report.oor++;
-      if (!skipValue(r, depth + 1)) return false;
+      if (!skipValue(r, depth + 2)) return false;
     } else if (vs == 'z' && (e.shape == "ptr" || e.shape == "sblob" || e.shape == "bblob")) {
       if (!literal(r, "null")) return false;
       out[placed] = null;
       placed++;
     } else if (!shapeMatches(shape, vs)) {
       r.report.mismatch++;
-      if (!skipValue(r, depth + 1)) return false;
+      if (!skipValue(r, depth + 2)) return false;
       placed++;
     } else if (text) {
       if (e.shape == "bblob") {
@@ -2007,6 +2008,7 @@ readArray = function(T, c, fd, r, v, depth) {
 // the generated element records; null is an absent `?string` element.
 readTextArray = function(T, c, fd, r, v, depth) {
   if (peek(r) != '[') { r.bad = true; return false; }
+  if (depth + 1 > MAX_DEPTH) { r.bad = true; return false; } // THE READ CAP COUNTS EVERY CONTAINER, placed or skipped (§16.2)
   r.p++;
   local e = fd.elem;
   local ed = tableDesc(T, e.table);
@@ -2029,17 +2031,17 @@ readTextArray = function(T, c, fd, r, v, depth) {
     seen++;
     if (full) {
       if (seen > bound) r.report.oor++;
-      if (!skipValue(r, depth + 1)) return false;
+      if (!skipValue(r, depth + 2)) return false;
     } else if (out.len() >= bound) {
       r.report.oor++;
-      if (!skipValue(r, depth + 1)) return false;
+      if (!skipValue(r, depth + 2)) return false;
     } else if (fd.textlist == 2 && vs == 'z') {
       if (!literal(r, "null")) return false;
       rec.ValuePresent = false;
       out.append(rec);
     } else if (vs != 's') {
       r.report.mismatch++;
-      if (!skipValue(r, depth + 1)) return false;
+      if (!skipValue(r, depth + 2)) return false;
       out.append(rec);
     } else {
       local s = scanBytes(r, capacity);
@@ -2077,6 +2079,7 @@ readTextArray = function(T, c, fd, r, v, depth) {
 // repeated slot is a repeated, counted before the shape check.
 readKeyed = function(T, c, fd, r, v, depth) {
   if (peek(r) != '{') { r.bad = true; return false; }
+  if (depth + 1 > MAX_DEPTH) { r.bad = true; return false; } // THE READ CAP COUNTS EVERY CONTAINER, placed or skipped (§16.2)
   r.p++;
   local e = fd.elem;
   local out = array(fd.bound);
@@ -2108,10 +2111,10 @@ readKeyed = function(T, c, fd, r, v, depth) {
     }
     if (slot < 0) {
       r.report.unknown++;
-      if (!skipValue(r, depth + 1)) return false;
+      if (!skipValue(r, depth + 2)) return false;
     } else if (!shapeMatches(shape, valueShape(r))) {
       r.report.mismatch++;
-      if (!skipValue(r, depth + 1)) return false;
+      if (!skipValue(r, depth + 2)) return false;
     } else if (!readScalar(T, e, r, out, slot, depth + 1, c.name + "." + fd.name)) {
       return false;
     }
@@ -2135,6 +2138,7 @@ readKeyed = function(T, c, fd, r, v, depth) {
 readMap = function(T, c, fd, r, v, depth) {
   if (depth + 1 > MAX_DEPTH) { r.bad = true; return false; }
   if (peek(r) != '{') { r.bad = true; return false; }
+  if (depth + 1 > MAX_DEPTH) { r.bad = true; return false; } // THE READ CAP COUNTS EVERY CONTAINER, placed or skipped (§16.2)
   r.p++;
   local kd = fd.mapkey, vd = fd.mapvalue;
   local ed = tableDesc(T, fd.entry);
@@ -2441,6 +2445,7 @@ local placeWide = function(d, tok, report) {
 
 local readFlags = function(d, r, depth) {
   if (peek(r) != '[') { r.bad = true; return null; }
+  if (depth + 1 > MAX_DEPTH) { r.bad = true; return null; }
   r.p++;
   local names = has(d, "flagNames") ? d.flagNames : [];
   local bits = 0;
@@ -2570,6 +2575,7 @@ readScalar = function(T, d, r, holder, key, depth, where) {
 readUnion = function(T, u, r, holder, key, depth) {
   if (depth + 1 > MAX_DEPTH) { r.bad = true; return false; }
   if (peek(r) != '{') { r.bad = true; return false; }
+  if (depth + 1 > MAX_DEPTH) { r.bad = true; return false; } // THE READ CAP COUNTS EVERY CONTAINER, placed or skipped (§16.2)
   r.p++;
   local inst = u.make();
   holder[key] = inst;

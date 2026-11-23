@@ -124,18 +124,20 @@ the program never started, which is a failure).
 | 2 | this backend does not implement it — the matrix prints ABSENT |
 | anything else | the driver failed; the matrix prints FAIL and the harness prints stderr |
 
-An expected semantic refusal scores PASS. A historical `.absent` file that
-names a reason may transport that refusal (the reason's text is not compared).
-An EMPTY `.absent` is the per-case absence below, a leg with no codec for the
-root: on a row that expects a refusal it counts absent, never PASS, so a leg
-that cannot read a root cannot pass the must-refuse rows on it. The other way
-round holds too: a `.absent` that names a reason is a refusal wherever it
-stands, so on a row that owes an answer (bytes, a golden, a verdict) it FAILS
-and never counts absent. A driver therefore tells a case's three endings
-apart by mechanism: no codec is the empty `.absent`; a present codec's public
-refusal is the refusal answer; anything else is a driver error, which names
-its case on stderr, lets the remaining cases run, and exits the surface
-non-zero.
+An expected semantic refusal scores PASS. **A refusal is spelled `refused` and
+a newline, in the file named by the case, on every read surface, the `wire`
+surface's `wire-refused` rows included.** A historical `.absent` file that
+names a reason may still transport that refusal (the reason's text is not
+compared). An EMPTY `.absent` is the per-case absence below, a leg with no
+codec for the root: on a row that expects a refusal it counts absent, never
+PASS, so a leg that cannot read a root cannot pass the must-refuse rows on it.
+The other way round holds too: a `.absent` that names a reason is a refusal
+wherever it stands, so on a row that owes an answer (bytes, a golden, a
+verdict) it FAILS and never counts absent. A driver therefore tells a case's
+three endings apart by mechanism: no codec is the empty `.absent`; a present
+codec's public refusal is the refusal answer; anything else is a driver error,
+which names its case on stderr, lets the remaining cases run, and exits the
+surface non-zero.
 
 **A refusal row and its accepted twin are one claim** (`harness/twins.go`).
 Per leg and per surface, when one half of a pair passes and the leg did not
@@ -148,8 +150,12 @@ shorter prefix of the refusal's name.
 **A CASE may be absent too, and it is said the same way.** A driver that
 cannot answer one case of a surface it otherwise implements writes
 `<case>.absent` — an empty file, beside where the answer would go — and the
-harness counts it. The cell then reads `pass 16/20 +4a`: what the leg answered
-out of every row sent, and how many it said it cannot. The distinction is the surface-level one at a
+harness counts it. **The marker is the ANSWER's file name with `.absent`
+appended**, so it is `<case>.absent` where the answer is `<case>`, and
+`<case>.json.absent` on the `json-write` surface, whose answer is
+`<case>.json`. Any other spelling is a driver that wrote nothing, which fails.
+The cell then reads `pass 16/20 +4a`: what the leg answered out of every row
+sent, and how many it said it cannot. The distinction is the surface-level one at a
 finer grain, and the corpus needed it the day it gained VARIABLE-class
 instances: a backend with no variable class still answers the wire surface over
 every FIXED instance, and a leg that failed the whole surface for them would say
@@ -291,6 +297,37 @@ One process per surface, so a runtime starts once rather than once per case.
 
 `wire` and `json-read` write a file named by the instance; `json-write` writes
 `<instance>.json`; the others write a file named by the case.
+
+**FOUR RULES A PORT READS HERE AND NOWHERE ELSE** (docs/SPEC-CONFORMANCE.md §7):
+
+- **The `framing` surface reads its root through the root's VARIABLE TWIN.**
+  Its vectors are form-`1` files, and every one names `tblr1 Cfg`, a declared
+  `fixed table`. A read at a fixed root refuses form `1` as `previous_form`
+  (docs/SPEC-TABLES.md §3.4), and the `report` rows `previous_form_*` hold
+  that, so the `framing` surface is NOT a read at the fixed root: the driver
+  reads the file as the variable class of the SAME declaration (same package,
+  fields, ids and defaults, the root's class variable), lands that value in
+  the fixed root's storage through its §16 text, and answers the fixed root's
+  own text and its form-`3` write-back in `<case>.wire`. The reference is the
+  Go driver's `tblr1CfgVariableLoad` (test/conformance/go/fixed.go) and the
+  harness's `framingVariableUnit` (harness/generate.go). Every other surface
+  reads a fixed root as a fixed root, and refuses form `1`.
+- **A fixed root's binary read takes a batch capacity of ONE on every surface
+  but `wire`.** The `report` and `framing` reads are single-value reads, so a file of two records refuses `batch_too_large`
+  (row `report fixedevo_v3_batch2`); the `wire` surface reads with room for
+  any batch the file holds.
+- **A fixed root's older layouts come from the unit's `schema.lock`.** The
+  lineage a read matches a file's hash against (docs/FIXED-FORM-ALGORITHM.md
+  §5.2-§5.3) is the `lineage` lines of the `schema.lock` beside the unit's
+  schema, read whole, oldest first, with the reader's own layout last; a port
+  compiles its plans from them (`COMPILE(lock, T)`) at generate time or at
+  load, its choice. Rows `report fixedevo_v1_as_v3` and `fixedevo_v2_as_v3`
+  read under `test/tables/fixedevo/schema.lock`.
+- **A port declares its gated keys by its answers.** A port outside the
+  repository has no entry in `compiler/carries.go`; a case whose unit uses a
+  key the port does not carry is answered ABSENT (`<case>.absent`, or the
+  surface exits 2), which `make conformance-port` counts as work not done
+  (`--complete`, docs/SPEC-CONFORMANCE.md §5) and never as a pass.
 
 **The four table-form `write-refusal` surfaces hold the write contract**
 (docs/SPEC.md §5.1): each row loads one wire, sets ONE field to a value its
@@ -944,8 +981,7 @@ counters. Native resource and allocator tests remain separate gates.
 
 The `wire-refused` instance marker specifies refusal for every port. Legacy
 `go-refusal=<reason>` and `refused-by=<ports>` spellings are accepted as
-compatibility metadata; they do not select a language or a shared reason. Drivers may emit `refused` or the historical `<case>.absent` file naming a
-reason; the reason's text is not compared. This expected semantic refusal
-scores PASS. An empty `<case>.absent` is a missing codec and counts absent.
+compatibility metadata; they do not select a language or a shared reason. Drivers emit `<case>` holding `refused` and a newline, or the historical `<case>.absent` file naming a reason; the
+`.absent` file's diagnostic text is ignored, and a `<case>` file holding anything but `refused` and a newline is value bytes and fails. This expected semantic refusal scores PASS. An empty `<case>.absent` is a missing codec and counts absent.
 Emitting value bytes, or emitting nothing at all, fails. An ordinary absence
 for a missing codec remains incomplete coverage.

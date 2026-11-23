@@ -2301,6 +2301,9 @@ function TableVariableJsonScalar(d, val, depth, g, out) {
     }
     case "bool": out.push(val ? "true" : "false"); return true;
     case "float": {
+      // a float32 field holds its value at float32: a double past the float32
+      // range is refused, never written as a float64 token (SPEC-TABLES §16.3)
+      if (!TableVariableFiniteFloat(d.f32, val)) { return false; }
       if (!TableVariableFloatValid(d, val)) { return false; }
       const t = TableVariableFloatText(TableVariableStoredFloat(d, val), d.f32);
       if (t === null) { return false; }
@@ -2879,6 +2882,7 @@ function TableVariableZero(e) {
 // a null element of an array of pointers is a null slot (§16.2)
 function TableVariableTextArray(fd, inp, v, depth, graph, report) {
   if (inp.peek() !== "[") { inp.bad = true; return false; }
+  if (depth + 1 > 128) { inp.bad = true; return false; }
   inp.p++;
   const e = fd.e;
   const out = fd.fixed ? globalThis.Array.from({ length: fd.bound }, () => TableVariableZero(e)) : [];
@@ -2895,13 +2899,13 @@ function TableVariableTextArray(fd, inp, v, depth, graph, report) {
     const shape = inp.shape();
     if (placed >= bound) {
       report.oor++;
-      if (!inp.skip(depth + 1, graph, report)) { return false; }
+      if (!inp.skip(depth + 2, graph, report)) { return false; }
     } else if (e.s === "ptr" && shape === "z") {
       if (!inp.literal("null")) { return false; }
       out[placed++] = null;
     } else if (!TableVariableShapeMatches(e.js, shape)) {
       report.mismatch++;
-      if (!inp.skip(depth + 1, graph, report)) { return false; }
+      if (!inp.skip(depth + 2, graph, report)) { return false; }
       out[placed++] = TableVariableZero(e);
     } else {
       out[placed] = TableVariableZero(e);
@@ -2987,6 +2991,7 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
     }
     case "flags": {
       if (inp.peek() !== "[") { inp.bad = true; return false; }
+      if (depth + 1 > 128) { inp.bad = true; return false; }
       inp.p++;
       let mask = 0n;
       for (;;) {
@@ -2995,7 +3000,7 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
         if (ch === "") { inp.bad = true; return false; }
         if (inp.shape() !== "s") {
           report.mismatch++;
-          if (!inp.skip(depth + 1, graph, report)) { return false; }
+          if (!inp.skip(depth + 2, graph, report)) { return false; }
         } else {
           const s = inp.name();
           if (s === null) { return false; }

@@ -1552,6 +1552,7 @@ recursive fn jr_array(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
     guard e else { return json_fail(c.jr); }
     if depth + 1 > JsonMaxDepth { return json_fail(c.jr); }
     if !json_expect(c.jr, '[') { return false; }
+    if depth + 1 > JsonMaxDepth { return json_fail(c.jr); }
     let bound = if d.array == ArrayList { 0x7FFFFFFF } else { d.bound };
     let shape = jr_shape(c, e, owner, ord, true);
     let mark = c.scratch.len;
@@ -1613,6 +1614,7 @@ fn jr_text_list(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i64) 
     let fd = c.unit.tables[et].fields[0];
     if depth + 1 > JsonMaxDepth { return json_fail(c.jr); }
     if !json_expect(c.jr, '[') { return false; }
+    if depth + 1 > JsonMaxDepth { return json_fail(c.jr); }
     let bound = if d.array == ArrayList { 0x7FFFFFFF } else { d.bound };
     let mark = c.scratch.len;
     var placed: i64 = 0;
@@ -1686,6 +1688,7 @@ recursive fn jr_keyed(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], ord: i
     guard e else { return json_fail(c.jr); }
     if depth + 1 > JsonMaxDepth { return json_fail(c.jr); }
     if !json_expect(c.jr, '{') { return false; }
+    if depth + 1 > JsonMaxDepth { return json_fail(c.jr); }
     let keys = jv_keys(c.unit, owner, d);
     let shape = jr_shape(c, e, owner, ord, true);
     jr_collection(c, s, d, c.scratch.len, 0);
@@ -1797,6 +1800,7 @@ recursive fn jr_map(c: JvIn&, s: i64, d: FieldDesc, owner: const u8[:], depth: i
     if et < 0 { return json_fail(c.jr); }
     if depth + 1 > JsonMaxDepth { return json_fail(c.jr); }
     if !json_expect(c.jr, '{') { return false; }
+    if depth + 1 > JsonMaxDepth { return json_fail(c.jr); }
     let kd = c.unit.tables[et].fields[0];
     let vd = c.unit.tables[et].fields[1];
     let ename = c.unit.tables[et].name;
@@ -2044,6 +2048,7 @@ fn jr_place_wide(c: JvIn&, s: i64, d: FieldDesc, pure: bool, tok: const u8[:]) -
 recursive fn jr_union(c: JvIn&, s: i64, name: const u8[:], depth: i64) -> bool {
     if depth + 1 > JsonMaxDepth { return json_fail(c.jr); }
     if !json_expect(c.jr, '{') { return false; }
+    if depth + 1 > JsonMaxDepth { return json_fail(c.jr); }
     let u = jv_union(c.unit, name);
     if u < 0 { return json_fail(c.jr); }
     c.vals[s] = LoadVal { shape: ShapeUnion, state: ValEmpty, tab: u, first: -1, .. };

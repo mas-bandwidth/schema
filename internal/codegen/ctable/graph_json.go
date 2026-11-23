@@ -125,7 +125,8 @@ static SCHEMA_UNUSED SCHEMA_JSON_NOINLINE int table_json_read_pointer( TableJson
 {
     TableJsonGraphIn * graph = (TableJsonGraphIn *)in->graph;
     TableJsonGraphEntry * entry;
-    char key[kTableJsonMaxKey], c;
+    char * key = in->key_buf;
+    char c;
     int32_t length = 0;
     int64_t quote;
     uint64_t label = 0;
