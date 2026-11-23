@@ -401,7 +401,10 @@ func workflowSteps(root string) ([]ciStep, error) {
 		if err != nil {
 			return nil, err
 		}
-		rel, _ := filepath.Rel(root, p)
+		rel, err := filepath.Rel(root, p)
+		if err != nil {
+			return nil, err
+		}
 		parsed, err := parseWorkflowContent(rel, string(b))
 		if err != nil {
 			return nil, fmt.Errorf("parsing %s: %w", rel, err)

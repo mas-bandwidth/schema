@@ -312,7 +312,7 @@ func TestCTableRefOrdinalBytes(t *testing.T) {
 	// the runtime the emitter grew for THIS schema has to carry the cache at
 	// all, or the comparison below would pass by measuring nothing. Not while
 	// PINNING: the pin is taken from the emitter that had no cache.
-	if os.Getenv("SCHEMA_UPDATE_CREFORDINAL_GOLDEN") != "1" {
+	if !slowtest.Rewriting(t, "SCHEMA_UPDATE_CREFORDINAL_GOLDEN") {
 		header := string(files["ProbeTable.h"])
 		for _, want := range []string{
 			"int32_t slot[",
@@ -332,7 +332,7 @@ func TestCTableRefOrdinalBytes(t *testing.T) {
 	}
 	out := runCRefOrdinal(t, files, cRefOrdinalDriver(), "crefordinal", "the save path refused its own value")
 	golden := filepath.Join("testdata", "crefordinal", "golden.txt")
-	if os.Getenv("SCHEMA_UPDATE_CREFORDINAL_GOLDEN") == "1" {
+	if slowtest.Rewriting(t, "SCHEMA_UPDATE_CREFORDINAL_GOLDEN") {
 		if err := os.MkdirAll(filepath.Dir(golden), 0755); err != nil {
 			t.Fatal(err)
 		}
