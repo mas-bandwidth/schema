@@ -343,7 +343,7 @@ committed rule and say what the repository does today.
 | a range tightened | refuses `out_of_range` where a stored value is past it | warns | moves |
 | a field's kind changed (`T`→`*T`, `string`→`bytes`, `int64`→`int32`) | refuses `kind_mismatch` | **refuses** | moves |
 | a field's kind WIDENED (`int32`→`int64`, `uint8`→`uint32`, `bits(8)`→`bits(9)`, `float32`→`float64`) | `widened`, and the value decodes exactly (SPEC-TABLES.md §4) | **passes**: a widening, and the new reader reads every old value exactly; an OLD build given the new file stops on it, `kind_mismatch` by name, which is lawful and never promised to work (R17; SPEC-TABLES.md §4 THE ONE WIDENING RULE, §18.2) | moves |
-| `T`→`?T` | nothing: non-default content shares bytes, and a present field at its defaults reads (SPEC-TABLES.md §4.1) | passes: a widening, and every old value lands present (SPEC-TABLES.md §4 THE ONE WIDENING RULE, §18.2) | moves (the presence flag is storage) |
+| `T`→`?T` | nothing: non-default content shares bytes, and a present field at its defaults reads (SPEC-TABLES.md §4.1) | passes: a widening, with presence determined by the form (SPEC-TABLES.md §4 THE ONE WIDENING RULE, §18.2) | moves (the presence flag is storage) |
 | `?T`→`T` | nothing on the variable form: one framing (the fixed form is SPEC-TABLES.md §3.4's) | **refuses**, naming the field: a narrowing, and once a field is optional it stays optional (R16; SPEC-TABLES.md §4 THE ONE WIDENING RULE, §18.2) | moves (the presence flag is storage) |
 | an enum variant added or removed | `unknown` where a stored name is gone | passes; warns on a removal | moves, and the protocol id with it where a `type` reaches the enum |
 | an enum variant reordered | nothing | passes | moves, and the protocol id with it where a `type` reaches the enum |
@@ -1182,8 +1182,9 @@ still open.
   is a kind change.
 - **Optional is a widening, and it runs one way** (R16, 2026-11-22: "once a
   field is optional, it must stay optional forever"). **`T`→`?T` passes the
-  baseline**: every old value lands present, so the new reader reads every
-  old file (SPEC-TABLES.md §2.3, §4.1). **`?T`→`T` is refused by the baseline**,
+  baseline**. A variable-form reader sets presence only when the old field
+  rode. A fixed-form reader sets presence for the old plain slot
+  (SPEC-TABLES.md §2.3, §3.4). **`?T`→`T` is refused by the baseline**,
   naming the field: it is a narrowing, the one the variable wire cannot see,
   so the check holds it (SPEC-TABLES.md §4 THE ONE WIDENING RULE, §18.2).
 - **A field whose type changed refuses the whole load** (R14, 2026-11-22):
