@@ -653,6 +653,12 @@ func gatherConformanceFixtures(root string) ([]wideFixture, error) {
 				// at the connection's unit
 				unit = connUnit[f[2]]
 				files = append(files, f[4])
+			case "read-into":
+				// The two operands of a JSON read-into row read the same
+				// declared root, including the input that expects refusal.
+				if len(f) >= 7 && f[4] == "json" {
+					files = append(files, f[5:7]...)
+				}
 			case "report":
 				files = append(files, dir+"/report-values/"+name+".json")
 			case "retain":
