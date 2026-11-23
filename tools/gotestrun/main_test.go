@@ -38,7 +38,7 @@ const passAndSlowSkip = `{"Action":"run","Package":"p/a","Test":"TestFast"}
 `
 
 // a skip for another reason (a missing tool) is the skip ledger's business,
-// not this one
+// not this one.
 const passAndToolSkip = `{"Action":"run","Package":"p/a","Test":"TestFast"}
 {"Action":"pass","Package":"p/a","Test":"TestFast"}
 {"Action":"run","Package":"p/a","Test":"TestCargo"}

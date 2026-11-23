@@ -343,6 +343,29 @@ func digest(answerHex string, packet bool) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
+// carriedFinding is one line of the findings file: the answer this port gives
+// the case today, `accept <digest>` or `refuse`, and one line saying why.
+type carriedFinding struct {
+	answer, text string
+}
+
+func (f carriedFinding) String() string { return f.text }
+
+// carries says whether the finding carries got: a refusal under `refuse`,
+// whatever its reason (docs/rulings.json refusal-verdict-only), or the very
+// accept and digest it records. Nothing else (F-070, F-079).
+func (f carriedFinding) carries(got string) bool {
+	if f.answer == "refuse" {
+		return strings.HasPrefix(got, "refuse ")
+	}
+	return got == f.answer
+}
+
+func validAnswer(a string) bool {
+	d, accept := strings.CutPrefix(a, "accept ")
+	return a == "refuse" || (accept && d != "" && !strings.ContainsAny(d, " \t"))
+}
+
 // answerOf is the runner's one-line answer for the program's line about a
 // case (a[0] the verdict, a[1] the hex text or the refusal's name), or for no
 // line at all.
@@ -380,9 +403,10 @@ func agrees(got, want string) bool {
 	return got == want
 }
 
-// readFindings: name<TAB>one line, `#` comments.
-func readFindings(path string) (map[string]string, error) {
-	out := map[string]string{}
+// readFindings: name<TAB>answer<TAB>one line, `#` comments. A finding carries
+// the answer it records and no other (F-079).
+func readFindings(path string) (map[string]carriedFinding, error) {
+	out := map[string]carriedFinding{}
 	if path == "" {
 		return out, nil
 	}
@@ -394,11 +418,11 @@ func readFindings(path string) (map[string]string, error) {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		name, text, ok := strings.Cut(line, "\t")
-		if !ok {
-			return nil, fmt.Errorf("%s: %q is not name<TAB>finding", path, line)
+		f := strings.SplitN(line, "\t", 3)
+		if len(f) != 3 || f[0] == "" || f[2] == "" || !validAnswer(f[1]) {
+			return nil, fmt.Errorf("%s: %q is not name<TAB>answer (accept <digest> or refuse)<TAB>finding", path, line)
 		}
-		out[name] = text
+		out[f[0]] = carriedFinding{f[1], f[2]}
 	}
 	return out, nil
 }
@@ -408,12 +432,21 @@ func main() {
 	units := flag.String("units", "build/lobster-hostile", "where each schema's unit is generated")
 	findingsPath := flag.String("findings", "test/conformance/lobster/hostile-known-findings.tsv", "the carried disagreements")
 	noGenerate := flag.Bool("no-generate", false, "run over the units already in --units")
+	absentPath := flag.String("absent-schemas", "test/conformance/lobster/hostile-absent-schemas.tsv", "the schemas the target refuses, held by name")
 	flag.Parse()
 
-	_, cases, err := hostilecorpus.LoadManifest(*corpus)
+	// THE LEDGER (internal/ci/hostilecorpus/ledger.go): the cases the Lobster
+	// reader answered against the cases the folder registers. A schema the
+	// target refuses is absent only when --absent-schemas names it.
+	cases, err := hostilecorpus.Registered(*corpus)
 	if err != nil {
 		fatalf("%v", err)
 	}
+	heldSchemas, err := hostilecorpus.LoadHeld(*absentPath)
+	if err != nil {
+		fatalf("%v", err)
+	}
+	ledger := hostilecorpus.NewLedger(cases)
 	findings, err := readFindings(*findingsPath)
 	if err != nil {
 		fatalf("%v", err)
@@ -460,12 +493,18 @@ func main() {
 		if why, no := absent[c.Schema]; no {
 			missing++
 			fmt.Printf("ABSENT %s carrier=%s: %s\n", c.Name, c.Carrier, why)
+			if held, ok := heldSchemas[c.Schema]; ok {
+				ledger.Skipped(c.Name, held)
+			}
 			if finding, owed := findings[c.Name]; owed {
 				stale = append(stale, fmt.Sprintf("STALE FIX-CARD %s: the case is absent; delete its line (%s)", c.Name, finding))
 			}
 			continue
 		}
 		a, ok := answers[c.Schema][c.Name]
+		if ok {
+			ledger.Ran(c.Name)
+		}
 		got, want := answerOf(a, ok, c.Carrier == "packet"), expected(c)
 		finding, owed := findings[c.Name]
 		switch {
@@ -474,7 +513,11 @@ func main() {
 		case agrees(got, want):
 			pass++
 			fmt.Printf("PASS %s\n", c.Name)
-		case owed:
+		// A FINDING CARRIES THE ANSWER IT RECORDS, and no other: never an
+		// execution failure (F-070: no answer, a digest that failed, an
+		// answer that is neither an accept nor a refusal), and never a
+		// different verdict or digest (F-079).
+		case owed && ok && finding.carries(got):
 			carried++
 			fmt.Printf("FIX-CARD %s carrier=%s: %s (got %s, want %s)\n", c.Name, c.Carrier, finding, got, want)
 		default:
@@ -488,7 +531,19 @@ func main() {
 		fmt.Println(line)
 	}
 	fmt.Printf("lobster hostile corpus: %d pass, %d carried, %d absent, %d fail, %d stale, of %d cases\n", pass, carried, missing, len(bad), len(stale), len(cases))
-	if len(bad) > 0 || len(stale) > 0 {
+	for schema := range heldSchemas {
+		if _, no := absent[schema]; !no {
+			stale = append(stale, schema)
+			fmt.Printf("STALE %s: %s holds a schema the target generates, or the corpus no longer names: delete its line\n", schema, *absentPath)
+		}
+	}
+	lerr := ledger.Check()
+	if lerr != nil {
+		fmt.Printf("FAIL lobster %v\n", lerr)
+	} else {
+		fmt.Printf("lobster hostile-corpus ledger: %s\n", ledger.Summary())
+	}
+	if len(bad) > 0 || len(stale) > 0 || lerr != nil {
 		os.Exit(1)
 	}
 }

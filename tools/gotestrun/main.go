@@ -26,6 +26,9 @@
 // to hold a test; without it the count is over the whole run, which is what a
 // -run pattern aimed at one package needs.
 //
+// Every run is uncached (-count=1 unless the caller names a -count): a cached
+// pass is not a run of the test.
+//
 // A trailing summary line is always printed: "gotestrun: ran N, passed P,
 // skipped S, failed F across K package(s)".
 package main
@@ -40,6 +43,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -170,6 +174,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 			_, _ = fmt.Fprintf(stderr, "gotestrun: %s is not for this wrapper (it already runs go test -json)\n", a)
 			return 2
 		}
+	}
+	// a cached pass is not a run: a test that hands its input to a subprocess
+	// is not keyed on that input, so without -count=1 a stale "ok (cached)"
+	// stands after the input changed. A -count the caller named is kept.
+	if !slices.ContainsFunc(args, func(a string) bool {
+		n, _, _ := strings.Cut(strings.TrimLeft(a, "-"), "=")
+		return strings.HasPrefix(a, "-") && n == "count"
+	}) {
+		args = append([]string{"-count=1"}, args...)
 	}
 	cmd := exec.Command("go", append([]string{"test", "-json"}, args...)...)
 	cmd.Stderr = stderr

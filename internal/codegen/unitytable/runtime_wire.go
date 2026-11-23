@@ -1416,7 +1416,7 @@ internal static partial class TableWire
         }
         if (!terminated || versions != 1 || vocabularies != 1) { Damage(report); return Finish(report, Verdict.Damaged); }
         // "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3): refused
-        // by name, the peer's build version kept, no vocabulary set, never damage.
+        // by name, the writer's build version kept, no vocabulary set, never damage.
         if (v.Strict && v.BuildVersion != tableOwnVocabulary.BuildVersion)
         {
             report.BuildVersionRemote = v.BuildVersion; report.BuildVersionOwn = tableOwnVocabulary.BuildVersion;

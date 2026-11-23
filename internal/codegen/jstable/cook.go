@@ -575,7 +575,7 @@ func (g *cookGen) emitOpen(st *ir.Struct, ml *ir.MemberLayout, align int64) {
 	g.pf("      const alignment = new globalThis.DataView(bytes.buffer, bytes.byteOffset, bytes.length).getBigUint64(40, true);\n")
 	g.pf("      throw new globalThis.RangeError(\"%sCook.Open: the view starts \" + bytes.byteOffset + \" bytes into its ArrayBuffer, and this cook's base \" +\n", st.Name)
 	g.pf("        \"must be a multiple of \" + alignment + \" (docs/SPEC-TABLES.md §7.1) — a pooled Node Buffer starts anywhere; copy the bytes \" +\n")
-	g.pf("        \"into a fresh Uint8Array first: new globalThis.Uint8Array(bytes)\");\n")
+	g.pf("        \"into a fresh Uint8Array first: new Uint8Array(bytes)\");\n")
 	g.pf("    }\n")
 	g.pf("    return typeof handle === \"string\" ? null : handle;\n")
 	g.pf("  }\n\n")

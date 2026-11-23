@@ -757,7 +757,7 @@ def _read_value(reader: BitReader, field: object, shape: Shape, vocab: MessageVo
         if value < fd.fmin or value > fd.fmax:
             raise Refused("out_of_range", fd.name)
         if value == 0:
-            # A compressed float's -0 is +0 (SPEC-TABLES §3.3), whatever the peer announced.
+            # A compressed float's -0 is +0 (SPEC-TABLES §3.3), whatever the writer announced.
             return 0.0
     return value
 
