@@ -317,7 +317,7 @@ u_pick	builds	-	a union named in lowercase: Ruby spells it Pick, its tag module 
 tb_fleet	builds	-	a table named in lowercase: Ruby spells it Fleet
 tb_max_items	builds	-	tables named in snake case, one holding the other: Ruby spells them MaxItemsTable and FleetRoot
 t_a_b_AB	refuse-at-check	Ruby	types a_b and AB: Ruby spells both AB (the Rust and C forms a_b and ab differ)
-t_integer	refuse-at-check	Ruby	a type named integer: Ruby spells it Integer, the core constant
+t_integer_lowercase	refuse-at-check	Ruby	a type named integer: Ruby spells it Integer, the core constant
 u_beacon_BeaconType	refuse-at-check	Ruby	union beacon beside type BeaconType: the union's Ruby tag module is BeaconType
 b_UnitView_tables	refuse-at-check	Python	a file UnitView.schema in a unit with tables: the Python view surface exports UnitView from the package
 c_kind_Kind	refuse-at-check	the C target	Kind and kind are both probe_kind_t
