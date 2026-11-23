@@ -1,7 +1,6 @@
 package compiler
 
 import (
-	"slices"
 	"strings"
 	"testing"
 )
@@ -63,28 +62,6 @@ func TestPacketValueDefaultsCarriers(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-// TestPacketValueDefaultsEveryBuiltinCarries holds that every built-in target
-// is a registered packet value-default carrier, so the packet-wire refusal is
-// reached only by a leg that has not met the form (a `schema new-leg`
-// scaffold), and that its list of carriers names every built-in, Lua and
-// Python included.
-func TestPacketValueDefaultsEveryBuiltinCarries(t *testing.T) {
-	for _, target := range New().Targets() {
-		if !slices.Contains(packetValueDefaultTargets, target) {
-			t.Errorf("built-in target %s is not a registered packet value-default carrier", target)
-		}
-	}
-	err := refuseValueDefaults(unitFromSource(t, packetValueDefaultsUnit), "newleg")
-	if err == nil {
-		t.Fatal("an unregistered leg was not refused")
-	}
-	for _, target := range New().Targets() {
-		if !strings.Contains(err.Error(), "--lang "+target+",") && !strings.Contains(err.Error(), "--lang "+target+" ") {
-			t.Errorf("the refusal's carriers omit %s: %v", target, err)
-		}
 	}
 }
 

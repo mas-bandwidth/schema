@@ -63,6 +63,24 @@ that count. The reader checks the final five bits as padding. An API that
 reports bits consumed reports **3** after success. The C++ reference
 driver asserts the value and count in [`make packet-end-cpp`](../test/packet-end/cpp/main.cpp).
 
+### Python packet defaults and hosted packet items
+
+[SPEC §4.2](SPEC.md#42-grammar) requires declared string, bytes and flags
+defaults to initialize packet storage. These fields still ride on the wire.
+[SPEC §4.8](SPEC.md#48-unions--union-first-class-one-of-fields) applies the
+construction rule when a packet union arm is selected. The shared
+[packet-defaults pins](../testdata/wire/packet-defaults) `sample-defaults`,
+`sample-empty`, and `choice-sample` hold the bytes and logical bit count.
+`make packet-defaults-python` runs these pins. The public Python compiler
+entry is covered by `TestPythonDriverCarriesPacketValueDefault`.
+
+[SPEC §4.3](SPEC.md#43-field-types-and-their-wire-encodings) also requires
+packet `const`, `reserved`, and `align` items when a unit declares tables.
+They occupy packet bits and contribute no table field. The
+[hosted packet probe](../internal/codegen/pythontable/hosted_items_test.go)
+checks this distinction in `TestPythonTableHostedPacketItemsGenerate` and
+`TestPythonTableHostedPacketItems`.
+
 ## 2. The surfaces
 
 A surface is one question put to every case of the corpus that applies to it.
