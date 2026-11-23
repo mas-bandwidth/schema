@@ -49,7 +49,7 @@ func writeVariableMapHelpers(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		fmt.Fprintf(b, "    static int compare_%s(%s a, %s b) { return %s; }\n", m, entry, entry, compare)
 		fmt.Fprintf(b, "    static java.util.List<%s> order_%s(java.util.List<%s> entries) {\n", entry, m, entry)
 		fmt.Fprintf(b, "        java.util.TreeMap<%s,%s> ordered = new java.util.TreeMap<>(%sVariable::compare_%s);\n", entry, entry, st.Name, m)
-		fmt.Fprintf(b, "        for (%s entry : entries) ordered.put(entry,entry);\n        return new java.util.ArrayList<>(ordered.values());\n    }\n", entry)
+		fmt.Fprintf(b, "        for (%s entry : entries) { if (ordered.put(entry,entry) != null) return null; }\n        return new java.util.ArrayList<>(ordered.values());\n    }\n", entry)
 		if unitCarriesForm(u, "json") {
 			fmt.Fprintf(b, "    static void jsonMapValue_%s(java.lang.StringBuilder b, TableVariable.NodeGraph graph, %s v, int depth) {\n", m, entry)
 			writeJsonFieldValue(b, u, f.MapEntry, variableStruct(f.MapEntry).Fields[1])
@@ -98,7 +98,7 @@ func writeJsonMapValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fiel
 	m := varMember(f)
 	entry := f.MapEntry.Name + "Variable.Value"
 	key := ir.MapKeyField(f)
-	fmt.Fprintf(b, "        { java.util.List<%s> entries = "+st.Name+"Variable.order_%s(v.%s); b.append('{'); for(int i=0;i<entries.size();i++) { if(i>0)b.append(','); TableJson.indent(b,depth+1); %s entry=entries.get(i);\n", entry, m, m, entry)
+	fmt.Fprintf(b, "        { java.util.List<%s> entries = "+st.Name+"Variable.order_%s(v.%s); if(entries==null)throw new TableJson.Refused(\"duplicate_map_key\"); b.append('{'); for(int i=0;i<entries.size();i++) { if(i>0)b.append(','); TableJson.indent(b,depth+1); %s entry=entries.get(i);\n", entry, m, m, entry)
 	keyText := "java.lang.Integer.toString(entry.key)"
 	switch {
 	case key.Type.Kind == ir.TString:

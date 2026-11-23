@@ -10,15 +10,23 @@ import (
 
 func (g *tableGen) emitMessages() {
 	g.tf("%s", tableMessageTypes)
-	g.pf("public static int AnnounceMeasure() { return tableAnnouncement.Length; }\npublic static ReadOnlySpan<byte> Announce() { return tableAnnouncement; }\n")
+	g.pf("public static int AnnounceMeasure() { return tableAnnouncement.Length == 0 ? -1 : tableAnnouncement.Length; }\npublic static ReadOnlySpan<byte> Announce() { return tableAnnouncement; }\n")
 	g.pf("public static TableWire.Verdict AnnounceRead(TableVocabulary vocabulary, ReadOnlySpan<byte> bytes, TableReport report) { return TableWire.AnnounceRead(vocabulary, bytes, report); }\n")
 }
 
 // Unit-specific announcement bytes live beside region metadata; the shared
 // table runtime stays byte-identical when another source file joins the unit.
 func (g *tableGen) emitMessageVocabulary() {
-	g.pf("static readonly byte[] tableAnnouncement = new byte[] { %s };\n", byteLiterals(tablewire.Announce(g.unit)))
-	g.pf("static readonly TableVocabulary tableOwnVocabulary = TableWire.OwnVocabulary(tableAnnouncement);\n\n")
+	var ann []byte
+	if len(tablewire.MessageVocabulary(g.unit)) <= ir.TableVocabularyMaxEntries {
+		ann = tablewire.Announce(g.unit)
+	}
+	g.pf("static readonly byte[] tableAnnouncement = new byte[] { %s };\n", byteLiterals(ann))
+	if len(ann) == 0 {
+		g.pf("static readonly TableVocabulary tableOwnVocabulary = new TableVocabulary { BuildVersion = 0x%016xul };\n\n", ir.BuildVersion(g.unit))
+	} else {
+		g.pf("static readonly TableVocabulary tableOwnVocabulary = TableWire.OwnVocabulary(tableAnnouncement);\n\n")
+	}
 }
 
 // messageClosure names what the message form is emitted for: every fixed
@@ -375,6 +383,11 @@ const tableMessageSource = `
             return;
         }
         UInt128 bits = f.GetWide != null ? f.GetWide(value, i) : f.GetBuffer != null ? f.GetBuffer(value)[i] : f.GetRaw(value, i);
+        if (f.EnumName != null && f.VariantId == null)
+        {
+            ulong mask = f.EnumMax >= 63 ? ulong.MaxValue : f.EnumMax < 0 ? 0UL : ((1UL << (int)(f.EnumMax + 1)) - 1UL);
+            System.Diagnostics.Debug.Assert(((ulong)bits & ~mask) == 0);
+        }
         if (f.Kind == 10 && shape.Packing == 2)
         {
             float normalized = (TableBitsToFloat((uint)bits) - shape.QMin) / shape.Delta;

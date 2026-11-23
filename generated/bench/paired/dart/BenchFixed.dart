@@ -2496,13 +2496,15 @@ class TableReport {
 }
 
 /// "The ANNOUNCEMENT IS A COMPILE-TIME CONSTANT BYTE ARRAY WITH A LENGTH."
-/// (§3.3) — the length, emitted beside the bytes.
-int announceMeasure() => tableAnnouncementLength;
+/// (§3.3) — the length, emitted beside the bytes, or -1 when the vocabulary
+/// exceeds the 4096-entry ceiling.
+int announceMeasure() => tableAnnouncementLength == 0 ? -1 : tableAnnouncementLength;
 
 /// Copies the compiled announcement into the caller's buffer and answers its
-/// length, or -1 when the buffer is too small. Nothing here allocates.
+/// length, or -1 when the buffer is too small or the vocabulary exceeds the
+/// 4096-entry ceiling. Nothing here allocates.
 int announce(Uint8List buffer) {
-  if (buffer.length < tableAnnouncementLength) {
+  if (tableAnnouncementLength == 0 || buffer.length < tableAnnouncementLength) {
     return -1;
   }
   buffer.setRange(0, tableAnnouncementLength, tableAnnouncement);
@@ -3193,6 +3195,12 @@ int tableMessageBatchOpen(
   TableReport report,
   TableMessageReader r,
 ) {
+  report.refused = false;
+  report.reason = '';
+  report.unknown = 0;
+  report.widened = 0;
+  report.buildVersionRemote = 0;
+  report.buildVersionOwn = 0;
   report.nonFiniteFloat = ''; // this read's own refusal (§3.3)
   if (data.length == 0) { report.Damage(); return -1; }
   if (data[0] != 2) { report.Refuse('newer_form'); return -1; }
@@ -3634,6 +3642,7 @@ bool mixedEntitySaveMessageBody(TableBitWriter w, MixedEntity value) {
   {
     if (value.damage != 0) {
       w.put(42, tableMessageRefBits);
+      assert((value.damage & ~255) == 0);
       w.put(value.damage - 0, 8);
     }
   }

@@ -432,7 +432,7 @@ namespace SchemaUnityConformance
                             verdict = WriteRefusalCookVerdict(codec, value, f[1]);
                             break;
                         case "write-refusal-block":
-                            verdict = WriteRefusalBlockVerdict(codec, f[1]);
+                            verdict = WriteRefusalBlockVerdict(codec, value, f[1]);
                             break;
                         default:
                             verdict = WriteRefusalBinaryVerdict(() => codec.VariableSave(value, buffer));

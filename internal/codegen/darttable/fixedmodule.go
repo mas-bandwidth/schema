@@ -10,6 +10,7 @@ package darttable
 
 import (
 	"fmt"
+	"math/big"
 	"sort"
 	"strings"
 
@@ -24,11 +25,14 @@ import (
 func generateFixedFiles(u *ir.Unit, wide []string, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
 	out := map[string][]byte{}
 	roots := map[string][]*ir.Struct{}
+	msgRoots := map[string][]*ir.Struct{}
 	any := false
 	for _, f := range u.Files {
 		rs := fixedRoots(f.Tables)
+		ms := messageOnlyRoots(f.Tables)
 		roots[f.Base] = rs
-		if len(rs) > 0 {
+		msgRoots[f.Base] = ms
+		if len(rs) > 0 || len(ms) > 0 {
 			any = true
 		}
 	}
@@ -36,16 +40,27 @@ func generateFixedFiles(u *ir.Unit, wide []string, lineage map[string][]FixedLin
 		return out, nil
 	}
 	home := runtimeHome(u)
+	blocks := declaredBlocks(u)
 
 	// THE CLOSURE OF EVERY ROOT OF THE UNIT, ordered so a nested type's
 	// helpers are emitted before the type that uses them. They land in the
 	// home and nowhere else: a nested type is often declared in a file of
 	// `type`s alone, which gets no fixed surface of its own, and a consumer
 	// would then import a helper nothing emitted.
+	seenFixed := map[string]bool{}
+	var fixedClosure []*ir.Struct
+	for _, f := range u.Files {
+		for _, st := range roots[f.Base] {
+			fixedCollectTypes(st, seenFixed, &fixedClosure)
+		}
+	}
 	seen := map[string]bool{}
 	var closure []*ir.Struct
 	for _, f := range u.Files {
 		for _, st := range roots[f.Base] {
+			fixedCollectTypes(st, seen, &closure)
+		}
+		for _, st := range msgRoots[f.Base] {
 			fixedCollectTypes(st, seen, &closure)
 		}
 	}
@@ -64,19 +79,19 @@ func generateFixedFiles(u *ir.Unit, wide []string, lineage map[string][]FixedLin
 
 	homeWritten := false
 	for _, f := range u.Files {
-		if len(roots[f.Base]) == 0 && f.Base != home {
+		if len(roots[f.Base]) == 0 && len(msgRoots[f.Base]) == 0 && f.Base != home {
 			continue
 		}
-		g := newFixedModule(u, f, f.Base, f.Base == home, home, wide, mine, lineage)
-		g.emit(closure, roots[f.Base], f.Tables)
+		g := newFixedModule(u, f, f.Base, f.Base == home, home, wide, mine, lineage, blocks)
+		g.emit(fixedClosure, closure, roots[f.Base], msgRoots[f.Base], f.Tables)
 		if g.home {
 			homeWritten = true
 		}
 		out[f.Base+"Fixed.dart"] = g.assemble()
 	}
 	if !homeWritten {
-		g := newFixedModule(u, nil, home, true, home, wide, mine, lineage)
-		g.emit(closure, nil, nil)
+		g := newFixedModule(u, nil, home, true, home, wide, mine, lineage, blocks)
+		g.emit(fixedClosure, closure, nil, nil, nil)
 		out[home+"Fixed.dart"] = g.assemble()
 	}
 	return out, nil
@@ -91,6 +106,7 @@ type fixedModule struct {
 	wide     []string
 	mine     map[string]bool                // the classes this emitter writes itself
 	lineage  map[string][]FixedLineageEntry // the locked layouts, oldest first (§5.2)
+	blocks   *ir.BlockUnit
 	imports  map[string]map[string]bool
 	gen      fixedGen
 	loopSeq  int
@@ -98,9 +114,9 @@ type fixedModule struct {
 }
 
 func newFixedModule(u *ir.Unit, f *ir.File, base string, home bool, homeBase string,
-	wide []string, mine map[string]bool, lineage map[string][]FixedLineageEntry) *fixedModule {
+	wide []string, mine map[string]bool, lineage map[string][]FixedLineageEntry, blocks *ir.BlockUnit) *fixedModule {
 	g := &fixedModule{unit: u, file: f, base: base, home: home, homeBase: homeBase,
-		wide: wide, mine: mine, lineage: lineage, imports: map[string]map[string]bool{}}
+		wide: wide, mine: mine, lineage: lineage, blocks: blocks, imports: map[string]map[string]bool{}}
 	g.gen.unit = u
 	g.gen.need = g.needClass
 	g.gen.needTag = func(union string) {
@@ -296,7 +312,7 @@ func fixedLocalUnions(closure []*ir.Struct) []*ir.Union {
 	return out
 }
 
-func (g *fixedModule) emit(closure, roots, tables []*ir.Struct) {
+func (g *fixedModule) emit(fixedClosure, closure, roots, msgRoots, tables []*ir.Struct) {
 	if g.home {
 		g.pf("%s\n", fixedRuntime)
 		g.pf("%s", integrityRuntime(g.unit))
@@ -319,7 +335,7 @@ func (g *fixedModule) emit(closure, roots, tables []*ir.Struct) {
 				g.gen.need(st.Name)
 			}
 		}
-		for _, st := range closure {
+		for _, st := range fixedClosure {
 			g.gen.emitWriteBody(st)
 			g.gen.emitDecodeBody(st)
 			g.gen.emitFiniteBody(st)
@@ -341,6 +357,10 @@ func (g *fixedModule) emit(closure, roots, tables []*ir.Struct) {
 	}
 	for _, st := range roots {
 		g.emitRoot(st)
+	}
+	for _, st := range msgRoots {
+		g.emitMessageBatch(st)
+		g.emitBlockBuild(st)
 	}
 }
 
@@ -829,6 +849,160 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	// THE MESSAGE FORM'S BATCH SURFACE (§3.3), beside the fixed form's: a
 	// fixed root's is the unit whose batch verbs are emitted.
 	g.emitMessageBatch(st)
+	g.emitBlockBuild(st)
+}
+
+func (g *fixedModule) blockFor(name string) *ir.BlockLayout {
+	if g.blocks == nil {
+		return nil
+	}
+	for _, bl := range g.blocks.Tables {
+		if bl.Table.Name == name {
+			return bl
+		}
+	}
+	return nil
+}
+
+// emitBlockBuild emits <lower>BlockBuild(Uint8List bytes, int base, <Name> value),
+// which validates every field of value against the write contract (SF-31,
+// SPEC §5.1) before writing the block prologue and triples, returning the used
+// byte count or -1 on refusal without touching bytes.
+func (g *fixedModule) emitBlockBuild(st *ir.Struct) {
+	bl := g.blockFor(st.Name)
+	if bl == nil {
+		return
+	}
+	lower := lowerFirst(st.Name)
+	g.needHome(st.Name, "tableBuildVersion")
+	g.emitFn("int", lower+"BlockBuild", []string{"Uint8List bytes", "int base", st.Name + " value"})
+	g.pf("  if (base < 0 || base %% %d != 0 || bytes.length - base < %d) return -1;\n", ir.BlockAlign, bl.MaxBytes)
+	g.emitBlockValidateStruct(st, "value", "  ", 0)
+	g.pf("  final view = ByteData.view(bytes.buffer, bytes.offsetInBytes, bytes.lengthInBytes);\n")
+	g.pf("  view.setUint64(base, 0x4b4c42414d484353, Endian.little);\n")
+	g.pf("  view.setUint64(base + 8, tableBuildVersion, Endian.little);\n")
+	g.pf("  view.setUint64(base + 16, 1, Endian.little);\n")
+	g.pf("  var offset = %d;\n", bl.Projection.Size)
+	for _, a := range bl.Arrays {
+		field := dartName(a.Field.Name) + "Count"
+		alignment := int64(ir.BlockAlign)
+		if a.ElemAlign() > alignment {
+			alignment = a.ElemAlign()
+		}
+		g.pf("  offset = (offset + %d) & ~%d;\n", alignment-1, alignment-1)
+		g.pf("  view.setUint64(base + %d, offset, Endian.little);\n", a.OffsetOfOffset)
+		g.pf("  view.setUint32(base + %d, value.%s, Endian.little);\n", a.CountOffset, field)
+		g.pf("  view.setUint32(base + %d, %d, Endian.little);\n", a.StrideOffset, a.Stride)
+		g.pf("  offset += value.%s * %d;\n", field, a.Stride)
+	}
+	g.pf("  return (offset + %d) & ~%d;\n}\n\n", ir.BlockAlign-1, ir.BlockAlign-1)
+}
+
+func (g *fixedModule) emitBlockValidateStruct(st *ir.Struct, val, ind string, depth int) {
+	for _, f := range st.Fields {
+		if f.Type.Optional {
+			g.pf("%sif (%s.%sPresent) {\n", ind, val, dartName(f.Name))
+			g.emitBlockValidateField(f, val+"."+dartName(f.Name), ind+"  ", depth)
+			g.pf("%s}\n", ind)
+		} else {
+			g.emitBlockValidateField(f, val+"."+dartName(f.Name), ind, depth)
+		}
+	}
+}
+
+func (g *fixedModule) emitBlockValidateField(f *ir.Field, expr, ind string, depth int) {
+	switch {
+	case f.Type.Kind == ir.TString:
+		g.needHome("tableFixedTextIllFormed", "TableFixedOp")
+		g.pf("%sif (%sLength < 0 || %sLength > %d || %sLength > %s.length || tableFixedTextIllFormed(TableFixedOp.textUtf8, %sLength, %s, 0)) return -1;\n",
+			ind, expr, expr, f.Type.Size, expr, expr, expr, expr)
+	case f.Type.Kind == ir.TBytes:
+		g.pf("%sif (%sLength < 0 || %sLength > %d || %sLength > %s.length) return -1;\n",
+			ind, expr, expr, f.Type.Size, expr, expr)
+	case f.KeyEnum != "":
+		iv := fmt.Sprintf("i%d", depth)
+		g.pf("%sif (%s.length != %d) return -1;\n", ind, expr, f.KeyEnumRef.Max)
+		g.pf("%sfor (var %s = 0; %s < %d; %s++) {\n", ind, iv, iv, f.KeyEnumRef.Max, iv)
+		g.emitBlockValidateElem(f, fmt.Sprintf("%s[%s]", expr, iv), ind+"  ", depth+1)
+		g.pf("%s}\n", ind)
+	case f.Array == ir.ArrayFixed:
+		iv := fmt.Sprintf("i%d", depth)
+		g.pf("%sif (%s.length != %d) return -1;\n", ind, expr, f.ArrayBound)
+		g.pf("%sfor (var %s = 0; %s < %d; %s++) {\n", ind, iv, iv, f.ArrayBound, iv)
+		g.emitBlockValidateElem(f, fmt.Sprintf("%s[%s]", expr, iv), ind+"  ", depth+1)
+		g.pf("%s}\n", ind)
+	case f.Array == ir.ArrayCounted:
+		iv := fmt.Sprintf("i%d", depth)
+		g.pf("%sif (%sCount < %d || %sCount > %d || %sCount > %s.length) return -1;\n",
+			ind, expr, f.ArrayMin, expr, f.ArrayBound, expr, expr)
+		g.pf("%sfor (var %s = 0; %s < %sCount; %s++) {\n", ind, iv, iv, expr, iv)
+		g.emitBlockValidateElem(f, fmt.Sprintf("%s[%s]", expr, iv), ind+"  ", depth+1)
+		g.pf("%s}\n", ind)
+	default:
+		g.emitBlockValidateElem(f, expr, ind, depth)
+	}
+}
+
+func (g *fixedModule) emitBlockValidateElem(f *ir.Field, expr, ind string, depth int) {
+	if f.Type.Kind == ir.TNamed {
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			g.emitBlockValidateStruct(r, expr, ind, depth+1)
+		case *ir.Enum:
+			g.pf("%sif (%s < 0 || %s > %d) return -1;\n", ind, expr, expr, len(r.Variants))
+		case *ir.Flags:
+			if len(r.Variants) < 64 {
+				mask := (uint64(1) << uint(len(r.Variants))) - 1
+				g.pf("%sif ((%s & ~%s) != 0) return -1;\n", ind, expr, dartU64Literal(mask))
+			}
+		}
+		return
+	}
+	switch f.Type.Kind {
+	case ir.TFloat32, ir.TFloat64:
+		g.pf("%sif (!%s.isFinite) return -1;\n", ind, expr)
+		if f.HasFloatRange {
+			if lo, hi, ok := fixedFloatClampEnds(f); ok {
+				if f.Type.Kind == ir.TFloat32 {
+					g.pf("%s{ final f32 = (Float32List(1)..[0] = %s)[0]; if (f32 < %s || f32 > %s) return -1; }\n", ind, expr, lo, hi)
+				} else {
+					g.pf("%sif (%s < %s || %s > %s) return -1;\n", ind, expr, lo, expr, hi)
+				}
+			}
+		}
+	default:
+		if f.Type.Width > 64 {
+			return
+		}
+		if lo, hi, ok := ir.TableRawRange(f); ok {
+			if (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TFixed) && !f.Type.Signed && f.Type.Width == 64 {
+				if lo.Sign() > 0 {
+					flipLo := new(big.Int).Xor(new(big.Int).Set(lo), new(big.Int).Lsh(big.NewInt(1), 63))
+					g.pf("%sif ((%s ^ 0x8000000000000000) < %s) return -1;\n", ind, expr, dartBoundLiteral(flipLo))
+				}
+				u64Max := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 64), big.NewInt(1))
+				if hi.Cmp(u64Max) < 0 {
+					flipHi := new(big.Int).Xor(new(big.Int).Set(hi), new(big.Int).Lsh(big.NewInt(1), 63))
+					g.pf("%sif ((%s ^ 0x8000000000000000) > %s) return -1;\n", ind, expr, dartBoundLiteral(flipHi))
+				}
+			} else {
+				g.pf("%sif (%s < %s || %s > %s) return -1;\n", ind, expr, dartBoundLiteral(lo), expr, dartBoundLiteral(hi))
+			}
+		} else if f.Type.Kind == ir.TInt && f.Type.Width > 0 && f.Type.Width < 64 {
+			if f.Type.Signed {
+				lo := -(int64(1) << uint(f.Type.Width-1))
+				hi := (int64(1) << uint(f.Type.Width-1)) - 1
+				g.pf("%sif (%s < %d || %s > %d) return -1;\n", ind, expr, lo, expr, hi)
+			} else {
+				hi := (int64(1) << uint(f.Type.Width)) - 1
+				g.pf("%sif (%s < 0 || %s > %d) return -1;\n", ind, expr, expr, hi)
+			}
+		}
+		if f.Type.Kind == ir.TBits && f.Type.Width < 64 {
+			maxv := (int64(1) << uint(f.Type.Width)) - 1
+			g.pf("%sif (%s < 0 || %s > %d) return -1;\n", ind, expr, expr, maxv)
+		}
+	}
 }
 
 func (g *fixedModule) emitBytes(b []byte) {

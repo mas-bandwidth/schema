@@ -910,21 +910,29 @@ int fixedTableLoadMessages(
 ) {
   final r = TableMessageReader();
   final count = tableMessageBatchOpen(vocabulary, bytes, report, r);
-  if (count < 0) return 0;
+  if (count < 0) {
+    for (var j = 0; j < values.length; j++) {
+      initFixedTable(values[j]);
+    }
+    return 0;
+  }
   if (count > values.length) {
+    for (var j = 0; j < values.length; j++) {
+      initFixedTable(values[j]);
+    }
     report.Refuse('batch_too_large');
     return 0;
   }
   for (var i = 0; i < count; i++) {
     if (!fixedTableLoadMessageBody(r, values[i])) {
-      for (var j = 0; j <= i; j++) {
+      for (var j = 0; j < values.length; j++) {
         initFixedTable(values[j]);
       }
       return 0;
     }
   }
   if (!tableMessageBatchClose(r)) {
-    for (var j = 0; j < count; j++) {
+    for (var j = 0; j < values.length; j++) {
       initFixedTable(values[j]);
     }
     return 0;

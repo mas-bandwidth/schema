@@ -180,8 +180,9 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 	// "A refused batch returns a count of `0`, as every refused batch does"
 	// (docs/SPEC-TABLES.md §3.3): the open's refusals answer 0 with the report
 	// refused, and a delivered batch is never empty (M is at least 1).
-	g.pf("  if (count < 0) return 0;\n")
+	g.pf("  if (count < 0) {\n    for (var j = 0; j < values.length; j++) {\n      init%s(values[j]);\n    }\n    return 0;\n  }\n", capitalize(st.Name))
 	g.pf("  if (count > values.length) {\n")
+	g.pf("    for (var j = 0; j < values.length; j++) {\n      init%s(values[j]);\n    }\n", capitalize(st.Name))
 	g.pf("    report.Refuse('batch_too_large');\n    return 0;\n  }\n")
 	g.pf("  for (var i = 0; i < count; i++) {\n")
 	g.pf("    if (!%sLoadMessageBody(r, values[i])) {\n", lower)
@@ -190,12 +191,12 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 	// defaults and the read answers no body at all.
 	// DAMAGE DISCARDS THE WHOLE BATCH the same way (docs/SPEC-TABLES.md §4):
 	// no body this call decoded is handed back.
-	g.pf("      for (var j = 0; j <= i; j++) {\n        init%s(values[j]);\n      }\n", capitalize(st.Name))
+	g.pf("      for (var j = 0; j < values.length; j++) {\n        init%s(values[j]);\n      }\n", capitalize(st.Name))
 	g.pf("      return 0;\n    }\n")
 	g.pf("  }\n")
 	// damage after the last body (the pad, trailing bytes) discards the batch too
 	g.pf("  if (!tableMessageBatchClose(r)) {\n")
-	g.pf("    for (var j = 0; j < count; j++) {\n      init%s(values[j]);\n    }\n", capitalize(st.Name))
+	g.pf("    for (var j = 0; j < values.length; j++) {\n      init%s(values[j]);\n    }\n", capitalize(st.Name))
 	g.pf("    return 0;\n  }\n")
 	g.pf("  return count;\n}\n\n")
 }
@@ -603,6 +604,10 @@ func (g *fixedModule) emitMessageWriteValue(f *ir.Field, entry ir.TableVocabular
 		case *ir.Enum:
 			g.emitMessageWriteEnum(r, expr, ind)
 		case *ir.Flags:
+			if len(r.Variants) < 64 {
+				mask := (uint64(1) << uint(len(r.Variants))) - 1
+				g.pf("%sassert((%s & ~%s) == 0);\n", ind, expr, dartU64Literal(mask))
+			}
 			g.emitMessageWriteScalar(f, entry, expr, ind)
 		}
 	default:
@@ -873,12 +878,20 @@ func (g *fixedModule) emitMessageReadKeyed(f *ir.Field, entry ir.TableVocabulary
 	g.pf("%s    if (r.seenHasId(key.id)) { %s; }\n", ind, bad)
 	g.pf("%s    r.seenAdd(keyRef);\n", ind)
 	g.pf("%s    var at = 0;\n", ind)
-	for i := range f.KeyEnumRef.Variants {
-		kw := "if"
-		if i > 0 {
-			kw = "else if"
+	if len(f.KeyEnumRef.Variants) > 64 {
+		g.pf("%s    at = const <int, int>{\n", ind)
+		for i := range f.KeyEnumRef.Variants {
+			g.pf("%s      %s: %d,\n", ind, dartU64Literal(ir.TableWireId(f.KeyEnumRef.VariantWireName(i))), i+1)
 		}
-		g.pf("%s    %s (key.id == %s) { at = %d; }\n", ind, kw, dartU64Literal(ir.TableWireId(f.KeyEnumRef.VariantWireName(i))), i+1)
+		g.pf("%s    }[key.id] ?? 0;\n", ind)
+	} else {
+		for i := range f.KeyEnumRef.Variants {
+			kw := "if"
+			if i > 0 {
+				kw = "else if"
+			}
+			g.pf("%s    %s (key.id == %s) { at = %d; }\n", ind, kw, dartU64Literal(ir.TableWireId(f.KeyEnumRef.VariantWireName(i))), i+1)
+		}
 	}
 	g.pf("%s    if (at == 0) {\n", ind)
 	g.pf("%s      r.report.unknown++;\n", ind)
@@ -1392,6 +1405,12 @@ int tableMessageBatchOpen(
   TableReport report,
   TableMessageReader r,
 ) {
+  report.refused = false;
+  report.reason = '';
+  report.unknown = 0;
+  report.widened = 0;
+  report.buildVersionRemote = 0;
+  report.buildVersionOwn = 0;
   report.nonFiniteFloat = ''; // this read's own refusal (§3.3)
   if (data.length == 0) { report.Damage(); return -1; }
   if (data[0] != 2) { report.Refuse('newer_form'); return -1; }

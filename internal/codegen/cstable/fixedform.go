@@ -2087,6 +2087,7 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    ReadOnlySpan<byte> data,\n")
 	g.pf("    Span<TableFixedEntry> plan,\n")
 	g.pf("    TableReport report = null)\n{\n")
+	g.pf("    if (report != null) { report.Zero(); }\n")
 	// STEP 1 (§5.3): only whether there IS a first byte. THE FORM BYTE IS READ
 	// BEFORE THE FILE'S LENGTH — a committed form-1 file is TEN bytes and a
 	// form-2 batch THREE. And the DIRECTIONS are §5.3's, the same eight other

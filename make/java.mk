@@ -212,6 +212,8 @@ build/tables-generated-java/.stamp: bin/schema make/java.mk $(wildcard testdata/
 	# RootMessage overflows javac's parser stack), so the driver answers their
 	# two announce rows absent, naming that cause.
 	rm -rf build/tables-generated-java/surfaces && ./bin/schema generate --lang java --out build/tables-generated-java/surfaces test/tables/surfaces
+	rm -rf build/tables-generated-java/tblann4096 && ./bin/schema generate --lang java --out build/tables-generated-java/tblann4096 test/tables/announce4096/Announce.schema
+	rm -rf build/tables-generated-java/tblann4097 && ./bin/schema generate --lang java --out build/tables-generated-java/tblann4097 test/tables/announce4097/Announce.schema
 	@touch $@
 
 # THE GENERATED TREE IS FRESH (a stale file is not the emitter's output). Every
@@ -1714,6 +1716,8 @@ build-conformance-java: build/tables-generated-java/.stamp test/conformance/java
 		build/tables-generated-java/backend/*.java build/tables-generated-java/vocab/*.java \
 		build/tables-generated-java/vocab9/*.java \
 		build/tables-generated-java/surfaces/*.java \
+		build/tables-generated-java/tblann4096/*.java \
+		build/tables-generated-java/tblann4097/*.java \
 		$(if $(wildcard testdata/conformance/feature-witnesses/full/Features.schema),build/tables-generated-java/featurewitnesses/*.java) \
 		test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
 

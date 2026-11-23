@@ -2534,6 +2534,11 @@ List<T> _stableSorted<T>(List<T> l, int Function(T a, T b) cmp) {
     }
     out[j + 1] = x;
   }
+  for (var i = 1; i < out.length; i++) {
+    if (cmp(out[i - 1], out[i]) == 0) {
+      throw StateError('repeated map key');
+    }
+  }
   return out;
 }
 
@@ -3014,6 +3019,7 @@ void tablePickupEventWireSaveBody(TableWireWriter w, TablePickupEvent v) {
 }
 
 void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
+  assert(v.protocolMagic >= 0 && v.protocolMagic <= 65535);
   if (v.protocolMagic != 0) {
     w.putLeb(w.refFor(7663561793681298941));
     w.putByte(7);
@@ -3042,6 +3048,7 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
     w.putByte(9);
     w.putU64(v.sessionId);
   }
+  assert(v.clientId >= 0 && v.clientId <= 4294967295);
   if (v.clientId != 0) {
     w.putLeb(w.refFor(7889067272199050878));
     w.putByte(8);
@@ -3124,6 +3131,9 @@ void tableMixedWireSaveBodyFields(TableWireWriter w, TableMixed v) {
     if (v.gameEvent.armTag == 0) { w.putLeb(0); } else { _tableEventSaveArm(w, v.gameEvent); }
   }
   assert(v.loadout.length == 4);
+  for (final assertElem in v.loadout) {
+    assert(assertElem >= 0 && assertElem <= 255);
+  }
   if (v.loadout.any((e) => e != 0)) {
     final ref = w.refFor(6294288958393922979);
     final s = w.sub();
@@ -4985,6 +4995,30 @@ TableEntity tableEntityWireLoad(Uint8List data, [TableWireReport? report]) {
   return v;
 }
 
+void _copyTableEntity(TableEntity dst, TableEntity src) {
+  dst.entityId = src.entityId;
+  dst.posX = src.posX;
+  dst.posY = src.posY;
+  dst.posZ = src.posZ;
+  dst.yaw = src.yaw;
+  dst.pitch = src.pitch;
+  dst.velX = src.velX;
+  dst.velY = src.velY;
+  dst.velZ = src.velZ;
+  dst.health = src.health;
+  dst.weapon = src.weapon;
+  dst.damage = src.damage;
+  dst.moving = src.moving;
+  dst.firing = src.firing;
+}
+
+bool tableEntityWireLoadInto(TableEntity target, Uint8List data, [TableWireReport? report]) {
+  final r = report ?? TableWireReport();
+  final v = tableEntityWireLoad(data, r);
+  _copyTableEntity(target, r.refused ? TableEntity() : v);
+  return !r.refused;
+}
+
 const _measureStructsTableEntity = <Map<int, _MF>>[
   // TableEntity
   {
@@ -5158,6 +5192,18 @@ TableStat tableStatWireLoad(Uint8List data, [TableWireReport? report]) {
   return v;
 }
 
+void _copyTableStat(TableStat dst, TableStat src) {
+  dst.statId = src.statId;
+  dst.delta = src.delta;
+}
+
+bool tableStatWireLoadInto(TableStat target, Uint8List data, [TableWireReport? report]) {
+  final r = report ?? TableWireReport();
+  final v = tableStatWireLoad(data, r);
+  _copyTableStat(target, r.refused ? TableStat() : v);
+  return !r.refused;
+}
+
 const _measureStructsTableStat = <Map<int, _MF>>[
   // TableStat
   {
@@ -5317,6 +5363,44 @@ TableMixed tableMixedWireLoad(Uint8List data, [TableWireReport? report]) {
   if (r.wireBadPointerIndex()) { r.report.refuse('wire_damaged'); }
   if (r.report.refused) return TableMixed();
   return v;
+}
+
+void _copyTableMixed(TableMixed dst, TableMixed src) {
+  dst.protocolMagic = src.protocolMagic;
+  dst.sequence = src.sequence;
+  dst.ackSequence = src.ackSequence;
+  dst.ackBits = src.ackBits;
+  dst.sessionId = src.sessionId;
+  dst.clientId = src.clientId;
+  dst.nonce = src.nonce;
+  dst.worldTime = src.worldTime;
+  dst.frameTick = src.frameTick;
+  dst.serverTime = src.serverTime;
+  dst.entities = src.entities;
+  dst.stats = src.stats;
+  dst.gameEvent = src.gameEvent;
+  dst.loadout = src.loadout;
+  dst.playerName = src.playerName;
+  dst.payload = src.payload;
+  dst.aimX = src.aimX;
+  dst.aimY = src.aimY;
+  dst.aimZ = src.aimZ;
+  dst.recoil = src.recoil;
+  dst.drift = src.drift;
+  dst.wideKey = src.wideKey;
+  dst.flux = src.flux;
+  dst.ping = src.ping;
+  dst.crcHint = src.crcHint;
+  dst.hasExtra = src.hasExtra;
+  dst.extra = src.extra;
+  dst.idleTicks = src.idleTicks;
+}
+
+bool tableMixedWireLoadInto(TableMixed target, Uint8List data, [TableWireReport? report]) {
+  final r = report ?? TableWireReport();
+  final v = tableMixedWireLoad(data, r);
+  _copyTableMixed(target, r.refused ? TableMixed() : v);
+  return !r.refused;
 }
 
 const _measureStructsTableMixed = <Map<int, _MF>>[
@@ -6241,10 +6325,10 @@ String _jsonPrepare(String text, TableTextReport r) {
       stripped.add(0x20);
       continue;
     }
-    // the root container is the first: one at count 130 sits at depth 129,
-    // past the cap (§16.14 W2)
+    // stack guard for raw bracket nesting; semantic table/skip depth 128 is
+    // enforced by the typed reader and _jsonSkipValue (FL-11, SPEC-TABLES §16.14 W2)
     if (c == 0x7b || c == 0x5b) {
-      if (++depth > 129) throw const FormatException('JSON nesting past 128');
+      if (++depth > 256) throw const FormatException('JSON nesting past 128');
     } else if (c == 0x7d || c == 0x5d) {
       depth--;
     }
@@ -6344,7 +6428,8 @@ int? _jsonSkippedLabel(dynamic raw) {
 // definition is open until this object closes. A dropped definition keeps its
 // label with no node, so a reference to it reads null. What the reader does
 // not place is the value, never the label.
-void _jsonSkipObject(List<MapEntry<String, dynamic>> entries, TableTextReport r) {
+void _jsonSkipObject(List<MapEntry<String, dynamic>> entries, TableTextReport r, [int depth = 0]) {
+  if (depth > 128) throw const FormatException('nested past the depth cap of 128');
   int? definition;
   for (var idx = 0; idx < entries.length; idx++) {
     final key = entries[idx].key;
@@ -6372,24 +6457,25 @@ void _jsonSkipObject(List<MapEntry<String, dynamic>> entries, TableTextReport r)
         definition = label;
       }
     } else {
-      _jsonSkipValue(val, r);
+      _jsonSkipValue(val, r, depth + 1);
     }
   }
   if (definition != null) r.labelsOpen.remove(definition);
 }
 
-void _jsonSkipValue(dynamic val, TableTextReport r) {
+void _jsonSkipValue(dynamic val, TableTextReport r, [int depth = 0]) {
   if (val is String) {
     _jsonText(val);
     return;
   }
   if (val is _JObj) {
-    _jsonSkipObject(val.entries, r);
+    _jsonSkipObject(val.entries, r, depth);
     return;
   }
   if (val is List) {
+    if (depth > 128) throw const FormatException('nested past the depth cap of 128');
     for (final item in val) {
-      _jsonSkipValue(item, r);
+      _jsonSkipValue(item, r, depth + 1);
     }
     return;
   }
@@ -6400,7 +6486,7 @@ void _jsonSkipValue(dynamic val, TableTextReport r) {
       if (key is! String) throw const FormatException('kind_mismatch');
       entries.add(MapEntry<String, dynamic>(key, entry.value));
     }
-    _jsonSkipObject(entries, r);
+    _jsonSkipObject(entries, r, depth);
   }
 }
 
@@ -6437,12 +6523,12 @@ final class _JParse {
     i++;
   }
 
-  // the depth cap counts containers (§16.14 W2): a scalar, a string or a
-  // null at depth 129 nests nothing
+  // stack guard for raw container nesting; semantic table/skip depth 128 is
+  // enforced by FromJsonFields and _jsonSkipValue (FL-11, SPEC-TABLES §16.14 W2)
   dynamic value(int depth) {
     if (i >= s.length) throw const FormatException('unexpected end of text');
     final c = s.codeUnitAt(i);
-    if ((c == 0x7B || c == 0x5B) && depth > 128) throw const FormatException('nested past the depth cap of 128');
+    if ((c == 0x7B || c == 0x5B) && depth > 256) throw const FormatException('nested past the depth cap of 128');
     if (c == 0x7B) {
       i++;
       final m = _JObj();
@@ -7028,7 +7114,8 @@ void _tableEventToJson(_JOut out, TableEvent v, int depth, _Share sh) {
   throw StateError('union TableEvent: tag ${v.armTag} names no arm — the writer refuses it (docs/SPEC-TABLES.md §5)');
 }
 
-TableEvent _tableEventFromJson(dynamic val, TableTextReport r, _Share sh, [TableEvent? def]) {
+TableEvent _tableEventFromJson(dynamic val, TableTextReport r, _Share sh, [TableEvent? def, int depth = 0]) {
+  if (depth > 128) throw const FormatException('nested past the depth cap of 128');
   final entries = _jsonEntries(val);
   if (entries == null) { r.refuse('kind_mismatch'); return def ?? TableEvent(); }
   final v = TableEvent();
@@ -7041,27 +7128,27 @@ TableEvent _tableEventFromJson(dynamic val, TableTextReport r, _Share sh, [Table
     case "hit":
       if (_jsonEntries(item) != null) {
         v.armTag = 1;
-        v.hit = _tableHitEventFromJsonValue(item, r, sh, v.hit);
+        v.hit = _tableHitEventFromJsonValue(item, r, sh, v.hit, depth + 1);
       } else {
         r.refuse('kind_mismatch');
       }
     case "chat":
       if (_jsonEntries(item) != null) {
         v.armTag = 2;
-        v.chat = _tableChatEventFromJsonValue(item, r, sh, v.chat);
+        v.chat = _tableChatEventFromJsonValue(item, r, sh, v.chat, depth + 1);
       } else {
         r.refuse('kind_mismatch');
       }
     case "pickup":
       if (_jsonEntries(item) != null) {
         v.armTag = 3;
-        v.pickup = _tablePickupEventFromJsonValue(item, r, sh, v.pickup);
+        v.pickup = _tablePickupEventFromJsonValue(item, r, sh, v.pickup, depth + 1);
       } else {
         r.refuse('kind_mismatch');
       }
     default:
       r.unknown++;
-      _jsonSkipValue(item, r);
+      _jsonSkipValue(item, r, depth + 1);
   }
   return v;
 }
@@ -7080,60 +7167,60 @@ void _tableEventCount(_Share sh, TableEvent v) {
   }
 }
 
-TableEntity _tableEntityFromJsonValue(dynamic val, TableTextReport r, _Share sh, [TableEntity? def]) {
+TableEntity _tableEntityFromJsonValue(dynamic val, TableTextReport r, _Share sh, [TableEntity? def, int depth = 0]) {
   if (_jsonEntries(val) != null) {
     final v = TableEntity();
-    tableEntityFromJsonFields(v, val, r, sh);
+    tableEntityFromJsonFields(v, val, r, sh, false, depth);
     return v;
   }
   r.refuse('kind_mismatch');
   return def ?? TableEntity();
 }
 
-TableStat _tableStatFromJsonValue(dynamic val, TableTextReport r, _Share sh, [TableStat? def]) {
+TableStat _tableStatFromJsonValue(dynamic val, TableTextReport r, _Share sh, [TableStat? def, int depth = 0]) {
   if (_jsonEntries(val) != null) {
     final v = TableStat();
-    tableStatFromJsonFields(v, val, r, sh);
+    tableStatFromJsonFields(v, val, r, sh, false, depth);
     return v;
   }
   r.refuse('kind_mismatch');
   return def ?? TableStat();
 }
 
-TableHitEvent _tableHitEventFromJsonValue(dynamic val, TableTextReport r, _Share sh, [TableHitEvent? def]) {
+TableHitEvent _tableHitEventFromJsonValue(dynamic val, TableTextReport r, _Share sh, [TableHitEvent? def, int depth = 0]) {
   if (_jsonEntries(val) != null) {
     final v = TableHitEvent();
-    tableHitEventFromJsonFields(v, val, r, sh);
+    tableHitEventFromJsonFields(v, val, r, sh, false, depth);
     return v;
   }
   r.refuse('kind_mismatch');
   return def ?? TableHitEvent();
 }
 
-TableChatEvent _tableChatEventFromJsonValue(dynamic val, TableTextReport r, _Share sh, [TableChatEvent? def]) {
+TableChatEvent _tableChatEventFromJsonValue(dynamic val, TableTextReport r, _Share sh, [TableChatEvent? def, int depth = 0]) {
   if (_jsonEntries(val) != null) {
     final v = TableChatEvent();
-    tableChatEventFromJsonFields(v, val, r, sh);
+    tableChatEventFromJsonFields(v, val, r, sh, false, depth);
     return v;
   }
   r.refuse('kind_mismatch');
   return def ?? TableChatEvent();
 }
 
-TablePickupEvent _tablePickupEventFromJsonValue(dynamic val, TableTextReport r, _Share sh, [TablePickupEvent? def]) {
+TablePickupEvent _tablePickupEventFromJsonValue(dynamic val, TableTextReport r, _Share sh, [TablePickupEvent? def, int depth = 0]) {
   if (_jsonEntries(val) != null) {
     final v = TablePickupEvent();
-    tablePickupEventFromJsonFields(v, val, r, sh);
+    tablePickupEventFromJsonFields(v, val, r, sh, false, depth);
     return v;
   }
   r.refuse('kind_mismatch');
   return def ?? TablePickupEvent();
 }
 
-TableMixed _tableMixedFromJsonValue(dynamic val, TableTextReport r, _Share sh, [TableMixed? def]) {
+TableMixed _tableMixedFromJsonValue(dynamic val, TableTextReport r, _Share sh, [TableMixed? def, int depth = 0]) {
   if (_jsonEntries(val) != null) {
     final v = TableMixed();
-    tableMixedFromJsonFields(v, val, r, sh);
+    tableMixedFromJsonFields(v, val, r, sh, false, depth);
     return v;
   }
   r.refuse('kind_mismatch');
@@ -7251,7 +7338,8 @@ void tableEntityToJsonBody(_JOut out, TableEntity v, int depth, _Share sh, [int?
   out.raw('}');
 }
 
-void tableEntityFromJsonFields(TableEntity v, dynamic obj, TableTextReport r, _Share sh, [bool pointer = false]) {
+void tableEntityFromJsonFields(TableEntity v, dynamic obj, TableTextReport r, _Share sh, [bool pointer = false, int depth = 0]) {
+  if (depth > 128) throw const FormatException('nested past the depth cap of 128');
   final entries = _jsonEntries(obj);
   if (entries == null) return;
   final seen = <String>{};
@@ -7325,7 +7413,7 @@ void tableEntityFromJsonFields(TableEntity v, dynamic obj, TableTextReport r, _S
           throw const FormatException('reserved ampersand prefix');
         }
         if (!seen.add(key)) r.refuse('text_damaged');
-        _jsonSkipValue(val, r);
+        _jsonSkipValue(val, r, depth + 1);
         r.unknown++;
     }
   }
@@ -7362,7 +7450,8 @@ void tableStatToJsonBody(_JOut out, TableStat v, int depth, _Share sh, [int? lab
   out.raw('}');
 }
 
-void tableStatFromJsonFields(TableStat v, dynamic obj, TableTextReport r, _Share sh, [bool pointer = false]) {
+void tableStatFromJsonFields(TableStat v, dynamic obj, TableTextReport r, _Share sh, [bool pointer = false, int depth = 0]) {
+  if (depth > 128) throw const FormatException('nested past the depth cap of 128');
   final entries = _jsonEntries(obj);
   if (entries == null) return;
   final seen = <String>{};
@@ -7388,7 +7477,7 @@ void tableStatFromJsonFields(TableStat v, dynamic obj, TableTextReport r, _Share
           throw const FormatException('reserved ampersand prefix');
         }
         if (!seen.add(key)) r.refuse('text_damaged');
-        _jsonSkipValue(val, r);
+        _jsonSkipValue(val, r, depth + 1);
         r.unknown++;
     }
   }
@@ -7438,7 +7527,8 @@ void tableHitEventToJsonBody(_JOut out, TableHitEvent v, int depth, _Share sh, [
   out.raw('}');
 }
 
-void tableHitEventFromJsonFields(TableHitEvent v, dynamic obj, TableTextReport r, _Share sh, [bool pointer = false]) {
+void tableHitEventFromJsonFields(TableHitEvent v, dynamic obj, TableTextReport r, _Share sh, [bool pointer = false, int depth = 0]) {
+  if (depth > 128) throw const FormatException('nested past the depth cap of 128');
   final entries = _jsonEntries(obj);
   if (entries == null) return;
   final seen = <String>{};
@@ -7472,7 +7562,7 @@ void tableHitEventFromJsonFields(TableHitEvent v, dynamic obj, TableTextReport r
           throw const FormatException('reserved ampersand prefix');
         }
         if (!seen.add(key)) r.refuse('text_damaged');
-        _jsonSkipValue(val, r);
+        _jsonSkipValue(val, r, depth + 1);
         r.unknown++;
     }
   }
@@ -7509,7 +7599,8 @@ void tableChatEventToJsonBody(_JOut out, TableChatEvent v, int depth, _Share sh,
   out.raw('}');
 }
 
-void tableChatEventFromJsonFields(TableChatEvent v, dynamic obj, TableTextReport r, _Share sh, [bool pointer = false]) {
+void tableChatEventFromJsonFields(TableChatEvent v, dynamic obj, TableTextReport r, _Share sh, [bool pointer = false, int depth = 0]) {
+  if (depth > 128) throw const FormatException('nested past the depth cap of 128');
   final entries = _jsonEntries(obj);
   if (entries == null) return;
   final seen = <String>{};
@@ -7535,7 +7626,7 @@ void tableChatEventFromJsonFields(TableChatEvent v, dynamic obj, TableTextReport
           throw const FormatException('reserved ampersand prefix');
         }
         if (!seen.add(key)) r.refuse('text_damaged');
-        _jsonSkipValue(val, r);
+        _jsonSkipValue(val, r, depth + 1);
         r.unknown++;
     }
   }
@@ -7572,7 +7663,8 @@ void tablePickupEventToJsonBody(_JOut out, TablePickupEvent v, int depth, _Share
   out.raw('}');
 }
 
-void tablePickupEventFromJsonFields(TablePickupEvent v, dynamic obj, TableTextReport r, _Share sh, [bool pointer = false]) {
+void tablePickupEventFromJsonFields(TablePickupEvent v, dynamic obj, TableTextReport r, _Share sh, [bool pointer = false, int depth = 0]) {
+  if (depth > 128) throw const FormatException('nested past the depth cap of 128');
   final entries = _jsonEntries(obj);
   if (entries == null) return;
   final seen = <String>{};
@@ -7598,7 +7690,7 @@ void tablePickupEventFromJsonFields(TablePickupEvent v, dynamic obj, TableTextRe
           throw const FormatException('reserved ampersand prefix');
         }
         if (!seen.add(key)) r.refuse('text_damaged');
-        _jsonSkipValue(val, r);
+        _jsonSkipValue(val, r, depth + 1);
         r.unknown++;
     }
   }
@@ -7738,6 +7830,7 @@ void tableMixedToJsonBody(_JOut out, TableMixed v, int depth, _Share sh, [int? l
   out.line(depth + 1);
   out.raw(_jsonString("loadout"));
   out.raw(': ');
+  if (v.loadout.length != 4) throw StateError('count_over_bound: TableMixed.loadout');
   if (v.loadout.isEmpty) {
     out.raw('[]');
   } else {
@@ -7850,7 +7943,8 @@ void tableMixedToJsonBody(_JOut out, TableMixed v, int depth, _Share sh, [int? l
   out.raw('}');
 }
 
-void tableMixedFromJsonFields(TableMixed v, dynamic obj, TableTextReport r, _Share sh, [bool pointer = false]) {
+void tableMixedFromJsonFields(TableMixed v, dynamic obj, TableTextReport r, _Share sh, [bool pointer = false, int depth = 0]) {
+  if (depth > 128) throw const FormatException('nested past the depth cap of 128');
   final entries = _jsonEntries(obj);
   if (entries == null) return;
   final seen = <String>{};
@@ -7912,7 +8006,7 @@ void tableMixedFromJsonFields(TableMixed v, dynamic obj, TableTextReport r, _Sha
           final item = val[index];
           final e = TableEntity();
           if (_jsonEntries(item) != null) {
-            tableEntityFromJsonFields(e, item, r, sh);
+            tableEntityFromJsonFields(e, item, r, sh, false, depth + 1);
           } else {
             r.refuse('kind_mismatch');
           }
@@ -7928,7 +8022,7 @@ void tableMixedFromJsonFields(TableMixed v, dynamic obj, TableTextReport r, _Sha
           final item = val[index];
           final e = TableStat();
           if (_jsonEntries(item) != null) {
-            tableStatFromJsonFields(e, item, r, sh);
+            tableStatFromJsonFields(e, item, r, sh, false, depth + 1);
           } else {
             r.refuse('kind_mismatch');
           }
@@ -7937,7 +8031,7 @@ void tableMixedFromJsonFields(TableMixed v, dynamic obj, TableTextReport r, _Sha
         break;
       case "game_event":
         if (!seen.add(key)) r.refuse('text_damaged');
-        v.gameEvent = _tableEventFromJson(val, r, sh, v.gameEvent);
+        v.gameEvent = _tableEventFromJson(val, r, sh, v.gameEvent, depth + 1);
         break;
       case "loadout":
         if (!seen.add(key)) r.refuse('text_damaged');
@@ -8004,7 +8098,7 @@ void tableMixedFromJsonFields(TableMixed v, dynamic obj, TableTextReport r, _Sha
           throw const FormatException('reserved ampersand prefix');
         }
         if (!seen.add(key)) r.refuse('text_damaged');
-        _jsonSkipValue(val, r);
+        _jsonSkipValue(val, r, depth + 1);
         r.unknown++;
     }
   }
@@ -8027,7 +8121,8 @@ TableEntity tableEntityFromJson(String text, [TableTextReport? report]) {
   r.refused = false;
   r.refusal = '';
   r.missingFields = '';
-  r.textLabels.clear();
+  r.labelsSeen.clear();
+  r.labelsOpen.clear();
   r.variableRoot = false;
   final v = TableEntity();
   try {
@@ -8044,6 +8139,14 @@ TableEntity tableEntityFromJson(String text, [TableTextReport? report]) {
     return TableEntity();
   }
   return v;
+}
+
+bool tableEntityFromJsonInto(TableEntity target, String text, [TableTextReport? report]) {
+  final r = report ?? TableTextReport();
+  final v = tableEntityFromJson(text, r);
+  _copyTableEntity(target, r.refused ? TableEntity() : v);
+  if (r.refused && report == null) throw FormatException(r.reason);
+  return !r.refused;
 }
 
 String tableStatToJson(TableStat v) {
@@ -8063,7 +8166,8 @@ TableStat tableStatFromJson(String text, [TableTextReport? report]) {
   r.refused = false;
   r.refusal = '';
   r.missingFields = '';
-  r.textLabels.clear();
+  r.labelsSeen.clear();
+  r.labelsOpen.clear();
   r.variableRoot = false;
   final v = TableStat();
   try {
@@ -8080,6 +8184,14 @@ TableStat tableStatFromJson(String text, [TableTextReport? report]) {
     return TableStat();
   }
   return v;
+}
+
+bool tableStatFromJsonInto(TableStat target, String text, [TableTextReport? report]) {
+  final r = report ?? TableTextReport();
+  final v = tableStatFromJson(text, r);
+  _copyTableStat(target, r.refused ? TableStat() : v);
+  if (r.refused && report == null) throw FormatException(r.reason);
+  return !r.refused;
 }
 
 String tableMixedToJson(TableMixed v) {
@@ -8099,7 +8211,8 @@ TableMixed tableMixedFromJson(String text, [TableTextReport? report]) {
   r.refused = false;
   r.refusal = '';
   r.missingFields = '';
-  r.textLabels.clear();
+  r.labelsSeen.clear();
+  r.labelsOpen.clear();
   r.variableRoot = false;
   final v = TableMixed();
   try {
@@ -8116,6 +8229,14 @@ TableMixed tableMixedFromJson(String text, [TableTextReport? report]) {
     return TableMixed();
   }
   return v;
+}
+
+bool tableMixedFromJsonInto(TableMixed target, String text, [TableTextReport? report]) {
+  final r = report ?? TableTextReport();
+  final v = tableMixedFromJson(text, r);
+  _copyTableMixed(target, r.refused ? TableMixed() : v);
+  if (r.refused && report == null) throw FormatException(r.reason);
+  return !r.refused;
 }
 
 // THE DESCRIPTORS (docs/SPEC-TABLES.md §8.1, §8.3): one TableFieldInfo

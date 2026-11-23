@@ -94,6 +94,24 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union, fixed fixedClosure) string 
 			}
 		}
 	}
+	b.WriteString("        public Value() {\n")
+	for _, f := range st.Fields {
+		if variableBornCount(f) > 0 {
+			fmt.Fprintf(&b, "            for (int i = 0; i < %d; i++) { %s.add(%s);", variableBornCount(f), varMember(f), variableDefault(variableElement(f)))
+			if isPointerArray(f) {
+				fmt.Fprintf(&b, " %sIdx.add(0L);", varMember(f))
+			}
+			b.WriteString(" }\n")
+		}
+		if f.KeyEnum != "" || f.Array == ir.ArrayFixed {
+			fmt.Fprintf(&b, "            for (int i = 0; i < %d; i++) { %s.add(%s);", f.ArrayBound, varMember(f), variableDefault(variableElement(f)))
+			if isPointerArray(f) || (f.KeyEnum != "" && f.Type.Pointer) {
+				fmt.Fprintf(&b, " %sIdx.add(0L);", varMember(f))
+			}
+			b.WriteString(" }\n")
+		}
+	}
+	b.WriteString("        }\n")
 	b.WriteString("    }\n")
 	b.WriteString("    static boolean graphEnter(TableVariable.NodeGraph g, Value v) {\n")
 	b.WriteString("        if (v == null) { return false; }\n")
@@ -329,7 +347,11 @@ func writeUnionFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	if f.ArrayBound > 0 {
 		countCheck = fmt.Sprintf("else{if(count<0||count>%d){count=%d;report.refuse(\"count_over_bound\");}", f.ArrayBound, f.ArrayBound)
 	}
-	fmt.Fprintf(b, "if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=%s;if(!ar.fail){if(!TableVariable.arrayElemKindClosed(ek)){report.damaged=true;}else if(ek!=15){report.refuse(\"kind_mismatch\");}%sv.%s.clear();", countRead(f, "ar"), countCheck, m)
+	clearStmt := fmt.Sprintf("v.%s.clear();", m)
+	if f.Array == ir.ArrayFixed {
+		clearStmt = ""
+	}
+	fmt.Fprintf(b, "if(kind==14){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=%s;if(!ar.fail){if(!TableVariable.arrayElemKindClosed(ek)){report.damaged=true;}else if(ek!=15){report.refuse(\"kind_mismatch\");}%s%s", countRead(f, "ar"), countCheck, clearStmt)
 	if retain {
 		fmt.Fprintf(b, "retain.discardField(path,depth,%d);", ordinal)
 	}
@@ -342,7 +364,7 @@ func writeUnionFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	// array keeps the slot at its default, and a counted or unbounded array
 	// keeps only the prefix that decoded (the engine's arrayBody, §4).
 	if f.Array == ir.ArrayFixed {
-		fmt.Fprintf(b, "%sVariable.Value elem=%sVariable.%s(ar,nt,report%s);v.%s.add(elem==null?new %sVariable.Value():elem);if(elem==null||ar.fail)break;}}}}}else{r.skip(kind);report.refuse(\"kind_mismatch\");}\n", un.Name, un.Name, method, args, m, un.Name)
+		fmt.Fprintf(b, "%sVariable.Value elem=%sVariable.%s(ar,nt,report%s);TableVariable.put(v.%s,(int)i,elem==null?new %sVariable.Value():elem);if(elem==null||ar.fail)break;}}}}}else{r.skip(kind);report.refuse(\"kind_mismatch\");}\n", un.Name, un.Name, method, args, m, un.Name)
 		return
 	}
 	fmt.Fprintf(b, "%sVariable.Value elem=%sVariable.%s(ar,nt,report%s);if(elem==null)break;v.%s.add(elem);if(ar.fail)break;}}}}}else{r.skip(kind);report.refuse(\"kind_mismatch\");}\n", un.Name, un.Name, method, args, m)

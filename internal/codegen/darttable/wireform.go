@@ -3905,6 +3905,20 @@ func (g *wireGen) emitLoad(st *ir.Struct) {
 	g.pf("\tif (r.report.refused) return %s();\n", n)
 	g.pf("\treturn v;\n")
 	g.pf("}\n\n")
+	g.pf("void _copy%s(%s dst, %s src) {\n", n, n, n)
+	for _, f := range st.Fields {
+		if f.Type.Optional {
+			g.pf("\tdst.%s = src.%s;\n", hasMember(f), hasMember(f))
+		}
+		g.pf("\tdst.%s = src.%s;\n", fieldMember(f), fieldMember(f))
+	}
+	g.pf("}\n\n")
+	g.pf("bool %sInto(%s target, Uint8List data, [TableWireReport? report]) {\n", fn, n)
+	g.pf("\tfinal r = report ?? TableWireReport();\n")
+	g.pf("\tfinal v = %s(data, r);\n", fn)
+	g.pf("\t_copy%s(target, r.refused ? %s() : v);\n", n, n)
+	g.pf("\treturn !r.refused;\n")
+	g.pf("}\n\n")
 }
 
 // measureSpec is one root's extent-walk spec (docs/SPEC-TABLES.md §6.2): the
@@ -4286,6 +4300,15 @@ func (g *wireGen) emitWireWriteAssert(f *ir.Field, expr, ind string) {
 			}
 		default:
 			g.pf("%sassert(%s >= %s && %s <= %s);\n", ind, expr, lo.String(), expr, hi.String())
+		}
+	} else if f.Type.Kind == ir.TInt && f.Type.Width > 0 && f.Type.Width < 64 {
+		if f.Type.Signed {
+			lo := -(int64(1) << uint(f.Type.Width-1))
+			hi := (int64(1) << uint(f.Type.Width-1)) - 1
+			g.pf("%sassert(%s >= %d && %s <= %d);\n", ind, expr, lo, expr, hi)
+		} else {
+			hi := (int64(1) << uint(f.Type.Width)) - 1
+			g.pf("%sassert(%s >= 0 && %s <= %d);\n", ind, expr, expr, hi)
 		}
 	}
 	if f.Type.Kind == ir.TBits && f.Type.Width < 64 {

@@ -314,19 +314,39 @@ func unitViewFor(u *ir.Unit, types, tables []*ir.Struct) string {
 	}
 	// enums: row 0 is None, then the variants in DECLARED order
 	enumNames := slices.Sorted(maps.Keys(u.Enums))
+	var enumHelpers strings.Builder
 	fmt.Fprintf(&b, "            TableVocabularyInfo[] enums = new TableVocabularyInfo[%d];\n", len(enumNames))
 	for ei, n := range enumNames {
 		e := u.Enums[n]
 		ev := fmt.Sprintf("ev%d", ei)
 		fmt.Fprintf(&b, "            TableVariantInfo[] %s = new TableVariantInfo[%d];\n", ev, len(e.Variants)+1)
 		fmt.Fprintf(&b, "            %s[0] = TableVariantInfo.of(0L, \"None\", 0x0000000000000000L, \"\", new java.lang.String[0]);\n", ev)
-		for i, variant := range e.Variants {
-			id := uint64(0)
-			if reached[n] {
-				id = ir.TableWireId(e.VariantWireName(i))
+		if len(e.Variants) > 256 {
+			const chunk = 256
+			for start := 0; start < len(e.Variants); start += chunk {
+				end := min(start+chunk, len(e.Variants))
+				fn := fmt.Sprintf("fillEnum%d_%d", ei, start)
+				fmt.Fprintf(&b, "            %s(%s);\n", fn, ev)
+				fmt.Fprintf(&enumHelpers, "        private static void %s(TableVariantInfo[] ev) {\n", fn)
+				for i := start; i < end; i++ {
+					id := uint64(0)
+					if reached[n] {
+						id = ir.TableWireId(e.VariantWireName(i))
+					}
+					fmt.Fprintf(&enumHelpers, "            ev[%d] = TableVariantInfo.of(%dL, %q, 0x%016xL, %s, %s);\n",
+						i+1, i+1, e.Variants[i], id, javaString(e.VariantDocs[i]), javaTags(e.VariantTags[i]))
+				}
+				enumHelpers.WriteString("        }\n")
 			}
-			fmt.Fprintf(&b, "            %s[%d] = TableVariantInfo.of(%dL, %q, 0x%016xL, %s, %s);\n",
-				ev, i+1, i+1, variant, id, javaString(e.VariantDocs[i]), javaTags(e.VariantTags[i]))
+		} else {
+			for i, variant := range e.Variants {
+				id := uint64(0)
+				if reached[n] {
+					id = ir.TableWireId(e.VariantWireName(i))
+				}
+				fmt.Fprintf(&b, "            %s[%d] = TableVariantInfo.of(%dL, %q, 0x%016xL, %s, %s);\n",
+					ev, i+1, i+1, variant, id, javaString(e.VariantDocs[i]), javaTags(e.VariantTags[i]))
+			}
 		}
 		fmt.Fprintf(&b, "            enums[%d] = TableVocabularyInfo.of(%q, %s, %dL, %d, %s, %s, %s);\n",
 			ei, n, javaString(viewFile(u, n)), e.Max, e.StorageBits, javaString(e.Doc), javaTags(e.Tags), ev)
@@ -418,6 +438,7 @@ func unitViewFor(u *ir.Unit, types, tables []*ir.Struct) string {
 	b.WriteString("            v.constants = constants;\n")
 	b.WriteString("            return v;\n")
 	b.WriteString("        }\n")
+	b.WriteString(enumHelpers.String())
 	b.WriteString("    }\n\n")
 	b.WriteString("    public static TableUnitView unit() { return Holder.UNIT; }\n")
 	b.WriteString("}\n")

@@ -873,6 +873,9 @@ func (g *tableGen) tableStorageColumns(f *ir.Field) string {
 		fmt.Fprintf(&b, ", GetCount = delegate (object o) { return %s%sCount; }", cast, name)
 		fmt.Fprintf(&b, ", SetCount = delegate (object o, int n) { %s%sCount = n; }", cast, name)
 	}
+	if f.Array == ir.ArrayFixed && f.KeyEnum == "" {
+		fmt.Fprintf(&b, ", GetArrayLength = delegate (object o) { var a = %s%s; return a == null ? -1 : a.Length; }", cast, name)
+	}
 	if f.IsMap() || f.IsList() {
 		typ := csFieldType(f.Type)
 		class := isClassRef(f.Type) && !f.Type.Pointer

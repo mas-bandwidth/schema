@@ -2255,9 +2255,27 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("     *  counted, arg. A layout entry cannot carry these; the plan compiler\n")
 	g.pf("     *  lands values through them. A `bytes(N)` row is an ARRAY's: dest the\n")
 	g.pf("     *  buffer, aux the live count. */\n")
-	g.pf("    public static final int[] dest = {\n")
-	g.emitDestArray(w)
-	g.pf("    };\n\n")
+	if len(w.dst) > 256 {
+		buf := make([]byte, 0, len(w.dst)*20)
+		putInt := func(v int64) {
+			u := uint32(v)
+			buf = append(buf, byte(u), byte(u>>8), byte(u>>16), byte(u>>24))
+		}
+		for _, d := range w.dst {
+			putInt(d.dst)
+			putInt(d.stride)
+			putInt(d.aux)
+			putInt(int64(d.counted))
+			putInt(int64(d.arg))
+		}
+		g.pf("    public static final int[] dest = TableFixed.ints(\n")
+		g.emitByteChunks(buf)
+		g.pf("    );\n\n")
+	} else {
+		g.pf("    public static final int[] dest = {\n")
+		g.emitDestArray(w)
+		g.pf("    };\n\n")
+	}
 
 	entries, floor := g.fixedLineage(st, FixedLineageEntry{Wire: hash, Layout: layout, Record: 8 + body})
 	g.emitLineage(st, hash, layout, entries, floor)
@@ -2501,6 +2519,8 @@ func (g *fixedGen) emitRoot(st *ir.Struct, body int64) {
 	g.pf("                if (report.refused || report.damaged) {\n")
 	g.pf("                    if (pass == 1) {\n")
 	g.pf("                        for (int j = 0; j <= k; j++) { scatter(defaults, 0, values[j], TableFixed.discard(), true, false); }\n")
+	g.pf("                    } else if (report.reason == TableFixed.Reason.outOfRange || report.reason == TableFixed.Reason.nonFiniteFloat) {\n")
+	g.pf("                        for (int j = 0; j < n; j++) { scatter(defaults, 0, values[j], TableFixed.discard(), true, false); }\n")
 	g.pf("                    }\n")
 	g.pf("                    report.widened = widenedBefore;\n")
 	g.pf("                    return -1;\n")

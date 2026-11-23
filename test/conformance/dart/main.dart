@@ -152,6 +152,9 @@ import '../../../build/tables-generated-dart-scalars/cooktorturewide/CookTorture
 import '../../../build/tables-generated-dart/surfaces/SurfacesWire.dart' as surfw;
 import '../../../build/tables-generated-dart/surfaces/SurfacesFixed.dart' as surff;
 import '../../../build/tables-generated-dart/surfaces/SurfacesCook.dart' as surfcook;
+import '../../../build/tables-generated-dart/tblann4096/Announce4096Fixed.dart' as ann4096;
+import '../../../build/tables-generated-dart/tblann4097/Announce4097Fixed.dart' as ann4097;
+import '../../../build/tables-generated-dart/backend/BackendBlock.dart' as backend_blk;
 
 // Decode JSON bytes before entering a generated String reader. The generated
 // reader owns the one leading byte-order mark skip (docs/SPEC-TABLES.md §16.2,
@@ -6077,11 +6080,7 @@ int run(List<String> args) {
     case 'write-refusal-cook':
       return surfaceWriteRefusalCook(out);
     case 'write-refusal-block':
-      // ABSENT, the whole surface: <Root>Block.begin takes the caller's bytes
-      // and a base and writes the prologue; rows are the caller's bytes, so no
-      // block builder is handed the row's value
-      stderr.writeln('write-refusal-block: the Dart leg has no block builder that takes a value (<Root>Block.begin writes the prologue alone)');
-      return 2;
+      return surfaceWriteRefusalBlock(out);
     case 'announce':
       return surfaceAnnounce(out);
     case 'read-into':
@@ -6815,7 +6814,23 @@ String _writeRefusal1122(String surface, String unit, String root, String wirePa
       });
     case 'tblsurf Big':
       if (surface != 'write-refusal-message') break;
-      return 'absent:the Dart emitter generates no message form for Big (no fixed form past the 65536-byte record ceiling)';
+      final fx = surff.Big();
+      switch (mutation) {
+        case 'hp int':
+          fx.hp = int.parse(text);
+        case 'mask int':
+          fx.mask = int.parse(text);
+        case 'ratio float':
+          fx.ratio = _parseRefusalFloat(text);
+        default:
+          throw StateError('$surface $key: unsupported mutation $mutation');
+      }
+      return _catchNew(() {
+        final batch = <surff.Big>[fx];
+        final n = surff.bigMeasureMessages(batch, surff.TableReport());
+        if (n < 0) return -1;
+        return surff.bigSaveMessages(batch, Uint8List(n), surff.TableReport()) == n ? 0 : -1;
+      });
     case 'mapdemo Fleet':
       final rep = mapdemo.TableWireReport();
       final w = mapdemo.fleetWireLoad(bytes(), rep);
@@ -6917,6 +6932,58 @@ int surfaceWriteRefusalCook(String outDir) {
   return 0;
 }
 
+int surfaceWriteRefusalBlock(String outDir) {
+  for (final f in kind('write-refusal-block')) {
+    final name = f[1];
+    final unit = f[2];
+    final root = f[3];
+    final wirePath = f[4];
+    final path = f[5];
+    final vkind = f[6];
+    final text = f[7];
+    final key = '$unit $root';
+    final mutation = '$path $vkind';
+    final wire = File(wirePath).readAsBytesSync();
+    String answer;
+    switch (key) {
+      case 'backenddemo StorePurchase':
+        final fx = _loadedFixed(
+            _fixedLoadOne(wire, backenddemo_fixed.StorePurchase.new, backend.storePurchaseFixedNewPlan, backenddemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, backend.storePurchaseFixedLoad), key, wirePath);
+        switch (mutation) {
+          case 'sku length':
+            _fillTextFixed(fx.sku, (n) => fx.skuLength = n, 'length', text);
+          case 'quantity int':
+            fx.quantity = int.parse(text);
+          default:
+            throw StateError('write-refusal-block $key: unsupported mutation $mutation');
+        }
+        final buf = Uint8List(backend_blk.StorePurchaseBlock.blockMaxBytes);
+        answer = backend.storePurchaseBlockBuild(buf, 0, fx) < 0 ? 'refused' : 'wrote';
+      case 'backenddemo MatchResult':
+        final fx = _loadedFixed(
+            _fixedLoadOne(wire, backenddemo_fixed.MatchResult.new, backend.matchResultFixedNewPlan, backenddemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, backend.matchResultFixedLoad), key, wirePath);
+        switch (mutation) {
+          case 'players elems':
+            final n = int.parse(text);
+            while (fx.players.length < n) {
+              fx.players.add(backenddemo_fixed.PlayerRow());
+            }
+            if (fx.players.length > n) {
+              fx.players.length = n;
+            }
+          default:
+            throw StateError('write-refusal-block $key: unsupported mutation $mutation');
+        }
+        final buf = Uint8List(backend_blk.MatchResultBlock.blockMaxBytes);
+        answer = backend.matchResultBlockBuild(buf, 0, fx) < 0 ? 'refused' : 'wrote';
+      default:
+        throw StateError('write-refusal-block: unsupported $key $mutation');
+    }
+    _spill1122(outDir, name, answer);
+  }
+  return 0;
+}
+
 // THE ANNOUNCEMENT (announce): the writer's bytes, a strict or lenient read
 // of a peer's announcement, or a SaveMessages with no announcement in hand.
 int surfaceAnnounce(String outDir) {
@@ -6929,14 +6996,11 @@ int surfaceAnnounce(String outDir) {
     String answer;
     switch (mode) {
       case 'write':
-        if (unit == 'tblann4096' || unit == 'tblann4097') {
-          File('$outDir/$name.absent').writeAsStringSync(
-              "the Dart emitter's output for tblann4096/4097 (a 4095-variant enum) does not compile: too many nested expressions or statements");
-          continue;
-        }
         final (int Function() measure, int Function(Uint8List) announce) = switch (unit) {
           'tblsurf' => (surff.announceMeasure, surff.announce),
           'messagedemo' => (messagedemo_fixed.announceMeasure, messagedemo_fixed.announce),
+          'tblann4096' => (ann4096.announceMeasure, ann4096.announce),
+          'tblann4097' => (ann4097.announceMeasure, ann4097.announce),
           _ => throw StateError('announce $name: no announcement writer for $unit'),
         };
         final n = measure();
@@ -7038,11 +7102,6 @@ int surfaceReadInto(String outDir) {
     final form = f[4];
     final lawful = File(f[5]).readAsBytesSync();
     switch (form) {
-      case 'variable':
-      case 'json':
-        File('$outDir/$name.absent').writeAsStringSync(
-            "Dart's <root>WireLoad and <root>FromJson take no caller value: they return a new one");
-        continue;
       case 'fixed-nocap':
         // NO CALL TO HOLD: <root>FixedLoad always takes a capacity
         File('$outDir/$name').writeAsStringSync('unrepresentable\n');
@@ -7052,6 +7111,24 @@ int surfaceReadInto(String outDir) {
     final count = int.parse(f[7]);
     final answer = StringBuffer();
     switch ('$form $unit $root') {
+      case 'variable tblsurf Counted':
+        final v = surfw.Counted();
+        final report = surfw.TableWireReport();
+        bool read(Uint8List b) => surfw.countedWireLoadInto(v, b, report) && !report.refused;
+        answer.write(_readIntoLine(() => read(lawful)));
+        answer.write(_readIntoLine(() => read(damaged)));
+        answer.write(surfw.countedToJson(v));
+        answer.write(_readIntoLine(() => read(lawful)));
+      case 'json tblsurf Counted':
+        final v = surfw.Counted();
+        final report = surfw.TableTextReport();
+        final lawfulText = utf8.decode(lawful);
+        final damagedText = utf8.decode(damaged);
+        bool read(String t) => surfw.countedFromJsonInto(v, t, report) && !report.refused;
+        answer.write(_readIntoLine(() => read(lawfulText)));
+        answer.write(_readIntoLine(() => read(damagedText)));
+        answer.write(surfw.countedToJson(v));
+        answer.write(_readIntoLine(() => read(lawfulText)));
       case 'fixed tblsurf Narrow':
         final values = List<surff.Narrow>.generate(count, (_) => surff.Narrow());
         final report = surff.TableFixedReport();

@@ -2052,6 +2052,79 @@ public final class TableVariable {
         return true;
     }
 
+    public static int[] ints(java.lang.String... parts) {
+        int n = 0;
+        for (java.lang.String p : parts) {
+            n += p.length();
+        }
+        int[] out = new int[n / 4];
+        byte[] raw = new byte[n];
+        int at = 0;
+        for (java.lang.String p : parts) {
+            for (int i = 0; i < p.length(); i++) {
+                raw[at++] = (byte) p.charAt(i);
+            }
+        }
+        for (int i = 0; i < out.length; i++) {
+            int o = i * 4;
+            out[i] = (raw[o] & 0xff)
+                    | ((raw[o + 1] & 0xff) << 8)
+                    | ((raw[o + 2] & 0xff) << 16)
+                    | ((raw[o + 3] & 0xff) << 24);
+        }
+        return out;
+    }
+
+    public static long[] longs(java.lang.String... parts) {
+        int n = 0;
+        for (java.lang.String p : parts) {
+            n += p.length();
+        }
+        long[] out = new long[n / 8];
+        byte[] raw = new byte[n];
+        int at = 0;
+        for (java.lang.String p : parts) {
+            for (int i = 0; i < p.length(); i++) {
+                raw[at++] = (byte) p.charAt(i);
+            }
+        }
+        for (int i = 0; i < out.length; i++) {
+            int o = i * 8;
+            out[i] = (raw[o] & 0xffL)
+                    | ((raw[o + 1] & 0xffL) << 8)
+                    | ((raw[o + 2] & 0xffL) << 16)
+                    | ((raw[o + 3] & 0xffL) << 24)
+                    | ((raw[o + 4] & 0xffL) << 32)
+                    | ((raw[o + 5] & 0xffL) << 40)
+                    | ((raw[o + 6] & 0xffL) << 48)
+                    | ((raw[o + 7] & 0xffL) << 56);
+        }
+        return out;
+    }
+
+    public static int findSlot(long[] sortedIds, int[] slots, long id) {
+        int idx = java.util.Arrays.binarySearch(sortedIds, id);
+        return idx < 0 ? -1 : slots[idx];
+    }
+
+    public static java.lang.String[] names(java.lang.String... parts) {
+        java.lang.StringBuilder sb = new java.lang.StringBuilder();
+        for (java.lang.String p : parts) {
+            sb.append(p);
+        }
+        return sb.toString().split(",", -1);
+    }
+
+    public static java.util.Map<java.lang.String, java.lang.Integer> nameIndex(
+            java.lang.String[] names) {
+        java.util.HashMap<java.lang.String, java.lang.Integer> m =
+                new java.util.HashMap<>(names.length * 2);
+        for (int i = 0; i < names.length; i++) {
+            m.put(names[i], i);
+        }
+        return m;
+    }
+
     // A NODE-TABLE RECORD (docs/SPEC-TABLES.md §3.1): the type id the record
     // rides under and its body bytes. For the card's *string the type id is the
     // reserved string id (ir.StringWireTypeId) and the body is the raw UTF-8

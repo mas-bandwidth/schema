@@ -293,6 +293,7 @@ namespace Blockdemo
         public Func<object, int, UInt128> GetWide;
         public Action<object, int, UInt128> SetWide;
         public byte[] DefaultBytes;
+        public Func<object, int> GetArrayLength;
         public Action<object> ResetField;
         public string Guard;        // branch guard, e.g. "at_rest" or "!at_rest"; "" if unguarded
 
@@ -690,7 +691,7 @@ namespace Blockdemo
     // one slice per generated file.
     public static partial class Schema
     {
-        public static int AnnounceMeasure() { return tableAnnouncement.Length; }
+        public static int AnnounceMeasure() { return tableAnnouncement.Length == 0 ? -1 : tableAnnouncement.Length; }
         public static ReadOnlySpan<byte> Announce() { return tableAnnouncement; }
         public static TableWire.Verdict AnnounceRead(TableVocabulary vocabulary, ReadOnlySpan<byte> bytes, TableReport report) { return TableWire.AnnounceRead(vocabulary, bytes, report); }
         // THE SHARED EMPTY DOC (docs/SPEC-TABLES.md §8.1): a declaration with no ///
@@ -1608,6 +1609,7 @@ namespace Blockdemo
             static bool WriteField(ref Out o, object value, TableFieldInfo f, int depth)
             {
                 if (f.Counted && (f.GetCount(value) < f.ArrayMin || f.GetCount(value) > f.ArrayBound)) { return false; }
+                if (f.GetArrayLength != null && f.GetArrayLength(value) != f.ArrayBound) { return false; }
                 if (f.TextTotal > 0 && !TableWire.TextFits(value, f)) { return false; }
                 if (f.Map) { return WriteMap(ref o, value, f, depth); }
                 if (f.Kind == 12 && !f.TextList)
@@ -4890,6 +4892,11 @@ namespace Blockdemo
                     return;
                 }
                 UInt128 bits = f.GetWide != null ? f.GetWide(value, i) : f.GetBuffer != null ? f.GetBuffer(value)[i] : f.GetRaw(value, i);
+                if (f.EnumName != null && f.VariantId == null)
+                {
+                    ulong mask = f.EnumMax >= 63 ? ulong.MaxValue : f.EnumMax < 0 ? 0UL : ((1UL << (int)(f.EnumMax + 1)) - 1UL);
+                    System.Diagnostics.Debug.Assert(((ulong)bits & ~mask) == 0);
+                }
                 if (f.Kind == 10 && shape.Packing == 2)
                 {
                     float normalized = (TableBitsToFloat((uint)bits) - shape.QMin) / shape.Delta;
@@ -5428,8 +5435,9 @@ namespace Blockdemo
                 long at = record + f.NativeOffset;
                 if (f.Optional) { w.Put(record + f.NativePresentOffset, f.GetPresent(value) ? 1u : 0u, 1); }
                 if (f.Optional && !f.GetPresent(value)) { return true; }
+                if (f.GetArrayLength != null) { System.Diagnostics.Debug.Assert(f.GetArrayLength(value) == f.ArrayBound); }
                 int live = f.Counted ? f.GetCount(value) : f.IsArray ? f.ArrayBound : 1;
-                System.Diagnostics.Debug.Assert(live >= 0 && (!f.Counted || live <= f.ArrayBound));
+                System.Diagnostics.Debug.Assert(live >= (f.Counted ? f.ArrayMin : 0) && (!f.Counted || live <= f.ArrayBound));
                 if (f.NativeCountOffset >= 0) { w.Put(record + f.NativeCountOffset, (uint)live, 4); }
                 if (f.Unbounded)
                 {
@@ -5537,8 +5545,9 @@ namespace Blockdemo
                     int count = f.GetCount(value); System.Diagnostics.Debug.Assert(count >= 0);
                     at = Align(at, f.StorageAlign) + (long)count * f.StorageSize;
                 }
+                if (f.GetArrayLength != null) { System.Diagnostics.Debug.Assert(f.GetArrayLength(value) == f.ArrayBound); }
                 int n = f.IsArray ? Count(value, f) : 1;
-                System.Diagnostics.Debug.Assert(n >= 0 && (!f.IsArray || n <= f.ArrayBound));
+                System.Diagnostics.Debug.Assert(n >= (f.Counted ? f.ArrayMin : 0) && (!f.IsArray || n <= f.ArrayBound));
                 for (int i = 0; i < n; i++)
                 {
                     if (f.Kind == 13 || f.TextList) { if (!NativeExtentSize(f.GetChild(value, i), f.Table, ref at)) { return false; } }
@@ -5733,6 +5742,7 @@ namespace Blockdemo
                     if (f.WireGuard != null && !f.WireGuard(value)) { continue; }
                     if (f.Optional && !f.GetPresent(value)) { continue; }
                     if (f.Counted) { System.Diagnostics.Debug.Assert(Count(value, f) >= f.ArrayMin && Count(value, f) <= f.ArrayBound); }
+                    if (f.GetArrayLength != null) { System.Diagnostics.Debug.Assert(f.GetArrayLength(value) == f.ArrayBound); }
                     if (Rides(value, f) && (!ids.Add(f.Id) || !CollectPayload(value, f, ref ids))) { return false; }
                 }
                 return true;
@@ -5921,7 +5931,8 @@ namespace Blockdemo
             {
                 if (f.WireGuard != null && !f.WireGuard(value)) { return true; }
                 if (f.Optional && !f.GetPresent(value)) { return true; }
-                if (f.Counted) { System.Diagnostics.Debug.Assert(Count(value, f) >= 0 && Count(value, f) <= f.ArrayBound); }
+                if (f.Counted) { System.Diagnostics.Debug.Assert(Count(value, f) >= f.ArrayMin && Count(value, f) <= f.ArrayBound); }
+                if (f.GetArrayLength != null) { System.Diagnostics.Debug.Assert(f.GetArrayLength(value) == f.ArrayBound); }
                 return !Rides(value, f) || (ids.Add(f.Id) && CollectPayload(value, f, ref ids));
             }
             public static long BodySizeField(object value, TableFieldInfo f, ref Ids ids, scoped Span<long> elemCache, out long payload)

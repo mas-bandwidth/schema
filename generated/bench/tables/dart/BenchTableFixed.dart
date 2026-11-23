@@ -2484,13 +2484,15 @@ class TableReport {
 }
 
 /// "The ANNOUNCEMENT IS A COMPILE-TIME CONSTANT BYTE ARRAY WITH A LENGTH."
-/// (§3.3) — the length, emitted beside the bytes.
-int announceMeasure() => tableAnnouncementLength;
+/// (§3.3) — the length, emitted beside the bytes, or -1 when the vocabulary
+/// exceeds the 4096-entry ceiling.
+int announceMeasure() => tableAnnouncementLength == 0 ? -1 : tableAnnouncementLength;
 
 /// Copies the compiled announcement into the caller's buffer and answers its
-/// length, or -1 when the buffer is too small. Nothing here allocates.
+/// length, or -1 when the buffer is too small or the vocabulary exceeds the
+/// 4096-entry ceiling. Nothing here allocates.
 int announce(Uint8List buffer) {
-  if (buffer.length < tableAnnouncementLength) {
+  if (tableAnnouncementLength == 0 || buffer.length < tableAnnouncementLength) {
     return -1;
   }
   buffer.setRange(0, tableAnnouncementLength, tableAnnouncement);
@@ -3180,6 +3182,12 @@ int tableMessageBatchOpen(
   TableReport report,
   TableMessageReader r,
 ) {
+  report.refused = false;
+  report.reason = '';
+  report.unknown = 0;
+  report.widened = 0;
+  report.buildVersionRemote = 0;
+  report.buildVersionOwn = 0;
   report.nonFiniteFloat = ''; // this read's own refusal (§3.3)
   if (data.length == 0) { report.Damage(); return -1; }
   if (data[0] != 2) { report.Refuse('newer_form'); return -1; }
@@ -3621,6 +3629,7 @@ bool tableEntitySaveMessageBody(TableBitWriter w, TableEntity value) {
   {
     if (value.damage != 0) {
       w.put(14, tableMessageRefBits);
+      assert((value.damage & ~255) == 0);
       w.put(value.damage - 0, 8);
     }
   }
@@ -6972,26 +6981,56 @@ int tableEntityLoadMessages(
 ) {
   final r = TableMessageReader();
   final count = tableMessageBatchOpen(vocabulary, bytes, report, r);
-  if (count < 0) return 0;
+  if (count < 0) {
+    for (var j = 0; j < values.length; j++) {
+      initTableEntity(values[j]);
+    }
+    return 0;
+  }
   if (count > values.length) {
+    for (var j = 0; j < values.length; j++) {
+      initTableEntity(values[j]);
+    }
     report.Refuse('batch_too_large');
     return 0;
   }
   for (var i = 0; i < count; i++) {
     if (!tableEntityLoadMessageBody(r, values[i])) {
-      for (var j = 0; j <= i; j++) {
+      for (var j = 0; j < values.length; j++) {
         initTableEntity(values[j]);
       }
       return 0;
     }
   }
   if (!tableMessageBatchClose(r)) {
-    for (var j = 0; j < count; j++) {
+    for (var j = 0; j < values.length; j++) {
       initTableEntity(values[j]);
     }
     return 0;
   }
   return count;
+}
+
+int tableEntityBlockBuild(Uint8List bytes, int base, TableEntity value) {
+  if (base < 0 || base % 64 != 0 || bytes.length - base < 128) return -1;
+  if (value.entityId < 0 || value.entityId > 4095) return -1;
+  if (value.posX < -16383 || value.posX > 16383) return -1;
+  if (value.posY < -16383 || value.posY > 16383) return -1;
+  if (value.posZ < -16383 || value.posZ > 16383) return -1;
+  if (value.yaw < 0 || value.yaw > 511) return -1;
+  if (value.pitch < 0 || value.pitch > 511) return -1;
+  if (value.velX < -2048 || value.velX > 2047) return -1;
+  if (value.velY < -2048 || value.velY > 2047) return -1;
+  if (value.velZ < -2048 || value.velZ > 2047) return -1;
+  if (value.health < 0 || value.health > 1000) return -1;
+  if (value.weapon < 0 || value.weapon > 15) return -1;
+  if ((value.damage & ~255) != 0) return -1;
+  final view = ByteData.view(bytes.buffer, bytes.offsetInBytes, bytes.lengthInBytes);
+  view.setUint64(base, 0x4b4c42414d484353, Endian.little);
+  view.setUint64(base + 8, tableBuildVersion, Endian.little);
+  view.setUint64(base + 16, 1, Endian.little);
+  var offset = 88;
+  return (offset + 63) & ~63;
 }
 
 // ---- TableStat, THE FIXED FORM (docs/SPEC-TABLES.md §3.4) ----
@@ -7435,26 +7474,46 @@ int tableStatLoadMessages(
 ) {
   final r = TableMessageReader();
   final count = tableMessageBatchOpen(vocabulary, bytes, report, r);
-  if (count < 0) return 0;
+  if (count < 0) {
+    for (var j = 0; j < values.length; j++) {
+      initTableStat(values[j]);
+    }
+    return 0;
+  }
   if (count > values.length) {
+    for (var j = 0; j < values.length; j++) {
+      initTableStat(values[j]);
+    }
     report.Refuse('batch_too_large');
     return 0;
   }
   for (var i = 0; i < count; i++) {
     if (!tableStatLoadMessageBody(r, values[i])) {
-      for (var j = 0; j <= i; j++) {
+      for (var j = 0; j < values.length; j++) {
         initTableStat(values[j]);
       }
       return 0;
     }
   }
   if (!tableMessageBatchClose(r)) {
-    for (var j = 0; j < count; j++) {
+    for (var j = 0; j < values.length; j++) {
       initTableStat(values[j]);
     }
     return 0;
   }
   return count;
+}
+
+int tableStatBlockBuild(Uint8List bytes, int base, TableStat value) {
+  if (base < 0 || base % 64 != 0 || bytes.length - base < 64) return -1;
+  if (value.statId < 0 || value.statId > 255) return -1;
+  if (value.delta < -512 || value.delta > 511) return -1;
+  final view = ByteData.view(bytes.buffer, bytes.offsetInBytes, bytes.lengthInBytes);
+  view.setUint64(base, 0x4b4c42414d484353, Endian.little);
+  view.setUint64(base + 8, tableBuildVersion, Endian.little);
+  view.setUint64(base + 16, 1, Endian.little);
+  var offset = 32;
+  return (offset + 63) & ~63;
 }
 
 // ---- TableMixed, THE FIXED FORM (docs/SPEC-TABLES.md §3.4) ----
@@ -8310,21 +8369,29 @@ int tableMixedLoadMessages(
 ) {
   final r = TableMessageReader();
   final count = tableMessageBatchOpen(vocabulary, bytes, report, r);
-  if (count < 0) return 0;
+  if (count < 0) {
+    for (var j = 0; j < values.length; j++) {
+      initTableMixed(values[j]);
+    }
+    return 0;
+  }
   if (count > values.length) {
+    for (var j = 0; j < values.length; j++) {
+      initTableMixed(values[j]);
+    }
     report.Refuse('batch_too_large');
     return 0;
   }
   for (var i = 0; i < count; i++) {
     if (!tableMixedLoadMessageBody(r, values[i])) {
-      for (var j = 0; j <= i; j++) {
+      for (var j = 0; j < values.length; j++) {
         initTableMixed(values[j]);
       }
       return 0;
     }
   }
   if (!tableMessageBatchClose(r)) {
-    for (var j = 0; j < count; j++) {
+    for (var j = 0; j < values.length; j++) {
       initTableMixed(values[j]);
     }
     return 0;

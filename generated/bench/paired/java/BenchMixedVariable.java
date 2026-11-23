@@ -45,6 +45,9 @@ public final class BenchMixedVariable {
             for (int i = 0; i < 1; i++) {
                 entities.add(new MixedEntityVariable.Value());
             }
+            for (int i = 0; i < 4; i++) {
+                loadout.add(0);
+            }
         }
     }
 
@@ -1843,6 +1846,54 @@ public final class BenchMixedVariable {
         return v;
     }
 
+    static void copyInto(Value src, Value dst) {
+        dst.sequence = src.sequence;
+        dst.ackSequence = src.ackSequence;
+        dst.ackBits = src.ackBits;
+        dst.sessionId = src.sessionId;
+        dst.clientId = src.clientId;
+        dst.nonce = src.nonce;
+        dst.worldTime = src.worldTime;
+        dst.frameTick = src.frameTick;
+        dst.serverTime = src.serverTime;
+        dst.entities = src.entities;
+        dst.stats = src.stats;
+        dst.gameEvent = src.gameEvent;
+        dst.loadout = src.loadout;
+        dst.playerName = src.playerName;
+        dst.payload = src.payload;
+        dst.aimX = src.aimX;
+        dst.aimY = src.aimY;
+        dst.aimZ = src.aimZ;
+        dst.recoil = src.recoil;
+        dst.drift = src.drift;
+        dst.wideKey = src.wideKey;
+        dst.flux = src.flux;
+        dst.ping = src.ping;
+        dst.crcHint = src.crcHint;
+        dst.hasExtra = src.hasExtra;
+        dst.extra = src.extra;
+        dst.idleTicks = src.idleTicks;
+    }
+
+    public static boolean loadInto(Value target, byte[] data, TableVariable.Report report) {
+        if (report == null) {
+            report = new TableVariable.Report();
+        }
+        report.reset();
+        Value loaded = load(data, report);
+        if (loaded == null || report.refused || report.damaged) {
+            if (target != null) {
+                copyInto(new Value(), target);
+            }
+            return false;
+        }
+        if (target != null) {
+            copyInto(loaded, target);
+        }
+        return true;
+    }
+
     // loadMeasure sizes the region a strict load would need (docs/SPEC-TABLES.md §6.5).
     private static final long ALIGN = 16;
     private static final long RECORD_SIZE = 1376;
@@ -2191,6 +2242,24 @@ public final class BenchMixedVariable {
         return v;
     }
 
+    public static boolean fromJsonInto(Value target, byte[] text, TableVariable.Report report) {
+        if (report == null) {
+            report = new TableVariable.Report();
+        }
+        report.reset();
+        Value loaded = fromJson(text, report);
+        if (loaded == null || report.refused || report.damaged) {
+            if (target != null) {
+                copyInto(new Value(), target);
+            }
+            return false;
+        }
+        if (target != null) {
+            copyInto(loaded, target);
+        }
+        return true;
+    }
+
     static void jsonFields(
             java.lang.StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth) {
         b.append('{');
@@ -2373,6 +2442,9 @@ public final class BenchMixedVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "loadout");
         b.append(": ");
+        if (v.loadout.size() != 4) {
+            throw new TableJson.Refused("count_over_bound");
+        }
         {
             java.util.List<java.lang.Integer> padded = new java.util.ArrayList<>();
             for (int j = 0; j < 4; j++) padded.add(j < v.loadout.size() ? v.loadout.get(j) : 0);
@@ -3062,6 +3134,9 @@ public final class BenchMixedVariable {
                         v.loadout = new java.util.ArrayList<>();
                     }
                     if (in.peek() == '[') {
+                        v.loadout.clear();
+                    }
+                    if (in.peek() == '[') {
                         in.p++;
                         int idx = 0;
                         int ab = 4;
@@ -3102,6 +3177,9 @@ public final class BenchMixedVariable {
                     } else {
                         in.skipValue();
                         in.rep.refuse("kind_mismatch");
+                    }
+                    while (v.loadout.size() < 4) {
+                        v.loadout.add(0);
                     }
                 }
             } else if ("player_name".equals(key)) {
@@ -3487,7 +3565,7 @@ public final class BenchMixedVariable {
         }
         v.gameEvent = MixedEventVariable.fromFixed(fixed.gameEvent);
         for (int i = 0; i < fixed.loadout.length; i++) {
-            v.loadout.add((fixed.loadout[i] & 0xFF));
+            v.loadout.set(i, (fixed.loadout[i] & 0xFF));
         }
         v.playerName = TableVariable.utf8FromFixed(fixed.playerName, fixed.playerNameLength);
         assert fixed.payloadLength >= 0 && fixed.payloadLength <= fixed.payload.length;

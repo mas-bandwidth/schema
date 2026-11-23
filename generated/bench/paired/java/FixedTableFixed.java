@@ -462,6 +462,11 @@ public final class FixedTableFixed {
                         for (int j = 0; j <= k; j++) {
                             scatter(defaults, 0, values[j], TableFixed.discard(), true, false);
                         }
+                    } else if (report.reason == TableFixed.Reason.outOfRange
+                            || report.reason == TableFixed.Reason.nonFiniteFloat) {
+                        for (int j = 0; j < n; j++) {
+                            scatter(defaults, 0, values[j], TableFixed.discard(), true, false);
+                        }
                     }
                     report.widened = widenedBefore;
                     return -1;

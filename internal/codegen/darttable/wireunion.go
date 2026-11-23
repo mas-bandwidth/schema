@@ -987,6 +987,11 @@ List<T> _stableSorted<T>(List<T> l, int Function(T a, T b) cmp) {
     }
     out[j + 1] = x;
   }
+  for (var i = 1; i < out.length; i++) {
+    if (cmp(out[i - 1], out[i]) == 0) {
+      throw StateError('repeated map key');
+    }
+  }
   return out;
 }
 

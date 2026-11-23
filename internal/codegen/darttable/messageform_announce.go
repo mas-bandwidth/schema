@@ -41,7 +41,10 @@ func (g *fixedModule) emitMessageAnnouncement() {
 // constant, the same way the reference legs emit it: a const byte list and its
 // length. `final` rather than `const` because Uint8List is not a const type.
 func dartTableAnnouncementConstant(u *ir.Unit) string {
-	b := tablewire.Announce(u)
+	var b []byte
+	if len(tablewire.MessageVocabulary(u)) <= ir.TableVocabularyMaxEntries {
+		b = tablewire.Announce(u)
+	}
 	var out strings.Builder
 	out.WriteString("/// THE ANNOUNCEMENT: the unit's id table, settled byte for byte by the\n")
 	out.WriteString("/// compiler. It is an ordinary form-`1` file whose body carries the build\n")
@@ -383,13 +386,15 @@ class TableReport {
 }
 
 /// "The ANNOUNCEMENT IS A COMPILE-TIME CONSTANT BYTE ARRAY WITH A LENGTH."
-/// (§3.3) — the length, emitted beside the bytes.
-int announceMeasure() => tableAnnouncementLength;
+/// (§3.3) — the length, emitted beside the bytes, or -1 when the vocabulary
+/// exceeds the 4096-entry ceiling.
+int announceMeasure() => tableAnnouncementLength == 0 ? -1 : tableAnnouncementLength;
 
 /// Copies the compiled announcement into the caller's buffer and answers its
-/// length, or -1 when the buffer is too small. Nothing here allocates.
+/// length, or -1 when the buffer is too small or the vocabulary exceeds the
+/// 4096-entry ceiling. Nothing here allocates.
 int announce(Uint8List buffer) {
-  if (buffer.length < tableAnnouncementLength) {
+  if (tableAnnouncementLength == 0 || buffer.length < tableAnnouncementLength) {
     return -1;
   }
   buffer.setRange(0, tableAnnouncementLength, tableAnnouncement);

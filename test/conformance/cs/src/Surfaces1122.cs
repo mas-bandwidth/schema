@@ -246,17 +246,17 @@ static partial class Program
     {
         switch (value)
         {
-            case Backenddemo.StorePurchase:
+            case Backenddemo.StorePurchase sp:
                 return WriteRefusalSave(() =>
                 {
                     using var storage = new Backenddemo.StorePurchaseBlockStorage();
-                    return Backenddemo.StorePurchaseBlock.Begin(out _, storage, new Backenddemo.StorePurchaseCounts(), out _) ? 1 : -1;
+                    return Backenddemo.StorePurchaseBlock.Begin(out _, storage, sp, out _) ? 1 : -1;
                 });
-            case Backenddemo.MatchResult:
+            case Backenddemo.MatchResult mr:
                 return WriteRefusalSave(() =>
                 {
                     using var storage = new Backenddemo.MatchResultBlockStorage();
-                    return Backenddemo.MatchResultBlock.Begin(out _, storage, new Backenddemo.MatchResultCounts(), out _) ? 1 : -1;
+                    return Backenddemo.MatchResultBlock.Begin(out _, storage, mr, out _) ? 1 : -1;
                 });
         }
         throw new InvalidOperationException("write-refusal-block " + name + ": no block builder registered for " + value.GetType().FullName);
@@ -272,12 +272,11 @@ static partial class Program
         byte[] bytes;
         switch (unit)
         {
-            case "tblann4096": size = Announce4096.Schema.AnnounceMeasure(); bytes = Announce4096.Schema.Announce().ToArray(); break;
-            case "tblann4097": size = Announce4097.Schema.AnnounceMeasure(); bytes = Announce4097.Schema.Announce().ToArray(); break;
-            case "tblsurf": size = Surfaces.Schema.AnnounceMeasure(); bytes = Surfaces.Schema.Announce().ToArray(); break;
+            case "tblann4096": size = Announce4096.Schema.AnnounceMeasure(); if (size < 0) { return null; } bytes = Announce4096.Schema.Announce().ToArray(); break;
+            case "tblann4097": size = Announce4097.Schema.AnnounceMeasure(); if (size < 0) { return null; } bytes = Announce4097.Schema.Announce().ToArray(); break;
+            case "tblsurf": size = Surfaces.Schema.AnnounceMeasure(); if (size < 0) { return null; } bytes = Surfaces.Schema.Announce().ToArray(); break;
             default: throw new InvalidOperationException("announce: no announcement writer registered for unit " + unit);
         }
-        if (size < 0) { return null; }
         if (size != bytes.Length) { throw new InvalidOperationException("announce: " + unit + " measures " + size + " and announces " + bytes.Length + " bytes"); }
         return bytes;
     }

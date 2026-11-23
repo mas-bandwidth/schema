@@ -166,7 +166,7 @@ func (g *cookGen) emitCookFixedFieldPayload(f *ir.Field, offset int64, expr, ind
 		// is the programmer's error, caught by `assert` and gone in release.
 		g.cookAssert(ind, fmt.Sprintf("%s.length >= %d", expr, bound))
 		if f.Array == ir.ArrayCounted {
-			g.cookAssert(ind, fmt.Sprintf("%sCount >= 0", expr))
+			g.cookAssert(ind, fmt.Sprintf("%sCount >= %d", expr, f.ArrayMin))
 			g.cookAssert(ind, fmt.Sprintf("%sCount <= %d", expr, bound))
 			g.pf("%sif (out != null) out.setInt32(at + %d, %sCount, order);\n", ind, pieces[1].Offset, expr)
 		}
@@ -284,11 +284,15 @@ func (g *cookGen) emitCookScalarStore(f *ir.Field, expr, at string, width int64,
 	case f.Type.Kind == ir.TBool:
 		g.pf("%s  out.setUint8(%s, %s ? 1 : 0);\n", ind, at, expr)
 	case f.Type.Kind == ir.TFloat32:
-		line := fmt.Sprintf("%s  out.setUint32(%s, TableCookWriteReport.float32Bits(%s), order);", ind, at, expr)
+		arg := expr
+		if strings.HasPrefix(arg, "(") && strings.HasSuffix(arg, ")") {
+			arg = arg[1 : len(arg)-1]
+		}
+		line := fmt.Sprintf("%s  out.setUint32(%s, TableCookWriteReport.float32Bits(%s), order);", ind, at, arg)
 		if len(line) <= 80 {
 			g.pf("%s\n", line)
 		} else {
-			g.pf("%s  out.setUint32(\n%s    %s,\n%s    TableCookWriteReport.float32Bits(%s),\n%s    order,\n%s  );\n", ind, ind, at, ind, expr, ind, ind)
+			g.pf("%s  out.setUint32(\n%s    %s,\n%s    TableCookWriteReport.float32Bits(%s),\n%s    order,\n%s  );\n", ind, ind, at, ind, arg, ind, ind)
 		}
 	case f.Type.Kind == ir.TFloat64:
 		g.pf("%s  out.setFloat64(%s, %s, order);\n", ind, at, expr)
@@ -1139,6 +1143,9 @@ func (g *cookGen) emitCookVariableField(f *ir.Field, offset int64, expr, ind str
 		}
 		ref := tableRef(f)
 		// THE STORAGE CHECKS ARE DEBUG ASSERTS (docs/SPEC.md §5.1)
+		if f.ArrayMin > 0 {
+			g.cookAssert(ind, fmt.Sprintf("%s.length >= %d", expr, f.ArrayMin))
+		}
 		g.cookAssert(ind, fmt.Sprintf("%s.length <= %d", expr, bound))
 		g.pf("%sout?.setInt32(at + %d, %s.length, order);\n", ind, pieces[1].Offset, expr)
 		g.pf("%sfor (var i = 0; i < %d; i++) {\n", ind, bound)
