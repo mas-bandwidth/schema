@@ -426,6 +426,36 @@ applies to the vocabulary payload. Run the generated Java example with
 SCHEMA_SLOW=1 go test -count=1 -v ./internal/codegen/javatable -run '^TestMessageFormAnnounceJavaR9MaxBytes$'
 ```
 
+### Ordinary message-driver round trips
+
+The Java, Rust, and Lua conformance drivers exercise the message form through
+the generated public API, not an internal decoder. For every `message` row
+they read the row's `connection` announcement into one fresh receiving
+vocabulary, load the batch against that same vocabulary, and save the loaded
+values through the root's message writer. The harness compares every saved
+byte with the committed message golden.
+
+The shared backend fixtures make three otherwise easy-to-miss driver mistakes
+observable:
+
+| Contract | Shared fixture and required answer |
+|---|---|
+| Exact golden comparison | `store_full` loads and re-saves byte-for-byte as `testdata/wire/tables/store_full_message.bin`. |
+| Declared enum value survives the public read/write path | `store_full` carries `Currency.EUR`; substituting the default `USD`, accepting an out-of-domain ordinal, or indexing the enum from the wrong base changes the saved golden and fails the row. |
+| A lawful multi-body batch is actually delivered | `batch_delivered` loads both `StorePurchase` bodies and answers `count 2`; `batch_range_in_second`, `batch_cut_in_second`, and `batch_byte_after_pad` each answer `count 0`. |
+
+The batch-count rows deliberately judge only the public loader's returned
+count. After a refusal, caller storage and the implementation's reason are not
+part of the shared contract (SPEC-TABLES.md §§3.3 and 6.5). Run the focused
+driver checks after `make conformance-generate` and the corresponding driver
+build:
+
+```sh
+./build/conformance-harness run --only java --surfaces message
+./build/conformance-harness run --only rust --surfaces message
+./build/conformance-harness run --only lua --surfaces message
+```
+
 ### JavaScript read-into names
 
 The shape checker refuses `ConfigLoadInto` because the JavaScript table
