@@ -487,7 +487,13 @@ The [fixed-capacity cases](../testdata/conformance/feature-witnesses/fixed-load-
 also exercise the typed empty-save call, which must refuse before emitting a
 file. Python exercises omission and both explicit capacities. Go uses the
 length of the required destination slice and also checks that the empty
-save leaves the supplied buffer intact. Run the generated public APIs with
+save leaves the supplied buffer intact.
+
+Run this command from the repository root after preparing the Go runtime
+with `make deps` and the pinned interpreters with `make dist-python`.
+An existing `../serialize.go` checkout or an absolute `SERIALIZE_GO` path
+also supplies the Go runtime. Set `PYTHON` and `PYTHON_FLOOR` to existing
+pinned executables to use them in place of the local Python builds.
 
 ```sh
 SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -v \
