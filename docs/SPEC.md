@@ -754,7 +754,13 @@ FloatExpr   = float expression over float literals, int literals and const names
   languages get it from their own rules, stated so no target can silently be
   the odd one out). A field may override its zero with `= value` after the
   type — the default DEFINES the fresh value, so it precedes any `|`
-  qualification: `active bool = true`. Defaults cover bool
+  qualification: `active bool = true`. **A field never shadows a constant:**
+  a default (or any bound) that names a `const` means that constant in every
+  target, even when a field of the type body has the same name in the
+  target's spelling (`const Half = 0` beside `half int64 = Half`); a target
+  whose class scope would resolve the bare name to the field (Dart) emits the
+  constant's value instead, and a generated default never refers to the field
+  it initializes. Defaults cover bool
   (`true`/`false`), integer and float fields (constant expressions,
   fit-checked like any use site), enum fields (a variant name), the 128-bit
   integers, `fixed` (§4.6), `string(N)` and `bytes(N)` fields (a quoted
