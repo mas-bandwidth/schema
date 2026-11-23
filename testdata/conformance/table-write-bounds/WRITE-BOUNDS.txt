@@ -2,7 +2,7 @@
 unit writebounds testdata/conformance/table-write-bounds/TableWriteBounds.schema
 instance torture_var_wref           writebounds     TortureVarWref   testdata/conformance/table-write-bounds/torture_var_wref.bin
 write-refusal       sfw_opt_arr_long      writebounds TortureVarWref  testdata/conformance/table-write-bounds/torture_var_wref.bin opt_arr           count   4     refused
-write-refusal       sfw_opt_arr_ok        writebounds TortureVarWref  testdata/conformance/table-write-bounds/torture_var_wref.bin opt_arr           count   3     wrote
+write-refusal       sfw_opt_arr_ok        writebounds TortureVarWref  testdata/conformance/table-write-bounds/torture_var_wref.bin opt_arr           count   3     wrote testdata/conformance/table-write-bounds/expected/torture_var_wref_resized.bin
 write-refusal       sfw_arm_bits_wide     writebounds TortureVarWref  testdata/conformance/table-write-bounds/torture_var_wref.bin arm_bits.a_bits   int     8192  refused
 write-refusal       sfw_arm_bits_ok       writebounds TortureVarWref  testdata/conformance/table-write-bounds/torture_var_wref.bin arm_bits.a_bits   int     8191  wrote
 write-refusal       sfw_arm_range_high    writebounds TortureVarWref  testdata/conformance/table-write-bounds/torture_var_wref.bin arm_range.a_range int     11    refused

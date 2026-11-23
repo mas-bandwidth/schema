@@ -20,7 +20,6 @@ import (
 	"graphdemo"
 	tblsurf "surfaces"
 
-	"bytes"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -101,13 +100,9 @@ func surfaceWriteRefusal(surface string, lines []line, out string) error {
 			buffer := make([]byte, n)
 			if c.save(value, buffer) != n {
 				answer = "refused"
-			} else if name == "sfw_opt_arr_ok" {
-				want, err := os.ReadFile("testdata/conformance/table-write-bounds/torture_var_wref_resized.bin")
-				if err != nil {
+			} else if len(f) > 8 && f[8] == "save-wire" {
+				if err := spill(out, name+".wire", buffer); err != nil {
 					return err
-				}
-				if !bytes.Equal(buffer, want) {
-					return fmt.Errorf("%s: saved bytes differ from the canonical resized array", name)
 				}
 			}
 		case "write-refusal-fixed":

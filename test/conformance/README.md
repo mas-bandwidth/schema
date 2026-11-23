@@ -342,7 +342,9 @@ leg answers from its DEBUG build, where the check is active — C and C++ fork
 one child per case and read an abort as the refusal, C# installs a throwing
 `TraceListener`, Rust catches the panic, the Java driver runs those surfaces
 under `-ea` and the Dart leg builds a second binary with `--enable-asserts` —
-and every other leg answers from its ordinary build. Each leg carries `conformance-negative-control-<lang>-write-refusal`,
+and every other leg answers from its ordinary build. A derived `save-wire`
+flag also asks for the actual saved bytes in `<case>.wire`. The harness holds
+the expected file for the byte comparison. Each leg carries `conformance-negative-control-<lang>-write-refusal`,
 `-write-refusal-fixed` and `-write-refusal-message`, which remove one check from
 a copy of the generated code and require that surface to go red while `wire`
 (or `message`) stays green.

@@ -462,7 +462,7 @@ packet writer, checks the exact byte, and reads back the original value.
 ### Variable-table write bounds
 
 [The focused manifest](../testdata/conformance/table-write-bounds/WRITE-BOUNDS.txt)
-loads the same lawful `TortureVarWref` seed for all fourteen cases. Each case
+loads the same lawful `TortureVarWref` seed for all fourteen writer-argument cases. Each case
 changes one caller field or arm, then calls the variable-form writer. The
 accepted cases require the public save to complete. Drivers that invoke an
 independent measure require it to complete too. The paired caller
@@ -472,7 +472,7 @@ values outside the declared bound require the target’s write refusal
 The `sfw_opt_arr_ok` edit grows the present array from `[1, 2]` to
 `[1, 2, 1]`. The driver preserves the existing elements and copies element
 zero into the new slot. Its save must match the
-[canonical resized file](../testdata/conformance/table-write-bounds/torture_var_wref_resized.bin),
+[canonical resized file](../testdata/conformance/table-write-bounds/expected/torture_var_wref_resized.bin),
 which decodes to that array with the other fields unchanged.
 
 | Carrier | Accepted cases | Refused cases |

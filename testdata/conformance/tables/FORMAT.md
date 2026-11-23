@@ -107,8 +107,9 @@ json-write-into <case> <instance>
   declared defaults when it was not the taken arm — and continues into its
   payload. `<kind>` says what the
   value sets: `int` an integer (a ranged scalar, or `bits(N)`), `count` the used
-  count of the array at `<path>` (a new element is a copy of element 0, or the
-  element's declared default when the array was empty),
+  count of the array at `<path>` (preserve the original prefix, dropping the
+  tail on shrink; on growth append copies of element 0, or the element's
+  declared default when the array was empty),
   `length` the used length of the text at `<path>` (filled with `a`), `ordinal`
   an enum by its raw ordinal, `tag` a union by its raw tag — `0` is None, `1`
   the first declared arm, `n` the `n`-th; a lawful tag takes its arm at the
@@ -120,6 +121,11 @@ json-write-into <case> <instance>
   and the derived manifest withholds it. The driver writes `refused`, `wrote`
   or, where the leg's own types cannot hold the value at all, `unrepresentable`,
   which answers a `refused` row and no other.
+  A `write-refusal` row whose verdict is `wrote` may name an expected saved
+  wire after the verdict. The derived manifest withholds the verdict and
+  expected path and adds `save-wire` after the caller value. The driver
+  also writes its actual saved bytes to `<case>.wire`; the harness requires
+  byte identity with the expected saved wire.
   **The same row drives three more writers, one line kind and one surface
   each**: `write-refusal-fixed` saves the value through the fixed form's
   `FixedSave` as a batch of one; `write-refusal-message` saves it through

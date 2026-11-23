@@ -3197,8 +3197,8 @@ fn surface_write_refusal(manifest: &Manifest, out: &str) {
                 match wref_writebounds(&mut v, path, kind, value) {
                     Mutation::Done => match wref_run(|| writebounds::torture_var_wref_save_checked(&v)) {
                         Ok(saved) => {
-                            if case == "sfw_opt_arr_ok" && saved != slurp("testdata/conformance/table-write-bounds/torture_var_wref_resized.bin") {
-                                fail("sfw_opt_arr_ok: saved bytes differ from the canonical resized array");
+                            if f.get(8).map(String::as_str) == Some("save-wire") {
+                                spill(out, &format!("{case}.wire"), &saved);
                             }
                             "wrote\n"
                         }

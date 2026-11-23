@@ -441,9 +441,8 @@ export async function surfaceWriteRefusal(surface, lines, outDir, codecFor, mess
       } else {
         answer = writes(name, () => {
           const saved = codec.save(v);
-          if (saved !== null && name === "sfw_opt_arr_ok"
-              && !Buffer.from(saved).equals(readFileSync("testdata/conformance/table-write-bounds/torture_var_wref_resized.bin"))) {
-            throw new Error("saved bytes differ from the canonical resized array");
+          if (saved !== null && f[8] === "save-wire") {
+            writeFileSync(join(outDir, name + ".wire"), saved);
           }
           return saved !== null;
         });

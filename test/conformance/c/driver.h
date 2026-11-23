@@ -158,7 +158,8 @@ int conformance_write_refusal_units( uint16_t * storage, int32_t capacity, int32
 #define CONFORMANCE_UNREPRESENTABLE 5
 int conformance_write_refusal_case( int surface, const ConformanceCodec * codec, const char * unit, const uint8_t * wire, int64_t bytes,
                                     const uint8_t * announcement, int64_t announcement_bytes,
-                                    const char * root, const char * path, const char * kind, const char * text );
+                                    const char * root, const char * path, const char * kind, const char * text,
+                                    const char * save_wire );
 
 int conformance_retain(const uint8_t * wire,int64_t bytes,int short_buffer,int64_t id_capacity,int * counters,uint8_t ** output,int64_t * output_bytes,char ** text,int64_t * text_bytes);
 int conformance_retain_varevo1(const uint8_t * wire,int64_t bytes,int short_buffer,int64_t id_capacity,int * counters,uint8_t ** output,int64_t * output_bytes,char ** text,int64_t * text_bytes);

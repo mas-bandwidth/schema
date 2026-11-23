@@ -352,7 +352,11 @@ func deriveManifest(m *Manifest, path string) error {
 	for _, wr := range m.WriteRefusals {
 		// the verdict is the answer and stays withheld: a driver is handed the
 		// value and owes what its writer does with it (docs/SPEC.md §5.1)
-		fmt.Fprintf(&b, "%s %s %s %s %s %s %s %s\n", wr.Surface(), wr.Name, wr.Unit, wr.Root, wr.Wire, wr.Path, wr.Kind, wr.Value)
+		fmt.Fprintf(&b, "%s %s %s %s %s %s %s %s", wr.Surface(), wr.Name, wr.Unit, wr.Root, wr.Wire, wr.Path, wr.Kind, wr.Value)
+		if wr.SaveWire != "" {
+			fmt.Fprint(&b, " save-wire")
+		}
+		fmt.Fprintln(&b)
 	}
 	for _, a := range m.Announces {
 		// the verdict is withheld; a strict or lenient read is handed the
@@ -727,7 +731,18 @@ func expectations(m *Manifest, surface string, reports map[string]string, jsonDi
 			if wr.Surface() != surface {
 				continue
 			}
-			out = append(out, expectation{name: wr.Name, want: []byte(wr.Verdict + "\n")})
+			e := expectation{name: wr.Name, want: []byte(wr.Verdict + "\n")}
+			if wr.SaveWire != "" {
+				save, err := os.ReadFile(wr.SaveWire)
+				if err != nil {
+					return nil, fmt.Errorf("%s: read the expected saved wire: %w", wr.Name, err)
+				}
+				if len(save) == 0 {
+					return nil, fmt.Errorf("%s: the expected saved wire is empty", wr.Name)
+				}
+				e.save = save
+			}
+			out = append(out, e)
 		}
 	case "forgery", "cook-forgery":
 		// one surface per KIND: a backend can have a block reader and no cook

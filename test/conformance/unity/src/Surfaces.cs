@@ -545,10 +545,9 @@ namespace SchemaUnityConformance
                             verdict = WriteRefusalBinaryVerdict(() =>
                             {
                                 long written = codec.VariableSave(value, buffer);
-                                if (written >= 0 && f[1] == "sfw_opt_arr_ok" &&
-                                    !buffer.AsSpan(0, (int)written).SequenceEqual(File.ReadAllBytes("testdata/conformance/table-write-bounds/torture_var_wref_resized.bin")))
+                                if (written >= 0 && f.Length > 8 && f[8] == "save-wire")
                                 {
-                                    throw new InvalidDataException("saved bytes differ from the canonical resized array");
+                                    File.WriteAllBytes(Path.Combine(outDir, f[1] + ".wire"), buffer.AsSpan(0, (int)written).ToArray());
                                 }
                                 return written;
                             });
