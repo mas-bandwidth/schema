@@ -149,8 +149,10 @@ being carried, and whether source order is free.
   of a unit's tables kept beside the schema. `schema check` compares the
   declaration against it and refuses the edits the wire cannot report. It is
   opt-in: no file, no check (SPEC-TABLES §18).
-- **The never-clobber rule**: a rewriting tool never overwrites a file whose
-  read report is not silent ([VERSIONING.md](VERSIONING.md)).
+- **The never-clobber rule**, for a studio that runs old builds against new
+  files, a sharp edge since an old reader on new data is not promised (R17): a
+  rewriting tool never overwrites a file whose read report is not silent
+  ([VERSIONING.md](VERSIONING.md)).
 - **The cook** is an offline memory image of one table tree. `Open` is a
   header check and a pointer, with nothing per node (SPEC-TABLES §7).
 - **The row block** is a contiguous extent of fixed-size rows at a stride the
