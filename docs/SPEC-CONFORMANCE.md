@@ -450,6 +450,31 @@ applies to the vocabulary payload. Run the generated Java example with
 SCHEMA_SLOW=1 go test -count=1 -v ./internal/codegen/javatable -run '^TestMessageFormAnnounceJavaR9MaxBytes$'
 ```
 
+### Announcement vocabulary entry budget
+
+Use a fresh receiver for each row. Compile the variable-only `tables/blobs`
+unit to produce an empty vocabulary and the following declaration to produce
+a one-entry vocabulary.
+
+```schema
+package entrybudget
+
+fixed table Probe { x int32 }
+```
+
+| Receiver setting | Empty vocabulary | One-entry vocabulary |
+|---|---|---|
+| Default entry and byte budgets | Accept, count 0 | Accept, count 1 |
+| Explicit entry budget 0 | Accept, count 0 | Refuse with `vocabulary_too_large` and leave `announced` false |
+| Explicit entry budget 1 | Accept, count 0 | Accept, count 1 |
+| Default entry budget and explicit byte budget 0 | Accept, count 0 | Refuse with `vocabulary_too_large` and leave `announced` false |
+
+Run the native Lua, Luau, MOO and Squirrel probes with
+
+```sh
+SCHEMA_SLOW=1 go test -count=1 -v ./internal/codegen/{luatable,luautable,mootable,squirreltable} -run '^TestAnnouncementEntryBudget$'
+```
+
 ### JavaScript read-into names
 
 The shape checker refuses `ConfigLoadInto` because the JavaScript table
