@@ -17,10 +17,12 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 // surfaces, in the order the matrix prints them.
@@ -898,6 +900,57 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 		if len(notOptedIn) > 0 {
 			_, _ = io.WriteString(w, "conformance OPT-IN "+d.lang+": `list` names no unit "+strings.Join(notOptedIn, ", ")+", so its rows count absent\n")
 		}
+		type surfaceRun struct {
+			surface string
+			out     string
+			code    int
+			stderr  string
+			err     error
+		}
+		runs := map[string]*surfaceRun{}
+		var active []*surfaceRun
+		for _, s := range surfaces {
+			if opts.only != nil && !opts.only[s] {
+				continue
+			}
+			if !listed[s] {
+				continue
+			}
+			out := filepath.Join(work, "out", d.lang, s)
+			if err := os.RemoveAll(out); err != nil {
+				return false, err
+			}
+			if err := os.MkdirAll(out, 0o755); err != nil {
+				return false, err
+			}
+			sr := &surfaceRun{surface: s, out: out}
+			runs[s] = sr
+			active = append(active, sr)
+		}
+		// Run independent surfaces in parallel across available cores; luau and
+		// lobster stage files into a shared driver directory and stay serial.
+		workers := min(runtime.GOMAXPROCS(0), 8)
+		if d.lang == "luau" || d.lang == "lobster" || workers < 1 {
+			workers = 1
+		}
+		if len(active) > 0 {
+			jobs := make(chan *surfaceRun, len(active))
+			for _, sr := range active {
+				jobs <- sr
+			}
+			close(jobs)
+			var wg sync.WaitGroup
+			for range min(workers, len(active)) {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					for sr := range jobs {
+						sr.code, sr.stderr, sr.err = runDriver(d, legDerived, sr.surface, sr.out)
+					}
+				}()
+			}
+			wg.Wait()
+		}
 		for _, s := range surfaces {
 			if opts.only != nil && !opts.only[s] {
 				continue
@@ -925,14 +978,8 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 				}
 				continue
 			}
-			out := filepath.Join(work, "out", d.lang, s)
-			if err := os.RemoveAll(out); err != nil {
-				return false, err
-			}
-			if err := os.MkdirAll(out, 0o755); err != nil {
-				return false, err
-			}
-			code, stderr, err := runDriver(d, legDerived, s, out)
+			sr := runs[s]
+			out, code, stderr, err := sr.out, sr.code, sr.stderr, sr.err
 			if err != nil {
 				return false, err
 			}
