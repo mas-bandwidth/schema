@@ -357,8 +357,9 @@ READ_PACKET(T, buf, n, out) -> ok, bits:
     // allocation of buf extends at least 8 bytes past n
     r := ReadStream(buf, n)
     if not READ(T, r, out): return fail
+    bits := r.bits_read
     if not END(r): return fail
-    return ok, r.bits_read
+    return ok, bits
 
 END(r) -> ok:
     remaining := 8 * r.num_bytes - r.bits_read
@@ -374,8 +375,11 @@ READ(T, r, out):
 
 `END` runs **once**, after the top-level object, and never inside a nested type's read. The
 generated public `Read<T>` is the one-packet read and ends with it; a nested type inside generated
-code reads through a per-type body that does not end (SPEC §5). Where the leg reports it, the read
-reports bits consumed.
+code reads through a per-type body that does not end (SPEC §5). Where a read reports
+bits consumed, it reports the logical count at the end of the object. This count
+includes alignment within the object and excludes the final byte's unused bits
+even when `END` reads them to check that they are zero. See the
+[packet end case](SPEC-CONFORMANCE.md#packet-end-and-the-logical-bit-count).
 
 A refusal is terminal: generated code returns on the first failure, later items are not reached,
 and `out` is unspecified (SPEC §5). Past-end, a ranged offset above the span, and nonzero align

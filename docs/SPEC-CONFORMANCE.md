@@ -43,6 +43,8 @@ conformance:
   alone, pass `--only pin:bytes_lineage:` to `build/verify-tablegen-bin`.
 - **The compressed-float endpoint pins**: [`ratio-endpoints.txt`](../test/packet-write-cfloat/ratio-endpoints.txt)
   gives the packet bytes for both [accepted endpoints](#compressed-float-packet-endpoints).
+- **The packet end pins**: [packet-end](../testdata/wire/packet-end/README.md)
+  includes the [logical bit count case](#packet-end-and-the-logical-bit-count).
 - **The cards corpus**: `tables/cards/conformance/` (`MANIFEST.txt`,
   `FORMAT.md`, `cases/`, `expected/`).
 - **The harness and driver contract**: `test/conformance/` (the harness in
@@ -51,6 +53,15 @@ conformance:
 A port is **conforming only if it passes every case on every surface it
 carries.** A case it cannot answer is an absence (sections 2 and 3), never a pass; a
 wrong answer is a failure whatever the reason.
+
+### Packet end and the logical bit count
+
+The public reader accepts [`packet-end/exact.bin`](../testdata/wire/packet-end/exact.bin)
+(the byte `03`) as `packetend.End` with `value = 3`. The declaration uses
+three bits and [`exact.bits`](../testdata/wire/packet-end/exact.bits) records
+that count. The reader checks the final five bits as padding. An API that
+reports bits consumed reports **3** after success. The C++ reference
+driver asserts the value and count in [`make packet-end-cpp`](../test/packet-end/cpp/main.cpp).
 
 ## 2. The surfaces
 

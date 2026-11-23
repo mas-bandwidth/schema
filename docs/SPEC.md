@@ -2455,8 +2455,10 @@ where the leg has a runtime (serialize format 2.0's `SerializeEnd` /
 `serializeEnd` end call) and its own equivalent where the generated code owns
 its bit reader (Java, Dart, Elixir and the JavaScript flat tier). A nested
 type inside generated code is read through a per-type body that does not end.
-Where the leg reports it, `Read` reports bits consumed. Framing several
-objects in one buffer is not several `Read<T>` calls: use a top-level type
+Where a read reports bits consumed, it reports the logical count through
+the end of the object, including internal alignment and excluding the unused
+bits checked at the end of the packet. Framing several objects in one buffer
+is not several `Read<T>` calls: use a top-level type
 whose fields are the objects, or the leg's bit-offset entry where it has one
 (§6.1), and the one end check runs once, after the last. Dart reports bits
 consumed through a second entry, `read<T>Bits(value, view, numBits,
