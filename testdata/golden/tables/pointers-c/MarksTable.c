@@ -3614,25 +3614,31 @@ static SCHEMA_UNUSED int graphdemo_table_json_read_map(graphdemo_table_json_in_t
         char c=graphdemo_table_json_peek(in),token[GRAPHDEMO_K_TABLE_JSON_MAX_KEY]; int32_t length=0,before; int64_t number=0; int place=1; void * entry;
         graphdemo_table_report_t scratch={0}; graphdemo_table_json_in_t scan=*in; scan.report=&scratch;
         if(c=='}') { in->pos++; return 1; } if(c==0) { in->bad=1; return 0; }
-#ifdef SCHEMA_GRAPHDEMO_TABLE_UNBOUNDED_TEXT_RUNTIME
-        if(key->kind==12 && !key->counted) {
+        if(key->kind==12 && (!key->counted || key->array_bound>=GRAPHDEMO_K_TABLE_JSON_MAX_KEY)) {
             int64_t mark=in->pos; char * dyn=NULL; const char * kptr=token;
             if(!graphdemo_table_json_scan_text(&scan,NULL,INT32_MAX,&length)) { in->pos=scan.pos; in->bad=1; return 0; }
-            if(length>=GRAPHDEMO_K_TABLE_JSON_MAX_KEY) {
-                dyn=(char *)graphdemo_table_allocate(graph->labels.allocator,(int64_t)length+1);
-                if(dyn==NULL) { in->bad=1; return 0; }
-                kptr=dyn;
+            if(key->counted && length>key->array_bound) {
+                in->pos=scan.pos;
+                if(graphdemo_table_json_peek(in)!=':') { in->bad=1; return 0; }
+                in->pos++;
+                in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_OUT_OF_RANGE;
+                before=map->count; entry=NULL;
+            } else {
+                if(length>=GRAPHDEMO_K_TABLE_JSON_MAX_KEY) {
+                    dyn=(char *)graphdemo_table_allocate(graph->labels.allocator,(int64_t)length+1);
+                    if(dyn==NULL) { in->bad=1; return 0; }
+                    kptr=dyn;
+                }
+                scan=*in; scan.report=&scratch; scan.pos=mark;
+                if(!graphdemo_table_json_scan_text(&scan,(char *)kptr,length,&length)) { graphdemo_table_release(graph->labels.allocator,dyn); in->pos=scan.pos; in->bad=1; return 0; }
+                ((char *)kptr)[length]=0; in->pos=scan.pos;
+                if(graphdemo_table_json_peek(in)!=':') { graphdemo_table_release(graph->labels.allocator,dyn); in->bad=1; return 0; }
+                in->pos++;
+                before=map->count; entry=f->place(graph->worker,map,kptr,length,0);
+                graphdemo_table_release(graph->labels.allocator,dyn);
+                if(entry==NULL) { in->bad=1; return 0; }
             }
-            scan=*in; scan.report=&scratch; scan.pos=mark;
-            if(!graphdemo_table_json_scan_text(&scan,(char *)kptr,length,&length)) { graphdemo_table_release(graph->labels.allocator,dyn); in->pos=scan.pos; in->bad=1; return 0; }
-            ((char *)kptr)[length]=0; in->pos=scan.pos;
-            if(graphdemo_table_json_peek(in)!=':') { graphdemo_table_release(graph->labels.allocator,dyn); in->bad=1; return 0; }
-            in->pos++;
-            before=map->count; entry=f->place(graph->worker,map,kptr,length,0);
-            graphdemo_table_release(graph->labels.allocator,dyn);
-            if(entry==NULL) { in->bad=1; return 0; }
         } else
-#endif
         {
             if(!graphdemo_table_json_scan_text(&scan,token,GRAPHDEMO_K_TABLE_JSON_MAX_KEY-1,&length)) { in->pos=scan.pos; in->bad=1; return 0; }
             in->pos=scan.pos; token[length]=0;
