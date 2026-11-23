@@ -821,12 +821,12 @@ func TestFixedPlanDestinationsAreThePortsOwnOffsets(t *testing.T) {
 	// the packed running offsets: scalars land at their own byte, an array at
 	// its element base with its count one count-width back, a string at its
 	// length with its buffer behind it, bytes the ARRAY way round.
-	expect("session_id", 12, 0, 0, 0, 0) // after sequence u32, ack_sequence u32, ack_bits u32
-	expect("entities", 56, 51, 52, 1, 0) // counted array: dst element base, aux count
-	expect("entity_id", 0, 0, 0, 0, 0)   // first element of entities
-	expect("pos_x", 4, 0, 0, 0, 0)       // packed inside the element, stride 51
-	expect("damage", 41, 0, 0, 0, 0)     // the element's last field
-	expect("stats", 468, 8, 464, 1, 0)   // the second counted array
+	expect("session_id", 12, 0, 0, 0, 0)   // after sequence u32, ack_sequence u32, ack_bits u32
+	expect("entities", 56, 51, 52, 1, 256) // counted array: dst element base, aux count
+	expect("entity_id", 0, 0, 0, 0, 0)     // first element of entities
+	expect("pos_x", 4, 0, 0, 0, 0)         // packed inside the element, stride 51
+	expect("damage", 41, 0, 0, 0, 0)       // the element's last field
+	expect("stats", 468, 8, 464, 1, 0)     // the second counted array
 	expect("delta", 4, 0, 0, 0, 0)
 	expect("game_event", 1108, 0, 1108, 0, 0)  // union: the tag at the field's own byte
 	expect("loadout", 1122, 1, 0, 0, 0)        // a fixed array of bool bytes

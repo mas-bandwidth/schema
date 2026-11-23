@@ -1985,3 +1985,37 @@ framing twin_listdemo_ints_empty    listdemo Ints    testdata/wire/tables/framin
 framing twin_listdemo_bounded_empty listdemo Bounded testdata/wire/tables/framing/twin_listdemo_bounded_empty.bin read testdata/conformance/tables/framing/listdemo_bounded_default.json
 framing twin_listdemo_squad_empty   listdemo Squad   testdata/wire/tables/framing/twin_listdemo_squad_empty.bin read testdata/conformance/tables/framing/listdemo_squad_default.json
 framing twin_listdemo_army_empty    listdemo Army    testdata/wire/tables/framing/twin_listdemo_army_empty.bin read testdata/conformance/tables/framing/listdemo_army_default.json
+
+# SPEC ROWS ROOTS 1122: three rules no earlier root carries (tables/examples/Spec1122.schema): a counted array below its minimum A, a compressed float32 bound compared against the declared float64 bound, and an enum element naming a deprecated variant.
+json-hostile sp-count-min-below                 tabledemo        CountedMin   testdata/conformance/tables/json-hostile/sp-count-min-below refused
+json-hostile sp-count-min-empty                 tabledemo        CountedMin   testdata/conformance/tables/json-hostile/sp-count-min-empty refused
+json-hostile sp-count-min-at                    tabledemo        CountedMin   testdata/conformance/tables/json-hostile/sp-count-min-at read
+json-hostile sp-count-min-max                   tabledemo        CountedMin   testdata/conformance/tables/json-hostile/sp-count-min-max read
+json-hostile sp-count-min-over                  tabledemo        CountedMin   testdata/conformance/tables/json-hostile/sp-count-min-over refused
+json-hostile sp-f32-bound-declared              tabledemo        FloatBound   testdata/conformance/tables/json-hostile/sp-f32-bound-declared read
+json-hostile sp-f32-bound-inside                tabledemo        FloatBound   testdata/conformance/tables/json-hostile/sp-f32-bound-inside read
+json-hostile sp-f32-bound-one-step-past         tabledemo        FloatBound   testdata/conformance/tables/json-hostile/sp-f32-bound-one-step-past refused
+json-hostile sp-f32-bound-narrows               tabledemo        FloatBound   testdata/conformance/tables/json-hostile/sp-f32-bound-narrows read
+json-hostile sp-enum-elem-deprecated-array      tabledemo        Moods        testdata/conformance/tables/json-hostile/sp-enum-elem-deprecated-array read
+framing sp_count_min_below                      tabledemo CountedMin testdata/wire/tables/framing/sp_count_min_below.bin refused -
+framing sp_count_min_zero                       tabledemo CountedMin testdata/wire/tables/framing/sp_count_min_zero.bin refused -
+
+# SPEC ROWS ROOTS 1122, EVOLUTION AND FIXED-FORM READS (test/conformance/harness/spec1122_evolution_vectors_test.go): a deprecated enum element reads as None on the fixed form and on the compiled plan; a count below the reader's minimum A refuses on the compiled plan.
+report  sp_enum_fixed_deprecated       tabledemo Moods      testdata/conformance/tables/wire/sp_enum_fixed_deprecated.bin
+report  sp_enum_evolved_deprecated     tabledemo Moods      testdata/conformance/tables/wire/sp_enum_evolved_deprecated.bin
+report  sp_count_min_evolved_at        tabledemo CountedMin testdata/conformance/tables/wire/sp_count_min_evolved_at.bin
+report  sp_count_min_evolved_max       tabledemo CountedMin testdata/conformance/tables/wire/sp_count_min_evolved_max.bin
+report  sp_count_min_evolved_below     tabledemo CountedMin testdata/conformance/tables/wire/sp_count_min_evolved_below.bin
+rewrite sp_enum_fixed_deprecated       tabledemo Moods      testdata/conformance/tables/wire/sp_enum_fixed_deprecated.bin
+rewrite sp_enum_evolved_deprecated     tabledemo Moods      testdata/conformance/tables/wire/sp_enum_evolved_deprecated.bin
+rewrite sp_count_min_evolved_at        tabledemo CountedMin testdata/conformance/tables/wire/sp_count_min_evolved_at.bin
+rewrite sp_count_min_evolved_max       tabledemo CountedMin testdata/conformance/tables/wire/sp_count_min_evolved_max.bin
+# the same minimum on the VARIABLE form (form 1): a count of 1 and of 0, the elements and L trimmed to
+# match, so the only rule the wire breaks is A = 2. The oracle reads them at the variable class.
+framing sp_count_min_below_form1                tabledemo CountedMin testdata/wire/tables/framing/sp_count_min_below_form1.bin refused -
+framing sp_count_min_zero_form1                 tabledemo CountedMin testdata/wire/tables/framing/sp_count_min_zero_form1.bin refused -
+# a counted [A..B] array below its minimum A is refused by every writer (SF-21, SF-22; docs/SPEC.md section 5.1 row 3), and the count AT A writes
+write-refusal wref_count_min       tabledemo CountedMin testdata/conformance/tables/save-wire/sp-count-min-at.bin few count 1 refused
+write-refusal wref_count_min_ok    tabledemo CountedMin testdata/conformance/tables/save-wire/sp-count-min-at.bin few count 2 wrote
+write-refusal-fixed fref_count_min    tabledemo CountedMin testdata/conformance/tables/save-wire/sp-count-min-at.bin few count 1 refused
+write-refusal-fixed fref_count_min_ok tabledemo CountedMin testdata/conformance/tables/save-wire/sp-count-min-at.bin few count 2 wrote

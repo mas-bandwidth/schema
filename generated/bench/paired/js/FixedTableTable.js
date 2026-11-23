@@ -234,7 +234,7 @@ const FixedTableFixedDst = new globalThis.Int32Array([
   32, 0, 0, 0, 0, // 8 world_time
   40, 0, 0, 0, 0, // 9 frame_tick
   48, 0, 0, 0, 0, // 10 server_time
-  56, 51, 52, 1, 0, // 11 entities
+  56, 51, 52, 1, 256, // 11 entities
   0, 0, 0, 0, 0, // 12 element
   0, 0, 0, 0, 0, // 13 entity_id
   4, 0, 0, 0, 0, // 14 pos_x

@@ -795,6 +795,7 @@ defmodule Benchtable.Table do
           present_off: -1,
           array: :counted,
           max_count: 8,
+          min_count: 1,
           elem_t: :record,
           shape: :table,
           bound: nil,
@@ -2448,6 +2449,12 @@ defmodule Benchtable.Table do
   # must write even its zero/default value, while nil never becomes a payload.
   # An optional enum has two zero states: absent nil and present reserved None.
   defp enum_none(f), do: if(Map.get(f, :optional, false), do: "None", else: nil)
+
+  # A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT, and an ARRAY
+  # ELEMENT as the ELEMENT's default, None; it is never counted unknown
+  # (docs/SPEC-TABLES.md section 2.15). The writer refuses it (check_enum).
+  defp retire(f, name, fallback),
+    do: if(name in Map.get(f, :retired, []), do: fallback, else: name)
 
   defp emit_scalar?(%{required: true}, _v), do: true
   defp emit_scalar?(%{optional: true}, v), do: v != nil
@@ -4346,7 +4353,7 @@ defmodule Benchtable.Table do
 
           variant_id ->
             case Map.fetch(f.by_id, variant_id) do
-              {:ok, name} -> {:cont, name, report}
+              {:ok, name} -> {:cont, retire(f, name, Map.get(f, :default)), report}
               :error -> {:cont, enum_none(f), %{report | unknown: report.unknown + 1}}
             end
         end
@@ -4896,6 +4903,9 @@ defmodule Benchtable.Table do
   # a count past a bounded array's declared bound reads the first bound
   # elements and counts one refusal, before any element is read, so the
   # elements past the bound are never asked of the body (docs/SPEC-TABLES.md §4)
+  defp clamp_count(n, %{min_count: min}, _report) when n < min,
+    do: {min, throw(:wire_damaged)}
+
   defp clamp_count(n, %{max_count: max}, _report) when n > max,
     do: {max, throw(:wire_damaged)}
 
@@ -5117,7 +5127,7 @@ defmodule Benchtable.Table do
           variant_id ->
             {value, report} =
               case Map.fetch(f.by_id, variant_id) do
-                {:ok, name} -> {name, report}
+                {:ok, name} -> {retire(f, name, nil), report}
                 :error -> {nil, %{report | unknown: report.unknown + 1}}
               end
 
@@ -5360,9 +5370,9 @@ defmodule Benchtable.Table do
     if Map.has_key?(f, :array_bound) and f.array_bound > 0 and n > f.array_bound,
       do: throw(:invalid_value)
 
-    # a counted array below its declared Min is refused on write
-    # (docs/SPEC.md section 5.1 row 3; docs/SPEC-TABLES.md section 22.2)
-    if n < Map.get(f, :min_count, 0),
+    # a counted [A..B] array below its minimum A is refused by the writer, as the
+    # reader refuses it (docs/SPEC.md section 5.1 row 3; SPEC-TABLES.md 22.2)
+    if Map.get(f, :array) == :counted and n < Map.get(f, :min_count, 0),
       do: throw(:invalid_value)
 
     required_value(f, v)
@@ -6155,8 +6165,8 @@ defmodule Benchtable.Table do
   end
 
   defp json_field(%{t: :list} = f, elements, depth) when is_list(elements) do
-    if Map.has_key?(f, :min_count) and
-         (length(elements) < f.min_count or length(elements) > f.array_bound),
+    if Map.get(f, :array) == :counted and
+         (length(elements) < Map.get(f, :min_count, 0) or length(elements) > f.array_bound),
        do: throw(:invalid_value)
 
     if Map.has_key?(f, :array_bound) and f.array_bound > 0 and length(elements) > f.array_bound,
@@ -6179,6 +6189,9 @@ defmodule Benchtable.Table do
   end
 
   defp json_field(%{t: :list}, nil, _depth), do: "[]"
+
+  # a list field holding anything but a list or nil is a value off the contract:
+  # the writer refuses it and never writes [] over it (docs/SPEC.md section 5.1)
   defp json_field(%{t: :list}, _other, _depth), do: throw(:invalid_value)
 
   defp json_field(%{optional: true}, nil, _depth), do: "null"
@@ -6936,7 +6949,7 @@ defmodule Benchtable.Table do
 
       _ ->
         case Map.fetch(f.by_name, raw) do
-          {:ok, _id} -> {raw, report}
+          {:ok, _id} -> {retire(f, raw, Map.get(f, :default)), report}
           :error -> {enum_none(f), %{report | unknown: report.unknown + 1}}
         end
     end
@@ -7233,7 +7246,7 @@ defmodule Benchtable.Table do
   defp json_read_field(%{t: :list} = f, raw, report) when is_list(raw) do
     bound = Map.get(f, :array_bound, 0)
 
-    {elems, _placed, report} =
+    {elems, placed, report} =
       Enum.reduce(raw, {[], 0, report}, fn e, {acc, placed, report} ->
         if Process.get(:elixir_json_bad, false) do
           {acc, placed, report}
@@ -7253,6 +7266,12 @@ defmodule Benchtable.Table do
           end
         end
       end)
+
+    # a counted array below its minimum A refuses the whole read (SPEC.md section 4.6)
+    report =
+      if not Process.get(:elixir_json_bad, false) and placed < Map.get(f, :min_count, 0),
+        do: throw(:wire_damaged),
+        else: report
 
     {Enum.reverse(elems), report}
   end
@@ -7555,7 +7574,7 @@ defmodule Benchtable.Table do
 
       _ ->
         case Map.fetch(f.by_name, e) do
-          {:ok, _id} -> {e, report}
+          {:ok, _id} -> {retire(f, e, nil), report}
           :error -> {nil, %{report | unknown: report.unknown + 1}}
         end
     end

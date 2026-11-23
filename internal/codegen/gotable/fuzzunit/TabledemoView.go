@@ -164,14 +164,17 @@ var tableUnitView = UnitViewInfo{Package: "tabledemo", ProtocolID: 0x5c9bc571714
 		{Name: "Debuff", File: "Tables.schema", Table: false, Type: &DebuffTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "ScoreBoard", File: "Keyed.schema", Table: false, Type: &ScoreBoardTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 	},
-	NumTables: 19, Tables: []ViewType{
+	NumTables: 22, Tables: []ViewType{
 		{Name: "ArchiveConfig", File: "Nested.schema", Table: true, Type: &ArchiveConfigTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
+		{Name: "CountedMin", File: "Tables.schema", Table: true, Type: &CountedMinTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
+		{Name: "FloatBound", File: "Tables.schema", Table: true, Type: &FloatBoundTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "GlobalSettings", File: "Pack.schema", Table: true, Type: &GlobalSettingsTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "GunnerConfig", File: "Keyed.schema", Table: true, Type: &GunnerConfigTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "GunnerSettings", File: "Pack.schema", Table: true, Type: &GunnerSettingsTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "HullConfig", File: "Keyed.schema", Table: true, Type: &HullConfigTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "KeyedConfig", File: "Keyed.schema", Table: true, Type: &KeyedConfigTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "LoadoutConfig", File: "Tables.schema", Table: true, Type: &LoadoutConfigTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
+		{Name: "Moods", File: "Tables.schema", Table: true, Type: &MoodsTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "PackConfig", File: "Pack.schema", Table: true, Type: &PackConfigTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "Patrol", File: "Guarded.schema", Table: true, Type: &PatrolTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "ProfileConfig", File: "Tables.schema", Table: true, Type: &ProfileConfigTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -185,7 +188,7 @@ var tableUnitView = UnitViewInfo{Package: "tabledemo", ProtocolID: 0x5c9bc571714
 		{Name: "WeaponConfig", File: "Tables.schema", Table: true, Type: &WeaponConfigTableInfo, Doc: "One weapon's tuning. A designer edits this table and nothing else.", NumTags: 1, Tags: []string{"designer_facing"}},
 		{Name: "WideBlob", File: "Wide.schema", Table: true, Type: &WideBlobTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 	},
-	NumEnums: 6, Enums: []ViewVocabulary{
+	NumEnums: 7, Enums: []ViewVocabulary{
 		{Name: "Difficulty", File: "Pack.schema", Max: 3, StorageBits: 8, NumVariants: 4, Doc: TableDocNone, NumTags: 0, Tags: nil, Variants: []ViewVariant{
 			{Name: "None", Doc: TableDocNone, NumTags: 0, Tags: nil},
 			{Value: 1, Name: "Easy", ID: 0x483d9e6c1ccd1f9b, Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -203,6 +206,12 @@ var tableUnitView = UnitViewInfo{Package: "tabledemo", ProtocolID: 0x5c9bc571714
 			{Value: 1, Name: "Interceptor", ID: 0xae61a6cbe88c2cf4, Doc: TableDocNone, NumTags: 0, Tags: nil},
 			{Value: 2, Name: "Gunship", ID: 0x334d24e1420dbc1f, Doc: TableDocNone, NumTags: 0, Tags: nil},
 			{Value: 3, Name: "Freighter", ID: 0x6c2321a3d00e23db, Doc: TableDocNone, NumTags: 0, Tags: nil},
+		}},
+		{Name: "Mood", File: "Tables.schema", Max: 3, StorageBits: 8, NumVariants: 4, Doc: TableDocNone, NumTags: 0, Tags: nil, Variants: []ViewVariant{
+			{Name: "None", Doc: TableDocNone, NumTags: 0, Tags: nil},
+			{Value: 1, Name: "Calm", ID: 0xdfa47a9ce9ac16d6, Doc: TableDocNone, NumTags: 0, Tags: nil},
+			{Value: 2, Name: "Old", ID: 0x3018cd19bf898cd6, Doc: TableDocNone, NumTags: 1, Tags: []string{"deprecated"}},
+			{Value: 3, Name: "Fierce", ID: 0x199c482b49ef9acb, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		}},
 		{Name: "ShipType", File: "Pack.schema", Max: 3, StorageBits: 8, NumVariants: 4, Doc: TableDocNone, NumTags: 0, Tags: nil, Variants: []ViewVariant{
 			{Name: "None", Doc: TableDocNone, NumTags: 0, Tags: nil},

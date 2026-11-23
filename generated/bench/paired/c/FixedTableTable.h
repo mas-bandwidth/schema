@@ -5029,7 +5029,7 @@ static SCHEMA_UNUSED int64_t schema_bench_fixed_table_fixed_load_walk_( bench_fi
             }
         }
         /* The immutable spans passed the whole-load preflight above. */
-        if ( !bench_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
+        if ( fill_count > 0 && !bench_table_fixed_fill_run( fill, fill_count, (const uint8_t *) &defaults, (uint8_t *) ( values + k ), sizeof( defaults ) ) )
         {
             memset( report, 0, sizeof( *report ) ); report->refused = 1; report->reason = SCHEMA_BENCH_TABLE_LAYOUT_MALFORMED;
             return -1;
