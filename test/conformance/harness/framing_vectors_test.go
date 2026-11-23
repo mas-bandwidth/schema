@@ -329,6 +329,9 @@ func sceneUnknownArray(body []byte) []byte {
 }
 
 var framingVectors = []framingVector{
+	// A real writer's variable-form file for few = [1, 2], at the minimum.
+	{name: "sp_count_min_at", unit: "tabledemo", root: "CountedMin", ids: []string{"few"},
+		body: cat(b(1, 14, 10, 8, 2), i32(1), i32(2), b(0))},
 	// ---------------------------------------------------------------- A. the file frame
 	// F1: form byte 0 is never assigned and refuses before anything is read.
 	{name: "frame_form_zero", unit: "tblr1", root: "Cfg", raw: b(0)},
