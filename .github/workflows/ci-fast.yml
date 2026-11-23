@@ -722,6 +722,10 @@ jobs:
           # The Dart conformance accounting consumer needs the AOT driver
           # from its verify producer. Other readers remain independent.
           dart_corpus_account=$(jq -r 'any(.[]; .family == "conformance-corpus" and .leg == "dart")' <<<"$input_rows")
+          # Verify the real handoff when its producer or Linux consumer changes.
+          if grep -Eqx 'make/dart-aot-handoff\.py|tools/inputaccount/(main|watch_linux)\.go' "$RUNNER_TEMP/diff-files.txt"; then
+            dart_corpus_account=true
+          fi
           input_rows=$(jq -c 'map(select(.family != "conformance-corpus" or .leg != "dart"))' <<<"$input_rows")
           echo "dart_corpus_account=$dart_corpus_account" >> "$GITHUB_OUTPUT"
           for p in $(sed -n 's/^input_packages=//p' "$RUNNER_TEMP/input-families.txt"); do

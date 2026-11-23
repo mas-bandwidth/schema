@@ -89,3 +89,59 @@ func TestDartConformanceHandoffSelection(t *testing.T) {
 		})
 	}
 }
+
+func TestFastPlanSelectsDartHandoffChanges(t *testing.T) {
+	t.Parallel()
+	for _, tool := range []string{"bash", "jq"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			t.Skipf("the CI plan needs %s", tool)
+		}
+	}
+	root := repoRoot(t)
+	data, err := os.ReadFile(filepath.Join(root, ".github/workflows/ci-fast.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, section, ok := strings.Cut(string(data), "\n          # THE INPUT FAMILIES (tools/inputfamilies, 2026-11-22).")
+	if !ok {
+		t.Fatal("input-family plan is missing")
+	}
+	start := "\n          if [ \"$all\" = yes ]; then\n"
+	_, script, ok := strings.Cut(section, start)
+	if !ok {
+		t.Fatal("input-family selector is missing")
+	}
+	script, _, ok = strings.Cut(script, "\n          # THE NIGHTLY GATES'")
+	if !ok {
+		t.Fatal("the end of the input-family selector is missing")
+	}
+	for _, tc := range []struct {
+		name, files, want string
+	}{
+		{"handoff helper", "make/dart-aot-handoff.py\n.github/workflows/ci-fast.yml\n", "true"},
+		{"accounting runtime", "tools/inputaccount/main.go\ntools/inputaccount/watch_linux_test.go\n", "true"},
+		{"accounting test only", "tools/inputaccount/watch_linux_test.go\n", "false"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "diff-files.txt"), []byte(tc.files), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			output := filepath.Join(dir, "outputs")
+			cmd := exec.Command("bash", "-euo", "pipefail", "-c", start+script)
+			cmd.Dir = root
+			cmd.Env = append(os.Environ(), "RUNNER_TEMP="+dir, "GITHUB_OUTPUT="+output, "all=no", "packages=")
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("input-family selector failed: %v\n%s", err, out)
+			}
+			got, err := os.ReadFile(output)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := "dart_corpus_account=" + tc.want + "\npackages=\ninput_rows=[]\n"
+			if string(got) != want {
+				t.Fatalf("input-family plan = %q, want %q", got, want)
+			}
+		})
+	}
+}
