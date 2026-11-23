@@ -710,11 +710,25 @@ const surfacesConnRows = [
 // wire is `-`; null where the root has no fixed codec on this leg.
 async function fixedValueOf(unit, root, wirePath) {
   const codec = await textCodec(unit, root);
-  if (codec === null || codec.fixedValue === undefined) { return null; }
-  if (wirePath === "-") { return codec.fixedValue.fresh(); }
-  const x = codec.fixedValue.load(new Uint8Array(readFileSync(wirePath)));
-  if (x === null) { fail(unit + "." + root + ": the fixed load refused " + wirePath); }
-  return x;
+  if (codec !== null && codec.fixedValue !== undefined) {
+    if (wirePath === "-") { return codec.fixedValue.fresh(); }
+    const x = codec.fixedValue.load(new Uint8Array(readFileSync(wirePath)));
+    if (x === null) { fail(unit + "." + root + ": the fixed load refused " + wirePath); }
+    return x;
+  }
+  if (wirePath === "-") {
+    const row = messageRow(unit, root) ?? surfacesConnRows.find((r) => r[0] === unit && r[1] === root) ?? null;
+    if (row !== null) {
+      const home = await load(row[2]);
+      const Class = home[root], init = home["Init" + root];
+      if (typeof Class === "function" && typeof init === "function") {
+        const x = new Class();
+        init(x);
+        return x;
+      }
+    }
+  }
+  return null;
 }
 
 // messageVerbs answers a message row's Measure/Save pair for the write-refusal

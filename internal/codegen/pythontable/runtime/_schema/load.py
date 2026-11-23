@@ -15,7 +15,7 @@ is judged over every slot, known or not.
 from operator import index as index_of
 from typing import Any, SupportsIndex, TypeVar, overload
 
-from . import InvalidValue, LoadReport, Refused
+from . import InvalidValue, LoadReport, Refused, _copy_instance
 from . import descriptor, kinds
 from . import kind_blob
 from .descriptor import FieldDesc, TableDesc
@@ -263,11 +263,29 @@ def load_table(cls: type[_T], data: Any, report: LoadReport | None = None, retai
         retain.directory = ctx.nodes
         retain.loaded_root = obj
     if report is not None:
+        report.reset()
         report.unknown = ctx.unknown
         report.widened = ctx.widened
         report.retained = retained
         report.retain_lost = lost
     return obj
+
+
+def load_into(cls: type[_T], target: _T, data: Any, report: LoadReport | None = None) -> bool:
+    """Read one value into target, resetting target and report on refusal (FL-02, FL-03, FL-29)."""
+    if report is not None:
+        report.reset()
+    try:
+        loaded = getattr(cls, "load")(data, report)
+    except Refused as err:
+        _copy_instance(target, cls())
+        if report is not None:
+            report.reset()
+            report.refused = True
+            report.reason = err.reason
+        return False
+    _copy_instance(target, loaded)
+    return True
 
 
 def _body_end(view: memoryview) -> int:

@@ -598,11 +598,11 @@ func emitModule(u *ir.Unit, plan *filePlan, blocks *ir.BlockUnit, surfaces Surfa
 	b.WriteString("from ._schema import kinds as _s_kinds\n")
 	b.WriteString("from ._schema.integrity import crc32c as _s_crc32c, open_crc as _s_open_crc, seal_crc as _s_seal_crc\n")
 	if unitHasJSON(u, surfaces) {
-		b.WriteString("from ._schema.json_table import from_json as _s_from_json, to_json as _s_to_json\n")
+		b.WriteString("from ._schema.json_table import from_json as _s_from_json, from_json_into as _s_from_json_into, to_json as _s_to_json\n")
 		b.WriteString("from ._schema.json_table import _guard_holds as _s_json_guard, _read_field as _s_json_read_field, _render as _s_json_render, _skip as _s_json_skip, _write_field as _s_json_field\n")
 	}
 	if surfaces.Fixed {
-		b.WriteString("from ._schema.fixedform import fixed_load as _s_fixed_load, fixed_save as _s_fixed_save, fixed_measure as _s_fixed_measure\n")
+		b.WriteString("from ._schema.fixedform import fixed_load as _s_fixed_load, fixed_load_into as _s_fixed_load_into, fixed_save as _s_fixed_save, fixed_measure as _s_fixed_measure\n")
 	}
 	if surfaces.TextForm && unitHasJSON(u, surfaces) {
 		b.WriteString("from ._schema.textform import Document as _s_TextDocument, Limits as _s_TextLimits, read as _s_read_text_form\n")
@@ -610,7 +610,7 @@ func emitModule(u *ir.Unit, plan *filePlan, blocks *ir.BlockUnit, surfaces Surfa
 	b.WriteString("from ._schema.text_carrier import decode_text as _s_decode_text, encode_text as _s_encode_text\n")
 	b.WriteString("from ._schema.graph import _graph_eq as _s_graph_eq, _graph_repr as _s_graph_repr\n")
 	b.WriteString("from ._schema.descriptor import ArmDesc, BlockArray, BlockField, BlockRecord, BlockTable, FieldDesc, TableDesc, UnionDesc, _register_value, new_by_name, new_union_by_name, register, register_union\n")
-	b.WriteString("from ._schema.load import Ctx as _LoadCtx, Reader as _LoadReader, _body_end, _check_file as _s_check_file, _check_id_order, _id_table, _resolve, _unknown_field, buffer_view, load_table\n")
+	b.WriteString("from ._schema.load import Ctx as _LoadCtx, Reader as _LoadReader, _body_end, _check_file as _s_check_file, _check_id_order, _id_table, _resolve, _unknown_field, buffer_view, load_into as _s_load_into, load_table\n")
 	b.WriteString("from ._schema.save import Ctx as _SaveCtx, FORM as _FORM, Writer as _Writer, _collect_root, _validate as _validate_value, _check_root as _s_check_root, _write_form, _write_node_table, measure_table, save_table\n\n\n")
 
 	if body := host.Body(); body != "" {
@@ -788,7 +788,8 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct, surfaces Surfaces)
 	straight := scalarOnly(st) || fast
 	if surfaces.Fixed && fixedRootAdmitted(u, st) {
 		b.WriteString("\n    fixed_plan_max: ClassVar[int] = 0\n")
-		fmt.Fprintf(b, "\n    @classmethod\n    def fixed_load(cls, data: bytes | bytearray | memoryview, capacity: int = 4096, report: LoadReport | None = None, plan_capacity: int | None = None) -> list[Self]:\n        return _s_fixed_load(cls, data, capacity, report, plan_capacity)\n")
+		fmt.Fprintf(b, "\n    @classmethod\n    def fixed_load(cls, data: bytes | bytearray | memoryview, capacity: int | None = None, report: LoadReport | None = None, plan_capacity: int | None = None) -> list[Self]:\n        return _s_fixed_load(cls, data, capacity, report, plan_capacity)\n")
+		fmt.Fprintf(b, "\n    @classmethod\n    def fixed_load_into(cls, targets: list[Self], data: bytes | bytearray | memoryview, capacity: int | None = None, report: LoadReport | None = None, plan_capacity: int | None = None) -> int:\n        return _s_fixed_load_into(cls, targets, data, capacity, report, plan_capacity)\n")
 		fmt.Fprintf(b, "\n    @classmethod\n    def fixed_save(cls, values: list[Self]) -> bytes:\n        return _s_fixed_save(cls, values)\n")
 		fmt.Fprintf(b, "\n    @classmethod\n    def fixed_measure(cls, count: int) -> int:\n        return _s_fixed_measure(cls, count)\n")
 	}
@@ -813,6 +814,7 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct, surfaces Surfaces)
 			b.WriteString("        return load_table(cls, data, report)\n")
 		}
 	}
+	b.WriteString("\n    @classmethod\n    def load_into(cls, target: Self, data: bytes | bytearray | memoryview, report: LoadReport | None = None) -> bool:\n        return _s_load_into(cls, target, data, report)\n")
 	b.WriteString("\n    def save(self) -> bytes:\n")
 	switch {
 	case st.FixedDeclared && !surfaces.Fixed:
@@ -890,6 +892,13 @@ func emitTable(b *strings.Builder, u *ir.Unit, st *ir.Struct, surfaces Surfaces)
 			fmt.Fprintf(b, "        return _s_from_json(cls, text, report, _s_json_fill_%s)\n", name)
 		} else {
 			b.WriteString("        return _s_from_json(cls, text, report)\n")
+		}
+		b.WriteString("\n    @classmethod\n")
+		b.WriteString("    def from_json_into(cls, target: Self, text: str | bytes | bytearray | memoryview, report: LoadReport | None = None) -> bool:\n")
+		if scalarOnly(st) {
+			fmt.Fprintf(b, "        return _s_from_json_into(cls, target, text, report, _s_json_fill_%s)\n", name)
+		} else {
+			b.WriteString("        return _s_from_json_into(cls, target, text, report)\n")
 		}
 		b.WriteString("\n    def to_json(self) -> str:\n")
 		if scalarOnly(st) {
@@ -1807,7 +1816,7 @@ func packageInit(u *ir.Unit, plans []*filePlan, surfaces Surfaces) string {
 			alias += "_"
 		}
 		fmt.Fprintf(&b, "from ._schema import _message_unit as %s\n", alias)
-		for _, name := range []string{"ANNOUNCEMENT", "BuildVersionMismatch", "MessageVocabulary", "announce_read", "load_messages", "measure_messages", "save_messages"} {
+		for _, name := range []string{"ANNOUNCEMENT", "BuildVersionMismatch", "MessageVocabulary", "announce_read", "load_messages", "load_messages_into", "measure_messages", "save_messages"} {
 			// A schema export keeps its existing public binding. The complete
 			// message API remains available through _schema._message_unit.
 			if slices.Contains(names, name) {

@@ -4,15 +4,12 @@
 # 2026-11-22 surfaces): one report and one set of caller values through a
 # lawful read, a refused read and the lawful read again.
 #
-# The Ruby reads (Load, FromJson, FixedLoad, LoadMessages) are handed the
-# report and RETURN new values; the caller's values are what it assigns from a
-# read that returns. A Ruby read refuses by raising Refused, which this driver
-# answers `threw` (the README: a read refuses through its report and never by
-# throwing, FL-29). The driver catches only to say so.
-def self.attempt(pkg, values)
-  result = yield
-  values.replace(result.is_a?(::Array) ? result : [result])
-  "read\n"
+# Uses load_into, from_json_into, fixed_load_into and load_messages_into
+# (FL-02, FL-03, FL-29) and fixed_load with omitted capacity for fixed-nocap
+# (FL-17). The driver still catches Refused only to report `threw`.
+def self.attempt(pkg, report)
+  ok = yield
+  ok && !report.refused ? "read\n" : "refused\n"
 rescue pkg::Refused => e
   warn "read-into: the read raised #{e.class}: #{e.message}"
   "threw\n"
@@ -31,38 +28,42 @@ def self.run(manifest, outdir)
       # FL-17: the fixed load with NO stated capacity; the answer is the
       # record count it returned
       report = pkg::FixedLoadReport.new
-      values = []
-      line = attempt(pkg, values) { cls.fixed_load(RubyConformance.read_bytes(lawful), report: report) }
-      out = line == "read\n" ? "read\n#{values.length}\n" : line
+      begin
+        values = cls.fixed_load(RubyConformance.read_bytes(lawful), report: report)
+        out = "read\n#{values.length}\n"
+      rescue pkg::Refused => e
+        warn "read-into: the read raised #{e.class}: #{e.message}"
+        out = "threw\n"
+      end
       RubyConformance.write_bytes(outdir, case_name, out.b)
       next
     end
     n = Integer(count, 10)
+    values = Array.new(n) { cls.new }
     read =
       case form
       when 'variable'
         report = pkg::LoadReport.new
-        ->(path) { cls.load(RubyConformance.read_bytes(path), report) }
+        ->(path) { cls.load_into(values[0], RubyConformance.read_bytes(path), report) }
       when 'json'
         report = pkg::LoadReport.new
-        ->(path) { cls.from_json(RubyConformance.read_utf8_raw(path), report) }
+        ->(path) { cls.from_json_into(values[0], RubyConformance.read_utf8_raw(path), report) }
       when 'fixed'
         report = pkg::FixedLoadReport.new
-        ->(path) { cls.fixed_load(RubyConformance.read_bytes(path), n, report) }
+        ->(path) { cls.fixed_load_into(values, RubyConformance.read_bytes(path), n, report) >= 1 }
       when 'message'
         report = pkg::LoadReport.new
         vocab = pkg::MessageVocabulary.new
         pkg.announce_read(vocab, RubyConformance.read_bytes(announcement))
-        ->(path) { pkg.load_messages(cls, vocab, RubyConformance.read_bytes(path), n, report) }
+        ->(path) { pkg.load_messages_into(cls, values, vocab, RubyConformance.read_bytes(path), n, report) >= 1 }
       else
         raise "#{case_name}: unknown read-into form #{form}"
       end
-    values = Array.new(n) { cls.new }
     out = String.new(encoding: ::Encoding::BINARY)
-    out << attempt(pkg, values) { read.call(lawful) }
-    out << attempt(pkg, values) { read.call(damaged) }
+    out << attempt(pkg, report) { read.call(lawful) }
+    out << attempt(pkg, report) { read.call(damaged) }
     values.each { |v| out << v.to_json.b }
-    out << attempt(pkg, values) { read.call(lawful) }
+    out << attempt(pkg, report) { read.call(lawful) }
     RubyConformance.write_bytes(outdir, case_name, out)
   end
 end

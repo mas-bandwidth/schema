@@ -436,9 +436,11 @@ func (g *fixedGen) emitCheckValuePayload(f *ir.Field, val, ind string) {
 	switch {
 	case f.KeyEnum != "":
 		g.emitCheckValueArray(expr, ind)
+		g.pf("%sif (%s.length !== %d) { return false; }\n", ind, expr, f.KeyEnumRef.Max)
 		g.emitCheckValueLoop(f, strconv.FormatInt(f.KeyEnumRef.Max, 10), expr, ind)
 	case f.Array == ir.ArrayFixed:
 		g.emitCheckValueArray(expr, ind)
+		g.pf("%sif (%s.length !== %d) { return false; }\n", ind, expr, f.ArrayBound)
 		g.emitCheckValueLoop(f, strconv.FormatInt(f.ArrayBound, 10), expr, ind)
 	case f.Array == ir.ArrayCounted:
 		g.emitCheckValueArray(expr, ind)
@@ -1922,13 +1924,20 @@ func (g *fixedGen) emitFromTextField(f *ir.Field) {
 			bound = f.KeyEnumRef.Max
 		}
 		g.pf("  if (%s !== null && typeof %s === \"object\" && typeof %s.length === \"number\") {\n", s, s, s)
-		g.pf("    const n = globalThis.Math.min(%s.length, %d);\n", s, bound)
-		if f.Array == ir.ArrayCounted && f.KeyEnum == "" {
-			g.pf("    %sCount = typeof %sCount === \"number\" ? %sCount : %s.length;\n", d, s, s, s)
+		if f.KeyEnum != "" || f.Array == ir.ArrayFixed {
+			g.pf("    if (%s.length !== %d) { %s = %s; } else {\n", s, bound, d, s)
+			g.pf("      for (let i = 0; i < %d; i++) {\n", bound)
+			g.emitFromTextElement(f, s+"[i]", d+"[i]", "        ")
+			g.pf("      }\n    }\n  }\n")
+		} else {
+			g.pf("    const n = globalThis.Math.min(%s.length, %d);\n", s, bound)
+			if f.Array == ir.ArrayCounted {
+				g.pf("    %sCount = typeof %sCount === \"number\" ? %sCount : %s.length;\n", d, s, s, s)
+			}
+			g.pf("    for (let i = 0; i < n; i++) {\n")
+			g.emitFromTextElement(f, s+"[i]", d+"[i]", "      ")
+			g.pf("    }\n  }\n")
 		}
-		g.pf("    for (let i = 0; i < n; i++) {\n")
-		g.emitFromTextElement(f, s+"[i]", d+"[i]", "      ")
-		g.pf("    }\n  }\n")
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.pf("  if (%s !== undefined) { %s = %s; }\n", s, d, s)
 		g.pf("  if (%sLength !== undefined) { %sLength = %sLength; }\n", s, d, s)

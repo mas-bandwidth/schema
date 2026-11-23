@@ -283,6 +283,7 @@ function TableVariableFieldEdges(fd, v, out, everyGuard) {
       TableVariableUnionEdges(fd.u, val, out, everyGuard);
       break;
     case "keyed":
+      if (!globalThis.Array.isArray(val) || val.length !== fd.slots.length) { out.push({ invalid: true }); return; }
       if (fd.e.s === "tab") { for (let i = 0; i < val.length; i++) { TableVariableEdges(fd.e.c, val[i], out, everyGuard); } }
       break;
     case "arr": {
@@ -2620,6 +2621,36 @@ class TableVariableTextIn {
 // UTF-8 itself — well-formed, no overlong form, no surrogate code point and
 // nothing above U+10FFFF — before a byte reaches the text walk. A caller's
 // error is the non-Uint8Array; data that is not UTF-8 refuses the whole read.
+function TableVariableCopyInto(c, dst, src) {
+  for (const fd of c.fields) { dst[fd.n] = src[fd.n]; }
+}
+function TableVariableLoadInto(c, target, bytes, report) {
+  const v = TableVariableLoad(c, bytes, report, null);
+  if (v === null) {
+    TableVariableCopyInto(c, target, c.make());
+    return false;
+  }
+  TableVariableCopyInto(c, target, v);
+  return true;
+}
+function TableVariableFromJsonInto(c, target, text, report) {
+  const v = TableVariableFromJson(c, text, report);
+  if (v === null) {
+    TableVariableCopyInto(c, target, c.make());
+    return false;
+  }
+  TableVariableCopyInto(c, target, v);
+  return true;
+}
+function TableVariableFromJsonBytesInto(c, target, bytes, report) {
+  const v = TableVariableFromJsonBytes(c, bytes, report);
+  if (v === null) {
+    TableVariableCopyInto(c, target, c.make());
+    return false;
+  }
+  TableVariableCopyInto(c, target, v);
+  return true;
+}
 function TableVariableFromJsonBytes(c, bytes, report) {
   if (!(bytes instanceof globalThis.Uint8Array)) {
     throw new globalThis.TypeError("TableVariableFromJsonBytes takes the text's bytes as a Uint8Array, not " + (bytes === null ? "null" : typeof bytes));

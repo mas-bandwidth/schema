@@ -1,13 +1,9 @@
 """Read into the caller's values (test/conformance/README.md, `read-into`;
 SPEC-TABLES §6.5).
 
-The Python reads take ONE report but no caller values: load, from_json,
-fixed_load and load_messages each return new values, and a refusal is raised
-as Refused (docs/PORT-PYTHON.md, ERRORS). The driver holds `<count>` fresh
-values as the caller would, rebinds them to what a read returns, and answers
-what each call did: `read` when it returned, `threw` when it raised (the one
-place the driver catches, only to say so; FL-29). It never answers `refused`
-for the runtime.
+Uses load_into, from_json_into, fixed_load_into and load_messages_into with one
+report and one set of caller values (FL-02, FL-03, FL-29), and fixed_load with
+omitted capacity for fixed-nocap (FL-17).
 """
 
 from _common import entries, read_bytes, root_class, unit_package, write_bytes
@@ -31,34 +27,36 @@ def run(manifest, outdir):
                 write_bytes(outdir, case, b"read\n%d\n" % len(values))
             continue
         n = int(count)
+        values = [cls() for _ in range(n)]
         if form == "variable":
             def call(data):
-                return [cls.load(data, report)]
+                return cls.load_into(values[0], data, report)
         elif form == "json":
             def call(data):
-                return [cls.from_json(data, report)]
+                return cls.from_json_into(values[0], data, report)
         elif form == "fixed":
             def call(data):
-                return cls.fixed_load(data, n, report)
+                return cls.fixed_load_into(values, data, n, report) >= 1
         elif form == "message":
             vocab = package.MessageVocabulary()
             package.announce_read(vocab, read_bytes(announcement))
 
             def call(data):
-                return package.load_messages(cls, vocab, data, n, report)
+                return package.load_messages_into(cls, values, vocab, data, n, report) >= 1
         else:
             raise ValueError(case + ": unknown read-into form " + form)
-        values = [cls() for _ in range(n)]
         out = bytearray()
 
         def read(path):
-            nonlocal values
             try:
-                values = call(read_bytes(path))
+                ok = call(read_bytes(path))
             except package.Refused:
                 out.extend(b"threw\n")
             else:
-                out.extend(b"read\n")
+                if ok and not report.refused:
+                    out.extend(b"read\n")
+                else:
+                    out.extend(b"refused\n")
 
         read(lawful)
         read(damaged)
