@@ -458,10 +458,14 @@ _verify-moo-fuzz: verify-toolchain-moo build/conformance-harness-vm build/confor
 
 # ---- 8. goose ----
 
-.PHONY: _verify-goose-conformance _verify-goose-bench _verify-goose-fuzz
-_verify-goose-conformance: verify-toolchain-goose build/conformance-harness-vm build/conformance-goose build/goose-packet/.stamp
-	cd build/goose-packet/normal && "$(GOOSE)" run main.goose
-	cd build/goose-packet/ludicrous && "$(GOOSE)" run main.goose
+.PHONY: _verify-goose-conformance _verify-goose-packet-normal _verify-goose-packet-ludicrous _verify-goose-bench _verify-goose-fuzz
+_verify-goose-packet-normal: verify-toolchain-goose build/goose-packet/.stamp
+	cd build/goose-packet/normal && "$(GOOSE)" run -O0 main.goose
+
+_verify-goose-packet-ludicrous: verify-toolchain-goose build/goose-packet/.stamp
+	cd build/goose-packet/ludicrous && "$(GOOSE)" run -O0 main.goose
+
+_verify-goose-conformance: verify-toolchain-goose build/conformance-harness-vm build/conformance-goose _verify-goose-packet-normal _verify-goose-packet-ludicrous
 	@rm -rf build/verify/conformance-goose && mkdir -p build/verify/conformance-goose $(VERIFY_RESULTS_DIR)
 	GOOSE="$(GOOSE)" ./build/conformance-harness-vm run --only goose --claims --work build/verify/conformance-goose --results $(VERIFY_RESULTS_DIR)/goose.json
 
