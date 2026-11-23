@@ -5,11 +5,10 @@ import (
 	"encoding/binary"
 	"math"
 	"math/rand"
-	"os"
-	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablecook"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -33,22 +32,19 @@ import (
 
 const hostileDefaultN = 400
 
-func hostileSeed() int64 {
-	if s := os.Getenv("SEED"); s != "" {
-		if v, err := strconv.ParseInt(s, 10, 64); err == nil {
-			return v
-		}
-	}
-	return 20260903
+// hostileSeed and hostileN read SEED and N. A value that is not a number (or
+// an N under 1) fails the test by name: read as the default, a typo would
+// run the default battery under a log that claims another.
+func hostileSeed(t testing.TB) int64 {
+	return int64(slowtest.EnvInt(t, "SEED", 20260903))
 }
 
-func hostileN() int {
-	if s := os.Getenv("N"); s != "" {
-		if v, err := strconv.Atoi(s); err == nil && v > 0 {
-			return v
-		}
+func hostileN(t testing.TB) int {
+	n := slowtest.EnvInt(t, "N", hostileDefaultN)
+	if n < 1 {
+		t.Fatalf("N=%d: the battery needs at least one case", n)
 	}
-	return hostileDefaultN
+	return n
 }
 
 // bar runs one mutated file through the bar and reports what it did, so a
@@ -250,7 +246,7 @@ func TestCookCheckRefusesEveryForgeryItNames(t *testing.T) {
 func TestCookCheckHostileBattery(t *testing.T) {
 	u := unit(t, "../../tables/pointers")
 	m := tabletext.NewModel(u)
-	seed, n := hostileSeed(), hostileN()
+	seed, n := hostileSeed(t), hostileN(t)
 	t.Logf("SEED=%d N=%d", seed, n)
 	rng := rand.New(rand.NewSource(seed))
 

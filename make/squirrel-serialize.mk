@@ -21,9 +21,9 @@ vendor-serialize-squirrel:
 		COMMIT=$$(git -C "$$SRC" rev-parse HEAD); \
 	else \
 		mkdir -p build; \
-		if [ ! -d "$(SQUIRREL_SERIALIZE_DIR)/.git" ]; then git clone "$(SQUIRREL_SERIALIZE_REPO)" "$(SQUIRREL_SERIALIZE_DIR)"; fi; \
-		git -C "$(SQUIRREL_SERIALIZE_DIR)" fetch --quiet origin; \
-		git -C "$(SQUIRREL_SERIALIZE_DIR)" checkout --quiet --detach "$(SQUIRREL_SERIALIZE_COMMIT)"; \
+		if [ ! -d "$(SQUIRREL_SERIALIZE_DIR)/.git" ]; then git clone "$(SQUIRREL_SERIALIZE_REPO)" "$(SQUIRREL_SERIALIZE_DIR)" || exit 1; fi; \
+		git -C "$(SQUIRREL_SERIALIZE_DIR)" fetch --quiet origin || exit 1; \
+		git -C "$(SQUIRREL_SERIALIZE_DIR)" checkout --quiet --detach "$(SQUIRREL_SERIALIZE_COMMIT)" || exit 1; \
 		SRC="$(SQUIRREL_SERIALIZE_DIR)"; \
 		COMMIT="$(SQUIRREL_SERIALIZE_COMMIT)"; \
 	fi; \

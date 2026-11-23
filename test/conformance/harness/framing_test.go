@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -20,7 +21,7 @@ const framingDir = "testdata/wire/tables/framing"
 // files from the scripts, which is how a new vector lands.
 func TestFramingVectorBytesArePinned(t *testing.T) {
 	_, _, u := corpus(t)
-	write := os.Getenv("FRAMING_WRITE") == "1"
+	write := slowtest.Rewriting(t, "FRAMING_WRITE")
 	seen := map[string]bool{}
 	for _, v := range framingVectors {
 		if seen[v.name] {
@@ -48,6 +49,33 @@ func TestFramingVectorBytesArePinned(t *testing.T) {
 		}
 		if !bytes.Equal(got, want) {
 			t.Errorf("%s: the file is not the script's bytes — run with FRAMING_WRITE=1 to rewrite it", v.name)
+		}
+	}
+}
+
+// TestFramingDirHasNoHandWrittenFiles holds testdata/wire/tables/framing to
+// files written by a Go vector script (framingVectors or noWriterVectors), so
+// a hand-written file cannot sit beside them without a script that regenerates
+// and compares it.
+func TestFramingDirHasNoHandWrittenFiles(t *testing.T) {
+	t.Parallel()
+	known := make(map[string]bool, len(framingVectors)+len(noWriterVectors))
+	for _, v := range framingVectors {
+		known[v.name+".bin"] = true
+	}
+	for _, v := range noWriterVectors {
+		known[v.name+".bin"] = true
+	}
+	entries, err := os.ReadDir(filepath.Join(conformanceRoot(t), framingDir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) == 0 {
+		t.Fatalf("%s holds no files", framingDir)
+	}
+	for _, e := range entries {
+		if !known[e.Name()] {
+			t.Errorf("%s/%s has no Go vector script in framingVectors or noWriterVectors: written by hand; delete it or add its vector script", framingDir, e.Name())
 		}
 	}
 }

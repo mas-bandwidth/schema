@@ -1056,7 +1056,9 @@ macro_rules! with_root {
             }
             ("listdemo", "Bounded") => {
                 #[allow(unused_imports)]
-                use listdemo::{bounded_from_json_bytes as $from_json, bounded_load as $load, bounded_save_checked as $save, bounded_to_json_checked as $to_json};
+                use listdemo::{bounded_from_json_bytes as $from_json, bounded_load as $load, bounded_to_json_checked as $to_json};
+                #[allow(unused_variables)]
+                let $save = fixed_save_from_variable!(listdemo, Bounded, BoundedRow, bounded_cook_write, bounded_fixed_save, bounded_fixed_measure);
                 Some($body)
             }
             ("listdemo", "Squad") => {

@@ -245,6 +245,17 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema t
 	@grep -q '^table Cfg$$' build/tables-r1-variable/R1.schema || { echo "R1 variable twin: the sed did not turn Cfg variable"; exit 1; }
 	./bin/schema generate --lang go --out build/tables-generated-go-framing/r1variable build/tables-r1-variable/R1.schema
 	$(call go_table_module_in,build/tables-generated-go-framing/r1variable,tblr1variable)
+	# THE SAME TWIN FOR listdemo Bounded, the battery's other fixed root: its
+	# array vectors (array_elem_*) are form-1 files read as the variable class,
+	# and without this twin the Go leg refused them as previous_form before any
+	# array rule ran, which the lawful twin twin_listdemo_bounded_empty exposed
+	# (test/conformance/harness/discriminate.go). Migrate.schema declares Unit
+	# and Bounded alone, so it generates on its own.
+	@mkdir -p build/tables-lists-variable
+	sed 's/^fixed table Bounded$$/table Bounded/' tables/lists/Migrate.schema > build/tables-lists-variable/Migrate.schema
+	@grep -q '^table Bounded$$' build/tables-lists-variable/Migrate.schema || { echo "lists variable twin: the sed did not turn Bounded variable"; exit 1; }
+	./bin/schema generate --lang go --out build/tables-generated-go-framing/listsvariable build/tables-lists-variable/Migrate.schema
+	$(call go_table_module_in,build/tables-generated-go-framing/listsvariable,listdemovariable)
 	# THE R19 ROW'S COMMITTED PAIR (test/conformance/go/rows/R19_test.go): one
 	# lineage, two generations. The old side is generated from its schema alone
 	# (it wrote testdata/conformance/r19/old.bin); the new side from its unit
@@ -419,7 +430,8 @@ cards-conformance-create: cards-driver-go
 		done; \
 	done
 	@for s in load save render parse bounds upgrade edit taskhash view; do \
-		./build/cards-driver-go tables/cards/conformance/MANIFEST.txt $$s tables/cards/conformance/expected; \
+		./build/cards-driver-go tables/cards/conformance/MANIFEST.txt $$s tables/cards/conformance/expected || \
+			{ echo "cards-conformance-create: the Go driver failed on $$s"; exit 1; }; \
 	done
 	@echo "cards-conformance-create: wrote the Go reference answers into tables/cards/conformance/expected"
 
@@ -503,14 +515,11 @@ cards-fuzz-fixture: cards-generate
 #
 # THE SIBLING RUNTIME IS A STATED PREREQUISITE: build/conformance-go links the
 # serialize.go checkout ($(SERIALIZE_GO)), a sibling this tree does not carry.
-# A machine without it must not fail with a go.mod replacement error mid-build;
-# it skips BY NAME and the same target runs in CI, which clones the sibling.
-cards-wire-fuzz:
-	@if [ -f "$(SERIALIZE_GO)/go.mod" ]; then \
-		$(MAKE) cards-wire-fuzz-run; \
-	else \
-		echo "cards-fuzz SKIPPED: the sibling runtime '$(SERIALIZE_GO)' (the serialize.go checkout) is absent; it is a stated bench prerequisite and is present in CI"; \
-	fi
+# A machine without it must not fail with a go.mod replacement error mid-build,
+# and must not go green having fuzzed nothing either: sibling-go (the #4736
+# sibling gate) stops first with one line naming 'make deps'.
+cards-wire-fuzz: sibling-go
+	@$(MAKE) --no-print-directory cards-wire-fuzz-run
 
 cards-wire-fuzz-run: build/conformance-harness build/conformance-go
 	@./build/conformance-harness wire-fuzz \
@@ -600,7 +609,10 @@ fuzz-generated-readers-go:
 
 .PHONY: tables-go-fuzz
 tables-go-fuzz: build/tables-generated-go/.stamp build/conformance-harness
-	./build/conformance-harness run --drivers /dev/null --work build/conformance-go-fuzz-work > /dev/null 2>&1 || true
+	@# loud-ok: with no drivers every leg reads absent, so the harness exits 1 by design; the fixtures it writes are what this rule wants, and the next line refuses none
+	./build/conformance-harness run --drivers /dev/null --work build/conformance-go-fuzz-work > build/conformance-go-fuzz-work.log 2>&1 || true
+	@test -n "$$(ls -A build/conformance-go-fuzz-work/fixtures 2>/dev/null)" || \
+		{ cat build/conformance-go-fuzz-work.log; echo "tables-go-fuzz: the harness wrote no fixtures under build/conformance-go-fuzz-work/fixtures"; exit 1; }
 	cd test/go-tables && GO_TABLES_FIXTURES="$(CURDIR)/build/conformance-go-fuzz-work/fixtures" SEED=$(SEED) N=$(N) go test -run Fuzz -count 1 .
 	cd test/go-tables && GO_TABLES_FIXTURES="$(CURDIR)/build/conformance-go-fuzz-work/fixtures" SEED=$(SEED) N=$(N) go test -race -run Fuzz -count 1 .
 
