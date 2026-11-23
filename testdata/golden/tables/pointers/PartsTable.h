@@ -9434,6 +9434,7 @@ inline int64_t StampMeasureBody( TableIds & ids, const Stamp & value )
     schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( !TableUtf8Valid( (const uint8_t *) value.tag, (uint64_t) value.tag_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.tag_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 13, 0x56d7ab194448a4f3ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.tag_length ) ) + ( value.tag_length ); } // tag
+    schema_assert( !( value.seq < 0 || value.seq > 1000 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.seq != 0 ) { bytes += TableLebBytes( ids.ref_at( 27, 0x823b8a195ce2133cull ) ) + 1 + 4; } // seq
     return bytes;
 }
@@ -9461,6 +9462,7 @@ GRAPHDEMO_TABLE_INLINE bool StampSaveBody( TableWriter & w, TableIds & ids, cons
     if ( value.seq != 0 )
     {
         w.header( ids.ref_at( 27, 0x823b8a195ce2133cull ), 4 ); // seq
+        schema_assert( !( value.seq < 0 || value.seq > 1000 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.seq ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -10923,6 +10925,7 @@ inline int64_t StampMeasureBodyRetain( TableRetainIds & ids, const Stamp & value
     schema_assert( value.tag_length >= 0 && value.tag_length <= 8 ); // storage invariant, debug only (§5.1)
     if ( !TableUtf8Valid( (const uint8_t *) value.tag, (uint64_t) value.tag_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
     if ( value.tag_length > 0 ) { bytes += TableLebBytes( ids.ref_at( 13, 0x56d7ab194448a4f3ull ) ) + 1 + TableLebBytes( (uint64_t) ( value.tag_length ) ) + ( value.tag_length ); } // tag
+    schema_assert( !( value.seq < 0 || value.seq > 1000 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.seq != 0 ) { bytes += TableLebBytes( ids.ref_at( 27, 0x823b8a195ce2133cull ) ) + 1 + 4; } // seq
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -10941,6 +10944,7 @@ GRAPHDEMO_TABLE_INLINE bool StampSaveBodyRetain( TableWriter & w, TableRetainIds
     if ( value.seq != 0 )
     {
         w.header( ids.ref_at( 27, 0x823b8a195ce2133cull ), 4 ); // seq
+        schema_assert( !( value.seq < 0 || value.seq > 1000 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.seq ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }

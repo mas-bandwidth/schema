@@ -11984,6 +11984,7 @@ TABLEDEMO_TABLE_INLINE bool ShipEntrySaveBody( TableWriter & w, TableIds & ids, 
         w.putleb( (uint64_t) ( value.hardpoints_count ) );
         for ( int32_t elem_i = 0; elem_i < value.hardpoints_count; elem_i++ )
         {
+            schema_assert( !( value.hardpoints[elem_i] < 0 || value.hardpoints[elem_i] > 8 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
             w.put32( uint32_t( value.hardpoints[elem_i] ) );
         }
     }
@@ -13078,6 +13079,7 @@ inline bool ShipEntryLoadMessages( ShipEntry * values, int64_t * count, const Ta
 inline int64_t GlobalSettingsMeasureBody( TableIds & ids, const GlobalSettings & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    schema_assert( !( value.tick_rate < 1 || value.tick_rate > 240 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.tick_rate != 60 ) { bytes += TableLebBytes( ids.ref_at( 88, 0xa65f859b617deaf3ull ) ) + 1 + 4; } // tick_rate
     if ( value.difficulty != Difficulty::Normal )
     {
@@ -13124,6 +13126,7 @@ TABLEDEMO_TABLE_INLINE bool GlobalSettingsSaveBody( TableWriter & w, TableIds & 
     if ( value.tick_rate != 60 )
     {
         w.header( ids.ref_at( 88, 0xa65f859b617deaf3ull ), 8 ); // tick_rate
+        schema_assert( !( value.tick_rate < 1 || value.tick_rate > 240 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.tick_rate ) );
     }
     if ( value.difficulty != Difficulty::Normal )
@@ -14288,6 +14291,7 @@ TABLEDEMO_TABLE_INLINE bool PackConfigSaveBody( TableWriter & w, TableIds & ids,
                 if ( !TableEnumRef( ids, Difficulty( i + 1 ), key_ref ) || key_ref == 0 ) { return false; } // i is the STORAGE index; the key it holds is i + 1
                 w.putleb( key_ref ); // the slot's VARIANT reference, not its position
                 w.putleb( 4 );
+                schema_assert( !( value.thresholds.slots[i] < 0 || value.thresholds.slots[i] > 1000 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
                 w.put32( uint32_t( value.thresholds.slots[i] ) );
             }
         }
@@ -18649,6 +18653,7 @@ TABLEDEMO_TABLE_INLINE bool ShipEntrySaveBodyRetain( TableWriter & w, TableRetai
         w.putleb( (uint64_t) ( value.hardpoints_count ) );
         for ( int32_t elem_i = 0; elem_i < value.hardpoints_count; elem_i++ )
         {
+            schema_assert( !( value.hardpoints[elem_i] < 0 || value.hardpoints[elem_i] > 8 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
             w.put32( uint32_t( value.hardpoints[elem_i] ) );
         }
     }
@@ -19007,6 +19012,7 @@ TABLEDEMO_TABLE_INLINE bool ShipEntryLoadBodyRetain( TableReader & r, ShipEntry 
 inline int64_t GlobalSettingsMeasureBodyRetain( TableRetainIds & ids, const GlobalSettings & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    schema_assert( !( value.tick_rate < 1 || value.tick_rate > 240 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.tick_rate != 60 ) { bytes += TableLebBytes( ids.ref_at( 88, 0xa65f859b617deaf3ull ) ) + 1 + 4; } // tick_rate
     if ( value.difficulty != Difficulty::Normal )
     {
@@ -19044,6 +19050,7 @@ TABLEDEMO_TABLE_INLINE bool GlobalSettingsSaveBodyRetain( TableWriter & w, Table
     if ( value.tick_rate != 60 )
     {
         w.header( ids.ref_at( 88, 0xa65f859b617deaf3ull ), 8 ); // tick_rate
+        schema_assert( !( value.tick_rate < 1 || value.tick_rate > 240 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.tick_rate ) );
     }
     if ( value.difficulty != Difficulty::Normal )
@@ -19548,6 +19555,7 @@ TABLEDEMO_TABLE_INLINE bool PackConfigSaveBodyRetain( TableWriter & w, TableReta
                 if ( !TableEnumRef( ids, Difficulty( i + 1 ), key_ref ) || key_ref == 0 ) { return false; } // i is the STORAGE index; the key it holds is i + 1
                 w.putleb( key_ref ); // the slot's VARIANT reference, not its position
                 w.putleb( 4 );
+                schema_assert( !( value.thresholds.slots[i] < 0 || value.thresholds.slots[i] > 1000 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
                 w.put32( uint32_t( value.thresholds.slots[i] ) );
             }
         }

@@ -9544,6 +9544,7 @@ inline bool MarkerLoadBodyRetain( TableReader & r, const TableNodeMap & nodes, M
 inline int64_t TallyMeasureBody( TableIds & ids, const Tally & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    schema_assert( !( value.hits < 0 || value.hits > 10000 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.hits != 0 ) { bytes += TableLebBytes( ids.ref_at( 19, 0x732dfbcc9b0cf0bbull ) ) + 1 + 4; } // hits
     return bytes;
 }
@@ -9563,6 +9564,7 @@ GRAPHDEMO_TABLE_INLINE bool TallySaveBody( TableWriter & w, TableIds & ids, cons
     if ( value.hits != 0 )
     {
         w.header( ids.ref_at( 19, 0x732dfbcc9b0cf0bbull ), 4 ); // hits
+        schema_assert( !( value.hits < 0 || value.hits > 10000 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.hits ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -11970,6 +11972,7 @@ inline const Marker * MarkerReadStrict( const uint8_t * wire_file, int64_t wire_
 inline int64_t TallyMeasureBodyRetain( TableRetainIds & ids, const Tally & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    schema_assert( !( value.hits < 0 || value.hits > 10000 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.hits != 0 ) { bytes += TableLebBytes( ids.ref_at( 19, 0x732dfbcc9b0cf0bbull ) ) + 1 + 4; } // hits
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -11980,6 +11983,7 @@ GRAPHDEMO_TABLE_INLINE bool TallySaveBodyRetain( TableWriter & w, TableRetainIds
     if ( value.hits != 0 )
     {
         w.header( ids.ref_at( 19, 0x732dfbcc9b0cf0bbull ), 4 ); // hits
+        schema_assert( !( value.hits < 0 || value.hits > 10000 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.hits ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }

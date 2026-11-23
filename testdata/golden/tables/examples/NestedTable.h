@@ -10906,6 +10906,7 @@ inline int64_t ArchiveConfigMeasureBody( TableIds & ids, const ArchiveConfig & v
         if ( body_root > 1 ) { bytes += TableLebBytes( ref_root ) + 1 + TableLebBytes( (uint64_t) ( body_root ) ) + ( body_root ); } // root
         else { ids.truncate( mark_root ); } // an all-default nested table elides, and costs no entry
     }
+    schema_assert( !( value.count < 0 || value.count > 100 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.count != 1 ) { bytes += TableLebBytes( ids.ref_at( 97, 0xb1e5e28e4479a274ull ) ) + 1 + 4; } // count
     return bytes;
 }
@@ -10938,6 +10939,7 @@ TABLEDEMO_TABLE_INLINE bool ArchiveConfigSaveBody( TableWriter & w, TableIds & i
     if ( value.count != 1 )
     {
         w.header( ids.ref_at( 97, 0xb1e5e28e4479a274ull ), 4 ); // count
+        schema_assert( !( value.count < 0 || value.count > 100 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.count ) );
     }
     w.put8( 0 ); // the ZERO REFERENCE that ends the body
@@ -12991,6 +12993,7 @@ inline int64_t ArchiveConfigMeasureBodyRetain( TableRetainIds & ids, const Archi
         if ( body_root > 1 ) { bytes += TableLebBytes( ref_root ) + 1 + TableLebBytes( (uint64_t) ( body_root ) ) + ( body_root ); } // root
         else { ids.truncate( mark_root ); } // an all-default nested table elides, and costs no entry
     }
+    schema_assert( !( value.count < 0 || value.count > 100 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.count != 1 ) { bytes += TableLebBytes( ids.ref_at( 97, 0xb1e5e28e4479a274ull ) ) + 1 + 4; } // count
     bytes += TableRetainTailMeasure( retain, ids, path );
     return bytes;
@@ -13014,6 +13017,7 @@ TABLEDEMO_TABLE_INLINE bool ArchiveConfigSaveBodyRetain( TableWriter & w, TableR
     if ( value.count != 1 )
     {
         w.header( ids.ref_at( 97, 0xb1e5e28e4479a274ull ), 4 ); // count
+        schema_assert( !( value.count < 0 || value.count > 100 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.count ) );
     }
     if ( !TableRetainTailSave( retain, ids, w, path ) ) { return false; }

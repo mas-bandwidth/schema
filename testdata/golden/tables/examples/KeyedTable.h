@@ -11368,6 +11368,7 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardLoadBodyRetain( TableReader & r, ScoreBoar
 inline int64_t TeamConfigMeasureBody( TableIds & ids, const TeamConfig & value )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    schema_assert( !( value.spawn_count < 0 || value.spawn_count > 64 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.spawn_count != 4 ) { bytes += TableLebBytes( ids.ref_at( 120, 0xceec99e2d65db674ull ) ) + 1 + 4; } // spawn_count
     schema_assert( value.banner_length >= 0 && value.banner_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( !TableUtf8Valid( (const uint8_t *) value.banner, (uint64_t) value.banner_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
@@ -11390,6 +11391,7 @@ TABLEDEMO_TABLE_INLINE bool TeamConfigSaveBody( TableWriter & w, TableIds & ids,
     if ( value.spawn_count != 4 )
     {
         w.header( ids.ref_at( 120, 0xceec99e2d65db674ull ), 4 ); // spawn_count
+        schema_assert( !( value.spawn_count < 0 || value.spawn_count > 64 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.spawn_count ) );
     }
     schema_assert( value.banner_length >= 0 && value.banner_length <= 16 ); // storage invariant, debug only (§5.1)
@@ -15356,6 +15358,7 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardSaveBody( TableWriter & w, TableIds & ids,
                 if ( !TableEnumRef( ids, Team( i + 1 ), key_ref ) || key_ref == 0 ) { return false; } // i is the STORAGE index; the key it holds is i + 1
                 w.putleb( key_ref ); // the slot's VARIANT reference, not its position
                 w.putleb( 4 );
+                schema_assert( !( value.per_team[i] < 0 || value.per_team[i] > 100000 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
                 w.put32( uint32_t( value.per_team[i] ) );
             }
         }
@@ -18979,6 +18982,7 @@ inline int64_t KeyedConfigFixedLoad( KeyedConfig * values, int64_t capacity, con
 inline int64_t TeamConfigMeasureBodyRetain( TableRetainIds & ids, const TeamConfig & value, TableRetain * retain, const TableRetainPath & path )
 {
     int64_t bytes = 1; // the ZERO REFERENCE that ends the body
+    schema_assert( !( value.spawn_count < 0 || value.spawn_count > 64 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
     if ( value.spawn_count != 4 ) { bytes += TableLebBytes( ids.ref_at( 120, 0xceec99e2d65db674ull ) ) + 1 + 4; } // spawn_count
     schema_assert( value.banner_length >= 0 && value.banner_length <= 16 ); // storage invariant, debug only (§5.1)
     if ( !TableUtf8Valid( (const uint8_t *) value.banner, (uint64_t) value.banner_length ) ) { return -1; } // well-formed, no zero byte (§2.13)
@@ -18992,6 +18996,7 @@ TABLEDEMO_TABLE_INLINE bool TeamConfigSaveBodyRetain( TableWriter & w, TableReta
     if ( value.spawn_count != 4 )
     {
         w.header( ids.ref_at( 120, 0xceec99e2d65db674ull ), 4 ); // spawn_count
+        schema_assert( !( value.spawn_count < 0 || value.spawn_count > 64 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
         w.put32( uint32_t( value.spawn_count ) );
     }
     schema_assert( value.banner_length >= 0 && value.banner_length <= 16 ); // storage invariant, debug only (§5.1)
@@ -20382,6 +20387,7 @@ TABLEDEMO_TABLE_INLINE bool ScoreBoardSaveBodyRetain( TableWriter & w, TableReta
                 if ( !TableEnumRef( ids, Team( i + 1 ), key_ref ) || key_ref == 0 ) { return false; } // i is the STORAGE index; the key it holds is i + 1
                 w.putleb( key_ref ); // the slot's VARIANT reference, not its position
                 w.putleb( 4 );
+                schema_assert( !( value.per_team[i] < 0 || value.per_team[i] > 100000 ) ); // off its min/max, debug only (SPEC.md §5.1 row 1)
                 w.put32( uint32_t( value.per_team[i] ) );
             }
         }
