@@ -149,9 +149,15 @@ func (m *msgGen) emitDefaults(st *ir.Struct) {
 					if f.DefBool {
 						assigns = append(assigns, fmt.Sprintf("        %s: true,\n", f.Name))
 					}
-				case ir.TInt:
-					if f.DefInt != nil && f.DefInt.Sign() != 0 && f.Type.Width <= 64 {
-						assigns = append(assigns, fmt.Sprintf("        %s: %s,\n", f.Name, f.DefInt.String()))
+				case ir.TInt, ir.TFixed:
+					if f.DefInt != nil && f.DefInt.Sign() != 0 {
+						// The IR already holds the exact storage value, including
+						// the fixed-point scale. A wide row field wraps that value.
+						value := f.DefInt.String()
+						if f.Type.Width > 64 {
+							value = fmt.Sprintf("%s(%s)", cookElemType(f), value)
+						}
+						assigns = append(assigns, fmt.Sprintf("        %s: %s,\n", f.Name, value))
 					}
 				case ir.TFloat32, ir.TFloat64:
 					if f.DefFloat != 0 {
