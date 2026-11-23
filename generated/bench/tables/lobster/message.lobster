@@ -1217,11 +1217,25 @@ def message_reset_report(rep:LoadReport):
     rep.damaged = false
     rep.stopped = false
 
-// The caller receives no usable bodies from a damaged read (§4).
+// The caller receives no usable bodies from a damaged read (§4). A refused
+// read RESETS THE CALLER'S LIST (ruling R4): the list is a Lobster list, so
+// its declared default is empty, and it is reset on every refusal, after the
+// refusal and never before the checks. The walk reads into a list of its own;
+// the caller's records are untouched until the read has answered, and a
+// success replaces them with the loaded bodies.
 def load_messages_into(root:string, v:MessageVocabulary, data:string, rep:LoadReport, capacity:int, batch:[Record]) -> int, bool:
-    message_reset_report(rep)
+    let loaded:[Record] = []
+    let count, ok = load_messages_walk(root, v, data, rep, capacity, loaded)
     for(batch) rec: release(rec)
     truncate(batch, 0)
+    if not ok:
+        for(loaded) rec: release(rec)
+        return 0, false
+    for(loaded) rec: push(batch, rec)
+    return count, true
+
+def load_messages_walk(root:string, v:MessageVocabulary, data:string, rep:LoadReport, capacity:int, batch:[Record]) -> int, bool:
+    message_reset_report(rep)
     if length(data) == 0:
         rep.malformed = true
         return 0, false
@@ -1257,15 +1271,11 @@ def load_messages_into(root:string, v:MessageVocabulary, data:string, rep:LoadRe
         let rec = new_record(d)
         push(batch, rec)
         if not message_body(m, rec):
-            for(batch) value: release(value)
-            truncate(batch, 0)
             return 0, false
         i++
     // THE TRAILING PAD IS VERIFIED ZERO, AND BYTES AFTER IT ARE MALFORMED
     if not mb_align(bits) or bits.off != bits.n:
         rep.malformed = true
-        for(batch) value: release(value)
-        truncate(batch, 0)
         return 0, false
     return count, true
 

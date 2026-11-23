@@ -77,8 +77,9 @@ fixed table Root {
 
 	// THE IDENTITY-PLAN PROBE: build, save, then forge each count/length past
 	// the bound, with and without slack behind it, and assert the refusal and
-	// that not one destination byte moved (the back storage is poisoned
-	// 0x5A before every load, and the refusal must leave it untouched).
+	// that the row handed in holds its declared defaults (ruling R4): the back
+	// storage is poisoned 0x5A before every load, and after the refusal it
+	// must equal a value poisoned the same way and then reset.
 	driver := strings.ReplaceAll(strings.ReplaceAll(strings.ReplaceAll(`#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -135,9 +136,10 @@ int main( void )
             printf( "%s: refusal moved a counter: unknown=%d widened=%d\n", name, r.unknown, r.widened );
             return 1;
         }
-        const uint8_t * p = (const uint8_t *) &back;
-        for ( int64_t i = 0; i < (int64_t) sizeof( back ); ++i )
-            if ( p[i] != 0x5A ) { printf( "%s: the refusal wrote destination byte %lld: 0x%02x\n", name, (long long) i, p[i] ); return 1; }
+        @ROOT@ fresh;
+        memset( &fresh, 0x5A, sizeof( fresh ) );
+        @ROOT@Reset( fresh );
+        if ( memcmp( &back, &fresh, sizeof( back ) ) != 0 ) { printf( "%s: the refusal left the row off its declared defaults\n", name ); return 1; }
         return 0;
     };
 

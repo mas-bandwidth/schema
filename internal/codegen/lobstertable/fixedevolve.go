@@ -1472,9 +1472,15 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 	}
 
 	// The fixed form has one read: a whole batch or refusal (SPEC-TABLES §6.5).
-	// REFUSE is total (docs/FIXED-FORM-ALGORITHM.md §5.3): every refusal met
-	// before a record lands leaves the caller's values exactly as they were.
+	// A REFUSED READ RESETS EVERY VALUE HANDED IN (ruling R4): the walk below
+	// answers a refusal as -1 at any point, and the public entry resets every
+	// row of the caller's batch to its declared defaults on that one exit.
 	g.Pf("def %sLoad(values:[%s], data_in:string, plan:[schema_rt.TableFixedEntry], report_in:schema_rt.TableReport?) -> int:\n", name, st.Name)
+	g.Pf("    let n = %sLoadWalk(values, data_in, plan, report_in)\n", name)
+	g.Pf("    if n < 0:\n")
+	g.Pf("        for(values) refused: %sReset(refused)\n", st.Name)
+	g.Pf("    return n\n\n")
+	g.Pf("def %sLoadWalk(values:[%s], data_in:string, plan:[schema_rt.TableFixedEntry], report_in:schema_rt.TableReport?) -> int:\n", name, st.Name)
 	g.Pf("    let report = if report_in: report_in else: schema_rt.TableReport {}\n")
 	g.Pf("    schema_rt.fixed_reset_report(report)\n")
 	if st.Integrity != "" {
@@ -1576,7 +1582,6 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 	g.Pf("        var img = schema_rt.fixed_prefill_holes(schema_rt.zeros(%d), %sResetImage, holes)\n", bodyBytes, name)
 	g.Pf("        let img2, why = schema_rt.fixed_run(entries, entry_count, data, rec_at + 8, img, report)\n")
 	g.Pf("        if why != \"\":\n")
-	g.Pf("            for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("            return schema_rt.fixed_refuse(report, why)\n")
 	g.Pf("        img = img2\n")
 	g.Pf("        %sScatter(img, 0, values[k])\n", name)
@@ -1588,11 +1593,9 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 		// to its defaults.
 		g.Pf("        let nf = %sFixedFiniteBody(values[k])\n", st.Name)
 		g.Pf("        if nf != \"\":\n")
-		g.Pf("            for(values) failed: %sReset(failed)\n", st.Name)
 		g.Pf("            return schema_rt.fixed_refuse_non_finite(report, nf)\n")
 	}
 	g.Pf("        if not %sFixedBoundsBody(values[k]):\n", st.Name)
-	g.Pf("            for(values) failed: %sReset(failed)\n", st.Name)
 	g.Pf("            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseOutOfRange)\n")
 	g.Pf("    report.unknown += census_unknown\n")
 	g.Pf("    report.kind_mismatch += census_kind\n")

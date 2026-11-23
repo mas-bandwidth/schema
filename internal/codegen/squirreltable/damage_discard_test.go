@@ -18,7 +18,7 @@ const squirrelFileDiscard = `  if (report.bodyDamaged) {
     return null;
   }
 `
-const squirrelBatchDiscard = `  for(local i=0;i<r.written;i++)storage[i]=d.make();
+const squirrelBatchDiscard = `  if(d!=null)for(local i=0;i<storage.len();i++)storage[i]=d.make();
 `
 
 func squirrelDamageProbe(t *testing.T, patchFile, anchor string) string {
