@@ -1366,7 +1366,9 @@ func verifyRust(repoRoot, schemaBin, packFile, workDir string, units []UnitSpec,
                 let mut vocab = %s::TableVocabulary::new(&mut entries);
                 let mut arep = %s::TableReport::default();
                 if c.aux.is_empty() {
-                    let mut abuf = vec![0u8; %s::announce_measure()];
+                    let asz = %s::announce_measure();
+                    if asz < 0 { die(&c.id, "announce_measure"); }
+                    let mut abuf = vec![0u8; asz as usize];
                     %s::announce(&mut abuf);
                     if !%s::announce_read(&mut vocab, &abuf, &mut arep) || arep.refused { die(&c.id, "own announce_read"); }
                 } else {

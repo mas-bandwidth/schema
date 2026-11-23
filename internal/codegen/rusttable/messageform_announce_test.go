@@ -362,7 +362,7 @@ func announceProbe(u *announceUnit) string {
 
 	b.WriteString("fn main() {\n")
 	// 2.1: the constant and its length.
-	b.WriteString("    say(\"measure\", announce_measure() == ANNOUNCE.len() && TABLE_ANNOUNCEMENT == ANNOUNCE, \"the constant or its measure differs\");\n")
+	b.WriteString("    say(\"measure\", announce_measure() == ANNOUNCE.len() as i64 && TABLE_ANNOUNCEMENT == ANNOUNCE, \"the constant or its measure differs\");\n")
 	// 2.2: the read fills the vocabulary the page names, the build version kept.
 	b.WriteString("    {\n        let mut storage = vec![TableMessageEntry::default(); 4096];\n")
 	b.WriteString("        let mut vocab = TableVocabulary::new(&mut storage);\n        let mut report = TableReport::default();\n")
