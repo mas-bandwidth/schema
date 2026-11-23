@@ -1884,7 +1884,7 @@ build/tables-generated-dart/.stamp: $(CONFORMANCE_UNIT_SCHEMAS) testdata/conform
 
 .PHONY: table-write-bounds-dart
 table-write-bounds-dart: build/conformance-harness build/conformance-dart
-	DART="$(DART)" ./build/conformance-harness run --only dart --surfaces write-refusal --complete \
+	DART="$(DART)" ./build/conformance-harness run --only dart --surfaces write-refusal,wire,json-read,json-write --complete \
 		--manifest testdata/conformance/table-write-bounds/WRITE-BOUNDS.txt \
 		--json testdata/conformance/table-write-bounds \
 		--work build/conformance-write-bounds-dart

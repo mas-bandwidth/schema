@@ -456,7 +456,7 @@ build/conformance-rust: build/tables-generated-rust/.stamp test/conformance/rust
 # so the generated writer's assertions decide the refusal rows.
 .PHONY: table-write-bounds-rust
 table-write-bounds-rust: build/conformance-harness build/conformance-rust
-	./build/conformance-harness run --only rust --surfaces write-refusal --complete \
+	./build/conformance-harness run --only rust --surfaces write-refusal,wire,json-read,json-write --complete \
 		--manifest testdata/conformance/table-write-bounds/WRITE-BOUNDS.txt \
 		--json testdata/conformance/table-write-bounds \
 		--work build/conformance-write-bounds-rust

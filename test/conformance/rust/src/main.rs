@@ -860,6 +860,12 @@ macro_rules! with_root {
                 let $save = fixed_save_from_variable!(tblfixedevo, EvoRoot, EvoRootRow, evo_root_cook_write, evo_root_fixed_save, evo_root_fixed_measure);
                 Some($body)
             }
+            ("writebounds", "TortureVarWref") => {
+                #[allow(unused_imports)]
+                use writebounds::{torture_var_wref_from_json_bytes as $from_json, torture_var_wref_load as $load,
+                    torture_var_wref_save_checked as $save, torture_var_wref_to_json_checked as $to_json};
+                Some($body)
+            }
             ("tblvarevo1", "EvoDoc") => {
                 #[allow(unused_imports)]
                 use tblvarevo1::{evo_doc_from_json_bytes as $from_json, evo_doc_load as $load, evo_doc_save_checked as $save, evo_doc_to_json_checked as $to_json};
@@ -2029,11 +2035,15 @@ fn surface_retain(manifest: &Manifest, out: &str, saves: bool) {
 }
 
 fn surface_json_read(manifest: &Manifest, out: &str) {
+    let json_dir = std::env::var("SCHEMA_CONFORMANCE_JSON_INPUT_DIR")
+        .ok()
+        .filter(|dir| !dir.is_empty())
+        .unwrap_or_else(|| "testdata/conformance/tables/json".into());
     for f in manifest.of_kind("instance") {
         if no_text(f) {
             continue;
         }
-        let path = format!("testdata/conformance/tables/json/{}.json", f[1]);
+        let path = format!("{json_dir}/{}.json", f[1]);
         if instance_is_fixed(f) {
             if let Some(value) = fixed_text_read(&f[2], &f[3], &slurp(&path)) {
                 let bytes = value.unwrap_or_else(|| fail(&format!("{}: fixed text read refused", f[1])));

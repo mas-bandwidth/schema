@@ -2569,6 +2569,8 @@ void _f2w_vocab9_Wide19(vocab9demo_fixed.Wide19 f, vocab9demo.Wide19 w) {
 
 Uint8List? wireResave(String unit, String root, Uint8List wire) {
   switch ('$unit $root') {
+    case 'writebounds TortureVarWref':
+      return _wireResaveOne(wire, writebounds.TableWireReport.new, (rep) => (rep.refused, rep.refusal), writebounds.tortureVarWrefWireLoad, writebounds.tortureVarWrefWireSave);
     case 'featurewitnesses Root':
       return _wireResaveOne(wire, feature.TableWireReport.new, (rep) => (rep.refused, rep.refusal), feature.rootWireLoad, feature.rootWireSave);
     case 'featurewitnesses ArrayRoot':
@@ -3048,6 +3050,11 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
 
 Uint8List? jsonReadSave(String unit, String root, String text) {
   switch ('$unit $root') {
+    case 'writebounds TortureVarWref':
+      final rep = writebounds.TableTextReport();
+      final v = writebounds.tortureVarWrefFromJson(text, rep);
+      if (rep.refused) return null;
+      return writebounds.tortureVarWrefWireSave(v);
     case 'featurewitnesses Root':
       final rep = feature.TableTextReport();
       final v = feature.rootFromJson(text, rep);
@@ -3557,6 +3564,11 @@ Uint8List? jsonReadSave(String unit, String root, String text) {
 
 String? jsonWriteText(String unit, String root, Uint8List wire) {
   switch ('$unit $root') {
+    case 'writebounds TortureVarWref':
+      final rep = writebounds.TableWireReport();
+      final v = writebounds.tortureVarWrefWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return writebounds.tortureVarWrefToJson(v);
     case 'featurewitnesses Root':
       final rep = feature.TableWireReport();
       final v = feature.rootWireLoad(wire, rep);
@@ -5147,9 +5159,11 @@ int surfaceWire(String outDir) {
 }
 
 int surfaceJsonRead(String outDir) {
+  final suppliedDir = Platform.environment['SCHEMA_CONFORMANCE_JSON_INPUT_DIR'];
+  final jsonDir = suppliedDir == null || suppliedDir.isEmpty ? 'testdata/conformance/tables/json' : suppliedDir;
   for (final f in kind('instance')) {
     if (noTextRow(f)) continue;
-    final textPath = 'testdata/conformance/tables/json/${f[1]}.json';
+    final textPath = '$jsonDir/${f[1]}.json';
     if (!File(textPath).existsSync()) {
       spillAbsent(outDir, f[1]);
       continue;
