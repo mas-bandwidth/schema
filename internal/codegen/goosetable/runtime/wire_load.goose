@@ -689,7 +689,9 @@ fn scalar_at(c: LoadCtx&, rep: LoadReport&, r: Rd&, out: LoadVal&, d: FieldDesc,
     // (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH; decode.go
     // scalarAt): a mask widened from a narrower unsigned kind is held the same way
     if d.mw > 0 && d.mw < 64 && ((value as! u64) >> (d.mw as! u64)) != 0 { rep.oor += 1; }
-    out.bits = i128_of(value);
+    // an unsigned kind is ZERO-extended: a uint64 or bits(64) with its top bit
+    // set is 2^63 and up, never negative (the save holds hi to 0)
+    out.bits = if signed { i128_of(value) } else { Int128 { lo: value as! u64, hi: 0 } };
     return true;
 }
 
@@ -2251,7 +2253,18 @@ fn wire_check(data: const u8[:], at: i64, end: i64, ids_at: i64, ids_n: i64, ann
 
 // load_with is the one load both entry points share: load_table, and
 // load_table_retain (wire_retain.goose) with retention on.
+// load_with is load_run under the caller's stores' promise: a refused load
+// (-1) leaves the value and node tables the length they had, as <T>ToLoaded
+// restores them (value_bridge.go), never holding its partial entries.
 fn load_with(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal[>..]&, nodes: LoadNode[>..]&, report: LoadReport&, store: RetainStore&, retaining: bool) -> i64 {
+    let slots = vals.len;
+    let held = nodes.len;
+    let rec = load_run(unit, root, data, vals, nodes, report, store, retaining);
+    if rec < 0 { vals.resize(slots); nodes.resize(held); }
+    return rec;
+}
+
+fn load_run(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal[>..]&, nodes: LoadNode[>..]&, report: LoadReport&, store: RetainStore&, retaining: bool) -> i64 {
     for k in nodes.len { nodes[k] = LoadNode { tab: -1, blob: 0, off: 0, len: 0, val: -1, named: false }; }
     var c = LoadCtx { data: data, unit: unit, vals: vals, nodes: nodes, report: report, ids_at: 0, ids_n: 0, numbered: false, good: false, root_tab: -1, root_val: -1, cap: false, node_n: 0, retain: store, retaining: retaining };
     // THE FORM BYTE IS READ FIRST (§3): form 2 is a stream form and never a

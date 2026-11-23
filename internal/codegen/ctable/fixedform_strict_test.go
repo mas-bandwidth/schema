@@ -133,8 +133,8 @@ func cStrictCorpus(t *testing.T) string {
 		cStrictCorpusDir = cached
 	})
 	if cStrictCorpusErr != nil {
-		if os.Getenv("SCHEMA_REQUIRE_CORPUS") != "" {
-			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set and corpus build failed: %v", cStrictCorpusErr)
+		if slowtest.CorpusRequired() {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and corpus build failed: %v", cStrictCorpusErr)
 		}
 		t.Skipf("fixedform corpus unavailable: %v", cStrictCorpusErr)
 	}

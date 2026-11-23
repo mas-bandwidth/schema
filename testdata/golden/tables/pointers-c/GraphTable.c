@@ -23,6 +23,9 @@
 #if defined(__APPLE__)
 #include <xlocale.h> /* newlocale, uselocale */
 #endif
+#if defined(__GLIBC__) && !defined(__USE_XOPEN2K8)
+#error "locale_t needs POSIX.1-2008: define _POSIX_C_SOURCE 200809L before the first #include of the translation unit that includes this file"
+#endif
 
 #include <assert.h> /* the text writer's zero-byte refusal, in a debug build */
 #ifndef schema_assert
@@ -1789,15 +1792,30 @@ static SCHEMA_UNUSED int64_t graphdemo_table_json_token_integer( const char * to
 
 #ifdef SCHEMA_GRAPHDEMO_TABLE_GRAPH_RUNTIME
 static SCHEMA_UNUSED int graphdemo_table_json_read_pointer( graphdemo_table_json_in_t * in, void * slot, const graphdemo_table_field_info_t * f, int32_t depth );
-static SCHEMA_UNUSED int graphdemo_table_json_skipped_ampersand( graphdemo_table_json_in_t * in, const char * key, int * reference, uint64_t * opened );
-static SCHEMA_UNUSED void graphdemo_table_json_skipped_close( graphdemo_table_json_in_t * in, uint64_t opened );
+static SCHEMA_UNUSED int graphdemo_table_json_skipped_ampersand( graphdemo_table_json_in_t * in, const char * key, char close, uint64_t * opened );
+static SCHEMA_UNUSED void graphdemo_table_json_skipped_close( graphdemo_table_json_in_t * in, uint64_t label );
 #else
 static SCHEMA_UNUSED int graphdemo_table_json_read_pointer( graphdemo_table_json_in_t * in, void * slot, const graphdemo_table_field_info_t * f, int32_t depth )
 { (void)slot; (void)f; (void)depth; in->bad = 1; return 0; }
-static SCHEMA_UNUSED int graphdemo_table_json_skipped_ampersand( graphdemo_table_json_in_t * in, const char * key, int * reference, uint64_t * opened )
-{ (void)key; (void)reference; (void)opened; in->bad = 1; return 0; }
-static SCHEMA_UNUSED void graphdemo_table_json_skipped_close( graphdemo_table_json_in_t * in, uint64_t opened )
-{ (void)in; (void)opened; }
+static SCHEMA_UNUSED int graphdemo_table_json_skipped_ampersand( graphdemo_table_json_in_t * in, const char * key, char close, uint64_t * opened )
+{
+    /* no pointer, so no label table: the prefix is still held to its grammar (a
+       well-formed first &node), and the value is skipped whole */
+    uint64_t value = 0;
+    (void)close; (void)opened;
+    if ( strcmp(key,"&node") != 0 ) { in->bad = 1; return 0; }
+    graphdemo_table_json_space(in);
+    if ( in->pos >= in->size || in->text[in->pos] < '1' || in->text[in->pos] > '9' ) { in->bad = 1; return 0; }
+    while ( in->pos < in->size && in->text[in->pos] >= '0' && in->text[in->pos] <= '9' )
+    {
+        uint64_t digit = (uint64_t)(in->text[in->pos]-'0');
+        if ( value > (UINT64_MAX-digit)/10 ) { in->bad = 1; return 0; }
+        value = value*10+digit; in->pos++;
+    }
+    return 1;
+}
+static SCHEMA_UNUSED void graphdemo_table_json_skipped_close( graphdemo_table_json_in_t * in, uint64_t label )
+{ (void)in; (void)label; }
 #endif
 
 /* THE KEYS OF ONE OBJECT (docs/SPEC-TABLES.md §16.2): a repeated key refuses
@@ -1912,14 +1930,14 @@ static SCHEMA_UNUSED int graphdemo_table_json_skip_members( graphdemo_table_json
     uint64_t seen[64];
     int32_t seen_count = 0;
     int first = 1;
-    uint64_t opened = 0; /* the label a definition this skipped object opened */
+    uint64_t opened = 0; /* the label this object defines, open until it closes */
     if ( depth > GRAPHDEMO_K_TABLE_JSON_MAX_DEPTH ) { in->bad = 1; return 0; }
     memset( seen, 0, sizeof( seen ) );
     in->pos++; /* the opening bracket */
     for ( ;; )
     {
         char c = graphdemo_table_json_peek( in );
-        if ( c == close ) { in->pos++; graphdemo_table_json_skipped_close( in, opened ); return 1; }
+        if ( c == close ) { in->pos++; if ( opened != 0 ) { graphdemo_table_json_skipped_close( in, opened ); } return 1; }
         if ( c == 0 ) { in->bad = 1; return 0; }
         if ( close == '}' )
         {
@@ -1942,25 +1960,13 @@ static SCHEMA_UNUSED int graphdemo_table_json_skip_members( graphdemo_table_json
             added = graphdemo_table_json_keys_add( in, keys, quote, key, length );
             if ( added < 0 ) { return 0; }
             if ( added == 0 ) { in->report->refused=1, in->report->refuse_reason=SCHEMA_GRAPHDEMO_TABLE_REFUSE_WIRE_DAMAGED; }
-            if ( key[0] == '&' && in->graph != NULL )
-            {
-                /* THE LABEL RULES HOLD IN A SKIPPED VALUE (§16.7): a label
-                   alone refers and must name a closed definition; a label
-                   with fields defines, must be new, and stays open until this
-                   object closes. Its comma, if any, is consumed with it. */
-                int reference = 0;
-                if ( !first ) { in->bad = 1; return 0; }
-                if ( !graphdemo_table_json_skipped_ampersand( in, key, &reference, &opened ) ) { return 0; }
-                if ( reference ) { return 1; }
-                first = 0;
-                continue;
-            }
+            if ( key[0] == '&' ) { if ( !first ) { in->bad = 1; return 0; } if ( !graphdemo_table_json_skipped_ampersand(in,key,close,&opened) ) { return 0; } consumed = 1; }
         }
         first = 0;
         if ( !graphdemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
         c = graphdemo_table_json_peek( in );
         if ( c == ',' ) { in->pos++; continue; }   /* a trailing comma is accepted */
-        if ( c == close ) { in->pos++; graphdemo_table_json_skipped_close( in, opened ); return 1; }
+        if ( c == close ) { in->pos++; if ( opened != 0 ) { graphdemo_table_json_skipped_close( in, opened ); } return 1; }
         in->bad = 1;
         return 0;
     }
@@ -3388,42 +3394,40 @@ static SCHEMA_UNUSED SCHEMA_GRAPHDEMO_JSON_NOINLINE int graphdemo_table_json_rea
     entry->node = (uint32_t)((graphdemo_table_ref_t *)slot)->value; entry->type = f->table; entry->open = 0; return 1;
 }
 
-/* An &node key opening an object the walk is SKIPPING (docs/SPEC-TABLES.md
-   §16.7). A label alone (a trailing comma allowed) REFERS: the text must have
-   defined it and closed that definition, and the object is consumed whole
-   (*reference). A label with fields DEFINES: the text must not have defined it,
-   and it is registered with no node, open until the skipped object closes
-   (*opened), so a later reference reads null and a second definition refuses. */
-static SCHEMA_UNUSED int graphdemo_table_json_skipped_ampersand( graphdemo_table_json_in_t * in, const char * key, int * reference, uint64_t * opened )
+/* THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): a label alone must name a
+   definition already closed; fields after one must follow a label not yet
+   defined, and the definition is open until its object closes (the label then
+   stays, with no node, so a reference to it reads null). What the reader does
+   not place is the value, never the label. The member loop owns the comma and
+   the close: this only looks past the comma, and hands back the label a
+   definition opened so the loop can close it. */
+static SCHEMA_UNUSED int graphdemo_table_json_skipped_ampersand( graphdemo_table_json_in_t * in, const char * key, char close, uint64_t * opened )
 {
     graphdemo_table_json_graph_in_t * graph = (graphdemo_table_json_graph_in_t *)in->graph;
     graphdemo_table_json_graph_entry_t * entry;
     uint64_t label = 0;
-    int taken = 0;
-    *reference = 0;
-    if ( graph == NULL || strcmp(key,"&node") != 0 ) { in->bad = 1; return 0; }
+    int taken = 0, bare;
+    int64_t mark;
+    char c;
+    if ( strcmp(key,"&node") != 0 ) { in->bad = 1; return 0; }
     if ( !graphdemo_table_json_scan_label(in,&label) ) { return 0; }
-    entry = graphdemo_table_json_graph_find(&graph->labels,label);
-    if ( graphdemo_table_json_peek(in) == ',' ) { in->pos++; }
-    if ( graphdemo_table_json_peek(in) == '}' )
-    {
-        in->pos++;
-        if ( entry == NULL || entry->open ) { in->bad = 1; return 0; }
-        *reference = 1; return 1;
-    }
-    if ( entry != NULL ) { in->bad = 1; return 0; }
+    if ( graph == NULL ) { return 1; } /* a fixed root in a pointered unit: no label table, the value skipped whole */
     entry = graphdemo_table_json_graph_reach(&graph->labels,label,&taken);
     if ( entry == NULL ) { in->bad = 1; return 0; }
-    entry->open = 1; entry->type = NULL; entry->node = 0;
-    *opened = label; return 1;
+    c = graphdemo_table_json_peek(in);
+    if ( c == ',' ) { mark = in->pos; in->pos++; c = graphdemo_table_json_peek(in); in->pos = mark; }
+    bare = c == close;
+    if ( bare == taken ) { in->bad = 1; return 0; }
+    if ( bare ) { if ( entry->open ) { in->bad = 1; return 0; } return 1; }
+    entry->open = 1;
+    *opened = label;
+    return 1;
 }
 
-static SCHEMA_UNUSED void graphdemo_table_json_skipped_close( graphdemo_table_json_in_t * in, uint64_t opened )
+static SCHEMA_UNUSED void graphdemo_table_json_skipped_close( graphdemo_table_json_in_t * in, uint64_t label )
 {
     graphdemo_table_json_graph_in_t * graph = (graphdemo_table_json_graph_in_t *)in->graph;
-    graphdemo_table_json_graph_entry_t * entry;
-    if ( graph == NULL || opened == 0 ) { return; }
-    entry = graphdemo_table_json_graph_find(&graph->labels,opened);
+    graphdemo_table_json_graph_entry_t * entry = graphdemo_table_json_graph_find(&graph->labels,label);
     if ( entry != NULL ) { entry->open = 0; }
 }
 

@@ -96,7 +96,7 @@ func TestRubyCompressedFloatStoresAreGuarded(t *testing.T) {
 	before(cook, "cook_write_scalar (float64)", cw, "[ranged && val.zero? ? 0.0 : val]", ".pack(big ? 'G' : 'E')")
 	// every caller hands the field's float_range, so no float site writes unmarked
 	rec := body(cook, cs, "def self.cook_write_record(")
-	if n, marked := strings.Count(rec, "cook_write_scalar("), strings.Count(rec, "float_range)")+strings.Count(rec, ", ranged)"); n == 0 || n != marked {
+	if n, marked := strings.Count(rec, "cook_write_scalar("), strings.Count(rec, "ranged: fd.float_range)")+strings.Count(rec, "ranged: fd.elem.float_range)")+strings.Count(rec, "ranged: ranged)"); n == 0 || n != marked {
 		t.Errorf("%s cook_write_record: %d cook_write_scalar calls, %d hand the field's float_range", cook, n, marked)
 	}
 }

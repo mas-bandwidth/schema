@@ -343,6 +343,16 @@ impl IdTable {
         self.entries.truncate(mark);
     }
 
+    /// THE ID TABLE'S MAXIMUM (docs/SPEC-TABLES.md §3, R8): every reader refuses a
+    /// table of more than 4096 entries, so a save refuses by name a value that
+    /// needs more, whatever the build. Checked once at the end of the walk, so a
+    /// speculative intern that a rollback undoes never refuses.
+    pub fn check_bound(&mut self) {
+        if self.entries.len() > 4096 && self.refused.is_none() {
+            self.refused = Some(String::from("id_table_full: more than 4096 ids"));
+        }
+    }
+
     pub fn id_ref(&mut self, id: u64) -> u64 {
         for (i, &e) in self.entries.iter().enumerate() {
             if e == id {
@@ -1580,7 +1590,7 @@ pub fn retain_ref(ids: &mut IdTable, retain: &mut TableRetain, known: &[u64], id
         ids.entries.push(id);
         return ids.entries.len() as u64;
     }
-    if retain.ids.len() >= retain.ids.capacity() {
+    if retain.ids.len() >= retain.ids.capacity() || ids.entries.len() >= 4096 {
         return 0;
     }
     retain.ids.push(id);
@@ -2378,10 +2388,8 @@ pub struct Jr<'a> {
     pub missing_required: u64,
     pub missing_required_fields: String,
     pub labels: HashMap<u64, JsonLabel>,
-    /// the root is a VARIABLE table (docs/SPEC-TABLES.md §16.7): its text
-    /// carries &node labels, and the label rules hold in a skipped value
-    /// too. A fixed table root's text has no labels, and a skipped value
-    /// there is skipped whole.
+    /// the root is a VARIABLE table, whose text carries the label construct
+    /// (§16.7); a pointer-free root holds the prefix to its grammar and skips whole
     pub graph: bool,
 }
 
@@ -2973,9 +2981,7 @@ impl<'a> Jr<'a> {
                  self.depth += 1;
                  let mut seen = std::collections::HashSet::new();
                  let mut first = true;
-                 // the label a definition this skipped object opened: it
-                 // closes with the object, and a later reference reads null
-                 let mut opened: Option<u64> = None;
+                 let mut defining: Option<u64> = None;
                  loop {
                      self.space();
                      if self.p >= self.b.len() {
@@ -2986,7 +2992,8 @@ impl<'a> Jr<'a> {
                      if self.b[self.p] == b'}' {
                          self.p += 1;
                          self.depth -= 1;
-                         if let Some(label) = opened {
+                         // a definition closes here: the label stays, with no node
+                         if let Some(label) = defining {
                              self.labels.insert(label, JsonLabel::Dropped);
                          }
                          return;
@@ -3012,14 +3019,19 @@ impl<'a> Jr<'a> {
                         return;
                     }
                     self.p += 1;
-                    // THE LABEL RULES HOLD IN A SKIPPED VALUE (§16.7), under a
-                    // variable root: an &-prefixed key is &node and the
-                    // object's first key, its label is a label; a label alone
-                    // (a trailing comma allowed) REFERS and must name a closed
-                    // definition; a label with fields DEFINES, must be new,
-                    // and stays open until this object closes, then reads null.
-                    if self.graph && key.as_deref().is_some_and(|k| k.starts_with('&')) {
-                        if !first || key.as_deref() != Some("&node") {
+                    // THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): a
+                    // definition (the label first, fields after it) takes a label
+                    // not yet defined, keeps it as Dropped once its object closes
+                    // so a reference reads null, and is Open until then; a label
+                    // alone must name a definition already closed. An & key
+                    // anywhere else is the reserved prefix out of place.
+                    let was_first = first;
+                    first = false;
+                    let mut labelled = false;
+                    if let Some(k) = &key
+                        && k.starts_with('&')
+                    {
+                        if !was_first || k != "&node" {
                             self.damaged = true;
                             self.depth -= 1;
                             return;
@@ -3029,30 +3041,26 @@ impl<'a> Jr<'a> {
                             self.depth -= 1;
                             return;
                         };
-                        let defined = self.labels.get(&label).map(|e| !matches!(e, JsonLabel::Open));
-                        if self.peek() == b',' {
-                            self.p += 1;
-                        }
-                        if self.peek() == b'}' {
-                            self.p += 1;
-                            self.depth -= 1;
-                            if defined != Some(true) {
+                        labelled = true;
+                        self.space();
+                        if self.graph {
+                            let bare = self.p < self.b.len() && self.b[self.p] == b'}';
+                            let defined = self.labels.contains_key(&label);
+                            let closed = matches!(self.labels.get(&label), Some(JsonLabel::Dropped | JsonLabel::Node(_)));
+                            if bare != defined || (bare && !closed) {
                                 self.damaged = true;
+                                self.depth -= 1;
+                                return;
                             }
-                            return;
+                            if !bare {
+                                self.labels.insert(label, JsonLabel::Open);
+                                defining = Some(label);
+                            }
                         }
-                        if defined.is_some() {
-                            self.damaged = true;
-                            self.depth -= 1;
-                            return;
-                        }
-                        self.labels.insert(label, JsonLabel::Open);
-                        opened = Some(label);
-                        first = false;
-                        continue;
                     }
-                    first = false;
-                    self.skip_value();
+                    if !labelled {
+                        self.skip_value();
+                    }
                     if self.damaged {
                         self.depth -= 1;
                         return;

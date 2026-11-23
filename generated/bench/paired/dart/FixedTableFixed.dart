@@ -887,7 +887,8 @@ int fixedTableSaveMessages(
     report.Refuse('batch_too_large');
     return -1;
   }
-  if (buffer.length < 2) return -1;
+  final need = fixedTableMeasureMessages(values, report);
+  if (need < 0 || buffer.length < need) return -1;
   buffer[0] = 2;
   buffer[1] = values.length - 1;
   final w = TableBitWriter(Uint8List.sublistView(buffer, 2));

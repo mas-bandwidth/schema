@@ -1,5 +1,7 @@
 # schema — specification
 
+> **Conformance:** the test cases a correct implementation must pass, and how they are run and judged, are the normative [conformance addendum](SPEC-CONFORMANCE.md).
+
 This document is the normative reference for the schema language, its wire
 encodings, and the code its compiler generates. Where the compiler and this
 document disagree, one of them is a bug (see VERSIONING.md).
@@ -535,7 +537,14 @@ from this projection rather than carried in it.
   refuses one by name (SPEC-TABLES.md §2.3). `|` opens a line's qualification
   section (§4.2, Attributes) and claims the rest of the line — the newline
   or a `//` comment terminates it, and no newline suppression applies after
-  `|` or after a `,` inside a qualification. `<=` is not in the language: a count
+  `|` or after a `,` inside a qualification. **On a DECLARATION line alone**
+  (`enum`, `flags`, `type`, `table`, `fixed table`, `union`) **the `{` that
+  opens the body also ends the section**, so the body may open on the
+  qualification's own line (`fixed table F | forms = "wire" { v int32 }`);
+  the formatter moves it to the next line. On a field, arm, variant or
+  constant line nothing but the newline or a `//` comment ends it (a `}`
+  closing the enclosing block terminates a field line as it terminates any
+  item; on a qualified VARIANT it is refused, below). `<=` is not in the language: a count
   bound is a range literal (`[..N]`, `[A..B]`), never a truncated
   comparison, and the retired `[<= N]` spelling is refused with the
   replacement named.
@@ -590,10 +599,27 @@ from this projection rather than carried in it.
 
 ### 4.2 Grammar
 
+**THE GRAMMAR IS COMPLETE AND NORMATIVE, AND IT IS WHAT A PORT READS.** A port
+of the runtime is handed `.schema` text — the conformance manifest's `unit`
+lines name source files and directories, and no other form of a schema is
+exchanged — so a port parses it with these productions, the lexical rules of
+§4.1 and the resolution rules below, and nothing else. The compiler's IR is
+internal and is never an interchange format. A spelling the parser of the
+reference compiler (`internal/parser`) accepts and these productions do not,
+or the reverse, is a defect in one of them, and the grammar corpus
+(`testdata/conformance/grammar`, docs/SPEC-CONFORMANCE.md §7) holds both.
+**The checker's refusals (§4.6, SPEC-TABLES.md §11) are `schema check`'s**:
+every unit the conformance corpus names is one the checker accepts, so a
+runtime port may take its input as checked and apply only the runtime rules.
+A port that accepts schema text from its own users runs `schema check` on it
+first, or implements §4.6 whole; it never reads a unit the checker refuses.
+
 EBNF (`NL` = the newline terminator; `{X}` repetition; `[X]` option). The
 productions elide one tolerance stated in §4.1: a newline is accepted before
 any `Block`, `UnionBlock` or `VariantList` opener — Allman is the canonical
-placement and the formatter normalizes to it:
+placement and the formatter normalizes to it. A declaration's `AttrSection`
+ends at its newline or at that opener's `{` (§4.1), so `AttrSection NL
+Block` below also reads `AttrSection Block`:
 
 ```
 File        = { Declaration } .
@@ -601,9 +627,9 @@ Declaration = Package | Const | Enum | Flags | TypeDecl | TableDecl | Union .
 Flags       = "flags" ident ( VariantList
             | AttrSection [ NL ] VariantList ) NL .            // "flags" contextual, §4.2;
                                                                    // a qualified declaration's
-                                                                   // body opens on the next line
-                                                                   // or ends the qualification
-                                                                   // line, for every kind
+                                                                   // body opens on the NEXT line
+                                                                   // in canonical form, or after
+                                                                   // the section on its own line
 Union       = "union" ident ( UnionBlock
             | AttrSection [ NL ] UnionBlock ) NL .                 // "union" contextual, §4.8;
                                                                    // the qualification carries TAGS
@@ -647,12 +673,19 @@ VariantSep  = "," | NL .                                           // a comma, o
 TypeDecl    = "type" ident ( Block
             | AttrSection [ NL ] Block ) NL .           // qualifiers = the type TAG and the
                                                         // cpp_* pair, §4.2
-TableDecl   = "table" ident ( Block
+TableDecl   = [ "fixed" ] "table" ident ( Block               // `fixed table` declares the fixed
+                                                        // class (SPEC-TABLES.md §2.2); `fixed`
+                                                        // here is the declaration's class
+                                                        // keyword, never the fixed(I, F) scalar
             | AttrSection [ NL ] Block ) NL .           // the TABLE wire, SPEC-TABLES.md —
                                                         // a type body, plus pointers and `was`.
                                                         // A table declaration's qualification
                                                         // carries TAGS, `was` and `forms`
-                                                        // (§4.2, SPEC-TABLES.md §2.12)
+                                                        // (§4.2, SPEC-TABLES.md §2.12), and
+                                                        // the table-only keys `integrity`
+                                                        // (SPEC-TABLES.md §2.14) and `json`
+                                                        // (SPEC-TABLES.md §16.10); no other
+                                                        // valued key
 
 Block       = "{" { Item } "}" .
 Item        = Field | ConstField | Reserved | Align | If .
@@ -667,7 +700,12 @@ ConstField  = "const" "(" IntExpr "," IntExpr ")" NL .          // (value, bits)
 Reserved    = "reserved" "(" IntExpr ")" NL .
 Align       = "align" NL .
 
-Type        = [ "?" ] [ "[" Bound "]" ] ( Scalar | Map ) .       // array bound is a PREFIX, Go's order.
+Type        = [ "?" ] [ "[" [ Bound ] "]" [ "?" ] ] ( Scalar | Map ) . // array bound is a PREFIX, Go's order.
+                                                                 // `[]` (no Bound) is the UNBOUNDED
+                                                                 // array (SPEC-TABLES.md §2.9); a "?"
+                                                                 // AFTER the bracket makes the ELEMENT
+                                                                 // optional (SPEC-TABLES.md §2.13);
+                                                                 // a second bracket is refused (§4.3)
                                                                  // "?" is the OPTIONAL prefix
                                                                  // (SPEC-TABLES.md §2.3): the value plus
                                                                  // a generated presence bool. TABLE
@@ -688,6 +726,8 @@ Scalar      = IntType
             | "bits" "(" IntExpr ")"
             | "bool" | "float32" | "float64"
             | "string" "(" IntExpr ")"
+            | "string"                                           // UNBOUNDED text: a text-list element
+                                                                 // or a map key (SPEC-TABLES.md §2.13.1)
             | "bytes" "(" IntExpr ")"
             | "timestamp"                                        // nanoseconds since the Unix epoch
                                                                  // (§4.13); TABLE fields only
@@ -695,6 +735,8 @@ Scalar      = IntType
                                                                  // the Q format is the type's SHAPE,
                                                                  // so it is positional like bits(N)
             | "ufixed" "(" IntExpr "," IntExpr ")"               // the unsigned sibling (§4.3)
+            | "*" ( "bytes" | "string" )                         // a BLOB slot at its used size
+                                                                 // (SPEC-TABLES.md §2.5); no bound
             | "*" ident                                          // a POINTER to a declared table
                                                                  // (SPEC-TABLES.md §2.1);
                                                                  // TABLE BODIES ONLY — a type
@@ -728,7 +770,12 @@ QualIdent   = ident { "::" ident } .                             // a `::`-quali
                                                                  // the global spelling the emitter
                                                                  // writes verbatim (cpp_native, §4.2)
 
-If          = "if" [ "!" ] ident Block [ "else" Block ] NL .
+If          = "if" [ "!" ] ident Block [ [ NL ] "else" Block ] NL .
+                                                                 // `else` stands on the `}`'s line or
+                                                                 // alone on the next (Allman). With no
+                                                                 // `else`, the If ends at its `}` and its
+                                                                 // NL, and the next line is an Item: one
+                                                                 // token past the newline decides
 
                                                                  // (an ident that is a const
                                                                  // name resolves as IntExpr;
@@ -741,6 +788,20 @@ IntExpr     = integer expression over literals, const names, and enum max
 FloatExpr   = float expression over float literals, int literals and const names:
               "+" "-" "*" "/", unary "-", parentheses — float64 arithmetic, no "%".
 ```
+
+**A FLOAT LITERAL IS A float64 FIRST, EVERYWHERE.** A float literal, alone or
+inside an expression, is rounded once to the nearest float64 (ties to even), and
+the expression is evaluated in float64. A `float32` field's default, range end or
+resolution is that float64 rounded once more to float32 (ties to even): `x
+float32 = 0.1` holds `float32(float64(0.1))`. The two roundings are the rule, not
+an approximation of a single one; a port that rounds the exact decimal once to
+float32 differs on literals within half a float64 ulp of a float32 tie, and is
+wrong there (docs/SPEC-CONFORMANCE.md §7).
+
+**A NAME IS ASCII; A `was` STRING IS UTF-8.** An identifier is `[A-Za-z_][A-Za-z0-9_]*`
+and nothing else (§4.1), so every wire id of a declared name is fnv1a64 over ASCII
+bytes. A `was = "..."` alias is a string, and its id is fnv1a64 over the string's
+UTF-8 bytes exactly as written, with no normalization.
 
 - **Integer expressions** evaluate at compile time in arbitrary precision,
   Go's untyped-constant style, with a fit-check at each use site — so
@@ -760,7 +821,13 @@ FloatExpr   = float expression over float literals, int literals and const names
   languages get it from their own rules, stated so no target can silently be
   the odd one out). A field may override its zero with `= value` after the
   type — the default DEFINES the fresh value, so it precedes any `|`
-  qualification: `active bool = true`. Defaults cover bool
+  qualification: `active bool = true`. **A field never shadows a constant:**
+  a default (or any bound) that names a `const` means that constant in every
+  target, even when a field of the type body has the same name in the
+  target's spelling (`const Half = 0` beside `half int64 = Half`); a target
+  whose class scope would resolve the bare name to the field (Dart) emits the
+  constant's value instead, and a generated default never refers to the field
+  it initializes. Defaults cover bool
   (`true`/`false`), integer and float fields (constant expressions,
   fit-checked like any use site), enum fields (a variant name), the 128-bit
   integers, `fixed` (§4.6), `string(N)` and `bytes(N)` fields (a quoted
@@ -940,7 +1007,8 @@ sequence    uint16
   has to be remembered as the exception. What differs per line is the VALUED
   vocabulary, which stays closed and per-line exactly as it is. `|` is never
   an operator; the language has no bitwise-or. It cannot wrap: the pipe
-  claims the rest of the line and nothing else can follow it. That
+  claims the rest of the line and nothing else can follow it (a
+  declaration's section ends at its body's `{` too, §4.1). That
   **no-exit property is a guarantee**, not an accident — nothing can be
   appended past the qualifiers, so the
   definition/qualification partition cannot erode; and the zone right of
@@ -952,10 +1020,10 @@ sequence    uint16
 - **Declaration lines take the same section**: a tag or a native-type
   binding, a flags declaration's `max` headroom —
   `type Quat | quat4`, `flags Damage | max = 8` —
-  and the body brace opens on the next line, which is the Allman house style
-  (§4.1) and what the formatter writes. A brace that ENDS the qualification
-  line, `table Root | designer {`, is accepted for every declaration kind
-  alike — type, table, union, enum and flags — and the section stops at it:
+  and the body brace opens on the next line in canonical form; the parser
+  also reads it on the qualification's own line, where the `{` ends the
+  section (§4.1), and the formatter moves it down. Everywhere else it is
+  the Allman house style (§4.1):
 
   ```
   type Quat | quat4, cpp_native = quat_t, cpp_include = "core_math.h"
@@ -2403,6 +2471,12 @@ a caller can hold that the declaration does not admit:
 | 10 | a compressed or ranged float off its range | refused (recommended name `invalid_value` on write; `out_of_range` on read) |
 | 11 | a bare `intN`/`uintN` value outside its declared `N`-bit width: signed below −2^(N−1) or above 2^(N−1)−1, unsigned above 2^N−1 | not on the wire to refuse: the writer puts `N` bits, so the reader lands the low `N` bits and reads a different value. The writer's check is the only guard; a conforming writer never sends one. **The writer checks it** like rows 1–10, by the leg's mechanism, wherever the value can be held: in a language whose storage for the field is exactly `N` bits (C, C++, C#, Go and Rust store `int8`…`uint64` natively) the row is unrepresentable and there is nothing to check; where the storage is wider (Java's `int` for a `uint8`, a JavaScript, Lua or Python number, a Dart or Elixir integer) the write checks it |
 
+**A writer refuses in EVERY form it writes.** The binary save, the text
+(JSON) writer and the cook each hold rows 1-10 (a counted array below its `Min`
+included, in the text writer as much as in the binary save). A field that
+holds a value of the wrong kind (a list field holding a number) is refused,
+never written as an empty list or a default.
+
 **The mechanism is the language's own, and it decides the build.** A language
 whose established idiom is a debug-only assert checks in its debug build and
 pays nothing in release; a language without one refuses in every build, by its
@@ -2466,7 +2540,7 @@ Each leg's variable `Save` and its `Measure`:
 
 - **C#**: 1–8 and 10 debug, the region `Save` and the managed cook included; 9 unchecked
 
-- **Rust**: 1–2 and 4 debug; 3 and 7 every build; 5–6 and 8 unrepresentable (native enums, a Rust `String`); 9 unchecked; 10 every build
+- **Rust**: 1–4 debug wherever the value rides (a field, an optional, an array element or count, a `bytes(N)` length, a union arm's payload, a keyed slot), a count past `Max` clamped for the storage in every build; 8 debug for a `string(N)`'s zero byte (unbounded text refuses it every build; ill-formed UTF-8 is unrepresentable in a Rust `String`); 7 every build; 5–6 unrepresentable (native enums); 9 unchecked; 10 every build
 
 - **Java**: 1–5 and 8 debug; 6–7 every build; 9 unchecked; 10 every build
 
@@ -2488,7 +2562,7 @@ Each leg's variable `Save` and its `Measure`:
 
 - **Goose**: 1–8 and 10 every build; 9 not audited
 
-- **Lobster**: 1–8 and 10 every build (`save_reasoned`'s `invalid_value`; 7 its `non_finite_float`), and a map key held twice, at every record the save graph reaches; 9 unchecked
+- **Lobster**: 1–8 and 10 every build (`save_reasoned`'s `invalid_value`; 7 its `non_finite_float`), a map key held twice and a deprecated enum variant (SPEC-TABLES §2.15), at every record the save graph reaches; `<Name>Cook` and `<Name>CookMeasure` run the same walk (`""` and `-1`, SPEC-TABLES §7.6); 9 unchecked
 
 The other writers, over rows 1–8 and 10 (row 9 is not audited there: a file
 read KEEPS an appended mask bit, the text writer refuses a bit it cannot name,
@@ -2497,10 +2571,24 @@ truncating it, SPEC-TABLES §3.3 and §4.1).
 Under strict-only, row 10 refuses exactly as rows 1–4 do: no reader clamps a
 finite value off its range, and no writer quantizes one into it in the build
 where its check is active (docs/plans/strict-only.md, decision 8).
+
+**Every field the value carries is checked, `required` or not, and three
+shapes a dynamic language's native value can hold fall under the same rule.**
+A map whose native keys hold one schema key twice (an integer-keyed map holding
+`7` and `"07"`, or one key stored twice), a fixed array `[N]T` handed more than
+`N` elements, and an enum value that names no variant or names a deprecated
+one (SPEC-TABLES §2.15) are refused by every writer that can be handed them,
+the text writer included, by the leg's mechanism. A writer never writes a key
+twice, never keeps one of the two, never cuts a list at `N`, and never writes
+a deprecated variant.
 **One rule holds in every leg on top of the table.** A count or a length that
 would index past the storage it describes is a write check like any other: a
 debug assert in an assert leg, a refusal in every build elsewhere. No release
 build of an assert leg is required to refuse it, and no gate may require one.
+A fixed-length array `[N]T` or an enum-keyed array `[E]T` handed to a
+writer holds exactly N values: a writer checks any other length like a count
+past its storage, and never cuts or pads it to N (SF-20,
+docs/silent-failure-audit-1122.md).
 `FixedSave`'s row 8 includes a zero byte or a zero unit, because the fixed
 reader refuses one as `text_ill_formed`: in the build where its check is
 active, a writer never produces bytes its own reader refuses.
@@ -2545,7 +2633,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `FixedSave`: 1–6, 8 and 10 debug; 7 every build
 
-  - `SaveMessages`: 1–2 and 8 debug; 3–7 every build
+  - `SaveMessages`: 1–2, 8 and 10 debug; 3–7 every build
 
   - packet `Write`: 1–8 and 10 debug; 11 debug for an unsigned width whose Java storage is wider (`checkWrite`'s `assert value.<field> <= 2^N−1`); unrepresentable for a signed width and a `byte`-stored one, whose storage is exactly `N` bits
 
@@ -2567,9 +2655,9 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
 - **JavaScript**
 
-  - `FixedSave`: 1–8 every build
+  - `FixedSave`: 1–8 every build; a `[N]T` or enum-keyed array whose length is not exactly `N` is refused, never cut at `N`, and row 3 holds the count to its `Min`
 
-  - `SaveMessages`: 1–8 every build
+  - `SaveMessages`: 1–9 every build (9: a `flags` value that is negative or holds a bit at or above its declared width, `invalid_value`); a `[N]T` or enum-keyed array whose length is not exactly `N` is refused, never cut at `N`
 
   - packet `Write`: the flat tier 1–7 every build, whatever `NODE_ENV` says; 8, 10 and 11 every build on the flat and the runtime tier
 
@@ -2617,7 +2705,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `FixedSave`: 1–8 every build
 
-  - `SaveMessages`: 1–8 every build
+  - `SaveMessages`: 1–9 every build (9: a `flags` bit at or above its declared width, `MsgRefuseInvalidValue`)
 
   - packet `Write`: 1–8 and 10 every build, each returning a `SERIALIZE_ERROR_*` kind (value out of range, invalid UTF-8 or embedded NUL), not `SaveRefuseInvalidValue`, which is the file save's name; 11 unrepresentable (the storage is `iN`/`uN`)
 

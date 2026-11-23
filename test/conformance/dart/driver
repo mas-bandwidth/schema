@@ -12,7 +12,8 @@
 # usage: driver <manifest> list
 #        driver <manifest> <surface> <outdir>
 case "${2:-}" in
-  write-refusal|write-refusal-fixed|write-refusal-message|write-refusal-json)
+  write-refusal|write-refusal-fixed|write-refusal-message|write-refusal-json|json-write)
+    # json-write holds rows whose answer is a debug assert's refusal: AOT has no asserts
     exec "${DART:-dart}" --enable-asserts test/conformance/dart/main.dart "$@"
     ;;
 esac

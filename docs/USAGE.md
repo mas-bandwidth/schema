@@ -196,7 +196,7 @@ values. `None` is one of those values, so an enum whose declared variant
 count is a power of two pays one bit for it: four declared variants are five
 wire values and cost 3 bits, not 2. An enum takes no `| max`: the width
 follows the variant count, and adding a variant that crosses a power of two
-widens the field. Forward compatibility lives elsewhere: on the packet wire
+widens the field. Reading across versions (a newer reader on older data) lives elsewhere: on the packet wire
 both peers share one schema, and on the table wire the field's width is
 recorded per version (the lock file's `width=` line, SPEC-TABLES.md), so a
 newer reader reads the older width.

@@ -2306,9 +2306,11 @@ func defaultExpr(owner string, f *ir.Field) string {
 		if f.KeyEnum != "" {
 			return keyedClassName(owner, f) + "()"
 		}
-		// A counted array is born at its declared minimum in every table,
-		// fixed or variable (SPEC.md §4.2), as the engine's model is; a fixed
-		// array holds its bound. Every constructed element is distinct.
+		// Every counted array, on a fixed or a variable table, is born holding
+		// its declared minimum of default elements (ir.Field.BornCount,
+		// docs/SPEC-TABLES.md §22.2): a range that starts above zero has no
+		// legal count at zero, and the reader lands the same value for an
+		// absent field. Every constructed element is distinct.
 		count := f.BornCount()
 		if f.Array == ir.ArrayFixed {
 			count = f.ArrayBound

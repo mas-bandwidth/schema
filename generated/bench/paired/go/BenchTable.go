@@ -897,10 +897,10 @@ func (ids *TableIds) Ref(id uint64) uint64 {
 			return uint64(i)
 		}
 	}
-	if ids.Count == len(ids.Values) {
+	if ids.Count == len(ids.Values) || ids.Count >= 4096 {
 		ids.Overflow = true
 		return 0
-	}
+	} // 4096: SPEC-TABLES.md §3
 	i := ids.Count
 	ids.Values[i], ids.chain[i] = id, ids.head[b]
 	ids.ordinalOf[i] = -1

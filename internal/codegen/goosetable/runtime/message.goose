@@ -79,7 +79,7 @@ struct MsgReport {
     oor: i64,
     repeated: i64,
     count: i64,
-    // a strict announcement refusal's two build versions, the peer's and the
+    // a strict announcement refusal's two build versions, the writer's and the
     // reader's own (build_version_mismatch, §3.3); zero otherwise
     remote: u64,
     own: u64,
@@ -196,7 +196,7 @@ struct MsgVocabulary {
     // STRICT MODE IS OPT-IN (docs/SPEC-TABLES.md §3.3): set before the first
     // announcement, one whose build version is not own_build_version (the
     // unit's MessageBuildVersion) is refused build_version_mismatch, sets no
-    // vocabulary, keeps the peer's build version and names both versions in
+    // vocabulary, keeps the writer's build version and names both versions in
     // the report's remote and own.
     strict: bool = false,
     own_build_version: u64 = 0,

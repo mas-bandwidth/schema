@@ -776,7 +776,6 @@ const unityRetainWireSource = `    internal const int RetainMaxDepth = @DEPTH@;
             if (f.ArrayMin > 0)
             {
                 if (n != f.ArrayMin) { return true; }
-                if (f.Kind == 13 && f.KeyId == null) { return true; }
                 for (int i = 0; i < n; i++) { if (!RetainDefaultElement(value, f, i)) { return true; } }
                 return false;
             }

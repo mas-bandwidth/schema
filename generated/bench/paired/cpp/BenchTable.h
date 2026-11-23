@@ -262,7 +262,7 @@ struct TableReport
     // from a caller's report that already held one.
     int32_t non_finite_floats = 0;
     // THE STRICT ANNOUNCEMENT'S TWO BUILD VERSIONS (docs/SPEC-TABLES.md §3.3):
-    // on reason build_version_mismatch, the peer's announced build version
+    // on reason build_version_mismatch, the writer's announced build version
     // (remote) and this unit's own (own). Zero on every other path.
     uint64_t build_version_remote = 0;
     uint64_t build_version_own = 0;
@@ -620,6 +620,9 @@ struct TableIds
 {
     static const int32_t kCapacity = 79;
     static const int32_t kBuckets = 256;
+    // THE WRITER'S MAXIMUM (docs/SPEC-TABLES.md §3): no reader accepts an id
+    // table past kTableProbeBound entries, so the 4097th id overflows.
+    static const int32_t kLimit = kCapacity < 4096 ? kCapacity : 4096;
 
     uint64_t ids[kCapacity];
     int32_t chain[kCapacity];
@@ -663,7 +666,7 @@ struct TableIds
         {
             if ( ids[i] == id ) { return uint64_t( i ) + 1; }
         }
-        if ( count >= kCapacity )
+        if ( count >= kLimit )
         {
             overflow = true;
             return 1;
@@ -3638,7 +3641,7 @@ inline bool AnnounceReadOnce( TableVocabulary & vocabulary, const uint8_t * buff
         return false;
     }
     // "STRICT MODE IS OPT-IN, and the default is unchanged" (§3.3): refused
-    // by name, the peer's build version kept, no vocabulary set, never damage.
+    // by name, the writer's build version kept, no vocabulary set, never damage.
     // The unit's own build version is spelled here as the literal BuildVersion
     // holds, because the cook runtime that declares BuildVersion follows this one.
     if ( vocabulary.strict && version != 0xba2dad78ebdbfff0ull )
@@ -16503,6 +16506,25 @@ inline bool BenchMixedLoadMessageBody( TableBitReader & r, const TableVocabulary
                         return false;
                     }
                     value.entities_count = kept;
+                }
+                if ( same_shape )
+                {
+                    bool rides_entities = value.entities_count > 0;
+                    if ( value.entities_count == 1 ) // the birth value elides (§22.2)
+                    {
+                        rides_entities = false;
+                        for ( int32_t birth_i = 0; birth_i < 1 && !rides_entities; birth_i++ )
+                        {
+                            const int64_t birth_bits = MixedEntityMeasureMessageBody( 0, value.entities[birth_i] );
+                            const bool birth_default = birth_bits >= 0 && birth_bits <= kTableMessageRefBitsHere;
+                            if ( !birth_default ) { rides_entities = true; }
+                        }
+                    }
+                    if ( !rides_entities )
+                    {
+                        report->damaged = true;
+                        return false;
+                    }
                 }
                 break;
             }

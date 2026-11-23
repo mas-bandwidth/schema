@@ -20,10 +20,12 @@ at 3.0.0. The packet wire's promises are held within a release by the pinned
 goldens, and across releases by the previous-release differential (#463),
 named in its section below.
 
-1. **From 3.0.0, data written by any build reads in any other build of the
-   same major, in either direction, and never crashes.** A table wire from a
-   newer build reads in an older one and the other way round across every
-   lawful edit: an unknown field is skipped and counted, a widening is
+1. **From 3.0.0, a newer build reads the data of every older build of the
+   same major, and nothing crashes on any input.** A table wire from an older
+   build reads in a newer one across every lawful edit; an older build given a
+   newer build's data may refuse it by name, which is lawful (R17, 2026-11-22:
+   "the newer reader can read old data, but never the other way"). On the
+   newer reader: an unknown field is skipped and counted, a widening is
    counted, and an edit the reader cannot honour (a changed kind, a value
    past a tightened bound) refuses the whole load by name and never crashes.
 2. **Nothing is misdecoded.** A value is read as what it was written as, or
@@ -118,8 +120,8 @@ skips what it does not know, defaults what it does not find, and refuses
 everything else by name (SPEC-TABLES.md §4, §6.5). It costs bytes for that,
 deliberately: this is the wire for data that outlives the build that wrote it,
 whether on disk or crossing a connection between builds. A five-year-old file
-reads in today's build, today's file reads in the five-year-old build, and
-each side learns exactly what it could not understand.
+reads in today's build, and the reader learns exactly what it could not
+understand.
 
 **Anything that outlives a build rides tables.** A replay recorded as packet
 streams dies with the first type edit; a replay recorded as tables reads for
@@ -245,11 +247,13 @@ the node table. A REFERENCE names a slot of the id table the wire carries once
 (the layout section below), and the **id** in that slot is the hash of the
 declared name. That one decision produces the whole evolution story:
 
-- **Add a field anywhere.** An old reader meets an id it does not know, skips
-  the payload by its kind, counts one `unknown`, and continues. A new reader
-  meets a file without the field and reads the declared default.
-- **Remove a field.** The reverse: the old file's field is unknown to the new
-  reader, skipped and counted. Nothing else moves.
+- **Add a field anywhere.** A new reader meets an old file without the field
+  and reads the declared default.
+- **Remove a field.** The old file's field is unknown to the new reader, which
+  skips the payload by its kind, counts one `unknown`, and continues. Nothing
+  else moves. That skip is what the rule exists for (a new reader of old
+  data), and what the message form and retain-unknown stand on; an old reader
+  skipping a field added after it is incidental and not promised (R17).
 - **Reorder freely.** Position carries nothing.
 - **Rename with `was`.** `speed float32 | was = "velocity"` keeps the wire id
   `hash("velocity")` forever; the source name is for people. **`was` names the
@@ -424,10 +428,14 @@ no existing caller sees a number move.
 **The never-clobber rule, and the opt-in that lifts it.** Unknown fields are
 dropped on rewrite BY DEFAULT: everything in schema has a schema, and a tool
 built from an older schema that rewrites a newer file drops what it does not
-know and counts it. That default has one consequence every studio with a mixed
-fleet must write into its own code before the first staged rollout: **a save
-cycle or a rewriting tool never overwrites a newer program's file without
-retention.** Write beside the file, retain, or refuse the rewrite. The read
+know and counts it. That is a SHARP EDGE, not a promise: nothing promises that
+an older build reads a newer file (R17), and one that does may drop what it
+cannot name or refuse the file by name. A studio that runs old builds against
+new files anyway (a rollback, a staged rollout) takes the edge on itself, and
+the never-clobber rule is the guard it writes if it does: **a save cycle or a
+rewriting tool never overwrites a newer program's file without retention.**
+Write beside the file, retain, or refuse the rewrite; retain-unknown stays the
+opt-in. The read
 counters (`unknown` among them) are per-language diagnostics a caller may
 consult to decide; they are not compared across languages and no rule depends
 on their exact value.
@@ -1079,16 +1087,16 @@ years, and several of the answers are patterns rather than syntax.
 - **Ship a schema change to a mixed fleet.** A table-body edit never forces a
   redeploy, and neither does an edit to an enum or a union no `type` reaches,
   which is where content lives. A type or flags edit always does, and so does
-  an enum or union edit a `type` reaches. Write the never-clobber rule before
-  the first staged rollout, or turn retain-unknown on and check `retain_lost`.
-  Roll back freely: the old build reads the new files and counts what it
-  cannot use, and under retention it writes the unknown fields back out
-  unharmed. A WIDENED field is the exception: the old build refuses the new
-  files `kind_mismatch` by name, which is lawful, because only the newer
-  reader is promised the older data (R17, SPEC-TABLES.md §4). Put every
-  reader on the new build before any writer widens.
-- **Debug an old file.** `unpack` renders a wire file of a newer version to
-  text and reports what it did not understand, and a damaged file is refused,
+  an enum or union edit a `type` reaches. Running an old build against new
+  files is a sharp edge, because only the newer reader is promised the older
+  data (R17): the old build may read a new file and drop what it cannot name,
+  or refuse it by name, as it refuses a WIDENED field `kind_mismatch`,
+  lawfully (SPEC-TABLES.md §4). If you roll back anyway, write the
+  never-clobber rule first, or turn retain-unknown on and check
+  `retain_lost`. Put every reader on the new build before any writer widens.
+- **Debug an old file.** A newer `unpack` renders any older wire file to text
+  and reports what it did not understand; an older `unpack` given a newer file
+  may refuse it by name (R17). A damaged file is refused,
   because a bit with no name has no text spelling. `uncook` renders a cook written by
   this build's version and refuses any other. The baseline history says what
   changed and why, by date. The `format` field on the root table says which
@@ -1174,9 +1182,8 @@ still open.
   is a kind change.
 - **Optional is a widening, and it runs one way** (R16, 2026-11-22: "once a
   field is optional, it must stay optional forever"). **`T`→`?T` passes the
-  baseline**: a new optional writer stores a present field at its defaults as
-  a body, and an old plain reader reads that body as the declared defaults
-  (SPEC-TABLES.md §2.3, §4.1). **`?T`→`T` is refused by the baseline**,
+  baseline**: every old value lands present, so the new reader reads every
+  old file (SPEC-TABLES.md §2.3, §4.1). **`?T`→`T` is refused by the baseline**,
   naming the field: it is a narrowing, the one the variable wire cannot see,
   so the check holds it (SPEC-TABLES.md §4 THE ONE WIDENING RULE, §18.2).
 - **A field whose type changed refuses the whole load** (R14, 2026-11-22):

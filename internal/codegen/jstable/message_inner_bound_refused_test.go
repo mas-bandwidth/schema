@@ -58,8 +58,10 @@ func TestJsMessageInnerBoundRefused(t *testing.T) {
 		if fn == "" {
 			t.Fatalf("no %sLoadMessages in ProbeTable.js", root)
 		}
-		if !strings.Contains(fn, "if (report.Oor > 0 || report.Mismatch > 0) {") ||
-			!strings.Contains(fn, `TableMessageRefuse(report, report.Oor > 0 ? "out_of_range" : "kind_mismatch");`) {
+		if !strings.Contains(fn, "if (report.Mismatch > 0) {") ||
+			!strings.Contains(fn, `TableMessageRefuse(report, "kind_mismatch");`) ||
+			!strings.Contains(fn, "if (report.Oor > 0) {") ||
+			!strings.Contains(fn, `TableMessageRefuse(report, "out_of_range");`) {
 			t.Errorf("%sLoadMessages delivers a body its walk counted out of range or mismatched; it must refuse the batch", root)
 		}
 	}

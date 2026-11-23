@@ -260,7 +260,7 @@ func (g *tableGen) emitTableStorageField(f *ir.Field) {
 	case f.Array == ir.ArrayFixed:
 		g.pf("    %s %s[%d];\n", typ, f.Name, f.ArrayBound)
 	case f.Array == ir.ArrayCounted:
-		g.pf("    %s %s[%d]; /* used count beside it; count in [0, %d] */\n", typ, f.Name, f.ArrayBound, f.ArrayBound)
+		g.pf("    %s %s[%d]; /* used count beside it; count in [%d, %d] */\n", typ, f.Name, f.ArrayBound, f.ArrayMin, f.ArrayBound)
 		g.pf("    int32_t %s_count;\n", f.Name)
 	default:
 		g.pf("    %s %s;\n", typ, f.Name)

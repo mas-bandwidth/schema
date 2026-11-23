@@ -336,7 +336,10 @@ func TestSharedFixturesCanonical(t *testing.T) {
 			}
 			continue
 		}
-		if len(shapes) > 0 {
+		if want := purposes[p[3]]; want != "" {
+			foundPurposes[p[3]] = true
+			judgeSharedFixture(t, p[0], p[3], want, shapes)
+		} else if len(shapes) > 0 {
 			t.Errorf("%s: message shapes=%v", p[0], shapes)
 		}
 		counts["message-index"]++
@@ -370,6 +373,14 @@ var sharedFixturePurposes = map[string]string{
 	"testdata/wire/tables/framing/array_L2_empty.bin":           "stored-default",
 	"testdata/wire/tables/framing/union_arm_zero_in_field.bin":  "union-arm-zero",
 	"testdata/wire/tables/framing/node_index_null.bin":          "explicit-null-pointer",
+	// The message skip depth pair is a batch whose only field is an entry the
+	// reader build does not declare (message_skip_depth_test.go rebuilds both
+	// byte for byte), so that unknown field is the purpose of each file.
+	"testdata/wire/tables/fuzz-vectors/message_skip_depth_at_limit.bin":   "same-build-unknown-field",
+	"testdata/wire/tables/fuzz-vectors/message_skip_depth_over_limit.bin": "same-build-unknown-field",
+	// retain_node_flags carries one id entry nothing references; the strict
+	// oracle refuses it for that entry, and every leg is held to that refusal.
+	"testdata/wire/tables/fuzz-vectors/retain_node_flags.bin": "unused-id-entry",
 }
 
 // judgeSharedFixture fails a purpose file that does not hold exactly its one

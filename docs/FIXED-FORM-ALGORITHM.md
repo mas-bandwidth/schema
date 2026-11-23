@@ -55,6 +55,18 @@ representation cannot express a cycle**, and there is no cycle rule to write.
 | `35` optional wrapper | one: the payload |
 | anything else | none |
 
+**THE SYNTHETIC CHILDREN'S IDS.** Three entries have no wire name of their own, and each id is fixed:
+
+| synthetic entry | its `id` |
+|---|---|
+| an array's (`14`) element, `bytes(N)`'s `u8` included | `0` |
+| an optional wrapper's (`35`) payload | the WRAPPED FIELD's own id — the same id as the wrapper entry |
+| an enum-keyed array's (`16`) key enum (`30`) | `fnv1a64` of the ENUM's declared name |
+| a keyed array's element | `0`, as an array's |
+
+The vector `testdata/conformance/fixed-digest/vector.txt` lays all four (its `maybe ?Inner`, `list [1..3]Inner`,
+`keyed [Mode]uint8` and `blob bytes(4)`), and every `layout=` in the corpus's `schema.lock` files holds them.
+
 **`bytes(N)` is walked as an ARRAY OF `u8`** — kind `14` with one synthetic child at kind `6`, size `1` — never
 as a text kind; `string(N)` (`12`) is the only text kind in a layout. **The hash** is
 `h := 0xcbf29ce484222325; for each byte v: h ^= v; h *= 0x100000001b3` over the layout's bytes as written,
@@ -80,6 +92,10 @@ wire format and frozen (`ir/tablekind.go:17-62`, `ir/tablewire.go:117-127`, `ir/
 | `15` | union | `33` | retired (wide text) — **NOT in the closed set** |
 | `16` | enum-keyed array | `34` | reserved (float16) — **NOT in the closed set** |
 | `17` | a `*T` pointer index | `35` | the OPTIONAL wrapper — a LAYOUT kind, the one §3.4 adds to §3's set |
+
+**A `timestamp` HAS NO LAYOUT KIND OF ITS OWN.** Kind `36` is the variable wire's and is not in this closed set: a
+timestamp field is laid, sized and digested as kind `5` (`i64`, 8 bytes), so respelling `int64` as `timestamp` in
+a fixed table is the identity (SPEC-TABLES.md §2.11). The digest vector's `at timestamp` lays it.
 
 **The union row and the payload-free arm row are FIELD LINES**: under §2.6 an arm's type is any type a field's is,
 so the form admits a direct scalar, text, bytes or bounded-array arm, a by-value struct arm, and a payload-free arm
@@ -195,7 +211,7 @@ constants, so measuring never reads a value.
 | `[N]T` | `N * C(T)` | no count rides; every element is live |
 | `[Min..Max]T` | `4 + Max*C(T)` | **the count (i32 LE) THEN `Max` elements** |
 | `string(N)`, `bytes(N)` | `4 + N` | the length (i32 LE) THEN the payload, in BYTES |
-| a UNION | `tag width + max(C(arm))` | **the tag THEN the widest arm**; tag `0` is `None` |
+| a UNION | `tag width + max(C(arm))` | **the tag THEN the widest arm**; tag `0` is `None`. **The tag width is note (a)'s ordinal width with the ARM COUNT as the top value**: 1 byte for up to 255 arms, 2 up to 65535, then 4, then 8 |
 | `?T` | `1 + C(T)` | **the present flag THEN the payload, which rides WHOLE** |
 | `[Enum]T` | `slots * C(T)` | every slot live, in the key enum's declared order; no key rides |
 
@@ -323,7 +339,10 @@ union arm, the bytes under tag `0` and the bytes past a narrower taken arm insid
 optional nested inside an absent payload, and a nested type inside a dead array slot or a dead arm, are dead
 whole. A fixed array `[N]T` and an enum-keyed `[Enum]T` have no dead bytes. A DEPRECATED SLOT is not a dead
 byte. The check is the CHECK pass's, over every record and before any record lands (§5.3 step 11), and it
-names no new vocabulary: `wire_damaged` is the refusal for a dead byte that is not zero.
+names no new vocabulary: `wire_damaged` is the refusal for a dead byte that is not zero. **A live ordinal naming a
+DEPRECATED variant** lands the field's declared default, and `None` at a position with no default of its own (an
+element, an arm payload, an optional's payload), exactly as form `1` and the text form do (SPEC-TABLES.md §16.2,
+the enum row).
 
 Flavours: `1` utf8, `3` bytes; `2` is retired with wide text and never reused. An **identity plan carries only `copy`, `count` and `text`** — an enum
 ordinal and a union tag ride inside plain `copy` runs there, so the range closing of §4.5 must live in the
@@ -800,6 +819,26 @@ segment follows the field segment. Count minima attach before the element
 segment. All ids use their existing `was` aliases. Anonymous path segments
 are distinguished by role and kind, never by source spelling.
 
+**THE DIGEST, PINNED FOR A PORT.** Each point below is what a port that computes the digest from the declaration
+must take as stated (the reference: `ir/fixedform_digest_v2.go`; the vector:
+`testdata/conformance/fixed-digest/vector.txt`, the definitions digest and the hash of a root that emits every row
+tag, held by `compiler/fixed_digest_vector_test.go`):
+
+- **The roles are the ASCII bytes** `t` (`0x74`), `f` (`0x66`), `a` (`0x61`), `?` (`0x3f`), `e` (`0x65`); the row
+  tags are the ASCII bytes `C`, `R`, `D`, `Q`, `B`, `X`, `F`.
+- **The kind in a path segment and in an `R`/`D` payload is the LEAF kind**, `TableFixedLeafKind`: the variable
+  wire's scalar kind with `timestamp` taken as `5`. An ENUM's leaf kind is `7` — the enum's VARIABLE-wire kind —
+  never the layout's `30`; a `flags` is `9`; a `bits(N)` is its storage's unsigned kind; a nested table or type is
+  `13`, a union `15`. A field segment of an array or `bytes(N)` field carries `14` and of a keyed array `16`; its
+  `e` segment then carries the element's leaf kind.
+- **Order inside one field**: the field segment (and its `?` segment), then the `C` row, then the `e` segment
+  for an array or keyed array, then `R` — or `D` followed by `Q` — then `B`, then `X`, then `F`, then the rows of a
+  nested table's fields or of each union arm's payload in declared order. A payload-free arm emits nothing.
+- **A one-sided range is two-sided by then**: the checker fills the missing end with the storage's own bound
+  before the digest is taken, so an `R` row always carries both ends.
+- **Ids are wire ids**: a field's `TableFieldWireId` (its `was` alias when it has one), an arm's id of its wire
+  name, and a `flags` variant's `fnv1a64` of its name.
+
 Walk declared fields depth first. Emit every reachable occurrence of a named
 struct, union or flags declaration at its wire path; do not deduplicate by name.
 The checked by-value closure is acyclic. Within a field emit these rows in order:
@@ -1021,6 +1060,27 @@ the bytes a text entry LANDS are `[aux, aux + span + 1)` for a text flavour and 
 `bytes` (the reference: fixedruntime.go:436-437) — which is what the prefill's cover subtracts. The reader's
 own span past `min(me.size, te.size) - 4` gets NO entry at all: a reader whose bound GREW takes the writer's
 units and the PREFILL answers the rest.
+
+**THE LADDER, NORMATIVE.** `LADDER(a, b)` holds exactly for these pairs of layout kinds (writer `a`, reader `b`),
+and for no other; the reference is `ir.TableFixedWidens`:
+
+| writer kind `a` | reader kinds `b` it widens onto |
+|---|---|
+| `2` i8 | `3` `4` `5` |
+| `3` i16 | `4` `5` |
+| `4` i32 | `5` |
+| `6` u8 | `7` `8` `9` |
+| `7` u16 | `8` `9` |
+| `8` u32 | `9` |
+| `20` `21` `22` `23` fixed(I,F) at 8/16/32/64 bits | every WIDER signed fixed kind through `24`, at EQUAL `F` |
+| `25` `26` `27` `28` ufixed(I,F) at 8/16/32/64 bits | every WIDER unsigned fixed kind through `29`, at EQUAL `F` |
+| `10` f32 | `11` |
+
+**Never a rung**: across signedness (`u32` into `i64` included — the variable wire's ladder does not take it
+either, SPEC-TABLES.md §4), into or out of `18`/`19` (the 128-bit integers), between an integer and a fixed or
+float kind, a narrower reader, and a change of `F` (the lock refuses it before a plan exists). Beside the ladder,
+two SAME-KIND widens exist and only two: a `bits(N)` at kinds `6`/`7` whose storage grew, and an enum (`30`) whose
+ordinal width grew. Rows `report fixedevo_v1_as_v3` and `fixedevo_v2_as_v3` read across the ladder.
 
 **A WIDEN'S SIGN IS THE LADDER'S, and the SAME-KIND widen has none.** There are two ways to reach `widen` and
 they extend differently. Across the LADDER — `te.kind != me.kind` and `TableFixedWidens` holds — the source
