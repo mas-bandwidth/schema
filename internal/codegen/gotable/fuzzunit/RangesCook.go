@@ -96,7 +96,7 @@ func RangedSignedAt(slot *int64, arena ...*TableArena) *RangedSignedRow {
 
 // Type is RangedSigned's cooked-record descriptor, the head of the graph a reflective
 // walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
-func (c RangedSignedCook) Type() *TableCookInfo { return &tableCookRecords[13] }
+func (c RangedSignedCook) Type() *TableCookInfo { return &tableCookRecords[16] }
 
 // RangedUnsignedCook is RangedUnsigned's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -162,7 +162,7 @@ func RangedUnsignedAt(slot *int64, arena ...*TableArena) *RangedUnsignedRow {
 
 // Type is RangedUnsigned's cooked-record descriptor, the head of the graph a reflective
 // walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
-func (c RangedUnsignedCook) Type() *TableCookInfo { return &tableCookRecords[14] }
+func (c RangedUnsignedCook) Type() *TableCookInfo { return &tableCookRecords[17] }
 
 // RangedWidthsCook is RangedWidths's cook: a pointer and a length, and then the root where it
 // lies. Opening one is a HEADER MATCH and no copy; a reference is one add
@@ -228,7 +228,7 @@ func RangedWidthsAt(slot *int64, arena ...*TableArena) *RangedWidthsRow {
 
 // Type is RangedWidths's cooked-record descriptor, the head of the graph a reflective
 // walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
-func (c RangedWidthsCook) Type() *TableCookInfo { return &tableCookRecords[15] }
+func (c RangedWidthsCook) Type() *TableCookInfo { return &tableCookRecords[18] }
 
 func RangedSignedCookMeasure(value *RangedSigned) int64 { return 160 }
 func RangedSignedCookMeasureReason(value *RangedSigned) (int64, error) {

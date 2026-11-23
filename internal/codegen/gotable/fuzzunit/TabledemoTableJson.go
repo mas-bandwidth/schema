@@ -3905,14 +3905,15 @@ func PatrolToJSON(value *Patrol, buffer []byte, allocator ...TableAllocator) int
 	return n
 }
 func PatrolFromJSONWith(builder *PatrolBuilder, text []byte, report *TableReport, options TableJSONOptions) bool {
-	if builder.Arena.Locked {
-		return false
-	}
 	read := report
 	if read == nil {
 		read = &TableReport{}
 	} else {
 		*read = TableReport{}
+	}
+	if builder.Arena.Locked {
+		read.Refuse(TableRefuseAllocationFailed, "")
+		return false
 	}
 	return tableRegionFromJSON(unsafe.Pointer(builder.GetRoot()), PatrolTableType(), &builder.Main, text, read, options)
 }
@@ -5654,6 +5655,279 @@ func ProfileConfigLoadText(text string, report *TableReport) (*ProfileConfig, er
 	var v ProfileConfig
 	var read TableReport
 	ok := ProfileConfigLoad(&v, wire, &read)
+	if report != nil {
+		*report = read
+	}
+	if !ok {
+		return nil, read.Err()
+	}
+	return &v, nil
+}
+
+// CountedMinFromJSON fills one CountedMin from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16): the whole
+// value, or a refusal with value at its defaults and false (§4, §6.5). A
+// supplied report receives this read's report, and on a refusal report.Err()
+// is the typed reason.
+func CountedMinFromJSON(value *CountedMin, text []byte, report *TableReport) bool {
+	return CountedMinFromJSONWith(value, text, report, TableJSONOptions{})
+}
+
+// CountedMinToJSONMeasure is the exact size of CountedMin's JSON text, writing nothing.
+func CountedMinToJSONMeasure(value *CountedMin) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), CountedMinTableType(), nil, TableJSONOptions{})
+}
+
+// CountedMinToJSON writes CountedMin's JSON text into the caller's slice and returns the
+// bytes written — exactly CountedMinToJSONMeasure's answer — or -1 when it is short.
+func CountedMinToJSON(value *CountedMin, buffer []byte) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), CountedMinTableType(), buffer, TableJSONOptions{})
+}
+
+// CountedMinFromJSONWith is CountedMinFromJSON under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2).
+func CountedMinFromJSONWith(value *CountedMin, text []byte, report *TableReport, options TableJSONOptions) bool {
+	read := report
+	if read == nil {
+		read = &TableReport{}
+	} else {
+		*read = TableReport{}
+	}
+	return tableJSONRead(unsafe.Pointer(value), CountedMinTableType(), text, read, options)
+}
+
+// CountedMinToJSONMeasureWith is CountedMinToJSONMeasure under TableJSONOptions (§16.2).
+func CountedMinToJSONMeasureWith(value *CountedMin, options TableJSONOptions) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), CountedMinTableType(), nil, options)
+}
+
+// CountedMinToJSONWith is CountedMinToJSON under TableJSONOptions (§16.2).
+func CountedMinToJSONWith(value *CountedMin, buffer []byte, options TableJSONOptions) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), CountedMinTableType(), buffer, options)
+}
+
+// CountedMinSaveText returns the base64 of CountedMin's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.8): the whole file, form byte first, so the text keeps the form byte,
+// the framing check and every versioning guarantee and is opaque.
+func CountedMinSaveText(value *CountedMin) (string, error) {
+	n := CountedMinMeasure(value)
+	if n < 0 {
+		return "", tableRefuseError(TableRefuseInvalidValue)
+	}
+	buf := make([]byte, n)
+	if CountedMinSave(value, buf) < 0 {
+		return "", tableRefuseError(TableRefuseInvalidValue)
+	}
+	return base64.StdEncoding.EncodeToString(buf), nil
+}
+
+// CountedMinLoadText fills one CountedMin from a base64 wire text (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.8): the read (§6.5) over the decoded wire. It refuses base64_damaged
+// when the body does not decode, base64_not_canonical when it decodes but is
+// not canonical (a pad bit set, or an embedded CR or LF), unknown_form when
+// the decoded wire's form byte is not one this build carries, and the read's
+// own reason otherwise. A nil report is allowed; a supplied one receives this
+// read's report.
+func CountedMinLoadText(text string, report *TableReport) (*CountedMin, error) {
+	if report != nil {
+		*report = TableReport{}
+	}
+	wire, err := base64.StdEncoding.Strict().DecodeString(text)
+	if err != nil {
+		if _, plainErr := base64.StdEncoding.DecodeString(text); plainErr == nil {
+			return nil, tableRefuseError(TableRefuseBase64NotCanonical)
+		}
+		return nil, tableRefuseError(TableRefuseBase64Damaged)
+	}
+	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
+		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
+	}
+	if len(wire) == 0 || (wire[0] != 1 && wire[0] != TableFixedForm) {
+		return nil, tableRefuseError(TableRefuseUnknownForm)
+	}
+	var v CountedMin
+	var read TableReport
+	ok := CountedMinLoad(&v, wire, &read)
+	if report != nil {
+		*report = read
+	}
+	if !ok {
+		return nil, read.Err()
+	}
+	return &v, nil
+}
+
+// FloatBoundFromJSON fills one FloatBound from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16): the whole
+// value, or a refusal with value at its defaults and false (§4, §6.5). A
+// supplied report receives this read's report, and on a refusal report.Err()
+// is the typed reason.
+func FloatBoundFromJSON(value *FloatBound, text []byte, report *TableReport) bool {
+	return FloatBoundFromJSONWith(value, text, report, TableJSONOptions{})
+}
+
+// FloatBoundToJSONMeasure is the exact size of FloatBound's JSON text, writing nothing.
+func FloatBoundToJSONMeasure(value *FloatBound) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), FloatBoundTableType(), nil, TableJSONOptions{})
+}
+
+// FloatBoundToJSON writes FloatBound's JSON text into the caller's slice and returns the
+// bytes written — exactly FloatBoundToJSONMeasure's answer — or -1 when it is short.
+func FloatBoundToJSON(value *FloatBound, buffer []byte) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), FloatBoundTableType(), buffer, TableJSONOptions{})
+}
+
+// FloatBoundFromJSONWith is FloatBoundFromJSON under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2).
+func FloatBoundFromJSONWith(value *FloatBound, text []byte, report *TableReport, options TableJSONOptions) bool {
+	read := report
+	if read == nil {
+		read = &TableReport{}
+	} else {
+		*read = TableReport{}
+	}
+	return tableJSONRead(unsafe.Pointer(value), FloatBoundTableType(), text, read, options)
+}
+
+// FloatBoundToJSONMeasureWith is FloatBoundToJSONMeasure under TableJSONOptions (§16.2).
+func FloatBoundToJSONMeasureWith(value *FloatBound, options TableJSONOptions) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), FloatBoundTableType(), nil, options)
+}
+
+// FloatBoundToJSONWith is FloatBoundToJSON under TableJSONOptions (§16.2).
+func FloatBoundToJSONWith(value *FloatBound, buffer []byte, options TableJSONOptions) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), FloatBoundTableType(), buffer, options)
+}
+
+// FloatBoundSaveText returns the base64 of FloatBound's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.8): the whole file, form byte first, so the text keeps the form byte,
+// the framing check and every versioning guarantee and is opaque.
+func FloatBoundSaveText(value *FloatBound) (string, error) {
+	n := FloatBoundMeasure(value)
+	if n < 0 {
+		return "", tableRefuseError(TableRefuseInvalidValue)
+	}
+	buf := make([]byte, n)
+	if FloatBoundSave(value, buf) < 0 {
+		return "", tableRefuseError(TableRefuseInvalidValue)
+	}
+	return base64.StdEncoding.EncodeToString(buf), nil
+}
+
+// FloatBoundLoadText fills one FloatBound from a base64 wire text (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.8): the read (§6.5) over the decoded wire. It refuses base64_damaged
+// when the body does not decode, base64_not_canonical when it decodes but is
+// not canonical (a pad bit set, or an embedded CR or LF), unknown_form when
+// the decoded wire's form byte is not one this build carries, and the read's
+// own reason otherwise. A nil report is allowed; a supplied one receives this
+// read's report.
+func FloatBoundLoadText(text string, report *TableReport) (*FloatBound, error) {
+	if report != nil {
+		*report = TableReport{}
+	}
+	wire, err := base64.StdEncoding.Strict().DecodeString(text)
+	if err != nil {
+		if _, plainErr := base64.StdEncoding.DecodeString(text); plainErr == nil {
+			return nil, tableRefuseError(TableRefuseBase64NotCanonical)
+		}
+		return nil, tableRefuseError(TableRefuseBase64Damaged)
+	}
+	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
+		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
+	}
+	if len(wire) == 0 || (wire[0] != 1 && wire[0] != TableFixedForm) {
+		return nil, tableRefuseError(TableRefuseUnknownForm)
+	}
+	var v FloatBound
+	var read TableReport
+	ok := FloatBoundLoad(&v, wire, &read)
+	if report != nil {
+		*report = read
+	}
+	if !ok {
+		return nil, read.Err()
+	}
+	return &v, nil
+}
+
+// MoodsFromJSON fills one Moods from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16): the whole
+// value, or a refusal with value at its defaults and false (§4, §6.5). A
+// supplied report receives this read's report, and on a refusal report.Err()
+// is the typed reason.
+func MoodsFromJSON(value *Moods, text []byte, report *TableReport) bool {
+	return MoodsFromJSONWith(value, text, report, TableJSONOptions{})
+}
+
+// MoodsToJSONMeasure is the exact size of Moods's JSON text, writing nothing.
+func MoodsToJSONMeasure(value *Moods) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), MoodsTableType(), nil, TableJSONOptions{})
+}
+
+// MoodsToJSON writes Moods's JSON text into the caller's slice and returns the
+// bytes written — exactly MoodsToJSONMeasure's answer — or -1 when it is short.
+func MoodsToJSON(value *Moods, buffer []byte) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), MoodsTableType(), buffer, TableJSONOptions{})
+}
+
+// MoodsFromJSONWith is MoodsFromJSON under TableJSONOptions (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2).
+func MoodsFromJSONWith(value *Moods, text []byte, report *TableReport, options TableJSONOptions) bool {
+	read := report
+	if read == nil {
+		read = &TableReport{}
+	} else {
+		*read = TableReport{}
+	}
+	return tableJSONRead(unsafe.Pointer(value), MoodsTableType(), text, read, options)
+}
+
+// MoodsToJSONMeasureWith is MoodsToJSONMeasure under TableJSONOptions (§16.2).
+func MoodsToJSONMeasureWith(value *Moods, options TableJSONOptions) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), MoodsTableType(), nil, options)
+}
+
+// MoodsToJSONWith is MoodsToJSON under TableJSONOptions (§16.2).
+func MoodsToJSONWith(value *Moods, buffer []byte, options TableJSONOptions) int64 {
+	return tableJSONWrite(unsafe.Pointer(value), MoodsTableType(), buffer, options)
+}
+
+// MoodsSaveText returns the base64 of Moods's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.8): the whole file, form byte first, so the text keeps the form byte,
+// the framing check and every versioning guarantee and is opaque.
+func MoodsSaveText(value *Moods) (string, error) {
+	n := MoodsMeasure(value)
+	if n < 0 {
+		return "", tableRefuseError(TableRefuseInvalidValue)
+	}
+	buf := make([]byte, n)
+	if MoodsSave(value, buf) < 0 {
+		return "", tableRefuseError(TableRefuseInvalidValue)
+	}
+	return base64.StdEncoding.EncodeToString(buf), nil
+}
+
+// MoodsLoadText fills one Moods from a base64 wire text (mas-bandwidth/schema docs/SPEC-TABLES.md
+// §16.8): the read (§6.5) over the decoded wire. It refuses base64_damaged
+// when the body does not decode, base64_not_canonical when it decodes but is
+// not canonical (a pad bit set, or an embedded CR or LF), unknown_form when
+// the decoded wire's form byte is not one this build carries, and the read's
+// own reason otherwise. A nil report is allowed; a supplied one receives this
+// read's report.
+func MoodsLoadText(text string, report *TableReport) (*Moods, error) {
+	if report != nil {
+		*report = TableReport{}
+	}
+	wire, err := base64.StdEncoding.Strict().DecodeString(text)
+	if err != nil {
+		if _, plainErr := base64.StdEncoding.DecodeString(text); plainErr == nil {
+			return nil, tableRefuseError(TableRefuseBase64NotCanonical)
+		}
+		return nil, tableRefuseError(TableRefuseBase64Damaged)
+	}
+	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
+		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
+	}
+	if len(wire) == 0 || (wire[0] != 1 && wire[0] != TableFixedForm) {
+		return nil, tableRefuseError(TableRefuseUnknownForm)
+	}
+	var v Moods
+	var read TableReport
+	ok := MoodsLoad(&v, wire, &read)
 	if report != nil {
 		*report = read
 	}

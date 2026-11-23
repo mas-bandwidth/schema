@@ -4983,8 +4983,14 @@ Uint8List tableEntityWireSave(TableEntity v) {
 }
 
 TableEntity tableEntityWireLoad(Uint8List data, [TableWireReport? report]) {
+  final read = report ?? TableWireReport();
+  final v = _tableEntityWireLoadRead(data, read);
+  if (report == null && read.reason != 'ok') throw FormatException(read.reason);
+  return v;
+}
+
+TableEntity _tableEntityWireLoadRead(Uint8List data, TableWireReport report) {
   final v = TableEntity();
-  report ??= TableWireReport();
   report.unknown = 0;
   report.widened = 0;
   report.retained = 0;
@@ -5156,8 +5162,14 @@ Uint8List tableStatWireSave(TableStat v) {
 }
 
 TableStat tableStatWireLoad(Uint8List data, [TableWireReport? report]) {
+  final read = report ?? TableWireReport();
+  final v = _tableStatWireLoadRead(data, read);
+  if (report == null && read.reason != 'ok') throw FormatException(read.reason);
+  return v;
+}
+
+TableStat _tableStatWireLoadRead(Uint8List data, TableWireReport report) {
   final v = TableStat();
-  report ??= TableWireReport();
   report.unknown = 0;
   report.widened = 0;
   report.retained = 0;
@@ -5317,8 +5329,14 @@ Uint8List tableMixedWireSave(TableMixed v) {
 }
 
 TableMixed tableMixedWireLoad(Uint8List data, [TableWireReport? report]) {
+  final read = report ?? TableWireReport();
+  final v = _tableMixedWireLoadRead(data, read);
+  if (report == null && read.reason != 'ok') throw FormatException(read.reason);
+  return v;
+}
+
+TableMixed _tableMixedWireLoadRead(Uint8List data, TableWireReport report) {
   final v = TableMixed();
-  report ??= TableWireReport();
   report.unknown = 0;
   report.widened = 0;
   report.retained = 0;

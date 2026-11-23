@@ -102,7 +102,7 @@ build/conformance-python: build/schema-python testdata/conformance/tables/MANIFE
 		fi; \
 	done
 	@echo "conformance-python: $$(ls -d $@/*/ 2>/dev/null | wc -l | tr -d " ") units generated, $$(ls $@/*.refused 2>/dev/null | wc -l | tr -d " ") refused by name"
-	# Framing exercises form 1 for Cfg, whose source also declares a fixed class.
+	# Framing exercises form 1 for roots that also declare a fixed class.
 	@test "$$(grep -c '^fixed table Cfg$$' test/tables/R1.schema)" = 1
 	@test "$$(grep -c '^package tblr1$$' test/tables/R1.schema)" = 1
 	@mkdir -p $@/tblr1/_framing/source $@/tblr1/_framing/tblr1
@@ -113,6 +113,11 @@ build/conformance-python: build/schema-python testdata/conformance/tables/MANIFE
 	@mkdir -p $@/listdemo/_framing/source $@/listdemo/_framing/listdemo
 	@sed -e 's/^fixed table Bounded$$/table Bounded/' -e 's/^package listdemo$$/package listdemo_framing/' tables/lists/Migrate.schema > $@/listdemo/_framing/source/Migrate.schema
 	./build/schema-python generate --lang python --out $@/listdemo/_framing/listdemo $@/listdemo/_framing/source/Migrate.schema
+	@test "$$(grep -c '^fixed table CountedMin$$' tables/examples/Tables.schema)" = 1
+	@test "$$(grep -c '^package tabledemo$$' tables/examples/Tables.schema)" = 1
+	@mkdir -p $@/tabledemo/_framing/source $@/tabledemo/_framing/tabledemo
+	@sed -e 's/^fixed table CountedMin$$/table CountedMin/' -e 's/^package tabledemo$$/package tabledemo_framing/' tables/examples/Tables.schema > $@/tabledemo/_framing/source/Tables.schema
+	./build/schema-python generate --lang python --out $@/tabledemo/_framing/tabledemo $@/tabledemo/_framing/source/Tables.schema
 
 # The table core's negative control: the generated runtime's form byte is
 # moved in a copy, and the interpreter probe must go red by name. It needs the

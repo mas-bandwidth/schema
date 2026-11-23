@@ -7,7 +7,9 @@ package ctable
 import (
 	"fmt"
 	"math/big"
+	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
@@ -509,36 +511,7 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string
 		g.pf("%stable_writer_put64( w, %s( %s ) );\n", ind, storedFloatBits(f, true), expr)
 	default:
 		width := int(g.intBytes(g.ownerName(), f.Name, int64(tableKindWidth(kind))))
-		// ROWS 1 AND 2 OF THE WRITE CONTRACT (docs/SPEC.md §5.1): a ranged
-		// integer or a fixed/ufixed raw value off its min/max, and a bits(N)
-		// value wider than N. A `| required` field refuses in every build; any
-		// other field holds them as this assert leg's debug assert, so no
-		// build where the check is active writes a value the reader refuses.
-		if lo, hi, ok := ir.TableRawRange(f); ok {
-			clampMin, clampMax := tableClampEnds(f, width)
-			if f.Required {
-				if clampMin {
-					g.pf("%sif ( %s < %s ) { return 0; }\n", ind, expr, tableIntLit(lo, f.Type.Signed, width))
-				}
-				if clampMax {
-					g.pf("%sif ( %s > %s ) { return 0; }\n", ind, expr, tableIntLit(hi, f.Type.Signed, width))
-				}
-			} else {
-				if clampMin {
-					g.pf("%sschema_assert( !( %s < %s ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */\n", ind, expr, tableIntLit(lo, f.Type.Signed, width))
-				}
-				if clampMax {
-					g.pf("%sschema_assert( !( %s > %s ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */\n", ind, expr, tableIntLit(hi, f.Type.Signed, width))
-				}
-			}
-		} else if f.Type.Kind == ir.TBits && f.Type.Width < width*8 {
-			mask := (uint64(1) << f.Type.Width) - 1
-			if f.Required {
-				g.pf("%sif ( (uint64_t)( %s ) > 0x%xull ) { return 0; }\n", ind, expr, mask)
-			} else {
-				g.pf("%sschema_assert( (uint64_t)( %s ) <= 0x%xull ); /* bits(%d) wider than %d bits, debug only (SPEC.md §5.1 row 2) */\n", ind, expr, mask, f.Type.Width, f.Type.Width)
-			}
-		}
+		g.emitWriteRowAsserts(f, expr, width, ind, false)
 		g.emitFlagsWidthAssert(f, expr, ind)
 		cast := fmt.Sprintf("uint%d_t", width*8)
 		g.pf("%s%s( w, (%s) ( %s ) );\n", ind, tablePut(width), cast, expr)
@@ -581,6 +554,45 @@ func (g *tableGen) emitFlagsWidthClamp(f *ir.Field, decoded, ind string) {
 func (g *tableGen) emitFlagsWidthAssert(f *ir.Field, expr, ind string) {
 	if w, ok := flagsWidth(f); ok {
 		g.pf("%sschema_assert( ( (uint64_t)( %s ) >> %d ) == 0 ); /* the write contract, debug only: a mask bit at or above W (docs/SPEC-TABLES.md §4) */\n", ind, expr, w)
+	}
+}
+
+// emitWriteRowAsserts holds rows 1 and 2 of one integer value (see below).
+func (g *tableGen) emitWriteRowAsserts(f *ir.Field, expr string, width int, ind string, debugOnly bool) {
+	if width == 16 {
+		g.emitWideWriteRowAsserts(f, expr, ind)
+		return
+	}
+	required := f.Required && !debugOnly
+	// ROWS 1 AND 2 OF THE WRITE CONTRACT (docs/SPEC.md §5.1): a ranged
+	// integer or a fixed/ufixed raw value off its min/max, and a bits(N)
+	// value wider than N. A `| required` field refuses in every build; any
+	// other field holds them as this assert leg's debug assert, so no
+	// build where the check is active writes a value the reader refuses.
+	if lo, hi, ok := ir.TableRawRange(f); ok {
+		clampMin, clampMax := tableClampEnds(f, width)
+		if required {
+			if clampMin {
+				g.pf("%sif ( %s < %s ) { return 0; }\n", ind, expr, tableIntLit(lo, f.Type.Signed, width))
+			}
+			if clampMax {
+				g.pf("%sif ( %s > %s ) { return 0; }\n", ind, expr, tableIntLit(hi, f.Type.Signed, width))
+			}
+		} else {
+			if clampMin {
+				g.pf("%sschema_assert( !( %s < %s ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */\n", ind, expr, tableIntLit(lo, f.Type.Signed, width))
+			}
+			if clampMax {
+				g.pf("%sschema_assert( !( %s > %s ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */\n", ind, expr, tableIntLit(hi, f.Type.Signed, width))
+			}
+		}
+	} else if f.Type.Kind == ir.TBits && f.Type.Width < width*8 {
+		mask := (uint64(1) << f.Type.Width) - 1
+		if required {
+			g.pf("%sif ( (uint64_t)( %s ) > 0x%xull ) { return 0; }\n", ind, expr, mask)
+		} else {
+			g.pf("%sschema_assert( (uint64_t)( %s ) <= 0x%xull ); /* bits(%d) wider than %d bits, debug only (SPEC.md §5.1 row 2) */\n", ind, expr, mask, f.Type.Width, f.Type.Width)
+		}
 	}
 }
 
@@ -803,6 +815,18 @@ func (g *tableGen) emitFieldVocabulary(st *ir.Struct, f *ir.Field) {
 			g.pf("    { NULL, 0 },\n")
 		}
 		g.pf("};\n")
+		if enumHasDeprecated(ref) {
+			// one flag per value, 1 where the variant is retired in place
+			// (docs/SPEC-TABLES.md §2.15)
+			flags := make([]string, ref.Max+1)
+			for i := range flags {
+				flags[i] = "0"
+				if i > 0 && enumVariantDeprecated(ref, i-1) {
+					flags[i] = "1"
+				}
+			}
+			g.pf("static const uint8_t %s[] = { %s };\n", g.vocabularySymbol(st.Name, f.Name, "deprecated"), strings.Join(flags, ", "))
+		}
 	case *ir.Flags:
 		if f.Type.Kind != ir.TNamed {
 			break
@@ -987,12 +1011,17 @@ func (g *tableGen) emitFieldDescriptorAt(st *ir.Struct, f *ir.Field, guard, memb
 	variants := "NULL"
 	hasIds := "0"
 	arms := "NULL"
+	enumDefault, enumDeprecated := "0", "NULL"
 	switch ref := f.Type.Ref.(type) {
 	case *ir.Enum:
 		if f.Type.Kind == ir.TNamed {
 			enumMax = fmt.Sprintf("%d", ref.Max)
 			variants = g.vocabularySymbol(st.Name, f.Name, "variants")
 			hasIds = "1"
+			if enumHasDeprecated(ref) {
+				enumDefault = fmt.Sprintf("%d", enumDefaultOrdinal(f, ref))
+				enumDeprecated = g.vocabularySymbol(st.Name, f.Name, "deprecated")
+			}
 		}
 	case *ir.Flags:
 		if f.Type.Kind == ir.TNamed {
@@ -1043,13 +1072,57 @@ func (g *tableGen) emitFieldDescriptorAt(st *ir.Struct, f *ir.Field, guard, memb
 	if g.anyVariable {
 		pointerColumn = fmt.Sprintf("%s, ", boolC(f.Type.Pointer))
 	}
-	g.pf("    { \"%s\", %s, \"%s\", 0x%016xull, %d, %s, %s%s, %s, %s, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, \"%s\", %s, %d, %d, %d, %s, %d },\n",
+	g.pf("    { \"%s\", %s, \"%s\", 0x%016xull, %d, %s, %s%s, %s, %s, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, \"%s\", %s, %d, %d, %d, %s, %d, %s, %s },\n",
 		f.Name, g.descriptorJSON(f), tableFieldTypeName(f), g.descriptorID(id), kind, boolC(isArray), pointerColumn,
 		boolC(counted), boolC(f.Type.Optional), boolC(f.Required), bound,
 		st.Name, member, elemSize, countOffset, presentOffset, table,
 		hasRange, rangeMin, fmt.Sprintf("%s, %s, %d", rangeMax, wide, frac), enumMax, variants, hasIds,
 		keyTypeName, keys, keyMax, arms, guard,
-		annotationColumns(f.Doc, f.Tags, g.vocabularySymbol(st.Name, f.Name, "tags")), sequence, textList, f.TextTotal, place, f.BornCount())
+		annotationColumns(f.Doc, f.Tags, g.vocabularySymbol(st.Name, f.Name, "tags")), sequence, textList, f.TextTotal, place,
+		arrayMinColumn(f), enumDefault, enumDeprecated)
+}
+
+// arrayMinColumn is a counted array's declared minimum A (docs/SPEC.md §5.1),
+// 0 for every other field.
+func arrayMinColumn(f *ir.Field) int64 {
+	if f.Array == ir.ArrayCounted {
+		return f.ArrayMin
+	}
+	return 0
+}
+
+// enumHasDeprecated reports whether any variant of e carries `| deprecated`
+// (docs/SPEC-TABLES.md §2.15).
+func enumHasDeprecated(e *ir.Enum) bool {
+	for i := range e.Variants {
+		if enumVariantDeprecated(e, i) {
+			return true
+		}
+	}
+	return false
+}
+
+// enumVariantDeprecated reads one variant's marker from the IR's variant tags,
+// which are parallel to Variants.
+func enumVariantDeprecated(e *ir.Enum, i int) bool {
+	return i >= 0 && i < len(e.VariantTags) && slices.Contains(e.VariantTags[i], "deprecated")
+}
+
+// enumDefaultOrdinal is the ordinal a deprecated variant lands on: the FIELD's
+// declared default, and the ELEMENT default (0, None) for an element of an
+// array, a list, a map or a keyed array (docs/SPEC-TABLES.md §2.15).
+func enumDefaultOrdinal(f *ir.Field, e *ir.Enum) uint64 {
+	if f.Array != ir.ArrayNone || f.KeyEnum != "" || f.IsList() || f.IsMap() {
+		return 0
+	}
+	if f.HasDefault && f.DefVariant != "" {
+		for i, v := range e.Variants {
+			if v == f.DefVariant {
+				return uint64(i + 1)
+			}
+		}
+	}
+	return 0
 }
 
 func boolC(v bool) string {

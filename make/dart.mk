@@ -666,7 +666,16 @@ tables-dart-order-negative-control: build/tables-generated-dart/.stamp build/coo
 # phony cards-dart-generate target: a restored driver must not rebuild only
 # because the phony target is always considered out of date.
 CARDS_DART_STAMP := build/tables-generated-dart/cards/.stamp
-build/conformance-dart: build/tables-generated-dart/.stamp $(CARDS_DART_STAMP) test/conformance/dart/main.dart
+# The form-1 framing rows for CountedMin use the same schema declaration
+# in the variable class. Canonical output still uses the fixed class.
+build/tables-generated-dart-framing/countedmin/.stamp: bin/schema make/dart.mk tables/examples/Tables.schema
+	@test "$$(grep -c '^fixed table CountedMin$$' tables/examples/Tables.schema)" = 1
+	@mkdir -p build/tables-dart-counted-min-variable
+	sed -n '/^package tabledemo$$/p; /^fixed table CountedMin$$/,/^}/p' tables/examples/Tables.schema | sed 's/^fixed table CountedMin$$/table CountedMin/' > build/tables-dart-counted-min-variable/CountedMin.schema
+	./bin/schema generate --lang dart --out build/tables-generated-dart-framing/countedmin build/tables-dart-counted-min-variable/CountedMin.schema
+	@touch $@
+
+build/conformance-dart: build/tables-generated-dart/.stamp build/tables-generated-dart-framing/countedmin/.stamp $(CARDS_DART_STAMP) test/conformance/dart/main.dart
 	@mkdir -p build
 	$(DART) compile exe -o $@ test/conformance/dart/main.dart >/dev/null
 

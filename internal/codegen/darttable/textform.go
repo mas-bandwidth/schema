@@ -899,6 +899,12 @@ func (g *wireGen) emitTextEnum(e *ir.Enum) {
 	g.pf("\tswitch (val) {\n")
 	g.pf("\t\tcase \"None\": return %s;\n", none)
 	for i, name := range e.Variants {
+		if i < len(e.VariantDeprecated) && e.VariantDeprecated[i] {
+			// A DEPRECATED VARIANT READS AS THE FIELD'S DEFAULT, an element as
+			// the element default (docs/SPEC-TABLES.md §2.13); never unknown.
+			g.pf("\t\tcase %s: return def ?? %s;\n", viewDartString(name), none)
+			continue
+		}
 		g.pf("\t\tcase %s: return %s;\n", viewDartString(name), g.enumConst(e, i+1))
 	}
 	g.pf("\t}\n\tr.unknown++;\n\treturn %s;\n}\n\n", none)

@@ -1985,7 +1985,11 @@ func (g *fixedGen) emitFromTextField(f *ir.Field) {
 		}
 		g.pf("    for (let i = 0; i < n; i++) {\n")
 		g.emitFromTextElement(f, s+"[i]", d+"[i]", "      ")
-		g.pf("    }\n  }\n")
+		// A VALUE THAT IS NOT ARRAY-LIKE (a number, a string, an object with no
+		// length) is carried as held, so <T>FixedCheckBody refuses it: leaving the
+		// fresh defaults in its place would write a value nobody held (SF-38,
+		// docs/SPEC.md section 5.1). Only an absent or null field keeps the defaults.
+		g.pf("    }\n  } else if (%s !== undefined && %s !== null) { %s = %s; }\n", s, s, d, s)
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.pf("  if (%s !== undefined) { %s = %s; }\n", s, d, s)
 		g.pf("  if (%sLength !== undefined) { %sLength = %sLength; }\n", s, d, s)

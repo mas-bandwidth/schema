@@ -5057,8 +5057,14 @@ Uint8List fixedTableWireSave(FixedTable v) {
 }
 
 FixedTable fixedTableWireLoad(Uint8List data, [TableWireReport? report]) {
+  final read = report ?? TableWireReport();
+  final v = _fixedTableWireLoadRead(data, read);
+  if (report == null && read.reason != 'ok') throw FormatException(read.reason);
+  return v;
+}
+
+FixedTable _fixedTableWireLoadRead(Uint8List data, TableWireReport report) {
   final v = FixedTable();
-  report ??= TableWireReport();
   report.unknown = 0;
   report.widened = 0;
   report.retained = 0;

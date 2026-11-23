@@ -276,6 +276,13 @@ build/tables-generated-go/.stamp: bin/schema make/go.mk test/tables/RT1.schema t
 	@grep -q '^table Bounded$$' build/tables-lists-variable/Migrate.schema || { echo "lists variable twin: the sed did not turn Bounded variable"; exit 1; }
 	./bin/schema generate --lang go --out build/tables-generated-go-framing/listsvariable build/tables-lists-variable/Migrate.schema
 	$(call go_table_module_in,build/tables-generated-go-framing/listsvariable,listdemovariable)
+	# CountedMin framing reads the same declaration as a variable-class root.
+	# Its canonical write still comes from the fixed codec.
+	@mkdir -p build/tables-counted-min-variable
+	sed -n '/^package tabledemo$$/p; /^fixed table CountedMin$$/,/^}/p' tables/examples/Tables.schema | sed 's/^fixed table CountedMin$$/table CountedMin/' > build/tables-counted-min-variable/CountedMin.schema
+	@grep -q '^table CountedMin$$' build/tables-counted-min-variable/CountedMin.schema
+	./bin/schema generate --lang go --out build/tables-generated-go-framing/countedminvariable build/tables-counted-min-variable/CountedMin.schema
+	$(call go_table_module_in,build/tables-generated-go-framing/countedminvariable,countedminvariable)
 	# THE R19 ROW'S COMMITTED PAIR (test/conformance/go/rows/R19_test.go): one
 	# lineage, two generations. The old side is generated from its schema alone
 	# (it wrote testdata/conformance/r19/old.bin); the new side from its unit

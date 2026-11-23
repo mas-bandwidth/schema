@@ -737,10 +737,10 @@ fixed table Root
 		t.Fatal(err)
 	}
 	runtime := string(out[FixedRuntimeModule+".ex"])
-	if !strings.Contains(runtime, "{:count, their_at, aux_at, their_n}") {
+	if !strings.Contains(runtime, "{:count, their_at, aux_at, their_n, elem(row, 4)}") {
 		t.Fatal("the count op is not bounded by the WRITER's element count")
 	}
-	if strings.Contains(runtime, "{:count, their_at, aux_at, my_n}") {
+	if strings.Contains(runtime, "{:count, their_at, aux_at, my_n, elem(row, 4)}") {
 		t.Fatal("the count op is still bounded by the READER's own element count")
 	}
 }

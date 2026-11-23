@@ -30,7 +30,7 @@ ruby-skeleton-negative-control: ruby-toolchain-check
 	sh test/slowgate/proof ruby-skeleton-negative-control 'TestRubySkeleton' -count=1 -timeout 600s -tags schema_leg_ruby -run 'TestRubySkeleton/negative-control' ./internal/codegen/ruby/
 
 # build/conformance-ruby generates every MANIFEST.txt tables unit for Ruby,
-# plus the variable-class framing sibling for tblr1 (test/tables/R1.schema).
+# plus the variable-class framing siblings for fixed roots.
 build/conformance-ruby: build/schema-ruby testdata/conformance/tables/MANIFEST.txt make/ruby.mk $(CONFORMANCE_UNIT_SCHEMAS)
 	@rm -rf $@ && mkdir -p $@
 	@awk '$$1 == "unit" { key = $$2; $$1 = ""; $$2 = ""; print key $$0 }' testdata/conformance/tables/MANIFEST.txt | \
@@ -53,6 +53,11 @@ build/conformance-ruby: build/schema-ruby testdata/conformance/tables/MANIFEST.t
 	@mkdir -p $@/listdemo/_framing/source $@/listdemo/_framing/listdemo
 	@sed -e 's/^fixed table Bounded$$/table Bounded/' -e 's/^package listdemo$$/package listdemo_framing/' tables/lists/Migrate.schema > $@/listdemo/_framing/source/Migrate.schema
 	./build/schema-ruby generate --lang ruby --out $@/listdemo/_framing/listdemo $@/listdemo/_framing/source/Migrate.schema
+	@test "$$(grep -c '^fixed table CountedMin$$' tables/examples/Tables.schema)" = 1
+	@test "$$(grep -c '^package tabledemo$$' tables/examples/Tables.schema)" = 1
+	@mkdir -p $@/tabledemo/_framing/source $@/tabledemo/_framing/tabledemo
+	@sed -e 's/^fixed table CountedMin$$/table CountedMin/' -e 's/^package tabledemo$$/package tabledemo_framing/' tables/examples/Tables.schema > $@/tabledemo/_framing/source/Tables.schema
+	./build/schema-ruby generate --lang ruby --out $@/tabledemo/_framing/tabledemo $@/tabledemo/_framing/source/Tables.schema
 
 generated/bench/ruby/.stamp: build/schema-ruby $(SCHEMAS_BENCH)
 	@rm -rf generated/bench/ruby && mkdir -p generated/bench/ruby

@@ -478,6 +478,7 @@ static partial class Program
         {
             case Tabledemo.RootConfig root: return Tabledemo.Schema.RootConfigFixedSave(root, buffer);
             case Tabledemo.LoadoutConfig loadout: return Tabledemo.Schema.LoadoutConfigFixedSave(loadout, buffer);
+            case Tabledemo.CountedMin counted: return Tabledemo.Schema.CountedMinFixedSave(counted, buffer);
             case Scalardemo.SimState sim: return Scalardemo.Schema.SimStateFixedSave(sim, buffer);
             case Cooktorture.TortureFixedWref tfw: return Cooktorture.Schema.TortureFixedWrefFixedSave(tfw, buffer);
             case Shapes.FixedBounds fb: return Shapes.Schema.FixedBoundsFixedSave(fb, buffer);

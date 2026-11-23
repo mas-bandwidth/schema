@@ -118,6 +118,7 @@ type tableGen struct {
 	// answerable by asking one question (§2.2).
 	blocks         *ir.BlockUnit
 	owner          *ir.Struct      // the closure member whose codec is being emitted
+	writeChecked   map[string]bool // see messageNeedsWriteAsserts
 	variable       map[string]bool // the derived VARIABLE-LENGTH members (ir.VariableTables)
 	targets        map[string]bool // tables some pointer targets (ir.PointerTargets)
 	body           strings.Builder
@@ -1121,10 +1122,17 @@ inline const char TableDocNone[1] = "";
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
-    // a [A..B]T count's declared minimum A (docs/SPEC.md §4.2, §5.1 row 3):
-    // the count it is born at and the least a read accepts; 0 on every other
-    // field
+    // A COUNTED ARRAY'S MINIMUM (docs/SPEC.md §5.1, docs/SPEC-TABLES.md §16.2):
+    // the A of [A..B]T, 0 on every other field. A text read that
+    // places fewer elements refuses, as the wire read does.
     int32_t array_min;
+    // A DEPRECATED VARIANT (docs/SPEC-TABLES.md §2.15): enum_deprecated says
+    // whether a value names a variant marked "| deprecated", NULL when
+    // the enum carries none. A read naming one stores enum_default instead —
+    // the field's declared default, None for an element — and is never
+    // counted unknown.
+    uint64_t enum_default;
+    bool ( *enum_deprecated )( uint64_t value );
 };
 
 struct TableTypeInfo

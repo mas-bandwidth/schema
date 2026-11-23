@@ -273,7 +273,7 @@ fixed table T
 
 	// a count past the writer's bound refuses count_over_bound, once, at the
 	// one site that reads the number.
-	if !strings.Contains(t02Norm(run), "if (v < 0 || v > size) { report.refused = TableFixedRefusal.CountOverBound; return; }") {
+	if !strings.Contains(t02Norm(run), "if (v < 0 || v < e[b + TableFixedLaneMeta] || v > size) { report.refused = TableFixedRefusal.CountOverBound; return; }") {
 		t.Error("R16: the count op does not refuse count_over_bound at the writer's bound")
 	}
 	if !strings.Contains(t02Norm(run), "const cap = size | 0;") ||

@@ -361,6 +361,9 @@ static const Codec codecs[] = {
     CODEC( "tabledemo", tabledemo, ArchiveConfig ),
     CODEC( "tabledemo", tabledemo, KeyedConfig ),
     CODEC( "tabledemo", tabledemo, PackConfig ),
+    CODEC( "tabledemo", tabledemo, CountedMin ),
+    CODEC( "tabledemo", tabledemo, FloatBound ),
+    CODEC( "tabledemo", tabledemo, Moods ),
     CODEC( "tblv1", tblv1, Cfg ),
     CODEC( "tblv2", tblv2, Cfg ),
     CODEC( "tblp1", tblp1, Chain ),
@@ -2310,6 +2313,11 @@ static bool write_refusal_set_variable( const std::string & root, void * value, 
 static bool write_refusal_set( const std::string & root, void * value, const std::string & path,
                                const std::string & kind, const std::string & text )
 {
+    if ( root == "CountedMin" && path == "few" && kind == "count" )
+    {
+        ((tabledemo::CountedMin *) value)->few_count = wref_count( text );
+        return true;
+    }
     if ( root == "RootConfig" )
     {
         tabledemo::RootConfig & v = *(tabledemo::RootConfig *) value;
@@ -2459,6 +2467,7 @@ static bool write_refusal_set( const std::string & root, void * value, const std
 // The fixed form's FixedSave, a batch of one, for the roots the rows name.
 static bool write_refusal_fixed_save( const std::string & root, const void * value, uint8_t * buffer, int64_t capacity, int64_t & wrote )
 {
+    if ( root == "CountedMin" ) { wrote = tabledemo::CountedMinFixedSave( (const tabledemo::CountedMin *) value, 1, buffer, capacity ); return true; }
     if ( root == "RootConfig" ) { wrote = tabledemo::RootConfigFixedSave( (const tabledemo::RootConfig *) value, 1, buffer, capacity ); return true; }
     if ( root == "LoadoutConfig" ) { wrote = tabledemo::LoadoutConfigFixedSave( (const tabledemo::LoadoutConfig *) value, 1, buffer, capacity ); return true; }
     if ( root == "SimState" ) { wrote = scalardemo::SimStateFixedSave( (const scalardemo::SimState *) value, 1, buffer, capacity ); return true; }

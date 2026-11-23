@@ -698,7 +698,7 @@ function TableVariableOpen(bytes, report) {
 // whose type id this root cannot place keeps its index and counts one unknown;
 // every pointer naming it reads null.
 function TableVariableCountRefused(report) {
-  return report.refused && report.reason === "count_over_extent_cap";
+  return report.refused && (report.reason === "count_over_extent_cap" || String(report.reason).startsWith("count_over_bound"));
 }
 
 // A reference joins the id-table sequence at the moment the bytes name it.
@@ -1461,7 +1461,9 @@ function TableVariableEnumRead(e, r, table, report, retain, st) {
   if (ref > table.length) { report.damaged = true; return undefined; }
   TableVariableIntroduce(st, ref);
   const id = table[ref - 1];
-  for (const [name, vid] of e.vs) { if (vid === id) { return name; } }
+  for (const [name, vid] of e.vs) {
+    if (vid === id) { return e.dp.includes(name) ? (e.el ? null : e.def) : name; }
+  }
   report.unknown++;
   if (retain !== null) { report.retainLost++; }
   return null;
@@ -1597,6 +1599,14 @@ function TableVariableReadArrayBody(fd, r, end, table, v, report, st, retain, pa
     if (ek !== fd.ek) {
       if (!TableVariableWidens(ek, fd.ek)) { report.mismatch++; return false; }
       report.widened++;
+    }
+    // A COUNTED [A..B] ARRAY BELOW ITS MINIMUM A REFUSES count_over_bound, in
+    // every form (docs/SPEC-TABLES.md section 22.2), before any element is read:
+    // a count short of A is a value no writer could have written.
+    if (!fd.list && !fd.fixed && fd.min > 0 && count < fd.min) {
+      report.refused = 1;
+      if (!report.reason) { report.reason = "count_over_bound: " + fd.n; }
+      return false;
     }
     let keep = count;
     if (fd.list) {
@@ -2888,12 +2898,19 @@ function TableVariableTextArray(fd, inp, v, depth, graph, report) {
   v[fd.n] = out;
   const bound = fd.list ? 0x7fffffff : fd.bound;
   let placed = 0;
-  // a closed array shorter than the declared Min is off the count's own
-  // range, refused as the count past Max is (SPEC §5.1 row 3; read.go)
-  const least = () => { if (placed < (fd.min || 0)) { report.oor++; } return true; };
+  // a counted array below its minimum A refuses on read, in the text form as in
+  // the wire (docs/SPEC.md section 4.6): a refusal is an answer, never a throw
+  const below = () => {
+    if (fd.min > 0 && placed < fd.min) {
+      report.refused = 1;
+      if (!report.reason) { report.reason = "count_over_bound: " + fd.n; }
+      return true;
+    }
+    return false;
+  };
   for (;;) {
     let ch = inp.peek();
-    if (ch === "]") { inp.p++; return least(); }
+    if (ch === "]") { inp.p++; return !below(); }
     if (ch === "") { inp.bad = true; return false; }
     const shape = inp.shape();
     if (placed >= bound) {
@@ -2913,7 +2930,7 @@ function TableVariableTextArray(fd, inp, v, depth, graph, report) {
     }
     ch = inp.peek();
     if (ch === ",") { inp.p++; continue; }
-    if (ch === "]") { inp.p++; return least(); }
+    if (ch === "]") { inp.p++; return !below(); }
     inp.bad = true;
     return false;
   }
@@ -2982,7 +2999,12 @@ function TableVariableTextScalar(d, inp, holder, key, depth, graph, report) {
       const s = inp.name();
       if (s === null) { return false; }
       if (s === "None") { holder[key] = null; return true; }
-      for (const [name] of d.vs) { if (name === s) { holder[key] = name; return true; } }
+      for (const [name] of d.vs) {
+        if (name !== s) { continue; }
+        // A DEPRECATED VARIANT READS AS THE FIELD'S DEFAULT, an element as None (§2.15)
+        holder[key] = d.dp.includes(name) ? (d.el ? null : d.def) : name;
+        return true;
+      }
       // a name this build cannot name reads None and counts unknown (§4)
       holder[key] = null;
       report.unknown++;

@@ -1623,6 +1623,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # An optional enum has two zero states: absent nil and present reserved None.
   defp enum_none(f), do: if(Map.get(f, :optional, false), do: "None", else: nil)
 
+  # A DEPRECATED VARIANT READS AS THE FIELD'S DECLARED DEFAULT, and an ARRAY
+  # ELEMENT as the ELEMENT's default, None; it is never counted unknown
+  # (docs/SPEC-TABLES.md section 2.15). The writer refuses it (check_enum).
+  defp retire(f, name, fallback),
+    do: if(name in Map.get(f, :retired, []), do: fallback, else: name)
+
   defp emit_scalar?(%{required: true}, _v), do: true
   defp emit_scalar?(%{optional: true}, v), do: v != nil
   defp emit_scalar?(f, v), do: not same_field?(f, v, f.default)
@@ -2773,7 +2779,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
           variant_id ->
             case Map.fetch(f.by_id, variant_id) do
-              {:ok, name} -> {:cont, name, report}
+              {:ok, name} -> {:cont, retire(f, name, Map.get(f, :default)), report}
               :error -> {:cont, enum_none(f), %{report | unknown: report.unknown + 1}}
             end
         end
@@ -3343,6 +3349,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # a count past a bounded array's declared bound reads the first bound
   # elements and counts one refusal, before any element is read, so the
   # elements past the bound are never asked of the body (docs/SPEC-TABLES.md §4)
+  defp clamp_count(n, %{min_count: min}, _report) when n < min,
+    do: {min, throw(:wire_damaged)}
+
   defp clamp_count(n, %{max_count: max}, _report) when n > max,
     do: {max, throw(:wire_damaged)}
 
@@ -3571,7 +3580,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           variant_id ->
             {value, report} =
               case Map.fetch(f.by_id, variant_id) do
-                {:ok, name} -> {name, report}
+                {:ok, name} -> {retire(f, name, nil), report}
                 :error -> {nil, %{report | unknown: report.unknown + 1}}
               end
 
@@ -4662,8 +4671,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp json_field(%{t: :list} = f, elements, depth) when is_list(elements) do
-    if Map.has_key?(f, :min_count) and
-         (length(elements) < f.min_count or length(elements) > f.array_bound),
+    if Map.get(f, :array) == :counted and
+         (length(elements) < Map.get(f, :min_count, 0) or length(elements) > f.array_bound),
        do: throw(:invalid_value)
 
     if Map.has_key?(f, :array_bound) and f.array_bound > 0 and length(elements) > f.array_bound,
@@ -4686,6 +4695,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   end
 
   defp json_field(%{t: :list}, nil, _depth), do: "[]"
+
+  # a list field holding anything but a list or nil is a value off the contract:
+  # the writer refuses it and never writes [] over it (docs/SPEC.md section 5.1)
   defp json_field(%{t: :list}, _other, _depth), do: throw(:invalid_value)
 
   defp json_field(%{optional: true}, nil, _depth), do: "null"
@@ -5458,7 +5470,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
       _ ->
         case Map.fetch(f.by_name, raw) do
-          {:ok, _id} -> {raw, report}
+          {:ok, _id} -> {retire(f, raw, Map.get(f, :default)), report}
           :error -> {enum_none(f), %{report | unknown: report.unknown + 1}}
         end
     end
@@ -5759,7 +5771,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_read_field(%{t: :list} = f, raw, report) when is_list(raw) do
     bound = Map.get(f, :array_bound, 0)
 
-    {elems, _placed, report} =
+    {elems, placed, report} =
       Enum.reduce(raw, {[], 0, report}, fn e, {acc, placed, report} ->
         if Process.get(:elixir_json_bad, false) do
           {acc, placed, report}
@@ -5781,7 +5793,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       end)
 
     # a counted array below its Min refuses (docs/SPEC.md §5.1 row 3)
-    if length(elems) < Map.get(f, :min_count, 0), do: throw(:wire_damaged)
+    if placed < Map.get(f, :min_count, 0), do: throw(:wire_damaged)
     {Enum.reverse(elems), report}
   end
 
@@ -6086,7 +6098,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
       _ ->
         case Map.fetch(f.by_name, e) do
-          {:ok, _id} -> {e, report}
+          {:ok, _id} -> {retire(f, e, nil), report}
           :error -> {nil, %{report | unknown: report.unknown + 1}}
         end
     end
@@ -8009,7 +8021,7 @@ const variableRetainSource = `
           variant_id ->
             case Map.fetch(f.by_id, variant_id) do
               {:ok, name} ->
-                {:cont, name, report, retain}
+                {:cont, retire(f, name, Map.get(f, :default)), report, retain}
 
               :error ->
                 # an unknown ENUM variant in a KNOWN field is excluded (§6.6):
@@ -9257,8 +9269,9 @@ func fieldDescriptor(u *ir.Unit, owner string, f *ir.Field, ordinal int, fl *ir.
 		if born := f.BornCount(); born > 0 {
 			// docs/SPEC.md §4.2, §5.1 row 3: a [Min..N]T count is born at Min,
 			// every writer refuses a count below it, every read refuses one,
-			// and an array holding its Min elements at their default elides
-			fmt.Fprintf(&b, ", min_count: %d, elem_default: %s", born, variableBornElementDefault(f))
+			// and an array holding its Min elements at their default elides.
+			// writeCookLayout emits the shared minimum.
+			fmt.Fprintf(&b, ", elem_default: %s", variableBornElementDefault(f))
 		}
 		if f.Array == ir.ArrayFixed {
 			// SPEC-TABLES §3: a [N]T writes all N elements; a table element
