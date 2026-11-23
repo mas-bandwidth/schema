@@ -57,3 +57,35 @@ func TestFastInputAccountingKeepsBothCanaries(t *testing.T) {
 		})
 	}
 }
+
+// The producer runs for either existing Dart verification or corpus
+// accounting. Only corpus accounting runs the dependent consumer.
+func TestDartConformanceHandoffSelection(t *testing.T) {
+	t.Parallel()
+	wf := workflows(t, repoRoot(t))["ci-fast.yml"]
+	for _, tc := range []struct {
+		name, legs, account, headRepo string
+		produce, consume              bool
+	}{
+		{"unrelated", `["go"]`, "false", "mas-bandwidth/schema", false, false},
+		{"verify only", `["dart"]`, "false", "mas-bandwidth/schema", true, false},
+		{"corpus only", `[]`, "true", "mas-bandwidth/schema", true, true},
+		{"verify and account", `["dart"]`, "true", "mas-bandwidth/schema", true, true},
+		{"fork", `["dart"]`, "true", "fork/schema", false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			event := ciEvent{
+				Name: "pull_request", Branch: "main", HeadRef: "topic",
+				Repo: "mas-bandwidth/schema", HeadRepo: tc.headRepo,
+				PlanVerifyLegs: tc.legs, PlanDartCorpus: tc.account,
+			}
+			for job, want := range map[string]bool{
+				"verify-dart-conformance": tc.produce, "input-family-dart-conformance": tc.consume,
+			} {
+				if got, err := jobRunsInWorkflow(wf, job, event); got != want || err != nil {
+					t.Errorf("%s returned %t, %v, want %t", job, got, err, want)
+				}
+			}
+		})
+	}
+}
