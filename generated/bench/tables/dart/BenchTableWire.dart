@@ -8027,7 +8027,8 @@ TableEntity tableEntityFromJson(String text, [TableTextReport? report]) {
   r.refused = false;
   r.refusal = '';
   r.missingFields = '';
-  r.textLabels.clear();
+  r.labelsSeen.clear();
+  r.labelsOpen.clear();
   r.variableRoot = false;
   final v = TableEntity();
   try {
@@ -8063,7 +8064,8 @@ TableStat tableStatFromJson(String text, [TableTextReport? report]) {
   r.refused = false;
   r.refusal = '';
   r.missingFields = '';
-  r.textLabels.clear();
+  r.labelsSeen.clear();
+  r.labelsOpen.clear();
   r.variableRoot = false;
   final v = TableStat();
   try {
@@ -8099,7 +8101,8 @@ TableMixed tableMixedFromJson(String text, [TableTextReport? report]) {
   r.refused = false;
   r.refusal = '';
   r.missingFields = '';
-  r.textLabels.clear();
+  r.labelsSeen.clear();
+  r.labelsOpen.clear();
   r.variableRoot = false;
   final v = TableMixed();
   try {

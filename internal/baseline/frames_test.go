@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/baseline"
+	"github.com/mas-bandwidth/schema/v2/internal/docgate"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -744,10 +745,74 @@ func TestEvolutionTableDocsAgreeWithTheGolden(t *testing.T) {
 		t.Error("§18.2 REFUSES must not invent a T to ?T break")
 	}
 	if !strings.Contains(passes, "`T` and `?T`") {
-		t.Error("§18.2 PASSES must name both optional directions")
+		// R16 makes optional one-way; the code that refuses `?T` to `T`
+		// lands with #4764. Until then the sentence is accepted only on
+		// its owed entry, and said so loudly.
+		owedOrFail(t, "R16", "§18.2 PASSES must name both optional directions")
 	}
 	if strings.Contains(passes, "`T`, `?T` and `*T`") {
 		t.Error("§18.2 PASSES must not include *T: a pointer is a kind change")
+	}
+}
+
+// owedVerdict decides a doc sentence that disagrees with the code on main.
+// It is let through only when rule has an entry in the owed table
+// (docs/SPEC-CONFORMANCE.md §7) that names the PR bringing the code: then
+// owed is the line to print, OWED <rule> <PR>. Otherwise fail is the
+// failure. When that PR merges, docgate TestOwedRowsAreLinked fails until
+// the entry goes, and then this gate checks the code again.
+func owedVerdict(entries []docgate.OwedEntry, rule, msg string) (owed, fail string) {
+	for _, e := range entries {
+		if e.Entry != rule || e.State != "owed" || len(e.PRs) == 0 {
+			continue
+		}
+		var prs []string
+		for _, pr := range e.PRs {
+			prs = append(prs, fmt.Sprintf("#%d", pr))
+		}
+		return fmt.Sprintf("OWED %s %s: %s", rule, strings.Join(prs, ","), msg), ""
+	}
+	return "", msg + " (no owed entry for " + rule + " in docs/SPEC-CONFORMANCE.md §7 names the PR that brings the code)"
+}
+
+func owedOrFail(t *testing.T, rule, msg string) {
+	t.Helper()
+	page, err := os.ReadFile("../../" + docgate.OwedPage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := docgate.ParseOwed(string(page))
+	if err != nil {
+		t.Fatal(err)
+	}
+	owed, fail := owedVerdict(entries, rule, msg)
+	if fail != "" {
+		t.Error(fail)
+		return
+	}
+	t.Log(owed)
+	fmt.Println(owed)
+}
+
+// TestOwedVerdictGoesRed plants an owed-exempt sentence whose rule has no
+// owed entry, and one whose entry names no PR: both fail.
+func TestOwedVerdictGoesRed(t *testing.T) {
+	msg := "a sentence the code does not do yet"
+	if _, fail := owedVerdict(nil, "R16", msg); fail == "" {
+		t.Error("a sentence with no owed entry was let through")
+	}
+	noPR := []docgate.OwedEntry{{Entry: "R16", State: "owed"}}
+	if _, fail := owedVerdict(noPR, "R16", msg); fail == "" {
+		t.Error("an owed entry naming no PR let a sentence through")
+	}
+	other := []docgate.OwedEntry{{Entry: "R14", State: "owed", PRs: []int{4764}}}
+	if _, fail := owedVerdict(other, "R16", msg); fail == "" {
+		t.Error("an entry for another rule let the sentence through")
+	}
+	ok := []docgate.OwedEntry{{Entry: "R16", State: "owed", PRs: []int{4764}}}
+	owed, fail := owedVerdict(ok, "R16", msg)
+	if fail != "" || !strings.HasPrefix(owed, "OWED R16 #4764") {
+		t.Errorf("an owed entry naming its PR: owed %q, fail %q", owed, fail)
 	}
 }
 

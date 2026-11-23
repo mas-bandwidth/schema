@@ -23,17 +23,24 @@ JAVAC ?= $(CURDIR)/dist/jdk-21.0.12.1/Contents/Home/bin/javac
 toolchain-java:
 	@$(call toolchain_probe,java,JAVA,$(JAVA))
 	@$(call toolchain_probe,java,JAVAC,$(JAVAC))
-build/packet-defaults/java/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema make/java.mk
+build/packet-defaults/java/.stamp: bin/schema test/packet-defaults/Defaults.schema test/packet-defaults/Plain.schema $(wildcard test/conformance/packet/testdata/constant-defaults/*/Defaults.schema) make/java.mk
 	./bin/schema generate --lang java --out build/packet-defaults/java/defaults test/packet-defaults/Defaults.schema
+	./bin/schema generate --lang java --out build/packet-defaults/java/constant-hexadecimal-addition test/conformance/packet/testdata/constant-defaults/hexadecimal-addition/Defaults.schema
+	./bin/schema generate --lang java --out build/packet-defaults/java/constant-unsigned-subtraction test/conformance/packet/testdata/constant-defaults/unsigned-subtraction/Defaults.schema
 	./bin/schema generate --lang java --out build/packet-defaults/java/plain test/packet-defaults/Plain.schema
 	@touch $@
 
+JAVA_CONSTANT_PINS := hexadecimal-addition=build/packet-defaults/java/constant-hexadecimal-addition-classes unsigned-subtraction=build/packet-defaults/java/constant-unsigned-subtraction-classes
 .PHONY: packet-defaults-java packet-defaults-java-negative-control
 packet-defaults-java: build/packet-defaults/java/.stamp packet-defaults-cpp
 	@mkdir -p build/packet-defaults/java/classes
 	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-defaults/java/classes build/packet-defaults/java/defaults/*.java build/packet-defaults/java/plain/*.java test/packet-defaults/java/Main.java
-	$(JAVA) -ea -cp build/packet-defaults/java/classes Main testdata/wire/packet-defaults
-	$(JAVA) -cp build/packet-defaults/java/classes Main testdata/wire/packet-defaults
+	@for n in hexadecimal-addition unsigned-subtraction; do \
+		mkdir -p build/packet-defaults/java/constant-$$n-classes && \
+		$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-defaults/java/constant-$$n-classes build/packet-defaults/java/constant-$$n/*.java || exit 1; \
+	done
+	$(JAVA) -ea -cp build/packet-defaults/java/classes Main testdata/wire/packet-defaults $(JAVA_CONSTANT_PINS)
+	$(JAVA) -cp build/packet-defaults/java/classes Main testdata/wire/packet-defaults $(JAVA_CONSTANT_PINS)
 
 packet-defaults-java-negative-control: packet-defaults-java
 	@mkdir -p build/packet-defaults/java-negative/classes
@@ -44,7 +51,7 @@ packet-defaults-java-negative-control: packet-defaults-java
 	go build -overlay=build/packet-defaults/java-negative/overlay.json -o build/packet-defaults/java-negative/schema ./cmd/schema
 	./build/packet-defaults/java-negative/schema generate --lang java --out build/packet-defaults/java-negative/generated test/packet-defaults/Defaults.schema
 	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-defaults/java-negative/classes build/packet-defaults/java-negative/generated/*.java build/packet-defaults/java/plain/*.java test/packet-defaults/java/Main.java
-	@if $(JAVA) -cp build/packet-defaults/java-negative/classes Main testdata/wire/packet-defaults > build/packet-defaults/java-negative/log 2>&1; then \
+	@if $(JAVA) -cp build/packet-defaults/java-negative/classes Main testdata/wire/packet-defaults $(JAVA_CONSTANT_PINS) > build/packet-defaults/java-negative/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: missing constructor bytes passed in Java'; exit 1; fi
 	@grep -Fq 'packet-default constructor bytes' build/packet-defaults/java-negative/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: Java failed for another reason'; cat build/packet-defaults/java-negative/log; exit 1; }
