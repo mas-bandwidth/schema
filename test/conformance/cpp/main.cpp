@@ -2058,6 +2058,11 @@ static bool write_refusal_set( const std::string & root, void * value, const std
                                const std::string & kind, const std::string & text )
 {
     const long long n = strtoll( text.c_str(), NULL, 10 );
+    if ( root == "CountedMin" && path == "few" && kind == "count" )
+    {
+        ((tabledemo::CountedMin *) value)->few_count = (int32_t) n;
+        return true;
+    }
     if ( root == "RootConfig" )
     {
         tabledemo::RootConfig & v = *(tabledemo::RootConfig *) value;

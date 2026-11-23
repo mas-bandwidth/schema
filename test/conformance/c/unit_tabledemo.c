@@ -41,6 +41,11 @@ int conformance_write_refusal_set_tabledemo( const char * root, void * value, co
                                              const char * kind, const char * text )
 {
     const long long n = strtoll( text, NULL, 10 );
+    if ( strcmp( root, "CountedMin" ) == 0 && strcmp( path, "few" ) == 0 && strcmp( kind, "count" ) == 0 )
+    {
+        ((tabledemo_counted_min_t *) value)->few_count = (int32_t) n;
+        return 1;
+    }
     if ( strcmp( root, "RootConfig" ) == 0 )
     {
         tabledemo_root_config_t * v = (tabledemo_root_config_t *) value;
