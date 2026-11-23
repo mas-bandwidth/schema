@@ -2876,6 +2876,11 @@ Uint8List? jsonReadSave(String unit, String root, String text) {
       final v = mapdemo.docsFromJson(text, rep);
       if (rep.refused) return null;
       return mapdemo.docsWireSave(v);
+    case 'mapdemo EdgeRow':
+      final rep = mapdemo.TableTextReport();
+      final v = mapdemo.edgeRowFromJson(text, rep);
+      if (rep.refused) return null;
+      return mapdemo.edgeRowWireSave(v);
     case 'mapdemo Fleet':
       final rep = mapdemo.TableTextReport();
       final v = mapdemo.fleetFromJson(text, rep);
@@ -3308,6 +3313,11 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
       final v = mapdemo.docsWireLoad(wire, rep);
       if (rep.refused) return null;
       return mapdemo.docsToJson(v);
+    case 'mapdemo EdgeRow':
+      final rep = mapdemo.TableWireReport();
+      final v = mapdemo.edgeRowWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return mapdemo.edgeRowToJson(v);
     case 'mapdemo Fleet':
       final rep = mapdemo.TableWireReport();
       final v = mapdemo.fleetWireLoad(wire, rep);
