@@ -52,6 +52,7 @@ class MessageUnitFacts:
     announcement:string = ""
     build_version:int = 0
     registered:bool = false
+    announce_too_large:bool = false
     roots:[string] = []
     fields:[MessageSlots] = []
     arms:[MessageSlots] = []
@@ -62,12 +63,13 @@ let message_facts = MessageUnitFacts {}
 // message_unit registers the unit's announcement and build version
 // (§3.3, "THE WHOLE ANNOUNCEMENT IS A COMPILE-TIME CONSTANT OF THE UNIT").
 // Every table module of the unit registers the same two facts.
-def message_unit(announcement:string, build_version:int) -> int:
+def message_unit(announcement:string, build_version:int, too_large:bool) -> int:
     if message_facts.registered:
         assert message_facts.announcement == announcement and message_facts.build_version == build_version
         return 0
     message_facts.announcement = announcement
     message_facts.build_version = build_version
+    message_facts.announce_too_large = too_large
     message_facts.registered = true
     return 1
 
@@ -222,9 +224,13 @@ def message_kind_bits(k:int) -> int:
 // announce_measure and announce are the unit's announcement, a constant
 // (§3.3): a backend emits it as a byte array rather than as a walk.
 def announce_measure() -> int:
+    if message_facts.announce_too_large:
+        return -1
     return length(message_facts.announcement)
 
 def announce() -> string:
+    if message_facts.announce_too_large:
+        return ""
     return message_facts.announcement
 
 def message_refuse(rep:LoadReport, reason:string) -> bool:

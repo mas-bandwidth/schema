@@ -101,6 +101,7 @@ var catalog = []Entry{
 	e("internal/goname", "Go member spelling (initialisms)", "go test ./internal/goname", "go test ./internal/goname"),
 	e("internal/goldens", "source, id, and wire pins", "go test ./internal/goldens", "make update-goldens"),
 	e("internal/inputfamilies", "shared test-input families and derived reader legs", "go test ./internal/inputfamilies", "go test ./internal/inputfamilies"),
+	e("internal/idcapwire", "the retain-writer id cap test file builder", "go test ./internal/tablewire", "go test ./internal/tablewire"),
 	e("internal/jsontestsuite", "JSONTestSuite oracle harness", "go test ./internal/tabletext", "go test ./internal/tabletext -run JSONTestSuite"),
 	e("internal/languages", "the supported-language list, derived", "go test ./internal/languages", "go test ./internal/languages"),
 	e("internal/listwalk", "unbounded-array walk", "go test ./internal/listwalk", "go test ./internal/listwalk"),
