@@ -1744,7 +1744,7 @@ namespace Tabledemo
             static bool ScanPointerKey(ReadOnlySpan<byte> text, ref In input, out bool isNode)
             {
                 isNode = false;
-                Span<byte> key = stackalloc byte[MaxName];
+                Span<byte> key = input.KeyBuf;
                 if (!ScanString(text, ref input, key, true, out int used, stored: true)) { return false; }
                 if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
                 input.Pos++;
@@ -2745,7 +2745,7 @@ namespace Tabledemo
             static bool ScanUnionKey(ReadOnlySpan<byte> text, ref In input, TableFieldInfo f, out int tag)
             {
                 tag = 0;
-                Span<byte> key = stackalloc byte[MaxName];
+                Span<byte> key = input.KeyBuf;
                 int keyLength;
                 if (!ScanString(text, ref input, key, true, out keyLength, stored: true)) { return false; }
                 if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
@@ -3233,9 +3233,9 @@ namespace Tabledemo
                 // The schema fixes the vocabulary size. Small schemas use the
                 // stack; larger ones still count every duplicate exactly.
                 int words = (f.ArrayBound + 63) / 64;
-                Span<ulong> seen = words <= 8 ? stackalloc ulong[words] : new ulong[words];
-                seen.Clear();
-                Span<byte> key = stackalloc byte[MaxName];
+                ulong seen0 = 0;
+                ulong[] seenBig = words > 1 ? new ulong[words] : null;
+                Span<byte> key = input.KeyBuf;
                 System.Collections.Generic.HashSet<string> unplaced = null;
                 for (; ; )
                 {
@@ -3258,8 +3258,16 @@ namespace Tabledemo
                     if (slot >= 0)
                     {
                         ulong bit = 1ul << (slot & 63);
-                        if ((seen[slot >> 6] & bit) != 0) { return RefuseText(ref input, "duplicate"); }
-                        seen[slot >> 6] |= bit;
+                        if (seenBig == null)
+                        {
+                            if ((seen0 & bit) != 0) { return RefuseText(ref input, "duplicate"); }
+                            seen0 |= bit;
+                        }
+                        else
+                        {
+                            if ((seenBig[slot >> 6] & bit) != 0) { return RefuseText(ref input, "duplicate"); }
+                            seenBig[slot >> 6] |= bit;
+                        }
                     }
                     if (slot < 0)
                     {
@@ -3294,7 +3302,7 @@ namespace Tabledemo
             static bool ScanTableKey(ReadOnlySpan<byte> text, ref In input, TableTypeInfo info, out int index, out bool isAmp, out string unknownKey)
             {
                 index = -1; isAmp = false; unknownKey = null;
-                Span<byte> key = stackalloc byte[MaxName];
+                Span<byte> key = input.KeyBuf;
                 int keyLength;
                 if (!ScanString(text, ref input, key, true, out keyLength, stored: true)) { return false; }
                 if (Peek(text, ref input) != ':') { input.Bad = true; return false; }
@@ -3763,7 +3771,6 @@ namespace Tabledemo
                         case 13:
                         case 14:
                         case 16:
-                        case 31:
                         case 32:
                             return Slice(out _);
                         case 15:
@@ -4013,7 +4020,6 @@ namespace Tabledemo
                             return true;
                         case 15: return Union(buf, ref off);
                         case 12:
-                        case 31:
                         case 32:
                         case 13:
                         case 14:
@@ -4033,7 +4039,6 @@ namespace Tabledemo
                     switch (kind)
                     {
                         case 12: return TextValid(b) || Damage();
-                        case 31: return true;
                         case 32: return b.Length == 0 || Damage();
                         case 13:
                         case 14:
@@ -4741,7 +4746,7 @@ namespace Tabledemo
 
             static int BitCount(ulong n) { return n == 0 ? 0 : System.Numerics.BitOperations.Log2(n) + 1; }
             static bool Reserved(ulong id) { return id >= ulong.MaxValue - 2; }
-            static bool MessageKind(byte kind) { return kind <= 32 || kind == 36; }
+            static bool MessageKind(byte kind) { return kind <= 30 || kind == 32 || kind == 36; } // 31 is held by name, never written (R17): an announcement naming it is malformed, as one naming 33 or 34 is
             static bool MessageNumber(byte kind) { return kind >= 2 && kind <= 9 || kind >= 18 && kind <= 29; }
             static bool Signed(byte kind) { return kind >= 2 && kind <= 5 || kind == 18 || kind >= 20 && kind <= 24; }
             static int ValueBits(byte kind, TableMessageShape s)
@@ -5105,8 +5110,6 @@ namespace Tabledemo
                         if (!r.Get(BitCount(shape.Max), out UInt128 length) || !r.Align() || length > (ulong)((r.End - r.At) / 8)) { return false; }
                         if (!TextValid(r.Bytes.Slice((int)(r.At / 8), (int)length))) { return false; }
                         r.At += (long)length * 8; return true;
-                    case 31:
-                        return r.Align() && r.Get(32, out UInt128 opaque) && r.Skip((long)opaque * 8);
                     case 14:
                     case 16:
                         ulong min = kind == 16 ? 0 : shape.Min;

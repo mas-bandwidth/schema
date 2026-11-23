@@ -230,7 +230,7 @@ var irFacts = map[string]classified{
 	"FieldType.Name":      rows("pointer retargeted", "enum made its raw integer"),
 	"FieldType.Ref":       rows("pointer retargeted", "enum variant removed", "union arm removed", "flags variant moved"),
 	"FieldType.Pointer":   rows("pointer retargeted", "byte buffer made a text buffer"),
-	"FieldType.Optional":  not("T and ?T share framing and absorb each other in both directions (§2.3, §18.2); TestBaselineAllowsOptionalEvolution"),
+	"FieldType.Optional":  not("T and ?T share variable framing, so no read refuses the move; the baseline holds it one way, refusing ?T to T (R16, §4, §18.2): TestBaselineOptionalIsOneWay"),
 	"FieldType.Timestamp": rows("timestamp made an integer"),
 	"FieldType.Unbounded": rows("map key capacity declared"),
 	// ---- ir.Enum ----

@@ -290,6 +290,8 @@ fn wref_parse_f64(s: const u8[:]) -> f64 {
     while e10 < 0 { m = m / 10.0; e10 += 1; }
     return if neg { -m } else { m };
 }
+// A decimal that overflows the destination width becomes a typed infinity.
+// Let the writer check it, as it does for the explicit infinity fixtures.
 fn wref_f32(s: const u8[:]) -> f32 {
     if s == "nan" { return wref_f32_bits(0x7fc00000); }
     if s == "inf" { return wref_f32_bits(0x7f800000); }

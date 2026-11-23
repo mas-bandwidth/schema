@@ -2579,6 +2579,7 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_JSON_NOINLINE int tabledemo_table_json_rea
     int64_t length = 0;
     int integral = 0;
     char textbuf[192]; /* a wide fixed's string spelling: 128 fraction digits, a whole part, a sign and a point */
+    (void) depth;
     if ( tabledemo_table_json_is_enum( f ) )
     {
         char name[TABLEDEMO_K_TABLE_JSON_MAX_KEY];

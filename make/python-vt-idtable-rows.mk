@@ -8,8 +8,8 @@
 #
 # python-vt-idtable-rows-negative-control: in copies of the emitted runtime,
 # one fault at a time, the fixed save's layout hash is one bit off, the fixed
-# read's record-hash test is inverted, and the variable read refuses an escape
-# it cannot name; the cases each covers must go red. Both need the pins, so
+# read's record-hash test is inverted, and the variable read skips an
+# unnamed kind 31 by its L as the removed escape did (R17); the cases each covers must go red. Both need the pins, so
 # test-python depends on them, and the control is registered in
 # make/negative-controls.d/python-vt-idtable-rows-negative-control.json.
 .PHONY: python-vt-idtable-rows python-vt-idtable-rows-negative-control

@@ -829,10 +829,6 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 	if err := deriveManifest(m, derived); err != nil {
 		return false, err
 	}
-	sent, err := sentRows(derived)
-	if err != nil {
-		return false, err
-	}
 
 	want := map[string][]expectation{}
 	for _, s := range surfaces {
@@ -904,6 +900,10 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 		}
 		if len(notOptedIn) > 0 {
 			_, _ = io.WriteString(w, "conformance OPT-IN "+d.lang+": `list` names no unit "+strings.Join(notOptedIn, ", ")+", so its rows count absent\n")
+		}
+		sent, err := sentRows(legDerived)
+		if err != nil {
+			return false, err
 		}
 		type surfaceRun struct {
 			surface string
@@ -1079,7 +1079,10 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 			// a different corpus (a stale manifest, a renamed case, a typo in
 			// its own case table), and a harness that only reads the files it
 			// expects would never see it.
-			for _, name := range strayAnswers(out, sent, legWant) {
+			asked := slices.DeleteFunc(slices.Clone(legWant), func(e expectation) bool {
+				return notAsked.has(s, e.name)
+			})
+			for _, name := range strayAnswers(out, sent, asked) {
 				r.failures = append(r.failures, fmt.Sprintf(
 					"%s: the driver answered a row the corpus did not send on the %s surface", name, s))
 			}

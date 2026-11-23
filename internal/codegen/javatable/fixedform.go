@@ -1129,7 +1129,7 @@ func fixedCheckField(f *ir.Field, val, ind string) []string {
 // packet emitter's emitCheck128Ranged — and every other slot is one assert
 // of fixedCheckElement, or no lines when the slot admits every value its
 // storage holds (a bool, an unranged float — row 7 is the save's finite pass — a bare
-// uint128, a flags mask, a nested table or union, which assert their own).
+// uint128, a flags mask of 64 bits, a nested table or union, which assert their own).
 func fixedCheckSlot(f *ir.Field, e, ind string) []string {
 	typ := fixedScalarType(f.Type)
 	if typ == "Int128" || typ == "UInt128" {
@@ -1191,6 +1191,11 @@ func fixedCheckElement(f *ir.Field, e string) string {
 	if f.Type.Kind == ir.TNamed {
 		if r, ok := f.Type.Ref.(*ir.Enum); ok {
 			return fmt.Sprintf("%s >= 0 && %s <= %d", e, e, len(r.Variants))
+		}
+		// A FLAGS MASK HOLDS TO ITS WIDTH W (docs/SPEC-TABLES.md §4): a save never
+		// stores a bit its own load refuses
+		if r, ok := f.Type.Ref.(*ir.Flags); ok && r.WireBits < 64 {
+			return fmt.Sprintf("(%s >>> %d) == 0L", e, r.WireBits)
 		}
 		return ""
 	}
@@ -1748,6 +1753,19 @@ func (g *fixedGen) emitScatterElement(f *ir.Field, off int64, buf, at, expr, rep
 			g.pf("%s}\n", ind)
 			return
 		case *ir.Flags:
+			if r.WireBits < 64 {
+				// A MASK BIT AT OR ABOVE THE READER'S W REFUSES out_of_range
+				// (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH),
+				// on the identity plan and a compiled one alike. The bits past W
+				// are dropped only so the refused record holds no bit its type
+				// cannot name, as an ordinal past the last variant lands None.
+				g.pf("%s{\n", ind)
+				g.pf("%s    long q = TableFixed.get64(%s, %s + %d);\n", ind, buf, at, off)
+				g.pf("%s    if ((q >>> %d) != 0L) { q &= 0x%xL; %s }\n", ind, r.WireBits, (uint64(1)<<uint(r.WireBits))-1, scatterRefuse(rep, walked, "outOfRange"))
+				g.pf("%s    %s = q;\n", ind, expr)
+				g.pf("%s}\n", ind)
+				return
+			}
 			g.pf("%s%s = TableFixed.get64(%s, %s + %d);\n", ind, expr, buf, at, off)
 			return
 		}

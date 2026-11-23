@@ -888,7 +888,8 @@ file that names forty ids across ten thousand fields carries forty ids and
 spends one byte a header on the reference. A length whose own width moves
 cannot be patched in place, so every body's length is MEASURED before it rides.
 Three kinds ride with it: `30` an enum, carrying the reference to its variant
-name's id; `31` the escape; `32` the payload-free arm. An ARM HEADER IS A FIELD
+name's id; `32` the payload-free arm; `31` is held by name, never written, and met
+only as damage (R17). An ARM HEADER IS A FIELD
 HEADER and carries the arm's kind. The node table rides in ONE field under the
 reserved id `0xFFFFFFFFFFFFFFFF`, whose 64-bit `L` frames a numbering of any
 size. The form byte is read FIRST, so a byte a reader does not know is a

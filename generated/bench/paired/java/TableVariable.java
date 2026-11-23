@@ -385,7 +385,6 @@ public final class TableVariable {
                 case 13:
                 case 14:
                 case 16:
-                case 31:
                 case 32:
                     {
                         long n = leb();
@@ -1287,7 +1286,6 @@ public final class TableVariable {
                 case 13:
                 case 14:
                 case 16:
-                case 31:
                 case 32:
                     {
                         long n = leb(off, end);
@@ -1354,7 +1352,6 @@ public final class TableVariable {
                 case 13:
                 case 14:
                 case 16:
-                case 31:
                 case 32:
                     {
                         long n = leb(off, end);
@@ -1385,8 +1382,6 @@ public final class TableVariable {
             switch (kind) {
                 case 12:
                     return textValid(buf, off, end - off) || damage();
-                case 31:
-                    return true; // opaque: the one kind whose meaning a reader may not know (§3)
                 case 32:
                     return end == off || damage();
                 case 13:
@@ -1854,7 +1849,6 @@ public final class TableVariable {
             case 13:
             case 14:
             case 16:
-            case 31:
             case 32:
                 {
                     int e = lebEnd(buf, off, limit);

@@ -1208,8 +1208,16 @@ func (in *tableJSONIn) scanText(out []byte, zero bool) (int32, bool) {
 			}
 			in.pos += n
 		}
+		// A MEASURED LENGTH SATURATES at the int32 top rather than wrapping
+		// negative: a string of 2 GiB or more is then longer than every
+		// bound a caller holds it to (the 255-byte name cap, a scratch
+		// buffer), and never a negative length a slice would panic on
 		if out == nil {
-			placed += unitLength
+			if placed > 0x7fffffff-unitLength {
+				placed = 0x7fffffff
+			} else {
+				placed += unitLength
+			}
 			continue
 		}
 		if !clamped && placed+unitLength <= int32(len(out)) {
@@ -1695,9 +1703,12 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 				break
 			}
 		}
+		// DEPTH (mas-bandwidth/schema docs/SPEC-TABLES.md §16.2): the holder is at depth, the
+		// union object at depth+1 and the arm's value at depth+2, where an
+		// unknown or mismatched arm's value is skipped
 		if tag == 0 {
 			in.report.Unknown++
-			if !in.skipValue(depth + 1) {
+			if !in.skipValue(depth + 2) {
 				return false
 			}
 		} else {
@@ -1708,7 +1719,7 @@ func tableJSONReadScalar(in *tableJSONIn, storage unsafe.Pointer, f *TableFieldI
 			}
 			if !tableJSONShapeMatches(want, in.valueShape()) && !(arm.Field.Pointer && !arm.Field.IsArray && in.valueShape() == 'z') {
 				in.report.Refuse(TableRefuseKindMismatch, "")
-				if !in.skipValue(depth + 1) {
+				if !in.skipValue(depth + 2) {
 					return false
 				}
 			} else {
@@ -2196,7 +2207,7 @@ func tableJSONReadField(in *tableJSONIn, base unsafe.Pointer, f *TableFieldInfo,
 					in.report.Refuse(TableRefuseMalformed, "")
 				}
 				in.report.Unknown++
-				if !in.skipValue(depth + 1) {
+				if !in.skipValue(depth + 2) {
 					return false
 				}
 			case !tableJSONShapeMatches(shape, in.valueShape()) && !(f.Pointer && in.valueShape() == 'z'):
@@ -2224,7 +2235,8 @@ func tableJSONReadField(in *tableJSONIn, base unsafe.Pointer, f *TableFieldInfo,
 		return true
 	}
 	if f.IsArray {
-		if in.peek() != '[' {
+		// array counts one depth level even when empty (FL-12)
+		if depth+1 > tableJSONMaxDepth || in.peek() != '[' {
 			in.bad = true
 			return false
 		}
@@ -3070,11 +3082,15 @@ func tableJSONReadPointer(in *tableJSONIn, slot *int64, f *TableFieldInfo, depth
 			hasLabel = true
 		}
 	}
+	// after the label, "," then fields DEFINES it, and "}" alone, a trailing "," allowed (§16.2), REFERS to it
 	if hasLabel {
 		entry, exists := in.graph.getLabel(label)
 		if exists && entry.open {
 			in.bad = true
 			return false
+		}
+		if probe.peek() == ',' {
+			probe.pos++
 		}
 		if probe.peek() == '}' {
 			if !exists {
@@ -3093,11 +3109,6 @@ func tableJSONReadPointer(in *tableJSONIn, slot *int64, f *TableFieldInfo, depth
 			return true
 		}
 		if exists {
-			in.bad = true
-			return false
-		}
-		probe.pos++
-		if probe.peek() == '}' {
 			in.bad = true
 			return false
 		}

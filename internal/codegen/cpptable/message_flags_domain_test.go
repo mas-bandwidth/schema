@@ -70,7 +70,7 @@ func cppMessageFlagsDomainRun(t *testing.T, plant bool) (string, error) {
 		for name, data := range files {
 			var out strings.Builder
 			for _, line := range strings.SplitAfter(string(data), "\n") {
-				if strings.Contains(line, "// message flags domain, debug only") {
+				if strings.Contains(line, "// message flags domain, debug only") || strings.Contains(line, "// a fixed flags mask held to W") {
 					hits++
 					continue
 				}

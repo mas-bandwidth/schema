@@ -583,6 +583,12 @@ func (g *gen) fixedScalarWriteCheck(f *ir.Field, expr string, width int64, ind s
 		if extent, ranged := fixedEnumExtent(f, width); ranged {
 			g.pf("%sdebug_assert!(%s <= %d, \"%s ordinal exceeds the enum's extent\");\n", ind, expr, extent, f.Name)
 		}
+		if w, held := fixedFlagsWidth(f); held {
+			// A FLAGS MASK IS HELD TO W (docs/SPEC-TABLES.md §4, A TABLE LOAD
+			// HOLDS A MASK TO ITS WIDTH): its own reader refuses a bit at or
+			// above W, so a writer never writes one.
+			g.pf("%sdebug_assert!(%s >> %d == 0, \"%s has a flags bit at or above its width %d\");\n", ind, expr, w, f.Name, w)
+		}
 		return
 	}
 	at := expr
@@ -871,13 +877,20 @@ func (g *gen) emitFixedScatterElement(f *ir.Field, at, dst string, indent int) {
 		read := fmt.Sprintf("%s::from_le_bytes(b[at..at + %d].try_into().expect(\"the declared width\"))", raw, width)
 		slot := g.fixedSlotType(f)
 		_, wide := fixedWide128(f)
-		if _, ranged := fixedEnumExtent(f, width); binding && !wide && !ranged && slot == raw {
+		_, flagsHeld := fixedFlagsWidth(f)
+		if _, ranged := fixedEnumExtent(f, width); binding && !wide && !ranged && !flagsHeld && slot == raw {
 			// the raw image IS the value: the block's value is the read itself
 			g.pf("%s", set(ind+"    ", read))
 			g.pf("%s};\n", ind)
 			return
 		}
 		g.pf("%s    let raw = %s;\n", ind, read)
+		if w, held := fixedFlagsWidth(f); held {
+			// A MASK BIT AT OR ABOVE THE READER'S W IS OUT OF RANGE
+			// (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH):
+			// it counts one held, and a held value refuses the whole batch.
+			g.pf("%s    if raw >> %d != 0 && report.slack == 0 {\n%s        report.held += 1;\n%s    }\n", ind, w, ind, ind)
+		}
 		held := "raw"
 		if wrap, wide := fixedWide128(f); wide {
 			// the aligned wrapper takes the integer, and a signed one takes it
@@ -1086,6 +1099,19 @@ func (g *gen) emitFixedDeadUnion(un *ir.Union) {
 		g.pf("            false\n        }\n")
 	}
 	g.pf("        _ => false,\n    }\n}\n\n")
+}
+
+// fixedFlagsWidth is a flags field's W when a mask can carry a bit at or
+// above it (W < 64): the read holds the mask to W and the write asserts it.
+func fixedFlagsWidth(f *ir.Field) (int, bool) {
+	if f == nil || f.Type.Kind != ir.TNamed {
+		return 0, false
+	}
+	fl, ok := f.Type.Ref.(*ir.Flags)
+	if !ok || fl.WireBits >= 64 {
+		return 0, false
+	}
+	return fl.WireBits, true
 }
 
 // fixedEnumExtent answers an ENUM leaf's top wire value and whether a range

@@ -377,7 +377,7 @@ func (r *TableReader) Skip(kind uint8) bool {
 	switch kind {
 	case 17,30:
 		_, ok := r.Leb(); return ok
-	case 12,13,14,16,31,32:
+	case 12,13,14,16,32:
 		_, ok := r.Body(); return ok
 	case 15:
 		ref, ok := r.Leb()

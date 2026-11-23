@@ -2123,7 +2123,7 @@ const messageRuntimeBody = `  defstruct announced: false,
       kind in [17, 30] ->
         leb_rest(bin)
 
-      kind in [12, 13, 14, 16, 31, 32] ->
+      kind in [12, 13, 14, 16, 32] ->
         body(bin)
 
       kind == 15 ->
@@ -2279,7 +2279,9 @@ const messageRuntimeBody = `  defstruct announced: false,
 
   defp read_element(_kind, _id, _s, _), do: :error
 
-  defp known_kind?(kind), do: (kind >= 0 and kind <= 32) or kind == 36
+  # 31 is held by name and never written (R17): an announcement naming it is
+  # malformed, as one naming 33 or 34 is
+  defp known_kind?(kind), do: (kind >= 0 and kind <= 30) or kind == 32 or kind == 36
 
   defp base_inside_kind?(kind, base) do
     dom = kind_bits(kind)
@@ -2671,6 +2673,16 @@ const messageArmKnownUnion = "  defp arm_known?({:union, name}, id),\n    do: @m
 // of them, and nil for every other field, an enum-keyed array included. Only a
 // DECLARED range is held here, as the Go engine's message read holds it.
 func messageReadRange(f *ir.Field) string {
+	if fl, ok := f.Type.Ref.(*ir.Flags); ok && f.Type.Kind == ir.TNamed && fl.WireBits < 64 && !f.IsMap() && !f.Type.Pointer && f.KeyEnum == "" {
+		// A MASK HOLDS TO W, the reader's own width (docs/SPEC-TABLES.md §4, A
+		// TABLE LOAD HOLDS A MASK TO ITS WIDTH): a newer writer announces a
+		// wider mask, and a bit at or above W refuses the batch
+		hi := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(fl.WireBits)), big.NewInt(1))
+		if f.Array != ir.ArrayNone {
+			return fmt.Sprintf("{:each, 0, %s}", hi.String())
+		}
+		return fmt.Sprintf("{0, %s}", hi.String())
+	}
 	if !f.HasIntRange || f.IsMap() || f.Type.Pointer || f.KeyEnum != "" {
 		return "nil"
 	}

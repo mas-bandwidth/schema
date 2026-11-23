@@ -280,7 +280,7 @@ report parts_index_out_of_range streamdemo Feed testdata/wire/tables/parts_index
 # AN ARRAY OF UNIONS read under §3's rules, as shared rows: two hand-built
 # ToolMessage bodies with one `history` field each. The element kind 13 where
 # the reader declares 15 is a kind mismatch and the field stays empty —
-# `[N]Body` ⇄ `[N]Table` is a reported edit; an arm id no build declares reads
+# `[N]Body` ⇄ `[N]Table` is refused by name, kind_mismatch; an arm id no build declares reads
 # as a None element, skipped by its length and counted, the slot kept live.
 # The bytes are pinned by the C++ leg (test/tables/main.cpp builds them).
 report batch_elem_kind   messagedemo ToolMessage testdata/wire/tables/batch_elem_kind.bin
@@ -330,12 +330,13 @@ instance optional_present_edge    tblg1 Guarded testdata/wire/tables/optional_pr
 report k1_as_k2  tblk2 Root testdata/wire/tables/k1_as_k2.bin
 report k2_as_k1  tblk1 Root testdata/wire/tables/k2_as_k1.bin
 
-# KIND 31 AND KIND 32, AT EVERY POSITION (§3). Where the reader meets them
-# decides which event it counts: at a position it CANNOT name the escape is
-# skipped by its L and counted unknown, and at a position it DOES name — a
-# field, an arm, an array's element kind — it is an ordinary kind mismatch, on
-# the rule every other kind already takes. The bytes are the reference leg's,
-# built from §3's grammar and pinned by test/tables/main.cpp.
+# KIND 31 AND KIND 32, AT EVERY POSITION (§3). Kind 31 is HELD BY NAME AND
+# NEVER WRITTEN (R17: the newer reader reads old data, never the other way),
+# so wherever a reader meets it — a field it cannot name, one it does, an arm,
+# an array's element kind — the whole load is refused, exactly as for 33
+# and 34. Kind 32 at a named field is an ordinary kind mismatch. The bytes
+# are the reference leg's, built from §3's grammar and pinned by
+# test/tables/main.cpp.
 report escape_unnamed_field   messagedemo ToolMessage testdata/wire/tables/escape_unnamed_field.bin
 report escape_named_field     messagedemo ToolMessage testdata/wire/tables/escape_named_field.bin
 report escape_arm             messagedemo ToolMessage testdata/wire/tables/escape_arm.bin
@@ -1695,10 +1696,14 @@ report varevo_v3_full_as_v1   tblvarevo1 EvoDoc testdata/conformance/tables/wire
 retain varevo_retain_v3_via_v1 tblvarevo1 EvoDoc testdata/conformance/tables/wire/varevo_v3_rollback.bin full full testdata/wire/tables/varevo_retain_v1_save.bin
 report varevo_rollback_as_v3   tblvarevo3 EvoDoc testdata/wire/tables/varevo_retain_v1_save.bin
 
-# Track C Part 1.1 — 2-Hop Multi-Generation Retention (v3 + Kind 31 -> v1 LoadRetain/SaveRetain -> v2 LoadRetain/SaveRetain -> v3):
-retain  varevo_2hop_step1_v1         tblvarevo1 EvoDoc testdata/wire/tables/varevo_2hop_v3_kind31.bin full full testdata/wire/tables/varevo_2hop_after_v1.bin
+# Track C Part 1.1 — 2-Hop Multi-Generation Retention, carrying Kind 31: every hop is REFUSED, as
+# kind 31 is held by name and never written (R17). The hop files stay as hostile inputs:
+# the kind 31 rides at the root of the first and inside retained bytes of the later two.
+retain  varevo_2hop_step1_v1         tblvarevo1 EvoDoc testdata/wire/tables/varevo_2hop_v3_kind31.bin full full refused
 report  varevo_2hop_step2_v2_report  tblvarevo2 EvoDoc testdata/wire/tables/varevo_2hop_after_v1.bin
-retain  varevo_2hop_step2_v2         tblvarevo2 EvoDoc testdata/wire/tables/varevo_2hop_after_v1.bin  full full testdata/wire/tables/varevo_2hop_after_v2.bin
+retain  varevo_2hop_step2_v2         tblvarevo2 EvoDoc testdata/wire/tables/varevo_2hop_after_v1.bin  full full refused
+# A reader that refuses every v2 EvoDoc must fail the retain control.
+retain  varevo_retain_v2_full         tblvarevo2 EvoDoc testdata/conformance/tables/wire/varevo_v2_full.bin full full testdata/wire/tables/varevo_retain_v2_full.bin
 report  varevo_2hop_step3_v3_report  tblvarevo3 EvoDoc testdata/wire/tables/varevo_2hop_after_v2.bin
 
 # Track C Part 1.2 — Pointer Cycles Hiding Through Unknown-Type Nodes (refused by BOTH Load and LoadRetain):
@@ -1716,11 +1721,11 @@ report  varevo_cycle_two_unknowns_report      tblvarevo1 EvoDoc testdata/wire/ta
 retain varevo_retain_default_containers tblvarevo1 EvoDoc testdata/conformance/tables/wire/varevo_v3_default_containers.bin full full testdata/wire/tables/varevo_retain_default_containers_v1.bin
 report varevo_default_containers_as_v3  tblvarevo3 EvoDoc testdata/wire/tables/varevo_retain_default_containers_v1.bin
 
-# Kind 31 future-major escape payloads (VERSIONING.md Rule #6): skip on framing/report, byte-exact preserve on retain, refuse truncated:
-framing varevo_kind31_escape    tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin    read    testdata/conformance/tables/framing/varevo_kind31_escape.json
+# Kind 31 is HELD BY NAME AND NEVER WRITTEN (R17; VERSIONING.md promise 6): refused on framing, report and retain alike:
+framing varevo_kind31_escape    tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin    refused -
 framing varevo_kind31_truncated tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_truncated.bin refused -
 report  varevo_kind31_report    tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin
-retain  varevo_kind31_retain    tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin    full full testdata/wire/tables/varevo_kind31_retain_save.bin
+retain  varevo_kind31_retain    tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin    full full refused
 
 # Form-2 Message Connection Vocabulary Drift (v1 -> v3 and v3 -> v1 multi-message batch skipping unknown alert mid-batch):
 connection varevo1_conn tblvarevo1 0x2a3013e4855f8026 testdata/wire/tables/varevo1_conn.bin
@@ -1743,56 +1748,115 @@ message-drift varevo_msg_v3_to_v1_batch tblvarevo1 varevo3_conn EvoMsg testdata/
 # (docs/rulings.json `refusal-verdict-only`).
 unit tblprior test/tables/prior/PriorNarrow.schema
 # a ranged int32
-message-prior prior_scalar_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"scalar":40} read
-message-prior prior_scalar_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"scalar":75} refused
+message-prior prior_scalar_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"scalar":40} read
+message-prior prior_scalar_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"scalar":75} refused
 # a ranged uint8
-message-prior prior_small_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"small":40} read
-message-prior prior_small_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"small":75} refused
+message-prior prior_small_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"small":40} read
+message-prior prior_small_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"small":75} refused
 # a ranged int64
-message-prior prior_wide_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"wide":"40"} read
-message-prior prior_wide_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"wide":"75"} refused
+message-prior prior_wide_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"wide":"40"} read
+message-prior prior_wide_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"wide":"75"} refused
 # bits(7) read as bits(5)
-message-prior prior_mask_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"mask":25} read
-message-prior prior_mask_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"mask":75} refused
+message-prior prior_mask_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"mask":25} read
+message-prior prior_mask_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"mask":75} refused
 # a fixed array element
-message-prior prior_pair_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"pair":[40,10]} read
-message-prior prior_pair_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"pair":[75,10]} refused
+message-prior prior_pair_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"pair":[40,10]} read
+message-prior prior_pair_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"pair":[75,10]} refused
 # a counted array element
-message-prior prior_list_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"list":[40,10]} read
-message-prior prior_list_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"list":[10,75]} refused
+message-prior prior_list_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"list":[40,10]} read
+message-prior prior_list_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"list":[10,75]} refused
 # an enum-keyed array element
-message-prior prior_keyed_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"keyed":{"X":40,"Y":10}} read
-message-prior prior_keyed_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"keyed":{"X":10,"Y":75}} refused
+message-prior prior_keyed_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"keyed":{"X":40,"Y":10}} read
+message-prior prior_keyed_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"keyed":{"X":10,"Y":75}} refused
 # a union arm scalar payload
-message-prior prior_arm_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"arm":{"amount":40}} read
-message-prior prior_arm_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"arm":{"amount":75}} refused
+message-prior prior_arm_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"arm":{"amount":40}} read
+message-prior prior_arm_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"arm":{"amount":75}} refused
 # a union arm record payload
-message-prior prior_arm_record_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"arm":{"inner":{"level":40}}} read
-message-prior prior_arm_record_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"arm":{"inner":{"level":75}}} refused
+message-prior prior_arm_record_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"arm":{"inner":{"level":40}}} read
+message-prior prior_arm_record_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"arm":{"inner":{"level":75}}} refused
 # a nested record field
-message-prior prior_nested_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"nested":{"level":40}} read
-message-prior prior_nested_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"nested":{"level":75}} refused
+message-prior prior_nested_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"nested":{"level":40}} read
+message-prior prior_nested_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"nested":{"level":75}} refused
 # a field of a nested table in an array
-message-prior prior_cells_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"cells":[{"depth":40},{"depth":10}]} read
-message-prior prior_cells_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"cells":[{"depth":10},{"depth":75}]} refused
+message-prior prior_cells_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"cells":[{"depth":40},{"depth":10}]} read
+message-prior prior_cells_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"cells":[{"depth":10},{"depth":75}]} refused
 # a quantized float
-message-prior prior_quant_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"quant":40.5} read
-message-prior prior_quant_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"quant":75.5} refused
+message-prior prior_quant_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"quant":40.5} read
+message-prior prior_quant_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"quant":75.5} refused
 # a ranged fixed-point value
-message-prior prior_fx_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"fx":40.5} read
-message-prior prior_fx_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"fx":75.5} refused
+message-prior prior_fx_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"fx":40.5} read
+message-prior prior_fx_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"fx":75.5} refused
 # a batch of two bodies (the writer value is a JSON array of them): when the
 # second carries a value past the reader's range the WHOLE batch refuses, the
 # lawful first body included, and no body is delivered
-message-prior prior_batch_inside tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 [{"mask":25},{"mask":30}] read
-message-prior prior_batch_past   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 [{"mask":25},{"mask":75}] refused
+message-prior prior_batch_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c [{"mask":25},{"mask":30}] read
+message-prior prior_batch_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c [{"mask":25},{"mask":75}] refused
 # A KIND THAT MOVED (§3.3, §4): the writer's int32 is the reader's int16 and
 # string(16), which the announcement shows and every reader refuses, never
 # defaulting the field and counting it; and the reader's
 # int64, the lawful widening, which every reader reads.
-message-prior prior_narrowed_kind   tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"narrowed":40} refused
-message-prior prior_retyped_kind    tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"retyped":40} refused
-message-prior prior_widened_inside  tblprior Prior test/tables/prior/PriorWide.schema 0xfb27790e8d5f1823 {"widened":40} read
+message-prior prior_narrowed_kind   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"narrowed":40} refused
+message-prior prior_retyped_kind    tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"retyped":40} refused
+message-prior prior_widened_inside  tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"widened":40} read
+# R14 (2026-11-22): A FIELD WHOSE TYPE CHANGED REFUSES THE WHOLE LOAD
+# kind_mismatch, because it is not a widening (docs/SPEC-TABLES.md §4, THE ONE
+# WIDENING RULE). Each refusal has its lawful twin beside it: the writer's
+# int64 read as the reader's string(16) refuses, and an int64 read as int64
+# reads; the writer's int64 read as the reader's timestamp refuses, and a
+# timestamp read as a timestamp reads.
+message-prior prior_restring_kind      tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"restring":"40"} refused
+message-prior prior_kept64_inside      tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"kept64":"40"} read
+message-prior prior_stamp_kind         tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"stamp":"1762086896123456789"} refused
+message-prior prior_stamped_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"stamped":"2025-11-02T12:34:56.123456789Z"} read
+# R15 (2026-11-22): A RANGED ANNOUNCEMENT IS HELD PER VALUE (§3.3). The writer
+# announces uint8 | min = 200, max = 250: base 200 in six bits, whose top
+# offsets pass 255, and that announcement is lawful. The base is held at the
+# announcement and each value on the body: 230 lies inside the reader's
+# min = 200, max = 240 and reads; 245 lies outside it and refuses.
+message-prior prior_band_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"band":230} read
+message-prior prior_band_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"band":245} refused
+# R17 (2026-11-22): a flags mask with a bit at or above the reader's W refuses the
+# WHOLE batch out_of_range (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO
+# ITS WIDTH). The writer's Perms is { Read, Write, Exec } and the reader's is
+# { Read, Write }: Read and Write reads, Read and Exec refuses.
+message-prior prior_flags_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"perms":["Read","Write"]} read
+message-prior prior_flags_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"perms":["Read","Exec"]} refused
+
+# R14 (2026-11-22) ON THE FILE FORM: a field whose TYPE changed refuses the
+# WHOLE load kind_mismatch, never defaulted and counted (docs/SPEC-TABLES.md
+# §2.3, §2.11, §4 THE ONE WIDENING RULE). The reader is featurewitnesses Root;
+# each writer is Features.schema with ONE declaration edited, under
+# test/tables/r14/<Writer>.schema, and its wire is schema pack --root Root
+# of test/tables/r14/<Writer>/Root.json under it. int64 read as timestamp
+# (AtInt64), *Part read as ?Part (OptionalPointer, from *T) and Leaf read as
+# *Leaf (ChildValue, to *T) each refuse. Their lawful twins read: the unit's
+# own Root.bin, and the R16 widening, Part read as ?Part (OptionalPlain),
+# whose value lands present.
+report r14_at_int64_as_timestamp        featurewitnesses Root testdata/wire/tables/r14_at_int64.bin
+report r14_optional_pointer_as_optional featurewitnesses Root testdata/wire/tables/r14_optional_pointer.bin
+report r14_child_value_as_pointer       featurewitnesses Root testdata/wire/tables/r14_child_value.bin
+report r14_features_twin                featurewitnesses Root testdata/conformance/feature-witnesses/full/Root.bin
+report r16_optional_plain_as_optional   featurewitnesses Root testdata/wire/tables/r16_optional_plain.bin
+rewrite r14_features_twin               featurewitnesses Root testdata/conformance/feature-witnesses/full/Root.bin
+rewrite r16_optional_plain_as_optional  featurewitnesses Root testdata/wire/tables/r16_optional_plain.bin
+
+# R17 (2026-11-22): A TABLE LOAD HOLDS A MASK TO ITS WIDTH (docs/SPEC-TABLES.md
+# §4). The newer reader reads old data, and never the other way: a flags mask
+# with a bit at or above the reader's W refuses the WHOLE load out_of_range.
+# The reader is tblvarevo1 EvoDoc (Perms { Read, Write }); the writer is
+# VarEvo2 (Perms { Read, Write, Exec }), and each wire is schema pack --root
+# EvoDoc of test/tables/r17/<Case>/EvoDoc.json under VarEvo2.schema. Read and
+# Exec refuses; the lawful twin, Read and Write from the same writer, reads.
+report r17_flags_past_width    tblvarevo1 EvoDoc testdata/wire/tables/r17_flags_past_width.bin
+report r17_flags_inside_width  tblvarevo1 EvoDoc testdata/wire/tables/r17_flags_inside_width.bin
+rewrite r17_flags_inside_width tblvarevo1 EvoDoc testdata/wire/tables/r17_flags_inside_width.bin
+# The FIXED form holds the same rule: r17_fixed_flags_past_width is
+# fixedevo_v3_min.bin with bit 17 of mask_widen set (EvoFlags has 17 variants,
+# so W = 17; byte 905, 0x00 to 0x02), and it refuses out_of_range; its twin is
+# the unforged file, which reads.
+report r17_fixed_flags_past_width   tblfixedevo EvoRoot testdata/wire/tables/r17_fixed_flags_past_width.bin
+report r17_fixed_flags_inside_width tblfixedevo EvoRoot testdata/conformance/tables/wire/fixedevo_v3_min.bin
+rewrite r17_fixed_flags_inside_width tblfixedevo EvoRoot testdata/conformance/tables/wire/fixedevo_v3_min.bin
 
 rewrite varevo_v1_as_v2                 tblvarevo2 EvoDoc testdata/conformance/tables/wire/varevo_v1_full.bin
 rewrite varevo_v1_as_v3                 tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_v1_full.bin
@@ -1800,12 +1864,8 @@ rewrite varevo_v1_ping_as_v3            tblvarevo3 EvoDoc testdata/conformance/t
 rewrite varevo_v2_as_v3                 tblvarevo3 EvoDoc testdata/conformance/tables/wire/varevo_v2_full.bin
 rewrite varevo_v3_compat_as_v1          tblvarevo1 EvoDoc testdata/conformance/tables/wire/varevo_v3_compat.bin
 rewrite varevo_rollback_as_v3           tblvarevo3 EvoDoc testdata/wire/tables/varevo_retain_v1_save.bin
-rewrite varevo_2hop_step2_v2_report     tblvarevo2 EvoDoc testdata/wire/tables/varevo_2hop_after_v1.bin
 rewrite fixed_array_rides_absent tblvarevo1 EvoDoc testdata/wire/tables/framing/fixed_array_rides_absent.bin
-rewrite varevo_2hop_step3_v3_report     tblvarevo3 EvoDoc testdata/wire/tables/varevo_2hop_after_v2.bin
 rewrite varevo_default_containers_as_v3 tblvarevo3 EvoDoc testdata/wire/tables/varevo_retain_default_containers_v1.bin
-rewrite varevo_kind31_escape            tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin
-rewrite varevo_kind31_report            tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin
 
 # ---- ROUND 2 & 3: PILLAR #3 COOK & BLOCK SIGNED/UNSIGNED EXTREMES, ALIGNMENT & FORGERY TORTURE ----
 unit cooktorture     test/tables/cooktorture/CookTorture.schema

@@ -923,7 +923,6 @@ final class TableWireReader {
       case 13:
       case 14:
       case 16:
-      case 31:
       case 32:
         final sl = readLeb();
         if (sl == null) return false;
@@ -1518,7 +1517,6 @@ final class TableWireReader {
       case 13:
       case 14:
       case 16:
-      case 31:
       case 32:
         final p = _wireLeb(buf, off);
         if (p == null || p.$1 < 0 || p.$1 > buf.length - p.$2) return -1;
@@ -1528,15 +1526,14 @@ final class TableWireReader {
     return -1;
   }
 
-  // _wireContent walks the length-bounded content of kinds 12-16 and 31-32
+  // _wireContent walks the length-bounded content of kinds 12-16 and 32
   // exactly as _wirePayload framed it.
   bool _wireContent(Uint8List b, int kind, List<int> out, int depth, [List<int>? order]) {
     switch (kind) {
       case 12:
         return _lebValid(b, 0, b.length);
-      case 31:
       case 32:
-        return kind != 32 || b.isEmpty;
+        return b.isEmpty;
       case 13:
         return depth < _kBinaryMaxDepth && _wireBody(b, false, out, depth + 1, order);
       case 14:
@@ -2110,7 +2107,6 @@ List<int>? _retainResolve(TableWireReader r, int kind, int depth) {
   if (w != 0) return _retainRaw(r, w);
   switch (kind) {
     case 12:
-    case 31:
     case 32:
       final len = r.readLeb();
       if (len == null || !r.has(len)) return null;
@@ -2163,6 +2159,7 @@ List<int>? _retainFramed(TableWireReader r, int kind, int depth) {
 
 List<int>? _retainContent(TableWireReader r, int kind, int depth) {
   switch (kind) {
+    case 31: // held by name, never written (R17): met only as damage
     case 17:
       return null;
     case 13:
@@ -2268,7 +2265,6 @@ List<int>? _retainEmitPayload(WireState state, int kind, _RetainCursor c, int de
   }
   switch (kind) {
     case 12:
-    case 31:
     case 32:
       final start = c.at;
       var len = 0;
@@ -2337,6 +2333,7 @@ List<int>? _retainEmitFramed(WireState state, int kind, _RetainCursor c, int dep
 
 List<int>? _retainEmitContent(WireState state, int kind, _RetainCursor c, int end, int depth) {
   switch (kind) {
+    case 31: // held by name, never written (R17): met only as damage
     case 17:
       return null;
     case 13:
@@ -2948,6 +2945,7 @@ void mixedEntityWireSaveBodyFields(TableWireWriter w, MixedEntity v) {
       default: w.putLeb(0);
     }
   }
+  assert((v.damage >>> 8) == 0);
   if (v.damage != 0) {
     w.putLeb(w.refFor(9179190079975030720));
     w.putByte(9);
@@ -3681,6 +3679,7 @@ void mixedEntityWireLoadBody(TableWireReader r, MixedEntity v, bool nested) {
             default:
               r.report.refuse('kind_mismatch'); return;
           }
+          if ((value >>> 8) != 0) { r.report.refuse('out_of_range'); return; }
           v.damage = value;
         }
         break;

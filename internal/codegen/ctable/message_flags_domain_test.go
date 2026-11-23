@@ -73,6 +73,19 @@ func cMessageFlagsDomainRun(t *testing.T, plant bool) (string, error) {
 			hits += len(gate.FindAll(data, -1))
 			files[name] = gate.ReplaceAll(data, []byte("/* SABOTAGED flags domain assertion */"))
 		}
+		// THE FIXED WRITE CHECK holds the same W (docs/SPEC-TABLES.md §4), and
+		// SaveMessages asserts it too, so the omission takes it as well
+		for name, data := range files {
+			var kept strings.Builder
+			for _, line := range strings.SplitAfter(string(data), "\n") {
+				if strings.Contains(line, "a fixed flags mask held to W") {
+					hits++
+					continue
+				}
+				kept.WriteString(line)
+			}
+			files[name] = []byte(kept.String())
+		}
 		if hits == 0 {
 			t.Fatal("flags assertion omission matched nothing")
 		}

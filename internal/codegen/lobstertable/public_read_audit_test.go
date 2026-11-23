@@ -34,7 +34,13 @@ func auditRun(t *testing.T, g *loadUnit, program string, inputs map[string][]byt
 	}
 }
 
-func TestLobsterAppendedFlagsStayWholeInFiles(t *testing.T) {
+// TestLobsterFlagsPastWidthRefusedByEveryWriter holds every writer to the
+// mask's width W (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS
+// WIDTH): a mask with a bit at or above W is refused by the checked fixed save,
+// the record saves of both file forms, the JSON writer and the message writer,
+// so a same-build round trip never writes what its own reader refuses. It
+// pinned the old rule (a file kept every mask bit and wrote it back) until R17.
+func TestLobsterFlagsPastWidthRefusedByEveryWriter(t *testing.T) {
 	t.Parallel()
 	g := auditUnit(t, `package audit
 flags Cap { Trace, Verbose }
@@ -49,21 +55,15 @@ import .message
 for([5, 0x8000000000000001, 0xffffffffffffffff]) bits:
     let typed = audit.NewFixed()
     typed.Cap = bits
-    let n, fixed_wire, fixed_reason = audit.FixedFixedSaveChecked([typed], schema_rt.zeros(audit.FixedFixedMeasure(1)))
-    assert n > 0 and fixed_reason == ""
-    let fixed = schema_rt.load("Fixed", fixed_wire, schema_rt.LoadReport {})
-    assert fixed and fixed.fields[0].cell.i == bits
-    let again, why = schema_rt.save_reasoned(fixed)
-    assert why == "" and again == fixed_wire
+    let n, _, fixed_reason = audit.FixedFixedSaveChecked([typed], schema_rt.zeros(audit.FixedFixedMeasure(1)))
+    assert n < 0 and fixed_reason == "invalid_value"
+    let fixed = schema_rt.new_record(audit.FixedDescriptor)
+    fixed.fields[0].cell.i = bits
     let variable = schema_rt.new_record(audit.VariableDescriptor)
     variable.fields[0].cell.i = bits
-    let wire, reason = schema_rt.save_reasoned(variable)
-    assert reason == ""
-    let loaded = schema_rt.load("Variable", wire, schema_rt.LoadReport {})
-    assert loaded and loaded.fields[0].cell.i == bits
-    let back, back_reason = schema_rt.save_reasoned(loaded)
-    assert back_reason == "" and back == wire
-    for([fixed, loaded]) rec:
+    for([fixed, variable]) rec:
+        let saved, reason = schema_rt.save_reasoned(rec)
+        assert saved == "" and reason != ""
         let text, text_reason = schema_rt.json_write(rec)
         assert text == "" and text_reason != ""
     assert schema_rt.measure_messages([fixed], schema_rt.LoadReport {}) < 0

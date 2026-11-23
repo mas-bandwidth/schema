@@ -478,7 +478,7 @@ function TableVariableSkip(r, kind) {
     case 4: case 8: case 10: case 22: case 27: { if (r.at + 4 > r.end) return false; r.at += 4; return true; }
     case 5: case 9: case 11: case 23: case 28: case 36: { if (r.at + 8 > r.end) return false; r.at += 8; return true; }
     case 18: case 19: case 24: case 29: { if (r.at + 16 > r.end) return false; r.at += 16; return true; }
-    case 12: case 13: case 14: case 16: case 31: case 32: {
+    case 12: case 13: case 14: case 16: case 32: {
       const L = r.leb(); if (r.bad) return false; if (r.at + L > r.end) return false; r.at += L; return true;
     }
     case 15: {
@@ -731,6 +731,18 @@ func unionOf(f *ir.Field) *ir.Union {
 		return un
 	}
 	return nil
+}
+
+// flagsWidth is a flags mask's W and the widest mask it admits
+// (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH): the
+// descriptor's bits/bmax, so the read refuses a mask bit at or above W
+// out_of_range and the writer refuses one in every build, exactly as they hold
+// a bits(N). W of 64 holds every mask, and bits stays 0.
+func flagsWidth(fl *ir.Flags) (int, string) {
+	if fl.WireBits >= 64 {
+		return 0, "0n"
+	}
+	return fl.WireBits, new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(fl.WireBits)), big.NewInt(1)).String() + "n"
 }
 
 // flagsOf returns the flags declaration a field names, or nil.
@@ -1028,8 +1040,9 @@ func (g *variableGen) fieldDescTail(f *ir.Field) string {
 	case enumOf(f) != nil:
 		fmt.Fprintf(&b, "s: \"enum\", js: \"s\", vs: %s, def: %s }", enumVariants(enumOf(f)), enumDefault(f))
 	case flagsOf(f) != nil:
-		fmt.Fprintf(&b, "s: \"flags\", js: \"a\", big: true, kw: 8, lo: null, hi: null, bits: 0, vs: %s, def: %s }",
-			flagsVariants(flagsOf(f)), intDefault(f))
+		w, wmax := flagsWidth(flagsOf(f))
+		fmt.Fprintf(&b, "s: \"flags\", js: \"a\", big: true, kw: 8, lo: null, hi: null, bits: %d, bmax: %s, vs: %s, def: %s }",
+			w, wmax, flagsVariants(flagsOf(f)), intDefault(f))
 	case tableOf(f) != nil:
 		fmt.Fprintf(&b, "s: \"tab\", js: %q, t: %s }", tableJSONShape(tableOf(f)), jsStr(tableOf(f).Name))
 	case f.Type.Kind == ir.TString:
@@ -1068,8 +1081,9 @@ func (g *variableGen) elemDesc(f *ir.Field) string {
 	case enumOf(f) != nil:
 		return fmt.Sprintf("{ s: \"enum\", js: \"s\", vs: %s }", enumVariants(enumOf(f)))
 	case flagsOf(f) != nil:
-		return fmt.Sprintf("{ s: \"flags\", js: \"a\", big: true, kw: 8, lo: null, hi: null, bits: 0, vs: %s }",
-			flagsVariants(flagsOf(f)))
+		w, wmax := flagsWidth(flagsOf(f))
+		return fmt.Sprintf("{ s: \"flags\", js: \"a\", big: true, kw: 8, lo: null, hi: null, bits: %d, bmax: %s, vs: %s }",
+			w, wmax, flagsVariants(flagsOf(f)))
 	case tableOf(f) != nil:
 		return fmt.Sprintf("{ s: \"tab\", js: %q, t: %s }", tableJSONShape(tableOf(f)), jsStr(tableOf(f).Name))
 	case f.Type.Kind == ir.TBool:

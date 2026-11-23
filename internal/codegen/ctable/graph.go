@@ -560,7 +560,7 @@ static SCHEMA_UNUSED void table_mark_value( TableReader * r, uint8_t kind, Table
             table_mark_framed( sub, kind, g, depth + 1 );
             return;
         }
-        case 12: case 31: case 32: { TableReader sub; table_reader_span( r, &sub ); return; }
+        case 12: case 32: { TableReader sub; table_reader_span( r, &sub ); return; }
         default:
         {
             int width = 0;

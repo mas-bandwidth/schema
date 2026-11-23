@@ -1091,6 +1091,7 @@ func (g *tableGen) emitFloatCheck(kind int, expr, ind, onBad string) {
 // fixed/ufixed raw value off its min/max; ROW 2, a bits(N) value wider than N;
 // ROW 10, a compressed float off its float32 ends (docs/SPEC-TABLES.md §3.3).
 func (g *tableGen) emitRequiredRangeCheck(f *ir.Field, expr, ind, onBad string) {
+	g.emitFlagsWidthAssert(f, expr, ind)
 	if !f.Required {
 		g.emitWriteContractAssert(f, expr, ind)
 		return
@@ -1135,6 +1136,46 @@ func (g *tableGen) emitRequiredRangeCheck(f *ir.Field, expr, ind, onBad string) 
 			g.pf("%sschema_assert( %s <= %dull ); // bits(%d) wider than %d bits, debug only (SPEC.md §5.1 row 2)\n",
 				ind, expr, maxv, f.Type.Width, f.Type.Width)
 		}
+	}
+}
+
+// flagsWidth is the reader W of a flags field narrower than 64 bits, and
+// false for every other field: a mask bit at or above W is one this
+// declaration names no variant for (docs/SPEC-TABLES.md §4, A TABLE LOAD
+// HOLDS A MASK TO ITS WIDTH; docs/SPEC.md §4.2).
+func flagsWidth(f *ir.Field) (int, bool) {
+	if f.Type.Kind != ir.TNamed {
+		return 0, false
+	}
+	fl, ok := f.Type.Ref.(*ir.Flags)
+	if !ok || fl.WireBits >= 64 {
+		return 0, false
+	}
+	return fl.WireBits, true
+}
+
+// emitFlagsWidthClamp holds a decoded mask to the W this reader declares: a
+// bit at or above it refuses the WHOLE load out_of_range, and only the bits
+// below W land. The newer reader reads old data, never the other way: an old
+// reader that meets a newer writer mask refuses it by name and keeps nothing
+// of it to write back (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO
+// ITS WIDTH). report is the spelling of the report pointer at the call site.
+func (g *tableGen) emitFlagsWidthClamp(f *ir.Field, decoded, report, ind string) {
+	w, ok := flagsWidth(f)
+	if !ok {
+		return
+	}
+	mask := fmt.Sprintf("0x%xull", (uint64(1)<<uint(w))-1)
+	g.pf("%[1]sif ( ( (uint64_t) %[2]s >> %[3]d ) != 0 ) // a mask bit at or above W refuses the load (docs/SPEC-TABLES.md §4)\n%[1]s{\n%[1]s    %[2]s &= %[4]s;\n%[1]s    %[5]srefused = true;\n%[1]s    %[5]srefuse_reason = out_of_range;\n%[1]s}\n", ind, decoded, w, mask, report)
+}
+
+// emitFlagsWidthAssert is the writer half of the same rule: a mask with a bit
+// at or above W is one its own reader refuses, so a same-build round trip must
+// never write it. C++ is an assert leg, so this is a debug-only schema_assert
+// (docs/SPEC.md §5.1), gone under NDEBUG.
+func (g *tableGen) emitFlagsWidthAssert(f *ir.Field, expr, ind string) {
+	if w, ok := flagsWidth(f); ok {
+		g.pf("%sschema_assert( ( uint64_t( %s ) >> %d ) == 0 ); // the write contract, debug only: a mask bit at or above W (docs/SPEC-TABLES.md §4)\n", ind, expr, w)
 	}
 }
 
@@ -2355,7 +2396,7 @@ func (g *tableGen) emitTableRead(st *ir.Struct) {
 				g.pf("                        break;\n                    }\n")
 			}
 			g.pf("                    // AT A POSITION THE READER DOES NAME, a field under\n")
-			g.pf("                    // kind 31 or kind 32 takes this same rule and no other (§3)\n")
+			g.pf("                    // kind 32 takes this same rule and no other (§3)\n")
 			g.pf("                    r.report->refused = true;\n")
 			g.pf("                    r.report->refuse_reason = kind_mismatch;\n")
 			g.pf("                    if ( !r.skip( kind ) )\n                    {\n                        r.report->damaged = true;\n                        return false;\n                    }\n")
@@ -3070,6 +3111,7 @@ func (g *tableGen) emitTableReadScalarFromChecked(f *ir.Field, kind int, lvalue,
 			maxv := (uint64(1) << f.Type.Width) - 1
 			g.pf("%[1]sif ( decoded_v > %[2]dull )\n%[1]s{\n%[1]s    decoded_v = %[3]dull;\n%[1]s    r.report->refused = true;\n%[1]s    r.report->refuse_reason = out_of_range;\n%[1]s} // bits(%[4]d) width clamp\n", ind, maxv, maxv, f.Type.Width)
 		}
+		g.emitFlagsWidthClamp(f, "decoded_v", "r.report->", ind)
 		g.pf("%s%s = decoded_v;\n", ind, lvalue)
 	}
 }

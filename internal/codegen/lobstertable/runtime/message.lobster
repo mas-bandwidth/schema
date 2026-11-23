@@ -197,8 +197,10 @@ def message_bits(n:int) -> int:
         x = shr(x, 1)
     return c
 
+// Kind 31 is held by name and never written (R17): an announcement naming it
+// is malformed, as one naming 33 or 34 is.
 def message_known_kind(k:int) -> bool:
-    return k <= 32 or k == 36
+    return (k <= 32 and k != 31) or k == 36
 
 def message_kind_bits(k:int) -> int:
     if k == 0 or k == 32:
@@ -680,11 +682,6 @@ def message_skip(m:MessageRead, s:MessageShape, el:MessageShape, depth:int) -> b
                 return false
             high = unit >= 0xd800 and unit <= 0xdbff
         return not high
-    if k == 31:
-        if not mb_align(r):
-            return false
-        let n, ok = mb_get(r, 32)
-        return ok and mb_skip(r, n * 8)
     if k == 14 or k == 16:
         let n, ok = message_count(r, s)
         if not ok or n > 0x7fffffff:
@@ -1412,9 +1409,9 @@ def mw_scalar(w:MessageWriter, d:FieldDescriptor, s:MessageShape, v:Value) -> bo
         lo = lo - s.base_lo
         hi = hi - s.base_hi - borrow
         // A ranged value whose offset from its base does not fit its bits
-        // is refused, a flags bit past the declared W among them: a file
-        // keeps all flags bits, but a message carries only W bits, and a
-        // writer never truncates (Go's tableMessageWriteScalar)
+        // is refused, a flags bit past the declared W among them: a mask
+        // holds to W in every form (docs/SPEC-TABLES.md §4), and a writer
+        // never truncates (Go's tableMessageWriteScalar)
         if kind_wide(kind):
             if s.bits < 64 and (hi != 0 or shr(lo, s.bits) != 0):
                 return false

@@ -1339,7 +1339,7 @@ func (r *TableReader) Skip(kind uint8) bool {
 	case 17, 30:
 		_, ok := r.Leb()
 		return ok
-	case 12, 13, 14, 16, 31, 32:
+	case 12, 13, 14, 16, 32:
 		_, ok := r.Body()
 		return ok
 	case 15:
@@ -1655,7 +1655,7 @@ func (c *tableWireCheck) value(r TableReader, kind uint8) (int64, bool) {
 		}
 	case 15:
 		return c.union(r)
-	case 12, 13, 14, 16, 31, 32:
+	case 12, 13, 14, 16, 32:
 		sub, ok := r.Body()
 		if !ok || !c.framed(sub, kind) {
 			return 0, c.fail(TableRefuseWireDamaged)
@@ -1678,8 +1678,6 @@ func (c *tableWireCheck) framed(sub TableReader, kind uint8) bool {
 	switch kind {
 	case 12:
 		return tableUTF8Valid(sub.Buffer) || c.fail(TableRefuseWireDamaged)
-	case 31:
-		return true
 	case 32:
 		return len(sub.Buffer) == 0 || c.fail(TableRefuseWireDamaged)
 	case 13, 14, 16:
@@ -2131,9 +2129,9 @@ func tableFixedSignedKind(kind uint8) bool {
 
 // THE CLOSED KIND SET (mas-bandwidth/schema docs/FIXED-FORM-ALGORITHM.md §1): §3's own kinds 1..30,
 // the no-payload variant 32, and the ONE kind this form's layout adds, the
-// optional wrapper 35. 0 is no kind at all, 31 is §3's BODY framing escape, 33
-// is retired and 34 is reserved: none of the four is a kind a declaration
-// spells, so none is ever an entry's kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a
+// optional wrapper 35. 0 is no kind at all, 31 is held by name and never
+// written (R17), 33 is retired and 34 is reserved: none of the four is a kind
+// a declaration spells, so none is ever an entry's kind. A KIND OUTSIDE THIS SET IS A REFUSAL, not a
 // leaf to step over — the form byte versions the kinds behind it, so a kind
 // this build does not know names a FORM this reader never saw.
 func tableFixedKindKnown(kind uint8) bool {
@@ -4056,6 +4054,9 @@ func TableEntityMeasureBody(value *TableEntity, ids *TableIds) int64 {
 		}
 		bytes += tableLebBytes(ref) + 1 + tableLebBytes(vref)
 	}
+	if (value.Damage != 0) && (value.Damage>>8 != 0) {
+		return -1
+	}
 	if value.Damage != 0 {
 		bytes += tableLebBytes(ids.refAtHit(40, 0x7f6308be8ab37fc0)) + 1 + 8
 	} // damage
@@ -4244,6 +4245,9 @@ func TableEntitySaveBody(w *TableWriter, value *TableEntity) bool {
 		if value.Damage != 0 {
 			if ref := w.Ids.refAtHit(40, 0x7f6308be8ab37fc0); !w.headerPair(ref, 9) {
 				w.headerRest(ref, 9)
+			}
+			if value.Damage>>8 != 0 {
+				return false
 			}
 			w.Put64(uint64(value.Damage))
 		}
@@ -4710,6 +4714,11 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 					}
 					{
 						v := r.Unsigned(kind)
+						if v>>8 != 0 {
+							r.Report.Refuse(TableRefuseOutOfRange, "TableEntity.damage")
+							r.Report.Refuse(TableRefuseWireDamaged, "")
+							return false
+						}
 						value.Damage = TableDamage(v)
 					}
 					r.Report.Widened++
@@ -4724,6 +4733,11 @@ func TableEntityLoadBody(r *TableReader, value *TableEntity) bool {
 			}
 			{
 				v := r.Get64()
+				if v>>8 != 0 {
+					r.Report.Refuse(TableRefuseOutOfRange, "TableEntity.damage")
+					r.Report.Refuse(TableRefuseWireDamaged, "")
+					return false
+				}
 				value.Damage = TableDamage(v)
 			}
 		case 0x11a44fc1d1243da7: // moving
@@ -8171,6 +8185,9 @@ func TableEntityFixedBoundsBody(value *TableEntity, over *int32) {
 	if uint64(value.Weapon) > 15 {
 		(*over)++
 	}
+	if value.Damage>>8 != 0 {
+		(*over)++
+	}
 }
 
 // TableStat's read-side bounds: each value outside them counts one in over.
@@ -8354,6 +8371,9 @@ func TableEntityFixedCheckBody(value *TableEntity) bool {
 		return false
 	}
 	if uint64(value.Weapon) > 15 {
+		return false
+	}
+	if value.Damage>>8 != 0 {
 		return false
 	}
 	return true

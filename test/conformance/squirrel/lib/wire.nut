@@ -283,7 +283,7 @@ API.parseLayout <- function(bytes, at, len) {
     // THE CLOSED KIND SET (§3 plus the one kind this layout adds, 35): "a kind
     // outside the set is not a newer layout of form 3, it is a layout of a
     // form this reader never saw, and it is refused by name rather than
-    // stepped over." 31 is §3's body framing escape and 34 is reserved for
+    // stepped over." 31 is held by name and never written (R17) and 34 is reserved for
     // float16: neither is a kind a declaration spells.
     local function knownKind(kind) {
         return (kind >= 1 && kind <= 30) || kind == 32 || kind == 35;

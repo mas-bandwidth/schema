@@ -457,8 +457,9 @@ func (g *tableGen) emitMessageEnumRef(f *ir.Field, expr, ind string, pass messag
 func (g *tableGen) emitMessageScalar(f *ir.Field, kind uint8, shape ir.TableMessageShape, expr, ind string, pass messagePass) {
 	width := msgValueBits(kind, shape)
 	if _, flags := f.Type.Ref.(*ir.Flags); flags && width < 64 {
-		// File and cook masks retain all storage bits; a message may carry
-		// only its announced width. This is writer misuse, checked in debug
+		// A cook mask retains its storage bits; a file and a message hold
+		// the mask to its declared W (docs/SPEC-TABLES.md §4). This is writer
+		// misuse, checked in debug
 		// like the packet writer (SPEC.md §5.1; SPEC-TABLES.md §3.3).
 		g.pf("%sschema_assert( ( uint64_t( %s ) >> %d ) == 0 ); // message flags domain, debug only (§5.1)\n", ind, expr, width)
 	}

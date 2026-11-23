@@ -661,7 +661,15 @@ func valueDesc(g *lobster.Gen, f *ir.Field, def bool) []string {
 			}
 			return out
 		case *ir.Flags:
-			return intDesc(f, def)
+			// a mask holds to W, its declaration's wire width: the read refuses a
+			// bit at or above W out_of_range and the writer refuses to write one
+			// (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH)
+			out := intDesc(f, def)
+			if r.WireBits < 64 {
+				hi := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(r.WireBits)), big.NewInt(1))
+				out = append(out, "ranged: true", "lo: "+lobster.Int128Lit(big.NewInt(0)), "hi: "+lobster.Int128Lit(hi))
+			}
+			return out
 		case *ir.Union:
 			requireHome(g, r.Name)
 			return []string{"s: \"union\"", "t: " + lobster.StringLit([]byte(r.Name))}

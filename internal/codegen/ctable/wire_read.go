@@ -109,6 +109,7 @@ func (g *tableGen) wireWidenedScalar(f *ir.Field, source int, dst, rdr, ind, onB
 			g.pf("%sif ( decoded_wide > %dull ) { decoded_wide = %dull; r->report->refused=1, r->report->refuse_reason=SCHEMA_TABLE_REFUSE_OUT_OF_RANGE; }\n", ind, max, max)
 		}
 	}
+	g.emitFlagsWidthClamp(f, "decoded_wide", ind)
 	g.pf("%s%s = decoded_wide;\n", ind, dst)
 }
 

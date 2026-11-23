@@ -34,8 +34,8 @@ namespace Example
         Arc = 15,
     }
 
-    // ProbeFlags — one bit per variant; wire 8 bits (SPEC §4.2). ulong-backed, the full
-    // width §4.2 requires, so bits a newer build appended survive a round trip.
+    // ProbeFlags — one bit per variant; wire 8 bits (SPEC §4.2). ulong-backed: 64 bits
+    // is the variant ceiling (§4.2); a table load refuses a bit at or above the wire width.
     [Flags]
     public enum ProbeFlags : ulong
     {

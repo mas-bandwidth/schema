@@ -588,6 +588,8 @@ fn wref_loaded_hex(s: const u8[:], out: u8[>..]&) -> bool {
     return true;
 }
 
+// Keep decimal rounding at the destination width. Overflow becomes infinity
+// so the writer exercises its non-finite refusal just as for a literal inf.
 fn wref_loaded_f32_bits(s: const u8[:]) -> u64 {
     if s == "nan" { return 0x7fc00000; }
     if s == "inf" { return 0x7f800000; }

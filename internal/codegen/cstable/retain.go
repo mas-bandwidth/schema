@@ -230,6 +230,7 @@ const tableRetainSource = `
                 if (!RetainInPayload(ref s, kind, depth)) { return false; }
                 break;
             case 17: return false;
+            case 31: return false; // held by name, never written (R17): met only as damage
             default:
                 s.Raw(s.R.Buffer.Slice(s.R.Offset, bytes)); s.R.Offset += bytes; break;
         }
@@ -244,7 +245,6 @@ const tableRetainSource = `
         switch (kind)
         {
             case 12:
-            case 31:
             case 32:
                 if (!s.R.Var(out ulong size) || size > (ulong)(s.R.Buffer.Length - s.R.Offset)) { return false; }
                 s.Var(size); s.Raw(s.R.Buffer.Slice(s.R.Offset, (int)size)); s.R.Offset += (int)size; return true;
@@ -396,6 +396,7 @@ const tableRetainSource = `
                 if (!RetainOutPayload(ref s, ref ids, kind, depth)) { return false; }
                 break;
             case 17: return false;
+            case 31: return false; // held by name, never written (R17): met only as damage
             default: s.Raw(s.R.Buffer.Slice(s.R.Offset, bytes)); s.R.Offset += bytes; break;
         }
         return s.R.Offset == end;
@@ -408,7 +409,6 @@ const tableRetainSource = `
         switch (kind)
         {
             case 12:
-            case 31:
             case 32:
                 if (!s.R.Var(out ulong size) || size > (ulong)(s.R.Buffer.Length - s.R.Offset)) { return false; }
                 s.Var(size); s.Raw(s.R.Buffer.Slice(s.R.Offset, (int)size)); s.R.Offset += (int)size; return true;

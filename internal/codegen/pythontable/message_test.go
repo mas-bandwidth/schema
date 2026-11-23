@@ -567,6 +567,9 @@ print('ok')
 }
 
 // TestPythonMessageHostileAnnouncement checks framing, widths and terminal state.
+// An entry naming kind 31 (held by name and never written, R17), 33 (retired)
+// or 34 (reserved for float16) is outside the closed set: the whole
+// announcement is refused, as one naming 99 is.
 func TestPythonMessageHostileAnnouncement(t *testing.T) {
 	t.Parallel()
 	u := loadUnit(t, messageSchema)
@@ -616,7 +619,7 @@ for form,reason in ((2,'message_form_as_file'),(3,'newer_form')):
  try:announce_read(MessageVocabulary(),bytes([form]))
  except Refused as e:assert e.reason==reason
  else:raise AssertionError('message_announcement_form')
-for raw in (entry(17,4,b'\x01\x21\x00'),entry(17,99),good+good,entry(0xfffffffffffffffe,0)):
+for raw in (entry(17,4,b'\x01\x21\x00'),entry(17,99),entry(17,31),entry(17,33),entry(17,34),good+good,entry(0xfffffffffffffffe,0)):
  v=MessageVocabulary()
  try:announce_read(v,announce(raw))
  except Refused as e:assert e.reason=='wire_damaged'

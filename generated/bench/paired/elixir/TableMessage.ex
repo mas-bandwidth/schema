@@ -180,7 +180,7 @@ defmodule Bench.TableMessage do
       0x6CEDE8B6EB60F1CD => {8, 0x01CDF160EBB6E8ED6C04010CFF1F, {:same, 0}, nil, {-2048, 2047}},
       0x7F69D4B5288BA9CF => {9, 0x01CFA98B28B5D4697F04010A00, {:same, 0}, nil, {0, 1000}},
       0xA0B610205F2C6E01 => {10, 0x01016E2C5F2010B6A01E, {:enum, :none}, nil, nil},
-      0x7F6308BE8AB37FC0 => {11, 0x01C07FB38ABE08637F09010800, {:same, 0}, nil, nil},
+      0x7F6308BE8AB37FC0 => {11, 0x01C07FB38ABE08637F09010800, {:same, 0}, nil, {0, 255}},
       0x11A44FC1D1243DA7 => {12, 0x01A73D24D1C14FA41101, {:same, 0}, nil, nil},
       0x7674CFD19B9031CA => {13, 0x01CA31909BD1CF747601, {:same, 0}, nil, nil}
     },
@@ -463,7 +463,7 @@ defmodule Bench.TableMessage do
     end
   end
 
-  defp first_use_payload(bin, kind, ids, acc, d) when kind in [12, 13, 14, 16, 31, 32] do
+  defp first_use_payload(bin, kind, ids, acc, d) when kind in [12, 13, 14, 16, 32] do
     with {:ok, content, rest} <- first_use_framed(bin),
          {:ok, acc} <- first_use_content(content, kind, ids, acc, d + 1) do
       {:ok, rest, acc}
@@ -715,7 +715,7 @@ defmodule Bench.TableMessage do
       kind in [17, 30] ->
         leb_rest(bin)
 
-      kind in [12, 13, 14, 16, 31, 32] ->
+      kind in [12, 13, 14, 16, 32] ->
         body(bin)
 
       kind == 15 ->
@@ -871,7 +871,9 @@ defmodule Bench.TableMessage do
 
   defp read_element(_kind, _id, _s, _), do: :error
 
-  defp known_kind?(kind), do: (kind >= 0 and kind <= 32) or kind == 36
+  # 31 is held by name and never written (R17): an announcement naming it is
+  # malformed, as one naming 33 or 34 is
+  defp known_kind?(kind), do: (kind >= 0 and kind <= 30) or kind == 32 or kind == 36
 
   defp base_inside_kind?(kind, base) do
     dom = kind_bits(kind)

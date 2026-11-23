@@ -124,20 +124,21 @@ the program never started, which is a failure).
 | 2 | this backend does not implement it — the matrix prints ABSENT |
 | anything else | the driver failed; the matrix prints FAIL and the harness prints stderr |
 
-An expected semantic refusal scores PASS. **A refusal is spelled `refused` and
-a newline, in the file named by the case, on every read surface, the `wire`
-surface's `wire-refused` rows included.** A historical `.absent` file that
-names a reason may still transport that refusal (the reason's text is not
-compared). An EMPTY `.absent` is the per-case absence below, a leg with no
-codec for the root: on a row that expects a refusal it counts absent, never
-PASS, so a leg that cannot read a root cannot pass the must-refuse rows on it.
-The other way round holds too: a `.absent` that names a reason is a refusal
-wherever it stands, so on a row that owes an answer (bytes, a golden, a
-verdict) it FAILS and never counts absent. A driver therefore tells a case's
-three endings apart by mechanism: no codec is the empty `.absent`; a present
-codec's public refusal is the refusal answer; anything else is a driver error,
-which names its case on stderr, lets the remaining cases run, and exits the
-surface non-zero.
+An expected semantic refusal scores PASS. Drivers write `refused` and a
+newline to the case's answer file, including on `wire-refused` rows.
+`message-prior` uses the `<case>.refused` marker described below. On
+surfaces that accept the historical `.absent` refusal, the file names a
+reason whose text is ignored.
+An EMPTY `.absent` is the per-case absence below, a leg with no codec for the
+root: on a row that expects a refusal it counts absent, never PASS, so a leg
+that cannot read a root cannot pass the must-refuse rows on it. The other way
+round holds too: a `.absent` that names a reason is a refusal wherever it
+stands, so on a row that owes an answer (bytes, a golden, a verdict) it FAILS
+and never counts absent. A driver therefore tells a case's three endings
+apart by mechanism: no codec is the empty `.absent`; a present codec's public
+refusal is the refusal answer; anything else is a driver error, which names
+its case on stderr, lets the remaining cases run, and exits the surface
+non-zero.
 
 **A refusal row and its accepted twin are one claim** (`harness/twins.go`).
 Per leg and per surface, when one half of a pair passes and the leg did not
@@ -981,7 +982,9 @@ counters. Native resource and allocator tests remain separate gates.
 
 The `wire-refused` instance marker specifies refusal for every port. Legacy
 `go-refusal=<reason>` and `refused-by=<ports>` spellings are accepted as
-compatibility metadata; they do not select a language or a shared reason. Drivers emit `<case>` holding `refused` and a newline, or the historical `<case>.absent` file naming a reason; the
-`.absent` file's diagnostic text is ignored, and a `<case>` file holding anything but `refused` and a newline is value bytes and fails. This expected semantic refusal scores PASS. An empty `<case>.absent` is a missing codec and counts absent.
+compatibility metadata; they do not select a language or a shared reason.
+Drivers write `refused` and a newline to `<case>`. A historical
+`<case>.absent` file naming a reason also scores PASS. The reason text is
+ignored. An empty `<case>.absent` is a missing codec and counts absent.
 Emitting value bytes, or emitting nothing at all, fails. An ordinary absence
 for a missing codec remains incomplete coverage.

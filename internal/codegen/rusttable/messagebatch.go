@@ -908,6 +908,12 @@ func (m *msgGen) convertScalar(f *ir.Field, expr, entry, ind string) {
 		max := uint64(1)<<f.Type.Width - 1
 		m.pf("%sif x > %d { x = %d; report.out_of_range(%q); }\n", ind, max, max, owner)
 	}
+	if fl := isFlags(f); fl != nil && fl.WireBits < 64 {
+		// A NEWER WRITER ANNOUNCES A WIDER MASK, and the reader holds each
+		// value to its OWN W (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK
+		// TO ITS WIDTH): a bit at or above it refuses by name as out_of_range.
+		m.pf("%sif x >> %d != 0 { report.out_of_range(%q); }\n", ind, fl.WireBits, owner)
+	}
 	typ := cookElemType(f)
 	switch typ {
 	case "TableI128", "TableU128":
@@ -1512,15 +1518,8 @@ fn table_message_skip_at(r: &mut TableBitReader, v: &TableVocabulary, e: &TableM
             // applies to them, and ill-formed text is damage (§3.3, §4)
             table_message_utf8(&r.buffer[start..start + n as usize])
         }
-        31 => {
-            if !r.align() {
-                return false;
-            }
-            match r.get(32) {
-                Some(n) => r.skip(n * 8),
-                None => false,
-            }
-        }
+        // 31 is held by name and never written (R17): met only as damage
+        31 => false,
         10 => {
             // A PLAIN FLOAT IS FINITE, AND A QUANTIZED INDEX IS AT MOST ITS
             // COUNT (§3.3): the same raw-bits rule a named float read applies.
@@ -1546,7 +1545,7 @@ fn table_message_skip_at(r: &mut TableBitReader, v: &TableVocabulary, e: &TableM
             // ranged or quantized element carries a value condition, and a
             // keyed entry carries a key reference, so those are walked.
             if e.kind == 14
-                && !matches!(element.kind, 10 | 11 | 12 | 13 | 15 | 17 | 30 | 31)
+                && !matches!(element.kind, 10 | 11 | 12 | 13 | 15 | 17 | 30)
                 && element.shape.packing == 0
             {
                 match table_message_value_bits(element.kind, &element.shape) {

@@ -13,9 +13,9 @@
 // THE WIRE MAP is pinned in testdata/cards/README.md against the Go leg's
 // committed byte oracle tables/cards/fuzz/card-populated.wire, and the
 // pointer, blob and list corpora pin the same bytes in testdata/wire/tables.
-// The id table is 64-bit, first-use order (§3). Kind 31 (escape) is never
-// written — no declaration maps to it — and the reader skips it by its L
-// (§3, §4). Every function below that implements a rule cites the section.
+// The id table is 64-bit, first-use order (§3). Kind 31 is held by name and
+// never written (R17): a reader meets it only as damage and refuses the whole
+// load, as it meets 33 or 34 (§3, §4). Every function below that implements a rule cites the section.
 package darttable
 
 import (
@@ -33,23 +33,23 @@ import (
 // rather than in the emitted text so a change is one place (docs/SPEC-TABLES.md
 // §3).
 const (
-	wireKindBool   = 1
-	wireKindI8     = 2
-	wireKindI16    = 3
-	wireKindI32    = 4
-	wireKindI64    = 5
-	wireKindU8     = 6
-	wireKindU16    = 7
-	wireKindU32    = 8
-	wireKindU64    = 9
-	wireKindF32    = 10
-	wireKindF64    = 11
-	wireKindString = 12
-	wireKindTable  = 13
-	wireKindArray  = 14
-	wireKindPtr    = 17
-	wireKindEnum   = 30
-	wireKindEscape = 31
+	wireKindBool       = 1
+	wireKindI8         = 2
+	wireKindI16        = 3
+	wireKindI32        = 4
+	wireKindI64        = 5
+	wireKindU8         = 6
+	wireKindU16        = 7
+	wireKindU32        = 8
+	wireKindU64        = 9
+	wireKindF32        = 10
+	wireKindF64        = 11
+	wireKindString     = 12
+	wireKindTable      = 13
+	wireKindArray      = 14
+	wireKindPtr        = 17
+	wireKindEnum       = 30
+	wireKindHeldEscape = 31 // held by name, never written (R17)
 )
 
 // dartU64Literal renders a wire id (fnv1a64, §5) as a Dart int literal: the
@@ -1438,7 +1438,6 @@ final class TableWireReader {
       case 13:
       case 14:
       case 16:
-      case 31:
       case 32:
         final sl = readLeb();
         if (sl == null) return false;
@@ -2033,7 +2032,6 @@ final class TableWireReader {
       case 13:
       case 14:
       case 16:
-      case 31:
       case 32:
         final p = _wireLeb(buf, off);
         if (p == null || p.$1 < 0 || p.$1 > buf.length - p.$2) return -1;
@@ -2043,15 +2041,14 @@ final class TableWireReader {
     return -1;
   }
 
-  // _wireContent walks the length-bounded content of kinds 12-16 and 31-32
+  // _wireContent walks the length-bounded content of kinds 12-16 and 32
   // exactly as _wirePayload framed it.
   bool _wireContent(Uint8List b, int kind, List<int> out, int depth, [List<int>? order]) {
     switch (kind) {
       case 12:
         return _lebValid(b, 0, b.length);
-      case 31:
       case 32:
-        return kind != 32 || b.isEmpty;
+        return b.isEmpty;
       case 13:
         return depth < _kBinaryMaxDepth && _wireBody(b, false, out, depth + 1, order);
       case 14:
@@ -3315,6 +3312,13 @@ func (g *wireGen) emitLoadField(f *ir.Field, ind string, ordinal int) {
 			lit := dartU64Literal(uint64(1)<<f.Type.Width - 1)
 			g.pf("%s\t\tif (_u64Above(value, %s)) { r.report.refuse('out_of_range'); return; }\n", ind, lit)
 		}
+		if fl := flagsRef(f); fl != nil && fl.WireBits < 64 {
+			// A MASK BIT AT OR ABOVE THE READER'S W REFUSES THE LOAD (docs/SPEC-TABLES.md
+			// §4, A TABLE LOAD HOLDS A MASK TO ITS WIDTH): flags append at the end, so
+			// old data never carries one, and an old reader does not read new data;
+			// every widened unsigned kind lands here too
+			g.pf("%s\t\tif ((value >>> %d) != 0) { r.report.refuse('out_of_range'); return; }\n", ind, fl.WireBits)
+		}
 		g.pf("%s\t\tv.%s = value;\n", ind, name)
 		g.pf("%s\t}\n", ind)
 		g.pf("%s\tbreak;\n", ind)
@@ -4259,6 +4263,14 @@ func (g *wireGen) emitWireWriteAssert(f *ir.Field, expr, ind string) {
 	}
 	if e := enumRef(f); e != nil {
 		g.pf("%sassert(%s >= 0 && %s <= %d);\n", ind, expr, expr, len(e.Variants))
+		return
+	}
+	if fl := flagsRef(f); fl != nil {
+		// A FLAGS MASK HOLDS TO ITS WIDTH W (docs/SPEC-TABLES.md §4, A TABLE LOAD
+		// HOLDS A MASK TO ITS WIDTH): a save never writes a bit its own load refuses
+		if fl.WireBits < 64 {
+			g.pf("%sassert((%s >>> %d) == 0);\n", ind, expr, fl.WireBits)
+		}
 		return
 	}
 	if f.Type.Blob() {
