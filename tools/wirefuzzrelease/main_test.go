@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -100,8 +101,8 @@ func TestOwedArms(t *testing.T) {
 
 // The runner must hand both successful and failed harness exits to the scorer.
 func TestRunnerScoresHarnessExit(t *testing.T) {
-	if _, err := exec.LookPath("bash"); err != nil {
-		t.Skip("the release runner requires Bash")
+	if runtime.GOOS == "windows" {
+		t.Skip("the release runner fixture requires POSIX executable permissions")
 	}
 	runner, err := filepath.Abs("../../make/checks/wire-fuzz-release-run.sh")
 	if err != nil {
