@@ -49,7 +49,7 @@ func main() {
 			os.Exit(2)
 		}
 		lines, err := runLedgerCorpus(*ledgerCorpus, scratch)
-		_ = os.RemoveAll(scratch)
+		_ = os.RemoveAll(scratch) // errdiscard: best-effort cleanup of temp scratch dir after replay
 		for _, line := range lines {
 			fmt.Println(line)
 		}

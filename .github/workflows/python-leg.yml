@@ -33,7 +33,7 @@ jobs:
     timeout-minutes: 2
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     outputs:
       rows0: ${{ steps.rows.outputs.rows0 }}
       rows1: ${{ steps.rows.outputs.rows1 }}
@@ -54,7 +54,7 @@ jobs:
     timeout-minutes: 2
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: build the reference corpus and generated Python units at this source
@@ -83,7 +83,7 @@ jobs:
       GOMAXPROCS: '2'
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/python
@@ -132,7 +132,7 @@ jobs:
       GOMAXPROCS: '2'
     defaults:
       run:
-        shell: go run ./tools/pgroup -- bash -e {0}
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/python

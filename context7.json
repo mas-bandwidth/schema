@@ -37,7 +37,8 @@
     "SPEC-TABLES.md",
     "UNITY.md",
     "VERSIONING.md",
-    "spec-rows-1122-status.md"
+    "test-input-accounting.md"
+    "spec-rows-1122-status.md",
   ],
   "excludeFolders": [
     "docs/LAYERS",
