@@ -354,7 +354,7 @@ per-port check where no shared case exercises it.
 | FL-09 | map key length uses its own `string(N)` bound, not `kTableJsonMaxKey` (SPEC-TABLES §16.2) | `TestTextMapKeyAboveNameCapReadsUnderItsOwnBound`, `sp-map-key-256-wide`, `sp-map-key-300-wide`, `sp-map-key-301-wide` (#4688) |
 | FL-27 | non-canonical base64 refuses (SPEC-TABLES §16.8, §16.2) | `base64-padding-*`, `base64-unpadded`, `sp-b64-escaped-noncanonical` (#4688) |
 | FL-12 | the read depth cap counts every container (SPEC-TABLES §16.2) | `rr-depth-*`, `sp-skip-depth-129`, `sp-skip-depth-130` (#4706, #4688); a flags array or text list nested at the depth limit still needs a shared row |
-| FL-31 | names some target cannot build are refused at check (SPEC.md §4.6) | `internal/check/buildable_names_test.go` (#4691) |
+| FL-31 | names some target cannot build are refused at check (SPEC.md §4.6) | `internal/check/buildable_names_test.go` (#4691), [JavaScript read-into names](#javascript-read-into-names) |
 | FL-33, FL-34, FL-35 | R2, R5, R9 (SPEC-TABLES §3.4 (the presence entry)) | `internal/ci` `TestRulingsR2R5R9PortRows`, `TestFixedLineageOptionalIntoBareRefusesKindMismatch` (#4680) |
 | SF-17 | `SaveMessages` checks row 10 and never moves an off-range float onto an endpoint (SPEC.md §5.1 row 10) | `smref_big_ratio_high`, `smref_big_ratio_max` (#4808 source registrations) |
 | SF-18, SF-19 | the message form refuses a flags value above its declared width and never masks it (SPEC.md §5.1 row 9; SPEC-TABLES §3.3) | `smref_big_mask_max`, `smref_big_mask_wide`, `smref_mask_named`, `smref_mask_unnamed` (#4808 source registrations) |
@@ -395,6 +395,25 @@ evolution", the close of §4's counters and the opening of §6.6; USAGE.md's enu
 width; COMPETITION.md's never-clobber line. Each now promises a newer reader
 on older data and no more: an older reader given newer data may refuse it by
 name, lawfully.
+
+### JavaScript read-into names
+
+The shape checker refuses `ConfigLoadInto` because the JavaScript table
+emitter binds that name for `Config` ([SPEC §4.6](SPEC.md#46-shape-checks),
+[SPEC-TABLES §11](SPEC-TABLES.md#11-refused-by-name)).
+
+```schema
+package probe
+table Config { count int32 }
+type ConfigLoadInto { count int32 }
+```
+
+Replace the final line with `type ConfigApplicationState { count int32 }`
+for an accepted schema. `TestJSReadIntoDeclarationNames` checks both outcomes.
+`TestJsTableModuleScopeNamesAreClaimed` and
+`TestJavaScriptVariableRuntimeNamesAreClaimed` inventory the emitted bindings.
+The Python, Lua, Luau, Squirrel, and Lobster runtime-name tests inventory
+their module or namespace entries separately from the schema-level claims.
 
 ### Compressed float packet endpoints
 
