@@ -3604,11 +3604,11 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 			textList = 1
 		}
 	}
-	g.pf("%s    { \"%s\", %s, \"%s\", 0x%016xull, %d, %v, %s%v, %v, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s\"%s\", %s, %v, %v, %d, %d, %v },\n",
+	g.pf("%s    { \"%s\", %s, \"%s\", 0x%016xull, %d, %v, %s%v, %v, %s, (uint32_t) offsetof( %s, %s ), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %d, %s, %s, %s, %s, %s, %s, %s, %s, %s\"%s\", %s, %v, %v, %d, %d, %v, %d },\n",
 		sp.indent, f.Name, jsonKey, tableFieldTypeName(f), id, kind, isArray, pointerColumn, counted, f.Type.Optional, bound,
 		sp.owner, sp.member, elemSize, countOffset, presentOffset, table,
 		hasRange, rangeMin, rangeMax, rangeIntMin, rangeIntMax, rangeUintMin, rangeUintMax, fracBits, wide, enumMax, enumName, variantId,
-		keyTypeName, keyName, keyId, arms, g.placeColumn(f), sp.guard, annotationColumns(f.Doc, f.Tags, sp.tagsName(f)), unboundedContainer, f.Required, textList, f.TextTotal, f.Type.TextUnbounded())
+		keyTypeName, keyName, keyId, arms, g.placeColumn(f), sp.guard, annotationColumns(f.Doc, f.Tags, sp.tagsName(f)), unboundedContainer, f.Required, textList, f.TextTotal, f.Type.TextUnbounded(), f.ArrayMin)
 }
 
 // ---- string, bytes and flags defaults (SPEC §4.2) ----

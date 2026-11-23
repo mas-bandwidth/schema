@@ -241,8 +241,25 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	}
 	// THE READ-SIDE BOUNDS, in the same closure order the write bodies take —
 	// post-order, so a nested type's body stands before the call to it.
+	// Fixed tables past the 65536-byte file-form ceiling still speak the message
+	// form and still need their write-contract check (SF-05, SF-06).
+	clampSeen := map[string]bool{}
 	for _, st := range own {
+		clampSeen[st.Name] = true
 		g.emitFixedClampBodyFn(st)
+	}
+	if len(refused) > 0 {
+		var extra []*ir.Struct
+		extraSeen := map[string]bool{}
+		for _, st := range refused {
+			fixedCollectTypes(st, extraSeen, &extra)
+		}
+		for _, st := range extra {
+			if here[st.Name] && !clampSeen[st.Name] {
+				clampSeen[st.Name] = true
+				g.emitFixedClampBodyFn(st)
+			}
+		}
 	}
 	// THE FINITE PASS, in the same order (docs/SPEC-TABLES.md §3.3): the read
 	// runs it before the bounds pass and the writer before its first byte
@@ -1302,7 +1319,7 @@ func (g *tableGen) emitFixedClampBodyFn(st *ir.Struct) {
 // writeAdmits is the check a writer of table st asserts (docs/SPEC.md §5.1),
 // or "" when the fixed form bounds nothing in st's closure.
 func (g *tableGen) writeAdmits(st *ir.Struct) string {
-	if g.isVar(st.Name) || !ir.TableFixedEmitted(g.unit, st) || !ir.TableFixedClampNeeded(st) {
+	if g.isVar(st.Name) || !ir.TableFixedClampNeeded(st) {
 		return ""
 	}
 	return st.Name + "FixedWriteAdmits"

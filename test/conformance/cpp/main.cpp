@@ -2484,7 +2484,7 @@ static int write_refusal_block( const std::string & root, const void * value )
             block.projection->quantity = v.quantity;
             block.projection->price_minor = v.price_minor;
             block.projection->currency = v.currency;
-            (void) backenddemo::StorePurchaseBlockBytes( block );
+            if ( backenddemo::StorePurchaseBlockBytes( block ) < 0 ) { storage.Destroy(); return kRefusedExit; }
         }
         storage.Destroy();
         return begun ? kWroteExit : kRefusedExit;
@@ -2502,7 +2502,7 @@ static int write_refusal_block( const std::string & root, const void * value )
         {
             block.projection->match_id = v.match_id;
             for ( size_t i = 0; i < sizeof( v.players ) / sizeof( v.players[0] ); i++ ) block.projection->players[i] = v.players[i];
-            (void) backenddemo::MatchResultBlockBytes( block );
+            if ( backenddemo::MatchResultBlockBytes( block ) < 0 ) { storage.Destroy(); return kRefusedExit; }
         }
         storage.Destroy();
         return begun ? kWroteExit : kRefusedExit;

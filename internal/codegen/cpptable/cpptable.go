@@ -1120,6 +1120,7 @@ inline const char TableDocNone[1] = "";
     uint8_t text_list;
     int64_t text_total;
     bool unbounded;
+    int32_t array_min;
 };
 
 struct TableTypeInfo

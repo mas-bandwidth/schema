@@ -868,6 +868,7 @@ func (g *tableGen) emitMessageEntries(st *ir.Struct) {
 	g.pf("inline bool %sLoadMessages( %s * values, int64_t * count, const TableVocabulary & vocabulary, const uint8_t * buffer, int64_t bytes, TableReport * report )\n{\n", n, n)
 	g.pf("    TableReport ignored;\n")
 	g.pf("    TableReport * to = report != NULL ? report : &ignored;\n")
+	g.pf("    *to = TableReport();\n")
 	g.pf("    if ( values == NULL || count == NULL )\n    {\n        to->damaged = true;\n        return false;\n    }\n")
 	g.pf("    const int64_t capacity = *count;\n")
 	g.pf("    *count = 0;\n")
