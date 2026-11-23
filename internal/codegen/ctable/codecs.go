@@ -506,11 +506,6 @@ func (g *tableGen) emitTableWriteElement(f *ir.Field, kind int, expr, ind string
 		} else if f.HasFloatRange {
 			g.pf("%sschema_assert( %s >= %s && %s <= %s ); /* a compressed float inside its range (§5.1 row 10) */\n", ind, expr, formatFloat(f.FMin, false), expr, formatFloat(f.FMax, false))
 		}
-		if f.HasFloatRange {
-			g.pf("%stable_writer_put64( w, table_double_to_bits( ( %s ) + 0.0 ) );\n", ind, expr)
-		} else {
-			g.pf("%stable_writer_put64( w, table_double_to_bits( %s ) );\n", ind, expr)
-		}
 		g.pf("%stable_writer_put64( w, %s( %s ) );\n", ind, storedFloatBits(f, true), expr)
 	default:
 		width := int(g.intBytes(g.ownerName(), f.Name, int64(tableKindWidth(kind))))

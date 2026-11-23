@@ -8059,7 +8059,6 @@ static SCHEMA_UNUSED int tabledemo_profile_config_save_body( tabledemo_table_wri
             tabledemo_table_writer_header_at( w, 24, 0x288427f5babd05f7ull, 11 );
             if ( !tabledemo_table_double_finite( value->precision ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             tabledemo_table_writer_put64( w, tabledemo_table_double_to_bits( value->precision ) );
-            tabledemo_table_writer_put64( w, tabledemo_table_double_to_bits( value->precision ) );
         }
     }
     { /* ratings */
@@ -15903,7 +15902,6 @@ static SCHEMA_UNUSED int tabledemo_profile_config_save_body_retain( tabledemo_ta
             tabledemo_table_writer_put8( w, 11 );
             if ( !tabledemo_table_double_finite( value->precision ) ) { return 0;
             } /* a NaN or an infinity is refused (§3.3) */
-            tabledemo_table_writer_put64( w, tabledemo_table_double_to_bits( value->precision ) );
             tabledemo_table_writer_put64( w, tabledemo_table_double_to_bits( value->precision ) );
         }
     }

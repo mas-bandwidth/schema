@@ -686,7 +686,9 @@ async function surfaceMessage(lines, outDir, prior) {
   }
   // message-batch <case> <connection> <root> <wire>: load with room for every
   // body and answer the count LoadMessages returned (docs/SPEC-TABLES.md §3.3;
-  // FORMAT.md, `message-batch`).
+  // FORMAT.md, `message-batch`). Only on the `message` surface; `message-prior`
+  // reads only `prior-connection` and `prior-message`.
+  if (prior) { return; }
   for (const f of kind(lines, "message-batch")) {
     const conn = connections.find((c) => c[1] === f[2]);
     if (conn === undefined) { fail("message-batch " + f[1] + " names no connection " + f[2]); }

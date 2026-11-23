@@ -6598,7 +6598,6 @@ static SCHEMA_UNUSED int benchtable_table_mixed_save_body( benchtable_table_writ
             benchtable_table_writer_header_at( w, 27, 0x5ab3f9c9341f6c04ull, 11 );
             if ( !benchtable_table_double_finite( value->drift ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             benchtable_table_writer_put64( w, benchtable_table_double_to_bits( value->drift ) );
-            benchtable_table_writer_put64( w, benchtable_table_double_to_bits( value->drift ) );
         }
     }
     { /* wide_key */
