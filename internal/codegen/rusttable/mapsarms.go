@@ -273,6 +273,9 @@ func (g *gen) emitFixedArraySave(b *strings.Builder, f *ir.Field, ordinal int, x
 		fmt.Fprintf(b, "%s}\n", ind)
 		return
 	}
+	// the elision test below reads only the first N slots, so the length is
+	// held before it, not only inside the body write
+	b.WriteString(rustFixedLenAssert(f, x, ind))
 	fmt.Fprintf(b, "%sif %s {\n", ind, requiredWriteGuard(f, fmt.Sprintf("%s.iter().take(%d).any(|e| %s)", x, f.ArrayBound, elemNonDefaultExpr(f, "e"))))
 	fmt.Fprintf(b, "%slet r = ids.id_ref(0x%016x);\n", inner, id)
 	fmt.Fprintf(b, "%slet mut body = Vec::new();\n", inner)
@@ -323,6 +326,9 @@ func (g *gen) emitKeyedSave(b *strings.Builder, f *ir.Field, ordinal int, x, ind
 	}
 	id := ir.TableFieldWireId(f)
 	inner := ind + "    "
+	// a [E]T holds exactly one value per variant: a length off the variant
+	// count is a debug assert, never a drop (audit SF-35)
+	fmt.Fprintf(b, "%sdebug_assert!(%s.len() == %d, \"%s length is not %d\");\n", ind, x, len(f.KeyEnumRef.Variants), f.Name, len(f.KeyEnumRef.Variants))
 	fmt.Fprintf(b, "%s{\n", ind)
 	fmt.Fprintf(b, "%sconst KEYS: [u64; %d] = [", inner, len(f.KeyEnumRef.Variants))
 	for i := range f.KeyEnumRef.Variants {
@@ -533,6 +539,9 @@ func (g *gen) emitArrayBodyWrite(b *strings.Builder, f *ir.Field, x, dst string,
 	switch {
 	case f.Array == ir.ArrayFixed:
 		count = fmt.Sprintf("%d", f.ArrayBound)
+		// a [N]T holds exactly N values: a length off N is a debug assert, never
+		// a cut or a pad (docs/SPEC.md §5.1; audit SF-34)
+		b.WriteString(rustFixedLenAssert(f, x, ind))
 	case f.Array == ir.ArrayCounted:
 		count = fmt.Sprintf("%s.len().min(%d)", x, f.ArrayBound)
 		// a count past Max, or under a declared Min, is a debug assert
@@ -1523,4 +1532,9 @@ func rustBoundedTextAsserts(f *ir.Field, x, ind string) string {
 		return ""
 	}
 	return a + fmt.Sprintf("%sdebug_assert!(!%s.as_bytes().contains(&0), \"%s holds a zero byte\");\n", ind, x, f.Name)
+}
+
+// rustFixedLenAssert is the debug assert that a [N]T holds exactly N values.
+func rustFixedLenAssert(f *ir.Field, x, ind string) string {
+	return fmt.Sprintf("%sdebug_assert!(%s.len() == %d, \"%s length is not %d\");\n", ind, x, f.ArrayBound, f.Name, f.ArrayBound)
 }

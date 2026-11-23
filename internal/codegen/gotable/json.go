@@ -107,7 +107,7 @@ func generateJsonFiles(u *ir.Unit, closure map[string]bool, home string) (map[st
 				fmt.Fprintf(&b, "func %sToJSON(value *%s,buffer []byte,allocator ...TableAllocator) int64 {n,_:=tableRegionToJSON(unsafe.Pointer(value),%sTableType(),buffer,TableJSONOptions{},allocator...);return n}\n", n, storageName(u, n), n)
 				// docs/SPEC-TABLES.md §16.2: the three options, as call arguments;
 				// <T>FromJSONWith is <T>FromJSON under the options
-				fmt.Fprintf(&b, "func %sFromJSONWith(builder *%sBuilder,text []byte,report *TableReport,options TableJSONOptions) bool {if builder.Arena.Locked {return false};read:=report;if read==nil{read=&TableReport{}}else{*read=TableReport{}};return tableRegionFromJSON(unsafe.Pointer(builder.GetRoot()),%sTableType(),&builder.Main,text,read,options)}\n", n, n, n)
+				fmt.Fprintf(&b, "func %sFromJSONWith(builder *%sBuilder,text []byte,report *TableReport,options TableJSONOptions) bool {read:=report;if read==nil{read=&TableReport{}}else{*read=TableReport{}};if builder.Arena.Locked {read.Refuse(TableRefuseAllocationFailed,\"\");return false};return tableRegionFromJSON(unsafe.Pointer(builder.GetRoot()),%sTableType(),&builder.Main,text,read,options)}\n", n, n, n)
 				fmt.Fprintf(&b, "func %sToJSONMeasureWith(value *%s,options TableJSONOptions,allocator ...TableAllocator) int64 {n,_:=tableRegionToJSON(unsafe.Pointer(value),%sTableType(),nil,options,allocator...);return n}\n", n, storageName(u, n), n)
 				fmt.Fprintf(&b, "func %sToJSONWith(value *%s,buffer []byte,options TableJSONOptions,allocator ...TableAllocator) int64 {n,_:=tableRegionToJSON(unsafe.Pointer(value),%sTableType(),buffer,options,allocator...);return n}\n", n, storageName(u, n), n)
 				// the reason twin of ToJSONMeasure, as MeasureReason is Measure's: a
