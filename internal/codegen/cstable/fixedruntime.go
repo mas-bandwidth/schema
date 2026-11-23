@@ -245,7 +245,7 @@ public static class TableFixedWire
     public static void ReadLittle<T>(ReadOnlySpan<byte> src, Span<T> dst) where T : unmanaged
     {
         int width = System.Runtime.CompilerServices.Unsafe.SizeOf<T>();
-        int n = Math.Min(src.Length / width, dst.Length);
+        int n = global::System.Math.Min(src.Length / width, dst.Length);
         MemoryMarshal.Cast<byte, T>(src.Slice(0, n * width)).CopyTo(dst); /* byte order: swapped below on a big-endian host */
         if (!BitConverter.IsLittleEndian) { ReverseEach(MemoryMarshal.AsBytes(dst.Slice(0, n)), width); }
     }
@@ -458,7 +458,7 @@ public static class TableFixedWire
                     {
                         if (te.Size < 4 || me.Size < 4) { return null; }
                         int used = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)at));
-                        uint cap = Math.Min(me.Size - 4u, te.Size - 4u);
+                        uint cap = global::System.Math.Min(me.Size - 4u, te.Size - 4u);
                         if (used < 0 || (uint)used > cap) { return null; } // the live length rule refuses this
                         return DeadZero(src.Slice((int)at + 4 + used, (int)te.Size - 4 - used));
                     }
@@ -468,7 +468,7 @@ public static class TableFixedWire
                     if (tel.Size == 0 || mel.Size == 0 || te.Size < head || me.Size < head) { return null; }
                     uint their_n = (te.Size - head) / tel.Size;
                     uint my_n = (me.Size - head) / mel.Size;
-                    uint n = Math.Min(their_n, my_n);
+                    uint n = global::System.Math.Min(their_n, my_n);
                     if (d.Counted != 0)
                     {
                         int count = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)at));
@@ -508,7 +508,7 @@ public static class TableFixedWire
                 {
                     if (te.Size < 4 || me.Size < 4) { return null; }
                     int used = BinaryPrimitives.ReadInt32LittleEndian(src.Slice((int)at));
-                    uint cap = Math.Min(me.Size - 4u, te.Size - 4u);
+                    uint cap = global::System.Math.Min(me.Size - 4u, te.Size - 4u);
                     if (used < 0 || (uint)used > cap) { return null; } // the live length rule refuses this
                     return DeadZero(src.Slice((int)at + 4 + used, (int)te.Size - 4 - used));
                 }
@@ -937,7 +937,7 @@ public static class TableFixedWire
                 {
                     if (d.Arg == TextBytes)
                     {
-                        uint units = Math.Min(me.Size - 4u, te.Size - 4u);
+                        uint units = global::System.Math.Min(me.Size - 4u, te.Size - 4u);
                         TableFixedEntry e = new TableFixedEntry(
                             their_at, aux_at, units, at, guard, Text, arg, 0, 0, d.Arg);
                         c.Push(e);
@@ -958,10 +958,10 @@ public static class TableFixedWire
                         // because this reader grew to 8. their_n held to this reader's
                         // storage is their_n itself on every legal widening, which is
                         // what go spells 'n' and rust spells 'their_n.min(my_n)'.
-                        TableFixedEntry e = new TableFixedEntry(their_at, aux_at, Math.Min(their_n, my_n), 0, guard, Count, arg, 0);
+                        TableFixedEntry e = new TableFixedEntry(their_at, aux_at, global::System.Math.Min(their_n, my_n), 0, guard, Count, arg, 0);
                         c.Push(e);
                     }
-                    uint n = Math.Min(their_n, my_n);
+                    uint n = global::System.Math.Min(their_n, my_n);
                     if (d.Stride == 0)
                     {
                         if (tel.Kind == mel.Kind && tel.Size == mel.Size)
@@ -1119,7 +1119,7 @@ public static class TableFixedWire
                 }
             case 12:
                 {
-                    uint units = Math.Min(me.Size - 4u, te.Size - 4u);
+                    uint units = global::System.Math.Min(me.Size - 4u, te.Size - 4u);
                     TableFixedEntry e = new TableFixedEntry(
                         their_at, at, units, aux_at, guard, Text, arg, 0, 0, d.Arg);
                     c.Push(e);

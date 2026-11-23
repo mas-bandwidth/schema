@@ -1,0 +1,7 @@
+# THE CANONICAL CORPUS CASES (test/verify-canonical/cases.go): id <TAB> verdict <TAB> layout <TAB> what the case is.
+# layout is what json_sorted.json, json_reverse.json and json_shuffled.json carry: sorted, reverse, shuffled, empty-object or missing.
+whole	pass	sorted,reverse,shuffled	control: the three orderings as generated
+sorted-three-times	red:json_reverse.json does not carry its own ordering (it carries json_sorted.json's)	sorted,sorted,sorted	F-044: the sorted input copied over the other two read as three permutations
+reverse-is-empty-object	red:json_reverse.json does not carry its own ordering (it carries another input)	sorted,empty-object,shuffled	control for F-044: an independent reverse input of {}
+reverse-and-shuffled-swapped	red:json_shuffled.json does not carry its own ordering (it carries json_reverse.json's)	sorted,shuffled,reverse	two orderings under each other's names
+shuffled-missing	red:json_shuffled.json	sorted,reverse,missing	a file that is not there is an error, never an empty input

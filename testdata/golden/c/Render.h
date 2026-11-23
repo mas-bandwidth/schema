@@ -5,8 +5,8 @@
    AGPL-3.0, its output is not.
    package example — protocol id 0x2bf51af687ac0abd */
 
-#ifndef SCHEMA_EXAMPLE_RENDER_H
-#define SCHEMA_EXAMPLE_RENDER_H
+#ifndef SCHEMA_EXAMPLE_Render_h
+#define SCHEMA_EXAMPLE_Render_h
 
 #include <stdint.h>
 #include "SchemaRuntime.h"
@@ -51,4 +51,4 @@ typedef struct example_render_block_t
 }
 #endif
 
-#endif /* SCHEMA_EXAMPLE_RENDER_H */
+#endif /* SCHEMA_EXAMPLE_Render_h */

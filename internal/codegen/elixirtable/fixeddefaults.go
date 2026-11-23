@@ -219,7 +219,7 @@ func (g *fixedGen) fixedElemDefaultTerm(f *ir.Field) string {
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
-			return fmt.Sprintf("%%%s.%s{}", g.ns, r.Name)
+			return fmt.Sprintf("%%%s.%s{}", g.ns, elixir.ModuleName(r.Name))
 		case *ir.Union:
 			return "nil" // None
 		case *ir.Enum:

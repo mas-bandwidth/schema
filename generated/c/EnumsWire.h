@@ -5,8 +5,8 @@
    AGPL-3.0, its output is not.
    package example — protocol id 0x2bf51af687ac0abd */
 
-#ifndef SCHEMA_EXAMPLE_ENUMSWIRE_H
-#define SCHEMA_EXAMPLE_ENUMSWIRE_H
+#ifndef SCHEMA_EXAMPLE_Enums_wire_h
+#define SCHEMA_EXAMPLE_Enums_wire_h
 
 #include "Enums.h"
 #include "serialize.h"
@@ -19,4 +19,4 @@ extern "C" {
 }
 #endif
 
-#endif /* SCHEMA_EXAMPLE_ENUMSWIRE_H */
+#endif /* SCHEMA_EXAMPLE_Enums_wire_h */

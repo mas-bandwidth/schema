@@ -5,8 +5,8 @@
    AGPL-3.0, its output is not.
    package example — protocol id 0x2bf51af687ac0abd */
 
-#ifndef SCHEMA_EXAMPLE_WIRE_H
-#define SCHEMA_EXAMPLE_WIRE_H
+#ifndef SCHEMA_EXAMPLE_Wire_h
+#define SCHEMA_EXAMPLE_Wire_h
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -424,4 +424,4 @@ typedef struct example_compressed_probe_t
 }
 #endif
 
-#endif /* SCHEMA_EXAMPLE_WIRE_H */
+#endif /* SCHEMA_EXAMPLE_Wire_h */

@@ -5,8 +5,8 @@
    AGPL-3.0, its output is not.
    package example — protocol id 0x2bf51af687ac0abd */
 
-#ifndef SCHEMA_EXAMPLE_RENDERWIRE_H
-#define SCHEMA_EXAMPLE_RENDERWIRE_H
+#ifndef SCHEMA_EXAMPLE_Render_wire_h
+#define SCHEMA_EXAMPLE_Render_wire_h
 
 #include "Render.h"
 #include "serialize.h"
@@ -196,4 +196,4 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_render_block( seriali
 }
 #endif
 
-#endif /* SCHEMA_EXAMPLE_RENDERWIRE_H */
+#endif /* SCHEMA_EXAMPLE_Render_wire_h */

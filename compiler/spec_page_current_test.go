@@ -45,12 +45,15 @@ func TestSpecPageCurrent(t *testing.T) {
 			wants: []string{
 				"C (serialize.c v2.1.1)",
 				"JavaScript (serialize.js v2.1.2)",
-				"serialize.cs v2.1.1",
+				"(serialize v2.1.6)",
+				"serialize.cs v2.2.1",
 			},
 			stales: []string{
 				"C (serialize.c v2.0.2)",
 				"JavaScript (serialize.js v2.0.1)",
 				"serialize.cs v2.0.1",
+				"serialize.cs v2.1.1",
+				"(serialize v2.1.3)",
 			},
 		},
 		{

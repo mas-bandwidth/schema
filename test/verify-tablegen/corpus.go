@@ -23,6 +23,14 @@ const (
 	opFixed       uint8 = 4 // Form 3 FixedLoad + FixedSave == want1
 	opFixedRefuse uint8 = 5 // Form 3 FixedLoad MUST refuse (historical V1 writer-bound violation)
 	opJSON        uint8 = 6 // FromJson(in) -> ToJson == want1 AND Save == want2
+	// opJSONMsg is a FIXED root's native writer: FromJson(in) -> ToJson ==
+	// want1 AND SaveMessages of that one value == want2. opMsg reads the
+	// engine's bytes first, so a reader that lands the wrong value (a counted
+	// array read back at count 0 rather than its birth count) hands its own
+	// writer a value that hides the writer's defect; a value placed by text
+	// is the value the text names, and the message the writer owes for it is
+	// the engine's (pinned.go).
+	opJSONMsg uint8 = 7
 )
 
 // CorpusCase is one differential test case against a generated schema root.

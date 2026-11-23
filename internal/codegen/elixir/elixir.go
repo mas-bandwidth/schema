@@ -116,12 +116,29 @@ func checkNames(u *ir.Unit) error {
 	// module name the stepped-aside file module would take is still refused,
 	// by name.
 	taken := moduleNamesUnderNs(u)
+	// two declarations whose names differ only in a leading letter's case
+	// (`type memcpy` beside `type Memcpy`) would lower to one module
+	declMods := map[string]string{}
+	for decl := range u.DeclFile {
+		if _, isConst := u.Consts[decl]; isConst {
+			continue
+		}
+		if _, isFlags := u.Flags[decl]; isFlags {
+			continue
+		}
+		mod := ModuleName(decl)
+		if prev, dup := declMods[mod]; dup {
+			a, b := min(prev, decl), max(prev, decl)
+			return fmt.Errorf("declarations %s and %s both lower to the Elixir module %s.%s; rename one", a, b, ir.GoExportName(u.Package), mod)
+		}
+		declMods[mod] = decl
+	}
 	for _, un := range u.Unions {
 		// the union's tag module <Name>Type colliding with a declaration of
 		// that name is a declaration-vs-declaration collision — the file
 		// module's step-aside cannot resolve it, so the refusal stands.
-		if _, isDecl := u.DeclFile[un.Name+"Type"]; isDecl {
-			return fmt.Errorf("union %s needs the tag module %sType, which collides with the declaration of that name; rename one", un.Name, un.Name)
+		if _, isDecl := declMods[ModuleName(un.Name)+"Type"]; isDecl {
+			return fmt.Errorf("union %s needs the tag module %sType, which collides with the declaration of that name; rename one", un.Name, ModuleName(un.Name))
 		}
 	}
 	ns := ir.GoExportName(u.Package)
@@ -309,7 +326,20 @@ func (g *gen) bpf(format string, args ...any) {
 }
 
 // mod is the namespaced module of a declaration or file base.
-func (g *gen) mod(name string) string { return g.ns + "." + name }
+func (g *gen) mod(name string) string { return g.ns + "." + ModuleName(name) }
+
+// ModuleName is the module segment a declaration lowers to under <Ns>: its
+// schema name, with a leading lowercase letter raised. An Elixir alias must
+// start with an uppercase letter (`Probe.memcpy` is not a module name), and
+// the schema grammar leaves case a convention (SPEC §4.6), so `type memcpy`
+// lowers to Probe.Memcpy, as a file base already lowers through GoExportName.
+// A name that starts upper case is its own module segment, unchanged.
+func ModuleName(name string) string {
+	if name != "" && name[0] >= 'a' && name[0] <= 'z' {
+		return string(name[0]-'a'+'A') + name[1:]
+	}
+	return name
+}
 
 // fileModuleName is the file-scope module's name for file f: <Ns>.<Base>,
 // or <Ns>.<Base>File when a declaration (type, enum, union or union tag
@@ -351,13 +381,13 @@ func moduleNamesUnderNs(u *ir.Unit) map[string]bool {
 		if _, isTable := u.Tables[decl]; isTable {
 			continue // a fixed table's value module is added below, by the backend's own closure
 		}
-		taken[decl] = true
+		taken[ModuleName(decl)] = true
 	}
 	for _, un := range u.Unions {
-		taken[un.Name+"Type"] = true
+		taken[ModuleName(un.Name)+"Type"] = true
 	}
 	for n := range fixedTableModuleNames(u) {
-		taken[n] = true
+		taken[ModuleName(n)] = true
 	}
 	return taken
 }
@@ -682,7 +712,7 @@ func emitKeyedAccessors(b *strings.Builder, st *ir.Struct, ns string) {
 		atomGuard := "is_atom(key) and key in [" + strings.Join(atoms, ", ") + "]"
 		key := "pos_integer()"
 		if ns != "" {
-			key = ns + "." + enumName + ".t()"
+			key = ns + "." + ModuleName(enumName) + ".t()"
 			b.WriteString("  @doc \"The " + slot + " element at an " + enumName + " key, by atom or by its 1-based wire value.\"\n")
 			b.WriteString("  @spec " + fn + "_at(t(), " + key + ") :: term()\n")
 		}
@@ -690,7 +720,7 @@ func emitKeyedAccessors(b *strings.Builder, st *ir.Struct, ns string) {
 		b.WriteString("    Enum.at(" + slotRef + ", key - 1)\n")
 		b.WriteString("  end\n\n")
 		if ns != "" {
-			b.WriteString("  def " + fn + "_at(s, key) when " + atomGuard + ",\n    do: " + fn + "_at(s, " + ns + "." + enumName + ".to_int(key))\n\n")
+			b.WriteString("  def " + fn + "_at(s, key) when " + atomGuard + ",\n    do: " + fn + "_at(s, " + ns + "." + ModuleName(enumName) + ".to_int(key))\n\n")
 		}
 		b.WriteString("  def " + fn + "_at(_s, key), do: refuse_" + fn + "_key(key)\n\n")
 		if ns != "" {
@@ -701,7 +731,7 @@ func emitKeyedAccessors(b *strings.Builder, st *ir.Struct, ns string) {
 		b.WriteString("    %{s | " + slot + ": List.replace_at(" + slotRef + ", key - 1, v)}\n")
 		b.WriteString("  end\n\n")
 		if ns != "" {
-			b.WriteString("  def put_" + fn + "_at(s, key, v) when " + atomGuard + ",\n    do: put_" + fn + "_at(s, " + ns + "." + enumName + ".to_int(key), v)\n\n")
+			b.WriteString("  def put_" + fn + "_at(s, key, v) when " + atomGuard + ",\n    do: put_" + fn + "_at(s, " + ns + "." + ModuleName(enumName) + ".to_int(key), v)\n\n")
 		}
 		b.WriteString("  def put_" + fn + "_at(_s, key, _v), do: refuse_" + fn + "_key(key)\n\n")
 		if ns != "" {

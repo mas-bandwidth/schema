@@ -934,6 +934,15 @@ func emitResetMethod(helpers *strings.Builder, holder string, st *ir.Struct) {
 			if isPointerArray(f) {
 				fmt.Fprintf(helpers, "        v.%sIdx.clear();\n", m)
 			}
+			if n := variableBornCount(f); n > 0 {
+				// a reset value is born again: M default elements (§22.2)
+				fmt.Fprintf(helpers, "        for (int i = 0; i < %d; i++) {\n", n)
+				fmt.Fprintf(helpers, "            v.%s.add(%s);\n", m, variableDefault(variableElement(f)))
+				if isPointerArray(f) {
+					fmt.Fprintf(helpers, "            v.%sIdx.add(0L);\n", m)
+				}
+				fmt.Fprintf(helpers, "        }\n")
+			}
 		case isStruct(f) && !f.Type.Pointer:
 			fmt.Fprintf(helpers, "        %sDescriptor.tableType().reset.accept(v.%s);\n", f.Type.Name, m)
 		default:

@@ -5,8 +5,8 @@
    AGPL-3.0, its output is not.
    package realworld — protocol id 0xcc9644116a3dac22 */
 
-#ifndef SCHEMA_REALWORLD_REAL_WORLDWIRE_H
-#define SCHEMA_REALWORLD_REAL_WORLDWIRE_H
+#ifndef SCHEMA_REALWORLD_RealWorld_wire_h
+#define SCHEMA_REALWORLD_RealWorld_wire_h
 
 #include "RealWorld.h"
 #include "serialize.h"
@@ -1449,4 +1449,4 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int realworld_read_real_packet( serial
 }
 #endif
 
-#endif /* SCHEMA_REALWORLD_REAL_WORLDWIRE_H */
+#endif /* SCHEMA_REALWORLD_RealWorld_wire_h */

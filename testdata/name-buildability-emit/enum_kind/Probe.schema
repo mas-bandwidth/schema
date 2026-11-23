@@ -1,0 +1,10 @@
+package probe
+
+enum kind
+{ Alpha, Beta, Gamma }
+
+type Slots
+{
+    which  kind
+    keyed  [kind]uint8
+}

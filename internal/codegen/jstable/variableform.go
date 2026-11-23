@@ -321,7 +321,8 @@ class TableVariableIds {
     const r = this.index.get(id);
     if (r !== undefined) { return r; }
     const isRetained = !!retained && !tableRetainNameable(id);
-    if (isRetained && this.retain !== null && this.retain.idUsed >= this.retain.ids.length) { return -1; }
+    // a retained id that would be the 4097th entry is lost like a full list (§3)
+    if (isRetained && this.retain !== null && (this.retain.idUsed >= this.retain.ids.length || this.list.length >= 4096)) { return -1; }
     this.list.push(id);
     const n = this.list.length;
     this.index.set(id, n);

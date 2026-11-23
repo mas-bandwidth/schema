@@ -1,0 +1,8 @@
+package probe
+
+table Holder
+{
+    first Math
+    list  [..4]Math
+    x     float32
+}

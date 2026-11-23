@@ -102,7 +102,9 @@ inline bool TableJsonWritePointer( TableJsonOut & out, const void * slot, const 
 // the FIRST key of an object the walk is skipping begins with ` + "`&`" + `: the cursor is
 // on its value. A dropped definition still takes its label (§16.7); a fixed reader
 // skips the value whole, as it skips everything else it does not place.
-inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32_t key_length, int32_t depth );
+inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32_t key_length, int32_t depth, char close, uint64_t & opened );
+// the object that opened a definition in a skipped value has closed: the label stays, with no node
+inline void TableJsonSkippedClose( TableJsonIn & in, uint64_t label );
 
 // ---- the map and list adapters (docs/SPEC-TABLES.md §2.8, §2.9, §16) ----
 //
@@ -176,10 +178,40 @@ inline bool TableJsonWritePointer( TableJsonOut &, const void *, const TableFiel
     return false;
 }
 
-inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char *, int32_t, int32_t depth )
+inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32_t key_length, int32_t, char, uint64_t & )
 {
-    return TableJsonSkipValue( in, depth + 1 );
+    // no pointer, so no label table: the prefix is still held to its grammar
+    // (a well-formed first &node), and the value is skipped whole
+    if ( !TableJsonKeyEquals( "&node", key, key_length ) )
+    {
+        in.report->damaged = true;
+        in.bad = true;
+        return false;
+    }
+    TableJsonSpace( in );
+    if ( in.pos >= in.size || in.text[in.pos] < '1' || in.text[in.pos] > '9' )
+    {
+        in.report->damaged = true;
+        in.bad = true;
+        return false;
+    }
+    uint64_t value = 0;
+    while ( in.pos < in.size && in.text[in.pos] >= '0' && in.text[in.pos] <= '9' )
+    {
+        const uint64_t digit = (uint64_t) ( in.text[in.pos] - '0' );
+        if ( value > ( UINT64_MAX - digit ) / 10 )
+        {
+            in.report->damaged = true;
+            in.bad = true;
+            return false;
+        }
+        value = value * 10 + digit;
+        in.pos++;
+    }
+    return true;
 }
+
+inline void TableJsonSkippedClose( TableJsonIn &, uint64_t ) {}
 
 inline bool schema_table_json_read_unbounded_text_( TableJsonIn & in, void *, int32_t * )
 {
@@ -3841,12 +3873,14 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
     in.pos++; // the opening bracket
     TableJsonKeyScope keys( in ); // this object's keys, bounded by the text's own length
     bool first = true;
+    uint64_t opened = 0; // the label this object defines, open until it closes
     for ( ;; )
     {
         char c = TableJsonPeek( in );
         if ( c == close )
         {
             in.pos++;
+            if ( opened != 0 ) { TableJsonSkippedClose( in, opened ); }
             return true;
         }
         if ( c == 0 )
@@ -3872,7 +3906,7 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
             }
             in.pos++;
             if ( !TableJsonKeyTrack( in, key, key_length ) ) { return false; }
-            if ( key[0] == '&' && in.graph != NULL )
+            if ( key[0] == '&' )
             {
                 if ( !first )
                 {
@@ -3880,7 +3914,7 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
                     in.bad = true;
                     return false;
                 }
-                if ( !TableJsonSkippedAmpersand( in, key, key_length, depth ) ) { return false; }
+                if ( !TableJsonSkippedAmpersand( in, key, key_length, depth, close, opened ) ) { return false; }
                 first = false;
                 c = TableJsonPeek( in );
                 if ( c == ',' )
@@ -3908,6 +3942,7 @@ inline bool TableJsonSkipContainer( TableJsonIn & in, char close, int32_t depth 
         if ( c == close )
         {
             in.pos++;
+            if ( opened != 0 ) { TableJsonSkippedClose( in, opened ); }
             return true;
         }
         in.bad = true;
@@ -5684,10 +5719,10 @@ inline bool TableJsonReadPointer( TableJsonIn & in, void * slot, const TableFiel
 // the storage could not hold (§16.7): the label is registered with no node, and a
 // reference to it reads null. Any other prefixed key is the reserved prefix
 // out of place.
-inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32_t key_length, int32_t )
+inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32_t key_length, int32_t, char close, uint64_t & opened )
 {
     TableJsonGraphIn * graph = (TableJsonGraphIn *) in.graph;
-    if ( graph == NULL || !TableJsonKeyEquals( "&node", key, key_length ) )
+    if ( !TableJsonKeyEquals( "&node", key, key_length ) )
     {
         in.report->damaged = true;
         in.bad = true;
@@ -5695,14 +5730,47 @@ inline bool TableJsonSkippedAmpersand( TableJsonIn & in, const char * key, int32
     }
     uint64_t label = 0;
     if ( !TableJsonScanLabel( in, label ) ) { return false; }
+    if ( graph == NULL ) { return true; } // a fixed root in a pointered unit: no label table, the value skipped whole
     bool taken = false;
-    if ( TableJsonGraphMapReach( graph->labels, label, taken ) == NULL )
+    TableJsonGraphEntry * entry = TableJsonGraphMapReach( graph->labels, label, taken );
+    if ( entry == NULL )
     {
         in.report->damaged = true;
         in.bad = true;
         return false;
     }
+    // THE LABEL RULES HOLD INSIDE A SKIPPED VALUE (§16.7): a label alone must
+    // name a definition already closed; fields after one must follow a label
+    // not yet defined, and the definition is open until its object closes. The
+    // caller owns the comma and the close: this only looks past the comma.
+    char c = TableJsonPeek( in );
+    if ( c == ',' )
+    {
+        const int64_t mark = in.pos;
+        in.pos++;
+        c = TableJsonPeek( in );
+        in.pos = mark;
+    }
+    const bool bare = c == close;
+    if ( bare == taken || ( bare && entry->open != 0 ) )
+    {
+        in.report->damaged = true;
+        in.bad = true;
+        return false;
+    }
+    if ( !bare )
+    {
+        entry->open = 1;
+        opened = label;
+    }
     return true; // a fresh entry is node 0, type NULL: a definition with no node
+}
+
+inline void TableJsonSkippedClose( TableJsonIn & in, uint64_t label )
+{
+    TableJsonGraphIn * graph = (TableJsonGraphIn *) in.graph;
+    TableJsonGraphEntry * entry = TableJsonGraphMapFind( graph->labels, label );
+    if ( entry != NULL ) { entry->open = 0; }
 }
 
 // ---- writing: from a region's const root ----

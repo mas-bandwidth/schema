@@ -100,7 +100,7 @@ const tableWideJsonSource = `
             byte[] fractionDigits = new byte[token.Length + 48];
             int fn = 0;
             for (int z = point; z < 0; z++) { fractionDigits[fn++] = 0; }
-            for (int k = Math.Max(point, 0) + start; k < end; k++) { fractionDigits[fn++] = digits[k]; }
+            for (int k = global::System.Math.Max(point, 0) + start; k < end; k++) { fractionDigits[fn++] = digits[k]; }
             UInt128 fraction = 0;
             for (int bit = 0; bit < f.FracBits; bit++)
             {

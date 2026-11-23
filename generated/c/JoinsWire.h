@@ -5,8 +5,8 @@
    AGPL-3.0, its output is not.
    package example — protocol id 0x2bf51af687ac0abd */
 
-#ifndef SCHEMA_EXAMPLE_JOINSWIRE_H
-#define SCHEMA_EXAMPLE_JOINSWIRE_H
+#ifndef SCHEMA_EXAMPLE_Joins_wire_h
+#define SCHEMA_EXAMPLE_Joins_wire_h
 
 #include "Joins.h"
 #include <string.h>   /* memset, strlen */
@@ -1104,4 +1104,4 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_regain_after_align( s
 }
 #endif
 
-#endif /* SCHEMA_EXAMPLE_JOINSWIRE_H */
+#endif /* SCHEMA_EXAMPLE_Joins_wire_h */

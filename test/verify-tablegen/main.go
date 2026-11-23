@@ -27,6 +27,23 @@ var allLangs = []string{
 	"js", "python", "ruby", "lua", "luau", "squirrel", "moo", "goose", "lobster",
 }
 
+// parseTargets is --lang as the target names every later step keys on: "all",
+// or a comma list whose names are trimmed and whose empty entries are dropped,
+// so `lobster, js` and `lobster,js` name the same two targets everywhere (the
+// run, the matrix's bookkeeping and its printout: one spelling, one key).
+func parseTargets(flag string) []string {
+	if strings.TrimSpace(flag) == "all" {
+		return slices.Clone(allLangs)
+	}
+	var out []string
+	for name := range strings.SplitSeq(flag, ",") {
+		if name = strings.TrimSpace(name); name != "" {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
 type PairMeta struct {
 	Index     int    `json:"index"`
 	Name      string `json:"name"`
@@ -48,6 +65,13 @@ type CorpusMeta struct {
 	Schemas   int        `json:"schemas"`
 	CaseCount int        `json:"case_count"`
 	Pairs     []PairMeta `json:"pairs"`
+	// Pinned is the hand-written array-default matrix's units (pinned.go)
+	Pinned []PinnedUnit `json:"pinned"`
+	// PinnedVersion is pinned.go's case layout; a cached corpus of another
+	// layout is generated again
+	PinnedVersion int `json:"pinned_version"`
+	// only, when set by --only, is the packages the kept cases name
+	only map[string]bool
 }
 
 type UnitSpec struct {
@@ -72,6 +96,15 @@ func unitsFromMeta(meta *CorpusMeta) []UnitSpec {
 				VarRoot: p.VarRootV2, FixRoot: p.FixRootV2, BlkRoot: p.BlkRootV2,
 			},
 		)
+	}
+	for _, p := range meta.Pinned {
+		out = append(out, UnitSpec{
+			Pkg: p.Pkg, FileBase: p.FileBase, SchemaDir: p.Dir,
+			VarRoot: pinnedVarRoot, FixRoot: pinnedFixRoot, BlkRoot: pinnedBlkRoot,
+		})
+	}
+	if meta.only != nil {
+		out = slices.DeleteFunc(out, func(u UnitSpec) bool { return !meta.only[u.Pkg] })
 	}
 	return out
 }
@@ -225,19 +258,63 @@ func resolveGooseTool(repoRoot string) string {
 }
 
 func runChecked(dir string, extraEnv []string, name string, args ...string) (string, error) {
-	cmd := exec.Command(name, args...)
-	cmd.Dir = dir
-	if len(extraEnv) > 0 {
-		cmd.Env = append(os.Environ(), extraEnv...)
+	run := func() (string, error) {
+		cmd := exec.Command(name, args...)
+		cmd.Dir = dir
+		if len(extraEnv) > 0 {
+			cmd.Env = append(os.Environ(), extraEnv...)
+		}
+		var out bytes.Buffer
+		cmd.Stdout = &out
+		cmd.Stderr = &out
+		err := cmd.Run()
+		return out.String(), err
 	}
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	cmd.Stderr = &out
-	err := cmd.Run()
-	return out.String(), err
+	if matrix != nil {
+		if out, err, ok := matrix.viaPack(args, run); ok {
+			return out, err
+		}
+	}
+	return run()
+}
+
+// proveSample holds a run to having something to verify (F-045): `--schemas 0`
+// generated no pair, every target's driver ran no case, and the tool printed
+// TABLEGEN_OK <lang> 0 and exited 0. The sample is at least one pair, the
+// corpus carries exactly the pairs asked for, every pair contributes a case,
+// and every case is its own (no id twice). This is the one place all 18
+// targets' drivers take their cases from.
+func proveSample(schemas int, meta *CorpusMeta, cases []CorpusCase) error {
+	if schemas < 1 {
+		return fmt.Errorf("--schemas %d: the sample is empty, and a verification over no schema passes nothing", schemas)
+	}
+	if len(meta.Pairs) != schemas {
+		return fmt.Errorf("the corpus carries %d schema pair(s) and --schemas asked for %d", len(meta.Pairs), schemas)
+	}
+	if len(cases) == 0 || len(cases) != meta.CaseCount {
+		return fmt.Errorf("the corpus carries %d case(s) and its meta says %d: a run over no case passes nothing", len(cases), meta.CaseCount)
+	}
+	byPkg := map[string]int{}
+	ids := map[string]bool{}
+	for _, c := range cases {
+		if ids[c.ID] {
+			return fmt.Errorf("the corpus carries the case %s twice", c.ID)
+		}
+		ids[c.ID] = true
+		byPkg[c.Pkg]++
+	}
+	for _, pm := range meta.Pairs {
+		if byPkg[pm.PkgV1]+byPkg[pm.PkgV2] == 0 {
+			return fmt.Errorf("schema pair %d (%s) contributes no case to the corpus", pm.Index, pm.Name)
+		}
+	}
+	return nil
 }
 
 func requireToken(out string, err error, lang string, caseCount int) error {
+	if caseCount < 1 {
+		return fmt.Errorf("%s was handed %d cases: a driver over no case proves nothing", lang, caseCount)
+	}
 	want := fmt.Sprintf("TABLEGEN_OK %s %d", lang, caseCount)
 	if err != nil {
 		return fmt.Errorf("%s failed (%w):\n%s", lang, err, out)
@@ -293,8 +370,13 @@ func ensureTablegenCorpus(corpusDir string, seed uint64, schemas int, forceGen b
 		praw, err2 := os.ReadFile(packPath)
 		if err1 == nil && err2 == nil {
 			var meta CorpusMeta
-			if json.Unmarshal(mraw, &meta) == nil && meta.Seed == seed && meta.Schemas == schemas && len(meta.Pairs) == schemas {
+			if json.Unmarshal(mraw, &meta) == nil && meta.Seed == seed && meta.Schemas == schemas && len(meta.Pairs) == schemas && len(meta.Pinned) == len(pinnedShapes()) && meta.PinnedVersion == pinnedVersion {
 				allExist := true
+				for _, pu := range meta.Pinned {
+					if !fileExists(pu.Dir) {
+						allExist = false
+					}
+				}
 				for _, pm := range meta.Pairs {
 					if !fileExists(pm.DirV1) || !fileExists(pm.DirV2) {
 						allExist = false
@@ -319,15 +401,26 @@ func ensureTablegenCorpus(corpusDir string, seed uint64, schemas int, forceGen b
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	cases, packed, err := BuildCorpus(pairs, seed, corpusDir)
+	cases, _, err := BuildCorpus(pairs, seed, corpusDir)
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	pinned, pinnedCases, err := BuildPinned(schemasDir)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	cases = append(cases, pinnedCases...)
+	packed := PackCases(cases)
+	if err := os.WriteFile(packPath, packed, 0o644); err != nil {
+		return nil, nil, nil, err
+	}
 	meta := &CorpusMeta{
-		Seed:      seed,
-		Schemas:   schemas,
-		CaseCount: len(cases),
-		Pairs:     make([]PairMeta, len(pairs)),
+		Seed:          seed,
+		Schemas:       schemas,
+		CaseCount:     len(cases),
+		Pairs:         make([]PairMeta, len(pairs)),
+		Pinned:        pinned,
+		PinnedVersion: pinnedVersion,
 	}
 	for i, p := range pairs {
 		meta.Pairs[i] = PairMeta{
@@ -409,8 +502,18 @@ func main() {
 	schemaMooFlag := flag.String("schema-moo", "./build/schema-moo", "path to build/schema-moo")
 	workFlag := flag.String("work", "./build/verify-tablegen", "working directory")
 	corpusFlag := flag.String("corpus", "", "pre-generated corpus directory (optional)")
+	sampleCasesFlag := flag.String("sample-cases", "", "replay this committed folder of sample cases and exit (testdata/sample-cases)")
 	genOnlyFlag := flag.Bool("generate-only", false, "only generate schemas, lockfiles, and oracle corpus")
+	matrixFlag := flag.Bool("matrix", false, "name every failing case of each target instead of stopping at the first (a diagnostic, matrix.go)")
+	onlyFlag := flag.String("only", "", "run only the cases whose id contains this text (a diagnostic: the gate runs them all)")
 	flag.Parse()
+	if *sampleCasesFlag != "" {
+		if err := runSampleCases(*sampleCasesFlag); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	repoRoot, err := filepath.Abs(*repoFlag)
 	if err != nil {
@@ -436,7 +539,14 @@ func main() {
 		corpusDir = filepath.Join(repoRoot, corpusDir)
 	}
 
+	if *schemasFlag < 1 {
+		fmt.Fprintf(os.Stderr, "--schemas %d: the sample is empty, and a verification over no schema passes nothing\n", *schemasFlag)
+		os.Exit(2)
+	}
 	meta, cases, packed, err := ensureTablegenCorpus(corpusDir, *seedFlag, *schemasFlag, *genOnlyFlag)
+	if err == nil {
+		err = proveSample(*schemasFlag, meta, cases)
+	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -452,21 +562,50 @@ func main() {
 		return
 	}
 
-	var targets []string
-	switch {
-	case *langFlag == "all":
-		targets = allLangs
-	case *langFlag != "":
-		targets = strings.Split(*langFlag, ",")
-	default:
+	if *onlyFlag != "" {
+		cases = slices.DeleteFunc(cases, func(c CorpusCase) bool { return !strings.Contains(c.ID, *onlyFlag) })
+		if len(cases) == 0 {
+			fmt.Fprintf(os.Stderr, "--only %q keeps no case\n", *onlyFlag)
+			os.Exit(2)
+		}
+		meta.only = map[string]bool{}
+		for _, c := range cases {
+			meta.only[c.Pkg] = true
+		}
+		packed = PackCases(cases)
+		corpusDir = filepath.Join(workRoot, "only")
+		if err := os.MkdirAll(corpusDir, 0o755); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if err := os.WriteFile(filepath.Join(corpusDir, "corpus.pack"), packed, 0o644); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+	}
+
+	targets := parseTargets(*langFlag)
+	if len(targets) == 0 {
 		fmt.Fprintln(os.Stderr, "--lang is required")
 		os.Exit(2)
+	}
+
+	if *matrixFlag {
+		matrix = newMatrix()
+		var mwg sync.WaitGroup
+		for _, lang := range targets {
+			mwg.Go(func() {
+				runMatrix(repoRoot, schemaBin, schemaMooBin, workRoot, lang, meta, cases)
+			})
+		}
+		mwg.Wait()
+		printMatrix(targets, len(cases))
+		return
 	}
 
 	var wg sync.WaitGroup
 	errs := make(chan error, len(targets))
 	for _, lang := range targets {
-		lang := strings.TrimSpace(lang)
 		wg.Go(func() {
 			if err := verifyLang(repoRoot, schemaBin, schemaMooBin, corpusDir, filepath.Join(workRoot, "runs"), lang, meta, cases, packed); err != nil {
 				errs <- err

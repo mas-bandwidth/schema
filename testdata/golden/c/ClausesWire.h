@@ -5,8 +5,8 @@
    AGPL-3.0, its output is not.
    package example — protocol id 0x2bf51af687ac0abd */
 
-#ifndef SCHEMA_EXAMPLE_CLAUSESWIRE_H
-#define SCHEMA_EXAMPLE_CLAUSESWIRE_H
+#ifndef SCHEMA_EXAMPLE_Clauses_wire_h
+#define SCHEMA_EXAMPLE_Clauses_wire_h
 
 #include "Clauses.h"
 #include <string.h>   /* memset, strlen */
@@ -1031,4 +1031,4 @@ static SCHEMA_UNUSED SCHEMA_C_READ_INLINE int example_read_sole( serialize_read_
 }
 #endif
 
-#endif /* SCHEMA_EXAMPLE_CLAUSESWIRE_H */
+#endif /* SCHEMA_EXAMPLE_Clauses_wire_h */

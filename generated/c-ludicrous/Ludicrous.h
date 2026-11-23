@@ -5,8 +5,8 @@
    AGPL-3.0, its output is not.
    package ludicrous — protocol id 0xd2ded2cc8a482aa1 */
 
-#ifndef SCHEMA_LUDICROUS_LUDICROUS_H
-#define SCHEMA_LUDICROUS_LUDICROUS_H
+#ifndef SCHEMA_LUDICROUS_Ludicrous_h
+#define SCHEMA_LUDICROUS_Ludicrous_h
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -211,4 +211,4 @@ static SCHEMA_UNUSED ludicrous_fixed_quat_t ludicrous_new_fixed_quat( void )
 }
 #endif
 
-#endif /* SCHEMA_LUDICROUS_LUDICROUS_H */
+#endif /* SCHEMA_LUDICROUS_Ludicrous_h */

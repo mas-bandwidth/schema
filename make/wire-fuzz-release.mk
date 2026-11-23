@@ -14,8 +14,12 @@
 #
 # THE SIX RUNS ARE INDEPENDENT and are separate make targets, so `make -j`
 # runs them side by side. Each run writes one row and always finishes
-# (make/checks/wire-fuzz-release-run.sh); the leg's target then prints its six
-# rows and is red on any RED row. An arm the leg does not carry is named in
+# (make/checks/wire-fuzz-release-run.sh); the leg's target then reads its
+# roster, every arm at every seed, row by row BY NAME (tools/wirefuzzrelease
+# table) and is red on any RED row and on any row that is not there. A run is
+# green only when its summary proves it: at least one seed, at least one
+# mutant, no divergence, and no seed absent that
+# test/conformance/wire-fuzz-absent.txt does not hold by leg, arm and count. An arm the leg does not carry is named in
 # test/conformance/wire-fuzz-owed.txt with its reason; it still runs where the
 # leg has a driver, and an owed arm that has gone green is RED until its entry
 # is removed. A leg with no driver at all has both arms owed by name.
@@ -98,21 +102,27 @@ wfr_runs = $(foreach a,$(WIRE_FUZZ_RELEASE_ARMS),$(foreach s,$(WIRE_FUZZ_RELEASE
 # no hyphen, so the words of the name are the run's coordinates.
 define wfr_leg
 .PHONY: tables-wire-fuzz-release-$(1) $(call wfr_runs,$(1))
-$(call wfr_runs,$(1)): build/conformance-harness $$(if $$(WFR_DRIVER_$(1)),$$(WFR_DEPS_$(1)))
-	@WFR_DRIVER="$$(strip $$(WFR_DRIVER_$(1)))" WFR_FLAGS="$$(WFR_FLAGS_$(1))" WFR_ENV="$$(WFR_ENV_$(1))" \
+$(call wfr_runs,$(1)): build/conformance-harness build/wirefuzzrelease wire-fuzz-release-cases $$(if $$(WFR_DRIVER_$(1)),$$(WFR_DEPS_$(1)))
+	@WFR_DRIVER="$$(strip $$(WFR_DRIVER_$(1)))" WFR_FLAGS="$$(WFR_FLAGS_$(1))" WFR_ENV="$$(WFR_ENV_$(1))" WFR_TOOL=./build/wirefuzzrelease \
 		sh make/checks/wire-fuzz-release-run.sh $(1) $$(word 4,$$(subst -, ,$$@)) $$(word 5,$$(subst -, ,$$@)) \
 		$$(WIRE_FUZZ_RELEASE_N) $$(WIRE_FUZZ_RELEASE_DIR)
 tables-wire-fuzz-release-$(1): $(call wfr_runs,$(1))
-	@for r in $(call wfr_runs,$(1)); do set -- $$$$(echo $$$$r | tr - ' '); cat $$(WIRE_FUZZ_RELEASE_DIR)/$$$$3.$$$$4.$$$$5.row; done > $$(WIRE_FUZZ_RELEASE_DIR)/$(1).tsv
-	@rows=$$$$(wc -l < $$(WIRE_FUZZ_RELEASE_DIR)/$(1).tsv | tr -d ' '); \
-	if [ "$$$$rows" -ne $(words $(call wfr_runs,$(1))) ]; then \
-		echo "tables-wire-fuzz-release-$(1): RED ($$$$rows rows for $(words $(call wfr_runs,$(1))) runs: a run landed no row)"; exit 1; fi
-	@awk -F'\t' '{ print $$$$1 " | " $$$$2 " | " $$$$3 " | " $$$$4 }' $$(WIRE_FUZZ_RELEASE_DIR)/$(1).tsv
-	@if cut -f4 $$(WIRE_FUZZ_RELEASE_DIR)/$(1).tsv | grep '^RED' >/dev/null; then \
-		echo "tables-wire-fuzz-release-$(1): RED (logs and mutants under $$(WIRE_FUZZ_RELEASE_DIR)/$(1).*)"; exit 1; fi
-	@echo "tables-wire-fuzz-release-$(1): every arm passes or is owed by name, seeds $$(WIRE_FUZZ_RELEASE_SEEDS) at N=$$(WIRE_FUZZ_RELEASE_N)"
+	@./build/wirefuzzrelease table -leg $(1) -dir $$(WIRE_FUZZ_RELEASE_DIR) -arms "$$(WIRE_FUZZ_RELEASE_ARMS)" -seeds "$$(WIRE_FUZZ_RELEASE_SEEDS)" -n $$(WIRE_FUZZ_RELEASE_N)
 endef
 $(foreach l,$(WIRE_FUZZ_RELEASE_LEGS),$(eval $(call wfr_leg,$(l))))
+
+# THE GATE'S JUDGEMENT (tools/wirefuzzrelease): one run into one row, and a
+# leg's roster of rows, read by name, into its verdict.
+build/wirefuzzrelease: $(wildcard tools/wirefuzzrelease/*.go)
+	@mkdir -p build
+	go build -o $@ ./tools/wirefuzzrelease
+
+# THE GATE'S OWN CASES (tools/wirefuzzrelease/testdata/gate-cases): committed
+# harness logs and rosters with the verdict each owes, the reviewer's controls
+# among them. Every run of the gate replays them first; it reads files only.
+.PHONY: wire-fuzz-release-cases
+wire-fuzz-release-cases: build/wirefuzzrelease
+	./build/wirefuzzrelease cases
 
 .PHONY: wire-fuzz-release wire-fuzz-release-table wire-fuzz-release-targets
 # Dry run of the release gate's name. The runs stay
@@ -140,12 +150,12 @@ wire-fuzz-release-targets:
 # the sabotaged units, and the gate's own run, plain arm, at the gate's seeds
 # and count, required to go RED on the report.
 .PHONY: tables-wire-fuzz-release-negative-control
-tables-wire-fuzz-release-negative-control: build/conformance-harness
+tables-wire-fuzz-release-negative-control: build/conformance-harness build/wirefuzzrelease
 	sh test/conformance/dart/negative-control mapheader "$(DART)"
 	@rm -rf build/wire-fuzz-release-nc
 	@# each seed's run waited on by its pid, never a bare wait (F-068)
 	@pids=; for s in $(WIRE_FUZZ_RELEASE_SEEDS); do \
-		WFR_DRIVER="$(CURDIR)/build/conformance-dart-negative-mapheader/conformance-dart wire-fuzz" WFR_FLAGS="$(WFR_FLAGS_dart)" WFR_ENV= \
+		WFR_DRIVER="$(CURDIR)/build/conformance-dart-negative-mapheader/conformance-dart wire-fuzz" WFR_FLAGS="$(WFR_FLAGS_dart)" WFR_ENV= WFR_TOOL=./build/wirefuzzrelease \
 		sh make/checks/wire-fuzz-release-run.sh dart plain $$s $(WIRE_FUZZ_RELEASE_N) build/wire-fuzz-release-nc & pids="$$pids $$!"; done; \
 	failed=0; for p in $$pids; do wait "$$p" || failed=1; done; \
 	if test "$$failed" -ne 0; then echo "NEGATIVE CONTROL FAILED: a release wire-fuzz run exited non-zero" >&2; exit 1; fi

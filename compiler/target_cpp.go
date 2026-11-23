@@ -5,8 +5,10 @@ package compiler
 import (
 	"fmt"
 
+	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpp"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/cpptable"
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/cqualify"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -28,15 +30,26 @@ func (t cppTarget) Generate(u *ir.Unit, opts Options) (map[string][]byte, error)
 // interim. So the OPEN is shared here and the interpretation is not, yet — the
 // entries of §5.9 #1 are what it will take the day the convention goes away.
 func (cppTarget) GenerateLineage(u *ir.Unit, _ Options, lineage *FixedLineage) (map[string][]byte, error) {
-	files, err := cpp.Generate(u)
+	// a declared type spelled like a libc name or a platform macro is handed to
+	// the emitters under the type escape, and the pass after them keeps the
+	// user's type and the platform's name apart (cqualify/cpp.go); a unit
+	// without one is emitted as it is
+	esc, table := cqualify.Escape(u, func(n string) bool { return cqualify.CppCollides(n, check.LibcIdentifier) })
+	files, err := cpp.Generate(esc)
 	if err != nil {
-		return nil, err
+		return nil, table.Err(err)
 	}
 	// units that declare tables ALSO get <Base>Table.h per file — the
 	// TABLE-wire codecs (docs/SPEC-TABLES.md); a table-free unit's output is
 	// byte-identical to what the packet emitter alone produces
-	tables, err := cpptable.GenerateLineage(u, lineage.Lock())
+	tables, err := cpptable.GenerateLineage(esc, lineage.Lock())
 	if err != nil {
+		return nil, table.Err(err)
+	}
+	if files, err = cqualify.QualifyCpp(files, table, check.LibcIdentifier); err != nil {
+		return nil, err
+	}
+	if tables, err = cqualify.QualifyCpp(tables, table, check.LibcIdentifier); err != nil {
 		return nil, err
 	}
 	for name, data := range tables {

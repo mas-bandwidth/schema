@@ -259,7 +259,7 @@ func (g *fixedGen) unionsIn(closure []*ir.Struct) []*ir.Union {
 func (g *fixedGen) structModule(st *ir.Struct) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# table %s — the value a fixed record of it carries (docs/SPEC-TABLES.md §3.4)\n", st.Name)
-	fmt.Fprintf(&b, "defmodule %s.%s do\n", g.ns, st.Name)
+	fmt.Fprintf(&b, "defmodule %s.%s do\n", g.ns, elixir.ModuleName(st.Name))
 	fields := make([]string, 0, len(st.Fields))
 	for _, f := range st.Fields {
 		if f.Type.Optional {
@@ -484,7 +484,7 @@ func (g *fixedGen) leafSegment(f *ir.Field, name string) string {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Enum:
 			// THE ORDINAL IS THE VARIANT'S POSITION, from 1, and 0 is None.
-			return fmt.Sprintf("%s.%s.to_int(%s)::little-unsigned-%d", g.ns, r.Name, name, r.StorageBits)
+			return fmt.Sprintf("%s.%s.to_int(%s)::little-unsigned-%d", g.ns, elixir.ModuleName(r.Name), name, r.StorageBits)
 		case *ir.Flags:
 			return fmt.Sprintf("%s::little-unsigned-64", name)
 		}
@@ -1037,7 +1037,7 @@ func (g *fixedGen) leafDec(f *ir.Field, v string) leafDec {
 			n := len(r.Variants)
 			return leafDec{
 				spec: fmt.Sprintf("%s::little-unsigned-%d", name, r.StorageBits),
-				wrap: call("elem", call(g.ns+"."+r.Name+".from_int",
+				wrap: call("elem", call(g.ns+"."+elixir.ModuleName(r.Name)+".from_int",
 					rawf("if(%s <= %d, do: %s, else: 0)", name, n, name)), raw("1")),
 				count: rawf("R.past(c, %s, %d)", name, n),
 			}
@@ -1104,7 +1104,7 @@ func (g *fixedGen) leafDec(f *ir.Field, v string) leafDec {
 }
 
 func (g *fixedGen) structNodeOf(st *ir.Struct, r rseg) node {
-	return structNode{mod: g.ns + "." + st.Name, keys: r.keys, vals: r.vals}
+	return structNode{mod: g.ns + "." + elixir.ModuleName(st.Name), keys: r.keys, vals: r.vals}
 }
 
 // ---------------------------------------------------------------------------

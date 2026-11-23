@@ -50,7 +50,7 @@ func (g *wireGen) emitRequiredCheck(st *ir.Struct, wire bool, ind string) {
 	if wire {
 		g.pf("%sif (missing.isNotEmpty && r.report.missingFields.isEmpty) { r.report.missingFields = missing.join(', '); r.report.refused = true; throw const _TableMissingRequired(); }\n", ind)
 	} else {
-		g.pf("%sif (missing.isNotEmpty) { %s.missingFields = missing.join(', '); throw FormatException('missing_required: '+%s.missingFields); }\n", ind, report, report)
+		g.pf("%sif (missing.isNotEmpty) { %s.missingFields = missing.join(', '); %s.refuse('missing_required'); }\n", ind, report, report)
 	}
 }
 
@@ -152,7 +152,16 @@ func requiredRangeCheck(f *ir.Field, expr, ind, cell, refusal string) string {
 // the library's reusable Float32List(1) a float32 narrows through.
 func jsonWriteCheck(f *ir.Field, expr, ind, cell, refusal string) string {
 	if f.Type.Optional {
-		return ""
+		// A PRESENT optional is held to its range like any value; an absent one holds
+		// a stale payload no writer reads (docs/SPEC.md §5.1).
+		if expr != "v."+fieldMember(f) {
+			return ""
+		}
+		body := jsonWriteCheck(nonOptional(f), expr, ind+"\t", cell, refusal)
+		if body == "" {
+			return ""
+		}
+		return fmt.Sprintf("%sif (v.%s) {\n%s%s}\n", ind, hasMember(f), body, ind)
 	}
 	var out string
 	if f.Array == ir.ArrayCounted {

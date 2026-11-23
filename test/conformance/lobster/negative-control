@@ -37,12 +37,19 @@
 #           declared fixed root, saved through its own form's one checked
 #           writer — while `wire`, `message` and `write-refusal-message` stay
 #           green.
+#   write-refusal-fixed
+#           the checked fixed writer's finite-float rule (docs/SPEC-TABLES.md
+#           §3.3: a NaN or an infinity is refused on write) is emitted as
+#           never refusing: `write-refusal-fixed` goes red on its float rows
+#           and, since a fixed root is written through that one writer for
+#           both batteries, `write-refusal` goes red beside it; `wire`,
+#           `message` and `write-refusal-message` stay green.
 #   write-refusal-message
 #           message.lobster's writer stops refusing a scalar its declaration
 #           does not admit: exactly `write-refusal-message` red, on its
 #           ranged rows; `wire`, `message` and `write-refusal` green.
 #
-# usage: test/conformance/lobster/negative-control <report|walk|framing|cycle|write-refusal|write-refusal-message>
+# usage: test/conformance/lobster/negative-control <report|walk|framing|cycle|write-refusal|write-refusal-fixed|write-refusal-message>
 set -eu
 
 mode=$1
@@ -75,6 +82,12 @@ write-refusal)
     # of fixedevolve.go, overlaid as the runtime files are)
     source=internal/codegen/lobstertable/fixedform.go
     sed 's/if not %sFixedCheckBody(v):/if false and not %sFixedCheckBody(v):/' "$source" > "$out/runtime.lobster"
+    ;;
+write-refusal-fixed)
+    # the emitter's checked body no longer refuses a non-finite float: the
+    # finite test is emitted behind `false and`
+    source=internal/codegen/lobstertable/fixedevolve.go
+    sed -e '/return false\\n", ind, expr, ind)$/ s/if not schema_rt\.finite_f\(32\|64\)(%s):/if false and not schema_rt.finite_f\1(%s):/' "$source" > "$out/runtime.lobster"
     ;;
 write-refusal-message)
     # the message writer's scalar admission check is taken out
@@ -119,6 +132,7 @@ framing) want="framing " ; green="wire report retain" ;;
 cycle)  want="framing " ; green="wire report retain" ;;
 walk)   want="cook-write json-hostile json-read " ; green="wire json-write" ;;
 write-refusal) want="write-refusal write-refusal-fixed " ; green="wire message write-refusal-message" ;;
+write-refusal-fixed) want="write-refusal write-refusal-fixed " ; green="wire message write-refusal-message" ;;
 write-refusal-message) want="write-refusal-message " ; green="wire message write-refusal" ;;
 esac
 if [ "$red" != "$want" ]; then
