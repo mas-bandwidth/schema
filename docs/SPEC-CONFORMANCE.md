@@ -460,6 +460,14 @@ still occupies bytes for the empty vocabulary. Measure `L` inside that
 framing. On APIs with separately allocated storage, keep enough storage
 for the nonempty vocabulary even in the explicit-zero tests.
 
+The generated Java witness derives `E` and `L` from a compiler-produced
+nonempty vocabulary and exercises the same empty and nonempty announcements
+under independent entry and byte limits. Run it with a JDK available:
+
+```sh
+SCHEMA_SLOW=1 go test -count=1 -v ./internal/codegen/javatable -run '^TestAnnouncementBudgetsJava$'
+```
+
 For [§3.4 fixed-file reads](SPEC-TABLES.md#34-the-fixed-form-a-record-of-values-under-a-layout),
 use the same [one-record file](../testdata/wire/fixed-empty-batch/one-record.bin)
 in every row. It stores `a = 7` and `name = "hello"` in the
