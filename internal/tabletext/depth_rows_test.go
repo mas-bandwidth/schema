@@ -27,7 +27,7 @@ func TestDepthRowsAnsweredByTheEngine(t *testing.T) {
 	units := map[string]string{}
 	type row struct{ name, unit, table, dir, want string }
 	var rows []row
-	for _, line := range strings.Split(string(man), "\n") {
+	for line := range strings.SplitSeq(string(man), "\n") {
 		f := strings.Fields(line)
 		if len(f) >= 3 && f[0] == "unit" {
 			units[f[1]] = f[2]

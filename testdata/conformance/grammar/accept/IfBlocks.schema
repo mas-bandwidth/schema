@@ -1,5 +1,5 @@
 // AN `if` WITH NO `else` ENDS AT ITS `}`, AND THE NEXT LINE IS AN ITEM (SPEC.md
-// §4.2, the If production; docs/SPEC-CONFORMANCE.md §8, gap 14). `else` may
+// §4.2, the If production; docs/SPEC-CONFORMANCE.md §7, gap 14). `else` may
 // stand on the line after the `}` (Allman) or on the same line. Every block
 // below parses.
 package grammarif

@@ -356,6 +356,7 @@ func rubyHostileRun(t *testing.T, root, corpusDir string, cases []rubyHostileCas
 				t.Fatalf("%s (%s): Ruby hostile-corpus runner failed: %v\nstderr:\n%s\nstdout:\n%s",
 					unit.schema, filepath.Base(interpreter), err, stderr, stdout)
 			}
+			answered := 0
 			for line := range strings.SplitSeq(strings.TrimRight(stdout, "\n"), "\n") {
 				if line == "" {
 					continue
@@ -364,6 +365,7 @@ func rubyHostileRun(t *testing.T, root, corpusDir string, cases []rubyHostileCas
 				if len(fields) != 4 || fields[0] != "CASE" {
 					t.Fatalf("unexpected Ruby hostile-corpus output line %q", line)
 				}
+				answered++
 				answer := rubyHostileAnswer{verdict: fields[2], reason: fields[3]}
 				if answer.verdict == rubyHostileAccept {
 					answer.text, err = os.ReadFile(filepath.Join(unit.dir, "answers", fields[1]))
@@ -378,6 +380,12 @@ func rubyHostileRun(t *testing.T, root, corpusDir string, cases []rubyHostileCas
 						fields[1], prev.verdict, prev.reason, answer.verdict, answer.reason)
 				}
 				answers[fields[1]] = answer
+			}
+			// each interpreter answers every case it was handed: the two
+			// merge into one map, which would hide one of them stopping early
+			if answered != len(lines) {
+				t.Fatalf("%s (%s): the Ruby runner was handed %d case(s) and answered %d",
+					unit.schema, filepath.Base(interpreter), len(lines), answered)
 			}
 		}
 	}
@@ -408,18 +416,107 @@ func rubyHostileGrade(c rubyHostileCase, a rubyHostileAnswer, answered bool) str
 	return ""
 }
 
-func rubyHostileCompare(cases []rubyHostileCase, answers map[string]rubyHostileAnswer) []string {
+// rubyHostileUnavailablePath names the cases the Ruby port has no reader for,
+// each with its reason. `reader_unavailable` used to pass unprinted and
+// uncounted, so a generator that refused every schema left the corpus green
+// having read nothing; now a case the port does not run is one this file
+// names, and a named case that runs is stale.
+const rubyHostileUnavailablePath = "internal/ci/testdata/ruby-hostile-reader-unavailable.tsv"
+
+// rubyHostileCompare holds every answer to the manifest and the run to THE
+// LEDGER (internal/ci/hostilecorpus/ledger.go): cases the Ruby reader answered
+// equals cases the manifest registers, less the cases held names with a reason.
+func rubyHostileCompare(cases []rubyHostileCase, answers map[string]rubyHostileAnswer, held hostilecorpus.Held) []string {
 	var bad []string
+	registered := make([]hostilecorpus.Case, 0, len(cases))
 	for _, c := range cases {
+		registered = append(registered, hostilecorpus.Case{Name: c.Name, Carrier: c.Carrier})
+	}
+	ledger := hostilecorpus.NewLedger(registered)
+	bad = rubyHostileScore(cases, answers, held, ledger)
+	if err := ledger.Check(); err != nil {
+		bad = append(bad, err.Error())
+	}
+	return bad
+}
+
+func rubyHostileScore(cases []rubyHostileCase, answers map[string]rubyHostileAnswer, held hostilecorpus.Held, ledger *hostilecorpus.Ledger) []string {
+	var bad []string
+	names := map[string]bool{}
+	for _, c := range cases {
+		names[c.Name] = true
 		a, ok := answers[c.Name]
-		if ok && a.verdict == rubyHostileRefuse && a.reason == "reader_unavailable" {
+		if !ok {
+			bad = append(bad, rubyHostileGrade(c, a, false))
 			continue
 		}
-		if why := rubyHostileGrade(c, a, ok); why != "" {
+		why, isHeld := held[c.Name]
+		if a.verdict == rubyHostileRefuse && a.reason == "reader_unavailable" {
+			if isHeld {
+				ledger.Skipped(c.Name, why)
+			} else {
+				bad = append(bad, fmt.Sprintf("%s (%s): the Ruby port has no reader for it and %s does not name it", c.Name, c.Carrier, rubyHostileUnavailablePath))
+			}
+			continue
+		}
+		ledger.Ran(c.Name)
+		if isHeld {
+			bad = append(bad, fmt.Sprintf("%s: %s holds a case the Ruby port answers: delete its line", c.Name, rubyHostileUnavailablePath))
+		}
+		if why := rubyHostileGrade(c, a, true); why != "" {
 			bad = append(bad, why)
 		}
 	}
+	for name := range held {
+		if !names[name] {
+			bad = append(bad, fmt.Sprintf("%s: %s holds a case the manifest no longer carries: delete its line", name, rubyHostileUnavailablePath))
+		}
+	}
+	slices.Sort(bad)
 	return bad
+}
+
+func rubyHostileHeld(t *testing.T, root string) hostilecorpus.Held {
+	t.Helper()
+	held, err := hostilecorpus.LoadHeld(filepath.Join(root, filepath.FromSlash(rubyHostileUnavailablePath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return held
+}
+
+// TestRubyHostileCompareProvesItRan needs no Ruby: the comparison alone, over
+// made-up answers. A case answered `reader_unavailable` is red unless the held
+// list names it, a run whose every case is unavailable is red even when every
+// one is named, and a held name that answers or is gone is stale.
+func TestRubyHostileCompareProvesItRan(t *testing.T) {
+	t.Parallel()
+	cases := []rubyHostileCase{
+		{Name: "a", Carrier: "text", Verdict: rubyHostileRefuse, Reason: "damaged"},
+		{Name: "b", Carrier: "wire", Verdict: rubyHostileRefuse, Reason: "damaged"},
+	}
+	ran := rubyHostileAnswer{verdict: rubyHostileRefuse, reason: "damaged"}
+	none := rubyHostileAnswer{verdict: rubyHostileRefuse, reason: "reader_unavailable"}
+	says := func(bad []string, want string) bool { return strings.Contains(strings.Join(bad, "\n"), want) }
+
+	if bad := rubyHostileCompare(cases, map[string]rubyHostileAnswer{"a": ran, "b": ran}, nil); len(bad) != 0 {
+		t.Fatalf("CONTROL FAILED: a whole run is red: %v", bad)
+	}
+	if bad := rubyHostileCompare(cases, map[string]rubyHostileAnswer{"a": ran, "b": none}, nil); !says(bad, "b (wire): the Ruby port has no reader for it") {
+		t.Errorf("an unread case no list names passed: %v", bad)
+	}
+	if bad := rubyHostileCompare(cases, map[string]rubyHostileAnswer{"a": ran, "b": none}, hostilecorpus.Held{"b": "why"}); len(bad) != 0 {
+		t.Errorf("an unread case held by name is red: %v", bad)
+	}
+	if bad := rubyHostileCompare(cases, map[string]rubyHostileAnswer{"a": none, "b": none}, hostilecorpus.Held{"a": "why", "b": "why"}); !says(bad, "no case ran") {
+		t.Errorf("a run that read nothing passed: %v", bad)
+	}
+	if bad := rubyHostileCompare(cases, map[string]rubyHostileAnswer{"a": ran, "b": ran}, hostilecorpus.Held{"b": "why"}); !says(bad, "holds a case the Ruby port answers") {
+		t.Errorf("a held case that answers is not stale: %v", bad)
+	}
+	if bad := rubyHostileCompare(cases, map[string]rubyHostileAnswer{"a": ran, "b": ran}, hostilecorpus.Held{"z": "why"}); !says(bad, "holds a case the manifest no longer carries") {
+		t.Errorf("a held case gone from the manifest is not stale: %v", bad)
+	}
 }
 
 // TestSchemaRubyHostileScorerOutcomes grades the shared scorer outcome cases
@@ -453,7 +550,7 @@ func TestSchemaRubyRunsHostileCorpus(t *testing.T) {
 	corpusDir := filepath.Join(root, "internal", "ci", "hostilecorpus", "corpus")
 	cases := rubyHostileCorpusCases(t, corpusDir)
 	answers := rubyHostileRun(t, root, corpusDir, cases, false)
-	if bad := rubyHostileCompare(cases, answers); len(bad) != 0 {
+	if bad := rubyHostileCompare(cases, answers, rubyHostileHeld(t, root)); len(bad) != 0 {
 		t.Fatalf("the Ruby port disagrees with %d of %d hostile-corpus cases:\n  %s",
 			len(bad), len(cases), strings.Join(bad, "\n  "))
 	}
@@ -467,11 +564,11 @@ func TestSchemaRubyHostileCorpusPlantedReader(t *testing.T) {
 	cases := rubyHostileCorpusCases(t, corpusDir)
 	corpusDir, cases = rubyHostileFormFFValidBody(t, corpusDir, cases)
 	clean := rubyHostileRun(t, root, corpusDir, cases, false)
-	if bad := rubyHostileCompare(cases, clean); len(bad) != 0 {
+	if bad := rubyHostileCompare(cases, clean, rubyHostileHeld(t, root)); len(bad) != 0 {
 		t.Fatalf("with the plant out the runner must be green:\n  %s", strings.Join(bad, "\n  "))
 	}
 	planted := rubyHostileRun(t, root, corpusDir, cases, true)
-	bad := rubyHostileCompare(cases, planted)
+	bad := rubyHostileCompare(cases, planted, rubyHostileHeld(t, root))
 	if len(bad) == 0 {
 		t.Fatal("the planted variable-table form gate bug (0xff admitted) was not observed: corpus stayed green")
 	}
