@@ -89,8 +89,8 @@ func twinPairs(surface string, rows []expectation, wireRefusals map[string]Insta
 	return pairs
 }
 
-// answered is whether an outcome is an answer the leg gave.
-func answered(outcome string) bool {
+// twinAnswered is whether an outcome is an answer the leg gave.
+func twinAnswered(outcome string) bool {
 	return outcome == outcomePass || outcome == outcomeFail || outcome == outcomeNamed
 }
 
@@ -103,9 +103,9 @@ func applyTwinRule(pairs map[string]string, r *result) []string {
 	for refusal, twin := range pairs {
 		or, ot := r.outcome[refusal], r.outcome[twin]
 		switch {
-		case or == outcomePass && !answered(ot):
+		case or == outcomePass && !twinAnswered(ot):
 			demote[refusal] = true
-		case ot == outcomePass && !answered(or):
+		case ot == outcomePass && !twinAnswered(or):
 			demote[twin] = true
 		}
 	}
