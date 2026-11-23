@@ -41,8 +41,9 @@ conformance:
   ([FIXED-FORM-ALGORITHM §4.1](FIXED-FORM-ALGORITHM.md#41-the-plan)).
   Run on a target with `make verify-tablegen-<lang>`. To select this pair
   alone, pass `--only pin:bytes_lineage:` to `build/verify-tablegen-bin`.
-- **The compressed-float endpoint pins**: [`ratio-endpoints.txt`](../test/packet-cfloat-endpoints/ratio-endpoints.txt)
-  gives the packet bytes for both [accepted endpoints](#compressed-float-packet-endpoints).
+- **The compressed-float packet writer cases**: the [shared caller cases](../test/packet-write-cfloat/cases.txt)
+  and the Go-only [endpoint pins](../test/packet-cfloat-endpoints/ratio-endpoints.txt)
+  are listed under [compressed float packet writes](#compressed-float-packet-writes).
 - **The packet end pins**: [packet-end](../testdata/wire/packet-end/README.md)
   includes the [logical bit count case](#packet-end-and-the-logical-bit-count).
 - **Variable-form optional evolution** ([SPEC-TABLES §2.3](SPEC-TABLES.md)):
@@ -366,7 +367,7 @@ per-port check where no shared case exercises it.
 | GAP-20 | A union and its structural payload are two levels (SPEC-TABLES §4); gaps Zig5, Hs8, Li4 | `rr-depth-placed-union-map-128`, `-129` (#4706) |
 | SF-03, SF-04 | the variable `Save` and `Measure` check rows 1–2 on every field, not only on `\| required` fields (SPEC.md §5.1 rows 1–2) | `write-refusal` (`wref_range_*`, `wref_bits_wide*` on a fixed root); `sfv_bits_wide` / `sfv_bits_ok` on the variable root `TortureCook` (a plain non-required `bits(13)`, 8192 refused and 8191 written); a ranged non-required `int` on a variable root is owed: no corpus unit with a `min` / `max` on a variable root has a write-refusal path in the hand-coded legs (#4740) |
 | SF-05, SF-06 | C and C++ debug builds assert the message save and measure write contract even when the fixed table exceeds the fixed-file record ceiling (SPEC.md §5.1 rows 1, 2, 10 and SPEC-TABLES §3.4) | `TestCMessageCeilingWriteAssert`, `TestCppMessageCeilingWriteAssert` and their `Compiled` twins. The compiled checks save and measure the same table with lawful values. A shared `write-refusal-message` case is owed until the harness has an initialized-value seed mode. The current surface seeds each value by loading a file, and this table has no file form (#4744). |
-| SF-07, SF-08 | the packet `Write` checks row 8 (text) and row 10 (compressed float) in every C# target, unity included (SPEC.md §5.1 rows 8, 10) | `write-refusal-packet` (`text_illformed`, `text_zero`, `text_long`); a compressed-float row (SF-08) is owed: `PacketWriteRefusal` declares no compressed float, and no C# leg runs this surface yet (#4740); Go runs the [accepted compressed-float endpoints](#compressed-float-packet-endpoints) |
+| SF-07, SF-08 | the packet `Write` checks row 8 (text) and row 10 (compressed float) in every C# target, unity included (SPEC.md §5.1 rows 8, 10) | `write-refusal-packet` (`text_illformed`, `text_zero`, `text_long`); SF-08 runs the [shared compressed-float caller cases](#compressed-float-packet-writes) in both C# dialects; Go runs the [exact endpoint pins](#compressed-float-packet-endpoints) |
 | SF-27 | the text read maps a deprecated enum variant to the field default (an element: None) (SPEC-TABLES §2.15 READ) | owed: the text-form corpus (`testdata/conformance/text`) carries strings only, so an enum text case needs the text surface extended (#4740) |
 | SF-32, SF-33 | tooling (moo-analyze run with no output, Luau bitpacker probe) (none: not a wire rule) | none (#4740) |
 | SF-09 to SF-15 | a write check reaches every carrier: a plain field, an optional, an array element, a union arm, a keyed slot (SPEC.md §5.1 rows 1–4, 8) | `write-refusal` (`wref_*`, `wref_var_*`, `wref_shapes_*`); on `TortureCook`, `sfv_opt_bits_wide` / `sfv_opt_bits_ok`, `sfv_elem_bits_wide` / `sfv_elem_bits_ok`, and `TestRustWriteRefusalReachesEveryCarrier` (#4501, #4740) |
@@ -431,7 +432,24 @@ width; COMPETITION.md's never-clobber line. Each now promises a newer reader
 on older data and no more: an older reader given newer data may refuse it by
 name, lawfully.
 
-### Compressed float packet endpoints
+### Compressed float packet writes
+
+[SPEC §5.1 row 10](SPEC.md#51-the-write-contract) and the [packet algorithm §2.5](PACKET-WIRE-ALGORITHM.md#25-compressed-float-write)
+require the public writer to check a compressed float before quantizing. The
+[shared caller cases](../test/packet-write-cfloat/cases.txt) use `[0, 10]` at
+resolution `0.01`. They require refusal for a finite value above or below the
+range, the largest finite float32, NaN and both infinities. Both range ends and
+the midpoint write and read back. Negative zero writes and reads back as
+positive zero.
+
+| Port | Executable coverage |
+|---|---|
+| C, C++, C# (modern and Unity), Rust, Java, Dart, Lobster | `make packet-write-cfloat-<leg>` runs the shared cases with packet write assertions enabled. Unity builds the generated library in its Unity dialect and checks the Debug assertion. |
+| JavaScript, Elixir, Lua, Luau, Squirrel, MOO, Goose, Ruby | `make packet-write-cfloat-<leg>` runs the shared cases using the public writer's refusal. Elixir cannot hold non-finite BEAM floats, so its driver passes the ordinary invalid-value surrogates named by the cases. Ruby runs both pinned interpreters and checks the field on `InvalidValue`. |
+| Go | `go test ./internal/codegen/golang -run '^TestGoPacketWriteRefusesOffRangeCompressedFloat$'` runs the shared cases through the generated writer. |
+| Python | `TestPythonPacketFloats` runs named compressed-field caller cases, including NaN, positive infinity and both finite out-of-range directions, and checks the field on `InvalidValue`. It uses its own `[-5, 5]` declaration. |
+
+#### Compressed float packet endpoints
 
 [`RatioEndpoint`](../test/packet-cfloat-endpoints/PacketRatio.schema) declares a closed
 `[0, 1]` range at resolution `0.01` ([packet wire §2.5](PACKET-WIRE-ALGORITHM.md#25-compressed-float-write)).

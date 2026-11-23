@@ -375,8 +375,10 @@ and absence scoring rules, and §7 traces the rules to their sources.
 | #4771, SF-09/21/26 | #4771's PR description says the bytes, fixed minimum and deprecated-enum cases were withdrawn from its retained set. | Wave 2 carries the separate fixed-minimum pair `fref_count_min` / `fref_count_min_ok`. Wave 3 cook rows do not cover write-time deprecated enum, and the retained carrier rows in #4771 do not cover SF-09 or arm bytes and arm array. |
 | #4772, SF-08 (SPEC §5.1 row 10) | `8b0dd5a18fc4` has six packet rows: four `ratio_{high,low,nan,inf}` refusals and two accepted `ratio_at_{max,min}` controls. The PR reports results for eleven drivers and identifies C, C++, C#, Unity, Rust, Java and Dart probes as owing the ratio operation. | All six IDs are missing from the packet row file. The text rows for SF-07 are present. `smref_big_ratio_*` exercises messages and cannot establish C# or Unity packet coverage. |
 
-There is no row credit for either missing case set merely because #4843 lists
-the PR numbers. The remaining coverage work is to restore the carrier and
-packet case sets through their own surfaces, establish the affected-port
-results, and leave the withdrawn or unexpressed cases open until corresponding
-evidence exists.
+The Wave accounting above records the named rows in those revisions. The
+#4772 packet behavior is covered by the existing shared packet writer cases,
+the Python packet caller tests and the Go endpoint pins. The current
+[conformance inventory](SPEC-CONFORMANCE.md#compressed-float-packet-writes)
+names each port's test and the scope of the exact wire pins. The remaining
+#4771 carrier work and its withdrawn or unexpressed cases require their own
+evidence.
