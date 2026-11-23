@@ -1624,7 +1624,8 @@
       "when": "pull-request",
       "why": "The exact nested arm boundary and its omission control run natively; measured pair 1.396s on Intel Linux.",
       "targets": [
-        "tables-rust-nested-union-negative-control"
+        "tables-rust-nested-union-negative-control",
+        "packet-write-refusal-rust-negative-control"
       ],
       "rust": "stable"
     },

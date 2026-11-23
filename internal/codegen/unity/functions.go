@@ -411,6 +411,9 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 	case ir.TInt:
 		g.emitWriteInt(f, name, ind)
 	case ir.TBits:
+		if w := f.Type.Width; w < 32 || (w > 32 && w < 64) {
+			g.writeAssert(ind, fmt.Sprintf("(ulong)%s < 1UL << %d", name, w), fmt.Sprintf("%s is wider than its %d bits", name, w))
+		}
 		_, fn := bitsCall(int64(f.Type.Width))
 		g.call(ind, fmt.Sprintf("%s.%s(ref %s, %d)", g.rv(), fn, name, f.Type.Width), "")
 	case ir.TBool:
@@ -430,6 +433,9 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		// length in [0, N], align, then the used bytes (SPEC §4.7)
 		length := name + "Length"
 		g.countWrite(length, 0, f.Type.Size, ind)
+		if f.Type.Kind == ir.TString {
+			g.writeAssert(ind, fmt.Sprintf("%s(%s.AsSpan().Slice(0, %s))", utf8Helper, name, length), fmt.Sprintf("%s holds a zero byte or is not well-formed UTF-8", name))
+		}
 		g.call(ind, fmt.Sprintf("%s.SerializeBytes(%s.AsSpan().Slice(0, %s))", g.rv(), name, length), "")
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {

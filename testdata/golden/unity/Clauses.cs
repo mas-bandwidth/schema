@@ -815,6 +815,8 @@ namespace Example
         {
             {
                 // 3 bits folded into 1 word(s)
+                Debug.Assert((ulong)value.A < 1UL << 1, "value.A is wider than its 1 bits");
+                Debug.Assert((ulong)value.B < 1UL << 2, "value.B is wider than its 2 bits");
                 ulong f0 = ((ulong)value.A) & 0x1UL;
                 ulong f1 = ((ulong)value.B) & 0x3UL;
                 uint w0 = (uint)(f0 | (f1 << 1));
@@ -974,6 +976,8 @@ namespace Example
         {
             {
                 // 11 bits folded into 1 word(s)
+                Debug.Assert((ulong)value.A < 1UL << 3, "value.A is wider than its 3 bits");
+                Debug.Assert((ulong)value.B < 1UL << 8, "value.B is wider than its 8 bits");
                 ulong f0 = ((ulong)value.A) & 0x7UL;
                 ulong f1 = ((ulong)value.B) & 0xffUL;
                 uint w0 = (uint)(f0 | (f1 << 3));
@@ -1339,6 +1343,7 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteHoldsEmptyUnionBatch(ref WriteBatch batch, ref HoldsEmptyUnion value)
         {
+            Debug.Assert((ulong)value.Lead < 1UL << 5, "value.Lead is wider than its 5 bits");
             if (!batch.SerializeBits(ref value.Lead, 5))
             {
                 return false;
@@ -1347,6 +1352,7 @@ namespace Example
             {
                 return false;
             }
+            Debug.Assert((ulong)value.Tail < 1UL << 7, "value.Tail is wider than its 7 bits");
             if (!batch.SerializeBits(ref value.Tail, 7))
             {
                 return false;
@@ -1404,6 +1410,7 @@ namespace Example
 
         public static bool WriteStrs(WriteStream stream, ref Strs value)
         {
+            Debug.Assert((ulong)value.Lead < 1UL << 5, "value.Lead is wider than its 5 bits");
             if (!stream.SerializeBits(ref value.Lead, 5))
             {
                 return false;
@@ -1416,6 +1423,7 @@ namespace Example
                     return false;
                 }
             }
+            Debug.Assert(ValidUtf8Text(value.S.AsSpan().Slice(0, value.SLength)), "value.S holds a zero byte or is not well-formed UTF-8");
             if (!stream.SerializeBytes(value.S.AsSpan().Slice(0, value.SLength)))
             {
                 return false;
@@ -1432,6 +1440,7 @@ namespace Example
             {
                 return false;
             }
+            Debug.Assert((ulong)value.Tail < 1UL << 3, "value.Tail is wider than its 3 bits");
             if (!stream.SerializeBits(ref value.Tail, 3))
             {
                 return false;
@@ -1511,6 +1520,7 @@ namespace Example
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool WriteArrNestedBatch(ref WriteBatch batch, ref ArrNested value)
         {
+            Debug.Assert((ulong)value.Lead < 1UL << 5, "value.Lead is wider than its 5 bits");
             if (!batch.SerializeBits(ref value.Lead, 5))
             {
                 return false;
@@ -1533,6 +1543,7 @@ namespace Example
                     }
                 }
             }
+            Debug.Assert((ulong)value.Tail < 1UL << 3, "value.Tail is wider than its 3 bits");
             if (!batch.SerializeBits(ref value.Tail, 3))
             {
                 return false;
@@ -1600,6 +1611,7 @@ namespace Example
 
         public static bool WriteSole(WriteStream stream, ref Sole value)
         {
+            Debug.Assert((ulong)value.Only < 1UL << 13, "value.Only is wider than its 13 bits");
             if (!stream.SerializeBits(ref value.Only, 13))
             {
                 return false;

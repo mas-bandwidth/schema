@@ -330,11 +330,15 @@ a copy of the generated code and require that surface to go red while `wire`
 **The packet wire has its own surface, `write-refusal-packet`** (docs/SPEC.md
 §5.1): a generated packet type carries one field per row, and the surface runs
 the packet `Write` over each refused value and its lawful twin at the same
-boundary. It starts with the Go leg: `TestWriteRefusalPacket` in
-`test/conformance/harness` generates the unit, compiles it against serialize.go
-and runs the battery behind `slowtest.Gate`, then runs a negative control that
-changes the emitter's upper-bound comparison and requires the boundary row to
-go red.
+boundary. The Go leg is `TestWriteRefusalPacket` in `test/conformance/harness`: it
+generates the unit, compiles it against serialize.go and runs the battery behind
+`slowtest.Gate`, then runs a negative control that changes the emitter's
+upper-bound comparison and requires the boundary row to go red. The assert legs
+(C, C++, C#, C# (unity), Rust, Java, Dart) answer the same rows from the shared
+schema and cases in `test/packet-write-refusal/`, in their debug build, where
+the assert firing is the refusal: `packet-write-refusal-<lang>`, each with a
+`-negative-control` that removes one emitted check and requires a named case to
+go red. Rust names the union tag as not representable.
 
 The every-build scripting legs (JavaScript, Python, Ruby, Elixir, Lua, Luau,
 Squirrel, MOO, Goose, Lobster) share one schema and one row list,

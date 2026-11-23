@@ -350,6 +350,7 @@ namespace Example
         {
             {
                 // 16 bits folded into 1 word(s)
+                Debug.Assert((ulong)value.Version < 1UL << 3, "value.Version is wider than its 3 bits");
                 ulong f0 = (171UL) & 0xffUL;
                 ulong f1 = ((ulong)value.Version) & 0x7UL;
                 ulong f2 = 0UL;
@@ -450,6 +451,8 @@ namespace Example
         {
             {
                 // 202 bits folded into 4 word(s)
+                Debug.Assert((ulong)value.Small < 1UL << 9, "value.Small is wider than its 9 bits");
+                Debug.Assert((ulong)value.Boundary < 1UL << 33, "value.Boundary is wider than its 33 bits");
                 ulong f0 = ((ulong)value.Small) & 0x1ffUL;
                 ulong f1 = ((ulong)value.Boundary) & 0x1ffffffffUL;
                 ulong f2 = (ulong)value.Wide;
@@ -1525,6 +1528,7 @@ namespace Example
                     return false;
                 }
             }
+            Debug.Assert(ValidUtf8Text(value.Text.AsSpan().Slice(0, value.TextLength)), "value.Text holds a zero byte or is not well-formed UTF-8");
             if (!stream.SerializeBytes(value.Text.AsSpan().Slice(0, value.TextLength)))
             {
                 return false;
@@ -1663,6 +1667,9 @@ namespace Example
                 Debug.Assert(value.A >= -100 && value.A <= 100, "value.A out of range [-100, 100]");
                 Debug.Assert(value.B >= -100 && value.B <= 100, "value.B out of range [-100, 100]");
                 Debug.Assert(value.C >= -100 && value.C <= 150, "value.C out of range [-100, 150]");
+                Debug.Assert((ulong)value.D < 1UL << 8, "value.D is wider than its 8 bits");
+                Debug.Assert((ulong)value.E < 1UL << 8, "value.E is wider than its 8 bits");
+                Debug.Assert((ulong)value.F < 1UL << 8, "value.F is wider than its 8 bits");
                 ulong f0 = (unchecked((ulong)value.A - (ulong)(-100))) & 0xffUL;
                 ulong f1 = (unchecked((ulong)value.B - (ulong)(-100))) & 0xffUL;
                 ulong f2 = (unchecked((ulong)value.C - (ulong)(-100))) & 0xffUL;
@@ -1761,6 +1768,7 @@ namespace Example
                     return false;
                 }
             }
+            Debug.Assert(ValidUtf8Text(value.Text.AsSpan().Slice(0, value.TextLength)), "value.Text holds a zero byte or is not well-formed UTF-8");
             if (!stream.SerializeBytes(value.Text.AsSpan().Slice(0, value.TextLength)))
             {
                 return false;
