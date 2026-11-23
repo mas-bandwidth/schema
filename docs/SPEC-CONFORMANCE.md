@@ -287,7 +287,7 @@ still owes part of it, takes its own number and its own ids off the entry.
 | SF-18, SF-19 | the message form refuses a flags value above its declared width and never masks it (SPEC.md §5.1 row 9; SPEC-TABLES §3.3) | a `write-refusal-message` flags case is owed: the only message-capable root with a flags field is `messagedemo` `ToolMessage` (the `caps` arm), which has no `connection` row and no write-refusal-message root in the hand-coded legs (C, C++, Rust, Dart) | `smref_big_mask_max`, `smref_big_mask_wide`, `smref_mask_named`, `smref_mask_unnamed` | #4743, #4744, #4753, #4771, #4772, #4808 | owed |
 | SF-20 | a writer refuses a `[N]T` or `[E]T` whose length is not N and never cuts or pads it (SPEC.md §5.1) | a case on `write-refusal-fixed` and `write-refusal-message` is owed: the `count` kind needs a companion count field and a `[N]T` has none, so every leg's `count` handler must first learn to answer `unrepresentable` or resize a fixed array | `sref_fixed_long`, `sref_fixed_ok`, `sref_fixed_short`, `sref_keyed_long`, `sref_keyed_ok`, `sref_keyed_short`, `sfref_fixed_long`, `sfref_fixed_ok`, `sfref_fixed_short`, `sfref_keyed_long`, `sfref_keyed_ok`, `sfref_keyed_short`, `sjref_fixed_long`, `sjref_fixed_ok`, `sjref_fixed_short`, `sjref_keyed_long`, `sjref_keyed_ok`, `sjref_keyed_short`, `smref_fixed_long`, `smref_fixed_ok`, `smref_fixed_short`, `smref_keyed_long`, `smref_keyed_ok`, `smref_keyed_short`, `cref_fixed_long`, `cref_fixed_ok` | #4743, #4744, #4753, #4771, #4772, #4808 | owed |
 | SF-21 | a writer refuses a counted array below its `Min` (SPEC.md §5.1 row 3) | a case on `write-refusal-fixed` is owed (`sp-count-min-*` carries the read side): no corpus unit declares a `[Min..N]T` | `sp-count-min-at`, `sp-count-min-below`, `sp-count-min-empty`, `sp-count-min-max`, `sp-count-min-over` | #4689, #4743, #4744, #4753, #4771, #4772 | owed |
-| SF-25, SF-26 | `Cook` and `CookMeasure` hold the write contract that `Save` holds; a deprecated enum variant is refused on write (SPEC-TABLES §7.6, §2.15) | `cook-write`; a refusal case is owed: `cook-write` has no refusal verdict and no corpus unit declares a deprecated enum variant | `cref_count_at_max`, `cref_count_at_min`, `cref_count_below_min`, `cref_count_over`, `cref_cycle`, `cref_shared_ok`, `cref_finite_ok`, `cref_infinite`, `cref_non_finite` | #4743, #4744, #4753, #4771, #4772, #4808 | owed |
+| SF-25, SF-26 | `Cook` and `CookMeasure` hold the write contract that `Save` holds; a deprecated enum variant is refused on write (SPEC-TABLES §7.6, §2.15) | `cook-write`; the [SF-26 typed Cook case](#declared-deprecated-enum-writers) exercises deprecated enum refusal independently of this surface | `cref_count_at_max`, `cref_count_at_min`, `cref_count_below_min`, `cref_count_over`, `cref_cycle`, `cref_shared_ok`, `cref_finite_ok`, `cref_infinite`, `cref_non_finite` | #4743, #4744, #4753, #4771, #4772, #4808 | owed |
 | SF-22, SF-28 | a variable save and a text (JSON) writer refuse a counted array below its `Min`, and a list field holding a non-list (SPEC.md §5.1 row 3 and "A writer refuses in EVERY form") | a `write-refusal` `count` row below a `[Min..N]` Min is owed: no corpus unit declares a counted array with `Min > 0` on a variable root, so it needs a new unit; SF-28 cannot be a row (a statically typed leg cannot hold a list field that is no list) and is held per port | `sref_count_at_min`, `sref_count_below_min`, `sref_count_not_list`, `sjref_count_at_min`, `sjref_count_below_min`, `sjref_count_not_list` | #4771, #4772, #4808 | owed |
 | SF-23 | `SaveMessages` holds a value to the rule of the declaration it is written under, not to the looser rule of a same-named field elsewhere (SPEC-TABLES §3.3) | a `write-refusal-message` `int` row on two declarations that share a field name and kind at different ranges is owed (new unit) | `smref_narrow_hp_5`, `smref_narrow_hp_6`, `smref_wide_hp_10`, `smref_wide_hp_11` | #4753, #4771, #4772, #4808 | owed |
 | SF-29, SF-37 | a cook refuses a loaded count outside `[Min, bound]` and a NaN or an infinity in a plain float (SPEC-TABLES §7.6; SPEC.md §5.1 row 7) | `cook-write`; a refusal case is owed; SF-29 cannot be a row (a caller-edited loaded value, not an instance) | `cref_count_at_min`, `cref_count_below_min`, `cref_count_over`, `cref_finite_ok`, `cref_infinite`, `cref_non_finite` | #4743, #4744, #4753, #4771, #4772, #4808 | owed |
@@ -385,6 +385,55 @@ evolution", the close of §4's counters and the opening of §6.6; USAGE.md's enu
 width; COMPETITION.md's never-clobber line. Each now promises a newer reader
 on older data and no more: an older reader given newer data may refuse it by
 name, lawfully.
+
+### Declared deprecated enum writers
+
+Compile the [SF-26 schema](../testdata/conformance/feature-witnesses/declared-deprecated-enum/Probe.schema).
+Its `Phase` enum keeps the deprecated variant `Old` at ordinal 2 and the
+live variant `Next` at ordinal 3. Assign each variant directly to the
+root's `phase` field through the caller API. A reader may map a deprecated
+variant to its default, so constructing the caller value directly is part
+of this test. Run with write assertions enabled on targets that use them.
+
+| Operation | `Phase.Next` | `Phase.Old` |
+|---|---|---|
+| Save one `VarRoot` in Form 1 | `sf26_form1_next` emits the pinned 29 bytes | `sf26_form1_old` refuses |
+| Save one `FixedRoot` in Form 3 | `sf26_form3_next` emits the pinned 118 bytes, with ordinal 3 in its enum slot | `sf26_form3_old` refuses |
+| Call fixed-root `CookMeasure` | `sf26_cook_measure_next` returns 88 bytes | `sf26_cook_measure_old` also returns 88 bytes |
+| Cook one `FixedRoot` in little-endian order | `sf26_cook_next_le` emits the pinned 88 bytes | `sf26_cook_old_le` refuses before writing |
+| Cook one `FixedRoot` in big-endian order | `sf26_cook_next_be` emits the pinned 88 bytes | `sf26_cook_old_be` refuses before writing |
+
+[The shared expected answers](../testdata/conformance/feature-witnesses/declared-deprecated-enum/cases.txt)
+give each case ID and its complete wire bytes in hex, size in decimal bytes,
+or refusal verdict. Compare every output byte for `Next`. For a caller-buffer
+Cook API, fill an 88-byte destination with `0x5a` before each `Old` call
+and check that every byte retains that value after refusal. A reasoned
+fixed-root measure reports success with size 88 for either variant. The
+fixed layout determines the size. The writer checks whether the supplied
+value may be emitted. These are the enum and fixed Cook rules in
+[SPEC-TABLES §2.15](SPEC-TABLES.md#215-enum-variants--deprecated-in-place)
+and [§7.6](SPEC-TABLES.md#76-the-write-side-cook-and-cookmeasure).
+
+Run the six fixed-root Cook and CookMeasure cases against generated Go with
+
+```sh
+SCHEMA_SLOW=1 go test -count=1 -v ./internal/codegen/gotable -run '^TestDeclaredDeprecatedEnumCook$'
+```
+
+### Present optional array grown from two elements to three
+
+Load the [variable-form seed](../testdata/conformance/table-write-bounds/torture_var_wref.bin)
+as `TortureVarWref` using the [declaration](../testdata/conformance/table-write-bounds/TableWriteBounds.schema).
+The optional `opt_arr` is present and holds `[1, 2]`. For the conformance
+driver's `count` edit, grow it to its declared maximum of three elements.
+Preserve the prefix and copy element zero into the new slot. Save the root.
+The output must match the complete [252-byte expected file](../testdata/conformance/table-write-bounds/expected/torture_var_wref_resized.bin).
+Loading it must return a present `[1, 2, 1]`, with every other field unchanged.
+A successful save of `[1, 2, 0]` fails this test. The fill rule defines the
+test driver's edit. A port may use any caller API that constructs that value.
+
+Run `make table-optional-array-resize-go` to exercise the generated Go writer
+and reader. The expected file is also the comparison input for a new port.
 
 ### Explicit zero and omitted limits
 
