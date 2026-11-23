@@ -258,11 +258,6 @@ func unionFieldConstruct(un *ir.Union, seen map[*ir.Union]bool) string {
 		if v.Body() {
 			continue
 		}
-		// a counted minimum rides as a table field (SPEC-TABLES §3, §4.6); an
-		// arm's array is read by the arm codec, which does not carry it
-		if v.F.Array == ir.ArrayCounted && v.F.ArrayMin > 0 {
-			return "arm " + v.Name + ": a counted array with a declared minimum [Min..N]T in a union arm is outside the variable class this leg carries (§3)"
-		}
 		if why := variableFieldConstruct(v.F); why != "" {
 			if v.F.Array == ir.ArrayFixed && mapValueArrayCarried(v.F) {
 				continue
