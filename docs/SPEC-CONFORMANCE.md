@@ -182,6 +182,23 @@ matching row in the corpus (a case, a golden, a refusal row); a case added
 to the corpus without a matching statement in the specification is likewise
 incomplete. A port states the spec version it passes the suite of.
 
+### Regression cases for implementation fixes
+
+Every fix to observable Schema behavior adds or extends a case in the shared
+corpus listed in §1. Give the case a stable identifier and cite the rule it
+tests. State the input and the expected result precisely enough for a new
+implementation to produce its answer from the specification alone. For wire
+output, include the bytes and significant bit count when the format requires
+both. For a refusal, identify the operation and the outcome the specification
+requires for that target. If the rule admits more than one answer, say which
+answers a port may return and how the case is judged.
+
+When two readings of a rule would produce different observable results,
+clarify the normative clause and choose a case that distinguishes them. The
+case must fail on the affected implementation before the fix and pass after
+it. If the shared suite cannot express the difference yet, record the missing
+case and keep the regression open until a port can run it through the suite.
+
 ## 7. Rules decided 2026-11-20..22, and the rows they owe
 
 Every rule decided or fixed from 2026-11-20 to 2026-11-22 is stated in the
