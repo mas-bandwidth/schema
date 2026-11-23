@@ -94,6 +94,7 @@ var catalog = []Entry{
 	e("internal/execref", "os/exec references resolved by binding, for the child-process policies", "go test ./internal/execref", "go test ./internal/execref"),
 	e("internal/fixedproof", "leg-independent fixed-table proof suite", "go test ./internal/fixedproof", "go test ./internal/fixedproof"),
 	e("internal/fixedvector", "fixed form's shared cross-version vectors", "go test ./internal/fixedvector", "go test ./internal/fixedvector"),
+	e("internal/githooks", "temp-repo tests for the .githooks/pre-push hook range and no-verify rules", "go test ./internal/githooks", "go test ./internal/githooks"),
 	e("internal/format", "schemafmt", "go test ./internal/format", "go test ./internal/format"),
 	e("internal/fuzz", "seeded fuzz corpus", "go test ./internal/fuzz", "go test ./internal/fuzz"),
 	e("internal/goname", "Go member spelling (initialisms)", "go test ./internal/goname", "go test ./internal/goname"),
