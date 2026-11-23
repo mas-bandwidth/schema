@@ -246,7 +246,7 @@ CONFORMANCE_LEGS   += $(call unless_skipped,unity,build/conformance-unity/.stamp
 
 .PHONY: table-write-bounds-unity
 table-write-bounds-unity: build/conformance-harness build/conformance-unity/.stamp
-	./build/conformance-harness run --only unity --surfaces write-refusal --complete \
+	./build/conformance-harness run --only unity --surfaces write-refusal,wire,json-read,json-write --complete \
 		--manifest testdata/conformance/table-write-bounds/WRITE-BOUNDS.txt \
 		--json testdata/conformance/table-write-bounds \
 		--work build/conformance-write-bounds-unity

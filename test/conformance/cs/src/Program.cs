@@ -893,6 +893,8 @@ static partial class Program
     // proves the reader against bytes this driver did not write.
     static int SurfaceJsonRead(string outDir)
     {
+        string jsonDir = Environment.GetEnvironmentVariable("SCHEMA_CONFORMANCE_JSON_INPUT_DIR");
+        if (string.IsNullOrEmpty(jsonDir)) { jsonDir = Path.Combine("testdata", "conformance", "tables", "json"); }
         foreach (string[] f in Kind("instance"))
         {
             if (NoText(f)) { continue; }
@@ -904,7 +906,7 @@ static partial class Program
                 SpillAbsent(outDir, f[1]);
                 continue;
             }
-            string path = Path.Combine("testdata", "conformance", "tables", "json", f[1] + ".json");
+            string path = Path.Combine(jsonDir, f[1] + ".json");
             byte[] text = File.ReadAllBytes(path);
             Report report = new Report();
             object value = codec.FromJson(text, report);
