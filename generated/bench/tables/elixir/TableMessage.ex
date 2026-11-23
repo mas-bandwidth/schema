@@ -224,7 +224,8 @@ defmodule Benchtable.TableMessage do
   The unit's announcement, byte for byte the compiler settled (docs/SPEC-TABLES.md
   §3.3): a form-`1` file whose body carries the build version and the vocabulary.
   """
-  def announce, do: if(@announcement_too_large, do: {:error, :vocabulary_too_large}, else: @announcement)
+  def announce,
+    do: if(@announcement_too_large, do: {:error, :vocabulary_too_large}, else: @announcement)
 
   @doc "The announcement's byte count, a constant of the unit."
   def announce_measure, do: if(@announcement_too_large, do: -1, else: byte_size(@announcement))
