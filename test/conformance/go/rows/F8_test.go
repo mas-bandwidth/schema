@@ -30,6 +30,8 @@ func f8Gate(t *testing.T) {
 // names it (docs/SPEC-TABLES.md §3.4): "BYTES LEFT OVER ARE `malformed`, named
 // `truncated`", so the report also carries Reason "truncated". The reader sets
 // Malformed = true, Reason = "truncated", returns -1, and moves no counters.
+// The row handed in, poisoned to {-1, -1}, comes back at its declared
+// defaults {1, 2} (ruling R4).
 // This test forges the second arm of the guard at fixedform.go:798
 // (rest % recordBytes != 0) by appending 1..(recordBytes-1) bytes to a valid
 // single-record file.
@@ -69,7 +71,7 @@ func TestRaggedTail(t *testing.T) {
 		got := []Point{{X: -1, Y: -1}}
 		r = TableReport{}
 		ragged := append(buf, make([]byte, extra)...)
-		if n := PointFixedLoad(got, ragged, plan, &r); n != -1 || !r.Refused() || r.Reason != "truncated" || got[0] != (Point{X: -1, Y: -1}) {
+		if n := PointFixedLoad(got, ragged, plan, &r); n != -1 || !r.Refused() || r.Reason != "truncated" || got[0] != (Point{X: 1, Y: 2}) { // R4: the poisoned row comes back at its declared defaults
 			t.Fatalf("extra=%d: n=%d report=%+v dest=%+v", extra, n, r, got[0])
 		}
 	}
@@ -173,7 +175,7 @@ func TestRaggedTail(t *testing.T) {
 		got := []Point{{X: -1, Y: -1}}
 		r = TableReport{}
 		ragged := append(buf, make([]byte, extra)...)
-		if n := PointFixedLoad(got, ragged, plan, &r); n != -1 || !r.Refused() || r.Reason != "truncated" || got[0] != (Point{X: -1, Y: -1}) {
+		if n := PointFixedLoad(got, ragged, plan, &r); n != -1 || !r.Refused() || r.Reason != "truncated" || got[0] != (Point{X: 1, Y: 2}) { // R4: the poisoned row comes back at its declared defaults
 			t.Fatalf("extra=%d: n=%d report=%+v dest=%+v", extra, n, r, got[0])
 		}
 	}
@@ -287,7 +289,7 @@ func TestRaggedTailByName(t *testing.T) {
 			}
 			ragged := append(buf, make([]byte, extra)...)
 			got := []Point{{X: -1, Y: -1}}
-			if n := PointFixedLoad(got, ragged, plan, &r); n != -1 || !r.Refused() || r.Reason != "truncated" || got[0] != (Point{X: -1, Y: -1}) {
+			if n := PointFixedLoad(got, ragged, plan, &r); n != -1 || !r.Refused() || r.Reason != "truncated" || got[0] != (Point{X: 1, Y: 2}) { // R4: the poisoned row comes back at its declared defaults
 				t.Fatalf("extra=%d: n=%d report=%+v dest=%+v", extra, n, r, got[0])
 			}
 		}

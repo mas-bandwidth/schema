@@ -85,8 +85,8 @@ func t12RequireRustToolchain(t *testing.T) {
 // t12F4 holds rust/F4 to docs/FIXED-FORM-ALGORITHM.md §5.3 step 3 (row 3 of the
 // refusal table): when `20 + L` reaches past the end of the file, the reader
 // refuses `layout_malformed` before any record, with `malformed` false,
-// `layout_hash` zero, every counter zero, and the `0x5A`-stained destination
-// untouched.
+// `layout_hash` zero, every counter zero, and (ruling R4) the `0x5A`-stained row
+// back at its declared default.
 func t12F4(t *testing.T, corpus string) {
 	out := t12ProbeRun(t, corpus)
 	if line := t12Line(out, "F4"); line != "T12 F4 ok" {
@@ -555,11 +555,17 @@ fn poison_row<T>(row: &mut T) {
     }
 }
 
-fn is_all_poison<T>(row: &T) -> bool {
-    let bytes = unsafe {
-        core::slice::from_raw_parts(row as *const T as *const u8, core::mem::size_of::<T>())
+/// RULING R4: a refused read leaves every row handed in at its declared
+/// default. The reference is the same 0x5A poison with the reader's defaults
+/// image scattered in, so its padding matches and the byte view compares fields.
+fn is_reset<T: Copy>(row: &T, scatter: fn(&[u8], &mut T, &mut TableFixedReport), defaults: &[u8]) -> bool {
+    let mut want = *row;
+    poison_row(&mut want);
+    scatter(defaults, &mut want, &mut TableFixedReport::default());
+    let view = |v: &T| unsafe {
+        core::slice::from_raw_parts(v as *const T as *const u8, core::mem::size_of::<T>()).to_vec()
     };
-    bytes.iter().all(|&b| b == 0x5A)
+    view(row) == view(&want)
 }
 
 fn check_f4() -> Result<(), String> {
@@ -584,7 +590,7 @@ fn check_f4() -> Result<(), String> {
 
     // Every prefix of length 20..20+L has 20 + L > cut: §5.3 row 3 demands
     // layout_malformed with malformed == false, layout_hash == 0, all counters
-    // zero, and the 0x5A-stained destination untouched.
+    // zero, and (ruling R4) the 0x5A-stained row back at its declared default.
     for cut in 20..(20 + l) {
         let mut dst = [LineageRow::default(); 1];
         poison_row(&mut dst[0]);
@@ -605,8 +611,8 @@ fn check_f4() -> Result<(), String> {
         if r.unknown != 0 || r.widened != 0 {
             return Err(format!("cut={cut}: non-zero counters on layout_malformed"));
         }
-        if !is_all_poison(&dst[0]) {
-            return Err(format!("cut={cut}: destination modified on layout_malformed"));
+        if !is_reset(&dst[0], lineage_fixed_scatter, &LINEAGE_FIXED_DEFAULTS) {
+            return Err(format!("cut={cut}: layout_malformed left the row off its declared default (R4)"));
         }
     }
 
@@ -623,8 +629,8 @@ fn check_f4() -> Result<(), String> {
         if !r.refused || r.damaged || r.reason != TableFixedReason::LayoutMalformed || r.layout_hash != 0 {
             return Err(format!("bad_l={bad_l}: wrong refusal {:?}", r.reason.name()));
         }
-        if !is_all_poison(&dst[0]) {
-            return Err(format!("bad_l={bad_l}: destination modified"));
+        if !is_reset(&dst[0], lineage_fixed_scatter, &LINEAGE_FIXED_DEFAULTS) {
+            return Err(format!("bad_l={bad_l}: the row is not its declared default (R4)"));
         }
     }
     Ok(())
@@ -794,8 +800,8 @@ fn check_p4() -> Result<(), String> {
     if !rep.refused || rep.damaged || rep.reason != TableFixedReason::LayoutNewer || rep.layout_hash != new_hash {
         return Err("VOLD_int_widen did not report LayoutNewer with the file's hash".into());
     }
-    if !is_all_poison(&dst[0]) {
-        return Err("VOLD_int_widen modified destination on LayoutNewer".into());
+    if !is_reset(&dst[0], widen_old::int_widen_fixed_scatter, &widen_old::INT_WIDEN_FIXED_DEFAULTS) {
+        return Err("VOLD_int_widen left the row off its declared default on LayoutNewer (R4)".into());
     }
 
     // 2. Running VOLD_int_widen's identity plan directly over new_int_widen.bin's

@@ -276,6 +276,9 @@ func TestSquirrelFixedEvolutionHostileInput(t *testing.T) {
 	}
 	gc = sqEvoGenerate(t, u, nil)
 	gc.plant(t, "    local v = _M.Host();\n", "    local v = out[k];\n")
+	// ruling R4 resets every row on a refusal, which would hide the landing:
+	// the control takes that reset out too
+	gc.plant(t, "  if (n >= 0 || out == null) return n;\n", "  return n;\n")
 	if got := gc.load(t, "Host", two); got.head == "refused no_layout w0 untouched" {
 		t.Errorf("the negative control: records decoded straight into the caller's rows still leave the first record untouched")
 	}

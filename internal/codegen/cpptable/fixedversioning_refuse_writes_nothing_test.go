@@ -7,10 +7,11 @@ package cpptable
 // entry, whose compiled plan carries a nonempty fill list (Vec.w = 88) when
 // step 11 compares the record's own hash; only the record hash is forged, a
 // header-hash forge being a different row. The refusal is total: malformed is
-// FALSE because a refusal by name is not a malformed file, and the poisoned
-// storage stays 0x5A in every byte, not the prefill's 88 and not a zero. The
-// poison goes AFTER the Reset loop, before the load; put it before and Reset
-// erases it, leaving the row the vacuity this shift repairs.
+// FALSE because a refusal by name is not a malformed file. RULING R4 replaces
+// "the poisoned storage stays 0x5A": every row handed in, all 8, holds its
+// declared defaults after the refusal, compared against the same poisoned
+// bytes reset. The poison goes AFTER the Reset loop, before the load, so an
+// untouched row still reads 0x5A and fails.
 import (
 	"fmt"
 	"maps"
@@ -109,14 +110,18 @@ func TestFixedVersioningRefuseWritesNothing(t *testing.T) {
     if ( r.unknown != 0 || r.widened != 0 )
         { printf( "refuse_writes_nothing: a counter moved: out_of_range=%d unknown=%d kind_mismatch=%d widened=%d repeated=%d\n", r.refused, r.unknown, r.refused, r.widened, r.refused ); return 1; }
     {
-        const uint8_t * p = (const uint8_t *) back;
-        int64_t i;
-        for ( i = 0; i < (int64_t) sizeof( back ); ++i )
+        /* RULING R4: every row handed in, all 8, holds its declared defaults
+           after the refusal: the image of the same poisoned bytes, reset. */
+        static ROOT expect[8];
+        memset( expect, 0x5A, sizeof( expect ) );
+        for ( int k = 0; k < 8; ++k ) { ROOTReset( expect[k] ); }
+        for ( int k = 0; k < 8; ++k )
         {
-            if ( p[i] != 0x5A ) { printf( "refuse_writes_nothing: byte %lld is 0x%02x — REFUSE wrote a destination byte\n", (long long) i, p[i] ); return 1; }
+            if ( memcmp( &back[k], &expect[k], sizeof( back[k] ) ) != 0 ) { printf( "refuse_writes_nothing: row %d is not its declared defaults after the refusal\n", k ); return 1; }
         }
     }
 `
+	body = strings.ReplaceAll(body, "ROOT", root)
 
 	probe := fmt.Sprintf(`#include <stdio.h>
 #include <stdlib.h>

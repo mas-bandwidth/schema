@@ -7,10 +7,10 @@ package ctable
 // entry, whose COMPILED plan carries a NONEMPTY fill list (Vec.w = 88) when
 // step 11 compares the record's own hash. Only the record hash is forged — a
 // header-hash forge is a different row — and the refusal must be TOTAL:
-// wire_damaged is NOT set because a refusal by name is not a damaged file, and
-// the caller's storage, poisoned 0x5A before the load, stays 0x5A in every
-// byte — not the prefill's 88, not a zero — which is what "writes nothing"
-// means.
+// wire_damaged is NOT set because a refusal by name is not a damaged file.
+// RULING R4 replaces "the caller's storage, poisoned 0x5A, stays 0x5A": every
+// row handed in, all 8, holds its declared defaults after the refusal,
+// compared with the same poisoned bytes reset.
 
 import (
 	"path/filepath"
@@ -45,11 +45,14 @@ func TestFixedVersioningRefuseWritesNothing(t *testing.T) {
     if ( r.unknown != 0 || r.widened != 0 )
         { printf( "refuse_writes_nothing: a counter moved: unknown=%d widened=%d\n", r.unknown, r.widened ); return 1; }
     {
-        const uint8_t * p = (const uint8_t *) back;
-        int64_t i;
-        for ( i = 0; i < (int64_t) sizeof( back ); ++i )
+        /* RULING R4: every row handed in, all 8, holds its declared defaults
+           after the refusal: the image of the same poisoned bytes, reset. */
+        static probe_row_t expect[8];
+        memset( expect, 0x5A, sizeof( expect ) );
+        for ( k = 0; k < 8; ++k ) { PROBE_RESET( &expect[k] ); }
+        for ( k = 0; k < 8; ++k )
         {
-            if ( p[i] != 0x5A ) { printf( "refuse_writes_nothing: byte %lld is 0x%02x — REFUSE wrote a destination byte\n", (long long) i, p[i] ); return 1; }
+            if ( memcmp( &back[k], &expect[k], sizeof( back[k] ) ) != 0 ) { printf( "refuse_writes_nothing: row %d is not its declared defaults after the refusal\n", k ); return 1; }
         }
     }
 `

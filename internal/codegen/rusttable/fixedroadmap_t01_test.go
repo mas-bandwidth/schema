@@ -53,8 +53,13 @@ fn t01_poisoned(n: usize) -> Vec<ROWTYPE> {
     values
 }
 
-fn t01_untouched(values: &[ROWTYPE]) -> bool {
-    values.iter().all(|v| as_bytes(v).iter().all(|&b| b == 0x5A))
+/// RULING R4: every row a refused read was handed holds its declared default.
+/// The reference starts from the same 0x5A poison and takes the same scatter of
+/// the defaults image, so padding matches and the byte view compares fields.
+fn t01_defaulted(values: &[ROWTYPE]) -> bool {
+    let mut want = t01_poisoned(1)[0];
+    SCATTERFN(&DEFAULTSCONST, &mut want, &mut TableFixedReport::default());
+    values.iter().all(|v| as_bytes(v) == as_bytes(&want))
 }
 
 fn t01_read(data: &[u8], capacity: usize, plan_len: usize) -> (Option<usize>, TableFixedReport, Vec<ROWTYPE>) {
@@ -111,7 +116,7 @@ fn v_t01_f9() {
         assert_eq!(report.reason.name(), "batch_too_large", "{k} records past capacity: {:?}", report.reason);
         assert!(report.refused && !report.damaged, "a refusal by name never sets damaged: {:?}", report);
         assert!(t01_total(&report), "REFUSE is TOTAL, no counter moves: {:?}", report);
-        assert!(t01_untouched(&values), "batch_too_large wrote a destination byte");
+        assert!(t01_defaulted(&values), "batch_too_large left a row off its declared default");
     }
     // THE COUNT IS CHECKED BEFORE THE RECORDS: a forged hash in the LAST record
     // of an over-capacity batch still answers batch_too_large, not no_block.
@@ -120,13 +125,13 @@ fn v_t01_f9() {
     for i in 0..8 { data[last + i] = !data[last + i]; }
     let (n, report, values) = t01_read(&data, 2, 4096);
     assert!(n.is_none() && report.reason.name() == "batch_too_large", "step 6 precedes step 7: {:?}", report);
-    assert!(t01_untouched(&values), "the over-capacity refusal wrote a destination byte");
+    assert!(t01_defaulted(&values), "the over-capacity refusal left a row off its declared default");
 }
 
 /// F10 (§5.3 step 7): "per record: if LE(8, at) != h, REFUSE no_layout" — this
 /// leg's spelling is no_block (§5.9 #25). A forged hash in ANY record refuses by
-/// name, total, and is never malformed. What a refusal at record k leaves in
-/// out[0..k-1] is the page's OPEN QUESTION and is not asserted.
+/// name, total, and is never malformed. Under ruling R4 a refusal at record k
+/// leaves every row handed in, out[0..k] and past it, at its declared default.
 #[test]
 fn v_t01_f10() {
     for k in 0..3usize {
@@ -139,9 +144,7 @@ fn v_t01_f10() {
         assert!(report.refused && !report.damaged, "record {k}: refused and malformed are never both set: {:?}", report);
         assert!(t01_total(&report), "record {k}: no counter moves: {:?}", report);
         assert_eq!(report.layout_hash, 0, "record {k}: no_block carries no hash: {:?}", report);
-        if k == 0 {
-            assert!(t01_untouched(&values), "a refusal at record 0 wrote a destination byte");
-        }
+        assert!(t01_defaulted(&values), "a refusal at record {k} left a row off its declared default");
     }
 }
 
@@ -162,7 +165,7 @@ fn v_t01_r8() {
             ..TableFixedReport::default()
         };
         assert_eq!(report, want, "layout_newer reports the file's hash {forged:#018x} and NOTHING ELSE");
-        assert!(t01_untouched(&values), "layout_newer wrote a destination byte");
+        assert!(t01_defaulted(&values), "layout_newer left a row off its declared default");
     }
 }
 
@@ -236,15 +239,16 @@ fn v_t01_r9() {
         assert_eq!(report.reason.name(), "layout_malformed", "{name}: ONE name, not {:?}", report.reason);
         assert!(report.refused && !report.damaged, "{name}: refused and malformed are never both set: {:?}", report);
         assert!(t01_total(&report) && report.layout_hash == 0, "{name}: nothing else is reported: {:?}", report);
-        assert!(t01_untouched(&values), "{name}: a destination byte was written");
+        assert!(t01_defaulted(&values), "{name}: a row is not its declared default");
     }
 }
 
 /// R13 (§5.3, §5.8 row 9): "REFUSE is total: refused+reason and malformed are
-/// never both set, every counter stays zero, and not one destination byte is
-/// written". Every refusal the load answers before a record lands is held to it
-/// across ITS OWN name. Malformed input instead discards all caller records
-/// to their declared defaults.
+/// never both set, every counter stays zero", and (ruling R4, which replaces
+/// "not one destination byte is written") every row handed in holds its
+/// declared default. Every refusal the load answers is held to it across ITS
+/// OWN name. Malformed input likewise discards all caller records to their
+/// declared defaults.
 #[test]
 fn v_t01_r13() {
     let own = t01_records(3);
@@ -268,7 +272,7 @@ fn v_t01_r13() {
         assert_eq!(report.reason.name(), name, "{label}");
         assert!(!report.damaged, "{label}: refused and malformed are never both set: {:?}", report);
         assert!(t01_total(&report), "{label}: every counter stays zero: {:?}", report);
-        assert!(t01_untouched(&values), "{label}: a destination byte was written");
+        assert!(t01_defaulted(&values), "{label}: a row is not its declared default");
     }
     // THE OTHER ANSWER: malformed is never a refusal and never carries a name.
     let malformed: Vec<(&str, Vec<u8>)> = vec![
