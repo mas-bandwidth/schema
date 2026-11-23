@@ -2224,13 +2224,8 @@ func tableJSONReadField(in *tableJSONIn, base unsafe.Pointer, f *TableFieldInfo,
 		return true
 	}
 	if f.IsArray {
-		// the array is a container one level below the table holding it, counted toward
-		// the cap whether or not it holds an element (FL-12)
-		if depth+1 > tableJSONMaxDepth {
-			in.bad = true
-			return false
-		}
-		if in.peek() != '[' {
+		// array counts one depth level even when empty (FL-12)
+		if depth+1 > tableJSONMaxDepth || in.peek() != '[' {
 			in.bad = true
 			return false
 		}
