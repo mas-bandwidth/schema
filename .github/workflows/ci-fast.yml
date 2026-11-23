@@ -237,6 +237,7 @@ jobs:
       nightly_rows: ${{ steps.pick.outputs.nightly_rows }}
       newleg: ${{ steps.pick.outputs.newleg }}
       input_rows: ${{ steps.pick.outputs.input_rows }}
+      dart_corpus_account: ${{ steps.pick.outputs.dart_corpus_account }}
       rows: ${{ steps.rows.outputs.rows }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -344,7 +345,7 @@ jobs:
               internal/codegen/javatable/*|internal/codegen/java/*|generated/java/*|test/java-tables/*|test/java-fixedform/*|make/java.mk|make/java-*.mk) add_leg java ;;
             esac
             case "$f" in
-              internal/codegen/darttable/*|internal/codegen/dart/*|generated/dart/*|test/dart-tables/*|make/dart.mk|make/dart-*.mk) add_leg dart ;;
+              internal/codegen/darttable/*|internal/codegen/dart/*|generated/dart/*|test/dart-tables/*|make/dart.mk|make/dart-*.mk|make/dart-aot-handoff.py) add_leg dart ;;
             esac
             case "$f" in
               internal/codegen/elixirtable/*|internal/codegen/elixir/*|generated/elixir/*|test/elixir-tables/*|test/elixir-fixedform/*|make/elixir.mk|make/elixir-*.mk|make/elixir-handoff.py) add_leg elixir ;;
@@ -718,6 +719,15 @@ jobs:
             echo "::error::tools/inputfamilies printed no input_rows line"
             exit 1
           fi
+          # The Dart conformance accounting consumer needs the AOT driver
+          # from its verify producer. Other readers remain independent.
+          dart_corpus_account=$(jq -r 'any(.[]; .family == "conformance-corpus" and .leg == "dart")' <<<"$input_rows")
+          # Verify the real handoff when its producer or Linux consumer changes.
+          if grep -Eqx 'make/dart-aot-handoff\.py|tools/inputaccount/(main|watch_linux)\.go' "$RUNNER_TEMP/diff-files.txt"; then
+            dart_corpus_account=true
+          fi
+          input_rows=$(jq -c 'map(select(.family != "conformance-corpus" or .leg != "dart"))' <<<"$input_rows")
+          echo "dart_corpus_account=$dart_corpus_account" >> "$GITHUB_OUTPUT"
           for p in $(sed -n 's/^input_packages=//p' "$RUNNER_TEMP/input-families.txt"); do
             case " $packages " in *" $p "*) ;; *) packages="$packages $p" ;; esac
           done
@@ -1451,6 +1461,8 @@ jobs:
         exclude:
           - leg: elixir
             gate: conformance
+          - leg: dart
+            gate: conformance
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/merge-main
@@ -1621,6 +1633,123 @@ jobs:
           go run ./tools/gotestreport -slowest 0 -skips .github/skip-ledger.txt \
             -provides "platform tool:make tool:git tool:sh tool:elixir" "$PGROUP_GO_TEST_JSON"
 
+  # Use the existing Dart verify conformance job as the producer. When
+  # accounting is selected, the consumer runs the identical claims in full
+  # and the producer retains the packet checks.
+  verify-dart-conformance:
+    needs: plan
+    if: startsWith(github.head_ref, 'sprint/') == false && ((contains(needs.plan.outputs.verify_legs, '"dart"') || needs.plan.outputs.dart_corpus_account == 'true') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    name: verify-leg (dart, conformance)
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 2
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
+      - name: record go test events
+        run: |
+          rm -rf "$RUNNER_TEMP/go-test-json"
+          echo "PGROUP_GO_TEST_JSON=$RUNNER_TEMP/go-test-json" >> "$GITHUB_ENV"
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        if: runner.environment == 'github-hosted'
+        with:
+          sdk: 3.13.2
+      - name: Check out the pinned packet oracle
+        if: contains(needs.plan.outputs.verify_legs, '"dart"')
+        run: |
+          cd ..
+          rm -rf serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
+      - name: verify Dart conformance or build the accounting driver
+        env:
+          ACCOUNT: ${{ needs.plan.outputs.dart_corpus_account }}
+          VERIFY: ${{ contains(needs.plan.outputs.verify_legs, '"dart"') }}
+        run: |
+          set -euo pipefail
+          if [ -f /opt/nova/sdk/env.sh ]; then . /opt/nova/sdk/env.sh; fi
+          if [ "$ACCOUNT" = true ]; then
+            options=()
+            if [ "$VERIFY" = true ]; then options+=(--verify-packets); fi
+            python3 make/dart-aot-handoff.py produce "$RUNNER_TEMP/dart-conformance.tar.gz" "${options[@]}"
+          else
+            make verify-dart-conformance DART=dart
+          fi
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: needs.plan.outputs.dart_corpus_account == 'true'
+        with:
+          name: dart-conformance-aot
+          path: ${{ runner.temp }}/dart-conformance.tar.gz
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+          overwrite: true
+      - name: the skip ledger
+        if: always()
+        run: |
+          go run ./tools/gotestreport -slowest 0 -skips .github/skip-ledger.txt \
+            -provides "platform tool:make tool:git tool:sh tool:dart" "$PGROUP_GO_TEST_JSON"
+
+  input-family-dart-conformance:
+    needs: [plan, verify-dart-conformance]
+    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.dart_corpus_account == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    name: input-family (conformance-corpus, dart)
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 2
+    permissions:
+      actions: read
+      contents: read
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
+      - name: prepare artifact and test event directories
+        run: |
+          artifact=$(mktemp -d "$RUNNER_TEMP/dart-conformance.XXXXXX")
+          echo "DART_CONFORMANCE_ARTIFACTS=$artifact" >> "$GITHUB_ENV"
+          rm -rf "$RUNNER_TEMP/go-test-json"
+          echo "PGROUP_GO_TEST_JSON=$RUNNER_TEMP/go-test-json" >> "$GITHUB_ENV"
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+      - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d # v1.8.1
+        if: runner.environment == 'github-hosted'
+        with:
+          sdk: 3.13.2
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dart-conformance-aot
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          path: ${{ env.DART_CONFORMANCE_ARTIFACTS }}
+          digest-mismatch: error
+      - name: verify the same-run Dart build and account for conformance inputs
+        run: |
+          set -euo pipefail
+          if [ -f /opt/nova/sdk/env.sh ]; then . /opt/nova/sdk/env.sh; fi
+          python3 make/dart-aot-handoff.py consume "${DART_CONFORMANCE_ARTIFACTS:?missing artifact directory}/dart-conformance.tar.gz"
+          go build -o "$RUNNER_TEMP/inputaccount" ./tools/inputaccount
+          # -o on the outer make is lost in recipes invoking $(MAKE).
+          vars=(DART=dart "VERIFY_JFLAG=-j4 -o build/conformance-dart")
+          "$RUNNER_TEMP/inputaccount" -family conformance-corpus -leg dart -check-extra "${vars[@]}"
+          "$RUNNER_TEMP/inputaccount" -family conformance-corpus -leg dart -canary wrong "${vars[@]}"
+      - name: the skip ledger
+        if: always()
+        run: |
+          go run ./tools/gotestreport -slowest 0 -skips .github/skip-ledger.txt \
+            -provides "platform tool:make tool:git tool:sh tool:dart" "$PGROUP_GO_TEST_JSON"
+
   # THE INPUT FAMILIES (tools/inputfamilies, tools/inputaccount; 2026-11-22).
   # One row per reader leg of each input family the diff touches (every
   # family on a push to main). The row runs the leg's make target for the
@@ -1741,13 +1870,16 @@ jobs:
             js)     vars=(NODE=node) ;;
             elixir) vars=("BEAM_PATH=$(dirname "$(command -v erl)"):$(dirname "$(command -v elixir)")") ;;
           esac
-          if [ "$FAMILY" != "conformance-corpus" ]; then
-            rm -rf "build/$FAMILY" build/java-finite
-          else
+          if [ "$FAMILY" = "conformance-corpus" ]; then
+            # Every leg reads the named MANIFEST.txt and wire pins, so the
+            # extra file beside the manifest is inert to the real run.
             vars+=("VERIFY_JOBS=4")
+            "$RUNNER_TEMP/inputaccount" -family "$FAMILY" -leg "$LEG" -check-extra "${vars[@]}"
+          else
+            rm -rf "build/$FAMILY" build/java-finite
+            "$RUNNER_TEMP/inputaccount" -family "$FAMILY" -leg "$LEG" "${vars[@]}"
+            "$RUNNER_TEMP/inputaccount" -family "$FAMILY" -leg "$LEG" -canary extra "${vars[@]}"
           fi
-          "$RUNNER_TEMP/inputaccount" -family "$FAMILY" -leg "$LEG" "${vars[@]}"
-          "$RUNNER_TEMP/inputaccount" -family "$FAMILY" -leg "$LEG" -canary extra "${vars[@]}"
           "$RUNNER_TEMP/inputaccount" -family "$FAMILY" -leg "$LEG" -canary wrong "${vars[@]}"
 
       # A SKIP NAMES A REASON, AND THIS ROW COUNTS ITS SKIPS. The row has its
@@ -2729,7 +2861,7 @@ jobs:
   # ci-policy, lint-fast, vet, block-gate) may never skip. `verdict` is the
   # check to require on main.
   verdict:
-    needs: [fork-pull-request, plan, lint-fast, ci-policy, vet, golangci-lint-fast, generated-current, lang-clean, lang-lint, verify-leg, verify-elixir-conformance, input-family, block-gate, go-fixed-corpus, go-test-touched, leg-gate, leg-gate-lobster, leg-gate-rust, leg-gate-squirrel, leg-gate-cpp, newleg-scaffold, nightly-fast, pins]
+    needs: [fork-pull-request, plan, lint-fast, ci-policy, vet, golangci-lint-fast, generated-current, lang-clean, lang-lint, verify-leg, verify-elixir-conformance, verify-dart-conformance, input-family, input-family-dart-conformance, block-gate, go-fixed-corpus, go-test-touched, leg-gate, leg-gate-lobster, leg-gate-rust, leg-gate-squirrel, leg-gate-cpp, newleg-scaffold, nightly-fast, pins]
     if: startsWith(github.head_ref, 'sprint/') == false && (always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # jq over the needs context: seconds
@@ -2759,6 +2891,8 @@ jobs:
               nightly-fast) [ "$(out nightly_rows)" = '[]' ] ;;
               verify-leg) [ "$(out verify_legs)" = '[]' ] ;;
               verify-elixir-conformance) ! grep -qF '"elixir"' <<<"$(out verify_legs)" ;;
+              verify-dart-conformance) [ "$(out dart_corpus_account)" != true ] && ! grep -qF '"dart"' <<<"$(out verify_legs)" ;;
+              input-family-dart-conformance) [ "$(out dart_corpus_account)" != true ] ;;
               input-family) [ "$(out input_rows)" = '[]' ] ;;
               go-fixed-corpus) ! grep -qF '"make":"tables-go-fixedform"' <<<"$(out rows)" ;;
               go-test-touched) [ -z "$(out packages)" ] ;;
