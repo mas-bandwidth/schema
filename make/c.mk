@@ -1343,7 +1343,13 @@ C_VIEW_BLOCKHOME_TABLES := $(addprefix build/tables-generated-c/blockhome/,DataT
 C_VIEW_TABLE_SOURCES = $(filter %Table.c,$(filter build/tables-generated-c/$(1)/%,$(C_CONFORMANCE_SOURCES) $(C_VIEW_BLOCKHOME_TABLES)))
 C_VIEW_TABLE_OBJECTS = $(addprefix $(C_CONFORMANCE_OBJDIR)/,$(patsubst %.c,%.o,$(call C_VIEW_TABLE_SOURCES,$(1))))
 C_VIEW_PACKAGES := $(foreach entry,$(VIEW_CORPUS),$(word 2,$(subst :, ,$(entry))))
+C_VIEW_DIRS := $(foreach entry,$(VIEW_CORPUS),$(word 1,$(subst :, ,$(entry))))
+C_VIEW_COLLECTION_DIRS := maps lists arms
+c_view_lineage = $(foreach dir,$(1),tables/$(dir) $(wildcard tables/$(dir)/schema.lock tables/$(dir)/tables.baseline))
 
+# The generator reads the lineage files in each directory it loads.
+build/tables-generated-c/.stamp: $(call c_view_lineage,$(filter-out $(C_VIEW_COLLECTION_DIRS),$(C_VIEW_DIRS)))
+build/tables-generated-c/collections.stamp: $(call c_view_lineage,$(C_VIEW_COLLECTION_DIRS))
 $(C_VIEW_BLOCKHOME_TABLES): build/tables-generated-c/.stamp ;
 
 define tables_c_view_unit
