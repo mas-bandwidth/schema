@@ -2,6 +2,7 @@ package inputfamilies
 
 import (
 	"path"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -60,6 +61,13 @@ var AccountLegSchemaOverride = map[string]map[string]string{
 	"packet-finite": {"java": "test/java/Finite.schema"},
 }
 
+// accountPerLegPatterns extends a family for a leg with additional surfaces.
+var accountPerLegPatterns = map[string]map[string][]string{
+	"table-write-bounds": {
+		"go": {"testdata/conformance/table-write-bounds/*.json", "testdata/conformance/table-write-bounds/wire/*.bin"},
+	},
+}
+
 // AccountFiles is every file of the tree a reader of family f must open,
 // sorted.
 func AccountFiles(t Tree, f string) []string {
@@ -81,7 +89,7 @@ func AccountFilesForLeg(t Tree, f, leg string) []string {
 		seen[p] = true
 		out = append(out, p)
 	}
-	for _, pat := range Account[f] {
+	for _, pat := range slices.Concat(Account[f], accountPerLegPatterns[f][leg]) {
 		effPat := pat
 		if leg != "" && perLegSchemaFamilies[f] && strings.HasSuffix(pat, "/*.schema") {
 			if ov, ok := AccountLegSchemaOverride[f][leg]; ok {

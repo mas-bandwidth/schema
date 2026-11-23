@@ -4955,6 +4955,15 @@ one document rather than two.
   | `32` no payload | `L`, then `L` bytes, and this form writes `L = 0` |
   | `36` timestamp | 8 bytes, two's complement, little-endian: NANOSECONDS SINCE THE UNIX EPOCH, `0` being the zero time `1970-01-01T00:00:00Z` (SPEC.md §4.13). The payload is the `i64`'s and the KIND is not `5`: a field respelled between `int64` and `timestamp` is a kind mismatch that refuses the WHOLE load `kind_mismatch`, never reinterpreted, defaulted or counted, and NEITHER SPELLING WIDENS INTO THE OTHER (R14; §4, THE ONE WIDENING RULE). Every count is a legal value — the wire has no range to check — and what a target refuses is a time its own time type holds and no count names, at the point a time enters the field, by name (SPEC.md §4.13). **`35` IS NOT THIS KIND'S NUMBER:** `35` is the fixed layout's optional wrapper (§3.4), a LAYOUT kind that never rides a record, and the next number the wire has free is `36` |
 
+  **Variable-length text and bytes carry their used extent.** For a
+  `string(N)` field or selected arm, `L` gives the number of used UTF-8
+  bytes in the payload. The declaration bounds this byte length by `N`.
+  For a `bytes(N)` field or selected arm, the kind `14` array count is
+  the number of used bytes and is at most `N`. Each kind `6` element
+  contributes one byte. The outer `L` covers the array body, including the
+  element kind and count. The writer emits exactly the used bytes of each
+  value, with no terminator or spare capacity.
+
   **A `1` BOOL'S PAYLOAD IS ONE BYTE, AND `0` AND `1` ARE THE ONLY LEGAL VALUES.**
   A writer writes only `0` or `1`. On the VARIABLE wire any OTHER byte is
   damage: the whole load refuses `wire_damaged` (§4, §6.5). The FIXED form
@@ -5119,7 +5128,7 @@ one document rather than two.
   | an `enum` | `30` | the reference's own length | the variant id reference |
   | a `flags` mask | `9` | `8` | the u64 mask |
   | a `string(N)` | `12` | the length | the bytes, no terminator, a kind `12` payload without its own `L`. Ill-formed UTF-8 and a zero byte are damage, the whole load discarded (§4) |
-  | a `bytes(N)` | `14` | the array body's length | the array body: element kind `6`, `N`, then the bytes |
+  | a `bytes(N)` | `14` | the array body's length | element kind `6`, the used byte count, then exactly that many bytes |
   | an array `[N]T` / `[..N]T` | `14` | the array body's length | the array body: element kind, `N`, then the elements, a kind `14` payload without its own `L`, its header read inside the ARM's `L` (above) |
   | a pointer `*T` | `17` | the index's own length | the node index, null as `0` (§3.1) |
   | a union | `15` | the inner arm id's length, or that plus the inner kind byte, its `L` and its payload | the union payload in its place: the inner arm id reference, then its kind, its own `L` and its payload when the id is not `0` |

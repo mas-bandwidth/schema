@@ -1012,7 +1012,11 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 							sr.aborted = true
 							continue
 						}
-						sr.code, sr.stderr, sr.err = runDriver(d, legDerived, sr.surface, sr.out)
+						var inputEnv []string
+						if sr.surface == "json-read" {
+							inputEnv = []string{"SCHEMA_CONFORMANCE_JSON_INPUT_DIR=" + jsonDir}
+						}
+						sr.code, sr.stderr, sr.err = runDriver(d, legDerived, sr.surface, sr.out, inputEnv...)
 						if failFast {
 							if sr.err != nil || (sr.code != 0 && sr.code != 2) {
 								failed.Store(true)
@@ -1860,18 +1864,19 @@ func listSurfaces(d driver, manifest string) (map[string]bool, []string, error) 
 	return out, retired, nil
 }
 
-func runDriver(d driver, manifest, surface, out string) (int, string, error) {
+func runDriver(d driver, manifest, surface, out string, env ...string) (int, string, error) {
 	argv := append(append([]string{}, d.argv...), manifest, surface, out)
 	cmd := exec.Command(argv[0], argv[1:]...)
+	cmd.Env = append(os.Environ(), env...)
 	if surface == "json-write-into" {
 		// THE COMMA-DECIMAL LOCALE the surface runs the text writer under
 		// (FL-14): named to the driver, and compiled for it where the host
 		// has none. A host that can do neither fails the surface loudly.
-		env, err := commaLocaleOnce()
+		localeEnv, err := commaLocaleOnce()
 		if err != nil {
 			return 0, "", err
 		}
-		cmd.Env = append(os.Environ(), env...)
+		cmd.Env = append(cmd.Env, localeEnv...)
 	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stderr = &stderr

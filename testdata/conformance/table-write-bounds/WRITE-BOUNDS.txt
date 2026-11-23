@@ -1,6 +1,9 @@
 # Paired variable-table writer arguments for SPEC.md §5.1 rows 1–4.
 unit writebounds testdata/conformance/table-write-bounds/TableWriteBounds.schema
 instance torture_var_wref           writebounds     TortureVarWref   testdata/conformance/table-write-bounds/torture_var_wref.bin
+instance sfw_raw_payload           writebounds TortureVarWref   testdata/conformance/table-write-bounds/wire/sfw_raw_payload.bin
+instance sfw_arm_raw_payload       writebounds TortureVarWref   testdata/conformance/table-write-bounds/wire/sfw_arm_raw_payload.bin
+instance sfw_arm_arr_payload       writebounds TortureVarWref   testdata/conformance/table-write-bounds/wire/sfw_arm_arr_payload.bin
 write-refusal       sfw_opt_arr_long      writebounds TortureVarWref  testdata/conformance/table-write-bounds/torture_var_wref.bin opt_arr           count   4     refused
 write-refusal       sfw_opt_arr_ok        writebounds TortureVarWref  testdata/conformance/table-write-bounds/torture_var_wref.bin opt_arr           count   3     wrote
 write-refusal       sfw_arm_bits_wide     writebounds TortureVarWref  testdata/conformance/table-write-bounds/torture_var_wref.bin arm_bits.a_bits   int     8192  refused
