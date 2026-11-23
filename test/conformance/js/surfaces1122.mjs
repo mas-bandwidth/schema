@@ -114,8 +114,26 @@ export async function surfaceReadInto(lines, outDir, load) {
     if (f[0] !== "read-into") { continue; }
     const [, name, unitName, root, form, lawful, damaged, countText, announcement] = f;
     if (form === "variable" || form === "json") {
-      writeFileSync(join(outDir, name + ".absent"),
-        "the JavaScript " + (form === "json" ? "<Root>FromJson" : "<Root>Load") + " takes no caller value: it returns a new value or null\n");
+      const u = unitOf(unitName, "variable", name);
+      const variable = await load(u.variable);
+      const Class = need(variable, root, name), toJson = need(variable, root + "ToJson", name);
+      const readInto = need(variable, root + (form === "json" ? "FromJsonBytesInto" : "LoadInto"), name);
+      const report = new variable.TableVariableReport();
+      const values = [new Class()];
+      const step = (path) => {
+        try {
+          const ok = readInto(values[0], new Uint8Array(readFileSync(path)), report);
+          return ok && report.refused === 0 && !report.damaged ? "read\n" : "refused\n";
+        } catch (e) {
+          process.stderr.write(name + ": the read of " + path + " threw: " + (e && e.stack ? e.stack : String(e)) + "\n");
+          return "threw\n";
+        }
+      };
+      let out = step(lawful) + step(damaged);
+      const text = toJson(values[0]);
+      if (text === null) { throw new Error(name + ": ToJson refused a value the read left"); }
+      out += text + step(lawful);
+      writeFileSync(join(outDir, name), out);
       continue;
     }
     if (form === "fixed-nocap") {

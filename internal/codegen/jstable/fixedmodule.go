@@ -30,7 +30,7 @@ func generateFixedFiles(u *ir.Unit, wide []string, lineage map[string][]FixedLin
 			any = true
 		}
 	}
-	if !any {
+	if !any && len(jsMessageUnitRoots(u)) == 0 {
 		return out, nil
 	}
 	home := runtimeHome(u)
@@ -135,7 +135,14 @@ func (g *fixedModule) emit(closure []*ir.Struct, roots []*ir.Struct, tables []*i
 		// A TABLE gets its storage class here; a `type` already has one, from
 		// internal/codegen/js, and is imported rather than emitted twice.
 		inClosure := map[string]bool{}
+		closureSet := map[string]bool{}
 		for _, st := range closure {
+			closureSet[st.Name] = true
+			if st.IsTable {
+				inClosure[st.Name] = true
+			}
+		}
+		for _, st := range g.messageClosure {
 			if st.IsTable {
 				inClosure[st.Name] = true
 			}
@@ -165,12 +172,22 @@ func (g *fixedModule) emit(closure []*ir.Struct, roots []*ir.Struct, tables []*i
 				g.gen.emitTableClass(st)
 			}
 		}
+		for _, st := range g.messageClosure {
+			if !closureSet[st.Name] && st.IsTable {
+				g.gen.emitTableClass(st)
+			}
+		}
 		for _, st := range closure {
 			g.gen.emitWriteBody(st)
 			g.gen.emitCheckBody(st)
 			g.gen.emitDecodeBody(st)
 			g.gen.emitReadCheckBody(st)
 			g.gen.emitDeadCheckBody(st)
+		}
+		for _, st := range g.messageClosure {
+			if !closureSet[st.Name] {
+				g.gen.emitCheckBody(st)
+			}
 		}
 		g.gen.emitFromTextEnums(g.messageClosure)
 		for _, st := range g.messageClosure {
@@ -196,9 +213,16 @@ func (g *fixedModule) emit(closure []*ir.Struct, roots []*ir.Struct, tables []*i
 			g.pf("// Its form-1 surface is unaffected; nothing about form 1 moves (docs/SPEC-TABLES.md §3.4).\n\n")
 		}
 	}
+	rootSet := map[string]bool{}
 	for _, st := range roots {
+		rootSet[st.Name] = true
 		g.emitRoot(st)
 		if st.FixedDeclared {
+			g.emitMessageBatch(st)
+		}
+	}
+	for _, st := range tables {
+		if !rootSet[st.Name] && st.IsTable && !st.IsMapEntry() && st.FixedDeclared && ir.TableFixedSupported(st, 0) {
 			g.emitMessageBatch(st)
 		}
 	}
@@ -414,6 +438,8 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("// intermediate copy, and its results are held equal to the shared path's by\n")
 	g.pf("// test. Answers the records read, or -1 with the reason named in the report.\n")
 	g.pf("export function %sFixedLoad(values, capacity, bytes, byteLength, plan, report) {\n", st.Name)
+	g.pf("  let _fixedLoadOk = false;\n")
+	g.pf("  try {\n")
 	g.pf("  TableFixedResetReport(report);\n")
 	g.pf("  if (bytes === null || byteLength < 1) { report.damaged = true; return -1; }\n")
 	g.pf("  // THE FORM BYTE IS READ FIRST, AND IT SAYS WHICH DIRECTION (§3, §3.4):\n")
@@ -592,7 +618,14 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("  report.widened += stage.widened;\n")
 	g.pf("  report.unknown += censusUnknown;\n")
 	g.pf("  report.mismatch += censusKind;\n")
-	g.pf("  return n;\n}\n\n")
+	g.pf("  _fixedLoadOk = true;\n")
+	g.pf("  return n;\n")
+	g.pf("  } finally {\n")
+	g.pf("    if (!_fixedLoadOk && values !== null && values !== undefined && capacity > 0) {\n")
+	g.pf("      const _lim = globalThis.Math.min(capacity, values.length);\n")
+	g.pf("      for (let _i = 0; _i < _lim; _i++) { if (values[_i] !== null && values[_i] !== undefined) { Init%s(values[_i]); } }\n", st.Name)
+	g.pf("    }\n")
+	g.pf("  }\n}\n\n")
 	g.emitFixedCookExports(st)
 }
 

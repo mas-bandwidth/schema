@@ -461,7 +461,7 @@ func emitTable(b *strings.Builder, u *ir.Unit, mod string, st *ir.Struct, blocks
 	b.WriteString("    def inspect\n      SchemaTable.graph_inspect(self)\n    end\n\n")
 
 	if surfaces.Fixed && fixedRootAdmitted(u, st) {
-		b.WriteString("    def self.fixed_load(data, capacity = 4096, report = nil, plan_capacity = nil, **opts)\n")
+		b.WriteString("    def self.fixed_load(data, capacity = nil, report = nil, plan_capacity = nil, **opts)\n")
 		b.WriteString("      opts.each_key do |k|\n")
 		b.WriteString("        unless k == :capacity || k == :report || k == :plan_capacity\n")
 		b.WriteString("          raise ::ArgumentError, \"unknown keyword: #{k.inspect}\"\n")
@@ -471,6 +471,17 @@ func emitTable(b *strings.Builder, u *ir.Unit, mod string, st *ir.Struct, blocks
 		b.WriteString("      report = opts[:report] if opts.key?(:report)\n")
 		b.WriteString("      plan_capacity = opts[:plan_capacity] if opts.key?(:plan_capacity)\n")
 		fmt.Fprintf(b, "      ::%s._s_fixed_load(%s, data, capacity, report, plan_capacity)\n", mod, rbQuote(name))
+		b.WriteString("    end\n\n")
+		b.WriteString("    def self.fixed_load_into(targets, data, capacity = nil, report = nil, plan_capacity = nil, **opts)\n")
+		b.WriteString("      opts.each_key do |k|\n")
+		b.WriteString("        unless k == :capacity || k == :report || k == :plan_capacity\n")
+		b.WriteString("          raise ::ArgumentError, \"unknown keyword: #{k.inspect}\"\n")
+		b.WriteString("        end\n")
+		b.WriteString("      end\n")
+		b.WriteString("      capacity = opts[:capacity] if opts.key?(:capacity)\n")
+		b.WriteString("      report = opts[:report] if opts.key?(:report)\n")
+		b.WriteString("      plan_capacity = opts[:plan_capacity] if opts.key?(:plan_capacity)\n")
+		fmt.Fprintf(b, "      ::%s._s_fixed_load_into(%s, targets, data, capacity, report, plan_capacity)\n", mod, rbQuote(name))
 		b.WriteString("    end\n\n")
 		b.WriteString("    def self.fixed_save(values)\n")
 		fmt.Fprintf(b, "      ::%s._s_fixed_save(%s, self, values)\n", mod, rbQuote(name))
@@ -511,6 +522,7 @@ func emitTable(b *strings.Builder, u *ir.Unit, mod string, st *ir.Struct, blocks
 		b.WriteString("    end\n\n")
 	}
 
+	b.WriteString("    def self.load_into(target, data, report = nil)\n      SchemaTable.load_into(self, target, data, report)\n    end\n\n")
 	b.WriteString("    def self.measure(value)\n      value.measure\n    end\n\n")
 
 	if surfaces.Retain {
@@ -563,6 +575,9 @@ func emitTable(b *strings.Builder, u *ir.Unit, mod string, st *ir.Struct, blocks
 	if surfaceCarries(surfaces, st, "json") {
 		b.WriteString("    def self.from_json(text, report = nil)\n")
 		fmt.Fprintf(b, "      SchemaTable.from_json(%s, text, report)\n", name)
+		b.WriteString("    end\n\n")
+		b.WriteString("    def self.from_json_into(target, text, report = nil)\n")
+		fmt.Fprintf(b, "      SchemaTable.from_json_into(%s, target, text, report)\n", name)
 		b.WriteString("    end\n\n")
 		b.WriteString("    def to_json(*_args)\n      SchemaTable.to_json(self)\n    end\n\n")
 		if surfaces.TextForm {

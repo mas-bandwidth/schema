@@ -9,7 +9,7 @@ import math
 import struct
 from typing import Any, TypeVar
 
-from . import InvalidValue, LoadReport, Refused
+from . import InvalidValue, LoadReport, Refused, _copy_instance
 from . import descriptor
 from .load import buffer_view
 from .integrity import open_crc, seal_crc
@@ -431,7 +431,7 @@ def fixed_save(cls: type[_T], values: list[_T]) -> bytes:
     return seal_crc(result) if root["integrity"] else result
 
 
-def fixed_load(cls: type[_T], data: bytes | bytearray | memoryview, capacity: int = 4096, report: LoadReport | None = None, plan_capacity: int | None = None) -> list[_T]:
+def fixed_load(cls: type[_T], data: bytes | bytearray | memoryview, capacity: int | None = None, report: LoadReport | None = None, plan_capacity: int | None = None) -> list[_T]:
     source = buffer_view(data)
     if not source:
         raise Refused("truncated")
@@ -465,7 +465,7 @@ def fixed_load(cls: type[_T], data: bytes | bytearray | memoryview, capacity: in
     if record <= 8 or rest <= 0 or rest % record:
         raise Refused("truncated")
     count = rest // record
-    if type(capacity) is not int or capacity < 0 or count > capacity:
+    if capacity is not None and (type(capacity) is not int or capacity < 0 or count > capacity):
         raise Refused("batch_too_large")
     start = 20 + length
     # The check pass is total over the batch: no caller report or class
@@ -502,3 +502,26 @@ def fixed_load(cls: type[_T], data: bytes | bytearray | memoryview, capacity: in
         if isinstance(report, FixedLoadReport):
             report.layout_hash = wire_hash
     return values
+
+
+def fixed_load_into(cls: type[_T], targets: list[_T], data: bytes | bytearray | memoryview, capacity: int | None = None, report: LoadReport | None = None, plan_capacity: int | None = None) -> int:
+    """Read a fixed batch into targets, resetting targets and report on refusal (FL-02, FL-03, FL-29)."""
+    if report is not None:
+        report.reset()
+    try:
+        loaded = fixed_load(cls, data, capacity, report, plan_capacity)
+        if len(loaded) > len(targets):
+            raise Refused("batch_too_large")
+    except Refused as err:
+        for item in targets:
+            _copy_instance(item, cls())
+        if report is not None:
+            report.reset()
+            report.refused = True
+            report.reason = err.reason
+        return 0
+    for i, item in enumerate(loaded):
+        _copy_instance(targets[i], item)
+    for i in range(len(loaded), len(targets)):
+        _copy_instance(targets[i], cls())
+    return len(loaded)

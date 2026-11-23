@@ -508,6 +508,7 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 	g.needHome("TableMessageBatchMax", "TableBitWriter",
 		"TableMessageResetReport", "TableMessageRefuse",
 		"tableMessageBatchOpen", "tableMessageBatchClose",
+		st.Name, "Init"+st.Name,
 		st.Name+"SaveMessageBody", st.Name+"LoadMessageBody")
 	if fixedStructNeedsValueCheck(st) {
 		g.needHome(st.Name + "FixedCheckBody")
@@ -573,7 +574,7 @@ func (g *fixedModule) nextIdxVar() string {
 
 func (g *fixedModule) emitMessageCheckArray(f *ir.Field, mem, ind string, bound int64) {
 	iv := g.nextIdxVar()
-	g.pf("%sif (%s === null || %s === undefined || typeof %s.length !== \"number\" || %s.length < %d) { return false; }\n",
+	g.pf("%sif (%s === null || %s === undefined || typeof %s.length !== \"number\" || %s.length !== %d) { return false; }\n",
 		ind, mem, mem, mem, mem, bound)
 	g.pf("%sfor (let %s = 0; %s < %d; %s++) {\n", ind, iv, iv, bound, iv)
 	e := messageElementField(f)
@@ -609,9 +610,15 @@ func (g *fixedModule) emitMessageCheckElement(f *ir.Field, expr, ind string) {
 	switch f.Type.Kind {
 	case ir.TFloat32:
 		g.pf("%sif (typeof %s !== \"number\" || !globalThis.Number.isFinite(globalThis.Math.fround(%s))) { return false; }\n", ind, expr, expr)
+		if lo, hi, ok := fixedFloatClampEnds(f); ok {
+			g.pf("%sif (globalThis.Math.fround(%s) < %s || globalThis.Math.fround(%s) > %s) { return false; }\n", ind, expr, lo, expr, hi)
+		}
 		return
 	case ir.TFloat64:
 		g.pf("%sif (typeof %s !== \"number\" || !globalThis.Number.isFinite(%s)) { return false; }\n", ind, expr, expr)
+		if lo, hi, ok := fixedFloatClampEnds(f); ok {
+			g.pf("%sif (%s < %s || %s > %s) { return false; }\n", ind, expr, lo, expr, hi)
+		}
 		return
 	case ir.TBits:
 		maxv := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), uint(f.Type.Width)), big.NewInt(1))
@@ -635,6 +642,15 @@ func (g *fixedModule) emitMessageCheckElement(f *ir.Field, expr, ind string) {
 	switch r := f.Type.Ref.(type) {
 	case *ir.Flags:
 		g.emitMessageCheckInteger(expr, ind, true)
+		{
+			bits := uint(len(r.Variants))
+			if bits >= 64 {
+				g.pf("%sif (%s < 0n || %s > 0xffffffffffffffffn) { return false; }\n", ind, expr, expr)
+			} else {
+				maxv := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), bits), big.NewInt(1))
+				g.emitMessageCheckRange(expr, ind, big.NewInt(0), maxv, true)
+			}
+		}
 	case *ir.Enum:
 		g.emitMessageCheckInteger(expr, ind, false)
 		g.pf("%sif (%s < 0 || %s > %d) { return false; }\n", ind, expr, expr, len(r.Variants))

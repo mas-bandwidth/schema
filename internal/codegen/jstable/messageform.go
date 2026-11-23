@@ -40,8 +40,18 @@ func messageAnnouncementRuntime(u *ir.Unit) string {
 	fmt.Fprintf(&b, "  TableMessageRefBitsHere = n;\n")
 	fmt.Fprintf(&b, "  return prev;\n")
 	fmt.Fprintf(&b, "}\n")
-	fmt.Fprintf(&b, "export const TableMessageEntriesHere = %d;\n", len(tablewire.MessageVocabulary(u)))
-	fmt.Fprintf(&b, "export const TableMessageAnnouncement = new globalThis.Uint8Array([%s]);\n", jsByteLiterals(tablewire.Announce(u)))
+	entryCount := len(tablewire.MessageVocabulary(u))
+	fmt.Fprintf(&b, "export const TableMessageEntriesHere = %d;\n", entryCount)
+	fmt.Fprintf(&b, "export const TableMessageBuildVersionHere = globalThis.BigInt(\"0x%016x\");\n", ir.BuildVersion(u))
+	if entryCount > 4096 {
+		b.WriteString("export const TableMessageAnnouncement = new globalThis.Uint8Array([]);\n")
+		b.WriteString("export function AnnounceMeasure() { return -1; }\n")
+		b.WriteString("export function Announce(buffer) { void buffer; return -1; }\n")
+	} else {
+		fmt.Fprintf(&b, "export const TableMessageAnnouncement = new globalThis.Uint8Array([%s]);\n", jsByteLiterals(tablewire.Announce(u)))
+		b.WriteString("export function AnnounceMeasure() { return TableMessageAnnouncement.length; }\n")
+		b.WriteString("export function Announce(buffer) {\n  if (buffer.length < TableMessageAnnouncement.length) { return -1; }\n  buffer.set(TableMessageAnnouncement);\n  return TableMessageAnnouncement.length;\n}\n")
+	}
 	b.WriteString(jsAnnounceRuntime)
 	return b.String()
 }
@@ -69,6 +79,7 @@ export class TableVocabulary {
     this.Count = 0;
     this.RefBits = 1;
     this.BuildVersion = 0n;
+    this.BuildVersionOwn = TableMessageBuildVersionHere;
     this.Announced = false;
     this.Refused = false;
     this.MaxBytes = 64 * 1024;
@@ -79,18 +90,14 @@ export class TableVocabulary {
     this.Count = 0;
     this.RefBits = 1;
     this.BuildVersion = 0n;
+    this.BuildVersionOwn = TableMessageBuildVersionHere;
     this.Announced = false;
     this.Refused = false;
     this.MaxBytes = 64 * 1024;
     this.Strict = false;
   }
 }
-export function AnnounceMeasure() { return TableMessageAnnouncement.length; }
-export function Announce(buffer) {
-  if (buffer.length < TableMessageAnnouncement.length) { return -1; }
-  buffer.set(TableMessageAnnouncement);
-  return TableMessageAnnouncement.length;
-}
+
 // The announcement is an ordinary form-1 file, so its reader is the form-1
 // reader (docs/SPEC-TABLES.md §3): a bounded view of the body, the id trailer,
 // and the framing pre-walk that refuses a body ending after its terminator.

@@ -238,12 +238,30 @@ module SchemaRuntimeUnit
         retain.loaded_root = obj
       end
       unless report.nil?
+        report.reset
         report.unknown = ctx.unknown
         report.widened = ctx.widened
         report.retained = retained
         report.retain_lost = lost
       end
       obj
+    end
+
+    def self.load_into(cls, target, data, report = nil)
+      report&.reset
+      begin
+        loaded = cls.load(data, report)
+      rescue Refused => e
+        target._s_reset
+        unless report.nil?
+          report.reset
+          report.refused = true
+          report.reason = e.reason
+        end
+        return false
+      end
+      target._s_copy_from(loaded)
+      true
     end
 
     def self.body_end_offset(raw)
