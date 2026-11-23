@@ -122,10 +122,7 @@ func run() (code int) {
 
 	// We now hold the exclusive kernel advisory lock.
 	// Record our PID in the lock file immediately so any contender has an immediate owner pid.
-	_ = f.Truncate(0)
-	_, _ = f.Seek(0, 0)
-	_, _ = fmt.Fprintf(f, "%d\n", os.Getpid())
-	_ = f.Sync()
+	writeOwner(f, os.Getpid())
 
 	cmd := exec.Command(cmdArgs[0], cmdArgs[1:]...)
 	cmd.Stdin = os.Stdin
@@ -146,15 +143,12 @@ func run() (code int) {
 	}
 
 	// Update lock file with child's PID as well.
-	_ = f.Truncate(0)
-	_, _ = f.Seek(0, 0)
-	_, _ = fmt.Fprintf(f, "%d\n", cmd.Process.Pid)
-	_ = f.Sync()
+	writeOwner(f, cmd.Process.Pid)
 
 	go func() {
 		for sig := range sigChan {
 			if cmd.Process != nil {
-				_ = cmd.Process.Signal(sig)
+				_ = cmd.Process.Signal(sig) // errdiscard: fails only once the child has exited, and its exit is what Wait reports
 			}
 		}
 	}()
@@ -176,4 +170,24 @@ func run() (code int) {
 		return 1
 	}
 	return 0
+}
+
+// writeOwner records pid in the lock file, which a contender reads to name
+// the holder in its refusal. The lock is the flock, not the text, so a write
+// that fails never stops the run; it is said on stderr, so a refusal that
+// names no owner is explained.
+func writeOwner(f *os.File, pid int) {
+	err := f.Truncate(0)
+	if err == nil {
+		_, err = f.Seek(0, 0)
+	}
+	if err == nil {
+		_, err = fmt.Fprintf(f, "%d\n", pid)
+	}
+	if err == nil {
+		err = f.Sync()
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "treelock: the owner pid %d was not recorded in %s: %v\n", pid, f.Name(), err)
+	}
 }

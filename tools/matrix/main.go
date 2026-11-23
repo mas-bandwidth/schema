@@ -116,7 +116,10 @@ func proofCommand(root string, args []string) int {
 	parity := parityError(AtParity(p, in.InProgress))
 	if *report != "" {
 		rep := Report{Commit: *commit, Cells: len(p.Cells), Red: p.Red(), InProgress: p.InProgress(), Stale: stale, Parity: parity}
-		data, _ := json.MarshalIndent(rep, "", "  ")
+		data, err := json.MarshalIndent(rep, "", "  ")
+		if err != nil {
+			fail(err)
+		}
 		if err := os.MkdirAll(filepath.Dir(*report), 0o755); err != nil {
 			fail(err)
 		}

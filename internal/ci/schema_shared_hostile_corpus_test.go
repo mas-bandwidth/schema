@@ -27,6 +27,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/ci/hostilecorpus"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
 
@@ -285,7 +286,7 @@ func TestSchemaSharedHostileCorpusGenerate(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := hostilecorpus.Format(got)
-	if os.Getenv("HOSTILE_CORPUS_UPDATE") == "1" {
+	if slowtest.Rewriting(t, "HOSTILE_CORPUS_UPDATE") {
 		if err := hostilecorpus.WriteManifest(dir, want); err != nil {
 			t.Fatal(err)
 		}
