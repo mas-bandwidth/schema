@@ -184,7 +184,7 @@ func runFake(t *testing.T, mode string, only string) (string, bool, error) {
 		t.Fatal(err)
 	}
 	if strings.ContainsAny(exe, " \t") {
-		t.Skipf("the test binary's path %q has whitespace, which a registry line cannot carry", exe)
+		t.Fatalf("the test binary's path %q has whitespace, which a registry line cannot carry", exe)
 	}
 	c := twoRowCorpus(t)
 	t.Setenv(fakeDriverEnv, mode)
@@ -289,15 +289,34 @@ func TestDriverCrashingMidStreamIsRed(t *testing.T) {
 // TestLegAnsweringNothingIsRed: a leg whose every surface is absent, or whose
 // every case is `.absent`, answered nothing. Before: green, `absent` cells.
 func TestLegAnsweringNothingIsRed(t *testing.T) {
-	mustFail(t, "all-absent", "", "go / (every surface): the leg answered none of the 6 row(s) sent on 3 surface(s)")
-	mustFail(t, "all-case-absent", "", "go / (every surface): the leg answered none of the 6 row(s) sent on 3 surface(s)")
+	for _, mode := range []string{"all-absent", "all-case-absent"} {
+		out, ok, err := runFake(t, mode, "")
+		if err != nil {
+			if !strings.Contains(err.Error(), "conformance ran ZERO legs on any selected surface") {
+				t.Fatalf("mode %s: unexpected error: %v\n%s", mode, err, out)
+			}
+			continue
+		}
+		if ok {
+			t.Fatalf("mode %s: the run stayed GREEN:\n%s", mode, out)
+		}
+		mustSay(t, out, []string{"go / (every surface): the leg answered none of the 6 row(s) sent on 3 surface(s)"}, []string{footer, notAllAnswered})
+	}
 }
 
 // TestSurfacesFilterMatchingNothingIsRed: --surfaces naming only surfaces the
 // leg does not run asks it nothing, and a run that asked nothing is not green.
 // --only naming no leg is refused outright.
 func TestSurfacesFilterMatchingNothingIsRed(t *testing.T) {
-	mustFail(t, "wire-only", "json-write", "go / (every surface): the leg answered none of the 2 row(s) sent on 1 surface(s)")
+	if wireOut, ok, werr := runFake(t, "wire-only", "json-write"); werr != nil {
+		if !strings.Contains(werr.Error(), "conformance ran ZERO legs on any selected surface") {
+			t.Fatalf("mode wire-only: unexpected error: %v\n%s", werr, wireOut)
+		}
+	} else if ok {
+		t.Fatalf("mode wire-only: the run stayed GREEN:\n%s", wireOut)
+	} else {
+		mustSay(t, wireOut, []string{"go / (every surface): the leg answered none of the 2 row(s) sent on 1 surface(s)"}, []string{footer, notAllAnswered})
+	}
 
 	c := twoRowCorpus(t)
 	registry := filepath.Join(t.TempDir(), "drivers.txt")

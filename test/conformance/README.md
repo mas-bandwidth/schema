@@ -19,6 +19,12 @@ make conformance-pin                 rewrite the half the reference leg writes
 make conformance-negative-control    prove the harness can go red
 ```
 
+A fresh clone needs `make deps` first (it stages the sibling runtime checkouts
+beside the worktree). Without it `make conformance` and the harness's `run`
+stop at once with one line, `the <leg> leg needs the sibling checkout <path>
+(<file> is missing): run 'make deps'`, and not with a compile error from the
+middle of a leg. A leg in `SCHEMA_SKIP_LEGS` does not need its sibling.
+
 **Negative controls stand behind it, and each localises a different
 thing** — a harness that has never gone red is watching nothing, and one that
 goes red everywhere localises nothing:
