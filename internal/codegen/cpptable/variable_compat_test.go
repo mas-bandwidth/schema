@@ -37,14 +37,29 @@ func TestCppVariableWriterEvolution(t *testing.T) {
 			old := cppUnitFrom(t, schema(c.oldFields))
 			current := cppUnitFrom(t, schema(c.newFields))
 			refusals, _ := baseline.Split(baseline.Diff(baseline.Render(old), baseline.Render(current), baseline.DefaultTokenPolicy))
-			if c.name == "widened_optional" {
-				// The decoder supports this wire-kind widening, but the current
-				// baseline refuses this particular edit. Keep it as a separate
-				// decoder check, not a claimed baseline-approved evolution.
-				if len(refusals) != 1 || !strings.Contains(fmt.Sprint(refusals), "wire kind 3 -> 4") {
+			switch {
+			case c.name == "widened_optional":
+				// The decoder supports this wire-kind widening, and `?T` to `T`
+				// is the narrowing the baseline refuses (R16), while the
+				// current baseline also refuses wire kind 3 -> 4. Keep it as a
+				// separate decoder check, not a claimed baseline-approved edit.
+				text := fmt.Sprint(refusals)
+				if len(refusals) != 2 || !strings.Contains(text, "wire kind 3 -> 4") || !strings.Contains(text, "presence removed") {
 					t.Fatalf("unexpected widening baseline verdict: %v", refusals)
 				}
-			} else if len(refusals) != 0 {
+			case strings.Contains(c.oldFields, "?"):
+				// `?T` to `T` is the narrowing the baseline refuses (R16). The
+				// decoder still reads the old optional writer, and that read is
+				// what the case checks.
+				if len(refusals) == 0 {
+					t.Fatalf("`?T` to `T` must be refused by the baseline (R16)")
+				}
+				for _, r := range refusals {
+					if !strings.Contains(r.What, "presence removed") {
+						t.Fatalf("a refusal other than the optional narrowing: %v", refusals)
+					}
+				}
+			case len(refusals) != 0:
 				t.Fatalf("the baseline refuses the proposed edit: %v", refusals)
 			}
 			write := func(u *ir.Unit, set string) []byte {
