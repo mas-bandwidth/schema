@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-const csNestedCountMinSchema = `package nested
+const csNestedCountMinSchema = `package countminprobe
 
 fixed table Child
 {
