@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 )
@@ -268,7 +269,7 @@ func TestInnerBoundsInputsArePinned(t *testing.T) {
 	if len(rows) != 48 {
 		t.Fatalf("%d rows, want 48: three forms, two parents, four bounds, at and past", len(rows))
 	}
-	write := os.Getenv("INNER_WRITE") == "1"
+	write := slowtest.Rewriting(t, "INNER_WRITE")
 	manifest, committed, err := LoadManifest(dir)
 	if err != nil {
 		t.Fatal(err)

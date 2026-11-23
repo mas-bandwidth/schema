@@ -344,7 +344,6 @@ local function skip_container(inp: Input, close: string, depth: number, graph: a
   if depth > MAX_DEPTH then inp.bad = true; return false end
   inp.p = inp.p + 1
   local first = true
-  local defined: any = nil
   -- A DUPLICATE KEY IN A SKIPPED OBJECT IS MALFORMED, exactly as in a read
   -- object (docs/SPEC-TABLES.md §16.2): the strict read refuses the whole
   -- value rather than guessing which occurrence wins.

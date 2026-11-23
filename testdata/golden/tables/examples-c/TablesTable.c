@@ -1936,6 +1936,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_skip_members( tabledemo_table_json
     in->pos++; /* the opening bracket */
     for ( ;; )
     {
+        int consumed = 0;
         char c = tabledemo_table_json_peek( in );
         if ( c == close ) { in->pos++; if ( opened != 0 ) { tabledemo_table_json_skipped_close( in, opened ); } return 1; }
         if ( c == 0 ) { in->bad = 1; return 0; }
@@ -1963,7 +1964,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_skip_members( tabledemo_table_json
             if ( key[0] == '&' ) { if ( !first ) { in->bad = 1; return 0; } if ( !tabledemo_table_json_skipped_ampersand(in,key,close,&opened) ) { return 0; } consumed = 1; }
         }
         first = 0;
-        if ( !tabledemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
+        if ( !consumed && !tabledemo_table_json_skip_value( in, depth + 1 ) ) { return 0; }
         c = tabledemo_table_json_peek( in );
         if ( c == ',' ) { in->pos++; continue; }   /* a trailing comma is accepted */
         if ( c == close ) { in->pos++; if ( opened != 0 ) { tabledemo_table_json_skipped_close( in, opened ); } return 1; }

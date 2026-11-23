@@ -106,6 +106,25 @@ file shapes of every surface, the absence rules and the reference-leg rule.
 - **Accepted values are judged by the value** the golden states, in the
   canonical text form.
 
+- **A refusal counts only beside an accepted twin.** Every case that requires
+  a refusal has a lawful twin in the corpus: a case of the same group (the
+  same surface, unit and root) that requires acceptance. A port's refusal is
+  credited only when the same port also answers at least one of its twins
+  correctly; otherwise the case is REFUSAL-ONLY. A port that refuses a whole
+  form (reads a root through the wrong reader, or has no reader for it)
+  refuses the lawful value too, and has not reached the rule the refusal case
+  tests. `test/conformance/README.md` states the groups and the harness
+  enforces both halves: it refuses a corpus with a refusal case that has no
+  twin, and scores refusal-only cases apart.
+
+**The score.** For each port the suite prints `credited C of T; absent A;
+refusal-only R; failed F` over every case of every surface it was asked.
+CREDITED is a correct answer (a refusal only as above). ABSENT (a surface the
+port does not list, exit code 2, or `<case>.absent`) and REFUSAL-ONLY are
+reported separately and are **never counted as passes**: a port conforms only
+when every case is credited except the absences section 2 lets it declare, and
+it has no refusal-only case and no failure.
+
 Expected answers come from the committed goldens and manifests, never from
 another language's leg.
 
@@ -281,6 +300,7 @@ row and test named on main, so they owe nothing:
 | generated-code-lint-clean | generated code compiles clean under the warnings-as-errors build of its leg: a Rust bool element written through its binding is `if *e`, never `if (*e)` (`unused_parens`) (SPEC-TABLES.md §16.2, §3) | `verify-tablegen` pin rows `pin:{f,c}bool:*` on the Rust leg; Rust `TestRustBoolElementConditionHasNoParens` (#4810) |
 | unsigned-top-bit-round-trips | an unsigned value with its top bit set (`bits(64)`, `uint64`, ranged or not) is 2^63 and up, never negative: the variable load places it zero-extended, and a save of what the load read writes the same bytes, never `invalid_value` (SPEC-TABLES.md §4, A VALUE OUTSIDE THE READER RANGE) | `verify-tablegen` pin row `pin:fwrec:first:var_wire` (`mask = 2^63`); Goose `TestGooseWireLoadZeroExtendsUnsignedTopBit` (#4810) |
 | unsigned-64-top-bit-is-in-width | a `bits(64)` or `uint64` value at 2^63 and up is inside its width: a reader carrying it in a wider slot extends it with zeros, and the save writes it back byte for byte, never refusing it as wider than its bits (Goose sign-extended it and refused `invalid_value`) (SPEC.md §5.1, ROWS 2 AND 11 READ AN UNSIGNED VALUE UNSIGNED) | verify-tablegen pinned case `pin:fwrec:first` (`verify-<lang>-tablegen` for every leg) (#4762) |
+| skipped-ampersand-in-a-pointer-free-unit | the label grammar holds inside an unknown key's skipped value in a unit with no pointer too: an `&`-prefixed key that is not its object's first `&node`, or an `&node` whose label is not a positive decimal, refuses the read (Goose's pointer-free skip read past both) (SPEC-TABLES.md §16.7, THE LABEL GRAMMAR AND THE DEFINITION RULES APPLY EVERYWHERE) | json-hostile `skipped-ampersand-stray-key` and `skipped-ampersand-node-not-first` (tabledemo RootConfig), every leg (#4800) |
 
 `GAP-26` and `GAP-27` are a FRONT-END vector, as `GAP-12`'s digest is: both rules
 bind what a port resolves from schema text (a default's bits, a wire id), so a

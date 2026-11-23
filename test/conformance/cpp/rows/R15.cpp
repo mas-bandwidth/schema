@@ -41,14 +41,17 @@
 // RUN (from ./repo), the standalone shape rows/R16.cpp and rows/R20.cpp use —
 // the generated units are header-only, so the -I paths are the whole recipe:
 //
-//   c++ -std=c++17 -Wall \
-//       -Ibuild/tables-generated/vnum \
-//       -Ibuild/tables-generated/vold_enum_append -Ibuild/tables-generated/vnew_enum_append \
-//       -Ibuild/tables-generated/vold_field_append -Ibuild/tables-generated/vnew_field_append \
+//   c++ -std=c++17 -Wall
+//       -Ibuild/tables-generated/vnum
+//       -Ibuild/tables-generated/vold_enum_append -Ibuild/tables-generated/vnew_enum_append
+//       -Ibuild/tables-generated/vold_field_append -Ibuild/tables-generated/vnew_field_append
 //       test/conformance/cpp/rows/R15.cpp -o build/rows-cpp-R15 && ./build/rows-cpp-R15
 //
 // One printed line per assertion; exit 0 when every line passes, exit 1 when
 // one does not.
+
+// CURRENT LAW (docs/FIXED-FORM-ALGORITHM.md §5.3): a hash in no lineage entry is layout_unknown in every leg; layout_newer is retired,
+// so the prose above that says layout_newer names this refusal.
 
 #include <cstdint>
 #include <cstdio>
@@ -89,17 +92,17 @@ static void expect_layout_newer( const Report & r, bool reason_is_newer,
                                  uint64_t file_hash, const char * label )
 {
     char buf[256];
-    std::snprintf( buf, sizeof( buf ), "%s: the refusal is layout_newer BY NAME", label );
+    std::snprintf( buf, sizeof( buf ), "%s: the refusal is layout_unknown BY NAME (layout_newer is retired, SPEC-TABLES 5.3)", label );
     check( reason_is_newer, buf );
     std::snprintf( buf, sizeof( buf ), "%s: the report carries THE FILE's hash 0x%016llx",
                    label, (unsigned long long) file_hash );
     check( r.layout_hash == file_hash, buf );
-    std::snprintf( buf, sizeof( buf ), "%s: refused is set and malformed is not", label );
-    check( r.refused && !r.malformed, buf );
+    std::snprintf( buf, sizeof( buf ), "%s: refused is set and damaged is not", label );
+    check( r.refused && !r.damaged, buf );
     std::snprintf( buf, sizeof( buf ),
-                   "%s: the four §4 counters and duplicate all stay at zero — a forward read that "
+                   "%s: every read counter stays at zero — a forward read that "
                    "clamped, remapped or dropped would move one", label );
-    check( r.unknown == 0 && r.kind_mismatch == 0 && r.widened == 0 && r.clamped == 0 && r.duplicate == 0,
+    check( r.unknown == 0 && r.widened == 0 && r.missing_required == 0 && r.non_finite_floats == 0,
            buf );
     std::snprintf( buf, sizeof( buf ), "%s: retention moved nothing either", label );
     check( r.retained == 0 && r.retain_lost == 0, buf );
@@ -143,7 +146,7 @@ static void count_clamp_is_layout_newer( void )
         &back, 1, buf, len, plan, 256, NULL, &r );
 
     check( n == -1, "count_clamp: the OLD reader refuses the NEW file (n == -1), it does not read it" );
-    expect_layout_newer( r, r.reason == vold_array_bounded_grow::layout_newer, file_hash, "count_clamp" );
+    expect_layout_newer( r, r.reason == vold_array_bounded_grow::layout_unknown, file_hash, "count_clamp" );
     check( back.lead == 0xDEADBEEFu && back.vals_count == 77 && back.trail == 0xFEEDFACEu &&
            back.vals[0] == 0x7F7F7F7F,
            "count_clamp: the count was NOT clamped and no value was landed — the destination is untouched" );
@@ -181,7 +184,7 @@ static void range_clamp_is_layout_newer( void )
     const int64_t n = vold_range_widen::RangeWidenFixedLoad( &back, 1, buf, len, plan, 256, NULL, &r );
 
     check( n == -1, "range_clamp: the OLD reader refuses the NEW file (n == -1), it does not read it" );
-    expect_layout_newer( r, r.reason == vold_range_widen::layout_newer, file_hash, "range_clamp" );
+    expect_layout_newer( r, r.reason == vold_range_widen::layout_unknown, file_hash, "range_clamp" );
     check( back.lead == 0xDEADBEEFu && back.v == 0x7F7F7F7F && back.trail == 0xFEEDFACEu,
            "range_clamp: the value was NOT clamped to the OLD end and nothing landed — the destination is untouched" );
 }
@@ -216,7 +219,7 @@ static void unknown_variant_remap_is_layout_newer( void )
     const int64_t n = vold_enum_append::LineageFixedLoad( &back, 1, buf, len, plan, 256, NULL, &r );
 
     check( n == -1, "unknown_variant: the OLD reader refuses the NEW file (n == -1), it does not read it" );
-    expect_layout_newer( r, r.reason == vold_enum_append::layout_newer, file_hash, "unknown_variant" );
+    expect_layout_newer( r, r.reason == vold_enum_append::layout_unknown, file_hash, "unknown_variant" );
     check( back.tier == vold_enum_append::Tier::Gold && back.seq == 0x7F7F7F7F,
            "unknown_variant: the ordinal was NOT remapped to None and no value landed — the destination is untouched" );
 }
@@ -250,7 +253,7 @@ static void unknown_field_drop_is_layout_newer( void )
     const int64_t n = vold_field_append::LineageFixedLoad( &back, 1, buf, len, plan, 256, NULL, &r );
 
     check( n == -1, "unknown_field: the OLD reader refuses the NEW file (n == -1), it does not read it" );
-    expect_layout_newer( r, r.reason == vold_field_append::layout_newer, file_hash, "unknown_field" );
+    expect_layout_newer( r, r.reason == vold_field_append::layout_unknown, file_hash, "unknown_field" );
     check( back.x == 101 && back.y == 102 && back.z == 103,
            "unknown_field: w was NOT dropped-and-counted and nothing landed — the destination is untouched" );
 }
@@ -267,6 +270,6 @@ int main( void )
         std::printf( "R15: %d assertion(s) failed\n", g_failures );
         return 1;
     }
-    std::printf( "R15: the four forward-read clamps are retired — each is layout_newer now\n" );
+    std::printf( "R15: the four forward-read clamps are retired — each is refused layout_unknown now\n" );
     return 0;
 }
