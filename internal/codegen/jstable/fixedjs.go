@@ -527,6 +527,11 @@ func (g *fixedGen) emitCheckValueElement(f *ir.Field, expr, ind string) {
 		case *ir.Enum:
 			g.pf("%sif (!globalThis.Number.isInteger(%s) || %s < 0 || %s > %d) { return false; }\n",
 				ind, expr, expr, expr, r.Max)
+			// §2.15 WRITE: a deprecated variant is never written either; the
+			// fixed save refuses it (-1) in every build, as the text writer does
+			if dep := fixedEnumDeprecated(r, expr); dep != "" {
+				g.pf("%sif (%s) { return false; }\n", ind, dep)
+			}
 			return
 		case *ir.Flags:
 			if r.WireBits < 64 {
@@ -1530,6 +1535,20 @@ func (g *fixedGen) emitDecodeBounds(ind, expr string, f *ir.Field) {
 		lit := jsIntLit(maxv, fixedIsBig(f.Type))
 		g.pf("%sif (%s > %s) { report.refused = TableFixedRefusal.OutOfRange; return; }\n", ind, expr, lit)
 	}
+}
+
+// fixedEnumDeprecated is the condition that the ordinal in expr names a
+// deprecated variant (docs/SPEC-TABLES.md §2.15 WRITE: a writer refuses a
+// value holding one), joined with || over each deprecated variant, or "" when
+// e has none. Variant i is ordinal i+1; 0 is None.
+func fixedEnumDeprecated(e *ir.Enum, expr string) string {
+	var conds []string
+	for i := range e.Variants {
+		if i < len(e.VariantDeprecated) && e.VariantDeprecated[i] {
+			conds = append(conds, fmt.Sprintf("%s === %d", expr, i+1))
+		}
+	}
+	return strings.Join(conds, " || ")
 }
 
 // fixedEnumClampMax is the enum's top wire value when a loaded ordinal can

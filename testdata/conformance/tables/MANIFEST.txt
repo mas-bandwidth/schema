@@ -2518,6 +2518,13 @@ rewrite twin_count_min_at_form1                 tabledemo CountedMin testdata/wi
 instance sp_enum_moods                          tabledemo Moods     testdata/conformance/tables/save-wire/sp-enum-elem-deprecated-array.bin
 write-refusal-json jref_enum_deprecated         tabledemo Moods testdata/conformance/tables/save-wire/sp-enum-elem-deprecated-array.bin row[0] ordinal 2 refused
 write-refusal-json jref_enum_deprecated_ok      tabledemo Moods testdata/conformance/tables/save-wire/sp-enum-elem-deprecated-array.bin row[0] ordinal 3 wrote
+# EVERY WRITER, not the text alone (§2.15 WRITE; the Java variable, fixed and message writers wrote Old
+# until 2026-11-24, which only the keyed in-tree gate's Go oracle saw): the table save and the fixed save
+# refuse the deprecated element, an assert leg from its debug build, and write the lawful twin.
+write-refusal wref_enum_deprecated              tabledemo Moods testdata/conformance/tables/save-wire/sp-enum-elem-deprecated-array.bin row[0] ordinal 2 refused
+write-refusal wref_enum_deprecated_ok           tabledemo Moods testdata/conformance/tables/save-wire/sp-enum-elem-deprecated-array.bin row[0] ordinal 3 wrote
+write-refusal-fixed fref_enum_deprecated        tabledemo Moods testdata/conformance/tables/save-wire/sp-enum-elem-deprecated-array.bin row[0] ordinal 2 refused
+write-refusal-fixed fref_enum_deprecated_ok     tabledemo Moods testdata/conformance/tables/save-wire/sp-enum-elem-deprecated-array.bin row[0] ordinal 3 wrote
 
 # THE SCALAR HALF of the deprecated-variant rule (docs/SPEC-TABLES.md §2.15): on a scalar enum field a
 # deprecated variant reads as the field's DECLARED default (MoodField.mood = Fierce), where in an array
@@ -2532,6 +2539,10 @@ rewrite sp_enum_scalar_evolved_deprecated tabledemo MoodField  testdata/conforma
 instance sp_enum_moodfield                      tabledemo MoodField testdata/conformance/tables/save-wire/sp-enum-scalar-deprecated.bin
 write-refusal-json jref_enum_scalar_deprecated    tabledemo MoodField testdata/conformance/tables/save-wire/sp-enum-scalar-deprecated.bin mood ordinal 2 refused
 write-refusal-json jref_enum_scalar_deprecated_ok tabledemo MoodField testdata/conformance/tables/save-wire/sp-enum-scalar-deprecated.bin mood ordinal 3 wrote
+write-refusal wref_enum_scalar_deprecated         tabledemo MoodField testdata/conformance/tables/save-wire/sp-enum-scalar-deprecated.bin mood ordinal 2 refused
+write-refusal wref_enum_scalar_deprecated_ok      tabledemo MoodField testdata/conformance/tables/save-wire/sp-enum-scalar-deprecated.bin mood ordinal 3 wrote
+write-refusal-fixed fref_enum_scalar_deprecated    tabledemo MoodField testdata/conformance/tables/save-wire/sp-enum-scalar-deprecated.bin mood ordinal 2 refused
+write-refusal-fixed fref_enum_scalar_deprecated_ok tabledemo MoodField testdata/conformance/tables/save-wire/sp-enum-scalar-deprecated.bin mood ordinal 3 wrote
 # ARM MIN (R10, 1122): a counted [A..B] inside a union arm holds A wherever the field sits: count below A refuses on read in every form (tables/examples/ArmMin.schema); A through B reads.
 json-hostile arm-min-fix-below   tabledemo MinArmFix testdata/conformance/tables/json-hostile/arm-min-fix-below   refused
 json-hostile arm-min-fix-empty   tabledemo MinArmFix testdata/conformance/tables/json-hostile/arm-min-fix-empty   refused

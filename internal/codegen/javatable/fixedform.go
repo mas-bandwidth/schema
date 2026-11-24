@@ -1201,6 +1201,10 @@ func fixedCheck128(f *ir.Field, e, typ, ind string) []string {
 func fixedCheckElement(f *ir.Field, e string) string {
 	if f.Type.Kind == ir.TNamed {
 		if r, ok := f.Type.Ref.(*ir.Enum); ok {
+			// §2.15 WRITE: a deprecated variant is never written either
+			if dep := enumNotDeprecated(r, e); dep != "" {
+				return fmt.Sprintf("%s >= 0 && %s <= %d && %s", e, e, len(r.Variants), dep)
+			}
 			return fmt.Sprintf("%s >= 0 && %s <= %d", e, e, len(r.Variants))
 		}
 		// A FLAGS MASK HOLDS TO ITS WIDTH W (docs/SPEC-TABLES.md §4): a save never
