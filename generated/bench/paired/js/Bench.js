@@ -1526,7 +1526,7 @@ export function WriteBenchMixed(stream, value) {
     }
   }
   NUMBER_SCRATCH.value = value.aimX;
-  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -1.0, 1.0, 0.01)) {
+  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -1.0, 1.0, 0.009999999776482582)) {
     return false;
   }
   {
@@ -1536,7 +1536,7 @@ export function WriteBenchMixed(stream, value) {
     }
   }
   NUMBER_SCRATCH.value = value.aimY;
-  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -1.0, 1.0, 0.01)) {
+  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -1.0, 1.0, 0.009999999776482582)) {
     return false;
   }
   {
@@ -1546,7 +1546,7 @@ export function WriteBenchMixed(stream, value) {
     }
   }
   NUMBER_SCRATCH.value = value.aimZ;
-  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -1.0, 1.0, 0.01)) {
+  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -1.0, 1.0, 0.009999999776482582)) {
     return false;
   }
   if (typeof value.recoil !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(value.recoil))) {
@@ -1706,15 +1706,15 @@ export function ReadBenchMixed(stream, value, nested) {
   if (!stream.serializeBytes(value.payload.subarray(0, value.payloadLength))) {
     return false;
   }
-  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -1.0, 1.0, 0.01)) {
+  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -1.0, 1.0, 0.009999999776482582)) {
     return false;
   }
   value.aimX = NUMBER_SCRATCH.value;
-  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -1.0, 1.0, 0.01)) {
+  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -1.0, 1.0, 0.009999999776482582)) {
     return false;
   }
   value.aimY = NUMBER_SCRATCH.value;
-  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -1.0, 1.0, 0.01)) {
+  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -1.0, 1.0, 0.009999999776482582)) {
     return false;
   }
   value.aimZ = NUMBER_SCRATCH.value;

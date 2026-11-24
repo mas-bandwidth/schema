@@ -479,6 +479,7 @@ def WriteVec2(s·:serialize_write_stream, v·:Vec2) -> bool:
 // WriteSpanF64 writes v in wire order (SPEC §6.1). Write misuse the runtime
 // sees traps in every run; the schema's own contracts are asserts.
 def WriteSpanF64(s·:serialize_write_stream, v·:SpanF64) -> bool:
+    assert length(v·.Values) == 2 // a [N]T holds exactly N values (SPEC §5.1)
     for(2) _i·:
         s·.serialize_double(v·.Values[_i·]) // finite only: NaN and ±inf trap (SPEC §4.3)
     return true
@@ -486,6 +487,7 @@ def WriteSpanF64(s·:serialize_write_stream, v·:SpanF64) -> bool:
 // WriteSpanU64 writes v in wire order (SPEC §6.1). Write misuse the runtime
 // sees traps in every run; the schema's own contracts are asserts.
 def WriteSpanU64(s·:serialize_write_stream, v·:SpanU64) -> bool:
+    assert length(v·.Values) == 2 // a [N]T holds exactly N values (SPEC §5.1)
     for(2) _i·:
         s·.serialize_bits64(v·.Values[_i·], 64) // the storage width (SPEC §4.3)
     return true
@@ -493,6 +495,7 @@ def WriteSpanU64(s·:serialize_write_stream, v·:SpanU64) -> bool:
 // WriteSpanI64 writes v in wire order (SPEC §6.1). Write misuse the runtime
 // sees traps in every run; the schema's own contracts are asserts.
 def WriteSpanI64(s·:serialize_write_stream, v·:SpanI64) -> bool:
+    assert length(v·.Values) == 2 // a [N]T holds exactly N values (SPEC §5.1)
     for(2) _i·:
         s·.serialize_bits64(v·.Values[_i·], 64) // the storage width (SPEC §4.3)
     return true
@@ -500,6 +503,7 @@ def WriteSpanI64(s·:serialize_write_stream, v·:SpanI64) -> bool:
 // WriteSpanOne writes v in wire order (SPEC §6.1). Write misuse the runtime
 // sees traps in every run; the schema's own contracts are asserts.
 def WriteSpanOne(s·:serialize_write_stream, v·:SpanOne) -> bool:
+    assert length(v·.Values) == 1 // a [N]T holds exactly N values (SPEC §5.1)
     for(1) _i·:
         s·.serialize_bits64(v·.Values[_i·], 64) // the storage width (SPEC §4.3)
     return true
@@ -507,6 +511,7 @@ def WriteSpanOne(s·:serialize_write_stream, v·:SpanOne) -> bool:
 // WriteSpanChunk writes v in wire order (SPEC §6.1). Write misuse the runtime
 // sees traps in every run; the schema's own contracts are asserts.
 def WriteSpanChunk(s·:serialize_write_stream, v·:SpanChunk) -> bool:
+    assert length(v·.Values) == 4 // a [N]T holds exactly N values (SPEC §5.1)
     for(4) _i·:
         s·.serialize_bits(v·.Values[_i·], 16) // the storage width (SPEC §4.3)
     return true
@@ -514,6 +519,7 @@ def WriteSpanChunk(s·:serialize_write_stream, v·:SpanChunk) -> bool:
 // WriteSpanTail writes v in wire order (SPEC §6.1). Write misuse the runtime
 // sees traps in every run; the schema's own contracts are asserts.
 def WriteSpanTail(s·:serialize_write_stream, v·:SpanTail) -> bool:
+    assert length(v·.Values) == 2 // a [N]T holds exactly N values (SPEC §5.1)
     for(2) _i·:
         s·.serialize_double(v·.Values[_i·]) // finite only: NaN and ±inf trap (SPEC §4.3)
     s·.serialize_bits(v·.Tail, 32) // the storage width (SPEC §4.3)
@@ -522,8 +528,10 @@ def WriteSpanTail(s·:serialize_write_stream, v·:SpanTail) -> bool:
 // WriteSpanTwice writes v in wire order (SPEC §6.1). Write misuse the runtime
 // sees traps in every run; the schema's own contracts are asserts.
 def WriteSpanTwice(s·:serialize_write_stream, v·:SpanTwice) -> bool:
+    assert length(v·.A) == 2 // a [N]T holds exactly N values (SPEC §5.1)
     for(2) _i·:
         s·.serialize_double(v·.A[_i·]) // finite only: NaN and ±inf trap (SPEC §4.3)
+    assert length(v·.B) == 2 // a [N]T holds exactly N values (SPEC §5.1)
     for(2) _i·:
         s·.serialize_double(v·.B[_i·]) // finite only: NaN and ±inf trap (SPEC §4.3)
     return true

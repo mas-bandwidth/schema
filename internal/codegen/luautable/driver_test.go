@@ -14,8 +14,8 @@ import (
 
 // TestLuauDriverListsItsSurfaces runs the Luau conformance driver's list
 // (test/conformance/README.md, "Registering a language") and holds it to the
-// contract: `wire` and `report` are among the surfaces, and every listed
-// surface is one the conformance README names.
+// contract: it lists every surface the conformance README names, and nothing
+// else.
 //
 // The driver stages its manifest under build/conformance-luau/driver/ of the
 // directory it runs in, the directory a conformance run of the leg reads at
@@ -78,6 +78,7 @@ func TestLuauDriverListsItsSurfaces(t *testing.T) {
 			t.Errorf("the luau driver's list names no `unit %s`: that opt-in unit's rows count absent on the leg", key)
 		}
 	}
+	conformanceSurface := readmeSurfaces(t, root)
 	seen := map[string]bool{}
 	for _, s := range lines {
 		if seen[s] {
@@ -88,41 +89,56 @@ func TestLuauDriverListsItsSurfaces(t *testing.T) {
 			t.Errorf("the luau driver lists %q, which test/conformance/README.md does not name", s)
 		}
 	}
-	for _, want := range []string{"wire", "report"} {
+	// the Luau leg answers every surface; a case it cannot reach is
+	// <case>.absent, never a surface left unlisted (README, "Exit codes")
+	for want := range conformanceSurface {
 		if !seen[want] {
 			t.Errorf("the luau driver's list does not name %q", want)
 		}
 	}
 }
 
-// conformanceSurface is every surface test/conformance/README.md names (its
-// "The surfaces" table).
-var conformanceSurface = map[string]bool{
-	"wire":                  true,
-	"message":               true,
-	"message-prior":         true,
-	"report":                true,
-	"framing":               true,
-	"retain":                true,
-	"retain-save":           true,
-	"json-read":             true,
-	"json-write":            true,
-	"json-hostile":          true,
-	"cook":                  true,
-	"cook-write":            true,
-	"cook-foreign":          true,
-	"block":                 true,
-	"block-foreign":         true,
-	"block-dump":            true,
-	"forgery":               true,
-	"cook-forgery":          true,
-	"write-refusal":         true,
-	"write-refusal-fixed":   true,
-	"write-refusal-shape":   true,
-	"write-refusal-message": true,
-	"write-refusal-json":    true,
-	"cook-reason":           true,
-	"block-reason":          true,
+// readmeSurfaces is every surface test/conformance/README.md names: the first
+// column of its "The surfaces" table, read from the file on every run so this
+// test can never hold the driver to a hand copy that has fallen behind the
+// README (it did: the Wave 3 surfaces of f259a7aa3a). The harness holds the
+// same table to its own surfaces list (test/conformance/harness
+// readme_surfaces_test.go), so README, harness and driver agree.
+func readmeSurfaces(t *testing.T, root string) map[string]bool {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(root, "test", "conformance", "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, section, ok := strings.Cut(string(data), "\n## The surfaces\n")
+	if !ok {
+		t.Fatal(`test/conformance/README.md has no "## The surfaces" section`)
+	}
+	if next := strings.Index(section, "\n## "); next >= 0 {
+		section = section[:next]
+	}
+	out := map[string]bool{}
+	inBody := false
+	for line := range strings.SplitSeq(section, "\n") {
+		if !strings.HasPrefix(line, "|") {
+			continue
+		}
+		if !inBody {
+			// the column names, then the |---| rule
+			inBody = strings.HasPrefix(line, "|---")
+			continue
+		}
+		cell, _, _ := strings.Cut(strings.TrimPrefix(line, "|"), "|")
+		name := strings.Trim(strings.TrimSpace(cell), "`")
+		if name == "" {
+			t.Fatalf("the surfaces table in test/conformance/README.md has a row with no surface name: %q", line)
+		}
+		out[name] = true
+	}
+	if len(out) == 0 {
+		t.Fatal("the surfaces table in test/conformance/README.md names no surface")
+	}
+	return out
 }
 
 // repoRoot walks up from the test's working directory to the repository root.

@@ -1527,7 +1527,7 @@ namespace SchemaUnityConformance
             "block\nblock-foreign\nblock-dump\n" +
             "forgery\ncook-forgery\n" +
             "write-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n" +
-            "write-refusal-cook\nwrite-refusal-block\nannounce\nread-into\njson-write-into\nunit shapes\n";
+            "write-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\nunit shapes\n";
 
         private static int Main(string[] args)
         {
@@ -1582,6 +1582,7 @@ namespace SchemaUnityConformance
                 case "write-refusal-cook":
                 case "write-refusal-block":
                 case "write-refusal-json":
+                case "write-refusal-shape":
                     return SurfaceWriteRefusal(outDir, surface);
                 case "announce": return SurfaceAnnounce(outDir);
                 case "read-into": return SurfaceReadInto(outDir);

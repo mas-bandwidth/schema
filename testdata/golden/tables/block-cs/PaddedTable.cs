@@ -73,6 +73,7 @@ namespace Blockdemo
 
         public static bool PaddedRowCollectTyped(PaddedRow v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null PaddedRow is written");
             TableFieldInfo[] fields = PaddedRowTableType().Fields;
             if (v.Tag != 0 && !ids.Add(0x56d7ab194448a4f3ul)) return false;
             System.Diagnostics.Debug.Assert(double.IsFinite(v.Value));
@@ -214,6 +215,7 @@ namespace Blockdemo
 
         public static bool PaddedFrameCollectTyped(PaddedFrame v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null PaddedFrame is written");
             TableFieldInfo[] fields = PaddedFrameTableType().Fields;
             if (v.Marker != 0 && !ids.Add(0xeddcb72b15486e77ul)) return false;
             if (v.Stamp != 0 && !ids.Add(0xee7ba9ad45c64144ul)) return false;
@@ -465,6 +467,7 @@ namespace Blockdemo
         // which is also what zero-fills every byte of declared slack.
         public static void PaddedRowFixedWriteBody(Span<byte> b, PaddedRow value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null PaddedRow is written");
             if (value == null) return;
             b[0] = unchecked((byte)value.Tag);
             BinaryPrimitives.WriteDoubleLittleEndian(b.Slice(1), value.Value);
@@ -487,6 +490,7 @@ namespace Blockdemo
         // which is also what zero-fills every byte of declared slack.
         public static void PaddedFrameFixedWriteBody(Span<byte> b, PaddedFrame value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null PaddedFrame is written");
             if (value == null) return;
             b[0] = unchecked((byte)value.Marker);
             BinaryPrimitives.WriteInt64LittleEndian(b.Slice(1), unchecked((long)value.Stamp));

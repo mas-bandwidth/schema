@@ -680,7 +680,7 @@ _M.SpanF64MaxBytes = 16
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteSpanF64(stream: any, v: any): boolean
   if type(v) ~= "table" then return false end
-  if type(v.Values) ~= "table" then return false end
+  if type(v.Values) ~= "table" or #v.Values ~= 2 then return false end -- a [N]T holds exactly N values (SPEC §5.1)
   for _i = 1, 2 do
     if type(v.Values[_i]) ~= "number" or v.Values[_i] ~= v.Values[_i] or v.Values[_i] == math.huge or v.Values[_i] == -math.huge then return false end -- finite (SPEC §5.1)
     if not stream:serializeDouble({ value = v.Values[_i] }) then return false end
@@ -697,7 +697,7 @@ _M.SpanU64MaxBytes = 16
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteSpanU64(stream: any, v: any): boolean
   if type(v) ~= "table" then return false end
-  if type(v.Values) ~= "table" then return false end
+  if type(v.Values) ~= "table" or #v.Values ~= 2 then return false end -- a [N]T holds exactly N values (SPEC §5.1)
   for _i = 1, 2 do
     if typeof(v.Values[_i]) ~= "integer" then return false end
     BIG.value = v.Values[_i]
@@ -715,7 +715,7 @@ _M.SpanI64MaxBytes = 16
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteSpanI64(stream: any, v: any): boolean
   if type(v) ~= "table" then return false end
-  if type(v.Values) ~= "table" then return false end
+  if type(v.Values) ~= "table" or #v.Values ~= 2 then return false end -- a [N]T holds exactly N values (SPEC §5.1)
   for _i = 1, 2 do
     if typeof(v.Values[_i]) ~= "integer" then return false end
     BIG.value = v.Values[_i]
@@ -733,7 +733,7 @@ _M.SpanOneMaxBytes = 8
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteSpanOne(stream: any, v: any): boolean
   if type(v) ~= "table" then return false end
-  if type(v.Values) ~= "table" then return false end
+  if type(v.Values) ~= "table" or #v.Values ~= 1 then return false end -- a [N]T holds exactly N values (SPEC §5.1)
   for _i = 1, 1 do
     if typeof(v.Values[_i]) ~= "integer" then return false end
     BIG.value = v.Values[_i]
@@ -751,7 +751,7 @@ _M.SpanChunkMaxBytes = 8
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteSpanChunk(stream: any, v: any): boolean
   if type(v) ~= "table" then return false end
-  if type(v.Values) ~= "table" then return false end
+  if type(v.Values) ~= "table" or #v.Values ~= 4 then return false end -- a [N]T holds exactly N values (SPEC §5.1)
   for _i = 1, 4 do
     if type(v.Values[_i]) ~= "number" or v.Values[_i] % 1 ~= 0 or v.Values[_i] < 0 or v.Values[_i] > 65535 then return false end
     BITS.value = v.Values[_i]
@@ -769,7 +769,7 @@ _M.SpanTailMaxBytes = 24
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteSpanTail(stream: any, v: any): boolean
   if type(v) ~= "table" then return false end
-  if type(v.Values) ~= "table" then return false end
+  if type(v.Values) ~= "table" or #v.Values ~= 2 then return false end -- a [N]T holds exactly N values (SPEC §5.1)
   for _i = 1, 2 do
     if type(v.Values[_i]) ~= "number" or v.Values[_i] ~= v.Values[_i] or v.Values[_i] == math.huge or v.Values[_i] == -math.huge then return false end -- finite (SPEC §5.1)
     if not stream:serializeDouble({ value = v.Values[_i] }) then return false end
@@ -789,12 +789,12 @@ _M.SpanTwiceMaxBytes = 32
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteSpanTwice(stream: any, v: any): boolean
   if type(v) ~= "table" then return false end
-  if type(v.A) ~= "table" then return false end
+  if type(v.A) ~= "table" or #v.A ~= 2 then return false end -- a [N]T holds exactly N values (SPEC §5.1)
   for _i = 1, 2 do
     if type(v.A[_i]) ~= "number" or v.A[_i] ~= v.A[_i] or v.A[_i] == math.huge or v.A[_i] == -math.huge then return false end -- finite (SPEC §5.1)
     if not stream:serializeDouble({ value = v.A[_i] }) then return false end
   end
-  if type(v.B) ~= "table" then return false end
+  if type(v.B) ~= "table" or #v.B ~= 2 then return false end -- a [N]T holds exactly N values (SPEC §5.1)
   for _i = 1, 2 do
     if type(v.B[_i]) ~= "number" or v.B[_i] ~= v.B[_i] or v.B[_i] == math.huge or v.B[_i] == -math.huge then return false end -- finite (SPEC §5.1)
     if not stream:serializeDouble({ value = v.B[_i] }) then return false end

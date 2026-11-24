@@ -45,12 +45,12 @@ func TestWriteShapeRowsAreHeldToTheirRules(t *testing.T) {
 }
 
 // TestShapeOwedNamesEveryRefuseEveryBuildLeg pins which legs owe the shape
-// surface: the eight whose writers refuse in every build owe every case, so
+// surface: the ten whose writers refuse in every build owe every case, so
 // an absence there is a failure; an assert leg, the reference leg and any
 // other surface owe nothing here.
 func TestShapeOwedNamesEveryRefuseEveryBuildLeg(t *testing.T) {
 	t.Parallel()
-	for _, lang := range []string{"go", "js", "elixir", "lua", "luau", "squirrel", "moo", "goose"} {
+	for _, lang := range []string{"go", "js", "elixir", "lua", "luau", "squirrel", "moo", "goose", "python", "ruby"} {
 		if shapeOwed(lang, "write-refusal-shape", 1, "x") == "" {
 			t.Errorf("%s does not owe the shape surface", lang)
 		}
