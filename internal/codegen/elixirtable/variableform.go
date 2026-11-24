@@ -7369,6 +7369,7 @@ const variableRetainSource = `
     case save_retain_internal(table, value, retain, empty_report()) do
       {:ok, bytes, _retain, _report} -> byte_size(bytes)
       {:error, :blob_shared} -> -1
+      {:error, :invalid_value} -> -1
     end
   catch
     :non_finite_float -> -1
@@ -7380,6 +7381,7 @@ const variableRetainSource = `
     case save_retain_internal(table, value, retain, report) do
       {:ok, bytes, retain, report} -> {:ok, bytes, report, retain}
       {:error, :blob_shared} -> {:error, :blob_shared, report, retain}
+      {:error, :invalid_value} -> {:error, :invalid_value, report, retain}
     end
   catch
     # every writer refuses a float that is not finite (docs/SPEC-TABLES.md §3.3)
