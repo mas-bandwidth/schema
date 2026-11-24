@@ -17,7 +17,7 @@ import (
 // retainDepthUnit is the reader for the binary nesting bound of
 // docs/SPEC-TABLES.md §4 and §6.6: `T` knows one scalar, so a field this build
 // cannot name is retained rather than read.
-const retainDepthUnit = `package depth
+const retainDepthUnit = `package retaindepth
 
 table T
 {

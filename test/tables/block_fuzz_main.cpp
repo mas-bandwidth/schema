@@ -459,10 +459,15 @@ static int64_t padded_seed_block( int v, uint8_t * out )
         storage.Destroy();
         return -1;
     }
-    // the projection's own fields are the producer's to fill, and Begin leaves
-    // them as the 0x5a pin wrote them: a bytes(12) length of 0x5a5a5a5a is out
-    // of its declared bound, which Bytes refuses (docs/SPEC-TABLES.md §19.1)
-    block.projection->blob_length = 0;
+    // The projection's own fields are the producer's to write (§19.1), and
+    // BlockBytes refuses a used length past its maximum (SF-31): a seed that
+    // leaves them at the 0x5a fill holds blob_length 0x5a5a5a5a, and the
+    // builder refuses it. Write every one, and walk the length from empty to
+    // its bound across the count vectors.
+    block.projection->marker = (uint8_t) ( 7 + v );
+    block.projection->stamp = 0x0123456789abcdefull + (uint64_t) v;
+    memcpy( (void *) block.projection->blob, "twelve bytes", 12 );
+    block.projection->blob_length = (int32_t) ( v * 4 );
     const int64_t bytes = PaddedFrameBlockBytes( block );
     memcpy( (void *) out, storage.base, (size_t) bytes );
     storage.Destroy();

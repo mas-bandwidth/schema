@@ -977,6 +977,7 @@ def WriteBenchMixed(s·:serialize_write_stream, v·:BenchMixed) -> bool:
     for(v·.StatsCount) _i·: // the count guards the loop (SPEC §6.3)
         WriteMixedStat(s·, v·.Stats[_i·])
     WriteMixedEvent(s·, v·.GameEvent)
+    assert length(v·.Loadout) == 4 // a [N]T holds exactly N values (SPEC §5.1)
     for(4) _i·:
         s·.serialize_bits(read_uint8_le(v·.Loadout, _i·), 8) // the storage width (SPEC §4.3)
     assert v·.PlayerNameLength >= 0 and v·.PlayerNameLength <= 15 // the used length is in [0, 15] (SPEC §4.7)

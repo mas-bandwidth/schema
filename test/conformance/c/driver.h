@@ -161,6 +161,8 @@ int conformance_write_refusal_case( int surface, const ConformanceCodec * codec,
                                     const char * root, const char * path, const char * kind, const char * text );
 
 int conformance_retain(const uint8_t * wire,int64_t bytes,int short_buffer,int64_t id_capacity,int * counters,uint8_t ** output,int64_t * output_bytes,char ** text,int64_t * text_bytes);
+/* the `read-into` row (tblrt1, Node, retain), retain.c: 0 answered, 2 unanswered */
+int conformance_read_into_retain(const uint8_t * lawful,int64_t lawful_bytes,const uint8_t * damaged,int64_t damaged_bytes,ConformanceText * answer);
 int conformance_retain_varevo1(const uint8_t * wire,int64_t bytes,int short_buffer,int64_t id_capacity,int * counters,uint8_t ** output,int64_t * output_bytes,char ** text,int64_t * text_bytes);
 int conformance_retain_varevo2(const uint8_t * wire,int64_t bytes,int short_buffer,int64_t id_capacity,int * counters,uint8_t ** output,int64_t * output_bytes,char ** text,int64_t * text_bytes);
 int conformance_torture_block_open_ex(void * data,int64_t bytes,int * reason,const uint8_t ** out_base,const void ** out_type);
@@ -325,6 +327,46 @@ const ConformanceUnit1122 * conformance_unit1122_tblann4096( void );
 const ConformanceUnit1122 * conformance_unit1122_tblann4097( void );
 const ConformanceUnit1122 * conformance_unit1122_messagedemo( void );
 const ConformanceUnit1122 * conformance_unit1122_backenddemo( void );
+const ConformanceUnit1122 * conformance_unit1122_tblfixedevo( void );
 const ConformanceCodec * conformance_codecs_tblsurf( int * count );
 
+
+/* THE RETAIN-REFUSAL SEQUENCE (test/conformance/README.md): ONE retention
+   store through LoadRetain of the first wire, SaveRetain, LoadRetain of the
+   refused wire into the same store (a region of its own, so the first value
+   stays whole; the first's size where LoadMeasure refuses the wire), and
+   SaveRetain of the first value again. Returns 0 when the first read refused,
+   1 otherwise, -1 on a driver failure. *after is NULL and *after_bytes -1 when
+   the second save refused. */
+int conformance_retain_refusal_rt1(const uint8_t * first,int64_t first_bytes,const uint8_t * second,int64_t second_bytes,uint8_t ** before,int64_t * before_bytes,int * second_refused,uint8_t ** after,int64_t * after_bytes);
+int conformance_retain_refusal_varevo1(const uint8_t * first,int64_t first_bytes,const uint8_t * second,int64_t second_bytes,uint8_t ** before,int64_t * before_bytes,int * second_refused,uint8_t ** after,int64_t * after_bytes);
+#define CONFORMANCE_RETAIN_REFUSAL(NAME,P,T) \
+int NAME(const uint8_t * first,int64_t first_bytes,const uint8_t * second,int64_t second_bytes,uint8_t ** before,int64_t * before_bytes,int * second_refused,uint8_t ** after,int64_t * after_bytes) \
+{ \
+ P##_table_retain_t retain;const P##_##T##_t * root;P##_table_report_t report={0},refused={0},save={0}; \
+ uint8_t * region=NULL,*other=NULL;int64_t need,need2,size;int rc=-1; \
+ memset(&retain,0,sizeof(retain));*before=NULL;*before_bytes=0;*after=NULL;*after_bytes=-1;*second_refused=0; \
+ need=P##_##T##_load_measure(first,first_bytes);if(need<0)return 0; \
+ region=(uint8_t *)malloc((size_t)(need?need:1));if(!region)return -1; \
+ retain.bytes=(uint8_t *)malloc(1<<20);retain.capacity=1<<20;retain.ids=(P##_table_retain_id_t *)calloc((size_t)(1<<17),sizeof(P##_table_retain_id_t));retain.id_capacity=1<<17; \
+ if(!retain.bytes||!retain.ids)goto done; \
+ root=P##_##T##_load_retain(region,need,first,first_bytes,&retain,&report); \
+ if(!root||report.refused){rc=0;goto done;} \
+ size=P##_##T##_measure_retain(root,&retain);if(size<0)goto done; \
+ *before=(uint8_t *)malloc((size_t)(size?size:1));if(!*before)goto done; \
+ if(P##_##T##_save_retain(root,&retain,*before,size,&save)!=size)goto done; \
+ *before_bytes=size; \
+ need2=P##_##T##_load_measure(second,second_bytes);if(need2<0)need2=need; \
+ other=(uint8_t *)malloc((size_t)(need2?need2:1));if(!other)goto done; \
+ *second_refused=!P##_##T##_load_retain(other,need2,second,second_bytes,&retain,&refused)||refused.refused; \
+ size=P##_##T##_measure_retain(root,&retain); \
+ if(size>=0){ \
+  P##_table_report_t again={0}; \
+  *after=(uint8_t *)malloc((size_t)(size?size:1));if(!*after)goto done; \
+  if(P##_##T##_save_retain(root,&retain,*after,size,&again)!=size){free(*after);*after=NULL;} \
+  else *after_bytes=size; \
+ } \
+ rc=1; \
+ done:free(retain.bytes);free(retain.ids);free(region);free(other);if(rc<0){free(*before);*before=NULL;free(*after);*after=NULL;}return rc; \
+}
 #endif /* SCHEMA_CONFORMANCE_DRIVER_H */

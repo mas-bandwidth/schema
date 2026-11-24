@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum toDecimal
+{ Zfirst, Zsecond, Zthird }
+
+enum toDoubleBits
+{ Zfirst, Zsecond, Zthird }
+
+enum toFloatBits
+{ Zfirst, Zsecond, Zthird }
+
+enum toNumber
+{ Zfirst, Zsecond, Zthird }
+
+enum to_arm_ref
+{ Zfirst, Zsecond, Zthird }
+
+enum to_by_raw
+{ Zfirst, Zsecond, Zthird }
+
+enum to_capacity
+{ Zfirst, Zsecond, Zthird }
+
+enum to_i64
+{ Zfirst, Zsecond, Zthird }
+
+enum to_ids
+{ Zfirst, Zsecond, Zthird }
+
+enum to_key_ref
+{ Zfirst, Zsecond, Zthird }
+
+enum to_lookup
+{ Zfirst, Zsecond, Zthird }
+
+enum to_lua
+{ Zfirst, Zsecond, Zthird }
+
+enum to_name_by_id
+{ Zfirst, Zsecond, Zthird }
+
+enum to_ref
+{ Zfirst, Zsecond, Zthird }
+
+enum to_report
+{ Zfirst, Zsecond, Zthird }
+
+enum to_vocab
+{ Zfirst, Zsecond, Zthird }
+
+enum toff
+{ Zfirst, Zsecond, Zthird }
+
+enum tok
+{ Zfirst, Zsecond, Zthird }
+
+enum token
+{ Zfirst, Zsecond, Zthird }
+
+enum tokenFloat
+{ Zfirst, Zsecond, Zthird }
+
+enum tokenIntegral
+{ Zfirst, Zsecond, Zthird }
+
+enum tokenParts
+{ Zfirst, Zsecond, Zthird }
+
+enum token_cmp
+{ Zfirst, Zsecond, Zthird }
+
+enum token_length
+{ Zfirst, Zsecond, Zthird }
+
+enum tokens
+{ Zfirst, Zsecond, Zthird }
+
+enum too
+{ Zfirst, Zsecond, Zthird }
+
+enum tooLarge
+{ Zfirst, Zsecond, Zthird }
+
+enum too_deep
+{ Zfirst, Zsecond, Zthird }
+
+enum took
+{ Zfirst, Zsecond, Zthird }
+
+enum top
+{ Zfirst, Zsecond, Zthird }
+
+enum topIdx
+{ Zfirst, Zsecond, Zthird }
+
+enum top_hi
+{ Zfirst, Zsecond, Zthird }
+
+enum tot
+{ Zfirst, Zsecond, Zthird }
+
+enum total
+{ Zfirst, Zsecond, Zthird }
+
+enum totalBits
+{ Zfirst, Zsecond, Zthird }
+
+enum total_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum total_of
+{ Zfirst, Zsecond, Zthird }
+
+enum total_oor_flag
+{ Zfirst, Zsecond, Zthird }
+
+enum total_text
+{ Zfirst, Zsecond, Zthird }
+
+enum tr_content
+{ Zfirst, Zsecond, Zthird }
+
+enum tr_framed
+{ Zfirst, Zsecond, Zthird }
+
+enum tr_has
+{ Zfirst, Zsecond, Zthird }
+
+enum tr_leb
+{ Zfirst, Zsecond, Zthird }
+
+enum tr_payload
+{ Zfirst, Zsecond, Zthird }
+
+enum tr_reader
+{ Zfirst, Zsecond, Zthird }
+
+enum tr_ref
+{ Zfirst, Zsecond, Zthird }
+
+enum tr_u8
+{ Zfirst, Zsecond, Zthird }
+
+enum tracked
+{ Zfirst, Zsecond, Zthird }
+
+enum trailer
+{ Zfirst, Zsecond, Zthird }
+
+enum trailerChecked
+{ Zfirst, Zsecond, Zthird }
+
+enum trailerCount
+{ Zfirst, Zsecond, Zthird }
+
+enum trailing
+{ Zfirst, Zsecond, Zthird }
+
+enum trailingBodies
+{ Zfirst, Zsecond, Zthird }
+
+enum transcodeBody
+{ Zfirst, Zsecond, Zthird }
+
+enum transcodeValue
+{ Zfirst, Zsecond, Zthird }
+
+enum transcoded
+{ Zfirst, Zsecond, Zthird }
+
+enum transport
+{ Zfirst, Zsecond, Zthird }
+
+enum trapMisuse
+{ Zfirst, Zsecond, Zthird }
+
+enum tree
+{ Zfirst, Zsecond, Zthird }
+
+enum tref
+{ Zfirst, Zsecond, Zthird }
+
+enum trefAt
+{ Zfirst, Zsecond, Zthird }
+
+enum trial
+{ Zfirst, Zsecond, Zthird }
+
+enum trim
+{ Zfirst, Zsecond, Zthird }
+
+enum trimmed
+{ Zfirst, Zsecond, Zthird }
+
+enum triple
+{ Zfirst, Zsecond, Zthird }
+
+enum triples
+{ Zfirst, Zsecond, Zthird }
+
+enum trunc
+{ Zfirst, Zsecond, Zthird }
+
+enum truncate
+{ Zfirst, Zsecond, Zthird }
+
+enum trust
+{ Zfirst, Zsecond, Zthird }
+
+enum ts
+{ Zfirst, Zsecond, Zthird }
+
+enum ts_days
+{ Zfirst, Zsecond, Zthird }
+
+enum ts_leap
+{ Zfirst, Zsecond, Zthird }
+
+enum ts_month_days
+{ Zfirst, Zsecond, Zthird }
+
+enum ts_two
+{ Zfirst, Zsecond, Zthird }
+
+enum turn
+{ Zfirst, Zsecond, Zthird }
+
+enum tvf
+{ Zfirst, Zsecond, Zthird }
+
+enum tw
+{ Zfirst, Zsecond, Zthird }
+
+enum twice
+{ Zfirst, Zsecond, Zthird }
+
+enum two
+{ Zfirst, Zsecond, Zthird }
+
+enum twoAt
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    toDecimal Inner
+    toDoubleBits Inner
+    toFloatBits Inner
+    toNumber Inner
+    to_arm_ref Inner
+    to_by_raw Inner
+    to_capacity Inner
+    to_i64 Inner
+    to_ids Inner
+    to_key_ref Inner
+}
+
+table NameTypes0
+{
+    one0  toDecimal
+    many0 [..4]toDecimal
+    one1  toDoubleBits
+    many1 [..4]toDoubleBits
+    one2  toFloatBits
+    many2 [..4]toFloatBits
+    one3  toNumber
+    many3 [..4]toNumber
+    one4  to_arm_ref
+    many4 [..4]to_arm_ref
+    one5  to_by_raw
+    many5 [..4]to_by_raw
+    one6  to_capacity
+    many6 [..4]to_capacity
+    one7  to_i64
+    many7 [..4]to_i64
+    one8  to_ids
+    many8 [..4]to_ids
+    one9  to_key_ref
+    many9 [..4]to_key_ref
+}
+
+table NameFields0
+{
+    toDecimal uint32
+    toDoubleBits uint32
+    toFloatBits uint32
+    toNumber uint32
+    to_arm_ref uint32
+    to_by_raw uint32
+    to_capacity uint32
+    to_i64 uint32
+    to_ids uint32
+    to_key_ref uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    to_lookup Inner
+    to_lua Inner
+    to_name_by_id Inner
+    to_ref Inner
+    to_report Inner
+    to_vocab Inner
+    toff Inner
+    tok Inner
+    token Inner
+    tokenFloat Inner
+}
+
+table NameTypes1
+{
+    one0  to_lookup
+    many0 [..4]to_lookup
+    one1  to_lua
+    many1 [..4]to_lua
+    one2  to_name_by_id
+    many2 [..4]to_name_by_id
+    one3  to_ref
+    many3 [..4]to_ref
+    one4  to_report
+    many4 [..4]to_report
+    one5  to_vocab
+    many5 [..4]to_vocab
+    one6  toff
+    many6 [..4]toff
+    one7  tok
+    many7 [..4]tok
+    one8  token
+    many8 [..4]token
+    one9  tokenFloat
+    many9 [..4]tokenFloat
+}
+
+table NameFields1
+{
+    to_lookup uint32
+    to_lua uint32
+    to_name_by_id uint32
+    to_ref uint32
+    to_report uint32
+    to_vocab uint32
+    toff uint32
+    tok uint32
+    token uint32
+    tokenFloat uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    tokenIntegral Inner
+    tokenParts Inner
+    token_cmp Inner
+    token_length Inner
+    tokens Inner
+    too Inner
+    tooLarge Inner
+    too_deep Inner
+    took Inner
+    top Inner
+}
+
+table NameTypes2
+{
+    one0  tokenIntegral
+    many0 [..4]tokenIntegral
+    one1  tokenParts
+    many1 [..4]tokenParts
+    one2  token_cmp
+    many2 [..4]token_cmp
+    one3  token_length
+    many3 [..4]token_length
+    one4  tokens
+    many4 [..4]tokens
+    one5  too
+    many5 [..4]too
+    one6  tooLarge
+    many6 [..4]tooLarge
+    one7  too_deep
+    many7 [..4]too_deep
+    one8  took
+    many8 [..4]took
+    one9  top
+    many9 [..4]top
+}
+
+table NameFields2
+{
+    tokenIntegral uint32
+    tokenParts uint32
+    token_cmp uint32
+    token_length uint32
+    tokens uint32
+    too uint32
+    tooLarge uint32
+    too_deep uint32
+    took uint32
+    top uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    topIdx Inner
+    top_hi Inner
+    tot Inner
+    total Inner
+    totalBits Inner
+    total_bytes Inner
+    total_of Inner
+    total_oor_flag Inner
+    total_text Inner
+    tr_content Inner
+}
+
+table NameTypes3
+{
+    one0  topIdx
+    many0 [..4]topIdx
+    one1  top_hi
+    many1 [..4]top_hi
+    one2  tot
+    many2 [..4]tot
+    one3  total
+    many3 [..4]total
+    one4  totalBits
+    many4 [..4]totalBits
+    one5  total_bytes
+    many5 [..4]total_bytes
+    one6  total_of
+    many6 [..4]total_of
+    one7  total_oor_flag
+    many7 [..4]total_oor_flag
+    one8  total_text
+    many8 [..4]total_text
+    one9  tr_content
+    many9 [..4]tr_content
+}
+
+table NameFields3
+{
+    topIdx uint32
+    top_hi uint32
+    tot uint32
+    total uint32
+    totalBits uint32
+    total_bytes uint32
+    total_of uint32
+    total_oor_flag uint32
+    total_text uint32
+    tr_content uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    tr_framed Inner
+    tr_has Inner
+    tr_leb Inner
+    tr_payload Inner
+    tr_reader Inner
+    tr_ref Inner
+    tr_u8 Inner
+    tracked Inner
+    trailer Inner
+    trailerChecked Inner
+}
+
+table NameTypes4
+{
+    one0  tr_framed
+    many0 [..4]tr_framed
+    one1  tr_has
+    many1 [..4]tr_has
+    one2  tr_leb
+    many2 [..4]tr_leb
+    one3  tr_payload
+    many3 [..4]tr_payload
+    one4  tr_reader
+    many4 [..4]tr_reader
+    one5  tr_ref
+    many5 [..4]tr_ref
+    one6  tr_u8
+    many6 [..4]tr_u8
+    one7  tracked
+    many7 [..4]tracked
+    one8  trailer
+    many8 [..4]trailer
+    one9  trailerChecked
+    many9 [..4]trailerChecked
+}
+
+table NameFields4
+{
+    tr_framed uint32
+    tr_has uint32
+    tr_leb uint32
+    tr_payload uint32
+    tr_reader uint32
+    tr_ref uint32
+    tr_u8 uint32
+    tracked uint32
+    trailer uint32
+    trailerChecked uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    trailerCount Inner
+    trailing Inner
+    trailingBodies Inner
+    transcodeBody Inner
+    transcodeValue Inner
+    transcoded Inner
+    transport Inner
+    trapMisuse Inner
+    tree Inner
+    tref Inner
+}
+
+table NameTypes5
+{
+    one0  trailerCount
+    many0 [..4]trailerCount
+    one1  trailing
+    many1 [..4]trailing
+    one2  trailingBodies
+    many2 [..4]trailingBodies
+    one3  transcodeBody
+    many3 [..4]transcodeBody
+    one4  transcodeValue
+    many4 [..4]transcodeValue
+    one5  transcoded
+    many5 [..4]transcoded
+    one6  transport
+    many6 [..4]transport
+    one7  trapMisuse
+    many7 [..4]trapMisuse
+    one8  tree
+    many8 [..4]tree
+    one9  tref
+    many9 [..4]tref
+}
+
+table NameFields5
+{
+    trailerCount uint32
+    trailing uint32
+    trailingBodies uint32
+    transcodeBody uint32
+    transcodeValue uint32
+    transcoded uint32
+    transport uint32
+    trapMisuse uint32
+    tree uint32
+    tref uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    trefAt Inner
+    trial Inner
+    trim Inner
+    trimmed Inner
+    triple Inner
+    triples Inner
+    trunc Inner
+    truncate Inner
+    trust Inner
+    ts Inner
+}
+
+table NameTypes6
+{
+    one0  trefAt
+    many0 [..4]trefAt
+    one1  trial
+    many1 [..4]trial
+    one2  trim
+    many2 [..4]trim
+    one3  trimmed
+    many3 [..4]trimmed
+    one4  triple
+    many4 [..4]triple
+    one5  triples
+    many5 [..4]triples
+    one6  trunc
+    many6 [..4]trunc
+    one7  truncate
+    many7 [..4]truncate
+    one8  trust
+    many8 [..4]trust
+    one9  ts
+    many9 [..4]ts
+}
+
+table NameFields6
+{
+    trefAt uint32
+    trial uint32
+    trim uint32
+    trimmed uint32
+    triple uint32
+    triples uint32
+    trunc uint32
+    truncate uint32
+    trust uint32
+    ts uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    ts_days Inner
+    ts_leap Inner
+    ts_month_days Inner
+    ts_two Inner
+    turn Inner
+    tvf Inner
+    tw Inner
+    twice Inner
+    two Inner
+    twoAt Inner
+}
+
+table NameTypes7
+{
+    one0  ts_days
+    many0 [..4]ts_days
+    one1  ts_leap
+    many1 [..4]ts_leap
+    one2  ts_month_days
+    many2 [..4]ts_month_days
+    one3  ts_two
+    many3 [..4]ts_two
+    one4  turn
+    many4 [..4]turn
+    one5  tvf
+    many5 [..4]tvf
+    one6  tw
+    many6 [..4]tw
+    one7  twice
+    many7 [..4]twice
+    one8  two
+    many8 [..4]two
+    one9  twoAt
+    many9 [..4]twoAt
+}
+
+table NameFields7
+{
+    ts_days uint32
+    ts_leap uint32
+    ts_month_days uint32
+    ts_two uint32
+    turn uint32
+    tvf uint32
+    tw uint32
+    twice uint32
+    two uint32
+    twoAt uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

@@ -21,6 +21,7 @@ public final class MixedHitEventRetain {
         if (report == null) {
             report = new TableVariable.Report();
         }
+        report.reset();
         if (retain == null) {
             return MixedHitEventVariable.load(data, report);
         }

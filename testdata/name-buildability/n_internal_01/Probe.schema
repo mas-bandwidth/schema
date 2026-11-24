@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum a
+{ Zfirst, Zsecond, Zthird }
+
+enum a0
+{ Zfirst, Zsecond, Zthird }
+
+enum a1
+{ Zfirst, Zsecond, Zthird }
+
+enum a2
+{ Zfirst, Zsecond, Zthird }
+
+enum a3
+{ Zfirst, Zsecond, Zthird }
+
+enum aEnd
+{ Zfirst, Zsecond, Zthird }
+
+enum aHi
+{ Zfirst, Zsecond, Zthird }
+
+enum aInf
+{ Zfirst, Zsecond, Zthird }
+
+enum aLo
+{ Zfirst, Zsecond, Zthird }
+
+enum aMag
+{ Zfirst, Zsecond, Zthird }
+
+enum aNeg
+{ Zfirst, Zsecond, Zthird }
+
+enum aZero
+{ Zfirst, Zsecond, Zthird }
+
+enum a_length
+{ Zfirst, Zsecond, Zthird }
+
+enum a_signed
+{ Zfirst, Zsecond, Zthird }
+
+enum ab
+{ Zfirst, Zsecond, Zthird }
+
+enum abort
+{ Zfirst, Zsecond, Zthird }
+
+enum aborts
+{ Zfirst, Zsecond, Zthird }
+
+enum above
+{ Zfirst, Zsecond, Zthird }
+
+enum absent
+{ Zfirst, Zsecond, Zthird }
+
+enum absent_into_bare
+{ Zfirst, Zsecond, Zthird }
+
+enum absolute
+{ Zfirst, Zsecond, Zthird }
+
+enum acc
+{ Zfirst, Zsecond, Zthird }
+
+enum acc2
+{ Zfirst, Zsecond, Zthird }
+
+enum acc3
+{ Zfirst, Zsecond, Zthird }
+
+enum accel_bits_f32
+{ Zfirst, Zsecond, Zthird }
+
+enum accel_bits_f64
+{ Zfirst, Zsecond, Zthird }
+
+enum accel_cf32_bits
+{ Zfirst, Zsecond, Zthird }
+
+enum accel_f32_bits
+{ Zfirst, Zsecond, Zthird }
+
+enum accel_f64_bits
+{ Zfirst, Zsecond, Zthird }
+
+enum accel_get
+{ Zfirst, Zsecond, Zthird }
+
+enum accel_get_signed
+{ Zfirst, Zsecond, Zthird }
+
+enum accel_put
+{ Zfirst, Zsecond, Zthird }
+
+enum accel_put_text
+{ Zfirst, Zsecond, Zthird }
+
+enum accel_text
+{ Zfirst, Zsecond, Zthird }
+
+enum accel_u16
+{ Zfirst, Zsecond, Zthird }
+
+enum accel_u32
+{ Zfirst, Zsecond, Zthird }
+
+enum accel_u64
+{ Zfirst, Zsecond, Zthird }
+
+enum accepted
+{ Zfirst, Zsecond, Zthird }
+
+enum accessor
+{ Zfirst, Zsecond, Zthird }
+
+enum accessors
+{ Zfirst, Zsecond, Zthird }
+
+enum accm1
+{ Zfirst, Zsecond, Zthird }
+
+enum accm4
+{ Zfirst, Zsecond, Zthird }
+
+enum accumulator
+{ Zfirst, Zsecond, Zthird }
+
+enum active
+{ Zfirst, Zsecond, Zthird }
+
+enum actual
+{ Zfirst, Zsecond, Zthird }
+
+enum acyclic
+{ Zfirst, Zsecond, Zthird }
+
+enum adapt_field
+{ Zfirst, Zsecond, Zthird }
+
+enum adapt_table
+{ Zfirst, Zsecond, Zthird }
+
+enum adapt_union
+{ Zfirst, Zsecond, Zthird }
+
+enum adapted
+{ Zfirst, Zsecond, Zthird }
+
+enum add
+{ Zfirst, Zsecond, Zthird }
+
+enum add16
+{ Zfirst, Zsecond, Zthird }
+
+enum add4
+{ Zfirst, Zsecond, Zthird }
+
+enum add64
+{ Zfirst, Zsecond, Zthird }
+
+enum addBits
+{ Zfirst, Zsecond, Zthird }
+
+enum added
+{ Zfirst, Zsecond, Zthird }
+
+enum address
+{ Zfirst, Zsecond, Zthird }
+
+enum adesc
+{ Zfirst, Zsecond, Zthird }
+
+enum admitted
+{ Zfirst, Zsecond, Zthird }
+
+enum adopt
+{ Zfirst, Zsecond, Zthird }
+
+enum ae
+{ Zfirst, Zsecond, Zthird }
+
+enum aex
+{ Zfirst, Zsecond, Zthird }
+
+enum af
+{ Zfirst, Zsecond, Zthird }
+
+enum afterNode
+{ Zfirst, Zsecond, Zthird }
+
+enum afterPoint
+{ Zfirst, Zsecond, Zthird }
+
+enum after_body
+{ Zfirst, Zsecond, Zthird }
+
+enum after_elem
+{ Zfirst, Zsecond, Zthird }
+
+enum after_key
+{ Zfirst, Zsecond, Zthird }
+
+enum after_kind
+{ Zfirst, Zsecond, Zthird }
+
+enum after_nodes
+{ Zfirst, Zsecond, Zthird }
+
+enum after_payload
+{ Zfirst, Zsecond, Zthird }
+
+enum after_sub
+{ Zfirst, Zsecond, Zthird }
+
+enum after_value
+{ Zfirst, Zsecond, Zthird }
+
+enum afterwards
+{ Zfirst, Zsecond, Zthird }
+
+enum again
+{ Zfirst, Zsecond, Zthird }
+
+enum against
+{ Zfirst, Zsecond, Zthird }
+
+enum ah
+{ Zfirst, Zsecond, Zthird }
+
+enum ai
+{ Zfirst, Zsecond, Zthird }
+
+enum aid
+{ Zfirst, Zsecond, Zthird }
+
+enum ak
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    a Inner
+    a0 Inner
+    a1 Inner
+    a2 Inner
+    a3 Inner
+    aEnd Inner
+    aHi Inner
+    aInf Inner
+    aLo Inner
+    aMag Inner
+}
+
+table NameTypes0
+{
+    one0  a
+    many0 [..4]a
+    one1  a0
+    many1 [..4]a0
+    one2  a1
+    many2 [..4]a1
+    one3  a2
+    many3 [..4]a2
+    one4  a3
+    many4 [..4]a3
+    one5  aEnd
+    many5 [..4]aEnd
+    one6  aHi
+    many6 [..4]aHi
+    one7  aInf
+    many7 [..4]aInf
+    one8  aLo
+    many8 [..4]aLo
+    one9  aMag
+    many9 [..4]aMag
+}
+
+table NameFields0
+{
+    a uint32
+    a0 uint32
+    a1 uint32
+    a2 uint32
+    a3 uint32
+    aEnd uint32
+    aHi uint32
+    aInf uint32
+    aLo uint32
+    aMag uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    aNeg Inner
+    aZero Inner
+    a_length Inner
+    a_signed Inner
+    ab Inner
+    abort Inner
+    aborts Inner
+    above Inner
+    absent Inner
+    absent_into_bare Inner
+}
+
+table NameTypes1
+{
+    one0  aNeg
+    many0 [..4]aNeg
+    one1  aZero
+    many1 [..4]aZero
+    one2  a_length
+    many2 [..4]a_length
+    one3  a_signed
+    many3 [..4]a_signed
+    one4  ab
+    many4 [..4]ab
+    one5  abort
+    many5 [..4]abort
+    one6  aborts
+    many6 [..4]aborts
+    one7  above
+    many7 [..4]above
+    one8  absent
+    many8 [..4]absent
+    one9  absent_into_bare
+    many9 [..4]absent_into_bare
+}
+
+table NameFields1
+{
+    aNeg uint32
+    aZero uint32
+    a_length uint32
+    a_signed uint32
+    ab uint32
+    abort uint32
+    aborts uint32
+    above uint32
+    absent uint32
+    absent_into_bare uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    absolute Inner
+    acc Inner
+    acc2 Inner
+    acc3 Inner
+    accel_bits_f32 Inner
+    accel_bits_f64 Inner
+    accel_cf32_bits Inner
+    accel_f32_bits Inner
+    accel_f64_bits Inner
+    accel_get Inner
+}
+
+table NameTypes2
+{
+    one0  absolute
+    many0 [..4]absolute
+    one1  acc
+    many1 [..4]acc
+    one2  acc2
+    many2 [..4]acc2
+    one3  acc3
+    many3 [..4]acc3
+    one4  accel_bits_f32
+    many4 [..4]accel_bits_f32
+    one5  accel_bits_f64
+    many5 [..4]accel_bits_f64
+    one6  accel_cf32_bits
+    many6 [..4]accel_cf32_bits
+    one7  accel_f32_bits
+    many7 [..4]accel_f32_bits
+    one8  accel_f64_bits
+    many8 [..4]accel_f64_bits
+    one9  accel_get
+    many9 [..4]accel_get
+}
+
+table NameFields2
+{
+    absolute uint32
+    acc uint32
+    acc2 uint32
+    acc3 uint32
+    accel_bits_f32 uint32
+    accel_bits_f64 uint32
+    accel_cf32_bits uint32
+    accel_f32_bits uint32
+    accel_f64_bits uint32
+    accel_get uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    accel_get_signed Inner
+    accel_put Inner
+    accel_put_text Inner
+    accel_text Inner
+    accel_u16 Inner
+    accel_u32 Inner
+    accel_u64 Inner
+    accepted Inner
+    accessor Inner
+    accessors Inner
+}
+
+table NameTypes3
+{
+    one0  accel_get_signed
+    many0 [..4]accel_get_signed
+    one1  accel_put
+    many1 [..4]accel_put
+    one2  accel_put_text
+    many2 [..4]accel_put_text
+    one3  accel_text
+    many3 [..4]accel_text
+    one4  accel_u16
+    many4 [..4]accel_u16
+    one5  accel_u32
+    many5 [..4]accel_u32
+    one6  accel_u64
+    many6 [..4]accel_u64
+    one7  accepted
+    many7 [..4]accepted
+    one8  accessor
+    many8 [..4]accessor
+    one9  accessors
+    many9 [..4]accessors
+}
+
+table NameFields3
+{
+    accel_get_signed uint32
+    accel_put uint32
+    accel_put_text uint32
+    accel_text uint32
+    accel_u16 uint32
+    accel_u32 uint32
+    accel_u64 uint32
+    accepted uint32
+    accessor uint32
+    accessors uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    accm1 Inner
+    accm4 Inner
+    accumulator Inner
+    active Inner
+    actual Inner
+    acyclic Inner
+    adapt_field Inner
+    adapt_table Inner
+    adapt_union Inner
+    adapted Inner
+}
+
+table NameTypes4
+{
+    one0  accm1
+    many0 [..4]accm1
+    one1  accm4
+    many1 [..4]accm4
+    one2  accumulator
+    many2 [..4]accumulator
+    one3  active
+    many3 [..4]active
+    one4  actual
+    many4 [..4]actual
+    one5  acyclic
+    many5 [..4]acyclic
+    one6  adapt_field
+    many6 [..4]adapt_field
+    one7  adapt_table
+    many7 [..4]adapt_table
+    one8  adapt_union
+    many8 [..4]adapt_union
+    one9  adapted
+    many9 [..4]adapted
+}
+
+table NameFields4
+{
+    accm1 uint32
+    accm4 uint32
+    accumulator uint32
+    active uint32
+    actual uint32
+    acyclic uint32
+    adapt_field uint32
+    adapt_table uint32
+    adapt_union uint32
+    adapted uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    add Inner
+    add16 Inner
+    add4 Inner
+    add64 Inner
+    addBits Inner
+    added Inner
+    address Inner
+    adesc Inner
+    admitted Inner
+    adopt Inner
+}
+
+table NameTypes5
+{
+    one0  add
+    many0 [..4]add
+    one1  add16
+    many1 [..4]add16
+    one2  add4
+    many2 [..4]add4
+    one3  add64
+    many3 [..4]add64
+    one4  addBits
+    many4 [..4]addBits
+    one5  added
+    many5 [..4]added
+    one6  address
+    many6 [..4]address
+    one7  adesc
+    many7 [..4]adesc
+    one8  admitted
+    many8 [..4]admitted
+    one9  adopt
+    many9 [..4]adopt
+}
+
+table NameFields5
+{
+    add uint32
+    add16 uint32
+    add4 uint32
+    add64 uint32
+    addBits uint32
+    added uint32
+    address uint32
+    adesc uint32
+    admitted uint32
+    adopt uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    ae Inner
+    aex Inner
+    af Inner
+    afterNode Inner
+    afterPoint Inner
+    after_body Inner
+    after_elem Inner
+    after_key Inner
+    after_kind Inner
+    after_nodes Inner
+}
+
+table NameTypes6
+{
+    one0  ae
+    many0 [..4]ae
+    one1  aex
+    many1 [..4]aex
+    one2  af
+    many2 [..4]af
+    one3  afterNode
+    many3 [..4]afterNode
+    one4  afterPoint
+    many4 [..4]afterPoint
+    one5  after_body
+    many5 [..4]after_body
+    one6  after_elem
+    many6 [..4]after_elem
+    one7  after_key
+    many7 [..4]after_key
+    one8  after_kind
+    many8 [..4]after_kind
+    one9  after_nodes
+    many9 [..4]after_nodes
+}
+
+table NameFields6
+{
+    ae uint32
+    aex uint32
+    af uint32
+    afterNode uint32
+    afterPoint uint32
+    after_body uint32
+    after_elem uint32
+    after_key uint32
+    after_kind uint32
+    after_nodes uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    after_payload Inner
+    after_sub Inner
+    after_value Inner
+    afterwards Inner
+    again Inner
+    against Inner
+    ah Inner
+    ai Inner
+    aid Inner
+    ak Inner
+}
+
+table NameTypes7
+{
+    one0  after_payload
+    many0 [..4]after_payload
+    one1  after_sub
+    many1 [..4]after_sub
+    one2  after_value
+    many2 [..4]after_value
+    one3  afterwards
+    many3 [..4]afterwards
+    one4  again
+    many4 [..4]again
+    one5  against
+    many5 [..4]against
+    one6  ah
+    many6 [..4]ah
+    one7  ai
+    many7 [..4]ai
+    one8  aid
+    many8 [..4]aid
+    one9  ak
+    many9 [..4]ak
+}
+
+table NameFields7
+{
+    after_payload uint32
+    after_sub uint32
+    after_value uint32
+    afterwards uint32
+    again uint32
+    against uint32
+    ah uint32
+    ai uint32
+    aid uint32
+    ak uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

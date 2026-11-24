@@ -255,11 +255,90 @@ static int surf_read_into_narrow( const char * form, const uint8_t * lawful, int
     return 0;
 }
 
+/* THE PLAIN REGION READ under the `retain` form's protocol (README, "The
+   `region` form"): ONE report, PRE-FILLED with every field set, through
+   surfaces_counted_load of the lawful file, the damaged one and the lawful one
+   again. After each lawful load the report must equal, FIELD BY FIELD, the
+   report the same load leaves in a fresh report (docs/SPEC-TABLES.md §6.5).
+   Every field of the C report is public, so the pre-fill sets each one. */
+static int surf_region_load( const uint8_t * wire, int64_t bytes, surfaces_table_report_t * report, int * ran )
+{
+    int64_t need = surfaces_counted_load_measure( wire, bytes );
+    uint8_t * raw, * region;
+    int ok;
+    *ran = 0;
+    if ( need < 0 ) { need = 0; }
+    raw = (uint8_t *) malloc( (size_t) need + 64 );
+    if ( raw == NULL ) { return 0; }
+    region = raw + ( ( 64 - ( (uintptr_t) raw & 63 ) ) & 63 );
+    ok = surfaces_counted_load( region, need, wire, bytes, report ) != NULL;
+    *ran = 1;
+    free( raw );
+    return ok;
+}
+
+static const char * surf_region_step( const uint8_t * wire, int64_t bytes, surfaces_table_report_t * report, int * ran )
+{
+    const int ok = surf_region_load( wire, bytes, report, ran );
+    const int refused = report->refused || report->refuse_reason != SCHEMA_SURFACES_TABLE_REFUSE_OK || report->damage_reason != 0;
+    if ( ok && !refused ) { return "read\n"; }
+    if ( !ok && refused ) { return "refused\n"; }
+    return ok ? "read-with-refused-report\n" : "refused-with-clean-report\n";
+}
+
+static void surf_region_compare( ConformanceText * answer, const surfaces_table_report_t * r, const surfaces_table_report_t * fresh )
+{
+    char line[256];
+    int same = 1;
+#define SURF_REGION_FIELD( f )                                                                                    \
+    if ( r->f != fresh->f )                                                                                       \
+    {                                                                                                             \
+        snprintf( line, sizeof( line ), "kept " #f " %lld want %lld\n", (long long) r->f, (long long) fresh->f ); \
+        conformance_text_add( answer, line );                                                                     \
+        same = 0;                                                                                                 \
+    }
+    SURF_REGION_FIELD( unknown ) SURF_REGION_FIELD( missing_required ) SURF_REGION_FIELD( widened ) SURF_REGION_FIELD( blob_shared )
+    SURF_REGION_FIELD( retained ) SURF_REGION_FIELD( retain_lost ) SURF_REGION_FIELD( refused ) SURF_REGION_FIELD( reason )
+    SURF_REGION_FIELD( refuse_reason ) SURF_REGION_FIELD( damage_reason ) SURF_REGION_FIELD( non_finite_floats )
+    SURF_REGION_FIELD( build_version_remote ) SURF_REGION_FIELD( build_version_own ) SURF_REGION_FIELD( layout_hash )
+#undef SURF_REGION_FIELD
+    if ( same ) { conformance_text_add( answer, "zeroed\n" ); }
+}
+
+static int surf_read_into_region( const uint8_t * lawful, int64_t lawful_bytes, const uint8_t * damaged, int64_t damaged_bytes,
+                                  int64_t count, ConformanceText * answer )
+{
+    surfaces_table_report_t fresh, report;
+    int ran;
+    if ( count != 1 ) { return 1; }
+    memset( &fresh, 0, sizeof( fresh ) );
+    if ( !surf_region_load( lawful, lawful_bytes, &fresh, &ran ) || fresh.refused )
+    {
+        fprintf( stderr, "driver: read-into: the lawful region load refused into a fresh report\n" );
+        return 2;
+    }
+    memset( &report, 0, sizeof( report ) );
+    report.unknown = 7; report.missing_required = 7; report.widened = 7; report.blob_shared = 7;
+    report.retained = 7; report.retain_lost = 7; report.refused = 1; report.reason = 7;
+    report.refuse_reason = 7; report.damage_reason = 7; report.non_finite_floats = 7;
+    report.build_version_remote = 7; report.build_version_own = 7; report.layout_hash = 7;
+    conformance_text_add( answer, surf_region_step( lawful, lawful_bytes, &report, &ran ) );
+    if ( !ran ) { return 2; }
+    surf_region_compare( answer, &report, &fresh );
+    conformance_text_add( answer, surf_region_step( damaged, damaged_bytes, &report, &ran ) );
+    if ( !ran ) { return 2; }
+    conformance_text_add( answer, surf_region_step( lawful, lawful_bytes, &report, &ran ) );
+    if ( !ran ) { return 2; }
+    surf_region_compare( answer, &report, &fresh );
+    return 0;
+}
+
 static int surf_read_into( const char * root, const char * form, const uint8_t * lawful, int64_t lawful_bytes,
                            const uint8_t * damaged, int64_t damaged_bytes, int64_t count,
                            const uint8_t * announcement, int64_t announcement_bytes, ConformanceText * answer )
 {
     (void) announcement; (void) announcement_bytes;
+    if ( strcmp( root, "Counted" ) == 0 && strcmp( form, "region" ) == 0 ) { return surf_read_into_region( lawful, lawful_bytes, damaged, damaged_bytes, count, answer ); }
     if ( strcmp( root, "Counted" ) == 0 ) { return surf_read_into_counted( form, lawful, lawful_bytes, damaged, damaged_bytes, count, answer ); }
     if ( strcmp( root, "Narrow" ) == 0 ) { return surf_read_into_narrow( form, lawful, lawful_bytes, damaged, damaged_bytes, count, answer ); }
     return 1;
