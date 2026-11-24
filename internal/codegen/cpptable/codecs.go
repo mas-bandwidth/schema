@@ -605,7 +605,43 @@ func (g *tableGen) emitTableResetOne(expr, typ string, f *ir.Field) {
 		g.pf("    %s.type = %sType::None;\n", expr, un.Name)
 		return
 	}
-	g.pf("    %s = %s();\n", expr, typ)
+	g.pf("    %s = %s();\n", expr, g.typeRef(f.Type, typ))
+}
+
+// declRef spells a declared name (an enum, a type, a table, a union) where a
+// name the generated code declares for itself may be in scope: a parameter
+// (ids, value, r, path), a local (count, tail, kind, body_len), a loop
+// variable or a lambda's parameter (v). Every such name starts lowercase, so
+// a declared name that starts lowercase is spelled from the global root,
+// `::<package>::name`, which no local can hide; the rest are spelled bare, as
+// before (SPEC §4.6, Generator-name safety). The test is on the DECLARED
+// spelling: a name the type escape respelled is decided as the schema wrote
+// it, so the escape stays faithful (TestCppTypeEscapeIsFaithful), and the
+// pass after the emitter writes a marked one back as `::<package>::<C++ spelling>`.
+func (g *tableGen) declRef(name, declared string) string {
+	if declared == "" || !(declared[0] >= 'a' && declared[0] <= 'z' || declared[0] == '_') {
+		return name
+	}
+	return "::" + g.unit.Package + "::" + name
+}
+
+// enumRefName is declRef for an enum named by its (possibly respelled) name.
+func (g *tableGen) enumRefName(name string) string {
+	declared := name
+	if e := g.unit.Enums[name]; e != nil {
+		declared = e.DeclaredName()
+	}
+	return g.declRef(name, declared)
+}
+
+// typeRef is declRef for a field type's C++ spelling: a declared type spelled
+// as its name is qualified, and a scalar, a native mapping or anything else
+// cppFieldType answers is left as it is.
+func (g *tableGen) typeRef(t ir.FieldType, typ string) string {
+	if t.Kind != ir.TNamed || typ != t.Name {
+		return typ
+	}
+	return g.declRef(typ, t.DeclaredName())
 }
 
 // emitTableResetArm resets ONE union arm at its overlay storage (emitArmStorage):
@@ -762,7 +798,7 @@ func (g *tableGen) emitEnumIdentity(e *ir.Enum) {
 	g.pf("// data still reads (docs/SPEC-TABLES.md §3, §5). None is the ZERO REFERENCE,\n")
 	g.pf("// the one value that names no id, so no declared variant can be mistaken for it.\n")
 	g.pf("#ifndef %s\n#define %s\n", guard, guard)
-	g.pf("inline bool TableEnumRef( TableIds & ids, %s value, uint64_t & ref )\n{\n", e.Name)
+	g.pf("inline bool TableEnumRef( TableIds & ids, %s value, uint64_t & ref )\n{\n", g.declRef(e.Name, e.DeclaredName()))
 	g.pf("    switch ( value )\n    {\n")
 	g.pf("        case %[1]s::None:\n            ref = 0;\n            return true;\n", e.Name)
 	for i, v := range e.Variants {
@@ -777,7 +813,7 @@ func (g *tableGen) emitEnumIdentity(e *ir.Enum) {
 		// (docs/SPEC-TABLES.md §6.6): a key or a variant this build can name
 		// takes its entry from the generated table exactly as it always did,
 		// and the overload is what lets one codec serve both families.
-		g.pf("inline bool TableEnumRef( TableRetainIds & ids, %s value, uint64_t & ref )\n{\n", e.Name)
+		g.pf("inline bool TableEnumRef( TableRetainIds & ids, %s value, uint64_t & ref )\n{\n", g.declRef(e.Name, e.DeclaredName()))
 		g.pf("    switch ( value )\n    {\n")
 		g.pf("        case %[1]s::None:\n            ref = 0;\n            return true;\n", e.Name)
 		for i, v := range e.Variants {
@@ -786,7 +822,7 @@ func (g *tableGen) emitEnumIdentity(e *ir.Enum) {
 		g.pf("        default: return false;\n")
 		g.pf("    }\n}\n")
 	}
-	g.pf("inline bool TableEnumNamed( %s value )\n{\n", e.Name)
+	g.pf("inline bool TableEnumNamed( %s value )\n{\n", g.declRef(e.Name, e.DeclaredName()))
 	g.pf("    switch ( value )\n    {\n")
 	g.pf("        case %s::None: return true;\n", e.Name)
 	for _, v := range e.Variants {
@@ -798,7 +834,7 @@ func (g *tableGen) emitEnumIdentity(e *ir.Enum) {
 	// (docs/SPEC-TABLES.md §3.3). A variant rides under its WIRE name; one the
 	// message closure does not reach has no slot, so it answers false like a
 	// value no variant names (every variant keeps its case: -Wswitch-enum).
-	g.pf("inline bool TableEnumSlot( %s value, uint64_t & slot )\n{\n", e.Name)
+	g.pf("inline bool TableEnumSlot( %s value, uint64_t & slot )\n{\n", g.declRef(e.Name, e.DeclaredName()))
 	g.pf("    switch ( value )\n    {\n")
 	g.pf("        case %[1]s::None:\n            slot = 0;\n            return true;\n", e.Name)
 	for i, v := range e.Variants {
@@ -811,7 +847,7 @@ func (g *tableGen) emitEnumIdentity(e *ir.Enum) {
 	}
 	g.pf("        default: return false; // no variant names this value: no wire identity\n")
 	g.pf("    }\n}\n")
-	g.pf("inline bool TableEnumId( %s value, uint64_t & id )\n{\n", e.Name)
+	g.pf("inline bool TableEnumId( %s value, uint64_t & id )\n{\n", g.declRef(e.Name, e.DeclaredName()))
 	g.pf("    switch ( value )\n    {\n")
 	g.pf("        case %[1]s::None:\n            id = 0;\n            return true;\n", e.Name)
 	for i, v := range e.Variants {
@@ -819,7 +855,7 @@ func (g *tableGen) emitEnumIdentity(e *ir.Enum) {
 	}
 	g.pf("        default: return false; // no variant names this value: no wire identity\n")
 	g.pf("    }\n}\n")
-	g.pf("inline bool TableEnumValue( uint64_t id, %s & out )\n{\n", e.Name)
+	g.pf("inline bool TableEnumValue( uint64_t id, %s & out )\n{\n", g.declRef(e.Name, e.DeclaredName()))
 	g.pf("    switch ( id )\n    {\n")
 	for i, v := range e.Variants {
 		g.pf("        case 0x%016[1]xull:\n            out = %[2]s::%[3]s;\n            return true;\n", ir.TableWireId(e.VariantWireName(i)), e.Name, v)
@@ -3627,8 +3663,8 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 				enumDefault = fmt.Sprintf("%d", enumDefaultOrdinal(f, ref))
 				enumDeprecated = lambda
 			}
-			enumName = fmt.Sprintf("+[]( uint64_t v ) { return EnumName( %s( v ) ); }", f.Type.Name)
-			variantId = fmt.Sprintf("+[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( %s( v ), id ); return id; }", f.Type.Name)
+			enumName = fmt.Sprintf("+[]( uint64_t v ) { return EnumName( %s( v ) ); }", g.declRef(f.Type.Name, f.Type.DeclaredName()))
+			variantId = fmt.Sprintf("+[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( %s( v ), id ); return id; }", g.declRef(f.Type.Name, f.Type.DeclaredName()))
 		}
 	case *ir.Flags:
 		if f.Type.Kind == ir.TNamed {
@@ -3677,8 +3713,8 @@ func (g *tableGen) emitFieldInfo(f *ir.Field, sp fieldSpelling, hoisted bool) {
 	keyTypeName, keyName, keyId := "NULL", "NULL", "NULL"
 	if f.KeyEnum != "" {
 		keyTypeName = cStringLit([]byte(f.KeyEnum))
-		keyName = fmt.Sprintf("+[]( uint64_t v ) { return EnumName( %s( v ) ); }", f.KeyEnum)
-		keyId = fmt.Sprintf("+[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( %s( v ), id ); return id; }", f.KeyEnum)
+		keyName = fmt.Sprintf("+[]( uint64_t v ) { return EnumName( %s( v ) ); }", g.enumRefName(f.KeyEnum))
+		keyId = fmt.Sprintf("+[]( uint64_t v ) -> uint64_t { uint64_t id = 0; TableEnumId( %s( v ), id ); return id; }", g.enumRefName(f.KeyEnum))
 		if sp.outside {
 			keyId = tableZeroId // §8.2, exactly as variant_id above
 		}

@@ -8,31 +8,6 @@
 # C: the C backend's own refusal is not lifted to the checker
 c n_internal_52 owed: enum placed beside enum placed_t: the C backend qualifies both to probe_placed_t and refuses at generate; schema check accepts the pair
 
-# C++ table: a local of the load code hides a lowercase enum, and the reset spells the enum bare (`E()`)
-cpp n_internal_12 owed: enum body_len: cpptable's local body_len hides it in `value.manyN[tail] = body_len();`
-cpp n_internal_17 owed: enum count: cpptable's local count hides it in `value.manyN[tail] = count();`
-cpp n_internal_18 owed: enum counted_ok: cpptable's local counted_ok hides it in `value.manyN[tail] = counted_ok();`
-cpp n_internal_20 owed: enum decoded: cpptable's local decoded hides it in `value.manyN[tail] = decoded();`
-cpp n_internal_27 owed: enum field_ref: cpptable's local field_ref hides it in `value.manyN[tail] = field_ref();`
-cpp n_internal_32 owed: enum ids: cpptable's parameter `TableIds & ids` hides it in TableEnumRef( TableIds & ids, ids value, ... ) and `case ids::None`
-cpp n_internal_33 owed: union arm int32_t: the packet union member is written `Inner ::int32_t;`, which C++ reads as a qualified name; schema check accepts an arm named like a <cstdint> type
-cpp n_internal_36 owed: enum keep: cpptable's local keep hides it in `value.manyN[tail] = keep();`
-cpp n_internal_47 owed: enum nodes: cpptable's parameter nodes (TableNodeMap) hides it in `value.manyN[tail] = nodes();`
-cpp n_internal_51 owed: enum path: cpptable's parameter path (TableRetainPath) hides it in `value.manyN[tail] = path();`
-cpp n_internal_53 owed: enum previous_count: cpptable's local previous_count hides it in `value.manyN[tail] = previous_count();`
-cpp n_internal_54 owed: enum r: cpptable's parameter r (TableReader) hides it in `value.manyN[tail] = r();`
-cpp n_internal_62 owed: enum retain: cpptable's parameter retain hides it in `value.manyN[tail] = retain();`
-cpp n_internal_66 owed: enum serialize_fixed: a function-like macro of the serialize runtime, so `serialize_fixed()` expands as the macro; schema check does not claim the runtime's macro names
-cpp n_internal_70 owed: enum sub: cpptable's local sub (TableReader) hides it in `value.manyN[tail] = sub();`
-cpp n_internal_71 owed: enum tail: cpptable's loop variable tail hides it in `value.manyN[tail] = tail();`
-cpp n_internal_75 owed: enum v: cpptable's local v (a lambda) hides it in `v()` and `v + ...`
-cpp n_internal_76 owed: enum value: cpptable's parameter value hides it in `value.manyN[tail] = value();`
-cpp n_internal_80 owed: enum write_float: a function-like macro of the serialize runtime, so `write_float()` expands as the macro; schema check does not claim the runtime's macro names
-cpp n_internal_82 owed: enum body_end: cpptable's local body_end hides it in `value.manyN[tail] = body_end();`
-cpp n_internal_83 owed: enums elem_kind and field_id: cpptable's locals of those names hide them in `value.manyN[tail] = E();`
-cpp n_internal_88 owed: enums write_int and write_string: function-like macros of the serialize runtime expand in `E()`; schema check does not claim the runtime's macro names
-cpp n_internal_91 owed: enum kind: cpptable's local kind hides it in `value.manyN[tail] = kind();`
-
 # C#: a contextual keyword the reserved-word table lacks
 cs n_internal_75 owed: enum unmanaged: the generic constraint `where T : unmanaged` resolves to the enum, CS0701; schema check does not reserve unmanaged for C#
 unity n_internal_75 owed: enum unmanaged: the generic constraint `where T : unmanaged` resolves to the enum, CS0701; schema check does not reserve unmanaged for C#
