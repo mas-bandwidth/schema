@@ -213,6 +213,7 @@ var catalog = []Entry{
 	e("tools/fixedtwin", "fixed-form twin", "go test ./tools/fixedtwin", "go test ./tools/fixedtwin"),
 	e("tools/gotestreport", "go test -json row report and skip ledger", "go test ./tools/gotestreport", "go run ./tools/gotestreport -skips .github/skip-ledger.txt build/go-test-json"),
 	e("tools/errdiscard", "refuses an error dropped in cmd/ or tools/ with no reason", "go test ./internal/errdiscard", "make errdiscard"),
+	e("tools/testguard", "holds a row's test results to its suites, skip ledger, baseline and coverage tables", "go test ./tools/testguard", "go run ./tools/testguard check --config test/testguard/ci-policy-rest.tsv RECORD..."),
 	e("tools/gotestrows", "ci-fast go-test matrix rows", "go test ./tools/gotestrows", "go run ./tools/gotestrows ./..."),
 	e("tools/hostilecorpus", "shared hostile-input corpus generator", "make schema-shared-hostile-corpus", "make schema-shared-hostile-corpus-generate"),
 	e("tools/hostilecorpusexec", "native-port hostile-corpus driver", "make schema-c-runs-hostile-corpus", "make schema-c-runs-hostile-corpus"),
