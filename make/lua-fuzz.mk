@@ -16,15 +16,15 @@
 LUA_FUZZ_SEED ?= 1
 LUA_FUZZ_N    ?= 2000
 # The roots the Lua leg has no codec for are the exact set in
-# test/conformance/wire-absent/lua-plain.tsv (make/wire-absent.mk, W-ROSTER):
+# test/conformance/wire-absent/lua-plain.tsv (test/conformance/harness/wirefuzz_absent.go, W-ROSTER):
 # the harness fails any other absent root, and a listed root the leg answers.
 # The registered count this replaced (20) was stale: the leg left 22 absent.
 
 .PHONY: tables-lua-wire-fuzz
 tables-lua-wire-fuzz: build/conformance-harness build/conformance-lua
 	@mkdir -p build
-	@./build/conformance-harness wire-fuzz \
-		--driver '$(LUA) test/conformance/lua/wirefuzz.lua build/conformance-lua' $(call WIRE_ABSENT,lua-plain) \
+	@./build/conformance-harness wire-fuzz --leg lua \
+		--driver '$(LUA) test/conformance/lua/wirefuzz.lua build/conformance-lua' \
 		--seed $(LUA_FUZZ_SEED) --n $(LUA_FUZZ_N) \
 		> build/tables-lua-wire-fuzz.log 2>&1; \
 		status=$$?; cat build/tables-lua-wire-fuzz.log; \

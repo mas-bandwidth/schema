@@ -121,6 +121,7 @@ func runLuaWireFuzzVerdictPipe(t *testing.T, generated string, n int, expectGree
 		filepath.Join("test", "conformance", "lua", "wirefuzz.lua"),
 		generated)
 	cmd := testproc.Command(t, harness, "wire-fuzz",
+		"--leg", "lua",
 		"--driver", driver,
 		"--seed", "1",
 		"--n", fmt.Sprintf("%d", n),
