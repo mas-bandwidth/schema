@@ -6,10 +6,12 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"maps"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/compiler"
@@ -19,6 +21,15 @@ import (
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
+// fixedCorpusBuild runs the corpus's own make target once per test binary, so
+// no test here depends on an earlier manual make; the parallel tests that ask
+// for the corpus share the one run and its answer.
+var fixedCorpusBuild struct {
+	once sync.Once
+	out  []byte
+	err  error
+}
+
 func fixedCorpus(t *testing.T) string {
 	t.Helper()
 	root, err := sqrun.RepoRoot()
@@ -26,11 +37,19 @@ func fixedCorpus(t *testing.T) string {
 		t.Fatal(err)
 	}
 	corpus := filepath.Join(root, "build", "fixedform-corpus")
-	if _, err := os.Stat(filepath.Join(corpus, "manifest.txt")); err != nil {
+	fixedCorpusBuild.once.Do(func() {
+		cmd := exec.Command("make", "--no-print-directory", "tables-fixedform-corpus")
+		cmd.Dir = root
+		fixedCorpusBuild.out, fixedCorpusBuild.err = cmd.CombinedOutput()
+	})
+	if fixedCorpusBuild.err != nil {
 		if slowtest.CorpusRequired() {
-			t.Fatalf("the fixed-form corpus is the byte oracle and it is absent: %v (run make tables-fixedform-corpus)", err)
+			t.Fatalf("the fixed-form corpus is the byte oracle and `make tables-fixedform-corpus` could not build it: %v\n%s", fixedCorpusBuild.err, fixedCorpusBuild.out)
 		}
-		t.Skipf("the fixed-form corpus is not built (make tables-fixedform-corpus): %v", err)
+		t.Skipf("the fixed-form corpus is not built (make tables-fixedform-corpus): %v", fixedCorpusBuild.err)
+	}
+	if _, err := os.Stat(filepath.Join(corpus, "manifest.txt")); err != nil {
+		t.Fatalf("`make tables-fixedform-corpus` succeeded and wrote no manifest: %v", err)
 	}
 	return corpus
 }
@@ -320,7 +339,7 @@ func decodeHex(s string) ([]byte, error) {
 func TestSquirrelFixedFormNegativeControl(t *testing.T) {
 	t.Parallel()
 	fixedCorpus(t)
-	u := fixedSynthetic(t, "package neg\nfixed table NR { a int32 = 5\n b int32 = 9 }\n")
+	u := fixedSynthetic(t, "package negctl\nfixed table NR { a int32 = 5\n b int32 = 9 }\n")
 	files, err := squirrel.Generate(u)
 	if err != nil {
 		t.Fatal(err)
@@ -355,8 +374,8 @@ func TestSquirrelFixedFormNegativeControl(t *testing.T) {
 	if matched != 1 {
 		t.Fatalf("the negative-control anchor matched %d times, want exactly 1", matched)
 	}
-	main := `local P = dofile("plain/schema_module.nut", true).require("NegTables");
-local Q = dofile("patched/schema_module.nut", true).require("NegTables");
+	main := `local P = dofile("plain/schema_module.nut", true).require("NegctlTables");
+local Q = dofile("patched/schema_module.nut", true).require("NegctlTables");
 local r = P.NR(); r.A = 42; r.B = 7; local a = blob(128); local n = P.NRFixedSave(a, [r]);
 local q = Q.NR(); q.A = 42; q.B = 7; local b = blob(128); local m = Q.NRFixedSave(b, [q]);
 local same = n == m; for (local i = 0; i < n && same; i++) if (a[i] != b[i]) same = false;
