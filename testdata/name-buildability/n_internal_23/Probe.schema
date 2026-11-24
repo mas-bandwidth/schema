@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum elem_arm_id
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_arm_kind
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_arm_len
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_arm_ref
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_base_hi
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_base_lo
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_bits
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_body
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_buf
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_by_name
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_cls
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_codec
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_cook_id
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_desc
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_fd
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_flags
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_flags_bits
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_floor
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_frac
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_frame
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_i
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_i_values
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_is_default
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_kind_allowed
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_len_by_name
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_len_tags
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_max
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_min
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_of
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_packing
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_path
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_qcount
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_qdelta
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_qmin
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_rides
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_rule
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_st
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_t
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_tags
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_u8
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_value
+{ Zfirst, Zsecond, Zthird }
+
+enum elem_value_bits
+{ Zfirst, Zsecond, Zthird }
+
+enum element
+{ Zfirst, Zsecond, Zthird }
+
+enum element0
+{ Zfirst, Zsecond, Zthird }
+
+enum elementBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum elementKind
+{ Zfirst, Zsecond, Zthird }
+
+enum elementRef
+{ Zfirst, Zsecond, Zthird }
+
+enum elementShape
+{ Zfirst, Zsecond, Zthird }
+
+enum elementSize
+{ Zfirst, Zsecond, Zthird }
+
+enum element_at
+{ Zfirst, Zsecond, Zthird }
+
+enum element_entry
+{ Zfirst, Zsecond, Zthird }
+
+enum element_frame
+{ Zfirst, Zsecond, Zthird }
+
+enum element_name
+{ Zfirst, Zsecond, Zthird }
+
+enum element_run_bits
+{ Zfirst, Zsecond, Zthird }
+
+enum element_value
+{ Zfirst, Zsecond, Zthird }
+
+enum elements
+{ Zfirst, Zsecond, Zthird }
+
+enum elements_consumed
+{ Zfirst, Zsecond, Zthird }
+
+enum elems
+{ Zfirst, Zsecond, Zthird }
+
+enum elen
+{ Zfirst, Zsecond, Zthird }
+
+enum elide
+{ Zfirst, Zsecond, Zthird }
+
+enum elideEmpty
+{ Zfirst, Zsecond, Zthird }
+
+enum elides
+{ Zfirst, Zsecond, Zthird }
+
+enum elim
+{ Zfirst, Zsecond, Zthird }
+
+enum em
+{ Zfirst, Zsecond, Zthird }
+
+enum em_byte
+{ Zfirst, Zsecond, Zthird }
+
+enum em_copy
+{ Zfirst, Zsecond, Zthird }
+
+enum emark
+{ Zfirst, Zsecond, Zthird }
+
+enum emit
+{ Zfirst, Zsecond, Zthird }
+
+enum emitLeb
+{ Zfirst, Zsecond, Zthird }
+
+enum emitPayload
+{ Zfirst, Zsecond, Zthird }
+
+enum emitRaw
+{ Zfirst, Zsecond, Zthird }
+
+enum emitRef
+{ Zfirst, Zsecond, Zthird }
+
+enum emit_content
+{ Zfirst, Zsecond, Zthird }
+
+enum emit_ln
+{ Zfirst, Zsecond, Zthird }
+
+enum emit_tail
+{ Zfirst, Zsecond, Zthird }
+
+enum emits
+{ Zfirst, Zsecond, Zthird }
+
+enum emitted
+{ Zfirst, Zsecond, Zthird }
+
+enum emitted_mark
+{ Zfirst, Zsecond, Zthird }
+
+enum empty
+{ Zfirst, Zsecond, Zthird }
+
+enum emptyOwnBody
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    elem_arm_id Inner
+    elem_arm_kind Inner
+    elem_arm_len Inner
+    elem_arm_ref Inner
+    elem_base_hi Inner
+    elem_base_lo Inner
+    elem_bits Inner
+    elem_body Inner
+    elem_buf Inner
+    elem_by_name Inner
+}
+
+table NameTypes0
+{
+    one0  elem_arm_id
+    many0 [..4]elem_arm_id
+    one1  elem_arm_kind
+    many1 [..4]elem_arm_kind
+    one2  elem_arm_len
+    many2 [..4]elem_arm_len
+    one3  elem_arm_ref
+    many3 [..4]elem_arm_ref
+    one4  elem_base_hi
+    many4 [..4]elem_base_hi
+    one5  elem_base_lo
+    many5 [..4]elem_base_lo
+    one6  elem_bits
+    many6 [..4]elem_bits
+    one7  elem_body
+    many7 [..4]elem_body
+    one8  elem_buf
+    many8 [..4]elem_buf
+    one9  elem_by_name
+    many9 [..4]elem_by_name
+}
+
+table NameFields0
+{
+    elem_arm_id uint32
+    elem_arm_kind uint32
+    elem_arm_len uint32
+    elem_arm_ref uint32
+    elem_base_hi uint32
+    elem_base_lo uint32
+    elem_bits uint32
+    elem_body uint32
+    elem_buf uint32
+    elem_by_name uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    elem_cls Inner
+    elem_codec Inner
+    elem_cook_id Inner
+    elem_desc Inner
+    elem_fd Inner
+    elem_flags Inner
+    elem_flags_bits Inner
+    elem_floor Inner
+    elem_frac Inner
+    elem_frame Inner
+}
+
+table NameTypes1
+{
+    one0  elem_cls
+    many0 [..4]elem_cls
+    one1  elem_codec
+    many1 [..4]elem_codec
+    one2  elem_cook_id
+    many2 [..4]elem_cook_id
+    one3  elem_desc
+    many3 [..4]elem_desc
+    one4  elem_fd
+    many4 [..4]elem_fd
+    one5  elem_flags
+    many5 [..4]elem_flags
+    one6  elem_flags_bits
+    many6 [..4]elem_flags_bits
+    one7  elem_floor
+    many7 [..4]elem_floor
+    one8  elem_frac
+    many8 [..4]elem_frac
+    one9  elem_frame
+    many9 [..4]elem_frame
+}
+
+table NameFields1
+{
+    elem_cls uint32
+    elem_codec uint32
+    elem_cook_id uint32
+    elem_desc uint32
+    elem_fd uint32
+    elem_flags uint32
+    elem_flags_bits uint32
+    elem_floor uint32
+    elem_frac uint32
+    elem_frame uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    elem_i Inner
+    elem_i_values Inner
+    elem_is_default Inner
+    elem_kind_allowed Inner
+    elem_len_by_name Inner
+    elem_len_tags Inner
+    elem_max Inner
+    elem_min Inner
+    elem_of Inner
+    elem_packing Inner
+}
+
+table NameTypes2
+{
+    one0  elem_i
+    many0 [..4]elem_i
+    one1  elem_i_values
+    many1 [..4]elem_i_values
+    one2  elem_is_default
+    many2 [..4]elem_is_default
+    one3  elem_kind_allowed
+    many3 [..4]elem_kind_allowed
+    one4  elem_len_by_name
+    many4 [..4]elem_len_by_name
+    one5  elem_len_tags
+    many5 [..4]elem_len_tags
+    one6  elem_max
+    many6 [..4]elem_max
+    one7  elem_min
+    many7 [..4]elem_min
+    one8  elem_of
+    many8 [..4]elem_of
+    one9  elem_packing
+    many9 [..4]elem_packing
+}
+
+table NameFields2
+{
+    elem_i uint32
+    elem_i_values uint32
+    elem_is_default uint32
+    elem_kind_allowed uint32
+    elem_len_by_name uint32
+    elem_len_tags uint32
+    elem_max uint32
+    elem_min uint32
+    elem_of uint32
+    elem_packing uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    elem_path Inner
+    elem_qcount Inner
+    elem_qdelta Inner
+    elem_qmin Inner
+    elem_rides Inner
+    elem_rule Inner
+    elem_st Inner
+    elem_t Inner
+    elem_tags Inner
+    elem_u8 Inner
+}
+
+table NameTypes3
+{
+    one0  elem_path
+    many0 [..4]elem_path
+    one1  elem_qcount
+    many1 [..4]elem_qcount
+    one2  elem_qdelta
+    many2 [..4]elem_qdelta
+    one3  elem_qmin
+    many3 [..4]elem_qmin
+    one4  elem_rides
+    many4 [..4]elem_rides
+    one5  elem_rule
+    many5 [..4]elem_rule
+    one6  elem_st
+    many6 [..4]elem_st
+    one7  elem_t
+    many7 [..4]elem_t
+    one8  elem_tags
+    many8 [..4]elem_tags
+    one9  elem_u8
+    many9 [..4]elem_u8
+}
+
+table NameFields3
+{
+    elem_path uint32
+    elem_qcount uint32
+    elem_qdelta uint32
+    elem_qmin uint32
+    elem_rides uint32
+    elem_rule uint32
+    elem_st uint32
+    elem_t uint32
+    elem_tags uint32
+    elem_u8 uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    elem_value Inner
+    elem_value_bits Inner
+    element Inner
+    element0 Inner
+    elementBytes Inner
+    elementKind Inner
+    elementRef Inner
+    elementShape Inner
+    elementSize Inner
+    element_at Inner
+}
+
+table NameTypes4
+{
+    one0  elem_value
+    many0 [..4]elem_value
+    one1  elem_value_bits
+    many1 [..4]elem_value_bits
+    one2  element
+    many2 [..4]element
+    one3  element0
+    many3 [..4]element0
+    one4  elementBytes
+    many4 [..4]elementBytes
+    one5  elementKind
+    many5 [..4]elementKind
+    one6  elementRef
+    many6 [..4]elementRef
+    one7  elementShape
+    many7 [..4]elementShape
+    one8  elementSize
+    many8 [..4]elementSize
+    one9  element_at
+    many9 [..4]element_at
+}
+
+table NameFields4
+{
+    elem_value uint32
+    elem_value_bits uint32
+    element uint32
+    element0 uint32
+    elementBytes uint32
+    elementKind uint32
+    elementRef uint32
+    elementShape uint32
+    elementSize uint32
+    element_at uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    element_entry Inner
+    element_frame Inner
+    element_name Inner
+    element_run_bits Inner
+    element_value Inner
+    elements Inner
+    elements_consumed Inner
+    elems Inner
+    elen Inner
+    elide Inner
+}
+
+table NameTypes5
+{
+    one0  element_entry
+    many0 [..4]element_entry
+    one1  element_frame
+    many1 [..4]element_frame
+    one2  element_name
+    many2 [..4]element_name
+    one3  element_run_bits
+    many3 [..4]element_run_bits
+    one4  element_value
+    many4 [..4]element_value
+    one5  elements
+    many5 [..4]elements
+    one6  elements_consumed
+    many6 [..4]elements_consumed
+    one7  elems
+    many7 [..4]elems
+    one8  elen
+    many8 [..4]elen
+    one9  elide
+    many9 [..4]elide
+}
+
+table NameFields5
+{
+    element_entry uint32
+    element_frame uint32
+    element_name uint32
+    element_run_bits uint32
+    element_value uint32
+    elements uint32
+    elements_consumed uint32
+    elems uint32
+    elen uint32
+    elide uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    elideEmpty Inner
+    elides Inner
+    elim Inner
+    em Inner
+    em_byte Inner
+    em_copy Inner
+    emark Inner
+    emit Inner
+    emitLeb Inner
+    emitPayload Inner
+}
+
+table NameTypes6
+{
+    one0  elideEmpty
+    many0 [..4]elideEmpty
+    one1  elides
+    many1 [..4]elides
+    one2  elim
+    many2 [..4]elim
+    one3  em
+    many3 [..4]em
+    one4  em_byte
+    many4 [..4]em_byte
+    one5  em_copy
+    many5 [..4]em_copy
+    one6  emark
+    many6 [..4]emark
+    one7  emit
+    many7 [..4]emit
+    one8  emitLeb
+    many8 [..4]emitLeb
+    one9  emitPayload
+    many9 [..4]emitPayload
+}
+
+table NameFields6
+{
+    elideEmpty uint32
+    elides uint32
+    elim uint32
+    em uint32
+    em_byte uint32
+    em_copy uint32
+    emark uint32
+    emit uint32
+    emitLeb uint32
+    emitPayload uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    emitRaw Inner
+    emitRef Inner
+    emit_content Inner
+    emit_ln Inner
+    emit_tail Inner
+    emits Inner
+    emitted Inner
+    emitted_mark Inner
+    empty Inner
+    emptyOwnBody Inner
+}
+
+table NameTypes7
+{
+    one0  emitRaw
+    many0 [..4]emitRaw
+    one1  emitRef
+    many1 [..4]emitRef
+    one2  emit_content
+    many2 [..4]emit_content
+    one3  emit_ln
+    many3 [..4]emit_ln
+    one4  emit_tail
+    many4 [..4]emit_tail
+    one5  emits
+    many5 [..4]emits
+    one6  emitted
+    many6 [..4]emitted
+    one7  emitted_mark
+    many7 [..4]emitted_mark
+    one8  empty
+    many8 [..4]empty
+    one9  emptyOwnBody
+    many9 [..4]emptyOwnBody
+}
+
+table NameFields7
+{
+    emitRaw uint32
+    emitRef uint32
+    emit_content uint32
+    emit_ln uint32
+    emit_tail uint32
+    emits uint32
+    emitted uint32
+    emitted_mark uint32
+    empty uint32
+    emptyOwnBody uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

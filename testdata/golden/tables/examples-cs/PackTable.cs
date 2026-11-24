@@ -142,6 +142,7 @@ namespace Tabledemo
 
         public static bool GunnerSettingsCollectTyped(GunnerSettings v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null GunnerSettings is written");
             TableFieldInfo[] fields = GunnerSettingsTableType().Fields;
             System.Diagnostics.Debug.Assert(float.IsFinite(v.Reaction));
             if (BitConverter.SingleToUInt32Bits(v.Reaction) != 0x3e4ccccdu && !ids.Add(0xb75aa3662201646aul)) return false;
@@ -255,6 +256,7 @@ namespace Tabledemo
 
         public static bool ShipEntryCollectTyped(ShipEntry v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null ShipEntry is written");
             TableFieldInfo[] fields = ShipEntryTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             System.Diagnostics.Debug.Assert(float.IsFinite(v.Health));
@@ -376,6 +378,7 @@ namespace Tabledemo
 
         public static bool GlobalSettingsCollectTyped(GlobalSettings v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null GlobalSettings is written");
             TableFieldInfo[] fields = GlobalSettingsTableType().Fields;
             if (v.TickRate != 60 && !ids.Add(0xa65f859b617deaf3ul)) return false;
             if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
@@ -493,6 +496,7 @@ namespace Tabledemo
 
         public static bool PackConfigCollectTyped(PackConfig v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null PackConfig is written");
             TableFieldInfo[] fields = PackConfigTableType().Fields;
             if (v.Version != 1 && !ids.Add(0xbb62c62c9808ea37ul)) return false;
             if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
@@ -860,6 +864,7 @@ namespace Tabledemo
         // which is also what zero-fills every byte of declared slack.
         public static void GunnerSettingsFixedWriteBody(Span<byte> b, GunnerSettings value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null GunnerSettings is written");
             if (value == null) return;
             BinaryPrimitives.WriteSingleLittleEndian(b, value.Reaction);
             b.Slice(4)[0] = (byte)(value.Tracking ? 1 : 0);
@@ -873,6 +878,7 @@ namespace Tabledemo
         // which is also what zero-fills every byte of declared slack.
         public static void ShipEntryFixedWriteBody(Span<byte> b, ShipEntry value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null ShipEntry is written");
             if (value == null) return;
             int len_display_name = value.DisplayName != null ? value.DisplayNameLength : 0;
             System.Diagnostics.Debug.Assert(len_display_name <= 32);
@@ -895,6 +901,7 @@ namespace Tabledemo
         // which is also what zero-fills every byte of declared slack.
         public static void GlobalSettingsFixedWriteBody(Span<byte> b, GlobalSettings value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null GlobalSettings is written");
             if (value == null) return;
             BinaryPrimitives.WriteInt32LittleEndian(b, unchecked((int)value.TickRate));
             b.Slice(4)[0] = (byte)value.Difficulty;
@@ -909,6 +916,7 @@ namespace Tabledemo
         // which is also what zero-fills every byte of declared slack.
         public static void PackConfigFixedWriteBody(Span<byte> b, PackConfig value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null PackConfig is written");
             if (value == null) return;
             BinaryPrimitives.WriteInt32LittleEndian(b, unchecked((int)value.Version));
             GlobalSettingsFixedWriteBody(b.Slice(4), value.Settings);

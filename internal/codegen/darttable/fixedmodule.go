@@ -1067,11 +1067,18 @@ func (g *fixedModule) assemble() []byte {
 	}
 	sort.Strings(bases)
 	for _, b := range bases {
-		names := make([]string, 0, len(g.imports[b]))
+		all := make([]string, 0, len(g.imports[b]))
 		for s := range g.imports[b] {
-			names = append(names, s)
+			all = append(all, s)
 		}
-		sort.Strings(names)
+		sort.Strings(all)
+		names, prefixed := splitEnumShows(g.unit, all)
+		if prefixed {
+			h.WriteString(enumPrefixImport(b + ".dart"))
+		}
+		if len(names) == 0 {
+			continue
+		}
 		list := strings.Join(names, ", ")
 		one := fmt.Sprintf("import '%s.dart' show %s;", b, list)
 		if len(one) <= 80 {

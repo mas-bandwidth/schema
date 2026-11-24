@@ -54,6 +54,19 @@ static void constWrong( PacketWriteRefusal & v ) { v.fixed_constant = 6; }
 static void constAt( PacketWriteRefusal & v ) { v.fixed_constant = 5; }
 static void reservedWrong( PacketWriteRefusal & v ) { v.reserved_zero = 1; }
 static void reservedAt( PacketWriteRefusal & v ) { v.reserved_zero = 0; }
+static serialize::int128_t int128Of( uint64_t hi, uint64_t lo ) { return serialize::int128_t( ( serialize::uint128_t( hi ) << 64 ) | serialize::uint128_t( lo ) ); }
+static void int128High( PacketWriteRefusal & v ) { v.wide = int128Of( 5ull, 0x6bc75e2d63100001ull ); }
+static void int128Low( PacketWriteRefusal & v ) { v.wide = -11; }
+static void int128AtMax( PacketWriteRefusal & v ) { v.wide = int128Of( 5ull, 0x6bc75e2d63100000ull ); }
+static void int128AtMin( PacketWriteRefusal & v ) { v.wide = -10; }
+static void fixedHigh( PacketWriteRefusal & v ) { v.fx = 655361; }
+static void fixedLow( PacketWriteRefusal & v ) { v.fx = -655361; }
+static void fixedAtMax( PacketWriteRefusal & v ) { v.fx = 655360; }
+static void fixedAtMin( PacketWriteRefusal & v ) { v.fx = -655360; }
+static void ufixedHigh( PacketWriteRefusal & v ) { v.ufx = 0xee6b280000000001ull; }
+static void ufixedLow( PacketWriteRefusal & v ) { v.ufx = 0xffffffffull; }
+static void ufixedAtMax( PacketWriteRefusal & v ) { v.ufx = 0xee6b280000000000ull; }
+static void ufixedAtMin( PacketWriteRefusal & v ) { v.ufx = 0x100000000ull; }
 
 static std::map<std::string, Setter> setters()
 {
@@ -80,6 +93,18 @@ static std::map<std::string, Setter> setters()
     m["const_at"] = constAt;
     m["reserved_wrong"] = reservedWrong;
     m["reserved_at"] = reservedAt;
+    m["int128_high"] = int128High;
+    m["int128_low"] = int128Low;
+    m["int128_at_max"] = int128AtMax;
+    m["int128_at_min"] = int128AtMin;
+    m["fixed_high"] = fixedHigh;
+    m["fixed_low"] = fixedLow;
+    m["fixed_at_max"] = fixedAtMax;
+    m["fixed_at_min"] = fixedAtMin;
+    m["ufixed_high"] = ufixedHigh;
+    m["ufixed_low"] = ufixedLow;
+    m["ufixed_at_max"] = ufixedAtMax;
+    m["ufixed_at_min"] = ufixedAtMin;
     return m;
 }
 
@@ -158,7 +183,8 @@ static int runChild( Setter set )
         return 11;
     }
     if ( back.scalar != value.scalar || back.narrow != value.narrow || back.window_count != value.window_count ||
-         back.text_length != value.text_length || back.grade != value.grade || back.shot.type != value.shot.type )
+         back.text_length != value.text_length || back.grade != value.grade || back.shot.type != value.shot.type ||
+         back.wide != value.wide || back.fx != value.fx || back.ufx != value.ufx )
     {
         return 12;
     }
