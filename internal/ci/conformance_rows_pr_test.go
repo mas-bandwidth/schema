@@ -54,8 +54,8 @@ func makeRecipe(db, target string) (string, bool) {
 			if r == "" {
 				break
 			}
-			if strings.HasPrefix(r, "\t") {
-				recipe = append(recipe, strings.TrimPrefix(r, "\t"))
+			if after, ok := strings.CutPrefix(r, "\t"); ok {
+				recipe = append(recipe, after)
 			}
 		}
 		if len(recipe) > 0 {

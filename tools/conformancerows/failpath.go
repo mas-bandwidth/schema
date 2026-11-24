@@ -115,7 +115,7 @@ var (
 	// Elixir's # comments; an interpolation `#{` is code, not a comment.
 	canFailElixir = func(src string) bool {
 		var b strings.Builder
-		for _, l := range strings.Split(src, "\n") {
+		for l := range strings.SplitSeq(src, "\n") {
 			if t := strings.TrimSpace(l); strings.HasPrefix(t, "#") && !strings.HasPrefix(t, "#{") {
 				continue
 			}

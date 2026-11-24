@@ -58,7 +58,7 @@ func resolveMakeFunctionVariables(root string, vars map[string]string) error {
 		return fmt.Errorf("asking make for the value of %s: %w: %s", strings.Join(names, ", "), err, strings.TrimSpace(stderr.String()))
 	}
 	got := map[string]string{}
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		rest, ok := strings.CutPrefix(line, "SLOWGATEVAR ")
 		if !ok {
 			continue

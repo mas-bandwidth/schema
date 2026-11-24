@@ -95,7 +95,7 @@ func TestVerdictIsAnExactSet(t *testing.T) {
 func TestShardsCoverEveryRowOnce(t *testing.T) {
 	rows := []string{"W1", "C3", "F8", "R4", "E6", "P3", "C10"}
 	seen := map[string]int{}
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		for _, r := range shardOf(rows, i, 3) {
 			seen[r]++
 		}

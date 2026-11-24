@@ -2,6 +2,7 @@ package ci
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -193,9 +194,7 @@ func TestConformanceRowsRunNightlyOnEveryLegNegativeControl(t *testing.T) {
 			continue
 		}
 		sab := map[string]string{}
-		for k, v := range wfs {
-			sab[k] = v
-		}
+		maps.Copy(sab, wfs)
 		sab[tc.wf] = tc.text
 		errs := conformanceRowsLaneErrors(sab, legs)
 		if !slices.ContainsFunc(errs, func(e string) bool { return strings.Contains(e, tc.want) }) {

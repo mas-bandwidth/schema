@@ -206,8 +206,7 @@ func runThrough(argv []string) ([]string, int, error) {
 	if echoErr != nil {
 		return nil, 0, fmt.Errorf("copying the gate's output through: %w", echoErr)
 	}
-	var exit *exec.ExitError
-	if errors.As(err, &exit) {
+	if exit, ok := errors.AsType[*exec.ExitError](err); ok {
 		if code := exit.ExitCode(); code > 0 {
 			return printed, code, nil
 		}

@@ -55,11 +55,12 @@ func (c *ctx) runProbe(argv ...string) error {
 // runShell runs a make-supplied command string (a toolchain variable may be
 // a command with its own arguments) followed by quoted arguments.
 func (c *ctx) runShell(row, command string, args ...string) error {
-	line := command
+	var line strings.Builder
+	line.WriteString(command)
 	for _, a := range args {
-		line += " " + strconv.Quote(a)
+		line.WriteString(" " + strconv.Quote(a))
 	}
-	return c.runLogged(row, nil, "sh", "-c", line)
+	return c.runLogged(row, nil, "sh", "-c", line.String())
 }
 
 func tail(s string, n int) string {
@@ -384,11 +385,12 @@ func prepareJava(c *ctx, rows []string) error {
 			defer func() { <-sem }()
 			out := filepath.Join(c.work, "units", u)
 			srcs, _ := filepath.Glob(filepath.Join(genDir, u, "*.java"))
-			line := "rm -rf " + strconv.Quote(out) + " && mkdir -p " + strconv.Quote(out) + " && " + javac + " --release 17 -nowarn -d " + strconv.Quote(out)
+			var line strings.Builder
+			line.WriteString("rm -rf " + strconv.Quote(out) + " && mkdir -p " + strconv.Quote(out) + " && " + javac + " --release 17 -nowarn -d " + strconv.Quote(out))
 			for _, s := range srcs {
-				line += " " + strconv.Quote(s)
+				line.WriteString(" " + strconv.Quote(s))
 			}
-			cmd := exec.Command("sh", "-c", line)
+			cmd := exec.Command("sh", "-c", line.String())
 			cmd.Dir = c.root
 			if b, cerr := cmd.CombinedOutput(); cerr != nil {
 				mu.Lock()
@@ -619,7 +621,7 @@ func (c *ctx) rustPathUnits(rows []string, genDir string, crates map[string]bool
 			if rerr != nil || strings.HasPrefix(rel, "..") || !strings.Contains(rel, string(filepath.Separator)) {
 				continue
 			}
-			dir := strings.SplitN(rel, string(filepath.Separator), 2)[0]
+			dir, _, _ := strings.Cut(rel, string(filepath.Separator))
 			if crates[dir] || done[dir] {
 				continue
 			}

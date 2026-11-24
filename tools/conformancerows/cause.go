@@ -75,7 +75,7 @@ func isBanner(l string) bool {
 // the log equal to one is the compiler or runtime echoing the source.
 func sourceLines(src string) map[string]bool {
 	set := map[string]bool{}
-	for _, l := range strings.Split(src, "\n") {
+	for l := range strings.SplitSeq(src, "\n") {
 		l = strings.TrimSpace(l)
 		if len(l) >= 8 {
 			set[l] = true
