@@ -915,33 +915,34 @@ export function WriteArrTri3Flat(view, value) {
   }
   lo = (((value.itemsCount) & 0xf));
   sb = 4;
-  try {
-    for (let i0 = 0; i0 < value.itemsCount; i0++) {
-      const e0 = value.items[i0];
-      if (!globalThis.Number.isInteger(e0.a) || e0.a < 0 || e0.a > 1) {
-        return -1;
+  {
+    let i0 = 0;
+    try {
+      for (; i0 < value.itemsCount; i0++) {
+        const e0 = value.items[i0];
+        if (!globalThis.Number.isInteger(e0.a) || e0.a < 0 || e0.a > 1) {
+          return -1;
+        }
+        if (!globalThis.Number.isInteger(e0.b) || e0.b < 0 || e0.b > 3) {
+          return -1;
+        }
+        v = ((e0.a & 0x1) | ((e0.b & 0x3) << 1)) >>> 0;
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 3;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (3 - sb);
+        }
       }
-      if (!globalThis.Number.isInteger(e0.b) || e0.b < 0 || e0.b > 3) {
-        return -1;
-      }
-      v = ((e0.a & 0x1) | ((e0.b & 0x3) << 1)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 3;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (3 - sb);
-      }
-    }
-  } catch (thrown) {
-    for (let i0 = 0; i0 < value.itemsCount; i0++) {
+    } catch (thrown) {
       const e0 = value.items[i0];
       if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
         return -1;
       }
+      throw thrown;
     }
-    throw thrown;
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
@@ -1096,33 +1097,34 @@ export function WriteArrElevenFlat(view, value) {
   if (value.items === null || typeof value.items !== "object" || !(value.items.length >= 9)) { // the storage holds every element the loop reads (SPEC §5.1)
     return -1;
   }
-  try {
-    for (let i0 = 0; i0 < 9; i0++) {
-      const e0 = value.items[i0];
-      if (!globalThis.Number.isInteger(e0.a) || e0.a < 0 || e0.a > 7) {
-        return -1;
+  {
+    let i0 = 0;
+    try {
+      for (; i0 < 9; i0++) {
+        const e0 = value.items[i0];
+        if (!globalThis.Number.isInteger(e0.a) || e0.a < 0 || e0.a > 7) {
+          return -1;
+        }
+        if (!globalThis.Number.isInteger(e0.b) || e0.b < 0 || e0.b > 255) {
+          return -1;
+        }
+        v = ((e0.a & 0x7) | ((e0.b & 0xff) << 3)) >>> 0;
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 11;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (11 - sb);
+        }
       }
-      if (!globalThis.Number.isInteger(e0.b) || e0.b < 0 || e0.b > 255) {
-        return -1;
-      }
-      v = ((e0.a & 0x7) | ((e0.b & 0xff) << 3)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 11;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (11 - sb);
-      }
-    }
-  } catch (thrown) {
-    for (let i0 = 0; i0 < 9; i0++) {
+    } catch (thrown) {
       const e0 = value.items[i0];
       if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
         return -1;
       }
+      throw thrown;
     }
-    throw thrown;
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
@@ -1811,33 +1813,34 @@ export function WriteArrNestedFlat(view, value) {
   }
   lo = ((value.lead & 0x1f) | (((value.itemsCount) & 0x7) << 5));
   sb = 8;
-  try {
-    for (let i0 = 0; i0 < value.itemsCount; i0++) {
-      const e0 = value.items[i0];
-      if (!globalThis.Number.isInteger(e0.a) || e0.a < 0 || e0.a > 7) {
-        return -1;
+  {
+    let i0 = 0;
+    try {
+      for (; i0 < value.itemsCount; i0++) {
+        const e0 = value.items[i0];
+        if (!globalThis.Number.isInteger(e0.a) || e0.a < 0 || e0.a > 7) {
+          return -1;
+        }
+        if (!globalThis.Number.isInteger(e0.b) || e0.b < 0 || e0.b > 255) {
+          return -1;
+        }
+        v = ((e0.a & 0x7) | ((e0.b & 0xff) << 3)) >>> 0;
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 11;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (11 - sb);
+        }
       }
-      if (!globalThis.Number.isInteger(e0.b) || e0.b < 0 || e0.b > 255) {
-        return -1;
-      }
-      v = ((e0.a & 0x7) | ((e0.b & 0xff) << 3)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 11;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (11 - sb);
-      }
-    }
-  } catch (thrown) {
-    for (let i0 = 0; i0 < value.itemsCount; i0++) {
+    } catch (thrown) {
       const e0 = value.items[i0];
       if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
         return -1;
       }
+      throw thrown;
     }
-    throw thrown;
   }
   if (!globalThis.Number.isInteger(value.tail) || value.tail < 0 || value.tail > 7) {
     return -1;

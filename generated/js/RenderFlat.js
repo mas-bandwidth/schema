@@ -151,79 +151,80 @@ export function WriteRenderBlockFlat(view, value) {
   lo = (((value.spritesCount) & 0x7f));
   wi = 8;
   sb = 7;
-  try {
-    for (let i0 = 0; i0 < value.spritesCount; i0++) {
-      const e0 = value.sprites[i0];
-      if (typeof e0.sortKey !== "bigint" || e0.sortKey < 0n || e0.sortKey > 18446744073709551615n) { // a bare integer must fit its width
-        return -1;
+  {
+    let i0 = 0;
+    try {
+      for (; i0 < value.spritesCount; i0++) {
+        const e0 = value.sprites[i0];
+        if (typeof e0.sortKey !== "bigint" || e0.sortKey < 0n || e0.sortKey > 18446744073709551615n) { // a bare integer must fit its width
+          return -1;
+        }
+        SC.setBigUint64(0, e0.sortKey, true);
+        v = SC.getUint32(0, true);
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 32;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (32 - sb);
+        }
+        v = SC.getUint32(4, true);
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 32;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (32 - sb);
+        }
+        if (!globalThis.Number.isInteger(e0.meshId) || e0.meshId < 0 || e0.meshId > 4294967295) { // a bare integer must fit its width
+          return -1;
+        }
+        if (!globalThis.Number.isInteger(e0.materialId) || e0.materialId < 0 || e0.materialId > 4294967295) { // a bare integer must fit its width
+          return -1;
+        }
+        v = (((e0.meshId) >>> 0)) >>> 0;
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 32;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (32 - sb);
+        }
+        if (!globalThis.Number.isInteger(e0.layer) || e0.layer < 0 || e0.layer > 255) { // a bare integer must fit its width
+          return -1;
+        }
+        v = (((e0.materialId) >>> 0)) >>> 0;
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 32;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (32 - sb);
+        }
+        if (!globalThis.Number.isInteger(e0.team) || e0.team < 0 || e0.team > 2) { // headroom above the wire range cannot ride
+          return -1;
+        }
+        v = (((e0.layer) & 0xff) | ((e0.team & 0x3) << 8)) >>> 0;
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 10;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (10 - sb);
+        }
       }
-      SC.setBigUint64(0, e0.sortKey, true);
-      v = SC.getUint32(0, true);
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 32;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (32 - sb);
-      }
-      v = SC.getUint32(4, true);
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 32;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (32 - sb);
-      }
-      if (!globalThis.Number.isInteger(e0.meshId) || e0.meshId < 0 || e0.meshId > 4294967295) { // a bare integer must fit its width
-        return -1;
-      }
-      if (!globalThis.Number.isInteger(e0.materialId) || e0.materialId < 0 || e0.materialId > 4294967295) { // a bare integer must fit its width
-        return -1;
-      }
-      v = (((e0.meshId) >>> 0)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 32;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (32 - sb);
-      }
-      if (!globalThis.Number.isInteger(e0.layer) || e0.layer < 0 || e0.layer > 255) { // a bare integer must fit its width
-        return -1;
-      }
-      v = (((e0.materialId) >>> 0)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 32;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (32 - sb);
-      }
-      if (!globalThis.Number.isInteger(e0.team) || e0.team < 0 || e0.team > 2) { // headroom above the wire range cannot ride
-        return -1;
-      }
-      v = (((e0.layer) & 0xff) | ((e0.team & 0x3) << 8)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 10;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (10 - sb);
-      }
-    }
-  } catch (thrown) {
-    for (let i0 = 0; i0 < value.spritesCount; i0++) {
+    } catch (thrown) {
       const e0 = value.sprites[i0];
       if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
         return -1;
       }
+      throw thrown;
     }
-    throw thrown;
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);

@@ -36,6 +36,12 @@ type Len
 
 flags Wide | max = 40 { W }
 
+// Outer nests an element loop inside an element loop.
+type Outer
+{
+    inner [..2]Arm
+}
+
 union Pick
 {
     arm Arm
@@ -58,12 +64,16 @@ type ShapeProbe
     d    float64
     c    float32 | min = -10, max = 10, resolution = 0.5
     ls   [..2]Len
+    os   [..2]Outer
 }
 `
 
 // writeShapeScript writes one valid ShapeProbe through both tiers, then one
 // per value of the wrong shape, and prints "<tier> <label>=<verdict>": refused
-// (false, or -1 from the flat tier), accepted, or threw.
+// (false, or -1 from the flat tier), accepted, or threw. A row labelled
+// rethrow_<Name>_... holds an object element whose own getter or Proxy trap
+// throws <Name>: the writer must let that error through, never answer -1,
+// even when another element is not an object.
 const writeShapeScript = `import * as S from "@mas-bandwidth/serialize";
 import * as M from "./ShapeProbe.js";
 import * as F from "./ShapeProbeFlat.js";
@@ -128,6 +138,13 @@ row("array_union_elem_undefined", (v) => { v.usCount = 1; v.us[0] = undefined; }
 row("array_union_elem_number", (v) => { v.usCount = 1; v.us[0] = 7; });
 row("len_elem_string", (v) => { v.lsCount = 1; v.ls[0] = "abcd"; });
 row("len_elem_function", (v) => { v.lsCount = 1; v.ls[0] = function (a) { return a; }; });
+const boom = () => { const o = new M.Arm(); Object.defineProperty(o, "n", { get() { throw new Error("boom"); } }); return o; };
+const trap = () => new Proxy(new M.Arm(), { get() { throw new RangeError("trap"); } });
+row("rethrow_Error_getter_then_number", (v) => { v.xsCount = 2; v.xs[0] = boom(); v.xs[1] = 7; });
+row("rethrow_Error_getter_then_null", (v) => { v.xsCount = 2; v.xs[0] = boom(); v.xs[1] = null; });
+row("rethrow_RangeError_proxy_then_null", (v) => { v.xsCount = 2; v.xs[0] = trap(); v.xs[1] = null; });
+row("rethrow_Error_union_tag_getter_then_null", (v) => { v.usCount = 2; const u = new M.Pick(); Object.defineProperty(u, "type", { get() { throw new Error("boom"); } }); v.us[0] = u; v.us[1] = null; });
+row("rethrow_Error_inner_getter_then_outer_null", (v) => { v.osCount = 2; const o = new M.Outer(); o.innerCount = 1; o.inner[0] = boom(); v.os[0] = o; v.os[1] = null; });
 {
   const [r, f] = verdicts(null);
   console.log("runtime value_is_null=" + r);
@@ -200,12 +217,16 @@ func TestJsWriteRefusesEveryValueShape(t *testing.T) {
 				if strings.HasSuffix(k, " valid") {
 					want = "accepted"
 				}
+				if _, label, _ := strings.Cut(k, " "); strings.HasPrefix(label, "rethrow_") {
+					name, _, _ := strings.Cut(strings.TrimPrefix(label, "rethrow_"), "_")
+					want = "threw " + name
+				}
 				if v != want {
 					t.Errorf("%s %s: %q, want %s", mode, k, v, want)
 				}
 			}
-			if len(lines) != 76 {
-				t.Fatalf("%s: the probe printed %d lines, want 76:\n%s", mode, len(lines), b)
+			if len(lines) != 86 {
+				t.Fatalf("%s: the probe printed %d lines, want 86:\n%s", mode, len(lines), b)
 			}
 		})
 	}

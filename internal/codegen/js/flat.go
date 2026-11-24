@@ -941,12 +941,17 @@ func (g *fgen) emitWriteField(f *ir.Field, path, ind string) {
 // read (elemShapeFolds) carries no object guard inside the loop: an explicit
 // test there, even a bare `=== undefined`, costs a short element loop several
 // percent of the whole write (#4936), while the first read's own map check is
-// already paid. The loop runs inside try instead. A null or undefined element
-// throws at that first read, and the catch refuses it by name: it walks the
-// elements with the full object check and returns -1. Anything else thrown
-// (a view too small for the write, say) is rethrown unchanged. A non-null
-// value that is not an object never throws here: its first read answers
-// undefined or an inherited method, and that field's own guard refuses it.
+// already paid. The loop runs inside try instead, its index declared before
+// the try. A null or undefined element throws at that first read, and the
+// catch refuses it by name: it applies the full object check to the element
+// that threw, the one at the loop index, and returns -1. Anything else
+// thrown is rethrown unchanged: a view too small for the write, or an
+// object element's own getter or Proxy trap, even when a later element is
+// not an object (#4936). A nested loop's catch sees its own index; when it
+// rethrows, the outer element holding it is an object, so the outer catch
+// rethrows too. A non-null value that is not an object never throws here:
+// its first read answers undefined or an inherited method, and that field's
+// own guard refuses it.
 func (g *fgen) emitWriteElemLoop(f *ir.Field, name, count, ind string) {
 	iv := fmt.Sprintf("i%d", g.loopDepth)
 	ev := fmt.Sprintf("e%d", g.loopDepth)
@@ -954,21 +959,29 @@ func (g *fgen) emitWriteElemLoop(f *ir.Field, name, count, ind string) {
 	g.wDynamic(ind)
 	folded := elemShapeFolds(f)
 	li := ind
+	bi := ind
 	if folded {
-		g.pf("%stry {\n", ind)
-		li = ind + "  "
+		// the index lives outside try, so the catch sees the element that
+		// threw; the block scopes it, so sibling loops at one depth each
+		// declare their own
+		g.pf("%s{\n", ind)
+		bi = ind + "  "
+		g.pf("%slet %s = 0;\n", bi, iv)
+		g.pf("%stry {\n", bi)
+		li = bi + "  "
+		g.pf("%sfor (; %s < %s; %s++) {\n", li, iv, count, iv)
+	} else {
+		g.pf("%sfor (let %s = 0; %s < %s; %s++) {\n", li, iv, iv, count, iv)
 	}
-	g.pf("%sfor (let %s = 0; %s < %s; %s++) {\n", li, iv, iv, count, iv)
 	g.emitWriteElem(f, name, iv, li+"  ", folded)
 	g.chunkFlush(li + "  ")
 	g.pf("%s}\n", li)
 	if folded {
-		g.pf("%s} catch (thrown) {\n", ind)
-		g.pf("%s  for (let %s = 0; %s < %s; %s++) {\n", ind, iv, iv, count, iv)
-		g.pf("%s    const %s = %s[%s];\n", ind, ev, name, iv)
-		g.guard(fmt.Sprintf("%s === null || typeof %s !== \"object\"", ev, ev), " // a record or union value is an object (SPEC §5.1)", ind+"    ")
-		g.pf("%s  }\n", ind)
-		g.pf("%s  throw thrown;\n", ind)
+		g.pf("%s} catch (thrown) {\n", bi)
+		g.pf("%s  const %s = %s[%s];\n", bi, ev, name, iv)
+		g.guard(fmt.Sprintf("%s === null || typeof %s !== \"object\"", ev, ev), " // a record or union value is an object (SPEC §5.1)", bi+"  ")
+		g.pf("%s  throw thrown;\n", bi)
+		g.pf("%s}\n", bi)
 		g.pf("%s}\n", ind)
 	}
 	g.loopDepth--

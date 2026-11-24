@@ -1069,71 +1069,72 @@ export function WriteProbeColliderFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (2 - sb);
   }
-  try {
-    for (let i0 = 0; i0 < value.extrasCount; i0++) {
-      const e0 = value.extras[i0];
-      if (!globalThis.Number.isInteger(e0.type) || e0.type < 0 || e0.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
-        return -1;
-      }
-      v = ((e0.type & 0x3)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 2;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (2 - sb);
-      }
-      switch (e0.type) {
-        case 1: {
-          if (e0.ring === null || typeof e0.ring !== "object") { // a record or union value is an object (SPEC §5.1)
-            return -1;
-          }
-          if (!globalThis.Number.isInteger(e0.ring.radius) || e0.ring.radius < 0 || e0.ring.radius > 65535) { // a bare integer must fit its width
-            return -1;
-          }
-          v = (((e0.ring.radius) & 0xffff)) >>> 0;
-          lo = (lo | (v << sb)) >>> 0;
-          sb += 16;
-          if (sb >= 32) {
-            view.setUint32(wi, lo, true);
-            wi += 4;
-            sb -= 32;
-            lo = sb === 0 ? 0 : v >>> (16 - sb);
-          }
-          break;
+  {
+    let i0 = 0;
+    try {
+      for (; i0 < value.extrasCount; i0++) {
+        const e0 = value.extras[i0];
+        if (!globalThis.Number.isInteger(e0.type) || e0.type < 0 || e0.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
+          return -1;
         }
-        case 2: {
-          if (e0.slab === null || typeof e0.slab !== "object") { // a record or union value is an object (SPEC §5.1)
-            return -1;
+        v = ((e0.type & 0x3)) >>> 0;
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 2;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (2 - sb);
+        }
+        switch (e0.type) {
+          case 1: {
+            if (e0.ring === null || typeof e0.ring !== "object") { // a record or union value is an object (SPEC §5.1)
+              return -1;
+            }
+            if (!globalThis.Number.isInteger(e0.ring.radius) || e0.ring.radius < 0 || e0.ring.radius > 65535) { // a bare integer must fit its width
+              return -1;
+            }
+            v = (((e0.ring.radius) & 0xffff)) >>> 0;
+            lo = (lo | (v << sb)) >>> 0;
+            sb += 16;
+            if (sb >= 32) {
+              view.setUint32(wi, lo, true);
+              wi += 4;
+              sb -= 32;
+              lo = sb === 0 ? 0 : v >>> (16 - sb);
+            }
+            break;
           }
-          if (!globalThis.Number.isInteger(e0.slab.width) || e0.slab.width < 0 || e0.slab.width > 100) {
-            return -1;
+          case 2: {
+            if (e0.slab === null || typeof e0.slab !== "object") { // a record or union value is an object (SPEC §5.1)
+              return -1;
+            }
+            if (!globalThis.Number.isInteger(e0.slab.width) || e0.slab.width < 0 || e0.slab.width > 100) {
+              return -1;
+            }
+            if (!globalThis.Number.isInteger(e0.slab.height) || e0.slab.height < 0 || e0.slab.height > 255) { // a bare integer must fit its width
+              return -1;
+            }
+            v = (((e0.slab.width) & 0x7f) | (((e0.slab.height) & 0xff) << 7)) >>> 0;
+            lo = (lo | (v << sb)) >>> 0;
+            sb += 15;
+            if (sb >= 32) {
+              view.setUint32(wi, lo, true);
+              wi += 4;
+              sb -= 32;
+              lo = sb === 0 ? 0 : v >>> (15 - sb);
+            }
+            break;
           }
-          if (!globalThis.Number.isInteger(e0.slab.height) || e0.slab.height < 0 || e0.slab.height > 255) { // a bare integer must fit its width
-            return -1;
-          }
-          v = (((e0.slab.width) & 0x7f) | (((e0.slab.height) & 0xff) << 7)) >>> 0;
-          lo = (lo | (v << sb)) >>> 0;
-          sb += 15;
-          if (sb >= 32) {
-            view.setUint32(wi, lo, true);
-            wi += 4;
-            sb -= 32;
-            lo = sb === 0 ? 0 : v >>> (15 - sb);
-          }
-          break;
         }
       }
-    }
-  } catch (thrown) {
-    for (let i0 = 0; i0 < value.extrasCount; i0++) {
+    } catch (thrown) {
       const e0 = value.extras[i0];
       if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
         return -1;
       }
+      throw thrown;
     }
-    throw thrown;
   }
   if (sb !== 0) {
     view.setUint32(wi, lo, true);
@@ -1589,98 +1590,143 @@ export function WriteProbeArrayFlat(view, value) {
   if (value.samples === null || typeof value.samples !== "object" || !(value.samples.length >= 2)) { // the storage holds every element the loop reads (SPEC §5.1)
     return -1;
   }
-  try {
-    for (let i0 = 0; i0 < 2; i0++) {
-      const e0 = value.samples[i0];
-      if (typeof e0.active !== "boolean") { // a bool is a boolean (SPEC §5.1)
-        return -1;
-      }
-      v = ((e0.active ? 1 : 0)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 1;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (1 - sb);
-      }
-      if (typeof e0.orientation !== "number") { // a float is a Number
-        return -1;
-      }
-      x = globalThis.Math.fround(e0.orientation);
-      if (!globalThis.Number.isFinite(x)) {
-        return -1;
-      }
-      if (x < -180.0 || x > 180.0) {
-        return -1;
-      }
-      n = globalThis.Math.fround(globalThis.Math.fround(x - -180.0) / 360.0);
-      if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
-      v = globalThis.Math.floor(globalThis.Math.fround(globalThis.Math.fround(n * 36000.0) + 0.5));
-      if (v > 36000) { v = 36000; }
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 16;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (16 - sb);
-      }
-      if (!globalThis.Number.isInteger(e0.rawDelta) || e0.rawDelta < -2147483648 || e0.rawDelta > 2147483647) { // a bare integer must fit its width
-        return -1;
-      }
-      if (typeof e0.bigDelta !== "bigint" || e0.bigDelta < -9223372036854775808n || e0.bigDelta > 9223372036854775807n) { // a bare integer must fit its width
-        return -1;
-      }
-      v = (((e0.rawDelta >>> 0) >>> 0)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 32;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (32 - sb);
-      }
-      SC.setBigUint64(0, e0.bigDelta, true);
-      v = SC.getUint32(0, true);
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 32;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (32 - sb);
-      }
-      v = SC.getUint32(4, true);
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 32;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (32 - sb);
-      }
-      if (e0.active) {
-        if (!globalThis.Number.isInteger(e0.weapon) || e0.weapon < 0 || e0.weapon > 15) { // headroom above the wire range cannot ride
+  {
+    let i0 = 0;
+    try {
+      for (; i0 < 2; i0++) {
+        const e0 = value.samples[i0];
+        if (typeof e0.active !== "boolean") { // a bool is a boolean (SPEC §5.1)
           return -1;
         }
-        if (typeof e0.hasTarget !== "boolean") { // a bool is a boolean (SPEC §5.1)
-          return -1;
-        }
-        v = ((e0.weapon & 0xf) | ((e0.hasTarget ? 1 : 0) << 4)) >>> 0;
+        v = ((e0.active ? 1 : 0)) >>> 0;
         lo = (lo | (v << sb)) >>> 0;
-        sb += 5;
+        sb += 1;
         if (sb >= 32) {
           view.setUint32(wi, lo, true);
           wi += 4;
           sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (5 - sb);
+          lo = sb === 0 ? 0 : v >>> (1 - sb);
         }
-        if (e0.hasTarget) {
-          if (!globalThis.Number.isInteger(e0.targetId) || e0.targetId < 0 || e0.targetId > 65535) { // a bare integer must fit its width
+        if (typeof e0.orientation !== "number") { // a float is a Number
+          return -1;
+        }
+        x = globalThis.Math.fround(e0.orientation);
+        if (!globalThis.Number.isFinite(x)) {
+          return -1;
+        }
+        if (x < -180.0 || x > 180.0) {
+          return -1;
+        }
+        n = globalThis.Math.fround(globalThis.Math.fround(x - -180.0) / 360.0);
+        if (!(n >= 0.0)) { n = 0.0; } else if (!(n <= 1.0)) { n = 1.0; }
+        v = globalThis.Math.floor(globalThis.Math.fround(globalThis.Math.fround(n * 36000.0) + 0.5));
+        if (v > 36000) { v = 36000; }
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 16;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (16 - sb);
+        }
+        if (!globalThis.Number.isInteger(e0.rawDelta) || e0.rawDelta < -2147483648 || e0.rawDelta > 2147483647) { // a bare integer must fit its width
+          return -1;
+        }
+        if (typeof e0.bigDelta !== "bigint" || e0.bigDelta < -9223372036854775808n || e0.bigDelta > 9223372036854775807n) { // a bare integer must fit its width
+          return -1;
+        }
+        v = (((e0.rawDelta >>> 0) >>> 0)) >>> 0;
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 32;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (32 - sb);
+        }
+        SC.setBigUint64(0, e0.bigDelta, true);
+        v = SC.getUint32(0, true);
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 32;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (32 - sb);
+        }
+        v = SC.getUint32(4, true);
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 32;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (32 - sb);
+        }
+        if (e0.active) {
+          if (!globalThis.Number.isInteger(e0.weapon) || e0.weapon < 0 || e0.weapon > 15) { // headroom above the wire range cannot ride
             return -1;
           }
-          v = (((e0.targetId) & 0xffff)) >>> 0;
+          if (typeof e0.hasTarget !== "boolean") { // a bool is a boolean (SPEC §5.1)
+            return -1;
+          }
+          v = ((e0.weapon & 0xf) | ((e0.hasTarget ? 1 : 0) << 4)) >>> 0;
+          lo = (lo | (v << sb)) >>> 0;
+          sb += 5;
+          if (sb >= 32) {
+            view.setUint32(wi, lo, true);
+            wi += 4;
+            sb -= 32;
+            lo = sb === 0 ? 0 : v >>> (5 - sb);
+          }
+          if (e0.hasTarget) {
+            if (!globalThis.Number.isInteger(e0.targetId) || e0.targetId < 0 || e0.targetId > 65535) { // a bare integer must fit its width
+              return -1;
+            }
+            v = (((e0.targetId) & 0xffff)) >>> 0;
+            lo = (lo | (v << sb)) >>> 0;
+            sb += 16;
+            if (sb >= 32) {
+              view.setUint32(wi, lo, true);
+              wi += 4;
+              sb -= 32;
+              lo = sb === 0 ? 0 : v >>> (16 - sb);
+            }
+          }
+        } else {
+          if (!globalThis.Number.isInteger(e0.idleTicks) || e0.idleTicks < 0 || e0.idleTicks > 4294967295) { // a bare integer must fit its width
+            return -1;
+          }
+          v = (((e0.idleTicks) >>> 0)) >>> 0;
+          lo = (lo | (v << sb)) >>> 0;
+          sb += 32;
+          if (sb >= 32) {
+            view.setUint32(wi, lo, true);
+            wi += 4;
+            sb -= 32;
+            lo = sb === 0 ? 0 : v >>> (32 - sb);
+          }
+        }
+        if (!globalThis.Number.isInteger(e0.samplesCount) || e0.samplesCount < 1 || e0.samplesCount > 8) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+          return -1;
+        }
+        if (e0.samples === null || typeof e0.samples !== "object" || !(e0.samples.length >= e0.samplesCount)) { // the storage holds every element the loop reads (SPEC §5.1)
+          return -1;
+        }
+        v = (((((e0.samplesCount >>> 0) - 1) >>> 0) & 0x7)) >>> 0;
+        lo = (lo | (v << sb)) >>> 0;
+        sb += 3;
+        if (sb >= 32) {
+          view.setUint32(wi, lo, true);
+          wi += 4;
+          sb -= 32;
+          lo = sb === 0 ? 0 : v >>> (3 - sb);
+        }
+        for (let i1 = 0; i1 < e0.samplesCount; i1++) {
+          if (!globalThis.Number.isInteger(e0.samples[i1]) || e0.samples[i1] < 0 || e0.samples[i1] > 65535) { // a bare integer must fit its width
+            return -1;
+          }
+          v = (((e0.samples[i1]) & 0xffff)) >>> 0;
           lo = (lo | (v << sb)) >>> 0;
           sb += 16;
           if (sb >= 32) {
@@ -1690,58 +1736,14 @@ export function WriteProbeArrayFlat(view, value) {
             lo = sb === 0 ? 0 : v >>> (16 - sb);
           }
         }
-      } else {
-        if (!globalThis.Number.isInteger(e0.idleTicks) || e0.idleTicks < 0 || e0.idleTicks > 4294967295) { // a bare integer must fit its width
-          return -1;
-        }
-        v = (((e0.idleTicks) >>> 0)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 32;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (32 - sb);
-        }
       }
-      if (!globalThis.Number.isInteger(e0.samplesCount) || e0.samplesCount < 1 || e0.samplesCount > 8) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
-        return -1;
-      }
-      if (e0.samples === null || typeof e0.samples !== "object" || !(e0.samples.length >= e0.samplesCount)) { // the storage holds every element the loop reads (SPEC §5.1)
-        return -1;
-      }
-      v = (((((e0.samplesCount >>> 0) - 1) >>> 0) & 0x7)) >>> 0;
-      lo = (lo | (v << sb)) >>> 0;
-      sb += 3;
-      if (sb >= 32) {
-        view.setUint32(wi, lo, true);
-        wi += 4;
-        sb -= 32;
-        lo = sb === 0 ? 0 : v >>> (3 - sb);
-      }
-      for (let i1 = 0; i1 < e0.samplesCount; i1++) {
-        if (!globalThis.Number.isInteger(e0.samples[i1]) || e0.samples[i1] < 0 || e0.samples[i1] > 65535) { // a bare integer must fit its width
-          return -1;
-        }
-        v = (((e0.samples[i1]) & 0xffff)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 16;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (16 - sb);
-        }
-      }
-    }
-  } catch (thrown) {
-    for (let i0 = 0; i0 < 2; i0++) {
+    } catch (thrown) {
       const e0 = value.samples[i0];
       if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
         return -1;
       }
+      throw thrown;
     }
-    throw thrown;
   }
   if (value.config === null || typeof value.config !== "object") { // a record or union value is an object (SPEC §5.1)
     return -1;
