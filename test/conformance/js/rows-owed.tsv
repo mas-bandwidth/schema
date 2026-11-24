@@ -4,7 +4,6 @@
 # Measured at main 0fd0920029 on vision, 2026-11-24. "does not build" is a row
 # written against an older generated API; "fails" is a row that runs and is red.
 E6	owed: fails: placeholder that checks nothing: the row prints "PASS: E6 skeleton loaded" and exits 0 with no failure path (no non-zero exit, throw or assert), so the runner holds it red
-R16	owed: fails: FAIL: count negative: clamped >= 1 (u32 > bound 4)
 R25	owed: fails: TypeError: Cannot read properties of undefined (reading 'fill')
 W13	owed: fails: FAIL FixedTableFixedHashLo: got 614323680, expected 2124077328
 W14	owed: fails: FAIL the generated tree carries the fixed tables (0 table modules)
