@@ -130,7 +130,8 @@ defmodule AllocAudit do
     "scalars" => "scalardemo",
     "tblscalars2" => "scalardemo2",
     "widelist" => "widelistdemo",
-    "tblsurf" => "surfaces"
+    "tblsurf" => "surfaces",
+    "packetunions" => "tblpacketunions"
   }
 
   defp table_module(unit) do

@@ -58,7 +58,7 @@ func refuseValueDefaults(u *ir.Unit, target string) error {
 			packetNames = append(packetNames, name)
 		}
 	}
-	if len(form1Names) > 0 && !slices.Contains(valueDefaultTargets, target) && (target != "python" || !pythonScalarValueDefaults(u, form1Names)) {
+	if len(form1Names) > 0 && !slices.Contains(valueDefaultTargets, target) {
 		// Rust has no form-1 table wire, but form 3's prefill image IS the
 		// declared defaults — string and bytes included. A unit whose every
 		// table is a fixed root therefore carries them. A variable table in
@@ -77,32 +77,6 @@ func refuseValueDefaults(u *ir.Unit, target string) error {
 	carry, flags := carriers(packetValueDefaultTargets)
 	return fmt.Errorf("unit declares a string, bytes or flags default (%s): packet-wire defaults are %s only today, and the %s form is a named follow-on; generate with %s, or drop the default (SPEC §4.2)",
 		englishList(packetNames), englishList(carry), target, englishList(flags))
-}
-
-// Python carries these defaults on scalar table fields. Container and
-// optional shapes remain gated until their complete default semantics land.
-func pythonScalarValueDefaults(u *ir.Unit, names []string) bool {
-	for _, name := range names {
-		owner, field, ok := strings.Cut(name, ".")
-		if !ok {
-			return false
-		}
-		st := ir.ClosureMember(u, owner)
-		if st == nil {
-			return false
-		}
-		found := false
-		for _, f := range st.Fields {
-			if f.Name == field {
-				found = f.Array == ir.ArrayNone && f.KeyEnum == "" && !f.Type.Optional && !f.Type.Pointer && !f.IsMap()
-				break
-			}
-		}
-		if !found {
-			return false
-		}
-	}
-	return true
 }
 
 // form1TableClosure is [ir.TableClosure] reached from tables the FIXED FORM
