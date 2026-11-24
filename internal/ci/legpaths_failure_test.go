@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
 // fastSelectorScript returns ci-fast.yml plan's selector, from its
@@ -85,12 +87,15 @@ func legpathsFailsEnv(t *testing.T) []string {
 func TestALegpathsFailureFailsTheSelector(t *testing.T) {
 	t.Parallel()
 	const call = `derived_legs=$(go run ./tools/legpaths -changed - <<<"$files")`
-	for _, sel := range []struct{ name, script string }{
-		{"ci-fast.yml plan", fastSelectorScript(t)},
-		{"ci-full.yml pr-select", prSelectScript(t)},
+	for _, sel := range []struct{ name, workflow, script string }{
+		{"ci-fast.yml plan", ".github/workflows/ci-fast.yml", fastSelectorScript(t)},
+		{"ci-full.yml pr-select", ".github/workflows/ci-full.yml", prSelectScript(t)},
 	} {
 		t.Run(sel.name, func(t *testing.T) {
 			t.Parallel()
+			// The child runs the workflow's own selector script; the stub
+			// stops go run ./tools/legpaths before it compiles anything.
+			testinputs.Files(t, sel.workflow)
 			env := legpathsFailsEnv(t)
 			run := func(script string) ([]byte, error) {
 				cmd := exec.Command("bash", "-e", "-o", "pipefail", "-c", script)
