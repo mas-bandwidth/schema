@@ -837,6 +837,25 @@ local function lawfulTable(d: any, w: Node, r: Node, u: Unlawful)
 	end
 end
 
+-- childrenNamed is Go's tableFixedChildrenNamed: every writer child (a field,
+-- a union arm, an enum variant, a keyed array's key) is named, by id, by a
+-- reader child. Deprecation retains the slot and its name; a removal leaves
+-- the writer naming what the reader does not (§5.1, §5.2, §5.8 rule 6).
+local function childrenNamed(w: Node, r: Node): boolean
+	for _, wc in w.children do
+		if childIndexById(r.children, wc.id) == 0 then return false end
+	end
+	return true
+end
+
+-- slotsOf is a fixed array's element count past its head: the count word of a
+-- counted array and the length word of a bytes(N) are no slot.
+local function slotsOf(n: Node, head: number): number
+	local e = n.children[1]
+	if e == nil or e.size == 0 then return 0 end
+	return math.floor((n.size - head) / e.size)
+end
+
 lawfulPair = function(f: any, w: Node, r: Node, u: Unlawful)
 	if w.kind ~= r.kind then
 		if not ladder(w.kind, r.kind) then
@@ -848,10 +867,40 @@ lawfulPair = function(f: any, w: Node, r: Node, u: Unlawful)
 	if k == 13 then
 		lawfulTable(S.lookup(f.t), w, r, u)
 	elseif k == 14 then
+		-- A SHRUNK ARRAY IS UNLAWFUL (Go's theirN > myN): a fixed [N], a
+		-- counted [..N] and a bytes(N) alike; the writer's slots past the
+		-- reader's are never dropped and read on
+		local head = if f.s == "bytes" or f.array == "counted" then COUNT else 0
+		if w.size < head or r.size < head then
+			u.name = "layout_malformed"
+			return
+		end
+		if slotsOf(w, head) > slotsOf(r, head) then
+			u.name = "layout_malformed"
+			return
+		end
 		if f.s ~= "bytes" then lawfulPair(f.e, w.children[1], r.children[1], u) end
 	elseif k == 16 then
-		lawfulPair(f.e, w.children[2], r.children[2], u)
+		-- A REMOVED KEY, or more writer slots than reader slots, is unlawful
+		local wkey, we = w.children[1], w.children[2]
+		local rkey, re = r.children[1], r.children[2]
+		if not childrenNamed(wkey, rkey) then
+			u.name = "layout_malformed"
+			return
+		end
+		local theirs = if we.size > 0 then math.floor(w.size / we.size) else 0
+		local mine = if re.size > 0 then math.floor(r.size / re.size) else 0
+		if theirs > mine then
+			u.name = "layout_malformed"
+			return
+		end
+		lawfulPair(f.e, we, re, u)
 	elseif k == 15 then
+		-- A REMOVED ARM is unlawful: the writer's tag could take it
+		if not childrenNamed(w, r) then
+			u.name = "layout_malformed"
+			return
+		end
 		local d = S.lookup(f.t)
 		for i, rarm in r.children do
 			local j = childIndexById(w.children, rarm.id)
@@ -860,7 +909,14 @@ lawfulPair = function(f: any, w: Node, r: Node, u: Unlawful)
 				lawfulPair(arm, w.children[j], rarm, u)
 			end
 		end
-	elseif k ~= 12 and k ~= 30 and w.size ~= r.size then
+	elseif k == 30 then
+		-- A REMOVED VARIANT is unlawful, on the grown-width widen and on the
+		-- same-width remap alike
+		if not childrenNamed(w, r) then u.name = "layout_malformed" end
+	elseif k == 12 then
+		-- NARROWED TEXT is unlawful (Go's te.Size > me.Size)
+		if w.size > r.size then u.name = "layout_malformed" end
+	elseif w.size ~= r.size then
 		-- a same-kind leaf grown within eight bytes is a ZERO widen; any other
 		-- width moved is a narrowed span
 		if not (w.size < r.size and r.size <= 8) then u.name = "layout_malformed" end

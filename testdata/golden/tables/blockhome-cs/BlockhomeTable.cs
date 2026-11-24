@@ -7203,6 +7203,32 @@ namespace Blockhome
             // §5.8 row 11 is that census, retired). The rule holds in every slot —
             // root, nested table, every element of an array of tables — because every
             // table is matched here.
+            // EVERY CHILD OF THE WRITER'S ENTRY ti IS NAMED BY A CHILD OF MY ENTRY mi
+            // (§5.1, §5.2 MATCH): a table's fields, a union's arms, an enum's
+            // variants, a keyed array's keys. A lawful older writer names only what
+            // this reader retains; deprecation keeps the slot and its name, so one
+            // the reader names nowhere was REMOVED and the entry is UNLAWFUL.
+            private static bool ChildrenNamed(TableFixedLayoutView theirs, int ti, TableFixedLayoutView mine, int mi)
+            {
+                TableFixedLayoutEntry te = EntryAt(theirs, ti);
+                TableFixedLayoutEntry me = EntryAt(mine, mi);
+                int tc_at = ti + 1;
+                for (uint j = 0; j < te.Children; ++j)
+                {
+                    ulong id = EntryAt(theirs, tc_at).Id;
+                    bool named = false;
+                    int mc_at = mi + 1;
+                    for (uint k = 0; k < me.Children; ++k)
+                    {
+                        if (EntryAt(mine, mc_at).Id == id) { named = true; break; }
+                        mc_at += Subtree(mine, mc_at);
+                    }
+                    if (!named) { return false; }
+                    tc_at += Subtree(theirs, tc_at);
+                }
+                return true;
+            }
+
             private static void MatchChildren(
                 ref Compiler c,
                 TableFixedLayoutView theirs, int ti, uint their_at,
@@ -7211,23 +7237,10 @@ namespace Blockhome
             {
                 TableFixedLayoutEntry te = EntryAt(theirs, ti);
                 TableFixedLayoutEntry me = EntryAt(mine, mi);
-                int tc_at = ti + 1;
-                for (uint j = 0; j < te.Children; ++j)
+                if (!ChildrenNamed(theirs, ti, mine, mi))
                 {
-                    TableFixedLayoutEntry tc = EntryAt(theirs, tc_at);
-                    bool named = false;
-                    int mc_at = mi + 1;
-                    for (uint k = 0; k < me.Children; ++k)
-                    {
-                        if (EntryAt(mine, mc_at).Id == tc.Id) { named = true; break; }
-                        mc_at += Subtree(mine, mc_at);
-                    }
-                    if (!named)
-                    {
-                        c.Unlawful = 1;
-                        return;
-                    }
-                    tc_at += Subtree(theirs, tc_at);
+                    c.Unlawful = 1;
+                    return;
                 }
                 int my_child = mi + 1;
                 for (uint k = 0; k < me.Children; ++k)
@@ -7309,6 +7322,10 @@ namespace Blockhome
                         {
                             if (d.Arg == TextBytes)
                             {
+                                // NARROWED BYTES ARE AN UNLAWFUL ENTRY (§5.1, §5.4): a
+                                // writer's bytes(N) past my own is refused whole, never
+                                // clipped to the length that happens to fit.
+                                if (te.Size > me.Size) { c.Unlawful = 1; break; }
                                 uint units = global::System.Math.Min(me.Size - 4u, te.Size - 4u);
                                 TableFixedEntry e = new TableFixedEntry(
                                     their_at, aux_at, units, at, guard, Text, arg, 0, 0, d.Arg);
@@ -7320,6 +7337,11 @@ namespace Blockhome
                             uint head = d.Counted != 0 ? 4u : 0u;
                             uint their_n = tel.Size != 0 ? (te.Size - head) / tel.Size : 0u;
                             uint my_n = mel.Size != 0 ? (me.Size - head) / mel.Size : 0u;
+                            // A SHRUNK ARRAY IS AN UNLAWFUL ENTRY (§5.1, §5.4), fixed
+                            // [N] and counted [..N] alike: a writer bound past mine is
+                            // refused whole, never clipped to my_n and never admitted
+                            // because this file's live count happens to fit.
+                            if (their_n > my_n) { c.Unlawful = 1; break; }
                             uint their_base = their_at + head;
                             if (d.Counted != 0)
                             {
@@ -7369,11 +7391,17 @@ namespace Blockhome
                         }
                     case 16: // Enum-keyed array
                         {
+                            // A REMOVED KEY IS AN UNLAWFUL ENTRY (§5.1, §5.4): every
+                            // writer key must be one this reader names, and the
+                            // writer's slot count may not pass mine.
+                            if (!ChildrenNamed(theirs, ti + 1, mine, mi + 1)) { c.Unlawful = 1; break; }
                             TableFixedLayoutEntry tkey = EntryAt(theirs, ti + 1);
                             TableFixedLayoutEntry mkey = EntryAt(mine, mi + 1);
                             int tel = ti + 1 + Subtree(theirs, ti + 1);
                             int mel = mi + 1 + Subtree(mine, mi + 1);
                             TableFixedLayoutEntry tee = EntryAt(theirs, tel);
+                            TableFixedLayoutEntry mee = EntryAt(mine, mel);
+                            if (tee.Size != 0 && mee.Size != 0 && te.Size / tee.Size > me.Size / mee.Size) { c.Unlawful = 1; break; }
                             for (uint k = 0; k < mkey.Children; ++k)
                             {
                                 ulong key_id = EntryAt(mine, mi + 2 + (int)k).Id;
@@ -7389,6 +7417,10 @@ namespace Blockhome
                         }
                     case 15: // Union
                         {
+                            // A REMOVED ARM IS AN UNLAWFUL ENTRY (§5.1, §5.4): every
+                            // writer arm must be one this reader names, or a file that
+                            // takes it would land None over a value the writer sent.
+                            if (!ChildrenNamed(theirs, ti, mine, mi)) { c.Unlawful = 1; break; }
                             uint their_tag = TagBytes(theirs, ti);
                             uint my_tag = TagBytes(mine, mi);
                             byte saved_argw = c.ArgW;
@@ -7457,6 +7489,11 @@ namespace Blockhome
                             // table is laid in the pool BEFORE the Push that would
                             // reject the other half, so the enum tests its half here and
                             // the discarded pass never calls LayTable.
+                            // A REMOVED VARIANT IS AN UNLAWFUL ENTRY (§5.1, §5.4), on
+                            // the grown-width widen path and the same-width remap path
+                            // alike: never remapped to None. It is decided before the
+                            // half test, so neither pass lays a plan past it.
+                            if (!ChildrenNamed(theirs, ti, mine, mi)) { c.Unlawful = 1; break; }
                             if ((guard != NoGuard) != c.WantGuarded) { break; }
                             // A GROWN ORDINAL WIDTH IS A WIDEN, unsigned, and it counts
                             // widened (§5.2 EMIT kind 30, §5.4). Only a SAME-WIDTH
@@ -7492,6 +7529,10 @@ namespace Blockhome
                         }
                     case 12:
                         {
+                            // NARROWED TEXT IS AN UNLAWFUL ENTRY (§5.1, §5.4): a
+                            // writer's string(N) past my own is refused whole, never
+                            // clipped to the length that happens to fit.
+                            if (te.Size > me.Size) { c.Unlawful = 1; break; }
                             uint units = global::System.Math.Min(me.Size - 4u, te.Size - 4u);
                             TableFixedEntry e = new TableFixedEntry(
                                 their_at, at, units, aux_at, guard, Text, arg, 0, 0, d.Arg);

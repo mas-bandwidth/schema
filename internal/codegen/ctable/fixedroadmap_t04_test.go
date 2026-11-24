@@ -394,7 +394,18 @@ func cT04R20(t *testing.T) {
 	cT04Has(t, text, "memset( (void *) &defaults, 0, sizeof( defaults ) );", "R20 the reader's slack is the template's zeros")
 	// A FIELD THE READER NAMES NOWHERE: the entry is unlawful, no plan is laid,
 	// and nothing is counted, in any slot (root, nested table, every element).
-	cT04Has(t, runtime, "if ( !named ) { c->unlawful = 1; return; }", "R20 a writer field the reader names nowhere makes the entry unlawful")
+	cT04Has(t, runtime, "if ( !table_fixed_children_named( theirs, ti, mine, mi ) ) { c->unlawful = 1; return; }", "R20 a writer field the reader names nowhere makes the entry unlawful")
+	// AND EVERY OTHER NARROWING the reference refuses (gotable tableFixedCompileEntry):
+	// a removed arm or variant, a removed key or more keyed slots, a shrunk
+	// bound, a narrowed text capacity, a narrowed scalar. Never min() and drop.
+	cT04Has(t, runtime, "if ( !table_fixed_children_named( theirs, ti, mine, mi ) ) { c->unlawful = 1; break; }", "R20 a removed arm or variant makes the entry unlawful")
+	cT04Has(t, runtime, "if ( !table_fixed_children_named( theirs, ti + 1, mine, mi + 1 ) ) { c->unlawful = 1; break; }", "R20 a removed key makes the entry unlawful")
+	cT04Has(t, runtime, "te.size / tee.size > me.size / mee.size ) { c->unlawful = 1; break; }", "R20 more keyed slots than the reader holds make the entry unlawful")
+	cT04Has(t, runtime, "if ( their_n > my_n ) { c->unlawful = 1; break; }", "R20 a shrunk array bound makes the entry unlawful")
+	cT04Has(t, runtime, "if ( te.size > me.size ) { c->unlawful = 1; break; }", "R20 a narrowed text capacity makes the entry unlawful")
+	if strings.Contains(runtime, "n = their_n < my_n ? their_n : my_n;") || strings.Contains(runtime, "c->report->refuse_reason=SCHEMA_TABLE_REFUSE_KIND_MISMATCH") {
+		t.Error("R20: the compile still lands min( their, mine ) or marks a narrowed scalar on the report; both are unlawful entries that lay no plan (§5.4, §5.9 #30)")
+	}
 	cT04Has(t, runtime, "if ( c.unlawful != 0 ) { return ( c.unlawful == 3 ) ? -4 : -3; }", "R20 an unlawful entry lays no plan")
 	if strings.Contains(runtime, "c->report->unknown++") || strings.Contains(runtime, "census && i == 0") {
 		t.Error("R20: the compile still counts a field it cannot name; the census is retired (§5.4, §5.9 #30)")
@@ -470,7 +481,8 @@ func cT04R29(t *testing.T) {
 	cT04Has(t, runtime, "if ( e.size > kTableFixedRecordMaxBytes )", "R29 an entry past the writer's declared record")
 	cT04Has(t, runtime, "else if ( v > (int32_t) p->size )", "R29 the count clamps to the writer's bound")
 	cT04Has(t, runtime, "else if ( (uint32_t) v > cap )", "R29 the text clamps to the writer's span")
-	cT04Has(t, runtime, "n = their_n < my_n ? their_n : my_n;", "R29 the count's bound is the writer's")
+	cT04Has(t, runtime, "n = their_n;", "R29 the count's bound is the writer's")
+	cT04Has(t, runtime, "if ( their_n > my_n ) { c->unlawful = 1; break; }", "R29 a writer bound past the reader's is unlawful, never clamped to min")
 }
 
 // ---- c/E5 -------------------------------------------------------------------

@@ -108,7 +108,7 @@ func t04Lacks(t *testing.T, src, banned, what string) {
 // t04Unlawful is the UNLAWFUL lineage entry's shape in the shared runtime
 // (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH, §5.4, §5.9 #30): a writer field no
 // reader field names lays no plan, and there is no compile census to count.
-const t04Unlawful = "if !named {\n            c.unlawful = 1;\n            return;\n        }"
+const t04Unlawful = "if !children_named(theirs, ti, mine, mi) {\n        c.unlawful = 1;\n        return;\n    }"
 
 // t04Retire builds THREE generations of one table — x, x+y, x+y+z — hands the
 // first `retired` of the first two in as the lock's lineage, and answers the

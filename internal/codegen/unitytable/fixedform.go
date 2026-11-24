@@ -437,6 +437,17 @@ func guardsEqual(a, b []fixedGuard) bool {
 	return slices.Equal(a, b)
 }
 
+// fixedAllNamed is true when every writer child's id is one of mine: a lawful
+// older writer names only arms and keys this reader retains (§5.1, §5.2 MATCH).
+func fixedAllNamed(theirs []*fixedLayoutNode, mine []uint64) bool {
+	for _, c := range theirs {
+		if !slices.Contains(mine, c.id) {
+			return false
+		}
+	}
+	return true
+}
+
 func compileFixedPlan(writer *fixedLayoutNode, reader *fixedSpec) ([]fixedOp, []fixedGuard, []fixedFill, []uint16, bool, string) {
 	var ops []fixedOp
 	var rawFills []rawFill
@@ -611,6 +622,13 @@ func compileFixedPlan(writer *fixedLayoutNode, reader *fixedSpec) ([]fixedOp, []
 				}
 				theirIdx[tk.id] = j
 			}
+			// A REMOVED KEY IS AN UNLAWFUL ENTRY (§5.1, §5.4): every writer key
+			// must be one this reader names, so the writer's slot count never
+			// passes this reader's either.
+			if !fixedAllNamed(tkeys, r.keys) || len(tkeys) > len(r.keys) {
+				why = "TableReport.LayoutMalformed"
+				return
+			}
 			var elemImg []byte
 			for k, keyID := range r.keys {
 				if j, ok := theirIdx[keyID]; ok {
@@ -656,6 +674,17 @@ func compileFixedPlan(writer *fixedLayoutNode, reader *fixedSpec) ([]fixedOp, []
 				why = "TableReport.LayoutMalformed"
 				return
 			}
+			// A REMOVED ARM IS AN UNLAWFUL ENTRY (§5.1, §5.4): every writer arm
+			// must be one this reader names, or a file that takes it would land
+			// None over a value the writer sent.
+			armIDs := make([]uint64, len(r.children))
+			for k, arm := range r.children {
+				armIDs[k] = arm.id
+			}
+			if !fixedAllNamed(w.children, armIDs) {
+				why = "TableReport.LayoutMalformed"
+				return
+			}
 			emit(opConst, 0, dst, r.tagBytes, 0, 0, 0, guards)
 			for k, arm := range r.children {
 				j, ok := theirArm[arm.id]
@@ -684,7 +713,14 @@ func compileFixedPlan(writer *fixedLayoutNode, reader *fixedSpec) ([]fixedOp, []
 					return
 				}
 				seen[c.id] = true
-				mapped := readerIdx[c.id]
+				mapped, named := readerIdx[c.id]
+				if !named {
+					// A REMOVED VARIANT IS AN UNLAWFUL ENTRY (§5.1, §5.4), on the
+					// grown-width widen path and the same-width remap path alike:
+					// never remapped to None.
+					why = "TableReport.LayoutMalformed"
+					return
+				}
 				table[j] = mapped
 				if mapped != uint16(j+1) {
 					identityMap = false

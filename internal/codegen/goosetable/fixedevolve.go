@@ -324,23 +324,9 @@ func (e *fixedEvolveEmit) emitRoot(st *ir.Struct) {
 	e.p("        }\n")
 	e.p("        k += 1;\n")
 	e.p("    }\n")
-	// THE CENSUS LANDS ONCE, AFTER THE RECORD LOOP, ON A READ THAT RETURNS
-	// (docs/FIXED-FORM-ALGORITHM.md §5.4, §5.8 row 11). It is per FIELD
-	// per PEER, never per record; a refusal has already returned and counted
-	// nothing.
-	for i, plan := range plans {
-		if plan.unknown == 0 && plan.kindMismatch == 0 {
-			continue
-		}
-		e.p("    if pick == %d {\n", i+1)
-		if plan.unknown > 0 {
-			e.p("        report.unknown += %d;\n", plan.unknown)
-		}
-		if plan.kindMismatch > 0 {
-			e.p("        report.mismatch += %d;\n", plan.kindMismatch)
-		}
-		e.p("    }\n")
-	}
+	// THERE IS NO COMPILE CENSUS (docs/FIXED-FORM-ALGORITHM.md §5.4, §5.9
+	// #30): a lawful entry has nothing to count, and an unlawful one laid no
+	// plan and refused layout_malformed above, before any record.
 	e.p("    return count;\n")
 	e.p("}\n")
 }
@@ -626,14 +612,13 @@ const (
 )
 
 // evolvePlan is one older entry's compiled plan. The old bytes are laid over
-// the current-layout default image the prefill wrote (§4.3); the census is
-// ONCE PER FIELD PER PEER and lands only on a read that returns (§5.4).
+// the current-layout default image the prefill wrote (§4.3). A plan counts
+// nothing: a lawful entry has nothing to count, and an unlawful one is never
+// laid (§5.4, §5.9 #30), so there is no compile census.
 type evolvePlan struct {
-	nodes        []evolveNode
-	unknown      int
-	kindMismatch int
-	supported    bool
-	refuse       int64
+	nodes     []evolveNode
+	supported bool
+	refuse    int64
 }
 
 func signedKind(k int) bool {
@@ -662,10 +647,14 @@ func evolveWidens(from, to int) bool {
 }
 
 // evolveCompiler walks the two layouts in pre-order by wire id, exactly as the
-// Go engine's tableFixedCompileEntry does. An old child the current layout
-// does not name is the unknown census; a field whose kind moved outside the
-// ladder is a kind mismatch. Neither is a refusal: both are counted and the
-// field is left at its default.
+// Go engine's tableFixedCompileEntry does. A LAWFUL older writer is a widening
+// of this reader (§5.1), so everything it wrote has a place here. An entry that
+// is not — a writer field, union arm, enum variant or keyed key the reader
+// names nowhere, a kind moved off every ladder, a shrunk array (fixed or
+// counted, bytes(N) among them), narrowed text, a narrowed span — is UNLAWFUL:
+// no plan is laid, nothing is counted, and a file under its hash refuses
+// layout_malformed before any record lands (docs/FIXED-FORM-ALGORITHM.md §5.2
+// MATCH/EMIT, §5.4, §5.9 #30; gotable's c.unlawful).
 type evolveCompiler struct {
 	oldAll, curAll []rawEntry
 	counted        map[int]bool
@@ -678,6 +667,37 @@ type evolveCompiler struct {
 	// optionalIntoBare: a writer's ?T read into a bare T refuses kind_mismatch
 	// (rulings 2026-11-22, R2).
 	optionalIntoBare bool
+	// unlawful: the entry is not a lawful widening of the reader
+	unlawful bool
+}
+
+// childrenNamed is gotable's tableFixedChildrenNamed: every child of the
+// writer's entry oi (a table's fields, a union's arms, an enum's variants, a
+// keyed array's keys) is named, by wire id, by a child of the reader's ci.
+func (c *evolveCompiler) childrenNamed(oi, ci int) bool {
+	if oi < 0 || oi >= len(c.oldAll) || ci < 0 || ci >= len(c.curAll) {
+		return false
+	}
+	oc := oi + 1
+	for k := 0; k < c.oldAll[oi].children; k++ {
+		if oc >= len(c.oldAll) {
+			return false
+		}
+		named := false
+		cc := ci + 1
+		for j := 0; j < c.curAll[ci].children && cc < len(c.curAll); j++ {
+			if c.curAll[cc].id == c.oldAll[oc].id {
+				named = true
+				break
+			}
+			cc += c.subtree(c.curAll, cc)
+		}
+		if !named {
+			return false
+		}
+		oc += c.subtree(c.oldAll, oc)
+	}
+	return true
 }
 
 func (c *evolveCompiler) checkSrc(oldOff, size int64) bool {
@@ -720,7 +740,7 @@ func widestArm(all []rawEntry, i int) int64 {
 	return widest
 }
 
-func (c *evolveCompiler) match(oi, ci int, oldOff, curOff int64, census bool, depth int) []evolveNode {
+func (c *evolveCompiler) match(oi, ci int, oldOff, curOff int64, depth int) []evolveNode {
 	if depth > 64 || oi < 0 || oi >= len(c.oldAll) || ci < 0 || ci >= len(c.curAll) {
 		return nil
 	}
@@ -740,7 +760,7 @@ func (c *evolveCompiler) match(oi, ci int, oldOff, curOff int64, census bool, de
 			if t := c.structAt[ci+1]; t != "" {
 				body = append(body, evolveNode{op: nodeDefault, curOff: curOff + 1, defaultType: t})
 			}
-			body = append(body, c.match(oi+1, ci+1, oldOff+1, curOff+1, census, depth+1)...)
+			body = append(body, c.match(oi+1, ci+1, oldOff+1, curOff+1, depth+1)...)
 			return []evolveNode{
 				{op: nodeOptionalGuard, oldOff: oldOff, oldSize: te.size - 1},
 				{op: nodeIf, oldOff: oldOff, tagWidth: 1, arg: 1, body: body},
@@ -750,7 +770,7 @@ func (c *evolveCompiler) match(oi, ci int, oldOff, curOff int64, census bool, de
 		if t := c.structAt[ci+1]; t != "" {
 			out = append(out, evolveNode{op: nodeDefault, curOff: curOff + 1, defaultType: t})
 		}
-		return append(out, c.match(oi, ci+1, oldOff, curOff+1, census, depth+1)...)
+		return append(out, c.match(oi, ci+1, oldOff, curOff+1, depth+1)...)
 	}
 	if te.kind != me.kind {
 		if evolveWidens(te.kind, me.kind) {
@@ -758,25 +778,47 @@ func (c *evolveCompiler) match(oi, ci int, oldOff, curOff int64, census bool, de
 			return []evolveNode{{op: nodeWiden, oldOff: oldOff, curOff: curOff, oldSize: te.size,
 				newSize: me.size, signed: signedKind(te.kind), float: te.kind == 10 && me.kind == 11, widened: true}}
 		}
-		// SPEC-TABLES §4: a named position whose kind moved is kind_mismatch,
-		// counted and dropped, never a silent byte copy.
-		c.plan.kindMismatch++
+		// A KIND MOVED OFF EVERY LADDER IS AN UNLAWFUL ENTRY (§5.2 EMIT, §5.4,
+		// §5.9 #30): never reinterpreted, never counted and read past.
+		c.unlawful = true
 		return nil
 	}
 	switch te.kind {
 	case 13: // a table or a nested struct: match the children by wire id
-		return c.matchChildren(oi, ci, oldOff, curOff, census, depth)
+		return c.matchChildren(oi, ci, oldOff, curOff, depth)
 	case 14: // an array: its count word, then its elements at their strides
-		return c.array(oi, ci, oldOff, curOff, census, depth)
+		return c.array(oi, ci, oldOff, curOff, depth)
 	case 15: // a union: the tag, then the selected arm
-		return c.union(oi, ci, oldOff, curOff, census, depth)
+		return c.union(oi, ci, oldOff, curOff, depth)
 	case 16: // a keyed array: the keys only ever append, so the old bytes stand
+		// A WRITER KEY THE READER NAMES NOWHERE, or more writer slots than the
+		// reader holds, is UNLAWFUL (gotable kind 16): the reader's key enum
+		// is the writer's or an append to it.
+		if !c.childrenNamed(oi+1, ci+1) {
+			c.unlawful = true
+			return nil
+		}
+		oel, cel := oi+1+c.subtree(c.oldAll, oi+1), ci+1+c.subtree(c.curAll, ci+1)
+		if oel >= len(c.oldAll) || cel >= len(c.curAll) || c.oldAll[oel].size <= 0 || c.curAll[cel].size <= 0 {
+			c.tooLarge = true
+			return nil
+		}
+		if te.size/c.oldAll[oel].size > me.size/c.curAll[cel].size {
+			c.unlawful = true
+			return nil
+		}
 		n := min(me.size, te.size)
 		c.checkSrc(oldOff, n)
 		return []evolveNode{{op: nodeCopy, oldOff: oldOff, curOff: curOff, size: n}}
 	case 12: // string: writer bound + dead-slack guard, then copy and zero grown tail
 		if te.size < 4 || me.size < 4 {
 			c.tooLarge = true
+			return nil
+		}
+		// NARROWED TEXT IS UNLAWFUL (gotable kind 12, §5.1): a writer's
+		// bound past the reader's is refused, never cut to fit.
+		if te.size > me.size {
+			c.unlawful = true
 			return nil
 		}
 		c.checkSrc(oldOff, te.size)
@@ -790,17 +832,29 @@ func (c *evolveCompiler) match(oi, ci int, oldOff, curOff int64, census bool, de
 		}
 		return out
 	case 30: // an ordinal: a grown width is an unsigned widen, one count each
+		// A WRITER VARIANT THE READER NAMES NOWHERE IS UNLAWFUL on both paths,
+		// the grown-width widen and the same-width remap (gotable kind 30):
+		// the reader's enum is the writer's or an append to it (§5.1).
 		if te.size < me.size {
+			if !c.childrenNamed(oi, ci) {
+				c.unlawful = true
+				return nil
+			}
 			c.checkSrc(oldOff, te.size)
 			return []evolveNode{{op: nodeWiden, oldOff: oldOff, curOff: curOff, oldSize: te.size,
 				newSize: me.size, widened: true}}
 		}
 		if te.size > me.size {
-			c.plan.kindMismatch++
+			// a narrowed ordinal is off the ladder (§5.1)
+			c.unlawful = true
 			return nil
 		}
 		if te.children > 0xFFFF {
 			c.overflow = true
+			return nil
+		}
+		if !c.childrenNamed(oi, ci) {
+			c.unlawful = true
 			return nil
 		}
 		c.checkSrc(oldOff, te.size)
@@ -829,17 +883,25 @@ func (c *evolveCompiler) match(oi, ci int, oldOff, curOff int64, census bool, de
 			return []evolveNode{{op: nodeWiden, oldOff: oldOff, curOff: curOff, oldSize: te.size,
 				newSize: me.size, signed: signedKind(te.kind), widened: true}}
 		}
-		c.plan.kindMismatch++
+		// A NARROWED SPAN OF THE SAME KIND IS OFF THE LADDER TOO (§5.1, §5.4).
+		c.unlawful = true
 		return nil
 	}
 }
 
 // matchChildren pairs the old entry's children with the current entry's by
-// wire id. An old child the current layout does not name is the unknown
-// census, counted ONCE per field per sender (§5.4) — never once per array
-// element, which is why the recursion carries one census flag.
-func (c *evolveCompiler) matchChildren(oi, ci int, oldOff, curOff int64, census bool, depth int) []evolveNode {
+// wire id. A LAWFUL older writer names only fields this reader retains (§5.1
+// refuses a removal; a field is deprecated in place, and a "was =" rename
+// keeps the id), so an old child the current layout does not name makes the
+// entry UNLAWFUL before anything is laid (gotable tableFixedMatchChildren,
+// §5.2 MATCH, §5.4, §5.9 #30). There is no unknown census (§5.8 row 11 is
+// that census, retired).
+func (c *evolveCompiler) matchChildren(oi, ci int, oldOff, curOff int64, depth int) []evolveNode {
 	te, me := c.oldAll[oi], c.curAll[ci]
+	if !c.childrenNamed(oi, ci) {
+		c.unlawful = true
+		return nil
+	}
 	var out []evolveNode
 	oc, oat := oi+1, oldOff
 	for k := 0; k < te.children; k++ {
@@ -855,12 +917,8 @@ func (c *evolveCompiler) matchChildren(oi, ci int, oldOff, curOff int64, census 
 			cat += ce.size
 			cc += c.subtree(c.curAll, cc)
 		}
-		if found < 0 {
-			if census {
-				c.plan.unknown++
-			}
-		} else {
-			out = append(out, c.match(oc, found, oat, fat, census, depth+1)...)
+		if found >= 0 {
+			out = append(out, c.match(oc, found, oat, fat, depth+1)...)
 		}
 		oat += oe.size
 		oc += c.subtree(c.oldAll, oc)
@@ -870,9 +928,10 @@ func (c *evolveCompiler) matchChildren(oi, ci int, oldOff, curOff int64, census 
 
 // array compiles a counted or fixed array: the count word verbatim (a counted
 // array's), then one element loop whose body is the element plan at the two
-// strides. The loop is min(their_n, my_n), from the layouts' own sizes, so a
-// growing bound leaves its new slots at the declared default (§5.3 step 11).
-func (c *evolveCompiler) array(oi, ci int, oldOff, curOff int64, census bool, depth int) []evolveNode {
+// strides. A growing bound leaves its new slots at the declared default (§5.3
+// step 11); a SHRUNK bound, their_n past my_n (a fixed [N], a counted [..N],
+// a bytes(N)), is UNLAWFUL and never cut to fit (gotable kind 14, §5.1).
+func (c *evolveCompiler) array(oi, ci int, oldOff, curOff int64, depth int) []evolveNode {
 	te, me := c.oldAll[oi], c.curAll[ci]
 	if te.children < 1 || me.children < 1 || oi+1 >= len(c.oldAll) || ci+1 >= len(c.curAll) {
 		return nil
@@ -891,7 +950,11 @@ func (c *evolveCompiler) array(oi, ci int, oldOff, curOff int64, census bool, de
 	}
 	oldN := (te.size - head) / oe.size
 	newN := (me.size - head) / ce.size
-	n := min(newN, oldN)
+	if oldN > newN {
+		c.unlawful = true
+		return nil
+	}
+	n := oldN
 	var out []evolveNode
 	if head == 4 {
 		c.checkSrc(oldOff, te.size)
@@ -908,7 +971,7 @@ func (c *evolveCompiler) array(oi, ci int, oldOff, curOff int64, census bool, de
 	} else {
 		c.baseOff = savedBase + oldOff
 	}
-	body := c.match(oi+1, ci+1, head, head, census, depth+1)
+	body := c.match(oi+1, ci+1, head, head, depth+1)
 	if head == 4 {
 		if t := c.structAt[ci+1]; t != "" {
 			body = append([]evolveNode{{op: nodeDefault, curOff: head, defaultType: t}}, body...)
@@ -930,12 +993,20 @@ func (c *evolveCompiler) array(oi, ci int, oldOff, curOff int64, census bool, de
 // at the writer's tag width: a matching arm stamps the current ordinal and
 // lands its payload; the appended arm the writer never wrote stays at the
 // current default (docs/FIXED-FORM-VERSIONING-TESTS.md, union_append).
-func (c *evolveCompiler) union(oi, ci int, oldOff, curOff int64, census bool, depth int) []evolveNode {
+func (c *evolveCompiler) union(oi, ci int, oldOff, curOff int64, depth int) []evolveNode {
 	te, me := c.oldAll[oi], c.curAll[ci]
 	oldTag := te.size - widestArm(c.oldAll, oi)
 	curTag := me.size - widestArm(c.curAll, ci)
 	if oldTag < 1 || oldTag > 8 || curTag < 1 || curTag > 8 {
-		c.plan.kindMismatch++
+		// a tag width no union lays: not a widening of this reader
+		c.unlawful = true
+		return nil
+	}
+	// A WRITER ARM THE READER NAMES NOWHERE IS UNLAWFUL (gotable kind 15,
+	// §5.1): the reader's arms are the writer's or an append to them, so a
+	// writer tag the reader cannot place is refused before any record lands.
+	if !c.childrenNamed(oi, ci) {
+		c.unlawful = true
 		return nil
 	}
 	// THE NONE TAG LANDS FIRST AND UNGUARDED (gotable's none const,
@@ -974,7 +1045,7 @@ func (c *evolveCompiler) union(oi, ci int, oldOff, curOff int64, census bool, de
 			if t := c.structAt[found]; t != "" {
 				body = append(body, evolveNode{op: nodeDefault, curOff: curOff + curTag, defaultType: t})
 			}
-			body = append(body, c.match(oa, found, oldOff+oldTag, curOff+curTag, census, depth+1)...)
+			body = append(body, c.match(oa, found, oldOff+oldTag, curOff+curTag, depth+1)...)
 			body = append([]evolveNode{{op: nodeSet, curOff: curOff, arg: uint64(ordinal), size: curTag}}, body...)
 			out = append(out, evolveNode{op: nodeIf, oldOff: oldOff, tagWidth: oldTag, arg: uint64(j + 1), body: body})
 		} else if te.size > oldTag+oe.size {
@@ -1010,12 +1081,18 @@ func compileEvolvePlan(st *ir.Struct, oldLayout, curLayout []byte) evolvePlan {
 	walkFixedStructs(st, structAt)
 	plan := evolvePlan{supported: true}
 	c := &evolveCompiler{oldAll: oldAll, curAll: curAll, counted: counted, structAt: structAt, plan: &plan, record: oldAll[0].size}
-	plan.nodes = c.match(0, 0, 0, 0, true, 0)
+	plan.nodes = c.match(0, 0, 0, 0, 0)
 	if c.tooLarge {
 		return evolvePlan{refuse: evolveRefuseLayoutRecordTooLarge}
 	}
 	if c.optionalIntoBare {
 		return evolvePlan{refuse: evolveRefuseKindMismatch}
+	}
+	// AN UNLAWFUL ENTRY LAYS NO PLAN and is layout_malformed by name (§5.2
+	// MATCH/EMIT, §5.4, §5.9 #30), decided before overflow, so a plan-storage
+	// limit never renames it: refused before any record, nothing counted.
+	if c.unlawful {
+		return evolvePlan{refuse: evolveRefuseLayoutMalformed}
 	}
 	if c.overflow || hasEnumOverflow(st, map[string]bool{}) {
 		return evolvePlan{refuse: evolveRefusePlanTooLarge}

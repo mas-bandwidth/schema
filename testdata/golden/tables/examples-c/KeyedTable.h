@@ -2156,7 +2156,7 @@ typedef struct tabledemo_table_fixed_fill_t
    path. There is no compile census: a writer field no reader field names makes
    the entry UNLAWFUL and lays no plan (§5.4, §5.9 #30). kind_changed is the
    entry the load refuses KIND_MISMATCH BEFORE any record lands (the writer's ?T
-   into a bare T, ruling R2, or a narrowed scalar). reason is the name a lineage
+   into a bare T, ruling R2). reason is the name a lineage
    entry that could not be planned refuses under if a file ever selects it
    (§5.9 #4, #8, #30). */
 typedef struct tabledemo_table_fixed_lineage_plan_t
@@ -2840,10 +2840,12 @@ typedef struct tabledemo_table_fixed_compiler_t
     uint8_t argw;      /* the CURRENT union's tag width, stamped onto every guarded push */
     uint32_t present;  /* the CURRENT optional's present byte plus one, 0 when none */
     /* UNLAWFUL (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH and EMIT, §5.4, §5.9 #30):
-       a writer field this reader does not name, or a pair whose kind moved off
-       every ladder. The entry is not a lawful widening of this reader, so no
-       plan is laid and a file under its hash refuses LAYOUT_MALFORMED. It is
-       never counted and read past. 1 is LAYOUT_MALFORMED; 3 is KIND_MISMATCH,
+       a writer field, union arm, enum variant or keyed key this reader does
+       not name; a shrunk array bound, keyed slot count, text or bytes capacity
+       or scalar width; or a pair whose kind moved off every ladder. The
+       entry is not a lawful widening of this reader, so no plan is laid and a
+       file under its hash refuses LAYOUT_MALFORMED. It is never counted and
+       read past. 1 is LAYOUT_MALFORMED; 3 is KIND_MISMATCH,
        the writer's ?T into this reader's bare T (ruling R2, 2026-11-22). */
     uint8_t unlawful;
     tabledemo_table_report_t * report;
@@ -2955,27 +2957,23 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_compile_entry( tabledemo_table_f
     const tabledemo_table_fixed_layout_view_t * mine, int32_t mi, const tabledemo_table_fixed_dst_t * dst, uint32_t my_at,
     uint32_t guard, uint64_t arg );
 
-/* table_fixed_match_children walks a TABLE's children on both sides.
+/* table_fixed_children_named is 1 when every child of THEIR entry ti — a
+   table's field, a union's arm, an enum's variant, a keyed array's key — is one
+   my entry mi names by id, and 0 otherwise.
 
-   A LAWFUL OLDER WRITER NAMES ONLY FIELDS THIS READER RETAINS (§5.1 refuses a
-   removal; a field is deprecated in place). A writer field no child of mine
-   names makes the lineage entry UNLAWFUL before any entry is laid: there is no
-   compile census to count (§5.4, §5.9 #30; §5.8 row 11 is that census, retired). */
-static SCHEMA_UNUSED void tabledemo_table_fixed_match_children( tabledemo_table_fixed_compiler_t * c,
-    const tabledemo_table_fixed_layout_view_t * theirs, int32_t ti, uint32_t their_at,
-    const tabledemo_table_fixed_layout_view_t * mine, int32_t mi, const tabledemo_table_fixed_dst_t * dst, uint32_t my_at,
-    uint32_t guard, uint64_t arg )
+   A LAWFUL OLDER WRITER NAMES ONLY FIELDS, ARMS AND VARIANTS THIS READER
+   RETAINS (§5.1 refuses a removal; deprecation retains the slot and its name).
+   A child no child of mine names makes the lineage entry UNLAWFUL before any
+   entry is laid: it is never counted and read past, never dropped, never
+   remapped to None (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH and EMIT, §5.4,
+   §5.9 #30; the reference is gotable's tableFixedChildrenNamed). */
+static SCHEMA_UNUSED int tabledemo_table_fixed_children_named( const tabledemo_table_fixed_layout_view_t * theirs, int32_t ti,
+    const tabledemo_table_fixed_layout_view_t * mine, int32_t mi )
 {
     const tabledemo_table_fixed_layout_entry_t te = tabledemo_table_fixed_entry_at( theirs, ti );
     const tabledemo_table_fixed_layout_entry_t me = tabledemo_table_fixed_entry_at( mine, mi );
-    int32_t my_child = mi + 1;
     int32_t tc_at = ti + 1;
-    /* THE LOOP INDICES ARE DECLARED AHEAD OF THEIR LOOPS, which is this
-       backend's shape everywhere and not a C99 limitation: j and k are reused
-       by both pairs of loops below, and a redeclaration inside the second pair
-       would shadow these two and trip -Wshadow. */
     uint32_t j, k;
-    /* EVERY FIELD OF THEIRS MUST BE ONE I NAME, or the entry is unlawful */
     for ( j = 0; j < te.children && tc_at < theirs->count; ++j )
     {
         const tabledemo_table_fixed_layout_entry_t tc = tabledemo_table_fixed_entry_at( theirs, tc_at );
@@ -2990,13 +2988,36 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_match_children( tabledemo_table_
             }
             mc_at += tabledemo_table_fixed_subtree( mine, mc_at );
         }
-        if ( !named )
-        {
-            c->unlawful = 1;
-            return;
-        }
+        if ( !named ) { return 0; }
         tc_at += tabledemo_table_fixed_subtree( theirs, tc_at );
     }
+    return 1;
+}
+
+/* table_fixed_match_children walks a TABLE's children on both sides.
+
+   A writer field no child of mine names makes the lineage entry UNLAWFUL
+   before any entry is laid: there is no compile census to count (§5.4, §5.9
+   #30; §5.8 row 11 is that census, retired). */
+static SCHEMA_UNUSED void tabledemo_table_fixed_match_children( tabledemo_table_fixed_compiler_t * c,
+    const tabledemo_table_fixed_layout_view_t * theirs, int32_t ti, uint32_t their_at,
+    const tabledemo_table_fixed_layout_view_t * mine, int32_t mi, const tabledemo_table_fixed_dst_t * dst, uint32_t my_at,
+    uint32_t guard, uint64_t arg )
+{
+    const tabledemo_table_fixed_layout_entry_t te = tabledemo_table_fixed_entry_at( theirs, ti );
+    const tabledemo_table_fixed_layout_entry_t me = tabledemo_table_fixed_entry_at( mine, mi );
+    int32_t my_child;
+    /* THE LOOP INDICES ARE DECLARED AHEAD OF THEIR LOOPS, which is this
+       backend's shape everywhere and not a C99 limitation: a redeclaration
+       inside the inner loop would shadow these two and trip -Wshadow. */
+    uint32_t j, k;
+    /* EVERY FIELD OF THEIRS MUST BE ONE I NAME, or the entry is unlawful */
+    if ( !tabledemo_table_fixed_children_named( theirs, ti, mine, mi ) )
+    {
+        c->unlawful = 1;
+        return;
+    }
+    my_child = mi + 1;
     for ( k = 0; k < me.children && my_child < mine->count; ++k )
     {
         const tabledemo_table_fixed_layout_entry_t mc = tabledemo_table_fixed_entry_at( mine, my_child );
@@ -3112,7 +3133,7 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_compile_entry( tabledemo_table_f
                 tabledemo_table_fixed_match_children( c, theirs, ti, their_at, mine, mi, dst, at, guard, arg );
                 break;
             }
-            case 14: /* an array: the count, then min( their bound, my bound ) elements */
+            case 14: /* an array: the count, then their bound's elements (never more than mine) */
             {
                 /* A COUNTED LOCAL against an ENDPOINT whose array is too small to hold
                    the four-byte count is a mismatch the head subtraction below
@@ -3131,7 +3152,17 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_compile_entry( tabledemo_table_f
                 const uint32_t their_base = their_at + head;
                 uint32_t n;
                 uint32_t i;
-                n = their_n < my_n ? their_n : my_n;
+                /* A SHRUNK BOUND IS UNLAWFUL (§5.1 "bound narrowed"): a writer's
+                   [4] or [..4] into my [2] or [..2], and bytes(8) into my
+                   bytes(4), which is an array row. Never min() and drop the
+                   rest, never admit it because the live count fits (§5.4,
+                   §5.9 #30). break (never return) so the depth decrement runs. */
+                if ( their_n > my_n )
+                {
+                    c->unlawful = 1;
+                    break;
+                }
+                n = their_n;
                 if ( d->counted )
                 {
                     /* THE COUNT'S BOUND IS THE WRITER'S their_n (§5.2 EMIT kind
@@ -3165,7 +3196,22 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_compile_entry( tabledemo_table_f
                 const int32_t tel = ti + 1 + tabledemo_table_fixed_subtree( theirs, ti + 1 );
                 const int32_t mel = mi + 1 + tabledemo_table_fixed_subtree( mine, mi + 1 );
                 const tabledemo_table_fixed_layout_entry_t tee = tabledemo_table_fixed_entry_at( theirs, tel );
+                const tabledemo_table_fixed_layout_entry_t mee = tabledemo_table_fixed_entry_at( mine, mel );
                 uint32_t k;
+                /* A REMOVED KEY IS UNLAWFUL (§5.1: the keyed array follows its
+                   enum, and a removed variant is refused), and so is a writer
+                   holding more slots than I do. Never land each of my slots
+                   from the writer's slot of the same key and drop the rest. */
+                if ( !tabledemo_table_fixed_children_named( theirs, ti + 1, mine, mi + 1 ) )
+                {
+                    c->unlawful = 1;
+                    break;
+                }
+                if ( tee.size != 0u && mee.size != 0u && te.size / tee.size > me.size / mee.size )
+                {
+                    c->unlawful = 1;
+                    break;
+                }
                 for ( k = 0; k < mkey.children && mi + 2 + (int32_t) k < mine->count; ++k )
                 {
                     const uint64_t key_id = tabledemo_table_fixed_entry_at( mine, mi + 2 + (int32_t) k ).id;
@@ -3182,6 +3228,13 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_compile_entry( tabledemo_table_f
             }
             case 15: /* a union: the tag, remapped, then each arm matched by id */
             {
+                /* A REMOVED ARM IS UNLAWFUL (§5.1 "arm removed"): never match
+                   the arms I keep and let a tag for the lost one land None. */
+                if ( !tabledemo_table_fixed_children_named( theirs, ti, mine, mi ) )
+                {
+                    c->unlawful = 1;
+                    break;
+                }
                 const uint32_t their_tag = tabledemo_table_fixed_tag_bytes( theirs, ti );
                 const uint32_t my_tag = tabledemo_table_fixed_tag_bytes( mine, mi );
                 const uint8_t saved_argw = c->argw;
@@ -3281,6 +3334,15 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_compile_entry( tabledemo_table_f
             }
             case 30: /* an enum: the ordinal is the layout's position, so it remaps */
             {
+                /* A REMOVED VARIANT IS UNLAWFUL (§5.1 "variant removed"), on the
+                   grown-width widen path and the same-width remap alike: never
+                   remap by id and let the lost variant land None. Decided before
+                   the pass gate so either pass sees it, as the C++ twin does. */
+                if ( !tabledemo_table_fixed_children_named( theirs, ti, mine, mi ) )
+                {
+                    c->unlawful = 1;
+                    break;
+                }
                 if ( ( guard != SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD ) != c->want_guarded ) { break; }
                 if ( te.size < me.size )
                 {
@@ -3333,6 +3395,13 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_compile_entry( tabledemo_table_f
             }
             case 12: /* text */
             {
+                /* A NARROWED CAPACITY IS UNLAWFUL (§5.1 "capacity narrowed"):
+                   never admit it because the used length fits. */
+                if ( te.size > me.size )
+                {
+                    c->unlawful = 1;
+                    break;
+                }
                 const uint32_t units = ( me.size - 4u ) < ( te.size - 4u ) ? ( me.size - 4u ) : ( te.size - 4u );
                 tabledemo_table_fixed_entry_t e = tabledemo_table_fixed_entry_zero();
                 e.src = their_at;
@@ -3367,9 +3436,11 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_compile_entry( tabledemo_table_f
                     e.op = TABLEDEMO_K_TABLE_FIXED_WIDEN;
                     tabledemo_table_fixed_push( c, e );
                 }
-                else if ( c->report != NULL )
+                else
                 {
-                    c->report->refused = 1, c->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
+                    /* A NARROWED SCALAR IS UNLAWFUL (§5.1): no plan is laid,
+                       as the reference's EMIT default does. */
+                    c->unlawful = 1;
                 }
                 break;
             }
@@ -15599,8 +15670,9 @@ static SCHEMA_UNUSED void tabledemo_team_config_fixed_lineage_build( void )
                ENTRY. A HOSTILE LAYOUT — a third nested union the two-lane
                compiled walk refuses, or a depth past 64 — is named
                layout_record_too_large, the reference's name (§5.8 row 6). */
-            /* §5.9 #30: an UNLAWFUL entry (-3) — a writer field this reader
-               names nowhere, or a kind moved off every ladder — lays no plan
+            /* §5.9 #30: an UNLAWFUL entry (-3) — a writer field, arm, variant or
+               key this reader names nowhere, a shrunk bound or capacity, or a kind
+               moved off every ladder — lays no plan
                and refuses LAYOUT_MALFORMED; the writer's ?T into a bare T (-4)
                refuses KIND_MISMATCH (ruling R2). Neither is counted and read past. */
             if ( made == -4 )
@@ -15616,7 +15688,6 @@ static SCHEMA_UNUSED void tabledemo_team_config_fixed_lineage_build( void )
         tabledemo_team_config_fixed_lineage[i].guarded = guarded;
         tabledemo_team_config_fixed_lineage[i].fill = ( fills > 0 ) ? (const tabledemo_table_fixed_fill_t *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
         tabledemo_team_config_fixed_lineage[i].fill_count = fills;
-        tabledemo_team_config_fixed_lineage[i].kind_changed = compiled.refused ? 1 : 0; /* a narrowed scalar refuses the read that selects this entry, before any record lands */
     }
     /* AND THE FLAG LAST: every entry above is written before this store, and
        this store is what a waiting thread's acquire is waiting for. */
@@ -16267,8 +16338,9 @@ static SCHEMA_UNUSED void tabledemo_gunner_config_fixed_lineage_build( void )
                ENTRY. A HOSTILE LAYOUT — a third nested union the two-lane
                compiled walk refuses, or a depth past 64 — is named
                layout_record_too_large, the reference's name (§5.8 row 6). */
-            /* §5.9 #30: an UNLAWFUL entry (-3) — a writer field this reader
-               names nowhere, or a kind moved off every ladder — lays no plan
+            /* §5.9 #30: an UNLAWFUL entry (-3) — a writer field, arm, variant or
+               key this reader names nowhere, a shrunk bound or capacity, or a kind
+               moved off every ladder — lays no plan
                and refuses LAYOUT_MALFORMED; the writer's ?T into a bare T (-4)
                refuses KIND_MISMATCH (ruling R2). Neither is counted and read past. */
             if ( made == -4 )
@@ -16284,7 +16356,6 @@ static SCHEMA_UNUSED void tabledemo_gunner_config_fixed_lineage_build( void )
         tabledemo_gunner_config_fixed_lineage[i].guarded = guarded;
         tabledemo_gunner_config_fixed_lineage[i].fill = ( fills > 0 ) ? (const tabledemo_table_fixed_fill_t *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
         tabledemo_gunner_config_fixed_lineage[i].fill_count = fills;
-        tabledemo_gunner_config_fixed_lineage[i].kind_changed = compiled.refused ? 1 : 0; /* a narrowed scalar refuses the read that selects this entry, before any record lands */
     }
     /* AND THE FLAG LAST: every entry above is written before this store, and
        this store is what a waiting thread's acquire is waiting for. */
@@ -17064,8 +17135,9 @@ static SCHEMA_UNUSED void tabledemo_turret_config_fixed_lineage_build( void )
                ENTRY. A HOSTILE LAYOUT — a third nested union the two-lane
                compiled walk refuses, or a depth past 64 — is named
                layout_record_too_large, the reference's name (§5.8 row 6). */
-            /* §5.9 #30: an UNLAWFUL entry (-3) — a writer field this reader
-               names nowhere, or a kind moved off every ladder — lays no plan
+            /* §5.9 #30: an UNLAWFUL entry (-3) — a writer field, arm, variant or
+               key this reader names nowhere, a shrunk bound or capacity, or a kind
+               moved off every ladder — lays no plan
                and refuses LAYOUT_MALFORMED; the writer's ?T into a bare T (-4)
                refuses KIND_MISMATCH (ruling R2). Neither is counted and read past. */
             if ( made == -4 )
@@ -17081,7 +17153,6 @@ static SCHEMA_UNUSED void tabledemo_turret_config_fixed_lineage_build( void )
         tabledemo_turret_config_fixed_lineage[i].guarded = guarded;
         tabledemo_turret_config_fixed_lineage[i].fill = ( fills > 0 ) ? (const tabledemo_table_fixed_fill_t *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
         tabledemo_turret_config_fixed_lineage[i].fill_count = fills;
-        tabledemo_turret_config_fixed_lineage[i].kind_changed = compiled.refused ? 1 : 0; /* a narrowed scalar refuses the read that selects this entry, before any record lands */
     }
     /* AND THE FLAG LAST: every entry above is written before this store, and
        this store is what a waiting thread's acquire is waiting for. */
@@ -18157,8 +18228,9 @@ static SCHEMA_UNUSED void tabledemo_hull_config_fixed_lineage_build( void )
                ENTRY. A HOSTILE LAYOUT — a third nested union the two-lane
                compiled walk refuses, or a depth past 64 — is named
                layout_record_too_large, the reference's name (§5.8 row 6). */
-            /* §5.9 #30: an UNLAWFUL entry (-3) — a writer field this reader
-               names nowhere, or a kind moved off every ladder — lays no plan
+            /* §5.9 #30: an UNLAWFUL entry (-3) — a writer field, arm, variant or
+               key this reader names nowhere, a shrunk bound or capacity, or a kind
+               moved off every ladder — lays no plan
                and refuses LAYOUT_MALFORMED; the writer's ?T into a bare T (-4)
                refuses KIND_MISMATCH (ruling R2). Neither is counted and read past. */
             if ( made == -4 )
@@ -18174,7 +18246,6 @@ static SCHEMA_UNUSED void tabledemo_hull_config_fixed_lineage_build( void )
         tabledemo_hull_config_fixed_lineage[i].guarded = guarded;
         tabledemo_hull_config_fixed_lineage[i].fill = ( fills > 0 ) ? (const tabledemo_table_fixed_fill_t *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
         tabledemo_hull_config_fixed_lineage[i].fill_count = fills;
-        tabledemo_hull_config_fixed_lineage[i].kind_changed = compiled.refused ? 1 : 0; /* a narrowed scalar refuses the read that selects this entry, before any record lands */
     }
     /* AND THE FLAG LAST: every entry above is written before this store, and
        this store is what a waiting thread's acquire is waiting for. */
@@ -20086,8 +20157,9 @@ static SCHEMA_UNUSED void tabledemo_keyed_config_fixed_lineage_build( void )
                ENTRY. A HOSTILE LAYOUT — a third nested union the two-lane
                compiled walk refuses, or a depth past 64 — is named
                layout_record_too_large, the reference's name (§5.8 row 6). */
-            /* §5.9 #30: an UNLAWFUL entry (-3) — a writer field this reader
-               names nowhere, or a kind moved off every ladder — lays no plan
+            /* §5.9 #30: an UNLAWFUL entry (-3) — a writer field, arm, variant or
+               key this reader names nowhere, a shrunk bound or capacity, or a kind
+               moved off every ladder — lays no plan
                and refuses LAYOUT_MALFORMED; the writer's ?T into a bare T (-4)
                refuses KIND_MISMATCH (ruling R2). Neither is counted and read past. */
             if ( made == -4 )
@@ -20103,7 +20175,6 @@ static SCHEMA_UNUSED void tabledemo_keyed_config_fixed_lineage_build( void )
         tabledemo_keyed_config_fixed_lineage[i].guarded = guarded;
         tabledemo_keyed_config_fixed_lineage[i].fill = ( fills > 0 ) ? (const tabledemo_table_fixed_fill_t *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
         tabledemo_keyed_config_fixed_lineage[i].fill_count = fills;
-        tabledemo_keyed_config_fixed_lineage[i].kind_changed = compiled.refused ? 1 : 0; /* a narrowed scalar refuses the read that selects this entry, before any record lands */
     }
     /* AND THE FLAG LAST: every entry above is written before this store, and
        this store is what a waiting thread's acquire is waiting for. */

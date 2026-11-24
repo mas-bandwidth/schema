@@ -78,6 +78,13 @@
 #include "VNEW_lineage_mergeTable.h"
 #include "VOLD_unknown_censusTable.h"
 #include "VOLD_kind_movedTable.h"
+#include "VOLD_arm_removedTable.h"
+#include "VOLD_variant_removedTable.h"
+#include "VOLD_key_removedTable.h"
+#include "VOLD_array_shrunkTable.h"
+#include "VOLD_counted_shrunkTable.h"
+#include "VOLD_text_narrowedTable.h"
+#include "VOLD_bytes_narrowedTable.h"
 #include "VNEW_unknown_censusTable.h"
 // ---- rowan/cpp-versioning-numbers: END ------------------------------------
 // ==== BEGIN rowan/cpp-versioning-lists: the LIST rows lineage pairs ====
@@ -1791,6 +1798,37 @@ static bool versioning_numbers_files( const char * dir )
     // its bits are not 7.0f, so a reinterpreting leg cannot pass by accident.
     VROW( vold_kind_moved, KindMoved, "old_kind_moved.bin",
           MS( v[0].lead, 0xAAAAAAAAu ); MS( v[0].v, 7 ); MS( v[0].trail, 0xBBBBBBBBu ); );
+
+    // THE NARROWING ROWS, the rest of the UNLAWFUL lineage entries (§5.1, §5.2
+    // MATCH/EMIT, §5.4; internal/fixedunlawful holds the case list every leg
+    // answers). Each OLD file holds only values the NEW reader could still
+    // name or hold: arm gamma, variant Gold, keys Bronze and Gold, a count of 2,
+    // a text of 2 bytes. A leg that drops what it lacks, remaps by id or
+    // checks only the live length LOADS these files; only a refusal passes.
+    // There is deliberately NO new_<row>.bin for any of them.
+    VROW( vold_arm_removed, ArmRemoved, "old_arm_removed.bin",
+          MS( v[0].lead, 0xAAAAAAAAu ); MSE( v[0].pick.type, vold_arm_removed::PickType::Gamma );
+          MS( v[0].pick.gamma.p, 9 ); MS( v[0].trail, 0xBBBBBBBBu ); );
+    VROW( vold_variant_removed, VariantRemoved, "old_variant_removed.bin",
+          MS( v[0].lead, 0xAAAAAAAAu ); MSE( v[0].tier, vold_variant_removed::Tier::Gold );
+          MS( v[0].trail, 0xBBBBBBBBu ); );
+    VROW( vold_key_removed, KeyRemoved, "old_key_removed.bin",
+          MS( v[0].lead, 0xAAAAAAAAu );
+          MSI( v[0].slots[vold_key_removed::Tier::Bronze], 11, KSLOT( vold_key_removed::Tier::Bronze ) );
+          MSI( v[0].slots[vold_key_removed::Tier::Silver], 22, KSLOT( vold_key_removed::Tier::Silver ) );
+          MSI( v[0].slots[vold_key_removed::Tier::Gold], 33, KSLOT( vold_key_removed::Tier::Gold ) );
+          MS( v[0].trail, 0xBBBBBBBBu ); );
+    VROW( vold_array_shrunk, ArrayShrunk, "old_array_shrunk.bin",
+          MS( v[0].lead, 0xAAAAAAAAu );
+          for ( int i = 0; i < 4; ++i ) { MSI( v[0].vals[i], 41 + i, (long long) ( i ) ); } MS( v[0].trail, 0xBBBBBBBBu ); );
+    VROW( vold_counted_shrunk, CountedShrunk, "old_counted_shrunk.bin",
+          MS( v[0].lead, 0xAAAAAAAAu ); MS( v[0].vals_count, 2 );
+          for ( int i = 0; i < 2; ++i ) { MSI( v[0].vals[i], 51 + i, (long long) ( i ) ); } MS( v[0].trail, 0xBBBBBBBBu ); );
+    VROW( vold_text_narrowed, TextNarrowed, "old_text_narrowed.bin",
+          MS( v[0].lead, 0xAAAAAAAAu ); MSTR( v[0].text, "ab" ); MS( v[0].text_length, 2 ); MS( v[0].trail, 0xBBBBBBBBu ); );
+    VROW( vold_bytes_narrowed, BytesNarrowed, "old_bytes_narrowed.bin",
+          MS( v[0].lead, 0xAAAAAAAAu ); for ( int i = 0; i < 2; ++i ) { MSI( v[0].blob[i], (uint8_t) ( 0xF0 + i ), (long long) ( i ) ); }
+          MS( v[0].blob_length, 2 ); MS( v[0].trail, 0xBBBBBBBBu ); );
     return true;
 }
 // ---- rowan/cpp-versioning-numbers: END ------------------------------------
