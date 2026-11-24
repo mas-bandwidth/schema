@@ -584,6 +584,22 @@ func main() {
 		}
 	}
 
+	switch plant := os.Getenv("SCHEMA_GATE_PLANT"); plant {
+	case "":
+	case "tablegen":
+		var n int
+		corpusDir, cases, n, err = plantTablegen(cases, filepath.Join(workRoot, "planted-tablegen"))
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		packed = PackCases(cases)
+		fmt.Fprintf(os.Stderr, "PLANTED tablegen: %d of %d expected answers carry an inverted last byte; every leg must now go red\n", n, len(cases))
+	default:
+		fmt.Fprintf(os.Stderr, "SCHEMA_GATE_PLANT=%q: verify-tablegen plants tablegen only\n", plant)
+		os.Exit(2)
+	}
+
 	targets := parseTargets(*langFlag)
 	if len(targets) == 0 {
 		fmt.Fprintln(os.Stderr, "--lang is required")

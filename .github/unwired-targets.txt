@@ -1,0 +1,68 @@
+# Make targets named like a test, gate or control that no workflow, nightly-fast
+# row, negative-control group or planner reaches (tools/wiredtargets).
+# One line each: `target | reason`. A reason starts `by-hand:` (an authoring,
+# pin, census, smoke or machine check a person runs on purpose) or `owed:` (a
+# real gate CI should run and does not yet; wire it and delete the line).
+# A line that excuses nothing (the target is reached, gone, or not test-like)
+# fails the check, so this list can only shrink by wiring.
+bench-check | by-hand: checks an SDK install on one machine after nova-fleet sdk-toolchain
+bench-paired-gate | by-hand: paired benchmark gate on a quiet bench machine; timing is meaningless on shared runners
+bench-table-check | by-hand: verifies the pinned bench-table corpus after bench-table-corpus regenerates it
+build-conformance-elixir-from-shards | by-hand: assembles the Elixir driver from sharded artifacts when replaying a CI handoff locally
+cards-conformance-all | by-hand: every card leg at once, for a person; CI runs the legs as their own rows
+cards-conformance-all-goose | by-hand: the goose part of cards-conformance-all
+cards-conformance-create | by-hand: authoring, writes a new card conformance case
+cards-corpus-create | by-hand: authoring, writes a new card corpus
+cards-fuzz-fixture | by-hand: authoring, regenerates the card fuzz fixture
+conformance-big-endian-smoke | owed: big-endian smoke under qemu-s390x (8.7 s) runs in no workflow
+conformance-generate | by-hand: authoring, regenerates the conformance corpus
+conformance-json-fuzz-nightly | owed: named nightly but no workflow runs it
+conformance-pin | by-hand: authoring, re-pins conformance expectations
+conformance-port | by-hand: authoring, ports a conformance case to a leg
+conformance-valuedefaults-pin | by-hand: authoring, re-pins value-default expectations
+fuzz-generated-readers-go | owed: comment says certify nightly, but no workflow runs it
+proof | owed: the matrix proof over conformance results runs in no workflow
+proof-write | by-hand: authoring, regenerates test/proof/proof.json
+python-fixed-proof-ci-patterns | by-hand: prints the CI patterns of the python fixed proof, runs no test
+python-fixed-proof-evolution | by-hand: aggregate of the evolution parts CI already runs one by one
+roadmap-original-nine-check | owed: original-nine roadmap check runs in no workflow
+ruby-gems-lock-controls | owed: negative controls of the ruby gems lock check run in no workflow
+schema-dart-generated-strict-analyze-gate-tables | owed: nightly half of the dart strict analyze gate runs in no workflow
+schema-dart-nightly-fuzz-analyze | owed: dart nightly fuzz analyze runs in no workflow
+schema-go-generated-golangci-lint-gate-ratchet-regenerate | by-hand: authoring, regenerates the golangci-lint ratchet
+shape-gate | by-hand: alias; ci-full runs `go run ./bench/tools/shapegate` directly, not through make
+slow-gate-coverage | owed: slow-gate coverage audit over ./... runs in no workflow
+tables-block-gate2 | owed: block gate 2 (C++ and C#) runs in no workflow
+tables-c | by-hand: the whole C leg for a person; CI runs its parts as their own jobs and rows
+tables-cook-open-1gb | by-hand: 1 GB scale run, too heavy for CI runners
+tables-cook-open-cs-1gb | by-hand: 1 GB scale run, too heavy for CI runners
+tables-cook-scale-1gb | by-hand: 1 GB scale run, too heavy for CI runners
+tables-cpp-clean-census | by-hand: census report, not a gate
+tables-cs-fixed-roadmap | owed: C# fixed-roadmap t12 test runs in no workflow
+tables-cs-fixed-t13 | owed: C# fixed-roadmap t13 test runs in no workflow
+tables-cs-leg-debug-core | owed: part of tables-cs-leg-debug, which the fixedform-cs row runs whole; not wired as its own part
+tables-cs-leg-debug-evolution | owed: part of tables-cs-leg-debug, which the fixedform-cs row runs whole; not wired as its own part
+tables-cs-leg-debug-fixed | owed: part of tables-cs-leg-debug, which the fixedform-cs row runs whole; not wired as its own part
+tables-cs-leg-debug-wire | owed: part of tables-cs-leg-debug, which the fixedform-cs row runs whole; not wired as its own part
+tables-cs-leg-release-core | owed: the C# release-build leg runs in no workflow
+tables-cs-leg-release-evolution | owed: the C# release-build leg runs in no workflow
+tables-cs-leg-release-fixed | owed: the C# release-build leg runs in no workflow
+tables-cs-leg-release-wire | owed: the C# release-build leg runs in no workflow
+tables-cs-region-fuzz-smoke | by-hand: smoke size of the C# region fuzz; CI runs the full fuzz
+tables-cs-wire-fuzz-smoke | by-hand: smoke size of the C# wire fuzz; CI runs the full fuzz
+tables-elixir-alloc-pin | by-hand: authoring, re-pins the Elixir allocation budget
+tables-go-checked-cook | owed: checked-cook Go consumers test runs in no workflow
+tables-go-soak | by-hand: unbounded soak (-timeout 0) run on purpose
+tables-goose-integrity | owed: goose CRC32C integrity gate runs in no workflow
+tables-goose-integrity-crc-diagnostic | by-hand: diagnostic replay of a CRC mutant, not a gate
+tables-goose-retain-fuzz | owed: goose retain fuzz runs in no workflow
+tables-goose-retain-fuzz-driver | owed: goose retaining fuzz-driver test runs in no workflow
+tables-java-fixed-roadmap | owed: Java fixed-roadmap t12 test runs in no workflow
+tables-java-format-census | by-hand: census report, not a gate
+tables-java-package | owed: whole javatable package (900 s) runs in no workflow
+tables-lobster-damage-discard | owed: lobster damage-discard gate runs in no workflow
+tables-moo-compiler-claims | owed: moo-tagged compiler tests run in no workflow
+tables-squirrel-damage-discard | owed: squirrel damage-discard gate runs in no workflow
+tables-squirrel-text-differential | owed: squirrel text differential runs in no workflow
+wire-fuzz-release-table | by-hand: authoring, regenerates the wire-fuzz release table
+wire-fuzz-release-targets | by-hand: authoring, prints the wire-fuzz release targets

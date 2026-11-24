@@ -534,7 +534,10 @@ func ciMakeTargetsAfter(args string) []string {
 }
 
 // ciPullRequestMakeTargets reads every `make <target>` the pull-request gate,
-// ci-fast.yml, invokes by name, comments stripped.
+// ci-fast.yml, invokes by name, comments stripped, and every target a row of
+// .github/nightly-fast-rows.txt names: ci-fast.yml's nightly-fast job runs
+// each row on the pull requests that select it (since 2026-11-24 that is how
+// the per-leg fixed-form and versioning gates run per pull request).
 func ciPullRequestMakeTargets(t *testing.T, root string) []string {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci-fast.yml"))
@@ -546,6 +549,22 @@ func ciPullRequestMakeTargets(t *testing.T, root string) []string {
 		for _, m := range ciMakeInvocation.FindAllStringSubmatch(l.text, -1) {
 			targets = append(targets, ciMakeTargetsAfter(m[1])...)
 		}
+	}
+	rows, err := os.ReadFile(filepath.Join(root, ".github", "nightly-fast-rows.txt"))
+	if err != nil {
+		t.Fatalf("the nightly-fast row registry ci-fast.yml runs per pull request: %v", err)
+	}
+	for _, l := range lines("nightly-fast-rows.txt", string(rows)) {
+		fields := strings.Split(l.text, " | ")
+		if len(fields) != 4 {
+			continue
+		}
+		for _, m := range ciMakeInvocation.FindAllStringSubmatch(fields[3], -1) {
+			targets = append(targets, ciMakeTargetsAfter(m[1])...)
+		}
+	}
+	if len(targets) == 0 {
+		t.Fatal("ci-fast.yml and its row registry invoke no make target: the listing below would check nothing")
 	}
 	return targets
 }
@@ -1192,15 +1211,24 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		PlanPkgs: planPkgs,
 		PlanLegs: planLegs,
 	}
-	// The leg gates (fixed form + versioning, every leg) are not light: they
-	// run on dispatch only (the owner, 2026-11-15, "no exceptions"); the
-	// nightly ci-full.yml runs every leg.
-	for _, job := range []string{"leg-gate", "leg-gate-cpp", "leg-gate-lobster", "leg-gate-rust", "leg-gate-squirrel"} {
+	// The leg gates' parts (fixed form + versioning) run on every pull
+	// request that selects their leg (2026-11-24): each fits the two-minute
+	// cap, and a gate that runs only on dispatch runs per commit never. A
+	// fork's pull request runs none of them (no fleet runner for a fork).
+	for _, job := range []string{"leg-gate-cpp", "leg-gate-lobster", "leg-gate-rust", "leg-gate-squirrel"} {
 		pr := sameRepoMainUnlabeled
 		pr.PlanLegs = `["cpp","go","lobster","rust","squirrel"]`
-		if ok, _ := jobSelectsSelfHosted(wfs["ci-fast.yml"], job, pr); ok {
-			errs = append(errs, fmt.Sprintf("same-repo PR into main ran ci-fast.yml:%s; the leg gates run on dispatch only", job))
+		if ok, err := jobSelectsSelfHosted(wfs["ci-fast.yml"], job, pr); err != nil || !ok {
+			errs = append(errs, fmt.Sprintf("a same-repo PR selecting its leg did not run ci-fast.yml:%s (err=%v)", job, err))
 		}
+		fork := pr
+		fork.HeadRepo = "someone/schema"
+		if ok, _ := jobRunsInWorkflow(wfs["ci-fast.yml"], job, fork); ok {
+			errs = append(errs, fmt.Sprintf("a fork's PR ran ci-fast.yml:%s on the fleet", job))
+		}
+	}
+	if _, ok := yamlJobs(wfs["ci-fast.yml"])["leg-gate"]; ok {
+		errs = append(errs, "ci-fast.yml carries the dispatch-only leg-gate matrix again; its arms are nightly-fast rows")
 	}
 	for _, wantKey := range []string{
 		"ci-fast.yml:golangci-lint-fast",
@@ -1236,57 +1264,38 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 			errs = append(errs, fmt.Sprintf("stream-to-dev PR did not run ci-fast.yml:%s (err=%v)", job, err))
 		}
 	}
-	if ok, _ := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate", streamToDevPR); ok {
-		errs = append(errs, "stream-to-dev PR ran ci-fast.yml:leg-gate below main")
-	}
-	if ok, _ := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate-lobster", streamToDevPR); ok {
-		errs = append(errs, "stream-to-dev PR ran ci-fast.yml:leg-gate-lobster below main")
-	}
-	if ok, _ := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate-squirrel", streamToDevPR); ok {
-		errs = append(errs, "stream-to-dev PR ran ci-fast.yml:leg-gate-squirrel below main")
-	}
-	if ok, _ := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate-cpp", streamToDevPR); ok {
-		errs = append(errs, "stream-to-dev PR ran ci-fast.yml:leg-gate-cpp below main")
-	}
-	if ok, _ := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate-rust", streamToDevPR); ok {
-		errs = append(errs, "stream-to-dev PR ran ci-fast.yml:leg-gate-rust below main")
-	}
 	// the Rust probe row runs exactly when the plan selects the Rust leg
 	rustIntoMain := sameRepoMainUnlabeled
-	rustIntoMain.Name = "workflow_dispatch"
 	rustIntoMain.PlanLegs = `["rust"]`
 	if ok, err := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-rust", rustIntoMain); err != nil || !ok {
-		errs = append(errs, fmt.Sprintf("a dispatch selecting the Rust leg did not run ci-fast.yml:leg-gate-rust (err=%v)", err))
+		errs = append(errs, fmt.Sprintf("a PR selecting the Rust leg did not run ci-fast.yml:leg-gate-rust (err=%v)", err))
 	}
 	if ok, _ := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-rust", sameRepoMainUnlabeled); ok {
 		errs = append(errs, "ci-fast.yml:leg-gate-rust ran with no Rust leg in the plan")
 	}
 	// the C++ parts run exactly when the plan selects the C++ leg
 	cppIntoMain := sameRepoMainUnlabeled
-	cppIntoMain.Name = "workflow_dispatch"
 	cppIntoMain.PlanLegs = `["cpp"]`
 	if ok, err := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-cpp", cppIntoMain); err != nil || !ok {
-		errs = append(errs, fmt.Sprintf("a dispatch selecting the C++ leg did not run ci-fast.yml:leg-gate-cpp (err=%v)", err))
+		errs = append(errs, fmt.Sprintf("a PR selecting the C++ leg did not run ci-fast.yml:leg-gate-cpp (err=%v)", err))
 	}
 	if ok, _ := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-cpp", sameRepoMainUnlabeled); ok {
 		errs = append(errs, "ci-fast.yml:leg-gate-cpp ran with no C++ leg in the plan")
 	}
 	// the Lobster rows run exactly when the plan selects the Lobster leg
 	lobsterIntoMain := sameRepoMainUnlabeled
-	lobsterIntoMain.Name = "workflow_dispatch"
 	lobsterIntoMain.PlanLegs = `["lobster"]`
 	if ok, err := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-lobster", lobsterIntoMain); err != nil || !ok {
-		errs = append(errs, fmt.Sprintf("a dispatch selecting the Lobster leg did not run ci-fast.yml:leg-gate-lobster (err=%v)", err))
+		errs = append(errs, fmt.Sprintf("a PR selecting the Lobster leg did not run ci-fast.yml:leg-gate-lobster (err=%v)", err))
 	}
 	if ok, _ := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-lobster", sameRepoMainUnlabeled); ok {
 		errs = append(errs, "ci-fast.yml:leg-gate-lobster ran with no Lobster leg in the plan")
 	}
 	// the Squirrel card rows run exactly when the plan selects the Squirrel leg
 	squirrelIntoMain := sameRepoMainUnlabeled
-	squirrelIntoMain.Name = "workflow_dispatch"
 	squirrelIntoMain.PlanLegs = `["squirrel"]`
 	if ok, err := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-squirrel", squirrelIntoMain); err != nil || !ok {
-		errs = append(errs, fmt.Sprintf("a dispatch selecting the Squirrel leg did not run ci-fast.yml:leg-gate-squirrel (err=%v)", err))
+		errs = append(errs, fmt.Sprintf("a PR selecting the Squirrel leg did not run ci-fast.yml:leg-gate-squirrel (err=%v)", err))
 	}
 	if ok, _ := jobSelectsSelfHosted(wfs["ci-fast.yml"], "leg-gate-squirrel", sameRepoMainUnlabeled); ok {
 		errs = append(errs, "ci-fast.yml:leg-gate-squirrel ran with no Squirrel leg in the plan")
@@ -1320,9 +1329,6 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		if ok, err := jobRunsInWorkflow(wfs["ci-fast.yml"], job, unnamedBase); err != nil || !ok {
 			errs = append(errs, fmt.Sprintf("PR into an unnamed base did not run ci-fast.yml:%s (err=%v)", job, err))
 		}
-	}
-	if ok, _ := jobRunsInWorkflow(wfs["ci-fast.yml"], "leg-gate", unnamedBase); ok {
-		errs = append(errs, "PR into an unnamed base ran ci-fast.yml:leg-gate below main")
 	}
 	forkUnnamed := unnamedBase
 	forkUnnamed.HeadRepo = forkRepo
@@ -1461,7 +1467,6 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:input-family-dart-conformance",
 		"ci-fast.yml:lang-clean",
 		"ci-fast.yml:lang-lint",
-		"ci-fast.yml:leg-gate",
 		"ci-fast.yml:leg-gate-cpp",
 		"ci-fast.yml:leg-gate-lobster",
 		"ci-fast.yml:leg-gate-rust",
@@ -1492,6 +1497,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-full.yml:pins",
 		"ci-full.yml:pr-select",
 		"ci-full.yml:proof",
+		"ci-full.yml:rust-miri",
 		"ci-full.yml:shape-gate",
 		"ci-full.yml:unity",
 		"ci-full.yml:verdict",

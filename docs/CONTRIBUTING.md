@@ -303,6 +303,13 @@ Nothing fails silently, in the tests or in the tools that run them:
   `// errdiscard: <reason>` comment. Writes into memory, to the process's own
   stdout and stderr, `Parse` on an `ExitOnError` flag set and `Close` on a
   read-only `os.Open` handle need no reason; `-all` lists the kept ones.
+- **No test or control target is left out of CI.** `go run ./tools/wiredtargets`
+  (a few seconds, in `ci-fast.yml`'s `lint-fast`) reads `make -pq` and refuses
+  by name any target named like a test, gate or control that no workflow,
+  nightly-fast row, negative-control group or planner reaches. A target run by
+  hand on purpose, or a gate still owed its wiring, goes in
+  `.github/unwired-targets.txt` with its reason; a line there that excuses
+  nothing is refused too.
 
 The per-leg make gates, measured on an M-series Studio:
 

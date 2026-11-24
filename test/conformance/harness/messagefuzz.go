@@ -457,6 +457,9 @@ func runAndCompareMessageMutant(leg *wireLeg, roots []*messageFuzzRoot, ri int, 
 	if err != nil {
 		return false, err
 	}
+	if plantedMessageFuzz() {
+		ans = plantMessageAnswer(ans) // plant.go: the negative control's wrong oracle
+	}
 	if err := leg.send(ri, frame); err != nil {
 		saveFailedMessageFrame(failedPath, frame)
 		leg.kill()

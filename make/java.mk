@@ -859,7 +859,7 @@ tables-java-fixedform: build/java-fixedform/.stamp build/fixedform-corpus/.stamp
 .PHONY: tables-java-versioning
 tables-java-versioning: tables-fixedform-corpus
 	SCHEMA_REQUIRE_CORPUS=1 JAVAC=$(JAVAC) JAVA=$(JAVA) \
-		go test ./internal/codegen/javatable/ -count=1 -run 'TestFixedVersioning'
+		$(call go-test-gate,TestFixedVersioning,-count=1,./internal/codegen/javatable/)
 	@echo 'tables Java versioning: §5 read both columns of every row against the C++ reference bytes'
 
 # THE MESSAGE FORM, form byte 2 (docs/SPEC-TABLES.md §3.3;

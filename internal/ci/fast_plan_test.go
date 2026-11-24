@@ -176,12 +176,12 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 		{
 			name:  "certify workflow edit runs readiness and workflow auditors",
 			files: ".github/workflows/certify.yml",
-			want:  `no|./internal/recipescan ./internal/codegen/pythontable ./internal/codegen/rubytable ./tools/negativecontrols ./tools/slowgatescan|[]`,
+			want:  `no|./internal/recipescan ./internal/codegen/pythontable ./internal/codegen/rubytable ./tools/negativecontrols ./tools/slowgatescan ./tools/wiredtargets|[]`,
 		},
 		{
 			name:  "nightly-readiness edit runs readiness and workflow auditors",
 			files: "test/conformance/nightly-readiness",
-			want:  `no|./internal/codegen/pythontable ./internal/codegen/rubytable ./tools/negativecontrols ./tools/slowgatescan|[]`,
+			want:  `no|./internal/codegen/pythontable ./internal/codegen/rubytable ./tools/negativecontrols ./tools/slowgatescan ./tools/wiredtargets|[]`,
 		},
 		{
 			name:  "docs only",

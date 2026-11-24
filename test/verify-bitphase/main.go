@@ -336,6 +336,16 @@ func main() {
 		}
 	}
 
+	if plant := os.Getenv("SCHEMA_GATE_PLANT"); plant != "" {
+		var swapped []string
+		corpusDir, swapped, err = plantCorpus(corpusDir, filepath.Join(workRoot, "planted-"+plant), plant, cases, blobs)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Fprintf(os.Stderr, "PLANTED %s: %d valid and hostile vectors traded bytes (%s); every leg must now go red\n", plant, len(swapped), strings.Join(swapped, " "))
+	}
+
 	var targets []string
 	switch {
 	case *langFlag == "all":

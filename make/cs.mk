@@ -856,7 +856,7 @@ tables-cs-soak-negative-control: build/tables-generated-cs/.stamp
 # reference's EXACT four since (csVersionRow.widened).
 .PHONY: tables-cs-versioning
 tables-cs-versioning: tables-fixedform-corpus
-	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -timeout 20m -run 'TestFixedVersioning'
+	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 $(call go-test-gate,TestFixedVersioning,-count=1 -timeout 20m,./internal/codegen/cstable/)
 	@echo 'tables C# versioning: §5 read both columns of every row against the C++ reference bytes'
 
 .PHONY: tables-cs-fixed-t13
