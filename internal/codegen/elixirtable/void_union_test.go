@@ -151,7 +151,7 @@ const voidUnionRequiredContext = `
  ptr *Kid }
  table Guard { on bool
  if on { needed int32 | required } }
- table Range { n int32 | min=5, required }
+ table MinFive { n int32 | min=5, required }
  table GuardRange { on bool
  if on { n int32 | min=5, required } }
  table Branch { outer bool
