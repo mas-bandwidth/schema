@@ -67,6 +67,11 @@ func cardBranchSkipErrors(wfs map[string]string) []string {
 		}
 		sort.Strings(jobNames)
 		for _, j := range jobNames {
+			// schema-test runs on every branch. #5008 removes this gate for
+			// every job; until it lands, schema-test is its one exception
+			if name == "ci-fast.yml" && j == "schema-test" {
+				continue
+			}
 			cond, ok := "", false
 			for line := range strings.SplitSeq(jobs[j], "\n") {
 				if c, found := strings.CutPrefix(line, "    if: "); found {
