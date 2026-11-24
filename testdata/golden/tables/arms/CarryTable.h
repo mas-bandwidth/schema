@@ -21357,6 +21357,7 @@ inline bool HandCookBody( const Ctx & ctx, const TableCookRegion & region, uint8
 {
     // 2 slots of storage, value.entries_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.entries_count >= 0 && value.entries_count <= 2 ); // storage invariant, debug only (§5.1)
+    if ( value.entries_count < 0 || value.entries_count > 2 ) { return false; }
     for ( int32_t i = 0; i < value.entries_count; i++ )
     {
         {

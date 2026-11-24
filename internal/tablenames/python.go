@@ -15,6 +15,11 @@ const Python Backend = 1 << 13
 
 func init() {
 	define(Python,
+		Name{Name: "BeginFrom", What: "build a block from a typed table in the Python runtime subpackage", Scoped: true},
+		Name{Name: "fixed_load_into", What: "load a fixed-form batch into caller values", Scoped: true},
+		Name{Name: "from_json_into", What: "read JSON into a caller value", Scoped: true},
+		Name{Name: "load_into", What: "load a variable-form table into a caller value", Scoped: true},
+		Name{Name: "load_messages_into", What: "load a message batch into caller values", Scoped: true},
 		Name{Name: "FixedLoadReport", What: "the fixed load counters and selected layout hash", Scoped: true},
 		Name{Name: "fixed_register", What: "bind the generated fixed-form schema and plans", Scoped: true},
 		Name{Name: "fixed_load", What: "load a whole fixed-form batch", Scoped: true},

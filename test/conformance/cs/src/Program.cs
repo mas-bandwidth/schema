@@ -83,6 +83,8 @@ static partial class Program
     sealed class Codec
     {
         public Func<byte[],bool,byte[]> NativeCook;
+        // Fresh is the root's declared-default value (a write-refusal wire of `-`).
+        public Func<object> Fresh;
         public Func<object, long> CookMeasure;
         public Func<object, byte[], bool, bool> Cook;
         public Func<byte[], byte[], Report, object> MessageLoad;
@@ -622,6 +624,7 @@ static partial class Program
         {
             Unit = unit,
             Root = root,
+            Fresh = () => new TValue(),
             LoadMeasure = loadMeasure,
             PartialLoad = (bytes, report) =>
             {
@@ -2867,6 +2870,7 @@ static partial class Program
 
     static int Main(string[] args)
     {
+        RegisterSurfaces1122();
         RegisterMessages();
         RegisterFixed();
         RegisterNativeCooks();
@@ -2884,7 +2888,7 @@ static partial class Program
         {
             // Form-1 wire and its five conformance surfaces. Unsupported constructs
             // remain explicit per-case absences, as in the other language drivers.
-            Console.Out.Write("wire\nmessage\nmessage-prior\ncook-write\nreport\nframing\njson-read\njson-write\njson-hostile\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\nretain\nretain-save\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nunit shapes\n");
+            Console.Out.Write("wire\nmessage\nmessage-prior\ncook-write\nreport\nframing\njson-read\njson-write\njson-hostile\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\nretain\nretain-save\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nannounce\nread-into\njson-write-into\nunit shapes\n");
             return 0;
         }
         if (args.Length < 3)
@@ -2914,7 +2918,12 @@ static partial class Program
             case "write-refusal":
             case "write-refusal-fixed":
             case "write-refusal-message":
+            case "write-refusal-cook":
+            case "write-refusal-block":
             case "write-refusal-json": return SurfaceWriteRefusal(outDir, surface);
+            case "announce": return SurfaceAnnounce(outDir);
+            case "read-into": return SurfaceReadInto(outDir);
+            case "json-write-into": return SurfaceJsonWriteInto(outDir);
             default: return 2;
         }
     }

@@ -79,6 +79,7 @@ func messageRuntimeModule(u *ir.Unit, ownsReport bool) []byte {
 	b.WriteString("/// compile-time constant (§3.3). It is an ordinary form-1 FILE whose body\n")
 	b.WriteString("/// carries the build version at kind 9 and the vocabulary at kind 14 over\n")
 	b.WriteString("/// element kind 6, and whose trailer is those two reserved ids.\n")
+	b.WriteString("#[allow(clippy::large_const_arrays)]\n")
 	fmt.Fprintf(&b, "pub const TABLE_ANNOUNCEMENT: [u8; %d] = [", len(announcement))
 	for i, v := range announcement {
 		if i%12 == 0 {

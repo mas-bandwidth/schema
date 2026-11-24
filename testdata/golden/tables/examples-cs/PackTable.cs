@@ -721,7 +721,7 @@ namespace Tabledemo
                     new TableFieldInfo { Name = "tick_rate", Json = "tick_rate", TypeName = "uint32", Id = 0xa65f859b617deaf3, Kind = 8, IsArray = false, Counted = false, Optional = false, ArrayMin = 0, ArrayBound = 0, ElemWidth = 4, HasRange = true, RangeMin = 1.0, RangeMax = 240.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Tabledemo.GlobalSettings)o).TickRate; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.GlobalSettings)o).TickRate = unchecked((uint)r); }, MessageSlot = 9, MessageBounded = true, MessageSigned = false, MessageMin = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0x1ul)), MessageMax = unchecked((UInt128)(((UInt128)0x0ul << 64) | 0xf0ul)), Ordinal = 0, NativeOffset = 0, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.GlobalSettings)o; value.TickRate = 60; }, DefaultRaw = (ulong)60, RangeJsonInteger = delegate (ulong raw, TableReport r) { ulong v = raw; if (v < 1ul || v > 240ul) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } return raw; }, RequiredValidRaw = delegate (ulong raw) { uint v = unchecked((uint)raw); return v >= 1 && v <= 240; }, RangeRaw = delegate (ulong raw, TableReport r) { uint v = unchecked((uint)raw); if (v < 1) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } if (v > 240) { if (!r.Refused) { r.Refused = true; r.Reason = "out_of_range"; } } return (ulong)v; } },
                     new TableFieldInfo { Name = "difficulty", Json = "difficulty", TypeName = "Difficulty", Id = 0x467f35a74c6e4a70, Kind = 30, IsArray = false, Counted = false, Optional = false, ArrayMin = 0, ArrayBound = 0, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = 3, EnumName = delegate (ulong v) { return v <= (ulong)DifficultyMax ? EnumNameDifficulty((global::Tabledemo.Difficulty)v) : "???"; }, VariantId = delegate (ulong v) { ulong id; TableEnumId((global::Tabledemo.Difficulty)v, out id); return id; }, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)((global::Tabledemo.GlobalSettings)o).Difficulty; }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.GlobalSettings)o).Difficulty = unchecked((Difficulty)r); }, MessageSlot = 10, Ordinal = 1, NativeOffset = 4, NativeElementSize = 1, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.GlobalSettings)o; value.Difficulty = global::Tabledemo.Difficulty.Normal; }, DefaultRaw = (ulong)global::Tabledemo.Difficulty.Normal },
                     new TableFieldInfo { Name = "build_note", Json = "build_note", TypeName = "string", Id = 0x14ec921cc2549d60, Kind = 12, IsArray = false, Counted = true, Optional = false, ArrayMin = 0, ArrayBound = 48, ElemWidth = 0, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetBuffer = delegate (object o) { return ((global::Tabledemo.GlobalSettings)o).BuildNote; }, GetCount = delegate (object o) { return ((global::Tabledemo.GlobalSettings)o).BuildNoteLength; }, SetCount = delegate (object o, int n) { ((global::Tabledemo.GlobalSettings)o).BuildNoteLength = n; }, MessageSlot = 11, Ordinal = 2, NativeOffset = 5, NativeElementSize = 49, NativeCountOffset = 56, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.GlobalSettings)o; Array.Clear(value.BuildNote, 0, value.BuildNote.Length); value.BuildNoteLength = 0; } },
-                    new TableFieldInfo { Name = "spawn_delays", Json = "spawn_delays", TypeName = "float32", Id = 0x09ae5613b0051271, Kind = 10, IsArray = true, Counted = false, Optional = false, ArrayMin = 0, ArrayBound = 3, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((global::Tabledemo.GlobalSettings)o).SpawnDelays[i])); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.GlobalSettings)o).SpawnDelays[i] = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, MessageSlot = 12, Ordinal = 3, NativeOffset = 60, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.GlobalSettings)o; Array.Clear(value.SpawnDelays, 0, value.SpawnDelays.Length); }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(0.0f)), NonFiniteField = "GlobalSettings.spawn_delays", NonFiniteReason = "non_finite_float: GlobalSettings.spawn_delays", RangeRaw = delegate (ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
+                    new TableFieldInfo { Name = "spawn_delays", Json = "spawn_delays", TypeName = "float32", Id = 0x09ae5613b0051271, Kind = 10, IsArray = true, Counted = false, Optional = false, ArrayMin = 0, ArrayBound = 3, ElemWidth = 4, HasRange = false, RangeMin = 0.0, RangeMax = 0.0, EnumMax = -1, EnumName = null, VariantId = null, KeyTypeName = null, KeyName = null, KeyId = null, Guard = "", TableRef = null, Arms = null, Doc = TableDocNone, NumTags = 0, Tags = null, GetRaw = delegate (object o, int i) { return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(((global::Tabledemo.GlobalSettings)o).SpawnDelays[i])); }, SetRaw = delegate (object o, int i, ulong r) { ((global::Tabledemo.GlobalSettings)o).SpawnDelays[i] = BitConverter.Int32BitsToSingle(unchecked((int)(uint)r)); }, GetArrayLength = delegate (object o) { var a = ((global::Tabledemo.GlobalSettings)o).SpawnDelays; return a == null ? -1 : a.Length; }, MessageSlot = 12, Ordinal = 3, NativeOffset = 60, NativeElementSize = 4, NativeCountOffset = -1, NativePresentOffset = -1, ResetField = delegate (object o) { var value = (global::Tabledemo.GlobalSettings)o; Array.Clear(value.SpawnDelays, 0, value.SpawnDelays.Length); }, DefaultRaw = (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(0.0f)), NonFiniteField = "GlobalSettings.spawn_delays", NonFiniteReason = "non_finite_float: GlobalSettings.spawn_delays", RangeRaw = delegate (ulong raw, TableReport r) { float v = BitConverter.Int32BitsToSingle(unchecked((int)(uint)raw)); return (ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v)); } },
                 };
                 info.Reset = delegate (object o) { TableReset((global::Tabledemo.GlobalSettings)o); };
                 info.Doc = TableDocNone;
@@ -1023,6 +1023,7 @@ namespace Tabledemo
             if (value.TickRate < 1 || value.TickRate > 240) { clamped++; }
             if ((ulong)value.Difficulty > 3) { clamped++; }
             if (value.BuildNote != null && value.BuildNoteLength >= 0 && value.BuildNoteLength <= value.BuildNote.Length && !TableWire.TextValid(value.BuildNote.AsSpan(0, value.BuildNoteLength))) { clamped++; }
+            if (value.SpawnDelays == null || value.SpawnDelays.Length != 3) { clamped++; }
         }
 
         // PackConfig's write check (docs/SPEC.md §5.1), debug builds only.
@@ -1548,6 +1549,7 @@ namespace Tabledemo
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
+            if (report != null) { report.Zero(); }
             long loaded = GunnerSettingsFixedLoadWalk(values, data, plan, report);
             if (loaded < 0)
             {
@@ -2236,6 +2238,7 @@ namespace Tabledemo
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
+            if (report != null) { report.Zero(); }
             long loaded = ShipEntryFixedLoadWalk(values, data, plan, report);
             if (loaded < 0)
             {
@@ -2911,6 +2914,7 @@ namespace Tabledemo
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
+            if (report != null) { report.Zero(); }
             long loaded = GlobalSettingsFixedLoadWalk(values, data, plan, report);
             if (loaded < 0)
             {
@@ -4015,6 +4019,7 @@ namespace Tabledemo
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
+            if (report != null) { report.Zero(); }
             long loaded = PackConfigFixedLoadWalk(values, data, plan, report);
             if (loaded < 0)
             {

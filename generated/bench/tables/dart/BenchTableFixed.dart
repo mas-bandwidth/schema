@@ -3217,6 +3217,12 @@ int tableMessageBatchOpen(
   TableReport report,
   TableMessageReader r,
 ) {
+  report.refused = false;
+  report.reason = '';
+  report.unknown = 0;
+  report.widened = 0;
+  report.buildVersionRemote = 0;
+  report.buildVersionOwn = 0;
   report.nonFiniteFloat = ''; // this read's own refusal (§3.3)
   if (data.length == 0) { report.Damage(); return -1; }
   if (data[0] != 2) { report.Refuse('newer_form'); return -1; }
@@ -7184,6 +7190,28 @@ int tableEntityLoadMessages(
   return count;
 }
 
+int tableEntityBlockBuild(Uint8List bytes, int base, TableEntity value) {
+  if (base < 0 || base % 64 != 0 || bytes.length - base < 128) return -1;
+  if (value.entityId < 0 || value.entityId > 4095) return -1;
+  if (value.posX < -16383 || value.posX > 16383) return -1;
+  if (value.posY < -16383 || value.posY > 16383) return -1;
+  if (value.posZ < -16383 || value.posZ > 16383) return -1;
+  if (value.yaw < 0 || value.yaw > 511) return -1;
+  if (value.pitch < 0 || value.pitch > 511) return -1;
+  if (value.velX < -2048 || value.velX > 2047) return -1;
+  if (value.velY < -2048 || value.velY > 2047) return -1;
+  if (value.velZ < -2048 || value.velZ > 2047) return -1;
+  if (value.health < 0 || value.health > 1000) return -1;
+  if (value.weapon < 0 || value.weapon > 15) return -1;
+  if ((value.damage & ~255) != 0) return -1;
+  final view = ByteData.view(bytes.buffer, bytes.offsetInBytes, bytes.lengthInBytes);
+  view.setUint64(base, 0x4b4c42414d484353, Endian.little);
+  view.setUint64(base + 8, tableBuildVersion, Endian.little);
+  view.setUint64(base + 16, 1, Endian.little);
+  var offset = 88;
+  return (offset + 63) & ~63;
+}
+
 // ---- TableStat, THE FIXED FORM (docs/SPEC-TABLES.md §3.4) ----
 //
 // A record is an eight-byte hash of the writer's LAYOUT and then the values
@@ -7647,6 +7675,18 @@ int tableStatLoadMessages(
     return refuse();
   }
   return count;
+}
+
+int tableStatBlockBuild(Uint8List bytes, int base, TableStat value) {
+  if (base < 0 || base % 64 != 0 || bytes.length - base < 64) return -1;
+  if (value.statId < 0 || value.statId > 255) return -1;
+  if (value.delta < -512 || value.delta > 511) return -1;
+  final view = ByteData.view(bytes.buffer, bytes.offsetInBytes, bytes.lengthInBytes);
+  view.setUint64(base, 0x4b4c42414d484353, Endian.little);
+  view.setUint64(base + 8, tableBuildVersion, Endian.little);
+  view.setUint64(base + 16, 1, Endian.little);
+  var offset = 32;
+  return (offset + 63) & ~63;
 }
 
 // ---- TableMixed, THE FIXED FORM (docs/SPEC-TABLES.md §3.4) ----

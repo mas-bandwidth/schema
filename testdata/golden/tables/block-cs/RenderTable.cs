@@ -3788,6 +3788,7 @@ namespace Blockdemo
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
+            if (report != null) { report.Zero(); }
             long loaded = RenderCameraFixedLoadWalk(values, data, plan, report);
             if (loaded < 0)
             {
@@ -4565,6 +4566,7 @@ namespace Blockdemo
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
+            if (report != null) { report.Zero(); }
             long loaded = RenderShipFixedLoadWalk(values, data, plan, report);
             if (loaded < 0)
             {
@@ -5291,6 +5293,7 @@ namespace Blockdemo
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
+            if (report != null) { report.Zero(); }
             long loaded = RenderTurretFixedLoadWalk(values, data, plan, report);
             if (loaded < 0)
             {
@@ -6032,6 +6035,7 @@ namespace Blockdemo
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
+            if (report != null) { report.Zero(); }
             long loaded = RenderMissileFixedLoadWalk(values, data, plan, report);
             if (loaded < 0)
             {
@@ -6777,6 +6781,7 @@ namespace Blockdemo
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
+            if (report != null) { report.Zero(); }
             long loaded = RenderDynamicPropFixedLoadWalk(values, data, plan, report);
             if (loaded < 0)
             {
@@ -7523,6 +7528,7 @@ namespace Blockdemo
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
+            if (report != null) { report.Zero(); }
             long loaded = RenderStaticPropFixedLoadWalk(values, data, plan, report);
             if (loaded < 0)
             {
@@ -8277,6 +8283,7 @@ namespace Blockdemo
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
+            if (report != null) { report.Zero(); }
             long loaded = RenderCosmeticPropFixedLoadWalk(values, data, plan, report);
             if (loaded < 0)
             {
@@ -9002,6 +9009,7 @@ namespace Blockdemo
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
+            if (report != null) { report.Zero(); }
             long loaded = RenderLaserFixedLoadWalk(values, data, plan, report);
             if (loaded < 0)
             {
@@ -9744,6 +9752,7 @@ namespace Blockdemo
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
+            if (report != null) { report.Zero(); }
             long loaded = RenderExplosionFixedLoadWalk(values, data, plan, report);
             if (loaded < 0)
             {

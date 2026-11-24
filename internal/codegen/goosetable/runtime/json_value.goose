@@ -752,6 +752,12 @@ recursive fn jw_map(c: JvOut&, out: u8[>..]&, s: i64, d: FieldDesc, owner: const
             j -= 1;
         }
     }
+    for k in n {
+        if k > 0 && jw_key_cmp(c, kd, c.scratch[mark + k - 1], c.scratch[mark + k]) == 0 {
+            c.scratch.resize(mark);
+            return false;
+        }
+    }
     out.push('{');
     var ok = true;
     var k: i64 = 0;

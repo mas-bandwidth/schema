@@ -60,6 +60,16 @@ export type BlockParams = {
 -- returns the buffer and the used extent rounded up to 64; on an over-count or
 -- negative count it returns nil and, when refusal is supplied, fills it with
 -- the array's name, the count and the maximum.
+local Save = require("./schema_save")
+
+local function Build(d: any, value: any): (boolean?, string?)
+	local saved, err = Save.save(d, value)
+	if saved == nil then
+		return nil, if typeof(err) == "table" and err.name ~= nil then tostring(err.name) else "invalid_value"
+	end
+	return true, nil
+end
+
 local function Begin(p: BlockParams, counts: { [string]: number }, refusal: Refusal?): (buffer?, number?)
 	for _, a in p.arrays do
 		local c = counts[a.name] or 0
@@ -113,6 +123,7 @@ end
 
 return table.freeze({
 	Begin = Begin,
+	Build = Build,
 	elemAlign = elemAlign,
 	alignUp = alignUp,
 	BLOCK_ALIGN = BLOCK_ALIGN,

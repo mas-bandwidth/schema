@@ -1317,9 +1317,9 @@ public final class TableVocabulary {
     }
 
     static boolean knownKind(int kind) {
-        // 31 is held by name, never written (R17): an announcement naming it is
-        // refused, as one naming 33 or 34 is
-        return kind <= 30 || kind == 32 || kind == 36;
+        // The announcement kind set is closed (§3.3). Zero is the lawful name
+        // kind for a variant; 31 is R17's held escape; 32 is the void kind.
+        return (kind >= 0 && kind <= 30) || kind == 32 || kind == 36;
     }
 
     static int kindWidth(int kind) {

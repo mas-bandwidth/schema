@@ -22,7 +22,10 @@ module Ludicrous
     attr_accessor widened: Integer
     attr_accessor retained: Integer
     attr_accessor retain_lost: Integer
+    attr_accessor refused: bool
+    attr_accessor reason: String
     def initialize: () -> void
+    def reset: () -> void
   end
 
   module Serialize

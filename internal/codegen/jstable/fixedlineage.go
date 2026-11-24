@@ -117,8 +117,11 @@ func jsFixedUnitRoots(u *ir.Unit) []*ir.Struct {
 // tables only (docs/SPEC-TABLES.md §3.3).
 func jsMessageUnitRoots(u *ir.Unit) []*ir.Struct {
 	var out []*ir.Struct
-	for _, st := range jsFixedUnitRoots(u) {
-		if st.FixedDeclared {
+	for _, f := range u.Files {
+		for _, st := range f.Tables {
+			if !st.IsTable || st.IsMapEntry() || !st.FixedDeclared || !ir.TableFixedSupported(st, 0) {
+				continue
+			}
 			out = append(out, st)
 		}
 	}

@@ -1,7 +1,8 @@
 """Test the JSON writer after planting each invalid value."""
 
-from _common import answering, no_codec, entries, root_class, write_bytes
-from _json_common import raise_if_unsupported, read_wire
+from _common import answering, entries, no_codec, root_class, write_bytes
+from _json_common import raise_if_unsupported
+from _mutate import UNREPRESENTABLE, fresh_or_load
 from importlib import import_module
 
 
@@ -14,8 +15,10 @@ def run(manifest, outdir):
             if cls is None:
                 no_codec(outdir, case)
                 continue
-            value = read_wire(cls, wire)
-            setter(value, path, rule, token)
+            value = fresh_or_load(cls, wire)
+            if setter(value, path, rule, token) is UNREPRESENTABLE:
+                write_bytes(outdir, case, b"unrepresentable\n")
+                continue
             try:
                 out = value.to_json()
             except ValueError as error:

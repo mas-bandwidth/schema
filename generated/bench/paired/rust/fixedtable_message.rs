@@ -15,7 +15,8 @@
 // runtime's when it does not, so the glob names it either way.
 use crate::*;
 
-const FIXED_TABLE_MESSAGE_DEFAULTS: [u8; 1236] = [
+// This immutable wire image is compiler-settled data of the form (§3.3).
+static FIXED_TABLE_MESSAGE_DEFAULTS: [u8; 1236] = [
     0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
     0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
     0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
@@ -235,10 +236,7 @@ pub fn fixed_table_load_messages(values: &mut [FixedTableRow], vocabulary: &Tabl
 /// The walk under LoadMessages: on a refusal it returns (0, false) and leaves
 /// the reset of every value handed in to the caller above (R4).
 fn fixed_table_load_messages_walk(values: &mut [FixedTableRow], vocabulary: &TableVocabulary, data: &[u8], report: &mut TableReport) -> (usize, bool) {
-    report.non_finite_float = "";
-    report.non_finite_float_id = None;
-    report.oor_field = "";
-    report.damaged = false;
+    *report = TableReport::default();
     let Some(count) = table_message_batch_open(vocabulary, data, report) else {
         return (0, false);
     };

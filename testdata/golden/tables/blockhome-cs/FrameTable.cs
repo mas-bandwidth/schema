@@ -1318,6 +1318,7 @@ namespace Blockhome
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
+            if (report != null) { report.Zero(); }
             long loaded = PartRowFixedLoadWalk(values, data, plan, report);
             if (loaded < 0)
             {
@@ -14301,6 +14302,7 @@ namespace Blockhome
             Span<TableFixedEntry> plan,
             TableReport report = null)
         {
+            if (report != null) { report.Zero(); }
             long loaded = PartFrameFixedLoadWalk(values, data, plan, report);
             if (loaded < 0)
             {

@@ -376,7 +376,7 @@ func emitFixedForm(m *Module) error {
 		entries := ir.TableFixedWalkRoot(st)
 		layout := ir.TableFixedLayoutBytes(entries)
 		hash := ir.TableFixedLayoutHash(layout, st)
-		m.Printf("_M.Fixed[%q].layout = %s\n", st.Name, lua.ByteString(layout))
+		m.Printf("_M.Fixed[%q].layout = %s\n", st.Name, chunkedLuaByteString(layout))
 		m.Printf("_M.Fixed[%q].hash = %s\n", st.Name, idLit(hash))
 		// THE KNOWN LAYOUTS (docs/FIXED-FORM-ALGORITHM.md §5.2): one entry per
 		// locked layout, OLDEST FIRST, the current one LAST. A file is matched
@@ -392,29 +392,27 @@ func emitFixedForm(m *Module) error {
 				m.Printf("  -- RETIRED: %s\n", e.Reason)
 			}
 			ranges, rangeParts := fixedWriterRangesParts(st, e, hash)
-			if len(e.Layout) > 1024 {
-				m.Printf("  {\n    hash = %s,\n    layout = table.concat({\n", idLit(e.Wire))
-				for i := 0; i < len(e.Layout); i += 20 {
-					end := min(i+20, len(e.Layout))
-					m.Printf("      %s,\n", lua.ByteString(e.Layout[i:end]))
-				}
-				m.Printf("    }),\n    record = %d,\n", e.Record)
-				if len(rangeParts) > 0 {
-					one := "ranges = { " + strings.Join(rangeParts, ", ") + " }"
-					if 4+len(one)+1 <= 120 {
-						m.Printf("    %s,\n", one)
-					} else {
-						m.Printf("    ranges = {\n")
-						for _, rp := range rangeParts {
-							m.Printf("      %s,\n", rp)
-						}
-						m.Printf("    },\n")
-					}
-				}
-				m.Printf("  },\n")
-			} else {
-				m.Printf("  { hash = %s, layout = %s, record = %d%s },\n", idLit(e.Wire), lua.ByteString(e.Layout), e.Record, ranges)
+			layout := chunkedLuaByteString(e.Layout)
+			compact := fmt.Sprintf("  { hash = %s, layout = %s, record = %d%s },", idLit(e.Wire), layout, e.Record, ranges)
+			if !strings.Contains(layout, "\n") && len(compact) <= lua.MaxLineLength {
+				m.Printf("%s\n", compact)
+				continue
 			}
+			m.Printf("  {\n    hash = %s,\n", idLit(e.Wire))
+			m.Printf("    layout = %s,\n    record = %d,\n", strings.ReplaceAll(layout, "\n", "\n    "), e.Record)
+			if len(rangeParts) > 0 {
+				one := "ranges = { " + strings.Join(rangeParts, ", ") + " }"
+				if 4+len(one)+1 <= lua.MaxLineLength {
+					m.Printf("    %s,\n", one)
+				} else {
+					m.Printf("    ranges = {\n")
+					for _, rp := range rangeParts {
+						m.Printf("      %s,\n", rp)
+					}
+					m.Printf("    },\n")
+				}
+			}
+			m.Printf("  },\n")
 		}
 		m.Printf("}\n")
 		m.Printf("_M.Fixed[%q].floor = %d\n", st.Name, floor)
@@ -438,9 +436,9 @@ func emitFixedForm(m *Module) error {
 	m.Printf("  local f = _M.Fixed[name]\n")
 	m.Printf("  return F.save(_M, f.table, values)\n")
 	m.Printf("end\n\n")
-	m.Printf("function _M.FixedLoad(name, buf, cap)\n")
+	m.Printf("function _M.FixedLoad(name, buf, cap, report, into)\n")
 	m.Printf("  local f = _M.Fixed[name]\n")
-	m.Printf("  return F.load(_M, f.table, buf, true, cap)\n")
+	m.Printf("  return F.load(_M, f.table, buf, true, cap, report, into)\n")
 	m.Printf("end\n\n")
 	return nil
 }

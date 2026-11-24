@@ -12390,9 +12390,16 @@ static SCHEMA_UNUSED int tabledemo_patrol_load_builder( tabledemo_patrol_builder
     refused_before = 0;
     non_finite_before = report->non_finite_floats;
     report->refused = 0;
+    root = builder != NULL ? tabledemo_patrol_builder_root( builder ) : NULL;
+    if ( root == NULL )
+    {
+        report->refused = 1, report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+        return 0;
+    }
     if ( !tabledemo_table_wire_open( &reader, wire, wire_bytes, report ) )
     {
         report->refused = report->refused || refused_before;
+        tabledemo_patrol_reset( root );
         return 0;
     }
     scan = tabledemo_table_node_scan_begin( &reader );
@@ -12400,18 +12407,14 @@ static SCHEMA_UNUSED int tabledemo_patrol_load_builder( tabledemo_patrol_builder
     if ( records >= INT64_MAX / (int64_t) sizeof( tabledemo_table_node_dir_entry_t ) - 1 )
     {
         report->refused = 1, report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
-        return 0;
-    }
-    root = tabledemo_patrol_builder_root( builder );
-    if ( root == NULL )
-    {
-        report->refused = 1, report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+        tabledemo_patrol_reset( root );
         return 0;
     }
     directory = (tabledemo_table_node_dir_entry_t *) tabledemo_table_allocate( builder->arena.allocator, ( records + 1 ) * (int64_t) sizeof( tabledemo_table_node_dir_entry_t ) );
     if ( directory == NULL )
     {
         report->refused = 1, report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
+        tabledemo_patrol_reset( root );
         return 0;
     }
     directory[0].offset = (uint64_t) builder->root_ref.value;

@@ -3,6 +3,7 @@ package javatable
 import (
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -111,6 +112,24 @@ func variableDefaultTest(f *ir.Field, expr string) string {
 	return expr + "==" + variableDefault(f)
 }
 
+func javaVariableNamesExpr(names []string) string {
+	joined := strings.Join(names, ",")
+	const chunk = 16000
+	var s strings.Builder
+	s.WriteString("TableVariable.names(\n")
+	for at := 0; at < len(joined); at += chunk {
+		end := min(at+chunk, len(joined))
+		fmt.Fprintf(&s, "        %q", joined[at:end])
+		if end == len(joined) {
+			s.WriteString("\n")
+		} else {
+			s.WriteString(",\n")
+		}
+	}
+	s.WriteString("    )")
+	return s.String()
+}
+
 // Each keyed slot is addressed by its variant's wire ID, never its position
 // in the writer's enum (§2.4, §3.2). The generated slot adapter reuses the
 // ordinary scalar/table codec and keeps the holder's typed List API.
@@ -125,6 +144,34 @@ func writeVariableKeyedHelpers(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		boxed := variableListElemType(f)
 		if isStruct(f) || one.Type.Pointer {
 			boxed = typ
+		}
+		large := len(f.KeyEnumRef.Variants) > 64
+		if large {
+			ids := make([]int64, len(f.KeyEnumRef.Variants))
+			type pair struct {
+				id  int64
+				idx int
+			}
+			pairs := make([]pair, len(f.KeyEnumRef.Variants))
+			for i := range f.KeyEnumRef.Variants {
+				id := int64(ir.TableWireId(f.KeyEnumRef.VariantWireName(i)))
+				ids[i] = id
+				pairs[i] = pair{id: id, idx: i}
+			}
+			sort.Slice(pairs, func(i, j int) bool { return pairs[i].id < pairs[j].id })
+			sortedIds := make([]int64, len(pairs))
+			sortedIdx := make([]int, len(pairs))
+			for i, p := range pairs {
+				sortedIds[i] = p.id
+				sortedIdx[i] = p.idx
+			}
+			fmt.Fprintf(b, "    static final long[] KEY_IDS_%s = %s;\n", m, strings.Replace(javaMessageLongsExpr(ids), "TableMessage.longs(", "TableVariable.longs(", 1))
+			fmt.Fprintf(b, "    static final long[] KEY_SORTED_IDS_%s = %s;\n", m, strings.Replace(javaMessageLongsExpr(sortedIds), "TableMessage.longs(", "TableVariable.longs(", 1))
+			fmt.Fprintf(b, "    static final int[] KEY_SORTED_IDX_%s = %s;\n", m, strings.Replace(javaMessageIntsExpr(sortedIdx), "TableMessage.ints(", "TableVariable.ints(", 1))
+			if unitCarriesForm(u, "json") {
+				fmt.Fprintf(b, "    static final java.lang.String[] KEY_NAMES_%s = %s;\n", m, javaVariableNamesExpr(f.KeyEnumRef.Variants))
+				fmt.Fprintf(b, "    static final java.util.Map<java.lang.String, java.lang.Integer> KEY_NAME_MAP_%s = TableVariable.nameIndex(KEY_NAMES_%s);\n", m, m)
+			}
 		}
 		fmt.Fprintf(b, "    static final class Slot_%s { %s %s=%s;long %sIdx; }\n", m, typ, m, variableDefault(one), m)
 		fmt.Fprintf(b, "    static void readSlot_%s(TableVariable.Reader r,Slot_%s v,int kind,TableVariable.NodeTable nt,TableVariable.Report report){\n", m, m)
@@ -149,34 +196,59 @@ func writeVariableKeyedHelpers(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 				args = ",TableRetain retain,TableVariable.Report report,int[] path,int depth"
 			}
 			fmt.Fprintf(b, "    static int writeKeyedPayload%s_%s(TableVariable.Writer w,TableVariable.NodeGraph graph,java.util.List<%s> slots%s){int entries=w.off;int count=0;\n", suffix, m, boxed, args)
-			for i := range f.KeyEnumRef.Variants {
-				expr := fmt.Sprintf("slots.get(%d)", i)
+			if large {
+				expr := "slots.get(i)"
 				defaultTest := variableDefaultTest(one, expr)
 				retainedBody := retaining && isStruct(one) && !one.Type.Pointer
 				if retainedBody {
 					defaultTest = "false"
 				}
-				fmt.Fprintf(b, "        if(slots.size()>%d&&!(%s)){int idsMark=w.ids.count;long key=w.ref(0x%016xL);int body=w.off;\n", i, defaultTest, ir.TableWireId(f.KeyEnumRef.VariantWireName(i)))
+				fmt.Fprintf(b, "        for(int i=0;i<KEY_IDS_%s.length&&i<slots.size();i++){if(!(%s)){int idsMark=w.ids.count;long key=w.ref(KEY_IDS_%s[i]);int body=w.off;\n", m, defaultTest, m)
 				if retaining {
 					fmt.Fprintf(b, "path[2*depth]=0;path[2*depth+1]=0;\n")
-					// The caller assigns the holder field and slot at depth-1.
-					fmt.Fprintf(b, "path[2*(depth-1)+1]=%d;\n", i)
+					fmt.Fprintf(b, "path[2*(depth-1)+1]=i;\n")
 					writeVariableRetainedPayload(b, u, st.Name, one, expr, "w", 0, "depth+1")
 				} else {
 					writeVariablePayload(b, u, st.Name, one, expr, "w", 0)
 				}
 				if retainedBody {
-					// the slot's payload is leb(length) then the body, and an
-					// EMPTY body — a default element with no retained tail — is
-					// the one terminator byte, two bytes framed: elided, as the
-					// plain write elides a default slot (§2.4, §6.6)
 					b.WriteString("if(w.off>body+2){")
 				}
 				fmt.Fprintf(b, "        w.frameEntry(body,key,%s);count++;", variablePayloadStart(one, "w", "body"))
 				if retainedBody {
 					b.WriteString("}else{w.off=body;w.ids.count=idsMark;}")
 				}
-				b.WriteString("}\n")
+				b.WriteString("}}\n")
+			} else {
+				for i := range f.KeyEnumRef.Variants {
+					expr := fmt.Sprintf("slots.get(%d)", i)
+					defaultTest := variableDefaultTest(one, expr)
+					retainedBody := retaining && isStruct(one) && !one.Type.Pointer
+					if retainedBody {
+						defaultTest = "false"
+					}
+					fmt.Fprintf(b, "        if(slots.size()>%d&&!(%s)){int idsMark=w.ids.count;long key=w.ref(0x%016xL);int body=w.off;\n", i, defaultTest, ir.TableWireId(f.KeyEnumRef.VariantWireName(i)))
+					if retaining {
+						fmt.Fprintf(b, "path[2*depth]=0;path[2*depth+1]=0;\n")
+						// The caller assigns the holder field and slot at depth-1.
+						fmt.Fprintf(b, "path[2*(depth-1)+1]=%d;\n", i)
+						writeVariableRetainedPayload(b, u, st.Name, one, expr, "w", 0, "depth+1")
+					} else {
+						writeVariablePayload(b, u, st.Name, one, expr, "w", 0)
+					}
+					if retainedBody {
+						// the slot's payload is leb(length) then the body, and an
+						// EMPTY body — a default element with no retained tail — is
+						// the one terminator byte, two bytes framed: elided, as the
+						// plain write elides a default slot (§2.4, §6.6)
+						b.WriteString("if(w.off>body+2){")
+					}
+					fmt.Fprintf(b, "        w.frameEntry(body,key,%s);count++;", variablePayloadStart(one, "w", "body"))
+					if retainedBody {
+						b.WriteString("}else{w.off=body;w.ids.count=idsMark;}")
+					}
+					b.WriteString("}\n")
+				}
 			}
 			fmt.Fprintf(b, "        w.frameKeyed(entries,%d,count);return count;}\n", ir.TableWireElemKind(f))
 		}
@@ -200,8 +272,12 @@ func writeKeyedFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	one := variableElement(f)
 	kind := ir.TableWireElemKind(f)
 	fmt.Fprintf(b, "                if(kind==16){TableVariable.Reader ar=r.body();if(ar!=null&&ar.has(2)){int ek=ar.get8();long count=ar.count(r.limit);if(!ar.fail){if(!TableVariable.keyedElemKindClosed(ek)){report.damaged=true;}else if(!(%s)){report.refuse(\"kind_mismatch\");}else{if(ek!=%d)report.widened++;for(long i=0;java.lang.Long.compareUnsigned(i,count)<0;i++){long keyRef=ar.leb();if(ar.fail||keyRef==0){report.damaged=true;break;}long key=ar.resolve(keyRef);TableVariable.Reader body=ar.body();if(body==null)break;int slot=-1;\n", variableCompatibleKinds(kind, "ek"), kind)
-	for i := range f.KeyEnumRef.Variants {
-		fmt.Fprintf(b, "                    if(key==0x%016xL)slot=%d;\n", ir.TableWireId(f.KeyEnumRef.VariantWireName(i)), i)
+	if len(f.KeyEnumRef.Variants) > 64 {
+		fmt.Fprintf(b, "                    slot=TableVariable.findSlot(%sVariable.KEY_SORTED_IDS_%s,%sVariable.KEY_SORTED_IDX_%s,key);\n", st.Name, m, st.Name, m)
+	} else {
+		for i := range f.KeyEnumRef.Variants {
+			fmt.Fprintf(b, "                    if(key==0x%016xL)slot=%d;\n", ir.TableWireId(f.KeyEnumRef.VariantWireName(i)), i)
+		}
 	}
 	lost := ""
 	method := "readSlot_"
@@ -236,12 +312,20 @@ func writeKeyedFieldRead(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 
 func writeJsonKeyedValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {
 	m := varMember(f)
+	fmt.Fprintf(b, "        if (v.%s.size() != %d) { throw new TableJson.Refused(\"count_over_bound\"); }\n", m, len(f.KeyEnumRef.Variants))
 	b.WriteString("        b.append('{');\n")
-	for i, name := range f.KeyEnumRef.Variants {
-		if i > 0 {
-			b.WriteString("        b.append(',');\n")
+	if len(f.KeyEnumRef.Variants) > 64 {
+		fmt.Fprintf(b, "        for (int i = 0; i < %sVariable.KEY_NAMES_%s.length; i++) {\n", st.Name, m)
+		b.WriteString("            if (i > 0) { b.append(','); }\n")
+		fmt.Fprintf(b, "            TableJson.indent(b,depth+1);TableJson.esc(b,%sVariable.KEY_NAMES_%s[i]);b.append(\": \");{"+st.Name+"Variable.Slot_%s slot=new "+st.Name+"Variable.Slot_%s();slot.%s=v.%s.get(i);"+st.Name+"Variable.jsonSlot_%s(b,graph,slot,depth+1);}\n", st.Name, m, m, m, m, m, m)
+		b.WriteString("        }\n")
+	} else {
+		for i, name := range f.KeyEnumRef.Variants {
+			if i > 0 {
+				b.WriteString("        b.append(',');\n")
+			}
+			fmt.Fprintf(b, "        TableJson.indent(b,depth+1);TableJson.esc(b,%q);b.append(\": \");{"+st.Name+"Variable.Slot_%s slot=new "+st.Name+"Variable.Slot_%s();slot.%s=v.%s.get(%d);"+st.Name+"Variable.jsonSlot_%s(b,graph,slot,depth+1);}\n", name, m, m, m, m, i, m)
 		}
-		fmt.Fprintf(b, "        TableJson.indent(b,depth+1);TableJson.esc(b,%q);b.append(\": \");{"+st.Name+"Variable.Slot_%s slot=new "+st.Name+"Variable.Slot_%s();slot.%s=v.%s.get(%d);"+st.Name+"Variable.jsonSlot_%s(b,graph,slot,depth+1);}\n", name, m, m, m, m, i, m)
 	}
 	b.WriteString("        TableJson.indent(b,depth);b.append('}');\n")
 }
@@ -254,8 +338,12 @@ func readJsonKeyedValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 	m := varMember(f)
 	one := variableElement(f)
 	fmt.Fprintf(b, "                if(in.peek()!='{'){in.bad=true;return;}if((%s)+1>TableJson.In.MAX_JSON_DEPTH){in.bad=true;return;}in.p++;for(int i=0;i<%d;i++)v.%s.set(i,%s);boolean[] seen=new boolean[%d];java.util.Set<java.lang.String> skipped=null;while(in.peek()!='}'){java.lang.String slotName=in.scanName();if(in.bad)return;if(in.peek()!=':'){in.bad=true;return;}in.p++;int slot=-1;\n", depth, f.ArrayBound, m, variableDefault(one), f.ArrayBound)
-	for i, name := range f.KeyEnumRef.Variants {
-		fmt.Fprintf(b, "                if(%q.equals(slotName))slot=%d;\n", name, i)
+	if len(f.KeyEnumRef.Variants) > 64 {
+		fmt.Fprintf(b, "                java.lang.Integer slotObj=%sVariable.KEY_NAME_MAP_%s.get(slotName);if(slotObj!=null)slot=slotObj;\n", st.Name, m)
+	} else {
+		for i, name := range f.KeyEnumRef.Variants {
+			fmt.Fprintf(b, "                if(%q.equals(slotName))slot=%d;\n", name, i)
+		}
 	}
 	fmt.Fprintf(b, "                if(slot<0){if(skipped==null)skipped=new java.util.HashSet<>();if(!skipped.add(slotName))in.rep.refuse(\"text_damaged\");in.rep.unknown++;in.skipValue((%s)+2);}else{if(seen[slot])in.rep.refuse(\"text_damaged\");seen[slot]=true;"+st.Name+"Variable.Slot_%s value=new "+st.Name+"Variable.Slot_%s();value.%s=v.%s.get(slot);"+st.Name+"Variable.readJsonSlot_%s(in,value,%s);v.%s.set(slot,value.%s);}int separator=in.peek();if(separator==','){in.p++;continue;}if(separator=='}')break;in.bad=true;return;}in.p++;\n", depth, m, m, m, m, m, depth+" + 1", m, m)
 }

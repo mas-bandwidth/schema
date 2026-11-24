@@ -176,7 +176,7 @@ func (g *fixedModule) emitMessageBatch(st *ir.Struct) {
 	// answers 0.
 	g.pf("  int refuse() {\n    for (var j = 0; j < values.length; j++) {\n      init%s(values[j]);\n    }\n    return 0;\n  }\n\n", capitalize(st.Name))
 	if st.Integrity != "" {
-		g.pf("  if (report.reason == 'integrity_mismatch') { report.reason = ''; report.refused = false; }\n")
+		g.pf("  report.refused = false; report.reason = ''; report.unknown = 0; report.widened = 0; report.buildVersionRemote = 0; report.buildVersionOwn = 0; report.nonFiniteFloat = '';\n")
 		g.pf("  if (bytes.isNotEmpty && bytes[0] == 2) {\n    if (!tableIntegrityValid(bytes, bytes.length, 6)) {\n      report.refused = true;\n      report.reason = 'integrity_mismatch';\n      return refuse();\n    }\n    bytes = Uint8List.sublistView(bytes, 0, bytes.length - 4);\n  }\n")
 	}
 	g.pf("  final r = TableMessageReader();\n")
@@ -904,12 +904,20 @@ func (g *fixedModule) emitMessageReadKeyed(f *ir.Field, entry ir.TableVocabulary
 	g.pf("%s    if (r.seenHasId(key.id)) { %s; }\n", ind, bad)
 	g.pf("%s    r.seenAdd(keyRef);\n", ind)
 	g.pf("%s    var at = 0;\n", ind)
-	for i := range f.KeyEnumRef.Variants {
-		kw := "if"
-		if i > 0 {
-			kw = "else if"
+	if len(f.KeyEnumRef.Variants) > 64 {
+		g.pf("%s    at = const <int, int>{\n", ind)
+		for i := range f.KeyEnumRef.Variants {
+			g.pf("%s      %s: %d,\n", ind, dartU64Literal(ir.TableWireId(f.KeyEnumRef.VariantWireName(i))), i+1)
 		}
-		g.pf("%s    %s (key.id == %s) { at = %d; }\n", ind, kw, dartU64Literal(ir.TableWireId(f.KeyEnumRef.VariantWireName(i))), i+1)
+		g.pf("%s    }[key.id] ?? 0;\n", ind)
+	} else {
+		for i := range f.KeyEnumRef.Variants {
+			kw := "if"
+			if i > 0 {
+				kw = "else if"
+			}
+			g.pf("%s    %s (key.id == %s) { at = %d; }\n", ind, kw, dartU64Literal(ir.TableWireId(f.KeyEnumRef.VariantWireName(i))), i+1)
+		}
 	}
 	g.pf("%s    if (at == 0) {\n", ind)
 	g.pf("%s      r.report.unknown++;\n", ind)
@@ -1446,6 +1454,12 @@ int tableMessageBatchOpen(
   TableReport report,
   TableMessageReader r,
 ) {
+  report.refused = false;
+  report.reason = '';
+  report.unknown = 0;
+  report.widened = 0;
+  report.buildVersionRemote = 0;
+  report.buildVersionOwn = 0;
   report.nonFiniteFloat = ''; // this read's own refusal (§3.3)
   if (data.length == 0) { report.Damage(); return -1; }
   if (data[0] != 2) { report.Refuse('newer_form'); return -1; }

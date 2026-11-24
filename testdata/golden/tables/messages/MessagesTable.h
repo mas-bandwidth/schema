@@ -11077,6 +11077,7 @@ inline bool UserLoadMessages( User * values, int64_t * count, const TableVocabul
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -11711,6 +11712,7 @@ inline bool ScriptLoadMessages( Script * values, int64_t * count, const TableVoc
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -12291,6 +12293,7 @@ inline bool SelectionLoadMessages( Selection * values, int64_t * count, const Ta
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -14482,6 +14485,7 @@ inline bool InsertTextLoadMessages( InsertText * values, int64_t * count, const 
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -14954,6 +14958,7 @@ inline bool RemoveTextLoadMessages( RemoveText * values, int64_t * count, const 
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -16446,6 +16451,7 @@ inline bool EditLoadMessages( Edit * values, int64_t * count, const TableVocabul
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -17163,6 +17169,7 @@ inline bool OpenDocumentLoadMessages( OpenDocument * values, int64_t * count, co
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -17730,6 +17737,7 @@ inline bool SaveDocumentLoadMessages( SaveDocument * values, int64_t * count, co
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -20120,6 +20128,7 @@ inline bool TransactionLoadMessages( Transaction * values, int64_t * count, cons
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -24402,6 +24411,7 @@ inline bool ToolMessageLoadMessages( ToolMessage * values, int64_t * count, cons
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -25997,6 +26007,7 @@ inline bool CursorLoadMessages( Cursor * values, int64_t * count, const TableVoc
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -26502,6 +26513,7 @@ inline bool PingLoadMessages( Ping * values, int64_t * count, const TableVocabul
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -47114,6 +47126,7 @@ inline bool InsertTextCookBody( uint8_t * at, const InsertText & value, TableByt
     }
     // 2 slots of storage, value.origins_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.origins_count >= 0 && value.origins_count <= 2 ); // storage invariant, debug only (§5.1)
+    if ( value.origins_count < 0 || value.origins_count > 2 ) { return false; }
     for ( int32_t i = 0; i < value.origins_count; i++ )
     {
         {
@@ -47143,6 +47156,7 @@ inline bool InsertTextCookBody( uint8_t * at, const InsertText & value, TableByt
     {
         // 2 slots of storage, value.modes_count live: a slot past the count keeps the extent's zero (§7.2)
         schema_assert( value.modes_count >= 0 && value.modes_count <= 2 ); // storage invariant, debug only (§5.1)
+        if ( value.modes_count < 0 || value.modes_count > 2 ) { return false; }
         for ( int32_t i = 0; i < value.modes_count; i++ )
         {
             table_cook_put( at + 292 + i * 1, (uint64_t) value.modes[i], 1, order );
@@ -47176,6 +47190,7 @@ inline bool EditCookBody( uint8_t * at, const Edit & value, TableByteOrder order
             {
                 // 3 slots of storage, value.body.marks.value_count live: a slot past the count keeps the extent's zero (§7.2)
                 schema_assert( value.body.marks.value_count >= 0 && value.body.marks.value_count <= 3 ); // storage invariant, debug only (§5.1)
+                if ( value.body.marks.value_count < 0 || value.body.marks.value_count > 3 ) { return false; }
                 for ( int32_t ia = 0; ia < value.body.marks.value_count; ia++ )
                 {
                     table_cook_put( at + 4 + 4 + ia * 2, (uint64_t) value.body.marks.value[ia], 2, order );
@@ -47223,6 +47238,7 @@ inline bool TransactionCookBody( uint8_t * at, const Transaction & value, TableB
     table_cook_put( at + 20, (uint64_t) (uint32_t) value.reason_length, 4, order );
     // 3 slots of storage, value.edits_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.edits_count >= 0 && value.edits_count <= 3 ); // storage invariant, debug only (§5.1)
+    if ( value.edits_count < 0 || value.edits_count > 3 ) { return false; }
     for ( int32_t i = 0; i < value.edits_count; i++ )
     {
         if ( !EditCookBody( at + 24 + i * 312, value.edits[i], order ) ) { return false; }
@@ -47245,6 +47261,7 @@ inline bool TransactionCookBody( uint8_t * at, const Transaction & value, TableB
                 {
                     // 3 slots of storage, value.pending[i].marks.value_count live: a slot past the count keeps the extent's zero (§7.2)
                     schema_assert( value.pending[i].marks.value_count >= 0 && value.pending[i].marks.value_count <= 3 ); // storage invariant, debug only (§5.1)
+                    if ( value.pending[i].marks.value_count < 0 || value.pending[i].marks.value_count > 3 ) { return false; }
                     for ( int32_t ia = 0; ia < value.pending[i].marks.value_count; ia++ )
                     {
                         table_cook_put( at + 964 + i * 308 + 4 + ia * 2, (uint64_t) value.pending[i].marks.value[ia], 2, order );
@@ -47339,6 +47356,7 @@ inline bool ToolMessageCookBody( uint8_t * at, const ToolMessage & value, TableB
     }
     // 2 slots of storage, value.history_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.history_count >= 0 && value.history_count <= 2 ); // storage invariant, debug only (§5.1)
+    if ( value.history_count < 0 || value.history_count > 2 ) { return false; }
     for ( int32_t i = 0; i < value.history_count; i++ )
     {
         {
@@ -47396,6 +47414,7 @@ inline bool ToolMessageCookBody( uint8_t * at, const ToolMessage & value, TableB
     {
         // 3 slots of storage, value.trace_count live: a slot past the count keeps the extent's zero (§7.2)
         schema_assert( value.trace_count >= 0 && value.trace_count <= 3 ); // storage invariant, debug only (§5.1)
+        if ( value.trace_count < 0 || value.trace_count > 3 ) { return false; }
         for ( int32_t i = 0; i < value.trace_count; i++ )
         {
             if ( !ScriptCookBody( at + 4932 + i * 76, value.trace[i], order ) ) { return false; }

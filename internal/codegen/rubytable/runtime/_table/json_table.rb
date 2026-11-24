@@ -342,12 +342,27 @@ module SchemaRuntimeUnit
         fill_json_object(val, data, graph, unknown)
       end
       unless report.nil?
+        report.reset
         report.unknown = unknown[0]
-        report.widened = 0
-        report.retained = 0
-        report.retain_lost = 0
       end
       val
+    end
+
+    def self.from_json_into(cls, target, text, report = nil)
+      report&.reset
+      begin
+        loaded = from_json(cls, text, report)
+      rescue Refused => e
+        target._s_reset
+        unless report.nil?
+          report.reset
+          report.refused = true
+          report.reason = e.reason
+        end
+        return false
+      end
+      target._s_copy_from(loaded)
+      true
     end
 
     def self.fill_json_object(value, data, graph, unknown)

@@ -1225,10 +1225,7 @@ jobs:
             fi
           done
 
-      # THE OWED TABLE READS MERGED PULL REQUESTS FROM HISTORY
-      # (internal/docgate TestOwedRowsAreLinked, docs/SPEC-CONFORMANCE.md
-      # §7): fetch it blobless (commits and trees only) so that half runs.
-      - name: the history the owed-table check reads
+      - name: fetch Git history for Go checks
         if: matrix.group == 'unit-rest-check'
         run: |
           set -euo pipefail

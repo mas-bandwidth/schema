@@ -417,6 +417,8 @@ func (g *gen) emitCookFieldValue(b *strings.Builder, f *ir.Field, x, base string
 				fmt.Fprintf(b, "%sif %s.len() > %d { w.fail(); }\n", ind, x, bound)
 			}
 			fmt.Fprintf(b, "%sw.put(%s, %s.len() as u64, 4);\n", ind, cookAt(base, pieces[1].Offset), x)
+		} else {
+			fmt.Fprintf(b, "%sif %s.len() != %d { w.fail(); }\n", ind, x, bound)
 		}
 		count := fmt.Sprintf("%d_usize", bound)
 		if f.Array == ir.ArrayCounted && f.KeyEnum == "" {

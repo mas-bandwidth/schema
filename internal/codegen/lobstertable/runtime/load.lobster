@@ -2060,6 +2060,19 @@ def strict_reason(rep:LoadReport) -> string:
 
 // The single read returns a complete value or nil. Unknowns and legal
 // widening preserve evolution; diagnostics do not enable partial values.
+def load_into(rec:Record, data:string, report:LoadReport) -> bool:
+    let candidate = load(rec.d.name, data, report)
+    if not candidate:
+        let defaults = new_record(rec.d)
+        release(rec)
+        rec.fields = defaults.fields
+        defaults.fields = []
+        return false
+    release(rec)
+    rec.fields = candidate.fields
+    candidate.fields = []
+    return true
+
 def load(root:string, data:string, report:LoadReport) -> Record?:
     read_reset(report)
     if table_of(root).fixed:

@@ -10484,6 +10484,7 @@ inline bool SimStateLoadMessages( SimState * values, int64_t * count, const Tabl
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -10523,6 +10524,8 @@ inline int64_t PoseMeasureBody( TableIds & ids, const Pose & value )
     if ( value.heading != 0 ) { bytes += TableLebBytes( ids.ref_at( 22, 0xb128829190ca0f75ull ) ) + 1 + 4; } // heading
     return bytes;
 }
+
+inline bool PoseFixedWriteAdmits( const Pose & value );
 
 inline int64_t PoseMeasure( const Pose & value )
 {
@@ -11157,6 +11160,7 @@ inline int64_t PoseMeasureMessages( const Pose * values, int64_t count, TableRep
     {
         const int64_t body = PoseMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( PoseFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -11175,6 +11179,7 @@ inline int64_t PoseSaveMessages( const Pose * values, int64_t count, uint8_t * b
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !PoseSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( PoseFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == PoseMeasureMessages( values, count, report )
@@ -11198,6 +11203,7 @@ inline bool PoseLoadMessages( Pose * values, int64_t * count, const TableVocabul
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -12410,6 +12416,7 @@ inline bool SimStateCookBody( uint8_t * at, const SimState & value, TableByteOrd
     }
     // 4 slots of storage, value.weights_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.weights_count >= 0 && value.weights_count <= 4 ); // storage invariant, debug only (§5.1)
+    if ( value.weights_count < 0 || value.weights_count > 4 ) { return false; }
     for ( int32_t i = 0; i < value.weights_count; i++ )
     {
         table_cook_put( at + 160 + i * 2, (uint64_t) value.weights[i], 2, order );
@@ -12422,6 +12429,7 @@ inline bool SimStateCookBody( uint8_t * at, const SimState & value, TableByteOrd
     }
     // 2 slots of storage, value.seeds_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.seeds_count >= 0 && value.seeds_count <= 2 ); // storage invariant, debug only (§5.1)
+    if ( value.seeds_count < 0 || value.seeds_count > 2 ) { return false; }
     for ( int32_t i = 0; i < value.seeds_count; i++ )
     {
         {

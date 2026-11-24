@@ -7495,6 +7495,7 @@ inline bool FixedTableLoadMessages( FixedTable * values, int64_t * count, const 
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;

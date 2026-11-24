@@ -160,6 +160,9 @@ define tables_generate_cs
 	$(1) generate --lang cs --out $(2)/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema
 	$(1) generate --lang cs --out $(2)/shapes test/tables/shapes
 	$(1) generate --lang cs --out $(2)/prior test/tables/prior/PriorNarrow.schema
+	$(1) generate --lang cs --out $(2)/surfaces test/tables/surfaces
+	$(1) generate --lang cs --out $(2)/announce4096 test/tables/announce4096
+	$(1) generate --lang cs --out $(2)/announce4097 test/tables/announce4097
 endef
 
 # Direct recipes run the same command list in parallel and wait for its jobs.
@@ -169,7 +172,7 @@ define tables_generate_cs_parallel
 	for pid in $$pids; do wait $$pid; done
 endef
 
-build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/K1.schema test/tables/K2.schema test/tables/CsIds.schema test/tables/CsUnions.schema test/tables/CsView.schema $(SCHEMAS_TABLES_MESSAGES) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema tables/scalars test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema tables/pointers tables/blobs test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema tables/lists tables/widelist tables/maps tables/stream test/tables/G1.schema tables/backend tables/vocab tables/vocab9 test/tables/R1.schema test/tables/R2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/CsRetain1.schema test/tables/CsRetain2.schema test/tables/CsCollections1.schema test/tables/CsCollections2.schema test/tables/UT.schema testdata/conformance/feature-witnesses/full/Features.schema test/tables/shapes/Shapes.schema test/tables/prior/PriorNarrow.schema
+build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/K1.schema test/tables/K2.schema test/tables/CsIds.schema test/tables/CsUnions.schema test/tables/CsView.schema $(SCHEMAS_TABLES_MESSAGES) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema tables/scalars test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema tables/pointers tables/blobs test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema tables/lists tables/widelist tables/maps tables/stream test/tables/G1.schema tables/backend tables/vocab tables/vocab9 test/tables/R1.schema test/tables/R2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/CsRetain1.schema test/tables/CsRetain2.schema test/tables/CsCollections1.schema test/tables/CsCollections2.schema test/tables/UT.schema testdata/conformance/feature-witnesses/full/Features.schema test/tables/shapes/Shapes.schema test/tables/prior/PriorNarrow.schema test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema
 	@mkdir -p build/tables-generated-cs
 	$(call tables_generate_cs_parallel,./bin/schema,build/tables-generated-cs)
 	@touch $@
@@ -247,11 +250,12 @@ CS_CONFORMANCE_INPUTS := test/conformance/cs/schemaconformance.csproj test/confo
 	build/tables-generated-cs $(SERIALIZE_CS)/src .github/dotnet-version
 CS_COOK_DLL := test/cs-cook/bin/Debug/net10.0/schemacooktest.dll
 CS_COOK_INPUTS := test/cs-cook/schemacook.csproj test/cs-cook/src \
-	build/tables-generated-cs/pointers .github/dotnet-version
+	build/tables-generated-cs/pointers $(SERIALIZE_CS)/src/Serialize.cs \
+	$(SERIALIZE_CS)/src/Int128Pair.cs .github/dotnet-version
 
 .PHONY: build-cs-cook
-build-cs-cook: build/tables-generated-cs/.stamp
-	@sh make/driver-stamp.sh $(DRIVER_STAMPS)/cs-cook.sha256 $(CS_COOK_DLL) $(CS_COOK_INPUTS) -- \
+build-cs-cook: sibling-cs build/tables-generated-cs/.stamp
+	@SerializeCsDir="$(abspath $(SERIALIZE_CS))" sh make/driver-stamp.sh $(DRIVER_STAMPS)/cs-cook.sha256 $(CS_COOK_DLL) $(CS_COOK_INPUTS) -- \
 		"cd test/cs-cook && $(DOTNET) build -v q --nologo --no-incremental"
 
 .PHONY: tables-cook-open-cs

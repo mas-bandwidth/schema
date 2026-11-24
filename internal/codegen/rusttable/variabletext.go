@@ -1292,14 +1292,19 @@ func (g *gen) emitTextWriteValue(b *strings.Builder, f *ir.Field, x, d, ind stri
 		return
 	}
 	if f.Array != ir.ArrayNone {
-		if f.Array == ir.ArrayCounted {
+		switch f.Array {
+		case ir.ArrayCounted:
 			if f.ArrayMin > 0 {
 				fmt.Fprintf(b, "%sif %s || %s.len() > %d { w.refused = true; }\n", ind, lenUnder(x, f.ArrayMin), x, f.ArrayBound)
 			} else if f.ArrayBound > 0 {
 				fmt.Fprintf(b, "%sif %s.len() > %d { w.refused = true; }\n", ind, x, f.ArrayBound)
 			}
-		} else if f.Array == ir.ArrayList && f.ArrayBound > 0 {
-			fmt.Fprintf(b, "%sif %s.len() > %d { w.refused = true; }\n", ind, x, f.ArrayBound)
+		case ir.ArrayFixed:
+			fmt.Fprintf(b, "%sif %s.len() != %d { w.refused = true; }\n", ind, x, f.ArrayBound)
+		case ir.ArrayList:
+			if f.ArrayBound > 0 {
+				fmt.Fprintf(b, "%sif %s.len() > %d { w.refused = true; }\n", ind, x, f.ArrayBound)
+			}
 		}
 		fmt.Fprintf(b, "%sif %s.is_empty() {\n", ind, x)
 		fmt.Fprintf(b, "%s    w.out.push_str(\"[]\");\n", ind)
@@ -2032,6 +2037,9 @@ func (g *gen) emitTextRoots(b *strings.Builder, st *ir.Struct) {
 	fmt.Fprintf(b, "/// %s — the strict read of one text into one %s (docs/SPEC-TABLES.md §16.2).\n", read, st.Name)
 	fmt.Fprintf(b, "pub fn %s(text: &str, report: &mut TableReport) -> Option<%s> {\n", read, st.Name)
 	fmt.Fprintf(b, "    %s(text.as_bytes(), report)\n", readBytes)
+	fmt.Fprintf(b, "}\n\n")
+	fmt.Fprintf(b, "pub fn %s_into(value: &mut %s, text: &[u8], report: &mut TableReport) -> bool {\n", read, st.Name)
+	fmt.Fprintf(b, "    match %s(text, report) { Some(v) => { *value = v; true } None => { *value = %s::default(); false } }\n", readBytes, st.Name)
 	fmt.Fprintf(b, "}\n\n")
 	fmt.Fprintf(b, "/// %s — the same read over the text's raw bytes, which a `&str` cannot\n", readBytes)
 	fmt.Fprintf(b, "/// hold ill-formed: bytes that are not well-formed UTF-8 refuse the read\n")

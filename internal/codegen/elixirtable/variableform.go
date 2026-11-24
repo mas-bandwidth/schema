@@ -111,6 +111,75 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
 	}
 	tables.WriteString("}")
 	b.WriteString(exAttribute("tables", tables.String()))
+	b.WriteString(`  # Declared defaults are immutable BEAM terms. Build each table and field
+  # template once while the generated module is compiled, rather than rebuilding
+  # nested maps and fixed/keyed lists on every load, write and sparse validation.
+  default_builder = fn default_builder, item ->
+    case item do
+      {:desc, desc} ->
+        Map.new(desc.fields, fn f ->
+          {f.name, default_builder.(default_builder, {:field, f})}
+        end)
+
+      {:field, %{optional: true} = f} ->
+        Map.get(f, :default)
+
+      {:field, %{t: :table, elem: name}} ->
+        default_builder.(default_builder, {:desc, Map.fetch!(@tables, name)})
+
+      {:field, %{t: :list, fixed_array: n} = f} ->
+        List.duplicate(default_builder.(default_builder, {:element, f}), n)
+
+      {:field, %{t: :list, min_count: n} = f} when n > 0 ->
+        List.duplicate(default_builder.(default_builder, {:element, f}), n)
+
+      {:field, %{t: :keyed} = f} ->
+        value =
+          if f.item.t == :table,
+            do:
+              default_builder.(
+                default_builder,
+                {:desc, Map.fetch!(@tables, f.item.elem)}
+              ),
+            else: Map.get(f.item, :default)
+
+        Map.new(f.key_names, fn name -> {name, value} end)
+
+      {:field, f} ->
+        Map.get(f, :default)
+
+      {:element, %{elem_kind: 13, elem: name}} ->
+        default_builder.(default_builder, {:desc, Map.fetch!(@tables, name)})
+
+      {:element, %{elem_default: value}} ->
+        value
+
+      {:element, %{elem_kind: kind}} when kind in [15, 17, 30] ->
+        nil
+
+      {:element, %{elem_kind: 12}} ->
+        ""
+
+      {:element, %{elem_kind: 1}} ->
+        false
+
+      {:element, %{elem_kind: kind}} when kind in [10, 11] ->
+        0.0
+
+      {:element, _f} ->
+        0
+    end
+  end
+
+  @defaults_by_table Map.new(@tables, fn {name, desc} ->
+                       {name, default_builder.(default_builder, {:desc, desc})}
+                     end)
+  @field_defaults for {_name, desc} <- @tables,
+                      f <- desc.fields,
+                      into: %{},
+                      do: {f, default_builder.(default_builder, {:field, f})}
+
+`)
 	var unions strings.Builder
 	unions.WriteString("%{\n")
 	// every `t:` an arm descriptor spells, nested ones included: the arm
@@ -1324,14 +1393,26 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # strings, see map_values). Any other spelling ("07", "+7", "x") or a key
   # that names the same integer as another ("7" beside 7) is refused, so no
   # key is written twice and none raises.
+  # A native map already guarantees unique string keys. Walk the keys
+  # for type checking without building a key list or a second key set.
+  defp check_map_keys(%{key_kind: 12}, values)
+       when is_map(values) and not is_struct(values),
+       do: :maps.fold(&check_string_map_key/3, :ok, values)
+
   defp check_map_keys(%{key_kind: 12}, values) do
-    Enum.each(values, fn {key, _v} -> if not is_binary(key), do: throw(:invalid_value) end)
+    Enum.reduce(values, %{}, fn {key, _value}, seen ->
+      if not is_binary(key) or Map.has_key?(seen, key), do: throw(:invalid_value)
+      Map.put(seen, key, true)
+    end)
   end
 
   defp check_map_keys(_f, values) do
     ints = Enum.map(values, fn {key, _v} -> map_int_key(key) end)
     if length(Enum.uniq(ints)) != length(ints), do: throw(:invalid_value)
   end
+
+  defp check_string_map_key(key, _value, :ok) when is_binary(key), do: :ok
+  defp check_string_map_key(_key, _value, :ok), do: throw(:invalid_value)
 
   defp map_int_key(key) when is_integer(key), do: key
 
@@ -2720,13 +2801,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   # A positional fixed array updates its received prefix; an enum-keyed
   # occurrence updates only the slots it names. Other fields replace normally.
-  defp put_wire_field(value, %{t: :list, fixed_array: _} = f, incoming) do
-    prior = Map.get(value, f.name) || []
+  defp put_wire_field(value, %{t: :list, fixed_array: n} = f, incoming) do
+    prior = Map.get(value, f.name) || List.duplicate(element_default(f), n)
     Map.put(value, f.name, incoming ++ Enum.drop(prior, length(incoming)))
   end
 
   defp put_wire_field(value, %{t: :keyed} = f, incoming) do
-    prior = Map.get(value, f.name) || %{}
+    prior = Map.get(value, f.name) || keyed_defaults(f)
     Map.put(value, f.name, Map.merge(prior, incoming))
   end
 
@@ -3205,10 +3286,22 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     # every other arm reads its payload exactly as a field does
     payload = if a.arm_kind in [12, 13, 14, 16], do: framed, else: inner
 
-    case read_payload(a, payload, nodes, ids, report) do
-      {:cont, v, report} -> {:cont, {name, v}, report}
-      {:halt, v, report} -> {:halt, {name, v}, report}
-    end
+    {status, v, report} = read_payload(a, payload, nodes, ids, report)
+    n = Map.get(a, :fixed_array)
+
+    v =
+      cond do
+        is_integer(n) and is_list(v) and length(v) < n ->
+          v ++ List.duplicate(element_default(a), n - length(v))
+
+        Map.get(a, :t) == :keyed and is_map(v) ->
+          Map.merge(keyed_defaults(a), v)
+
+        true ->
+          v
+      end
+
+    {status, {name, v}, report}
   end
 
   # arm_framing_damaged? is §3's length rule for an arm whose kind byte
@@ -3353,9 +3446,6 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # a count past a bounded array's declared bound reads the first bound
   # elements and counts one refusal, before any element is read, so the
   # elements past the bound are never asked of the body (docs/SPEC-TABLES.md §4)
-  defp clamp_count(n, %{min_count: min}, _report) when n < min,
-    do: {min, throw(:wire_damaged)}
-
   defp clamp_count(n, %{max_count: max}, _report) when n > max,
     do: {max, throw(:wire_damaged)}
 
@@ -3733,7 +3823,14 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp validate_record(desc, value) do
     Enum.each(desc.fields, fn f ->
       if field_active?(f, desc, value) do
-        v = Map.get(value, f.name, f.default)
+        name = f.name
+
+        v =
+          case value do
+            %{^name => present} -> present
+            _ -> field_default(f)
+          end
+
         if Map.get(f, :text_list, false), do: validate_text_list(f, v)
         write_value(f, v)
       end
@@ -3762,9 +3859,9 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
       true ->
         n = length(values)
 
-        # a [N]T carries exactly N elements: a shorter value is padded with the
-        # element default (pad_fixed/2), a longer one refuses, never cut
-        if Map.has_key?(f, :fixed_array) and n > f.fixed_array, do: throw(:invalid_value)
+        # a [N]T carries exactly N elements: shorter or longer refuses, never
+        # padded or cut (docs/SPEC.md §5.1, SF-34)
+        if Map.has_key?(f, :fixed_array) and n != f.fixed_array, do: throw(:invalid_value)
 
         if Map.get(f, :array) == :counted and
              (n < Map.get(f, :min_count, 0) or n > f.array_bound),
@@ -3784,7 +3881,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
       true ->
         Enum.each(f.key_names, fn name ->
-          write_value(f.item, Map.get(slots, name, f.item.default))
+          if not Map.has_key?(slots, name), do: throw(:invalid_value)
+          write_value(f.item, Map.fetch!(slots, name))
         end)
     end
   end
@@ -3970,16 +4068,51 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # member's own defaults, as the reference's prefill does, so every body takes
   # one shape whether the wire named its fields or not.
   defp defaults(desc) do
-    Map.new(desc.fields, fn f ->
-      value =
-        case f do
-          %{optional: true} -> Map.get(f, :default)
-          %{t: :table, elem: name} -> defaults(Map.fetch!(@tables, name))
-          _ -> Map.get(f, :default)
-        end
+    Map.fetch!(@defaults_by_table, desc.name)
+  end
 
-      {f.name, value}
-    end)
+  defp field_default(f) do
+    case Map.fetch(@field_defaults, f) do
+      {:ok, value} -> value
+      :error -> uncached_field_default(f)
+    end
+  end
+
+  # Union-arm descriptors are not members of a table's descriptor list. They
+  # take the same declared-default rules without sharing a cache identity with
+  # an unrelated, same-named table field (SF-23).
+  defp uncached_field_default(%{optional: true} = f), do: Map.get(f, :default)
+  defp uncached_field_default(%{t: :table, elem: name}), do: defaults(Map.fetch!(@tables, name))
+
+  defp uncached_field_default(%{t: :list, fixed_array: n} = f),
+    do: List.duplicate(element_default(f), n)
+
+  defp uncached_field_default(%{t: :list, min_count: n} = f) when n > 0,
+    do: List.duplicate(element_default(f), n)
+
+  defp uncached_field_default(%{t: :keyed} = f), do: uncached_keyed_defaults(f)
+  defp uncached_field_default(f), do: Map.get(f, :default)
+
+  defp uncached_keyed_defaults(f) do
+    value =
+      if f.item.t == :table,
+        do: defaults(Map.fetch!(@tables, f.item.elem)),
+        else: Map.get(f.item, :default)
+
+    Map.new(f.key_names, fn name -> {name, value} end)
+  end
+
+  # Missing slots keep their element default in both binary and text forms.
+  defp element_default(%{elem_kind: 13, elem: name}), do: defaults(Map.fetch!(@tables, name))
+  defp element_default(%{elem_default: value}), do: value
+  defp element_default(%{elem_kind: kind}) when kind in [15, 17, 30], do: nil
+  defp element_default(%{elem_kind: 12}), do: ""
+  defp element_default(%{elem_kind: 1}), do: false
+  defp element_default(%{elem_kind: kind}) when kind in [10, 11], do: 0.0
+  defp element_default(_f), do: 0
+
+  defp keyed_defaults(f) do
+    field_default(f)
   end
 
   # intern assigns a reference in first-use order and returns it.
@@ -5493,7 +5626,8 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # keyed by variant name; a name the key enum does not have counts unknown.
   defp json_read_field(%{t: :keyed} = f, {:obj, pairs}, report) do
     {values, _seen, report} =
-      Enum.reduce(pairs, {%{}, MapSet.new(), report}, fn {name, input}, {acc, seen, report} ->
+      Enum.reduce(pairs, {keyed_defaults(f), MapSet.new(), report}, fn {name, input},
+                                                                       {acc, seen, report} ->
         if Process.get(:elixir_json_bad, false) do
           {acc, seen, report}
         else
@@ -5787,7 +5921,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
             case json_read_list_elem(f, e, report) do
               {:skip, report} ->
                 json_skip_value(e)
-                {[json_element_default(f) | acc], placed + 1, report}
+                {[element_default(f) | acc], placed + 1, report}
 
               {v, report} ->
                 {[v | acc], placed + 1, report}
@@ -5798,7 +5932,18 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
     # a counted array below its Min refuses (docs/SPEC.md §5.1 row 3)
     if placed < Map.get(f, :min_count, 0), do: throw(:wire_damaged)
-    {Enum.reverse(elems), report}
+    list = Enum.reverse(elems)
+
+    list =
+      case Map.get(f, :fixed_array) do
+        n when is_integer(n) and length(list) < n ->
+          list ++ List.duplicate(element_default(f), n - length(list))
+
+        _ ->
+          list
+      end
+
+    {list, report}
   end
 
   defp json_read_field(%{t: :list}, raw, _report) do
@@ -5863,15 +6008,6 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_present_default(%{t: :bool}), do: false
   defp json_present_default(%{t: :float}), do: 0.0
   defp json_present_default(_f), do: 0
-
-  # Array elements are positional: a rejected element keeps its default slot.
-  defp json_element_default(%{elem_default: value}), do: value
-  defp json_element_default(%{elem_kind: 13, elem: name}), do: defaults(Map.fetch!(@tables, name))
-  defp json_element_default(%{elem_kind: kind}) when kind in [15, 17, 30], do: nil
-  defp json_element_default(%{elem_kind: 12}), do: ""
-  defp json_element_default(%{elem_kind: 1}), do: false
-  defp json_element_default(%{elem_kind: kind}) when kind in [10, 11], do: 0.0
-  defp json_element_default(_f), do: 0
 
   # json_text_zero is the one rule for a zero in text (docs/SPEC-TABLES.md
   # §16.2, "A ZERO IN TEXT TAKES ONE RULE IN EVERY FORM: NO READ STORES IT"):
@@ -6347,7 +6483,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
              :ok <- json_key_ok(key),
              <<":", r2::binary>> <- json_skip(r1),
              false <- MapSet.member?(seen, key),
-             {:ok, val, r3} <- json_object_val(key, acc, r2, depth + 1) do
+             {:ok, val, r3} <- json_object_val(key, acc, r2, depth) do
           seen = MapSet.put(seen, key)
 
           case json_skip(r3) do
@@ -6381,7 +6517,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         json_label(bin)
       end
     else
-      json_value(bin, depth)
+      json_value(bin, depth + 1)
     end
   end
 
@@ -7327,6 +7463,7 @@ const variableRetainSource = `
     case save_retain_internal(table, value, retain, empty_report()) do
       {:ok, bytes, _retain, _report} -> byte_size(bytes)
       {:error, :blob_shared} -> -1
+      {:error, :invalid_value} -> -1
     end
   catch
     :non_finite_float -> -1
@@ -7338,6 +7475,7 @@ const variableRetainSource = `
     case save_retain_internal(table, value, retain, report) do
       {:ok, bytes, retain, report} -> {:ok, bytes, report, retain}
       {:error, :blob_shared} -> {:error, :blob_shared, report, retain}
+      {:error, :invalid_value} -> {:error, :invalid_value, report, retain}
     end
   catch
     # every writer refuses a float that is not finite (docs/SPEC-TABLES.md §3.3)
@@ -8283,7 +8421,11 @@ const variableRetainSource = `
     {nodes, ids, report, retain} = c
 
     case read_payload_retain(a, framed, nodes, ids, report, retain, arm_path) do
-      {:cont, value, report, retain} -> {:cont, {name, value}, report, retain}
+      {:cont, value, report, retain} ->
+        # The retaining read returns the same public value as the plain read:
+        # an older fixed-array arm is completed with this build's defaults.
+        # Its public writer then accepts the value it just decoded.
+        {:cont, {name, pad_fixed(a, value)}, report, retain}
     end
   end
 

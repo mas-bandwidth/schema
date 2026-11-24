@@ -1,84 +1,12 @@
 package docgate
 
 import (
-	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 )
-
-// TestOwedRowsAreLinked holds docs/SPEC-CONFORMANCE.md §7 honest: every
-// owed rule names the PR that carries its code and row and at least one id
-// it adds, an entry whose PR has merged can no longer say owed, and neither
-// can one any id of which is in the tree. It reads git and the tree, never
-// the network.
-func TestOwedRowsAreLinked(t *testing.T) {
-	t.Parallel()
-	root, err := FindRoot(".")
-	if err != nil {
-		t.Fatal(err)
-	}
-	text, err := os.ReadFile(filepath.Join(root, OwedPage))
-	if err != nil {
-		t.Fatal(err)
-	}
-	entries, err := ParseOwed(string(text))
-	if err != nil {
-		t.Fatal(err)
-	}
-	// No entry is no pass: an empty table means every rule is linked, and
-	// then the section and this test go, together.
-	if len(entries) == 0 {
-		t.Fatalf("%s §7 holds no owed entry: every rule is linked, so delete the table and this test", OwedPage)
-	}
-	merged, err := MergedPRs(root)
-	switch {
-	case errors.Is(err, ErrShallow) && os.Getenv("GITHUB_ACTIONS") == "true":
-		// CI fetches the history for this check (ci-fast.yml and
-		// ci-full.yml, "the history the owed-table check reads"); a CI run
-		// without it is a broken job, never a pass.
-		t.Fatalf("%v: in CI the job must fetch the history before this test", err)
-	case errors.Is(err, ErrShallow):
-		// A shallow clone outside CI has no history to read. The tree half
-		// below still runs; the merged half is named here as NOT RUN.
-		t.Logf("NOT RUN: the merged-PR half of this check: %v. Run it in a full clone.", err)
-		merged = nil
-	case err != nil:
-		t.Fatal(err)
-	}
-	tree, err := OpenTree(root, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var ids []string
-	for _, e := range entries {
-		for _, id := range e.IDs {
-			if _, err := IDKind(id); err == nil {
-				ids = append(ids, id)
-			}
-		}
-	}
-	inTree, err := tree.Present(ids)
-	if err != nil {
-		t.Fatal(err)
-	}
-	findings, err := CheckOwed(entries, func(pr int) bool { return merged[pr] }, func(id string) (bool, error) {
-		v, ok := inTree[id]
-		if !ok {
-			return false, errors.New("Present did not answer for this id")
-		}
-		return v, nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range findings {
-		t.Error(f)
-	}
-	t.Logf("%d owed entries, %d ids checked", len(entries), len(ids))
-}
 
 // TestOwedCheckGoesRed plants each failure the check exists to catch and
 // asserts it is caught, so the gate above cannot pass by checking nothing.

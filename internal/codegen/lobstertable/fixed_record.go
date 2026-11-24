@@ -96,7 +96,11 @@ func (p *fixedRecordProjection) field(f *ir.Field, typed, sl, ind string) {
 			p.assign(n, sl+".count", ind)
 			p.check(fmt.Sprintf("%s < %d or %s > %d", n, f.ArrayMin, n, f.ArrayBound), ind)
 		}
-		p.check(fmt.Sprintf("length(%s.elems) < %s", sl, n), ind)
+		if f.Array == ir.ArrayCounted {
+			p.check(fmt.Sprintf("length(%s.elems) < %s", sl, n), ind)
+		} else {
+			p.check(fmt.Sprintf("length(%s.elems) != %s", sl, n), ind)
+		}
 		if p.toTyped && fixedByteArray(f) {
 			p.g.Pf("%s%s = schema_rt.zeros(%d)\n", ind, typed, fixedArrayBound(f))
 		}

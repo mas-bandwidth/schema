@@ -550,6 +550,17 @@ public final class TableMessage {
                     final int start = r.atByte();
                     return r.skipBits(n * 8L) && utf8Valid(r.buf, start, (int) n);
                 }
+            case 31:
+                {
+                    if (!r.align()) {
+                        return false;
+                    }
+                    long n = r.get(32);
+                    if (r.err) {
+                        return false;
+                    }
+                    return r.skipBits(n * 8L);
+                }
             case 14:
             case 16:
                 {
@@ -1031,5 +1042,55 @@ public final class TableMessage {
         buffer[n + 2] = (byte) (crc >>> 16);
         buffer[n + 3] = (byte) (crc >>> 24);
         return n + 4;
+    }
+
+    public static byte[] bytes(java.lang.String... parts) {
+        int n = 0;
+        for (java.lang.String p : parts) {
+            n += p.length();
+        }
+        final byte[] out = new byte[n];
+        int at = 0;
+        for (java.lang.String p : parts) {
+            for (int i = 0; i < p.length(); i++) {
+                out[at++] = (byte) p.charAt(i);
+            }
+        }
+        return out;
+    }
+
+    public static int[] ints(java.lang.String... parts) {
+        final byte[] b = bytes(parts);
+        final int[] out = new int[b.length / 4];
+        for (int i = 0; i < out.length; i++) {
+            final int at = i * 4;
+            out[i] = (b[at] & 0xff)
+                    | ((b[at + 1] & 0xff) << 8)
+                    | ((b[at + 2] & 0xff) << 16)
+                    | ((b[at + 3] & 0xff) << 24);
+        }
+        return out;
+    }
+
+    public static long[] longs(java.lang.String... parts) {
+        final byte[] b = bytes(parts);
+        final long[] out = new long[b.length / 8];
+        for (int i = 0; i < out.length; i++) {
+            final int at = i * 8;
+            out[i] = (b[at] & 0xffL)
+                    | ((b[at + 1] & 0xffL) << 8)
+                    | ((b[at + 2] & 0xffL) << 16)
+                    | ((b[at + 3] & 0xffL) << 24)
+                    | ((b[at + 4] & 0xffL) << 32)
+                    | ((b[at + 5] & 0xffL) << 40)
+                    | ((b[at + 6] & 0xffL) << 48)
+                    | ((b[at + 7] & 0xffL) << 56);
+        }
+        return out;
+    }
+
+    public static int findSlot(long[] sortedIds, int[] slots, long id) {
+        int i = java.util.Arrays.binarySearch(sortedIds, id);
+        return i >= 0 ? slots[i] : -1;
     }
 }

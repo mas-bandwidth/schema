@@ -243,6 +243,9 @@ func CountedMinBlockBytes(b *CountedMinBlock) int64 {
 		return 0
 	}
 	used := int64(48)
+	if b.Projection.FewCount < 2 || b.Projection.FewCount > 5 {
+		return -1
+	}
 	return (used + 63) &^ int64(63)
 }
 
@@ -365,6 +368,9 @@ func FloatBoundBlockBytes(b *FloatBoundBlock) int64 {
 		return 0
 	}
 	used := int64(32)
+	if !(b.Projection.Level >= 0 && b.Projection.Level <= 0.1) {
+		return -1
+	}
 	return (used + 63) &^ int64(63)
 }
 
@@ -487,6 +493,9 @@ func MoodsBlockBytes(b *MoodsBlock) int64 {
 		return 0
 	}
 	used := int64(32)
+	if b.Projection.RowCount < 0 || b.Projection.RowCount > 4 {
+		return -1
+	}
 	return (used + 63) &^ int64(63)
 }
 
@@ -735,6 +744,9 @@ func MinPlainFixBlockBytes(b *MinPlainFixBlock) int64 {
 		return 0
 	}
 	used := int64(48)
+	if b.Projection.FewCount < 2 || b.Projection.FewCount > 4 {
+		return -1
+	}
 	return (used + 63) &^ int64(63)
 }
 

@@ -25027,6 +25027,7 @@ static SCHEMA_UNUSED int schema_tabledemo_ranged_signed_body_pack_( struct table
     tabledemo_table_cook_put( at + 40, (uint64_t) value->i64_low, 8, order );
     tabledemo_table_cook_put( at + 48, (uint64_t) value->i64_high, 8, order );
     tabledemo_table_cook_put( at + 56, (uint64_t) value->i64_inside, 8, order );
+    if ( value->edges_count < 0 || value->edges_count > 4 ) { return 0; }
     {
         int32_t cook_i1;
         for ( cook_i1 = 0; cook_i1 < value->edges_count && cook_i1 < 4; cook_i1++ )
@@ -25079,6 +25080,7 @@ static SCHEMA_UNUSED int schema_tabledemo_ranged_unsigned_body_pack_( struct tab
     tabledemo_table_cook_put( at + 40, (uint64_t) value->u64_low, 8, order );
     tabledemo_table_cook_put( at + 48, (uint64_t) value->u64_high, 8, order );
     tabledemo_table_cook_put( at + 56, (uint64_t) value->u64_inside, 8, order );
+    if ( value->counts_count < 0 || value->counts_count > 4 ) { return 0; }
     {
         int32_t cook_i1;
         for ( cook_i1 = 0; cook_i1 < value->counts_count && cook_i1 < 4; cook_i1++ )

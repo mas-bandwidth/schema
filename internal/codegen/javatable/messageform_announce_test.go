@@ -247,6 +247,62 @@ func TestMessageFormAnnounceJava(t *testing.T) {
 	})
 }
 
+func TestMessageFormAnnounceJavaR9MaxBytes(t *testing.T) {
+	t.Parallel()
+	root, err := filepath.Abs("../../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	u := loadUnitDir(t, root, "tables/backend")
+	emptyUnit := loadUnitDir(t, root, "tables/blobs")
+	if len(tablewire.MessageVocabulary(emptyUnit)) != 0 {
+		t.Fatal("the variable-only peer must announce an empty vocabulary")
+	}
+	out := runMessageJava(t, u, fmt.Sprintf(announceR9MaxBytesMain, hexOf(tablewire.Announce(emptyUnit))))
+	if out = strings.TrimSpace(out); out != "ok" {
+		t.Fatalf("R9 announcement byte limit: %s", out)
+	}
+}
+
+const announceR9MaxBytesMain = `    public static void main(String[] args) {
+        final byte[] ann = new byte[TableVocabulary.announceMeasure()];
+        if (TableVocabulary.announce(ann) != ann.length) { fail("announce"); }
+        testLimits(ann, false);
+        testLimits(fromHex("%s"), true);
+        System.out.println("ok");
+    }
+
+    private static void testLimits(byte[] ann, boolean empty) {
+        final TableVocabulary defaults = new TableVocabulary();
+        defaults.reset(4096);
+        final TableVocabulary.Report defaultReport = new TableVocabulary.Report();
+        if (!TableVocabulary.announceRead(defaults, ann, defaultReport) || !defaults.announced || (defaults.count == 0) != empty) {
+            fail("default byte limit did not accept the generated announcement");
+        }
+
+        final TableVocabulary positive = new TableVocabulary();
+        positive.reset(4096);
+        positive.maxBytes = ann.length;
+        final TableVocabulary.Report positiveReport = new TableVocabulary.Report();
+        if (!TableVocabulary.announceRead(positive, ann, positiveReport) || positive.count != defaults.count) {
+            fail("positive byte limit did not accept the generated announcement");
+        }
+
+        final TableVocabulary zero = new TableVocabulary();
+        zero.reset(4096);
+        zero.maxBytes = 0;
+        final TableVocabulary.Report zeroReport = new TableVocabulary.Report();
+        final boolean accepted = TableVocabulary.announceRead(zero, ann, zeroReport);
+        if (empty) {
+            if (!accepted || !zero.announced || zero.count != 0 || zeroReport.refused || zeroReport.damaged) {
+                fail("zero byte limit did not accept the empty vocabulary");
+            }
+        } else if (accepted || zero.announced || !zeroReport.refused || zeroReport.damaged || !"vocabulary_too_large".equals(zeroReport.reason)) {
+            fail("zero byte limit did not refuse the nonempty vocabulary by name");
+        }
+    }
+`
+
 func TestAnnouncementBudgetsJava(t *testing.T) {
 	t.Parallel()
 	root, err := filepath.Abs("../../..")

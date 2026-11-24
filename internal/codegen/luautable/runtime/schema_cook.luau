@@ -279,8 +279,22 @@ local function live_count(fd: any, holder: any, val: any): number?
 	if fd.array == "counted" then
 		local c = holder[fd.slot .. "Count"]
 		if c == nil then c = 0 end
-		if c < 0 or c > (fd.bound or 0) then return nil end
+		if c < (fd.min or 0) or c > (fd.bound or 0) then return nil end
 		return c
+	end
+	if fd.array == "fixed" or fd.array == "keyed" then
+		local want = fd.bound or #(fd.keyvs or {})
+		local nullableElem = fd.e ~= nil and (fd.e.s == "ptr" or fd.e.s == "sblob" or fd.e.s == "bblob")
+		if typeof(val) == "buffer" then
+			if buffer.len(val) ~= want then return nil end
+		elseif typeof(val) ~= "table" then
+			return nil
+		elseif nullableElem then
+			for k in val do if typeof(k) == "number" and (k < 1 or k > want) then return nil end end
+		elseif #val ~= want or val[want + 1] ~= nil then
+			return nil
+		end
+		return want
 	end
 	return fd.bound or 0
 end
@@ -777,6 +791,8 @@ write_array = function(fd: any, holder: any, x: any, at: number, fl: any, w: any
 		-- a slot past the live count is DEAD BYTES and stays the buffer's zero
 		-- (§7.2; docs/rulings.json fixed-dead-bytes-are-zero)
 		n = used
+	elseif fd.array == "fixed" or fd.array == "keyed" then
+		if live_count(fd, holder, x) == nil then return false end
 	end
 	-- a [N]uint8 or [E]uint8 is a buffer, 0-based (docs/PORT-LUAU.md, THE TYPE
 	-- MAPPING): its slots are read as bytes, every other array is a 1-based list

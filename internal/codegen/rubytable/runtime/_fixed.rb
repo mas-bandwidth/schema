@@ -7,15 +7,6 @@
 # an executable layout. All records are checked before any value is built.
 
 module SchemaRuntimeUnit
-  class LoadReport
-    def reset
-      @unknown = 0
-      @widened = 0
-      @retained = 0
-      @retain_lost = 0
-    end
-  end
-
   class FixedLoadReport < LoadReport
     attr_accessor :layout_hash
 
@@ -642,7 +633,7 @@ module SchemaRuntimeUnit
     root["integrity"] ? _s_fixed_seal_crc(result) : result
   end
 
-  def self._s_fixed_load(cls_name, data, capacity = 4096, report = nil, plan_capacity = nil)
+  def self._s_fixed_load(cls_name, data, capacity = nil, report = nil, plan_capacity = nil)
     raise Refused.new("bad_input", "expected String") unless data.is_a?(::String)
     source = data.encoding == ::Encoding::BINARY ? data : data.b
     raise Refused.new("truncated") if source.bytesize == 0
@@ -684,7 +675,7 @@ module SchemaRuntimeUnit
       raise Refused.new("truncated")
     end
     count = rest / record
-    if !capacity.is_a?(::Integer) || capacity < 0 || count > capacity
+    if !capacity.nil? && (!capacity.is_a?(::Integer) || capacity < 0 || count > capacity)
       raise Refused.new("batch_too_large")
     end
     start = 20 + length
@@ -739,6 +730,29 @@ module SchemaRuntimeUnit
       end
     end
     values
+  end
+
+  def self._s_fixed_load_into(cls_name, targets, data, capacity = nil, report = nil, plan_capacity = nil)
+    report&.reset
+    begin
+      loaded = _s_fixed_load(cls_name, data, capacity, report, plan_capacity)
+      raise Refused.new("batch_too_large") if loaded.length > targets.length
+    rescue Refused => e
+      targets.each(&:_s_reset)
+      unless report.nil?
+        report.reset
+        report.refused = true
+        report.reason = e.reason
+      end
+      return 0
+    end
+    loaded.each_with_index { |item, idx| targets[idx]._s_copy_from(item) }
+    idx = loaded.length
+    while idx < targets.length
+      targets[idx]._s_reset
+      idx += 1
+    end
+    loaded.length
   end
 
   def self._s_fixed_dead_header(source)

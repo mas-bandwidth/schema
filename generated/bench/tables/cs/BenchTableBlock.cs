@@ -222,6 +222,38 @@ namespace Benchtable
             if (allocator == null) { Marshal.FreeHGlobal(allocation); } else { allocator.Free(allocation); }
             allocation = IntPtr.Zero; Pointer = IntPtr.Zero; Capacity = 0;
         }
+        internal static bool TextValid(byte[] bytes, int len)
+        {
+            if (bytes == null || len < 0 || len > bytes.Length) { return false; }
+            int i = 0;
+            while (i < len)
+            {
+                byte c = bytes[i];
+                if (c == 0) { return false; }
+                if (c < 0x80) { i++; continue; }
+                if (c >= 0xC2 && c <= 0xDF)
+                {
+                    if (i + 1 >= len || (bytes[i + 1] & 0xC0) != 0x80) { return false; }
+                    i += 2; continue;
+                }
+                if (c >= 0xE0 && c <= 0xEF)
+                {
+                    if (i + 2 >= len || (bytes[i + 1] & 0xC0) != 0x80 || (bytes[i + 2] & 0xC0) != 0x80) { return false; }
+                    if (c == 0xE0 && bytes[i + 1] < 0xA0) { return false; }
+                    if (c == 0xED && bytes[i + 1] >= 0xA0) { return false; }
+                    i += 3; continue;
+                }
+                if (c >= 0xF0 && c <= 0xF4)
+                {
+                    if (i + 3 >= len || (bytes[i + 1] & 0xC0) != 0x80 || (bytes[i + 2] & 0xC0) != 0x80 || (bytes[i + 3] & 0xC0) != 0x80) { return false; }
+                    if (c == 0xF0 && bytes[i + 1] < 0x90) { return false; }
+                    if (c == 0xF4 && bytes[i + 1] >= 0x90) { return false; }
+                    i += 4; continue;
+                }
+                return false;
+            }
+            return true;
+        }
     }
     // The LAYOUT CONTRACT's C# half (docs/SPEC-TABLES.md §19.3), run ONCE: every size
     // and offset the C++ side static_asserts, asserted here against the MANAGED
@@ -395,6 +427,27 @@ namespace Benchtable
         }
 
         public static bool Begin(out TableEntityBlock block, TableEntityBlockStorage storage, in TableEntityCounts counts, out TableBlockRefusal refusal) { return Begin(out block, storage.Pointer, storage.Capacity, counts, out refusal); }
+        public static bool Begin(out TableEntityBlock block, IntPtr pointer, long capacity, TableEntity value, out TableBlockRefusal refusal)
+        {
+            block = default; refusal = default;
+            if (value == null) { return false; }
+            if (value.EntityId > 4095) { return false; }
+            if (value.PosX < -16383 || value.PosX > 16383) { return false; }
+            if (value.PosY < -16383 || value.PosY > 16383) { return false; }
+            if (value.PosZ < -16383 || value.PosZ > 16383) { return false; }
+            if (value.Yaw > 511) { return false; }
+            if (value.Pitch > 511) { return false; }
+            if (value.VelX < -2048 || value.VelX > 2047) { return false; }
+            if (value.VelY < -2048 || value.VelY > 2047) { return false; }
+            if (value.VelZ < -2048 || value.VelZ > 2047) { return false; }
+            if (value.Health < 0 || value.Health > 1000) { return false; }
+            if ((ulong)value.Weapon > 15UL) { return false; }
+            if (((ulong)value.Damage & ~0xffUL) != 0) { return false; }
+            var counts = new TableEntityCounts();
+            return Begin(out block, pointer, capacity, in counts, out refusal);
+        }
+
+        public static bool Begin(out TableEntityBlock block, TableEntityBlockStorage storage, TableEntity value, out TableBlockRefusal refusal) { return Begin(out block, storage.Pointer, storage.Capacity, value, out refusal); }
         public ref TableEntityBlockProjection WritableProjection { get { return ref *(TableEntityBlockProjection*)basePointer; } }
         private readonly byte* basePointer;
         private readonly long bytes;
@@ -525,6 +578,17 @@ namespace Benchtable
         }
 
         public static bool Begin(out TableStatBlock block, TableStatBlockStorage storage, in TableStatCounts counts, out TableBlockRefusal refusal) { return Begin(out block, storage.Pointer, storage.Capacity, counts, out refusal); }
+        public static bool Begin(out TableStatBlock block, IntPtr pointer, long capacity, TableStat value, out TableBlockRefusal refusal)
+        {
+            block = default; refusal = default;
+            if (value == null) { return false; }
+            if (value.StatId > 255) { return false; }
+            if (value.Delta < -512 || value.Delta > 511) { return false; }
+            var counts = new TableStatCounts();
+            return Begin(out block, pointer, capacity, in counts, out refusal);
+        }
+
+        public static bool Begin(out TableStatBlock block, TableStatBlockStorage storage, TableStat value, out TableBlockRefusal refusal) { return Begin(out block, storage.Pointer, storage.Capacity, value, out refusal); }
         public ref TableStatBlockProjection WritableProjection { get { return ref *(TableStatBlockProjection*)basePointer; } }
         private readonly byte* basePointer;
         private readonly long bytes;

@@ -119,6 +119,9 @@ func writeCookLayout(b *strings.Builder, u *ir.Unit, f *ir.Field, fl *ir.FieldLa
 		b.WriteString(", array: :list")
 	case f.Array == ir.ArrayCounted:
 		b.WriteString(", array: :counted")
+		if f.ArrayMin > 0 {
+			fmt.Fprintf(b, ", min_count: %d", f.ArrayMin)
+		}
 	case f.Array == ir.ArrayFixed:
 		b.WriteString(", array: :fixed")
 	}
@@ -142,11 +145,6 @@ func writeCookLayout(b *strings.Builder, u *ir.Unit, f *ir.Field, fl *ir.FieldLa
 	}
 	if f.Array == ir.ArrayCounted || f.Array == ir.ArrayFixed {
 		fmt.Fprintf(b, ", max_count: %d", f.ArrayBound)
-	}
-	if f.Array == ir.ArrayCounted && f.ArrayMin > 0 {
-		// a counted array below its minimum A refuses on read, in every form
-		// (docs/SPEC.md section 4.6)
-		fmt.Fprintf(b, ", min_count: %d", f.ArrayMin)
 	}
 	if f.Array == ir.ArrayNone && enumRef(f) == nil && (f.Type.Kind == ir.TInt || f.Type.Kind == ir.TBits ||
 		f.Type.Kind == ir.TFixed || flagsRef(f) != nil) {

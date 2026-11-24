@@ -19719,6 +19719,7 @@ static SCHEMA_UNUSED int tabledemo_attachment_save_body( tabledemo_table_writer_
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_tabledemo_attachment_write_admits_( const tabledemo_attachment_t * value );
 static SCHEMA_UNUSED int64_t tabledemo_attachment_measure( const tabledemo_attachment_t * value )
 {
     tabledemo_table_write_ids_t vocabulary;
@@ -20002,7 +20003,11 @@ static SCHEMA_UNUSED int64_t tabledemo_attachment_measure_messages( const tabled
     tabledemo_table_bit_put( &w, 2, 8 );
     tabledemo_table_bit_put( &w, (uint64_t) ( count - 1 ), 8 );
     for ( i = 0; i < count; i++ )
+    {
         if ( !tabledemo_attachment_save_message_body( &w, values + i ) ) return -1;
+        schema_assert( schema_tabledemo_attachment_write_admits_( values + i ) );
+        /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     tabledemo_table_bit_align_write( &w );
     return w.overflow ? -1 : w.bits / 8;
 }
@@ -20025,7 +20030,11 @@ static SCHEMA_UNUSED int64_t tabledemo_attachment_save_messages( const tabledemo
     tabledemo_table_bit_put( &w, 2, 8 );
     tabledemo_table_bit_put( &w, (uint64_t) ( count - 1 ), 8 );
     for ( i = 0; i < count; i++ )
+    {
         if ( !tabledemo_attachment_save_message_body( &w, values + i ) ) return -1;
+        schema_assert( schema_tabledemo_attachment_write_admits_( values + i ) );
+        /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     tabledemo_table_bit_align_write( &w );
     return w.overflow ? -1 : w.bits / 8;
 }
@@ -20581,6 +20590,7 @@ static SCHEMA_UNUSED int tabledemo_debuff_save_body( tabledemo_table_writer_t * 
     return !w->overflow;
 }
 
+static SCHEMA_UNUSED int schema_tabledemo_debuff_write_admits_( const tabledemo_debuff_t * value );
 static SCHEMA_UNUSED int64_t tabledemo_debuff_measure( const tabledemo_debuff_t * value )
 {
     tabledemo_table_write_ids_t vocabulary;
@@ -20828,7 +20838,11 @@ static SCHEMA_UNUSED int64_t tabledemo_debuff_measure_messages( const tabledemo_
     tabledemo_table_bit_put( &w, 2, 8 );
     tabledemo_table_bit_put( &w, (uint64_t) ( count - 1 ), 8 );
     for ( i = 0; i < count; i++ )
+    {
         if ( !tabledemo_debuff_save_message_body( &w, values + i ) ) return -1;
+        schema_assert( schema_tabledemo_debuff_write_admits_( values + i ) );
+        /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     tabledemo_table_bit_align_write( &w );
     return w.overflow ? -1 : w.bits / 8;
 }
@@ -20851,7 +20865,11 @@ static SCHEMA_UNUSED int64_t tabledemo_debuff_save_messages( const tabledemo_deb
     tabledemo_table_bit_put( &w, 2, 8 );
     tabledemo_table_bit_put( &w, (uint64_t) ( count - 1 ), 8 );
     for ( i = 0; i < count; i++ )
+    {
         if ( !tabledemo_debuff_save_message_body( &w, values + i ) ) return -1;
+        schema_assert( schema_tabledemo_debuff_write_admits_( values + i ) );
+        /* the write contract, debug only (docs/SPEC.md §5.1) */
+    }
     tabledemo_table_bit_align_write( &w );
     return w.overflow ? -1 : w.bits / 8;
 }
@@ -21793,6 +21811,28 @@ static SCHEMA_UNUSED SCHEMA_TABLEDEMO_TABLE_INLINE void schema_tabledemo_min_pla
     (void) out_of_range;
     (void) damaged;
     if ( value->few_count < 2 ) { ( *out_of_range )++; }
+}
+
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value Attachment holds is
+   one its declaration admits. Every writer of Attachment asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_tabledemo_attachment_write_admits_( const tabledemo_attachment_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_tabledemo_attachment_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
+}
+
+/* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value Debuff holds is
+   one its declaration admits. Every writer of Debuff asserts it; NDEBUG
+   removes the assert, the call and the cost. */
+static SCHEMA_UNUSED int schema_tabledemo_debuff_write_admits_( const tabledemo_debuff_t * value )
+{
+    int32_t out_of_range = 0;
+    int32_t damaged = 0;
+    schema_tabledemo_debuff_fixed_write_check_body_( value, &out_of_range, &damaged );
+    return out_of_range == 0 && damaged == 0;
 }
 
 /* THE WRITE CHECK (docs/SPEC.md §5.1): true when every value WeaponConfig holds is
@@ -41078,6 +41118,7 @@ static SCHEMA_UNUSED int schema_tabledemo_loadout_config_body_pack_( struct tabl
     (void) value;
     (void) order;
     tabledemo_table_cook_put( at + 0, (uint64_t) value->grade, 1, order );
+    if ( value->grades_count < 0 || value->grades_count > 4 ) { return 0; }
     {
         int32_t cook_i1;
         for ( cook_i1 = 0; cook_i1 < value->grades_count && cook_i1 < 4; cook_i1++ )
@@ -41102,6 +41143,7 @@ static SCHEMA_UNUSED int schema_tabledemo_loadout_config_body_pack_( struct tabl
             if ( !schema_tabledemo_weapon_config_body_pack_( n, at + 52 + cook_i3 * 28, &value->backups[cook_i3], order ) ) { return 0; }
         }
     }
+    if ( value->attachments_count < 0 || value->attachments_count > 8 ) { return 0; }
     {
         int32_t cook_i4;
         for ( cook_i4 = 0; cook_i4 < value->attachments_count && cook_i4 < 8; cook_i4++ )
@@ -41199,6 +41241,7 @@ static SCHEMA_UNUSED int schema_tabledemo_root_config_body_pack_( struct tablede
     (void) order;
     tabledemo_table_cook_bytes( at + 0, value->version_note, value->version_note_length, 17 );
     tabledemo_table_cook_put( at + 0 + 20, (uint32_t) value->version_note_length, 4, order );
+    if ( value->weapons_count < 0 || value->weapons_count > 8 ) { return 0; }
     {
         int32_t cook_i1;
         for ( cook_i1 = 0; cook_i1 < value->weapons_count && cook_i1 < 8; cook_i1++ )
@@ -41207,6 +41250,7 @@ static SCHEMA_UNUSED int schema_tabledemo_root_config_body_pack_( struct tablede
         }
     }
     tabledemo_table_cook_put( at + 24 + 224, (uint32_t) value->weapons_count, 4, order );
+    if ( value->profiles_count < 0 || value->profiles_count > 4 ) { return 0; }
     {
         int32_t cook_i2;
         for ( cook_i2 = 0; cook_i2 < value->profiles_count && cook_i2 < 4; cook_i2++ )
@@ -41243,6 +41287,7 @@ static SCHEMA_UNUSED int schema_tabledemo_counted_min_body_pack_( struct tablede
     (void) at;
     (void) value;
     (void) order;
+    if ( value->few_count < 2 || value->few_count > 5 ) { return 0; }
     schema_assert( 2 <= value->few_count && value->few_count <= 5 );
     {
         int32_t cook_i1;
@@ -41310,6 +41355,7 @@ static SCHEMA_UNUSED int schema_tabledemo_moods_body_pack_( struct tabledemo_tab
     (void) at;
     (void) value;
     (void) order;
+    if ( value->row_count < 0 || value->row_count > 4 ) { return 0; }
     {
         int32_t cook_i1;
         for ( cook_i1 = 0; cook_i1 < value->row_count && cook_i1 < 4; cook_i1++ )
@@ -41381,6 +41427,7 @@ static SCHEMA_UNUSED int schema_tabledemo_min_arm_fix_body_pack_( struct tablede
     {
         case TABLEDEMO_MIN_PICK_TYPE_FEW:
         {
+            if ( value->pick.as.few.value_count < 2 || value->pick.as.few.value_count > 4 ) { return 0; }
             schema_assert( 2 <= value->pick.as.few.value_count && value->pick.as.few.value_count <= 4 );
             {
                 int32_t cook_i1;
@@ -41427,6 +41474,7 @@ static SCHEMA_UNUSED int schema_tabledemo_min_plain_fix_body_pack_( struct table
     (void) at;
     (void) value;
     (void) order;
+    if ( value->few_count < 2 || value->few_count > 4 ) { return 0; }
     schema_assert( 2 <= value->few_count && value->few_count <= 4 );
     {
         int32_t cook_i1;

@@ -9028,6 +9028,7 @@ inline bool RenderCameraLoadMessages( RenderCamera * values, int64_t * count, co
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -10643,6 +10644,7 @@ inline bool RenderShipLoadMessages( RenderShip * values, int64_t * count, const 
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -12098,6 +12100,7 @@ inline bool RenderTurretLoadMessages( RenderTurret * values, int64_t * count, co
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -13280,6 +13283,7 @@ inline bool RenderMissileLoadMessages( RenderMissile * values, int64_t * count, 
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -14462,6 +14466,7 @@ inline bool RenderDynamicPropLoadMessages( RenderDynamicProp * values, int64_t *
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -15680,6 +15685,7 @@ inline bool RenderStaticPropLoadMessages( RenderStaticProp * values, int64_t * c
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -16994,6 +17000,7 @@ inline bool RenderCosmeticPropLoadMessages( RenderCosmeticProp * values, int64_t
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -18083,6 +18090,7 @@ inline bool RenderLaserLoadMessages( RenderLaser * values, int64_t * count, cons
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -19313,6 +19321,7 @@ inline bool RenderExplosionLoadMessages( RenderExplosion * values, int64_t * cou
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -19471,6 +19480,8 @@ inline int64_t RenderFrameMeasureBody( TableIds & ids, const RenderFrame & value
     }
     return bytes;
 }
+
+inline bool RenderFrameFixedWriteAdmits( const RenderFrame & value );
 
 inline int64_t RenderFrameMeasure( const RenderFrame & value )
 {
@@ -21781,6 +21792,7 @@ inline int64_t RenderFrameMeasureMessages( const RenderFrame * values, int64_t c
     {
         const int64_t body = RenderFrameMeasureMessageBody( bits, values[i] );
         if ( body < 0 ) { return -1; }
+        schema_assert( RenderFrameFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         bits += body;
     }
     return 1 + ( bits + 7 ) / 8; // the form byte, then the stream padded to a byte
@@ -21799,6 +21811,7 @@ inline int64_t RenderFrameSaveMessages( const RenderFrame * values, int64_t coun
     for ( int64_t i = 0; i < count; i++ )
     {
         if ( !RenderFrameSaveMessageBody( batch.w, values[i] ) ) { return -1; }
+        schema_assert( RenderFrameFixedWriteAdmits( values[i] ) ); // the write contract, debug only (docs/SPEC.md §5.1)
         batch.written++;
     }
     return TableMessageBatchEnd( batch ); // == RenderFrameMeasureMessages( values, count, report )
@@ -21822,6 +21835,7 @@ inline bool RenderFrameLoadMessages( RenderFrame * values, int64_t * count, cons
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -22582,6 +22596,7 @@ inline bool RenderVector3LoadMessages( RenderVector3 * values, int64_t * count, 
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -23474,6 +23489,7 @@ inline bool RenderQuaternionLoadMessages( RenderQuaternion * values, int64_t * c
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -24019,6 +24035,128 @@ inline void RenderExplosionFixedClampBody( RenderExplosion & value, int32_t & TA
     (void) damaged;
     if ( (uint64_t) value.explosion_type > 2u ) { value.explosion_type = ExplosionType::None; oor_count++; }
     if ( (uint64_t) value.team > 4u ) { value.team = Team::None; oor_count++; }
+}
+
+// RenderFrame's read-side bounds, CHECKED: true when every clamp below would
+// count nothing and store nothing.
+TABLE_FIXED_INLINE bool RenderFrameFixedInRange( const RenderFrame & value )
+{
+    (void) value;
+    int bad = 0;
+    for ( int64_t i = 0; i < (int64_t) value.ships_count; ++i )
+    {
+        bad |= (int) !RenderShipFixedInRange( value.ships[i] );
+    }
+    for ( int64_t i = 0; i < (int64_t) value.turrets_count; ++i )
+    {
+        bad |= (int) !RenderTurretFixedInRange( value.turrets[i] );
+    }
+    for ( int64_t i = 0; i < (int64_t) value.missiles_count; ++i )
+    {
+        bad |= (int) !RenderMissileFixedInRange( value.missiles[i] );
+    }
+    for ( int64_t i = 0; i < (int64_t) value.dynamic_props_count; ++i )
+    {
+        bad |= (int) !RenderDynamicPropFixedInRange( value.dynamic_props[i] );
+    }
+    for ( int64_t i = 0; i < (int64_t) value.static_props_count; ++i )
+    {
+        bad |= (int) !RenderStaticPropFixedInRange( value.static_props[i] );
+    }
+    for ( int64_t i = 0; i < (int64_t) value.cosmetic_props_count; ++i )
+    {
+        bad |= (int) !RenderCosmeticPropFixedInRange( value.cosmetic_props[i] );
+    }
+    for ( int64_t i = 0; i < (int64_t) value.lasers_count; ++i )
+    {
+        bad |= (int) !RenderLaserFixedInRange( value.lasers[i] );
+    }
+    for ( int64_t i = 0; i < (int64_t) value.explosions_count; ++i )
+    {
+        bad |= (int) !RenderExplosionFixedInRange( value.explosions[i] );
+    }
+    return bad == 0;
+}
+
+// RenderFrame's write check (docs/SPEC.md §5.1): true when every value it holds
+// is one its declaration admits. Only a schema_assert calls it.
+inline bool RenderFrameFixedWriteAdmits( const RenderFrame & value )
+{
+    (void) value;
+    int bad = 0;
+    for ( int64_t i = 0; i < ( value.ships_count >= 0 && value.ships_count <= 4096 ? (int64_t) value.ships_count : 0 ); ++i )
+    {
+        bad |= (int) !RenderShipFixedWriteAdmits( value.ships[i] );
+    }
+    for ( int64_t i = 0; i < ( value.turrets_count >= 0 && value.turrets_count <= 1024 ? (int64_t) value.turrets_count : 0 ); ++i )
+    {
+        bad |= (int) !RenderTurretFixedWriteAdmits( value.turrets[i] );
+    }
+    for ( int64_t i = 0; i < ( value.missiles_count >= 0 && value.missiles_count <= 4096 ? (int64_t) value.missiles_count : 0 ); ++i )
+    {
+        bad |= (int) !RenderMissileFixedWriteAdmits( value.missiles[i] );
+    }
+    for ( int64_t i = 0; i < ( value.dynamic_props_count >= 0 && value.dynamic_props_count <= 4096 ? (int64_t) value.dynamic_props_count : 0 ); ++i )
+    {
+        bad |= (int) !RenderDynamicPropFixedWriteAdmits( value.dynamic_props[i] );
+    }
+    for ( int64_t i = 0; i < ( value.static_props_count >= 0 && value.static_props_count <= 20000 ? (int64_t) value.static_props_count : 0 ); ++i )
+    {
+        bad |= (int) !RenderStaticPropFixedWriteAdmits( value.static_props[i] );
+    }
+    for ( int64_t i = 0; i < ( value.cosmetic_props_count >= 0 && value.cosmetic_props_count <= 8192 ? (int64_t) value.cosmetic_props_count : 0 ); ++i )
+    {
+        bad |= (int) !RenderCosmeticPropFixedWriteAdmits( value.cosmetic_props[i] );
+    }
+    for ( int64_t i = 0; i < ( value.lasers_count >= 0 && value.lasers_count <= 32000 ? (int64_t) value.lasers_count : 0 ); ++i )
+    {
+        bad |= (int) !RenderLaserFixedWriteAdmits( value.lasers[i] );
+    }
+    for ( int64_t i = 0; i < ( value.explosions_count >= 0 && value.explosions_count <= 32000 ? (int64_t) value.explosions_count : 0 ); ++i )
+    {
+        bad |= (int) !RenderExplosionFixedWriteAdmits( value.explosions[i] );
+    }
+    return bad == 0;
+}
+
+// RenderFrame's read-side bounds.
+inline void RenderFrameFixedClampBody( RenderFrame & value, int32_t & TABLE_CLAMP_RESTRICT oor_count, int32_t & TABLE_CLAMP_RESTRICT damaged )
+{
+    (void) value;
+    (void) oor_count;
+    (void) damaged;
+    for ( int64_t i = 0; i < (int64_t) value.ships_count; ++i )
+    {
+        RenderShipFixedClampBody( value.ships[i], oor_count, damaged );
+    }
+    for ( int64_t i = 0; i < (int64_t) value.turrets_count; ++i )
+    {
+        RenderTurretFixedClampBody( value.turrets[i], oor_count, damaged );
+    }
+    for ( int64_t i = 0; i < (int64_t) value.missiles_count; ++i )
+    {
+        RenderMissileFixedClampBody( value.missiles[i], oor_count, damaged );
+    }
+    for ( int64_t i = 0; i < (int64_t) value.dynamic_props_count; ++i )
+    {
+        RenderDynamicPropFixedClampBody( value.dynamic_props[i], oor_count, damaged );
+    }
+    for ( int64_t i = 0; i < (int64_t) value.static_props_count; ++i )
+    {
+        RenderStaticPropFixedClampBody( value.static_props[i], oor_count, damaged );
+    }
+    for ( int64_t i = 0; i < (int64_t) value.cosmetic_props_count; ++i )
+    {
+        RenderCosmeticPropFixedClampBody( value.cosmetic_props[i], oor_count, damaged );
+    }
+    for ( int64_t i = 0; i < (int64_t) value.lasers_count; ++i )
+    {
+        RenderLaserFixedClampBody( value.lasers[i], oor_count, damaged );
+    }
+    for ( int64_t i = 0; i < (int64_t) value.explosions_count; ++i )
+    {
+        RenderExplosionFixedClampBody( value.explosions[i], oor_count, damaged );
+    }
 }
 
 // RenderVector3's finite rule (docs/SPEC-TABLES.md §3.3): false when a float it
@@ -30480,6 +30618,7 @@ inline bool RenderFrameCookBody( uint8_t * at, const RenderFrame & value, TableB
     table_cook_put( at + 0, (uint64_t) value.version, 8, order );
     // 1 slots of storage, value.cameras_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.cameras_count >= 0 && value.cameras_count <= 1 ); // storage invariant, debug only (§5.1)
+    if ( value.cameras_count < 0 || value.cameras_count > 1 ) { return false; }
     for ( int32_t i = 0; i < value.cameras_count; i++ )
     {
         if ( !RenderCameraCookBody( at + 8 + i * 72, value.cameras[i], order ) ) { return false; }
@@ -30487,6 +30626,7 @@ inline bool RenderFrameCookBody( uint8_t * at, const RenderFrame & value, TableB
     table_cook_put( at + 80, (uint64_t) (uint32_t) value.cameras_count, 4, order );
     // 4096 slots of storage, value.ships_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.ships_count >= 0 && value.ships_count <= 4096 ); // storage invariant, debug only (§5.1)
+    if ( value.ships_count < 0 || value.ships_count > 4096 ) { return false; }
     for ( int32_t i = 0; i < value.ships_count; i++ )
     {
         if ( !RenderShipCookBody( at + 88 + i * 88, value.ships[i], order ) ) { return false; }
@@ -30494,6 +30634,7 @@ inline bool RenderFrameCookBody( uint8_t * at, const RenderFrame & value, TableB
     table_cook_put( at + 360536, (uint64_t) (uint32_t) value.ships_count, 4, order );
     // 1024 slots of storage, value.turrets_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.turrets_count >= 0 && value.turrets_count <= 1024 ); // storage invariant, debug only (§5.1)
+    if ( value.turrets_count < 0 || value.turrets_count > 1024 ) { return false; }
     for ( int32_t i = 0; i < value.turrets_count; i++ )
     {
         if ( !RenderTurretCookBody( at + 360544 + i * 64, value.turrets[i], order ) ) { return false; }
@@ -30501,6 +30642,7 @@ inline bool RenderFrameCookBody( uint8_t * at, const RenderFrame & value, TableB
     table_cook_put( at + 426080, (uint64_t) (uint32_t) value.turrets_count, 4, order );
     // 4096 slots of storage, value.missiles_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.missiles_count >= 0 && value.missiles_count <= 4096 ); // storage invariant, debug only (§5.1)
+    if ( value.missiles_count < 0 || value.missiles_count > 4096 ) { return false; }
     for ( int32_t i = 0; i < value.missiles_count; i++ )
     {
         if ( !RenderMissileCookBody( at + 426088 + i * 72, value.missiles[i], order ) ) { return false; }
@@ -30508,6 +30650,7 @@ inline bool RenderFrameCookBody( uint8_t * at, const RenderFrame & value, TableB
     table_cook_put( at + 721000, (uint64_t) (uint32_t) value.missiles_count, 4, order );
     // 4096 slots of storage, value.dynamic_props_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.dynamic_props_count >= 0 && value.dynamic_props_count <= 4096 ); // storage invariant, debug only (§5.1)
+    if ( value.dynamic_props_count < 0 || value.dynamic_props_count > 4096 ) { return false; }
     for ( int32_t i = 0; i < value.dynamic_props_count; i++ )
     {
         if ( !RenderDynamicPropCookBody( at + 721008 + i * 72, value.dynamic_props[i], order ) ) { return false; }
@@ -30515,6 +30658,7 @@ inline bool RenderFrameCookBody( uint8_t * at, const RenderFrame & value, TableB
     table_cook_put( at + 1015920, (uint64_t) (uint32_t) value.dynamic_props_count, 4, order );
     // 20000 slots of storage, value.static_props_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.static_props_count >= 0 && value.static_props_count <= 20000 ); // storage invariant, debug only (§5.1)
+    if ( value.static_props_count < 0 || value.static_props_count > 20000 ) { return false; }
     for ( int32_t i = 0; i < value.static_props_count; i++ )
     {
         if ( !RenderStaticPropCookBody( at + 1015928 + i * 80, value.static_props[i], order ) ) { return false; }
@@ -30522,6 +30666,7 @@ inline bool RenderFrameCookBody( uint8_t * at, const RenderFrame & value, TableB
     table_cook_put( at + 2615928, (uint64_t) (uint32_t) value.static_props_count, 4, order );
     // 8192 slots of storage, value.cosmetic_props_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.cosmetic_props_count >= 0 && value.cosmetic_props_count <= 8192 ); // storage invariant, debug only (§5.1)
+    if ( value.cosmetic_props_count < 0 || value.cosmetic_props_count > 8192 ) { return false; }
     for ( int32_t i = 0; i < value.cosmetic_props_count; i++ )
     {
         if ( !RenderCosmeticPropCookBody( at + 2615936 + i * 80, value.cosmetic_props[i], order ) ) { return false; }
@@ -30529,6 +30674,7 @@ inline bool RenderFrameCookBody( uint8_t * at, const RenderFrame & value, TableB
     table_cook_put( at + 3271296, (uint64_t) (uint32_t) value.cosmetic_props_count, 4, order );
     // 32000 slots of storage, value.lasers_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.lasers_count >= 0 && value.lasers_count <= 32000 ); // storage invariant, debug only (§5.1)
+    if ( value.lasers_count < 0 || value.lasers_count > 32000 ) { return false; }
     for ( int32_t i = 0; i < value.lasers_count; i++ )
     {
         if ( !RenderLaserCookBody( at + 3271304 + i * 64, value.lasers[i], order ) ) { return false; }
@@ -30536,6 +30682,7 @@ inline bool RenderFrameCookBody( uint8_t * at, const RenderFrame & value, TableB
     table_cook_put( at + 5319304, (uint64_t) (uint32_t) value.lasers_count, 4, order );
     // 32000 slots of storage, value.explosions_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.explosions_count >= 0 && value.explosions_count <= 32000 ); // storage invariant, debug only (§5.1)
+    if ( value.explosions_count < 0 || value.explosions_count > 32000 ) { return false; }
     for ( int32_t i = 0; i < value.explosions_count; i++ )
     {
         if ( !RenderExplosionCookBody( at + 5319312 + i * 80, value.explosions[i], order ) ) { return false; }

@@ -169,6 +169,9 @@ func WideBlobBlockBytes(b *WideBlobBlock) int64 {
 		return 0
 	}
 	used := int64(280040)
+	if (b.Projection.LabelLength < 0 || b.Projection.LabelLength > 70000) || (b.Projection.PayloadLength < 0 || b.Projection.PayloadLength > 70000) || (b.Projection.SamplesCount < 0 || b.Projection.SamplesCount > 70000) {
+		return -1
+	}
 	return (used + 63) &^ int64(63)
 }
 

@@ -2058,6 +2058,79 @@ public final class TableVariable {
         return true;
     }
 
+    public static int[] ints(java.lang.String... parts) {
+        int n = 0;
+        for (java.lang.String p : parts) {
+            n += p.length();
+        }
+        int[] out = new int[n / 4];
+        byte[] raw = new byte[n];
+        int at = 0;
+        for (java.lang.String p : parts) {
+            for (int i = 0; i < p.length(); i++) {
+                raw[at++] = (byte) p.charAt(i);
+            }
+        }
+        for (int i = 0; i < out.length; i++) {
+            int o = i * 4;
+            out[i] = (raw[o] & 0xff)
+                    | ((raw[o + 1] & 0xff) << 8)
+                    | ((raw[o + 2] & 0xff) << 16)
+                    | ((raw[o + 3] & 0xff) << 24);
+        }
+        return out;
+    }
+
+    public static long[] longs(java.lang.String... parts) {
+        int n = 0;
+        for (java.lang.String p : parts) {
+            n += p.length();
+        }
+        long[] out = new long[n / 8];
+        byte[] raw = new byte[n];
+        int at = 0;
+        for (java.lang.String p : parts) {
+            for (int i = 0; i < p.length(); i++) {
+                raw[at++] = (byte) p.charAt(i);
+            }
+        }
+        for (int i = 0; i < out.length; i++) {
+            int o = i * 8;
+            out[i] = (raw[o] & 0xffL)
+                    | ((raw[o + 1] & 0xffL) << 8)
+                    | ((raw[o + 2] & 0xffL) << 16)
+                    | ((raw[o + 3] & 0xffL) << 24)
+                    | ((raw[o + 4] & 0xffL) << 32)
+                    | ((raw[o + 5] & 0xffL) << 40)
+                    | ((raw[o + 6] & 0xffL) << 48)
+                    | ((raw[o + 7] & 0xffL) << 56);
+        }
+        return out;
+    }
+
+    public static int findSlot(long[] sortedIds, int[] slots, long id) {
+        int idx = java.util.Arrays.binarySearch(sortedIds, id);
+        return idx < 0 ? -1 : slots[idx];
+    }
+
+    public static java.lang.String[] names(java.lang.String... parts) {
+        java.lang.StringBuilder sb = new java.lang.StringBuilder();
+        for (java.lang.String p : parts) {
+            sb.append(p);
+        }
+        return sb.toString().split(",", -1);
+    }
+
+    public static java.util.Map<java.lang.String, java.lang.Integer> nameIndex(
+            java.lang.String[] names) {
+        java.util.HashMap<java.lang.String, java.lang.Integer> m =
+                new java.util.HashMap<>(names.length * 2);
+        for (int i = 0; i < names.length; i++) {
+            m.put(names[i], i);
+        }
+        return m;
+    }
+
     // A NODE-TABLE RECORD (docs/SPEC-TABLES.md §3.1): the type id the record
     // rides under and its body bytes. For the card's *string the type id is the
     // reserved string id (ir.StringWireTypeId) and the body is the raw UTF-8
@@ -4496,9 +4569,9 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct, fixed fixedClosure) (strin
 			}
 			b.WriteString("            }\n")
 		}
-		if f.KeyEnum != "" {
+		if f.KeyEnum != "" || f.Array == ir.ArrayFixed {
 			fmt.Fprintf(&b, "            for (int i = 0; i < %d; i++) {\n                %s.add(%s);\n", f.ArrayBound, varMember(f), variableDefault(variableElement(f)))
-			if f.Type.Pointer {
+			if isPointerArray(f) || (f.KeyEnum != "" && f.Type.Pointer) {
 				fmt.Fprintf(&b, "                %sIdx.add(0L);\n", varMember(f))
 			}
 			b.WriteString("            }\n")
@@ -4831,6 +4904,32 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct, fixed fixedClosure) (strin
 		fmt.Fprintf(&b, "    }\n\n")
 	}
 
+	fmt.Fprintf(&b, "    static void copyInto(Value src, Value dst) {\n")
+	for _, f := range st.Fields {
+		m := varMember(f)
+		fmt.Fprintf(&b, "        dst.%s = src.%s;\n", m, m)
+		if f.Type.Optional {
+			fmt.Fprintf(&b, "        dst.%sPresent = src.%sPresent;\n", m, m)
+		}
+		if f.Type.Blob() || (f.Type.Pointer && isStruct(f) && f.Array == ir.ArrayNone) {
+			fmt.Fprintf(&b, "        dst.%sIdx = src.%sIdx;\n", m, m)
+		} else if isPointerArray(f) {
+			fmt.Fprintf(&b, "        dst.%sIdx = src.%sIdx;\n", m, m)
+		}
+	}
+	fmt.Fprintf(&b, "    }\n\n")
+	fmt.Fprintf(&b, "    public static boolean loadInto(Value target, byte[] data, TableVariable.Report report) {\n")
+	fmt.Fprintf(&b, "        if (report == null) { report = new TableVariable.Report(); }\n")
+	fmt.Fprintf(&b, "        report.reset();\n")
+	fmt.Fprintf(&b, "        Value loaded = load(data, report);\n")
+	fmt.Fprintf(&b, "        if (loaded == null || report.refused || report.damaged) {\n")
+	fmt.Fprintf(&b, "            if (target != null) { copyInto(new Value(), target); }\n")
+	fmt.Fprintf(&b, "            return false;\n")
+	fmt.Fprintf(&b, "        }\n")
+	fmt.Fprintf(&b, "        if (target != null) { copyInto(loaded, target); }\n")
+	fmt.Fprintf(&b, "        return true;\n")
+	fmt.Fprintf(&b, "    }\n\n")
+
 	writeLoadMeasure(&b, u, st)
 	if unitCarriesForm(u, "json") {
 		writeJsonCodec(&b, u, st)
@@ -4844,7 +4943,7 @@ func generateTableVariable(u *ir.Unit, st *ir.Struct, fixed fixedClosure) (strin
 	if st.IsMapEntry() {
 		// Entries are codec bodies reached through their holder, never roots
 		// (SPEC-TABLES §2.8). Keep root conveniences out of the public API.
-		for _, signature := range []string{"byte[] save(", "Value load(", "long loadMeasure(", "byte[] toJson(", "Value fromJson("} {
+		for _, signature := range []string{"byte[] save(", "Value load(", "boolean loadInto(", "long loadMeasure(", "byte[] toJson(", "Value fromJson(", "boolean fromJsonInto("} {
 			source = strings.ReplaceAll(source, "public static "+signature, "static "+signature)
 		}
 	}
@@ -5319,6 +5418,17 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 		fmt.Fprintf(b, "        if (report.damaged) { report.settleDamage(); return null; }\n")
 		fmt.Fprintf(b, "        return v;\n")
 		fmt.Fprintf(b, "    }\n\n")
+		fmt.Fprintf(b, "    public static boolean fromJsonInto(Value target, byte[] text, TableVariable.Report report) {\n")
+		fmt.Fprintf(b, "        if (report == null) { report = new TableVariable.Report(); }\n")
+		fmt.Fprintf(b, "        report.reset();\n")
+		fmt.Fprintf(b, "        Value loaded = fromJson(text, report);\n")
+		fmt.Fprintf(b, "        if (loaded == null || report.refused || report.damaged) {\n")
+		fmt.Fprintf(b, "            if (target != null) { copyInto(new Value(), target); }\n")
+		fmt.Fprintf(b, "            return false;\n")
+		fmt.Fprintf(b, "        }\n")
+		fmt.Fprintf(b, "        if (target != null) { copyInto(loaded, target); }\n")
+		fmt.Fprintf(b, "        return true;\n")
+		fmt.Fprintf(b, "    }\n\n")
 	}
 
 	fmt.Fprintf(b, "    static void jsonFields(java.lang.StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth) {\n")
@@ -5580,9 +5690,12 @@ func jsonIntRange(f *ir.Field) (min, max string) {
 
 func writeJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {
 	m := varMember(f)
-	if f.Array == ir.ArrayCounted {
+	switch {
+	case f.Array == ir.ArrayCounted:
 		fmt.Fprintf(b, "        if (v.%s.size() < %d || v.%s.size() > %d) { throw new TableJson.Refused(\"count_over_bound\"); }\n", m, f.ArrayMin, m, f.ArrayBound)
-	} else if f.Array == ir.ArrayList && f.ArrayBound > 0 {
+	case f.Array == ir.ArrayFixed:
+		fmt.Fprintf(b, "        if (v.%s.size() != %d) { throw new TableJson.Refused(\"count_over_bound\"); }\n", m, f.ArrayBound)
+	case f.Array == ir.ArrayList && f.ArrayBound > 0:
 		fmt.Fprintf(b, "        if (v.%s.size() > %d) { throw new TableJson.Refused(\"count_over_bound\"); }\n", m, f.ArrayBound)
 	}
 	fmt.Fprintf(b, "        if (v.%s.isEmpty()) { b.append(\"[]\"); } else {\n", m)
@@ -5827,6 +5940,7 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 		case "boolean":
 			elem = "java.lang.Boolean"
 		}
+		fmt.Fprintf(b, "        if (v.%s.size() != %d) { throw new TableJson.Refused(\"count_over_bound\"); }\n", varMember(f), f.ArrayBound)
 		fmt.Fprintf(b, "        { java.util.List<%s> padded=new java.util.ArrayList<>();for(int j=0;j<%d;j++)padded.add(j<v.%s.size()?v.%s.get(j):%s);\n", elem, f.ArrayBound, varMember(f), varMember(f), variableDefault(&one))
 		one = *f
 		one.Array = ir.ArrayList
@@ -6066,10 +6180,13 @@ func readJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fie
 		return
 	}
 	m := varMember(f)
-	if variableBornCount(f) > 0 {
+	if variableBornCount(f) > 0 || (f.Array == ir.ArrayFixed && f.KeyEnum == "") {
 		// the text names the array whole: the born elements a fresh value
 		// holds (§22.2) are replaced, never appended to
 		fmt.Fprintf(b, "                if (in.peek() == '[') { v.%s.clear(); }\n", m)
+	}
+	if f.Array == ir.ArrayFixed && f.KeyEnum == "" {
+		defer fmt.Fprintf(b, "                while (v.%s.size() < %d) { v.%s.add(%s); }\n", m, f.ArrayBound, m, variableDefault(variableElement(f)))
 	}
 	switch {
 	case isPointerArray(f):
@@ -7149,6 +7266,7 @@ func writeVariableGraphFieldOnce(b *strings.Builder, f *ir.Field, pad string) {
 	}
 	if f.IsMap() {
 		fmt.Fprintf(b, "%sv.%s = order_%s(v.%s);\n", pad, m, m, m)
+		fmt.Fprintf(b, "%sif (v.%s == null) return false;\n", pad, m)
 	}
 }
 

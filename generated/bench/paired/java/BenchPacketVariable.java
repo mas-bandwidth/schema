@@ -26,7 +26,11 @@ public final class BenchPacketVariable {
         public long big = 0L;
         public java.util.List<java.lang.Integer> blob = new java.util.ArrayList<>();
 
-        public Value() {}
+        public Value() {
+            for (int i = 0; i < 17; i++) {
+                blob.add(0);
+            }
+        }
     }
 
     public static final long TYPE_ID = 0x473ca4761ebab5a5L;
@@ -1070,6 +1074,39 @@ public final class BenchPacketVariable {
         return v;
     }
 
+    static void copyInto(Value src, Value dst) {
+        dst.a = src.a;
+        dst.b = src.b;
+        dst.c = src.c;
+        dst.bits7 = src.bits7;
+        dst.bits13 = src.bits13;
+        dst.bits23 = src.bits23;
+        dst.flag = src.flag;
+        dst.x = src.x;
+        dst.y = src.y;
+        dst.z = src.z;
+        dst.big = src.big;
+        dst.blob = src.blob;
+    }
+
+    public static boolean loadInto(Value target, byte[] data, TableVariable.Report report) {
+        if (report == null) {
+            report = new TableVariable.Report();
+        }
+        report.reset();
+        Value loaded = load(data, report);
+        if (loaded == null || report.refused || report.damaged) {
+            if (target != null) {
+                copyInto(new Value(), target);
+            }
+            return false;
+        }
+        if (target != null) {
+            copyInto(loaded, target);
+        }
+        return true;
+    }
+
     // loadMeasure sizes the region a strict load would need (docs/SPEC-TABLES.md §6.5).
     private static final long ALIGN = 16;
     private static final long RECORD_SIZE = 72;
@@ -1270,6 +1307,24 @@ public final class BenchPacketVariable {
         return v;
     }
 
+    public static boolean fromJsonInto(Value target, byte[] text, TableVariable.Report report) {
+        if (report == null) {
+            report = new TableVariable.Report();
+        }
+        report.reset();
+        Value loaded = fromJson(text, report);
+        if (loaded == null || report.refused || report.damaged) {
+            if (target != null) {
+                copyInto(new Value(), target);
+            }
+            return false;
+        }
+        if (target != null) {
+            copyInto(loaded, target);
+        }
+        return true;
+    }
+
     static void jsonFields(
             java.lang.StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth) {
         b.append('{');
@@ -1399,6 +1454,9 @@ public final class BenchPacketVariable {
         TableJson.indent(b, depth);
         TableJson.esc(b, "blob");
         b.append(": ");
+        if (v.blob.size() != 17) {
+            throw new TableJson.Refused("count_over_bound");
+        }
         {
             java.util.List<java.lang.Integer> padded = new java.util.ArrayList<>();
             for (int j = 0; j < 17; j++) padded.add(j < v.blob.size() ? v.blob.get(j) : 0);
@@ -1825,6 +1883,9 @@ public final class BenchPacketVariable {
                     if (repeated && in.peek() != 'n') {
                         v.blob = new java.util.ArrayList<>();
                     }
+                    if (in.peek() == '[') {
+                        v.blob.clear();
+                    }
                     if (depth + 1 > TableJson.In.MAX_JSON_DEPTH) {
                         in.bad = true;
                         in.skipValue();
@@ -1869,6 +1930,9 @@ public final class BenchPacketVariable {
                     } else {
                         in.skipValue();
                         in.rep.refuse("kind_mismatch");
+                    }
+                    while (v.blob.size() < 17) {
+                        v.blob.add(0);
                     }
                 }
             } else {

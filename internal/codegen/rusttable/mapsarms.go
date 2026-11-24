@@ -259,6 +259,7 @@ func (g *gen) emitOptionalSaveField(b *strings.Builder, f *ir.Field, ordinal int
 // rides; any other fixed array elides when all N slots hold their default
 // (docs/SPEC-TABLES.md §2.2, §3).
 func (g *gen) emitFixedArraySave(b *strings.Builder, f *ir.Field, ordinal int, x, ind string) {
+	fmt.Fprintf(b, "%sdebug_assert!(%s.len() == %d, \"%s length != %d\");\n", ind, x, f.ArrayBound, f.Name, f.ArrayBound)
 	id := ir.TableFieldWireId(f)
 	inner := ind + "    "
 	if classOf(f) == vTable {
@@ -324,13 +325,14 @@ func (g *gen) emitKeyedSave(b *strings.Builder, f *ir.Field, ordinal int, x, ind
 	if f.KeyEnumRef == nil || len(f.KeyEnumRef.Variants) == 0 {
 		return
 	}
+	fmt.Fprintf(b, "%sdebug_assert!(%s.len() == %d, \"%s keyed length != %d\");\n", ind, x, len(f.KeyEnumRef.Variants), f.Name, len(f.KeyEnumRef.Variants))
 	id := ir.TableFieldWireId(f)
 	inner := ind + "    "
 	// a [E]T holds exactly one value per variant: a length off the variant
 	// count is a debug assert, never a drop (audit SF-35)
 	fmt.Fprintf(b, "%sdebug_assert!(%s.len() == %d, \"%s length is not %d\");\n", ind, x, len(f.KeyEnumRef.Variants), f.Name, len(f.KeyEnumRef.Variants))
 	fmt.Fprintf(b, "%s{\n", ind)
-	fmt.Fprintf(b, "%sconst KEYS: [u64; %d] = [", inner, len(f.KeyEnumRef.Variants))
+	fmt.Fprintf(b, "%sstatic KEYS: [u64; %d] = [", inner, len(f.KeyEnumRef.Variants))
 	for i := range f.KeyEnumRef.Variants {
 		if i > 0 {
 			b.WriteString(", ")
@@ -407,6 +409,7 @@ func (g *gen) emitMapSave(b *strings.Builder, f *ir.Field, ordinal int, x, ind s
 	fmt.Fprintf(b, "%slet r = ids.id_ref(0x%016x);\n", inner, id)
 	fmt.Fprintf(b, "%slet mut order: Vec<usize> = (0..%s.len()).collect();\n", inner, x)
 	fmt.Fprintf(b, "%sorder.sort_by(|&a, &b| %s);\n", inner, mapKeyOrd(f, x+"[a]."+ir.RustSnake(ir.MapKeyFieldName), x+"[b]."+ir.RustSnake(ir.MapKeyFieldName)))
+	fmt.Fprintf(b, "%sfor pair in order.windows(2) { debug_assert!(%s == std::cmp::Ordering::Less, \"duplicate map key\"); }\n", inner, mapKeyOrd(f, x+"[pair[0]]."+ir.RustSnake(ir.MapKeyFieldName), x+"[pair[1]]."+ir.RustSnake(ir.MapKeyFieldName)))
 	fmt.Fprintf(b, "%slet mut body = Vec::new();\n", inner)
 	fmt.Fprintf(b, "%sbody.push(%d); // element kind 13: the entry is a table (§2.8)\n", inner, ir.TableKindTable)
 	fmt.Fprintf(b, "%sleb_write(&mut body, %s.len() as u64);\n", inner, x)
@@ -1219,6 +1222,7 @@ func (g *gen) emitKeyedTextWrite(b *strings.Builder, f *ir.Field, x, d, ind stri
 		fmt.Fprintf(b, "%sw.out.push_str(\"{}\");\n", ind)
 		return
 	}
+	fmt.Fprintf(b, "%sif %s.len() != %d { w.refused = true; return; }\n", ind, x, len(f.KeyEnumRef.Variants))
 	elemField := scalarOnly(f)
 	defExpr := fieldDefault(elemField)
 	fmt.Fprintf(b, "%sw.out.push('{');\n", ind)
@@ -1419,6 +1423,7 @@ func (g *gen) emitMapTextWrite(b *strings.Builder, f *ir.Field, x, d, ind string
 	fmt.Fprintf(b, "%s    let map_val = %s;\n", ind, borrowOf(x))
 	fmt.Fprintf(b, "%s    let mut order: Vec<usize> = (0..map_val.len()).collect();\n", ind)
 	fmt.Fprintf(b, "%s    order.sort_by(|&a, &b| %s);\n", ind, mapKeyOrd(f, "map_val[a]."+key, "map_val[b]."+key))
+	fmt.Fprintf(b, "%s    for pair in order.windows(2) { if %s != std::cmp::Ordering::Less { w.refused = true; return; } }\n", ind, mapKeyOrd(f, "map_val[pair[0]]."+key, "map_val[pair[1]]."+key))
 	fmt.Fprintf(b, "%s    w.out.push('{');\n", ind)
 	fmt.Fprintf(b, "%s    for (i, &at) in order.iter().enumerate() {\n", ind)
 	fmt.Fprintf(b, "%s        let ent = &map_val[at];\n", ind)

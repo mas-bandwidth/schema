@@ -64,6 +64,37 @@ const msgBad = "{ report.damaged = true; return false; }"
 // may not" (§3.3), so a variable table grows no verb.
 func (g *gen) messageModule() []byte {
 	reach, _ := unitFixedClosure(g.unit, g.closure)
+	var addReach func(st *ir.Struct)
+	addReach = func(st *ir.Struct) {
+		if st == nil || reach[st.Name] || !g.rowable(st.Name) {
+			return
+		}
+		reach[st.Name] = true
+		for _, f := range st.Fields {
+			if f.Type.Kind != ir.TNamed {
+				continue
+			}
+			switch r := f.Type.Ref.(type) {
+			case *ir.Struct:
+				addReach(r)
+			case *ir.Union:
+				for _, v := range r.Variants {
+					if v.F != nil && v.F.Type.Kind == ir.TNamed {
+						if sub, ok := v.F.Type.Ref.(*ir.Struct); ok {
+							addReach(sub)
+						}
+					}
+				}
+			}
+		}
+	}
+	for _, f := range g.unit.Files {
+		for _, st := range f.Tables {
+			if st.FixedDeclared && !ir.TableFixedEmitted(g.unit, st) && g.rowable(st.Name) {
+				addReach(st)
+			}
+		}
+	}
 	var members []*ir.Struct
 	for _, st := range g.cookRoots() {
 		if reach[st.Name] {
@@ -104,9 +135,55 @@ use crate::*;
 // declared default (§3.3, SPEC §4.2).
 func (m *msgGen) emitDefaults(st *ir.Struct) {
 	snake := ir.RustSnake(st.Name)
+	if !ir.TableFixedEmitted(m.u, st) {
+		m.pf("/// %s at its declared defaults (SPEC §4.2): the value a body that carries\n/// no field of it decodes to (§3.3).\n", st.Name)
+		m.pf("pub fn %s_message_default() -> %sRow {\n", snake, st.Name)
+		var assigns []string
+		for _, f := range st.Fields {
+			if f.Type.Optional || f.Array != ir.ArrayNone || f.KeyEnum != "" {
+				continue
+			}
+			if f.HasDefault {
+				switch f.Type.Kind {
+				case ir.TBool:
+					if f.DefBool {
+						assigns = append(assigns, fmt.Sprintf("        %s: true,\n", f.Name))
+					}
+				case ir.TInt, ir.TFixed:
+					if f.DefInt != nil && f.DefInt.Sign() != 0 {
+						// The IR already holds the exact storage value, including
+						// the fixed-point scale. A wide row field wraps that value.
+						value := f.DefInt.String()
+						if f.Type.Width > 64 {
+							value = fmt.Sprintf("%s(%s)", cookElemType(f), value)
+						}
+						assigns = append(assigns, fmt.Sprintf("        %s: %s,\n", f.Name, value))
+					}
+				case ir.TFloat32, ir.TFloat64:
+					if f.DefFloat != 0 {
+						assigns = append(assigns, fmt.Sprintf("        %s: %s,\n", f.Name, fixedFloatLit(f.DefFloat)))
+					}
+				}
+			}
+		}
+		if len(assigns) == 0 {
+			m.pf("    %sRow::default()\n}\n\n", st.Name)
+			return
+		}
+		m.pf("    %sRow {\n", st.Name)
+		for _, line := range assigns {
+			m.pf("%s", line)
+		}
+		if len(assigns) < len(st.Fields) {
+			m.pf("        ..Default::default()\n")
+		}
+		m.pf("    }\n}\n\n")
+		return
+	}
 	up := strings.ToUpper(snake)
 	img := fixedDefaultImage(st)
-	m.pf("const %s_MESSAGE_DEFAULTS: [u8; %d] = [", up, len(img))
+	m.pf("// This immutable wire image is compiler-settled data of the form (§3.3).\n")
+	m.pf("static %s_MESSAGE_DEFAULTS: [u8; %d] = [", up, len(img))
 	for i, v := range img {
 		if i%16 == 0 {
 			m.pf("\n    ")
@@ -344,7 +421,12 @@ func (m *msgGen) scalarWriteCheck(f *ir.Field, expr, ind string) {
 		return
 	}
 	switch f.Type.Kind {
-	case ir.TBool, ir.TFloat32, ir.TFloat64, ir.TNamed:
+	case ir.TBool, ir.TFloat32, ir.TFloat64:
+		return
+	case ir.TNamed:
+		if fl, ok := f.Type.Ref.(*ir.Flags); ok && len(fl.Variants) < 64 {
+			m.pf("%sdebug_assert!(%s >> %d == 0, \"flags %s bits name no variant\");\n", ind, expr, len(fl.Variants), fl.Name)
+		}
 		return
 	}
 	x := expr
@@ -1087,10 +1169,7 @@ pub fn %[1]s_load_messages(values: &mut [%[2]s], vocabulary: &TableVocabulary, d
 /// The walk under LoadMessages: on a refusal it returns (0, false) and leaves
 /// the reset of every value handed in to the caller above (R4).
 fn %[1]s_load_messages_walk(values: &mut [%[2]s], vocabulary: &TableVocabulary, data: &[u8], report: &mut TableReport) -> (usize, bool) {
-    report.non_finite_float = "";
-    report.non_finite_float_id = None;
-    report.oor_field = "";
-    report.damaged = false;
+    *report = TableReport::default();
 %[6]s    let Some(count) = table_message_batch_open(vocabulary, data, report) else {
         return (0, false);
     };

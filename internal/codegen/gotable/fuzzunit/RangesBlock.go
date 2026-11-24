@@ -236,6 +236,9 @@ func RangedSignedBlockBytes(b *RangedSignedBlock) int64 {
 		return 0
 	}
 	used := int64(104)
+	if (int64(b.Projection.I8Span) < -128 || int64(b.Projection.I8Span) > 127) || (int64(b.Projection.I8Low) < -128 || int64(b.Projection.I8Low) > 126) || (int64(b.Projection.I8High) < -127 || int64(b.Projection.I8High) > 127) || (int64(b.Projection.I8Inside) < -127 || int64(b.Projection.I8Inside) > 126) || (int64(b.Projection.I16Span) < -32768 || int64(b.Projection.I16Span) > 32767) || (int64(b.Projection.I16Low) < -32768 || int64(b.Projection.I16Low) > 32766) || (int64(b.Projection.I16High) < -32767 || int64(b.Projection.I16High) > 32767) || (int64(b.Projection.I16Inside) < -32767 || int64(b.Projection.I16Inside) > 32766) || (int64(b.Projection.I32Span) < -2147483648 || int64(b.Projection.I32Span) > 2147483647) || (int64(b.Projection.I32Low) < -2147483648 || int64(b.Projection.I32Low) > 2147483646) || (int64(b.Projection.I32High) < -2147483647 || int64(b.Projection.I32High) > 2147483647) || (int64(b.Projection.I32Inside) < -2147483647 || int64(b.Projection.I32Inside) > 2147483646) || (int64(b.Projection.I64Span) < -9223372036854775808 || int64(b.Projection.I64Span) > 9223372036854775807) || (int64(b.Projection.I64Low) < -9223372036854775808 || int64(b.Projection.I64Low) > 9223372036854775806) || (int64(b.Projection.I64High) < -9223372036854775807 || int64(b.Projection.I64High) > 9223372036854775807) || (int64(b.Projection.I64Inside) < -9223372036854775807 || int64(b.Projection.I64Inside) > 9223372036854775806) || (b.Projection.EdgesCount < 0 || b.Projection.EdgesCount > 4) {
+		return -1
+	}
 	return (used + 63) &^ int64(63)
 }
 
@@ -358,6 +361,9 @@ func RangedUnsignedBlockBytes(b *RangedUnsignedBlock) int64 {
 		return 0
 	}
 	used := int64(128)
+	if (uint64(b.Projection.U8Span) > 255) || (uint64(b.Projection.U8Low) > 254) || (uint64(b.Projection.U8High) < 1 || uint64(b.Projection.U8High) > 255) || (uint64(b.Projection.U8Inside) < 1 || uint64(b.Projection.U8Inside) > 254) || (uint64(b.Projection.U16Span) > 65535) || (uint64(b.Projection.U16Low) > 65534) || (uint64(b.Projection.U16High) < 1 || uint64(b.Projection.U16High) > 65535) || (uint64(b.Projection.U16Inside) < 1 || uint64(b.Projection.U16Inside) > 65534) || (uint64(b.Projection.U32Span) > 4294967295) || (uint64(b.Projection.U32Low) > 4294967294) || (uint64(b.Projection.U32High) < 1 || uint64(b.Projection.U32High) > 4294967295) || (uint64(b.Projection.U32Inside) < 1 || uint64(b.Projection.U32Inside) > 4294967294) || (uint64(b.Projection.U64Span) > 18446744073709551615) || (uint64(b.Projection.U64Low) > 18446744073709551614) || (uint64(b.Projection.U64High) < 1 || uint64(b.Projection.U64High) > 18446744073709551615) || (uint64(b.Projection.U64Inside) < 1 || uint64(b.Projection.U64Inside) > 18446744073709551614) || (b.Projection.CountsCount < 0 || b.Projection.CountsCount > 4) {
+		return -1
+	}
 	return (used + 63) &^ int64(63)
 }
 

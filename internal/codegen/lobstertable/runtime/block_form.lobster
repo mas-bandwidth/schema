@@ -462,14 +462,30 @@ def block_write_field(bl:BlockLayout, bf:BlockField, sl:Slot, data:string, at:in
     let f = sl.fd
     let base = at + bf.offset
     let s = f.s
+    if bf.optional and not sl.present:
+        data = write_int8_le(data, at + bf.present_offset, 0)
+        return data
     if bf.counted and (s == "str" or s == "text" or s == "bytes"):
         if length(sl.cell.s) > bf.bound or sl.count < 0 or sl.count > bf.bound:
             block_refuse(bf, if length(sl.cell.s) > bf.bound: length(sl.cell.s) else: sl.count)
             return data
+        if s == "str" and not text_valid(sl.cell.s, 0, length(sl.cell.s)):
+            block_non_finite = "invalid_value"
+            return data
         data = write_substring(data, base, sl.cell.s, false)
         data = write_int32_le(data, at + bf.count_offset, sl.count)
     elif bf.is_array and s == "arr":
-        for(sl.elems) v, k:
+        if f.array == "counted":
+            if sl.count < f.min or sl.count > bf.bound or sl.count > length(sl.elems):
+                block_non_finite = "invalid_value"
+                return data
+        elif length(sl.elems) != bf.bound:
+            block_non_finite = "invalid_value"
+            return data
+        let live = if f.array == "counted": sl.count else: length(sl.elems)
+        var k = 0
+        while k < live:
+            let v = sl.elems[k]
             if bf.elem != "":
                 let sub = block_record(bl, bf.elem)
                 assert sub
@@ -477,6 +493,9 @@ def block_write_field(bl:BlockLayout, bf:BlockField, sl:Slot, data:string, at:in
                 data = block_write_record(bl, sub, v.tab, data, base + k * bf.elem_size)
             else:
                 data = block_write_elem(bf, v, elem_of(f), data, base + k * bf.elem_size)
+            k++
+        if f.array == "counted" and bf.count_offset >= 0:
+            data = write_int32_le(data, at + bf.count_offset, sl.count)
     elif s == "tab":
         let sub = block_record(bl, bf.elem)
         if sub and sl.cell.tab:
@@ -484,11 +503,23 @@ def block_write_field(bl:BlockLayout, bf:BlockField, sl:Slot, data:string, at:in
     elif s == "bool":
         data = write_int8_le(data, base, if sl.cell.b: 1 else: 0)
     elif s == "float":
+        if not scalar_admitted(f, f.k, sl.cell):
+            block_non_finite = "invalid_value"
+            return data
         data = block_float_put(f, data, base, bf.elem_size, sl.cell.f)
     elif s == "int" and bf.elem_size == 16:
+        if not scalar_admitted(f, f.k, sl.cell):
+            block_non_finite = "invalid_value"
+            return data
         data = write_int64_le(data, base, sl.cell.w.lo)
         data = write_int64_le(data, base + 8, sl.cell.w.hi)
     else:
+        if s == "int" and not scalar_admitted(f, f.k, sl.cell):
+            block_non_finite = "invalid_value"
+            return data
+        if s == "enum" and (sl.cell.i < 0 or sl.cell.i > length(f.vs)):
+            block_non_finite = "invalid_value"
+            return data
         data = bwrite_int(data, base, bf.elem_size, sl.cell.i)
     if bf.optional:
         data = write_int8_le(data, at + bf.present_offset, if sl.present: 1 else: 0)

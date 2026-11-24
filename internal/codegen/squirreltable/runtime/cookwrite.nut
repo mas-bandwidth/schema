@@ -88,6 +88,7 @@ local joinField = function(cf, fd) {
     presentOffset = cf.presentOffset, isPointer = fd.shape == "ptr", variants = fd.variants,
     f32 = ("f32" in fd) && fd.f32, nf = ("nf" in fd) ? fd.nf : null, list = ("list" in fd) && fd.list,
     counted = ("counted" in fd) && fd.counted,
+    min = ("min" in fd) ? fd.min : 0,
     unbounded = ("unbounded" in fd) && fd.unbounded,
     elemAlign = cf.elemAlign, entry = ("entry" in fd) ? fd.entry : null,
     mapkey = ("mapkey" in fd) ? fd.mapkey : null,
@@ -207,8 +208,12 @@ carveField = function(T, f, value, at, extentBase, c, buf, regionBase, order, no
     return true;
   }
   if (f.shape == "arr") {
-    local n = f.counted ? (value == null ? 0 : value.len()) : f.bound;
-    if (n > f.bound) n = f.bound;
+    if (f.counted) {
+      if (typeof value != "array" || value.len() < f.min || value.len() > f.bound) return false;
+    } else if (!f.list) {
+      if (typeof value != "array" || value.len() != f.bound) return false;
+    }
+    local n = f.counted ? value.len() : f.bound;
     for (local i = 0; i < n; i++) {
       local ev = value != null && i < value.len() ? value[i] : elemDefault(T, f.elem);
       if (!carveElement(T, f.elem, ev, at + i * f.elemSize, extentBase, c, buf, regionBase, order, nodes, offsets)) return false;
@@ -387,8 +392,11 @@ writeField = function(T, f, inst, buf, regionBase, at, order, nodes, offsets) {
     // stays the buffer's zero.
     local n = f.bound;
     if (f.counted) {
-      n = val == null ? 0 : val.len();
-      if (n > f.bound) n = f.bound;
+      if (typeof val != "array") return false;
+      n = val.len();
+      if (n < f.min || n > f.bound) return false;
+    } else if (!f.list) {
+      if (typeof val != "array" || val.len() != f.bound) return false;
     }
     for (local i = 0; i < n; i++) {
       local ev = (val != null && i < val.len()) ? val[i] : elemDefault(T, f.elem);

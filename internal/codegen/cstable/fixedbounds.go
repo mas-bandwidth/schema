@@ -42,11 +42,74 @@ func csOrdinalFillsStorage(max int64, storageBits int) bool {
 	return uint64(max) >= uint64(1)<<uint(storageBits)-1
 }
 
+func csFixedWriteCheckExtraIn(st *ir.Struct, seen map[string]bool) bool {
+	if seen[st.Name] {
+		return false
+	}
+	seen[st.Name] = true
+	for _, f := range st.Fields {
+		if csFixedWriteCheckExtraField(f, seen) {
+			return true
+		}
+	}
+	return false
+}
+
+func csFixedWriteCheckExtraField(f *ir.Field, seen map[string]bool) bool {
+	if f.Array == ir.ArrayFixed && f.KeyEnum == "" {
+		return true
+	}
+	if f.Type.Kind == ir.TNamed && !f.Type.Pointer {
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			return csFixedWriteCheckExtraIn(r, seen)
+		case *ir.Union:
+			for _, v := range r.Variants {
+				if v.F != nil && csFixedWriteCheckExtraField(v.F, seen) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func csFixedWriteCheckNeeded(st *ir.Struct) bool {
+	return csFixedBoundsNeeded(st) || csFixedWriteCheckExtraIn(st, map[string]bool{})
+}
+
+func csFixedWriteCheckNeededField(f *ir.Field) bool {
+	return csFixedBoundsNeededField(f) || csFixedWriteCheckExtraField(f, map[string]bool{})
+}
+
+func (g *tableGen) fixedBoundsNeeded(st *ir.Struct) bool {
+	if g.fixedWriteCheck {
+		return csFixedWriteCheckNeeded(st)
+	}
+	return csFixedBoundsNeeded(st)
+}
+
+func (g *tableGen) fixedBoundsNeededField(f *ir.Field) bool {
+	if g.fixedWriteCheck {
+		return csFixedWriteCheckNeededField(f)
+	}
+	return csFixedBoundsNeededField(f)
+}
+
+func (g *tableGen) fixedBoundsNeededUnionArm(r *ir.Union) bool {
+	for _, v := range r.Variants {
+		if v.F != nil && g.fixedBoundsNeededField(v.F) {
+			return true
+		}
+	}
+	return false
+}
+
 // emitFixedClampBodyFn is ONE type's bounds, the twin of its write body: a
 // nested type is a call and not an inlining, so a type that appears twice in a
 // closure is spelled once.
 func (g *tableGen) emitFixedClampBodyFn(st *ir.Struct) {
-	if !csFixedBoundsNeeded(st) {
+	if !g.fixedBoundsNeeded(st) {
 		return
 	}
 	if g.fixedWriteCheck {
@@ -93,7 +156,7 @@ func (g *tableGen) emitFixedWriteCheckBodyFn(st *ir.Struct) {
 // fixedWriteAdmits names a table's write check, or "" when it has none: the
 // table has no fixed form to borrow the walk from, or bounds nothing.
 func (g *tableGen) fixedWriteAdmits(st *ir.Struct) string {
-	if !ir.TableFixedEmitted(g.unit, st) || !csFixedBoundsNeeded(st) {
+	if !ir.TableFixedEmitted(g.unit, st) || !csFixedWriteCheckNeeded(st) {
 		return ""
 	}
 	return st.Name + "FixedWriteAdmits"
@@ -144,7 +207,7 @@ func (g *tableGen) emitFixedClamp(st *ir.Struct) {
 }
 
 func (g *tableGen) emitFixedClampField(owner *ir.Struct, f *ir.Field, val string, indent int) {
-	if !csFixedBoundsNeededField(f) {
+	if !g.fixedBoundsNeededField(f) {
 		return
 	}
 	ind := strings.Repeat(" ", indent)
@@ -178,6 +241,14 @@ func (g *tableGen) emitFixedClampPayload(owner *ir.Struct, f *ir.Field, val stri
 		g.pf("%s    }\n%s}\n", ind, ind)
 		g.leaveLoop()
 	case f.Array == ir.ArrayFixed:
+		if g.fixedWriteCheck {
+			g.pf("%sif (%s == null || %s.Length != %d) { clamped++; }\n", ind, expr, expr, f.ArrayBound)
+		}
+		element := *f
+		element.Array, element.ArrayBound = ir.ArrayNone, 0
+		if !g.fixedBoundsNeededField(&element) {
+			return
+		}
 		i := g.enterLoop()
 		g.pf("%sif (%s != null)\n%s{\n", ind, expr, ind)
 		g.pf("%s    for (int %s = 0; %s < %d && %s < %s.Length; ++%s)\n%s    {\n", ind, i, i, f.ArrayBound, i, expr, i, ind)
@@ -193,7 +264,10 @@ func (g *tableGen) emitFixedClampPayload(owner *ir.Struct, f *ir.Field, val stri
 		// minimum included (ir.TableFixedElementBoundsNeeded).
 		if f.ArrayMin > 0 {
 			g.pf("%sif (%s.%sCount < %d) { clamped++; }\n", ind, val, prop, f.ArrayMin)
-			if !csFixedElementBoundsNeeded(f) {
+			// the elements' own bounds, when they have any, are walked below
+			element := *f
+			element.Array, element.ArrayMin = ir.ArrayNone, 0
+			if !g.fixedBoundsNeededField(&element) {
 				return
 			}
 		}
@@ -226,7 +300,7 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 	if f.Type.Kind == ir.TNamed {
 		switch r := f.Type.Ref.(type) {
 		case *ir.Struct:
-			if csFixedBoundsNeeded(r) {
+			if g.fixedBoundsNeeded(r) {
 				g.pf("%s%s(%s, ref clamped);\n", ind, g.fixedBoundsName(r), expr)
 			}
 			return
@@ -241,10 +315,10 @@ func (g *tableGen) emitFixedClampElement(f *ir.Field, expr string, indent int) {
 			if !csOrdinalFillsStorage(r.Max, ir.StorageBitsFor(r.Max)) {
 				g.pf("%s    if ((ulong)%s.Type > %d) { clamped++; }\n", ind, expr, r.Max)
 			}
-			if csFixedBoundsNeededUnionArm(r) {
+			if g.fixedBoundsNeededUnionArm(r) {
 				g.pf("%s    switch (%s.Type)\n%s    {\n", ind, expr, ind)
 				for _, v := range r.Variants {
-					if v.F == nil || !csFixedBoundsNeededField(v.F) {
+					if v.F == nil || !g.fixedBoundsNeededField(v.F) {
 						continue
 					}
 					g.pf("%s        case %s.%s:\n%s            {\n", ind, tagType, ir.GoExportName(v.Name), ind)
@@ -511,19 +585,6 @@ func csFixedBoundsNeeded(st *ir.Struct) bool {
 
 func csFixedBoundsNeededField(f *ir.Field) bool {
 	return ir.TableFixedBoundsNeededField(f) || csFlagsBoundField(f, map[string]bool{})
-}
-
-func csFixedElementBoundsNeeded(f *ir.Field) bool {
-	return ir.TableFixedElementBoundsNeeded(f) || csFlagsBoundField(f, map[string]bool{})
-}
-
-func csFixedBoundsNeededUnionArm(r *ir.Union) bool {
-	for _, v := range r.Variants {
-		if v.F != nil && csFixedBoundsNeededField(v.F) {
-			return true
-		}
-	}
-	return false
 }
 
 func csFlagsBoundIn(st *ir.Struct, seen map[string]bool) bool {

@@ -2698,4 +2698,23 @@ function L.resetWalkCount()
 	_walks = 0
 end
 
+function L.loadInto(root: string, bytes: buffer, report: any, into: any): any
+	local res = L.load(root, bytes, report)
+	local desc = S.lookup(root)
+	if res == nil then
+		if into ~= nil and desc ~= nil then
+			local fresh = desc.new()
+			for k in into do into[k] = nil end
+			for k, val in fresh do into[k] = val end
+		end
+		return nil
+	end
+	if into ~= nil then
+		for k in into do into[k] = nil end
+		for k, val in res do into[k] = val end
+		return into
+	end
+	return res
+end
+
 return table.freeze(L)

@@ -11859,6 +11859,7 @@ inline bool ArchiveConfigLoadMessages( ArchiveConfig * values, int64_t * count, 
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;

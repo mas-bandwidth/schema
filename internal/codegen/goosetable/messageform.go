@@ -67,8 +67,61 @@ func msgSlotName(entry ir.TableVocabularyEntry) string {
 
 // emitMessagePackage writes the unit's vocabulary into <package>_message.goose:
 // the reference width, every entry's slot, and the announcement.
+func messageClosure(u *ir.Unit) (map[string]*ir.Struct, map[string]*ir.Union) {
+	structs, unions := map[string]*ir.Struct{}, map[string]*ir.Union{}
+	var visitStruct func(st *ir.Struct)
+	var visitField func(f *ir.Field)
+	visitField = func(f *ir.Field) {
+		if f == nil || f.Type.Kind != ir.TNamed || f.Type.Pointer || f.IsMap() {
+			return
+		}
+		switch r := f.Type.Ref.(type) {
+		case *ir.Struct:
+			visitStruct(r)
+		case *ir.Union:
+			if unions[r.Name] != nil {
+				return
+			}
+			unions[r.Name] = r
+			for _, v := range r.Variants {
+				visitField(v.F)
+			}
+		}
+	}
+	visitStruct = func(st *ir.Struct) {
+		if structs[st.Name] != nil {
+			return
+		}
+		structs[st.Name] = st
+		for _, f := range st.Fields {
+			visitField(f)
+		}
+	}
+	names := make([]string, 0, len(u.Tables))
+	for name, st := range u.Tables {
+		if st.FixedDeclared {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		visitStruct(u.Tables[name])
+	}
+	return structs, unions
+}
+
+func messageRootsOf(g *goose.Gen) []*ir.Struct {
+	var out []*ir.Struct
+	for _, t := range g.File.Tables {
+		if t.FixedDeclared {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 func emitMessagePackage(g *goose.Gen) error {
-	structs, _ := fixedClosure(g.Unit)
+	structs, _ := messageClosure(g.Unit)
 	if len(structs) == 0 {
 		return nil
 	}
@@ -84,7 +137,11 @@ func emitMessagePackage(g *goose.Gen) error {
 	}
 	g.Pf("// The announcement: the form-1 file carrying the build version and the vocabulary.\n")
 	g.Declare("MessageAnnouncement")
-	g.Pf("let MessageAnnouncement: const u8[:] = \"%s\";\n", fixedGooseBytes(tablewire.Announce(g.Unit)))
+	ann := tablewire.Announce(g.Unit)
+	if len(vocabulary) > ir.TableVocabularyMaxEntries {
+		ann = nil
+	}
+	g.Pf("let MessageAnnouncement: const u8[:] = \"%s\";\n", fixedGooseBytes(ann))
 	g.Pf("// The build version the announcement carries (docs/SPEC-TABLES.md §20.1).\n")
 	g.Declare("MessageBuildVersion")
 	g.Pf("let MessageBuildVersion: u64 = 0x%016x;\n\n", ir.BuildVersion(g.Unit))
@@ -140,7 +197,7 @@ func (e *msgEmit) ref(ind int, slot string) {
 // emitMessageFormPart is the [Register]ed part, over the same closure and the
 // same module partition as the fixed form.
 func emitMessageFormPart(g *goose.Gen) error {
-	structs, unions := fixedClosure(g.Unit)
+	structs, unions := messageClosure(g.Unit)
 	if len(structs) == 0 {
 		return nil
 	}
@@ -177,7 +234,7 @@ func emitMessageFormPart(g *goose.Gen) error {
 			e.emitUnion(unions[name])
 		}
 	}
-	roots := fixedRootsOf(g)
+	roots := messageRootsOf(g)
 	sort.SliceStable(roots, func(i, j int) bool { return roots[i].Name < roots[j].Name })
 	for _, st := range roots {
 		e.emitRoot(st)

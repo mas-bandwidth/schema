@@ -88,6 +88,27 @@ def Begin(T: Any, root: str, counts: Mapping[str, int] | None = None) -> _block.
     return _block.Block(root, buf, version, layout.projection, tuple(arrays), used, 0)
 
 
+def BeginFrom(T: Any, root: str, value: Any) -> _block.Block:
+    """Validate a table value against its declaration and begin its block (SF-31)."""
+    layout = _table(T, root)
+    cls = getattr(T, root, None)
+    if cls is None or not isinstance(value, cls):
+        raise InvalidValue(root, f"expected {root}")
+    desc = getattr(cls, "descriptor", None)
+    if desc is None:
+        raise InvalidValue(root, "the table has no descriptor")
+    from . import save as _save
+
+    _save._validate(value, desc, root, set())
+    counts: dict[str, int] = {}
+    for a in layout.arrays:
+        items = getattr(value, a.name, None)
+        if type(items) is not list:
+            raise InvalidValue(a.name, "expected list")
+        counts[a.name] = len(items)
+    return Begin(T, root, counts)
+
+
 def BlockBytes(block: _block.Block) -> int:
     """The used extent, the greatest offset_of + count * stride rounded to 64."""
     return len(block.bytes)

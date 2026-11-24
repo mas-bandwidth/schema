@@ -148,7 +148,13 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 			own = append(own, st)
 		}
 	}
-	if len(roots) == 0 && len(own) == 0 {
+	var refused []*ir.Struct
+	for _, st := range members {
+		if !g.isVar(st.Name) && !ir.TableFixedEmitted(g.unit, st) && ir.TableFixedClampNeeded(st) {
+			refused = append(refused, st)
+		}
+	}
+	if len(roots) == 0 && len(own) == 0 && len(refused) == 0 {
 		return
 	}
 	g.pf("/* ---- THE FIXED FORM, form byte 3 (docs/SPEC-TABLES.md §3.4) ----\n\n")
@@ -178,8 +184,26 @@ func (g *tableGen) emitFixedForm(members []*ir.Struct) {
 	}
 	/* THE WRITE CHECK, the same bounds over const storage (docs/SPEC.md §5.1),
 	   in the same post-order. */
+	checkSeen := map[string]bool{}
 	for _, st := range own {
+		checkSeen[st.Name] = true
 		g.emitFixedWriteCheckBodyFn(st)
+	}
+	if len(refused) > 0 {
+		var extra []*ir.Struct
+		extraSeen := map[string]bool{}
+		for _, st := range refused {
+			fixedCollectTypes(st, extraSeen, &extra)
+		}
+		for _, st := range extra {
+			if here[st.Name] && !checkSeen[st.Name] {
+				checkSeen[st.Name] = true
+				g.emitFixedWriteCheckBodyFn(st)
+			}
+		}
+		for _, st := range refused {
+			g.emitWriteAdmits(st)
+		}
 	}
 	for _, st := range roots {
 		g.emitWriteAdmits(st)
@@ -1220,7 +1244,7 @@ func (g *tableGen) emitFixedWriteCheckBodyFn(st *ir.Struct) {
 // writeAdmits is the one call a writer's schema_assert makes for a value of
 // table st, or "" when the fixed form bounds nothing in st's closure.
 func (g *tableGen) writeAdmits(st *ir.Struct) string {
-	if !ir.TableFixedEmitted(g.unit, st) || !fixedBoundsNeeded(st) {
+	if g.isVar(st.Name) || !fixedBoundsNeeded(st) {
 		return ""
 	}
 	return g.sym(st.Name, "write_admits")

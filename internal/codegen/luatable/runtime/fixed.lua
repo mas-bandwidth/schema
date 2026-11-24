@@ -756,13 +756,10 @@ decode_old_value = function(T, d, node, buf, pos, rep)
         if ev == nil and d.elem.shape == "enum" then ev = false end
         t[i] = ev
       end
-      -- A GROWN FIXED BOUND (docs/SPEC-TABLES.md §21.1): the writer's record
-      -- holds fewer slots than this reader's bound; each new slot holds one
-      -- fresh default element, as the message and variable forms pad.
-      if node.kind ~= 16 and d.fixed then
-        for i = n + 1, d.bound do
-          t[i] = L.zero_elem(T, d.elem)
-        end
+      -- Slots absent from the writer's fixed or enum-keyed array get
+      -- the element default (docs/FIXED-FORM-ALGORITHM.md §5.9).
+      for i = n + 1, d.bound do
+        t[i] = L.zero_elem(T, d.elem)
       end
       return t
     end
@@ -988,9 +985,51 @@ end
 
 -- F.load is a whole file's read: the records, the layout hash and bytes,
 -- and the widened and unknown counts.
-function F.load(T, name, buf, strict, cap)
+function F.load(T, name, buf, strict, cap, report, into)
+  if report ~= nil then
+    report.damaged = false
+    report.refused = 0
+    report.unknown = 0
+    report.kindChanged = 0
+    report.outOfRange = 0
+    report.widened = 0
+    report.repeatedKey = 0
+    report.sharedBlob = 0
+    report.missingRequired = 0
+    report.reason = nil
+    report.Reason = nil
+  end
   local ok, out, h, l, w, u = pcall(load_impl, T, name, buf, strict, cap)
-  if not ok then error(out, 0) end
+  if not ok then
+    if report ~= nil or into ~= nil then
+      if report ~= nil then
+        report.damaged = true
+        report.refused = 1
+        report.reason = tostring(out)
+        report.Reason = report.reason
+      end
+      if into ~= nil and T["New" .. name] ~= nil then
+        local new = T["New" .. name]
+        for i = 1, #into do
+          D.copy_into(into[i], new())
+        end
+      end
+      return nil
+    end
+    error(out, 0)
+  end
+  if into ~= nil and T["New" .. name] ~= nil then
+    local new = T["New" .. name]
+    local n = #out
+    for i = 1, n do
+      if into[i] == nil then into[i] = new() end
+      D.copy_into(into[i], out[i])
+    end
+    for i = n + 1, #into do
+      into[i] = nil
+    end
+    return into, h, l, w, u
+  end
   return out, h, l, w, u
 end
 

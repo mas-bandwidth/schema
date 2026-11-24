@@ -12,6 +12,14 @@ def self.run(manifest, outdir)
       next
     end
     text = RubyConformance.read_utf8_raw("testdata/conformance/tables/json/#{case_name}.json")
-    RubyConformance.write_bytes(outdir, case_name, cls.from_json(text).save)
+    # A committed text the reader refuses is one red row, never the surface
+    # crashing: the answer is the runtime's own refusal, which no wire golden
+    # matches.
+    out = begin
+      cls.from_json(text).save
+    rescue pkg::Refused => e
+      "refused #{e.reason}\n".b
+    end
+    RubyConformance.write_bytes(outdir, case_name, out)
   end
 end

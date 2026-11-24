@@ -10773,6 +10773,7 @@ inline bool MetaLoadMessages( Meta * values, int64_t * count, const TableVocabul
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -11457,6 +11458,7 @@ inline bool SettingsLoadMessages( Settings * values, int64_t * count, const Tabl
 {
     TableReport ignored;
     TableReport * to = report != NULL ? report : &ignored;
+    *to = TableReport();
     if ( values == NULL || count == NULL )
     {
         to->damaged = true;
@@ -26836,6 +26838,7 @@ inline bool SceneCookBody( const Ctx & ctx, const TableCookRegion & region, uint
     if ( !LayerCookBody( ctx, region, at + 72, value.ground, order ) ) { return false; }
     // 4 slots of storage, value.layers_count live: a slot past the count keeps the extent's zero (§7.2)
     schema_assert( value.layers_count >= 0 && value.layers_count <= 4 ); // storage invariant, debug only (§5.1)
+    if ( value.layers_count < 0 || value.layers_count > 4 ) { return false; }
     for ( int32_t i = 0; i < value.layers_count; i++ )
     {
         if ( !LayerCookBody( ctx, region, at + 88 + i * 16, value.layers[i], order ) ) { return false; }
