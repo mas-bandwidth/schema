@@ -509,6 +509,7 @@ _M.WriteArmArray <- function(stream, value) {
     _h.value = value.ItemsCount;
     if (!stream.serializeBits(_h, 2)) return false;
     for (local _i = 0; _i < value.ItemsCount; _i++) {
+      if (typeof value.Items[_i] != "integer" || value.Items[_i] < 0 || value.Items[_i] > 8191) return false; // SPEC §5.1 row 1
       _h.value = value.Items[_i];
       if (!stream.serializeInt(_h, 0, 8191)) return false;
     }
@@ -842,6 +843,7 @@ _M.WriteRegainAfterAlign <- function(stream, value) {
   _h.value = value.ItemsCount;
   if (!stream.serializeBits(_h, 2)) return false;
   for (local _i = 0; _i < value.ItemsCount; _i++) {
+    if (typeof value.Items[_i] != "integer" || value.Items[_i] < 0 || value.Items[_i] > 8191) return false; // SPEC §5.1 row 1
     _h.value = value.Items[_i];
     if (!stream.serializeInt(_h, 0, 8191)) return false;
   }

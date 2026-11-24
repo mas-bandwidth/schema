@@ -1,0 +1,465 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum wst
+{ Zfirst, Zsecond, Zthird }
+
+enum wx
+{ Zfirst, Zsecond, Zthird }
+
+enum x
+{ Zfirst, Zsecond, Zthird }
+
+enum x0
+{ Zfirst, Zsecond, Zthird }
+
+enum x1
+{ Zfirst, Zsecond, Zthird }
+
+enum x10
+{ Zfirst, Zsecond, Zthird }
+
+enum x11
+{ Zfirst, Zsecond, Zthird }
+
+enum x12
+{ Zfirst, Zsecond, Zthird }
+
+enum x2
+{ Zfirst, Zsecond, Zthird }
+
+enum x3
+{ Zfirst, Zsecond, Zthird }
+
+enum x4
+{ Zfirst, Zsecond, Zthird }
+
+enum x5
+{ Zfirst, Zsecond, Zthird }
+
+enum x6
+{ Zfirst, Zsecond, Zthird }
+
+enum x7
+{ Zfirst, Zsecond, Zthird }
+
+enum x8
+{ Zfirst, Zsecond, Zthird }
+
+enum x9
+{ Zfirst, Zsecond, Zthird }
+
+enum xb2
+{ Zfirst, Zsecond, Zthird }
+
+enum xb4
+{ Zfirst, Zsecond, Zthird }
+
+enum xb6
+{ Zfirst, Zsecond, Zthird }
+
+enum xb8
+{ Zfirst, Zsecond, Zthird }
+
+enum xi
+{ Zfirst, Zsecond, Zthird }
+
+enum xm3
+{ Zfirst, Zsecond, Zthird }
+
+enum xm6
+{ Zfirst, Zsecond, Zthird }
+
+enum xn
+{ Zfirst, Zsecond, Zthird }
+
+enum xs
+{ Zfirst, Zsecond, Zthird }
+
+enum xsBound
+{ Zfirst, Zsecond, Zthird }
+
+enum xu
+{ Zfirst, Zsecond, Zthird }
+
+enum xv
+{ Zfirst, Zsecond, Zthird }
+
+enum xz
+{ Zfirst, Zsecond, Zthird }
+
+enum y
+{ Zfirst, Zsecond, Zthird }
+
+enum y0
+{ Zfirst, Zsecond, Zthird }
+
+enum year
+{ Zfirst, Zsecond, Zthird }
+
+enum yearOfEra
+{ Zfirst, Zsecond, Zthird }
+
+enum ymd
+{ Zfirst, Zsecond, Zthird }
+
+enum yoe
+{ Zfirst, Zsecond, Zthird }
+
+enum yr
+{ Zfirst, Zsecond, Zthird }
+
+enum yy
+{ Zfirst, Zsecond, Zthird }
+
+enum z
+{ Zfirst, Zsecond, Zthird }
+
+enum zero
+{ Zfirst, Zsecond, Zthird }
+
+enum zeroElement
+{ Zfirst, Zsecond, Zthird }
+
+enum zeroOf
+{ Zfirst, Zsecond, Zthird }
+
+enum zeroRange
+{ Zfirst, Zsecond, Zthird }
+
+enum zero_allowed
+{ Zfirst, Zsecond, Zthird }
+
+enum zero_array
+{ Zfirst, Zsecond, Zthird }
+
+enum zero_elem
+{ Zfirst, Zsecond, Zthird }
+
+enum zero_ok
+{ Zfirst, Zsecond, Zthird }
+
+enum zeros
+{ Zfirst, Zsecond, Zthird }
+
+enum zf
+{ Zfirst, Zsecond, Zthird }
+
+enum zh
+{ Zfirst, Zsecond, Zthird }
+
+enum zigzag
+{ Zfirst, Zsecond, Zthird }
+
+enum zn
+{ Zfirst, Zsecond, Zthird }
+
+enum zone
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    wst Inner
+    wx Inner
+    x Inner
+    x0 Inner
+    x1 Inner
+    x10 Inner
+    x11 Inner
+    x12 Inner
+    x2 Inner
+    x3 Inner
+}
+
+table NameTypes0
+{
+    one0  wst
+    many0 [..4]wst
+    one1  wx
+    many1 [..4]wx
+    one2  x
+    many2 [..4]x
+    one3  x0
+    many3 [..4]x0
+    one4  x1
+    many4 [..4]x1
+    one5  x10
+    many5 [..4]x10
+    one6  x11
+    many6 [..4]x11
+    one7  x12
+    many7 [..4]x12
+    one8  x2
+    many8 [..4]x2
+    one9  x3
+    many9 [..4]x3
+}
+
+table NameFields0
+{
+    wst uint32
+    wx uint32
+    x uint32
+    x0 uint32
+    x1 uint32
+    x10 uint32
+    x11 uint32
+    x12 uint32
+    x2 uint32
+    x3 uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    x4 Inner
+    x5 Inner
+    x6 Inner
+    x7 Inner
+    x8 Inner
+    x9 Inner
+    xb2 Inner
+    xb4 Inner
+    xb6 Inner
+    xb8 Inner
+}
+
+table NameTypes1
+{
+    one0  x4
+    many0 [..4]x4
+    one1  x5
+    many1 [..4]x5
+    one2  x6
+    many2 [..4]x6
+    one3  x7
+    many3 [..4]x7
+    one4  x8
+    many4 [..4]x8
+    one5  x9
+    many5 [..4]x9
+    one6  xb2
+    many6 [..4]xb2
+    one7  xb4
+    many7 [..4]xb4
+    one8  xb6
+    many8 [..4]xb6
+    one9  xb8
+    many9 [..4]xb8
+}
+
+table NameFields1
+{
+    x4 uint32
+    x5 uint32
+    x6 uint32
+    x7 uint32
+    x8 uint32
+    x9 uint32
+    xb2 uint32
+    xb4 uint32
+    xb6 uint32
+    xb8 uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    xi Inner
+    xm3 Inner
+    xm6 Inner
+    xn Inner
+    xs Inner
+    xsBound Inner
+    xu Inner
+    xv Inner
+    xz Inner
+    y Inner
+}
+
+table NameTypes2
+{
+    one0  xi
+    many0 [..4]xi
+    one1  xm3
+    many1 [..4]xm3
+    one2  xm6
+    many2 [..4]xm6
+    one3  xn
+    many3 [..4]xn
+    one4  xs
+    many4 [..4]xs
+    one5  xsBound
+    many5 [..4]xsBound
+    one6  xu
+    many6 [..4]xu
+    one7  xv
+    many7 [..4]xv
+    one8  xz
+    many8 [..4]xz
+    one9  y
+    many9 [..4]y
+}
+
+table NameFields2
+{
+    xi uint32
+    xm3 uint32
+    xm6 uint32
+    xn uint32
+    xs uint32
+    xsBound uint32
+    xu uint32
+    xv uint32
+    xz uint32
+    y uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    y0 Inner
+    year Inner
+    yearOfEra Inner
+    ymd Inner
+    yoe Inner
+    yr Inner
+    yy Inner
+    z Inner
+    zero Inner
+    zeroElement Inner
+}
+
+table NameTypes3
+{
+    one0  y0
+    many0 [..4]y0
+    one1  year
+    many1 [..4]year
+    one2  yearOfEra
+    many2 [..4]yearOfEra
+    one3  ymd
+    many3 [..4]ymd
+    one4  yoe
+    many4 [..4]yoe
+    one5  yr
+    many5 [..4]yr
+    one6  yy
+    many6 [..4]yy
+    one7  z
+    many7 [..4]z
+    one8  zero
+    many8 [..4]zero
+    one9  zeroElement
+    many9 [..4]zeroElement
+}
+
+table NameFields3
+{
+    y0 uint32
+    year uint32
+    yearOfEra uint32
+    ymd uint32
+    yoe uint32
+    yr uint32
+    yy uint32
+    z uint32
+    zero uint32
+    zeroElement uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    zeroOf Inner
+    zeroRange Inner
+    zero_allowed Inner
+    zero_array Inner
+    zero_elem Inner
+    zero_ok Inner
+    zeros Inner
+    zf Inner
+    zh Inner
+    zigzag Inner
+}
+
+table NameTypes4
+{
+    one0  zeroOf
+    many0 [..4]zeroOf
+    one1  zeroRange
+    many1 [..4]zeroRange
+    one2  zero_allowed
+    many2 [..4]zero_allowed
+    one3  zero_array
+    many3 [..4]zero_array
+    one4  zero_elem
+    many4 [..4]zero_elem
+    one5  zero_ok
+    many5 [..4]zero_ok
+    one6  zeros
+    many6 [..4]zeros
+    one7  zf
+    many7 [..4]zf
+    one8  zh
+    many8 [..4]zh
+    one9  zigzag
+    many9 [..4]zigzag
+}
+
+table NameFields4
+{
+    zeroOf uint32
+    zeroRange uint32
+    zero_allowed uint32
+    zero_array uint32
+    zero_elem uint32
+    zero_ok uint32
+    zeros uint32
+    zf uint32
+    zh uint32
+    zigzag uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    zn Inner
+    zone Inner
+}
+
+table NameTypes5
+{
+    one0  zn
+    many0 [..4]zn
+    one1  zone
+    many1 [..4]zone
+}
+
+table NameFields5
+{
+    zn uint32
+    zone uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}

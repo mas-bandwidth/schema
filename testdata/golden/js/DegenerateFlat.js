@@ -76,6 +76,9 @@ export function ReadVec2FlatBits(view, numBits, value) {
 // must hold SpanF64MaxBytes.
 export function WriteSpanF64Flat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (value.values == null || value.values.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+    return -1;
+  }
   for (let i0 = 0; i0 < 2; i0++) {
     if (!globalThis.Number.isFinite(value.values[i0])) { // a bare float must be finite
       return -1;
@@ -186,6 +189,9 @@ export function ReadSpanF64FlatBits(view, numBits, value) {
 // must hold SpanU64MaxBytes.
 export function WriteSpanU64Flat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (value.values == null || value.values.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+    return -1;
+  }
   for (let i0 = 0; i0 < 2; i0++) {
     if (typeof value.values[i0] !== "bigint" || value.values[i0] < 0n || value.values[i0] > 18446744073709551615n) { // a bare integer must fit its width
       return -1;
@@ -294,6 +300,9 @@ export function ReadSpanU64FlatBits(view, numBits, value) {
 // must hold SpanI64MaxBytes.
 export function WriteSpanI64Flat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (value.values == null || value.values.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+    return -1;
+  }
   for (let i0 = 0; i0 < 2; i0++) {
     if (typeof value.values[i0] !== "bigint" || value.values[i0] < -9223372036854775808n || value.values[i0] > 9223372036854775807n) { // a bare integer must fit its width
       return -1;
@@ -402,6 +411,9 @@ export function ReadSpanI64FlatBits(view, numBits, value) {
 // must hold SpanOneMaxBytes.
 export function WriteSpanOneFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (value.values == null || value.values.length !== 1) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+    return -1;
+  }
   for (let i0 = 0; i0 < 1; i0++) {
     if (typeof value.values[i0] !== "bigint" || value.values[i0] < 0n || value.values[i0] > 18446744073709551615n) { // a bare integer must fit its width
       return -1;
@@ -510,6 +522,9 @@ export function ReadSpanOneFlatBits(view, numBits, value) {
 // must hold SpanChunkMaxBytes.
 export function WriteSpanChunkFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (value.values == null || value.values.length !== 4) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+    return -1;
+  }
   for (let i0 = 0; i0 < 4; i0++) {
     if (!globalThis.Number.isInteger(value.values[i0]) || value.values[i0] < 0 || value.values[i0] > 65535) { // a bare integer must fit its width
       return -1;
@@ -586,6 +601,9 @@ export function ReadSpanChunkFlatBits(view, numBits, value) {
 // must hold SpanTailMaxBytes.
 export function WriteSpanTailFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (value.values == null || value.values.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+    return -1;
+  }
   for (let i0 = 0; i0 < 2; i0++) {
     if (!globalThis.Number.isFinite(value.values[i0])) { // a bare float must be finite
       return -1;
@@ -724,6 +742,9 @@ export function ReadSpanTailFlatBits(view, numBits, value) {
 // must hold SpanTwiceMaxBytes.
 export function WriteSpanTwiceFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (value.a == null || value.a.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+    return -1;
+  }
   for (let i0 = 0; i0 < 2; i0++) {
     if (!globalThis.Number.isFinite(value.a[i0])) { // a bare float must be finite
       return -1;
@@ -747,6 +768,9 @@ export function WriteSpanTwiceFlat(view, value) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
+  }
+  if (value.b == null || value.b.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+    return -1;
   }
   for (let i0 = 0; i0 < 2; i0++) {
     if (!globalThis.Number.isFinite(value.b[i0])) { // a bare float must be finite

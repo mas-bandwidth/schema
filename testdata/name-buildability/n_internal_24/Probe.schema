@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum emptySpan
+{ Zfirst, Zsecond, Zthird }
+
+enum empty_seen
+{ Zfirst, Zsecond, Zthird }
+
+enum en
+{ Zfirst, Zsecond, Zthird }
+
+enum ename
+{ Zfirst, Zsecond, Zthird }
+
+enum enc
+{ Zfirst, Zsecond, Zthird }
+
+enum encode
+{ Zfirst, Zsecond, Zthird }
+
+enum encodeArm
+{ Zfirst, Zsecond, Zthird }
+
+enum encodeArray
+{ Zfirst, Zsecond, Zthird }
+
+enum encodeBody
+{ Zfirst, Zsecond, Zthird }
+
+enum encodeBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum encodeElement
+{ Zfirst, Zsecond, Zthird }
+
+enum encodeEnum
+{ Zfirst, Zsecond, Zthird }
+
+enum encodeField
+{ Zfirst, Zsecond, Zthird }
+
+enum encodeKeyed
+{ Zfirst, Zsecond, Zthird }
+
+enum encodeOwnBody
+{ Zfirst, Zsecond, Zthird }
+
+enum encodeOwnValue
+{ Zfirst, Zsecond, Zthird }
+
+enum encodeText
+{ Zfirst, Zsecond, Zthird }
+
+enum encodeUTF8
+{ Zfirst, Zsecond, Zthird }
+
+enum encodeValue
+{ Zfirst, Zsecond, Zthird }
+
+enum encode_message_batch
+{ Zfirst, Zsecond, Zthird }
+
+enum encode_table
+{ Zfirst, Zsecond, Zthird }
+
+enum encode_union
+{ Zfirst, Zsecond, Zthird }
+
+enum encoded
+{ Zfirst, Zsecond, Zthird }
+
+enum endByte
+{ Zfirst, Zsecond, Zthird }
+
+enum end_at
+{ Zfirst, Zsecond, Zthird }
+
+enum end_off
+{ Zfirst, Zsecond, Zthird }
+
+enum end_p
+{ Zfirst, Zsecond, Zthird }
+
+enum end_pos
+{ Zfirst, Zsecond, Zthird }
+
+enum end_values
+{ Zfirst, Zsecond, Zthird }
+
+enum end_xs
+{ Zfirst, Zsecond, Zthird }
+
+enum ended
+{ Zfirst, Zsecond, Zthird }
+
+enum ending
+{ Zfirst, Zsecond, Zthird }
+
+enum endr
+{ Zfirst, Zsecond, Zthird }
+
+enum ends
+{ Zfirst, Zsecond, Zthird }
+
+enum eneg
+{ Zfirst, Zsecond, Zthird }
+
+enum engine
+{ Zfirst, Zsecond, Zthird }
+
+enum enm
+{ Zfirst, Zsecond, Zthird }
+
+enum enp
+{ Zfirst, Zsecond, Zthird }
+
+enum ent
+{ Zfirst, Zsecond, Zthird }
+
+enum enter
+{ Zfirst, Zsecond, Zthird }
+
+enum entered
+{ Zfirst, Zsecond, Zthird }
+
+enum entries
+{ Zfirst, Zsecond, Zthird }
+
+enum entry
+{ Zfirst, Zsecond, Zthird }
+
+enum entryAt
+{ Zfirst, Zsecond, Zthird }
+
+enum entryBound
+{ Zfirst, Zsecond, Zthird }
+
+enum entryBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum entryCapacity
+{ Zfirst, Zsecond, Zthird }
+
+enum entryCount
+{ Zfirst, Zsecond, Zthird }
+
+enum entryElem
+{ Zfirst, Zsecond, Zthird }
+
+enum entryFields
+{ Zfirst, Zsecond, Zthird }
+
+enum entryOf
+{ Zfirst, Zsecond, Zthird }
+
+enum entryRead
+{ Zfirst, Zsecond, Zthird }
+
+enum entrySize
+{ Zfirst, Zsecond, Zthird }
+
+enum entrySlot
+{ Zfirst, Zsecond, Zthird }
+
+enum entryWidened
+{ Zfirst, Zsecond, Zthird }
+
+enum entry_align
+{ Zfirst, Zsecond, Zthird }
+
+enum entry_body
+{ Zfirst, Zsecond, Zthird }
+
+enum entry_bytes_len
+{ Zfirst, Zsecond, Zthird }
+
+enum entry_cls
+{ Zfirst, Zsecond, Zthird }
+
+enum entry_desc
+{ Zfirst, Zsecond, Zthird }
+
+enum entry_frame
+{ Zfirst, Zsecond, Zthird }
+
+enum entry_guarded
+{ Zfirst, Zsecond, Zthird }
+
+enum entry_guards
+{ Zfirst, Zsecond, Zthird }
+
+enum entry_key
+{ Zfirst, Zsecond, Zthird }
+
+enum entry_matches_field
+{ Zfirst, Zsecond, Zthird }
+
+enum entry_path
+{ Zfirst, Zsecond, Zthird }
+
+enum entry_writer
+{ Zfirst, Zsecond, Zthird }
+
+enum ents
+{ Zfirst, Zsecond, Zthird }
+
+enum enumName
+{ Zfirst, Zsecond, Zthird }
+
+enum enumRemap
+{ Zfirst, Zsecond, Zthird }
+
+enum enumValue
+{ Zfirst, Zsecond, Zthird }
+
+enum enum_default
+{ Zfirst, Zsecond, Zthird }
+
+enum enum_deprecated
+{ Zfirst, Zsecond, Zthird }
+
+enum enum_max
+{ Zfirst, Zsecond, Zthird }
+
+enum enum_number
+{ Zfirst, Zsecond, Zthird }
+
+enum enum_read
+{ Zfirst, Zsecond, Zthird }
+
+enum enum_reader
+{ Zfirst, Zsecond, Zthird }
+
+enum enum_ref
+{ Zfirst, Zsecond, Zthird }
+
+enum enum_shape
+{ Zfirst, Zsecond, Zthird }
+
+enum enum_width
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    emptySpan Inner
+    empty_seen Inner
+    en Inner
+    ename Inner
+    enc Inner
+    encode Inner
+    encodeArm Inner
+    encodeArray Inner
+    encodeBody Inner
+    encodeBytes Inner
+}
+
+table NameTypes0
+{
+    one0  emptySpan
+    many0 [..4]emptySpan
+    one1  empty_seen
+    many1 [..4]empty_seen
+    one2  en
+    many2 [..4]en
+    one3  ename
+    many3 [..4]ename
+    one4  enc
+    many4 [..4]enc
+    one5  encode
+    many5 [..4]encode
+    one6  encodeArm
+    many6 [..4]encodeArm
+    one7  encodeArray
+    many7 [..4]encodeArray
+    one8  encodeBody
+    many8 [..4]encodeBody
+    one9  encodeBytes
+    many9 [..4]encodeBytes
+}
+
+table NameFields0
+{
+    emptySpan uint32
+    empty_seen uint32
+    en uint32
+    ename uint32
+    enc uint32
+    encode uint32
+    encodeArm uint32
+    encodeArray uint32
+    encodeBody uint32
+    encodeBytes uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    encodeElement Inner
+    encodeEnum Inner
+    encodeField Inner
+    encodeKeyed Inner
+    encodeOwnBody Inner
+    encodeOwnValue Inner
+    encodeText Inner
+    encodeUTF8 Inner
+    encodeValue Inner
+    encode_message_batch Inner
+}
+
+table NameTypes1
+{
+    one0  encodeElement
+    many0 [..4]encodeElement
+    one1  encodeEnum
+    many1 [..4]encodeEnum
+    one2  encodeField
+    many2 [..4]encodeField
+    one3  encodeKeyed
+    many3 [..4]encodeKeyed
+    one4  encodeOwnBody
+    many4 [..4]encodeOwnBody
+    one5  encodeOwnValue
+    many5 [..4]encodeOwnValue
+    one6  encodeText
+    many6 [..4]encodeText
+    one7  encodeUTF8
+    many7 [..4]encodeUTF8
+    one8  encodeValue
+    many8 [..4]encodeValue
+    one9  encode_message_batch
+    many9 [..4]encode_message_batch
+}
+
+table NameFields1
+{
+    encodeElement uint32
+    encodeEnum uint32
+    encodeField uint32
+    encodeKeyed uint32
+    encodeOwnBody uint32
+    encodeOwnValue uint32
+    encodeText uint32
+    encodeUTF8 uint32
+    encodeValue uint32
+    encode_message_batch uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    encode_table Inner
+    encode_union Inner
+    encoded Inner
+    endByte Inner
+    end_at Inner
+    end_off Inner
+    end_p Inner
+    end_pos Inner
+    end_values Inner
+    end_xs Inner
+}
+
+table NameTypes2
+{
+    one0  encode_table
+    many0 [..4]encode_table
+    one1  encode_union
+    many1 [..4]encode_union
+    one2  encoded
+    many2 [..4]encoded
+    one3  endByte
+    many3 [..4]endByte
+    one4  end_at
+    many4 [..4]end_at
+    one5  end_off
+    many5 [..4]end_off
+    one6  end_p
+    many6 [..4]end_p
+    one7  end_pos
+    many7 [..4]end_pos
+    one8  end_values
+    many8 [..4]end_values
+    one9  end_xs
+    many9 [..4]end_xs
+}
+
+table NameFields2
+{
+    encode_table uint32
+    encode_union uint32
+    encoded uint32
+    endByte uint32
+    end_at uint32
+    end_off uint32
+    end_p uint32
+    end_pos uint32
+    end_values uint32
+    end_xs uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    ended Inner
+    ending Inner
+    endr Inner
+    ends Inner
+    eneg Inner
+    engine Inner
+    enm Inner
+    enp Inner
+    ent Inner
+    enter Inner
+}
+
+table NameTypes3
+{
+    one0  ended
+    many0 [..4]ended
+    one1  ending
+    many1 [..4]ending
+    one2  endr
+    many2 [..4]endr
+    one3  ends
+    many3 [..4]ends
+    one4  eneg
+    many4 [..4]eneg
+    one5  engine
+    many5 [..4]engine
+    one6  enm
+    many6 [..4]enm
+    one7  enp
+    many7 [..4]enp
+    one8  ent
+    many8 [..4]ent
+    one9  enter
+    many9 [..4]enter
+}
+
+table NameFields3
+{
+    ended uint32
+    ending uint32
+    endr uint32
+    ends uint32
+    eneg uint32
+    engine uint32
+    enm uint32
+    enp uint32
+    ent uint32
+    enter uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    entered Inner
+    entries Inner
+    entry Inner
+    entryAt Inner
+    entryBound Inner
+    entryBytes Inner
+    entryCapacity Inner
+    entryCount Inner
+    entryElem Inner
+    entryFields Inner
+}
+
+table NameTypes4
+{
+    one0  entered
+    many0 [..4]entered
+    one1  entries
+    many1 [..4]entries
+    one2  entry
+    many2 [..4]entry
+    one3  entryAt
+    many3 [..4]entryAt
+    one4  entryBound
+    many4 [..4]entryBound
+    one5  entryBytes
+    many5 [..4]entryBytes
+    one6  entryCapacity
+    many6 [..4]entryCapacity
+    one7  entryCount
+    many7 [..4]entryCount
+    one8  entryElem
+    many8 [..4]entryElem
+    one9  entryFields
+    many9 [..4]entryFields
+}
+
+table NameFields4
+{
+    entered uint32
+    entries uint32
+    entry uint32
+    entryAt uint32
+    entryBound uint32
+    entryBytes uint32
+    entryCapacity uint32
+    entryCount uint32
+    entryElem uint32
+    entryFields uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    entryOf Inner
+    entryRead Inner
+    entrySize Inner
+    entrySlot Inner
+    entryWidened Inner
+    entry_align Inner
+    entry_body Inner
+    entry_bytes_len Inner
+    entry_cls Inner
+    entry_desc Inner
+}
+
+table NameTypes5
+{
+    one0  entryOf
+    many0 [..4]entryOf
+    one1  entryRead
+    many1 [..4]entryRead
+    one2  entrySize
+    many2 [..4]entrySize
+    one3  entrySlot
+    many3 [..4]entrySlot
+    one4  entryWidened
+    many4 [..4]entryWidened
+    one5  entry_align
+    many5 [..4]entry_align
+    one6  entry_body
+    many6 [..4]entry_body
+    one7  entry_bytes_len
+    many7 [..4]entry_bytes_len
+    one8  entry_cls
+    many8 [..4]entry_cls
+    one9  entry_desc
+    many9 [..4]entry_desc
+}
+
+table NameFields5
+{
+    entryOf uint32
+    entryRead uint32
+    entrySize uint32
+    entrySlot uint32
+    entryWidened uint32
+    entry_align uint32
+    entry_body uint32
+    entry_bytes_len uint32
+    entry_cls uint32
+    entry_desc uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    entry_frame Inner
+    entry_guarded Inner
+    entry_guards Inner
+    entry_key Inner
+    entry_matches_field Inner
+    entry_path Inner
+    entry_writer Inner
+    ents Inner
+    enumName Inner
+    enumRemap Inner
+}
+
+table NameTypes6
+{
+    one0  entry_frame
+    many0 [..4]entry_frame
+    one1  entry_guarded
+    many1 [..4]entry_guarded
+    one2  entry_guards
+    many2 [..4]entry_guards
+    one3  entry_key
+    many3 [..4]entry_key
+    one4  entry_matches_field
+    many4 [..4]entry_matches_field
+    one5  entry_path
+    many5 [..4]entry_path
+    one6  entry_writer
+    many6 [..4]entry_writer
+    one7  ents
+    many7 [..4]ents
+    one8  enumName
+    many8 [..4]enumName
+    one9  enumRemap
+    many9 [..4]enumRemap
+}
+
+table NameFields6
+{
+    entry_frame uint32
+    entry_guarded uint32
+    entry_guards uint32
+    entry_key uint32
+    entry_matches_field uint32
+    entry_path uint32
+    entry_writer uint32
+    ents uint32
+    enumName uint32
+    enumRemap uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    enumValue Inner
+    enum_default Inner
+    enum_deprecated Inner
+    enum_max Inner
+    enum_number Inner
+    enum_read Inner
+    enum_reader Inner
+    enum_ref Inner
+    enum_shape Inner
+    enum_width Inner
+}
+
+table NameTypes7
+{
+    one0  enumValue
+    many0 [..4]enumValue
+    one1  enum_default
+    many1 [..4]enum_default
+    one2  enum_deprecated
+    many2 [..4]enum_deprecated
+    one3  enum_max
+    many3 [..4]enum_max
+    one4  enum_number
+    many4 [..4]enum_number
+    one5  enum_read
+    many5 [..4]enum_read
+    one6  enum_reader
+    many6 [..4]enum_reader
+    one7  enum_ref
+    many7 [..4]enum_ref
+    one8  enum_shape
+    many8 [..4]enum_shape
+    one9  enum_width
+    many9 [..4]enum_width
+}
+
+table NameFields7
+{
+    enumValue uint32
+    enum_default uint32
+    enum_deprecated uint32
+    enum_max uint32
+    enum_number uint32
+    enum_read uint32
+    enum_reader uint32
+    enum_ref uint32
+    enum_shape uint32
+    enum_width uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

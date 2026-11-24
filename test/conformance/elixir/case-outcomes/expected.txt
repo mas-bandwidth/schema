@@ -5,10 +5,10 @@
 #   error   a driver error: neither file, and the case named on stderr
 #   =<word> <case> holds exactly <word> and a newline, and no <case>.absent
 wire case_read bytes
-wire case_refused reason
+wire case_refused =refused
 wire case_error error
 wire case_fixed_read bytes
-wire case_fixed_refused reason
+wire case_fixed_refused =refused
 wire case_no_unit absent
 wire case_no_root absent
 write-refusal wr_tag_ok =wrote

@@ -581,12 +581,15 @@ public final class MixedEventVariable {
             return true;
         }
         if (v.tag == 1) {
+            assert v.hit != null : "MixedEvent.hit";
             assert MixedHitEventVariable.checkWrite(v.hit, walk);
         }
         if (v.tag == 2) {
+            assert v.chat != null : "MixedEvent.chat";
             assert MixedChatEventVariable.checkWrite(v.chat, walk);
         }
         if (v.tag == 3) {
+            assert v.pickup != null : "MixedEvent.pickup";
             assert MixedPickupEventVariable.checkWrite(v.pickup, walk);
         }
         return true;

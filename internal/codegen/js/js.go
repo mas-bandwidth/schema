@@ -860,13 +860,17 @@ func formatFloat(v float64) string {
 	return s
 }
 
-// formatFloat32 renders a float32-precision literal: the shortest form that
-// a float32 parser reads as exactly float32(v). JavaScript reads it as a
-// double, which is float32(v) only when the decimal is exact (-3.3 is not);
-// the stream runtime frounds its parameters, so the stream tier is exact, and
-// a literal the generated code computes with is flat.go's f32lit.
+// formatFloat32 renders float32(v) as a JavaScript literal: the shortest
+// decimal of its float64 value, which a double parser reads as exactly that
+// float32 (the stream tier's twin of flat.go's f32lit, kept apart so each
+// tier's negative control plants one tier). The float32's own shortest
+// decimal ("0.1") names float32(0.1) only to a float32 parser; JavaScript
+// reads it as the double 0.1, so a float32 constant and a float32 default
+// held a value the declaration does not name, and the stream tier's write
+// guard, x > 0.3, refused float32(0.3), the declared max itself (SPEC §4.3,
+// "A FLOAT LITERAL IS A float64 FIRST"; test/verify-bitphase f32lit.go).
 func formatFloat32(v float64) string {
-	s := strconv.FormatFloat(v, 'g', -1, 32)
+	s := strconv.FormatFloat(float64(float32(v)), 'g', -1, 64)
 	if !strings.ContainsAny(s, ".eE") {
 		s += ".0"
 	}
