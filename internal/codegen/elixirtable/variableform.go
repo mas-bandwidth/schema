@@ -8333,7 +8333,11 @@ const variableRetainSource = `
     {nodes, ids, report, retain} = c
 
     case read_payload_retain(a, framed, nodes, ids, report, retain, arm_path) do
-      {:cont, value, report, retain} -> {:cont, {name, value}, report, retain}
+      {:cont, value, report, retain} ->
+        # The retaining read returns the same public value as the plain read:
+        # an older fixed-array arm is completed with this build's defaults.
+        # Its public writer then accepts the value it just decoded.
+        {:cont, {name, pad_fixed(a, value)}, report, retain}
     end
   end
 
