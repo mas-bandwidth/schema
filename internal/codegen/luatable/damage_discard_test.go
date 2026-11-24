@@ -101,8 +101,11 @@ print(tostring(report.damaged) .. "|" .. tostring(values and #values or 0))
 		name, wire, from, to string
 		trailing             bool
 	}{
-		{"body", "backend_batch_damaged_second_message.bin", "      report.damaged = true\n      return {}", "      report.damaged = true\n      return values", false},
-		{"tail", "login_full_message.bin", "  if report.damaged then return {} end\n", "", true},
+		// a damaged batch answers nil, never the records before the damage
+		// (3fedba5f36, R4: a refusal hands back no value); each sabotage
+		// hands back the records decoded so far instead
+		{"body", "backend_batch_damaged_second_message.bin", "    if v == nil then\n      report.damaged = true\n      return nil\n    end\n    values[i] = v\n", "    if v == nil then\n      report.damaged = true\n      return values\n    end\n    values[i] = v\n", false},
+		{"tail", "login_full_message.bin", "  if report.damaged then return nil end\n", "", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			wire := readFile(t, filepath.Join(repo, "testdata/wire/tables", tc.wire))

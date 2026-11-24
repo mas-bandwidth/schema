@@ -308,7 +308,7 @@ namespace SchemaUnityConformance
                 if (codec == null) { Console.Error.WriteLine("driver: read-into " + f[1] + " names no codec " + f[2] + "." + f[3]); return 1; }
                 int count = int.Parse(f[7], CultureInfo.InvariantCulture);
                 byte[] announcement = f[8] == "-" ? null : File.ReadAllBytes(f[8]);
-                File.WriteAllBytes(answer, codec.ReadInto(f[4], File.ReadAllBytes(f[5]), File.ReadAllBytes(f[6]), count, announcement));
+                File.WriteAllBytes(answer, codec.ReadInto(f[4], File.ReadAllBytes(f[5]), f[6] == "-" ? null : File.ReadAllBytes(f[6]), count, announcement));
             }
             return 0;
         }

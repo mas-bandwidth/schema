@@ -13,6 +13,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -133,6 +134,7 @@ func TestPythonVtEvolutionCICoverage(t *testing.T) {
 	if strings.Count(string(planner), "/^TestPythonVtEvolution$/d") != 1 {
 		t.Fatal("complete Evolution parent must be delegated exactly once")
 	}
+	testinputs.Make(t, "compiler", "internal/codegen/python", "internal/codegen/pythontable")
 	cmd := testproc.Command(t, "sh", filepath.Join(root, "tools/python-ci-rows.sh"))
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()

@@ -30,7 +30,7 @@ import (
 //	shade  Shade       14      ordinal, 1-based, two variants
 //	s      string(4)   15..19 length, 19..23 bytes
 //	m      [..3]int32  23..27 count, 27..39 elements
-const sqTotalSchema = "package tot\nenum Shade { Dark, Light }\nfixed table TR\n{\n" +
+const sqTotalSchema = "package fixedtotal\nenum Shade { Dark, Light }\nfixed table TR\n{\n" +
 	"    n     int32 = 5 | min = 0, max = %d\n" +
 	"    on    bool\n" +
 	"    opt   ?int32\n" +

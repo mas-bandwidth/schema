@@ -134,11 +134,19 @@ through their plain load. The tool's engine now writes and reads form `3` at an
 admitted fixed root; the conformance corpus's historical form-1 fixed-root
 files are now `previous_form` refusal rows that owe `refused`, and its
 fixed-root positives are form `3`. **The `framing` battery is no exception**:
-its form-`1` vectors name the fixed `tblr1 Cfg`, and its surface reads each one
-through the VARIABLE TWIN of that declaration — the same declaration with its
-class variable, which is a variable root and reads form `1` — then answers the
-fixed root's text and form-`3` write-back (test/conformance/README.md, The
-surfaces; Go's `tblr1CfgVariableLoad`). One answer per surface: `report` reads
+its form-`1` vectors name the fixed `tblr1 Cfg`, `listdemo Bounded` and
+`tabledemo CountedMin`, and its surface reads EVERY form-`1` vector at ANY
+declared fixed root through the VARIABLE TWIN of that declaration, never at the
+fixed root and never at one root alone: read at the fixed root, a lawful row
+(`twin_listdemo_bounded_empty`, an empty bounded list; `sp_count_min_at` and
+`twin_count_min_at_form1`, a counted array at its `Min`, §2.3) answers
+`previous_form` like every other, and a damaged one is refused for the wrong
+reason. The twin — the same declaration with its class variable, which is a
+variable root and reads form `1` — reads each vector, and the surface then
+answers the fixed root's text and form-`3` write-back (test/conformance/README.md,
+The surfaces; Go's `tblr1CfgVariableLoad`, `listdemoBoundedVariableLoad` and
+`tabledemoCountedMinVariableLoad`; the Lua strict-load battery's
+`luaFramingAnswers`). One answer per surface: `report` reads
 at the fixed root and refuses, `framing` reads at the variable twin and reads. A
 declared fixed table past one of §3.4's bounds (a union in a regional unit, a
 record over 65536 bytes, depth past the walk bound, or the leaf cap) carries
@@ -8874,7 +8882,16 @@ rather than a preference** (`test/bench/fixedform_measure.cpp`):
 
 **THE PREFILL IS WHAT ANSWERS "ABSENT FIELD".** A field this record does not
 carry has NO PLAN ENTRY at all, so it keeps the default the prefill put there
-and the loop never learns it existed. **THE ABSENCE OF AN ENTRY IS ALSO WHAT
+and the loop never learns it existed. **The prefill is of the destination,
+whatever it held before the call**: a row, element, arm or optional payload
+the caller's value already held is reset like a fresh one, so after a lineage
+load every field the writer did not supply holds its declared default, at
+every depth, and never a value the caller's storage held before the read
+(docs/SPEC-CONFORMANCE.md, [Fields an older fixed writer does not
+supply](SPEC-CONFORMANCE.md#fields-an-older-fixed-writer-does-not-supply)).
+A slot the plan lands only in part, such as a reader `[N]T` an older writer
+sent shorter, lands whole: the writer's elements, then the default past them.
+**THE ABSENCE OF AN ENTRY IS ALSO WHAT
 ANSWERS "UNKNOWN FIELD"**: a field of the writer's this reader cannot name is
 simply never a source, and the bytes it occupies are stepped over because the
 next entry's `src` is past them. **Skipping costs nothing, because skipping is
@@ -9926,6 +9943,15 @@ one-byte over-read into a finding attributed to the mutant that caused it.
 `make test` runs both at a short `N`; `make tables-cpp-release` runs both at a
 long one, and that target is picked up by the certification workflow the way
 every `tables-<lang>-release` target is.
+
+**AN ARM CLAIMS A ROOT ONLY WHEN THE LEG HOLDS THAT ARM'S READ FOR IT.** A leg
+answers the roster with a `1` for a root only when it can read that root the
+way the arm reads it: under `--builder`, through the generated builder. A root
+the leg holds no builder read for is answered `0`, which the harness counts and
+names as absent, and is never handed to some other read that cannot say whether
+the builder completed: a C# builder arm that did exactly that threw on the
+first mutant of `shapes.Bounds` (a truncation to nothing) where the engine
+refuses the load by name.
 
 **Two negative controls stand behind it**, because a fuzzer that has never gone
 red proves nothing about the reader it points at, and each removes ONE check

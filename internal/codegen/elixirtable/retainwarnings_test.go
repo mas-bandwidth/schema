@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -30,6 +31,7 @@ func TestRetainScalarFallbackCompilesWithoutWarningsElixir(t *testing.T) {
 		t.Fatal(err)
 	}
 	args := append([]string{gate, compiler, "-o", filepath.Join(dir, "ebin")}, names...)
+	testinputs.Files(t, gate)
 	cmd := testproc.Command(t, "sh", args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "PATH="+otpBin(t)+string(os.PathListSeparator)+os.Getenv("PATH"))

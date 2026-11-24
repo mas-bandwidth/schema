@@ -4,6 +4,8 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
 // TestVulnRecipeRunsThePinnedScannerSingular guards the vulnerability gate's
@@ -25,6 +27,7 @@ func TestVulnRecipeRunsThePinnedScannerSingular(t *testing.T) {
 	}
 	root := repoRoot(t)
 
+	testinputs.Make(t)
 	cmd := exec.Command("make", "-n", "vuln")
 	cmd.Dir = root
 	out, err := cmd.CombinedOutput()
