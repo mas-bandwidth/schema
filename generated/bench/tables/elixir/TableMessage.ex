@@ -1989,7 +1989,7 @@ defmodule Benchtable.TableMessage do
   end
 
   # a declaration of the scope (a table name, or {:union, name}) judges its own
-  # field; a field the scope does not declare (a peer at another build, an
+  # field; a field the scope does not declare (a writer at another build, an
   # unbound root) falls back to the merge over every declaration of its id and kind
   defp field_rule(entry, scope, true) when scope != nil,
     do: Map.get(scoped_rules(), {scope, entry.id, entry.kind})
@@ -2188,7 +2188,7 @@ defmodule Benchtable.TableMessage do
             do: :out_of_order,
             else: {:ok, {index, exact, rule, sub}}
         else
-          if peer_kind_compatible?(entry.kind, raw) do
+          if writer_kind_compatible?(entry.kind, raw) do
             {:ok, {index, false, rule, sub}}
           else
             :kind_mismatch
@@ -2197,7 +2197,7 @@ defmodule Benchtable.TableMessage do
     end
   end
 
-  defp peer_kind_compatible?(from, raw) do
+  defp writer_kind_compatible?(from, raw) do
     case :binary.encode_unsigned(raw) do
       <<1, _id::little-unsigned-64, to, _::binary>> ->
         from == to or
