@@ -18351,8 +18351,8 @@ which every enclosing object and array raises by one (a table's object, an
 array, a map's object and a union's object alike), the root at 0. The write
 judges it at EVERY CONTAINER IT WRITES, exactly as the read judges it at every
 container it walks (§16.2): a table or type value (W3), an array, a text
-list, a map's object, an enum-keyed array's object and a union's object, the
-empty `[]` and `{}` included. A container at `d` past 128 refuses the write,
+list, a flags value's array of names, a map's object, an enum-keyed array's
+object and a union's object, the empty `[]` and `{}` included. A container at `d` past 128 refuses the write,
 so a document this writer emits never meets the read's cap. A value is
 writable only when its deepest container, an empty leaf array included, sits
 at `d` 128 or less: a pointer chain of 128 nodes under the root whose nodes

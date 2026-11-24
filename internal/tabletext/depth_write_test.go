@@ -51,11 +51,23 @@ table KeyedNode
     next  *KeyedNode
     sides [Side]int32
 }
+
+flags Mark
+{
+    Hot
+    Cold
+}
+
+table FlagsNode
+{
+    next  *FlagsNode
+    marks Mark
+}
 `
 
 func TestWriteDepthCapCountsEveryContainer(t *testing.T) {
 	m := checkModel(t, depthWriteUnit)
-	for _, table := range []string{"ArrNode", "UnionNode", "MapNode", "KeyedNode"} {
+	for _, table := range []string{"ArrNode", "UnionNode", "MapNode", "KeyedNode", "FlagsNode"} {
 		chain := func(nodes int) *tabletext.Instance {
 			st := m.Lookup(table)
 			root := m.New(st)

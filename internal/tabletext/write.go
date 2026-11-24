@@ -587,6 +587,11 @@ func (m *Model) writeScalar(w *writer, cell *Cell, f *ir.Field, depth int) error
 		return nil
 	}
 	if fl := FlagsOf(f); fl != nil {
+		// a flags value is an array of names, a container the read counts
+		// (readFlags), so the cap counts it too, `[]` included (§16.14 W2)
+		if err := containerCap(depth, f); err != nil {
+			return err
+		}
 		bits := cell.U
 		if bits == 0 {
 			w.raw("[]")
