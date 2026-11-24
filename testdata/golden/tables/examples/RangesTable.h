@@ -6764,6 +6764,7 @@ struct TableFixedCompiler
     bool want_guarded = false; // THE WALK RUNS TWICE, unguarded first (§3.4)
     bool overflow = false;
     bool hostile = false;
+    uint8_t argw = 1; // the CURRENT union's tag width, stamped onto every guarded push
     // UNLAWFUL (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH and EMIT, §5.4, §5.9 #30):
     // a writer field this reader does not name, or a pair whose kind moved off
     // every ladder. The entry is not a lawful widening of this reader, so no
@@ -6771,7 +6772,6 @@ struct TableFixedCompiler
     // never counted and read past. 1 is layout_malformed; 3 is kind_mismatch,
     // the writer's ?T into this reader's bare T (ruling R2, 2026-11-22).
     uint8_t unlawful = 0;
-    uint8_t argw = 1; // the CURRENT union's tag width, stamped onto every guarded push
     TableReport * report = NULL;
 };
 
@@ -6885,7 +6885,9 @@ inline void TableFixedMatchChildren( TableFixedCompiler & c,
 {
     const TableFixedLayoutEntry te = TableFixedEntryAt( theirs, ti );
     const TableFixedLayoutEntry me = TableFixedEntryAt( mine, mi );
+    int32_t my_child = mi + 1;
     int32_t tc_at = ti + 1;
+    // EVERY FIELD OF THEIRS MUST BE ONE I NAME, or the entry is unlawful
     for ( uint32_t j = 0; j < te.children && tc_at < theirs.count; ++j )
     {
         const TableFixedLayoutEntry tc = TableFixedEntryAt( theirs, tc_at );
@@ -6907,7 +6909,6 @@ inline void TableFixedMatchChildren( TableFixedCompiler & c,
         }
         tc_at += TableFixedSubtree( theirs, tc_at );
     }
-    int32_t my_child = mi + 1;
     for ( uint32_t k = 0; k < me.children && my_child < mine.count; ++k )
     {
         const TableFixedLayoutEntry mc = TableFixedEntryAt( mine, my_child );
@@ -6987,7 +6988,7 @@ inline void TableFixedCompileEntry( TableFixedCompiler & c,
         // A KIND THAT MOVED OFF EVERY LADDER IS AN UNLAWFUL ENTRY, NEVER
         // REINTERPRETED AND NEVER COUNTED AND READ PAST (§5.2 EMIT, §5.4):
         // no plan is laid. The writer's ?T into my bare T is kind_mismatch (R2).
-        c.unlawful = ( te.kind == 35 ) ? 3 : 1;
+        c.unlawful = ( te.kind == 35 ) ? 3u : 1u;
         return;
     }
     switch ( me.kind )
@@ -7300,13 +7301,9 @@ inline int32_t TableFixedCompile( const TableFixedLayoutView & theirs,
     // AN UNLAWFUL ENTRY LAYS NO PLAN (§5.4): -3 is layout_malformed, -4 the
     // writer's ?T into a bare T, kind_mismatch (R2). Decided before overflow,
     // so a capacity retry never turns an unlawful entry into plan_too_large.
+    // The caller names the refusal from the code, as the C twin's caller does.
     if ( c.unlawful != 0 )
     {
-        if ( report != NULL )
-        {
-            report->refused = true;
-            report->reason = ( c.unlawful == 3 ) ? kind_mismatch : layout_malformed;
-        }
         return ( c.unlawful == 3 ) ? -4 : -3;
     }
     if ( c.overflow || c.hostile )
