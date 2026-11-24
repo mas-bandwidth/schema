@@ -682,6 +682,27 @@ SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -v \
   -run 'Test(Go|Python)FixedLoadCapacityWitness'
 ```
 
+### A cook below a counted minimum stops the C debug build
+
+Declare `fixed table Holder { few [2..4]uint32 }`, and separately
+`union MinPick { few [2..4]uint32  other int32 }` under
+`fixed table Holder { pick MinPick }`. Reset a `Holder`, select the counted
+array (for the union, construct the `few` arm and set its tag), and set its
+count to 1, below the minimum A = 2 (SPEC §4.2, ruling R10). Cook it.
+
+C refuses a write its declaration does not admit through a debug assert
+(SPEC §5.1; the ruling `write-refusal`). A debug build of the C cook must
+therefore abort on the count assert. Returning 0 from the cook in a debug
+build fails this case: the debug build would report a failed cook where the
+rule requires the assert. A build with `NDEBUG` has no write-side check to
+honour, and its answer to this input is not judged here. The case failed on
+the C leg when the cook tested the count range and returned 0 before its
+debug assert. Run it with a C compiler available:
+
+```sh
+SCHEMA_SLOW=1 go test -count=1 -v ./internal/codegen/ctable -run '^TestCCountedMinimumHolds$'
+```
+
 ### Retaining loads zero a reused report
 
 [SPEC-TABLES §6.5](SPEC-TABLES.md#65-the-two-load-paths-and-the-one-read)
