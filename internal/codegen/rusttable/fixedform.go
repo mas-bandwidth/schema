@@ -828,9 +828,60 @@ func (g *gen) emitFixedScatterCountedSlots(f *ir.Field, base, count int64) {
 	g.pf("    for i in 0..%d {\n", count)
 	g.pf("        let slack = u32::from(i as i32 >= value.%s_count);\n", f.Name)
 	g.pf("        report.slack += slack;\n")
-	g.emitFixedScatterElement(f, fixedSlotOffset(base, elem), fmt.Sprintf("value.%s[i]", f.Name), 8)
+	g.emitFixedScatterSlot(f, fixedSlotOffset(base, elem), fmt.Sprintf("value.%s[i]", f.Name), 8)
 	g.pf("        report.slack -= slack;\n")
 	g.pf("    }\n")
+}
+
+// fixedSlackImage is the declared-defaults image of ONE element of a counted
+// array, or nil when that image is all zero (THE SLOTS PAST A COUNT AFTER ANY
+// LOAD, docs/SPEC-TABLES.md §3.4). It is the same bytes the refusal's
+// <ROOT>_FIXED_DEFAULTS carries in every slot.
+func fixedSlackImage(f *ir.Field) []byte {
+	if f.Array != ir.ArrayCounted {
+		return nil
+	}
+	if _, union := f.Type.Ref.(*ir.Union); union && f.Type.Kind == ir.TNamed {
+		// a union's scatter lands tag 0 as <Union>Row::default() whatever the
+		// arm bytes hold, so the record's zeros already land the fresh union
+		return nil
+	}
+	img := make([]byte, ir.TableFixedElementBytes(f))
+	fixedDefaultElement(img, f)
+	for _, c := range img {
+		if c != 0 {
+			return img
+		}
+	}
+	return nil
+}
+
+// emitFixedScatterSlot lands one slot of a counted array whose `slack` is in
+// scope. THE SLOTS PAST A COUNT AFTER ANY LOAD, LAWFUL OR REFUSED
+// (docs/SPEC-TABLES.md §3.4): a dead slot's record bytes are the writer's
+// zeros, so where the element's declared-defaults image is not all zero a dead
+// slot is landed from that image instead, which is what the refusal's reset
+// lands there too. Where the image is all zero the zeros ARE the defaults, and
+// the slot is landed as it always was: no code is added.
+func (g *gen) emitFixedScatterSlot(f *ir.Field, at, dst string, indent int) {
+	img := fixedSlackImage(f)
+	if img == nil {
+		g.emitFixedScatterElement(f, at, dst, indent)
+		return
+	}
+	ind := strings.Repeat(" ", indent)
+	lits := make([]string, len(img))
+	for i, c := range img {
+		lits[i] = fmt.Sprintf("0x%02x", c)
+	}
+	g.pf("%sif slack != 0 {\n", ind)
+	g.pf("%s    // a dead slot holds the element's declared defaults (§3.4)\n", ind)
+	g.pf("%s    const FRESH: [u8; %d] = [%s];\n", ind, len(img), strings.Join(lits, ", "))
+	g.pf("%s    let b: &[u8] = &FRESH;\n", ind)
+	g.emitFixedScatterElement(f, "0", dst, indent+4)
+	g.pf("%s} else {\n", ind)
+	g.emitFixedScatterElement(f, at, dst, indent+4)
+	g.pf("%s}\n", ind)
 }
 
 func (g *gen) emitFixedScatterSlots(f *ir.Field, base, count int64) {
@@ -1376,7 +1427,7 @@ func (g *gen) emitFixedScatterArm(un *ir.Union, v ir.UnionVariant, base int64, i
 			// the slots past the live count are slack (§3.4)
 			g.pf("%sfor i in 0..%d {\n", ind, f.ArrayBound)
 			g.pf("%s    let slack = u32::from(i as i32 >= arm.value_count);\n%s    report.slack += slack;\n", ind, ind)
-			g.emitFixedScatterElement(f, fixedSlotOffset(base+ir.TableFixedCountBytes, elem), "arm.value[i]", indent+4)
+			g.emitFixedScatterSlot(f, fixedSlotOffset(base+ir.TableFixedCountBytes, elem), "arm.value[i]", indent+4)
 			g.pf("%s    report.slack -= slack;\n", ind)
 			g.pf("%s}\n", ind)
 		}
