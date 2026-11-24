@@ -417,6 +417,22 @@ func enumRef(f *ir.Field) *ir.Enum {
 	return e
 }
 
+// enumNotDeprecated is the write-side condition that the ordinal in expr names
+// no deprecated variant (docs/SPEC-TABLES.md §2.15 WRITE: a strict write
+// refuses a value holding one), joined with && for each deprecated variant,
+// or "" when e has none. Variant i is ordinal i+1; 0 is None. Dart holds it
+// as a DEBUG assert (docs/SPEC.md §5.1), the same check on the variable save,
+// the fixed save and the JSON text (textform.go).
+func enumNotDeprecated(e *ir.Enum, expr string) string {
+	var conds []string
+	for i := range e.Variants {
+		if i < len(e.VariantDeprecated) && e.VariantDeprecated[i] {
+			conds = append(conds, fmt.Sprintf("%s != %d", expr, i+1))
+		}
+	}
+	return strings.Join(conds, " && ")
+}
+
 // listElementKind is the element kind an unbounded array's body opens with
 // (docs/SPEC-TABLES.md §2.9, §3): 13 for `[]T` of tables, 12 for `[]string`,
 // 30 for `[]E` of enums, and the scalar kind otherwise.
@@ -4286,6 +4302,10 @@ func (g *wireGen) emitWireWriteAssert(f *ir.Field, expr, ind string) {
 	}
 	if e := enumRef(f); e != nil {
 		g.pf("%sassert(%s >= 0 && %s <= %d);\n", ind, expr, expr, len(e.Variants))
+		// §2.15 WRITE: a deprecated variant is never written
+		if cond := enumNotDeprecated(e, expr); cond != "" {
+			g.pf("%sassert(%s, 'deprecated variant is never written (SPEC-TABLES 2.15)');\n", ind, cond)
+		}
 		return
 	}
 	if fl := flagsRef(f); fl != nil {

@@ -7574,6 +7574,50 @@ int surfaceWriteRefusal(String outDir, String surface) {
           return tables_fixed.loadoutConfigFixedSave(<tabledemo_fixed.LoadoutConfig>[fx], 1, out) == n ? 0 : -1;
         });
       }
+    } else if ('$unit $root' == 'tabledemo Moods') {
+      // §2.15 WRITE: a deprecated variant is never written, as an element
+      final fx = _fixedLoadOne(wire, tabledemo_fixed.Moods.new, tables_fixed.moodsFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.moodsFixedLoad);
+      if (fx == null) return 1;
+      if ('$path $vkind' != 'row[0] ordinal') return 1;
+      if (surface == 'write-refusal') {
+        final w = tabledemo.Moods();
+        _f2w_examples_Moods(fx, w);
+        if (w.row.isEmpty) return 1;
+        w.row[0] = (int.parse(text) as dynamic);
+        answer = _catchWrite(() {
+          tabledemo.moodsWireSave(w);
+          return 0;
+        });
+      } else {
+        if (fx.rowCount == 0) return 1;
+        fx.row[0] = int.parse(text);
+        answer = _catchWrite(() {
+          final n = tables_fixed.moodsFixedMeasure(1);
+          final out = Uint8List(n);
+          return tables_fixed.moodsFixedSave(<tabledemo_fixed.Moods>[fx], 1, out) == n ? 0 : -1;
+        });
+      }
+    } else if ('$unit $root' == 'tabledemo MoodField') {
+      // §2.15 WRITE: a deprecated variant is never written, as a scalar
+      final fx = _fixedLoadOne(wire, tabledemo_fixed.MoodField.new, tables_fixed.moodFieldFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.moodFieldFixedLoad);
+      if (fx == null) return 1;
+      if ('$path $vkind' != 'mood ordinal') return 1;
+      if (surface == 'write-refusal') {
+        final w = tabledemo.MoodField();
+        _f2w_examples_MoodField(fx, w);
+        w.mood = (int.parse(text) as dynamic);
+        answer = _catchWrite(() {
+          tabledemo.moodFieldWireSave(w);
+          return 0;
+        });
+      } else {
+        fx.mood = (int.parse(text) as dynamic);
+        answer = _catchWrite(() {
+          final n = tables_fixed.moodFieldFixedMeasure(1);
+          final out = Uint8List(n);
+          return tables_fixed.moodFieldFixedSave(<tabledemo_fixed.MoodField>[fx], 1, out) == n ? 0 : -1;
+        });
+      }
     } else if ('$unit $root' == 'tabledemo CountedMin') {
       final fx = _fixedLoadOne(wire, tabledemo_fixed.CountedMin.new, tables_fixed.countedMinFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.countedMinFixedLoad);
       if (fx == null) return 1;
