@@ -201,9 +201,9 @@ fixed table T {
 
 	t.Run("R5_digest_sensitivities", func(t *testing.T) {
 		t.Parallel()
-		base := parseCheckUnit(t, "package p\nflags F { A, B }\nfixed table T { x int32 | min = 0, max = 10\n q float32 | min = 0.0, max = 1.0, resolution = 0.5\n f1 F\n f2 F\n s string(8)\n}\n")
-		diffRange := parseCheckUnit(t, "package p\nflags F { A, B }\nfixed table T { x int32 | min = 0, max = 11\n q float32 | min = 0.0, max = 1.0, resolution = 0.5\n f1 F\n f2 F\n s string(8)\n}\n")
-		diffRes := parseCheckUnit(t, "package p\nflags F { A, B }\nfixed table T { x int32 | min = 0, max = 10\n q float32 | min = 0.0, max = 1.0, resolution = 0.25\n f1 F\n f2 F\n s string(8)\n}\n")
+		base := parseCheckUnit(t, "package probe\nflags F { A, B }\nfixed table T { x int32 | min = 0, max = 10\n q float32 | min = 0.0, max = 1.0, resolution = 0.5\n f1 F\n f2 F\n s string(8)\n}\n")
+		diffRange := parseCheckUnit(t, "package probe\nflags F { A, B }\nfixed table T { x int32 | min = 0, max = 11\n q float32 | min = 0.0, max = 1.0, resolution = 0.5\n f1 F\n f2 F\n s string(8)\n}\n")
+		diffRes := parseCheckUnit(t, "package probe\nflags F { A, B }\nfixed table T { x int32 | min = 0, max = 10\n q float32 | min = 0.0, max = 1.0, resolution = 0.25\n f1 F\n f2 F\n s string(8)\n}\n")
 		_, hBase, _ := fixedRootFacts(fixedRootStruct(t, base, "T"))
 		_, hRange, _ := fixedRootFacts(fixedRootStruct(t, diffRange, "T"))
 		_, hRes, _ := fixedRootFacts(fixedRootStruct(t, diffRes, "T"))

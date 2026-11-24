@@ -1,0 +1,6 @@
+package depth
+
+table Rec
+{
+    value uint32
+}
