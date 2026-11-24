@@ -3754,7 +3754,14 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp validate_record(desc, value) do
     Enum.each(desc.fields, fn f ->
       if field_active?(f, desc, value) do
-        v = record_value(value, f)
+        name = f.name
+
+        v =
+          case value do
+            %{^name => present} -> present
+            _ -> field_default(f)
+          end
+
         if Map.get(f, :text_list, false), do: validate_text_list(f, v)
         write_value(f, v)
       end
@@ -3993,16 +4000,6 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # one shape whether the wire named its fields or not.
   defp defaults(desc) do
     Map.new(desc.fields, fn f -> {f.name, field_default(f)} end)
-  end
-
-  # Record values are normally dense after a load. Do not build and merge a
-  # complete defaults map merely to validate those callers; construct a
-  # declared default only when a sparse caller actually omits that field.
-  defp record_value(value, %{name: name} = f) do
-    case value do
-      %{^name => present} -> present
-      _ -> field_default(f)
-    end
   end
 
   defp field_default(%{optional: true} = f), do: Map.get(f, :default)
