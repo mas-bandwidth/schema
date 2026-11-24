@@ -171,7 +171,7 @@ endef
 define tables_generate_cs_parallel
 	@set -e; pids=""; \
 	$(subst $(tables_zero_cost_nl), & pids="$$pids $$!"; ,$(call tables_generate_cs,$(1),$(2))) & pids="$$pids $$!"; \
-	for pid in $$pids; do wait $$pid; done
+	rc=0; for pid in $$pids; do wait $$pid || rc=1; done; exit $$rc
 endef
 
 # The same list into any root, from any compiler: test/conformance/cs/negative-control
@@ -626,7 +626,7 @@ tables-cs-view: bin/schema
 			-p:ViewAliasFile="$$PWD/build/view-cs/Unit-$$pkg.cs" -p:ViewGeneratedDir="$$PWD/build/view-cs/generated/$$dir" > build/view-cs/$$pkg.log 2>&1 || { cat build/view-cs/$$pkg.log; exit 1; }; \
 		$(DOTNET) build/view-cs/bin-$$pkg/schema-view.dll > build/view-cs/$$pkg.listing; \
 		if [ "$$pkg" = tabledemo ]; then $(DOTNET) build/view-cs/bin-$$pkg/schema-view.dll unflattened > build/view-cs/unflattened.listing; fi \
-	) & pids="$$pids $$!"; done; for pid in $$pids; do wait $$pid; done
+	) & pids="$$pids $$!"; done; rc=0; for pid in $$pids; do wait $$pid || rc=1; done; exit $$rc
 	SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view-cs go test ./internal/viewlisting -run TestUnitViewListingMatchesTheIR
 	@mkdir -p build/view-cs/negative
 	@cp build/view-cs/unflattened.listing build/view-cs/negative/tabledemo.listing

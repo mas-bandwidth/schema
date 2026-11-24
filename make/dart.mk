@@ -27,7 +27,7 @@ tables-dart-view: bin/schema test/dart-tables/view_main.dart
 		./bin/schema generate --lang dart --out build/dart-view/$$dir $$source; \
 		sed "s|VIEW_LIBRARY|$$dir/$${cap}View.dart|" test/dart-tables/view_main.dart > build/dart-view/$$pkg-main.dart; \
 		$(DART) build/dart-view/$$pkg-main.dart > build/dart-view/$$pkg.listing \
-	) & pids="$$pids $$!"; done; for pid in $$pids; do wait $$pid; done
+	) & pids="$$pids $$!"; done; rc=0; for pid in $$pids; do wait $$pid || rc=1; done; exit $$rc
 	SCHEMA_VIEW_LISTING_DIR="$(CURDIR)/build/dart-view" go test -count=1 -timeout=0 ./internal/viewlisting -run TestUnitViewListingMatchesTheIR
 	@echo "Dart unit registry: $(words $(VIEW_CORPUS)) units match the independent listing"
 
@@ -718,7 +718,7 @@ tables-dart-generate-into: $(DART_COUNTED_MIN_VARIABLE)
 	$(subst $(tables_zero_cost_nl), & pids="$$pids $$!"; ,$(call tables_generate_dart,$(GEN),$(OUT))) & pids="$$pids $$!"; \
 	$(GEN) generate --lang dart --out $(OUT)/tables-generated-dart/cards tables/cards & pids="$$pids $$!"; \
 	$(GEN) generate --lang dart --out $(OUT)/tables-generated-dart-framing/countedmin $(DART_COUNTED_MIN_VARIABLE) & pids="$$pids $$!"; \
-	for pid in $$pids; do wait $$pid; done
+	rc=0; for pid in $$pids; do wait $$pid || rc=1; done; exit $$rc
 
 # THE FORM-1 COOK WRITER'S NEGATIVE CONTROL (docs/SPEC-TABLES.md §2.6, §3, §7.6):
 # the cook-write rows of messagedemo (an ARRAY OF UNIONS at three depths) and
