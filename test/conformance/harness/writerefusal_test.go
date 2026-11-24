@@ -63,10 +63,11 @@ func TestWriteRefusalSurfaceHoldsTheGoEngine(t *testing.T) {
 			if answer == wr.Verdict {
 				return
 			}
-			if answer == "unrepresentable" && wr.Verdict == "refused" && wr.Kind == "int" {
+			if answer == "unrepresentable" && wr.Verdict == "refused" && (wr.Kind == "int" || wr.Kind == "shape") {
 				// §5.1 row 11 past 64 bits: the instance model's 64-bit cell
 				// cannot hold the value, which is the type system's refusal
-				// the harness scores as one (run.go, `unrepresentable`)
+				// the harness scores as one (run.go, `unrepresentable`); so
+				// is a value of the wrong kind (DW-TABLE-SHAPE)
 				return
 			}
 			// The Go engine holds every value these rows name, and every
@@ -210,6 +211,12 @@ func TestWriteRefusalEngineHoldsTheIntCorpus(t *testing.T) {
 // write is `wrote`; a value the row asks for that the instance cannot hold is
 // `unrepresentable`.
 func writeRefusalAnswer(root string, m *Manifest, u *units, wr WriteRefusal) (string, error) {
+	if wr.Kind == "shape" {
+		// A VALUE OF THE WRONG KIND (DW-TABLE-SHAPE) is one the engine's typed
+		// instance model cannot hold: the type system's refusal, as the Go leg
+		// answers it
+		return "unrepresentable", nil
+	}
 	unitKey := wr.Unit
 	if wr.Form == "message" {
 		conn, err := m.LookupConnection(wr.Unit)
@@ -260,8 +267,9 @@ func writeRefusalAnswer(root string, m *Manifest, u *units, wr WriteRefusal) (st
 		return "unrepresentable", nil
 	}
 	switch wr.Form {
-	case "":
-		// THE ROOT'S OWN FORM'S WRITER, the one the row's verdict names: a
+	case "", "shape":
+		// THE ROOT'S OWN FORM'S WRITER, the one the row's verdict names (and
+		// the one a shape row's lawful twin is written by): a
 		// fixed root is written by the fixed form, a variable root by form 1.
 		if def.FixedDeclared {
 			if _, err := tablewire.EncodeFixed(model, inst); err != nil {

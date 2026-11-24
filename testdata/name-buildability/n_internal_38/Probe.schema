@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum kpair
+{ Zfirst, Zsecond, Zthird }
+
+enum kptr
+{ Zfirst, Zsecond, Zthird }
+
+enum kr
+{ Zfirst, Zsecond, Zthird }
+
+enum kraw
+{ Zfirst, Zsecond, Zthird }
+
+enum kref
+{ Zfirst, Zsecond, Zthird }
+
+enum ks
+{ Zfirst, Zsecond, Zthird }
+
+enum kseen
+{ Zfirst, Zsecond, Zthird }
+
+enum kset
+{ Zfirst, Zsecond, Zthird }
+
+enum kset_entries
+{ Zfirst, Zsecond, Zthird }
+
+enum kset_slots
+{ Zfirst, Zsecond, Zthird }
+
+enum kslot
+{ Zfirst, Zsecond, Zthird }
+
+enum kv
+{ Zfirst, Zsecond, Zthird }
+
+enum kval
+{ Zfirst, Zsecond, Zthird }
+
+enum kvs
+{ Zfirst, Zsecond, Zthird }
+
+enum kw
+{ Zfirst, Zsecond, Zthird }
+
+enum kwargs
+{ Zfirst, Zsecond, Zthird }
+
+enum l
+{ Zfirst, Zsecond, Zthird }
+
+enum l0
+{ Zfirst, Zsecond, Zthird }
+
+enum l1
+{ Zfirst, Zsecond, Zthird }
+
+enum l2
+{ Zfirst, Zsecond, Zthird }
+
+enum l3
+{ Zfirst, Zsecond, Zthird }
+
+enum la
+{ Zfirst, Zsecond, Zthird }
+
+enum label
+{ Zfirst, Zsecond, Zthird }
+
+enum labelId
+{ Zfirst, Zsecond, Zthird }
+
+enum labeled
+{ Zfirst, Zsecond, Zthird }
+
+enum labelled
+{ Zfirst, Zsecond, Zthird }
+
+enum labels
+{ Zfirst, Zsecond, Zthird }
+
+enum labelsOpen
+{ Zfirst, Zsecond, Zthird }
+
+enum labelsSeen
+{ Zfirst, Zsecond, Zthird }
+
+enum ladder
+{ Zfirst, Zsecond, Zthird }
+
+enum land
+{ Zfirst, Zsecond, Zthird }
+
+enum landed
+{ Zfirst, Zsecond, Zthird }
+
+enum landed_hi
+{ Zfirst, Zsecond, Zthird }
+
+enum lands
+{ Zfirst, Zsecond, Zthird }
+
+enum lane
+{ Zfirst, Zsecond, Zthird }
+
+enum laneOf
+{ Zfirst, Zsecond, Zthird }
+
+enum lanes
+{ Zfirst, Zsecond, Zthird }
+
+enum last
+{ Zfirst, Zsecond, Zthird }
+
+enum lastAt
+{ Zfirst, Zsecond, Zthird }
+
+enum lastEntry
+{ Zfirst, Zsecond, Zthird }
+
+enum lastField
+{ Zfirst, Zsecond, Zthird }
+
+enum lastK
+{ Zfirst, Zsecond, Zthird }
+
+enum lastKey
+{ Zfirst, Zsecond, Zthird }
+
+enum lastKidx
+{ Zfirst, Zsecond, Zthird }
+
+enum lastKnown
+{ Zfirst, Zsecond, Zthird }
+
+enum lastKord
+{ Zfirst, Zsecond, Zthird }
+
+enum lastLanded
+{ Zfirst, Zsecond, Zthird }
+
+enum lastOdd
+{ Zfirst, Zsecond, Zthird }
+
+enum lastOrdinal
+{ Zfirst, Zsecond, Zthird }
+
+enum lastPad
+{ Zfirst, Zsecond, Zthird }
+
+enum lastSlot
+{ Zfirst, Zsecond, Zthird }
+
+enum last_field_ord
+{ Zfirst, Zsecond, Zthird }
+
+enum last_idx
+{ Zfirst, Zsecond, Zthird }
+
+enum last_index
+{ Zfirst, Zsecond, Zthird }
+
+enum last_length
+{ Zfirst, Zsecond, Zthird }
+
+enum later
+{ Zfirst, Zsecond, Zthird }
+
+enum lawful
+{ Zfirst, Zsecond, Zthird }
+
+enum lay
+{ Zfirst, Zsecond, Zthird }
+
+enum layout
+{ Zfirst, Zsecond, Zthird }
+
+enum layoutAt
+{ Zfirst, Zsecond, Zthird }
+
+enum layoutBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum layoutChecked
+{ Zfirst, Zsecond, Zthird }
+
+enum layoutCountMismatch
+{ Zfirst, Zsecond, Zthird }
+
+enum layoutDamaged
+{ Zfirst, Zsecond, Zthird }
+
+enum layoutField
+{ Zfirst, Zsecond, Zthird }
+
+enum layoutHash
+{ Zfirst, Zsecond, Zthird }
+
+enum layoutHeaderBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum layoutKindInvalid
+{ Zfirst, Zsecond, Zthird }
+
+enum layoutKindUnknown
+{ Zfirst, Zsecond, Zthird }
+
+enum layoutLen
+{ Zfirst, Zsecond, Zthird }
+
+enum layoutNewer
+{ Zfirst, Zsecond, Zthird }
+
+enum layoutOf
+{ Zfirst, Zsecond, Zthird }
+
+enum layoutRecordTooLarge
+{ Zfirst, Zsecond, Zthird }
+
+enum layoutSizeMismatch
+{ Zfirst, Zsecond, Zthird }
+
+enum layoutTooDeep
+{ Zfirst, Zsecond, Zthird }
+
+enum layoutTreeUnclosed
+{ Zfirst, Zsecond, Zthird }
+
+enum layoutUnsupported
+{ Zfirst, Zsecond, Zthird }
+
+enum layout_length
+{ Zfirst, Zsecond, Zthird }
+
+enum layout_tree
+{ Zfirst, Zsecond, Zthird }
+
+enum layouts
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    kpair Inner
+    kptr Inner
+    kr Inner
+    kraw Inner
+    kref Inner
+    ks Inner
+    kseen Inner
+    kset Inner
+    kset_entries Inner
+    kset_slots Inner
+}
+
+table NameTypes0
+{
+    one0  kpair
+    many0 [..4]kpair
+    one1  kptr
+    many1 [..4]kptr
+    one2  kr
+    many2 [..4]kr
+    one3  kraw
+    many3 [..4]kraw
+    one4  kref
+    many4 [..4]kref
+    one5  ks
+    many5 [..4]ks
+    one6  kseen
+    many6 [..4]kseen
+    one7  kset
+    many7 [..4]kset
+    one8  kset_entries
+    many8 [..4]kset_entries
+    one9  kset_slots
+    many9 [..4]kset_slots
+}
+
+table NameFields0
+{
+    kpair uint32
+    kptr uint32
+    kr uint32
+    kraw uint32
+    kref uint32
+    ks uint32
+    kseen uint32
+    kset uint32
+    kset_entries uint32
+    kset_slots uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    kslot Inner
+    kv Inner
+    kval Inner
+    kvs Inner
+    kw Inner
+    kwargs Inner
+    l Inner
+    l0 Inner
+    l1 Inner
+    l2 Inner
+}
+
+table NameTypes1
+{
+    one0  kslot
+    many0 [..4]kslot
+    one1  kv
+    many1 [..4]kv
+    one2  kval
+    many2 [..4]kval
+    one3  kvs
+    many3 [..4]kvs
+    one4  kw
+    many4 [..4]kw
+    one5  kwargs
+    many5 [..4]kwargs
+    one6  l
+    many6 [..4]l
+    one7  l0
+    many7 [..4]l0
+    one8  l1
+    many8 [..4]l1
+    one9  l2
+    many9 [..4]l2
+}
+
+table NameFields1
+{
+    kslot uint32
+    kv uint32
+    kval uint32
+    kvs uint32
+    kw uint32
+    kwargs uint32
+    l uint32
+    l0 uint32
+    l1 uint32
+    l2 uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    l3 Inner
+    la Inner
+    label Inner
+    labelId Inner
+    labeled Inner
+    labelled Inner
+    labels Inner
+    labelsOpen Inner
+    labelsSeen Inner
+    ladder Inner
+}
+
+table NameTypes2
+{
+    one0  l3
+    many0 [..4]l3
+    one1  la
+    many1 [..4]la
+    one2  label
+    many2 [..4]label
+    one3  labelId
+    many3 [..4]labelId
+    one4  labeled
+    many4 [..4]labeled
+    one5  labelled
+    many5 [..4]labelled
+    one6  labels
+    many6 [..4]labels
+    one7  labelsOpen
+    many7 [..4]labelsOpen
+    one8  labelsSeen
+    many8 [..4]labelsSeen
+    one9  ladder
+    many9 [..4]ladder
+}
+
+table NameFields2
+{
+    l3 uint32
+    la uint32
+    label uint32
+    labelId uint32
+    labeled uint32
+    labelled uint32
+    labels uint32
+    labelsOpen uint32
+    labelsSeen uint32
+    ladder uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    land Inner
+    landed Inner
+    landed_hi Inner
+    lands Inner
+    lane Inner
+    laneOf Inner
+    lanes Inner
+    last Inner
+    lastAt Inner
+    lastEntry Inner
+}
+
+table NameTypes3
+{
+    one0  land
+    many0 [..4]land
+    one1  landed
+    many1 [..4]landed
+    one2  landed_hi
+    many2 [..4]landed_hi
+    one3  lands
+    many3 [..4]lands
+    one4  lane
+    many4 [..4]lane
+    one5  laneOf
+    many5 [..4]laneOf
+    one6  lanes
+    many6 [..4]lanes
+    one7  last
+    many7 [..4]last
+    one8  lastAt
+    many8 [..4]lastAt
+    one9  lastEntry
+    many9 [..4]lastEntry
+}
+
+table NameFields3
+{
+    land uint32
+    landed uint32
+    landed_hi uint32
+    lands uint32
+    lane uint32
+    laneOf uint32
+    lanes uint32
+    last uint32
+    lastAt uint32
+    lastEntry uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    lastField Inner
+    lastK Inner
+    lastKey Inner
+    lastKidx Inner
+    lastKnown Inner
+    lastKord Inner
+    lastLanded Inner
+    lastOdd Inner
+    lastOrdinal Inner
+    lastPad Inner
+}
+
+table NameTypes4
+{
+    one0  lastField
+    many0 [..4]lastField
+    one1  lastK
+    many1 [..4]lastK
+    one2  lastKey
+    many2 [..4]lastKey
+    one3  lastKidx
+    many3 [..4]lastKidx
+    one4  lastKnown
+    many4 [..4]lastKnown
+    one5  lastKord
+    many5 [..4]lastKord
+    one6  lastLanded
+    many6 [..4]lastLanded
+    one7  lastOdd
+    many7 [..4]lastOdd
+    one8  lastOrdinal
+    many8 [..4]lastOrdinal
+    one9  lastPad
+    many9 [..4]lastPad
+}
+
+table NameFields4
+{
+    lastField uint32
+    lastK uint32
+    lastKey uint32
+    lastKidx uint32
+    lastKnown uint32
+    lastKord uint32
+    lastLanded uint32
+    lastOdd uint32
+    lastOrdinal uint32
+    lastPad uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    lastSlot Inner
+    last_field_ord Inner
+    last_idx Inner
+    last_index Inner
+    last_length Inner
+    later Inner
+    lawful Inner
+    lay Inner
+    layout Inner
+    layoutAt Inner
+}
+
+table NameTypes5
+{
+    one0  lastSlot
+    many0 [..4]lastSlot
+    one1  last_field_ord
+    many1 [..4]last_field_ord
+    one2  last_idx
+    many2 [..4]last_idx
+    one3  last_index
+    many3 [..4]last_index
+    one4  last_length
+    many4 [..4]last_length
+    one5  later
+    many5 [..4]later
+    one6  lawful
+    many6 [..4]lawful
+    one7  lay
+    many7 [..4]lay
+    one8  layout
+    many8 [..4]layout
+    one9  layoutAt
+    many9 [..4]layoutAt
+}
+
+table NameFields5
+{
+    lastSlot uint32
+    last_field_ord uint32
+    last_idx uint32
+    last_index uint32
+    last_length uint32
+    later uint32
+    lawful uint32
+    lay uint32
+    layout uint32
+    layoutAt uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    layoutBytes Inner
+    layoutChecked Inner
+    layoutCountMismatch Inner
+    layoutDamaged Inner
+    layoutField Inner
+    layoutHash Inner
+    layoutHeaderBytes Inner
+    layoutKindInvalid Inner
+    layoutKindUnknown Inner
+    layoutLen Inner
+}
+
+table NameTypes6
+{
+    one0  layoutBytes
+    many0 [..4]layoutBytes
+    one1  layoutChecked
+    many1 [..4]layoutChecked
+    one2  layoutCountMismatch
+    many2 [..4]layoutCountMismatch
+    one3  layoutDamaged
+    many3 [..4]layoutDamaged
+    one4  layoutField
+    many4 [..4]layoutField
+    one5  layoutHash
+    many5 [..4]layoutHash
+    one6  layoutHeaderBytes
+    many6 [..4]layoutHeaderBytes
+    one7  layoutKindInvalid
+    many7 [..4]layoutKindInvalid
+    one8  layoutKindUnknown
+    many8 [..4]layoutKindUnknown
+    one9  layoutLen
+    many9 [..4]layoutLen
+}
+
+table NameFields6
+{
+    layoutBytes uint32
+    layoutChecked uint32
+    layoutCountMismatch uint32
+    layoutDamaged uint32
+    layoutField uint32
+    layoutHash uint32
+    layoutHeaderBytes uint32
+    layoutKindInvalid uint32
+    layoutKindUnknown uint32
+    layoutLen uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    layoutNewer Inner
+    layoutOf Inner
+    layoutRecordTooLarge Inner
+    layoutSizeMismatch Inner
+    layoutTooDeep Inner
+    layoutTreeUnclosed Inner
+    layoutUnsupported Inner
+    layout_length Inner
+    layout_tree Inner
+    layouts Inner
+}
+
+table NameTypes7
+{
+    one0  layoutNewer
+    many0 [..4]layoutNewer
+    one1  layoutOf
+    many1 [..4]layoutOf
+    one2  layoutRecordTooLarge
+    many2 [..4]layoutRecordTooLarge
+    one3  layoutSizeMismatch
+    many3 [..4]layoutSizeMismatch
+    one4  layoutTooDeep
+    many4 [..4]layoutTooDeep
+    one5  layoutTreeUnclosed
+    many5 [..4]layoutTreeUnclosed
+    one6  layoutUnsupported
+    many6 [..4]layoutUnsupported
+    one7  layout_length
+    many7 [..4]layout_length
+    one8  layout_tree
+    many8 [..4]layout_tree
+    one9  layouts
+    many9 [..4]layouts
+}
+
+table NameFields7
+{
+    layoutNewer uint32
+    layoutOf uint32
+    layoutRecordTooLarge uint32
+    layoutSizeMismatch uint32
+    layoutTooDeep uint32
+    layoutTreeUnclosed uint32
+    layoutUnsupported uint32
+    layout_length uint32
+    layout_tree uint32
+    layouts uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

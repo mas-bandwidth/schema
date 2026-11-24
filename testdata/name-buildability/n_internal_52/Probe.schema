@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum payload51
+{ Zfirst, Zsecond, Zthird }
+
+enum payload53
+{ Zfirst, Zsecond, Zthird }
+
+enum payload54
+{ Zfirst, Zsecond, Zthird }
+
+enum payload55
+{ Zfirst, Zsecond, Zthird }
+
+enum payload56
+{ Zfirst, Zsecond, Zthird }
+
+enum payload57
+{ Zfirst, Zsecond, Zthird }
+
+enum payload58
+{ Zfirst, Zsecond, Zthird }
+
+enum payload59
+{ Zfirst, Zsecond, Zthird }
+
+enum payload6
+{ Zfirst, Zsecond, Zthird }
+
+enum payload60
+{ Zfirst, Zsecond, Zthird }
+
+enum payload7
+{ Zfirst, Zsecond, Zthird }
+
+enum payload8
+{ Zfirst, Zsecond, Zthird }
+
+enum payload9
+{ Zfirst, Zsecond, Zthird }
+
+enum payloadAt
+{ Zfirst, Zsecond, Zthird }
+
+enum payloadBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum payloadEnd
+{ Zfirst, Zsecond, Zthird }
+
+enum payloadName
+{ Zfirst, Zsecond, Zthird }
+
+enum payload_dst
+{ Zfirst, Zsecond, Zthird }
+
+enum payload_offset
+{ Zfirst, Zsecond, Zthird }
+
+enum payload_size
+{ Zfirst, Zsecond, Zthird }
+
+enum payload_wire
+{ Zfirst, Zsecond, Zthird }
+
+enum pb
+{ Zfirst, Zsecond, Zthird }
+
+enum pc
+{ Zfirst, Zsecond, Zthird }
+
+enum pchunk
+{ Zfirst, Zsecond, Zthird }
+
+enum pchunks
+{ Zfirst, Zsecond, Zthird }
+
+enum pd
+{ Zfirst, Zsecond, Zthird }
+
+enum pe
+{ Zfirst, Zsecond, Zthird }
+
+enum peElem
+{ Zfirst, Zsecond, Zthird }
+
+enum peek
+{ Zfirst, Zsecond, Zthird }
+
+enum peekOff
+{ Zfirst, Zsecond, Zthird }
+
+enum peer
+{ Zfirst, Zsecond, Zthird }
+
+enum pen
+{ Zfirst, Zsecond, Zthird }
+
+enum pending
+{ Zfirst, Zsecond, Zthird }
+
+enum people
+{ Zfirst, Zsecond, Zthird }
+
+enum performed
+{ Zfirst, Zsecond, Zthird }
+
+enum pf
+{ Zfirst, Zsecond, Zthird }
+
+enum phase
+{ Zfirst, Zsecond, Zthird }
+
+enum phi
+{ Zfirst, Zsecond, Zthird }
+
+enum pick
+{ Zfirst, Zsecond, Zthird }
+
+enum pick_json_count
+{ Zfirst, Zsecond, Zthird }
+
+enum pick_json_read
+{ Zfirst, Zsecond, Zthird }
+
+enum pick_json_read_arm
+{ Zfirst, Zsecond, Zthird }
+
+enum pick_json_write
+{ Zfirst, Zsecond, Zthird }
+
+enum piece
+{ Zfirst, Zsecond, Zthird }
+
+enum piece_at
+{ Zfirst, Zsecond, Zthird }
+
+enum pieces
+{ Zfirst, Zsecond, Zthird }
+
+enum pinned
+{ Zfirst, Zsecond, Zthird }
+
+enum pitch
+{ Zfirst, Zsecond, Zthird }
+
+enum pk
+{ Zfirst, Zsecond, Zthird }
+
+enum place
+{ Zfirst, Zsecond, Zthird }
+
+enum placeFloat
+{ Zfirst, Zsecond, Zthird }
+
+enum placeInteger
+{ Zfirst, Zsecond, Zthird }
+
+enum placeTypes
+{ Zfirst, Zsecond, Zthird }
+
+enum placeWide
+{ Zfirst, Zsecond, Zthird }
+
+enum place_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum place_named
+{ Zfirst, Zsecond, Zthird }
+
+enum place_str
+{ Zfirst, Zsecond, Zthird }
+
+enum placeable
+{ Zfirst, Zsecond, Zthird }
+
+enum placed
+{ Zfirst, Zsecond, Zthird }
+
+enum placed0
+{ Zfirst, Zsecond, Zthird }
+
+enum placed1
+{ Zfirst, Zsecond, Zthird }
+
+enum placed_array
+{ Zfirst, Zsecond, Zthird }
+
+enum placed_key
+{ Zfirst, Zsecond, Zthird }
+
+enum placed_pool
+{ Zfirst, Zsecond, Zthird }
+
+enum placed_scratch
+{ Zfirst, Zsecond, Zthird }
+
+enum placed_t
+{ Zfirst, Zsecond, Zthird }
+
+enum placements
+{ Zfirst, Zsecond, Zthird }
+
+enum plain
+{ Zfirst, Zsecond, Zthird }
+
+enum plainErr
+{ Zfirst, Zsecond, Zthird }
+
+enum plainFloat
+{ Zfirst, Zsecond, Zthird }
+
+enum plainLength
+{ Zfirst, Zsecond, Zthird }
+
+enum plain_num
+{ Zfirst, Zsecond, Zthird }
+
+enum plan
+{ Zfirst, Zsecond, Zthird }
+
+enum planBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum planCapacity
+{ Zfirst, Zsecond, Zthird }
+
+enum planCount
+{ Zfirst, Zsecond, Zthird }
+
+enum planFor
+{ Zfirst, Zsecond, Zthird }
+
+enum planTooLarge
+{ Zfirst, Zsecond, Zthird }
+
+enum plans
+{ Zfirst, Zsecond, Zthird }
+
+enum plen
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    payload51 Inner
+    payload53 Inner
+    payload54 Inner
+    payload55 Inner
+    payload56 Inner
+    payload57 Inner
+    payload58 Inner
+    payload59 Inner
+    payload6 Inner
+    payload60 Inner
+}
+
+table NameTypes0
+{
+    one0  payload51
+    many0 [..4]payload51
+    one1  payload53
+    many1 [..4]payload53
+    one2  payload54
+    many2 [..4]payload54
+    one3  payload55
+    many3 [..4]payload55
+    one4  payload56
+    many4 [..4]payload56
+    one5  payload57
+    many5 [..4]payload57
+    one6  payload58
+    many6 [..4]payload58
+    one7  payload59
+    many7 [..4]payload59
+    one8  payload6
+    many8 [..4]payload6
+    one9  payload60
+    many9 [..4]payload60
+}
+
+table NameFields0
+{
+    payload51 uint32
+    payload53 uint32
+    payload54 uint32
+    payload55 uint32
+    payload56 uint32
+    payload57 uint32
+    payload58 uint32
+    payload59 uint32
+    payload6 uint32
+    payload60 uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    payload7 Inner
+    payload8 Inner
+    payload9 Inner
+    payloadAt Inner
+    payloadBytes Inner
+    payloadEnd Inner
+    payloadName Inner
+    payload_dst Inner
+    payload_offset Inner
+    payload_size Inner
+}
+
+table NameTypes1
+{
+    one0  payload7
+    many0 [..4]payload7
+    one1  payload8
+    many1 [..4]payload8
+    one2  payload9
+    many2 [..4]payload9
+    one3  payloadAt
+    many3 [..4]payloadAt
+    one4  payloadBytes
+    many4 [..4]payloadBytes
+    one5  payloadEnd
+    many5 [..4]payloadEnd
+    one6  payloadName
+    many6 [..4]payloadName
+    one7  payload_dst
+    many7 [..4]payload_dst
+    one8  payload_offset
+    many8 [..4]payload_offset
+    one9  payload_size
+    many9 [..4]payload_size
+}
+
+table NameFields1
+{
+    payload7 uint32
+    payload8 uint32
+    payload9 uint32
+    payloadAt uint32
+    payloadBytes uint32
+    payloadEnd uint32
+    payloadName uint32
+    payload_dst uint32
+    payload_offset uint32
+    payload_size uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    payload_wire Inner
+    pb Inner
+    pc Inner
+    pchunk Inner
+    pchunks Inner
+    pd Inner
+    pe Inner
+    peElem Inner
+    peek Inner
+    peekOff Inner
+}
+
+table NameTypes2
+{
+    one0  payload_wire
+    many0 [..4]payload_wire
+    one1  pb
+    many1 [..4]pb
+    one2  pc
+    many2 [..4]pc
+    one3  pchunk
+    many3 [..4]pchunk
+    one4  pchunks
+    many4 [..4]pchunks
+    one5  pd
+    many5 [..4]pd
+    one6  pe
+    many6 [..4]pe
+    one7  peElem
+    many7 [..4]peElem
+    one8  peek
+    many8 [..4]peek
+    one9  peekOff
+    many9 [..4]peekOff
+}
+
+table NameFields2
+{
+    payload_wire uint32
+    pb uint32
+    pc uint32
+    pchunk uint32
+    pchunks uint32
+    pd uint32
+    pe uint32
+    peElem uint32
+    peek uint32
+    peekOff uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    peer Inner
+    pen Inner
+    pending Inner
+    people Inner
+    performed Inner
+    pf Inner
+    phase Inner
+    phi Inner
+    pick Inner
+    pick_json_count Inner
+}
+
+table NameTypes3
+{
+    one0  peer
+    many0 [..4]peer
+    one1  pen
+    many1 [..4]pen
+    one2  pending
+    many2 [..4]pending
+    one3  people
+    many3 [..4]people
+    one4  performed
+    many4 [..4]performed
+    one5  pf
+    many5 [..4]pf
+    one6  phase
+    many6 [..4]phase
+    one7  phi
+    many7 [..4]phi
+    one8  pick
+    many8 [..4]pick
+    one9  pick_json_count
+    many9 [..4]pick_json_count
+}
+
+table NameFields3
+{
+    peer uint32
+    pen uint32
+    pending uint32
+    people uint32
+    performed uint32
+    pf uint32
+    phase uint32
+    phi uint32
+    pick uint32
+    pick_json_count uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    pick_json_read Inner
+    pick_json_read_arm Inner
+    pick_json_write Inner
+    piece Inner
+    piece_at Inner
+    pieces Inner
+    pinned Inner
+    pitch Inner
+    pk Inner
+    place Inner
+}
+
+table NameTypes4
+{
+    one0  pick_json_read
+    many0 [..4]pick_json_read
+    one1  pick_json_read_arm
+    many1 [..4]pick_json_read_arm
+    one2  pick_json_write
+    many2 [..4]pick_json_write
+    one3  piece
+    many3 [..4]piece
+    one4  piece_at
+    many4 [..4]piece_at
+    one5  pieces
+    many5 [..4]pieces
+    one6  pinned
+    many6 [..4]pinned
+    one7  pitch
+    many7 [..4]pitch
+    one8  pk
+    many8 [..4]pk
+    one9  place
+    many9 [..4]place
+}
+
+table NameFields4
+{
+    pick_json_read uint32
+    pick_json_read_arm uint32
+    pick_json_write uint32
+    piece uint32
+    piece_at uint32
+    pieces uint32
+    pinned uint32
+    pitch uint32
+    pk uint32
+    place uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    placeFloat Inner
+    placeInteger Inner
+    placeTypes Inner
+    placeWide Inner
+    place_bytes Inner
+    place_named Inner
+    place_str Inner
+    placeable Inner
+    placed Inner
+    placed0 Inner
+}
+
+table NameTypes5
+{
+    one0  placeFloat
+    many0 [..4]placeFloat
+    one1  placeInteger
+    many1 [..4]placeInteger
+    one2  placeTypes
+    many2 [..4]placeTypes
+    one3  placeWide
+    many3 [..4]placeWide
+    one4  place_bytes
+    many4 [..4]place_bytes
+    one5  place_named
+    many5 [..4]place_named
+    one6  place_str
+    many6 [..4]place_str
+    one7  placeable
+    many7 [..4]placeable
+    one8  placed
+    many8 [..4]placed
+    one9  placed0
+    many9 [..4]placed0
+}
+
+table NameFields5
+{
+    placeFloat uint32
+    placeInteger uint32
+    placeTypes uint32
+    placeWide uint32
+    place_bytes uint32
+    place_named uint32
+    place_str uint32
+    placeable uint32
+    placed uint32
+    placed0 uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    placed1 Inner
+    placed_array Inner
+    placed_key Inner
+    placed_pool Inner
+    placed_scratch Inner
+    placed_t Inner
+    placements Inner
+    plain Inner
+    plainErr Inner
+    plainFloat Inner
+}
+
+table NameTypes6
+{
+    one0  placed1
+    many0 [..4]placed1
+    one1  placed_array
+    many1 [..4]placed_array
+    one2  placed_key
+    many2 [..4]placed_key
+    one3  placed_pool
+    many3 [..4]placed_pool
+    one4  placed_scratch
+    many4 [..4]placed_scratch
+    one5  placed_t
+    many5 [..4]placed_t
+    one6  placements
+    many6 [..4]placements
+    one7  plain
+    many7 [..4]plain
+    one8  plainErr
+    many8 [..4]plainErr
+    one9  plainFloat
+    many9 [..4]plainFloat
+}
+
+table NameFields6
+{
+    placed1 uint32
+    placed_array uint32
+    placed_key uint32
+    placed_pool uint32
+    placed_scratch uint32
+    placed_t uint32
+    placements uint32
+    plain uint32
+    plainErr uint32
+    plainFloat uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    plainLength Inner
+    plain_num Inner
+    plan Inner
+    planBytes Inner
+    planCapacity Inner
+    planCount Inner
+    planFor Inner
+    planTooLarge Inner
+    plans Inner
+    plen Inner
+}
+
+table NameTypes7
+{
+    one0  plainLength
+    many0 [..4]plainLength
+    one1  plain_num
+    many1 [..4]plain_num
+    one2  plan
+    many2 [..4]plan
+    one3  planBytes
+    many3 [..4]planBytes
+    one4  planCapacity
+    many4 [..4]planCapacity
+    one5  planCount
+    many5 [..4]planCount
+    one6  planFor
+    many6 [..4]planFor
+    one7  planTooLarge
+    many7 [..4]planTooLarge
+    one8  plans
+    many8 [..4]plans
+    one9  plen
+    many9 [..4]plen
+}
+
+table NameFields7
+{
+    plainLength uint32
+    plain_num uint32
+    plan uint32
+    planBytes uint32
+    planCapacity uint32
+    planCount uint32
+    planFor uint32
+    planTooLarge uint32
+    plans uint32
+    plen uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

@@ -593,7 +593,7 @@ func TestSchemaRubyHostileCorpusPlantedReader(t *testing.T) {
 func rubyHostileFormFFValidBody(t *testing.T, corpusDir string, cases []rubyHostileCase) (string, []rubyHostileCase) {
 	t.Helper()
 	dir := t.TempDir()
-	var valid *rubyHostileCase
+	validAt := -1
 	for i, c := range cases {
 		data, err := os.ReadFile(filepath.Join(corpusDir, filepath.FromSlash(c.Input)))
 		if err != nil {
@@ -607,18 +607,19 @@ func rubyHostileFormFFValidBody(t *testing.T, corpusDir string, cases []rubyHost
 			t.Fatal(err)
 		}
 		if c.Name == "wire-valid" {
-			valid = &cases[i]
+			validAt = i
 		}
 	}
-	if valid == nil {
+	if validAt < 0 {
 		t.Fatal("the corpus carries no wire-valid case to build the form-0xff body from")
 	}
+	valid := cases[validAt]
 	data, err := os.ReadFile(filepath.Join(corpusDir, filepath.FromSlash(valid.Input)))
 	if err != nil {
 		t.Fatal(err)
 	}
 	data[0] = 0xff
-	ff := *valid
+	ff := valid
 	ff.Name = "wire-form-ff-valid-body"
 	ff.Input = "inputs/wire-form-ff-valid-body.bin"
 	ff.Verdict, ff.Reason, ff.Digest = rubyHostileRefuse, "newer_form", "-"

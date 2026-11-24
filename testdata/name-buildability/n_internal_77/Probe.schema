@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum view
+{ Zfirst, Zsecond, Zthird }
+
+enum view_constants
+{ Zfirst, Zsecond, Zthird }
+
+enum view_enums
+{ Zfirst, Zsecond, Zthird }
+
+enum view_equals
+{ Zfirst, Zsecond, Zthird }
+
+enum view_flags
+{ Zfirst, Zsecond, Zthird }
+
+enum view_package
+{ Zfirst, Zsecond, Zthird }
+
+enum view_protocol
+{ Zfirst, Zsecond, Zthird }
+
+enum view_tables
+{ Zfirst, Zsecond, Zthird }
+
+enum view_types
+{ Zfirst, Zsecond, Zthird }
+
+enum view_unions
+{ Zfirst, Zsecond, Zthird }
+
+enum visit
+{ Zfirst, Zsecond, Zthird }
+
+enum visitEdges
+{ Zfirst, Zsecond, Zthird }
+
+enum visit_all
+{ Zfirst, Zsecond, Zthird }
+
+enum visit_blob
+{ Zfirst, Zsecond, Zthird }
+
+enum visit_elem
+{ Zfirst, Zsecond, Zthird }
+
+enum visit_field
+{ Zfirst, Zsecond, Zthird }
+
+enum visit_struct
+{ Zfirst, Zsecond, Zthird }
+
+enum visit_table
+{ Zfirst, Zsecond, Zthird }
+
+enum visited
+{ Zfirst, Zsecond, Zthird }
+
+enum vkind
+{ Zfirst, Zsecond, Zthird }
+
+enum vlen
+{ Zfirst, Zsecond, Zthird }
+
+enum vm
+{ Zfirst, Zsecond, Zthird }
+
+enum vmap
+{ Zfirst, Zsecond, Zthird }
+
+enum vn
+{ Zfirst, Zsecond, Zthird }
+
+enum voc
+{ Zfirst, Zsecond, Zthird }
+
+enum vocab
+{ Zfirst, Zsecond, Zthird }
+
+enum vocabCount
+{ Zfirst, Zsecond, Zthird }
+
+enum vocabs
+{ Zfirst, Zsecond, Zthird }
+
+enum vocabularies
+{ Zfirst, Zsecond, Zthird }
+
+enum vocabulary
+{ Zfirst, Zsecond, Zthird }
+
+enum vocabularyLength
+{ Zfirst, Zsecond, Zthird }
+
+enum vocabularyStart
+{ Zfirst, Zsecond, Zthird }
+
+enum vocabularyWireId
+{ Zfirst, Zsecond, Zthird }
+
+enum vocabulary_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum vocabulary_entries
+{ Zfirst, Zsecond, Zthird }
+
+enum vocabulary_kind
+{ Zfirst, Zsecond, Zthird }
+
+enum vok
+{ Zfirst, Zsecond, Zthird }
+
+enum vp
+{ Zfirst, Zsecond, Zthird }
+
+enum vpe
+{ Zfirst, Zsecond, Zthird }
+
+enum vref
+{ Zfirst, Zsecond, Zthird }
+
+enum vrow
+{ Zfirst, Zsecond, Zthird }
+
+enum vs
+{ Zfirst, Zsecond, Zthird }
+
+enum vsize
+{ Zfirst, Zsecond, Zthird }
+
+enum vv
+{ Zfirst, Zsecond, Zthird }
+
+enum w
+{ Zfirst, Zsecond, Zthird }
+
+enum w0
+{ Zfirst, Zsecond, Zthird }
+
+enum w1
+{ Zfirst, Zsecond, Zthird }
+
+enum w2
+{ Zfirst, Zsecond, Zthird }
+
+enum w3
+{ Zfirst, Zsecond, Zthird }
+
+enum wById
+{ Zfirst, Zsecond, Zthird }
+
+enum wMark
+{ Zfirst, Zsecond, Zthird }
+
+enum wSigned
+{ Zfirst, Zsecond, Zthird }
+
+enum w_buf
+{ Zfirst, Zsecond, Zthird }
+
+enum w_f64
+{ Zfirst, Zsecond, Zthird }
+
+enum w_float
+{ Zfirst, Zsecond, Zthird }
+
+enum w_int
+{ Zfirst, Zsecond, Zthird }
+
+enum w_leb
+{ Zfirst, Zsecond, Zthird }
+
+enum w_raw
+{ Zfirst, Zsecond, Zthird }
+
+enum w_raw_int
+{ Zfirst, Zsecond, Zthird }
+
+enum w_small
+{ Zfirst, Zsecond, Zthird }
+
+enum w_str
+{ Zfirst, Zsecond, Zthird }
+
+enum w_sub
+{ Zfirst, Zsecond, Zthird }
+
+enum w_u32
+{ Zfirst, Zsecond, Zthird }
+
+enum w_u64
+{ Zfirst, Zsecond, Zthird }
+
+enum w_u8
+{ Zfirst, Zsecond, Zthird }
+
+enum walk
+{ Zfirst, Zsecond, Zthird }
+
+enum walkBodies
+{ Zfirst, Zsecond, Zthird }
+
+enum walkBody
+{ Zfirst, Zsecond, Zthird }
+
+enum walkNumber
+{ Zfirst, Zsecond, Zthird }
+
+enum walkOne
+{ Zfirst, Zsecond, Zthird }
+
+enum walk_array
+{ Zfirst, Zsecond, Zthird }
+
+enum walk_content
+{ Zfirst, Zsecond, Zthird }
+
+enum walk_default
+{ Zfirst, Zsecond, Zthird }
+
+enum walk_elem
+{ Zfirst, Zsecond, Zthird }
+
+enum walk_element
+{ Zfirst, Zsecond, Zthird }
+
+enum walk_enum
+{ Zfirst, Zsecond, Zthird }
+
+enum walk_enum_name
+{ Zfirst, Zsecond, Zthird }
+
+enum walk_field
+{ Zfirst, Zsecond, Zthird }
+
+enum walk_fn
+{ Zfirst, Zsecond, Zthird }
+
+enum walk_framed
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    view Inner
+    view_constants Inner
+    view_enums Inner
+    view_equals Inner
+    view_flags Inner
+    view_package Inner
+    view_protocol Inner
+    view_tables Inner
+    view_types Inner
+    view_unions Inner
+}
+
+table NameTypes0
+{
+    one0  view
+    many0 [..4]view
+    one1  view_constants
+    many1 [..4]view_constants
+    one2  view_enums
+    many2 [..4]view_enums
+    one3  view_equals
+    many3 [..4]view_equals
+    one4  view_flags
+    many4 [..4]view_flags
+    one5  view_package
+    many5 [..4]view_package
+    one6  view_protocol
+    many6 [..4]view_protocol
+    one7  view_tables
+    many7 [..4]view_tables
+    one8  view_types
+    many8 [..4]view_types
+    one9  view_unions
+    many9 [..4]view_unions
+}
+
+table NameFields0
+{
+    view uint32
+    view_constants uint32
+    view_enums uint32
+    view_equals uint32
+    view_flags uint32
+    view_package uint32
+    view_protocol uint32
+    view_tables uint32
+    view_types uint32
+    view_unions uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    visit Inner
+    visitEdges Inner
+    visit_all Inner
+    visit_blob Inner
+    visit_elem Inner
+    visit_field Inner
+    visit_struct Inner
+    visit_table Inner
+    visited Inner
+    vkind Inner
+}
+
+table NameTypes1
+{
+    one0  visit
+    many0 [..4]visit
+    one1  visitEdges
+    many1 [..4]visitEdges
+    one2  visit_all
+    many2 [..4]visit_all
+    one3  visit_blob
+    many3 [..4]visit_blob
+    one4  visit_elem
+    many4 [..4]visit_elem
+    one5  visit_field
+    many5 [..4]visit_field
+    one6  visit_struct
+    many6 [..4]visit_struct
+    one7  visit_table
+    many7 [..4]visit_table
+    one8  visited
+    many8 [..4]visited
+    one9  vkind
+    many9 [..4]vkind
+}
+
+table NameFields1
+{
+    visit uint32
+    visitEdges uint32
+    visit_all uint32
+    visit_blob uint32
+    visit_elem uint32
+    visit_field uint32
+    visit_struct uint32
+    visit_table uint32
+    visited uint32
+    vkind uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    vlen Inner
+    vm Inner
+    vmap Inner
+    vn Inner
+    voc Inner
+    vocab Inner
+    vocabCount Inner
+    vocabs Inner
+    vocabularies Inner
+    vocabulary Inner
+}
+
+table NameTypes2
+{
+    one0  vlen
+    many0 [..4]vlen
+    one1  vm
+    many1 [..4]vm
+    one2  vmap
+    many2 [..4]vmap
+    one3  vn
+    many3 [..4]vn
+    one4  voc
+    many4 [..4]voc
+    one5  vocab
+    many5 [..4]vocab
+    one6  vocabCount
+    many6 [..4]vocabCount
+    one7  vocabs
+    many7 [..4]vocabs
+    one8  vocabularies
+    many8 [..4]vocabularies
+    one9  vocabulary
+    many9 [..4]vocabulary
+}
+
+table NameFields2
+{
+    vlen uint32
+    vm uint32
+    vmap uint32
+    vn uint32
+    voc uint32
+    vocab uint32
+    vocabCount uint32
+    vocabs uint32
+    vocabularies uint32
+    vocabulary uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    vocabularyLength Inner
+    vocabularyStart Inner
+    vocabularyWireId Inner
+    vocabulary_bytes Inner
+    vocabulary_entries Inner
+    vocabulary_kind Inner
+    vok Inner
+    vp Inner
+    vpe Inner
+    vref Inner
+}
+
+table NameTypes3
+{
+    one0  vocabularyLength
+    many0 [..4]vocabularyLength
+    one1  vocabularyStart
+    many1 [..4]vocabularyStart
+    one2  vocabularyWireId
+    many2 [..4]vocabularyWireId
+    one3  vocabulary_bytes
+    many3 [..4]vocabulary_bytes
+    one4  vocabulary_entries
+    many4 [..4]vocabulary_entries
+    one5  vocabulary_kind
+    many5 [..4]vocabulary_kind
+    one6  vok
+    many6 [..4]vok
+    one7  vp
+    many7 [..4]vp
+    one8  vpe
+    many8 [..4]vpe
+    one9  vref
+    many9 [..4]vref
+}
+
+table NameFields3
+{
+    vocabularyLength uint32
+    vocabularyStart uint32
+    vocabularyWireId uint32
+    vocabulary_bytes uint32
+    vocabulary_entries uint32
+    vocabulary_kind uint32
+    vok uint32
+    vp uint32
+    vpe uint32
+    vref uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    vrow Inner
+    vs Inner
+    vsize Inner
+    vv Inner
+    w Inner
+    w0 Inner
+    w1 Inner
+    w2 Inner
+    w3 Inner
+    wById Inner
+}
+
+table NameTypes4
+{
+    one0  vrow
+    many0 [..4]vrow
+    one1  vs
+    many1 [..4]vs
+    one2  vsize
+    many2 [..4]vsize
+    one3  vv
+    many3 [..4]vv
+    one4  w
+    many4 [..4]w
+    one5  w0
+    many5 [..4]w0
+    one6  w1
+    many6 [..4]w1
+    one7  w2
+    many7 [..4]w2
+    one8  w3
+    many8 [..4]w3
+    one9  wById
+    many9 [..4]wById
+}
+
+table NameFields4
+{
+    vrow uint32
+    vs uint32
+    vsize uint32
+    vv uint32
+    w uint32
+    w0 uint32
+    w1 uint32
+    w2 uint32
+    w3 uint32
+    wById uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    wMark Inner
+    wSigned Inner
+    w_buf Inner
+    w_f64 Inner
+    w_float Inner
+    w_int Inner
+    w_leb Inner
+    w_raw Inner
+    w_raw_int Inner
+    w_small Inner
+}
+
+table NameTypes5
+{
+    one0  wMark
+    many0 [..4]wMark
+    one1  wSigned
+    many1 [..4]wSigned
+    one2  w_buf
+    many2 [..4]w_buf
+    one3  w_f64
+    many3 [..4]w_f64
+    one4  w_float
+    many4 [..4]w_float
+    one5  w_int
+    many5 [..4]w_int
+    one6  w_leb
+    many6 [..4]w_leb
+    one7  w_raw
+    many7 [..4]w_raw
+    one8  w_raw_int
+    many8 [..4]w_raw_int
+    one9  w_small
+    many9 [..4]w_small
+}
+
+table NameFields5
+{
+    wMark uint32
+    wSigned uint32
+    w_buf uint32
+    w_f64 uint32
+    w_float uint32
+    w_int uint32
+    w_leb uint32
+    w_raw uint32
+    w_raw_int uint32
+    w_small uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    w_str Inner
+    w_sub Inner
+    w_u32 Inner
+    w_u64 Inner
+    w_u8 Inner
+    walk Inner
+    walkBodies Inner
+    walkBody Inner
+    walkNumber Inner
+    walkOne Inner
+}
+
+table NameTypes6
+{
+    one0  w_str
+    many0 [..4]w_str
+    one1  w_sub
+    many1 [..4]w_sub
+    one2  w_u32
+    many2 [..4]w_u32
+    one3  w_u64
+    many3 [..4]w_u64
+    one4  w_u8
+    many4 [..4]w_u8
+    one5  walk
+    many5 [..4]walk
+    one6  walkBodies
+    many6 [..4]walkBodies
+    one7  walkBody
+    many7 [..4]walkBody
+    one8  walkNumber
+    many8 [..4]walkNumber
+    one9  walkOne
+    many9 [..4]walkOne
+}
+
+table NameFields6
+{
+    w_str uint32
+    w_sub uint32
+    w_u32 uint32
+    w_u64 uint32
+    w_u8 uint32
+    walk uint32
+    walkBodies uint32
+    walkBody uint32
+    walkNumber uint32
+    walkOne uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    walk_array Inner
+    walk_content Inner
+    walk_default Inner
+    walk_elem Inner
+    walk_element Inner
+    walk_enum Inner
+    walk_enum_name Inner
+    walk_field Inner
+    walk_fn Inner
+    walk_framed Inner
+}
+
+table NameTypes7
+{
+    one0  walk_array
+    many0 [..4]walk_array
+    one1  walk_content
+    many1 [..4]walk_content
+    one2  walk_default
+    many2 [..4]walk_default
+    one3  walk_elem
+    many3 [..4]walk_elem
+    one4  walk_element
+    many4 [..4]walk_element
+    one5  walk_enum
+    many5 [..4]walk_enum
+    one6  walk_enum_name
+    many6 [..4]walk_enum_name
+    one7  walk_field
+    many7 [..4]walk_field
+    one8  walk_fn
+    many8 [..4]walk_fn
+    one9  walk_framed
+    many9 [..4]walk_framed
+}
+
+table NameFields7
+{
+    walk_array uint32
+    walk_content uint32
+    walk_default uint32
+    walk_elem uint32
+    walk_element uint32
+    walk_enum uint32
+    walk_enum_name uint32
+    walk_field uint32
+    walk_fn uint32
+    walk_framed uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

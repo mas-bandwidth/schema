@@ -34,9 +34,9 @@ local GENERATED = "build/conformance-luau"
 local SURFACES = {
 	"wire", "message", "message-prior", "report", "framing", "retain", "retain-save", "json-read", "json-write", "json-hostile",
 	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery",
-	"cook-forgery", "cook-reason", "block-reason",
+	"cook-forgery",
 	"write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json",
-	"write-refusal-cook", "write-refusal-block", "announce", "read-into", "json-write-into",
+	"write-refusal-cook", "write-refusal-block", "write-refusal-shape", "announce", "read-into", "json-write-into",
 }
 local listed: { [string]: boolean } = {}
 for _, s in SURFACES do
@@ -1138,9 +1138,10 @@ end
 -- <pointer>`: the patch is already applied, the extent is the length the
 -- caller claims (-1 the file's own) and the pointer the buffer the caller
 -- holds (`null` none, else the lead). forgery and cook-forgery answer
--- `open`/`refuse`; block-reason and cook-reason the first failing clause's
--- name, or `ok`. The reason is the reader's own: this driver places bytes and
--- prints what it is told.
+-- `open`/`refuse`, the verdict of the reader's own first failing clause: this
+-- driver places bytes and prints what it is told. The reason surfaces
+-- (cook-reason, block-reason) are retired: the harness does not run them
+-- (test/conformance/harness/run.go retiredSurfaces).
 local function forgeryReason(f: { string }): (boolean, string?)
 	local source: buffer? = nil
 	local lead = 0
@@ -1163,14 +1164,12 @@ local function forgeryReason(f: { string }): (boolean, string?)
 	return true, cookReason(C, f[4], build :: integer, source, extent, lead)
 end
 
-local function surfaceForgery(lines: { { string } }, kindName: string, reasons: boolean)
+local function surfaceForgery(lines: { { string } }, kindName: string)
 	for _, f in kind(lines, "forgery") do
 		if f[3] == kindName then
 			local carried, why = forgeryReason(f)
 			if not carried then
 				say(f[2], nil)
-			elseif reasons then
-				sayText(f[2], (why or "ok") .. "\n")
 			else
 				sayText(f[2], verdict(why))
 			end
@@ -1426,7 +1425,136 @@ local function wrefSet(u: any, root: string, v: any, path: string, what: string,
 	end
 end
 
+-- THE SHAPE ROWS (`write-refusal-shape`; docs/SPEC-CONFORMANCE.md
+-- DW-TABLE-SHAPE): the row's token is a value of the WRONG KIND, put where the
+-- path names, and the root's own writer must refuse it by its answer (nil),
+-- never by raising. Luau spells `int` 1, `float` 1.5, `numtext` "1.5", `text`
+-- "x", `bool` true, `map` {} and `seq` { 1 }. Three have no wrong-kind
+-- spelling here and answer `unrepresentable`: `null` in a field or an element
+-- is nil, which IS the field at its default (a table holds no nil);
+-- `improper` names no Luau value; and `map` or `seq` where a record, a union,
+-- an array or a map belongs is a Luau table, that value's own spelling. `null`
+-- as the whole value is nil handed to the writer, which must refuse it.
+local SHAPE_TABLE_SHAPES = { tab = true, union = true, arr = true, map = true, ptr = true }
+
+local function shapeToken(token: string): any
+	if token == "int" then return 1 end
+	if token == "float" then return 1.5 end
+	if token == "numtext" then return "1.5" end
+	if token == "text" then return "x" end
+	if token == "bool" then return true end
+	if token == "map" then return {} end
+	if token == "seq" then return { 1 } end
+	return nil
+end
+
+-- shapeSet puts the token's value at `path` in `v` and answers true when the
+-- token has no wrong-kind spelling there (nothing is set). A path ending
+-- `f[i]` makes the array f its first i elements as loaded, then the value; a
+-- path ending in an arm's name selects that arm (its tag, 1-based in
+-- declaration order) and makes the value its payload.
+local function shapeSet(u: any, root: string, v: any, path: string, token: string): boolean
+	if token == "null" or token == "improper" then return true end
+	local value = shapeToken(token)
+	-- an arm: the prefix names a union (a field, or one element of an array of
+	-- unions), and wrefWalk answers the union value itself and the arm
+	local prefix, last = string.match(path, "^(.*)%.([^.]+)$")
+	if prefix ~= nil and string.find(last :: string, "%[") == nil then
+		local _, pfd, pidx = wrefWalk(u, root, v, prefix :: string)
+		local ut: string? = nil
+		if pfd.s == "union" and pidx == nil then ut = pfd.t end
+		if pfd.s == "arr" and pidx ~= nil and pfd.e ~= nil and pfd.e.s == "union" then ut = pfd.e.t end
+		if ut ~= nil then
+			local union, arm = wrefWalk(u, root, v, path)
+			local tag = nil
+			for i, a in u.S.lookup(ut).arms do
+				if a.name == last then tag = i end
+			end
+			if tag == nil then error(path .. ": no arm " .. tostring(last)) end
+			local ad: any = arm.f or arm
+			if type(value) == "table" and SHAPE_TABLE_SHAPES[ad.s] then return true end
+			union.Type = tag
+			union[arm.slot] = value
+			return false
+		end
+	end
+	local owner, fd, idx = wrefWalk(u, root, v, path)
+	local d: any = if idx ~= nil and fd.s == "arr" then fd.e else fd
+	if type(value) == "table" and SHAPE_TABLE_SHAPES[d.s] then return true end
+	if idx == nil then
+		owner[fd.slot] = value
+		return false
+	end
+	local old = owner[fd.slot]
+	local arr = {}
+	for i = 1, idx - 1 do
+		if type(old) ~= "table" or old[i] == nil then error(path .. ": element " .. (i - 1) .. " is not loaded") end
+		arr[i] = old[i]
+	end
+	arr[idx] = value
+	owner[fd.slot] = arr
+	if owner[fd.slot .. "Count"] ~= nil then owner[fd.slot .. "Count"] = idx end
+	return false
+end
+
+-- a shape row's writer answer: nil is the refusal; a RAISED error is not one,
+-- and is answered as what it is (the error in the answer itself, since this
+-- leg's stdout is its answer channel), so the row goes red
+local function shapeWrite(u: any, d: any, v: any): string
+	local ok, saved = pcall(u.save.save, d, v)
+	if not ok then
+		return "raised: " .. (string.gsub(tostring(saved), "\n", " ")) .. "\n"
+	end
+	if saved == nil then return "refused\n" end
+	local okm, sz = pcall(u.save.measure, d, v)
+	if okm and sz == buffer.len(saved) then return "wrote\n" end
+	return "wrote against a measure that disagrees\n"
+end
+
+local function surfaceWriteRefusalShape(lines: { { string } })
+	for _, f in kind(lines, "write-refusal-shape") do
+		local name, key, root, wire, path, what, text = f[2], f[3], f[4], f[5], f[6], f[7], f[8]
+		local u = unit(key)
+		local d = if u ~= nil then rootOf(u, root) else nil
+		if u == nil or d == nil then
+			say(name, nil)
+			continue
+		end
+		local r = report()
+		local v: any = u.load.load(root, file(wire), r)
+		if v == nil then
+			error(name .. ": load refused " .. wire .. " (" .. tostring(r.reason) .. ")")
+		end
+		local unrep = false
+		if what ~= "shape" then
+			unrep = wrefSet(u, root, v, path, what, text) == true
+		elseif path == "." then
+			if text == "improper" then
+				unrep = true
+			elseif text == "null" then
+				v = nil
+			else
+				v = shapeToken(text)
+				-- a Luau table IS a record: the whole value as one is the
+				-- root's own spelling
+				if type(v) == "table" then unrep = true end
+			end
+		else
+			unrep = shapeSet(u, root, v, path, text)
+		end
+		if unrep then
+			sayText(name, "unrepresentable\n")
+		else
+			sayText(name, shapeWrite(u, d, v))
+		end
+	end
+end
+
 local function surfaceWriteRefusal(lines: { { string } }, kindName: string)
+	if kindName == "write-refusal-shape" then
+		surfaceWriteRefusalShape(lines)
+		return
+	end
 	local connections: { [string]: { string } } = {}
 	for _, c in kind(lines, "connection") do
 		connections[c[2]] = c
@@ -1611,6 +1739,83 @@ local function surfaceReadInto(lines: { { string } })
 			else
 				sayText(name, "read\n" .. tostring(#out) .. "\n")
 			end
+		elseif form == "retain-fixed" then
+			-- LoadRetain of a FIXED-class root, pre-filled report, roomy store
+			local rep = {
+				malformed = true, refused = 7, unknown = 7, kindMismatch = 7, clamped = 7,
+				widened = 7, duplicate = 7, verdict = 0, reason = "stale", retained = 7,
+				retainLost = 7, missingRequired = 7, blobShared = 7, nonFiniteFloat = "stale",
+				missingName = "stale", field = "stale", unknownField = "stale",
+				duplicateField = "stale",
+			}
+			local ok, got = pcall(u.retain.LoadRetain, root, file(lawful), rep, 1048576, 131072)
+			local line = if not ok then "threw\n"
+				elseif got == nil or (rep.reason ~= nil and rep.reason ~= "") or rep.malformed == true or (rep.refused or 0) ~= 0 then "refused\n"
+				else "read\n"
+			local fresh = report()
+			pcall(u.retain.LoadRetain, root, file(lawful), fresh, 1048576, 131072)
+			local diff = {}
+			for k, v in rep do
+				if fresh[k] ~= v then table.insert(diff, tostring(k) .. "=" .. tostring(v) .. " want " .. tostring(fresh[k])) end
+			end
+			for k, v in fresh do
+				if rep[k] == nil then table.insert(diff, tostring(k) .. "=nil want " .. tostring(v)) end
+			end
+			table.sort(diff)
+			sayText(name, line .. (if #diff == 0 then "zeroed\n" else "kept " .. table.concat(diff, ", ") .. "\n"))
+		elseif form == "retain" or form == "region" then
+			-- THE `retain` FORM (test/conformance/README.md): ONE report,
+			-- PRE-FILLED (every counter, the reason and every detail the Luau
+			-- report can carry; `verdict` stays 0 because the table load never
+			-- sets it and the step line below reads it), then the retaining
+			-- load of <lawful>, <damaged>, <lawful> again. After each lawful
+			-- load every field of the report must equal the field the same
+			-- load leaves in a FRESH report (§6.5).
+			local lawfulBytes, damagedBytes = file(lawful), file(damaged)
+			local function load(bytes: buffer, rep: any): string
+				-- `region`: the PLAIN load (Luau has no region read), not LoadRetain
+				local ok, got
+				if form == "region" then
+					ok, got = pcall(u.load.load, root, bytes, rep)
+				else
+					ok, got = pcall(u.retain.LoadRetain, root, bytes, rep, 1048576, 131072)
+				end
+				if not ok then return "threw\n" end
+				if got == nil or (rep.reason ~= nil and rep.reason ~= "") or rep.malformed == true or (rep.refused or 0) ~= 0 then
+					return "refused\n"
+				end
+				return "read\n"
+			end
+			local fresh = report()
+			if load(lawfulBytes, fresh) ~= "read\n" then
+				error(name .. ": the lawful retaining load did not read into a fresh report")
+			end
+			local function zeroed(rep: any): string
+				local diff = {}
+				for k, v in rep do
+					if fresh[k] ~= v then table.insert(diff, tostring(k) .. "=" .. tostring(v) .. " want " .. tostring(fresh[k])) end
+				end
+				for k, v in fresh do
+					if rep[k] == nil then table.insert(diff, tostring(k) .. "=nil want " .. tostring(v)) end
+				end
+				table.sort(diff)
+				if #diff == 0 then return "zeroed\n" end
+				return "kept " .. table.concat(diff, ", ") .. "\n"
+			end
+			local rep = {
+				malformed = true, refused = 7, unknown = 7, kindMismatch = 7, clamped = 7,
+				widened = 7, duplicate = 7, verdict = 0, reason = "stale", retained = 7,
+				retainLost = 7, missingRequired = 7, blobShared = 7, nonFiniteFloat = "stale",
+				missingName = "stale", field = "stale", unknownField = "stale",
+				duplicateField = "stale",
+			}
+			local parts = {}
+			parts[#parts + 1] = load(lawfulBytes, rep)
+			parts[#parts + 1] = zeroed(rep)
+			parts[#parts + 1] = load(damagedBytes, rep)
+			parts[#parts + 1] = load(lawfulBytes, rep)
+			parts[#parts + 1] = zeroed(rep)
+			sayText(name, table.concat(parts))
 		else
 			local n = tonumber(count)
 			if n == nil or n < 1 then error(name .. ": " .. tostring(count) .. " is not a count") end
@@ -1737,13 +1942,9 @@ elseif surface == "block-foreign" then
 elseif surface == "block-dump" then
 	surfaceBlockDump(lines)
 elseif surface == "forgery" then
-	surfaceForgery(lines, "block", false)
+	surfaceForgery(lines, "block")
 elseif surface == "cook-forgery" then
-	surfaceForgery(lines, "cook", false)
-elseif surface == "cook-reason" then
-	surfaceForgery(lines, "cook", true)
-elseif surface == "block-reason" then
-	surfaceForgery(lines, "block", true)
+	surfaceForgery(lines, "cook")
 elseif string.sub(surface, 1, 13) == "write-refusal" then
 	surfaceWriteRefusal(lines, surface)
 elseif surface == "announce" then
