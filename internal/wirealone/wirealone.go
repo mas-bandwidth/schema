@@ -33,13 +33,18 @@ var Classes = map[string]bool{
 // Read answers every row of the file under root, keyed by row name and
 // valued by its class. A malformed line, an unknown class, a repeated row or
 // an empty file is an error naming it.
-func Read(root string) (map[string]string, error) {
+func Read(root string) (rows map[string]string, err error) {
 	f, err := os.Open(filepath.Join(root, Path))
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
-	rows := map[string]string{}
+	// a close that fails is an error, never dropped
+	defer func() {
+		if cerr := f.Close(); cerr != nil && err == nil {
+			rows, err = nil, cerr
+		}
+	}()
+	rows = map[string]string{}
 	sc := bufio.NewScanner(f)
 	for line := 1; sc.Scan(); line++ {
 		text := strings.TrimSpace(sc.Text())
