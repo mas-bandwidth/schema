@@ -414,7 +414,7 @@ func TestConstrainedTestGateCorpus(t *testing.T) {
 type ledgerLane struct {
 	job      string
 	goTest   bool     // a step runs `go test` directly
-	records  bool     // it sets PGROUP_GO_TEST_JSON (or certify.yml PGROUP_GO_TEST_SUMMARY)
+	records  bool     // it sets PGROUP_GO_TEST_JSON
 	reads    bool     // an `if: always()` step runs gotestreport -skips on the record
 	provides []string // every class its -provides strings name
 }
@@ -463,8 +463,7 @@ func ledgerLanes(workflow string) []ledgerLane {
 		if goTestCommand.MatchString(line) {
 			cur.goTest = true
 		}
-		if strings.Contains(line, `echo "PGROUP_GO_TEST_JSON=$RUNNER_TEMP/go-test-json" >> "$GITHUB_ENV"`) ||
-			strings.Contains(line, `echo "PGROUP_GO_TEST_SUMMARY=$RUNNER_TEMP/go-test-summary" >> "$GITHUB_ENV"`) {
+		if strings.Contains(line, `echo "PGROUP_GO_TEST_JSON=$RUNNER_TEMP/go-test-json" >> "$GITHUB_ENV"`) {
 			cur.records = true
 		}
 		if strings.Contains(line, "go run ./tools/gotestreport") && strings.Contains(line, "-skips "+skipLedgerPath) && always {

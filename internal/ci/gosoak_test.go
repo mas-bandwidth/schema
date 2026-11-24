@@ -61,7 +61,7 @@ var releaseSoakBudget = regexp.MustCompile(`go test [^\n]*-timeout (\S+) -soak-i
 // (the owner, 2026-11-16: "Nightly runs don't have a timeout... they can run
 // as long as they need."), so the soak runs to the end and the budget is read
 // after it: tools/pgroup lifts the recipe's -timeout in the nightly and
-// records it with the package's wall time (PGROUP_GO_TEST_SUMMARY, set by
+// records it with the package's wall time (PGROUP_GO_TEST_JSON, set by
 // release-gates), and that job's last step, tools/gotestreport, names the
 // package OVER BUDGET when its test binary ran past it. This test keeps that
 // budget meaningful:
@@ -85,10 +85,10 @@ func TestGoReleaseSoakFitsItsBudget(t *testing.T) {
 		t.Fatal("certify.yml has no release-gates job — the job that runs tables-go-release is missing")
 	}
 	// the budget is read, or this test guards nothing: the job records its
-	// go test package results and reports them whatever happened
+	// go test -json events and reports them whatever happened
 	for _, want := range []string{
-		`run: echo "PGROUP_GO_TEST_SUMMARY=$RUNNER_TEMP/go-test-summary" >> "$GITHUB_ENV"`,
-		"        if: always()\n        run: go run ./tools/gotestreport -budget 10m -skips .github/skip-ledger.txt \"$PGROUP_GO_TEST_SUMMARY\"",
+		`run: echo "PGROUP_GO_TEST_JSON=$RUNNER_TEMP/go-test-json" >> "$GITHUB_ENV"`,
+		"        if: always()\n        run: go run ./tools/gotestreport -budget 10m -skips .github/skip-ledger.txt \"$PGROUP_GO_TEST_JSON\"",
 	} {
 		if !strings.Contains(gates, want) {
 			t.Errorf("certify.yml release-gates lacks %q: nothing would read the soak's budget", want)

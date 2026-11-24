@@ -185,8 +185,8 @@ jobs:
           go-version: '1.26'
           cache: false
 
-      - name: where this job records its go test package results
-        run: echo "PGROUP_GO_TEST_SUMMARY=$RUNNER_TEMP/go-test-summary" >> "$GITHUB_ENV"
+      - name: where this job records its go test -json events
+        run: echo "PGROUP_GO_TEST_JSON=$RUNNER_TEMP/go-test-json" >> "$GITHUB_ENV"
 
       - name: isolate per-job SDK and build caches
         run: |
@@ -614,7 +614,7 @@ jobs:
 
       - name: report each go test package against its named budget
         if: always()
-        run: go run ./tools/gotestreport -budget 10m -skips .github/skip-ledger.txt "$PGROUP_GO_TEST_SUMMARY"
+        run: go run ./tools/gotestreport -budget 10m -skips .github/skip-ledger.txt "$PGROUP_GO_TEST_JSON"
 
   # EVERY PORT'S RELEASE GATE, by name. A port whose `make test` half had to
   # stay cheap puts its expensive half — the soak, the allocation gate at
@@ -686,11 +686,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # every go test this job runs records its package results here (the
+      # every go test this job runs records its go test -json events here (the
       # report at the end of the job). A step sets it because a job's env may
       # not name the runner context; RUNNER_TEMP is the job's own.
-      - name: where this job records its go test package results
-        run: echo "PGROUP_GO_TEST_SUMMARY=$RUNNER_TEMP/go-test-summary" >> "$GITHUB_ENV"
+      - name: where this job records its go test -json events
+        run: echo "PGROUP_GO_TEST_JSON=$RUNNER_TEMP/go-test-json" >> "$GITHUB_ENV"
 
       - name: isolate Mix and Hex in the job temp directory
         run: |
@@ -823,11 +823,11 @@ jobs:
       # every go test package this job ran, its verdict and wall time, held to
       # the -timeout its command named, after it reported (the nightly rule in
       # the header): a package past it is named OVER BUDGET, not failed: a nightly has no time limit.
-      # Its text is go test's own, byte for byte (summary mode), so no recipe
-      # that greps it sees anything new.
+      # It counts pass, fail and skip per test from the go test -json events; a
+      # package that passed no test, or skipped one, is red by name.
       - name: report each go test package against its named budget
         if: always()
-        run: go run ./tools/gotestreport -budget 10m -skips .github/skip-ledger.txt "$PGROUP_GO_TEST_SUMMARY"
+        run: go run ./tools/gotestreport -budget 10m -skips .github/skip-ledger.txt "$PGROUP_GO_TEST_JSON"
 
   # The per-port inline-budget gate (issue #25; BENCH-STANDARD.md §4.3),
   # fanned out one leg per job across the Linux X64 and macOS ARM64 fleet.
@@ -861,8 +861,8 @@ jobs:
           go-version: '1.26'
           cache: false
 
-      - name: where this job records its go test package results
-        run: echo "PGROUP_GO_TEST_SUMMARY=$RUNNER_TEMP/go-test-summary" >> "$GITHUB_ENV"
+      - name: where this job records its go test -json events
+        run: echo "PGROUP_GO_TEST_JSON=$RUNNER_TEMP/go-test-json" >> "$GITHUB_ENV"
 
       - name: isolate per-job .NET build state
         if: matrix.leg == 'cs' || (matrix.os == 'fleet' && matrix.leg == 'go')
@@ -912,7 +912,7 @@ jobs:
 
       - name: report each go test package against its named budget
         if: always()
-        run: go run ./tools/gotestreport -budget 10m -skips .github/skip-ledger.txt "$PGROUP_GO_TEST_SUMMARY"
+        run: go run ./tools/gotestreport -budget 10m -skips .github/skip-ledger.txt "$PGROUP_GO_TEST_JSON"
 
   # A new CVE lands with no commit, so govulncheck is the one gate whose
   # verdict changes on its own — the nightly is the trigger that catches it.
@@ -972,11 +972,11 @@ jobs:
           # the newest v tag and its tree are the previous side
           fetch-depth: 0
 
-      # every go test this job runs records its package results here (the
+      # every go test this job runs records its go test -json events here (the
       # report at the end of the job). A step sets it because a job's env may
       # not name the runner context; RUNNER_TEMP is the job's own.
-      - name: where this job records its go test package results
-        run: echo "PGROUP_GO_TEST_SUMMARY=$RUNNER_TEMP/go-test-summary" >> "$GITHUB_ENV"
+      - name: where this job records its go test -json events
+        run: echo "PGROUP_GO_TEST_JSON=$RUNNER_TEMP/go-test-json" >> "$GITHUB_ENV"
 
       - name: isolate Mix and Hex in the job temp directory
         run: |
@@ -996,11 +996,11 @@ jobs:
       # every go test package this job ran, its verdict and wall time, held to
       # the -timeout its command named, after it reported (the nightly rule in
       # the header): a package past it is named OVER BUDGET, not failed: a nightly has no time limit.
-      # Its text is go test's own, byte for byte (summary mode), so no recipe
-      # that greps it sees anything new.
+      # It counts pass, fail and skip per test from the go test -json events; a
+      # package that passed no test, or skipped one, is red by name.
       - name: report each go test package against its named budget
         if: always()
-        run: go run ./tools/gotestreport -budget 10m -skips .github/skip-ledger.txt "$PGROUP_GO_TEST_SUMMARY"
+        run: go run ./tools/gotestreport -budget 10m -skips .github/skip-ledger.txt "$PGROUP_GO_TEST_JSON"
 
   # THE NIGHTLY NEGATIVE-CONTROL TIER (issue #563). Every negative control this
   # tree defines runs on every pull request, in ci.yml, one job per group, and
@@ -1051,11 +1051,11 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # every go test this job runs records its package results here (the
+      # every go test this job runs records its go test -json events here (the
       # report at the end of the job). A step sets it because a job's env may
       # not name the runner context; RUNNER_TEMP is the job's own.
-      - name: where this job records its go test package results
-        run: echo "PGROUP_GO_TEST_SUMMARY=$RUNNER_TEMP/go-test-summary" >> "$GITHUB_ENV"
+      - name: where this job records its go test -json events
+        run: echo "PGROUP_GO_TEST_JSON=$RUNNER_TEMP/go-test-json" >> "$GITHUB_ENV"
 
       - name: isolate Mix and Hex in the job temp directory
         run: |
@@ -1210,11 +1210,11 @@ jobs:
       # every go test package this job ran, its verdict and wall time, held to
       # the -timeout its command named, after it reported (the nightly rule in
       # the header): a package past it is named OVER BUDGET, not failed: a nightly has no time limit.
-      # Its text is go test's own, byte for byte (summary mode), so no recipe
-      # that greps it sees anything new.
+      # It counts pass, fail and skip per test from the go test -json events; a
+      # package that passed no test, or skipped one, is red by name.
       - name: report each go test package against its named budget
         if: always()
-        run: go run ./tools/gotestreport -budget 10m -skips .github/skip-ledger.txt "$PGROUP_GO_TEST_SUMMARY"
+        run: go run ./tools/gotestreport -budget 10m -skips .github/skip-ledger.txt "$PGROUP_GO_TEST_JSON"
 
   # THE NINE SCHEMA LEGS (issue #nx-g30). One reusable workflow, leg.yml,
   # runs every registered driver over its own surface; the matrix input is

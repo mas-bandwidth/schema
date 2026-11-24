@@ -41,12 +41,14 @@ package main
 // which is most of the tree that reads test inputs at all; one central rule
 // leaves none of them to remember it.
 //
-// PGROUP_GO_TEST_SUMMARY is the same record for jobs whose make recipes grep
+// PGROUP_GO_TEST_SUMMARY records only package ok/FAIL lines for a job whose make recipes grep
 // go test's own text (certify's `make test`, where -v-shaped output would
 // change what a `--- SKIP` or `--- PASS` grep sees): the output passes
 // through byte for byte, and only each package's result line (`ok`/`FAIL`,
 // its wall time) is recorded. That is enough for the budget, not for naming
-// the test a cut row was running.
+// the test a cut row was running. It counts no test, so
+// tools/gotestreport reads it as a row that passed none (NO TEST PASSED): no
+// CI row reads it, and certify records PGROUP_GO_TEST_JSON (2026-11-24).
 
 import (
 	"bufio"
