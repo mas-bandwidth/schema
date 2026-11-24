@@ -347,7 +347,7 @@ func TestGoPreservesSchemaRootedAPIWithPrivateSpellings(t *testing.T) {
 		name, upperSchemaRoot, privateSchemaRoot, upperGoRoot, privateGoRoot string
 	}{
 		{name: "lowercase", upperSchemaRoot: "Lower", privateSchemaRoot: "lower", upperGoRoot: "Lower", privateGoRoot: "lower"},
-		{name: "escaped-keyword", upperSchemaRoot: "Function", privateSchemaRoot: "func", upperGoRoot: "Function", privateGoRoot: "func_"},
+		{name: "escaped-keyword", upperSchemaRoot: "Func", privateSchemaRoot: "func", upperGoRoot: "Func", privateGoRoot: "func_"},
 		{name: "initialism", upperSchemaRoot: "LowerId", privateSchemaRoot: "lowerId", upperGoRoot: "LowerID", privateGoRoot: "lowerID"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
