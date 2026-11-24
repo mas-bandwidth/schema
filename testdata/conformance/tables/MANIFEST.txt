@@ -2676,8 +2676,9 @@ write-refusal-block bref_elems_ok    backenddemo MatchResult   testdata/conforma
 # shape tokens are FORMAT.md's (`write-refusal-shape`). A leg whose types
 # cannot hold the value, or in which the value is the field's own lawful
 # spelling (a Lua table is a record), answers `unrepresentable`. The legs that
-# refuse in every build owe every row (run.go shapeLegs); the assert legs check
-# writes in their debug build alone and do not list the surface. TortureCook
+# refuse in every build owe every row (run.go shapeLegs); the assert legs answer
+# from their debug build: `unrepresentable` where their types cannot hold the
+# value, their own refusal where they can (a null in a class place). TortureCook
 # is a variable root, written by Save; RootConfig a fixed one, written by its
 # fixed form. The lawful twins write the same roots through the same writers.
 write-refusal-shape shref_v_ok_int          cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin b_i32                    int   7    wrote
@@ -2779,6 +2780,19 @@ read-into ri_json       tblsurf      Counted       json        testdata/conforma
 read-into ri_fixed      tblsurf      Narrow        fixed       testdata/conformance/tables/read-into/narrow_3.fixed        testdata/conformance/tables/read-into/narrow_3_damaged.fixed     3
 read-into ri_message    backend_conn StorePurchase message     testdata/conformance/tables/message-batch/batch_delivered.bin testdata/conformance/tables/message-batch/batch_range_in_second.bin 2
 read-into ri_fixed_5000 tblsurf      Narrow        fixed-nocap testdata/conformance/tables/read-into/narrow_5000.fixed     -                                                                5000
+# A FIELD THE WRITER DID NOT SUPPLY HOLDS ITS DECLARED DEFAULT AFTER A LOAD,
+# never what the caller's value held before (SPEC-TABLES §3.4, THE PREFILL IS
+# WHAT ANSWERS "ABSENT FIELD"; §6.5). The first read lands v3's full record,
+# every nested element off its default (nested_chain's leaf bonus 17 and tag
+# "🚀ok", sub_opt's note "present", extra_opt present). The second read is a
+# LAWFUL v1 record, read through the lineage, whose layout carries none of
+# those fields, into the SAME value: every one of them holds its declared
+# default (bonus 9, tag "leaf", note "sub", extra_opt absent), exactly as a
+# fresh value read from v1 holds them. The engine writes the answer from its
+# own read of v1 into a fresh value. The trailing lawful-second states that
+# the second file is lawful; generate fails if the engine refuses it, and an
+# unmarked fixed row fails if the engine reads its damaged file.
+read-into ri_fixed_lineage tblfixedevo EvoRoot   fixed       testdata/conformance/tables/wire/fixedevo_v3_full.bin       testdata/conformance/tables/wire/fixedevo_v1.bin                 1 lawful-second
 
 # THE RETAIN FAMILY ZEROES ITS REPORT TOO (SPEC-TABLES §6.5, §6.6): the
 # retaining load is handed a report the driver PRE-FILLED (every counter
@@ -2786,6 +2800,15 @@ read-into ri_fixed_5000 tblsurf      Narrow        fixed-nocap testdata/conforma
 # field by field, to the one the same read leaves in a fresh report; then a
 # damaged retaining load refuses into it and the lawful one zeroes it again.
 read-into ri_retain     tblrt1       Node          retain      testdata/wire/tables/retain_rt2.bin                           testdata/conformance/tables/read-into/retain_rt2_cut.bin         1
+
+# THE PLAIN LOAD ZEROES A PRE-FILLED REPORT TOO (SPEC-TABLES §6.5): the same
+# protocol through the plain <Root>Load of a variable root, the REGION read
+# where the leg has one. And LoadRetain on a FIXED-class root is refused by
+# name (§6.6): a runtime refusal refuses through a report it zeroed first, so
+# the report equals a fresh one's; a compile-time refusal answers
+# unrepresentable.
+read-into ri_region       tblsurf    Counted       region       testdata/conformance/tables/wire/surf_counted_full.bin      testdata/conformance/tables/read-into/counted_cut.bin            1
+read-into ri_retain_fixed tblsurf    Narrow        retain-fixed testdata/conformance/tables/wire/surf_narrow_full.bin       -                                                                1
 
 # FL-14, FL-15 (SPEC-TABLES §16.1): the text writer in a comma-decimal process
 # locale, into a caller buffer longer than the text, writes the instance's

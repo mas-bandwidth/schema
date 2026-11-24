@@ -104,7 +104,7 @@ func varTopWire(t *testing.T) (at, below []byte) {
 	encode := func(src, text string) []byte {
 		dir := t.TempDir()
 		path := filepath.Join(dir, "Top.schema")
-		if err := os.WriteFile(path, []byte("package top\n"+src), 0o644); err != nil {
+		if err := os.WriteFile(path, []byte("package topmost\n"+src), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		u, err := compiler.New().Load([]string{path})

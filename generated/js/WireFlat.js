@@ -1504,6 +1504,9 @@ export function ReadProbeConfigFlatBits(view, numBits, value) {
 // must hold ProbeArrayMaxBytes.
 export function WriteProbeArrayFlat(view, value) {
   let v = 0, x = 0, n = 0, lo = 0, sb = 0, wi = 0;
+  if (value.samples == null || value.samples.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+    return -1;
+  }
   for (let i0 = 0; i0 < 2; i0++) {
     const e0 = value.samples[i0];
     v = ((e0.active ? 1 : 0)) >>> 0;
@@ -2732,6 +2735,9 @@ export function WriteTestDataFlat(view, value) {
     wi += 4;
     lo = 0;
     sb = 0;
+  }
+  if (value.fixedBytes == null || value.fixedBytes.length !== 17) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+    return -1;
   }
   for (let i0 = 0; i0 < 17; i0++) {
     if (!globalThis.Number.isInteger(value.fixedBytes[i0]) || value.fixedBytes[i0] < 0 || value.fixedBytes[i0] > 255) { // a bare integer must fit its width

@@ -55,6 +55,18 @@ internal static class Program
         { "const_at", (ref PacketWriteRefusal v) => v.FixedConstant = 5 },
         { "reserved_wrong", (ref PacketWriteRefusal v) => v.ReservedZero = 1 },
         { "reserved_at", (ref PacketWriteRefusal v) => v.ReservedZero = 0 },
+        { "int128_high", (ref PacketWriteRefusal v) => v.Wide = new Int128Value(0x5UL, 0x6bc75e2d63100001UL) },
+        { "int128_low", (ref PacketWriteRefusal v) => v.Wide = -11L },
+        { "int128_at_max", (ref PacketWriteRefusal v) => v.Wide = new Int128Value(0x5UL, 0x6bc75e2d63100000UL) },
+        { "int128_at_min", (ref PacketWriteRefusal v) => v.Wide = -10L },
+        { "fixed_high", (ref PacketWriteRefusal v) => v.Fx = 655361 },
+        { "fixed_low", (ref PacketWriteRefusal v) => v.Fx = -655361 },
+        { "fixed_at_max", (ref PacketWriteRefusal v) => v.Fx = 655360 },
+        { "fixed_at_min", (ref PacketWriteRefusal v) => v.Fx = -655360 },
+        { "ufixed_high", (ref PacketWriteRefusal v) => v.Ufx = 0xee6b280000000001UL },
+        { "ufixed_low", (ref PacketWriteRefusal v) => v.Ufx = 0xffffffffUL },
+        { "ufixed_at_max", (ref PacketWriteRefusal v) => v.Ufx = 0xee6b280000000000UL },
+        { "ufixed_at_min", (ref PacketWriteRefusal v) => v.Ufx = 0x100000000UL },
     };
 
     private static int Main(string[] args)

@@ -328,7 +328,7 @@ type wireGen struct {
 // extension type over int, which this library imports.
 func (g *wireGen) enumType(e *ir.Enum) string {
 	g.enums[e.Name] = true
-	return e.Name
+	return dartEnumRef(e.Name)
 }
 
 // enumConst is an enum's named constant for ordinal i — None at 0, the
@@ -344,7 +344,7 @@ func (g *wireGen) enumConst(e *ir.Enum, i int) string {
 // listElemType is dartListElemType, recording an enum element's import.
 func (g *wireGen) listElemType(f *ir.Field) string {
 	if e, ok := f.Type.Ref.(*ir.Enum); ok && f.Type.Kind == ir.TNamed {
-		g.enumType(e)
+		return g.enumType(e)
 	}
 	return dartListElemType(f)
 }
@@ -367,7 +367,13 @@ func (g *wireGen) insertEnumImports() {
 	sort.Strings(files)
 	var imports strings.Builder
 	for _, f := range files {
-		names := byFile[f]
+		names, prefixed := splitEnumShows(g.unit, byFile[f])
+		if prefixed {
+			imports.WriteString(enumPrefixImport(f + ".dart"))
+		}
+		if len(names) == 0 {
+			continue
+		}
 		sort.Strings(names)
 		one := fmt.Sprintf("import '%s.dart' show %s;\n", f, strings.Join(names, ", "))
 		if len(one) <= 81 {
@@ -456,7 +462,7 @@ func dartListElemType(f *ir.Field) string {
 		return "String"
 	case f.Type.Kind == ir.TNamed:
 		if e, isEnum := f.Type.Ref.(*ir.Enum); isEnum {
-			return e.Name // the packet extension type, imported by the wire library
+			return dartEnumRef(e.Name) // the packet extension type, imported by the wire library
 		}
 		if f.Type.Pointer && tableRef(f) != nil {
 			return f.Type.Name + "?"

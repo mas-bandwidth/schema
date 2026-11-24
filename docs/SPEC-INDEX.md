@@ -361,6 +361,7 @@ and absence scoring rules, and §7 traces the rules to their sources.
 | R3/R8b, FL-18/36/38, SPEC-TABLES §3.3 | Seven `announce` cases: `ann_4096_write`, `ann_4097_write`, `ann_strict_peer`, `ann_lenient_peer`, `ann_strict_own`, `ann_send_narrow`, `ann_send_arrays`. R9's explicit zero capacity is a separate boundary. |
 | R4, FL-02/03/17/29, SPEC-TABLES §§3.4, 6.5 | Five `read-into` cases: `ri_variable`, `ri_json`, `ri_fixed`, `ri_message`, `ri_fixed_5000`. |
 | SPEC-TABLES §§6.5, 6.6 | The `read-into` case `ri_retain`: the retaining load zeroes a pre-filled report in full. |
+| SPEC-TABLES §§6.5, 6.6 | The `read-into` cases `ri_region` (the plain region `Load` zeroes a pre-filled report) and `ri_retain_fixed` (a fixed-root `LoadRetain` refuses through a zeroed report, or at compile time). |
 | FL-14/15, SPEC-TABLES §16.1 | Five `json-write-into` cases: `jwi_float_misc`, `jwi_float64_ties`, `jwi_float_exp`, `jwi_negative_zero`, `jwi_root_full`. The row inventory alone gives no per-port locale run evidence. |
 | FL-11/16, SPEC-TABLES §§2.3, 16.2 | `surf_chain127_vals`, `surf_chain128_vals`, `graph_chain_past_cap`, `surf_holder_null_required`, `surf_holder_present`. |
 | FL-04/06/22 and SF-20/22/28/34/35/38, SPEC §5.1 and SPEC-TABLES §16.2 | `sref_{int8,uint8,uint32}_*`, `*_mask_{named,unnamed}`, `sref_count_*` / `sjref_count_*`, `sref_map_dupkey*` / `sjref_map_dupkey*`, and short/long/exact fixed-length rows on the variable, fixed, message, JSON and cook write-refusal surfaces. Whether an edit is representable is a driver result. |

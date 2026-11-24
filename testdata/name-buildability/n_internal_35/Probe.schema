@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum iterator_traits
+{ Zfirst, Zsecond, Zthird }
+
+enum its
+{ Zfirst, Zsecond, Zthird }
+
+enum itself
+{ Zfirst, Zsecond, Zthird }
+
+enum iv
+{ Zfirst, Zsecond, Zthird }
+
+enum ivar
+{ Zfirst, Zsecond, Zthird }
+
+enum ivar_get
+{ Zfirst, Zsecond, Zthird }
+
+enum ivar_set
+{ Zfirst, Zsecond, Zthird }
+
+enum iw
+{ Zfirst, Zsecond, Zthird }
+
+enum j
+{ Zfirst, Zsecond, Zthird }
+
+enum j1
+{ Zfirst, Zsecond, Zthird }
+
+enum j_b64
+{ Zfirst, Zsecond, Zthird }
+
+enum j_b64_alphabet
+{ Zfirst, Zsecond, Zthird }
+
+enum j_bn_mask
+{ Zfirst, Zsecond, Zthird }
+
+enum j_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum j_flt_max
+{ Zfirst, Zsecond, Zthird }
+
+enum j_hex
+{ Zfirst, Zsecond, Zthird }
+
+enum j_indent
+{ Zfirst, Zsecond, Zthird }
+
+enum j_two128
+{ Zfirst, Zsecond, Zthird }
+
+enum join
+{ Zfirst, Zsecond, Zthird }
+
+enum joinField
+{ Zfirst, Zsecond, Zthird }
+
+enum joinPath
+{ Zfirst, Zsecond, Zthird }
+
+enum joinText
+{ Zfirst, Zsecond, Zthird }
+
+enum joined
+{ Zfirst, Zsecond, Zthird }
+
+enum jr
+{ Zfirst, Zsecond, Zthird }
+
+enum jr_array
+{ Zfirst, Zsecond, Zthird }
+
+enum jr_blob
+{ Zfirst, Zsecond, Zthird }
+
+enum jr_collection
+{ Zfirst, Zsecond, Zthird }
+
+enum jr_default_elem
+{ Zfirst, Zsecond, Zthird }
+
+enum jr_keyed
+{ Zfirst, Zsecond, Zthird }
+
+enum jr_keys
+{ Zfirst, Zsecond, Zthird }
+
+enum jr_node
+{ Zfirst, Zsecond, Zthird }
+
+enum jr_null
+{ Zfirst, Zsecond, Zthird }
+
+enum jr_place_view
+{ Zfirst, Zsecond, Zthird }
+
+enum jr_point
+{ Zfirst, Zsecond, Zthird }
+
+enum jr_pointer
+{ Zfirst, Zsecond, Zthird }
+
+enum jr_required
+{ Zfirst, Zsecond, Zthird }
+
+enum jr_text_list
+{ Zfirst, Zsecond, Zthird }
+
+enum js
+{ Zfirst, Zsecond, Zthird }
+
+enum json
+{ Zfirst, Zsecond, Zthird }
+
+enum jsonElement
+{ Zfirst, Zsecond, Zthird }
+
+enum jsonString
+{ Zfirst, Zsecond, Zthird }
+
+enum jsonWideInteger
+{ Zfirst, Zsecond, Zthird }
+
+enum json_array
+{ Zfirst, Zsecond, Zthird }
+
+enum json_array_registry
+{ Zfirst, Zsecond, Zthird }
+
+enum json_b64_sextet
+{ Zfirst, Zsecond, Zthird }
+
+enum json_comment_char
+{ Zfirst, Zsecond, Zthird }
+
+enum json_dec_of_bits
+{ Zfirst, Zsecond, Zthird }
+
+enum json_dec_set
+{ Zfirst, Zsecond, Zthird }
+
+enum json_dec_shift
+{ Zfirst, Zsecond, Zthird }
+
+enum json_encode_utf8
+{ Zfirst, Zsecond, Zthird }
+
+enum json_escape
+{ Zfirst, Zsecond, Zthird }
+
+enum json_expect
+{ Zfirst, Zsecond, Zthird }
+
+enum json_fail
+{ Zfirst, Zsecond, Zthird }
+
+enum json_finish
+{ Zfirst, Zsecond, Zthird }
+
+enum json_finite
+{ Zfirst, Zsecond, Zthird }
+
+enum json_fixed
+{ Zfirst, Zsecond, Zthird }
+
+enum json_flags
+{ Zfirst, Zsecond, Zthird }
+
+enum json_flags_registry
+{ Zfirst, Zsecond, Zthird }
+
+enum json_float
+{ Zfirst, Zsecond, Zthird }
+
+enum json_format_g
+{ Zfirst, Zsecond, Zthird }
+
+enum json_guard_registry
+{ Zfirst, Zsecond, Zthird }
+
+enum json_hex4
+{ Zfirst, Zsecond, Zthird }
+
+enum json_in
+{ Zfirst, Zsecond, Zthird }
+
+enum json_inner_field
+{ Zfirst, Zsecond, Zthird }
+
+enum json_integer_literal
+{ Zfirst, Zsecond, Zthird }
+
+enum json_key
+{ Zfirst, Zsecond, Zthird }
+
+enum json_keys
+{ Zfirst, Zsecond, Zthird }
+
+enum json_line
+{ Zfirst, Zsecond, Zthird }
+
+enum json_literal
+{ Zfirst, Zsecond, Zthird }
+
+enum json_max_depth
+{ Zfirst, Zsecond, Zthird }
+
+enum json_max_key
+{ Zfirst, Zsecond, Zthird }
+
+enum json_name_is
+{ Zfirst, Zsecond, Zthird }
+
+enum json_newline
+{ Zfirst, Zsecond, Zthird }
+
+enum json_oor
+{ Zfirst, Zsecond, Zthird }
+
+enum json_oor_reason
+{ Zfirst, Zsecond, Zthird }
+
+enum json_peek
+{ Zfirst, Zsecond, Zthird }
+
+enum json_put_base64
+{ Zfirst, Zsecond, Zthird }
+
+enum json_put_exp
+{ Zfirst, Zsecond, Zthird }
+
+enum json_put_float
+{ Zfirst, Zsecond, Zthird }
+
+enum json_put_g
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    iterator_traits Inner
+    its Inner
+    itself Inner
+    iv Inner
+    ivar Inner
+    ivar_get Inner
+    ivar_set Inner
+    iw Inner
+    j Inner
+    j1 Inner
+}
+
+table NameTypes0
+{
+    one0  iterator_traits
+    many0 [..4]iterator_traits
+    one1  its
+    many1 [..4]its
+    one2  itself
+    many2 [..4]itself
+    one3  iv
+    many3 [..4]iv
+    one4  ivar
+    many4 [..4]ivar
+    one5  ivar_get
+    many5 [..4]ivar_get
+    one6  ivar_set
+    many6 [..4]ivar_set
+    one7  iw
+    many7 [..4]iw
+    one8  j
+    many8 [..4]j
+    one9  j1
+    many9 [..4]j1
+}
+
+table NameFields0
+{
+    iterator_traits uint32
+    its uint32
+    itself uint32
+    iv uint32
+    ivar uint32
+    ivar_get uint32
+    ivar_set uint32
+    iw uint32
+    j uint32
+    j1 uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    j_b64 Inner
+    j_b64_alphabet Inner
+    j_bn_mask Inner
+    j_bytes Inner
+    j_flt_max Inner
+    j_hex Inner
+    j_indent Inner
+    j_two128 Inner
+    join Inner
+    joinField Inner
+}
+
+table NameTypes1
+{
+    one0  j_b64
+    many0 [..4]j_b64
+    one1  j_b64_alphabet
+    many1 [..4]j_b64_alphabet
+    one2  j_bn_mask
+    many2 [..4]j_bn_mask
+    one3  j_bytes
+    many3 [..4]j_bytes
+    one4  j_flt_max
+    many4 [..4]j_flt_max
+    one5  j_hex
+    many5 [..4]j_hex
+    one6  j_indent
+    many6 [..4]j_indent
+    one7  j_two128
+    many7 [..4]j_two128
+    one8  join
+    many8 [..4]join
+    one9  joinField
+    many9 [..4]joinField
+}
+
+table NameFields1
+{
+    j_b64 uint32
+    j_b64_alphabet uint32
+    j_bn_mask uint32
+    j_bytes uint32
+    j_flt_max uint32
+    j_hex uint32
+    j_indent uint32
+    j_two128 uint32
+    join uint32
+    joinField uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    joinPath Inner
+    joinText Inner
+    joined Inner
+    jr Inner
+    jr_array Inner
+    jr_blob Inner
+    jr_collection Inner
+    jr_default_elem Inner
+    jr_keyed Inner
+    jr_keys Inner
+}
+
+table NameTypes2
+{
+    one0  joinPath
+    many0 [..4]joinPath
+    one1  joinText
+    many1 [..4]joinText
+    one2  joined
+    many2 [..4]joined
+    one3  jr
+    many3 [..4]jr
+    one4  jr_array
+    many4 [..4]jr_array
+    one5  jr_blob
+    many5 [..4]jr_blob
+    one6  jr_collection
+    many6 [..4]jr_collection
+    one7  jr_default_elem
+    many7 [..4]jr_default_elem
+    one8  jr_keyed
+    many8 [..4]jr_keyed
+    one9  jr_keys
+    many9 [..4]jr_keys
+}
+
+table NameFields2
+{
+    joinPath uint32
+    joinText uint32
+    joined uint32
+    jr uint32
+    jr_array uint32
+    jr_blob uint32
+    jr_collection uint32
+    jr_default_elem uint32
+    jr_keyed uint32
+    jr_keys uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    jr_node Inner
+    jr_null Inner
+    jr_place_view Inner
+    jr_point Inner
+    jr_pointer Inner
+    jr_required Inner
+    jr_text_list Inner
+    js Inner
+    json Inner
+    jsonElement Inner
+}
+
+table NameTypes3
+{
+    one0  jr_node
+    many0 [..4]jr_node
+    one1  jr_null
+    many1 [..4]jr_null
+    one2  jr_place_view
+    many2 [..4]jr_place_view
+    one3  jr_point
+    many3 [..4]jr_point
+    one4  jr_pointer
+    many4 [..4]jr_pointer
+    one5  jr_required
+    many5 [..4]jr_required
+    one6  jr_text_list
+    many6 [..4]jr_text_list
+    one7  js
+    many7 [..4]js
+    one8  json
+    many8 [..4]json
+    one9  jsonElement
+    many9 [..4]jsonElement
+}
+
+table NameFields3
+{
+    jr_node uint32
+    jr_null uint32
+    jr_place_view uint32
+    jr_point uint32
+    jr_pointer uint32
+    jr_required uint32
+    jr_text_list uint32
+    js uint32
+    json uint32
+    jsonElement uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    jsonString Inner
+    jsonWideInteger Inner
+    json_array Inner
+    json_array_registry Inner
+    json_b64_sextet Inner
+    json_comment_char Inner
+    json_dec_of_bits Inner
+    json_dec_set Inner
+    json_dec_shift Inner
+    json_encode_utf8 Inner
+}
+
+table NameTypes4
+{
+    one0  jsonString
+    many0 [..4]jsonString
+    one1  jsonWideInteger
+    many1 [..4]jsonWideInteger
+    one2  json_array
+    many2 [..4]json_array
+    one3  json_array_registry
+    many3 [..4]json_array_registry
+    one4  json_b64_sextet
+    many4 [..4]json_b64_sextet
+    one5  json_comment_char
+    many5 [..4]json_comment_char
+    one6  json_dec_of_bits
+    many6 [..4]json_dec_of_bits
+    one7  json_dec_set
+    many7 [..4]json_dec_set
+    one8  json_dec_shift
+    many8 [..4]json_dec_shift
+    one9  json_encode_utf8
+    many9 [..4]json_encode_utf8
+}
+
+table NameFields4
+{
+    jsonString uint32
+    jsonWideInteger uint32
+    json_array uint32
+    json_array_registry uint32
+    json_b64_sextet uint32
+    json_comment_char uint32
+    json_dec_of_bits uint32
+    json_dec_set uint32
+    json_dec_shift uint32
+    json_encode_utf8 uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    json_escape Inner
+    json_expect Inner
+    json_fail Inner
+    json_finish Inner
+    json_finite Inner
+    json_fixed Inner
+    json_flags Inner
+    json_flags_registry Inner
+    json_float Inner
+    json_format_g Inner
+}
+
+table NameTypes5
+{
+    one0  json_escape
+    many0 [..4]json_escape
+    one1  json_expect
+    many1 [..4]json_expect
+    one2  json_fail
+    many2 [..4]json_fail
+    one3  json_finish
+    many3 [..4]json_finish
+    one4  json_finite
+    many4 [..4]json_finite
+    one5  json_fixed
+    many5 [..4]json_fixed
+    one6  json_flags
+    many6 [..4]json_flags
+    one7  json_flags_registry
+    many7 [..4]json_flags_registry
+    one8  json_float
+    many8 [..4]json_float
+    one9  json_format_g
+    many9 [..4]json_format_g
+}
+
+table NameFields5
+{
+    json_escape uint32
+    json_expect uint32
+    json_fail uint32
+    json_finish uint32
+    json_finite uint32
+    json_fixed uint32
+    json_flags uint32
+    json_flags_registry uint32
+    json_float uint32
+    json_format_g uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    json_guard_registry Inner
+    json_hex4 Inner
+    json_in Inner
+    json_inner_field Inner
+    json_integer_literal Inner
+    json_key Inner
+    json_keys Inner
+    json_line Inner
+    json_literal Inner
+    json_max_depth Inner
+}
+
+table NameTypes6
+{
+    one0  json_guard_registry
+    many0 [..4]json_guard_registry
+    one1  json_hex4
+    many1 [..4]json_hex4
+    one2  json_in
+    many2 [..4]json_in
+    one3  json_inner_field
+    many3 [..4]json_inner_field
+    one4  json_integer_literal
+    many4 [..4]json_integer_literal
+    one5  json_key
+    many5 [..4]json_key
+    one6  json_keys
+    many6 [..4]json_keys
+    one7  json_line
+    many7 [..4]json_line
+    one8  json_literal
+    many8 [..4]json_literal
+    one9  json_max_depth
+    many9 [..4]json_max_depth
+}
+
+table NameFields6
+{
+    json_guard_registry uint32
+    json_hex4 uint32
+    json_in uint32
+    json_inner_field uint32
+    json_integer_literal uint32
+    json_key uint32
+    json_keys uint32
+    json_line uint32
+    json_literal uint32
+    json_max_depth uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    json_max_key Inner
+    json_name_is Inner
+    json_newline Inner
+    json_oor Inner
+    json_oor_reason Inner
+    json_peek Inner
+    json_put_base64 Inner
+    json_put_exp Inner
+    json_put_float Inner
+    json_put_g Inner
+}
+
+table NameTypes7
+{
+    one0  json_max_key
+    many0 [..4]json_max_key
+    one1  json_name_is
+    many1 [..4]json_name_is
+    one2  json_newline
+    many2 [..4]json_newline
+    one3  json_oor
+    many3 [..4]json_oor
+    one4  json_oor_reason
+    many4 [..4]json_oor_reason
+    one5  json_peek
+    many5 [..4]json_peek
+    one6  json_put_base64
+    many6 [..4]json_put_base64
+    one7  json_put_exp
+    many7 [..4]json_put_exp
+    one8  json_put_float
+    many8 [..4]json_put_float
+    one9  json_put_g
+    many9 [..4]json_put_g
+}
+
+table NameFields7
+{
+    json_max_key uint32
+    json_name_is uint32
+    json_newline uint32
+    json_oor uint32
+    json_oor_reason uint32
+    json_peek uint32
+    json_put_base64 uint32
+    json_put_exp uint32
+    json_put_float uint32
+    json_put_g uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

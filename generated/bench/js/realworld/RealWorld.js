@@ -463,7 +463,7 @@ export function WriteRealPacket(stream, value) {
     }
   }
   NUMBER_SCRATCH.value = value.f004Cf32;
-  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 2000.0, 0.1)) {
+  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 2000.0, 0.10000000149011612)) {
     return false;
   }
   if (!globalThis.Number.isInteger(value.f005Uint) || value.f005Uint < 0 || value.f005Uint > 7316) {
@@ -935,7 +935,7 @@ export function WriteRealPacket(stream, value) {
     }
   }
   NUMBER_SCRATCH.value = value.f071Cf32;
-  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 10.0, 0.02)) {
+  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 10.0, 0.019999999552965164)) {
     return false;
   }
   {
@@ -945,7 +945,7 @@ export function WriteRealPacket(stream, value) {
     }
   }
   NUMBER_SCRATCH.value = value.f072Cf32;
-  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 100.0, 0.01)) {
+  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 100.0, 0.009999999776482582)) {
     return false;
   }
   if (!globalThis.Number.isInteger(value.f073Int) || value.f073Int < -4 || value.f073Int > 4) {
@@ -1132,7 +1132,7 @@ export function ReadRealPacket(stream, value, nested) {
     return false;
   }
   value.f003Int = NUMBER_SCRATCH.value;
-  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 2000.0, 0.1)) {
+  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 2000.0, 0.10000000149011612)) {
     return false;
   }
   value.f004Cf32 = NUMBER_SCRATCH.value;
@@ -1422,11 +1422,11 @@ export function ReadRealPacket(stream, value, nested) {
     return false;
   }
   value.f070Uint = NUMBER_SCRATCH.value;
-  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 10.0, 0.02)) {
+  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 10.0, 0.019999999552965164)) {
     return false;
   }
   value.f071Cf32 = NUMBER_SCRATCH.value;
-  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 100.0, 0.01)) {
+  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 100.0, 0.009999999776482582)) {
     return false;
   }
   value.f072Cf32 = NUMBER_SCRATCH.value;

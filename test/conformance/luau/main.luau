@@ -34,7 +34,7 @@ local GENERATED = "build/conformance-luau"
 local SURFACES = {
 	"wire", "message", "message-prior", "report", "framing", "retain", "retain-save", "json-read", "json-write", "json-hostile",
 	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery",
-	"cook-forgery", "cook-reason", "block-reason",
+	"cook-forgery",
 	"write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json",
 	"write-refusal-cook", "write-refusal-block", "write-refusal-shape", "announce", "read-into", "json-write-into",
 }
@@ -1138,9 +1138,10 @@ end
 -- <pointer>`: the patch is already applied, the extent is the length the
 -- caller claims (-1 the file's own) and the pointer the buffer the caller
 -- holds (`null` none, else the lead). forgery and cook-forgery answer
--- `open`/`refuse`; block-reason and cook-reason the first failing clause's
--- name, or `ok`. The reason is the reader's own: this driver places bytes and
--- prints what it is told.
+-- `open`/`refuse`, the verdict of the reader's own first failing clause: this
+-- driver places bytes and prints what it is told. The reason surfaces
+-- (cook-reason, block-reason) are retired: the harness does not run them
+-- (test/conformance/harness/run.go retiredSurfaces).
 local function forgeryReason(f: { string }): (boolean, string?)
 	local source: buffer? = nil
 	local lead = 0
@@ -1163,14 +1164,12 @@ local function forgeryReason(f: { string }): (boolean, string?)
 	return true, cookReason(C, f[4], build :: integer, source, extent, lead)
 end
 
-local function surfaceForgery(lines: { { string } }, kindName: string, reasons: boolean)
+local function surfaceForgery(lines: { { string } }, kindName: string)
 	for _, f in kind(lines, "forgery") do
 		if f[3] == kindName then
 			local carried, why = forgeryReason(f)
 			if not carried then
 				say(f[2], nil)
-			elseif reasons then
-				sayText(f[2], (why or "ok") .. "\n")
 			else
 				sayText(f[2], verdict(why))
 			end
@@ -1740,7 +1739,31 @@ local function surfaceReadInto(lines: { { string } })
 			else
 				sayText(name, "read\n" .. tostring(#out) .. "\n")
 			end
-		elseif form == "retain" then
+		elseif form == "retain-fixed" then
+			-- LoadRetain of a FIXED-class root, pre-filled report, roomy store
+			local rep = {
+				malformed = true, refused = 7, unknown = 7, kindMismatch = 7, clamped = 7,
+				widened = 7, duplicate = 7, verdict = 0, reason = "stale", retained = 7,
+				retainLost = 7, missingRequired = 7, blobShared = 7, nonFiniteFloat = "stale",
+				missingName = "stale", field = "stale", unknownField = "stale",
+				duplicateField = "stale",
+			}
+			local ok, got = pcall(u.retain.LoadRetain, root, file(lawful), rep, 1048576, 131072)
+			local line = if not ok then "threw\n"
+				elseif got == nil or (rep.reason ~= nil and rep.reason ~= "") or rep.malformed == true or (rep.refused or 0) ~= 0 then "refused\n"
+				else "read\n"
+			local fresh = report()
+			pcall(u.retain.LoadRetain, root, file(lawful), fresh, 1048576, 131072)
+			local diff = {}
+			for k, v in rep do
+				if fresh[k] ~= v then table.insert(diff, tostring(k) .. "=" .. tostring(v) .. " want " .. tostring(fresh[k])) end
+			end
+			for k, v in fresh do
+				if rep[k] == nil then table.insert(diff, tostring(k) .. "=nil want " .. tostring(v)) end
+			end
+			table.sort(diff)
+			sayText(name, line .. (if #diff == 0 then "zeroed\n" else "kept " .. table.concat(diff, ", ") .. "\n"))
+		elseif form == "retain" or form == "region" then
 			-- THE `retain` FORM (test/conformance/README.md): ONE report,
 			-- PRE-FILLED (every counter, the reason and every detail the Luau
 			-- report can carry; `verdict` stays 0 because the table load never
@@ -1750,7 +1773,13 @@ local function surfaceReadInto(lines: { { string } })
 			-- load leaves in a FRESH report (§6.5).
 			local lawfulBytes, damagedBytes = file(lawful), file(damaged)
 			local function load(bytes: buffer, rep: any): string
-				local ok, got = pcall(u.retain.LoadRetain, root, bytes, rep, 1048576, 131072)
+				-- `region`: the PLAIN load (Luau has no region read), not LoadRetain
+				local ok, got
+				if form == "region" then
+					ok, got = pcall(u.load.load, root, bytes, rep)
+				else
+					ok, got = pcall(u.retain.LoadRetain, root, bytes, rep, 1048576, 131072)
+				end
 				if not ok then return "threw\n" end
 				if got == nil or (rep.reason ~= nil and rep.reason ~= "") or rep.malformed == true or (rep.refused or 0) ~= 0 then
 					return "refused\n"
@@ -1913,13 +1942,9 @@ elseif surface == "block-foreign" then
 elseif surface == "block-dump" then
 	surfaceBlockDump(lines)
 elseif surface == "forgery" then
-	surfaceForgery(lines, "block", false)
+	surfaceForgery(lines, "block")
 elseif surface == "cook-forgery" then
-	surfaceForgery(lines, "cook", false)
-elseif surface == "cook-reason" then
-	surfaceForgery(lines, "cook", true)
-elseif surface == "block-reason" then
-	surfaceForgery(lines, "block", true)
+	surfaceForgery(lines, "cook")
 elseif string.sub(surface, 1, 13) == "write-refusal" then
 	surfaceWriteRefusal(lines, surface)
 elseif surface == "announce" then

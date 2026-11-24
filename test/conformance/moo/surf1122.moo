@@ -123,27 +123,37 @@ return function(ctx: any): { [string]: Surface }
 				ctx.say(name, if not ok then "threw\n" elseif out == nil then "refused\n" else "read\n" .. tostring(#out) .. "\n")
 				continue
 			end
-			if form == "retain" then
-				-- THE RETAINING LOAD (table_retain's LoadRetain, SPEC-TABLES
-				-- §6.6) into ONE report the driver PRE-FILLED: every field
-				-- the report at rest carries (table_load's reset) is a plain
-				-- table field, so each is set directly. After each lawful load
-				-- the report is compared, key by key in both directions, with
-				-- the report the same load leaves in a FRESH report (§6.5:
-				-- every read zeroes a supplied report in full, the retain
-				-- family included). Every load has its own roomy store.
+			if form == "retain" or form == "region" or form == "retain-fixed" then
+				-- ONE report the driver PRE-FILLED: every field the report at
+				-- rest carries (table_load's reset) is a plain table field, so
+				-- each is set directly. After each lawful read the report is
+				-- compared, key by key in both directions, with the report the
+				-- same read leaves in a FRESH report (§6.5: every read zeroes a
+				-- supplied report in full, on every read path). `retain` is
+				-- table_retain's LoadRetain (§6.6) of a variable root, with its
+				-- own roomy store per load; `region` is the plain load,
+				-- table_load's load (the moo leg has no region read);
+				-- `retain-fixed` is LoadRetain of a FIXED-class root, which
+				-- takes the report and refuses through it (FixedClassRefusal),
+				-- so it owes `refused` and `zeroed` with no damaged read.
 				local R: any = ctx.module(key, "table_retain")
 				local L: any = ctx.module(key, "table_load")
 				if R == nil then error("driver: " .. name .. ": the unit emits no table_retain", 0) end
 				local function retainOnce(path: string, report: any): string
-					local ok, got = pcall(R.LoadRetain, root, ctx.inputs(path), report, R.newStore(1048576, 131072))
+					local ok: boolean, got: any
+					if form == "region" then
+						ok, got = pcall(L.load, root, ctx.inputs(path), report)
+					else
+						ok, got = pcall(R.LoadRetain, root, ctx.inputs(path), report, R.newStore(1048576, 131072))
+					end
 					if not ok then return "threw\n" end
 					if got == nil or refusedBy(report) then return "refused\n" end
 					return "read\n"
 				end
 				local fresh = L.newReport()
-				if retainOnce(lawful, fresh) ~= "read\n" then
-					error("driver: " .. name .. ": the lawful retaining load refused into a fresh report", 0)
+				local want = if form == "retain-fixed" then "refused\n" else "read\n"
+				if retainOnce(lawful, fresh) ~= want then
+					error("driver: " .. name .. ": the lawful read into a fresh report did not answer " .. want, 0)
 				end
 				local function zeroed(report: any): string
 					local differs = {}
@@ -167,6 +177,10 @@ return function(ctx: any): { [string]: Surface }
 				local parts = {}
 				parts[#parts + 1] = retainOnce(lawful, report)
 				parts[#parts + 1] = zeroed(report)
+				if form == "retain-fixed" then
+					ctx.say(name, table.concat(parts))
+					continue
+				end
 				parts[#parts + 1] = retainOnce(damaged, report)
 				parts[#parts + 1] = retainOnce(lawful, report)
 				parts[#parts + 1] = zeroed(report)

@@ -327,6 +327,7 @@ const ConformanceUnit1122 * conformance_unit1122_tblann4096( void );
 const ConformanceUnit1122 * conformance_unit1122_tblann4097( void );
 const ConformanceUnit1122 * conformance_unit1122_messagedemo( void );
 const ConformanceUnit1122 * conformance_unit1122_backenddemo( void );
+const ConformanceUnit1122 * conformance_unit1122_tblfixedevo( void );
 const ConformanceCodec * conformance_codecs_tblsurf( int * count );
 
 #endif /* SCHEMA_CONFORMANCE_DRIVER_H */

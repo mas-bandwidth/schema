@@ -709,6 +709,13 @@ local function load_retain(read: any, root: string, bytes: buffer, report: any, 
 	local new_store = function()
 		return { bytes = buffer.create(cap), cap = cap, used = 0, count = 0, idCap = idCap, nodeObjs = {} }
 	end
+	-- §6.6: retention needs a variable root. A FIXED-class root is refused by
+	-- name through the report, as the Squirrel leg's load does, and keeps nothing.
+	if S.lookup(root).fixed then
+		report.refused = 1
+		report.reason = "retention_requires_variable_region_root"
+		return nil, new_store()
+	end
 	local nodeObjs = {}
 	local v = read(root, bytes, report, nodeObjs)
 	if v == nil then

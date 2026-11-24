@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum lookup
+{ Zfirst, Zsecond, Zthird }
+
+enum loss
+{ Zfirst, Zsecond, Zthird }
+
+enum lost
+{ Zfirst, Zsecond, Zthird }
+
+enum lostBefore
+{ Zfirst, Zsecond, Zthird }
+
+enum low
+{ Zfirst, Zsecond, Zthird }
+
+enum lowBase
+{ Zfirst, Zsecond, Zthird }
+
+enum lowBits
+{ Zfirst, Zsecond, Zthird }
+
+enum lowPart
+{ Zfirst, Zsecond, Zthird }
+
+enum lpos
+{ Zfirst, Zsecond, Zthird }
+
+enum lsbExp
+{ Zfirst, Zsecond, Zthird }
+
+enum lsh
+{ Zfirst, Zsecond, Zthird }
+
+enum lshift
+{ Zfirst, Zsecond, Zthird }
+
+enum lt
+{ Zfirst, Zsecond, Zthird }
+
+enum lt128
+{ Zfirst, Zsecond, Zthird }
+
+enum lua
+{ Zfirst, Zsecond, Zthird }
+
+enum luau_slot
+{ Zfirst, Zsecond, Zthird }
+
+enum lv
+{ Zfirst, Zsecond, Zthird }
+
+enum m
+{ Zfirst, Zsecond, Zthird }
+
+enum m0
+{ Zfirst, Zsecond, Zthird }
+
+enum m1
+{ Zfirst, Zsecond, Zthird }
+
+enum m2
+{ Zfirst, Zsecond, Zthird }
+
+enum m23
+{ Zfirst, Zsecond, Zthird }
+
+enum m3
+{ Zfirst, Zsecond, Zthird }
+
+enum m32
+{ Zfirst, Zsecond, Zthird }
+
+enum m6
+{ Zfirst, Zsecond, Zthird }
+
+enum m64
+{ Zfirst, Zsecond, Zthird }
+
+enum mAlign
+{ Zfirst, Zsecond, Zthird }
+
+enum mAligns
+{ Zfirst, Zsecond, Zthird }
+
+enum mAtDefault
+{ Zfirst, Zsecond, Zthird }
+
+enum mCmpLt
+{ Zfirst, Zsecond, Zthird }
+
+enum mCopyInto
+{ Zfirst, Zsecond, Zthird }
+
+enum mCountBits
+{ Zfirst, Zsecond, Zthird }
+
+enum mDecodeOwnBody
+{ Zfirst, Zsecond, Zthird }
+
+enum mDecodeOwnValue
+{ Zfirst, Zsecond, Zthird }
+
+enum mEncodeArm
+{ Zfirst, Zsecond, Zthird }
+
+enum mEncodeBody
+{ Zfirst, Zsecond, Zthird }
+
+enum mEncodeElem
+{ Zfirst, Zsecond, Zthird }
+
+enum mEncodeEnum
+{ Zfirst, Zsecond, Zthird }
+
+enum mEncodeFieldPayload
+{ Zfirst, Zsecond, Zthird }
+
+enum mEncodeScalar
+{ Zfirst, Zsecond, Zthird }
+
+enum mFail
+{ Zfirst, Zsecond, Zthird }
+
+enum mIs128
+{ Zfirst, Zsecond, Zthird }
+
+enum mIsBitSliceBatch
+{ Zfirst, Zsecond, Zthird }
+
+enum mNewWriter
+{ Zfirst, Zsecond, Zthird }
+
+enum mPut
+{ Zfirst, Zsecond, Zthird }
+
+enum mPutBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum mPutIntBits
+{ Zfirst, Zsecond, Zthird }
+
+enum mReserve
+{ Zfirst, Zsecond, Zthird }
+
+enum mValidScalar
+{ Zfirst, Zsecond, Zthird }
+
+enum mWriteRecordBatch
+{ Zfirst, Zsecond, Zthird }
+
+enum m_ok
+{ Zfirst, Zsecond, Zthird }
+
+enum m_reader
+{ Zfirst, Zsecond, Zthird }
+
+enum m_sink
+{ Zfirst, Zsecond, Zthird }
+
+enum ma
+{ Zfirst, Zsecond, Zthird }
+
+enum made
+{ Zfirst, Zsecond, Zthird }
+
+enum mag
+{ Zfirst, Zsecond, Zthird }
+
+enum mag_of_digits
+{ Zfirst, Zsecond, Zthird }
+
+enum mag_sat
+{ Zfirst, Zsecond, Zthird }
+
+enum magnitude
+{ Zfirst, Zsecond, Zthird }
+
+enum main
+{ Zfirst, Zsecond, Zthird }
+
+enum makeClass
+{ Zfirst, Zsecond, Zthird }
+
+enum make_hook
+{ Zfirst, Zsecond, Zthird }
+
+enum make_record
+{ Zfirst, Zsecond, Zthird }
+
+enum make_slots
+{ Zfirst, Zsecond, Zthird }
+
+enum makes
+{ Zfirst, Zsecond, Zthird }
+
+enum malformed2
+{ Zfirst, Zsecond, Zthird }
+
+enum manifest
+{ Zfirst, Zsecond, Zthird }
+
+enum mant
+{ Zfirst, Zsecond, Zthird }
+
+enum mant_text
+{ Zfirst, Zsecond, Zthird }
+
+enum mantbits
+{ Zfirst, Zsecond, Zthird }
+
+enum mantissa
+{ Zfirst, Zsecond, Zthird }
+
+enum mantissa64
+{ Zfirst, Zsecond, Zthird }
+
+enum mantissaText
+{ Zfirst, Zsecond, Zthird }
+
+enum mapEntries
+{ Zfirst, Zsecond, Zthird }
+
+enum mapEntryCounters
+{ Zfirst, Zsecond, Zthird }
+
+enum mapField
+{ Zfirst, Zsecond, Zthird }
+
+enum mapKey
+{ Zfirst, Zsecond, Zthird }
+
+enum mapKeyAt
+{ Zfirst, Zsecond, Zthird }
+
+enum mapKeyCmp
+{ Zfirst, Zsecond, Zthird }
+
+enum mapKeyInDomain
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    lookup Inner
+    loss Inner
+    lost Inner
+    lostBefore Inner
+    low Inner
+    lowBase Inner
+    lowBits Inner
+    lowPart Inner
+    lpos Inner
+    lsbExp Inner
+}
+
+table NameTypes0
+{
+    one0  lookup
+    many0 [..4]lookup
+    one1  loss
+    many1 [..4]loss
+    one2  lost
+    many2 [..4]lost
+    one3  lostBefore
+    many3 [..4]lostBefore
+    one4  low
+    many4 [..4]low
+    one5  lowBase
+    many5 [..4]lowBase
+    one6  lowBits
+    many6 [..4]lowBits
+    one7  lowPart
+    many7 [..4]lowPart
+    one8  lpos
+    many8 [..4]lpos
+    one9  lsbExp
+    many9 [..4]lsbExp
+}
+
+table NameFields0
+{
+    lookup uint32
+    loss uint32
+    lost uint32
+    lostBefore uint32
+    low uint32
+    lowBase uint32
+    lowBits uint32
+    lowPart uint32
+    lpos uint32
+    lsbExp uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    lsh Inner
+    lshift Inner
+    lt Inner
+    lt128 Inner
+    lua Inner
+    luau_slot Inner
+    lv Inner
+    m Inner
+    m0 Inner
+    m1 Inner
+}
+
+table NameTypes1
+{
+    one0  lsh
+    many0 [..4]lsh
+    one1  lshift
+    many1 [..4]lshift
+    one2  lt
+    many2 [..4]lt
+    one3  lt128
+    many3 [..4]lt128
+    one4  lua
+    many4 [..4]lua
+    one5  luau_slot
+    many5 [..4]luau_slot
+    one6  lv
+    many6 [..4]lv
+    one7  m
+    many7 [..4]m
+    one8  m0
+    many8 [..4]m0
+    one9  m1
+    many9 [..4]m1
+}
+
+table NameFields1
+{
+    lsh uint32
+    lshift uint32
+    lt uint32
+    lt128 uint32
+    lua uint32
+    luau_slot uint32
+    lv uint32
+    m uint32
+    m0 uint32
+    m1 uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    m2 Inner
+    m23 Inner
+    m3 Inner
+    m32 Inner
+    m6 Inner
+    m64 Inner
+    mAlign Inner
+    mAligns Inner
+    mAtDefault Inner
+    mCmpLt Inner
+}
+
+table NameTypes2
+{
+    one0  m2
+    many0 [..4]m2
+    one1  m23
+    many1 [..4]m23
+    one2  m3
+    many2 [..4]m3
+    one3  m32
+    many3 [..4]m32
+    one4  m6
+    many4 [..4]m6
+    one5  m64
+    many5 [..4]m64
+    one6  mAlign
+    many6 [..4]mAlign
+    one7  mAligns
+    many7 [..4]mAligns
+    one8  mAtDefault
+    many8 [..4]mAtDefault
+    one9  mCmpLt
+    many9 [..4]mCmpLt
+}
+
+table NameFields2
+{
+    m2 uint32
+    m23 uint32
+    m3 uint32
+    m32 uint32
+    m6 uint32
+    m64 uint32
+    mAlign uint32
+    mAligns uint32
+    mAtDefault uint32
+    mCmpLt uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    mCopyInto Inner
+    mCountBits Inner
+    mDecodeOwnBody Inner
+    mDecodeOwnValue Inner
+    mEncodeArm Inner
+    mEncodeBody Inner
+    mEncodeElem Inner
+    mEncodeEnum Inner
+    mEncodeFieldPayload Inner
+    mEncodeScalar Inner
+}
+
+table NameTypes3
+{
+    one0  mCopyInto
+    many0 [..4]mCopyInto
+    one1  mCountBits
+    many1 [..4]mCountBits
+    one2  mDecodeOwnBody
+    many2 [..4]mDecodeOwnBody
+    one3  mDecodeOwnValue
+    many3 [..4]mDecodeOwnValue
+    one4  mEncodeArm
+    many4 [..4]mEncodeArm
+    one5  mEncodeBody
+    many5 [..4]mEncodeBody
+    one6  mEncodeElem
+    many6 [..4]mEncodeElem
+    one7  mEncodeEnum
+    many7 [..4]mEncodeEnum
+    one8  mEncodeFieldPayload
+    many8 [..4]mEncodeFieldPayload
+    one9  mEncodeScalar
+    many9 [..4]mEncodeScalar
+}
+
+table NameFields3
+{
+    mCopyInto uint32
+    mCountBits uint32
+    mDecodeOwnBody uint32
+    mDecodeOwnValue uint32
+    mEncodeArm uint32
+    mEncodeBody uint32
+    mEncodeElem uint32
+    mEncodeEnum uint32
+    mEncodeFieldPayload uint32
+    mEncodeScalar uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    mFail Inner
+    mIs128 Inner
+    mIsBitSliceBatch Inner
+    mNewWriter Inner
+    mPut Inner
+    mPutBytes Inner
+    mPutIntBits Inner
+    mReserve Inner
+    mValidScalar Inner
+    mWriteRecordBatch Inner
+}
+
+table NameTypes4
+{
+    one0  mFail
+    many0 [..4]mFail
+    one1  mIs128
+    many1 [..4]mIs128
+    one2  mIsBitSliceBatch
+    many2 [..4]mIsBitSliceBatch
+    one3  mNewWriter
+    many3 [..4]mNewWriter
+    one4  mPut
+    many4 [..4]mPut
+    one5  mPutBytes
+    many5 [..4]mPutBytes
+    one6  mPutIntBits
+    many6 [..4]mPutIntBits
+    one7  mReserve
+    many7 [..4]mReserve
+    one8  mValidScalar
+    many8 [..4]mValidScalar
+    one9  mWriteRecordBatch
+    many9 [..4]mWriteRecordBatch
+}
+
+table NameFields4
+{
+    mFail uint32
+    mIs128 uint32
+    mIsBitSliceBatch uint32
+    mNewWriter uint32
+    mPut uint32
+    mPutBytes uint32
+    mPutIntBits uint32
+    mReserve uint32
+    mValidScalar uint32
+    mWriteRecordBatch uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    m_ok Inner
+    m_reader Inner
+    m_sink Inner
+    ma Inner
+    made Inner
+    mag Inner
+    mag_of_digits Inner
+    mag_sat Inner
+    magnitude Inner
+    main Inner
+}
+
+table NameTypes5
+{
+    one0  m_ok
+    many0 [..4]m_ok
+    one1  m_reader
+    many1 [..4]m_reader
+    one2  m_sink
+    many2 [..4]m_sink
+    one3  ma
+    many3 [..4]ma
+    one4  made
+    many4 [..4]made
+    one5  mag
+    many5 [..4]mag
+    one6  mag_of_digits
+    many6 [..4]mag_of_digits
+    one7  mag_sat
+    many7 [..4]mag_sat
+    one8  magnitude
+    many8 [..4]magnitude
+    one9  main
+    many9 [..4]main
+}
+
+table NameFields5
+{
+    m_ok uint32
+    m_reader uint32
+    m_sink uint32
+    ma uint32
+    made uint32
+    mag uint32
+    mag_of_digits uint32
+    mag_sat uint32
+    magnitude uint32
+    main uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    makeClass Inner
+    make_hook Inner
+    make_record Inner
+    make_slots Inner
+    makes Inner
+    malformed2 Inner
+    manifest Inner
+    mant Inner
+    mant_text Inner
+    mantbits Inner
+}
+
+table NameTypes6
+{
+    one0  makeClass
+    many0 [..4]makeClass
+    one1  make_hook
+    many1 [..4]make_hook
+    one2  make_record
+    many2 [..4]make_record
+    one3  make_slots
+    many3 [..4]make_slots
+    one4  makes
+    many4 [..4]makes
+    one5  malformed2
+    many5 [..4]malformed2
+    one6  manifest
+    many6 [..4]manifest
+    one7  mant
+    many7 [..4]mant
+    one8  mant_text
+    many8 [..4]mant_text
+    one9  mantbits
+    many9 [..4]mantbits
+}
+
+table NameFields6
+{
+    makeClass uint32
+    make_hook uint32
+    make_record uint32
+    make_slots uint32
+    makes uint32
+    malformed2 uint32
+    manifest uint32
+    mant uint32
+    mant_text uint32
+    mantbits uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    mantissa Inner
+    mantissa64 Inner
+    mantissaText Inner
+    mapEntries Inner
+    mapEntryCounters Inner
+    mapField Inner
+    mapKey Inner
+    mapKeyAt Inner
+    mapKeyCmp Inner
+    mapKeyInDomain Inner
+}
+
+table NameTypes7
+{
+    one0  mantissa
+    many0 [..4]mantissa
+    one1  mantissa64
+    many1 [..4]mantissa64
+    one2  mantissaText
+    many2 [..4]mantissaText
+    one3  mapEntries
+    many3 [..4]mapEntries
+    one4  mapEntryCounters
+    many4 [..4]mapEntryCounters
+    one5  mapField
+    many5 [..4]mapField
+    one6  mapKey
+    many6 [..4]mapKey
+    one7  mapKeyAt
+    many7 [..4]mapKeyAt
+    one8  mapKeyCmp
+    many8 [..4]mapKeyCmp
+    one9  mapKeyInDomain
+    many9 [..4]mapKeyInDomain
+}
+
+table NameFields7
+{
+    mantissa uint32
+    mantissa64 uint32
+    mantissaText uint32
+    mapEntries uint32
+    mapEntryCounters uint32
+    mapField uint32
+    mapKey uint32
+    mapKeyAt uint32
+    mapKeyCmp uint32
+    mapKeyInDomain uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

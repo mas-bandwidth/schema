@@ -35,8 +35,8 @@ local GENERATED = os.getenv("LUA_CONFORMANCE_GENERATED") or "build/conformance-l
 local SURFACE_ORDER = {
   "wire", "message", "message-prior", "report", "framing", "retain", "retain-save", "json-read",
   "json-write", "json-hostile", "cook", "cook-write", "cook-foreign", "block",
-  "block-foreign", "block-dump", "forgery", "cook-forgery", "cook-reason",
-  "block-reason", "write-refusal", "write-refusal-fixed",
+  "block-foreign", "block-dump", "forgery", "cook-forgery",
+  "write-refusal", "write-refusal-fixed",
   "write-refusal-message", "write-refusal-json", "write-refusal-cook",
   "write-refusal-block", "write-refusal-shape", "announce", "read-into", "json-write-into",
 }
@@ -887,25 +887,21 @@ local function surfaceCookForeign(all, outdir)
   end
 end
 
--- the two forgery batteries (FORMAT.md, `forgery`): the verdict, or the
--- reason the generated reader names beside its nil — the TableRefuseReason
--- value name of the FIRST failing clause, or `ok` (§6.5, §7, §19.2). This
--- driver places bytes and prints what it is told, and judges nothing.
-local function surfaceForgery(all, outdir, forgeryKind, reasons)
+-- the two forgery batteries (FORMAT.md, `forgery`): the verdict (§6.5, §7,
+-- §19.2). This driver places bytes and prints what it is told, and judges
+-- nothing. The reason surfaces (cook-reason, block-reason) are retired: the
+-- harness does not run them (test/conformance/harness/run.go retiredSurfaces).
+local function surfaceForgery(all, outdir, forgeryKind)
   for _, f in ipairs(kind(all, "forgery")) do
     if f[3] == forgeryKind then
       local bytes, lead = forged(f)
-      local h, why
+      local h
       if forgeryKind == "cook" then
-        h, why = cookOpen(all, f[4], bytes, lead)
+        h = cookOpen(all, f[4], bytes, lead)
       else
-        h, why = blockOpen(all, f[4], bytes, lead)
+        h = blockOpen(all, f[4], bytes, lead)
       end
-      if reasons then
-        writeBytes(outdir .. "/" .. f[2], (h ~= nil and "ok" or tostring(why)) .. "\n")
-      else
-        writeBytes(outdir .. "/" .. f[2], verdict(h))
-      end
+      writeBytes(outdir .. "/" .. f[2], verdict(h))
     end
   end
 end
@@ -1555,16 +1551,34 @@ local function surfaceReadInto(all, outdir)
       else
         writeBytes(outdir .. "/" .. name, "read\n" .. #out .. "\n")
       end
-    elseif form == "retain" then
+    elseif form == "retain-fixed" then
+      -- LoadRetain of a FIXED-class root: the runtime raises a named error
+      -- unconditionally, before it touches the report or the input
+      -- (internal/codegen/luatable/runtime/retain.lua fixed_refusal), the
+      -- dynamic leg's compile-time refusal, so the answer is unrepresentable.
+      local report = newReport()
+      local ok, err = pcall(u.retain.LoadRetain, u.T, root, mustRead(lawful), retainStore(ROOMY, math.floor(ROOMY / 8)), report)
+      if ok or not tostring(err):find("retention requires a variable root", 1, true) then
+        fail(name .. ": LoadRetain of a fixed root did not raise the named refusal")
+      end
+      writeBytes(outdir .. "/" .. name, "unrepresentable\n")
+    elseif form == "retain" or form == "region" then
       -- THE `retain` FORM (test/conformance/README.md): ONE report, PRE-FILLED
       -- (every counter, the refusal set, the reason and every flag the Lua
       -- report can carry), then the retaining load of <lawful>, <damaged>,
       -- <lawful> again. After each lawful load every field of the report must
       -- equal the field the same load leaves in a FRESH report (§6.5).
       local lawfulBytes, damagedBytes = mustRead(lawful), mustRead(damaged)
+      -- `region`: the PLAIN Load of the variable root (Lua has no region
+      -- read, so the plain value Load is the read), not LoadRetain.
       local function load(bytes, report)
         local store = retainStore(ROOMY, math.floor(ROOMY / 8))
-        local ok, got = pcall(u.retain.LoadRetain, u.T, root, bytes, store, report)
+        local ok, got
+        if form == "region" then
+          ok, got = pcall(u.load.Load, u.T, root, bytes, report)
+        else
+          ok, got = pcall(u.retain.LoadRetain, u.T, root, bytes, store, report)
+        end
         if not ok then return "threw\n" end
         local reason = report.reason
         if got == nil or (reason ~= nil and reason ~= "") or (report.refused or 0) ~= 0 or report.damaged then
@@ -1739,10 +1753,8 @@ elseif surface == "cook-foreign" then surfaceCookForeign(all, outdir)
 elseif surface == "block" then surfaceBlock(all, outdir, identity)
 elseif surface == "block-foreign" then surfaceBlock(all, outdir, foreign)
 elseif surface == "block-dump" then surfaceBlockDump(all, outdir)
-elseif surface == "forgery" then surfaceForgery(all, outdir, "block", false)
-elseif surface == "cook-forgery" then surfaceForgery(all, outdir, "cook", false)
-elseif surface == "cook-reason" then surfaceForgery(all, outdir, "cook", true)
-elseif surface == "block-reason" then surfaceForgery(all, outdir, "block", true)
+elseif surface == "forgery" then surfaceForgery(all, outdir, "block")
+elseif surface == "cook-forgery" then surfaceForgery(all, outdir, "cook")
 elseif surface:find("^write%-refusal") then surfaceWriteRefusal(all, outdir, surface)
 elseif surface == "announce" then surfaceAnnounce(all, outdir)
 elseif surface == "read-into" then surfaceReadInto(all, outdir)

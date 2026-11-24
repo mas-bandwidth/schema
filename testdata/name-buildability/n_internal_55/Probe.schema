@@ -1,0 +1,185 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum r_u16
+{ Zfirst, Zsecond, Zthird }
+
+enum r_u32
+{ Zfirst, Zsecond, Zthird }
+
+enum r_u64
+{ Zfirst, Zsecond, Zthird }
+
+enum raiseValue
+{ Zfirst, Zsecond, Zthird }
+
+enum ralign
+{ Zfirst, Zsecond, Zthird }
+
+enum rangeScalar
+{ Zfirst, Zsecond, Zthird }
+
+enum range_int_max
+{ Zfirst, Zsecond, Zthird }
+
+enum range_int_min
+{ Zfirst, Zsecond, Zthird }
+
+enum range_max
+{ Zfirst, Zsecond, Zthird }
+
+enum range_min
+{ Zfirst, Zsecond, Zthird }
+
+enum range_uint_max
+{ Zfirst, Zsecond, Zthird }
+
+enum range_uint_min
+{ Zfirst, Zsecond, Zthird }
+
+enum ranged
+{ Zfirst, Zsecond, Zthird }
+
+enum rangedHeld
+{ Zfirst, Zsecond, Zthird }
+
+enum rangedHolds16
+{ Zfirst, Zsecond, Zthird }
+
+enum rangedOffset
+{ Zfirst, Zsecond, Zthird }
+
+enum ranged_holds
+{ Zfirst, Zsecond, Zthird }
+
+enum ranges
+{ Zfirst, Zsecond, Zthird }
+
+enum rarm
+{ Zfirst, Zsecond, Zthird }
+
+enum rather
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    r_u16 Inner
+    r_u32 Inner
+    r_u64 Inner
+    raiseValue Inner
+    ralign Inner
+    rangeScalar Inner
+    range_int_max Inner
+    range_int_min Inner
+    range_max Inner
+    range_min Inner
+}
+
+table NameTypes0
+{
+    one0  r_u16
+    many0 [..4]r_u16
+    one1  r_u32
+    many1 [..4]r_u32
+    one2  r_u64
+    many2 [..4]r_u64
+    one3  raiseValue
+    many3 [..4]raiseValue
+    one4  ralign
+    many4 [..4]ralign
+    one5  rangeScalar
+    many5 [..4]rangeScalar
+    one6  range_int_max
+    many6 [..4]range_int_max
+    one7  range_int_min
+    many7 [..4]range_int_min
+    one8  range_max
+    many8 [..4]range_max
+    one9  range_min
+    many9 [..4]range_min
+}
+
+table NameFields0
+{
+    r_u16 uint32
+    r_u32 uint32
+    r_u64 uint32
+    raiseValue uint32
+    ralign uint32
+    rangeScalar uint32
+    range_int_max uint32
+    range_int_min uint32
+    range_max uint32
+    range_min uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    range_uint_max Inner
+    range_uint_min Inner
+    ranged Inner
+    rangedHeld Inner
+    rangedHolds16 Inner
+    rangedOffset Inner
+    ranged_holds Inner
+    ranges Inner
+    rarm Inner
+    rather Inner
+}
+
+table NameTypes1
+{
+    one0  range_uint_max
+    many0 [..4]range_uint_max
+    one1  range_uint_min
+    many1 [..4]range_uint_min
+    one2  ranged
+    many2 [..4]ranged
+    one3  rangedHeld
+    many3 [..4]rangedHeld
+    one4  rangedHolds16
+    many4 [..4]rangedHolds16
+    one5  rangedOffset
+    many5 [..4]rangedOffset
+    one6  ranged_holds
+    many6 [..4]ranged_holds
+    one7  ranges
+    many7 [..4]ranges
+    one8  rarm
+    many8 [..4]rarm
+    one9  rather
+    many9 [..4]rather
+}
+
+table NameFields1
+{
+    range_uint_max uint32
+    range_uint_min uint32
+    ranged uint32
+    rangedHeld uint32
+    rangedHolds16 uint32
+    rangedOffset uint32
+    ranged_holds uint32
+    ranges uint32
+    rarm uint32
+    rather uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}

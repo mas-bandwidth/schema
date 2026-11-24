@@ -37,10 +37,13 @@ var surfaces = []string{"wire", "message", "message-prior", "report", "framing",
 // out of `list`, exits 2 on, or a case it answers `.absent`, is a failure and
 // never the work left (docs/SPEC-CONFORMANCE.md DW-TABLE-SHAPE). A dynamic leg
 // answers from its writer; a static one (go, goose) answers `unrepresentable`
-// for a value its types cannot hold. The assert legs check writes in their
-// debug build alone and do not list the surface; the reference leg lists it
-// as it lists every surface.
-var shapeLegs = map[string]bool{"go": true, "js": true, "elixir": true, "lua": true, "luau": true, "squirrel": true, "moo": true, "goose": true}
+// for a value its types cannot hold. Python and Ruby refuse in every build
+// too (a ValueError, an InvalidValue). The assert legs list the surface as
+// well and answer from their debug build: `unrepresentable` where their types
+// cannot hold the value, their own debug refusal where they can (a null in a
+// class place); a ticked row they leave absent is red through ticked.go. The
+// reference leg lists it as it lists every surface.
+var shapeLegs = map[string]bool{"go": true, "js": true, "elixir": true, "lua": true, "luau": true, "squirrel": true, "moo": true, "goose": true, "python": true, "ruby": true}
 
 // shapeOwed is the failure a shape leg earns by leaving `how` cases of the
 // write-refusal-shape surface unanswered, or "" when the leg owes none (a
@@ -429,7 +432,9 @@ type expectation struct {
 	verdictOnly bool
 	// unrepresentable credits `unrepresentable\n` as the answer: a
 	// read-into fixed-nocap row in a leg whose fixed load cannot omit the
-	// capacity, so the rule has no call to hold (FL-17).
+	// capacity, so the rule has no call to hold (FL-17); or a read-into
+	// retain-fixed row in a leg whose fixed-root LoadRetain is refused at
+	// compile time, so there is no call to hand a report (SPEC-TABLES §6.6).
 	unrepresentable bool
 }
 
@@ -724,7 +729,7 @@ func expectations(m *Manifest, surface string, reports map[string]string, jsonDi
 			if err != nil {
 				return nil, fmt.Errorf("%s: the engine's read-into answer: %w — run: make conformance-generate", r.Name, err)
 			}
-			out = append(out, expectation{name: r.Name, want: want, unrepresentable: r.Form == "fixed-nocap"})
+			out = append(out, expectation{name: r.Name, want: want, unrepresentable: r.Form == "fixed-nocap" || r.Form == "retain-fixed"})
 		}
 	case "json-write-into":
 		for _, j := range m.JSONWriteIntos {
