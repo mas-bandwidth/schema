@@ -12,7 +12,6 @@ P4	owed: fails: FAIL P4 wrong plan yields non-zero Flags at CameraId bytes
 R14	owed: fails: R14.mjs: RED: governance: FIXED-FORM-ALGORITHM.md:1133	a placeholder RED test that checks nothing: the row prints its governance line and exits 1 by design
 R15	owed: fails: TypeError: Cannot create property 'power' on number '0'
 R16	owed: fails: FAIL: count negative: clamped >= 1 (u32 > bound 4)
-R23	owed: fails: RED: TableFixedKnownLayout has 5 own members
 R25	owed: fails: TypeError: Cannot read properties of undefined (reading 'fill')
 R6	owed: fails: R6.mjs: RED: governance: FIXED-FORM-ALGORITHM.md:518	a placeholder RED test that checks nothing: the row prints its governance line and exits 1 by design
 W13	owed: fails: FAIL FixedTableFixedHashLo: got 614323680, expected 2124077328

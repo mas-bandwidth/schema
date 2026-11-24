@@ -1476,6 +1476,12 @@ function TableFixedCoalesce(plan, from) {
 // divergence from that row's spelling: JavaScript has no sixty-four-bit integer
 // without a BigInt, and the same hash is compared once per RECORD in the read
 // loop, where an allocation per record is the cost §3.4 already refused.
+//
+// AND NOTHING ELSE RIDES ON IT (§5.9 #19, #34): the struct's members are the
+// contract, so the lock bytes' DataView the per-read layout compare moves its
+// 32-bit lanes through is NOT a fifth member here. Each generated module keeps
+// those views in its own <Name>FixedKnownViews array, made once at module load
+// beside <Name>FixedKnown and indexed by the same pick.
 export class TableFixedKnownLayout {
   constructor(hashLo, hashHi, layout, layoutBytes, recordBytes) {
     this.hashLo = hashLo | 0;
@@ -1483,9 +1489,6 @@ export class TableFixedKnownLayout {
     this.layout = layout;
     this.layoutBytes = layoutBytes | 0;
     this.recordBytes = recordBytes | 0;
-    // the lock's bytes as a view, made ONCE at module load, so the per-read
-    // layout compare moves in 32-bit lanes and allocates nothing
-    this.layoutView = new globalThis.DataView(layout.buffer, layout.byteOffset, layout.length);
   }
 }
 

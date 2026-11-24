@@ -325,6 +325,12 @@ const FixedTableFixedKnown = [
 // the module's own entries to their values but cannot replace one.
 for (const entry of FixedTableFixedKnown) { globalThis.Object.freeze(entry); }
 globalThis.Object.freeze(FixedTableFixedKnown);
+// THE LOCK BYTES' VIEWS, one per entry and made ONCE here, so the per-read
+// layout compare moves in 32-bit lanes and allocates nothing. They ride
+// BESIDE the table and never on TableFixedKnownLayout, whose members are
+// the contract (docs/FIXED-FORM-ALGORITHM.md §5.9 #19, #34).
+const FixedTableFixedKnownViews = globalThis.Object.freeze(FixedTableFixedKnown.map(
+  (k) => new globalThis.DataView(k.layout.buffer, k.layout.byteOffset, k.layout.length)));
 
 // THE FLOOR is one number and the lineage is one array, so "retired" is an
 // index cut and the operator's two answers stay distinct: below it a layout
@@ -438,7 +444,7 @@ function FixedTableFixedLoadWalk(values, capacity, bytes, byteLength, plan, repo
   const srcView = new globalThis.DataView(bytes.buffer, bytes.byteOffset, bytes.length);
   {
     // THE LAYOUT COMPARE MOVES IN 32-BIT LANES, then a tail of at most three bytes.
-    const lv = known.layoutView;
+    const lv = FixedTableFixedKnownViews[pick];
     let i = 0;
     for (; i + 4 <= layoutBytes; i += 4) {
       if (srcView.getUint32(layoutAt + i, true) !== lv.getUint32(i, true)) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }
