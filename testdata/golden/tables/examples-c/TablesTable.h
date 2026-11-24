@@ -41117,12 +41117,14 @@ static SCHEMA_UNUSED int schema_tabledemo_loadout_config_body_pack_( struct tabl
     (void) at;
     (void) value;
     (void) order;
+    schema_assert( !( (uint64_t) ( value->grade ) > 3 ) );
     tabledemo_table_cook_put( at + 0, (uint64_t) value->grade, 1, order );
     if ( value->grades_count < 0 || value->grades_count > 4 ) { return 0; }
     {
         int32_t cook_i1;
         for ( cook_i1 = 0; cook_i1 < value->grades_count && cook_i1 < 4; cook_i1++ )
         {
+            schema_assert( !( (uint64_t) ( value->grades[cook_i1] ) > 3 ) );
             tabledemo_table_cook_put( at + 1 + cook_i1 * 1, (uint64_t) value->grades[cook_i1], 1, order );
         }
     }
@@ -41131,6 +41133,7 @@ static SCHEMA_UNUSED int schema_tabledemo_loadout_config_body_pack_( struct tabl
         int32_t cook_i2;
         for ( cook_i2 = 0; cook_i2 < 3; cook_i2++ )
         {
+            schema_assert( !( (uint64_t) ( value->podium[cook_i2] ) > 3 ) );
             tabledemo_table_cook_put( at + 12 + cook_i2 * 1, (uint64_t) value->podium[cook_i2], 1, order );
         }
     }
@@ -41360,6 +41363,7 @@ static SCHEMA_UNUSED int schema_tabledemo_moods_body_pack_( struct tabledemo_tab
         int32_t cook_i1;
         for ( cook_i1 = 0; cook_i1 < value->row_count && cook_i1 < 4; cook_i1++ )
         {
+            schema_assert( !( (uint64_t) ( value->row[cook_i1] ) > 3 || (uint64_t) ( value->row[cook_i1] ) == 2 ) );
             tabledemo_table_cook_put( at + 0 + cook_i1 * 1, (uint64_t) value->row[cook_i1], 1, order );
         }
     }
@@ -41392,6 +41396,7 @@ static SCHEMA_UNUSED int schema_tabledemo_mood_field_body_pack_( struct tabledem
     (void) at;
     (void) value;
     (void) order;
+    schema_assert( !( (uint64_t) ( value->mood ) > 3 || (uint64_t) ( value->mood ) == 2 ) );
     tabledemo_table_cook_put( at + 0, (uint64_t) value->mood, 1, order );
     tabledemo_table_cook_put( at + 2, (uint64_t) value->tail, 2, order );
     return 1;

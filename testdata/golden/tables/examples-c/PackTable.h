@@ -22592,6 +22592,7 @@ static SCHEMA_UNUSED int schema_tabledemo_global_settings_body_pack_( struct tab
     (void) value;
     (void) order;
     tabledemo_table_cook_put( at + 0, (uint64_t) value->tick_rate, 4, order );
+    schema_assert( !( (uint64_t) ( value->difficulty ) > 3 ) );
     tabledemo_table_cook_put( at + 4, (uint64_t) value->difficulty, 1, order );
     tabledemo_table_cook_bytes( at + 5, value->build_note, value->build_note_length, 49 );
     tabledemo_table_cook_put( at + 5 + 51, (uint32_t) value->build_note_length, 4, order );

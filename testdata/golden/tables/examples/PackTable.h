@@ -20879,6 +20879,7 @@ inline bool ShipEntryCookBody( uint8_t * at, const ShipEntry & value, TableByteO
 inline bool GlobalSettingsCookBody( uint8_t * at, const GlobalSettings & value, TableByteOrder order )
 {
     table_cook_put( at + 0, (uint64_t) value.tick_rate, 4, order );
+    schema_assert( !( uint64_t( value.difficulty ) > 3 ) );
     table_cook_put( at + 4, (uint64_t) value.difficulty, 1, order );
     table_cook_bytes( at + 5, value.build_note, value.build_note_length, 49 );
     table_cook_put( at + 56, (uint64_t) (uint32_t) value.build_note_length, 4, order );

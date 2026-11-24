@@ -47160,6 +47160,7 @@ inline bool InsertTextCookBody( uint8_t * at, const InsertText & value, TableByt
         if ( value.modes_count < 0 || value.modes_count > 2 ) { return false; }
         for ( int32_t i = 0; i < value.modes_count; i++ )
         {
+            schema_assert( !( uint64_t( value.modes[i] ) > 2 ) );
             table_cook_put( at + 292 + i * 1, (uint64_t) value.modes[i], 1, order );
         }
         table_cook_put( at + 296, (uint64_t) (uint32_t) value.modes_count, 4, order );
@@ -47207,6 +47208,7 @@ inline bool EditCookBody( uint8_t * at, const Edit & value, TableByteOrder order
             }
             case EditBodyType::Mode:
             {
+                schema_assert( !( uint64_t( value.body.mode ) > 2 ) );
                 table_cook_put( at + 4 + 4, (uint64_t) value.body.mode, 1, order );
                 break;
             }
@@ -47220,6 +47222,7 @@ inline bool OpenDocumentCookBody( uint8_t * at, const OpenDocument & value, Tabl
 {
     table_cook_bytes( at + 0, value.path, value.path_length, 65 );
     table_cook_put( at + 68, (uint64_t) (uint32_t) value.path_length, 4, order );
+    schema_assert( !( uint64_t( value.mode ) > 2 ) );
     table_cook_put( at + 72, (uint64_t) value.mode, 1, order );
     if ( !CursorCookBody( at + 76, value.cursor, order ) ) { return false; }
     return true;
@@ -47278,6 +47281,7 @@ inline bool TransactionCookBody( uint8_t * at, const Transaction & value, TableB
                 }
                 case EditBodyType::Mode:
                 {
+                    schema_assert( !( uint64_t( value.pending[i].mode ) > 2 ) );
                     table_cook_put( at + 964 + i * 308 + 4, (uint64_t) value.pending[i].mode, 1, order );
                     break;
                 }
@@ -47427,6 +47431,7 @@ inline bool ToolMessageCookBody( uint8_t * at, const ToolMessage & value, TableB
     {
         for ( int32_t i = 0; i < 2; i++ )
         {
+            schema_assert( !( uint64_t( value.marks[i] ) > 2 ) );
             table_cook_put( at + 5165 + i * 1, (uint64_t) value.marks[i], 1, order );
         }
     }
