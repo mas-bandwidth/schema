@@ -134,8 +134,10 @@ func probeVerdicts(t *testing.T, out []byte) map[string]string {
 
 // TestJavaTextReadDepthCap holds the generated Java text read to the depth cap
 // on the same texts the Go reader reads: 128 nests in, 129 refuses, and a
-// 100000-deep text refuses without a Throwable. The pointer chain also
-// round-trips at 128 and does neither at 129, as §16.14 W2 says.
+// 100000-deep text refuses without a Throwable. The writer counts every
+// container the reader does (§16.14 W2): each Node writes its `kids` array,
+// so a chain of 127 nodes under the root puts the last `kids` at depth 128
+// and round-trips, and one of 128 puts it at 129 and does neither.
 func TestJavaTextReadDepthCap(t *testing.T) {
 	slowtest.Gate(t, "the JDK (it compiles and runs the generated Java)")
 	t.Parallel()
@@ -231,8 +233,9 @@ func TestJavaTextReadDepthCap(t *testing.T) {
 		}
 	}
 
-	// W2: the writer carries the same cap. A chain of 128 nodes under the root
-	// writes and reads; 129 does neither. Build both in Go and Java.
+	// W2: the writer carries the same cap in the same unit. A chain of 127
+	// nodes under the root writes and reads; 128, whose last `kids` array sits
+	// at depth 129, does neither. Build both in Go and Java.
 	goWrites := func(n int) bool {
 		rootInst := m.New(node)
 		cur := rootInst
@@ -254,8 +257,8 @@ func TestJavaTextReadDepthCap(t *testing.T) {
 		_, err := m.Write(rootInst)
 		return err == nil
 	}
-	for _, n := range []int{128, 129} {
-		want := n == 128
+	for _, n := range []int{127, 128} {
+		want := n == 127
 		if got := goWrites(n); got != want {
 			t.Fatalf("Go writer chain of %d nodes: write=%v, want %v", n, got, want)
 		}

@@ -16893,8 +16893,10 @@ nests as deep as it is long. **The cap is 128**: a read that nests deeper is <!-
 **The read's cap counts every object and array the reader walks, placed or skipped**,
 the value under an unknown key included, the root at depth 0: a container at
 depth 128 is the deepest read, so 129 nested containers (the root and 128
-inside it) are read and the 130th nested container refuses `malformed`. The write's cap at the same number counts
-table and type values only (W2), so the two caps share a number and not a unit.
+inside it) are read and the 130th nested container refuses `malformed`. **The write's cap counts
+the same containers in the same unit** (W2): every object and array it writes,
+an empty `[]` or `{}` included, so a writer never emits a text its own reader
+refuses.
 
 **A SCHEMA-NAME STRING IS CAPPED AT 255 BYTES, wherever the read meets one** —
 an object key that names a field, an enum variant name, a flags element, a
@@ -18347,13 +18349,20 @@ spaces (`0x20`); `NL(d)` is a line feed followed by `INDENT(d)`.
 THE DEPTH CAP IS 128, AND READ AND WRITE MEASURE IT IN ONE UNIT: this `d`,
 which every enclosing object and array raises by one (a table's object, an
 array, a map's object and a union's object alike), the root at 0. The write
-judges it at each table or type value (W3): one at `d` past 128 refuses the
-write. The read judges the same `d` at each table value it places and at
-each container it skips (§16.2), so a document this writer emits never
-meets the read's cap, and a pointer chain of
-128 nodes under the root writes and reads and one of 129 does neither. A
-scalar, a string or a `null` written at depth 129 nests nothing and is
-written: the last node's null `next` does not count. No other whitespace is
+judges it at EVERY CONTAINER IT WRITES, exactly as the read judges it at every
+container it walks (§16.2): a table or type value (W3), an array, a text
+list, a map's object, an enum-keyed array's object and a union's object, the
+empty `[]` and `{}` included. A container at `d` past 128 refuses the write,
+so a document this writer emits never meets the read's cap. A value is
+writable only when its deepest container, an empty leaf array included, sits
+at `d` 128 or less: a pointer chain of 128 nodes under the root whose nodes
+hold no container writes and reads, and one of 129 does neither; a chain whose
+nodes each hold an array writes and reads at 127 nodes, and at 128 the last
+node's array sits at 129 and the write refuses. A scalar, a string or a
+`null` written at depth 129 nests nothing and is written: the last node's null
+`next` does not count. The refusal is the text writer's own, the -1 of §16.3
+in every build and every leg, the one a table value past the cap already
+takes: one cap, one check, whatever the container. No other whitespace is
 ever written outside a string: no tab, no carriage return, no space before a
 `,` or a `:`, no space after a `,`.
 
