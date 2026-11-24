@@ -17,18 +17,16 @@ import (
 
 // TestEveryGeneratedTableHeaderCompilesStandalone holds docs/SPEC-TABLES.md
 // section 13.9 (the hooks table) over the shared corpus: every unit the
-// conformance manifest names generates C++ table headers, and each Table.h and
-// packet header compiles when it is the first and only thing a translation unit
+// conformance manifest names generates C++ table headers, and every generated header (Table, Block, View, packet)
+// compiles when it is the first and only thing a translation unit
 // includes. A header that calls schema_assert without carrying the hook (an
 // `#ifndef schema_assert` fallback) is refused by the compiler here, whichever
 // of the write-contract checks emitted the call: a variable table with a
 // ranged fixed(48,16) field once did, and the unit-specific conditions that
 // decided the hook missed it.
 //
-// COST: the Block and View headers of a manifest unit include its Table.h, so
-// only the one-check standalone_* units compile every header; the manifest
-// units compile Table.h and the packet headers. Units run in parallel, and
-// the ci-full row unit-codegen-cpp-3 gives the test 110 s on 4 CPUs.
+// Every header of every unit is compiled, Block and View headers too. The sweep
+// has its own ci-full row (unit-codegen-cpp-4).
 //
 // Functional (a C++ compiler): run with SCHEMA_SLOW=1.
 func TestEveryGeneratedTableHeaderCompilesStandalone(t *testing.T) {
@@ -114,9 +112,6 @@ func TestEveryGeneratedTableHeaderCompilesStandalone(t *testing.T) {
 				}
 				compiled := 0
 				for _, header := range names {
-					if !strings.HasPrefix(row.name, "standalone_") && standaloneSkipsHeader(header) {
-						continue
-					}
 					compiled++
 					tu := filepath.Join(dir, "tu_"+strings.TrimSuffix(header, ".h")+".cpp")
 					if err := os.WriteFile(tu, []byte("#include \""+header+"\"\n"), 0o600); err != nil {
@@ -137,12 +132,6 @@ func TestEveryGeneratedTableHeaderCompilesStandalone(t *testing.T) {
 	if err := checkSwept(int(swept.Load()), len(units)); err != nil {
 		t.Fatal(err)
 	}
-}
-
-// standaloneSkipsHeader is the cost bound of the sweep: a Block or View header
-// includes its unit Table.h, which carries the hook and is compiled alone.
-func standaloneSkipsHeader(header string) bool {
-	return strings.HasSuffix(header, "Block.h") || strings.HasSuffix(header, "View.h")
 }
 
 // checkSwept refuses a sweep that left a unit out: every unit registered must
