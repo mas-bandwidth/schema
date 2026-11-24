@@ -114,9 +114,15 @@ func emitWriteField(m *Module, val string, f *ir.Field, indent string) {
 		return
 	}
 	// a [N]T holds exactly N values: any other count is refused, never cut or
-	// padded to N (SPEC §5.1, SF-20)
-	m.Printf("%sif (typeof %s != \"array\" || %s.len() != %d) return false; // a [N]T holds exactly N values (SPEC §5.1)\n",
-		indent, val, val, bound)
+	// padded to N (SPEC §5.1, SF-20). The check names the container the
+	// constructor makes (squirrel.go): a [N]uint8 is a blob, every other [N]T
+	// an array. An array-only check refused every lawful [N]uint8.
+	container := "array"
+	if isByteElem(f.Type) {
+		container = "blob"
+	}
+	m.Printf("%sif (typeof %s != \"%s\" || %s.len() != %d) return false; // a [N]T holds exactly N values (SPEC §5.1)\n",
+		indent, val, container, val, bound)
 	m.Printf("%sfor (local _i = 0; _i < %d; _i++) {\n", indent, bound)
 	emitArrayElement(m, val, f, indent+"  ")
 	m.Printf("%s}\n", indent)
