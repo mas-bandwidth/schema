@@ -1833,6 +1833,20 @@ tables-dart-wire-fuzz-negative-control: build/conformance-harness
 
 test-dart: tables-dart-wire-fuzz tables-dart-wire-fuzz-negative-control
 
+# THE DRIVER'S STDIN QUEUE is linear: test/conformance/dart/chunk_queue.dart
+# keeps chunks and a read offset instead of removing each frame from the front
+# of one growing list (quadratic with 256 large mutants queued, against the
+# harness's 30 s per-mutant limit). The unit test counts bytes copied, with no
+# clock, and its control runs the same test against the old reader.
+.PHONY: dart-chunk-queue-test dart-chunk-queue-negative-control
+dart-chunk-queue-test:
+	sh test/conformance/dart/chunk-queue-check test "$(DART)"
+
+dart-chunk-queue-negative-control:
+	sh test/conformance/dart/chunk-queue-check control "$(DART)"
+
+test-dart: dart-chunk-queue-test dart-chunk-queue-negative-control
+
 # DAMAGE DISCARDS THE WHOLE LOAD on the Dart leg (docs/SPEC-TABLES.md §4):
 # damage inside a nested body makes WireLoad hand back the type's defaults
 # (fixed and variable roots), WireLoadRetain hand back defaults with the

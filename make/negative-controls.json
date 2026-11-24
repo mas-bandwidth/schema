@@ -1950,7 +1950,8 @@
       "when": "pull-request",
       "why": "slice 3 of 4 of dart-conformance-2, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on a shared four-thread bench at load average 80 to 180: tables-dart-wire-fuzz-negative-control 42 s.",
       "targets": [
-        "tables-dart-wire-fuzz-negative-control"
+        "tables-dart-wire-fuzz-negative-control",
+        "dart-chunk-queue-negative-control"
       ],
       "dart": "3.13.2"
     },
