@@ -11390,6 +11390,15 @@ Two consequences follow, and each is a rule:
   its defaults writes nothing (§3). One whose body holds a retained field
   writes its body, that field and its terminator. Elision is about what a body
   CONTAINS, and a retained field is content.
+- **A RETAINING SAVE ELIDES WHAT THE PLAIN SAVE ELIDES, AND NOTHING ELSE.**
+  Retention adds content; it never changes the test for a field with none.
+  A FIXED ARRAY OF UNIONS whose every element is None is left out, as §3
+  leaves out any fixed array at its defaults: a None element has no arm, so
+  no body under it can carry a retained record, and there is nothing for the
+  field to carry. A retaining save that tested the list for emptiness wrote
+  the field as its bound of Nones, because a fixed array is always its bound
+  long (Java, found by the full nightly 45130315968 on
+  `messagedemo.ToolEnvelope`; SPEC-CONFORMANCE.md §7).
 - **A retained id enters the file's ID TABLE in first-use order** (§3), at the
   point the walk reaches it, which is after its body's own fields. An id
   already in the table takes that entry and is never appended twice, exactly as
