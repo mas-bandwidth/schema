@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum dir_entry
+{ Zfirst, Zsecond, Zthird }
+
+enum dir_rev
+{ Zfirst, Zsecond, Zthird }
+
+enum direct
+{ Zfirst, Zsecond, Zthird }
+
+enum directive
+{ Zfirst, Zsecond, Zthird }
+
+enum directory
+{ Zfirst, Zsecond, Zthird }
+
+enum directory_count
+{ Zfirst, Zsecond, Zthird }
+
+enum discard
+{ Zfirst, Zsecond, Zthird }
+
+enum discarded
+{ Zfirst, Zsecond, Zthird }
+
+enum disjuncts
+{ Zfirst, Zsecond, Zthird }
+
+enum disposed
+{ Zfirst, Zsecond, Zthird }
+
+enum distinct
+{ Zfirst, Zsecond, Zthird }
+
+enum div
+{ Zfirst, Zsecond, Zthird }
+
+enum divMod
+{ Zfirst, Zsecond, Zthird }
+
+enum divModS
+{ Zfirst, Zsecond, Zthird }
+
+enum divModSigned
+{ Zfirst, Zsecond, Zthird }
+
+enum divModU
+{ Zfirst, Zsecond, Zthird }
+
+enum divSmall
+{ Zfirst, Zsecond, Zthird }
+
+enum division
+{ Zfirst, Zsecond, Zthird }
+
+enum dkey
+{ Zfirst, Zsecond, Zthird }
+
+enum dl
+{ Zfirst, Zsecond, Zthird }
+
+enum dlo
+{ Zfirst, Zsecond, Zthird }
+
+enum dmal
+{ Zfirst, Zsecond, Zthird }
+
+enum dn
+{ Zfirst, Zsecond, Zthird }
+
+enum doc
+{ Zfirst, Zsecond, Zthird }
+
+enum document
+{ Zfirst, Zsecond, Zthird }
+
+enum document_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum doe
+{ Zfirst, Zsecond, Zthird }
+
+enum does
+{ Zfirst, Zsecond, Zthird }
+
+enum dom
+{ Zfirst, Zsecond, Zthird }
+
+enum domain
+{ Zfirst, Zsecond, Zthird }
+
+enum domainHi
+{ Zfirst, Zsecond, Zthird }
+
+enum domainLo
+{ Zfirst, Zsecond, Zthird }
+
+enum done
+{ Zfirst, Zsecond, Zthird }
+
+enum dot
+{ Zfirst, Zsecond, Zthird }
+
+enum doubleBits
+{ Zfirst, Zsecond, Zthird }
+
+enum doubleBitsAreFinite
+{ Zfirst, Zsecond, Zthird }
+
+enum doubleFromBits
+{ Zfirst, Zsecond, Zthird }
+
+enum doubleToF32
+{ Zfirst, Zsecond, Zthird }
+
+enum double_exact_decimal
+{ Zfirst, Zsecond, Zthird }
+
+enum down
+{ Zfirst, Zsecond, Zthird }
+
+enum doy
+{ Zfirst, Zsecond, Zthird }
+
+enum dp
+{ Zfirst, Zsecond, Zthird }
+
+enum dq
+{ Zfirst, Zsecond, Zthird }
+
+enum drop
+{ Zfirst, Zsecond, Zthird }
+
+enum dropped
+{ Zfirst, Zsecond, Zthird }
+
+enum ds
+{ Zfirst, Zsecond, Zthird }
+
+enum dsigned
+{ Zfirst, Zsecond, Zthird }
+
+enum dst
+{ Zfirst, Zsecond, Zthird }
+
+enum dstArg
+{ Zfirst, Zsecond, Zthird }
+
+enum dstAux
+{ Zfirst, Zsecond, Zthird }
+
+enum dstCounted
+{ Zfirst, Zsecond, Zthird }
+
+enum dstHalf
+{ Zfirst, Zsecond, Zthird }
+
+enum dstLanes
+{ Zfirst, Zsecond, Zthird }
+
+enum dstOff
+{ Zfirst, Zsecond, Zthird }
+
+enum dstOffset
+{ Zfirst, Zsecond, Zthird }
+
+enum dstSize
+{ Zfirst, Zsecond, Zthird }
+
+enum dstStride
+{ Zfirst, Zsecond, Zthird }
+
+enum dstTag
+{ Zfirst, Zsecond, Zthird }
+
+enum dstView
+{ Zfirst, Zsecond, Zthird }
+
+enum dstWidth
+{ Zfirst, Zsecond, Zthird }
+
+enum dst_in
+{ Zfirst, Zsecond, Zthird }
+
+enum dst_storage
+{ Zfirst, Zsecond, Zthird }
+
+enum dtail
+{ Zfirst, Zsecond, Zthird }
+
+enum dummy
+{ Zfirst, Zsecond, Zthird }
+
+enum dump_record
+{ Zfirst, Zsecond, Zthird }
+
+enum dump_scalar
+{ Zfirst, Zsecond, Zthird }
+
+enum dup_unknown
+{ Zfirst, Zsecond, Zthird }
+
+enum duplicate
+{ Zfirst, Zsecond, Zthird }
+
+enum dv
+{ Zfirst, Zsecond, Zthird }
+
+enum dw
+{ Zfirst, Zsecond, Zthird }
+
+enum dx
+{ Zfirst, Zsecond, Zthird }
+
+enum dy
+{ Zfirst, Zsecond, Zthird }
+
+enum e
+{ Zfirst, Zsecond, Zthird }
+
+enum e0
+{ Zfirst, Zsecond, Zthird }
+
+enum e1
+{ Zfirst, Zsecond, Zthird }
+
+enum e10
+{ Zfirst, Zsecond, Zthird }
+
+enum e2
+{ Zfirst, Zsecond, Zthird }
+
+enum e32
+{ Zfirst, Zsecond, Zthird }
+
+enum e64
+{ Zfirst, Zsecond, Zthird }
+
+enum eE
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    dir_entry Inner
+    dir_rev Inner
+    direct Inner
+    directive Inner
+    directory Inner
+    directory_count Inner
+    discard Inner
+    discarded Inner
+    disjuncts Inner
+    disposed Inner
+}
+
+table NameTypes0
+{
+    one0  dir_entry
+    many0 [..4]dir_entry
+    one1  dir_rev
+    many1 [..4]dir_rev
+    one2  direct
+    many2 [..4]direct
+    one3  directive
+    many3 [..4]directive
+    one4  directory
+    many4 [..4]directory
+    one5  directory_count
+    many5 [..4]directory_count
+    one6  discard
+    many6 [..4]discard
+    one7  discarded
+    many7 [..4]discarded
+    one8  disjuncts
+    many8 [..4]disjuncts
+    one9  disposed
+    many9 [..4]disposed
+}
+
+table NameFields0
+{
+    dir_entry uint32
+    dir_rev uint32
+    direct uint32
+    directive uint32
+    directory uint32
+    directory_count uint32
+    discard uint32
+    discarded uint32
+    disjuncts uint32
+    disposed uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    distinct Inner
+    div Inner
+    divMod Inner
+    divModS Inner
+    divModSigned Inner
+    divModU Inner
+    divSmall Inner
+    division Inner
+    dkey Inner
+    dl Inner
+}
+
+table NameTypes1
+{
+    one0  distinct
+    many0 [..4]distinct
+    one1  div
+    many1 [..4]div
+    one2  divMod
+    many2 [..4]divMod
+    one3  divModS
+    many3 [..4]divModS
+    one4  divModSigned
+    many4 [..4]divModSigned
+    one5  divModU
+    many5 [..4]divModU
+    one6  divSmall
+    many6 [..4]divSmall
+    one7  division
+    many7 [..4]division
+    one8  dkey
+    many8 [..4]dkey
+    one9  dl
+    many9 [..4]dl
+}
+
+table NameFields1
+{
+    distinct uint32
+    div uint32
+    divMod uint32
+    divModS uint32
+    divModSigned uint32
+    divModU uint32
+    divSmall uint32
+    division uint32
+    dkey uint32
+    dl uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    dlo Inner
+    dmal Inner
+    dn Inner
+    doc Inner
+    document Inner
+    document_bytes Inner
+    doe Inner
+    does Inner
+    dom Inner
+    domain Inner
+}
+
+table NameTypes2
+{
+    one0  dlo
+    many0 [..4]dlo
+    one1  dmal
+    many1 [..4]dmal
+    one2  dn
+    many2 [..4]dn
+    one3  doc
+    many3 [..4]doc
+    one4  document
+    many4 [..4]document
+    one5  document_bytes
+    many5 [..4]document_bytes
+    one6  doe
+    many6 [..4]doe
+    one7  does
+    many7 [..4]does
+    one8  dom
+    many8 [..4]dom
+    one9  domain
+    many9 [..4]domain
+}
+
+table NameFields2
+{
+    dlo uint32
+    dmal uint32
+    dn uint32
+    doc uint32
+    document uint32
+    document_bytes uint32
+    doe uint32
+    does uint32
+    dom uint32
+    domain uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    domainHi Inner
+    domainLo Inner
+    done Inner
+    dot Inner
+    doubleBits Inner
+    doubleBitsAreFinite Inner
+    doubleFromBits Inner
+    doubleToF32 Inner
+    double_exact_decimal Inner
+    down Inner
+}
+
+table NameTypes3
+{
+    one0  domainHi
+    many0 [..4]domainHi
+    one1  domainLo
+    many1 [..4]domainLo
+    one2  done
+    many2 [..4]done
+    one3  dot
+    many3 [..4]dot
+    one4  doubleBits
+    many4 [..4]doubleBits
+    one5  doubleBitsAreFinite
+    many5 [..4]doubleBitsAreFinite
+    one6  doubleFromBits
+    many6 [..4]doubleFromBits
+    one7  doubleToF32
+    many7 [..4]doubleToF32
+    one8  double_exact_decimal
+    many8 [..4]double_exact_decimal
+    one9  down
+    many9 [..4]down
+}
+
+table NameFields3
+{
+    domainHi uint32
+    domainLo uint32
+    done uint32
+    dot uint32
+    doubleBits uint32
+    doubleBitsAreFinite uint32
+    doubleFromBits uint32
+    doubleToF32 uint32
+    double_exact_decimal uint32
+    down uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    doy Inner
+    dp Inner
+    dq Inner
+    drop Inner
+    dropped Inner
+    ds Inner
+    dsigned Inner
+    dst Inner
+    dstArg Inner
+    dstAux Inner
+}
+
+table NameTypes4
+{
+    one0  doy
+    many0 [..4]doy
+    one1  dp
+    many1 [..4]dp
+    one2  dq
+    many2 [..4]dq
+    one3  drop
+    many3 [..4]drop
+    one4  dropped
+    many4 [..4]dropped
+    one5  ds
+    many5 [..4]ds
+    one6  dsigned
+    many6 [..4]dsigned
+    one7  dst
+    many7 [..4]dst
+    one8  dstArg
+    many8 [..4]dstArg
+    one9  dstAux
+    many9 [..4]dstAux
+}
+
+table NameFields4
+{
+    doy uint32
+    dp uint32
+    dq uint32
+    drop uint32
+    dropped uint32
+    ds uint32
+    dsigned uint32
+    dst uint32
+    dstArg uint32
+    dstAux uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    dstCounted Inner
+    dstHalf Inner
+    dstLanes Inner
+    dstOff Inner
+    dstOffset Inner
+    dstSize Inner
+    dstStride Inner
+    dstTag Inner
+    dstView Inner
+    dstWidth Inner
+}
+
+table NameTypes5
+{
+    one0  dstCounted
+    many0 [..4]dstCounted
+    one1  dstHalf
+    many1 [..4]dstHalf
+    one2  dstLanes
+    many2 [..4]dstLanes
+    one3  dstOff
+    many3 [..4]dstOff
+    one4  dstOffset
+    many4 [..4]dstOffset
+    one5  dstSize
+    many5 [..4]dstSize
+    one6  dstStride
+    many6 [..4]dstStride
+    one7  dstTag
+    many7 [..4]dstTag
+    one8  dstView
+    many8 [..4]dstView
+    one9  dstWidth
+    many9 [..4]dstWidth
+}
+
+table NameFields5
+{
+    dstCounted uint32
+    dstHalf uint32
+    dstLanes uint32
+    dstOff uint32
+    dstOffset uint32
+    dstSize uint32
+    dstStride uint32
+    dstTag uint32
+    dstView uint32
+    dstWidth uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    dst_in Inner
+    dst_storage Inner
+    dtail Inner
+    dummy Inner
+    dump_record Inner
+    dump_scalar Inner
+    dup_unknown Inner
+    duplicate Inner
+    dv Inner
+    dw Inner
+}
+
+table NameTypes6
+{
+    one0  dst_in
+    many0 [..4]dst_in
+    one1  dst_storage
+    many1 [..4]dst_storage
+    one2  dtail
+    many2 [..4]dtail
+    one3  dummy
+    many3 [..4]dummy
+    one4  dump_record
+    many4 [..4]dump_record
+    one5  dump_scalar
+    many5 [..4]dump_scalar
+    one6  dup_unknown
+    many6 [..4]dup_unknown
+    one7  duplicate
+    many7 [..4]duplicate
+    one8  dv
+    many8 [..4]dv
+    one9  dw
+    many9 [..4]dw
+}
+
+table NameFields6
+{
+    dst_in uint32
+    dst_storage uint32
+    dtail uint32
+    dummy uint32
+    dump_record uint32
+    dump_scalar uint32
+    dup_unknown uint32
+    duplicate uint32
+    dv uint32
+    dw uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    dx Inner
+    dy Inner
+    e Inner
+    e0 Inner
+    e1 Inner
+    e10 Inner
+    e2 Inner
+    e32 Inner
+    e64 Inner
+    eE Inner
+}
+
+table NameTypes7
+{
+    one0  dx
+    many0 [..4]dx
+    one1  dy
+    many1 [..4]dy
+    one2  e
+    many2 [..4]e
+    one3  e0
+    many3 [..4]e0
+    one4  e1
+    many4 [..4]e1
+    one5  e10
+    many5 [..4]e10
+    one6  e2
+    many6 [..4]e2
+    one7  e32
+    many7 [..4]e32
+    one8  e64
+    many8 [..4]e64
+    one9  eE
+    many9 [..4]eE
+}
+
+table NameFields7
+{
+    dx uint32
+    dy uint32
+    e uint32
+    e0 uint32
+    e1 uint32
+    e10 uint32
+    e2 uint32
+    e32 uint32
+    e64 uint32
+    eE uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

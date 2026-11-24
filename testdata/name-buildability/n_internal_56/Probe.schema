@@ -1,0 +1,101 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum ratio
+{ Zfirst, Zsecond, Zthird }
+
+enum raw
+{ Zfirst, Zsecond, Zthird }
+
+enum raw12
+{ Zfirst, Zsecond, Zthird }
+
+enum raw16
+{ Zfirst, Zsecond, Zthird }
+
+enum raw32
+{ Zfirst, Zsecond, Zthird }
+
+enum raw64
+{ Zfirst, Zsecond, Zthird }
+
+enum rawArr
+{ Zfirst, Zsecond, Zthird }
+
+enum rawAt
+{ Zfirst, Zsecond, Zthird }
+
+enum rawBase
+{ Zfirst, Zsecond, Zthird }
+
+enum rawBytes
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    ratio Inner
+    raw Inner
+    raw12 Inner
+    raw16 Inner
+    raw32 Inner
+    raw64 Inner
+    rawArr Inner
+    rawAt Inner
+    rawBase Inner
+    rawBytes Inner
+}
+
+table NameTypes0
+{
+    one0  ratio
+    many0 [..4]ratio
+    one1  raw
+    many1 [..4]raw
+    one2  raw12
+    many2 [..4]raw12
+    one3  raw16
+    many3 [..4]raw16
+    one4  raw32
+    many4 [..4]raw32
+    one5  raw64
+    many5 [..4]raw64
+    one6  rawArr
+    many6 [..4]rawArr
+    one7  rawAt
+    many7 [..4]rawAt
+    one8  rawBase
+    many8 [..4]rawBase
+    one9  rawBytes
+    many9 [..4]rawBytes
+}
+
+table NameFields0
+{
+    ratio uint32
+    raw uint32
+    raw12 uint32
+    raw16 uint32
+    raw32 uint32
+    raw64 uint32
+    rawArr uint32
+    rawAt uint32
+    rawBase uint32
+    rawBytes uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}

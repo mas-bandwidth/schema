@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum next_idx
+{ Zfirst, Zsecond, Zthird }
+
+enum next_label
+{ Zfirst, Zsecond, Zthird }
+
+enum next_segment
+{ Zfirst, Zsecond, Zthird }
+
+enum nexti
+{ Zfirst, Zsecond, Zthird }
+
+enum nexts
+{ Zfirst, Zsecond, Zthird }
+
+enum nf
+{ Zfirst, Zsecond, Zthird }
+
+enum nfound
+{ Zfirst, Zsecond, Zthird }
+
+enum nhi
+{ Zfirst, Zsecond, Zthird }
+
+enum ni
+{ Zfirst, Zsecond, Zthird }
+
+enum nib
+{ Zfirst, Zsecond, Zthird }
+
+enum nids
+{ Zfirst, Zsecond, Zthird }
+
+enum nl
+{ Zfirst, Zsecond, Zthird }
+
+enum nlo
+{ Zfirst, Zsecond, Zthird }
+
+enum nm
+{ Zfirst, Zsecond, Zthird }
+
+enum nm2
+{ Zfirst, Zsecond, Zthird }
+
+enum no
+{ Zfirst, Zsecond, Zthird }
+
+enum noGuard
+{ Zfirst, Zsecond, Zthird }
+
+enum noLayout
+{ Zfirst, Zsecond, Zthird }
+
+enum no_file_form
+{ Zfirst, Zsecond, Zthird }
+
+enum nobuf
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeAlign
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeAt
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeBase
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeCount
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeEnd
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeFixedBodyBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeFixedCover
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeFixedCoverCount
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeFixedDst
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeFixedFloor
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeFixedHash
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeFixedHeaderBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeFixedIdentity
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeFixedIdentityCount
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeFixedIdentityGuards
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeFixedIdentitySplit
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeFixedKnown
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeFixedLayout
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeFixedLayoutBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeFixedLineagePlans
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeFixedLoadView
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeFixedPrefill
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeFixedRecordBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeFixedSaveView
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeIndex
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeKeys
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeLen
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeNum
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeObjs
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeOut
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeRec
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeRecs
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeRef
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeScan
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeSeen
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeSegs
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeSpec
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeTable
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeTableBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeTableGood
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeTableSeen
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeTables
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeTotal
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeTypes
+{ Zfirst, Zsecond, Zthird }
+
+enum nodeWireId
+{ Zfirst, Zsecond, Zthird }
+
+enum node_bin
+{ Zfirst, Zsecond, Zthird }
+
+enum node_blobs
+{ Zfirst, Zsecond, Zthird }
+
+enum node_entry
+{ Zfirst, Zsecond, Zthird }
+
+enum node_fields
+{ Zfirst, Zsecond, Zthird }
+
+enum node_frame
+{ Zfirst, Zsecond, Zthird }
+
+enum node_idx
+{ Zfirst, Zsecond, Zthird }
+
+enum node_indices
+{ Zfirst, Zsecond, Zthird }
+
+enum node_json_count
+{ Zfirst, Zsecond, Zthird }
+
+enum node_json_fields
+{ Zfirst, Zsecond, Zthird }
+
+enum node_json_ptr
+{ Zfirst, Zsecond, Zthird }
+
+enum node_json_read
+{ Zfirst, Zsecond, Zthird }
+
+enum node_json_write
+{ Zfirst, Zsecond, Zthird }
+
+enum node_load
+{ Zfirst, Zsecond, Zthird }
+
+enum node_load_inner
+{ Zfirst, Zsecond, Zthird }
+
+enum node_load_into
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    next_idx Inner
+    next_label Inner
+    next_segment Inner
+    nexti Inner
+    nexts Inner
+    nf Inner
+    nfound Inner
+    nhi Inner
+    ni Inner
+    nib Inner
+}
+
+table NameTypes0
+{
+    one0  next_idx
+    many0 [..4]next_idx
+    one1  next_label
+    many1 [..4]next_label
+    one2  next_segment
+    many2 [..4]next_segment
+    one3  nexti
+    many3 [..4]nexti
+    one4  nexts
+    many4 [..4]nexts
+    one5  nf
+    many5 [..4]nf
+    one6  nfound
+    many6 [..4]nfound
+    one7  nhi
+    many7 [..4]nhi
+    one8  ni
+    many8 [..4]ni
+    one9  nib
+    many9 [..4]nib
+}
+
+table NameFields0
+{
+    next_idx uint32
+    next_label uint32
+    next_segment uint32
+    nexti uint32
+    nexts uint32
+    nf uint32
+    nfound uint32
+    nhi uint32
+    ni uint32
+    nib uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    nids Inner
+    nl Inner
+    nlo Inner
+    nm Inner
+    nm2 Inner
+    no Inner
+    noGuard Inner
+    noLayout Inner
+    no_file_form Inner
+    nobuf Inner
+}
+
+table NameTypes1
+{
+    one0  nids
+    many0 [..4]nids
+    one1  nl
+    many1 [..4]nl
+    one2  nlo
+    many2 [..4]nlo
+    one3  nm
+    many3 [..4]nm
+    one4  nm2
+    many4 [..4]nm2
+    one5  no
+    many5 [..4]no
+    one6  noGuard
+    many6 [..4]noGuard
+    one7  noLayout
+    many7 [..4]noLayout
+    one8  no_file_form
+    many8 [..4]no_file_form
+    one9  nobuf
+    many9 [..4]nobuf
+}
+
+table NameFields1
+{
+    nids uint32
+    nl uint32
+    nlo uint32
+    nm uint32
+    nm2 uint32
+    no uint32
+    noGuard uint32
+    noLayout uint32
+    no_file_form uint32
+    nobuf uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    nodeAlign Inner
+    nodeAt Inner
+    nodeBase Inner
+    nodeCount Inner
+    nodeEnd Inner
+    nodeFixedBodyBytes Inner
+    nodeFixedCover Inner
+    nodeFixedCoverCount Inner
+    nodeFixedDst Inner
+    nodeFixedFloor Inner
+}
+
+table NameTypes2
+{
+    one0  nodeAlign
+    many0 [..4]nodeAlign
+    one1  nodeAt
+    many1 [..4]nodeAt
+    one2  nodeBase
+    many2 [..4]nodeBase
+    one3  nodeCount
+    many3 [..4]nodeCount
+    one4  nodeEnd
+    many4 [..4]nodeEnd
+    one5  nodeFixedBodyBytes
+    many5 [..4]nodeFixedBodyBytes
+    one6  nodeFixedCover
+    many6 [..4]nodeFixedCover
+    one7  nodeFixedCoverCount
+    many7 [..4]nodeFixedCoverCount
+    one8  nodeFixedDst
+    many8 [..4]nodeFixedDst
+    one9  nodeFixedFloor
+    many9 [..4]nodeFixedFloor
+}
+
+table NameFields2
+{
+    nodeAlign uint32
+    nodeAt uint32
+    nodeBase uint32
+    nodeCount uint32
+    nodeEnd uint32
+    nodeFixedBodyBytes uint32
+    nodeFixedCover uint32
+    nodeFixedCoverCount uint32
+    nodeFixedDst uint32
+    nodeFixedFloor uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    nodeFixedHash Inner
+    nodeFixedHeaderBytes Inner
+    nodeFixedIdentity Inner
+    nodeFixedIdentityCount Inner
+    nodeFixedIdentityGuards Inner
+    nodeFixedIdentitySplit Inner
+    nodeFixedKnown Inner
+    nodeFixedLayout Inner
+    nodeFixedLayoutBytes Inner
+    nodeFixedLineagePlans Inner
+}
+
+table NameTypes3
+{
+    one0  nodeFixedHash
+    many0 [..4]nodeFixedHash
+    one1  nodeFixedHeaderBytes
+    many1 [..4]nodeFixedHeaderBytes
+    one2  nodeFixedIdentity
+    many2 [..4]nodeFixedIdentity
+    one3  nodeFixedIdentityCount
+    many3 [..4]nodeFixedIdentityCount
+    one4  nodeFixedIdentityGuards
+    many4 [..4]nodeFixedIdentityGuards
+    one5  nodeFixedIdentitySplit
+    many5 [..4]nodeFixedIdentitySplit
+    one6  nodeFixedKnown
+    many6 [..4]nodeFixedKnown
+    one7  nodeFixedLayout
+    many7 [..4]nodeFixedLayout
+    one8  nodeFixedLayoutBytes
+    many8 [..4]nodeFixedLayoutBytes
+    one9  nodeFixedLineagePlans
+    many9 [..4]nodeFixedLineagePlans
+}
+
+table NameFields3
+{
+    nodeFixedHash uint32
+    nodeFixedHeaderBytes uint32
+    nodeFixedIdentity uint32
+    nodeFixedIdentityCount uint32
+    nodeFixedIdentityGuards uint32
+    nodeFixedIdentitySplit uint32
+    nodeFixedKnown uint32
+    nodeFixedLayout uint32
+    nodeFixedLayoutBytes uint32
+    nodeFixedLineagePlans uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    nodeFixedLoadView Inner
+    nodeFixedPrefill Inner
+    nodeFixedRecordBytes Inner
+    nodeFixedSaveView Inner
+    nodeIndex Inner
+    nodeKeys Inner
+    nodeLen Inner
+    nodeNum Inner
+    nodeObjs Inner
+    nodeOut Inner
+}
+
+table NameTypes4
+{
+    one0  nodeFixedLoadView
+    many0 [..4]nodeFixedLoadView
+    one1  nodeFixedPrefill
+    many1 [..4]nodeFixedPrefill
+    one2  nodeFixedRecordBytes
+    many2 [..4]nodeFixedRecordBytes
+    one3  nodeFixedSaveView
+    many3 [..4]nodeFixedSaveView
+    one4  nodeIndex
+    many4 [..4]nodeIndex
+    one5  nodeKeys
+    many5 [..4]nodeKeys
+    one6  nodeLen
+    many6 [..4]nodeLen
+    one7  nodeNum
+    many7 [..4]nodeNum
+    one8  nodeObjs
+    many8 [..4]nodeObjs
+    one9  nodeOut
+    many9 [..4]nodeOut
+}
+
+table NameFields4
+{
+    nodeFixedLoadView uint32
+    nodeFixedPrefill uint32
+    nodeFixedRecordBytes uint32
+    nodeFixedSaveView uint32
+    nodeIndex uint32
+    nodeKeys uint32
+    nodeLen uint32
+    nodeNum uint32
+    nodeObjs uint32
+    nodeOut uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    nodeRec Inner
+    nodeRecs Inner
+    nodeRef Inner
+    nodeScan Inner
+    nodeSeen Inner
+    nodeSegs Inner
+    nodeSpec Inner
+    nodeTable Inner
+    nodeTableBytes Inner
+    nodeTableGood Inner
+}
+
+table NameTypes5
+{
+    one0  nodeRec
+    many0 [..4]nodeRec
+    one1  nodeRecs
+    many1 [..4]nodeRecs
+    one2  nodeRef
+    many2 [..4]nodeRef
+    one3  nodeScan
+    many3 [..4]nodeScan
+    one4  nodeSeen
+    many4 [..4]nodeSeen
+    one5  nodeSegs
+    many5 [..4]nodeSegs
+    one6  nodeSpec
+    many6 [..4]nodeSpec
+    one7  nodeTable
+    many7 [..4]nodeTable
+    one8  nodeTableBytes
+    many8 [..4]nodeTableBytes
+    one9  nodeTableGood
+    many9 [..4]nodeTableGood
+}
+
+table NameFields5
+{
+    nodeRec uint32
+    nodeRecs uint32
+    nodeRef uint32
+    nodeScan uint32
+    nodeSeen uint32
+    nodeSegs uint32
+    nodeSpec uint32
+    nodeTable uint32
+    nodeTableBytes uint32
+    nodeTableGood uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    nodeTableSeen Inner
+    nodeTables Inner
+    nodeTotal Inner
+    nodeTypes Inner
+    nodeWireId Inner
+    node_bin Inner
+    node_blobs Inner
+    node_entry Inner
+    node_fields Inner
+    node_frame Inner
+}
+
+table NameTypes6
+{
+    one0  nodeTableSeen
+    many0 [..4]nodeTableSeen
+    one1  nodeTables
+    many1 [..4]nodeTables
+    one2  nodeTotal
+    many2 [..4]nodeTotal
+    one3  nodeTypes
+    many3 [..4]nodeTypes
+    one4  nodeWireId
+    many4 [..4]nodeWireId
+    one5  node_bin
+    many5 [..4]node_bin
+    one6  node_blobs
+    many6 [..4]node_blobs
+    one7  node_entry
+    many7 [..4]node_entry
+    one8  node_fields
+    many8 [..4]node_fields
+    one9  node_frame
+    many9 [..4]node_frame
+}
+
+table NameFields6
+{
+    nodeTableSeen uint32
+    nodeTables uint32
+    nodeTotal uint32
+    nodeTypes uint32
+    nodeWireId uint32
+    node_bin uint32
+    node_blobs uint32
+    node_entry uint32
+    node_fields uint32
+    node_frame uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    node_idx Inner
+    node_indices Inner
+    node_json_count Inner
+    node_json_fields Inner
+    node_json_ptr Inner
+    node_json_read Inner
+    node_json_write Inner
+    node_load Inner
+    node_load_inner Inner
+    node_load_into Inner
+}
+
+table NameTypes7
+{
+    one0  node_idx
+    many0 [..4]node_idx
+    one1  node_indices
+    many1 [..4]node_indices
+    one2  node_json_count
+    many2 [..4]node_json_count
+    one3  node_json_fields
+    many3 [..4]node_json_fields
+    one4  node_json_ptr
+    many4 [..4]node_json_ptr
+    one5  node_json_read
+    many5 [..4]node_json_read
+    one6  node_json_write
+    many6 [..4]node_json_write
+    one7  node_load
+    many7 [..4]node_load
+    one8  node_load_inner
+    many8 [..4]node_load_inner
+    one9  node_load_into
+    many9 [..4]node_load_into
+}
+
+table NameFields7
+{
+    node_idx uint32
+    node_indices uint32
+    node_json_count uint32
+    node_json_fields uint32
+    node_json_ptr uint32
+    node_json_read uint32
+    node_json_write uint32
+    node_load uint32
+    node_load_inner uint32
+    node_load_into uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

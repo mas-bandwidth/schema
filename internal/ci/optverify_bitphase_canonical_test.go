@@ -36,6 +36,9 @@ func TestOptVerifyBitPhaseAndCanonicalAll18(t *testing.T) {
 		"build/verify-canonical-bin:",
 		"build/verify-canonical/corpus/.stamp:",
 		"verify-bitphase-$(1):",
+		// the align-arrays family rides every leg's bitphase target (F1,
+		// 2026-11-24: Elixir wrote nonzero align padding inside arrays)
+		"./build/verify-bitphase-bin --lang $(1) --family align-arrays",
 		"verify-canonical-$(1):",
 		"_verify-$(1)-bench: verify-bitphase-$(1) verify-canonical-$(1)",
 		"verify-bitphase-negative-control:",
