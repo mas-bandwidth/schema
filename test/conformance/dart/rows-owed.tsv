@@ -25,9 +25,6 @@ R23	owed: fails: test/conformance/dart/rows/R23.dart:99:13: Error: The getter 'm
 R27	owed: fails: test/conformance/dart/rows/R27.dart:284:17: Error: The getter 'malformed' isn't defined for the type 'TableFixedReport'.
 R31	owed: fails: test/conformance/dart/rows/R31.dart:92:37: Error: The getter 'clamped' isn't defined for the type 'TableFixedReport'.
 R32	owed: fails: test/conformance/dart/rows/R32.dart:132:19: Error: The getter 'malformed' isn't defined for the type 'TableFixedReport'.
-R4	owed: fails: FAIL: R4: PaddedRow digest is empty — fnv1a64(layout_bytes) == stored hash (0x-697c96a5413a389e == 0x-6a0f030fb6326ae3)
-R5	owed: fails: FAIL: R5: PaddedRow has no digest entries — fnv1a64(layout) == hash (0x-697c96a5413a389e == 0x-6a0f030fb6326ae3)
 R7	owed: fails: test/conformance/dart/rows/R7.dart:152:67: Error: The getter 'malformed' isn't defined for the type 'TableFixedReport'.
 R9	owed: fails: test/conformance/dart/rows/R9.dart:102:46: Error: Member not found: 'layoutMalformed'.
 VD_signed_integers	owed: fails: test/conformance/dart/rows/VD_signed_integers.dart:167:8: Error: The getter 'malformed' isn't defined for the type 'TableFixedReport'.
-W13	owed: fails: FAIL: Cell hash: dart 0x210ba0ea336b070f, C++ reference 0x70cc58293abe4686
