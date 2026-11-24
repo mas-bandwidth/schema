@@ -961,6 +961,7 @@ func (g *fixedGen) emitDecodeValue(f *ir.Field, base string, at int64, expr, ind
 			g.pf("%s}\n", ind)
 		}
 		g.emitDecodeLoop(f, base, at+fixedCountBytes, count, expr, ind)
+		g.emitSlackReset(f, count, expr, ind)
 	case f.Type.Kind == ir.TString, f.Type.Kind == ir.TBytes:
 		length := fixedDartSibling(expr, "Length")
 		g.call(ind, length+" = ", "view.getInt32",
@@ -971,6 +972,33 @@ func (g *fixedGen) emitDecodeValue(f *ir.Field, base string, at int64, expr, ind
 	default:
 		g.emitDecodeElement(f, base, at, expr, ind)
 	}
+}
+
+// emitSlackReset puts every slot past a counted array's live count back to
+// what a fresh value holds there (docs/SPEC-TABLES.md §3.4, THE SLOTS PAST A
+// COUNT AFTER ANY LOAD, LAWFUL OR REFUSED). The slots are objects and typed
+// lists the caller's value owns, and the live loop above writes only the
+// count, so without this a second load into the same value kept the first
+// load's elements: the result depended on what the value held before. It runs
+// in the decode, which the identity plan and every lineage plan share, and
+// inside each element's own decode, so a counted array in a live element, a
+// live arm or a present optional resets its own slack too. A table or union
+// slot is restored IN PLACE (the storage is the caller's and never replaced);
+// a scalar slot takes the element's declared default, as init<Table> does.
+// The count is already held to [0, bound] by the plan's count op, and the
+// guard keeps fillRange from ever being handed an empty or inverted range.
+func (g *fixedGen) emitSlackReset(f *ir.Field, count, expr, ind string) {
+	if cls := fixedElementClass(f.Type); cls != "" {
+		restore := g.restoreFn(f.Type, cls)
+		g.pf("%sfor (var i = %s; i < %d; i++) {\n", ind, count, f.ArrayBound)
+		g.pf("%s  %s(%s[i]);\n", ind, restore, expr)
+		g.pf("%s}\n", ind)
+		return
+	}
+	g.pf("%sif (%s < %d) {\n", ind, count, f.ArrayBound)
+	g.call(ind+"  ", "", expr+".fillRange",
+		[]string{count, fmt.Sprintf("%d", f.ArrayBound), g.fixedElementZero(f)}, ";")
+	g.pf("%s}\n", ind)
 }
 
 // emitTextLengthClamp holds a string/bytes used-length to [0, cap].
