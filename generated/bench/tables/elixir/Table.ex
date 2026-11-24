@@ -9774,8 +9774,10 @@ defmodule Benchtable.Table do
   defp cook_lay_writes(_writes, _at, _size, _parts), do: :overlap
 
   # Retention requires a variable root (docs/SPEC-TABLES.md §6.6).
-  # Refuse before inspecting input or changing the caller's report and stores.
-  def load_retain(_table, _data, retain, report), do: {:error, :fixed_root, report, retain}
+  # Refuse before inspecting input, into a zeroed report (§6.5: the supplied
+  # report is never read) and with the stores unchanged.
+  def load_retain(_table, _data, retain, _report),
+    do: {:error, :fixed_root, empty_report(), retain}
 
   def measure_retain(_table, _value, _retain), do: {:error, :fixed_root}
 

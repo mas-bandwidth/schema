@@ -419,7 +419,16 @@ an answer the runtime did not give.
   `read\nrefused\n<defaults × count>read\n`: every read zeroes the report it
   is handed (FL-02), and a refusal leaves every value the call was handed at
   its declared defaults, a fixed batch checking every record before any lands
-  (FL-03). The `fixed-nocap` form (damaged and count `-`) calls the fixed load
+  (FL-03). A `fixed` row's second file may instead be LAWFUL, an older
+  writer's one record read through the lineage (`ri_fixed_lineage`), and
+  the manifest row says so with a trailing `lawful-second` (the driver is
+  not told; `generate` fails when the engine's verdict on the file differs
+  from the mark, either way): the
+  driver runs the same three reads, and the owed answer is
+  `read\nread\n<that record's value>read\n`, the value being what a FRESH
+  value reads from the second file, so every field that writer did not supply
+  holds its declared default and never what the first read left (SPEC-TABLES
+  §3.4). The `fixed-nocap` form (damaged and count `-`) calls the fixed load
   with NO stated capacity and answers `read\n` and the record count it
   returned (FL-17: the omitted capacity is the file's own 5000 records, never
   a default the port invented). A leg whose fixed load cannot omit the
@@ -437,7 +446,22 @@ an answer the runtime did not give.
   `<damaged>` into the same report (one line), read `<lawful>` once more (one
   line) and compare again (one line). The owed answer is
   `read\nzeroed\nrefused\nread\nzeroed\n`: §6.5 zeroes a supplied report in
-  full on every read path, the retain family included.
+  full on every read path, the retain family included. The `region` form
+  (count 1) is the same protocol and the same owed answer through the PLAIN
+  `<Root>Load` of a variable root: the region read (`Load(region, wire,
+  report)`) where the leg has one, and the leg's plain value `Load` where it
+  has no region read. The `retain-fixed` form (damaged `-`, count 1) calls
+  `<Root>LoadRetain` on a FIXED-class root, which §6.6 refuses by name, with
+  a pre-filled report and a roomy retention buffer, and answers the step line
+  and then `zeroed` (or a line naming the field that differs) against the
+  same call into a fresh report; the owed answer is `refused\nzeroed\n`. A
+  leg whose fixed-root `LoadRetain` is refused at COMPILE time (a named
+  constant, macro, template or missing method, so no call can be written)
+  answers `unrepresentable\n`, which the harness credits on this form; so
+  does a dynamic leg whose generated fixed-root entry point raises a named
+  error UNCONDITIONALLY, before it touches the report or the input (that
+  language's nearest form of a compile-time refusal). A leg whose call takes
+  the report and refuses through it owes `refused\nzeroed\n`.
 - **`json-write-into <case> <unit> <root> <wire>`**. The harness hands the
   driver `SCHEMA_COMMA_LOCALE` (`de_DE.UTF-8`, compiled into a `LOCPATH` the
   harness also sets where the host has none). The driver makes it the
@@ -466,7 +490,7 @@ go red. Rust names the union tag as not representable.
 
 The every-build scripting legs (JavaScript, Python, Ruby, Elixir, Lua, Luau,
 Squirrel, MOO, Goose, Lobster) share one schema and one row list,
-`test/conformance/write-refusal-packet/` (`PacketWriteRefusal.schema`,
+`test/conformance/write-refusal-packet/` (`RefusalPacket.schema`,
 `rows.txt`, and `wrpacket.Check`). Each leg's directory holds a
 `writerefusalpacket_test.go` and its own probe: the test generates the unit,
 runs the probe over `rows.txt` (one `<row> refused|wrote` line each, a refusal

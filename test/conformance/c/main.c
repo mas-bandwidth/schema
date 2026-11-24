@@ -908,7 +908,7 @@ static const ConformanceUnit1122 * find_unit1122( const char * unit )
 {
     static const ConformanceUnit1122 * ( * const getters[] )( void ) = {
         conformance_unit1122_tblsurf, conformance_unit1122_tblann4096, conformance_unit1122_tblann4097,
-        conformance_unit1122_messagedemo, conformance_unit1122_backenddemo,
+        conformance_unit1122_messagedemo, conformance_unit1122_backenddemo, conformance_unit1122_tblfixedevo,
     };
     size_t i;
     for ( i = 0; i < sizeof( getters ) / sizeof( getters[0] ); i++ )
@@ -1016,6 +1016,17 @@ static int surface_read_into( const char * out )
             /* NO CALL TO MAKE: C's <base>_fixed_load takes its capacity as a
                parameter, and C has no overload without it, so no omitted
                capacity can be asked of it */
+            if ( !spill( out, f->field[1], "unrepresentable\n", strlen( "unrepresentable\n" ) ) ) { return 1; }
+            continue;
+        }
+        if ( strcmp( f->field[4], "retain-fixed" ) == 0 )
+        {
+            /* NO CALL TO MAKE (docs/SPEC-TABLES.md §6.6): C refuses
+               <root>_load_retain on a FIXED-class root at COMPILE time. The
+               generator defines it as a C99 macro whose expansion is a
+               negative-width bit-field (internal/codegen/ctable/retain_graph.go
+               :129, emitRetainRefusals), so surfaces_narrow_load_retain(...)
+               does not compile and no call can be handed a report */
             if ( !spill( out, f->field[1], "unrepresentable\n", strlen( "unrepresentable\n" ) ) ) { return 1; }
             continue;
         }

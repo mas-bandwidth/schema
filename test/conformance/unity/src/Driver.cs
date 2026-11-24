@@ -628,13 +628,19 @@ namespace SchemaUnityConformance
             // leaves in a FRESH report (§6.5: every read zeroes a supplied
             // report in full, the retain family included). Each load has its
             // own fresh value and retention store.
-            private byte[] ReadIntoRetain(byte[] lawful, byte[] damaged)
+            //
+            // A `region` row ("The `region` form") is the same protocol through
+            // the PLAIN <Root>Load: the Unity backend has no region read, so it
+            // is the value Load (ref value, bytes, ref report), each load into
+            // its own fresh value.
+            private byte[] ReadIntoZeroed(byte[] lawful, byte[] damaged, bool retain)
             {
-                if (loadRetain == null) { throw new InvalidOperationException("read-into: " + Unit + "." + Root + " has no LoadRetain"); }
+                if (retain && loadRetain == null) { throw new InvalidOperationException("read-into: " + Unit + "." + Root + " has no LoadRetain"); }
+                if (!retain && varLoad == null) { throw new InvalidOperationException("read-into: " + Unit + "." + Root + " has no variable Load"); }
                 bool Load(byte[] wire, ref TRep report)
                 {
                     T value = MakeFresh();
-                    return loadRetain(ref value, wire, MakeRetain(1 << 20, 1 << 17), ref report);
+                    return retain ? loadRetain(ref value, wire, MakeRetain(1 << 20, 1 << 17), ref report) : varLoad(ref value, wire, ref report);
                 }
                 FieldInfo[] fields = typeof(TRep).GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
                 TRep fresh = default;
@@ -688,7 +694,19 @@ namespace SchemaUnityConformance
 
             public byte[] ReadInto(string form, byte[] lawful, byte[] damaged, int count, byte[] announcement)
             {
-                if (form == "retain") { return ReadIntoRetain(lawful, damaged); }
+                if (form == "retain") { return ReadIntoZeroed(lawful, damaged, true); }
+                if (form == "region") { return ReadIntoZeroed(lawful, damaged, false); }
+                if (form == "retain-fixed")
+                {
+                    // NO SUCH METHOD: the Unity generator emits <Root>LoadRetain
+                    // only for a variable-class root
+                    // (internal/codegen/unitytable/surfaces.go:49-51, `if variable
+                    // { emitRetainSurfaces(...) }`), so the fixed-class
+                    // tblsurf.Narrow has no LoadRetain to hand a report to
+                    // (SPEC-TABLES §6.6 refuses it at compile time).
+                    if (loadRetain != null) { throw new InvalidOperationException("read-into: " + Unit + "." + Root + " has a LoadRetain; the retain-fixed row owes its call"); }
+                    return Encoding.ASCII.GetBytes("unrepresentable\n");
+                }
                 switch (form)
                 {
                     case "variable": if (varLoad == null) { throw new InvalidOperationException("read-into: " + Unit + "." + Root + " has no variable Load"); } break;
