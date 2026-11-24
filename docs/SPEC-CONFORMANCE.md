@@ -623,3 +623,25 @@ SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -v \
   ./internal/codegen/gotable ./internal/codegen/pythontable \
   -run 'Test(Go|Python)FixedLoadCapacityWitness'
 ```
+
+### A field named like its own type
+
+The checker refuses a field named exactly like its own named type, for every
+target: C++ declares `kind kind = kind::None;` in the struct, which g++
+refuses as a declaration that changes the meaning of `kind`, and Dart declares
+`kind kind = kind.none;` in the class, where the member hides the type
+([SPEC §4.6](SPEC.md#46-shape-checks), Emitter name rules).
+
+```schema
+package probe
+enum kind { Alpha, Beta, Gamma }
+type Inner { kind kind }
+```
+
+The refusal names the C++ and Dart targets. Rename the field (`mode kind`) or
+write the type with another case (`kind Kind`) for an accepted schema: the two
+differ by case and build in all 18 targets. `TestFieldNamedLikeItsOwnType`
+checks the refusal for a type and for a table and the three accepted
+spellings, and the name-buildability row `e_kind`
+(`testdata/name-buildability`, held by `TestNameBuildabilityCorpus`) holds the
+same schema.

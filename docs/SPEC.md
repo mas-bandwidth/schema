@@ -1876,6 +1876,10 @@ All compile errors with positions:
   `_s_` or spells a member the generated class defines; a Goose namespace is
   no reserved one) and the C and C++ wire-header name
   (`<Base>Wire.h`, so `Other.schema` beside `OtherWire.schema` collides), and
+  a field named exactly like its own named type (an enum `kind` beside a
+  field `kind kind`: C++ refuses the member as a declaration that changes the
+  meaning of the type name, and Dart as a member that hides its type; `kind
+  Kind` differs by case and builds), and
   refuses for every target, naming the target, a unit one of them refuses,
   so those names are refused at check rather than at generate.
 
