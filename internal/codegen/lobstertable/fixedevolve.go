@@ -1553,8 +1553,11 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 	g.Pf("    var entry_count = %sPlan.count\n", name)
 	g.Pf("    var holes = %sHoles\n", name)
 	g.Pf("    let record_bytes = known.record\n")
-	g.Pf("    var census_unknown = 0\n")
-	g.Pf("    var census_kind = 0\n")
+	// AN UNLAWFUL LINEAGE ENTRY LAYS NO PLAN (docs/FIXED-FORM-ALGORITHM.md
+	// §5.2 MATCH/EMIT, §5.4, §5.9 #30): its lane carries the refusal
+	// (layout_malformed, or kind_mismatch for ?T into bare T) and the load
+	// refuses here, before any record, with no counter moved. There is no
+	// compile census: a lawful plan counts nothing unknown.
 	g.Pf("    if hash != %sHash:\n", name)
 	g.Pf("        let lane = %sLineagePlans[pick]\n", name)
 	g.Pf("        if lane.why != \"\":\n")
@@ -1562,10 +1565,6 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 	g.Pf("        entries = lane.entries\n")
 	g.Pf("        entry_count = lane.count\n")
 	g.Pf("        holes = %sLineageHoles[pick]\n", name)
-	g.Pf("        census_unknown = lane.unknown\n")
-	g.Pf("        census_kind = lane.kind_mismatch\n")
-	g.Pf("    if census_kind != 0:\n")
-	g.Pf("        return schema_rt.fixed_refuse(report, schema_rt.TableRefuseKindMismatch)\n")
 	g.Pf("    if entry_count > length(plan):\n")
 	g.Pf("        return schema_rt.fixed_refuse(report, schema_rt.TableRefusePlanTooLarge)\n")
 	g.Pf("    let records_start = schema_rt.TableFixedHeaderBytes + 4 + layout_bytes\n")
@@ -1613,8 +1612,6 @@ func emitFixedEvolveRoot(g *lobster.Gen, st *ir.Struct, older []FixedLineageEntr
 	}
 	g.Pf("        if not %sFixedBoundsBody(values[k]):\n", st.Name)
 	g.Pf("            return schema_rt.fixed_refuse(report, schema_rt.TableRefuseOutOfRange)\n")
-	g.Pf("    report.unknown += census_unknown\n")
-	g.Pf("    report.kind_mismatch += census_kind\n")
 	g.Pf("    return n\n\n")
 }
 
