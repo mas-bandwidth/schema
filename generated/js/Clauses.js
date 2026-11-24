@@ -436,6 +436,9 @@ export function ZeroF13(value) {
 }
 
 export function WriteF13(stream, value) {
+  if (value.items == null || value.items.length !== 7) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+    return false;
+  }
   for (let i = 0; i < 7; i++) {
     if (!globalThis.Number.isInteger(value.items[i]) || value.items[i] < 0 || value.items[i] > 8191) {
       return false;
@@ -655,6 +658,9 @@ export function ZeroArrEleven(value) {
 }
 
 export function WriteArrEleven(stream, value) {
+  if (value.items == null || value.items.length !== 9) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+    return false;
+  }
   for (let i = 0; i < 9; i++) {
     if (!WriteEleven(stream, value.items[i])) {
       return false;
