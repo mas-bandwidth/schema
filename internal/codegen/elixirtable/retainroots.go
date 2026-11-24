@@ -25,7 +25,7 @@ func restrictRetainRoots(u *ir.Unit, names []string, runtime string) (string, st
 		return "", runtime
 	}
 	for _, change := range []struct{ entry, refusal string }{
-		{"  def load_retain(table, data, retain, report)", `  def load_retain(table, _data, retain, report) when table in @retain_fixed_roots,
+		{"  def load_retain(table, data, retain, _report)", `  def load_retain(table, _data, retain, report) when table in @retain_fixed_roots,
     do: {:error, :fixed_root, report, retain}
 
 `},

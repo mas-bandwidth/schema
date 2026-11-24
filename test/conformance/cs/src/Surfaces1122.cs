@@ -403,6 +403,70 @@ static partial class Program
         return answer.ToArray();
     }
 
+    // A `retain` row (test/conformance/README.md, "The `retain` form"): the
+    // retaining load (NodeLoadRetain, SPEC-TABLES §6.6) into ONE report the
+    // driver PRE-FILLED, then the damaged load and the lawful load again into
+    // that report. After each lawful load the report must equal, field by
+    // field (every instance field, the internal ones too), the report the same
+    // load leaves in a FRESH report (§6.5: every read zeroes a supplied report
+    // in full, the retain family included). Each load has its own fresh
+    // region and retention store.
+    static unsafe byte[] ReadIntoRetainRow(byte[] lawful, byte[] damaged)
+    {
+        bool Load(byte[] wire, Tblrt1.TableReport report)
+        {
+            long need = Tblrt1.Schema.NodeLoadMeasure(wire);
+            if (need < 0) { need = 0; }
+            byte* region = (byte*)System.Runtime.InteropServices.NativeMemory.AlignedAlloc((nuint)Math.Max(need, 1), 64);
+            var store = new Tblrt1.TableRetain { Bytes = (byte*)System.Runtime.InteropServices.NativeMemory.Alloc(1 << 20), Capacity = 1 << 20, Ids = (Tblrt1.TableRetain.Id*)System.Runtime.InteropServices.NativeMemory.Alloc(1 << 21), IdCapacity = 1 << 17 };
+            try { return Tblrt1.Schema.NodeLoadRetain((IntPtr)region, need, wire, ref store, report) != null; }
+            finally
+            {
+                System.Runtime.InteropServices.NativeMemory.AlignedFree(region);
+                System.Runtime.InteropServices.NativeMemory.Free(store.Bytes); System.Runtime.InteropServices.NativeMemory.Free(store.Ids);
+            }
+        }
+        FieldInfo[] fields = typeof(Tblrt1.TableReport).GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        var fresh = new Tblrt1.TableReport();
+        if (!Load(lawful, fresh) || fresh.Refused || fresh.Damaged) { throw new InvalidOperationException("ri_retain: the lawful retaining load refused into a fresh report"); }
+        string Zeroed(Tblrt1.TableReport r)
+        {
+            var kept = new List<string>();
+            foreach (FieldInfo fi in fields)
+            {
+                if (!Equals(fi.GetValue(r), fi.GetValue(fresh))) { kept.Add(fi.Name + "=" + fi.GetValue(r) + " want " + fi.GetValue(fresh)); }
+            }
+            return kept.Count == 0 ? "zeroed" : "kept " + string.Join(", ", kept);
+        }
+        // Every field pre-filled to a non-default value, the internal ones too
+        // (the driver sees the generated unit's internals).
+        var report = new Tblrt1.TableReport
+        {
+            Unknown = 7, Widened = 7, Retained = 7, RetainLost = 7, Refused = true, Reason = "stale",
+            NonFiniteFloat = "stale", NonFiniteReason = "stale", Verdict = Tblrt1.Schema.TableWire.Verdict.Damaged,
+            Damaged = true, KindChanged = 7, BuildVersionRemote = 7, BuildVersionOwn = 7, LayoutHash = 7,
+        };
+        foreach (FieldInfo fi in fields)
+        {
+            if (Equals(fi.GetValue(report), fi.GetValue(new Tblrt1.TableReport()))) { throw new InvalidOperationException("ri_retain: the pre-fill leaves " + fi.Name + " at its default"); }
+        }
+        var answer = new MemoryStream();
+        void Line(string text) { byte[] b = System.Text.Encoding.ASCII.GetBytes(text + "\n"); answer.Write(b, 0, b.Length); }
+        void Step(byte[] bytes)
+        {
+            string line;
+            try { line = Load(bytes, report) && !report.Refused && !report.Damaged ? "read" : "refused"; }
+            catch (Exception e) { line = "threw " + e.GetType().Name; }
+            Line(line);
+        }
+        Step(lawful);
+        Line(Zeroed(report));
+        Step(damaged);
+        Step(lawful);
+        Line(Zeroed(report));
+        return answer.ToArray();
+    }
+
     static int SurfaceReadInto(string outDir)
     {
         foreach (string[] f in Kind("read-into"))
@@ -416,6 +480,12 @@ static partial class Program
                 // handed: no call omits it, so no omitted capacity can be
                 // asked of it (FL-17)
                 File.WriteAllText(answer, "unrepresentable\n");
+                continue;
+            }
+            if (form == "retain")
+            {
+                if (f[2] != "tblrt1" || f[3] != "Node") { Console.Error.WriteLine("driver: read-into " + f[1] + ": no retain read registered for " + f[2] + " " + f[3]); return 1; }
+                File.WriteAllBytes(answer, ReadIntoRetainRow(File.ReadAllBytes(f[5]), File.ReadAllBytes(f[6])));
                 continue;
             }
             Codec codec = Find(f[2], f[3]);

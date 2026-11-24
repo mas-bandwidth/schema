@@ -628,8 +628,76 @@ namespace SchemaUnityConformance
 
             public object Fresh() { return MakeFresh(); }
 
+            // A `retain` row (test/conformance/README.md, "The `retain` form"):
+            // the retaining load (<Root>LoadRetain, SPEC-TABLES §6.6) into ONE
+            // report the driver PRE-FILLED (every field of the report struct
+            // set to a non-default value), then the damaged load and the
+            // lawful load again into that report. After each lawful load the
+            // report must equal, field by field, the report the same load
+            // leaves in a FRESH report (§6.5: every read zeroes a supplied
+            // report in full, the retain family included). Each load has its
+            // own fresh value and retention store.
+            private byte[] ReadIntoRetain(byte[] lawful, byte[] damaged)
+            {
+                if (loadRetain == null) { throw new InvalidOperationException("read-into: " + Unit + "." + Root + " has no LoadRetain"); }
+                bool Load(byte[] wire, ref TRep report)
+                {
+                    T value = MakeFresh();
+                    return loadRetain(ref value, wire, MakeRetain(1 << 20, 1 << 17), ref report);
+                }
+                FieldInfo[] fields = typeof(TRep).GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                TRep fresh = default;
+                if (!Load(lawful, ref fresh) || (bool)fRefused.GetValue(fresh) || (fDamaged != null && (bool)fDamaged.GetValue(fresh)))
+                { throw new InvalidOperationException("ri_retain: the lawful retaining load refused into a fresh report"); }
+                object boxedFresh = fresh;
+                string Zeroed(TRep r)
+                {
+                    object boxed = r;
+                    var kept = new List<string>();
+                    foreach (FieldInfo fi in fields)
+                    {
+                        if (!Equals(fi.GetValue(boxed), fi.GetValue(boxedFresh))) { kept.Add(fi.Name + "=" + fi.GetValue(boxed) + " want " + fi.GetValue(boxedFresh)); }
+                    }
+                    return kept.Count == 0 ? "zeroed" : "kept " + string.Join(", ", kept);
+                }
+                object fill = default(TRep);
+                foreach (FieldInfo fi in fields)
+                {
+                    Type t = fi.FieldType;
+                    if (t == typeof(int)) { fi.SetValue(fill, 7); }
+                    else if (t == typeof(long)) { fi.SetValue(fill, 7L); }
+                    else if (t == typeof(ulong)) { fi.SetValue(fill, 7UL); }
+                    else if (t == typeof(bool)) { fi.SetValue(fill, true); }
+                    else if (t == typeof(string)) { fi.SetValue(fill, "stale"); }
+                    else { throw new InvalidOperationException("ri_retain: the driver cannot pre-fill report field " + fi.Name + " of " + t.Name); }
+                }
+                TRep report = (TRep)fill;
+                var answer = new MemoryStream();
+                void Line(string text) { byte[] b = Encoding.ASCII.GetBytes(text + "\n"); answer.Write(b, 0, b.Length); }
+                void Step(byte[] bytes)
+                {
+                    string line;
+                    try
+                    {
+                        bool ok = Load(bytes, ref report);
+                        object boxed = report;
+                        bool refused = (bool)fRefused.GetValue(boxed) || (fDamaged != null && (bool)fDamaged.GetValue(boxed));
+                        line = ok && !refused ? "read" : "refused";
+                    }
+                    catch (Exception e) { line = "threw " + e.GetType().Name; }
+                    Line(line);
+                }
+                Step(lawful);
+                Line(Zeroed(report));
+                Step(damaged);
+                Step(lawful);
+                Line(Zeroed(report));
+                return answer.ToArray();
+            }
+
             public byte[] ReadInto(string form, byte[] lawful, byte[] damaged, int count, byte[] announcement)
             {
+                if (form == "retain") { return ReadIntoRetain(lawful, damaged); }
                 switch (form)
                 {
                     case "variable": if (varLoad == null) { throw new InvalidOperationException("read-into: " + Unit + "." + Root + " has no variable Load"); } break;

@@ -1456,6 +1456,50 @@ local function surfaceReadInto(all, outdir)
       else
         writeBytes(outdir .. "/" .. name, "read\n" .. #out .. "\n")
       end
+    elseif form == "retain" then
+      -- THE `retain` FORM (test/conformance/README.md): ONE report, PRE-FILLED
+      -- (every counter, the refusal set, the reason and every flag the Lua
+      -- report can carry), then the retaining load of <lawful>, <damaged>,
+      -- <lawful> again. After each lawful load every field of the report must
+      -- equal the field the same load leaves in a FRESH report (§6.5).
+      local lawfulBytes, damagedBytes = mustRead(lawful), mustRead(damaged)
+      local function load(bytes, report)
+        local store = retainStore(ROOMY, math.floor(ROOMY / 8))
+        local ok, got = pcall(u.retain.LoadRetain, u.T, root, bytes, store, report)
+        if not ok then return "threw\n" end
+        local reason = report.reason
+        if got == nil or (reason ~= nil and reason ~= "") or (report.refused or 0) ~= 0 or report.damaged then
+          return "refused\n"
+        end
+        return "read\n"
+      end
+      local fresh = newReport()
+      if load(lawfulBytes, fresh) ~= "read\n" then fail(name .. ": the lawful retaining load did not read into a fresh report") end
+      local function zeroed(report)
+        local diff = {}
+        for k, v in pairs(report) do
+          if fresh[k] ~= v then diff[#diff + 1] = k .. "=" .. tostring(v) .. " want " .. tostring(fresh[k]) end
+        end
+        for k, v in pairs(fresh) do
+          if report[k] == nil then diff[#diff + 1] = k .. "=nil want " .. tostring(v) end
+        end
+        table.sort(diff)
+        if #diff == 0 then return "zeroed\n" end
+        return "kept " .. table.concat(diff, ", ") .. "\n"
+      end
+      local report = {
+        damaged = true, refused = 7, unknown = 7, kindChanged = 7, outOfRange = 7,
+        widened = 7, repeatedKey = 7, retained = 7, retainLost = 7, sharedBlob = 7,
+        missingRequired = 7, wireDamaged = true, reason = "stale", wireAlone = true,
+        nonFiniteFloat = "stale", outOfRangeField = "stale", countRefusal = true,
+      }
+      local parts = {}
+      parts[#parts + 1] = load(lawfulBytes, report)
+      parts[#parts + 1] = zeroed(report)
+      parts[#parts + 1] = load(damagedBytes, report)
+      parts[#parts + 1] = load(lawfulBytes, report)
+      parts[#parts + 1] = zeroed(report)
+      writeBytes(outdir .. "/" .. name, table.concat(parts))
     else
       local n = math.tointeger(tonumber(count))
       if n == nil or n < 1 then fail(name .. ": " .. tostring(count) .. " is not a count") end

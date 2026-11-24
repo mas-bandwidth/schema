@@ -411,7 +411,20 @@ an answer the runtime did not give.
   returned (FL-17: the omitted capacity is the file's own 5000 records, never
   a default the port invented). A leg whose fixed load cannot omit the
   capacity answers `unrepresentable\n`, which the harness credits on that
-  form alone.
+  form alone. The `retain` form (count 1) is the RETAINING load
+  (`<Root>LoadRetain`, SPEC-TABLES §6.6) of a variable root, with a roomy
+  retention buffer, and it checks the report rather than the value. Make ONE
+  report and PRE-FILL it: every counter nonzero (`unknown`, `widened`,
+  `retained`, `retain_lost` and every other counter the report has), the
+  refusal set, and the reason and its detail set where the language has them;
+  a field the language does not let a caller set is filled by a refused read
+  first. Read `<lawful>` into it and write the read's line, then `zeroed` when
+  every field of that report equals the field the same read leaves in a FRESH
+  report, or any other line (naming the field) when one differs. Then read
+  `<damaged>` into the same report (one line), read `<lawful>` once more (one
+  line) and compare again (one line). The owed answer is
+  `read\nzeroed\nrefused\nread\nzeroed\n`: §6.5 zeroes a supplied report in
+  full on every read path, the retain family included.
 - **`json-write-into <case> <unit> <root> <wire>`**. The harness hands the
   driver `SCHEMA_COMMA_LOCALE` (`de_DE.UTF-8`, compiled into a `LOCPATH` the
   harness also sets where the host has none). The driver makes it the

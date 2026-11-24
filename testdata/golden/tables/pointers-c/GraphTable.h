@@ -19981,7 +19981,8 @@ static SCHEMA_UNUSED const graphdemo_list_node_t * graphdemo_list_node_load_reta
     int refused_before, reason_before;
     int32_t non_finite_before;
     if ( report == NULL ) report = &ignored;
-    refused_before = report->refused;
+    memset( report, 0, sizeof( *report ) );
+    refused_before = 0;
     reason_before = report->reason;
     non_finite_before = report->non_finite_floats;
     report->refused = 0;
@@ -20276,7 +20277,8 @@ static SCHEMA_UNUSED const graphdemo_tree_node_t * graphdemo_tree_node_load_reta
     int refused_before, reason_before;
     int32_t non_finite_before;
     if ( report == NULL ) report = &ignored;
-    refused_before = report->refused;
+    memset( report, 0, sizeof( *report ) );
+    refused_before = 0;
     reason_before = report->reason;
     non_finite_before = report->non_finite_floats;
     report->refused = 0;
@@ -20571,7 +20573,8 @@ static SCHEMA_UNUSED const graphdemo_layer_t * graphdemo_layer_load_retain( uint
     int refused_before, reason_before;
     int32_t non_finite_before;
     if ( report == NULL ) report = &ignored;
-    refused_before = report->refused;
+    memset( report, 0, sizeof( *report ) );
+    refused_before = 0;
     reason_before = report->reason;
     non_finite_before = report->non_finite_floats;
     report->refused = 0;
@@ -20883,7 +20886,8 @@ static SCHEMA_UNUSED const graphdemo_scene_t * graphdemo_scene_load_retain( uint
     int refused_before, reason_before;
     int32_t non_finite_before;
     if ( report == NULL ) report = &ignored;
-    refused_before = report->refused;
+    memset( report, 0, sizeof( *report ) );
+    refused_before = 0;
     reason_before = report->reason;
     non_finite_before = report->non_finite_floats;
     report->refused = 0;
@@ -21181,7 +21185,8 @@ static SCHEMA_UNUSED const graphdemo_depot_t * graphdemo_depot_load_retain( uint
     int refused_before, reason_before;
     int32_t non_finite_before;
     if ( report == NULL ) report = &ignored;
-    refused_before = report->refused;
+    memset( report, 0, sizeof( *report ) );
+    refused_before = 0;
     reason_before = report->reason;
     non_finite_before = report->non_finite_floats;
     report->refused = 0;
@@ -21493,7 +21498,8 @@ static SCHEMA_UNUSED const graphdemo_album_t * graphdemo_album_load_retain( uint
     int refused_before, reason_before;
     int32_t non_finite_before;
     if ( report == NULL ) report = &ignored;
-    refused_before = report->refused;
+    memset( report, 0, sizeof( *report ) );
+    refused_before = 0;
     reason_before = report->reason;
     non_finite_before = report->non_finite_floats;
     report->refused = 0;

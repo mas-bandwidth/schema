@@ -2714,6 +2714,13 @@ read-into ri_fixed      tblsurf      Narrow        fixed       testdata/conforma
 read-into ri_message    backend_conn StorePurchase message     testdata/conformance/tables/message-batch/batch_delivered.bin testdata/conformance/tables/message-batch/batch_range_in_second.bin 2
 read-into ri_fixed_5000 tblsurf      Narrow        fixed-nocap testdata/conformance/tables/read-into/narrow_5000.fixed     -                                                                5000
 
+# THE RETAIN FAMILY ZEROES ITS REPORT TOO (SPEC-TABLES §6.5, §6.6): the
+# retaining load is handed a report the driver PRE-FILLED (every counter
+# nonzero, the refusal set), reads lawfully, and must leave the report equal,
+# field by field, to the one the same read leaves in a fresh report; then a
+# damaged retaining load refuses into it and the lawful one zeroes it again.
+read-into ri_retain     tblrt1       Node          retain      testdata/wire/tables/retain_rt2.bin                           testdata/conformance/tables/read-into/retain_rt2_cut.bin         1
+
 # FL-14, FL-15 (SPEC-TABLES §16.1): the text writer in a comma-decimal process
 # locale, into a caller buffer longer than the text, writes the instance's
 # own text and nothing past it.

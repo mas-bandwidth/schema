@@ -1660,6 +1660,53 @@ local function surfaceReadInto(lines: { { string } })
 			else
 				sayText(name, "read\n" .. tostring(#out) .. "\n")
 			end
+		elseif form == "retain" then
+			-- THE `retain` FORM (test/conformance/README.md): ONE report,
+			-- PRE-FILLED (every counter, the reason and every detail the Luau
+			-- report can carry; `verdict` stays 0 because the table load never
+			-- sets it and the step line below reads it), then the retaining
+			-- load of <lawful>, <damaged>, <lawful> again. After each lawful
+			-- load every field of the report must equal the field the same
+			-- load leaves in a FRESH report (§6.5).
+			local lawfulBytes, damagedBytes = file(lawful), file(damaged)
+			local function load(bytes: buffer, rep: any): string
+				local ok, got = pcall(u.retain.LoadRetain, root, bytes, rep, 1048576, 131072)
+				if not ok then return "threw\n" end
+				if got == nil or (rep.reason ~= nil and rep.reason ~= "") or rep.malformed == true or (rep.refused or 0) ~= 0 then
+					return "refused\n"
+				end
+				return "read\n"
+			end
+			local fresh = report()
+			if load(lawfulBytes, fresh) ~= "read\n" then
+				error(name .. ": the lawful retaining load did not read into a fresh report")
+			end
+			local function zeroed(rep: any): string
+				local diff = {}
+				for k, v in rep do
+					if fresh[k] ~= v then table.insert(diff, tostring(k) .. "=" .. tostring(v) .. " want " .. tostring(fresh[k])) end
+				end
+				for k, v in fresh do
+					if rep[k] == nil then table.insert(diff, tostring(k) .. "=nil want " .. tostring(v)) end
+				end
+				table.sort(diff)
+				if #diff == 0 then return "zeroed\n" end
+				return "kept " .. table.concat(diff, ", ") .. "\n"
+			end
+			local rep = {
+				malformed = true, refused = 7, unknown = 7, kindMismatch = 7, clamped = 7,
+				widened = 7, duplicate = 7, verdict = 0, reason = "stale", retained = 7,
+				retainLost = 7, missingRequired = 7, blobShared = 7, nonFiniteFloat = "stale",
+				missingName = "stale", field = "stale", unknownField = "stale",
+				duplicateField = "stale",
+			}
+			local parts = {}
+			parts[#parts + 1] = load(lawfulBytes, rep)
+			parts[#parts + 1] = zeroed(rep)
+			parts[#parts + 1] = load(damagedBytes, rep)
+			parts[#parts + 1] = load(lawfulBytes, rep)
+			parts[#parts + 1] = zeroed(rep)
+			sayText(name, table.concat(parts))
 		else
 			local n = tonumber(count)
 			if n == nil or n < 1 then error(name .. ": " .. tostring(count) .. " is not a count") end

@@ -3164,6 +3164,57 @@ public final class Driver {
         return 0;
     }
 
+    // readIntoRetainRow answers a `retain` row (test/conformance/README.md): the
+    // retaining load (NodeRetain.loadRetain, SPEC-TABLES section 6.6) into ONE
+    // report the driver PRE-FILLED, then the damaged load and the lawful load
+    // again into that report. After each lawful load the report must equal,
+    // field by field, what the same load leaves in a FRESH report (section 6.5:
+    // every read zeroes a supplied report in full, the retain family included).
+    // Every public field is filled directly; the package-private node table
+    // state is not reachable from here and is not part of the contract.
+    private static String retainReportDiff(tblrt1.TableVariable.Report r, tblrt1.TableVariable.Report fresh) {
+        StringBuilder diff = new StringBuilder();
+        if (r.unknown != fresh.unknown) { diff.append(" unknown=" + r.unknown + " want " + fresh.unknown); }
+        if (r.damaged != fresh.damaged) { diff.append(" damaged=" + r.damaged + " want " + fresh.damaged); }
+        if (r.widened != fresh.widened) { diff.append(" widened=" + r.widened + " want " + fresh.widened); }
+        if (r.missingRequired != fresh.missingRequired) { diff.append(" missingRequired=" + r.missingRequired + " want " + fresh.missingRequired); }
+        if (r.refused != fresh.refused) { diff.append(" refused=" + r.refused + " want " + fresh.refused); }
+        if (!java.util.Objects.equals(r.reason, fresh.reason)) { diff.append(" reason=" + r.reason + " want " + fresh.reason); }
+        if (r.retained != fresh.retained) { diff.append(" retained=" + r.retained + " want " + fresh.retained); }
+        if (r.retainLost != fresh.retainLost) { diff.append(" retainLost=" + r.retainLost + " want " + fresh.retainLost); }
+        return diff.length() == 0 ? "zeroed" : "kept" + diff;
+    }
+
+    private static String readIntoRetainStep(byte[] wire, tblrt1.TableVariable.Report r) {
+        try {
+            tblrt1.TableRetain store = new tblrt1.TableRetain(RETAIN_BYTES, RETAIN_IDS);
+            tblrt1.NodeVariable.Value root = tblrt1.NodeRetain.loadRetain(wire, store, r);
+            return root != null && !r.refused && !r.damaged ? "read\n" : "refused\n";
+        } catch (RuntimeException | Error thrown) {
+            return "threw\n";
+        }
+    }
+
+    private static String readIntoRetainRow(String unit, String root, String lawful, String damaged) throws IOException {
+        if (!unit.equals("tblrt1") || !root.equals("Node")) {
+            return "unrepresentable: no retaining codec for " + unit + " " + root + "\n";
+        }
+        byte[] good = Files.readAllBytes(Paths.get(lawful));
+        byte[] bad = Files.readAllBytes(Paths.get(damaged));
+        tblrt1.TableVariable.Report fresh = new tblrt1.TableVariable.Report();
+        readIntoRetainStep(good, fresh);
+        tblrt1.TableVariable.Report r = new tblrt1.TableVariable.Report();
+        r.unknown = 7; r.widened = 7; r.retained = 7; r.retainLost = 7; r.missingRequired = 7;
+        r.damaged = true; r.refused = true; r.reason = "stale";
+        StringBuilder answer = new StringBuilder();
+        answer.append(readIntoRetainStep(good, r));
+        answer.append(retainReportDiff(r, fresh)).append("\n");
+        answer.append(readIntoRetainStep(bad, r));
+        answer.append(readIntoRetainStep(good, r));
+        answer.append(retainReportDiff(r, fresh)).append("\n");
+        return answer.toString();
+    }
+
     // READ INTO THE CALLER'S VALUES (read-into): one report and one set of
     // values through a lawful read, a refused read and the lawful read again.
     private static int surfaceReadInto(String out) throws IOException {
@@ -3186,6 +3237,9 @@ public final class Driver {
                     case "fixed":
                     case "message":
                         break;
+                    case "retain":
+                        spill(out, name, readIntoRetainRow(unit, root, lawful, damaged));
+                        continue;
                     default:
                         return failInt(name + ": unknown read-into form " + form);
                 }

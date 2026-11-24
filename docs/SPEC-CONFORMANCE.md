@@ -194,6 +194,7 @@ the refusal (`MANIFEST.txt`, "THE 2026-11-22 SURFACES"):
 | SF-31: the block builder refuses a count or a used length past its maximum | `write-refusal-block` | `bref_*` |
 | FL-38, FL-36, FL-18: 4096 entries announced, 4097 refused; strict mode; a send with no announcement | `announce` | `ann_*` |
 | FL-02, FL-03, FL-17, FL-29: a read zeroes its report, a refusal leaves the caller's values at their defaults, an omitted fixed capacity is the file's own, a read never throws | `read-into` | `ri_*` |
+| SPEC-TABLES §6.5: the retaining load zeroes a PRE-FILLED report in full, every counter and the refusal ([below](#retaining-loads-zero-a-reused-report)) | `read-into` (`retain`) | `ri_retain` |
 | FL-14, FL-15: float text ignores the process locale; a caller-buffer writer writes nothing past its text | `json-write-into` | `jwi_*` |
 | FL-11: the text depth cap (read counts every container; write counts table/type values) | `wire`, `json-read`, `json-write` | `surf_chain127_vals` (`wire`/`json-read`/`json-write`), `surf_chain128_vals` (`wire`, `no-text`); refusal `graph_chain_past_cap` |
 | FL-16: a null `*T \| required` is written as index 0 and reads back null | `wire`, `json-read`, `json-write` | `surf_holder_null_required`, `surf_holder_present` |
@@ -945,3 +946,26 @@ SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 ELIXIR=elixir DART=$(command -v dart) \
   go test -count=1 ./internal/codegen/... \
   -run 'Test(JS|Luau)?FixedVersioning(UnknownCensus|KindMoved)|TestUnityFixedUnlawfulLineage|TestFixedVersioningUnlawfulEntryRefuses'
 ```
+
+### Retaining loads zero a reused report
+
+[SPEC-TABLES §6.5](SPEC-TABLES.md#65-the-two-load-paths-and-the-one-read)
+says every read zeroes a supplied report in full as its first act, and names
+the retain family among those reads. §6.6's "the report accumulates across
+the pair" is the save adding to the load's report, not the load keeping the
+caller's. Case `ri_retain` (`read-into`, form `retain`) loads
+[`retain_rt2.bin`](../testdata/wire/tables/retain_rt2.bin) as `tblrt1.Node`
+through `<Root>LoadRetain` with a roomy retention buffer, into a report the
+driver pre-filled: every counter nonzero, the refusal set (reason and detail
+too, where the language has them). After the read, every field of that report
+must equal the field the same read leaves in a fresh report, and the line is
+`zeroed`; any field that differs fails the row. The driver then loads the
+first 200 bytes of that file
+([`retain_rt2_cut.bin`](../testdata/conformance/tables/read-into/retain_rt2_cut.bin)),
+which every reader refuses, into the same report, and loads the lawful file
+once more and compares again. The answer owed is
+`read\nzeroed\nrefused\nread\nzeroed\n`, in every language.
+
+| rule | case | the leg it was red on before its fix |
+|---|---|---|
+| SPEC-TABLES §6.5: the retain family zeroes a supplied report in full, every counter and the refusal | `ri_retain` | red before its fix on C (kept and re-ORed a prior refusal, every counter), C++ (kept the caller's report and `damaged`), Java (no reset), C# (cleared three fields, kept `Damaged` and every counter; `Zero()` now also clears both build versions), Elixir (kept every counter but `missing_required`), Lua (kept every key but the two retain counters), Luau (never reset; retain counters piled up), Squirrel (reset only the two retain counters), Dart (kept the counters; fixed by #4950). Green with no fix: Go, JavaScript, Rust, Python, Ruby, C# (unity), Lobster, Goose, moo |
