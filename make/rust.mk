@@ -1790,7 +1790,7 @@ tables-rust-discard-negative-control:
 
 tables-rust-fixed-discard-negative-control:
 	@rm -rf $(RUST_DISCARD_NC)/fixed && mkdir -p $(RUST_DISCARD_NC)/fixed
-	@sed -e 's|g.pf("    if damaged && !untouched {\\n")|g.pf("    if false \&\& damaged \&\& !untouched { // NEGATIVE CONTROL: the discard is gone\\n")|' \
+	@sed -e 's|g.pf("    if read.is_none() {\\n")|g.pf("    if false \&\& read.is_none() { // NEGATIVE CONTROL: the discard is gone\\n")|' \
 		internal/codegen/rusttable/fixedform.go > $(RUST_DISCARD_NC)/fixed/fixedform.go.txt
 	@cmp -s internal/codegen/rusttable/fixedform.go $(RUST_DISCARD_NC)/fixed/fixedform.go.txt && \
 		{ echo "NEGATIVE CONTROL: the Rust fixed discard sabotage patched nothing"; exit 1; } || true

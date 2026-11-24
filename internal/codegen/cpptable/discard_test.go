@@ -265,6 +265,24 @@ fixed table Rec
         if ( r.unknown != 0 || r.widened != 0 ) { printf( "fixed: no_layout left unknown=%d widened=%d\n", r.unknown, r.widened ); return 1; }
     }
 
+    // the same refusal through RecFixedLoadWalk DIRECTLY, over FOUR poisoned rows
+    // (ruling R4): rows 2 and 3 lie past every record the walk reaches, so only the
+    // all-rows reset after the walk brings them back to their declared defaults.
+    // RecFixedLoad resets again on its own, so this is the call that holds that line.
+    memcpy( work, data, (size_t) n );
+    work[n - record_bytes] ^= 0x01;
+    {
+        Rec got[4];
+        for ( int i = 0; i < 4; ++i ) { RecReset( got[i] ); got[i].lead = 77; got[i].rng = 42; }
+        TableReport r; memset( &r, 0, sizeof( r ) );
+        const int64_t k = RecFixedLoadWalk( got, 4, work, n, plan, 4096, NULL, &r );
+        if ( k != -1 || !r.refused ) { printf( "fixed: FixedLoadWalk took a hash mismatch at record 1: %lld\n", (long long) k ); return 1; }
+        for ( int i = 0; i < 4; ++i )
+        {
+            if ( got[i].lead != fresh.lead || got[i].rng != fresh.rng ) { printf( "fixed: FixedLoadWalk no_layout left row %d usable: lead=%u rng=%d\n", i, got[i].lead, got[i].rng ); return 1; }
+        }
+    }
+
     // record 1's label is ill-formed UTF-8: text_ill_formed
     memcpy( work, data, (size_t) n );
     {
