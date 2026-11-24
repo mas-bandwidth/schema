@@ -157,6 +157,7 @@ static int spill( const char * dir, const char * name, const void * data, size_t
 typedef const ConformanceCodec * ( *UnitFn )( int * count );
 
 static const UnitFn units[] = {
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
     conformance_codecs_mapdemo,
     conformance_codecs_listdemo,
     conformance_codecs_armdemo,
@@ -182,7 +183,9 @@ static const UnitFn units[] = {
     conformance_codecs_scalars,
     conformance_codecs_graphdemo, conformance_codecs_blobdemo, conformance_codecs_tblg1, conformance_codecs_tblp2, conformance_codecs_streamdemo, conformance_codecs_tblscalars2, conformance_codecs_tblfixedevo, conformance_codecs_widelist, conformance_codecs_featurewitnesses, conformance_codecs_tblvarevo1, conformance_codecs_tblvarevo2, conformance_codecs_tblvarevo3, conformance_codecs_cooktorture, conformance_codecs_cooktorturewide, conformance_codecs_shapes, conformance_codecs_tblprior,
     conformance_codecs_tblsurf,
-    conformance_codecs_tblvaluedefaults, conformance_codecs_packetunions, conformance_codecs_writebounds
+    conformance_codecs_tblvaluedefaults, conformance_codecs_packetunions,
+#endif
+    conformance_codecs_writebounds
 };
 
 static const ConformanceCodec * find_codec( const char * unit, const char * root )
@@ -530,6 +533,7 @@ static int surface_json_hostile( const char * out )
     return 0;
 }
 
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
 static int surface_block( const char * out )
 {
     int i;
@@ -754,6 +758,7 @@ static int surface_reason(const char * out,const char * kind)
     }
     return 0;
 }
+#endif
 
 static int surface_message(const char * out, int prior)
 {
@@ -816,10 +821,14 @@ static int surface_retain(const char * out,int saved)
   if(strcmp(f->field[0],"retain"))continue;
   if(saved&&!strcmp(f->field[f->count-1],"-"))continue;
   wire=slurp(f->field[4],&n);if(!wire)return 1;ids=!strcmp(f->field[6],"full")?-1:strtoll(f->field[6],NULL,10);
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
   if(!strcmp(f->field[2],"tblrt1")&&!strcmp(f->field[3],"Node"))ok=conformance_retain(wire,(int64_t)n,!strcmp(f->field[5],"short"),ids,counters,&answer,&size,&text,&text_size);
   else if(!strcmp(f->field[2],"tblvarevo1")&&!strcmp(f->field[3],"EvoDoc"))ok=conformance_retain_varevo1(wire,(int64_t)n,!strcmp(f->field[5],"short"),ids,counters,&answer,&size,&text,&text_size);
   else if(!strcmp(f->field[2],"tblvarevo2")&&!strcmp(f->field[3],"EvoDoc"))ok=conformance_retain_varevo2(wire,(int64_t)n,!strcmp(f->field[5],"short"),ids,counters,&answer,&size,&text,&text_size);
   else{free(wire);return 1;}
+#else
+  (void)ids; (void)counters; free(wire); return 1;
+#endif
   /* retain-save answers the write-back bytes; retain answers the read: `read`
      and the §16 text of the known value (the counters are local diagnostics) */
   if(ok){if(saved)ok=spill(out,f->field[1],answer,(size_t)size);else{char * read=(char *)malloc((size_t)text_size+5);ok=read!=NULL;if(ok){memcpy(read,"read\n",5);memcpy(read+5,text,(size_t)text_size);ok=spill(out,f->field[1],read,(size_t)text_size+5);free(read);}}}
@@ -916,6 +925,10 @@ static int surface_write_refusal( const char * out, const char * surface, int wr
 
 static const ConformanceUnit1122 * find_unit1122( const char * unit )
 {
+#ifdef CONFORMANCE_WRITEBOUNDS_ONLY
+    (void) unit;
+    return NULL;
+#else
     static const ConformanceUnit1122 * ( * const getters[] )( void ) = {
         conformance_unit1122_tblsurf, conformance_unit1122_tblann4096, conformance_unit1122_tblann4097,
         conformance_unit1122_messagedemo, conformance_unit1122_backenddemo,
@@ -927,6 +940,7 @@ static const ConformanceUnit1122 * find_unit1122( const char * unit )
         if ( strcmp( u->unit, unit ) == 0 ) { return u; }
     }
     return NULL;
+#endif
 }
 
 /* announce <case> <unit> <root> <mode> <input>: the unit's announcement
@@ -1125,7 +1139,11 @@ int main( int argc, char ** argv )
     surface = argv[2];
     if ( strcmp( surface, "list" ) == 0 )
     {
+#ifdef CONFORMANCE_WRITEBOUNDS_ONLY
+        printf( "wire\njson-read\njson-write\nwrite-refusal\n" );
+#else
         printf( "wire\nmessage\nmessage-prior\nretain\nretain-save\nreport\nframing\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-reason\nblock-reason\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nannounce\nread-into\njson-write-into\nunit shapes\n" );
+#endif
         return 0;
     }
     if ( argc < 4 )
@@ -1144,6 +1162,7 @@ int main( int argc, char ** argv )
     if ( strcmp( surface, "json-read" ) == 0 ) { return surface_json_read( out ); }
     if ( strcmp( surface, "json-write" ) == 0 ) { return surface_json_write( out ); }
     if ( strcmp( surface, "json-hostile" ) == 0 ) { return surface_json_hostile( out ); }
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
     if ( strcmp( surface, "cook-reason" ) == 0 ) { return surface_reason(out,"cook"); }
     if ( strcmp( surface, "block-reason" ) == 0 ) { return surface_reason(out,"block"); }
     if ( strcmp( surface, "cook-write" ) == 0 ) { return surface_cook_write(out); }
@@ -1154,6 +1173,7 @@ int main( int argc, char ** argv )
     if ( strcmp( surface, "block-dump" ) == 0 ) { return surface_block_dump( out ); }
     if ( strcmp( surface, "forgery" ) == 0 ) { return surface_forgery( out, "block" ); }
     if ( strcmp( surface, "cook-forgery" ) == 0 ) { return surface_forgery( out, "cook" ); }
+#endif
     if ( strcmp( surface, "write-refusal" ) == 0 ) { return surface_write_refusal( out, surface, CONFORMANCE_WRITE_VARIABLE ); }
     if ( strcmp( surface, "write-refusal-fixed" ) == 0 ) { return surface_write_refusal( out, surface, CONFORMANCE_WRITE_FIXED ); }
     if ( strcmp( surface, "write-refusal-message" ) == 0 ) { return surface_write_refusal( out, surface, CONFORMANCE_WRITE_MESSAGE ); }

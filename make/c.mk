@@ -293,6 +293,17 @@ build/conformance-c: $(C_CONFORMANCE_OBJECTS) build/tables-generated-c/.stamp $(
 	@mkdir -p build
 	$(CC) $(TABLES_CFLAGS) $(C_CONFORMANCE_OBJECTS) -o $@ -lm
 
+build/tables-generated-c/writebounds/.stamp: bin/schema testdata/conformance/table-write-bounds/TableWriteBounds.schema
+	@mkdir -p build/tables-generated-c/writebounds
+	./bin/schema generate --lang c --out build/tables-generated-c/writebounds testdata/conformance/table-write-bounds/TableWriteBounds.schema
+	@touch $@
+
+build/conformance-c-writebounds: build/tables-generated-c/writebounds/.stamp test/conformance/c/main.c test/conformance/c/wref.c test/conformance/c/unit_writebounds.c $(wildcard test/conformance/c/*.h) $(wildcard $(SERIALIZE_C)/*.h)
+	@mkdir -p build
+	$(CC) $(TABLES_CFLAGS) -DCONFORMANCE_WRITEBOUNDS_ONLY -Itest/conformance/c -Ibuild/tables-generated-c/writebounds -I$(SERIALIZE_C) \
+		test/conformance/c/main.c test/conformance/c/wref.c test/conformance/c/unit_writebounds.c \
+		build/tables-generated-c/writebounds/TableWriteBoundsTable.c -o $@ -lm
+
 
 # THE ZERO-COST GATE, C side (docs/SPEC-TABLES.md §2.2). A table with no pointer
 # in its by-value closure must pay NOTHING for the pointer machinery — no

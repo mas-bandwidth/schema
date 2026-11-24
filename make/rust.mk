@@ -452,11 +452,28 @@ build/conformance-rust: build/tables-generated-rust/.stamp test/conformance/rust
 	            # running corrupts it in place, and a long soak runs this one
 	cp test/conformance/rust/target/debug/conformance-rust $@
 
+build/tables-generated-rust/writebounds/.stamp: bin/schema $(RUST_WRITE_BOUNDS_SCHEMA) make/rust.mk
+	@mkdir -p build/tables-generated-rust/writebounds
+	@rm -rf build/tables-generated-rust/writebounds/src
+	./bin/schema generate --lang rust --out build/tables-generated-rust/writebounds/src $(RUST_WRITE_BOUNDS_SCHEMA)
+	@printf '[package]\nname = "writebounds"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../$(SERIALIZE_RS)" }\n' \
+		> build/tables-generated-rust/writebounds/Cargo.toml
+	@touch $@
+
+build/conformance-rust-writebounds: build/tables-generated-rust/writebounds/.stamp test/conformance/rust/writebounds/Cargo.toml test/conformance/rust/writebounds/src/main.rs test/conformance/rust/src/writebounds_cases.rs $(wildcard $(SERIALIZE_RS)/src/*.rs)
+	@mkdir -p build
+	cd test/conformance/rust/writebounds && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --target-dir "$(CURDIR)/build/conformance-rust-writebounds-target"
+	@rm -f $@
+	cp build/conformance-rust-writebounds-target/debug/conformance-rust-writebounds $@
+
 # Shared variable writer boundary pairs. The driver above is a debug build,
 # so the generated writer's assertions decide the refusal rows.
 .PHONY: table-write-bounds-rust
-table-write-bounds-rust: build/conformance-harness build/conformance-rust
-	./build/conformance-harness run --only rust --surfaces write-refusal,wire,json-read,json-write --complete \
+table-write-bounds-rust: build/conformance-harness build/conformance-rust-writebounds
+	@mkdir -p build
+	@printf 'rust ./build/conformance-rust-writebounds\n' > build/conformance-write-bounds-rust.drivers
+	./build/conformance-harness run --drivers build/conformance-write-bounds-rust.drivers \
+		--only rust --surfaces write-refusal,wire,json-read,json-write --complete \
 		--manifest testdata/conformance/table-write-bounds/WRITE-BOUNDS.txt \
 		--json testdata/conformance/table-write-bounds \
 		--work build/conformance-write-bounds-rust

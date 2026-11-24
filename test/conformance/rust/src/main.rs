@@ -3135,32 +3135,9 @@ fn wref_fixed_case(f: &[String], data: &[u8]) -> &'static str {
 
 // Apply the caller's assignment. The generated writer owns the bounds checks.
 fn wref_writebounds(v: &mut writebounds::TortureVarWref, path: &str, kind: &str, value: &str) -> Mutation {
-    use writebounds::WrefArm;
-    match (path, kind) {
-        ("opt_arr", "count") => {
-            let array = v.opt_arr.get_or_insert_with(Vec::new);
-            let first = array.first().copied().unwrap_or(0);
-            array.resize(wref_usize(value), first);
-            Mutation::Done
-        }
-        ("arm_bits.a_bits", "int") => {
-            let mut bits = 0u16;
-            let result = wref_int(value, &mut bits);
-            v.arm_bits = WrefArm::ABits(bits);
-            result
-        }
-        ("arm_range.a_range", "int") => {
-            let mut n = 0i32;
-            let result = wref_int(value, &mut n);
-            v.arm_range = WrefArm::ARange(n);
-            result
-        }
-        ("arm_str.a_str", "length") => {
-            v.arm_str = WrefArm::AStr("a".repeat(wref_usize(value)));
-            Mutation::Done
-        }
-        ("chan_lim[1]", "int") => wref_int(value, &mut v.chan_lim[1]),
-        _ => fail(&format!("write-refusal: TortureVarWref names no {kind} path {path}")),
+    match writebounds_cases::mutate(v, path, kind, value).unwrap_or_else(|msg| fail(&msg)) {
+        writebounds_cases::WriteBoundsMutation::Done => Mutation::Done,
+        writebounds_cases::WriteBoundsMutation::Unrepresentable => Mutation::Unrepresentable,
     }
 }
 
@@ -3716,3 +3693,4 @@ fn main() {
 // THE 2026-11-22 SURFACES: announce, read-into, json-write-into,
 // write-refusal-cook, write-refusal-block and the new write-refusal kinds.
 mod surfaces1122;
+mod writebounds_cases;

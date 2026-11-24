@@ -82,6 +82,7 @@ static const struct
     int ( *write )( int surface, const char * root, const void * value, const uint8_t * announcement,
                     int64_t announcement_bytes, uint8_t * buffer, int64_t capacity, int64_t * wrote );
 } write_units[] = {
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
     { "tabledemo", conformance_write_refusal_set_tabledemo, conformance_write_refusal_write_tabledemo },
     { "backenddemo", conformance_write_refusal_set_backenddemo, conformance_write_refusal_write_backenddemo },
     { "scalars", conformance_write_refusal_set_scalars, conformance_write_refusal_write_scalars },
@@ -92,6 +93,7 @@ static const struct
     { "shapes", conformance_write_refusal_set_shapes, conformance_write_refusal_write_shapes },
     { "tblsurf", conformance_write_refusal_set_tblsurf, conformance_write_refusal_write_tblsurf },
     { "mapdemo", conformance_write_refusal_set_mapdemo, conformance_write_refusal_write_none },
+#endif
     { "writebounds", conformance_write_refusal_set_writebounds, conformance_write_refusal_write_none },
 };
 #endif

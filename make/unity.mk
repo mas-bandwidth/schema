@@ -244,8 +244,24 @@ build/conformance-unity/.stamp: bin/schema testdata/conformance/tables/MANIFEST.
 
 CONFORMANCE_LEGS   += $(call unless_skipped,unity,build/conformance-unity/.stamp)
 
+build/conformance-unity/driver/.stamp: test/conformance/unity/unityconformance.csproj test/conformance/unity/src/Driver.cs test/conformance/unity/src/Surfaces.cs test/conformance/unity/src/Surfaces1122.cs test/unity/HostDialect.props .github/dotnet-version
+	@mkdir -p build/conformance-unity/driver
+	$(DOTNET) build test/conformance/unity/unityconformance.csproj -c Release \
+		-p:ArtifactsPath="$(CURDIR)/build/conformance-unity/_art_driver" \
+		-o build/conformance-unity/driver --nologo -v quiet
+	@touch $@
+
+build/conformance-unity/writebounds/.stamp: bin/schema testdata/conformance/table-write-bounds/TableWriteBounds.schema make/unity.mk test/conformance/unity/unit/schemaunit.csproj test/unity/UnityDialect.props .github/dotnet-version
+	@mkdir -p build/conformance-unity/_gen/writebounds build/conformance-unity/writebounds
+	./bin/schema generate --lang unity --out build/conformance-unity/_gen/writebounds testdata/conformance/table-write-bounds/TableWriteBounds.schema
+	$(DOTNET) build test/conformance/unity/unit/schemaunit.csproj -c Debug \
+		-p:UnityUnitDir="$(CURDIR)/build/conformance-unity/_gen/writebounds" \
+		-p:ArtifactsPath="$(CURDIR)/build/conformance-unity/_art/writebounds" \
+		-o build/conformance-unity/writebounds --nologo -v quiet
+	@touch $@
+
 .PHONY: table-write-bounds-unity
-table-write-bounds-unity: build/conformance-harness build/conformance-unity/.stamp
+table-write-bounds-unity: build/conformance-harness build/conformance-unity/driver/.stamp build/conformance-unity/writebounds/.stamp
 	./build/conformance-harness run --only unity --surfaces write-refusal,wire,json-read,json-write --complete \
 		--manifest testdata/conformance/table-write-bounds/WRITE-BOUNDS.txt \
 		--json testdata/conformance/table-write-bounds \

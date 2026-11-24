@@ -35,6 +35,7 @@
 #include <type_traits>
 #include <vector>
 
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
 #include "TablesTable.h"
 #include "WideTable.h"
 #include "FeaturesTable.h"
@@ -63,7 +64,9 @@
 #include "ShapesTable.h"
 // an ARRAY OF PACKET UNIONS in a variable and a fixed table (docs/SPEC-TABLES.md §2.6)
 #include "PacketUnionsTable.h"
+#endif
 #include "TableWriteBoundsTable.h"
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
 // the MESSAGE FORM's units (docs/SPEC-TABLES.md §3.3): the three backend
 // messages the ruling measured, and the WIDE-VOCABULARY unit whose slots fall
 // on both sides of the one-byte boundary
@@ -130,6 +133,7 @@
 #include "announce4096/AnnounceTable.h"
 #include "announce4097/AnnounceTable.h"
 #include "BackendBlock.h"
+#endif
 
 // ---------------------------------------------------------------------------
 // the manifest, read exactly as testdata/conformance/tables/FORMAT.md states it
@@ -368,6 +372,7 @@ static const int32_t kFixedPlanCapacity = 4096;
         }                                                                                      \
     }
 
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
 static const Codec codecs[] = {
     CODEC( "tabledemo", tabledemo, RootConfig ),
     CODEC( "tabledemo", tabledemo, ProfileConfig ),
@@ -422,6 +427,7 @@ static const Codec codecs[] = {
     CODEC( "tblvaluedefaults", tblvaluedefaults, FixedDefaults ),
     CODEC( "packetunions", tblpacketunions, ShapeMsg ),
 };
+#endif
 
 // ---------------------------------------------------------------------------
 // the VARIABLE class's rows (docs/SPEC-TABLES.md §6.2)
@@ -503,6 +509,7 @@ struct VarCodec
     }
 
 static const VarCodec var_codecs[] = {
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
     VARCODEC( "mapdemo", mapdemo, Cells ),
     VARCODEC( "mapdemo", mapdemo, Chunks ),
     VARCODEC( "mapdemo", mapdemo, Crews ),
@@ -534,8 +541,9 @@ static const VarCodec var_codecs[] = {
     VARCODEC( "cooktorturewide", cooktorturewide, TortureWideCook ),
     VARCODEC( "shapes", shapes, Bounds ),
     VARCODEC( "packetunions", tblpacketunions, ShapeDoc ),
+#endif
     VARCODEC( "writebounds", writebounds, TortureVarWref ),
-
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
     VARCODEC( "graphdemo", graphdemo, Scene ),
     VARCODEC( "graphdemo", graphdemo, ListNode ),
     VARCODEC( "tblp2", tblp2, Chain ),
@@ -551,8 +559,10 @@ static const VarCodec var_codecs[] = {
     VARCODEC( "tblsurf", surfaces, Chain ),
     VARCODEC( "tblsurf", surfaces, Holder ),
     VARCODEC( "tblsurf", surfaces, Counted ),
+#endif
 };
 
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
 // ---------------------------------------------------------------------------
 // the MESSAGE FORM's rows (docs/SPEC-TABLES.md §3.3)
 // ---------------------------------------------------------------------------
@@ -755,6 +765,7 @@ static const MsgCodec * find_msg_codec( const std::string & unit, const std::str
     }
     return NULL;
 }
+#endif
 
 static const VarCodec * find_var_codec( const std::string & unit, const std::string & root )
 {
@@ -767,13 +778,20 @@ static const VarCodec * find_var_codec( const std::string & unit, const std::str
 
 static const Codec * find_codec( const std::string & unit, const std::string & root )
 {
+#ifdef CONFORMANCE_WRITEBOUNDS_ONLY
+    (void) unit;
+    (void) root;
+    return NULL;
+#else
     for ( size_t i = 0; i < sizeof( codecs ) / sizeof( codecs[0] ); i++ )
     {
         if ( unit == codecs[i].unit && root == codecs[i].root ) return &codecs[i];
     }
     return NULL;
+#endif
 }
 
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
 // ---------------------------------------------------------------------------
 // blocks
 // ---------------------------------------------------------------------------
@@ -1081,6 +1099,7 @@ static bool block_dump( const std::string & name, const std::vector<uint8_t> & d
     storage.destroy();
     return ok;
 }
+#endif
 
 // ---------------------------------------------------------------------------
 // the surfaces
@@ -1095,6 +1114,7 @@ static bool spill_refusal( const std::string & out, const std::string & name )
     return spill( out, name, refused, sizeof( refused ) - 1 );
 }
 
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
 // THE VERDICT LINE of a `report`, `framing` and `json-hostile` answer: the
 // legacy seven fields the harness still reads, with the retired counters at
 // zero and the refusal flag the only thing that selects the verdict
@@ -1106,6 +1126,7 @@ static std::vector<char> verdict_line( const Report & report, bool read )
                             report.unknown, report.widened, read ? "read" : "refused" );
     return std::vector<char>( text, text + n );
 }
+#endif
 
 static int surface_wire( const std::string & out )
 {
@@ -1153,6 +1174,7 @@ static int surface_wire( const std::string & out )
     return 0;
 }
 
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
 // THE MESSAGE SURFACE (docs/SPEC-TABLES.md §3.3): read the message against the
 // connection's announced table, and write it back. The expectation is the
 // message golden itself, exactly as the wire surface's is the wire golden.
@@ -1392,6 +1414,7 @@ static int surface_framing( const std::string & out )
     return 0;
 }
 
+#endif
 // an instance the corpus carries on the wire alone: past the text form's depth
 // cap by the form's own rule (§16.7), so no leg is asked for its text
 static bool no_text( const std::vector<std::string> & f )
@@ -1477,6 +1500,7 @@ static int surface_json_write( const std::string & out )
     return 0;
 }
 
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
 // A VALUE THE WRITER REFUSES (docs/SPEC-TABLES.md §16.14, W0): the line names
 // a wire that reads, and the damage the driver puts into it afterwards, which no
 // read can deliver: the bytes 61 FF 62 in a narrow text field, the units 0061
@@ -2034,6 +2058,7 @@ static int emit_block_forgeries()
     storage.destroy();
     return 0;
 }
+#endif
 
 // THE WRITE CONTRACT's batteries (docs/SPEC.md §5.1; FORMAT.md, `write-refusal`
 // and the three surfaces beside it): load the wire, set ONE field out of (or at
@@ -2056,6 +2081,7 @@ enum
     // the value is past the storage's own width (§5.1 row 11): C++'s typed
     // storage cannot hold it, so there is nothing for the writer to refuse
     kUnrepresentableExit = 12,
+    kRowWireExit = 2, // the row's own wire did not load: a corpus fault, never a verdict
 };
 
 // The hex of a `bytes` or `units` value: two digits a byte, or four a unit.
@@ -2105,6 +2131,7 @@ static bool write_refusal_text( char * storage, int32_t capacity, int32_t & leng
     return false;
 }
 
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
 // Sets the one field the row names. The set is EXACTLY the rows' (root, path,
 // kind) triples: an unknown one is an error that names itself, so a new row
 // cannot pass by being skipped.
@@ -2150,6 +2177,7 @@ static bool write_refusal_bytes_field( uint8_t * storage, int32_t capacity, int3
     }
     return false;
 }
+#endif
 
 // A decimal integer as __int128, saturating far past any storage, so a value
 // past 64 bits still compares as past it.
@@ -2197,6 +2225,7 @@ template <typename E> static bool wref_store_enum( E & field, const std::string 
 // The `real` kind (FORMAT.md): a decimal parsed as a double, then rounded to the
 // float storage the way any caller's assignment rounds it, so a row can name
 // the float32 one step past a bound exactly.
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
 static bool parse_wref_real_f32( const std::string & text, float & out )
 {
     char * end = NULL;
@@ -2260,6 +2289,7 @@ template <typename T, typename E> static bool write_refusal_shapes_common( T & v
     }
     return false;
 }
+#endif
 
 // The REVIEW-1121 rows on PLAIN VARIABLE roots (MANIFEST.txt, R1): the value is
 // the region the load left, set in place.
@@ -2289,6 +2319,7 @@ static bool write_refusal_set_variable( const std::string & root, void * value, 
         if ( path == "chan_lim[1]" ) return wref_store_int( v.chan_lim.slots[1], text );
         return false;
     }
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
     if ( root == "Scene" )
     {
         graphdemo::Scene & v = *(graphdemo::Scene *) value;
@@ -2377,9 +2408,11 @@ static bool write_refusal_set_variable( const std::string & root, void * value, 
         if ( path == "wide" && kind == "float" ) return parse_wref_f64( text, v.wide );
         return write_refusal_shapes_common( v, v.tones, v.tones_count, path, kind, text );
     }
+#endif
     return false;
 }
 
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
 static bool write_refusal_set( const std::string & root, void * value, const std::string & path,
                                const std::string & kind, const std::string & text )
 {
@@ -2625,11 +2658,6 @@ static bool write_refusal_json_holds_zero( const std::string & json, const std::
 // answered `unrepresentable`, never `refused` on the runtime's behalf: a native
 // `[N]T` holds exactly N elements, an `int8_t` holds no 128. The child exits
 // with this code for it.
-enum
-{
-    kRowWireExit = 2, // the row's own wire did not load: a corpus fault, never a verdict
-};
-
 enum WrefSet
 {
     kWrefNotMine, // a (root, path, kind) this setter does not know: the older setter's
@@ -2865,17 +2893,22 @@ static int write_refusal_write( const std::string & surface, const std::string &
     }
     return wrote < 0 ? kRefusedExit : kWroteExit;
 }
+#endif
 
 // sets the one field a row names: the 2026-11-22 kinds first, then the older
 // setter; answers 0 or the child's exit code
 static int write_refusal_set_any( const std::string & root, void * value, const std::string & path,
                                   const std::string & kind, const std::string & text )
 {
+#ifdef CONFORMANCE_WRITEBOUNDS_ONLY
+    return write_refusal_set_variable( root, value, path, kind, text ) ? 0 : kNoSetterExit;
+#else
     const WrefSet set = write_refusal_set_1122( root, value, path, kind, text );
     if ( set == kWrefSet ) return 0;
     if ( set == kWrefUnrep ) return kUnrepresentableExit;
     if ( set == kWrefBad ) return kNoSetterExit;
     return write_refusal_set( root, value, path, kind, text ) ? 0 : kNoSetterExit;
+#endif
 }
 
 // A row whose <wire> is `-` starts from the root's FRESH value (SF-05, SF-06:
@@ -2926,8 +2959,12 @@ static int surface_write_refusal( const std::string & surface, const std::string
                 Report report;
                 const void * cval = var_codec->load( region, wire.data(), (int64_t) wire.size(), &report );
                 if ( cval == NULL ) _exit( kRowWireExit );
+#ifdef CONFORMANCE_WRITEBOUNDS_ONLY
+                const int set = write_refusal_set_any( f[3], const_cast<void *>( cval ), f[5], f[6], f[7] );
+#else
                 const int set = f[6] == "dupkey" ? write_refusal_dupkey( f[3], region, cval, f[5], f[7] )
                                                  : write_refusal_set_any( f[3], const_cast<void *>( cval ), f[5], f[6], f[7] );
+#endif
                 if ( set != 0 ) _exit( set );
                 const void * mval = cval;
                 const int quiet = open( "/dev/null", O_WRONLY );
@@ -2947,9 +2984,12 @@ static int surface_write_refusal( const std::string & surface, const std::string
                     std::vector<char> jtxt;
                     _exit( var_codec->to_json( mval, jtxt ) ? kWroteExit : kRefusedExit );
                 }
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
                 if ( surface == "write-refusal-cook" ) _exit( write_refusal_cook( var_codec->cook_measure, var_codec->cook, mval ) );
+#endif
                 _exit( kNoSetterExit );
             }
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
             void * value = codec->make();
             codec->reset( value );
             if ( !fresh )
@@ -2962,6 +3002,9 @@ static int surface_write_refusal( const std::string & surface, const std::string
             const int quiet = open( "/dev/null", O_WRONLY );
             if ( quiet >= 0 ) dup2( quiet, 2 );
             _exit( write_refusal_write( surface, unit, f[3], f[5], codec, value, announcement ) );
+#else
+            _exit( kNoSetterExit );
+#endif
         }
         int status = 0;
         if ( waitpid( child, &status, 0 ) != child ) { fprintf( stderr, "driver: waitpid failed\n" ); return 1; }
@@ -2999,6 +3042,7 @@ static int surface_write_refusal( const std::string & surface, const std::string
     return 0;
 }
 
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
 // ---------------------------------------------------------------------------
 // THE ANNOUNCEMENT (docs/SPEC-TABLES.md §3.3; test/conformance/README.md,
 // `announce`): a unit's announcement writer, and its reader with the strict
@@ -3324,13 +3368,16 @@ static int surface_json_write_into( const std::string & out )
     setlocale( LC_ALL, "C" );
     return 0;
 }
+#endif
 
 int main( int argc, char ** argv )
 {
+#ifndef CONFORMANCE_WRITEBOUNDS_ONLY
     if ( argc >= 2 && strcmp( argv[1], "emit-block-forgeries" ) == 0 )
     {
         return emit_block_forgeries();
     }
+#endif
     if ( argc < 3 )
     {
         fprintf( stderr, "usage: %s <manifest> list\n       %s <manifest> <surface> <outdir>\n", argv[0], argv[0] );
@@ -3341,10 +3388,14 @@ int main( int argc, char ** argv )
     const std::string surface = argv[2];
     if ( surface == "list" )
     {
+#ifdef CONFORMANCE_WRITEBOUNDS_ONLY
+        printf( "wire\njson-read\njson-write\nwrite-refusal\n" );
+#else
         printf( "wire\nmessage\nmessage-prior\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook-write\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n"
                 "write-refusal-cook\nwrite-refusal-block\nannounce\nread-into\njson-write-into\n" );
         // the opt-in units this leg answers (MANIFEST.txt `opt-in`)
         printf( "unit shapes\n" );
+#endif
         return 0;
     }
     if ( argc < 4 )
@@ -3355,13 +3406,17 @@ int main( int argc, char ** argv )
     const std::string out = argv[3];
 
     if ( surface == "wire" ) return surface_wire( out );
+    if ( surface == "json-read" ) return surface_json_read( out );
+#ifdef CONFORMANCE_WRITEBOUNDS_ONLY
+    if ( surface == "json-write" ) return surface_json_write( out );
+    if ( surface == "write-refusal" ) return surface_write_refusal( surface, out );
+#else
     if ( surface == "message" ) return surface_message( out, false );
     if ( surface == "message-prior" ) return surface_message( out, true );
     if ( surface == "report" ) return surface_report( out );
     if ( surface == "framing" ) return surface_framing( out );
     if ( surface == "retain" ) return surface_retain( out );
     if ( surface == "retain-save" ) return surface_retain_save( out );
-    if ( surface == "json-read" ) return surface_json_read( out );
     if ( surface == "json-write" ) return surface_json_write( out ) || surface_json_write_refusal( out );
     if ( surface == "json-text" ) return surface_json_text( out );
     if ( surface == "json-hostile" ) return surface_json_hostile( out );
@@ -3379,5 +3434,6 @@ int main( int argc, char ** argv )
     if ( surface == "announce" ) return surface_announce( out );
     if ( surface == "read-into" ) return surface_read_into( out );
     if ( surface == "json-write-into" ) return surface_json_write_into( out );
+#endif
     return 2;
 }

@@ -5423,6 +5423,16 @@ _conformance-cpp-binary: test/conformance/cpp/main.cpp $(CONFORMANCE_OBJECTS)
 	$(CXX) $(TABLES_CXXFLAGS) $(CONFORMANCE_INCLUDES) test/conformance/cpp/main.cpp \
 		$(CONFORMANCE_OBJECTS) -o build/conformance-cpp
 
+build/tables-generated/writebounds/.stamp: bin/schema testdata/conformance/table-write-bounds/TableWriteBounds.schema
+	@mkdir -p build/tables-generated/writebounds
+	./bin/schema generate --lang cpp --out build/tables-generated/writebounds testdata/conformance/table-write-bounds/TableWriteBounds.schema
+	@touch $@
+
+build/conformance-cpp-writebounds: build/tables-generated/writebounds/.stamp test/conformance/cpp/main.cpp $(wildcard $(SERIALIZE)/*.h)
+	@mkdir -p build
+	$(CXX) $(TABLES_CXXFLAGS) -DCONFORMANCE_WRITEBOUNDS_ONLY -Ibuild/tables-generated/writebounds -I$(SERIALIZE) \
+		test/conformance/cpp/main.cpp build/tables-generated/writebounds/TableWriteBoundsTable.cpp -o $@
+
 # ---- THE WIRE FUZZER (docs/SPEC-TABLES.md §4.2; docs/SECURITY.md) -------------
 #
 # A table read is untrusted input, so the tolerant read IS the verifier, and

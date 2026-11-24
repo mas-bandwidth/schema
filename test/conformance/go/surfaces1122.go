@@ -1,3 +1,5 @@
+//go:build !writebounds_only
+
 // THE 2026-11-22 SURFACES (test/conformance/README.md, "The 2026-11-22
 // surfaces ask what no surface asked before"; docs/SPEC-CONFORMANCE.md §2).
 //

@@ -16,7 +16,6 @@ package main
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
 	"math/big"
 	"os"
@@ -25,8 +24,6 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
-
-	"blobdemo"
 )
 
 // ---------------------------------------------------------------------------
@@ -227,7 +224,7 @@ func surfaceWire(lines []line, out string) error {
 			// MeasureReason names that refusal; preserve it as this row's answer.
 			if c.measureReason != nil {
 				_, reason := c.measureReason(value)
-				if errors.Is(reason, blobdemo.TableRefuseBlobShared) {
+				if isBlobSharedErr(reason) {
 					if err := spill(out, f[1], []byte("refused\n")); err != nil {
 						return err
 					}

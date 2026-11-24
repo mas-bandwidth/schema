@@ -131,66 +131,56 @@ BENCH_TABLES_LEGS += generated/bench/tables/dart/.stamp
 # carried root also owns form 1, including the V, W and R evolution pairs.
 build/tables-generated-dart/.stamp: bin/schema testdata/conformance/feature-witnesses/full/Features.schema $(wildcard tables/backend/*.schema) $(wildcard tables/maps/*.schema) $(wildcard tables/widelist/*.schema) $(wildcard tables/messages/*.schema) $(wildcard tables/scalars/*.schema) $(wildcard tables/stream/*.schema) $(wildcard tables/vocab/*.schema) $(wildcard tables/vocab9/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/G1.schema test/tables/M1.schema test/tables/M2.schema test/tables/P2.schema test/tables/K1.schema test/tables/K2.schema test/tables/A2.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/prior/PriorNarrow.schema test/tables/shapes/Shapes.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/RT1.schema test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/ValueDefaults.schema test/tables/packetunions/PacketUnions.schema
 	@mkdir -p build/tables-generated-dart
-	./bin/schema generate --lang dart --out build/tables-generated-dart/features testdata/conformance/feature-witnesses/full/Features.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/examples tables/examples
-	./bin/schema generate --lang dart --out build/tables-generated-dart/writebounds testdata/conformance/table-write-bounds/TableWriteBounds.schema
-	# the POINTERED unit: form 1 for Scene, form 3 and cook beside it.
-	./bin/schema generate --lang dart --out build/tables-generated-dart/pointers tables/pointers
-	./bin/schema generate --lang dart --out build/tables-generated-dart/blobs tables/blobs
-	./bin/schema generate --lang dart --out build/tables-generated-dart/lists tables/lists
-	./bin/schema generate --lang dart --out build/tables-generated-dart/maps tables/maps
-	# widelist: 128-bit list elements, the cook's node-alignment row (§2.8, §6.2)
-	./bin/schema generate --lang dart --out build/tables-generated-dart/widelist tables/widelist
-	./bin/schema generate --lang dart --out build/tables-generated-dart/messages tables/messages
-	# backend, vocab and vocab9 are also the MESSAGE FORM's units (docs/SPEC-TABLES.md
-	# §3.3): the conformance driver's `message` surface reads their batches.
-	./bin/schema generate --lang dart --out build/tables-generated-dart/backend tables/backend
-	./bin/schema generate --lang dart --out build/tables-generated-dart/stream tables/stream
-	./bin/schema generate --lang dart --out build/tables-generated-dart/vocab tables/vocab
-	./bin/schema generate --lang dart --out build/tables-generated-dart/vocab9 tables/vocab9
-	# tables/scalars beside the tree, not in it: the standalone and clean gates
-	# walk this tree, and the conformance driver reads its form-1 library from
-	# there. The packet emitter writes Int128.dart beside a table-only 128-bit
-	# unit, so its form-3 libraries resolve under the strict analyzer too.
-	./bin/schema generate --lang dart --out build/tables-generated-dart-scalars/scalars tables/scalars
-	./bin/schema generate --lang dart --out build/tables-generated-dart/block tables/block
-	./bin/schema generate --lang dart --out build/tables-generated-dart/blockhome tables/blockhome
-	./bin/schema generate --lang dart --out build/tables-generated-dart/v1 test/tables/V1.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/v2 test/tables/V2.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/w1 test/tables/W1.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/w2 test/tables/W2.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/r1 test/tables/R1.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/r2 test/tables/R2.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/p1 test/tables/P1.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/p3 test/tables/P3.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/g1 test/tables/G1.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/m1 test/tables/M1.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/m2 test/tables/M2.schema
-	# RT1 is the RETAIN surfaces' unit (docs/SPEC-TABLES.md §6.6).
-	./bin/schema generate --lang dart --out build/tables-generated-dart/rt1 test/tables/RT1.schema
-	# the REPORT surface's remaining readers (docs/SPEC-TABLES.md §4, §5): the
-	# pointer-presence middle P2, the id-table pair K1/K2, the arm retypes A2,
-	# and Scalars2 (beside the tree, as tables/scalars is, for its Int128.dart).
-	./bin/schema generate --lang dart --out build/tables-generated-dart/p2 test/tables/P2.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/k1 test/tables/K1.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/k2 test/tables/K2.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/a2 test/tables/A2.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart-scalars/scalars2 test/tables/Scalars2.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart-scalars/fixedevo test/tables/fixedevo
-	./bin/schema generate --lang dart --out build/tables-generated-dart/varevo1 test/tables/varevo/VarEvo1.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/varevo2 test/tables/varevo/VarEvo2.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart-scalars/varevo3 test/tables/varevo/VarEvo3.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/prior test/tables/prior/PriorNarrow.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart-scalars/shapes test/tables/shapes/Shapes.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/cooktorture test/tables/cooktorture/CookTorture.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart-scalars/cooktorturewide test/tables/cooktorturewide/CookTortureWide.schema
-	# THE 2026-11-22 SURFACES (test/conformance/README.md): tblsurf's roots plus
-	# the announcement-cap units tblann4096 and tblann4097.
-	./bin/schema generate --lang dart --out build/tables-generated-dart/surfaces test/tables/surfaces
-	./bin/schema generate --lang dart --out build/tables-generated-dart/tblann4096 test/tables/announce4096/Announce.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/tblann4097 test/tables/announce4097/Announce.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/valuedefaults test/tables/ValueDefaults.schema
-	./bin/schema generate --lang dart --out build/tables-generated-dart/packetunions test/tables/packetunions/PacketUnions.schema
+	# Generate every Dart table unit in parallel (heavy announcement units first
+	# so they overlap with the smaller schemas rather than running at the tail).
+	printf '%s\n' \
+		'build/tables-generated-dart/tblann4097 test/tables/announce4097/Announce.schema' \
+		'build/tables-generated-dart/tblann4096 test/tables/announce4096/Announce.schema' \
+		'build/tables-generated-dart/features testdata/conformance/feature-witnesses/full/Features.schema' \
+		'build/tables-generated-dart/examples tables/examples' \
+		'build/tables-generated-dart/writebounds testdata/conformance/table-write-bounds/TableWriteBounds.schema' \
+		'build/tables-generated-dart/pointers tables/pointers' \
+		'build/tables-generated-dart/blobs tables/blobs' \
+		'build/tables-generated-dart/lists tables/lists' \
+		'build/tables-generated-dart/maps tables/maps' \
+		'build/tables-generated-dart/widelist tables/widelist' \
+		'build/tables-generated-dart/messages tables/messages' \
+		'build/tables-generated-dart/backend tables/backend' \
+		'build/tables-generated-dart/stream tables/stream' \
+		'build/tables-generated-dart/vocab tables/vocab' \
+		'build/tables-generated-dart/vocab9 tables/vocab9' \
+		'build/tables-generated-dart-scalars/scalars tables/scalars' \
+		'build/tables-generated-dart/block tables/block' \
+		'build/tables-generated-dart/blockhome tables/blockhome' \
+		'build/tables-generated-dart/v1 test/tables/V1.schema' \
+		'build/tables-generated-dart/v2 test/tables/V2.schema' \
+		'build/tables-generated-dart/w1 test/tables/W1.schema' \
+		'build/tables-generated-dart/w2 test/tables/W2.schema' \
+		'build/tables-generated-dart/r1 test/tables/R1.schema' \
+		'build/tables-generated-dart/r2 test/tables/R2.schema' \
+		'build/tables-generated-dart/p1 test/tables/P1.schema' \
+		'build/tables-generated-dart/p3 test/tables/P3.schema' \
+		'build/tables-generated-dart/g1 test/tables/G1.schema' \
+		'build/tables-generated-dart/m1 test/tables/M1.schema' \
+		'build/tables-generated-dart/m2 test/tables/M2.schema' \
+		'build/tables-generated-dart/rt1 test/tables/RT1.schema' \
+		'build/tables-generated-dart/p2 test/tables/P2.schema' \
+		'build/tables-generated-dart/k1 test/tables/K1.schema' \
+		'build/tables-generated-dart/k2 test/tables/K2.schema' \
+		'build/tables-generated-dart/a2 test/tables/A2.schema' \
+		'build/tables-generated-dart-scalars/scalars2 test/tables/Scalars2.schema' \
+		'build/tables-generated-dart-scalars/fixedevo test/tables/fixedevo' \
+		'build/tables-generated-dart/varevo1 test/tables/varevo/VarEvo1.schema' \
+		'build/tables-generated-dart/varevo2 test/tables/varevo/VarEvo2.schema' \
+		'build/tables-generated-dart-scalars/varevo3 test/tables/varevo/VarEvo3.schema' \
+		'build/tables-generated-dart/prior test/tables/prior/PriorNarrow.schema' \
+		'build/tables-generated-dart-scalars/shapes test/tables/shapes/Shapes.schema' \
+		'build/tables-generated-dart/cooktorture test/tables/cooktorture/CookTorture.schema' \
+		'build/tables-generated-dart-scalars/cooktorturewide test/tables/cooktorturewide/CookTortureWide.schema' \
+		'build/tables-generated-dart/surfaces test/tables/surfaces' \
+		'build/tables-generated-dart/valuedefaults test/tables/ValueDefaults.schema' \
+		'build/tables-generated-dart/packetunions test/tables/packetunions/PacketUnions.schema' \
+		| xargs -P 8 -L 1 sh -c './bin/schema generate --lang dart --out "$$0" "$$1"'
 	@touch $@
 
 # THE DART TABLE SOURCES ARE FORMAT-CANONICAL. `dart format` is the language's
@@ -1882,9 +1872,15 @@ test-dart: conformance-dart-text-boundary
 # manifest names, not only with the ones listed above
 build/tables-generated-dart/.stamp: $(CONFORMANCE_UNIT_SCHEMAS) testdata/conformance/table-write-bounds/TableWriteBounds.schema
 
+build/conformance-write-bounds-dart.dill: build/tables-generated-dart/.stamp $(CARDS_DART_STAMP) build/tables-generated-dart-framing/countedmin/.stamp test/conformance/dart/main.dart
+	@mkdir -p build
+	$(DART) --enable-asserts --snapshot-kind=kernel --snapshot=$@ test/conformance/dart/main.dart >/dev/null
+
 .PHONY: table-write-bounds-dart
-table-write-bounds-dart: build/conformance-harness build/conformance-dart
-	DART="$(DART)" ./build/conformance-harness run --only dart --surfaces write-refusal,wire,json-read,json-write --complete \
+table-write-bounds-dart: build/conformance-harness build/conformance-write-bounds-dart.dill
+	@printf 'dart %s --enable-asserts %s/build/conformance-write-bounds-dart.dill\n' "$(DART)" "$(CURDIR)" > build/conformance-write-bounds-dart.drivers
+	./build/conformance-harness run --drivers build/conformance-write-bounds-dart.drivers \
+		--only dart --surfaces write-refusal,wire,json-read,json-write --complete \
 		--manifest testdata/conformance/table-write-bounds/WRITE-BOUNDS.txt \
 		--json testdata/conformance/table-write-bounds \
 		--work build/conformance-write-bounds-dart
