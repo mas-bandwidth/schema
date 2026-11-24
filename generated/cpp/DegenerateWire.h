@@ -329,8 +329,11 @@ SCHEMA_READ_INLINE bool ReadSpanTwice( serialize::ReadStream & stream, SpanTwice
 
 SCHEMA_WRITE_INLINE bool WriteTrio( serialize::WriteStream & stream, const Trio & value )
 {
+    serialize_assert( value.a < ( 1ull << 20 ) );
     write_bits( stream, value.a, 20 );
+    serialize_assert( value.b < ( 1ull << 20 ) );
     write_bits( stream, value.b, 20 );
+    serialize_assert( value.c < ( 1ull << 24 ) );
     write_bits( stream, value.c, 24 );
     return true;
 }
@@ -403,6 +406,7 @@ SCHEMA_READ_INLINE bool ReadVec3Sole( serialize::ReadStream & stream, Vec3Sole &
 SCHEMA_WRITE_INLINE bool WriteTrioFirst( serialize::WriteStream & stream, const TrioFirst & value )
 {
     schema_write_object( stream, WriteTrio, value.inner );
+    serialize_assert( value.trailer < ( 1ull << 16 ) );
     write_bits( stream, value.trailer, 16 );
     return true;
 }
@@ -432,6 +436,7 @@ SCHEMA_WRITE_INLINE bool WriteTrioStraddle( serialize::WriteStream & stream, con
     write_bits( stream, value.pad2, 64 );
     write_bits( stream, value.pad3, 64 );
     write_bits( stream, value.pad4, 64 );
+    serialize_assert( value.pad5 < ( 1ull << 24 ) );
     write_bits( stream, value.pad5, 24 );
     schema_write_object( stream, WriteTrio, value.inner );
     return true;

@@ -195,16 +195,20 @@ SCHEMA_READ_INLINE bool schema_interior_null( const uint8_t * bytes, int32_t len
 
 SCHEMA_WRITE_INLINE bool WriteArmsAgree( serialize::WriteStream & stream, const ArmsAgree & value )
 {
+    serialize_assert( value.lead < ( 1ull << 5 ) );
     write_bits( stream, value.lead, 5 );
     write_bool( stream, value.flag );
     if ( value.flag )
     {
+        serialize_assert( value.a < ( 1ull << 11 ) );
         write_bits( stream, value.a, 11 );
     }
     else
     {
+        serialize_assert( value.b < ( 1ull << 11 ) );
         write_bits( stream, value.b, 11 );
     }
+    serialize_assert( value.tail < ( 1ull << 7 ) );
     write_bits( stream, value.tail, 7 );
     return true;
 }
@@ -240,16 +244,20 @@ SCHEMA_READ_INLINE bool ReadArmsAgree( serialize::ReadStream & stream, ArmsAgree
 
 SCHEMA_WRITE_INLINE bool WriteArmsDisagree( serialize::WriteStream & stream, const ArmsDisagree & value )
 {
+    serialize_assert( value.lead < ( 1ull << 5 ) );
     write_bits( stream, value.lead, 5 );
     write_bool( stream, value.flag );
     if ( value.flag )
     {
+        serialize_assert( value.a < ( 1ull << 11 ) );
         write_bits( stream, value.a, 11 );
     }
     else
     {
+        serialize_assert( value.b < ( 1ull << 3 ) );
         write_bits( stream, value.b, 3 );
     }
+    serialize_assert( value.tail < ( 1ull << 7 ) );
     write_bits( stream, value.tail, 7 );
     return true;
 }
@@ -285,12 +293,15 @@ SCHEMA_READ_INLINE bool ReadArmsDisagree( serialize::ReadStream & stream, ArmsDi
 
 SCHEMA_WRITE_INLINE bool WriteArmEmpty( serialize::WriteStream & stream, const ArmEmpty & value )
 {
+    serialize_assert( value.lead < ( 1ull << 5 ) );
     write_bits( stream, value.lead, 5 );
     write_bool( stream, value.flag );
     if ( value.flag )
     {
+        serialize_assert( value.a < ( 1ull << 19 ) );
         write_bits( stream, value.a, 19 );
     }
+    serialize_assert( value.tail < ( 1ull << 7 ) );
     write_bits( stream, value.tail, 7 );
     return true;
 }
@@ -324,6 +335,7 @@ SCHEMA_READ_INLINE bool ReadArmEmpty( serialize::ReadStream & stream, ArmEmpty &
 
 SCHEMA_WRITE_INLINE bool WriteArmsNested( serialize::WriteStream & stream, const ArmsNested & value )
 {
+    serialize_assert( value.lead < ( 1ull << 3 ) );
     write_bits( stream, value.lead, 3 );
     write_bool( stream, value.outer );
     if ( value.outer )
@@ -331,17 +343,21 @@ SCHEMA_WRITE_INLINE bool WriteArmsNested( serialize::WriteStream & stream, const
         write_bool( stream, value.inner );
         if ( value.inner )
         {
+            serialize_assert( value.x < ( 1ull << 29 ) );
             write_bits( stream, value.x, 29 );
         }
         else
         {
+            serialize_assert( value.y < ( 1ull << 5 ) );
             write_bits( stream, value.y, 5 );
         }
     }
     else
     {
+        serialize_assert( value.z < ( 1ull << 13 ) );
         write_bits( stream, value.z, 13 );
     }
+    serialize_assert( value.tail < ( 1ull << 6 ) );
     write_bits( stream, value.tail, 6 );
     return true;
 }
@@ -389,6 +405,7 @@ SCHEMA_READ_INLINE bool ReadArmsNested( serialize::ReadStream & stream, ArmsNest
 
 SCHEMA_WRITE_INLINE bool WriteArmAlign( serialize::WriteStream & stream, const ArmAlign & value )
 {
+    serialize_assert( value.lead < ( 1ull << 5 ) );
     write_bits( stream, value.lead, 5 );
     write_bool( stream, value.flag );
     if ( value.flag )
@@ -404,8 +421,10 @@ SCHEMA_WRITE_INLINE bool WriteArmAlign( serialize::WriteStream & stream, const A
     }
     else
     {
+        serialize_assert( value.b < ( 1ull << 10 ) );
         write_bits( stream, value.b, 10 );
     }
+    serialize_assert( value.tail < ( 1ull << 7 ) );
     write_bits( stream, value.tail, 7 );
     return true;
 }
@@ -452,6 +471,7 @@ SCHEMA_READ_INLINE bool ReadArmAlign( serialize::ReadStream & stream, ArmAlign &
 
 SCHEMA_WRITE_INLINE bool WriteArmArray( serialize::WriteStream & stream, const ArmArray & value )
 {
+    serialize_assert( value.lead < ( 1ull << 5 ) );
     write_bits( stream, value.lead, 5 );
     write_bool( stream, value.flag );
     if ( value.flag )
@@ -466,8 +486,10 @@ SCHEMA_WRITE_INLINE bool WriteArmArray( serialize::WriteStream & stream, const A
     }
     else
     {
+        serialize_assert( value.b < ( 1ull << 9 ) );
         write_bits( stream, value.b, 9 );
     }
+    serialize_assert( value.tail < ( 1ull << 7 ) );
     write_bits( stream, value.tail, 7 );
     return true;
 }
@@ -512,6 +534,7 @@ SCHEMA_READ_INLINE bool ReadArmArray( serialize::ReadStream & stream, ArmArray &
 
 SCHEMA_WRITE_INLINE bool WriteNarrow( serialize::WriteStream & stream, const Narrow & value )
 {
+    serialize_assert( value.n < ( 1ull << 3 ) );
     write_bits( stream, value.n, 3 );
     return true;
 }
@@ -535,6 +558,7 @@ SCHEMA_READ_INLINE bool ReadNarrow( serialize::ReadStream & stream, Narrow & val
 
 SCHEMA_WRITE_INLINE bool WriteWide( serialize::WriteStream & stream, const Wide & value )
 {
+    serialize_assert( value.w < ( 1ull << 37 ) );
     write_bits( stream, value.w, 37 );
     return true;
 }
@@ -608,8 +632,10 @@ SCHEMA_READ_INLINE bool ReadUneven( serialize::ReadStream & stream, Uneven & val
 
 SCHEMA_WRITE_INLINE bool WriteHoldsUneven( serialize::WriteStream & stream, const HoldsUneven & value )
 {
+    serialize_assert( value.lead < ( 1ull << 5 ) );
     write_bits( stream, value.lead, 5 );
     schema_write_object( stream, WriteUneven, value.u );
+    serialize_assert( value.tail < ( 1ull << 11 ) );
     write_bits( stream, value.tail, 11 );
     return true;
 }
@@ -635,6 +661,7 @@ SCHEMA_READ_INLINE bool ReadHoldsUneven( serialize::ReadStream & stream, HoldsUn
 
 SCHEMA_WRITE_INLINE bool WriteArrUneven( serialize::WriteStream & stream, const ArrUneven & value )
 {
+    serialize_assert( value.lead < ( 1ull << 5 ) );
     write_bits( stream, value.lead, 5 );
     serialize_assert( int32_t( value.items_count ) >= int32_t( 0 ) && int32_t( value.items_count ) <= int32_t( 3 ) );
     write_bits( stream, uint32_t( value.items_count ), 2 );
@@ -642,6 +669,7 @@ SCHEMA_WRITE_INLINE bool WriteArrUneven( serialize::WriteStream & stream, const 
     {
         schema_write_object( stream, WriteUneven, value.items[i] );
     }
+    serialize_assert( value.tail < ( 1ull << 3 ) );
     write_bits( stream, value.tail, 3 );
     return true;
 }
@@ -671,6 +699,7 @@ SCHEMA_READ_INLINE bool ReadArrUneven( serialize::ReadStream & stream, ArrUneven
 
 SCHEMA_WRITE_INLINE bool WriteRegainAfterAlign( serialize::WriteStream & stream, const RegainAfterAlign & value )
 {
+    serialize_assert( value.lead < ( 1ull << 5 ) );
     write_bits( stream, value.lead, 5 );
     serialize_assert( int32_t( value.items_count ) >= int32_t( 0 ) && int32_t( value.items_count ) <= int32_t( 3 ) );
     write_bits( stream, uint32_t( value.items_count ), 2 );
@@ -688,8 +717,11 @@ SCHEMA_WRITE_INLINE bool WriteRegainAfterAlign( serialize::WriteStream & stream,
     write_bits( stream, uint32_t( value.s_length ), 3 );
     write_bytes( stream, value.s, value.s_length );
     write_bits( stream, value.p, 32 );
+    serialize_assert( value.q < ( 1ull << 29 ) );
     write_bits( stream, value.q, 29 );
+    serialize_assert( value.r < ( 1ull << 19 ) );
     write_bits( stream, value.r, 19 );
+    serialize_assert( value.tail < ( 1ull << 4 ) );
     write_bits( stream, value.tail, 4 );
     return true;
 }

@@ -435,7 +435,9 @@ SCHEMA_READ_INLINE bool ReadF13( serialize::ReadStream & stream, F13 & value )
 
 SCHEMA_WRITE_INLINE bool WriteTri3( serialize::WriteStream & stream, const Tri3 & value )
 {
+    serialize_assert( value.a < ( 1ull << 1 ) );
     write_bits( stream, value.a, 1 );
+    serialize_assert( value.b < ( 1ull << 2 ) );
     write_bits( stream, value.b, 2 );
     return true;
 }
@@ -492,7 +494,9 @@ SCHEMA_READ_INLINE bool ReadArrTri3( serialize::ReadStream & stream, ArrTri3 & v
 
 SCHEMA_WRITE_INLINE bool WriteEleven( serialize::WriteStream & stream, const Eleven & value )
 {
+    serialize_assert( value.a < ( 1ull << 3 ) );
     write_bits( stream, value.a, 3 );
+    serialize_assert( value.b < ( 1ull << 8 ) );
     write_bits( stream, value.b, 8 );
     return true;
 }
@@ -646,8 +650,10 @@ SCHEMA_READ_INLINE bool ReadEmptyUnion( serialize::ReadStream & stream, EmptyUni
 
 SCHEMA_WRITE_INLINE bool WriteHoldsEmptyUnion( serialize::WriteStream & stream, const HoldsEmptyUnion & value )
 {
+    serialize_assert( value.lead < ( 1ull << 5 ) );
     write_bits( stream, value.lead, 5 );
     schema_write_object( stream, WriteEmptyUnion, value.u );
+    serialize_assert( value.tail < ( 1ull << 7 ) );
     write_bits( stream, value.tail, 7 );
     return true;
 }
@@ -673,6 +679,7 @@ SCHEMA_READ_INLINE bool ReadHoldsEmptyUnion( serialize::ReadStream & stream, Hol
 
 SCHEMA_WRITE_INLINE bool WriteStrs( serialize::WriteStream & stream, const Strs & value )
 {
+    serialize_assert( value.lead < ( 1ull << 5 ) );
     write_bits( stream, value.lead, 5 );
     serialize_assert( int32_t( value.s_length ) >= int32_t( 0 ) && int32_t( value.s_length ) <= int32_t( 8 ) );
     for ( int32_t i = 0; i < value.s_length; i++ )
@@ -685,6 +692,7 @@ SCHEMA_WRITE_INLINE bool WriteStrs( serialize::WriteStream & stream, const Strs 
     serialize_assert( int32_t( value.b_length ) >= int32_t( 0 ) && int32_t( value.b_length ) <= int32_t( 8 ) );
     write_bits( stream, uint32_t( value.b_length ), 4 );
     write_bytes( stream, value.b, value.b_length );
+    serialize_assert( value.tail < ( 1ull << 3 ) );
     write_bits( stream, value.tail, 3 );
     return true;
 }
@@ -722,6 +730,7 @@ SCHEMA_READ_INLINE bool ReadStrs( serialize::ReadStream & stream, Strs & value )
 
 SCHEMA_WRITE_INLINE bool WriteArrNested( serialize::WriteStream & stream, const ArrNested & value )
 {
+    serialize_assert( value.lead < ( 1ull << 5 ) );
     write_bits( stream, value.lead, 5 );
     serialize_assert( int32_t( value.items_count ) >= int32_t( 0 ) && int32_t( value.items_count ) <= int32_t( 4 ) );
     write_bits( stream, uint32_t( value.items_count ), 3 );
@@ -729,6 +738,7 @@ SCHEMA_WRITE_INLINE bool WriteArrNested( serialize::WriteStream & stream, const 
     {
         schema_write_object( stream, WriteEleven, value.items[i] );
     }
+    serialize_assert( value.tail < ( 1ull << 3 ) );
     write_bits( stream, value.tail, 3 );
     return true;
 }
@@ -758,6 +768,7 @@ SCHEMA_READ_INLINE bool ReadArrNested( serialize::ReadStream & stream, ArrNested
 
 SCHEMA_WRITE_INLINE bool WriteSole( serialize::WriteStream & stream, const Sole & value )
 {
+    serialize_assert( value.only < ( 1ull << 13 ) );
     write_bits( stream, value.only, 13 );
     return true;
 }

@@ -633,6 +633,13 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		}
 		g.pf("%swrite_bits( stream, %s, %d );\n", ind, name, f.Type.Width)
 	case ir.TBits:
+		if f.Type.Width != 32 && f.Type.Width < 64 {
+			// storage (uint32_t for N <= 32, uint64_t above) is wider than the
+			// wire: a value past N bits is writer misuse (SPEC §5.1 row 2), refused
+			// by this generated assert naming the field, never left to the
+			// runtime write_bits check alone
+			g.pf("%sserialize_assert( %s < ( 1ull << %d ) );\n", ind, name, f.Type.Width)
+		}
 		g.pf("%swrite_bits( stream, %s, %d );\n", ind, name, f.Type.Width)
 	case ir.TBool:
 		g.pf("%swrite_bool( stream, %s );\n", ind, name)

@@ -56,6 +56,7 @@ namespace benchtable {
 
 SCHEMA_WRITE_INLINE bool WriteTableHitEvent( serialize::WriteStream & stream, const TableHitEvent & value )
 {
+    serialize_assert( value.target_id < ( 1ull << 12 ) );
     write_bits( stream, value.target_id, 12 );
     serialize_assert( int32_t( value.damage ) >= int32_t( 0 ) && int32_t( value.damage ) <= int32_t( 4095 ) );
     write_bits( stream, uint32_t( value.damage ), 12 );
@@ -89,6 +90,7 @@ SCHEMA_WRITE_INLINE bool WriteTableChatEvent( serialize::WriteStream & stream, c
 {
     serialize_assert( int32_t( value.channel ) >= int32_t( 0 ) && int32_t( value.channel ) <= int32_t( 3 ) );
     write_bits( stream, uint32_t( value.channel ), 2 );
+    serialize_assert( value.speaker < ( 1ull << 12 ) );
     write_bits( stream, value.speaker, 12 );
     return true;
 }
@@ -113,6 +115,7 @@ SCHEMA_READ_INLINE bool ReadTableChatEvent( serialize::ReadStream & stream, Tabl
 
 SCHEMA_WRITE_INLINE bool WriteTablePickupEvent( serialize::WriteStream & stream, const TablePickupEvent & value )
 {
+    serialize_assert( value.item_id < ( 1ull << 10 ) );
     write_bits( stream, value.item_id, 10 );
     serialize_assert( int32_t( value.amount ) >= int32_t( 0 ) && int32_t( value.amount ) <= int32_t( 255 ) );
     write_bits( stream, uint32_t( value.amount ), 8 );

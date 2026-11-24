@@ -201,8 +201,11 @@ SCHEMA_WRITE_INLINE bool WriteBenchPacket( serialize::WriteStream & stream, cons
     write_bits( stream, uint32_t( value.b ), 16 );
     serialize_assert( int32_t( value.c ) >= int32_t( -1000000 ) && int32_t( value.c ) <= int32_t( 1000000 ) );
     write_bits( stream, uint32_t( value.c ) - uint32_t( -1000000 ), 21 );
+    serialize_assert( value.bits7 < ( 1ull << 7 ) );
     write_bits( stream, value.bits7, 7 );
+    serialize_assert( value.bits13 < ( 1ull << 13 ) );
     write_bits( stream, value.bits13, 13 );
+    serialize_assert( value.bits23 < ( 1ull << 23 ) );
     write_bits( stream, value.bits23, 23 );
     write_bool( stream, value.flag );
     write_float( stream, value.x );
@@ -296,13 +299,20 @@ SCHEMA_READ_INLINE bool ReadBenchInts( serialize::ReadStream & stream, BenchInts
 
 SCHEMA_WRITE_INLINE bool WriteBenchBits( serialize::WriteStream & stream, const BenchBits & value )
 {
+    serialize_assert( value.b7 < ( 1ull << 7 ) );
     write_bits( stream, value.b7, 7 );
+    serialize_assert( value.b13 < ( 1ull << 13 ) );
     write_bits( stream, value.b13, 13 );
+    serialize_assert( value.b23 < ( 1ull << 23 ) );
     write_bits( stream, value.b23, 23 );
+    serialize_assert( value.b3 < ( 1ull << 3 ) );
     write_bits( stream, value.b3, 3 );
     write_bits( stream, value.b32, 32 );
+    serialize_assert( value.b11 < ( 1ull << 11 ) );
     write_bits( stream, value.b11, 11 );
+    serialize_assert( value.b19 < ( 1ull << 19 ) );
     write_bits( stream, value.b19, 19 );
+    serialize_assert( value.b48 < ( 1ull << 48 ) );
     write_bits( stream, value.b48, 48 );
     return true;
 }
@@ -333,6 +343,7 @@ SCHEMA_READ_INLINE bool ReadBenchBits( serialize::ReadStream & stream, BenchBits
 
 SCHEMA_WRITE_INLINE bool WriteMixedEntity( serialize::WriteStream & stream, const MixedEntity & value )
 {
+    serialize_assert( value.entity_id < ( 1ull << 12 ) );
     write_bits( stream, value.entity_id, 12 );
     serialize_assert( int32_t( value.pos_x ) >= int32_t( -16383 ) && int32_t( value.pos_x ) <= int32_t( 16383 ) );
     write_bits( stream, uint32_t( value.pos_x ) - uint32_t( -16383 ), 15 );
@@ -340,7 +351,9 @@ SCHEMA_WRITE_INLINE bool WriteMixedEntity( serialize::WriteStream & stream, cons
     write_bits( stream, uint32_t( value.pos_y ) - uint32_t( -16383 ), 15 );
     serialize_assert( int32_t( value.pos_z ) >= int32_t( -16383 ) && int32_t( value.pos_z ) <= int32_t( 16383 ) );
     write_bits( stream, uint32_t( value.pos_z ) - uint32_t( -16383 ), 15 );
+    serialize_assert( value.yaw < ( 1ull << 9 ) );
     write_bits( stream, value.yaw, 9 );
+    serialize_assert( value.pitch < ( 1ull << 9 ) );
     write_bits( stream, value.pitch, 9 );
     serialize_assert( int32_t( value.vel_x ) >= int32_t( -2048 ) && int32_t( value.vel_x ) <= int32_t( 2047 ) );
     write_bits( stream, uint32_t( value.vel_x ) - uint32_t( -2048 ), 12 );
@@ -395,6 +408,7 @@ SCHEMA_READ_INLINE bool ReadMixedEntity( serialize::ReadStream & stream, MixedEn
 
 SCHEMA_WRITE_INLINE bool WriteMixedStat( serialize::WriteStream & stream, const MixedStat & value )
 {
+    serialize_assert( value.stat_id < ( 1ull << 8 ) );
     write_bits( stream, value.stat_id, 8 );
     serialize_assert( int32_t( value.delta ) >= int32_t( -512 ) && int32_t( value.delta ) <= int32_t( 511 ) );
     write_bits( stream, uint32_t( value.delta ) - uint32_t( -512 ), 10 );
@@ -421,6 +435,7 @@ SCHEMA_READ_INLINE bool ReadMixedStat( serialize::ReadStream & stream, MixedStat
 
 SCHEMA_WRITE_INLINE bool WriteMixedHitEvent( serialize::WriteStream & stream, const MixedHitEvent & value )
 {
+    serialize_assert( value.target_id < ( 1ull << 12 ) );
     write_bits( stream, value.target_id, 12 );
     serialize_assert( int32_t( value.damage ) >= int32_t( 0 ) && int32_t( value.damage ) <= int32_t( 4095 ) );
     write_bits( stream, uint32_t( value.damage ), 12 );
@@ -454,6 +469,7 @@ SCHEMA_WRITE_INLINE bool WriteMixedChatEvent( serialize::WriteStream & stream, c
 {
     serialize_assert( int32_t( value.channel ) >= int32_t( 0 ) && int32_t( value.channel ) <= int32_t( 3 ) );
     write_bits( stream, uint32_t( value.channel ), 2 );
+    serialize_assert( value.speaker < ( 1ull << 12 ) );
     write_bits( stream, value.speaker, 12 );
     return true;
 }
@@ -478,6 +494,7 @@ SCHEMA_READ_INLINE bool ReadMixedChatEvent( serialize::ReadStream & stream, Mixe
 
 SCHEMA_WRITE_INLINE bool WriteMixedPickupEvent( serialize::WriteStream & stream, const MixedPickupEvent & value )
 {
+    serialize_assert( value.item_id < ( 1ull << 10 ) );
     write_bits( stream, value.item_id, 10 );
     serialize_assert( int32_t( value.amount ) >= int32_t( 0 ) && int32_t( value.amount ) <= int32_t( 255 ) );
     write_bits( stream, uint32_t( value.amount ), 8 );
@@ -561,6 +578,7 @@ SCHEMA_READ_INLINE bool ReadMixedEvent( serialize::ReadStream & stream, MixedEve
 SCHEMA_WRITE_INLINE bool WriteBenchMixed( serialize::WriteStream & stream, const BenchMixed & value )
 {
     write_bits( stream, 49374ull, 16 ); // const(49374, 16) — SPEC §4.3
+    serialize_assert( value.sequence < ( 1ull << 16 ) );
     write_bits( stream, value.sequence, 16 );
     serialize_assert( int32_t( value.ack_sequence ) >= int32_t( 0 ) && int32_t( value.ack_sequence ) <= int32_t( 65535 ) );
     write_bits( stream, uint32_t( value.ack_sequence ), 16 );
@@ -570,6 +588,7 @@ SCHEMA_WRITE_INLINE bool WriteBenchMixed( serialize::WriteStream & stream, const
     write_bits( stream, value.nonce, 64 );
     serialize_assert( int64_t( value.world_time ) >= int64_t( -1000000000000 ) && int64_t( value.world_time ) <= int64_t( 1000000000000 ) );
     write_bits( stream, uint64_t( value.world_time ) - uint64_t( -1000000000000 ), 41 );
+    serialize_assert( value.frame_tick < ( 1ull << 48 ) );
     write_bits( stream, value.frame_tick, 48 );
     {
         int32_t fixed_value = value.server_time;
@@ -628,6 +647,7 @@ SCHEMA_WRITE_INLINE bool WriteBenchMixed( serialize::WriteStream & stream, const
     }
     write_bits( stream, 0ull, 4 ); // reserved(4) — zeros on the wire
     write_align( stream );
+    serialize_assert( value.crc_hint < ( 1ull << 24 ) );
     write_bits( stream, value.crc_hint, 24 );
     write_bool( stream, value.has_extra );
     serialize_assert( int32_t( value.extra ) >= int32_t( 0 ) && int32_t( value.extra ) <= int32_t( 255 ) );

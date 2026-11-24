@@ -74,6 +74,7 @@ SCHEMA_WRITE_INLINE bool WriteRealPacket( serialize::WriteStream & stream, const
     serialize_assert( int32_t( value.f009_int ) >= int32_t( -22 ) && int32_t( value.f009_int ) <= int32_t( 22 ) );
     write_bits( stream, uint32_t( value.f009_int ) - uint32_t( -22 ), 6 );
     write_float( stream, value.f010_f32 );
+    serialize_assert( value.f011_bits < ( 1ull << 10 ) );
     write_bits( stream, value.f011_bits, 10 );
     write_bool( stream, value.f012_bool );
     if ( value.f012_bool )
@@ -99,21 +100,25 @@ SCHEMA_WRITE_INLINE bool WriteRealPacket( serialize::WriteStream & stream, const
         write_fixed( stream, fixed_value, 20, 12, 0, 25141 );
     }
     write_float( stream, value.f022_f32 );
+    serialize_assert( value.f023_bits < ( 1ull << 25 ) );
     write_bits( stream, value.f023_bits, 25 );
     write_float( stream, value.f024_f32 );
     {
         int16_t fixed_value = value.f025_fixed;
         write_fixed( stream, fixed_value, 8, 8, -119, 119 );
     }
+    serialize_assert( value.f026_bits < ( 1ull << 9 ) );
     write_bits( stream, value.f026_bits, 9 );
     {
         float compressed_value = value.f027_cf32;
         serialize_assert( compressed_value >= -2.0f && compressed_value <= 2.0f ); // SPEC §5.1 row 10
         serialize_compressed_float_precomputed( stream, compressed_value, 16u, 5, 4.0f, -2.0f );
     }
+    serialize_assert( value.f028_bits < ( 1ull << 4 ) );
     write_bits( stream, value.f028_bits, 4 );
     write_bits( stream, value.f029_i64, 64 );
     write_float( stream, value.f030_f32 );
+    serialize_assert( value.f031_bits < ( 1ull << 1 ) );
     write_bits( stream, value.f031_bits, 1 );
     serialize_assert( int32_t( value.f032_int ) >= int32_t( -3 ) && int32_t( value.f032_int ) <= int32_t( 3 ) );
     write_bits( stream, uint32_t( value.f032_int ) - uint32_t( -3 ), 3 );
@@ -121,11 +126,13 @@ SCHEMA_WRITE_INLINE bool WriteRealPacket( serialize::WriteStream & stream, const
     write_bits( stream, uint32_t( value.f033_uint ), 18 );
     serialize_assert( int32_t( value.f034_uint ) <= int32_t( 14149 ) );
     write_bits( stream, uint32_t( value.f034_uint ), 14 );
+    serialize_assert( value.f035_bits < ( 1ull << 9 ) );
     write_bits( stream, value.f035_bits, 9 );
     serialize_assert( int32_t( value.f036_enum ) <= int32_t( PacketMode::Max ) );
     write_bits( stream, uint32_t( value.f036_enum ), 3 );
     write_bool( stream, value.f037_bool );
     write_bool( stream, value.f038_bool );
+    serialize_assert( value.f039_bits < ( 1ull << 19 ) );
     write_bits( stream, value.f039_bits, 19 );
     {
         int16_t fixed_value = value.f040_fixed;
@@ -133,11 +140,13 @@ SCHEMA_WRITE_INLINE bool WriteRealPacket( serialize::WriteStream & stream, const
     }
     serialize_assert( int32_t( value.f041_int ) >= int32_t( -55 ) && int32_t( value.f041_int ) <= int32_t( 55 ) );
     write_bits( stream, uint32_t( value.f041_int ) - uint32_t( -55 ), 7 );
+    serialize_assert( value.f042_bits < ( 1ull << 30 ) );
     write_bits( stream, value.f042_bits, 30 );
     write_bool( stream, value.f043_bool );
     if ( value.f043_bool )
     {
         write_float( stream, value.f044_f32 );
+        serialize_assert( value.f045_bits < ( 1ull << 12 ) );
         write_bits( stream, value.f045_bits, 12 );
         serialize_assert( int32_t( value.f046_uint ) >= int32_t( 0 ) && int32_t( value.f046_uint ) <= int32_t( 76063 ) );
         write_bits( stream, uint32_t( value.f046_uint ), 17 );
@@ -166,6 +175,7 @@ SCHEMA_WRITE_INLINE bool WriteRealPacket( serialize::WriteStream & stream, const
     write_bits( stream, uint32_t( value.f057_int ) - uint32_t( -15 ), 5 );
     write_float( stream, value.f058_f32 );
     write_double( stream, value.f059_f64 );
+    serialize_assert( value.f060_bits < ( 1ull << 8 ) );
     write_bits( stream, value.f060_bits, 8 );
     {
         float compressed_value = value.f061_cf32;
@@ -196,6 +206,7 @@ SCHEMA_WRITE_INLINE bool WriteRealPacket( serialize::WriteStream & stream, const
         serialize_assert( compressed_value >= 0.0f && compressed_value <= 2000.0f ); // SPEC §5.1 row 10
         serialize_compressed_float_precomputed( stream, compressed_value, 2000u, 11, 2000.0f, 0.0f );
     }
+    serialize_assert( value.f069_bits < ( 1ull << 11 ) );
     write_bits( stream, value.f069_bits, 11 );
     serialize_assert( int32_t( value.f070_uint ) <= int32_t( 2 ) );
     write_bits( stream, uint32_t( value.f070_uint ), 2 );
@@ -219,12 +230,15 @@ SCHEMA_WRITE_INLINE bool WriteRealPacket( serialize::WriteStream & stream, const
         write_bits( stream, uint32_t( value.f076_int ) - uint32_t( -26218 ), 16 );
         serialize_assert( int32_t( value.f077_int ) >= int32_t( -17 ) && int32_t( value.f077_int ) <= int32_t( 17 ) );
         write_bits( stream, uint32_t( value.f077_int ) - uint32_t( -17 ), 6 );
+        serialize_assert( value.f078_bits < ( 1ull << 9 ) );
         write_bits( stream, value.f078_bits, 9 );
         serialize_assert( int32_t( value.f079_uint ) <= int32_t( 17 ) );
         write_bits( stream, uint32_t( value.f079_uint ), 5 );
     }
     write_bool( stream, value.f080_bool );
+    serialize_assert( value.f081_bits < ( 1ull << 29 ) );
     write_bits( stream, value.f081_bits, 29 );
+    serialize_assert( value.f082_bits < ( 1ull << 25 ) );
     write_bits( stream, value.f082_bits, 25 );
     serialize_assert( int32_t( value.f083_enum ) <= int32_t( PacketMode::Max ) );
     write_bits( stream, uint32_t( value.f083_enum ), 3 );
@@ -232,12 +246,14 @@ SCHEMA_WRITE_INLINE bool WriteRealPacket( serialize::WriteStream & stream, const
         uint8_t fixed_value = value.f084_ufixed;
         write_fixed( stream, fixed_value, 1, 7, 0, 1 );
     }
+    serialize_assert( value.f085_bits < ( 1ull << 21 ) );
     write_bits( stream, value.f085_bits, 21 );
     serialize_assert( int32_t( value.f086_uint ) <= int32_t( 399 ) );
     write_bits( stream, uint32_t( value.f086_uint ), 9 );
     write_double( stream, value.f087_f64 );
     serialize_assert( int32_t( value.f088_int ) >= int32_t( -694 ) && int32_t( value.f088_int ) <= int32_t( 694 ) );
     write_bits( stream, uint32_t( value.f088_int ) - uint32_t( -694 ), 11 );
+    serialize_assert( value.f089_bits < ( 1ull << 48 ) );
     write_bits( stream, value.f089_bits, 48 );
     serialize_assert( int32_t( value.f090_uint ) <= int32_t( 214 ) );
     write_bits( stream, uint32_t( value.f090_uint ), 8 );
@@ -250,7 +266,9 @@ SCHEMA_WRITE_INLINE bool WriteRealPacket( serialize::WriteStream & stream, const
         int32_t fixed_value = value.f095_fixed;
         write_fixed( stream, fixed_value, 16, 16, -1577, 1577 );
     }
+    serialize_assert( value.f096_bits < ( 1ull << 18 ) );
     write_bits( stream, value.f096_bits, 18 );
+    serialize_assert( value.f097_bits < ( 1ull << 12 ) );
     write_bits( stream, value.f097_bits, 12 );
     return true;
 }

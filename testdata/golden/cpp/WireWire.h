@@ -197,6 +197,7 @@ SCHEMA_READ_INLINE bool schema_interior_null( const uint8_t * bytes, int32_t len
 SCHEMA_WRITE_INLINE bool WriteProbeHeader( serialize::WriteStream & stream, const ProbeHeader & value )
 {
     write_bits( stream, 171ull, 8 ); // const(171, 8) — SPEC §4.3
+    serialize_assert( value.version < ( 1ull << 3 ) );
     write_bits( stream, value.version, 3 );
     write_bits( stream, 0ull, 5 ); // reserved(5) — zeros on the wire
     write_align( stream );
@@ -241,7 +242,9 @@ SCHEMA_READ_INLINE bool ReadProbeHeader( serialize::ReadStream & stream, ProbeHe
 
 SCHEMA_WRITE_INLINE bool WriteProbeBits( serialize::WriteStream & stream, const ProbeBits & value )
 {
+    serialize_assert( value.small < ( 1ull << 9 ) );
     write_bits( stream, value.small, 9 );
+    serialize_assert( value.boundary < ( 1ull << 33 ) );
     write_bits( stream, value.boundary, 33 );
     write_bits( stream, value.wide, 64 );
     write_bits( stream, uint64_t( value.sensor ), 32 );
@@ -766,8 +769,11 @@ SCHEMA_WRITE_INLINE bool WriteTestData( serialize::WriteStream & stream, const T
     write_bits( stream, uint32_t( value.b ) - uint32_t( -100 ), 8 );
     serialize_assert( int32_t( value.c ) >= int32_t( -100 ) && int32_t( value.c ) <= int32_t( 150 ) );
     write_bits( stream, uint32_t( value.c ) - uint32_t( -100 ), 8 );
+    serialize_assert( value.d < ( 1ull << 8 ) );
     write_bits( stream, value.d, 8 );
+    serialize_assert( value.e < ( 1ull << 8 ) );
     write_bits( stream, value.e, 8 );
+    serialize_assert( value.f < ( 1ull << 8 ) );
     write_bits( stream, value.f, 8 );
     write_bool( stream, value.g );
     serialize_assert( int32_t( value.items_count ) >= int32_t( 0 ) && int32_t( value.items_count ) <= int32_t( 16 ) );
