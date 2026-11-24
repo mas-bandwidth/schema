@@ -176,7 +176,7 @@ func TestCookWriteMapsAndListsElixir(t *testing.T) {
 {name, table, wire, little, big} = {%q, %q, %q, %q, %q}
 
 case %s.load(table, File.read!(wire)) do
-  {:ok, value, _report} ->
+  {:ok, value, %%{reason: "", unknown: 0, blob_shared: 0, missing_required: 0, retain_lost: 0, widened: 0, retained: 0}} ->
     case %s.cook_measure_reason(table, value) do
       {size, :ok} when size > 0 ->
         short = :binary.copy(<<0xA5>>, size - 1)
@@ -199,7 +199,7 @@ case %s.load(table, File.read!(wire)) do
     end
 
   other ->
-    Probe.check(false, name, "absent: the load answered " <> inspect(other))
+    Probe.check(false, name, "the load did not answer a clean report: " <> inspect(other))
 end
 `, r.name, r.root, filepath.Join(root, r.wire), filepath.Join(root, r.little), filepath.Join(root, r.big), mod, mod, mod, mod)
 			}
