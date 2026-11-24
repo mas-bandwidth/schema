@@ -2715,6 +2715,8 @@ write_value = function(T: any, d: any, val: any, depth: number, g: any, w: any, 
     end
     return false
   elseif s == "flags" then
+    -- a flags value's array is a container too (docs/SPEC-TABLES.md §16.14 W2)
+    if depth > MAX_DEPTH then return false end
     local bits: integer = if typeof(val) == "integer" then val else integer.create(val or 0)
     if bits == 0i then raw(w, "[]"); return true end
     local seen: integer = 0i
