@@ -655,6 +655,27 @@ tables-js-block-build:
 
 test-js: tables-js-block-build
 
+# A DEPRECATED VARIANT IS NEVER WRITTEN, BY THE VARIABLE SAVE (docs/SPEC-TABLES.md
+# §2.15 WRITE; JavaScript refuses in every build). The shared wref_/fref_enum_*
+# rows reach this leg's fixed save only, since their roots are fixed tables, so
+# TestJsDeprecatedVariantNeverWritten holds the variable save. It takes node
+# through the slow gate, so a bare `go test` skips it: this target requires it
+# to run to its PASS and refuses a SKIP.
+.PHONY: tables-js-deprecated-write
+tables-js-deprecated-write:
+	@mkdir -p build/js-deprecated
+	@SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) \
+		go test ./internal/codegen/jstable/ -count=1 -timeout 600s -v -run '^TestJsDeprecatedVariantNeverWritten$$' \
+		> build/js-deprecated/log 2>&1 || { grep -E -- '--- FAIL|_test.go:' build/js-deprecated/log | head -40; exit 1; }
+	@if grep -q -- '--- SKIP' build/js-deprecated/log; then \
+		echo "tables-js-deprecated-write: a test SKIPPED under SCHEMA_REQUIRE_CORPUS=1"; grep -- '--- SKIP' build/js-deprecated/log; exit 1; \
+	fi
+	@grep -q -- '--- PASS: TestJsDeprecatedVariantNeverWritten ' build/js-deprecated/log || \
+		{ echo "tables-js-deprecated-write: TestJsDeprecatedVariantNeverWritten did not run to a PASS"; tail -20 build/js-deprecated/log; exit 1; }
+	@echo 'tables JS: the variable save refuses a deprecated variant and writes the live one (§2.15)'
+
+test-js: tables-js-deprecated-write
+
 .PHONY: tables-js-cook-write-rows
 tables-js-cook-write-rows:
 	SCHEMA_REQUIRE_CORPUS=1 NODE=$(NODE) go test -count=1 -timeout 600s -v ./internal/codegen/jstable/ -run '^TestCookWriteAnswersEveryCookWriteRowJavaScript$$'
