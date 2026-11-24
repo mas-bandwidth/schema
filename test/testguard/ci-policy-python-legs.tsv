@@ -2,20 +2,24 @@
 # Every package the row's go test runs is a suite; every test that runs has
 # an empty file under the baseline directory; skips are ledgered here by test.
 # go run ./tools/testguard help check
+# The record lines run the row's go test as ci-fast.yml's ci-policy step does
+# (keep them the same); `go run ./tools/testguard baseline --config THIS` runs
+# them and writes the entries for the tests that ran and are not listed.
+record	go test -json -run '^(TestPython|TestConformance|TestCertify|TestNo)' ./internal/ci/ > "$TESTGUARD_RECORD/ci.jsonl"
 suite	github.com/mas-bandwidth/schema/v2/internal/ci
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonCICorpusProvenanceAndDamageControls	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonCIPlannerProvisionsFixedCorpus	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonCISupportCoversEveryPrerequisite	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonCIWireFuzzStandalonePartition	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonCompilerCIShardCoverage	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonFixedEvolutionCICoverage	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonHandtextCISelection	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonUsageFragmentsRun/examples-3.11.18	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonUsageFragmentsRun/examples-3.15.2	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonUsageFragmentsRun/pointers-3.11.18	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonUsageFragmentsRun/pointers-3.15.2	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonUsageFragmentsRunNegativeControl/packet-write-renamed	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonUsageFragmentsRunNegativeControl/runtime-refused-renamed	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonUsageFragmentsRunNegativeControl/table-load-renamed	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
-skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonUsageFragmentsRunNegativeControl/table-save-renamed	skipped on main where its toolchain is absent; .github/skip-ledger.txt holds the reason
+skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonCICorpusProvenanceAndDamageControls	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonCIPlannerProvisionsFixedCorpus	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonCISupportCoversEveryPrerequisite	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonCIWireFuzzStandalonePartition	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonCompilerCIShardCoverage	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonFixedEvolutionCICoverage	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonHandtextCISelection	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonUsageFragmentsRun/examples-3.11.18	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonUsageFragmentsRun/examples-3.15.2	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonUsageFragmentsRun/pointers-3.11.18	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonUsageFragmentsRun/pointers-3.15.2	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonUsageFragmentsRunNegativeControl/packet-write-renamed	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonUsageFragmentsRunNegativeControl/runtime-refused-renamed	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonUsageFragmentsRunNegativeControl/table-load-renamed	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
+skip	github.com/mas-bandwidth/schema/v2/internal/ci	TestPythonUsageFragmentsRunNegativeControl/table-save-renamed	skips under internal/slowtest's SCHEMA_SLOW gate, which this row does not set; ci-full.yml and the make leg gates run it with SCHEMA_SLOW=1
 baseline	test/testguard/ci-policy-python-legs

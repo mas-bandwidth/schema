@@ -201,7 +201,7 @@ func TestBadConfigIsRefusedWithItsLine(t *testing.T) {
 		"suite\t\n":                       `a field is empty or starts or ends with a blank`,
 		"gap\tt\tr\tc\n":                  `"gap" wants TABLE, ROW, COLUMN and REASON`,
 		"baseline\ta\nbaseline\tb\n":      `"baseline" wants DIR, once`,
-		"suite\tex/a\nfrobnicate\tx\ty\n": `:2: "frobnicate" is no entry; the entries are suite, skip, cover, gap and baseline`,
+		"suite\tex/a\nfrobnicate\tx\ty\n": `:2: "frobnicate" is no entry; the entries are suite, skip, cover, gap, baseline and record`,
 		"suite\tex/a\nbaseline\tbl\ncover\tt\trows\tfile\tr.txt\n": `table t has no columns source`,
 	} {
 		code, _, errOut := w.check("--config", w.file("bad.tsv", body), w.file("go.json", goGreen))
@@ -433,4 +433,128 @@ func TestGitkeepIsNeverAnEntry(t *testing.T) {
 	w.file("bl/ex%2Fa/.gitkeep", "")
 	code, out, _ := w.check("--config", w.config(""), w.file("go.json", goGreen))
 	assert.Equal(t, exitOK, code, out)
+}
+
+// recorder is a fake shell for the baseline verb: it takes the export line the
+// verb puts before each record line, and for a command it knows writes that
+// command's result file into the directory the export names.
+type recorder struct {
+	t        *testing.T
+	files    map[string][2]string // record command -> file name ("" writes none), body; an unknown command fails
+	commands []string             // the record commands it ran, in order
+	dirs     []string             // the TESTGUARD_RECORD directories it was given
+}
+
+func (r *recorder) shell(_, script string) ([]byte, error) {
+	export, command, ok := strings.Cut(script, "\n")
+	require.True(r.t, ok, script)
+	quoted, ok := strings.CutPrefix(export, "export TESTGUARD_RECORD=")
+	require.True(r.t, ok, export)
+	require.True(r.t, strings.HasPrefix(quoted, "'") && strings.HasSuffix(quoted, "'"), quoted)
+	dir := strings.ReplaceAll(quoted[1:len(quoted)-1], `'\''`, "'")
+	r.commands = append(r.commands, command)
+	r.dirs = append(r.dirs, dir)
+	f, ok := r.files[command]
+	if !ok {
+		return nil, errors.New("exit status 1")
+	}
+	if f[0] != "" { // a command that succeeds and writes nothing
+		require.NoError(r.t, os.WriteFile(filepath.Join(dir, f[0]), []byte(f[1]), 0o644))
+	}
+	return nil, nil
+}
+
+const (
+	recordA = `go test -json ./ex/a > "$TESTGUARD_RECORD/a.jsonl"`
+	goAdded = goGreen + `{"Action":"run","Package":"ex/a","Test":"TestThree"}
+{"Action":"pass","Package":"ex/a","Test":"TestThree"}
+`
+)
+
+func (w *world) baseline(r *recorder, args ...string) (int, string, string) {
+	var so, se bytes.Buffer
+	code := run(w.dir, append([]string{"baseline"}, args...), &so, &se, r.shell)
+	return code, so.String(), se.String()
+}
+
+func TestUnlistedNamesTheBaselineCommandWhenTheConfigCanRecord(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	cfg := w.config("suite\tcards\nrecord\t" + recordA + "\n")
+	code, out, _ := w.check("--config", cfg, w.file("added.json", goAdded), w.file("cards.log", "cards: ran 4, failed 0\n"))
+	assert.Equal(t, exitFindings, code)
+	assert.Contains(t, out, "RED unlisted ex/a\tTestThree: ran, and the baseline does not list it; fix: add the empty file bl/ex%2Fa/TestThree in this change, or run: go run ./tools/testguard baseline --config testguard.tsv\n")
+	assert.Contains(t, out, "fix: write 4 into bl/cards/#count in this change, or run: go run ./tools/testguard baseline --config testguard.tsv\n")
+}
+
+func TestBaselineWritesTheNewTestAndNeverPasses(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	cfg := w.config("record\t" + recordA + "\n")
+	r := &recorder{t: t, files: map[string][2]string{recordA: {"a.jsonl", goAdded}}}
+	code, out, errOut := w.baseline(r, "--config", cfg)
+	assert.Equal(t, exitFindings, code, out+errOut)
+	assert.Contains(t, out, "WROTE: 1 baseline entries under bl;")
+	assert.Equal(t, []string{recordA}, r.commands)
+	require.Len(t, r.dirs, 1)
+	_, err := os.Stat(r.dirs[0])
+	assert.True(t, os.IsNotExist(err), "the record directory is removed: %v", err)
+	_, err = os.Stat(filepath.Join(w.dir, "bl/ex%2Fa/TestThree"))
+	require.NoError(t, err)
+	code, out, _ = w.check("--config", cfg, w.file("added.json", goAdded))
+	assert.Equal(t, exitOK, code, out)
+}
+
+func TestBaselineWritesNothingBesideAnotherFinding(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	cfg := w.config("record\t" + recordA + "\n")
+	failing := strings.Replace(goAdded, `"pass","Package":"ex/a","Test":"TestOne"`, `"fail","Package":"ex/a","Test":"TestOne"`, 1)
+	r := &recorder{t: t, files: map[string][2]string{recordA: {"a.jsonl", failing}}}
+	code, out, _ := w.baseline(r, "--config", cfg)
+	assert.Equal(t, exitFindings, code)
+	assert.Contains(t, out, "RED failed ex/a\tTestOne:")
+	assert.Contains(t, out, "nothing written:")
+	_, err := os.Stat(filepath.Join(w.dir, "bl/ex%2Fa/TestThree"))
+	assert.True(t, os.IsNotExist(err), "%v", err)
+}
+
+func TestBaselineRefusals(t *testing.T) {
+	t.Parallel()
+	for _, c := range []struct {
+		name, extra string
+		args        []string
+		files       map[string][2]string
+		want        string
+	}{
+		{"no config", "", nil, nil, "testguard baseline: wants --config and nothing else; run: go run ./tools/testguard baseline -h\n"},
+		{"a stray argument", "record\t" + recordA + "\n", []string{"go.json"}, nil, "testguard baseline: wants --config and nothing else;"},
+		{"no record line", "", nil, nil, "testguard.tsv has no record line, so there is no way to make the row's results; add the row's go test as one; run: go run ./tools/testguard help check\n"},
+		{"a record line fails", "record\t" + recordA + "\n", nil, nil, "nothing written: the row's tests must pass before their entries are added; run: grep -n '^record' testguard.tsv\n"},
+		{"no result file", "record\ttrue\n", nil, map[string][2]string{"true": {}}, "the record lines in testguard.tsv wrote nothing under $TESTGUARD_RECORD;"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			w := newWorld(t)
+			args := c.args
+			if c.name != "no config" {
+				args = append([]string{"--config", w.config(c.extra)}, args...)
+			}
+			r := &recorder{t: t, files: c.files}
+			code, out, errOut := w.baseline(r, args...)
+			assert.Equal(t, exitRefused, code, out+errOut)
+			assert.Contains(t, errOut, c.want)
+			assert.Empty(t, out)
+			_, err := os.Stat(filepath.Join(w.dir, "bl/ex%2Fa/TestThree"))
+			assert.True(t, os.IsNotExist(err), "%v", err)
+		})
+	}
+}
+
+func TestHelpBaseline(t *testing.T) {
+	t.Parallel()
+	var so, se bytes.Buffer
+	assert.Equal(t, exitOK, run(t.TempDir(), []string{"help", "baseline"}, &so, &se, nil))
+	assert.Contains(t, so.String(), "testguard baseline --config FILE")
+	assert.Empty(t, se.String())
 }
