@@ -6,6 +6,6 @@
 C12	owed: fails: FAIL: byte 2 load
 C13	owed: fails: FAIL: byte 3 load
 E5	owed: does not build: test/conformance/cs/rows/E5/Program.cs(91,32): error CS0103: The name 'Tblp1' does not exist in the current context [test/conformance/cs/rows/E5/E5.csproj]
-FlagsValuesValidData	owed: does not build: build/tables-generated-cs/examples/Tables.cs(11,7): error CS0246: The type or namespace name 'Serialize' could not be found (are you missing a using directive o...
-R21	owed: fails: Assertion failed.
-ScalarDefaultsValidData	owed: does not build: build/tables-generated-cs/scalars/Scalars.cs(122,27): error CS1061: 'ReadStream' does not contain a definition for 'SerializeEnd' and no accessible extension me...
+FlagsValuesValidData	owed: does not build: test/conformance/cs/rows/FlagsValuesValidData/Program.cs(66,21): error CS0266: Cannot implicitly convert type 'ulong' to 'Tabledemo.Perks'. An explicit conversion exists (are you missing a cast?)
+R21	owed: fails: Process terminated. Assertion failed. FloatWidenFixedFiniteBody(values[k]) == null at Vold_float_widen.Schema.FloatWidenFixedSave(ReadOnlySpan`1 values, Span`1 buffer) in build/tables-generated-cs/vold_float_widen/VOLD_float_widenTable.cs:line 8761
+ScalarDefaultsValidData	owed: does not build: ../serialize.cs/src/Serialize.cs(1626,21): error CS0101: The namespace 'Serialize' already contains a definition for 'WriteStream' (the row's Program.cs declares a stub namespace Serialize of its own beside the runtime)

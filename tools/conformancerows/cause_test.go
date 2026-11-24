@@ -59,6 +59,11 @@ func TestCauseReadsWhatTheRowSaid(t *testing.T) {
 			want: "fails: Process terminated. Assertion failed. at Program.Main() in test/conformance/cs/rows/R21/Program.cs:line 45",
 		},
 		{
+			name: "dotnet assertion over three lines",
+			log:  "OK: 1.0f widens\nProcess terminated.\nAssertion failed.\nFloatWidenFixedFiniteBody(values[k]) == null\n   at Vold.Schema.Save(ReadOnlySpan`1 values) in /r/build/tables-generated-cs/vold/T.cs:line 8761\n   at Program.Main() in /r/test/conformance/cs/rows/R21/Program.cs:line 39\n",
+			want: "fails: Process terminated. Assertion failed. FloatWidenFixedFiniteBody(values[k]) == null at Vold.Schema.Save(ReadOnlySpan`1 values) in build/tables-generated-cs/vold/T.cs:line 8761",
+		},
+		{
 			name: "node exception under its source echo",
 			src:  "const x = undefined;\nx.fill(0) // the row's own line\n",
 			log:  "file:///r/R25.mjs:2\nx.fill(0) // the row's own line\n  ^\n\nTypeError: Cannot read properties of undefined (reading 'fill')\n    at file:///r/R25.mjs:2:3\n",

@@ -154,13 +154,24 @@ func cause(root, src, log string) string {
 			pick += " " + strings.TrimSpace(lines[j])
 		}
 	}
-	// A crash with no message of its own is located by its first stack frame
-	// in the row ("Assertion failed." at Program.Main() in Program.cs:line 45).
+	// A crash header with no message of its own ("Process terminated.") is
+	// completed by the lines after it, up to two (dotnet's "Assertion
+	// failed." and the assertion's text), and located by the first stack
+	// frame.
 	if crashRe.MatchString(pick) && !strings.Contains(pick, ":") {
+		added := 0
 		for j := at + 1; j < len(lines) && j <= at+12; j++ {
+			l := strings.TrimSpace(lines[j])
+			if l == "" {
+				continue
+			}
 			if frameRe.MatchString(lines[j]) {
-				pick += " " + strings.TrimSpace(lines[j])
+				pick += " " + l
 				break
+			}
+			if added < 2 {
+				pick += " " + l
+				added++
 			}
 		}
 	}
