@@ -3040,6 +3040,9 @@ public final class TableJson {
     private TableJson() {}
 
     static void writeFlags(java.lang.StringBuilder b, long bits, java.lang.String[] names, int depth) {
+        // a flags value is an array of names, a container the read counts, so
+        // the cap counts it at its own depth, [] included (SPEC-TABLES §16.14 W2)
+        if (depth > In.MAX_JSON_DEPTH) { throw new Refused("a container past the cap: the write counts every container the read does"); }
         assert names.length >= 64 || (bits >>> names.length) == 0 : "flags value sets a bit no variant names";
         b.append('[');
         boolean first = true;
