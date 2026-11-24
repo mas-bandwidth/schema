@@ -1019,6 +1019,14 @@ jobs:
         if: matrix.shard == 'rest'
         run: bash -n bench/run.sh
 
+      # THE PYTHON TOOLING TESTS (nightly_readiness_test.py, wire_fuzz_complete_test.py):
+      # no job ran the first, so main went red unseen. About a second. The
+      # guard in internal/ci (python_tests_run_test.go) fails a *_test.py that
+      # no target runs.
+      - name: python tooling tests
+        if: matrix.shard == 'rest'
+        run: make python-tooling-tests
+
       # A SKIP NAMES A REASON, AND THIS JOB COUNTS ITS SKIPS. The policy gates
       # shell out to make and git, which every runner of this job has: a gate
       # that skipped for want of either checked nothing, and is red here. So

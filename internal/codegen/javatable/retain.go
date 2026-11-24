@@ -77,6 +77,10 @@ func generateTableRetain(u *ir.Unit, st *ir.Struct) (string, error) {
 	b.WriteString("    // loss, never retained silently.\n")
 	fmt.Fprintf(&b, "    public static %sVariable.Value loadRetain(byte[] data, TableRetain retain, TableVariable.Report report) {\n", st.Name)
 	b.WriteString("        if (report == null) { report = new TableVariable.Report(); }\n")
+	// §6.5: every read zeroes a supplied report in full as its first act, the
+	// retain family included (§6.6 accumulates only across the pair: SaveRetain
+	// adds to what this load left).
+	b.WriteString("        report.reset();\n")
 	b.WriteString("        if (retain == null) { return " + st.Name + "Variable.load(data, report); }\n")
 	b.WriteString("        int[] path = new int[128];\n")
 	b.WriteString("        retain.used = 0; retain.idUsed = 0; retain.nodeKeys.clear();\n")

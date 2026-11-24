@@ -1,6 +1,7 @@
 package ci
 
 import (
+	"fmt"
 	"maps"
 	"os"
 	"path"
@@ -253,9 +254,16 @@ func TestRubyGeneratedStrictGatePlantedPattern(t *testing.T) {
 // five minutes on four cores, so it stayed nightly, and a RuboCop offense in
 // the generated Ruby reached main (2026-11-22). This form keeps the two
 // halves that answer in seconds over the same units: every unit loads under
-// ruby -w on both pins with an empty stderr, and ONE RuboCop process lints
-// every unit at once instead of one process per unit. RBS validation and Steep
-// strict mode stay in the nightly gate.
+// ruby -w on both pins with an empty stderr, and ONE RuboCop run (--parallel,
+// its result cache on) lints every unit at once instead of one process per
+// unit. RUBY_STRICT_SHARD=i/n runs the i-th of n disjoint parts of that work
+// (ruby_strict_fast_shard_test.go), one nightly-fast row each. RBS validation
+// and Steep strict mode stay in the nightly gate.
+//
+// RuboCop reads a copy of each file whose comment-only lines are ASCII
+// (rubyLintCopy), and the fixed-form data is written in short array literals
+// (rubytable.fixedLiteralChunk): each removed a cost that grew with the square
+// of the file, 937 CPU-seconds of RuboCop over the set in all, 123 now.
 func TestRubyGeneratedStrictGateFast(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "both pinned Ruby interpreters and RuboCop")
@@ -265,43 +273,39 @@ func TestRubyGeneratedStrictGateFast(t *testing.T) {
 		t.Fatalf("strict gate fast form covered only %d units, want >= 40", len(units))
 	}
 	allDir := t.TempDir()
-	// THE RUNTIME IS LINTED ONCE. Every unit carries the same Ruby runtime
-	// (_table/, serialize/, _fixed.rb ...) under its own module name, which is
-	// most of its lines. A file whose text, with the module name of its unit
-	// replaced, equals one already queued is the same RuboCop input, so the
-	// runtime is linted once and the schema files of every unit each time.
-	var rcPaths []string
-	queued := map[string]bool{}
-	modLine := regexp.MustCompile(`(?m)^module (\w+)`)
-	type unit struct{ label, dir, pkg string }
-	var all []unit
-	for _, label := range slices.Sorted(maps.Keys(units)) {
-		sub := strings.ReplaceAll(label, "/", "__")
-		dir := filepath.Join(allDir, sub)
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+	all, rcPaths := rubyStrictFastPlan(t, allDir, units)
+	// the fast form may not lint less than it did (ruby_strict_fast_guard_test.go)
+	if err := rubyStrictFastGuard(len(units), len(rcPaths), rubyStrictFastConfig(t, root)); err != nil {
+		t.Fatal(err)
+	}
+	// this run's part of the work (ruby_strict_fast_shard_test.go); 1/1 is all of it
+	shardI, shardN := rubyStrictShard(t)
+	sizes := map[string]int64{}
+	for _, p := range rcPaths {
+		st, err := os.Stat(filepath.Join(allDir, filepath.FromSlash(p)))
+		if err != nil {
 			t.Fatal(err)
 		}
-		pkg := rubyStrictGateWriteAndPkg(t, dir, units[label])
-		m := modLine.FindSubmatch(units[label][pkg+".rb"])
-		if m == nil {
-			t.Fatalf("%s: %s.rb names no module", label, pkg)
-		}
-		for _, name := range slices.Sorted(maps.Keys(units[label])) {
-			if !strings.HasSuffix(name, ".rb") {
-				continue
-			}
-			key := strings.ReplaceAll(string(units[label][name]), string(m[1]), "SchemaUnit")
-			if queued[key] {
-				continue
-			}
-			queued[key] = true
-			rcPaths = append(rcPaths, path.Join(sub, name))
-		}
-		all = append(all, unit{label, dir, pkg})
+		sizes[p] = st.Size()
 	}
+	shards := rubyStrictShardFiles(sizes, rcPaths, shardN)
+	if err := rubyStrictShardsCover(rcPaths, shards); err != nil {
+		t.Fatal(err)
+	}
+	myPaths := shards[shardI-1]
+	var myUnits []rubyStrictFastUnit
+	for k, u := range all {
+		if k%shardN == shardI-1 {
+			myUnits = append(myUnits, u)
+		}
+	}
+	if err := rubyStrictShardNotEmpty(shardI, shardN, len(myPaths), len(myUnits)); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("shard %d/%d: %d of %d units under ruby -w, %d of %d files under RuboCop", shardI, shardN, len(myUnits), len(all), len(myPaths), len(rcPaths))
 	t.Run("ruby-w", func(t *testing.T) {
 		t.Parallel()
-		for _, u := range all {
+		for _, u := range myUnits {
 			t.Run(u.label, func(t *testing.T) {
 				t.Parallel()
 				probe := map[string][]byte{
@@ -314,12 +318,15 @@ func TestRubyGeneratedStrictGateFast(t *testing.T) {
 	})
 	t.Run("rubocop", func(t *testing.T) {
 		t.Parallel()
-		out, err := rubyrun.RuboCopAll(t, allDir, rcPaths...)
+		out, err := rubyrun.RuboCopAll(t, rubyStrictFastLintTree(t, allDir, myPaths), myPaths...)
 		if err != nil {
-			t.Fatalf("RuboCop over all %d generated Ruby units failed (%v):\n%s", len(all), err, out)
+			t.Fatalf("RuboCop over %d generated Ruby files failed (%v):\n%s", len(myPaths), err, out)
 		}
 		if !strings.Contains(out, "no offenses detected") {
-			t.Fatalf("RuboCop over all %d units did not report its verdict:\n%s", len(all), out)
+			t.Fatalf("RuboCop over %d files did not report its verdict:\n%s", len(myPaths), out)
+		}
+		if want := fmt.Sprintf("%d files inspected", len(myPaths)); !strings.Contains(out, want) {
+			t.Fatalf("RuboCop did not inspect every queued file (want %q):\n%s", want, out)
 		}
 	})
 }

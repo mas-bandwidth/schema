@@ -46,6 +46,7 @@ func TestTablePassInterleavesAfterEveryBuild(t *testing.T) {
 	slowtest.Gate(t, "an external toolchain")
 
 	root, env := tablePassFixture(t, "")
+	// testinputs:none — runs the copy of bench/tables/run.sh that tablePassFixture read through os, which go test records
 	cmd := exec.Command("sh", "bench/tables/run.sh", "--only", "c,cpp", "--rounds", "2", "--bare")
 	cmd.Dir, cmd.Env = root, env
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -65,6 +66,7 @@ func TestTablePassRefusesFailedProducerWithoutPublishingRows(t *testing.T) {
 	slowtest.Gate(t, "an external toolchain")
 
 	root, env := tablePassFixture(t, "cpp")
+	// testinputs:none — runs the copy of bench/tables/run.sh that tablePassFixture read through os, which go test records
 	cmd := exec.Command("sh", "bench/tables/run.sh", "--only", "c,cpp", "--bare")
 	cmd.Dir, cmd.Env = root, env
 	var stdout, stderr strings.Builder
@@ -81,6 +83,7 @@ func TestTablePassRequiresEveryRequestedLanguage(t *testing.T) {
 	slowtest.Gate(t, "an external toolchain")
 
 	root, env := tablePassFixture(t, "")
+	// testinputs:none — runs the copy of bench/tables/run.sh that tablePassFixture read through os, which go test records
 	cmd := exec.Command("sh", "bench/tables/run.sh", "--only", "c,cpp,cs", "--bare")
 	cmd.Dir, cmd.Env = root, env
 	if out, err := cmd.CombinedOutput(); err == nil || !strings.Contains(string(out), "requested leg cs is unavailable") {
@@ -104,6 +107,7 @@ func TestTablePassSkipsUnavailableScaffoldOnlyDuringDiscovery(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// testinputs:none — runs the copy of bench/tables/run.sh that tablePassFixture read through os, which go test records
 	cmd := exec.Command("sh", "bench/tables/run.sh", "--bare")
 	cmd.Dir, cmd.Env = root, env
 	out, err := cmd.CombinedOutput()
@@ -114,6 +118,7 @@ func TestTablePassSkipsUnavailableScaffoldOnlyDuringDiscovery(t *testing.T) {
 		t.Fatalf("default discovery ran the unavailable scaffold: %s", out)
 	}
 
+	// testinputs:none — runs the copy of bench/tables/run.sh that tablePassFixture read through os, which go test records
 	cmd = exec.Command("sh", "bench/tables/run.sh", "--only", "lua", "--bare")
 	cmd.Dir, cmd.Env = root, env
 	out, err = cmd.CombinedOutput()
