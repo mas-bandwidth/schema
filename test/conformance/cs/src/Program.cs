@@ -99,6 +99,7 @@ static partial class Program
         public string Root;
         public Func<byte[], Report, object> PartialLoad;
         public bool Region; // this codec carries a region read (wire-fuzz-region)
+        public bool Builder; // this codec carries a builder read (wire-fuzz-builder, BindBuilder)
         public Func<byte[], Report, object> VariableLoad; // a fixed root's variable-form read; framing only
         public Func<byte[], Report, object> Load;   // null on refusal
         public Func<object, long> Measure;
@@ -2841,6 +2842,10 @@ static partial class Program
             string root = Encoding.UTF8.GetString(input.ReadBytes(input.ReadUInt16()));
             byte form = input.ReadByte(), retain = input.ReadByte();
             Codec found=Find(unit,root);
+            // THE BUILDER ARM IS THE BUILDER READ'S: a root with no builder binding is
+            // answered absent, which the harness names, and never falls through to a
+            // read that cannot report the builder's completion.
+            if (builder && found != null && !found.Builder) { found = null; }
             roster[i] = retain == 0 || found?.Retain!=null?found:null;
             // a variable root has no message form, so no form-2 binding
             if ((form == 2 || form == 5) && (retain != 0 || builder || roster[i]?.MessageLoad == null)) { roster[i] = null; }
