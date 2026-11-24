@@ -301,7 +301,9 @@ SCHEMAS_VERSIONING := test/tables/VOLD_array_bounded_grow.schema \
 	test/tables/VBRB_lineage_merge.schema \
 	test/tables/VNEW_lineage_merge.schema \
 	test/tables/VOLD_unknown_census.schema \
-	test/tables/VNEW_unknown_census.schema
+	test/tables/VNEW_unknown_census.schema \
+	test/tables/VOLD_kind_moved.schema \
+	test/tables/VNEW_kind_moved.schema
 # ---- rowan/cpp-versioning-numbers: END ----------------------------------
 
 define tables_generate

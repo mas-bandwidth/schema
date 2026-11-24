@@ -862,7 +862,9 @@ func TestFixedRoadmapCppT18ExactCounters(t *testing.T) {
 `, pair.root, pair.newPkg, 1))
 
 		// unknown: Item.drop removed, read across the four-element array of tables.
-		// Once per field per endpoint, never per record nor per element: unknown == 1.
+		// §5.1 refuses the removal, so the handed-in entry is UNLAWFUL: the load
+		// refuses layout_malformed with unknown at zero — there is no compile
+		// census (FIXED-FORM-ALGORITHM §5.4, §5.9 #30).
 		pair = cppT18Generate(t, "unknown_census")
 		cppT18Run(t, pair, fmt.Sprintf(`
     {
@@ -873,9 +875,9 @@ func TestFixedRoadmapCppT18ExactCounters(t *testing.T) {
         const int64_t written = %[1]sFixedSave( &want, 1, buffer, (int64_t) sizeof( buffer ) );
         if ( written < 0 ) { printf( "unknown: save failed\n" ); return 1; }
 `+t18Read+`
-        if ( n != 1 ) { printf( "unknown: n=%%lld\n", (long long) n ); return 1; }
-        if ( r.unknown != 1 ) { printf( "unknown: unknown=%%d want 1\n", r.unknown ); return 1; }
-        if ( r.widened != 0 ) { printf( "unknown: a counter moved\n" ); return 1; }
+        if ( n >= 0 ) { printf( "unknown: the unlawful entry loaded n=%%lld\n", (long long) n ); return 1; }
+        if ( !r.refused || r.reason != %[2]s::TableMessageReason::layout_malformed ) { printf( "unknown: not refused layout_malformed: reason=%%d\n", (int) r.reason ); return 1; }
+        if ( r.unknown != 0 || r.widened != 0 ) { printf( "unknown: a counter moved on a refusal: unknown=%%d\n", r.unknown ); return 1; }
     }
 `, pair.root, pair.newPkg, 1))
 	})
