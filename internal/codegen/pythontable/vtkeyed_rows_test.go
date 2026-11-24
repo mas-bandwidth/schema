@@ -84,6 +84,8 @@ var pyKeyedRowCases = []string{
 	"varevo_v3_full", "varevo_v3_full_as_v1", "varevo_v3_rollback",
 	// the F-092 grown-bound evolution document (#4544)
 	"widenbound_evodoc",
+	// the wave-3 rows: the 17-bit flags field past and inside its width, and the surface arrays
+	"r17_flags_inside_width", "r17_flags_past_width", "surf_arrays_full",
 }
 
 // pyKeyedRowConstructs are luatable's constructs for the row
