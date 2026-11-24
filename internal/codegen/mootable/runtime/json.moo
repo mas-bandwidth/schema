@@ -3915,6 +3915,10 @@ local function writeScalar(w: W, fd: any, v: any, depth: number): boolean
 	end
 	local names = flagsOf(fd)
 	if names ~= nil then
+		-- a flags value's array is a container too (§16.14 W2)
+		if not containerCap(w, fd, depth) then
+			return false
+		end
 		local low, high = v[1], v[2]
 		if low == 0 and high == 0 then
 			emit(w, "[]")
