@@ -6862,6 +6862,14 @@ _FuzzRoot? fuzzRoot(String unit, String root) {
       return _FuzzRoot(
           _plainCodec(tblpacketunions.TableWireReport.new, tblpacketunions.shapeDocWireMeasure, tblpacketunions.shapeDocWireLoad, tblpacketunions.shapeDocWireSave),
           retain: _retainCodec(tblpacketunions.TableRetain.new, tblpacketunions.TableWireReport.new, tblpacketunions.shapeDocWireMeasure, tblpacketunions.shapeDocWireLoadRetain, tblpacketunions.shapeDocWireSaveRetain));
+    // ...and their fixed-class siblings, which the plain arm reads through the
+    // fixed codec as tblsurf Narrow does (the plain arm left their seeds absent).
+    case 'tblvaluedefaults FixedDefaults':
+      return _FuzzRoot(
+          _fixedFuzzCodec(tblvaluedefaults_fixed.FixedDefaults.new, valuedefaults_fixed.fixedDefaultsFixedNewPlan, tblvaluedefaults_fixed.TableFixedReport.new, valuedefaults_fixed.fixedDefaultsFixedLoad, valuedefaults_fixed.fixedDefaultsFixedMeasure, valuedefaults_fixed.fixedDefaultsFixedSave));
+    case 'packetunions ShapeMsg':
+      return _FuzzRoot(
+          _fixedFuzzCodec(tblpacketunions_fixed.ShapeMsg.new, packetunions_fixed.shapeMsgFixedNewPlan, tblpacketunions_fixed.TableFixedReport.new, packetunions_fixed.shapeMsgFixedLoad, packetunions_fixed.shapeMsgFixedMeasure, packetunions_fixed.shapeMsgFixedSave));
     case 'cooktorturewide TortureWideCook':
       return _FuzzRoot(
           _plainCodec(cooktorturewide.TableWireReport.new, cooktorturewide.tortureWideCookWireMeasure, cooktorturewide.tortureWideCookWireLoad, cooktorturewide.tortureWideCookWireSave),
