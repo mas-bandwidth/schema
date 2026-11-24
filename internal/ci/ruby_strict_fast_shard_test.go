@@ -222,3 +222,38 @@ func TestRubyStrictShardSplit(t *testing.T) {
 		}
 	}
 }
+
+// rubyStrictShardNotEmpty returns an error when a part is handed no file or no
+// unit: such a part would pass having linted nothing.
+func rubyStrictShardNotEmpty(i, n, files, units int) error {
+	if files == 0 || units == 0 {
+		return fmt.Errorf("shard %d/%d is handed %d files and %d units: a part that lints nothing is a gate that watches nothing, so it fails (RUBY_STRICT_SHARD larger than the file set?)", i, n, files, units)
+	}
+	return nil
+}
+
+func TestRubyStrictShardNotEmpty(t *testing.T) {
+	t.Parallel()
+	if err := rubyStrictShardNotEmpty(1, 6, 88, 16); err != nil {
+		t.Fatalf("a part with work is refused: %v", err)
+	}
+	// reversed witnesses: no files, no units, and a split finer than the set
+	for name, c := range map[string][2]int{"no files": {0, 16}, "no units": {88, 0}} {
+		if err := rubyStrictShardNotEmpty(2, 6, c[0], c[1]); err == nil {
+			t.Errorf("%s: the part passes", name)
+		}
+	}
+	parts := rubyStrictShardFiles(map[string]int64{"a.rb": 1, "b.rb": 1}, []string{"a.rb", "b.rb"}, 5)
+	empty := 0
+	for _, p := range parts {
+		if len(p) == 0 {
+			empty++
+		}
+	}
+	if empty != 3 {
+		t.Fatalf("5 parts of 2 files leave %d empty, want 3", empty)
+	}
+	if err := rubyStrictShardNotEmpty(3, 5, len(parts[2]), 1); err == nil {
+		t.Error("an empty part of a too-fine split passes")
+	}
+}

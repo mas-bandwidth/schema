@@ -48,7 +48,7 @@ func TestFixedRubyLiteralChunksLongArrays(t *testing.T) {
 	}
 }
 
-// a long array inside a hash inside an array is chunked at every level that is long
+// a long array inside a hash inside an array is chunked at every level that is long.
 func TestFixedRubyLiteralChunksNestedLongArrays(t *testing.T) {
 	t.Parallel()
 	kids := make([]any, 70)

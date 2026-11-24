@@ -299,6 +299,9 @@ func TestRubyGeneratedStrictGateFast(t *testing.T) {
 			myUnits = append(myUnits, u)
 		}
 	}
+	if err := rubyStrictShardNotEmpty(shardI, shardN, len(myPaths), len(myUnits)); err != nil {
+		t.Fatal(err)
+	}
 	t.Logf("shard %d/%d: %d of %d units under ruby -w, %d of %d files under RuboCop", shardI, shardN, len(myUnits), len(all), len(myPaths), len(rcPaths))
 	t.Run("ruby-w", func(t *testing.T) {
 		t.Parallel()
