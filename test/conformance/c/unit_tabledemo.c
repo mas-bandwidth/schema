@@ -23,7 +23,6 @@ SCHEMA_CONFORMANCE_CODEC( Moods, moods )
 SCHEMA_CONFORMANCE_CODEC( MoodField, mood_field )
 SCHEMA_CONFORMANCE_CODEC( MinArmFix, min_arm_fix )
 SCHEMA_CONFORMANCE_CODEC( MinPlainFix, min_plain_fix )
-SCHEMA_CONFORMANCE_GRAPH_CODEC( VarMoods, var_moods ) /* variable only: no fixed form, so the deprecated-variant rows reach the variable save */
 
 static const ConformanceCodec codecs[] = {
     SCHEMA_CONFORMANCE_ROW( tabledemo, RootConfig ),
@@ -38,8 +37,7 @@ static const ConformanceCodec codecs[] = {
     SCHEMA_CONFORMANCE_ROW( tabledemo, Moods ),
     SCHEMA_CONFORMANCE_ROW( tabledemo, MoodField ),
     SCHEMA_CONFORMANCE_ROW( tabledemo, MinArmFix ),
-    SCHEMA_CONFORMANCE_ROW( tabledemo, MinPlainFix ),
-    SCHEMA_CONFORMANCE_GRAPH_ROW( tabledemo, VarMoods )
+    SCHEMA_CONFORMANCE_ROW( tabledemo, MinPlainFix )
 };
 
 /* Sets the one field a `write-refusal` row names. The set is EXACTLY the rows'
@@ -137,20 +135,6 @@ int conformance_write_refusal_set_tabledemo( const char * root, void * value, co
     if ( strcmp( root, "MoodField" ) == 0 )
     {
         tabledemo_mood_field_t * v = (tabledemo_mood_field_t *) value;
-        if ( strcmp( path, "mood" ) == 0 && strcmp( kind, "ordinal" ) == 0 ) { return CONFORMANCE_WREF_UNSIGNED( v->mood, text ); }
-    }
-    if ( strcmp( root, "VarMoods" ) == 0 )
-    {
-        schema_conformance_holder_VarMoods * holder = (schema_conformance_holder_VarMoods *) value;
-        tabledemo_var_moods_t * v = (tabledemo_var_moods_t *) (uintptr_t) holder->root;
-        if ( v == NULL ) { return 0; }
-        if ( strcmp( path, "row[0]" ) == 0 && strcmp( kind, "ordinal" ) == 0 )
-        {
-            tabledemo_mood_t * elems;
-            if ( v->row.count < 1 || v->row.items.value == 0 ) { return 0; }
-            elems = (tabledemo_mood_t *) (void *) ( (uint8_t *) (void *) &v->row.items + v->row.items.value );
-            return CONFORMANCE_WREF_UNSIGNED( elems[0], text );
-        }
         if ( strcmp( path, "mood" ) == 0 && strcmp( kind, "ordinal" ) == 0 ) { return CONFORMANCE_WREF_UNSIGNED( v->mood, text ); }
     }
     return 0;

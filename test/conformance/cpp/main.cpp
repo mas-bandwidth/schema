@@ -532,6 +532,7 @@ static const VarCodec var_codecs[] = {
     VARCODEC( "cooktorture", cooktorture, TortureCook ),
     VARCODEC( "cooktorturewide", cooktorturewide, TortureWideCook ),
     VARCODEC( "shapes", shapes, Bounds ),
+    VARCODEC( "shapes", shapes, VarMoods ), // variable only: the deprecated-variant rows reach the variable save
     VARCODEC( "packetunions", tblpacketunions, ShapeDoc ),
 
     VARCODEC( "graphdemo", graphdemo, Scene ),
@@ -549,7 +550,6 @@ static const VarCodec var_codecs[] = {
     VARCODEC( "tblsurf", surfaces, Chain ),
     VARCODEC( "tblsurf", surfaces, Holder ),
     VARCODEC( "tblsurf", surfaces, Counted ),
-    VARCODEC( "tabledemo", tabledemo, VarMoods ), // variable only: the deprecated-variant rows reach the variable save
 };
 
 // ---------------------------------------------------------------------------
@@ -2337,14 +2337,15 @@ static bool write_refusal_set_variable( const std::string & root, void * value, 
     }
     if ( root == "VarMoods" )
     {
-        tabledemo::VarMoods & v = *(tabledemo::VarMoods *) value;
+        shapes::VarMoods & v = *(shapes::VarMoods *) value;
         if ( path == "row[0]" && kind == "ordinal" )
         {
             if ( v.row.count < 1 || v.row.elements.value == 0 ) return false;
-            tabledemo::Mood * elems = (tabledemo::Mood *) ( (uint8_t *) &v.row.elements + v.row.elements.value );
+            shapes::Mood * elems = (shapes::Mood *) ( (uint8_t *) &v.row.elements + v.row.elements.value );
             return wref_store_enum( elems[0], text );
         }
         if ( path == "mood" && kind == "ordinal" ) return wref_store_enum( v.mood, text );
+        return false;
     }
     if ( root == "Bounds" )
     {

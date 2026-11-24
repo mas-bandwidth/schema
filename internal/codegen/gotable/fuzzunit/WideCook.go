@@ -96,7 +96,7 @@ func WideBlobAt(slot *int64, arena ...*TableArena) *WideBlobRow {
 
 // Type is WideBlob's cooked-record descriptor, the head of the graph a reflective
 // walk follows (mas-bandwidth/schema docs/SPEC-TABLES.md §8).
-func (c WideBlobCook) Type() *TableCookInfo { return &tableCookRecords[29] }
+func (c WideBlobCook) Type() *TableCookInfo { return &tableCookRecords[28] }
 
 func WideBlobCookMeasure(value *WideBlob) int64 { return 280096 }
 func WideBlobCookMeasureReason(value *WideBlob) (int64, error) {

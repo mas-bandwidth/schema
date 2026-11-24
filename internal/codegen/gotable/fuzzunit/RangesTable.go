@@ -69,7 +69,7 @@ func RangedSignedSaveBody(w *TableWriter, value *RangedSigned) bool {
 func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 	{
 		if value.I8Span != 0 {
-			if ref := w.Ids.refAtHit(51, 0x48121511bf702eb5); !w.headerPair(ref, 2) {
+			if ref := w.Ids.refAtHit(50, 0x48121511bf702eb5); !w.headerPair(ref, 2) {
 				w.headerRest(ref, 2)
 			}
 			w.Put8(uint8(int64(value.I8Span) & 0xff))
@@ -77,7 +77,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 	}
 	{
 		if value.I8Low != 0 {
-			if ref := w.Ids.refAtHit(85, 0x942bfe3168090f7d); !w.headerPair(ref, 2) {
+			if ref := w.Ids.refAtHit(84, 0x942bfe3168090f7d); !w.headerPair(ref, 2) {
 				w.headerRest(ref, 2)
 			}
 			if value.I8Low > 126 {
@@ -88,7 +88,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 	}
 	{
 		if value.I8High != 0 {
-			if ref := w.Ids.refAtHit(137, 0xd182acd105b55dd1); !w.headerPair(ref, 2) {
+			if ref := w.Ids.refAtHit(136, 0xd182acd105b55dd1); !w.headerPair(ref, 2) {
 				w.headerRest(ref, 2)
 			}
 			if value.I8High < -127 {
@@ -99,7 +99,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 	}
 	{
 		if value.I8Inside != 0 {
-			if ref := w.Ids.refAtHit(157, 0xef9ded23c8912a81); !w.headerPair(ref, 2) {
+			if ref := w.Ids.refAtHit(156, 0xef9ded23c8912a81); !w.headerPair(ref, 2) {
 				w.headerRest(ref, 2)
 			}
 			if value.I8Inside < -127 || value.I8Inside > 126 {
@@ -110,7 +110,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 	}
 	{
 		if value.I16Span != 0 {
-			if ref := w.Ids.refAtHit(110, 0xb655574ea23760b4); !w.headerPair(ref, 3) {
+			if ref := w.Ids.refAtHit(109, 0xb655574ea23760b4); !w.headerPair(ref, 3) {
 				w.headerRest(ref, 3)
 			}
 			w.Put16(uint16(int64(value.I16Span) & 0xffff))
@@ -118,7 +118,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 	}
 	{
 		if value.I16Low != 0 {
-			if ref := w.Ids.refAtHit(138, 0xd217b3af8d7a2bde); !w.headerPair(ref, 3) {
+			if ref := w.Ids.refAtHit(137, 0xd217b3af8d7a2bde); !w.headerPair(ref, 3) {
 				w.headerRest(ref, 3)
 			}
 			if value.I16Low > 32766 {
@@ -129,7 +129,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 	}
 	{
 		if value.I16High != 0 {
-			if ref := w.Ids.refAtHit(84, 0x90652f70c9127900); !w.headerPair(ref, 3) {
+			if ref := w.Ids.refAtHit(83, 0x90652f70c9127900); !w.headerPair(ref, 3) {
 				w.headerRest(ref, 3)
 			}
 			if value.I16High < -32767 {
@@ -140,7 +140,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 	}
 	{
 		if value.I16Inside != 0 {
-			if ref := w.Ids.refAtHit(66, 0x6a659d7c354db158); !w.headerPair(ref, 3) {
+			if ref := w.Ids.refAtHit(65, 0x6a659d7c354db158); !w.headerPair(ref, 3) {
 				w.headerRest(ref, 3)
 			}
 			if value.I16Inside < -32767 || value.I16Inside > 32766 {
@@ -151,7 +151,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 	}
 	{
 		if value.I32Span != 0 {
-			if ref := w.Ids.refAtHit(152, 0xe693bd88532c91d6); !w.headerPair(ref, 4) {
+			if ref := w.Ids.refAtHit(151, 0xe693bd88532c91d6); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
 			w.Put32(uint32(int64(value.I32Span) & 0xffffffff))
@@ -159,7 +159,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 	}
 	{
 		if value.I32Low != 0 {
-			if ref := w.Ids.refAtHit(6, 0x065ee827cf99fbb4); !w.headerPair(ref, 4) {
+			if ref := w.Ids.refAtHit(5, 0x065ee827cf99fbb4); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
 			if value.I32Low > 2147483646 {
@@ -170,7 +170,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 	}
 	{
 		if value.I32High != 0 {
-			if ref := w.Ids.refAtHit(129, 0xc9b121c4c2a186ee); !w.headerPair(ref, 4) {
+			if ref := w.Ids.refAtHit(128, 0xc9b121c4c2a186ee); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
 			if value.I32High < -2147483647 {
@@ -181,7 +181,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 	}
 	{
 		if value.I32Inside != 0 {
-			if ref := w.Ids.refAtHit(140, 0xd363dfa465acf27a); !w.headerPair(ref, 4) {
+			if ref := w.Ids.refAtHit(139, 0xd363dfa465acf27a); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
 			if value.I32Inside < -2147483647 || value.I32Inside > 2147483646 {
@@ -192,7 +192,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 	}
 	{
 		if value.I64Span != 0 {
-			if ref := w.Ids.refAtHit(71, 0x7549c70700c49d6f); !w.headerPair(ref, 5) {
+			if ref := w.Ids.refAtHit(70, 0x7549c70700c49d6f); !w.headerPair(ref, 5) {
 				w.headerRest(ref, 5)
 			}
 			w.putI64(value.I64Span)
@@ -200,7 +200,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 	}
 	{
 		if value.I64Low != 0 {
-			if ref := w.Ids.refAtHit(21, 0x1cce6617419771db); !w.headerPair(ref, 5) {
+			if ref := w.Ids.refAtHit(20, 0x1cce6617419771db); !w.headerPair(ref, 5) {
 				w.headerRest(ref, 5)
 			}
 			if value.I64Low > 9223372036854775806 {
@@ -211,7 +211,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 	}
 	{
 		if value.I64High != 0 {
-			if ref := w.Ids.refAtHit(44, 0x3b54fa60620b5597); !w.headerPair(ref, 5) {
+			if ref := w.Ids.refAtHit(43, 0x3b54fa60620b5597); !w.headerPair(ref, 5) {
 				w.headerRest(ref, 5)
 			}
 			if value.I64High < -9223372036854775807 {
@@ -222,7 +222,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 	}
 	{
 		if value.I64Inside != 0 {
-			if ref := w.Ids.refAtHit(139, 0xd308fcb98ece5d23); !w.headerPair(ref, 5) {
+			if ref := w.Ids.refAtHit(138, 0xd308fcb98ece5d23); !w.headerPair(ref, 5) {
 				w.headerRest(ref, 5)
 			}
 			if value.I64Inside < -9223372036854775807 || value.I64Inside > 9223372036854775806 {
@@ -236,7 +236,7 @@ func RangedSignedSaveBodyFields(w *TableWriter, value *RangedSigned) bool {
 			return false
 		}
 		if value.EdgesCount > 0 {
-			if ref := w.Ids.refAtHit(128, 0xc70cde6b85b6197d); !w.headerPair(ref, 14) {
+			if ref := w.Ids.refAtHit(127, 0xc70cde6b85b6197d); !w.headerPair(ref, 14) {
 				w.headerRest(ref, 14)
 			}
 			if value.EdgesCount < 0 || value.EdgesCount > 4 {
@@ -871,10 +871,6 @@ func RangedSignedLoadBody(r *TableReader, value *RangedSigned) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
-				r.Take(sub)
-				if r.Nodes.Carve.Refused {
-					return false
-				}
 			}
 		default:
 			r.Report.Unknown++
@@ -963,7 +959,7 @@ func RangedSignedSaveBodyRetain(w *TableRetainWriter, value *RangedSigned) bool 
 func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned) bool {
 	{
 		if value.I8Span != 0 {
-			if ref := w.Ids.refAtHit(51, 0x48121511bf702eb5); !w.headerPair(ref, 2) {
+			if ref := w.Ids.refAtHit(50, 0x48121511bf702eb5); !w.headerPair(ref, 2) {
 				w.headerRest(ref, 2)
 			}
 			w.Put8(uint8(int64(value.I8Span) & 0xff))
@@ -971,7 +967,7 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 	}
 	{
 		if value.I8Low != 0 {
-			if ref := w.Ids.refAtHit(85, 0x942bfe3168090f7d); !w.headerPair(ref, 2) {
+			if ref := w.Ids.refAtHit(84, 0x942bfe3168090f7d); !w.headerPair(ref, 2) {
 				w.headerRest(ref, 2)
 			}
 			if value.I8Low > 126 {
@@ -982,7 +978,7 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 	}
 	{
 		if value.I8High != 0 {
-			if ref := w.Ids.refAtHit(137, 0xd182acd105b55dd1); !w.headerPair(ref, 2) {
+			if ref := w.Ids.refAtHit(136, 0xd182acd105b55dd1); !w.headerPair(ref, 2) {
 				w.headerRest(ref, 2)
 			}
 			if value.I8High < -127 {
@@ -993,7 +989,7 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 	}
 	{
 		if value.I8Inside != 0 {
-			if ref := w.Ids.refAtHit(157, 0xef9ded23c8912a81); !w.headerPair(ref, 2) {
+			if ref := w.Ids.refAtHit(156, 0xef9ded23c8912a81); !w.headerPair(ref, 2) {
 				w.headerRest(ref, 2)
 			}
 			if value.I8Inside < -127 || value.I8Inside > 126 {
@@ -1004,7 +1000,7 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 	}
 	{
 		if value.I16Span != 0 {
-			if ref := w.Ids.refAtHit(110, 0xb655574ea23760b4); !w.headerPair(ref, 3) {
+			if ref := w.Ids.refAtHit(109, 0xb655574ea23760b4); !w.headerPair(ref, 3) {
 				w.headerRest(ref, 3)
 			}
 			w.Put16(uint16(int64(value.I16Span) & 0xffff))
@@ -1012,7 +1008,7 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 	}
 	{
 		if value.I16Low != 0 {
-			if ref := w.Ids.refAtHit(138, 0xd217b3af8d7a2bde); !w.headerPair(ref, 3) {
+			if ref := w.Ids.refAtHit(137, 0xd217b3af8d7a2bde); !w.headerPair(ref, 3) {
 				w.headerRest(ref, 3)
 			}
 			if value.I16Low > 32766 {
@@ -1023,7 +1019,7 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 	}
 	{
 		if value.I16High != 0 {
-			if ref := w.Ids.refAtHit(84, 0x90652f70c9127900); !w.headerPair(ref, 3) {
+			if ref := w.Ids.refAtHit(83, 0x90652f70c9127900); !w.headerPair(ref, 3) {
 				w.headerRest(ref, 3)
 			}
 			if value.I16High < -32767 {
@@ -1034,7 +1030,7 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 	}
 	{
 		if value.I16Inside != 0 {
-			if ref := w.Ids.refAtHit(66, 0x6a659d7c354db158); !w.headerPair(ref, 3) {
+			if ref := w.Ids.refAtHit(65, 0x6a659d7c354db158); !w.headerPair(ref, 3) {
 				w.headerRest(ref, 3)
 			}
 			if value.I16Inside < -32767 || value.I16Inside > 32766 {
@@ -1045,7 +1041,7 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 	}
 	{
 		if value.I32Span != 0 {
-			if ref := w.Ids.refAtHit(152, 0xe693bd88532c91d6); !w.headerPair(ref, 4) {
+			if ref := w.Ids.refAtHit(151, 0xe693bd88532c91d6); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
 			w.Put32(uint32(int64(value.I32Span) & 0xffffffff))
@@ -1053,7 +1049,7 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 	}
 	{
 		if value.I32Low != 0 {
-			if ref := w.Ids.refAtHit(6, 0x065ee827cf99fbb4); !w.headerPair(ref, 4) {
+			if ref := w.Ids.refAtHit(5, 0x065ee827cf99fbb4); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
 			if value.I32Low > 2147483646 {
@@ -1064,7 +1060,7 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 	}
 	{
 		if value.I32High != 0 {
-			if ref := w.Ids.refAtHit(129, 0xc9b121c4c2a186ee); !w.headerPair(ref, 4) {
+			if ref := w.Ids.refAtHit(128, 0xc9b121c4c2a186ee); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
 			if value.I32High < -2147483647 {
@@ -1075,7 +1071,7 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 	}
 	{
 		if value.I32Inside != 0 {
-			if ref := w.Ids.refAtHit(140, 0xd363dfa465acf27a); !w.headerPair(ref, 4) {
+			if ref := w.Ids.refAtHit(139, 0xd363dfa465acf27a); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
 			if value.I32Inside < -2147483647 || value.I32Inside > 2147483646 {
@@ -1086,7 +1082,7 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 	}
 	{
 		if value.I64Span != 0 {
-			if ref := w.Ids.refAtHit(71, 0x7549c70700c49d6f); !w.headerPair(ref, 5) {
+			if ref := w.Ids.refAtHit(70, 0x7549c70700c49d6f); !w.headerPair(ref, 5) {
 				w.headerRest(ref, 5)
 			}
 			w.putI64(value.I64Span)
@@ -1094,7 +1090,7 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 	}
 	{
 		if value.I64Low != 0 {
-			if ref := w.Ids.refAtHit(21, 0x1cce6617419771db); !w.headerPair(ref, 5) {
+			if ref := w.Ids.refAtHit(20, 0x1cce6617419771db); !w.headerPair(ref, 5) {
 				w.headerRest(ref, 5)
 			}
 			if value.I64Low > 9223372036854775806 {
@@ -1105,7 +1101,7 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 	}
 	{
 		if value.I64High != 0 {
-			if ref := w.Ids.refAtHit(44, 0x3b54fa60620b5597); !w.headerPair(ref, 5) {
+			if ref := w.Ids.refAtHit(43, 0x3b54fa60620b5597); !w.headerPair(ref, 5) {
 				w.headerRest(ref, 5)
 			}
 			if value.I64High < -9223372036854775807 {
@@ -1116,7 +1112,7 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 	}
 	{
 		if value.I64Inside != 0 {
-			if ref := w.Ids.refAtHit(139, 0xd308fcb98ece5d23); !w.headerPair(ref, 5) {
+			if ref := w.Ids.refAtHit(138, 0xd308fcb98ece5d23); !w.headerPair(ref, 5) {
 				w.headerRest(ref, 5)
 			}
 			if value.I64Inside < -9223372036854775807 || value.I64Inside > 9223372036854775806 {
@@ -1130,7 +1126,7 @@ func RangedSignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedSigned)
 			return false
 		}
 		if value.EdgesCount > 0 {
-			if ref := w.Ids.refAtHit(128, 0xc70cde6b85b6197d); !w.headerPair(ref, 14) {
+			if ref := w.Ids.refAtHit(127, 0xc70cde6b85b6197d); !w.headerPair(ref, 14) {
 				w.headerRest(ref, 14)
 			}
 			if value.EdgesCount < 0 || value.EdgesCount > 4 {
@@ -1766,10 +1762,6 @@ func RangedSignedLoadBodyRetain(r *TableRetainReader, value *RangedSigned) bool 
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
-				r.Take(sub)
-				if r.Nodes.Carve.Refused {
-					return false
-				}
 			}
 		default:
 			r.Report.Unknown++
@@ -1835,7 +1827,7 @@ func RangedUnsignedSaveBody(w *TableWriter, value *RangedUnsigned) bool {
 func RangedUnsignedSaveBodyFields(w *TableWriter, value *RangedUnsigned) bool {
 	{
 		if value.U8Span != 0 {
-			if ref := w.Ids.refAtHit(11, 0x0f8897557f37c021); !w.headerPair(ref, 6) {
+			if ref := w.Ids.refAtHit(10, 0x0f8897557f37c021); !w.headerPair(ref, 6) {
 				w.headerRest(ref, 6)
 			}
 			w.Put8(uint8(value.U8Span))
@@ -1843,7 +1835,7 @@ func RangedUnsignedSaveBodyFields(w *TableWriter, value *RangedUnsigned) bool {
 	}
 	{
 		if value.U8Low != 0 {
-			if ref := w.Ids.refAtHit(34, 0x2e17553f8200a2a1); !w.headerPair(ref, 6) {
+			if ref := w.Ids.refAtHit(33, 0x2e17553f8200a2a1); !w.headerPair(ref, 6) {
 				w.headerRest(ref, 6)
 			}
 			if value.U8Low > 254 {
@@ -1854,7 +1846,7 @@ func RangedUnsignedSaveBodyFields(w *TableWriter, value *RangedUnsigned) bool {
 	}
 	{
 		if value.U8High != 1 {
-			if ref := w.Ids.refAtHit(93, 0xa0e5c60df9301b7d); !w.headerPair(ref, 6) {
+			if ref := w.Ids.refAtHit(92, 0xa0e5c60df9301b7d); !w.headerPair(ref, 6) {
 				w.headerRest(ref, 6)
 			}
 			if value.U8High < 1 {
@@ -1865,7 +1857,7 @@ func RangedUnsignedSaveBodyFields(w *TableWriter, value *RangedUnsigned) bool {
 	}
 	{
 		if value.U8Inside != 1 {
-			if ref := w.Ids.refAtHit(20, 0x1cb2c073a6f5844d); !w.headerPair(ref, 6) {
+			if ref := w.Ids.refAtHit(19, 0x1cb2c073a6f5844d); !w.headerPair(ref, 6) {
 				w.headerRest(ref, 6)
 			}
 			if value.U8Inside < 1 || value.U8Inside > 254 {
@@ -1876,7 +1868,7 @@ func RangedUnsignedSaveBodyFields(w *TableWriter, value *RangedUnsigned) bool {
 	}
 	{
 		if value.U16Span != 0 {
-			if ref := w.Ids.refAtHit(54, 0x4ca0c150b1790960); !w.headerPair(ref, 7) {
+			if ref := w.Ids.refAtHit(53, 0x4ca0c150b1790960); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
 			}
 			w.Put16(uint16(value.U16Span))
@@ -1884,7 +1876,7 @@ func RangedUnsignedSaveBodyFields(w *TableWriter, value *RangedUnsigned) bool {
 	}
 	{
 		if value.U16Low != 0 {
-			if ref := w.Ids.refAtHit(159, 0xf252136836b04cb2); !w.headerPair(ref, 7) {
+			if ref := w.Ids.refAtHit(158, 0xf252136836b04cb2); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
 			}
 			if value.U16Low > 65534 {
@@ -1895,7 +1887,7 @@ func RangedUnsignedSaveBodyFields(w *TableWriter, value *RangedUnsigned) bool {
 	}
 	{
 		if value.U16High != 1 {
-			if ref := w.Ids.refAtHit(56, 0x4f37e1f216e7610c); !w.headerPair(ref, 7) {
+			if ref := w.Ids.refAtHit(55, 0x4f37e1f216e7610c); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
 			}
 			if value.U16High < 1 {
@@ -1906,7 +1898,7 @@ func RangedUnsignedSaveBodyFields(w *TableWriter, value *RangedUnsigned) bool {
 	}
 	{
 		if value.U16Inside != 1 {
-			if ref := w.Ids.refAtHit(136, 0xd176b605978f3304); !w.headerPair(ref, 7) {
+			if ref := w.Ids.refAtHit(135, 0xd176b605978f3304); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
 			}
 			if value.U16Inside < 1 || value.U16Inside > 65534 {
@@ -1917,7 +1909,7 @@ func RangedUnsignedSaveBodyFields(w *TableWriter, value *RangedUnsigned) bool {
 	}
 	{
 		if value.U32Span != 0 {
-			if ref := w.Ids.refAtHit(26, 0x200b924de7479cda); !w.headerPair(ref, 8) {
+			if ref := w.Ids.refAtHit(25, 0x200b924de7479cda); !w.headerPair(ref, 8) {
 				w.headerRest(ref, 8)
 			}
 			w.Put32(uint32(value.U32Span))
@@ -1925,7 +1917,7 @@ func RangedUnsignedSaveBodyFields(w *TableWriter, value *RangedUnsigned) bool {
 	}
 	{
 		if value.U32Low != 0 {
-			if ref := w.Ids.refAtHit(96, 0xa53d2f2a31b5acb0); !w.headerPair(ref, 8) {
+			if ref := w.Ids.refAtHit(95, 0xa53d2f2a31b5acb0); !w.headerPair(ref, 8) {
 				w.headerRest(ref, 8)
 			}
 			if value.U32Low > 4294967294 {
@@ -1936,7 +1928,7 @@ func RangedUnsignedSaveBodyFields(w *TableWriter, value *RangedUnsigned) bool {
 	}
 	{
 		if value.U32High != 1 {
-			if ref := w.Ids.refAtHit(87, 0x9759be8ea1a4e3d2); !w.headerPair(ref, 8) {
+			if ref := w.Ids.refAtHit(86, 0x9759be8ea1a4e3d2); !w.headerPair(ref, 8) {
 				w.headerRest(ref, 8)
 			}
 			if value.U32High < 1 {
@@ -1947,7 +1939,7 @@ func RangedUnsignedSaveBodyFields(w *TableWriter, value *RangedUnsigned) bool {
 	}
 	{
 		if value.U32Inside != 1 {
-			if ref := w.Ids.refAtHit(83, 0x8dc515fc082e3c0e); !w.headerPair(ref, 8) {
+			if ref := w.Ids.refAtHit(82, 0x8dc515fc082e3c0e); !w.headerPair(ref, 8) {
 				w.headerRest(ref, 8)
 			}
 			if value.U32Inside < 1 || value.U32Inside > 4294967294 {
@@ -1958,7 +1950,7 @@ func RangedUnsignedSaveBodyFields(w *TableWriter, value *RangedUnsigned) bool {
 	}
 	{
 		if value.U64Span != 0 {
-			if ref := w.Ids.refAtHit(119, 0xbeecef11dbdf8973); !w.headerPair(ref, 9) {
+			if ref := w.Ids.refAtHit(118, 0xbeecef11dbdf8973); !w.headerPair(ref, 9) {
 				w.headerRest(ref, 9)
 			}
 			w.Put64(uint64(value.U64Span))
@@ -1977,7 +1969,7 @@ func RangedUnsignedSaveBodyFields(w *TableWriter, value *RangedUnsigned) bool {
 	}
 	{
 		if value.U64High != 1 {
-			if ref := w.Ids.refAtHit(160, 0xf2b45af3b50689db); !w.headerPair(ref, 9) {
+			if ref := w.Ids.refAtHit(159, 0xf2b45af3b50689db); !w.headerPair(ref, 9) {
 				w.headerRest(ref, 9)
 			}
 			if value.U64High < 1 {
@@ -1988,7 +1980,7 @@ func RangedUnsignedSaveBodyFields(w *TableWriter, value *RangedUnsigned) bool {
 	}
 	{
 		if value.U64Inside != 1 {
-			if ref := w.Ids.refAtHit(70, 0x713e12017eebcaf7); !w.headerPair(ref, 9) {
+			if ref := w.Ids.refAtHit(69, 0x713e12017eebcaf7); !w.headerPair(ref, 9) {
 				w.headerRest(ref, 9)
 			}
 			if value.U64Inside < 1 || value.U64Inside > 18446744073709551614 {
@@ -2002,7 +1994,7 @@ func RangedUnsignedSaveBodyFields(w *TableWriter, value *RangedUnsigned) bool {
 			return false
 		}
 		if value.CountsCount > 0 {
-			if ref := w.Ids.refAtHit(123, 0xc341febe5aae51e5); !w.headerPair(ref, 14) {
+			if ref := w.Ids.refAtHit(122, 0xc341febe5aae51e5); !w.headerPair(ref, 14) {
 				w.headerRest(ref, 14)
 			}
 			if value.CountsCount < 0 || value.CountsCount > 4 {
@@ -2637,10 +2629,6 @@ func RangedUnsignedLoadBody(r *TableReader, value *RangedUnsigned) bool {
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
-				r.Take(sub)
-				if r.Nodes.Carve.Refused {
-					return false
-				}
 			}
 		default:
 			r.Report.Unknown++
@@ -2729,7 +2717,7 @@ func RangedUnsignedSaveBodyRetain(w *TableRetainWriter, value *RangedUnsigned) b
 func RangedUnsignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedUnsigned) bool {
 	{
 		if value.U8Span != 0 {
-			if ref := w.Ids.refAtHit(11, 0x0f8897557f37c021); !w.headerPair(ref, 6) {
+			if ref := w.Ids.refAtHit(10, 0x0f8897557f37c021); !w.headerPair(ref, 6) {
 				w.headerRest(ref, 6)
 			}
 			w.Put8(uint8(value.U8Span))
@@ -2737,7 +2725,7 @@ func RangedUnsignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedUnsig
 	}
 	{
 		if value.U8Low != 0 {
-			if ref := w.Ids.refAtHit(34, 0x2e17553f8200a2a1); !w.headerPair(ref, 6) {
+			if ref := w.Ids.refAtHit(33, 0x2e17553f8200a2a1); !w.headerPair(ref, 6) {
 				w.headerRest(ref, 6)
 			}
 			if value.U8Low > 254 {
@@ -2748,7 +2736,7 @@ func RangedUnsignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedUnsig
 	}
 	{
 		if value.U8High != 1 {
-			if ref := w.Ids.refAtHit(93, 0xa0e5c60df9301b7d); !w.headerPair(ref, 6) {
+			if ref := w.Ids.refAtHit(92, 0xa0e5c60df9301b7d); !w.headerPair(ref, 6) {
 				w.headerRest(ref, 6)
 			}
 			if value.U8High < 1 {
@@ -2759,7 +2747,7 @@ func RangedUnsignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedUnsig
 	}
 	{
 		if value.U8Inside != 1 {
-			if ref := w.Ids.refAtHit(20, 0x1cb2c073a6f5844d); !w.headerPair(ref, 6) {
+			if ref := w.Ids.refAtHit(19, 0x1cb2c073a6f5844d); !w.headerPair(ref, 6) {
 				w.headerRest(ref, 6)
 			}
 			if value.U8Inside < 1 || value.U8Inside > 254 {
@@ -2770,7 +2758,7 @@ func RangedUnsignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedUnsig
 	}
 	{
 		if value.U16Span != 0 {
-			if ref := w.Ids.refAtHit(54, 0x4ca0c150b1790960); !w.headerPair(ref, 7) {
+			if ref := w.Ids.refAtHit(53, 0x4ca0c150b1790960); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
 			}
 			w.Put16(uint16(value.U16Span))
@@ -2778,7 +2766,7 @@ func RangedUnsignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedUnsig
 	}
 	{
 		if value.U16Low != 0 {
-			if ref := w.Ids.refAtHit(159, 0xf252136836b04cb2); !w.headerPair(ref, 7) {
+			if ref := w.Ids.refAtHit(158, 0xf252136836b04cb2); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
 			}
 			if value.U16Low > 65534 {
@@ -2789,7 +2777,7 @@ func RangedUnsignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedUnsig
 	}
 	{
 		if value.U16High != 1 {
-			if ref := w.Ids.refAtHit(56, 0x4f37e1f216e7610c); !w.headerPair(ref, 7) {
+			if ref := w.Ids.refAtHit(55, 0x4f37e1f216e7610c); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
 			}
 			if value.U16High < 1 {
@@ -2800,7 +2788,7 @@ func RangedUnsignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedUnsig
 	}
 	{
 		if value.U16Inside != 1 {
-			if ref := w.Ids.refAtHit(136, 0xd176b605978f3304); !w.headerPair(ref, 7) {
+			if ref := w.Ids.refAtHit(135, 0xd176b605978f3304); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
 			}
 			if value.U16Inside < 1 || value.U16Inside > 65534 {
@@ -2811,7 +2799,7 @@ func RangedUnsignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedUnsig
 	}
 	{
 		if value.U32Span != 0 {
-			if ref := w.Ids.refAtHit(26, 0x200b924de7479cda); !w.headerPair(ref, 8) {
+			if ref := w.Ids.refAtHit(25, 0x200b924de7479cda); !w.headerPair(ref, 8) {
 				w.headerRest(ref, 8)
 			}
 			w.Put32(uint32(value.U32Span))
@@ -2819,7 +2807,7 @@ func RangedUnsignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedUnsig
 	}
 	{
 		if value.U32Low != 0 {
-			if ref := w.Ids.refAtHit(96, 0xa53d2f2a31b5acb0); !w.headerPair(ref, 8) {
+			if ref := w.Ids.refAtHit(95, 0xa53d2f2a31b5acb0); !w.headerPair(ref, 8) {
 				w.headerRest(ref, 8)
 			}
 			if value.U32Low > 4294967294 {
@@ -2830,7 +2818,7 @@ func RangedUnsignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedUnsig
 	}
 	{
 		if value.U32High != 1 {
-			if ref := w.Ids.refAtHit(87, 0x9759be8ea1a4e3d2); !w.headerPair(ref, 8) {
+			if ref := w.Ids.refAtHit(86, 0x9759be8ea1a4e3d2); !w.headerPair(ref, 8) {
 				w.headerRest(ref, 8)
 			}
 			if value.U32High < 1 {
@@ -2841,7 +2829,7 @@ func RangedUnsignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedUnsig
 	}
 	{
 		if value.U32Inside != 1 {
-			if ref := w.Ids.refAtHit(83, 0x8dc515fc082e3c0e); !w.headerPair(ref, 8) {
+			if ref := w.Ids.refAtHit(82, 0x8dc515fc082e3c0e); !w.headerPair(ref, 8) {
 				w.headerRest(ref, 8)
 			}
 			if value.U32Inside < 1 || value.U32Inside > 4294967294 {
@@ -2852,7 +2840,7 @@ func RangedUnsignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedUnsig
 	}
 	{
 		if value.U64Span != 0 {
-			if ref := w.Ids.refAtHit(119, 0xbeecef11dbdf8973); !w.headerPair(ref, 9) {
+			if ref := w.Ids.refAtHit(118, 0xbeecef11dbdf8973); !w.headerPair(ref, 9) {
 				w.headerRest(ref, 9)
 			}
 			w.Put64(uint64(value.U64Span))
@@ -2871,7 +2859,7 @@ func RangedUnsignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedUnsig
 	}
 	{
 		if value.U64High != 1 {
-			if ref := w.Ids.refAtHit(160, 0xf2b45af3b50689db); !w.headerPair(ref, 9) {
+			if ref := w.Ids.refAtHit(159, 0xf2b45af3b50689db); !w.headerPair(ref, 9) {
 				w.headerRest(ref, 9)
 			}
 			if value.U64High < 1 {
@@ -2882,7 +2870,7 @@ func RangedUnsignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedUnsig
 	}
 	{
 		if value.U64Inside != 1 {
-			if ref := w.Ids.refAtHit(70, 0x713e12017eebcaf7); !w.headerPair(ref, 9) {
+			if ref := w.Ids.refAtHit(69, 0x713e12017eebcaf7); !w.headerPair(ref, 9) {
 				w.headerRest(ref, 9)
 			}
 			if value.U64Inside < 1 || value.U64Inside > 18446744073709551614 {
@@ -2896,7 +2884,7 @@ func RangedUnsignedSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedUnsig
 			return false
 		}
 		if value.CountsCount > 0 {
-			if ref := w.Ids.refAtHit(123, 0xc341febe5aae51e5); !w.headerPair(ref, 14) {
+			if ref := w.Ids.refAtHit(122, 0xc341febe5aae51e5); !w.headerPair(ref, 14) {
 				w.headerRest(ref, 14)
 			}
 			if value.CountsCount < 0 || value.CountsCount > 4 {
@@ -3532,10 +3520,6 @@ func RangedUnsignedLoadBodyRetain(r *TableRetainReader, value *RangedUnsigned) b
 					r.Report.Refuse(TableRefuseWireDamaged, "")
 					return false
 				}
-				r.Take(sub)
-				if r.Nodes.Carve.Refused {
-					return false
-				}
 			}
 		default:
 			r.Report.Unknown++
@@ -3564,31 +3548,31 @@ func RangedWidthsMeasureBody(value *RangedWidths, ids *TableIds) int64 {
 		return -1
 	}
 	if value.B8 != 0 {
-		bytes += tableLebBytes(ids.refAtHit(7, 0x08a60c07b54d8dc7)) + 1 + 1
+		bytes += tableLebBytes(ids.refAtHit(6, 0x08a60c07b54d8dc7)) + 1 + 1
 	} // b8
 	if (value.B16 != 0) && (value.B16 > 65535) {
 		return -1
 	}
 	if value.B16 != 0 {
-		bytes += tableLebBytes(ids.refAtHit(166, 0xff95701912ad97be)) + 1 + 2
+		bytes += tableLebBytes(ids.refAtHit(165, 0xff95701912ad97be)) + 1 + 2
 	} // b16
 	if value.B32 != 0 {
-		bytes += tableLebBytes(ids.refAtHit(168, 0xff9c5c1912b39470)) + 1 + 4
+		bytes += tableLebBytes(ids.refAtHit(167, 0xff9c5c1912b39470)) + 1 + 4
 	} // b32
 	if value.B64 != 0 {
-		bytes += tableLebBytes(ids.refAtHit(165, 0xff92701912ab61e7)) + 1 + 8
+		bytes += tableLebBytes(ids.refAtHit(164, 0xff92701912ab61e7)) + 1 + 8
 	} // b64
 	if (value.B12 != 0) && (value.B12 > 4095) {
 		return -1
 	}
 	if value.B12 != 0 {
-		bytes += tableLebBytes(ids.refAtHit(167, 0xff95741912ad9e8a)) + 1 + 2
+		bytes += tableLebBytes(ids.refAtHit(166, 0xff95741912ad9e8a)) + 1 + 2
 	} // b12
 	if (value.B48 != 0) && (value.B48 > 281474976710655) {
 		return -1
 	}
 	if value.B48 != 0 {
-		bytes += tableLebBytes(ids.refAtHit(164, 0xff8b681912a535a1)) + 1 + 8
+		bytes += tableLebBytes(ids.refAtHit(163, 0xff8b681912a535a1)) + 1 + 8
 	} // b48
 	if ids.Overflow {
 		return -1
@@ -3619,7 +3603,7 @@ func RangedWidthsSaveBody(w *TableWriter, value *RangedWidths) bool {
 func RangedWidthsSaveBodyFields(w *TableWriter, value *RangedWidths) bool {
 	{
 		if value.B8 != 0 {
-			if ref := w.Ids.refAtHit(7, 0x08a60c07b54d8dc7); !w.headerPair(ref, 6) {
+			if ref := w.Ids.refAtHit(6, 0x08a60c07b54d8dc7); !w.headerPair(ref, 6) {
 				w.headerRest(ref, 6)
 			}
 			if value.B8 > 255 {
@@ -3630,7 +3614,7 @@ func RangedWidthsSaveBodyFields(w *TableWriter, value *RangedWidths) bool {
 	}
 	{
 		if value.B16 != 0 {
-			if ref := w.Ids.refAtHit(166, 0xff95701912ad97be); !w.headerPair(ref, 7) {
+			if ref := w.Ids.refAtHit(165, 0xff95701912ad97be); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
 			}
 			if value.B16 > 65535 {
@@ -3641,7 +3625,7 @@ func RangedWidthsSaveBodyFields(w *TableWriter, value *RangedWidths) bool {
 	}
 	{
 		if value.B32 != 0 {
-			if ref := w.Ids.refAtHit(168, 0xff9c5c1912b39470); !w.headerPair(ref, 8) {
+			if ref := w.Ids.refAtHit(167, 0xff9c5c1912b39470); !w.headerPair(ref, 8) {
 				w.headerRest(ref, 8)
 			}
 			w.Put32(uint32(value.B32))
@@ -3649,7 +3633,7 @@ func RangedWidthsSaveBodyFields(w *TableWriter, value *RangedWidths) bool {
 	}
 	{
 		if value.B64 != 0 {
-			if ref := w.Ids.refAtHit(165, 0xff92701912ab61e7); !w.headerPair(ref, 9) {
+			if ref := w.Ids.refAtHit(164, 0xff92701912ab61e7); !w.headerPair(ref, 9) {
 				w.headerRest(ref, 9)
 			}
 			w.Put64(uint64(value.B64))
@@ -3657,7 +3641,7 @@ func RangedWidthsSaveBodyFields(w *TableWriter, value *RangedWidths) bool {
 	}
 	{
 		if value.B12 != 0 {
-			if ref := w.Ids.refAtHit(167, 0xff95741912ad9e8a); !w.headerPair(ref, 7) {
+			if ref := w.Ids.refAtHit(166, 0xff95741912ad9e8a); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
 			}
 			if value.B12 > 4095 {
@@ -3668,7 +3652,7 @@ func RangedWidthsSaveBodyFields(w *TableWriter, value *RangedWidths) bool {
 	}
 	{
 		if value.B48 != 0 {
-			if ref := w.Ids.refAtHit(164, 0xff8b681912a535a1); !w.headerPair(ref, 9) {
+			if ref := w.Ids.refAtHit(163, 0xff8b681912a535a1); !w.headerPair(ref, 9) {
 				w.headerRest(ref, 9)
 			}
 			if value.B48 > 281474976710655 {
@@ -4001,7 +3985,7 @@ func RangedWidthsSaveBodyRetain(w *TableRetainWriter, value *RangedWidths) bool 
 func RangedWidthsSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedWidths) bool {
 	{
 		if value.B8 != 0 {
-			if ref := w.Ids.refAtHit(7, 0x08a60c07b54d8dc7); !w.headerPair(ref, 6) {
+			if ref := w.Ids.refAtHit(6, 0x08a60c07b54d8dc7); !w.headerPair(ref, 6) {
 				w.headerRest(ref, 6)
 			}
 			if value.B8 > 255 {
@@ -4012,7 +3996,7 @@ func RangedWidthsSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedWidths)
 	}
 	{
 		if value.B16 != 0 {
-			if ref := w.Ids.refAtHit(166, 0xff95701912ad97be); !w.headerPair(ref, 7) {
+			if ref := w.Ids.refAtHit(165, 0xff95701912ad97be); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
 			}
 			if value.B16 > 65535 {
@@ -4023,7 +4007,7 @@ func RangedWidthsSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedWidths)
 	}
 	{
 		if value.B32 != 0 {
-			if ref := w.Ids.refAtHit(168, 0xff9c5c1912b39470); !w.headerPair(ref, 8) {
+			if ref := w.Ids.refAtHit(167, 0xff9c5c1912b39470); !w.headerPair(ref, 8) {
 				w.headerRest(ref, 8)
 			}
 			w.Put32(uint32(value.B32))
@@ -4031,7 +4015,7 @@ func RangedWidthsSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedWidths)
 	}
 	{
 		if value.B64 != 0 {
-			if ref := w.Ids.refAtHit(165, 0xff92701912ab61e7); !w.headerPair(ref, 9) {
+			if ref := w.Ids.refAtHit(164, 0xff92701912ab61e7); !w.headerPair(ref, 9) {
 				w.headerRest(ref, 9)
 			}
 			w.Put64(uint64(value.B64))
@@ -4039,7 +4023,7 @@ func RangedWidthsSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedWidths)
 	}
 	{
 		if value.B12 != 0 {
-			if ref := w.Ids.refAtHit(167, 0xff95741912ad9e8a); !w.headerPair(ref, 7) {
+			if ref := w.Ids.refAtHit(166, 0xff95741912ad9e8a); !w.headerPair(ref, 7) {
 				w.headerRest(ref, 7)
 			}
 			if value.B12 > 4095 {
@@ -4050,7 +4034,7 @@ func RangedWidthsSaveBodyFieldsRetain(w *TableRetainWriter, value *RangedWidths)
 	}
 	{
 		if value.B48 != 0 {
-			if ref := w.Ids.refAtHit(164, 0xff8b681912a535a1); !w.headerPair(ref, 9) {
+			if ref := w.Ids.refAtHit(163, 0xff8b681912a535a1); !w.headerPair(ref, 9) {
 				w.headerRest(ref, 9)
 			}
 			if value.B48 > 281474976710655 {

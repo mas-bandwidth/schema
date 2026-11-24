@@ -184,16 +184,6 @@ static partial class Program
                         case "mood ordinal": moodField.Mood = (Tabledemo.Mood)checked((byte)ulong.Parse(text, CultureInfo.InvariantCulture)); return true;
                     }
                     break;
-                case Tabledemo.VarMoods varMoods:
-                    switch (path + " " + kind)
-                    {
-                        case "row[0] ordinal":
-                            if (varMoods.RowCount < 1) { return false; }
-                            varMoods.Row[0] = (Tabledemo.Mood)checked((byte)ulong.Parse(text, CultureInfo.InvariantCulture));
-                            return true;
-                        case "mood ordinal": varMoods.Mood = (Tabledemo.Mood)checked((byte)ulong.Parse(text, CultureInfo.InvariantCulture)); return true;
-                    }
-                    break;
                 case Backenddemo.StorePurchase purchase:
                     switch (path + " " + kind)
                     {

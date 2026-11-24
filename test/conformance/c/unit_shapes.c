@@ -6,9 +6,11 @@
 
 SCHEMA_CONFORMANCE_GRAPH_CODEC( Bounds, bounds )
 SCHEMA_CONFORMANCE_CODEC( FixedBounds, fixed_bounds )
+SCHEMA_CONFORMANCE_GRAPH_CODEC( VarMoods, var_moods ) /* variable only: no fixed form, so the deprecated-variant rows reach the variable save */
 static const ConformanceCodec codecs[] = {
     SCHEMA_CONFORMANCE_GRAPH_ROW( shapes, Bounds ),
-    SCHEMA_CONFORMANCE_ROW( shapes, FixedBounds )
+    SCHEMA_CONFORMANCE_ROW( shapes, FixedBounds ),
+    SCHEMA_CONFORMANCE_GRAPH_ROW( shapes, VarMoods )
 };
 
 static int parse_shapes_f32( const char * text, float * out )
@@ -99,6 +101,20 @@ int conformance_write_refusal_set_shapes( const char * root, void * value, const
             CONFORMANCE_WREF_UNSIGNED( v->pick.type, text );
             return 1;
         }
+        return 0;
+    }
+    if ( strcmp( root, "VarMoods" ) == 0 )
+    {
+        schema_conformance_holder_VarMoods * holder = (schema_conformance_holder_VarMoods *) value;
+        shapes_var_moods_t * v = (shapes_var_moods_t *) (uintptr_t) holder->root;
+        if ( v == NULL ) { return 0; }
+        if ( strcmp( path, "row[0]" ) == 0 && strcmp( kind, "ordinal" ) == 0 )
+        {
+            shapes_mood_t * elem = (shapes_mood_t *) (uintptr_t) shapes_var_moods_row_at( &v->row, 0 );
+            if ( elem == NULL ) { return 0; }
+            return CONFORMANCE_WREF_UNSIGNED( *elem, text );
+        }
+        if ( strcmp( path, "mood" ) == 0 && strcmp( kind, "ordinal" ) == 0 ) { return CONFORMANCE_WREF_UNSIGNED( v->mood, text ); }
         return 0;
     }
     return 0;

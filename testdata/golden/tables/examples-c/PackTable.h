@@ -308,19 +308,19 @@ typedef struct tabledemo_table_type_info_t
    preserves every earlier open-addressing chain and first-use wire reference. */
 typedef struct tabledemo_table_write_ids_t
 {
-    uint64_t ids[173];
-    uint32_t slots[512], positions[173];
+    uint64_t ids[172];
+    uint32_t slots[512], positions[172];
     /* THE ORDINAL SLOT CACHE (docs/SPEC-TABLES.md §3). Every id a generated
        field header, union arm header or blob header names is a COMPILE-TIME
        CONSTANT of the unit, so it has an ORDINAL: its index in the unit's id
-       vocabulary, the ascending set 173 counts. slot holds the ENTRY
+       vocabulary, the ascending set 172 counts. slot holds the ENTRY
        that ordinal's id took, -1 for one not interned yet, and ordinal_of is
        its inverse over the entries — the ordinal an entry was taken under, -1
        for an entry a RUNTIME id took, which has no ordinal. The pair is what
        lets a rewind undo the cache in O(popped) rather than walking the whole
        vocabulary. */
-    int32_t slot[173];
-    int16_t ordinal_of[173];
+    int32_t slot[172];
+    int16_t ordinal_of[172];
     int count;
 } tabledemo_table_write_ids_t;
 
@@ -346,7 +346,7 @@ static SCHEMA_UNUSED tabledemo_table_writer_t tabledemo_table_writer_make( uint8
        that makes an entry, and read only below count. The ordinal slots are
        the one column with a non-zero empty value. */
     memset( vocabulary->slots, 0, sizeof( vocabulary->slots ) );
-    for ( i = 0; i < 173; i++ ) { vocabulary->slot[i] = -1; }
+    for ( i = 0; i < 172; i++ ) { vocabulary->slot[i] = -1; }
     vocabulary->count = 0;
     return w;
 }
@@ -412,7 +412,7 @@ static SCHEMA_UNUSED uint64_t tabledemo_table_writer_id( tabledemo_table_writer_
     /* AN OVERFLOWED TABLE APPENDS NOTHING and spells no reference: 0 names no
        id, so a caller can tell the miss that took an entry from the one that
        did not. */
-    if ( v->count >= 173 )
+    if ( v->count >= 172 )
     {
         w->overflow = 1;
         return 0;
@@ -4126,321 +4126,6 @@ static SCHEMA_UNUSED char * tabledemo_table_string_emplace( tabledemo_table_work
 }
 #endif
 
-#ifndef SCHEMA_TABLEDEMO_TABLE_SEQUENCE_RUNTIME
-#define SCHEMA_TABLEDEMO_TABLE_SEQUENCE_RUNTIME
-typedef struct tabledemo_table_sequence_t
-{
-    tabledemo_table_ref_t items;
-    int32_t count, padding;
-} tabledemo_table_sequence_t;
-typedef struct tabledemo_table_sequence_head_t
-{
-    uint32_t first, last;
-    int32_t live, reserved;
-} tabledemo_table_sequence_head_t;
-typedef struct tabledemo_table_sequence_segment_t
-{
-    uint32_t next, dead;
-    int32_t used, reserved;
-} tabledemo_table_sequence_segment_t;
-typedef struct tabledemo_table_sequence_cursor_t
-{
-    const tabledemo_table_arena_t * arena;
-    const uint8_t * array;
-    const void * const * ordered;
-    const tabledemo_table_sequence_segment_t * segment;
-    int64_t width;
-    int32_t index, left;
-    int ok;
-} tabledemo_table_sequence_cursor_t;
-static SCHEMA_UNUSED tabledemo_table_sequence_cursor_t tabledemo_table_sequence_cursor( const tabledemo_table_ctx_t * ctx, const tabledemo_table_sequence_t * value, int64_t width )
-{
-    tabledemo_table_sequence_cursor_t c;
-    memset( &c, 0, sizeof( c ) );
-    c.width = width;
-    c.left = value->count;
-    c.ok = value->count >= 0 && ( value->count == 0 || value->items.value != 0 );
-    if ( !c.ok || value->count == 0 ) { return c; }
-    if ( ctx != NULL && ctx->arena != NULL )
-    {
-        const tabledemo_table_sequence_head_t * head = (const tabledemo_table_sequence_head_t *) tabledemo_table_arena_at( ctx->arena, (uint32_t) value->items.value );
-        c.arena = ctx->arena;
-        c.ok = head != NULL && head->live == value->count;
-        if ( c.ok ) { c.segment = (const tabledemo_table_sequence_segment_t *) tabledemo_table_arena_at( c.arena, head->first ); }
-    }
-    else
-    {
-        c.array = (const uint8_t *) (const void *) &value->items + value->items.value;
-    }
-    return c;
-}
-static SCHEMA_UNUSED const void * tabledemo_table_sequence_next( tabledemo_table_sequence_cursor_t * c )
-{
-    if ( !c->ok || c->left <= 0 ) { return NULL; }
-    if ( c->ordered != NULL )
-    {
-        c->left--;
-        return c->ordered[c->index++];
-    }
-    if ( c->array != NULL )
-    {
-        const void * p = c->array + (int64_t) c->index++ * c->width;
-        c->left--;
-        return p;
-    }
-    while ( c->segment != NULL )
-    {
-        while ( c->index < c->segment->used )
-        {
-            int32_t i = c->index++;
-            if ( ( c->segment->dead & ( UINT32_C( 1 ) << i ) ) == 0 )
-            {
-                c->left--;
-                return (const uint8_t *) ( c->segment + 1 ) + (int64_t) i * c->width;
-            }
-        }
-        c->segment = c->segment->next ? (const tabledemo_table_sequence_segment_t *) tabledemo_table_arena_at( c->arena, c->segment->next ) : NULL;
-        c->index = 0;
-    }
-    c->ok = 0;
-    return NULL;
-}
-typedef struct tabledemo_table_sequence_order_t
-{
-    const tabledemo_table_sequence_t * value;
-    const void ** entries;
-    struct tabledemo_table_sequence_order_t * next;
-} tabledemo_table_sequence_order_t;
-typedef int ( *tabledemo_table_sequence_compare_t )( const void *, const void * );
-static SCHEMA_UNUSED void tabledemo_table_sequence_sift( const void ** entries, int64_t at, int64_t count, tabledemo_table_sequence_compare_t compare )
-{
-    for ( ;; )
-    {
-        int64_t child = at * 2 + 1;
-        const void * swap;
-        if ( child >= count ) { return; }
-        if ( child + 1 < count && compare( entries[child], entries[child + 1] ) < 0 ) { child++; }
-        if ( compare( entries[at], entries[child] ) >= 0 ) { return; }
-        swap = entries[at];
-        entries[at] = entries[child];
-        entries[child] = swap;
-        at = child;
-    }
-}
-// The arena's sort is cached only for the duration of one save or lock.
-// Builders retain insertion order and stable addresses; no index is stored.
-static SCHEMA_UNUSED tabledemo_table_sequence_cursor_t tabledemo_table_sequence_order( const tabledemo_table_ctx_t * ctx, const tabledemo_table_sequence_t * value, int64_t width,
-    tabledemo_table_sequence_compare_t compare, tabledemo_table_allocator_t allocator, tabledemo_table_sequence_order_t ** orders )
-{
-    tabledemo_table_sequence_cursor_t cursor = tabledemo_table_sequence_cursor( ctx, value, width );
-    tabledemo_table_sequence_order_t * order;
-    int64_t i;
-    if ( !cursor.ok || value->count == 0 ) { return cursor; }
-    if ( ctx == NULL || ctx->arena == NULL )
-    {
-        for ( i = 1; i < value->count; i++ )
-        {
-            if ( compare( cursor.array + ( i - 1 ) * width, cursor.array + i * width ) >= 0 )
-            {
-                cursor.ok = 0;
-                return cursor;
-            }
-        }
-        return cursor;
-    }
-    for ( order = *orders; order != NULL; order = order->next )
-    {
-        if ( order->value == value )
-        {
-            cursor.ordered = order->entries;
-            return cursor;
-        }
-    }
-    order = (tabledemo_table_sequence_order_t *) tabledemo_table_allocate( allocator, sizeof( *order ) );
-    if ( order == NULL )
-    {
-        cursor.ok = 0;
-        return cursor;
-    }
-    order->entries = (const void **) tabledemo_table_allocate( allocator, (int64_t) value->count * sizeof( void * ) );
-    if ( order->entries == NULL )
-    {
-        tabledemo_table_release( allocator, order );
-        cursor.ok = 0;
-        return cursor;
-    }
-    for ( i = 0; i < value->count; i++ )
-    {
-        order->entries[i] = tabledemo_table_sequence_next( &cursor );
-        if ( order->entries[i] == NULL )
-        {
-            tabledemo_table_release( allocator, order->entries );
-            tabledemo_table_release( allocator, order );
-            return cursor;
-        }
-    }
-    for ( i = (int64_t) value->count / 2; i > 0; i-- ) { tabledemo_table_sequence_sift( order->entries, i - 1, value->count, compare ); }
-    for ( i = (int64_t) value->count - 1; i > 0; i-- )
-    {
-        const void * swap = order->entries[0];
-        order->entries[0] = order->entries[i];
-        order->entries[i] = swap;
-        tabledemo_table_sequence_sift( order->entries, 0, i, compare );
-    }
-    for ( i = 1; i < value->count; i++ )
-    {
-        if ( compare( order->entries[i - 1], order->entries[i] ) >= 0 )
-        {
-            tabledemo_table_release( allocator, order->entries );
-            tabledemo_table_release( allocator, order );
-            cursor.ok = 0;
-            return cursor;
-        }
-    }
-    order->value = value;
-    order->next = *orders;
-    *orders = order;
-    cursor = tabledemo_table_sequence_cursor( ctx, value, width );
-    cursor.ordered = order->entries;
-    return cursor;
-}
-static SCHEMA_UNUSED void tabledemo_table_sequence_orders_release( tabledemo_table_allocator_t allocator, tabledemo_table_sequence_order_t * order )
-{
-    while ( order != NULL )
-    {
-        tabledemo_table_sequence_order_t * next = order->next;
-        tabledemo_table_release( allocator, order->entries );
-        tabledemo_table_release( allocator, order );
-        order = next;
-    }
-}
-static SCHEMA_UNUSED void * tabledemo_table_sequence_add( tabledemo_table_worker_t * worker, tabledemo_table_sequence_t * list, int64_t width )
-{
-    tabledemo_table_sequence_head_t * head;
-    tabledemo_table_sequence_segment_t * segment;
-    uint32_t at;
-    if ( worker == NULL || worker->arena == NULL || worker->arena->locked || list->count < 0 || list->count == INT32_MAX || width <= 0 || width > ( INT64_MAX - 16 ) / 32 ) { return NULL; }
-    if ( list->items.value == 0 )
-    {
-        at = tabledemo_table_worker_alloc( worker, sizeof( tabledemo_table_sequence_head_t ) );
-        if ( at == TABLEDEMO_K_TABLE_ALLOC_FAILED ) { return NULL; }
-        list->items.value = at;
-    }
-    head = (tabledemo_table_sequence_head_t *) tabledemo_table_arena_at( worker->arena, (uint32_t) list->items.value );
-    if ( head == NULL || head->live != list->count ) { return NULL; }
-    segment = head->last ? (tabledemo_table_sequence_segment_t *) tabledemo_table_arena_at( worker->arena, head->last ) : NULL;
-    if ( segment == NULL || segment->used == 32 )
-    {
-        at = tabledemo_table_worker_alloc( worker, 16 + 32 * width );
-        if ( at == TABLEDEMO_K_TABLE_ALLOC_FAILED ) { return NULL; }
-        if ( segment != NULL ) { segment->next = at; }
-        else
-        {
-            head->first = at;
-        }
-        head->last = at;
-        segment = (tabledemo_table_sequence_segment_t *) tabledemo_table_arena_at( worker->arena, at );
-    }
-    {
-        void * p = (uint8_t *) ( segment + 1 ) + (int64_t) segment->used++ * width;
-        head->live++;
-        list->count++;
-        return p;
-    }
-}
-static SCHEMA_UNUSED int tabledemo_table_sequence_erase( tabledemo_table_arena_t * arena, tabledemo_table_sequence_t * list, const void * element, int64_t width )
-{
-    tabledemo_table_sequence_head_t * head;
-    uint32_t at;
-    if ( arena == NULL || arena->locked || list->items.value == 0 || element == NULL ) { return 0; }
-    head = (tabledemo_table_sequence_head_t *) tabledemo_table_arena_at( arena, (uint32_t) list->items.value );
-    for ( at = head->first; at; )
-    {
-        tabledemo_table_sequence_segment_t * s = (tabledemo_table_sequence_segment_t *) tabledemo_table_arena_at( arena, at );
-        int32_t i;
-        for ( i = 0; i < s->used; i++ )
-        {
-            if ( element == (const uint8_t *) ( s + 1 ) + (int64_t) i * width && !( s->dead & ( UINT32_C( 1 ) << i ) ) )
-            {
-                s->dead |= UINT32_C( 1 ) << i;
-                list->count--;
-                head->live--;
-                return 1;
-            }
-        }
-        at = s->next;
-    }
-    return 0;
-}
-static SCHEMA_UNUSED int tabledemo_table_extent_reserve( int64_t * at, int64_t count, int64_t width, int64_t alignment )
-{
-    if ( count < 0 || width <= 0 || *at < 0 || *at > INT64_MAX - alignment || count > ( INT64_MAX - *at - alignment ) / width ) { return 0; }
-    *at = ( *at + alignment - 1 ) & ~( alignment - 1 );
-    *at += count * width;
-    return 1;
-}
-typedef struct tabledemo_table_sequence_fill_t
-{
-    tabledemo_table_sequence_t * value;
-    tabledemo_table_worker_t * worker;
-    uint8_t * array;
-    int64_t width;
-    int32_t capacity;
-    int ok, refused;
-} tabledemo_table_sequence_fill_t;
-static SCHEMA_UNUSED tabledemo_table_sequence_fill_t tabledemo_table_sequence_fill( tabledemo_table_sink_t * sink, tabledemo_table_sequence_t * value, uint64_t count, int64_t width, int64_t alignment )
-{
-    tabledemo_table_sequence_fill_t f;
-    memset( &f, 0, sizeof( f ) );
-    f.value = value;
-    f.width = width;
-    memset( value, 0, sizeof( *value ) );
-    if ( sink == NULL ) { return f; }
-    if ( count > INT32_MAX )
-    {
-        f.refused = sink->worker != NULL;
-        return f;
-    }
-    f.worker = sink->worker;
-    f.capacity = (int32_t) count;
-    if ( f.worker != NULL )
-    {
-        f.ok = 1;
-        return f;
-    }
-    if ( sink->region != NULL )
-    {
-        tabledemo_table_region_sink_t * region = sink->region;
-        int64_t at = region->used;
-        if ( !tabledemo_table_extent_reserve( &at, (int64_t) count, width, alignment ) || at > region->capacity ) { return f; }
-        f.array = region->base + at - (int64_t) count * width;
-        region->used = at;
-        if ( count ) { value->items.value = (int64_t) ( f.array - (uint8_t *) (void *) &value->items ); }
-        f.ok = 1;
-    }
-    return f;
-}
-static SCHEMA_UNUSED void * tabledemo_table_sequence_fill_next( tabledemo_table_sequence_fill_t * f )
-{
-    if ( !f->ok || f->value->count >= f->capacity ) { return NULL; }
-    if ( f->worker != NULL ) { return tabledemo_table_sequence_add( f->worker, f->value, f->width ); }
-    return f->array + (int64_t) f->value->count++ * f->width;
-}
-static SCHEMA_UNUSED void tabledemo_table_sequence_fill_drop( tabledemo_table_sequence_fill_t * f, void * element )
-{
-    if ( f->worker != NULL ) { tabledemo_table_sequence_erase( f->worker->arena, f->value, element, f->width ); }
-    else if ( f->value->count > 0 ) { f->value->count--; }
-}
-static SCHEMA_UNUSED void tabledemo_table_sequence_fill_end( tabledemo_table_sequence_fill_t * f )
-{
-    if ( f->worker == NULL && f->value->count == 0 ) { f->value->items.value = 0; }
-}
-#endif
-#ifndef SCHEMA_TABLEDEMO_TABLE_LIST_RUNTIME
-#define SCHEMA_TABLEDEMO_TABLE_LIST_RUNTIME
-typedef tabledemo_table_sequence_t tabledemo_table_list_t;
-#endif
-
 #ifndef SCHEMA_TABLEDEMO_TABLE_GRAPH_RUNTIME
 #define SCHEMA_TABLEDEMO_TABLE_GRAPH_RUNTIME
 typedef struct tabledemo_table_numbering_t tabledemo_table_numbering_t;
@@ -4481,7 +4166,7 @@ struct tabledemo_table_numbering_t
     const tabledemo_table_ctx_t * ctx;
     uint8_t * pack_base;
 #ifdef SCHEMA_TABLEDEMO_TABLE_SEQUENCE_RUNTIME
-    tabledemo_table_sequence_order_t * orders;
+    TableSequenceOrder * orders;
 #endif
     tabledemo_table_allocator_t allocator;
     tabledemo_table_node_entry_t * entries;
@@ -4597,7 +4282,7 @@ static SCHEMA_UNUSED int tabledemo_table_number_edge( tabledemo_table_numbering_
 static SCHEMA_UNUSED void tabledemo_table_number_dispose( tabledemo_table_numbering_t * n )
 {
 #ifdef SCHEMA_TABLEDEMO_TABLE_SEQUENCE_RUNTIME
-    tabledemo_table_sequence_orders_release( n->allocator, n->orders );
+    table_sequence_orders_release( n->allocator, n->orders );
 #endif
     tabledemo_table_release( n->allocator, n->entries );
     tabledemo_table_release( n->allocator, n->slots );
@@ -5506,7 +5191,7 @@ static SCHEMA_UNUSED int tabledemo_table_cycle_acyclic( tabledemo_table_node_map
    PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
    what everything cooked or blocked is keyed by. A table edit moves this and
    never the protocol id; a type edit moves both. */
-#define SCHEMA_TABLEDEMO_BUILD_VERSION_VALUE 0x2ee1bb849c945752ull
+#define SCHEMA_TABLEDEMO_BUILD_VERSION_VALUE 0x74f8a79e113ca9dfull
 
 #endif /* SCHEMA_TABLEDEMO_BUILD_VERSION */
 
@@ -5713,14 +5398,14 @@ static const uint8_t TABLEDEMO_K_TABLE_ANNOUNCE[TABLEDEMO_K_TABLE_ANNOUNCE_BYTES
     0x01,
     0x01,
     0x09,
-    0x52,
-    0x57,
-    0x94,
-    0x9c,
-    0x84,
-    0xbb,
-    0xe1,
-    0x2e,
+    0xdf,
+    0xa9,
+    0x3c,
+    0x11,
+    0x9e,
+    0xa7,
+    0xf8,
+    0x74,
     0x02,
     0x0e,
     0x89,
@@ -10077,7 +9762,7 @@ static SCHEMA_UNUSED int schema_tabledemo_table_cook_text_( tabledemo_table_numb
     if ( len < 0 ) { return 0; }
     if ( len == 0 ) { return 1; }
     bytes = tabledemo_table_blob_storage( (int64_t) len, 1 );
-    if ( bytes < 0 || !tabledemo_table_extent_reserve( at, 1, bytes, 8 ) ) { return 0; }
+    if ( bytes < 0 || !table_extent_reserve( at, 1, bytes, 8 ) ) { return 0; }
     if ( slot != NULL && extent != NULL )
     {
         uint8_t * raw = extent + *at - bytes;
@@ -10146,7 +9831,6 @@ static const uint64_t tabledemo_table_retain_known[] = {
     UINT64_C( 0x031ec0c4b7d28bf1 ),
     UINT64_C( 0x04dc16aea8ff5276 ),
     UINT64_C( 0x0577780d86c4b0c3 ),
-    UINT64_C( 0x05d94ead8f7094de ),
     UINT64_C( 0x065ee827cf99fbb4 ),
     UINT64_C( 0x08a60c07b54d8dc7 ),
     UINT64_C( 0x09ae5613b0051271 ),
@@ -11304,7 +10988,7 @@ static SCHEMA_UNUSED int tabledemo_gunner_settings_save_body( tabledemo_table_wr
     { /* reaction */
         if ( !( tabledemo_table_float_to_bits( value->reaction ) == tabledemo_table_float_to_bits( 0.2f ) ) )
         {
-            tabledemo_table_writer_header_at( w, 111, 0xb75aa3662201646aull, 10 );
+            tabledemo_table_writer_header_at( w, 110, 0xb75aa3662201646aull, 10 );
             if ( !tabledemo_table_float_finite( value->reaction ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             tabledemo_table_writer_put32( w, tabledemo_table_float_to_bits( value->reaction ) );
         }
@@ -11312,7 +10996,7 @@ static SCHEMA_UNUSED int tabledemo_gunner_settings_save_body( tabledemo_table_wr
     { /* tracking */
         if ( !( value->tracking == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 99, 0xa6bf719a4602b0bcull, 1 );
+            tabledemo_table_writer_header_at( w, 98, 0xa6bf719a4602b0bcull, 1 );
             tabledemo_table_writer_put8( w, value->tracking ? 1 : 0 );
         }
     }
@@ -11320,7 +11004,7 @@ static SCHEMA_UNUSED int tabledemo_gunner_settings_save_body( tabledemo_table_wr
         schema_assert( 0 <= value->callsign_length && value->callsign_length <= 24 );
         if ( value->callsign_length != 0 )
         {
-            tabledemo_table_writer_header_at( w, 61, 0x5bc44627b9848818ull, 12 );
+            tabledemo_table_writer_header_at( w, 60, 0x5bc44627b9848818ull, 12 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -11365,7 +11049,6 @@ static SCHEMA_UNUSED int64_t tabledemo_gunner_settings_save( const tabledemo_gun
 
 static SCHEMA_UNUSED int tabledemo_gunner_settings_load_body( tabledemo_table_reader_t * r, tabledemo_gunner_settings_t * value )
 {
-    if ( r->nodes != NULL && r->nodes->refused ) { return 0; }
     tabledemo_gunner_settings_reset( value );
     uint8_t seen_ref[512];
     memset( seen_ref, 0, sizeof( seen_ref ) );
@@ -11866,7 +11549,7 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_save_body( tabledemo_table_writer_
                 w->offset = 2;
                 return 1;
             }
-            tabledemo_table_writer_header_at( w, 33, 0x2d21d7cd66bd5a5dull, 12 );
+            tabledemo_table_writer_header_at( w, 32, 0x2d21d7cd66bd5a5dull, 12 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -11891,7 +11574,7 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_save_body( tabledemo_table_writer_
                 w->offset = 2;
                 return 1;
             }
-            tabledemo_table_writer_header_at( w, 75, 0x7f69d4b5288ba9cfull, 10 );
+            tabledemo_table_writer_header_at( w, 74, 0x7f69d4b5288ba9cfull, 10 );
             if ( !tabledemo_table_float_finite( value->health ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             tabledemo_table_writer_put32( w, tabledemo_table_float_to_bits( value->health ) );
         }
@@ -11904,7 +11587,7 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_save_body( tabledemo_table_writer_
                 w->offset = 2;
                 return 1;
             }
-            tabledemo_table_writer_header_at( w, 25, 0x1f3757a2ce7b0ab1ull, 10 );
+            tabledemo_table_writer_header_at( w, 24, 0x1f3757a2ce7b0ab1ull, 10 );
             if ( !tabledemo_table_float_finite( value->mass ) ) { return 0; } /* a NaN or an infinity is refused (§3.3) */
             tabledemo_table_writer_put32( w, tabledemo_table_float_to_bits( value->mass ) );
         }
@@ -11918,7 +11601,7 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_save_body( tabledemo_table_writer_
                 w->offset = 2;
                 return 1;
             }
-            tabledemo_table_writer_header_at( w, 86, 0x95d0cce09ca82b73ull, 14 );
+            tabledemo_table_writer_header_at( w, 85, 0x95d0cce09ca82b73ull, 14 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -11943,7 +11626,7 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_save_body( tabledemo_table_writer_
                 w->offset = 2;
                 return 1;
             }
-            tabledemo_table_writer_header_at( w, 46, 0x40dbb648c0cd44aaull, 13 );
+            tabledemo_table_writer_header_at( w, 45, 0x40dbb648c0cd44aaull, 13 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -11988,7 +11671,6 @@ static SCHEMA_UNUSED int64_t tabledemo_ship_entry_save( const tabledemo_ship_ent
 
 static SCHEMA_UNUSED int tabledemo_ship_entry_load_body( tabledemo_table_reader_t * r, tabledemo_ship_entry_t * value )
 {
-    if ( r->nodes != NULL && r->nodes->refused ) { return 0; }
     tabledemo_ship_entry_reset( value );
     uint8_t seen_ref[512];
     memset( seen_ref, 0, sizeof( seen_ref ) );
@@ -12273,7 +11955,6 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_load_body( tabledemo_table_reader_
                     return 0;
                 }
                 tabledemo_gunner_settings_load_body( &sub, &value->gunner );
-                if ( r->nodes != NULL && r->nodes->refused ) { return 0; }
                 if ( sub.offset != sub.size )
                 {
                     r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -12810,7 +12491,7 @@ static SCHEMA_UNUSED int tabledemo_global_settings_save_body( tabledemo_table_wr
                 w->offset = 2;
                 return 1;
             }
-            tabledemo_table_writer_header_at( w, 97, 0xa65f859b617deaf3ull, 8 );
+            tabledemo_table_writer_header_at( w, 96, 0xa65f859b617deaf3ull, 8 );
             schema_assert( !( value->tick_rate < 1 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
             schema_assert( !( value->tick_rate > 240 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->tick_rate ) );
@@ -12824,7 +12505,7 @@ static SCHEMA_UNUSED int tabledemo_global_settings_save_body( tabledemo_table_wr
                 w->offset = 2;
                 return 1;
             }
-            tabledemo_table_writer_header_at( w, 49, 0x467f35a74c6e4a70ull, 30 );
+            tabledemo_table_writer_header_at( w, 48, 0x467f35a74c6e4a70ull, 30 );
             switch ( value->difficulty )
             {
                 case TABLEDEMO_DIFFICULTY_NONE: tabledemo_table_writer_leb( w, 0 ); break;
@@ -12845,7 +12526,7 @@ static SCHEMA_UNUSED int tabledemo_global_settings_save_body( tabledemo_table_wr
                 w->offset = 2;
                 return 1;
             }
-            tabledemo_table_writer_header_at( w, 14, 0x14ec921cc2549d60ull, 12 );
+            tabledemo_table_writer_header_at( w, 13, 0x14ec921cc2549d60ull, 12 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -12880,7 +12561,7 @@ static SCHEMA_UNUSED int tabledemo_global_settings_save_body( tabledemo_table_wr
                 w->offset = 2;
                 return 1;
             }
-            tabledemo_table_writer_header_at( w, 8, 0x09ae5613b0051271ull, 14 );
+            tabledemo_table_writer_header_at( w, 7, 0x09ae5613b0051271ull, 14 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -12925,7 +12606,6 @@ static SCHEMA_UNUSED int64_t tabledemo_global_settings_save( const tabledemo_glo
 
 static SCHEMA_UNUSED int tabledemo_global_settings_load_body( tabledemo_table_reader_t * r, tabledemo_global_settings_t * value )
 {
-    if ( r->nodes != NULL && r->nodes->refused ) { return 0; }
     tabledemo_global_settings_reset( value );
     uint8_t seen_ref[512];
     memset( seen_ref, 0, sizeof( seen_ref ) );
@@ -13853,7 +13533,7 @@ static SCHEMA_UNUSED int tabledemo_pack_config_save_body( tabledemo_table_writer
     { /* version */
         if ( !( value->version == 1 ) )
         {
-            tabledemo_table_writer_header_at( w, 117, 0xbb62c62c9808ea37ull, 8 );
+            tabledemo_table_writer_header_at( w, 116, 0xbb62c62c9808ea37ull, 8 );
             tabledemo_table_writer_put32( w, (uint32_t) ( value->version ) );
         }
     }
@@ -13864,7 +13544,7 @@ static SCHEMA_UNUSED int tabledemo_pack_config_save_body( tabledemo_table_writer
         tabledemo_table_writer_rewind( &default_probe );
         if ( default_probe.offset > 1 )
         {
-            tabledemo_table_writer_header_at( w, 76, 0x7fb43557b54149ceull, 13 );
+            tabledemo_table_writer_header_at( w, 75, 0x7fb43557b54149ceull, 13 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -13896,7 +13576,7 @@ static SCHEMA_UNUSED int tabledemo_pack_config_save_body( tabledemo_table_writer
         }
         if ( rides )
         {
-            tabledemo_table_writer_header_at( w, 30, 0x294a5c4913e1ad44ull, 16 );
+            tabledemo_table_writer_header_at( w, 29, 0x294a5c4913e1ad44ull, 16 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -13924,7 +13604,7 @@ static SCHEMA_UNUSED int tabledemo_pack_config_save_body( tabledemo_table_writer
         }
         if ( rides )
         {
-            tabledemo_table_writer_header_at( w, 89, 0x9cda940a344e1571ull, 16 );
+            tabledemo_table_writer_header_at( w, 88, 0x9cda940a344e1571ull, 16 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -13945,7 +13625,7 @@ static SCHEMA_UNUSED int tabledemo_pack_config_save_body( tabledemo_table_writer
         schema_assert( 0 <= value->reserves_count && value->reserves_count <= 3 );
         if ( value->reserves_count > 0 )
         {
-            tabledemo_table_writer_header_at( w, 72, 0x77707fccd201c228ull, 14 );
+            tabledemo_table_writer_header_at( w, 71, 0x77707fccd201c228ull, 14 );
             int64_t element_sizes[3]; /* bounded sizing-to-write cache */
             if ( w->buffer == NULL )
             {
@@ -13991,7 +13671,6 @@ static SCHEMA_UNUSED int64_t tabledemo_pack_config_save( const tabledemo_pack_co
 
 static SCHEMA_UNUSED int tabledemo_pack_config_load_body( tabledemo_table_reader_t * r, tabledemo_pack_config_t * value )
 {
-    if ( r->nodes != NULL && r->nodes->refused ) { return 0; }
     tabledemo_pack_config_reset( value );
     uint8_t seen_ref[512];
     memset( seen_ref, 0, sizeof( seen_ref ) );
@@ -14114,7 +13793,6 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_body( tabledemo_table_reader
                     return 0;
                 }
                 tabledemo_global_settings_load_body( &sub, &value->settings );
-                if ( r->nodes != NULL && r->nodes->refused ) { return 0; }
                 if ( sub.offset != sub.size )
                 {
                     r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -14209,7 +13887,6 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_body( tabledemo_table_reader
                             continue;
                         }
                         tabledemo_ship_entry_load_body( &elem, &value->ships[slot] );
-                        if ( r->nodes != NULL && r->nodes->refused ) { return 0; }
                         if ( elem.offset != elem.size )
                         {
                             r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -14443,7 +14120,6 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_body( tabledemo_table_reader
                                 goto end_reserves;
                             }
                             tabledemo_ship_entry_load_body( &elem, &value->reserves[i] );
-                            if ( r->nodes != NULL && r->nodes->refused ) { return 0; }
                             if ( elem.offset != elem.size )
                             {
                                 r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -20521,10 +20197,6 @@ static SCHEMA_UNUSED int tabledemo_gunner_settings_load_body_retain( tabledemo_t
 {
     (void) retention;
 
-    if ( r->nodes != NULL && r->nodes->refused )
-    {
-        return 0;
-    }
     tabledemo_gunner_settings_reset( value );
     tabledemo_table_retain_walk_t body_keep = retention;
     tabledemo_table_retain_discard( retention, 0, 0 );
@@ -20881,10 +20553,6 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_load_body_retain( tabledemo_table_
 {
     (void) retention;
 
-    if ( r->nodes != NULL && r->nodes->refused )
-    {
-        return 0;
-    }
     tabledemo_ship_entry_reset( value );
     tabledemo_table_retain_walk_t body_keep = retention;
     tabledemo_table_retain_discard( retention, 0, 0 );
@@ -21194,10 +20862,6 @@ static SCHEMA_UNUSED int tabledemo_ship_entry_load_body_retain( tabledemo_table_
                     return 0;
                 }
                 tabledemo_gunner_settings_load_body_retain( &sub, &value->gunner, retention );
-                if ( r->nodes != NULL && r->nodes->refused )
-                {
-                    return 0;
-                }
                 if ( sub.offset != sub.size )
                 {
                     r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -21409,10 +21073,6 @@ static SCHEMA_UNUSED int tabledemo_global_settings_load_body_retain( tabledemo_t
 {
     (void) retention;
 
-    if ( r->nodes != NULL && r->nodes->refused )
-    {
-        return 0;
-    }
     tabledemo_global_settings_reset( value );
     tabledemo_table_retain_walk_t body_keep = retention;
     tabledemo_table_retain_discard( retention, 0, 0 );
@@ -22137,10 +21797,6 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_body_retain( tabledemo_table
 {
     (void) retention;
 
-    if ( r->nodes != NULL && r->nodes->refused )
-    {
-        return 0;
-    }
     tabledemo_pack_config_reset( value );
     tabledemo_table_retain_walk_t body_keep = retention;
     tabledemo_table_retain_discard( retention, 0, 0 );
@@ -22273,10 +21929,6 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_body_retain( tabledemo_table
                     return 0;
                 }
                 tabledemo_global_settings_load_body_retain( &sub, &value->settings, retention );
-                if ( r->nodes != NULL && r->nodes->refused )
-                {
-                    return 0;
-                }
                 if ( sub.offset != sub.size )
                 {
                     r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -22382,10 +22034,6 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_body_retain( tabledemo_table
                         }
                         retention = tabledemo_table_retain_index( retention, (uint32_t) ( slot ) );
                         tabledemo_ship_entry_load_body_retain( &elem, &value->ships[slot], retention );
-                        if ( r->nodes != NULL && r->nodes->refused )
-                        {
-                            return 0;
-                        }
                         if ( elem.offset != elem.size )
                         {
                             r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;
@@ -22650,10 +22298,6 @@ static SCHEMA_UNUSED int tabledemo_pack_config_load_body_retain( tabledemo_table
                                 goto end_reserves;
                             }
                             tabledemo_ship_entry_load_body_retain( &elem, &value->reserves[i], retention );
-                            if ( r->nodes != NULL && r->nodes->refused )
-                            {
-                                return 0;
-                            }
                             if ( elem.offset != elem.size )
                             {
                                 r->report->refused = 1, r->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_WIRE_DAMAGED;

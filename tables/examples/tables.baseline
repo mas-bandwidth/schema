@@ -168,10 +168,6 @@ table TurretConfig
     field cooldown id=0xdc2cbe6953343d48 kind=10 default=0.5
     field gunner id=0x40dbb648c0cd44aa kind=13 type=GunnerConfig optional=true
 
-table VarMoods
-    field row id=0x8a0bc1196111ad9b kind=14 elem=7 enum=Mood array=unbounded
-    field mood id=0x0d5cfaa2c43877be kind=7 enum=Mood default=Fierce
-
 table WeaponConfig
     field damage id=0x7f6308be8ab37fc0 kind=10 default=21.0
     field speed id=0x1733055702acb1d2 kind=10 default=500.0 was=velocity
@@ -274,7 +270,4 @@ packet ScoreBoard
 - baseline REGENERATED over an unreadable one (baseline version 9, this compiler writes 10); the projection is this unit as it stands and the history above is preserved, but the previous projection could not be diffed, so no per-edit lines follow
 
 ### 2026-11-23 (UTC) — Record the added tabledemos for counted minimums, float bounds and deprecated enum evolution
-- no compatibility-affecting edits; the wire absorbs the rest
-
-### 2026-11-24 (UTC) — Record VarMoods, a variable-only tabledemo root so the deprecated-variant write rows reach every variable save
 - no compatibility-affecting edits; the wire absorbs the rest

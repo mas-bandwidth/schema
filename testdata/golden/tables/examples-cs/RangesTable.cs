@@ -130,22 +130,22 @@ namespace Tabledemo
         {
             long n = 1;
             TableFieldInfo[] fields = RangedSignedTableType().Fields;
-            if (v.I8Span != 0) { n += TableWire.VarSize(ids.RefAt(51, 0x48121511bf702eb5ul)) + 2; }
-            if (v.I8Low != 0) { n += TableWire.VarSize(ids.RefAt(85, 0x942bfe3168090f7dul)) + 2; }
-            if (v.I8High != 0) { n += TableWire.VarSize(ids.RefAt(137, 0xd182acd105b55dd1ul)) + 2; }
-            if (v.I8Inside != 0) { n += TableWire.VarSize(ids.RefAt(157, 0xef9ded23c8912a81ul)) + 2; }
-            if (v.I16Span != 0) { n += TableWire.VarSize(ids.RefAt(110, 0xb655574ea23760b4ul)) + 3; }
-            if (v.I16Low != 0) { n += TableWire.VarSize(ids.RefAt(138, 0xd217b3af8d7a2bdeul)) + 3; }
-            if (v.I16High != 0) { n += TableWire.VarSize(ids.RefAt(84, 0x90652f70c9127900ul)) + 3; }
-            if (v.I16Inside != 0) { n += TableWire.VarSize(ids.RefAt(66, 0x6a659d7c354db158ul)) + 3; }
-            if (v.I32Span != 0) { n += TableWire.VarSize(ids.RefAt(152, 0xe693bd88532c91d6ul)) + 5; }
-            if (v.I32Low != 0) { n += TableWire.VarSize(ids.RefAt(6, 0x065ee827cf99fbb4ul)) + 5; }
-            if (v.I32High != 0) { n += TableWire.VarSize(ids.RefAt(129, 0xc9b121c4c2a186eeul)) + 5; }
-            if (v.I32Inside != 0) { n += TableWire.VarSize(ids.RefAt(140, 0xd363dfa465acf27aul)) + 5; }
-            if (v.I64Span != 0) { n += TableWire.VarSize(ids.RefAt(71, 0x7549c70700c49d6ful)) + 9; }
-            if (v.I64Low != 0) { n += TableWire.VarSize(ids.RefAt(21, 0x1cce6617419771dbul)) + 9; }
-            if (v.I64High != 0) { n += TableWire.VarSize(ids.RefAt(44, 0x3b54fa60620b5597ul)) + 9; }
-            if (v.I64Inside != 0) { n += TableWire.VarSize(ids.RefAt(139, 0xd308fcb98ece5d23ul)) + 9; }
+            if (v.I8Span != 0) { n += TableWire.VarSize(ids.RefAt(50, 0x48121511bf702eb5ul)) + 2; }
+            if (v.I8Low != 0) { n += TableWire.VarSize(ids.RefAt(84, 0x942bfe3168090f7dul)) + 2; }
+            if (v.I8High != 0) { n += TableWire.VarSize(ids.RefAt(136, 0xd182acd105b55dd1ul)) + 2; }
+            if (v.I8Inside != 0) { n += TableWire.VarSize(ids.RefAt(156, 0xef9ded23c8912a81ul)) + 2; }
+            if (v.I16Span != 0) { n += TableWire.VarSize(ids.RefAt(109, 0xb655574ea23760b4ul)) + 3; }
+            if (v.I16Low != 0) { n += TableWire.VarSize(ids.RefAt(137, 0xd217b3af8d7a2bdeul)) + 3; }
+            if (v.I16High != 0) { n += TableWire.VarSize(ids.RefAt(83, 0x90652f70c9127900ul)) + 3; }
+            if (v.I16Inside != 0) { n += TableWire.VarSize(ids.RefAt(65, 0x6a659d7c354db158ul)) + 3; }
+            if (v.I32Span != 0) { n += TableWire.VarSize(ids.RefAt(151, 0xe693bd88532c91d6ul)) + 5; }
+            if (v.I32Low != 0) { n += TableWire.VarSize(ids.RefAt(5, 0x065ee827cf99fbb4ul)) + 5; }
+            if (v.I32High != 0) { n += TableWire.VarSize(ids.RefAt(128, 0xc9b121c4c2a186eeul)) + 5; }
+            if (v.I32Inside != 0) { n += TableWire.VarSize(ids.RefAt(139, 0xd363dfa465acf27aul)) + 5; }
+            if (v.I64Span != 0) { n += TableWire.VarSize(ids.RefAt(70, 0x7549c70700c49d6ful)) + 9; }
+            if (v.I64Low != 0) { n += TableWire.VarSize(ids.RefAt(20, 0x1cce6617419771dbul)) + 9; }
+            if (v.I64High != 0) { n += TableWire.VarSize(ids.RefAt(43, 0x3b54fa60620b5597ul)) + 9; }
+            if (v.I64Inside != 0) { n += TableWire.VarSize(ids.RefAt(138, 0xd308fcb98ece5d23ul)) + 9; }
             n += TableWire.BodySizeField(v, fields[16], ref ids, default, out long payload_16);
             if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[16] = payload_16; }
             return n;
@@ -156,82 +156,82 @@ namespace Tabledemo
             TableFieldInfo[] fields = RangedSignedTableType().Fields;
             if (v.I8Span != 0)
             {
-                w.HeaderAt(51, 0x48121511bf702eb5ul, 2, ref ids);
+                w.HeaderAt(50, 0x48121511bf702eb5ul, 2, ref ids);
                 w.Fixed(unchecked((ulong)(long)(v.I8Span)), 1);
             }
             if (v.I8Low != 0)
             {
-                w.HeaderAt(85, 0x942bfe3168090f7dul, 2, ref ids);
+                w.HeaderAt(84, 0x942bfe3168090f7dul, 2, ref ids);
                 w.Fixed(unchecked((ulong)(long)(v.I8Low)), 1);
             }
             if (v.I8High != 0)
             {
-                w.HeaderAt(137, 0xd182acd105b55dd1ul, 2, ref ids);
+                w.HeaderAt(136, 0xd182acd105b55dd1ul, 2, ref ids);
                 w.Fixed(unchecked((ulong)(long)(v.I8High)), 1);
             }
             if (v.I8Inside != 0)
             {
-                w.HeaderAt(157, 0xef9ded23c8912a81ul, 2, ref ids);
+                w.HeaderAt(156, 0xef9ded23c8912a81ul, 2, ref ids);
                 w.Fixed(unchecked((ulong)(long)(v.I8Inside)), 1);
             }
             if (v.I16Span != 0)
             {
-                w.HeaderAt(110, 0xb655574ea23760b4ul, 3, ref ids);
+                w.HeaderAt(109, 0xb655574ea23760b4ul, 3, ref ids);
                 w.Fixed(unchecked((ulong)(long)(v.I16Span)), 2);
             }
             if (v.I16Low != 0)
             {
-                w.HeaderAt(138, 0xd217b3af8d7a2bdeul, 3, ref ids);
+                w.HeaderAt(137, 0xd217b3af8d7a2bdeul, 3, ref ids);
                 w.Fixed(unchecked((ulong)(long)(v.I16Low)), 2);
             }
             if (v.I16High != 0)
             {
-                w.HeaderAt(84, 0x90652f70c9127900ul, 3, ref ids);
+                w.HeaderAt(83, 0x90652f70c9127900ul, 3, ref ids);
                 w.Fixed(unchecked((ulong)(long)(v.I16High)), 2);
             }
             if (v.I16Inside != 0)
             {
-                w.HeaderAt(66, 0x6a659d7c354db158ul, 3, ref ids);
+                w.HeaderAt(65, 0x6a659d7c354db158ul, 3, ref ids);
                 w.Fixed(unchecked((ulong)(long)(v.I16Inside)), 2);
             }
             if (v.I32Span != 0)
             {
-                w.HeaderAt(152, 0xe693bd88532c91d6ul, 4, ref ids);
+                w.HeaderAt(151, 0xe693bd88532c91d6ul, 4, ref ids);
                 w.Fixed(unchecked((ulong)(long)(v.I32Span)), 4);
             }
             if (v.I32Low != 0)
             {
-                w.HeaderAt(6, 0x065ee827cf99fbb4ul, 4, ref ids);
+                w.HeaderAt(5, 0x065ee827cf99fbb4ul, 4, ref ids);
                 w.Fixed(unchecked((ulong)(long)(v.I32Low)), 4);
             }
             if (v.I32High != 0)
             {
-                w.HeaderAt(129, 0xc9b121c4c2a186eeul, 4, ref ids);
+                w.HeaderAt(128, 0xc9b121c4c2a186eeul, 4, ref ids);
                 w.Fixed(unchecked((ulong)(long)(v.I32High)), 4);
             }
             if (v.I32Inside != 0)
             {
-                w.HeaderAt(140, 0xd363dfa465acf27aul, 4, ref ids);
+                w.HeaderAt(139, 0xd363dfa465acf27aul, 4, ref ids);
                 w.Fixed(unchecked((ulong)(long)(v.I32Inside)), 4);
             }
             if (v.I64Span != 0)
             {
-                w.HeaderAt(71, 0x7549c70700c49d6ful, 5, ref ids);
+                w.HeaderAt(70, 0x7549c70700c49d6ful, 5, ref ids);
                 w.Fixed(unchecked((ulong)(long)(v.I64Span)), 8);
             }
             if (v.I64Low != 0)
             {
-                w.HeaderAt(21, 0x1cce6617419771dbul, 5, ref ids);
+                w.HeaderAt(20, 0x1cce6617419771dbul, 5, ref ids);
                 w.Fixed(unchecked((ulong)(long)(v.I64Low)), 8);
             }
             if (v.I64High != 0)
             {
-                w.HeaderAt(44, 0x3b54fa60620b5597ul, 5, ref ids);
+                w.HeaderAt(43, 0x3b54fa60620b5597ul, 5, ref ids);
                 w.Fixed(unchecked((ulong)(long)(v.I64High)), 8);
             }
             if (v.I64Inside != 0)
             {
-                w.HeaderAt(139, 0xd308fcb98ece5d23ul, 5, ref ids);
+                w.HeaderAt(138, 0xd308fcb98ece5d23ul, 5, ref ids);
                 w.Fixed(unchecked((ulong)(long)(v.I64Inside)), 8);
             }
             long payload_16 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[16] : -1;
@@ -272,13 +272,13 @@ namespace Tabledemo
 
         public static long RangedSignedMeasure(RangedSigned value)
         {
-            Span<ulong> ids = stackalloc ulong[172];
+            Span<ulong> ids = stackalloc ulong[171];
             return RangedSignedSaveTyped(value, Span<byte>.Empty, ids, true);
         }
 
         public static long RangedSignedSave(RangedSigned value, Span<byte> buffer)
         {
-            Span<ulong> ids = stackalloc ulong[172];
+            Span<ulong> ids = stackalloc ulong[171];
             return RangedSignedSaveTyped(value, buffer, ids, false);
         }
 
@@ -350,22 +350,22 @@ namespace Tabledemo
         {
             long n = 1;
             TableFieldInfo[] fields = RangedUnsignedTableType().Fields;
-            if (v.U8Span != 0) { n += TableWire.VarSize(ids.RefAt(11, 0x0f8897557f37c021ul)) + 2; }
-            if (v.U8Low != 0) { n += TableWire.VarSize(ids.RefAt(34, 0x2e17553f8200a2a1ul)) + 2; }
-            if (v.U8High != 1) { n += TableWire.VarSize(ids.RefAt(93, 0xa0e5c60df9301b7dul)) + 2; }
-            if (v.U8Inside != 1) { n += TableWire.VarSize(ids.RefAt(20, 0x1cb2c073a6f5844dul)) + 2; }
-            if (v.U16Span != 0) { n += TableWire.VarSize(ids.RefAt(54, 0x4ca0c150b1790960ul)) + 3; }
-            if (v.U16Low != 0) { n += TableWire.VarSize(ids.RefAt(159, 0xf252136836b04cb2ul)) + 3; }
-            if (v.U16High != 1) { n += TableWire.VarSize(ids.RefAt(56, 0x4f37e1f216e7610cul)) + 3; }
-            if (v.U16Inside != 1) { n += TableWire.VarSize(ids.RefAt(136, 0xd176b605978f3304ul)) + 3; }
-            if (v.U32Span != 0) { n += TableWire.VarSize(ids.RefAt(26, 0x200b924de7479cdaul)) + 5; }
-            if (v.U32Low != 0) { n += TableWire.VarSize(ids.RefAt(96, 0xa53d2f2a31b5acb0ul)) + 5; }
-            if (v.U32High != 1) { n += TableWire.VarSize(ids.RefAt(87, 0x9759be8ea1a4e3d2ul)) + 5; }
-            if (v.U32Inside != 1) { n += TableWire.VarSize(ids.RefAt(83, 0x8dc515fc082e3c0eul)) + 5; }
-            if (v.U64Span != 0) { n += TableWire.VarSize(ids.RefAt(119, 0xbeecef11dbdf8973ul)) + 9; }
+            if (v.U8Span != 0) { n += TableWire.VarSize(ids.RefAt(10, 0x0f8897557f37c021ul)) + 2; }
+            if (v.U8Low != 0) { n += TableWire.VarSize(ids.RefAt(33, 0x2e17553f8200a2a1ul)) + 2; }
+            if (v.U8High != 1) { n += TableWire.VarSize(ids.RefAt(92, 0xa0e5c60df9301b7dul)) + 2; }
+            if (v.U8Inside != 1) { n += TableWire.VarSize(ids.RefAt(19, 0x1cb2c073a6f5844dul)) + 2; }
+            if (v.U16Span != 0) { n += TableWire.VarSize(ids.RefAt(53, 0x4ca0c150b1790960ul)) + 3; }
+            if (v.U16Low != 0) { n += TableWire.VarSize(ids.RefAt(158, 0xf252136836b04cb2ul)) + 3; }
+            if (v.U16High != 1) { n += TableWire.VarSize(ids.RefAt(55, 0x4f37e1f216e7610cul)) + 3; }
+            if (v.U16Inside != 1) { n += TableWire.VarSize(ids.RefAt(135, 0xd176b605978f3304ul)) + 3; }
+            if (v.U32Span != 0) { n += TableWire.VarSize(ids.RefAt(25, 0x200b924de7479cdaul)) + 5; }
+            if (v.U32Low != 0) { n += TableWire.VarSize(ids.RefAt(95, 0xa53d2f2a31b5acb0ul)) + 5; }
+            if (v.U32High != 1) { n += TableWire.VarSize(ids.RefAt(86, 0x9759be8ea1a4e3d2ul)) + 5; }
+            if (v.U32Inside != 1) { n += TableWire.VarSize(ids.RefAt(82, 0x8dc515fc082e3c0eul)) + 5; }
+            if (v.U64Span != 0) { n += TableWire.VarSize(ids.RefAt(118, 0xbeecef11dbdf8973ul)) + 9; }
             if (v.U64Low != 0) { n += TableWire.VarSize(ids.RefAt(0, 0x0117ad66e0fff227ul)) + 9; }
-            if (v.U64High != 1ul) { n += TableWire.VarSize(ids.RefAt(160, 0xf2b45af3b50689dbul)) + 9; }
-            if (v.U64Inside != 1ul) { n += TableWire.VarSize(ids.RefAt(70, 0x713e12017eebcaf7ul)) + 9; }
+            if (v.U64High != 1ul) { n += TableWire.VarSize(ids.RefAt(159, 0xf2b45af3b50689dbul)) + 9; }
+            if (v.U64Inside != 1ul) { n += TableWire.VarSize(ids.RefAt(69, 0x713e12017eebcaf7ul)) + 9; }
             n += TableWire.BodySizeField(v, fields[16], ref ids, default, out long payload_16);
             if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[16] = payload_16; }
             return n;
@@ -376,67 +376,67 @@ namespace Tabledemo
             TableFieldInfo[] fields = RangedUnsignedTableType().Fields;
             if (v.U8Span != 0)
             {
-                w.HeaderAt(11, 0x0f8897557f37c021ul, 6, ref ids);
+                w.HeaderAt(10, 0x0f8897557f37c021ul, 6, ref ids);
                 w.Fixed((ulong)v.U8Span, 1);
             }
             if (v.U8Low != 0)
             {
-                w.HeaderAt(34, 0x2e17553f8200a2a1ul, 6, ref ids);
+                w.HeaderAt(33, 0x2e17553f8200a2a1ul, 6, ref ids);
                 w.Fixed((ulong)v.U8Low, 1);
             }
             if (v.U8High != 1)
             {
-                w.HeaderAt(93, 0xa0e5c60df9301b7dul, 6, ref ids);
+                w.HeaderAt(92, 0xa0e5c60df9301b7dul, 6, ref ids);
                 w.Fixed((ulong)v.U8High, 1);
             }
             if (v.U8Inside != 1)
             {
-                w.HeaderAt(20, 0x1cb2c073a6f5844dul, 6, ref ids);
+                w.HeaderAt(19, 0x1cb2c073a6f5844dul, 6, ref ids);
                 w.Fixed((ulong)v.U8Inside, 1);
             }
             if (v.U16Span != 0)
             {
-                w.HeaderAt(54, 0x4ca0c150b1790960ul, 7, ref ids);
+                w.HeaderAt(53, 0x4ca0c150b1790960ul, 7, ref ids);
                 w.Fixed((ulong)v.U16Span, 2);
             }
             if (v.U16Low != 0)
             {
-                w.HeaderAt(159, 0xf252136836b04cb2ul, 7, ref ids);
+                w.HeaderAt(158, 0xf252136836b04cb2ul, 7, ref ids);
                 w.Fixed((ulong)v.U16Low, 2);
             }
             if (v.U16High != 1)
             {
-                w.HeaderAt(56, 0x4f37e1f216e7610cul, 7, ref ids);
+                w.HeaderAt(55, 0x4f37e1f216e7610cul, 7, ref ids);
                 w.Fixed((ulong)v.U16High, 2);
             }
             if (v.U16Inside != 1)
             {
-                w.HeaderAt(136, 0xd176b605978f3304ul, 7, ref ids);
+                w.HeaderAt(135, 0xd176b605978f3304ul, 7, ref ids);
                 w.Fixed((ulong)v.U16Inside, 2);
             }
             if (v.U32Span != 0)
             {
-                w.HeaderAt(26, 0x200b924de7479cdaul, 8, ref ids);
+                w.HeaderAt(25, 0x200b924de7479cdaul, 8, ref ids);
                 w.Fixed((ulong)v.U32Span, 4);
             }
             if (v.U32Low != 0)
             {
-                w.HeaderAt(96, 0xa53d2f2a31b5acb0ul, 8, ref ids);
+                w.HeaderAt(95, 0xa53d2f2a31b5acb0ul, 8, ref ids);
                 w.Fixed((ulong)v.U32Low, 4);
             }
             if (v.U32High != 1)
             {
-                w.HeaderAt(87, 0x9759be8ea1a4e3d2ul, 8, ref ids);
+                w.HeaderAt(86, 0x9759be8ea1a4e3d2ul, 8, ref ids);
                 w.Fixed((ulong)v.U32High, 4);
             }
             if (v.U32Inside != 1)
             {
-                w.HeaderAt(83, 0x8dc515fc082e3c0eul, 8, ref ids);
+                w.HeaderAt(82, 0x8dc515fc082e3c0eul, 8, ref ids);
                 w.Fixed((ulong)v.U32Inside, 4);
             }
             if (v.U64Span != 0)
             {
-                w.HeaderAt(119, 0xbeecef11dbdf8973ul, 9, ref ids);
+                w.HeaderAt(118, 0xbeecef11dbdf8973ul, 9, ref ids);
                 w.Fixed((ulong)v.U64Span, 8);
             }
             if (v.U64Low != 0)
@@ -446,12 +446,12 @@ namespace Tabledemo
             }
             if (v.U64High != 1ul)
             {
-                w.HeaderAt(160, 0xf2b45af3b50689dbul, 9, ref ids);
+                w.HeaderAt(159, 0xf2b45af3b50689dbul, 9, ref ids);
                 w.Fixed((ulong)v.U64High, 8);
             }
             if (v.U64Inside != 1ul)
             {
-                w.HeaderAt(70, 0x713e12017eebcaf7ul, 9, ref ids);
+                w.HeaderAt(69, 0x713e12017eebcaf7ul, 9, ref ids);
                 w.Fixed((ulong)v.U64Inside, 8);
             }
             long payload_16 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[16] : -1;
@@ -492,13 +492,13 @@ namespace Tabledemo
 
         public static long RangedUnsignedMeasure(RangedUnsigned value)
         {
-            Span<ulong> ids = stackalloc ulong[172];
+            Span<ulong> ids = stackalloc ulong[171];
             return RangedUnsignedSaveTyped(value, Span<byte>.Empty, ids, true);
         }
 
         public static long RangedUnsignedSave(RangedUnsigned value, Span<byte> buffer)
         {
-            Span<ulong> ids = stackalloc ulong[172];
+            Span<ulong> ids = stackalloc ulong[171];
             return RangedUnsignedSaveTyped(value, buffer, ids, false);
         }
 
@@ -545,12 +545,12 @@ namespace Tabledemo
         public static long RangedWidthsBodySizeTyped(RangedWidths v, ref TableWire.Ids ids, scoped Span<long> rootPayloadSizes = default, scoped Span<long> rootElemSizes = default)
         {
             long n = 1;
-            if (v.B8 != 0) { n += TableWire.VarSize(ids.RefAt(7, 0x08a60c07b54d8dc7ul)) + 2; }
-            if (v.B16 != 0) { n += TableWire.VarSize(ids.RefAt(166, 0xff95701912ad97beul)) + 3; }
-            if (v.B32 != 0) { n += TableWire.VarSize(ids.RefAt(168, 0xff9c5c1912b39470ul)) + 5; }
-            if (v.B64 != 0) { n += TableWire.VarSize(ids.RefAt(165, 0xff92701912ab61e7ul)) + 9; }
-            if (v.B12 != 0) { n += TableWire.VarSize(ids.RefAt(167, 0xff95741912ad9e8aul)) + 3; }
-            if (v.B48 != 0) { n += TableWire.VarSize(ids.RefAt(164, 0xff8b681912a535a1ul)) + 9; }
+            if (v.B8 != 0) { n += TableWire.VarSize(ids.RefAt(6, 0x08a60c07b54d8dc7ul)) + 2; }
+            if (v.B16 != 0) { n += TableWire.VarSize(ids.RefAt(165, 0xff95701912ad97beul)) + 3; }
+            if (v.B32 != 0) { n += TableWire.VarSize(ids.RefAt(167, 0xff9c5c1912b39470ul)) + 5; }
+            if (v.B64 != 0) { n += TableWire.VarSize(ids.RefAt(164, 0xff92701912ab61e7ul)) + 9; }
+            if (v.B12 != 0) { n += TableWire.VarSize(ids.RefAt(166, 0xff95741912ad9e8aul)) + 3; }
+            if (v.B48 != 0) { n += TableWire.VarSize(ids.RefAt(163, 0xff8b681912a535a1ul)) + 9; }
             return n;
         }
 
@@ -558,32 +558,32 @@ namespace Tabledemo
         {
             if (v.B8 != 0)
             {
-                w.HeaderAt(7, 0x08a60c07b54d8dc7ul, 6, ref ids);
+                w.HeaderAt(6, 0x08a60c07b54d8dc7ul, 6, ref ids);
                 w.Fixed((ulong)v.B8, 1);
             }
             if (v.B16 != 0)
             {
-                w.HeaderAt(166, 0xff95701912ad97beul, 7, ref ids);
+                w.HeaderAt(165, 0xff95701912ad97beul, 7, ref ids);
                 w.Fixed((ulong)v.B16, 2);
             }
             if (v.B32 != 0)
             {
-                w.HeaderAt(168, 0xff9c5c1912b39470ul, 8, ref ids);
+                w.HeaderAt(167, 0xff9c5c1912b39470ul, 8, ref ids);
                 w.Fixed((ulong)v.B32, 4);
             }
             if (v.B64 != 0)
             {
-                w.HeaderAt(165, 0xff92701912ab61e7ul, 9, ref ids);
+                w.HeaderAt(164, 0xff92701912ab61e7ul, 9, ref ids);
                 w.Fixed((ulong)v.B64, 8);
             }
             if (v.B12 != 0)
             {
-                w.HeaderAt(167, 0xff95741912ad9e8aul, 7, ref ids);
+                w.HeaderAt(166, 0xff95741912ad9e8aul, 7, ref ids);
                 w.Fixed((ulong)v.B12, 2);
             }
             if (v.B48 != 0)
             {
-                w.HeaderAt(164, 0xff8b681912a535a1ul, 9, ref ids);
+                w.HeaderAt(163, 0xff8b681912a535a1ul, 9, ref ids);
                 w.Fixed((ulong)v.B48, 8);
             }
             w.Var(0);
@@ -622,13 +622,13 @@ namespace Tabledemo
 
         public static long RangedWidthsMeasure(RangedWidths value)
         {
-            Span<ulong> ids = stackalloc ulong[172];
+            Span<ulong> ids = stackalloc ulong[171];
             return RangedWidthsSaveTyped(value, Span<byte>.Empty, ids, true);
         }
 
         public static long RangedWidthsSave(RangedWidths value, Span<byte> buffer)
         {
-            Span<ulong> ids = stackalloc ulong[172];
+            Span<ulong> ids = stackalloc ulong[171];
             return RangedWidthsSaveTyped(value, buffer, ids, false);
         }
 
@@ -668,7 +668,7 @@ namespace Tabledemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
-                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x413e7bcf261bc3c7ul: return ArchiveConfigTableType(); case 0x2c8168f122124937ul: return CountedMinTableType(); case 0x19212a5b5b3ccb4bul: return FloatBoundTableType(); case 0xffb1dfb1f6ce215bul: return GlobalSettingsTableType(); case 0x5fcbe04615411b64ul: return GunnerConfigTableType(); case 0xb76842b2253337aful: return GunnerSettingsTableType(); case 0x3066b130dfbd7890ul: return HullConfigTableType(); case 0xd6633ae4e94deecful: return KeyedConfigTableType(); case 0xa6aa0caea28dcca1ul: return LoadoutConfigTableType(); case 0xe2f227393c6b20a2ul: return MinArmFixTableType(); case 0xf5b735fce4011ff4ul: return MinPlainFixTableType(); case 0x33de720d0bcfd78aul: return MoodFieldTableType(); case 0xad3596f9de08e3b7ul: return MoodsTableType(); case 0xd02d825db114336eul: return PackConfigTableType(); case 0x1c182e1c2529027bul: return PatrolTableType(); case 0x19fffcb7859da778ul: return ProfileConfigTableType(); case 0xec79751dda28be2eul: return RangedSignedTableType(); case 0x031ec0c4b7d28bf1ul: return RangedUnsignedTableType(); case 0xbf59694e9e4f5ed7ul: return RangedWidthsTableType(); case 0x5f4843f6def45e87ul: return RootConfigTableType(); case 0x1d1a9911da171a29ul: return ShipEntryTableType(); case 0x1cf8555d11fb113aul: return TeamConfigTableType(); case 0x469dba0c16b2ad15ul: return TurretConfigTableType(); case 0x05d94ead8f7094deul: return VarMoodsTableType(); case 0x0577780d86c4b0c3ul: return WeaponConfigTableType(); case 0xab6a6961d3366451ul: return WideBlobTableType(); default: return null; } };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x413e7bcf261bc3c7ul: return ArchiveConfigTableType(); case 0x2c8168f122124937ul: return CountedMinTableType(); case 0x19212a5b5b3ccb4bul: return FloatBoundTableType(); case 0xffb1dfb1f6ce215bul: return GlobalSettingsTableType(); case 0x5fcbe04615411b64ul: return GunnerConfigTableType(); case 0xb76842b2253337aful: return GunnerSettingsTableType(); case 0x3066b130dfbd7890ul: return HullConfigTableType(); case 0xd6633ae4e94deecful: return KeyedConfigTableType(); case 0xa6aa0caea28dcca1ul: return LoadoutConfigTableType(); case 0xe2f227393c6b20a2ul: return MinArmFixTableType(); case 0xf5b735fce4011ff4ul: return MinPlainFixTableType(); case 0x33de720d0bcfd78aul: return MoodFieldTableType(); case 0xad3596f9de08e3b7ul: return MoodsTableType(); case 0xd02d825db114336eul: return PackConfigTableType(); case 0x1c182e1c2529027bul: return PatrolTableType(); case 0x19fffcb7859da778ul: return ProfileConfigTableType(); case 0xec79751dda28be2eul: return RangedSignedTableType(); case 0x031ec0c4b7d28bf1ul: return RangedUnsignedTableType(); case 0xbf59694e9e4f5ed7ul: return RangedWidthsTableType(); case 0x5f4843f6def45e87ul: return RootConfigTableType(); case 0x1d1a9911da171a29ul: return ShipEntryTableType(); case 0x1cf8555d11fb113aul: return TeamConfigTableType(); case 0x469dba0c16b2ad15ul: return TurretConfigTableType(); case 0x0577780d86c4b0c3ul: return WeaponConfigTableType(); case 0xab6a6961d3366451ul: return WideBlobTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -721,7 +721,7 @@ namespace Tabledemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
-                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x413e7bcf261bc3c7ul: return ArchiveConfigTableType(); case 0x2c8168f122124937ul: return CountedMinTableType(); case 0x19212a5b5b3ccb4bul: return FloatBoundTableType(); case 0xffb1dfb1f6ce215bul: return GlobalSettingsTableType(); case 0x5fcbe04615411b64ul: return GunnerConfigTableType(); case 0xb76842b2253337aful: return GunnerSettingsTableType(); case 0x3066b130dfbd7890ul: return HullConfigTableType(); case 0xd6633ae4e94deecful: return KeyedConfigTableType(); case 0xa6aa0caea28dcca1ul: return LoadoutConfigTableType(); case 0xe2f227393c6b20a2ul: return MinArmFixTableType(); case 0xf5b735fce4011ff4ul: return MinPlainFixTableType(); case 0x33de720d0bcfd78aul: return MoodFieldTableType(); case 0xad3596f9de08e3b7ul: return MoodsTableType(); case 0xd02d825db114336eul: return PackConfigTableType(); case 0x1c182e1c2529027bul: return PatrolTableType(); case 0x19fffcb7859da778ul: return ProfileConfigTableType(); case 0xec79751dda28be2eul: return RangedSignedTableType(); case 0x031ec0c4b7d28bf1ul: return RangedUnsignedTableType(); case 0xbf59694e9e4f5ed7ul: return RangedWidthsTableType(); case 0x5f4843f6def45e87ul: return RootConfigTableType(); case 0x1d1a9911da171a29ul: return ShipEntryTableType(); case 0x1cf8555d11fb113aul: return TeamConfigTableType(); case 0x469dba0c16b2ad15ul: return TurretConfigTableType(); case 0x05d94ead8f7094deul: return VarMoodsTableType(); case 0x0577780d86c4b0c3ul: return WeaponConfigTableType(); case 0xab6a6961d3366451ul: return WideBlobTableType(); default: return null; } };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x413e7bcf261bc3c7ul: return ArchiveConfigTableType(); case 0x2c8168f122124937ul: return CountedMinTableType(); case 0x19212a5b5b3ccb4bul: return FloatBoundTableType(); case 0xffb1dfb1f6ce215bul: return GlobalSettingsTableType(); case 0x5fcbe04615411b64ul: return GunnerConfigTableType(); case 0xb76842b2253337aful: return GunnerSettingsTableType(); case 0x3066b130dfbd7890ul: return HullConfigTableType(); case 0xd6633ae4e94deecful: return KeyedConfigTableType(); case 0xa6aa0caea28dcca1ul: return LoadoutConfigTableType(); case 0xe2f227393c6b20a2ul: return MinArmFixTableType(); case 0xf5b735fce4011ff4ul: return MinPlainFixTableType(); case 0x33de720d0bcfd78aul: return MoodFieldTableType(); case 0xad3596f9de08e3b7ul: return MoodsTableType(); case 0xd02d825db114336eul: return PackConfigTableType(); case 0x1c182e1c2529027bul: return PatrolTableType(); case 0x19fffcb7859da778ul: return ProfileConfigTableType(); case 0xec79751dda28be2eul: return RangedSignedTableType(); case 0x031ec0c4b7d28bf1ul: return RangedUnsignedTableType(); case 0xbf59694e9e4f5ed7ul: return RangedWidthsTableType(); case 0x5f4843f6def45e87ul: return RootConfigTableType(); case 0x1d1a9911da171a29ul: return ShipEntryTableType(); case 0x1cf8555d11fb113aul: return TeamConfigTableType(); case 0x469dba0c16b2ad15ul: return TurretConfigTableType(); case 0x0577780d86c4b0c3ul: return WeaponConfigTableType(); case 0xab6a6961d3366451ul: return WideBlobTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -774,7 +774,7 @@ namespace Tabledemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
-                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x413e7bcf261bc3c7ul: return ArchiveConfigTableType(); case 0x2c8168f122124937ul: return CountedMinTableType(); case 0x19212a5b5b3ccb4bul: return FloatBoundTableType(); case 0xffb1dfb1f6ce215bul: return GlobalSettingsTableType(); case 0x5fcbe04615411b64ul: return GunnerConfigTableType(); case 0xb76842b2253337aful: return GunnerSettingsTableType(); case 0x3066b130dfbd7890ul: return HullConfigTableType(); case 0xd6633ae4e94deecful: return KeyedConfigTableType(); case 0xa6aa0caea28dcca1ul: return LoadoutConfigTableType(); case 0xe2f227393c6b20a2ul: return MinArmFixTableType(); case 0xf5b735fce4011ff4ul: return MinPlainFixTableType(); case 0x33de720d0bcfd78aul: return MoodFieldTableType(); case 0xad3596f9de08e3b7ul: return MoodsTableType(); case 0xd02d825db114336eul: return PackConfigTableType(); case 0x1c182e1c2529027bul: return PatrolTableType(); case 0x19fffcb7859da778ul: return ProfileConfigTableType(); case 0xec79751dda28be2eul: return RangedSignedTableType(); case 0x031ec0c4b7d28bf1ul: return RangedUnsignedTableType(); case 0xbf59694e9e4f5ed7ul: return RangedWidthsTableType(); case 0x5f4843f6def45e87ul: return RootConfigTableType(); case 0x1d1a9911da171a29ul: return ShipEntryTableType(); case 0x1cf8555d11fb113aul: return TeamConfigTableType(); case 0x469dba0c16b2ad15ul: return TurretConfigTableType(); case 0x05d94ead8f7094deul: return VarMoodsTableType(); case 0x0577780d86c4b0c3ul: return WeaponConfigTableType(); case 0xab6a6961d3366451ul: return WideBlobTableType(); default: return null; } };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x413e7bcf261bc3c7ul: return ArchiveConfigTableType(); case 0x2c8168f122124937ul: return CountedMinTableType(); case 0x19212a5b5b3ccb4bul: return FloatBoundTableType(); case 0xffb1dfb1f6ce215bul: return GlobalSettingsTableType(); case 0x5fcbe04615411b64ul: return GunnerConfigTableType(); case 0xb76842b2253337aful: return GunnerSettingsTableType(); case 0x3066b130dfbd7890ul: return HullConfigTableType(); case 0xd6633ae4e94deecful: return KeyedConfigTableType(); case 0xa6aa0caea28dcca1ul: return LoadoutConfigTableType(); case 0xe2f227393c6b20a2ul: return MinArmFixTableType(); case 0xf5b735fce4011ff4ul: return MinPlainFixTableType(); case 0x33de720d0bcfd78aul: return MoodFieldTableType(); case 0xad3596f9de08e3b7ul: return MoodsTableType(); case 0xd02d825db114336eul: return PackConfigTableType(); case 0x1c182e1c2529027bul: return PatrolTableType(); case 0x19fffcb7859da778ul: return ProfileConfigTableType(); case 0xec79751dda28be2eul: return RangedSignedTableType(); case 0x031ec0c4b7d28bf1ul: return RangedUnsignedTableType(); case 0xbf59694e9e4f5ed7ul: return RangedWidthsTableType(); case 0x5f4843f6def45e87ul: return RootConfigTableType(); case 0x1d1a9911da171a29ul: return ShipEntryTableType(); case 0x1cf8555d11fb113aul: return TeamConfigTableType(); case 0x469dba0c16b2ad15ul: return TurretConfigTableType(); case 0x0577780d86c4b0c3ul: return WeaponConfigTableType(); case 0xab6a6961d3366451ul: return WideBlobTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {

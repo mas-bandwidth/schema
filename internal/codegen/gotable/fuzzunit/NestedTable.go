@@ -51,7 +51,7 @@ func ArchiveConfigSaveBody(w *TableWriter, value *ArchiveConfig) bool {
 func ArchiveConfigSaveBodyFields(w *TableWriter, value *ArchiveConfig) bool {
 	{
 		mark := w.Ids.Count
-		ref := w.Ids.refAtHit(94, 0xa354fd1ff0c467c5)
+		ref := w.Ids.refAtHit(93, 0xa354fd1ff0c467c5)
 		start := w.Ids.Count
 		n := RootConfigMeasureBody(&value.Root, w.Ids)
 		if n < 0 || w.Ids.Overflow {
@@ -78,7 +78,7 @@ func ArchiveConfigSaveBodyFields(w *TableWriter, value *ArchiveConfig) bool {
 	}
 	{
 		if value.Count != 1 {
-			if ref := w.Ids.refAtHit(107, 0xb1e5e28e4479a274); !w.headerPair(ref, 4) {
+			if ref := w.Ids.refAtHit(106, 0xb1e5e28e4479a274); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
 			if value.Count < 0 || value.Count > 100 {
@@ -157,10 +157,6 @@ func ArchiveConfigLoadBody(r *TableReader, value *ArchiveConfig) bool {
 				return false
 			}
 			if !RootConfigLoadBody(&sub, &value.Root) {
-				return false
-			}
-			r.Take(sub)
-			if r.Nodes.Carve.Refused {
 				return false
 			}
 			if sub.Offset != int64(len(sub.Buffer)) {
@@ -289,7 +285,7 @@ func ArchiveConfigSaveBodyRetain(w *TableRetainWriter, value *ArchiveConfig) boo
 func ArchiveConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ArchiveConfig) bool {
 	{
 		mark := w.Ids.Count
-		ref := w.Ids.refAtHit(94, 0xa354fd1ff0c467c5)
+		ref := w.Ids.refAtHit(93, 0xa354fd1ff0c467c5)
 		start := w.Ids.Count
 		payload := TableRetainWriter{Measuring: true, Ids: w.Ids}
 		{
@@ -356,7 +352,7 @@ func ArchiveConfigSaveBodyFieldsRetain(w *TableRetainWriter, value *ArchiveConfi
 	}
 	{
 		if value.Count != 1 {
-			if ref := w.Ids.refAtHit(107, 0xb1e5e28e4479a274); !w.headerPair(ref, 4) {
+			if ref := w.Ids.refAtHit(106, 0xb1e5e28e4479a274); !w.headerPair(ref, 4) {
 				w.headerRest(ref, 4)
 			}
 			if value.Count < 0 || value.Count > 100 {
@@ -436,10 +432,6 @@ func ArchiveConfigLoadBodyRetain(r *TableRetainReader, value *ArchiveConfig) boo
 				return false
 			}
 			if !RootConfigLoadBodyRetain(&sub, &value.Root) {
-				return false
-			}
-			r.Take(sub)
-			if r.Nodes.Carve.Refused {
 				return false
 			}
 			if sub.Offset != int64(len(sub.Buffer)) {

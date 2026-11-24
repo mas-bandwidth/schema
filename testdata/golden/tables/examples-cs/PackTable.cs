@@ -154,8 +154,8 @@ namespace Tabledemo
         {
             long n = 1;
             TableFieldInfo[] fields = GunnerSettingsTableType().Fields;
-            if (BitConverter.SingleToUInt32Bits(v.Reaction) != 0x3e4ccccdu) { n += TableWire.VarSize(ids.RefAt(111, 0xb75aa3662201646aul)) + 5; }
-            if (v.Tracking != false) { n += TableWire.VarSize(ids.RefAt(99, 0xa6bf719a4602b0bcul)) + 2; }
+            if (BitConverter.SingleToUInt32Bits(v.Reaction) != 0x3e4ccccdu) { n += TableWire.VarSize(ids.RefAt(110, 0xb75aa3662201646aul)) + 5; }
+            if (v.Tracking != false) { n += TableWire.VarSize(ids.RefAt(98, 0xa6bf719a4602b0bcul)) + 2; }
             n += TableWire.BodySizeField(v, fields[2], ref ids, default, out long payload_2);
             if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[2] = payload_2; }
             return n;
@@ -166,12 +166,12 @@ namespace Tabledemo
             TableFieldInfo[] fields = GunnerSettingsTableType().Fields;
             if (BitConverter.SingleToUInt32Bits(v.Reaction) != 0x3e4ccccdu)
             {
-                w.HeaderAt(111, 0xb75aa3662201646aul, 10, ref ids);
+                w.HeaderAt(110, 0xb75aa3662201646aul, 10, ref ids);
                 w.Fixed((ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v.Reaction)), 4);
             }
             if (v.Tracking != false)
             {
-                w.HeaderAt(99, 0xa6bf719a4602b0bcul, 1, ref ids);
+                w.HeaderAt(98, 0xa6bf719a4602b0bcul, 1, ref ids);
                 w.Fixed(v.Tracking ? 1ul : 0ul, 1);
             }
             long payload_2 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[2] : -1;
@@ -212,13 +212,13 @@ namespace Tabledemo
 
         public static long GunnerSettingsMeasure(GunnerSettings value)
         {
-            Span<ulong> ids = stackalloc ulong[172];
+            Span<ulong> ids = stackalloc ulong[171];
             return GunnerSettingsSaveTyped(value, Span<byte>.Empty, ids, true);
         }
 
         public static long GunnerSettingsSave(GunnerSettings value, Span<byte> buffer)
         {
-            Span<ulong> ids = stackalloc ulong[172];
+            Span<ulong> ids = stackalloc ulong[171];
             return GunnerSettingsSaveTyped(value, buffer, ids, false);
         }
 
@@ -272,8 +272,8 @@ namespace Tabledemo
             TableFieldInfo[] fields = ShipEntryTableType().Fields;
             n += TableWire.BodySizeField(v, fields[0], ref ids, default, out long payload_0);
             if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[0] = payload_0; }
-            if (BitConverter.SingleToUInt32Bits(v.Health) != 0x42c80000u) { n += TableWire.VarSize(ids.RefAt(75, 0x7f69d4b5288ba9cful)) + 5; }
-            if (BitConverter.SingleToUInt32Bits(v.Mass) != 0x3f800000u) { n += TableWire.VarSize(ids.RefAt(25, 0x1f3757a2ce7b0ab1ul)) + 5; }
+            if (BitConverter.SingleToUInt32Bits(v.Health) != 0x42c80000u) { n += TableWire.VarSize(ids.RefAt(74, 0x7f69d4b5288ba9cful)) + 5; }
+            if (BitConverter.SingleToUInt32Bits(v.Mass) != 0x3f800000u) { n += TableWire.VarSize(ids.RefAt(24, 0x1f3757a2ce7b0ab1ul)) + 5; }
             n += TableWire.BodySizeField(v, fields[3], ref ids, default, out long payload_3);
             if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[3] = payload_3; }
             n += TableWire.BodySizeField(v, fields[4], ref ids, default, out long payload_4);
@@ -288,12 +288,12 @@ namespace Tabledemo
             TableWire.WriteBodyField(ref w, v, fields[0], ref ids, default, payload_0);
             if (BitConverter.SingleToUInt32Bits(v.Health) != 0x42c80000u)
             {
-                w.HeaderAt(75, 0x7f69d4b5288ba9cful, 10, ref ids);
+                w.HeaderAt(74, 0x7f69d4b5288ba9cful, 10, ref ids);
                 w.Fixed((ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v.Health)), 4);
             }
             if (BitConverter.SingleToUInt32Bits(v.Mass) != 0x3f800000u)
             {
-                w.HeaderAt(25, 0x1f3757a2ce7b0ab1ul, 10, ref ids);
+                w.HeaderAt(24, 0x1f3757a2ce7b0ab1ul, 10, ref ids);
                 w.Fixed((ulong)unchecked((uint)BitConverter.SingleToInt32Bits(v.Mass)), 4);
             }
             long payload_3 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[3] : -1;
@@ -336,13 +336,13 @@ namespace Tabledemo
 
         public static long ShipEntryMeasure(ShipEntry value)
         {
-            Span<ulong> ids = stackalloc ulong[172];
+            Span<ulong> ids = stackalloc ulong[171];
             return ShipEntrySaveTyped(value, Span<byte>.Empty, ids, true);
         }
 
         public static long ShipEntrySave(ShipEntry value, Span<byte> buffer)
         {
-            Span<ulong> ids = stackalloc ulong[172];
+            Span<ulong> ids = stackalloc ulong[171];
             return ShipEntrySaveTyped(value, buffer, ids, false);
         }
 
@@ -388,7 +388,7 @@ namespace Tabledemo
         {
             long n = 1;
             TableFieldInfo[] fields = GlobalSettingsTableType().Fields;
-            if (v.TickRate != 60) { n += TableWire.VarSize(ids.RefAt(97, 0xa65f859b617deaf3ul)) + 5; }
+            if (v.TickRate != 60) { n += TableWire.VarSize(ids.RefAt(96, 0xa65f859b617deaf3ul)) + 5; }
             n += TableWire.BodySizeField(v, fields[1], ref ids);
             n += TableWire.BodySizeField(v, fields[2], ref ids, default, out long payload_2);
             if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[2] = payload_2; }
@@ -402,7 +402,7 @@ namespace Tabledemo
             TableFieldInfo[] fields = GlobalSettingsTableType().Fields;
             if (v.TickRate != 60)
             {
-                w.HeaderAt(97, 0xa65f859b617deaf3ul, 8, ref ids);
+                w.HeaderAt(96, 0xa65f859b617deaf3ul, 8, ref ids);
                 w.Fixed((ulong)v.TickRate, 4);
             }
             TableWire.WriteBodyField(ref w, v, fields[1], ref ids);
@@ -446,13 +446,13 @@ namespace Tabledemo
 
         public static long GlobalSettingsMeasure(GlobalSettings value)
         {
-            Span<ulong> ids = stackalloc ulong[172];
+            Span<ulong> ids = stackalloc ulong[171];
             return GlobalSettingsSaveTyped(value, Span<byte>.Empty, ids, true);
         }
 
         public static long GlobalSettingsSave(GlobalSettings value, Span<byte> buffer)
         {
-            Span<ulong> ids = stackalloc ulong[172];
+            Span<ulong> ids = stackalloc ulong[171];
             return GlobalSettingsSaveTyped(value, buffer, ids, false);
         }
 
@@ -507,7 +507,7 @@ namespace Tabledemo
             long n = 1;
             TableFieldInfo[] fields = PackConfigTableType().Fields;
             int elemOffset = 0;
-            if (v.Version != 1) { n += TableWire.VarSize(ids.RefAt(117, 0xbb62c62c9808ea37ul)) + 5; }
+            if (v.Version != 1) { n += TableWire.VarSize(ids.RefAt(116, 0xbb62c62c9808ea37ul)) + 5; }
             n += TableWire.BodySizeField(v, fields[1], ref ids, default, out long payload_1);
             if (!rootPayloadSizes.IsEmpty) { rootPayloadSizes[1] = payload_1; }
             n += TableWire.BodySizeField(v, fields[2], ref ids, default, out long payload_2);
@@ -533,7 +533,7 @@ namespace Tabledemo
             int elemOffset = 0;
             if (v.Version != 1)
             {
-                w.HeaderAt(117, 0xbb62c62c9808ea37ul, 8, ref ids);
+                w.HeaderAt(116, 0xbb62c62c9808ea37ul, 8, ref ids);
                 w.Fixed((ulong)v.Version, 4);
             }
             long payload_1 = !rootPayloadSizes.IsEmpty ? rootPayloadSizes[1] : -1;
@@ -588,13 +588,13 @@ namespace Tabledemo
 
         public static long PackConfigMeasure(PackConfig value)
         {
-            Span<ulong> ids = stackalloc ulong[172];
+            Span<ulong> ids = stackalloc ulong[171];
             return PackConfigSaveTyped(value, Span<byte>.Empty, ids, true);
         }
 
         public static long PackConfigSave(PackConfig value, Span<byte> buffer)
         {
-            Span<ulong> ids = stackalloc ulong[172];
+            Span<ulong> ids = stackalloc ulong[171];
             return PackConfigSaveTyped(value, buffer, ids, false);
         }
 
@@ -634,7 +634,7 @@ namespace Tabledemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
-                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x413e7bcf261bc3c7ul: return ArchiveConfigTableType(); case 0x2c8168f122124937ul: return CountedMinTableType(); case 0x19212a5b5b3ccb4bul: return FloatBoundTableType(); case 0xffb1dfb1f6ce215bul: return GlobalSettingsTableType(); case 0x5fcbe04615411b64ul: return GunnerConfigTableType(); case 0xb76842b2253337aful: return GunnerSettingsTableType(); case 0x3066b130dfbd7890ul: return HullConfigTableType(); case 0xd6633ae4e94deecful: return KeyedConfigTableType(); case 0xa6aa0caea28dcca1ul: return LoadoutConfigTableType(); case 0xe2f227393c6b20a2ul: return MinArmFixTableType(); case 0xf5b735fce4011ff4ul: return MinPlainFixTableType(); case 0x33de720d0bcfd78aul: return MoodFieldTableType(); case 0xad3596f9de08e3b7ul: return MoodsTableType(); case 0xd02d825db114336eul: return PackConfigTableType(); case 0x1c182e1c2529027bul: return PatrolTableType(); case 0x19fffcb7859da778ul: return ProfileConfigTableType(); case 0xec79751dda28be2eul: return RangedSignedTableType(); case 0x031ec0c4b7d28bf1ul: return RangedUnsignedTableType(); case 0xbf59694e9e4f5ed7ul: return RangedWidthsTableType(); case 0x5f4843f6def45e87ul: return RootConfigTableType(); case 0x1d1a9911da171a29ul: return ShipEntryTableType(); case 0x1cf8555d11fb113aul: return TeamConfigTableType(); case 0x469dba0c16b2ad15ul: return TurretConfigTableType(); case 0x05d94ead8f7094deul: return VarMoodsTableType(); case 0x0577780d86c4b0c3ul: return WeaponConfigTableType(); case 0xab6a6961d3366451ul: return WideBlobTableType(); default: return null; } };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x413e7bcf261bc3c7ul: return ArchiveConfigTableType(); case 0x2c8168f122124937ul: return CountedMinTableType(); case 0x19212a5b5b3ccb4bul: return FloatBoundTableType(); case 0xffb1dfb1f6ce215bul: return GlobalSettingsTableType(); case 0x5fcbe04615411b64ul: return GunnerConfigTableType(); case 0xb76842b2253337aful: return GunnerSettingsTableType(); case 0x3066b130dfbd7890ul: return HullConfigTableType(); case 0xd6633ae4e94deecful: return KeyedConfigTableType(); case 0xa6aa0caea28dcca1ul: return LoadoutConfigTableType(); case 0xe2f227393c6b20a2ul: return MinArmFixTableType(); case 0xf5b735fce4011ff4ul: return MinPlainFixTableType(); case 0x33de720d0bcfd78aul: return MoodFieldTableType(); case 0xad3596f9de08e3b7ul: return MoodsTableType(); case 0xd02d825db114336eul: return PackConfigTableType(); case 0x1c182e1c2529027bul: return PatrolTableType(); case 0x19fffcb7859da778ul: return ProfileConfigTableType(); case 0xec79751dda28be2eul: return RangedSignedTableType(); case 0x031ec0c4b7d28bf1ul: return RangedUnsignedTableType(); case 0xbf59694e9e4f5ed7ul: return RangedWidthsTableType(); case 0x5f4843f6def45e87ul: return RootConfigTableType(); case 0x1d1a9911da171a29ul: return ShipEntryTableType(); case 0x1cf8555d11fb113aul: return TeamConfigTableType(); case 0x469dba0c16b2ad15ul: return TurretConfigTableType(); case 0x0577780d86c4b0c3ul: return WeaponConfigTableType(); case 0xab6a6961d3366451ul: return WideBlobTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -673,7 +673,7 @@ namespace Tabledemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
-                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x413e7bcf261bc3c7ul: return ArchiveConfigTableType(); case 0x2c8168f122124937ul: return CountedMinTableType(); case 0x19212a5b5b3ccb4bul: return FloatBoundTableType(); case 0xffb1dfb1f6ce215bul: return GlobalSettingsTableType(); case 0x5fcbe04615411b64ul: return GunnerConfigTableType(); case 0xb76842b2253337aful: return GunnerSettingsTableType(); case 0x3066b130dfbd7890ul: return HullConfigTableType(); case 0xd6633ae4e94deecful: return KeyedConfigTableType(); case 0xa6aa0caea28dcca1ul: return LoadoutConfigTableType(); case 0xe2f227393c6b20a2ul: return MinArmFixTableType(); case 0xf5b735fce4011ff4ul: return MinPlainFixTableType(); case 0x33de720d0bcfd78aul: return MoodFieldTableType(); case 0xad3596f9de08e3b7ul: return MoodsTableType(); case 0xd02d825db114336eul: return PackConfigTableType(); case 0x1c182e1c2529027bul: return PatrolTableType(); case 0x19fffcb7859da778ul: return ProfileConfigTableType(); case 0xec79751dda28be2eul: return RangedSignedTableType(); case 0x031ec0c4b7d28bf1ul: return RangedUnsignedTableType(); case 0xbf59694e9e4f5ed7ul: return RangedWidthsTableType(); case 0x5f4843f6def45e87ul: return RootConfigTableType(); case 0x1d1a9911da171a29ul: return ShipEntryTableType(); case 0x1cf8555d11fb113aul: return TeamConfigTableType(); case 0x469dba0c16b2ad15ul: return TurretConfigTableType(); case 0x05d94ead8f7094deul: return VarMoodsTableType(); case 0x0577780d86c4b0c3ul: return WeaponConfigTableType(); case 0xab6a6961d3366451ul: return WideBlobTableType(); default: return null; } };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x413e7bcf261bc3c7ul: return ArchiveConfigTableType(); case 0x2c8168f122124937ul: return CountedMinTableType(); case 0x19212a5b5b3ccb4bul: return FloatBoundTableType(); case 0xffb1dfb1f6ce215bul: return GlobalSettingsTableType(); case 0x5fcbe04615411b64ul: return GunnerConfigTableType(); case 0xb76842b2253337aful: return GunnerSettingsTableType(); case 0x3066b130dfbd7890ul: return HullConfigTableType(); case 0xd6633ae4e94deecful: return KeyedConfigTableType(); case 0xa6aa0caea28dcca1ul: return LoadoutConfigTableType(); case 0xe2f227393c6b20a2ul: return MinArmFixTableType(); case 0xf5b735fce4011ff4ul: return MinPlainFixTableType(); case 0x33de720d0bcfd78aul: return MoodFieldTableType(); case 0xad3596f9de08e3b7ul: return MoodsTableType(); case 0xd02d825db114336eul: return PackConfigTableType(); case 0x1c182e1c2529027bul: return PatrolTableType(); case 0x19fffcb7859da778ul: return ProfileConfigTableType(); case 0xec79751dda28be2eul: return RangedSignedTableType(); case 0x031ec0c4b7d28bf1ul: return RangedUnsignedTableType(); case 0xbf59694e9e4f5ed7ul: return RangedWidthsTableType(); case 0x5f4843f6def45e87ul: return RootConfigTableType(); case 0x1d1a9911da171a29ul: return ShipEntryTableType(); case 0x1cf8555d11fb113aul: return TeamConfigTableType(); case 0x469dba0c16b2ad15ul: return TurretConfigTableType(); case 0x0577780d86c4b0c3ul: return WeaponConfigTableType(); case 0xab6a6961d3366451ul: return WideBlobTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -714,7 +714,7 @@ namespace Tabledemo
                 info.RootElemSlots = 0;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
-                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x413e7bcf261bc3c7ul: return ArchiveConfigTableType(); case 0x2c8168f122124937ul: return CountedMinTableType(); case 0x19212a5b5b3ccb4bul: return FloatBoundTableType(); case 0xffb1dfb1f6ce215bul: return GlobalSettingsTableType(); case 0x5fcbe04615411b64ul: return GunnerConfigTableType(); case 0xb76842b2253337aful: return GunnerSettingsTableType(); case 0x3066b130dfbd7890ul: return HullConfigTableType(); case 0xd6633ae4e94deecful: return KeyedConfigTableType(); case 0xa6aa0caea28dcca1ul: return LoadoutConfigTableType(); case 0xe2f227393c6b20a2ul: return MinArmFixTableType(); case 0xf5b735fce4011ff4ul: return MinPlainFixTableType(); case 0x33de720d0bcfd78aul: return MoodFieldTableType(); case 0xad3596f9de08e3b7ul: return MoodsTableType(); case 0xd02d825db114336eul: return PackConfigTableType(); case 0x1c182e1c2529027bul: return PatrolTableType(); case 0x19fffcb7859da778ul: return ProfileConfigTableType(); case 0xec79751dda28be2eul: return RangedSignedTableType(); case 0x031ec0c4b7d28bf1ul: return RangedUnsignedTableType(); case 0xbf59694e9e4f5ed7ul: return RangedWidthsTableType(); case 0x5f4843f6def45e87ul: return RootConfigTableType(); case 0x1d1a9911da171a29ul: return ShipEntryTableType(); case 0x1cf8555d11fb113aul: return TeamConfigTableType(); case 0x469dba0c16b2ad15ul: return TurretConfigTableType(); case 0x05d94ead8f7094deul: return VarMoodsTableType(); case 0x0577780d86c4b0c3ul: return WeaponConfigTableType(); case 0xab6a6961d3366451ul: return WideBlobTableType(); default: return null; } };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x413e7bcf261bc3c7ul: return ArchiveConfigTableType(); case 0x2c8168f122124937ul: return CountedMinTableType(); case 0x19212a5b5b3ccb4bul: return FloatBoundTableType(); case 0xffb1dfb1f6ce215bul: return GlobalSettingsTableType(); case 0x5fcbe04615411b64ul: return GunnerConfigTableType(); case 0xb76842b2253337aful: return GunnerSettingsTableType(); case 0x3066b130dfbd7890ul: return HullConfigTableType(); case 0xd6633ae4e94deecful: return KeyedConfigTableType(); case 0xa6aa0caea28dcca1ul: return LoadoutConfigTableType(); case 0xe2f227393c6b20a2ul: return MinArmFixTableType(); case 0xf5b735fce4011ff4ul: return MinPlainFixTableType(); case 0x33de720d0bcfd78aul: return MoodFieldTableType(); case 0xad3596f9de08e3b7ul: return MoodsTableType(); case 0xd02d825db114336eul: return PackConfigTableType(); case 0x1c182e1c2529027bul: return PatrolTableType(); case 0x19fffcb7859da778ul: return ProfileConfigTableType(); case 0xec79751dda28be2eul: return RangedSignedTableType(); case 0x031ec0c4b7d28bf1ul: return RangedUnsignedTableType(); case 0xbf59694e9e4f5ed7ul: return RangedWidthsTableType(); case 0x5f4843f6def45e87ul: return RootConfigTableType(); case 0x1d1a9911da171a29ul: return ShipEntryTableType(); case 0x1cf8555d11fb113aul: return TeamConfigTableType(); case 0x469dba0c16b2ad15ul: return TurretConfigTableType(); case 0x0577780d86c4b0c3ul: return WeaponConfigTableType(); case 0xab6a6961d3366451ul: return WideBlobTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {
@@ -754,7 +754,7 @@ namespace Tabledemo
                 info.RootElemSlots = 3;
                 info.PointerType = delegate (ulong id) { switch (id) { default: return null; } };
                 info.PointerTypes = delegate { return new TableTypeInfo[] { }; };
-                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x413e7bcf261bc3c7ul: return ArchiveConfigTableType(); case 0x2c8168f122124937ul: return CountedMinTableType(); case 0x19212a5b5b3ccb4bul: return FloatBoundTableType(); case 0xffb1dfb1f6ce215bul: return GlobalSettingsTableType(); case 0x5fcbe04615411b64ul: return GunnerConfigTableType(); case 0xb76842b2253337aful: return GunnerSettingsTableType(); case 0x3066b130dfbd7890ul: return HullConfigTableType(); case 0xd6633ae4e94deecful: return KeyedConfigTableType(); case 0xa6aa0caea28dcca1ul: return LoadoutConfigTableType(); case 0xe2f227393c6b20a2ul: return MinArmFixTableType(); case 0xf5b735fce4011ff4ul: return MinPlainFixTableType(); case 0x33de720d0bcfd78aul: return MoodFieldTableType(); case 0xad3596f9de08e3b7ul: return MoodsTableType(); case 0xd02d825db114336eul: return PackConfigTableType(); case 0x1c182e1c2529027bul: return PatrolTableType(); case 0x19fffcb7859da778ul: return ProfileConfigTableType(); case 0xec79751dda28be2eul: return RangedSignedTableType(); case 0x031ec0c4b7d28bf1ul: return RangedUnsignedTableType(); case 0xbf59694e9e4f5ed7ul: return RangedWidthsTableType(); case 0x5f4843f6def45e87ul: return RootConfigTableType(); case 0x1d1a9911da171a29ul: return ShipEntryTableType(); case 0x1cf8555d11fb113aul: return TeamConfigTableType(); case 0x469dba0c16b2ad15ul: return TurretConfigTableType(); case 0x05d94ead8f7094deul: return VarMoodsTableType(); case 0x0577780d86c4b0c3ul: return WeaponConfigTableType(); case 0xab6a6961d3366451ul: return WideBlobTableType(); default: return null; } };
+                info.DeclaredType = delegate (ulong id) { switch (id) { case 0x413e7bcf261bc3c7ul: return ArchiveConfigTableType(); case 0x2c8168f122124937ul: return CountedMinTableType(); case 0x19212a5b5b3ccb4bul: return FloatBoundTableType(); case 0xffb1dfb1f6ce215bul: return GlobalSettingsTableType(); case 0x5fcbe04615411b64ul: return GunnerConfigTableType(); case 0xb76842b2253337aful: return GunnerSettingsTableType(); case 0x3066b130dfbd7890ul: return HullConfigTableType(); case 0xd6633ae4e94deecful: return KeyedConfigTableType(); case 0xa6aa0caea28dcca1ul: return LoadoutConfigTableType(); case 0xe2f227393c6b20a2ul: return MinArmFixTableType(); case 0xf5b735fce4011ff4ul: return MinPlainFixTableType(); case 0x33de720d0bcfd78aul: return MoodFieldTableType(); case 0xad3596f9de08e3b7ul: return MoodsTableType(); case 0xd02d825db114336eul: return PackConfigTableType(); case 0x1c182e1c2529027bul: return PatrolTableType(); case 0x19fffcb7859da778ul: return ProfileConfigTableType(); case 0xec79751dda28be2eul: return RangedSignedTableType(); case 0x031ec0c4b7d28bf1ul: return RangedUnsignedTableType(); case 0xbf59694e9e4f5ed7ul: return RangedWidthsTableType(); case 0x5f4843f6def45e87ul: return RootConfigTableType(); case 0x1d1a9911da171a29ul: return ShipEntryTableType(); case 0x1cf8555d11fb113aul: return TeamConfigTableType(); case 0x469dba0c16b2ad15ul: return TurretConfigTableType(); case 0x0577780d86c4b0c3ul: return WeaponConfigTableType(); case 0xab6a6961d3366451ul: return WideBlobTableType(); default: return null; } };
                 info.BytesEdge = false; info.StringEdge = false;
                 info.Fields = new TableFieldInfo[]
                 {

@@ -57,3 +57,23 @@ fixed table FixedBounds
     tones   [..4]Tone
     marks   [..4]Mark
 }
+
+// VarMoods: a writer never writes a deprecated enum variant (docs/SPEC-TABLES.md
+// §2.15 WRITE), held on a VARIABLE root with no fixed form. tabledemo's Moods
+// and MoodField are fixed, and a leg may save a fixed root through its fixed
+// form on the variable surface too, so the wref_varmoods_* rows reach every
+// leg's variable writer only through a root like this one: the list element
+// and the scalar each refuse Old and write Fierce.
+
+enum Mood
+{
+    Calm
+    Old | deprecated
+    Fierce
+}
+
+table VarMoods
+{
+    row  []Mood
+    mood Mood = Fierce
+}

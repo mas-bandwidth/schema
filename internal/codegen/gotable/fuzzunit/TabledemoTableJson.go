@@ -3829,11 +3829,7 @@ func tableRegionFromJSON(value unsafe.Pointer, info *TableTypeInfo, worker *Tabl
 		report.Refuse(TableRefuseMalformed, "")
 		return false
 	}
-	graph := tableJSONGraph{mapPlace: func(p unsafe.Pointer, f *TableFieldInfo, key tableMapKey) (unsafe.Pointer, bool) {
-		return tableMapPlace(worker, (*tableContainer)(p), f, key)
-	}, listAdd: func(p unsafe.Pointer, size int64) unsafe.Pointer {
-		return tableContainerAppend(worker, (*tableContainer)(p), size)
-	}, alloc: worker.Alloc, allocate: worker.Arena.Allocator.alloc, release: worker.Arena.Allocator.free}
+	graph := tableJSONGraph{alloc: worker.Alloc, allocate: worker.Arena.Allocator.alloc, release: worker.Arena.Allocator.free}
 	defer graph.close()
 	in := tableJSONIn{text: text, report: report, graph: &graph, nullEmpty: options.NullAsEmpty}
 	info.Reset(value)
@@ -3875,7 +3871,7 @@ func tableRegionToJSON(value unsafe.Pointer, info *TableTypeInfo, buffer []byte,
 	}}
 	for i := range n.entries {
 		e := &n.entries[i]
-		if e.info != nil && !tableRegionEdges(e.node, e.info, nil, func(slot *TableRef, f *TableFieldInfo) bool {
+		if e.info != nil && !tableRegionEdges(e.node, e.info, func(slot *TableRef, f *TableFieldInfo) bool {
 			p := tableRefAt(slot, nil)
 			if p != nil {
 				graph.node(p).refs++
@@ -6032,142 +6028,6 @@ func MoodFieldLoadText(text string, report *TableReport) (*MoodField, error) {
 		return nil, read.Err()
 	}
 	return &v, nil
-}
-
-// VarMoodsFromJSON is the text read (mas-bandwidth/schema docs/SPEC-TABLES.md §6.5, §16): the whole value into the builder, or false
-// with the builder's root at its defaults; a supplied report receives this read's report, and
-// report.Err() is the reason.
-func VarMoodsFromJSON(builder *VarMoodsBuilder, text []byte, report *TableReport) bool {
-	return VarMoodsFromJSONWith(builder, text, report, TableJSONOptions{})
-}
-func VarMoodsToJSONMeasure(value *VarMoods, allocator ...TableAllocator) int64 {
-	n, _ := tableRegionToJSON(unsafe.Pointer(value), VarMoodsTableType(), nil, TableJSONOptions{}, allocator...)
-	return n
-}
-func VarMoodsToJSON(value *VarMoods, buffer []byte, allocator ...TableAllocator) int64 {
-	n, _ := tableRegionToJSON(unsafe.Pointer(value), VarMoodsTableType(), buffer, TableJSONOptions{}, allocator...)
-	return n
-}
-func VarMoodsFromJSONWith(builder *VarMoodsBuilder, text []byte, report *TableReport, options TableJSONOptions) bool {
-	read := report
-	if read == nil {
-		read = &TableReport{}
-	} else {
-		*read = TableReport{}
-	}
-	if builder.Arena.Locked {
-		read.Refuse(TableRefuseAllocationFailed, "")
-		return false
-	}
-	return tableRegionFromJSON(unsafe.Pointer(builder.GetRoot()), VarMoodsTableType(), &builder.Main, text, read, options)
-}
-func VarMoodsToJSONMeasureWith(value *VarMoods, options TableJSONOptions, allocator ...TableAllocator) int64 {
-	n, _ := tableRegionToJSON(unsafe.Pointer(value), VarMoodsTableType(), nil, options, allocator...)
-	return n
-}
-func VarMoodsToJSONWith(value *VarMoods, buffer []byte, options TableJSONOptions, allocator ...TableAllocator) int64 {
-	n, _ := tableRegionToJSON(unsafe.Pointer(value), VarMoodsTableType(), buffer, options, allocator...)
-	return n
-}
-func VarMoodsToJSONMeasureReason(value *VarMoods, allocator ...TableAllocator) (int64, error) {
-	size, reason := tableRegionToJSON(unsafe.Pointer(value), VarMoodsTableType(), nil, TableJSONOptions{}, allocator...)
-	return size, tableRefuseError(reason)
-}
-
-// VarMoodsSaveText returns the base64 of VarMoods's binary wire (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §16.8): the whole file, form byte first, so the text keeps the form byte,
-// the framing check and every versioning guarantee and is opaque. It takes
-// the write context VarMoodsSave takes.
-func VarMoodsSaveText(value *VarMoods, context ...TableWriteContext) (string, error) {
-	n, err := VarMoodsMeasureReason(value, context...)
-	if err != nil {
-		return "", err
-	}
-	if n < 0 {
-		return "", tableRefuseError(TableRefuseInvalidValue)
-	}
-	buf := make([]byte, n)
-	if VarMoodsSave(value, buf, context...) != n {
-		return "", tableRefuseError(TableRefuseInvalidValue)
-	}
-	return base64.StdEncoding.EncodeToString(buf), nil
-}
-
-// VarMoodsLoadText reads one VarMoods from a base64 wire text (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §16.8) into a builder of its own and returns the locked root, as VarMoodsReadStrict
-// does (§6.5). It refuses base64_damaged when the body does not decode,
-// base64_not_canonical when it decodes but is not canonical (a pad bit set, or
-// an embedded CR or LF), unknown_form when the decoded wire's form byte is not
-// one this build carries, and the read's own reason otherwise. A nil report is
-// allowed; a supplied one receives this read's report.
-func VarMoodsLoadText(text string, report *TableReport) (*VarMoods, error) {
-	if report != nil {
-		*report = TableReport{}
-	}
-	var decoded [256]byte
-	var stackWire, heapWire []byte
-	var err error
-	heap := false
-	if want := base64.StdEncoding.DecodedLen(len(text)); want <= len(decoded) {
-		var n int
-		n, err = base64.StdEncoding.Strict().Decode(decoded[:want], []byte(text))
-		stackWire = decoded[:n]
-	} else {
-		heapWire, err = base64.StdEncoding.Strict().DecodeString(text)
-		heap = true
-	}
-	if err != nil {
-		if _, plainErr := base64.StdEncoding.DecodeString(text); plainErr == nil {
-			return nil, tableRefuseError(TableRefuseBase64NotCanonical)
-		}
-		return nil, tableRefuseError(TableRefuseBase64Damaged)
-	}
-	wire := stackWire
-	if heap {
-		wire = heapWire
-	}
-	if len(text) != base64.StdEncoding.EncodedLen(len(wire)) {
-		return nil, tableRefuseError(TableRefuseBase64NotCanonical)
-	}
-	size, measureErr := VarMoodsLoadMeasureReason(wire)
-	if measureErr == TableRefuseCountOverLength {
-		measureErr = TableRefuseWireDamaged
-	}
-	if measureErr != nil {
-		if report != nil {
-			*report = TableReport{}
-			if reason, ok := measureErr.(TableRefuseReason); ok {
-				report.Refuse(reason, "")
-			} else {
-				report.Refuse(TableRefuseWireDamaged, "")
-			}
-		}
-		return nil, measureErr
-	}
-	var load []byte
-	if heap {
-		load = heapWire
-	} else {
-		load = append([]byte(nil), stackWire...)
-	}
-	var builder VarMoodsBuilder
-	if !builder.initSized(size) {
-		return nil, tableRefuseError(TableRefuseAllocationFailed)
-	}
-	var read TableReport
-	ok := VarMoodsLoadBuilder(&builder, load, &read)
-	if report != nil {
-		*report = read
-	}
-	if !ok {
-		builder.Shutdown()
-		return nil, read.Err()
-	}
-	if !builder.Lock() {
-		builder.Shutdown()
-		return nil, tableRefuseError(TableRefuseAllocationFailed)
-	}
-	return builder.AsConst(), nil
 }
 
 // MinArmFixFromJSON fills one MinArmFix from a JSON text (mas-bandwidth/schema docs/SPEC-TABLES.md §16): the whole

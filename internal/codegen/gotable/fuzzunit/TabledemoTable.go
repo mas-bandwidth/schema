@@ -642,14 +642,6 @@ type RootConfigRow struct {
 	_                 [4]byte // generated padding
 }
 
-// VarMoodsRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
-// §11), so no declaration in the unit can take it.
-type VarMoodsRow struct {
-	Row  TableList[Mood]
-	Mood Mood
-	_    [7]byte // generated padding
-}
-
 // WeaponConfigRow — a cooked record. `Row` is a CLAIMED suffix (mas-bandwidth/schema docs/SPEC-TABLES.md
 // §11), so no declaration in the unit can take it.
 type WeaponConfigRow struct {
@@ -689,7 +681,7 @@ type MinPickRow struct {
 // BuildVersion is the unit's build version (mas-bandwidth/schema docs/SPEC-TABLES.md §20): the
 // one digest a block carries and BlockOpen compares, and the fact §3.3's
 // announcement carries before the first body so an endpoint's build is knowable.
-const BuildVersion uint64 = 0x2ee1bb849c945752
+const BuildVersion uint64 = 0x74f8a79e113ca9df
 
 // ---- reflection (tables only, mas-bandwidth/schema docs/SPEC-TABLES.md §8) ----
 //
@@ -980,7 +972,7 @@ func tableJSONGuardHolds(base unsafe.Pointer, info *TableTypeInfo, guard string)
 	}
 }
 
-const tableIDCapacity = 172
+const tableIDCapacity = 171
 const tableIDBuckets = 512
 
 // TableIds interns the writer's ids in first-use order. Bucket links are
@@ -3055,7 +3047,7 @@ func (n *TableNumbering) visit(p unsafe.Pointer, t *TableTypeInfo, id uint64) bo
 	n.entries[i] = tableNodeEntry{node: p, info: t, id: id, open: true}
 	n.buckets[slot] = uint64(i + 1)
 	a := n.arena
-	if t != nil && !tableRegionEdges(p, t, a, func(slot *TableRef, f *TableFieldInfo) bool {
+	if t != nil && !tableRegionEdges(p, t, func(slot *TableRef, f *TableFieldInfo) bool {
 		var target *TableTypeInfo
 		if f.Table != nil {
 			target = f.Table()
@@ -3084,19 +3076,13 @@ func tableNumber(root unsafe.Pointer, info *TableTypeInfo, a *TableArena, alloca
 	}
 	return n, true
 }
-func tableRegionEdges(base unsafe.Pointer, info *TableTypeInfo, a *TableArena, visit func(*TableRef, *TableFieldInfo) bool) bool {
+func tableRegionEdges(base unsafe.Pointer, info *TableTypeInfo, visit func(*TableRef, *TableFieldInfo) bool) bool {
 	for i := range info.Fields {
 		f := &info.Fields[i]
 		if !tableJSONGuardHolds(base, info, f.Guard) || f.Optional && !*(*bool)(unsafe.Add(base, f.PresentOffset)) {
 			continue
 		}
 		p := unsafe.Add(base, f.Offset)
-		if f.List || f.Map {
-			if !tableRegionContainerEdges((*tableContainer)(p), f, a, visit) {
-				return false
-			}
-			continue
-		}
 		count := int32(1)
 		if f.IsArray {
 			count = tableRegionCount(base, f)
@@ -3106,19 +3092,19 @@ func tableRegionEdges(base unsafe.Pointer, info *TableTypeInfo, a *TableArena, v
 		}
 		for j := range count {
 			at := unsafe.Add(p, uintptr(j)*uintptr(f.ElemSize))
-			if !tableRegionValueEdges(at, f, a, visit) {
+			if !tableRegionValueEdges(at, f, visit) {
 				return false
 			}
 		}
 	}
 	return true
 }
-func tableRegionValueEdges(p unsafe.Pointer, f *TableFieldInfo, a *TableArena, visit func(*TableRef, *TableFieldInfo) bool) bool {
+func tableRegionValueEdges(p unsafe.Pointer, f *TableFieldInfo, visit func(*TableRef, *TableFieldInfo) bool) bool {
 	if f.Pointer {
 		return visit((*TableRef)(p), f)
 	}
 	if f.Kind == 13 && f.Table != nil {
-		return tableRegionEdges(p, f.Table(), a, visit)
+		return tableRegionEdges(p, f.Table(), visit)
 	}
 	if f.Kind == 15 && f.Arms != nil {
 		arms := f.Arms()
@@ -3141,7 +3127,7 @@ func tableRegionValueEdges(p unsafe.Pointer, f *TableFieldInfo, a *TableArena, v
 				}
 			}
 			for j := range count {
-				if !tableRegionValueEdges(unsafe.Add(at, uintptr(j)*uintptr(af.ElemSize)), af, a, visit) {
+				if !tableRegionValueEdges(unsafe.Add(at, uintptr(j)*uintptr(af.ElemSize)), af, visit) {
 					return false
 				}
 			}
@@ -3264,7 +3250,6 @@ func tableRegionSaveReason(root unsafe.Pointer, info *TableTypeInfo, buffer []by
 // check has already refused an index past the table and a blob named twice.
 type TableNodeDirEntry struct{ Offset, TypeID uint64 }
 type TableNodeMap struct {
-	Carve     TableExtentCarve
 	Base      unsafe.Pointer
 	Entries   []TableNodeDirEntry
 	Good      bool
@@ -3421,7 +3406,7 @@ func tableNodeStorage(id uint64, body TableReader, nodeType func(uint64) *TableT
 }
 func tableNodeStorageReason(id uint64, body TableReader, nodeType func(uint64) *TableTypeInfo, blobs int) (int64, TableRefuseReason) {
 	if t := nodeType(id); t != nil {
-		return tableWireNodeBytesReason(body, t)
+		return tableRegionRound(int64(t.Size)), TableRefuseOk
 	}
 	if n, reason, blob := tableBlobStorageReason(id, int64(len(body.Buffer)), blobs); blob {
 		if n == -1 && id == tableStringTypeID && !tableUTF8Valid(body.Buffer) {
@@ -3507,10 +3492,7 @@ func tableRegionMeasureReason(wire []byte, root *TableTypeInfo, nodeType func(ui
 	if !framed || probe.Offset != int64(len(probe.Buffer)) {
 		return -1, 0, TableOpenDamaged, TableRefuseWireDamaged
 	}
-	data, reason := tableWireNodeBytesReason(r, root)
-	if data < 0 {
-		return -1, 0, TableOpenRefused, reason
-	}
+	data := tableRegionRound(int64(root.Size))
 	s := tableNodeScanBegin(r)
 	for {
 		id, body, ok := s.next()
@@ -3612,7 +3594,7 @@ func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uin
 	nodes.Count = uint64(len(directory) - 1)
 	root.Reset(base)
 	s := tableNodeScanBegin(r)
-	used := tableWireNodeBytes(r, root)
+	used := tableRegionRound(int64(root.Size))
 	k := 1
 	unknown := int32(0)
 	for {
@@ -3655,9 +3637,7 @@ func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uin
 			if o&tableNodeBlobAway != tableNodeBlobAway {
 				p := unsafe.Add(base, o&^(tableNodeWireNamed|tableNodeBlobSeen))
 				if t := nodeType(id); t != nil {
-					carve := TableExtentCarve{Base: p, At: tableRegionRound(int64(t.Size)), Limit: tableWireNodeBytes(body, t)}
 					body.Nodes = nodes
-					body.Nodes.Carve = carve
 					t.LoadBody(body, p)
 				} else {
 					copy(unsafe.Slice((*byte)(unsafe.Add(p, 8)), len(body.Buffer)), body.Buffer)
@@ -3672,9 +3652,7 @@ func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uin
 	}
 	tableFirstUseCount(report, 2)
 	nodes.from = 0
-	carve := TableExtentCarve{Base: base, At: tableRegionRound(int64(root.Size)), Limit: tableWireNodeBytes(r, root)}
 	r.Nodes = nodes
-	r.Nodes.Carve = carve
 	r.Nested = false
 	root.LoadBody(r, base)
 	if !tableFirstUseWhole(report, uint64(len(r.Ids)/8)) {
@@ -3695,11 +3673,7 @@ func tableRegionLoad(region, wire []byte, root *TableTypeInfo, nodeType func(uin
 }
 func tablePackNodeBytes(e *tableNodeEntry, a *TableArena) int64 {
 	if e.info != nil {
-		extent := tableExtentBytes(e.node, e.info, a)
-		if extent < 0 {
-			return -1
-		}
-		return tableRegionRound(tableRegionRound(int64(e.info.Size)) + extent)
+		return tableRegionRound(int64(e.info.Size))
 	}
 	extra := int64(0)
 	if e.id == tableStringTypeID {
@@ -3736,7 +3710,6 @@ func tableRegionPackMeasureReason(root unsafe.Pointer, info *TableTypeInfo, a *T
 	}
 	return size, TableRefuseOk
 }
-
 func tableRegionPack(root unsafe.Pointer, info *TableTypeInfo, a *TableArena) ([]byte, []byte, bool) {
 	total := tableRegionPackMeasure(root, info, a)
 	if total < 0 {
@@ -3762,17 +3735,11 @@ func tableRegionPack(root unsafe.Pointer, info *TableTypeInfo, a *TableArena) ([
 		e := &n.entries[i]
 		p := unsafe.Add(base, e.offset)
 		if e.info == nil {
-			length := 8 + int(uint64(*(*uint32)(e.node)))
-			copy(unsafe.Slice((*byte)(p), length), unsafe.Slice((*byte)(e.node), length))
+			copy(unsafe.Slice((*byte)(p), 8+int(uint64(*(*uint32)(e.node)))), unsafe.Slice((*byte)(e.node), 8+int(uint64(*(*uint32)(e.node)))))
 			continue
 		}
-		copy(unsafe.Slice((*byte)(p), e.info.Size), unsafe.Slice((*byte)(e.node), e.info.Size))
-		at := tableRegionRound(int64(e.info.Size))
-		if !tableExtentWalk(e.node, p, e.info, a, p, &at) {
-			a.Allocator.free(allocation)
-			return nil, nil, false
-		}
-		if !tableRegionEdges(p, e.info, nil, func(slot *TableRef, f *TableFieldInfo) bool {
+		copy(unsafe.Slice((*byte)(p), int(e.info.Size)), unsafe.Slice((*byte)(e.node), int(e.info.Size)))
+		if !tableRegionEdges(p, e.info, func(slot *TableRef, f *TableFieldInfo) bool {
 			if *slot == 0 {
 				return true
 			}
@@ -3901,7 +3868,7 @@ func tableBuilderLoad(p unsafe.Pointer, ref TableRef, worker *TableWorker, wire 
 	clear(memory)
 	directory := unsafe.Slice((*TableNodeDirEntry)(unsafe.Pointer(&memory[0])), int(count))
 	directory[0] = TableNodeDirEntry{uint64(ref), root.ID}
-	nodes := TableNodeMap{Entries: directory, Arena: true, Carve: TableExtentCarve{Worker: worker}}
+	nodes := TableNodeMap{Entries: directory, Arena: true}
 	nodes.Once = true
 	nodes.Indexed = true
 	nodes.Count = uint64(count - 1)
@@ -4161,35 +4128,8 @@ func tableWireArrayExtent(r TableReader, f *TableFieldInfo, keyed, arm bool, at 
 		*at += int64(count) * int64(f.ElemSize)
 	}
 	if nodes >= 0 && f.Map {
-		kf := &f.Table().Fields[0]
-		var last tableMapKey
-		prior := false
-		for range count {
-			elem, ok := r.Body()
-			if !ok {
-				return bad
-			}
-			key, clash, over, _, whole := tableMapReadKey(elem, kf)
-			if clash {
-				return TableRefuseOk
-			}
-			if !whole {
-				return bad
-			}
-			if over {
-				continue
-			}
-			if prior && tableMapKeyOrder(last, key, kf) > 0 {
-				return bad
-			}
-			if reason := tableWireExtent(&elem, f.Table(), at, nodes); reason != TableRefuseOk {
-				return reason
-			}
-			last = key
-			prior = true
-		}
 		return TableRefuseOk
-	}
+	} // map arm
 	if nodes >= 0 {
 		n := count
 		if !f.List && !keyed && f.ArrayBound > 0 && n > uint64(f.ArrayBound) {
@@ -4371,611 +4311,6 @@ func tableWireUnionExtent(r *TableReader, f *TableFieldInfo, at *int64, nodes in
 	}
 	return TableRefuseOk
 }
-
-func tableRegionContainerEdges(h *tableContainer, f *TableFieldInfo, a *TableArena, visit func(*TableRef, *TableFieldInfo) bool) bool {
-	if h.Count < 0 {
-		return false
-	}
-	cursor := tableMapCursor(h, f, a)
-	defer cursor.Release()
-	for range h.Count {
-		elem := cursor.Next()
-		if elem == nil || !tableRegionValueEdges(elem, f, a, visit) {
-			return false
-		}
-	}
-	return true
-}
-
-type tableContainer struct {
-	Ref   int64
-	Count int32
-	_     int32
-}
-type TableList[T any] struct {
-	Ref   int64
-	Count int32
-	_     int32
-}
-
-func (l *TableList[T]) Clear() { *l = TableList[T]{} }
-
-// container is the list's untyped head: TableList[T] and tableContainer share one layout.
-func (l *TableList[T]) container() *tableContainer { return (*tableContainer)(unsafe.Pointer(l)) }
-func (l *TableList[T]) At(index int32, arena ...*TableArena) *T {
-	if l == nil || index < 0 || index >= l.Count {
-		return nil
-	}
-	c := tableContainerCursorBegin(l.container(), int64(unsafe.Sizeof(*new(T))), tableOptionalArena(arena))
-	return (*T)(c.At(index))
-}
-
-type tableContainerHead struct {
-	First, Last int64
-	Live        int32
-	_           [12]byte
-}
-type tableContainerChunk struct {
-	Next            int64
-	Count, Capacity int32
-	Dead            uint64
-	_               uint64
-}
-type tableContainerCursor struct {
-	order  []int64
-	memory []byte
-	p      unsafe.Pointer
-	chunk  *tableContainerChunk
-	arena  *TableArena
-	size   int64
-	index  int32
-}
-
-func tableContainerCursorBegin(h *tableContainer, size int64, a *TableArena) tableContainerCursor {
-	c := tableContainerCursor{arena: a, size: size}
-	if h.Ref == 0 {
-		return c
-	}
-	if a == nil {
-		c.p = unsafe.Add(unsafe.Pointer(h), h.Ref)
-	} else {
-		head := (*tableContainerHead)(a.At(h.Ref))
-		if head != nil && head.Live == h.Count {
-			c.chunk = (*tableContainerChunk)(a.At(head.First))
-		}
-	}
-	return c
-}
-func (c *tableContainerCursor) At(index int32) unsafe.Pointer {
-	if c.arena == nil {
-		if c.p == nil {
-			return nil
-		}
-		return unsafe.Add(c.p, int64(index)*c.size)
-	}
-	for i := int32(0); ; i++ {
-		p := c.Next()
-		if p == nil || i == index {
-			return p
-		}
-	}
-}
-func (c *tableContainerCursor) Next() unsafe.Pointer {
-	if c.order != nil {
-		if int(c.index) >= len(c.order) {
-			return nil
-		}
-		p := c.arena.At(c.order[c.index])
-		c.index++
-		return p
-	}
-	if c.arena == nil {
-		if c.p == nil {
-			return nil
-		}
-		p := c.p
-		c.p = unsafe.Add(p, c.size)
-		return p
-	}
-	for c.chunk != nil {
-		if c.index < c.chunk.Count {
-			p := unsafe.Add(unsafe.Pointer(c.chunk), 32+int64(c.index)*c.size)
-			dead := c.chunk.Dead&(uint64(1)<<uint(c.index)) != 0
-			c.index++
-			if dead {
-				continue
-			}
-			return p
-		}
-		c.index = 0
-		c.chunk = (*tableContainerChunk)(c.arena.At(c.chunk.Next))
-	}
-	return nil
-}
-func tableContainerAppend(w *TableWorker, h *tableContainer, size int64) unsafe.Pointer {
-	if w == nil || w.Arena == nil || w.Arena.Locked || h.Count < 0 || h.Count == math.MaxInt32 {
-		return nil
-	}
-	if h.Ref == 0 {
-		p, ref := w.Alloc(32)
-		if p == nil {
-			return nil
-		}
-		h.Ref = ref
-	}
-	head := (*tableContainerHead)(w.Arena.At(h.Ref))
-	chunk := (*tableContainerChunk)(w.Arena.At(head.Last))
-	if chunk == nil || chunk.Count == chunk.Capacity {
-		p, ref := w.Alloc(32 + 64*size)
-		if p == nil {
-			return nil
-		}
-		if chunk != nil {
-			chunk.Next = ref
-		} else {
-			head.First = ref
-		}
-		head.Last = ref
-		chunk = (*tableContainerChunk)(p)
-		chunk.Capacity = 64
-	}
-	p := unsafe.Add(unsafe.Pointer(chunk), 32+int64(chunk.Count)*size)
-	chunk.Count++
-	h.Count++
-	head.Live++
-	clear(unsafe.Slice((*byte)(p), int(size)))
-	return p
-}
-func (r *TableReader) Take(sub TableReader) { r.Nodes.Carve = sub.Nodes.Carve }
-func tableContainerErase(a *TableArena, h *tableContainer, p unsafe.Pointer, size int64) bool {
-	if a == nil || a.Locked || h.Ref == 0 || p == nil {
-		return false
-	}
-	head := (*tableContainerHead)(a.At(h.Ref))
-	if head == nil || head.Live != h.Count {
-		return false
-	}
-	for chunk := (*tableContainerChunk)(a.At(head.First)); chunk != nil; chunk = (*tableContainerChunk)(a.At(chunk.Next)) {
-		start := uintptr(unsafe.Add(unsafe.Pointer(chunk), 32))
-		where := uintptr(p)
-		if where < start || where >= start+uintptr(chunk.Count)*uintptr(size) || (where-start)%uintptr(size) != 0 {
-			continue
-		}
-		index := (where - start) / uintptr(size)
-		bit := uint64(1) << uint(index)
-		if chunk.Dead&bit != 0 {
-			return false
-		}
-		chunk.Dead |= bit
-		head.Live--
-		h.Count--
-		return true
-	}
-	return false
-}
-
-type TableExtentCarve struct {
-	Base      unsafe.Pointer
-	At, Limit int64
-	Worker    *TableWorker
-	Refused   bool
-}
-
-func (c *TableExtentCarve) Alloc(n, align int64) unsafe.Pointer {
-	if c == nil || n < 0 {
-		return nil
-	}
-	at := (c.At + align - 1) & -align
-	if at > c.Limit || n > c.Limit-at {
-		return nil
-	}
-	c.At = at + n
-	return unsafe.Add(c.Base, at)
-}
-func tableContainerFill(c *TableExtentCarve, h *tableContainer, count uint64, size, align int64) bool {
-	if c == nil {
-		return false
-	}
-	*h = tableContainer{}
-	if count > math.MaxInt32 {
-		if c.Worker != nil {
-			c.Refused = true
-			c.Worker.refused = TableRefuseCountOverExtentCap
-		}
-		return false
-	}
-	if count == 0 {
-		return true
-	}
-	if c.Worker != nil {
-		return true
-	}
-	p := c.Alloc(int64(count)*size, align)
-	if p == nil {
-		return false
-	}
-	h.Ref = int64(uintptr(p) - uintptr(unsafe.Pointer(h)))
-	h.Count = int32(count)
-	return true
-}
-func tableContainerFillAt(c *TableExtentCarve, h *tableContainer, index int32, size int64) unsafe.Pointer {
-	if c.Worker != nil {
-		return tableContainerAppend(c.Worker, h, size)
-	}
-	cursor := tableContainerCursorBegin(h, size, nil)
-	return cursor.At(index)
-}
-func tableExtentFieldEmpty(p, base unsafe.Pointer, f *TableFieldInfo, a *TableArena) bool {
-	if f.List || f.Map {
-		return (*tableContainer)(p).Count == 0
-	}
-	count := int32(1)
-	if f.IsArray {
-		count = f.ArrayBound
-	}
-	for j := range count {
-		at := int64(0)
-		if !tableExtentValue(unsafe.Add(p, uintptr(j)*uintptr(f.ElemSize)), nil, f, a, nil, &at) || at != 0 {
-			return false
-		}
-	}
-	return true
-}
-func tableExtentBytes(base unsafe.Pointer, info *TableTypeInfo, a *TableArena) int64 {
-	at := int64(0)
-	if !tableExtentWalk(base, nil, info, a, nil, &at) {
-		return -1
-	}
-	return at
-}
-func tableExtentWalk(base, dest unsafe.Pointer, info *TableTypeInfo, a *TableArena, region unsafe.Pointer, at *int64) bool {
-	for i := range info.Fields {
-		f := &info.Fields[i]
-		p := unsafe.Add(base, f.Offset)
-		var q unsafe.Pointer
-		if dest != nil {
-			q = unsafe.Add(dest, f.Offset)
-		}
-		if !tableJSONGuardHolds(base, info, f.Guard) || f.Optional && !*(*bool)(unsafe.Add(base, f.PresentOffset)) {
-			if !tableExtentFieldEmpty(p, base, f, a) {
-				return false
-			}
-			continue
-		}
-		if f.List || f.Map {
-			if !tableExtentContainer(p, q, f, a, region, at) {
-				return false
-			}
-			continue
-		}
-		count := int32(1)
-		if f.IsArray {
-			count = tableRegionCount(base, f)
-			if count < 0 || count > f.ArrayBound {
-				return false
-			}
-			for j := count; j < f.ArrayBound; j++ {
-				empty := int64(0)
-				if !tableExtentValue(unsafe.Add(p, uintptr(j)*uintptr(f.ElemSize)), nil, f, a, nil, &empty) || empty != 0 {
-					return false
-				}
-			}
-		}
-		for j := range count {
-			var placed unsafe.Pointer
-			if q != nil {
-				placed = unsafe.Add(q, uintptr(j)*uintptr(f.ElemSize))
-			}
-			if !tableExtentValue(unsafe.Add(p, uintptr(j)*uintptr(f.ElemSize)), placed, f, a, region, at) {
-				return false
-			}
-		}
-	}
-	return true
-}
-func tableExtentContainer(p, q unsafe.Pointer, f *TableFieldInfo, a *TableArena, region unsafe.Pointer, at *int64) bool {
-	h := (*tableContainer)(p)
-	if h.Count < 0 {
-		return false
-	}
-	if h.Count == 0 {
-		if q != nil {
-			*(*tableContainer)(q) = tableContainer{}
-		}
-		return true
-	}
-	*at = (*at + int64(f.ElemAlign) - 1) & -int64(f.ElemAlign)
-	start := *at
-	*at += int64(h.Count) * int64(f.ElemSize)
-	if *at < start {
-		return false
-	}
-	cursor := tableMapCursor(h, f, a)
-	defer cursor.Release()
-	if q != nil {
-		out := (*tableContainer)(q)
-		out.Count = h.Count
-		out.Ref = int64(uintptr(unsafe.Add(region, start)) - uintptr(q))
-	}
-	for j := range h.Count {
-		elem := cursor.Next()
-		if elem == nil {
-			return false
-		}
-		var placed unsafe.Pointer
-		if q != nil {
-			placed = unsafe.Add(region, start+int64(j)*int64(f.ElemSize))
-			copy(unsafe.Slice((*byte)(placed), f.ElemSize), unsafe.Slice((*byte)(elem), f.ElemSize))
-		}
-		if !tableExtentValue(elem, placed, f, a, region, at) {
-			return false
-		}
-	}
-	return true
-}
-
-func tableExtentValue(p, q unsafe.Pointer, f *TableFieldInfo, a *TableArena, region unsafe.Pointer, at *int64) bool {
-	if f.Pointer {
-		return true
-	}
-	if f.Kind == 13 && f.Table != nil {
-		return tableExtentWalk(p, q, f.Table(), a, region, at)
-	}
-	if f.Kind == 15 && f.Arms != nil {
-		u := f.Arms()
-		tag := tableJSONGetRaw(unsafe.Add(p, u.TagOffset), u.TagSize)
-		if tag >= uint64(len(u.Arms)) {
-			return false
-		}
-		if tag == 0 || u.Arms[tag].Void {
-			return true
-		}
-		arm := &u.Arms[tag].Field
-		var placed unsafe.Pointer
-		if q != nil {
-			placed = unsafe.Add(q, arm.Offset)
-		}
-		count := int32(1)
-		if arm.IsArray {
-			count = tableRegionCount(p, arm)
-			if count < 0 || count > arm.ArrayBound {
-				return false
-			}
-		}
-		for j := range count {
-			var out unsafe.Pointer
-			if placed != nil {
-				out = unsafe.Add(placed, uintptr(j)*uintptr(arm.ElemSize))
-			}
-			if !tableExtentValue(unsafe.Add(p, uintptr(arm.Offset)+uintptr(j)*uintptr(arm.ElemSize)), out, arm, a, region, at) {
-				return false
-			}
-		}
-		return true
-	}
-	return true
-}
-func tableWireNodeBytes(r TableReader, t *TableTypeInfo) int64 {
-	n, _ := tableWireNodeBytesReason(r, t)
-	return n
-}
-func tableWireNodeBytesReason(r TableReader, t *TableTypeInfo) (int64, TableRefuseReason) {
-	at := int64(0)
-	r.Report = nil
-	if reason := tableWireExtent(&r, t, &at, -1); reason != TableRefuseOk {
-		return -2, reason
-	}
-	return tableRegionRound(tableRegionRound(int64(t.Size)) + at), TableRefuseOk
-}
-
-type TableMap[T any] struct {
-	Ref   int64
-	Count int32
-	_     int32
-}
-
-func (m *TableMap[T]) Clear() { *m = TableMap[T]{} }
-
-// container is the map's untyped head: TableMap[T] and tableContainer share one layout.
-func (m *TableMap[T]) container() *tableContainer { return (*tableContainer)(unsafe.Pointer(m)) }
-func (m *TableMap[T]) At(index int32, arena ...*TableArena) *T {
-	if m == nil || index < 0 || index >= m.Count {
-		return nil
-	}
-	c := tableContainerCursorBegin(m.container(), int64(unsafe.Sizeof(*new(T))), tableOptionalArena(arena))
-	return (*T)(c.At(index))
-}
-func (c *tableContainerCursor) Release() {
-	if c.memory != nil {
-		c.arena.Allocator.free(c.memory)
-		c.memory = nil
-		c.order = nil
-	}
-}
-func tableMapCursor(h *tableContainer, f *TableFieldInfo, a *TableArena) tableContainerCursor {
-	c := tableContainerCursorBegin(h, int64(f.ElemSize), a)
-	if !f.Map || h.Count == 0 {
-		return c
-	}
-	if a == nil {
-		if h.Count < 0 || h.Ref == 0 {
-			return tableContainerCursor{}
-		}
-		base := unsafe.Add(unsafe.Pointer(h), h.Ref)
-		key := &f.Table().Fields[0]
-		var prev tableMapKey
-		for i := range h.Count {
-			k := tableMapStoredKey(unsafe.Add(base, int64(i)*int64(f.ElemSize)), key)
-			if !tableMapKeyValid(k, key) || i > 0 && tableMapKeyOrder(prev, k, key) >= 0 {
-				return tableContainerCursor{}
-			}
-			prev = k
-		}
-		return c
-	}
-	bad := tableContainerCursor{arena: a}
-	if h.Count < 0 || h.Ref == 0 {
-		return bad
-	}
-	memory := a.Allocator.alloc(int64(h.Count) * 8)
-	if memory == nil {
-		return bad
-	}
-	order := unsafe.Slice((*int64)(unsafe.Pointer(&memory[0])), int(h.Count))
-	head := (*tableContainerHead)(a.At(h.Ref))
-	n := 0
-	for ref := head.First; ref != 0; {
-		chunk := (*tableContainerChunk)(a.At(ref))
-		if chunk == nil {
-			a.Allocator.free(memory)
-			return bad
-		}
-		for i := range chunk.Count {
-			if chunk.Dead&(uint64(1)<<uint(i)) != 0 {
-				continue
-			}
-			if n >= len(order) {
-				a.Allocator.free(memory)
-				return bad
-			}
-			order[n] = ref + 32 + int64(i)*int64(f.ElemSize)
-			n++
-		}
-		ref = chunk.Next
-	}
-	if n != len(order) {
-		a.Allocator.free(memory)
-		return bad
-	}
-	key := &f.Table().Fields[0]
-	slices.SortFunc(order, func(x, y int64) int {
-		return tableMapKeyOrder(tableMapStoredKey(a.At(x), key), tableMapStoredKey(a.At(y), key), key)
-	})
-	for i, ref := range order {
-		k := tableMapStoredKey(a.At(ref), key)
-		if !tableMapKeyValid(k, key) || i > 0 && tableMapKeyOrder(tableMapStoredKey(a.At(order[i-1]), key), k, key) >= 0 {
-			a.Allocator.free(memory)
-			return bad
-		}
-	}
-	return tableContainerCursor{arena: a, size: int64(f.ElemSize), order: order, memory: memory}
-}
-func tableMapFind(h *tableContainer, f *TableFieldInfo, key tableMapKey, a *TableArena) unsafe.Pointer {
-	if h == nil || h.Count <= 0 || h.Ref == 0 {
-		return nil
-	}
-	kf := &f.Table().Fields[0]
-	if !tableMapKeyValid(key, kf) {
-		return nil
-	}
-	if a == nil {
-		base := unsafe.Add(unsafe.Pointer(h), h.Ref)
-		lo, hi := int32(0), h.Count
-		for lo < hi {
-			mid := lo + (hi-lo)/2
-			p := unsafe.Add(base, int64(mid)*int64(f.ElemSize))
-			order := tableMapKeyOrder(tableMapStoredKey(p, kf), key, kf)
-			if order < 0 {
-				lo = mid + 1
-			} else {
-				hi = mid
-			}
-		}
-		if lo < h.Count {
-			p := unsafe.Add(base, int64(lo)*int64(f.ElemSize))
-			if tableMapKeyOrder(tableMapStoredKey(p, kf), key, kf) == 0 {
-				return p
-			}
-		}
-		return nil
-	}
-	c := tableContainerCursorBegin(h, int64(f.ElemSize), a)
-	for range h.Count {
-		p := c.Next()
-		if p == nil {
-			return nil
-		}
-		if tableMapKeyOrder(tableMapStoredKey(p, kf), key, kf) == 0 {
-			return p
-		}
-	}
-	return nil
-}
-func tableMapPlace(w *TableWorker, h *tableContainer, f *TableFieldInfo, key tableMapKey) (unsafe.Pointer, bool) {
-	if w == nil || w.Arena == nil || w.Arena.Locked || !tableMapKeyValid(key, &f.Table().Fields[0]) {
-		return nil, false
-	}
-	if p := tableMapFind(h, f, key, w.Arena); p != nil {
-		return p, true
-	}
-	p := tableContainerAppend(w, h, int64(f.ElemSize))
-	if p == nil {
-		return nil, false
-	}
-	f.Table().Reset(p)
-	tableMapStoreKey(p, &f.Table().Fields[0], key)
-	return p, false
-}
-
-// The key probe reads ahead of the entry's own read, so it meets no reference
-// in the load's first-use count: the entry read meets them in byte order.
-func tableMapReadKey(r TableReader, f *TableFieldInfo) (key tableMapKey, bad, over, wide, whole bool) {
-	r.Report = nil
-	for {
-		ref, ok := r.Leb()
-		if !ok {
-			return
-		}
-		if ref == 0 {
-			whole = r.Offset == int64(len(r.Buffer))
-			return
-		}
-		id, ok := r.Resolve(ref)
-		if !ok || !r.Has(1) {
-			return
-		}
-		kind := r.Get8()
-		if id != f.ID {
-			if !r.Skip(kind) {
-				return
-			}
-			continue
-		}
-		if kind != f.Kind && tableKindWidens(kind, f.Kind) {
-			bad = false
-			wide = true
-		} else {
-			bad = kind != f.Kind
-			if bad {
-				if !r.Skip(kind) {
-					return
-				}
-				continue
-			}
-		}
-		if kind == 12 {
-			body, ok := r.Body()
-			if !ok || !tableUTF8Valid(body.Buffer) {
-				return
-			}
-			key.text = body.Buffer
-			over = len(key.text) > int(f.ArrayBound)
-		} else {
-			size := tableKindBytes(kind)
-			if !r.Has(size) {
-				return
-			}
-			if f.Kind >= 2 && f.Kind <= 5 {
-				key.raw = uint64(r.Signed(kind))
-			} else {
-				key.raw = r.Unsigned(kind)
-			}
-		}
-	}
-}
-
-type TableMapIndex struct{ slots []int32 }
-
 func tableCycleType(index uint64) *TableTypeInfo {
 	switch index {
 	case 1:
@@ -5033,39 +4368,23 @@ func tableCycleType(index uint64) *TableTypeInfo {
 	case 27:
 		return TurretConfigTableType()
 	case 28:
-		return VarMoodsTableType()
-	case 29:
 		return WeaponConfigTableType()
-	case 30:
+	case 29:
 		return WideBlobTableType()
 	}
 	return nil
 }
 
-var tableDeclaredTypes = map[uint64]*TableTypeInfo{0x413e7bcf261bc3c7: ArchiveConfigTableType(), 0x2c8168f122124937: CountedMinTableType(), 0x19212a5b5b3ccb4b: FloatBoundTableType(), 0xffb1dfb1f6ce215b: GlobalSettingsTableType(), 0x5fcbe04615411b64: GunnerConfigTableType(), 0xb76842b2253337af: GunnerSettingsTableType(), 0x3066b130dfbd7890: HullConfigTableType(), 0xd6633ae4e94deecf: KeyedConfigTableType(), 0xa6aa0caea28dcca1: LoadoutConfigTableType(), 0xe2f227393c6b20a2: MinArmFixTableType(), 0xf5b735fce4011ff4: MinPlainFixTableType(), 0x33de720d0bcfd78a: MoodFieldTableType(), 0xad3596f9de08e3b7: MoodsTableType(), 0xd02d825db114336e: PackConfigTableType(), 0x1c182e1c2529027b: PatrolTableType(), 0x19fffcb7859da778: ProfileConfigTableType(), 0xec79751dda28be2e: RangedSignedTableType(), 0x031ec0c4b7d28bf1: RangedUnsignedTableType(), 0xbf59694e9e4f5ed7: RangedWidthsTableType(), 0x5f4843f6def45e87: RootConfigTableType(), 0x1d1a9911da171a29: ShipEntryTableType(), 0x1cf8555d11fb113a: TeamConfigTableType(), 0x469dba0c16b2ad15: TurretConfigTableType(), 0x05d94ead8f7094de: VarMoodsTableType(), 0x0577780d86c4b0c3: WeaponConfigTableType(), 0xab6a6961d3366451: WideBlobTableType()}
+var tableDeclaredTypes = map[uint64]*TableTypeInfo{0x413e7bcf261bc3c7: ArchiveConfigTableType(), 0x2c8168f122124937: CountedMinTableType(), 0x19212a5b5b3ccb4b: FloatBoundTableType(), 0xffb1dfb1f6ce215b: GlobalSettingsTableType(), 0x5fcbe04615411b64: GunnerConfigTableType(), 0xb76842b2253337af: GunnerSettingsTableType(), 0x3066b130dfbd7890: HullConfigTableType(), 0xd6633ae4e94deecf: KeyedConfigTableType(), 0xa6aa0caea28dcca1: LoadoutConfigTableType(), 0xe2f227393c6b20a2: MinArmFixTableType(), 0xf5b735fce4011ff4: MinPlainFixTableType(), 0x33de720d0bcfd78a: MoodFieldTableType(), 0xad3596f9de08e3b7: MoodsTableType(), 0xd02d825db114336e: PackConfigTableType(), 0x1c182e1c2529027b: PatrolTableType(), 0x19fffcb7859da778: ProfileConfigTableType(), 0xec79751dda28be2e: RangedSignedTableType(), 0x031ec0c4b7d28bf1: RangedUnsignedTableType(), 0xbf59694e9e4f5ed7: RangedWidthsTableType(), 0x5f4843f6def45e87: RootConfigTableType(), 0x1d1a9911da171a29: ShipEntryTableType(), 0x1cf8555d11fb113a: TeamConfigTableType(), 0x469dba0c16b2ad15: TurretConfigTableType(), 0x0577780d86c4b0c3: WeaponConfigTableType(), 0xab6a6961d3366451: WideBlobTableType()}
 
 func tableDeclaredType(id uint64) *TableTypeInfo { return tableDeclaredTypes[id] }
-func tableCycleEdges(base unsafe.Pointer, info *TableTypeInfo, a *TableArena, visit func(*TableRef, *TableFieldInfo) bool) bool {
+func tableCycleEdges(base unsafe.Pointer, info *TableTypeInfo, visit func(*TableRef, *TableFieldInfo) bool) bool {
 	for i := range info.Fields {
 		f := &info.Fields[i]
 		if f.Optional && !*(*bool)(unsafe.Add(base, f.PresentOffset)) {
 			continue
 		}
 		p := unsafe.Add(base, f.Offset)
-		if f.List || f.Map {
-			h := (*tableContainer)(p)
-			if h.Count < 0 {
-				return false
-			}
-			cursor := tableContainerCursorBegin(h, int64(f.ElemSize), a)
-			for range h.Count {
-				elem := cursor.Next()
-				if elem == nil || !tableCycleValueEdges(elem, f, a, visit) {
-					return false
-				}
-			}
-			continue
-		}
 		count := int32(1)
 		if f.IsArray {
 			count = tableRegionCount(base, f)
@@ -5075,19 +4394,19 @@ func tableCycleEdges(base unsafe.Pointer, info *TableTypeInfo, a *TableArena, vi
 		}
 		for j := range count {
 			at := unsafe.Add(p, uintptr(j)*uintptr(f.ElemSize))
-			if !tableCycleValueEdges(at, f, a, visit) {
+			if !tableCycleValueEdges(at, f, visit) {
 				return false
 			}
 		}
 	}
 	return true
 }
-func tableCycleValueEdges(p unsafe.Pointer, f *TableFieldInfo, a *TableArena, visit func(*TableRef, *TableFieldInfo) bool) bool {
+func tableCycleValueEdges(p unsafe.Pointer, f *TableFieldInfo, visit func(*TableRef, *TableFieldInfo) bool) bool {
 	if f.Pointer {
 		return visit((*TableRef)(p), f)
 	}
 	if f.Kind == 13 && f.Table != nil {
-		return tableCycleEdges(p, f.Table(), a, visit)
+		return tableCycleEdges(p, f.Table(), visit)
 	}
 	if f.Kind == 15 && f.Arms != nil {
 		arms := f.Arms()
@@ -5110,7 +4429,7 @@ func tableCycleValueEdges(p unsafe.Pointer, f *TableFieldInfo, a *TableArena, vi
 				}
 			}
 			for j := range count {
-				if !tableCycleValueEdges(unsafe.Add(at, uintptr(j)*uintptr(af.ElemSize)), af, a, visit) {
+				if !tableCycleValueEdges(unsafe.Add(at, uintptr(j)*uintptr(af.ElemSize)), af, visit) {
 					return false
 				}
 			}
@@ -5229,7 +4548,7 @@ func tableCycleCheckReason(base unsafe.Pointer, root *TableTypeInfo, a *TableAre
 		} else {
 			p = unsafe.Add(base, dir[i].Offset&mask)
 		}
-		return tableCycleEdges(p, t, a, visit)
+		return tableCycleEdges(p, t, visit)
 	}
 	// the edges of a record walked from the wire: each pointer its body
 	// carries, a blob's excepted (its mark is the blob's count)
@@ -5359,7 +4678,7 @@ func tableCycleCheckReason(base unsafe.Pointer, root *TableTypeInfo, a *TableAre
 
 const tableRetainPathDepth = 7
 
-var tableRetainKnown = [...]uint64{0x0117ad66e0fff227, 0x01986b0b27400fb2, 0x031ec0c4b7d28bf1, 0x04dc16aea8ff5276, 0x0577780d86c4b0c3, 0x05d94ead8f7094de, 0x065ee827cf99fbb4, 0x08a60c07b54d8dc7, 0x09ae5613b0051271, 0x0a24ad61c2562a55, 0x0d5cfaa2c43877be, 0x0f8897557f37c021, 0x10bda981fe095518, 0x13cdc5ede73d2fd7, 0x14ec921cc2549d60, 0x1733055702acb1d2, 0x19212a5b5b3ccb4b, 0x199c482b49ef9acb, 0x19fffcb7859da778, 0x1c182e1c2529027b, 0x1cb2c073a6f5844d, 0x1cce6617419771db, 0x1cf8555d11fb113a, 0x1d1a9911da171a29, 0x1e5088ef2e9bafc6, 0x1f3757a2ce7b0ab1, 0x200b924de7479cda, 0x2281498aa0200e40, 0x247f0e7f55aacfbd, 0x288427f5babd05f7, 0x294a5c4913e1ad44, 0x2a43bfa7e454ddac, 0x2c8168f122124937, 0x2d21d7cd66bd5a5d, 0x2e17553f8200a2a1, 0x2f2ec0474f1c4fe4, 0x3018cd19bf898cd6, 0x3066b130dfbd7890, 0x32a89b2977c48ad4, 0x334d24e1420dbc1f, 0x33de720d0bcfd78a, 0x36c1c83b51f24394, 0x38b429bf239b38db, 0x39f7fcec8fcb623d, 0x3b54fa60620b5597, 0x3bf8fbbad1587cdd, 0x40dbb648c0cd44aa, 0x413e7bcf261bc3c7, 0x41cbd901b87fabb6, 0x467f35a74c6e4a70, 0x469dba0c16b2ad15, 0x48121511bf702eb5, 0x483d9e6c1ccd1f9b, 0x4b06f5847096e54a, 0x4ca0c150b1790960, 0x4f31c5309e13e932, 0x4f37e1f216e7610c, 0x52bb98fcd979eab7, 0x5759ce7586bbb5a3, 0x5854debe3b2e767c, 0x58c7b5d87587287c, 0x5bc44627b9848818, 0x5ddc92338ef53403, 0x5f4843f6def45e87, 0x5fcbe04615411b64, 0x6580790b036f0c6f, 0x6a659d7c354db158, 0x6a771618f6fe31d1, 0x6c2321a3d00e23db, 0x704be0d8faaffc58, 0x713e12017eebcaf7, 0x7549c70700c49d6f, 0x77707fccd201c228, 0x7d573c625719c1a5, 0x7f6308be8ab37fc0, 0x7f69d4b5288ba9cf, 0x7fb43557b54149ce, 0x8113fe7ea2b16969, 0x8181e61fc0436767, 0x84f8260bc283608c, 0x8a0bc1196111ad9b, 0x8a67c9728746d394, 0x8c2cdb0da8933fa6, 0x8dc515fc082e3c0e, 0x90652f70c9127900, 0x942bfe3168090f7d, 0x95d0cce09ca82b73, 0x9759be8ea1a4e3d2, 0x9adc623a805c87c6, 0x9cda940a344e1571, 0x9ff1de19feac1b7c, 0x9ff3121d30f88d52, 0xa06f5e0a148e253c, 0xa0e5c60df9301b7d, 0xa354fd1ff0c467c5, 0xa5013e9ad5caeda4, 0xa53d2f2a31b5acb0, 0xa65f859b617deaf3, 0xa6aa0caea28dcca1, 0xa6bf719a4602b0bc, 0xa8216aa1c554cb8a, 0xab6a6961d3366451, 0xab8b6d521f80b969, 0xad3596f9de08e3b7, 0xad6587bc602e3f59, 0xae61a6cbe88c2cf4, 0xb128829190ca0f75, 0xb1e5e28e4479a274, 0xb46ff45a23d72549, 0xb528592e5a4583e3, 0xb655574ea23760b4, 0xb75aa3662201646a, 0xb76842b2253337af, 0xb7bc9ac015a25050, 0xb8c758d8bd1845d4, 0xb921eb8a3d0cb0f9, 0xbaaeb048a5a8fa6d, 0xbb62c62c9808ea37, 0xbca0dab1c7a00ccf, 0xbeecef11dbdf8973, 0xbf0bc40dc513bbd8, 0xbf31137ff783e939, 0xbf59694e9e4f5ed7, 0xc341febe5aae51e5, 0xc3e51adeeaf12580, 0xc416c97e0d3218b3, 0xc4927739aac4c591, 0xc4bcadba8e631b86, 0xc70cde6b85b6197d, 0xc9b121c4c2a186ee, 0xce0ac3c25694d8ff, 0xceec99e2d65db674, 0xcf00d78fd5953f1c, 0xcfb8a9d063b5e9e5, 0xd011f7c3c15285c2, 0xd02d825db114336e, 0xd176b605978f3304, 0xd182acd105b55dd1, 0xd217b3af8d7a2bde, 0xd308fcb98ece5d23, 0xd363dfa465acf27a, 0xd6633ae4e94deecf, 0xd90a4e7682f799c5, 0xd94c56ef0798d723, 0xdbff4cc56c2092f0, 0xdc2cbe6953343d48, 0xdcc67d18feea8c19, 0xddfc86d2b1251528, 0xde28f0f5118acc24, 0xdfa47a9ce9ac16d6, 0xe2f227393c6b20a2, 0xe3b1ca6a3b48dddc, 0xe693bd88532c91d6, 0xe8ddc90a9d7c709d, 0xec79751dda28be2e, 0xecf3d3a7c1693e2d, 0xeef9d1358ae7b4e6, 0xef9ded23c8912a81, 0xf10fad739a0e1660, 0xf252136836b04cb2, 0xf2b45af3b50689db, 0xf5b735fce4011ff4, 0xf901aa0340249a41, 0xfc9697d1196e6ba6, 0xff8b681912a535a1, 0xff92701912ab61e7, 0xff95701912ad97be, 0xff95741912ad9e8a, 0xff9c5c1912b39470, 0xffb1dfb1f6ce215b, 0xffb5be9be2e469cc, 0xffffffffffffffff}
+var tableRetainKnown = [...]uint64{0x0117ad66e0fff227, 0x01986b0b27400fb2, 0x031ec0c4b7d28bf1, 0x04dc16aea8ff5276, 0x0577780d86c4b0c3, 0x065ee827cf99fbb4, 0x08a60c07b54d8dc7, 0x09ae5613b0051271, 0x0a24ad61c2562a55, 0x0d5cfaa2c43877be, 0x0f8897557f37c021, 0x10bda981fe095518, 0x13cdc5ede73d2fd7, 0x14ec921cc2549d60, 0x1733055702acb1d2, 0x19212a5b5b3ccb4b, 0x199c482b49ef9acb, 0x19fffcb7859da778, 0x1c182e1c2529027b, 0x1cb2c073a6f5844d, 0x1cce6617419771db, 0x1cf8555d11fb113a, 0x1d1a9911da171a29, 0x1e5088ef2e9bafc6, 0x1f3757a2ce7b0ab1, 0x200b924de7479cda, 0x2281498aa0200e40, 0x247f0e7f55aacfbd, 0x288427f5babd05f7, 0x294a5c4913e1ad44, 0x2a43bfa7e454ddac, 0x2c8168f122124937, 0x2d21d7cd66bd5a5d, 0x2e17553f8200a2a1, 0x2f2ec0474f1c4fe4, 0x3018cd19bf898cd6, 0x3066b130dfbd7890, 0x32a89b2977c48ad4, 0x334d24e1420dbc1f, 0x33de720d0bcfd78a, 0x36c1c83b51f24394, 0x38b429bf239b38db, 0x39f7fcec8fcb623d, 0x3b54fa60620b5597, 0x3bf8fbbad1587cdd, 0x40dbb648c0cd44aa, 0x413e7bcf261bc3c7, 0x41cbd901b87fabb6, 0x467f35a74c6e4a70, 0x469dba0c16b2ad15, 0x48121511bf702eb5, 0x483d9e6c1ccd1f9b, 0x4b06f5847096e54a, 0x4ca0c150b1790960, 0x4f31c5309e13e932, 0x4f37e1f216e7610c, 0x52bb98fcd979eab7, 0x5759ce7586bbb5a3, 0x5854debe3b2e767c, 0x58c7b5d87587287c, 0x5bc44627b9848818, 0x5ddc92338ef53403, 0x5f4843f6def45e87, 0x5fcbe04615411b64, 0x6580790b036f0c6f, 0x6a659d7c354db158, 0x6a771618f6fe31d1, 0x6c2321a3d00e23db, 0x704be0d8faaffc58, 0x713e12017eebcaf7, 0x7549c70700c49d6f, 0x77707fccd201c228, 0x7d573c625719c1a5, 0x7f6308be8ab37fc0, 0x7f69d4b5288ba9cf, 0x7fb43557b54149ce, 0x8113fe7ea2b16969, 0x8181e61fc0436767, 0x84f8260bc283608c, 0x8a0bc1196111ad9b, 0x8a67c9728746d394, 0x8c2cdb0da8933fa6, 0x8dc515fc082e3c0e, 0x90652f70c9127900, 0x942bfe3168090f7d, 0x95d0cce09ca82b73, 0x9759be8ea1a4e3d2, 0x9adc623a805c87c6, 0x9cda940a344e1571, 0x9ff1de19feac1b7c, 0x9ff3121d30f88d52, 0xa06f5e0a148e253c, 0xa0e5c60df9301b7d, 0xa354fd1ff0c467c5, 0xa5013e9ad5caeda4, 0xa53d2f2a31b5acb0, 0xa65f859b617deaf3, 0xa6aa0caea28dcca1, 0xa6bf719a4602b0bc, 0xa8216aa1c554cb8a, 0xab6a6961d3366451, 0xab8b6d521f80b969, 0xad3596f9de08e3b7, 0xad6587bc602e3f59, 0xae61a6cbe88c2cf4, 0xb128829190ca0f75, 0xb1e5e28e4479a274, 0xb46ff45a23d72549, 0xb528592e5a4583e3, 0xb655574ea23760b4, 0xb75aa3662201646a, 0xb76842b2253337af, 0xb7bc9ac015a25050, 0xb8c758d8bd1845d4, 0xb921eb8a3d0cb0f9, 0xbaaeb048a5a8fa6d, 0xbb62c62c9808ea37, 0xbca0dab1c7a00ccf, 0xbeecef11dbdf8973, 0xbf0bc40dc513bbd8, 0xbf31137ff783e939, 0xbf59694e9e4f5ed7, 0xc341febe5aae51e5, 0xc3e51adeeaf12580, 0xc416c97e0d3218b3, 0xc4927739aac4c591, 0xc4bcadba8e631b86, 0xc70cde6b85b6197d, 0xc9b121c4c2a186ee, 0xce0ac3c25694d8ff, 0xceec99e2d65db674, 0xcf00d78fd5953f1c, 0xcfb8a9d063b5e9e5, 0xd011f7c3c15285c2, 0xd02d825db114336e, 0xd176b605978f3304, 0xd182acd105b55dd1, 0xd217b3af8d7a2bde, 0xd308fcb98ece5d23, 0xd363dfa465acf27a, 0xd6633ae4e94deecf, 0xd90a4e7682f799c5, 0xd94c56ef0798d723, 0xdbff4cc56c2092f0, 0xdc2cbe6953343d48, 0xdcc67d18feea8c19, 0xddfc86d2b1251528, 0xde28f0f5118acc24, 0xdfa47a9ce9ac16d6, 0xe2f227393c6b20a2, 0xe3b1ca6a3b48dddc, 0xe693bd88532c91d6, 0xe8ddc90a9d7c709d, 0xec79751dda28be2e, 0xecf3d3a7c1693e2d, 0xeef9d1358ae7b4e6, 0xef9ded23c8912a81, 0xf10fad739a0e1660, 0xf252136836b04cb2, 0xf2b45af3b50689db, 0xf5b735fce4011ff4, 0xf901aa0340249a41, 0xfc9697d1196e6ba6, 0xff8b681912a535a1, 0xff92701912ab61e7, 0xff95701912ad97be, 0xff95741912ad9e8a, 0xff9c5c1912b39470, 0xffb1dfb1f6ce215b, 0xffb5be9be2e469cc, 0xffffffffffffffff}
 
 // TableRetain owns no storage. The caller supplies both bounded buffers; a
 // whole unknown record that does not fit is dropped and counted once.
@@ -6254,7 +5573,7 @@ func tableRegionLoadRetain(region, wire []byte, root *TableTypeInfo, nodeType fu
 	root.Reset(base)
 	retain.reset(base, directory)
 	s := tableNodeScanBegin(r)
-	used := tableWireNodeBytes(r, root)
+	used := tableRegionRound(int64(root.Size))
 	k := 1
 	unknown := int32(0)
 	for {
@@ -6300,9 +5619,7 @@ func tableRegionLoadRetain(region, wire []byte, root *TableTypeInfo, nodeType fu
 			if o&tableNodeBlobAway != tableNodeBlobAway {
 				p := unsafe.Add(base, o&^(tableNodeWireNamed|tableNodeBlobSeen))
 				if t := nodeType(id); t != nil {
-					carve := TableExtentCarve{Base: p, At: tableRegionRound(int64(t.Size)), Limit: tableWireNodeBytes(body, t)}
 					body.Nodes = nodes
-					body.Nodes.Carve = carve
 					t.LoadBodyRetain(TableRetainReader{tableRetainPlainReader: body, Retain: retain, Path: tableRetainPath{at: p, node: uint32(k + 1)}}, p)
 				} else {
 					copy(unsafe.Slice((*byte)(unsafe.Add(p, 8)), len(body.Buffer)), body.Buffer)
@@ -6317,9 +5634,7 @@ func tableRegionLoadRetain(region, wire []byte, root *TableTypeInfo, nodeType fu
 	}
 	tableFirstUseCount(report, 2)
 	nodes.from = 0
-	carve := TableExtentCarve{Base: base, At: tableRegionRound(int64(root.Size)), Limit: tableWireNodeBytes(r, root)}
 	r.Nodes = nodes
-	r.Nodes.Carve = carve
 	r.Nested = false
 	root.LoadBodyRetain(TableRetainReader{tableRetainPlainReader: r, Retain: retain, Path: tableRetainPath{at: base, node: 1}}, base)
 	if !tableFirstUseWhole(report, uint64(len(r.Ids)/8)) {
@@ -6441,9 +5756,6 @@ func tableNodeMeasureRetain(w *TableRetainWriter, ids *TableRetainIds, e *tableN
 		return -1
 	}
 	return w.Offset
-}
-func (r *TableRetainReader) Take(sub TableRetainReader) {
-	r.tableRetainPlainReader.Take(sub.tableRetainPlainReader)
 }
 
 // TableKeyed indexes an enum-keyed array's slots BY KEY: the storage shifts

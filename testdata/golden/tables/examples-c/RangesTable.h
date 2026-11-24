@@ -308,19 +308,19 @@ typedef struct tabledemo_table_type_info_t
    preserves every earlier open-addressing chain and first-use wire reference. */
 typedef struct tabledemo_table_write_ids_t
 {
-    uint64_t ids[173];
-    uint32_t slots[512], positions[173];
+    uint64_t ids[172];
+    uint32_t slots[512], positions[172];
     /* THE ORDINAL SLOT CACHE (docs/SPEC-TABLES.md §3). Every id a generated
        field header, union arm header or blob header names is a COMPILE-TIME
        CONSTANT of the unit, so it has an ORDINAL: its index in the unit's id
-       vocabulary, the ascending set 173 counts. slot holds the ENTRY
+       vocabulary, the ascending set 172 counts. slot holds the ENTRY
        that ordinal's id took, -1 for one not interned yet, and ordinal_of is
        its inverse over the entries — the ordinal an entry was taken under, -1
        for an entry a RUNTIME id took, which has no ordinal. The pair is what
        lets a rewind undo the cache in O(popped) rather than walking the whole
        vocabulary. */
-    int32_t slot[173];
-    int16_t ordinal_of[173];
+    int32_t slot[172];
+    int16_t ordinal_of[172];
     int count;
 } tabledemo_table_write_ids_t;
 
@@ -346,7 +346,7 @@ static SCHEMA_UNUSED tabledemo_table_writer_t tabledemo_table_writer_make( uint8
        that makes an entry, and read only below count. The ordinal slots are
        the one column with a non-zero empty value. */
     memset( vocabulary->slots, 0, sizeof( vocabulary->slots ) );
-    for ( i = 0; i < 173; i++ ) { vocabulary->slot[i] = -1; }
+    for ( i = 0; i < 172; i++ ) { vocabulary->slot[i] = -1; }
     vocabulary->count = 0;
     return w;
 }
@@ -412,7 +412,7 @@ static SCHEMA_UNUSED uint64_t tabledemo_table_writer_id( tabledemo_table_writer_
     /* AN OVERFLOWED TABLE APPENDS NOTHING and spells no reference: 0 names no
        id, so a caller can tell the miss that took an entry from the one that
        did not. */
-    if ( v->count >= 173 )
+    if ( v->count >= 172 )
     {
         w->overflow = 1;
         return 0;
@@ -4126,321 +4126,6 @@ static SCHEMA_UNUSED char * tabledemo_table_string_emplace( tabledemo_table_work
 }
 #endif
 
-#ifndef SCHEMA_TABLEDEMO_TABLE_SEQUENCE_RUNTIME
-#define SCHEMA_TABLEDEMO_TABLE_SEQUENCE_RUNTIME
-typedef struct tabledemo_table_sequence_t
-{
-    tabledemo_table_ref_t items;
-    int32_t count, padding;
-} tabledemo_table_sequence_t;
-typedef struct tabledemo_table_sequence_head_t
-{
-    uint32_t first, last;
-    int32_t live, reserved;
-} tabledemo_table_sequence_head_t;
-typedef struct tabledemo_table_sequence_segment_t
-{
-    uint32_t next, dead;
-    int32_t used, reserved;
-} tabledemo_table_sequence_segment_t;
-typedef struct tabledemo_table_sequence_cursor_t
-{
-    const tabledemo_table_arena_t * arena;
-    const uint8_t * array;
-    const void * const * ordered;
-    const tabledemo_table_sequence_segment_t * segment;
-    int64_t width;
-    int32_t index, left;
-    int ok;
-} tabledemo_table_sequence_cursor_t;
-static SCHEMA_UNUSED tabledemo_table_sequence_cursor_t tabledemo_table_sequence_cursor( const tabledemo_table_ctx_t * ctx, const tabledemo_table_sequence_t * value, int64_t width )
-{
-    tabledemo_table_sequence_cursor_t c;
-    memset( &c, 0, sizeof( c ) );
-    c.width = width;
-    c.left = value->count;
-    c.ok = value->count >= 0 && ( value->count == 0 || value->items.value != 0 );
-    if ( !c.ok || value->count == 0 ) { return c; }
-    if ( ctx != NULL && ctx->arena != NULL )
-    {
-        const tabledemo_table_sequence_head_t * head = (const tabledemo_table_sequence_head_t *) tabledemo_table_arena_at( ctx->arena, (uint32_t) value->items.value );
-        c.arena = ctx->arena;
-        c.ok = head != NULL && head->live == value->count;
-        if ( c.ok ) { c.segment = (const tabledemo_table_sequence_segment_t *) tabledemo_table_arena_at( c.arena, head->first ); }
-    }
-    else
-    {
-        c.array = (const uint8_t *) (const void *) &value->items + value->items.value;
-    }
-    return c;
-}
-static SCHEMA_UNUSED const void * tabledemo_table_sequence_next( tabledemo_table_sequence_cursor_t * c )
-{
-    if ( !c->ok || c->left <= 0 ) { return NULL; }
-    if ( c->ordered != NULL )
-    {
-        c->left--;
-        return c->ordered[c->index++];
-    }
-    if ( c->array != NULL )
-    {
-        const void * p = c->array + (int64_t) c->index++ * c->width;
-        c->left--;
-        return p;
-    }
-    while ( c->segment != NULL )
-    {
-        while ( c->index < c->segment->used )
-        {
-            int32_t i = c->index++;
-            if ( ( c->segment->dead & ( UINT32_C( 1 ) << i ) ) == 0 )
-            {
-                c->left--;
-                return (const uint8_t *) ( c->segment + 1 ) + (int64_t) i * c->width;
-            }
-        }
-        c->segment = c->segment->next ? (const tabledemo_table_sequence_segment_t *) tabledemo_table_arena_at( c->arena, c->segment->next ) : NULL;
-        c->index = 0;
-    }
-    c->ok = 0;
-    return NULL;
-}
-typedef struct tabledemo_table_sequence_order_t
-{
-    const tabledemo_table_sequence_t * value;
-    const void ** entries;
-    struct tabledemo_table_sequence_order_t * next;
-} tabledemo_table_sequence_order_t;
-typedef int ( *tabledemo_table_sequence_compare_t )( const void *, const void * );
-static SCHEMA_UNUSED void tabledemo_table_sequence_sift( const void ** entries, int64_t at, int64_t count, tabledemo_table_sequence_compare_t compare )
-{
-    for ( ;; )
-    {
-        int64_t child = at * 2 + 1;
-        const void * swap;
-        if ( child >= count ) { return; }
-        if ( child + 1 < count && compare( entries[child], entries[child + 1] ) < 0 ) { child++; }
-        if ( compare( entries[at], entries[child] ) >= 0 ) { return; }
-        swap = entries[at];
-        entries[at] = entries[child];
-        entries[child] = swap;
-        at = child;
-    }
-}
-// The arena's sort is cached only for the duration of one save or lock.
-// Builders retain insertion order and stable addresses; no index is stored.
-static SCHEMA_UNUSED tabledemo_table_sequence_cursor_t tabledemo_table_sequence_order( const tabledemo_table_ctx_t * ctx, const tabledemo_table_sequence_t * value, int64_t width,
-    tabledemo_table_sequence_compare_t compare, tabledemo_table_allocator_t allocator, tabledemo_table_sequence_order_t ** orders )
-{
-    tabledemo_table_sequence_cursor_t cursor = tabledemo_table_sequence_cursor( ctx, value, width );
-    tabledemo_table_sequence_order_t * order;
-    int64_t i;
-    if ( !cursor.ok || value->count == 0 ) { return cursor; }
-    if ( ctx == NULL || ctx->arena == NULL )
-    {
-        for ( i = 1; i < value->count; i++ )
-        {
-            if ( compare( cursor.array + ( i - 1 ) * width, cursor.array + i * width ) >= 0 )
-            {
-                cursor.ok = 0;
-                return cursor;
-            }
-        }
-        return cursor;
-    }
-    for ( order = *orders; order != NULL; order = order->next )
-    {
-        if ( order->value == value )
-        {
-            cursor.ordered = order->entries;
-            return cursor;
-        }
-    }
-    order = (tabledemo_table_sequence_order_t *) tabledemo_table_allocate( allocator, sizeof( *order ) );
-    if ( order == NULL )
-    {
-        cursor.ok = 0;
-        return cursor;
-    }
-    order->entries = (const void **) tabledemo_table_allocate( allocator, (int64_t) value->count * sizeof( void * ) );
-    if ( order->entries == NULL )
-    {
-        tabledemo_table_release( allocator, order );
-        cursor.ok = 0;
-        return cursor;
-    }
-    for ( i = 0; i < value->count; i++ )
-    {
-        order->entries[i] = tabledemo_table_sequence_next( &cursor );
-        if ( order->entries[i] == NULL )
-        {
-            tabledemo_table_release( allocator, order->entries );
-            tabledemo_table_release( allocator, order );
-            return cursor;
-        }
-    }
-    for ( i = (int64_t) value->count / 2; i > 0; i-- ) { tabledemo_table_sequence_sift( order->entries, i - 1, value->count, compare ); }
-    for ( i = (int64_t) value->count - 1; i > 0; i-- )
-    {
-        const void * swap = order->entries[0];
-        order->entries[0] = order->entries[i];
-        order->entries[i] = swap;
-        tabledemo_table_sequence_sift( order->entries, 0, i, compare );
-    }
-    for ( i = 1; i < value->count; i++ )
-    {
-        if ( compare( order->entries[i - 1], order->entries[i] ) >= 0 )
-        {
-            tabledemo_table_release( allocator, order->entries );
-            tabledemo_table_release( allocator, order );
-            cursor.ok = 0;
-            return cursor;
-        }
-    }
-    order->value = value;
-    order->next = *orders;
-    *orders = order;
-    cursor = tabledemo_table_sequence_cursor( ctx, value, width );
-    cursor.ordered = order->entries;
-    return cursor;
-}
-static SCHEMA_UNUSED void tabledemo_table_sequence_orders_release( tabledemo_table_allocator_t allocator, tabledemo_table_sequence_order_t * order )
-{
-    while ( order != NULL )
-    {
-        tabledemo_table_sequence_order_t * next = order->next;
-        tabledemo_table_release( allocator, order->entries );
-        tabledemo_table_release( allocator, order );
-        order = next;
-    }
-}
-static SCHEMA_UNUSED void * tabledemo_table_sequence_add( tabledemo_table_worker_t * worker, tabledemo_table_sequence_t * list, int64_t width )
-{
-    tabledemo_table_sequence_head_t * head;
-    tabledemo_table_sequence_segment_t * segment;
-    uint32_t at;
-    if ( worker == NULL || worker->arena == NULL || worker->arena->locked || list->count < 0 || list->count == INT32_MAX || width <= 0 || width > ( INT64_MAX - 16 ) / 32 ) { return NULL; }
-    if ( list->items.value == 0 )
-    {
-        at = tabledemo_table_worker_alloc( worker, sizeof( tabledemo_table_sequence_head_t ) );
-        if ( at == TABLEDEMO_K_TABLE_ALLOC_FAILED ) { return NULL; }
-        list->items.value = at;
-    }
-    head = (tabledemo_table_sequence_head_t *) tabledemo_table_arena_at( worker->arena, (uint32_t) list->items.value );
-    if ( head == NULL || head->live != list->count ) { return NULL; }
-    segment = head->last ? (tabledemo_table_sequence_segment_t *) tabledemo_table_arena_at( worker->arena, head->last ) : NULL;
-    if ( segment == NULL || segment->used == 32 )
-    {
-        at = tabledemo_table_worker_alloc( worker, 16 + 32 * width );
-        if ( at == TABLEDEMO_K_TABLE_ALLOC_FAILED ) { return NULL; }
-        if ( segment != NULL ) { segment->next = at; }
-        else
-        {
-            head->first = at;
-        }
-        head->last = at;
-        segment = (tabledemo_table_sequence_segment_t *) tabledemo_table_arena_at( worker->arena, at );
-    }
-    {
-        void * p = (uint8_t *) ( segment + 1 ) + (int64_t) segment->used++ * width;
-        head->live++;
-        list->count++;
-        return p;
-    }
-}
-static SCHEMA_UNUSED int tabledemo_table_sequence_erase( tabledemo_table_arena_t * arena, tabledemo_table_sequence_t * list, const void * element, int64_t width )
-{
-    tabledemo_table_sequence_head_t * head;
-    uint32_t at;
-    if ( arena == NULL || arena->locked || list->items.value == 0 || element == NULL ) { return 0; }
-    head = (tabledemo_table_sequence_head_t *) tabledemo_table_arena_at( arena, (uint32_t) list->items.value );
-    for ( at = head->first; at; )
-    {
-        tabledemo_table_sequence_segment_t * s = (tabledemo_table_sequence_segment_t *) tabledemo_table_arena_at( arena, at );
-        int32_t i;
-        for ( i = 0; i < s->used; i++ )
-        {
-            if ( element == (const uint8_t *) ( s + 1 ) + (int64_t) i * width && !( s->dead & ( UINT32_C( 1 ) << i ) ) )
-            {
-                s->dead |= UINT32_C( 1 ) << i;
-                list->count--;
-                head->live--;
-                return 1;
-            }
-        }
-        at = s->next;
-    }
-    return 0;
-}
-static SCHEMA_UNUSED int tabledemo_table_extent_reserve( int64_t * at, int64_t count, int64_t width, int64_t alignment )
-{
-    if ( count < 0 || width <= 0 || *at < 0 || *at > INT64_MAX - alignment || count > ( INT64_MAX - *at - alignment ) / width ) { return 0; }
-    *at = ( *at + alignment - 1 ) & ~( alignment - 1 );
-    *at += count * width;
-    return 1;
-}
-typedef struct tabledemo_table_sequence_fill_t
-{
-    tabledemo_table_sequence_t * value;
-    tabledemo_table_worker_t * worker;
-    uint8_t * array;
-    int64_t width;
-    int32_t capacity;
-    int ok, refused;
-} tabledemo_table_sequence_fill_t;
-static SCHEMA_UNUSED tabledemo_table_sequence_fill_t tabledemo_table_sequence_fill( tabledemo_table_sink_t * sink, tabledemo_table_sequence_t * value, uint64_t count, int64_t width, int64_t alignment )
-{
-    tabledemo_table_sequence_fill_t f;
-    memset( &f, 0, sizeof( f ) );
-    f.value = value;
-    f.width = width;
-    memset( value, 0, sizeof( *value ) );
-    if ( sink == NULL ) { return f; }
-    if ( count > INT32_MAX )
-    {
-        f.refused = sink->worker != NULL;
-        return f;
-    }
-    f.worker = sink->worker;
-    f.capacity = (int32_t) count;
-    if ( f.worker != NULL )
-    {
-        f.ok = 1;
-        return f;
-    }
-    if ( sink->region != NULL )
-    {
-        tabledemo_table_region_sink_t * region = sink->region;
-        int64_t at = region->used;
-        if ( !tabledemo_table_extent_reserve( &at, (int64_t) count, width, alignment ) || at > region->capacity ) { return f; }
-        f.array = region->base + at - (int64_t) count * width;
-        region->used = at;
-        if ( count ) { value->items.value = (int64_t) ( f.array - (uint8_t *) (void *) &value->items ); }
-        f.ok = 1;
-    }
-    return f;
-}
-static SCHEMA_UNUSED void * tabledemo_table_sequence_fill_next( tabledemo_table_sequence_fill_t * f )
-{
-    if ( !f->ok || f->value->count >= f->capacity ) { return NULL; }
-    if ( f->worker != NULL ) { return tabledemo_table_sequence_add( f->worker, f->value, f->width ); }
-    return f->array + (int64_t) f->value->count++ * f->width;
-}
-static SCHEMA_UNUSED void tabledemo_table_sequence_fill_drop( tabledemo_table_sequence_fill_t * f, void * element )
-{
-    if ( f->worker != NULL ) { tabledemo_table_sequence_erase( f->worker->arena, f->value, element, f->width ); }
-    else if ( f->value->count > 0 ) { f->value->count--; }
-}
-static SCHEMA_UNUSED void tabledemo_table_sequence_fill_end( tabledemo_table_sequence_fill_t * f )
-{
-    if ( f->worker == NULL && f->value->count == 0 ) { f->value->items.value = 0; }
-}
-#endif
-#ifndef SCHEMA_TABLEDEMO_TABLE_LIST_RUNTIME
-#define SCHEMA_TABLEDEMO_TABLE_LIST_RUNTIME
-typedef tabledemo_table_sequence_t tabledemo_table_list_t;
-#endif
-
 #ifndef SCHEMA_TABLEDEMO_TABLE_GRAPH_RUNTIME
 #define SCHEMA_TABLEDEMO_TABLE_GRAPH_RUNTIME
 typedef struct tabledemo_table_numbering_t tabledemo_table_numbering_t;
@@ -4481,7 +4166,7 @@ struct tabledemo_table_numbering_t
     const tabledemo_table_ctx_t * ctx;
     uint8_t * pack_base;
 #ifdef SCHEMA_TABLEDEMO_TABLE_SEQUENCE_RUNTIME
-    tabledemo_table_sequence_order_t * orders;
+    TableSequenceOrder * orders;
 #endif
     tabledemo_table_allocator_t allocator;
     tabledemo_table_node_entry_t * entries;
@@ -4597,7 +4282,7 @@ static SCHEMA_UNUSED int tabledemo_table_number_edge( tabledemo_table_numbering_
 static SCHEMA_UNUSED void tabledemo_table_number_dispose( tabledemo_table_numbering_t * n )
 {
 #ifdef SCHEMA_TABLEDEMO_TABLE_SEQUENCE_RUNTIME
-    tabledemo_table_sequence_orders_release( n->allocator, n->orders );
+    table_sequence_orders_release( n->allocator, n->orders );
 #endif
     tabledemo_table_release( n->allocator, n->entries );
     tabledemo_table_release( n->allocator, n->slots );
@@ -5506,7 +5191,7 @@ static SCHEMA_UNUSED int tabledemo_table_cycle_acyclic( tabledemo_table_node_map
    PROTOCOL ID is the type wire's and nothing else, and the BUILD VERSION is
    what everything cooked or blocked is keyed by. A table edit moves this and
    never the protocol id; a type edit moves both. */
-#define SCHEMA_TABLEDEMO_BUILD_VERSION_VALUE 0x2ee1bb849c945752ull
+#define SCHEMA_TABLEDEMO_BUILD_VERSION_VALUE 0x74f8a79e113ca9dfull
 
 #endif /* SCHEMA_TABLEDEMO_BUILD_VERSION */
 
@@ -5713,14 +5398,14 @@ static const uint8_t TABLEDEMO_K_TABLE_ANNOUNCE[TABLEDEMO_K_TABLE_ANNOUNCE_BYTES
     0x01,
     0x01,
     0x09,
-    0x52,
-    0x57,
-    0x94,
-    0x9c,
-    0x84,
-    0xbb,
-    0xe1,
-    0x2e,
+    0xdf,
+    0xa9,
+    0x3c,
+    0x11,
+    0x9e,
+    0xa7,
+    0xf8,
+    0x74,
     0x02,
     0x0e,
     0x89,
@@ -10077,7 +9762,7 @@ static SCHEMA_UNUSED int schema_tabledemo_table_cook_text_( tabledemo_table_numb
     if ( len < 0 ) { return 0; }
     if ( len == 0 ) { return 1; }
     bytes = tabledemo_table_blob_storage( (int64_t) len, 1 );
-    if ( bytes < 0 || !tabledemo_table_extent_reserve( at, 1, bytes, 8 ) ) { return 0; }
+    if ( bytes < 0 || !table_extent_reserve( at, 1, bytes, 8 ) ) { return 0; }
     if ( slot != NULL && extent != NULL )
     {
         uint8_t * raw = extent + *at - bytes;
@@ -10146,7 +9831,6 @@ static const uint64_t tabledemo_table_retain_known[] = {
     UINT64_C( 0x031ec0c4b7d28bf1 ),
     UINT64_C( 0x04dc16aea8ff5276 ),
     UINT64_C( 0x0577780d86c4b0c3 ),
-    UINT64_C( 0x05d94ead8f7094de ),
     UINT64_C( 0x065ee827cf99fbb4 ),
     UINT64_C( 0x08a60c07b54d8dc7 ),
     UINT64_C( 0x09ae5613b0051271 ),
@@ -11318,14 +11002,14 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_save_body( tabledemo_table_writ
     { /* i8_span */
         if ( !( value->i8_span == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 51, 0x48121511bf702eb5ull, 2 );
+            tabledemo_table_writer_header_at( w, 50, 0x48121511bf702eb5ull, 2 );
             tabledemo_table_writer_put8( w, (uint8_t) ( value->i8_span ) );
         }
     }
     { /* i8_low */
         if ( !( value->i8_low == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 85, 0x942bfe3168090f7dull, 2 );
+            tabledemo_table_writer_header_at( w, 84, 0x942bfe3168090f7dull, 2 );
             schema_assert( !( value->i8_low > 126 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put8( w, (uint8_t) ( value->i8_low ) );
         }
@@ -11333,7 +11017,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_save_body( tabledemo_table_writ
     { /* i8_high */
         if ( !( value->i8_high == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 137, 0xd182acd105b55dd1ull, 2 );
+            tabledemo_table_writer_header_at( w, 136, 0xd182acd105b55dd1ull, 2 );
             schema_assert( !( value->i8_high < -127 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put8( w, (uint8_t) ( value->i8_high ) );
         }
@@ -11341,7 +11025,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_save_body( tabledemo_table_writ
     { /* i8_inside */
         if ( !( value->i8_inside == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 157, 0xef9ded23c8912a81ull, 2 );
+            tabledemo_table_writer_header_at( w, 156, 0xef9ded23c8912a81ull, 2 );
             schema_assert( !( value->i8_inside < -127 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
             schema_assert( !( value->i8_inside > 126 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put8( w, (uint8_t) ( value->i8_inside ) );
@@ -11350,14 +11034,14 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_save_body( tabledemo_table_writ
     { /* i16_span */
         if ( !( value->i16_span == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 110, 0xb655574ea23760b4ull, 3 );
+            tabledemo_table_writer_header_at( w, 109, 0xb655574ea23760b4ull, 3 );
             tabledemo_table_writer_put16( w, (uint16_t) ( value->i16_span ) );
         }
     }
     { /* i16_low */
         if ( !( value->i16_low == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 138, 0xd217b3af8d7a2bdeull, 3 );
+            tabledemo_table_writer_header_at( w, 137, 0xd217b3af8d7a2bdeull, 3 );
             schema_assert( !( value->i16_low > 32766 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put16( w, (uint16_t) ( value->i16_low ) );
         }
@@ -11365,7 +11049,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_save_body( tabledemo_table_writ
     { /* i16_high */
         if ( !( value->i16_high == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 84, 0x90652f70c9127900ull, 3 );
+            tabledemo_table_writer_header_at( w, 83, 0x90652f70c9127900ull, 3 );
             schema_assert( !( value->i16_high < -32767 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put16( w, (uint16_t) ( value->i16_high ) );
         }
@@ -11373,7 +11057,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_save_body( tabledemo_table_writ
     { /* i16_inside */
         if ( !( value->i16_inside == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 66, 0x6a659d7c354db158ull, 3 );
+            tabledemo_table_writer_header_at( w, 65, 0x6a659d7c354db158ull, 3 );
             schema_assert( !( value->i16_inside < -32767 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
             schema_assert( !( value->i16_inside > 32766 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put16( w, (uint16_t) ( value->i16_inside ) );
@@ -11382,14 +11066,14 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_save_body( tabledemo_table_writ
     { /* i32_span */
         if ( !( value->i32_span == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 152, 0xe693bd88532c91d6ull, 4 );
+            tabledemo_table_writer_header_at( w, 151, 0xe693bd88532c91d6ull, 4 );
             tabledemo_table_writer_put32( w, (uint32_t) ( value->i32_span ) );
         }
     }
     { /* i32_low */
         if ( !( value->i32_low == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 6, 0x065ee827cf99fbb4ull, 4 );
+            tabledemo_table_writer_header_at( w, 5, 0x065ee827cf99fbb4ull, 4 );
             schema_assert( !( value->i32_low > 2147483646 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->i32_low ) );
         }
@@ -11397,7 +11081,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_save_body( tabledemo_table_writ
     { /* i32_high */
         if ( !( value->i32_high == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 129, 0xc9b121c4c2a186eeull, 4 );
+            tabledemo_table_writer_header_at( w, 128, 0xc9b121c4c2a186eeull, 4 );
             schema_assert( !( value->i32_high < -2147483647 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->i32_high ) );
         }
@@ -11405,7 +11089,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_save_body( tabledemo_table_writ
     { /* i32_inside */
         if ( !( value->i32_inside == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 140, 0xd363dfa465acf27aull, 4 );
+            tabledemo_table_writer_header_at( w, 139, 0xd363dfa465acf27aull, 4 );
             schema_assert( !( value->i32_inside < -2147483647 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
             schema_assert( !( value->i32_inside > 2147483646 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->i32_inside ) );
@@ -11414,14 +11098,14 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_save_body( tabledemo_table_writ
     { /* i64_span */
         if ( !( value->i64_span == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 71, 0x7549c70700c49d6full, 5 );
+            tabledemo_table_writer_header_at( w, 70, 0x7549c70700c49d6full, 5 );
             tabledemo_table_writer_put64( w, (uint64_t) ( value->i64_span ) );
         }
     }
     { /* i64_low */
         if ( !( value->i64_low == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 21, 0x1cce6617419771dbull, 5 );
+            tabledemo_table_writer_header_at( w, 20, 0x1cce6617419771dbull, 5 );
             schema_assert( !( value->i64_low > 9223372036854775806ll ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put64( w, (uint64_t) ( value->i64_low ) );
         }
@@ -11429,7 +11113,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_save_body( tabledemo_table_writ
     { /* i64_high */
         if ( !( value->i64_high == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 44, 0x3b54fa60620b5597ull, 5 );
+            tabledemo_table_writer_header_at( w, 43, 0x3b54fa60620b5597ull, 5 );
             schema_assert( !( value->i64_high < -9223372036854775807ll ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put64( w, (uint64_t) ( value->i64_high ) );
         }
@@ -11437,7 +11121,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_save_body( tabledemo_table_writ
     { /* i64_inside */
         if ( !( value->i64_inside == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 139, 0xd308fcb98ece5d23ull, 5 );
+            tabledemo_table_writer_header_at( w, 138, 0xd308fcb98ece5d23ull, 5 );
             schema_assert( !( value->i64_inside < -9223372036854775807ll ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
             schema_assert( !( value->i64_inside > 9223372036854775806ll ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put64( w, (uint64_t) ( value->i64_inside ) );
@@ -11447,7 +11131,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_save_body( tabledemo_table_writ
         schema_assert( 0 <= value->edges_count && value->edges_count <= 4 );
         if ( value->edges_count > 0 )
         {
-            tabledemo_table_writer_header_at( w, 128, 0xc70cde6b85b6197dull, 14 );
+            tabledemo_table_writer_header_at( w, 127, 0xc70cde6b85b6197dull, 14 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -11492,7 +11176,6 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_signed_save( const tabledemo_range
 
 static SCHEMA_UNUSED int tabledemo_ranged_signed_load_body( tabledemo_table_reader_t * r, tabledemo_ranged_signed_t * value )
 {
-    if ( r->nodes != NULL && r->nodes->refused ) { return 0; }
     tabledemo_ranged_signed_reset( value );
     uint8_t seen_ref[512];
     memset( seen_ref, 0, sizeof( seen_ref ) );
@@ -13959,14 +13642,14 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_save_body( tabledemo_table_wr
     { /* u8_span */
         if ( !( value->u8_span == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 11, 0x0f8897557f37c021ull, 6 );
+            tabledemo_table_writer_header_at( w, 10, 0x0f8897557f37c021ull, 6 );
             tabledemo_table_writer_put8( w, (uint8_t) ( value->u8_span ) );
         }
     }
     { /* u8_low */
         if ( !( value->u8_low == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 34, 0x2e17553f8200a2a1ull, 6 );
+            tabledemo_table_writer_header_at( w, 33, 0x2e17553f8200a2a1ull, 6 );
             schema_assert( !( value->u8_low > 254 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put8( w, (uint8_t) ( value->u8_low ) );
         }
@@ -13974,7 +13657,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_save_body( tabledemo_table_wr
     { /* u8_high */
         if ( !( value->u8_high == 1 ) )
         {
-            tabledemo_table_writer_header_at( w, 93, 0xa0e5c60df9301b7dull, 6 );
+            tabledemo_table_writer_header_at( w, 92, 0xa0e5c60df9301b7dull, 6 );
             schema_assert( !( value->u8_high < 1 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put8( w, (uint8_t) ( value->u8_high ) );
         }
@@ -13982,7 +13665,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_save_body( tabledemo_table_wr
     { /* u8_inside */
         if ( !( value->u8_inside == 1 ) )
         {
-            tabledemo_table_writer_header_at( w, 20, 0x1cb2c073a6f5844dull, 6 );
+            tabledemo_table_writer_header_at( w, 19, 0x1cb2c073a6f5844dull, 6 );
             schema_assert( !( value->u8_inside < 1 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
             schema_assert( !( value->u8_inside > 254 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put8( w, (uint8_t) ( value->u8_inside ) );
@@ -13991,14 +13674,14 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_save_body( tabledemo_table_wr
     { /* u16_span */
         if ( !( value->u16_span == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 54, 0x4ca0c150b1790960ull, 7 );
+            tabledemo_table_writer_header_at( w, 53, 0x4ca0c150b1790960ull, 7 );
             tabledemo_table_writer_put16( w, (uint16_t) ( value->u16_span ) );
         }
     }
     { /* u16_low */
         if ( !( value->u16_low == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 159, 0xf252136836b04cb2ull, 7 );
+            tabledemo_table_writer_header_at( w, 158, 0xf252136836b04cb2ull, 7 );
             schema_assert( !( value->u16_low > 65534 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put16( w, (uint16_t) ( value->u16_low ) );
         }
@@ -14006,7 +13689,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_save_body( tabledemo_table_wr
     { /* u16_high */
         if ( !( value->u16_high == 1 ) )
         {
-            tabledemo_table_writer_header_at( w, 56, 0x4f37e1f216e7610cull, 7 );
+            tabledemo_table_writer_header_at( w, 55, 0x4f37e1f216e7610cull, 7 );
             schema_assert( !( value->u16_high < 1 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put16( w, (uint16_t) ( value->u16_high ) );
         }
@@ -14014,7 +13697,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_save_body( tabledemo_table_wr
     { /* u16_inside */
         if ( !( value->u16_inside == 1 ) )
         {
-            tabledemo_table_writer_header_at( w, 136, 0xd176b605978f3304ull, 7 );
+            tabledemo_table_writer_header_at( w, 135, 0xd176b605978f3304ull, 7 );
             schema_assert( !( value->u16_inside < 1 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
             schema_assert( !( value->u16_inside > 65534 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put16( w, (uint16_t) ( value->u16_inside ) );
@@ -14023,14 +13706,14 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_save_body( tabledemo_table_wr
     { /* u32_span */
         if ( !( value->u32_span == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 26, 0x200b924de7479cdaull, 8 );
+            tabledemo_table_writer_header_at( w, 25, 0x200b924de7479cdaull, 8 );
             tabledemo_table_writer_put32( w, (uint32_t) ( value->u32_span ) );
         }
     }
     { /* u32_low */
         if ( !( value->u32_low == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 96, 0xa53d2f2a31b5acb0ull, 8 );
+            tabledemo_table_writer_header_at( w, 95, 0xa53d2f2a31b5acb0ull, 8 );
             schema_assert( !( value->u32_low > 4294967294 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->u32_low ) );
         }
@@ -14038,7 +13721,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_save_body( tabledemo_table_wr
     { /* u32_high */
         if ( !( value->u32_high == 1 ) )
         {
-            tabledemo_table_writer_header_at( w, 87, 0x9759be8ea1a4e3d2ull, 8 );
+            tabledemo_table_writer_header_at( w, 86, 0x9759be8ea1a4e3d2ull, 8 );
             schema_assert( !( value->u32_high < 1 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->u32_high ) );
         }
@@ -14046,7 +13729,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_save_body( tabledemo_table_wr
     { /* u32_inside */
         if ( !( value->u32_inside == 1 ) )
         {
-            tabledemo_table_writer_header_at( w, 83, 0x8dc515fc082e3c0eull, 8 );
+            tabledemo_table_writer_header_at( w, 82, 0x8dc515fc082e3c0eull, 8 );
             schema_assert( !( value->u32_inside < 1 ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
             schema_assert( !( value->u32_inside > 4294967294 ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put32( w, (uint32_t) ( value->u32_inside ) );
@@ -14055,7 +13738,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_save_body( tabledemo_table_wr
     { /* u64_span */
         if ( !( value->u64_span == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 119, 0xbeecef11dbdf8973ull, 9 );
+            tabledemo_table_writer_header_at( w, 118, 0xbeecef11dbdf8973ull, 9 );
             tabledemo_table_writer_put64( w, (uint64_t) ( value->u64_span ) );
         }
     }
@@ -14070,7 +13753,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_save_body( tabledemo_table_wr
     { /* u64_high */
         if ( !( value->u64_high == 1ull ) )
         {
-            tabledemo_table_writer_header_at( w, 160, 0xf2b45af3b50689dbull, 9 );
+            tabledemo_table_writer_header_at( w, 159, 0xf2b45af3b50689dbull, 9 );
             schema_assert( !( value->u64_high < 1ull ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put64( w, (uint64_t) ( value->u64_high ) );
         }
@@ -14078,7 +13761,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_save_body( tabledemo_table_wr
     { /* u64_inside */
         if ( !( value->u64_inside == 1ull ) )
         {
-            tabledemo_table_writer_header_at( w, 70, 0x713e12017eebcaf7ull, 9 );
+            tabledemo_table_writer_header_at( w, 69, 0x713e12017eebcaf7ull, 9 );
             schema_assert( !( value->u64_inside < 1ull ) ); /* off its min, debug only (SPEC.md §5.1 row 1) */
             schema_assert( !( value->u64_inside > 18446744073709551614ull ) ); /* off its max, debug only (SPEC.md §5.1 row 1) */
             tabledemo_table_writer_put64( w, (uint64_t) ( value->u64_inside ) );
@@ -14088,7 +13771,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_save_body( tabledemo_table_wr
         schema_assert( 0 <= value->counts_count && value->counts_count <= 4 );
         if ( value->counts_count > 0 )
         {
-            tabledemo_table_writer_header_at( w, 123, 0xc341febe5aae51e5ull, 14 );
+            tabledemo_table_writer_header_at( w, 122, 0xc341febe5aae51e5ull, 14 );
             if ( w->buffer == NULL )
             {
                 int64_t frame_begin = w->offset;
@@ -14133,7 +13816,6 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_unsigned_save( const tabledemo_ran
 
 static SCHEMA_UNUSED int tabledemo_ranged_unsigned_load_body( tabledemo_table_reader_t * r, tabledemo_ranged_unsigned_t * value )
 {
-    if ( r->nodes != NULL && r->nodes->refused ) { return 0; }
     tabledemo_ranged_unsigned_reset( value );
     uint8_t seen_ref[512];
     memset( seen_ref, 0, sizeof( seen_ref ) );
@@ -16531,32 +16213,32 @@ static SCHEMA_UNUSED int tabledemo_ranged_widths_save_body( tabledemo_table_writ
         int64_t payload_bytes = 1; /* the zero reference ending this body */
         if ( !( value->b8 == 0 ) )
         {
-            tabledemo_table_writer_id_at( w, 7, 0x08a60c07b54d8dc7ull );
+            tabledemo_table_writer_id_at( w, 6, 0x08a60c07b54d8dc7ull );
             payload_bytes += 2; /* kind and fixed-width payload */
         }
         if ( !( value->b16 == 0 ) )
         {
-            tabledemo_table_writer_id_at( w, 166, 0xff95701912ad97beull );
+            tabledemo_table_writer_id_at( w, 165, 0xff95701912ad97beull );
             payload_bytes += 3; /* kind and fixed-width payload */
         }
         if ( !( value->b32 == 0 ) )
         {
-            tabledemo_table_writer_id_at( w, 168, 0xff9c5c1912b39470ull );
+            tabledemo_table_writer_id_at( w, 167, 0xff9c5c1912b39470ull );
             payload_bytes += 5; /* kind and fixed-width payload */
         }
         if ( !( value->b64 == 0 ) )
         {
-            tabledemo_table_writer_id_at( w, 165, 0xff92701912ab61e7ull );
+            tabledemo_table_writer_id_at( w, 164, 0xff92701912ab61e7ull );
             payload_bytes += 9; /* kind and fixed-width payload */
         }
         if ( !( value->b12 == 0 ) )
         {
-            tabledemo_table_writer_id_at( w, 167, 0xff95741912ad9e8aull );
+            tabledemo_table_writer_id_at( w, 166, 0xff95741912ad9e8aull );
             payload_bytes += 3; /* kind and fixed-width payload */
         }
         if ( !( value->b48 == 0 ) )
         {
-            tabledemo_table_writer_id_at( w, 164, 0xff8b681912a535a1ull );
+            tabledemo_table_writer_id_at( w, 163, 0xff8b681912a535a1ull );
             payload_bytes += 9; /* kind and fixed-width payload */
         }
         if ( payload_bytes < 0 || w->offset > w->capacity || payload_bytes > w->capacity - w->offset ) { w->overflow = 1; }
@@ -16569,35 +16251,35 @@ static SCHEMA_UNUSED int tabledemo_ranged_widths_save_body( tabledemo_table_writ
     { /* b8 */
         if ( !( value->b8 == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 7, 0x08a60c07b54d8dc7ull, 6 );
+            tabledemo_table_writer_header_at( w, 6, 0x08a60c07b54d8dc7ull, 6 );
             tabledemo_table_writer_put8( w, (uint8_t) ( value->b8 ) );
         }
     }
     { /* b16 */
         if ( !( value->b16 == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 166, 0xff95701912ad97beull, 7 );
+            tabledemo_table_writer_header_at( w, 165, 0xff95701912ad97beull, 7 );
             tabledemo_table_writer_put16( w, (uint16_t) ( value->b16 ) );
         }
     }
     { /* b32 */
         if ( !( value->b32 == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 168, 0xff9c5c1912b39470ull, 8 );
+            tabledemo_table_writer_header_at( w, 167, 0xff9c5c1912b39470ull, 8 );
             tabledemo_table_writer_put32( w, (uint32_t) ( value->b32 ) );
         }
     }
     { /* b64 */
         if ( !( value->b64 == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 165, 0xff92701912ab61e7ull, 9 );
+            tabledemo_table_writer_header_at( w, 164, 0xff92701912ab61e7ull, 9 );
             tabledemo_table_writer_put64( w, (uint64_t) ( value->b64 ) );
         }
     }
     { /* b12 */
         if ( !( value->b12 == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 167, 0xff95741912ad9e8aull, 7 );
+            tabledemo_table_writer_header_at( w, 166, 0xff95741912ad9e8aull, 7 );
             schema_assert( (uint64_t) ( value->b12 ) <= 0xfffull ); /* bits(12) wider than 12 bits, debug only (SPEC.md §5.1 row 2) */
             tabledemo_table_writer_put16( w, (uint16_t) ( value->b12 ) );
         }
@@ -16605,7 +16287,7 @@ static SCHEMA_UNUSED int tabledemo_ranged_widths_save_body( tabledemo_table_writ
     { /* b48 */
         if ( !( value->b48 == 0 ) )
         {
-            tabledemo_table_writer_header_at( w, 164, 0xff8b681912a535a1ull, 9 );
+            tabledemo_table_writer_header_at( w, 163, 0xff8b681912a535a1ull, 9 );
             schema_assert( (uint64_t) ( value->b48 ) <= 0xffffffffffffull ); /* bits(48) wider than 48 bits, debug only (SPEC.md §5.1 row 2) */
             tabledemo_table_writer_put64( w, (uint64_t) ( value->b48 ) );
         }
@@ -16638,7 +16320,6 @@ static SCHEMA_UNUSED int64_t tabledemo_ranged_widths_save( const tabledemo_range
 
 static SCHEMA_UNUSED int tabledemo_ranged_widths_load_body( tabledemo_table_reader_t * r, tabledemo_ranged_widths_t * value )
 {
-    if ( r->nodes != NULL && r->nodes->refused ) { return 0; }
     tabledemo_ranged_widths_reset( value );
     uint8_t seen_ref[512];
     memset( seen_ref, 0, sizeof( seen_ref ) );
@@ -21550,10 +21231,6 @@ static SCHEMA_UNUSED int tabledemo_ranged_signed_load_body_retain( tabledemo_tab
 {
     (void) retention;
 
-    if ( r->nodes != NULL && r->nodes->refused )
-    {
-        return 0;
-    }
     tabledemo_ranged_signed_reset( value );
     tabledemo_table_retain_walk_t body_keep = retention;
     tabledemo_table_retain_discard( retention, 0, 0 );
@@ -23230,10 +22907,6 @@ static SCHEMA_UNUSED int tabledemo_ranged_unsigned_load_body_retain( tabledemo_t
 {
     (void) retention;
 
-    if ( r->nodes != NULL && r->nodes->refused )
-    {
-        return 0;
-    }
     tabledemo_ranged_unsigned_reset( value );
     tabledemo_table_retain_walk_t body_keep = retention;
     tabledemo_table_retain_discard( retention, 0, 0 );
@@ -24727,10 +24400,6 @@ static SCHEMA_UNUSED int tabledemo_ranged_widths_load_body_retain( tabledemo_tab
 {
     (void) retention;
 
-    if ( r->nodes != NULL && r->nodes->refused )
-    {
-        return 0;
-    }
     tabledemo_ranged_widths_reset( value );
     tabledemo_table_retain_walk_t body_keep = retention;
     tabledemo_table_retain_discard( retention, 0, 0 );

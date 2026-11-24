@@ -2511,14 +2511,14 @@ write-refusal-fixed fref_enum_scalar_deprecated    tabledemo MoodField testdata/
 write-refusal-fixed fref_enum_scalar_deprecated_ok tabledemo MoodField testdata/conformance/tables/save-wire/sp-enum-scalar-deprecated.bin mood ordinal 3 wrote
 # THE VARIABLE SAVE of the same rule (docs/SPEC-TABLES.md §2.15 WRITE): Moods and MoodField are FIXED
 # roots, and a leg may save a fixed root through its fixed form on the write-refusal surface too, so the
-# rows above can miss its variable writer. VarMoods (tables/examples/Tables.schema) is a plain table with
+# rows above can miss its variable writer. VarMoods (test/tables/shapes/Shapes.schema) is a plain table with
 # no fixed form: the list element and the scalar each refuse Old (2) and write Fierce (3).
-json-hostile sp-varmoods                        tabledemo        VarMoods     testdata/conformance/tables/json-hostile/sp-varmoods read
-instance sp_varmoods                            tabledemo VarMoods  testdata/conformance/tables/save-wire/sp-varmoods.bin
-write-refusal wref_varmoods_deprecated            tabledemo VarMoods testdata/conformance/tables/save-wire/sp-varmoods.bin row[0] ordinal 2 refused
-write-refusal wref_varmoods_deprecated_ok         tabledemo VarMoods testdata/conformance/tables/save-wire/sp-varmoods.bin row[0] ordinal 3 wrote
-write-refusal wref_varmoods_scalar_deprecated     tabledemo VarMoods testdata/conformance/tables/save-wire/sp-varmoods.bin mood ordinal 2 refused
-write-refusal wref_varmoods_scalar_deprecated_ok  tabledemo VarMoods testdata/conformance/tables/save-wire/sp-varmoods.bin mood ordinal 3 wrote
+json-hostile sp-varmoods                        shapes           VarMoods     testdata/conformance/tables/json-hostile/sp-varmoods read
+instance sp_varmoods                            shapes    VarMoods  testdata/conformance/tables/save-wire/sp-varmoods.bin
+write-refusal wref_varmoods_deprecated            shapes    VarMoods testdata/conformance/tables/save-wire/sp-varmoods.bin row[0] ordinal 2 refused
+write-refusal wref_varmoods_deprecated_ok         shapes    VarMoods testdata/conformance/tables/save-wire/sp-varmoods.bin row[0] ordinal 3 wrote
+write-refusal wref_varmoods_scalar_deprecated     shapes    VarMoods testdata/conformance/tables/save-wire/sp-varmoods.bin mood ordinal 2 refused
+write-refusal wref_varmoods_scalar_deprecated_ok  shapes    VarMoods testdata/conformance/tables/save-wire/sp-varmoods.bin mood ordinal 3 wrote
 # ARM MIN (R10, 1122): a counted [A..B] inside a union arm holds A wherever the field sits: count below A refuses on read in every form (tables/examples/ArmMin.schema); A through B reads.
 json-hostile arm-min-fix-below   tabledemo MinArmFix testdata/conformance/tables/json-hostile/arm-min-fix-below   refused
 json-hostile arm-min-fix-empty   tabledemo MinArmFix testdata/conformance/tables/json-hostile/arm-min-fix-empty   refused

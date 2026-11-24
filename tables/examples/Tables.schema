@@ -146,18 +146,6 @@ fixed table MoodField
     tail uint16
 }
 
-// VarMoods: the same two halves of the deprecated-variant rule on a VARIABLE
-// root, which has no fixed form. A driver may save a fixed root through its
-// fixed form even on the variable surface, so the wref_varmoods_* rows reach
-// every leg's variable save only through a root like this one: a writer
-// never writes Old, in the list element or in the scalar (SPEC-TABLES §2.15).
-
-table VarMoods
-{
-    row  []Mood
-    mood Mood = Fierce
-}
-
 // A counted array [A..B] inside a union arm (docs/SPEC.md section 4.2;
 // docs/SPEC-TABLES.md section 3.4). The minimum A holds wherever the
 // field sits: an arm payload with a count below A refuses on read in every

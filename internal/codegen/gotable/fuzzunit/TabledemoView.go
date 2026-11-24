@@ -164,7 +164,7 @@ var tableUnitView = UnitViewInfo{Package: "tabledemo", ProtocolID: 0x5c9bc571714
 		{Name: "Debuff", File: "Tables.schema", Table: false, Type: &DebuffTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "ScoreBoard", File: "Keyed.schema", Table: false, Type: &ScoreBoardTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 	},
-	NumTables: 26, Tables: []ViewType{
+	NumTables: 25, Tables: []ViewType{
 		{Name: "ArchiveConfig", File: "Nested.schema", Table: true, Type: &ArchiveConfigTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "CountedMin", File: "Tables.schema", Table: true, Type: &CountedMinTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "FloatBound", File: "Tables.schema", Table: true, Type: &FloatBoundTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
@@ -188,7 +188,6 @@ var tableUnitView = UnitViewInfo{Package: "tabledemo", ProtocolID: 0x5c9bc571714
 		{Name: "ShipEntry", File: "Pack.schema", Table: true, Type: &ShipEntryTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "TeamConfig", File: "Keyed.schema", Table: true, Type: &TeamConfigTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "TurretConfig", File: "Keyed.schema", Table: true, Type: &TurretConfigTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
-		{Name: "VarMoods", File: "Tables.schema", Table: true, Type: &VarMoodsTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 		{Name: "WeaponConfig", File: "Tables.schema", Table: true, Type: &WeaponConfigTableInfo, Doc: "One weapon's tuning. A designer edits this table and nothing else.", NumTags: 1, Tags: []string{"designer_facing"}},
 		{Name: "WideBlob", File: "Wide.schema", Table: true, Type: &WideBlobTableInfo, Doc: TableDocNone, NumTags: 0, Tags: nil},
 	},

@@ -918,6 +918,21 @@ var codecTable = []codec{
 	}, shapes.BoundsToJSONMeasure, shapes.BoundsToJSON, shapes.BoundsCookMeasure, shapes.BoundsCookFrom, func(r *shapes.TableReport) report {
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
+	// VarMoods: variable only (no fixed form), so the §2.15 write-refusal rows reach the variable Save
+	regionRow("shapes", "VarMoods", shapes.VarMoodsLoadMeasure, shapes.VarMoodsLoad, shapes.VarMoodsMeasure, shapes.VarMoodsSave, func(text []byte, r *shapes.TableReport) (*shapes.VarMoods, []byte, bool) {
+		var b shapes.VarMoodsBuilder
+		if !b.Init() {
+			return nil, nil, false
+		}
+		defer b.Shutdown()
+		ok := shapes.VarMoodsFromJSON(&b, text, r)
+		if !b.Lock() {
+			return nil, nil, false
+		}
+		return b.AsConst(), b.Region(), ok
+	}, shapes.VarMoodsToJSONMeasure, shapes.VarMoodsToJSON, shapes.VarMoodsCookMeasure, shapes.VarMoodsCookFrom, func(r *shapes.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
 	row("shapes", "FixedBounds", shapes.FixedBoundsReset, shapes.FixedBoundsLoad, shapes.FixedBoundsMeasure, shapes.FixedBoundsSave, shapes.FixedBoundsFromJSON, shapes.FixedBoundsToJSONMeasure, shapes.FixedBoundsToJSON, shapes.FixedBoundsCookMeasure, shapes.FixedBoundsCookFrom, func(r *shapes.TableReport) report {
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
@@ -977,20 +992,6 @@ var codecTable = []codec{
 	row("tabledemo", "Moods", tabledemo.MoodsReset, tabledemo.MoodsLoad,
 		tabledemo.MoodsMeasure, tabledemo.MoodsSave,
 		tabledemo.MoodsFromJSON, tabledemo.MoodsToJSONMeasure, tabledemo.MoodsToJSON, tabledemo.MoodsCookMeasure, tabledemo.MoodsCookFrom, snapDemo),
-	// VarMoods is variable-only (no fixed form): the §2.15 write-refusal rows
-	// reach the variable Save through it, so it rides the region load.
-	regionRow("tabledemo", "VarMoods", tabledemo.VarMoodsLoadMeasure, tabledemo.VarMoodsLoad, tabledemo.VarMoodsMeasure, tabledemo.VarMoodsSave, func(text []byte, r *tabledemo.TableReport) (*tabledemo.VarMoods, []byte, bool) {
-		var b tabledemo.VarMoodsBuilder
-		if !b.Init() {
-			return nil, nil, false
-		}
-		defer b.Shutdown()
-		ok := tabledemo.VarMoodsFromJSON(&b, text, r)
-		if !b.Lock() {
-			return nil, nil, false
-		}
-		return b.AsConst(), b.Region(), ok
-	}, tabledemo.VarMoodsToJSONMeasure, tabledemo.VarMoodsToJSON, tabledemo.VarMoodsCookMeasure, tabledemo.VarMoodsCookFrom, snapDemo),
 	row("tabledemo", "MoodField", tabledemo.MoodFieldReset, tabledemo.MoodFieldLoad,
 		tabledemo.MoodFieldMeasure, tabledemo.MoodFieldSave,
 		tabledemo.MoodFieldFromJSON, tabledemo.MoodFieldToJSONMeasure, tabledemo.MoodFieldToJSON, tabledemo.MoodFieldCookMeasure, tabledemo.MoodFieldCookFrom, snapDemo),

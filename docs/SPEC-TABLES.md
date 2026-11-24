@@ -4699,7 +4699,8 @@ lawful variant. Every leg answers the shared rows `wref_enum_deprecated`,
 `fref_enum_scalar_deprecated` (refused) and their `_ok` twins (written) on the
 `write-refusal` and `write-refusal-fixed` surfaces. A driver may save a FIXED
 root through its fixed form on both surfaces, so the VARIABLE save is reached
-through the variable-only root `VarMoods` (`row []Mood`, `mood Mood = Fierce`):
+through the variable-only conformance root `VarMoods` of the shapes unit
+(test/tables/shapes; `row []Mood`, `mood Mood = Fierce`):
 `wref_varmoods_deprecated` and `wref_varmoods_scalar_deprecated` (refused) and
 their `_ok` twins (written), every leg. The block builder
 holds the rule too (an assert leg in its debug build): Dart's

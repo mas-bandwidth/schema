@@ -813,7 +813,6 @@ const wireRows = [
   ["tabledemo", "MinPlainFix", "examples/TabledemoVariable.js"],
   ["tabledemo", "Moods", "examples/TabledemoVariable.js"],
   ["tabledemo", "MoodField", "examples/TabledemoVariable.js"],
-  ["tabledemo", "VarMoods", "examples/TabledemoVariable.js"],
   ["tblv1", "Cfg", "v1/Tblv1Variable.js"],
   ["tblv2", "Cfg", "v2/Tblv2Variable.js"],
   ["tblw1", "Fleet", "w1/Tblw1Variable.js"],
@@ -902,6 +901,7 @@ const wireRows = [
   // variable table and a fixed one
   ["shapes", "Bounds", "shapes/ShapesVariable.js"],
   ["shapes", "FixedBounds", "shapes/ShapesVariable.js"],
+  ["shapes", "VarMoods", "shapes/ShapesVariable.js"],
   // the 2026-11-22 unit (test/tables/surfaces): the text writer's depth cap
   // (Chain), a null required pointer (Holder), a counted array with a Min
   // (Counted), and the three fixed roots with a file form (Narrow, Wide,
