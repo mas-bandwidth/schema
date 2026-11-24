@@ -65,6 +65,9 @@ type wireFuzzOptions struct {
 	vectors      string
 	// Kept for command-line compatibility so a retired exemption fails clearly.
 	finiteOwed string
+	// absentLedger is the checked-in set of roots this leg and arm may leave
+	// absent (wirefuzz_absent.go); empty excuses none.
+	absentLedger string
 }
 
 // wireRoot is one (unit, root) the seeds name, with what the oracle needs to
@@ -903,6 +906,12 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 	if err != nil {
 		return err
 	}
+	var absentHeld map[string]string
+	if opts.absentLedger != "" {
+		if absentHeld, err = readAbsentLedger(opts.absentLedger); err != nil {
+			return err
+		}
+	}
 
 	leg, err := startWireLeg(opts.driver, roots)
 	if err != nil {
@@ -916,6 +925,7 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		})
 		defer timer.Stop()
 	}
+	absentRoots := map[string]int{}
 	absent := 0
 	var live []*wireSeed
 	for _, s := range seeds {
@@ -923,7 +933,12 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 			live = append(live, s)
 		} else {
 			absent++
+			absentRoots[absentRootName(roots[seedRoot[s]])]++
 		}
+	}
+	if err := checkAbsentRoots(absentRoots, absentHeld, opts.absentLedger); err != nil {
+		leg.kill()
+		return err
 	}
 	if len(live) == 0 {
 		leg.kill()

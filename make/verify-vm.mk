@@ -289,11 +289,11 @@ _verify-js-fuzz: verify-toolchain-js build/conformance-harness-vm build/tables-g
 	NODE="$(NODE)" ./build/conformance-harness-vm wire-fuzz $(WFR_FLAGS_js) \
 		--driver "$(WFR_DRIVER_js)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_js) \
-		--failed build/verify/fuzz-js-plain.bin
+		$(call WIRE_ABSENT,js-plain) --failed build/verify/fuzz-js-plain.bin
 	NODE="$(NODE)" ./build/conformance-harness-vm wire-fuzz --retain $(WFR_FLAGS_js) \
 		--driver "$(WFR_DRIVER_js)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_js) \
-		--failed build/verify/fuzz-js-retain.bin
+		$(call WIRE_ABSENT,js-retain) --failed build/verify/fuzz-js-retain.bin
 	NODE="$(NODE)" ./build/conformance-harness-vm json-fuzz --only js \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-js
@@ -315,11 +315,11 @@ _verify-python-fuzz: verify-toolchain-python build/conformance-harness-vm build/
 	./build/conformance-harness-vm wire-fuzz \
 		--driver "$(WFR_DRIVER_python)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_python) \
-		--failed build/verify/fuzz-python-plain.bin
+		$(call WIRE_ABSENT,python-plain) --failed build/verify/fuzz-python-plain.bin
 	./build/conformance-harness-vm wire-fuzz --retain \
 		--driver "$(WFR_DRIVER_python)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_python) \
-		--failed build/verify/fuzz-python-retain.bin
+		$(call WIRE_ABSENT,python-retain) --failed build/verify/fuzz-python-retain.bin
 	PYTHON="$(PYTHON)" ./build/conformance-harness-vm json-fuzz --only python \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-python
@@ -341,11 +341,11 @@ _verify-ruby-fuzz: verify-toolchain-ruby build/conformance-harness-vm build/conf
 	./build/conformance-harness-vm wire-fuzz \
 		--driver "$(WFR_DRIVER_ruby)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_ruby) \
-		--failed build/verify/fuzz-ruby-plain.bin
+		$(call WIRE_ABSENT,ruby-plain) --failed build/verify/fuzz-ruby-plain.bin
 	./build/conformance-harness-vm wire-fuzz --retain \
 		--driver "$(WFR_DRIVER_ruby)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_ruby) \
-		--failed build/verify/fuzz-ruby-retain.bin
+		$(call WIRE_ABSENT,ruby-retain) --failed build/verify/fuzz-ruby-retain.bin
 	RUBY="$(RUBY)" ./build/conformance-harness-vm json-fuzz --only ruby \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-ruby
@@ -367,11 +367,11 @@ _verify-lua-fuzz: verify-toolchain-lua build/conformance-harness-vm build/confor
 	./build/conformance-harness-vm wire-fuzz \
 		--driver "$(WFR_DRIVER_lua)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_lua) \
-		--failed build/verify/fuzz-lua-plain.bin
+		$(call WIRE_ABSENT,lua-plain) --failed build/verify/fuzz-lua-plain.bin
 	./build/conformance-harness-vm wire-fuzz --retain \
 		--driver "$(WFR_DRIVER_lua)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_lua) \
-		--failed build/verify/fuzz-lua-retain.bin
+		$(call WIRE_ABSENT,lua-retain) --failed build/verify/fuzz-lua-retain.bin
 	LUA="$(LUA)" ./build/conformance-harness-vm json-fuzz --only lua \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-lua
@@ -393,11 +393,11 @@ _verify-luau-fuzz: verify-toolchain-luau build/conformance-harness-vm build/conf
 	$(WFR_ENV_luau) LUAU="$(LUAU)" ./build/conformance-harness-vm wire-fuzz \
 		--driver "$(WFR_DRIVER_luau)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_luau) \
-		--failed build/verify/fuzz-luau-plain.bin
+		$(call WIRE_ABSENT,luau-plain) --failed build/verify/fuzz-luau-plain.bin
 	$(WFR_ENV_luau) LUAU="$(LUAU)" ./build/conformance-harness-vm wire-fuzz --retain \
 		--driver "$(WFR_DRIVER_luau)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_luau) \
-		--failed build/verify/fuzz-luau-retain.bin
+		$(call WIRE_ABSENT,luau-retain) --failed build/verify/fuzz-luau-retain.bin
 	LUAU="$(LUAU)" ./build/conformance-harness-vm json-fuzz --only luau \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-luau
@@ -420,15 +420,15 @@ _verify-squirrel-fuzz: verify-toolchain-squirrel build/conformance-harness-vm bu
 	./build/conformance-harness-vm wire-fuzz \
 		--driver "$(SQ) test/conformance/squirrel/wirefuzz.nut" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_squirrel) \
-		--failed build/verify/fuzz-squirrel-fixed.bin
+		$(call WIRE_ABSENT,squirrel-fixed) --failed build/verify/fuzz-squirrel-fixed.bin
 	./build/conformance-harness-vm wire-fuzz --builder \
 		--driver "$(SQ) test/conformance/squirrel/wirefuzz.nut builder" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_squirrel) \
-		--failed build/verify/fuzz-squirrel-builder.bin
+		$(call WIRE_ABSENT,squirrel-builder) --failed build/verify/fuzz-squirrel-builder.bin
 	./build/conformance-harness-vm wire-fuzz --builder --retain \
 		--driver "$(SQ) test/conformance/squirrel/wirefuzz.nut builder" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_squirrel) \
-		--failed build/verify/fuzz-squirrel-retain.bin
+		$(call WIRE_ABSENT,squirrel-retain) --failed build/verify/fuzz-squirrel-retain.bin
 	SQ="$(SQ)" ./build/conformance-harness-vm json-fuzz --only squirrel \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-squirrel
@@ -451,11 +451,11 @@ _verify-moo-fuzz: verify-toolchain-moo build/conformance-harness-vm build/confor
 	$(WFR_ENV_moo) MOO="$(MOO)" ./build/conformance-harness-vm wire-fuzz \
 		--driver "$(WFR_DRIVER_moo)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_moo) \
-		--failed build/verify/fuzz-moo-plain.bin
+		$(call WIRE_ABSENT,moo-plain) --failed build/verify/fuzz-moo-plain.bin
 	$(WFR_ENV_moo) MOO="$(MOO)" ./build/conformance-harness-vm wire-fuzz --retain \
 		--driver "$(WFR_DRIVER_moo)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_moo) \
-		--failed build/verify/fuzz-moo-retain.bin
+		$(call WIRE_ABSENT,moo-retain) --failed build/verify/fuzz-moo-retain.bin
 	MOO="$(MOO)" MOO_ANALYZE="$(MOO_ANALYZE)" ./build/conformance-harness-vm json-fuzz --only moo \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-moo
@@ -508,14 +508,14 @@ _verify-goose-fuzz-plain: $(GOOSE_FUZZ_BASE) build/goose-wirefuzz-legs/.verify-s
 	./build/conformance-harness-vm wire-fuzz --mixed-builder \
 		--driver "$(GOOSE_DISPATCH) $(GOOSE_LEGS_DIR)/legs" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_goose) \
-		--failed build/verify/fuzz-goose-plain.bin
+		$(call WIRE_ABSENT,goose-plain) --failed build/verify/fuzz-goose-plain.bin
 
 _verify-goose-fuzz-retain: $(GOOSE_FUZZ_BASE) build/goose-wirefuzz-legs/.verify-stamp
 	@mkdir -p build/verify
 	./build/conformance-harness-vm wire-fuzz --mixed-builder --retain \
 		--driver "$(GOOSE_DISPATCH) $(GOOSE_LEGS_DIR)/legs" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_goose) \
-		--failed build/verify/fuzz-goose-retain.bin
+		$(call WIRE_ABSENT,goose-retain) --failed build/verify/fuzz-goose-retain.bin
 
 _verify-goose-fuzz-json: $(GOOSE_FUZZ_BASE)
 	@mkdir -p build/verify
@@ -544,11 +544,11 @@ _verify-lobster-fuzz: verify-toolchain-lobster build/conformance-harness-vm buil
 	LOBSTER="$(LOBSTER)" ./build/conformance-harness-vm wire-fuzz \
 		--driver "$(WFR_DRIVER_lobster)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_lobster) \
-		--failed build/verify/fuzz-lobster-plain.bin
+		$(call WIRE_ABSENT,lobster-plain) --failed build/verify/fuzz-lobster-plain.bin
 	LOBSTER="$(LOBSTER)" ./build/conformance-harness-vm wire-fuzz --retain \
 		--driver "$(WFR_DRIVER_lobster)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_lobster) \
-		--failed build/verify/fuzz-lobster-retain.bin
+		$(call WIRE_ABSENT,lobster-retain) --failed build/verify/fuzz-lobster-retain.bin
 	LOBSTER="$(LOBSTER)" ./build/conformance-harness-vm json-fuzz --only lobster \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-lobster
