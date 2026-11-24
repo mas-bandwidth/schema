@@ -69,7 +69,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `packet-end/` | packet end-check fixture | `make test-go` | `go test -run TestSpecPacketEndIsChecked ./compiler/` |
 | `packet-finite/` | packet finite-float gates | `make test-go, make test-dart, make test-elixir, make test-lua, make test-luau` | `make packet-finite-go packet-finite-dart packet-finite-elixir packet-finite-lua packet-finite-luau` |
 | `packet-text/` | packet UTF-8 gates | `make test` | `make test` |
-| `packet-void/` | packet void-arm gates | `make test` | `make test` |
+| `packet-void/` | packet void-arm drivers, one per leg, over testdata/wire/packet-void/cases.txt | `make packet-void-<leg>` | `make packet-void-pins` |
 | `packet-write-bareint/` | packet Write bare-integer width fixture | `go test -run TestSpecPacketWriteBareIntWidth ./compiler/` | `go test -run TestSpecPacketWriteBareIntWidth ./compiler/` |
 | `packet-write-cfloat/` | packet Write compressed-float range fixture | `make test-go` | `go test -run TestSpecPacketWriteRefusesOffRangeCompressedFloat ./compiler/` |
 | `packet-write-refusal/` | packet Write refusal fixtures for the assert legs | `make test-c, make test-cpp, make test-cs, make test-unity, make test-rust, make test-java, make test-dart` | `make packet-write-refusal-rust` |

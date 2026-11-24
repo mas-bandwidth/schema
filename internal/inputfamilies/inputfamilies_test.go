@@ -136,6 +136,90 @@ func TestDerivationOnAHandTree(t *testing.T) {
 	}
 }
 
+// A shared-corpus family refuses a leg with no target and no whole-leg owed
+// line, a whole-leg owed line for a leg that has a target, and a missing
+// ledger.
+func TestSharedCorpusRefusesALegWithNoTargetAndNoLedgerLine(t *testing.T) {
+	t.Parallel()
+	f := Family{Name: "pins", Target: "pins-{leg}", Owed: "testdata/pins/owed.txt"}
+	has := map[string]bool{}
+	for _, l := range Legs {
+		has[l] = l != "moo" && l != "lobster"
+	}
+	tr := Tree{Ledgers: map[string]string{"testdata/pins/owed.txt": "# head\nlobster all owed: no union API\nlua all owed: stale\nlua x owed: one case\n"}}
+	bad := strings.Join(checkOwed(f, tr, has), "\n")
+	for _, want := range []string{
+		"leg moo has no pins-moo target and no `moo all owed: <cause>` line",
+		"leg lua defines pins-lua and testdata/pins/owed.txt still says `lua all owed`",
+	} {
+		if !strings.Contains(bad, want) {
+			t.Errorf("checkOwed did not say %q:\n%s", want, bad)
+		}
+	}
+	if strings.Contains(bad, "lobster") {
+		t.Errorf("checkOwed refused lobster, which its ledger line owes:\n%s", bad)
+	}
+	if bad := checkOwed(f, Tree{}, has); len(bad) != 1 || !strings.Contains(bad[0], "is missing") {
+		t.Errorf("a missing ledger: %v", bad)
+	}
+}
+
+// The ledger is an exact set on every line, not only on whole-leg lines: a
+// per-case line under a leg that is not a leg (a typo, a removed leg) would
+// otherwise owe a case for nobody and never go red. Each plant is one line
+// added to a green ledger, and each must be refused by name.
+func TestSharedCorpusLedgerIsAnExactSetOnEveryLine(t *testing.T) {
+	t.Parallel()
+	f := Family{Name: "pins", Target: "pins-{leg}", Owed: "testdata/pins/owed.txt", Cases: "testdata/pins/cases.txt"}
+	has := map[string]bool{}
+	for _, l := range Legs {
+		has[l] = true
+	}
+	const green = "# head\nlua mixed-ping owed: the port\n"
+	ledgers := func(owed string) Tree {
+		return Tree{Ledgers: map[string]string{
+			"testdata/pins/owed.txt":  owed,
+			"testdata/pins/cases.txt": "# head\nmixed-ping Mixed accept 2 ping\nmixed-none Mixed accept 2 None\n",
+		}}
+	}
+	if bad := checkOwed(f, ledgers(green), has); len(bad) != 0 {
+		t.Fatalf("the green ledger was refused: %v", bad)
+	}
+	for _, c := range []struct{ plant, want string }{
+		{"golang mixed-ping owed: plant", "golang is not a leg"},
+		{"lua no-such-case owed: plant", "testdata/pins/cases.txt names no such case"},
+		{"lua mixed-ping owed: again", "names lua mixed-ping twice"},
+		{"lua mixed-none owed:", "is not `<leg> <case> owed: <cause>`"},
+		{"lua mixed-none", "is not `<leg> <case> owed: <cause>`"},
+	} {
+		bad := strings.Join(checkOwed(f, ledgers(green+c.plant+"\n"), has), "\n")
+		if !strings.Contains(bad, c.want) {
+			t.Errorf("planting %q: refusals %q, want one saying %q", c.plant, bad, c.want)
+		}
+	}
+	if bad := checkOwed(f, Tree{Ledgers: map[string]string{"testdata/pins/owed.txt": green}}, has); len(bad) != 1 || !strings.Contains(bad[0], "case file testdata/pins/cases.txt is missing") {
+		t.Errorf("a missing case file: %v", bad)
+	}
+}
+
+// The reversed witness on the real tree: the repository's packet-void ledger
+// is green, and the one-line plant a cold reader made (a per-case line under
+// the misspelt leg golang) turns Check red.
+func TestPacketVoidLedgerPlantedUnknownLegIsRed(t *testing.T) {
+	t.Parallel()
+	tr := repoTree(t)
+	const owed = "testdata/wire/packet-void/owed.txt"
+	for _, b := range Check(tr) {
+		if strings.Contains(b, owed) {
+			t.Fatalf("the packet-void ledger is red as checked in: %s", b)
+		}
+	}
+	tr.Ledgers[owed] += "golang mixed-ping owed: plant\n"
+	if bad := strings.Join(Check(tr), "\n"); !strings.Contains(bad, `packet-void: testdata/wire/packet-void/owed.txt line "golang mixed-ping owed: plant": golang is not a leg`) {
+		t.Fatalf("the planted golang line was not refused:\n%s", bad)
+	}
+}
+
 func TestAccountFilesForLegResolvesPerLegSchemasAndExclusions(t *testing.T) {
 	t.Parallel()
 	tr := repoTree(t)
@@ -162,8 +246,8 @@ func TestAccountFilesForLegResolvesPerLegSchemasAndExclusions(t *testing.T) {
 		{"packet-finite", "dart", "test/packet-finite/dart/Finite.schema"},
 		{"packet-finite", "squirrel", "test/packet-finite/squirrel/Finite.schema"},
 		{"packet-void", "cpp", "test/packet-void/Void.schema"},
-		{"packet-void", "python", "test/packet-void/python/Python.schema"},
-		{"packet-void", "ruby", "test/packet-void/ruby/Ruby.schema"},
+		{"packet-void", "python", "test/packet-void/Void.schema"},
+		{"packet-void", "ruby", "test/packet-void/Void.schema"},
 		{"packet-write-text", "rust", "test/packet-write-text/Text.schema"},
 		{"packet-write-text", "cpp", "test/packet-write-text/cpp/TextPacketCases.schema"},
 		{"packet-write-text", "c", "test/packet-write-text/c/Text.schema"},
