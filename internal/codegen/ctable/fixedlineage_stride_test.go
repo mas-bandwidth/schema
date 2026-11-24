@@ -82,6 +82,12 @@ fixed table Root { items [200]Item }
 // writer's size for the reader's tag makes the sizing walk believe each tag
 // entry lands the array's whole span, so it undercounts the prefill ranges and
 // sizes the pool too small. The older file then refuses plan_too_large.
+//
+// The NEW reader keeps every field the writer carried (a writer field the
+// reader names nowhere is an UNLAWFUL lineage entry, docs/FIXED-FORM-ALGORITHM.md
+// §5.2 MATCH, §5.9 #30): its `front` union arrived from another branch and sits
+// FIRST after a merge (§5.1, any interleaving after a merge), so the reader's tag
+// at walk index 1 faces the writer's 500-byte array at the same index.
 func TestFixedLineageEvolvedUnionPlanFits(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the C compiler (it compiles and runs the generated units)")
@@ -101,6 +107,8 @@ union U {
     b int32
 }
 fixed table Root {
+    front U
+    blob [500]uint8
     u U
     tail int32 = 0
 }
@@ -136,6 +144,8 @@ int main( void )
     if ( n != 1 ) { printf( "the older file did not load: n=%lld reason=%d\n", (long long) n, (int) r.reason ); return 1; }
     if ( r.refused ) { printf( "the older file was refused: reason=%d\n", (int) r.reason ); return 1; }
     if ( back[0].u.type != 1 || back[0].u.as.a != 12345 ) { printf( "the union moved\n" ); return 1; }
+    if ( back[0].front.type != 0 ) { printf( "the merged-in union the writer never carried is not None: %d\n", (int) back[0].front.type ); return 1; }
+    { int i; for ( i = 0; i < 500; ++i ) { if ( back[0].blob[i] != (uint8_t) i ) { printf( "blob[%d] did not land: %d\n", i, (int) back[0].blob[i] ); return 1; } } }
     if ( back[0].tail != 0 ) { printf( "the appended field is not its default: %d\n", (int) back[0].tail ); return 1; }
 `, "")
 	if err != nil {
