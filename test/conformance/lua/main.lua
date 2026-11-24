@@ -33,7 +33,7 @@ local GENERATED = os.getenv("LUA_CONFORMANCE_GENERATED") or "build/conformance-l
 
 -- every surface test/conformance/README.md names, in its table's order
 local SURFACE_ORDER = {
-  "wire", "message", "message-prior", "report", "framing", "retain", "retain-save", "json-read",
+  "wire", "message", "message-prior", "report", "framing", "retain", "retain-save", "retain-refusal", "json-read",
   "json-write", "json-hostile", "cook", "cook-write", "cook-foreign", "block",
   "block-foreign", "block-dump", "forgery", "cook-forgery",
   "write-refusal", "write-refusal-fixed",
@@ -591,6 +591,52 @@ local function surfaceRetain(all, outdir, saves)
   end
 end
 
+-- THE RETAIN-REFUSAL SURFACE (test/conformance/README.md): ONE retention store
+-- through LoadRetain of the first wire, SaveRetain, LoadRetain of the refused
+-- wire into the same store, and SaveRetain of the first value again. The
+-- verdicts and what the second save did go in <case>, the first save in
+-- <case>.before, the second in <case>.wire.
+local function surfaceRetainRefusal(all, outdir)
+  for _, f in ipairs(all) do
+    if f[1] == "retain-refusal" then
+      local name, key, root = f[2], f[3], f[4]
+      local u = unit(key)
+      if not u then
+        noCodec(outdir, name)
+      else
+        local store = retainStore(ROOMY, math.floor(ROOMY / 8))
+        local report = newReport()
+        local value = u.retain.LoadRetain(u.T, root, mustRead(f[5]), store, report)
+        if value == nil or report.damaged or report.refused ~= 0 then
+          writeBytes(outdir .. "/" .. name, "refused\n")
+        else
+          local before = u.retain.SaveRetain(u.T, root, value, store, newReport())
+          if before == nil then error(name .. ": the first save through the store refused") end
+          writeBytes(outdir .. "/" .. name .. ".before", before)
+          local refused = newReport()
+          local other = u.retain.LoadRetain(u.T, root, mustRead(f[6]), store, refused)
+          local answer = "read\n"
+          if other == nil or refused.damaged or refused.refused ~= 0 then
+            answer = answer .. "refused\n"
+          else
+            answer = answer .. "read\n"
+          end
+          local after = nil
+          if u.retain.MeasureRetain(u.T, root, value, store) ~= nil then
+            after = u.retain.SaveRetain(u.T, root, value, store, newReport())
+          end
+          if after == nil then
+            answer = answer .. "save-refused\n"
+          else
+            writeBytes(outdir .. "/" .. name .. ".wire", after)
+            answer = answer .. "saved\n"
+          end
+          writeBytes(outdir .. "/" .. name, answer)
+        end
+      end
+    end
+  end
+end
 ---------------------------------------------------------------------------
 -- the accelerators: placing a buffer the way a forgery line asks for
 ---------------------------------------------------------------------------
@@ -1747,6 +1793,7 @@ elseif surface == "message" then surfaceMessage(all, outdir)
 elseif surface == "message-prior" then surfaceMessagePrior(all, outdir)
 elseif surface == "retain" then surfaceRetain(all, outdir, false)
 elseif surface == "retain-save" then surfaceRetain(all, outdir, true)
+elseif surface == "retain-refusal" then surfaceRetainRefusal(all, outdir)
 elseif surface == "cook" then surfaceCook(all, outdir)
 elseif surface == "cook-write" then surfaceCookWrite(all, outdir)
 elseif surface == "cook-foreign" then surfaceCookForeign(all, outdir)
