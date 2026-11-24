@@ -1,6 +1,7 @@
 // BitPhase.schema — Pillar #1: 0..63 packet bit-phase sweep across all 18 ports.
 // Packs an identical rich Payload preceded by 8 bit-offset prefix shims
-// (0, 1, 7, 31, 32, 33, 56, 63 bits) plus a 0-bit degenerate struct.
+// (0, 1, 7, 31, 32, 33, 56, 63 bits) plus a 0-bit degenerate struct, and
+// CfDecode, the compressed-float decode read at every index (at the end).
 
 package bitphase
 
@@ -116,4 +117,29 @@ type Phase63
 {
     shim bits(63)
     body Payload
+}
+
+// CfDecode is the compressed-float decode case (cfdecode.go): every leg reads
+// it at every quantum index, 0 to 11000, and the harness holds each value to
+// SPEC.md §4.6's normative decode bit for bit. min = -3.3 is no float32: the
+// decode adds float32(-3.3) = -3.299999952316284, and a reader that adds the
+// double -3.3 is one bit off at 2,535 of the 11,001 indices, index 2 first.
+type CfDecode
+{
+    c float32 | min = -3.3, max = 7.7, resolution = 0.001
+}
+
+// F32Const and F32Lit are the float32 literal case (f32lit.go). A float32 is
+// the float64 of its declaration rounded once more to float32 (SPEC.md §4.3):
+// 0.1 and 0.3 are no float32, and a target whose float literals are doubles
+// reads the decimal 0.1 as the double 0.1, not as float32(0.1). Every leg
+// prints the constant and the fresh defaults bit for bit, and writes e at
+// each float32 end, which lies outside its decimal (float32(0.3) is above the
+// double 0.3), so a write guard held at the decimal refuses it.
+const F32Const float32 = 0.1
+
+type F32Lit
+{
+    d float32 = 0.1
+    e float32 = -0.3 | min = -0.3, max = 0.3, resolution = 0.001
 }

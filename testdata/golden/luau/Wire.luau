@@ -1455,7 +1455,7 @@ _M.ProbeArrayMaxBytes = 80
 -- order); false refuses a value that breaks the writer contract (SPEC §5).
 function _M.WriteProbeArray(stream: any, v: any): boolean
   if type(v) ~= "table" then return false end
-  if type(v.Samples) ~= "table" then return false end
+  if type(v.Samples) ~= "table" or #v.Samples ~= 2 then return false end -- a [N]T holds exactly N values (SPEC §5.1)
   for _i = 1, 2 do
     if type(v.Samples[_i]) ~= "table" then return false end
     if not _M.WriteProbeSample(stream, v.Samples[_i]) then return false end

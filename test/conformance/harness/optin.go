@@ -73,14 +73,23 @@ var derivedRows = map[string]derivedRow{
 	"write-refusal":         {ref: refUnit, col: 2, cases: ownName},
 	"write-refusal-fixed":   {ref: refUnit, col: 2, cases: ownName},
 	"write-refusal-json":    {ref: refUnit, col: 2, cases: ownName},
-	"write-refusal-shape":   {ref: refUnit, col: 2, cases: ownName},
-	"retain":                {ref: refUnit, col: 2, cases: sameName("retain", "retain-save")},
-	"retain-refusal":        {ref: refUnit, col: 2, cases: ownName},
-	"report":                {ref: refUnit, col: 2, cases: ownName},
-	"framing":               {ref: refUnit, col: 2, cases: ownName},
-	"json-hostile":          {ref: refUnit, col: 2, cases: ownName},
-	"cook":                  {ref: refUnit, col: 2, cases: sameName("cook", "cook-foreign")},
-	"block":                 {ref: refUnit, col: 2, cases: sameName("block", "block-foreign", "block-dump")},
+	// the 2026-11-22 surfaces (f259a7aa3a added them to the harness's
+	// surfaces and the manifest, and not here, so every leg's derived
+	// manifest was refused at its first such line): each row reads the unit
+	// in its third column and is scored under its own name on its own surface
+	"write-refusal-shape": {ref: refUnit, col: 2, cases: ownName},
+	"write-refusal-cook":  {ref: refUnit, col: 2, cases: ownName},
+	"write-refusal-block": {ref: refUnit, col: 2, cases: ownName},
+	"announce":            {ref: refUnit, col: 2, cases: ownName},
+	"read-into":           {ref: refUnit, col: 2, cases: ownName},
+	"json-write-into":     {ref: refUnit, col: 2, cases: ownName},
+	"retain":              {ref: refUnit, col: 2, cases: sameName("retain", "retain-save")},
+	"retain-refusal":      {ref: refUnit, col: 2, cases: ownName},
+	"report":              {ref: refUnit, col: 2, cases: ownName},
+	"framing":             {ref: refUnit, col: 2, cases: ownName},
+	"json-hostile":        {ref: refUnit, col: 2, cases: ownName},
+	"cook":                {ref: refUnit, col: 2, cases: sameName("cook", "cook-foreign")},
+	"block":               {ref: refUnit, col: 2, cases: sameName("block", "block-foreign", "block-dump")},
 	"cook-write": {ref: refInstance, col: 1, cases: func(f []string) []caseKey {
 		return []caseKey{{"cook-write", f[1]}, {"cook-write", f[1] + "-be"}}
 	}},

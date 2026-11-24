@@ -2946,7 +2946,7 @@ static partial class Program
         {
             // Form-1 wire and its five conformance surfaces. Unsupported constructs
             // remain explicit per-case absences, as in the other language drivers.
-            Console.Out.Write("wire\nmessage\nmessage-prior\ncook-write\nreport\nframing\njson-read\njson-write\njson-hostile\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\nretain\nretain-save\nretain-refusal\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nannounce\nread-into\njson-write-into\nunit shapes\n");
+            Console.Out.Write("wire\nmessage\nmessage-prior\ncook-write\nreport\nframing\njson-read\njson-write\njson-hostile\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\nretain\nretain-save\nretain-refusal\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\nunit shapes\n");
             return 0;
         }
         if (args.Length < 3)
@@ -2979,7 +2979,8 @@ static partial class Program
             case "write-refusal-message":
             case "write-refusal-cook":
             case "write-refusal-block":
-            case "write-refusal-json": return SurfaceWriteRefusal(outDir, surface);
+            case "write-refusal-json":
+            case "write-refusal-shape": return SurfaceWriteRefusal(outDir, surface);
             case "announce": return SurfaceAnnounce(outDir);
             case "read-into": return SurfaceReadInto(outDir);
             case "json-write-into": return SurfaceJsonWriteInto(outDir);

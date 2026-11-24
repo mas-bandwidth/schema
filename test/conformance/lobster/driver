@@ -178,7 +178,7 @@ pairs() {
 	s == "cook-forgery" && $1 == "forgery" && $3 == "cook" { print subj("cook", $4), $2 }
 	s == "block-reason" && $1 == "refusal" && $3 == "block" { print subj("block", fs[$2]), $2 }
 	s == "cook-reason" && $1 == "refusal" && $3 == "cook" { print subj("cook", fs[$2]), $2 }
-	(s == "write-refusal" || s == "write-refusal-fixed" || s == "write-refusal-json" || s == "write-refusal-cook" || s == "write-refusal-block") && $1 == s { print $3, $2 }
+	(s == "write-refusal" || s == "write-refusal-fixed" || s == "write-refusal-json" || s == "write-refusal-cook" || s == "write-refusal-block" || s == "write-refusal-shape") && $1 == s { print $3, $2 }
 	(s == "announce" || s == "read-into" || s == "json-write-into") && $1 == s { print $3, $2 }
 	s == "write-refusal-message" && $1 == s { print conn[$3], $2 }
 	' "$manifest" "$manifest"

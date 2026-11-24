@@ -3167,12 +3167,22 @@ fn wref_fixed_case(f: &[String], data: &[u8]) -> &'static str {
     }
 }
 
-fn surface_write_refusal(manifest: &Manifest, out: &str) {
-    for f in manifest.of_kind("write-refusal") {
+// `surface` is write-refusal, or write-refusal-shape, whose lawful twins are
+// written as write-refusal writes them
+fn surface_write_refusal(manifest: &Manifest, out: &str, surface: &str) {
+    for f in manifest.of_kind(surface) {
         if f.len() < 8 {
-            fail(&format!("write-refusal line has {} fields", f.len()));
+            fail(&format!("{surface} line has {} fields", f.len()));
         }
         let (case, unit, root, wire, path, kind, value) = (&f[1], f[2].as_str(), f[3].as_str(), &f[4], f[5].as_str(), f[6].as_str(), f[7].as_str());
+        // A VALUE OF THE WRONG KIND (`write-refusal-shape` kind `shape`,
+        // DW-TABLE-SHAPE) is one Rust's types cannot hold: every field,
+        // element, arm payload and root is its declared type, and Rust has no
+        // null. The compiler refuses it before any writer runs.
+        if kind == "shape" {
+            spill(out, case, b"unrepresentable\n");
+            continue;
+        }
         // the 2026-11-22 rows (surfaces1122.rs)
         if let Some(answer) = surfaces1122::write_refusal(manifest, "", f) {
             surfaces1122::spill_answer(out, case, &answer);
@@ -3657,7 +3667,7 @@ fn main() {
             // case ABSENT, one by one; the message surface rides the message form's
             // batch for the fixed roots of backenddemo, vocabdemo and vocab9demo
             // (§3.3); the retaining file rows read through tblrt1 (§6.6).
-            "wire\nreport\nframing\nretain\nretain-save\nretain-refusal\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write\nmessage\nmessage-prior\nblock-reason\ncook-reason\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nannounce\nread-into\njson-write-into\nunit shapes"
+            "wire\nreport\nframing\nretain\nretain-save\nretain-refusal\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write\nmessage\nmessage-prior\nblock-reason\ncook-reason\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\nunit shapes"
         );
         return;
     }
@@ -3688,7 +3698,8 @@ fn main() {
         "cook-reason" => surface_reason(&manifest, out, "cook"),
         "message" => surface_message(&manifest, out, false),
         "message-prior" => surface_message(&manifest, out, true),
-        "write-refusal" => surface_write_refusal(&manifest, out),
+        "write-refusal" => surface_write_refusal(&manifest, out, "write-refusal"),
+        "write-refusal-shape" => surface_write_refusal(&manifest, out, "write-refusal-shape"),
         "write-refusal-fixed" => surface_write_refusal_fixed(&manifest, out),
         "write-refusal-message" => surface_write_refusal_message(&manifest, out),
         "write-refusal-json" => surface_write_refusal_json(&manifest, out),
