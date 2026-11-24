@@ -17,6 +17,9 @@ MANIFEST.txt          the registry: every case, by kind
 reports.txt           read/refused for every evolution case   (generated)
 report-values/<case>.json  the complete accepted evolution value (generated)
 retain-values/<case>.json  the complete accepted known retained value (generated)
+retain-refusal/<case>.before.bin  the save of the first read, retained records and all (generated)
+retain-refusal/<case>.after.bin   the save after the refused read: the first value alone (generated)
+retain-refusal-owed.txt  the exact set of retain-refusal rows a leg owes
 rewrite/<case>.bin    the canonical bytes of every rewrite row  (generated)
 json/<instance>.json  the §16 text of every instance           (generated)
 json-hostile/<case>/  one tree per rule the text form states
@@ -46,6 +49,7 @@ message-drift <name> <unit> <peer connection> <root> <file-form wire> <peer mess
 message-prior <name> <unit> <root> <writer schema> <writer build version> <writer value> <read|refused>
 message-batch <case> <connection> <root> <sent json> <shape> <verdict>
 retain       <case> <unit> <root> <wire> <capacity> <ids> <save or ->
+retain-refusal <case> <unit> <root> <first wire> <refused wire>
 report       <case> <unit> <root> <wire file>
 rewrite      <case> <unit> <root> <wire file>
 framing      <case> <unit> <root> <wire file> <verdict> <value file or ->
@@ -167,7 +171,13 @@ json-write-into <case> <instance>
   `region` (the plain region `Load` under the same protocol and answer) or
   `retain-fixed` (damaged `-`: `LoadRetain` on a fixed-class root into a
   pre-filled report, owing `refused\nzeroed\n`, or `unrepresentable\n` where
-  the refusal is at compile time). The answer owed is `read-into/<case>.txt`, which `make
+  the refusal is at compile time). In a `fixed` row with count `1` that the manifest marks
+  `lawful-second` (a trailing word the driver never sees), `<damaged>` is a
+  LAWFUL older writer's record that the engine reads through the lineage (the
+  harness fails when the engine's verdict differs from the mark); the
+  answer then owes that read's value as a fresh value holds it (§3.4: a field
+  the writer did not supply holds its declared default, never the first
+  read's). The answer owed is `read-into/<case>.txt`, which `make
   conformance-generate` writes from the engine; the derived line withholds a
   `fixed-nocap` count and adds the connection's announcement file for a
   `message` row.
@@ -248,6 +258,19 @@ json-write-into <case> <instance>
   value at `retain-values/<case>.json`; `<save>` additionally pins retained
   write-back bytes, or is `-` when no retained-byte pin is specified. Local
   retention loss does not excuse loss of a known value.
+- **`retain-refusal`** is a sequence through ONE roomy retention store
+  (docs/SPEC-TABLES.md §6.6, "the next LoadRetain into it resets both
+  stores"): LoadRetain of `<first wire>`, which reads and retains; SaveRetain
+  of that value; LoadRetain of `<refused wire>` into the same store, which
+  refuses; and SaveRetain of the first value again. The second save owes the
+  first value with none of the earlier read's retained records and none of
+  the refused read's partial capture (`retain-refusal/<case>.after.bin`, the
+  plain save), or a refusal where the leg binds a store to the root it
+  loaded. `make conformance-generate` writes both saves from the engine and
+  checks the first wire retains, the second is refused and the plain save is
+  what is left. A row a leg does not answer yet is a line
+  `<leg> <case> owed: <cause>` in `retain-refusal-owed.txt`; the set is
+  exact, so a ledgered row the leg answers correctly is red.
 - **`report`** is bytes read by another schema version. `reports.txt` supplies
   `read` or `refused`, keyed by case. An accepted row also owes its complete
   value at `report-values/<case>.json` and its canonical write-back wire at
@@ -331,6 +354,7 @@ Construction input remains data the driver needs. These derived lines are:
 ```
 message-batch <case> <connection> <root> <wire>
 retain <case> <unit> <root> <wire> <capacity> <ids>
+retain-refusal <case> <unit> <root> <first wire> <refused wire>
 framing <case> <unit> <root> <wire>
 cook-write <instance> <JSON input or -> <source field or -> <alias field or ->
 write-refusal[-fixed|-message|-json|-cook|-block] <case> <unit> <root> <wire> <path> <kind> <value>
@@ -339,7 +363,8 @@ read-into <case> <unit> <root> <form> <lawful> <damaged> <count or -> <announcem
 json-write-into <case> <unit> <root> <wire>
 ```
 
-`retain` has seven fields including its keyword. `framing` always has five,
+`retain` has seven fields including its keyword. `retain-refusal` travels as
+written, six fields: its goldens never do. `framing` always has five,
 with no verdict or value-omission marker: every accepted read owes its complete
 value. `cook-write` has five: `-`
 input selects the `no-text` instance's wire; otherwise the input is JSON.

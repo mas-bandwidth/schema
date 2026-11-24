@@ -14,7 +14,14 @@
 // 200..240 to the reader: the writer's announcement is lawful though its top
 // offsets pass 255, and each value is held on the body. R17 adds `perms`: the
 // writer's Perms has a third flag, Exec, that the reader's does not, and a body
-// with that bit set refuses `out_of_range`. The two files differ
+// with that bit set refuses `out_of_range`. The element-kind fields hold
+// an ARRAY ELEMENT KIND to the reader's own (§3.3, §4): the writer's int32
+// elements are the reader's uint8 in a counted array (`elems`), a fixed array
+// (`elempair`) and an enum-keyed array (`elemkeyed`), its Cell records are the
+// reader's uint8 (`elemcells`), and an arm's int32 elements are the reader's
+// uint8 (Arm `vals`), each refusing `kind_mismatch`; its uint8 elements are
+// the reader's uint16 (`elemgrown`), the lawful element widening, which reads.
+// The two files differ
 // in these declarations and nothing else, which
 // TestMessagePriorWriterIsRangesApart holds.
 package tblprior
@@ -38,6 +45,7 @@ union Arm
     idle
     amount int32 | min = 0, max = 100
     inner  Inner
+    vals   [..2]int32
 }
 
 fixed table Prior
@@ -64,4 +72,9 @@ fixed table Prior
     stamped  timestamp
     band     uint8 = 200 | min = 200, max = 250
     perms    Perms
+    elems     [..4]int32
+    elempair  [2]int32
+    elemkeyed [Axis]int32
+    elemcells [..2]Cell
+    elemgrown [..4]uint8
 }

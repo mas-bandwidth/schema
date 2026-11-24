@@ -475,6 +475,7 @@ public final class MixedStatVariable {
     // without -ea the writer trusts its caller. It reaches every table the
     // value points to, each once, so a cycle ends it.
     static boolean checkWrite(Value v) {
+        assert v != null : "MixedStat: a null value is written";
         TableVariable.WriteCheck walk = new TableVariable.WriteCheck();
         walk.point(v);
         for (java.lang.Object o = walk.next(); o != null; o = walk.next()) {

@@ -23,7 +23,7 @@ extern "C" {
 
 #define EXAMPLE_PROBE_ID ( 0xDEADBEEFCAFE )
 #define EXAMPLE_HALF_TURN 180.0
-#define EXAMPLE_TICK_RATE 60.0
+#define EXAMPLE_TICK_RATE 60.0f
 #define EXAMPLE_SPIN_RATE 1.5
 
 /* enum Weapon — None = 0 implicit, variants dense from 1, wire range [0, 15]

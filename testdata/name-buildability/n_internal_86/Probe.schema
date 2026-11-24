@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum read_scalar
+{ Zfirst, Zsecond, Zthird }
+
+enum read_shape
+{ Zfirst, Zsecond, Zthird }
+
+enum read_table
+{ Zfirst, Zsecond, Zthird }
+
+enum read_text_list
+{ Zfirst, Zsecond, Zthird }
+
+enum read_u32
+{ Zfirst, Zsecond, Zthird }
+
+enum read_union
+{ Zfirst, Zsecond, Zthird }
+
+enum read_value
+{ Zfirst, Zsecond, Zthird }
+
+enum rec_name
+{ Zfirst, Zsecond, Zthird }
+
+enum recend
+{ Zfirst, Zsecond, Zthird }
+
+enum record_at
+{ Zfirst, Zsecond, Zthird }
+
+enum record_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum ref_bits
+{ Zfirst, Zsecond, Zthird }
+
+enum refuse_count
+{ Zfirst, Zsecond, Zthird }
+
+enum refuse_non_finite
+{ Zfirst, Zsecond, Zthird }
+
+enum refuse_shared
+{ Zfirst, Zsecond, Zthird }
+
+enum region_align
+{ Zfirst, Zsecond, Zthird }
+
+enum region_length
+{ Zfirst, Zsecond, Zthird }
+
+enum remap_used
+{ Zfirst, Zsecond, Zthird }
+
+enum reqSeen_0
+{ Zfirst, Zsecond, Zthird }
+
+enum reqSeen_1
+{ Zfirst, Zsecond, Zthird }
+
+enum required_seen
+{ Zfirst, Zsecond, Zthird }
+
+enum resolve_payload
+{ Zfirst, Zsecond, Zthird }
+
+enum retain_lost
+{ Zfirst, Zsecond, Zthird }
+
+enum root_align
+{ Zfirst, Zsecond, Zthird }
+
+enum root_edges
+{ Zfirst, Zsecond, Zthird }
+
+enum root_extent
+{ Zfirst, Zsecond, Zthird }
+
+enum root_name
+{ Zfirst, Zsecond, Zthird }
+
+enum root_size
+{ Zfirst, Zsecond, Zthird }
+
+enum root_type
+{ Zfirst, Zsecond, Zthird }
+
+enum root_val
+{ Zfirst, Zsecond, Zthird }
+
+enum rootdesc
+{ Zfirst, Zsecond, Zthird }
+
+enum round_up
+{ Zfirst, Zsecond, Zthird }
+
+enum run_why
+{ Zfirst, Zsecond, Zthird }
+
+enum same_build
+{ Zfirst, Zsecond, Zthird }
+
+enum saved_argw
+{ Zfirst, Zsecond, Zthird }
+
+enum saved_at
+{ Zfirst, Zsecond, Zthird }
+
+enum saved_laid
+{ Zfirst, Zsecond, Zthird }
+
+enum saved_w
+{ Zfirst, Zsecond, Zthird }
+
+enum saw_node
+{ Zfirst, Zsecond, Zthird }
+
+enum scalar_at
+{ Zfirst, Zsecond, Zthird }
+
+enum scan_key
+{ Zfirst, Zsecond, Zthird }
+
+enum scan_label
+{ Zfirst, Zsecond, Zthird }
+
+enum scan_name
+{ Zfirst, Zsecond, Zthird }
+
+enum scan_number
+{ Zfirst, Zsecond, Zthird }
+
+enum scan_string
+{ Zfirst, Zsecond, Zthird }
+
+enum scan_unit
+{ Zfirst, Zsecond, Zthird }
+
+enum second_size
+{ Zfirst, Zsecond, Zthird }
+
+enum seen_ids
+{ Zfirst, Zsecond, Zthird }
+
+enum seen_keys
+{ Zfirst, Zsecond, Zthird }
+
+enum seen_refs
+{ Zfirst, Zsecond, Zthird }
+
+enum seen_version
+{ Zfirst, Zsecond, Zthird }
+
+enum shape_matches
+{ Zfirst, Zsecond, Zthird }
+
+enum shape_of
+{ Zfirst, Zsecond, Zthird }
+
+enum sign_bit
+{ Zfirst, Zsecond, Zthird }
+
+enum signed_max
+{ Zfirst, Zsecond, Zthird }
+
+enum signed_min
+{ Zfirst, Zsecond, Zthird }
+
+enum skip_body
+{ Zfirst, Zsecond, Zthird }
+
+enum skip_container
+{ Zfirst, Zsecond, Zthird }
+
+enum skip_entry
+{ Zfirst, Zsecond, Zthird }
+
+enum skip_field
+{ Zfirst, Zsecond, Zthird }
+
+enum skip_payload
+{ Zfirst, Zsecond, Zthird }
+
+enum skip_run
+{ Zfirst, Zsecond, Zthird }
+
+enum skip_value
+{ Zfirst, Zsecond, Zthird }
+
+enum slot_at
+{ Zfirst, Zsecond, Zthird }
+
+enum slot_idx
+{ Zfirst, Zsecond, Zthird }
+
+enum slot_mark
+{ Zfirst, Zsecond, Zthird }
+
+enum slot_name
+{ Zfirst, Zsecond, Zthird }
+
+enum slot_of
+{ Zfirst, Zsecond, Zthird }
+
+enum sok
+{ Zfirst, Zsecond, Zthird }
+
+enum src_off
+{ Zfirst, Zsecond, Zthird }
+
+enum stack_next
+{ Zfirst, Zsecond, Zthird }
+
+enum stack_node
+{ Zfirst, Zsecond, Zthird }
+
+enum storage_bits
+{ Zfirst, Zsecond, Zthird }
+
+enum stride_offset
+{ Zfirst, Zsecond, Zthird }
+
+enum string_blob
+{ Zfirst, Zsecond, Zthird }
+
+enum string_key
+{ Zfirst, Zsecond, Zthird }
+
+enum structural_kind
+{ Zfirst, Zsecond, Zthird }
+
+enum sub_before
+{ Zfirst, Zsecond, Zthird }
+
+enum sub_start
+{ Zfirst, Zsecond, Zthird }
+
+enum subdesc
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    read_scalar Inner
+    read_shape Inner
+    read_table Inner
+    read_text_list Inner
+    read_u32 Inner
+    read_union Inner
+    read_value Inner
+    rec_name Inner
+    recend Inner
+    record_at Inner
+}
+
+table NameTypes0
+{
+    one0  read_scalar
+    many0 [..4]read_scalar
+    one1  read_shape
+    many1 [..4]read_shape
+    one2  read_table
+    many2 [..4]read_table
+    one3  read_text_list
+    many3 [..4]read_text_list
+    one4  read_u32
+    many4 [..4]read_u32
+    one5  read_union
+    many5 [..4]read_union
+    one6  read_value
+    many6 [..4]read_value
+    one7  rec_name
+    many7 [..4]rec_name
+    one8  recend
+    many8 [..4]recend
+    one9  record_at
+    many9 [..4]record_at
+}
+
+table NameFields0
+{
+    read_scalar uint32
+    read_shape uint32
+    read_table uint32
+    read_text_list uint32
+    read_u32 uint32
+    read_union uint32
+    read_value uint32
+    rec_name uint32
+    recend uint32
+    record_at uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    record_bytes Inner
+    ref_bits Inner
+    refuse_count Inner
+    refuse_non_finite Inner
+    refuse_shared Inner
+    region_align Inner
+    region_length Inner
+    remap_used Inner
+    reqSeen_0 Inner
+    reqSeen_1 Inner
+}
+
+table NameTypes1
+{
+    one0  record_bytes
+    many0 [..4]record_bytes
+    one1  ref_bits
+    many1 [..4]ref_bits
+    one2  refuse_count
+    many2 [..4]refuse_count
+    one3  refuse_non_finite
+    many3 [..4]refuse_non_finite
+    one4  refuse_shared
+    many4 [..4]refuse_shared
+    one5  region_align
+    many5 [..4]region_align
+    one6  region_length
+    many6 [..4]region_length
+    one7  remap_used
+    many7 [..4]remap_used
+    one8  reqSeen_0
+    many8 [..4]reqSeen_0
+    one9  reqSeen_1
+    many9 [..4]reqSeen_1
+}
+
+table NameFields1
+{
+    record_bytes uint32
+    ref_bits uint32
+    refuse_count uint32
+    refuse_non_finite uint32
+    refuse_shared uint32
+    region_align uint32
+    region_length uint32
+    remap_used uint32
+    reqSeen_0 uint32
+    reqSeen_1 uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    required_seen Inner
+    resolve_payload Inner
+    retain_lost Inner
+    root_align Inner
+    root_edges Inner
+    root_extent Inner
+    root_name Inner
+    root_size Inner
+    root_type Inner
+    root_val Inner
+}
+
+table NameTypes2
+{
+    one0  required_seen
+    many0 [..4]required_seen
+    one1  resolve_payload
+    many1 [..4]resolve_payload
+    one2  retain_lost
+    many2 [..4]retain_lost
+    one3  root_align
+    many3 [..4]root_align
+    one4  root_edges
+    many4 [..4]root_edges
+    one5  root_extent
+    many5 [..4]root_extent
+    one6  root_name
+    many6 [..4]root_name
+    one7  root_size
+    many7 [..4]root_size
+    one8  root_type
+    many8 [..4]root_type
+    one9  root_val
+    many9 [..4]root_val
+}
+
+table NameFields2
+{
+    required_seen uint32
+    resolve_payload uint32
+    retain_lost uint32
+    root_align uint32
+    root_edges uint32
+    root_extent uint32
+    root_name uint32
+    root_size uint32
+    root_type uint32
+    root_val uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    rootdesc Inner
+    round_up Inner
+    run_why Inner
+    same_build Inner
+    saved_argw Inner
+    saved_at Inner
+    saved_laid Inner
+    saved_w Inner
+    saw_node Inner
+    scalar_at Inner
+}
+
+table NameTypes3
+{
+    one0  rootdesc
+    many0 [..4]rootdesc
+    one1  round_up
+    many1 [..4]round_up
+    one2  run_why
+    many2 [..4]run_why
+    one3  same_build
+    many3 [..4]same_build
+    one4  saved_argw
+    many4 [..4]saved_argw
+    one5  saved_at
+    many5 [..4]saved_at
+    one6  saved_laid
+    many6 [..4]saved_laid
+    one7  saved_w
+    many7 [..4]saved_w
+    one8  saw_node
+    many8 [..4]saw_node
+    one9  scalar_at
+    many9 [..4]scalar_at
+}
+
+table NameFields3
+{
+    rootdesc uint32
+    round_up uint32
+    run_why uint32
+    same_build uint32
+    saved_argw uint32
+    saved_at uint32
+    saved_laid uint32
+    saved_w uint32
+    saw_node uint32
+    scalar_at uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    scan_key Inner
+    scan_label Inner
+    scan_name Inner
+    scan_number Inner
+    scan_string Inner
+    scan_unit Inner
+    second_size Inner
+    seen_ids Inner
+    seen_keys Inner
+    seen_refs Inner
+}
+
+table NameTypes4
+{
+    one0  scan_key
+    many0 [..4]scan_key
+    one1  scan_label
+    many1 [..4]scan_label
+    one2  scan_name
+    many2 [..4]scan_name
+    one3  scan_number
+    many3 [..4]scan_number
+    one4  scan_string
+    many4 [..4]scan_string
+    one5  scan_unit
+    many5 [..4]scan_unit
+    one6  second_size
+    many6 [..4]second_size
+    one7  seen_ids
+    many7 [..4]seen_ids
+    one8  seen_keys
+    many8 [..4]seen_keys
+    one9  seen_refs
+    many9 [..4]seen_refs
+}
+
+table NameFields4
+{
+    scan_key uint32
+    scan_label uint32
+    scan_name uint32
+    scan_number uint32
+    scan_string uint32
+    scan_unit uint32
+    second_size uint32
+    seen_ids uint32
+    seen_keys uint32
+    seen_refs uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    seen_version Inner
+    shape_matches Inner
+    shape_of Inner
+    sign_bit Inner
+    signed_max Inner
+    signed_min Inner
+    skip_body Inner
+    skip_container Inner
+    skip_entry Inner
+    skip_field Inner
+}
+
+table NameTypes5
+{
+    one0  seen_version
+    many0 [..4]seen_version
+    one1  shape_matches
+    many1 [..4]shape_matches
+    one2  shape_of
+    many2 [..4]shape_of
+    one3  sign_bit
+    many3 [..4]sign_bit
+    one4  signed_max
+    many4 [..4]signed_max
+    one5  signed_min
+    many5 [..4]signed_min
+    one6  skip_body
+    many6 [..4]skip_body
+    one7  skip_container
+    many7 [..4]skip_container
+    one8  skip_entry
+    many8 [..4]skip_entry
+    one9  skip_field
+    many9 [..4]skip_field
+}
+
+table NameFields5
+{
+    seen_version uint32
+    shape_matches uint32
+    shape_of uint32
+    sign_bit uint32
+    signed_max uint32
+    signed_min uint32
+    skip_body uint32
+    skip_container uint32
+    skip_entry uint32
+    skip_field uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    skip_payload Inner
+    skip_run Inner
+    skip_value Inner
+    slot_at Inner
+    slot_idx Inner
+    slot_mark Inner
+    slot_name Inner
+    slot_of Inner
+    sok Inner
+    src_off Inner
+}
+
+table NameTypes6
+{
+    one0  skip_payload
+    many0 [..4]skip_payload
+    one1  skip_run
+    many1 [..4]skip_run
+    one2  skip_value
+    many2 [..4]skip_value
+    one3  slot_at
+    many3 [..4]slot_at
+    one4  slot_idx
+    many4 [..4]slot_idx
+    one5  slot_mark
+    many5 [..4]slot_mark
+    one6  slot_name
+    many6 [..4]slot_name
+    one7  slot_of
+    many7 [..4]slot_of
+    one8  sok
+    many8 [..4]sok
+    one9  src_off
+    many9 [..4]src_off
+}
+
+table NameFields6
+{
+    skip_payload uint32
+    skip_run uint32
+    skip_value uint32
+    slot_at uint32
+    slot_idx uint32
+    slot_mark uint32
+    slot_name uint32
+    slot_of uint32
+    sok uint32
+    src_off uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    stack_next Inner
+    stack_node Inner
+    storage_bits Inner
+    stride_offset Inner
+    string_blob Inner
+    string_key Inner
+    structural_kind Inner
+    sub_before Inner
+    sub_start Inner
+    subdesc Inner
+}
+
+table NameTypes7
+{
+    one0  stack_next
+    many0 [..4]stack_next
+    one1  stack_node
+    many1 [..4]stack_node
+    one2  storage_bits
+    many2 [..4]storage_bits
+    one3  stride_offset
+    many3 [..4]stride_offset
+    one4  string_blob
+    many4 [..4]string_blob
+    one5  string_key
+    many5 [..4]string_key
+    one6  structural_kind
+    many6 [..4]structural_kind
+    one7  sub_before
+    many7 [..4]sub_before
+    one8  sub_start
+    many8 [..4]sub_start
+    one9  subdesc
+    many9 [..4]subdesc
+}
+
+table NameFields7
+{
+    stack_next uint32
+    stack_node uint32
+    storage_bits uint32
+    stride_offset uint32
+    string_blob uint32
+    string_key uint32
+    structural_kind uint32
+    sub_before uint32
+    sub_start uint32
+    subdesc uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

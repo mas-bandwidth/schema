@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum nRec
+{ Zfirst, Zsecond, Zthird }
+
+enum n_frac
+{ Zfirst, Zsecond, Zthird }
+
+enum n_int
+{ Zfirst, Zsecond, Zthird }
+
+enum n_ok
+{ Zfirst, Zsecond, Zthird }
+
+enum n_remap
+{ Zfirst, Zsecond, Zthird }
+
+enum na
+{ Zfirst, Zsecond, Zthird }
+
+enum name
+{ Zfirst, Zsecond, Zthird }
+
+enum nameAt
+{ Zfirst, Zsecond, Zthird }
+
+enum nameLength
+{ Zfirst, Zsecond, Zthird }
+
+enum nameZero
+{ Zfirst, Zsecond, Zthird }
+
+enum name_blob
+{ Zfirst, Zsecond, Zthird }
+
+enum nameable
+{ Zfirst, Zsecond, Zthird }
+
+enum named
+{ Zfirst, Zsecond, Zthird }
+
+enum namedBlobs
+{ Zfirst, Zsecond, Zthird }
+
+enum names
+{ Zfirst, Zsecond, Zthird }
+
+enum naming
+{ Zfirst, Zsecond, Zthird }
+
+enum nanos
+{ Zfirst, Zsecond, Zthird }
+
+enum narrow
+{ Zfirst, Zsecond, Zthird }
+
+enum narrow64
+{ Zfirst, Zsecond, Zthird }
+
+enum narrowF32
+{ Zfirst, Zsecond, Zthird }
+
+enum narrowScratch
+{ Zfirst, Zsecond, Zthird }
+
+enum narrowToF32
+{ Zfirst, Zsecond, Zthird }
+
+enum narrow_text_ok
+{ Zfirst, Zsecond, Zthird }
+
+enum narrowed
+{ Zfirst, Zsecond, Zthird }
+
+enum nb
+{ Zfirst, Zsecond, Zthird }
+
+enum nbits
+{ Zfirst, Zsecond, Zthird }
+
+enum nbytes
+{ Zfirst, Zsecond, Zthird }
+
+enum nc
+{ Zfirst, Zsecond, Zthird }
+
+enum nd
+{ Zfirst, Zsecond, Zthird }
+
+enum ne
+{ Zfirst, Zsecond, Zthird }
+
+enum nearest_f32
+{ Zfirst, Zsecond, Zthird }
+
+enum need
+{ Zfirst, Zsecond, Zthird }
+
+enum need2
+{ Zfirst, Zsecond, Zthird }
+
+enum needDecl
+{ Zfirst, Zsecond, Zthird }
+
+enum need_zeros
+{ Zfirst, Zsecond, Zthird }
+
+enum needed
+{ Zfirst, Zsecond, Zthird }
+
+enum neg
+{ Zfirst, Zsecond, Zthird }
+
+enum neg4
+{ Zfirst, Zsecond, Zthird }
+
+enum negative
+{ Zfirst, Zsecond, Zthird }
+
+enum negativeA
+{ Zfirst, Zsecond, Zthird }
+
+enum negativeB
+{ Zfirst, Zsecond, Zthird }
+
+enum negativeExp
+{ Zfirst, Zsecond, Zthird }
+
+enum nentry
+{ Zfirst, Zsecond, Zthird }
+
+enum nested
+{ Zfirst, Zsecond, Zthird }
+
+enum nestedDepth
+{ Zfirst, Zsecond, Zthird }
+
+enum nested_body
+{ Zfirst, Zsecond, Zthird }
+
+enum nested_fn
+{ Zfirst, Zsecond, Zthird }
+
+enum nested_len
+{ Zfirst, Zsecond, Zthird }
+
+enum nested_measure
+{ Zfirst, Zsecond, Zthird }
+
+enum nested_writer
+{ Zfirst, Zsecond, Zthird }
+
+enum newIds
+{ Zfirst, Zsecond, Zthird }
+
+enum newIn
+{ Zfirst, Zsecond, Zthird }
+
+enum newNode
+{ Zfirst, Zsecond, Zthird }
+
+enum newParser
+{ Zfirst, Zsecond, Zthird }
+
+enum newReader
+{ Zfirst, Zsecond, Zthird }
+
+enum newS
+{ Zfirst, Zsecond, Zthird }
+
+enum newScratchBits
+{ Zfirst, Zsecond, Zthird }
+
+enum newShape
+{ Zfirst, Zsecond, Zthird }
+
+enum newWriter
+{ Zfirst, Zsecond, Zthird }
+
+enum new_branch
+{ Zfirst, Zsecond, Zthird }
+
+enum new_cursor
+{ Zfirst, Zsecond, Zthird }
+
+enum new_leaf
+{ Zfirst, Zsecond, Zthird }
+
+enum new_out
+{ Zfirst, Zsecond, Zthird }
+
+enum new_resolver
+{ Zfirst, Zsecond, Zthird }
+
+enum new_scan
+{ Zfirst, Zsecond, Zthird }
+
+enum new_store
+{ Zfirst, Zsecond, Zthird }
+
+enum new_val
+{ Zfirst, Zsecond, Zthird }
+
+enum newerForm
+{ Zfirst, Zsecond, Zthird }
+
+enum newline
+{ Zfirst, Zsecond, Zthird }
+
+enum newref
+{ Zfirst, Zsecond, Zthird }
+
+enum nextAt
+{ Zfirst, Zsecond, Zthird }
+
+enum nextAt2
+{ Zfirst, Zsecond, Zthird }
+
+enum nextByte
+{ Zfirst, Zsecond, Zthird }
+
+enum nextDigit
+{ Zfirst, Zsecond, Zthird }
+
+enum nextField
+{ Zfirst, Zsecond, Zthird }
+
+enum nextRef
+{ Zfirst, Zsecond, Zthird }
+
+enum next_arm_n
+{ Zfirst, Zsecond, Zthird }
+
+enum next_arm_plain
+{ Zfirst, Zsecond, Zthird }
+
+enum next_depth
+{ Zfirst, Zsecond, Zthird }
+
+enum next_edge
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    nRec Inner
+    n_frac Inner
+    n_int Inner
+    n_ok Inner
+    n_remap Inner
+    na Inner
+    name Inner
+    nameAt Inner
+    nameLength Inner
+    nameZero Inner
+}
+
+table NameTypes0
+{
+    one0  nRec
+    many0 [..4]nRec
+    one1  n_frac
+    many1 [..4]n_frac
+    one2  n_int
+    many2 [..4]n_int
+    one3  n_ok
+    many3 [..4]n_ok
+    one4  n_remap
+    many4 [..4]n_remap
+    one5  na
+    many5 [..4]na
+    one6  name
+    many6 [..4]name
+    one7  nameAt
+    many7 [..4]nameAt
+    one8  nameLength
+    many8 [..4]nameLength
+    one9  nameZero
+    many9 [..4]nameZero
+}
+
+table NameFields0
+{
+    nRec uint32
+    n_frac uint32
+    n_int uint32
+    n_ok uint32
+    n_remap uint32
+    na uint32
+    name uint32
+    nameAt uint32
+    nameLength uint32
+    nameZero uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    name_blob Inner
+    nameable Inner
+    named Inner
+    namedBlobs Inner
+    names Inner
+    naming Inner
+    nanos Inner
+    narrow Inner
+    narrow64 Inner
+    narrowF32 Inner
+}
+
+table NameTypes1
+{
+    one0  name_blob
+    many0 [..4]name_blob
+    one1  nameable
+    many1 [..4]nameable
+    one2  named
+    many2 [..4]named
+    one3  namedBlobs
+    many3 [..4]namedBlobs
+    one4  names
+    many4 [..4]names
+    one5  naming
+    many5 [..4]naming
+    one6  nanos
+    many6 [..4]nanos
+    one7  narrow
+    many7 [..4]narrow
+    one8  narrow64
+    many8 [..4]narrow64
+    one9  narrowF32
+    many9 [..4]narrowF32
+}
+
+table NameFields1
+{
+    name_blob uint32
+    nameable uint32
+    named uint32
+    namedBlobs uint32
+    names uint32
+    naming uint32
+    nanos uint32
+    narrow uint32
+    narrow64 uint32
+    narrowF32 uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    narrowScratch Inner
+    narrowToF32 Inner
+    narrow_text_ok Inner
+    narrowed Inner
+    nb Inner
+    nbits Inner
+    nbytes Inner
+    nc Inner
+    nd Inner
+    ne Inner
+}
+
+table NameTypes2
+{
+    one0  narrowScratch
+    many0 [..4]narrowScratch
+    one1  narrowToF32
+    many1 [..4]narrowToF32
+    one2  narrow_text_ok
+    many2 [..4]narrow_text_ok
+    one3  narrowed
+    many3 [..4]narrowed
+    one4  nb
+    many4 [..4]nb
+    one5  nbits
+    many5 [..4]nbits
+    one6  nbytes
+    many6 [..4]nbytes
+    one7  nc
+    many7 [..4]nc
+    one8  nd
+    many8 [..4]nd
+    one9  ne
+    many9 [..4]ne
+}
+
+table NameFields2
+{
+    narrowScratch uint32
+    narrowToF32 uint32
+    narrow_text_ok uint32
+    narrowed uint32
+    nb uint32
+    nbits uint32
+    nbytes uint32
+    nc uint32
+    nd uint32
+    ne uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    nearest_f32 Inner
+    need Inner
+    need2 Inner
+    needDecl Inner
+    need_zeros Inner
+    needed Inner
+    neg Inner
+    neg4 Inner
+    negative Inner
+    negativeA Inner
+}
+
+table NameTypes3
+{
+    one0  nearest_f32
+    many0 [..4]nearest_f32
+    one1  need
+    many1 [..4]need
+    one2  need2
+    many2 [..4]need2
+    one3  needDecl
+    many3 [..4]needDecl
+    one4  need_zeros
+    many4 [..4]need_zeros
+    one5  needed
+    many5 [..4]needed
+    one6  neg
+    many6 [..4]neg
+    one7  neg4
+    many7 [..4]neg4
+    one8  negative
+    many8 [..4]negative
+    one9  negativeA
+    many9 [..4]negativeA
+}
+
+table NameFields3
+{
+    nearest_f32 uint32
+    need uint32
+    need2 uint32
+    needDecl uint32
+    need_zeros uint32
+    needed uint32
+    neg uint32
+    neg4 uint32
+    negative uint32
+    negativeA uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    negativeB Inner
+    negativeExp Inner
+    nentry Inner
+    nested Inner
+    nestedDepth Inner
+    nested_body Inner
+    nested_fn Inner
+    nested_len Inner
+    nested_measure Inner
+    nested_writer Inner
+}
+
+table NameTypes4
+{
+    one0  negativeB
+    many0 [..4]negativeB
+    one1  negativeExp
+    many1 [..4]negativeExp
+    one2  nentry
+    many2 [..4]nentry
+    one3  nested
+    many3 [..4]nested
+    one4  nestedDepth
+    many4 [..4]nestedDepth
+    one5  nested_body
+    many5 [..4]nested_body
+    one6  nested_fn
+    many6 [..4]nested_fn
+    one7  nested_len
+    many7 [..4]nested_len
+    one8  nested_measure
+    many8 [..4]nested_measure
+    one9  nested_writer
+    many9 [..4]nested_writer
+}
+
+table NameFields4
+{
+    negativeB uint32
+    negativeExp uint32
+    nentry uint32
+    nested uint32
+    nestedDepth uint32
+    nested_body uint32
+    nested_fn uint32
+    nested_len uint32
+    nested_measure uint32
+    nested_writer uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    newIds Inner
+    newIn Inner
+    newNode Inner
+    newParser Inner
+    newReader Inner
+    newS Inner
+    newScratchBits Inner
+    newShape Inner
+    newWriter Inner
+    new_branch Inner
+}
+
+table NameTypes5
+{
+    one0  newIds
+    many0 [..4]newIds
+    one1  newIn
+    many1 [..4]newIn
+    one2  newNode
+    many2 [..4]newNode
+    one3  newParser
+    many3 [..4]newParser
+    one4  newReader
+    many4 [..4]newReader
+    one5  newS
+    many5 [..4]newS
+    one6  newScratchBits
+    many6 [..4]newScratchBits
+    one7  newShape
+    many7 [..4]newShape
+    one8  newWriter
+    many8 [..4]newWriter
+    one9  new_branch
+    many9 [..4]new_branch
+}
+
+table NameFields5
+{
+    newIds uint32
+    newIn uint32
+    newNode uint32
+    newParser uint32
+    newReader uint32
+    newS uint32
+    newScratchBits uint32
+    newShape uint32
+    newWriter uint32
+    new_branch uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    new_cursor Inner
+    new_leaf Inner
+    new_out Inner
+    new_resolver Inner
+    new_scan Inner
+    new_store Inner
+    new_val Inner
+    newerForm Inner
+    newline Inner
+    newref Inner
+}
+
+table NameTypes6
+{
+    one0  new_cursor
+    many0 [..4]new_cursor
+    one1  new_leaf
+    many1 [..4]new_leaf
+    one2  new_out
+    many2 [..4]new_out
+    one3  new_resolver
+    many3 [..4]new_resolver
+    one4  new_scan
+    many4 [..4]new_scan
+    one5  new_store
+    many5 [..4]new_store
+    one6  new_val
+    many6 [..4]new_val
+    one7  newerForm
+    many7 [..4]newerForm
+    one8  newline
+    many8 [..4]newline
+    one9  newref
+    many9 [..4]newref
+}
+
+table NameFields6
+{
+    new_cursor uint32
+    new_leaf uint32
+    new_out uint32
+    new_resolver uint32
+    new_scan uint32
+    new_store uint32
+    new_val uint32
+    newerForm uint32
+    newline uint32
+    newref uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    nextAt Inner
+    nextAt2 Inner
+    nextByte Inner
+    nextDigit Inner
+    nextField Inner
+    nextRef Inner
+    next_arm_n Inner
+    next_arm_plain Inner
+    next_depth Inner
+    next_edge Inner
+}
+
+table NameTypes7
+{
+    one0  nextAt
+    many0 [..4]nextAt
+    one1  nextAt2
+    many1 [..4]nextAt2
+    one2  nextByte
+    many2 [..4]nextByte
+    one3  nextDigit
+    many3 [..4]nextDigit
+    one4  nextField
+    many4 [..4]nextField
+    one5  nextRef
+    many5 [..4]nextRef
+    one6  next_arm_n
+    many6 [..4]next_arm_n
+    one7  next_arm_plain
+    many7 [..4]next_arm_plain
+    one8  next_depth
+    many8 [..4]next_depth
+    one9  next_edge
+    many9 [..4]next_edge
+}
+
+table NameFields7
+{
+    nextAt uint32
+    nextAt2 uint32
+    nextByte uint32
+    nextDigit uint32
+    nextField uint32
+    nextRef uint32
+    next_arm_n uint32
+    next_arm_plain uint32
+    next_depth uint32
+    next_edge uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}
