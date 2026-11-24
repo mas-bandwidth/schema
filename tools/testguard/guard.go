@@ -291,7 +291,7 @@ func (c *config) lines(name, axis string, sh shellFunc) ([]string, error) {
 		return nil, refuse(src[1], "table %s %s: the command %q failed: %v", name, axis, src[1], err)
 	}
 	var out []string
-	for _, l := range strings.Split(string(data), "\n") {
+	for l := range strings.SplitSeq(string(data), "\n") {
 		l = strings.TrimRight(l, "\r")
 		if strings.TrimSpace(l) != "" && !strings.HasPrefix(l, "#") {
 			out = append(out, l)

@@ -78,8 +78,8 @@ var countLine = regexp.MustCompile(`^(?:(.*\S):\s+)?ran (\d+), failed (\d+)$`)
 func readCount(r results, name string, data []byte) error {
 	lines := strings.Split(string(data), "\n")
 	last, n := "", 0
-	for i := len(lines) - 1; i >= 0; i-- {
-		if last = strings.TrimSpace(lines[i]); last != "" {
+	for i, l := range slices.Backward(lines) {
+		if last = strings.TrimSpace(l); last != "" {
 			n = i + 1
 			break
 		}

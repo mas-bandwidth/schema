@@ -57,28 +57,28 @@ type shellFunc func(dir, command string) ([]byte, error)
 // ("" is the working directory), so tests run in a directory of their own.
 func run(dir string, args []string, stdout, stderr io.Writer, sh shellFunc) int {
 	if len(args) == 0 {
-		fmt.Fprint(stdout, banner)
+		say(stdout, "%s", banner)
 		return exitOK
 	}
 	switch args[0] {
 	case "-h", "--help":
-		fmt.Fprint(stdout, banner)
+		say(stdout, "%s", banner)
 		return exitOK
 	case "help":
 		switch {
 		case len(args) == 1:
-			fmt.Fprint(stdout, banner)
+			say(stdout, "%s", banner)
 			return exitOK
 		case len(args) == 2 && args[1] == "check":
-			fmt.Fprint(stdout, checkHelp)
+			say(stdout, "%s", checkHelp)
 			return exitOK
 		}
-		fmt.Fprintf(stderr, "testguard: help takes no flags and one topic, check; got %q; run: go run ./tools/testguard help\n", strings.Join(args[1:], " "))
+		say(stderr, "testguard: help takes no flags and one topic, check; got %q; run: go run ./tools/testguard help\n", strings.Join(args[1:], " "))
 		return exitRefused
 	case "check":
 		return check(dir, args[1:], stdout, stderr, sh)
 	}
-	fmt.Fprintf(stderr, "testguard: %q is no verb; the verbs are check and help; run: go run ./tools/testguard help\n", args[0])
+	say(stderr, "testguard: %q is no verb; the verbs are check and help; run: go run ./tools/testguard help\n", args[0])
 	return exitRefused
 }
 
@@ -93,10 +93,10 @@ func check(dir string, args []string, stdout, stderr io.Writer, sh shellFunc) in
 	for {
 		if err := fset.Parse(rest); err != nil {
 			if errors.Is(err, flag.ErrHelp) {
-				fmt.Fprint(stdout, checkHelp)
+				say(stdout, "%s", checkHelp)
 				return exitOK
 			}
-			fmt.Fprintf(stderr, "testguard check: %s; run: %s\n", flagError(err), checkUsage)
+			say(stderr, "testguard check: %s; run: %s\n", flagError(err), checkUsage)
 			return exitRefused
 		}
 		if fset.NArg() == 0 {
@@ -113,7 +113,7 @@ func check(dir string, args []string, stdout, stderr io.Writer, sh shellFunc) in
 		missing = append(missing, "result files (none were read, and reading none is never a pass)")
 	}
 	if len(missing) > 0 {
-		fmt.Fprintf(stderr, "testguard check: wants %s; run: %s\n", strings.Join(missing, " and "), checkUsage)
+		say(stderr, "testguard check: wants %s; run: %s\n", strings.Join(missing, " and "), checkUsage)
 		return exitRefused
 	}
 	rep, err := guard(dir, *config, files, *write, sh)
@@ -122,23 +122,23 @@ func check(dir string, args []string, stdout, stderr io.Writer, sh shellFunc) in
 		if !errors.As(err, &r) {
 			r = &refusal{err.Error(), checkUsage}
 		}
-		fmt.Fprintf(stderr, "testguard check: %s; run: %s\n", r.what, r.remedy)
+		say(stderr, "testguard check: %s; run: %s\n", r.what, r.remedy)
 		return exitRefused
 	}
 	for _, f := range rep.findings {
-		fmt.Fprintln(stdout, f)
+		say(stdout, "%s\n", f)
 	}
 	for _, line := range rep.notes {
-		fmt.Fprintln(stdout, line)
+		say(stdout, "%s\n", line)
 	}
 	if len(rep.findings) > 0 {
-		fmt.Fprintf(stdout, "RED: %d findings (%s); %s\n", len(rep.findings), rep.byRule(), rep.stats)
+		say(stdout, "RED: %d findings (%s); %s\n", len(rep.findings), rep.byRule(), rep.stats)
 		return exitFindings
 	}
 	if *write {
 		return exitFindings // the WROTE line said why: a write is never a pass
 	}
-	fmt.Fprintf(stdout, "OK: every test that should run ran and passed; %s\n", rep.stats)
+	say(stdout, "OK: every test that should run ran and passed; %s\n", rep.stats)
 	return exitOK
 }
 
@@ -229,3 +229,8 @@ example:
   go test -json ./... > go.json
   testguard check --config tests/testguard.tsv go.json
 `
+
+// say writes one piece of the report.
+func say(w io.Writer, format string, args ...any) {
+	_, _ = fmt.Fprintf(w, format, args...) // errdiscard: a report that cannot be written has no one to tell; the exit code still says it
+}

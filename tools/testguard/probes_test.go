@@ -93,7 +93,7 @@ func copyProbe(t *testing.T, src, dir string) string {
 			if err := os.MkdirAll(suiteDir, 0o755); err != nil {
 				return err
 			}
-			for _, test := range strings.Fields(string(data)) {
+			for test := range strings.FieldsSeq(string(data)) {
 				if err := os.WriteFile(filepath.Join(suiteDir, escape(test)), nil, 0o644); err != nil {
 					return err
 				}
@@ -101,7 +101,7 @@ func copyProbe(t *testing.T, src, dir string) string {
 			return nil
 		case rel == "c.tsv":
 			var lines []string
-			for _, l := range strings.Split(string(data), "\n") {
+			for l := range strings.SplitSeq(string(data), "\n") {
 				if f := strings.Split(l, "\t"); f[0] == "skip" && len(f) == 3 {
 					suite, test, _ := strings.Cut(f[1], ".") // errdiscard: a skip with no dot stays one field and is refused
 					l = strings.Join([]string{"skip", suite, test, f[2]}, "\t")
