@@ -313,7 +313,6 @@ var catalog = []Entry{
 	e("test/packet-write-bareint", "packet Write bare-integer width fixture", "go test -run TestSpecPacketWriteBareIntWidth ./compiler/", "go test -run TestSpecPacketWriteBareIntWidth ./compiler/"),
 	e("test/packet-write-refusal", "packet Write refusal fixtures for the assert legs", "make test-c, make test-cpp, make test-cs, make test-unity, make test-rust, make test-java, make test-dart", "make packet-write-refusal-rust"),
 	e("test/packet-write-text", "packet text write contract fixtures", "go test -run TestSpecPacketWriteChecksText ./compiler/", "go test -run TestSpecPacketWriteChecksText ./compiler/"),
-	e("test/packet-cfloat-endpoints", "accepted compressed-float packet endpoints", "make packet-cfloat-endpoints-go", "make packet-cfloat-endpoints-go"),
 	e("test/packet-write-cfloat", "packet Write compressed-float range fixture", "make test-go", "go test -run TestSpecPacketWriteRefusesOffRangeCompressedFloat ./compiler/"),
 	e("test/packet-void", "packet void-arm drivers, one per leg, over testdata/wire/packet-void/cases.txt", "make packet-void-<leg>", "make packet-void-pins"),
 	e("test/pointer-target-type", "pointer target-type fixtures", "go test -run TestSpecPointerTargetTypeChecked ./compiler/", "go test -run TestSpecPointerTargetTypeChecked ./compiler/"),

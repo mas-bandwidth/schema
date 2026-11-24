@@ -68,17 +68,42 @@ public final class Main {
                 fail(name + ": unknown verdict " + field[2]);
                 continue;
             }
+            // [reads-back <v>] [type RatioEndpoint] [wire <hex>], in pairs
             float expect = value;
-            if (field.length >= 5 && field[3].equals("reads-back")) {
-                expect = parseValue(field[4]);
+            boolean ratio = false;
+            String wire = null;
+            boolean malformed = field.length % 2 != 1;
+            for (int i = 3; i + 1 < field.length; i += 2) {
+                switch (field[i]) {
+                    case "reads-back":
+                        expect = parseValue(field[i + 1]);
+                        break;
+                    case "type":
+                        ratio = field[i + 1].equals("RatioEndpoint");
+                        malformed |= !ratio;
+                        break;
+                    case "wire":
+                        wire = field[i + 1].toLowerCase(java.util.Locale.ROOT);
+                        break;
+                    default:
+                        malformed = true;
+                }
+            }
+            if (malformed) {
+                fail(name + ": malformed modifier in " + line);
+                continue;
             }
             PacketCFloat.CFloat in = new PacketCFloat.CFloat();
             in.x = value;
-            byte[] data = new byte[PacketCFloat.C_FLOAT_MAX_BYTES];
+            PacketCFloat.RatioEndpoint ratioIn = new PacketCFloat.RatioEndpoint();
+            ratioIn.ratio = value;
+            byte[] data = new byte[ratio ? PacketCFloat.RATIO_ENDPOINT_MAX_BYTES : PacketCFloat.C_FLOAT_MAX_BYTES];
             boolean threw = false;
             int bits = 0;
             try {
-                bits = PacketCFloat.writeCFloatBits(in, data, 0);
+                bits = ratio
+                        ? PacketCFloat.writeRatioEndpointBits(ratioIn, data, 0)
+                        : PacketCFloat.writeCFloatBits(in, data, 0);
             } catch (AssertionError error) {
                 threw = true;
             }
@@ -94,15 +119,36 @@ public final class Main {
                 fail(name + ": a lawful compressed float was refused");
                 continue;
             }
-            PacketCFloat.CFloat out = new PacketCFloat.CFloat();
-            if (!PacketCFloat.readCFloat(out, data, bits)) {
-                fail(name + ": the write did not read back");
-                continue;
+            if (wire != null) {
+                StringBuilder got = new StringBuilder();
+                for (int i = 0; i < (bits + 7) / 8; i++) {
+                    got.append(String.format("%02x", data[i] & 0xff));
+                }
+                if (!got.toString().equals(wire)) {
+                    fail(name + ": wrote " + got + ", want " + wire);
+                    continue;
+                }
             }
-            if (Float.floatToRawIntBits(out.x) != Float.floatToRawIntBits(expect)) {
+            float back;
+            if (ratio) {
+                PacketCFloat.RatioEndpoint out = new PacketCFloat.RatioEndpoint();
+                if (!PacketCFloat.readRatioEndpoint(out, data, bits)) {
+                    fail(name + ": the write did not read back");
+                    continue;
+                }
+                back = out.ratio;
+            } else {
+                PacketCFloat.CFloat out = new PacketCFloat.CFloat();
+                if (!PacketCFloat.readCFloat(out, data, bits)) {
+                    fail(name + ": the write did not read back");
+                    continue;
+                }
+                back = out.x;
+            }
+            if (Float.floatToRawIntBits(back) != Float.floatToRawIntBits(expect)) {
                 fail(name
                         + ": read back "
-                        + Float.floatToRawIntBits(out.x)
+                        + Float.floatToRawIntBits(back)
                         + ", want the quantized value "
                         + Float.floatToRawIntBits(expect));
                 continue;

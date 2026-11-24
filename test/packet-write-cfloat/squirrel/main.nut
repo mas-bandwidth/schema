@@ -62,16 +62,29 @@ for (local i = 0; i <= input.len(); i++) {
   local name = fields[0];
   local value = parseFloat(fields[1]);
   local expected = fields[2];
+  // [reads-back <v>] [type RatioEndpoint] [wire <hex>], in pairs
   local readBack = value;
-  if (fields.len() >= 5 && fields[3] == "reads-back") readBack = parseFloat(fields[4]);
+  local ratio = false;
+  local wantWire = null;
+  local malformed = fields.len() % 2 != 1;
+  for (local k = 3; k + 1 < fields.len(); k += 2) {
+    if (fields[k] == "reads-back") readBack = parseFloat(fields[k + 1]);
+    else if (fields[k] == "type" && fields[k + 1] == "RatioEndpoint") ratio = true;
+    else if (fields[k] == "wire") wantWire = fields[k + 1].tolower();
+    else malformed = true;
+  }
+  if (malformed) {
+    check(false, name, "malformed case modifiers");
+    continue;
+  }
 
-  local record = CFloat.CFloat();
-  record.X = value;
+  local record = ratio ? CFloat.RatioEndpoint() : CFloat.CFloat();
+  if (ratio) record.Ratio = value; else record.X = value;
   local stream = serialize.WriteStream(blob(16));
   local wrote = false;
   local raised = null;
   try {
-    wrote = CFloat.WriteCFloat(stream, record);
+    wrote = ratio ? CFloat.WriteRatioEndpoint(stream, record) : CFloat.WriteCFloat(stream, record);
   } catch (e) {
     raised = e;
   }
@@ -91,16 +104,25 @@ for (local i = 0; i <= input.len(); i++) {
   // unused bits, so it stops at the written bits rounded up to a whole byte.
   local bits = ((stream.bitsProcessed() + 7) / 8) * 8;
   stream.flush();
-  local read = serialize.ReadStream(stream.data());
-  local got = CFloat.CFloat();
+  local wire = stream.data();
+  if (wantWire != null) {
+    local gotWire = "";
+    for (local k = 0; k < wire.len(); k++) gotWire += format("%02x", wire[k] & 0xff);
+    if (gotWire != wantWire) {
+      check(false, name, "wrote " + gotWire + ", want " + wantWire);
+      continue;
+    }
+  }
+  local read = serialize.ReadStream(wire);
+  local got = ratio ? CFloat.RatioEndpoint() : CFloat.CFloat();
   local readOK = false;
   try {
-    readOK = CFloat.ReadCFloat(read, got);
+    readOK = ratio ? CFloat.ReadRatioEndpoint(read, got) : CFloat.ReadCFloat(read, got);
   } catch (e) {
     check(false, name, "readback raised: " + e);
     continue;
   }
-  check(readOK && read.bitsProcessed() == bits && got.X == readBack,
+  check(readOK && read.bitsProcessed() == bits && (ratio ? got.Ratio : got.X) == readBack,
     name, "lawful value did not read back as its quantized value");
 }
 

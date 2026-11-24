@@ -24,7 +24,8 @@ enum
 {
     kWroteExit = 10,
     kReadFailedExit = 11,
-    kMismatchExit = 12
+    kMismatchExit = 12,
+    kWireExit = 13
 };
 
 typedef struct
@@ -33,7 +34,37 @@ typedef struct
     float value;
     int refused;
     float reads_back;
+    int ratio;
+    int wire_bytes;
+    uint8_t wire[16];
 } cfloat_case_t;
+
+static int parse_hex( const char * text, uint8_t * out, int capacity )
+{
+    int n = 0;
+    size_t i;
+    size_t length = strlen( text );
+    if ( length == 0 || length % 2 != 0 || (int) ( length / 2 ) > capacity )
+    {
+        return -1;
+    }
+    for ( i = 0; i < length; i += 2 )
+    {
+        unsigned byte;
+        char pair[3];
+        char * end = NULL;
+        pair[0] = text[i];
+        pair[1] = text[i + 1];
+        pair[2] = 0;
+        byte = (unsigned) strtoul( pair, &end, 16 );
+        if ( end != pair + 2 )
+        {
+            return -1;
+        }
+        out[n++] = (uint8_t) byte;
+    }
+    return n;
+}
 
 static int parse_float( const char * text, float * value )
 {
@@ -82,15 +113,40 @@ static int parse_case( char * line, cfloat_case_t * out )
         return -1;
     }
     out->refused = 0;
-    word = strtok_r( NULL, " \t", &save );
-    if ( word != NULL )
+    out->ratio = 0;
+    out->wire_bytes = -1;
+    while ( ( word = strtok_r( NULL, " \t", &save ) ) != NULL )
     {
-        if ( strcmp( word, "reads-back" ) != 0 )
+        char * operand = strtok_r( NULL, " \t", &save );
+        if ( operand == NULL )
         {
             return -1;
         }
-        reads_back = strtok_r( NULL, " \t", &save );
-        if ( reads_back == NULL || !parse_float( reads_back, &out->reads_back ) )
+        if ( strcmp( word, "reads-back" ) == 0 )
+        {
+            reads_back = operand;
+            if ( !parse_float( reads_back, &out->reads_back ) )
+            {
+                return -1;
+            }
+        }
+        else if ( strcmp( word, "type" ) == 0 )
+        {
+            if ( strcmp( operand, "RatioEndpoint" ) != 0 )
+            {
+                return -1;
+            }
+            out->ratio = 1;
+        }
+        else if ( strcmp( word, "wire" ) == 0 )
+        {
+            out->wire_bytes = parse_hex( operand, out->wire, (int) sizeof( out->wire ) );
+            if ( out->wire_bytes < 0 )
+            {
+                return -1;
+            }
+        }
+        else
         {
             return -1;
         }
@@ -110,11 +166,14 @@ static int run_child( const cfloat_case_t * test )
 {
     cfloat_c_float_t in;
     cfloat_c_float_t out;
+    cfloat_ratio_endpoint_t ratio_in;
+    cfloat_ratio_endpoint_t ratio_out;
     uint8_t buffer[64];
     serialize_write_stream_t writer;
     serialize_read_stream_t reader;
     int bytes;
     int quiet;
+    float got;
 
     quiet = open( "/dev/null", O_WRONLY );
     if ( quiet >= 0 )
@@ -123,9 +182,11 @@ static int run_child( const cfloat_case_t * test )
     }
 
     memset( &in, 0, sizeof( in ) );
+    memset( &ratio_in, 0, sizeof( ratio_in ) );
     in.x = test->value;
+    ratio_in.ratio = test->value;
     serialize_write_stream_init( &writer, buffer, (int) sizeof( buffer ) );
-    if ( !cfloat_write_c_float( &writer, &in ) )
+    if ( test->ratio ? !cfloat_write_ratio_endpoint( &writer, &ratio_in ) : !cfloat_write_c_float( &writer, &in ) )
     {
         return kReadFailedExit;
     }
@@ -135,14 +196,20 @@ static int run_child( const cfloat_case_t * test )
         return kReadFailedExit;
     }
     bytes = (int) serialize_write_bytes_processed( &writer );
+    if ( test->wire_bytes >= 0 && ( bytes != test->wire_bytes || memcmp( buffer, test->wire, (size_t) bytes ) != 0 ) )
+    {
+        return kWireExit;
+    }
 
     memset( &out, 0, sizeof( out ) );
+    memset( &ratio_out, 0, sizeof( ratio_out ) );
     serialize_read_stream_init( &reader, buffer, bytes );
-    if ( !cfloat_read_c_float( &reader, &out ) )
+    if ( test->ratio ? !cfloat_read_ratio_endpoint( &reader, &ratio_out ) : !cfloat_read_c_float( &reader, &out ) )
     {
         return kReadFailedExit;
     }
-    if ( float_bits( out.x ) != float_bits( test->reads_back ) )
+    got = test->ratio ? ratio_out.ratio : out.x;
+    if ( float_bits( got ) != float_bits( test->reads_back ) )
     {
         return kMismatchExit;
     }
@@ -246,6 +313,11 @@ int main( int argc, char ** argv )
             wrote = 1;
             broke = 1;
         }
+        else if ( WIFEXITED( status ) && WEXITSTATUS( status ) == kWireExit )
+        {
+            wrote = 1;
+            broke = 2;
+        }
         else
         {
             broke = 1;
@@ -264,6 +336,11 @@ int main( int argc, char ** argv )
         else if ( !test.refused && !wrote )
         {
             printf( "FAILED: packet-write-cfloat %s: the write or read did not finish\n", test.name );
+            failed = 1;
+        }
+        else if ( !test.refused && broke == 2 )
+        {
+            printf( "FAILED: packet-write-cfloat %s: the written bytes are not the case's wire\n", test.name );
             failed = 1;
         }
         else if ( !test.refused && broke )

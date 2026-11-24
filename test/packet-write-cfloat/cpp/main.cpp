@@ -22,9 +22,15 @@
 #include "PacketCFloatWire.h"
 
 namespace {
-constexpr float kMin = 0.0f;
-constexpr float kMax = 10.0f;
-constexpr float kResolution = 0.01f;
+// CFloat.x and RatioEndpoint.ratio (PacketCFloat.schema).
+struct Range
+{
+    float min;
+    float max;
+    float resolution;
+};
+constexpr Range kCFloat = { 0.0f, 10.0f, 0.01f };
+constexpr Range kRatio = { 0.0f, 1.0f, 0.01f };
 
 enum
 {
@@ -33,6 +39,7 @@ enum
     kReadFailedExit = 12,
     kReadMismatchExit = 13,
     kBadCaseExit = 14,
+    kWireMismatchExit = 15,
 };
 
 struct Case
@@ -42,7 +49,24 @@ struct Case
     bool refused = false;
     bool has_reads_back = false;
     float reads_back = 0.0f;
+    bool ratio = false;
+    bool has_wire = false;
+    std::vector<uint8_t> wire;
 };
+
+bool parse_hex( const std::string & text, std::vector<uint8_t> & out )
+{
+    if ( text.empty() || text.size() % 2 != 0 ) return false;
+    for ( size_t i = 0; i < text.size(); i += 2 )
+    {
+        char * end = nullptr;
+        const std::string pair = text.substr( i, 2 );
+        const unsigned long byte = std::strtoul( pair.c_str(), &end, 16 );
+        if ( end != pair.c_str() + 2 ) return false;
+        out.push_back( static_cast<uint8_t>( byte ) );
+    }
+    return true;
+}
 
 uint32_t float_bits( float value )
 {
@@ -53,10 +77,11 @@ uint32_t float_bits( float value )
 
 // The read side's quantization of a lawful value: the product rounds to
 // float32 before 0.5 is added, and the integer clamp is the one §2.5 keeps.
-float quantized( float value )
+float quantized( float value, const Range & range )
 {
-    const float delta = kMax - kMin;
-    const float values = delta / kResolution;
+    const float kMin = range.min;
+    const float delta = range.max - range.min;
+    const float values = delta / range.resolution;
     const uint32_t steps = static_cast<uint32_t>( std::ceil( values ) );
     float normalized = ( value - kMin ) / delta;
     if ( !( normalized >= 0.0f ) ) normalized = 0.0f;
@@ -95,16 +120,33 @@ bool read_cases( const char * path, std::vector<Case> & cases )
         std::vector<std::string> token;
         std::string item;
         while ( fields >> item ) token.push_back( item );
-        if ( token.size() != 3 && token.size() != 5 ) return false;
+        if ( token.size() < 3 || token.size() % 2 != 1 ) return false;
         Case c;
         c.name = token[0];
         if ( !parse_float( token[1], c.value ) ) return false;
         if ( token[2] == "refused" ) c.refused = true;
         else if ( token[2] != "written" ) return false;
-        if ( token.size() == 5 )
+        for ( size_t i = 3; i + 1 < token.size(); i += 2 )
         {
-            if ( token[3] != "reads-back" || !parse_float( token[4], c.reads_back ) ) return false;
-            c.has_reads_back = true;
+            if ( token[i] == "reads-back" )
+            {
+                if ( !parse_float( token[i + 1], c.reads_back ) ) return false;
+                c.has_reads_back = true;
+            }
+            else if ( token[i] == "type" )
+            {
+                if ( token[i + 1] != "RatioEndpoint" ) return false;
+                c.ratio = true;
+            }
+            else if ( token[i] == "wire" )
+            {
+                if ( !parse_hex( token[i + 1], c.wire ) ) return false;
+                c.has_wire = true;
+            }
+            else
+            {
+                return false;
+            }
         }
         cases.push_back( c );
     }
@@ -118,23 +160,39 @@ int run_case( const Case & c )
 
     cfloat::CFloat value;
     value.x = c.value;
+    cfloat::RatioEndpoint ratio;
+    ratio.ratio = c.value;
 
     alignas( 8 ) uint8_t buffer[64] = {};
     serialize::WriteStream stream( buffer, sizeof( buffer ) );
-    if ( !cfloat::WriteCFloat( stream, value ) ) _exit( kWriteFailedExit );
+    const bool written = c.ratio ? cfloat::WriteRatioEndpoint( stream, ratio ) : cfloat::WriteCFloat( stream, value );
+    if ( !written ) _exit( kWriteFailedExit );
     if ( c.refused ) _exit( kWroteExit );
 
     stream.Flush();
     const int64_t bytes = stream.GetBytesProcessed();
     if ( bytes <= 0 || bytes > int64_t( sizeof( buffer ) ) ) _exit( kReadFailedExit );
+    if ( c.has_wire && ( bytes != int64_t( c.wire.size() ) || std::memcmp( buffer, c.wire.data(), c.wire.size() ) != 0 ) )
+        _exit( kWireMismatchExit );
 
-    cfloat::CFloat readback;
+    float got = 0.0f;
     serialize::ReadStream reader( buffer, bytes );
-    if ( !cfloat::ReadCFloat( reader, readback ) ) _exit( kReadFailedExit );
+    if ( c.ratio )
+    {
+        cfloat::RatioEndpoint readback;
+        if ( !cfloat::ReadRatioEndpoint( reader, readback ) ) _exit( kReadFailedExit );
+        got = readback.ratio;
+    }
+    else
+    {
+        cfloat::CFloat readback;
+        if ( !cfloat::ReadCFloat( reader, readback ) ) _exit( kReadFailedExit );
+        got = readback.x;
+    }
 
-    const float expected = quantized( c.value );
+    const float expected = quantized( c.value, c.ratio ? kRatio : kCFloat );
     if ( c.has_reads_back && float_bits( expected ) != float_bits( c.reads_back ) ) _exit( kReadMismatchExit );
-    if ( float_bits( readback.x ) != float_bits( expected ) ) _exit( kReadMismatchExit );
+    if ( float_bits( got ) != float_bits( expected ) ) _exit( kReadMismatchExit );
     _exit( kWroteExit );
 }
 } // namespace
@@ -197,6 +255,11 @@ int main( int argc, char ** argv )
         else if ( WIFEXITED( status ) && WEXITSTATUS( status ) == kReadMismatchExit )
         {
             std::fprintf( stderr, "FAILED: %s: read-back is not the quantized value\n", c.name.c_str() );
+            ++failures;
+        }
+        else if ( WIFEXITED( status ) && WEXITSTATUS( status ) == kWireMismatchExit )
+        {
+            std::fprintf( stderr, "FAILED: %s: the written bytes are not the case's wire\n", c.name.c_str() );
             ++failures;
         }
         else if ( WIFEXITED( status ) && WEXITSTATUS( status ) == kWriteFailedExit )

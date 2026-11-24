@@ -534,7 +534,7 @@ build/packet-write-cfloat/lua/.stamp: bin/schema test/packet-write-cfloat/Packet
 PACKET_WRITE_CFLOAT_LUA_DIR ?= build/packet-write-cfloat/lua/generated
 .PHONY: packet-write-cfloat-lua packet-write-cfloat-lua-negative-control
 packet-write-cfloat-lua: toolchain-lua build/packet-write-cfloat/lua/.stamp build/mustrun
-	$(MUSTRUN) -name packet-write-cfloat-lua -count 10 -- $(LUA) test/packet-write-cfloat/lua/main.lua $(PACKET_WRITE_CFLOAT_LUA_DIR) test/packet-write-cfloat
+	$(MUSTRUN) -name packet-write-cfloat-lua -count 12 -- $(LUA) test/packet-write-cfloat/lua/main.lua $(PACKET_WRITE_CFLOAT_LUA_DIR) test/packet-write-cfloat
 
 packet-write-cfloat-lua-negative-control: packet-write-cfloat-lua
 	@rm -rf build/packet-write-cfloat/lua-negative && mkdir -p build/packet-write-cfloat/lua-negative/generated

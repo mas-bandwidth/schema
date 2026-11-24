@@ -278,45 +278,54 @@ func TestAccountFilesForLegResolvesPerLegSchemasAndExclusions(t *testing.T) {
 	}
 }
 
-func TestAcceptedBoundsSelectOnlyTheirGoReaders(t *testing.T) {
+// The accepted bounds that were Go-only (packet-cfloat-endpoints and
+// table-write-bounds, retired 2026-11-24) live in shared corpora now: a
+// change to their inputs selects every leg, not only Go.
+func TestAcceptedBoundsSelectEveryLeg(t *testing.T) {
 	t.Parallel()
 	tree := repoTree(t)
 	for _, tc := range []struct {
-		family   string
-		neighbor string
-		inputs   []string
+		family string
+		inputs []string
 	}{
-		{
-			family:   "packet-cfloat-endpoints",
-			neighbor: "packet-write-cfloat",
-			inputs: []string{
-				"test/packet-cfloat-endpoints/PacketRatio.schema",
-				"test/packet-cfloat-endpoints/ratio-endpoints.txt",
-			},
-		},
-		{
-			family:   "table-write-bounds",
-			neighbor: "conformance-corpus",
-			inputs: []string{
-				"testdata/conformance/table-write-bounds/ACCEPTED-WRITE-BOUNDS.txt",
-				"testdata/conformance/table-write-bounds/TableWriteBounds.schema",
-				"testdata/conformance/table-write-bounds/torture_var_wref.bin",
-			},
-		},
+		{"packet-write-cfloat", []string{"test/packet-write-cfloat/PacketCFloat.schema", "test/packet-write-cfloat/cases.txt"}},
+		{"conformance-corpus", []string{
+			"testdata/conformance/table-write-bounds/TableWriteBounds.schema",
+			"testdata/conformance/table-write-bounds/torture_var_wref.bin",
+			"testdata/conformance/tables/json/torture_var_wref.json",
+		}},
 	} {
-		t.Run(tc.family, func(t *testing.T) {
-			if got := AccountFilesForLeg(tree, tc.family, "go"); !slices.Equal(got, tc.inputs) {
-				t.Errorf("accounted files = %v, want %v", got, tc.inputs)
-			}
-			for _, input := range tc.inputs {
-				want := []Row{{Leg: "go", Family: tc.family, Target: tc.family + "-go"}}
-				if got := Select(tree, []string{input}, false, true).Rows; !slices.Equal(got, want) {
-					t.Errorf("%s selected %v, want %v", input, got, want)
-				}
-				if slices.Contains(AccountFilesForLeg(tree, tc.neighbor, "cpp"), input) {
-					t.Errorf("%s is accounted by neighboring family %s", input, tc.neighbor)
+		for _, input := range tc.inputs {
+			var legs []string
+			for _, r := range Select(tree, []string{input}, false, true).Rows {
+				if r.Family == tc.family {
+					legs = append(legs, r.Leg)
 				}
 			}
-		})
+			if !slices.Equal(legs, Legs) {
+				t.Errorf("%s selected %s legs %v, want all of %v", input, tc.family, legs, Legs)
+			}
+		}
+	}
+	if got := AccountFilesForLeg(tree, "conformance-corpus", "go"); !slices.Contains(got, "testdata/conformance/table-write-bounds/torture_var_wref.bin") {
+		t.Errorf("conformance-corpus does not account the TortureVarWref seed: %v", got)
+	}
+}
+
+// The reversed witness on the packet-write-cfloat ledger, which #4909 adds
+// empty because every leg answers every case: the tree is green, and a line
+// under a leg that is not a leg, for a real case, turns Check red.
+func TestPacketWriteCFloatLedgerPlantedUnknownLegIsRed(t *testing.T) {
+	t.Parallel()
+	tr := repoTree(t)
+	const owed = "test/packet-write-cfloat/owed.txt"
+	for _, b := range Check(tr) {
+		if strings.Contains(b, owed) {
+			t.Fatalf("the packet-write-cfloat ledger is red as checked in: %s", b)
+		}
+	}
+	tr.Ledgers[owed] += "cobol ratio-at-max owed: plant\n"
+	if bad := strings.Join(Check(tr), "\n"); !strings.Contains(bad, `packet-write-cfloat: test/packet-write-cfloat/owed.txt line "cobol ratio-at-max owed: plant": cobol is not a leg`) {
+		t.Fatalf("the planted cobol line was not refused:\n%s", bad)
 	}
 }

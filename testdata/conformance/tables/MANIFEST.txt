@@ -2296,6 +2296,23 @@ write-refusal sfv_opt_bits_ok      cooktorture TortureCook testdata/conformance/
 write-refusal sfv_elem_bits_wide   cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin arr_bits[0].v            int 137438953472  refused
 write-refusal sfv_elem_bits_ok     cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin arr_bits[0].v            int 137438953471  wrote
 
+# ACCEPTED VARIABLE-TABLE WRITE BOUNDS (docs/SPEC.md §5.1 rows 1-4 and 8,
+# SF-13 to SF-15): the lawful TortureVarWref seed, one field or arm moved to its
+# declared boundary per case, and the variable-form measure and save complete.
+# Carriers: a present optional counted array at its maximum length, a direct
+# bits(13) union arm at 2^13 - 1, a ranged int32 union arm at its min and max,
+# a string(8) union arm at its maximum length, and an enum-keyed slot at its
+# min and max.
+unit writebounds testdata/conformance/table-write-bounds/TableWriteBounds.schema
+instance torture_var_wref writebounds TortureVarWref testdata/conformance/table-write-bounds/torture_var_wref.bin
+write-refusal sfw_opt_arr_ok    writebounds TortureVarWref testdata/conformance/table-write-bounds/torture_var_wref.bin opt_arr           count  3    wrote
+write-refusal sfw_arm_bits_ok   writebounds TortureVarWref testdata/conformance/table-write-bounds/torture_var_wref.bin arm_bits.a_bits   int    8191 wrote
+write-refusal sfw_arm_range_max writebounds TortureVarWref testdata/conformance/table-write-bounds/torture_var_wref.bin arm_range.a_range int    10   wrote
+write-refusal sfw_arm_range_min writebounds TortureVarWref testdata/conformance/table-write-bounds/torture_var_wref.bin arm_range.a_range int    0    wrote
+write-refusal sfw_arm_str_ok    writebounds TortureVarWref testdata/conformance/table-write-bounds/torture_var_wref.bin arm_str.a_str     length 8    wrote
+write-refusal sfw_slot_max      writebounds TortureVarWref testdata/conformance/table-write-bounds/torture_var_wref.bin chan_lim[1]       int    50   wrote
+write-refusal sfw_slot_min      writebounds TortureVarWref testdata/conformance/table-write-bounds/torture_var_wref.bin chan_lim[1]       int    0    wrote
+
 # A FIXED BOUND GROWN SINCE THE WRITER (docs/SPEC-TABLES.md §21.1, "a grown
 # bound"): `[N]T` written by a build whose bound was smaller reads as the
 # writer's elements followed by ONE DEFAULT ELEMENT PER NEW SLOT — an empty

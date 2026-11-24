@@ -1,4 +1,4 @@
-use packetcfloat::{self as c, CFloat};
+use packetcfloat::{self as c, CFloat, RatioEndpoint};
 use serialize::{ReadStream, Stream, WriteStream};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
@@ -11,6 +11,10 @@ fn value(text: &str) -> f32 {
     }
 }
 
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
 fn main() {
     let cases = std::env::args().nth(1).expect("shared cases path");
     std::panic::set_hook(Box::new(|_| {}));
@@ -20,7 +24,7 @@ fn main() {
         if fields.is_empty() || fields[0].starts_with('#') {
             continue;
         }
-        if fields.len() < 3 {
+        if fields.len() < 3 || fields.len() % 2 != 1 {
             eprintln!("FAILED: malformed case line {line:?}");
             std::process::exit(1);
         }
@@ -28,12 +32,31 @@ fn main() {
         let name = fields[0];
         let input = value(fields[1]);
         let wanted = fields[2];
+        // [reads-back <v>] [type RatioEndpoint] [wire <hex>], in pairs
+        let mut expected = input;
+        let mut ratio = false;
+        let mut wire: Option<String> = None;
+        for pair in fields[3..].chunks(2) {
+            match (pair[0], pair[1]) {
+                ("reads-back", v) => expected = value(v),
+                ("type", "RatioEndpoint") => ratio = true,
+                ("wire", h) => wire = Some(h.to_ascii_lowercase()),
+                _ => {
+                    eprintln!("FAILED: {name}: malformed modifier in {line:?}");
+                    std::process::exit(1);
+                }
+            }
+        }
         let old_hook = std::panic::take_hook();
         std::panic::set_hook(Box::new(|_| {}));
         let attempt = catch_unwind(AssertUnwindSafe(|| {
             let mut bytes = [0u8; 64];
             let mut ws = WriteStream::new(&mut bytes);
-            c::write_c_float(&mut ws, &CFloat { x: input })?;
+            if ratio {
+                c::write_ratio_endpoint(&mut ws, &RatioEndpoint { ratio: input })?;
+            } else {
+                c::write_c_float(&mut ws, &CFloat { x: input })?;
+            }
             let bits = ws.bits_processed();
             ws.flush();
             Ok::<_, c::Error>((ws.data().to_vec(), bits))
@@ -55,18 +78,26 @@ fn main() {
             eprintln!("FAILED: {name} was written but must be refused");
             std::process::exit(1);
         }
+        if let Some(want) = &wire {
+            if hex(&data) != *want {
+                eprintln!("FAILED: {name} wrote {}, want {want}", hex(&data));
+                std::process::exit(1);
+            }
+        }
         let mut padded = vec![0; (data.len() + 3) & !3];
         padded[..data.len()].copy_from_slice(&data);
         let mut rs = ReadStream::new(&padded, data.len());
-        let mut output = CFloat::default();
-        c::read_c_float(&mut rs, &mut output).expect("read back");
-        let expected = if fields.len() >= 5 && fields[3] == "reads-back" {
-            value(fields[4])
+        let got = if ratio {
+            let mut output = RatioEndpoint::default();
+            c::read_ratio_endpoint(&mut rs, &mut output).expect("read back");
+            output.ratio
         } else {
-            input
+            let mut output = CFloat::default();
+            c::read_c_float(&mut rs, &mut output).expect("read back");
+            output.x
         };
-        if output.x.to_bits() != expected.to_bits() {
-            eprintln!("FAILED: {name} read back {}, expected {expected}", output.x);
+        if got.to_bits() != expected.to_bits() {
+            eprintln!("FAILED: {name} read back {got}, expected {expected}");
             std::process::exit(1);
         }
         // The public read ends the packet (SPEC §5): it consumes the final

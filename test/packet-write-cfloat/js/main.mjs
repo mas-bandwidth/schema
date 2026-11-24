@@ -35,7 +35,8 @@ function parseValue(text) {
   }
 }
 
-// One case per line: <name> <value> <verdict> [reads-back <value>].
+// One case per line: <name> <value> <verdict> [reads-back <value>]
+// [type RatioEndpoint wire <hex>]; the modifiers come in pairs.
 function readCases() {
   const cases = [];
   for (const raw of readFileSync(casesURL, "utf8").split("\n")) {
@@ -45,14 +46,21 @@ function readCases() {
     if (f[2] !== "written" && f[2] !== "refused") {
       throw new Error(`cases.txt: ${f[0]}: verdict "${f[2]}" is neither written nor refused`);
     }
-    cases.push({
-      name: f[0],
-      value: parseValue(f[1]),
-      written: f[2] === "written",
-      readsBack: f[3] === "reads-back" ? parseValue(f[4]) : undefined,
-    });
+    if (f.length % 2 !== 1) throw new Error(`cases.txt: ${f[0]}: a modifier has no operand`);
+    const c = { name: f[0], value: parseValue(f[1]), written: f[2] === "written", readsBack: undefined, ratio: false, wire: undefined };
+    for (let i = 3; i + 1 < f.length; i += 2) {
+      if (f[i] === "reads-back") c.readsBack = parseValue(f[i + 1]);
+      else if (f[i] === "type" && f[i + 1] === "RatioEndpoint") c.ratio = true;
+      else if (f[i] === "wire") c.wire = f[i + 1].toLowerCase();
+      else throw new Error(`cases.txt: ${f[0]}: unknown modifier ${f[i]} ${f[i + 1]}`);
+    }
+    cases.push(c);
   }
   return cases;
+}
+
+function hex(bytes) {
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 // Bit-exact equality, including the sign of zero: the shared list says a
@@ -62,32 +70,48 @@ function sameNumber(actual, expected) {
   return actual === expected && Object.is(actual, -0) === Object.is(expected, -0);
 }
 
-function writeRuntime(value) {
+function writeRuntime(c) {
   const stream = new WriteStream(new Uint8Array(64));
-  const input = new runtime.CFloat();
-  input.x = value;
-  if (!runtime.WriteCFloat(stream, input)) return null;
+  if (c.ratio) {
+    const input = new runtime.RatioEndpoint();
+    input.ratio = c.value;
+    if (!runtime.WriteRatioEndpoint(stream, input)) return null;
+  } else {
+    const input = new runtime.CFloat();
+    input.x = c.value;
+    if (!runtime.WriteCFloat(stream, input)) return null;
+  }
   stream.flush();
   return { bytes: stream.data().slice(), bits: stream.bitsProcessed() };
 }
 
-function readRuntime(wire) {
+function readRuntime(c, wire) {
   const stream = new ReadStream(wire.bytes);
+  if (c.ratio) {
+    const output = new runtime.RatioEndpoint();
+    if (!runtime.ReadRatioEndpoint(stream, output)) return null;
+    return output.ratio;
+  }
   const output = new runtime.CFloat();
   if (!runtime.ReadCFloat(stream, output)) return null;
   return output.x;
 }
 
-function writeFlat(value) {
+function writeFlat(c) {
   const view = new DataView(new ArrayBuffer(64));
-  const size = flat.WriteCFloatFlat(view, { x: value });
+  const size = c.ratio ? flat.WriteRatioEndpointFlat(view, { ratio: c.value }) : flat.WriteCFloatFlat(view, { x: c.value });
   if (size < 0) return null;
   return { bytes: new Uint8Array(view.buffer.slice(0, size)), bits: size * 8 };
 }
 
-function readFlat(wire) {
+function readFlat(c, wire) {
   const buffer = new Uint8Array(wire.bytes.length + flat.FlatReadSlack);
   buffer.set(wire.bytes);
+  if (c.ratio) {
+    const output = new runtime.RatioEndpoint();
+    if (!flat.ReadRatioEndpointFlat(new DataView(buffer.buffer), wire.bits, output)) return null;
+    return output.ratio;
+  }
   const output = new runtime.CFloat();
   if (!flat.ReadCFloatFlat(new DataView(buffer.buffer), wire.bits, output)) return null;
   return output.x;
@@ -103,7 +127,7 @@ for (const c of cases) {
   for (const tier of tiers) {
     let wire;
     try {
-      wire = tier.write(c.value);
+      wire = tier.write(c);
     } catch (err) {
       fail(`${tier.name} ${c.name}: threw ${err.name}: ${err.message}`);
       continue;
@@ -116,9 +140,13 @@ for (const c of cases) {
       fail(`${tier.name} ${c.name}: refused a lawful value`);
       continue;
     }
+    if (c.wire !== undefined && hex(wire.bytes) !== c.wire) {
+      fail(`${tier.name} ${c.name}: wrote ${hex(wire.bytes)}, want ${c.wire}`);
+      continue;
+    }
     let got;
     try {
-      got = tier.read(wire);
+      got = tier.read(c, wire);
     } catch (err) {
       fail(`${tier.name} ${c.name}: threw on the read-back ${err.name}: ${err.message}`);
       continue;

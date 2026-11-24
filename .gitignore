@@ -106,6 +106,8 @@ erl_crash.dump
 /test/packet-defaults/unity/**/obj/
 /test/packet-text/unity/**/bin/
 /test/packet-text/unity/**/obj/
+/test/packet-write-cfloat/unity/**/bin/
+/test/packet-write-cfloat/unity/**/obj/
 /test/unity-hostile/**/bin/
 /test/unity-hostile/**/obj/
 /tables/cards/unity/**/bin/

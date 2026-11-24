@@ -1,5 +1,10 @@
 // Command cases turns the shared packet compressed-float cases into inputs
 // for the Goose writer driver. The shared cases remain the single value list.
+//
+// One tab-separated line per case: name, verdict, the value's float32 bits,
+// the expected read-back's float32 bits (both little-endian hex), the type
+// written (CFloat or RatioEndpoint), and the expected wire in hex ("-" when
+// the case pins none).
 package main
 
 import (
@@ -30,18 +35,33 @@ func main() {
 		if len(fields) == 0 || strings.HasPrefix(fields[0], "#") {
 			continue
 		}
-		if len(fields) < 3 || (fields[2] != "refused" && fields[2] != "written") {
+		if len(fields) < 3 || len(fields)%2 != 1 || (fields[2] != "refused" && fields[2] != "written") {
 			fatal("malformed case: %q", scanner.Text())
 		}
 		value := parse32(fields[1])
 		want := value
-		if len(fields) > 3 {
-			if len(fields) != 5 || fields[3] != "reads-back" {
-				fatal("malformed read-back case: %q", scanner.Text())
+		typ := "CFloat"
+		wire := "-"
+		for i := 3; i+1 < len(fields); i += 2 {
+			switch fields[i] {
+			case "reads-back":
+				want = parse32(fields[i+1])
+			case "type":
+				if fields[i+1] != "RatioEndpoint" {
+					fatal("unknown type in case: %q", scanner.Text())
+				}
+				typ = fields[i+1]
+			case "wire":
+				b, err := hex.DecodeString(fields[i+1])
+				if err != nil || len(b) == 0 {
+					fatal("malformed wire in case: %q", scanner.Text())
+				}
+				wire = hex.EncodeToString(b)
+			default:
+				fatal("unknown modifier in case: %q", scanner.Text())
 			}
-			want = parse32(fields[4])
 		}
-		fmt.Printf("%s\t%s\t%s\t%s\n", fields[0], fields[2], bitsHex(value), bitsHex(want))
+		fmt.Printf("%s\t%s\t%s\t%s\t%s\t%s\n", fields[0], fields[2], bitsHex(value), bitsHex(want), typ, wire)
 		count++
 	}
 	if err := scanner.Err(); err != nil {

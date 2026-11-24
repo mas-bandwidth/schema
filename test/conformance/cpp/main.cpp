@@ -63,6 +63,9 @@
 #include "ShapesTable.h"
 // an ARRAY OF PACKET UNIONS in a variable and a fixed table (docs/SPEC-TABLES.md §2.6)
 #include "PacketUnionsTable.h"
+// the WRITE-BOUNDS unit (testdata/conformance/table-write-bounds): the lawful
+// TortureVarWref seed and its boundary write-refusal rows
+#include "TableWriteBoundsTable.h"
 // the MESSAGE FORM's units (docs/SPEC-TABLES.md §3.3): the three backend
 // messages the ruling measured, and the WIDE-VOCABULARY unit whose slots fall
 // on both sides of the one-byte boundary
@@ -533,6 +536,7 @@ static const VarCodec var_codecs[] = {
     VARCODEC( "cooktorturewide", cooktorturewide, TortureWideCook ),
     VARCODEC( "shapes", shapes, Bounds ),
     VARCODEC( "packetunions", tblpacketunions, ShapeDoc ),
+    VARCODEC( "writebounds", writebounds, TortureVarWref ),
 
     VARCODEC( "graphdemo", graphdemo, Scene ),
     VARCODEC( "graphdemo", graphdemo, ListNode ),
@@ -2333,6 +2337,28 @@ static bool write_refusal_set_variable( const std::string & root, void * value, 
             if ( (int) v.bounded_steps[0].type == 4 ) { memset( v.bounded_steps[0].label.value, 0, sizeof( v.bounded_steps[0].label.value ) ); v.bounded_steps[0].label.value_length = 0; }
             return true;
         }
+    }
+    if ( root == "TortureVarWref" )
+    {
+        // the write-bounds rows: each union field already carries the arm its
+        // path names in the seed, so a path naming another arm has no setter
+        writebounds::TortureVarWref & v = *(writebounds::TortureVarWref *) value;
+        if ( path == "opt_arr" && kind == "count" )
+        {
+            const int32_t storage = (int32_t) ( sizeof( v.opt_arr ) / sizeof( v.opt_arr[0] ) );
+            for ( int32_t i = v.opt_arr_count; i < wref_count( text ) && i < storage; i++ ) v.opt_arr[i] = 0;
+            v.opt_arr_present = true;
+            v.opt_arr_count = wref_count( text );
+            return true;
+        }
+        if ( path == "arm_bits.a_bits" && kind == "int" )
+            return v.arm_bits.type == writebounds::WrefArmType::ABits && wref_store_int( v.arm_bits.a_bits, text );
+        if ( path == "arm_range.a_range" && kind == "int" )
+            return v.arm_range.type == writebounds::WrefArmType::ARange && wref_store_int( v.arm_range.a_range, text );
+        if ( path == "arm_str.a_str" )
+            return v.arm_str.type == writebounds::WrefArmType::AStr &&
+                   write_refusal_text( v.arm_str.a_str.value, 8, v.arm_str.a_str.value_length, kind, text );
+        if ( path == "chan_lim[1]" && kind == "int" ) return wref_store_int( v.chan_lim.slots[1], text );
     }
     if ( root == "Bounds" )
     {

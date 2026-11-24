@@ -24,6 +24,8 @@ type packetWriteCFloatCase struct {
 	value   uint32
 	refused bool
 	read    uint32
+	typ     string // CFloat, or RatioEndpoint
+	wire    string // the written bytes in hex; "" when the case pins none
 }
 
 func parsePacketWriteCFloatValue(t *testing.T, token string) uint32 {
@@ -68,11 +70,24 @@ func readPacketWriteCFloatCases(t *testing.T) []packetWriteCFloatCase {
 			t.Fatalf("packet-write-cfloat case %q has verdict %q", line, fields[2])
 		}
 		c.read = c.value
-		if len(fields) > 3 {
-			if len(fields) != 5 || fields[3] != "reads-back" {
-				t.Fatalf("packet-write-cfloat case %q is not <name> <value> written reads-back <value>", line)
+		c.typ = "CFloat"
+		if len(fields)%2 != 1 {
+			t.Fatalf("packet-write-cfloat case %q has a modifier with no operand", line)
+		}
+		for i := 3; i+1 < len(fields); i += 2 {
+			switch fields[i] {
+			case "reads-back":
+				c.read = parsePacketWriteCFloatValue(t, fields[i+1])
+			case "type":
+				if fields[i+1] != "RatioEndpoint" {
+					t.Fatalf("packet-write-cfloat case %q names an unknown type", line)
+				}
+				c.typ = fields[i+1]
+			case "wire":
+				c.wire = strings.ToLower(fields[i+1])
+			default:
+				t.Fatalf("packet-write-cfloat case %q has an unknown modifier %q", line, fields[i])
 			}
-			c.read = parsePacketWriteCFloatValue(t, fields[4])
 		}
 		cases = append(cases, c)
 	}
@@ -97,19 +112,24 @@ func generatePacketWriteCFloat(t *testing.T) map[string][]byte {
 	return files
 }
 
-func packetWriteCFloatReadBits(out string) (uint32, bool) {
+// packetWriteCFloatReadBits reads the probe's "wrote <bits> wire <hex>" line.
+func packetWriteCFloatReadBits(out string) (uint32, string, bool) {
 	for line := range strings.SplitSeq(strings.TrimSpace(out), "\n") {
 		rest, ok := strings.CutPrefix(line, "wrote ")
 		if !ok {
 			continue
 		}
-		bits, err := strconv.ParseUint(strings.TrimSpace(rest), 16, 32)
-		if err != nil {
-			return 0, false
+		fields := strings.Fields(rest)
+		if len(fields) != 3 || fields[1] != "wire" {
+			return 0, "", false
 		}
-		return uint32(bits), true
+		bits, err := strconv.ParseUint(fields[0], 16, 32)
+		if err != nil {
+			return 0, "", false
+		}
+		return uint32(bits), fields[2], true
 	}
-	return 0, false
+	return 0, "", false
 }
 
 func TestLobsterPacketWriteCFloatRange(t *testing.T) {
@@ -126,7 +146,7 @@ func TestLobsterPacketWriteCFloatRange(t *testing.T) {
 		t.Fatal("readPacketWriteCFloatCases(t) is empty: the loop below would check nothing")
 	}
 	for _, c := range allReadPacketWriteCFloatCases {
-		out, code := lobsterrun.RunExit(t, dir, "main.lobster", nil, fmt.Sprintf("%08x", c.value))
+		out, code := lobsterrun.RunExit(t, dir, "main.lobster", nil, fmt.Sprintf("%08x", c.value), c.typ)
 		text := strings.TrimSpace(string(out))
 		if c.refused {
 			if code == 0 {
@@ -138,10 +158,13 @@ func TestLobsterPacketWriteCFloatRange(t *testing.T) {
 			t.Errorf("FAILED: %s: a lawful value was refused (exit %d): %s", c.name, code, text)
 			continue
 		}
-		got, ok := packetWriteCFloatReadBits(text)
+		got, wire, ok := packetWriteCFloatReadBits(text)
 		if !ok {
 			t.Errorf("FAILED: %s: the driver printed %q", c.name, text)
 			continue
+		}
+		if c.wire != "" && wire != c.wire {
+			t.Errorf("FAILED: %s: wrote %s, want %s", c.name, wire, c.wire)
 		}
 		if got != c.read {
 			t.Errorf("FAILED: %s: read 0x%08x, want 0x%08x", c.name, got, c.read)

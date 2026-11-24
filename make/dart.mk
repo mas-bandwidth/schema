@@ -129,7 +129,7 @@ BENCH_TABLES_LEGS += generated/bench/tables/dart/.stamp
 # generated (packet .dart + <Base>Block.dart + <Base>Cook.dart, and the wire
 # forms where the unit owns them). Fixed-class units own form 3, and every
 # carried root also owns form 1, including the V, W and R evolution pairs.
-build/tables-generated-dart/.stamp: bin/schema testdata/conformance/feature-witnesses/full/Features.schema $(wildcard tables/backend/*.schema) $(wildcard tables/maps/*.schema) $(wildcard tables/widelist/*.schema) $(wildcard tables/messages/*.schema) $(wildcard tables/scalars/*.schema) $(wildcard tables/stream/*.schema) $(wildcard tables/vocab/*.schema) $(wildcard tables/vocab9/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/G1.schema test/tables/M1.schema test/tables/M2.schema test/tables/P2.schema test/tables/K1.schema test/tables/K2.schema test/tables/A2.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/prior/PriorNarrow.schema test/tables/shapes/Shapes.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/RT1.schema test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/ValueDefaults.schema test/tables/packetunions/PacketUnions.schema
+build/tables-generated-dart/.stamp: bin/schema testdata/conformance/feature-witnesses/full/Features.schema $(wildcard tables/backend/*.schema) $(wildcard tables/maps/*.schema) $(wildcard tables/widelist/*.schema) $(wildcard tables/messages/*.schema) $(wildcard tables/scalars/*.schema) $(wildcard tables/stream/*.schema) $(wildcard tables/vocab/*.schema) $(wildcard tables/vocab9/*.schema) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/G1.schema test/tables/M1.schema test/tables/M2.schema test/tables/P2.schema test/tables/K1.schema test/tables/K2.schema test/tables/A2.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/prior/PriorNarrow.schema test/tables/shapes/Shapes.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/RT1.schema test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/ValueDefaults.schema test/tables/packetunions/PacketUnions.schema testdata/conformance/table-write-bounds/TableWriteBounds.schema
 	@mkdir -p build/tables-generated-dart
 	./bin/schema generate --lang dart --out build/tables-generated-dart/features testdata/conformance/feature-witnesses/full/Features.schema
 	./bin/schema generate --lang dart --out build/tables-generated-dart/examples tables/examples
@@ -190,6 +190,7 @@ build/tables-generated-dart/.stamp: bin/schema testdata/conformance/feature-witn
 	./bin/schema generate --lang dart --out build/tables-generated-dart/tblann4097 test/tables/announce4097/Announce.schema
 	./bin/schema generate --lang dart --out build/tables-generated-dart/valuedefaults test/tables/ValueDefaults.schema
 	./bin/schema generate --lang dart --out build/tables-generated-dart/packetunions test/tables/packetunions/PacketUnions.schema
+	./bin/schema generate --lang dart --out build/tables-generated-dart/writebounds testdata/conformance/table-write-bounds/TableWriteBounds.schema
 	@touch $@
 
 # THE DART TABLE SOURCES ARE FORMAT-CANONICAL. `dart format` is the language's
@@ -2025,9 +2026,9 @@ build/packet-write-cfloat/dart/.stamp: bin/schema test/packet-write-cfloat/Packe
 packet-write-cfloat-dart: build/mustrun build/packet-write-cfloat/dart/.stamp
 	$(DART) analyze build/packet-write-cfloat/dart test/packet-write-cfloat/dart
 	$(DART) format --set-exit-if-changed --output=none build/packet-write-cfloat/dart test/packet-write-cfloat/dart
-	$(MUSTRUN) -name packet-write-cfloat-dart -count 10 -- $(DART) --enable-asserts test/packet-write-cfloat/dart/main.dart test/packet-write-cfloat/cases.txt
+	$(MUSTRUN) -name packet-write-cfloat-dart -count 12 -- $(DART) --enable-asserts test/packet-write-cfloat/dart/main.dart test/packet-write-cfloat/cases.txt
 	$(DART) compile exe -o build/packet-write-cfloat/dart/checker test/packet-write-cfloat/dart/main.dart >/dev/null
-	$(MUSTRUN) -name packet-write-cfloat-dart-aot -count 10 -- ./build/packet-write-cfloat/dart/checker test/packet-write-cfloat/cases.txt
+	$(MUSTRUN) -name packet-write-cfloat-dart-aot -count 12 -- ./build/packet-write-cfloat/dart/checker test/packet-write-cfloat/cases.txt
 
 packet-write-cfloat-dart-negative-control: packet-write-cfloat-dart
 	@rm -rf build/packet-write-cfloat/dart-negative && mkdir -p build/packet-write-cfloat/dart-negative

@@ -442,6 +442,8 @@ build/tables-generated/w2/W2Table.cpp
 build/tables-generated/w2/W2Table.h
 build/tables-generated/widelist/WidesTable.cpp
 build/tables-generated/widelist/WidesTable.h
+build/tables-generated/writebounds/TableWriteBoundsTable.cpp
+build/tables-generated/writebounds/TableWriteBoundsTable.h
 generated/bench/paired/cpp/BenchTable.cpp
 generated/bench/paired/cpp/BenchTable.h
 generated/bench/paired/cpp/FixedTableTable.cpp

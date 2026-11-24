@@ -178,7 +178,7 @@ packet-write-cfloat-goose: goose-packet-ready build/mustrun
 	./build/schema-goose-packet generate --lang goose --out build/packet-write-cfloat/goose test/packet-write-cfloat/PacketCFloat.schema
 	cp test/goose/driverlib.goose test/packet-write-cfloat/goose/main.goose build/packet-write-cfloat/goose/
 	go run ./test/packet-write-cfloat/goose/cases.go test/packet-write-cfloat/cases.txt > build/packet-write-cfloat/goose/cases
-	$(MUSTRUN) -name packet-write-cfloat-goose -count 10 -- $(GOOSE) run build/packet-write-cfloat/goose/main.goose < build/packet-write-cfloat/goose/cases
+	$(MUSTRUN) -name packet-write-cfloat-goose -count 12 -- $(GOOSE) run build/packet-write-cfloat/goose/main.goose < build/packet-write-cfloat/goose/cases
 
 packet-write-cfloat-goose-negative-control: packet-write-cfloat-goose
 	$(call goose-packet-sabotaged,build/packet-write-cfloat/goose-negative,packet-write-cfloat-goose,internal/codegen/goose/write.go)

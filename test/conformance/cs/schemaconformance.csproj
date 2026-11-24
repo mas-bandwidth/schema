@@ -68,6 +68,7 @@
     <Compile Include="$(TablesGeneratedDir)/cooktorture/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/cooktorturewide/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/packetunions/*.cs" />
+    <Compile Include="$(TablesGeneratedDir)/writebounds/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/scalars/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/messages/*.cs" />
     <Compile Include="$(TablesGeneratedDir)/m1/*.cs" />

@@ -59,16 +59,41 @@ void main(List<String> args) {
       );
     }
     final refused = fields[2] == 'refused';
-    final readsBack = fields.length > 4 ? parseValue(fields[4]) : x;
+    // [reads-back <v>] [type RatioEndpoint] [wire <hex>], in pairs
+    var readsBack = x;
+    var ratio = false;
+    String? wireHex;
+    if (fields.length % 2 != 1) {
+      throw StateError('cases: $name: a modifier has no operand');
+    }
+    for (var i = 3; i + 1 < fields.length; i += 2) {
+      switch (fields[i]) {
+        case 'reads-back':
+          readsBack = parseValue(fields[i + 1]);
+        case 'type':
+          if (fields[i + 1] != 'RatioEndpoint') {
+            throw StateError('cases: $name: unknown type ${fields[i + 1]}');
+          }
+          ratio = true;
+        case 'wire':
+          wireHex = fields[i + 1].toLowerCase();
+        default:
+          throw StateError('cases: $name: unknown modifier ${fields[i]}');
+      }
+    }
 
     final value = CFloat();
     value.x = x;
-    final view = ByteData(cFloatMaxBytes);
+    final ratioValue = RatioEndpoint();
+    ratioValue.ratio = x;
+    final view = ByteData(ratio ? ratioEndpointMaxBytes : cFloatMaxBytes);
 
     var fired = false;
     var written = 0;
     try {
-      written = writeCFloat(value, view);
+      written = ratio
+          ? writeRatioEndpoint(ratioValue, view)
+          : writeCFloat(value, view);
     } on AssertionError {
       fired = true;
     }
@@ -84,14 +109,25 @@ void main(List<String> args) {
       check(false, 'packet-write-cfloat $name: lawful value was refused');
       continue;
     }
+    if (wireHex != null) {
+      final got = [
+        for (var i = 0; i < written; i++)
+          view.getUint8(i).toRadixString(16).padLeft(2, '0'),
+      ].join();
+      check(
+        got == wireHex,
+        'packet-write-cfloat $name: wrote $got, want $wireHex',
+      );
+    }
     final back = CFloat();
-    final read = readCFloat(back, view, written * 8);
+    final ratioBack = RatioEndpoint();
+    final read = ratio
+        ? readRatioEndpoint(ratioBack, view, written * 8)
+        : readCFloat(back, view, written * 8);
     check(read, 'packet-write-cfloat $name: the writer bytes read back');
     if (read) {
-      check(
-        back.x == readsBack,
-        'packet-write-cfloat $name: read back ${back.x}',
-      );
+      final got = ratio ? ratioBack.ratio : back.x;
+      check(got == readsBack, 'packet-write-cfloat $name: read back $got');
     }
   }
 
