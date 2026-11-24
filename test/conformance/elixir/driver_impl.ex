@@ -1212,6 +1212,62 @@ defmodule Driver do
     e -> "threw " <> inspect(e.__struct__) <> "\n"
   end
 
+  # THE RETAIN FORM (test/conformance/README.md; SPEC-TABLES §6.5, §6.6): the
+  # retaining load of a variable root into ONE report the driver pre-fills,
+  # then the damaged load and the lawful load again into that same report.
+  # Elixir reports are maps the caller may build freely, so every field is set
+  # directly (every counter nonzero, the reason and the missing_required flag
+  # set, and a stray blob_shared); no refused read is needed to fill it. The
+  # returned report is threaded from one step to the next, and after each
+  # lawful load it must equal, field by field, the report the same load
+  # leaves in a FRESH report.
+  defp read_into(unit, root, "retain", lawful, damaged, _count, _announcement) do
+    mod = table_module(unit) || raise "read-into: unit #{unit} has no Table module"
+    zero = %{unknown: 0, widened: 0, retained: 0, retain_lost: 0, reason: "", missing_required: 0}
+
+    load = fn path, report ->
+      # a roomy retention buffer, a fresh one for every load
+      retain = %{records: [], used: 0, cap: 1_048_576, ids: [], id_cap: 131_072}
+
+      try do
+        case mod.load_retain(root, File.read!(path), retain, report) do
+          {:ok, _value, report, _retain} -> {"read\n", report}
+          {:error, _reason, report, _retain} -> {"refused\n", report}
+        end
+      rescue
+        _ -> {"threw\n", report}
+      end
+    end
+
+    {fresh_line, fresh} = load.(lawful, zero)
+
+    if fresh_line != "read\n" do
+      raise "ri_retain: the lawful retaining load did not read into a fresh report (#{fresh_line})"
+    end
+
+    compare = fn report ->
+      if report == fresh,
+        do: "zeroed\n",
+        else: "kept #{inspect(report)} want #{inspect(fresh)}\n"
+    end
+
+    stale = %{
+      unknown: 7,
+      widened: 7,
+      retained: 7,
+      retain_lost: 7,
+      reason: "stale",
+      missing_required: 7,
+      blob_shared: 7
+    }
+
+    {first, report} = load.(lawful, stale)
+    first_compare = compare.(report)
+    {second, report} = load.(damaged, report)
+    {third, report} = load.(lawful, report)
+    first <> first_compare <> second <> third <> compare.(report)
+  end
+
   defp read_into(unit, root, form, lawful, damaged, count, announcement) do
     n = String.to_integer(count)
     table = table_module(unit) || raise "read-into: unit #{unit} has no Table module"
