@@ -76,15 +76,23 @@ generated/rust/.stamp: bin/schema $(SCHEMAS)
 # walk over the 7.5 MiB vector would cost hours and cover no check the small
 # vectors do not — and the native leg runs it in full.
 #
-# It needs the nightly toolchain and the miri component:
-# `rustup toolchain install nightly && rustup +nightly component add miri`.
+# It needs a nightly toolchain with the miri component, PINNED (MIRI_TOOLCHAIN)
+# and installed by rustup into a home of its own (MIRI_RUSTUP_HOME, under
+# build/): `cargo +nightly` resolves only through a rustup proxy, and the
+# fleet's cargo is not one, so the gate runs the pinned toolchain's own bin.
+# Nothing it does leaves the workspace: CARGO_HOME is build/miri-cargo too,
+# and the install passes --no-self-update, so a nightly row never upgrades the
+# runner's own rustup (it did once, on vision, 2026-11-24).
 #
-# IT IS A BY-HAND GATE, like tables-cook-scale-1gb: 51,940 mutants at the
-# defaults measured 478 s on arm64 macOS, which is not a per-push cost. What
-# rides every push is the NATIVE leg (tables-rust-fuzz), 409,746 mutants in
-# 4.5 s at N=100000.
+# IT RUNS NIGHTLY (certify.yml nightly-gates row miri-rust, 2026-11-24; until then it was a
+# by-hand gate no workflow ran): 51,940 mutants at the defaults measured 478 s
+# on arm64 macOS, which is not a per-push cost. What rides every push is the
+# NATIVE leg (tables-rust-fuzz), 409,746 mutants in 4.5 s at N=100000.
 MIRI_N ?= 8
 MIRI_MAX_SEED_BYTES ?= 4224
+MIRI_TOOLCHAIN ?= nightly-2026-10-01
+MIRI_RUSTUP_HOME ?= $(CURDIR)/build/miri-rustup
+MIRI_CARGO_HOME ?= $(CURDIR)/build/miri-cargo
 
 # THE GENERATED RUST BUILDS CLEAN UNDER CLIPPY, WARNINGS DENIED. A consumer
 # who runs clippy over their own crate runs it over the generated modules too,
@@ -221,12 +229,21 @@ tables-rust-fuzz: build/block-fuzz/.stamp build/cook-fuzz/.stamp build/tables-ge
 	SEED=$(SEED) N=$(N) ./test/rust-fuzz/target/debug/rust-fuzz
 
 .PHONY: tables-rust-fuzz-miri
-tables-rust-fuzz-miri: build/block-fuzz/.stamp build/cook-fuzz/.stamp build/tables-generated-rust/.stamp
-	cd test/rust-fuzz && PATH="$(RUSTUP_BIN):$$PATH" \
+tables-rust-fuzz-miri: build/block-fuzz/.stamp build/cook-fuzz/.stamp build/tables-generated-rust/.stamp $(MIRI_RUSTUP_HOME)/$(MIRI_TOOLCHAIN).stamp
+	bin=$$(echo "$(MIRI_RUSTUP_HOME)"/toolchains/$(MIRI_TOOLCHAIN)-*/bin); \
+	test -x "$$bin/cargo-miri" || { echo "tables-rust-fuzz-miri: no cargo-miri under $$bin"; exit 1; }; \
+	cd test/rust-fuzz && RUSTUP_HOME="$(MIRI_RUSTUP_HOME)" CARGO_HOME="$(MIRI_CARGO_HOME)" PATH="$$bin:$$PATH" \
 		MIRIFLAGS="-Zmiri-disable-isolation" SEED=$(SEED) N=$(MIRI_N) \
 		MAX_SEED_BYTES=$(MIRI_MAX_SEED_BYTES) \
 		BLOCK_SEEDS="$(CURDIR)/build/block-fuzz" COOK_FIXTURES="$(CURDIR)/build/cook-fuzz" \
-		cargo +nightly miri run --quiet
+		cargo miri run --quiet
+
+# the pinned nightly and its miri, in a rustup home of the gate's own
+$(MIRI_RUSTUP_HOME)/$(MIRI_TOOLCHAIN).stamp:
+	mkdir -p "$(MIRI_RUSTUP_HOME)" "$(MIRI_CARGO_HOME)"
+	RUSTUP_HOME="$(MIRI_RUSTUP_HOME)" CARGO_HOME="$(MIRI_CARGO_HOME)" PATH="$(RUSTUP_BIN):$$PATH" \
+		rustup toolchain install $(MIRI_TOOLCHAIN) --no-self-update --profile minimal -c miri,rust-src
+	touch "$@"
 
 # THE RUST NAME-CLAIM NEGATIVE CONTROL (docs/SPEC-TABLES.md §11). The claim
 # that a schema declaration may not lower onto one of the table runtime's Rust

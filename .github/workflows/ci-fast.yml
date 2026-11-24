@@ -517,7 +517,7 @@ jobs:
             # readiness checks, negativecontrols matrix checks, and
             # slowgatescan shard coverage (~8 s total in one go-test-touched row).
             if grep -qE '^(\.github/(workflows|actions)/|test/conformance/nightly-readiness$)' <<<"$files"; then
-              for p in ./internal/codegen/pythontable ./internal/codegen/rubytable ./tools/negativecontrols ./tools/slowgatescan; do
+              for p in ./internal/codegen/pythontable ./internal/codegen/rubytable ./tools/negativecontrols ./tools/slowgatescan ./tools/wiredtargets; do
                 case " $packages " in *" $p "*) ;; *) packages="$packages $p" ;; esac
               done
             fi
@@ -869,6 +869,14 @@ jobs:
       # in the build cache, so it costs about a second.
       - name: no dropped errors in cmd/ and tools/
         run: go run ./tools/errdiscard
+      # NOTHING LEFT OUT (2026-11-24): every make target named like a test,
+      # gate or control is reached from a workflow, a nightly-fast row, a
+      # nightly gate (.github/nightly-gates.txt), a negative-control group or
+      # a planner, or is named with its reason in .github/unwired-targets.txt;
+      # tools/wiredtargets refuses the rest by name, and refuses a ledger line
+      # that excuses nothing. About 4 s.
+      - name: every test and control target is wired
+        run: go run ./tools/wiredtargets
 
   # Keep policy checks in a separate two-minute job: on loaded runners the
   # whole-tree modernizer and these checks exceed the combined budget.

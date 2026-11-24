@@ -1443,6 +1443,8 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"certify.yml:inline-gate",
 		"certify.yml:negative-controls-nightly",
 		"certify.yml:negative-controls-nightly-matrix",
+		"certify.yml:nightly-gates",
+		"certify.yml:nightly-gates-plan",
 		"certify.yml:release-differential",
 		"certify.yml:release-gates",
 		"certify.yml:release-targets",
