@@ -16,14 +16,14 @@
 LUA_FUZZ_SEED ?= 1
 LUA_FUZZ_N    ?= 2000
 # The Lua leg answers every plain root, form 1 and the form-2 message roots, so it
-# holds no wire-absent ledger (make/wire-absent.mk, W-ROSTER): the harness fails any
-# absent root.
+# holds no wire-absent ledger (test/conformance/harness/wirefuzz_absent.go, W-ROSTER):
+# the harness fails any absent root.
 
 .PHONY: tables-lua-wire-fuzz
 tables-lua-wire-fuzz: build/conformance-harness build/conformance-lua
 	@mkdir -p build
-	@./build/conformance-harness wire-fuzz \
-		--driver '$(LUA) test/conformance/lua/wirefuzz.lua build/conformance-lua' $(call WIRE_ABSENT,lua-plain) \
+	@./build/conformance-harness wire-fuzz --leg lua \
+		--driver '$(LUA) test/conformance/lua/wirefuzz.lua build/conformance-lua' \
 		--seed $(LUA_FUZZ_SEED) --n $(LUA_FUZZ_N) \
 		> build/tables-lua-wire-fuzz.log 2>&1; \
 		status=$$?; cat build/tables-lua-wire-fuzz.log; \

@@ -111,6 +111,7 @@ func runGooseWireFuzzVerdictPipe(t *testing.T, harness, leg, unit string, retain
 	failed := filepath.Join(t.TempDir(), "failed.bin")
 	args := []string{
 		"wire-fuzz",
+		"--leg", "goose-unit", "--unit", unit,
 		"--builder",
 	}
 	if retain {
