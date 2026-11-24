@@ -8,14 +8,20 @@
 // This writer is V1 with exactly those three taken back: no `b`, `a` already
 // float32, `ledger` already keyed. Every other edit V2 makes (a variant and an
 // arm inserted in the middle, the rename under `was`, the slid and the added
-// keys, the grown Inner, the shrunk and grown bounds, the optional) is lawful,
+// keys, the grown Inner, the grown bounds, the optional) is lawful,
 // and is still read through a plan compiled from this older writer's block.
+//
+// Two of V1's edits are narrowings, unlawful as the rest (FIXED-FORM-ALGORITHM
+// §5.2 EMIT): V1's Slot key Gamma, which V2 removed, and V1's [..6] slots,
+// which V2 shrank to [..3]. They are taken back here too: Slot has no Gamma
+// and MaxSlots is 2, a bound V2 GREW. The Go reference refuses either one, and
+// internal/codegen/gotable TestFixedV1LIsALawfulWriterForV2 holds this writer to it.
 //
 // It sits in its own directory on purpose: it is in no lineage (V2's is V1),
 // and the checks drive it through COMPILE directly, as v_case always has.
 package tblv1l
 
-const MaxSlots = 6
+const MaxSlots = 2
 
 const TallySlots = 3
 
@@ -23,7 +29,7 @@ enum Mode { Alpha, Beta }
 
 enum Grade { Bronze, Gold }
 
-enum Slot { Alpha, Beta, Gamma, Delta }
+enum Slot { Alpha, Beta, Delta }
 
 type Inner
 {

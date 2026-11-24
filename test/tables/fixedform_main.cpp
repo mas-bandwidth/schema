@@ -338,7 +338,7 @@ static void v_case()
 
     // THE REMAP ITSELF is the COMPILED PLAN's (docs/FIXED-FORM-ALGORITHM.md
     // §5.2), and it is owed on a LAWFUL older writer. V1L is V1 with only the
-    // three unlawful edits taken back (test/tables/lawful/v1l): the plan V2
+    // unlawful edits taken back, the narrowings among them (test/tables/lawful/v1l): the plan V2
     // compiles from V1L's layout, run over V1L's record body, moves every field
     // by NAME. This drives the same three primitives the loader calls (as
     // negative_control and bounds_case do): COMPILE, the prefill, RUN.
