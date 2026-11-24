@@ -251,6 +251,7 @@ var catalog = []Entry{
 	e("test/c-tables", "C table tests", "make test-c", "make test-c"),
 	e("test/c-two-units", "C two units in one TU", "make tables-c-two-units", "make tables-c-two-units"),
 	e("test/verify-vm", "VM optimization fast-verify deep runner", "make verify-js-bench", "go build -o build/vmverify ./test/verify-vm"),
+	e("test/testguard", "tools/testguard configs, baselines and coverage tables for the ci-policy rows", "go test ./tools/testguard", "go run ./tools/testguard check --config test/testguard/ci-policy-rest.tsv RECORD..."),
 	e("test/conformance", "cross-language table matrix", "make conformance", "make conformance"),
 	e("test/cookgen", "cook fixture generator", "make tables-cook-scale", "go build -o build/cookgen ./test/cookgen"),
 	e("test/cpp-hostile", "C++ hostile-corpus runner", "make schema-cpp-runs-hostile-corpus", "make schema-cpp-runs-hostile-corpus"),
