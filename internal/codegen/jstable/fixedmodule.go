@@ -505,7 +505,6 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	// that is not the file's, where the answer it is owed is `layout_newer`.
 	g.pf("  if (plan === null) { report.refused = TableFixedRefusal.PlanTooLarge; return -1; }\n")
 	g.pf("  let entries = %sFixedIdentity, entryCount = 1, remap = null;\n", st.Name)
-	g.pf("  let censusUnknown = 0, censusKind = 0;\n")
 	if writerBounds {
 		g.pf("  let writerBounds = null;\n")
 	}
@@ -518,9 +517,6 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("    // a plan that does not fit refuses BY NAME.\n")
 	g.pf("    if (lane.count > plan.capacity) { report.refused = TableFixedRefusal.PlanTooLarge; return -1; }\n")
 	g.pf("    entries = lane.entries; entryCount = lane.count; remap = lane.remap;\n")
-	g.pf("    // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4); it lands\n")
-	g.pf("    // after the loop, on a read that RETURNS — REFUSE moves no counter.\n")
-	g.pf("    censusUnknown = lane.unknown; censusKind = lane.mismatch;\n")
 	if writerBounds {
 		g.pf("    writerBounds = %sFixedWriterBounds[pick];\n", st.Name)
 	}
@@ -609,13 +605,11 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("    }\n")
 	g.pf("    at += recordBytes;\n")
 	g.pf("  }\n  }\n")
-	g.pf("  // THE COMPILE CENSUS AND THE LOOP'S COUNTERS LAND ONCE, AFTER THE LOOP, on\n")
-	g.pf("  // a read that returns (§5.3, §5.9 #6). On a LAWFUL lineage unknown and\n")
-	g.pf("  // mismatch land zero, always (§5.9 #30).\n")
+	g.pf("  // THE LOOP'S COUNTERS LAND ONCE, AFTER THE LOOP, on a read that returns\n")
+	g.pf("  // (§5.3, §5.9 #6). There is no compile census: an unlawful lineage entry\n")
+	g.pf("  // refused above by name and laid no plan (§5.4, §5.9 #30).\n")
 	g.pf("  report.oor += stage.oor;\n")
 	g.pf("  report.widened += stage.widened;\n")
-	g.pf("  report.unknown += censusUnknown;\n")
-	g.pf("  report.mismatch += censusKind;\n")
 	g.pf("  return n;\n}\n\n")
 	// R4: EVERY REFUSAL HANDS BACK NO ROW. The walk above answers -1 for every
 	// refusal and never says which rows it touched, so the exported read resets
