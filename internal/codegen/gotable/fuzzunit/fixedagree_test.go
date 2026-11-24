@@ -52,6 +52,9 @@ func TestGeneratedFixedAgreesWithEngine(t *testing.T) {
 		root := m.Lookup(target.name)
 		if root == nil || !tablewire.FixedRoot(m, root) {
 			t.Logf("%s: not an engine fixed root", target.name)
+			t.Run(target.name, func(t *testing.T) {
+				slowtest.SkipRow(t, "the engine does not treat this target as a fixed root, so there is no fixed read to compare")
+			})
 			continue
 		}
 		for _, v := range []any{target.zero(), target.away()} {

@@ -150,11 +150,17 @@ func TestLuaFromJsonIsStrict(t *testing.T) {
 		u := luarun.LoadUnit(t, paths...)
 		if len(ir.TableWideFields(u)) > 0 {
 			t.Logf("unit %s carries the wide kinds; its JSON rows are not this card's (docs/SPEC-TABLES.md §15)", unit)
+			t.Run(unit, func(t *testing.T) {
+				slowtest.SkipRow(t, "UNPORTED: the strict JSON rows of a unit with the wide kinds are owed (docs/SPEC-TABLES.md §15)")
+			})
 			continue
 		}
 		luaFiles, err := Generate(u)
 		if err != nil {
 			t.Logf("unit %s is not generated for lua: %v", unit, err)
+			t.Run(unit, func(t *testing.T) {
+				slowtest.SkipRow(t, "the Lua table backend does not generate this unit: "+err.Error())
+			})
 			continue
 		}
 

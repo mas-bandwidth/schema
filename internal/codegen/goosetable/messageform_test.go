@@ -36,6 +36,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/goose/gooserun"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/tabletext"
 	"github.com/mas-bandwidth/schema/v2/internal/tablewire"
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -512,6 +513,9 @@ func TestGooseMessageFormMatchesTheGoldens(t *testing.T) {
 			// a VARIABLE root (graph_tree's Scene): the variable class is
 			// the id-table card's, and the row is named here, not counted
 			t.Logf("%s: %s is a variable root, owed with the id-table wire (#2236)", row.name, row.root)
+			t.Run(row.name, func(t *testing.T) {
+				slowtest.SkipRow(t, "UNPORTED: "+row.root+" is a variable root; the variable class is owed with the id-table wire (#2236)")
+			})
 			continue
 		}
 		carried++

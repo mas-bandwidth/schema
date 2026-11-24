@@ -148,6 +148,8 @@ skip inapplicable ^docs/SPEC-TABLES\.md §3\.4 does not list
 skip inapplicable ^a sibling C\+\+ serialize checkout at .* resolves SERIALIZE
 skip inapplicable records with no capacity \(schema-fixedproof-x1's row\)
 skip inapplicable ^FirstV3ModuleTag is unset: 
+skip inapplicable ^the crossing does not run `
+skip inapplicable ^the engine does not treat this target as a fixed root
 
 # retired, unported: THE TEST RUNS IN NO LANE. Each names the document that
 # owes it. Provided by no lane: these lines are the count of what is owed,

@@ -357,6 +357,9 @@ func TestLuaStrictReadRefusesWhatGoRefuses(t *testing.T) {
 			// kinds yet (docs/SPEC-TABLES.md §3, §15); a unit it refuses to emit
 			// has no Lua strict read to pin.
 			t.Logf("unit %s is not carried by the Lua table backend: %v", g.name, err)
+			t.Run(g.name, func(t *testing.T) {
+				slowtest.SkipRow(t, "the Lua table backend does not generate this unit: "+err.Error())
+			})
 			continue
 		}
 		goAns := strictGoOracle(t, g.unit, g.cases)

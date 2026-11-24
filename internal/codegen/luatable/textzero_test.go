@@ -19,8 +19,9 @@ import (
 // Lua carries: string(8), *string, a map[string(8)] key, a map
 // key and a string one table down, with \u0000 at the front, middle and end.
 // A \u0001 in the same place reads clean and writes, reads and writes the same
-// text. A text list, an unbounded key and a timestamp are named and skipped:
-// the Lua JSON read does not carry them yet.
+// text. A text list, an unbounded key and a timestamp run too: the first two refuse as
+// text_holds_zero, and a timestamp, which is not text storage, refuses by its
+// own name, timestamp_not_rfc3339.
 func TestLuaTextZeroByteTakesOneRuleInEveryForm(t *testing.T) {
 	t.Parallel()
 	work := t.TempDir()
@@ -60,26 +61,29 @@ table Root
 
 	forms := []struct {
 		name, template, field string
-		control, skip         bool
+		control               bool
+		// want overrides the refusal: a timestamp is not text storage, so its
+		// zero falls through to the RFC 3339 rule, as the Go oracle does
+		// (internal/codegen/gotable/textzero_test.go)
+		want string
 	}{
-		{"t", `{"t":"%s"}`, "Root.t", true, false},
-		{"s", `{"s":"%s"}`, "Root.s", true, false},
-		{"m", `{"m":{"ok":1,"%s":2}}`, "Root.m", true, false},
-		{"i", `{"i":{"n":"%s"}}`, "Inner.n", true, false},
-		{"k", `{"k":{"7":1,"%s":2}}`, "Root.k", false, false},
-		{"l", `{"l":["ok","%s"]}`, "Root.l", false, true},
-		{"u", `{"u":{"ok":1,"%s":2}}`, "Root.u", false, true},
-		{"at", `{"at":"%s"}`, "Root.at", false, true},
+		{"t", `{"t":"%s"}`, "Root.t", true, ""},
+		{"s", `{"s":"%s"}`, "Root.s", true, ""},
+		{"m", `{"m":{"ok":1,"%s":2}}`, "Root.m", true, ""},
+		{"i", `{"i":{"n":"%s"}}`, "Inner.n", true, ""},
+		{"k", `{"k":{"7":1,"%s":2}}`, "Root.k", false, ""},
+		{"l", `{"l":["ok","%s"]}`, "Root.l", false, ""},
+		{"u", `{"u":{"ok":1,"%s":2}}`, "Root.u", false, ""},
+		{"at", `{"at":"%s"}`, "Root.at", false, "timestamp_not_rfc3339: at"},
 	}
 	for _, f := range forms {
-		if f.skip {
-			t.Logf("skipped %s: the Lua JSON read does not carry this construct yet", f.name)
-			continue
-		}
 		for _, at := range []string{`\u0000ab`, `a\u0000b`, `ab\u0000`} {
 			text := fmt.Sprintf(f.template, at)
 			lines := textZeroRun(t, dir, text)
 			want := "text_holds_zero: " + f.field
+			if f.want != "" {
+				want = f.want
+			}
 			if len(lines) < 2 || lines[0] != "refused" || lines[1] != want {
 				t.Errorf("%s %s: got %q, want refused with %q", f.name, text, lines, want)
 				continue

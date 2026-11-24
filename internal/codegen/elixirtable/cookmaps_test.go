@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -110,6 +112,10 @@ const cookMapsProbeHead = `
 defmodule Probe do
   def check(true, _name, _what), do: :ok
 
+  # a row is counted only when it ran to the end: loaded, measured, short
+  # buffer refused, and both byte orders compared
+  def row, do: Process.put(:rows, Process.get(:rows, 0) + 1)
+
   def check(false, name, what) do
     IO.puts(:stderr, "FAIL " <> name <> ": " <> what)
     Process.put(:failed, true)
@@ -124,7 +130,7 @@ rescue
   e -> Probe.check(false, "probe", Exception.format(:error, e, __STACKTRACE__))
 end
 
-if Process.get(:failed), do: System.halt(1), else: IO.puts("ok")
+if Process.get(:failed), do: System.halt(1), else: IO.puts("ok rows=" <> Integer.to_string(Process.get(:rows, 0)))
 `
 
 // TestCookWriteMapsAndListsElixir is the M19 cook-write gate on the Elixir leg
@@ -186,6 +192,8 @@ case %s.load(table, File.read!(wire)) do
           end
         end
 
+        Probe.row()
+
       other ->
         Probe.check(false, name, "absent: the measure answered " <> inspect(other))
     end
@@ -200,7 +208,15 @@ end
 			if !strings.Contains(out, "ok") {
 				t.Fatalf("probe did not finish:\n%s", out)
 			}
-			t.Logf("cook-write %s: %d/%d rows, both byte orders", p, len(rows), len(rows))
+			m := regexp.MustCompile(`ok rows=(\d+)`).FindStringSubmatch(out)
+			if m == nil {
+				t.Fatalf("the probe did not report how many rows it ran:\n%s", out)
+			}
+			ran, _ := strconv.Atoi(m[1])
+			if ran != len(rows) {
+				t.Fatalf("cook-write %s: the probe ran %d of %d rows", p, ran, len(rows))
+			}
+			t.Logf("cook-write %s: %d/%d rows measured, both byte orders", p, ran, len(rows))
 		})
 	}
 }

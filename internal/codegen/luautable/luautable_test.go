@@ -15,6 +15,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luau/luaurun"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/luautable"
 	"github.com/mas-bandwidth/schema/v2/internal/irtest"
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 const root = "../../.."
@@ -63,6 +64,10 @@ func TestLuauTableDescriptorsLoad(t *testing.T) {
 		if err != nil {
 			gotRefused[key] = err.Error()
 			t.Logf("luau refuses unit %s: %v", key, err)
+			refusal := err.Error()
+			t.Run(key, func(t *testing.T) {
+				slowtest.SkipRow(t, "UNPORTED: the luau backend refuses unit "+key+" ("+refusal+"); its table descriptors are unchecked until the backend generates it")
+			})
 			continue
 		}
 		var mods []string
