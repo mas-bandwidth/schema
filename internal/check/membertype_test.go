@@ -50,8 +50,8 @@ func TestFieldNamedLikeItsOwnType(t *testing.T) {
 		})
 	}
 	for name, src := range map[string]string{
-		"differing by case":    head + "type Inner\n{\n    kind Kind2\n}\n",
-		"another field name":   head + "type Inner\n{\n    mode kind\n}\n",
+		"differing by case":             head + "type Inner\n{\n    kind Kind2\n}\n",
+		"another field name":            head + "type Inner\n{\n    mode kind\n}\n",
 		"a table field of another name": head + "table Doc\n{\n    mode kind\n}\n",
 	} {
 		t.Run(name, func(t *testing.T) {
