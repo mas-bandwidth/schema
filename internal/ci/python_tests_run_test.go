@@ -18,6 +18,12 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
+var yamlComment = regexp.MustCompile(`(^|\s)#.*$`)
+
+// stripYAMLComment drops a trailing or whole-line YAML comment, so a command
+// named only in a comment does not count as run.
+func stripYAMLComment(line string) string { return yamlComment.ReplaceAllString(line, "") }
+
 var recipeTarget = regexp.MustCompile(`^([^:=\s#][^:=]*):(?:[^=]|$)`)
 
 // unrunPythonTests returns the repo-relative *_test.py files that nothing runs.
@@ -26,8 +32,10 @@ var recipeTarget = regexp.MustCompile(`^([^:=\s#][^:=]*):(?:[^=]|$)`)
 func unrunPythonTests(files []string, makeFiles, workflowFiles map[string]string, groupText string) []string {
 	var wf strings.Builder
 	for _, text := range workflowFiles {
-		wf.WriteString(text)
-		wf.WriteString("\n")
+		for _, line := range strings.Split(text, "\n") {
+			wf.WriteString(stripYAMLComment(line))
+			wf.WriteString("\n")
+		}
 	}
 	reached := func(target string) bool {
 		word := regexp.MustCompile(`(^|[^A-Za-z0-9_.-])` + regexp.QuoteMeta(target) + `($|[^A-Za-z0-9_.-])`)
@@ -37,7 +45,7 @@ func unrunPythonTests(files []string, makeFiles, workflowFiles map[string]string
 	for _, file := range files {
 		ok := false
 		for _, line := range strings.Split(wf.String(), "\n") {
-			if strings.Contains(line, file) && !strings.HasPrefix(strings.TrimSpace(line), "#") {
+			if strings.Contains(line, file) {
 				ok = true
 			}
 		}
@@ -134,11 +142,13 @@ func TestUnrunPythonTestWitness(t *testing.T) {
 	mk := map[string]string{"Makefile": "" +
 		"wired:\n\tpython3 -I a/wired_test.py\n" +
 		"orphan-target:\n\tpython3 -I a/orphan_test.py\n" +
-		"commented:\n\t# python3 a/comment_test.py\n\ttrue\n"}
-	wf := map[string]string{"ci.yml": "      - run: make wired\n      - run: python3 b/direct_test.py\n      # c/never_test.py\n"}
-	files := []string{"a/wired_test.py", "a/orphan_test.py", "a/comment_test.py", "b/direct_test.py", "c/never_test.py", "d/absent_test.py"}
+		"commented:\n\t# python3 a/comment_test.py\n\ttrue\n" +
+		"trailing-target:\n\tpython3 -I a/trailing_test.py\n"}
+	wf := map[string]string{"ci.yml": "      - run: make wired\n      - run: python3 b/direct_test.py\n      # c/never_test.py\n" +
+		"      - run: true # make trailing-target\n"}
+	files := []string{"a/wired_test.py", "a/orphan_test.py", "a/comment_test.py", "b/direct_test.py", "c/never_test.py", "d/absent_test.py", "a/trailing_test.py"}
 	got := unrunPythonTests(files, mk, wf, "")
-	want := []string{"a/comment_test.py", "a/orphan_test.py", "c/never_test.py", "d/absent_test.py"}
+	want := []string{"a/comment_test.py", "a/orphan_test.py", "a/trailing_test.py", "c/never_test.py", "d/absent_test.py"}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("flagged %v, want %v", got, want)
 	}
