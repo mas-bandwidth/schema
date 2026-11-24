@@ -72,6 +72,11 @@ if [ "$mode" = reader ]; then
     exit 0
 fi
 
+# the wrapper narrows the surfaces to the three text ones and keeps every
+# unit line the real driver's list names, as the JavaScript gate's wrapper
+# does: an opt-in unit left out of the list is handed to no leg and scored
+# ABSENT, which a ticked leg fails. A list with no unit line fails the
+# wrapper's list, so the harness says so.
 cat > "$out/driver" <<WRAP
 #!/bin/sh
 if [ "\$2" = list ]; then
