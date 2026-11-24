@@ -2859,6 +2859,10 @@ def j_write_field(w:JsonWriter, sl:Slot, depth:int) -> bool:
     if s == "map":
         return j_write_map(w, sl, depth)
     if s == "arr":
+        // an array, a text list or an enum-keyed array's object, an empty one
+        // included, is a container the cap counts at its own depth
+        if not j_container_cap(w, f, depth):
+            return false
         if f.array == "keyed":
             return j_write_keyed(w, sl, depth)
         let count = j_array_count(sl)
@@ -2893,7 +2897,21 @@ def j_write_field(w:JsonWriter, sl:Slot, depth:int) -> bool:
         return true
     return j_write_scalar(w, sl.cell, f, depth)
 
+// j_container_cap refuses a container (an array, a text list, a map's object,
+// an enum-keyed array's object or a union's object) at a depth past the cap,
+// an empty [] or {{}} included. The read counts every container it walks
+// (docs/SPEC-TABLES.md §16.2), so the write counts the same ones in the same
+// unit (§16.14 W2), or it writes a text its own reader refuses (Go's
+// internal/tabletext containerCap). A table value is judged by j_write_value
+// and j_write_pointer.
+def j_container_cap(w:JsonWriter, f:FieldDescriptor, depth:int) -> bool:
+    if depth > json_max_depth:
+        return j_fail(w, "field " + f.name + ": a container at depth " + string(depth) + ", past the depth cap: the write counts every container the read does (docs/SPEC-TABLES.md §16.14 W2)")
+    return true
+
 def j_write_map(w:JsonWriter, sl:Slot, depth:int) -> bool:
+    if not j_container_cap(w, sl.fd, depth):
+        return false
     if length(sl.entries) == 0:
         j_raw(w, "{{}}")
         return true
@@ -2959,6 +2977,10 @@ def j_write_keyed(w:JsonWriter, sl:Slot, depth:int) -> bool:
 def j_write_scalar(w:JsonWriter, cell:Value, f:FieldDescriptor, depth:int) -> bool:
     let s = f.s
     if s == "union":
+        // a union is an object with one key, the arm's name; None is {{}}, and
+        // either is a container the cap counts (§16.14 W2)
+        if not j_container_cap(w, f, depth):
+            return false
         if cell.i == 0:
             j_raw(w, "{{}}")
             return true
