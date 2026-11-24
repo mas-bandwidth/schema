@@ -24,6 +24,9 @@ func TestCommittedSplitsRunEveryDeclaredTestExactlyOnce(t *testing.T) {
 	for pkg := range tb.splits {
 		packages[pkg] = true
 	}
+	for pkg := range tb.rides {
+		packages[pkg] = true
+	}
 	for pkg := range tb.subsplits {
 		packages[pkg] = true
 	}
@@ -55,6 +58,11 @@ func TestCommittedSplitsRunEveryDeclaredTestExactlyOnce(t *testing.T) {
 						}
 					}
 					want := 1
+					for _, pat := range tb.ridePatterns(pkg) {
+						if regexp.MustCompile(pat).MatchString(fn.Name.Name) {
+							want = 0 // it rides its leg's verify row (a rides line)
+						}
+					}
 					parent := ""
 					for _, sub := range tb.subsplits[pkg] {
 						if regexp.MustCompile(sub.parent).MatchString(fn.Name.Name) {
@@ -289,3 +297,106 @@ func TestGoNamespaceSplitPreservesOldBoundary(t *testing.T) {
 		}
 	}
 }
+
+// TestRidingTestRunsInNoRow: a rides line's test is skipped by every row of
+// its package, packed, split or complement, and -rides-out names its leg for
+// any selection that holds the package.
+func TestRidingTestRunsInNoRow(t *testing.T) {
+	t.Parallel()
+	tb := table{short: map[string]float64{}, plain: map[string]float64{},
+		splits: map[string][]string{"./s": {"^TestShared"}},
+		rides:  map[string][]ride{"./s": {{pattern: "^TestDriverRefusal$", leg: "rust"}}, "./w": {{pattern: "^TestWhole$", leg: "go"}}}}
+	for _, pkg := range []string{"./s", "./w"} {
+		for _, r := range plan(tb, []string{pkg}, true, 60) {
+			for _, name := range []string{"TestDriverRefusal", "TestWhole"} {
+				if selects(t, r, name) && tb.ridePatterns(pkg) != nil && regexp.MustCompile(tb.ridePatterns(pkg)[0]).MatchString(name) {
+					t.Errorf("row %+v runs the riding test %s", r, name)
+				}
+			}
+		}
+	}
+	rows := plan(tb, []string{"./s"}, true, 60)
+	if len(rows) != 2 || !selects(t, rows[0], "TestSharedFixtures") || !selects(t, rows[1], "TestOther") {
+		t.Errorf("the split and complement rows must still run the package's other tests, got %+v", rows)
+	}
+	if got := rideLegs(tb, []string{"./a", "./s", "./w"}); strings.Join(got, " ") != "go rust" {
+		t.Errorf("rideLegs = %v, want [go rust]", got)
+	}
+	if got := rideLegs(tb, []string{"./a"}); len(got) != 0 {
+		t.Errorf("a selection without a riding package must name no leg, got %v", got)
+	}
+	// PLANTED: a table whose ride is dropped runs the test in a row again.
+	tb.rides = nil
+	ran := false
+	for _, r := range plan(tb, []string{"./s"}, true, 60) {
+		ran = ran || selects(t, r, "TestDriverRefusal")
+	}
+	if !ran {
+		t.Error("PLANTED CONTROL FAILED: without its rides line the test ran in no row either: the check reads nothing")
+	}
+}
+
+// TestEveryRideRunsInItsLegsRow: each committed rides line's test is run by
+// the make target its leg's verify-leg conformance row runs, so a riding test
+// is never a test that runs nowhere.
+func TestEveryRideRunsInItsLegsRow(t *testing.T) {
+	t.Parallel()
+	tb, err := readTable(filepath.Join("..", "..", tablePath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mk, err := os.ReadFile(filepath.Join("..", "..", "make", "verify-compiled.mk"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wf, err := os.ReadFile(filepath.Join("..", "..", ".github", "workflows", "ci-fast.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for pkg, rides := range tb.rides {
+		for _, r := range rides {
+			n++
+			if errs := rideErrs(string(mk), string(wf), pkg, r); len(errs) > 0 {
+				t.Errorf("rides %s %s %s: %s", pkg, r.pattern, r.leg, strings.Join(errs, "; "))
+			}
+			// PLANTED: the go test line taken out of the make file
+			planted := strings.Replace(string(mk), "-run '"+makeQuote(r.pattern)+"' "+pkg, "-run '^TestNothing$$' "+pkg, 1)
+			if len(rideErrs(planted, string(wf), pkg, r)) == 0 {
+				t.Errorf("PLANTED CONTROL FAILED: rides %s %s still read as run with its go test line gone", pkg, r.pattern)
+			}
+		}
+	}
+	if n == 0 {
+		t.Fatal("the table has no rides line: the check reads nothing")
+	}
+}
+
+// rideErrs answers why a ride's test would not run in its leg's row: the
+// row's make target (verify-<leg>-conformance-and-driver-fuzz, which the
+// verify-leg step runs for that leg's conformance gate) must reach a recipe
+// that runs `go test ... -run '<pattern>' <pkg>`.
+func rideErrs(mk, wf, pkg string, r ride) []string {
+	var errs []string
+	target := "verify-" + r.leg + "-conformance-and-driver-fuzz"
+	if !strings.Contains(wf, "conformance) target="+target+" ;;") {
+		errs = append(errs, "ci-fast.yml's verify-leg does not run "+target+" for the "+r.leg+" conformance gate")
+	}
+	ruleRe := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(target) + `:\n\t@\$\(MAKE\)([^\n]*)`)
+	m := ruleRe.FindStringSubmatch(mk)
+	if m == nil {
+		return append(errs, "make/verify-compiled.mk has no "+target)
+	}
+	runRe := regexp.MustCompile(`(?m)^([_a-z0-9-]+):[^\n]*\n(?:\t[^\n]*\n)*?\t[^\n]*go test [^\n]*-run '` + regexp.QuoteMeta(makeQuote(r.pattern)) + `' ` + regexp.QuoteMeta(pkg) + `\b`)
+	rm := runRe.FindStringSubmatch(mk)
+	if rm == nil {
+		return append(errs, "no make recipe runs go test -run '"+r.pattern+"' "+pkg)
+	}
+	if !strings.Contains(" "+m[1]+" ", " "+rm[1]+" ") {
+		errs = append(errs, target+" does not make "+rm[1]+", the target that runs the test")
+	}
+	return errs
+}
+
+// makeQuote answers a pattern as a makefile recipe spells it: $ doubled.
+func makeQuote(s string) string { return strings.ReplaceAll(s, "$", "$$") }

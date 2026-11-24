@@ -611,6 +611,9 @@ type ciEvent struct {
 	GoCorpusResult string   // needs.go-fixed-corpus.result, success when omitted
 	PRPins         string   // needs.pr-select.outputs.pins (ci-full.yml)
 	PRCS           string   // needs.pr-select.outputs.cs (ci-full.yml)
+	// PlanOutputs, when set, answers needs.plan.outputs.<name> for every
+	// name it holds, ahead of the fields above (TestNoFastJobSkipsOnAMainPush)
+	PlanOutputs map[string]string
 
 	// issue_comment (cla.yml): the comment and the thread it is on
 	CommentBody string // github.event.comment.body
@@ -961,6 +964,11 @@ func resolveCIToken(tok string, ev ciEvent) (string, error) {
 			return "", err
 		}
 		return strconv.FormatBool(strings.HasPrefix(strings.ToLower(v), strings.ToLower(p))), nil
+	}
+	if name, ok := strings.CutPrefix(tok, "needs.plan.outputs."); ok && ev.PlanOutputs != nil {
+		if v, ok := ev.PlanOutputs[name]; ok {
+			return v, nil
+		}
 	}
 	switch tok {
 	case "true", "false":

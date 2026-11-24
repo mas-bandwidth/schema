@@ -1,7 +1,7 @@
 // Command gotestrows cuts ci-fast's go-test-touched selection into matrix
 // rows that each finish inside the fleet's two-minute per-commit cap.
 //
-//	go run ./tools/gotestrows [-short] [-budget seconds] [-gotable-extras] [-dependents-of "<package>..."] [-changed-files <file>] <package>...
+//	go run ./tools/gotestrows [-short] [-budget seconds] [-gotable-extras] [-dependents-of "<package>..."] [-changed-files <file>] [-packages-out <file>] [-rides-out <file>] <package>...
 //
 // It prints one line of JSON, a GitHub Actions matrix `include` list: one
 // object per row, {"row": "k/n", "packages": "...", "run": "...", "skip":
@@ -29,6 +29,14 @@
 //   - `subsplit` divides a single parent's children in the same way. Each
 //     child pattern gets a row; its complement keeps future named corpus
 //     seeds, and the package complement excludes the parent altogether.
+//
+//   - a `rides` line names a test that runs in a leg's verify-leg conformance
+//     row, on the native driver that row builds anyway, and in no row here:
+//     every row of its package skips it. -rides-out writes the legs whose
+//     row must run for the selection, and ci-fast's plan adds them to the
+//     verify legs, so a riding test runs whenever its package is selected.
+//     TestRustDriverAnswersWriteRefusal built the Rust driver cold in a row
+//     of its own, 105 s of a two-minute job (PR #5007, run 45437384482).
 //
 // -gotable-extras adds the two make rows go-test-touched has always run when
 // gotable is selected (schema#1376): tables-go-fixedform and
@@ -72,6 +80,23 @@ type table struct {
 	short, plain map[string]float64
 	splits       map[string][]string
 	subsplits    map[string][]subsplit
+	rides        map[string][]ride
+}
+
+// ride is a test that runs in a leg's verify-leg conformance row, on the
+// driver that row builds, and in no go-test-touched row (a `rides` line).
+type ride struct {
+	pattern string
+	leg     string
+}
+
+// ridePatterns answers the patterns of p's rides.
+func (t table) ridePatterns(p string) []string {
+	var out []string
+	for _, r := range t.rides[p] {
+		out = append(out, r.pattern)
+	}
+	return out
 }
 
 type subsplit struct {
@@ -109,6 +134,7 @@ func run(argv []string, golist func() (string, error), exists func(string) bool,
 	changed := fs.String("dependents-of", "", "packages whose non-test source changed: every main-module package whose tests build against one of them is selected too")
 	changedFiles := fs.String("changed-files", "", "a file listing the diff's paths, one per line: a changed non-.go file a package embeds seeds -dependents-of with that package (a test embed selects the package alone)")
 	packagesOut := fs.String("packages-out", "", "write the finalized selection, space-separated, to this file")
+	ridesOut := fs.String("rides-out", "", "write the legs whose verify-leg conformance row must run, for the selected packages' rides lines, space-separated, to this file")
 	tableFile := fs.String("table", tablePath, "the weights and splits table")
 	if err := fs.Parse(argv); err != nil {
 		return err
@@ -156,12 +182,31 @@ func run(argv []string, golist func() (string, error), exists func(string) bool,
 			return err
 		}
 	}
+	if *ridesOut != "" {
+		if err := os.WriteFile(*ridesOut, []byte(strings.Join(rideLegs(t, pkgs), " ")), 0o644); err != nil {
+			return err
+		}
+	}
 	out, err := json.Marshal(rows)
 	if err != nil {
 		return err
 	}
 	_, err = fmt.Fprintln(stdout, string(out))
 	return err
+}
+
+// rideLegs answers, sorted and once each, the legs whose verify-leg
+// conformance row runs a test of a selected package (a `rides` line): the
+// plan selects those rows whenever the package is selected, so the test runs.
+func rideLegs(t table, pkgs []string) []string {
+	var legs []string
+	for _, p := range pkgs {
+		for _, r := range t.rides[p] {
+			legs = append(legs, r.leg)
+		}
+	}
+	sort.Strings(legs)
+	return slices.Compact(legs)
 }
 
 func fail(err error) {
@@ -175,7 +220,7 @@ func fail(err error) {
 //	split  <package> <test-name regexp>
 //	subsplit <package> <parent regexp> <child regexp>
 func readTable(path string) (table, error) {
-	t := table{short: map[string]float64{}, plain: map[string]float64{}, splits: map[string][]string{}, subsplits: map[string][]subsplit{}}
+	t := table{short: map[string]float64{}, plain: map[string]float64{}, splits: map[string][]string{}, subsplits: map[string][]subsplit{}, rides: map[string][]ride{}}
 	f, err := os.Open(path)
 	if err != nil {
 		return t, err
@@ -202,8 +247,10 @@ func readTable(path string) (table, error) {
 			t.splits[fields[1]] = append(t.splits[fields[1]], fields[2])
 		case fields[0] == "subsplit" && len(fields) == 4:
 			t.subsplits[fields[1]] = append(t.subsplits[fields[1]], subsplit{parent: fields[2], child: fields[3]})
+		case fields[0] == "rides" && len(fields) == 4:
+			t.rides[fields[1]] = append(t.rides[fields[1]], ride{pattern: fields[2], leg: fields[3]})
 		default:
-			return t, fmt.Errorf("%s:%d: want weight, split or subsplit, got %q", path, n, line)
+			return t, fmt.Errorf("%s:%d: want weight, split, subsplit or rides, got %q", path, n, line)
 		}
 	}
 	return t, sc.Err()
@@ -474,7 +521,10 @@ func plan(t table, pkgs []string, short bool, budget float64) []Row {
 	for _, p := range pkgs {
 		pats := append([]string(nil), t.splits[p]...)
 		children := t.subsplits[p]
-		if len(pats) == 0 && len(children) == 0 {
+		// a riding test runs in its leg's verify row, never here: every
+		// row of the package skips it
+		rides := t.ridePatterns(p)
+		if len(pats) == 0 && len(children) == 0 && len(rides) == 0 {
 			whole = append(whole, p)
 			continue
 		}
@@ -482,8 +532,9 @@ func plan(t table, pkgs []string, short bool, budget float64) []Row {
 		// line after narrow ones (a family, a name range) takes only what they
 		// left and no test runs in two rows.
 		for i, pat := range pats {
-			rows = append(rows, Row{Packages: p, Run: pat, Skip: strings.Join(pats[:i], "|")})
+			rows = append(rows, Row{Packages: p, Run: pat, Skip: strings.Join(append(append([]string(nil), rides...), pats[:i]...), "|")})
 		}
+		pats = append(rides, pats...)
 		// Preserve table order without iterating a map. A slash is Go's
 		// hierarchical matcher separator, so the child skip does not skip
 		// the parent before its children can be discovered.
@@ -494,7 +545,7 @@ func plan(t table, pkgs []string, short bool, budget float64) []Row {
 				parents = append(parents, sub.parent)
 			}
 			byParent[sub.parent] = append(byParent[sub.parent], sub.child)
-			rows = append(rows, Row{Packages: p, Run: sub.parent + "/" + sub.child})
+			rows = append(rows, Row{Packages: p, Run: sub.parent + "/" + sub.child, Skip: strings.Join(rides, "|")})
 		}
 		for _, parent := range parents {
 			rows = append(rows, Row{Packages: p, Run: parent, Skip: parent + "/(" + strings.Join(byParent[parent], "|") + ")"})

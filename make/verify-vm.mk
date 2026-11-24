@@ -530,6 +530,33 @@ _verify-goose-fuzz-message: $(GOOSE_FUZZ_BASE) build/goose-wirefuzz-legs/.verify
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_MESSAGE_FUZZ_N) \
 		--failed build/verify/message-fuzz-goose
 
+# THE PER-COMMIT GOOSE FUZZ, IN TWO PARTS (2026-11-24). As the ci-fast.yml row
+# (goose, fuzz) `verify-goose-fuzz` was cut at the two-minute cap on main's
+# push run 45431445496: the job spent 2 s before make, 30 s on the race test,
+# the harness and the JSON pass, and was still building the 46 unit legs
+# (`goose build -O2` each) and running the 60000-mutant wire passes when the
+# fleet killed it. On bench vision the three leg passes alone are 46 s at
+# 60000 mutants and 12 s at 5000.
+#
+# So a commit runs two jobs, each building half the legs (GOOSE_FUZZ_SLICE,
+# make/goose-fuzz.mk) and fuzzing them at the 5000-mutant cap every compiled
+# leg uses (VERIFY_FUZZ_MAX, make/verify-compiled.mk). Part 1 also runs the
+# race test and the JSON pass, once. The two parts cover every unit, every
+# seed and every pinned vector; what the cap leaves out is the long tail of
+# the enumerated and random passes, and the 60000-mutant whole-roster run is
+# nightly (leg-gates-nightly.yml, goose-fuzz-whole: `make verify-goose-fuzz`).
+VERIFY_GOOSE_PR_MAX ?= 5000
+.PHONY: verify-goose-fuzz-part-1 verify-goose-fuzz-part-2
+verify-goose-fuzz-part-1:
+	@$(MAKE) $(VERIFY_JFLAG) --no-print-directory _verify-goose-fuzz-race _verify-goose-fuzz-json \
+		_verify-goose-fuzz-plain _verify-goose-fuzz-retain _verify-goose-fuzz-message \
+		GOOSE_FUZZ_SLICE=1/2 VERIFY_FUZZ_MAX_goose=$(VERIFY_GOOSE_PR_MAX)
+
+verify-goose-fuzz-part-2:
+	@$(MAKE) $(VERIFY_JFLAG) --no-print-directory \
+		_verify-goose-fuzz-plain _verify-goose-fuzz-retain _verify-goose-fuzz-message \
+		GOOSE_FUZZ_SLICE=2/2 VERIFY_FUZZ_MAX_goose=$(VERIFY_GOOSE_PR_MAX)
+
 # ---- 9. lobster ----
 
 .PHONY: _verify-lobster-conformance _verify-lobster-bench _verify-lobster-fuzz
@@ -687,7 +714,7 @@ _conformance-corpus-luau: verify-toolchain-luau build/conformance-harness-vm bui
 
 _conformance-corpus-squirrel: verify-toolchain-squirrel build/conformance-harness-vm build/conformance-squirrel
 	@rm -rf build/verify/conformance-corpus-squirrel && mkdir -p build/verify/conformance-corpus-squirrel $(VERIFY_RESULTS_DIR)
-	SQ="$(SQ)" ./build/conformance-harness-vm run --only squirrel --claims --work build/verify/conformance-corpus-squirrel --results $(VERIFY_RESULTS_DIR)/squirrel.json
+	SQ="$(SQ)" ./build/conformance-harness-vm run --only squirrel --claims --work build/verify/conformance-corpus-squirrel --results $(VERIFY_RESULTS_DIR)/squirrel.json $(if $(CONFORMANCE_SHARDS),--shard $(CONFORMANCE_SHARD) --shards $(CONFORMANCE_SHARDS))
 
 _conformance-corpus-moo: verify-toolchain-moo build/conformance-harness-vm build/conformance-moo
 	@rm -rf build/verify/conformance-corpus-moo && mkdir -p build/verify/conformance-corpus-moo $(VERIFY_RESULTS_DIR)
