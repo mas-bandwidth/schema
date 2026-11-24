@@ -9975,15 +9975,19 @@ fuzzed over the fixed ones, and the line says how many seeds were absent.
 seeds an arm answers, leaves absent and counts outside it is a function of the
 corpus, and a seed count written into a recipe goes stale the day a seed lands
 (the Lobster and Squirrel builder arms registered 219 outside and measured 315).
-A leg that runs more than one arm holds the arms to each other off the same
-run instead (`make/checks/wire-fuzz-split.sh`): a leg whose plain arm answers
-the whole corpus holds every further arm to leaving nothing absent, so the
-seeds it answers and the seeds outside it are the plain arm's seeds; a leg that
+A leg holds its arms to the roster and to each other off the same run instead
+(`make/checks/wire-fuzz-split.sh`): a leg whose plain arm answers the whole
+corpus leaves nothing absent there, and holds every further arm to leaving
+nothing absent, so the seeds it answers and the seeds outside it are the plain
+arm's seeds; a leg that
 splits the corpus between a plain and a builder arm holds the builder arm to
 leaving nothing absent, the plain arm's absent seeds to exactly the builder
 arm's, and the seeds outside the builder arm to exactly the plain arm's. A root
 that drops out of an arm, or out of both, is red naming the arm and both
-numbers; a corpus that grows is not.
+numbers; a corpus that grows is not. The release gate holds the same split:
+its absent list (`test/conformance/wire-fuzz-absent.txt`) names such a plain
+arm with the word `builder` rather than a number, and the count is the seeds
+the builder arm answers at the same seed, run beside it.
 
 **There is no `wire-forgery` surface, and the reason is the same one the
 block and cook fuzzers gave.** A fuzzer is a search, not a case, and a find it

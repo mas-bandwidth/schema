@@ -92,6 +92,9 @@ WFR_DRIVER_rust  = build/conformance-rust-all
 
 WFR_DEPS_squirrel = toolchain-squirrel build/conformance-squirrel
 WFR_DRIVER_squirrel = $(SQ) test/conformance/squirrel/wirefuzz.nut
+# the plain arm leaves the variable roots to the builder arm; its absent count
+# is that arm's seeds at the same seed (wire-fuzz-absent.txt, `builder`)
+WFR_BUILDER_DRIVER_squirrel = $(SQ) test/conformance/squirrel/wirefuzz.nut builder
 
 WFR_DEPS_unity    = toolchain-unity build/conformance-unity/.stamp
 WFR_DRIVER_unity  = test/conformance/unity/driver wire-fuzz
@@ -103,7 +106,7 @@ wfr_runs = $(foreach a,$(WIRE_FUZZ_RELEASE_ARMS),$(foreach s,$(WIRE_FUZZ_RELEASE
 define wfr_leg
 .PHONY: tables-wire-fuzz-release-$(1) $(call wfr_runs,$(1))
 $(call wfr_runs,$(1)): build/conformance-harness build/wirefuzzrelease wire-fuzz-release-cases $$(if $$(WFR_DRIVER_$(1)),$$(WFR_DEPS_$(1)))
-	@WFR_DRIVER="$$(strip $$(WFR_DRIVER_$(1)))" WFR_FLAGS="$$(WFR_FLAGS_$(1))" WFR_ENV="$$(WFR_ENV_$(1))" WFR_TOOL=./build/wirefuzzrelease \
+	@WFR_DRIVER="$$(strip $$(WFR_DRIVER_$(1)))" WFR_BUILDER_DRIVER="$$(strip $$(WFR_BUILDER_DRIVER_$(1)))" WFR_FLAGS="$$(WFR_FLAGS_$(1))" WFR_ENV="$$(WFR_ENV_$(1))" WFR_TOOL=./build/wirefuzzrelease \
 		bash make/checks/wire-fuzz-release-run.sh $(1) $$(word 4,$$(subst -, ,$$@)) $$(word 5,$$(subst -, ,$$@)) \
 		$$(WIRE_FUZZ_RELEASE_N) $$(WIRE_FUZZ_RELEASE_DIR)
 tables-wire-fuzz-release-$(1): $(call wfr_runs,$(1))

@@ -2,7 +2,7 @@
 # make/checks/wire-fuzz-split.sh — A LEG'S ARMS COVER THE CORPUS, DERIVED FROM
 # THE ROSTER (docs/SPEC-TABLES.md §4.2, A LEG'S ARMS ARE HELD TO THE ROSTER).
 #
-#   sh make/checks/wire-fuzz-split.sh complete   <recipe> <plain log> <arm log>...
+#   sh make/checks/wire-fuzz-split.sh complete   <recipe> <plain log> [<arm log>...]
 #   sh make/checks/wire-fuzz-split.sh complement <recipe> <plain log> <builder log>
 #
 # Every log is one `harness wire-fuzz` run of one leg over the committed corpus,
@@ -35,7 +35,7 @@ usage() {
 	echo "usage: wire-fuzz-split.sh complete <recipe> <plain log> <arm log>... | complement <recipe> <plain log> <builder log>" >&2
 	exit 2
 }
-[ $# -ge 4 ] || usage
+[ $# -ge 3 ] || usage
 mode=$1 recipe=$2 plain=$3
 shift 3
 
@@ -70,6 +70,7 @@ complete)
 		echo "$recipe: the plain arm ($plain) leaves $plain_absent seeds absent: the leg answers every root of the corpus" >&2
 		exit 1
 	fi
+	echo "$recipe: the plain arm answers all $plain_seeds seeds of the corpus, none absent (derived from the roster)"
 	for arm in "$@"; do
 		split "$arm"
 		if [ "$absent" -ne 0 ]; then

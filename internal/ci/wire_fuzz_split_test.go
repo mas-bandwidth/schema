@@ -42,6 +42,8 @@ func TestWireFuzzSplitIsDerivedFromTheRoster(t *testing.T) {
 		{"complete: every arm answers its roster", "complete", []string{plainAll, builderAll, retainAll}, true, "answers 205 seeds and 315 are outside it, the plain arm's 520"},
 		{"complete: the corpus grows and nothing is registered", "complete", []string{plainGrown, builderGrown}, true, "the plain arm's 540"},
 		{"complete: a root drops out of the builder arm", "complete", []string{plainAll, builderHole}, false, "leaves 2 seeds absent: the leg answers every root of the arm"},
+		{"complete: a one-arm leg answers the whole corpus", "complete", []string{plainAll}, true, "the plain arm answers all 520 seeds of the corpus, none absent"},
+		{"complete: a one-arm leg leaves seeds absent", "complete", []string{plainAbsent}, false, "the plain arm (plain.log) leaves 3 seeds absent"},
 		{"complete: a root drops out of the plain arm", "complete", []string{plainAbsent, builderAll}, false, "the plain arm (plain.log) leaves 3 seeds absent"},
 		{"complete: the arm's split does not add up to the plain arm's", "complete", []string{plainAll, builderGrown}, false, "540 in all, where the plain arm answers 520"},
 		{"complete: an arm with no summary proved nothing", "complete", []string{plainAll, noSummary}, false, "carries no wire-fuzz summary line"},

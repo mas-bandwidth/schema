@@ -135,6 +135,20 @@ func writeRow(leg, arm, seed, dir, owedPath, absentPath string, noDriver bool, s
 		return err
 	}
 	base := filepath.Join(dir, leg+"."+arm+"."+seed)
+	derivedRed := ""
+	if held.builder && !noDriver {
+		// THE COUNT IS DERIVED, never registered: the builder arm's own run at
+		// this seed says how many seeds it answers, and those are the seeds
+		// this arm leaves to it
+		blog, err := os.ReadFile(base + ".builder.log")
+		if err != nil {
+			derivedRed = fmt.Sprintf("RED: %s derives '%s %s' from the builder arm and the builder arm left no log: %v", absentPath, leg, arm, err)
+		} else if n, red := builderSeeds(string(blog), seed); red != "" {
+			derivedRed = fmt.Sprintf("RED: %s derives '%s %s' from the builder arm, which does not prove its roster: %s", absentPath, leg, arm, red)
+		} else {
+			held.count = n
+		}
+	}
 	var verdict string
 	if noDriver {
 		verdict = "RED: the leg has no wire-fuzz driver and the owed list does not name this arm"
@@ -147,6 +161,9 @@ func writeRow(leg, arm, seed, dir, owedPath, absentPath string, noDriver bool, s
 			return err
 		}
 		verdict = score(leg, arm, seed, string(log), status, secs, asked, owed, owedPath, held, absentPath)
+		if derivedRed != "" && owed == "" && (strings.HasPrefix(verdict, "pass") || strings.Contains(verdict, absentPath)) {
+			verdict = derivedRed
+		}
 	}
 	verdict = strings.NewReplacer("\t", " ", "\n", " ").Replace(verdict)
 	if len(verdict) > 400 {
@@ -156,10 +173,15 @@ func writeRow(leg, arm, seed, dir, owedPath, absentPath string, noDriver bool, s
 }
 
 // absentHold is one line of the absent list: how many seeds the leg has no
-// codec for on this arm, and why. -1 is no line.
+// codec for on this arm, and why. -1 is no line. A line whose count is the
+// word `builder` DERIVES it: the leg splits the corpus with its builder arm,
+// so the seeds this arm leaves absent are exactly the seeds the builder arm
+// answers at the same seed (<base>.builder.log), and no number is written
+// down to go stale.
 type absentHold struct {
-	count int
-	why   string
+	count   int
+	why     string
+	builder bool
 }
 
 func heldAbsent(path, leg, arm string) (absentHold, error) {
@@ -171,6 +193,12 @@ func heldAbsent(path, leg, arm string) (absentHold, error) {
 		return absentHold{count: -1}, nil
 	}
 	n, why, _ := strings.Cut(rest, " ")
+	if n == "builder" {
+		if strings.TrimSpace(why) == "" {
+			return absentHold{}, fmt.Errorf("%s: the %s %s line is `<leg> <arm> builder <why>`, got %q", path, leg, arm, rest)
+		}
+		return absentHold{count: -1, why: why, builder: true}, nil
+	}
 	count, err := strconv.Atoi(n)
 	if err != nil || count <= 0 || strings.TrimSpace(why) == "" {
 		return absentHold{}, fmt.Errorf("%s: the %s %s line is `<leg> <arm> <count above zero> <why>`, got %q", path, leg, arm, rest)
@@ -178,15 +206,54 @@ func heldAbsent(path, leg, arm string) (absentHold, error) {
 	return absentHold{count: count, why: why}, nil
 }
 
+// builderSeeds reads the builder arm's run at this seed: the seeds it answers,
+// or why the run proves nothing. It must have run (a summary, at this seed,
+// with no divergence) and must leave nothing absent itself, or a root that
+// dropped out of both arms would move both sides of the split together.
+func builderSeeds(log, seed string) (int, string) {
+	if f := failedRE.FindStringSubmatch(log); f != nil {
+		return 0, "FAILED after " + f[1] + " mutants: " + f[2]
+	}
+	if e := builderExitRE.FindStringSubmatch(log); e == nil {
+		return 0, "its log does not say how the builder arm exited (make/checks/wire-fuzz-release-run.sh writes that line)"
+	} else if e[1] != "0" {
+		return 0, "the builder arm exited " + e[1] + ": " + firstErrorLine(log)
+	}
+	summary := ""
+	for line := range strings.SplitSeq(log, "\n") {
+		if strings.HasPrefix(line, "wire-fuzz-builder:") && summaryRE.MatchString(line) {
+			summary = line
+		}
+	}
+	switch {
+	case summary == "":
+		return 0, "no wire-fuzz-builder summary line: " + firstErrorLine(log)
+	case !zeroDivRE.MatchString(summary):
+		return 0, "the summary does not say 0 divergences: " + summary
+	case absentRE.MatchString(summary):
+		return 0, "the builder arm leaves seeds absent too: " + summary
+	}
+	if c := seedRE.FindStringSubmatch(summary); c == nil || c[1] != seed {
+		return 0, "the summary is not seed " + seed + "'s: " + summary
+	}
+	n, err := strconv.Atoi(summaryRE.FindStringSubmatch(summary)[1])
+	if err != nil || n == 0 {
+		return 0, "the builder arm answers no seed: " + summary
+	}
+	return n, ""
+}
+
 var (
-	seedRE     = regexp.MustCompile(`: seed (\d+),`)
-	summaryRE  = regexp.MustCompile(`(\d+) seeds over (\d+) roots`)
-	absentRE   = regexp.MustCompile(`(\d+) seeds absent`)
-	mutantsRE  = regexp.MustCompile(`(\d+) enumerated \+ (\d+) random = (\d+) mutants`)
-	zeroDivRE  = regexp.MustCompile(`(^|[^0-9])0 divergences`)
-	failedRE   = regexp.MustCompile(`FAILED after (\d+) mutants: (.*)`)
-	whereRE    = regexp.MustCompile(`(?m)^ *corpus seed [^ ]+ \(([^)]*)\), pass ([^,]+),`)
-	errorishRE = regexp.MustCompile(`FAILED|harness:|wire-fuzz:|panic|error`)
+	seedRE    = regexp.MustCompile(`: seed (\d+),`)
+	summaryRE = regexp.MustCompile(`(\d+) seeds over (\d+) roots`)
+	absentRE  = regexp.MustCompile(`(\d+) (?:ledgered )?seeds absent`)
+	// the line make/checks/wire-fuzz-release-run.sh appends to a builder log
+	builderExitRE = regexp.MustCompile(`(?m)^wire-fuzz-release: the builder arm exited (\d+)$`)
+	mutantsRE     = regexp.MustCompile(`(\d+) enumerated \+ (\d+) random = (\d+) mutants`)
+	zeroDivRE     = regexp.MustCompile(`(^|[^0-9])0 divergences`)
+	failedRE      = regexp.MustCompile(`FAILED after (\d+) mutants: (.*)`)
+	whereRE       = regexp.MustCompile(`(?m)^ *corpus seed [^ ]+ \(([^)]*)\), pass ([^,]+),`)
+	errorishRE    = regexp.MustCompile(`FAILED|harness:|wire-fuzz:|panic|error`)
 )
 
 // score is one run's verdict, from the harness's exit status and its log.
