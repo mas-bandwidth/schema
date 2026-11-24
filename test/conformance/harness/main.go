@@ -157,7 +157,7 @@ func main() {
 	shard := fs.Int("shard", 0, "zero-based wire-fuzz shard index")
 	shards := fs.Int("shards", 1, "number of wire-fuzz shards")
 	replay := fs.String("replay", "", "one mutant file to run alone (wire-fuzz only)")
-	unit := fs.String("unit", "", "the replayed mutant's unit key (wire-fuzz only)")
+	unit := fs.String("unit", "", "the replayed mutant's unit key; without --replay, the one unit a one-unit driver is asked about (wire-fuzz only)")
 	root := fs.String("root", "", "the replayed mutant's root table (wire-fuzz only)")
 	message := fs.Bool("message", false, "replay the mutant as a MESSAGE against the unit's announced table (docs/SPEC-TABLES.md §3.3; wire-fuzz only)")
 	builder := fs.Bool("builder", false, "compare mutable builder completion, reports and successful saved values (wire-fuzz only)")
@@ -166,7 +166,7 @@ func main() {
 	failed := fs.String("failed", "build/wire-fuzz/failed.bin", "where a failing mutant is written (wire-fuzz only)")
 	finiteOwed := fs.String("finite-owed", "", "the docs/roadmap.sexp card that owes this leg the finite float rule (docs/SPEC-TABLES.md §3.3): a mutant the oracle refuses as non_finite_float is counted and not compared (wire-fuzz only)")
 	vectors := fs.String("vectors", defaultVectors, "the pinned-vector index (wire-fuzz only)")
-	absentLedger := fs.String("absent-ledger", "", "the checked-in ledger of roots a leg may leave absent, matched as an exact set (test/conformance/wire-absent/<leg>-<arm>.tsv); without it any absent seed fails the run (wire-fuzz only)")
+	leg := fs.String("leg", "", "the leg this whole-roster run fuzzes: the harness holds the roots it leaves absent against test/conformance/wire-absent/<leg>-<arm>.tsv, the arm being the run's profile (plain, builder or retain), and refuses every absent root when that file does not exist; required unless --replay (wire-fuzz only)")
 	timeout := fs.Duration("timeout", 0, "whole-run wall-clock timeout (wire-fuzz only)")
 	corpus := fs.String("corpus", "tables/cards/conformance", "the card conformance corpus directory (cards only)")
 	expected := fs.String("expected", "", "where the card expected answers live, default <corpus>/expected (cards only)")
@@ -285,7 +285,7 @@ func main() {
 		if *shards < 1 || *shard < 0 || *shard >= *shards {
 			fatalf("wire-fuzz: shard must be in [0, shards), and shards must be positive")
 		}
-		if err := wireFuzz(m, wireFuzzOptions{shard: *shard, shards: *shards, maxMutants: *maxMutants, timeout: *timeout, driver: *driver, seed: *seed, n: *n, replay: *replay, unit: *unit, root: *root, message: *message, failed: *failed, vectors: *vectors, retain: *retain, builder: *builder, mixedBuilder: *mixedBuilder, finiteOwed: *finiteOwed, absentLedger: *absentLedger}); err != nil {
+		if err := wireFuzz(m, wireFuzzOptions{shard: *shard, shards: *shards, maxMutants: *maxMutants, timeout: *timeout, driver: *driver, seed: *seed, n: *n, replay: *replay, unit: *unit, root: *root, message: *message, failed: *failed, vectors: *vectors, retain: *retain, builder: *builder, mixedBuilder: *mixedBuilder, finiteOwed: *finiteOwed, leg: *leg}); err != nil {
 			fatalf("%v", err)
 		}
 	case "cook-differential":

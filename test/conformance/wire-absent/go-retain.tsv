@@ -1,5 +1,5 @@
 # go-retain: the roots the go-retain wire-fuzz driver answers absent, matched as an exact
-# set (make/wire-absent.mk, docs/SPEC-CONFORMANCE.md W-ROSTER). Measured at
+# set (test/conformance/harness/wirefuzz_absent.go, docs/SPEC-CONFORMANCE.md W-ROSTER). Measured at
 # main 2d352b7dd8: 9 seeds over 4 roots. Delete a line in the change that
 # adds its root to the driver, and the file with its last line.
 shapes.Bounds	owed: wire-seed-roots-go (4 seeds)

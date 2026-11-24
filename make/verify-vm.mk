@@ -286,14 +286,14 @@ _verify-js-bench: bench-js-gate tables-js-bench-gate verify-deep-js verify-cards
 
 _verify-js-fuzz: verify-toolchain-js build/conformance-harness-vm build/tables-generated-js/.stamp cards-js-generate
 	@mkdir -p build/verify
-	NODE="$(NODE)" ./build/conformance-harness-vm wire-fuzz $(WFR_FLAGS_js) \
+	NODE="$(NODE)" ./build/conformance-harness-vm wire-fuzz --leg js $(WFR_FLAGS_js) \
 		--driver "$(WFR_DRIVER_js)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_js) \
-		$(call WIRE_ABSENT,js-plain) --failed build/verify/fuzz-js-plain.bin
-	NODE="$(NODE)" ./build/conformance-harness-vm wire-fuzz --retain $(WFR_FLAGS_js) \
+		--failed build/verify/fuzz-js-plain.bin
+	NODE="$(NODE)" ./build/conformance-harness-vm wire-fuzz --leg js --retain $(WFR_FLAGS_js) \
 		--driver "$(WFR_DRIVER_js)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_js) \
-		$(call WIRE_ABSENT,js-retain) --failed build/verify/fuzz-js-retain.bin
+		--failed build/verify/fuzz-js-retain.bin
 	NODE="$(NODE)" ./build/conformance-harness-vm json-fuzz --only js \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-js
@@ -312,14 +312,14 @@ _verify-python-bench: verify-toolchain-python bench-python-gate tables-python-be
 
 _verify-python-fuzz: verify-toolchain-python build/conformance-harness-vm build/conformance-python
 	@mkdir -p build/verify
-	./build/conformance-harness-vm wire-fuzz \
+	./build/conformance-harness-vm wire-fuzz --leg python \
 		--driver "$(WFR_DRIVER_python)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_python) \
-		$(call WIRE_ABSENT,python-plain) --failed build/verify/fuzz-python-plain.bin
-	./build/conformance-harness-vm wire-fuzz --retain \
+		--failed build/verify/fuzz-python-plain.bin
+	./build/conformance-harness-vm wire-fuzz --leg python --retain \
 		--driver "$(WFR_DRIVER_python)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_python) \
-		$(call WIRE_ABSENT,python-retain) --failed build/verify/fuzz-python-retain.bin
+		--failed build/verify/fuzz-python-retain.bin
 	PYTHON="$(PYTHON)" ./build/conformance-harness-vm json-fuzz --only python \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-python
@@ -338,14 +338,14 @@ _verify-ruby-bench: verify-toolchain-ruby bench-ruby-gate tables-ruby-bench-gate
 
 _verify-ruby-fuzz: verify-toolchain-ruby build/conformance-harness-vm build/conformance-ruby
 	@mkdir -p build/verify
-	./build/conformance-harness-vm wire-fuzz \
+	./build/conformance-harness-vm wire-fuzz --leg ruby \
 		--driver "$(WFR_DRIVER_ruby)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_ruby) \
-		$(call WIRE_ABSENT,ruby-plain) --failed build/verify/fuzz-ruby-plain.bin
-	./build/conformance-harness-vm wire-fuzz --retain \
+		--failed build/verify/fuzz-ruby-plain.bin
+	./build/conformance-harness-vm wire-fuzz --leg ruby --retain \
 		--driver "$(WFR_DRIVER_ruby)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_ruby) \
-		$(call WIRE_ABSENT,ruby-retain) --failed build/verify/fuzz-ruby-retain.bin
+		--failed build/verify/fuzz-ruby-retain.bin
 	RUBY="$(RUBY)" ./build/conformance-harness-vm json-fuzz --only ruby \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-ruby
@@ -364,14 +364,14 @@ _verify-lua-bench: verify-toolchain-lua bench-lua-gate tables-lua-bench-gate ver
 
 _verify-lua-fuzz: verify-toolchain-lua build/conformance-harness-vm build/conformance-lua
 	@mkdir -p build/verify
-	./build/conformance-harness-vm wire-fuzz \
+	./build/conformance-harness-vm wire-fuzz --leg lua \
 		--driver "$(WFR_DRIVER_lua)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_lua) \
-		$(call WIRE_ABSENT,lua-plain) --failed build/verify/fuzz-lua-plain.bin
-	./build/conformance-harness-vm wire-fuzz --retain \
+		--failed build/verify/fuzz-lua-plain.bin
+	./build/conformance-harness-vm wire-fuzz --leg lua --retain \
 		--driver "$(WFR_DRIVER_lua)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_lua) \
-		$(call WIRE_ABSENT,lua-retain) --failed build/verify/fuzz-lua-retain.bin
+		--failed build/verify/fuzz-lua-retain.bin
 	LUA="$(LUA)" ./build/conformance-harness-vm json-fuzz --only lua \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-lua
@@ -390,14 +390,14 @@ _verify-luau-bench: verify-toolchain-luau bench-luau-gate tables-luau-bench-gate
 
 _verify-luau-fuzz: verify-toolchain-luau build/conformance-harness-vm build/conformance-luau build/luau-driver/units.luau build/luaufuzzhost/luaufuzzhost
 	@mkdir -p build/verify
-	$(WFR_ENV_luau) LUAU="$(LUAU)" ./build/conformance-harness-vm wire-fuzz \
+	$(WFR_ENV_luau) LUAU="$(LUAU)" ./build/conformance-harness-vm wire-fuzz --leg luau \
 		--driver "$(WFR_DRIVER_luau)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_luau) \
-		$(call WIRE_ABSENT,luau-plain) --failed build/verify/fuzz-luau-plain.bin
-	$(WFR_ENV_luau) LUAU="$(LUAU)" ./build/conformance-harness-vm wire-fuzz --retain \
+		--failed build/verify/fuzz-luau-plain.bin
+	$(WFR_ENV_luau) LUAU="$(LUAU)" ./build/conformance-harness-vm wire-fuzz --leg luau --retain \
 		--driver "$(WFR_DRIVER_luau)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_luau) \
-		$(call WIRE_ABSENT,luau-retain) --failed build/verify/fuzz-luau-retain.bin
+		--failed build/verify/fuzz-luau-retain.bin
 	LUAU="$(LUAU)" ./build/conformance-harness-vm json-fuzz --only luau \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-luau
@@ -417,18 +417,18 @@ _verify-squirrel-bench: verify-toolchain-squirrel bench-squirrel-gate tables-squ
 # Squirrel splits fixed-class roots (plain arm) and variable-class roots (`builder` / --builder).
 _verify-squirrel-fuzz: verify-toolchain-squirrel build/conformance-harness-vm build/conformance-squirrel
 	@mkdir -p build/verify
-	./build/conformance-harness-vm wire-fuzz \
+	./build/conformance-harness-vm wire-fuzz --leg squirrel \
 		--driver "$(SQ) test/conformance/squirrel/wirefuzz.nut" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_squirrel) \
-		$(call WIRE_ABSENT,squirrel-fixed) --failed build/verify/fuzz-squirrel-fixed.bin
-	./build/conformance-harness-vm wire-fuzz --builder \
+		--failed build/verify/fuzz-squirrel-fixed.bin
+	./build/conformance-harness-vm wire-fuzz --leg squirrel --builder \
 		--driver "$(SQ) test/conformance/squirrel/wirefuzz.nut builder" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_squirrel) \
-		$(call WIRE_ABSENT,squirrel-builder) --failed build/verify/fuzz-squirrel-builder.bin
-	./build/conformance-harness-vm wire-fuzz --builder --retain \
+		--failed build/verify/fuzz-squirrel-builder.bin
+	./build/conformance-harness-vm wire-fuzz --leg squirrel --builder --retain \
 		--driver "$(SQ) test/conformance/squirrel/wirefuzz.nut builder" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_squirrel) \
-		$(call WIRE_ABSENT,squirrel-retain) --failed build/verify/fuzz-squirrel-retain.bin
+		--failed build/verify/fuzz-squirrel-retain.bin
 	SQ="$(SQ)" ./build/conformance-harness-vm json-fuzz --only squirrel \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-squirrel
@@ -448,14 +448,14 @@ _verify-moo-bench: verify-toolchain-moo bench-moo-gate tables-moo-bench-gate ver
 _verify-moo-fuzz: verify-toolchain-moo build/conformance-harness-vm build/conformance-moo
 	@$(MAKE) --no-print-directory $(MOOFUZZHOST) MOO_BUILD_JOBS=$(VERIFY_JOBS)
 	@mkdir -p build/verify
-	$(WFR_ENV_moo) MOO="$(MOO)" ./build/conformance-harness-vm wire-fuzz \
+	$(WFR_ENV_moo) MOO="$(MOO)" ./build/conformance-harness-vm wire-fuzz --leg moo \
 		--driver "$(WFR_DRIVER_moo)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_moo) \
-		$(call WIRE_ABSENT,moo-plain) --failed build/verify/fuzz-moo-plain.bin
-	$(WFR_ENV_moo) MOO="$(MOO)" ./build/conformance-harness-vm wire-fuzz --retain \
+		--failed build/verify/fuzz-moo-plain.bin
+	$(WFR_ENV_moo) MOO="$(MOO)" ./build/conformance-harness-vm wire-fuzz --leg moo --retain \
 		--driver "$(WFR_DRIVER_moo)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_moo) \
-		$(call WIRE_ABSENT,moo-retain) --failed build/verify/fuzz-moo-retain.bin
+		--failed build/verify/fuzz-moo-retain.bin
 	MOO="$(MOO)" MOO_ANALYZE="$(MOO_ANALYZE)" ./build/conformance-harness-vm json-fuzz --only moo \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-moo
@@ -505,17 +505,17 @@ _verify-goose-fuzz-race:
 
 _verify-goose-fuzz-plain: $(GOOSE_FUZZ_BASE) build/goose-wirefuzz-legs/.verify-stamp
 	@mkdir -p build/verify
-	./build/conformance-harness-vm wire-fuzz --mixed-builder \
+	./build/conformance-harness-vm wire-fuzz --leg goose --mixed-builder \
 		--driver "$(GOOSE_DISPATCH) $(GOOSE_LEGS_DIR)/legs" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_goose) \
-		$(call WIRE_ABSENT,goose-plain) --failed build/verify/fuzz-goose-plain.bin
+		--failed build/verify/fuzz-goose-plain.bin
 
 _verify-goose-fuzz-retain: $(GOOSE_FUZZ_BASE) build/goose-wirefuzz-legs/.verify-stamp
 	@mkdir -p build/verify
-	./build/conformance-harness-vm wire-fuzz --mixed-builder --retain \
+	./build/conformance-harness-vm wire-fuzz --leg goose --mixed-builder --retain \
 		--driver "$(GOOSE_DISPATCH) $(GOOSE_LEGS_DIR)/legs" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_goose) \
-		$(call WIRE_ABSENT,goose-retain) --failed build/verify/fuzz-goose-retain.bin
+		--failed build/verify/fuzz-goose-retain.bin
 
 _verify-goose-fuzz-json: $(GOOSE_FUZZ_BASE)
 	@mkdir -p build/verify
@@ -541,14 +541,14 @@ _verify-lobster-bench: verify-toolchain-lobster bench-lobster-gate tables-lobste
 
 _verify-lobster-fuzz: verify-toolchain-lobster build/conformance-harness-vm build/conformance-lobster build/lobster-wirefuzzhost
 	@mkdir -p build/verify
-	LOBSTER="$(LOBSTER)" ./build/conformance-harness-vm wire-fuzz \
+	LOBSTER="$(LOBSTER)" ./build/conformance-harness-vm wire-fuzz --leg lobster \
 		--driver "$(WFR_DRIVER_lobster)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_lobster) \
-		$(call WIRE_ABSENT,lobster-plain) --failed build/verify/fuzz-lobster-plain.bin
-	LOBSTER="$(LOBSTER)" ./build/conformance-harness-vm wire-fuzz --retain \
+		--failed build/verify/fuzz-lobster-plain.bin
+	LOBSTER="$(LOBSTER)" ./build/conformance-harness-vm wire-fuzz --leg lobster --retain \
 		--driver "$(WFR_DRIVER_lobster)" \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_FUZZ_RANDOM_N) --max-mutants $(VERIFY_FUZZ_MAX_lobster) \
-		$(call WIRE_ABSENT,lobster-retain) --failed build/verify/fuzz-lobster-retain.bin
+		--failed build/verify/fuzz-lobster-retain.bin
 	LOBSTER="$(LOBSTER)" ./build/conformance-harness-vm json-fuzz --only lobster \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_JSON_FUZZ_N) \
 		--failed build/verify/json-fuzz-lobster
@@ -648,7 +648,7 @@ verify-sabotage-retain-negative-control: verify-toolchain-js build/conformance-h
 		echo "NEGATIVE CONTROL FAILED: sabotaged JS retain-unknown loader passed conformance" >&2; exit 1; fi
 	@grep -q 'wire .*pass' build/verify-sabotage-nc/retain/retain.log && grep -q 'js / retain-save: retain_round_trip' build/verify-sabotage-nc/retain/retain.log || \
 		{ echo "NEGATIVE CONTROL FAILED: expected wire pass + retain-save FAIL:" >&2; cat build/verify-sabotage-nc/retain/retain.log >&2; exit 1; }
-	@if SCHEMA_JS_GENERATED=build/verify-sabotage-nc/retain/conformance-js NODE="$(NODE)" ./build/conformance-harness-vm wire-fuzz --retain $(WFR_FLAGS_js) --driver "$(WFR_DRIVER_js)" --seed 1 --n 20 --max-mutants 250 --failed build/verify-sabotage-nc/retain/fuzz.bin > build/verify-sabotage-nc/retain/fuzz.log 2>&1; then \
+	@if SCHEMA_JS_GENERATED=build/verify-sabotage-nc/retain/conformance-js NODE="$(NODE)" ./build/conformance-harness-vm wire-fuzz --leg js --retain $(WFR_FLAGS_js) --driver "$(WFR_DRIVER_js)" --seed 1 --n 20 --max-mutants 250 --failed build/verify-sabotage-nc/retain/fuzz.bin > build/verify-sabotage-nc/retain/fuzz.log 2>&1; then \
 		echo "NEGATIVE CONTROL FAILED: sabotaged JS retain-unknown loader passed wire-fuzz --retain" >&2; exit 1; fi
 	@echo "verify-sabotage-retain-negative-control: silent retain-unknown drop left wire green and failed both retain-save and wire-fuzz --retain"
 

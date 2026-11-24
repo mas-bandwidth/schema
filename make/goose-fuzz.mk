@@ -114,7 +114,7 @@ tables-goose-wire-fuzz-leb-negative-control tables-goose-wire-fuzz-utf8-negative
 		echo "NEGATIVE CONTROL FAILED: the $* sabotage patched nothing"; exit 1; }
 	@mv $(GOOSE_FUZZ_DIR)/control-$*/wire_load.goose $(GOOSE_FUZZ_DIR)/control-$*/unit/wire_load.goose
 	@sh make/goose-wirefuzz-build.sh "$(GOOSE)" $(GOOSE_FUZZ_DIR)/control-$*/unit $(GOOSE_FUZZ_DIR)/control-$*/leg
-	@if ./build/conformance-harness wire-fuzz --builder --driver "$(GOOSE_FUZZ_DIR)/control-$*/leg/wirefuzz tblw1 builder" \
+	@if ./build/conformance-harness wire-fuzz --leg goose-unit --unit tblw1 --builder --driver "$(GOOSE_FUZZ_DIR)/control-$*/leg/wirefuzz tblw1 builder" \
 		--seed $(GOOSE_FUZZ_SEED) --n $(GOOSE_FUZZ_N) --failed $(GOOSE_FUZZ_DIR)/control-$*/failed.bin \
 		>$(GOOSE_FUZZ_DIR)/control-$*/log 2>&1; then \
 		cat $(GOOSE_FUZZ_DIR)/control-$*/log; \
