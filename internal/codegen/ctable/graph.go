@@ -1189,7 +1189,9 @@ func (g *tableGen) emitGraphLoad(st *ir.Struct) {
 	// THE PLAIN NAME IS THE STRICT READ; THE STRICT READ HAS A NAME OF ITS
 	// OWN (docs/SPEC-TABLES.md §6.5). Both decodes run under the strict
 	// names, unchanged; the plain names are thin wrappers emitted after them.
-	// The retain family is outside the rule (§6.6) and returned above.
+	// The retain family keeps only its strict name (§6.6) and returned above;
+	// it is still inside §6.5's report rule: <root>_load_retain zeroes the
+	// supplied report in full as its first act (retain_graph.go).
 	blobNamedAlloc := ""
 	blobNamedAllocFallback := ""
 	blobNamedAllocBuilder := ""
