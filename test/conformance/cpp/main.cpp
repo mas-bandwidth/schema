@@ -549,6 +549,7 @@ static const VarCodec var_codecs[] = {
     VARCODEC( "tblsurf", surfaces, Chain ),
     VARCODEC( "tblsurf", surfaces, Holder ),
     VARCODEC( "tblsurf", surfaces, Counted ),
+    VARCODEC( "tabledemo", tabledemo, VarMoods ), // variable only: the deprecated-variant rows reach the variable save
 };
 
 // ---------------------------------------------------------------------------
@@ -2333,6 +2334,17 @@ static bool write_refusal_set_variable( const std::string & root, void * value, 
             if ( (int) v.bounded_steps[0].type == 4 ) { memset( v.bounded_steps[0].label.value, 0, sizeof( v.bounded_steps[0].label.value ) ); v.bounded_steps[0].label.value_length = 0; }
             return true;
         }
+    }
+    if ( root == "VarMoods" )
+    {
+        tabledemo::VarMoods & v = *(tabledemo::VarMoods *) value;
+        if ( path == "row[0]" && kind == "ordinal" )
+        {
+            if ( v.row.count < 1 || v.row.elements.value == 0 ) return false;
+            tabledemo::Mood * elems = (tabledemo::Mood *) ( (uint8_t *) &v.row.elements + v.row.elements.value );
+            return wref_store_enum( elems[0], text );
+        }
+        if ( path == "mood" && kind == "ordinal" ) return wref_store_enum( v.mood, text );
     }
     if ( root == "Bounds" )
     {
