@@ -4690,7 +4690,22 @@ default and not as zero: `sp-enum-scalar-deprecated` (text),
 `invalid_value`, the Reason naming `<Table>.<field>` and the variant. A
 deprecated field is never refused because its value is the writer's own
 default, while a variant value is the caller's, so the two features differ here
-on purpose.
+on purpose. EVERY writer holds this, not the text writer alone: the table
+save, the fixed save and the message save refuse the deprecated variant as an
+element and as a scalar, an assert leg in its debug build (SPEC.md §5.1). A
+writer that emits one hands every reader a value it reads back as the default,
+so a round trip moves the value silently. `TestJavaDeprecatedVariantNeverWritten`
+holds the Java leg's three binary writers, scalar and element, beside the
+lawful variant. Every leg answers the shared rows `wref_enum_deprecated`,
+`wref_enum_scalar_deprecated`, `fref_enum_deprecated` and
+`fref_enum_scalar_deprecated` (refused) and their `_ok` twins (written) on the
+`write-refusal` and `write-refusal-fixed` surfaces. A leg whose driver saves a
+FIXED root through its fixed form on both surfaces holds its variable save to
+the rule by its own test (`TestJsDeprecatedVariantNeverWritten`), since the
+shared rows reach that writer only through a variable root. The block builder
+holds the rule too (an assert leg in its debug build): Dart's
+(`TestDartBlockBuildRefusesDeprecatedVariant`), as Rust's message writer does
+(`TestRustDeprecatedVariantMessageNeverWritten`).
 
 **COMPILE TIME.** A field default or a `const` that names a deprecated variant
 is refused by name. An enum-keyed array such as `[Enum]int32` whose enum has
@@ -6970,7 +6985,15 @@ a fact of the announcement, not of a body. A widening is not a mismatch (§4). *
 meets such an entry in a batch instead** — the reference's `AnnounceRead` holds no
 root, so it meets the entry at the field or arm that names it — **REFUSES THE
 WHOLE BATCH `kind_mismatch`**: the count is `0` and every body holds its declared
-defaults. It never skips the entry, counts it and delivers the batch. **A field whose
+defaults. It never skips the entry, counts it and delivers the batch. **THE
+ANNOUNCED KIND OF AN ARRAY OR AN ENUM-KEYED ARRAY INCLUDES ITS ELEMENT KIND**
+(§3, "An array's ELEMENT KIND is part of its identity"), at a field and at an
+arm alike: an announced kind that agrees over an element kind that does not is
+the same mismatch and refuses the whole batch `kind_mismatch`, an `int32`
+element read as `uint8`, a record element read as `uint8`, in a counted, a
+fixed and an enum-keyed array. Only a positional array's element kind widens
+(§4, THE ONE WIDENING RULE: `uint8` elements read as `uint16`); an
+enum-keyed array's element kind that moves is a mismatch. **A field whose
 announced kind AGREES and whose announced RANGE differs decodes**, and refuses
 `out_of_range` where the value falls outside this reader's bound, which is §4's
 rule for a range change on the variable form and is why the shapes carry ranges
@@ -7150,6 +7173,18 @@ Where each refusal runs is each form's own:
 | FIXED (§3.4) | the WRITER refuses a NaN or an infinity (`-1`); the READ tests the raw bits for a non-finite value FIRST (`non_finite_float`, refused) and then each end against the WRITER's range the plan carries (`out_of_range`, refused); a `-0` lands as `+0`, uncounted, and the WRITER stores `+0` for it |
 | VARIABLE (§3) | the same: the WRITER refuses, and the READ refuses a non-finite value and then a finite one outside the reader's declared range (§4), `out_of_range` |
 | TEXT / JSON (§16) | JSON has no spelling for a NaN or an infinity, so the WRITER REFUSES each (§16.2: measure and write return `-1`, and the reference's refusal names the value) and nothing lands; a text cannot carry one in. A `-0` is spelled `-0`, and the READ lands it as `+0`, uncounted |
+
+**A DEBUG RANGE CHECK DOES NOT MASK THE NON-FINITE REFUSAL.** A NaN or an
+infinity also fails the range compare. Where a leg's writer has its own
+`non_finite_float` refusal, the leg's debug range check on a compressed or
+ranged float holds a FINITE value only, so a non-finite value passes it and
+reaches that refusal. A debug range check that fires on a NaN or an infinity
+first, masking the leg's own refusal, is a defect, on the message writer as on
+the fixed one (Java's message writer, 2026-11-24, held by
+`TestJavaFiniteFloats` `form-write-ranged`). This asks nothing of a release
+build: an assert leg's release build has no write-side refusal (SPEC.md §5.1),
+and a leg whose non-finite check is itself a debug assert (C#, for one) meets
+this rule as it stands.
 
 The quantizer, read off the Go oracle (`ir.TableMessageQuantize` and
 `TableMessageDequantize`) on two shapes, because a range that starts at `0`
