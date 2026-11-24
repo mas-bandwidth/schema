@@ -1,0 +1,353 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum rawRangeOrNil
+{ Zfirst, Zsecond, Zthird }
+
+enum raw_2
+{ Zfirst, Zsecond, Zthird }
+
+enum raw_digits
+{ Zfirst, Zsecond, Zthird }
+
+enum raw_signed
+{ Zfirst, Zsecond, Zthird }
+
+enum raw_span
+{ Zfirst, Zsecond, Zthird }
+
+enum raw_utf8
+{ Zfirst, Zsecond, Zthird }
+
+enum raw_val
+{ Zfirst, Zsecond, Zthird }
+
+enum raw_value
+{ Zfirst, Zsecond, Zthird }
+
+enum raw_vocab
+{ Zfirst, Zsecond, Zthird }
+
+enum rawpool
+{ Zfirst, Zsecond, Zthird }
+
+enum rb
+{ Zfirst, Zsecond, Zthird }
+
+enum rbit
+{ Zfirst, Zsecond, Zthird }
+
+enum rc
+{ Zfirst, Zsecond, Zthird }
+
+enum rd
+{ Zfirst, Zsecond, Zthird }
+
+enum rd_le
+{ Zfirst, Zsecond, Zthird }
+
+enum rd_u8
+{ Zfirst, Zsecond, Zthird }
+
+enum rdepth
+{ Zfirst, Zsecond, Zthird }
+
+enum rdesc
+{ Zfirst, Zsecond, Zthird }
+
+enum re
+{ Zfirst, Zsecond, Zthird }
+
+enum reach
+{ Zfirst, Zsecond, Zthird }
+
+enum reached
+{ Zfirst, Zsecond, Zthird }
+
+enum reachedNodes
+{ Zfirst, Zsecond, Zthird }
+
+enum reaches
+{ Zfirst, Zsecond, Zthird }
+
+enum readAlign
+{ Zfirst, Zsecond, Zthird }
+
+enum readArray
+{ Zfirst, Zsecond, Zthird }
+
+enum readBase64
+{ Zfirst, Zsecond, Zthird }
+
+enum readBase64Into
+{ Zfirst, Zsecond, Zthird }
+
+enum readBatch
+{ Zfirst, Zsecond, Zthird }
+
+enum readBitsRaw
+{ Zfirst, Zsecond, Zthird }
+
+enum readBody
+{ Zfirst, Zsecond, Zthird }
+
+enum readCommon
+{ Zfirst, Zsecond, Zthird }
+
+enum readElement
+{ Zfirst, Zsecond, Zthird }
+
+enum readEnum
+{ Zfirst, Zsecond, Zthird }
+
+enum readField
+{ Zfirst, Zsecond, Zthird }
+
+enum readFixed
+{ Zfirst, Zsecond, Zthird }
+
+enum readFixed128
+{ Zfirst, Zsecond, Zthird }
+
+enum readFixed64
+{ Zfirst, Zsecond, Zthird }
+
+enum readFlags
+{ Zfirst, Zsecond, Zthird }
+
+enum readFloat32
+{ Zfirst, Zsecond, Zthird }
+
+enum readFloat32Bits
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    rawRangeOrNil Inner
+    raw_2 Inner
+    raw_digits Inner
+    raw_signed Inner
+    raw_span Inner
+    raw_utf8 Inner
+    raw_val Inner
+    raw_value Inner
+    raw_vocab Inner
+    rawpool Inner
+}
+
+table NameTypes0
+{
+    one0  rawRangeOrNil
+    many0 [..4]rawRangeOrNil
+    one1  raw_2
+    many1 [..4]raw_2
+    one2  raw_digits
+    many2 [..4]raw_digits
+    one3  raw_signed
+    many3 [..4]raw_signed
+    one4  raw_span
+    many4 [..4]raw_span
+    one5  raw_utf8
+    many5 [..4]raw_utf8
+    one6  raw_val
+    many6 [..4]raw_val
+    one7  raw_value
+    many7 [..4]raw_value
+    one8  raw_vocab
+    many8 [..4]raw_vocab
+    one9  rawpool
+    many9 [..4]rawpool
+}
+
+table NameFields0
+{
+    rawRangeOrNil uint32
+    raw_2 uint32
+    raw_digits uint32
+    raw_signed uint32
+    raw_span uint32
+    raw_utf8 uint32
+    raw_val uint32
+    raw_value uint32
+    raw_vocab uint32
+    rawpool uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    rb Inner
+    rbit Inner
+    rc Inner
+    rd Inner
+    rd_le Inner
+    rd_u8 Inner
+    rdepth Inner
+    rdesc Inner
+    re Inner
+    reach Inner
+}
+
+table NameTypes1
+{
+    one0  rb
+    many0 [..4]rb
+    one1  rbit
+    many1 [..4]rbit
+    one2  rc
+    many2 [..4]rc
+    one3  rd
+    many3 [..4]rd
+    one4  rd_le
+    many4 [..4]rd_le
+    one5  rd_u8
+    many5 [..4]rd_u8
+    one6  rdepth
+    many6 [..4]rdepth
+    one7  rdesc
+    many7 [..4]rdesc
+    one8  re
+    many8 [..4]re
+    one9  reach
+    many9 [..4]reach
+}
+
+table NameFields1
+{
+    rb uint32
+    rbit uint32
+    rc uint32
+    rd uint32
+    rd_le uint32
+    rd_u8 uint32
+    rdepth uint32
+    rdesc uint32
+    re uint32
+    reach uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    reached Inner
+    reachedNodes Inner
+    reaches Inner
+    readAlign Inner
+    readArray Inner
+    readBase64 Inner
+    readBase64Into Inner
+    readBatch Inner
+    readBitsRaw Inner
+    readBody Inner
+}
+
+table NameTypes2
+{
+    one0  reached
+    many0 [..4]reached
+    one1  reachedNodes
+    many1 [..4]reachedNodes
+    one2  reaches
+    many2 [..4]reaches
+    one3  readAlign
+    many3 [..4]readAlign
+    one4  readArray
+    many4 [..4]readArray
+    one5  readBase64
+    many5 [..4]readBase64
+    one6  readBase64Into
+    many6 [..4]readBase64Into
+    one7  readBatch
+    many7 [..4]readBatch
+    one8  readBitsRaw
+    many8 [..4]readBitsRaw
+    one9  readBody
+    many9 [..4]readBody
+}
+
+table NameFields2
+{
+    reached uint32
+    reachedNodes uint32
+    reaches uint32
+    readAlign uint32
+    readArray uint32
+    readBase64 uint32
+    readBase64Into uint32
+    readBatch uint32
+    readBitsRaw uint32
+    readBody uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    readCommon Inner
+    readElement Inner
+    readEnum Inner
+    readField Inner
+    readFixed Inner
+    readFixed128 Inner
+    readFixed64 Inner
+    readFlags Inner
+    readFloat32 Inner
+    readFloat32Bits Inner
+}
+
+table NameTypes3
+{
+    one0  readCommon
+    many0 [..4]readCommon
+    one1  readElement
+    many1 [..4]readElement
+    one2  readEnum
+    many2 [..4]readEnum
+    one3  readField
+    many3 [..4]readField
+    one4  readFixed
+    many4 [..4]readFixed
+    one5  readFixed128
+    many5 [..4]readFixed128
+    one6  readFixed64
+    many6 [..4]readFixed64
+    one7  readFlags
+    many7 [..4]readFlags
+    one8  readFloat32
+    many8 [..4]readFloat32
+    one9  readFloat32Bits
+    many9 [..4]readFloat32Bits
+}
+
+table NameFields3
+{
+    readCommon uint32
+    readElement uint32
+    readEnum uint32
+    readField uint32
+    readFixed uint32
+    readFixed128 uint32
+    readFixed64 uint32
+    readFlags uint32
+    readFloat32 uint32
+    readFloat32Bits uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}

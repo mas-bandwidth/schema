@@ -34,6 +34,7 @@ const units = {
   tblann4097: { home: "announce4097/Announce4097Table.js" },
   messagedemo: { home: "messages/MessagedemoTable.js" },
   backenddemo: { home: "backend/BackenddemoTable.js", table: "backend/BackendTable.js", variable: "backend/BackenddemoVariable.js", view: "backend/BackenddemoView.js" },
+  tblfixedevo: { home: "fixedevo/TblfixedevoTable.js", table: "fixedevo/FixedEvoTable.js", variable: "fixedevo/TblfixedevoVariable.js", view: "fixedevo/TblfixedevoView.js" },
 };
 
 function unitOf(name, what, row) {

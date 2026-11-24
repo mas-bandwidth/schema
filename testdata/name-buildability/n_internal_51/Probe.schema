@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum parent_keep
+{ Zfirst, Zsecond, Zthird }
+
+enum parent_ordinal
+{ Zfirst, Zsecond, Zthird }
+
+enum parent_side
+{ Zfirst, Zsecond, Zthird }
+
+enum parent_steps
+{ Zfirst, Zsecond, Zthird }
+
+enum parents
+{ Zfirst, Zsecond, Zthird }
+
+enum parse
+{ Zfirst, Zsecond, Zthird }
+
+enum parseF32
+{ Zfirst, Zsecond, Zthird }
+
+enum parseFloat32
+{ Zfirst, Zsecond, Zthird }
+
+enum parseLayout
+{ Zfirst, Zsecond, Zthird }
+
+enum parseNode
+{ Zfirst, Zsecond, Zthird }
+
+enum parseShape
+{ Zfirst, Zsecond, Zthird }
+
+enum parseTimestamp
+{ Zfirst, Zsecond, Zthird }
+
+enum parseVocabulary
+{ Zfirst, Zsecond, Zthird }
+
+enum parseWide
+{ Zfirst, Zsecond, Zthird }
+
+enum parse_document
+{ Zfirst, Zsecond, Zthird }
+
+enum parse_edit_text
+{ Zfirst, Zsecond, Zthird }
+
+enum parse_value
+{ Zfirst, Zsecond, Zthird }
+
+enum parsed
+{ Zfirst, Zsecond, Zthird }
+
+enum parsed_key
+{ Zfirst, Zsecond, Zthird }
+
+enum parser
+{ Zfirst, Zsecond, Zthird }
+
+enum parts
+{ Zfirst, Zsecond, Zthird }
+
+enum passed
+{ Zfirst, Zsecond, Zthird }
+
+enum past
+{ Zfirst, Zsecond, Zthird }
+
+enum pat
+{ Zfirst, Zsecond, Zthird }
+
+enum patch_len
+{ Zfirst, Zsecond, Zthird }
+
+enum path
+{ Zfirst, Zsecond, Zthird }
+
+enum path_key
+{ Zfirst, Zsecond, Zthird }
+
+enum path_root
+{ Zfirst, Zsecond, Zthird }
+
+enum path_step
+{ Zfirst, Zsecond, Zthird }
+
+enum path_str
+{ Zfirst, Zsecond, Zthird }
+
+enum paths
+{ Zfirst, Zsecond, Zthird }
+
+enum pattern
+{ Zfirst, Zsecond, Zthird }
+
+enum payLen
+{ Zfirst, Zsecond, Zthird }
+
+enum payOff
+{ Zfirst, Zsecond, Zthird }
+
+enum paySpan
+{ Zfirst, Zsecond, Zthird }
+
+enum payload
+{ Zfirst, Zsecond, Zthird }
+
+enum payload0
+{ Zfirst, Zsecond, Zthird }
+
+enum payload1
+{ Zfirst, Zsecond, Zthird }
+
+enum payload10
+{ Zfirst, Zsecond, Zthird }
+
+enum payload11
+{ Zfirst, Zsecond, Zthird }
+
+enum payload12
+{ Zfirst, Zsecond, Zthird }
+
+enum payload13
+{ Zfirst, Zsecond, Zthird }
+
+enum payload14
+{ Zfirst, Zsecond, Zthird }
+
+enum payload15
+{ Zfirst, Zsecond, Zthird }
+
+enum payload16
+{ Zfirst, Zsecond, Zthird }
+
+enum payload17
+{ Zfirst, Zsecond, Zthird }
+
+enum payload18
+{ Zfirst, Zsecond, Zthird }
+
+enum payload19
+{ Zfirst, Zsecond, Zthird }
+
+enum payload2
+{ Zfirst, Zsecond, Zthird }
+
+enum payload20
+{ Zfirst, Zsecond, Zthird }
+
+enum payload21
+{ Zfirst, Zsecond, Zthird }
+
+enum payload22
+{ Zfirst, Zsecond, Zthird }
+
+enum payload23
+{ Zfirst, Zsecond, Zthird }
+
+enum payload24
+{ Zfirst, Zsecond, Zthird }
+
+enum payload25
+{ Zfirst, Zsecond, Zthird }
+
+enum payload26
+{ Zfirst, Zsecond, Zthird }
+
+enum payload27
+{ Zfirst, Zsecond, Zthird }
+
+enum payload28
+{ Zfirst, Zsecond, Zthird }
+
+enum payload29
+{ Zfirst, Zsecond, Zthird }
+
+enum payload3
+{ Zfirst, Zsecond, Zthird }
+
+enum payload30
+{ Zfirst, Zsecond, Zthird }
+
+enum payload31
+{ Zfirst, Zsecond, Zthird }
+
+enum payload32
+{ Zfirst, Zsecond, Zthird }
+
+enum payload33
+{ Zfirst, Zsecond, Zthird }
+
+enum payload34
+{ Zfirst, Zsecond, Zthird }
+
+enum payload35
+{ Zfirst, Zsecond, Zthird }
+
+enum payload36
+{ Zfirst, Zsecond, Zthird }
+
+enum payload37
+{ Zfirst, Zsecond, Zthird }
+
+enum payload38
+{ Zfirst, Zsecond, Zthird }
+
+enum payload4
+{ Zfirst, Zsecond, Zthird }
+
+enum payload40
+{ Zfirst, Zsecond, Zthird }
+
+enum payload42
+{ Zfirst, Zsecond, Zthird }
+
+enum payload43
+{ Zfirst, Zsecond, Zthird }
+
+enum payload44
+{ Zfirst, Zsecond, Zthird }
+
+enum payload45
+{ Zfirst, Zsecond, Zthird }
+
+enum payload46
+{ Zfirst, Zsecond, Zthird }
+
+enum payload47
+{ Zfirst, Zsecond, Zthird }
+
+enum payload48
+{ Zfirst, Zsecond, Zthird }
+
+enum payload5
+{ Zfirst, Zsecond, Zthird }
+
+enum payload50
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    parent_keep Inner
+    parent_ordinal Inner
+    parent_side Inner
+    parent_steps Inner
+    parents Inner
+    parse Inner
+    parseF32 Inner
+    parseFloat32 Inner
+    parseLayout Inner
+    parseNode Inner
+}
+
+table NameTypes0
+{
+    one0  parent_keep
+    many0 [..4]parent_keep
+    one1  parent_ordinal
+    many1 [..4]parent_ordinal
+    one2  parent_side
+    many2 [..4]parent_side
+    one3  parent_steps
+    many3 [..4]parent_steps
+    one4  parents
+    many4 [..4]parents
+    one5  parse
+    many5 [..4]parse
+    one6  parseF32
+    many6 [..4]parseF32
+    one7  parseFloat32
+    many7 [..4]parseFloat32
+    one8  parseLayout
+    many8 [..4]parseLayout
+    one9  parseNode
+    many9 [..4]parseNode
+}
+
+table NameFields0
+{
+    parent_keep uint32
+    parent_ordinal uint32
+    parent_side uint32
+    parent_steps uint32
+    parents uint32
+    parse uint32
+    parseF32 uint32
+    parseFloat32 uint32
+    parseLayout uint32
+    parseNode uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    parseShape Inner
+    parseTimestamp Inner
+    parseVocabulary Inner
+    parseWide Inner
+    parse_document Inner
+    parse_edit_text Inner
+    parse_value Inner
+    parsed Inner
+    parsed_key Inner
+    parser Inner
+}
+
+table NameTypes1
+{
+    one0  parseShape
+    many0 [..4]parseShape
+    one1  parseTimestamp
+    many1 [..4]parseTimestamp
+    one2  parseVocabulary
+    many2 [..4]parseVocabulary
+    one3  parseWide
+    many3 [..4]parseWide
+    one4  parse_document
+    many4 [..4]parse_document
+    one5  parse_edit_text
+    many5 [..4]parse_edit_text
+    one6  parse_value
+    many6 [..4]parse_value
+    one7  parsed
+    many7 [..4]parsed
+    one8  parsed_key
+    many8 [..4]parsed_key
+    one9  parser
+    many9 [..4]parser
+}
+
+table NameFields1
+{
+    parseShape uint32
+    parseTimestamp uint32
+    parseVocabulary uint32
+    parseWide uint32
+    parse_document uint32
+    parse_edit_text uint32
+    parse_value uint32
+    parsed uint32
+    parsed_key uint32
+    parser uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    parts Inner
+    passed Inner
+    past Inner
+    pat Inner
+    patch_len Inner
+    path Inner
+    path_key Inner
+    path_root Inner
+    path_step Inner
+    path_str Inner
+}
+
+table NameTypes2
+{
+    one0  parts
+    many0 [..4]parts
+    one1  passed
+    many1 [..4]passed
+    one2  past
+    many2 [..4]past
+    one3  pat
+    many3 [..4]pat
+    one4  patch_len
+    many4 [..4]patch_len
+    one5  path
+    many5 [..4]path
+    one6  path_key
+    many6 [..4]path_key
+    one7  path_root
+    many7 [..4]path_root
+    one8  path_step
+    many8 [..4]path_step
+    one9  path_str
+    many9 [..4]path_str
+}
+
+table NameFields2
+{
+    parts uint32
+    passed uint32
+    past uint32
+    pat uint32
+    patch_len uint32
+    path uint32
+    path_key uint32
+    path_root uint32
+    path_step uint32
+    path_str uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    paths Inner
+    pattern Inner
+    payLen Inner
+    payOff Inner
+    paySpan Inner
+    payload Inner
+    payload0 Inner
+    payload1 Inner
+    payload10 Inner
+    payload11 Inner
+}
+
+table NameTypes3
+{
+    one0  paths
+    many0 [..4]paths
+    one1  pattern
+    many1 [..4]pattern
+    one2  payLen
+    many2 [..4]payLen
+    one3  payOff
+    many3 [..4]payOff
+    one4  paySpan
+    many4 [..4]paySpan
+    one5  payload
+    many5 [..4]payload
+    one6  payload0
+    many6 [..4]payload0
+    one7  payload1
+    many7 [..4]payload1
+    one8  payload10
+    many8 [..4]payload10
+    one9  payload11
+    many9 [..4]payload11
+}
+
+table NameFields3
+{
+    paths uint32
+    pattern uint32
+    payLen uint32
+    payOff uint32
+    paySpan uint32
+    payload uint32
+    payload0 uint32
+    payload1 uint32
+    payload10 uint32
+    payload11 uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    payload12 Inner
+    payload13 Inner
+    payload14 Inner
+    payload15 Inner
+    payload16 Inner
+    payload17 Inner
+    payload18 Inner
+    payload19 Inner
+    payload2 Inner
+    payload20 Inner
+}
+
+table NameTypes4
+{
+    one0  payload12
+    many0 [..4]payload12
+    one1  payload13
+    many1 [..4]payload13
+    one2  payload14
+    many2 [..4]payload14
+    one3  payload15
+    many3 [..4]payload15
+    one4  payload16
+    many4 [..4]payload16
+    one5  payload17
+    many5 [..4]payload17
+    one6  payload18
+    many6 [..4]payload18
+    one7  payload19
+    many7 [..4]payload19
+    one8  payload2
+    many8 [..4]payload2
+    one9  payload20
+    many9 [..4]payload20
+}
+
+table NameFields4
+{
+    payload12 uint32
+    payload13 uint32
+    payload14 uint32
+    payload15 uint32
+    payload16 uint32
+    payload17 uint32
+    payload18 uint32
+    payload19 uint32
+    payload2 uint32
+    payload20 uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    payload21 Inner
+    payload22 Inner
+    payload23 Inner
+    payload24 Inner
+    payload25 Inner
+    payload26 Inner
+    payload27 Inner
+    payload28 Inner
+    payload29 Inner
+    payload3 Inner
+}
+
+table NameTypes5
+{
+    one0  payload21
+    many0 [..4]payload21
+    one1  payload22
+    many1 [..4]payload22
+    one2  payload23
+    many2 [..4]payload23
+    one3  payload24
+    many3 [..4]payload24
+    one4  payload25
+    many4 [..4]payload25
+    one5  payload26
+    many5 [..4]payload26
+    one6  payload27
+    many6 [..4]payload27
+    one7  payload28
+    many7 [..4]payload28
+    one8  payload29
+    many8 [..4]payload29
+    one9  payload3
+    many9 [..4]payload3
+}
+
+table NameFields5
+{
+    payload21 uint32
+    payload22 uint32
+    payload23 uint32
+    payload24 uint32
+    payload25 uint32
+    payload26 uint32
+    payload27 uint32
+    payload28 uint32
+    payload29 uint32
+    payload3 uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    payload30 Inner
+    payload31 Inner
+    payload32 Inner
+    payload33 Inner
+    payload34 Inner
+    payload35 Inner
+    payload36 Inner
+    payload37 Inner
+    payload38 Inner
+    payload4 Inner
+}
+
+table NameTypes6
+{
+    one0  payload30
+    many0 [..4]payload30
+    one1  payload31
+    many1 [..4]payload31
+    one2  payload32
+    many2 [..4]payload32
+    one3  payload33
+    many3 [..4]payload33
+    one4  payload34
+    many4 [..4]payload34
+    one5  payload35
+    many5 [..4]payload35
+    one6  payload36
+    many6 [..4]payload36
+    one7  payload37
+    many7 [..4]payload37
+    one8  payload38
+    many8 [..4]payload38
+    one9  payload4
+    many9 [..4]payload4
+}
+
+table NameFields6
+{
+    payload30 uint32
+    payload31 uint32
+    payload32 uint32
+    payload33 uint32
+    payload34 uint32
+    payload35 uint32
+    payload36 uint32
+    payload37 uint32
+    payload38 uint32
+    payload4 uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    payload40 Inner
+    payload42 Inner
+    payload43 Inner
+    payload44 Inner
+    payload45 Inner
+    payload46 Inner
+    payload47 Inner
+    payload48 Inner
+    payload5 Inner
+    payload50 Inner
+}
+
+table NameTypes7
+{
+    one0  payload40
+    many0 [..4]payload40
+    one1  payload42
+    many1 [..4]payload42
+    one2  payload43
+    many2 [..4]payload43
+    one3  payload44
+    many3 [..4]payload44
+    one4  payload45
+    many4 [..4]payload45
+    one5  payload46
+    many5 [..4]payload46
+    one6  payload47
+    many6 [..4]payload47
+    one7  payload48
+    many7 [..4]payload48
+    one8  payload5
+    many8 [..4]payload5
+    one9  payload50
+    many9 [..4]payload50
+}
+
+table NameFields7
+{
+    payload40 uint32
+    payload42 uint32
+    payload43 uint32
+    payload44 uint32
+    payload45 uint32
+    payload46 uint32
+    payload47 uint32
+    payload48 uint32
+    payload5 uint32
+    payload50 uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

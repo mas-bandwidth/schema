@@ -133,7 +133,7 @@ func reviewArmZero(data []byte, arm, next, end tablewire.BitSpot) []byte {
 	)
 }
 
-const reviewQuantizedSrc = `package quantized
+const reviewQuantizedSrc = `package quantizedreview
 
 fixed table Inner
 {

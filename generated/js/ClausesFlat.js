@@ -727,6 +727,9 @@ export function ReadW50FlatBits(view, numBits, value) {
 // must hold F13MaxBytes.
 export function WriteF13Flat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (value.items == null || value.items.length !== 7) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+    return -1;
+  }
   for (let i0 = 0; i0 < 7; i0++) {
     if (!globalThis.Number.isInteger(value.items[i0]) || value.items[i0] < 0 || value.items[i0] > 8191) {
       return -1;
@@ -1026,6 +1029,9 @@ export function ReadElevenFlatBits(view, numBits, value) {
 // must hold ArrElevenMaxBytes.
 export function WriteArrElevenFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (value.items == null || value.items.length !== 9) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+    return -1;
+  }
   for (let i0 = 0; i0 < 9; i0++) {
     const e0 = value.items[i0];
     if (!globalThis.Number.isInteger(e0.a) || e0.a < 0 || e0.a > 7) {

@@ -29,6 +29,7 @@ import (
 	"backenddemo"
 	"messagedemo"
 	tblsurf "surfaces"
+	"tblfixedevo"
 )
 
 // blockBuilderAbsent is why the Go leg answers `write-refusal-block` ABSENT:
@@ -376,6 +377,33 @@ var readIntoRows = map[readIntoKey]func(lawful, damaged []byte, count int, annou
 				v := &values[i]
 				text, err := jsonOf(func() int64 { return tblsurf.NarrowToJSONMeasure(v) },
 					func(buf []byte) int64 { return tblsurf.NarrowToJSON(v, buf) }, "Narrow")
+				if err != nil {
+					return nil, err
+				}
+				all = append(all, text...)
+			}
+			return all, nil
+		})
+	},
+	// A FIELD AN OLDER WRITER DID NOT SUPPLY HOLDS ITS DECLARED DEFAULT
+	// (docs/SPEC-TABLES.md §3.4): the second file is a lawful v1 record read
+	// through the lineage into the value the v3 record filled
+	{"tblfixedevo", "EvoRoot", "fixed"}: func(lawful, second []byte, count int, _ []byte) ([]byte, error) {
+		values := make([]tblfixedevo.EvoRoot, count)
+		for i := range values {
+			tblfixedevo.EvoRootReset(&values[i])
+		}
+		plan := make([]tblfixedevo.TableFixedEntry, fixedPlanCapacity)
+		var r tblfixedevo.TableReport
+		return readInto(lawful, second, func(data []byte) (bool, bool) {
+			n := tblfixedevo.EvoRootFixedLoad(values, data, plan, &r)
+			return n >= 0, r.Refused()
+		}, func() ([]byte, error) {
+			var all []byte
+			for i := range values {
+				v := &values[i]
+				text, err := jsonOf(func() int64 { return tblfixedevo.EvoRootToJSONMeasure(v) },
+					func(buf []byte) int64 { return tblfixedevo.EvoRootToJSON(v, buf) }, "EvoRoot")
 				if err != nil {
 					return nil, err
 				}
