@@ -150,10 +150,8 @@ OWES) and is repeated here as the rule for the suite:
   (`plain`, `builder` or `retain`); a whole-roster run with no `--leg` is
   refused, `--unit` on a whole-roster run is refused unless the leg is a
   one-unit leg (`goose-unit`) whose driver is the Goose unit leg over the same
-  unit, and `TestEveryWireFuzzOccurrenceIsRecognised` (internal/ci) fails
-  closed: every occurrence of the word `wire-fuzz` in every tracked file is a
-  call with a literal `--leg`, a replay, a leg's own mode word, or prose, and
-  anything it cannot read is red by file and line. The
+  unit. The refusal is the guard: a caller without `--leg`, per PR or
+  nightly, is red at its first run, loud and by name. The
   release gate reads the summary's `N ledgered seeds absent (<ledger>)` clause
   and is red on an absence in any other words. A new absent root and
   a stale line are both red, and a `split:` line of a plain ledger is red
@@ -344,7 +342,7 @@ per-port check where no shared case exercises it.
 | entry | rule (spec) | held by |
 |---|---|---|
 | INDEX | every pinned wire-fuzz vector is run: `harness wire-fuzz` refuses a vector on disk and not in the index, or in the index and not on disk, naming the file (§2; SPEC-TABLES.md §4.2) | `TestWireVectorIndexAndDirectoryAgree` (#4765, merged) |
-| W-ROSTER | every wire-fuzz seed is asked: a root the leg answers `0` for fails the run by name in every tier, per PR and nightly, unless the exact set of absent roots is held in `test/conformance/wire-absent/<leg>-<arm>.tsv` with a reason per root; a new absent root and a stale line are both red (§2; SPEC-TABLES.md §4.2) | `TestWireFuzzAbsentRoots*` (test/conformance/harness/wirefuzz_absent_test.go), `TestWireFuzzAbsentRootEndToEnd`, `TestWireFuzzSplitRootAnsweredByBuilderArm`, `TestWireFuzzUnitOnlyOnOneUnitLegs`, `TestEveryWireFuzzOccurrenceIsRecognised` and `TestWireFuzzScanFailsClosed` (internal/ci), `TestTheAbsenceClauseIsReadOrRed` and the `go-ledgered-absent` gate case (tools/wirefuzzrelease); every `verify-<leg>-fuzz` row |
+| W-ROSTER | every wire-fuzz seed is asked: a root the leg answers `0` for fails the run by name in every tier, per PR and nightly, unless the exact set of absent roots is held in `test/conformance/wire-absent/<leg>-<arm>.tsv` with a reason per root; a new absent root and a stale line are both red (§2; SPEC-TABLES.md §4.2) | `TestWireFuzzAbsentRoots*` (test/conformance/harness/wirefuzz_absent_test.go), `TestWireFuzzAbsentRootEndToEnd`, `TestWireFuzzSplitRootAnsweredByBuilderArm`, `TestWireFuzzUnitOnlyOnOneUnitLegs` (the refusal of a whole-roster run with no `--leg` is in `TestWireFuzzAbsentRootEndToEnd`), `TestTheAbsenceClauseIsReadOrRed` and the `go-ledgered-absent` gate case (tools/wirefuzzrelease); every `verify-<leg>-fuzz` row |
 | retain-id-bound-is-the-wires | a retaining save numbers the generated table's ids and the retained ids into one trailer bounded by `id_table_max` = 4096, never by the generated table's own capacity; a file of 4096 retained ids saves back byte for byte (SPEC-TABLES.md §6.6, THE MERGED TRAILER IS BOUNDED BY THE WIRE) | the wire-fuzz `--retain` arm on the pinned seed `id_table_4096` (graphdemo.Scene); C++ `TestCppRetainIdTableBoundIsTheWires` (#4767, merged) |
 | counted-born-elides | a plain counted `[Min..N]T` is born with `Min` elements each at its default, and a save of that born state elides the field, whether the value was born fresh or read back from text or wire at it; the shared rows of FL-25 add the refusals below `Min` (SPEC-TABLES §2.3, §22.2) | the verify-tablegen pinned matrix (`test/verify-tablegen/pinned.go`): `pin:c<elem>:fresh:*` and `pin:c<elem>:min_default:*` on every leg; Elixir also `TestCountedBornStateElides` |
 | FL-01 | compressed -0 stored as +0 (SPEC-TABLES §3.3; rulings `fixed-compressed-negzero`) | `testdata/conformance/feature-witnesses/compressed-negzero-go` |
