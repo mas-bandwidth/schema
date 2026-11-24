@@ -105,6 +105,18 @@ static std::map<std::string, Setter> setters()
     m["flags_wide"] = flagsWide;
     m["flags_wide_high"] = flagsWideHigh;
     m["flags_at_max"] = flagsAtMax;
+    m["int128_high"] = int128High;
+    m["int128_low"] = int128Low;
+    m["int128_at_max"] = int128AtMax;
+    m["int128_at_min"] = int128AtMin;
+    m["fixed_high"] = fixedHigh;
+    m["fixed_low"] = fixedLow;
+    m["fixed_at_max"] = fixedAtMax;
+    m["fixed_at_min"] = fixedAtMin;
+    m["ufixed_high"] = ufixedHigh;
+    m["ufixed_low"] = ufixedLow;
+    m["ufixed_at_max"] = ufixedAtMax;
+    m["ufixed_at_min"] = ufixedAtMin;
     return m;
 }
 
@@ -129,18 +141,15 @@ static std::map<std::string, std::string> refusedBy()
     m["reserved_wrong"] = "value.reserved_zero";
     m["flags_wide"] = "value.perks < ( 1ull << 3 )";
     m["flags_wide_high"] = "value.perks < ( 1ull << 3 )";
-    m["int128_high"] = int128High;
-    m["int128_low"] = int128Low;
-    m["int128_at_max"] = int128AtMax;
-    m["int128_at_min"] = int128AtMin;
-    m["fixed_high"] = fixedHigh;
-    m["fixed_low"] = fixedLow;
-    m["fixed_at_max"] = fixedAtMax;
-    m["fixed_at_min"] = fixedAtMin;
-    m["ufixed_high"] = ufixedHigh;
-    m["ufixed_low"] = ufixedLow;
-    m["ufixed_at_max"] = ufixedAtMax;
-    m["ufixed_at_min"] = ufixedAtMin;
+    // int128 refuses in write_int128's value_in_int128_range( value.wide, ... ) assert;
+    // a fixed or ufixed value has no generated assert: the runtime's
+    // FixedPointSerializer refuses it with offset <= raw_range
+    m["int128_high"] = "value.wide";
+    m["int128_low"] = "value.wide";
+    m["fixed_high"] = "offset <= raw_range";
+    m["fixed_low"] = "offset <= raw_range";
+    m["ufixed_high"] = "offset <= raw_range";
+    m["ufixed_low"] = "offset <= raw_range";
     return m;
 }
 
