@@ -369,7 +369,7 @@ class Contracts(unittest.TestCase):
             self.assertEqual(expected.count(before),1)
             expected=expected.replace(before,after)
         self.assertEqual(copied,expected)
-        self.assertEqual(len(receipt["replacements"]),2)
+        self.assertEqual(len(receipt["replacements"]),3)
         runner.temporary.cleanup()
         with tempfile.TemporaryDirectory() as tmp:
             root=Path(tmp)
@@ -514,7 +514,7 @@ class Contracts(unittest.TestCase):
         # verdict-pipe controls.
         python_outer={name for name in outer if "python" in name}
         ruby_outer={name for name in outer if "ruby" in name}
-        self.assertEqual(outer-goose_outer-moo_outer-python_outer-ruby_outer,{"tables-view","tables-fixed-twin"})
+        self.assertEqual(outer-goose_outer-moo_outer-python_outer-ruby_outer,{"tables-view","tables-fixed-twin","tables-lists"})
         self.assertEqual(moo_outer,set(m.FIXED_GATES["moo"].split()))
         self.assertEqual(goose_outer,set(m.FIXED_GATES["goose"].split()))
         runner=FakeRunner(ROOT,"python")
