@@ -1281,6 +1281,74 @@ defmodule Benchtable.Table do
       ]
     }
   }
+  # Declared defaults are immutable BEAM terms. Build each table and field
+  # template once while the generated module is compiled, rather than rebuilding
+  # nested maps and fixed/keyed lists on every load, write and sparse validation.
+  default_builder = fn default_builder, item ->
+    case item do
+      {:desc, desc} ->
+        Map.new(desc.fields, fn f ->
+          {f.name, default_builder.(default_builder, {:field, f})}
+        end)
+
+      {:field, %{optional: true} = f} ->
+        Map.get(f, :default)
+
+      {:field, %{t: :table, elem: name}} ->
+        default_builder.(default_builder, {:desc, Map.fetch!(@tables, name)})
+
+      {:field, %{t: :list, fixed_array: n} = f} ->
+        List.duplicate(default_builder.(default_builder, {:element, f}), n)
+
+      {:field, %{t: :list, min_count: n} = f} when n > 0 ->
+        List.duplicate(default_builder.(default_builder, {:element, f}), n)
+
+      {:field, %{t: :keyed} = f} ->
+        value =
+          if f.item.t == :table,
+            do:
+              default_builder.(
+                default_builder,
+                {:desc, Map.fetch!(@tables, f.item.elem)}
+              ),
+            else: Map.get(f.item, :default)
+
+        Map.new(f.key_names, fn name -> {name, value} end)
+
+      {:field, f} ->
+        Map.get(f, :default)
+
+      {:element, %{elem_kind: 13, elem: name}} ->
+        default_builder.(default_builder, {:desc, Map.fetch!(@tables, name)})
+
+      {:element, %{elem_default: value}} ->
+        value
+
+      {:element, %{elem_kind: kind}} when kind in [15, 17, 30] ->
+        nil
+
+      {:element, %{elem_kind: 12}} ->
+        ""
+
+      {:element, %{elem_kind: 1}} ->
+        false
+
+      {:element, %{elem_kind: kind}} when kind in [10, 11] ->
+        0.0
+
+      {:element, _f} ->
+        0
+    end
+  end
+
+  @defaults_by_table Map.new(@tables, fn {name, desc} ->
+                       {name, default_builder.(default_builder, {:desc, desc})}
+                     end)
+  @field_defaults for {_name, desc} <- @tables,
+                      f <- desc.fields,
+                      into: %{},
+                      do: {f, default_builder.(default_builder, {:field, f})}
+
   # Union arms are field lines (docs/SPEC-TABLES.md §2.6, §3).
   @unions %{
     "TableEvent" => %{
@@ -5648,20 +5716,39 @@ defmodule Benchtable.Table do
   # member's own defaults, as the reference's prefill does, so every body takes
   # one shape whether the wire named its fields or not.
   defp defaults(desc) do
-    Map.new(desc.fields, fn f -> {f.name, field_default(f)} end)
+    Map.fetch!(@defaults_by_table, desc.name)
   end
 
-  defp field_default(%{optional: true} = f), do: Map.get(f, :default)
-  defp field_default(%{t: :table, elem: name}), do: defaults(Map.fetch!(@tables, name))
+  defp field_default(f) do
+    case Map.fetch(@field_defaults, f) do
+      {:ok, value} -> value
+      :error -> uncached_field_default(f)
+    end
+  end
 
-  defp field_default(%{t: :list, fixed_array: n} = f),
+  # Union-arm descriptors are not members of a table's descriptor list. They
+  # take the same declared-default rules without sharing a cache identity with
+  # an unrelated, same-named table field (SF-23).
+  defp uncached_field_default(%{optional: true} = f), do: Map.get(f, :default)
+  defp uncached_field_default(%{t: :table, elem: name}), do: defaults(Map.fetch!(@tables, name))
+
+  defp uncached_field_default(%{t: :list, fixed_array: n} = f),
     do: List.duplicate(element_default(f), n)
 
-  defp field_default(%{t: :list, min_count: m} = f) when m > 0,
-    do: List.duplicate(element_default(f), m)
+  defp uncached_field_default(%{t: :list, min_count: n} = f) when n > 0,
+    do: List.duplicate(element_default(f), n)
 
-  defp field_default(%{t: :keyed} = f), do: keyed_defaults(f)
-  defp field_default(f), do: Map.get(f, :default)
+  defp uncached_field_default(%{t: :keyed} = f), do: uncached_keyed_defaults(f)
+  defp uncached_field_default(f), do: Map.get(f, :default)
+
+  defp uncached_keyed_defaults(f) do
+    value =
+      if f.item.t == :table,
+        do: defaults(Map.fetch!(@tables, f.item.elem)),
+        else: Map.get(f.item, :default)
+
+    Map.new(f.key_names, fn name -> {name, value} end)
+  end
 
   # Missing slots keep their element default in both binary and text forms.
   defp element_default(%{elem_kind: 13, elem: name}), do: defaults(Map.fetch!(@tables, name))
@@ -5673,12 +5760,7 @@ defmodule Benchtable.Table do
   defp element_default(_f), do: 0
 
   defp keyed_defaults(f) do
-    def_val =
-      if f.item.t == :table,
-        do: defaults(Map.fetch!(@tables, f.item.elem)),
-        else: Map.get(f.item, :default)
-
-    Map.new(f.key_names, fn name -> {name, def_val} end)
+    field_default(f)
   end
 
   # intern assigns a reference in first-use order and returns it.
