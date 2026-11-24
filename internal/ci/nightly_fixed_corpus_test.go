@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
 // These are synthetic file metadata, never packet/native inputs or producers.
@@ -40,6 +42,7 @@ func TestNightlyFixedCorpusMetadata(t *testing.T) {
 				write(consumer, name, content)
 			}
 			run := func(args ...string) ([]byte, error) {
+				testinputs.Files(t, "test/conformance/fixed-corpus-identity.py")
 				command := exec.Command("python3", append([]string{filepath.Join(repoRoot(t), "test", "conformance", "fixed-corpus-identity.py")}, args...)...)
 				return command.CombinedOutput()
 			}

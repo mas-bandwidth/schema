@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
 // prSelectScript returns ci-full.yml pr-select's selector, from its
@@ -62,6 +64,7 @@ func TestCIFullPRSelect(t *testing.T) {
 		{"this workflow", ".github/workflows/ci-full.yml", "yes|yes|yes"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			testinputs.Files(t, ".github/workflows/ci-full.yml")
 			cmd := exec.Command("bash", "-euo", "pipefail", "-c", script)
 			cmd.Env = append(scriptEnv(os.Environ()), "files="+tc.files)
 			cmd.Dir = repoRoot(t)

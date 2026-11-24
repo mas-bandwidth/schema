@@ -12,6 +12,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/inputfamilies"
 	"github.com/mas-bandwidth/schema/v2/internal/provesran"
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
 var allOptVerifyLangs = []string{
@@ -262,6 +263,7 @@ func TestOptVerifyFastWorkflowSelector(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel() // each case is its own bash over a read-only script
+			testinputs.Files(t, ".github/workflows/ci-fast.yml")
 			cmd := exec.Command("bash", "-euo", "pipefail", "-c", script.String())
 			cmd.Env = append(scriptEnv(os.Environ()), "files="+tc.files)
 			cmd.Dir = root

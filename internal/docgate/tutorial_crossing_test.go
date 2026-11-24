@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
 // The tutorial's Go crossing (Parts 12 and 13) is the one place a reader
@@ -117,6 +118,7 @@ func TestTutorialGoCrossing(t *testing.T) {
 		"PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"GOFLAGS=-mod=mod", "GOPROXY=off", "GOWORK=off", "GOTOOLCHAIN=local")
 	run := func(command string) (string, error) {
+		testinputs.Files(t, testinputs.Compiler...)
 		cmd := exec.Command("sh", "-c", command)
 		cmd.Dir = work
 		cmd.Env = env

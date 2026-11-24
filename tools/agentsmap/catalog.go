@@ -128,6 +128,7 @@ var catalog = []Entry{
 	e("internal/tablenames", "per-language claimed names", "go test ./compiler", "go test ./compiler"),
 	e("internal/tablepack", "pack/unpack", "go test ./internal/tablepack", "go test ./internal/tablepack"),
 	e("internal/tabletext", "table JSON text", "go test ./internal/tabletext", "go test ./internal/tabletext"),
+	e("internal/testinputs", "repository files a test's child process reads, recorded for the go test cache", "go test ./internal/testinputs", "go test ./internal/testinputs"),
 	e("internal/testproc", "bounded child processes for tests", "go test ./internal/testproc", "go test ./internal/testproc"),
 	e("internal/tablewire", "table wire codecs", "go test ./internal/tablewire", "go test ./internal/tablewire"),
 	e("internal/vacuous", "Go tests that pass checking nothing", "go test ./internal/vacuous", "go test ./internal/ci -run TestEveryGoTestCanFail"),
