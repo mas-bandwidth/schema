@@ -77,6 +77,7 @@ var derivedRows = map[string]derivedRow{
 	// surfaces and the manifest, and not here, so every leg's derived
 	// manifest was refused at its first such line): each row reads the unit
 	// in its third column and is scored under its own name on its own surface
+	"write-refusal-shape": {ref: refUnit, col: 2, cases: ownName},
 	"write-refusal-cook":  {ref: refUnit, col: 2, cases: ownName},
 	"write-refusal-block": {ref: refUnit, col: 2, cases: ownName},
 	"announce":            {ref: refUnit, col: 2, cases: ownName},

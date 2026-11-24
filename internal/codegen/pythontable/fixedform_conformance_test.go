@@ -11,6 +11,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/python/pyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -27,6 +28,7 @@ func ensurePythonConformanceUnits(t *testing.T, repo string) string {
 		if _, err := os.Stat(sentinel); err == nil {
 			return
 		}
+		testinputs.Build(t, "test/conformance/python")
 		cmd := testproc.Command(t, "make", "build/conformance-python")
 		cmd.Dir = repo
 		out, err := cmd.CombinedOutput()

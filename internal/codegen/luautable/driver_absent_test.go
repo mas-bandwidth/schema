@@ -60,6 +60,7 @@ func driverAbsentRun(t *testing.T, patch func(string) string) (absent string, ab
 		t.Fatal(err)
 	}
 	out := filepath.Join(dir, "out")
+	// testinputs:none — runs the copy of the luau driver this test read through os, which go test records
 	cmd := testproc.Command(t, "sh", filepath.Join(leg, "driver"), manifest, "wire", out)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "LUAU="+stand)

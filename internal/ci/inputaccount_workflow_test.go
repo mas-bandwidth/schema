@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
 // The accounting consumer also runs Dart in JIT mode and needs the generated
@@ -100,6 +102,7 @@ func TestFastInputAccountingKeepsBothCanaries(t *testing.T) {
 			if err := os.WriteFile(bin, []byte(stub), 0o755); err != nil {
 				t.Fatal(err)
 			}
+			testinputs.Files(t, ".github/workflows/ci-fast.yml")
 			cmd := exec.Command("bash", "-eo", "pipefail", "-c", "vars=()\n"+script)
 			cmd.Dir = dir
 			cmd.Env = append(os.Environ(), "RUNNER_TEMP="+dir, "FAMILY="+tc.family, "LEG="+tc.leg, "ACCOUNT_CONTROL="+tc.control)
@@ -131,6 +134,7 @@ func TestFastPlanSplitsSquirrelCorpusAccountingRows(t *testing.T) {
 			"[" + corpusRow + "," + otherRows + `,{"family":"conformance-corpus","leg":"squirrel","account_control":"wrong"}]`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			testinputs.Files(t, ".github/workflows/ci-fast.yml")
 			cmd := exec.Command("bash", "-euo", "pipefail", "-c", line+"\nprintf '%s\\n' \"$input_rows\"")
 			cmd.Env = append(os.Environ(), "input_rows="+tc.rows)
 			out, err := cmd.CombinedOutput()
@@ -211,6 +215,7 @@ func TestFastPlanSelectsConformanceHandoffChanges(t *testing.T) {
 				t.Fatal(err)
 			}
 			output := filepath.Join(dir, "outputs")
+			testinputs.Files(t, ".github/workflows/ci-fast.yml", "make/conformance-handoff.py")
 			cmd := exec.Command("bash", "-euo", "pipefail", "-c", start+script)
 			cmd.Dir = root
 			cmd.Env = append(scriptEnv(os.Environ()), "RUNNER_TEMP="+dir, "GITHUB_OUTPUT="+output, "all=no", "packages=")
