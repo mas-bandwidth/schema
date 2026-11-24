@@ -1274,6 +1274,9 @@ static SCHEMA_UNUSED int tabledemo_table_json_write_scalar( tabledemo_table_json
         const tabledemo_table_union_info_t * arms = f->arms;
         uint64_t tag = tabledemo_table_json_get_raw( (const uint8_t *) storage + arms->tag_offset, arms->tag_size );
         const char * arm;
+        /* the union's object, None's {} included, is a container the read
+           counts, so the write refuses it past the cap (§16.14 W2) */
+        if ( depth > TABLEDEMO_K_TABLE_JSON_MAX_DEPTH ) { return 0; }
         if ( tag == 0 )
         {
             tabledemo_table_json_raw( out, "{}", 2 );
@@ -1450,6 +1453,9 @@ static SCHEMA_UNUSED int tabledemo_table_json_write_field( tabledemo_table_json_
            the key i + 1: nothing is stored for None, so nothing is written for it. */
         int first = 1;
         int64_t slot;
+        /* the keyed object, an empty {} included, is a container the read
+           counts, so the write refuses it past the cap (§16.14 W2) */
+        if ( depth > TABLEDEMO_K_TABLE_JSON_MAX_DEPTH ) { return 0; }
         tabledemo_table_json_put( out, '{' );
         for ( slot = 0; slot < f->array_bound; slot++ )
         {
@@ -1479,6 +1485,9 @@ static SCHEMA_UNUSED int tabledemo_table_json_write_field( tabledemo_table_json_
     {
         int32_t count = tabledemo_table_json_count( base, f );
         int32_t i;
+        /* the array, an empty [] included, is a container the read counts,
+           so the write refuses it past the cap (§16.14 W2) */
+        if ( depth > TABLEDEMO_K_TABLE_JSON_MAX_DEPTH ) { return 0; }
         if ( f->text_total > 0 && schema_tabledemo_table_json_text_bytes_( storage, count, f ) > f->text_total )
         {
             return 0;
@@ -4678,6 +4687,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_write_list( tabledemo_table_json_o
     const TableSequence * list = (const TableSequence *) storage;
     TableSequenceCursor cursor = table_sequence_cursor( NULL, list, f->elem_size );
     int32_t i;
+    if ( depth > TABLEDEMO_K_TABLE_JSON_MAX_DEPTH ) { return 0; } /* the list, [] included, is a container the read counts (§16.14 W2) */
     if ( !cursor.ok ) { return 0; }
     if ( f->text_total > 0 && list->count > 0 && schema_tabledemo_table_json_text_bytes_( cursor.array, list->count, f ) > f->text_total ) { return 0; }
     tabledemo_table_json_put( out, '[' );
@@ -4921,6 +4931,7 @@ static SCHEMA_UNUSED int tabledemo_table_json_write_map( tabledemo_table_json_ou
     const uint8_t * prev = NULL;
     const tabledemo_table_field_info_t * key = &f->table->fields[0];
     const tabledemo_table_field_info_t * value = &f->table->fields[1];
+    if ( depth > TABLEDEMO_K_TABLE_JSON_MAX_DEPTH ) { return 0; } /* the map's object, {} included, is a container the read counts (§16.14 W2) */
     if ( !cursor.ok ) { return 0; }
     tabledemo_table_json_put( out, '{' );
     for ( i = 0; i < map->count; i++ )
