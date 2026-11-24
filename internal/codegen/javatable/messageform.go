@@ -3180,8 +3180,25 @@ func (g *messageGen) emitRootBatch(st *ir.Struct, valType string) {
 	g.pf("        return loadMessages(values, values == null ? 0 : values.length, vocab, data, report);\n")
 	g.pf("    }\n\n")
 
+	// THE CALLER'S VALUES AFTER A REFUSAL (docs/SPEC-TABLES.md §6.5): a
+	// message batch read resets EVERY value it was handed, not only those it
+	// reached or the wire's count of them, whatever the reason and wherever
+	// the refusal fell (the form byte, the vocabulary, the capacity, a body),
+	// and answers a count of 0. The wrapper decides that once, after the read.
 	g.pf("    public static int loadMessages(%s[] values, int capacity, TableVocabulary vocab, byte[] data, TableVocabulary.Report report) {\n", valType)
 	g.pf("        if (report == null) { report = new TableVocabulary.Report(); } else { report.zero(); }\n")
+	g.pf("        int read = loadMessagesRead(values, capacity, vocab, data, report);\n")
+	g.pf("        if (report.refused || report.damaged) {\n")
+	g.pf("            int handed = values == null ? 0 : java.lang.Math.min(java.lang.Math.max(capacity, 0), values.length);\n")
+	g.pf("            for (int j = 0; j < handed; j++) {\n")
+	g.pf("                if (values[j] != null) { reset(values[j]); }\n")
+	g.pf("            }\n")
+	g.pf("            return 0;\n")
+	g.pf("        }\n")
+	g.pf("        return read;\n")
+	g.pf("    }\n\n")
+
+	g.pf("    private static int loadMessagesRead(%s[] values, int capacity, TableVocabulary vocab, byte[] data, TableVocabulary.Report report) {\n", valType)
 	g.pf("        if (data == null || data.length == 0) { report.damaged = true; return 0; }\n")
 	g.pf("        if ((data[0] & 0xff) != 2) {\n")
 	g.pf("            report.refused = true;\n")
