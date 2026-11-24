@@ -276,7 +276,10 @@ func TestGooseFixedProofReports(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "goose")
 	// E9: duplicate never raised; R18: a clamp that cannot fire is not emitted and nothing moves;
-	// R16: §5.4's counters (unknown once per lineage entry at compile, widened once per entry per record, etc.).
+	// R16: §5.4's counters: a refusal moves none. The unknown_census pair is
+	// an UNLAWFUL lineage entry (a writer field the reader names nowhere), so
+	// it lays no plan and refuses layout_malformed, nothing counted, every row
+	// at its declared defaults, on a second read as well (§5.4, §5.9 #30).
 	const schemaNoClamp = `package probe
 fixed table T {
     a int32 = 1
@@ -301,10 +304,11 @@ fixed table T {
 	records := gooseFixedRecords(t, data, older, "Census")
 	res := gooseVersionProbe(t, gooseVersionCase{
 		reader: newer, older: []*ir.Unit{older}, root: "Census", capacity: records, data: data, twice: true,
+		poison: true, fresh: true,
 	})
-	res.reads(t, records)
-	if res.unknown != 1 || res.secondUnknown != 1 || res.clamped != 0 || res.widened != 0 {
-		t.Fatalf("R16: unexpected census counters: %+v", res)
+	res.refuses(t, "layout_malformed", false, 0)
+	if res.secondUnknown != 0 || res.secondCounters != "0 0 0 0" {
+		t.Fatalf("R16: the second refusal moved a counter: %+v", res)
 	}
 }
 
