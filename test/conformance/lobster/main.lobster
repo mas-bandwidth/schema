@@ -45,7 +45,7 @@ let surfaces = ["wire", "message", "message-prior", "report", "framing", "retain
     "block", "block-foreign", "block-dump", "forgery", "cook-forgery", "cook-reason", "block-reason",
     "json-read", "json-write", "json-hostile",
     "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json",
-    "write-refusal-cook", "write-refusal-block", "announce", "read-into", "json-write-into"]
+    "write-refusal-cook", "write-refusal-block", "write-refusal-shape", "announce", "read-into", "json-write-into"]
 
 // The line that opens the answers. lobster prints its compiler warnings and
 // errors on stdout, beside the answers; the driver sends everything before this
@@ -791,6 +791,14 @@ def wr_value_of(f:[string]) -> schema_rt.Record:
 
 def surface_write_refusal(text:string, kind:string):
     for(wr_rows(text, kind)) f:
+        // A VALUE OF THE WRONG KIND (`write-refusal-shape` kind `shape`,
+        // DW-TABLE-SHAPE) is one Lobster's types cannot hold: each generated
+        // field, element, arm payload and root is its declared type, none of
+        // them nillable. The compiler refuses it before any writer runs. The
+        // lawful twins are written as write-refusal writes them.
+        if kind == "write-refusal-shape" and f[6] == "shape":
+            say(f[1], "unrepresentable\n")
+            continue
         let rec = wr_value_of(f)
         if not wr_set(rec, f[5], f[6], f[7]):
             say(f[1], "unrepresentable\n")

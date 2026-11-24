@@ -35,6 +35,7 @@ namespace Bench
 
         public static bool FixedTableCollectTyped(FixedTable v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null FixedTable is written");
             TableFieldInfo[] fields = FixedTableTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             return true;
@@ -187,6 +188,7 @@ namespace Bench
         // which is also what zero-fills every byte of declared slack.
         public static void FixedTableFixedWriteBody(Span<byte> b, FixedTable value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null FixedTable is written");
             if (value == null) return;
             BenchMixedFixedWriteBody(b, value.Value);
         }

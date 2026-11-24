@@ -383,12 +383,14 @@ an answer the runtime did not give.
   as a float; null as a bool; a bare map as a union; an improper list as an
   array; a number as the whole value) and writes it through the root's own
   form's writer. Every refuse-every-build leg (Go, JS, Elixir, Lua, Luau,
-  Squirrel, moo, Goose) answers every row, and the harness refuses a missing
-  answer from one of them; a leg whose types cannot hold the value answers
-  `unrepresentable`. The writer refuses by its answer, never by raising: a
+  Squirrel, moo, Goose, Python, Ruby) answers every row, and the harness
+  refuses a missing answer from one of them; a leg whose types cannot hold
+  the value answers `unrepresentable`. The writer refuses by its answer, never by raising: a
   raised error is answered `raised` and is red (DW-TABLE-SHAPE). The assert
   legs, whose writers hold these values with debug asserts only, answer the
-  lawful twins and `unrepresentable` for the shape rows.
+  lawful twins, `unrepresentable` for a shape row their types cannot hold,
+  and their debug build's own refusal for one they can (a null in a C#, Unity
+  or Java class place).
 - **`announce <case> <unit> <root> <mode> <input>`** (the verdict withheld).
   `write` (root and input `-`): the unit's announcement writer
   (`AnnounceMeasure` then `Announce`); the answer is the announcement's bytes,
