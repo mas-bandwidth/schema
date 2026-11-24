@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/lua/luarun"
+	"github.com/mas-bandwidth/schema/v2/internal/fixedvector"
 	"github.com/mas-bandwidth/schema/v2/ir"
 )
 
@@ -162,9 +163,14 @@ function root(mod, name)
 end
 `
 
+// TestMain runs the package and then requires the every-root record of
+// TestLuaFixedCorpusEveryRoot from this very run wherever the run selects it
+// with the slow half on (EVERY TEST IS A SHARED CORPUS, internal/fixedvector.Main):
+// a walk that never reached fixedvector.EveryRoot, or answered less than every
+// root, is red here by name even when every test in the package passed.
 func TestMain(m *testing.M) {
 	debug.SetMemoryLimit(2 << 30)
-	os.Exit(m.Run())
+	os.Exit(fixedvector.Main(m.Run(), "lua", "TestLuaFixedCorpusEveryRoot"))
 }
 
 // TestLuaTableDescriptorsNegativeControlFunctional sabotages a field kind and a table
