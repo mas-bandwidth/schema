@@ -77,8 +77,13 @@ func TestGooseFixedUnlawfulCorpus(t *testing.T) {
 				capacity: c.Records, poison: true, data: data, print: a.values})
 			got.file = c.Name
 			got.reads(t, c.Records)
-			if got.clamped != 0 || got.unknown != 0 || got.kindMismatch != 0 { // widened is 1: the widening is counted
+			if got.clamped != 0 || got.unknown != 0 || got.kindMismatch != 0 {
 				t.Fatalf("%s: the lawful control moved a counter it owes zero: %s", c.Name, got.raw)
+			}
+			// uint16 -> uint32 is one widen entry, and §5.2 counts widened once
+			// per entry per record: one record, exactly 1.
+			if got.widened != 1 {
+				t.Fatalf("%s: the lawful control reported widened %d; one widened entry over one record is exactly 1 (FIXED-FORM-ALGORITHM §5.2): %s", c.Name, got.widened, got.raw)
 			}
 			if len(got.printed) != len(a.values) {
 				t.Fatalf("%s: %d values printed for %d asked: %s", c.Name, len(got.printed), len(a.values), got.raw)
