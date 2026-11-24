@@ -149,7 +149,7 @@ defmodule FiniteProbe do
     "zs" => [3.25],
     "pair" => %{"s" => 4.25, "d" => 3.125},
     "u" => {"r", 4.125},
-    "keyed" => %{"A" => 5.25},
+    "keyed" => %{"A" => 5.25, "B" => 0.0},
     "child" => 2
   }, {%{"c" => 5.125}}}
 
@@ -261,6 +261,22 @@ defmodule FiniteProbe do
       expect(again == base, "the finite value did not round-trip")
     end)
 
+    row("json sparse keyed read completes defaults", fn ->
+      {:ok, {v, _}, _} = V.from_json("Root", ~s({"keyed":{"A":5.25}}))
+
+      expect(
+        v["keyed"] == %{"A" => 5.25, "B" => 0.0} and match?({:ok, _}, V.save("Root", v)),
+        "the sparse text value did not become a complete writable keyed value"
+      )
+    end)
+
+    row("variable typed keyed value must be complete", fn ->
+      expect(
+        V.save("Root", %{"keyed" => %{"A" => 5.25}}) == {:error, :invalid_value},
+        "a short typed keyed value was padded instead of refused"
+      )
+    end)
+
     for {slot, sentinel, w, name} <- @var_slots, {pname, b} <- patterns(w) do
       row("variable read #{slot} #{pname}", fn ->
         wire = patch(base, bits(sentinel, w), raw(b, w))
@@ -320,7 +336,8 @@ defmodule FiniteProbe do
 
     row("variable writer refuses a keyed slot past float32", fn ->
       expect(
-        V.save("Root", %{"keyed" => %{"A" => -1.0e300}}) == {:error, :non_finite_float},
+        V.save("Root", %{"keyed" => %{"A" => -1.0e300, "B" => 0.0}}) ==
+          {:error, :non_finite_float},
         "save wrote it"
       )
     end)
@@ -557,10 +574,10 @@ func runFiniteProbe(t *testing.T, edit func(map[string][]byte)) (pass, fail []st
 }
 
 // finiteRowCount is every row the probe prints: the variable form's 11 slots
-// at five patterns, its 5 retaining-read slots and its 14 other rows; the
+// at five patterns, its 5 retaining-read slots and its 16 other rows; the
 // message form's ten patterns and two rows; the fixed form's five slots at
 // five patterns and its five other rows.
-const finiteRowCount = 11*5 + 5 + 14 + 10 + 2 + 5*5 + 5
+const finiteRowCount = 11*5 + 5 + 16 + 10 + 2 + 5*5 + 5
 
 func TestElixirFiniteFloat(t *testing.T) {
 	t.Parallel()
