@@ -657,6 +657,11 @@ func tableJSONWriteScalar(out *tableJSONOut, storage unsafe.Pointer, f *TableFie
 		return true
 	}
 	if tableJSONIsFlags(f) {
+		// a flags value is an array of names, a container the read counts, so
+		// the cap counts it too, an empty [] included (mas-bandwidth/schema docs/SPEC-TABLES.md §16.14 W2)
+		if depth > tableJSONMaxDepth {
+			return false
+		}
 		bits := tableJSONGetRaw(storage, f.ElemSize)
 		if bits == 0 {
 			out.text("[]")
