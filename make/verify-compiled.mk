@@ -170,7 +170,11 @@ _verify-c-bench: bin/schema generated/bench/c/.stamp generated/bench/tables/c/.s
 # is the one whose `#if DEBUG` checks prove the writer's Debug.Asserts fire, the
 # Release run the one that proves they are gone and the corpus still writes.
 # The two share test/cs/obj, so they run one after the other.
-_verify-cs-conformance: build/mustrun toolchain-cs build/conformance-harness build-conformance-cs build-cs-cook generated/cs/.stamp generated/cs-ludicrous/.stamp
+# C#'s write-refusal battery is a prerequisite HERE, not of _verify-cs-bench
+# like the other legs': its project build runs beside build-conformance-cs's
+# under -j, where the bench row (111 s on a loaded runner, run 45322780223)
+# had no margin for it.
+_verify-cs-conformance: build/mustrun toolchain-cs build/conformance-harness build-conformance-cs build-cs-cook generated/cs/.stamp generated/cs-ludicrous/.stamp packet-write-refusal-cs
 	@rm -rf build/verify/conformance-cs && mkdir -p build/verify/conformance-cs $(VERIFY_RESULTS_DIR)
 	@set -e; \
 		(cd test/cs && "$(CURDIR)/$(MUSTRUN)" -name test-cs-debug -count $(CS_DEBUG_CHECKS) -- $(DOTNET) run --nologo && \
@@ -179,7 +183,7 @@ _verify-cs-conformance: build/mustrun toolchain-cs build/conformance-harness bui
 		./build/conformance-harness run --only cs --claims --work build/verify/conformance-cs --results $(VERIFY_RESULTS_DIR)/cs.json & p3=$$!; \
 		wait $$p1; wait $$p2; wait $$p3
 
-_verify-cs-bench: toolchain-cs bin/schema generated/bench/cs/.stamp tables-cs-bench-gate cards-cs-conformance table-base64-cs packet-defaults-cs packet-utf8-cs packet-write-refusal-cs
+_verify-cs-bench: toolchain-cs bin/schema generated/bench/cs/.stamp tables-cs-bench-gate cards-cs-conformance table-base64-cs packet-defaults-cs packet-utf8-cs
 	@mkdir -p build/verify build/bench && rm -f build/verify/bench-cs.csv
 	DOTNET="$(DOTNET)" bench/run.sh --quick --bare --only cs --out build/verify/bench-cs.csv
 	@test -s build/verify/bench-cs.csv

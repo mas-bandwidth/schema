@@ -2187,7 +2187,7 @@ JAVA_CHECKS              := 860
 JAVA_LUDICROUS_EA_CHECKS := 48
 JAVA_LUDICROUS_CHECKS    := 47
 .PHONY: test-java
-test-java:build/mustrun toolchain-java generated/java/.stamp generated/java-ludicrous/.stamp generated/bench/java/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
+test-java: build/mustrun toolchain-java generated/java/.stamp generated/java-ludicrous/.stamp generated/bench/java/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
 	$(MAKE) tables-java-compile
 	$(MAKE) tables-java-standalone
 	$(MAKE) tables-java-zero-cost
@@ -2207,7 +2207,7 @@ test-java:build/mustrun toolchain-java generated/java/.stamp generated/java-ludi
 	cd test/java && ../../$(MUSTRUN) -name test-java-ea -count $(JAVA_EA_CHECKS) -- $(JAVA) -ea -cp ../../build/java-test Main
 	cd test/java && ../../$(MUSTRUN) -name test-java -count $(JAVA_CHECKS) -- $(JAVA) -cp ../../build/java-test Main
 	cd test/java-ludicrous && ../../$(MUSTRUN) -name test-java-ludicrous-ea -count $(JAVA_LUDICROUS_EA_CHECKS) -- $(JAVA) -ea -cp ../../build/java-test-ludicrous Main
-	cd test/java-ludicrous && ../../$(MUSTRUN) -name test-java-ludicrous -count $(JAVA_LUDICROUS_CHECKS) --$(JAVA) -cp ../../build/java-test-ludicrous Main
+	cd test/java-ludicrous && ../../$(MUSTRUN) -name test-java-ludicrous -count $(JAVA_LUDICROUS_CHECKS) -- $(JAVA) -cp ../../build/java-test-ludicrous Main
 
 TEST_LEGS          += test-java
 TOOLCHAIN_LEGS     += java

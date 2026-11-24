@@ -627,7 +627,7 @@ RUST_RELEASE_CHECKS           := 509
 RUST_LUDICROUS_DEBUG_CHECKS   := 49
 RUST_LUDICROUS_RELEASE_CHECKS := 48
 .PHONY: test-rust
-test-rust:build/mustrun generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench/rust/.stamp generated/bench/paired/rust/.stamp
+test-rust: build/mustrun generated/rust/.stamp generated/rust-ludicrous/.stamp generated/bench/rust/.stamp generated/bench/paired/rust/.stamp
 	$(MAKE) tables-rust-clippy
 	$(MAKE) tables-rust-features
 	$(MAKE) tables-rust-names-negative-control

@@ -1254,7 +1254,7 @@ CS_DEBUG_CHECKS     := 966
 CS_RELEASE_CHECKS   := 968
 CS_LUDICROUS_CHECKS := 56
 .PHONY: test-cs
-test-cs:build/mustrun toolchain-cs build/tables-generated-cs/.stamp generated/bench/tables/cs/.stamp generated/bench/paired/cs/.stamp generated/cs/.stamp generated/cs-ludicrous/.stamp generated/bench/cs/.stamp
+test-cs: build/mustrun toolchain-cs build/tables-generated-cs/.stamp generated/bench/tables/cs/.stamp generated/bench/paired/cs/.stamp generated/cs/.stamp generated/cs-ludicrous/.stamp generated/bench/cs/.stamp
 	$(MAKE) tables-cs-json-walk
 	$(MAKE) tables-cs-standalone
 	$(MAKE) tables-cs-variable-surface
