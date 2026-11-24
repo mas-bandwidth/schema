@@ -311,7 +311,9 @@ func TestEveryTreePathMapsToAJob(t *testing.T) {
 	if len(files) < 500 {
 		t.Fatalf("found %d files under %v: the walk reads nothing", len(files), tops)
 	}
-	verdict := `printf '%s' "$unmapped"`
+	// one line: the selector's output is read from its last line (selectorOutput),
+	// so a list printed one file a line would show only its last file
+	verdict := `tr '\n' ' ' <<<"$unmapped"`
 	if got := strings.TrimSpace(runSelector(t, wf, files, verdict)); got != "" {
 		t.Errorf("no rule of ci-fast.yml's plan names these files, so a change to one selects no job:\n%s", got)
 	}
