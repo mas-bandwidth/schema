@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -143,5 +145,44 @@ func TestARowThatCannotFailIsCaught(t *testing.T) {
 	}
 	if !strings.Contains(canFailNote, "checks nothing") {
 		t.Fatal("the no-failure-path cause must say the row checks nothing")
+	}
+}
+
+// Every committed ledger line names a failure, so a ledger edit that writes
+// a banner or a line of source goes red here, before any row runs.
+func TestEveryCommittedLedgerLineNamesAFailure(t *testing.T) {
+	root, err := filepath.Abs(filepath.Join("..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ledgers, err := filepath.Glob(filepath.Join(root, "test", "conformance", "*", "rows-owed.tsv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ledgers) == 0 {
+		t.Fatal("no test/conformance/*/rows-owed.tsv found: this test reads nothing")
+	}
+	for _, path := range ledgers {
+		leg := filepath.Base(filepath.Dir(path))
+		rc, ok := recipes[leg]
+		if !ok {
+			t.Errorf("%s: no row recipe for leg %q", path, leg)
+			continue
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ledger, err := parseLedger(strings.NewReader(string(data)), path)
+		if err != nil {
+			t.Error(err)
+			continue
+		}
+		c := &ctx{root: root, leg: leg, rowsDir: filepath.Join(root, "test", "conformance", leg, "rows")}
+		for row, why := range ledger {
+			if err := checkCause(row, why, c.rowSource(rc, row)); err != nil {
+				t.Errorf("%s: %v", path, err)
+			}
+		}
 	}
 }
