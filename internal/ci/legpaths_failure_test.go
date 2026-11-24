@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -93,7 +94,7 @@ func TestALegpathsFailureFailsTheSelector(t *testing.T) {
 			env := legpathsFailsEnv(t)
 			run := func(script string) ([]byte, error) {
 				cmd := exec.Command("bash", "-e", "-o", "pipefail", "-c", script)
-				cmd.Env = append(env, "files=README.md")
+				cmd.Env = append(slices.Clone(env), "files=README.md")
 				cmd.Dir = repoRoot(t)
 				return cmd.CombinedOutput()
 			}
