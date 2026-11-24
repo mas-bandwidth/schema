@@ -1333,6 +1333,9 @@ static SCHEMA_UNUSED int graphdemo_table_json_write_scalar( graphdemo_table_json
         uint64_t bits = graphdemo_table_json_get_raw( storage, f->elem_size );
         int first = 1;
         int64_t bit;
+        /* a flags value is an array of names, a container the read counts,
+           [] included, so the write refuses it past the cap (§16.14 W2) */
+        if ( depth > GRAPHDEMO_K_TABLE_JSON_MAX_DEPTH ) { return 0; }
         if ( bits == 0 )
         {
             graphdemo_table_json_raw( out, "[]", 2 );

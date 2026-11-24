@@ -1041,6 +1041,9 @@ static SCHEMA_UNUSED int table_json_write_scalar( TableJsonOut * out, const void
         uint64_t bits = table_json_get_raw( storage, f->elem_size );
         int first = 1;
         int64_t bit;
+        /* a flags value is an array of names, a container the read counts,
+           [] included, so the write refuses it past the cap (§16.14 W2) */
+        if ( depth > kTableJsonMaxDepth ) { return 0; }
         if ( bits == 0 )
         {
             table_json_raw( out, "[]", 2 );
