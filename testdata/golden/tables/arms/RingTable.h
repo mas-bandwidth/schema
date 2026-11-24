@@ -19123,6 +19123,7 @@ inline const Ring * RingLoadRetain( uint8_t * region, int64_t region_bytes, cons
 {
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
+    *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const int32_t non_finite_before = out->non_finite_floats;
     const bool damaged_before = out->damaged;
     out->damaged = false;
@@ -19616,6 +19617,7 @@ inline const Rack * RackLoadRetain( uint8_t * region, int64_t region_bytes, cons
 {
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
+    *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const int32_t non_finite_before = out->non_finite_floats;
     const bool damaged_before = out->damaged;
     out->damaged = false;
@@ -20109,6 +20111,7 @@ inline const Tray * TrayLoadRetain( uint8_t * region, int64_t region_bytes, cons
 {
     TableReport ignored;
     TableReport * out = report != NULL ? report : &ignored;
+    *out = TableReport(); // this read's report, not the caller's last one (§6.5)
     const int32_t non_finite_before = out->non_finite_floats;
     const bool damaged_before = out->damaged;
     out->damaged = false;

@@ -1019,6 +1019,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   def save(table, {root, nodes}) when is_map(root) and is_tuple(nodes),
     do: save_graph(table, root, nodes)
 
+  # anything else is no value of a table: a number, a string, nil or a list as
+  # the whole value is refused by name, never a FunctionClauseError
+  # (docs/SPEC-CONFORMANCE.md DW-TABLE-SHAPE)
+  def save(_table, _value), do: {:error, :invalid_value}
+
   defp save_graph(table, value, directory) do
     desc = Map.fetch!(@tables, table)
 
@@ -1132,9 +1137,13 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # index 1, the first node is 2). A node reached twice is one record. A node
   # is {type_id, kind, table_name, number, content}: kind :blob for a byte
   # buffer, :table for a pointer pointee.
-  defp save_collect_nodes(desc, value, acc, seen, dir) do
+  # a record is a map: anything else in a record's place (a list element, an
+  # arm's payload) is refused, never read as one (DW-TABLE-SHAPE)
+  defp save_collect_nodes(desc, value, acc, seen, dir) when is_map(value) do
     save_collect_fields(desc.fields, desc, value, {acc, seen}, dir)
   end
+
+  defp save_collect_nodes(_desc, _value, _acc, _seen, _dir), do: throw(:invalid_value)
 
   defp save_collect_fields([], _desc, _value, state, _dir), do: state
 
@@ -1224,6 +1233,10 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     save_collect_table_list(desc, rest, acc, seen, dir)
   end
 
+  # a list is a proper list: a number, a string or an improper tail in a
+  # list's place is refused (DW-TABLE-SHAPE)
+  defp save_collect_table_list(_desc, _other, _acc, _seen, _dir), do: throw(:invalid_value)
+
   # a union's selected arm is a field line (docs/SPEC-TABLES.md §2.6, §3.1):
   # its nodes are visited where the union sits, exactly as a field's are.
   defp save_collect_union_nodes(_union, nil, acc, seen, _dir), do: {acc, seen}
@@ -1276,6 +1289,11 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # save_collect_list_nodes numbers an unbounded array's elements: table
   # elements recurse, pointer elements are node numbers, union elements read
   # their set arm.
+  # a number or a string in a list's place is refused before any element is
+  # read (DW-TABLE-SHAPE)
+  defp save_collect_list_nodes(_f, elements, _acc, _seen, _dir) when not is_list(elements),
+    do: throw(:invalid_value)
+
   defp save_collect_list_nodes(%{elem_kind: 13} = f, elements, acc, seen, dir) do
     save_collect_table_list(Map.fetch!(@tables, f.elem), elements, acc, seen, dir)
   end
@@ -3857,7 +3875,14 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
         throw(:invalid_value)
 
       true ->
-        n = length(values)
+        # an IMPROPER list ([1 | 2]) is no list of elements: refused, never a
+        # badarg out of length/1 (DW-TABLE-SHAPE)
+        n =
+          try do
+            length(values)
+          rescue
+            ArgumentError -> throw(:invalid_value)
+          end
 
         # a [N]T carries exactly N elements: shorter or longer refuses, never
         # padded or cut (docs/SPEC.md §5.1, SF-34)
@@ -3915,6 +3940,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
 
   defp write_value(%{t: :table}, v) do
     if v != nil and not is_map(v), do: throw(:invalid_value)
+  end
+
+  # a bool is true or false: 1, "x" or nil in a bool's place is refused, never
+  # written as its truthiness (DW-TABLE-SHAPE)
+  defp write_value(%{t: :bool}, v) do
+    if not is_boolean(v), do: throw(:invalid_value)
   end
 
   defp write_value(_f, _v), do: :ok
@@ -7362,10 +7393,16 @@ const variableRetainSource = `
   # record the remaining capacity cannot hold whole is dropped and counted one
   # retain_lost (§6.6).
 
-  def load_retain(table, data, retain, report) when is_binary(data) do
+  # §6.5: every read zeroes a supplied report in full as its first act, the
+  # retaining read alike; the supplied report is never read, so the returned
+  # report is the one a fresh load returns. SaveRetain, not this read, adds to
+  # the report this read returns (§6.6).
+  def load_retain(table, data, retain, _report) when is_binary(data),
+    do: load_retain_zeroed(table, data, retain, empty_report())
+
+  defp load_retain_zeroed(table, data, retain, report) do
     desc = Map.fetch!(@tables, table)
-    missing_before = Map.get(report, :missing_required, 0)
-    report = report |> Map.put(:missing_required, 0) |> Map.put(:reason, "")
+    missing_before = 0
     # §6.6: a retention buffer belongs to one loaded region; the next LoadRetain
     # into it resets both stores, keeping only the caller's capacities.
     retain = %{retain | records: [], used: 0, ids: []}

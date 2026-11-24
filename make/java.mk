@@ -1058,7 +1058,7 @@ test-java: tables-java-keyed
 # must red TestKeyedArrayIndexingJava ON ITS OWN END AND ONLY THERE: a control
 # that reds both ends at once could not tell a symmetric guard from a broken one.
 JAVA_KEYED_SABOTAGE := build/java-keyed-sabotage
-JAVA_KEYED_COMPARE := "Integer.compareUnsigned(%s - 1, %d) >= 0", key, max)
+JAVA_KEYED_COMPARE := "java.lang.Integer.compareUnsigned(%s - 1, %d) >= 0", key, max)
 tables-java-keyed-negative-control:
 	@rm -rf $(JAVA_KEYED_SABOTAGE) && mkdir -p $(JAVA_KEYED_SABOTAGE)
 	@set -e; for end in upper lower; do \
@@ -2613,7 +2613,7 @@ JAVA_WRITE_REFUSAL_MESSAGE_CONTROL := build/conformance-java-write-refusal-messa
 conformance-negative-control-java-write-refusal-message: build/conformance-harness build-conformance-java
 	@rm -rf $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL) && mkdir -p $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/generated $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/classes
 	@cp build/tables-generated-java/backend/*.java $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/generated/
-	@sed -i.orig 's/assert Long\.compareUnsigned((v\.quantity) & 0xffL, 0x63L) <= 0;/assert true; \/\/ SABOTAGED: quantity upper bound removed/' \
+	@sed -i.orig 's/assert java\.lang\.Long\.compareUnsigned((v\.quantity) & 0xffL, 0x63L) <= 0;/assert true; \/\/ SABOTAGED: quantity upper bound removed/' \
 		$(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/generated/StorePurchaseMessage.java
 	@! cmp -s $(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/generated/StorePurchaseMessage.java \
 		$(JAVA_WRITE_REFUSAL_MESSAGE_CONTROL)/generated/StorePurchaseMessage.java.orig || \
