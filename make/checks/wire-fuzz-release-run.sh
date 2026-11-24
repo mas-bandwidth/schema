@@ -60,6 +60,20 @@ status=0
 env ${WFR_ENV:-} ./build/conformance-harness wire-fuzz ${WFR_FLAGS:-} $retain \
 	--driver "$WFR_DRIVER" --seed "$seed" --n "$n" --failed "$base.bin" > "$log" 2>&1 || status=$?
 secs=$(( $(date +%s) - start ))
+# THE BUILDER ARM'S SPLIT (WFR_BUILDER_DRIVER, the plain arm only): a leg whose
+# plain arm leaves the variable roots to its builder arm holds that absent
+# count as `builder` in the absent list, and the count is DERIVED from this
+# run of the builder arm at the same seed, never registered. --max-mutants
+# still covers every seed, which is all the split needs; the builder arm's own
+# fuzz target runs it in full. A builder run that fails is scored by the row.
+rm -f "$base.builder.log"
+bstatus=0
+if [ -n "${WFR_BUILDER_DRIVER:-}" ] && [ "$arm" = plain ]; then
+	# shellcheck disable=SC2086 # WFR_ENV is a word list by design
+	env ${WFR_ENV:-} ./build/conformance-harness wire-fuzz --builder --driver "$WFR_BUILDER_DRIVER" \
+		--seed "$seed" --max-mutants 4000 --failed "$base.builder.bin" > "$base.builder.log" 2>&1 || bstatus=$?
+	echo "wire-fuzz-release: the builder arm exited $bstatus" >> "$base.builder.log"
+fi
 # shellcheck disable=SC2086
 $tool row -leg "$leg" -arm "$arm" -seed "$seed" -dir "$dir" -owed "$owedfile" -absent "$absentfile" -status "$status" -secs "$secs" -n "$n" || exit 2
 exit 0

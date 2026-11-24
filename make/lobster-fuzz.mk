@@ -94,12 +94,15 @@ define lobster_wire_fuzz_vectors
 	done
 endef
 
-# THE ARMS' SPLIT IS REGISTERED (measured on the committed corpus; the counts
-# do not depend on --n). The plain arm answers every seed and prints no
-# absence; the builder and retain arms each count 315 seeds outside the arm.
-# A root that drops out of the leg moves one of these and the recipe goes red
-# instead of fuzzing less.
-LOBSTER_WIRE_FUZZ_OUTSIDE_SEEDS := 315
+# THE ARMS' SPLIT IS DERIVED FROM THE ROSTER (make/checks/wire-fuzz-split.sh,
+# `complete`). The plain arm answers every seed of the corpus and leaves none
+# absent; the builder and retain arms each answer every seed of their own
+# roster, so the seeds each answers plus the ones the harness counts outside it
+# are the plain arm's seeds. Nothing is registered: the count this replaced
+# (LOBSTER_WIRE_FUZZ_OUTSIDE_SEEDS, 219 and then 315) went stale each time the
+# corpus grew. A root that drops out of the leg, in any arm, moves one side and
+# the recipe goes red instead of fuzzing less.
+LOBSTER_WIRE_FUZZ_SPLIT := sh make/checks/wire-fuzz-split.sh complete tables-lobster-wire-fuzz build/wire-fuzz/lobster-plain.log
 
 .PHONY: tables-lobster-wire-fuzz tables-lobster-wire-fuzz-negative-control tables-lobster-release
 tables-lobster-wire-fuzz: lobster-dist-present build/conformance-harness build/conformance-lobster build/lobster-wirefuzzhost $(LOBSTER_WIRE_FUZZ_ILL_TEXT)
@@ -112,14 +115,12 @@ tables-lobster-wire-fuzz: lobster-dist-present build/conformance-harness build/c
 	./build/conformance-harness wire-fuzz --builder --driver '$(LOBSTER_WIRE_FUZZ_HOST) --builder' \
 		--seed $(LOBSTER_WIRE_FUZZ_SEED) --n $(LOBSTER_WIRE_FUZZ_N) --failed build/wire-fuzz/failed-lobster-builder.bin \
 		> build/wire-fuzz/lobster-builder.log 2>&1; status=$$?; cat build/wire-fuzz/lobster-builder.log; test $$status -eq 0
-	@grep -qE ', $(LOBSTER_WIRE_FUZZ_OUTSIDE_SEEDS) seeds outside the arm,' build/wire-fuzz/lobster-builder.log || { \
-		echo "tables-lobster-wire-fuzz: the builder arm's outside seed count is not the $(LOBSTER_WIRE_FUZZ_OUTSIDE_SEEDS) registered: $$(grep -oE '[0-9]+ seeds outside the arm' build/wire-fuzz/lobster-builder.log || echo none outside)"; exit 1; }
+	@$(LOBSTER_WIRE_FUZZ_SPLIT) build/wire-fuzz/lobster-builder.log
 	$(call lobster_wire_fuzz_vectors,build/conformance-lobster)
 	./build/conformance-harness wire-fuzz --retain --driver '$(LOBSTER_WIRE_FUZZ_HOST)' \
 		--seed $(LOBSTER_WIRE_FUZZ_SEED) --n $(LOBSTER_WIRE_FUZZ_N) --failed build/wire-fuzz/failed-lobster-retain.bin \
 		> build/wire-fuzz/lobster-retain.log 2>&1; status=$$?; cat build/wire-fuzz/lobster-retain.log; test $$status -eq 0
-	@grep -qE ', $(LOBSTER_WIRE_FUZZ_OUTSIDE_SEEDS) seeds outside the arm,' build/wire-fuzz/lobster-retain.log || { \
-		echo "tables-lobster-wire-fuzz: the retain arm's outside seed count is not the $(LOBSTER_WIRE_FUZZ_OUTSIDE_SEEDS) registered: $$(grep -oE '[0-9]+ seeds outside the arm' build/wire-fuzz/lobster-retain.log || echo none outside)"; exit 1; }
+	@$(LOBSTER_WIRE_FUZZ_SPLIT) build/wire-fuzz/lobster-retain.log
 	$(call lobster_wire_fuzz_arm_vectors,build/conformance-lobster)
 
 test-lobster: tables-lobster-wire-fuzz
