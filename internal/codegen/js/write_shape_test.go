@@ -27,6 +27,13 @@ type Arm
 
 flags Mode { A, B, C }
 
+// Len opens with a field a string or a function also answers: its elements
+// keep the object guard inside the loop.
+type Len
+{
+    length int32 | min = 0, max = 100
+}
+
 flags Wide | max = 40 { W }
 
 union Pick
@@ -50,6 +57,7 @@ type ShapeProbe
     f    float32
     d    float64
     c    float32 | min = -10, max = 10, resolution = 0.5
+    ls   [..2]Len
 }
 `
 
@@ -113,6 +121,13 @@ row("cfloat_null", (v) => { v.c = null; });
 row("cfloat_true", (v) => { v.c = true; });
 row("cfloat_string", (v) => { v.c = "2.5"; });
 row("cfloat_array", (v) => { v.c = [3]; });
+row("array_struct_elem_undefined", (v) => { v.xsCount = 1; v.xs[0] = undefined; });
+row("array_struct_elem_number", (v) => { v.xsCount = 1; v.xs[0] = 7; });
+row("array_struct_elem_string", (v) => { v.xsCount = 1; v.xs[0] = "ab"; });
+row("array_union_elem_undefined", (v) => { v.usCount = 1; v.us[0] = undefined; });
+row("array_union_elem_number", (v) => { v.usCount = 1; v.us[0] = 7; });
+row("len_elem_string", (v) => { v.lsCount = 1; v.ls[0] = "abcd"; });
+row("len_elem_function", (v) => { v.lsCount = 1; v.ls[0] = function (a) { return a; }; });
 {
   const [r, f] = verdicts(null);
   console.log("runtime value_is_null=" + r);
@@ -189,8 +204,8 @@ func TestJsWriteRefusesEveryValueShape(t *testing.T) {
 					t.Errorf("%s %s: %q, want %s", mode, k, v, want)
 				}
 			}
-			if len(lines) != 62 {
-				t.Fatalf("%s: the probe printed %d lines, want 62:\n%s", mode, len(lines), b)
+			if len(lines) != 76 {
+				t.Fatalf("%s: the probe printed %d lines, want 76:\n%s", mode, len(lines), b)
 			}
 		})
 	}

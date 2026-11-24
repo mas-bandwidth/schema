@@ -47,35 +47,42 @@ export function WriteDefaultArmFlat(view, value) {
   }
   lo = (((value.entriesCount) & 0x3));
   sb = 2;
-  for (let i0 = 0; i0 < value.entriesCount; i0++) {
-    const e0 = value.entries[i0];
-    if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
-      return -1;
+  try {
+    for (let i0 = 0; i0 < value.entriesCount; i0++) {
+      const e0 = value.entries[i0];
+      if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
+        return -1;
+      }
+      if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
+        return -1;
+      }
+      v = (((e0.retries >>> 0) >>> 0)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+      v = ((e0.preferred & 0xf)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 4;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (4 - sb);
+      }
     }
-    if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
-      return -1;
+  } catch (thrown) {
+    for (let i0 = 0; i0 < value.entriesCount; i0++) {
+      const e0 = value.entries[i0];
+      if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
+        return -1;
+      }
     }
-    if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
-      return -1;
-    }
-    v = (((e0.retries >>> 0) >>> 0)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = ((e0.preferred & 0xf)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 4;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (4 - sb);
-    }
+    throw thrown;
   }
   if (!globalThis.Number.isInteger(value.marker) || value.marker < 0 || value.marker > 7) {
     return -1;
@@ -239,35 +246,42 @@ export function WriteDefaultChoiceFlat(view, value) {
         sb -= 32;
         lo = sb === 0 ? 0 : v >>> (2 - sb);
       }
-      for (let i0 = 0; i0 < value.first.entriesCount; i0++) {
-        const e0 = value.first.entries[i0];
-        if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
-          return -1;
+      try {
+        for (let i0 = 0; i0 < value.first.entriesCount; i0++) {
+          const e0 = value.first.entries[i0];
+          if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
+            return -1;
+          }
+          if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
+            return -1;
+          }
+          v = (((e0.retries >>> 0) >>> 0)) >>> 0;
+          lo = (lo | (v << sb)) >>> 0;
+          sb += 32;
+          if (sb >= 32) {
+            view.setUint32(wi, lo, true);
+            wi += 4;
+            sb -= 32;
+            lo = sb === 0 ? 0 : v >>> (32 - sb);
+          }
+          v = ((e0.preferred & 0xf)) >>> 0;
+          lo = (lo | (v << sb)) >>> 0;
+          sb += 4;
+          if (sb >= 32) {
+            view.setUint32(wi, lo, true);
+            wi += 4;
+            sb -= 32;
+            lo = sb === 0 ? 0 : v >>> (4 - sb);
+          }
         }
-        if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
-          return -1;
+      } catch (thrown) {
+        for (let i0 = 0; i0 < value.first.entriesCount; i0++) {
+          const e0 = value.first.entries[i0];
+          if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
+            return -1;
+          }
         }
-        if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
-          return -1;
-        }
-        v = (((e0.retries >>> 0) >>> 0)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 32;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (32 - sb);
-        }
-        v = ((e0.preferred & 0xf)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 4;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (4 - sb);
-        }
+        throw thrown;
       }
       if (!globalThis.Number.isInteger(value.first.marker) || value.first.marker < 0 || value.first.marker > 7) {
         return -1;
@@ -302,35 +316,42 @@ export function WriteDefaultChoiceFlat(view, value) {
         sb -= 32;
         lo = sb === 0 ? 0 : v >>> (2 - sb);
       }
-      for (let i0 = 0; i0 < value.second.entriesCount; i0++) {
-        const e0 = value.second.entries[i0];
-        if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
-          return -1;
+      try {
+        for (let i0 = 0; i0 < value.second.entriesCount; i0++) {
+          const e0 = value.second.entries[i0];
+          if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
+            return -1;
+          }
+          if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
+            return -1;
+          }
+          v = (((e0.retries >>> 0) >>> 0)) >>> 0;
+          lo = (lo | (v << sb)) >>> 0;
+          sb += 32;
+          if (sb >= 32) {
+            view.setUint32(wi, lo, true);
+            wi += 4;
+            sb -= 32;
+            lo = sb === 0 ? 0 : v >>> (32 - sb);
+          }
+          v = ((e0.preferred & 0xf)) >>> 0;
+          lo = (lo | (v << sb)) >>> 0;
+          sb += 4;
+          if (sb >= 32) {
+            view.setUint32(wi, lo, true);
+            wi += 4;
+            sb -= 32;
+            lo = sb === 0 ? 0 : v >>> (4 - sb);
+          }
         }
-        if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
-          return -1;
+      } catch (thrown) {
+        for (let i0 = 0; i0 < value.second.entriesCount; i0++) {
+          const e0 = value.second.entries[i0];
+          if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
+            return -1;
+          }
         }
-        if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
-          return -1;
-        }
-        v = (((e0.retries >>> 0) >>> 0)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 32;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (32 - sb);
-        }
-        v = ((e0.preferred & 0xf)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 4;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (4 - sb);
-        }
+        throw thrown;
       }
       if (!globalThis.Number.isInteger(value.second.marker) || value.second.marker < 0 || value.second.marker > 7) {
         return -1;
@@ -666,35 +687,42 @@ export function WriteDefaultChoicePacketFlat(view, value) {
         sb -= 32;
         lo = sb === 0 ? 0 : v >>> (2 - sb);
       }
-      for (let i0 = 0; i0 < value.choice.first.entriesCount; i0++) {
-        const e0 = value.choice.first.entries[i0];
-        if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
-          return -1;
+      try {
+        for (let i0 = 0; i0 < value.choice.first.entriesCount; i0++) {
+          const e0 = value.choice.first.entries[i0];
+          if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
+            return -1;
+          }
+          if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
+            return -1;
+          }
+          v = (((e0.retries >>> 0) >>> 0)) >>> 0;
+          lo = (lo | (v << sb)) >>> 0;
+          sb += 32;
+          if (sb >= 32) {
+            view.setUint32(wi, lo, true);
+            wi += 4;
+            sb -= 32;
+            lo = sb === 0 ? 0 : v >>> (32 - sb);
+          }
+          v = ((e0.preferred & 0xf)) >>> 0;
+          lo = (lo | (v << sb)) >>> 0;
+          sb += 4;
+          if (sb >= 32) {
+            view.setUint32(wi, lo, true);
+            wi += 4;
+            sb -= 32;
+            lo = sb === 0 ? 0 : v >>> (4 - sb);
+          }
         }
-        if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
-          return -1;
+      } catch (thrown) {
+        for (let i0 = 0; i0 < value.choice.first.entriesCount; i0++) {
+          const e0 = value.choice.first.entries[i0];
+          if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
+            return -1;
+          }
         }
-        if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
-          return -1;
-        }
-        v = (((e0.retries >>> 0) >>> 0)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 32;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (32 - sb);
-        }
-        v = ((e0.preferred & 0xf)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 4;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (4 - sb);
-        }
+        throw thrown;
       }
       if (!globalThis.Number.isInteger(value.choice.first.marker) || value.choice.first.marker < 0 || value.choice.first.marker > 7) {
         return -1;
@@ -729,35 +757,42 @@ export function WriteDefaultChoicePacketFlat(view, value) {
         sb -= 32;
         lo = sb === 0 ? 0 : v >>> (2 - sb);
       }
-      for (let i0 = 0; i0 < value.choice.second.entriesCount; i0++) {
-        const e0 = value.choice.second.entries[i0];
-        if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
-          return -1;
+      try {
+        for (let i0 = 0; i0 < value.choice.second.entriesCount; i0++) {
+          const e0 = value.choice.second.entries[i0];
+          if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
+            return -1;
+          }
+          if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
+            return -1;
+          }
+          v = (((e0.retries >>> 0) >>> 0)) >>> 0;
+          lo = (lo | (v << sb)) >>> 0;
+          sb += 32;
+          if (sb >= 32) {
+            view.setUint32(wi, lo, true);
+            wi += 4;
+            sb -= 32;
+            lo = sb === 0 ? 0 : v >>> (32 - sb);
+          }
+          v = ((e0.preferred & 0xf)) >>> 0;
+          lo = (lo | (v << sb)) >>> 0;
+          sb += 4;
+          if (sb >= 32) {
+            view.setUint32(wi, lo, true);
+            wi += 4;
+            sb -= 32;
+            lo = sb === 0 ? 0 : v >>> (4 - sb);
+          }
         }
-        if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
-          return -1;
+      } catch (thrown) {
+        for (let i0 = 0; i0 < value.choice.second.entriesCount; i0++) {
+          const e0 = value.choice.second.entries[i0];
+          if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
+            return -1;
+          }
         }
-        if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
-          return -1;
-        }
-        v = (((e0.retries >>> 0) >>> 0)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 32;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (32 - sb);
-        }
-        v = ((e0.preferred & 0xf)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 4;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (4 - sb);
-        }
+        throw thrown;
       }
       if (!globalThis.Number.isInteger(value.choice.second.marker) || value.choice.second.marker < 0 || value.choice.second.marker > 7) {
         return -1;
@@ -1076,35 +1111,42 @@ export function WriteDefaultBulkArmFlat(view, value) {
   }
   lo = (((value.payload.entriesCount) & 0x3));
   sb = 2;
-  for (let i0 = 0; i0 < value.payload.entriesCount; i0++) {
-    const e0 = value.payload.entries[i0];
-    if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
-      return -1;
+  try {
+    for (let i0 = 0; i0 < value.payload.entriesCount; i0++) {
+      const e0 = value.payload.entries[i0];
+      if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
+        return -1;
+      }
+      if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
+        return -1;
+      }
+      v = (((e0.retries >>> 0) >>> 0)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+      v = ((e0.preferred & 0xf)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 4;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (4 - sb);
+      }
     }
-    if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
-      return -1;
+  } catch (thrown) {
+    for (let i0 = 0; i0 < value.payload.entriesCount; i0++) {
+      const e0 = value.payload.entries[i0];
+      if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
+        return -1;
+      }
     }
-    if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
-      return -1;
-    }
-    v = (((e0.retries >>> 0) >>> 0)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 32;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (32 - sb);
-    }
-    v = ((e0.preferred & 0xf)) >>> 0;
-    lo = (lo | (v << sb)) >>> 0;
-    sb += 4;
-    if (sb >= 32) {
-      view.setUint32(wi, lo, true);
-      wi += 4;
-      sb -= 32;
-      lo = sb === 0 ? 0 : v >>> (4 - sb);
-    }
+    throw thrown;
   }
   if (!globalThis.Number.isInteger(value.payload.marker) || value.payload.marker < 0 || value.payload.marker > 7) {
     return -1;
@@ -1373,35 +1415,42 @@ export function WriteDefaultBulkChoiceFlat(view, value) {
         sb -= 32;
         lo = sb === 0 ? 0 : v >>> (2 - sb);
       }
-      for (let i0 = 0; i0 < value.first.payload.entriesCount; i0++) {
-        const e0 = value.first.payload.entries[i0];
-        if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
-          return -1;
+      try {
+        for (let i0 = 0; i0 < value.first.payload.entriesCount; i0++) {
+          const e0 = value.first.payload.entries[i0];
+          if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
+            return -1;
+          }
+          if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
+            return -1;
+          }
+          v = (((e0.retries >>> 0) >>> 0)) >>> 0;
+          lo = (lo | (v << sb)) >>> 0;
+          sb += 32;
+          if (sb >= 32) {
+            view.setUint32(wi, lo, true);
+            wi += 4;
+            sb -= 32;
+            lo = sb === 0 ? 0 : v >>> (32 - sb);
+          }
+          v = ((e0.preferred & 0xf)) >>> 0;
+          lo = (lo | (v << sb)) >>> 0;
+          sb += 4;
+          if (sb >= 32) {
+            view.setUint32(wi, lo, true);
+            wi += 4;
+            sb -= 32;
+            lo = sb === 0 ? 0 : v >>> (4 - sb);
+          }
         }
-        if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
-          return -1;
+      } catch (thrown) {
+        for (let i0 = 0; i0 < value.first.payload.entriesCount; i0++) {
+          const e0 = value.first.payload.entries[i0];
+          if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
+            return -1;
+          }
         }
-        if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
-          return -1;
-        }
-        v = (((e0.retries >>> 0) >>> 0)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 32;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (32 - sb);
-        }
-        v = ((e0.preferred & 0xf)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 4;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (4 - sb);
-        }
+        throw thrown;
       }
       if (!globalThis.Number.isInteger(value.first.payload.marker) || value.first.payload.marker < 0 || value.first.payload.marker > 7) {
         return -1;
@@ -1477,35 +1526,42 @@ export function WriteDefaultBulkChoiceFlat(view, value) {
         sb -= 32;
         lo = sb === 0 ? 0 : v >>> (2 - sb);
       }
-      for (let i0 = 0; i0 < value.second.payload.entriesCount; i0++) {
-        const e0 = value.second.payload.entries[i0];
-        if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
-          return -1;
+      try {
+        for (let i0 = 0; i0 < value.second.payload.entriesCount; i0++) {
+          const e0 = value.second.payload.entries[i0];
+          if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
+            return -1;
+          }
+          if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
+            return -1;
+          }
+          v = (((e0.retries >>> 0) >>> 0)) >>> 0;
+          lo = (lo | (v << sb)) >>> 0;
+          sb += 32;
+          if (sb >= 32) {
+            view.setUint32(wi, lo, true);
+            wi += 4;
+            sb -= 32;
+            lo = sb === 0 ? 0 : v >>> (32 - sb);
+          }
+          v = ((e0.preferred & 0xf)) >>> 0;
+          lo = (lo | (v << sb)) >>> 0;
+          sb += 4;
+          if (sb >= 32) {
+            view.setUint32(wi, lo, true);
+            wi += 4;
+            sb -= 32;
+            lo = sb === 0 ? 0 : v >>> (4 - sb);
+          }
         }
-        if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
-          return -1;
+      } catch (thrown) {
+        for (let i0 = 0; i0 < value.second.payload.entriesCount; i0++) {
+          const e0 = value.second.payload.entries[i0];
+          if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
+            return -1;
+          }
         }
-        if (!globalThis.Number.isInteger(e0.preferred) || e0.preferred < 0 || e0.preferred > 15) { // headroom above the wire range cannot ride
-          return -1;
-        }
-        v = (((e0.retries >>> 0) >>> 0)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 32;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (32 - sb);
-        }
-        v = ((e0.preferred & 0xf)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 4;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (4 - sb);
-        }
+        throw thrown;
       }
       if (!globalThis.Number.isInteger(value.second.payload.marker) || value.second.payload.marker < 0 || value.second.payload.marker > 7) {
         return -1;
