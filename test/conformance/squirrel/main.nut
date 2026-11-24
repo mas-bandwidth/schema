@@ -1437,7 +1437,39 @@ if (mode == "read-into") {
       writeText(outdir + "/" + cname, "unrepresentable\n");
       continue;
     }
-    if (form == "retain") {
+    if (form == "retain-fixed") {
+      // LoadRetain of a FIXED-class root, pre-filled report, roomy store
+      local rep = newReport();
+      rep.unknown <- 7; rep.mismatch <- 7; rep.widened <- 7; rep.oor <- 7; rep.repeated <- 7;
+      rep.bodyDamaged <- true; rep.refused <- true;
+      rep.retained <- 7; rep.retainLost <- 7; rep.reason <- "stale"; rep.field <- "stale";
+      rep.nonFiniteFloat <- "stale"; rep.countRefusal <- true; rep.missingRequired <- true; rep.sharedBlob <- 7;
+      if (!((root + "LoadRetain") in T)) {
+        // no such method on a fixed root: the compile-time form of §6.6's refusal
+        writeText(outdir + "/" + cname, "unrepresentable\n");
+        continue;
+      }
+      local fixedBytes = readBytes(lawful);
+      local call = function(r) {
+        try {
+          local got = T[root + "LoadRetain"](fixedBytes, { capacity = 1 << 20, idCapacity = 1 << 17 }, r);
+          if (got == null || r.refused || r.bodyDamaged || (r.reason != null && r.reason != "")) return "refused\n";
+          return "read\n";
+        } catch (e) { return "threw\n"; }
+      };
+      local fresh = newReport();
+      local line = call(rep);
+      call(fresh);
+      local diff = [];
+      foreach (k, v in rep) if (!(k in fresh) || fresh[k] != v) diff.append(k + "=" + v + " want " + ((k in fresh) ? fresh[k] : "absent"));
+      foreach (k, v in fresh) if (!(k in rep)) diff.append(k + "=absent want " + v);
+      diff.sort();
+      local s = "zeroed\n";
+      if (diff.len() > 0) { s = "kept"; foreach (d in diff) s += " " + d + ";"; s += "\n"; }
+      writeText(outdir + "/" + cname, line + s);
+      continue;
+    }
+    if (form == "retain" || form == "region") {
       // THE `retain` FORM (test/conformance/README.md): ONE report, PRE-FILLED
       // (every counter, the refusal flags, the reason and every detail the
       // Squirrel report can carry), then the retaining load of <lawful>,
@@ -1449,7 +1481,9 @@ if (mode == "read-into") {
         local store = { capacity = 1 << 20, idCapacity = 1 << 17 };
         local got = null;
         try {
-          got = T[root + "LoadRetain"](bytes, store, rep);
+          // `region`: the PLAIN <Root>Load (Squirrel has no region read), not LoadRetain
+          if (form == "region") got = T[root + "Load"](bytes, rep);
+          else got = T[root + "LoadRetain"](bytes, store, rep);
         } catch (e) {
           return "threw\n";
         }

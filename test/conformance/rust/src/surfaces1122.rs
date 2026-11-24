@@ -584,6 +584,16 @@ macro_rules! read_into_message {
     }};
 }
 
+// every field of the report set to a value no read leaves
+fn stale_surf_report() -> tblsurf::TableReport {
+    tblsurf::TableReport {
+        unknown: 7, widened: 7, oor_field: "stale", damaged: true, refused: true, cycle_on_save: true,
+        retained: 7, retain_lost: 7, reason: tblsurf::TableReason::NewerForm,
+        build_version_remote: 7, build_version_own: 7, non_finite_float: "stale", non_finite_float_id: Some(7),
+        text_error: "stale", missing_required: 7, missing_required_fields: "stale".to_string(),
+    }
+}
+
 pub(crate) fn surface_read_into(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("read-into") {
         if f.len() != 9 {
@@ -605,6 +615,47 @@ pub(crate) fn surface_read_into(manifest: &Manifest, out: &str) {
             ("message", "backenddemo", "StorePurchase") => {
                 let text = read_into_message!(backenddemo, StorePurchaseRow, StorePurchase, store_purchase_load_messages, store_purchase_to_json_checked, case, lawful, damaged, count(), ann);
                 spill(out, case, text.as_bytes());
+            }
+            // REGION (README, "The `region` form"): the same protocol through the
+            // PLAIN counted_load, the leg's only read of a variable root (no
+            // region read here).
+            ("region", "tblsurf", "Counted") => {
+                let lawful = slurp(lawful);
+                let damaged = slurp(damaged);
+                let load = |wire: &[u8], report: &mut tblsurf::TableReport| -> Result<bool, String> {
+                    catch(|| tblsurf::counted_load(wire, report).is_some())
+                };
+                let mut fresh = tblsurf::TableReport::default();
+                if load(&lawful, &mut fresh) != Ok(true) || fresh.refused || fresh.damaged {
+                    fail(&format!("{case}: the lawful load refused into a fresh report"));
+                }
+                let zeroed = |r: &tblsurf::TableReport| -> String {
+                    if *r == fresh { "zeroed\n".to_string() } else { format!("kept {r:?} want {fresh:?}\n") }
+                };
+                let mut report = stale_surf_report();
+                let mut text = String::new();
+                text.push_str(read_line(load(&lawful, &mut report), report.refused || report.damaged));
+                text.push_str(&zeroed(&report));
+                text.push_str(read_line(load(&damaged, &mut report), report.refused || report.damaged));
+                text.push_str(read_line(load(&lawful, &mut report), report.refused || report.damaged));
+                text.push_str(&zeroed(&report));
+                spill(out, case, text.as_bytes());
+            }
+            // RETAIN-FIXED: narrow_load_retain takes the report, so SPEC-TABLES
+            // 6.6's refusal arrives through it; the call into a pre-filled report
+            // must leave what the same call leaves in a fresh one.
+            ("retain-fixed", "tblsurf", "Narrow") => {
+                let lawful = slurp(lawful);
+                let call = |report: &mut tblsurf::TableReport| -> Result<bool, String> {
+                    let mut store = tblsurf::TableRetain { bytes: Vec::with_capacity(1 << 20), ids: Vec::with_capacity(1 << 17), nodes: Default::default() };
+                    catch(|| tblsurf::narrow_load_retain(&lawful, &mut store, report).is_some())
+                };
+                let mut fresh = tblsurf::TableReport::default();
+                let _ = call(&mut fresh);
+                let mut report = stale_surf_report();
+                let line = read_line(call(&mut report), report.refused || report.damaged);
+                let zeroed = if report == fresh { "zeroed\n".to_string() } else { format!("kept {report:?} want {fresh:?}\n") };
+                spill(out, case, format!("{line}{zeroed}").as_bytes());
             }
             // RETAIN (README, "The `retain` form"): the retaining load into ONE
             // PRE-FILLED report must leave exactly what the same load leaves in a

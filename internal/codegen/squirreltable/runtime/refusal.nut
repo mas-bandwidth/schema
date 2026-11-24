@@ -221,6 +221,11 @@ local reset = function(report) {
   report.nonFiniteFloat <- null;
   report.unknownField <- null;
   report.repeatedField <- null;
+  // the retention counters and the shared-blob count are the report's too
+  // (§6.5: every read zeroes it in full)
+  report.retained <- 0;
+  report.retainLost <- 0;
+  report.sharedBlob <- 0;
 };
 
 // the report's reset, shared with the retaining load (retain.nut): every read

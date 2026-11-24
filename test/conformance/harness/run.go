@@ -429,7 +429,9 @@ type expectation struct {
 	verdictOnly bool
 	// unrepresentable credits `unrepresentable\n` as the answer: a
 	// read-into fixed-nocap row in a leg whose fixed load cannot omit the
-	// capacity, so the rule has no call to hold (FL-17).
+	// capacity, so the rule has no call to hold (FL-17); or a read-into
+	// retain-fixed row in a leg whose fixed-root LoadRetain is refused at
+	// compile time, so there is no call to hand a report (SPEC-TABLES §6.6).
 	unrepresentable bool
 }
 
@@ -724,7 +726,7 @@ func expectations(m *Manifest, surface string, reports map[string]string, jsonDi
 			if err != nil {
 				return nil, fmt.Errorf("%s: the engine's read-into answer: %w — run: make conformance-generate", r.Name, err)
 			}
-			out = append(out, expectation{name: r.Name, want: want, unrepresentable: r.Form == "fixed-nocap"})
+			out = append(out, expectation{name: r.Name, want: want, unrepresentable: r.Form == "fixed-nocap" || r.Form == "retain-fixed"})
 		}
 	case "json-write-into":
 		for _, j := range m.JSONWriteIntos {

@@ -163,7 +163,10 @@ func (a AnnounceCase) want() ([]byte, error) {
 // its reads do.
 //
 // Form `retain` is the retaining load (`<Root>LoadRetain`, §6.6) of a variable
-// root, handed one value; its answer is in FORMAT.md and README.md.
+// root, handed one value; form `region` is the plain `<Root>Load` of a
+// variable root (the region read where the leg has one) under the same
+// pre-filled-report protocol; form `retain-fixed` (damaged `-`) is LoadRetain
+// on a FIXED-class root, refused by name (§6.6). Answers: FORMAT.md, README.md.
 type ReadInto struct {
 	Name         string
 	Unit         string
@@ -178,13 +181,21 @@ type ReadInto struct {
 // Golden is the answer the row owes.
 func (r ReadInto) Golden() string { return ReadIntoDir + "/" + r.Name + ".txt" }
 
-var readIntoForms = map[string]bool{"variable": true, "fixed": true, "message": true, "json": true, "fixed-nocap": true, "retain": true}
+var readIntoForms = map[string]bool{"variable": true, "fixed": true, "message": true, "json": true, "fixed-nocap": true, "retain": true, "region": true, "retain-fixed": true}
 
-// readIntoRetainAnswer is what a `retain` row owes (docs/SPEC-TABLES.md §6.5,
-// §6.6): the lawful retaining read on a PRE-FILLED report reads and leaves the
-// report a fresh read leaves (`zeroed`), the damaged read refuses into the same
-// report, and the lawful read again reads and leaves it `zeroed` once more.
+// readIntoRetainAnswer is what a `retain` or `region` row owes
+// (docs/SPEC-TABLES.md §6.5, §6.6): the lawful read on a PRE-FILLED report
+// reads and leaves the report a fresh read leaves (`zeroed`), the damaged read
+// refuses into the same report, and the lawful read again reads and leaves it
+// `zeroed` once more.
 const readIntoRetainAnswer = "read\nzeroed\nrefused\nread\nzeroed\n"
+
+// readIntoRetainFixedAnswer is what a `retain-fixed` row owes: LoadRetain on a
+// FIXED-class root is refused by name (§6.6), and a leg whose refusal is a
+// runtime one refuses through a report it zeroed first (§6.5), so the report
+// equals the one the same call leaves in a fresh report. A leg whose refusal
+// is at compile time (the call does not exist) answers `unrepresentable`.
+const readIntoRetainFixedAnswer = "refused\nzeroed\n"
 
 func parseReadInto(f []string, where string) (ReadInto, error) {
 	if len(f) != 8 && len(f) != 9 {
@@ -192,17 +203,17 @@ func parseReadInto(f []string, where string) (ReadInto, error) {
 	}
 	r := ReadInto{Name: f[1], Unit: f[2], Root: f[3], Form: f[4], Lawful: f[5], RefusedInput: f[6]}
 	if !readIntoForms[r.Form] {
-		return r, fmt.Errorf("%s: %q is not a read-into form (variable, fixed, message, json, fixed-nocap, retain)", where, r.Form)
+		return r, fmt.Errorf("%s: %q is not a read-into form (variable, fixed, message, json, fixed-nocap, retain, region, retain-fixed)", where, r.Form)
 	}
 	n, err := strconv.Atoi(f[7])
 	if err != nil || n < 1 {
 		return r, fmt.Errorf("%s: %q is not a count of values", where, f[7])
 	}
 	r.Count = n
-	if (r.Form == "fixed-nocap") != (r.RefusedInput == "-") {
-		return r, fmt.Errorf("%s: a fixed-nocap row, and only it, takes damaged -", where)
+	if (r.Form == "fixed-nocap" || r.Form == "retain-fixed") != (r.RefusedInput == "-") {
+		return r, fmt.Errorf("%s: a fixed-nocap or retain-fixed row, and only those, takes damaged -", where)
 	}
-	if (r.Form == "variable" || r.Form == "json" || r.Form == "retain") && n != 1 {
+	if (r.Form == "variable" || r.Form == "json" || r.Form == "retain" || r.Form == "region" || r.Form == "retain-fixed") && n != 1 {
 		return r, fmt.Errorf("%s: a %s read is handed one value", where, r.Form)
 	}
 	if len(f) == 9 {
@@ -373,8 +384,23 @@ func generate1122(u *units, m *Manifest) error {
 		var answer []byte
 		if r.Form == "fixed-nocap" {
 			answer = fmt.Appendf(nil, "read\n%d\n", r.Count)
+		} else if r.Form == "retain-fixed" {
+			// the root must be fixed-class, and its input one the plain read
+			// takes, so the refusal is the class's and not the bytes'
+			if ir.VariableTables(unit)[r.Root] {
+				return fmt.Errorf("read-into %s: a retain-fixed row needs a fixed-class root, and %s is variable", r.Name, r.Root)
+			}
+			wire, err := os.ReadFile(r.Lawful)
+			if err != nil {
+				return fmt.Errorf("read-into %s: %w", r.Name, err)
+			}
+			var rep tabletext.Report
+			if ok, err := strictDecode(model, model.New(root), wire, &rep); !ok {
+				return fmt.Errorf("read-into %s: the engine refuses the row's lawful input: %w", r.Name, err)
+			}
+			answer = []byte(readIntoRetainFixedAnswer)
 		} else {
-			if r.Form == "variable" || r.Form == "retain" {
+			if r.Form == "variable" || r.Form == "retain" || r.Form == "region" {
 				// the engine reads the variable form; the row's two verdicts
 				// are checked here, the other forms by the reference leg (a
 				// retaining load refuses exactly what Load refuses, §6.6)
@@ -392,7 +418,7 @@ func generate1122(u *units, m *Manifest) error {
 					}
 				}
 			}
-			if r.Form == "retain" {
+			if r.Form == "retain" || r.Form == "region" {
 				if err := writeFileAtomic(r.Golden(), []byte(readIntoRetainAnswer)); err != nil {
 					return err
 				}

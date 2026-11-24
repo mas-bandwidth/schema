@@ -163,7 +163,11 @@ json-write-into <case> <instance>
   `message` (`<unit>` a connection key), `fixed-nocap` (damaged `-`, the
   count the answer) or `retain` (the retaining load, `LoadRetain`, §6.6, into
   a report the driver pre-filled; the answer is
-  `read\nzeroed\nrefused\nread\nzeroed\n`, test/conformance/README.md). In a `fixed` row with count `1` that the manifest marks
+  `read\nzeroed\nrefused\nread\nzeroed\n`, test/conformance/README.md),
+  `region` (the plain region `Load` under the same protocol and answer) or
+  `retain-fixed` (damaged `-`: `LoadRetain` on a fixed-class root into a
+  pre-filled report, owing `refused\nzeroed\n`, or `unrepresentable\n` where
+  the refusal is at compile time). In a `fixed` row with count `1` that the manifest marks
   `lawful-second` (a trailing word the driver never sees), `<damaged>` is a
   LAWFUL older writer's record that the engine reads through the lineage (the
   harness fails when the engine's verdict differs from the mark); the
