@@ -8,6 +8,8 @@
 --                `refused\n` alone (the store's byte cost is local, never
 --                compared)
 --   retain-save  the same round trip, the SAVED BYTES
+--   retain-refusal  one store through a read, a save, a refused read and a
+--                second save: the verdicts, then the two saves
 --
 -- through the emitted table_retain.moo and the descriptors the unit's
 -- <Base>Table modules register. A row's capacities are rules: `full` is a
@@ -82,6 +84,43 @@ return function(ctx: any): { [string]: Surface }
 		return { text = text, saves = { out } }, nil
 	end
 
+
+	-- retain-refusal <case> <unit> <root> <first wire> <refused wire>: ONE store
+	-- through LoadRetain of the first wire, SaveRetain, LoadRetain of the
+	-- refused wire into the same store, and SaveRetain of the first value
+	-- again. The verdicts and what the second save did go in <case>, the first
+	-- save in <case>.before, the second in <case>.wire.
+	local function sequence(f: { string })
+		local unit, rootName = f[3], f[4]
+		ctx.tables(unit)
+		local R: any = ctx.module(unit, "table_retain")
+		local L: any = ctx.module(unit, "table_load")
+		local store = R.newStore(CAPACITY, IDS)
+		local report = L.newReport()
+		local v = R.LoadRetain(rootName, ctx.inputs(f[5]), report, store)
+		if v == nil or report.damaged then
+			ctx.say(f[2], "refused\n")
+			return
+		end
+		local before = R.SaveRetain(rootName, v, store, L.newReport())
+		if before == nil then
+			error("retain-refusal: " .. f[2] .. ": the first save through the store refused", 0)
+		end
+		ctx.say(f[2] .. ".before", buffer.tostring(before))
+		local refused = L.newReport()
+		local other = R.LoadRetain(rootName, ctx.inputs(f[6]), refused, store)
+		local answer = "read\n" .. (if other == nil or refused.damaged then "refused\n" else "read\n")
+		local size = R.MeasureRetain(rootName, v, store)
+		local after = if size == nil or size < 0 then nil else R.SaveRetain(rootName, v, store, L.newReport())
+		if after == nil then
+			answer ..= "save-refused\n"
+		else
+			ctx.say(f[2] .. ".wire", buffer.tostring(after))
+			answer ..= "saved\n"
+		end
+		ctx.say(f[2], answer)
+	end
+
 	local function rows(saves: boolean)
 		for _, f in ctx.kind("retain") do
 			if saves and f[#f] == "-" then
@@ -116,6 +155,18 @@ return function(ctx: any): { [string]: Surface }
 			carried = carried,
 			run = function()
 				rows(true)
+			end,
+		},
+		["retain-refusal"] = {
+			carried = carried,
+			run = function()
+				for _, f in ctx.kind("retain-refusal") do
+					if not carried(nil, f[3]) then
+						ctx.say(f[2], nil)
+					else
+						sequence(f)
+					end
+				end
 			end,
 		},
 	}

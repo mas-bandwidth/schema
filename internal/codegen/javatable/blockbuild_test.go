@@ -455,8 +455,10 @@ func cookRefusal(t *testing.T, m cookManifest, planted bool) {
 		// both from the copied artifact so the remaining check cannot mask
 		// the plant; ordinary generated writers retain both assertions.
 		for _, anchor := range []string{
-			"assert used >= 0\n                    && used <= f.arrayBound\n                    && (f.countOffset < 0 || length(source) >= used);",
-			"assert used >= 0 && used <= f.arrayBound && (f.countOffset < 0 || length(v) >= used);",
+			// the [M..N] minimum and the fixed array's N joined these in
+			// f259a7aa3a; the anchors are the formatted generated text
+			"assert used >= f.arrayMin\n                    && used <= f.arrayBound\n                    && (f.countOffset < 0\n                            ? length(source) <= f.arrayBound\n                            : length(source) >= used);",
+			"assert used >= f.arrayMin\n                    && used <= f.arrayBound\n                    && (f.countOffset < 0 ? length(v) <= f.arrayBound : length(v) >= used);",
 		} {
 			if strings.Count(source, anchor) != 1 {
 				t.Fatal("cook count assertion anchor changed")

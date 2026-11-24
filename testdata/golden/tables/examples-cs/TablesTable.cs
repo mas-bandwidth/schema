@@ -3007,6 +3007,7 @@ namespace Tabledemo
             {
                 for (int i = 0; i < value.RowCount && i < value.Row.Length; ++i)
                 {
+                    if ((ulong)value.Row[i] == 2UL) { clamped++; }
                     if ((ulong)value.Row[i] > 3) { clamped++; }
                 }
             }
@@ -3016,6 +3017,7 @@ namespace Tabledemo
         public static void MoodFieldFixedWriteCheckBody(MoodField value, ref int clamped)
         {
             if (value == null) return;
+            if ((ulong)value.Mood == 2UL) { clamped++; }
             if ((ulong)value.Mood > 3) { clamped++; }
         }
 

@@ -150,6 +150,8 @@ int conformance_write_refusal_write_tabledemo( int surface, const char * root, c
     if ( strcmp( root, "CountedMin" ) == 0 ) { *wrote = tabledemo_counted_min_fixed_save( (const tabledemo_counted_min_t *) value, 1, buffer, capacity ); return 1; }
     if ( strcmp( root, "RootConfig" ) == 0 ) { *wrote = tabledemo_root_config_fixed_save( (const tabledemo_root_config_t *) value, 1, buffer, capacity ); return 1; }
     if ( strcmp( root, "LoadoutConfig" ) == 0 ) { *wrote = tabledemo_loadout_config_fixed_save( (const tabledemo_loadout_config_t *) value, 1, buffer, capacity ); return 1; }
+    if ( strcmp( root, "Moods" ) == 0 ) { *wrote = tabledemo_moods_fixed_save( (const tabledemo_moods_t *) value, 1, buffer, capacity ); return 1; }
+    if ( strcmp( root, "MoodField" ) == 0 ) { *wrote = tabledemo_mood_field_fixed_save( (const tabledemo_mood_field_t *) value, 1, buffer, capacity ); return 1; }
     return 0;
 }
 

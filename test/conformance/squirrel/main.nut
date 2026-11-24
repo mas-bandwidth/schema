@@ -266,7 +266,7 @@ if (mode == "list") {
   foreach (name in ["wire", "report", "framing", "json-read", "json-write", "json-hostile",
                      "cook", "cook-foreign", "block", "block-foreign", "block-dump",
                      "forgery", "cook-forgery", "cook-reason", "block-reason",
-                     "cook-write", "message", "message-prior", "retain", "retain-save",
+                     "cook-write", "message", "message-prior", "retain", "retain-save", "retain-refusal",
                      "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json",
                      "write-refusal-cook", "write-refusal-block", "write-refusal-shape", "announce", "read-into", "json-write-into", "unit shapes"]) print(name + "\n");
   return;
@@ -898,6 +898,48 @@ if (mode == "retain" || mode == "retain-save") {
       if (json == null) throw name + ": ToJson refused the value";
       writeText(outdir + "/" + name, "read\n" + json);
     }
+  }
+  return;
+}
+
+// RETAIN-REFUSAL (test/conformance/README.md): ONE store through LoadRetain of
+// the first wire, SaveRetain, LoadRetain of the refused wire into the same
+// store, and SaveRetain of the first value again. The verdicts and what the
+// second save did go in <case>, the first save in <case>.before, the second in
+// <case>.wire.
+if (mode == "retain-refusal") {
+  foreach (ln in lines) {
+    local f = splitFields(ln);
+    if (f.len() < 2 || f[0] != "retain-refusal") continue;
+    local name = f[1];
+    if (f.len() < 6) throw name + ": a retain-refusal row takes unit, root and two wires";
+    local unit = f[2]; local root = f[3];
+    if (!generated(unit)) { writeAbsent(name); continue; }
+    local T = openUnit(unit)[1];
+    local store = { capacity = 1 << 20, idCapacity = 1 << 17 };
+    local report = newReport();
+    local v = T[root + "LoadRetain"](readBytes(f[4]), store, report);
+    if (v == null || report.bodyDamaged || report.refused) {
+      writeText(outdir + "/" + name, "refused\n");
+      continue;
+    }
+    local n = T[root + "MeasureRetain"](v, store);
+    if (n < 0) throw name + ": MeasureRetain refused the first value";
+    local before = blob(n);
+    if (T[root + "SaveRetain"](v, store, before, newReport()) != n) throw name + ": SaveRetain did not write the measure";
+    writeBytes(outdir + "/" + name + ".before", before);
+    local refused = newReport();
+    local other = T[root + "LoadRetain"](readBytes(f[5]), store, refused);
+    local answer = "read\n" + ((other == null || refused.bodyDamaged || refused.refused) ? "refused\n" : "read\n");
+    n = T[root + "MeasureRetain"](v, store);
+    local after = n < 0 ? null : blob(n);
+    if (after != null && T[root + "SaveRetain"](v, store, after, newReport()) != n) after = null;
+    if (after == null) answer += "save-refused\n";
+    else {
+      writeBytes(outdir + "/" + name + ".wire", after);
+      answer += "saved\n";
+    }
+    writeText(outdir + "/" + name, answer);
   }
   return;
 }
