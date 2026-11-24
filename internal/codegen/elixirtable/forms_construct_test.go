@@ -259,7 +259,9 @@ Probe.check(Probe.ProbeCook.root_node_n(handle.region,0)==7,"cooked value")
 bodies=[[{1,value["n"]}]]
 {:ok,size}=M.measure_messages(vocab,bodies)
 {:ok,batch}=M.save_messages(vocab,bodies)
-{:ok,^bodies}=M.load_messages(vocab,batch)
+{:ok,announced}=M.announce_read(M.announce())
+{:ok,reader}=M.for_root(announced,"Root")
+{:ok,^bodies}=M.load_messages(reader,batch)
 Probe.check(byte_size(batch)==size,"message measure matches save")
 `)
 			} else {
