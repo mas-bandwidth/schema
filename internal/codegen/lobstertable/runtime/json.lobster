@@ -3027,6 +3027,10 @@ def j_write_scalar(w:JsonWriter, cell:Value, f:FieldDescriptor, depth:int) -> bo
         return true
     let fl = json_flags_of(f)
     if fl:
+        // a flags value is an array of names, a container the read counts,
+        // so the cap counts it too, [] included (§16.14 W2)
+        if not j_container_cap(w, f, depth):
+            return false
         let bits = cell.i
         if bits == 0:
             j_raw(w, "[]")
