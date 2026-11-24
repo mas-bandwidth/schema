@@ -42,11 +42,12 @@ const (
 )
 
 // cfDecodeStepsToken is the placeholder a driver source carries for the last
-// index it reads; withCfDecodeSteps fills it in.
+// index it reads; withCfDecodeSteps fills it in, with the float32 literal
+// case's tokens (f32lit.go), since every driver source passes through it.
 const cfDecodeStepsToken = "@CFDECODE_STEPS@"
 
 func withCfDecodeSteps(src string) string {
-	return strings.ReplaceAll(src, cfDecodeStepsToken, strconv.Itoa(cfDecodeSteps))
+	return withF32LitTokens(strings.ReplaceAll(src, cfDecodeStepsToken, strconv.Itoa(cfDecodeSteps)))
 }
 
 // cfDecodeSpec is SPEC.md §4.6's decode of index i, each step one float32

@@ -3,10 +3,12 @@
 # `_verify-<lang>-bench` across all 9 compiled legs and all 9 VM legs.
 #
 #   make verify-bitphase-<lang>              66 vectors across bit phases 0,1,7,31,32,33,56,63 + EmptyZero,
-#                                            and CfDecode read at all 11,001 indices (SPEC §4.6's decode)
+#                                            CfDecode read at all 11,001 indices (SPEC §4.6's decode), and the
+#                                            float32 literal case: F32Const, F32Lit's defaults, both float32 ends written
 #   make verify-canonical-<lang>             6 permutations (3 JSON + 3 native) of unsorted maps & distinct equal blobs
 #   make verify-bitphase-negative-control    sabotage unaligned JS 32-bit read shift -> fails bitphase immediately;
-#                                            sabotage the JS flat tier's float32 literals -> fails the decode case
+#                                            sabotage the JS flat tier's float32 literals -> fails the decode case;
+#                                            sabotage the JS stream tier's float32 literals -> fails the f32lit case
 #   make verify-canonical-negative-control   sabotage JS map entry sort -> fails canonical immediately
 
 VERIFY_ALL_18_LEGS := cpp c cs unity go rust java dart elixir js python ruby lua luau squirrel moo goose lobster
@@ -199,6 +201,21 @@ verify-bitphase-negative-control: verify-toolchain-js build/verify-bitphase-bin 
 	@if grep -Fq 'tier stream' build/verify-bitphase-nc/cfdecode/run.log; then \
 		echo "NEGATIVE CONTROL FAILED: the flat-tier sabotage moved the stream tier:" >&2; cat build/verify-bitphase-nc/cfdecode/run.log >&2; exit 1; fi
 	@echo "verify-bitphase-negative-control: the flat tier's double min reds the compressed-float decode case at 2,535 indices, the stream tier stays green"
+	@mkdir -p build/verify-bitphase-nc/f32lit
+	go run ./tools/sabotage -name verify-bitphase-f32lit-js -out build/verify-bitphase-nc/f32lit/js.gotext internal/codegen/js/js.go
+	@printf '{"Replace":{"%s/internal/codegen/js/js.go":"%s/build/verify-bitphase-nc/f32lit/js.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/verify-bitphase-nc/f32lit/overlay.json
+	go build -overlay=build/verify-bitphase-nc/f32lit/overlay.json -o build/verify-bitphase-nc/f32lit/schema ./cmd/schema
+	@if NODE="$(NODE)" ./build/verify-bitphase-bin --lang js --schema ./build/verify-bitphase-nc/f32lit/schema --work build/verify-bitphase-nc/f32lit/work --corpus build/verify-bitphase/corpus > build/verify-bitphase-nc/f32lit/run.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the float32 constants spelled as their shortest decimals passed the float32 literal case" >&2; exit 1; fi
+	@for owed in 'tier stream const reads 3fb999999999999a' 'tier stream default-e reads bfd3333333333333' \
+		'tier stream write-min: the write refused float32 be99999a' 'tier stream write-max: the write refused float32 3e99999a' \
+		'tier flat const reads 3fb999999999999a'; do \
+		grep -Fq "$$owed" build/verify-bitphase-nc/f32lit/run.log || \
+			{ echo "NEGATIVE CONTROL FAILED: the f32lit failure does not say '$$owed':" >&2; cat build/verify-bitphase-nc/f32lit/run.log >&2; exit 1; }; \
+	done
+	@if grep -Fq 'tier flat write-' build/verify-bitphase-nc/f32lit/run.log || grep -Fq 'cfdecode' build/verify-bitphase-nc/f32lit/run.log; then \
+		echo "NEGATIVE CONTROL FAILED: the stream-tier literal sabotage moved the flat tier's writes or the decode case:" >&2; cat build/verify-bitphase-nc/f32lit/run.log >&2; exit 1; fi
+	@echo "verify-bitphase-negative-control: the float32 shortest decimals red the float32 literal case (constant and defaults on both tiers, both stream-tier writes), the flat tier's writes and the decode case stay green"
 
 # Sabotages map entry sorting in internal/codegen/jstable/variablearms.go and
 # proves verify-canonical-js fails immediately on unsorted input permutations.

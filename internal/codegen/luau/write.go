@@ -318,7 +318,11 @@ func emitWriteScalar(g *Gen, val, length string, f *ir.Field, indent string) {
 	case ir.TFloat32:
 		guardFinite32(g, indent, val)
 		if f.HasFloatRange {
-			g.Pf("%sif %s < %s or %s > %s then return false end\n", indent, val, FloatLiteral(f.FMin), val, FloatLiteral(f.FMax))
+			// the range is held at the float32 ends, spelled as their float64
+			// values: Luau reads the decimal 0.3 as the double 0.3, below
+			// float32(0.3), and refused the declared max itself (SPEC §4.3,
+			// "A FLOAT LITERAL IS A float64 FIRST"; test/verify-bitphase f32lit.go)
+			g.Pf("%sif %s < %s or %s > %s then return false end\n", indent, val, FormatFloat32(f.FMin), val, FormatFloat32(f.FMax))
 			call(fmt.Sprintf("stream:serializeCompressedFloat({ value = %s }, %s, %s, %s)", val,
 				FloatLiteral(f.FMin), FloatLiteral(f.FMax), FloatLiteral(f.Resolution)), " -- the step index (SPEC §4.3)")
 		} else {
