@@ -2153,11 +2153,12 @@ typedef struct tabledemo_table_fixed_fill_t
 } tabledemo_table_fixed_fill_t;
 
 /* ONE LINEAGE ENTRY'S PLAN, laid down from THE LOCK'S BYTES and off every load
-   path. unknown and kind_changed are THE COMPILE CENSUS — a writer field no
-   reader field names is counted ONCE PER ENDPOINT and never per record (§5.4) — and
-   a load carries them onto the report once, after the record loop, only on a
-   read that RETURNS. reason is the name a lineage entry that could not be
-   planned refuses under if a file ever selects it (§5.9 #4, #8). */
+   path. There is no compile census: a writer field no reader field names makes
+   the entry UNLAWFUL and lays no plan (§5.4, §5.9 #30). kind_changed is the
+   entry the load refuses KIND_MISMATCH BEFORE any record lands (the writer's ?T
+   into a bare T, ruling R2, or a narrowed scalar). reason is the name a lineage
+   entry that could not be planned refuses under if a file ever selects it
+   (§5.9 #4, #8, #30). */
 typedef struct tabledemo_table_fixed_lineage_plan_t
 {
     const tabledemo_table_fixed_entry_t * entries;
@@ -2165,7 +2166,6 @@ typedef struct tabledemo_table_fixed_lineage_plan_t
     int32_t guarded;
     const tabledemo_table_fixed_fill_t * fill;
     int32_t fill_count;
-    int32_t unknown;
     int32_t kind_changed;
     int reason;
 } tabledemo_table_fixed_lineage_plan_t;
@@ -2839,6 +2839,13 @@ typedef struct tabledemo_table_fixed_compiler_t
     int hostile;
     uint8_t argw;      /* the CURRENT union's tag width, stamped onto every guarded push */
     uint32_t present;  /* the CURRENT optional's present byte plus one, 0 when none */
+    /* UNLAWFUL (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH and EMIT, §5.4, §5.9 #30):
+       a writer field this reader does not name, or a pair whose kind moved off
+       every ladder. The entry is not a lawful widening of this reader, so no
+       plan is laid and a file under its hash refuses LAYOUT_MALFORMED. It is
+       never counted and read past. 1 is LAYOUT_MALFORMED; 3 is KIND_MISMATCH,
+       the writer's ?T into this reader's bare T (ruling R2, 2026-11-22). */
+    uint8_t unlawful;
     tabledemo_table_report_t * report;
 } tabledemo_table_fixed_compiler_t;
 
@@ -2946,48 +2953,29 @@ static SCHEMA_UNUSED uint32_t tabledemo_table_fixed_lay_fills( tabledemo_table_f
 static SCHEMA_UNUSED void tabledemo_table_fixed_compile_entry( tabledemo_table_fixed_compiler_t * c,
     const tabledemo_table_fixed_layout_view_t * theirs, int32_t ti, uint32_t their_at,
     const tabledemo_table_fixed_layout_view_t * mine, int32_t mi, const tabledemo_table_fixed_dst_t * dst, uint32_t my_at,
-    uint32_t guard, uint64_t arg, int census );
+    uint32_t guard, uint64_t arg );
 
 /* table_fixed_match_children walks a TABLE's children on both sides.
 
-   The census flag is whether THIS entry is the FIRST time the writer's field is
-   seen. An array compiles its element ONCE PER SLOT, and the unknown count is
-   ONCE PER FIELD PER ENDPOINT (ALG 5.4), so only element 0 censuses. Without it a
-   writer's field dropped from a [4]Item is counted four times and the report says 4
-   where the law says 1 (docs/FIXED-FORM-VERSIONING-TESTS.md 5.8 row 11). */
+   A LAWFUL OLDER WRITER NAMES ONLY FIELDS THIS READER RETAINS (§5.1 refuses a
+   removal; a field is deprecated in place). A writer field no child of mine
+   names makes the lineage entry UNLAWFUL before any entry is laid: there is no
+   compile census to count (§5.4, §5.9 #30; §5.8 row 11 is that census, retired). */
 static SCHEMA_UNUSED void tabledemo_table_fixed_match_children( tabledemo_table_fixed_compiler_t * c,
     const tabledemo_table_fixed_layout_view_t * theirs, int32_t ti, uint32_t their_at,
     const tabledemo_table_fixed_layout_view_t * mine, int32_t mi, const tabledemo_table_fixed_dst_t * dst, uint32_t my_at,
-    uint32_t guard, uint64_t arg, int census )
+    uint32_t guard, uint64_t arg )
 {
     const tabledemo_table_fixed_layout_entry_t te = tabledemo_table_fixed_entry_at( theirs, ti );
     const tabledemo_table_fixed_layout_entry_t me = tabledemo_table_fixed_entry_at( mine, mi );
     int32_t my_child = mi + 1;
+    int32_t tc_at = ti + 1;
     /* THE LOOP INDICES ARE DECLARED AHEAD OF THEIR LOOPS, which is this
        backend's shape everywhere and not a C99 limitation: j and k are reused
-       by the census below, and a redeclaration inside the second pair of loops
+       by both pairs of loops below, and a redeclaration inside the second pair
        would shadow these two and trip -Wshadow. */
     uint32_t j, k;
-    for ( k = 0; k < me.children && my_child < mine->count; ++k )
-    {
-        const tabledemo_table_fixed_layout_entry_t mc = tabledemo_table_fixed_entry_at( mine, my_child );
-        int32_t their_child = ti + 1;
-        uint32_t their_off = their_at;
-        for ( j = 0; j < te.children && their_child < theirs->count; ++j )
-        {
-            const tabledemo_table_fixed_layout_entry_t tc = tabledemo_table_fixed_entry_at( theirs, their_child );
-            if ( tc.id == mc.id )
-            {
-                tabledemo_table_fixed_compile_entry( c, theirs, their_child, their_off, mine, my_child, dst, my_at, guard, arg, census );
-                break;
-            }
-            their_off += tc.size;
-            their_child += tabledemo_table_fixed_subtree( theirs, their_child );
-        }
-        my_child += tabledemo_table_fixed_subtree( mine, my_child );
-    }
-    /* EVERY FIELD OF THEIRS I COULD NOT NAME IS ONE unknown */
-    int32_t tc_at = ti + 1;
+    /* EVERY FIELD OF THEIRS MUST BE ONE I NAME, or the entry is unlawful */
     for ( j = 0; j < te.children && tc_at < theirs->count; ++j )
     {
         const tabledemo_table_fixed_layout_entry_t tc = tabledemo_table_fixed_entry_at( theirs, tc_at );
@@ -3002,15 +2990,37 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_match_children( tabledemo_table_
             }
             mc_at += tabledemo_table_fixed_subtree( mine, mc_at );
         }
-        if ( !named && census && c->report != NULL ) { c->report->unknown++; }
+        if ( !named )
+        {
+            c->unlawful = 1;
+            return;
+        }
         tc_at += tabledemo_table_fixed_subtree( theirs, tc_at );
+    }
+    for ( k = 0; k < me.children && my_child < mine->count; ++k )
+    {
+        const tabledemo_table_fixed_layout_entry_t mc = tabledemo_table_fixed_entry_at( mine, my_child );
+        int32_t their_child = ti + 1;
+        uint32_t their_off = their_at;
+        for ( j = 0; j < te.children && their_child < theirs->count; ++j )
+        {
+            const tabledemo_table_fixed_layout_entry_t tc = tabledemo_table_fixed_entry_at( theirs, their_child );
+            if ( tc.id == mc.id )
+            {
+                tabledemo_table_fixed_compile_entry( c, theirs, their_child, their_off, mine, my_child, dst, my_at, guard, arg );
+                break;
+            }
+            their_off += tc.size;
+            their_child += tabledemo_table_fixed_subtree( theirs, their_child );
+        }
+        my_child += tabledemo_table_fixed_subtree( mine, my_child );
     }
 }
 
 static SCHEMA_UNUSED void tabledemo_table_fixed_compile_entry( tabledemo_table_fixed_compiler_t * c,
     const tabledemo_table_fixed_layout_view_t * theirs, int32_t ti, uint32_t their_at,
     const tabledemo_table_fixed_layout_view_t * mine, int32_t mi, const tabledemo_table_fixed_dst_t * dst, uint32_t my_at,
-    uint32_t guard, uint64_t arg, int census )
+    uint32_t guard, uint64_t arg )
 {
     const tabledemo_table_fixed_layout_entry_t te = tabledemo_table_fixed_entry_at( theirs, ti );
     const tabledemo_table_fixed_layout_entry_t me = tabledemo_table_fixed_entry_at( mine, mi );
@@ -3044,7 +3054,7 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_compile_entry( tabledemo_table_f
             e.arg = arg;
             e.op = TABLEDEMO_K_TABLE_FIXED_PRESENT;
             tabledemo_table_fixed_push( c, e );
-            tabledemo_table_fixed_compile_entry( c, theirs, ti, their_at, mine, mi + 1, dst, my_at, guard, arg, census );
+            tabledemo_table_fixed_compile_entry( c, theirs, ti, their_at, mine, mi + 1, dst, my_at, guard, arg );
             break;
         }
         if ( te.kind != me.kind )
@@ -3063,8 +3073,10 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_compile_entry( tabledemo_table_f
                 tabledemo_table_fixed_push( c, e );
                 break;
             }
-            /* A KIND THAT MOVED IS REPORTED AND NEVER REINTERPRETED (§4). */
-            if ( c->report != NULL ) { c->report->refused = 1, c->report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH; }
+            /* A KIND THAT MOVED OFF EVERY LADDER IS AN UNLAWFUL ENTRY, NEVER
+               REINTERPRETED AND NEVER COUNTED AND READ PAST (§5.2 EMIT, §5.4):
+               no plan is laid. The writer's ?T into my bare T is KIND_MISMATCH (R2). */
+            c->unlawful = ( te.kind == 35 ) ? (uint8_t) 3 : (uint8_t) 1;
             break;
         }
         switch ( me.kind )
@@ -3081,7 +3093,7 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_compile_entry( tabledemo_table_f
                 const uint32_t payload_size = ( aux_at > payload_dst ) ? ( aux_at - payload_dst ) : 0u;
                 const uint32_t outer_present = c->present;
                 c->present = their_at + 1u;
-                tabledemo_table_fixed_compile_entry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg, census );
+                tabledemo_table_fixed_compile_entry( c, theirs, ti + 1, their_at + 1, mine, mi + 1, dst, my_at, guard, arg );
                 c->present = outer_present;
                 tabledemo_table_fixed_entry_t e = tabledemo_table_fixed_entry_zero();
                 e.src = their_at;
@@ -3097,7 +3109,7 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_compile_entry( tabledemo_table_f
             }
             case 13: /* a nested table: match its fields */
             {
-                tabledemo_table_fixed_match_children( c, theirs, ti, their_at, mine, mi, dst, at, guard, arg, census );
+                tabledemo_table_fixed_match_children( c, theirs, ti, their_at, mine, mi, dst, at, guard, arg );
                 break;
             }
             case 14: /* an array: the count, then min( their bound, my bound ) elements */
@@ -3142,7 +3154,7 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_compile_entry( tabledemo_table_f
                 for ( i = 0; i < n; ++i )
                 {
                     tabledemo_table_fixed_compile_entry( c, theirs, ti + 1, their_base + i * tel.size,
-                        mine, mi + 1, dst, at + i * d->stride, guard, arg, census && i == 0 );
+                        mine, mi + 1, dst, at + i * d->stride, guard, arg );
                 }
                 break;
             }
@@ -3162,7 +3174,7 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_compile_entry( tabledemo_table_f
                     {
                         if ( tabledemo_table_fixed_entry_at( theirs, ti + 2 + (int32_t) j ).id != key_id ) { continue; }
                         tabledemo_table_fixed_compile_entry( c, theirs, tel, their_at + j * tee.size,
-                            mine, mel, dst, at + k * d->stride, guard, arg, census && k == 0 );
+                            mine, mel, dst, at + k * d->stride, guard, arg );
                         break;
                     }
                 }
@@ -3232,7 +3244,7 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_compile_entry( tabledemo_table_f
                             tag.arm = ta.size; /* the WRITER's arm bytes, for the span past a narrower taken arm */
                             tabledemo_table_fixed_push( c, tag );
                             tabledemo_table_fixed_compile_entry( c, theirs, their_arm, their_at + their_tag,
-                                mine, my_arm, dst, at, their_at, (uint64_t) j + 1u, census );
+                                mine, my_arm, dst, at, their_at, (uint64_t) j + 1u );
                             break;
                         }
                         their_arm += tabledemo_table_fixed_subtree( theirs, their_arm );
@@ -3392,11 +3404,15 @@ static SCHEMA_UNUSED int32_t tabledemo_table_fixed_compile( const tabledemo_tabl
     c.report = report;
     c.record = tabledemo_table_fixed_entry_at( theirs, 0 ).size;
     c.want_guarded = 0;
-    tabledemo_table_fixed_match_children( &c, theirs, 0, 0, &mine, 0, dst, 0, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1 );
+    tabledemo_table_fixed_match_children( &c, theirs, 0, 0, &mine, 0, dst, 0, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0 );
     plain = c.count;
     c.want_guarded = 1;
-    c.report = NULL; /* the unknown census is the first pass's; counting it twice would lie */
-    tabledemo_table_fixed_match_children( &c, theirs, 0, 0, &mine, 0, dst, 0, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0, 1 );
+    c.report = NULL;
+    tabledemo_table_fixed_match_children( &c, theirs, 0, 0, &mine, 0, dst, 0, SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD, 0 );
+    /* AN UNLAWFUL ENTRY LAYS NO PLAN (§5.4): -3 is LAYOUT_MALFORMED, -4 the
+       writer's ?T into a bare T, KIND_MISMATCH (R2). Decided before overflow,
+       so a capacity retry never turns an unlawful entry into plan_too_large. */
+    if ( c.unlawful != 0 ) { return ( c.unlawful == 3 ) ? -4 : -3; }
     if ( c.overflow || c.hostile )
     {
         if ( c.hostile && report != NULL ) { report->reason = SCHEMA_TABLEDEMO_TABLE_LAYOUT_RECORD_TOO_LARGE; }
@@ -22447,7 +22463,7 @@ static SCHEMA_UNUSED void tabledemo_weapon_config_fixed_lineage_build( void )
     for ( i = 0; i < tabledemo_weapon_config_fixed_known_count; ++i )
     {
         tabledemo_table_fixed_layout_view_t parsed;
-        tabledemo_table_report_t census;
+        tabledemo_table_report_t compiled;
         tabledemo_table_fixed_entry_t * dest = tabledemo_weapon_config_fixed_lineage_storage[i];
         int32_t guarded = 0;
         int32_t made;
@@ -22456,7 +22472,7 @@ static SCHEMA_UNUSED void tabledemo_weapon_config_fixed_lineage_build( void )
         int why = SCHEMA_TABLEDEMO_TABLE_LAYOUT_MALFORMED;
         memset( &tabledemo_weapon_config_fixed_lineage[i], 0, sizeof( tabledemo_weapon_config_fixed_lineage[i] ) );
         if ( tabledemo_weapon_config_fixed_known[i].hash == tabledemo_weapon_config_fixed_hash ) { continue; } /* the identity entry: the baked plan answers it */
-        memset( &census, 0, sizeof( census ) );
+        memset( &compiled, 0, sizeof( compiled ) );
         /* A LINEAGE ENTRY THAT IS NOT A PARSEABLE LAYOUT IS A BUG IN THE LOCK
            (§5.9 #8). C cannot fail a build from a header, so the entry carries
            the name and LOAD refuses by it if a file ever matches its hash. */
@@ -22467,7 +22483,7 @@ static SCHEMA_UNUSED void tabledemo_weapon_config_fixed_lineage_build( void )
         }
         made = tabledemo_table_fixed_compile( &parsed, tabledemo_weapon_config_fixed_layout, (int32_t) sizeof( tabledemo_weapon_config_fixed_layout ), tabledemo_weapon_config_fixed_dst,
             tabledemo_weapon_config_fixed_cover, tabledemo_weapon_config_fixed_cover_count,
-            dest, TABLEDEMO_WEAPON_CONFIG_FIXED_LINEAGE_STRIDE, &guarded, &fill_at, &fills, &census );
+            dest, TABLEDEMO_WEAPON_CONFIG_FIXED_LINEAGE_STRIDE, &guarded, &fill_at, &fills, &compiled );
         if ( made < 0 )
         {
             /* §5.9 #4: the DECLARED CAPACITY a build holds an entry to is real,
@@ -22475,7 +22491,16 @@ static SCHEMA_UNUSED void tabledemo_weapon_config_fixed_lineage_build( void )
                ENTRY. A HOSTILE LAYOUT — a third nested union the two-lane
                compiled walk refuses, or a depth past 64 — is named
                layout_record_too_large, the reference's name (§5.8 row 6). */
-            tabledemo_weapon_config_fixed_lineage[i].reason = ( made == -2 ) ? SCHEMA_TABLEDEMO_TABLE_LAYOUT_RECORD_TOO_LARGE : SCHEMA_TABLEDEMO_TABLE_PLAN_TOO_LARGE;
+            /* §5.9 #30: an UNLAWFUL entry (-3) — a writer field this reader
+               names nowhere, or a kind moved off every ladder — lays no plan
+               and refuses LAYOUT_MALFORMED; the writer's ?T into a bare T (-4)
+               refuses KIND_MISMATCH (ruling R2). Neither is counted and read past. */
+            if ( made == -4 )
+            {
+                tabledemo_weapon_config_fixed_lineage[i].kind_changed = 1;
+                continue;
+            }
+            tabledemo_weapon_config_fixed_lineage[i].reason = ( made == -2 ) ? SCHEMA_TABLEDEMO_TABLE_LAYOUT_RECORD_TOO_LARGE : ( made == -3 ) ? SCHEMA_TABLEDEMO_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLEDEMO_TABLE_PLAN_TOO_LARGE;
             continue;
         }
         tabledemo_weapon_config_fixed_lineage[i].entries = dest;
@@ -22483,9 +22508,7 @@ static SCHEMA_UNUSED void tabledemo_weapon_config_fixed_lineage_build( void )
         tabledemo_weapon_config_fixed_lineage[i].guarded = guarded;
         tabledemo_weapon_config_fixed_lineage[i].fill = ( fills > 0 ) ? (const tabledemo_table_fixed_fill_t *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
         tabledemo_weapon_config_fixed_lineage[i].fill_count = fills;
-        /* THE COMPILE CENSUS, ONCE PER ENDPOINT and never per record (§5.4). */
-        tabledemo_weapon_config_fixed_lineage[i].unknown = census.unknown;
-        tabledemo_weapon_config_fixed_lineage[i].kind_changed = census.refused ? 1 : 0; /* a kind that moved refuses the read that selects this entry */
+        tabledemo_weapon_config_fixed_lineage[i].kind_changed = compiled.refused ? 1 : 0; /* a narrowed scalar refuses the read that selects this entry, before any record lands */
     }
     /* AND THE FLAG LAST: every entry above is written before this store, and
        this store is what a waiting thread's acquire is waiting for. */
@@ -22569,8 +22592,6 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_weapon_config_fixed_load_walk_( ta
     int64_t rest, record_bytes, count, k;
     int32_t pick;
     int32_t reserved_at;
-    int32_t census_unknown = 0;
-    int32_t census_kind = 0;
     int32_t read_widened;
     const tabledemo_table_fixed_entry_t * entries = tabledemo_weapon_config_fixed_plan;
     int32_t entry_count = tabledemo_weapon_config_fixed_plan_count;
@@ -22654,6 +22675,13 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_weapon_config_fixed_load_walk_( ta
             report->reason = tabledemo_weapon_config_fixed_lineage[pick].reason;
             return -1;
         }
+        /* A KIND THAT MOVED REFUSES BEFORE ANY RECORD LANDS, and no counter moves (§5.9 #6). */
+        if ( tabledemo_weapon_config_fixed_lineage[pick].kind_changed != 0 )
+        {
+            report->refused = 1;
+            report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
+            return -1;
+        }
         if ( tabledemo_weapon_config_fixed_lineage[pick].count > plan_capacity )
         {
             report->refused = 1;
@@ -22670,10 +22698,6 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_weapon_config_fixed_load_walk_( ta
         entry_guarded = tabledemo_weapon_config_fixed_lineage[pick].guarded;
         fill = tabledemo_weapon_config_fixed_lineage[pick].fill;
         fill_count = tabledemo_weapon_config_fixed_lineage[pick].fill_count;
-        /* THE CENSUS IS THE PLAN'S OWN NUMBER, landed ONCE after the record loop
-           and only on a read that RETURNS: REFUSE moves no counter (§5.9 #6). */
-        census_unknown = tabledemo_weapon_config_fixed_lineage[pick].unknown;
-        census_kind = tabledemo_weapon_config_fixed_lineage[pick].kind_changed;
     }
     /* 9 and 10. A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD, the tail must be
        whole records, and they must fit the caller. */
@@ -22828,14 +22852,6 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_weapon_config_fixed_load_walk_( ta
             return -1;
         }
         at += record_bytes;
-    }
-    /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
-    report->unknown += census_unknown;
-    if ( census_kind != 0 )
-    {
-        report->refused = 1;
-        report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
-        return -1;
     }
     return count;
 }
@@ -24634,7 +24650,7 @@ static SCHEMA_UNUSED void tabledemo_loadout_config_fixed_lineage_build( void )
     for ( i = 0; i < tabledemo_loadout_config_fixed_known_count; ++i )
     {
         tabledemo_table_fixed_layout_view_t parsed;
-        tabledemo_table_report_t census;
+        tabledemo_table_report_t compiled;
         tabledemo_table_fixed_entry_t * dest = tabledemo_loadout_config_fixed_lineage_storage[i];
         int32_t guarded = 0;
         int32_t made;
@@ -24643,7 +24659,7 @@ static SCHEMA_UNUSED void tabledemo_loadout_config_fixed_lineage_build( void )
         int why = SCHEMA_TABLEDEMO_TABLE_LAYOUT_MALFORMED;
         memset( &tabledemo_loadout_config_fixed_lineage[i], 0, sizeof( tabledemo_loadout_config_fixed_lineage[i] ) );
         if ( tabledemo_loadout_config_fixed_known[i].hash == tabledemo_loadout_config_fixed_hash ) { continue; } /* the identity entry: the baked plan answers it */
-        memset( &census, 0, sizeof( census ) );
+        memset( &compiled, 0, sizeof( compiled ) );
         /* A LINEAGE ENTRY THAT IS NOT A PARSEABLE LAYOUT IS A BUG IN THE LOCK
            (§5.9 #8). C cannot fail a build from a header, so the entry carries
            the name and LOAD refuses by it if a file ever matches its hash. */
@@ -24654,7 +24670,7 @@ static SCHEMA_UNUSED void tabledemo_loadout_config_fixed_lineage_build( void )
         }
         made = tabledemo_table_fixed_compile( &parsed, tabledemo_loadout_config_fixed_layout, (int32_t) sizeof( tabledemo_loadout_config_fixed_layout ), tabledemo_loadout_config_fixed_dst,
             tabledemo_loadout_config_fixed_cover, tabledemo_loadout_config_fixed_cover_count,
-            dest, TABLEDEMO_LOADOUT_CONFIG_FIXED_LINEAGE_STRIDE, &guarded, &fill_at, &fills, &census );
+            dest, TABLEDEMO_LOADOUT_CONFIG_FIXED_LINEAGE_STRIDE, &guarded, &fill_at, &fills, &compiled );
         if ( made < 0 )
         {
             /* §5.9 #4: the DECLARED CAPACITY a build holds an entry to is real,
@@ -24662,7 +24678,16 @@ static SCHEMA_UNUSED void tabledemo_loadout_config_fixed_lineage_build( void )
                ENTRY. A HOSTILE LAYOUT — a third nested union the two-lane
                compiled walk refuses, or a depth past 64 — is named
                layout_record_too_large, the reference's name (§5.8 row 6). */
-            tabledemo_loadout_config_fixed_lineage[i].reason = ( made == -2 ) ? SCHEMA_TABLEDEMO_TABLE_LAYOUT_RECORD_TOO_LARGE : SCHEMA_TABLEDEMO_TABLE_PLAN_TOO_LARGE;
+            /* §5.9 #30: an UNLAWFUL entry (-3) — a writer field this reader
+               names nowhere, or a kind moved off every ladder — lays no plan
+               and refuses LAYOUT_MALFORMED; the writer's ?T into a bare T (-4)
+               refuses KIND_MISMATCH (ruling R2). Neither is counted and read past. */
+            if ( made == -4 )
+            {
+                tabledemo_loadout_config_fixed_lineage[i].kind_changed = 1;
+                continue;
+            }
+            tabledemo_loadout_config_fixed_lineage[i].reason = ( made == -2 ) ? SCHEMA_TABLEDEMO_TABLE_LAYOUT_RECORD_TOO_LARGE : ( made == -3 ) ? SCHEMA_TABLEDEMO_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLEDEMO_TABLE_PLAN_TOO_LARGE;
             continue;
         }
         tabledemo_loadout_config_fixed_lineage[i].entries = dest;
@@ -24670,9 +24695,7 @@ static SCHEMA_UNUSED void tabledemo_loadout_config_fixed_lineage_build( void )
         tabledemo_loadout_config_fixed_lineage[i].guarded = guarded;
         tabledemo_loadout_config_fixed_lineage[i].fill = ( fills > 0 ) ? (const tabledemo_table_fixed_fill_t *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
         tabledemo_loadout_config_fixed_lineage[i].fill_count = fills;
-        /* THE COMPILE CENSUS, ONCE PER ENDPOINT and never per record (§5.4). */
-        tabledemo_loadout_config_fixed_lineage[i].unknown = census.unknown;
-        tabledemo_loadout_config_fixed_lineage[i].kind_changed = census.refused ? 1 : 0; /* a kind that moved refuses the read that selects this entry */
+        tabledemo_loadout_config_fixed_lineage[i].kind_changed = compiled.refused ? 1 : 0; /* a narrowed scalar refuses the read that selects this entry, before any record lands */
     }
     /* AND THE FLAG LAST: every entry above is written before this store, and
        this store is what a waiting thread's acquire is waiting for. */
@@ -24756,8 +24779,6 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_loadout_config_fixed_load_walk_( t
     int64_t rest, record_bytes, count, k;
     int32_t pick;
     int32_t reserved_at;
-    int32_t census_unknown = 0;
-    int32_t census_kind = 0;
     int32_t read_widened;
     const tabledemo_table_fixed_entry_t * entries = tabledemo_loadout_config_fixed_plan;
     int32_t entry_count = tabledemo_loadout_config_fixed_plan_count;
@@ -24841,6 +24862,13 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_loadout_config_fixed_load_walk_( t
             report->reason = tabledemo_loadout_config_fixed_lineage[pick].reason;
             return -1;
         }
+        /* A KIND THAT MOVED REFUSES BEFORE ANY RECORD LANDS, and no counter moves (§5.9 #6). */
+        if ( tabledemo_loadout_config_fixed_lineage[pick].kind_changed != 0 )
+        {
+            report->refused = 1;
+            report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
+            return -1;
+        }
         if ( tabledemo_loadout_config_fixed_lineage[pick].count > plan_capacity )
         {
             report->refused = 1;
@@ -24857,10 +24885,6 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_loadout_config_fixed_load_walk_( t
         entry_guarded = tabledemo_loadout_config_fixed_lineage[pick].guarded;
         fill = tabledemo_loadout_config_fixed_lineage[pick].fill;
         fill_count = tabledemo_loadout_config_fixed_lineage[pick].fill_count;
-        /* THE CENSUS IS THE PLAN'S OWN NUMBER, landed ONCE after the record loop
-           and only on a read that RETURNS: REFUSE moves no counter (§5.9 #6). */
-        census_unknown = tabledemo_loadout_config_fixed_lineage[pick].unknown;
-        census_kind = tabledemo_loadout_config_fixed_lineage[pick].kind_changed;
     }
     /* 9 and 10. A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD, the tail must be
        whole records, and they must fit the caller. */
@@ -24999,14 +25023,6 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_loadout_config_fixed_load_walk_( t
             return -1;
         }
         at += record_bytes;
-    }
-    /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
-    report->unknown += census_unknown;
-    if ( census_kind != 0 )
-    {
-        report->refused = 1;
-        report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
-        return -1;
     }
     return count;
 }
@@ -27351,7 +27367,7 @@ static SCHEMA_UNUSED void tabledemo_profile_config_fixed_lineage_build( void )
     for ( i = 0; i < tabledemo_profile_config_fixed_known_count; ++i )
     {
         tabledemo_table_fixed_layout_view_t parsed;
-        tabledemo_table_report_t census;
+        tabledemo_table_report_t compiled;
         tabledemo_table_fixed_entry_t * dest = tabledemo_profile_config_fixed_lineage_storage[i];
         int32_t guarded = 0;
         int32_t made;
@@ -27360,7 +27376,7 @@ static SCHEMA_UNUSED void tabledemo_profile_config_fixed_lineage_build( void )
         int why = SCHEMA_TABLEDEMO_TABLE_LAYOUT_MALFORMED;
         memset( &tabledemo_profile_config_fixed_lineage[i], 0, sizeof( tabledemo_profile_config_fixed_lineage[i] ) );
         if ( tabledemo_profile_config_fixed_known[i].hash == tabledemo_profile_config_fixed_hash ) { continue; } /* the identity entry: the baked plan answers it */
-        memset( &census, 0, sizeof( census ) );
+        memset( &compiled, 0, sizeof( compiled ) );
         /* A LINEAGE ENTRY THAT IS NOT A PARSEABLE LAYOUT IS A BUG IN THE LOCK
            (§5.9 #8). C cannot fail a build from a header, so the entry carries
            the name and LOAD refuses by it if a file ever matches its hash. */
@@ -27371,7 +27387,7 @@ static SCHEMA_UNUSED void tabledemo_profile_config_fixed_lineage_build( void )
         }
         made = tabledemo_table_fixed_compile( &parsed, tabledemo_profile_config_fixed_layout, (int32_t) sizeof( tabledemo_profile_config_fixed_layout ), tabledemo_profile_config_fixed_dst,
             tabledemo_profile_config_fixed_cover, tabledemo_profile_config_fixed_cover_count,
-            dest, TABLEDEMO_PROFILE_CONFIG_FIXED_LINEAGE_STRIDE, &guarded, &fill_at, &fills, &census );
+            dest, TABLEDEMO_PROFILE_CONFIG_FIXED_LINEAGE_STRIDE, &guarded, &fill_at, &fills, &compiled );
         if ( made < 0 )
         {
             /* §5.9 #4: the DECLARED CAPACITY a build holds an entry to is real,
@@ -27379,7 +27395,16 @@ static SCHEMA_UNUSED void tabledemo_profile_config_fixed_lineage_build( void )
                ENTRY. A HOSTILE LAYOUT — a third nested union the two-lane
                compiled walk refuses, or a depth past 64 — is named
                layout_record_too_large, the reference's name (§5.8 row 6). */
-            tabledemo_profile_config_fixed_lineage[i].reason = ( made == -2 ) ? SCHEMA_TABLEDEMO_TABLE_LAYOUT_RECORD_TOO_LARGE : SCHEMA_TABLEDEMO_TABLE_PLAN_TOO_LARGE;
+            /* §5.9 #30: an UNLAWFUL entry (-3) — a writer field this reader
+               names nowhere, or a kind moved off every ladder — lays no plan
+               and refuses LAYOUT_MALFORMED; the writer's ?T into a bare T (-4)
+               refuses KIND_MISMATCH (ruling R2). Neither is counted and read past. */
+            if ( made == -4 )
+            {
+                tabledemo_profile_config_fixed_lineage[i].kind_changed = 1;
+                continue;
+            }
+            tabledemo_profile_config_fixed_lineage[i].reason = ( made == -2 ) ? SCHEMA_TABLEDEMO_TABLE_LAYOUT_RECORD_TOO_LARGE : ( made == -3 ) ? SCHEMA_TABLEDEMO_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLEDEMO_TABLE_PLAN_TOO_LARGE;
             continue;
         }
         tabledemo_profile_config_fixed_lineage[i].entries = dest;
@@ -27387,9 +27412,7 @@ static SCHEMA_UNUSED void tabledemo_profile_config_fixed_lineage_build( void )
         tabledemo_profile_config_fixed_lineage[i].guarded = guarded;
         tabledemo_profile_config_fixed_lineage[i].fill = ( fills > 0 ) ? (const tabledemo_table_fixed_fill_t *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
         tabledemo_profile_config_fixed_lineage[i].fill_count = fills;
-        /* THE COMPILE CENSUS, ONCE PER ENDPOINT and never per record (§5.4). */
-        tabledemo_profile_config_fixed_lineage[i].unknown = census.unknown;
-        tabledemo_profile_config_fixed_lineage[i].kind_changed = census.refused ? 1 : 0; /* a kind that moved refuses the read that selects this entry */
+        tabledemo_profile_config_fixed_lineage[i].kind_changed = compiled.refused ? 1 : 0; /* a narrowed scalar refuses the read that selects this entry, before any record lands */
     }
     /* AND THE FLAG LAST: every entry above is written before this store, and
        this store is what a waiting thread's acquire is waiting for. */
@@ -27473,8 +27496,6 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_profile_config_fixed_load_walk_( t
     int64_t rest, record_bytes, count, k;
     int32_t pick;
     int32_t reserved_at;
-    int32_t census_unknown = 0;
-    int32_t census_kind = 0;
     int32_t read_widened;
     const tabledemo_table_fixed_entry_t * entries = tabledemo_profile_config_fixed_plan;
     int32_t entry_count = tabledemo_profile_config_fixed_plan_count;
@@ -27558,6 +27579,13 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_profile_config_fixed_load_walk_( t
             report->reason = tabledemo_profile_config_fixed_lineage[pick].reason;
             return -1;
         }
+        /* A KIND THAT MOVED REFUSES BEFORE ANY RECORD LANDS, and no counter moves (§5.9 #6). */
+        if ( tabledemo_profile_config_fixed_lineage[pick].kind_changed != 0 )
+        {
+            report->refused = 1;
+            report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
+            return -1;
+        }
         if ( tabledemo_profile_config_fixed_lineage[pick].count > plan_capacity )
         {
             report->refused = 1;
@@ -27574,10 +27602,6 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_profile_config_fixed_load_walk_( t
         entry_guarded = tabledemo_profile_config_fixed_lineage[pick].guarded;
         fill = tabledemo_profile_config_fixed_lineage[pick].fill;
         fill_count = tabledemo_profile_config_fixed_lineage[pick].fill_count;
-        /* THE CENSUS IS THE PLAN'S OWN NUMBER, landed ONCE after the record loop
-           and only on a read that RETURNS: REFUSE moves no counter (§5.9 #6). */
-        census_unknown = tabledemo_profile_config_fixed_lineage[pick].unknown;
-        census_kind = tabledemo_profile_config_fixed_lineage[pick].kind_changed;
     }
     /* 9 and 10. A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD, the tail must be
        whole records, and they must fit the caller. */
@@ -27716,14 +27740,6 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_profile_config_fixed_load_walk_( t
             return -1;
         }
         at += record_bytes;
-    }
-    /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
-    report->unknown += census_unknown;
-    if ( census_kind != 0 )
-    {
-        report->refused = 1;
-        report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
-        return -1;
     }
     return count;
 }
@@ -30952,7 +30968,7 @@ static SCHEMA_UNUSED void tabledemo_root_config_fixed_lineage_build( void )
     for ( i = 0; i < tabledemo_root_config_fixed_known_count; ++i )
     {
         tabledemo_table_fixed_layout_view_t parsed;
-        tabledemo_table_report_t census;
+        tabledemo_table_report_t compiled;
         tabledemo_table_fixed_entry_t * dest = tabledemo_root_config_fixed_lineage_storage[i];
         int32_t guarded = 0;
         int32_t made;
@@ -30961,7 +30977,7 @@ static SCHEMA_UNUSED void tabledemo_root_config_fixed_lineage_build( void )
         int why = SCHEMA_TABLEDEMO_TABLE_LAYOUT_MALFORMED;
         memset( &tabledemo_root_config_fixed_lineage[i], 0, sizeof( tabledemo_root_config_fixed_lineage[i] ) );
         if ( tabledemo_root_config_fixed_known[i].hash == tabledemo_root_config_fixed_hash ) { continue; } /* the identity entry: the baked plan answers it */
-        memset( &census, 0, sizeof( census ) );
+        memset( &compiled, 0, sizeof( compiled ) );
         /* A LINEAGE ENTRY THAT IS NOT A PARSEABLE LAYOUT IS A BUG IN THE LOCK
            (§5.9 #8). C cannot fail a build from a header, so the entry carries
            the name and LOAD refuses by it if a file ever matches its hash. */
@@ -30972,7 +30988,7 @@ static SCHEMA_UNUSED void tabledemo_root_config_fixed_lineage_build( void )
         }
         made = tabledemo_table_fixed_compile( &parsed, tabledemo_root_config_fixed_layout, (int32_t) sizeof( tabledemo_root_config_fixed_layout ), tabledemo_root_config_fixed_dst,
             tabledemo_root_config_fixed_cover, tabledemo_root_config_fixed_cover_count,
-            dest, TABLEDEMO_ROOT_CONFIG_FIXED_LINEAGE_STRIDE, &guarded, &fill_at, &fills, &census );
+            dest, TABLEDEMO_ROOT_CONFIG_FIXED_LINEAGE_STRIDE, &guarded, &fill_at, &fills, &compiled );
         if ( made < 0 )
         {
             /* §5.9 #4: the DECLARED CAPACITY a build holds an entry to is real,
@@ -30980,7 +30996,16 @@ static SCHEMA_UNUSED void tabledemo_root_config_fixed_lineage_build( void )
                ENTRY. A HOSTILE LAYOUT — a third nested union the two-lane
                compiled walk refuses, or a depth past 64 — is named
                layout_record_too_large, the reference's name (§5.8 row 6). */
-            tabledemo_root_config_fixed_lineage[i].reason = ( made == -2 ) ? SCHEMA_TABLEDEMO_TABLE_LAYOUT_RECORD_TOO_LARGE : SCHEMA_TABLEDEMO_TABLE_PLAN_TOO_LARGE;
+            /* §5.9 #30: an UNLAWFUL entry (-3) — a writer field this reader
+               names nowhere, or a kind moved off every ladder — lays no plan
+               and refuses LAYOUT_MALFORMED; the writer's ?T into a bare T (-4)
+               refuses KIND_MISMATCH (ruling R2). Neither is counted and read past. */
+            if ( made == -4 )
+            {
+                tabledemo_root_config_fixed_lineage[i].kind_changed = 1;
+                continue;
+            }
+            tabledemo_root_config_fixed_lineage[i].reason = ( made == -2 ) ? SCHEMA_TABLEDEMO_TABLE_LAYOUT_RECORD_TOO_LARGE : ( made == -3 ) ? SCHEMA_TABLEDEMO_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLEDEMO_TABLE_PLAN_TOO_LARGE;
             continue;
         }
         tabledemo_root_config_fixed_lineage[i].entries = dest;
@@ -30988,9 +31013,7 @@ static SCHEMA_UNUSED void tabledemo_root_config_fixed_lineage_build( void )
         tabledemo_root_config_fixed_lineage[i].guarded = guarded;
         tabledemo_root_config_fixed_lineage[i].fill = ( fills > 0 ) ? (const tabledemo_table_fixed_fill_t *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
         tabledemo_root_config_fixed_lineage[i].fill_count = fills;
-        /* THE COMPILE CENSUS, ONCE PER ENDPOINT and never per record (§5.4). */
-        tabledemo_root_config_fixed_lineage[i].unknown = census.unknown;
-        tabledemo_root_config_fixed_lineage[i].kind_changed = census.refused ? 1 : 0; /* a kind that moved refuses the read that selects this entry */
+        tabledemo_root_config_fixed_lineage[i].kind_changed = compiled.refused ? 1 : 0; /* a narrowed scalar refuses the read that selects this entry, before any record lands */
     }
     /* AND THE FLAG LAST: every entry above is written before this store, and
        this store is what a waiting thread's acquire is waiting for. */
@@ -31074,8 +31097,6 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_root_config_fixed_load_walk_( tabl
     int64_t rest, record_bytes, count, k;
     int32_t pick;
     int32_t reserved_at;
-    int32_t census_unknown = 0;
-    int32_t census_kind = 0;
     int32_t read_widened;
     const tabledemo_table_fixed_entry_t * entries = tabledemo_root_config_fixed_plan;
     int32_t entry_count = tabledemo_root_config_fixed_plan_count;
@@ -31159,6 +31180,13 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_root_config_fixed_load_walk_( tabl
             report->reason = tabledemo_root_config_fixed_lineage[pick].reason;
             return -1;
         }
+        /* A KIND THAT MOVED REFUSES BEFORE ANY RECORD LANDS, and no counter moves (§5.9 #6). */
+        if ( tabledemo_root_config_fixed_lineage[pick].kind_changed != 0 )
+        {
+            report->refused = 1;
+            report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
+            return -1;
+        }
         if ( tabledemo_root_config_fixed_lineage[pick].count > plan_capacity )
         {
             report->refused = 1;
@@ -31175,10 +31203,6 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_root_config_fixed_load_walk_( tabl
         entry_guarded = tabledemo_root_config_fixed_lineage[pick].guarded;
         fill = tabledemo_root_config_fixed_lineage[pick].fill;
         fill_count = tabledemo_root_config_fixed_lineage[pick].fill_count;
-        /* THE CENSUS IS THE PLAN'S OWN NUMBER, landed ONCE after the record loop
-           and only on a read that RETURNS: REFUSE moves no counter (§5.9 #6). */
-        census_unknown = tabledemo_root_config_fixed_lineage[pick].unknown;
-        census_kind = tabledemo_root_config_fixed_lineage[pick].kind_changed;
     }
     /* 9 and 10. A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD, the tail must be
        whole records, and they must fit the caller. */
@@ -31317,14 +31341,6 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_root_config_fixed_load_walk_( tabl
             return -1;
         }
         at += record_bytes;
-    }
-    /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
-    report->unknown += census_unknown;
-    if ( census_kind != 0 )
-    {
-        report->refused = 1;
-        report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
-        return -1;
     }
     return count;
 }
@@ -31665,7 +31681,7 @@ static SCHEMA_UNUSED void tabledemo_counted_min_fixed_lineage_build( void )
     for ( i = 0; i < tabledemo_counted_min_fixed_known_count; ++i )
     {
         tabledemo_table_fixed_layout_view_t parsed;
-        tabledemo_table_report_t census;
+        tabledemo_table_report_t compiled;
         tabledemo_table_fixed_entry_t * dest = tabledemo_counted_min_fixed_lineage_storage[i];
         int32_t guarded = 0;
         int32_t made;
@@ -31674,7 +31690,7 @@ static SCHEMA_UNUSED void tabledemo_counted_min_fixed_lineage_build( void )
         int why = SCHEMA_TABLEDEMO_TABLE_LAYOUT_MALFORMED;
         memset( &tabledemo_counted_min_fixed_lineage[i], 0, sizeof( tabledemo_counted_min_fixed_lineage[i] ) );
         if ( tabledemo_counted_min_fixed_known[i].hash == tabledemo_counted_min_fixed_hash ) { continue; } /* the identity entry: the baked plan answers it */
-        memset( &census, 0, sizeof( census ) );
+        memset( &compiled, 0, sizeof( compiled ) );
         /* A LINEAGE ENTRY THAT IS NOT A PARSEABLE LAYOUT IS A BUG IN THE LOCK
            (§5.9 #8). C cannot fail a build from a header, so the entry carries
            the name and LOAD refuses by it if a file ever matches its hash. */
@@ -31685,7 +31701,7 @@ static SCHEMA_UNUSED void tabledemo_counted_min_fixed_lineage_build( void )
         }
         made = tabledemo_table_fixed_compile( &parsed, tabledemo_counted_min_fixed_layout, (int32_t) sizeof( tabledemo_counted_min_fixed_layout ), tabledemo_counted_min_fixed_dst,
             tabledemo_counted_min_fixed_cover, tabledemo_counted_min_fixed_cover_count,
-            dest, TABLEDEMO_COUNTED_MIN_FIXED_LINEAGE_STRIDE, &guarded, &fill_at, &fills, &census );
+            dest, TABLEDEMO_COUNTED_MIN_FIXED_LINEAGE_STRIDE, &guarded, &fill_at, &fills, &compiled );
         if ( made < 0 )
         {
             /* §5.9 #4: the DECLARED CAPACITY a build holds an entry to is real,
@@ -31693,7 +31709,16 @@ static SCHEMA_UNUSED void tabledemo_counted_min_fixed_lineage_build( void )
                ENTRY. A HOSTILE LAYOUT — a third nested union the two-lane
                compiled walk refuses, or a depth past 64 — is named
                layout_record_too_large, the reference's name (§5.8 row 6). */
-            tabledemo_counted_min_fixed_lineage[i].reason = ( made == -2 ) ? SCHEMA_TABLEDEMO_TABLE_LAYOUT_RECORD_TOO_LARGE : SCHEMA_TABLEDEMO_TABLE_PLAN_TOO_LARGE;
+            /* §5.9 #30: an UNLAWFUL entry (-3) — a writer field this reader
+               names nowhere, or a kind moved off every ladder — lays no plan
+               and refuses LAYOUT_MALFORMED; the writer's ?T into a bare T (-4)
+               refuses KIND_MISMATCH (ruling R2). Neither is counted and read past. */
+            if ( made == -4 )
+            {
+                tabledemo_counted_min_fixed_lineage[i].kind_changed = 1;
+                continue;
+            }
+            tabledemo_counted_min_fixed_lineage[i].reason = ( made == -2 ) ? SCHEMA_TABLEDEMO_TABLE_LAYOUT_RECORD_TOO_LARGE : ( made == -3 ) ? SCHEMA_TABLEDEMO_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLEDEMO_TABLE_PLAN_TOO_LARGE;
             continue;
         }
         tabledemo_counted_min_fixed_lineage[i].entries = dest;
@@ -31701,9 +31726,7 @@ static SCHEMA_UNUSED void tabledemo_counted_min_fixed_lineage_build( void )
         tabledemo_counted_min_fixed_lineage[i].guarded = guarded;
         tabledemo_counted_min_fixed_lineage[i].fill = ( fills > 0 ) ? (const tabledemo_table_fixed_fill_t *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
         tabledemo_counted_min_fixed_lineage[i].fill_count = fills;
-        /* THE COMPILE CENSUS, ONCE PER ENDPOINT and never per record (§5.4). */
-        tabledemo_counted_min_fixed_lineage[i].unknown = census.unknown;
-        tabledemo_counted_min_fixed_lineage[i].kind_changed = census.refused ? 1 : 0; /* a kind that moved refuses the read that selects this entry */
+        tabledemo_counted_min_fixed_lineage[i].kind_changed = compiled.refused ? 1 : 0; /* a narrowed scalar refuses the read that selects this entry, before any record lands */
     }
     /* AND THE FLAG LAST: every entry above is written before this store, and
        this store is what a waiting thread's acquire is waiting for. */
@@ -31783,8 +31806,6 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_counted_min_fixed_load_walk_( tabl
     int64_t rest, record_bytes, count, k;
     int32_t pick;
     int32_t reserved_at;
-    int32_t census_unknown = 0;
-    int32_t census_kind = 0;
     const tabledemo_table_fixed_entry_t * entries = tabledemo_counted_min_fixed_plan;
     int32_t entry_count = tabledemo_counted_min_fixed_plan_count;
     int32_t entry_guarded = tabledemo_counted_min_fixed_plan_guarded;
@@ -31867,6 +31888,13 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_counted_min_fixed_load_walk_( tabl
             report->reason = tabledemo_counted_min_fixed_lineage[pick].reason;
             return -1;
         }
+        /* A KIND THAT MOVED REFUSES BEFORE ANY RECORD LANDS, and no counter moves (§5.9 #6). */
+        if ( tabledemo_counted_min_fixed_lineage[pick].kind_changed != 0 )
+        {
+            report->refused = 1;
+            report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
+            return -1;
+        }
         if ( tabledemo_counted_min_fixed_lineage[pick].count > plan_capacity )
         {
             report->refused = 1;
@@ -31883,10 +31911,6 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_counted_min_fixed_load_walk_( tabl
         entry_guarded = tabledemo_counted_min_fixed_lineage[pick].guarded;
         fill = tabledemo_counted_min_fixed_lineage[pick].fill;
         fill_count = tabledemo_counted_min_fixed_lineage[pick].fill_count;
-        /* THE CENSUS IS THE PLAN'S OWN NUMBER, landed ONCE after the record loop
-           and only on a read that RETURNS: REFUSE moves no counter (§5.9 #6). */
-        census_unknown = tabledemo_counted_min_fixed_lineage[pick].unknown;
-        census_kind = tabledemo_counted_min_fixed_lineage[pick].kind_changed;
     }
     /* 9 and 10. A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD, the tail must be
        whole records, and they must fit the caller. */
@@ -32015,14 +32039,6 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_counted_min_fixed_load_walk_( tabl
             return -1;
         }
         at += record_bytes;
-    }
-    /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
-    report->unknown += census_unknown;
-    if ( census_kind != 0 )
-    {
-        report->refused = 1;
-        report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
-        return -1;
     }
     return count;
 }
@@ -32273,8 +32289,6 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_float_bound_fixed_load_walk_( tabl
     int64_t rest, record_bytes, count, k;
     int32_t pick;
     int32_t reserved_at;
-    int32_t census_unknown = 0;
-    int32_t census_kind = 0;
     int32_t read_widened;
     const tabledemo_table_fixed_entry_t * entries = tabledemo_float_bound_fixed_plan;
     int32_t entry_count = tabledemo_float_bound_fixed_plan_count;
@@ -32486,14 +32500,6 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_float_bound_fixed_load_walk_( tabl
             return -1;
         }
         at += record_bytes;
-    }
-    /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
-    report->unknown += census_unknown;
-    if ( census_kind != 0 )
-    {
-        report->refused = 1;
-        report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
-        return -1;
     }
     return count;
 }
@@ -32938,7 +32944,7 @@ static SCHEMA_UNUSED void tabledemo_moods_fixed_lineage_build( void )
     for ( i = 0; i < tabledemo_moods_fixed_known_count; ++i )
     {
         tabledemo_table_fixed_layout_view_t parsed;
-        tabledemo_table_report_t census;
+        tabledemo_table_report_t compiled;
         tabledemo_table_fixed_entry_t * dest = tabledemo_moods_fixed_lineage_storage[i];
         int32_t guarded = 0;
         int32_t made;
@@ -32947,7 +32953,7 @@ static SCHEMA_UNUSED void tabledemo_moods_fixed_lineage_build( void )
         int why = SCHEMA_TABLEDEMO_TABLE_LAYOUT_MALFORMED;
         memset( &tabledemo_moods_fixed_lineage[i], 0, sizeof( tabledemo_moods_fixed_lineage[i] ) );
         if ( tabledemo_moods_fixed_known[i].hash == tabledemo_moods_fixed_hash ) { continue; } /* the identity entry: the baked plan answers it */
-        memset( &census, 0, sizeof( census ) );
+        memset( &compiled, 0, sizeof( compiled ) );
         /* A LINEAGE ENTRY THAT IS NOT A PARSEABLE LAYOUT IS A BUG IN THE LOCK
            (§5.9 #8). C cannot fail a build from a header, so the entry carries
            the name and LOAD refuses by it if a file ever matches its hash. */
@@ -32958,7 +32964,7 @@ static SCHEMA_UNUSED void tabledemo_moods_fixed_lineage_build( void )
         }
         made = tabledemo_table_fixed_compile( &parsed, tabledemo_moods_fixed_layout, (int32_t) sizeof( tabledemo_moods_fixed_layout ), tabledemo_moods_fixed_dst,
             tabledemo_moods_fixed_cover, tabledemo_moods_fixed_cover_count,
-            dest, TABLEDEMO_MOODS_FIXED_LINEAGE_STRIDE, &guarded, &fill_at, &fills, &census );
+            dest, TABLEDEMO_MOODS_FIXED_LINEAGE_STRIDE, &guarded, &fill_at, &fills, &compiled );
         if ( made < 0 )
         {
             /* §5.9 #4: the DECLARED CAPACITY a build holds an entry to is real,
@@ -32966,7 +32972,16 @@ static SCHEMA_UNUSED void tabledemo_moods_fixed_lineage_build( void )
                ENTRY. A HOSTILE LAYOUT — a third nested union the two-lane
                compiled walk refuses, or a depth past 64 — is named
                layout_record_too_large, the reference's name (§5.8 row 6). */
-            tabledemo_moods_fixed_lineage[i].reason = ( made == -2 ) ? SCHEMA_TABLEDEMO_TABLE_LAYOUT_RECORD_TOO_LARGE : SCHEMA_TABLEDEMO_TABLE_PLAN_TOO_LARGE;
+            /* §5.9 #30: an UNLAWFUL entry (-3) — a writer field this reader
+               names nowhere, or a kind moved off every ladder — lays no plan
+               and refuses LAYOUT_MALFORMED; the writer's ?T into a bare T (-4)
+               refuses KIND_MISMATCH (ruling R2). Neither is counted and read past. */
+            if ( made == -4 )
+            {
+                tabledemo_moods_fixed_lineage[i].kind_changed = 1;
+                continue;
+            }
+            tabledemo_moods_fixed_lineage[i].reason = ( made == -2 ) ? SCHEMA_TABLEDEMO_TABLE_LAYOUT_RECORD_TOO_LARGE : ( made == -3 ) ? SCHEMA_TABLEDEMO_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLEDEMO_TABLE_PLAN_TOO_LARGE;
             continue;
         }
         tabledemo_moods_fixed_lineage[i].entries = dest;
@@ -32974,9 +32989,7 @@ static SCHEMA_UNUSED void tabledemo_moods_fixed_lineage_build( void )
         tabledemo_moods_fixed_lineage[i].guarded = guarded;
         tabledemo_moods_fixed_lineage[i].fill = ( fills > 0 ) ? (const tabledemo_table_fixed_fill_t *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
         tabledemo_moods_fixed_lineage[i].fill_count = fills;
-        /* THE COMPILE CENSUS, ONCE PER ENDPOINT and never per record (§5.4). */
-        tabledemo_moods_fixed_lineage[i].unknown = census.unknown;
-        tabledemo_moods_fixed_lineage[i].kind_changed = census.refused ? 1 : 0; /* a kind that moved refuses the read that selects this entry */
+        tabledemo_moods_fixed_lineage[i].kind_changed = compiled.refused ? 1 : 0; /* a narrowed scalar refuses the read that selects this entry, before any record lands */
     }
     /* AND THE FLAG LAST: every entry above is written before this store, and
        this store is what a waiting thread's acquire is waiting for. */
@@ -33056,8 +33069,6 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_moods_fixed_load_walk_( tabledemo_
     int64_t rest, record_bytes, count, k;
     int32_t pick;
     int32_t reserved_at;
-    int32_t census_unknown = 0;
-    int32_t census_kind = 0;
     const tabledemo_table_fixed_entry_t * entries = tabledemo_moods_fixed_plan;
     int32_t entry_count = tabledemo_moods_fixed_plan_count;
     int32_t entry_guarded = tabledemo_moods_fixed_plan_guarded;
@@ -33140,6 +33151,13 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_moods_fixed_load_walk_( tabledemo_
             report->reason = tabledemo_moods_fixed_lineage[pick].reason;
             return -1;
         }
+        /* A KIND THAT MOVED REFUSES BEFORE ANY RECORD LANDS, and no counter moves (§5.9 #6). */
+        if ( tabledemo_moods_fixed_lineage[pick].kind_changed != 0 )
+        {
+            report->refused = 1;
+            report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
+            return -1;
+        }
         if ( tabledemo_moods_fixed_lineage[pick].count > plan_capacity )
         {
             report->refused = 1;
@@ -33156,10 +33174,6 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_moods_fixed_load_walk_( tabledemo_
         entry_guarded = tabledemo_moods_fixed_lineage[pick].guarded;
         fill = tabledemo_moods_fixed_lineage[pick].fill;
         fill_count = tabledemo_moods_fixed_lineage[pick].fill_count;
-        /* THE CENSUS IS THE PLAN'S OWN NUMBER, landed ONCE after the record loop
-           and only on a read that RETURNS: REFUSE moves no counter (§5.9 #6). */
-        census_unknown = tabledemo_moods_fixed_lineage[pick].unknown;
-        census_kind = tabledemo_moods_fixed_lineage[pick].kind_changed;
     }
     /* 9 and 10. A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD, the tail must be
        whole records, and they must fit the caller. */
@@ -33288,14 +33302,6 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_moods_fixed_load_walk_( tabledemo_
             return -1;
         }
         at += record_bytes;
-    }
-    /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
-    report->unknown += census_unknown;
-    if ( census_kind != 0 )
-    {
-        report->refused = 1;
-        report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
-        return -1;
     }
     return count;
 }
@@ -33721,7 +33727,7 @@ static SCHEMA_UNUSED void tabledemo_mood_field_fixed_lineage_build( void )
     for ( i = 0; i < tabledemo_mood_field_fixed_known_count; ++i )
     {
         tabledemo_table_fixed_layout_view_t parsed;
-        tabledemo_table_report_t census;
+        tabledemo_table_report_t compiled;
         tabledemo_table_fixed_entry_t * dest = tabledemo_mood_field_fixed_lineage_storage[i];
         int32_t guarded = 0;
         int32_t made;
@@ -33730,7 +33736,7 @@ static SCHEMA_UNUSED void tabledemo_mood_field_fixed_lineage_build( void )
         int why = SCHEMA_TABLEDEMO_TABLE_LAYOUT_MALFORMED;
         memset( &tabledemo_mood_field_fixed_lineage[i], 0, sizeof( tabledemo_mood_field_fixed_lineage[i] ) );
         if ( tabledemo_mood_field_fixed_known[i].hash == tabledemo_mood_field_fixed_hash ) { continue; } /* the identity entry: the baked plan answers it */
-        memset( &census, 0, sizeof( census ) );
+        memset( &compiled, 0, sizeof( compiled ) );
         /* A LINEAGE ENTRY THAT IS NOT A PARSEABLE LAYOUT IS A BUG IN THE LOCK
            (§5.9 #8). C cannot fail a build from a header, so the entry carries
            the name and LOAD refuses by it if a file ever matches its hash. */
@@ -33741,7 +33747,7 @@ static SCHEMA_UNUSED void tabledemo_mood_field_fixed_lineage_build( void )
         }
         made = tabledemo_table_fixed_compile( &parsed, tabledemo_mood_field_fixed_layout, (int32_t) sizeof( tabledemo_mood_field_fixed_layout ), tabledemo_mood_field_fixed_dst,
             tabledemo_mood_field_fixed_cover, tabledemo_mood_field_fixed_cover_count,
-            dest, TABLEDEMO_MOOD_FIELD_FIXED_LINEAGE_STRIDE, &guarded, &fill_at, &fills, &census );
+            dest, TABLEDEMO_MOOD_FIELD_FIXED_LINEAGE_STRIDE, &guarded, &fill_at, &fills, &compiled );
         if ( made < 0 )
         {
             /* §5.9 #4: the DECLARED CAPACITY a build holds an entry to is real,
@@ -33749,7 +33755,16 @@ static SCHEMA_UNUSED void tabledemo_mood_field_fixed_lineage_build( void )
                ENTRY. A HOSTILE LAYOUT — a third nested union the two-lane
                compiled walk refuses, or a depth past 64 — is named
                layout_record_too_large, the reference's name (§5.8 row 6). */
-            tabledemo_mood_field_fixed_lineage[i].reason = ( made == -2 ) ? SCHEMA_TABLEDEMO_TABLE_LAYOUT_RECORD_TOO_LARGE : SCHEMA_TABLEDEMO_TABLE_PLAN_TOO_LARGE;
+            /* §5.9 #30: an UNLAWFUL entry (-3) — a writer field this reader
+               names nowhere, or a kind moved off every ladder — lays no plan
+               and refuses LAYOUT_MALFORMED; the writer's ?T into a bare T (-4)
+               refuses KIND_MISMATCH (ruling R2). Neither is counted and read past. */
+            if ( made == -4 )
+            {
+                tabledemo_mood_field_fixed_lineage[i].kind_changed = 1;
+                continue;
+            }
+            tabledemo_mood_field_fixed_lineage[i].reason = ( made == -2 ) ? SCHEMA_TABLEDEMO_TABLE_LAYOUT_RECORD_TOO_LARGE : ( made == -3 ) ? SCHEMA_TABLEDEMO_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLEDEMO_TABLE_PLAN_TOO_LARGE;
             continue;
         }
         tabledemo_mood_field_fixed_lineage[i].entries = dest;
@@ -33757,9 +33772,7 @@ static SCHEMA_UNUSED void tabledemo_mood_field_fixed_lineage_build( void )
         tabledemo_mood_field_fixed_lineage[i].guarded = guarded;
         tabledemo_mood_field_fixed_lineage[i].fill = ( fills > 0 ) ? (const tabledemo_table_fixed_fill_t *) (const void *) ( (const uint8_t *) dest + fill_at ) : NULL;
         tabledemo_mood_field_fixed_lineage[i].fill_count = fills;
-        /* THE COMPILE CENSUS, ONCE PER ENDPOINT and never per record (§5.4). */
-        tabledemo_mood_field_fixed_lineage[i].unknown = census.unknown;
-        tabledemo_mood_field_fixed_lineage[i].kind_changed = census.refused ? 1 : 0; /* a kind that moved refuses the read that selects this entry */
+        tabledemo_mood_field_fixed_lineage[i].kind_changed = compiled.refused ? 1 : 0; /* a narrowed scalar refuses the read that selects this entry, before any record lands */
     }
     /* AND THE FLAG LAST: every entry above is written before this store, and
        this store is what a waiting thread's acquire is waiting for. */
@@ -33839,8 +33852,6 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_mood_field_fixed_load_walk_( table
     int64_t rest, record_bytes, count, k;
     int32_t pick;
     int32_t reserved_at;
-    int32_t census_unknown = 0;
-    int32_t census_kind = 0;
     const tabledemo_table_fixed_entry_t * entries = tabledemo_mood_field_fixed_plan;
     int32_t entry_count = tabledemo_mood_field_fixed_plan_count;
     int32_t entry_guarded = tabledemo_mood_field_fixed_plan_guarded;
@@ -33923,6 +33934,13 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_mood_field_fixed_load_walk_( table
             report->reason = tabledemo_mood_field_fixed_lineage[pick].reason;
             return -1;
         }
+        /* A KIND THAT MOVED REFUSES BEFORE ANY RECORD LANDS, and no counter moves (§5.9 #6). */
+        if ( tabledemo_mood_field_fixed_lineage[pick].kind_changed != 0 )
+        {
+            report->refused = 1;
+            report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
+            return -1;
+        }
         if ( tabledemo_mood_field_fixed_lineage[pick].count > plan_capacity )
         {
             report->refused = 1;
@@ -33939,10 +33957,6 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_mood_field_fixed_load_walk_( table
         entry_guarded = tabledemo_mood_field_fixed_lineage[pick].guarded;
         fill = tabledemo_mood_field_fixed_lineage[pick].fill;
         fill_count = tabledemo_mood_field_fixed_lineage[pick].fill_count;
-        /* THE CENSUS IS THE PLAN'S OWN NUMBER, landed ONCE after the record loop
-           and only on a read that RETURNS: REFUSE moves no counter (§5.9 #6). */
-        census_unknown = tabledemo_mood_field_fixed_lineage[pick].unknown;
-        census_kind = tabledemo_mood_field_fixed_lineage[pick].kind_changed;
     }
     /* 9 and 10. A FIXED-FORM FILE HOLDS AT LEAST ONE RECORD, the tail must be
        whole records, and they must fit the caller. */
@@ -34071,14 +34085,6 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_mood_field_fixed_load_walk_( table
             return -1;
         }
         at += record_bytes;
-    }
-    /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
-    report->unknown += census_unknown;
-    if ( census_kind != 0 )
-    {
-        report->refused = 1;
-        report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
-        return -1;
     }
     return count;
 }
@@ -34387,8 +34393,6 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_min_arm_fix_fixed_load_walk_( tabl
     int64_t rest, record_bytes, count, k;
     int32_t pick;
     int32_t reserved_at;
-    int32_t census_unknown = 0;
-    int32_t census_kind = 0;
     const tabledemo_table_fixed_entry_t * entries = tabledemo_min_arm_fix_fixed_plan;
     int32_t entry_count = tabledemo_min_arm_fix_fixed_plan_count;
     int32_t entry_guarded = tabledemo_min_arm_fix_fixed_plan_guarded;
@@ -34589,14 +34593,6 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_min_arm_fix_fixed_load_walk_( tabl
             return -1;
         }
         at += record_bytes;
-    }
-    /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
-    report->unknown += census_unknown;
-    if ( census_kind != 0 )
-    {
-        report->refused = 1;
-        report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
-        return -1;
     }
     return count;
 }
@@ -34865,8 +34861,6 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_min_plain_fix_fixed_load_walk_( ta
     int64_t rest, record_bytes, count, k;
     int32_t pick;
     int32_t reserved_at;
-    int32_t census_unknown = 0;
-    int32_t census_kind = 0;
     const tabledemo_table_fixed_entry_t * entries = tabledemo_min_plain_fix_fixed_plan;
     int32_t entry_count = tabledemo_min_plain_fix_fixed_plan_count;
     int32_t entry_guarded = tabledemo_min_plain_fix_fixed_plan_guarded;
@@ -35067,14 +35061,6 @@ static SCHEMA_UNUSED int64_t schema_tabledemo_min_plain_fix_fixed_load_walk_( ta
             return -1;
         }
         at += record_bytes;
-    }
-    /* THE COMPILE CENSUS LANDS HERE, ONCE, on a read that returns (§5.9 #6). */
-    report->unknown += census_unknown;
-    if ( census_kind != 0 )
-    {
-        report->refused = 1;
-        report->refuse_reason = SCHEMA_TABLEDEMO_TABLE_REFUSE_KIND_MISMATCH;
-        return -1;
     }
     return count;
 }

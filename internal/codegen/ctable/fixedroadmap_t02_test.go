@@ -380,8 +380,12 @@ func t02R26(t *testing.T) {
 	if !strings.Contains(text, snake+"_fixed_lineage[i].reason = SCHEMA_TABLE_LAYOUT_MALFORMED;\n            continue;") {
 		t.Errorf("R26: a lineage entry that does not parse carries no layout_malformed lane of its own")
 	}
-	if !strings.Contains(text, "( made == -2 ) ? SCHEMA_TABLE_LAYOUT_RECORD_TOO_LARGE : SCHEMA_TABLE_PLAN_TOO_LARGE") {
-		t.Errorf("R26: a lineage entry that will not build does not pick its own lane (layout_record_too_large vs plan_too_large)")
+	if !strings.Contains(text, "( made == -2 ) ? SCHEMA_TABLE_LAYOUT_RECORD_TOO_LARGE : ( made == -3 ) ? SCHEMA_TABLE_LAYOUT_MALFORMED : SCHEMA_TABLE_PLAN_TOO_LARGE") {
+		t.Errorf("R26: a lineage entry that will not build does not pick its own lane (layout_record_too_large vs unlawful layout_malformed vs plan_too_large)")
+	}
+	// AN UNLAWFUL ENTRY'S R2 LANE: the writer's ?T into a bare T refuses kind_mismatch (§5.9 #30).
+	if !strings.Contains(text, "if ( made == -4 )") || !strings.Contains(text, snake+"_fixed_lineage[i].kind_changed = 1;") {
+		t.Errorf("R26: the writer's ?T into a bare T does not carry its kind_mismatch lane on the entry")
 	}
 	// AND LOAD REFUSES BY THAT ENTRY'S OWN LANE.
 	if !strings.Contains(text, snake+"_fixed_lineage[pick].reason != 0") {

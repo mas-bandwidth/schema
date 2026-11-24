@@ -111,7 +111,6 @@ const fixedRuntime = `
         public readonly bool Identity;
         public readonly bool Prefill;
         public readonly int Widens;
-        public readonly int Unknown;
         public readonly int PlanCount;
         public readonly bool HasGuards;
         public readonly byte[] Layout;
@@ -123,11 +122,11 @@ const fixedRuntime = `
         public readonly ushort[] Remap;
 
         public FixedLane(ulong hash, int recordBytes, int why, bool identity, bool prefill, int widens, int planCount, byte[] layout, FixedOp[] ops, FixedOp[] checks)
-            : this(hash, recordBytes, why, identity, prefill, widens, 0, planCount, false, layout, ops, checks, Array.Empty<FixedGuard>(), Array.Empty<FixedGuard>(), Array.Empty<FixedFill>(), Array.Empty<ushort>())
+            : this(hash, recordBytes, why, identity, prefill, widens, planCount, false, layout, ops, checks, Array.Empty<FixedGuard>(), Array.Empty<FixedGuard>(), Array.Empty<FixedFill>(), Array.Empty<ushort>())
         {
         }
 
-        public FixedLane(ulong hash, int recordBytes, int why, bool identity, bool prefill, int widens, int unknown, int planCount, bool hasGuards, byte[] layout, FixedOp[] ops, FixedOp[] checks, FixedGuard[] guards, FixedGuard[] checkGuards, FixedFill[] fills, ushort[] remap)
+        public FixedLane(ulong hash, int recordBytes, int why, bool identity, bool prefill, int widens, int planCount, bool hasGuards, byte[] layout, FixedOp[] ops, FixedOp[] checks, FixedGuard[] guards, FixedGuard[] checkGuards, FixedFill[] fills, ushort[] remap)
         {
             Hash = hash;
             RecordBytes = recordBytes;
@@ -135,7 +134,6 @@ const fixedRuntime = `
             Identity = identity;
             Prefill = prefill;
             Widens = widens;
-            Unknown = unknown;
             PlanCount = planCount;
             HasGuards = hasGuards;
             Layout = layout;

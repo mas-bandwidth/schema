@@ -959,6 +959,16 @@ func runRootProbe(t *testing.T, elixirBin, reader, root string, older []string, 
 			lineage[st.Name] = append(lineage[st.Name], e)
 		}
 	}
+	return runUnitProbe(t, elixirBin, u, root, lineage, file, body)
+}
+
+// runUnitProbe is runRootProbe over a unit already checked and a lineage
+// already built: the unlawful-entry rows hand in pairs written in the test
+// itself, never read from test/tables.
+func runUnitProbe(t *testing.T, elixirBin string, u *ir.Unit, root string, lineage map[string][]FixedLineageEntry, file, body string) (string, error) {
+	slowtest.Gate(t, "an external toolchain")
+
+	t.Helper()
 	// THE PACKET LIBRARY TOO: a row's unions, enums and flags lower to modules
 	// there, and the fixed surface names them the way a consumer does.
 	files, err := elixir.Generate(u)

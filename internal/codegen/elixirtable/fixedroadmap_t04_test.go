@@ -29,6 +29,14 @@ func t04Has(t *testing.T, src, want, what string) {
 	}
 }
 
+// t04Lacks is a forbidden substring of a source, named by rule.
+func t04Lacks(t *testing.T, src, unwanted, what string) {
+	t.Helper()
+	if strings.Contains(src, unwanted) {
+		t.Errorf("%s: the source still carries %q", what, unwanted)
+	}
+}
+
 // t04Floor reads the emitted `@<snake>_floor` constant.
 func t04Floor(t *testing.T, text, snake string) string {
 	t.Helper()
@@ -203,7 +211,9 @@ func t04R15(t *testing.T) {
 // t04E3 holds elixir/E3 to FIXED-FORM-ALGORITHM.md §4's widening rungs as the
 // runtime carries them: a kind that grew decodes at the writer's width and
 // lands exactly, counting one `widened`; the integer, fixed-point and float
-// families each have their own ladder and a kind that MOVED is reported.
+// families each have their own ladder, and a kind that MOVED off every ladder
+// makes the entry unlawful (§5.2 MATCH, §5.9 #30): layout_malformed, or
+// kind_mismatch for the writer's ?T into a bare T (R2). It is never counted.
 func t04E3(t *testing.T) {
 	t04Has(t, fixedRuntimeBody, "defp widens?(from, to) when from >= 2 and from <= 5 and to >= 2 and to <= 5, do: to > from", "E3 the signed/unsigned integer ladder")
 	t04Has(t, fixedRuntimeBody, "defp widens?(from, to) when from >= 20 and from <= 24 and to >= 20 and to <= 24, do: to > from", "E3 the signed fixed-point ladder")
@@ -211,7 +221,10 @@ func t04E3(t *testing.T) {
 	t04Has(t, fixedRuntimeBody, "{:widen, their_at, at, their_size, my_size, signed_kind?(their_kind)}", "E3 a widened integer lands at the writer's width")
 	t04Has(t, fixedRuntimeBody, "{dst, image_bytes(raw, width, signed)}", "E3 a widened integer lands sign-extended at the reader's width")
 	t04Has(t, fixedRuntimeBody, "bump(report, :widened)", "E3 a widening counts one widened")
-	t04Has(t, fixedRuntimeBody, "{acc, Map.update(report, :mismatch, 1, &(&1 + 1))}", "E3 a kind that moved is reported")
+	t04Has(t, fixedRuntimeBody, "if their_kind == 35 do\n        {acc, mark_unlawful_kind(report)}\n      else\n        {acc, mark_unlawful(report)}\n      end", "E3 a kind that moved off the ladder is unlawful")
+	t04Has(t, fixedRuntimeBody, "{:error, :kind_mismatch}", "E3 the writer's ?T into a bare T refuses kind_mismatch")
+	t04Lacks(t, fixedRuntimeBody, ":mismatch, 1", "E3 a kind that moved is never counted")
+	t04Lacks(t, fixedRuntimeBody, "throw({:refuse, :wire_damaged})\n\n  def census", "E3 a kind that moved is never answered wire_damaged")
 
 	// [CAPABILITY]: the leg WRITES the older integer at its boundary values and
 	// the WIDENED leg READS them back exactly, counting one `widened` per record.
@@ -284,8 +297,8 @@ fixed table T
 // ---- elixir/R20 -------------------------------------------------------------
 
 // t04R20 holds elixir/R20 to the landing rules: an added field lands its
-// declared default (the prefill image the plan does not write), a deprecated
-// field is dropped and counted once under `unknown` per plan, a narrower
+// declared default (the prefill image the plan does not write), a removed
+// writer field makes the entry unlawful and refused layout_malformed, a narrower
 // integer or float is widened exactly and counted, a shorter array or string
 // lands with the reader's slack as template zeros, and an older enum's
 // ordinals are the reader's.
@@ -309,11 +322,14 @@ fixed table T
 	text := t04Emitted(t, u)
 	t04Has(t, text, "@t_prefill", "R20 the declared defaults ride the emitted prefill")
 
-	// A DEPRECATED FIELD IS DROPPED AND COUNTED ONCE UNDER `unknown` PER PLAN:
-	// the census flag counts a writer's field once PER FIELD PER ENDPOINT, so only the
-	// first slot of an array element censuses.
-	t04Has(t, fixedRuntimeBody, "nil -> if census, do: bump(report, :unknown), else: report", "R20 a dropped field counts once per field per endpoint")
-	t04Has(t, fixedRuntimeBody, "def census(report, unknown, _mismatch)", "R20 the unknown census is per plan")
+	// A WRITER FIELD NO READER FIELD NAMES IS UNLAWFUL, REFUSED AND NEVER
+	// COUNTED (docs/FIXED-FORM-ALGORITHM.md §5.4, §5.9 #30; the Go reference's
+	// tableFixedChildrenNamed): the compile marks the entry unlawful in EVERY
+	// slot, and the lane refuses layout_malformed. (A deprecated field keeps its
+	// slot and its name, so it is named and never reaches this branch.)
+	t04Has(t, fixedRuntimeBody, "nil -> Map.update(report, :unlawful, 1, &(&1 + 1))", "R20 an unnamed writer field marks the entry unlawful")
+	t04Has(t, fixedRuntimeBody, "{:ok, _plan, _made, %{unlawful: n}} when n > 0 ->\n            # AN UNLAWFUL ENTRY IS REFUSED, NEVER COUNTED (§5.4): no plan is laid\n            # for it, and a file under its hash refuses layout_malformed.\n            {:error, :layout_malformed}", "R20 an unlawful entry's lane refuses layout_malformed")
+	t04Lacks(t, fixedRuntimeBody, "bump(report, :unknown)", "R20 no writer field is censused under unknown")
 
 	// A NARROWER INTEGER OR FLOAT IS WIDENED EXACTLY AND WIDENED COUNTS: the
 	// widen step sign-extends at the reader's width and bumps the counter; the

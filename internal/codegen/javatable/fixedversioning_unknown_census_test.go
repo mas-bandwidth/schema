@@ -6,89 +6,103 @@ package javatable
 // deliberately UNLAWFUL — §5.1 refuses a removal — so the lineage entry is HANDED
 // IN by the probe and never read from a lock.
 //
-// `unknown` is asserted EXACTLY == 1: `Item.drop` is ONE field of ONE endpoint however
-// many of the four elements carry it. A leg that counts once per ELEMENT lands 4,
-// and that 4 is the whole reason this row exists. The census lands ONCE, after the
-// record loop, on a read that RETURNS (§5.9 #6) — so a SECOND read of the same
-// endpoint owes the same number again, which is the second half of the row.
+// A lawful older writer names only fields the reader retains, so a writer field
+// the reader names nowhere makes the handed-in entry UNLAWFUL: COMPILE lays no
+// plan and the load refuses `layoutMalformed` with every counter at zero —
+// `unknown` included, because there is no compile census
+// (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH, §5.4, §5.9 #30). The removed field
+// sits in every element of an array of tables, so this is the rule in that slot.
+// After the refusal every row handed in, POISONED first, holds its declared
+// defaults (SPEC-TABLES §6.5), and a second load (fresh report) and a third (the
+// first report handed back) refuse the same way.
 import (
 	"fmt"
-	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
-func TestFixedVersioningUnknownCensus(t *testing.T) {
-	slowtest.Gate(t, "an external toolchain")
+// javaUnlawfulCensusPoison and javaUnlawfulCensusDefaults are the Census
+// root's poison and its declared defaults (lead 1, trail 2, every items[i].a 0).
+const (
+	javaUnlawfulCensusPoison   = `v.lead = 99; v.trail = 88; for (int i = 0; i < 4; i++) { v.items[i].a = 5 + i; }`
+	javaUnlawfulCensusDefaults = `v.lead == 1 && v.trail == 2 && v.items[0].a == 0 && v.items[1].a == 0 && v.items[2].a == 0 && v.items[3].a == 0`
+)
 
-	corpus := corpusDir(t)
-	file := filepath.Join(corpus, "old_unknown_census.bin")
-	if _, err := os.Stat(file); err != nil {
-		t.Fatalf("the corpus has no old_unknown_census.bin: run `make tables-fixedform-corpus`")
+// javaUnlawfulRequired is the loud half of the gate for the unlawful-entry
+// rows: once slowtest.Gate let the test run, SCHEMA_SLOW or
+// SCHEMA_REQUIRE_CORPUS promised the toolchain and the corpus, so a missing
+// JDK or corpus file FAILS by name, never a quiet skip. It answers the file.
+func javaUnlawfulRequired(t *testing.T, name string) string {
+	t.Helper()
+	slowtest.Gate(t, "javac and java (it builds and runs the generated Java)")
+	if _, _, ok := javaToolsLookup(t); !ok {
+		t.Fatal("SCHEMA_SLOW or SCHEMA_REQUIRE_CORPUS promised the Java toolchain and no working javac/java was found: set JAVAC and JAVA")
 	}
+	dir := os.Getenv("SCHEMA_FIXEDFORM_CORPUS")
+	if dir == "" {
+		dir = filepath.Join("..", "..", "..", "build", "fixedform-corpus")
+	}
+	file := filepath.Join(dir, name)
+	if _, err := os.Stat(file); err != nil {
+		t.Fatalf("SCHEMA_SLOW or SCHEMA_REQUIRE_CORPUS promised the fixed-form corpus and %s is not there (%v): run `make tables-fixedform-corpus`", file, err)
+	}
+	return file
+}
 
+// javaUnlawfulRun builds the row's NEW schema with the OLD one HANDED IN as a
+// lineage entry, poisons every row with `poison` (Java statements on `v`), and
+// loads `file` three times: a fresh report, a second fresh report, and the
+// first report handed back. Each load must answer -1, refused by
+// layoutMalformed, not damaged, unknown and widened zero, and every one of the
+// eight rows at its declared defaults (`defaults`, a Java boolean on `v`). The
+// probe first proves its own oracle: a fresh value IS at defaults and a
+// poisoned one is NOT.
+func javaUnlawfulRun(t *testing.T, row, file, poison, defaults string) {
+	t.Helper()
 	dir := t.TempDir()
-	builds, classes := buildRow(t, dir, "unknown_census", []sideSpec{
-		{key: "reads", schema: "VNEW_unknown_census.schema", older: []string{"VOLD_unknown_census.schema"}},
+	builds, classes := buildRow(t, dir, row, []sideSpec{
+		{key: "reads", schema: "VNEW_" + row + ".schema", older: []string{"VOLD_" + row + ".schema"}},
 	})
 	b := builds["reads"]
 
-	// A PROBE OF THIS ROW'S OWN, because the shared one reads once and the row
-	// is about the SECOND read. Each read is handed a FRESH report, exactly as
-	// the Go reference's probe does (fixedversioning_unknown_census_test.go in
-	// internal/codegen/gotable): the census is a per-read number, so two reads
-	// of one endpoint owe the same one.
-	const class = "Probe_census"
+	const class = "Probe_unlawful"
 	src := fmt.Sprintf(`import java.nio.file.*;
 
 public final class %[1]s {
-    static int read(String path, %[2]s.TableFixed.Report report) throws Exception {
-        byte[] data = Files.readAllBytes(Paths.get(path));
-        %[2]s.%[3]sFixed.Value[] vals = new %[2]s.%[3]sFixed.Value[8];
-        for (int i = 0; i < vals.length; i++) { vals[i] = new %[2]s.%[3]sFixed.Value(); }
-        %[2]s.TableFixed.Entry[] plan = %[2]s.TableFixed.plan(1 << 14);
-        short[] remap = new short[1 << 14];
-        byte[] image = %[2]s.%[3]sFixed.image();
-        int n = %[2]s.%[3]sFixed.load(vals, vals.length, data, plan, remap, image, report);
-        last = vals[0];
-        return n;
-    }
+    static boolean atDefaults(%[2]s.%[3]sFixed.Value v) { return %[5]s; }
 
-    static %[2]s.%[3]sFixed.Value last;
-
-    static void say(String tag, int n, %[2]s.TableFixed.Report r) {
-        System.out.println(tag + " n=" + n
-            + " unknown=" + r.unknown
-            + " widened=" + r.widened
-            + " refused=" + r.refused + " damaged=" + r.damaged
-            + " reason=" + r.reason);
-    }
+    static void poison(%[2]s.%[3]sFixed.Value v) { %[4]s }
 
     public static void main(String[] args) throws Exception {
-        %[2]s.TableFixed.Report r1 = new %[2]s.TableFixed.Report();
-        int n1 = read(args[0], r1);
-        say("READ1", n1, r1);
-        System.out.println("VALUES lead=" + last.lead + " trail=" + last.trail
-            + " a0=" + last.items[0].a + " a1=" + last.items[1].a
-            + " a2=" + last.items[2].a + " a3=" + last.items[3].a);
-
-        // THE SECOND READ, its own report, as the reference's probe does.
-        %[2]s.TableFixed.Report r2 = new %[2]s.TableFixed.Report();
-        int n2 = read(args[0], r2);
-        say("READ2", n2, r2);
-
-        // And the same report handed back for a third read, printed only so a
-        // red says which of the two shapes the leg is in.
-        int n3 = read(args[0], r1);
-        say("READ3REUSED", n3, r1);
+        byte[] data = Files.readAllBytes(Paths.get(args[0]));
+        %[2]s.%[3]sFixed.Value[] vals = new %[2]s.%[3]sFixed.Value[8];
+        for (int i = 0; i < vals.length; i++) { vals[i] = new %[2]s.%[3]sFixed.Value(); }
+        System.out.println("FRESH defaults=" + atDefaults(vals[0]));
+        poison(vals[0]);
+        System.out.println("POISONED defaults=" + atDefaults(vals[0]));
+        %[2]s.TableFixed.Report first = new %[2]s.TableFixed.Report();
+        for (int pass = 1; pass <= 3; pass++) {
+            for (int k = 0; k < vals.length; k++) { poison(vals[k]); }
+            %[2]s.TableFixed.Report r = (pass == 2) ? new %[2]s.TableFixed.Report() : first;
+            %[2]s.TableFixed.Entry[] plan = %[2]s.TableFixed.plan(1 << 14);
+            short[] remap = new short[1 << 14];
+            byte[] image = %[2]s.%[3]sFixed.image();
+            int n = %[2]s.%[3]sFixed.load(vals, vals.length, data, plan, remap, image, r);
+            int at = 0;
+            for (int k = 0; k < vals.length; k++) { if (atDefaults(vals[k])) { at++; } }
+            System.out.println("LOAD" + pass + " n=" + n
+                + " refused=" + r.refused + " damaged=" + r.damaged + " reason=" + r.reason
+                + " unknown=" + r.unknown + " widened=" + r.widened + " atDefaults=" + at);
+        }
     }
 }
-`, class, b.pkg, b.root)
+`, class, b.pkg, b.root, poison, defaults)
 
 	path := filepath.Join(dir, class+".java")
 	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
@@ -105,7 +119,7 @@ public final class %[1]s {
 	got := string(out)
 	t.Logf("probe said:\n%s", got)
 
-	reads := map[string]map[string]string{}
+	lines := map[string]map[string]string{}
 	for line := range strings.SplitSeq(got, "\n") {
 		fields := strings.Fields(line)
 		if len(fields) < 2 {
@@ -117,44 +131,43 @@ public final class %[1]s {
 				kv[k] = v
 			}
 		}
-		reads[fields[0]] = kv
+		lines[fields[0]] = kv
 	}
-	num := func(tag, key string) int {
-		v, ok := reads[tag][key]
+	if lines["FRESH"]["defaults"] != "true" || lines["POISONED"]["defaults"] != "false" {
+		t.Fatalf("%s: the probe's oracle is wrong: a fresh value at defaults=%s, a poisoned one=%s (want true, false)",
+			row, lines["FRESH"]["defaults"], lines["POISONED"]["defaults"])
+	}
+	for _, tag := range []string{"LOAD1", "LOAD2", "LOAD3"} {
+		kv, ok := lines[tag]
 		if !ok {
-			t.Fatalf("the probe printed no %s on %s:\n%s", key, tag, got)
+			t.Fatalf("%s: the probe printed no %s:\n%s", row, tag, got)
 		}
-		n, err := strconv.Atoi(v)
-		if err != nil {
-			t.Fatalf("%s %s=%q is not a number", tag, key, v)
+		num := func(key string) int {
+			n, err := strconv.Atoi(kv[key])
+			if err != nil {
+				t.Fatalf("%s %s: %s=%q is not a number", row, tag, key, kv[key])
+			}
+			return n
 		}
-		return n
+		if n := num("n"); n != -1 {
+			t.Errorf("%s %s: the UNLAWFUL entry LOADED n=%d, want -1 (no plan is laid, §5.4)", row, tag, n)
+		}
+		if kv["refused"] != "true" || kv["reason"] != "layoutMalformed" || kv["damaged"] != "false" {
+			t.Errorf("%s %s: refused=%s reason=%s damaged=%s, want refused by layoutMalformed and not damaged",
+				row, tag, kv["refused"], kv["reason"], kv["damaged"])
+		}
+		if u, w := num("unknown"), num("widened"); u != 0 || w != 0 {
+			t.Errorf("%s %s: a refusal moved a counter: unknown=%d widened=%d, want 0 and 0 (there is no compile census, §5.9 #30)",
+				row, tag, u, w)
+		}
+		if at := num("atDefaults"); at != 8 {
+			t.Errorf("%s %s: %d of 8 poisoned rows are at their declared defaults after the refusal, want 8 (SPEC-TABLES §6.5)",
+				row, tag, at)
+		}
 	}
+}
 
-	for _, tag := range []string{"READ1", "READ2"} {
-		if n := num(tag, "n"); n != 1 {
-			t.Errorf("%s: n=%d, want 1", tag, n)
-		}
-		if reads[tag]["refused"] != "false" || reads[tag]["damaged"] != "false" || reads[tag]["reason"] != "none" {
-			t.Errorf("%s: a clean NEW-READS-OLD is not a refusal: %v", tag, reads[tag])
-		}
-		if num(tag, "widened") != 0 {
-			t.Errorf("%s: a counter that must not move did: %v", tag, reads[tag])
-		}
-		if u := num(tag, "unknown"); u != 1 {
-			t.Errorf("%s: unknown=%d, want 1 — Item.drop is ONE field of ONE endpoint, not one per element",
-				tag, u)
-		}
-	}
-
-	v := reads["VALUES"]
-	if v["lead"] != "1" || v["trail"] != "2" {
-		t.Errorf("the bracketing fields moved: lead=%s trail=%s, want 1 and 2", v["lead"], v["trail"])
-	}
-	for i, want := range []string{"10", "11", "12", "13"} {
-		key := fmt.Sprintf("a%d", i)
-		if v[key] != want {
-			t.Errorf("items[%d].a=%s, want %s", i, v[key], want)
-		}
-	}
+func TestFixedVersioningUnknownCensus(t *testing.T) {
+	file := javaUnlawfulRequired(t, "old_unknown_census.bin")
+	javaUnlawfulRun(t, "unknown_census", file, javaUnlawfulCensusPoison, javaUnlawfulCensusDefaults)
 }

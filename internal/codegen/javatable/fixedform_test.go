@@ -520,6 +520,26 @@ func javaTools(t *testing.T) (javac, javaBin string) {
 	slowtest.Gate(t, "an external toolchain")
 
 	t.Helper()
+	if jc, j, ok := javaToolsLookup(t); ok {
+		return jc, j
+	}
+	// UNDER SCHEMA_REQUIRE_CORPUS (every make tables-java-* gate) OR THE CI
+	// SLOW HALF (ci-full.yml's unit-codegen-java rows), A MISSING JDK IS A
+	// FAILURE, never a skip: a skipped test exits 0, so the gate would read
+	// green having compiled nothing (slowtest.CorpusRequired). Found
+	// 2026-11-24 when three Java gates went red on main: the make targets'
+	// comments promised this and javaTools skipped anyway.
+	if slowtest.CorpusRequired() {
+		t.Fatalf("no working javac, and SCHEMA_REQUIRE_CORPUS (or CI with SCHEMA_SLOW=1) makes that a failure: set JAVAC/JAVA or install a JDK")
+	}
+	t.Skip("no working javac (set JAVAC/JAVA or install a JDK)")
+	return "", ""
+}
+
+// javaToolsLookup finds a working javac and java, or answers ok false; a
+// test the toolchain was promised to fails on false instead of skipping.
+func javaToolsLookup(t *testing.T) (javac, javaBin string, ok bool) {
+	t.Helper()
 	try := func(jc, j string) bool {
 		if jc == "" || j == "" {
 			return false
@@ -536,12 +556,12 @@ func javaTools(t *testing.T) (javac, javaBin string) {
 		return true
 	}
 	if try(os.Getenv("JAVAC"), os.Getenv("JAVA")) {
-		return os.Getenv("JAVAC"), os.Getenv("JAVA")
+		return os.Getenv("JAVAC"), os.Getenv("JAVA"), true
 	}
 	if p, err := exec.LookPath("javac"); err == nil {
 		j, jerr := exec.LookPath("java")
 		if jerr == nil && try(p, j) {
-			return p, j
+			return p, j, true
 		}
 	}
 	homes := []string{
@@ -554,20 +574,10 @@ func javaTools(t *testing.T) (javac, javaBin string) {
 		jc := filepath.Join(home, "bin", "javac")
 		j := filepath.Join(home, "bin", "java")
 		if try(jc, j) {
-			return jc, j
+			return jc, j, true
 		}
 	}
-	// UNDER SCHEMA_REQUIRE_CORPUS (every make tables-java-* gate) OR THE CI
-	// SLOW HALF (ci-full.yml's unit-codegen-java rows), A MISSING JDK IS A
-	// FAILURE, never a skip: a skipped test exits 0, so the gate would read
-	// green having compiled nothing (slowtest.CorpusRequired). Found
-	// 2026-11-24 when three Java gates went red on main: the make targets'
-	// comments promised this and javaTools skipped anyway.
-	if slowtest.CorpusRequired() {
-		t.Fatalf("no working javac, and SCHEMA_REQUIRE_CORPUS (or CI with SCHEMA_SLOW=1) makes that a failure: set JAVAC/JAVA or install a JDK")
-	}
-	t.Skip("no working javac (set JAVAC/JAVA or install a JDK)")
-	return "", ""
+	return "", "", false
 }
 
 const fu1fu2Driver = `public final class Driver {

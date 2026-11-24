@@ -348,7 +348,7 @@ func t02R26Lanes(t *testing.T) {
 	if !strings.Contains(text, "out.reason[i] = TableFixedReason::LayoutMalformed;") {
 		t.Errorf("a lineage entry whose layout would not parse is not recorded layout_malformed")
 	}
-	if !strings.Contains(text, "None => out.reason[i] = if census.refused { census.reason } else { TableFixedReason::PlanTooLarge },") {
+	if !strings.Contains(text, "None => out.reason[i] = if verdict.refused { verdict.reason } else { TableFixedReason::PlanTooLarge },") {
 		t.Errorf("a lineage entry whose plan would not fit is not recorded plan_too_large")
 	}
 	if !strings.Contains(text, "if plans.reason[found] != TableFixedReason::None {") ||

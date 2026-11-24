@@ -972,8 +972,11 @@ MATCH(x, ti, y, mi, guard, arg):                   -- two TABLE entries, side by
 ```
 
 `id` is `fnv1a64(wire name)`, so `was =` matches by the OLD name and a reorder after a merge matches by NAME
-and never by position. A writer field the reader cannot name gets no entry: **skipping is not an act**. A
-reader field the writer does not carry gets no entry either, and the prefill answers it.
+and never by position. A writer field the reader cannot name is never skipped: it makes the WHOLE LINEAGE ENTRY
+UNLAWFUL (the MATCH line above, §5.4, §5.9 #30), no plan is laid and a file under its hash refuses
+`layout_malformed`. A field REMOVED from the schema is that case — §5.1 refuses a removal, a field is
+deprecated in place instead — while a rename through `was =` keeps the old id and is matched. A
+reader field the writer does not carry gets no entry, and the prefill answers it.
 
 ```
 EMIT(te, their_at, me, my_at, guard, arg):
@@ -1555,7 +1558,7 @@ each row the bill's ruling is the second column, and **the reference owes this**
 | 8 | ill-formed text zeroes the field, restores its default and sets a flag | a content violation REFUSES BY NAME, `text_ill_formed` (§4.5, fix 11) |
 | 9 | the prefill runs BEFORE the per-record hash check, so `no_layout` has already written the caller's storage | the hash check is first; REFUSE writes nothing (§5.3) |
 | 10 | the digest carries only INTEGER ranges (`HasIntRange`) — a float range, **a compressed float's resolution** and a reader-side limit are still not in it, and a FLAGS type is re-emitted once per naming field because `seen` covers structs only | every range, **every resolution (tag `'Q'`)** and every limit, tag `'L'` (bill §13), or the widening cannot be refused — **and a flags type deduped by NAME, once, as a struct is** (§5.2). **An INTEROP BREAK, not a missed refusal: it moves the hash, so the reference owes it BEFORE any leg ports** |
-| 11 | the `unknown` census is counted once per ELEMENT of an array of tables | no census: the entry is UNLAWFUL and refused `layout_malformed` (§5.2, §5.4) |
+| 11 | ~~the `unknown` census is counted once per ELEMENT of an array of tables~~ **LANDED** (rowan/fixed-unlawful-lineage, 2026-11-24): a writer field the reader names nowhere, or a kind off every ladder, makes the entry UNLAWFUL and `TableFixedCompile` answers -3, refused `layout_malformed`; nothing is counted | no census: the entry is UNLAWFUL and refused `layout_malformed` (§5.2, §5.4) |
 | 12 | a forged ordinal remaps to `None` and counts NOTHING on a compiled plan, while the identity plan counts `clamped` | `REFUSE out_of_range` on both, in the bounds pass (§4.6) |
 | 16 | a `bool` or a present byte lands by a one-byte copy, and a ranged value, a tag and an ordinal past the writer's are clamped and counted | `wire_damaged` for the byte and `out_of_range` for the rest, refused (§4.5, §4.6; 2026-11-03) |
 | 13 | an entry reaching past the writer's declared record comes back through the compile's failure path as `layout_malformed`; the name `layout_record_too_large` is wired only to the 65536 bound and to a zero root size | `layout_record_too_large` for the entry too (fix 3) |

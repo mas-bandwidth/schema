@@ -77,6 +77,7 @@
 #include "VBRB_lineage_mergeTable.h"
 #include "VNEW_lineage_mergeTable.h"
 #include "VOLD_unknown_censusTable.h"
+#include "VOLD_kind_movedTable.h"
 #include "VNEW_unknown_censusTable.h"
 // ---- rowan/cpp-versioning-numbers: END ------------------------------------
 // ==== BEGIN rowan/cpp-versioning-lists: the LIST rows lineage pairs ====
@@ -1781,6 +1782,15 @@ static bool versioning_numbers_files( const char * dir )
         if ( !emit( dir, "many_unknown_census.bin", m, vold_unknown_census::CensusFixedMeasure,
                     vold_unknown_census::CensusFixedSave, vold_unknown_census::CensusFixedLoad ) ) { return false; }
     }
+
+    // `kind_moved`: the second half of the UNLAWFUL lineage entry (§5.4, §5.9 #30).
+    // The OLD writer carries `v int32`; the NEW reader declares `v float32`, a
+    // kind off every ladder. There is deliberately NO `new_kind_moved.bin`: the
+    // NEW side is generated and never dumped. Every leg's NEW build refuses this
+    // file `layout_malformed` and writes nothing. `v = 7` is not a default and
+    // its bits are not 7.0f, so a reinterpreting leg cannot pass by accident.
+    VROW( vold_kind_moved, KindMoved, "old_kind_moved.bin",
+          MS( v[0].lead, 0xAAAAAAAAu ); MS( v[0].v, 7 ); MS( v[0].trail, 0xBBBBBBBBu ); );
     return true;
 }
 // ---- rowan/cpp-versioning-numbers: END ------------------------------------

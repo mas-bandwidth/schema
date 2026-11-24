@@ -240,8 +240,9 @@ func csCheckStrictContract(body string) []string {
 }
 
 // csCheckExactCounters: the report exposes only the surviving evolution
-// counters (Unknown, Widened, Retained, RetainLost), the compile census stays
-// off the read report, and a refusal moves no counter.
+// counters (Unknown, Widened, Retained, RetainLost), there is no fixed compile
+// census to land on the read report (an unlawful lineage entry refuses; §5.4,
+// §5.9 #30), and a refusal moves no counter.
 func csCheckExactCounters(text string) []string {
 	var bad []string
 	for _, want := range []string{
@@ -256,11 +257,11 @@ func csCheckExactCounters(text string) []string {
 			bad = append(bad, "the strict report is missing "+want)
 		}
 	}
-	if !strings.Contains(text, "report.Unknown +=") {
-		bad = append(bad, "the census does not land on a returned read")
+	if strings.Contains(text, "census_unknown") || strings.Contains(text, "census_kind") || strings.Contains(text, "lane.Unknown") {
+		bad = append(bad, "the fixed compile census is back on the read: an unlawful lineage entry is counted instead of refused")
 	}
-	if !strings.Contains(text, "_ = census_kind;") {
-		bad = append(bad, "the compile census leaks onto the read report")
+	if !strings.Contains(text, "if (lane.Why != null)") {
+		bad = append(bad, "an unlawful lineage lane is not refused by its own Why")
 	}
 	if !strings.Contains(text, "report.Widened = 0; report.Refused = true") {
 		bad = append(bad, "a refusal does not move no counter (Widened not reset)")

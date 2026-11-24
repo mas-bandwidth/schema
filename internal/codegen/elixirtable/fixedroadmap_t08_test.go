@@ -158,7 +158,7 @@ func t08W6(t *testing.T) {
 	if got, _ := strconv.Atoi(m[1]); got != body {
 		t.Errorf("W6: the coalesced plan runs %d bytes, want the body's %d", got, body)
 	}
-	t08Has(t, fixedRuntimeBody, "defp match_children(theirs, ti, their_at, mine, mi, dst, my_at, guard, tag, acc, report, census) do", "W6 the runtime partitions a plan by child id")
+	t08Has(t, fixedRuntimeBody, "defp match_children(theirs, ti, their_at, mine, mi, dst, my_at, guard, tag, acc, report) do", "W6 the runtime partitions a plan by child id")
 	t08Has(t, fixedRuntimeBody, "def coalesce(entries), do: coalesce(entries, [])", "W6 the runtime coalesces the compiled partition")
 	t08Has(t, text, "defp t_fixed_split(<<>>, _hash, _size, acc), do: {:ok, :lists.reverse(acc)}", "W6 the reader splits a file's records")
 	t08Has(t, text, "defp t_fixed_split(records, hash, size, acc) do", "W6 the record split walks the rest of the file")
