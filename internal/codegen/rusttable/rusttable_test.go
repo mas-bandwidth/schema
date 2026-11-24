@@ -390,7 +390,7 @@ func TestFixedFormIsEmittedForAFixedRootAndForNothingElse(t *testing.T) {
 		"pub fn tag(&self) -> u8 {",
 		"pub fn boost(&self) -> Option<BoostRow> {",
 		"        if self.tag == 1 {",
-		"pub fn set_boost(&mut self, value: BoostRow) {",
+		"pub fn set_boost(&mut self, schema_value: BoostRow) {",
 		"pub fn set_none(&mut self) {",
 		"const _: () = assert!(core::mem::offset_of!(EffectRow, tag) == 0,",
 		"const _: () = assert!(core::mem::offset_of!(EffectRowArms, boost) == 0,",

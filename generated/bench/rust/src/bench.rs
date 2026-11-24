@@ -20,8 +20,8 @@ pub enum Error {
 }
 
 impl From<serialize::Error> for Error {
-    fn from(e: serialize::Error) -> Error {
-        Error::Stream(e)
+    fn from(schema_e: serialize::Error) -> Error {
+        Error::Stream(schema_e)
     }
 }
 
@@ -52,124 +52,124 @@ pub const BENCH_PACKET_MAX_BITS: u64 = 392;
 pub const BENCH_PACKET_MAX_BYTES: usize = 56;
 
 #[inline(always)]
-pub fn write_bench_packet(stream: &mut WriteStream<'_>, value: &BenchPacket) -> Result {
-    debug_assert!(value.a >= -100 && value.a <= 100, "a out of range [-100, 100]");
-    debug_assert!(value.b >= 0 && value.b <= 65535, "b out of range [0, 65535]");
-    debug_assert!(value.c >= -1000000 && value.c <= 1000000, "c out of range [-1000000, 1000000]");
-    debug_assert!(value.bits7 < 1 << 7, "bits7 above the bits(7) wire width");
-    debug_assert!(value.bits13 < 1 << 13, "bits13 above the bits(13) wire width");
-    debug_assert!(value.bits23 < 1 << 23, "bits23 above the bits(23) wire width");
-    debug_assert!(value.x.is_finite(), "x is not finite");
-    debug_assert!(value.y.is_finite(), "y is not finite");
-    debug_assert!(value.z.is_finite(), "z is not finite");
-    let f0: u64 = u64::from((value.a as u32).wrapping_sub((-100_i32) as u32));
-    let f1: u64 = u64::from(value.b as u32);
-    let f2: u64 = u64::from((value.c as u32).wrapping_sub((-1000000_i32) as u32));
-    let f3: u64 = u64::from(value.bits7);
-    let f4: u64 = u64::from(value.bits13);
-    let f5: u64 = u64::from(value.bits23);
-    let f6: u64 = u64::from(value.flag);
-    let f7: u64 = u64::from(value.x.to_bits());
-    let f8: u64 = u64::from(value.y.to_bits());
-    let f9: u64 = u64::from(value.z.to_bits());
-    let f10: u64 = value.big;
+pub fn write_bench_packet(schema_stream: &mut WriteStream<'_>, schema_value: &BenchPacket) -> Result {
+    debug_assert!(schema_value.a >= -100 && schema_value.a <= 100, "a out of range [-100, 100]");
+    debug_assert!(schema_value.b >= 0 && schema_value.b <= 65535, "b out of range [0, 65535]");
+    debug_assert!(schema_value.c >= -1000000 && schema_value.c <= 1000000, "c out of range [-1000000, 1000000]");
+    debug_assert!(schema_value.bits7 < 1 << 7, "bits7 above the bits(7) wire width");
+    debug_assert!(schema_value.bits13 < 1 << 13, "bits13 above the bits(13) wire width");
+    debug_assert!(schema_value.bits23 < 1 << 23, "bits23 above the bits(23) wire width");
+    debug_assert!(schema_value.x.is_finite(), "x is not finite");
+    debug_assert!(schema_value.y.is_finite(), "y is not finite");
+    debug_assert!(schema_value.z.is_finite(), "z is not finite");
+    let schema_f0: u64 = u64::from((schema_value.a as u32).wrapping_sub((-100_i32) as u32));
+    let schema_f1: u64 = u64::from(schema_value.b as u32);
+    let schema_f2: u64 = u64::from((schema_value.c as u32).wrapping_sub((-1000000_i32) as u32));
+    let schema_f3: u64 = u64::from(schema_value.bits7);
+    let schema_f4: u64 = u64::from(schema_value.bits13);
+    let schema_f5: u64 = u64::from(schema_value.bits23);
+    let schema_f6: u64 = u64::from(schema_value.flag);
+    let schema_f7: u64 = u64::from(schema_value.x.to_bits());
+    let schema_f8: u64 = u64::from(schema_value.y.to_bits());
+    let schema_f9: u64 = u64::from(schema_value.z.to_bits());
+    let schema_f10: u64 = schema_value.big;
     // word 0, 32 bits: a[0..8], b[0..16], c[0..8]
-    stream.serialize_bits(&mut ((f0 | (f1 << 8) | (f2 << 24)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 8) | (schema_f2 << 24)) as u32), 32)?;
     // word 1, 32 bits: c[8..21], bits7[0..7], bits13[0..12]
-    stream.serialize_bits(&mut (((f2 >> 8) | (f3 << 13) | (f4 << 20)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut (((schema_f2 >> 8) | (schema_f3 << 13) | (schema_f4 << 20)) as u32), 32)?;
     // word 2, 32 bits: bits13[12..13], bits23[0..23], flag[0..1], x[0..7]
-    stream.serialize_bits(&mut (((f4 >> 12) | (f5 << 1) | (f6 << 24) | (f7 << 25)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut (((schema_f4 >> 12) | (schema_f5 << 1) | (schema_f6 << 24) | (schema_f7 << 25)) as u32), 32)?;
     // word 3, 32 bits: x[7..32], y[0..7]
-    stream.serialize_bits(&mut (((f7 >> 7) | (f8 << 25)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut (((schema_f7 >> 7) | (schema_f8 << 25)) as u32), 32)?;
     // word 4, 32 bits: y[7..32], z[0..7]
-    stream.serialize_bits(&mut (((f8 >> 7) | (f9 << 25)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut (((schema_f8 >> 7) | (schema_f9 << 25)) as u32), 32)?;
     // word 5, 32 bits: z[7..32], big[0..7]
-    stream.serialize_bits(&mut (((f9 >> 7) | (f10 << 25)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut (((schema_f9 >> 7) | (schema_f10 << 25)) as u32), 32)?;
     // word 6, 32 bits: big[7..39]
-    stream.serialize_bits(&mut ((f10 >> 7) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f10 >> 7) as u32), 32)?;
     // word 7, 25 bits: big[39..64]
-    stream.serialize_bits(&mut ((f10 >> 39) as u32), 25)?;
-    stream.serialize_align()?;
-    stream.write_bytes(&value.blob); // byte-aligned [N]u8 — bulk copy, wire-identical to the per-byte loop (infallible: returns () in serialize.rs 2.0.0)
+    schema_stream.serialize_bits(&mut ((schema_f10 >> 39) as u32), 25)?;
+    schema_stream.serialize_align()?;
+    schema_stream.write_bytes(&schema_value.blob); // byte-aligned [N]u8 — bulk copy, wire-identical to the per-byte loop (infallible: returns () in serialize.rs 2.0.0)
     Ok(())
 }
 
 #[inline]
-pub fn read_bench_packet(stream: &mut ReadStream<'_>, value: &mut BenchPacket) -> Result {
-    read_bench_packet_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_bench_packet(schema_stream: &mut ReadStream<'_>, schema_value: &mut BenchPacket) -> Result {
+    read_bench_packet_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_bench_packet_body(stream: &mut ReadStream<'_>, value: &mut BenchPacket) -> Result {
-    let mut c: u32 = 0;
+pub(crate) fn read_bench_packet_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut BenchPacket) -> Result {
+    let mut schema_c: u32 = 0;
     // word 0, 32 bits: a[0..8], b[0..16], c[0..8]
-    stream.serialize_bits(&mut c, 32)?;
-    let c0 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c0 = u64::from(schema_c);
     // word 1, 32 bits: c[8..21], bits7[0..7], bits13[0..12]
-    stream.serialize_bits(&mut c, 32)?;
-    let c1 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c1 = u64::from(schema_c);
     // word 2, 32 bits: bits13[12..13], bits23[0..23], flag[0..1], x[0..7]
-    stream.serialize_bits(&mut c, 32)?;
-    let c2 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c2 = u64::from(schema_c);
     // word 3, 32 bits: x[7..32], y[0..7]
-    stream.serialize_bits(&mut c, 32)?;
-    let c3 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c3 = u64::from(schema_c);
     // word 4, 32 bits: y[7..32], z[0..7]
-    stream.serialize_bits(&mut c, 32)?;
-    let c4 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c4 = u64::from(schema_c);
     // word 5, 32 bits: z[7..32], big[0..7]
-    stream.serialize_bits(&mut c, 32)?;
-    let c5 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c5 = u64::from(schema_c);
     // word 6, 32 bits: big[7..39]
-    stream.serialize_bits(&mut c, 32)?;
-    let c6 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c6 = u64::from(schema_c);
     // word 7, 25 bits: big[39..64]
-    stream.serialize_bits(&mut c, 25)?;
-    let c7 = u64::from(c);
-    let v0: u64 = c0 & 0xff;
-    if v0 > 200 {
+    schema_stream.serialize_bits(&mut schema_c, 25)?;
+    let schema_c7 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0xff;
+    if schema_v0 > 200 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.a = (v0 as u32).wrapping_add((-100_i32) as u32) as i32;
-    let v1: u64 = (c0 >> 8) & 0xffff;
-    value.b = v1 as i32;
-    let v2: u64 = ((c0 >> 24) | (c1 << 8)) & 0x1fffff;
-    if v2 > 2000000 {
+    schema_value.a = (schema_v0 as u32).wrapping_add((-100_i32) as u32) as i32;
+    let schema_v1: u64 = (schema_c0 >> 8) & 0xffff;
+    schema_value.b = schema_v1 as i32;
+    let schema_v2: u64 = ((schema_c0 >> 24) | (schema_c1 << 8)) & 0x1fffff;
+    if schema_v2 > 2000000 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.c = (v2 as u32).wrapping_add((-1000000_i32) as u32) as i32;
-    let v3: u64 = (c1 >> 13) & 0x7f;
-    value.bits7 = v3 as u32;
-    let v4: u64 = ((c1 >> 20) | (c2 << 12)) & 0x1fff;
-    value.bits13 = v4 as u32;
-    let v5: u64 = (c2 >> 1) & 0x7fffff;
-    value.bits23 = v5 as u32;
-    let v6: u64 = (c2 >> 24) & 0x1;
-    value.flag = v6 != 0;
-    let v7: u64 = ((c2 >> 25) | (c3 << 7)) & 0xffffffff;
-    if v7 & 0x7f800000 == 0x7f800000 {
+    schema_value.c = (schema_v2 as u32).wrapping_add((-1000000_i32) as u32) as i32;
+    let schema_v3: u64 = (schema_c1 >> 13) & 0x7f;
+    schema_value.bits7 = schema_v3 as u32;
+    let schema_v4: u64 = ((schema_c1 >> 20) | (schema_c2 << 12)) & 0x1fff;
+    schema_value.bits13 = schema_v4 as u32;
+    let schema_v5: u64 = (schema_c2 >> 1) & 0x7fffff;
+    schema_value.bits23 = schema_v5 as u32;
+    let schema_v6: u64 = (schema_c2 >> 24) & 0x1;
+    schema_value.flag = schema_v6 != 0;
+    let schema_v7: u64 = ((schema_c2 >> 25) | (schema_c3 << 7)) & 0xffffffff;
+    if schema_v7 & 0x7f800000 == 0x7f800000 {
         // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
         return Err(Error::Stream(serialize::Error::NonFiniteFloat));
     }
-    value.x = f32::from_bits(v7 as u32);
-    let v8: u64 = ((c3 >> 25) | (c4 << 7)) & 0xffffffff;
-    if v8 & 0x7f800000 == 0x7f800000 {
+    schema_value.x = f32::from_bits(schema_v7 as u32);
+    let schema_v8: u64 = ((schema_c3 >> 25) | (schema_c4 << 7)) & 0xffffffff;
+    if schema_v8 & 0x7f800000 == 0x7f800000 {
         // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
         return Err(Error::Stream(serialize::Error::NonFiniteFloat));
     }
-    value.y = f32::from_bits(v8 as u32);
-    let v9: u64 = ((c4 >> 25) | (c5 << 7)) & 0xffffffff;
-    if v9 & 0x7f800000 == 0x7f800000 {
+    schema_value.y = f32::from_bits(schema_v8 as u32);
+    let schema_v9: u64 = ((schema_c4 >> 25) | (schema_c5 << 7)) & 0xffffffff;
+    if schema_v9 & 0x7f800000 == 0x7f800000 {
         // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
         return Err(Error::Stream(serialize::Error::NonFiniteFloat));
     }
-    value.z = f32::from_bits(v9 as u32);
-    let v10: u64 = (c5 >> 25) | (c6 << 7) | (c7 << 39);
-    value.big = v10;
-    stream.serialize_align()?; // rejects nonzero padding (SPEC §4.3)
-    stream.serialize_bytes(&mut value.blob)?; // byte-aligned [N]u8 — bulk copy, wire-identical to the per-byte loop
+    schema_value.z = f32::from_bits(schema_v9 as u32);
+    let schema_v10: u64 = (schema_c5 >> 25) | (schema_c6 << 7) | (schema_c7 << 39);
+    schema_value.big = schema_v10;
+    schema_stream.serialize_align()?; // rejects nonzero padding (SPEC §4.3)
+    schema_stream.serialize_bytes(&mut schema_value.blob)?; // byte-aligned [N]u8 — bulk copy, wire-identical to the per-byte loop
     Ok(())
 }
 
@@ -196,98 +196,98 @@ pub const BENCH_INTS_MAX_BITS: u64 = 110;
 pub const BENCH_INTS_MAX_BYTES: usize = 16;
 
 #[inline(always)]
-pub fn write_bench_ints(stream: &mut WriteStream<'_>, value: &BenchInts) -> Result {
-    debug_assert!(value.f0 >= -100 && value.f0 <= 100, "f0 out of range [-100, 100]");
-    debug_assert!(value.f1 >= 0 && value.f1 <= 65535, "f1 out of range [0, 65535]");
-    debug_assert!(value.f2 >= -1000000 && value.f2 <= 1000000, "f2 out of range [-1000000, 1000000]");
-    debug_assert!(value.f3 >= 0 && value.f3 <= 3, "f3 out of range [0, 3]");
-    debug_assert!(value.f4 >= -15 && value.f4 <= 15, "f4 out of range [-15, 15]");
-    debug_assert!(value.f5 >= 0 && value.f5 <= 1000, "f5 out of range [0, 1000]");
-    debug_assert!(value.f6 >= -2048 && value.f6 <= 2047, "f6 out of range [-2048, 2047]");
-    debug_assert!(value.f7 >= 0 && value.f7 <= 255, "f7 out of range [0, 255]");
-    debug_assert!(value.f8 >= -600000 && value.f8 <= 600000, "f8 out of range [-600000, 600000]");
-    debug_assert!(value.f9 >= 0 && value.f9 <= 100, "f9 out of range [0, 100]");
-    let f0: u64 = u64::from((value.f0 as u32).wrapping_sub((-100_i32) as u32));
-    let f1: u64 = u64::from(value.f1 as u32);
-    let f2: u64 = u64::from((value.f2 as u32).wrapping_sub((-1000000_i32) as u32));
-    let f3: u64 = u64::from(value.f3 as u32);
-    let f4: u64 = u64::from((value.f4 as u32).wrapping_sub((-15_i32) as u32));
-    let f5: u64 = u64::from(value.f5 as u32);
-    let f6: u64 = u64::from((value.f6 as u32).wrapping_sub((-2048_i32) as u32));
-    let f7: u64 = u64::from(value.f7 as u32);
-    let f8: u64 = u64::from((value.f8 as u32).wrapping_sub((-600000_i32) as u32));
-    let f9: u64 = u64::from(value.f9 as u32);
+pub fn write_bench_ints(schema_stream: &mut WriteStream<'_>, schema_value: &BenchInts) -> Result {
+    debug_assert!(schema_value.f0 >= -100 && schema_value.f0 <= 100, "f0 out of range [-100, 100]");
+    debug_assert!(schema_value.f1 >= 0 && schema_value.f1 <= 65535, "f1 out of range [0, 65535]");
+    debug_assert!(schema_value.f2 >= -1000000 && schema_value.f2 <= 1000000, "f2 out of range [-1000000, 1000000]");
+    debug_assert!(schema_value.f3 >= 0 && schema_value.f3 <= 3, "f3 out of range [0, 3]");
+    debug_assert!(schema_value.f4 >= -15 && schema_value.f4 <= 15, "f4 out of range [-15, 15]");
+    debug_assert!(schema_value.f5 >= 0 && schema_value.f5 <= 1000, "f5 out of range [0, 1000]");
+    debug_assert!(schema_value.f6 >= -2048 && schema_value.f6 <= 2047, "f6 out of range [-2048, 2047]");
+    debug_assert!(schema_value.f7 >= 0 && schema_value.f7 <= 255, "f7 out of range [0, 255]");
+    debug_assert!(schema_value.f8 >= -600000 && schema_value.f8 <= 600000, "f8 out of range [-600000, 600000]");
+    debug_assert!(schema_value.f9 >= 0 && schema_value.f9 <= 100, "f9 out of range [0, 100]");
+    let schema_f0: u64 = u64::from((schema_value.f0 as u32).wrapping_sub((-100_i32) as u32));
+    let schema_f1: u64 = u64::from(schema_value.f1 as u32);
+    let schema_f2: u64 = u64::from((schema_value.f2 as u32).wrapping_sub((-1000000_i32) as u32));
+    let schema_f3: u64 = u64::from(schema_value.f3 as u32);
+    let schema_f4: u64 = u64::from((schema_value.f4 as u32).wrapping_sub((-15_i32) as u32));
+    let schema_f5: u64 = u64::from(schema_value.f5 as u32);
+    let schema_f6: u64 = u64::from((schema_value.f6 as u32).wrapping_sub((-2048_i32) as u32));
+    let schema_f7: u64 = u64::from(schema_value.f7 as u32);
+    let schema_f8: u64 = u64::from((schema_value.f8 as u32).wrapping_sub((-600000_i32) as u32));
+    let schema_f9: u64 = u64::from(schema_value.f9 as u32);
     // word 0, 32 bits: f0[0..8], f1[0..16], f2[0..8]
-    stream.serialize_bits(&mut ((f0 | (f1 << 8) | (f2 << 24)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 8) | (schema_f2 << 24)) as u32), 32)?;
     // word 1, 32 bits: f2[8..21], f3[0..2], f4[0..5], f5[0..10], f6[0..2]
-    stream.serialize_bits(&mut (((f2 >> 8) | (f3 << 13) | (f4 << 15) | (f5 << 20) | (f6 << 30)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut (((schema_f2 >> 8) | (schema_f3 << 13) | (schema_f4 << 15) | (schema_f5 << 20) | (schema_f6 << 30)) as u32), 32)?;
     // word 2, 32 bits: f6[2..12], f7[0..8], f8[0..14]
-    stream.serialize_bits(&mut (((f6 >> 2) | (f7 << 10) | (f8 << 18)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut (((schema_f6 >> 2) | (schema_f7 << 10) | (schema_f8 << 18)) as u32), 32)?;
     // word 3, 14 bits: f8[14..21], f9[0..7]
-    stream.serialize_bits(&mut (((f8 >> 14) | (f9 << 7)) as u32), 14)?;
+    schema_stream.serialize_bits(&mut (((schema_f8 >> 14) | (schema_f9 << 7)) as u32), 14)?;
     Ok(())
 }
 
 #[inline]
-pub fn read_bench_ints(stream: &mut ReadStream<'_>, value: &mut BenchInts) -> Result {
-    read_bench_ints_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_bench_ints(schema_stream: &mut ReadStream<'_>, schema_value: &mut BenchInts) -> Result {
+    read_bench_ints_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_bench_ints_body(stream: &mut ReadStream<'_>, value: &mut BenchInts) -> Result {
-    let mut c: u32 = 0;
+pub(crate) fn read_bench_ints_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut BenchInts) -> Result {
+    let mut schema_c: u32 = 0;
     // word 0, 32 bits: f0[0..8], f1[0..16], f2[0..8]
-    stream.serialize_bits(&mut c, 32)?;
-    let c0 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c0 = u64::from(schema_c);
     // word 1, 32 bits: f2[8..21], f3[0..2], f4[0..5], f5[0..10], f6[0..2]
-    stream.serialize_bits(&mut c, 32)?;
-    let c1 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c1 = u64::from(schema_c);
     // word 2, 32 bits: f6[2..12], f7[0..8], f8[0..14]
-    stream.serialize_bits(&mut c, 32)?;
-    let c2 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c2 = u64::from(schema_c);
     // word 3, 14 bits: f8[14..21], f9[0..7]
-    stream.serialize_bits(&mut c, 14)?;
-    let c3 = u64::from(c);
-    let v0: u64 = c0 & 0xff;
-    if v0 > 200 {
+    schema_stream.serialize_bits(&mut schema_c, 14)?;
+    let schema_c3 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0xff;
+    if schema_v0 > 200 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.f0 = (v0 as u32).wrapping_add((-100_i32) as u32) as i32;
-    let v1: u64 = (c0 >> 8) & 0xffff;
-    value.f1 = v1 as i32;
-    let v2: u64 = ((c0 >> 24) | (c1 << 8)) & 0x1fffff;
-    if v2 > 2000000 {
+    schema_value.f0 = (schema_v0 as u32).wrapping_add((-100_i32) as u32) as i32;
+    let schema_v1: u64 = (schema_c0 >> 8) & 0xffff;
+    schema_value.f1 = schema_v1 as i32;
+    let schema_v2: u64 = ((schema_c0 >> 24) | (schema_c1 << 8)) & 0x1fffff;
+    if schema_v2 > 2000000 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.f2 = (v2 as u32).wrapping_add((-1000000_i32) as u32) as i32;
-    let v3: u64 = (c1 >> 13) & 0x3;
-    value.f3 = v3 as i32;
-    let v4: u64 = (c1 >> 15) & 0x1f;
-    if v4 > 30 {
+    schema_value.f2 = (schema_v2 as u32).wrapping_add((-1000000_i32) as u32) as i32;
+    let schema_v3: u64 = (schema_c1 >> 13) & 0x3;
+    schema_value.f3 = schema_v3 as i32;
+    let schema_v4: u64 = (schema_c1 >> 15) & 0x1f;
+    if schema_v4 > 30 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.f4 = (v4 as u32).wrapping_add((-15_i32) as u32) as i32;
-    let v5: u64 = (c1 >> 20) & 0x3ff;
-    if v5 > 1000 {
+    schema_value.f4 = (schema_v4 as u32).wrapping_add((-15_i32) as u32) as i32;
+    let schema_v5: u64 = (schema_c1 >> 20) & 0x3ff;
+    if schema_v5 > 1000 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.f5 = v5 as i32;
-    let v6: u64 = ((c1 >> 30) | (c2 << 2)) & 0xfff;
-    value.f6 = (v6 as u32).wrapping_add((-2048_i32) as u32) as i32;
-    let v7: u64 = (c2 >> 10) & 0xff;
-    value.f7 = v7 as i32;
-    let v8: u64 = ((c2 >> 18) | (c3 << 14)) & 0x1fffff;
-    if v8 > 1200000 {
+    schema_value.f5 = schema_v5 as i32;
+    let schema_v6: u64 = ((schema_c1 >> 30) | (schema_c2 << 2)) & 0xfff;
+    schema_value.f6 = (schema_v6 as u32).wrapping_add((-2048_i32) as u32) as i32;
+    let schema_v7: u64 = (schema_c2 >> 10) & 0xff;
+    schema_value.f7 = schema_v7 as i32;
+    let schema_v8: u64 = ((schema_c2 >> 18) | (schema_c3 << 14)) & 0x1fffff;
+    if schema_v8 > 1200000 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.f8 = (v8 as u32).wrapping_add((-600000_i32) as u32) as i32;
-    let v9: u64 = (c3 >> 7) & 0x7f;
-    if v9 > 100 {
+    schema_value.f8 = (schema_v8 as u32).wrapping_add((-600000_i32) as u32) as i32;
+    let schema_v9: u64 = (schema_c3 >> 7) & 0x7f;
+    if schema_v9 > 100 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.f9 = v9 as i32;
+    schema_value.f9 = schema_v9 as i32;
     Ok(())
 }
 
@@ -312,76 +312,76 @@ pub const BENCH_BITS_MAX_BITS: u64 = 156;
 pub const BENCH_BITS_MAX_BYTES: usize = 24;
 
 #[inline(always)]
-pub fn write_bench_bits(stream: &mut WriteStream<'_>, value: &BenchBits) -> Result {
-    debug_assert!(value.b7 < 1 << 7, "b7 above the bits(7) wire width");
-    debug_assert!(value.b13 < 1 << 13, "b13 above the bits(13) wire width");
-    debug_assert!(value.b23 < 1 << 23, "b23 above the bits(23) wire width");
-    debug_assert!(value.b3 < 1 << 3, "b3 above the bits(3) wire width");
-    debug_assert!(value.b11 < 1 << 11, "b11 above the bits(11) wire width");
-    debug_assert!(value.b19 < 1 << 19, "b19 above the bits(19) wire width");
-    debug_assert!(value.b48 < 1 << 48, "b48 above the bits(48) wire width");
-    let f0: u64 = u64::from(value.b7);
-    let f1: u64 = u64::from(value.b13);
-    let f2: u64 = u64::from(value.b23);
-    let f3: u64 = u64::from(value.b3);
-    let f4: u64 = u64::from(value.b32);
-    let f5: u64 = u64::from(value.b11);
-    let f6: u64 = u64::from(value.b19);
-    let f7: u64 = value.b48;
+pub fn write_bench_bits(schema_stream: &mut WriteStream<'_>, schema_value: &BenchBits) -> Result {
+    debug_assert!(schema_value.b7 < 1 << 7, "b7 above the bits(7) wire width");
+    debug_assert!(schema_value.b13 < 1 << 13, "b13 above the bits(13) wire width");
+    debug_assert!(schema_value.b23 < 1 << 23, "b23 above the bits(23) wire width");
+    debug_assert!(schema_value.b3 < 1 << 3, "b3 above the bits(3) wire width");
+    debug_assert!(schema_value.b11 < 1 << 11, "b11 above the bits(11) wire width");
+    debug_assert!(schema_value.b19 < 1 << 19, "b19 above the bits(19) wire width");
+    debug_assert!(schema_value.b48 < 1 << 48, "b48 above the bits(48) wire width");
+    let schema_f0: u64 = u64::from(schema_value.b7);
+    let schema_f1: u64 = u64::from(schema_value.b13);
+    let schema_f2: u64 = u64::from(schema_value.b23);
+    let schema_f3: u64 = u64::from(schema_value.b3);
+    let schema_f4: u64 = u64::from(schema_value.b32);
+    let schema_f5: u64 = u64::from(schema_value.b11);
+    let schema_f6: u64 = u64::from(schema_value.b19);
+    let schema_f7: u64 = schema_value.b48;
     // word 0, 32 bits: b7[0..7], b13[0..13], b23[0..12]
-    stream.serialize_bits(&mut ((f0 | (f1 << 7) | (f2 << 20)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 7) | (schema_f2 << 20)) as u32), 32)?;
     // word 1, 32 bits: b23[12..23], b3[0..3], b32[0..18]
-    stream.serialize_bits(&mut (((f2 >> 12) | (f3 << 11) | (f4 << 14)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut (((schema_f2 >> 12) | (schema_f3 << 11) | (schema_f4 << 14)) as u32), 32)?;
     // word 2, 32 bits: b32[18..32], b11[0..11], b19[0..7]
-    stream.serialize_bits(&mut (((f4 >> 18) | (f5 << 14) | (f6 << 25)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut (((schema_f4 >> 18) | (schema_f5 << 14) | (schema_f6 << 25)) as u32), 32)?;
     // word 3, 32 bits: b19[7..19], b48[0..20]
-    stream.serialize_bits(&mut (((f6 >> 7) | (f7 << 12)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut (((schema_f6 >> 7) | (schema_f7 << 12)) as u32), 32)?;
     // word 4, 28 bits: b48[20..48]
-    stream.serialize_bits(&mut ((f7 >> 20) as u32), 28)?;
+    schema_stream.serialize_bits(&mut ((schema_f7 >> 20) as u32), 28)?;
     Ok(())
 }
 
 #[inline]
-pub fn read_bench_bits(stream: &mut ReadStream<'_>, value: &mut BenchBits) -> Result {
-    read_bench_bits_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_bench_bits(schema_stream: &mut ReadStream<'_>, schema_value: &mut BenchBits) -> Result {
+    read_bench_bits_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_bench_bits_body(stream: &mut ReadStream<'_>, value: &mut BenchBits) -> Result {
-    let mut c: u32 = 0;
+pub(crate) fn read_bench_bits_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut BenchBits) -> Result {
+    let mut schema_c: u32 = 0;
     // word 0, 32 bits: b7[0..7], b13[0..13], b23[0..12]
-    stream.serialize_bits(&mut c, 32)?;
-    let c0 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c0 = u64::from(schema_c);
     // word 1, 32 bits: b23[12..23], b3[0..3], b32[0..18]
-    stream.serialize_bits(&mut c, 32)?;
-    let c1 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c1 = u64::from(schema_c);
     // word 2, 32 bits: b32[18..32], b11[0..11], b19[0..7]
-    stream.serialize_bits(&mut c, 32)?;
-    let c2 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c2 = u64::from(schema_c);
     // word 3, 32 bits: b19[7..19], b48[0..20]
-    stream.serialize_bits(&mut c, 32)?;
-    let c3 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c3 = u64::from(schema_c);
     // word 4, 28 bits: b48[20..48]
-    stream.serialize_bits(&mut c, 28)?;
-    let c4 = u64::from(c);
-    let v0: u64 = c0 & 0x7f;
-    value.b7 = v0 as u32;
-    let v1: u64 = (c0 >> 7) & 0x1fff;
-    value.b13 = v1 as u32;
-    let v2: u64 = ((c0 >> 20) | (c1 << 12)) & 0x7fffff;
-    value.b23 = v2 as u32;
-    let v3: u64 = (c1 >> 11) & 0x7;
-    value.b3 = v3 as u32;
-    let v4: u64 = ((c1 >> 14) | (c2 << 18)) & 0xffffffff;
-    value.b32 = v4 as u32;
-    let v5: u64 = (c2 >> 14) & 0x7ff;
-    value.b11 = v5 as u32;
-    let v6: u64 = ((c2 >> 25) | (c3 << 7)) & 0x7ffff;
-    value.b19 = v6 as u32;
-    let v7: u64 = ((c3 >> 12) | (c4 << 20)) & 0xffffffffffff;
-    value.b48 = v7;
+    schema_stream.serialize_bits(&mut schema_c, 28)?;
+    let schema_c4 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0x7f;
+    schema_value.b7 = schema_v0 as u32;
+    let schema_v1: u64 = (schema_c0 >> 7) & 0x1fff;
+    schema_value.b13 = schema_v1 as u32;
+    let schema_v2: u64 = ((schema_c0 >> 20) | (schema_c1 << 12)) & 0x7fffff;
+    schema_value.b23 = schema_v2 as u32;
+    let schema_v3: u64 = (schema_c1 >> 11) & 0x7;
+    schema_value.b3 = schema_v3 as u32;
+    let schema_v4: u64 = ((schema_c1 >> 14) | (schema_c2 << 18)) & 0xffffffff;
+    schema_value.b32 = schema_v4 as u32;
+    let schema_v5: u64 = (schema_c2 >> 14) & 0x7ff;
+    schema_value.b11 = schema_v5 as u32;
+    let schema_v6: u64 = ((schema_c2 >> 25) | (schema_c3 << 7)) & 0x7ffff;
+    schema_value.b19 = schema_v6 as u32;
+    let schema_v7: u64 = ((schema_c3 >> 12) | (schema_c4 << 20)) & 0xffffffffffff;
+    schema_value.b48 = schema_v7;
     Ok(())
 }
 
@@ -417,14 +417,14 @@ impl MixedWeapon {
 }
 
 impl core::fmt::Display for MixedWeapon {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str(self.as_str())
+    fn fmt(&self, schema_f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        schema_f.write_str(self.as_str())
     }
 }
 
 /// Debug/log name for any `MixedWeapon` value, out-of-set included.
-pub fn enum_name_mixed_weapon(value: MixedWeapon) -> &'static str {
-    match value.0 {
+pub fn enum_name_mixed_weapon(schema_value: MixedWeapon) -> &'static str {
+    match schema_value.0 {
         0 => "None",
         1 => "Fists",
         2 => "Pistol",
@@ -460,8 +460,8 @@ pub const MIXED_DAMAGE_DOWNED: MixedDamage = 1 << 7;
 pub const MIXED_DAMAGE_COUNT: i64 = 8; // the declared variant count (SPEC §4.2)
 
 /// Debug/log name for bit `i` of `MixedDamage` — out-of-range bits name as `"???"`.
-pub fn flag_name_mixed_damage(bit: u32) -> &'static str {
-    match bit {
+pub fn flag_name_mixed_damage(schema_bit: u32) -> &'static str {
+    match schema_bit {
         0 => "Bleeding",
         1 => "Burning",
         2 => "Stunned",
@@ -476,66 +476,66 @@ pub fn flag_name_mixed_damage(bit: u32) -> &'static str {
 
 /// Renders the set bits of `value` as `"A|B"` — `"0"` for the empty set,
 /// bits past the declared variants as hex.
-pub fn flag_names_mixed_damage(value: MixedDamage) -> String {
-    let mut names = String::new();
-    if value & (1 << 0) != 0 {
-        if !names.is_empty() {
-            names.push('|');
+pub fn flag_names_mixed_damage(schema_value: MixedDamage) -> String {
+    let mut schema_names = String::new();
+    if schema_value & (1 << 0) != 0 {
+        if !schema_names.is_empty() {
+            schema_names.push('|');
         }
-        names.push_str(flag_name_mixed_damage(0));
+        schema_names.push_str(flag_name_mixed_damage(0));
     }
-    if value & (1 << 1) != 0 {
-        if !names.is_empty() {
-            names.push('|');
+    if schema_value & (1 << 1) != 0 {
+        if !schema_names.is_empty() {
+            schema_names.push('|');
         }
-        names.push_str(flag_name_mixed_damage(1));
+        schema_names.push_str(flag_name_mixed_damage(1));
     }
-    if value & (1 << 2) != 0 {
-        if !names.is_empty() {
-            names.push('|');
+    if schema_value & (1 << 2) != 0 {
+        if !schema_names.is_empty() {
+            schema_names.push('|');
         }
-        names.push_str(flag_name_mixed_damage(2));
+        schema_names.push_str(flag_name_mixed_damage(2));
     }
-    if value & (1 << 3) != 0 {
-        if !names.is_empty() {
-            names.push('|');
+    if schema_value & (1 << 3) != 0 {
+        if !schema_names.is_empty() {
+            schema_names.push('|');
         }
-        names.push_str(flag_name_mixed_damage(3));
+        schema_names.push_str(flag_name_mixed_damage(3));
     }
-    if value & (1 << 4) != 0 {
-        if !names.is_empty() {
-            names.push('|');
+    if schema_value & (1 << 4) != 0 {
+        if !schema_names.is_empty() {
+            schema_names.push('|');
         }
-        names.push_str(flag_name_mixed_damage(4));
+        schema_names.push_str(flag_name_mixed_damage(4));
     }
-    if value & (1 << 5) != 0 {
-        if !names.is_empty() {
-            names.push('|');
+    if schema_value & (1 << 5) != 0 {
+        if !schema_names.is_empty() {
+            schema_names.push('|');
         }
-        names.push_str(flag_name_mixed_damage(5));
+        schema_names.push_str(flag_name_mixed_damage(5));
     }
-    if value & (1 << 6) != 0 {
-        if !names.is_empty() {
-            names.push('|');
+    if schema_value & (1 << 6) != 0 {
+        if !schema_names.is_empty() {
+            schema_names.push('|');
         }
-        names.push_str(flag_name_mixed_damage(6));
+        schema_names.push_str(flag_name_mixed_damage(6));
     }
-    if value & (1 << 7) != 0 {
-        if !names.is_empty() {
-            names.push('|');
+    if schema_value & (1 << 7) != 0 {
+        if !schema_names.is_empty() {
+            schema_names.push('|');
         }
-        names.push_str(flag_name_mixed_damage(7));
+        schema_names.push_str(flag_name_mixed_damage(7));
     }
-    if value >> 8 != 0 {
-        if !names.is_empty() {
-            names.push('|');
+    if schema_value >> 8 != 0 {
+        if !schema_names.is_empty() {
+            schema_names.push('|');
         }
-        names.push_str(&format!("{:#x}", (value >> 8) << 8));
+        schema_names.push_str(&format!("{:#x}", (schema_value >> 8) << 8));
     }
-    if names.is_empty() {
-        names.push('0');
+    if schema_names.is_empty() {
+        schema_names.push('0');
     }
-    names
+    schema_names
 }
 
 // type MixedEntity
@@ -565,111 +565,111 @@ pub const MIXED_ENTITY_MAX_BITS: u64 = 135;
 pub const MIXED_ENTITY_MAX_BYTES: usize = 24;
 
 #[inline(always)]
-pub fn write_mixed_entity(stream: &mut WriteStream<'_>, value: &MixedEntity) -> Result {
-    debug_assert!(value.entity_id < 1 << 12, "entity_id above the bits(12) wire width");
-    debug_assert!(value.pos_x >= -16383 && value.pos_x <= 16383, "pos_x out of range [-16383, 16383]");
-    debug_assert!(value.pos_y >= -16383 && value.pos_y <= 16383, "pos_y out of range [-16383, 16383]");
-    debug_assert!(value.pos_z >= -16383 && value.pos_z <= 16383, "pos_z out of range [-16383, 16383]");
-    debug_assert!(value.yaw < 1 << 9, "yaw above the bits(9) wire width");
-    debug_assert!(value.pitch < 1 << 9, "pitch above the bits(9) wire width");
-    debug_assert!(value.vel_x >= -2048 && value.vel_x <= 2047, "vel_x out of range [-2048, 2047]");
-    debug_assert!(value.vel_y >= -2048 && value.vel_y <= 2047, "vel_y out of range [-2048, 2047]");
-    debug_assert!(value.vel_z >= -2048 && value.vel_z <= 2047, "vel_z out of range [-2048, 2047]");
-    debug_assert!(value.health >= 0 && value.health <= 1000, "health out of range [0, 1000]");
-    debug_assert!(value.weapon.0 <= 15, "weapon above the MixedWeapon wire range [0, 15]");
-    debug_assert!(value.damage < 1 << 8, "damage has a mask bit above the 8-bit wire width");
-    let f0: u64 = u64::from(value.entity_id);
-    let f1: u64 = u64::from((value.pos_x as u32).wrapping_sub((-16383_i32) as u32));
-    let f2: u64 = u64::from((value.pos_y as u32).wrapping_sub((-16383_i32) as u32));
-    let f3: u64 = u64::from((value.pos_z as u32).wrapping_sub((-16383_i32) as u32));
-    let f4: u64 = u64::from(value.yaw);
-    let f5: u64 = u64::from(value.pitch);
-    let f6: u64 = u64::from((value.vel_x as u32).wrapping_sub((-2048_i32) as u32));
-    let f7: u64 = u64::from((value.vel_y as u32).wrapping_sub((-2048_i32) as u32));
-    let f8: u64 = u64::from((value.vel_z as u32).wrapping_sub((-2048_i32) as u32));
-    let f9: u64 = u64::from(value.health as u32);
-    let f10: u64 = u64::from(value.weapon.0);
-    let f11: u64 = value.damage;
-    let f12: u64 = u64::from(value.moving);
-    let f13: u64 = u64::from(value.firing);
+pub fn write_mixed_entity(schema_stream: &mut WriteStream<'_>, schema_value: &MixedEntity) -> Result {
+    debug_assert!(schema_value.entity_id < 1 << 12, "entity_id above the bits(12) wire width");
+    debug_assert!(schema_value.pos_x >= -16383 && schema_value.pos_x <= 16383, "pos_x out of range [-16383, 16383]");
+    debug_assert!(schema_value.pos_y >= -16383 && schema_value.pos_y <= 16383, "pos_y out of range [-16383, 16383]");
+    debug_assert!(schema_value.pos_z >= -16383 && schema_value.pos_z <= 16383, "pos_z out of range [-16383, 16383]");
+    debug_assert!(schema_value.yaw < 1 << 9, "yaw above the bits(9) wire width");
+    debug_assert!(schema_value.pitch < 1 << 9, "pitch above the bits(9) wire width");
+    debug_assert!(schema_value.vel_x >= -2048 && schema_value.vel_x <= 2047, "vel_x out of range [-2048, 2047]");
+    debug_assert!(schema_value.vel_y >= -2048 && schema_value.vel_y <= 2047, "vel_y out of range [-2048, 2047]");
+    debug_assert!(schema_value.vel_z >= -2048 && schema_value.vel_z <= 2047, "vel_z out of range [-2048, 2047]");
+    debug_assert!(schema_value.health >= 0 && schema_value.health <= 1000, "health out of range [0, 1000]");
+    debug_assert!(schema_value.weapon.0 <= 15, "weapon above the MixedWeapon wire range [0, 15]");
+    debug_assert!(schema_value.damage < 1 << 8, "damage has a mask bit above the 8-bit wire width");
+    let schema_f0: u64 = u64::from(schema_value.entity_id);
+    let schema_f1: u64 = u64::from((schema_value.pos_x as u32).wrapping_sub((-16383_i32) as u32));
+    let schema_f2: u64 = u64::from((schema_value.pos_y as u32).wrapping_sub((-16383_i32) as u32));
+    let schema_f3: u64 = u64::from((schema_value.pos_z as u32).wrapping_sub((-16383_i32) as u32));
+    let schema_f4: u64 = u64::from(schema_value.yaw);
+    let schema_f5: u64 = u64::from(schema_value.pitch);
+    let schema_f6: u64 = u64::from((schema_value.vel_x as u32).wrapping_sub((-2048_i32) as u32));
+    let schema_f7: u64 = u64::from((schema_value.vel_y as u32).wrapping_sub((-2048_i32) as u32));
+    let schema_f8: u64 = u64::from((schema_value.vel_z as u32).wrapping_sub((-2048_i32) as u32));
+    let schema_f9: u64 = u64::from(schema_value.health as u32);
+    let schema_f10: u64 = u64::from(schema_value.weapon.0);
+    let schema_f11: u64 = schema_value.damage;
+    let schema_f12: u64 = u64::from(schema_value.moving);
+    let schema_f13: u64 = u64::from(schema_value.firing);
     // word 0, 32 bits: entity_id[0..12], pos_x[0..15], pos_y[0..5]
-    stream.serialize_bits(&mut ((f0 | (f1 << 12) | (f2 << 27)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 12) | (schema_f2 << 27)) as u32), 32)?;
     // word 1, 32 bits: pos_y[5..15], pos_z[0..15], yaw[0..7]
-    stream.serialize_bits(&mut (((f2 >> 5) | (f3 << 10) | (f4 << 25)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut (((schema_f2 >> 5) | (schema_f3 << 10) | (schema_f4 << 25)) as u32), 32)?;
     // word 2, 32 bits: yaw[7..9], pitch[0..9], vel_x[0..12], vel_y[0..9]
-    stream.serialize_bits(&mut (((f4 >> 7) | (f5 << 2) | (f6 << 11) | (f7 << 23)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut (((schema_f4 >> 7) | (schema_f5 << 2) | (schema_f6 << 11) | (schema_f7 << 23)) as u32), 32)?;
     // word 3, 32 bits: vel_y[9..12], vel_z[0..12], health[0..10], weapon[0..4], damage[0..3]
-    stream.serialize_bits(&mut (((f7 >> 9) | (f8 << 3) | (f9 << 15) | (f10 << 25) | (f11 << 29)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut (((schema_f7 >> 9) | (schema_f8 << 3) | (schema_f9 << 15) | (schema_f10 << 25) | (schema_f11 << 29)) as u32), 32)?;
     // word 4, 7 bits: damage[3..8], moving[0..1], firing[0..1]
-    stream.serialize_bits(&mut (((f11 >> 3) | (f12 << 5) | (f13 << 6)) as u32), 7)?;
+    schema_stream.serialize_bits(&mut (((schema_f11 >> 3) | (schema_f12 << 5) | (schema_f13 << 6)) as u32), 7)?;
     Ok(())
 }
 
 #[inline]
-pub fn read_mixed_entity(stream: &mut ReadStream<'_>, value: &mut MixedEntity) -> Result {
-    read_mixed_entity_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_mixed_entity(schema_stream: &mut ReadStream<'_>, schema_value: &mut MixedEntity) -> Result {
+    read_mixed_entity_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_mixed_entity_body(stream: &mut ReadStream<'_>, value: &mut MixedEntity) -> Result {
-    let mut c: u32 = 0;
+pub(crate) fn read_mixed_entity_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut MixedEntity) -> Result {
+    let mut schema_c: u32 = 0;
     // word 0, 32 bits: entity_id[0..12], pos_x[0..15], pos_y[0..5]
-    stream.serialize_bits(&mut c, 32)?;
-    let c0 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c0 = u64::from(schema_c);
     // word 1, 32 bits: pos_y[5..15], pos_z[0..15], yaw[0..7]
-    stream.serialize_bits(&mut c, 32)?;
-    let c1 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c1 = u64::from(schema_c);
     // word 2, 32 bits: yaw[7..9], pitch[0..9], vel_x[0..12], vel_y[0..9]
-    stream.serialize_bits(&mut c, 32)?;
-    let c2 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c2 = u64::from(schema_c);
     // word 3, 32 bits: vel_y[9..12], vel_z[0..12], health[0..10], weapon[0..4], damage[0..3]
-    stream.serialize_bits(&mut c, 32)?;
-    let c3 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c3 = u64::from(schema_c);
     // word 4, 7 bits: damage[3..8], moving[0..1], firing[0..1]
-    stream.serialize_bits(&mut c, 7)?;
-    let c4 = u64::from(c);
-    let v0: u64 = c0 & 0xfff;
-    value.entity_id = v0 as u32;
-    let v1: u64 = (c0 >> 12) & 0x7fff;
-    if v1 > 32766 {
+    schema_stream.serialize_bits(&mut schema_c, 7)?;
+    let schema_c4 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0xfff;
+    schema_value.entity_id = schema_v0 as u32;
+    let schema_v1: u64 = (schema_c0 >> 12) & 0x7fff;
+    if schema_v1 > 32766 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.pos_x = (v1 as u32).wrapping_add((-16383_i32) as u32) as i32;
-    let v2: u64 = ((c0 >> 27) | (c1 << 5)) & 0x7fff;
-    if v2 > 32766 {
+    schema_value.pos_x = (schema_v1 as u32).wrapping_add((-16383_i32) as u32) as i32;
+    let schema_v2: u64 = ((schema_c0 >> 27) | (schema_c1 << 5)) & 0x7fff;
+    if schema_v2 > 32766 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.pos_y = (v2 as u32).wrapping_add((-16383_i32) as u32) as i32;
-    let v3: u64 = (c1 >> 10) & 0x7fff;
-    if v3 > 32766 {
+    schema_value.pos_y = (schema_v2 as u32).wrapping_add((-16383_i32) as u32) as i32;
+    let schema_v3: u64 = (schema_c1 >> 10) & 0x7fff;
+    if schema_v3 > 32766 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.pos_z = (v3 as u32).wrapping_add((-16383_i32) as u32) as i32;
-    let v4: u64 = ((c1 >> 25) | (c2 << 7)) & 0x1ff;
-    value.yaw = v4 as u32;
-    let v5: u64 = (c2 >> 2) & 0x1ff;
-    value.pitch = v5 as u32;
-    let v6: u64 = (c2 >> 11) & 0xfff;
-    value.vel_x = (v6 as u32).wrapping_add((-2048_i32) as u32) as i32;
-    let v7: u64 = ((c2 >> 23) | (c3 << 9)) & 0xfff;
-    value.vel_y = (v7 as u32).wrapping_add((-2048_i32) as u32) as i32;
-    let v8: u64 = (c3 >> 3) & 0xfff;
-    value.vel_z = (v8 as u32).wrapping_add((-2048_i32) as u32) as i32;
-    let v9: u64 = (c3 >> 15) & 0x3ff;
-    if v9 > 1000 {
+    schema_value.pos_z = (schema_v3 as u32).wrapping_add((-16383_i32) as u32) as i32;
+    let schema_v4: u64 = ((schema_c1 >> 25) | (schema_c2 << 7)) & 0x1ff;
+    schema_value.yaw = schema_v4 as u32;
+    let schema_v5: u64 = (schema_c2 >> 2) & 0x1ff;
+    schema_value.pitch = schema_v5 as u32;
+    let schema_v6: u64 = (schema_c2 >> 11) & 0xfff;
+    schema_value.vel_x = (schema_v6 as u32).wrapping_add((-2048_i32) as u32) as i32;
+    let schema_v7: u64 = ((schema_c2 >> 23) | (schema_c3 << 9)) & 0xfff;
+    schema_value.vel_y = (schema_v7 as u32).wrapping_add((-2048_i32) as u32) as i32;
+    let schema_v8: u64 = (schema_c3 >> 3) & 0xfff;
+    schema_value.vel_z = (schema_v8 as u32).wrapping_add((-2048_i32) as u32) as i32;
+    let schema_v9: u64 = (schema_c3 >> 15) & 0x3ff;
+    if schema_v9 > 1000 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.health = v9 as i32;
-    let v10: u64 = (c3 >> 25) & 0xf;
-    value.weapon = MixedWeapon(v10 as u8);
-    let v11: u64 = ((c3 >> 29) | (c4 << 3)) & 0xff;
-    value.damage = v11;
-    let v12: u64 = (c4 >> 5) & 0x1;
-    value.moving = v12 != 0;
-    let v13: u64 = (c4 >> 6) & 0x1;
-    value.firing = v13 != 0;
+    schema_value.health = schema_v9 as i32;
+    let schema_v10: u64 = (schema_c3 >> 25) & 0xf;
+    schema_value.weapon = MixedWeapon(schema_v10 as u8);
+    let schema_v11: u64 = ((schema_c3 >> 29) | (schema_c4 << 3)) & 0xff;
+    schema_value.damage = schema_v11;
+    let schema_v12: u64 = (schema_c4 >> 5) & 0x1;
+    schema_value.moving = schema_v12 != 0;
+    let schema_v13: u64 = (schema_c4 >> 6) & 0x1;
+    schema_value.firing = schema_v13 != 0;
     Ok(())
 }
 
@@ -688,33 +688,33 @@ pub const MIXED_STAT_MAX_BITS: u64 = 18;
 pub const MIXED_STAT_MAX_BYTES: usize = 8;
 
 #[inline(always)]
-pub fn write_mixed_stat(stream: &mut WriteStream<'_>, value: &MixedStat) -> Result {
-    debug_assert!(value.stat_id < 1 << 8, "stat_id above the bits(8) wire width");
-    debug_assert!(value.delta >= -512 && value.delta <= 511, "delta out of range [-512, 511]");
-    let f0: u64 = u64::from(value.stat_id);
-    let f1: u64 = u64::from((value.delta as u32).wrapping_sub((-512_i32) as u32));
+pub fn write_mixed_stat(schema_stream: &mut WriteStream<'_>, schema_value: &MixedStat) -> Result {
+    debug_assert!(schema_value.stat_id < 1 << 8, "stat_id above the bits(8) wire width");
+    debug_assert!(schema_value.delta >= -512 && schema_value.delta <= 511, "delta out of range [-512, 511]");
+    let schema_f0: u64 = u64::from(schema_value.stat_id);
+    let schema_f1: u64 = u64::from((schema_value.delta as u32).wrapping_sub((-512_i32) as u32));
     // word 0, 18 bits: stat_id[0..8], delta[0..10]
-    stream.serialize_bits(&mut ((f0 | (f1 << 8)) as u32), 18)?;
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 8)) as u32), 18)?;
     Ok(())
 }
 
 #[inline]
-pub fn read_mixed_stat(stream: &mut ReadStream<'_>, value: &mut MixedStat) -> Result {
-    read_mixed_stat_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_mixed_stat(schema_stream: &mut ReadStream<'_>, schema_value: &mut MixedStat) -> Result {
+    read_mixed_stat_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_mixed_stat_body(stream: &mut ReadStream<'_>, value: &mut MixedStat) -> Result {
-    let mut c: u32 = 0;
+pub(crate) fn read_mixed_stat_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut MixedStat) -> Result {
+    let mut schema_c: u32 = 0;
     // word 0, 18 bits: stat_id[0..8], delta[0..10]
-    stream.serialize_bits(&mut c, 18)?;
-    let c0 = u64::from(c);
-    let v0: u64 = c0 & 0xff;
-    value.stat_id = v0 as u32;
-    let v1: u64 = (c0 >> 8) & 0x3ff;
-    value.delta = (v1 as u32).wrapping_add((-512_i32) as u32) as i32;
+    schema_stream.serialize_bits(&mut schema_c, 18)?;
+    let schema_c0 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0xff;
+    schema_value.stat_id = schema_v0 as u32;
+    let schema_v1: u64 = (schema_c0 >> 8) & 0x3ff;
+    schema_value.delta = (schema_v1 as u32).wrapping_add((-512_i32) as u32) as i32;
     Ok(())
 }
 
@@ -735,40 +735,40 @@ pub const MIXED_HIT_EVENT_MAX_BITS: u64 = 28;
 pub const MIXED_HIT_EVENT_MAX_BYTES: usize = 8;
 
 #[inline(always)]
-pub fn write_mixed_hit_event(stream: &mut WriteStream<'_>, value: &MixedHitEvent) -> Result {
-    debug_assert!(value.target_id < 1 << 12, "target_id above the bits(12) wire width");
-    debug_assert!(value.damage >= 0 && value.damage <= 4095, "damage out of range [0, 4095]");
-    debug_assert!(value.hit_kind >= 0 && value.hit_kind <= 7, "hit_kind out of range [0, 7]");
-    let f0: u64 = u64::from(value.target_id);
-    let f1: u64 = u64::from(value.damage as u32);
-    let f2: u64 = u64::from(value.hit_kind as u32);
-    let f3: u64 = u64::from(value.crit);
+pub fn write_mixed_hit_event(schema_stream: &mut WriteStream<'_>, schema_value: &MixedHitEvent) -> Result {
+    debug_assert!(schema_value.target_id < 1 << 12, "target_id above the bits(12) wire width");
+    debug_assert!(schema_value.damage >= 0 && schema_value.damage <= 4095, "damage out of range [0, 4095]");
+    debug_assert!(schema_value.hit_kind >= 0 && schema_value.hit_kind <= 7, "hit_kind out of range [0, 7]");
+    let schema_f0: u64 = u64::from(schema_value.target_id);
+    let schema_f1: u64 = u64::from(schema_value.damage as u32);
+    let schema_f2: u64 = u64::from(schema_value.hit_kind as u32);
+    let schema_f3: u64 = u64::from(schema_value.crit);
     // word 0, 28 bits: target_id[0..12], damage[0..12], hit_kind[0..3], crit[0..1]
-    stream.serialize_bits(&mut ((f0 | (f1 << 12) | (f2 << 24) | (f3 << 27)) as u32), 28)?;
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 12) | (schema_f2 << 24) | (schema_f3 << 27)) as u32), 28)?;
     Ok(())
 }
 
 #[inline]
-pub fn read_mixed_hit_event(stream: &mut ReadStream<'_>, value: &mut MixedHitEvent) -> Result {
-    read_mixed_hit_event_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_mixed_hit_event(schema_stream: &mut ReadStream<'_>, schema_value: &mut MixedHitEvent) -> Result {
+    read_mixed_hit_event_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_mixed_hit_event_body(stream: &mut ReadStream<'_>, value: &mut MixedHitEvent) -> Result {
-    let mut c: u32 = 0;
+pub(crate) fn read_mixed_hit_event_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut MixedHitEvent) -> Result {
+    let mut schema_c: u32 = 0;
     // word 0, 28 bits: target_id[0..12], damage[0..12], hit_kind[0..3], crit[0..1]
-    stream.serialize_bits(&mut c, 28)?;
-    let c0 = u64::from(c);
-    let v0: u64 = c0 & 0xfff;
-    value.target_id = v0 as u32;
-    let v1: u64 = (c0 >> 12) & 0xfff;
-    value.damage = v1 as i32;
-    let v2: u64 = (c0 >> 24) & 0x7;
-    value.hit_kind = v2 as i32;
-    let v3: u64 = (c0 >> 27) & 0x1;
-    value.crit = v3 != 0;
+    schema_stream.serialize_bits(&mut schema_c, 28)?;
+    let schema_c0 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0xfff;
+    schema_value.target_id = schema_v0 as u32;
+    let schema_v1: u64 = (schema_c0 >> 12) & 0xfff;
+    schema_value.damage = schema_v1 as i32;
+    let schema_v2: u64 = (schema_c0 >> 24) & 0x7;
+    schema_value.hit_kind = schema_v2 as i32;
+    let schema_v3: u64 = (schema_c0 >> 27) & 0x1;
+    schema_value.crit = schema_v3 != 0;
     Ok(())
 }
 
@@ -787,33 +787,33 @@ pub const MIXED_CHAT_EVENT_MAX_BITS: u64 = 14;
 pub const MIXED_CHAT_EVENT_MAX_BYTES: usize = 8;
 
 #[inline(always)]
-pub fn write_mixed_chat_event(stream: &mut WriteStream<'_>, value: &MixedChatEvent) -> Result {
-    debug_assert!(value.channel >= 0 && value.channel <= 3, "channel out of range [0, 3]");
-    debug_assert!(value.speaker < 1 << 12, "speaker above the bits(12) wire width");
-    let f0: u64 = u64::from(value.channel as u32);
-    let f1: u64 = u64::from(value.speaker);
+pub fn write_mixed_chat_event(schema_stream: &mut WriteStream<'_>, schema_value: &MixedChatEvent) -> Result {
+    debug_assert!(schema_value.channel >= 0 && schema_value.channel <= 3, "channel out of range [0, 3]");
+    debug_assert!(schema_value.speaker < 1 << 12, "speaker above the bits(12) wire width");
+    let schema_f0: u64 = u64::from(schema_value.channel as u32);
+    let schema_f1: u64 = u64::from(schema_value.speaker);
     // word 0, 14 bits: channel[0..2], speaker[0..12]
-    stream.serialize_bits(&mut ((f0 | (f1 << 2)) as u32), 14)?;
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 2)) as u32), 14)?;
     Ok(())
 }
 
 #[inline]
-pub fn read_mixed_chat_event(stream: &mut ReadStream<'_>, value: &mut MixedChatEvent) -> Result {
-    read_mixed_chat_event_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_mixed_chat_event(schema_stream: &mut ReadStream<'_>, schema_value: &mut MixedChatEvent) -> Result {
+    read_mixed_chat_event_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_mixed_chat_event_body(stream: &mut ReadStream<'_>, value: &mut MixedChatEvent) -> Result {
-    let mut c: u32 = 0;
+pub(crate) fn read_mixed_chat_event_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut MixedChatEvent) -> Result {
+    let mut schema_c: u32 = 0;
     // word 0, 14 bits: channel[0..2], speaker[0..12]
-    stream.serialize_bits(&mut c, 14)?;
-    let c0 = u64::from(c);
-    let v0: u64 = c0 & 0x3;
-    value.channel = v0 as i32;
-    let v1: u64 = (c0 >> 2) & 0xfff;
-    value.speaker = v1 as u32;
+    schema_stream.serialize_bits(&mut schema_c, 14)?;
+    let schema_c0 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0x3;
+    schema_value.channel = schema_v0 as i32;
+    let schema_v1: u64 = (schema_c0 >> 2) & 0xfff;
+    schema_value.speaker = schema_v1 as u32;
     Ok(())
 }
 
@@ -832,33 +832,33 @@ pub const MIXED_PICKUP_EVENT_MAX_BITS: u64 = 18;
 pub const MIXED_PICKUP_EVENT_MAX_BYTES: usize = 8;
 
 #[inline(always)]
-pub fn write_mixed_pickup_event(stream: &mut WriteStream<'_>, value: &MixedPickupEvent) -> Result {
-    debug_assert!(value.item_id < 1 << 10, "item_id above the bits(10) wire width");
-    debug_assert!(value.amount >= 0 && value.amount <= 255, "amount out of range [0, 255]");
-    let f0: u64 = u64::from(value.item_id);
-    let f1: u64 = u64::from(value.amount as u32);
+pub fn write_mixed_pickup_event(schema_stream: &mut WriteStream<'_>, schema_value: &MixedPickupEvent) -> Result {
+    debug_assert!(schema_value.item_id < 1 << 10, "item_id above the bits(10) wire width");
+    debug_assert!(schema_value.amount >= 0 && schema_value.amount <= 255, "amount out of range [0, 255]");
+    let schema_f0: u64 = u64::from(schema_value.item_id);
+    let schema_f1: u64 = u64::from(schema_value.amount as u32);
     // word 0, 18 bits: item_id[0..10], amount[0..8]
-    stream.serialize_bits(&mut ((f0 | (f1 << 10)) as u32), 18)?;
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 10)) as u32), 18)?;
     Ok(())
 }
 
 #[inline]
-pub fn read_mixed_pickup_event(stream: &mut ReadStream<'_>, value: &mut MixedPickupEvent) -> Result {
-    read_mixed_pickup_event_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_mixed_pickup_event(schema_stream: &mut ReadStream<'_>, schema_value: &mut MixedPickupEvent) -> Result {
+    read_mixed_pickup_event_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_mixed_pickup_event_body(stream: &mut ReadStream<'_>, value: &mut MixedPickupEvent) -> Result {
-    let mut c: u32 = 0;
+pub(crate) fn read_mixed_pickup_event_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut MixedPickupEvent) -> Result {
+    let mut schema_c: u32 = 0;
     // word 0, 18 bits: item_id[0..10], amount[0..8]
-    stream.serialize_bits(&mut c, 18)?;
-    let c0 = u64::from(c);
-    let v0: u64 = c0 & 0x3ff;
-    value.item_id = v0 as u32;
-    let v1: u64 = (c0 >> 10) & 0xff;
-    value.amount = v1 as i32;
+    schema_stream.serialize_bits(&mut schema_c, 18)?;
+    let schema_c0 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0x3ff;
+    schema_value.item_id = schema_v0 as u32;
+    let schema_v1: u64 = (schema_c0 >> 10) & 0xff;
+    schema_value.amount = schema_v1 as i32;
     Ok(())
 }
 
@@ -881,14 +881,14 @@ impl MixedEventType {
 }
 
 impl core::fmt::Display for MixedEventType {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        f.write_str(self.as_str())
+    fn fmt(&self, schema_f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        schema_f.write_str(self.as_str())
     }
 }
 
 /// Debug/log name for any `MixedEventType` value, out-of-set included.
-pub fn enum_name_mixed_event_type(value: MixedEventType) -> &'static str {
-    match value.0 {
+pub fn enum_name_mixed_event_type(schema_value: MixedEventType) -> &'static str {
+    match schema_value.0 {
         0 => "None",
         1 => "Hit",
         2 => "Chat",
@@ -914,59 +914,59 @@ pub enum MixedEvent {
 pub const MIXED_EVENT_MAX_BITS: u64 = 30;
 pub const MIXED_EVENT_MAX_BYTES: usize = 8;
 
-pub fn write_mixed_event(stream: &mut WriteStream<'_>, value: &MixedEvent) -> Result {
-    match value {
+pub fn write_mixed_event(schema_stream: &mut WriteStream<'_>, schema_value: &MixedEvent) -> Result {
+    match schema_value {
         MixedEvent::None => {
-            let mut offset_value: u32 = 0;
-            stream.serialize_bits(&mut offset_value, 2)?;
+            let mut schema_offset_value: u32 = 0;
+            schema_stream.serialize_bits(&mut schema_offset_value, 2)?;
             Ok(()) // no payload — the tag is the whole wire (SPEC §4.8)
         }
-        MixedEvent::Hit(arm) => {
-            let mut offset_value: u32 = 1;
-            stream.serialize_bits(&mut offset_value, 2)?;
-            write_mixed_hit_event(stream, arm)
+        MixedEvent::Hit(schema_arm) => {
+            let mut schema_offset_value: u32 = 1;
+            schema_stream.serialize_bits(&mut schema_offset_value, 2)?;
+            write_mixed_hit_event(schema_stream, schema_arm)
         }
-        MixedEvent::Chat(arm) => {
-            let mut offset_value: u32 = 2;
-            stream.serialize_bits(&mut offset_value, 2)?;
-            write_mixed_chat_event(stream, arm)
+        MixedEvent::Chat(schema_arm) => {
+            let mut schema_offset_value: u32 = 2;
+            schema_stream.serialize_bits(&mut schema_offset_value, 2)?;
+            write_mixed_chat_event(schema_stream, schema_arm)
         }
-        MixedEvent::Pickup(arm) => {
-            let mut offset_value: u32 = 3;
-            stream.serialize_bits(&mut offset_value, 2)?;
-            write_mixed_pickup_event(stream, arm)
+        MixedEvent::Pickup(schema_arm) => {
+            let mut schema_offset_value: u32 = 3;
+            schema_stream.serialize_bits(&mut schema_offset_value, 2)?;
+            write_mixed_pickup_event(schema_stream, schema_arm)
         }
     }
 }
 
 #[inline]
-pub fn read_mixed_event(stream: &mut ReadStream<'_>, value: &mut MixedEvent) -> Result {
-    read_mixed_event_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_mixed_event(schema_stream: &mut ReadStream<'_>, schema_value: &mut MixedEvent) -> Result {
+    read_mixed_event_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[inline]
-pub(crate) fn read_mixed_event_body(stream: &mut ReadStream<'_>, value: &mut MixedEvent) -> Result {
-    let mut tag_value: i32 = 0;
-    stream.serialize_int(&mut tag_value, 0, 3)?; // rejects a tag above the count (SPEC §4.8)
-    match tag_value {
+pub(crate) fn read_mixed_event_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut MixedEvent) -> Result {
+    let mut schema_tag_value: i32 = 0;
+    schema_stream.serialize_int(&mut schema_tag_value, 0, 3)?; // rejects a tag above the count (SPEC §4.8)
+    match schema_tag_value {
         1 => {
-            let mut arm = MixedHitEvent::default();
-            read_mixed_hit_event_body(stream, &mut arm)?;
-            *value = MixedEvent::Hit(arm);
+            let mut schema_arm = MixedHitEvent::default();
+            read_mixed_hit_event_body(schema_stream, &mut schema_arm)?;
+            *schema_value = MixedEvent::Hit(schema_arm);
         }
         2 => {
-            let mut arm = MixedChatEvent::default();
-            read_mixed_chat_event_body(stream, &mut arm)?;
-            *value = MixedEvent::Chat(arm);
+            let mut schema_arm = MixedChatEvent::default();
+            read_mixed_chat_event_body(schema_stream, &mut schema_arm)?;
+            *schema_value = MixedEvent::Chat(schema_arm);
         }
         3 => {
-            let mut arm = MixedPickupEvent::default();
-            read_mixed_pickup_event_body(stream, &mut arm)?;
-            *value = MixedEvent::Pickup(arm);
+            let mut schema_arm = MixedPickupEvent::default();
+            read_mixed_pickup_event_body(schema_stream, &mut schema_arm)?;
+            *schema_value = MixedEvent::Pickup(schema_arm);
         }
-        _ => *value = MixedEvent::None,
+        _ => *schema_value = MixedEvent::None,
     }
     Ok(())
 }
@@ -1067,292 +1067,292 @@ pub const BENCH_MIXED_MAX_BYTES: usize = 456;
 
 #[allow(clippy::needless_range_loop)]
 #[inline(always)]
-pub fn write_bench_mixed(stream: &mut WriteStream<'_>, value: &BenchMixed) -> Result {
-    debug_assert!(value.sequence < 1 << 16, "sequence above the bits(16) wire width");
-    debug_assert!(value.ack_sequence >= 0 && value.ack_sequence <= 65535, "ack_sequence out of range [0, 65535]");
-    let f0: u64 = 49374_u64; // const(49374, 16) — SPEC §4.3
-    let f1: u64 = u64::from(value.sequence);
-    let f2: u64 = u64::from(value.ack_sequence as u32);
-    let f3: u64 = u64::from(value.ack_bits);
-    let f4: u64 = value.session_id;
-    let f5: u64 = u64::from(value.client_id);
-    let f6: u64 = value.nonce;
+pub fn write_bench_mixed(schema_stream: &mut WriteStream<'_>, schema_value: &BenchMixed) -> Result {
+    debug_assert!(schema_value.sequence < 1 << 16, "sequence above the bits(16) wire width");
+    debug_assert!(schema_value.ack_sequence >= 0 && schema_value.ack_sequence <= 65535, "ack_sequence out of range [0, 65535]");
+    let schema_f0: u64 = 49374_u64; // const(49374, 16) — SPEC §4.3
+    let schema_f1: u64 = u64::from(schema_value.sequence);
+    let schema_f2: u64 = u64::from(schema_value.ack_sequence as u32);
+    let schema_f3: u64 = u64::from(schema_value.ack_bits);
+    let schema_f4: u64 = schema_value.session_id;
+    let schema_f5: u64 = u64::from(schema_value.client_id);
+    let schema_f6: u64 = schema_value.nonce;
     // word 0, 32 bits: const(49374)[0..16], sequence[0..16]
-    stream.serialize_bits(&mut ((f0 | (f1 << 16)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 16)) as u32), 32)?;
     // word 1, 32 bits: ack_sequence[0..16], ack_bits[0..16]
-    stream.serialize_bits(&mut ((f2 | (f3 << 16)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f2 | (schema_f3 << 16)) as u32), 32)?;
     // word 2, 32 bits: ack_bits[16..32], session_id[0..16]
-    stream.serialize_bits(&mut (((f3 >> 16) | (f4 << 16)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut (((schema_f3 >> 16) | (schema_f4 << 16)) as u32), 32)?;
     // word 3, 32 bits: session_id[16..48]
-    stream.serialize_bits(&mut ((f4 >> 16) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f4 >> 16) as u32), 32)?;
     // word 4, 32 bits: session_id[48..64], client_id[0..16]
-    stream.serialize_bits(&mut (((f4 >> 48) | (f5 << 16)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut (((schema_f4 >> 48) | (schema_f5 << 16)) as u32), 32)?;
     // word 5, 32 bits: client_id[16..32], nonce[0..16]
-    stream.serialize_bits(&mut (((f5 >> 16) | (f6 << 16)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut (((schema_f5 >> 16) | (schema_f6 << 16)) as u32), 32)?;
     // word 6, 32 bits: nonce[16..48]
-    stream.serialize_bits(&mut ((f6 >> 16) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f6 >> 16) as u32), 32)?;
     // word 7, 16 bits: nonce[48..64]
-    stream.serialize_bits(&mut ((f6 >> 48) as u32), 16)?;
-    debug_assert!(value.world_time >= -1000000000000 && value.world_time <= 1000000000000, "world_time out of range [-1000000000000, 1000000000000]");
-    debug_assert!(value.frame_tick < 1 << 48, "frame_tick above the bits(48) wire width");
-    let f0: u64 = (value.world_time as u64).wrapping_sub((-1000000000000_i64) as u64);
-    let f1: u64 = value.frame_tick;
+    schema_stream.serialize_bits(&mut ((schema_f6 >> 48) as u32), 16)?;
+    debug_assert!(schema_value.world_time >= -1000000000000 && schema_value.world_time <= 1000000000000, "world_time out of range [-1000000000000, 1000000000000]");
+    debug_assert!(schema_value.frame_tick < 1 << 48, "frame_tick above the bits(48) wire width");
+    let schema_f0: u64 = (schema_value.world_time as u64).wrapping_sub((-1000000000000_i64) as u64);
+    let schema_f1: u64 = schema_value.frame_tick;
     // word 0, 32 bits: world_time[0..32]
-    stream.serialize_bits(&mut (f0 as u32), 32)?;
+    schema_stream.serialize_bits(&mut (schema_f0 as u32), 32)?;
     // word 1, 32 bits: world_time[32..41], frame_tick[0..23]
-    stream.serialize_bits(&mut (((f0 >> 32) | (f1 << 9)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut (((schema_f0 >> 32) | (schema_f1 << 9)) as u32), 32)?;
     // word 2, 25 bits: frame_tick[23..48]
-    stream.serialize_bits(&mut ((f1 >> 23) as u32), 25)?;
-    debug_assert!(value.server_time >= 0 && value.server_time <= 16776960, "server_time raw value out of range [0, 16776960]");
+    schema_stream.serialize_bits(&mut ((schema_f1 >> 23) as u32), 25)?;
+    debug_assert!(schema_value.server_time >= 0 && schema_value.server_time <= 16776960, "server_time raw value out of range [0, 16776960]");
     {
-        let mut fixed_value = value.server_time;
-        stream.serialize_fixed(&mut fixed_value, 24, 8, 0, 65535)?;
+        let mut schema_fixed_value = schema_value.server_time;
+        schema_stream.serialize_fixed(&mut schema_fixed_value, 24, 8, 0, 65535)?;
     }
-    debug_assert!(value.entities_count >= 1 && value.entities_count <= 8, "entities_count out of range [1, 8]");
+    debug_assert!(schema_value.entities_count >= 1 && schema_value.entities_count <= 8, "entities_count out of range [1, 8]");
     {
-        let mut offset_value = (value.entities_count as u32).wrapping_sub((1_i32) as u32);
-        stream.serialize_bits(&mut offset_value, 3)?; // the count guards the loop (§6.3)
+        let mut schema_offset_value = (schema_value.entities_count as u32).wrapping_sub((1_i32) as u32);
+        schema_stream.serialize_bits(&mut schema_offset_value, 3)?; // the count guards the loop (§6.3)
     }
-    for i in 0..value.entities_count as usize {
-        write_mixed_entity(stream, &value.entities[i])?;
+    for schema_i in 0..schema_value.entities_count as usize {
+        write_mixed_entity(schema_stream, &schema_value.entities[schema_i])?;
     }
-    debug_assert!(value.stats_count >= 0 && value.stats_count <= 80, "stats_count out of range [0, 80]");
+    debug_assert!(schema_value.stats_count >= 0 && schema_value.stats_count <= 80, "stats_count out of range [0, 80]");
     {
-        let mut offset_value = value.stats_count as u32;
-        stream.serialize_bits(&mut offset_value, 7)?; // the count guards the loop (§6.3)
+        let mut schema_offset_value = schema_value.stats_count as u32;
+        schema_stream.serialize_bits(&mut schema_offset_value, 7)?; // the count guards the loop (§6.3)
     }
-    for i in 0..value.stats_count as usize {
-        write_mixed_stat(stream, &value.stats[i])?;
+    for schema_i in 0..schema_value.stats_count as usize {
+        write_mixed_stat(schema_stream, &schema_value.stats[schema_i])?;
     }
-    write_mixed_event(stream, &value.game_event)?;
-    for i in 0..4 {
+    write_mixed_event(schema_stream, &schema_value.game_event)?;
+    for schema_i in 0..4 {
         {
-            let mut raw_value = value.loadout[i] as u32;
-            stream.serialize_bits(&mut raw_value, 8)?;
+            let mut schema_raw_value = schema_value.loadout[schema_i] as u32;
+            schema_stream.serialize_bits(&mut schema_raw_value, 8)?;
         }
     }
-    debug_assert!(value.player_name_length >= 0 && value.player_name_length <= 15, "player_name_length out of range [0, 15]");
-    debug_assert!(!value.player_name[..value.player_name_length as usize].contains(&0), "player_name holds a zero byte");
-    debug_assert!(std::str::from_utf8(&value.player_name[..value.player_name_length as usize]).is_ok(), "player_name is not well-formed UTF-8");
+    debug_assert!(schema_value.player_name_length >= 0 && schema_value.player_name_length <= 15, "player_name_length out of range [0, 15]");
+    debug_assert!(!schema_value.player_name[..schema_value.player_name_length as usize].contains(&0), "player_name holds a zero byte");
+    debug_assert!(std::str::from_utf8(&schema_value.player_name[..schema_value.player_name_length as usize]).is_ok(), "player_name is not well-formed UTF-8");
     {
-        let mut offset_value = value.player_name_length as u32;
-        stream.serialize_bits(&mut offset_value, 4)?; // the length guards the slice (§6.3)
+        let mut schema_offset_value = schema_value.player_name_length as u32;
+        schema_stream.serialize_bits(&mut schema_offset_value, 4)?; // the length guards the slice (§6.3)
     }
-    stream.write_bytes(&value.player_name[..value.player_name_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
-    debug_assert!(value.payload_length >= 0 && value.payload_length <= 16, "payload_length out of range [0, 16]");
+    schema_stream.write_bytes(&schema_value.player_name[..schema_value.player_name_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
+    debug_assert!(schema_value.payload_length >= 0 && schema_value.payload_length <= 16, "payload_length out of range [0, 16]");
     {
-        let mut offset_value = value.payload_length as u32;
-        stream.serialize_bits(&mut offset_value, 5)?; // the length guards the slice (§6.3)
+        let mut schema_offset_value = schema_value.payload_length as u32;
+        schema_stream.serialize_bits(&mut schema_offset_value, 5)?; // the length guards the slice (§6.3)
     }
-    stream.write_bytes(&value.payload[..value.payload_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
-    debug_assert!(value.aim_x.is_finite() && value.aim_x >= -1.0_f32 && value.aim_x <= 1.0_f32, "aim_x out of range [-1.0_f32, 1.0_f32]");
+    schema_stream.write_bytes(&schema_value.payload[..schema_value.payload_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)
+    debug_assert!(schema_value.aim_x.is_finite() && schema_value.aim_x >= -1.0_f32 && schema_value.aim_x <= 1.0_f32, "aim_x out of range [-1.0_f32, 1.0_f32]");
     {
-        let mut compressed_value = value.aim_x;
-        stream.serialize_compressed_float_precomputed(&mut compressed_value, 200, 8, 2.0_f32, -1.0_f32)?; // compressed float [-1.0, 1.0] @ 0.01, constants folded at generation
+        let mut schema_compressed_value = schema_value.aim_x;
+        schema_stream.serialize_compressed_float_precomputed(&mut schema_compressed_value, 200, 8, 2.0_f32, -1.0_f32)?; // compressed float [-1.0, 1.0] @ 0.01, constants folded at generation
     }
-    debug_assert!(value.aim_y.is_finite() && value.aim_y >= -1.0_f32 && value.aim_y <= 1.0_f32, "aim_y out of range [-1.0_f32, 1.0_f32]");
+    debug_assert!(schema_value.aim_y.is_finite() && schema_value.aim_y >= -1.0_f32 && schema_value.aim_y <= 1.0_f32, "aim_y out of range [-1.0_f32, 1.0_f32]");
     {
-        let mut compressed_value = value.aim_y;
-        stream.serialize_compressed_float_precomputed(&mut compressed_value, 200, 8, 2.0_f32, -1.0_f32)?; // compressed float [-1.0, 1.0] @ 0.01, constants folded at generation
+        let mut schema_compressed_value = schema_value.aim_y;
+        schema_stream.serialize_compressed_float_precomputed(&mut schema_compressed_value, 200, 8, 2.0_f32, -1.0_f32)?; // compressed float [-1.0, 1.0] @ 0.01, constants folded at generation
     }
-    debug_assert!(value.aim_z.is_finite() && value.aim_z >= -1.0_f32 && value.aim_z <= 1.0_f32, "aim_z out of range [-1.0_f32, 1.0_f32]");
+    debug_assert!(schema_value.aim_z.is_finite() && schema_value.aim_z >= -1.0_f32 && schema_value.aim_z <= 1.0_f32, "aim_z out of range [-1.0_f32, 1.0_f32]");
     {
-        let mut compressed_value = value.aim_z;
-        stream.serialize_compressed_float_precomputed(&mut compressed_value, 200, 8, 2.0_f32, -1.0_f32)?; // compressed float [-1.0, 1.0] @ 0.01, constants folded at generation
+        let mut schema_compressed_value = schema_value.aim_z;
+        schema_stream.serialize_compressed_float_precomputed(&mut schema_compressed_value, 200, 8, 2.0_f32, -1.0_f32)?; // compressed float [-1.0, 1.0] @ 0.01, constants folded at generation
     }
-    debug_assert!(value.recoil.is_finite(), "recoil is not finite");
-    debug_assert!(value.drift.is_finite(), "drift is not finite");
-    let f0: u64 = u64::from(value.recoil.to_bits());
-    let f1: u64 = value.drift.to_bits();
+    debug_assert!(schema_value.recoil.is_finite(), "recoil is not finite");
+    debug_assert!(schema_value.drift.is_finite(), "drift is not finite");
+    let schema_f0: u64 = u64::from(schema_value.recoil.to_bits());
+    let schema_f1: u64 = schema_value.drift.to_bits();
     // word 0, 32 bits: recoil[0..32]
-    stream.serialize_bits(&mut (f0 as u32), 32)?;
+    schema_stream.serialize_bits(&mut (schema_f0 as u32), 32)?;
     // word 1, 32 bits: drift[0..32]
-    stream.serialize_bits(&mut (f1 as u32), 32)?;
+    schema_stream.serialize_bits(&mut (schema_f1 as u32), 32)?;
     // word 2, 32 bits: drift[32..64]
-    stream.serialize_bits(&mut ((f1 >> 32) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f1 >> 32) as u32), 32)?;
     {
-        let mut raw_value = value.wide_key;
-        stream.serialize_u128(&mut raw_value)?;
+        let mut schema_raw_value = schema_value.wide_key;
+        schema_stream.serialize_u128(&mut schema_raw_value)?;
     }
-    debug_assert!(value.flux >= -1267650600228229401496703205376 && value.flux <= 1267650600228229401496703205376, "flux out of range [-1267650600228229401496703205376, 1267650600228229401496703205376]");
+    debug_assert!(schema_value.flux >= -1267650600228229401496703205376 && schema_value.flux <= 1267650600228229401496703205376, "flux out of range [-1267650600228229401496703205376, 1267650600228229401496703205376]");
     {
-        let mut range_value = value.flux;
-        stream.serialize_int128(&mut range_value, -1267650600228229401496703205376, 1267650600228229401496703205376)?;
+        let mut schema_range_value = schema_value.flux;
+        schema_stream.serialize_int128(&mut schema_range_value, -1267650600228229401496703205376, 1267650600228229401496703205376)?;
     }
-    debug_assert!(value.ping <= 64000, "ping raw value out of range [0, 64000]");
+    debug_assert!(schema_value.ping <= 64000, "ping raw value out of range [0, 64000]");
     {
-        let mut fixed_value = value.ping;
-        stream.serialize_fixed(&mut fixed_value, 8, 8, 0, 250)?;
+        let mut schema_fixed_value = schema_value.ping;
+        schema_stream.serialize_fixed(&mut schema_fixed_value, 8, 8, 0, 250)?;
     }
     {
-        let mut reserved_value: u32 = 0;
-        stream.serialize_bits(&mut reserved_value, 4)?; // reserved(4) — zeros on the wire
+        let mut schema_reserved_value: u32 = 0;
+        schema_stream.serialize_bits(&mut schema_reserved_value, 4)?; // reserved(4) — zeros on the wire
     }
-    stream.serialize_align()?;
-    debug_assert!(value.crc_hint < 1 << 24, "crc_hint above the bits(24) wire width");
-    debug_assert!(value.extra >= 0 && value.extra <= 255, "extra out of range [0, 255]");
-    debug_assert!(value.idle_ticks >= 0 && value.idle_ticks <= 15, "idle_ticks out of range [0, 15]");
-    let f0: u64 = u64::from(value.crc_hint);
-    let f1: u64 = u64::from(value.has_extra);
-    let f2: u64 = u64::from(value.extra as u32);
-    let f3: u64 = u64::from(value.idle_ticks as u32);
+    schema_stream.serialize_align()?;
+    debug_assert!(schema_value.crc_hint < 1 << 24, "crc_hint above the bits(24) wire width");
+    debug_assert!(schema_value.extra >= 0 && schema_value.extra <= 255, "extra out of range [0, 255]");
+    debug_assert!(schema_value.idle_ticks >= 0 && schema_value.idle_ticks <= 15, "idle_ticks out of range [0, 15]");
+    let schema_f0: u64 = u64::from(schema_value.crc_hint);
+    let schema_f1: u64 = u64::from(schema_value.has_extra);
+    let schema_f2: u64 = u64::from(schema_value.extra as u32);
+    let schema_f3: u64 = u64::from(schema_value.idle_ticks as u32);
     // word 0, 32 bits: crc_hint[0..24], has_extra[0..1], extra[0..7]
-    stream.serialize_bits(&mut ((f0 | (f1 << 24) | (f2 << 25)) as u32), 32)?;
+    schema_stream.serialize_bits(&mut ((schema_f0 | (schema_f1 << 24) | (schema_f2 << 25)) as u32), 32)?;
     // word 1, 5 bits: extra[7..8], idle_ticks[0..4]
-    stream.serialize_bits(&mut (((f2 >> 7) | (f3 << 1)) as u32), 5)?;
+    schema_stream.serialize_bits(&mut (((schema_f2 >> 7) | (schema_f3 << 1)) as u32), 5)?;
     Ok(())
 }
 
 #[inline]
-pub fn read_bench_mixed(stream: &mut ReadStream<'_>, value: &mut BenchMixed) -> Result {
-    read_bench_mixed_body(stream, value)?;
-    stream.serialize_end()?;
+pub fn read_bench_mixed(schema_stream: &mut ReadStream<'_>, schema_value: &mut BenchMixed) -> Result {
+    read_bench_mixed_body(schema_stream, schema_value)?;
+    schema_stream.serialize_end()?;
     Ok(())
 }
 
 #[allow(clippy::needless_range_loop)]
 #[inline]
-pub(crate) fn read_bench_mixed_body(stream: &mut ReadStream<'_>, value: &mut BenchMixed) -> Result {
-    let mut c: u32 = 0;
+pub(crate) fn read_bench_mixed_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut BenchMixed) -> Result {
+    let mut schema_c: u32 = 0;
     // word 0, 32 bits: const(49374)[0..16], sequence[0..16]
-    stream.serialize_bits(&mut c, 32)?;
-    let c0 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c0 = u64::from(schema_c);
     // word 1, 32 bits: ack_sequence[0..16], ack_bits[0..16]
-    stream.serialize_bits(&mut c, 32)?;
-    let c1 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c1 = u64::from(schema_c);
     // word 2, 32 bits: ack_bits[16..32], session_id[0..16]
-    stream.serialize_bits(&mut c, 32)?;
-    let c2 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c2 = u64::from(schema_c);
     // word 3, 32 bits: session_id[16..48]
-    stream.serialize_bits(&mut c, 32)?;
-    let c3 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c3 = u64::from(schema_c);
     // word 4, 32 bits: session_id[48..64], client_id[0..16]
-    stream.serialize_bits(&mut c, 32)?;
-    let c4 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c4 = u64::from(schema_c);
     // word 5, 32 bits: client_id[16..32], nonce[0..16]
-    stream.serialize_bits(&mut c, 32)?;
-    let c5 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c5 = u64::from(schema_c);
     // word 6, 32 bits: nonce[16..48]
-    stream.serialize_bits(&mut c, 32)?;
-    let c6 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c6 = u64::from(schema_c);
     // word 7, 16 bits: nonce[48..64]
-    stream.serialize_bits(&mut c, 16)?;
-    let c7 = u64::from(c);
-    let v0: u64 = c0 & 0xffff;
-    if v0 != 49374 {
+    schema_stream.serialize_bits(&mut schema_c, 16)?;
+    let schema_c7 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0xffff;
+    if schema_v0 != 49374 {
         // const(49374, 16): a read rejects any other value (SPEC §4.3)
         return Err(Error::Validation);
     }
-    let v1: u64 = (c0 >> 16) & 0xffff;
-    value.sequence = v1 as u32;
-    let v2: u64 = c1 & 0xffff;
-    value.ack_sequence = v2 as i32;
-    let v3: u64 = ((c1 >> 16) | (c2 << 16)) & 0xffffffff;
-    value.ack_bits = v3 as u32;
-    let v4: u64 = (c2 >> 16) | (c3 << 16) | (c4 << 48);
-    value.session_id = v4;
-    let v5: u64 = ((c4 >> 16) | (c5 << 16)) & 0xffffffff;
-    value.client_id = v5 as u32;
-    let v6: u64 = (c5 >> 16) | (c6 << 16) | (c7 << 48);
-    value.nonce = v6;
-    let mut c: u32 = 0;
+    let schema_v1: u64 = (schema_c0 >> 16) & 0xffff;
+    schema_value.sequence = schema_v1 as u32;
+    let schema_v2: u64 = schema_c1 & 0xffff;
+    schema_value.ack_sequence = schema_v2 as i32;
+    let schema_v3: u64 = ((schema_c1 >> 16) | (schema_c2 << 16)) & 0xffffffff;
+    schema_value.ack_bits = schema_v3 as u32;
+    let schema_v4: u64 = (schema_c2 >> 16) | (schema_c3 << 16) | (schema_c4 << 48);
+    schema_value.session_id = schema_v4;
+    let schema_v5: u64 = ((schema_c4 >> 16) | (schema_c5 << 16)) & 0xffffffff;
+    schema_value.client_id = schema_v5 as u32;
+    let schema_v6: u64 = (schema_c5 >> 16) | (schema_c6 << 16) | (schema_c7 << 48);
+    schema_value.nonce = schema_v6;
+    let mut schema_c: u32 = 0;
     // word 0, 32 bits: world_time[0..32]
-    stream.serialize_bits(&mut c, 32)?;
-    let c0 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c0 = u64::from(schema_c);
     // word 1, 32 bits: world_time[32..41], frame_tick[0..23]
-    stream.serialize_bits(&mut c, 32)?;
-    let c1 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c1 = u64::from(schema_c);
     // word 2, 25 bits: frame_tick[23..48]
-    stream.serialize_bits(&mut c, 25)?;
-    let c2 = u64::from(c);
-    let v0: u64 = (c0 | (c1 << 32)) & 0x1ffffffffff;
-    if v0 > 2000000000000 {
+    schema_stream.serialize_bits(&mut schema_c, 25)?;
+    let schema_c2 = u64::from(schema_c);
+    let schema_v0: u64 = (schema_c0 | (schema_c1 << 32)) & 0x1ffffffffff;
+    if schema_v0 > 2000000000000 {
         return Err(Error::Stream(serialize::Error::ValueOutOfRange));
     }
-    value.world_time = v0.wrapping_add((-1000000000000_i64) as u64) as i64;
-    let v1: u64 = ((c1 >> 9) | (c2 << 23)) & 0xffffffffffff;
-    value.frame_tick = v1;
-    stream.serialize_fixed(&mut value.server_time, 24, 8, 0, 65535)?;
-    stream.serialize_int(&mut value.entities_count, 1, 8)?; // the count guards the loop (§6.3)
-    for i in 0..value.entities_count as usize {
-        read_mixed_entity_body(stream, &mut value.entities[i])?;
+    schema_value.world_time = schema_v0.wrapping_add((-1000000000000_i64) as u64) as i64;
+    let schema_v1: u64 = ((schema_c1 >> 9) | (schema_c2 << 23)) & 0xffffffffffff;
+    schema_value.frame_tick = schema_v1;
+    schema_stream.serialize_fixed(&mut schema_value.server_time, 24, 8, 0, 65535)?;
+    schema_stream.serialize_int(&mut schema_value.entities_count, 1, 8)?; // the count guards the loop (§6.3)
+    for schema_i in 0..schema_value.entities_count as usize {
+        read_mixed_entity_body(schema_stream, &mut schema_value.entities[schema_i])?;
     }
-    stream.serialize_int(&mut value.stats_count, 0, 80)?; // the count guards the loop (§6.3)
-    for i in 0..value.stats_count as usize {
-        read_mixed_stat_body(stream, &mut value.stats[i])?;
+    schema_stream.serialize_int(&mut schema_value.stats_count, 0, 80)?; // the count guards the loop (§6.3)
+    for schema_i in 0..schema_value.stats_count as usize {
+        read_mixed_stat_body(schema_stream, &mut schema_value.stats[schema_i])?;
     }
-    read_mixed_event_body(stream, &mut value.game_event)?;
-    for i in 0..4 {
+    read_mixed_event_body(schema_stream, &mut schema_value.game_event)?;
+    for schema_i in 0..4 {
         {
-            let mut raw_value: u32 = 0;
-            stream.serialize_bits(&mut raw_value, 8)?;
-            value.loadout[i] = raw_value as u8;
+            let mut schema_raw_value: u32 = 0;
+            schema_stream.serialize_bits(&mut schema_raw_value, 8)?;
+            schema_value.loadout[schema_i] = schema_raw_value as u8;
         }
     }
-    stream.serialize_int(&mut value.player_name_length, 0, 15)?; // the length guards the slice (§6.3)
-    stream.serialize_bytes(&mut value.player_name[..value.player_name_length as usize])?;
-    if std::str::from_utf8(&value.player_name[..value.player_name_length as usize]).is_err() {
+    schema_stream.serialize_int(&mut schema_value.player_name_length, 0, 15)?; // the length guards the slice (§6.3)
+    schema_stream.serialize_bytes(&mut schema_value.player_name[..schema_value.player_name_length as usize])?;
+    if std::str::from_utf8(&schema_value.player_name[..schema_value.player_name_length as usize]).is_err() {
         return Err(Error::Validation); // malformed UTF-8 (SPEC §4.7)
     }
-    for i in 0..value.player_name_length as usize {
-        if value.player_name[i] == 0 {
+    for schema_i in 0..schema_value.player_name_length as usize {
+        if schema_value.player_name[schema_i] == 0 {
             return Err(Error::Validation);
         }
     }
-    stream.serialize_int(&mut value.payload_length, 0, 16)?; // the length guards the slice (§6.3)
-    stream.serialize_bytes(&mut value.payload[..value.payload_length as usize])?;
-    stream.serialize_compressed_float_precomputed(&mut value.aim_x, 200, 8, 2.0_f32, -1.0_f32)?; // compressed float [-1.0, 1.0] @ 0.01, constants folded at generation
-    stream.serialize_compressed_float_precomputed(&mut value.aim_y, 200, 8, 2.0_f32, -1.0_f32)?; // compressed float [-1.0, 1.0] @ 0.01, constants folded at generation
-    stream.serialize_compressed_float_precomputed(&mut value.aim_z, 200, 8, 2.0_f32, -1.0_f32)?; // compressed float [-1.0, 1.0] @ 0.01, constants folded at generation
-    let mut c: u32 = 0;
+    schema_stream.serialize_int(&mut schema_value.payload_length, 0, 16)?; // the length guards the slice (§6.3)
+    schema_stream.serialize_bytes(&mut schema_value.payload[..schema_value.payload_length as usize])?;
+    schema_stream.serialize_compressed_float_precomputed(&mut schema_value.aim_x, 200, 8, 2.0_f32, -1.0_f32)?; // compressed float [-1.0, 1.0] @ 0.01, constants folded at generation
+    schema_stream.serialize_compressed_float_precomputed(&mut schema_value.aim_y, 200, 8, 2.0_f32, -1.0_f32)?; // compressed float [-1.0, 1.0] @ 0.01, constants folded at generation
+    schema_stream.serialize_compressed_float_precomputed(&mut schema_value.aim_z, 200, 8, 2.0_f32, -1.0_f32)?; // compressed float [-1.0, 1.0] @ 0.01, constants folded at generation
+    let mut schema_c: u32 = 0;
     // word 0, 32 bits: recoil[0..32]
-    stream.serialize_bits(&mut c, 32)?;
-    let c0 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c0 = u64::from(schema_c);
     // word 1, 32 bits: drift[0..32]
-    stream.serialize_bits(&mut c, 32)?;
-    let c1 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c1 = u64::from(schema_c);
     // word 2, 32 bits: drift[32..64]
-    stream.serialize_bits(&mut c, 32)?;
-    let c2 = u64::from(c);
-    let v0: u64 = c0 & 0xffffffff;
-    if v0 & 0x7f800000 == 0x7f800000 {
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c2 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0xffffffff;
+    if schema_v0 & 0x7f800000 == 0x7f800000 {
         // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
         return Err(Error::Stream(serialize::Error::NonFiniteFloat));
     }
-    value.recoil = f32::from_bits(v0 as u32);
-    let v1: u64 = c1 | (c2 << 32);
-    if v1 & 0x7ff0000000000000 == 0x7ff0000000000000 {
+    schema_value.recoil = f32::from_bits(schema_v0 as u32);
+    let schema_v1: u64 = schema_c1 | (schema_c2 << 32);
+    if schema_v1 & 0x7ff0000000000000 == 0x7ff0000000000000 {
         // a NaN or infinity pattern is refused on its raw bits (SPEC §4.3)
         return Err(Error::Stream(serialize::Error::NonFiniteFloat));
     }
-    value.drift = f64::from_bits(v1);
-    stream.serialize_u128(&mut value.wide_key)?;
-    stream.serialize_int128(&mut value.flux, -1267650600228229401496703205376, 1267650600228229401496703205376)?;
-    stream.serialize_fixed(&mut value.ping, 8, 8, 0, 250)?;
+    schema_value.drift = f64::from_bits(schema_v1);
+    schema_stream.serialize_u128(&mut schema_value.wide_key)?;
+    schema_stream.serialize_int128(&mut schema_value.flux, -1267650600228229401496703205376, 1267650600228229401496703205376)?;
+    schema_stream.serialize_fixed(&mut schema_value.ping, 8, 8, 0, 250)?;
     {
-        let mut reserved_value: u32 = 0;
-        stream.serialize_bits(&mut reserved_value, 4)?;
-        if reserved_value != 0 {
+        let mut schema_reserved_value: u32 = 0;
+        schema_stream.serialize_bits(&mut schema_reserved_value, 4)?;
+        if schema_reserved_value != 0 {
             // reserved(4): a read rejects nonzero (SPEC §4.3)
             return Err(Error::Validation);
         }
     }
-    stream.serialize_align()?; // rejects nonzero padding (SPEC §4.3)
-    let mut c: u32 = 0;
+    schema_stream.serialize_align()?; // rejects nonzero padding (SPEC §4.3)
+    let mut schema_c: u32 = 0;
     // word 0, 32 bits: crc_hint[0..24], has_extra[0..1], extra[0..7]
-    stream.serialize_bits(&mut c, 32)?;
-    let c0 = u64::from(c);
+    schema_stream.serialize_bits(&mut schema_c, 32)?;
+    let schema_c0 = u64::from(schema_c);
     // word 1, 5 bits: extra[7..8], idle_ticks[0..4]
-    stream.serialize_bits(&mut c, 5)?;
-    let c1 = u64::from(c);
-    let v0: u64 = c0 & 0xffffff;
-    value.crc_hint = v0 as u32;
-    let v1: u64 = (c0 >> 24) & 0x1;
-    value.has_extra = v1 != 0;
-    let v2: u64 = ((c0 >> 25) | (c1 << 7)) & 0xff;
-    value.extra = v2 as i32;
-    let v3: u64 = (c1 >> 1) & 0xf;
-    value.idle_ticks = v3 as i32;
+    schema_stream.serialize_bits(&mut schema_c, 5)?;
+    let schema_c1 = u64::from(schema_c);
+    let schema_v0: u64 = schema_c0 & 0xffffff;
+    schema_value.crc_hint = schema_v0 as u32;
+    let schema_v1: u64 = (schema_c0 >> 24) & 0x1;
+    schema_value.has_extra = schema_v1 != 0;
+    let schema_v2: u64 = ((schema_c0 >> 25) | (schema_c1 << 7)) & 0xff;
+    schema_value.extra = schema_v2 as i32;
+    let schema_v3: u64 = (schema_c1 >> 1) & 0xf;
+    schema_value.idle_ticks = schema_v3 as i32;
     Ok(())
 }
 

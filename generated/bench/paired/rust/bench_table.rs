@@ -2442,7 +2442,7 @@ pub fn mixed_entity_json_write(v: &MixedEntity, w: &mut Jw, depth: usize, label:
     json_newline(&mut w.out, depth + 1);
     json_escape("weapon", &mut w.out);
     w.out.push_str(": ");
-    json_escape(mixed_weapon_json_name(v.weapon), &mut w.out);
+    json_escape(MixedWeapon::json_name(v.weapon), &mut w.out);
     if sep { w.out.push(','); }
     sep = true;
     json_newline(&mut w.out, depth + 1);
@@ -3253,7 +3253,7 @@ pub fn mixed_entity_json_fields(jr: &mut Jr, v: &mut MixedEntity, first: Option<
                 seen[10] = true;
                 if jr.peek() == b'"' {
                     if let Some(s) = jr.read_variant_name() {
-                        v.weapon = match mixed_weapon_from_json_name(&s) {
+                        v.weapon = match MixedWeapon::from_json_name(&s) {
                             Some(x) => x,
                             None => { jr.unknown += 1; MixedWeapon::None },
                         };

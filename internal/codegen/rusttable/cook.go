@@ -685,8 +685,8 @@ func (g *gen) emitUnionRow(un *ir.Union) {
 		g.pf("        } else {\n            None\n        }\n    }\n\n")
 		g.pf("    /// Selects `%s`: the ARM AND THE TAG MOVE TOGETHER, which is the only\n", v.Name)
 		g.pf("    /// way the tag moves at all, so the two can never disagree.\n")
-		g.pf("    pub fn set_%s(&mut self, value: %s) {\n", v.Name, arm)
-		g.pf("        self.arms.%s = value; // a WRITE of a union field, which is safe\n", v.Name)
+		g.pf("    pub fn set_%s(&mut self, schema_value: %s) {\n", v.Name, arm)
+		g.pf("        self.arms.%s = schema_value; // a WRITE of a union field, which is safe\n", v.Name)
 		g.pf("        self.tag = %d;\n    }\n\n", i+1)
 	}
 	g.pf("    /// The empty union: tag 0, no arm.\n")

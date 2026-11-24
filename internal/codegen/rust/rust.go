@@ -301,7 +301,7 @@ func (g *gen) emitFile(carriesProtocolId bool) {
 		g.pf("#[derive(Clone, Copy, PartialEq, Eq, Debug)]\n")
 		g.pf("pub enum Error {\n    Stream(serialize::Error),\n    Validation,\n}\n\n")
 		g.pf("impl From<serialize::Error> for Error {\n")
-		g.pf("    fn from(e: serialize::Error) -> Error {\n        Error::Stream(e)\n    }\n}\n\n")
+		g.pf("    fn from(schema_e: serialize::Error) -> Error {\n        Error::Stream(schema_e)\n    }\n}\n\n")
 		g.pf("pub type Result<T = ()> = core::result::Result<T, Error>;\n\n")
 	}
 
@@ -363,12 +363,12 @@ func (g *gen) emitEnumNames(name string, members []string) {
 	g.pf("        enum_name_%s(self)\n    }\n}\n\n", snake)
 
 	g.pf("impl core::fmt::Display for %s {\n", name)
-	g.pf("    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {\n")
-	g.pf("        f.write_str(self.as_str())\n    }\n}\n\n")
+	g.pf("    fn fmt(&self, schema_f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {\n")
+	g.pf("        schema_f.write_str(self.as_str())\n    }\n}\n\n")
 
 	g.pf("/// Debug/log name for any `%s` value, out-of-set included.\n", name)
-	g.pf("pub fn enum_name_%s(value: %s) -> &'static str {\n", snake, name)
-	g.pf("    match value.0 {\n")
+	g.pf("pub fn enum_name_%s(schema_value: %s) -> &'static str {\n", snake, name)
+	g.pf("    match schema_value.0 {\n")
 	g.pf("        0 => \"None\",\n")
 	for i, m := range members {
 		g.pf("        %d => %q,\n", i+1, m)
@@ -489,8 +489,8 @@ func (g *gen) emitFlags(d *ir.Flags) {
 
 	snake := ir.RustSnake(d.Name)
 	g.pf("/// Debug/log name for bit `i` of `%s` — out-of-range bits name as `\"???\"`.\n", d.Name)
-	g.pf("pub fn flag_name_%s(bit: u32) -> &'static str {\n", snake)
-	g.pf("    match bit {\n")
+	g.pf("pub fn flag_name_%s(schema_bit: u32) -> &'static str {\n", snake)
+	g.pf("    match schema_bit {\n")
 	for i, v := range d.Variants {
 		g.pf("        %d => %q,\n", i, v)
 	}
@@ -498,20 +498,20 @@ func (g *gen) emitFlags(d *ir.Flags) {
 
 	g.pf("/// Renders the set bits of `value` as `\"A|B\"` — `\"0\"` for the empty set,\n")
 	g.pf("/// bits past the declared variants as hex.\n")
-	g.pf("pub fn flag_names_%s(value: %s) -> String {\n", snake, d.Name)
-	g.pf("    let mut names = String::new();\n")
+	g.pf("pub fn flag_names_%s(schema_value: %s) -> String {\n", snake, d.Name)
+	g.pf("    let mut schema_names = String::new();\n")
 	for i := range d.Variants {
-		g.pf("    if value & (1 << %d) != 0 {\n", i)
-		g.pf("        if !names.is_empty() {\n            names.push('|');\n        }\n")
-		g.pf("        names.push_str(flag_name_%s(%d));\n    }\n", snake, i)
+		g.pf("    if schema_value & (1 << %d) != 0 {\n", i)
+		g.pf("        if !schema_names.is_empty() {\n            schema_names.push('|');\n        }\n")
+		g.pf("        schema_names.push_str(flag_name_%s(%d));\n    }\n", snake, i)
 	}
 	if len(d.Variants) < 64 { // a 64-variant set has no room for unknown bits
-		g.pf("    if value >> %d != 0 {\n", len(d.Variants))
-		g.pf("        if !names.is_empty() {\n            names.push('|');\n        }\n")
-		g.pf("        names.push_str(&format!(\"{:#x}\", (value >> %d) << %d));\n    }\n", len(d.Variants), len(d.Variants))
+		g.pf("    if schema_value >> %d != 0 {\n", len(d.Variants))
+		g.pf("        if !schema_names.is_empty() {\n            schema_names.push('|');\n        }\n")
+		g.pf("        schema_names.push_str(&format!(\"{:#x}\", (schema_value >> %d) << %d));\n    }\n", len(d.Variants), len(d.Variants))
 	}
-	g.pf("    if names.is_empty() {\n        names.push('0');\n    }\n")
-	g.pf("    names\n}\n\n")
+	g.pf("    if schema_names.is_empty() {\n        schema_names.push('0');\n    }\n")
+	g.pf("    schema_names\n}\n\n")
 }
 
 func (g *gen) emitStruct(d *ir.Struct) {
@@ -763,7 +763,7 @@ func (g *gen) defaultInits(f *ir.Field) []string {
 					bytes = append(bytes, fmt.Sprintf("0x%02x", b))
 				}
 				size := g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "usize")
-				out = append(out, fmt.Sprintf("%s: {\n                let mut buffer = [0; %s];\n                buffer[..%d].copy_from_slice(&[%s]);\n                buffer\n            }",
+				out = append(out, fmt.Sprintf("%s: {\n                let mut schema_buffer = [0; %s];\n                schema_buffer[..%d].copy_from_slice(&[%s]);\n                schema_buffer\n            }",
 					f.Name, size, len(f.DefBytes), strings.Join(bytes, ", ")))
 			}
 			return append(out, fmt.Sprintf("%s_length: %d", f.Name, len(f.DefBytes)))

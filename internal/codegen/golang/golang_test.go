@@ -307,8 +307,8 @@ func TestUnionSurfaceEmitted(t *testing.T) {
 		expectation{"pub struct ShapeType(pub u8);", 1},
 		expectation{"pub const MAX: ShapeType = ShapeType(2);", 1},
 		expectation{"pub enum Shape {", 1},
-		expectation{"pub fn write_shape(stream: &mut WriteStream<'_>, value: &Shape) -> Result {", 1},
-		expectation{"pub fn read_shape(stream: &mut ReadStream<'_>, value: &mut Shape) -> Result {", 1},
+		expectation{"pub fn write_shape(schema_stream: &mut WriteStream<'_>, schema_value: &Shape) -> Result {", 1},
+		expectation{"pub fn read_shape(schema_stream: &mut ReadStream<'_>, schema_value: &mut Shape) -> Result {", 1},
 		expectation{"pub const SHAPE_MAX_BITS: u64 = 18;", 1})
 	csFiles, csErr := csharp.Generate(u)
 	addTarget("C#", csFiles, csErr,
@@ -401,7 +401,7 @@ func TestFlagsCountAndWireBits(t *testing.T) {
 	rustFiles, rustErr := rust.Generate(u)
 	addTarget("Rust", rustFiles, rustErr,
 		expectation{"pub const CAPS_COUNT: i64 = 4;", 1},
-		expectation{"stream.serialize_bits(&mut flags_value, 4)?;", 2})
+		expectation{"schema_stream.serialize_bits(&mut schema_flags_value, 4)?;", 2})
 	csFiles, csErr := csharp.Generate(u)
 	addTarget("C#", csFiles, csErr,
 		expectation{"public const long CapsCount = 4;", 1},

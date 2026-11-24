@@ -290,3 +290,56 @@ func (c *checker) checkPlatformNames() {
 		c.errf(d.DeclPos(), "declaration name %q is %s — rename at the source (SPEC §4.6)", name, why)
 	}
 }
+
+// rustTableFileModuleSuffixes are the modules the Rust table layer writes per
+// schema file, after the file's own lowercased basename: <base>_table.rs and
+// the rest (internal/codegen/rusttable), and <base>_variable.rs, which lib.rs
+// declares as <base>_variable_constants.
+var rustTableFileModuleSuffixes = []string{
+	"_table", "_variable", "_variable_constants", "_records", "_cook",
+	"_fixed", "_fixed_values", "_message", "_block",
+}
+
+// rustTableUnitModules are the modules a Rust crate with tables declares once:
+// the table runtimes and registries (internal/codegen/rusttable) and the
+// public `tables` surface (internal/codegen/rust, TablesModule), and
+// tables_schema, the name lib.rs gives the packet module of a file whose
+// basename lowers to `tables`.
+var rustTableUnitModules = []string{
+	"tables", "table_enums", "variable_runtime", "card_descriptors", "cook_runtime",
+	"fixed_runtime", "block_runtime", "integrity_runtime", "message_runtime",
+	"build_version", "unit_view", "tables_schema",
+}
+
+// RustModuleNames returns every module name the generated Rust crate's
+// lib.rs can declare for a unit of the given schema file basenames, sorted:
+// each file's own module (its lowercased basename) always, and the table
+// layer's modules when the unit declares tables. The Rust emitters' tests
+// hold it to what they write (TestRustModulesAreClaimed in
+// internal/codegen/rusttable).
+func RustModuleNames(bases []string, tables bool) []string {
+	set := map[string]bool{}
+	for _, b := range bases {
+		set[strings.ToLower(b)] = true
+	}
+	if tables {
+		for _, m := range rustTableUnitModules {
+			set[m] = true
+		}
+		for _, b := range bases {
+			for _, s := range rustTableFileModuleSuffixes {
+				set[strings.ToLower(b)+s] = true
+			}
+		}
+	}
+	return slices.Sorted(maps.Keys(set))
+}
+
+// fileBases returns the unit's schema file basenames.
+func (c *checker) fileBases() []string {
+	out := make([]string, 0, len(c.files))
+	for _, f := range c.files {
+		out = append(out, f.Base)
+	}
+	return out
+}

@@ -35,8 +35,8 @@ import (
 func (g *gen) emitReadSpine(name, typ string, body func()) {
 	snake := ir.RustSnake(name)
 	g.pf(readSpineInline)
-	g.pf("pub fn read_%s(stream: &mut ReadStream<'_>, value: &mut %s) -> Result {\n", snake, typ)
-	g.pf("    read_%s_body(stream, value)?;\n", snake)
+	g.pf("pub fn read_%s(schema_stream: &mut ReadStream<'_>, schema_value: &mut %s) -> Result {\n", snake, typ)
+	g.pf("    read_%s_body(schema_stream, schema_value)?;\n", snake)
 	g.emitReadEnd()
 	g.pf("    Ok(())\n}\n\n")
 	saved := g.body
@@ -44,11 +44,11 @@ func (g *gen) emitReadSpine(name, typ string, body func()) {
 	body()
 	inner := g.body.String()
 	g.body = saved
-	if strings.Contains(inner, "for i in 0..") {
+	if strings.Contains(inner, "for schema_i in 0..") {
 		g.pf("#[allow(clippy::needless_range_loop)]\n")
 	}
 	g.pf(readSpineInline)
-	g.pf("pub(crate) fn read_%s_body(stream: &mut ReadStream<'_>, value: &mut %s) -> Result {\n", snake, typ)
+	g.pf("pub(crate) fn read_%s_body(schema_stream: &mut ReadStream<'_>, schema_value: &mut %s) -> Result {\n", snake, typ)
 	g.body.WriteString(inner)
 	g.pf("    Ok(())\n}\n\n")
 }
@@ -58,7 +58,7 @@ func (g *gen) emitReadSpine(name, typ string, body func()) {
 // top-level object and non-zero unused bits in the final byte. It runs once,
 // here, after the object, and never inside a nested type's read.
 func (g *gen) emitReadEnd() {
-	g.pf("    stream.serialize_end()?;\n")
+	g.pf("    schema_stream.serialize_end()?;\n")
 }
 
 // emitUnionFunctions emits the union's bounds and wire pair (SPEC §4.8). The
@@ -76,56 +76,56 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 	g.pf("pub const %s: usize = %d;\n\n", ir.RustConstName(d.Name+"MaxBytes"), ir.MaxBytes(maxBits))
 
 	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(d.Max))
-	g.pf("pub fn write_%s(stream: &mut WriteStream<'_>, value: &%s) -> Result {\n", snake, d.Name)
+	g.pf("pub fn write_%s(schema_stream: &mut WriteStream<'_>, schema_value: &%s) -> Result {\n", snake, d.Name)
 	if d.Max == 0 {
-		g.pf("    let _ = (stream, value); // only None exists; the degenerate tag range [0, 0] costs zero bits (SPEC §4.8)\n")
+		g.pf("    let _ = (schema_stream, schema_value); // only None exists; the degenerate tag range [0, 0] costs zero bits (SPEC §4.8)\n")
 		g.pf("    Ok(())\n}\n\n")
 	} else {
-		g.pf("    match value {\n")
+		g.pf("    match schema_value {\n")
 		g.pf("        %s::None => {\n", d.Name)
-		g.pf("            let mut offset_value: u32 = 0;\n")
-		g.pf("            stream.serialize_bits(&mut offset_value, %d)?;\n", bits)
+		g.pf("            let mut schema_offset_value: u32 = 0;\n")
+		g.pf("            schema_stream.serialize_bits(&mut schema_offset_value, %d)?;\n", bits)
 		g.pf("            Ok(()) // no payload — the tag is the whole wire (SPEC §4.8)\n        }\n")
 		for i, v := range d.Variants {
 			if v.Void() {
 				g.pf("        %s::%s => {\n", d.Name, ir.GoExportName(v.Name))
-				g.pf("            let mut offset_value: u32 = %d;\n", i+1)
-				g.pf("            stream.serialize_bits(&mut offset_value, %d)?;\n", bits)
+				g.pf("            let mut schema_offset_value: u32 = %d;\n", i+1)
+				g.pf("            schema_stream.serialize_bits(&mut schema_offset_value, %d)?;\n", bits)
 				g.pf("            Ok(()) // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n        }\n")
 				continue
 			}
-			g.pf("        %s::%s(arm) => {\n", d.Name, ir.GoExportName(v.Name))
-			g.pf("            let mut offset_value: u32 = %d;\n", i+1)
-			g.pf("            stream.serialize_bits(&mut offset_value, %d)?;\n", bits)
-			g.pf("            write_%s(stream, arm)\n        }\n", ir.RustSnake(v.Type))
+			g.pf("        %s::%s(schema_arm) => {\n", d.Name, ir.GoExportName(v.Name))
+			g.pf("            let mut schema_offset_value: u32 = %d;\n", i+1)
+			g.pf("            schema_stream.serialize_bits(&mut schema_offset_value, %d)?;\n", bits)
+			g.pf("            write_%s(schema_stream, schema_arm)\n        }\n", ir.RustSnake(v.Type))
 		}
 		g.pf("    }\n}\n\n")
 	}
 
 	g.emitReadSpine(d.Name, d.Name, func() {
 		if d.Max == 0 {
-			g.pf("    let _ = stream; // zero wire bits — only None exists (SPEC §4.8)\n")
-			g.pf("    *value = %s::None;\n", d.Name)
+			g.pf("    let _ = schema_stream; // zero wire bits — only None exists (SPEC §4.8)\n")
+			g.pf("    *schema_value = %s::None;\n", d.Name)
 			return
 		}
-		g.pf("    let mut tag_value: i32 = 0;\n")
-		g.pf("    stream.serialize_int(&mut tag_value, 0, %d)?; // rejects a tag above the count (SPEC §4.8)\n", d.Max)
-		g.pf("    match tag_value {\n")
+		g.pf("    let mut schema_tag_value: i32 = 0;\n")
+		g.pf("    schema_stream.serialize_int(&mut schema_tag_value, 0, %d)?; // rejects a tag above the count (SPEC §4.8)\n", d.Max)
+		g.pf("    match schema_tag_value {\n")
 		for i, v := range d.Variants {
 			if v.Void() {
-				g.pf("        %d => *value = %s::%s, // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n", i+1, d.Name, ir.GoExportName(v.Name))
+				g.pf("        %d => *schema_value = %s::%s, // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n", i+1, d.Name, ir.GoExportName(v.Name))
 				continue
 			}
 			g.pf("        %d => {\n", i+1)
 			if v.Ref != nil && g.hasDefaults(v.Ref) {
-				g.pf("            let mut arm = %s::new();\n", v.Type)
+				g.pf("            let mut schema_arm = %s::new();\n", v.Type)
 			} else {
-				g.pf("            let mut arm = %s::default();\n", v.Type)
+				g.pf("            let mut schema_arm = %s::default();\n", v.Type)
 			}
-			g.pf("            read_%s_body(stream, &mut arm)?;\n", ir.RustSnake(v.Type))
-			g.pf("            *value = %s::%s(arm);\n        }\n", d.Name, ir.GoExportName(v.Name))
+			g.pf("            read_%s_body(schema_stream, &mut schema_arm)?;\n", ir.RustSnake(v.Type))
+			g.pf("            *schema_value = %s::%s(schema_arm);\n        }\n", d.Name, ir.GoExportName(v.Name))
 		}
-		g.pf("        _ => *value = %s::None,\n", d.Name)
+		g.pf("        _ => *schema_value = %s::None,\n", d.Name)
 		g.pf("    }\n")
 	})
 }
@@ -159,23 +159,23 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 	saved := g.body
 	g.body = strings.Builder{}
 	if len(st.Items) == 0 {
-		g.pf("    let _ = (stream, value); // empty body — presence is the payload (SPEC §4.6)\n")
+		g.pf("    let _ = (schema_stream, schema_value); // empty body — presence is the payload (SPEC §4.6)\n")
 	} else {
 		g.emitWriteItems(st.Items, "    ")
 	}
 	writeInner := g.body.String()
 	g.body = saved
-	if strings.Contains(writeInner, "for i in 0..") {
+	if strings.Contains(writeInner, "for schema_i in 0..") {
 		g.pf("#[allow(clippy::needless_range_loop)]\n")
 	}
 	g.pf(writeSpineInline)
-	g.pf("pub fn write_%s(stream: &mut WriteStream<'_>, value: &%s) -> Result {\n", snake, st.Name)
+	g.pf("pub fn write_%s(schema_stream: &mut WriteStream<'_>, schema_value: &%s) -> Result {\n", snake, st.Name)
 	g.body.WriteString(writeInner)
 	g.pf("    Ok(())\n}\n\n")
 
 	g.emitReadSpine(st.Name, st.Name, func() {
 		if len(st.Items) == 0 {
-			g.pf("    let _ = (stream, value);\n")
+			g.pf("    let _ = (schema_stream, schema_value);\n")
 		} else {
 			g.emitReadItems(st.Items, "    ")
 		}
@@ -228,13 +228,13 @@ func (g *gen) emitWriteItem(item ir.Item, ind string) {
 		g.emitReservedItem(item, ind, true)
 	case *ir.AlignItem:
 		g.needsStreamTrait = true
-		g.pf("%sstream.serialize_align()?;\n", ind)
+		g.pf("%sschema_stream.serialize_align()?;\n", ind)
 	case *ir.Branch:
 		neg := ""
 		if item.Neg {
 			neg = "!"
 		}
-		g.pf("%sif %svalue.%s {\n", ind, neg, item.Cond)
+		g.pf("%sif %sschema_value.%s {\n", ind, neg, item.Cond)
 		g.emitWriteItems(item.Then, ind+"    ")
 		if item.Else != nil {
 			g.pf("%s} else {\n", ind)
@@ -288,13 +288,13 @@ func (g *gen) emitReadItem(item ir.Item, ind string) {
 		g.emitReservedItem(item, ind, false)
 	case *ir.AlignItem:
 		g.needsStreamTrait = true
-		g.pf("%sstream.serialize_align()?; // rejects nonzero padding (SPEC §4.3)\n", ind)
+		g.pf("%sschema_stream.serialize_align()?; // rejects nonzero padding (SPEC §4.3)\n", ind)
 	case *ir.Branch:
 		neg := ""
 		if item.Neg {
 			neg = "!"
 		}
-		g.pf("%sif %svalue.%s {\n", ind, neg, item.Cond)
+		g.pf("%sif %sschema_value.%s {\n", ind, neg, item.Cond)
 		g.emitReadItems(item.Then, ind+"    ")
 		// the untaken side reads as zero values (SPEC §5)
 		g.emitZeroItems(item.Else, ind+"    ")
@@ -313,23 +313,23 @@ func (g *gen) emitConstItem(item *ir.ConstItem, ind string, writing bool) {
 	g.needsStreamTrait = true
 	if writing {
 		if item.Bits <= 32 {
-			g.pf("%s{\n%s    let mut const_value: u32 = %s;\n", ind, ind, item.Value.String())
-			g.pf("%s    stream.serialize_bits(&mut const_value, %d)?; // const(%s, %d) — SPEC §4.3\n", ind, item.Bits, item.Value.String(), item.Bits)
+			g.pf("%s{\n%s    let mut schema_const_value: u32 = %s;\n", ind, ind, item.Value.String())
+			g.pf("%s    schema_stream.serialize_bits(&mut schema_const_value, %d)?; // const(%s, %d) — SPEC §4.3\n", ind, item.Bits, item.Value.String(), item.Bits)
 		} else {
-			g.pf("%s{\n%s    let mut const_value: u64 = %s;\n", ind, ind, item.Value.String())
-			g.pf("%s    stream.serialize_bits64(&mut const_value, %d)?; // const(%s, %d) — SPEC §4.3\n", ind, item.Bits, item.Value.String(), item.Bits)
+			g.pf("%s{\n%s    let mut schema_const_value: u64 = %s;\n", ind, ind, item.Value.String())
+			g.pf("%s    schema_stream.serialize_bits64(&mut schema_const_value, %d)?; // const(%s, %d) — SPEC §4.3\n", ind, item.Bits, item.Value.String(), item.Bits)
 		}
 		g.pf("%s}\n", ind)
 		return
 	}
 	if item.Bits <= 32 {
-		g.pf("%s{\n%s    let mut const_value: u32 = 0;\n", ind, ind)
-		g.pf("%s    stream.serialize_bits(&mut const_value, %d)?;\n", ind, item.Bits)
+		g.pf("%s{\n%s    let mut schema_const_value: u32 = 0;\n", ind, ind)
+		g.pf("%s    schema_stream.serialize_bits(&mut schema_const_value, %d)?;\n", ind, item.Bits)
 	} else {
-		g.pf("%s{\n%s    let mut const_value: u64 = 0;\n", ind, ind)
-		g.pf("%s    stream.serialize_bits64(&mut const_value, %d)?;\n", ind, item.Bits)
+		g.pf("%s{\n%s    let mut schema_const_value: u64 = 0;\n", ind, ind)
+		g.pf("%s    schema_stream.serialize_bits64(&mut schema_const_value, %d)?;\n", ind, item.Bits)
 	}
-	g.pf("%s    if const_value != %s {\n", ind, item.Value.String())
+	g.pf("%s    if schema_const_value != %s {\n", ind, item.Value.String())
 	g.pf("%s        // const(%s, %d): a read rejects any other value (SPEC §4.3)\n", ind, item.Value.String(), item.Bits)
 	g.pf("%s        return Err(Error::Validation);\n%s    }\n%s}\n", ind, ind, ind)
 }
@@ -339,23 +339,23 @@ func (g *gen) emitReservedItem(item *ir.ReservedItem, ind string, writing bool) 
 	g.needsStreamTrait = true
 	if writing {
 		if item.Bits <= 32 {
-			g.pf("%s{\n%s    let mut reserved_value: u32 = 0;\n", ind, ind)
-			g.pf("%s    stream.serialize_bits(&mut reserved_value, %d)?; // reserved(%d) — zeros on the wire\n", ind, item.Bits, item.Bits)
+			g.pf("%s{\n%s    let mut schema_reserved_value: u32 = 0;\n", ind, ind)
+			g.pf("%s    schema_stream.serialize_bits(&mut schema_reserved_value, %d)?; // reserved(%d) — zeros on the wire\n", ind, item.Bits, item.Bits)
 		} else {
-			g.pf("%s{\n%s    let mut reserved_value: u64 = 0;\n", ind, ind)
-			g.pf("%s    stream.serialize_bits64(&mut reserved_value, %d)?; // reserved(%d) — zeros on the wire\n", ind, item.Bits, item.Bits)
+			g.pf("%s{\n%s    let mut schema_reserved_value: u64 = 0;\n", ind, ind)
+			g.pf("%s    schema_stream.serialize_bits64(&mut schema_reserved_value, %d)?; // reserved(%d) — zeros on the wire\n", ind, item.Bits, item.Bits)
 		}
 		g.pf("%s}\n", ind)
 		return
 	}
 	if item.Bits <= 32 {
-		g.pf("%s{\n%s    let mut reserved_value: u32 = 0;\n", ind, ind)
-		g.pf("%s    stream.serialize_bits(&mut reserved_value, %d)?;\n", ind, item.Bits)
+		g.pf("%s{\n%s    let mut schema_reserved_value: u32 = 0;\n", ind, ind)
+		g.pf("%s    schema_stream.serialize_bits(&mut schema_reserved_value, %d)?;\n", ind, item.Bits)
 	} else {
-		g.pf("%s{\n%s    let mut reserved_value: u64 = 0;\n", ind, ind)
-		g.pf("%s    stream.serialize_bits64(&mut reserved_value, %d)?;\n", ind, item.Bits)
+		g.pf("%s{\n%s    let mut schema_reserved_value: u64 = 0;\n", ind, ind)
+		g.pf("%s    schema_stream.serialize_bits64(&mut schema_reserved_value, %d)?;\n", ind, item.Bits)
 	}
-	g.pf("%s    if reserved_value != 0 {\n", ind)
+	g.pf("%s    if schema_reserved_value != 0 {\n", ind)
 	g.pf("%s        // reserved(%d): a read rejects nonzero (SPEC §4.3)\n", ind, item.Bits)
 	g.pf("%s        return Err(Error::Validation);\n%s    }\n%s}\n", ind, ind, ind)
 }
@@ -376,7 +376,7 @@ func (g *gen) emitZeroItems(items []ir.Item, ind string) {
 }
 
 func (g *gen) emitZeroField(f *ir.Field, ind string) {
-	name := "value." + f.Name
+	name := "schema_value." + f.Name
 	switch {
 	case f.Type.Kind == ir.TString || f.Type.Kind == ir.TBytes:
 		g.pf("%s%s = [0; %s];\n%s%s_length = 0;\n", ind, name, g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "usize"), ind, name)
@@ -465,8 +465,8 @@ func (g *gen) emitWriteRangedFold32(expr string, exprIsU32 bool, lo string, loZe
 	if bits == 0 {
 		return
 	}
-	g.pf("%s{\n%s    let mut offset_value = %s;\n", ind, ind, foldOffset32(expr, exprIsU32, lo, loZero))
-	g.pf("%s    stream.serialize_bits(&mut offset_value, %d)?;%s\n%s}\n", ind, bits, comment, ind)
+	g.pf("%s{\n%s    let mut schema_offset_value = %s;\n", ind, ind, foldOffset32(expr, exprIsU32, lo, loZero))
+	g.pf("%s    schema_stream.serialize_bits(&mut schema_offset_value, %d)?;%s\n%s}\n", ind, bits, comment, ind)
 }
 
 // emitWriteRangedFold64 is the int64 family twin (serialize_int64's encoding).
@@ -488,8 +488,8 @@ func (g *gen) emitWriteRangedFold64(expr string, exprIsU64, exprIsU32 bool, lo s
 	if !loZero {
 		offset = fmt.Sprintf("(%s).wrapping_sub((%s) as u64)", cast, lo)
 	}
-	g.pf("%s{\n%s    let mut offset_value = %s;\n", ind, ind, offset)
-	g.pf("%s    stream.serialize_bits64(&mut offset_value, %d)?;%s\n%s}\n", ind, bits, comment, ind)
+	g.pf("%s{\n%s    let mut schema_offset_value = %s;\n", ind, ind, offset)
+	g.pf("%s    schema_stream.serialize_bits64(&mut schema_offset_value, %d)?;%s\n%s}\n", ind, bits, comment, ind)
 }
 
 // foldArg32 and foldArg64 render a bound for a cast context: a bare literal
@@ -531,7 +531,7 @@ func storageMax(t ir.FieldType) *big.Int {
 // assertLabel names a field in an assert message the way a Rust programmer
 // reads it: the field path without the `value.` receiver prefix.
 func assertLabel(name string) string {
-	return strings.TrimPrefix(name, "value.")
+	return strings.TrimPrefix(name, "schema_value.")
 }
 
 // writeAssert emits one write-side contract assertion.
@@ -622,14 +622,14 @@ func (g *gen) emitWriteFixedRawGuard(name string, f *ir.Field, ind string) {
 
 func (g *gen) emitWriteField(f *ir.Field, ind string) {
 	g.needsStreamTrait = true
-	name := "value." + f.Name
+	name := "schema_value." + f.Name
 	if f.Array != ir.ArrayNone {
 		if g.bulkBytes[f] {
 			// statically byte-aligned [N]u8: the bulk path is byte-identical
 			// to the per-byte loop (its internal align is zero bits here) and
 			// block-copies instead of 8-bit packing; borrowed in place via
 			// WriteStream::write_bytes, as the length-prefixed fields already are
-			g.pf("%sstream.write_bytes(&%s); // byte-aligned [N]u8 — bulk copy, wire-identical to the per-byte loop (infallible: returns () in serialize.rs 2.0.0)\n", ind, name)
+			g.pf("%sschema_stream.write_bytes(&%s); // byte-aligned [N]u8 — bulk copy, wire-identical to the per-byte loop (infallible: returns () in serialize.rs 2.0.0)\n", ind, name)
 			return
 		}
 		if f.Array == ir.ArrayCounted {
@@ -642,11 +642,11 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 				fmt.Sprintf("%s_count out of range [%d, %d]", assertLabel(name), f.ArrayMin, f.ArrayBound))
 			g.emitWriteRangedFold32(name+"_count", false, fmt.Sprintf("%d_i32", f.ArrayMin), f.ArrayMin == 0,
 				ir.BitsRequired(big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound)), " // the count guards the loop (§6.3)", ind)
-			g.pf("%sfor i in 0..%s_count as usize {\n", ind, name)
+			g.pf("%sfor schema_i in 0..%s_count as usize {\n", ind, name)
 		} else {
-			g.pf("%sfor i in 0..%s {\n", ind, g.renderArg(f.ArrayExpr, big.NewInt(f.ArrayBound), "usize"))
+			g.pf("%sfor schema_i in 0..%s {\n", ind, g.renderArg(f.ArrayExpr, big.NewInt(f.ArrayBound), "usize"))
 		}
-		g.emitWriteScalar(f, name+"[i]", ind+"    ")
+		g.emitWriteScalar(f, name+"[schema_i]", ind+"    ")
 		g.pf("%s}\n", ind)
 		return
 	}
@@ -671,8 +671,8 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		// immutably
 		g.emitWriteFixedRawGuard(name, f, ind)
 		lo, hi := g.rangeArgs(f, "i64")
-		g.pf("%s{\n%s    let mut fixed_value = %s;\n", ind, ind, name)
-		g.pf("%s    stream.serialize_fixed(&mut fixed_value, %d, %d, %s, %s)?;\n%s}\n",
+		g.pf("%s{\n%s    let mut schema_fixed_value = %s;\n", ind, ind, name)
+		g.pf("%s    schema_stream.serialize_fixed(&mut schema_fixed_value, %d, %d, %s, %s)?;\n%s}\n",
 			ind, f.Type.IntBits, f.Type.FracBits, lo, hi, ind)
 	case ir.TInt:
 		if f.Type.Width == 128 {
@@ -689,12 +689,12 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 				// trusted in release (the target's family rule)
 				g.emitWriteRangeGuard(name, f, ind)
 				lo, hi := g.rangeArgs(f, "i128")
-				g.pf("%s{\n%s    let mut range_value = %s;\n", ind, ind, name)
-				g.pf("%s    stream.serialize_int128(&mut range_value, %s, %s)?;\n%s}\n", ind, lo, hi, ind)
+				g.pf("%s{\n%s    let mut schema_range_value = %s;\n", ind, ind, name)
+				g.pf("%s    schema_stream.serialize_int128(&mut schema_range_value, %s, %s)?;\n%s}\n", ind, lo, hi, ind)
 			} else {
 				// uint128 is the raw field: 128 bits, low 64-bit half first
-				g.pf("%s{\n%s    let mut raw_value = %s;\n", ind, ind, name)
-				g.pf("%s    stream.serialize_u128(&mut raw_value)?;\n%s}\n", ind, ind)
+				g.pf("%s{\n%s    let mut schema_raw_value = %s;\n", ind, ind, name)
+				g.pf("%s    schema_stream.serialize_u128(&mut schema_raw_value)?;\n%s}\n", ind, ind)
 			}
 			return
 		}
@@ -728,11 +728,11 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 					g.writeAssert(ind, fmt.Sprintf("%s <= %s", name, f.IntMax.String()), msg)
 				}
 				if loVacuous {
-					g.pf("%s{\n%s    let mut offset_value = %s;\n", ind, ind, name)
+					g.pf("%s{\n%s    let mut schema_offset_value = %s;\n", ind, ind, name)
 				} else {
-					g.pf("%s{\n%s    let mut offset_value = %s - %s;\n", ind, ind, name, lo)
+					g.pf("%s{\n%s    let mut schema_offset_value = %s - %s;\n", ind, ind, name, lo)
 				}
-				g.pf("%s    stream.serialize_bits64(&mut offset_value, %d)?;\n%s}\n", ind, ir.BitsRequired(f.IntMin, f.IntMax), ind)
+				g.pf("%s    schema_stream.serialize_bits64(&mut schema_offset_value, %d)?;\n%s}\n", ind, ir.BitsRequired(f.IntMin, f.IntMax), ind)
 			}
 			return
 		}
@@ -744,29 +744,29 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			g.writeAssert(ind, fmt.Sprintf("%s < 1 << %d", name, f.Type.Width),
 				fmt.Sprintf("%s above the bits(%d) wire width", assertLabel(name), f.Type.Width))
 		}
-		g.pf("%s{\n%s    let mut raw_value = %s;\n", ind, ind, name)
+		g.pf("%s{\n%s    let mut schema_raw_value = %s;\n", ind, ind, name)
 		if f.Type.Width <= 32 {
-			g.pf("%s    stream.serialize_bits(&mut raw_value, %d)?;\n%s}\n", ind, f.Type.Width, ind)
+			g.pf("%s    schema_stream.serialize_bits(&mut schema_raw_value, %d)?;\n%s}\n", ind, f.Type.Width, ind)
 		} else {
-			g.pf("%s    stream.serialize_bits64(&mut raw_value, %d)?;\n%s}\n", ind, f.Type.Width, ind)
+			g.pf("%s    schema_stream.serialize_bits64(&mut schema_raw_value, %d)?;\n%s}\n", ind, f.Type.Width, ind)
 		}
 	case ir.TBool:
-		g.pf("%s{\n%s    let mut bool_value = %s;\n", ind, ind, name)
-		g.pf("%s    stream.serialize_bool(&mut bool_value)?;\n%s}\n", ind, ind)
+		g.pf("%s{\n%s    let mut schema_bool_value = %s;\n", ind, ind, name)
+		g.pf("%s    schema_stream.serialize_bool(&mut schema_bool_value)?;\n%s}\n", ind, ind)
 	case ir.TFloat32:
 		if f.HasFloatRange {
 			g.writeCompressedFloatRangeAssert(name, f, ind)
 			// a temp so the wire quantization cannot write back into the input
-			g.pf("%s{\n%s    let mut compressed_value = %s;\n", ind, ind, name)
-			g.pf("%s    stream.serialize_compressed_float_precomputed(&mut compressed_value, %s)?;%s\n%s}\n",
+			g.pf("%s{\n%s    let mut schema_compressed_value = %s;\n", ind, ind, name)
+			g.pf("%s    schema_stream.serialize_compressed_float_precomputed(&mut schema_compressed_value, %s)?;%s\n%s}\n",
 				ind, compressedFloatArgs(f), compressedFloatNote(f), ind)
 			return
 		}
-		g.pf("%s{\n%s    let mut float_value = %s;\n", ind, ind, name)
-		g.pf("%s    stream.serialize_f32(&mut float_value)?;\n%s}\n", ind, ind)
+		g.pf("%s{\n%s    let mut schema_float_value = %s;\n", ind, ind, name)
+		g.pf("%s    schema_stream.serialize_f32(&mut schema_float_value)?;\n%s}\n", ind, ind)
 	case ir.TFloat64:
-		g.pf("%s{\n%s    let mut float_value = %s;\n", ind, ind, name)
-		g.pf("%s    stream.serialize_f64(&mut float_value)?;\n%s}\n", ind, ind)
+		g.pf("%s{\n%s    let mut schema_float_value = %s;\n", ind, ind, name)
+		g.pf("%s    schema_stream.serialize_f64(&mut schema_float_value)?;\n%s}\n", ind, ind)
 	case ir.TString, ir.TBytes:
 		// length in [0, N], align, then the used bytes — the classic
 		// serialize_string framing over a buffer of N + 1 (SPEC §4.7).
@@ -787,7 +787,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		// takes &[u8] (same wire as serialize_bytes — align, then the block copy),
 		// where the unified &mut signature forced a whole-array copy into a mutable
 		// local first — 256 B per chat, 2 KB per block, visible in perf
-		g.pf("%sstream.write_bytes(&%s[..%s_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)\n", ind, name, name)
+		g.pf("%sschema_stream.write_bytes(&%s[..%s_length as usize]); // borrowed in place: the write side never mutates (infallible: returns () in serialize.rs 2.0.0)\n", ind, name, name)
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:
@@ -802,9 +802,9 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		case *ir.Flags:
 			g.emitWriteFlagsValue(name, ref.WireBits, ind)
 		case *ir.Struct:
-			g.pf("%swrite_%s(stream, &%s)?;\n", ind, ir.RustSnake(f.Type.Name), name)
+			g.pf("%swrite_%s(schema_stream, &%s)?;\n", ind, ir.RustSnake(f.Type.Name), name)
 		case *ir.Union:
-			g.pf("%swrite_%s(stream, &%s)?;\n", ind, ir.RustSnake(f.Type.Name), name)
+			g.pf("%swrite_%s(schema_stream, &%s)?;\n", ind, ir.RustSnake(f.Type.Name), name)
 		}
 	}
 }
@@ -850,11 +850,11 @@ func compressedFloatNote(f *ir.Field) string {
 func (g *gen) emitWriteBareInt(f *ir.Field, name, ind string) {
 	if f.Type.Width == 64 {
 		if f.Type.Signed {
-			g.pf("%s{\n%s    let mut raw_value = %s as u64;\n", ind, ind, name)
+			g.pf("%s{\n%s    let mut schema_raw_value = %s as u64;\n", ind, ind, name)
 		} else {
-			g.pf("%s{\n%s    let mut raw_value = %s;\n", ind, ind, name)
+			g.pf("%s{\n%s    let mut schema_raw_value = %s;\n", ind, ind, name)
 		}
-		g.pf("%s    stream.serialize_bits64(&mut raw_value, 64)?;\n%s}\n", ind, ind)
+		g.pf("%s    schema_stream.serialize_bits64(&mut schema_raw_value, 64)?;\n%s}\n", ind, ind)
 		return
 	}
 	cast := name + " as u32"
@@ -863,8 +863,8 @@ func (g *gen) emitWriteBareInt(f *ir.Field, name, ind string) {
 	} else if f.Type.Signed && f.Type.Width < 32 {
 		cast = fmt32Cast(f.Type.Width, name)
 	}
-	g.pf("%s{\n%s    let mut raw_value = %s;\n", ind, ind, cast)
-	g.pf("%s    stream.serialize_bits(&mut raw_value, %d)?;\n%s}\n", ind, f.Type.Width, ind)
+	g.pf("%s{\n%s    let mut schema_raw_value = %s;\n", ind, ind, cast)
+	g.pf("%s    schema_stream.serialize_bits(&mut schema_raw_value, %d)?;\n%s}\n", ind, f.Type.Width, ind)
 }
 
 // fmt32Cast renders the value-to-u32 conversion for a sub-32 signed bare
@@ -875,20 +875,20 @@ func fmt32Cast(width int, name string) string {
 
 func (g *gen) emitReadField(f *ir.Field, ind string) {
 	g.needsStreamTrait = true
-	name := "value." + f.Name
+	name := "schema_value." + f.Name
 	if f.Array != ir.ArrayNone {
 		if g.bulkBytes[f] {
-			g.pf("%sstream.serialize_bytes(&mut %s)?; // byte-aligned [N]u8 — bulk copy, wire-identical to the per-byte loop\n", ind, name)
+			g.pf("%sschema_stream.serialize_bytes(&mut %s)?; // byte-aligned [N]u8 — bulk copy, wire-identical to the per-byte loop\n", ind, name)
 			return
 		}
 		if f.Array == ir.ArrayCounted {
 			bound := g.renderArg(f.ArrayExpr, big.NewInt(f.ArrayBound), "i32")
-			g.pf("%sstream.serialize_int(&mut %s_count, %d, %s)?; // the count guards the loop (§6.3)\n", ind, name, f.ArrayMin, bound)
-			g.pf("%sfor i in 0..%s_count as usize {\n", ind, name)
+			g.pf("%sschema_stream.serialize_int(&mut %s_count, %d, %s)?; // the count guards the loop (§6.3)\n", ind, name, f.ArrayMin, bound)
+			g.pf("%sfor schema_i in 0..%s_count as usize {\n", ind, name)
 		} else {
-			g.pf("%sfor i in 0..%s {\n", ind, g.renderArg(f.ArrayExpr, big.NewInt(f.ArrayBound), "usize"))
+			g.pf("%sfor schema_i in 0..%s {\n", ind, g.renderArg(f.ArrayExpr, big.NewInt(f.ArrayBound), "usize"))
 		}
-		g.emitReadScalar(f, name+"[i]", ind+"    ")
+		g.emitReadScalar(f, name+"[schema_i]", ind+"    ")
 		g.pf("%s}\n", ind)
 		return
 	}
@@ -909,7 +909,7 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 		// the runtime validates the raw offset against the raw bounds and
 		// rejects — never clamps — Error::ValueOutOfRange on a hostile stream
 		lo, hi := g.rangeArgs(f, "i64")
-		g.pf("%sstream.serialize_fixed(&mut %s, %d, %d, %s, %s)?;\n",
+		g.pf("%sschema_stream.serialize_fixed(&mut %s, %d, %d, %s, %s)?;\n",
 			ind, name, f.Type.IntBits, f.Type.FracBits, lo, hi)
 	case ir.TInt:
 		if f.Type.Width == 128 {
@@ -921,9 +921,9 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 				}
 				// rejects a decoded offset beyond max - min (reject, never clamp)
 				lo, hi := g.rangeArgs(f, "i128")
-				g.pf("%sstream.serialize_int128(&mut %s, %s, %s)?;\n", ind, name, lo, hi)
+				g.pf("%sschema_stream.serialize_int128(&mut %s, %s, %s)?;\n", ind, name, lo, hi)
 			} else {
-				g.pf("%sstream.serialize_u128(&mut %s)?;\n", ind, name)
+				g.pf("%sschema_stream.serialize_u128(&mut %s)?;\n", ind, name)
 			}
 			return
 		}
@@ -938,36 +938,36 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 			case "int32":
 				lo, hi := g.rangeArgs(f, "i32")
 				if f.Type.Signed && f.Type.Width == 32 {
-					g.pf("%sstream.serialize_int(&mut %s, %s, %s)?;\n", ind, name, lo, hi)
+					g.pf("%sschema_stream.serialize_int(&mut %s, %s, %s)?;\n", ind, name, lo, hi)
 					return
 				}
-				g.pf("%s{\n%s    let mut range_value: i32 = 0;\n", ind, ind)
-				g.pf("%s    stream.serialize_int(&mut range_value, %s, %s)?;\n", ind, lo, hi)
-				g.pf("%s    %s = range_value as %s;\n%s}\n", ind, name, g.rustFieldType(f.Type), ind)
+				g.pf("%s{\n%s    let mut schema_range_value: i32 = 0;\n", ind, ind)
+				g.pf("%s    schema_stream.serialize_int(&mut schema_range_value, %s, %s)?;\n", ind, lo, hi)
+				g.pf("%s    %s = schema_range_value as %s;\n%s}\n", ind, name, g.rustFieldType(f.Type), ind)
 			case "int64":
 				lo, hi := g.rangeArgs(f, "i64")
 				if f.Type.Signed && f.Type.Width == 64 {
-					g.pf("%sstream.serialize_int64(&mut %s, %s, %s)?;\n", ind, name, lo, hi)
+					g.pf("%sschema_stream.serialize_int64(&mut %s, %s, %s)?;\n", ind, name, lo, hi)
 					return
 				}
-				g.pf("%s{\n%s    let mut range_value: i64 = 0;\n", ind, ind)
-				g.pf("%s    stream.serialize_int64(&mut range_value, %s, %s)?;\n", ind, lo, hi)
-				g.pf("%s    %s = range_value as %s;\n%s}\n", ind, name, g.rustFieldType(f.Type), ind)
+				g.pf("%s{\n%s    let mut schema_range_value: i64 = 0;\n", ind, ind)
+				g.pf("%s    schema_stream.serialize_int64(&mut schema_range_value, %s, %s)?;\n", ind, lo, hi)
+				g.pf("%s    %s = schema_range_value as %s;\n%s}\n", ind, name, g.rustFieldType(f.Type), ind)
 			default:
 				lo, _ := g.rangeArgs(f, "u64")
 				diff := new(big.Int).Sub(f.IntMax, f.IntMin)
-				g.pf("%s{\n%s    let mut offset_value: u64 = 0;\n", ind, ind)
-				g.pf("%s    stream.serialize_bits64(&mut offset_value, %d)?;\n", ind, ir.BitsRequired(f.IntMin, f.IntMax))
+				g.pf("%s{\n%s    let mut schema_offset_value: u64 = 0;\n", ind, ind)
+				g.pf("%s    schema_stream.serialize_bits64(&mut schema_offset_value, %d)?;\n", ind, ir.BitsRequired(f.IntMin, f.IntMax))
 				if diff.Cmp(maxUint64) != 0 {
 					// a full-width diff cannot overflow its own read — elided
-					g.pf("%s    if offset_value > %s {\n", ind, diff.String())
+					g.pf("%s    if schema_offset_value > %s {\n", ind, diff.String())
 					g.pf("%s        // a read rejects out-of-range (SPEC §5)\n", ind)
 					g.pf("%s        return Err(Error::Validation);\n%s    }\n", ind, ind)
 				}
 				if f.IntMin.Sign() == 0 {
-					g.pf("%s    %s = offset_value;\n%s}\n", ind, name, ind)
+					g.pf("%s    %s = schema_offset_value;\n%s}\n", ind, name, ind)
 				} else {
-					g.pf("%s    %s = offset_value + %s;\n%s}\n", ind, name, lo, ind)
+					g.pf("%s    %s = schema_offset_value + %s;\n%s}\n", ind, name, lo, ind)
 				}
 			}
 			return
@@ -975,46 +975,46 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 		g.emitReadBareInt(f, name, ind)
 	case ir.TBits:
 		if f.Type.Width <= 32 {
-			g.pf("%sstream.serialize_bits(&mut %s, %d)?;\n", ind, name, f.Type.Width)
+			g.pf("%sschema_stream.serialize_bits(&mut %s, %d)?;\n", ind, name, f.Type.Width)
 		} else {
-			g.pf("%sstream.serialize_bits64(&mut %s, %d)?;\n", ind, name, f.Type.Width)
+			g.pf("%sschema_stream.serialize_bits64(&mut %s, %d)?;\n", ind, name, f.Type.Width)
 		}
 	case ir.TBool:
-		g.pf("%sstream.serialize_bool(&mut %s)?;\n", ind, name)
+		g.pf("%sschema_stream.serialize_bool(&mut %s)?;\n", ind, name)
 	case ir.TFloat32:
 		if f.HasFloatRange {
-			g.pf("%sstream.serialize_compressed_float_precomputed(&mut %s, %s)?;%s\n",
+			g.pf("%sschema_stream.serialize_compressed_float_precomputed(&mut %s, %s)?;%s\n",
 				ind, name, compressedFloatArgs(f), compressedFloatNote(f))
 			return
 		}
-		g.pf("%sstream.serialize_f32(&mut %s)?;\n", ind, name)
+		g.pf("%sschema_stream.serialize_f32(&mut %s)?;\n", ind, name)
 	case ir.TFloat64:
-		g.pf("%sstream.serialize_f64(&mut %s)?;\n", ind, name)
+		g.pf("%sschema_stream.serialize_f64(&mut %s)?;\n", ind, name)
 	case ir.TString, ir.TBytes:
-		g.pf("%sstream.serialize_int(&mut %s_length, 0, %s)?; // the length guards the slice (§6.3)\n",
+		g.pf("%sschema_stream.serialize_int(&mut %s_length, 0, %s)?; // the length guards the slice (§6.3)\n",
 			ind, name, g.renderArg(f.Type.SizeExpr, big.NewInt(f.Type.Size), "i32"))
-		g.pf("%sstream.serialize_bytes(&mut %s[..%s_length as usize])?;\n", ind, name, name)
+		g.pf("%sschema_stream.serialize_bytes(&mut %s[..%s_length as usize])?;\n", ind, name, name)
 		if f.Type.Kind == ir.TString {
 			g.pf("%sif std::str::from_utf8(&%s[..%s_length as usize]).is_err() {\n", ind, name, name)
 			g.pf("%s    return Err(Error::Validation); // malformed UTF-8 (SPEC §4.7)\n%s}\n", ind, ind)
 			// the interior-null rule is generated-code validation (SPEC §4.7);
 			// `?` above already surfaced a truncated stream as the stream's own
 			// error, so this verdict only ever judges bytes that arrived
-			g.pf("%sfor i in 0..%s_length as usize {\n", ind, name)
-			g.pf("%s    if %s[i] == 0 {\n%s        return Err(Error::Validation);\n%s    }\n%s}\n", ind, name, ind, ind, ind)
+			g.pf("%sfor schema_i in 0..%s_length as usize {\n", ind, name)
+			g.pf("%s    if %s[schema_i] == 0 {\n%s        return Err(Error::Validation);\n%s    }\n%s}\n", ind, name, ind, ind, ind)
 		}
 	case ir.TNamed:
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Enum:
-			g.pf("%s{\n%s    let mut enum_value: i32 = 0;\n", ind, ind)
-			g.pf("%s    stream.serialize_int(&mut enum_value, 0, %d)?;\n", ind, ref.Max)
-			g.pf("%s    %s = %s(enum_value as %s);\n%s}\n", ind, name, f.Type.Name, rustUint(ref.StorageBits), ind)
+			g.pf("%s{\n%s    let mut schema_enum_value: i32 = 0;\n", ind, ind)
+			g.pf("%s    schema_stream.serialize_int(&mut schema_enum_value, 0, %d)?;\n", ind, ref.Max)
+			g.pf("%s    %s = %s(schema_enum_value as %s);\n%s}\n", ind, name, f.Type.Name, rustUint(ref.StorageBits), ind)
 		case *ir.Flags:
 			g.emitReadFlags(name, f.Type.Name, ref.WireBits, ind)
 		case *ir.Struct:
-			g.pf("%sread_%s_body(stream, &mut %s)?;\n", ind, ir.RustSnake(f.Type.Name), name)
+			g.pf("%sread_%s_body(schema_stream, &mut %s)?;\n", ind, ir.RustSnake(f.Type.Name), name)
 		case *ir.Union:
-			g.pf("%sread_%s_body(stream, &mut %s)?;\n", ind, ir.RustSnake(f.Type.Name), name)
+			g.pf("%sread_%s_body(schema_stream, &mut %s)?;\n", ind, ir.RustSnake(f.Type.Name), name)
 		}
 	}
 }
@@ -1022,38 +1022,38 @@ func (g *gen) emitReadScalar(f *ir.Field, name, ind string) {
 func (g *gen) emitReadBareInt(f *ir.Field, name, ind string) {
 	if f.Type.Width == 64 {
 		if f.Type.Signed {
-			g.pf("%s{\n%s    let mut raw_value: u64 = 0;\n", ind, ind)
-			g.pf("%s    stream.serialize_bits64(&mut raw_value, 64)?;\n", ind)
-			g.pf("%s    %s = raw_value as i64;\n%s}\n", ind, name, ind)
+			g.pf("%s{\n%s    let mut schema_raw_value: u64 = 0;\n", ind, ind)
+			g.pf("%s    schema_stream.serialize_bits64(&mut schema_raw_value, 64)?;\n", ind)
+			g.pf("%s    %s = schema_raw_value as i64;\n%s}\n", ind, name, ind)
 			return
 		}
-		g.pf("%sstream.serialize_bits64(&mut %s, 64)?;\n", ind, name)
+		g.pf("%sschema_stream.serialize_bits64(&mut %s, 64)?;\n", ind, name)
 		return
 	}
 	if !f.Type.Signed && f.Type.Width == 32 {
-		g.pf("%sstream.serialize_bits(&mut %s, 32)?;\n", ind, name)
+		g.pf("%sschema_stream.serialize_bits(&mut %s, 32)?;\n", ind, name)
 		return
 	}
-	g.pf("%s{\n%s    let mut raw_value: u32 = 0;\n", ind, ind)
-	g.pf("%s    stream.serialize_bits(&mut raw_value, %d)?;\n", ind, f.Type.Width)
+	g.pf("%s{\n%s    let mut schema_raw_value: u32 = 0;\n", ind, ind)
+	g.pf("%s    schema_stream.serialize_bits(&mut schema_raw_value, %d)?;\n", ind, f.Type.Width)
 	if f.Type.Signed && f.Type.Width < 32 {
 		// back through the same-width unsigned so the sign bit lands right
-		g.pf("%s    %s = raw_value as u%d as i%d;\n%s}\n", ind, name, f.Type.Width, f.Type.Width, ind)
+		g.pf("%s    %s = schema_raw_value as u%d as i%d;\n%s}\n", ind, name, f.Type.Width, f.Type.Width, ind)
 		return
 	}
-	g.pf("%s    %s = raw_value as %s;\n%s}\n", ind, name, g.rustFieldType(f.Type), ind)
+	g.pf("%s    %s = schema_raw_value as %s;\n%s}\n", ind, name, g.rustFieldType(f.Type), ind)
 }
 
 // emitReadFlags reads a flags value through an unsigned temp; past 32 wire
 // bits the u64 storage takes the read directly.
 func (g *gen) emitReadFlags(name, typeName string, wireBits int, ind string) {
 	if wireBits <= 32 {
-		g.pf("%s{\n%s    let mut flags_value: u32 = 0;\n", ind, ind)
-		g.pf("%s    stream.serialize_bits(&mut flags_value, %d)?;\n", ind, wireBits)
-		g.pf("%s    %s = flags_value as %s;\n%s}\n", ind, name, typeName, ind)
+		g.pf("%s{\n%s    let mut schema_flags_value: u32 = 0;\n", ind, ind)
+		g.pf("%s    schema_stream.serialize_bits(&mut schema_flags_value, %d)?;\n", ind, wireBits)
+		g.pf("%s    %s = schema_flags_value as %s;\n%s}\n", ind, name, typeName, ind)
 		return
 	}
-	g.pf("%sstream.serialize_bits64(&mut %s, %d)?;\n", ind, name, wireBits)
+	g.pf("%sschema_stream.serialize_bits64(&mut %s, %d)?;\n", ind, name, wireBits)
 }
 
 // emitWriteFlagsValue is the write half used by emitWriteScalar. Storage is
@@ -1065,12 +1065,12 @@ func (g *gen) emitWriteFlagsValue(name string, wireBits int, ind string) {
 			fmt.Sprintf("%s has a mask bit above the %d-bit wire width", assertLabel(name), wireBits))
 	}
 	if wireBits <= 32 {
-		g.pf("%s{\n%s    let mut flags_value = %s as u32;\n", ind, ind, name)
-		g.pf("%s    stream.serialize_bits(&mut flags_value, %d)?;\n%s}\n", ind, wireBits, ind)
+		g.pf("%s{\n%s    let mut schema_flags_value = %s as u32;\n", ind, ind, name)
+		g.pf("%s    schema_stream.serialize_bits(&mut schema_flags_value, %d)?;\n%s}\n", ind, wireBits, ind)
 		return
 	}
-	g.pf("%s{\n%s    let mut flags_value = %s;\n", ind, ind, name)
-	g.pf("%s    stream.serialize_bits64(&mut flags_value, %d)?;\n%s}\n", ind, wireBits, ind)
+	g.pf("%s{\n%s    let mut schema_flags_value = %s;\n", ind, ind, name)
+	g.pf("%s    schema_stream.serialize_bits64(&mut schema_flags_value, %d)?;\n%s}\n", ind, wireBits, ind)
 }
 
 // rustIntLitStorage renders a degenerate-range materialization literal in the

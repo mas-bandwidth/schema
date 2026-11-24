@@ -3598,8 +3598,9 @@ var reservedLanguages = []struct {
 		append cap clear close complex copy delete imag len make max min new panic print println real recover
 		any bool comparable complex64 complex128 error float32 float64 int int8 int16 int32 int64 rune string
 		uint uint8 uint16 uint32 uint64 uintptr iota nil`},
+	// gen is reserved in Rust 2024, the edition the generated crate builds with.
 	{"Rust", []string{"rust"}, `abstract as async await become box break char const continue crate do dyn
-		else enum extern false final fn for if impl in let loop macro match mod move mut
+		else enum extern false final fn for gen if impl in let loop macro match mod move mut
 		override priv pub ref return self Self static struct super trait true try type typeof
 		unsafe unsized use virtual where while yield`},
 	// Java's keywords and literals, the contextual words a simple identifier
@@ -4279,6 +4280,23 @@ func (c *checker) checkClaimedNames() {
 			}
 			add(ir.RustConstName(gen), rustConstantClaim(gen), unitPos)
 		}
+	}
+
+	// THE RUST CRATE'S MODULE NAMES. lib.rs declares one module per schema
+	// file (its lowercased basename), the table layer's per-file modules beside
+	// it, the table runtimes, and the public `tables` module, all at the crate
+	// root, where a declaration is glob re-exported too. A declaration named
+	// like one of them is E0255 where lib.rs re-exports it by name, and is
+	// silently shadowed by the module everywhere else, so the crate root loses
+	// the user's type. Claimed for every target (SPEC §4.6): a file's own module
+	// always, and the table layer's modules in a unit with tables, as the
+	// table runtime's other names are (ClaimedWithATable, above). Last of the
+	// unit-level claims, so a name one of them already holds stays theirs.
+	for _, gen := range RustModuleNames(c.fileBases(), len(c.tables) > 0) {
+		if _, taken := registry[gen]; taken {
+			continue // a unit name claimed above (unit_view, serialize, announce): one module, never a user's collision
+		}
+		add(gen, "a module of the generated Rust crate (lib.rs)", unitPos)
 	}
 
 	declNames := make([]string, 0, len(c.astDecls))
