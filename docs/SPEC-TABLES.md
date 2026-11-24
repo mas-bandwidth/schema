@@ -2028,7 +2028,9 @@ never in the packet header, and in JavaScript in `<Base>.js` importing each
 `table` arm class its constructor instantiates (`new <Arm>()`) from the unit
 home that defines it (`./<Home>Table.js` when the union is in the unit's
 fixed-form closure, `./<Home>Variable.js` otherwise, and nothing it does not
-construct); a `type`
+construct), and in Dart by the table emitters themselves (the fixed form's
+`<Base>Fixed.dart` declares its storage class with a plain-int tag, since the
+packet emitter declares no class for it); a `type`
 body that holds one is refused by name, as is such a union that no table
 reaches (§11). A table holding one has no BLOCK form, by §19's standing rule
 for every union in a block closure. The packet wire's encoding of a general

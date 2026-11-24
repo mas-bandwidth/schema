@@ -242,6 +242,15 @@ func fixedDeclaringFile(u *ir.Unit, name string) string {
 // class keeps its tag in a plain int. Every other union is the packet
 // emitter's class, whose tag is the <Union>Type extension type.
 func unionStorageIsLocal(un *ir.Union) bool {
+	// A TABLE-CLOSURE UNION (ir.Union.TableClosureOnly: an arm that is an
+	// enum, a flags mask, a pointer, an array, a scalar, a union or a table)
+	// assembles beside the decl stream, so internal/codegen/dart never meets
+	// it and declares no class for it: its storage is this emitter's. An enum
+	// arm (`union U { mode kind }` reached from a table) once fell through to
+	// the packet class and left U, zeroU and UType undefined in <Base>Fixed.dart.
+	if un.TableClosureOnly() {
+		return true
+	}
 	for _, v := range un.Variants {
 		if v.F == nil {
 			return true // §2.6: fixed storage owns the tag-only arm, with no member.
