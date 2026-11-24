@@ -60,7 +60,7 @@ func readShardRecord(file string) (shardRecord, error) {
 		return r, err
 	}
 	if err := json.Unmarshal(b, &r); err != nil {
-		return r, fmt.Errorf("%s: %v", file, err)
+		return r, fmt.Errorf("%s: %w", file, err)
 	}
 	return r, nil
 }
