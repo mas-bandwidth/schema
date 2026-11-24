@@ -129,8 +129,9 @@ defmodule AllocAudit do
   @unit_packages %{
     "scalars" => "scalardemo",
     "tblscalars2" => "scalardemo2",
-    "widelist" => "widelistdemo"
-      "tblsurf" => "surfaces",
+    "widelist" => "widelistdemo",
+    "tblsurf" => "surfaces",
+    "packetunions" => "tblpacketunions"
   }
 
   defp table_module(unit) do

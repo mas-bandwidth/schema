@@ -1782,13 +1782,18 @@ defmodule Bench.Table do
     item = Map.fetch!(f, :item)
 
     Enum.map(Map.fetch!(f, :key_names), fn name ->
-      atom = String.to_atom(fixed_class_snake(name))
-
       raw =
-        cond do
-          Map.has_key?(value, name) -> Map.get(value, name)
-          Map.has_key?(value, atom) -> Map.get(value, atom)
-          true -> raise ArgumentError, "missing keyed slot #{name}"
+        case Map.fetch(value, name) do
+          {:ok, slot} ->
+            slot
+
+          :error ->
+            atom = String.to_atom(fixed_class_snake(name))
+
+            case Map.fetch(value, atom) do
+              {:ok, slot} -> slot
+              :error -> raise ArgumentError, "missing keyed slot #{name}"
+            end
         end
 
       fixed_class_value_from_table(item, raw)
@@ -2197,20 +2202,26 @@ defmodule Bench.Table do
   # strings, see map_values). Any other spelling ("07", "+7", "x") or a key
   # that names the same integer as another ("7" beside 7) is refused, so no
   # key is written twice and none raises.
-  defp check_map_keys(%{key_kind: 12}, values) do
-    keys =
-      Enum.map(values, fn {key, _v} ->
-        if not is_binary(key), do: throw(:invalid_value)
-        key
-      end)
+  # A native map already guarantees unique string keys. Walk the keys
+  # for type checking without building a key list or a second key set.
+  defp check_map_keys(%{key_kind: 12}, values)
+       when is_map(values) and not is_struct(values),
+       do: :maps.fold(&check_string_map_key/3, :ok, values)
 
-    if length(Enum.uniq(keys)) != length(keys), do: throw(:invalid_value)
+  defp check_map_keys(%{key_kind: 12}, values) do
+    Enum.reduce(values, %{}, fn {key, _value}, seen ->
+      if not is_binary(key) or Map.has_key?(seen, key), do: throw(:invalid_value)
+      Map.put(seen, key, true)
+    end)
   end
 
   defp check_map_keys(_f, values) do
     ints = Enum.map(values, fn {key, _v} -> map_int_key(key) end)
     if length(Enum.uniq(ints)) != length(ints), do: throw(:invalid_value)
   end
+
+  defp check_string_map_key(key, _value, :ok) when is_binary(key), do: :ok
+  defp check_string_map_key(_key, _value, :ok), do: throw(:invalid_value)
 
   defp map_int_key(key) when is_integer(key), do: key
 
@@ -4351,7 +4362,7 @@ defmodule Bench.Table do
   # A positional fixed array updates its received prefix; an enum-keyed
   # occurrence updates only the slots it names. Other fields replace normally.
   defp put_wire_field(value, %{t: :list, fixed_array: n} = f, incoming) do
-    prior = Map.get(value, f.name) || List.duplicate(json_element_default(f), n)
+    prior = Map.get(value, f.name) || List.duplicate(element_default(f), n)
     Map.put(value, f.name, incoming ++ Enum.drop(prior, length(incoming)))
   end
 
@@ -4835,7 +4846,7 @@ defmodule Bench.Table do
     v =
       cond do
         is_integer(n) and is_list(v) and length(v) < n ->
-          v ++ List.duplicate(json_element_default(a), n - length(v))
+          v ++ List.duplicate(element_default(a), n - length(v))
 
         Map.get(a, :t) == :keyed and is_map(v) ->
           Map.merge(keyed_defaults(a), v)
@@ -5350,11 +5361,16 @@ defmodule Bench.Table do
   # EVERY field it writes to its declaration, required or not, and every
   # union arm payload and array element with it, before a byte is built.
   defp validate_record(desc, value) do
-    value = Map.merge(defaults(desc), value)
-
     Enum.each(desc.fields, fn f ->
       if field_active?(f, desc, value) do
-        v = Map.get(value, f.name, f.default)
+        name = f.name
+
+        v =
+          case value do
+            %{^name => present} -> present
+            _ -> field_default(f)
+          end
+
         if Map.get(f, :text_list, false), do: validate_text_list(f, v)
         write_value(f, v)
       end
@@ -5592,20 +5608,29 @@ defmodule Bench.Table do
   # member's own defaults, as the reference's prefill does, so every body takes
   # one shape whether the wire named its fields or not.
   defp defaults(desc) do
-    Map.new(desc.fields, fn f ->
-      value =
-        case f do
-          %{optional: true} -> Map.get(f, :default)
-          %{t: :table, elem: name} -> defaults(Map.fetch!(@tables, name))
-          %{t: :list, fixed_array: n} -> List.duplicate(json_element_default(f), n)
-          %{t: :list, min_count: m} when m > 0 -> List.duplicate(json_element_default(f), m)
-          %{t: :keyed} -> keyed_defaults(f)
-          _ -> Map.get(f, :default)
-        end
-
-      {f.name, value}
-    end)
+    Map.new(desc.fields, fn f -> {f.name, field_default(f)} end)
   end
+
+  defp field_default(%{optional: true} = f), do: Map.get(f, :default)
+  defp field_default(%{t: :table, elem: name}), do: defaults(Map.fetch!(@tables, name))
+
+  defp field_default(%{t: :list, fixed_array: n} = f),
+    do: List.duplicate(element_default(f), n)
+
+  defp field_default(%{t: :list, min_count: m} = f) when m > 0,
+    do: List.duplicate(element_default(f), m)
+
+  defp field_default(%{t: :keyed} = f), do: keyed_defaults(f)
+  defp field_default(f), do: Map.get(f, :default)
+
+  # Missing slots keep their element default in both binary and text forms.
+  defp element_default(%{elem_kind: 13, elem: name}), do: defaults(Map.fetch!(@tables, name))
+  defp element_default(%{elem_default: value}), do: value
+  defp element_default(%{elem_kind: kind}) when kind in [15, 17, 30], do: nil
+  defp element_default(%{elem_kind: 12}), do: ""
+  defp element_default(%{elem_kind: 1}), do: false
+  defp element_default(%{elem_kind: kind}) when kind in [10, 11], do: 0.0
+  defp element_default(_f), do: 0
 
   defp keyed_defaults(f) do
     def_val =
@@ -7408,7 +7433,7 @@ defmodule Bench.Table do
             case json_read_list_elem(f, e, report) do
               {:skip, report} ->
                 json_skip_value(e)
-                {[json_element_default(f) | acc], placed + 1, report}
+                {[element_default(f) | acc], placed + 1, report}
 
               {v, report} ->
                 {[v | acc], placed + 1, report}
@@ -7424,7 +7449,7 @@ defmodule Bench.Table do
     list =
       case Map.get(f, :fixed_array) do
         n when is_integer(n) and length(list) < n ->
-          list ++ List.duplicate(json_element_default(f), n - length(list))
+          list ++ List.duplicate(element_default(f), n - length(list))
 
         _ ->
           list
@@ -7495,15 +7520,6 @@ defmodule Bench.Table do
   defp json_present_default(%{t: :bool}), do: false
   defp json_present_default(%{t: :float}), do: 0.0
   defp json_present_default(_f), do: 0
-
-  # Array elements are positional: a rejected element keeps its default slot.
-  defp json_element_default(%{elem_kind: 13, elem: name}), do: defaults(Map.fetch!(@tables, name))
-  defp json_element_default(%{elem_default: value}), do: value
-  defp json_element_default(%{elem_kind: kind}) when kind in [15, 17, 30], do: nil
-  defp json_element_default(%{elem_kind: 12}), do: ""
-  defp json_element_default(%{elem_kind: 1}), do: false
-  defp json_element_default(%{elem_kind: kind}) when kind in [10, 11], do: 0.0
-  defp json_element_default(_f), do: 0
 
   # json_text_zero is the one rule for a zero in text (docs/SPEC-TABLES.md
   # §16.2, "A ZERO IN TEXT TAKES ONE RULE IN EVERY FORM: NO READ STORES IT"):
