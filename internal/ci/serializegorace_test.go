@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
 // TestSerializeGoRuntimeWhenTheSiblingArrivesMidRun holds the Go runtime rule
@@ -55,6 +56,7 @@ func TestSerializeGoRuntimeWhenTheSiblingArrivesMidRun(t *testing.T) {
 		}
 		args := append([]string{"--no-print-directory", "-j1", "-f", "Makefile", "-f", "probe.mk"}, vars...)
 		args = append(args, goals...)
+		testinputs.Make(t)
 		cmd := exec.Command("make", args...)
 		cmd.Dir = makeRoot
 		cmd.Env = append(stripEnv(os.Environ(),

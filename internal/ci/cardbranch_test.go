@@ -176,8 +176,8 @@ func TestCardBranchPullRequestsSkipCI(t *testing.T) {
 		name string
 		wfs  map[string]string
 	}{
-		{"a job without the skip", plant("cla.yml", "    if: "+cardBranchSkipForkAware+"\n", "")},
-		{"a fork's branch name skips the CAA", plant("cla.yml", "    if: "+cardBranchSkipForkAware+"\n", "    if: "+cardBranchSkip+"\n")},
+		{"a job without the skip", plant("cla.yml", "    if: "+cardBranchSkipForkAware+" && (", "    if: (")},
+		{"a fork's branch name skips the CAA", plant("cla.yml", "    if: "+cardBranchSkipForkAware+" && (", "    if: "+cardBranchSkip+" && (")},
 		{"a skip dropped from a combined if", plant("ci-fast.yml", "    if: "+cardBranchSkip+" && (", "    if: (")},
 		{"a prefix that also skips the group branch", plant("roadmap.yml", "'sprint/'", "'sprint'")},
 		{"a prefix that skips no card branch", plant("ci-fast.yml", "'sprint/'", "'sprint-group/'")},

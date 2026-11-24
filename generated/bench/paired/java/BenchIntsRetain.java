@@ -21,6 +21,7 @@ public final class BenchIntsRetain {
         if (report == null) {
             report = new TableVariable.Report();
         }
+        report.reset();
         if (retain == null) {
             return BenchIntsVariable.load(data, report);
         }

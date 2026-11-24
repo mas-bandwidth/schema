@@ -17,6 +17,7 @@ package dart
 import (
 	"fmt"
 	"math/big"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/ir"
@@ -919,10 +920,19 @@ func (g *gen) emitReadFloat32Bits(name, ind string) {
 	g.pf("%s%s = Schema.f32[0];\n", ind, name)
 }
 
-// f32lit renders the float32 rounding of v as a Dart double literal (exact —
-// f32 is a subset of f64).
+// f32lit renders the float32 rounding of v as a Dart double literal whose
+// value IS that float32 (f32 is a subset of f64): the shortest decimal of the
+// float64 value. The float32's own shortest decimal is not that: "3.3" names
+// float32(3.3) only to a float32 parser, and Dart parses it to the double 3.3,
+// so the folded decode subtracted the declaration's min and not its float32
+// and read 2,535 of the 11,001 steps of [-3.3, 7.7] @ 0.001 one bit off
+// (SPEC §4.6, "The decode is normative"; test/verify-bitphase cfdecode.go).
 func f32lit(v float64) string {
-	return formatFloat32(float64(float32(v)))
+	s := strconv.FormatFloat(float64(float32(v)), 'g', -1, 64)
+	if !strings.ContainsAny(s, ".eE") {
+		s += ".0"
+	}
+	return s
 }
 
 // emitWriteCompressedFloat is the family's two-rounding float32 quantization

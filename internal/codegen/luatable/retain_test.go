@@ -241,6 +241,11 @@ print(hex(text2))
 		t.Fatal(err)
 	}
 	raw := strings.TrimRight(string(luarun.Run(t, dir, "main.lua", map[string][]byte{"wire": wire})), "\n")
+	if raw == "refused" {
+		// the probe's refusal: "refused" and three empty lines, which the
+		// trim above folds to the verdict alone
+		return "refused", nil, nil, nil
+	}
 	lines := strings.Split(raw, "\n")
 	if len(lines) != 4 {
 		t.Fatalf("%s: unexpected output %q", r.name, raw)
@@ -267,7 +272,7 @@ print(hex(text2))
 	return verdict, jsonText, saved, reloadJSON
 }
 
-// TestLuaRetainConformanceSurface exercises all eight retain conformance rows
+// TestLuaRetainConformanceSurface exercises every retain conformance row
 // (both the 7-field derived manifest line format and the 8-field MANIFEST.txt
 // line format) through LoadRetain, ToJson, MeasureRetain, SaveRetain, and
 // reload via Load, holding the Lua output to the Go tablewire reference and
@@ -279,8 +284,21 @@ func TestLuaRetainConformanceSurface(t *testing.T) {
 	manifest := filepath.Join(repo, "testdata", "conformance", "tables", "MANIFEST.txt")
 	units := manifestUnits(t, manifest)
 	rows := loadRetainConformanceRows(t, manifest)
-	if len(rows) != 13 {
-		t.Fatalf("got %d retain rows, want 13", len(rows))
+	// every retain row of MANIFEST.txt, counted apart from the parser so a row
+	// the parser drops is red; the count is the manifest's, never a hand copy
+	// (a pinned 13 went red when 1e841ae41e added the fourteenth row)
+	raw, err := os.ReadFile(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := 0
+	for line := range strings.SplitSeq(string(raw), "\n") {
+		if f := strings.Fields(line); len(f) > 0 && f[0] == "retain" {
+			want++
+		}
+	}
+	if want == 0 || len(rows) != want {
+		t.Fatalf("got %d retain rows, MANIFEST.txt holds %d", len(rows), want)
 	}
 	// Also verify parsing the 7-field derived manifest lines (where the save
 	// column is withheld by the conformance harness).
@@ -324,6 +342,32 @@ func TestLuaRetainConformanceSurface(t *testing.T) {
 			bu := built[r.unit]
 			u, files := bu.u, bu.files
 			verdict, jsonText, saved, reloadJSON := runLuaRetainConformanceRow(t, repo, u, files, r)
+			if r.save == "refused" {
+				// A MUST-REFUSE ROW (testdata/conformance/tables/FORMAT.md,
+				// "retain"; the varevo 2-hop rows carry kind 31, held by name
+				// and never written, R17): the Lua read refuses, and so does
+				// the Go reference at the row's capacities
+				if verdict != "refused" {
+					t.Fatalf("%s: verdict = %q, want refused", r.name, verdict)
+				}
+				wire, err := os.ReadFile(filepath.Join(repo, r.wire))
+				if err != nil {
+					t.Fatal(err)
+				}
+				idCap := 1 << 17
+				if r.ids != "full" {
+					if idCap, err = strconv.Atoi(r.ids); err != nil {
+						t.Fatal(err)
+					}
+				}
+				m := tabletext.NewModel(u)
+				var rep tabletext.Report
+				store := &tablewire.Retain{Capacity: 1 << 20, IdCapacity: idCap}
+				if ok, err := tablewire.DecodeRetain(m, m.New(m.Lookup(r.root)), wire, store, &rep); err == nil && ok {
+					t.Fatalf("%s: the manifest says refused and the Go reference reads it", r.name)
+				}
+				return
+			}
 			if verdict != "read" {
 				t.Fatalf("%s: verdict = %q, want read", r.name, verdict)
 			}
