@@ -225,8 +225,16 @@ jobs:
       # go-test-touched is gated on it, never on the pick step's own list, which
       # an embed-only diff leaves empty while its owner is selected
       packages: ${{ steps.rows.outputs.packages }}
-      # the diff's own Go packages, what golangci-lint-fast lints
-      lint_packages: ${{ steps.pick.outputs.packages }}
+      # what golangci-lint-fast lints, govet included: the same finalized
+      # selection, so the dependents of changed non-test source (every module
+      # package whose build or tests import one, transitively) are linted
+      # beside the packages the diff names. There is no whole-module vet job in
+      # this file (see golangci-lint-fast), so a change that breaks govet only
+      # in a package that imports it is red here, on the pull request. Measured
+      # on the main pushes, which select almost every package: 174 packages
+      # linted in 44 s on amd-3 (job 138079627930), 138 in 67 s on hetzner2
+      # at load 74 (job 138177481271); an ir/ diff selects 105 of 179.
+      lint_packages: ${{ steps.rows.outputs.packages }}
       legs: ${{ steps.pick.outputs.legs }}
       verify_legs: ${{ steps.pick.outputs.verify_legs }}
       clean_legs: ${{ steps.pick.outputs.clean_legs }}
@@ -1035,7 +1043,8 @@ jobs:
             -provides "short platform tool:make tool:git tool:sh" "$PGROUP_GO_TEST_JSON"
 
   # NO WHOLE-MODULE GO VET HERE (2026-11-24). golangci-lint-fast runs govet
-  # (.golangci.yml: default: standard) over the touched packages, so a
+  # (.golangci.yml: default: standard) over the touched packages and every
+  # package that depends on them (plan: lint_packages), so a
   # separate `go vet ./...` type-checked the whole tree on every pull request
   # to repeat it, and was cancelled at the two-minute cap on loaded runners
   # (vision-6, run 45314325769: 114 s). The whole-module vet runs in
