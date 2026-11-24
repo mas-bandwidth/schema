@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -88,6 +89,7 @@ func TestFastPlanSelectsNewLegScaffold(t *testing.T) {
 					t.Fatalf("case names %s, which the tree does not hold: %v", f, err)
 				}
 			}
+			testinputs.Files(t, ".github/workflows/ci-fast.yml")
 			cmd := testproc.Command(t, "bash", "-euo", "pipefail", "-c", script.String())
 			cmd.Dir = root
 			cmd.Env = append(scriptEnv(os.Environ()), "files="+strings.Join(c.Files, "\n"))
