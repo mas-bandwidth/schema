@@ -27,7 +27,7 @@ import (
 )
 
 // surfaces, in the order the matrix prints them.
-var surfaces = []string{"wire", "message", "message-prior", "report", "framing", "retain", "retain-save", "json-read", "json-write", "json-hostile",
+var surfaces = []string{"wire", "message", "message-prior", "report", "framing", "retain", "retain-save", "retain-refusal", "json-read", "json-write", "json-hostile",
 	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery", "cook-forgery",
 	"write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json",
 	"write-refusal-cook", "write-refusal-block", "announce", "read-into", "json-write-into"}
@@ -75,6 +75,7 @@ const (
 	outcomeFail   = "fail"
 	outcomeAbsent = "absent" // `<case>.absent`, a missing feature
 	outcomeNamed  = "named"  // the row's named writer refusal (§2.5)
+	outcomeOwed   = "owed"   // a retain-refusal case its ledger line owes (retainrefusal.go)
 )
 
 // mark records what one case came to.
@@ -304,6 +305,9 @@ func deriveManifest(m *Manifest, path string) error {
 			capacity = "short"
 		}
 		fmt.Fprintf(&b, "retain %s %s %s %s %s %s\n", rc.Name, rc.Unit, rc.Root, rc.Wire, capacity, ids)
+	}
+	for _, rr := range m.RetainRefusals {
+		b.WriteString(rr.derivedLine())
 	}
 	for _, r := range m.Reports {
 		fmt.Fprintf(&b, "report %s %s %s %s\n", r.Name, r.Unit, r.Root, r.Wire)
@@ -569,6 +573,20 @@ func expectations(m *Manifest, surface string, reports map[string]string, jsonDi
 				return nil, err
 			}
 			out = append(out, expectation{name: rc.Name, want: want})
+		}
+	case "retain-refusal":
+		// THE STORE AFTER A REFUSED RETAINING READ (retainrefusal.go): the
+		// first save carries the retained records, the second carries none
+		for _, rr := range m.RetainRefusals {
+			before, err := os.ReadFile(rr.Before())
+			if err != nil {
+				return nil, fmt.Errorf("%s: the engine's first save: %w — run: make conformance-generate", rr.Name, err)
+			}
+			after, err := os.ReadFile(rr.After())
+			if err != nil {
+				return nil, fmt.Errorf("%s: the engine's second save: %w — run: make conformance-generate", rr.Name, err)
+			}
+			out = append(out, expectation{name: rr.Name, want: before, save: after})
 		}
 	case "json-write":
 		for _, i := range m.Instances {
@@ -906,6 +924,10 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 		return false, fmt.Errorf("the corpus has %d must-refuse row(s) that cannot fail:\n  %s", len(problems), strings.Join(problems, "\n  "))
 	}
 
+	owedRR, err := loadRetainRefusalLedger(manifestPath, m)
+	if err != nil {
+		return false, err
+	}
 	wireRefusals := map[string]Instance{}
 	for _, instance := range m.Instances {
 		if instance.WireRefused {
@@ -1022,6 +1044,9 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 								probe := &result{total: len(want[sr.surface])}
 								for _, e := range want[sr.surface] {
 									if notAsked.has(sr.surface, e.name) {
+										continue
+									}
+									if _, owed := owedRR.owes(d.lang, sr.surface, e.name); owed {
 										continue
 									}
 									scoreAnswer(d.lang, sr.surface, sr.out, e, wireRefusals[e.name], probe)
@@ -1150,7 +1175,11 @@ func runWith(w io.Writer, m *Manifest, manifestPath, jsonDir, reportsPath, drive
 					continue
 				}
 				pass, named, missing := r.pass, r.named, r.missing
-				scoreAnswer(d.lang, s, out, e, wireRefusals[e.name], r)
+				if why, owed := owedRR.owes(d.lang, s, e.name); owed {
+					scoreOwedRetainRefusal(w, d.lang, filepath.Join(out, e.name), e, why, r)
+				} else {
+					scoreAnswer(d.lang, s, out, e, wireRefusals[e.name], r)
+				}
 				switch {
 				case r.pass > pass:
 					r.verdict(e.name, "pass")
@@ -1507,6 +1536,10 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 	answer := filepath.Join(out, e.name)
 	if surface == "message-prior" {
 		scorePrior(answer, e, r)
+		return
+	}
+	if surface == "retain-refusal" {
+		scoreRetainRefusal(lang, answer, e, r)
 		return
 	}
 	if e.batch != nil {

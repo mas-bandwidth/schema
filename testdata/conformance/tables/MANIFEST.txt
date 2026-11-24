@@ -16,6 +16,7 @@
 #            instance both ways.
 #
 #   retain   <case> <unit> <root> <wire> <capacity> <ids> <counters> <save lost> <save>
+#   retain-refusal <case> <unit> <root> <first wire> <refused wire>
 #            one RETAIN-UNKNOWN round trip (§6.6): the wire, the two capacities
 #            the caller declares, the counters the LOAD owes and the one the
 #            SAVE adds, and the file the pair writes back. The byte capacity is
@@ -1118,6 +1119,22 @@ retain retain_union_arm    tblrt1 Node testdata/wire/tables/retain_excluded_4.bi
 retain retain_keyed_slot   tblrt1 Node testdata/wire/tables/retain_excluded_5.bin full  full testdata/wire/tables/retain_excluded_5_save.bin
 retain retain_node_record  tblrt1 Node testdata/wire/tables/retain_rt3.bin        full  full testdata/wire/tables/retain_rt3_save.bin
 
+# RETAINED STATE AFTER A REFUSAL (docs/SPEC-TABLES.md §6.6: "the next
+# LoadRetain into it resets both stores"). One store through a sequence: the
+# first wire reads and retains, the second is refused, and a save of the first
+# value through the same store then writes its known fields alone. The frame
+# row is refused before any body is walked (form byte 3 at a variable root);
+# the body row is refused at items[1].hits = 101 (max 100), after items[0]
+# carried an unknown the walk may already have captured. The short, empty and
+# form-two rows are refused at the frame too: two bytes with no id table, no
+# form byte at all, and the message form where a file is read.
+#   retain-refusal <case> <unit> <root> <first wire> <refused wire>
+retain-refusal retain_refusal_frame tblrt1 Node testdata/wire/tables/retain_rt2.bin testdata/conformance/tables/wire/retain_refusal_frame.bin
+retain-refusal retain_refusal_body  tblrt1 Node testdata/wire/tables/retain_rt2.bin testdata/conformance/tables/wire/retain_refusal_body.bin
+retain-refusal retain_refusal_short tblrt1 Node testdata/wire/tables/retain_rt2.bin testdata/conformance/tables/wire/retain_refusal_short.bin
+retain-refusal retain_refusal_empty tblrt1 Node testdata/wire/tables/retain_rt2.bin testdata/conformance/tables/wire/retain_refusal_empty.bin
+retain-refusal retain_refusal_form_two tblrt1 Node testdata/wire/tables/retain_rt2.bin testdata/conformance/tables/wire/retain_refusal_form_two.bin
+
 
 # Unbounded arrays: existing C++ wire pins now shared by every port.
 unit listdemo tables/lists
@@ -1744,6 +1761,9 @@ framing varevo_kind31_escape    tblvarevo1 EvoDoc testdata/wire/tables/framing/v
 framing varevo_kind31_truncated tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_truncated.bin refused -
 report  varevo_kind31_report    tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin
 retain  varevo_kind31_retain    tblvarevo1 EvoDoc testdata/wire/tables/framing/varevo_kind31_escape.bin    full full refused
+# the same sequence at the evolution set: v1 retains the fields v3 adds, then a v3 wire
+# whose kind 31 rides at the root is refused into the same store
+retain-refusal retain_refusal_kind31 tblvarevo1 EvoDoc testdata/conformance/tables/wire/varevo_v3_rollback.bin testdata/wire/tables/varevo_2hop_v3_kind31.bin
 
 # Form-2 Message Connection Vocabulary Drift (v1 -> v3 and v3 -> v1 multi-message batch skipping unknown alert mid-batch):
 connection varevo1_conn tblvarevo1 0x2a3013e4855f8026 testdata/wire/tables/varevo1_conn.bin

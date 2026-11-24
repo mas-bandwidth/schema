@@ -25,3 +25,5 @@ int conformance_retain(const uint8_t * wire,int64_t bytes,int short_buffer,int64
  ok=1;
  done:free(retain.bytes);free(retain.ids);free(region);if(!ok){free(*output);*output=NULL;free(*text);*text=NULL;}return ok;
 }
+
+CONFORMANCE_RETAIN_REFUSAL(conformance_retain_refusal_rt1,tblrt1,node)
