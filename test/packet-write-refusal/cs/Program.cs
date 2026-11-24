@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using Packetwriterefusal;
+using Packetrefusal;
 using Serialize;
 
 internal sealed class AssertionTrapped : Exception { }
@@ -17,20 +17,23 @@ internal sealed class ThrowingListener : TraceListener
 
 // write-refusal-packet, C# leg (docs/SPEC.md §5.1). C# is an assert leg: the
 // check is a Debug.Assert, answered here through a throwing TraceListener, and
-// a Release build carries no write check by design. Each case starts from the
-// type's default value and changes ONE field, the same values the Go leg's
-// probe uses (test/conformance/harness/writerefusalpacket_test.go).
+// a Release build carries no write check by design. The one row list is
+// test/conformance/write-refusal-packet/rows.txt (<name> <verdict> <op> <arg>),
+// keyed here by name; each row starts from the type's default value and
+// changes ONE field.
 static class Program
 {
     delegate void Setter(ref PacketWriteRefusal v);
 
     static readonly Dictionary<string, Setter> Cases = new Dictionary<string, Setter>
     {
+        // write-refusal-packet setters: begin
         ["scalar_high"] = (ref PacketWriteRefusal v) => { v.Scalar = 11; },
         ["scalar_low"] = (ref PacketWriteRefusal v) => { v.Scalar = -1; },
         ["scalar_at_max"] = (ref PacketWriteRefusal v) => { v.Scalar = 10; },
         ["scalar_at_min"] = (ref PacketWriteRefusal v) => { v.Scalar = 0; },
         ["bits_wide"] = (ref PacketWriteRefusal v) => { v.Narrow = 200; },
+        ["bits_just_wide"] = (ref PacketWriteRefusal v) => { v.Narrow = 128; },
         ["bits_at_max"] = (ref PacketWriteRefusal v) => { v.Narrow = 127; },
         ["enum_high"] = (ref PacketWriteRefusal v) => { v.Grade = (Grade)4; },
         ["enum_at_max"] = (ref PacketWriteRefusal v) => { v.Grade = Schema.GradeMax; },
@@ -51,6 +54,7 @@ static class Program
         ["flags_wide"] = (ref PacketWriteRefusal v) => { v.Perks = (Perk)(1ul << 3); },
         ["flags_wide_high"] = (ref PacketWriteRefusal v) => { v.Perks = (Perk)(1ul << 40); },
         ["flags_at_max"] = (ref PacketWriteRefusal v) => { v.Perks = Perk.Shield | Perk.Boost | Perk.Cloak; },
+        // write-refusal-packet setters: end
     };
 
     // Cases C# cannot hold, named so that a case neither run nor named fails.
@@ -67,14 +71,25 @@ static class Program
         {
             string line = raw.Trim();
             if (line.Length == 0 || line.StartsWith("#")) continue;
-            string[] parts = line.Split('|');
-            string name = parts[0].Trim();
-            string verdict = parts[1].Trim();
-            seen.Add(name);
+            string[] parts = line.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length != 4 || (parts[1] != "refused" && parts[1] != "wrote"))
+            {
+                Console.WriteLine("FAILED: write-refusal-packet: a row is not <name> refused|wrote <op> <arg>: " + line);
+                failed++;
+                continue;
+            }
+            string name = parts[0];
+            string verdict = parts[1];
+            if (!seen.Add(name))
+            {
+                Console.WriteLine("FAILED: write-refusal-packet " + name + ": named twice in rows.txt");
+                failed++;
+                continue;
+            }
             if (NotRepresentable.Contains(name)) { passed++; continue; }
             if (!Cases.TryGetValue(name, out Setter? set))
             {
-                Console.WriteLine("FAILED: write-refusal-packet " + name + ": neither run nor named not representable in C#");
+                Console.WriteLine("FAILED: write-refusal-packet " + name + ": a row in rows.txt this driver has no setter for");
                 failed++;
                 continue;
             }
@@ -115,9 +130,9 @@ static class Program
         }
         foreach (string known in Cases.Keys)
         {
-            if (!seen.Contains(known)) { Console.WriteLine("FAILED: write-refusal-packet " + known + ": driver case absent from cases.txt"); failed++; }
+            if (!seen.Contains(known)) { Console.WriteLine("FAILED: write-refusal-packet " + known + ": a setter this driver runs that rows.txt does not name"); failed++; }
         }
-        Console.WriteLine("write-refusal-packet C#: " + passed + " passed, " + failed + " failed");
+        Console.WriteLine("write-refusal-packet C#: " + seen.Count + " rows, " + passed + " passed, " + failed + " failed");
         return failed == 0 ? 0 : 1;
     }
 }

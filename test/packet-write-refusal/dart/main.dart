@@ -1,10 +1,10 @@
 // The write-refusal-packet surface on the Dart leg (docs/SPEC.md §5.1): every
-// case starts from the type's default value, changes ONE field, and runs the
-// packet writer. Dart is an assert leg, so the driver runs under
+// row of the one shared list, test/conformance/write-refusal-packet/rows.txt
+// (<name> <verdict> <op> <arg>, keyed here by name), starts from the type's
+// default value, changes ONE field, and runs the packet writer. Dart is an assert leg, so the driver runs under
 // --enable-asserts and an AssertionError is the refusal; a written twin must
-// be accepted and read back. A case in cases.txt this driver neither runs nor
-// names not representable fails, and so does a driver case missing from the
-// file.
+// be accepted and read back. A row this driver has no setter for fails, and so
+// does a setter it runs that the file does not name.
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -20,11 +20,13 @@ void fail(String what) {
 typedef Setter = void Function(PacketWriteRefusal v);
 
 final Map<String, Setter> setters = {
+  // write-refusal-packet setters: begin
   'scalar_high': (v) => v.scalar = 11,
   'scalar_low': (v) => v.scalar = -1,
   'scalar_at_max': (v) => v.scalar = 10,
   'scalar_at_min': (v) => v.scalar = 0,
   'bits_wide': (v) => v.narrow = 200,
+  'bits_just_wide': (v) => v.narrow = 128,
   'bits_at_max': (v) => v.narrow = 127,
   'enum_high': (v) => v.grade = Grade(4),
   'enum_at_max': (v) => v.grade = Grade.gold,
@@ -54,6 +56,7 @@ final Map<String, Setter> setters = {
   'flags_wide': (v) => v.perks = 1 << 3,
   'flags_wide_high': (v) => v.perks = 1 << 40,
   'flags_at_max': (v) => v.perks = perkShield | perkBoost | perkCloak,
+  // write-refusal-packet setters: end
 };
 
 // Cases the leg cannot build. Dart's enum and union tag are extension types
@@ -65,14 +68,21 @@ void main(List<String> args) {
   for (var line in File(args[0]).readAsLinesSync()) {
     line = line.trim();
     if (line.isEmpty || line.startsWith('#')) continue;
-    final parts = line.split('|');
-    final name = parts[0].trim();
-    final verdict = parts[1].trim();
-    seen.add(name);
+    final parts = line.split(RegExp(r'\s+'));
+    if (parts.length != 4 || (parts[1] != 'refused' && parts[1] != 'wrote')) {
+      fail(': a row is not <name> refused|wrote <op> <arg>: $line');
+      continue;
+    }
+    final name = parts[0];
+    final verdict = parts[1];
+    if (!seen.add(name)) {
+      fail('$name: named twice in rows.txt');
+      continue;
+    }
     if (notRepresentable.contains(name)) continue;
     final set = setters[name];
     if (set == null) {
-      fail('$name: neither run nor named not representable in Dart');
+      fail('$name: a row in rows.txt this driver has no setter for');
       continue;
     }
     final value = PacketWriteRefusal();
@@ -99,8 +109,9 @@ void main(List<String> args) {
     }
   }
   for (final name in setters.keys) {
-    if (!seen.contains(name)) fail('$name: driver case absent from cases.txt');
+    if (!seen.contains(name))
+      fail('$name: a setter this driver runs that rows.txt does not name');
   }
   if (failures != 0) exit(1);
-  stdout.writeln('packet-write-refusal-dart: ${seen.length} cases');
+  stdout.writeln('packet-write-refusal-dart: ${seen.length} rows');
 }

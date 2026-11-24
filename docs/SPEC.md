@@ -2837,9 +2837,10 @@ test/conformance/harness, with a negative control that changes the emitter's
 upper-bound comparison and requires the boundary row to go red. The every-build
 scripting legs answer the same rows from test/conformance/write-refusal-packet
 (see test/conformance/README.md). The assert legs
-(C, C++, C#, C# (unity), Rust, Java and Dart) run a shared schema and
-cases (test/packet-write-refusal/) in their debug build, where the assert is the
-refusal, as `packet-write-refusal-<lang>` with a `-negative-control` beside it;
+(C, C++, C#, C# (unity), Rust, Java and Dart) run the same schema and rows
+in their debug build, with drivers under test/packet-write-refusal/ keyed by
+row name, where the assert is the refusal, as `packet-write-refusal-<lang>`
+with a `-negative-control` beside it;
 Rust names the union tag as not representable. The four table-form batteries
 cover a ranged integer above and below its range, a `bits(6)` past its width, a
 count past `Max`, a text past `N`, an enum ordinal and a union tag past their

@@ -130,15 +130,15 @@ packet-utf8-unity-negative-control: build/packet-text/unity/.stamp build/packet-
 # assert leg, so the driver runs a Debug build where each check is a
 # Debug.Assert, answered through a throwing TraceListener; a refused value
 # must trap and its lawful twin at the same boundary must be written.
-build/packet-write-refusal/unity/.stamp: bin/schema test/packet-write-refusal/RefusalPacket.schema make/unity.mk
+build/packet-write-refusal/unity/.stamp: bin/schema test/conformance/write-refusal-packet/RefusalPacket.schema make/unity.mk
 	@rm -rf build/packet-write-refusal/unity && mkdir -p build/packet-write-refusal/unity
-	./bin/schema generate --lang unity --out build/packet-write-refusal/unity test/packet-write-refusal/RefusalPacket.schema
+	./bin/schema generate --lang unity --out build/packet-write-refusal/unity test/conformance/write-refusal-packet/RefusalPacket.schema
 	@touch $@
 
 .PHONY: packet-write-refusal-unity packet-write-refusal-unity-negative-control
 packet-write-refusal-unity: build/packet-write-refusal/unity/.stamp
 	$(DOTNET) build test/packet-write-refusal/unity/packet-write-refusal-unity.csproj -c Debug -o build/packet-write-refusal/unity-debug --nologo -v quiet
-	$(DOTNET) build/packet-write-refusal/unity-debug/packet-write-refusal-unity.dll test/packet-write-refusal/cases.txt
+	$(DOTNET) build/packet-write-refusal/unity-debug/packet-write-refusal-unity.dll test/conformance/write-refusal-packet/rows.txt
 
 # One upper bound moved in a copy of the generated code must turn the boundary
 # case red, by name, while every other case stays green.
@@ -151,7 +151,7 @@ packet-write-refusal-unity-negative-control: build/packet-write-refusal/unity/.s
 	@rm -f $(UNITY_WRITE_REFUSAL_NC)/generated/*.orig
 	$(DOTNET) build test/packet-write-refusal/unity/packet-write-refusal-unity.csproj -c Debug -o $(UNITY_WRITE_REFUSAL_NC)/bin --nologo -v quiet \
 		-p:RefusalDir="$(CURDIR)/$(UNITY_WRITE_REFUSAL_NC)/generated"
-	@if $(DOTNET) $(UNITY_WRITE_REFUSAL_NC)/bin/packet-write-refusal-unity.dll test/packet-write-refusal/cases.txt > $(UNITY_WRITE_REFUSAL_NC)/log 2>&1; then \
+	@if $(DOTNET) $(UNITY_WRITE_REFUSAL_NC)/bin/packet-write-refusal-unity.dll test/conformance/write-refusal-packet/rows.txt > $(UNITY_WRITE_REFUSAL_NC)/log 2>&1; then \
 		echo 'NEGATIVE CONTROL FAILED: a moved upper bound passed the Unity packet write-refusal driver'; exit 1; fi
 	@grep -Fq 'FAILED: scalar_at_max lawful value at the boundary was refused' $(UNITY_WRITE_REFUSAL_NC)/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: the boundary case scalar_at_max was not the failure'; cat $(UNITY_WRITE_REFUSAL_NC)/log; exit 1; }

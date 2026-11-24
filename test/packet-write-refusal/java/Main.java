@@ -1,17 +1,22 @@
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Set;
-import packetwriterefusal.RefusalPacket;
-import packetwriterefusal.RefusalPacket.Grade;
-import packetwriterefusal.RefusalPacket.PacketWriteRefusal;
-import packetwriterefusal.RefusalPacket.ShotType;
+import java.util.function.Consumer;
+import packetrefusal.RefusalPacket;
+import packetrefusal.RefusalPacket.Grade;
+import packetrefusal.RefusalPacket.PacketWriteRefusal;
+import packetrefusal.RefusalPacket.ShotType;
 
-// write-refusal-packet on the Java leg (docs/SPEC.md §5.1): every case starts
-// from the default value, changes ONE field, and runs the packet writer under
-// -ea. An AssertionError is the refusal; the lawful twin at the same boundary
-// must be written. A case in cases.txt this driver does not set fails, so
-// does a case it sets that the file does not list.
+// write-refusal-packet on the Java leg (docs/SPEC.md §5.1): every row of the
+// one shared list, test/conformance/write-refusal-packet/rows.txt
+// (<name> <verdict> <op> <arg>, keyed here by name), starts from the default
+// value, changes ONE field, and runs the packet writer under -ea. An
+// AssertionError is the refusal; the lawful twin at the same boundary must be
+// written. A row this driver has no setter for fails, and so does a setter it
+// runs that the file does not name.
 public final class Main {
     private static int failures;
 
@@ -20,48 +25,46 @@ public final class Main {
         failures++;
     }
 
-    // set applies the case's one change, or returns false for a name it does not know.
-    private static boolean set(String name, PacketWriteRefusal v) {
-        switch (name) {
-            case "scalar_high" -> v.scalar = 11;
-            case "scalar_low" -> v.scalar = -1;
-            case "scalar_at_max" -> v.scalar = 10;
-            case "scalar_at_min" -> v.scalar = 0;
-            case "bits_wide" -> v.narrow = 200;
-            case "bits_at_max" -> v.narrow = 127;
-            case "enum_high" -> v.grade = 4;
-            case "enum_at_max" -> v.grade = Grade.GOLD;
-            case "union_tag_high" -> v.shot.type = 3;
-            case "union_tag_at_max" -> v.shot.type = ShotType.MAX;
-            case "count_high" -> v.windowCount = 9;
-            case "count_low" -> v.windowCount = 1;
-            case "count_at_max" -> v.windowCount = 8;
-            case "count_at_min" -> v.windowCount = 2;
-            case "text_long" -> v.textLength = 9;
-            case "text_illformed" -> {
-                v.text[0] = (byte) 0xff;
-                v.textLength = 1;
-            }
-            case "text_zero" -> {
-                v.text[0] = 0;
-                v.textLength = 1;
-            }
-            case "text_at_max" -> {
-                java.util.Arrays.fill(v.text, (byte) 'a');
-                v.textLength = 8;
-            }
-            case "const_wrong" -> v.fixedConstant = 6;
-            case "const_at" -> v.fixedConstant = 5;
-            case "reserved_wrong" -> v.reservedZero = 1;
-            case "reserved_at" -> v.reservedZero = 0;
-            case "flags_wide" -> v.perks = 1L << 3;
-            case "flags_wide_high" -> v.perks = 1L << 40;
-            case "flags_at_max" -> v.perks = 7;
-            default -> {
-                return false;
-            }
-        }
-        return true;
+    private static final Map<String, Consumer<PacketWriteRefusal>> SETTERS = new LinkedHashMap<>();
+
+    static {
+        // write-refusal-packet setters: begin
+        SETTERS.put("scalar_high", v -> v.scalar = 11);
+        SETTERS.put("scalar_low", v -> v.scalar = -1);
+        SETTERS.put("scalar_at_max", v -> v.scalar = 10);
+        SETTERS.put("scalar_at_min", v -> v.scalar = 0);
+        SETTERS.put("bits_wide", v -> v.narrow = 200);
+        SETTERS.put("bits_just_wide", v -> v.narrow = 128);
+        SETTERS.put("bits_at_max", v -> v.narrow = 127);
+        SETTERS.put("enum_high", v -> v.grade = 4);
+        SETTERS.put("enum_at_max", v -> v.grade = Grade.GOLD);
+        SETTERS.put("union_tag_high", v -> v.shot.type = 3);
+        SETTERS.put("union_tag_at_max", v -> v.shot.type = ShotType.MAX);
+        SETTERS.put("count_high", v -> v.windowCount = 9);
+        SETTERS.put("count_low", v -> v.windowCount = 1);
+        SETTERS.put("count_at_max", v -> v.windowCount = 8);
+        SETTERS.put("count_at_min", v -> v.windowCount = 2);
+        SETTERS.put("text_long", v -> v.textLength = 9);
+        SETTERS.put("text_illformed", v -> {
+            v.text[0] = (byte) 0xff;
+            v.textLength = 1;
+        });
+        SETTERS.put("text_zero", v -> {
+            v.text[0] = 0;
+            v.textLength = 1;
+        });
+        SETTERS.put("text_at_max", v -> {
+            java.util.Arrays.fill(v.text, (byte) 'a');
+            v.textLength = 8;
+        });
+        SETTERS.put("const_wrong", v -> v.fixedConstant = 6);
+        SETTERS.put("const_at", v -> v.fixedConstant = 5);
+        SETTERS.put("reserved_wrong", v -> v.reservedZero = 1);
+        SETTERS.put("reserved_at", v -> v.reservedZero = 0);
+        SETTERS.put("flags_wide", v -> v.perks = 1L << 3);
+        SETTERS.put("flags_wide_high", v -> v.perks = 1L << 40);
+        SETTERS.put("flags_at_max", v -> v.perks = 7);
+        // write-refusal-packet setters: end
     }
 
     public static void main(String[] args) throws Exception {
@@ -79,15 +82,24 @@ public final class Main {
             if (line.isEmpty() || line.startsWith("#")) {
                 continue;
             }
-            String[] parts = line.split("\\|");
-            String name = parts[0].trim();
-            String verdict = parts[1].trim();
-            listed.add(name);
-            PacketWriteRefusal value = new PacketWriteRefusal();
-            if (!set(name, value)) {
-                fail(name + ": neither run nor named not representable in Java");
+            String[] parts = line.split("\\s+");
+            if (parts.length != 4) {
+                fail(": a row is not <name> <verdict> <op> <arg>: " + line);
                 continue;
             }
+            String name = parts[0];
+            String verdict = parts[1];
+            if (!listed.add(name)) {
+                fail(name + ": named twice in rows.txt");
+                continue;
+            }
+            Consumer<PacketWriteRefusal> set = SETTERS.get(name);
+            if (set == null) {
+                fail(name + ": a row in rows.txt this driver has no setter for");
+                continue;
+            }
+            PacketWriteRefusal value = new PacketWriteRefusal();
+            set.accept(value);
             byte[] data = new byte[RefusalPacket.PACKET_WRITE_REFUSAL_MAX_BYTES];
             if (verdict.equals("refused")) {
                 try {
@@ -107,14 +119,12 @@ public final class Main {
                 fail(name + ": unknown verdict " + verdict);
             }
         }
-        for (String known : new String[] {"scalar_high", "bits_wide", "enum_high", "union_tag_high", "count_high",
-                "text_long", "text_illformed", "text_zero", "const_wrong", "reserved_wrong", "flags_wide",
-                "flags_wide_high"}) {
+        for (String known : SETTERS.keySet()) {
             if (!listed.contains(known)) {
-                fail(known + ": missing from cases.txt");
+                fail(known + ": a setter this driver runs that rows.txt does not name");
             }
         }
-        System.out.println("write-refusal-packet java: " + refused + " refused, " + written + " written");
+        System.out.println("write-refusal-packet java: " + listed.size() + " rows, " + refused + " refused, " + written + " written");
         if (failures != 0) {
             System.exit(1);
         }

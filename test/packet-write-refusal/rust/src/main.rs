@@ -1,10 +1,12 @@
-// Rust packet Write refusal surface (SPEC §5.1, write-refusal-packet): in a
+// Rust packet Write refusal surface (SPEC §5.1, write-refusal-packet). The one
+// row list is test/conformance/write-refusal-packet/rows.txt
+// (<name> <verdict> <op> <arg>), keyed here by name. In a
 // debug build the writer's debug_assert! refuses each value its declaration
 // does not admit, observed here as a caught panic whose message names the
 // field; each lawful twin at the same boundary is written and read back.
 // Rust cannot build a union tag outside its arm set (Shot is a native enum),
-// so that row is named not-representable, by case; a case neither run nor so
-// named fails.
+// so that row is named not-representable, by case; a row neither run nor so
+// named fails, and so does a setter the file does not name.
 use packetwriterefusal::{
     Grade, Laser, Missile, PERK_BOOST, PERK_CLOAK, PERK_SHIELD, PacketWriteRefusal, Shot, read_packet_write_refusal,
     write_packet_write_refusal,
@@ -27,46 +29,62 @@ fn load(path: &str) -> Vec<Case> {
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
-        let parts: Vec<&str> = line.split('|').map(str::trim).collect();
-        assert!(parts.len() == 2, "invalid case row: {line}");
+        let parts: Vec<&str> = line.split_whitespace().collect();
+        assert!(parts.len() == 4, "a row is not <name> <verdict> <op> <arg>: {line}");
         cases.push(Case { name: parts[0].into(), verdict: parts[1].into() });
     }
     cases
 }
 
-// The case's one changed field, and the fragment of the assert message that
+type Setter = fn(&mut PacketWriteRefusal);
+
+// Each row's one changed field, and the fragment of the assert message that
 // must name it when refused.
+const SETTERS: &[(&str, &str, Setter)] = &[
+    // write-refusal-packet setters: begin
+    ("scalar_high", "scalar", |v| v.scalar = 11),
+    ("scalar_low", "scalar", |v| v.scalar = -1),
+    ("scalar_at_max", "scalar", |v| v.scalar = 10),
+    ("scalar_at_min", "scalar", |v| v.scalar = 0),
+    ("bits_wide", "narrow", |v| v.narrow = 200),
+    ("bits_just_wide", "narrow", |v| v.narrow = 128),
+    ("bits_at_max", "narrow", |v| v.narrow = 127),
+    ("enum_high", "grade", |v| v.grade = Grade(4)),
+    ("enum_at_max", "grade", |v| v.grade = Grade::GOLD),
+    ("union_tag_at_max", "shot", |v| v.shot = Shot::Missile(Missile { fuel: 7 })),
+    ("count_high", "window_count", |v| v.window_count = 9),
+    ("count_low", "window_count", |v| v.window_count = 1),
+    ("count_at_max", "window_count", |v| v.window_count = 8),
+    ("count_at_min", "window_count", |v| v.window_count = 2),
+    ("text_long", "text_length", |v| v.text_length = 9),
+    ("text_illformed", "text", |v| {
+        v.text[0] = 0xff;
+        v.text_length = 1;
+    }),
+    ("text_zero", "text", |v| {
+        v.text[0] = 0;
+        v.text_length = 1;
+    }),
+    ("text_at_max", "text", |v| {
+        v.text = [b'a'; 8];
+        v.text_length = 8;
+    }),
+    ("const_wrong", "fixed_constant", |v| v.fixed_constant = 6),
+    ("const_at", "fixed_constant", |v| v.fixed_constant = 5),
+    ("reserved_wrong", "reserved_zero", |v| v.reserved_zero = 1),
+    ("reserved_at", "reserved_zero", |v| v.reserved_zero = 0),
+    ("flags_wide", "perks", |v| v.perks = 1 << 3),
+    ("flags_wide_high", "perks", |v| v.perks = 1 << 40),
+    ("flags_at_max", "perks", |v| v.perks = PERK_SHIELD | PERK_BOOST | PERK_CLOAK),
+    // write-refusal-packet setters: end
+];
+
 fn build(name: &str) -> Option<(PacketWriteRefusal, &'static str)> {
+    let (_, field, set) = SETTERS.iter().find(|(n, _, _)| *n == name)?;
     let mut v = PacketWriteRefusal::new();
-    let field = match name {
-        "scalar_high" => { v.scalar = 11; "scalar" }
-        "scalar_low" => { v.scalar = -1; "scalar" }
-        "scalar_at_max" => { v.scalar = 10; "scalar" }
-        "scalar_at_min" => { v.scalar = 0; "scalar" }
-        "bits_wide" => { v.narrow = 200; "narrow" }
-        "bits_at_max" => { v.narrow = 127; "narrow" }
-        "enum_high" => { v.grade = Grade(4); "grade" }
-        "enum_at_max" => { v.grade = Grade::GOLD; "grade" }
-        "union_tag_at_max" => { v.shot = Shot::Missile(Missile { fuel: 7 }); "shot" }
-        "count_high" => { v.window_count = 9; "window_count" }
-        "count_low" => { v.window_count = 1; "window_count" }
-        "count_at_max" => { v.window_count = 8; "window_count" }
-        "count_at_min" => { v.window_count = 2; "window_count" }
-        "text_long" => { v.text_length = 9; "text_length" }
-        "text_illformed" => { v.text[0] = 0xff; v.text_length = 1; "text" }
-        "text_zero" => { v.text[0] = 0; v.text_length = 1; "text" }
-        "text_at_max" => { v.text = [b'a'; 8]; v.text_length = 8; "text" }
-        "const_wrong" => { v.fixed_constant = 6; "fixed_constant" }
-        "const_at" => { v.fixed_constant = 5; "fixed_constant" }
-        "reserved_wrong" => { v.reserved_zero = 1; "reserved_zero" }
-        "reserved_at" => { v.reserved_zero = 0; "reserved_zero" }
-        "flags_wide" => { v.perks = 1 << 3; "perks" }
-        "flags_wide_high" => { v.perks = 1 << 40; "perks" }
-        "flags_at_max" => { v.perks = PERK_SHIELD | PERK_BOOST | PERK_CLOAK; "perks" }
-        _ => return None,
-    };
+    set(&mut v);
     let _ = Laser::default();
-    Some((v, field))
+    Some((v, *field))
 }
 
 fn write_read(value: &PacketWriteRefusal) -> Result<(), String> {
@@ -102,7 +120,7 @@ fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() != 2 {
-        eprintln!("usage: {} cases.txt", args[0]);
+        eprintln!("usage: {} rows.txt", args[0]);
         std::process::exit(2);
     }
     if !cfg!(debug_assertions) {
@@ -113,7 +131,13 @@ fn main() {
     panic::set_hook(Box::new(|_| {}));
     let mut failed = 0;
     let mut named = 0;
+    let mut seen = std::collections::HashSet::new();
     for case in &cases {
+        if !seen.insert(case.name.as_str()) {
+            eprintln!("FAILED: packet-write-refusal {}: named twice in rows.txt", case.name);
+            failed += 1;
+            continue;
+        }
         if NOT_REPRESENTABLE.contains(&case.name.as_str()) {
             if case.verdict != "refused" {
                 eprintln!("FAILED: packet-write-refusal {}: named not representable but its verdict is {}", case.name, case.verdict);
@@ -123,7 +147,7 @@ fn main() {
             continue;
         }
         let Some((value, field)) = build(&case.name) else {
-            eprintln!("FAILED: packet-write-refusal {}: neither run nor named not representable in Rust", case.name);
+            eprintln!("FAILED: packet-write-refusal {}: a row in rows.txt neither run nor named not representable in Rust", case.name);
             failed += 1;
             continue;
         };
@@ -150,9 +174,15 @@ fn main() {
             failed += 1;
         }
     }
+    for name in SETTERS.iter().map(|(n, _, _)| *n).chain(NOT_REPRESENTABLE.iter().copied()) {
+        if !seen.contains(name) {
+            eprintln!("FAILED: packet-write-refusal {name}: a setter or not-representable name rows.txt does not name");
+            failed += 1;
+        }
+    }
     if failed > 0 {
-        eprintln!("FAILED: packet-write-refusal Rust: {failed} of {} shared cases", cases.len());
+        eprintln!("FAILED: packet-write-refusal Rust: {failed} of {} shared rows", cases.len());
         std::process::exit(1);
     }
-    println!("packet-write-refusal Rust: {} shared cases, {} named not representable, all passed", cases.len(), named);
+    println!("packet-write-refusal Rust: {} rows, {} named not representable, all passed", cases.len(), named);
 }

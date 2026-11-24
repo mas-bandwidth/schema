@@ -4,6 +4,8 @@
 // test generates RefusalPacket.schema with Generate, runs its own probe
 // over rows.txt, and hands the probe's output to Check. The probe is the leg's
 // own code and speaks one line per row: "<name> refused" or "<name> wrote".
+// The compiled assert legs (make packet-write-refusal-<lang>) generate the
+// same schema and read the same rows.txt; there is no other list.
 package wrpacket
 
 import (

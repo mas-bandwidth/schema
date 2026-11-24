@@ -7,6 +7,13 @@
 # a failed assert). Every refused row has a lawful twin ("wrote") at the same
 # boundary, so a writer that refuses everything fails half the battery.
 #
+# This is the ONE list for every leg. The Go leg and the probes under
+# test/conformance/<lang>/ apply <op> <arg>; the compiled assert legs' drivers
+# (test/packet-write-refusal/<lang>/: C, C++, C#, Unity, Java, Dart, Rust) read
+# this file, key their setters by <name> and fail on a row they cannot run or a
+# setter it does not name. onelist_test.go beside it fails if a second list
+# appears or a driver's setter table drifts from these rows.
+#
 # ops:
 #   scalar <n>          the ranged int32 field `scalar` (min 0, max 10)
 #   narrow <n>          the bits(7) field `narrow`
