@@ -36,7 +36,8 @@ build/conformance-luau: $(LUAU_CONFORMANCE_DRIVER)/inputs.luau $(LUAU_CONFORMANC
 # surface of the matrix passing:
 #
 #   1. the LOAD: every unknown field met in the variable walk raises
-#      malformed, so `framing`, `retain` and `retain-save` go red while
+#      malformed, so `report`, `retain`, `retain-save` and `framing` (on exactly its
+#      unknown-field rows) go red while
 #      `wire`, which carries no unknown field, stays green;
 #   2. the ACCELERATOR READERS: the cook's reserved-words clause and the
 #      block's pitch clause are cut out of Check and BlockOpen, so the two
@@ -56,7 +57,8 @@ conformance-negative-control-luau: build/conformance-harness build/conformance-l
 # test/conformance/luau/negative-control holds both and says what each requires.
 #
 # conformance-negative-control-luau-emitter  the load's unknown-field skip
-#                                            (framing, retain and retain-save red,
+#                                            (report, retain, retain-save and the
+#                                            unknown-field framing rows red,
 #                                            wire green)
 # conformance-negative-control-luau-walk     the text walk's field-key match (I11:
 #                                            json-read and json-hostile red,
