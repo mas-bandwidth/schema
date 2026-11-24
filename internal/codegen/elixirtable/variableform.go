@@ -4980,6 +4980,14 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     end
   end
 
+  # a flags value is an array of names, a container the read counts, so the
+  # cap counts it at its own depth, [] included (§16.14 W2), a field's or an
+  # array element's alike
+  defp json_field(%{t: :int, flags: _}, _v, depth) when depth > 128 do
+    Process.put(:elixir_json_refuse, true)
+    "null"
+  end
+
   defp json_field(%{t: :int, flags: names}, v, depth) do
     # A bit above the named variants has no text spelling (docs/SPEC-TABLES.md
     # §16.2): the file read keeps it whole, and the text writer refuses it.
