@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/wirealone"
 )
 
 // framingVerdicts reads every `framing` row of the conformance manifest
@@ -93,36 +94,15 @@ func TestMooReadStrictWireCheckNegativeControl(t *testing.T) {
 	got, want := framingVerdicts(t, func(t *testing.T, g *generatedUnit) {
 		removeMooDiscard(t, g, "table_load.moo", wirePhaseOne, wirePhaseOneOff)
 	})
-	// Each row breaks a condition docs/SPEC-TABLES.md §6.5 lists as DECIDABLE
-	// FROM THE WIRE ALONE, which the walk holds before the typed read decodes a
-	// byte, so the typed read need not hold it again (§6.5, DETECTION ORDER IS
-	// FREE). Lua's control holds the same rows (luatable/wirecheck_test.go,
-	// luaWireCheckOnly).
-	walkOnly := []string{
-		// the id table: an unknown, unreferenced or out-of-first-use id
-		"frame_unknown_id_length", "frame_unknown_id_reference", "frame_unreferenced_entry",
-		"skipped_ids_out_of_order",
-		// an element kind no reader can skip, under any count
-		"array_elem_kind_16_count_1", "array_elem_kind_31_count_1",
-		"array_elem_kind_32_count_2", "array_elem_reserved_count_0",
-		"array_elem_unassigned_count_0", "array_elem_zero_count_0",
-		// a nesting depth past the binary bound of 128, inside unknown bytes too
-		"depth_arrays_129", "depth_keyed_129", "depth_tables_129",
-		"depth_tables_5000", "depth_union_tables_65",
-		"union_chain_unknown_past_bound", "union_chain_unknown_deep",
-		// the node table's framing, and a record typed by a reserved id
-		"node_record_bytes_after_terminator", "node_unknown_to_fixed_reader",
-		"node_type_node_table_id", "node_type_build_version_id", "node_type_vocabulary_id",
-		// the pointer graph: a cycle or an unreachable record
-		"varevo_cycle_unknown_self", "varevo_cycle_two_unknowns",
-		"varevo_cycle_root_via_unknown", "varevo_cycle_known_via_unknown",
-		"graph_unknown_type_self", "graph_unknown_type_pair",
-		"graph_listnode_unknown_self", "graph_unknown_to_root",
-		"graph_unknown_type_unreached", "graph_string_blob_unreached",
-		// one blob record named from two slots
-		"graph_blob_two_unknown_fields", "graph_blob_two_unknown_elements",
-		// ill-formed text in a string blob only an unknown field reaches
-		"graph_string_blob_ill_formed", "graph_string_blob_zero_byte",
+	// The rows the walk alone refuses are WIRE-ALONE.txt's
+	// (testdata/conformance/tables, internal/wirealone): each breaks a
+	// condition docs/SPEC-TABLES.md §6.5 lists as DECIDABLE FROM THE WIRE
+	// ALONE, which the walk holds before the typed read decodes a byte, so the
+	// typed read need not hold it again (§6.5, DETECTION ORDER IS FREE). moo
+	// states only its exceptions, the rows its typed read refuses as well.
+	walkOnly, err := wirealone.Owned(root, mooWireCheckExceptions)
+	if err != nil {
+		t.Fatal(err)
 	}
 	for _, name := range walkOnly {
 		if want[name] != "refused" || got[name] != "read" {
@@ -141,4 +121,16 @@ func TestMooReadStrictWireCheckNegativeControl(t *testing.T) {
 			t.Errorf("%s: removing the walk moved a row it does not own: %q, the row pins %q", name, got[name], w)
 		}
 	}
+}
+
+// mooWireCheckExceptions are the rows of WIRE-ALONE.txt that moo's typed read
+// refuses as well as its wire-alone walk, so they stay refused with the walk
+// removed. Each carries the reason.
+var mooWireCheckExceptions = map[string]string{
+	"frame_repeat_last_wins": "the typed read refuses a field id twice in one body as it reads the body (table_load.moo, A FIELD ID TWICE IN ONE BODY IS DAMAGE)",
+	"array_L0_inert":         "the typed read refuses bytes left inside an array's L after its elements (table_load.moo, BYTES LEFT INSIDE AN ARRAY'S L AFTER ITS ELEMENTS ARE DAMAGE)",
+	"array_L1_inert":         "the typed read refuses bytes left inside an array's L after its elements (table_load.moo, BYTES LEFT INSIDE AN ARRAY'S L AFTER ITS ELEMENTS ARE DAMAGE)",
+	"keyed_L1_inert":         "the typed read refuses bytes left inside a keyed array's L after its slots (table_load.moo, BYTES LEFT INSIDE A KEYED ARRAY'S L AFTER ITS SLOTS ARE DAMAGE)",
+	"map_L1_inert":           "the typed read refuses bytes left inside a map's L after its entries (table_load.moo, BYTES LEFT INSIDE A MAP'S L AFTER ITS ENTRIES ARE DAMAGE)",
+	"node_table_twice":       "the typed read refuses the node table's id twice in the root body (table_load.moo, A FIELD ID TWICE IN ONE BODY IS DAMAGE)",
 }

@@ -750,3 +750,5 @@ one-check units in `testdata/cpp-standalone`, generates headers that compile
 with `-std=c++17 -fsyntax-only` when included alone.
 `TestEveryGeneratedTableHeaderCompilesStandalone` sweeps that corpus and is red
 on the old generator for all four one-check units (`ranged_fixed`, `ranged_int`, `ranged_bits`, `ranged_float`).
+
+| wire-alone-rows-are-the-walks | `testdata/conformance/tables/WIRE-ALONE.txt` lists, by class, the framing rows whose condition §6.5 lists as DECIDABLE FROM THE WIRE ALONE. With a port's wire-alone walk removed, every listed row reads except the port's stated exceptions (rows its typed read also refuses, each with a reason), and no other row moves. moo states 6 exceptions (the inert-bytes rows, `frame_repeat_last_wins`, `node_table_twice`); Lua states 6 (the three `node_type_*` rows, the two ill-formed string-blob rows, `node_unknown_to_fixed_reader`). A listed row must be a refused framing row of MANIFEST.txt, and an exception must name a listed row and give a reason (SPEC-TABLES.md §6.5, DETECTION ORDER IS FREE) | `TestMooReadStrictWireCheckNegativeControl`, `TestLuaWireCheckNegativeControl`, `internal/wirealone` |

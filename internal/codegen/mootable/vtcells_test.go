@@ -25,9 +25,9 @@ import (
 	"maps"
 	"slices"
 	"strings"
-	"sync"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/codegen/mootable"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
@@ -105,7 +105,7 @@ var vtCells = []vtCell{
 // vtCellFailures runs one row and answers what differs, and how many rows,
 // instances and constructs it held. mutate, when set, edits each generated
 // unit's emitted files first.
-func vtCellFailures(t *testing.T, c vtCell, mutate func(*testing.T, map[string][]byte)) (fails []string, held int) {
+func vtCellFailures(t *testing.T, c vtCell, mutate func(*testing.T, map[string][]byte), first bool) (fails []string, held int) {
 	t.Helper()
 	units, _ := readManifest(t)
 	expect := reportsExpect(t)
@@ -128,6 +128,9 @@ func vtCellFailures(t *testing.T, c vtCell, mutate func(*testing.T, map[string][
 		return g
 	}
 	for _, name := range c.cases {
+		if first && len(fails) > 0 {
+			break
+		}
 		row, ok := byCase[name]
 		if !ok {
 			t.Fatalf("%s names case %s, which the manifest does not carry", c.row, name)
@@ -164,6 +167,9 @@ func vtCellFailures(t *testing.T, c vtCell, mutate func(*testing.T, map[string][
 		}
 	}
 	for _, name := range c.constructs {
+		if first && len(fails) > 0 {
+			break
+		}
 		i := slices.IndexFunc(constructCases, func(cc constructCase) bool { return cc.name == name })
 		if i < 0 {
 			t.Fatalf("%s names construct %s, which constructCases does not carry", c.row, name)
@@ -194,7 +200,7 @@ func TestMooVariableTableCells(t *testing.T) {
 	for _, c := range vtCells {
 		t.Run(c.row, func(t *testing.T) {
 			t.Parallel()
-			fails, held := vtCellFailures(t, c, nil)
+			fails, held := vtCellFailures(t, c, nil, false)
 			for _, f := range fails {
 				t.Error(f)
 			}
@@ -234,32 +240,19 @@ func TestMooVariableTableCellsNegativeControl(t *testing.T) {
 		{"load-id-order", plant("table_load.moo", "\t\tids[i + 1] = id\n", "\t\tids[count - i] = id\n")},
 		{"fixed-save-form", plant("table_fixed.moo", "\t\tbuffer.writeu8(out, 0, FORM)\n", "\t\tbuffer.writeu8(out, 0, FORM + 1)\n")},
 	}
-	var mu sync.Mutex
-	reddened := map[string]int{}
-	t.Run("rows", func(t *testing.T) {
-		for _, c := range vtCells {
-			t.Run(c.row, func(t *testing.T) {
-				t.Parallel()
-				red := 0
-				for _, p := range plants {
-					fails, _ := vtCellFailures(t, c, p.mutate)
-					if len(fails) > 0 {
-						red++
-						mu.Lock()
-						reddened[p.name]++
-						mu.Unlock()
-						t.Logf("%s: %d findings, first %s", p.name, len(fails), fails[0])
-					}
-				}
-				if red == 0 {
-					t.Fatalf("the %s row stayed green under every plant", c.row)
-				}
-			})
-		}
-	})
-	for _, p := range plants {
-		if reddened[p.name] == 0 {
-			t.Errorf("the %s plant turned no row red", p.name)
-		}
+	rows := make([]string, len(vtCells))
+	for i, c := range vtCells {
+		rows[i] = c.row
 	}
+	names := make([]string, len(plants))
+	for i, p := range plants {
+		names[i] = p.name
+	}
+	mootable.SweepControl(t, rows, names, func(t *testing.T, r, p int) (bool, string) {
+		fails, _ := vtCellFailures(t, vtCells[r], plants[p].mutate, true)
+		if len(fails) == 0 {
+			return false, ""
+		}
+		return true, fails[0]
+	})
 }
