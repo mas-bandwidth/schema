@@ -12817,7 +12817,10 @@ contract (SPEC §5.1) runs before a byte is placed. A loaded value whose live
 count lies below its array's `Min` or above its bound, or whose length is
 negative, is REFUSED (`Cook` writes nothing, `CookMeasure` answers `-1`); it is
 never clamped to the bound and written. A NaN or an infinity in a plain float
-is refused (row 7), as the save refuses it. A leg whose measure and write
+is refused (row 7), as the save refuses it. An enum slot holding an ordinal past its variant set
+(row 5) or a deprecated variant (§2.15) is refused before the first byte
+(`cref_enum_*`, `cref_var_enum_*`); an assert leg refuses by its debug assert
+(SPEC §5.1). A leg whose measure and write
 share one body refuses in both.
 
 **A BUILD CAN WRITE A COOK, AND THE BYTES ARE THE TOOL'S.** `schema cook` is

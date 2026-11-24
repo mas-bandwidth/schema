@@ -2648,6 +2648,16 @@ write-refusal-cook cref_infinite         tabledemo RootConfig testdata/conforman
 write-refusal-cook cref_finite_ok        tabledemo RootConfig testdata/conformance/tables/wire/root_full.bin           weapons[0].damage  float 1.5   wrote
 write-refusal-cook cref_fixed_long       tblsurf   Arrays     testdata/conformance/tables/wire/surf_arrays_full.bin    trio               elems 4     refused
 write-refusal-cook cref_fixed_ok         tblsurf   Arrays     testdata/conformance/tables/wire/surf_arrays_full.bin    trio               elems 3     wrote
+# SF-25, SF-26 (docs/SPEC.md §5.1 row 5; SPEC-TABLES §2.15): an enum slot holds
+# None or a live variant. Mood is Calm 1, Old 2 (deprecated), Fierce 3: the
+# deprecated Old and the ordinal 9 past the set are refused, Fierce is written.
+write-refusal-cook cref_enum_deprecated  tabledemo MoodField  testdata/conformance/tables/save-wire/sp-enum-scalar-deprecated.bin mood ordinal 2 refused
+write-refusal-cook cref_enum_range       tabledemo MoodField  testdata/conformance/tables/save-wire/sp-enum-scalar-deprecated.bin mood ordinal 9 refused
+write-refusal-cook cref_enum_ok          tabledemo MoodField  testdata/conformance/tables/save-wire/sp-enum-scalar-deprecated.bin mood ordinal 3 wrote
+# The same rule on a list element of a pointered root (Mixed.grades holds
+# Grade, three variants), which some legs cook through a second writer.
+write-refusal-cook cref_var_enum_range   listdemo  Mixed      testdata/wire/tables/list_mixed.bin grades[0] ordinal 4 refused
+write-refusal-cook cref_var_enum_ok      listdemo  Mixed      testdata/wire/tables/list_mixed.bin grades[0] ordinal 3 wrote
 
 # THE BLOCK BUILDER holds the write contract too (SPEC-TABLES §19.1). SF-31: a
 # used length or a count past its maximum is refused by name in every build.

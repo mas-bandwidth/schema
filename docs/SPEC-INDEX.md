@@ -168,7 +168,7 @@ each breaks is below.
 | SF-W5 | the message form refuses a flags value above its width, never masks it (SF-18, 19) | SPEC §5.1 row 9 (main) | *none*: a `write-refusal-message` flags case is owed | **no row** |
 | SF-W6 | a `[N]T` or `[E]T` handed to a writer holds exactly N values, never cut or padded (SF-20, 24, 38) | SPEC §5.1 (#4740; and FL-22, #4737) | *none*: cases on `write-refusal-fixed` and `write-refusal-message` are owed | **no row** |
 | SF-W7 | a writer refuses a counted array below its `Min` (SF-21, 22) | SPEC §5.1 row 3 (main) | *none* on the write side; the read side is SF-R1 | **no row** |
-| SF-W8 | `Cook` and `CookMeasure` hold the write contract `Save` holds (SF-25, 26, 29, 37) | SPEC-TABLES §7.6 (#4740, written for Lobster) | *none*: a `cook-write` refusal case is owed | **no row** |
+| SF-W8 | `Cook` and `CookMeasure` hold the write contract `Save` holds (SF-25, 26, 29, 37) | SPEC-TABLES §7.6 (#4740, written for Lobster) | `write-refusal-cook` `cref_count_*`, `cref_{non_finite,infinite,finite_ok}`, `cref_cycle`, `cref_enum_*`, `cref_var_enum_*` | **PR** |
 | SF-R1 | a count below `Min` refuses on every read, every form (SF-01, 02) | SPEC-TABLES §22.2 (main) | `sp-count-min-below`, `sp_count_min_below`, `sp_count_min_evolved_below` (#4689) | **PR** |
 | SF-R2 | a read handed no report still refuses, never silently (SF-16) | SPEC-TABLES §6.5, a nil report refuses the same way (main) | *none* | **no row** |
 | SF-R3 | each value is held to the range of its own declaration (SF-23) | SPEC §5.1 row 1 (main) | *none* | **no row** |
@@ -364,7 +364,7 @@ and absence scoring rules, and §7 traces the rules to their sources.
 | FL-11/16, SPEC-TABLES §§2.3, 16.2 | `surf_chain127_vals`, `surf_chain128_vals`, `graph_chain_past_cap`, `surf_holder_null_required`, `surf_holder_present`. |
 | FL-04/06/22 and SF-20/22/28/34/35/38, SPEC §5.1 and SPEC-TABLES §16.2 | `sref_{int8,uint8,uint32}_*`, `*_mask_{named,unnamed}`, `sref_count_*` / `sjref_count_*`, `sref_map_dupkey*` / `sjref_map_dupkey*`, and short/long/exact fixed-length rows on the variable, fixed, message, JSON and cook write-refusal surfaces. Whether an edit is representable is a driver result. |
 | SF-05/06/17/18/19/23, SPEC §5.1 and SPEC-TABLES §§3.3–3.4 | `smref_big_*` includes the message ceiling, flags and compressed-range rows; `smref_{narrow,wide}_hp_*` covers the two declarations' separate ranges. Packet compression uses a different surface. |
-| FL-28, SF-25/29/37, SPEC-TABLES §7.6 and SPEC §5.1 row 7 | Eleven `write-refusal-cook` rows, including `cref_cycle` / `cref_shared_ok`, `cref_count_*`, `cref_{non_finite,infinite,finite_ok}`, and `cref_fixed_{long,ok}`. No deprecated enum cook-refusal case is registered (SF-26). |
+| FL-28, SF-25/26/29/37, SPEC-TABLES §§2.15, 7.6 and SPEC §5.1 rows 5, 7 | Sixteen `write-refusal-cook` rows, including `cref_cycle` / `cref_shared_ok`, `cref_count_*`, `cref_{non_finite,infinite,finite_ok}`, `cref_fixed_{long,ok}`, `cref_enum_{deprecated,range,ok}` (a deprecated variant and an ordinal past the set, SF-26) and `cref_var_enum_{range,ok}` (the same on a pointered root's list element). |
 | SF-31, SPEC-TABLES §19.1 | Six `write-refusal-block` rows in the `bref_length*`, `bref_range*`, and `bref_elems_*` pairs. |
 
 ### Reconciliation of #4771 and #4772

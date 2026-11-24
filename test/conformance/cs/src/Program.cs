@@ -2115,6 +2115,12 @@ static partial class Program
             c.Cook = (value, bytes, big) => Listdemo.Schema.SheetCook((Listdemo.Sheet)value, bytes, big ? Listdemo.TableByteOrder.Big : Listdemo.TableByteOrder.Little);
         }
         {
+            // an enum slot (SPEC §5.1 row 5; SPEC-TABLES §2.15): write-refusal-cook cref_enum_*
+            Codec c = Find("tabledemo", "MoodField");
+            c.CookMeasure = value => Tabledemo.Schema.MoodFieldCookMeasure((Tabledemo.MoodField)value);
+            c.Cook = (value, bytes, big) => Tabledemo.Schema.MoodFieldCook((Tabledemo.MoodField)value, bytes, big ? Tabledemo.TableByteOrder.Big : Tabledemo.TableByteOrder.Little);
+        }
+        {
             Codec c = Find("listdemo", "Mixed");
             c.CookMeasure = value => Listdemo.Schema.MixedCookMeasure((Listdemo.Mixed)value);
             c.Cook = (value, bytes, big) => Listdemo.Schema.MixedCook((Listdemo.Mixed)value, bytes, big ? Listdemo.TableByteOrder.Big : Listdemo.TableByteOrder.Little);

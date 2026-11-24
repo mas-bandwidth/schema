@@ -488,7 +488,12 @@ func (g *gen) emitCookElement(b *strings.Builder, f *ir.Field, x, at, ind string
 	case ir.TNamed:
 		switch ref := t.Ref.(type) {
 		case *ir.Enum:
-			// the slot stores the ORDINAL, not the wire's name hash (§7.2)
+			// the slot stores the ORDINAL, not the wire's name hash (§7.2).
+			// A deprecated variant is refused (docs/SPEC-TABLES.md §2.15,
+			// §7.6); an ordinal past the set cannot be built (native enum)
+			if pat := deprecatedPattern(ref); pat != "" {
+				fmt.Fprintf(b, "%sif matches!(%s, %s) { w.fail(); }\n", ind, cookVal(x), pat)
+			}
 			fmt.Fprintf(b, "%sw.put(%s, %s, %d);\n", ind, at, cookCast(x, ref.Name, "u64"), ir.StorageBitsFor(ref.Max)/8)
 		case *ir.Flags:
 			fmt.Fprintf(b, "%sw.put(%s, %s, 8);\n", ind, at, cookVal(x))

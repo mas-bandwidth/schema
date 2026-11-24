@@ -113,6 +113,7 @@ import '../../../build/tables-generated-dart/stream/StreamCook.dart' as streamco
 import '../../../build/tables-generated-dart/messages/MessagesCook.dart' as messagescook;
 import '../../../build/tables-generated-dart-scalars/scalars/ScalarsCook.dart' as scalarscook;
 import '../../../build/tables-generated-dart/lists/SaveCook.dart' as lsavecook;
+import '../../../build/tables-generated-dart/lists/Save.dart' as lsave_pkt;
 import '../../../build/tables-generated-dart/lists/SharedCook.dart' as lsharedcook;
 import '../../../build/tables-generated-dart/lists/HoldersCook.dart' as lholderscook;
 import '../../../build/tables-generated-dart/lists/MigrateCook.dart' as lmigratecook;
@@ -8040,6 +8041,24 @@ String _writeRefusal1122(String surface, String unit, String root, String wirePa
           throw StateError('$key: point $path');
       }
       return _cookAnswer(() => ck.SceneCook.cookMeasure(w), (out) => ck.SceneCook.cook(w, out, Endian.little));
+    case 'tabledemo MoodField':
+      // an enum slot: a deprecated variant and an ordinal past the set are
+      // refused (docs/SPEC.md §5.1 row 5; SPEC-TABLES §2.15, §7.6). Mood is
+      // an extension type over int, so every ordinal is representable
+      if (surface != 'write-refusal-cook' || mutation != 'mood ordinal') break;
+      final fx = _loadedFixed(
+          _fixedLoadOne(bytes(), tabledemo_fixed.MoodField.new, tables_fixed.moodFieldFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.moodFieldFixedLoad), key, wirePath);
+      final w = tabledemo.MoodField();
+      _f2w_examples_MoodField(fx, w);
+      w.mood = tables_pkt.Mood(int.parse(text));
+      return _cookAnswer(() => tablescook.MoodFieldCookWire.cookMeasure(w), (out) => tablescook.MoodFieldCookWire.cook(w, out, Endian.little));
+    case 'listdemo Mixed':
+      if (surface != 'write-refusal-cook' || mutation != 'grades[0] ordinal') break;
+      final rep = listdemo.TableWireReport();
+      final w = listdemo.mixedWireLoad(bytes(), rep);
+      if (rep.refused) throw StateError('$key: load refused $wirePath');
+      w.grades[0] = lsave_pkt.Grade(int.parse(text));
+      return _cookAnswer(() => lsavecook.MixedCook.cookMeasure(w), (out) => lsavecook.MixedCook.cook(w, out, Endian.little));
     case 'tabledemo RootConfig':
       if (surface != 'write-refusal-cook') break;
       // a fixed root's form 3 file, carried into the value the cook takes
