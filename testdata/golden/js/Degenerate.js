@@ -38,6 +38,9 @@ export function ZeroVec2(value) {
 }
 
 export function WriteVec2(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (typeof value.x !== "number" || !globalThis.Number.isFinite(value.x)) {
     return false; // a bare float must be finite (SPEC §4.3, §5.1)
   }
@@ -90,6 +93,12 @@ export function ZeroSpanF64(value) {
 }
 
 export function WriteSpanF64(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
+  if (value.values === null || typeof value.values !== "object" || !(value.values.length >= 2)) {
+    return false; // the storage holds every element the loop reads (SPEC §5.1)
+  }
   for (let i = 0; i < 2; i++) {
     if (typeof value.values[i] !== "number" || !globalThis.Number.isFinite(value.values[i])) {
       return false; // a bare float must be finite (SPEC §4.3, §5.1)
@@ -135,6 +144,12 @@ export function ZeroSpanU64(value) {
 }
 
 export function WriteSpanU64(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
+  if (value.values === null || typeof value.values !== "object" || !(value.values.length >= 2)) {
+    return false; // the storage holds every element the loop reads (SPEC §5.1)
+  }
   for (let i = 0; i < 2; i++) {
     if (typeof value.values[i] !== "bigint" || value.values[i] < 0n || value.values[i] > 18446744073709551615n) { // a bare integer must fit its width
       return false;
@@ -180,6 +195,12 @@ export function ZeroSpanI64(value) {
 }
 
 export function WriteSpanI64(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
+  if (value.values === null || typeof value.values !== "object" || !(value.values.length >= 2)) {
+    return false; // the storage holds every element the loop reads (SPEC §5.1)
+  }
   for (let i = 0; i < 2; i++) {
     if (typeof value.values[i] !== "bigint" || value.values[i] < -9223372036854775808n || value.values[i] > 9223372036854775807n) { // a bare integer must fit its width
       return false;
@@ -225,6 +246,12 @@ export function ZeroSpanOne(value) {
 }
 
 export function WriteSpanOne(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
+  if (value.values === null || typeof value.values !== "object" || !(value.values.length >= 1)) {
+    return false; // the storage holds every element the loop reads (SPEC §5.1)
+  }
   for (let i = 0; i < 1; i++) {
     if (typeof value.values[i] !== "bigint" || value.values[i] < 0n || value.values[i] > 18446744073709551615n) { // a bare integer must fit its width
       return false;
@@ -270,6 +297,12 @@ export function ZeroSpanChunk(value) {
 }
 
 export function WriteSpanChunk(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
+  if (value.values === null || typeof value.values !== "object" || !(value.values.length >= 4)) {
+    return false; // the storage holds every element the loop reads (SPEC §5.1)
+  }
   for (let i = 0; i < 4; i++) {
     if (!globalThis.Number.isInteger(value.values[i]) || value.values[i] < 0 || value.values[i] > 65535) { // a bare integer must fit its width
       return false;
@@ -318,6 +351,12 @@ export function ZeroSpanTail(value) {
 }
 
 export function WriteSpanTail(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
+  if (value.values === null || typeof value.values !== "object" || !(value.values.length >= 2)) {
+    return false; // the storage holds every element the loop reads (SPEC §5.1)
+  }
   for (let i = 0; i < 2; i++) {
     if (typeof value.values[i] !== "number" || !globalThis.Number.isFinite(value.values[i])) {
       return false; // a bare float must be finite (SPEC §4.3, §5.1)
@@ -377,6 +416,12 @@ export function ZeroSpanTwice(value) {
 }
 
 export function WriteSpanTwice(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
+  if (value.a === null || typeof value.a !== "object" || !(value.a.length >= 2)) {
+    return false; // the storage holds every element the loop reads (SPEC §5.1)
+  }
   for (let i = 0; i < 2; i++) {
     if (typeof value.a[i] !== "number" || !globalThis.Number.isFinite(value.a[i])) {
       return false; // a bare float must be finite (SPEC §4.3, §5.1)
@@ -385,6 +430,9 @@ export function WriteSpanTwice(stream, value) {
     if (!stream.serializeDouble(NUMBER_SCRATCH)) {
       return false;
     }
+  }
+  if (value.b === null || typeof value.b !== "object" || !(value.b.length >= 2)) {
+    return false; // the storage holds every element the loop reads (SPEC §5.1)
   }
   for (let i = 0; i < 2; i++) {
     if (typeof value.b[i] !== "number" || !globalThis.Number.isFinite(value.b[i])) {
@@ -443,6 +491,9 @@ export function ZeroTrio(value) {
 }
 
 export function WriteTrio(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.a) || value.a < 0 || value.a > 1048575) { // a bits(N) value must fit its width
     return false;
   }
@@ -506,6 +557,9 @@ export function ZeroTrioSole(value) {
 }
 
 export function WriteTrioSole(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!WriteTrio(stream, value.inner)) {
     return false;
   }
@@ -542,6 +596,9 @@ export function ZeroVec3Sole(value) {
 }
 
 export function WriteVec3Sole(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!WriteVec3(stream, value.v)) {
     return false;
   }
@@ -581,6 +638,9 @@ export function ZeroTrioFirst(value) {
 }
 
 export function WriteTrioFirst(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!WriteTrio(stream, value.inner)) {
     return false;
   }
@@ -646,6 +706,9 @@ export function ZeroTrioStraddle(value) {
 }
 
 export function WriteTrioStraddle(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (typeof value.pad0 !== "bigint" || value.pad0 < 0n || value.pad0 > 18446744073709551615n) { // a bits(N) value must fit its width
     return false;
   }

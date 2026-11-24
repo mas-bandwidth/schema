@@ -208,12 +208,13 @@ func assemble(m *Module) []byte {
 // THE MODULE-SCOPE HELPERS, each declared only where the body names it, in
 // this order. They are locals of the module, so a call reaches them as an
 // outer variable, never through a table.
-var helperOrder = []string{holder, usedBytes, validText}
+var helperOrder = []string{holder, usedBytes, validText, isWide}
 
 const (
 	holder    = "_h"
 	usedBytes = "_usedBytes"
 	validText = "_validText"
+	isWide    = "_isWide"
 )
 
 var helperSource = map[string]string{
@@ -258,6 +259,13 @@ local _usedBytes = function(b, n) {
     if (rem == 3 && (point < 0x10000 || point > 0x10FFFF)) return false;
   }
   return true;
+};
+`,
+	// _isWide(v): whether v is the [lo, hi] pair of integers a 128-bit value
+	// is (docs/PORT-SQUIRREL.md, 64-BIT AND 128-BIT INTEGERS); a write refuses
+	// anything else before the runtime indexes it
+	isWide: `local _isWide = function(v) {
+  return typeof v == "array" && v.len() == 2 && typeof v[0] == "integer" && typeof v[1] == "integer";
 };
 `,
 }

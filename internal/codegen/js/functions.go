@@ -44,6 +44,7 @@ func (g *gen) emitUnionFunctions(d *ir.Union) {
 
 	bits := ir.BitsRequired(big.NewInt(0), big.NewInt(d.Max))
 	g.pf("export function Write%s(stream, value) {\n", d.Name)
+	g.refuseNonObject("value", "  ")
 	if d.Max == 0 {
 		g.pf("  // an empty union holds only None; its degenerate tag range [0, 0] costs\n")
 		g.pf("  // zero bits (SPEC §4.8)\n")
@@ -115,6 +116,7 @@ func (g *gen) emitStructFunctions(st *ir.Struct) {
 		g.pf("  // empty body — presence is the payload (SPEC §4.6)\n")
 	} else {
 		g.pf("export function Write%s(stream, value) {\n", st.Name)
+		g.refuseNonObject("value", "  ")
 		g.emitWriteItems(st.Items, "  ")
 	}
 	g.pf("  return true;\n}\n\n")
@@ -512,10 +514,12 @@ func (g *gen) emitWriteField(f *ir.Field, ind string) {
 			g.emitWriteFoldedNum(count, fmt.Sprintf("%d", f.ArrayMin), bound,
 				big.NewInt(f.ArrayMin), big.NewInt(f.ArrayBound), true,
 				" // the count guards the loop (§6.3)", ind)
+			g.refuseShortStorage(name, count, ind)
 			g.pf("%sfor (let i = 0; i < %s; i++) {\n", ind, count)
 		} else {
 			// the SCHEMA bound, never the storage's length: reassigned-short
-			// storage must fail loudly, not silently write fewer elements
+			// storage is refused, never written short
+			g.refuseShortStorage(name, bound, ind)
 			g.pf("%sfor (let i = 0; i < %s; i++) {\n", ind, bound)
 		}
 		g.emitWriteScalar(f, name+"[i]", ind+"  ")
@@ -641,6 +645,7 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			g.call(ind, fmt.Sprintf("stream.serializeBits64(%s, %d)", scratch, f.Type.Width), "")
 		}
 	case ir.TBool:
+		g.pf("%sif (typeof %s !== \"boolean\") {\n%s  return false; // a bool is a boolean (SPEC §5.1)\n%s}\n", ind, name, ind, ind)
 		scratch := g.boolScratch()
 		g.pf("%s%s.value = %s;\n", ind, scratch, name)
 		g.call(ind, fmt.Sprintf("stream.serializeBool(%s)", scratch), "")
@@ -679,6 +684,8 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.emitWriteFoldedNum(length, "0", g.renderNum(f.Type.SizeExpr, big.NewInt(f.Type.Size)),
 			big.NewInt(0), big.NewInt(f.Type.Size), true,
 			" // the length guards the slice (§6.3); out-of-contract writes are refused", ind)
+		g.pf("%sif (!(%s instanceof globalThis.Uint8Array) || %s.length < %s) {\n%s  return false; // the bytes are a Uint8Array holding the length (SPEC §5.1)\n%s}\n",
+			ind, name, name, length, ind, ind)
 		if f.Type.Kind == ir.TString {
 			g.needText = true
 			emitWriteText(g.pf, name, length, ind, "false")
@@ -1049,4 +1056,20 @@ func (g *gen) emitWriteFlagsValue(name string, wireBits int, ind string) {
 		g.call(ind+"  ", fmt.Sprintf("stream.serializeBits64(%s, %d)", scratch, wireBits), "")
 	}
 	g.pf("%s}\n", ind)
+}
+
+// refuseNonObject refuses a record or union value that is not an object: a
+// field read on null or undefined would throw a TypeError, never the
+// writer's own false (SPEC §5.1; JavaScript refuses in every build).
+func (g *gen) refuseNonObject(expr, ind string) {
+	g.pf("%sif (%s === null || typeof %s !== \"object\") {\n%s  return false; // a record or union value is an object (SPEC §5.1)\n%s}\n",
+		ind, expr, expr, ind, ind)
+}
+
+// refuseShortStorage refuses an array's storage that is not an object
+// holding at least n elements: the loop would index null or undefined into
+// a TypeError, or write elements that are not there (SPEC §5.1).
+func (g *gen) refuseShortStorage(expr, n, ind string) {
+	g.pf("%sif (%s === null || typeof %s !== \"object\" || !(%s.length >= %s)) {\n%s  return false; // the storage holds every element the loop reads (SPEC §5.1)\n%s}\n",
+		ind, expr, expr, expr, n, ind, ind)
 }

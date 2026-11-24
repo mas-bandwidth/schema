@@ -624,7 +624,10 @@ func (g *fgen) staticBitsScalar(f *ir.Field) (int64, bool) {
 
 func (g *fgen) emitStructFlat(st *ir.Struct) {
 	g.bpf("// ---- type %s: the flat codec ----\n\n", st.Name)
-	g.emitWriteFlat(st.Name, func() { g.emitWriteItems(st.Items, "value", "  ") })
+	g.emitWriteFlat(st.Name, func() {
+		g.guardObject("value", "  ")
+		g.emitWriteItems(st.Items, "value", "  ")
+	})
 	g.emitReadFlatBody(st.Name, func() { g.emitReadItems(st.Items, "value", "  ", false) })
 	g.emitReadFlatBits(st.Name, func() { g.emitReadItems(st.Items, "value", "  ", false) })
 }
@@ -915,6 +918,7 @@ func (g *fgen) emitWriteField(f *ir.Field, path, ind string) {
 	name := path + "." + MemberName(f.Name)
 	switch f.Array {
 	case ir.ArrayFixed:
+		g.guardStorage(name, fmt.Sprintf("%d", f.ArrayBound), ind)
 		iv := fmt.Sprintf("i%d", g.loopDepth)
 		g.loopDepth++
 		g.wDynamic(ind)
@@ -930,6 +934,7 @@ func (g *fgen) emitWriteField(f *ir.Field, path, ind string) {
 		// the count to an integer, its contract on every number.
 		cond := fmt.Sprintf("!globalThis.Number.isInteger(%s) || %s < %d || %s > %d", count, count, f.ArrayMin, count, f.ArrayBound)
 		g.guard(cond, " // the count guards the loop; its range is a writer contract (SPEC §4.6)", ind)
+		g.guardStorage(name, count, ind)
 		g.emitWriteRangedNum(count, f.ArrayMin, f.ArrayBound, ind)
 		iv := fmt.Sprintf("i%d", g.loopDepth)
 		g.loopDepth++
@@ -951,6 +956,7 @@ func (g *fgen) emitWriteElem(f *ir.Field, name, iv, ind string) {
 		case *ir.Struct:
 			ev := fmt.Sprintf("e%d", g.loopDepth-1)
 			g.pf("%sconst %s = %s[%s];\n", ind, ev, name, iv)
+			g.guardObject(ev, ind)
 			g.emitWriteItems(ref.Items, ev, ind)
 			return
 		case *ir.Union:
@@ -1071,6 +1077,7 @@ func (g *fgen) emitWriteScalar(f *ir.Field, name, ind string) {
 		g.guard(fmt.Sprintf("typeof %s !== \"bigint\" || %s < 0n || %s > %sn", name, name, name, max.String()), "", ind)
 		g.emitWriteWideOffset(name, w, ind)
 	case ir.TBool:
+		g.guard(fmt.Sprintf("typeof %s !== \"boolean\"", name), " // a bool is a boolean (SPEC §5.1)", ind)
 		g.chunkAdd(fmt.Sprintf("(%s ? 1 : 0)", name), 1, ind)
 	case ir.TFloat32:
 		if f.HasFloatRange {
@@ -1102,6 +1109,7 @@ func (g *fgen) emitWriteScalar(f *ir.Field, name, ind string) {
 		case *ir.Flags:
 			g.emitWriteFlags(ref, name, ind)
 		case *ir.Struct:
+			g.guardObject(name, ind)
 			g.emitWriteItems(ref.Items, name, ind)
 		case *ir.Union:
 			g.emitWriteUnionFlat(ref, name, ind)
@@ -1367,6 +1375,8 @@ func (g *fgen) emitWriteBytesField(f *ir.Field, name, ind string) {
 	length := name + "Length"
 	g.guard(fmt.Sprintf("!globalThis.Number.isInteger(%s) || %s < 0 || %s > %d", length, length, length, f.Type.Size),
 		" // the length guards the slice; out-of-contract writes are refused", ind)
+	g.guard(fmt.Sprintf("!(%s instanceof globalThis.Uint8Array) || %s.length < %s", name, name, length),
+		" // the bytes are a Uint8Array holding the length (SPEC §5.1)", ind)
 	if f.Type.Kind == ir.TString {
 		g.needText = true
 		emitWriteText(g.pf, name, length, ind, "-1")
@@ -2087,6 +2097,7 @@ func (g *fgen) emitReadWideOffsetNum(f *ir.Field, name string, bits int64, diff,
 // switch inlines each arm's items — the struct-inlining move, per arm. expr
 // is the union object (a field path or a hoisted element ref).
 func (g *fgen) emitWriteUnionFlat(u *ir.Union, expr, ind string) {
+	g.guardObject(expr, ind)
 	g.guard(fmt.Sprintf("!globalThis.Number.isInteger(%s.type) || %s.type < 0 || %s.type > %d", expr, expr, expr, u.Max),
 		" // the tag validates BEFORE it rides (SPEC §4.8)", ind)
 	if u.Max == 0 {
@@ -2102,6 +2113,7 @@ func (g *fgen) emitWriteUnionFlat(u *ir.Union, expr, ind string) {
 			g.pf("%s    break; // a payload-free arm: the tag is the whole wire (SPEC §4.8)\n%s  }\n", ind, ind)
 			continue
 		}
+		g.guardObject(expr+"."+MemberName(vr.Name), ind+"    ")
 		g.emitWriteItems(vr.Ref.Items, expr+"."+MemberName(vr.Name), ind+"    ")
 		g.chunkFlush(ind + "    ")
 		g.pf("%s    break;\n%s  }\n", ind, ind)
@@ -2229,4 +2241,19 @@ func (g *fgen) flatZeroValue(t ir.FieldType) string {
 		return "0n"
 	}
 	return "0"
+}
+
+// guardObject refuses a record or union value that is not an object: a field
+// read on null or undefined would throw a TypeError, never the writer's own
+// -1 (SPEC §5.1; JavaScript refuses in every build).
+func (g *fgen) guardObject(expr, ind string) {
+	g.guard(fmt.Sprintf("%s === null || typeof %s !== \"object\"", expr, expr), " // a record or union value is an object (SPEC §5.1)", ind)
+}
+
+// guardStorage refuses an array's storage that is not an object holding at
+// least n elements: the loop would index null or undefined into a TypeError,
+// or write elements that are not there (SPEC §5.1).
+func (g *fgen) guardStorage(expr, n, ind string) {
+	g.guard(fmt.Sprintf("%s === null || typeof %s !== \"object\" || !(%s.length >= %s)", expr, expr, expr, n),
+		" // the storage holds every element the loop reads (SPEC §5.1)", ind)
 }

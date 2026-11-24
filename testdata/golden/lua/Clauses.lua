@@ -732,6 +732,8 @@ end
 
 -- type W13 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteW13(stream, v)
+  if type(v) ~= "table" then return false end
+  if type(v.Items) ~= "table" then return false end
   -- the count guards the loop (SPEC §6.3)
   if math.type(v.ItemsCount) ~= "integer" or v.ItemsCount < 0 or v.ItemsCount > 12 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 4) then return false end -- the count
@@ -744,6 +746,8 @@ end
 
 -- type W17 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteW17(stream, v)
+  if type(v) ~= "table" then return false end
+  if type(v.Items) ~= "table" then return false end
   -- the count guards the loop (SPEC §6.3)
   if math.type(v.ItemsCount) ~= "integer" or v.ItemsCount < 0 or v.ItemsCount > 9 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 4) then return false end -- the count
@@ -756,6 +760,8 @@ end
 
 -- type W26 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteW26(stream, v)
+  if type(v) ~= "table" then return false end
+  if type(v.Items) ~= "table" then return false end
   -- the count guards the loop (SPEC §6.3)
   if math.type(v.ItemsCount) ~= "integer" or v.ItemsCount < 0 or v.ItemsCount > 6 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 3) then return false end -- the count
@@ -768,6 +774,8 @@ end
 
 -- type W1 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteW1(stream, v)
+  if type(v) ~= "table" then return false end
+  if type(v.Items) ~= "table" then return false end
   -- the count guards the loop (SPEC §6.3)
   if math.type(v.ItemsCount) ~= "integer" or v.ItemsCount < 0 or v.ItemsCount > 20 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 5) then return false end -- the count
@@ -780,6 +788,8 @@ end
 
 -- type W52 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteW52(stream, v)
+  if type(v) ~= "table" then return false end
+  if type(v.Items) ~= "table" then return false end
   -- the count guards the loop (SPEC §6.3)
   if math.type(v.ItemsCount) ~= "integer" or v.ItemsCount < 0 or v.ItemsCount > 3 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 2) then return false end -- the count
@@ -792,6 +802,8 @@ end
 
 -- type W50 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteW50(stream, v)
+  if type(v) ~= "table" then return false end
+  if type(v.Items) ~= "table" then return false end
   -- the count guards the loop (SPEC §6.3)
   if math.type(v.ItemsCount) ~= "integer" or v.ItemsCount < 0 or v.ItemsCount > 3 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 2) then return false end -- the count
@@ -804,6 +816,8 @@ end
 
 -- type F13 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteF13(stream, v)
+  if type(v) ~= "table" then return false end
+  if type(v.Items) ~= "table" then return false end
   for _i = 1, 7 do
     if math.type(v.Items[_i]) ~= "integer" or v.Items[_i] < 0 or v.Items[_i] > 8191 then return false end
     if not stream:serializeBits({ value = v.Items[_i] - 0 }, 13) then return false end -- the offset from min
@@ -813,6 +827,7 @@ end
 
 -- type Tri3 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteTri3(stream, v)
+  if type(v) ~= "table" then return false end
   if math.type(v.A) ~= "integer" or v.A < 0 or v.A > 1 then return false end
   if not stream:serializeBits({ value = v.A }, 1) then return false end -- the declared bit width
   if math.type(v.B) ~= "integer" or v.B < 0 or v.B > 3 then return false end
@@ -822,6 +837,8 @@ end
 
 -- type ArrTri3 (SPEC §6.1: the wire order is the declared order)
 function _M.WriteArrTri3(stream, v)
+  if type(v) ~= "table" then return false end
+  if type(v.Items) ~= "table" then return false end
   -- the count guards the loop (SPEC §6.3)
   if math.type(v.ItemsCount) ~= "integer" or v.ItemsCount < 0 or v.ItemsCount > 10 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 4) then return false end -- the count
@@ -833,6 +850,7 @@ end
 
 -- type Eleven (SPEC §6.1: the wire order is the declared order)
 function _M.WriteEleven(stream, v)
+  if type(v) ~= "table" then return false end
   if math.type(v.A) ~= "integer" or v.A < 0 or v.A > 7 then return false end
   if not stream:serializeBits({ value = v.A }, 3) then return false end -- the declared bit width
   if math.type(v.B) ~= "integer" or v.B < 0 or v.B > 255 then return false end
@@ -842,6 +860,8 @@ end
 
 -- type ArrEleven (SPEC §6.1: the wire order is the declared order)
 function _M.WriteArrEleven(stream, v)
+  if type(v) ~= "table" then return false end
+  if type(v.Items) ~= "table" then return false end
   for _i = 1, 9 do
     if not _M.WriteEleven(stream, v.Items[_i]) then return false end
   end
@@ -849,17 +869,20 @@ function _M.WriteArrEleven(stream, v)
 end
 
 -- type EmptyA (SPEC §6.1: the wire order is the declared order)
-function _M.WriteEmptyA(_stream, _v)
+function _M.WriteEmptyA(_stream, v)
+  if type(v) ~= "table" then return false end
   return true
 end
 
 -- type EmptyB (SPEC §6.1: the wire order is the declared order)
-function _M.WriteEmptyB(_stream, _v)
+function _M.WriteEmptyB(_stream, v)
+  if type(v) ~= "table" then return false end
   return true
 end
 
 -- union EmptyUnion (SPEC §4.8: None = 0, then each declared arm)
 function _M.WriteEmptyUnion(stream, v)
+  if type(v) ~= "table" then return false end
   if math.type(v.Type) ~= "integer" or v.Type < 0 or v.Type > 2 then return false end
   if not stream:serializeBits({ value = v.Type }, 2) then return false end -- the union tag
   if v.Type == 1 then
@@ -873,6 +896,7 @@ end
 
 -- type HoldsEmptyUnion (SPEC §6.1: the wire order is the declared order)
 function _M.WriteHoldsEmptyUnion(stream, v)
+  if type(v) ~= "table" then return false end
   if math.type(v.Lead) ~= "integer" or v.Lead < 0 or v.Lead > 31 then return false end
   if not stream:serializeBits({ value = v.Lead }, 5) then return false end -- the declared bit width
   if not _M.WriteEmptyUnion(stream, v.U) then return false end
@@ -883,6 +907,7 @@ end
 
 -- type Strs (SPEC §6.1: the wire order is the declared order)
 function _M.WriteStrs(stream, v)
+  if type(v) ~= "table" then return false end
   if math.type(v.Lead) ~= "integer" or v.Lead < 0 or v.Lead > 31 then return false end
   if not stream:serializeBits({ value = v.Lead }, 5) then return false end -- the declared bit width
   if type(v.S) ~= "string" or #v.S > 8 then return false end
@@ -902,8 +927,10 @@ end
 
 -- type ArrNested (SPEC §6.1: the wire order is the declared order)
 function _M.WriteArrNested(stream, v)
+  if type(v) ~= "table" then return false end
   if math.type(v.Lead) ~= "integer" or v.Lead < 0 or v.Lead > 31 then return false end
   if not stream:serializeBits({ value = v.Lead }, 5) then return false end -- the declared bit width
+  if type(v.Items) ~= "table" then return false end
   -- the count guards the loop (SPEC §6.3)
   if math.type(v.ItemsCount) ~= "integer" or v.ItemsCount < 0 or v.ItemsCount > 4 then return false end
   if not stream:serializeBits({ value = v.ItemsCount }, 3) then return false end -- the count
@@ -917,6 +944,7 @@ end
 
 -- type Sole (SPEC §6.1: the wire order is the declared order)
 function _M.WriteSole(stream, v)
+  if type(v) ~= "table" then return false end
   if math.type(v.Only) ~= "integer" or v.Only < 0 or v.Only > 8191 then return false end
   if not stream:serializeBits({ value = v.Only }, 13) then return false end -- the declared bit width
   return true

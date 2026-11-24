@@ -90,6 +90,9 @@ function validText(bytes, length) {
 // must hold BenchPacketMaxBytes.
 export function WriteBenchPacketFlat(view, value) {
   let v = 0, x = 0, lo = 0, sb = 0, wi = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.a) || value.a < -100 || value.a > 100) {
     return -1;
   }
@@ -115,6 +118,9 @@ export function WriteBenchPacketFlat(view, value) {
   v = ((value.bits13 & 0x1fff)) >>> 0;
   view.setUint32(4, (lo | (v << 20)) >>> 0, true);
   lo = v >>> 12;
+  if (typeof value.flag !== "boolean") { // a bool is a boolean (SPEC §5.1)
+    return -1;
+  }
   lo = (lo | (((value.bits23 & 0x7fffff) | ((value.flag ? 1 : 0) << 23)) << 1)) >>> 0;
   x = value.x;
   if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
@@ -152,6 +158,9 @@ export function WriteBenchPacketFlat(view, value) {
   lo = v >>> 7;
   view.setUint32(28, lo, true);
   lo = 0;
+  if (value.blob === null || typeof value.blob !== "object" || !(value.blob.length >= 17)) { // the storage holds every element the loop reads (SPEC §5.1)
+    return -1;
+  }
   wi = 32;
   for (let i0 = 0; i0 < 17; i0++) {
     if (!globalThis.Number.isInteger(value.blob[i0]) || value.blob[i0] < 0 || value.blob[i0] > 255) { // a bare integer must fit its width
@@ -387,6 +396,9 @@ export function ReadBenchPacketFlatBits(view, numBits, value) {
 // must hold BenchIntsMaxBytes.
 export function WriteBenchIntsFlat(view, value) {
   let v = 0, lo = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.f0) || value.f0 < -100 || value.f0 > 100) {
     return -1;
   }
@@ -550,6 +562,9 @@ export function ReadBenchIntsFlatBits(view, numBits, value) {
 // must hold BenchBitsMaxBytes.
 export function WriteBenchBitsFlat(view, value) {
   let v = 0, lo = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.b7) || value.b7 < 0 || value.b7 > 127) {
     return -1;
   }
@@ -683,6 +698,9 @@ export function ReadBenchBitsFlatBits(view, numBits, value) {
 // must hold MixedEntityMaxBytes.
 export function WriteMixedEntityFlat(view, value) {
   let v = 0, lo = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.entityId) || value.entityId < 0 || value.entityId > 4095) {
     return -1;
   }
@@ -734,6 +752,12 @@ export function WriteMixedEntityFlat(view, value) {
   v = SC.getUint32(0, true) & 0xff;
   view.setUint32(12, (lo | (v << 29)) >>> 0, true);
   lo = v >>> 3;
+  if (typeof value.moving !== "boolean") { // a bool is a boolean (SPEC §5.1)
+    return -1;
+  }
+  if (typeof value.firing !== "boolean") { // a bool is a boolean (SPEC §5.1)
+    return -1;
+  }
   lo = (lo | (((value.moving ? 1 : 0) | ((value.firing ? 1 : 0) << 1)) << 5)) >>> 0;
   view.setUint32(16, lo, true);
   return 17;
@@ -864,6 +888,9 @@ export function ReadMixedEntityFlatBits(view, numBits, value) {
 // must hold MixedStatMaxBytes.
 export function WriteMixedStatFlat(view, value) {
   let lo = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.statId) || value.statId < 0 || value.statId > 255) {
     return -1;
   }
@@ -920,6 +947,9 @@ export function ReadMixedStatFlatBits(view, numBits, value) {
 // must hold MixedHitEventMaxBytes.
 export function WriteMixedHitEventFlat(view, value) {
   let lo = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.targetId) || value.targetId < 0 || value.targetId > 4095) {
     return -1;
   }
@@ -927,6 +957,9 @@ export function WriteMixedHitEventFlat(view, value) {
     return -1;
   }
   if (!globalThis.Number.isInteger(value.hitKind) || value.hitKind < 0 || value.hitKind > 7) {
+    return -1;
+  }
+  if (typeof value.crit !== "boolean") { // a bool is a boolean (SPEC §5.1)
     return -1;
   }
   lo = ((value.targetId & 0xfff) | (((value.damage) & 0xfff) << 12) | (((value.hitKind) & 0x7) << 24) | ((value.crit ? 1 : 0) << 27));
@@ -987,6 +1020,9 @@ export function ReadMixedHitEventFlatBits(view, numBits, value) {
 // must hold MixedChatEventMaxBytes.
 export function WriteMixedChatEventFlat(view, value) {
   let lo = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.channel) || value.channel < 0 || value.channel > 3) {
     return -1;
   }
@@ -1043,6 +1079,9 @@ export function ReadMixedChatEventFlatBits(view, numBits, value) {
 // must hold MixedPickupEventMaxBytes.
 export function WriteMixedPickupEventFlat(view, value) {
   let lo = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.itemId) || value.itemId < 0 || value.itemId > 1023) {
     return -1;
   }
@@ -1099,6 +1138,9 @@ export function ReadMixedPickupEventFlatBits(view, numBits, value) {
 // must hold MixedEventMaxBytes.
 export function WriteMixedEventFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.type) || value.type < 0 || value.type > 3) { // the tag validates BEFORE it rides (SPEC §4.8)
     return -1;
   }
@@ -1106,6 +1148,9 @@ export function WriteMixedEventFlat(view, value) {
   sb = 2;
   switch (value.type) {
     case 1: {
+      if (value.hit === null || typeof value.hit !== "object") { // a record or union value is an object (SPEC §5.1)
+        return -1;
+      }
       if (!globalThis.Number.isInteger(value.hit.targetId) || value.hit.targetId < 0 || value.hit.targetId > 4095) {
         return -1;
       }
@@ -1113,6 +1158,9 @@ export function WriteMixedEventFlat(view, value) {
         return -1;
       }
       if (!globalThis.Number.isInteger(value.hit.hitKind) || value.hit.hitKind < 0 || value.hit.hitKind > 7) {
+        return -1;
+      }
+      if (typeof value.hit.crit !== "boolean") { // a bool is a boolean (SPEC §5.1)
         return -1;
       }
       v = ((value.hit.targetId & 0xfff) | (((value.hit.damage) & 0xfff) << 12) | (((value.hit.hitKind) & 0x7) << 24) | ((value.hit.crit ? 1 : 0) << 27)) >>> 0;
@@ -1127,6 +1175,9 @@ export function WriteMixedEventFlat(view, value) {
       break;
     }
     case 2: {
+      if (value.chat === null || typeof value.chat !== "object") { // a record or union value is an object (SPEC §5.1)
+        return -1;
+      }
       if (!globalThis.Number.isInteger(value.chat.channel) || value.chat.channel < 0 || value.chat.channel > 3) {
         return -1;
       }
@@ -1145,6 +1196,9 @@ export function WriteMixedEventFlat(view, value) {
       break;
     }
     case 3: {
+      if (value.pickup === null || typeof value.pickup !== "object") { // a record or union value is an object (SPEC §5.1)
+        return -1;
+      }
       if (!globalThis.Number.isInteger(value.pickup.itemId) || value.pickup.itemId < 0 || value.pickup.itemId > 1023) {
         return -1;
       }
@@ -1338,6 +1392,9 @@ export function ReadMixedEventFlatBits(view, numBits, value) {
 export function WriteBenchMixedFlat(view, value) {
   let v = 0, x = 0, n = 0, lo = 0, sb = 0, wi = 0;
   let bg = 0n;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.sequence) || value.sequence < 0 || value.sequence > 65535) {
     return -1;
   }
@@ -1403,6 +1460,9 @@ export function WriteBenchMixedFlat(view, value) {
   if (!globalThis.Number.isInteger(value.entitiesCount) || value.entitiesCount < 1 || value.entitiesCount > 8) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
+  if (value.entities === null || typeof value.entities !== "object" || !(value.entities.length >= value.entitiesCount)) { // the storage holds every element the loop reads (SPEC §5.1)
+    return -1;
+  }
   v = (((value.serverTime) & 0xffffff) | (((((value.entitiesCount >>> 0) - 1) >>> 0) & 0x7) << 24)) >>> 0;
   view.setUint32(40, (lo | (v << 9)) >>> 0, true);
   lo = v >>> 23;
@@ -1410,6 +1470,9 @@ export function WriteBenchMixedFlat(view, value) {
   sb = 4;
   for (let i0 = 0; i0 < value.entitiesCount; i0++) {
     const e0 = value.entities[i0];
+    if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
+      return -1;
+    }
     if (!globalThis.Number.isInteger(e0.entityId) || e0.entityId < 0 || e0.entityId > 4095) {
       return -1;
     }
@@ -1501,6 +1564,12 @@ export function WriteBenchMixedFlat(view, value) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (8 - sb);
     }
+    if (typeof e0.moving !== "boolean") { // a bool is a boolean (SPEC §5.1)
+      return -1;
+    }
+    if (typeof e0.firing !== "boolean") { // a bool is a boolean (SPEC §5.1)
+      return -1;
+    }
     v = ((e0.moving ? 1 : 0) | ((e0.firing ? 1 : 0) << 1)) >>> 0;
     lo = (lo | (v << sb)) >>> 0;
     sb += 2;
@@ -1514,6 +1583,9 @@ export function WriteBenchMixedFlat(view, value) {
   if (!globalThis.Number.isInteger(value.statsCount) || value.statsCount < 0 || value.statsCount > 80) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
+  if (value.stats === null || typeof value.stats !== "object" || !(value.stats.length >= value.statsCount)) { // the storage holds every element the loop reads (SPEC §5.1)
+    return -1;
+  }
   v = (((value.statsCount) & 0x7f)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 7;
@@ -1525,6 +1597,9 @@ export function WriteBenchMixedFlat(view, value) {
   }
   for (let i0 = 0; i0 < value.statsCount; i0++) {
     const e0 = value.stats[i0];
+    if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
+      return -1;
+    }
     if (!globalThis.Number.isInteger(e0.statId) || e0.statId < 0 || e0.statId > 255) {
       return -1;
     }
@@ -1541,6 +1616,9 @@ export function WriteBenchMixedFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (18 - sb);
     }
   }
+  if (value.gameEvent === null || typeof value.gameEvent !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.gameEvent.type) || value.gameEvent.type < 0 || value.gameEvent.type > 3) { // the tag validates BEFORE it rides (SPEC §4.8)
     return -1;
   }
@@ -1555,6 +1633,9 @@ export function WriteBenchMixedFlat(view, value) {
   }
   switch (value.gameEvent.type) {
     case 1: {
+      if (value.gameEvent.hit === null || typeof value.gameEvent.hit !== "object") { // a record or union value is an object (SPEC §5.1)
+        return -1;
+      }
       if (!globalThis.Number.isInteger(value.gameEvent.hit.targetId) || value.gameEvent.hit.targetId < 0 || value.gameEvent.hit.targetId > 4095) {
         return -1;
       }
@@ -1562,6 +1643,9 @@ export function WriteBenchMixedFlat(view, value) {
         return -1;
       }
       if (!globalThis.Number.isInteger(value.gameEvent.hit.hitKind) || value.gameEvent.hit.hitKind < 0 || value.gameEvent.hit.hitKind > 7) {
+        return -1;
+      }
+      if (typeof value.gameEvent.hit.crit !== "boolean") { // a bool is a boolean (SPEC §5.1)
         return -1;
       }
       v = ((value.gameEvent.hit.targetId & 0xfff) | (((value.gameEvent.hit.damage) & 0xfff) << 12) | (((value.gameEvent.hit.hitKind) & 0x7) << 24) | ((value.gameEvent.hit.crit ? 1 : 0) << 27)) >>> 0;
@@ -1576,6 +1660,9 @@ export function WriteBenchMixedFlat(view, value) {
       break;
     }
     case 2: {
+      if (value.gameEvent.chat === null || typeof value.gameEvent.chat !== "object") { // a record or union value is an object (SPEC §5.1)
+        return -1;
+      }
       if (!globalThis.Number.isInteger(value.gameEvent.chat.channel) || value.gameEvent.chat.channel < 0 || value.gameEvent.chat.channel > 3) {
         return -1;
       }
@@ -1594,6 +1681,9 @@ export function WriteBenchMixedFlat(view, value) {
       break;
     }
     case 3: {
+      if (value.gameEvent.pickup === null || typeof value.gameEvent.pickup !== "object") { // a record or union value is an object (SPEC §5.1)
+        return -1;
+      }
       if (!globalThis.Number.isInteger(value.gameEvent.pickup.itemId) || value.gameEvent.pickup.itemId < 0 || value.gameEvent.pickup.itemId > 1023) {
         return -1;
       }
@@ -1612,6 +1702,9 @@ export function WriteBenchMixedFlat(view, value) {
       break;
     }
   }
+  if (value.loadout === null || typeof value.loadout !== "object" || !(value.loadout.length >= 4)) { // the storage holds every element the loop reads (SPEC §5.1)
+    return -1;
+  }
   for (let i0 = 0; i0 < 4; i0++) {
     if (!globalThis.Number.isInteger(value.loadout[i0]) || value.loadout[i0] < 0 || value.loadout[i0] > 255) { // a bare integer must fit its width
       return -1;
@@ -1627,6 +1720,9 @@ export function WriteBenchMixedFlat(view, value) {
     }
   }
   if (!globalThis.Number.isInteger(value.playerNameLength) || value.playerNameLength < 0 || value.playerNameLength > 15) { // the length guards the slice; out-of-contract writes are refused
+    return -1;
+  }
+  if (!(value.playerName instanceof globalThis.Uint8Array) || value.playerName.length < value.playerNameLength) { // the bytes are a Uint8Array holding the length (SPEC §5.1)
     return -1;
   }
   if (!validText(value.playerName, value.playerNameLength)) {
@@ -1674,6 +1770,9 @@ export function WriteBenchMixedFlat(view, value) {
     }
   }
   if (!globalThis.Number.isInteger(value.payloadLength) || value.payloadLength < 0 || value.payloadLength > 16) { // the length guards the slice; out-of-contract writes are refused
+    return -1;
+  }
+  if (!(value.payload instanceof globalThis.Uint8Array) || value.payload.length < value.payloadLength) { // the bytes are a Uint8Array holding the length (SPEC §5.1)
     return -1;
   }
   v = (((value.payloadLength) & 0x1f)) >>> 0;
@@ -1914,6 +2013,9 @@ export function WriteBenchMixedFlat(view, value) {
     sb = 0;
   }
   if (!globalThis.Number.isInteger(value.crcHint) || value.crcHint < 0 || value.crcHint > 16777215) {
+    return -1;
+  }
+  if (typeof value.hasExtra !== "boolean") { // a bool is a boolean (SPEC §5.1)
     return -1;
   }
   if (!globalThis.Number.isInteger(value.extra) || value.extra < 0 || value.extra > 255) {

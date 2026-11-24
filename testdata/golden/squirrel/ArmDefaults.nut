@@ -60,12 +60,15 @@ _M.ReadDefaultArm <- function(stream, value) {
 
 // WriteDefaultArm writes value in declared order; false on a refused value.
 _M.WriteDefaultArm <- function(stream, value) {
+  if (!(value instanceof _M.DefaultArm)) return false;
   if (typeof value.EntriesCount != "integer" || value.EntriesCount < 0 || value.EntriesCount > 2) return false;
+  if (typeof value.Entries != "array" || value.Entries.len() < value.EntriesCount) return false;
   _h.value = value.EntriesCount;
   if (!stream.serializeBits(_h, 2)) return false;
   for (local _i = 0; _i < value.EntriesCount; _i++) {
     if (!_Wire_.WriteProbeConfig(stream, value.Entries[_i])) return false;
   }
+  if (typeof value.Marker != "integer") return false;
   _h.value = value.Marker;
   if (!stream.serializeInt(_h, 0, 7)) return false;
   return true;
@@ -132,6 +135,7 @@ _M.ReadDefaultChoice <- function(stream, value) {
 
 // WriteDefaultChoice writes the tag, then the selected arm; false on a refused value.
 _M.WriteDefaultChoice <- function(stream, value) {
+  if (!(value instanceof _M.DefaultChoice)) return false;
   if (typeof value.Type != "integer" || value.Type < 0 || value.Type > 2) return false;
   _h.value = value.Type;
   if (!stream.serializeBits(_h, 2)) return false;
@@ -173,6 +177,7 @@ _M.ReadDefaultChoicePacket <- function(stream, value) {
 
 // WriteDefaultChoicePacket writes value in declared order; false on a refused value.
 _M.WriteDefaultChoicePacket <- function(stream, value) {
+  if (!(value instanceof _M.DefaultChoicePacket)) return false;
   if (!_M.WriteDefaultChoice(stream, value.Choice)) return false;
   return true;
 };
@@ -216,6 +221,7 @@ _M.ReadDefaultBulkArm <- function(stream, value) {
 
 // WriteDefaultBulkArm writes value in declared order; false on a refused value.
 _M.WriteDefaultBulkArm <- function(stream, value) {
+  if (!(value instanceof _M.DefaultBulkArm)) return false;
   if (!_M.WriteDefaultArm(stream, value.Payload)) return false;
   if (typeof value.Data != "blob" || typeof value.DataLength != "integer" || value.DataLength < 0 || value.DataLength > 2 || value.DataLength > value.Data.len()) return false;
   _h.value = value.DataLength;
@@ -285,6 +291,7 @@ _M.ReadDefaultBulkChoice <- function(stream, value) {
 
 // WriteDefaultBulkChoice writes the tag, then the selected arm; false on a refused value.
 _M.WriteDefaultBulkChoice <- function(stream, value) {
+  if (!(value instanceof _M.DefaultBulkChoice)) return false;
   if (typeof value.Type != "integer" || value.Type < 0 || value.Type > 2) return false;
   _h.value = value.Type;
   if (!stream.serializeBits(_h, 2)) return false;

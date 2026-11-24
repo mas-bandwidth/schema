@@ -69,7 +69,13 @@ function validText(bytes, length) {
 // must hold W13MaxBytes.
 export function WriteW13Flat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 12) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+    return -1;
+  }
+  if (value.items === null || typeof value.items !== "object" || !(value.items.length >= value.itemsCount)) { // the storage holds every element the loop reads (SPEC §5.1)
     return -1;
   }
   lo = (((value.itemsCount) & 0xf));
@@ -170,7 +176,13 @@ export function ReadW13FlatBits(view, numBits, value) {
 // must hold W17MaxBytes.
 export function WriteW17Flat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 9) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+    return -1;
+  }
+  if (value.items === null || typeof value.items !== "object" || !(value.items.length >= value.itemsCount)) { // the storage holds every element the loop reads (SPEC §5.1)
     return -1;
   }
   lo = (((value.itemsCount) & 0xf));
@@ -271,7 +283,13 @@ export function ReadW17FlatBits(view, numBits, value) {
 // must hold W26MaxBytes.
 export function WriteW26Flat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 6) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+    return -1;
+  }
+  if (value.items === null || typeof value.items !== "object" || !(value.items.length >= value.itemsCount)) { // the storage holds every element the loop reads (SPEC §5.1)
     return -1;
   }
   lo = (((value.itemsCount) & 0x7));
@@ -372,7 +390,13 @@ export function ReadW26FlatBits(view, numBits, value) {
 // must hold W1MaxBytes.
 export function WriteW1Flat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 20) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+    return -1;
+  }
+  if (value.items === null || typeof value.items !== "object" || !(value.items.length >= value.itemsCount)) { // the storage holds every element the loop reads (SPEC §5.1)
     return -1;
   }
   lo = (((value.itemsCount) & 0x1f));
@@ -473,7 +497,13 @@ export function ReadW1FlatBits(view, numBits, value) {
 // must hold W52MaxBytes.
 export function WriteW52Flat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+    return -1;
+  }
+  if (value.items === null || typeof value.items !== "object" || !(value.items.length >= value.itemsCount)) { // the storage holds every element the loop reads (SPEC §5.1)
     return -1;
   }
   lo = (((value.itemsCount) & 0x3));
@@ -600,7 +630,13 @@ export function ReadW52FlatBits(view, numBits, value) {
 // must hold W50MaxBytes.
 export function WriteW50Flat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 3) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+    return -1;
+  }
+  if (value.items === null || typeof value.items !== "object" || !(value.items.length >= value.itemsCount)) { // the storage holds every element the loop reads (SPEC §5.1)
     return -1;
   }
   lo = (((value.itemsCount) & 0x3));
@@ -727,6 +763,12 @@ export function ReadW50FlatBits(view, numBits, value) {
 // must hold F13MaxBytes.
 export function WriteF13Flat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
+  if (value.items === null || typeof value.items !== "object" || !(value.items.length >= 7)) { // the storage holds every element the loop reads (SPEC §5.1)
+    return -1;
+  }
   for (let i0 = 0; i0 < 7; i0++) {
     if (!globalThis.Number.isInteger(value.items[i0]) || value.items[i0] < 0 || value.items[i0] > 8191) {
       return -1;
@@ -803,6 +845,9 @@ export function ReadF13FlatBits(view, numBits, value) {
 // must hold Tri3MaxBytes.
 export function WriteTri3Flat(view, value) {
   let lo = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.a) || value.a < 0 || value.a > 1) {
     return -1;
   }
@@ -859,13 +904,22 @@ export function ReadTri3FlatBits(view, numBits, value) {
 // must hold ArrTri3MaxBytes.
 export function WriteArrTri3Flat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 10) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
+    return -1;
+  }
+  if (value.items === null || typeof value.items !== "object" || !(value.items.length >= value.itemsCount)) { // the storage holds every element the loop reads (SPEC §5.1)
     return -1;
   }
   lo = (((value.itemsCount) & 0xf));
   sb = 4;
   for (let i0 = 0; i0 < value.itemsCount; i0++) {
     const e0 = value.items[i0];
+    if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
+      return -1;
+    }
     if (!globalThis.Number.isInteger(e0.a) || e0.a < 0 || e0.a > 1) {
       return -1;
     }
@@ -970,6 +1024,9 @@ export function ReadArrTri3FlatBits(view, numBits, value) {
 // must hold ElevenMaxBytes.
 export function WriteElevenFlat(view, value) {
   let lo = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.a) || value.a < 0 || value.a > 7) {
     return -1;
   }
@@ -1026,8 +1083,17 @@ export function ReadElevenFlatBits(view, numBits, value) {
 // must hold ArrElevenMaxBytes.
 export function WriteArrElevenFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
+  if (value.items === null || typeof value.items !== "object" || !(value.items.length >= 9)) { // the storage holds every element the loop reads (SPEC §5.1)
+    return -1;
+  }
   for (let i0 = 0; i0 < 9; i0++) {
     const e0 = value.items[i0];
+    if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
+      return -1;
+    }
     if (!globalThis.Number.isInteger(e0.a) || e0.a < 0 || e0.a > 7) {
       return -1;
     }
@@ -1107,9 +1173,13 @@ export function ReadArrElevenFlatBits(view, numBits, value) {
 
 // ---- type EmptyA: the flat codec ----
 
-// WriteEmptyAFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract. The buffer behind view must hold EmptyAMaxBytes.
-export function WriteEmptyAFlat() {
+// WriteEmptyAFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold EmptyAMaxBytes.
+export function WriteEmptyAFlat(view, value) {
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   return 0;
 }
 
@@ -1132,9 +1202,13 @@ export function ReadEmptyAFlatBits() {
 
 // ---- type EmptyB: the flat codec ----
 
-// WriteEmptyBFlat(view, value) -> bytes written (>= 0). Nothing here is a
-// writer contract. The buffer behind view must hold EmptyBMaxBytes.
-export function WriteEmptyBFlat() {
+// WriteEmptyBFlat(view, value) -> bytes written (>= 0), or -1 on a refused
+// writer contract, in every build (SPEC §5.1). The buffer behind view
+// must hold EmptyBMaxBytes.
+export function WriteEmptyBFlat(view, value) {
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   return 0;
 }
 
@@ -1162,6 +1236,9 @@ export function ReadEmptyBFlatBits() {
 // must hold EmptyUnionMaxBytes.
 export function WriteEmptyUnionFlat(view, value) {
   let lo = 0, sb = 0, wi = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.type) || value.type < 0 || value.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
     return -1;
   }
@@ -1169,9 +1246,15 @@ export function WriteEmptyUnionFlat(view, value) {
   sb = 2;
   switch (value.type) {
     case 1: {
+      if (value.a === null || typeof value.a !== "object") { // a record or union value is an object (SPEC §5.1)
+        return -1;
+      }
       break;
     }
     case 2: {
+      if (value.b === null || typeof value.b !== "object") { // a record or union value is an object (SPEC §5.1)
+        return -1;
+      }
       break;
     }
   }
@@ -1247,7 +1330,13 @@ export function ReadEmptyUnionFlatBits(view, numBits, value) {
 // must hold HoldsEmptyUnionMaxBytes.
 export function WriteHoldsEmptyUnionFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
+    return -1;
+  }
+  if (value.u === null || typeof value.u !== "object") { // a record or union value is an object (SPEC §5.1)
     return -1;
   }
   if (!globalThis.Number.isInteger(value.u.type) || value.u.type < 0 || value.u.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
@@ -1257,9 +1346,15 @@ export function WriteHoldsEmptyUnionFlat(view, value) {
   sb = 7;
   switch (value.u.type) {
     case 1: {
+      if (value.u.a === null || typeof value.u.a !== "object") { // a record or union value is an object (SPEC §5.1)
+        return -1;
+      }
       break;
     }
     case 2: {
+      if (value.u.b === null || typeof value.u.b !== "object") { // a record or union value is an object (SPEC §5.1)
+        return -1;
+      }
       break;
     }
   }
@@ -1381,10 +1476,16 @@ export function ReadHoldsEmptyUnionFlatBits(view, numBits, value) {
 // must hold StrsMaxBytes.
 export function WriteStrsFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
     return -1;
   }
   if (!globalThis.Number.isInteger(value.sLength) || value.sLength < 0 || value.sLength > 8) { // the length guards the slice; out-of-contract writes are refused
+    return -1;
+  }
+  if (!(value.s instanceof globalThis.Uint8Array) || value.s.length < value.sLength) { // the bytes are a Uint8Array holding the length (SPEC §5.1)
     return -1;
   }
   if (!validText(value.s, value.sLength)) {
@@ -1418,6 +1519,9 @@ export function WriteStrsFlat(view, value) {
     }
   }
   if (!globalThis.Number.isInteger(value.bLength) || value.bLength < 0 || value.bLength > 8) { // the length guards the slice; out-of-contract writes are refused
+    return -1;
+  }
+  if (!(value.b instanceof globalThis.Uint8Array) || value.b.length < value.bLength) { // the bytes are a Uint8Array holding the length (SPEC §5.1)
     return -1;
   }
   v = (((value.bLength) & 0xf)) >>> 0;
@@ -1679,16 +1783,25 @@ export function ReadStrsFlatBits(view, numBits, value) {
 // must hold ArrNestedMaxBytes.
 export function WriteArrNestedFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.lead) || value.lead < 0 || value.lead > 31) {
     return -1;
   }
   if (!globalThis.Number.isInteger(value.itemsCount) || value.itemsCount < 0 || value.itemsCount > 4) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
+  if (value.items === null || typeof value.items !== "object" || !(value.items.length >= value.itemsCount)) { // the storage holds every element the loop reads (SPEC §5.1)
+    return -1;
+  }
   lo = ((value.lead & 0x1f) | (((value.itemsCount) & 0x7) << 5));
   sb = 8;
   for (let i0 = 0; i0 < value.itemsCount; i0++) {
     const e0 = value.items[i0];
+    if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
+      return -1;
+    }
     if (!globalThis.Number.isInteger(e0.a) || e0.a < 0 || e0.a > 7) {
       return -1;
     }
@@ -1839,6 +1952,9 @@ export function ReadArrNestedFlatBits(view, numBits, value) {
 // must hold SoleMaxBytes.
 export function WriteSoleFlat(view, value) {
   let lo = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.only) || value.only < 0 || value.only > 8191) {
     return -1;
   }

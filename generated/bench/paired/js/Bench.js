@@ -130,6 +130,9 @@ export function ZeroBenchPacket(value) {
 }
 
 export function WriteBenchPacket(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.a) || value.a < -100 || value.a > 100) {
     return false;
   }
@@ -171,6 +174,9 @@ export function WriteBenchPacket(stream, value) {
   NUMBER_SCRATCH.value = value.bits23;
   if (!stream.serializeBits(NUMBER_SCRATCH, 23)) {
     return false;
+  }
+  if (typeof value.flag !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
   }
   BOOL_SCRATCH.value = value.flag;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
@@ -320,6 +326,9 @@ export function ZeroBenchInts(value) {
 }
 
 export function WriteBenchInts(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.f0) || value.f0 < -100 || value.f0 > 100) {
     return false;
   }
@@ -481,6 +490,9 @@ export function ZeroBenchBits(value) {
 }
 
 export function WriteBenchBits(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.b7) || value.b7 < 0 || value.b7 > 127) { // a bits(N) value must fit its width
     return false;
   }
@@ -766,6 +778,9 @@ export function ZeroMixedEntity(value) {
 }
 
 export function WriteMixedEntity(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.entityId) || value.entityId < 0 || value.entityId > 4095) { // a bits(N) value must fit its width
     return false;
   }
@@ -853,9 +868,15 @@ export function WriteMixedEntity(stream, value) {
       return false;
     }
   }
+  if (typeof value.moving !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
+  }
   BOOL_SCRATCH.value = value.moving;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
+  }
+  if (typeof value.firing !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
   }
   BOOL_SCRATCH.value = value.firing;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
@@ -950,6 +971,9 @@ export function ZeroMixedStat(value) {
 }
 
 export function WriteMixedStat(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.statId) || value.statId < 0 || value.statId > 255) { // a bits(N) value must fit its width
     return false;
   }
@@ -1011,6 +1035,9 @@ export function ZeroMixedHitEvent(value) {
 }
 
 export function WriteMixedHitEvent(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.targetId) || value.targetId < 0 || value.targetId > 4095) { // a bits(N) value must fit its width
     return false;
   }
@@ -1031,6 +1058,9 @@ export function WriteMixedHitEvent(stream, value) {
   NUMBER_SCRATCH.value = value.hitKind;
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
+  }
+  if (typeof value.crit !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
   }
   BOOL_SCRATCH.value = value.crit;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
@@ -1085,6 +1115,9 @@ export function ZeroMixedChatEvent(value) {
 }
 
 export function WriteMixedChatEvent(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.channel) || value.channel < 0 || value.channel > 3) {
     return false;
   }
@@ -1140,6 +1173,9 @@ export function ZeroMixedPickupEvent(value) {
 }
 
 export function WriteMixedPickupEvent(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.itemId) || value.itemId < 0 || value.itemId > 1023) { // a bits(N) value must fit its width
     return false;
   }
@@ -1221,6 +1257,9 @@ export function ZeroMixedEvent(value) {
 }
 
 export function WriteMixedEvent(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.type) || value.type < 0 || value.type > 3) {
     return false; // the tag validates BEFORE it rides (SPEC §4.8)
   }
@@ -1390,6 +1429,9 @@ export function ZeroBenchMixed(value) {
 }
 
 export function WriteBenchMixed(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   NUMBER_SCRATCH.value = 49374;
   if (!stream.serializeBits(NUMBER_SCRATCH, 16)) { // const(49374, 16) — SPEC §4.3
     return false;
@@ -1464,6 +1506,9 @@ export function WriteBenchMixed(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
+  if (value.entities === null || typeof value.entities !== "object" || !(value.entities.length >= value.entitiesCount)) {
+    return false; // the storage holds every element the loop reads (SPEC §5.1)
+  }
   for (let i = 0; i < value.entitiesCount; i++) {
     if (!WriteMixedEntity(stream, value.entities[i])) {
       return false;
@@ -1476,6 +1521,9 @@ export function WriteBenchMixed(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
     return false;
   }
+  if (value.stats === null || typeof value.stats !== "object" || !(value.stats.length >= value.statsCount)) {
+    return false; // the storage holds every element the loop reads (SPEC §5.1)
+  }
   for (let i = 0; i < value.statsCount; i++) {
     if (!WriteMixedStat(stream, value.stats[i])) {
       return false;
@@ -1483,6 +1531,9 @@ export function WriteBenchMixed(stream, value) {
   }
   if (!WriteMixedEvent(stream, value.gameEvent)) {
     return false;
+  }
+  if (value.loadout === null || typeof value.loadout !== "object" || !(value.loadout.length >= 4)) {
+    return false; // the storage holds every element the loop reads (SPEC §5.1)
   }
   for (let i = 0; i < 4; i++) {
     if (!globalThis.Number.isInteger(value.loadout[i]) || value.loadout[i] < 0 || value.loadout[i] > 255) { // a bare integer must fit its width
@@ -1500,6 +1551,9 @@ export function WriteBenchMixed(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
     return false;
   }
+  if (!(value.playerName instanceof globalThis.Uint8Array) || value.playerName.length < value.playerNameLength) {
+    return false; // the bytes are a Uint8Array holding the length (SPEC §5.1)
+  }
   if (!validText(value.playerName, value.playerNameLength)) {
     return false;
   }
@@ -1512,6 +1566,9 @@ export function WriteBenchMixed(stream, value) {
   NUMBER_SCRATCH.value = value.payloadLength;
   if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
     return false;
+  }
+  if (!(value.payload instanceof globalThis.Uint8Array) || value.payload.length < value.payloadLength) {
+    return false; // the bytes are a Uint8Array holding the length (SPEC §5.1)
   }
   if (!stream.serializeBytes(value.payload.subarray(0, value.payloadLength))) {
     return false;
@@ -1594,6 +1651,9 @@ export function WriteBenchMixed(stream, value) {
   NUMBER_SCRATCH.value = value.crcHint;
   if (!stream.serializeBits(NUMBER_SCRATCH, 24)) {
     return false;
+  }
+  if (typeof value.hasExtra !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
   }
   BOOL_SCRATCH.value = value.hasExtra;
   if (!stream.serializeBool(BOOL_SCRATCH)) {

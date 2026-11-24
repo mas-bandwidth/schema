@@ -41,6 +41,9 @@ export const FlatReadSlack = 8;
 // must hold RealPacketMaxBytes.
 export function WriteRealPacketFlat(view, value) {
   let v = 0, x = 0, n = 0, lo = 0, sb = 0, wi = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.f001Int) || value.f001Int < -805495 || value.f001Int > 805495) {
     return -1;
   }
@@ -113,6 +116,9 @@ export function WriteRealPacketFlat(view, value) {
   view.setUint32(28, (lo | (v << 24)) >>> 0, true);
   lo = v >>> 8;
   if (!globalThis.Number.isInteger(value.f011Bits) || value.f011Bits < 0 || value.f011Bits > 1023) {
+    return -1;
+  }
+  if (typeof value.f012Bool !== "boolean") { // a bool is a boolean (SPEC §5.1)
     return -1;
   }
   v = ((value.f011Bits & 0x3ff) | ((value.f012Bool ? 1 : 0) << 10)) >>> 0;
@@ -384,6 +390,12 @@ export function WriteRealPacketFlat(view, value) {
   if (!globalThis.Number.isInteger(value.f036Enum) || value.f036Enum < 0 || value.f036Enum > 5) { // headroom above the wire range cannot ride
     return -1;
   }
+  if (typeof value.f037Bool !== "boolean") { // a bool is a boolean (SPEC §5.1)
+    return -1;
+  }
+  if (typeof value.f038Bool !== "boolean") { // a bool is a boolean (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.f039Bits) || value.f039Bits < 0 || value.f039Bits > 524287) {
     return -1;
   }
@@ -422,6 +434,9 @@ export function WriteRealPacketFlat(view, value) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (23 - sb);
+  }
+  if (typeof value.f043Bool !== "boolean") { // a bool is a boolean (SPEC §5.1)
+    return -1;
   }
   v = ((value.f042Bits & 0x3fffffff) | ((value.f043Bool ? 1 : 0) << 30)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
@@ -500,6 +515,9 @@ export function WriteRealPacketFlat(view, value) {
   if (!globalThis.Number.isInteger(value.f049Ufixed) || value.f049Ufixed < 0 || value.f049Ufixed > 49152) {
     return -1;
   }
+  if (typeof value.f050Bool !== "boolean") { // a bool is a boolean (SPEC §5.1)
+    return -1;
+  }
   v = (((value.f049Ufixed) & 0xffff) | ((value.f050Bool ? 1 : 0) << 16)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 17;
@@ -510,6 +528,9 @@ export function WriteRealPacketFlat(view, value) {
     lo = sb === 0 ? 0 : v >>> (17 - sb);
   }
   if (value.f050Bool) {
+    if (typeof value.f051Bool !== "boolean") { // a bool is a boolean (SPEC §5.1)
+      return -1;
+    }
     if (!globalThis.Number.isInteger(value.f052Int) || value.f052Int < -57 || value.f052Int > 57) {
       return -1;
     }
@@ -548,6 +569,9 @@ export function WriteRealPacketFlat(view, value) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (7 - sb);
     }
+  }
+  if (typeof value.f055Bool !== "boolean") { // a bool is a boolean (SPEC §5.1)
+    return -1;
   }
   if (!globalThis.Number.isInteger(value.f056Int) || value.f056Int < -13 || value.f056Int > 13) {
     return -1;
@@ -802,6 +826,9 @@ export function WriteRealPacketFlat(view, value) {
   if (!globalThis.Number.isInteger(value.f073Int) || value.f073Int < -4 || value.f073Int > 4) {
     return -1;
   }
+  if (typeof value.f074Bool !== "boolean") { // a bool is a boolean (SPEC §5.1)
+    return -1;
+  }
   v = (((((value.f073Int >>> 0) - 4294967292) >>> 0) & 0xf) | ((value.f074Bool ? 1 : 0) << 4)) >>> 0;
   lo = (lo | (v << sb)) >>> 0;
   sb += 5;
@@ -864,6 +891,9 @@ export function WriteRealPacketFlat(view, value) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (5 - sb);
     }
+  }
+  if (typeof value.f080Bool !== "boolean") { // a bool is a boolean (SPEC §5.1)
+    return -1;
   }
   if (!globalThis.Number.isInteger(value.f081Bits) || value.f081Bits < 0 || value.f081Bits > 536870911) {
     return -1;
@@ -1000,6 +1030,9 @@ export function WriteRealPacketFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (5 - sb);
   }
+  if (typeof value.f092Bool !== "boolean") { // a bool is a boolean (SPEC §5.1)
+    return -1;
+  }
   if (typeof value.f093Bits !== "bigint" || value.f093Bits < 0n || value.f093Bits > 18446744073709551615n) {
     return -1;
   }
@@ -1030,6 +1063,9 @@ export function WriteRealPacketFlat(view, value) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
+  }
+  if (typeof value.f094Bool !== "boolean") { // a bool is a boolean (SPEC §5.1)
+    return -1;
   }
   if (!globalThis.Number.isInteger(value.f095Fixed) || value.f095Fixed < -103350272 || value.f095Fixed > 103350272) {
     return -1;

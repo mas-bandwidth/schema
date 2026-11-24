@@ -435,6 +435,9 @@ export function ZeroRealPacket(value) {
 }
 
 export function WriteRealPacket(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.f001Int) || value.f001Int < -805495 || value.f001Int > 805495) {
     return false;
   }
@@ -514,6 +517,9 @@ export function WriteRealPacket(stream, value) {
   NUMBER_SCRATCH.value = value.f011Bits;
   if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
     return false;
+  }
+  if (typeof value.f012Bool !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
   }
   BOOL_SCRATCH.value = value.f012Bool;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
@@ -692,9 +698,15 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
+  if (typeof value.f037Bool !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
+  }
   BOOL_SCRATCH.value = value.f037Bool;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
+  }
+  if (typeof value.f038Bool !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
   }
   BOOL_SCRATCH.value = value.f038Bool;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
@@ -727,6 +739,9 @@ export function WriteRealPacket(stream, value) {
   NUMBER_SCRATCH.value = value.f042Bits;
   if (!stream.serializeBits(NUMBER_SCRATCH, 30)) {
     return false;
+  }
+  if (typeof value.f043Bool !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
   }
   BOOL_SCRATCH.value = value.f043Bool;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
@@ -776,11 +791,17 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeFixed(NUMBER_SCRATCH, 2, 14, 0, 3)) {
     return false;
   }
+  if (typeof value.f050Bool !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
+  }
   BOOL_SCRATCH.value = value.f050Bool;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
   if (value.f050Bool) {
+    if (typeof value.f051Bool !== "boolean") {
+      return false; // a bool is a boolean (SPEC §5.1)
+    }
     BOOL_SCRATCH.value = value.f051Bool;
     if (!stream.serializeBool(BOOL_SCRATCH)) {
       return false;
@@ -806,6 +827,9 @@ export function WriteRealPacket(stream, value) {
     if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
       return false;
     }
+  }
+  if (typeof value.f055Bool !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
   }
   BOOL_SCRATCH.value = value.f055Bool;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
@@ -955,6 +979,9 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
     return false;
   }
+  if (typeof value.f074Bool !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
+  }
   BOOL_SCRATCH.value = value.f074Bool;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
@@ -995,6 +1022,9 @@ export function WriteRealPacket(stream, value) {
     if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
       return false;
     }
+  }
+  if (typeof value.f080Bool !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
   }
   BOOL_SCRATCH.value = value.f080Bool;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
@@ -1080,6 +1110,9 @@ export function WriteRealPacket(stream, value) {
       return false;
     }
   }
+  if (typeof value.f092Bool !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
+  }
   BOOL_SCRATCH.value = value.f092Bool;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
@@ -1090,6 +1123,9 @@ export function WriteRealPacket(stream, value) {
   BIGINT_SCRATCH.value = value.f093Bits;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
+  }
+  if (typeof value.f094Bool !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
   }
   BOOL_SCRATCH.value = value.f094Bool;
   if (!stream.serializeBool(BOOL_SCRATCH)) {

@@ -46,8 +46,11 @@ _M.ReadVec2 <- function(stream, value) {
 
 // WriteVec2 writes value in declared order; false on a refused value.
 _M.WriteVec2 <- function(stream, value) {
+  if (!(value instanceof _M.Vec2)) return false;
+  if (typeof value.X != "float" && typeof value.X != "integer") return false;
   _h.value = value.X;
   if (!stream.serializeDouble(_h)) return false;
+  if (typeof value.Y != "float" && typeof value.Y != "integer") return false;
   _h.value = value.Y;
   if (!stream.serializeDouble(_h)) return false;
   return true;
@@ -83,7 +86,10 @@ _M.ReadSpanF64 <- function(stream, value) {
 
 // WriteSpanF64 writes value in declared order; false on a refused value.
 _M.WriteSpanF64 <- function(stream, value) {
+  if (!(value instanceof _M.SpanF64)) return false;
+  if (typeof value.Values != "array" || value.Values.len() < 2) return false;
   for (local _i = 0; _i < 2; _i++) {
+    if (typeof value.Values[_i] != "float" && typeof value.Values[_i] != "integer") return false;
     _h.value = value.Values[_i];
     if (!stream.serializeDouble(_h)) return false;
   }
@@ -120,6 +126,8 @@ _M.ReadSpanU64 <- function(stream, value) {
 
 // WriteSpanU64 writes value in declared order; false on a refused value.
 _M.WriteSpanU64 <- function(stream, value) {
+  if (!(value instanceof _M.SpanU64)) return false;
+  if (typeof value.Values != "array" || value.Values.len() < 2) return false;
   for (local _i = 0; _i < 2; _i++) {
     if (typeof value.Values[_i] != "integer") return false;
     _h.value = value.Values[_i];
@@ -158,6 +166,8 @@ _M.ReadSpanI64 <- function(stream, value) {
 
 // WriteSpanI64 writes value in declared order; false on a refused value.
 _M.WriteSpanI64 <- function(stream, value) {
+  if (!(value instanceof _M.SpanI64)) return false;
+  if (typeof value.Values != "array" || value.Values.len() < 2) return false;
   for (local _i = 0; _i < 2; _i++) {
     if (typeof value.Values[_i] != "integer") return false;
     _h.value = value.Values[_i];
@@ -196,6 +206,8 @@ _M.ReadSpanOne <- function(stream, value) {
 
 // WriteSpanOne writes value in declared order; false on a refused value.
 _M.WriteSpanOne <- function(stream, value) {
+  if (!(value instanceof _M.SpanOne)) return false;
+  if (typeof value.Values != "array" || value.Values.len() < 1) return false;
   for (local _i = 0; _i < 1; _i++) {
     if (typeof value.Values[_i] != "integer") return false;
     _h.value = value.Values[_i];
@@ -234,6 +246,8 @@ _M.ReadSpanChunk <- function(stream, value) {
 
 // WriteSpanChunk writes value in declared order; false on a refused value.
 _M.WriteSpanChunk <- function(stream, value) {
+  if (!(value instanceof _M.SpanChunk)) return false;
+  if (typeof value.Values != "array" || value.Values.len() < 4) return false;
   for (local _i = 0; _i < 4; _i++) {
     if (typeof value.Values[_i] != "integer" || value.Values[_i] < 0 || value.Values[_i] > 65535) return false;
     _h.value = value.Values[_i];
@@ -276,7 +290,10 @@ _M.ReadSpanTail <- function(stream, value) {
 
 // WriteSpanTail writes value in declared order; false on a refused value.
 _M.WriteSpanTail <- function(stream, value) {
+  if (!(value instanceof _M.SpanTail)) return false;
+  if (typeof value.Values != "array" || value.Values.len() < 2) return false;
   for (local _i = 0; _i < 2; _i++) {
+    if (typeof value.Values[_i] != "float" && typeof value.Values[_i] != "integer") return false;
     _h.value = value.Values[_i];
     if (!stream.serializeDouble(_h)) return false;
   }
@@ -322,11 +339,16 @@ _M.ReadSpanTwice <- function(stream, value) {
 
 // WriteSpanTwice writes value in declared order; false on a refused value.
 _M.WriteSpanTwice <- function(stream, value) {
+  if (!(value instanceof _M.SpanTwice)) return false;
+  if (typeof value.A != "array" || value.A.len() < 2) return false;
   for (local _i = 0; _i < 2; _i++) {
+    if (typeof value.A[_i] != "float" && typeof value.A[_i] != "integer") return false;
     _h.value = value.A[_i];
     if (!stream.serializeDouble(_h)) return false;
   }
+  if (typeof value.B != "array" || value.B.len() < 2) return false;
   for (local _i = 0; _i < 2; _i++) {
+    if (typeof value.B[_i] != "float" && typeof value.B[_i] != "integer") return false;
     _h.value = value.B[_i];
     if (!stream.serializeDouble(_h)) return false;
   }
@@ -369,6 +391,7 @@ _M.ReadTrio <- function(stream, value) {
 
 // WriteTrio writes value in declared order; false on a refused value.
 _M.WriteTrio <- function(stream, value) {
+  if (!(value instanceof _M.Trio)) return false;
   if (typeof value.A != "integer" || (value.A >>> 20) != 0) return false;
   _h.value = value.A;
   if (!stream.serializeBits(_h, 20)) return false;
@@ -408,6 +431,7 @@ _M.ReadTrioSole <- function(stream, value) {
 
 // WriteTrioSole writes value in declared order; false on a refused value.
 _M.WriteTrioSole <- function(stream, value) {
+  if (!(value instanceof _M.TrioSole)) return false;
   if (!_M.WriteTrio(stream, value.Inner)) return false;
   return true;
 };
@@ -439,6 +463,7 @@ _M.ReadVec3Sole <- function(stream, value) {
 
 // WriteVec3Sole writes value in declared order; false on a refused value.
 _M.WriteVec3Sole <- function(stream, value) {
+  if (!(value instanceof _M.Vec3Sole)) return false;
   if (!_Types_.WriteVec3(stream, value.V)) return false;
   return true;
 };
@@ -474,6 +499,7 @@ _M.ReadTrioFirst <- function(stream, value) {
 
 // WriteTrioFirst writes value in declared order; false on a refused value.
 _M.WriteTrioFirst <- function(stream, value) {
+  if (!(value instanceof _M.TrioFirst)) return false;
   if (!_M.WriteTrio(stream, value.Inner)) return false;
   if (typeof value.Trailer != "integer" || (value.Trailer >>> 16) != 0) return false;
   _h.value = value.Trailer;
@@ -532,6 +558,7 @@ _M.ReadTrioStraddle <- function(stream, value) {
 
 // WriteTrioStraddle writes value in declared order; false on a refused value.
 _M.WriteTrioStraddle <- function(stream, value) {
+  if (!(value instanceof _M.TrioStraddle)) return false;
   if (typeof value.Pad0 != "integer") return false;
   _h.value = value.Pad0;
   if (!stream.serializeBits64(_h, 64)) return false;

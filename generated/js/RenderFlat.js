@@ -20,6 +20,9 @@ export const FlatReadSlack = 8;
 // must hold RenderSpriteMaxBytes.
 export function WriteRenderSpriteFlat(view, value) {
   let v = 0, lo = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (typeof value.sortKey !== "bigint" || value.sortKey < 0n || value.sortKey > 18446744073709551615n) { // a bare integer must fit its width
     return -1;
   }
@@ -128,6 +131,9 @@ export function ReadRenderSpriteFlatBits(view, numBits, value) {
 // must hold RenderBlockMaxBytes.
 export function WriteRenderBlockFlat(view, value) {
   let v = 0, lo = 0, sb = 0, wi = 0;
+  if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
+    return -1;
+  }
   if (!globalThis.Number.isInteger(value.workerIndex) || value.workerIndex < 0 || value.workerIndex > 4294967295) { // a bare integer must fit its width
     return -1;
   }
@@ -138,12 +144,18 @@ export function WriteRenderBlockFlat(view, value) {
   if (!globalThis.Number.isInteger(value.spritesCount) || value.spritesCount < 0 || value.spritesCount > 64) { // the count guards the loop; its range is a writer contract (SPEC §4.6)
     return -1;
   }
+  if (value.sprites === null || typeof value.sprites !== "object" || !(value.sprites.length >= value.spritesCount)) { // the storage holds every element the loop reads (SPEC §5.1)
+    return -1;
+  }
   view.setUint32(4, (((value.spriteCountHint) >>> 0)), true);
   lo = (((value.spritesCount) & 0x7f));
   wi = 8;
   sb = 7;
   for (let i0 = 0; i0 < value.spritesCount; i0++) {
     const e0 = value.sprites[i0];
+    if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
+      return -1;
+    }
     if (typeof e0.sortKey !== "bigint" || e0.sortKey < 0n || e0.sortKey > 18446744073709551615n) { // a bare integer must fit its width
       return -1;
     }
