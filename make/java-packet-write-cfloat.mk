@@ -10,10 +10,10 @@ build/packet-write-cfloat/java/.stamp: bin/schema test/packet-write-cfloat/Packe
 	@touch $@
 
 .PHONY: packet-write-cfloat-java packet-write-cfloat-java-negative-control
-packet-write-cfloat-java: build/packet-write-cfloat/java/.stamp
+packet-write-cfloat-java: build/packet-write-cfloat/java/.stamp build/casegate
 	@mkdir -p build/packet-write-cfloat/java/classes
 	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-write-cfloat/java/classes build/packet-write-cfloat/java/gen/*.java test/packet-write-cfloat/java/Main.java
-	$(JAVA) -ea -cp build/packet-write-cfloat/java/classes Main test/packet-write-cfloat/cases.txt
+	$(call packet_write_cfloat_gate,java,packet-write-cfloat-java) $(JAVA) -ea -cp build/packet-write-cfloat/java/classes Main test/packet-write-cfloat/cases.txt
 
 packet-write-cfloat-java-negative-control: packet-write-cfloat-java
 	@rm -rf build/packet-write-cfloat/java-negative

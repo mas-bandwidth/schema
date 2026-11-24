@@ -165,6 +165,7 @@ define tables_generate_cs
 	$(1) generate --lang cs --out $(2)/announce4097 test/tables/announce4097
 	$(1) generate --lang cs --out $(2)/valuedefaults test/tables/ValueDefaults.schema
 	$(1) generate --lang cs --out $(2)/packetunions test/tables/packetunions/PacketUnions.schema
+	$(1) generate --lang cs --out $(2)/writebounds testdata/conformance/table-write-bounds/TableWriteBounds.schema
 endef
 
 # Direct recipes run the same command list in parallel and wait for its jobs.
@@ -174,7 +175,7 @@ define tables_generate_cs_parallel
 	for pid in $$pids; do wait $$pid; done
 endef
 
-build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/K1.schema test/tables/K2.schema test/tables/CsIds.schema test/tables/CsUnions.schema test/tables/CsView.schema $(SCHEMAS_TABLES_MESSAGES) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema tables/scalars test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema tables/pointers tables/blobs test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema tables/lists tables/widelist tables/maps tables/stream test/tables/G1.schema tables/backend tables/vocab tables/vocab9 test/tables/R1.schema test/tables/R2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/CsRetain1.schema test/tables/CsRetain2.schema test/tables/CsCollections1.schema test/tables/CsCollections2.schema test/tables/UT.schema testdata/conformance/feature-witnesses/full/Features.schema test/tables/shapes/Shapes.schema test/tables/prior/PriorNarrow.schema test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/ValueDefaults.schema test/tables/packetunions/PacketUnions.schema
+build/tables-generated-cs/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P3.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/K1.schema test/tables/K2.schema test/tables/CsIds.schema test/tables/CsUnions.schema test/tables/CsView.schema $(SCHEMAS_TABLES_MESSAGES) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema tables/scalars test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema tables/pointers tables/blobs test/tables/P2.schema test/tables/W1.schema test/tables/W2.schema tables/lists tables/widelist tables/maps tables/stream test/tables/G1.schema tables/backend tables/vocab tables/vocab9 test/tables/R1.schema test/tables/R2.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/CsRetain1.schema test/tables/CsRetain2.schema test/tables/CsCollections1.schema test/tables/CsCollections2.schema test/tables/UT.schema testdata/conformance/feature-witnesses/full/Features.schema test/tables/shapes/Shapes.schema test/tables/prior/PriorNarrow.schema test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/ValueDefaults.schema test/tables/packetunions/PacketUnions.schema testdata/conformance/table-write-bounds/TableWriteBounds.schema
 	@mkdir -p build/tables-generated-cs
 	$(call tables_generate_cs_parallel,./bin/schema,build/tables-generated-cs)
 	@touch $@
@@ -1629,6 +1630,27 @@ packet-end-cs-negative-control: build/packet-end/cs/.stamp
 
 test-cs: packet-end-cs packet-end-cs-negative-control
 
+# THE PACKET-VOID CORPUS, C# (SPEC §4.8; make/checks/packet-void.mk): the
+# driver answers every case of testdata/wire/packet-void/cases.txt through the
+# generated public write and one-packet read, in a Debug build (the writer's
+# Debug.Assert contracts live) and a Release build; tools/casegate refuses a
+# case with no answer.
+.PHONY: packet-void-cs
+PACKET_VOID_CS := build/packet-void/cs
+
+$(PACKET_VOID_CS)/.stamp: bin/schema test/packet-void/Void.schema make/cs.mk
+	@rm -rf $(PACKET_VOID_CS)/generated
+	./bin/schema generate --lang cs --out $(PACKET_VOID_CS)/generated $(PACKET_VOID_SCHEMA)
+	@touch $@
+
+packet-void-cs: $(PACKET_VOID_CS)/.stamp build/casegate
+	$(DOTNET) build test/packet-void/cs/packet-void.csproj -c Debug -o $(PACKET_VOID_CS)/debug \
+		-p:ArtifactsPath="$(CURDIR)/$(PACKET_VOID_CS)/artifacts" --nologo -v quiet
+	$(call packet_void_gate,cs) $(DOTNET) $(PACKET_VOID_CS)/debug/packet-void.dll $(PACKET_VOID_PINS)
+	$(DOTNET) build test/packet-void/cs/packet-void.csproj -c Release -o $(PACKET_VOID_CS)/release \
+		-p:ArtifactsPath="$(CURDIR)/$(PACKET_VOID_CS)/artifacts" --nologo -v quiet
+	$(call packet_void_gate,cs) $(DOTNET) $(PACKET_VOID_CS)/release/packet-void.dll $(PACKET_VOID_PINS)
+
 # THE PACKET-WRITE COMPRESSED-FLOAT RANGE GATE (docs/SPEC.md §5.1 row 10,
 # docs/PACKET-WIRE-ALGORITHM.md §2.5): the generated packet writer holds a
 # compressed float to finite and inside [min, max] before quantizing, with a
@@ -1644,8 +1666,8 @@ $(PACKET_WRITE_CFLOAT_CS)/.stamp: bin/schema test/packet-write-cfloat/PacketCFlo
 	./bin/schema generate --lang cs --out $(PACKET_WRITE_CFLOAT_CS) test/packet-write-cfloat/PacketCFloat.schema
 	@touch $@
 
-packet-write-cfloat-cs: build/mustrun $(PACKET_WRITE_CFLOAT_CS)/.stamp
-	$(MUSTRUN) -name packet-write-cfloat-cs -count 10 -- $(DOTNET) run --configuration Debug --project test/packet-write-cfloat/cs/packet-write-cfloat.csproj -- test/packet-write-cfloat
+packet-write-cfloat-cs: build/casegate $(PACKET_WRITE_CFLOAT_CS)/.stamp
+	$(call packet_write_cfloat_gate,cs,packet-write-cfloat-cs) $(DOTNET) run --configuration Debug --project test/packet-write-cfloat/cs/packet-write-cfloat.csproj -- test/packet-write-cfloat
 	@echo 'packet-write-cfloat C#: every refused case refused, every lawful case reads back quantized'
 
 # The control turns the generated finite/range assertion into a constant true

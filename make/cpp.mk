@@ -565,8 +565,8 @@ build/schema_test_packet_write_cfloat_cpp: $(PACKET_WRITE_CFLOAT_CPP_DIR)/.stamp
 	$(CXX) $(CXXFLAGS) -I$(PACKET_WRITE_CFLOAT_CPP_DIR) test/packet-write-cfloat/cpp/main.cpp -o $@
 
 .PHONY: packet-write-cfloat-cpp
-packet-write-cfloat-cpp: build/schema_test_packet_write_cfloat_cpp
-	./build/schema_test_packet_write_cfloat_cpp test/packet-write-cfloat/cases.txt
+packet-write-cfloat-cpp: build/schema_test_packet_write_cfloat_cpp build/casegate
+	$(call packet_write_cfloat_gate,cpp,packet-write-cfloat-cpp) ./build/schema_test_packet_write_cfloat_cpp test/packet-write-cfloat/cases.txt
 
 PACKET_WRITE_CFLOAT_CPP_NEGATIVE := build/packet-write-cfloat/cpp-negative
 

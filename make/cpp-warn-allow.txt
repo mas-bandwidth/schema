@@ -802,6 +802,11 @@ build/tables-generated/w2/W2Table.h cast-align,comma,implicit-int-conversion,imp
 build/tables-generated/widelist/WidelistdemoView.h padded
 build/tables-generated/widelist/WidesTable.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros
 build/tables-generated/widelist/WidesTable.h cast-align,comma,implicit-int-conversion,implicit-int-float-conversion,old-style-cast,padded,switch-default
+build/tables-generated/writebounds/TableWriteBounds.h covered-switch-default
+build/tables-generated/writebounds/TableWriteBoundsTable.cpp float-equal,nrvo,old-style-cast,padded,sign-conversion,switch-default,unused-macros,zero-as-null-pointer-constant
+build/tables-generated/writebounds/TableWriteBoundsTable.h cast-align,comma,covered-switch-default,implicit-int-conversion,implicit-int-float-conversion,nested-anon-types,old-style-cast,padded,sign-conversion,switch-default,switch-enum
+build/tables-generated/writebounds/WriteboundsView.cpp old-style-cast
+build/tables-generated/writebounds/WriteboundsView.h padded
 generated/bench/cpp/Bench.h covered-switch-default,padded
 generated/bench/cpp/BenchWire.h covered-switch-default,switch-default
 generated/bench/cpp/RealWorld.h covered-switch-default,padded

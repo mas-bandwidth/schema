@@ -87,7 +87,7 @@ generated/js-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # test-only, never part of the committed generated/ tree. The full unit is
 # generated (packet .js + <Base>Table.js + the two accelerators' readers),
 # because a table's closure decodes into the packet emitter's own classes.
-build/tables-generated-js/.stamp: make/js.mk bin/schema testdata/conformance/feature-witnesses/full/Features.schema $(wildcard tables/maps/*.schema) $(SCHEMAS_TABLES_WIDELIST) test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) tables/stream tables/scalars test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/P2.schema test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/ValueDefaults.schema test/tables/packetunions/PacketUnions.schema
+build/tables-generated-js/.stamp: make/js.mk bin/schema testdata/conformance/feature-witnesses/full/Features.schema $(wildcard tables/maps/*.schema) $(SCHEMAS_TABLES_WIDELIST) test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) tables/stream tables/scalars test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/P2.schema test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/ValueDefaults.schema test/tables/packetunions/PacketUnions.schema testdata/conformance/table-write-bounds/TableWriteBounds.schema
 	@mkdir -p build/tables-generated-js
 	./bin/schema generate --lang js --out build/tables-generated-js/features testdata/conformance/feature-witnesses/full/Features.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/examples tables/examples
@@ -142,6 +142,7 @@ build/tables-generated-js/.stamp: make/js.mk bin/schema testdata/conformance/fea
 	./bin/schema generate --lang js --out build/tables-generated-js/cooktorturewide test/tables/cooktorturewide/CookTortureWide.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/valuedefaults test/tables/ValueDefaults.schema
 	./bin/schema generate --lang js --out build/tables-generated-js/packetunions test/tables/packetunions/PacketUnions.schema
+	./bin/schema generate --lang js --out build/tables-generated-js/writebounds testdata/conformance/table-write-bounds/TableWriteBounds.schema
 	# THE MESSAGE FORM's WIDE-VOCABULARY units (docs/SPEC-TABLES.md §3.3): the
 	# conformance driver's `message` surface AnnounceReads a connection's
 	# announcement, LoadMessages the form-2 batch against it and SaveMessages
@@ -1921,6 +1922,20 @@ packet-end-js-negative-control: packet-end-js
 		{ echo 'NEGATIVE CONTROL FAILED: JavaScript failed for another reason'; cat build/packet-end/js-negative/log; exit 1; }
 	@echo 'packet end JavaScript negative control: the flat end check removal reds the trailing-byte vector'
 
+# THE PACKET-VOID CORPUS, JavaScript (SPEC §4.8; make/checks/packet-void.mk):
+# the driver answers every case of testdata/wire/packet-void/cases.txt through
+# both generated tiers, runtime and flat, checked and production;
+# tools/casegate refuses a case with no answer.
+.PHONY: packet-void-js
+build/packet-void/js/.stamp: bin/schema test/packet-void/Void.schema make/js.mk
+	@rm -f build/packet-void/js/*.js build/packet-void/js/*.d.ts
+	./bin/schema generate --lang js --out build/packet-void/js $(PACKET_VOID_SCHEMA)
+	@touch $@
+
+packet-void-js: build/packet-void/js/.stamp build/casegate
+	$(call packet_void_gate,js) $(NODE) test/packet-void/js/main.mjs $(PACKET_VOID_PINS) build/packet-void/js
+	NODE_ENV=production $(call packet_void_gate,js) $(NODE) test/packet-void/js/main.mjs $(PACKET_VOID_PINS) build/packet-void/js
+
 # THE PACKET-WRITE COMPRESSED-FLOAT CHECK (docs/SPEC.md §5.1 row 10,
 # docs/PACKET-WIRE-ALGORITHM.md §2.5): every shared case in
 # test/packet-write-cfloat is written through the flat tier and the runtime
@@ -1931,9 +1946,9 @@ build/packet-write-cfloat/js/.stamp: bin/schema test/packet-write-cfloat/PacketC
 	@touch $@
 
 .PHONY: packet-write-cfloat-js packet-write-cfloat-js-negative-control
-packet-write-cfloat-js: build/mustrun build/packet-write-cfloat/js/.stamp
-	$(MUSTRUN) -name packet-write-cfloat-js -count 10 -- $(NODE) test/packet-write-cfloat/js/main.mjs test/packet-write-cfloat/cases.txt build/packet-write-cfloat/js
-	NODE_ENV=production $(MUSTRUN) -name packet-write-cfloat-js-production -count 10 -- $(NODE) test/packet-write-cfloat/js/main.mjs test/packet-write-cfloat/cases.txt build/packet-write-cfloat/js
+packet-write-cfloat-js: build/casegate build/packet-write-cfloat/js/.stamp
+	$(call packet_write_cfloat_gate,js,packet-write-cfloat-js) $(NODE) test/packet-write-cfloat/js/main.mjs test/packet-write-cfloat/cases.txt build/packet-write-cfloat/js
+	NODE_ENV=production $(call packet_write_cfloat_gate,js,packet-write-cfloat-js-production) $(NODE) test/packet-write-cfloat/js/main.mjs test/packet-write-cfloat/cases.txt build/packet-write-cfloat/js
 
 packet-write-cfloat-js-negative-control: packet-write-cfloat-js
 	@mkdir -p build/packet-write-cfloat/js-negative-flat

@@ -201,6 +201,10 @@ static partial class Program
     {
         return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
     }
+    static Report Copy(Writebounds.TableReport r)
+    {
+        return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
+    }
     static Report Copy(Tblpacketunions.TableReport r)
     {
         return new Report { Unknown = r.Unknown, Widened = r.Widened, Refused = r.Refused, Malformed = r.Damaged };
@@ -474,6 +478,9 @@ static partial class Program
         Row<Tblpacketunions.ShapeDoc, Tblpacketunions.TableReport>("packetunions", "ShapeDoc", () => new Tblpacketunions.TableReport(), Copy,
             Tblpacketunions.Schema.ShapeDocLoad, Tblpacketunions.Schema.ShapeDocMeasure, Tblpacketunions.Schema.ShapeDocSave,
             Tblpacketunions.Schema.ShapeDocFromJson, Tblpacketunions.Schema.ShapeDocToJsonMeasure, Tblpacketunions.Schema.ShapeDocToJson, Tblpacketunions.Schema.ShapeDocLoadMeasure),
+        Row<Writebounds.TortureVarWref, Writebounds.TableReport>("writebounds", "TortureVarWref", () => new Writebounds.TableReport(), Copy,
+            Writebounds.Schema.TortureVarWrefLoad, Writebounds.Schema.TortureVarWrefMeasure, Writebounds.Schema.TortureVarWrefSave,
+            Writebounds.Schema.TortureVarWrefFromJson, Writebounds.Schema.TortureVarWrefToJsonMeasure, Writebounds.Schema.TortureVarWrefToJson, Writebounds.Schema.TortureVarWrefLoadMeasure),
         Row<Tblpacketunions.ShapeMsg, Tblpacketunions.TableReport>("packetunions", "ShapeMsg", () => new Tblpacketunions.TableReport(), Copy,
             Tblpacketunions.Schema.ShapeMsgLoad, Tblpacketunions.Schema.ShapeMsgMeasure, Tblpacketunions.Schema.ShapeMsgSave,
             Tblpacketunions.Schema.ShapeMsgFromJson, Tblpacketunions.Schema.ShapeMsgToJsonMeasure, Tblpacketunions.Schema.ShapeMsgToJson),
@@ -2042,6 +2049,11 @@ static partial class Program
             };
             c.MessageMeasure = value => value is Tblprior.Prior[] batch ? Tblprior.Schema.PriorMeasureMessages(batch) : Tblprior.Schema.PriorMeasureMessages(new Tblprior.Prior[] { (Tblprior.Prior)value });
             c.MessageSave = (value, bytes) => value is Tblprior.Prior[] batch ? Tblprior.Schema.PriorSaveMessages(batch, bytes) : Tblprior.Schema.PriorSaveMessages(new Tblprior.Prior[] { (Tblprior.Prior)value }, bytes);
+        }
+        {
+            Codec c = Find("writebounds", "TortureVarWref");
+            c.CookMeasure = value => Writebounds.Schema.TortureVarWrefCookMeasure((Writebounds.TortureVarWref)value);
+            c.Cook = (value, bytes, big) => Writebounds.Schema.TortureVarWrefCook((Writebounds.TortureVarWref)value, bytes, big ? Writebounds.TableByteOrder.Big : Writebounds.TableByteOrder.Little);
         }
         {
             Codec c = Find("packetunions", "ShapeDoc");

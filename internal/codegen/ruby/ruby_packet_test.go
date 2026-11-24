@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/casegate"
 	"github.com/mas-bandwidth/schema/v2/internal/check"
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/ruby/rubyrun"
 	"github.com/mas-bandwidth/schema/v2/internal/parser"
@@ -590,7 +591,7 @@ func TestRubyPacketCloseAnalyzer(t *testing.T) {
 		"bench/corpus/Bench.schema",
 		"test/packet-defaults/Defaults.schema",
 		"test/packet-finite/ruby/PacketFinite.schema",
-		"test/packet-void/ruby/Ruby.schema",
+		"test/packet-void/Void.schema",
 	} {
 		t.Run(rel, func(t *testing.T) {
 			t.Parallel()
@@ -879,95 +880,182 @@ func TestRubyPacketFiniteNegativeControl(t *testing.T) {
 	})
 }
 
-func TestRubyPacketVoid(t *testing.T) {
-	t.Parallel()
+// packetVoidRuby is the Ruby leg of test/packet-void: the family's one
+// schema generated, the driver, and the shared case file's pins, case names
+// and the leg's owed lines that internal/casegate judges its answers against.
+func packetVoidRuby(t *testing.T) (files map[string][]byte, driver, pins string, cases []string, owed map[string]string) {
+	t.Helper()
 	root := repoRoot(t)
-	u := loadRubyUnit(t, filepath.Join(root, "test", "packet-void", "ruby", "Ruby.schema"))
+	u := loadRubyUnit(t, filepath.Join(root, "test", "packet-void", "Void.schema"))
 	files, err := Generate(u)
 	if err != nil {
 		t.Fatal(err)
 	}
-	driverPath := filepath.Join(root, "test", "packet-void", "ruby", "main.rb")
-	for _, pin := range []struct {
-		name string
-		exe  func(testing.TB) string
-	}{{"current", rubyrun.Interpreter}, {"floor", rubyrun.Floor}} {
+	pins = filepath.Join(root, "testdata", "wire", "packet-void")
+	if _, cases, owed, err = casegate.Inputs(pins, "ruby"); err != nil {
+		t.Fatal(err)
+	}
+	return files, filepath.Join(root, "test", "packet-void", "ruby", "main.rb"), pins, cases, owed
+}
+
+var rubyPins = []struct {
+	name string
+	exe  func(testing.TB) string
+}{{"current", rubyrun.Interpreter}, {"floor", rubyrun.Floor}}
+
+func TestRubyPacketVoid(t *testing.T) {
+	t.Parallel()
+	files, driver, pins, cases, owed := packetVoidRuby(t)
+	for _, pin := range rubyPins {
 		t.Run(pin.name, func(t *testing.T) {
 			t.Parallel()
 			dir := t.TempDir()
 			writeTree(t, dir, files)
-			out := strings.TrimSpace(string(rubyrun.RunArgs(t, pin.exe(t), dir, driverPath, []string{dir}, nil)))
-			if out != "ok" {
-				t.Fatalf("packet-void output: %q", out)
+			out := rubyrun.RunArgs(t, pin.exe(t), dir, driver, []string{dir, pins}, nil)
+			red, summary := casegate.Verdict("packet-void-ruby-"+pin.name, "ruby", 0, out, cases, owed)
+			if len(red) > 0 {
+				t.Fatalf("%s\n%s", strings.Join(red, "\n"), out)
 			}
+			t.Log(summary)
 		})
 	}
 }
 
+// packetVoidRubyAPIProbe holds the generated API shape of test/packet-void's
+// unions, which the shared wire cases cannot see: the tag constants and their
+// Max, the frozen NAMES tables, and what construction leaves in a union (tag
+// None, the payload arm built at its declared defaults). It prints one
+// "FAILED: <what>" line per broken rule and exits 1, else prints ok.
+const packetVoidRubyAPIProbe = `# frozen_string_literal: true
+
+require File.expand_path("packetvoid", ARGV.fetch(0))
+
+P = Packetvoid
+failures = []
+check = ->(ok, what) { failures << what unless ok }
+
+check.call([P::MixedType::None, P::MixedType::Ping, P::MixedType::Payload, P::MixedType::Max] == [0, 1, 2, 2],
+           "MixedType tag numbers")
+check.call([P::LateType::None, P::LateType::Ping, P::LateType::Payload, P::LateType::Pong, P::LateType::Max] ==
+             [0, 1, 2, 3, 3], "LateType tag numbers")
+{
+  "MixedType" => [P::MixedType::NAMES, { 0 => "None", 1 => "ping", 2 => "payload" }],
+  "LateType" => [P::LateType::NAMES, { 0 => "None", 1 => "ping", 2 => "payload", 3 => "pong" }],
+  "TagsType" => [P::TagsType::NAMES, { 0 => "None", 1 => "ping", 2 => "pong" }],
+  "SingleType" => [P::SingleType::NAMES, { 0 => "None", 1 => "ack" }],
+  "EmptyType" => [P::EmptyType::NAMES, { 0 => "None" }]
+}.each do |name, (got, want)|
+  check.call(got == want, "#{name}::NAMES #{got.inspect}, want #{want.inspect}")
+  check.call(got.frozen?, "#{name}::NAMES is not frozen")
+end
+check.call(P::TagsType::Max == 2 && P::TagsType::Pong == 2, "TagsType extent")
+check.call(P::SingleType::Max == 1 && P::SingleType::Ack == 1, "SingleType extent")
+check.call(P::EmptyType::Max.zero?, "EmptyType extent")
+
+defaults = lambda do |arm|
+  arm.instance_of?(P::DefaultArm) && arm.entries == [] && arm.marker == 5
+end
+[[P::Mixed, P::MixedType::None], [P::Late, P::LateType::None]].each do |klass, none|
+  fresh = klass.new
+  check.call(fresh.type == none, "#{klass}.new type #{fresh.type.inspect}, want None")
+  check.call(defaults.call(fresh.payload), "#{klass}.new payload #{fresh.payload.inspect}, want DefaultArm at its defaults")
+end
+choice = P::Frame.new.choice
+check.call(choice.instance_of?(P::Mixed) && choice.type == P::MixedType::None,
+           "Frame.new.choice #{choice.inspect}, want a Mixed of type None")
+check.call(defaults.call(choice.payload), "Frame.new.choice payload #{choice.payload.inspect}, want DefaultArm at its defaults")
+
+if failures.empty?
+  puts "ok"
+else
+  failures.each { |what| puts "FAILED: #{what}" }
+  exit 1
+end
+`
+
+// TestRubyPacketVoidAPI holds the generated API shape of test/packet-void's
+// unions under both pinned interpreters (packetVoidRubyAPIProbe), and plants
+// a wrong LateType::Max in a copy of the generated code, which must go red by
+// name.
+func TestRubyPacketVoidAPI(t *testing.T) {
+	t.Parallel()
+	files, _, _, _, _ := packetVoidRuby(t)
+	inputs := map[string][]byte{"api.rb": []byte(packetVoidRubyAPIProbe)}
+	for _, pin := range rubyPins {
+		t.Run(pin.name, func(t *testing.T) {
+			t.Parallel()
+			dir := t.TempDir()
+			writeTree(t, dir, files)
+			out := strings.TrimSpace(string(rubyrun.RunArgs(t, pin.exe(t), dir, "api.rb", []string{dir}, inputs)))
+			if out != "ok" {
+				t.Fatalf("packet-void API shape under %s:\n%s", pin.name, out)
+			}
+		})
+	}
+	t.Run("planted-late-max", func(t *testing.T) {
+		t.Parallel()
+		const module = "packetvoid/Void.rb"
+		planted := maps.Clone(files)
+		src := string(planted[module])
+		const marker = "    Pong = 3\n    Max = 3\n"
+		if n := strings.Count(src, marker); n != 1 {
+			t.Fatalf("the LateType::Max marker matched %d times", n)
+		}
+		planted[module] = []byte(strings.Replace(src, marker, "    Pong = 3\n    Max = 4\n", 1))
+		dir := t.TempDir()
+		writeTree(t, dir, planted)
+		out, stderr, err := rubyrun.TryArgs(t, rubyrun.Interpreter(t), dir, "api.rb", []string{dir}, inputs, nil)
+		const want = "FAILED: LateType tag numbers"
+		if err == nil || !slices.Contains(strings.Split(out, "\n"), want) {
+			t.Fatalf("the planted LateType::Max did not answer %q (err %v):\n%s\n%s", want, err, out, stderr)
+		}
+	})
+}
+
+// TestRubyPacketVoidNegativeControl plants one fault in a copy of the
+// generated code and requires the driver to answer the case it breaks
+// FAILED, by name.
 func TestRubyPacketVoidNegativeControl(t *testing.T) {
 	t.Parallel()
-	root := repoRoot(t)
-	u := loadRubyUnit(t, filepath.Join(root, "test", "packet-void", "ruby", "Ruby.schema"))
-	baseFiles, err := Generate(u)
-	if err != nil {
-		t.Fatal(err)
+	baseFiles, driver, pins, _, _ := packetVoidRuby(t)
+	const module = "packetvoid/Void.rb"
+	for _, c := range []struct {
+		name, marker, planted, want string
+	}{{
+		// The Tags read admits its unused tag 3.
+		name:    "unused-tag-admitted",
+		marker:  "return false unless stream.serialize_int(_s_ri, 0, 2)\n      self.type = _s_ri.value\n      if self.type == 1\n        return true\n      elsif self.type == 2\n        return true",
+		planted: "return false unless stream.serialize_int(_s_ri, 0, 3)\n      self.type = _s_ri.value\n      if self.type == 1\n        return true\n      elsif self.type == 2\n        return true",
+		want:    "case tags-tag-3 FAILED: read accepted",
+	}, {
+		// The Mixed write spends one set bit on its payload-free arm: the
+		// ping tag 01 with that bit above it is 05.
+		name:    "extra-bit-on-void-arm",
+		marker:  "stream.serialize_int(_s_ri, 0, 2)\n      if self.type == 2\n        self.payload._s_write(stream)",
+		planted: "stream.serialize_int(_s_ri, 0, 2)\n      if self.type == 1\n        _s_ri.value = 1\n        stream.serialize_bits(_s_ri, 1)\n      elsif self.type == 2\n        self.payload._s_write(stream)",
+		want:    "case mixed-ping FAILED: write 05, pin 01",
+	}} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			files := maps.Clone(baseFiles)
+			src := string(files[module])
+			if n := strings.Count(src, c.marker); n != 1 {
+				t.Fatalf("the %s marker matched %d times", c.name, n)
+			}
+			files[module] = []byte(strings.Replace(src, c.marker, c.planted, 1))
+			for _, pin := range rubyPins {
+				t.Run(pin.name, func(t *testing.T) {
+					t.Parallel()
+					dir := t.TempDir()
+					writeTree(t, dir, files)
+					out, stderr, err := rubyrun.TryArgs(t, pin.exe(t), dir, driver, []string{dir, pins}, nil, nil)
+					if err != nil || !slices.Contains(strings.Split(out, "\n"), c.want) {
+						t.Fatalf("the planted %s did not answer %q (err %v):\n%s\n%s", c.name, c.want, err, out, stderr)
+					}
+				})
+			}
+		})
 	}
-	driverPath := filepath.Join(root, "test", "packet-void", "ruby", "main.rb")
-
-	t.Run("unused-tag-admitted", func(t *testing.T) {
-		t.Parallel()
-		files := maps.Clone(baseFiles)
-		src := string(files["packetvoidruby/Ruby.rb"])
-		marker := "return false unless stream.serialize_int(_s_ri, 0, 2)"
-		if strings.Count(src, marker) != 1 {
-			t.Fatalf("Tags tag-read marker missing or ambiguous")
-		}
-		files["packetvoidruby/Ruby.rb"] = []byte(strings.Replace(src, marker, "return false unless stream.serialize_int(_s_ri, 0, 3)", 1))
-		for _, pin := range []struct {
-			name string
-			exe  func(testing.TB) string
-		}{{"current", rubyrun.Interpreter}, {"floor", rubyrun.Floor}} {
-			t.Run(pin.name, func(t *testing.T) {
-				t.Parallel()
-				dir := t.TempDir()
-				writeTree(t, dir, files)
-				_, stderr, err := rubyrun.TryArgs(t, pin.exe(t), dir, driverPath, []string{dir}, nil, nil)
-				if err == nil || !strings.Contains(stderr, "FAILED: read tags-tag-3 was accepted") {
-					t.Fatalf("sabotaged tag range did not fail tags-tag-3: %v\n%s", err, stderr)
-				}
-			})
-		}
-	})
-
-	t.Run("extra-bit-on-void-arm", func(t *testing.T) {
-		t.Parallel()
-		files := maps.Clone(baseFiles)
-		src := string(files["packetvoidruby/Ruby.rb"])
-		marker := "stream.serialize_int(_s_ri, 0, 3)\n      if self.type == 2"
-		if strings.Count(src, marker) != 1 {
-			t.Fatalf("Mixed write marker missing")
-		}
-		files["packetvoidruby/Ruby.rb"] = []byte(strings.Replace(
-			src,
-			marker,
-			"stream.serialize_int(_s_ri, 0, 3)\n      if self.type == 1\n        _s_ri.value = 1\n        stream.serialize_bits(_s_ri, 1)\n      elsif self.type == 2",
-			1,
-		))
-		for _, pin := range []struct {
-			name string
-			exe  func(testing.TB) string
-		}{{"current", rubyrun.Interpreter}, {"floor", rubyrun.Floor}} {
-			t.Run(pin.name, func(t *testing.T) {
-				t.Parallel()
-				dir := t.TempDir()
-				writeTree(t, dir, files)
-				_, stderr, err := rubyrun.TryArgs(t, pin.exe(t), dir, driverPath, []string{dir}, nil, nil)
-				if err == nil || !strings.Contains(stderr, "FAILED: write mixed-ping") {
-					t.Fatalf("sabotaged void arm write did not fail mixed-ping: %v\n%s", err, stderr)
-				}
-			})
-		}
-	})
 }
 
 func TestRubyPacketReadBitsAndOwnership(t *testing.T) {

@@ -16,7 +16,7 @@ conformance:
   wires, JSON texts, goldens, framing vectors, cook inputs and outputs, block
   images, hostile JSON and report expectations live in the directories
   beside it). The [accepted variable-table write bounds](#accepted-variable-table-write-bounds)
-  run through the same harness with a focused manifest. The wider fixtures it names are under `testdata/conformance/`
+  are rows of that manifest. The wider fixtures it names are under `testdata/conformance/`
   (`feature-witnesses`, `text`, `write-refusal-int`, `r19`,
   `cook-authored-optional-map`) and `testdata/golden`, `testdata/wire` and
   `testdata/jsontestsuite`.
@@ -41,8 +41,9 @@ conformance:
   ([FIXED-FORM-ALGORITHM §4.1](FIXED-FORM-ALGORITHM.md#41-the-plan)).
   Run on a target with `make verify-tablegen-<lang>`. To select this pair
   alone, pass `--only pin:bytes_lineage:` to `build/verify-tablegen-bin`.
-- **The compressed-float endpoint pins**: [`ratio-endpoints.txt`](../test/packet-cfloat-endpoints/ratio-endpoints.txt)
-  gives the packet bytes for both [accepted endpoints](#compressed-float-packet-endpoints).
+- **The compressed-float endpoint pins**: the `ratio-at-min` and `ratio-at-max` rows of
+  [`cases.txt`](../test/packet-write-cfloat/cases.txt) give the packet bytes for both
+  [accepted endpoints](#compressed-float-packet-endpoints).
 - **The packet end pins**: [packet-end](../testdata/wire/packet-end/README.md)
   includes the [logical bit count case](#packet-end-and-the-logical-bit-count).
 - **Variable-form optional evolution** ([SPEC-TABLES §2.3](SPEC-TABLES.md)):
@@ -376,7 +377,7 @@ per-port check where no shared case exercises it.
 | GAP-20 | A union and its structural payload are two levels (SPEC-TABLES §4); gaps Zig5, Hs8, Li4 | `rr-depth-placed-union-map-128`, `-129` (#4706) |
 | SF-03, SF-04 | the variable `Save` and `Measure` check rows 1–2 on every field, not only on `\| required` fields (SPEC.md §5.1 rows 1–2) | `write-refusal` (`wref_range_*`, `wref_bits_wide*` on a fixed root); `sfv_bits_wide` / `sfv_bits_ok` on the variable root `TortureCook` (a plain non-required `bits(13)`, 8192 refused and 8191 written); a ranged non-required `int` on a variable root is owed: no corpus unit with a `min` / `max` on a variable root has a write-refusal path in the hand-coded legs (#4740) |
 | SF-05, SF-06 | C and C++ debug builds assert the message save and measure write contract even when the fixed table exceeds the fixed-file record ceiling (SPEC.md §5.1 rows 1, 2, 10 and SPEC-TABLES §3.4) | `TestCMessageCeilingWriteAssert`, `TestCppMessageCeilingWriteAssert` and their `Compiled` twins. The compiled checks save and measure the same table with lawful values. A shared `write-refusal-message` case is owed until the harness has an initialized-value seed mode. The current surface seeds each value by loading a file, and this table has no file form (#4744). |
-| SF-07, SF-08 | the packet `Write` checks row 8 (text) and row 10 (compressed float) in every C# target, unity included (SPEC.md §5.1 rows 8, 10) | `write-refusal-packet` (`text_illformed`, `text_zero`, `text_long`); a compressed-float row (SF-08) is owed: `PacketWriteRefusal` declares no compressed float, and no C# leg runs this surface yet (#4740); Go runs the [accepted compressed-float endpoints](#compressed-float-packet-endpoints) |
+| SF-07, SF-08 | the packet `Write` checks row 8 (text) and row 10 (compressed float) in every C# target, unity included (SPEC.md §5.1 rows 8, 10) | `write-refusal-packet` (`text_illformed`, `text_zero`, `text_long`); a compressed-float row (SF-08) is owed: `PacketWriteRefusal` declares no compressed float, and no C# leg runs this surface yet (#4740); every leg, C# and unity included, runs the [accepted compressed-float endpoints](#compressed-float-packet-endpoints) |
 | SF-27 | the text read maps a deprecated enum variant to the field default (an element: None) (SPEC-TABLES §2.15 READ) | owed: the text-form corpus (`testdata/conformance/text`) carries strings only, so an enum text case needs the text surface extended (#4740) |
 | SF-32, SF-33 | tooling (moo-analyze run with no output, Luau bitpacker probe) (none: not a wire rule) | none (#4740) |
 | SF-09 to SF-15 | a write check reaches every carrier: a plain field, an optional, an array element, a union arm, a keyed slot (SPEC.md §5.1 rows 1–4, 8) | `write-refusal` (`wref_*`, `wref_var_*`, `wref_shapes_*`); on `TortureCook`, `sfv_opt_bits_wide` / `sfv_opt_bits_ok`, `sfv_elem_bits_wide` / `sfv_elem_bits_ok`, and `TestRustWriteRefusalReachesEveryCarrier` (#4501, #4740) |
@@ -521,19 +522,30 @@ their module or namespace entries separately from the schema-level claims.
 
 ### Compressed float packet endpoints
 
-[`RatioEndpoint`](../test/packet-cfloat-endpoints/PacketRatio.schema) declares a closed
+[`RatioEndpoint`](../test/packet-write-cfloat/PacketCFloat.schema) declares a closed
 `[0, 1]` range at resolution `0.01` ([packet wire §2.5](PACKET-WIRE-ALGORITHM.md#25-compressed-float-write)).
-The [endpoint cases](../test/packet-cfloat-endpoints/ratio-endpoints.txt) pin the seven-bit
-step indices 0 and 100 and their zero-padded packet bytes `00` and `64`.
-`make packet-cfloat-endpoints-go` writes each endpoint through the generated Go
-packet writer, checks the exact byte, and reads back the original value.
+The `ratio-at-min` and `ratio-at-max` rows of the shared
+[cases](../test/packet-write-cfloat/cases.txt) pin the seven-bit step indices 0 and
+100 and their zero-padded packet bytes `00` and `64`. Every leg's
+`packet-write-cfloat-<leg>` writes each endpoint through its generated packet
+writer, checks the exact byte and that the write emitted exactly seven bits
+before the flush (`bits 7`: an eight-bit writer pads to the same byte), and
+reads back the original value. Legs whose writer returns bytes rather than a
+stream (Dart, Elixir, the JavaScript flat tier) hold the declared width,
+the generated `<T>MaxBits`, to the seven bits and read the bytes back
+through exactly seven bits. Each case gets one `case <name> ok` answer
+per leg, which `tools/casegate` checks against the case file. A leg that
+cannot answer a case owes it with an exact line in
+[`owed.txt`](../test/packet-write-cfloat/owed.txt).
 
 
 ### Accepted variable-table write bounds
 
-[The focused manifest](../testdata/conformance/table-write-bounds/ACCEPTED-WRITE-BOUNDS.txt)
-loads the lawful `TortureVarWref` seed, changes one field or arm per case, and
-requires its variable-form measure and save to complete.
+The `writebounds` unit and its `write-refusal` rows in
+[the tables manifest](../testdata/conformance/tables/MANIFEST.txt) load the lawful
+`TortureVarWref` seed, change one field or arm per case, and require its
+variable-form measure and save to complete. Every leg answers them through
+`make conformance-corpus-<leg>`.
 
 | Carrier | Accepted cases |
 |---|---|
@@ -543,7 +555,7 @@ requires its variable-form measure and save to complete.
 | Direct string union arm of maximum length 8 | `sfw_arm_str_ok` |
 | Enum-keyed `Beta` slot at 0 and 50 | `sfw_slot_min`, `sfw_slot_max` |
 
-Run these cases with `make table-write-bounds-go`.
+Run them for one leg with `make conformance-corpus-<leg>`.
 
 
 ### Packet union arrays in table closures

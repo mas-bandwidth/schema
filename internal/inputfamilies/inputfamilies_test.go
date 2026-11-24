@@ -136,6 +136,90 @@ func TestDerivationOnAHandTree(t *testing.T) {
 	}
 }
 
+// A shared-corpus family refuses a leg with no target and no whole-leg owed
+// line, a whole-leg owed line for a leg that has a target, and a missing
+// ledger.
+func TestSharedCorpusRefusesALegWithNoTargetAndNoLedgerLine(t *testing.T) {
+	t.Parallel()
+	f := Family{Name: "pins", Target: "pins-{leg}", Owed: "testdata/pins/owed.txt"}
+	has := map[string]bool{}
+	for _, l := range Legs {
+		has[l] = l != "moo" && l != "lobster"
+	}
+	tr := Tree{Ledgers: map[string]string{"testdata/pins/owed.txt": "# head\nlobster all owed: no union API\nlua all owed: stale\nlua x owed: one case\n"}}
+	bad := strings.Join(checkOwed(f, tr, has), "\n")
+	for _, want := range []string{
+		"leg moo has no pins-moo target and no `moo all owed: <cause>` line",
+		"leg lua defines pins-lua and testdata/pins/owed.txt still says `lua all owed`",
+	} {
+		if !strings.Contains(bad, want) {
+			t.Errorf("checkOwed did not say %q:\n%s", want, bad)
+		}
+	}
+	if strings.Contains(bad, "lobster") {
+		t.Errorf("checkOwed refused lobster, which its ledger line owes:\n%s", bad)
+	}
+	if bad := checkOwed(f, Tree{}, has); len(bad) != 1 || !strings.Contains(bad[0], "is missing") {
+		t.Errorf("a missing ledger: %v", bad)
+	}
+}
+
+// The ledger is an exact set on every line, not only on whole-leg lines: a
+// per-case line under a leg that is not a leg (a typo, a removed leg) would
+// otherwise owe a case for nobody and never go red. Each plant is one line
+// added to a green ledger, and each must be refused by name.
+func TestSharedCorpusLedgerIsAnExactSetOnEveryLine(t *testing.T) {
+	t.Parallel()
+	f := Family{Name: "pins", Target: "pins-{leg}", Owed: "testdata/pins/owed.txt", Cases: "testdata/pins/cases.txt"}
+	has := map[string]bool{}
+	for _, l := range Legs {
+		has[l] = true
+	}
+	const green = "# head\nlua mixed-ping owed: the port\n"
+	ledgers := func(owed string) Tree {
+		return Tree{Ledgers: map[string]string{
+			"testdata/pins/owed.txt":  owed,
+			"testdata/pins/cases.txt": "# head\nmixed-ping Mixed accept 2 ping\nmixed-none Mixed accept 2 None\n",
+		}}
+	}
+	if bad := checkOwed(f, ledgers(green), has); len(bad) != 0 {
+		t.Fatalf("the green ledger was refused: %v", bad)
+	}
+	for _, c := range []struct{ plant, want string }{
+		{"golang mixed-ping owed: plant", "golang is not a leg"},
+		{"lua no-such-case owed: plant", "testdata/pins/cases.txt names no such case"},
+		{"lua mixed-ping owed: again", "names lua mixed-ping twice"},
+		{"lua mixed-none owed:", "is not `<leg> <case> owed: <cause>`"},
+		{"lua mixed-none", "is not `<leg> <case> owed: <cause>`"},
+	} {
+		bad := strings.Join(checkOwed(f, ledgers(green+c.plant+"\n"), has), "\n")
+		if !strings.Contains(bad, c.want) {
+			t.Errorf("planting %q: refusals %q, want one saying %q", c.plant, bad, c.want)
+		}
+	}
+	if bad := checkOwed(f, Tree{Ledgers: map[string]string{"testdata/pins/owed.txt": green}}, has); len(bad) != 1 || !strings.Contains(bad[0], "case file testdata/pins/cases.txt is missing") {
+		t.Errorf("a missing case file: %v", bad)
+	}
+}
+
+// The reversed witness on the real tree: the repository's packet-void ledger
+// is green, and the one-line plant a cold reader made (a per-case line under
+// the misspelt leg golang) turns Check red.
+func TestPacketVoidLedgerPlantedUnknownLegIsRed(t *testing.T) {
+	t.Parallel()
+	tr := repoTree(t)
+	const owed = "testdata/wire/packet-void/owed.txt"
+	for _, b := range Check(tr) {
+		if strings.Contains(b, owed) {
+			t.Fatalf("the packet-void ledger is red as checked in: %s", b)
+		}
+	}
+	tr.Ledgers[owed] += "golang mixed-ping owed: plant\n"
+	if bad := strings.Join(Check(tr), "\n"); !strings.Contains(bad, `packet-void: testdata/wire/packet-void/owed.txt line "golang mixed-ping owed: plant": golang is not a leg`) {
+		t.Fatalf("the planted golang line was not refused:\n%s", bad)
+	}
+}
+
 func TestAccountFilesForLegResolvesPerLegSchemasAndExclusions(t *testing.T) {
 	t.Parallel()
 	tr := repoTree(t)
@@ -162,8 +246,8 @@ func TestAccountFilesForLegResolvesPerLegSchemasAndExclusions(t *testing.T) {
 		{"packet-finite", "dart", "test/packet-finite/dart/Finite.schema"},
 		{"packet-finite", "squirrel", "test/packet-finite/squirrel/Finite.schema"},
 		{"packet-void", "cpp", "test/packet-void/Void.schema"},
-		{"packet-void", "python", "test/packet-void/python/Python.schema"},
-		{"packet-void", "ruby", "test/packet-void/ruby/Ruby.schema"},
+		{"packet-void", "python", "test/packet-void/Void.schema"},
+		{"packet-void", "ruby", "test/packet-void/Void.schema"},
 		{"packet-write-text", "rust", "test/packet-write-text/Text.schema"},
 		{"packet-write-text", "cpp", "test/packet-write-text/cpp/TextPacketCases.schema"},
 		{"packet-write-text", "c", "test/packet-write-text/c/Text.schema"},
@@ -194,45 +278,54 @@ func TestAccountFilesForLegResolvesPerLegSchemasAndExclusions(t *testing.T) {
 	}
 }
 
-func TestAcceptedBoundsSelectOnlyTheirGoReaders(t *testing.T) {
+// The accepted bounds that were Go-only (packet-cfloat-endpoints and
+// table-write-bounds, retired 2026-11-24) live in shared corpora now: a
+// change to their inputs selects every leg, not only Go.
+func TestAcceptedBoundsSelectEveryLeg(t *testing.T) {
 	t.Parallel()
 	tree := repoTree(t)
 	for _, tc := range []struct {
-		family   string
-		neighbor string
-		inputs   []string
+		family string
+		inputs []string
 	}{
-		{
-			family:   "packet-cfloat-endpoints",
-			neighbor: "packet-write-cfloat",
-			inputs: []string{
-				"test/packet-cfloat-endpoints/PacketRatio.schema",
-				"test/packet-cfloat-endpoints/ratio-endpoints.txt",
-			},
-		},
-		{
-			family:   "table-write-bounds",
-			neighbor: "conformance-corpus",
-			inputs: []string{
-				"testdata/conformance/table-write-bounds/ACCEPTED-WRITE-BOUNDS.txt",
-				"testdata/conformance/table-write-bounds/TableWriteBounds.schema",
-				"testdata/conformance/table-write-bounds/torture_var_wref.bin",
-			},
-		},
+		{"packet-write-cfloat", []string{"test/packet-write-cfloat/PacketCFloat.schema", "test/packet-write-cfloat/cases.txt"}},
+		{"conformance-corpus", []string{
+			"testdata/conformance/table-write-bounds/TableWriteBounds.schema",
+			"testdata/conformance/table-write-bounds/torture_var_wref.bin",
+			"testdata/conformance/tables/json/torture_var_wref.json",
+		}},
 	} {
-		t.Run(tc.family, func(t *testing.T) {
-			if got := AccountFilesForLeg(tree, tc.family, "go"); !slices.Equal(got, tc.inputs) {
-				t.Errorf("accounted files = %v, want %v", got, tc.inputs)
-			}
-			for _, input := range tc.inputs {
-				want := []Row{{Leg: "go", Family: tc.family, Target: tc.family + "-go"}}
-				if got := Select(tree, []string{input}, false, true).Rows; !slices.Equal(got, want) {
-					t.Errorf("%s selected %v, want %v", input, got, want)
-				}
-				if slices.Contains(AccountFilesForLeg(tree, tc.neighbor, "cpp"), input) {
-					t.Errorf("%s is accounted by neighboring family %s", input, tc.neighbor)
+		for _, input := range tc.inputs {
+			var legs []string
+			for _, r := range Select(tree, []string{input}, false, true).Rows {
+				if r.Family == tc.family {
+					legs = append(legs, r.Leg)
 				}
 			}
-		})
+			if !slices.Equal(legs, Legs) {
+				t.Errorf("%s selected %s legs %v, want all of %v", input, tc.family, legs, Legs)
+			}
+		}
+	}
+	if got := AccountFilesForLeg(tree, "conformance-corpus", "go"); !slices.Contains(got, "testdata/conformance/table-write-bounds/torture_var_wref.bin") {
+		t.Errorf("conformance-corpus does not account the TortureVarWref seed: %v", got)
+	}
+}
+
+// The reversed witness on the packet-write-cfloat ledger, which #4909 adds
+// empty because every leg answers every case: the tree is green, and a line
+// under a leg that is not a leg, for a real case, turns Check red.
+func TestPacketWriteCFloatLedgerPlantedUnknownLegIsRed(t *testing.T) {
+	t.Parallel()
+	tr := repoTree(t)
+	const owed = "test/packet-write-cfloat/owed.txt"
+	for _, b := range Check(tr) {
+		if strings.Contains(b, owed) {
+			t.Fatalf("the packet-write-cfloat ledger is red as checked in: %s", b)
+		}
+	}
+	tr.Ledgers[owed] += "cobol ratio-at-max owed: plant\n"
+	if bad := strings.Join(Check(tr), "\n"); !strings.Contains(bad, `packet-write-cfloat: test/packet-write-cfloat/owed.txt line "cobol ratio-at-max owed: plant": cobol is not a leg`) {
+		t.Fatalf("the planted cobol line was not refused:\n%s", bad)
 	}
 }

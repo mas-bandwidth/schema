@@ -9,3 +9,11 @@ type CFloat
 {
     x float32 | min = 0.0, max = 10.0, resolution = 0.01
 }
+
+// The closed endpoints of a [0, 1] range at resolution 0.01
+// (PACKET-WIRE-ALGORITHM.md §2.5): step indices 0 and 100 in seven bits. The
+// `type RatioEndpoint` cases write this type and pin its exact bytes.
+type RatioEndpoint
+{
+    ratio float32 | min = 0.0, max = 1.0, resolution = 0.01
+}

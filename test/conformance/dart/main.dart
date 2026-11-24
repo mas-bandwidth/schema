@@ -173,6 +173,9 @@ import '../../../build/tables-generated-dart/packetunions/TblpacketunionsWire.da
 import '../../../build/tables-generated-dart/packetunions/TblpacketunionsFixed.dart' as tblpacketunions_fixed;
 import '../../../build/tables-generated-dart/packetunions/PacketUnions.dart' as packetunions_packet;
 import '../../../build/tables-generated-dart/packetunions/PacketUnionsFixed.dart' as packetunions_fixed;
+// the WRITE-BOUNDS unit (docs/SPEC-TABLES.md): lawful boundary writes on the
+// variable-table carriers — an optional bounded list, union arms, enum slots
+import '../../../build/tables-generated-dart/writebounds/WriteboundsWire.dart' as writebounds;
 // Decode JSON bytes before entering a generated String reader. The generated
 // reader owns the one leading byte-order mark skip (docs/SPEC-TABLES.md §16.2,
 // §16.12), so the boundary hands it the text unchanged, as the JS driver's
@@ -2674,6 +2677,8 @@ Uint8List? wireResave(String unit, String root, Uint8List wire) {
       return _fixedResave(wire, tblvaluedefaults_fixed.FixedDefaults.new, valuedefaults_fixed.fixedDefaultsFixedNewPlan, tblvaluedefaults_fixed.TableFixedReport.new, (rep) => rep.refused != 0, valuedefaults_fixed.fixedDefaultsFixedLoad, valuedefaults_fixed.fixedDefaultsFixedMeasure, valuedefaults_fixed.fixedDefaultsFixedSave);
     case 'packetunions ShapeDoc':
       return _wireResaveOne(wire, tblpacketunions.TableWireReport.new, (rep) => (rep.refused, rep.refusal), tblpacketunions.shapeDocWireLoad, tblpacketunions.shapeDocWireSave);
+    case 'writebounds TortureVarWref':
+      return _wireResaveOne(wire, writebounds.TableWireReport.new, (rep) => (rep.refused, rep.refusal), writebounds.tortureVarWrefWireLoad, writebounds.tortureVarWrefWireSave);
     case 'packetunions ShapeMsg':
       if (wire.isNotEmpty && wire[0] == 1) {
         final rep = tblpacketunions.TableWireReport();
@@ -3269,6 +3274,11 @@ Uint8List? jsonReadSave(String unit, String root, String text) {
       final v = tblpacketunions.shapeDocFromJson(text, rep);
       if (rep.refused) return null;
       return tblpacketunions.shapeDocWireSave(v);
+    case 'writebounds TortureVarWref':
+      final rep = writebounds.TableTextReport();
+      final v = writebounds.tortureVarWrefFromJson(text, rep);
+      if (rep.refused) return null;
+      return writebounds.tortureVarWrefWireSave(v);
     case 'packetunions ShapeMsg':
       final rep = tblpacketunions.TableTextReport();
       final w = tblpacketunions.shapeMsgFromJson(text, rep);
@@ -3790,6 +3800,11 @@ String? jsonWriteText(String unit, String root, Uint8List wire) {
       final v = tblpacketunions.shapeDocWireLoad(wire, rep);
       if (rep.refused) return null;
       return tblpacketunions.shapeDocToJson(v);
+    case 'writebounds TortureVarWref':
+      final rep = writebounds.TableWireReport();
+      final v = writebounds.tortureVarWrefWireLoad(wire, rep);
+      if (rep.refused) return null;
+      return writebounds.tortureVarWrefToJson(v);
     case 'packetunions ShapeMsg':
       if (wire.isNotEmpty && wire[0] == 1) {
         final rep = tblpacketunions.TableWireReport();
@@ -4420,6 +4435,10 @@ String? loadReport(String unit, String root, Uint8List wire, {bool framing = fal
     case 'packetunions ShapeDoc':
       final rep = tblpacketunions.TableWireReport();
       tblpacketunions.shapeDocWireLoad(wire, rep);
+      return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
+    case 'writebounds TortureVarWref':
+      final rep = writebounds.TableWireReport();
+      writebounds.tortureVarWrefWireLoad(wire, rep);
       return _reportLine(rep.unknown, rep.widened, rep.retained, rep.retainLost, rep.refused);
     case 'listdemo Army':
       final rep = listdemo.TableWireReport();
@@ -7111,6 +7130,36 @@ bool _mutateRootConfigFixed(tabledemo_fixed.RootConfig fx, String path, String v
   }
 }
 
+// _mutateTortureVarWrefWire sets one write-bounds path on the variable form.
+// An arm path selects its arm first (WrefArm: a_none 1, a_bits 2, a_range 3,
+// a_str 4), so the write reaches the bound under test.
+bool _mutateTortureVarWrefWire(writebounds.TortureVarWref w, String path, String vkind, String text) {
+  switch ('$path $vkind') {
+    case 'opt_arr count':
+      final n = int.parse(text);
+      w.hasOptArr = true;
+      w.optArr = List<int>.generate(n, (i) => i < w.optArr.length ? w.optArr[i] : 0);
+      return true;
+    case 'arm_bits.a_bits int':
+      w.armBits.armTag = 2;
+      w.armBits.aBits = int.parse(text);
+      return true;
+    case 'arm_range.a_range int':
+      w.armRange.armTag = 3;
+      w.armRange.aRange = int.parse(text);
+      return true;
+    case 'arm_str.a_str length':
+      w.armStr.armTag = 4;
+      w.armStr.aStr = 'a' * int.parse(text);
+      return true;
+    case 'chan_lim[1] int':
+      w.chanLim[1] = int.parse(text);
+      return true;
+    default:
+      throw StateError('unsupported TortureVarWref mutation $path $vkind');
+  }
+}
+
 bool _mutateTortureCookWire(cooktorture.TortureCook w, String path, String vkind, String text) {
   switch ('$path $vkind') {
     case 'slice_f32[0] float':
@@ -7624,6 +7673,19 @@ int surfaceWriteRefusal(String outDir, String surface) {
         answer = _catchWrite(() {
           cooktorture.tortureCookWireSave(w);
           return 0;
+        });
+      }
+    } else if ('$unit $root' == 'writebounds TortureVarWref') {
+      final rep = writebounds.TableWireReport();
+      final w = writebounds.tortureVarWrefWireLoad(wire, rep);
+      if (rep.refused) return 1;
+      if (!_mutateTortureVarWrefWire(w, path, vkind, text)) {
+        answer = 'unrepresentable';
+      } else {
+        answer = _catchWrite(() {
+          final out = writebounds.tortureVarWrefWireSave(w);
+          // the measure is the load's arena need: a saved form it cannot walk is malformed
+          return writebounds.tortureVarWrefWireMeasure(out) > 0 ? 0 : -1;
         });
       }
     } else if ('$unit $root' == 'cooktorture TortureFixedWref') {

@@ -27,10 +27,14 @@ sealed class ThrowingTraceListener : TraceListener
 
 static class Program
 {
-    // CFloat.schema: x float32 | min = 0.0, max = 10.0, resolution = 0.01.
+    // PacketCFloat.schema: CFloat.x float32 | min = 0.0, max = 10.0,
+    // resolution = 0.01; RatioEndpoint.ratio float32 | min = 0.0, max = 1.0,
+    // resolution = 0.01.
     const float Min = 0.0f;
     const float Delta = 10.0f;
     const uint Steps = 1000u;
+    const float RatioDelta = 1.0f;
+    const uint RatioSteps = 100u;
 
     static int failed;
 
@@ -41,6 +45,20 @@ static class Program
             Console.WriteLine("FAILED: " + what);
             failed++;
         }
+    }
+
+    // The case being run and the failures before it: Answer() prints its
+    // "case <name> ok|FAILED: ..." line, the answer tools/casegate reads.
+    static string? pending;
+    static int pendingFailed;
+
+    static void Answer()
+    {
+        if (pending != null)
+        {
+            Console.WriteLine("case " + pending + (failed == pendingFailed ? " ok" : " FAILED: see the FAILED line above"));
+        }
+        pending = null;
     }
 
     static bool AssertFires(Action action)
@@ -65,32 +83,56 @@ static class Program
         }
     }
 
-    static bool Refused(float value)
+    static bool WriteOne(WriteStream stream, float value, bool ratio)
     {
+        if (ratio)
+        {
+            RatioEndpoint r = new RatioEndpoint { Ratio = value };
+            return Schema.WriteRatioEndpoint(stream, ref r);
+        }
         CFloat input = new CFloat { X = value };
+        return Schema.WriteCFloat(stream, ref input);
+    }
+
+    static bool Refused(float value, bool ratio)
+    {
         WriteStream stream = new WriteStream(new byte[64]);
         bool wrote = false;
-        bool asserted = AssertFires(() => { wrote = Schema.WriteCFloat(stream, ref input); });
+        bool asserted = AssertFires(() => { wrote = WriteOne(stream, value, ratio); });
         return asserted || !wrote;
     }
 
-    static bool Written(float value, out float readBack)
+    static bool Written(float value, bool ratio, out float readBack, out byte[] wire, out long bits)
     {
         readBack = 0.0f;
-        CFloat input = new CFloat { X = value };
+        wire = Array.Empty<byte>();
+        bits = -1;
         WriteStream stream = new WriteStream(new byte[64]);
         bool wrote = false;
-        bool asserted = AssertFires(() => { wrote = Schema.WriteCFloat(stream, ref input); });
+        bool asserted = AssertFires(() => { wrote = WriteOne(stream, value, ratio); });
         if (asserted || !wrote || !stream.Ok)
         {
             return false;
         }
+        // the bits the write emitted, before the flush pads the last byte
+        bits = stream.BitsProcessed;
         stream.Flush();
         if (!stream.Ok)
         {
             return false;
         }
-        ReadStream reader = new ReadStream(stream.Data.ToArray());
+        wire = stream.Data.ToArray();
+        ReadStream reader = new ReadStream(wire);
+        if (ratio)
+        {
+            RatioEndpoint r = new RatioEndpoint();
+            if (!Schema.ReadRatioEndpoint(reader, ref r))
+            {
+                return false;
+            }
+            readBack = r.Ratio;
+            return true;
+        }
         CFloat output = new CFloat();
         if (!Schema.ReadCFloat(reader, ref output))
         {
@@ -103,17 +145,19 @@ static class Program
     // The normative write quantization and decode (PACKET-WIRE-ALGORITHM §2.5):
     // round to the step, clamp only the INTEGER at the top, then dequantize with
     // float32 operations in order.
-    static float Quantized(float value)
+    static float Quantized(float value, bool ratio)
     {
-        float normalized = (value - Min) / Delta;
-        float scaled = (float)(normalized * Steps);
+        float delta = ratio ? RatioDelta : Delta;
+        uint steps = ratio ? RatioSteps : Steps;
+        float normalized = (value - Min) / delta;
+        float scaled = (float)(normalized * steps);
         uint integer = (uint)Math.Floor((double)(float)(scaled + 0.5f));
-        if (integer > Steps)
+        if (integer > steps)
         {
-            integer = Steps;
+            integer = steps;
         }
-        float quotient = (float)integer / Steps;
-        float product = (float)(quotient * Delta);
+        float quotient = (float)integer / steps;
+        float product = (float)(quotient * delta);
         return (float)(product + Min);
     }
 
@@ -144,6 +188,9 @@ static class Program
                 continue;
             }
             ran++;
+            Answer();
+            pending = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)[0];
+            pendingFailed = failed;
             string[] fields = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
             if (fields.Length < 3)
             {
@@ -153,9 +200,29 @@ static class Program
             string name = fields[0];
             float value = Parse(fields[1]);
             string verdict = fields[2];
+            bool ratio = false;
+            string? wireHex = null;
+            long wantBits = -1;
+            bool malformed = fields.Length % 2 != 1;
+            for (int i = 3; i + 1 < fields.Length; i += 2)
+            {
+                switch (fields[i])
+                {
+                    case "reads-back": break;
+                    case "type": ratio = fields[i + 1] == "RatioEndpoint"; malformed |= !ratio; break;
+                    case "wire": wireHex = fields[i + 1].ToLowerInvariant(); break;
+                    case "bits": malformed |= !long.TryParse(fields[i + 1], NumberStyles.None, CultureInfo.InvariantCulture, out wantBits); break;
+                    default: malformed = true; break;
+                }
+            }
+            if (malformed)
+            {
+                Check(false, "case line '" + line + "' has a malformed modifier");
+                continue;
+            }
             if (verdict == "refused")
             {
-                Check(Refused(value), name + " refused");
+                Check(Refused(value, ratio), name + " refused");
                 continue;
             }
             if (verdict != "written")
@@ -164,16 +231,24 @@ static class Program
                 continue;
             }
             written++;
-            if (!Written(value, out float got))
+            if (!Written(value, ratio, out float got, out byte[] wire, out long bits))
             {
                 Check(false, name + " written");
                 continue;
             }
-            float want = Quantized(value);
+            if (wantBits >= 0)
+            {
+                Check(bits == wantBits, name + " wrote " + bits + " bits before the flush, want " + wantBits);
+            }
+            if (wireHex != null)
+            {
+                Check(Convert.ToHexString(wire).ToLowerInvariant() == wireHex, name + " writes the wire " + wireHex);
+            }
+            float want = Quantized(value, ratio);
             Check(Bits(got) == Bits(want), name + " reads back its quantized value");
         }
-        // the count line build/mustrun holds to the registered count: a case
-        // file that lost its rows runs nothing and is red
+        Answer();
+        // a summary; tools/casegate holds every case of the file to an answer
         Check(ran > 0, "the shared cases in " + cases + " name at least one case");
         Console.WriteLine("packet-write-cfloat C# (" + written + " lawful cases read back quantized): ran " + ran + ", failed " + failed);
         return failed == 0 ? 0 : 1;

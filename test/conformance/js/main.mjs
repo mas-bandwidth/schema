@@ -857,6 +857,9 @@ const wireRows = [
   ["tblvaluedefaults", "FixedDefaults", "valuedefaults/TblvaluedefaultsVariable.js"],
   ["packetunions", "ShapeDoc", "packetunions/TblpacketunionsVariable.js"],
   ["packetunions", "ShapeMsg", "packetunions/TblpacketunionsVariable.js"],
+  // variable-table write bounds: union arms, an optional bounded array, a
+  // keyed array with a range (testdata/conformance/table-write-bounds)
+  ["writebounds", "TortureVarWref", "writebounds/WriteboundsVariable.js"],
   // the message corpus's root on the variable wire: union arms of every
   // carried field type, wide text among them (§2.6, §3)
   ["messagedemo", "ToolMessage", "messages/MessagedemoVariable.js"],
@@ -1094,6 +1097,7 @@ const textUnits = {
   shapes: "shapes/ShapesVariable.js",
   tblsurf: "surfaces/SurfacesVariable.js",
   tblvaluedefaults: "valuedefaults/TblvaluedefaultsVariable.js",
+  writebounds: "writebounds/WriteboundsVariable.js",
 };
 
 // unitView binds a unit's variable module and its View (<Pkg>View.js beside

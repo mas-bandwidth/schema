@@ -509,6 +509,22 @@ packet-end-lua-negative-control: packet-end-lua
 		cat build/packet-end/lua-negative/log; echo 'NEGATIVE CONTROL FAILED: a check other than the end check went red'; exit 1; fi
 	@echo 'packet end Lua negative control: removed end check accepts the trailing byte and the set padding'
 
+# ---------------------------------------------------------------- packet void
+# SPEC §4.8: payload-free union arms cost exactly their tag bits. The shared
+# corpus (testdata/wire/packet-void/cases.txt, make/checks/packet-void.mk):
+# test/packet-void/lua answers every case and tools/casegate refuses a case
+# with no answer.
+build/packet-void/lua/.stamp: bin/schema test/packet-void/Void.schema
+	@rm -rf build/packet-void/lua && mkdir -p build/packet-void/lua
+	./bin/schema generate --lang lua --out build/packet-void/lua/generated $(PACKET_VOID_SCHEMA)
+	@touch $@
+
+.PHONY: packet-void-lua
+packet-void-lua: toolchain-lua build/packet-void/lua/.stamp build/casegate
+	$(call packet_void_gate,lua) $(LUA) test/packet-void/lua/main.lua build/packet-void/lua/generated $(PACKET_VOID_PINS)
+
+test-lua: packet-void-lua
+
 # Compressed-float packet writes must refuse values outside their range.
 build/packet-write-cfloat/lua/.stamp: bin/schema test/packet-write-cfloat/PacketCFloat.schema
 	@rm -rf build/packet-write-cfloat/lua && mkdir -p build/packet-write-cfloat/lua
@@ -517,8 +533,8 @@ build/packet-write-cfloat/lua/.stamp: bin/schema test/packet-write-cfloat/Packet
 
 PACKET_WRITE_CFLOAT_LUA_DIR ?= build/packet-write-cfloat/lua/generated
 .PHONY: packet-write-cfloat-lua packet-write-cfloat-lua-negative-control
-packet-write-cfloat-lua: toolchain-lua build/packet-write-cfloat/lua/.stamp build/mustrun
-	$(MUSTRUN) -name packet-write-cfloat-lua -count 10 -- $(LUA) test/packet-write-cfloat/lua/main.lua $(PACKET_WRITE_CFLOAT_LUA_DIR) test/packet-write-cfloat
+packet-write-cfloat-lua: toolchain-lua build/packet-write-cfloat/lua/.stamp build/casegate
+	$(call packet_write_cfloat_gate,lua,packet-write-cfloat-lua) $(LUA) test/packet-write-cfloat/lua/main.lua $(PACKET_WRITE_CFLOAT_LUA_DIR) test/packet-write-cfloat
 
 packet-write-cfloat-lua-negative-control: packet-write-cfloat-lua
 	@rm -rf build/packet-write-cfloat/lua-negative && mkdir -p build/packet-write-cfloat/lua-negative/generated

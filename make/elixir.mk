@@ -142,6 +142,7 @@ ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	tblfixedevo:test/tables/fixedevo \
 	tblvarevo1:test/tables/varevo/VarEvo1.schema tblvarevo2:test/tables/varevo/VarEvo2.schema tblvarevo3:test/tables/varevo/VarEvo3.schema \
 	cooktorture:test/tables/cooktorture/CookTorture.schema cooktorturewide:test/tables/cooktorturewide/CookTortureWide.schema tblvaluedefaults:test/tables/ValueDefaults.schema \
+	writebounds:testdata/conformance/table-write-bounds/TableWriteBounds.schema \
 	packetunions:test/tables/packetunions/PacketUnions.schema \
 	tblrt1:test/tables/RT1.schema tblrt2:test/tables/RT2.schema tblrt3:test/tables/RT3.schema \
 	tblg1:test/tables/G1.schema widelist:tables/widelist \
@@ -150,7 +151,7 @@ ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	tblsurf:test/tables/surfaces/Surfaces.schema tblann4096:test/tables/announce4096/Announce.schema tblann4097:test/tables/announce4097/Announce.schema \
 	featurewitnesses:testdata/conformance/feature-witnesses/full/Features.schema
 
-build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk testdata/conformance/feature-witnesses/full/Features.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema $(wildcard tables/stream/*.schema) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/widenbound/WidenBoundPeer.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/G1.schema $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_BACKEND) $(wildcard tables/widelist/*.schema) test/tables/shapes/Shapes.schema test/tables/prior/PriorNarrow.schema test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/ValueDefaults.schema
+build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk testdata/conformance/feature-witnesses/full/Features.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema $(wildcard tables/stream/*.schema) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/widenbound/WidenBoundPeer.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/G1.schema $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_BACKEND) $(wildcard tables/widelist/*.schema) test/tables/shapes/Shapes.schema test/tables/prior/PriorNarrow.schema test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/ValueDefaults.schema testdata/conformance/table-write-bounds/TableWriteBounds.schema
 	@mkdir -p build/tables-generated-elixir
 	@if ! jobs=$$(nproc 2>/dev/null); then if ! jobs=$$(sysctl -n hw.ncpu 2>/dev/null); then jobs=4; fi; fi; \
 	printf '%s\n' $(ELIXIR_TABLE_UNITS) | xargs -P "$$jobs" -n 4 sh -c 'for unit in "$$@"; do name=$${unit%%:*}; path=$${unit#*:}; rm -rf "build/tables-generated-elixir/$$name"; ./bin/schema generate --lang elixir --out "build/tables-generated-elixir/$$name" $$path || exit 255; done' _
@@ -2357,3 +2358,19 @@ packet-end-elixir-negative-control: packet-end-elixir
 	@echo 'packet end Elixir negative control: removing the end check accepts the trailing and padding vectors'
 
 test-elixir: packet-end-elixir packet-end-elixir-negative-control
+
+# Payload-free union arms cost exactly their tag bits (SPEC §4.8): the leg's
+# half of test/packet-void. The driver answers every case of
+# testdata/wire/packet-void/cases.txt against the Go oracle's pins, and
+# tools/casegate judges its answers (make/checks/packet-void.mk).
+build/packet-void/elixir/.stamp: bin/schema $(PACKET_VOID_SCHEMA) make/elixir.mk
+	@rm -rf build/packet-void/elixir && mkdir -p build/packet-void/elixir
+	./bin/schema generate --lang elixir --out build/packet-void/elixir $(PACKET_VOID_SCHEMA)
+	@touch $@
+
+.PHONY: packet-void-elixir
+packet-void-elixir: build/packet-void/elixir/.stamp build/casegate
+	$(MIX) format --check-formatted build/packet-void/elixir/*.ex test/packet-void/elixir/*.exs
+	@rm -rf build/packet-void/elixir-beam && mkdir -p build/packet-void/elixir-beam
+	$(ELIXIRC_STRICT) -o build/packet-void/elixir-beam build/packet-void/elixir/*.ex
+	$(call packet_void_gate,elixir) env PATH="$(BEAM_PATH):$$PATH" $(lastword $(ELIXIR)) test/packet-void/elixir/main.exs $(PACKET_VOID_PINS)

@@ -92,6 +92,7 @@ static const struct
     { "shapes", conformance_write_refusal_set_shapes, conformance_write_refusal_write_shapes },
     { "tblsurf", conformance_write_refusal_set_tblsurf, conformance_write_refusal_write_tblsurf },
     { "mapdemo", conformance_write_refusal_set_mapdemo, conformance_write_refusal_write_none },
+    { "writebounds", conformance_write_refusal_set_writebounds, conformance_write_refusal_write_none },
 };
 #endif
 

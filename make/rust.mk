@@ -335,7 +335,7 @@ generated/bench/rust/.stamp: bin/schema $(SCHEMAS_BENCH)
 RUST_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	blobdemo:tables/blobs mapdemo:tables/maps listdemo:tables/lists widelistdemo:tables/widelist \
 	messagedemo:tables/messages streamdemo:tables/stream \
-	scalars:tables/scalars tblscalars2:test/tables/Scalars2.schema tblfixedevo:test/tables/fixedevo tblvarevo1:test/tables/varevo/VarEvo1.schema tblvarevo2:test/tables/varevo/VarEvo2.schema tblvarevo3:test/tables/varevo/VarEvo3.schema cooktorture:test/tables/cooktorture/CookTorture.schema cooktorturewide:test/tables/cooktorturewide/CookTortureWide.schema packetunions:test/tables/packetunions/PacketUnions.schema blockdemo:tables/block blockhome:tables/blockhome \
+	scalars:tables/scalars tblscalars2:test/tables/Scalars2.schema tblfixedevo:test/tables/fixedevo tblvarevo1:test/tables/varevo/VarEvo1.schema tblvarevo2:test/tables/varevo/VarEvo2.schema tblvarevo3:test/tables/varevo/VarEvo3.schema cooktorture:test/tables/cooktorture/CookTorture.schema cooktorturewide:test/tables/cooktorturewide/CookTortureWide.schema packetunions:test/tables/packetunions/PacketUnions.schema writebounds:testdata/conformance/table-write-bounds/TableWriteBounds.schema blockdemo:tables/block blockhome:tables/blockhome \
 	tblv1:test/tables/V1.schema tblv2:test/tables/V2.schema \
 	tblp1:test/tables/P1.schema tblp2:test/tables/P2.schema \
 	tblp3:test/tables/P3.schema jsonkeys:test/tables/JsonKeys.schema \
@@ -361,7 +361,7 @@ RUST_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 # those bytes (docs/SPEC-TABLES.md §3.4, §15).
 RUST_TABLE_BENCH_SCHEMAS := bench/corpus/Bench.schema bench/corpus/FixedTable.schema
 
-build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_SCALARS) test/tables/Scalars2.schema $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/G1.schema test/tables/shapes/Shapes.schema test/tables/prior/PriorNarrow.schema $(RUST_TABLE_BENCH_SCHEMAS) test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/packetunions/PacketUnions.schema
+build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_SCALARS) test/tables/Scalars2.schema $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/G1.schema test/tables/shapes/Shapes.schema test/tables/prior/PriorNarrow.schema $(RUST_TABLE_BENCH_SCHEMAS) test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/packetunions/PacketUnions.schema testdata/conformance/table-write-bounds/TableWriteBounds.schema
 	@mkdir -p build/tables-generated-rust
 	@for unit in $(RUST_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
@@ -2004,6 +2004,25 @@ packet-end-rust-negative-control: packet-end-rust
 	@echo 'packet end Rust negative control: removing the end check turns a trailing byte red'
 
 test-rust: packet-end-rust packet-end-rust-negative-control
+
+# THE PACKET-VOID LEG (SPEC §4.8; make/checks/packet-void.mk): payload-free
+# union arms cost exactly their tag bits. The driver answers every case of
+# testdata/wire/packet-void/cases.txt through tools/casegate, in a debug
+# build (the writer's debug_assert! contracts live) and a release build.
+build/packet-void/rust/.stamp: bin/schema test/packet-void/Void.schema make/rust.mk
+	@rm -rf build/packet-void/rust/generated && mkdir -p build/packet-void/rust/generated/src
+	./bin/schema generate --lang rust --out build/packet-void/rust/generated/src $(PACKET_VOID_SCHEMA)
+	@printf '[package]\nname = "packetvoid"\nversion = "0.0.0"\nedition = "2024"\n\n[dependencies]\nserialize = { package = "serialize-official", path = "%s/$(SERIALIZE_RS)" }\n' "$(CURDIR)" > build/packet-void/rust/generated/Cargo.toml
+	@touch $@
+
+.PHONY: packet-void-rust
+packet-void-rust: build/casegate build/packet-void/rust/.stamp
+	cd test/packet-void/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --target-dir ../../../build/packet-void/rust/target
+	cd test/packet-void/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo build --quiet --release --target-dir ../../../build/packet-void/rust/target
+	$(call packet_void_gate,rust) ./build/packet-void/rust/target/debug/packet-void-test $(PACKET_VOID_PINS)
+	$(call packet_void_gate,rust) ./build/packet-void/rust/target/release/packet-void-test $(PACKET_VOID_PINS)
+
+test-rust: packet-void-rust
 
 # Packet Write holds row 8 (SPEC §5.1) in a Rust debug build: the driver
 # writes every shared case and catches the writer's debug_assert! panic as

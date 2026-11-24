@@ -24,7 +24,9 @@ enum
 {
     kWroteExit = 10,
     kReadFailedExit = 11,
-    kMismatchExit = 12
+    kMismatchExit = 12,
+    kWireExit = 13,
+    kBitsExit = 14
 };
 
 typedef struct
@@ -33,7 +35,38 @@ typedef struct
     float value;
     int refused;
     float reads_back;
+    int ratio;
+    int wire_bytes;
+    uint8_t wire[16];
+    int bits;
 } cfloat_case_t;
+
+static int parse_hex( const char * text, uint8_t * out, int capacity )
+{
+    int n = 0;
+    size_t i;
+    size_t length = strlen( text );
+    if ( length == 0 || length % 2 != 0 || (int) ( length / 2 ) > capacity )
+    {
+        return -1;
+    }
+    for ( i = 0; i < length; i += 2 )
+    {
+        unsigned byte;
+        char pair[3];
+        char * end = NULL;
+        pair[0] = text[i];
+        pair[1] = text[i + 1];
+        pair[2] = 0;
+        byte = (unsigned) strtoul( pair, &end, 16 );
+        if ( end != pair + 2 )
+        {
+            return -1;
+        }
+        out[n++] = (uint8_t) byte;
+    }
+    return n;
+}
 
 static int parse_float( const char * text, float * value )
 {
@@ -51,6 +84,9 @@ static int parse_case( char * line, cfloat_case_t * out )
     char * reads_back;
     char * save = NULL;
 
+    memset( out, 0, sizeof( *out ) );
+    out->wire_bytes = -1;
+    out->bits = -1;
     line[strcspn( line, "\r\n" )] = 0;
     for ( name = line; *name == ' ' || *name == '\t'; name++ )
     {
@@ -81,16 +117,48 @@ static int parse_case( char * line, cfloat_case_t * out )
     {
         return -1;
     }
-    out->refused = 0;
-    word = strtok_r( NULL, " \t", &save );
-    if ( word != NULL )
+    while ( ( word = strtok_r( NULL, " \t", &save ) ) != NULL )
     {
-        if ( strcmp( word, "reads-back" ) != 0 )
+        char * operand = strtok_r( NULL, " \t", &save );
+        if ( operand == NULL )
         {
             return -1;
         }
-        reads_back = strtok_r( NULL, " \t", &save );
-        if ( reads_back == NULL || !parse_float( reads_back, &out->reads_back ) )
+        if ( strcmp( word, "reads-back" ) == 0 )
+        {
+            reads_back = operand;
+            if ( !parse_float( reads_back, &out->reads_back ) )
+            {
+                return -1;
+            }
+        }
+        else if ( strcmp( word, "type" ) == 0 )
+        {
+            if ( strcmp( operand, "RatioEndpoint" ) != 0 )
+            {
+                return -1;
+            }
+            out->ratio = 1;
+        }
+        else if ( strcmp( word, "wire" ) == 0 )
+        {
+            out->wire_bytes = parse_hex( operand, out->wire, (int) sizeof( out->wire ) );
+            if ( out->wire_bytes < 0 )
+            {
+                return -1;
+            }
+        }
+        else if ( strcmp( word, "bits" ) == 0 )
+        {
+            char * end = NULL;
+            long bits = strtol( operand, &end, 10 );
+            if ( end == operand || *end != 0 || bits < 0 || bits > 512 )
+            {
+                return -1;
+            }
+            out->bits = (int) bits;
+        }
+        else
         {
             return -1;
         }
@@ -110,11 +178,14 @@ static int run_child( const cfloat_case_t * test )
 {
     cfloat_c_float_t in;
     cfloat_c_float_t out;
+    cfloat_ratio_endpoint_t ratio_in;
+    cfloat_ratio_endpoint_t ratio_out;
     uint8_t buffer[64];
     serialize_write_stream_t writer;
     serialize_read_stream_t reader;
     int bytes;
     int quiet;
+    float got;
 
     quiet = open( "/dev/null", O_WRONLY );
     if ( quiet >= 0 )
@@ -123,11 +194,18 @@ static int run_child( const cfloat_case_t * test )
     }
 
     memset( &in, 0, sizeof( in ) );
+    memset( &ratio_in, 0, sizeof( ratio_in ) );
     in.x = test->value;
+    ratio_in.ratio = test->value;
     serialize_write_stream_init( &writer, buffer, (int) sizeof( buffer ) );
-    if ( !cfloat_write_c_float( &writer, &in ) )
+    if ( test->ratio ? !cfloat_write_ratio_endpoint( &writer, &ratio_in ) : !cfloat_write_c_float( &writer, &in ) )
     {
         return kReadFailedExit;
+    }
+    /* the bits the write emitted, before the flush pads the last byte */
+    if ( test->bits >= 0 && serialize_write_bits_processed( &writer ) != test->bits )
+    {
+        return kBitsExit;
     }
     serialize_write_flush( &writer );
     if ( serialize_write_error( &writer ) )
@@ -135,14 +213,20 @@ static int run_child( const cfloat_case_t * test )
         return kReadFailedExit;
     }
     bytes = (int) serialize_write_bytes_processed( &writer );
+    if ( test->wire_bytes >= 0 && ( bytes != test->wire_bytes || memcmp( buffer, test->wire, (size_t) bytes ) != 0 ) )
+    {
+        return kWireExit;
+    }
 
     memset( &out, 0, sizeof( out ) );
+    memset( &ratio_out, 0, sizeof( ratio_out ) );
     serialize_read_stream_init( &reader, buffer, bytes );
-    if ( !cfloat_read_c_float( &reader, &out ) )
+    if ( test->ratio ? !cfloat_read_ratio_endpoint( &reader, &ratio_out ) : !cfloat_read_c_float( &reader, &out ) )
     {
         return kReadFailedExit;
     }
-    if ( float_bits( out.x ) != float_bits( test->reads_back ) )
+    got = test->ratio ? ratio_out.ratio : out.x;
+    if ( float_bits( got ) != float_bits( test->reads_back ) )
     {
         return kMismatchExit;
     }
@@ -182,11 +266,12 @@ int main( int argc, char ** argv )
         int refused = 0;
         int wrote = 0;
         int broke = 0;
+        int failed_before = failed;
 
         if ( parsed < 0 )
         {
             printf( "FAILED: packet-write-cfloat cases.txt: malformed case %s\n", line );
-            failed = 1;
+            failed++;
             continue;
         }
         if ( parsed == 0 )
@@ -203,14 +288,14 @@ int main( int argc, char ** argv )
         if ( mark < 0 )
         {
             printf( "FAILED: packet-write-cfloat %s: could not mark the case file\n", test.name );
-            failed = 1;
+            failed++;
             break;
         }
         child = fork();
         if ( child < 0 )
         {
             printf( "FAILED: packet-write-cfloat %s: could not fork\n", test.name );
-            failed = 1;
+            failed++;
             continue;
         }
         if ( child == 0 )
@@ -220,7 +305,7 @@ int main( int argc, char ** argv )
         if ( waitpid( child, &status, 0 ) != child )
         {
             printf( "FAILED: packet-write-cfloat %s: could not wait for the child\n", test.name );
-            failed = 1;
+            failed++;
             if ( fseek( file, mark, SEEK_SET ) != 0 )
             {
                 break;
@@ -230,7 +315,7 @@ int main( int argc, char ** argv )
         if ( fseek( file, mark, SEEK_SET ) != 0 )
         {
             printf( "FAILED: packet-write-cfloat %s: could not restore the case file\n", test.name );
-            failed = 1;
+            failed++;
             break;
         }
         if ( WIFSIGNALED( status ) && WTERMSIG( status ) == SIGABRT )
@@ -246,6 +331,16 @@ int main( int argc, char ** argv )
             wrote = 1;
             broke = 1;
         }
+        else if ( WIFEXITED( status ) && WEXITSTATUS( status ) == kWireExit )
+        {
+            wrote = 1;
+            broke = 2;
+        }
+        else if ( WIFEXITED( status ) && WEXITSTATUS( status ) == kBitsExit )
+        {
+            wrote = 1;
+            broke = 3;
+        }
         else
         {
             broke = 1;
@@ -254,36 +349,48 @@ int main( int argc, char ** argv )
         if ( test.refused && !refused )
         {
             printf( "FAILED: packet-write-cfloat %s: refused case was written\n", test.name );
-            failed = 1;
+            failed++;
         }
         else if ( !test.refused && refused )
         {
             printf( "FAILED: packet-write-cfloat %s: written case was refused\n", test.name );
-            failed = 1;
+            failed++;
         }
         else if ( !test.refused && !wrote )
         {
             printf( "FAILED: packet-write-cfloat %s: the write or read did not finish\n", test.name );
-            failed = 1;
+            failed++;
+        }
+        else if ( !test.refused && broke == 2 )
+        {
+            printf( "FAILED: packet-write-cfloat %s: the written bytes are not the case's wire\n", test.name );
+            failed++;
+        }
+        else if ( !test.refused && broke == 3 )
+        {
+            printf( "FAILED: packet-write-cfloat %s: the write emitted other than the case's %d bits before the flush\n",
+                test.name, test.bits );
+            failed++;
         }
         else if ( !test.refused && broke )
         {
             printf( "FAILED: packet-write-cfloat %s: read back did not match its quantized value (want 0x%08x)\n",
-                    test.name, float_bits( test.reads_back ) );
-            failed = 1;
+                test.name, float_bits( test.reads_back ) );
+            failed++;
         }
+        /* the case's answer tools/casegate reads (the FAILED line above
+           says why) */
+        printf( "case %s %s\n", test.name,
+            failed == failed_before ? "ok" : "FAILED: see the FAILED line above" );
     }
     fclose( file );
 
     if ( cases == 0 )
     {
         printf( "FAILED: packet-write-cfloat: no cases in %s\n", argv[1] );
-        failed = 1;
+        failed++;
     }
-    if ( failed )
-    {
-        return 1;
-    }
-    printf( "packet-write-cfloat: %d cases hold the write contract\n", cases );
-    return 0;
+    /* a summary; tools/casegate holds every case of the file to an answer */
+    printf( "packet-write-cfloat C: ran %d, failed %d\n", cases, failed );
+    return failed ? 1 : 0;
 }

@@ -25,3 +25,20 @@ packet-end-lobster-negative-control: packet-end-lobster
 	@echo 'packet end Lobster negative control: the removed end call accepts trailing bytes and set padding'
 
 test-lobster: packet-end-lobster packet-end-lobster-negative-control
+
+# ---- packet void: SPEC §4.8's payload-free union arms ----
+#
+# packet-void-lobster is the leg's half of test/packet-void: TestLobsterPacketVoid
+# generates test/packet-void/Void.schema and runs the driver
+# test/packet-void/lobster/main.lobster under the pinned toolchain with
+# testdata/wire/packet-void/cases.txt and every pin beside it; internal/casegate
+# judges its "case <name> ok|FAILED" lines (the Python leg's shape: the driver
+# runs inside the Go test). The control adds one bit to the Mixed void arm on
+# just the write or just the read path of the generated code and requires
+# mixed-ping red by name.
+.PHONY: packet-void-lobster packet-void-lobster-negative-control
+packet-void-lobster: toolchain-lobster
+	SCHEMA_SLOW=1 go test -count=1 -v -run '^TestLobsterPacketVoid$$' ./internal/codegen/lobster/
+
+packet-void-lobster-negative-control: packet-void-lobster
+	SCHEMA_SLOW=1 go test -count=1 -run '^TestLobsterPacketVoidNegativeControls$$' ./internal/codegen/lobster/

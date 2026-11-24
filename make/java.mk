@@ -129,7 +129,7 @@ generated/java-ludicrous/.stamp: bin/schema $(SCHEMAS128)
 # the committed generated/ tree. The full unit is generated (packet .java +
 # <Table>Block.java + <Table>Cook.java + the Row accessors and the runtime
 # types), because a record's descriptors name the packet emitter's own enums.
-build/tables-generated-java/.stamp: bin/schema make/java.mk $(wildcard testdata/conformance/feature-witnesses/full/Features.schema) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_WIDELIST) $(SCHEMAS_WIDE) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/RT1.schema $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/surfaces/Surfaces.schema test/tables/ValueDefaults.schema test/tables/packetunions/PacketUnions.schema
+build/tables-generated-java/.stamp: bin/schema make/java.mk $(wildcard testdata/conformance/feature-witnesses/full/Features.schema) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_ARMS) $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_WIDELIST) $(SCHEMAS_WIDE) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/G1.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/UT.schema test/tables/FU1.schema test/tables/FU2.schema $(SCHEMAS_TABLES_SCALARS) test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/RT1.schema $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) test/tables/surfaces/Surfaces.schema test/tables/ValueDefaults.schema test/tables/packetunions/PacketUnions.schema testdata/conformance/table-write-bounds/TableWriteBounds.schema
 	@mkdir -p build/tables-generated-java
 	$(if $(wildcard testdata/conformance/feature-witnesses/full/Features.schema),rm -rf build/tables-generated-java/featurewitnesses && ./bin/schema generate --lang java --out build/tables-generated-java/featurewitnesses testdata/conformance/feature-witnesses/full/Features.schema)
 	rm -rf build/tables-generated-java/examples && ./bin/schema generate --lang java --out build/tables-generated-java/examples tables/examples
@@ -211,6 +211,7 @@ build/tables-generated-java/.stamp: bin/schema make/java.mk $(wildcard testdata/
 	rm -rf build/tables-generated-java/cooktorturewide && ./bin/schema generate --lang java --out build/tables-generated-java/cooktorturewide test/tables/cooktorturewide/CookTortureWide.schema
 	rm -rf build/tables-generated-java/valuedefaults && ./bin/schema generate --lang java --out build/tables-generated-java/valuedefaults test/tables/ValueDefaults.schema
 	rm -rf build/tables-generated-java/packetunions && ./bin/schema generate --lang java --out build/tables-generated-java/packetunions test/tables/packetunions/PacketUnions.schema
+	rm -rf build/tables-generated-java/writebounds && ./bin/schema generate --lang java --out build/tables-generated-java/writebounds testdata/conformance/table-write-bounds/TableWriteBounds.schema
 	rm -rf build/tables-generated-java/backend && ./bin/schema generate --lang java --out build/tables-generated-java/backend tables/backend
 	rm -rf build/tables-generated-java/vocab && ./bin/schema generate --lang java --out build/tables-generated-java/vocab tables/vocab
 	rm -rf build/tables-generated-java/vocab9 && ./bin/schema generate --lang java --out build/tables-generated-java/vocab9 tables/vocab9
@@ -1718,7 +1719,7 @@ build/conformance-java/.stamp: build/tables-generated-java/.stamp test/conforman
 		build/tables-generated-java/examples/*.java build/tables-generated-java/pointers/*.java \
 		build/tables-generated-java/blobs/*.java \
 		build/tables-generated-java/maps/*.java build/tables-generated-java/arms/*.java \
-		build/tables-generated-java/scalars/*.java build/tables-generated-java/scalars2/*.java build/tables-generated-java/tblfixedevo/*.java build/tables-generated-java/tblvarevo1/*.java build/tables-generated-java/tblvarevo2/*.java build/tables-generated-java/tblvarevo3/*.java build/tables-generated-java/cooktorture/*.java build/tables-generated-java/cooktorturewide/*.java build/tables-generated-java/valuedefaults/*.java build/tables-generated-java/packetunions/*.java \
+		build/tables-generated-java/scalars/*.java build/tables-generated-java/scalars2/*.java build/tables-generated-java/tblfixedevo/*.java build/tables-generated-java/tblvarevo1/*.java build/tables-generated-java/tblvarevo2/*.java build/tables-generated-java/tblvarevo3/*.java build/tables-generated-java/cooktorture/*.java build/tables-generated-java/cooktorturewide/*.java build/tables-generated-java/valuedefaults/*.java build/tables-generated-java/packetunions/*.java build/tables-generated-java/writebounds/*.java \
 		build/tables-generated-java/messages/*.java \
 		build/tables-generated-java/stream/*.java build/tables-generated-java/lists/*.java build/tables-generated-java/widelist/*.java \
 		build/tables-generated-java/rt1/*.java \
@@ -2671,6 +2672,24 @@ packet-end-java-negative-control: packet-end-java
 	@echo 'packet end Java negative control: a removed end check accepts a trailing byte'
 
 test-java: packet-end-java packet-end-java-negative-control
+
+# THE PACKET-VOID LEG (SPEC §4.8; make/checks/packet-void.mk): payload-free
+# union arms cost exactly their tag bits. The driver answers every case of
+# testdata/wire/packet-void/cases.txt through tools/casegate, with -ea (the
+# writer's contract asserts live) and without.
+build/packet-void/java/.stamp: bin/schema test/packet-void/Void.schema make/java.mk
+	@rm -rf build/packet-void/java/gen build/packet-void/java/classes
+	./bin/schema generate --lang java --out build/packet-void/java/gen $(PACKET_VOID_SCHEMA)
+	@touch $@
+
+.PHONY: packet-void-java
+packet-void-java: build/casegate build/packet-void/java/.stamp
+	@mkdir -p build/packet-void/java/classes
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-void/java/classes build/packet-void/java/gen/*.java test/packet-void/java/Main.java
+	$(call packet_void_gate,java) $(JAVA) -ea -cp build/packet-void/java/classes Main $(PACKET_VOID_PINS)
+	$(call packet_void_gate,java) $(JAVA) -cp build/packet-void/java/classes Main $(PACKET_VOID_PINS)
+
+test-java: packet-void-java
 
 # Declaration-free transport IDs: run the legal and noncanonical vectors
 # through both public load paths, then plant a bypass of the order check.
