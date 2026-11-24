@@ -1,0 +1,21 @@
+{
+  "s": "",
+  "b": "",
+  "f": [],
+  "item": {"s": "other", "b": "eno=", "f": ["Crouch"], "n": 7},
+  "counted": [
+    {"s": "", "b": "", "f": [], "n": 1},
+    {"s": "x", "b": "AQID", "f": ["Jump", "Crouch", "Fly"], "n": 2},
+    {"s": "dflt", "b": "YWI=", "f": ["Jump", "Fly"], "n": 3}
+  ],
+  "pair": [
+    {"s": "p0", "b": "AA==", "f": ["Fly"], "n": 0},
+    {"s": "dflt", "b": "YWI=", "f": ["Jump", "Fly"], "n": -1}
+  ],
+  "keyed": {
+    "Alpha": {"s": "alpha", "b": "YWJj", "f": ["Jump"], "n": 10},
+    "Beta": {"s": "dflt", "b": "YWI=", "f": ["Jump", "Fly"], "n": 0},
+    "Gamma": {"s": "", "b": "", "f": [], "n": 0}
+  },
+  "pick": {"item": {"s": "", "b": "", "f": [], "n": 9}}
+}

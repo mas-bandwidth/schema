@@ -141,7 +141,8 @@ ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	tblscalars2:test/tables/Scalars2.schema \
 	tblfixedevo:test/tables/fixedevo \
 	tblvarevo1:test/tables/varevo/VarEvo1.schema tblvarevo2:test/tables/varevo/VarEvo2.schema tblvarevo3:test/tables/varevo/VarEvo3.schema \
-	cooktorture:test/tables/cooktorture/CookTorture.schema cooktorturewide:test/tables/cooktorturewide/CookTortureWide.schema \
+	cooktorture:test/tables/cooktorture/CookTorture.schema cooktorturewide:test/tables/cooktorturewide/CookTortureWide.schema tblvaluedefaults:test/tables/ValueDefaults.schema \
+	packetunions:test/tables/packetunions/PacketUnions.schema \
 	tblrt1:test/tables/RT1.schema tblrt2:test/tables/RT2.schema tblrt3:test/tables/RT3.schema \
 	tblg1:test/tables/G1.schema widelist:tables/widelist \
 	shapes:test/tables/shapes \
@@ -149,7 +150,7 @@ ELIXIR_TABLE_UNITS := tabledemo:tables/examples graphdemo:tables/pointers \
 	tblsurf:test/tables/surfaces/Surfaces.schema tblann4096:test/tables/announce4096/Announce.schema tblann4097:test/tables/announce4097/Announce.schema \
 	featurewitnesses:testdata/conformance/feature-witnesses/full/Features.schema
 
-build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk testdata/conformance/feature-witnesses/full/Features.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema $(wildcard tables/stream/*.schema) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/widenbound/WidenBoundPeer.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/G1.schema $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_BACKEND) $(wildcard tables/widelist/*.schema) test/tables/shapes/Shapes.schema test/tables/prior/PriorNarrow.schema test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema
+build/tables-generated-elixir/.stamp: bin/schema make/elixir.mk testdata/conformance/feature-witnesses/full/Features.schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOCK) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_SCALARS) test/tables/V1.schema test/tables/V2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema $(wildcard tables/stream/*.schema) test/tables/M1.schema test/tables/M2.schema test/tables/A1.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/Scalars2.schema test/tables/fixedevo/FixedEvo.schema test/tables/fixedevo/schema.lock test/tables/varevo/VarEvo1.schema test/tables/varevo/VarEvo2.schema test/tables/varevo/VarEvo3.schema test/tables/widenbound/WidenBoundPeer.schema test/tables/cooktorture/CookTorture.schema test/tables/cooktorturewide/CookTortureWide.schema test/tables/RT1.schema test/tables/RT2.schema test/tables/RT3.schema test/tables/G1.schema $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_BACKEND) $(wildcard tables/widelist/*.schema) test/tables/shapes/Shapes.schema test/tables/prior/PriorNarrow.schema test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/ValueDefaults.schema
 	@mkdir -p build/tables-generated-elixir
 	@if ! jobs=$$(nproc 2>/dev/null); then if ! jobs=$$(sysctl -n hw.ncpu 2>/dev/null); then jobs=4; fi; fi; \
 	printf '%s\n' $(ELIXIR_TABLE_UNITS) | xargs -P "$$jobs" -n 4 sh -c 'for unit in "$$@"; do name=$${unit%%:*}; path=$${unit#*:}; rm -rf "build/tables-generated-elixir/$$name"; ./bin/schema generate --lang elixir --out "build/tables-generated-elixir/$$name" $$path || exit 255; done' _
@@ -852,13 +853,13 @@ tables-elixir-alloc-pin: build/conformance-elixir-manifest/manifest.txt
 # THE AUDIT'S NEGATIVE CONTROL, and it is what makes the audit an instrument
 # rather than a number: the EMITTER is sabotaged (variableform.go, through
 # ELIXIR_SABOTAGED_BUILD) so every generated load also builds sixteen refc
-# binaries and a thousand-cell list and frees them at once, and every pinned
+# binaries and a ten-thousand-cell list and frees them at once, and every pinned
 # case must go over its budget on the heap-word column AND on the binary-call
 # column — each counted on its own from the audit's output, so a column that
 # lost its teeth is found on its own. A gate that cannot go red is not a gate.
 CONFORMANCE_NEGATIVE_ELIXIR_ALLOC := build/elixir-alloc-negative
-ELIXIR_ALLOC_SED := -e 's|^  def load(table, data) when is_binary(data), do: variable_read(table, data)$$|  def load(table, data) when is_binary(data), do: (_ = Enum.map(1..16, fn _ -> :binary.copy(<<0>>, 65) end) ++ List.duplicate(0, 1000); variable_read(table, data))|' \
-	-e 's|runtime = withFixedClassWire(u, ns, runtime)|runtime = strings.ReplaceAll(withFixedClassWire(u, ns, runtime), "  defp fixed_class_report(report) do", "  defp fixed_class_report(report) do _ = Enum.map(1..16, fn _ -> :binary.copy(<<0>>, 65) end) ++ List.duplicate(0, 1000);")|'
+ELIXIR_ALLOC_SED := -e 's|^  def load(table, data) when is_binary(data), do: variable_read(table, data)$$|  def load(table, data) when is_binary(data), do: (_ = Enum.map(1..16, fn _ -> :binary.copy(<<0>>, 65) end) ++ List.duplicate(0, 10000); variable_read(table, data))|' \
+	-e 's|runtime = withFixedClassWire(u, ns, runtime)|runtime = strings.ReplaceAll(withFixedClassWire(u, ns, runtime), "  defp fixed_class_report(report) do", "  defp fixed_class_report(report) do _ = Enum.map(1..16, fn _ -> :binary.copy(<<0>>, 65) end) ++ List.duplicate(0, 10000);")|'
 
 .PHONY: tables-elixir-alloc-negative-control
 tables-elixir-alloc-negative-control: build/conformance-elixir-manifest/manifest.txt
@@ -866,7 +867,7 @@ tables-elixir-alloc-negative-control: build/conformance-elixir-manifest/manifest
 	@if ELIXIR_TABLES_EBIN=$(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC)/ebin $(ELIXIR) test/elixir-alloc/main.exs \
 			build/conformance-elixir-manifest/manifest.txt $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR) audit $(ELIXIR_ALLOC_BUDGET) \
 			> $(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC)/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the audit passed with sixteen refc binaries and a thousand-cell list added to every generated load"; \
+		echo "NEGATIVE CONTROL FAILED: the audit passed with sixteen refc binaries and a ten-thousand-cell list added to every generated load"; \
 		cat $(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC)/log; exit 1; fi
 	@cases=$$(grep -c '^[a-z]' $(ELIXIR_ALLOC_BUDGET)); \
 	over=$$(grep 'over its pinned budget' $(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC)/log); \
@@ -875,7 +876,7 @@ tables-elixir-alloc-negative-control: build/conformance-elixir-manifest/manifest
 		{ echo "NEGATIVE CONTROL FAILED: the heap words column did not red every one of the $$cases pinned cases"; cat $(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC)/log; exit 1; }; \
 	[ "$$(echo "$$over" | grep -c 'binary calls')" -eq "$$cases" ] || \
 		{ echo "NEGATIVE CONTROL FAILED: the binary calls column did not red every one of the $$cases pinned cases"; cat $(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC)/log; exit 1; }; \
-	echo "elixir alloc negative control: sixteen refc binaries and a thousand-cell list per generated load red the heap words and binary calls columns of all $$cases pinned cases"
+	echo "elixir alloc negative control: sixteen refc binaries and a ten-thousand-cell list per generated load red the heap words and binary calls columns of all $$cases pinned cases"
 
 # THE AUDIT'S RUNTIME CONTROL, as tables-elixir-runtime-pin-negative-control is
 # the pin's: the audit run with a pin nothing is running must refuse, name the
