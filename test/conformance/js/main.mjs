@@ -813,6 +813,7 @@ const wireRows = [
   ["tabledemo", "MinPlainFix", "examples/TabledemoVariable.js"],
   ["tabledemo", "Moods", "examples/TabledemoVariable.js"],
   ["tabledemo", "MoodField", "examples/TabledemoVariable.js"],
+  ["tabledemo", "VarMoods", "examples/TabledemoVariable.js"],
   ["tblv1", "Cfg", "v1/Tblv1Variable.js"],
   ["tblv2", "Cfg", "v2/Tblv2Variable.js"],
   ["tblw1", "Fleet", "w1/Tblw1Variable.js"],
