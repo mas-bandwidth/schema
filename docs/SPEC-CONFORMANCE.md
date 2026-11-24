@@ -725,3 +725,28 @@ SCHEMA_SLOW=1 go test -count=1 ./internal/check ./internal/codegen/goosetable ./
 | fixed-last-record-refusal-resets-every-row | a fixed batch read refused at its LAST record (`no_layout`, a bad layout hash) answers `-1` and leaves EVERY row handed in at its declared defaults, record 0 included; the caller's own values survive in none (SPEC-TABLES.md §6.5, THE CALLER'S VALUES AFTER A REFUSAL; R4, GAP-21) | `TestGooseFixedHostileInput/P3`, `last_record_nolayout` |
 | message-batch-reset-after-the-walk | a refused message batch puts every value it was handed back at its declared defaults after the walk has decided the refusal, whatever refused: a non-finite float, an out-of-range value or damaged framing (SPEC-TABLES.md §6.5, "resets it after the refusal is decided"; R4) | `TestGooseLoadMessagesRefusalResetsBatch`; its negative control removes the `LoadMessages` reset and requires all three cases red |
 | wire-alone-rows-are-the-walks | with the wire-alone walk removed from moo's `ReadStrict`, exactly the framing rows that break a condition §6.5 lists as DECIDABLE FROM THE WIRE ALONE read, and no other row moves: the id table, an element kind no reader can skip, a depth past 128, the node table's framing and reserved type ids, graph cycles and unreachable records, a blob named twice, and ill-formed text in a blob only an unknown field reaches (SPEC-TABLES.md §6.5, DETECTION ORDER IS FREE) | `TestMooReadStrictWireCheckNegativeControl` (the same classes as Lua's `luaWireCheckOnly`) |
+
+### Every generated C++ table header compiles standalone
+
+A C++ table header carries the `schema_assert` hook whenever it calls
+`schema_assert` for any reason ([SPEC-TABLES §13.9](SPEC-TABLES.md), the hooks
+table; SPEC.md §5.1): a generated header is the first and only include of a
+translation unit and must compile there. A variable table with a ranged
+`fixed(48, 16)` field and no fixed form, list or storage check once emitted the
+write-contract call without the hook.
+
+```schema
+package rangedfixed
+table Root
+{
+    f fixed(48, 16) | min = -10, max = 10
+    n int64
+}
+```
+
+A new C++ implementation holds the same rule for its own generated table
+headers: every unit the shared corpus names, the manifest `unit` rows and the
+one-check units in `testdata/cpp-standalone`, generates headers that compile
+with `-std=c++17 -fsyntax-only` when included alone.
+`TestEveryGeneratedTableHeaderCompilesStandalone` sweeps that corpus and is red
+on the old generator for all four one-check units (`ranged_fixed`, `ranged_int`, `ranged_bits`, `ranged_float`).

@@ -1,0 +1,12 @@
+// The shared corpus of the C++ standalone-header test beside the manifest
+// units (internal/codegen/cpptable, TestEveryGeneratedTableHeaderCompilesStandalone):
+// each unit is the smallest table whose only schema_assert is one section 5.1
+// write-contract check, so nothing else decides whether its header carries the
+// hook. A ranged fixed(48, 16).
+package rangedfixed
+
+table Root
+{
+    f fixed(48, 16) | min = -10, max = 10
+    n int64
+}
