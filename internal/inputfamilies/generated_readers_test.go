@@ -8,8 +8,8 @@ import (
 // TestTheTwinHeadersSelectFixedtwin: a diff that changes only the C or C++
 // twin header under generated/bench/paired, or the paired unit under
 // bench/corpus, selects ./tools/fixedtwin, which reads the headers with
-// os.ReadFile and loads the unit by path. Neither is a Go import nor a
-// go:embed, so the dependents expansion never sees them. THE REVERSED
+// os.ReadFile and loads the unit by path. Neither is a Go import nor
+// a go:embed, so the dependents expansion never sees them. THE REVERSED
 // WITNESS: the rule before generatedInputs (isTestInput alone) selects no
 // fixedtwin for the same paths, the miss this reverses.
 func TestTheTwinHeadersSelectFixedtwin(t *testing.T) {

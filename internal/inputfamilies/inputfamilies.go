@@ -265,8 +265,8 @@ func isTestInput(p string) bool {
 // WHY (2026-11-24). tools/fixedtwin holds the C and C++ fixed runtimes to
 // each other by reading generated/bench/paired/{c,cpp}/FixedTableTable.h
 // with os.ReadFile, and loads the paired unit from bench/corpus. The go test
-// selection follows the Go import graph (gotestrows -dependents-of) and
-// go:embed, and neither sees a file read by path, so a diff that only
+// selection follows the Go import graph (gotestrows -dependents-of)
+// and go:embed, and neither sees a file read by path, so a diff that only
 // regenerated the twin headers selected no package that reads them. A .go
 // file under generated/ is outside the main module, so it is an input here
 // too: the plan's .go rule never names it.
