@@ -934,3 +934,15 @@ with the flat tier's writes and the decode case green.
 | SPEC §4.3, §5: a `float32` field's default is the float32 of its declaration | `F32Lit` `default-d`, `default-e`, `verify-bitphase-<lang>` | red before its fix on JavaScript (both tiers construct through the module), Dart and Elixir. Green with no fix: C (the decimal assigned to a `float` rounds there), C++, C# (modern and unity), Go, Rust, Java, Python, Ruby, Lua, Luau, Squirrel, moo, Goose, Lobster |
 | SPEC §4.3, §5.1 row 10: a compressed float's write takes both float32 ends | `F32Lit` `write-min`, `write-max`, `verify-bitphase-<lang>` | red before its fix on the JavaScript stream tier, Lua and Luau, whose write guards compared against the decimals and refused both ends. Green with no fix: the JavaScript flat tier, Dart and Elixir (their guards were spelled as float32 by #4991), C, C++, C# (modern and unity), Go, Rust, Java, Python, Ruby, Squirrel, moo, Goose, Lobster |
 | SPEC §4.3: a table field's `float32` default is the float32 of its declaration | Go unit test `TestJsTableFloat32DefaultIsItsFloat32` (`internal/codegen/jstable`; no shared case: every table surface, the text form included, rounds a value through float32 before it spells or stores it, so the double default differs only in memory) | red before its fix on JavaScript tables (the constructor and the descriptor's `def`, which an absent field reads back, held the double `0.7`). The other table generators spell a float32 default as its float32 already |
+
+### A block build names the non-finite float it refuses
+
+A block float is finite (SPEC-TABLES §3.3): the read refuses a NaN or an
+infinity on its raw bits and the builder refuses one in the value, and both
+name the field, `<Owner>.<field>`. The verdict is shared and already held by
+every leg; the name is a leg's own report (docs/rulings.json
+refusal-verdict-only), so the case is the leg's unit test.
+
+| rule | case | the leg it was red on before its fix |
+|---|---|---|
+| SPEC-TABLES §3.3: the block builder refuses a NaN or an infinity and names the field, as the block read does | Go unit test `TestLobsterTablesAreFiniteOnly` (`internal/codegen/lobstertable`, slow tier; no shared case: the verdict was already `refused`, and the corpus judges the verdict alone) | red before its fix on Lobster: the range check in `block_write_field` ran first and answered `invalid_value` for a NaN, so the build named no field while the read named `PaddedRow.value` |
