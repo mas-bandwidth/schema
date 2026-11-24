@@ -33,7 +33,7 @@ func nightlyGateLangs(t *testing.T, root string) map[string][]string {
 		t.Fatal("test/conformance/nightly-readiness: LANGUAGES not found")
 	}
 	var readiness []string
-	for _, f := range strings.Split(ready[1], ",") {
+	for f := range strings.SplitSeq(ready[1], ",") {
 		if f = strings.Trim(strings.TrimSpace(f), `"'`); f != "" {
 			readiness = append(readiness, f)
 		}
