@@ -11,15 +11,16 @@
 // for each byte v: h ^= v; h *= 0x100000001b3 over the layout's bytes as
 // written, the 4-byte count included, and then over the DEFINITIONS DIGEST
 // (§5.2) — the facts a range, a bits(N), a fixed(I,F) split or a flags bit
-// count states and the layout's sizes do not, which never ride the wire. An
-// empty digest leaves the hash the layout's alone."
+// count states and the layout's sizes do not, which never ride the wire. A
+// legacy empty digest leaves the hash the layout's alone; prospective v2 roots
+// always include their identity prefix (§5.2)."
 //
 // WHAT THIS ASSERTS:
 //   1. For a table with no digest-relevant definitions (PaddedRow: no ranges,
-//      no flags, no bits, no fixed), fnv1a64(layout_bytes) == stored hash,
-//      proving the digest is empty and "leaves the hash the layout's alone."
+//      no flags, no bits, no fixed), fnv1a64(layout ++ v2 prefix) == stored hash,
+//      proving the digest is the v2 identity prefix alone (§5.2).
 //   2. For a table with a range (Meta: build int32 | min=0, max=1000),
-//      fnv1a64(layout_bytes) != stored hash, proving the digest was folded in.
+//      fnv1a64(layout ++ v2 prefix) != stored hash, proving the digest was folded in.
 //   3. The hash values are compile-time const declarations — handed constants,
 //      not computed at runtime from layout bytes.
 //
@@ -65,16 +66,30 @@ int fnv1a64(List<int> bytes) {
   return h.toSigned(64).toInt();
 }
 
+
+// THE PROSPECTIVE V2 IDENTITY PREFIX (docs/FIXED-FORM-ALGORITHM.md §5.2,
+// "PROSPECTIVE V2 DEFINITIONS DIGEST"): every non-nil fixed root begins its
+// digest with these 26 bytes, "\0schema-fixed-definitions\x02", even when it has
+// no rows. So a root with no digest rows hashes fnv1a64(layout ++ prefix), and
+// a root whose ranges, resolutions, bits, fixed splits or flags ARE in the
+// digest hashes something else. (This row once compared against
+// fnv1a64(layout) alone, the legacy layout-only key, which WireLaw 3 retired
+// for a root's own identity; against it every v2 hash differs, so the
+// "digest folded in" checks below compare with the prefix included.)
+final List<int> v2Prefix = <int>[0x00, ...'schema-fixed-definitions'.codeUnits, 0x02];
+
+List<int> withV2Prefix(List<int> layout) => <int>[...layout, ...v2Prefix];
+
 void main() {
   // ---- LAW: an empty digest leaves the hash the layout's alone (§5.2) ----
   //
   // PaddedRow has no ranges, no flags, no bits(N), no fixed(I,F), no reader
-  // limits — its definitions digest is empty, so the hash is fnv1a64 over the
-  // layout bytes alone.
-  final paddedComputed = fnv1a64(paddedRowFixedLayout);
+  // limits — its definitions digest is the v2 prefix alone, so the hash is
+  // fnv1a64 over the layout bytes and then that prefix.
+  final paddedComputed = fnv1a64(withV2Prefix(paddedRowFixedLayout));
   check(
     paddedComputed == paddedRowFixedHash,
-    'R4: PaddedRow digest is empty — fnv1a64(layout_bytes) == stored hash '
+    'R4: PaddedRow digest is the v2 prefix alone — fnv1a64(layout ++ v2 prefix) == stored hash '
     '(0x${(paddedComputed & 0xFFFFFFFFFFFFFFFF).toRadixString(16).padLeft(16, '0')} '
     '== 0x${(paddedRowFixedHash & 0xFFFFFFFFFFFFFFFF).toRadixString(16).padLeft(16, '0')})',
   );
@@ -82,11 +97,11 @@ void main() {
   // ---- LAW: the digest is folded in after the layout bytes (§5.2) ----
   //
   // Meta has a range (build int32 | min=0, max=1000), so its digest is
-  // non-empty. The hash must differ from fnv1a64(layout_bytes alone).
-  final metaLayoutOnly = fnv1a64(metaFixedLayout);
+  // non-empty. The hash must differ from fnv1a64(layout ++ v2 prefix).
+  final metaLayoutOnly = fnv1a64(withV2Prefix(metaFixedLayout));
   check(
     metaLayoutOnly != metaFixedHash,
-    'R4: Meta has a range — fnv1a64(layout_bytes) != stored hash '
+    'R4: Meta has a range — fnv1a64(layout ++ v2 prefix) != stored hash '
     '(digest folded in; 0x${(metaLayoutOnly & 0xFFFFFFFFFFFFFFFF).toRadixString(16).padLeft(16, '0')} '
     '!= 0x${(metaFixedHash & 0xFFFFFFFFFFFFFFFF).toRadixString(16).padLeft(16, '0')})',
   );

@@ -15,9 +15,9 @@
 //
 // WHAT THIS ASSERTS:
 //   1. RangedSigned (12 integer ranges across four widths) has a hash that
-//      differs from fnv1a64(layout_bytes) — ranges fold into the digest.
+//      differs from fnv1a64(layout ++ v2 prefix) — ranges fold into the digest.
 //   2. RootConfig (closure includes LoadoutConfig → Perks flags) has a hash
-//      that differs from fnv1a64(layout_bytes) — the flags type is in the digest.
+//      that differs from fnv1a64(layout ++ v2 prefix) — the flags type is in the digest.
 //   3. Two tables with the same layout shape but different ranges produce
 //      different hashes (RangedSigned vs RangedUnsigned: different widths,
 //      different range bounds, different hashes).
@@ -70,28 +70,42 @@ int fnv1a64(List<int> bytes) {
 String hex64(int v) =>
     (v & 0xFFFFFFFFFFFFFFFF).toRadixString(16).padLeft(16, '0');
 
+
+// THE PROSPECTIVE V2 IDENTITY PREFIX (docs/FIXED-FORM-ALGORITHM.md §5.2,
+// "PROSPECTIVE V2 DEFINITIONS DIGEST"): every non-nil fixed root begins its
+// digest with these 26 bytes, "\0schema-fixed-definitions\x02", even when it has
+// no rows. So a root with no digest rows hashes fnv1a64(layout ++ prefix), and
+// a root whose ranges, resolutions, bits, fixed splits or flags ARE in the
+// digest hashes something else. (This row once compared against
+// fnv1a64(layout) alone, the legacy layout-only key, which WireLaw 3 retired
+// for a root's own identity; against it every v2 hash differs, so the
+// "digest folded in" checks below compare with the prefix included.)
+final List<int> v2Prefix = <int>[0x00, ...'schema-fixed-definitions'.codeUnits, 0x02];
+
+List<int> withV2Prefix(List<int> layout) => <int>[...layout, ...v2Prefix];
+
 void main() {
   // ---- LAW: every range is in the digest (§5.2, bill §13) ----
   //
   // RangedSigned carries twelve integer ranges across four widths (int8,
   // int16, int32, int64), each with different bounds. Its digest is non-empty
   // because of these 'R' entries, so the hash must differ from
-  // fnv1a64(layout_bytes alone).
-  final rangedSignedLayoutOnly = fnv1a64(rangedSignedFixedLayout);
+  // fnv1a64(layout ++ v2 prefix).
+  final rangedSignedLayoutOnly = fnv1a64(withV2Prefix(rangedSignedFixedLayout));
   check(
     rangedSignedLayoutOnly != rangedSignedFixedHash,
     'R5: RangedSigned has 12 integer ranges — digest is non-empty, '
-    'so fnv1a64(layout) != hash '
+    'so fnv1a64(layout ++ v2 prefix) != hash '
     '(0x${hex64(rangedSignedLayoutOnly)} != 0x${hex64(rangedSignedFixedHash)})',
   );
 
   // RangedUnsigned carries twelve unsigned integer ranges — different bounds
-  // from RangedSigned. Its hash must also differ from fnv1a64(layout alone).
-  final rangedUnsignedLayoutOnly = fnv1a64(rangedUnsignedFixedLayout);
+  // from RangedSigned. Its hash must also differ from fnv1a64(layout ++ v2 prefix).
+  final rangedUnsignedLayoutOnly = fnv1a64(withV2Prefix(rangedUnsignedFixedLayout));
   check(
     rangedUnsignedLayoutOnly != rangedUnsignedFixedHash,
     'R5: RangedUnsigned has 12 unsigned integer ranges — '
-    'fnv1a64(layout) != hash '
+    'fnv1a64(layout ++ v2 prefix) != hash '
     '(0x${hex64(rangedUnsignedLayoutOnly)} != 0x${hex64(rangedUnsignedFixedHash)})',
   );
 
@@ -113,8 +127,8 @@ void main() {
   // RootConfig's closure reaches LoadoutConfig, which carries `perks Perks`.
   // Perks is a flags type (flags Perks { Shielded, Cloaked, Turbo }).
   // The flags type contributes an 'F' entry to the digest, so the hash
-  // must differ from fnv1a64(layout_bytes alone).
-  final rootConfigLayoutOnly = fnv1a64(rootConfigFixedLayout);
+  // must differ from fnv1a64(layout ++ v2 prefix).
+  final rootConfigLayoutOnly = fnv1a64(withV2Prefix(rootConfigFixedLayout));
   check(
     rootConfigLayoutOnly != rootConfigFixedHash,
     'R5: RootConfig\'s closure includes LoadoutConfig → Perks (flags type) — '
@@ -122,14 +136,14 @@ void main() {
     '(0x${hex64(rootConfigLayoutOnly)} != 0x${hex64(rootConfigFixedHash)})',
   );
 
-  // ---- CONTROL: a table with no digest entries matches fnv1a64(layout) ----
+  // ---- CONTROL: a table with no digest entries matches fnv1a64(layout ++ v2 prefix) ----
   //
   // PaddedRow has no ranges, no flags, no bits, no fixed, no limits —
-  // its digest is empty, so the hash equals fnv1a64(layout_bytes).
-  final paddedLayoutOnly = fnv1a64(paddedRowFixedLayout);
+  // its digest is the v2 prefix alone, so the hash equals fnv1a64(layout ++ v2 prefix).
+  final paddedLayoutOnly = fnv1a64(withV2Prefix(paddedRowFixedLayout));
   check(
     paddedLayoutOnly == paddedRowFixedHash,
-    'R5: PaddedRow has no digest entries — fnv1a64(layout) == hash '
+    'R5: PaddedRow has no digest entries — fnv1a64(layout ++ v2 prefix) == hash '
     '(0x${hex64(paddedLayoutOnly)} == 0x${hex64(paddedRowFixedHash)})',
   );
 
