@@ -798,10 +798,14 @@ module SchemaRuntimeUnit
     end
 
     def self.render_json_value(field, item, depth, counts, labels)
-      # the write cap counts table values only (SPEC-TABLES W2): an empty array,
-      # map, union or flags value nests nothing and is written at any depth
+      # the write cap counts every container the read does (SPEC-TABLES §16.14
+      # W2): a table value, and an array or text list, a map, an enum-keyed
+      # array's object and a union's object, an empty [] or {} included
       if depth > MAX_DEPTH && %w[pointer table].include?(field.codec) && !(field.codec == 'pointer' && item.nil?)
         raise InvalidValue.new(field.name, 'nested past the depth cap')
+      end
+      if depth > MAX_DEPTH && %w[array pointer_array union_array map keyed union].include?(field.codec)
+        raise InvalidValue.new(field.name, 'a container nested past the depth cap')
       end
       if field.codec == 'optional'
         return item.nil? ? 'null' : render_json_value(json_inner_field(field), item, depth, counts, labels)
