@@ -1,10 +1,13 @@
 # Card cell3-elixir-r16 — the R16 cell of the elixir row group: §5.4's counters
-# exactly (docs/FIXED-FORM-ALGORITHM.md:939-947).
+# exactly (docs/FIXED-FORM-ALGORITHM.md §5.4, "The counter, and the refusals,
+# per op and per condition").
 #
-# THE LAW (§5.4, docs/FIXED-FORM-ALGORITHM.md:939):
-#   | where | counter | when |
-#   | MATCH, at COMPILE | unknown | once per writer field no reader field names,
-#   |                   |         | ONCE PER PEER AND NEVER PER RECORD |
+# THE LAW (§5.4, as ruled today; §5.9 #30; 2026-11-03):
+#   | where | answer | when |
+#   | MATCH and EMIT, at COMPILE | UNLAWFUL | a writer field no reader field
+#   |                   |         | names: no plan is laid for the entry, and a
+#   |                   |         | file under its hash refuses layout_malformed
+#   |                   |         | with every counter zero — never counted |
 #   | widen, widenf | widened | once per entry per record; a folded element run
 #   |                |         | is ONE and an unfolded one is min(their_n, my_n),
 #   |                |         | and a widened run is never folded (§5.9 #33) |
@@ -12,15 +15,15 @@
 #   |             |         | refuses the whole load as count_over_bound, on
 #   |             |         | either plan; the strict report carries no clamp
 #   |             |         | counter |
-#   | the bounds pass | (mixed) | a FORGED ordinal past the writer's set lands
-#   |                 |         | None and counts unknown on the COMPILED plan,
-#   |                 |         | and refuses out_of_range on the identity one |
+#   | the bounds pass | out_of_range | a FORGED ordinal past the writer's set
+#   |                 |         | refuses on the COMPILED plan exactly as on
+#   |                 |         | the identity one |
 #   | copy, const, present, ordinal | none | the op lands its value and moves
 #   |                               | nothing; the remap is the BOUNDS PASS's |
 #
-# Every clause is asserted with the EXACT number, never >= : a reader that
-# censused per record, folded a widened run, or counted the forged ordinal in
-# the ordinal op as well lands a different number and goes red.
+# Every clause is asserted with the EXACT number or the exact refusal, never
+# >= : a reader that censused a removed field, folded a widened run, or landed
+# the forged ordinal as None goes red.
 #
 # THE VECTORS ARE THE GENERATED WRITERS' OWN OUTPUT (the production path, not a
 # hand-derivation — the cpp leg's R16.cpp is the same shape). The corpus oracle
@@ -108,18 +111,26 @@ defmodule R16.Lock do
 
   def lineage_lines(body), do: Enum.filter(body, &String.match?(&1, ~r/^\s+lineage wire=/))
 
-  def wires(body) do
-    for l <- lineage_lines(body) do
-      [_, "wire=0x" <> hex | _] = String.split(String.trim(l), " ")
-      String.downcase(hex)
-    end
+  # One entry's roll-up line, read off its printed lineage line: the facts
+  # internal/lockfile/lineage.go's LineageHash digests, in its order — the
+  # wire hash, the writer snapshot when the entry has one, the
+  # legacy-layout-only mark and the retired mark. The record size, layout
+  # bytes and digest are bound to the wire hash already and are not in it.
+  def rollup_line(l) do
+    ["lineage", "wire=0x" <> hex | rest] = String.split(String.trim(l), " ")
+    writer = Enum.find(rest, &String.starts_with?(&1, "writer="))
+
+    "lineage wire=0x" <> String.downcase(hex) <>
+      if(writer, do: " " <> writer, else: "") <>
+      if("legacy-layout-only" in rest, do: " legacy-layout-only", else: "") <>
+      if("retired" in rest, do: " retired", else: "") <> "\n"
   end
 
+  def entries(body), do: Enum.map(lineage_lines(body), &rollup_line/1)
+
   # internal/lockfile/lineage.go's LineageHash: one fnv1a64 over
-  # `lineage wire=0x%016x[ retired]\n` per entry, in order.
-  def rollup(wire_hexes) do
-    fnv1a64(Enum.map_join(wire_hexes, "", fn hex -> "lineage wire=0x" <> hex <> "\n" end))
-  end
+  # `lineage wire=0x%016x[ writer=%x][ legacy-layout-only][ retired]\n` per entry, in order.
+  def rollup(lines), do: fnv1a64(Enum.join(lines))
 
   # The splice for §5.8 row 11's UNLAWFUL pair: the NEW print is the live
   # projection and stays verbatim but for the roll-up; the OLD print's lineage
@@ -135,7 +146,7 @@ defmodule R16.Lock do
         {_old_head, old_body} = Map.fetch!(old_by_name, name)
         old_lins = lineage_lines(old_body)
         new_lins = lineage_lines(body)
-        roll = rollup(wires(old_body) ++ wires(body))
+        roll = rollup(entries(old_body) ++ entries(body))
         head = String.replace(head, ~r/lineage=0x[0-9a-f]+/, "lineage=0x" <> hex16(roll))
         fields = Enum.reject(body, &(&1 in new_lins or String.trim(&1) == ""))
         [head | fields ++ old_lins ++ new_lins]
@@ -354,9 +365,11 @@ put32 = fn data, at, v ->
 end
 
 # ============================================================================
-# unknown: once per PEER at COMPILE, never per record (§5.8 row 11's pair).
-# THREE records, each FOUR Items, each carrying the dropped `drop`: the
-# per-record divergence would read 3 and the per-element one 12.
+# an UNLAWFUL entry is refused, never counted (§5.4, §5.9 #30; §5.8 row 11's
+# pair). THREE records, each FOUR Items, each carrying the dropped `drop`:
+# the NEW reader names no field for it, so COMPILE laid no plan for the OLD
+# entry and the whole load refuses layout_malformed with every counter at zero.
+# (This clause once asserted the retired census, unknown == 1.)
 # ============================================================================
 
 uc = mods["unknown_census"]
@@ -374,26 +387,14 @@ end
 file = save.(uc.old_mod, "census", [census_rec.(0), census_rec.(1), census_rec.(2)])
 
 case load.(uc.new_mod, "census", file) do
-  {:ok, values, report} ->
-    check.("unknown_census: the NEW reader returned all three records", length(values) == 3)
-
+  {:error, :layout_malformed, report} ->
     check.(
-      "unknown is once per PEER at COMPILE (== 1, never 3 per record, never 12 per element)",
-      report.unknown == 1
+      "unknown_census: the unlawful entry refuses layout_malformed, never counted (unknown == 0, every counter zero)",
+      refused_clean?.(report) and report.unknown == 0
     )
 
-    check.("unknown_census: no other counter moved on the counted peer", quiet.(report, [:unknown]))
-
-    landed =
-      Enum.zip(values, [[0, 1, 2, 3], [10, 11, 12, 13], [20, 21, 22, 23]])
-      |> Enum.all?(fn {v, want} ->
-        v.lead == 1 and v.trail == 2 and Enum.map(v.items, & &1.a) == want
-      end)
-
-    check.("unknown_census: every named field landed exactly", landed)
-
   other ->
-    check.("unknown_census: the NEW reader returned all three records — got #{inspect(other)}", false)
+    check.("unknown_census: the unlawful entry refuses layout_malformed — got #{inspect(other)}", false)
 end
 
 # ============================================================================
@@ -551,8 +552,9 @@ end
 
 # ============================================================================
 # the bounds pass on a forged ordinal past the writer's set — tier forged
-# from Gold (3), the WRITER's top variant, to 4: None plus unknown on the
-# compiled plan, an out_of_range refusal on the identity one.
+# from Gold (3), the WRITER's top variant, to 4: an out_of_range refusal on
+# the compiled plan EXACTLY as on the identity one (§5.4, the bounds pass;
+# ruled 2026-11-03 — this clause once asserted None plus unknown).
 # ============================================================================
 
 ea = mods["enum_append"]
@@ -566,17 +568,14 @@ case forge.(file, <<0x03, 0x09, 0x00, 0x00, 0x00>>, 1, fn acc, at ->
     # THE COMPILED PLAN: the NEW build reads the forged OLD file through the
     # lineage, so the plan is compiled from the OLD (three-variant) layout.
     case load.(ea.new_mod, "lineage", forged) do
-      {:ok, [v], report} ->
-        check.("forged ordinal, compiled plan: one past the WRITER's top lands None", v.tier == :none)
-        check.("forged ordinal, compiled plan: the scalar behind it landed", v.seq == 9)
-
+      {:error, :out_of_range, report} ->
         check.(
-          "forged ordinal, compiled plan: unknown counted once (the bounds pass, not the op too)",
-          report.unknown == 1 and quiet.(report, [:unknown])
+          "forged ordinal, compiled plan: one past the WRITER's top refuses out_of_range, no counter moved",
+          refused_clean?.(report)
         )
 
       other ->
-        check.("forged ordinal, compiled plan: the record read — got #{inspect(other)}", false)
+        check.("forged ordinal, compiled plan: the forged ordinal refuses out_of_range — got #{inspect(other)}", false)
     end
 
     # THE IDENTITY PLAN: the OLD build reads its own forged file on its own

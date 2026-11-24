@@ -1375,6 +1375,13 @@ diagnostics (SPEC-TABLES §6.5). `widened` is the one counter; every other row i
 | `copy`, `const`, `present` | none | the op lands its value and moves nothing |
 | a clean NEW-READS-OLD of an appended field, variant, arm, flag or keyed slot | none | **the counter stays at zero**: an append the reader knows is not an event |
 
+**AN UNLAWFUL ENTRY IS NEVER CENSUSED, IN ANY SLOT.** A writer field the reader's table names nowhere marks
+the whole entry unlawful wherever it is met: at the root, inside a nested table, and in every element of an
+array of tables, not only the first. The compile lays no plan for that entry, and the load refuses
+`layout_malformed` with `unknown` at zero. A port that still counts the field as `unknown`, once or per element,
+lands values from a layout it was required to refuse. This is the reference's `tableFixedChildrenNamed`, and the
+shared case is SPEC-CONFORMANCE.md, "Unlawful handed-in lineage entry" (Elixir fixed 2026-11-24).
+
 **A check that cannot fire is not emitted.** An ordinal whose extent FILLS its storage width — 255 variants in
 a byte, 65535 in two — has no read-side check: the comparison would be `> extent` against a value of that very
 width, which no value satisfies. A port that emits the tautology instead is still conforming, and a port whose

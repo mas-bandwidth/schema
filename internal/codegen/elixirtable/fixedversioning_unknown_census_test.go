@@ -6,11 +6,12 @@ package elixirtable
 // pair is deliberately UNLAWFUL — §5.1 refuses a removal — so the lineage entry
 // is HANDED IN by the probe and never read from a lock.
 //
-// `unknown` is asserted EXACTLY == 1: `Item.drop` is ONE field of ONE endpoint
-// however many of the four elements carry it. A leg that counts once per ELEMENT
-// lands 4, and that 4 is the whole reason this row exists. The census lands ONCE,
-// after the record loop, on a read that RETURNS (§5.9 #6) — so a SECOND read of
-// the same endpoint owes the same number again.
+// THE ENTRY IS UNLAWFUL AND IS REFUSED, NEVER COUNTED (docs/FIXED-FORM-ALGORITHM.md
+// §5.4, §5.9 #30, §5.9 row 9 of the port order; the Go reference's
+// TestFixedVersioningUnknownCensus): COMPILE lays no plan for a writer field no
+// reader field names, so the load refuses layout_malformed before any record
+// lands, moves no counter, and a SECOND read refuses the same way. This row
+// once asserted the retired census, unknown == 1.
 import (
 	"fmt"
 	"path/filepath"
@@ -23,27 +24,17 @@ func TestFixedVersioningUnknownCensus(t *testing.T) {
 	elixirBin := elixirBinary(t)
 	file := filepath.Join(corpus, "old_unknown_census.bin")
 	body := fmt.Sprintf(`  data = File.read!(%s)
-  {tag, values, report} = load(data)
-  check(tag == :ok, "the newer reader did not read the older writer's record: #{inspect(tag)} #{why(report)}")
-  check(length(values) == 1, "n == #{length(values)}, want 1")
-  v = hd(values)
-  leadtrail(v, 1, 2)
-  check(Enum.map(v.items, & &1.a) == [10, 11, 12, 13],
-    "the four a values did not land: #{inspect(Enum.map(v.items, & &1.a))}")
-  check(report.unknown == 1,
-    "unknown == #{report.unknown}, want 1: Item.drop is ONE field of ONE endpoint, not one per element")
-  check(true and report.widened == 0 and true,
-    "a counter that must not move did: #{why(report)}")
-  check(true,
-    "a clean NEW-READS-OLD is not damage: #{why(report)}")
+  {tag, why, report} = load(data)
+  check(tag == :error and why == :layout_malformed,
+    "the unlawful lineage entry was not refused layout_malformed: #{inspect({tag, why})} #{inspect(report)}")
+  check(is_map(report) and report.unknown == 0 and report.widened == 0 and report.retained == 0 and report.retain_lost == 0,
+    "a refusal moved a counter: #{inspect(report)}")
 
-  # THE SECOND READ OWES THE SAME CENSUS (§5.9 #6): the census is the plan's own
-  # number and it lands on every read that returns, never once per run.
-  {tag2, values2, report2} = load(data)
-  check(tag2 == :ok and length(values2) == 1,
-    "the second read did not return one record: #{inspect(tag2)} #{why(report2)}")
-  check(report2.unknown == 1,
-    "the second read owes the same census: unknown == #{report2.unknown}, want 1")`,
+  # THE SECOND READ IS REFUSED THE SAME WAY: the lane's refusal is the build's,
+  # laid down once, never a per-run accident.
+  {tag2, why2, _report2} = load(data)
+  check(tag2 == :error and why2 == :layout_malformed,
+    "the second read was not refused layout_malformed: #{inspect({tag2, why2})}")`,
 		elixirString(file))
 
 	out, err := runVersionProbe(t, elixirBin, "VNEW_unknown_census",
