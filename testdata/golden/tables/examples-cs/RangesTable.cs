@@ -1700,8 +1700,6 @@ namespace Tabledemo
             ReadOnlySpan<byte> planBytes = RangedSignedFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
-            int census_unknown = 0;
-            int census_kind = 0;
             // THE WRITER'S OWN BOUNDS for the endpoint this file selected (ALGORITHM
             // §4.6, bill §12.5): held after the plan run, before this reader's own
             // pass, so a value forged past what the writer could have written lands
@@ -1733,10 +1731,6 @@ namespace Tabledemo
                     fillBuf = new TableFixedFill[slotN];
                     fillCount = TableFixedWire.Fills(entries, RangedSignedFixedCover, landed, fillBuf);
                 }
-                // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and
-                // it lands only on a read that RETURNS: REFUSE moves no counter.
-                census_unknown = lane.Unknown;
-                census_kind = lane.KindChanged;
                 writerClamp = RangedSignedFixedClampKnown[pick];
             }
             if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
@@ -1802,8 +1796,6 @@ namespace Tabledemo
             }
             if (report != null)
             {
-                report.Unknown += census_unknown;
-                _ = census_kind; // the compile census stays on the lineage lane, never a read counter
                 report.Verdict = TableWire.Verdict.Ok;
             }
             return n;
@@ -2480,8 +2472,6 @@ namespace Tabledemo
             ReadOnlySpan<byte> planBytes = RangedUnsignedFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
-            int census_unknown = 0;
-            int census_kind = 0;
             // THE WRITER'S OWN BOUNDS for the endpoint this file selected (ALGORITHM
             // §4.6, bill §12.5): held after the plan run, before this reader's own
             // pass, so a value forged past what the writer could have written lands
@@ -2513,10 +2503,6 @@ namespace Tabledemo
                     fillBuf = new TableFixedFill[slotN];
                     fillCount = TableFixedWire.Fills(entries, RangedUnsignedFixedCover, landed, fillBuf);
                 }
-                // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and
-                // it lands only on a read that RETURNS: REFUSE moves no counter.
-                census_unknown = lane.Unknown;
-                census_kind = lane.KindChanged;
                 writerClamp = RangedUnsignedFixedClampKnown[pick];
             }
             if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
@@ -2582,8 +2568,6 @@ namespace Tabledemo
             }
             if (report != null)
             {
-                report.Unknown += census_unknown;
-                _ = census_kind; // the compile census stays on the lineage lane, never a read counter
                 report.Verdict = TableWire.Verdict.Ok;
             }
             return n;
@@ -3156,8 +3140,6 @@ namespace Tabledemo
             ReadOnlySpan<byte> planBytes = RangedWidthsFixedGuardPool;
             TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();
             int fillCount = 0;
-            int census_unknown = 0;
-            int census_kind = 0;
             // THE WRITER'S OWN BOUNDS for the endpoint this file selected (ALGORITHM
             // §4.6, bill §12.5): held after the plan run, before this reader's own
             // pass, so a value forged past what the writer could have written lands
@@ -3189,10 +3171,6 @@ namespace Tabledemo
                     fillBuf = new TableFixedFill[slotN];
                     fillCount = TableFixedWire.Fills(entries, RangedWidthsFixedCover, landed, fillBuf);
                 }
-                // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and
-                // it lands only on a read that RETURNS: REFUSE moves no counter.
-                census_unknown = lane.Unknown;
-                census_kind = lane.KindChanged;
                 writerClamp = RangedWidthsFixedClampKnown[pick];
             }
             if (record_bytes <= 8 || rest == 0 || rest % record_bytes != 0)
@@ -3258,8 +3236,6 @@ namespace Tabledemo
             }
             if (report != null)
             {
-                report.Unknown += census_unknown;
-                _ = census_kind; // the compile census stays on the lineage lane, never a read counter
                 report.Verdict = TableWire.Verdict.Ok;
             }
             return n;

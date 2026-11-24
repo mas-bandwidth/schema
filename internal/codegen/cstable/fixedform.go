@@ -2167,8 +2167,6 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("    ReadOnlySpan<byte> planBytes = %sFixedGuardPool;\n", name)
 	g.pf("    TableFixedFill[] fillBuf = Array.Empty<TableFixedFill>();\n")
 	g.pf("    int fillCount = 0;\n")
-	g.pf("    int census_unknown = 0;\n")
-	g.pf("    int census_kind = 0;\n")
 	if hasWriterBounds {
 		g.pf("    // THE WRITER'S OWN BOUNDS for the endpoint this file selected (ALGORITHM\n")
 		g.pf("    // §4.6, bill §12.5): held after the plan run, before this reader's own\n")
@@ -2203,10 +2201,6 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("            fillBuf = new TableFixedFill[slotN];\n")
 	g.pf("            fillCount = TableFixedWire.Fills(entries, %sFixedCover, landed, fillBuf);\n", name)
 	g.pf("        }\n")
-	g.pf("        // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4), and\n")
-	g.pf("        // it lands only on a read that RETURNS: REFUSE moves no counter.\n")
-	g.pf("        census_unknown = lane.Unknown;\n")
-	g.pf("        census_kind = lane.KindChanged;\n")
 	if hasWriterBounds {
 		g.pf("        writerClamp = %sFixedClampKnown[pick];\n", name)
 	}
@@ -2295,13 +2289,10 @@ func (g *tableGen) emitFixedRoot(st *ir.Struct) {
 	g.pf("            if (report != null) { report.Verdict = TableWire.Verdict.Refused; }\n")
 	g.pf("            return -1;\n        }\n")
 	g.pf("        at = at.Slice((int)record_bytes);\n    }\n")
-	// THE COMPILE CENSUS LANDS ONCE, AFTER THE RECORD LOOP, on a read that
-	// returns n (§5.9 #6). Not inside the loop — §5.4 says once per endpoint — and
-	// not before it, because a refusal that came after would have moved a
-	// counter and REFUSE IS TOTAL.
+	// THERE IS NO COMPILE CENSUS (§5.4, §5.9 #30): a lineage entry naming a
+	// writer field this reader does not is UNLAWFUL and refused above by its
+	// lane's Why, so a read that returns has nothing to count as unknown.
 	g.pf("    if (report != null)\n    {\n")
-	g.pf("        report.Unknown += census_unknown;\n")
-	g.pf("        _ = census_kind; // the compile census stays on the lineage lane, never a read counter\n")
 	g.pf("        report.Verdict = TableWire.Verdict.Ok;\n    }\n    return n;\n}\n\n")
 
 	g.pf("public static long %sFixedLoad(%s[] values, ReadOnlySpan<byte> data, Span<TableFixedEntry> plan, TableReport report = null)\n{\n", name, name)
