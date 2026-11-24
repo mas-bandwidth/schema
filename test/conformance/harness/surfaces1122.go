@@ -139,7 +139,7 @@ func (a AnnounceCase) want() ([]byte, error) {
 
 // ReadInto is one `read-into` row:
 //
-//	read-into <case> <unit> <root> <form> <lawful> <damaged> <count>
+//	read-into <case> <unit> <root> <form> <lawful> <damaged> <count> [lawful-second]
 //
 // Form is `variable` (the variable-form Load), `fixed` (the fixed form's
 // batch load), `message` (LoadMessages, Unit a connection key whose
@@ -148,6 +148,14 @@ func (a AnnounceCase) want() ([]byte, error) {
 // values the call is handed: 1 for `variable` and `json`, the lawful file's
 // records or bodies for `fixed` and `message`; for `fixed-nocap` it is the
 // answer, the record count the load returns, and the driver is not told it.
+//
+// `lawful-second` (a `fixed` row handed one value, and only one) says the
+// second file is a LAWFUL older writer's record read through the lineage,
+// not a damaged one. The row's intent is stated, never inferred: generate
+// fails when the engine's verdict on the second file differs from it either
+// way, so a file meant to be damaged that the engine happens to read never
+// quietly becomes a lawful row. The driver is not told it; it answers what
+// its reads do.
 type ReadInto struct {
 	Name         string
 	Unit         string
@@ -156,6 +164,7 @@ type ReadInto struct {
 	Lawful       string
 	RefusedInput string
 	Count        int
+	SecondLawful bool
 }
 
 // Golden is the answer the row owes.
@@ -164,8 +173,8 @@ func (r ReadInto) Golden() string { return ReadIntoDir + "/" + r.Name + ".txt" }
 var readIntoForms = map[string]bool{"variable": true, "fixed": true, "message": true, "json": true, "fixed-nocap": true}
 
 func parseReadInto(f []string, where string) (ReadInto, error) {
-	if len(f) != 8 {
-		return ReadInto{}, fmt.Errorf("%s: read-into takes case, unit, root, form, lawful, damaged, count", where)
+	if len(f) != 8 && len(f) != 9 {
+		return ReadInto{}, fmt.Errorf("%s: read-into takes case, unit, root, form, lawful, damaged, count, and an optional lawful-second", where)
 	}
 	r := ReadInto{Name: f[1], Unit: f[2], Root: f[3], Form: f[4], Lawful: f[5], RefusedInput: f[6]}
 	if !readIntoForms[r.Form] {
@@ -181,6 +190,15 @@ func parseReadInto(f []string, where string) (ReadInto, error) {
 	}
 	if (r.Form == "variable" || r.Form == "json") && n != 1 {
 		return r, fmt.Errorf("%s: a %s read is handed one value", where, r.Form)
+	}
+	if len(f) == 9 {
+		if f[8] != "lawful-second" {
+			return r, fmt.Errorf("%s: %q is not a read-into marker (lawful-second)", where, f[8])
+		}
+		if r.Form != "fixed" || n != 1 {
+			return r, fmt.Errorf("%s: lawful-second marks a fixed row handed one value", where)
+		}
+		r.SecondLawful = true
 	}
 	return r, nil
 }
@@ -366,9 +384,9 @@ func generate1122(u *units, m *Manifest) error {
 			// the document ends with one line feed (§16.14 W2), as ToJson
 			// writes it
 			defaults = oneText(defaults)
-			// A FIXED ROW'S SECOND READ MAY BE LAWFUL: an older writer's
-			// record, read through the lineage into the values the first
-			// read filled. Every field that record does not supply then holds
+			// A FIXED ROW MARKED lawful-second: its second read is an older
+			// writer's record, read through the lineage into the values the
+			// first read filled. Every field that record does not supply then holds
 			// its declared default (§3.4, THE PREFILL IS WHAT ANSWERS "ABSENT
 			// FIELD"), so the values owed are the engine's read of that file
 			// into a FRESH value, never a merge into the caller's old one.
@@ -395,12 +413,12 @@ func generate1122(u *units, m *Manifest) error {
 	return nil
 }
 
-// readIntoLawfulSecond is a `fixed` row's second read when the engine reads
-// it: the §16 text of the file read into a fresh value. It answers nil when
-// the engine refuses the file (the row's second read is the refused one) and
-// for every other form, whose second read is always the refused one. A lawful
-// second read is handed one value: a fixed batch's rows past the second
-// file's count are not this row's question.
+// readIntoLawfulSecond is a `fixed` row's second read as the row states it.
+// The engine reads the second file into a fresh value, and its verdict must
+// be the row's intent: a row marked lawful-second whose file the engine
+// refuses fails, and so does an unmarked row whose damaged file the engine
+// reads. A marked row answers the §16 text of that fresh value; every other
+// row answers nil, and its second read is the refused one.
 func readIntoLawfulSecond(model *tabletext.Model, root *ir.Struct, r ReadInto) ([]byte, error) {
 	if r.Form != "fixed" {
 		return nil, nil
@@ -411,11 +429,12 @@ func readIntoLawfulSecond(model *tabletext.Model, root *ir.Struct, r ReadInto) (
 	}
 	value := model.New(root)
 	var rep tabletext.Report
-	if ok, _ := strictDecode(model, value, wire, &rep); !ok {
-		return nil, nil
+	ok, _ := strictDecode(model, value, wire, &rep)
+	if ok != r.SecondLawful {
+		return nil, fmt.Errorf("read-into %s: the engine's read of %s is %v, the row needs %v (lawful-second marks a lawful second file)", r.Name, r.RefusedInput, ok, r.SecondLawful)
 	}
-	if r.Count != 1 {
-		return nil, fmt.Errorf("read-into %s: a fixed row whose second read is lawful is handed one value, not %d", r.Name, r.Count)
+	if !ok {
+		return nil, nil
 	}
 	text, err := model.Write(value)
 	if err != nil {

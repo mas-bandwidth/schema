@@ -1100,15 +1100,7 @@ fn surface_read_into(lines: const u8[:][:], unit: const u8[:]) {
         } else {
             r = conformance_read_into(f[3], f[4], lawful, damaged, count, ann, out);
         }
-        // -1: this leg has no such read, or no text writer for the root (a
-        // ToJson the leg's text form does not carry yet, as EvoRoot's
-        // fixed-point fields in ri_fixed_lineage): a missing feature, which is
-        // an EMPTY absent and never a refusal; the reason goes to stderr
-        if r == -1 {
-            write_stderr(str("driver: ", f[1], ": no ", f[4], " read with a text writer for ", f[3], "\n"));
-            absent(f[1], "");
-            continue;
-        }
+        if r == -1 { absent(f[1], str("no ", f[4], " read for ", f[3])); continue; }
         if r < 0 { write_stderr(str("driver: ", f[1], ": read-into failed (", r, ")\n")); exit(1); }
         answer(f[1], out);
     }

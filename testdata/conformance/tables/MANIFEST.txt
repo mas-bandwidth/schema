@@ -2692,8 +2692,10 @@ read-into ri_fixed_5000 tblsurf      Narrow        fixed-nocap testdata/conforma
 # those fields, into the SAME value: every one of them holds its declared
 # default (bonus 9, tag "leaf", note "sub", extra_opt absent), exactly as a
 # fresh value read from v1 holds them. The engine writes the answer from its
-# own read of v1 into a fresh value.
-read-into ri_fixed_lineage tblfixedevo EvoRoot   fixed       testdata/conformance/tables/wire/fixedevo_v3_full.bin       testdata/conformance/tables/wire/fixedevo_v1.bin                 1
+# own read of v1 into a fresh value. The trailing lawful-second states that
+# the second file is lawful; generate fails if the engine refuses it, and an
+# unmarked fixed row fails if the engine reads its damaged file.
+read-into ri_fixed_lineage tblfixedevo EvoRoot   fixed       testdata/conformance/tables/wire/fixedevo_v3_full.bin       testdata/conformance/tables/wire/fixedevo_v1.bin                 1 lawful-second
 
 # FL-14, FL-15 (SPEC-TABLES §16.1): the text writer in a comma-decimal process
 # locale, into a caller buffer longer than the text, writes the instance's

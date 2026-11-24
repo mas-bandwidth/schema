@@ -406,7 +406,10 @@ an answer the runtime did not give.
   is handed (FL-02), and a refusal leaves every value the call was handed at
   its declared defaults, a fixed batch checking every record before any lands
   (FL-03). A `fixed` row's second file may instead be LAWFUL, an older
-  writer's one record read through the lineage (`ri_fixed_lineage`): the
+  writer's one record read through the lineage (`ri_fixed_lineage`), and
+  the manifest row says so with a trailing `lawful-second` (the driver is
+  not told; `generate` fails when the engine's verdict on the file differs
+  from the mark, either way): the
   driver runs the same three reads, and the owed answer is
   `read\nread\n<that record's value>read\n`, the value being what a FRESH
   value reads from the second file, so every field that writer did not supply
