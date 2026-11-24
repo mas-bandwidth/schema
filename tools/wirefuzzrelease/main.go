@@ -247,7 +247,7 @@ var (
 	seedRE    = regexp.MustCompile(`: seed (\d+),`)
 	summaryRE = regexp.MustCompile(`(\d+) seeds over (\d+) roots`)
 	absentRE  = regexp.MustCompile(`(\d+) (?:ledgered )?seeds absent`)
-	// the line make/checks/wire-fuzz-release-run.sh appends to a builder log
+	// the line make/checks/wire-fuzz-release-run.sh appends to a builder log.
 	builderExitRE = regexp.MustCompile(`(?m)^wire-fuzz-release: the builder arm exited (\d+)$`)
 	mutantsRE     = regexp.MustCompile(`(\d+) enumerated \+ (\d+) random = (\d+) mutants`)
 	zeroDivRE     = regexp.MustCompile(`(^|[^0-9])0 divergences`)
