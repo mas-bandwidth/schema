@@ -13,10 +13,12 @@
 // A test calls Files (or Make, or Build) on every repository file its child will read,
 // before or after starting it. The file is opened through the os package, so
 // the testlog records it and go test keys the cached result on it: a later run
-// in which it changed runs the test again. internal/testinputs's
-// TestEveryInterpreterChildRegistersItsInputs refuses a _test.go file that
-// starts sh, bash, make, python or node without calling this package in the
-// same function, or saying why the child reads no repository file.
+// in which it changed runs the test again. internal/ci's
+// TestEveryInterpreterChildRegistersItsInputs (it lives there because the
+// ci-policy job runs that package on every pull request, whatever the diff)
+// refuses a _test.go file that starts sh, bash, make, python or node without
+// calling Files, Make or Build in the same function (Root alone registers
+// nothing), or saying in words why the child reads no repository file.
 //
 // go test hashes a recorded file by its size and modification time, and a
 // recorded directory by its listing, and it does not record files outside the
