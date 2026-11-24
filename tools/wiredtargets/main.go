@@ -164,7 +164,7 @@ func parseDatabase(r io.Reader) (database, error) {
 		}
 		rest = strings.ReplaceAll(rest, "|", " ")
 		cur = nil
-		for _, t := range strings.Fields(name) {
+		for t := range strings.FieldsSeq(name) {
 			r := db.rules[t]
 			if r == nil {
 				r = &rule{}
@@ -222,7 +222,7 @@ func makeWords(args string) []string {
 		args = args[:loc[0]]
 	}
 	var out []string
-	for _, w := range strings.Fields(args) {
+	for w := range strings.FieldsSeq(args) {
 		w = strings.Trim(w, `"'`)
 		if w == "" || strings.HasPrefix(w, "-") || strings.Contains(w, "=") {
 			continue
@@ -616,7 +616,7 @@ func check(db database, src sources, ledger []ledgerEntry) (result, error) {
 		if err := json.Unmarshal([]byte(c), &v); err != nil {
 			return result{}, fmt.Errorf("%s is not JSON: %w", src.legJSONNames[i], err)
 		}
-		for _, t := range strings.Fields(v.Targets) {
+		for t := range strings.FieldsSeq(v.Targets) {
 			if _, ok := db.rules[t]; ok {
 				addRoots(src.legJSONNames[i]+" (leg.yml, which certify.yml calls)", []string{t})
 			}

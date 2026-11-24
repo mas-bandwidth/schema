@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"maps"
 	"os"
 	"path/filepath"
 	"testing"
@@ -26,9 +27,7 @@ func TestPlantCorpusSwapsEveryPhasesPair(t *testing.T) {
 		t.Fatal(err)
 	}
 	orig := map[string][]byte{}
-	for k, v := range blobs {
-		orig[k] = v
-	}
+	maps.Copy(orig, blobs)
 	dir, swapped, err := plantCorpus(src, filepath.Join(t.TempDir(), "planted"), "packet", cases, blobs)
 	if err != nil {
 		t.Fatal(err)
