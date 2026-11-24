@@ -73,5 +73,6 @@ with its 600-second cap lifted, as Goose's are. The contract tests in
 copied recipes for Python as for every other language.
 
 The nightly workflow (`nightly-conformance.yml`) runs its readiness step for
-the original nine only, as it does for Goose and MOO, and its port job has no
-Python pin step; adding Python there is a change to that workflow.
+every port nightly-readiness plans, Python among them (its port job installs
+the pins through `.github/actions/python`); a port it does not plan is a
+named line of `test/conformance/nightly-exemptions.txt`.

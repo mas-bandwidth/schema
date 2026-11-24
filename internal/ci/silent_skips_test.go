@@ -407,14 +407,14 @@ func TestConstrainedTestGateCorpus(t *testing.T) {
 	}
 }
 
-// THE LANES READ THE LEDGER. A ci-fast job that runs `go test` records what
+// THE LANES READ THE LEDGER. A job that runs `go test` records what
 // ran (PGROUP_GO_TEST_JSON) and ends with the ledger step, so a job added
 // tomorrow cannot run tests whose skips nobody counts.
 
 type ledgerLane struct {
 	job      string
 	goTest   bool     // a step runs `go test` directly
-	records  bool     // it sets PGROUP_GO_TEST_JSON
+	records  bool     // it sets PGROUP_GO_TEST_JSON (or certify.yml PGROUP_GO_TEST_SUMMARY)
 	reads    bool     // an `if: always()` step runs gotestreport -skips on the record
 	provides []string // every class its -provides strings name
 }
@@ -463,7 +463,8 @@ func ledgerLanes(workflow string) []ledgerLane {
 		if goTestCommand.MatchString(line) {
 			cur.goTest = true
 		}
-		if strings.Contains(line, `echo "PGROUP_GO_TEST_JSON=$RUNNER_TEMP/go-test-json" >> "$GITHUB_ENV"`) {
+		if strings.Contains(line, `echo "PGROUP_GO_TEST_JSON=$RUNNER_TEMP/go-test-json" >> "$GITHUB_ENV"`) ||
+			strings.Contains(line, `echo "PGROUP_GO_TEST_SUMMARY=$RUNNER_TEMP/go-test-summary" >> "$GITHUB_ENV"`) {
 			cur.records = true
 		}
 		if strings.Contains(line, "go run ./tools/gotestreport") && strings.Contains(line, "-skips "+skipLedgerPath) && always {
@@ -501,26 +502,62 @@ func ledgerLaneFaults(lanes []ledgerLane, l *skipledger.Ledger) []string {
 	return out
 }
 
-func TestFastGoTestLanesReadTheSkipLedger(t *testing.T) {
+// THE GO TEST LANES OF EVERY TIER READ THE LEDGER: ci-fast.yml per pull
+// request, ci-full.yml and certify.yml nightly. Each job named here records
+// its go test run and ends with an `if: always()` step that reads the record
+// against .github/skip-ledger.txt; a job that records and does not read is
+// red (ledgerLaneFaults), so dropping `-skips` from any of these readers is
+// red here. A reader that finds none of a workflow's named jobs is reading
+// the wrong text. And every gotestreport call in every workflow carries the
+// ledger, so a lane in a workflow not named here cannot report without it.
+func TestGoTestLanesReadTheSkipLedger(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
 	l := readSkipLedger(t, root)
-	lanes := ledgerLanes(workflows(t, root)["ci-fast.yml"])
-	read := map[string]bool{}
-	for _, lane := range lanes {
-		if lane.reads {
-			read[lane.job] = true
+	all := workflows(t, root)
+	for _, wf := range []struct {
+		name string
+		jobs []string
+	}{
+		{"ci-fast.yml", []string{"ci-policy", "go-test-touched", "verify-leg", "verify-elixir-conformance"}},
+		{"ci-full.yml", []string{"go-test", "leg-tagged"}},
+		{"certify.yml", []string{"test", "release-gates", "inline-gate", "release-differential", "negative-controls-nightly"}},
+	} {
+		text, ok := all[wf.name]
+		if !ok {
+			t.Errorf("no workflow %s", wf.name)
+			continue
+		}
+		lanes := ledgerLanes(text)
+		read := map[string]bool{}
+		for _, lane := range lanes {
+			if lane.reads {
+				read[lane.job] = true
+			}
+		}
+		for _, job := range wf.jobs {
+			if !read[job] {
+				t.Errorf("%s's %s job does not read the skip ledger over its go test record", wf.name, job)
+			}
+		}
+		for _, fault := range ledgerLaneFaults(lanes, l) {
+			t.Error(wf.name + ": " + fault)
 		}
 	}
-	// the jobs of the fast lane with an explicit skip ledger; a reader
-	// that finds none of them is reading the wrong text
-	for _, job := range []string{"ci-policy", "go-test-touched", "verify-leg", "verify-elixir-conformance"} {
-		if !read[job] {
-			t.Errorf("ci-fast.yml's %s job does not read the skip ledger over its go test record", job)
+	calls := 0
+	for name, text := range all {
+		for n, raw := range strings.Split(text, "\n") {
+			if strings.HasPrefix(strings.TrimSpace(raw), "#") || !strings.Contains(raw, "go run ./tools/gotestreport") {
+				continue
+			}
+			calls++
+			if !strings.Contains(raw, "-skips "+skipLedgerPath) {
+				t.Errorf("%s:%d runs tools/gotestreport without -skips %s: its skips are counted by nobody", name, n+1, skipLedgerPath)
+			}
 		}
 	}
-	for _, fault := range ledgerLaneFaults(lanes, l) {
-		t.Error("ci-fast.yml: " + fault)
+	if calls < 15 {
+		t.Errorf("found %d tools/gotestreport calls in .github/workflows; want at least 15 (8 in ci-fast.yml, 2 in ci-full.yml, 5 in certify.yml)", calls)
 	}
 }
 

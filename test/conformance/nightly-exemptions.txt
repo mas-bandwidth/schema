@@ -15,12 +15,6 @@
 # the gate or listed here, never both, and every line names a gate and a
 # port that exist. Covering a port in the gate means deleting its line.
 
-bom-entry lobster not yet measured against the four BOM entry fixtures (bom-entry's check_lang covers it once its driver answers json-hostile 4/4)
-bom-entry lua not yet measured against the four BOM entry fixtures (bom-entry's check_lang covers it once its driver answers json-hostile 4/4)
-bom-entry luau not yet measured against the four BOM entry fixtures (bom-entry's check_lang covers it once its driver answers json-hostile 4/4)
-bom-entry ruby not yet measured against the four BOM entry fixtures (bom-entry's check_lang covers it once its driver answers json-hostile 4/4)
-bom-entry squirrel not yet measured against the four BOM entry fixtures (bom-entry's check_lang covers it once its driver answers json-hostile 4/4)
-bom-entry unity not yet measured against the four BOM entry fixtures (bom-entry's check_lang covers it once its driver answers json-hostile 4/4)
 readiness lobster nightly-readiness has no acceptance plan for this leg (its LANGUAGES list)
 readiness lua nightly-readiness has no acceptance plan for this leg (its LANGUAGES list)
 readiness luau nightly-readiness has no acceptance plan for this leg (its LANGUAGES list)

@@ -1,13 +1,16 @@
 #!/bin/sh
-# One port's reader over the four shared BOM entry fixtures: the original nine,
-# and Goose, MOO and Python (measured 4/4 on 2026-11-24). A port not listed
-# here is a named line of test/conformance/nightly-exemptions.txt.
+# One port's reader over the four shared BOM entry fixtures. Every port in the
+# registry is listed: the original nine, then Goose, MOO, Python, Lua, Ruby,
+# Luau, Lobster, Unity and Squirrel, each measured json-hostile 4/4 with the
+# nightly's own targets and pins on 2026-11-24. A port added to the registry
+# is listed here once measured, or named with its measured failure in
+# test/conformance/nightly-exemptions.txt.
 # Use the existing harness scorer and driver protocol; no corpus generation.
 set -eu
 
 check_lang() {
     case "$1" in
-        cpp|c|cs|go|rust|java|js|dart|elixir|goose|moo|python) ;;
+        cpp|c|cs|go|rust|java|js|dart|elixir|goose|moo|python|lua|ruby|luau|lobster|unity|squirrel) ;;
         *) echo "BOM entry gate does not cover $1 (test/conformance/nightly-exemptions.txt)" >&2; exit 2 ;;
     esac
 }

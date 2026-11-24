@@ -3271,6 +3271,11 @@ jobs:
       # They all ride ci-full.yml's unit-rest row, which sets SCHEMA_SLOW=1 and
       # runs on the merge and nightly triggers, so nothing is checked less than
       # before — it moved down this lane, not out of it.
+      # the go test below records its -json stream (tools/pgroup), and the
+      # last step reads it against the skip ledger: this job ran go test and
+      # nothing counted its skips (internal/ci TestGoTestLanesReadTheSkipLedger)
+      - name: where this job records its go test events
+        run: echo "PGROUP_GO_TEST_JSON=$RUNNER_TEMP/go-test-json" >> "$GITHUB_ENV"
       - name: CI lints itself — action pins and the .NET SDK pin
         run: go test ./internal/ci/
       # A FRESH ANALYSIS CACHE per job. The restored action cache held
@@ -3317,6 +3322,9 @@ jobs:
           grep -q "language        %" <<<"$out" || { echo "::error::render printed no table header"; exit 1; }
           rows=$(echo "$out" | grep -cE "^  [a-z]+ ")
           [ "$rows" -ge 1 ] || { echo "::error::render printed zero language rows"; exit 1; }
+      - name: count the go test skips against the ledger
+        if: always()
+        run: go run ./tools/gotestreport -require-record -skips .github/skip-ledger.txt "$PGROUP_GO_TEST_JSON"
 
   # A new CVE lands with no commit, so govulncheck is the one gate whose
   # verdict changes on its own. It rides the pull request here AND the nightly
@@ -3417,7 +3425,20 @@ jobs:
       # treelock_windows_test.go is `//go:build windows`: go vet compiled it
       # and no lane ran it (internal/ci,
       # TestEveryConstrainedTestFileCompilesInSomeLane).
-      - run: go test ./tools/treelock/
+      # Recorded as a -json stream and read against the skip ledger by the next
+      # step: this job ran go test and nothing counted its skips (internal/ci
+      # TestGoTestLanesReadTheSkipLedger). A failed test fails this step, and
+      # the report names it.
+      - name: the Windows-only tests
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/go-test-json"
+          echo "PGROUP_GO_TEST_JSON=$RUNNER_TEMP/go-test-json" >> "$GITHUB_ENV"
+          go test -json ./tools/treelock/ > "$RUNNER_TEMP/go-test-json/treelock.jsonl"
+      - name: count the Windows-only test skips against the ledger
+        if: always()
+        shell: bash
+        run: go run ./tools/gotestreport -require-record -skips .github/skip-ledger.txt "$PGROUP_GO_TEST_JSON"
 
       # THE ONE WINDOWS WRITER. Vet and build above cover the whole module, so
       # this is the widest Windows cache available, and `msvc` — which builds
