@@ -333,3 +333,94 @@ func TestRowHoldsTheRunToItsBudget(t *testing.T) {
 		}
 	}
 }
+
+// TestAbsentCountIsDerivedFromTheBuilderArm: a leg that splits the corpus with
+// its builder arm (Squirrel) holds its plain arm's absent seeds by the word
+// `builder`, never by a number: the count is the builder arm's seeds at the
+// same seed, read off <base>.builder.log. The registered numbers this replaced
+// (185, then 211 measured) went stale as the corpus grew; a grown corpus is
+// green here, and a builder arm that answers fewer, leaves seeds absent itself,
+// diverges, or left no log is red.
+func TestAbsentCountIsDerivedFromTheBuilderArm(t *testing.T) {
+	const (
+		plain205 = "wire-fuzz: seed 1, 315 seeds over 87 roots, 205 seeds absent (roots the leg has no codec for), 5000 enumerated + 100000 random = 105000 mutants, 0 divergences, 3.1 s, 32258 mutants/s\n"
+		plain227 = "wire-fuzz: seed 1, 293 seeds over 87 roots, 227 seeds absent (roots the leg has no codec for), 5000 enumerated + 100000 random = 105000 mutants, 0 divergences, 3.1 s, 32258 mutants/s\n"
+		builder  = "wire-fuzz-builder: seed 1, 205 seeds over 38 roots, 315 seeds outside the arm, 900 enumerated + 0 random = 900 mutants, 0 divergences, 0.4 s, 2250 mutants/s\n"
+		holed    = "wire-fuzz-builder: seed 1, 203 seeds over 37 roots, 2 seeds absent (roots the leg has no codec for), 315 seeds outside the arm, 900 enumerated + 0 random = 900 mutants, 0 divergences, 0.4 s, 2250 mutants/s\n"
+		seed2    = "wire-fuzz-builder: seed 2, 205 seeds over 38 roots, 315 seeds outside the arm, 900 enumerated + 0 random = 900 mutants, 0 divergences, 0.4 s, 2250 mutants/s\n"
+		// a builder arm that answered nothing derives a count of 0, which a
+		// plain arm with nothing absent would match: the refusal is by name
+		zeroBuilder = "wire-fuzz-builder: seed 1, 0 seeds over 38 roots, 520 seeds outside the arm, 0 enumerated + 0 random = 0 mutants, 0 divergences, 0.1 s, 0 mutants/s\n"
+		plainNone   = "wire-fuzz: seed 1, 520 seeds over 87 roots, 5000 enumerated + 100000 random = 105000 mutants, 0 divergences, 3.1 s, 32258 mutants/s\n"
+	)
+	grown := strings.NewReplacer("315 seeds over", "330 seeds over", "205 seeds absent", "210 seeds absent").Replace(plain205)
+	grownBuilder := strings.Replace(builder, "205 seeds over 38", "210 seeds over 39", 1)
+	for _, tc := range []struct {
+		name, plain, builder, want string
+		noBuilderLog               bool
+	}{
+		{"the arms split the corpus", plain205, builder, "pass (105000 mutants", false},
+		{"the corpus grows and nothing is registered", grown, grownBuilder, "pass (105000 mutants", false},
+		{"seeds in neither arm", plain227, builder, "holds 205 for 'squirrel plain'", false},
+		{"a root drops out of the builder arm", plain205, holed, "derives 'squirrel plain' from the builder arm, which does not prove its roster: the builder arm leaves seeds absent too", false},
+		{"the builder arm diverges", plain205, divergence, "derives 'squirrel plain' from the builder arm, which does not prove its roster: FAILED after 41 mutants", false},
+		{"the builder arm ran another seed", plain205, seed2, "the summary is not seed 1's", false},
+		{"the builder arm answers 0 seeds", plainNone, zeroBuilder, "the builder arm answers no seed", false},
+		{"the builder arm left no log", plain205, "", "the builder arm left no log", true},
+		{"the builder arm exited 2 under a green summary", plain205, builder, "the builder arm exited 2", false},
+		{"the builder log has no exit line", plain205, builder, "does not say how the builder arm exited", false},
+		{"the plain arm diverges", divergence, builder, "RED: tables.Scene, pass enumerated #3", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			absent := filepath.Join(dir, "absent.txt")
+			owed := filepath.Join(dir, "owed.txt")
+			if err := os.WriteFile(absent, []byte("squirrel plain builder the builder arm reads the variable roots\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(owed, []byte("# none\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(dir, "squirrel.plain.1.log"), []byte(tc.plain), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if !tc.noBuilderLog {
+				blog := tc.builder
+				switch {
+				case blog == divergence:
+					blog += "wire-fuzz-release: the builder arm exited 1\n"
+				case strings.HasPrefix(tc.name, "the builder arm exited"):
+					blog += "wire-fuzz-release: the builder arm exited 2\n"
+				case strings.HasPrefix(tc.name, "the builder log has no exit"):
+				default:
+					blog += "wire-fuzz-release: the builder arm exited 0\n"
+				}
+				if err := os.WriteFile(filepath.Join(dir, "squirrel.plain.1.builder.log"), []byte(blog), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			status := 0
+			if tc.plain == divergence {
+				status = 1
+			}
+			if err := writeRow("squirrel", "plain", "1", dir, owed, absent, false, status, 3, 100000); err != nil {
+				t.Fatal(err)
+			}
+			row, err := os.ReadFile(filepath.Join(dir, "squirrel.plain.1.row"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(row), tc.want) {
+				t.Fatalf("row %q, want %q", row, tc.want)
+			}
+		})
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, "absent.txt")
+	if err := os.WriteFile(path, []byte("squirrel plain builder\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := heldAbsent(path, "squirrel", "plain"); err == nil {
+		t.Error("a `builder` line with no reason was read")
+	}
+}

@@ -101,9 +101,26 @@ local function load_unit(key)
 end
 
 -- THE ROSTER. A FORM-1 entry (a file, docs/SPEC-TABLES.md §3) whose unit this
--- target generated and whose table it carries answers 1. Every other entry
--- answers 0: a form-2 BATCH (this leg drives no LoadMessages here), and the
--- RETAIN arm (§6.6), which the Lua leg does not carry.
+-- target generated and whose table it carries answers 1. A FORM-2 entry (the
+-- message batch, §3.3) answers 1 for a fixed root the unit's generated code
+-- carries a message form for, driven through LoadMessages and SaveMessages over
+-- the unit's OWN announced vocabulary (answer_message). Every other entry
+-- answers 0: the RETAIN arm (§6.6) of a fixed root, which the Lua leg does not
+-- carry.
+-- A unit's OWN vocabulary, what a receiver talking only to peers of its own
+-- schema holds: read from the unit's own announcement (the roster carries none).
+local function own_vocabulary(u)
+  if u.vocab ~= nil then return u.vocab or nil end
+  u.vocab = false
+  local T = u.T
+  if T.MessageRoots == nil or T.Announcement == nil then return nil end
+  local vocab = {}
+  for i = 1, (T.MessageEntries or 0) do vocab[i] = {} end
+  if not T.AnnounceRead(vocab, T.Announcement, {}) then return nil end
+  u.vocab = vocab
+  return vocab
+end
+
 local count = read_u32()
 if count == nil then os.exit(0) end
 local roster = {}
@@ -118,7 +135,13 @@ for i = 1, count do
   end
   local form, retain = head:byte(1), head:byte(2)
   local entry = nil
-  if form == 1 and (retain == 0 or retain == 1) then
+  if form == 2 and retain == 0 then
+    local u = load_unit(unit)
+    if u and u.T.MessageRoots ~= nil and u.T.MessageRoots[root] then
+      local vocab = own_vocabulary(u)
+      if vocab ~= nil then entry = { unit = u, root = root, message = true, vocab = vocab } end
+    end
+  elseif form == 1 and (retain == 0 or retain == 1) then
     local u = load_unit(unit)
     if u and u.T.Tables and u.T.Tables[root] ~= nil then
       local desc = u.T.Tables[root]
@@ -143,7 +166,35 @@ stdout:flush()
 -- A NaN OR AN INFINITY IS REFUSED BY EVERY READ (docs/SPEC-TABLES.md §3.3):
 -- the tolerant load lands nothing and names the float in the report, and the
 -- reply says so with the refusal verdict, as every leg's does.
+-- THE MESSAGE FORM (form 2; docs/SPEC-TABLES.md §3.3): the mutant is a message
+-- batch, read by LoadMessages against the unit's own vocabulary, every body
+-- measured and saved by SaveMessages. A batch that does not load whole is
+-- refused: the leg answers no root, and the harness holds it to its oracle.
+local function answer_message(entry, wire)
+  local T = entry.unit.T
+  local report = {
+    damaged = false,
+    refused = 0,
+    unknown = 0,
+    kindChanged = 0,
+    outOfRange = 0,
+    widened = 0,
+    repeatedKey = 0,
+  }
+  local values = T.LoadMessages(entry.root, entry.vocab, wire, report)
+  if values == nil or #values < 1 then
+    report.refused = 1
+    return false, report, -1, nil
+  end
+  local size = T.MeasureMessages(entry.root, entry.vocab, values)
+  if size == nil or size < 0 then return false, report, -1, nil end
+  local saved = T.SaveMessages(entry.root, entry.vocab, values)
+  if saved == nil or #saved ~= size then return false, report, -1, nil end
+  return true, report, -1, saved
+end
+
 local function answer(entry, wire)
+  if entry.message then return answer_message(entry, wire) end
   local report = {
     damaged = false,
     refused = 0,

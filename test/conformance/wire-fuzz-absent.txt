@@ -3,3 +3,9 @@
 # leg has no codec for: `<leg> <arm> <count> <why>`. The harness counts them
 # ("N seeds absent"); a run with any is RED unless a line here holds that exact
 # count, and a line whose leg now answers every seed is RED until it is removed.
+# A count of `builder` DERIVES the count instead of registering it: the leg
+# splits the corpus with its builder arm, so this arm leaves absent exactly the
+# seeds the builder arm answers at the same seed (WFR_BUILDER_DRIVER_<leg> in
+# make/wire-fuzz-release.mk runs it beside the plain arm). A number written
+# here goes stale the day a seed lands; Squirrel's did (185, then 211).
+squirrel plain builder the plain arm reads the fixed and message roots; the variable roots are the builder arm's (make/squirrel-fuzz.mk)
