@@ -733,6 +733,9 @@ int? _jsonIntKey(String k, TableTextReport r, int? lo, int? hi, bool unsigned) {
 func (g *wireGen) emitTextMoreDecls() {
 	for _, fl := range g.textFlags() {
 		g.pf("void %s(_JOut out, int bits, int depth) {\n", flagsFn(fl, "ToJson"))
+		// a flags value is an array of names, a container the depth cap counts,
+		// `[]` included (§16.14 W2)
+		g.pf("\t_jsonDepth(depth);\n")
 		g.pf("\tif (bits == 0) { out.raw('[]'); return; }\n")
 		g.pf("\tout.raw('[');\n")
 		g.pf("\tvar first = true;\n")
