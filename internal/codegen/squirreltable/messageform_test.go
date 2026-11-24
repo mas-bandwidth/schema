@@ -501,8 +501,9 @@ func TestSquirrelMessageFormMatchesTheGoldens(t *testing.T) {
 			fixed++
 		}
 	}
-	if fixed != 15 {
-		t.Fatalf("manifest has %d message rows over a fixed root, want 15", fixed)
+	// The fixed-root corpus includes both packet-union array message batches.
+	if fixed != 17 {
+		t.Fatalf("manifest has %d message rows over a fixed root, want 17", fixed)
 	}
 	out := string(runSquirrelMessages(t, root, units, connections, rows, false))
 	for _, row := range rows {

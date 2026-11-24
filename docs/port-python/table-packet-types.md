@@ -29,3 +29,14 @@
   ...) is refused at generate time, naming the type, the field, the kind and
   P4 the packet wire. It is never a blanket refusal of the unit, so a unit is
   refused only for the packet kind that is still missing.
+- **The storage-less items are hosted like any other.** `const(Value, Bits)`,
+  `reserved(Bits)` and `align` in a hosted packet type are written and checked
+  by the packet core's own item emitters ([the packet layout](packet-layout.md)):
+  the const is written always and a read refuses any other value, reserved
+  bits are written zero and refused set, and align padding is written zero and
+  refused set (SPEC §4.3). They have no storage, so a type a table reaches
+  rides the table wire as its stored fields only, and its table descriptor
+  never names them. `TestPythonTableHostedPacketItems` holds the bytes against
+  a Go-built reference and each refusal, with a planted-fault control; the
+  tutorial's `starlight` unit, which gains a table in Part 6 beside Part 5's
+  framed header, generates (`TestTutorialStarlightGeneratesForPython`).

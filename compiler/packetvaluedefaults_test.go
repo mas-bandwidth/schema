@@ -47,7 +47,7 @@ func TestPacketValueDefaultsCarriers(t *testing.T) {
 	for _, target := range allTargets {
 		t.Run(target, func(t *testing.T) {
 			_, err := c.Generate(u, target, Options{})
-			if target == "cpp" || target == "cs" || target == "go" || target == "c" || target == "rust" || target == "java" || target == "js" || target == "dart" || target == "elixir" || target == "goose" || target == "lobster" || target == "lua" || target == "luau" || target == "moo" || target == "ruby" || target == "squirrel" || target == "unity" {
+			if target == "cpp" || target == "cs" || target == "go" || target == "c" || target == "rust" || target == "java" || target == "js" || target == "dart" || target == "elixir" || target == "goose" || target == "lobster" || target == "lua" || target == "luau" || target == "moo" || target == "python" || target == "ruby" || target == "squirrel" || target == "unity" {
 				if err != nil {
 					t.Fatalf("packet defaults refused: %v", err)
 				}
@@ -67,7 +67,7 @@ func TestPacketValueDefaultsCarriers(t *testing.T) {
 
 func TestPacketValueDefaultsBesideUnrelatedTable(t *testing.T) {
 	u := unitFromSource(t, packetValueDefaultsUnit+"\ntable Counter { number int32 }\n")
-	for _, target := range []string{"rust", "java", "js", "dart", "elixir", "lobster"} {
+	for _, target := range []string{"rust", "java", "js", "dart", "elixir", "lobster", "python"} {
 		if _, err := New().Generate(u, target, Options{}); err != nil {
 			t.Fatalf("%s: an unrelated table must not turn packet defaults into table defaults: %v", target, err)
 		}
