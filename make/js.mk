@@ -1928,7 +1928,7 @@ packet-end-js-negative-control: packet-end-js
 .PHONY: packet-void-js
 build/packet-void/js/.stamp: bin/schema test/packet-void/Void.schema make/js.mk
 	@rm -f build/packet-void/js/*.js build/packet-void/js/*.d.ts
-	./bin/schema generate --lang js --out build/packet-void/js $(PACKET_VOID_SCHEMA)
+	./bin/schema generate --lang js --out build/packet-void/js test/packet-void/Void.schema
 	@touch $@
 
 packet-void-js: build/packet-void/js/.stamp build/casegate
