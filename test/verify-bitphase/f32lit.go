@@ -93,9 +93,7 @@ func f32LitRoundTrip(x float32) float32 {
 		n = 1
 	}
 	idx := uint64(math.Floor(float64(float32(float32(n*count) + 0.5))))
-	if idx > steps {
-		idx = steps
-	}
+	idx = min(idx, steps)
 	q := float32(float32(idx) / count)
 	p := float32(q * delta)
 	return float32(p + minF)
