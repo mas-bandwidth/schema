@@ -76,7 +76,7 @@ func runChecked(dir string, extraEnv []string, name string, args ...string) (str
 }
 
 func requireToken(out string, err error, lang string) error {
-	want := fmt.Sprintf("BITPHASE_OK %s %d", lang, len(requiredRoster()))
+	want := fmt.Sprintf("BITPHASE_OK %s %d", lang, len(activeRoster()))
 	if err != nil {
 		return fmt.Errorf("%s failed (%w):\n%s", lang, err, out)
 	}
@@ -139,7 +139,15 @@ func requiredRoster() []manifestCase {
 	return out
 }
 
-// loadManifest reads the corpus and holds it to requiredRoster by IDENTITY:
+// activeRoster is the roster the run holds its corpus to: requiredRoster, or
+// a case family's (--family) own.
+var activeRoster = requiredRoster
+
+// bitphaseSchema is the schema every leg generates from, from the repository
+// root: the main corpus's, or a case family's (--family).
+var bitphaseSchema = "test/verify-bitphase/BitPhase.schema"
+
+// loadManifest reads the corpus and holds it to activeRoster by IDENTITY:
 // every required row is there exactly once, no other row is, no line is
 // malformed, and no two rows carry the same bytes (a file copied over another
 // is one vector, not two).
@@ -149,7 +157,7 @@ func loadManifest(corpusDir string) ([]manifestCase, map[string][]byte, error) {
 		return nil, nil, err
 	}
 	required := map[manifestCase]bool{}
-	for _, c := range requiredRoster() {
+	for _, c := range activeRoster() {
 		required[c] = true
 	}
 	var cases []manifestCase
@@ -184,7 +192,7 @@ func loadManifest(corpusDir string) ([]manifestCase, map[string][]byte, error) {
 		cases = append(cases, c)
 		blobs[c.File] = b
 	}
-	for _, c := range requiredRoster() {
+	for _, c := range activeRoster() {
 		if !seen[c] {
 			bad = append(bad, fmt.Sprintf("the required row %s %s %s is missing", c.Kind, c.Type, c.File))
 		}
@@ -204,7 +212,7 @@ func generateBitPhase(repoRoot, schemaBin, schemaMooBin, lang, outDir string) er
 	if lang == "moo" {
 		gen = schemaMooBin
 	}
-	schemaFile := filepath.Join(repoRoot, "test", "verify-bitphase", "BitPhase.schema")
+	schemaFile := filepath.Join(repoRoot, filepath.FromSlash(bitphaseSchema))
 	out, err := runChecked(repoRoot, nil, gen, "generate", "--lang", lang, "--out", outDir, schemaFile)
 	if err != nil {
 		return fmt.Errorf("generate %s: %w\n%s", lang, err, out)
@@ -272,6 +280,7 @@ func main() {
 	corpusFlag := flag.String("corpus", "", "pre-generated corpus directory (optional)")
 	rosterCasesFlag := flag.String("roster-cases", "", "replay this committed folder of manifest cases and exit (testdata/roster-cases)")
 	genOnlyFlag := flag.Bool("generate-only", false, "only build oracle and generate corpus")
+	familyFlag := flag.String("family", "", "run a case family instead of the main corpus: "+AlignArraysFamily+" (alignarrays.go)")
 	flag.Parse()
 	if *rosterCasesFlag != "" {
 		scratch, err := os.MkdirTemp("", "bitphase-roster-cases-")
@@ -310,6 +319,13 @@ func main() {
 		corpusDir = filepath.Join(repoRoot, corpusDir)
 	}
 	oracleBin := filepath.Join(workRoot, "oracle")
+	if *familyFlag != "" {
+		if err := runFamily(repoRoot, schemaBin, schemaMooBin, workRoot, *familyFlag, *langFlag); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	var cases []manifestCase
 	var blobs map[string][]byte

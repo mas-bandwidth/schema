@@ -1336,7 +1336,11 @@ it (§4.6).
   in the range's own width (clz over 32 or 64 bits as the range demands); no
   zigzag on the wire, ever.
 - **`align` emits zero bits up to the next byte boundary — zero bits when
-  already aligned**; readers verify the padding is zero.
+  already aligned**; readers verify the padding is zero. This holds for an
+  align inside an array or union element as for any other (a string's or
+  bytes' own align included): whatever the element before it wrote, an
+  element's padding is zero and its first field carries only its own bits
+  (SPEC-CONFORMANCE, align padding inside array elements).
 - **Length prefixes** (`string(N)`, `bytes(N)`, `[..N]T`,
   `[Min..N]T`) are ranged integers over their declared count range, per the
   rows below.
