@@ -3,23 +3,15 @@ package main
 import (
 	"bytes"
 	"context"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/testreg"
 )
 
-const cliFixture = `{"rec":"lang","name":"go","write":"refuse","adapter":"fake"}
-{"rec":"lang","name":"c","write":"assert","adapter":""}
-{"rec":"tier","name":"functional","what":"a toolchain"}
-{"rec":"type","name":"roundtrip","what":"same bytes back"}
-{"rec":"type","name":"plant","what":"a negative control"}
-{"rec":"test","key":"roundtrip.fam.one","type":"roundtrip","family":"fam","case":"one","tier":"functional","checks":"one","inputs":{"n":1},"expect":"same"}
-{"rec":"test","key":"plant.fam.one-red","type":"plant","family":"fam","case":"one-red","tier":"functional","checks":"one goes red when broken","inputs":{"target":"go.functional.roundtrip.fam.one","env":{"BREAK":"1"}},"expect":"the target fails","scope":"none","adapter":"plant"}
-{"rec":"group","name":"ready","what":"the ready languages","query":{"langs":["go"]}}
-`
+// cliRegistry is the CLI tests' registry, committed and only read: the tests
+// write nothing anywhere.
+const cliRegistry = "testdata/registry.jsonl"
 
 // envFake passes every instance unless the run's environment carries BREAK,
 // and then fails every one: a build a plant breaks.
@@ -41,12 +33,8 @@ func (f envFake) Run(ctx context.Context, _ string, insts []testreg.Instance) ([
 
 func cli(t *testing.T, a testreg.Adapter, args ...string) (int, string) {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "registry.jsonl")
-	if err := os.WriteFile(path, []byte(cliFixture), 0o644); err != nil {
-		t.Fatal(err)
-	}
 	var out, errOut bytes.Buffer
-	code := run(context.Background(), append(args, "--registry", path), &out, &errOut, map[string]testreg.Adapter{"fake": a})
+	code := run(context.Background(), append(args, "--registry", cliRegistry), &out, &errOut, map[string]testreg.Adapter{"fake": a})
 	return code, out.String() + errOut.String()
 }
 
@@ -67,6 +55,8 @@ func TestTheCommandExitsNonZeroOnEveryFailRule(t *testing.T) {
 		{[]string{"run", "--group", "nope"}, 1, `group "nope" is not in the registry`},
 		{[]string{"run", "--lang", "go", "--shard", "2/2"}, 1, "shard 2/2 of 1 names matches 0 tests"},
 		{[]string{"run"}, 2, "name what to run"},
+		{[]string{"run", "c.functional.roundtrip.fam.one", "go.functional.roundtrip.fam.one", "--ready"}, 1, "the filters exclude the full names c.functional.roundtrip.fam.one"},
+		{[]string{"list", "c.functional.roundtrip.fam.one", "--lang", "go"}, 1, "the filters exclude the full names c.functional.roundtrip.fam.one"},
 		{[]string{"list", "*"}, 0, "3 names"},
 	} {
 		code, out := cli(t, envFake{}, c.args...)

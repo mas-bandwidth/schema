@@ -6,11 +6,11 @@
 // must agree with that row byte for byte, so the registry and this file
 // cannot drift apart in silence.
 //
-// The legs' drivers stop at their first failing row. So a run that fails at
-// a row records that row's failure, records the rows before it in manifest
-// order as passed, and runs the rest again; a failure that names no
-// requested row is a crash, and the driver exits non-zero after the results
-// it has.
+// The legs' drivers stop at their first failing row, so a red run over all
+// the rows says nothing about the others. Then each row runs alone, and its
+// verdict is that run's: green, or red naming that row. A failure that names
+// no row, or another row, is a crash, and the driver exits non-zero after
+// the results it has.
 package main
 
 import (
@@ -100,66 +100,79 @@ func runAdapter(in io.Reader, out io.Writer, repoRoot, schemaBin, schemaMooBin, 
 	bitphaseSchema = AlignArraysSchema
 	familyRun = true
 	runRoot := filepath.Join(workRoot, AlignArraysFamily)
-	for attempt := 0; len(rows) > 0; attempt++ {
-		left := rows
-		activeRoster = func() []manifestCase {
-			out := make([]manifestCase, len(left))
-			for i, r := range left {
-				out[i] = r.manifestCase
-			}
-			return out
-		}
-		dir := filepath.Join(runRoot, fmt.Sprintf("attempt-%d", attempt))
-		corpusDir := filepath.Join(dir, "corpus")
-		if err := writeAlignRows(corpusDir, left); err != nil {
+	run := func(dir string, rs []alignRow) error {
+		return runRows(repoRoot, schemaBin, schemaMooBin, filepath.Join(runRoot, dir), lang, rs)
+	}
+	vs, verr := rowVerdicts(rows, run)
+	for _, v := range vs {
+		if _, err := fmt.Fprintln(out, testreg.FormatResult(testreg.Result{Instance: instOf[v.row.File], Verdict: v.verdict, Reason: v.reason})); err != nil {
 			return err
 		}
-		cases, blobs, err := loadManifest(corpusDir)
-		if err != nil {
-			return err
-		}
-		oracleBin := filepath.Join(dir, "oracle")
-		if lang == "cpp" {
-			if err := buildFamilyVerifier(repoRoot, schemaBin, oracleBin); err != nil {
-				return err
-			}
-		}
-		emit := func(r alignRow, verdict, reason string) error {
-			_, err := fmt.Fprintln(out, testreg.FormatResult(testreg.Result{Instance: instOf[r.File], Verdict: verdict, Reason: reason}))
-			return err
-		}
-		verr := verifyLang(repoRoot, schemaBin, schemaMooBin, oracleBin, corpusDir, filepath.Join(dir, "runs"), lang, cases, blobs)
-		if verr == nil {
-			for _, r := range left {
-				if err := emit(r, testreg.Pass, ""); err != nil {
-					return err
-				}
-			}
-			return nil
-		}
-		m := failedRow.FindStringSubmatch(verr.Error())
-		at := -1
-		if m != nil {
-			for i, r := range left {
-				if r.File == m[1] {
-					at = i
-				}
-			}
-		}
-		if at < 0 {
-			return fmt.Errorf("the %s driver failed without naming a requested row: %w", lang, verr)
-		}
-		for _, r := range left[:at] {
-			if err := emit(r, testreg.Pass, ""); err != nil {
-				return err
-			}
-		}
-		if err := emit(left[at], testreg.Fail, firstFailure(verr.Error())); err != nil {
-			return err
-		}
-		rows = left[at+1:]
+	}
+	if verr != nil {
+		return fmt.Errorf("the %s driver: %w", lang, verr)
 	}
 	return nil
+}
+
+type rowVerdict struct {
+	row             alignRow
+	verdict, reason string
+}
+
+// rowVerdicts runs the rows once together: green means the driver printed
+// BITPHASE_OK with the count of these rows and no FAILED line, so each row
+// ran and passed in that run. Red, it says nothing about the rows the driver
+// did not reach, nor which it reached, so then every row runs alone and its
+// verdict is that run's: green, or red naming that row. A run alone that
+// fails without naming its row is a crash: the verdicts so far come back
+// with the error.
+func rowVerdicts(rows []alignRow, run func(dir string, rows []alignRow) error) ([]rowVerdict, error) {
+	var out []rowVerdict
+	if run("all", rows) == nil {
+		for _, r := range rows {
+			out = append(out, rowVerdict{row: r, verdict: testreg.Pass})
+		}
+		return out, nil
+	}
+	for i, r := range rows {
+		err := run(fmt.Sprintf("row-%d", i), []alignRow{r})
+		if err == nil {
+			out = append(out, rowVerdict{row: r, verdict: testreg.Pass})
+			continue
+		}
+		if m := failedRow.FindStringSubmatch(err.Error()); m == nil || m[1] != r.File {
+			return out, fmt.Errorf("failed on %s alone without naming it: %w", r.File, err)
+		}
+		out = append(out, rowVerdict{row: r, verdict: testreg.Fail, reason: firstFailure(err.Error())})
+	}
+	return out, nil
+}
+
+// runRows runs the leg's driver over exactly these rows in dir.
+func runRows(repoRoot, schemaBin, schemaMooBin, dir, lang string, rows []alignRow) error {
+	activeRoster = func() []manifestCase {
+		out := make([]manifestCase, len(rows))
+		for i, r := range rows {
+			out[i] = r.manifestCase
+		}
+		return out
+	}
+	corpusDir := filepath.Join(dir, "corpus")
+	if err := writeAlignRows(corpusDir, rows); err != nil {
+		return err
+	}
+	cases, blobs, err := loadManifest(corpusDir)
+	if err != nil {
+		return err
+	}
+	oracleBin := filepath.Join(dir, "oracle")
+	if lang == "cpp" {
+		if err := buildFamilyVerifier(repoRoot, schemaBin, oracleBin); err != nil {
+			return err
+		}
+	}
+	return verifyLang(repoRoot, schemaBin, schemaMooBin, oracleBin, corpusDir, filepath.Join(dir, "runs"), lang, cases, blobs)
 }
 
 // PlantEnv names the negative control's handle on this harness: a row file

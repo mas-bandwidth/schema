@@ -220,6 +220,21 @@ func (r *Registry) Select(q Query) (Selection, error) {
 			sel.Instances = append(sel.Instances, inst)
 		}
 	}
+	// a name given in full is run or the query fails: a filter never drops
+	// it in silence
+	var dropped []string
+	for _, name := range q.Names {
+		if IsPattern(name) {
+			continue
+		}
+		inst, _ := r.Resolve(name)
+		if !keep(inst.Lang, inst.Test) {
+			dropped = append(dropped, name)
+		}
+	}
+	if len(dropped) > 0 {
+		return Selection{}, fmt.Errorf("query %s: the filters exclude the full names %s; a name given in full runs or fails", q, strings.Join(dropped, ", "))
+	}
 	if len(sel.Instances) == 0 {
 		return Selection{}, fmt.Errorf("query %s matches 0 tests", q)
 	}

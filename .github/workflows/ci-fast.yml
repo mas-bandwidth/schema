@@ -3018,7 +3018,7 @@ jobs:
   # sight; its MISSING instances are red in schema-test-nightly.yml. The old
   # harness jobs above keep running until the registry covers what they run.
   schema-test:
-    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
     defaults:

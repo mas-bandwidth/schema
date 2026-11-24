@@ -113,6 +113,27 @@ func TestAQueryThatMatchesNothingFails(t *testing.T) {
 	}
 }
 
+// TestAFullNameIsNeverFilteredOut: a filter that excludes a name given in
+// full fails the query, naming it; it never drops the name and runs the rest.
+func TestAFullNameIsNeverFilteredOut(t *testing.T) {
+	t.Parallel()
+	reg := load(t, fixture)
+	for _, q := range []Query{
+		{Names: []string{"c.functional.roundtrip.fam.one", "go.functional.roundtrip.fam.one"}, Ready: true},
+		{Names: []string{"c.functional.roundtrip.fam.one", "go.functional.roundtrip.fam.one"}, Langs: []string{"go"}},
+		{Names: []string{"go.unit.load-refusal.fam.bad", "go.*"}, Tiers: []string{"functional"}},
+	} {
+		_, err := reg.Select(q)
+		if err == nil || !strings.Contains(err.Error(), "the filters exclude the full names") {
+			t.Errorf("%s: %v, want a refusal naming the excluded name", q, err)
+		}
+	}
+	// a pattern is narrowed by the filters: that is what they are for
+	if sel, err := reg.Select(Query{Names: []string{"*.fam.one"}, Ready: true}); err != nil || len(sel.Instances) != 2 {
+		t.Fatalf("a pattern under --ready: %v, %d names", err, len(sel.Instances))
+	}
+}
+
 func TestALanguageWithNoAdapterFails(t *testing.T) {
 	t.Parallel()
 	reg := load(t, fixture)

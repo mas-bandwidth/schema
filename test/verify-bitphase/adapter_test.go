@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -66,6 +67,53 @@ func TestTheAdapterNamesTheFailingRow(t *testing.T) {
 		if m == nil || m[1] != "aa_phase63_valid_ab-e-acute.bin" {
 			t.Errorf("%q: %v", out, m)
 		}
+	}
+}
+
+// TestEachRowsVerdictIsItsOwnRun: a red batch says nothing about the rows a
+// driver did not reach, or reached in another order, so each row's verdict
+// comes from a run of that row alone. The fake driver here runs rows last to
+// first and stops at its first failure, so the failure it names is the last
+// bad row; a verdict read off where the batch stopped would pass the first
+// bad row.
+func TestEachRowsVerdictIsItsOwnRun(t *testing.T) {
+	t.Parallel()
+	rows := alignArraysRows()[:4]
+	bad := map[string]bool{rows[0].File: true, rows[2].File: true}
+	var runs []string
+	reversed := func(dir string, rs []alignRow) error {
+		runs = append(runs, dir)
+		for i := len(rs) - 1; i >= 0; i-- {
+			if bad[rs[i].File] {
+				return fmt.Errorf("FAILED: bytes %s (got 1 want 2)", rs[i].File)
+			}
+		}
+		return nil
+	}
+	got, err := rowVerdicts(rows, reversed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{testreg.Fail, testreg.Pass, testreg.Fail, testreg.Pass}
+	if len(got) != len(rows) {
+		t.Fatalf("%d verdicts for %d rows", len(got), len(rows))
+	}
+	for i, v := range got {
+		if v.row.File != rows[i].File || v.verdict != want[i] {
+			t.Errorf("row %d %s: %s, want %s", i, v.row.File, v.verdict, want[i])
+		}
+	}
+	if strings.Join(runs, " ") != "all row-0 row-1 row-2 row-3" {
+		t.Errorf("runs %v, want the batch then each row alone", runs)
+	}
+	// a green batch is every row's pass, in one run
+	runs = nil
+	if got, err := rowVerdicts(rows[1:2], reversed); err != nil || len(got) != 1 || got[0].verdict != testreg.Pass || len(runs) != 1 {
+		t.Errorf("a green batch: %v %+v, runs %v", err, got, runs)
+	}
+	// a row alone that fails without naming itself is a crash
+	if _, err := rowVerdicts(rows[:1], func(string, []alignRow) error { return fmt.Errorf("signal: killed") }); err == nil {
+		t.Error("a run that names no row was taken as a verdict")
 	}
 }
 
