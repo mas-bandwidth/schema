@@ -191,36 +191,50 @@ func TestJavaTextReadDepthCap(t *testing.T) {
 		return out
 	}
 
-	readText := func(name, text string) (bool, map[string]string) {
+	// readText answers the Go reader's verdict on the text, the Go writer's
+	// verdict on the value it read (false when it did not read), and the
+	// Java probe's verdicts on the same text.
+	readText := func(name, text string) (bool, bool, map[string]string) {
 		t.Helper()
 		inst := m.New(node)
 		var report tabletext.Report
 		goRead := m.Read(inst, []byte(text), &report)
+		goWrite := false
+		if goRead {
+			_, err := m.Write(inst)
+			goWrite = err == nil
+		}
 		path := filepath.Join(root, name+".json")
 		if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		got := probeVerdicts(t, runProbe("read", path))
-		return goRead, got
+		return goRead, goWrite, got
 	}
 
 	// The reference first: the Go reader's own verdicts on the same texts.
 	// A pointer chain nests one table value per link under the root; an array
 	// of tables nests a table and its element, so the engine's own spacing
-	// decides where its cap falls.
+	// decides where its cap falls. Writing back what was read is the Go
+	// writer's verdict too (§16.14 W2): a chain of 128 nodes reads, since its
+	// deepest object sits at 128, but every node writes its `kids` array, and
+	// the last one's empty `[]` sits at 129, so the write refuses it; 127
+	// writes back.
 	for _, c := range []struct {
-		name string
-		text string
-		want *bool
+		name  string
+		text  string
+		want  *bool
+		write *bool
 	}{
-		{"next-128", nextText(128), new(true)},
-		{"next-129", nextText(129), new(false)},
-		{"next-100000", nextText(100000), new(false)},
-		{"kids-128", kidsText(128), nil},
-		{"kids-129", kidsText(129), nil},
-		{"kids-100000", kidsText(100000), nil},
+		{"next-127", nextText(127), new(true), new(true)},
+		{"next-128", nextText(128), new(true), new(false)},
+		{"next-129", nextText(129), new(false), nil},
+		{"next-100000", nextText(100000), new(false), nil},
+		{"kids-128", kidsText(128), nil, nil},
+		{"kids-129", kidsText(129), nil, nil},
+		{"kids-100000", kidsText(100000), nil, nil},
 	} {
-		goRead, got := readText(c.name, c.text)
+		goRead, goWrite, got := readText(c.name, c.text)
 		if c.want != nil && goRead != *c.want {
 			t.Fatalf("%s: Go reader verdict is %v, want %v", c.name, goRead, *c.want)
 		}
@@ -228,8 +242,11 @@ func TestJavaTextReadDepthCap(t *testing.T) {
 		if javaRead != goRead {
 			t.Fatalf("%s: Java fromJson verdict is %v, Go reader is %v", c.name, javaRead, goRead)
 		}
-		if c.want != nil && *c.want && got["write"] != "1" {
-			t.Fatalf("%s: Java toJson refused a text its fromJson accepted", c.name)
+		if c.write != nil && goWrite != *c.write {
+			t.Fatalf("%s: Go writer verdict on the value read is %v, want %v", c.name, goWrite, *c.write)
+		}
+		if javaWrite := got["write"] == "1"; goRead && javaWrite != goWrite {
+			t.Fatalf("%s: Java toJson verdict on the value read is %v, Go writer is %v", c.name, javaWrite, goWrite)
 		}
 	}
 

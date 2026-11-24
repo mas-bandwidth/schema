@@ -264,7 +264,11 @@ func generateVariableUnion(u *ir.Unit, un *ir.Union, fixed fixedClosure) string 
 		b.WriteString("return v;}\n")
 	}
 	if unitCarriesForm(u, "json") {
-		b.WriteString("    static void jsonFields(java.lang.StringBuilder b,TableVariable.NodeGraph graph,Value v,int depth){b.append('{');switch(v.tag){case 0:b.append('}');return;\n")
+		// the union's object, None's {} included, is a container the cap
+		// counts at its own depth (§16.14 W2)
+		b.WriteString("    static void jsonFields(java.lang.StringBuilder b,TableVariable.NodeGraph graph,Value v,int depth){\n")
+		writeJsonContainerCap(&b)
+		b.WriteString("        b.append('{');switch(v.tag){case 0:b.append('}');return;\n")
 		for i, arm := range un.Variants {
 			fmt.Fprintf(&b, "        case %d:{TableJson.indent(b,depth+1);TableJson.esc(b,%q);b.append(\": \");\n", i+1, arm.Name)
 			if arm.Void() {

@@ -5432,6 +5432,9 @@ func writeJsonCodec(b *strings.Builder, u *ir.Unit, st *ir.Struct) {
 	}
 
 	fmt.Fprintf(b, "    static void jsonFields(java.lang.StringBuilder b, TableVariable.NodeGraph graph, Value v, int depth) {\n")
+	// a table value held in place is judged where it is written, as a
+	// pointee is in writeJsonPointer (internal/tabletext writeValue)
+	writeJsonContainerCap(b)
 	if st.JsonArray && len(st.Fields) == 1 {
 		writeJsonFieldValue(b, u, st, st.Fields[0])
 		b.WriteString("    }\n\n")
@@ -5688,8 +5691,20 @@ func jsonIntRange(f *ir.Field) (min, max string) {
 	return min, max
 }
 
+// writeJsonContainerCap judges the container the code after it writes — an
+// array (an empty `[]` included), a text list, a map's object, an enum-keyed
+// array's object, a union's object (None `{}` included) or a table value — at
+// its own depth, `depth`, refusing past the cap with the table value's own
+// refusal. The read counts every container it walks (docs/SPEC-TABLES.md
+// §16.2), so the write counts the same ones in the same unit (§16.14 W2) and
+// never writes a text its own reader refuses (internal/tabletext containerCap).
+func writeJsonContainerCap(b *strings.Builder) {
+	b.WriteString("        if (depth > TableJson.In.MAX_JSON_DEPTH) { throw new TableJson.Refused(\"a container past the cap: the write counts every container the read does\"); }\n")
+}
+
 func writeJsonArrayValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Field) {
 	m := varMember(f)
+	writeJsonContainerCap(b)
 	switch {
 	case f.Array == ir.ArrayCounted:
 		fmt.Fprintf(b, "        if (v.%s.size() < %d || v.%s.size() > %d) { throw new TableJson.Refused(\"count_over_bound\"); }\n", m, f.ArrayMin, m, f.ArrayBound)
@@ -5966,6 +5981,7 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 	switch {
 	case isPointerArray(f):
 		target := f.Type.Ref.(*ir.Struct)
+		writeJsonContainerCap(b)
 		if f.Array == ir.ArrayCounted {
 			fmt.Fprintf(b, "        if (v.%s.size() < %d || v.%s.size() > %d) { throw new TableJson.Refused(\"count_over_bound\"); }\n", m, f.ArrayMin, m, f.ArrayBound)
 		} else if f.Array == ir.ArrayList && f.ArrayBound > 0 {
@@ -5987,6 +6003,7 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 		// §5.1 rows 3 and 4): the save's graph walk does not refuse them in a
 		// release build, but toJson still answers null for a value its reader
 		// would refuse.
+		writeJsonContainerCap(b)
 		elementBound := int64(-1)
 		if !ir.TextListUnbounded(f) {
 			elementBound = ir.TextListValue(f).Type.Size
@@ -6038,6 +6055,7 @@ func writeJsonFieldValue(b *strings.Builder, u *ir.Unit, st *ir.Struct, f *ir.Fi
 		b.WriteString("        }\n")
 	case isStructArray(f):
 		target := f.Type.Ref.(*ir.Struct)
+		writeJsonContainerCap(b)
 		if f.Array == ir.ArrayCounted {
 			fmt.Fprintf(b, "        if (v.%s.size() < %d || v.%s.size() > %d) { throw new TableJson.Refused(\"count_over_bound\"); }\n", m, f.ArrayMin, m, f.ArrayBound)
 		} else if f.Array == ir.ArrayList && f.ArrayBound > 0 {
