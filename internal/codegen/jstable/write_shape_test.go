@@ -1,6 +1,7 @@
 package jstable
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -41,9 +42,7 @@ func jsFixedShapeRun(t *testing.T, u *ir.Unit) {
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	for name, data := range files {
-		base[name] = data
-	}
+	maps.Copy(base, files)
 	dir := t.TempDir()
 	module, classes := "", ""
 	for name, data := range base {

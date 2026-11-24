@@ -114,6 +114,10 @@ func emitWriteField(m *Module, b *strings.Builder, val string, f *ir.Field, inde
 		fmt.Fprintf(b, "%send\n", indent)
 		return
 	}
+	// a [N]T holds exactly N values: any other count is refused, never cut
+	// or padded to N (SPEC §5.1, SF-20)
+	fmt.Fprintf(b, "%sif type(%s) ~= \"table\" or #%s ~= %s then return false end -- a [N]T holds exactly N values (SPEC §5.1)\n",
+		indent, val, val, bound)
 	fmt.Fprintf(b, "%sfor _i = 1, %s do\n", indent, bound)
 	elem := *f
 	elem.Array = ir.ArrayNone
