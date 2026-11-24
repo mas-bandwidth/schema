@@ -1,6 +1,0 @@
-# Conformance rows the js leg owes: every row file under test/conformance/js/rows/ runs
-# (tools/conformancerows), and these still fail. Exact set: a failing row not named
-# here is red, and a row named here that passes is red until its line goes.
-# Measured at main 0fd0920029 on vision, 2026-11-24. "does not build" is a row
-# written against an older generated API; "fails" is a row that runs and is red.
-E6	owed: fails: placeholder that checks nothing: the row prints "PASS: E6 skeleton loaded" and exits 0 with no failure path (no non-zero exit, throw or assert), so the runner holds it red
