@@ -122,7 +122,7 @@ func generateRetainRefusals(u *units, m *Manifest, jsonDir string) error {
 		value := model.New(root)
 		var report tabletext.Report
 		if ok, err := strictDecodeRetain(model, value, first, store, &report); !ok {
-			return fmt.Errorf("retain-refusal %s: the engine refuses the first wire: %v", r.Name, err)
+			return fmt.Errorf("retain-refusal %s: the engine refuses the first wire: %w", r.Name, err)
 		}
 		var saveReport tabletext.Report
 		before, err := tablewire.EncodeRetain(model, value, store, &saveReport)
