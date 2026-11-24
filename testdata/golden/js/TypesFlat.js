@@ -1368,115 +1368,111 @@ export function WriteInputPacketFlat(view, value) {
   lo = (lo | ((((value.inputsCount) & 0x1f)) << 16)) >>> 0;
   wi = 16;
   sb = 21;
-  {
-    let i0 = 0;
-    let e0 = globalThis; // an object until the loop reads an element
+  for (let i0 = 0; i0 < value.inputsCount; i0++) {
+    const e0 = value.inputs[i0];
     try {
-      for (; i0 < value.inputsCount; i0++) {
-        e0 = value.inputs[i0];
-        x = e0.stickX;
-        if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
-          return -1;
-        }
-        SC.setFloat32(0, x, true);
-        v = SC.getUint32(0, true);
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 32;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (32 - sb);
-        }
-        x = e0.stickY;
-        if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
-          return -1;
-        }
-        SC.setFloat32(0, x, true);
-        v = SC.getUint32(0, true);
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 32;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (32 - sb);
-        }
-        x = e0.throttle;
-        if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
-          return -1;
-        }
-        SC.setFloat32(0, x, true);
-        v = SC.getUint32(0, true);
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 32;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (32 - sb);
-        }
-        x = e0.yaw;
-        if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
-          return -1;
-        }
-        SC.setFloat32(0, x, true);
-        v = SC.getUint32(0, true);
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 32;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (32 - sb);
-        }
-        x = e0.pitch;
-        if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
-          return -1;
-        }
-        SC.setFloat32(0, x, true);
-        v = SC.getUint32(0, true);
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 32;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (32 - sb);
-        }
-        if (typeof e0.fire !== "boolean") { // a bool is a boolean (SPEC §5.1)
-          return -1;
-        }
-        if (typeof e0.altFire !== "boolean") { // a bool is a boolean (SPEC §5.1)
-          return -1;
-        }
-        if (typeof e0.boost !== "boolean") { // a bool is a boolean (SPEC §5.1)
-          return -1;
-        }
-        if (typeof e0.brake !== "boolean") { // a bool is a boolean (SPEC §5.1)
-          return -1;
-        }
-        if (typeof e0.aim !== "boolean") { // a bool is a boolean (SPEC §5.1)
-          return -1;
-        }
-        if (typeof e0.lockOn !== "boolean") { // a bool is a boolean (SPEC §5.1)
-          return -1;
-        }
-        if (typeof e0.zoom !== "boolean") { // a bool is a boolean (SPEC §5.1)
-          return -1;
-        }
-        if (typeof e0.ping !== "boolean") { // a bool is a boolean (SPEC §5.1)
-          return -1;
-        }
-        v = ((e0.fire ? 1 : 0) | ((e0.altFire ? 1 : 0) << 1) | ((e0.boost ? 1 : 0) << 2) | ((e0.brake ? 1 : 0) << 3) | ((e0.aim ? 1 : 0) << 4) | ((e0.lockOn ? 1 : 0) << 5) | ((e0.zoom ? 1 : 0) << 6) | ((e0.ping ? 1 : 0) << 7)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 8;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (8 - sb);
-        }
+      x = e0.stickX;
+      if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
+        return -1;
+      }
+      SC.setFloat32(0, x, true);
+      v = SC.getUint32(0, true);
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+      x = e0.stickY;
+      if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
+        return -1;
+      }
+      SC.setFloat32(0, x, true);
+      v = SC.getUint32(0, true);
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+      x = e0.throttle;
+      if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
+        return -1;
+      }
+      SC.setFloat32(0, x, true);
+      v = SC.getUint32(0, true);
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+      x = e0.yaw;
+      if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
+        return -1;
+      }
+      SC.setFloat32(0, x, true);
+      v = SC.getUint32(0, true);
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+      x = e0.pitch;
+      if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
+        return -1;
+      }
+      SC.setFloat32(0, x, true);
+      v = SC.getUint32(0, true);
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 32;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (32 - sb);
+      }
+      if (typeof e0.fire !== "boolean") { // a bool is a boolean (SPEC §5.1)
+        return -1;
+      }
+      if (typeof e0.altFire !== "boolean") { // a bool is a boolean (SPEC §5.1)
+        return -1;
+      }
+      if (typeof e0.boost !== "boolean") { // a bool is a boolean (SPEC §5.1)
+        return -1;
+      }
+      if (typeof e0.brake !== "boolean") { // a bool is a boolean (SPEC §5.1)
+        return -1;
+      }
+      if (typeof e0.aim !== "boolean") { // a bool is a boolean (SPEC §5.1)
+        return -1;
+      }
+      if (typeof e0.lockOn !== "boolean") { // a bool is a boolean (SPEC §5.1)
+        return -1;
+      }
+      if (typeof e0.zoom !== "boolean") { // a bool is a boolean (SPEC §5.1)
+        return -1;
+      }
+      if (typeof e0.ping !== "boolean") { // a bool is a boolean (SPEC §5.1)
+        return -1;
+      }
+      v = ((e0.fire ? 1 : 0) | ((e0.altFire ? 1 : 0) << 1) | ((e0.boost ? 1 : 0) << 2) | ((e0.brake ? 1 : 0) << 3) | ((e0.aim ? 1 : 0) << 4) | ((e0.lockOn ? 1 : 0) << 5) | ((e0.zoom ? 1 : 0) << 6) | ((e0.ping ? 1 : 0) << 7)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 8;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (8 - sb);
       }
     } catch (thrown) {
       if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)

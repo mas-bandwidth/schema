@@ -1831,71 +1831,67 @@ export function WriteArrUnevenFlat(view, value) {
   }
   lo = ((value.lead & 0x1f) | (((value.itemsCount) & 0x3) << 5));
   sb = 7;
-  {
-    let i0 = 0;
-    let e0 = globalThis; // an object until the loop reads an element
+  for (let i0 = 0; i0 < value.itemsCount; i0++) {
+    const e0 = value.items[i0];
     try {
-      for (; i0 < value.itemsCount; i0++) {
-        e0 = value.items[i0];
-        if (!globalThis.Number.isInteger(e0.type) || e0.type < 0 || e0.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
-          return -1;
-        }
-        v = ((e0.type & 0x3)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 2;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (2 - sb);
-        }
-        switch (e0.type) {
-          case 1: {
-            if (e0.narrow === null || typeof e0.narrow !== "object") { // a record or union value is an object (SPEC §5.1)
-              return -1;
-            }
-            if (!globalThis.Number.isInteger(e0.narrow.n) || e0.narrow.n < 0 || e0.narrow.n > 7) {
-              return -1;
-            }
-            v = ((e0.narrow.n & 0x7)) >>> 0;
-            lo = (lo | (v << sb)) >>> 0;
-            sb += 3;
-            if (sb >= 32) {
-              view.setUint32(wi, lo, true);
-              wi += 4;
-              sb -= 32;
-              lo = sb === 0 ? 0 : v >>> (3 - sb);
-            }
-            break;
+      if (!globalThis.Number.isInteger(e0.type) || e0.type < 0 || e0.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
+        return -1;
+      }
+      v = ((e0.type & 0x3)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 2;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (2 - sb);
+      }
+      switch (e0.type) {
+        case 1: {
+          if (e0.narrow === null || typeof e0.narrow !== "object") { // a record or union value is an object (SPEC §5.1)
+            return -1;
           }
-          case 2: {
-            if (e0.wide === null || typeof e0.wide !== "object") { // a record or union value is an object (SPEC §5.1)
-              return -1;
-            }
-            if (typeof e0.wide.w !== "bigint" || e0.wide.w < 0n || e0.wide.w > 137438953471n) {
-              return -1;
-            }
-            SC.setBigUint64(0, e0.wide.w, true);
-            v = SC.getUint32(0, true);
-            lo = (lo | (v << sb)) >>> 0;
-            sb += 32;
-            if (sb >= 32) {
-              view.setUint32(wi, lo, true);
-              wi += 4;
-              sb -= 32;
-              lo = sb === 0 ? 0 : v >>> (32 - sb);
-            }
-            v = SC.getUint32(4, true) & 0x1f;
-            lo = (lo | (v << sb)) >>> 0;
-            sb += 5;
-            if (sb >= 32) {
-              view.setUint32(wi, lo, true);
-              wi += 4;
-              sb -= 32;
-              lo = sb === 0 ? 0 : v >>> (5 - sb);
-            }
-            break;
+          if (!globalThis.Number.isInteger(e0.narrow.n) || e0.narrow.n < 0 || e0.narrow.n > 7) {
+            return -1;
           }
+          v = ((e0.narrow.n & 0x7)) >>> 0;
+          lo = (lo | (v << sb)) >>> 0;
+          sb += 3;
+          if (sb >= 32) {
+            view.setUint32(wi, lo, true);
+            wi += 4;
+            sb -= 32;
+            lo = sb === 0 ? 0 : v >>> (3 - sb);
+          }
+          break;
+        }
+        case 2: {
+          if (e0.wide === null || typeof e0.wide !== "object") { // a record or union value is an object (SPEC §5.1)
+            return -1;
+          }
+          if (typeof e0.wide.w !== "bigint" || e0.wide.w < 0n || e0.wide.w > 137438953471n) {
+            return -1;
+          }
+          SC.setBigUint64(0, e0.wide.w, true);
+          v = SC.getUint32(0, true);
+          lo = (lo | (v << sb)) >>> 0;
+          sb += 32;
+          if (sb >= 32) {
+            view.setUint32(wi, lo, true);
+            wi += 4;
+            sb -= 32;
+            lo = sb === 0 ? 0 : v >>> (32 - sb);
+          }
+          v = SC.getUint32(4, true) & 0x1f;
+          lo = (lo | (v << sb)) >>> 0;
+          sb += 5;
+          if (sb >= 32) {
+            view.setUint32(wi, lo, true);
+            wi += 4;
+            sb -= 32;
+            lo = sb === 0 ? 0 : v >>> (5 - sb);
+          }
+          break;
         }
       }
     } catch (thrown) {

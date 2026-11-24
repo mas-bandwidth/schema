@@ -1471,121 +1471,117 @@ export function WriteBenchMixedFlat(view, value) {
   lo = v >>> 23;
   wi = 44;
   sb = 4;
-  {
-    let i0 = 0;
-    let e0 = globalThis; // an object until the loop reads an element
+  for (let i0 = 0; i0 < value.entitiesCount; i0++) {
+    const e0 = value.entities[i0];
     try {
-      for (; i0 < value.entitiesCount; i0++) {
-        e0 = value.entities[i0];
-        if (!globalThis.Number.isInteger(e0.entityId) || e0.entityId < 0 || e0.entityId > 4095) {
-          return -1;
-        }
-        if (!globalThis.Number.isInteger(e0.posX) || e0.posX < -16383 || e0.posX > 16383) {
-          return -1;
-        }
-        if (!globalThis.Number.isInteger(e0.posY) || e0.posY < -16383 || e0.posY > 16383) {
-          return -1;
-        }
-        v = ((e0.entityId & 0xfff) | (((((e0.posX >>> 0) - 4294950913) >>> 0) & 0x7fff) << 12)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 27;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (27 - sb);
-        }
-        if (!globalThis.Number.isInteger(e0.posZ) || e0.posZ < -16383 || e0.posZ > 16383) {
-          return -1;
-        }
-        if (!globalThis.Number.isInteger(e0.yaw) || e0.yaw < 0 || e0.yaw > 511) {
-          return -1;
-        }
-        v = (((((e0.posY >>> 0) - 4294950913) >>> 0) & 0x7fff) | (((((e0.posZ >>> 0) - 4294950913) >>> 0) & 0x7fff) << 15)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 30;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (30 - sb);
-        }
-        if (!globalThis.Number.isInteger(e0.pitch) || e0.pitch < 0 || e0.pitch > 511) {
-          return -1;
-        }
-        if (!globalThis.Number.isInteger(e0.velX) || e0.velX < -2048 || e0.velX > 2047) {
-          return -1;
-        }
-        if (!globalThis.Number.isInteger(e0.velY) || e0.velY < -2048 || e0.velY > 2047) {
-          return -1;
-        }
-        v = ((e0.yaw & 0x1ff) | ((e0.pitch & 0x1ff) << 9) | (((((e0.velX >>> 0) - 4294965248) >>> 0) & 0xfff) << 18)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 30;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (30 - sb);
-        }
-        if (!globalThis.Number.isInteger(e0.velZ) || e0.velZ < -2048 || e0.velZ > 2047) {
-          return -1;
-        }
-        if (!globalThis.Number.isInteger(e0.health) || e0.health < 0 || e0.health > 1000) {
-          return -1;
-        }
-        v = (((((e0.velY >>> 0) - 4294965248) >>> 0) & 0xfff) | (((((e0.velZ >>> 0) - 4294965248) >>> 0) & 0xfff) << 12)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 24;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (24 - sb);
-        }
-        if (!globalThis.Number.isInteger(e0.weapon) || e0.weapon < 0 || e0.weapon > 15) { // headroom above the wire range cannot ride
-          return -1;
-        }
-        if (typeof e0.damage !== "bigint") { // a flags value is a BigInt
-          return -1;
-        }
-        if (globalThis.BigInt.asUintN(64, e0.damage) >= 256n) { // a mask bit above the wire width cannot ride
-          return -1;
-        }
-        v = (((e0.health) & 0x3ff) | ((e0.weapon & 0xf) << 10)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 14;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (14 - sb);
-        }
-        SC.setBigUint64(0, e0.damage, true);
-        v = SC.getUint32(0, true) & 0xff;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 8;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (8 - sb);
-        }
-        if (typeof e0.moving !== "boolean") { // a bool is a boolean (SPEC §5.1)
-          return -1;
-        }
-        if (typeof e0.firing !== "boolean") { // a bool is a boolean (SPEC §5.1)
-          return -1;
-        }
-        v = ((e0.moving ? 1 : 0) | ((e0.firing ? 1 : 0) << 1)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 2;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (2 - sb);
-        }
+      if (!globalThis.Number.isInteger(e0.entityId) || e0.entityId < 0 || e0.entityId > 4095) {
+        return -1;
+      }
+      if (!globalThis.Number.isInteger(e0.posX) || e0.posX < -16383 || e0.posX > 16383) {
+        return -1;
+      }
+      if (!globalThis.Number.isInteger(e0.posY) || e0.posY < -16383 || e0.posY > 16383) {
+        return -1;
+      }
+      v = ((e0.entityId & 0xfff) | (((((e0.posX >>> 0) - 4294950913) >>> 0) & 0x7fff) << 12)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 27;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (27 - sb);
+      }
+      if (!globalThis.Number.isInteger(e0.posZ) || e0.posZ < -16383 || e0.posZ > 16383) {
+        return -1;
+      }
+      if (!globalThis.Number.isInteger(e0.yaw) || e0.yaw < 0 || e0.yaw > 511) {
+        return -1;
+      }
+      v = (((((e0.posY >>> 0) - 4294950913) >>> 0) & 0x7fff) | (((((e0.posZ >>> 0) - 4294950913) >>> 0) & 0x7fff) << 15)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 30;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (30 - sb);
+      }
+      if (!globalThis.Number.isInteger(e0.pitch) || e0.pitch < 0 || e0.pitch > 511) {
+        return -1;
+      }
+      if (!globalThis.Number.isInteger(e0.velX) || e0.velX < -2048 || e0.velX > 2047) {
+        return -1;
+      }
+      if (!globalThis.Number.isInteger(e0.velY) || e0.velY < -2048 || e0.velY > 2047) {
+        return -1;
+      }
+      v = ((e0.yaw & 0x1ff) | ((e0.pitch & 0x1ff) << 9) | (((((e0.velX >>> 0) - 4294965248) >>> 0) & 0xfff) << 18)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 30;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (30 - sb);
+      }
+      if (!globalThis.Number.isInteger(e0.velZ) || e0.velZ < -2048 || e0.velZ > 2047) {
+        return -1;
+      }
+      if (!globalThis.Number.isInteger(e0.health) || e0.health < 0 || e0.health > 1000) {
+        return -1;
+      }
+      v = (((((e0.velY >>> 0) - 4294965248) >>> 0) & 0xfff) | (((((e0.velZ >>> 0) - 4294965248) >>> 0) & 0xfff) << 12)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 24;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (24 - sb);
+      }
+      if (!globalThis.Number.isInteger(e0.weapon) || e0.weapon < 0 || e0.weapon > 15) { // headroom above the wire range cannot ride
+        return -1;
+      }
+      if (typeof e0.damage !== "bigint") { // a flags value is a BigInt
+        return -1;
+      }
+      if (globalThis.BigInt.asUintN(64, e0.damage) >= 256n) { // a mask bit above the wire width cannot ride
+        return -1;
+      }
+      v = (((e0.health) & 0x3ff) | ((e0.weapon & 0xf) << 10)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 14;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (14 - sb);
+      }
+      SC.setBigUint64(0, e0.damage, true);
+      v = SC.getUint32(0, true) & 0xff;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 8;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (8 - sb);
+      }
+      if (typeof e0.moving !== "boolean") { // a bool is a boolean (SPEC §5.1)
+        return -1;
+      }
+      if (typeof e0.firing !== "boolean") { // a bool is a boolean (SPEC §5.1)
+        return -1;
+      }
+      v = ((e0.moving ? 1 : 0) | ((e0.firing ? 1 : 0) << 1)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 2;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (2 - sb);
       }
     } catch (thrown) {
       if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
@@ -1609,27 +1605,23 @@ export function WriteBenchMixedFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (7 - sb);
   }
-  {
-    let i0 = 0;
-    let e0 = globalThis; // an object until the loop reads an element
+  for (let i0 = 0; i0 < value.statsCount; i0++) {
+    const e0 = value.stats[i0];
     try {
-      for (; i0 < value.statsCount; i0++) {
-        e0 = value.stats[i0];
-        if (!globalThis.Number.isInteger(e0.statId) || e0.statId < 0 || e0.statId > 255) {
-          return -1;
-        }
-        if (!globalThis.Number.isInteger(e0.delta) || e0.delta < -512 || e0.delta > 511) {
-          return -1;
-        }
-        v = ((e0.statId & 0xff) | (((((e0.delta >>> 0) - 4294966784) >>> 0) & 0x3ff) << 8)) >>> 0;
-        lo = (lo | (v << sb)) >>> 0;
-        sb += 18;
-        if (sb >= 32) {
-          view.setUint32(wi, lo, true);
-          wi += 4;
-          sb -= 32;
-          lo = sb === 0 ? 0 : v >>> (18 - sb);
-        }
+      if (!globalThis.Number.isInteger(e0.statId) || e0.statId < 0 || e0.statId > 255) {
+        return -1;
+      }
+      if (!globalThis.Number.isInteger(e0.delta) || e0.delta < -512 || e0.delta > 511) {
+        return -1;
+      }
+      v = ((e0.statId & 0xff) | (((((e0.delta >>> 0) - 4294966784) >>> 0) & 0x3ff) << 8)) >>> 0;
+      lo = (lo | (v << sb)) >>> 0;
+      sb += 18;
+      if (sb >= 32) {
+        view.setUint32(wi, lo, true);
+        wi += 4;
+        sb -= 32;
+        lo = sb === 0 ? 0 : v >>> (18 - sb);
       }
     } catch (thrown) {
       if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
