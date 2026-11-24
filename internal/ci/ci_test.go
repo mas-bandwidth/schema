@@ -1628,8 +1628,8 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		{
 			name:      "drop ci-fast plan same-repo PR guard",
 			workflow:  "ci-fast.yml",
-			oldSubstr: "  plan:\n    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)\n",
-			newSubstr: "  plan:\n    if: startsWith(github.head_ref, 'sprint/') == false\n",
+			oldSubstr: "  plan:\n    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository\n",
+			newSubstr: "  plan:\n    if: github.event_name != 'never'\n",
 			wantErr:   "ci-fast.yml:plan admits fork PR",
 		},
 		{

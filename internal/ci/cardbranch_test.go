@@ -1,29 +1,32 @@
 package ci
 
-// A CARD BRANCH'S PULL REQUEST RUNS NO CI. The coordinator, 2026-11-15: card
-// branches (sprint/<stream>/<card>) skip CI. The sprint lands every card
-// through its stream's group branch, sprint-group/<stream>, whose pull request
-// keeps the whole fast lane; a card's own pull request gates nothing (a hand
-// `nova-sprint land` has no CI gate, and the landing policy never uses rung 1),
-// and its card already ran its DONE-WHEN on a bench. On 2026-11-15 card-branch
-// runs were 461 of 588 active jobs on the schema runners, and the group's
-// verdict queued behind them.
+// A CARD BRANCH'S PULL REQUEST RUNS THE FAST LANE. The rule: we merge on
+// CI against current main. From 2026-11-15 every job of a pull-request
+// workflow opened its if: with startsWith(github.head_ref, 'sprint/') ==
+// false, so a card branch's pull request (sprint/<stream>/<card>) ran
+// nothing. The sprint's automatic landing gates on its group branch
+// (sprint-group/<stream>), which kept the lane, but a hand landing
+// (nova-sprint land, or judge land.<card> land) opens the card's own pull
+// request against main and merges it at once. All 41 sprint/ pull requests
+// merged into main from 2026-11-16 to 2026-11-17 merged that way, and on
+// every one each fast-lane job ended SKIPPED (#4364: 15 checks, all
+// skipped), which the sprint's forge counts as green. The first verdict on
+// their code was main's own, after they had landed.
 //
-// So every job of a workflow that triggers on pull_request or
-// pull_request_target opens its job-level `if:` with cardBranchSkip, combined
-// with the job's own condition by `&& (...)`. github.head_ref is empty on a
-// push, a dispatch and a comment, so only a pull request from a card branch
-// skips; a skipped job ends skipped, never failed or pending. This reads the
-// workflow text only.
+// So no job of a workflow that a pull request starts reads the head branch's
+// name: a card branch's pull request runs exactly what any other branch's
+// would. This reads the workflow text, and evaluates each job's if: where
+// the expression model can.
 //
-// A FORK NAMES ITS OWN BRANCH (CI-TOOLS-2). head_ref cannot tell an in-repo
-// sprint/ branch from a fork's branch of the same name, so a job a fork's pull
-// request reaches (cla.yml's caa on pull_request_target, ci-fast.yml's
-// fork-pull-request) opens with cardBranchSkipForkAware instead, which skips
-// only a same-repository card branch. The gate below holds it by behaviour:
-// for every pull-request job, a fork's pull request from a branch named
-// sprint/... runs it exactly when the same pull request from any other branch
-// name would.
+// THE ONE EXCEPTION is cla.yml's caa, the Contributor Assignment Agreement
+// check (pull_request_target, the org token). It keeps its card-branch skip,
+// and only in the fork-aware form: a fork names its own branch, so only a
+// same-repository card branch may skip it (CI-TOOLS-2). Whether card commits
+// should face the CAA check is a policy call, not a CI-load one, and is
+// outside this gate.
+//
+// FORK SAFETY IS UNCHANGED: a fork's pull request starts only the red,
+// hosted fork-pull-request job, whatever its branch is named.
 
 import (
 	"fmt"
@@ -34,25 +37,42 @@ import (
 	"testing"
 )
 
-// cardBranchSkip is the gate every pull-request job opens its if: with.
-const cardBranchSkip = "startsWith(github.head_ref, 'sprint/') == false"
+// cardBranchSkipForkAware is cla.yml's caa skip: only a same-repository card
+// branch skips it.
+const cardBranchSkipForkAware = "(startsWith(github.head_ref, 'sprint/') == false || github.event.pull_request.head.repo.full_name != github.repository)"
 
-// cardBranchSkipForkAware is the same gate for a job a fork's pull request
-// reaches: only a same-repository card branch skips.
-const cardBranchSkipForkAware = "(" + cardBranchSkip + " || github.event.pull_request.head.repo.full_name != github.repository)"
+// cardBranchSkipAllowed is the one job that may still read the branch name.
+var cardBranchSkipAllowed = map[string]string{"cla.yml:caa": cardBranchSkipForkAware}
 
-var startsWithLiteral = regexp.MustCompile(`^(?:startsWith\(github\.head_ref, '([^']*)'\) == false|\(startsWith\(github\.head_ref, '([^']*)'\) == false \|\| github\.event\.pull_request\.head\.repo\.full_name != github\.repository\))`)
+// headRefRead is any way an if: can read the head branch's name.
+var headRefRead = regexp.MustCompile(`(?i)github\.head_ref|github\.event\.pull_request\.head\.ref|github\.event\.pull_request\.head\.label`)
 
-// cardBranchSkipErrors names every pull-request job that does not open its
-// if: with the card-branch skip, and a skip whose prefix would also skip the
-// group branch or would not skip a card branch.
-func cardBranchSkipErrors(wfs map[string]string) []string {
+// cardBranchEvent is a pull request from head in headRepo, with a plan that
+// selects every gate, so a job's own condition is not what skips it.
+func cardBranchEvent(head, headRepo string) ciEvent {
+	return ciEvent{
+		Name: "pull_request", Branch: "main", HeadRef: head,
+		Repo: "mas-bandwidth/schema", HeadRepo: headRepo,
+		PlanPkgs: "./...", PlanLegs: `["cpp","rust","lobster","squirrel"]`,
+		PlanVerifyLegs: `["elixir","dart"]`, PlanDartCorpus: "true", PlanCppCorpus: "true",
+		PlanRows: `[{"make":"tables-go-fixedform"}]`,
+	}
+}
+
+// cardBranchSkipErrors names every pull-request job whose if: reads the head
+// branch's name (bar the allowed exception, exactly as written), every job
+// that a same-repository card branch's pull request would run differently
+// from any other branch's, and every job a fork's pull request would run
+// differently for a branch named sprint/... It also returns how many jobs it
+// evaluated, so the caller can refuse a gate that evaluated none.
+func cardBranchSkipErrors(wfs map[string]string) ([]string, int) {
 	var names []string
 	for name := range wfs {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 	var errs []string
+	evaluated := 0
 	for _, name := range names {
 		triggers := workflowTriggerBranches(wfs[name])
 		_, pr := triggers["pull_request"]
@@ -67,100 +87,103 @@ func cardBranchSkipErrors(wfs map[string]string) []string {
 		}
 		sort.Strings(jobNames)
 		for _, j := range jobNames {
-			cond, ok := "", false
-			for line := range strings.SplitSeq(jobs[j], "\n") {
-				if c, found := strings.CutPrefix(line, "    if: "); found {
-					cond, ok = c, true
-					break
+			cond := jobIfCondition(wfs[name], j)
+			if want, ok := cardBranchSkipAllowed[name+":"+j]; ok {
+				if cond != want {
+					errs = append(errs, fmt.Sprintf("%s:%s: its if: is %q; the one allowed card-branch skip is exactly %q", name, j, cond, want))
 				}
+			} else if headRefRead.MatchString(cond) {
+				errs = append(errs, fmt.Sprintf("%s:%s reads the head branch's name in its if: (%s): a card branch's pull request must run what any other branch's does, so the sprint merges on CI against main", name, j, cond))
 			}
-			if !ok {
-				errs = append(errs, fmt.Sprintf("%s:%s runs on a pull request with no job-level if:; open it with %q so a card branch's pull request skips it", name, j, cardBranchSkip))
-				continue
-			}
-			m := startsWithLiteral.FindStringSubmatch(cond)
-			if m == nil {
-				errs = append(errs, fmt.Sprintf("%s:%s does not open its if: with %q: a card branch's pull request would run it (if: %s)", name, j, cardBranchSkip, cond))
-				continue
-			}
-			// startsWith is case-insensitive in Actions
-			lit := m[1] + m[2]
-			prefix := strings.ToLower(lit)
-			groupRef := "sprint-group/schema-main"
-			cardRef := "sprint/schema-main/a-card"
-			if strings.HasPrefix(groupRef, prefix) {
-				errs = append(errs, fmt.Sprintf("%s:%s skips on head_ref prefix %q, which also skips the group branch sprint-group/schema-main: the landing gate would run nothing", name, j, lit))
-			}
-			if !strings.HasPrefix(cardRef, prefix) {
-				errs = append(errs, fmt.Sprintf("%s:%s skips on head_ref prefix %q, which does not skip the card branch sprint/schema-main/a-card", name, j, lit))
-			}
-			// a fork's branch name must not decide whether the job runs
 			for _, ev := range []string{"pull_request", "pull_request_target"} {
 				if _, on := triggers[ev]; !on {
 					continue
 				}
-				fork := func(head string) ciEvent {
-					return ciEvent{Name: ev, Branch: "main", HeadRef: head, Repo: "mas-bandwidth/schema", HeadRepo: "someone/schema"}
+				at := func(head, repo string) ciEvent {
+					e := cardBranchEvent(head, repo)
+					e.Name = ev
+					return e
 				}
-				named, err1 := jobRunsInWorkflow(wfs[name], j, fork("sprint/x"))
-				other, err2 := jobRunsInWorkflow(wfs[name], j, fork("feature-x"))
+				// a fork's branch name never decides whether a job runs
+				named, err1 := jobRunsInWorkflow(wfs[name], j, at("sprint/x", "someone/schema"))
+				other, err2 := jobRunsInWorkflow(wfs[name], j, at("feature-x", "someone/schema"))
+				if err1 == nil && err2 == nil && named != other {
+					errs = append(errs, fmt.Sprintf("%s:%s: a fork's %s from a branch named sprint/... runs=%v, from any other name runs=%v: a fork chooses its branch name", name, j, ev, named, other))
+				}
+				if _, ok := cardBranchSkipAllowed[name+":"+j]; ok {
+					continue
+				}
+				// a same-repository card branch runs what any other branch runs
+				card, err1 := jobRunsInWorkflow(wfs[name], j, at("sprint/schema-main/a-card", "mas-bandwidth/schema"))
+				plain, err2 := jobRunsInWorkflow(wfs[name], j, at("feature-x", "mas-bandwidth/schema"))
 				if err1 != nil || err2 != nil {
-					errs = append(errs, fmt.Sprintf("%s:%s: its if: cannot be evaluated for a fork's %s: %v %v", name, j, ev, err1, err2))
-				} else if named != other {
-					errs = append(errs, fmt.Sprintf("%s:%s: a fork's %s from a branch named sprint/... runs=%v, from any other name runs=%v: a fork chooses its branch name, so open the if: with %s", name, j, ev, named, other, cardBranchSkipForkAware))
+					continue // the expression model cannot read it; the text check above still holds it
 				}
-			}
-			if rest := cond[len(m[0]):]; rest != "" && (!strings.HasPrefix(rest, " && (") || !strings.HasSuffix(rest, ")")) {
-				errs = append(errs, fmt.Sprintf("%s:%s combines the card-branch skip with its own condition other than by `&& (...)`: %s", name, j, cond))
+				evaluated++
+				if card != plain {
+					errs = append(errs, fmt.Sprintf("%s:%s: a card branch's %s runs=%v, any other branch's runs=%v: the card's code would land with no verdict from this job", name, j, ev, card, plain))
+				}
 			}
 		}
 	}
-	return errs
+	return errs, evaluated
 }
 
-func TestCardBranchPullRequestsSkipCI(t *testing.T) {
+func TestCardBranchPullRequestsRunCI(t *testing.T) {
 	t.Parallel()
 	wfs := workflows(t, repoRoot(t))
 	if len(wfs) == 0 {
 		t.Fatal("no workflows read: this gate would pass over an empty set")
 	}
-	for _, name := range []string{"ci-fast.yml", "roadmap.yml", "caa-self-test.yml"} {
-		if !strings.Contains(wfs[name], "    if: "+cardBranchSkip) {
-			t.Errorf("%s carries no card-branch skip: the gate below would pass over it", name)
+	for _, name := range []string{"ci-fast.yml", "caa-self-test.yml", "roadmap.yml", "cla.yml"} {
+		if wfs[name] == "" {
+			t.Errorf("%s was not read: the gate below would pass over it", name)
 		}
 	}
-	for _, name := range []string{"cla.yml", "ci-fast.yml"} {
-		if !strings.Contains(wfs[name], "    if: "+cardBranchSkipForkAware) {
-			t.Errorf("%s carries no fork-aware card-branch skip: the fork rule below would pass over it", name)
-		}
-	}
-	for _, e := range cardBranchSkipErrors(wfs) {
+	errs, evaluated := cardBranchSkipErrors(wfs)
+	for _, e := range errs {
 		t.Error(e)
 	}
-	// the gate as Actions evaluates it: a card branch's pull request skips
-	// plan, the group branch's runs it, and a push to main still runs CAA's
-	// self-test
+	// ci-fast.yml alone has more than twenty pull-request jobs; a gate that
+	// evaluated a handful has lost its expression model
+	t.Logf("%d pull-request jobs evaluated for a card branch", evaluated)
+	if evaluated < 20 {
+		t.Errorf("only %d pull-request jobs were evaluated for a card branch: the behaviour check is hollow", evaluated)
+	}
+	// the gate as Actions evaluates it
+	inRepo, fork := "mas-bandwidth/schema", "someone/schema"
 	for _, c := range []struct {
 		wf, job string
 		ev      ciEvent
 		want    bool
 	}{
-		{"ci-fast.yml", "plan", ciEvent{Name: "pull_request", Branch: "main", HeadRef: "sprint/schema-main/a-card", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"}, false},
-		{"ci-fast.yml", "plan", ciEvent{Name: "pull_request", Branch: "main", HeadRef: "sprint-group/schema-main", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"}, true},
-		{"caa-self-test.yml", "caa-self-test", ciEvent{Name: "push", Branch: "main", Repo: "mas-bandwidth/schema"}, true},
+		// a card branch's pull request runs the fast lane, as the group
+		// branch's and any other's do
+		{"ci-fast.yml", "plan", cardBranchEvent("sprint/schema-main/a-card", inRepo), true},
+		{"ci-fast.yml", "go-test-touched", cardBranchEvent("sprint/schema-main/a-card", inRepo), true},
+		{"ci-fast.yml", "verdict", cardBranchEvent("sprint/schema-main/a-card", inRepo), true},
+		{"ci-fast.yml", "plan", cardBranchEvent("sprint-group/schema-main", inRepo), true},
+		{"caa-self-test.yml", "caa-self-test", cardBranchEvent("sprint/schema-main/a-card", inRepo), true},
+		{"roadmap.yml", "roadmap", cardBranchEvent("sprint/schema-main/a-card", inRepo), true},
+		{"caa-self-test.yml", "caa-self-test", ciEvent{Name: "push", Branch: "main", Repo: inRepo}, true},
+		// fork safety: a fork's pull request reaches no fleet job, whatever
+		// its branch is named, and gets the red hosted fork job
+		{"ci-fast.yml", "plan", cardBranchEvent("sprint/schema-main/a-card", fork), false},
+		{"ci-fast.yml", "plan", cardBranchEvent("feature", fork), false},
+		{"ci-fast.yml", "verdict", cardBranchEvent("sprint/anything", fork), false},
+		{"caa-self-test.yml", "caa-self-test", cardBranchEvent("sprint/anything", fork), false},
+		{"ci-fast.yml", "fork-pull-request", cardBranchEvent("sprint/anything", fork), true},
+		{"ci-fast.yml", "fork-pull-request", cardBranchEvent("feature", fork), true},
+		{"ci-fast.yml", "fork-pull-request", cardBranchEvent("feature", inRepo), false},
+		{"ci-fast.yml", "fork-pull-request", cardBranchEvent("sprint/schema-main/a-card", inRepo), false},
 		// CI-TOOLS-2: a fork's branch named sprint/... is still checked for
-		// the CAA; the table's own card branch is not
-		{"cla.yml", "caa", ciEvent{Name: "pull_request_target", Branch: "main", HeadRef: "sprint/anything", Repo: "mas-bandwidth/schema", HeadRepo: "someone/schema"}, true},
-		{"cla.yml", "caa", ciEvent{Name: "pull_request_target", Branch: "main", HeadRef: "sprint/schema-main/a-card", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"}, false},
-		// CI-TOOLS-1: a fork's pull request gets the red fork job, whatever
-		// its branch is named; the table's own pull request does not
-		{"ci-fast.yml", "fork-pull-request", ciEvent{Name: "pull_request", Branch: "main", HeadRef: "sprint/anything", Repo: "mas-bandwidth/schema", HeadRepo: "someone/schema"}, true},
-		{"ci-fast.yml", "fork-pull-request", ciEvent{Name: "pull_request", Branch: "main", HeadRef: "feature", Repo: "mas-bandwidth/schema", HeadRepo: "someone/schema"}, true},
-		{"ci-fast.yml", "fork-pull-request", ciEvent{Name: "pull_request", Branch: "main", HeadRef: "feature", Repo: "mas-bandwidth/schema", HeadRepo: "mas-bandwidth/schema"}, false},
+		// the CAA; the sprint's own card branch is not
+		{"cla.yml", "caa", ciEvent{Name: "pull_request_target", Branch: "main", HeadRef: "sprint/anything", Repo: inRepo, HeadRepo: fork}, true},
+		{"cla.yml", "caa", ciEvent{Name: "pull_request_target", Branch: "main", HeadRef: "sprint/schema-main/a-card", Repo: inRepo, HeadRepo: inRepo}, false},
 	} {
 		got, err := jobRunsInWorkflow(wfs[c.wf], c.job, c.ev)
 		if err != nil || got != c.want {
-			t.Errorf("%s:%s on %s from %q: runs=%v err=%v, want runs=%v", c.wf, c.job, c.ev.Name, c.ev.HeadRef, got, err, c.want)
+			t.Errorf("%s:%s on %s from %s %q: runs=%v err=%v, want runs=%v", c.wf, c.job, c.ev.Name, c.ev.HeadRepo, c.ev.HeadRef, got, err, c.want)
 		}
 	}
 
@@ -176,14 +199,13 @@ func TestCardBranchPullRequestsSkipCI(t *testing.T) {
 		name string
 		wfs  map[string]string
 	}{
-		{"a job without the skip", plant("cla.yml", "    if: "+cardBranchSkipForkAware+"\n", "")},
-		{"a fork's branch name skips the CAA", plant("cla.yml", "    if: "+cardBranchSkipForkAware+"\n", "    if: "+cardBranchSkip+"\n")},
-		{"a skip dropped from a combined if", plant("ci-fast.yml", "    if: "+cardBranchSkip+" && (", "    if: (")},
-		{"a prefix that also skips the group branch", plant("roadmap.yml", "'sprint/'", "'sprint'")},
-		{"a prefix that skips no card branch", plant("ci-fast.yml", "'sprint/'", "'sprint-group/'")},
-		{"the skip joined by ||", plant("caa-self-test.yml", cardBranchSkip+" && (", cardBranchSkip+" || (")},
+		{"the card-branch skip back on ci-fast's plan", plant("ci-fast.yml", "  plan:\n    if: ", "  plan:\n    if: startsWith(github.head_ref, 'sprint/') == false && ")},
+		{"the fork-aware skip on ci-fast's fork job", plant("ci-fast.yml", "  fork-pull-request:\n    if: ", "  fork-pull-request:\n    if: "+cardBranchSkipForkAware+" && ")},
+		{"a skip spelled in another case on roadmap", plant("roadmap.yml", "  roadmap:\n    if: ", "  roadmap:\n    if: !startsWith(github.HEAD_REF, 'Sprint/') && ")},
+		{"a skip on the pull request's head.ref", plant("caa-self-test.yml", "  caa-self-test:\n    if: ", "  caa-self-test:\n    if: !startsWith(github.event.pull_request.head.ref, 'sprint/') && ")},
+		{"a fork's branch name skips the CAA", plant("cla.yml", "    if: "+cardBranchSkipForkAware+"\n", "    if: startsWith(github.head_ref, 'sprint/') == false\n")},
 	} {
-		if len(cardBranchSkipErrors(c.wfs)) == 0 {
+		if errs, _ := cardBranchSkipErrors(c.wfs); len(errs) == 0 {
 			t.Errorf("PLANTED PATTERN %q left the gate green", c.name)
 		}
 	}
