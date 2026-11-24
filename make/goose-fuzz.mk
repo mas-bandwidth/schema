@@ -175,11 +175,14 @@ schema-goose-runs-hostile-corpus-negative-control: $(GOOSE_FUZZ_SCHEMA)
 # wire-text-total-and-count, and on nothing else. Both are taken out because
 # wire-text-total-and-count is past its [..4] bound as well as its total, and
 # under strict-only (docs/plans/strict-only.md) either refuses it.
+# The bound is taken out for list elements only: the same branch bounds a
+# bytes field's length, and the corpus's bytes-past-capacity rows are not
+# this control's to turn red.
 .PHONY: schema-goose-runs-hostile-corpus-total-negative-control
 schema-goose-runs-hostile-corpus-total-negative-control: $(GOOSE_FUZZ_SCHEMA)
 	@test -x "$(GOOSE)" || $(MAKE) dist-goose
 	@mkdir -p $(GOOSE_FUZZ_DIR)
-	@if SCHEMA_GOOSE_HOSTILE_SABOTAGE='s|if d.text_total > 0 {|if d.text_total < 0 { // SABOTAGED: the total keeps nothing out|;s|} else if count > d.bound as! u64 {|} else if count > d.bound as! u64 \&\& false { // SABOTAGED: the bound keeps nothing out|' \
+	@if SCHEMA_GOOSE_HOSTILE_SABOTAGE='s|if d.text_total > 0 {|if d.text_total < 0 { // SABOTAGED: the total keeps nothing out|;s|} else if count > d.bound as! u64 {|} else if count > d.bound as! u64 \&\& bytes { // SABOTAGED: the bound keeps no list element out|' \
 		sh make/goose-hostile.sh "$(GOOSE)" ./$(GOOSE_FUZZ_SCHEMA) $(GOOSE_HOSTILE_CORPUS) $(GOOSE_FUZZ_DIR)/hostile-total-plant \
 		>$(GOOSE_FUZZ_DIR)/hostile-total-plant.log 2>&1; then \
 		cat $(GOOSE_FUZZ_DIR)/hostile-total-plant.log; \
