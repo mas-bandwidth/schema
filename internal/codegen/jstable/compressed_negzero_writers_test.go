@@ -125,15 +125,17 @@ func TestJavaScriptCompressedNegZeroWriters(t *testing.T) {
 	cmd := testproc.Command(t, node, filepath.Join(dir, "probe.mjs"), corpus)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
-	if err != nil || !strings.Contains(string(out), "\nPASS rows=15 twins=84\n") {
+	if err != nil || !strings.Contains(string(out), "\nPASS rows=15 twins=77\n") {
 		t.Fatalf("node probe: %v\n%s", err, out)
 	}
 }
 
 const jsNegZeroProbe = `import { readFileSync } from "node:fs";
 import { Var, Fix, VarSave, FixSave, VarToJson, FixToJson, VarFromJson, FixFromJson, VarCookMeasure, VarCookFrom, FixCookMeasure, FixCookFrom, VarMeasureRetain, VarSaveRetain, TableVariableRetain, TableVariableReport } from "./NzgoVariable.js";
-import { Var as FVar, Fix as FFix, TableFixedReport } from "./NzgoTable.js";
-import { VarFixedMeasure, VarFixedSave, FixFixedMeasure, FixFixedSave, FixFixedLoad, FixFixedNewPlan, FixMeasureMessages, FixSaveMessages } from "./ProbeTable.js";
+import * as fixedRuntime from "./NzgoTable.js";
+import { Fix as FFix, TableFixedReport } from "./NzgoTable.js";
+import * as fixedTable from "./ProbeTable.js";
+import { FixFixedMeasure, FixFixedSave, FixFixedLoad, FixFixedNewPlan, FixMeasureMessages, FixSaveMessages } from "./ProbeTable.js";
 import { Level, PickType } from "./Probe.js";
 
 const hex = (b) => Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
@@ -196,6 +198,15 @@ for (const line of readFileSync(dir + "/cases.tsv", "utf8").split("\n")) {
   if (hex(got) !== hex(want)) { fail(name + ": the " + form + " save of -0 at " + path + " is not " + expect + "." + form + ".bin:\n have " + hex(got) + "\n want " + hex(want)); }
 }
 
+// AN UNDECLARED table IS A VARIABLE TABLE AND NEVER REACHES FORM 3
+// (docs/SPEC-TABLES.md, "AN UNDECLARED table IS A VARIABLE TABLE"): Var has
+// no fixed class and no fixed writer, so its -0 has no fixed twin to owe. The
+// fixed form's twins are Fix's.
+if (fixedRuntime.Var !== undefined) { fail("the undeclared table Var carries a fixed class"); }
+for (const name of ["VarFixedMeasure", "VarFixedSave", "VarFixedLoad"]) {
+  if (fixedTable[name] !== undefined) { fail("the undeclared table Var carries the fixed writer " + name); }
+}
+
 // THE TWINS: every writer saves a value holding -0 in one cell and owes the
 // bytes its +0 twin writes; the plain float p owes different bytes.
 const cases = [
@@ -213,7 +224,6 @@ const writers = [
   ["Var", "json", false, () => new Var(), (v) => enc(VarToJson(v))],
   ["Var", "cook_le", false, () => new Var(), (v) => cook(VarCookMeasure, VarCookFrom, v, 1)],
   ["Var", "cook_be", false, () => new Var(), (v) => cook(VarCookMeasure, VarCookFrom, v, 2)],
-  ["Var", "fixed", true, () => new FVar(), (v) => fixed(VarFixedMeasure, VarFixedSave, v)],
   ["Fix", "save", false, () => new Fix(), (v) => FixSave(v)],
   ["Fix", "json", false, () => new Fix(), (v) => enc(FixToJson(v))],
   ["Fix", "cook_le", false, () => new Fix(), (v) => cook(FixCookMeasure, FixCookFrom, v, 1)],
