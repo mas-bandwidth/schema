@@ -17,7 +17,7 @@
 
 local inputs = dofile("inputs.nut", true);
 local serialize = dofile("serialize.nut", true);
-local P = dofile("schema_module.nut", true).require("PacketWriteRefusal");
+local P = dofile("schema_module.nut", true).require("RefusalPacket");
 
 // RAISES: the ops whose field is a ranged int32 (SPEC §5.1 row 1), the only
 // ones where the trap below is this leg's refusal.
@@ -55,6 +55,7 @@ local apply = function(v, op, arg) {
     }
     case "fixed_constant": v.FixedConstant = arg.tointeger(); break;
     case "reserved_zero": v.ReservedZero = arg.tointeger(); break;
+    case "perks": v.Perks = arg.tointeger(); break;
     default: throw "rows: unknown op " + op;
   }
 };

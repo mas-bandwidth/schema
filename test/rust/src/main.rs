@@ -53,11 +53,14 @@ fn check_err(result: example::Result, what: &str) {
 // and Dart tests' `assertsEnabled`.
 const ASSERTS_ENABLED: bool = cfg!(debug_assertions);
 
-// expect_assert runs a writer-contract violation and demands the assertion
-// fires (checked twin only — the release writer trusts by design). The panic
-// hook is silenced for the duration: the panic IS the pass, and its backtrace
-// noise would read like a failure in the log.
-fn expect_assert<F: FnOnce()>(f: F, what: &str) {
+// expect_assert runs a writer-contract violation and demands that the
+// generated assertion fires, named by its exact message (checked twin only —
+// the release writer trusts by design). Any other panic fails: serialize.rs's
+// own misuse checks can panic on the same value, so a bare "it panicked"
+// would stay green with the generated assert deleted. The panic hook is
+// silenced for the duration: the panic IS the pass, and its backtrace noise
+// would read like a failure in the log.
+fn expect_assert<F: FnOnce()>(f: F, message: &str, what: &str) {
     if !ASSERTS_ENABLED {
         return;
     }
@@ -65,7 +68,14 @@ fn expect_assert<F: FnOnce()>(f: F, what: &str) {
     std::panic::set_hook(Box::new(|_| {}));
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
     std::panic::set_hook(previous);
-    check(outcome.is_err(), what);
+    let fired = match &outcome {
+        Err(payload) => {
+            payload.downcast_ref::<&str>().copied().or_else(|| payload.downcast_ref::<String>().map(String::as_str))
+                == Some(message)
+        }
+        Ok(()) => false,
+    };
+    check(fired, what);
 }
 
 // golden_wire byte-compares written wire against the C++-pinned golden.
@@ -616,6 +626,8 @@ fn main() {
 
         // a mask bit above the widened 8-bit wire violates the writer's
         // contract: the debug build asserts, release trusts the caller
+        // (SPEC.md §5.1 row 9)
+        const FLAGS_ASSERT: &str = "flags has a mask bit above the 8-bit wire width";
         input.flags = 1 << 9;
         expect_assert(
             || {
@@ -623,8 +635,11 @@ fn main() {
                 let mut ws2 = WriteStream::new(&mut buffer2);
                 let _ = write_probe_report(&mut ws2, &input);
             },
+            FLAGS_ASSERT,
             "a mask bit above the flags wire width asserts",
         );
+        // a bit above 31, which `value.flags as u32` would drop, is the shared
+        // write-refusal-packet row flags_wide_high (test/packet-write-refusal)
     }
 
     // ---- write-side contracts: the generated writer holds every caller
@@ -648,6 +663,7 @@ fn main() {
                 let mut ws = WriteStream::new(&mut buffer);
                 let _ = write_probe_sample(&mut ws, &sample);
             },
+            "weapon above the Weapon wire range [0, 15]",
             "an out-of-set enum value asserts on write",
         );
 
@@ -676,6 +692,7 @@ fn main() {
                 let mut ws_below = WriteStream::new(&mut buffer_below);
                 let _ = write_probe_sample(&mut ws_below, &below);
             },
+            "samples_count out of range [1, 8]",
             "a below-minimum array count asserts on write",
         );
 
@@ -688,6 +705,7 @@ fn main() {
                 let mut ws3 = WriteStream::new(&mut buffer3);
                 let _ = write_test(&mut ws3, &test);
             },
+            "test_b out of range [0, 1000]",
             "an out-of-range int value asserts on write",
         );
 
@@ -701,6 +719,7 @@ fn main() {
                 let mut ws4 = WriteStream::new(&mut buffer4);
                 let _ = write_probe_bits(&mut ws4, &bits);
             },
+            "small above the bits(9) wire width",
             "a bit above a bits(N) wire width asserts on write",
         );
 
@@ -713,6 +732,7 @@ fn main() {
                 let mut ws5 = WriteStream::new(&mut buffer5);
                 let _ = write_chat(&mut ws5, &chat);
             },
+            "text_length out of range [0, 256]",
             "an over-length string asserts on write",
         );
     }

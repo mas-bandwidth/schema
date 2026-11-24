@@ -44,7 +44,7 @@ func TestWriteRefusalPacketSurface(t *testing.T) {
 // writeRefusalPacketSchema carries one field per row §5.1 names: a ranged
 // scalar, a bits(N) value, an enum, a counted array, a string, a union, and a
 // constant and a reserved-range field whose only lawful value is the
-// declared one. The real const() and reserved() wire items ride beside them
+// declared one, and a flags mask of width 3. The real const() and reserved() wire items ride beside them
 // so the writer's own constant and zero bits are exercised too.
 const writeRefusalPacketSchema = `package packetrefusal
 
@@ -53,6 +53,13 @@ enum Grade
     Bronze
     Silver
     Gold
+}
+
+flags Perk
+{
+    Shield
+    Boost
+    Cloak
 }
 
 type Laser
@@ -81,6 +88,7 @@ type PacketWriteRefusal
     shot           Shot
     fixed_constant int32 = 5 | min = 5, max = 5
     reserved_zero  int32 = 0 | min = 0, max = 0
+    perks          Perk
     const(0xAB, 8)
     reserved(5)
 }
@@ -130,6 +138,9 @@ func TestWriteRefusalPacketRows(t *testing.T) {
 		{"const_at", "wrote", func(v *PacketWriteRefusal) { v.FixedConstant = 5 }},
 		{"reserved_wrong", "refused", func(v *PacketWriteRefusal) { v.ReservedZero = 1 }},
 		{"reserved_at", "wrote", func(v *PacketWriteRefusal) { v.ReservedZero = 0 }},
+		{"flags_wide", "refused", func(v *PacketWriteRefusal) { v.Perks = 1 << 3 }},
+		{"flags_wide_high", "refused", func(v *PacketWriteRefusal) { v.Perks = 1 << 40 }},
+		{"flags_at_max", "wrote", func(v *PacketWriteRefusal) { v.Perks = PerkShield | PerkBoost | PerkCloak }},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -164,7 +175,9 @@ func runWriteRefusalPacket(t *testing.T) {
 
 	c := compiler.New()
 	dir := t.TempDir()
-	schema := filepath.Join(dir, "PacketWriteRefusal.schema")
+	// the file name stays clear of the type name: the Java emitter writes one
+	// outer class per file, so a unit named PacketWriteRefusal refuses the type
+	schema := filepath.Join(dir, "RefusalPacket.schema")
 	if err := os.WriteFile(schema, []byte(writeRefusalPacketSchema), 0o600); err != nil {
 		t.Fatal(err)
 	}

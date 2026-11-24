@@ -9,7 +9,7 @@
 -- ends the run nonzero. rows.luau carries rows.txt in as source (the
 -- interpreter has no io library).
 local serialize = require("./serialize")
-local P = require("./PacketWriteRefusal")
+local P = require("./RefusalPacket")
 local rows: { { name: string, op: string, arg: string } } = require("./rows") :: any
 
 local function fromHex(h: string): buffer
@@ -46,6 +46,8 @@ local function build(op: string, arg: string): any
 		v.FixedConstant = tonumber(arg)
 	elseif op == "reserved_zero" then
 		v.ReservedZero = tonumber(arg)
+	elseif op == "perks" then
+		v.Perks = integer.create(tonumber(arg) :: number) -- a flags mask is integer storage
 	else
 		error("write-refusal-packet: unknown op " .. op)
 	end

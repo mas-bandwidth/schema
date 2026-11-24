@@ -6,7 +6,7 @@
 -- reports. A write that raises is printed as "<name> raised" so it answers no
 -- row and the check names it, never as a refusal.
 local serialize = require("serialize")
-local G = require("PacketWriteRefusal")
+local G = require("RefusalPacket")
 local inputs = require("inputs")
 
 local function unhex(s)
@@ -24,6 +24,7 @@ local ops = {
   text_fill = function(v, n) v.Text = string.rep("a", n) end,
   fixed_constant = function(v, n) v.FixedConstant = n end,
   reserved_zero = function(v, n) v.ReservedZero = n end,
+  perks = function(v, n) v.Perks = n end,
 }
 
 for line in inputs.rows:gmatch("[^\n]+") do

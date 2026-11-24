@@ -10,7 +10,7 @@
 //
 //   main.goose -- <rows.txt path>
 import os;
-import .PacketWriteRefusal;
+import .RefusalPacket;
 import .serialize;
 
 var wbuf: u8[256] = [0; 256];
@@ -51,6 +51,8 @@ fn apply(v: packetrefusal::PacketWriteRefusal&, op: const u8[:], arg: const u8[:
         v.FixedConstant = n as! i32;
     } else if op == "reserved_zero" {
         v.ReservedZero = n as! i32;
+    } else if op == "perks" {
+        v.Perks = n as! packetrefusal::Perk;
     } else {
         return false;
     }

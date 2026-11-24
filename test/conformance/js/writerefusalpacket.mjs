@@ -21,8 +21,8 @@ if (tier !== "runtime" && tier !== "flat") {
 }
 const { WriteStream } = await import(pathToFileURL(serializeIndex).href);
 const generated = pathToFileURL(generatedDir + "/");
-const runtime = await import(new URL("PacketWriteRefusal.js", generated).href);
-const flat = await import(new URL("PacketWriteRefusalFlat.js", generated).href);
+const runtime = await import(new URL("RefusalPacket.js", generated).href);
+const flat = await import(new URL("RefusalPacketFlat.js", generated).href);
 
 function hexBytes(text) {
   if (text.length % 2 !== 0 || !/^[0-9A-Fa-f]*$/.test(text)) { throw new Error(JSON.stringify(text) + " is not hex"); }
@@ -51,6 +51,7 @@ function apply(value, op, arg) {
     case "text_fill": value.text.fill(0x61, 0, n); value.textLength = n; break;
     case "fixed_constant": value.fixedConstant = n; break;
     case "reserved_zero": value.reservedZero = n; break;
+    case "perks": value.perks = BigInt(arg); break; // a flags mask is BigInt (uint64) storage
     default: throw new Error("unknown op " + JSON.stringify(op));
   }
 }

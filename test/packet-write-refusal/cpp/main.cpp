@@ -5,6 +5,12 @@
 // it. A written twin must be written, read back and have the same bit count.
 // A case in the file this driver does not run, or a case it runs that the file
 // does not name, fails.
+//
+// A refusal must be the GENERATED assert, named by the text of its expression
+// on the child's stderr (refusedBy below). The runtime's write_bits asserts
+// value_fits_in_bits on its own uint64 argument, so a mask bit above a flags
+// width aborts there too: an abort alone stays green with the generated flags
+// check deleted, and the expression is what tells them apart.
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -54,6 +60,9 @@ static void constWrong( PacketWriteRefusal & v ) { v.fixed_constant = 6; }
 static void constAt( PacketWriteRefusal & v ) { v.fixed_constant = 5; }
 static void reservedWrong( PacketWriteRefusal & v ) { v.reserved_zero = 1; }
 static void reservedAt( PacketWriteRefusal & v ) { v.reserved_zero = 0; }
+static void flagsWide( PacketWriteRefusal & v ) { v.perks = 1ull << 3; }
+static void flagsWideHigh( PacketWriteRefusal & v ) { v.perks = 1ull << 40; }
+static void flagsAtMax( PacketWriteRefusal & v ) { v.perks = Perk_Shield | Perk_Boost | Perk_Cloak; }
 
 static std::map<std::string, Setter> setters()
 {
@@ -80,6 +89,33 @@ static std::map<std::string, Setter> setters()
     m["const_at"] = constAt;
     m["reserved_wrong"] = reservedWrong;
     m["reserved_at"] = reservedAt;
+    m["flags_wide"] = flagsWide;
+    m["flags_wide_high"] = flagsWideHigh;
+    m["flags_at_max"] = flagsAtMax;
+    return m;
+}
+
+// refusedBy names, for every refused case, a fragment of the generated
+// assert's expression that must appear in the abort message. The flags rows
+// carry the whole comparison: the runtime's own assert also names
+// value.perks, inside value_fits_in_bits.
+static std::map<std::string, std::string> refusedBy()
+{
+    std::map<std::string, std::string> m;
+    m["scalar_high"] = "value.scalar";
+    m["scalar_low"] = "value.scalar";
+    m["bits_wide"] = "value.narrow";
+    m["enum_high"] = "value.grade";
+    m["union_tag_high"] = "value.type";
+    m["count_high"] = "value.window_count";
+    m["count_low"] = "value.window_count";
+    m["text_long"] = "value.text";
+    m["text_illformed"] = "value.text";
+    m["text_zero"] = "value.text";
+    m["const_wrong"] = "value.fixed_constant";
+    m["reserved_wrong"] = "value.reserved_zero";
+    m["flags_wide"] = "value.perks < ( 1ull << 3 )";
+    m["flags_wide_high"] = "value.perks < ( 1ull << 3 )";
     return m;
 }
 
@@ -158,7 +194,8 @@ static int runChild( Setter set )
         return 11;
     }
     if ( back.scalar != value.scalar || back.narrow != value.narrow || back.window_count != value.window_count ||
-         back.text_length != value.text_length || back.grade != value.grade || back.shot.type != value.shot.type )
+         back.text_length != value.text_length || back.grade != value.grade || back.shot.type != value.shot.type ||
+         back.perks != value.perks )
     {
         return 12;
     }
@@ -198,6 +235,7 @@ int main( int argc, char ** argv )
         return 2;
     }
     const std::map<std::string, Setter> table = setters();
+    const std::map<std::string, std::string> expected = refusedBy();
     int failures = 0;
     int refused = 0;
     int written = 0;
@@ -221,6 +259,19 @@ int main( int argc, char ** argv )
         {
             written++;
         }
+        const std::map<std::string, std::string>::const_iterator want = expected.find( c.name );
+        if ( c.refused && want == expected.end() )
+        {
+            printf( "FAILED: packet-write-refusal-cpp: %s: refused, and refusedBy names no generated assert for it\n", c.name.c_str() );
+            failures++;
+            continue;
+        }
+        int pipe_fds[2];
+        if ( pipe( pipe_fds ) != 0 )
+        {
+            perror( "packet-write-refusal-cpp: pipe" );
+            return 2;
+        }
         fflush( stdout );
         fflush( stderr );
         const pid_t pid = fork();
@@ -231,23 +282,47 @@ int main( int argc, char ** argv )
         }
         if ( pid == 0 )
         {
+            close( pipe_fds[0] );
+            if ( dup2( pipe_fds[1], 2 ) < 0 )
+            {
+                _exit( 20 );
+            }
             const int code = runChild( it->second );
             fflush( stdout );
             fflush( stderr );
             _exit( code );
         }
+        close( pipe_fds[1] );
+        std::string message;
+        char chunk[512];
+        ssize_t got;
+        while ( ( got = read( pipe_fds[0], chunk, sizeof( chunk ) ) ) > 0 )
+        {
+            message.append( chunk, (size_t) got );
+        }
+        close( pipe_fds[0] );
+        fputs( message.c_str(), stderr ); // the child's assert line, as before
         int status = 0;
         if ( waitpid( pid, &status, 0 ) != pid )
         {
             perror( "packet-write-refusal-cpp: waitpid" );
             return 2;
         }
-        const bool ok = c.refused ? ( WIFSIGNALED( status ) && WTERMSIG( status ) == SIGABRT )
+        const bool aborted = WIFSIGNALED( status ) && WTERMSIG( status ) == SIGABRT;
+        const bool ok = c.refused ? ( aborted && message.find( want->second ) != std::string::npos )
                                   : ( WIFEXITED( status ) && WEXITSTATUS( status ) == 0 );
         if ( !ok )
         {
-            printf( "FAILED: packet-write-refusal-cpp: %s: expected %s, child %s\n", c.name.c_str(),
-                    c.refused ? "a debug assert" : "a written value", describe( status ).c_str() );
+            if ( c.refused && aborted )
+            {
+                printf( "FAILED: packet-write-refusal-cpp: %s: aborted, but not by the generated assert on %s\n", c.name.c_str(),
+                        want->second.c_str() );
+            }
+            else
+            {
+                printf( "FAILED: packet-write-refusal-cpp: %s: expected %s, child %s\n", c.name.c_str(),
+                        c.refused ? "a debug assert" : "a written value", describe( status ).c_str() );
+            }
             failures++;
         }
     }
