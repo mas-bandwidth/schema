@@ -1368,7 +1368,7 @@ defmodule Bench.Table do
   @field_defaults for {_name, desc} <- @tables,
                       f <- desc.fields,
                       into: %{},
-                      do: {f.id, default_builder.(default_builder, {:field, f})}
+                      do: {f, default_builder.(default_builder, {:field, f})}
 
   # Union arms are field lines (docs/SPEC-TABLES.md §2.6, §3).
   @unions %{
@@ -5679,7 +5679,36 @@ defmodule Bench.Table do
     Map.fetch!(@defaults_by_table, desc.name)
   end
 
-  defp field_default(f), do: Map.fetch!(@field_defaults, f.id)
+  defp field_default(f) do
+    case Map.fetch(@field_defaults, f) do
+      {:ok, value} -> value
+      :error -> uncached_field_default(f)
+    end
+  end
+
+  # Union-arm descriptors are not members of a table's descriptor list. They
+  # take the same declared-default rules without sharing a cache identity with
+  # an unrelated, same-named table field (SF-23).
+  defp uncached_field_default(%{optional: true} = f), do: Map.get(f, :default)
+  defp uncached_field_default(%{t: :table, elem: name}), do: defaults(Map.fetch!(@tables, name))
+
+  defp uncached_field_default(%{t: :list, fixed_array: n} = f),
+    do: List.duplicate(element_default(f), n)
+
+  defp uncached_field_default(%{t: :list, min_count: n} = f) when n > 0,
+    do: List.duplicate(element_default(f), n)
+
+  defp uncached_field_default(%{t: :keyed} = f), do: uncached_keyed_defaults(f)
+  defp uncached_field_default(f), do: Map.get(f, :default)
+
+  defp uncached_keyed_defaults(f) do
+    value =
+      if f.item.t == :table,
+        do: defaults(Map.fetch!(@tables, f.item.elem)),
+        else: Map.get(f.item, :default)
+
+    Map.new(f.key_names, fn name -> {name, value} end)
+  end
 
   # Missing slots keep their element default in both binary and text forms.
   defp element_default(%{elem_kind: 13, elem: name}), do: defaults(Map.fetch!(@tables, name))
