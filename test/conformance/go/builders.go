@@ -14,6 +14,7 @@ import (
 	"mapdemo"
 	"messagedemo"
 	"streamdemo"
+	"tblvaluedefaults"
 	"tblvarevo1"
 	"tblvarevo2"
 	"tblvarevo3"
@@ -89,6 +90,9 @@ var builderCodecs = []builderCodec{
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
 	builderRow("cooktorturewide", "TortureWideCook", (*cooktorturewide.TortureWideCookBuilder).Init, (*cooktorturewide.TortureWideCookBuilder).Shutdown, (*cooktorturewide.TortureWideCookBuilder).GetRoot, func(b *cooktorturewide.TortureWideCookBuilder) cooktorturewide.TableWriteContext { return &b.Arena }, cooktorturewide.TortureWideCookLoadBuilder, cooktorturewide.TortureWideCookMeasure, cooktorturewide.TortureWideCookSave, func(r *cooktorturewide.TableReport) report {
+		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
+	}),
+	builderRow("tblvaluedefaults", "VarDefaults", (*tblvaluedefaults.VarDefaultsBuilder).Init, (*tblvaluedefaults.VarDefaultsBuilder).Shutdown, (*tblvaluedefaults.VarDefaultsBuilder).GetRoot, func(b *tblvaluedefaults.VarDefaultsBuilder) tblvaluedefaults.TableWriteContext { return &b.Arena }, tblvaluedefaults.VarDefaultsLoadBuilder, tblvaluedefaults.VarDefaultsMeasure, tblvaluedefaults.VarDefaultsSave, func(r *tblvaluedefaults.TableReport) report {
 		return report{unknown: r.Unknown, widened: r.Widened, refused: r.Refused()}
 	}),
 

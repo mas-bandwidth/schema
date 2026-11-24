@@ -1354,6 +1354,7 @@ defmodule Driver do
   @unit_packages %{
     "scalars" => "scalardemo",
     "tblscalars2" => "scalardemo2",
+    "packetunions" => "tblpacketunions",
     "widelist" => "widelistdemo",
     "tblsurf" => "surfaces",
     "tblann4096" => "announce4096",
