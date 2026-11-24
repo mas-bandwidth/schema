@@ -24951,30 +24951,15 @@ inline int64_t WeaponConfigFixedSave( const WeaponConfig * values, int64_t count
 // different bytes is TableMessageReason::layout_malformed, a hash below the floor is
 // TableMessageReason::layout_unsupported. Identity is a PLAN walked by the same loop.
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
-// holds the same rule as FixedLoad. The body below is the walk itself.
-inline int64_t WeaponConfigFixedLoadWalkBody( WeaponConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+// holds the same rule as FixedLoad. The walk is a lambda INSIDE this function, not a
+// function of its own: there is no second, unreset entry point a caller could reach.
 inline int64_t WeaponConfigFixedLoadWalk( WeaponConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = WeaponConfigFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { WeaponConfigReset( values[k] ); } }
-        return -1;
-    }
-    return n;
-}
-
-// WeaponConfigFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
-// every recovered record, with the counters counted onto the report passed.
-inline int64_t WeaponConfigFixedLoadWalkBody( WeaponConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
-{
-    TableReport local;
-    if ( report == NULL ) { report = &local; }
     // EVERY REFUSAL OF THE FIXED LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS
     // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3): a damage return keeps
     // malformed set BESIDE the name, so a caller switching on reason sees it.
@@ -25248,6 +25233,13 @@ inline int64_t WeaponConfigFixedLoadWalkBody( WeaponConfig * values, int64_t cap
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { WeaponConfigReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN WeaponConfigFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -25752,30 +25744,15 @@ inline int64_t LoadoutConfigFixedSave( const LoadoutConfig * values, int64_t cou
 // different bytes is TableMessageReason::layout_malformed, a hash below the floor is
 // TableMessageReason::layout_unsupported. Identity is a PLAN walked by the same loop.
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
-// holds the same rule as FixedLoad. The body below is the walk itself.
-inline int64_t LoadoutConfigFixedLoadWalkBody( LoadoutConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+// holds the same rule as FixedLoad. The walk is a lambda INSIDE this function, not a
+// function of its own: there is no second, unreset entry point a caller could reach.
 inline int64_t LoadoutConfigFixedLoadWalk( LoadoutConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = LoadoutConfigFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { LoadoutConfigReset( values[k] ); } }
-        return -1;
-    }
-    return n;
-}
-
-// LoadoutConfigFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
-// every recovered record, with the counters counted onto the report passed.
-inline int64_t LoadoutConfigFixedLoadWalkBody( LoadoutConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
-{
-    TableReport local;
-    if ( report == NULL ) { report = &local; }
     // EVERY REFUSAL OF THE FIXED LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS
     // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3): a damage return keeps
     // malformed set BESIDE the name, so a caller switching on reason sees it.
@@ -26049,6 +26026,13 @@ inline int64_t LoadoutConfigFixedLoadWalkBody( LoadoutConfig * values, int64_t c
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { LoadoutConfigReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN LoadoutConfigFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -26667,30 +26651,15 @@ inline int64_t ProfileConfigFixedSave( const ProfileConfig * values, int64_t cou
 // different bytes is TableMessageReason::layout_malformed, a hash below the floor is
 // TableMessageReason::layout_unsupported. Identity is a PLAN walked by the same loop.
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
-// holds the same rule as FixedLoad. The body below is the walk itself.
-inline int64_t ProfileConfigFixedLoadWalkBody( ProfileConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+// holds the same rule as FixedLoad. The walk is a lambda INSIDE this function, not a
+// function of its own: there is no second, unreset entry point a caller could reach.
 inline int64_t ProfileConfigFixedLoadWalk( ProfileConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = ProfileConfigFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { ProfileConfigReset( values[k] ); } }
-        return -1;
-    }
-    return n;
-}
-
-// ProfileConfigFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
-// every recovered record, with the counters counted onto the report passed.
-inline int64_t ProfileConfigFixedLoadWalkBody( ProfileConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
-{
-    TableReport local;
-    if ( report == NULL ) { report = &local; }
     // EVERY REFUSAL OF THE FIXED LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS
     // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3): a damage return keeps
     // malformed set BESIDE the name, so a caller switching on reason sees it.
@@ -26964,6 +26933,13 @@ inline int64_t ProfileConfigFixedLoadWalkBody( ProfileConfig * values, int64_t c
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { ProfileConfigReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN ProfileConfigFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -28034,30 +28010,15 @@ inline int64_t RootConfigFixedSave( const RootConfig * values, int64_t count, ui
 // different bytes is TableMessageReason::layout_malformed, a hash below the floor is
 // TableMessageReason::layout_unsupported. Identity is a PLAN walked by the same loop.
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
-// holds the same rule as FixedLoad. The body below is the walk itself.
-inline int64_t RootConfigFixedLoadWalkBody( RootConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+// holds the same rule as FixedLoad. The walk is a lambda INSIDE this function, not a
+// function of its own: there is no second, unreset entry point a caller could reach.
 inline int64_t RootConfigFixedLoadWalk( RootConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = RootConfigFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { RootConfigReset( values[k] ); } }
-        return -1;
-    }
-    return n;
-}
-
-// RootConfigFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
-// every recovered record, with the counters counted onto the report passed.
-inline int64_t RootConfigFixedLoadWalkBody( RootConfig * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
-{
-    TableReport local;
-    if ( report == NULL ) { report = &local; }
     // EVERY REFUSAL OF THE FIXED LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS
     // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3): a damage return keeps
     // malformed set BESIDE the name, so a caller switching on reason sees it.
@@ -28331,6 +28292,13 @@ inline int64_t RootConfigFixedLoadWalkBody( RootConfig * values, int64_t capacit
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { RootConfigReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN RootConfigFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -28530,30 +28498,15 @@ inline int64_t CountedMinFixedSave( const CountedMin * values, int64_t count, ui
 // different bytes is TableMessageReason::layout_malformed, a hash below the floor is
 // TableMessageReason::layout_unsupported. Identity is a PLAN walked by the same loop.
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
-// holds the same rule as FixedLoad. The body below is the walk itself.
-inline int64_t CountedMinFixedLoadWalkBody( CountedMin * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+// holds the same rule as FixedLoad. The walk is a lambda INSIDE this function, not a
+// function of its own: there is no second, unreset entry point a caller could reach.
 inline int64_t CountedMinFixedLoadWalk( CountedMin * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = CountedMinFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { CountedMinReset( values[k] ); } }
-        return -1;
-    }
-    return n;
-}
-
-// CountedMinFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
-// every recovered record, with the counters counted onto the report passed.
-inline int64_t CountedMinFixedLoadWalkBody( CountedMin * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
-{
-    TableReport local;
-    if ( report == NULL ) { report = &local; }
     // EVERY REFUSAL OF THE FIXED LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS
     // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3): a damage return keeps
     // malformed set BESIDE the name, so a caller switching on reason sees it.
@@ -28820,6 +28773,13 @@ inline int64_t CountedMinFixedLoadWalkBody( CountedMin * values, int64_t capacit
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { CountedMinReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN CountedMinFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -29001,30 +28961,15 @@ inline int64_t FloatBoundFixedSave( const FloatBound * values, int64_t count, ui
 // different bytes is TableMessageReason::layout_malformed, a hash below the floor is
 // TableMessageReason::layout_unsupported. Identity is a PLAN walked by the same loop.
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
-// holds the same rule as FixedLoad. The body below is the walk itself.
-inline int64_t FloatBoundFixedLoadWalkBody( FloatBound * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+// holds the same rule as FixedLoad. The walk is a lambda INSIDE this function, not a
+// function of its own: there is no second, unreset entry point a caller could reach.
 inline int64_t FloatBoundFixedLoadWalk( FloatBound * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = FloatBoundFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { FloatBoundReset( values[k] ); } }
-        return -1;
-    }
-    return n;
-}
-
-// FloatBoundFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
-// every recovered record, with the counters counted onto the report passed.
-inline int64_t FloatBoundFixedLoadWalkBody( FloatBound * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
-{
-    TableReport local;
-    if ( report == NULL ) { report = &local; }
     // EVERY REFUSAL OF THE FIXED LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS
     // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3): a damage return keeps
     // malformed set BESIDE the name, so a caller switching on reason sees it.
@@ -29298,6 +29243,13 @@ inline int64_t FloatBoundFixedLoadWalkBody( FloatBound * values, int64_t capacit
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { FloatBoundReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN FloatBoundFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -29514,30 +29466,15 @@ inline int64_t MoodsFixedSave( const Moods * values, int64_t count, uint8_t * bu
 // different bytes is TableMessageReason::layout_malformed, a hash below the floor is
 // TableMessageReason::layout_unsupported. Identity is a PLAN walked by the same loop.
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
-// holds the same rule as FixedLoad. The body below is the walk itself.
-inline int64_t MoodsFixedLoadWalkBody( Moods * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+// holds the same rule as FixedLoad. The walk is a lambda INSIDE this function, not a
+// function of its own: there is no second, unreset entry point a caller could reach.
 inline int64_t MoodsFixedLoadWalk( Moods * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = MoodsFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { MoodsReset( values[k] ); } }
-        return -1;
-    }
-    return n;
-}
-
-// MoodsFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
-// every recovered record, with the counters counted onto the report passed.
-inline int64_t MoodsFixedLoadWalkBody( Moods * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
-{
-    TableReport local;
-    if ( report == NULL ) { report = &local; }
     // EVERY REFUSAL OF THE FIXED LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS
     // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3): a damage return keeps
     // malformed set BESIDE the name, so a caller switching on reason sees it.
@@ -29804,6 +29741,13 @@ inline int64_t MoodsFixedLoadWalkBody( Moods * values, int64_t capacity, const u
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { MoodsReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN MoodsFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -30017,30 +29961,15 @@ inline int64_t MoodFieldFixedSave( const MoodField * values, int64_t count, uint
 // different bytes is TableMessageReason::layout_malformed, a hash below the floor is
 // TableMessageReason::layout_unsupported. Identity is a PLAN walked by the same loop.
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
-// holds the same rule as FixedLoad. The body below is the walk itself.
-inline int64_t MoodFieldFixedLoadWalkBody( MoodField * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+// holds the same rule as FixedLoad. The walk is a lambda INSIDE this function, not a
+// function of its own: there is no second, unreset entry point a caller could reach.
 inline int64_t MoodFieldFixedLoadWalk( MoodField * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = MoodFieldFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { MoodFieldReset( values[k] ); } }
-        return -1;
-    }
-    return n;
-}
-
-// MoodFieldFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
-// every recovered record, with the counters counted onto the report passed.
-inline int64_t MoodFieldFixedLoadWalkBody( MoodField * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
-{
-    TableReport local;
-    if ( report == NULL ) { report = &local; }
     // EVERY REFUSAL OF THE FIXED LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS
     // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3): a damage return keeps
     // malformed set BESIDE the name, so a caller switching on reason sees it.
@@ -30307,6 +30236,13 @@ inline int64_t MoodFieldFixedLoadWalkBody( MoodField * values, int64_t capacity,
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { MoodFieldReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN MoodFieldFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -30510,30 +30446,15 @@ inline int64_t MinArmFixFixedSave( const MinArmFix * values, int64_t count, uint
 // different bytes is TableMessageReason::layout_malformed, a hash below the floor is
 // TableMessageReason::layout_unsupported. Identity is a PLAN walked by the same loop.
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
-// holds the same rule as FixedLoad. The body below is the walk itself.
-inline int64_t MinArmFixFixedLoadWalkBody( MinArmFix * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+// holds the same rule as FixedLoad. The walk is a lambda INSIDE this function, not a
+// function of its own: there is no second, unreset entry point a caller could reach.
 inline int64_t MinArmFixFixedLoadWalk( MinArmFix * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = MinArmFixFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { MinArmFixReset( values[k] ); } }
-        return -1;
-    }
-    return n;
-}
-
-// MinArmFixFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
-// every recovered record, with the counters counted onto the report passed.
-inline int64_t MinArmFixFixedLoadWalkBody( MinArmFix * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
-{
-    TableReport local;
-    if ( report == NULL ) { report = &local; }
     // EVERY REFUSAL OF THE FIXED LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS
     // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3): a damage return keeps
     // malformed set BESIDE the name, so a caller switching on reason sees it.
@@ -30800,6 +30721,13 @@ inline int64_t MinArmFixFixedLoadWalkBody( MinArmFix * values, int64_t capacity,
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { MinArmFixReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN MinArmFixFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
@@ -30989,30 +30917,15 @@ inline int64_t MinPlainFixFixedSave( const MinPlainFix * values, int64_t count, 
 // different bytes is TableMessageReason::layout_malformed, a hash below the floor is
 // TableMessageReason::layout_unsupported. Identity is a PLAN walked by the same loop.
 // R4: every refusal leaves ALL `capacity` rows at their declared defaults, so a direct call
-// holds the same rule as FixedLoad. The body below is the walk itself.
-inline int64_t MinPlainFixFixedLoadWalkBody( MinPlainFix * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report );
+// holds the same rule as FixedLoad. The walk is a lambda INSIDE this function, not a
+// function of its own: there is no second, unreset entry point a caller could reach.
 inline int64_t MinPlainFixFixedLoadWalk( MinPlainFix * values, int64_t capacity, const uint8_t * data, int64_t bytes,
                             TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
 {
     TableReport local;
     if ( report == NULL ) { report = &local; }
-    const int64_t n = MinPlainFixFixedLoadWalkBody( values, capacity, data, bytes, plan, plan_capacity, cache, report );
-    if ( n < 0 || report->damaged || report->refused )
+    const int64_t walked = [&]() -> int64_t
     {
-        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { MinPlainFixReset( values[k] ); } }
-        return -1;
-    }
-    return n;
-}
-
-// MinPlainFixFixedLoadWalkBody is the STRICT fixed-form read (docs/SPEC-TABLES.md §6.5): it keeps
-// every recovered record, with the counters counted onto the report passed.
-inline int64_t MinPlainFixFixedLoadWalkBody( MinPlainFix * values, int64_t capacity, const uint8_t * data, int64_t bytes,
-                            TableFixedEntry * plan, int32_t plan_capacity, TableFixedPlanCache * cache, TableReport * report )
-{
-    TableReport local;
-    if ( report == NULL ) { report = &local; }
     // EVERY REFUSAL OF THE FIXED LOAD HAS A NAME, THE FRAMING-DAMAGE RETURNS
     // INCLUDED (docs/FIXED-FORM-ALGORITHM.md §5.3): a damage return keeps
     // malformed set BESIDE the name, so a caller switching on reason sees it.
@@ -31279,6 +31192,13 @@ inline int64_t MinPlainFixFixedLoadWalkBody( MinPlainFix * values, int64_t capac
         at += record_bytes;
     }
     return n;
+    }();
+    if ( walked < 0 || report->damaged || report->refused )
+    {
+        if ( values != NULL ) { for ( int64_t k = 0; k < capacity; ++k ) { MinPlainFixReset( values[k] ); } }
+        return -1;
+    }
+    return walked;
 }
 
 // The PLAIN MinPlainFixFixedLoad IS THE STRICT READ (docs/SPEC-TABLES.md §6.5): -1 for
