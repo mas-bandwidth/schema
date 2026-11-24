@@ -13,7 +13,7 @@
 #
 # The working directory is the repository root.
 #
-# usage: ./build/conformance-harness wire-fuzz --driver test/conformance/luau/wirefuzz-driver [--seed S] [--n N]
+# usage: ./build/conformance-harness wire-fuzz --leg luau --driver test/conformance/luau/wirefuzz-driver [--seed S] [--n N]
 host=${LUAUFUZZHOST:-build/luaufuzzhost/luaufuzzhost}
 for need in "$host" build/conformance-luau build/luau-driver/units.luau; do
 	if [ ! -e "$need" ]; then

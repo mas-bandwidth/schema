@@ -58,7 +58,7 @@ for mode in wire json; do
         -p:TablesGeneratedDir="$PWD/$dir/generated" \
         -p:BaseIntermediateOutputPath="$PWD/$dir/obj/" -o "$dir/checker"
     if [ "$mode" = wire ]; then
-        if ./build/conformance-harness wire-fuzz \
+        if ./build/conformance-harness wire-fuzz --leg cs \
             --driver "$dotnet $dir/checker/schemaconformance.dll wire-fuzz" \
             --seed 24845619678 --n 0 > "$dir/log" 2>&1; then
             echo 'NEGATIVE CONTROL FAILED: duplicate identities accepted'; exit 1

@@ -94,7 +94,9 @@ func writeJavaWireFuzzManifest(t *testing.T) string {
 func runJavaWireFuzzVerdictPipe(t *testing.T, root, driver string, retain bool) string {
 	t.Helper()
 	failed := filepath.Join(t.TempDir(), "failed.bin")
-	args := []string{"wire-fuzz"}
+	// the staged manifest is a fixture: its leg holds no absent-root ledger,
+	// so a root the driver does not answer is red by name (W-ROSTER)
+	args := []string{"wire-fuzz", "--leg", "java-fixture"}
 	if retain {
 		args = append(args, "--retain")
 	}
@@ -189,6 +191,7 @@ func TestJavaWireFuzzVerdictPipeNegativeControl(t *testing.T) {
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
 	cmd := testproc.CommandContext(t, ctx, filepath.Join(root, "build", "conformance-harness"), "wire-fuzz",
+		"--leg", "java-fixture",
 		"--manifest", writeJavaWireFuzzManifest(t),
 		"--vectors", "",
 		"--driver", driver,

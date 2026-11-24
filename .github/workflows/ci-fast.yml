@@ -620,8 +620,15 @@ jobs:
           # and the verdict called the skip green because the plan had selected
           # nothing. A skip is green only when no leg reads the change. The
           # rows run in parallel, each inside its own two minutes.
+          # THE CORPUS ROSTER (W-ROSTER, docs/SPEC-CONFORMANCE.md): an edit to
+          # any wire-fuzz corpus input (the manifest, a unit's schema or lock,
+          # a seed wire, the vector index or a vector), the harness or the
+          # absent-root ledger runs every leg's fuzz row, and the harness fails
+          # any seed a leg has no codec for, so a root added without its
+          # drivers is red on that PR. The rule covers every path the corpus
+          # reads (internal/ci TestVerifyLegsCorpusRosterCoversEveryInput).
           shared_broad=no
-          if [ "$all" = yes ] || grep -qE '^(ir/|compiler/|tables/|Makefile$|go\.mod$|docs/FIXED-FORM-|test/tables/.*\.schema$|\.github/workflows/ci-fast\.yml$)' <<<"$files"; then
+          if [ "$all" = yes ] || grep -qE '^(ir/|compiler/|tables/|Makefile$|go\.mod$|docs/FIXED-FORM-|test/tables/.*\.(schema|lock)$|testdata/conformance/(tables|feature-witnesses)/|testdata/wire/tables/|test/conformance/harness/|test/conformance/wire-absent/|\.github/workflows/ci-fast\.yml$)' <<<"$files"; then
             shared_broad=yes
           fi
           if [ "$shared_broad" = yes ]; then

@@ -812,7 +812,7 @@ func TestMakefilePortabilityNegativeControls(t *testing.T) {
 			"\tsh test/go-tables/negative-control cards",
 			"",
 			"target-a:",
-			"\t@./build/conformance-harness wire-fuzz --timeout 30s --seed 1 --n 10",
+			"\t@./build/conformance-harness wire-fuzz --leg cpp --timeout 30s --seed 1 --n 10",
 			"\tgo test -timeout 60s ./...",
 			"\t@if command -v bsdtar >/dev/null 2>&1; then bsdtar -xf a.tar '*.so'; else tar --wildcards -xf a.tar '*.so'; fi",
 			"\t./build/conformance-harness run --only cpp --work build/work-a",
