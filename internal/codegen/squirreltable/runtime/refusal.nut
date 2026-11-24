@@ -223,6 +223,10 @@ local reset = function(report) {
   report.repeatedField <- null;
 };
 
+// the report's reset, shared with the retaining load (retain.nut): every read
+// zeroes a supplied report in full as its first act (§6.5)
+_M.resetReport <- reset;
+
 // ReadStrict(T, root, bytes, report): the root instance or null, with
 // report.reason the name of the first refusal (§6.5's vocabulary, the same
 // spellings in every port) and report.field the first field the walk saw move

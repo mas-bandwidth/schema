@@ -695,8 +695,13 @@ end
 -- and counts one `retain_lost` there (§6.6). It defaults to C / 8, the bound
 -- no file can beat.
 local function load_retain(read: any, root: string, bytes: buffer, report: any, capacity: number?, idCount: number?)
-	if report.retained == nil then report.retained = 0 end
-	if report.retainLost == nil then report.retainLost = 0 end
+	-- EVERY READ ZEROES A SUPPLIED REPORT IN FULL as its first act (§6.5, the
+	-- retain family included): the plain load's own reset, then the two counters
+	-- the retaining load adds. They start at zero here and ACCUMULATE through
+	-- the capture; SaveRetain adds to what this load left (§6.6).
+	Load.resetReport(report)
+	report.retained = 0
+	report.retainLost = 0
 	local cap: number = capacity or 65536
 	if cap < 0 then cap = 0 end
 	local idCap: number = idCount or math.floor(cap / 8)

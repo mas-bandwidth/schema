@@ -7362,10 +7362,16 @@ const variableRetainSource = `
   # record the remaining capacity cannot hold whole is dropped and counted one
   # retain_lost (§6.6).
 
-  def load_retain(table, data, retain, report) when is_binary(data) do
+  # §6.5: every read zeroes a supplied report in full as its first act, the
+  # retaining read alike; the supplied report is never read, so the returned
+  # report is the one a fresh load returns. SaveRetain, not this read, adds to
+  # the report this read returns (§6.6).
+  def load_retain(table, data, retain, _report) when is_binary(data),
+    do: load_retain_zeroed(table, data, retain, empty_report())
+
+  defp load_retain_zeroed(table, data, retain, report) do
     desc = Map.fetch!(@tables, table)
-    missing_before = Map.get(report, :missing_required, 0)
-    report = report |> Map.put(:missing_required, 0) |> Map.put(:reason, "")
+    missing_before = 0
     # §6.6: a retention buffer belongs to one loaded region; the next LoadRetain
     # into it resets both stores, keeping only the caller's capacities.
     retain = %{retain | records: [], used: 0, ids: []}

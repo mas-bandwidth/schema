@@ -26,6 +26,45 @@ def run(manifest, outdir):
             else:
                 write_bytes(outdir, case, b"read\n%d\n" % len(values))
             continue
+        if form == "retain":
+            # `retain` (README, "The `retain` form"): the retaining load into ONE
+            # PRE-FILLED report must leave what the same load leaves in a FRESH
+            # report (SPEC-TABLES 6.5: every read zeroes a supplied report, the
+            # retain family included). Every field this report has is settable.
+            def retaining(data, rep):
+                store = package.TableRetain(bytearray(1 << 20), bytearray(24 * (1 << 17)))
+                return cls.load_retain(data, store, rep)
+
+            lawful_bytes = read_bytes(lawful)
+            fresh = package.LoadReport()
+            retaining(lawful_bytes, fresh)
+            report = package.LoadReport()
+            report.unknown = report.widened = report.retained = report.retain_lost = 7
+            report.refused = True
+            report.reason = "stale"
+            out = bytearray()
+
+            def step(data):
+                try:
+                    retaining(data, report)
+                except package.Refused:
+                    return b"refused\n"
+                return b"refused\n" if report.refused else b"read\n"
+
+            def zeroed():
+                if all(getattr(report, s) == getattr(fresh, s) for s in report.__slots__):
+                    return b"zeroed\n"
+                kept = {s: getattr(report, s) for s in report.__slots__}
+                want = {s: getattr(fresh, s) for s in fresh.__slots__}
+                return ("kept %r want %r\n" % (kept, want)).encode()
+
+            out.extend(step(lawful_bytes))
+            out.extend(zeroed())
+            out.extend(step(read_bytes(damaged)))
+            out.extend(step(lawful_bytes))
+            out.extend(zeroed())
+            write_bytes(outdir, case, bytes(out))
+            continue
         n = int(count)
         values = [cls() for _ in range(n)]
         if form == "variable":
