@@ -1165,6 +1165,9 @@ func scanMakefiles(root string, gated map[string]bool) ([]recipe, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := resolveMakeFunctionVariables(root, vars); err != nil {
+		return nil, err
+	}
 	macros, err := readMakeMacros(files)
 	if err != nil {
 		return nil, err
