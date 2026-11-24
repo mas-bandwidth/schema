@@ -8,6 +8,7 @@ package ci
 // group names, or by a workflow run line directly.
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -32,7 +33,7 @@ var recipeTarget = regexp.MustCompile(`^([^:=\s#][^:=]*):(?:[^=]|$)`)
 func unrunPythonTests(files []string, makeFiles, workflowFiles map[string]string, groupText string) []string {
 	var wf strings.Builder
 	for _, text := range workflowFiles {
-		for _, line := range strings.Split(text, "\n") {
+		for line := range strings.SplitSeq(text, "\n") {
 			wf.WriteString(stripYAMLComment(line))
 			wf.WriteString("\n")
 		}
@@ -44,14 +45,14 @@ func unrunPythonTests(files []string, makeFiles, workflowFiles map[string]string
 	var bad []string
 	for _, file := range files {
 		ok := false
-		for _, line := range strings.Split(wf.String(), "\n") {
+		for line := range strings.SplitSeq(wf.String(), "\n") {
 			if strings.Contains(line, file) {
 				ok = true
 			}
 		}
 		for _, text := range makeFiles {
 			var current []string
-			for _, line := range strings.Split(text, "\n") {
+			for line := range strings.SplitSeq(text, "\n") {
 				if strings.HasPrefix(line, "\t") {
 					if strings.Contains(line, file) && !strings.HasPrefix(strings.TrimSpace(line), "#") {
 						for _, target := range current {
@@ -120,9 +121,7 @@ func TestEveryPythonTestFileIsRunByACITarget(t *testing.T) {
 		t.Fatalf("found %d *_test.py files; the walk is looking at the wrong tree", len(files))
 	}
 	makeFiles := readAll(t, filepath.Join(root, "Makefile"))
-	for k, v := range readAll(t, filepath.Join(root, "make", "*.mk")) {
-		makeFiles[k] = v
-	}
+	maps.Copy(makeFiles, readAll(t, filepath.Join(root, "make", "*.mk")))
 	workflowFiles := readAll(t, filepath.Join(root, ".github", "workflows", "*.yml"))
 	var groups strings.Builder
 	for _, v := range readAll(t, filepath.Join(root, "make", "negative-controls.d", "*.json")) {

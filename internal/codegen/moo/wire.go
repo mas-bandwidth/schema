@@ -128,6 +128,11 @@ func (g *gen) writeField(val string, f *ir.Field, ind string) error {
 		g.refuse(ind, fmt.Sprintf("type(%s) ~= \"buffer\"", val), "the byte array's fixed storage")
 	} else {
 		g.refuse(ind, fmt.Sprintf("type(%s) ~= \"table\"", val), "the array's table storage")
+		if f.Array == ir.ArrayFixed {
+			// a [N]T holds exactly N values: any other count is refused,
+			// never cut or padded to N (SPEC §5.1, SF-20)
+			g.refuse(ind, fmt.Sprintf("#%s ~= %s", val, limit), "a [N]T holds exactly N values (SPEC §5.1)")
+		}
 	}
 	if f.Array == ir.ArrayCounted {
 		count := val + "Count"
