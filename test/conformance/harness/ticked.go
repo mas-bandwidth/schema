@@ -50,7 +50,7 @@ func caseRows(surface, class string) []string {
 		return []string{"variable-tables/widening"}
 	case "framing":
 		return []string{"variable-tables/id-table-wire"}
-	case "retain", "retain-save":
+	case "retain", "retain-save", "retain-refusal":
 		return []string{"variable-tables/retain-unknown"}
 	case "cook", "cook-foreign", "cook-forgery":
 		return []string{"variable-tables/cook-open"}

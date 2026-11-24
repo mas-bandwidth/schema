@@ -78,7 +78,8 @@ func runChecked(dir string, extraEnv []string, name string, args ...string) (str
 
 // requireToken holds a driver's run to the roster's token, to the
 // compressed-float decode case (cfdecode.go) and to the float32 literal case
-// (f32lit.go): every leg answers all three.
+// (f32lit.go): every leg answers all three on the main corpus. A case
+// family's run carries neither case (mainonly.go) and answers the token alone.
 func requireToken(out string, err error, lang string) error {
 	want := fmt.Sprintf("BITPHASE_OK %s %d", lang, len(activeRoster()))
 	if err != nil {
@@ -86,6 +87,9 @@ func requireToken(out string, err error, lang string) error {
 	}
 	if strings.Contains(out, "FAILED:") || !strings.Contains(out, want) {
 		return fmt.Errorf("%s did not print %q:\n%s", lang, want, stripCfDecode(out))
+	}
+	if familyRun {
+		return checkNoMainOnlyOutput(lang, out)
 	}
 	return errors.Join(checkCfDecode(lang, out), checkF32Lit(lang, out))
 }
