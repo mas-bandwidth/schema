@@ -26,6 +26,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `irtest/` | test helper: a unit renamed past the checker | `go vet ./internal/irtest` | `go test ./internal/codegen/luau` |
 | `jsontestsuite/` | JSONTestSuite oracle harness | `go test ./internal/tabletext` | `go test ./internal/tabletext -run JSONTestSuite` |
 | `languages/` | the supported-language list, derived | `go test ./internal/languages` | `go test ./internal/languages` |
+| `legpaths/` | which legs a changed path selects, derived | `go test ./internal/legpaths` | `go test ./internal/legpaths` |
 | `listwalk/` | unbounded-array walk | `go test ./internal/listwalk` | `go test ./internal/listwalk` |
 | `lockfile/` | schema.lock lineage | `go test ./internal/lockfile` | `go test ./internal/lockfile` |
 | `mapwalk/` | map walk | `go test ./internal/mapwalk` | `go test ./internal/mapwalk` |
@@ -52,3 +53,4 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `vacuous/` | Go tests that pass checking nothing | `go test ./internal/vacuous` | `go test ./internal/ci -run TestEveryGoTestCanFail` |
 | `version/` | binary version stamp | `go test ./internal/version` | `go test ./internal/version` |
 | `viewlisting/` | view listing vs IR | `go test ./internal/viewlisting` | `go test ./internal/viewlisting` |
+| `wirealone/` | WIRE-ALONE.txt, the one wire-alone row list | `go test ./internal/wirealone` | `go test ./internal/wirealone` |

@@ -17,6 +17,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `hostileledger/` | hostile-corpus runner ledger check | `go test ./tools/hostileledger` | `go run ./tools/hostileledger` |
 | `inputaccount/` | inotify input-file accounting wrapper for reader legs | `go test ./tools/inputaccount` | `go run ./tools/inputaccount -family NAME -leg LEG` |
 | `inputfamilies/` | ci-fast input-family matrix selector and checker | `go test ./internal/inputfamilies` | `go run ./tools/inputfamilies check` |
+| `legpaths/` | prints the legs a list of changed paths selects | `go test ./tools/legpaths` | `go run ./tools/legpaths -changed -` |
 | `luaufuzzhost/` | Luau nightly fuzz host (C++) | `make luau-nightly-fuzz-replay` | `make luau-nightly-fuzz` |
 | `matrix/` | 3.0.0 proof gate | `go test ./tools/matrix` | `make proof` |
 | `moofuzzhost/` | moo wire-fuzz native host (C++) | `make tables-moo-wire-fuzz` | `make tables-moo-wire-fuzz` |

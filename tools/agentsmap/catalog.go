@@ -106,6 +106,7 @@ var catalog = []Entry{
 	e("internal/irtest", "test helper: a unit renamed past the checker", "go vet ./internal/irtest", "go test ./internal/codegen/luau"),
 	e("internal/jsontestsuite", "JSONTestSuite oracle harness", "go test ./internal/tabletext", "go test ./internal/tabletext -run JSONTestSuite"),
 	e("internal/languages", "the supported-language list, derived", "go test ./internal/languages", "go test ./internal/languages"),
+	e("internal/legpaths", "which legs a changed path selects, derived", "go test ./internal/legpaths", "go test ./internal/legpaths"),
 	e("internal/listwalk", "unbounded-array walk", "go test ./internal/listwalk", "go test ./internal/listwalk"),
 	e("internal/mapwalk", "map walk", "go test ./internal/mapwalk", "go test ./internal/mapwalk"),
 	e("internal/lockfile", "schema.lock lineage", "go test ./internal/lockfile", "go test ./internal/lockfile"),
@@ -132,6 +133,7 @@ var catalog = []Entry{
 	e("internal/vacuous", "Go tests that pass checking nothing", "go test ./internal/vacuous", "go test ./internal/ci -run TestEveryGoTestCanFail"),
 	e("internal/version", "binary version stamp", "go test ./internal/version", "go test ./internal/version"),
 	e("internal/viewlisting", "view listing vs IR", "go test ./internal/viewlisting", "go test ./internal/viewlisting"),
+	e("internal/wirealone", "WIRE-ALONE.txt, the one wire-alone row list", "go test ./internal/wirealone", "go test ./internal/wirealone"),
 
 	// internal/codegen/
 	e("internal/codegen/c", "C packet emitter", "go test ./internal/codegen/c", "go test ./internal/codegen/c"),
@@ -222,6 +224,7 @@ var catalog = []Entry{
 	e("tools/hostileledger", "hostile-corpus runner ledger check", "go test ./tools/hostileledger", "go run ./tools/hostileledger"),
 	e("tools/inputaccount", "inotify input-file accounting wrapper for reader legs", "go test ./tools/inputaccount", "go run ./tools/inputaccount -family NAME -leg LEG"),
 	e("tools/inputfamilies", "ci-fast input-family matrix selector and checker", "go test ./internal/inputfamilies", "go run ./tools/inputfamilies check"),
+	e("tools/legpaths", "prints the legs a list of changed paths selects", "go test ./tools/legpaths", "go run ./tools/legpaths -changed -"),
 	e("tools/luaufuzzhost", "Luau nightly fuzz host (C++)", "make luau-nightly-fuzz-replay", "make luau-nightly-fuzz"),
 	e("tools/matrix", "3.0.0 proof gate", "go test ./tools/matrix", "make proof"),
 	e("tools/moofuzzhost", "moo wire-fuzz native host (C++)", "make tables-moo-wire-fuzz", "make tables-moo-wire-fuzz"),
