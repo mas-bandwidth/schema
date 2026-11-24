@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -26,8 +27,8 @@ func (f *fakeTB) Errorf(format string, a ...any) {
 func (f *fakeTB) Fatalf(format string, a ...any) { f.fatal = fmt.Sprintf(format, a...) }
 func (f *fakeTB) Logf(string, ...any)            {}
 func (f *fakeTB) end() {
-	for i := len(f.cleanups) - 1; i >= 0; i-- {
-		f.cleanups[i]()
+	for _, cleanup := range slices.Backward(f.cleanups) {
+		cleanup()
 	}
 }
 

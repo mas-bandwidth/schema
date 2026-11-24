@@ -507,10 +507,8 @@ func selected(test string) bool {
 // selects is selected's matching, on the two patterns.
 func selects(run, skip, test string) bool {
 	top := func(p string) string {
-		if i := strings.Index(p, "/"); i >= 0 {
-			return p[:i]
-		}
-		return p
+		before, _, _ := strings.Cut(p, "/")
+		return before
 	}
 	if run != "" {
 		re, err := regexp.Compile(top(run))
