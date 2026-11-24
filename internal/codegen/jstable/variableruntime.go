@@ -2261,6 +2261,9 @@ function TableVariableJsonField(fd, val, depth, g, out) {
     case "map": return TableVariableJsonMap(fd, val, depth, g, out);
     case "keyed": return TableVariableJsonKeyed(fd, val, depth, g, out);
     case "arr": {
+      // an array or a text list, an empty [] included, is a container the
+      // depth cap counts, as the read counts it (SPEC-TABLES §16.14 W2)
+      if (depth > 128) { return false; }
       if (!TableVariableArrayValid(fd, val)) { return false; }
       if (fd.tl && !TableVariableTextListValid(fd, val)) { return false; }
       const n = TableVariableCount(fd, val);

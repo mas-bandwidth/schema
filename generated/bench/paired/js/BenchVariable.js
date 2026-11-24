@@ -3754,6 +3754,9 @@ function TableVariableJsonField(fd, val, depth, g, out) {
     case "map": return TableVariableJsonMap(fd, val, depth, g, out);
     case "keyed": return TableVariableJsonKeyed(fd, val, depth, g, out);
     case "arr": {
+      // an array or a text list, an empty [] included, is a container the
+      // depth cap counts, as the read counts it (SPEC-TABLES §16.14 W2)
+      if (depth > 128) { return false; }
       if (!TableVariableArrayValid(fd, val)) { return false; }
       if (fd.tl && !TableVariableTextListValid(fd, val)) { return false; }
       const n = TableVariableCount(fd, val);
@@ -4753,6 +4756,8 @@ function TableVariableTextInt(d, inp, holder, key, report) {
 // ---- the text (write.go, read.go) -------------------------------------------
 
 function TableVariableJsonMap(fd, val, depth, g, out) {
+  // the write counts every container the read does (SPEC-TABLES §16.14 W2)
+  if (depth > 128) { return false; }
   if (!(val instanceof globalThis.Map) || (fd.bound > 0 && val.size > fd.bound)) { return false; }
   if (val.size === 0) { out.push("{}"); return true; }
   const ents = TableVariableMapEntries(fd, val);
@@ -4770,6 +4775,8 @@ function TableVariableJsonMap(fd, val, depth, g, out) {
 }
 
 function TableVariableJsonKeyed(fd, val, depth, g, out) {
+  // the write counts every container the read does (SPEC-TABLES §16.14 W2)
+  if (depth > 128) { return false; }
   if (!globalThis.Array.isArray(val) || val.length !== fd.slots.length) { return false; }
   if (fd.slots.length === 0) { out.push("{}"); return true; }
   const ind = "\n" + "  ".repeat(depth + 1);
@@ -4786,6 +4793,8 @@ function TableVariableJsonKeyed(fd, val, depth, g, out) {
 
 // a union is an object with ONE key, the arm's name; None is {} (§16.2)
 function TableVariableJsonUnion(u, val, depth, g, out) {
+  // a union is a container, None {} included (SPEC-TABLES §16.14 W2)
+  if (depth > 128) { return false; }
   if (val === null) { out.push("{}"); return true; }
   const arm = u.byName.get(val.arm);
   if (arm === undefined) { return false; }
