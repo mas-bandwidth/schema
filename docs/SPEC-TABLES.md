@@ -4694,7 +4694,13 @@ element and as a scalar, an assert leg in its debug build (SPEC.md §5.1). A
 writer that emits one hands every reader a value it reads back as the default,
 so a round trip moves the value silently. `TestJavaDeprecatedVariantNeverWritten`
 holds the Java leg's three binary writers, scalar and element, beside the
-lawful variant.
+lawful variant. Every leg answers the shared rows `wref_enum_deprecated`,
+`wref_enum_scalar_deprecated`, `fref_enum_deprecated` and
+`fref_enum_scalar_deprecated` (refused) and their `_ok` twins (written) on the
+`write-refusal` and `write-refusal-fixed` surfaces. A leg whose driver saves a
+FIXED root through its fixed form on both surfaces holds its variable save to
+the rule by its own test (`TestJsDeprecatedVariantNeverWritten`), since the
+shared rows reach that writer only through a variable root.
 
 **COMPILE TIME.** A field default or a `const` that names a deprecated variant
 is refused by name. An enum-keyed array such as `[Enum]int32` whose enum has
