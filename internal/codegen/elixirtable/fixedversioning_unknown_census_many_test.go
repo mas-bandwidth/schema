@@ -1,42 +1,40 @@
 package elixirtable
 
-// `unknown_census`, the many-record half of §5.8 row 11's clause (§5.4): the
-// compile census lands ONCE PER ENDPOINT AND NEVER PER RECORD. The landed one-record
-// row reads `old_unknown_census.bin` — ONE record — where "once per endpoint" and
-// "once per record" are the SAME number, 1, so the second half has never been
-// under a gate. This file carries THREE records; a reader that counts per record
-// lands `unknown == 3` here and `1` on the landed row, so only this file sees
-// the difference. `unknown` is asserted EXACTLY == 1: `Item.drop` is ONE field
-// of ONE endpoint, never one per record.
+// `unknown_census`, the many-record file (§5.8 row 11): THREE records under the
+// DELIBERATELY UNLAWFUL entry (Item.drop removed). The entry is refused, never
+// counted (docs/FIXED-FORM-ALGORITHM.md §5.4, §5.9 #30; the Go reference's
+// TestFixedVersioningUnknownCensusManyRecords): the whole load refuses
+// layout_malformed before any of the three records lands, and no counter moves.
+// This row once asserted the retired census, unknown == 1 across the file.
 import (
 	"fmt"
-	"path/filepath"
 	"testing"
 )
 
 func TestFixedVersioningUnknownCensusManyRecords(t *testing.T) {
 	t.Parallel()
-	corpus := fixedCorpus(t)
-	elixirBin := elixirBinary(t)
-	file := filepath.Join(corpus, "many_unknown_census.bin")
+	// A MISSING CORPUS OR ELIXIR FAILS BY NAME whenever SCHEMA_SLOW,
+	// SCHEMA_REQUIRE_CORPUS or CI promised this row; it never skips quietly.
+	file := lineageCorpus(t, "many_unknown_census.bin")
+	elixirBin := lineageElixir(t)
 	body := fmt.Sprintf(`  data = File.read!(%s)
-  {tag, values, report} = load(data)
-  check(tag == :ok, "the newer reader did not read the older writer's records: #{inspect(tag)} #{why(report)}")
-  check(length(values) == 3, "n == #{length(values)}, want 3")
-  want = [[10, 11, 12, 13], [20, 21, 22, 23], [30, 31, 32, 33]]
-  Enum.zip(values, want)
-  |> Enum.with_index()
-  |> Enum.each(fn {{v, w}, k} ->
-    leadtrail(v, 1, 2)
-    check(Enum.map(v.items, & &1.a) == w,
-      "record #{k} the four a values did not land: #{inspect(Enum.map(v.items, & &1.a))}")
-  end)
-  check(report.unknown == 1,
-    "unknown == #{report.unknown}, want 1: Item.drop is ONE field of ONE endpoint, not one per record")
-  check(true and report.widened == 0 and true,
-    "a counter that must not move did: #{why(report)}")
-  check(true,
-    "a clean NEW-READS-OLD is not damage: #{why(report)}")`,
+  {tag, why, report} = load(data)
+  check(tag == :error and why == :layout_malformed,
+    "the unlawful lineage entry was not refused layout_malformed: #{inspect({tag, why})} #{inspect(report)}")
+  check(is_map(report) and report.unknown == 0 and report.widened == 0 and report.retained == 0 and report.retain_lost == 0,
+    "a refusal moved a counter: #{inspect(report)}")
+  # NO VALUES RIDE A REFUSAL, and the reader's declared defaults stand
+  # (SPEC-TABLES §6.5): Elixir hands back a fresh list and never writes caller
+  # rows, so the rows a refused load leaves the caller are the declared ones.
+  check(not is_list(why), "a refusal handed back values: #{inspect(why)}")
+  {d, _c, _m} = T.census_fixed_decode(prefill(), 0, false)
+  check(d.lead == 1 and d.trail == 2 and Enum.all?(d.items, &(&1.a == 0)),
+    "the reader's declared defaults moved: #{inspect(d)}")
+
+  # THE SECOND READ IS REFUSED THE SAME WAY.
+  {tag2, why2, _report2} = load(data)
+  check(tag2 == :error and why2 == :layout_malformed,
+    "the second read was not refused layout_malformed: #{inspect({tag2, why2})}")`,
 		elixirString(file))
 
 	out, err := runVersionProbe(t, elixirBin, "VNEW_unknown_census",
