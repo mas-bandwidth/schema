@@ -3605,6 +3605,13 @@ build/schema_test_bench_table: generated/bench/tables/cpp/.stamp test/bench/tabl
 	@mkdir -p build
 	$(CXX) $(CXXFLAGS) -Igenerated/bench/tables/cpp test/bench/table_main.cpp -o $@
 
+# The registered counts of the C++ unit drivers: tools/mustrun holds each
+# "ran N" to the number here, in the nightly recipes below and in the per-PR
+# one (_verify-cpp-conformance in make/verify-compiled.mk).
+CPP_MAIN_CHECKS      := 735
+CPP_TABLES_CHECKS    := 153
+CPP_LUDICROUS_CHECKS := 61
+
 # THE TOOLCHAIN GATE IS THE FIRST PREREQUISITE (issue #599): a pinned toolchain
 # that does not resolve stops the chain by name here, before an hour of C++,
 # rather than in the middle of a leg with a shell's "command not found".
@@ -3620,7 +3627,7 @@ test-core-tables-1a: build/mustrun build/schema_test build/schema_test_guard bui
 	# stands between a missing toolchain and a green run, so it is held to the
 	# same rule as every other gate here. It has to go red on demand, by name.
 	$(MAKE) toolchain-negative-control
-	$(MUSTRUN) -name schema_test -count 735 -- ./build/schema_test
+	$(MUSTRUN) -name schema_test -count $(CPP_MAIN_CHECKS) -- ./build/schema_test
 	$(MUSTRUN) -name schema_test_guard -count 8 -- ./build/schema_test_guard
 	$(MAKE) check-zero-range-negative-control
 	$(MAKE) check-enum-bound-negative-control
@@ -3628,8 +3635,8 @@ test-core-tables-1a: build/mustrun build/schema_test build/schema_test_guard bui
 	$(MAKE) projection-variant-order-negative-control
 	$(MAKE) projection-wire-law-negative-control
 	$(MAKE) projection-union-arm-order-negative-control
-	$(MUSTRUN) -name schema_test_tables -count 153 -- ./build/schema_test_tables
-	$(MUSTRUN) -name schema_test_tables_asan -count 153 -- ./build/schema_test_tables_asan
+	$(MUSTRUN) -name schema_test_tables -count $(CPP_TABLES_CHECKS) -- ./build/schema_test_tables
+	$(MUSTRUN) -name schema_test_tables_asan -count $(CPP_TABLES_CHECKS) -- ./build/schema_test_tables_asan
 	# THE ORDINAL SLOT CACHE (docs/SPEC-TABLES.md §3): a save that answers a
 	# repeat header out of slot[ordinal] is held to main's own bytes by
 	# compiler/tablerefordinal_test.go, and the ONE rule a green pin cannot be
@@ -3794,7 +3801,7 @@ test-core-tables-3: build/mustrun build/schema_test_block build/schema_test_bloc
 	$(MAKE) tables-hostile-values
 	$(MAKE) tables-hostile-negative-control
 	$(MUSTRUN) -name schema_test_random -count 40001 -- ./build/schema_test_random
-	$(MUSTRUN) -name schema_test_ludicrous -count 61 -- ./build/schema_test_ludicrous
+	$(MUSTRUN) -name schema_test_ludicrous -count $(CPP_LUDICROUS_CHECKS) -- ./build/schema_test_ludicrous
 	$(MUSTRUN) -name schema_test_bench -count 37 -- ./build/schema_test_bench
 	# the tables bench corpus's oracle — the generated table unit has no other
 	# consumer under `make test`, and a unit that generates but does not compile
