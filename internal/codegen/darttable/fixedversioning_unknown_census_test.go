@@ -7,38 +7,30 @@ import (
 
 // §5.8 row 11, `unknown_census`, on the DART leg: the NEW build reads
 // `old_unknown_census.bin` through a HANDED-IN lineage entry (§5.1 refuses the
-// removal, so no lock). The forged bytes are the C++ reference's own — one
-// record, four `items`, `a` = 10..13 and `drop` = 900..903 — and the divergence
-// this row exists for is in the COUNTING, not in damaged data.
+// removal, so no lock). The bytes are the C++ reference's own: one record,
+// four `items`, `a` = 10..13 and `drop` = 900..903.
 //
-// `report.unknown` is asserted EXACTLY `== 1` because `Item.drop` is ONE field
-// of ONE endpoint (§5.4: the census is once per field per endpoint, and §5.9 #6 lands
-// it once per read that returns). A leg that censuses inside the array's
-// element loop lands `4` and would pass any `>= 1`; that `4` is the whole
-// reason this row is a file of its own.
+// THE ENTRY IS UNLAWFUL AND IS REFUSED, NEVER COUNTED (docs/FIXED-FORM-ALGORITHM.md
+// §5.4, §5.9 #30; the Go reference's TestFixedVersioningUnknownCensus): the
+// compile lays no plan for a writer field no reader field names, so the load
+// refuses layout_malformed (this leg's layoutDamaged) before any record lands,
+// moves no counter, leaves every row handed in at its declared defaults
+// (SPEC-TABLES §6.5), and a SECOND read refuses the same way. This row once
+// asserted the retired census, unknown == 1.
 func TestFixedVersioningUnknownCensus(t *testing.T) {
 	corpus := fixedCorpus(t)
 	dartBin := dartBinary(t)
 	body := `  final data = File(FILE).readAsBytesSync();
+  values[0].lead = 99; // poisoned: a refusal resets every row handed in
+  values[0].items[0].a = 77;
   final n = LOAD(values, values.length, data, data.length, plan, report);
-  check(n == 1, 'the newer reader did not read the older writer one record: n=$n ${why(report)}');
-  check(report.refused == 0,
-      'a clean NEW-READS-OLD is not a refusal: ${why(report)}');
-  check(
-    report.widened == 0,
-    'counters that must not move did: ${why(report)}',
-  );
-  check(report.unknown == 1,
-      'unknown == ${report.unknown}, want 1: Item.drop is ONE field of ONE endpoint, not one per element');
-  check(values[0].lead == 1 && values[0].trail == 2,
-      'the bracketing fields moved: lead=${values[0].lead} trail=${values[0].trail}');
-  for (var k = 0; k < 4; k++) {
-    check(values[0].items[k].a == 10 + k,
-        'items[$k].a == ${values[0].items[k].a}, want ${10 + k}');
-  }
-  // THE SECOND READ OWES THE SAME CENSUS. The census is the plan's own number,
-  // carried onto a report ONCE per read that returns, so a second read into a
-  // fresh report reads 1 again — never 2, and never the element count.
+  check(n == -1 && report.refused == t.TableFixedRefusal.layoutDamaged,
+      'the unlawful lineage entry was not refused layout_malformed: n=$n ${why(report)}');
+  check(report.unknown == 0 && report.widened == 0,
+      'a refusal moved a counter: ${why(report)}');
+  check(values[0].lead == 1 && values[0].trail == 2 && values[0].items[0].a == 0,
+      'a refusal left a row off its declared defaults: lead=${values[0].lead} trail=${values[0].trail} items[0].a=${values[0].items[0].a}');
+  // THE SECOND READ IS REFUSED THE SAME WAY: the lane's refusal is the build's.
   final values2 = <t.Census>[for (var i = 0; i < 8; i++) t.Census()];
   for (final v in values2) {
     t.initCensus(v);
@@ -46,8 +38,8 @@ func TestFixedVersioningUnknownCensus(t *testing.T) {
   final plan2 = t.censusFixedNewPlan();
   final report2 = t.TableFixedReport();
   final n2 = LOAD(values2, values2.length, data, data.length, plan2, report2);
-  check(n2 == 1 && report2.unknown == 1 && report2.refused == 0,
-      'the second read owes the same census: n=$n2 ${why(report2)}');
+  check(n2 == -1 && report2.refused == t.TableFixedRefusal.layoutDamaged && report2.unknown == 0,
+      'the second read was not refused layout_malformed: n=$n2 ${why(report2)}');
 `
 	out, err := runVersionProbe(t, dartBin, "VNEW_unknown_census", []string{"VOLD_unknown_census"}, 0,
 		filepath.Join(corpus, "old_unknown_census.bin"), body)

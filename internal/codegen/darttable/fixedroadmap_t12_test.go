@@ -193,14 +193,24 @@ fixed table Root
   final rep = t.TableFixedReport();
   final back = [t.Root()];
   t.initRoot(back[0]);
-  final n = t.rootFixedLoad(back, 1, bytes, bytes.length, plan, rep);
-  check(n == -1, 'the dirty-slack file must be refused: n=$n ${rep.refused}');
-  check(rep.refused == t.TableFixedRefusal.damaged,
-      'a non-zero dead byte refuses wire_damaged: ${rep.refused}');
-  check(rep.unknown == 0 && rep.widened == 0,
-      'a refusal moves no counter: ${rep.unknown} ${rep.widened}');
-  check(back[0].a == 0 && back[0].tLength == 0,
-      'a refused read lands nothing: a=${back[0].a} len=${back[0].tLength}');
+  // POISONED FIRST: after ANY refusal every row handed in holds its DECLARED
+  // DEFAULTS (SPEC-TABLES §6.5), a = 0 and an empty t — never what the caller
+  // left there, and never the record's live bytes. Twice: a second load
+  // refuses the same way.
+  for (var pass = 0; pass < 2; pass++) {
+    back[0].a = 99;
+    back[0].tLength = 1;
+    back[0].t[0] = 0x5A;
+    final n = t.rootFixedLoad(back, 1, bytes, bytes.length, plan, rep);
+    check(n == -1, 'load $pass: the dirty-slack file must be refused: n=$n ${rep.refused}');
+    check(rep.refused == t.TableFixedRefusal.damaged,
+        'load $pass: a non-zero dead byte refuses wire_damaged: ${rep.refused}');
+    check(rep.unknown == 0 && rep.widened == 0,
+        'load $pass: a refusal moves no counter: ${rep.unknown} ${rep.widened}');
+    check(back[0].a == 0 && back[0].tLength == 0 && back[0].t[0] == 0,
+        'load $pass: a refused read leaves the row off its declared defaults: '
+        'a=${back[0].a} len=${back[0].tLength} t[0]=${back[0].t[0]}');
+  }
 `, 1)
 	})
 

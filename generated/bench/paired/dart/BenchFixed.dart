@@ -832,6 +832,12 @@ final class TableFixedPlan {
   /// kind_mismatch (rulings 2026-11-22, R2)
   bool optionalIntoBare = false;
 
+  /// A WRITER FIELD NO READER FIELD NAMES: the entry is UNLAWFUL and refuses
+  /// the plan whole as layout_malformed (this leg's layoutDamaged), never
+  /// counted as unknown (docs/FIXED-FORM-ALGORITHM.md §5.4, §5.9 #30; the
+  /// Go reference's tableFixedChildrenNamed)
+  bool unlawful = false;
+
   /// the sixteen-byte conversion scratch the float rung widens through
   final ByteData conv = ByteData(16);
 }
@@ -1010,6 +1016,18 @@ List<TableFixedLineagePlan> tableFixedLineagePlans(
           empty,
           0,
           TableFixedRefusal.wrongKind,
+        );
+        break;
+      }
+      if (made == -5) {
+        lane = TableFixedLineagePlan(
+          empty,
+          0,
+          empty,
+          0,
+          empty,
+          0,
+          TableFixedRefusal.layoutDamaged,
         );
         break;
       }
@@ -1576,7 +1594,8 @@ abstract final class TableFixedCompiler {
       }
       myChild += mine.subtree(myChild);
     }
-    // EVERY FIELD OF THEIRS I COULD NOT NAME IS ONE unknown
+    // A FIELD OF THEIRS I COULD NOT NAME MAKES THE ENTRY UNLAWFUL, in every
+    // slot and either pass, census or not: it is refused, never counted.
     var tc = ti + 1;
     for (var j = 0; j < theirChildren; j++) {
       var named = false;
@@ -1588,8 +1607,8 @@ abstract final class TableFixedCompiler {
         }
         mc += mine.subtree(mc);
       }
-      if (!named && census) {
-        report.unknown++;
+      if (!named) {
+        plan.unlawful = true;
       }
       tc += theirs.subtree(tc);
     }
@@ -1659,8 +1678,11 @@ abstract final class TableFixedCompiler {
         );
         return;
       }
-      // A KIND THAT MOVED IS NEVER REINTERPRETED (§4): the field reads
-      // its default and the compile census does not count it.
+      // A KIND MOVED OFF EVERY LADDER MAKES THE ENTRY UNLAWFUL (§5.2 MATCH,
+      // §5.4 row 1, §5.9 #30; the Go reference's c.unlawful = 1): no plan is
+      // laid, and the lane refuses layout_malformed (this leg's layoutDamaged),
+      // never reinterpreted and never counted.
+      plan.unlawful = true;
       return;
     }
     switch (myKind) {
@@ -2167,6 +2189,7 @@ abstract final class TableFixedCompiler {
     plan.overflow = false;
     plan.tooLarge = false;
     plan.optionalIntoBare = false;
+    plan.unlawful = false;
     // THE WRITER'S DECLARED RECORD (§5.2's record := x.root.size): every
     // entry this compile pushes is bounded by it and by nothing the file
     // said. theirs is parsed by the caller, from the lock's own bytes.
@@ -2205,6 +2228,11 @@ abstract final class TableFixedCompiler {
     }
     if (plan.optionalIntoBare) {
       return -4;
+    }
+    // -5 IS AN UNLAWFUL ENTRY (§5.4): no plan is laid, and the lane refuses
+    // layout_malformed with every counter zero.
+    if (plan.unlawful) {
+      return -5;
     }
     if (plan.overflow) {
       return -1;
