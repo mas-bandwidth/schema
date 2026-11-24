@@ -46,7 +46,7 @@ tables-luau-wire-fuzz: build/conformance-harness build/conformance-luau build/lu
 	@mkdir -p build/wire-fuzz
 	@rm -f $(LUAU_WIRE_FUZZ_ABSENT)
 	@LUAUFUZZ_NOTE=$(CURDIR)/$(LUAU_WIRE_FUZZ_ABSENT) \
-		./build/conformance-harness wire-fuzz --driver "$(LUAU_WIREFUZZ_DRIVER)" \
+		./build/conformance-harness wire-fuzz --leg luau --driver "$(LUAU_WIREFUZZ_DRIVER)" \
 		--seed $(LUAU_FUZZ_SEED) --n $(LUAU_FUZZ_N) --failed $(LUAU_WIRE_FUZZ_FAILED) \
 		> $(LUAU_WIRE_FUZZ_LOG) 2>&1; \
 		status=$$?; cat $(LUAU_WIRE_FUZZ_LOG); \

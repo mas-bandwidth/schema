@@ -10,7 +10,7 @@
 // the thin reader test/conformance/README.md states and nothing else; the
 // mutators, the oracle and the comparison live here once, for every language.
 //
-//	harness wire-fuzz --driver <cmd> [--seed S] [--n N]
+//	harness wire-fuzz --driver <cmd> --leg <leg> [--unit <key>] [--seed S] [--n N]
 //	harness wire-fuzz --driver <cmd> --replay <file> --unit <key> --root <table>
 //
 // Every mutant is a pure function of (seed, pass, index), and a failure writes
@@ -65,9 +65,12 @@ type wireFuzzOptions struct {
 	vectors      string
 	// Kept for command-line compatibility so a retired exemption fails clearly.
 	finiteOwed string
-	// absentLedger is the checked-in set of roots this leg and arm may leave
-	// absent (wirefuzz_absent.go); empty excuses none.
-	absentLedger string
+	// leg names the leg whose absent-root ledger the harness reads,
+	// <ledgerDir>/<leg>-<arm>.tsv (wirefuzz_absent.go). A whole-roster run
+	// without it is refused; a replay reads no ledger.
+	leg string
+	// ledgerDir is where the ledgers live; empty is wireAbsentDir.
+	ledgerDir string
 }
 
 // wireRoot is one (unit, root) the seeds name, with what the oracle needs to
@@ -782,6 +785,12 @@ func buildWireFuzzRoster(m *Manifest, opts wireFuzzOptions) ([]*wireSeed, []*wir
 	seedRoot := map[*wireSeed]int{}
 	skipped := 0
 	addFormSeed := func(name, unit, root, wirePath string, message bool) error {
+		// A WHOLE-ROSTER RUN SCOPED TO ONE UNIT (--unit without --replay)
+		// asks a one-unit driver about that unit's roots and no other, so
+		// its absent set is the roots of its own unit it lacks.
+		if opts.replay == "" && opts.unit != "" && unit != opts.unit {
+			return nil
+		}
 		wire, err := os.ReadFile(wirePath)
 		if err != nil {
 			return err
@@ -902,15 +911,39 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 	if opts.driver == "" {
 		return fmt.Errorf("wire-fuzz needs --driver")
 	}
+	if opts.replay == "" && opts.root != "" {
+		return fmt.Errorf("wire-fuzz: --root names a replay's root; a whole-roster run takes --unit alone")
+	}
+	// THE LEDGER IS THE HARNESS'S TO FIND (wirefuzz_absent.go): a
+	// whole-roster run names its leg and the arm is its own profile.
+	ledgerDir := opts.ledgerDir
+	if ledgerDir == "" {
+		ledgerDir = wireAbsentDir
+	}
+	var ledgerPath, plainPath string
+	var absentHeld, plainHeld map[string]string
+	if opts.replay == "" {
+		if opts.leg == "" {
+			return fmt.Errorf("wire-fuzz: --leg names the leg, so the harness reads its absent-root ledger %s/<leg>-%s.tsv (docs/SPEC-CONFORMANCE.md W-ROSTER); a whole-roster run without it is refused", ledgerDir, wireArm(opts))
+		}
+		if !legName.MatchString(opts.leg) {
+			return fmt.Errorf("wire-fuzz: --leg %q is not lowercase words joined by '-'", opts.leg)
+		}
+		ledgerPath = absentLedgerPath(ledgerDir, opts.leg, wireArm(opts))
+		var err error
+		if absentHeld, err = loadAbsentLedger(ledgerPath); err != nil {
+			return err
+		}
+		if opts.builder && !opts.retain {
+			plainPath = absentLedgerPath(ledgerDir, opts.leg, "plain")
+			if plainHeld, err = loadAbsentLedger(plainPath); err != nil {
+				return err
+			}
+		}
+	}
 	seeds, roots, seedRoot, skipped, err := buildWireFuzzRoster(m, opts)
 	if err != nil {
 		return err
-	}
-	var absentHeld map[string]string
-	if opts.absentLedger != "" {
-		if absentHeld, err = readAbsentLedger(opts.absentLedger); err != nil {
-			return err
-		}
 	}
 
 	leg, err := startWireLeg(opts.driver, roots)
@@ -926,23 +959,35 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		defer timer.Stop()
 	}
 	absentRoots := map[string]int{}
+	answered := map[string]bool{}
 	absent := 0
 	var live []*wireSeed
 	for _, s := range seeds {
 		if leg.known[seedRoot[s]] {
 			live = append(live, s)
+			answered[absentRootName(roots[seedRoot[s]])] = true
 		} else {
 			absent++
 			absentRoots[absentRootName(roots[seedRoot[s]])]++
 		}
 	}
-	if err := checkAbsentRoots(absentRoots, absentHeld, opts.absentLedger); err != nil {
-		leg.kill()
-		return err
-	}
 	if len(live) == 0 {
 		leg.kill()
 		return fmt.Errorf("the leg has a codec for none of the %d roots the corpus names", len(roots))
+	}
+	scope := ""
+	if opts.replay == "" {
+		scope = opts.unit
+	}
+	if err := checkAbsentRoots(absentRoots, absentHeld, ledgerPath, scope); err != nil {
+		leg.kill()
+		return err
+	}
+	if plainHeld != nil {
+		if err := checkSplitRoots(plainHeld, plainPath, answered, scope); err != nil {
+			leg.kill()
+			return err
+		}
 	}
 	var pool []*wireSeed
 	for _, s := range live {
@@ -1068,7 +1113,9 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		absence = fmt.Sprintf(", shard %d/%d", opts.shard, opts.shards)
 	}
 	if absent > 0 {
-		absence += fmt.Sprintf(", %d seeds absent (roots the leg has no codec for)", absent)
+		// every one is held by name in the leg's ledger, or the run stopped
+		// above (wirefuzz_absent.go)
+		absence += fmt.Sprintf(", %d ledgered seeds absent (%s)", absent, ledgerPath)
 	}
 	if skipped > 0 {
 		// the seeds this ARM has nothing to say about: a fixed-class root gets

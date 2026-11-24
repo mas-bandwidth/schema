@@ -128,9 +128,9 @@ conformance-negative-control-unity: toolchain-unity build/conformance-harness bu
 
 tables-unity-wire-fuzz: toolchain-unity build/conformance-harness build/conformance-unity/.stamp
 	@mkdir -p build/unity-wire-fuzz
-	sh test/conformance/wire-fuzz-complete build/unity-wire-fuzz/plain.log ./build/conformance-harness wire-fuzz \
+	sh test/conformance/wire-fuzz-complete build/unity-wire-fuzz/plain.log ./build/conformance-harness wire-fuzz --leg unity \
 		--driver 'test/conformance/unity/driver wire-fuzz' --seed $(SEED) --n $(N) --failed build/unity-wire-fuzz/plain.bin
-	sh test/conformance/wire-fuzz-complete build/unity-wire-fuzz/retain.log ./build/conformance-harness wire-fuzz --retain \
+	sh test/conformance/wire-fuzz-complete build/unity-wire-fuzz/retain.log ./build/conformance-harness wire-fuzz --leg unity --retain \
 		--driver 'test/conformance/unity/driver wire-fuzz' --seed $(SEED) --n $(N) --failed build/unity-wire-fuzz/retain.bin
 
 tables-unity-wire-fuzz-negative-control: toolchain-unity build/conformance-harness build/conformance-unity/.stamp
