@@ -112,19 +112,19 @@ func TestPushToMainSelectsEveryFamily(t *testing.T) {
 // Go file naming the input directory selects its package.
 func TestDerivationOnAHandTree(t *testing.T) {
 	t.Parallel()
-	saved := Families
-	t.Cleanup(func() { Families = saved })
-	Families = []Family{{Name: "pins", PR: true, Inputs: []string{"testdata/pins/"}, Target: "pins-{leg}", Drivers: `^test/pins/([a-z]+)/`}}
+	// The families are passed in, never swapped into the package global, so
+	// this test stays parallel and races with no other test.
+	families := []Family{{Name: "pins", PR: true, Inputs: []string{"testdata/pins/"}, Target: "pins-{leg}", Drivers: `^test/pins/([a-z]+)/`}}
 	tr := Tree{
 		Files:   []string{"testdata/pins/a.bin", "test/pins/lua/main.lua", "test/pins/moo/main.moo"},
 		Targets: map[string]bool{"pins-lua": true},
 		GoFiles: map[string]string{"internal/x/x_test.go": `const dir = "testdata/pins"`, "internal/y/y.go": "package y"},
 	}
-	bad := strings.Join(Check(tr), "\n")
+	bad := strings.Join(checkFamilies(families, tr), "\n")
 	if !strings.Contains(bad, "leg moo has a driver but no pins-moo target") {
 		t.Errorf("Check did not refuse the moo driver with no target:\n%s", bad)
 	}
-	s := Select(tr, []string{"testdata/pins/b.bin", "testdata/orphan/z.bin"}, false, true)
+	s := selectFrom(families, tr, []string{"testdata/pins/b.bin", "testdata/orphan/z.bin"}, false, true)
 	if len(s.Rows) != 1 || s.Rows[0] != (Row{Leg: "lua", Family: "pins", Target: "pins-lua"}) {
 		t.Errorf("rows = %+v", s.Rows)
 	}
