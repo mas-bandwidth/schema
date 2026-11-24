@@ -732,7 +732,7 @@ jobs:
           input_rows=$(jq -c '. + [.[] | select(.family == "conformance-corpus" and .leg == "squirrel") | . + {account_control:"wrong"}]' <<<"$input_rows")
           echo "dart_corpus_account=$dart_corpus_account" >> "$GITHUB_OUTPUT"
           cpp_corpus_account=$(jq -r 'any(.[]; .family == "conformance-corpus" and .leg == "cpp")' <<<"$input_rows")
-          if grep -Eqx 'make/conformance-handoff\.py|test/conformance/cpp/(main\.cpp|driver)|test/tables/cook_main\.cpp|tools/inputaccount/(main|watch_linux)\.go' "$RUNNER_TEMP/diff-files.txt"; then
+          if grep -Eqx 'make/conformance-handoff\.py|test/conformance/cpp/(main\.cpp|codecs\.h|driver)|test/tables/cook_main\.cpp|tools/inputaccount/(main|watch_linux)\.go' "$RUNNER_TEMP/diff-files.txt"; then
             cpp_corpus_account=true
           fi
           input_rows=$(jq -c 'map(select(.family != "conformance-corpus" or .leg != "cpp"))' <<<"$input_rows")
