@@ -351,7 +351,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	g.pf("// THE FLOOR is one number and the lineage is one array, so \"retired\" is an\n")
 	g.pf("// index cut and the operator's two answers stay distinct: below it a layout\n")
 	g.pf("// this build once served is layout_unsupported (upgrade the client), outside\n")
-	g.pf("// the lineage is layout_newer (ship the reader).\n")
+	g.pf("// the lineage is layout_unknown (§5.3 step 5).\n")
 	g.pf("export const %sFixedFloor = %d;\n\n", st.Name, floor)
 	g.pf("// ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes at module\n")
 	g.pf("// load: nothing compiles on the load path, nothing on it parses a layout,\n")
@@ -470,11 +470,12 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	// from the wire: the definitions digest is not on the wire, so the hash
 	// cannot be re-derived from a file at all.
 	// STEP 5 and STEP 6: SELECT BY HASH, then the floor. Outside the lineage is
-	// layout_newer — ship the reader; below the floor is layout_unsupported —
-	// upgrade the client. Both report THE FILE'S hash, and layout_newer reports
-	// NOTHING ELSE.
+	// layout_unknown in every leg (layout_newer is retired: nothing in the
+	// lineage proves a hash newer); below the floor is layout_unsupported —
+	// upgrade the client. Both report THE FILE'S hash, and layout_unknown
+	// reports NOTHING ELSE.
 	g.pf("  const pick = TableFixedSelect(%sFixedKnown, hashLo, hashHi);\n", st.Name)
-	g.pf("  if (pick < 0) { return TableFixedRefuseHash(report, TableFixedRefusal.LayoutNewer, hashLo, hashHi); }\n")
+	g.pf("  if (pick < 0) { return TableFixedRefuseHash(report, TableFixedRefusal.LayoutUnknown, hashLo, hashHi); }\n")
 	g.pf("  if (pick < %sFixedFloor) { return TableFixedRefuseHash(report, TableFixedRefusal.LayoutUnsupported, hashLo, hashHi); }\n", st.Name)
 	// STEP 7: a known hash is read under THE LOCK'S layout bytes. A difference is
 	// ONE name — a lie about a known version — and §1.1's seven rules do not run
@@ -502,7 +503,7 @@ func (g *fixedModule) emitRoot(st *ir.Struct) {
 	// order, §5.9 #5). A caller that handed no plan at all declared a capacity of
 	// nothing, which is `plan_too_large` by name — and refusing it up here as
 	// `no_layout` gave a STRANGER'S file the name §5.3 reserves for a RECORD hash
-	// that is not the file's, where the answer it is owed is `layout_newer`.
+	// that is not the file's, where the answer it is owed is `layout_unknown`.
 	g.pf("  if (plan === null) { report.refused = TableFixedRefusal.PlanTooLarge; return -1; }\n")
 	g.pf("  let entries = %sFixedIdentity, entryCount = 1, remap = null;\n", st.Name)
 	g.pf("  let censusUnknown = 0, censusKind = 0;\n")

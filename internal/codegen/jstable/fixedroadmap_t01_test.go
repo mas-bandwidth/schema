@@ -137,7 +137,7 @@ for (const declared of [data.length - layoutAt + 1, 0xFFFFFFFF]) {
   total("declared L=" + declared, n, r, "LayoutMalformed", 0n, back, plan);
 }
 // the guard runs BEFORE the hash select (step 3 before step 5): a truncated file
-// under a hash no lineage entry holds is layout_malformed, never layout_newer
+// under a hash no lineage entry holds is layout_malformed, never layout_unknown
 {
   const f = copy(data, layoutAt + L - 1);
   new DataView(f.buffer).setBigUint64(8, 0xDEADBEEFCAFEF00Dn, true);
@@ -274,7 +274,7 @@ for (const name of ["./ProbeTable.js", "./@HOME@Table.js"]) {
 }
 `
 		}, nil},
-		// §5.3 step 5: "if none: REFUSE layout_newer, reporting h AND NOTHING
+		// §5.3 step 5: "if none: REFUSE layout_unknown, reporting h AND NOTHING
 		// ELSE" — and step 5 comes BEFORE step 7's layout compare, so a stranger's
 		// layout is never looked at: garbage behind an unknown hash is still this name.
 		{"js/R8", func() (string, []string, int, string) {
@@ -290,11 +290,11 @@ for (const garbage of [false, true]) {
   poison(back, plan);
   const r = new TableFixedReport();
   const n = TLoad(back, back.length, f, f.length, plan, r);
-  total("unknown hash, garbage=" + garbage, n, r, "LayoutNewer", want, back, plan);
+  total("unknown hash, garbage=" + garbage, n, r, "LayoutUnknown", want, back, plan);
   // AND NOTHING ELSE: the whole report is a fresh one with refused and layoutHash set
   const fresh = new TableFixedReport();
-  fresh.refused = TableFixedRefusal.LayoutNewer; fresh.layoutHash = want;
-  if (show(r) !== show(fresh)) { fail("layout_newer reports the hash and nothing else: " + show(r)); }
+  fresh.refused = TableFixedRefusal.LayoutUnknown; fresh.layoutHash = want;
+  if (show(r) !== show(fresh)) { fail("layout_unknown reports the hash and nothing else: " + show(r)); }
 }
 `
 		}, nil},
@@ -404,7 +404,7 @@ for (const [b, name] of [[1, "PreviousForm"], [2, "MessageFormAsFile"], [6, "New
 { const f = copy(old, 40); refuse("cut inside the layout", f, "LayoutMalformed", 0n, back.length, big); }
 { const f = copy(old); f[20] ^= 0xFF; refuse("a lie about a known layout", f, "LayoutMalformed", 0n, back.length, big); }
 { const f = copy(old); const v = new DataView(f.buffer); v.setBigUint64(8, 0xDEADBEEFCAFEF00Dn, true);
-  refuse("a hash in no lineage entry", f, "LayoutNewer", 0xDEADBEEFCAFEF00Dn, back.length, big); }
+  refuse("a hash in no lineage entry", f, "LayoutUnknown", 0xDEADBEEFCAFEF00Dn, back.length, big); }
 refuse("more records than the caller's room", old, "BatchTooLarge", 0n, 0, big);
 refuse("a plan that does not fit", old, "PlanTooLarge", 0n, back.length, none);
 refuse("no plan at all", old, "PlanTooLarge", 0n, back.length, null);

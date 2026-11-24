@@ -1,144 +1,133 @@
-// R15.mjs — test/conformance/js/rows/R15.mjs
+// R15 — the four forward-read clamps are retired (docs/roadmap.sexp R15): the
+// count clamp across bounds, the range clamp across versions, the remap of an
+// unknown variant to None, the drop-and-count of an unknown field. Each was a
+// read of a layout the lineage does not hold, and each is now ONE refusal at
+// §5.3 step 5, before any record is touched.
 //
-// The four forward-read clamps are retired:
-//   - count clamp across bounds
-//   - range clamp across versions
-//   - remap of an unknown variant to None
-//   - drop-and-count of an unknown field
+// THE LAW. docs/FIXED-FORM-ALGORITHM.md §5.3 step 5: "if none: REFUSE
+// layout_unknown, reporting h AND NOTHING ELSE"; and "STEP 5's ANSWER IS
+// `layout_unknown`, IN EVERY LEG, AND `layout_newer` IS RETIRED" (decided
+// 2026-11-03). Ruling R4 (commit fa1d6bdea): a refused read leaves every value
+// handed in at its declared default.
 //
-// Each is layout_newer now. This test verifies that an unknown layout
-// refuses with LayoutNewer and does NOT perform forward reads.
+// Ported from the Go reference row test/conformance/go/rows/R15_test.go, on the
+// real generated API: the build's own Cell file, written by CellFixedSave, is
+// the positive control (it reads, so the refusal below is not vacuous); then
+// the same file with its header hash (and every record's) moved off the
+// lineage, its record bodies filled with 0xFF so a count word, a ranged scalar,
+// a union tag and an unknown field id would all be past any bound, must refuse
+// layout_unknown with n = -1, layoutHash = the file's hash, every counter zero,
+// and every poisoned value back at its default.
 //
-// SPEC: docs/FIXED-FORM-ALGORITHM.md:967-973
-//
-// The test:
-// 1. Constructs a minimal valid form-1 header with an unknown hash
-// 2. Calls CellFixedLoad with that buffer
-// 3. Verifies report.refused === TableFixedRefusal.LayoutNewer (15)
+// Run alone from the repo root: node test/conformance/js/rows/R15.mjs
 
-import { CellFixedLoad } from "../../../../build/tables-generated-js/v1/V1Table.js";
-import { TableFixedResetReport } from "../../../../build/tables-generated-js/v1/Tblv1Table.js";
-import { CellFixedLayoutCopy, CellFixedLayoutBytes } from "../../../../build/tables-generated-js/v1/V1Table.js";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 
-// Constants for building a minimal form-1 file
-const FORM_1 = 3;               // TableFixedForm (not TableFixedVariableForm=1)
-const HEADER_BYTES = 10;        // Form byte + hash (8) + reserved (1)
-const RESERVE_BYTES = 1;        // bytes[1..8] must be zero
+const generated = process.env.SCHEMA_JS_GENERATED ?? "build/tables-generated-js";
+const load = (path) => import(pathToFileURL(resolve(generated, path)).href);
 
-// The report structure expected by CellFixedLoad
-function newReport() {
-  return {
-    damaged: false,
-    refused: 0,
-    unknown: 0,
-    mismatch: 0,
-    layoutHash: 0n,
-  };
+const rt = await load("v1/Tblv1Table.js");
+const v1 = await load("v1/V1Table.js");
+const { Cell, TableFixedForm, TableFixedHashAt, TableFixedHeaderBytes, TableFixedLayoutHeaderBytes,
+  TableFixedRefusal, TableFixedRefusalName, TableFixedReport } = rt;
+const { CellFixedLoad, CellFixedSave, CellFixedMeasure, CellFixedNewPlan, CellFixedLayoutBytes,
+  CellFixedRecordBytes, CellFixedHashLo, CellFixedHashHi } = v1;
+
+let failed = 0;
+function check(ok, msg) {
+  if (ok) { process.stdout.write("PASS " + msg + "\n"); }
+  else { failed++; process.stdout.write("FAIL " + msg + "\n"); }
 }
 
-// Build a minimal form-1 file with an UNKNOWN hash (0x12345678, 0xABCDEF01)
-// SPEC: TableFixedHeaderBytes=16, TableFixedHashAt=8, TableFixedLayoutHeaderBytes=4
-function buildUnknownLayoutFile() {
-  // CellFixedLayoutBytes = 55 for V1 Cfg table
-  const layoutLen = CellFixedLayoutBytes;
-  // HEADER_BYTES=10 includes form(1)+hash(8)+reserved(1) = 10 bytes
-  // But TableFixedHeaderBytes=16, so we need to account for that
-  // Header: [0]form, [1..7]hash_hi_part? no... let me check
-  // TableFixedHashAt=8 means hashLo at bytes[8:12], hashHi at bytes[12:16]
-  // Form byte at bytes[0], reserved bytes[1..7] must be zero
-  // Layout length at bytes[16:20] (little-endian uint32)
-  // Layout starts at bytes[20]
-  
-  const totalLen = 16 + 4 + layoutLen + 8;  // header(16) + layout_header(4) + layout + record_header(8)
-
-  const bytes = new Uint8Array(totalLen);
-
-  // Form byte
-  bytes[0] = FORM_1;
-
-  // Reserved bytes [1..7] must be zero
-  for (let i = 1; i < 8; i++) bytes[i] = 0;
-
-  // Hash in header (UNKNOWN: 0x12345678, 0xABCDEF01)
-  const headerHashLo = 0x12345678;
-  const headerHashHi = 0xABCDEF01;
-  bytes[8] = headerHashLo & 0xff;
-  bytes[9] = (headerHashLo >> 8) & 0xff;
-  bytes[10] = (headerHashLo >> 16) & 0xff;
-  bytes[11] = (headerHashLo >> 24) & 0xff;
-  bytes[12] = headerHashHi & 0xff;
-  bytes[13] = (headerHashHi >> 8) & 0xff;
-  bytes[14] = (headerHashHi >> 16) & 0xff;
-  bytes[15] = (headerHashHi >> 24) & 0xff;
-
-  // Layout length at bytes[16:20] (little-endian uint32)
-  bytes[16] = layoutLen & 0xff;
-  bytes[17] = (layoutLen >> 8) & 0xff;
-  bytes[18] = (layoutLen >> 16) & 0xff;
-  bytes[19] = (layoutLen >> 24) & 0xff;
-
-  // Layout bytes (copy from CellFixedLayout)
-  for (let i = 0; i < layoutLen; i++) {
-    bytes[20 + i] = CellFixedLayoutCopy()[i];
-  }
-
-  // Record header at the end (unknown hash again)
-  const recAt = 20 + layoutLen;
-  bytes[recAt] = headerHashLo & 0xff;
-  bytes[recAt + 1] = (headerHashLo >> 8) & 0xff;
-  bytes[recAt + 2] = (headerHashLo >> 16) & 0xff;
-  bytes[recAt + 3] = (headerHashLo >> 24) & 0xff;
-  bytes[recAt + 4] = headerHashHi & 0xff;
-  bytes[recAt + 5] = (headerHashHi >> 8) & 0xff;
-  bytes[recAt + 6] = (headerHashHi >> 16) & 0xff;
-  bytes[recAt + 7] = (headerHashHi >> 24) & 0xff;
-
-  return bytes;
+// Every refusal must be a name this leg knows: a missing LayoutUnknown would
+// make every comparison below undefined === undefined.
+if (typeof TableFixedRefusal.LayoutUnknown !== "number") {
+  process.stdout.write("FAIL TableFixedRefusal.LayoutUnknown is not defined\n");
+  process.exit(1);
 }
 
-// Test: unknown layout refuses with LayoutNewer
-function testUnknownLayoutLayoutNewer() {
-  const bytes = buildUnknownLayoutFile();
-  const report = newReport();
+const COUNT = 2;
+const UNKNOWN_HASH = 0xdeadbeefcafe0001n; // in no lineage entry
+const OWN_HASH = (BigInt(CellFixedHashHi >>> 0) << 32n) | BigInt(CellFixedHashLo >>> 0);
+check(UNKNOWN_HASH !== OWN_HASH, "the planted hash is not the build's own");
 
-  const plan = {
-    capacity: 10,
-    image: new Uint8Array(256),
-    view: new DataView(new ArrayBuffer(256)),
-    cover: 0,
-    holes: [],
-  };
-
-  const result = CellFixedLoad(plan.image, plan.capacity, bytes, bytes.length, plan, report);
-
-  // EXPECTED: result === -1, report.refused === LayoutNewer (15)
-  // The forward reads are RETIRED — an unknown layout must refuse immediately
-  // with layout_newer, not clamp counts or ranges or remap unknowns.
-  if (result !== -1) {
-    console.log("FAIL: result = " + result + ", expected -1");
-    return false;
-  }
-  if (report.refused !== 15) {
-    console.log("FAIL: report.refused = " + report.refused + ", expected 15 (LayoutNewer)");
-    return false;
-  }
-  if (report.damaged) {
-    console.log("FAIL: report.damaged = true, expected false");
-    return false;
-  }
-  if (report.unknown !== 0) {
-    console.log("FAIL: report.unknown = " + report.unknown + ", expected 0");
-    return false;
-  }
-  if (report.mismatch !== 0) {
-    console.log("FAIL: report.mismatch = " + report.mismatch + ", expected 0");
-    return false;
-  }
-
-  console.log("PASS: unknown layout refuses with LayoutNewer");
-  return true;
+function poison(c) {
+  c.power = 0x5a5a5a5a;
+  c.label.fill(0x7e);
+  c.labelLength = 5;
+}
+function isDefault(c) {
+  const fresh = new Cell();
+  return c.power === fresh.power && c.labelLength === fresh.labelLength &&
+    c.label.length === fresh.label.length && c.label.every((b, i) => b === fresh.label[i]);
+}
+function countersZero(r) {
+  return r.unknown === 0 && r.mismatch === 0 && r.oor === 0 && r.widened === 0 && r.repeated === 0;
 }
 
-// Entry point
-const passed = testUnknownLayoutLayoutNewer();
-process.exit(passed ? 0 : 1);
+// ---- THE BUILD'S OWN FILE ----
+const written = [];
+for (let i = 0; i < COUNT; i++) {
+  const c = new Cell();
+  c.power = 100 + i;
+  c.label.set([0x68, 0x69]); // "hi"
+  c.labelLength = 2;
+  written.push(c);
+}
+const need = CellFixedMeasure(COUNT);
+const file = new Uint8Array(need);
+const wrote = CellFixedSave(written, COUNT, file);
+check(wrote === need, "the build's own file writes (" + wrote + " of " + need + " bytes)");
+check(file[0] === TableFixedForm, "form byte is TableFixedForm (" + file[0] + ")");
+
+// ---- POSITIVE CONTROL: the build's own file reads ----
+{
+  const values = [new Cell(), new Cell(), new Cell()];
+  const plan = CellFixedNewPlan();
+  const report = new TableFixedReport();
+  const n = CellFixedLoad(values, values.length, file, file.length, plan, report);
+  check(n === COUNT && report.refused === TableFixedRefusal.None,
+    "positive control: own hash reads " + COUNT + " records (n=" + n + ", refused=" +
+    TableFixedRefusalName(report.refused) + ")");
+  check(values[0].power === 100 && values[1].power === 101 && values[1].labelLength === 2,
+    "positive control: the values landed (power " + values[0].power + "," + values[1].power + ")");
+  check(report.layoutHash === 0n, "positive control: layoutHash is zero on a read that lands");
+}
+
+// ---- THE UNKNOWN HASH: header and every record, bodies 0xFF ----
+const stranger = file.slice();
+const dv = new DataView(stranger.buffer);
+const firstRecord = TableFixedHeaderBytes + TableFixedLayoutHeaderBytes + CellFixedLayoutBytes;
+dv.setBigUint64(TableFixedHashAt, UNKNOWN_HASH, true);
+for (let i = 0; i < COUNT; i++) {
+  const at = firstRecord + i * CellFixedRecordBytes;
+  dv.setBigUint64(at, UNKNOWN_HASH, true);
+  stranger.fill(0xff, at + 8, at + CellFixedRecordBytes);
+}
+{
+  const values = [new Cell(), new Cell(), new Cell()];
+  for (const c of values) { poison(c); }
+  check(!values.some(isDefault), "the values handed in are poisoned before the read");
+  const plan = CellFixedNewPlan();
+  const report = new TableFixedReport();
+  const n = CellFixedLoad(values, values.length, stranger, stranger.length, plan, report);
+  check(n === -1, "unknown hash: n = -1 (got " + n + ")");
+  check(report.refused === TableFixedRefusal.LayoutUnknown,
+    "unknown hash refuses layout_unknown at step 5 (got " + TableFixedRefusalName(report.refused) + ")");
+  check(TableFixedRefusalName(report.refused) === "layout_unknown",
+    "the refusal's name is layout_unknown, never layout_newer");
+  check(report.layoutHash === UNKNOWN_HASH,
+    "layoutHash is the file's hash 0x" + UNKNOWN_HASH.toString(16) + " (got 0x" + report.layoutHash.toString(16) + ")");
+  check(countersZero(report) && report.damaged === false,
+    "every counter zero, not damaged: no clamp, remap or drop ran (unknown=" + report.unknown +
+    " mismatch=" + report.mismatch + " oor=" + report.oor + " widened=" + report.widened +
+    " repeated=" + report.repeated + " damaged=" + report.damaged + ")");
+  check(values.every(isDefault), "ruling R4: every value handed in holds its declared default after the refusal");
+}
+
+if (failed > 0) {
+  process.stdout.write("R15: RED, " + failed + " failed\n");
+  process.exit(1);
+}
+process.stdout.write("R15: GREEN\n");

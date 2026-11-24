@@ -13,7 +13,7 @@
 //
 // THE CHECK RUNS BEFORE THE HASH SELECT, so the header's hash is irrelevant to
 // it: a truncated layout is refused layout_malformed even for a hash in no
-// lineage, before layout_newer or no_layout could have their say.
+// lineage, before layout_unknown or no_layout could have their say.
 //
 // Reaches the generated tree exactly as the driver does (test/conformance/js/
 // main.mjs): the same SCHEMA_JS_GENERATED indirection and the same module

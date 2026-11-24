@@ -140,11 +140,13 @@ export const TableFixedRefusal = globalThis.Object.freeze({
   LayoutTooDeep: 12,
   PlanTooLarge: 13,     // a layout whose compiled plan does not fit the caller's storage
   BatchTooLarge: 14,    // more records than the caller's capacity
-  // §5'S TWO, IN THE ORDER §5.3 NAMES THEM (§5.9 #14: the NAMES are the
-  // contract and the integers are each leg pair's own, but the ORDER is the
-  // contract too). Outside the lineage: ship the reader. Below the floor: a
-  // layout this build served and has retired — upgrade the client.
+  // RETIRED (docs/FIXED-FORM-ALGORITHM.md §5.3 step 5, SPEC-TABLES §21.3,
+  // decided 2026-11-03): nothing in the lineage proves a hash newer, so no read
+  // answers layout_newer. It keeps its ordinal so no other number shifts; a
+  // step-5 miss is LayoutUnknown, below.
   LayoutNewer: 15,
+  // Below the floor: a layout this build served and has retired — upgrade the
+  // client (§5.3 step 6).
   LayoutUnsupported: 16,
   // THE ONE CONTENT REFUSAL (docs/FIXED-FORM-ALGORITHM.md §4.5 fix 11): a text
   // field whose USED units are ill-formed REFUSES BY NAME rather than landing a
@@ -172,6 +174,10 @@ export const TableFixedRefusal = globalThis.Object.freeze({
   // A WRITER'S OPTIONAL READ INTO A READER'S BARE FIELD refuses the lineage by
   // name: the reader cannot hold an absent value (rulings 2026-11-22, R2).
   KindMismatch: 24,
+  // §5.3 STEP 5'S ANSWER, IN EVERY LEG: a header hash in no lineage entry. It
+  // reports THE FILE'S hash and nothing else. Appended, so no ordinal above
+  // moves (§5.9 #14: the names are the contract, the integers each leg pair's).
+  LayoutUnknown: 25,
 });
 
 // THE REFUSAL'S OWN NAME, matching the C++ reference's spellings exactly.
@@ -202,6 +208,7 @@ export function TableFixedRefusalName(r) {
     case TableFixedRefusal.OutOfRange: return "out_of_range";
     case TableFixedRefusal.WireDamaged: return "wire_damaged";
     case TableFixedRefusal.KindMismatch: return "kind_mismatch";
+    case TableFixedRefusal.LayoutUnknown: return "layout_unknown";
     default: return "???";
   }
 }
@@ -218,7 +225,7 @@ export class TableFixedReport {
     this.widened = 0;
     this.repeated = 0;
     // THE FILE'S HASH, AND IT IS SET BY TWO REFUSALS AND NOTHING ELSE:
-    // layout_newer reports it "AND NOTHING ELSE" (§5.3), and
+    // layout_unknown reports it "AND NOTHING ELSE" (§5.3), and
     // layout_unsupported reports it too — the operator's other answer (§5.9
     // #7). LAST ON THE REPORT, and zero on every other path (§5.9 #15).
     //
@@ -1455,8 +1462,8 @@ function TableFixedCoalesce(plan, from) {
 // A fixed table reads BACKWARD and never forward. A file is matched on the eight
 // bytes of its header's hash against the lineage the BUILD laid down, and the
 // layout it carries is held to a BYTE COMPARISON against the bytes the lock
-// recorded — never walked. A hash the lineage does not hold is layout_newer
-// (ship the reader); a hash it holds below the floor is layout_unsupported
+// recorded — never walked. A hash the lineage does not hold is layout_unknown
+// (the file's hash and nothing else); a hash it holds below the floor is layout_unsupported
 // (upgrade the client). Those are the operator's two distinct answers, and
 // NOTHING PARSES A STRANGER'S LAYOUT ON ANY PATH.
 

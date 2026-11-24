@@ -10,7 +10,7 @@ package jstable
 //                    of them zero, because an append the reader knows is not an
 //                    event.
 //   OLD-REFUSES-NEW  the older reader given the widened writer's file refuses
-//                    `layout_newer` BEFORE any record, reporting THE FILE'S
+//                    `layout_unknown` BEFORE any record, reporting THE FILE'S
 //                    HASH and nothing else, with no counter moved and
 //                    `malformed` false (§5.3's joint answer).
 //
@@ -265,11 +265,11 @@ if (r.refused !== 0 || r.damaged) { fail("an equal hash is not a version: " + re
 			} else {
 				body = `
 if (n !== -1) { fail("the older reader did not refuse the newer writer's file: n=" + n + " " + reason(r)); }
-if (r.refused !== TableFixedRefusal.LayoutNewer) {
-  fail("a hash in no lineage entry owes layout_newer, not " + TableFixedRefusalName(r.refused));
+if (r.refused !== TableFixedRefusal.LayoutUnknown) {
+  fail("a hash in no lineage entry owes layout_unknown, not " + TableFixedRefusalName(r.refused));
 }
 if (r.layoutHash !== want) {
-  fail("layout_newer reports THE FILE'S hash: " + want.toString(16) + ", not " + r.layoutHash.toString(16));
+  fail("layout_unknown reports THE FILE'S hash: " + want.toString(16) + ", not " + r.layoutHash.toString(16));
 }
 if (r.damaged) { fail("a refusal by name never sets malformed too (§5.3, the joint answer)"); }
 if (r.widened !== 0 || r.unknown !== 0 || r.mismatch !== 0 || r.oor !== 0 || r.repeated !== 0) {
@@ -306,7 +306,7 @@ const r = report;
 // The floor is ONE NUMBER and the lineage is ONE ARRAY, so "retired" is an index
 // cut and the operator's two answers stay distinct: below the floor is
 // `layout_unsupported` (upgrade the client), outside the lineage is
-// `layout_newer` (ship the reader). §5.2, §5.7's three floor rows.
+// `layout_unknown` (§5.3 step 5; layout_newer is retired). §5.2, §5.7's three floor rows.
 
 func TestJSFixedVersioningFloor(t *testing.T) {
 	corpus := jsFixedCorpus(t)
@@ -384,7 +384,7 @@ func TestJSFixedVersioningHash(t *testing.T) {
 		name string
 		src  string
 	}{
-		// hash_unknown: a hash in no lineage refuses layout_newer.
+		// hash_unknown: a hash in no lineage refuses layout_unknown.
 		{"hash_unknown", fmt.Sprintf(`
 const data = readFileSync(%q);
 const view = new DataView(data.buffer, data.byteOffset, data.length);
@@ -392,7 +392,7 @@ view.setBigUint64(8, 0xDEADBEEFCAFEF00Dn, true);
 const back = []; for (let k = 0; k < 8; k++) { back.push(new T()); InitT(back[k]); }
 const report = new TableFixedReport(); const r = report;
 const n = TLoad(back, back.length, data, data.length, TNewPlan(4096, 4096), report);
-if (n !== -1 || r.refused !== TableFixedRefusal.LayoutNewer || r.layoutHash !== 0xDEADBEEFCAFEF00Dn || r.damaged) {
+if (n !== -1 || r.refused !== TableFixedRefusal.LayoutUnknown || r.layoutHash !== 0xDEADBEEFCAFEF00Dn || r.damaged) {
   fail("hash_unknown: n=" + n + " " + reason(r) + " hash=" + r.layoutHash.toString(16));
 }`, old)},
 		// hash_known_bytes_differ: a KNOWN hash whose layout bytes differ from
