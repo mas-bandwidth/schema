@@ -11066,6 +11066,16 @@ and it is the same buffer across all three by construction.
   stores. The id list is the retained ids' own storage (THE RETAINED IDS,
   below), and it rides inside `TableRetain` and claims no name of its own
   (§11).
+- **A REFUSED LOADRETAIN LEAVES THE STORE EMPTY.** A load the read refuses,
+  at the form byte, the framing, or damage met mid-body after records were
+  already captured, keeps no retained record: the store holds nothing from
+  the refused read and nothing from any earlier load into it. A later
+  `SaveRetain` of a root an earlier load answered, through that store, writes
+  that root's known fields and no retained record, exactly the plain `Save`'s
+  bytes, or refuses by name where a port binds the store to the root it
+  loaded. A port whose records carry their own retained fields drops them
+  from the save by this rule, not by emptying the records. The
+  `retain-refusal` rows hold it on every leg (SPEC-CONFORMANCE.md §7).
 - **The three names are ADDITIVE.** `Load`, `Measure` and `Save` are unchanged
   and retain nothing, so every existing caller, every conformance leg and every
   generated golden stands byte for byte. Retention is a thing a caller asks
