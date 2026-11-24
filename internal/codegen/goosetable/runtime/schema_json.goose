@@ -1918,6 +1918,8 @@ fn json_write_enum<T>(out: u8[>..]&, v: T, f: const FieldDesc&) -> bool {
 // json_write_flags writes a mask as its names; a set bit no variant names is
 // refused (§16.3).
 fn json_write_flags<T>(out: u8[>..]&, v: T, names: const (const u8[:])[:], depth: i64) -> bool {
+    // a flags value's array is a container too (docs/SPEC-TABLES.md §16.14 W2)
+    if depth > JsonMaxDepth { return false; }
     let bits = v as! u64;
     if bits == 0 {
         out.append("[]");
