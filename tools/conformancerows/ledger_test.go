@@ -147,3 +147,92 @@ func TestParseShard(t *testing.T) {
 		}
 	}
 }
+
+func TestPickRows(t *testing.T) {
+	all := []string{"E8", "F4", "R13", "R8"}
+	got, err := pickRows(all, "R8, E8 R13")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, []string{"E8", "R13", "R8"}) {
+		t.Fatalf("picked %v", got)
+	}
+	for list, want := range map[string]string{
+		"E8 Z9":  "Z9 (no row file)",
+		"E8 E8":  "E8 (named twice)",
+		" , ":    "names no row",
+		"":       "names no row",
+		"F4,R99": "R99 (no row file)",
+	} {
+		if _, err := pickRows(all, list); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("-rows %q: got %v, want an error naming %q", list, err, want)
+		}
+	}
+}
+
+// A narrow run (-rows, the per-PR verify targets' run) is held to the same
+// ledger and the same cause match as the whole leg's: an owed row it runs
+// that fails with another cause is red, naming the row; a row it does not run
+// is not judged. The toolchain is a shell script standing in for dart: no
+// time, socket or network.
+func TestNarrowRunKeepsTheLedgerAndTheCauseMatch(t *testing.T) {
+	root := t.TempDir()
+	rows := filepath.Join(root, "test", "conformance", "dart", "rows")
+	if err := os.MkdirAll(rows, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range []string{"A", "B", "C"} {
+		if err := os.WriteFile(filepath.Join(rows, r+".dart"), []byte("void main() { if (false) throw 'x'; }\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fake := filepath.Join(root, "fake-dart")
+	script := "case \"$3\" in *B.dart) echo 'B: the dead byte was not refused' >&2; exit 1;; esac\nexit 0\n"
+	if err := os.WriteFile(fake, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("DART", "sh "+fake)
+	ledger := filepath.Join(root, "test", "conformance", "dart", "rows-owed.tsv")
+	write := func(text string) {
+		t.Helper()
+		if err := os.WriteFile(ledger, []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	o := opts{root: root, leg: "dart", shard: "0/1", jobs: 2, work: filepath.Join(root, "work")}
+
+	// B fails with a cause its ledger line does not state: red, by name.
+	write("B\towed: B: some other failure\n")
+	o.rows = "A,B"
+	err := run(o)
+	if err == nil || !strings.Contains(err.Error(), "cause their ledger line does not state") || !strings.Contains(err.Error(), "B: ") {
+		t.Fatalf("a narrow run passed an owed row's changed cause: %v", err)
+	}
+	// The line set to what the run printed: green.
+	write("B\towed: fails: B: the dead byte was not refused\n")
+	if err := run(o); err != nil {
+		t.Fatalf("the owed row with its printed cause: %v", err)
+	}
+	// B unledgered and run: red.
+	if err := os.Remove(ledger); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(o); err == nil || !strings.Contains(err.Error(), "B") {
+		t.Fatalf("a narrow run passed an unledgered failing row: %v", err)
+	}
+	// A run that names only A does not judge B.
+	o.rows = "A"
+	if err := run(o); err != nil {
+		t.Fatalf("a narrow run judged a row it did not run: %v", err)
+	}
+	// A name with no row file is refused before anything runs.
+	o.rows = "A,Z"
+	if err := run(o); err == nil || !strings.Contains(err.Error(), "Z (no row file)") {
+		t.Fatalf("-rows with a missing row ran: %v", err)
+	}
+	// -gen is refused on a leg whose rows name their tree themselves.
+	o.rows, o.gen = "A", "work"
+	if err := run(o); err == nil || !strings.Contains(err.Error(), "-gen") {
+		t.Fatalf("-gen on dart ran: %v", err)
+	}
+}

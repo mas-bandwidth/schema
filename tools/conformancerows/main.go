@@ -24,6 +24,15 @@
 //
 // -shard i/n runs the rows of shard i (every n-th row, sorted by name), for
 // a person splitting a run by hand; every row is in exactly one shard.
+//
+// -rows "F4 F10 F12" runs only the rows named (each must be a row file of the
+// leg, or the run is refused), against the same ledger and the same cause
+// match: this is a per-PR verify target's narrow run (make/conformance-rows.mk,
+// CONFORMANCE_ROWS_PR_<leg>). -gen DIR reads the leg's generated units from
+// DIR, a tree holding only the units those rows read, in place of the leg's
+// whole generated tree (C, Java and Rust; the C++ and Dart rows name their
+// tree's path themselves). -work DIR keeps the run's build products apart
+// from the whole leg's, so the two never share a probe crate or a log.
 package main
 
 import (
@@ -47,8 +56,11 @@ func main() {
 	jobs := flag.Int("j", runtime.NumCPU(), "rows built and run at once")
 	root := flag.String("root", ".", "the repository root")
 	measured := flag.String("measured", "", "also write every failing row of the run as a ledger line `<row><TAB>owed: <measured cause>` to this file, for a person to read and copy; the ledger itself is never written")
+	rows := flag.String("rows", "", "run only these rows (names separated by spaces or commas); a name with no row file is refused")
+	gen := flag.String("gen", "", "the generated tree the rows read, relative to -root, in place of the leg's whole one (c, java and rust only)")
+	work := flag.String("work", "", "the directory for the run's build products (default build/conformance-rows/<leg>)")
 	flag.Parse()
-	if err := run(*root, *leg, *shard, *jobs, *measured); err != nil {
+	if err := run(opts{root: *root, leg: *leg, shard: *shard, jobs: *jobs, measured: *measured, rows: *rows, gen: *gen, work: *work}); err != nil {
 		fmt.Fprintf(os.Stderr, "conformancerows %s: %v\n", *leg, err)
 		os.Exit(1)
 	}
@@ -90,6 +102,62 @@ type ctx struct {
 	pre     map[string]error  // failures recorded by prepare
 	exe     map[string]string // Rust: row -> built test executable
 	javaCP  map[string]string // Java: row -> the classpath of the units it names
+	gen     string            // -gen: the generated tree, relative to root; "" is the leg's own
+}
+
+// genTree is the generated tree a recipe reads: -gen when given, else the
+// leg's whole tree, relative to the root.
+func (c *ctx) genTree(whole string) string {
+	if c.gen != "" {
+		return c.gen
+	}
+	return whole
+}
+
+// opts are the command's flags.
+type opts struct {
+	root, leg, shard string
+	jobs             int
+	measured, rows   string
+	gen, work        string
+}
+
+// genLegs are the legs whose recipe reads its generated tree from one root
+// that -gen can replace.
+var genLegs = map[string]bool{"c": true, "java": true, "rust": true}
+
+// pickRows is the rows -rows names, in the leg's order; a name that is not a
+// row of the leg, a name given twice, or an empty list is refused.
+func pickRows(all []string, list string) ([]string, error) {
+	names := strings.FieldsFunc(list, func(r rune) bool { return r == ',' || r == ' ' || r == '\t' })
+	if len(names) == 0 {
+		return nil, fmt.Errorf("-rows %q names no row", list)
+	}
+	have := map[string]bool{}
+	for _, r := range all {
+		have[r] = true
+	}
+	want := map[string]bool{}
+	var bad []string
+	for _, n := range names {
+		switch {
+		case !have[n]:
+			bad = append(bad, n+" (no row file)")
+		case want[n]:
+			bad = append(bad, n+" (named twice)")
+		}
+		want[n] = true
+	}
+	if len(bad) > 0 {
+		return nil, fmt.Errorf("-rows refused: %s", strings.Join(bad, ", "))
+	}
+	var picked []string
+	for _, r := range all {
+		if want[r] {
+			picked = append(picked, r)
+		}
+	}
+	return picked, nil
 }
 
 func (c *ctx) rowPath(row, ext string) string { return filepath.Join(c.rowsDir, row+ext) }
@@ -113,7 +181,8 @@ func (c *ctx) rowSource(rc recipe, row string) string {
 	return b.String()
 }
 
-func run(root, leg, shard string, jobs int, measured string) error {
+func run(o opts) error {
+	root, leg, shard, jobs, measured := o.root, o.leg, o.shard, o.jobs, o.measured
 	rc, ok := recipes[leg]
 	if !ok {
 		return fmt.Errorf("no row recipe for leg %q", leg)
@@ -131,6 +200,23 @@ func run(root, leg, shard string, jobs int, measured string) error {
 	}
 	c := &ctx{root: abs, leg: leg, rowsDir: filepath.Join(abs, "test", "conformance", leg, "rows"),
 		work: filepath.Join(abs, "build", "conformance-rows", leg), pre: map[string]error{}, exe: map[string]string{}}
+	if o.work != "" {
+		if c.work, err = filepath.Abs(o.work); err != nil {
+			return err
+		}
+	}
+	if o.gen != "" {
+		if !genLegs[leg] {
+			return fmt.Errorf("-gen: the %s rows name their generated tree's path themselves; only c, java and rust read a tree -gen can replace", leg)
+		}
+		if filepath.IsAbs(o.gen) || strings.HasPrefix(filepath.Clean(o.gen), "..") {
+			return fmt.Errorf("-gen %q: want a directory inside the repository, relative to -root", o.gen)
+		}
+		if st, serr := os.Stat(filepath.Join(abs, o.gen)); serr != nil || !st.IsDir() {
+			return fmt.Errorf("-gen %q: the generated tree is missing", o.gen)
+		}
+		c.gen = filepath.Clean(o.gen)
+	}
 	all, err := listRows(c.rowsDir, rc.ext)
 	if err != nil {
 		return err
@@ -152,7 +238,13 @@ func run(root, leg, shard string, jobs int, measured string) error {
 	} else if !errors.Is(rerr, fs.ErrNotExist) {
 		return rerr
 	}
-	ran := shardOf(all, i, n)
+	picked := all
+	if o.rows != "" {
+		if picked, err = pickRows(all, o.rows); err != nil {
+			return err
+		}
+	}
+	ran := shardOf(picked, i, n)
 	if len(ran) == 0 {
 		return fmt.Errorf("shard %d/%d of %d rows is empty: use fewer shards", i, n, len(all))
 	}

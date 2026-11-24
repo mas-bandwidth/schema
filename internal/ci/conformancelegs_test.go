@@ -162,6 +162,13 @@ func conformanceLegGaps(t *testing.T, replace map[string]string) []string {
 // its prerequisites (normal and order-only), as `make -p` prints them.
 func makeGraph(t *testing.T, root string, replace map[string]string) map[string][]string {
 	t.Helper()
+	return parseMakeGraph(t, makeDatabase(t, root, replace))
+}
+
+// makeDatabase is what `make -p -q` prints over the real Makefile, each make
+// file named in replace swapped for the file it maps to.
+func makeDatabase(t *testing.T, root string, replace map[string]string) []byte {
+	t.Helper()
 	makefile := filepath.Join(root, "Makefile")
 	if len(replace) > 0 {
 		src, err := os.ReadFile(makefile)
@@ -187,7 +194,12 @@ func makeGraph(t *testing.T, root string, replace map[string]string) map[string]
 	// has printed the database
 	cmd := exec.Command("make", "--no-print-directory", "-f", makefile, "-p", "-q", "conformance-leg-inputs-no-such-target")
 	cmd.Dir = root
-	out := makeQueryOutput(t, cmd)
+	return makeQueryOutput(t, cmd)
+}
+
+// parseMakeGraph reads the prerequisite graph out of a make database.
+func parseMakeGraph(t *testing.T, out []byte) map[string][]string {
+	t.Helper()
 	graph := map[string][]string{}
 	sc := bufio.NewScanner(strings.NewReader(string(out)))
 	sc.Buffer(make([]byte, 1<<20), 1<<26)

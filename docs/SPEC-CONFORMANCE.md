@@ -166,7 +166,13 @@ OWES) and is repeated here as the rule for the suite:
   nothing and is red when it exits 0, the twin of a Rust row whose test
   binary ran no test. The rows run nightly (ci-full.yml `conformance-rows`,
   every leg); a leg's rows come back per pull request once they fit in 60 s
-  on a CI runner.
+  on a CI runner. Ten rows run per pull request already, the ones the verify
+  targets ran by hand list before (c F4 F10 F12, cpp R15, dart E8 R8 R13,
+  java F10 R8, rust F8): `make conformance-rows-pr-<leg>` runs them through the
+  same runner, ledger and cause match (`-rows`), each against only the units
+  it reads, as a prerequisite of the leg's verify target, and
+  internal/ci/conformance_rows_pr_test.go fails when a verify target or a
+  list drops one.
 - **Every §5.6 fixed-form retirement is ledgered.** The fixed-form gates of the
   native legs print a `SKIP`/`RETIRED` line for each test retired by
   FIXED-FORM-ALGORITHM.md §5.6; `tools/retiredskips` holds the printed set to

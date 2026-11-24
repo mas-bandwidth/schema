@@ -22,7 +22,9 @@ import (
 //
 //   - no workflow a push or a pull request starts runs a conformance-rows
 //     target or job (a leg comes back per-PR only by changing this test,
-//     once it fits in 60 s on a CI runner);
+//     once it fits in 60 s on a CI runner); the ten rows the per-PR verify
+//     targets ran before still run there, through make, never named in a
+//     workflow (conformance_rows_pr_test.go);
 //   - ci-full.yml's conformance-rows matrix is exactly the legs with a
 //     test/conformance/<leg>/rows directory, Go's aside (its rows are TestRow
 //     functions go test runs);

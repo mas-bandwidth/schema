@@ -126,7 +126,7 @@ $(foreach leg,$(VERIFY_COMPILED_LEGS),$(eval $(call verify_compiled_fuzz_rules,$
 # ---- cpp ----
 
 .PHONY: _verify-cpp-conformance _verify-cpp-bench
-_verify-cpp-conformance: build/conformance-harness build/conformance-cpp build/schema_test_cook build/schema_test build/schema_test_ludicrous packet-defaults-cpp packet-void-cpp table-base64-cpp build/packet-text/cpp/driver build/packet-text/harness build/schema_test_tables
+_verify-cpp-conformance: build/conformance-harness build/conformance-cpp build/schema_test_cook build/schema_test build/schema_test_ludicrous packet-defaults-cpp packet-void-cpp table-base64-cpp build/packet-text/cpp/driver build/packet-text/harness conformance-rows-pr-cpp build/schema_test_tables
 	./build/schema_test
 	./build/schema_test_tables
 	./build/schema_test_ludicrous
@@ -142,7 +142,7 @@ _verify-cpp-bench: bin/schema generated/bench/cpp/.stamp generated/bench/tables/
 # ---- c ----
 
 .PHONY: _verify-c-conformance _verify-c-bench
-_verify-c-conformance: build/conformance-harness build/conformance-c build/schema_test_c build/schema_test_c_ludicrous packet-defaults-c packet-utf8-c packet-void-c table-base64-c
+_verify-c-conformance: build/conformance-harness build/conformance-c build/schema_test_c build/schema_test_c_ludicrous packet-defaults-c packet-utf8-c packet-void-c table-base64-c conformance-rows-pr-c
 	cd test/c && ../../build/schema_test_c
 	cd test/c-ludicrous && ../../build/schema_test_c_ludicrous
 	@rm -rf build/verify/conformance-c && mkdir -p build/verify/conformance-c $(VERIFY_RESULTS_DIR)
@@ -207,7 +207,7 @@ _verify-go-bench: bin/schema generated/bench/go/.stamp generated/bench/tables/go
 # ---- rust ----
 
 .PHONY: _verify-rust-conformance _verify-rust-bench
-_verify-rust-conformance: build/conformance-harness build/conformance-rust generated/rust/.stamp generated/rust-ludicrous/.stamp packet-utf8-rust
+_verify-rust-conformance: build/conformance-harness build/conformance-rust generated/rust/.stamp generated/rust-ludicrous/.stamp packet-utf8-rust conformance-rows-pr-rust
 	@rm -rf build/verify/conformance-rust && mkdir -p build/verify/conformance-rust $(VERIFY_RESULTS_DIR)
 	@set -e; \
 		(cd test/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release) & p1=$$!; \
@@ -244,7 +244,7 @@ _verify-java-packet-main: toolchain-java build/java-test/.stamp
 _verify-java-packet-ludicrous: toolchain-java build/java-test-ludicrous/.stamp
 	cd test/java-ludicrous && $(JAVA) -ea -cp ../../build/java-test-ludicrous Main
 
-_verify-java-conformance: toolchain-java build/conformance-harness build-conformance-java _verify-java-packet-main-ea _verify-java-packet-main _verify-java-packet-ludicrous packet-defaults-java packet-utf8-java packet-finite-java
+_verify-java-conformance: toolchain-java build/conformance-harness build-conformance-java _verify-java-packet-main-ea _verify-java-packet-main _verify-java-packet-ludicrous packet-defaults-java packet-utf8-java packet-finite-java conformance-rows-pr-java
 	@rm -rf build/verify/conformance-java && mkdir -p build/verify/conformance-java $(VERIFY_RESULTS_DIR)
 	JAVA="$(JAVA)" JAVAC="$(JAVAC)" ./build/conformance-harness run --only java --claims --work build/verify/conformance-java --results $(VERIFY_RESULTS_DIR)/java.json
 
@@ -266,7 +266,7 @@ _verify-java-bench: toolchain-java bin/schema generated/bench/java/.stamp cards-
 # ---- dart ----
 
 .PHONY: _verify-dart-conformance _verify-dart-packets _verify-dart-bench
-_verify-dart-packets: build/mustrun toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp packet-defaults-dart packet-utf8-dart packet-finite-dart
+_verify-dart-packets: build/mustrun toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp packet-defaults-dart packet-utf8-dart packet-finite-dart conformance-rows-pr-dart
 	cd test/dart && "$(CURDIR)/$(MUSTRUN)" -name test-dart-main -count $(DART_MAIN_CHECKS) -- $(DART) --enable-asserts main.dart
 	cd test/dart-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-dart-ludicrous -count $(DART_LUDICROUS_CHECKS) -- $(DART) --enable-asserts main.dart
 

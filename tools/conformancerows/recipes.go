@@ -41,6 +41,14 @@ func (c *ctx) runLogged(row string, extraEnv []string, argv ...string) error {
 	return nil
 }
 
+// runProbe runs argv from the repository root for its exit status alone:
+// nothing it prints reaches the row's log.
+func (c *ctx) runProbe(argv ...string) error {
+	cmd := exec.Command(argv[0], argv[1:]...)
+	cmd.Dir = c.root
+	return cmd.Run()
+}
+
 // runShell runs a make-supplied command string (a toolchain variable may be
 // a command with its own arguments) followed by quoted arguments.
 func (c *ctx) runShell(row, command string, args ...string) error {
@@ -163,6 +171,16 @@ func (c *ctx) resolve(src string, roots []string, ext string) (incs, srcs []stri
 }
 
 var cRoots = []string{"build/tables-generated-c", "build/tables-generated-c-fixed", "test/conformance/c"}
+
+// roots is cRoots, or with -gen the one narrow tree and the driver's unit
+// sources.
+func (c *ctx) cRoots() []string {
+	if c.gen != "" {
+		return []string{c.gen, "test/conformance/c"}
+	}
+	return cRoots
+}
+
 var cppRoots = []string{"build/tables-generated"}
 
 func rowC(c *ctx, row string) error {
@@ -182,7 +200,7 @@ func rowC(c *ctx, row string) error {
 	// includes the header, so the recipe defines it for every row.
 	flags := []string{"-std=c11", "-D_POSIX_C_SOURCE=200809L", "-Wall", "-Wextra", "-Werror", "-ffp-contract=off"}
 	extra := []string{"-I" + runtime, "-I" + filepath.Join(c.root, "test/conformance/c")}
-	return c.rowNative(row, ".c", cRoots, strings.Fields(cc), flags, extra, []string{"-lm"})
+	return c.rowNative(row, ".c", c.cRoots(), strings.Fields(cc), flags, extra, []string{"-lm"})
 }
 
 func rowCpp(c *ctx, row string) error {
@@ -201,7 +219,10 @@ func rowCpp(c *ctx, row string) error {
 // rowNative compiles the row against the generated headers it includes and
 // links it on its own; only a row whose link needs the units' compiled
 // sources (an undefined reference) is linked again with them, each unit
-// source compiled once per run and shared by every row that needs it.
+// source compiled once per run and shared by every row that needs it. The
+// first link is a probe: its output stays out of the row's log, so a row that
+// links with the units and then fails is named by its own failure, never by
+// the probe's undefined reference.
 func (c *ctx) rowNative(row, ext string, roots, compiler, flags, extra, libs []string) error {
 	c.resetLog(row)
 	src := c.rowPath(row, ext)
@@ -220,7 +241,7 @@ func (c *ctx) rowNative(row, ext string, roots, compiler, flags, extra, libs []s
 	}
 	out := filepath.Join(c.work, row)
 	link := append(append([]string{}, compiler...), flags...)
-	if err := c.runLogged(row, nil, append(append(link, obj, "-o", out), libs...)...); err != nil {
+	if err := c.runProbe(append(append(link, obj, "-o", out), libs...)...); err != nil {
 		var objs []string
 		for _, s := range srcs {
 			o, uerr := c.unitObject(s, compiler, flags, extra)
@@ -300,10 +321,11 @@ func prepareJava(c *ctx, rows []string) error {
 	if err != nil {
 		return err
 	}
-	genDir := filepath.Join(c.root, "build", "tables-generated-java")
+	tree := c.genTree(filepath.Join("build", "tables-generated-java"))
+	genDir := filepath.Join(c.root, tree)
 	ents, err := os.ReadDir(genDir)
 	if err != nil {
-		return fmt.Errorf("the generated tree build/tables-generated-java is missing: %w", err)
+		return fmt.Errorf("the generated tree %s is missing: %w", tree, err)
 	}
 	unitOf := map[string]string{} // package -> unit directory (the first by name)
 	for _, e := range ents {
@@ -368,7 +390,7 @@ func prepareJava(c *ctx, rows []string) error {
 			if b, cerr := cmd.CombinedOutput(); cerr != nil {
 				mu.Lock()
 				for _, row := range need[u] {
-					c.pre[row] = fmt.Errorf("does not build: the generated unit build/tables-generated-java/%s it names: %v\n%s", u, cerr, tail(string(b), 30))
+					c.pre[row] = fmt.Errorf("does not build: the generated unit %s/%s it names: %v\n%s", tree, u, cerr, tail(string(b), 30))
 				}
 				mu.Unlock()
 			}
@@ -445,10 +467,11 @@ func prepareRust(c *ctx, rows []string) error {
 	if err != nil {
 		return err
 	}
-	genDir := filepath.Join(c.root, "build", "tables-generated-rust")
+	tree := c.genTree(filepath.Join("build", "tables-generated-rust"))
+	genDir := filepath.Join(c.root, tree)
 	ents, err := os.ReadDir(genDir)
 	if err != nil {
-		return fmt.Errorf("the generated tree build/tables-generated-rust is missing: %w", err)
+		return fmt.Errorf("the generated tree %s is missing: %w", tree, err)
 	}
 	crates := map[string]bool{}
 	for _, e := range ents {
