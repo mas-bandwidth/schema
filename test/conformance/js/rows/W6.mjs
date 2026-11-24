@@ -11,7 +11,6 @@
 
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
-import { readFileSync } from "node:fs";
 
 const generated = process.env.SCHEMA_JS_GENERATED ?? "build/tables-generated-js";
 const imp = (p) => import(pathToFileURL(resolve(generated, p)).href);
@@ -20,22 +19,18 @@ const v1Table = await imp("v1/Tblv1Table.js");
 const v1 = await imp("v1/V1Table.js");
 const v2 = await imp("v2/V2Table.js");
 
-function parseInt32ArrayDecl(text, name, suffix) {
-  const at = text.indexOf(`const ${name}${suffix} = new Int32Array([`);
-  if (at < 0) return null;
-  const open = text.indexOf("[", at);
-  const close = text.indexOf("]);", open);
-  const body = text.slice(open + 1, close).replace(/\/\/[^\n]*/g, "");
-  return new Int32Array(body.match(/-?\d+/g).map(Number));
-}
+// THE DST ROWS THROUGH THE MODULE'S OWN EXPORT. This row once parsed them out
+// of the source text as `new Int32Array([`, a spelling the emitter left for
+// `new globalThis.Int32Array([`, so the parse came back null; the exported
+// copy is the public API and cannot drift from what the module runs.
+const v1CellDst = v1.CellFixedDstCopy();
+const v1CfgDst = v1.CfgFixedDstCopy();
+const v2CfgDst = v2.CfgFixedDstCopy();
 
-const v1Text = readFileSync(resolve(generated, "v1/V1Table.js"), "utf8");
-const v2Text = readFileSync(resolve(generated, "v2/V2Table.js"), "utf8");
-const v1CellDst = parseInt32ArrayDecl(v1Text, "Cell", "FixedDst");
-const v1CfgDst = parseInt32ArrayDecl(v1Text, "Cfg", "FixedDst");
-const v2CfgDst = parseInt32ArrayDecl(v2Text, "Cfg", "FixedDst");
-
-const LANES = 9, OP = 0, SRC = 1, DST = 2, SIZE = 3, AUX = 4, GUARD = 5, ARG = 6, META = 7, ARGW = 8;
+// THE ENTRY WIDTH IS THE RUNTIME'S OWN (TableFixedLanes): an entry grew two lanes,
+// the guard chain's count and offset (§4.1), after this row hard-coded nine, so
+// every entry past the first was read at the wrong stride. Lanes 0..8 are unchanged.
+const LANES = v1Table.TableFixedLanes, OP = 0, SRC = 1, DST = 2, SIZE = 3, AUX = 4, GUARD = 5, ARG = 6, META = 7, ARGW = 8;
 const NO_GUARD = -1, COPY = 0;
 
 // The law: plan.split exists and is initialized to 0
