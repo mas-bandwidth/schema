@@ -1473,9 +1473,10 @@ export function WriteBenchMixedFlat(view, value) {
   sb = 4;
   {
     let i0 = 0;
+    let e0 = globalThis; // an object until the loop reads an element
     try {
       for (; i0 < value.entitiesCount; i0++) {
-        const e0 = value.entities[i0];
+        e0 = value.entities[i0];
         if (!globalThis.Number.isInteger(e0.entityId) || e0.entityId < 0 || e0.entityId > 4095) {
           return -1;
         }
@@ -1587,7 +1588,6 @@ export function WriteBenchMixedFlat(view, value) {
         }
       }
     } catch (thrown) {
-      const e0 = value.entities[i0];
       if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
         return -1;
       }
@@ -1611,9 +1611,10 @@ export function WriteBenchMixedFlat(view, value) {
   }
   {
     let i0 = 0;
+    let e0 = globalThis; // an object until the loop reads an element
     try {
       for (; i0 < value.statsCount; i0++) {
-        const e0 = value.stats[i0];
+        e0 = value.stats[i0];
         if (!globalThis.Number.isInteger(e0.statId) || e0.statId < 0 || e0.statId > 255) {
           return -1;
         }
@@ -1631,7 +1632,6 @@ export function WriteBenchMixedFlat(view, value) {
         }
       }
     } catch (thrown) {
-      const e0 = value.stats[i0];
       if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
         return -1;
       }

@@ -1071,9 +1071,10 @@ export function WriteProbeColliderFlat(view, value) {
   }
   {
     let i0 = 0;
+    let e0 = globalThis; // an object until the loop reads an element
     try {
       for (; i0 < value.extrasCount; i0++) {
-        const e0 = value.extras[i0];
+        e0 = value.extras[i0];
         if (!globalThis.Number.isInteger(e0.type) || e0.type < 0 || e0.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
           return -1;
         }
@@ -1129,7 +1130,6 @@ export function WriteProbeColliderFlat(view, value) {
         }
       }
     } catch (thrown) {
-      const e0 = value.extras[i0];
       if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
         return -1;
       }
@@ -1592,9 +1592,10 @@ export function WriteProbeArrayFlat(view, value) {
   }
   {
     let i0 = 0;
+    let e0 = globalThis; // an object until the loop reads an element
     try {
       for (; i0 < 2; i0++) {
-        const e0 = value.samples[i0];
+        e0 = value.samples[i0];
         if (typeof e0.active !== "boolean") { // a bool is a boolean (SPEC §5.1)
           return -1;
         }
@@ -1738,7 +1739,6 @@ export function WriteProbeArrayFlat(view, value) {
         }
       }
     } catch (thrown) {
-      const e0 = value.samples[i0];
       if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
         return -1;
       }

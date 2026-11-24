@@ -1370,9 +1370,10 @@ export function WriteInputPacketFlat(view, value) {
   sb = 21;
   {
     let i0 = 0;
+    let e0 = globalThis; // an object until the loop reads an element
     try {
       for (; i0 < value.inputsCount; i0++) {
-        const e0 = value.inputs[i0];
+        e0 = value.inputs[i0];
         x = e0.stickX;
         if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
           return -1;
@@ -1478,7 +1479,6 @@ export function WriteInputPacketFlat(view, value) {
         }
       }
     } catch (thrown) {
-      const e0 = value.inputs[i0];
       if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
         return -1;
       }

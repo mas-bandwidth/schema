@@ -1833,9 +1833,10 @@ export function WriteArrUnevenFlat(view, value) {
   sb = 7;
   {
     let i0 = 0;
+    let e0 = globalThis; // an object until the loop reads an element
     try {
       for (; i0 < value.itemsCount; i0++) {
-        const e0 = value.items[i0];
+        e0 = value.items[i0];
         if (!globalThis.Number.isInteger(e0.type) || e0.type < 0 || e0.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
           return -1;
         }
@@ -1898,7 +1899,6 @@ export function WriteArrUnevenFlat(view, value) {
         }
       }
     } catch (thrown) {
-      const e0 = value.items[i0];
       if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
         return -1;
       }

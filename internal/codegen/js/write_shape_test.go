@@ -145,6 +145,50 @@ row("rethrow_Error_getter_then_null", (v) => { v.xsCount = 2; v.xs[0] = boom(); 
 row("rethrow_RangeError_proxy_then_null", (v) => { v.xsCount = 2; v.xs[0] = trap(); v.xs[1] = null; });
 row("rethrow_Error_union_tag_getter_then_null", (v) => { v.usCount = 2; const u = new M.Pick(); Object.defineProperty(u, "type", { get() { throw new Error("boom"); } }); v.us[0] = u; v.us[1] = null; });
 row("rethrow_Error_inner_getter_then_outer_null", (v) => { v.osCount = 2; const o = new M.Outer(); o.innerCount = 1; o.inner[0] = boom(); v.os[0] = o; v.os[1] = null; });
+// Accessors that answer differently on a second read: each tier gets its
+// own fresh value, since the accessor keeps state.
+function writeRuntime(v) {
+  try {
+    return M.WriteShapeProbe(new S.WriteStream(new Uint8Array(256)), v) === false ? "refused" : "accepted";
+  } catch (e) {
+    return "threw " + e.name;
+  }
+}
+function writeFlat(v) {
+  try {
+    return F.WriteShapeProbeFlat(new DataView(new Uint8Array(256).buffer), v) === -1 ? "refused" : "accepted";
+  } catch (e) {
+    return "threw " + e.name;
+  }
+}
+function rowFresh(label, mk) {
+  console.log("runtime " + label + "=" + mk(writeRuntime));
+  console.log("flat " + label + "=" + mk(writeFlat));
+}
+// storage whose index 0 throws once, then answers undefined
+rowFresh("rethrow_Error_storage_index_throws_once", (write) => {
+  const v = new M.ShapeProbe();
+  v.xsCount = 1;
+  let n = 0;
+  v.xs = new Proxy([new M.Arm()], { get(t, k) { if (k === "0") { if (n++ === 0) throw new Error("boom"); return undefined; } return t[k]; } });
+  return write(v);
+});
+// a count getter that answers 1 to every read but the last, the loop
+// condition after element 0, which throws; storage holds one element. A
+// clean run counts the reads first, so the throw lands on that last read.
+rowFresh("rethrow_Error_count_getter_throws_late", (write) => {
+  const mk = (limit) => {
+    const v = new M.ShapeProbe();
+    v.xs = [new M.Arm()];
+    let n = 0;
+    Object.defineProperty(v, "xsCount", { get() { n++; if (n === limit) throw new Error("late"); return 1; } });
+    return [v, () => n];
+  };
+  const [clean, reads] = mk(-1);
+  const verdict = write(clean);
+  if (verdict !== "accepted") return "clean run " + verdict;
+  return write(mk(reads())[0]);
+});
 {
   const [r, f] = verdicts(null);
   console.log("runtime value_is_null=" + r);
@@ -225,8 +269,8 @@ func TestJsWriteRefusesEveryValueShape(t *testing.T) {
 					t.Errorf("%s %s: %q, want %s", mode, k, v, want)
 				}
 			}
-			if len(lines) != 86 {
-				t.Fatalf("%s: the probe printed %d lines, want 86:\n%s", mode, len(lines), b)
+			if len(lines) != 90 {
+				t.Fatalf("%s: the probe printed %d lines, want 90:\n%s", mode, len(lines), b)
 			}
 		})
 	}

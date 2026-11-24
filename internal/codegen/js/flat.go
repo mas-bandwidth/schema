@@ -941,15 +941,19 @@ func (g *fgen) emitWriteField(f *ir.Field, path, ind string) {
 // read (elemShapeFolds) carries no object guard inside the loop: an explicit
 // test there, even a bare `=== undefined`, costs a short element loop several
 // percent of the whole write (#4936), while the first read's own map check is
-// already paid. The loop runs inside try instead, its index declared before
-// the try. A null or undefined element throws at that first read, and the
-// catch refuses it by name: it applies the full object check to the element
-// that threw, the one at the loop index, and returns -1. Anything else
-// thrown is rethrown unchanged: a view too small for the write, or an
-// object element's own getter or Proxy trap, even when a later element is
-// not an object (#4936). A nested loop's catch sees its own index; when it
-// rethrows, the outer element holding it is an object, so the outer catch
-// rethrows too. A non-null value that is not an object never throws here:
+// already paid. The loop runs inside try instead, with the element variable
+// declared before the try and set to globalThis, an object, until the loop
+// reads the first element into it. A null or undefined element throws at its
+// first read, and the catch refuses it by name: it applies the full object
+// check to that variable, the element the loop last read, and returns -1.
+// The catch never reads storage or the count again, so an accessor that
+// throws or answers differently on a second read cannot steer it (#4936).
+// Anything else thrown is rethrown unchanged: a view too small for the
+// write, an object element's own getter or Proxy trap, a storage index trap
+// (the variable still holds the previous element, or globalThis), or a count
+// getter that throws in the loop condition. A nested loop's catch sees its
+// own variable; when it rethrows, the outer element holding it is an object,
+// so the outer catch rethrows too. A non-null value that is not an object never throws here:
 // its first read answers undefined or an inherited method, and that field's
 // own guard refuses it.
 func (g *fgen) emitWriteElemLoop(f *ir.Field, name, count, ind string) {
@@ -961,12 +965,13 @@ func (g *fgen) emitWriteElemLoop(f *ir.Field, name, count, ind string) {
 	li := ind
 	bi := ind
 	if folded {
-		// the index lives outside try, so the catch sees the element that
-		// threw; the block scopes it, so sibling loops at one depth each
-		// declare their own
+		// the element lives outside try, so the catch sees the element the
+		// loop last read; the block scopes it, so sibling loops at one depth
+		// each declare their own
 		g.pf("%s{\n", ind)
 		bi = ind + "  "
 		g.pf("%slet %s = 0;\n", bi, iv)
+		g.pf("%slet %s = globalThis; // an object until the loop reads an element\n", bi, ev)
 		g.pf("%stry {\n", bi)
 		li = bi + "  "
 		g.pf("%sfor (; %s < %s; %s++) {\n", li, iv, count, iv)
@@ -978,7 +983,6 @@ func (g *fgen) emitWriteElemLoop(f *ir.Field, name, count, ind string) {
 	g.pf("%s}\n", li)
 	if folded {
 		g.pf("%s} catch (thrown) {\n", bi)
-		g.pf("%s  const %s = %s[%s];\n", bi, ev, name, iv)
 		g.guard(fmt.Sprintf("%s === null || typeof %s !== \"object\"", ev, ev), " // a record or union value is an object (SPEC §5.1)", bi+"  ")
 		g.pf("%s  throw thrown;\n", bi)
 		g.pf("%s}\n", bi)
@@ -1026,6 +1030,15 @@ func elemShapeFolds(f *ir.Field) bool {
 	return false
 }
 
+// elemDecl declares a hoisted element ref, except in a folded loop, whose
+// element variable is declared before the try (emitWriteElemLoop).
+func elemDecl(folded bool) string {
+	if folded {
+		return ""
+	}
+	return "const "
+}
+
 // emitWriteElem writes one array element; struct elements hoist a const ref.
 // folded drops the element's object guard: the element loop's catch holds
 // it (emitWriteElemLoop).
@@ -1034,7 +1047,7 @@ func (g *fgen) emitWriteElem(f *ir.Field, name, iv, ind string, folded bool) {
 		switch ref := f.Type.Ref.(type) {
 		case *ir.Struct:
 			ev := fmt.Sprintf("e%d", g.loopDepth-1)
-			g.pf("%sconst %s = %s[%s];\n", ind, ev, name, iv)
+			g.pf("%s%s%s = %s[%s];\n", ind, elemDecl(folded), ev, name, iv)
 			if !folded {
 				g.guardObject(ev, ind)
 			}
@@ -1042,7 +1055,7 @@ func (g *fgen) emitWriteElem(f *ir.Field, name, iv, ind string, folded bool) {
 			return
 		case *ir.Union:
 			ev := fmt.Sprintf("e%d", g.loopDepth-1)
-			g.pf("%sconst %s = %s[%s];\n", ind, ev, name, iv)
+			g.pf("%s%s%s = %s[%s];\n", ind, elemDecl(folded), ev, name, iv)
 			g.emitWriteUnionFlatGuarded(ref, ev, ind, !folded)
 			return
 		}

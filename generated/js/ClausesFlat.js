@@ -917,9 +917,10 @@ export function WriteArrTri3Flat(view, value) {
   sb = 4;
   {
     let i0 = 0;
+    let e0 = globalThis; // an object until the loop reads an element
     try {
       for (; i0 < value.itemsCount; i0++) {
-        const e0 = value.items[i0];
+        e0 = value.items[i0];
         if (!globalThis.Number.isInteger(e0.a) || e0.a < 0 || e0.a > 1) {
           return -1;
         }
@@ -937,7 +938,6 @@ export function WriteArrTri3Flat(view, value) {
         }
       }
     } catch (thrown) {
-      const e0 = value.items[i0];
       if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
         return -1;
       }
@@ -1099,9 +1099,10 @@ export function WriteArrElevenFlat(view, value) {
   }
   {
     let i0 = 0;
+    let e0 = globalThis; // an object until the loop reads an element
     try {
       for (; i0 < 9; i0++) {
-        const e0 = value.items[i0];
+        e0 = value.items[i0];
         if (!globalThis.Number.isInteger(e0.a) || e0.a < 0 || e0.a > 7) {
           return -1;
         }
@@ -1119,7 +1120,6 @@ export function WriteArrElevenFlat(view, value) {
         }
       }
     } catch (thrown) {
-      const e0 = value.items[i0];
       if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
         return -1;
       }
@@ -1815,9 +1815,10 @@ export function WriteArrNestedFlat(view, value) {
   sb = 8;
   {
     let i0 = 0;
+    let e0 = globalThis; // an object until the loop reads an element
     try {
       for (; i0 < value.itemsCount; i0++) {
-        const e0 = value.items[i0];
+        e0 = value.items[i0];
         if (!globalThis.Number.isInteger(e0.a) || e0.a < 0 || e0.a > 7) {
           return -1;
         }
@@ -1835,7 +1836,6 @@ export function WriteArrNestedFlat(view, value) {
         }
       }
     } catch (thrown) {
-      const e0 = value.items[i0];
       if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
         return -1;
       }

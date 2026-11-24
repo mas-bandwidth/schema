@@ -49,9 +49,10 @@ export function WriteDefaultArmFlat(view, value) {
   sb = 2;
   {
     let i0 = 0;
+    let e0 = globalThis; // an object until the loop reads an element
     try {
       for (; i0 < value.entriesCount; i0++) {
-        const e0 = value.entries[i0];
+        e0 = value.entries[i0];
         if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
           return -1;
         }
@@ -78,7 +79,6 @@ export function WriteDefaultArmFlat(view, value) {
         }
       }
     } catch (thrown) {
-      const e0 = value.entries[i0];
       if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
         return -1;
       }
@@ -249,9 +249,10 @@ export function WriteDefaultChoiceFlat(view, value) {
       }
       {
         let i0 = 0;
+        let e0 = globalThis; // an object until the loop reads an element
         try {
           for (; i0 < value.first.entriesCount; i0++) {
-            const e0 = value.first.entries[i0];
+            e0 = value.first.entries[i0];
             if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
               return -1;
             }
@@ -278,7 +279,6 @@ export function WriteDefaultChoiceFlat(view, value) {
             }
           }
         } catch (thrown) {
-          const e0 = value.first.entries[i0];
           if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
             return -1;
           }
@@ -320,9 +320,10 @@ export function WriteDefaultChoiceFlat(view, value) {
       }
       {
         let i0 = 0;
+        let e0 = globalThis; // an object until the loop reads an element
         try {
           for (; i0 < value.second.entriesCount; i0++) {
-            const e0 = value.second.entries[i0];
+            e0 = value.second.entries[i0];
             if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
               return -1;
             }
@@ -349,7 +350,6 @@ export function WriteDefaultChoiceFlat(view, value) {
             }
           }
         } catch (thrown) {
-          const e0 = value.second.entries[i0];
           if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
             return -1;
           }
@@ -692,9 +692,10 @@ export function WriteDefaultChoicePacketFlat(view, value) {
       }
       {
         let i0 = 0;
+        let e0 = globalThis; // an object until the loop reads an element
         try {
           for (; i0 < value.choice.first.entriesCount; i0++) {
-            const e0 = value.choice.first.entries[i0];
+            e0 = value.choice.first.entries[i0];
             if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
               return -1;
             }
@@ -721,7 +722,6 @@ export function WriteDefaultChoicePacketFlat(view, value) {
             }
           }
         } catch (thrown) {
-          const e0 = value.choice.first.entries[i0];
           if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
             return -1;
           }
@@ -763,9 +763,10 @@ export function WriteDefaultChoicePacketFlat(view, value) {
       }
       {
         let i0 = 0;
+        let e0 = globalThis; // an object until the loop reads an element
         try {
           for (; i0 < value.choice.second.entriesCount; i0++) {
-            const e0 = value.choice.second.entries[i0];
+            e0 = value.choice.second.entries[i0];
             if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
               return -1;
             }
@@ -792,7 +793,6 @@ export function WriteDefaultChoicePacketFlat(view, value) {
             }
           }
         } catch (thrown) {
-          const e0 = value.choice.second.entries[i0];
           if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
             return -1;
           }
@@ -1118,9 +1118,10 @@ export function WriteDefaultBulkArmFlat(view, value) {
   sb = 2;
   {
     let i0 = 0;
+    let e0 = globalThis; // an object until the loop reads an element
     try {
       for (; i0 < value.payload.entriesCount; i0++) {
-        const e0 = value.payload.entries[i0];
+        e0 = value.payload.entries[i0];
         if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
           return -1;
         }
@@ -1147,7 +1148,6 @@ export function WriteDefaultBulkArmFlat(view, value) {
         }
       }
     } catch (thrown) {
-      const e0 = value.payload.entries[i0];
       if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
         return -1;
       }
@@ -1423,9 +1423,10 @@ export function WriteDefaultBulkChoiceFlat(view, value) {
       }
       {
         let i0 = 0;
+        let e0 = globalThis; // an object until the loop reads an element
         try {
           for (; i0 < value.first.payload.entriesCount; i0++) {
-            const e0 = value.first.payload.entries[i0];
+            e0 = value.first.payload.entries[i0];
             if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
               return -1;
             }
@@ -1452,7 +1453,6 @@ export function WriteDefaultBulkChoiceFlat(view, value) {
             }
           }
         } catch (thrown) {
-          const e0 = value.first.payload.entries[i0];
           if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
             return -1;
           }
@@ -1535,9 +1535,10 @@ export function WriteDefaultBulkChoiceFlat(view, value) {
       }
       {
         let i0 = 0;
+        let e0 = globalThis; // an object until the loop reads an element
         try {
           for (; i0 < value.second.payload.entriesCount; i0++) {
-            const e0 = value.second.payload.entries[i0];
+            e0 = value.second.payload.entries[i0];
             if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
               return -1;
             }
@@ -1564,7 +1565,6 @@ export function WriteDefaultBulkChoiceFlat(view, value) {
             }
           }
         } catch (thrown) {
-          const e0 = value.second.payload.entries[i0];
           if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
             return -1;
           }

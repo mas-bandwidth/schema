@@ -153,9 +153,10 @@ export function WriteRenderBlockFlat(view, value) {
   sb = 7;
   {
     let i0 = 0;
+    let e0 = globalThis; // an object until the loop reads an element
     try {
       for (; i0 < value.spritesCount; i0++) {
-        const e0 = value.sprites[i0];
+        e0 = value.sprites[i0];
         if (typeof e0.sortKey !== "bigint" || e0.sortKey < 0n || e0.sortKey > 18446744073709551615n) { // a bare integer must fit its width
           return -1;
         }
@@ -219,7 +220,6 @@ export function WriteRenderBlockFlat(view, value) {
         }
       }
     } catch (thrown) {
-      const e0 = value.sprites[i0];
       if (e0 === null || typeof e0 !== "object") { // a record or union value is an object (SPEC §5.1)
         return -1;
       }
