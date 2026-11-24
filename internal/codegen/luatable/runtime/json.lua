@@ -3166,6 +3166,8 @@ write_value = function(T, d, val, depth, g, w, _elem)
     end
     return false
   elseif s == "flags" then
+    -- a flags value's array is a container too (docs/SPEC-TABLES.md §16.14 W2)
+    if depth > MAX_DEPTH then return false end
     local bits = val or 0
     if bits == 0 then
       raw(w, "[]")
