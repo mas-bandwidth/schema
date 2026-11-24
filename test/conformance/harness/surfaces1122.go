@@ -13,7 +13,11 @@
 //     (FL-02), a refusal leaves every value the call was handed at its declared
 //     defaults (FL-03), and the read refuses through its report and never by
 //     throwing (FL-29). Its `fixed-nocap` form loads a fixed file with no
-//     stated capacity and owes the file's own record count (FL-17). Its
+//     stated capacity and owes the file's own record count (FL-17). A
+//     `fixed` row's second read may instead be a LAWFUL older writer's
+//     record, read through the lineage: every field that record does not
+//     supply then holds its declared default, never the value the first read
+//     left there (§3.4). Its
 //     `retain` form hands the RETAINING load (`LoadRetain`, §6.6) a report the
 //     driver PRE-FILLED (every counter nonzero, the refusal set) and owes a
 //     report equal, field by field, to the one the same read leaves in a fresh
@@ -140,7 +144,7 @@ func (a AnnounceCase) want() ([]byte, error) {
 
 // ReadInto is one `read-into` row:
 //
-//	read-into <case> <unit> <root> <form> <lawful> <damaged> <count>
+//	read-into <case> <unit> <root> <form> <lawful> <damaged> <count> [lawful-second]
 //
 // Form is `variable` (the variable-form Load), `fixed` (the fixed form's
 // batch load), `message` (LoadMessages, Unit a connection key whose
@@ -149,6 +153,15 @@ func (a AnnounceCase) want() ([]byte, error) {
 // values the call is handed: 1 for `variable` and `json`, the lawful file's
 // records or bodies for `fixed` and `message`; for `fixed-nocap` it is the
 // answer, the record count the load returns, and the driver is not told it.
+//
+// `lawful-second` (a `fixed` row handed one value, and only one) says the
+// second file is a LAWFUL older writer's record read through the lineage,
+// not a damaged one. The row's intent is stated, never inferred: generate
+// fails when the engine's verdict on the second file differs from it either
+// way, so a file meant to be damaged that the engine happens to read never
+// quietly becomes a lawful row. The driver is not told it; it answers what
+// its reads do.
+//
 // Form `retain` is the retaining load (`<Root>LoadRetain`, §6.6) of a variable
 // root, handed one value; form `region` is the plain `<Root>Load` of a
 // variable root (the region read where the leg has one) under the same
@@ -162,6 +175,7 @@ type ReadInto struct {
 	Lawful       string
 	RefusedInput string
 	Count        int
+	SecondLawful bool
 }
 
 // Golden is the answer the row owes.
@@ -184,8 +198,8 @@ const readIntoRetainAnswer = "read\nzeroed\nrefused\nread\nzeroed\n"
 const readIntoRetainFixedAnswer = "refused\nzeroed\n"
 
 func parseReadInto(f []string, where string) (ReadInto, error) {
-	if len(f) != 8 {
-		return ReadInto{}, fmt.Errorf("%s: read-into takes case, unit, root, form, lawful, damaged, count", where)
+	if len(f) != 8 && len(f) != 9 {
+		return ReadInto{}, fmt.Errorf("%s: read-into takes case, unit, root, form, lawful, damaged, count, and an optional lawful-second", where)
 	}
 	r := ReadInto{Name: f[1], Unit: f[2], Root: f[3], Form: f[4], Lawful: f[5], RefusedInput: f[6]}
 	if !readIntoForms[r.Form] {
@@ -201,6 +215,15 @@ func parseReadInto(f []string, where string) (ReadInto, error) {
 	}
 	if (r.Form == "variable" || r.Form == "json" || r.Form == "retain" || r.Form == "region" || r.Form == "retain-fixed") && n != 1 {
 		return r, fmt.Errorf("%s: a %s read is handed one value", where, r.Form)
+	}
+	if len(f) == 9 {
+		if f[8] != "lawful-second" {
+			return r, fmt.Errorf("%s: %q is not a read-into marker (lawful-second)", where, f[8])
+		}
+		if r.Form != "fixed" || n != 1 {
+			return r, fmt.Errorf("%s: lawful-second marks a fixed row handed one value", where)
+		}
+		r.SecondLawful = true
 	}
 	return r, nil
 }
@@ -409,9 +432,24 @@ func generate1122(u *units, m *Manifest) error {
 			// the document ends with one line feed (§16.14 W2), as ToJson
 			// writes it
 			defaults = oneText(defaults)
-			answer = []byte("read\nrefused\n")
-			for range r.Count {
-				answer = append(answer, defaults...)
+			// A FIXED ROW MARKED lawful-second: its second read is an older
+			// writer's record, read through the lineage into the values the
+			// first read filled. Every field that record does not supply then holds
+			// its declared default (§3.4, THE PREFILL IS WHAT ANSWERS "ABSENT
+			// FIELD"), so the values owed are the engine's read of that file
+			// into a FRESH value, never a merge into the caller's old one.
+			second, err := readIntoLawfulSecond(model, root, r)
+			if err != nil {
+				return err
+			}
+			if second != nil {
+				answer = []byte("read\nread\n")
+				answer = append(answer, second...)
+			} else {
+				answer = []byte("read\nrefused\n")
+				for range r.Count {
+					answer = append(answer, defaults...)
+				}
 			}
 			answer = append(answer, "read\n"...)
 		}
@@ -421,4 +459,34 @@ func generate1122(u *units, m *Manifest) error {
 		fmt.Printf("conformance: %-22s read-into %s\n", r.Name, r.Form)
 	}
 	return nil
+}
+
+// readIntoLawfulSecond is a `fixed` row's second read as the row states it.
+// The engine reads the second file into a fresh value, and its verdict must
+// be the row's intent: a row marked lawful-second whose file the engine
+// refuses fails, and so does an unmarked row whose damaged file the engine
+// reads. A marked row answers the §16 text of that fresh value; every other
+// row answers nil, and its second read is the refused one.
+func readIntoLawfulSecond(model *tabletext.Model, root *ir.Struct, r ReadInto) ([]byte, error) {
+	if r.Form != "fixed" {
+		return nil, nil
+	}
+	wire, err := os.ReadFile(r.RefusedInput)
+	if err != nil {
+		return nil, fmt.Errorf("read-into %s: %w", r.Name, err)
+	}
+	value := model.New(root)
+	var rep tabletext.Report
+	ok, _ := strictDecode(model, value, wire, &rep)
+	if ok != r.SecondLawful {
+		return nil, fmt.Errorf("read-into %s: the engine's read of %s is %v, the row needs %v (lawful-second marks a lawful second file)", r.Name, r.RefusedInput, ok, r.SecondLawful)
+	}
+	if !ok {
+		return nil, nil
+	}
+	text, err := model.Write(value)
+	if err != nil {
+		return nil, fmt.Errorf("read-into %s: the second read's text: %w", r.Name, err)
+	}
+	return oneText(text), nil
 }
