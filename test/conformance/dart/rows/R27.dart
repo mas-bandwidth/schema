@@ -279,11 +279,20 @@ void wireAssert(Uint8List bytes, OracleLine line, String what) {
     n == int.parse(line.head['records']!),
     "$what: the reader lands records=${line.head['records']} as the line declares (got $n)",
   );
+  // TODAY'S READ IS STRICT (docs/FIXED-FORM-ALGORITHM.md §4.5, §4.6, §5.3,
+  // §5.4): nothing clamps and nothing is counted as clamped or malformed — a
+  // value past its range or bound REFUSES the load by name. So a manifest
+  // file that reads clean is refused == none, counts no unknown and no
+  // widen (it is this build's own layout), and reports its own hash.
   check(
     report.refused == TableFixedRefusal.none &&
-        !report.malformed &&
-        report.clamped == 0,
-    '$what: the read refuses nothing, is not malformed and clamps nothing',
+        report.unknown == 0 &&
+        report.widened == 0 &&
+        report.hash == chainFixedHash &&
+        report.layoutHash == 0,
+    '$what: the read refuses nothing, counts nothing and reports its own hash '
+    '(refused=${TableFixedRefusal.name(report.refused)} unknown=${report.unknown} '
+    'widened=${report.widened} hash=0x${report.hash.toRadixString(16)})',
   );
   final record = values[0];
   for (final field in chainFields) {
