@@ -597,7 +597,11 @@ func tableJSONWriteScalar(out *tableJSONOut, storage unsafe.Pointer, f *TableFie
 		return tableJSONWriteTimestamp(out, storage)
 	}
 	if f.Arms != nil {
-		// a union is an object with ONE key, the arm's name; None is {}
+		// a union is an object with ONE key, the arm's name; None is {}, and
+		// either is a container the depth cap counts (mas-bandwidth/schema docs/SPEC-TABLES.md §16.14 W2)
+		if depth > tableJSONMaxDepth {
+			return false
+		}
 		arms := f.Arms()
 		tag := tableJSONGetRaw(unsafe.Add(storage, uintptr(arms.TagOffset)), arms.TagSize)
 		if tag == 0 {
@@ -739,6 +743,13 @@ func tableJSONWriteField(out *tableJSONOut, base unsafe.Pointer, f *TableFieldIn
 	if tableJSONIsBytes(f) {
 		tableJSONWriteBase64(out, tableJSONBytes(storage, tableJSONCount(base, f)))
 		return true
+	}
+	// THE WRITE COUNTS EVERY CONTAINER THE READ DOES (mas-bandwidth/schema docs/SPEC-TABLES.md
+	// §16.14 W2): an enum-keyed array's object and an array, an empty {} or
+	// [] included, at a depth past the cap is refused, or the writer emits
+	// a text its own reader refuses.
+	if (f.IsArray || tableJSONIsKeyed(f)) && depth > tableJSONMaxDepth {
+		return false
 	}
 	if tableJSONIsKeyed(f) {
 		// one entry per SLOT, keyed by the variant that owns it, so inserting a
@@ -3184,6 +3195,9 @@ func tableJSONReadBlob(in *tableJSONIn, slot *int64, f *TableFieldInfo) bool {
 }
 
 func tableJSONWriteList(out *tableJSONOut, holder unsafe.Pointer, f *TableFieldInfo, depth int32) bool {
+	if depth > tableJSONMaxDepth {
+		return false
+	}
 	count := *(*int32)(unsafe.Add(holder, 8))
 	if count < 0 {
 		return false
