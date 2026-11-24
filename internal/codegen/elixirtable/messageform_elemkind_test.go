@@ -1,6 +1,7 @@
 package elixirtable
 
 import (
+	"maps"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -88,10 +89,7 @@ IO.puts("ok")
 	}
 	for _, p := range plants {
 		t.Run(p.name, func(t *testing.T) {
-			planted := map[string][]byte{}
-			for k, v := range files {
-				planted[k] = v
-			}
+			planted := maps.Clone(files)
 			elixirPatch(t, planted, p.old, p.new)
 			out, err := runArmProbe(t, elixirBin, planted, probe)
 			if err == nil {
