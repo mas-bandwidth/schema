@@ -382,7 +382,11 @@ func emitFixedRead(m *Module, st *ir.Struct) {
 	m.Printf("  local pick = -1;\n")
 	m.Printf("  for (local i = 0; i < _M.%sFixedLineage.len(); i++)\n", st.Name)
 	m.Printf("    if (_M.%sFixedLineage[i].hash == h) { pick = i; break; }\n", st.Name)
-	m.Printf("  if (pick < 0) { _M.FixedReason = (_M.%sFixedLineage.len() == 0 ? \"layout_unsupported\" : \"layout_unknown\"); return -1; }\n", st.Name)
+	// STEP 5: a hash no lineage entry holds is layout_unknown, with no variation
+	// (docs/FIXED-FORM-ALGORITHM.md §5.3, SPEC-TABLES.md §21.3) — an empty
+	// lineage included. Only step 6, a held hash below the floor, is
+	// layout_unsupported.
+	m.Printf("  if (pick < 0) { _M.FixedReason = \"layout_unknown\"; return -1; }\n")
 	m.Printf("  if (pick < _M.%sFixedFloor) { _M.FixedReason = \"layout_unsupported\"; return -1; }\n", st.Name)
 	m.Printf("  local e = _M.%sFixedLineage[pick];\n", st.Name)
 	m.Printf("  if (L * 2 != e.layoutHex.len()) { _M.FixedReason = \"layout_malformed\"; return -1; }\n")
