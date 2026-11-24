@@ -2000,7 +2000,7 @@ int main() {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(dir, "probe")
-	args := append([]string{"-std=c++17", "-O1", "-Dschema_assert(x)=((void)0)", "-I" + dir, "-I" + serialize, path}, sources...)
+	args := append([]string{"-std=c++17", "-O1", "-I" + dir, "-I" + serialize, path}, sources...)
 	args = append(args, "-o", bin)
 	if output, err := testproc.Command(t, "c++", args...).CombinedOutput(); err != nil {
 		t.Fatalf("C++ compile: %v\n%s", err, output)
