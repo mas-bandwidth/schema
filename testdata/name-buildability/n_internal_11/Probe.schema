@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum began
+{ Zfirst, Zsecond, Zthird }
+
+enum begin_node
+{ Zfirst, Zsecond, Zthird }
+
+enum behaviour
+{ Zfirst, Zsecond, Zthird }
+
+enum below
+{ Zfirst, Zsecond, Zthird }
+
+enum below_min
+{ Zfirst, Zsecond, Zthird }
+
+enum bentry
+{ Zfirst, Zsecond, Zthird }
+
+enum beside
+{ Zfirst, Zsecond, Zthird }
+
+enum beta
+{ Zfirst, Zsecond, Zthird }
+
+enum between
+{ Zfirst, Zsecond, Zthird }
+
+enum bf
+{ Zfirst, Zsecond, Zthird }
+
+enum bh
+{ Zfirst, Zsecond, Zthird }
+
+enum bi
+{ Zfirst, Zsecond, Zthird }
+
+enum bias
+{ Zfirst, Zsecond, Zthird }
+
+enum biased
+{ Zfirst, Zsecond, Zthird }
+
+enum bid
+{ Zfirst, Zsecond, Zthird }
+
+enum big
+{ Zfirst, Zsecond, Zthird }
+
+enum bigBitLen
+{ Zfirst, Zsecond, Zthird }
+
+enum bigCmp
+{ Zfirst, Zsecond, Zthird }
+
+enum bigDivSticky
+{ Zfirst, Zsecond, Zthird }
+
+enum bigFromDigits
+{ Zfirst, Zsecond, Zthird }
+
+enum bigMulSmall
+{ Zfirst, Zsecond, Zthird }
+
+enum bigShl
+{ Zfirst, Zsecond, Zthird }
+
+enum bigSub
+{ Zfirst, Zsecond, Zthird }
+
+enum bigTrim
+{ Zfirst, Zsecond, Zthird }
+
+enum big_digits
+{ Zfirst, Zsecond, Zthird }
+
+enum big_endian
+{ Zfirst, Zsecond, Zthird }
+
+enum big_mul
+{ Zfirst, Zsecond, Zthird }
+
+enum big_pow
+{ Zfirst, Zsecond, Zthird }
+
+enum big_small
+{ Zfirst, Zsecond, Zthird }
+
+enum binary_max_depth
+{ Zfirst, Zsecond, Zthird }
+
+enum birth
+{ Zfirst, Zsecond, Zthird }
+
+enum bit
+{ Zfirst, Zsecond, Zthird }
+
+enum bit16
+{ Zfirst, Zsecond, Zthird }
+
+enum bitCount
+{ Zfirst, Zsecond, Zthird }
+
+enum bitIdx
+{ Zfirst, Zsecond, Zthird }
+
+enum bitLen
+{ Zfirst, Zsecond, Zthird }
+
+enum bitLen128
+{ Zfirst, Zsecond, Zthird }
+
+enum bitLen64
+{ Zfirst, Zsecond, Zthird }
+
+enum bitLength
+{ Zfirst, Zsecond, Zthird }
+
+enum bit_offset
+{ Zfirst, Zsecond, Zthird }
+
+enum bitpacker
+{ Zfirst, Zsecond, Zthird }
+
+enum bitpos
+{ Zfirst, Zsecond, Zthird }
+
+enum bits32
+{ Zfirst, Zsecond, Zthird }
+
+enum bits64
+{ Zfirst, Zsecond, Zthird }
+
+enum bitsArg
+{ Zfirst, Zsecond, Zthird }
+
+enum bitsLen32
+{ Zfirst, Zsecond, Zthird }
+
+enum bitsN
+{ Zfirst, Zsecond, Zthird }
+
+enum bitsRead
+{ Zfirst, Zsecond, Zthird }
+
+enum bitsReq
+{ Zfirst, Zsecond, Zthird }
+
+enum bitsRequired
+{ Zfirst, Zsecond, Zthird }
+
+enum bitsRequired0toMax
+{ Zfirst, Zsecond, Zthird }
+
+enum bitsRequired128
+{ Zfirst, Zsecond, Zthird }
+
+enum bitsRequired32
+{ Zfirst, Zsecond, Zthird }
+
+enum bitsRequired64
+{ Zfirst, Zsecond, Zthird }
+
+enum bitsSlot
+{ Zfirst, Zsecond, Zthird }
+
+enum bitsWidth
+{ Zfirst, Zsecond, Zthird }
+
+enum bits_max
+{ Zfirst, Zsecond, Zthird }
+
+enum bits_range
+{ Zfirst, Zsecond, Zthird }
+
+enum bits_written
+{ Zfirst, Zsecond, Zthird }
+
+enum bitwise
+{ Zfirst, Zsecond, Zthird }
+
+enum bl
+{ Zfirst, Zsecond, Zthird }
+
+enum blank
+{ Zfirst, Zsecond, Zthird }
+
+enum blen
+{ Zfirst, Zsecond, Zthird }
+
+enum blim
+{ Zfirst, Zsecond, Zthird }
+
+enum blob
+{ Zfirst, Zsecond, Zthird }
+
+enum blobAt
+{ Zfirst, Zsecond, Zthird }
+
+enum blobEqString
+{ Zfirst, Zsecond, Zthird }
+
+enum blobIdentity
+{ Zfirst, Zsecond, Zthird }
+
+enum blobKey
+{ Zfirst, Zsecond, Zthird }
+
+enum blobOf
+{ Zfirst, Zsecond, Zthird }
+
+enum blobOfRange
+{ Zfirst, Zsecond, Zthird }
+
+enum blobRec
+{ Zfirst, Zsecond, Zthird }
+
+enum blobSharedPacks
+{ Zfirst, Zsecond, Zthird }
+
+enum blobValue
+{ Zfirst, Zsecond, Zthird }
+
+enum blob_entry
+{ Zfirst, Zsecond, Zthird }
+
+enum blob_idx
+{ Zfirst, Zsecond, Zthird }
+
+enum blob_index
+{ Zfirst, Zsecond, Zthird }
+
+enum blob_iter
+{ Zfirst, Zsecond, Zthird }
+
+enum blob_named
+{ Zfirst, Zsecond, Zthird }
+
+enum blob_next
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    began Inner
+    begin_node Inner
+    behaviour Inner
+    below Inner
+    below_min Inner
+    bentry Inner
+    beside Inner
+    beta Inner
+    between Inner
+    bf Inner
+}
+
+table NameTypes0
+{
+    one0  began
+    many0 [..4]began
+    one1  begin_node
+    many1 [..4]begin_node
+    one2  behaviour
+    many2 [..4]behaviour
+    one3  below
+    many3 [..4]below
+    one4  below_min
+    many4 [..4]below_min
+    one5  bentry
+    many5 [..4]bentry
+    one6  beside
+    many6 [..4]beside
+    one7  beta
+    many7 [..4]beta
+    one8  between
+    many8 [..4]between
+    one9  bf
+    many9 [..4]bf
+}
+
+table NameFields0
+{
+    began uint32
+    begin_node uint32
+    behaviour uint32
+    below uint32
+    below_min uint32
+    bentry uint32
+    beside uint32
+    beta uint32
+    between uint32
+    bf uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    bh Inner
+    bi Inner
+    bias Inner
+    biased Inner
+    bid Inner
+    big Inner
+    bigBitLen Inner
+    bigCmp Inner
+    bigDivSticky Inner
+    bigFromDigits Inner
+}
+
+table NameTypes1
+{
+    one0  bh
+    many0 [..4]bh
+    one1  bi
+    many1 [..4]bi
+    one2  bias
+    many2 [..4]bias
+    one3  biased
+    many3 [..4]biased
+    one4  bid
+    many4 [..4]bid
+    one5  big
+    many5 [..4]big
+    one6  bigBitLen
+    many6 [..4]bigBitLen
+    one7  bigCmp
+    many7 [..4]bigCmp
+    one8  bigDivSticky
+    many8 [..4]bigDivSticky
+    one9  bigFromDigits
+    many9 [..4]bigFromDigits
+}
+
+table NameFields1
+{
+    bh uint32
+    bi uint32
+    bias uint32
+    biased uint32
+    bid uint32
+    big uint32
+    bigBitLen uint32
+    bigCmp uint32
+    bigDivSticky uint32
+    bigFromDigits uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    bigMulSmall Inner
+    bigShl Inner
+    bigSub Inner
+    bigTrim Inner
+    big_digits Inner
+    big_endian Inner
+    big_mul Inner
+    big_pow Inner
+    big_small Inner
+    binary_max_depth Inner
+}
+
+table NameTypes2
+{
+    one0  bigMulSmall
+    many0 [..4]bigMulSmall
+    one1  bigShl
+    many1 [..4]bigShl
+    one2  bigSub
+    many2 [..4]bigSub
+    one3  bigTrim
+    many3 [..4]bigTrim
+    one4  big_digits
+    many4 [..4]big_digits
+    one5  big_endian
+    many5 [..4]big_endian
+    one6  big_mul
+    many6 [..4]big_mul
+    one7  big_pow
+    many7 [..4]big_pow
+    one8  big_small
+    many8 [..4]big_small
+    one9  binary_max_depth
+    many9 [..4]binary_max_depth
+}
+
+table NameFields2
+{
+    bigMulSmall uint32
+    bigShl uint32
+    bigSub uint32
+    bigTrim uint32
+    big_digits uint32
+    big_endian uint32
+    big_mul uint32
+    big_pow uint32
+    big_small uint32
+    binary_max_depth uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    birth Inner
+    bit Inner
+    bit16 Inner
+    bitCount Inner
+    bitIdx Inner
+    bitLen Inner
+    bitLen128 Inner
+    bitLen64 Inner
+    bitLength Inner
+    bit_offset Inner
+}
+
+table NameTypes3
+{
+    one0  birth
+    many0 [..4]birth
+    one1  bit
+    many1 [..4]bit
+    one2  bit16
+    many2 [..4]bit16
+    one3  bitCount
+    many3 [..4]bitCount
+    one4  bitIdx
+    many4 [..4]bitIdx
+    one5  bitLen
+    many5 [..4]bitLen
+    one6  bitLen128
+    many6 [..4]bitLen128
+    one7  bitLen64
+    many7 [..4]bitLen64
+    one8  bitLength
+    many8 [..4]bitLength
+    one9  bit_offset
+    many9 [..4]bit_offset
+}
+
+table NameFields3
+{
+    birth uint32
+    bit uint32
+    bit16 uint32
+    bitCount uint32
+    bitIdx uint32
+    bitLen uint32
+    bitLen128 uint32
+    bitLen64 uint32
+    bitLength uint32
+    bit_offset uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    bitpacker Inner
+    bitpos Inner
+    bits32 Inner
+    bits64 Inner
+    bitsArg Inner
+    bitsLen32 Inner
+    bitsN Inner
+    bitsRead Inner
+    bitsReq Inner
+    bitsRequired Inner
+}
+
+table NameTypes4
+{
+    one0  bitpacker
+    many0 [..4]bitpacker
+    one1  bitpos
+    many1 [..4]bitpos
+    one2  bits32
+    many2 [..4]bits32
+    one3  bits64
+    many3 [..4]bits64
+    one4  bitsArg
+    many4 [..4]bitsArg
+    one5  bitsLen32
+    many5 [..4]bitsLen32
+    one6  bitsN
+    many6 [..4]bitsN
+    one7  bitsRead
+    many7 [..4]bitsRead
+    one8  bitsReq
+    many8 [..4]bitsReq
+    one9  bitsRequired
+    many9 [..4]bitsRequired
+}
+
+table NameFields4
+{
+    bitpacker uint32
+    bitpos uint32
+    bits32 uint32
+    bits64 uint32
+    bitsArg uint32
+    bitsLen32 uint32
+    bitsN uint32
+    bitsRead uint32
+    bitsReq uint32
+    bitsRequired uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    bitsRequired0toMax Inner
+    bitsRequired128 Inner
+    bitsRequired32 Inner
+    bitsRequired64 Inner
+    bitsSlot Inner
+    bitsWidth Inner
+    bits_max Inner
+    bits_range Inner
+    bits_written Inner
+    bitwise Inner
+}
+
+table NameTypes5
+{
+    one0  bitsRequired0toMax
+    many0 [..4]bitsRequired0toMax
+    one1  bitsRequired128
+    many1 [..4]bitsRequired128
+    one2  bitsRequired32
+    many2 [..4]bitsRequired32
+    one3  bitsRequired64
+    many3 [..4]bitsRequired64
+    one4  bitsSlot
+    many4 [..4]bitsSlot
+    one5  bitsWidth
+    many5 [..4]bitsWidth
+    one6  bits_max
+    many6 [..4]bits_max
+    one7  bits_range
+    many7 [..4]bits_range
+    one8  bits_written
+    many8 [..4]bits_written
+    one9  bitwise
+    many9 [..4]bitwise
+}
+
+table NameFields5
+{
+    bitsRequired0toMax uint32
+    bitsRequired128 uint32
+    bitsRequired32 uint32
+    bitsRequired64 uint32
+    bitsSlot uint32
+    bitsWidth uint32
+    bits_max uint32
+    bits_range uint32
+    bits_written uint32
+    bitwise uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    bl Inner
+    blank Inner
+    blen Inner
+    blim Inner
+    blob Inner
+    blobAt Inner
+    blobEqString Inner
+    blobIdentity Inner
+    blobKey Inner
+    blobOf Inner
+}
+
+table NameTypes6
+{
+    one0  bl
+    many0 [..4]bl
+    one1  blank
+    many1 [..4]blank
+    one2  blen
+    many2 [..4]blen
+    one3  blim
+    many3 [..4]blim
+    one4  blob
+    many4 [..4]blob
+    one5  blobAt
+    many5 [..4]blobAt
+    one6  blobEqString
+    many6 [..4]blobEqString
+    one7  blobIdentity
+    many7 [..4]blobIdentity
+    one8  blobKey
+    many8 [..4]blobKey
+    one9  blobOf
+    many9 [..4]blobOf
+}
+
+table NameFields6
+{
+    bl uint32
+    blank uint32
+    blen uint32
+    blim uint32
+    blob uint32
+    blobAt uint32
+    blobEqString uint32
+    blobIdentity uint32
+    blobKey uint32
+    blobOf uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    blobOfRange Inner
+    blobRec Inner
+    blobSharedPacks Inner
+    blobValue Inner
+    blob_entry Inner
+    blob_idx Inner
+    blob_index Inner
+    blob_iter Inner
+    blob_named Inner
+    blob_next Inner
+}
+
+table NameTypes7
+{
+    one0  blobOfRange
+    many0 [..4]blobOfRange
+    one1  blobRec
+    many1 [..4]blobRec
+    one2  blobSharedPacks
+    many2 [..4]blobSharedPacks
+    one3  blobValue
+    many3 [..4]blobValue
+    one4  blob_entry
+    many4 [..4]blob_entry
+    one5  blob_idx
+    many5 [..4]blob_idx
+    one6  blob_index
+    many6 [..4]blob_index
+    one7  blob_iter
+    many7 [..4]blob_iter
+    one8  blob_named
+    many8 [..4]blob_named
+    one9  blob_next
+    many9 [..4]blob_next
+}
+
+table NameFields7
+{
+    blobOfRange uint32
+    blobRec uint32
+    blobSharedPacks uint32
+    blobValue uint32
+    blob_entry uint32
+    blob_idx uint32
+    blob_index uint32
+    blob_iter uint32
+    blob_named uint32
+    blob_next uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

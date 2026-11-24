@@ -57,6 +57,7 @@ function apply(value, op, arg) {
     case "pick_small": value.pick.type = runtime.PickType.Small; value.pick.small.v = n; break;
     case "huge": value.huge = BigInt(arg); break; // int128 storage is a BigInt
     case "fx": value.fx = n; break; // fixed(16, 16) storage is the raw Number
+    case "ufx": value.ufx = BigInt(arg); break; // ufixed(32, 32) storage is the raw BigInt (past 2^53)
     default: throw new Error("unknown op " + JSON.stringify(op));
   }
 }
