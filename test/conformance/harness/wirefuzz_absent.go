@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/mas-bandwidth/schema/v2/internal/wireabsent"
 )
 
 // THE ABSENT-ROOT RULE (docs/SPEC-CONFORMANCE.md W-ROSTER, docs/SPEC-TABLES.md
@@ -42,7 +44,7 @@ import (
 
 // wireAbsentDir is where the ledgers live, relative to the repository root
 // the harness runs from.
-const wireAbsentDir = "test/conformance/wire-absent"
+const wireAbsentDir = wireabsent.Dir
 
 // legName is the shape of a --leg value: lowercase words joined by `-`, so
 // the ledger's file name is unambiguous.
@@ -114,7 +116,7 @@ func wireArm(opts wireFuzzOptions) string {
 
 // absentLedgerPath is the ledger the harness reads for a leg and arm.
 func absentLedgerPath(dir, leg, arm string) string {
-	return filepath.Join(dir, leg+"-"+arm+".tsv")
+	return wireabsent.LedgerPath(dir, leg, arm)
 }
 
 // loadAbsentLedger reads the leg and arm's ledger, or returns nil (excusing

@@ -31,6 +31,8 @@ import (
 	"runtime/debug"
 	"sort"
 	"strings"
+
+	"github.com/mas-bandwidth/schema/v2/internal/wireabsent"
 	"sync/atomic"
 	"time"
 
@@ -1118,7 +1120,7 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 	if absent > 0 {
 		// every one is held by name in the leg's ledger, or the run stopped
 		// above (wirefuzz_absent.go)
-		absence += fmt.Sprintf(", %d ledgered seeds absent (%s)", absent, ledgerPath)
+		absence += wireabsent.Clause(absent, ledgerPath)
 	}
 	if skipped > 0 {
 		// the seeds this ARM has nothing to say about: a fixed-class root gets

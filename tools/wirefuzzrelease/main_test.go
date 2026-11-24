@@ -72,6 +72,11 @@ func TestTheAbsenceClauseIsReadOrRed(t *testing.T) {
 		{"no ledger named", strings.Replace(oneAbsent, " (test/conformance/wire-absent/lua-plain.tsv)", "", 1), "RED: the summary speaks of absent seeds in words the gate does not read"},
 		{"two clauses", strings.Replace(oneAbsent, "126 roots,", "126 roots, 2 ledgered seeds absent (x.tsv),", 1), "RED: the summary has more than one absence clause"},
 		{"another mention", strings.Replace(oneAbsent, "0 divergences", "0 divergences, 3 roots absent", 1), "RED: the summary speaks of absent seeds outside its one clause"},
+		// #4880 round 5: the clause in other words is red, never no absence
+		{"other words", strings.Replace(oneAbsent, "1 ledgered seeds absent (test/conformance/wire-absent/lua-plain.tsv)", "1 ledgered seeds missing (x.tsv)", 1), "RED: the summary speaks of absent seeds in words the gate does not read"},
+		// #4880 round 5: the clause cites this row's own ledger, never another leg's or arm's
+		{"another leg's ledger", strings.Replace(oneAbsent, "lua-plain.tsv", "go-plain.tsv", 1), "RED: the absence clause cites test/conformance/wire-absent/go-plain.tsv, not the lua plain row's ledger"},
+		{"another arm's ledger", strings.Replace(oneAbsent, "lua-plain.tsv", "lua-builder.tsv", 1), "RED: the absence clause cites test/conformance/wire-absent/lua-builder.tsv, not the lua plain row's ledger"},
 	} {
 		if got := score("lua", "plain", "1", tc.log, 0, 3, 100000, "", "owed.txt"); !strings.HasPrefix(got, tc.want) {
 			t.Errorf("%s: got %q, want %q", tc.name, got, tc.want)
@@ -246,7 +251,7 @@ func TestWriteRow(t *testing.T) {
 	if got := row("go.plain.3", oldAbsent, false, 0); !strings.HasPrefix(got, "go\tplain\t3\tRED: the summary speaks of absent seeds in words the gate does not read") {
 		t.Errorf("an absence in the old words: %q", got)
 	}
-	if got := row("go.retain.1", strings.Replace(oneAbsent, "wire-fuzz:", "wire-fuzz retain:", 1), false, 0); got != "go\tretain\t1\tpass (105000 mutants, 2 s, 1 ledgered seeds absent (test/conformance/wire-absent/lua-plain.tsv))\n" {
+	if got := row("go.retain.1", strings.NewReplacer("wire-fuzz:", "wire-fuzz retain:", "lua-plain.tsv", "go-retain.tsv").Replace(oneAbsent), false, 0); got != "go\tretain\t1\tpass (105000 mutants, 2 s, 1 ledgered seeds absent (test/conformance/wire-absent/go-retain.tsv))\n" {
 		t.Errorf("a ledgered-absence row: %q", got)
 	}
 	if got := row("zz.plain.1", "", true, -1); got != "zz\tplain\t1\tRED: the leg has no wire-fuzz driver and the owed list does not name this arm\n" {

@@ -35,6 +35,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/mas-bandwidth/schema/v2/internal/wireabsent"
 )
 
 func main() {
@@ -158,12 +160,13 @@ func writeRow(leg, arm, seed, dir, owedPath string, noDriver bool, status, secs,
 var (
 	seedRE    = regexp.MustCompile(`: seed (\d+),`)
 	summaryRE = regexp.MustCompile(`(\d+) seeds over (\d+) roots`)
-	// THE ABSENCE CLAUSE, in the harness's words (test/conformance/harness/
-	// wirefuzz.go): every absent seed is in the leg's ledger or the run
-	// stopped. absentWordRE is any mention of absence at all, so a clause in
-	// other words is RED and never read as none.
-	absentRE     = regexp.MustCompile(`, (\d+) ledgered seeds absent \(([^)]+)\)`)
-	absentWordRE = regexp.MustCompile(`(?i)absent`)
+	// THE ABSENCE CLAUSE is internal/wireabsent's, the one spelling the
+	// harness prints: every absent seed is in the leg's ledger or the run
+	// stopped. absentWordRE is any mention of absence or of a ledger at all,
+	// so a clause in other words ("24 ledgered seeds missing") is RED and
+	// never read as none.
+	absentRE     = wireabsent.ClauseRE
+	absentWordRE = regexp.MustCompile(`(?i)absent|ledger`)
 	mutantsRE    = regexp.MustCompile(`(\d+) enumerated \+ (\d+) random = (\d+) mutants`)
 	zeroDivRE    = regexp.MustCompile(`(^|[^0-9])0 divergences`)
 	failedRE     = regexp.MustCompile(`FAILED after (\d+) mutants: (.*)`)
@@ -173,7 +176,7 @@ var (
 
 // score is one run's verdict, from the harness's exit status and its log.
 func score(leg, arm, seed, log string, status, secs, asked int, owed, owedPath string) string {
-	red, ledgered := runRed(arm, seed, log, status, asked)
+	red, ledgered := runRed(leg, arm, seed, log, status, asked)
 	if red == "" {
 		mutants := mutantsRE.FindAllStringSubmatch(log, -1)
 		m := mutants[len(mutants)-1][3]
@@ -194,7 +197,7 @@ func score(leg, arm, seed, log string, status, secs, asked int, owed, owedPath s
 // enumerated ones), so a run of one mutant under a budget of 100,000 is red.
 // The second answer is the ledgered absence for the pass verdict, "" when
 // no seed is absent.
-func runRed(arm, seed, log string, status, asked int) (string, string) {
+func runRed(leg, arm, seed, log string, status, asked int) (string, string) {
 	if status != 0 {
 		if f := failedRE.FindStringSubmatch(log); f != nil {
 			// THE FIRST DIVERGENCE: the root, the mutant after the ones that
@@ -282,6 +285,11 @@ func runRed(arm, seed, log string, status, asked int) (string, string) {
 	absent, err := strconv.Atoi(a[0][1])
 	if err != nil || absent <= 0 {
 		return "RED: malformed wire-fuzz absent count: " + summary, ""
+	}
+	// the clause cites THIS row's ledger: another leg's or arm's would excuse
+	// roots this run was never held to
+	if want := wireabsent.LedgerPath(wireabsent.Dir, leg, arm); a[0][2] != want {
+		return fmt.Sprintf("RED: the absence clause cites %s, not the %s %s row's ledger %s: %s", a[0][2], leg, arm, want, summary), ""
 	}
 	// what is left once the clause is read must not speak of absence again
 	if absentWordRE.MatchString(strings.Replace(summary, a[0][0], "", 1)) {
