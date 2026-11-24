@@ -15,10 +15,9 @@
 
 LUA_FUZZ_SEED ?= 1
 LUA_FUZZ_N    ?= 2000
-# The roots the Lua leg has no codec for are the exact set in
-# test/conformance/wire-absent/lua-plain.tsv (test/conformance/harness/wirefuzz_absent.go, W-ROSTER):
-# the harness fails any other absent root, and a listed root the leg answers.
-# The registered count this replaced (20) was stale: the leg left 22 absent.
+# The Lua leg answers every plain root, form 1 and the form-2 message roots, so it
+# holds no wire-absent ledger (test/conformance/harness/wirefuzz_absent.go, W-ROSTER): the
+# harness fails any absent root.
 
 .PHONY: tables-lua-wire-fuzz
 tables-lua-wire-fuzz: build/conformance-harness build/conformance-lua
