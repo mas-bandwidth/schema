@@ -21,6 +21,9 @@ type lobsterUnlawfulAnswer struct {
 	// default). The probe also holds every row's fixed save to the save of a
 	// fresh New<Root>(), so a field the check does not name is held too.
 	check string
+	// values, for the LAWFUL control only, is a Lobster expression over `back`
+	// that formats the loaded first record as the case's Values line.
+	values string
 }
 
 var lobsterUnlawfulAnswers = map[string]lobsterUnlawfulAnswer{
@@ -64,6 +67,10 @@ var lobsterUnlawfulAnswers = map[string]lobsterUnlawfulAnswer{
 		poison: `p.Lead = 99; p.Blob = write_int8_le(p.Blob, 0, 0x5A); p.BlobLength = 1; p.Trail = 88`,
 		check:  `p.Lead == 1 and p.BlobLength == 0 and p.Blob == schema_rt.zeros(4) and p.Trail == 2`,
 	},
+	"lawful_control": {
+		poison: `p.Lead = 99; p.V = 5; p.Trail = 88`,
+		values: `"lead=" + string(back[0].Lead) + " v=" + string(back[0].V) + " trail=" + string(back[0].Trail)`,
+	},
 }
 
 // TestLobsterFixedUnlawfulCorpus is the Lobster leg's driver for the shared
@@ -79,7 +86,7 @@ var lobsterUnlawfulAnswers = map[string]lobsterUnlawfulAnswer{
 func TestLobsterFixedUnlawfulCorpus(t *testing.T) {
 	t.Parallel()
 	corpus := lobsterFixedCorpus(t)
-	fixedunlawful.Run(t, "lobstertable", lobsterUnlawfulAnswers, func(t *testing.T, c fixedunlawful.Case, a lobsterUnlawfulAnswer) {
+	fixedunlawful.Run(t, "lobstertable", lobsterUnlawfulAnswers, func(t *testing.T, c fixedunlawful.Case, a lobsterUnlawfulAnswer) string {
 		t.Parallel()
 		older := lobsterReadSchema(t, c.Old)
 		newer := lobsterReadSchema(t, c.New)
@@ -90,7 +97,7 @@ func TestLobsterFixedUnlawfulCorpus(t *testing.T) {
 		}
 		poison := strings.ReplaceAll(strings.ReplaceAll(a.poison, "PKG.", pkg+"."), "; ", "\n            ")
 		check := strings.ReplaceAll(a.check, "PKG.", pkg+".")
-		body := fmt.Sprintf(`
+		unlawful := fmt.Sprintf(`
     let _f_n, fresh, _f_why = %[1]s.%[2]sFixedSaveChecked([%[1]s.New%[2]s()], schema_rt.zeros(%[1]s.%[2]sFixedMeasure(1)))
     let plan = %[1]s.make_plan(4096)
     let back:[%[1]s.%[2]s] = []
@@ -108,10 +115,25 @@ func TestLobsterFixedUnlawfulCorpus(t *testing.T) {
             assert_true(%[5]s, "%[4]s attempt " + string(attempt) + ": row " + string(k) + " is not at its declared defaults")
             let _s_n, saved, _s_why = %[1]s.%[2]sFixedSaveChecked([p], schema_rt.zeros(%[1]s.%[2]sFixedMeasure(1)))
             assert_true(saved == fresh, "%[4]s attempt " + string(attempt) + ": row " + string(k) + " does not save as a fresh row")
-    print "PASS"
+    print "refused"
 `, pkg, c.Root, poison, c.Name, check)
-		if out := runLobsterVersionProbe(t, newer, []string{older}, 0, body, map[string][]byte{"in.bin": data}); strings.TrimSpace(out) != "PASS" {
-			t.Fatalf("%s (%s): %q", c.Name, c.Change, out)
+		lawful := fmt.Sprintf(`
+    let plan = %[1]s.make_plan(4096)
+    let back:[%[1]s.%[2]s] = []
+    for(8): push(back, %[1]s.New%[2]s())
+    for(back) p:
+        %[1]s.%[2]sReset(p)
+        %[3]s
+    let r = schema_rt.TableReport { unknown: 9, widened: 9, kind_mismatch: 9, clamped: 9, duplicate: 9, retained: 9, retain_lost: 9, reason: "stale" }
+    let n = %[1]s.%[2]sFixedLoad(back, read_in("in.bin"), plan, r)
+    assert_true(n >= 0, "%[4]s: the LAWFUL control refused: n=" + string(n) + " reason=" + r.reason)
+    print "loaded " + string(n) + ": " + %[5]s
+`, pkg, c.Root, strings.ReplaceAll(poison, "\n            ", "\n        "), c.Name, a.values)
+		body := unlawful
+		if c.Lawful {
+			body = lawful
 		}
+		out := runLobsterVersionProbe(t, newer, []string{older}, 0, body, map[string][]byte{"in.bin": data})
+		return strings.TrimSpace(out)
 	})
 }

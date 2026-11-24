@@ -1,6 +1,7 @@
 package cpptable
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -17,6 +18,9 @@ type cppUnlawfulAnswer struct {
 	// check is true when back[k] holds its declared defaults (read off the
 	// VNEW_ schema: lead = 1, trail = 2, every other field its type's default).
 	check string
+	// values, for the LAWFUL control only, is the printf argument list that
+	// formats back[0] after the load (a "lead=%llu v=%llu trail=%llu" line).
+	values string
 }
 
 var cppUnlawfulAnswers = map[string]cppUnlawfulAnswer{
@@ -60,6 +64,24 @@ var cppUnlawfulAnswers = map[string]cppUnlawfulAnswer{
 		poison: `back[k].lead = 99u; back[k].blob[0] = 0x5A; back[k].blob_length = 1; back[k].trail = 88u;`,
 		check:  `back[k].lead == 1u && back[k].blob_length == 0 && back[k].blob[0] == 0 && back[k].trail == 2u`,
 	},
+	"lawful_control": {
+		poison: `back[k].lead = 99u; back[k].v = 5u; back[k].trail = 88u;`,
+		values: `(unsigned long long) back[0].lead, (unsigned long long) back[0].v, (unsigned long long) back[0].trail`,
+	},
+}
+
+// cppLawfulBody is the probe body of the LAWFUL control: the rows are poisoned,
+// the OLD file is loaded again, a refusal or a count other than the file's is a
+// failure, and the verdict the driver reads is what the probe prints of the
+// values the load landed in record 0.
+func cppLawfulBody(name, root, poison, values string, records int) string {
+	return fmt.Sprintf(`
+    for ( int k = 0; k < 8; ++k ) { %[3]s }
+    memset( &r, 0, sizeof( r ) );
+    n = %[2]sFixedLoad( back, 8, data, len, plan, 4096, NULL, &r );
+    if ( n != %[5]d || r.refused ) { printf( "%[1]s: the LAWFUL control did not load: n=%%lld refused=%%d reason=%%d\n", (long long) n, (int) r.refused, (int) r.reason ); return 1; }
+    printf( "loaded %%lld: lead=%%llu v=%%llu trail=%%llu", (long long) n, %[4]s );
+`, name, root, poison, values, records)
 }
 
 // TestCppFixedUnlawfulCorpus is the C++ leg's driver for the shared
@@ -74,16 +96,23 @@ var cppUnlawfulAnswers = map[string]cppUnlawfulAnswer{
 func TestCppFixedUnlawfulCorpus(t *testing.T) {
 	t.Parallel()
 	corpus := cppFixedCorpus(t)
-	fixedunlawful.Run(t, "cpptable", cppUnlawfulAnswers, func(t *testing.T, c fixedunlawful.Case, a cppUnlawfulAnswer) {
+	fixedunlawful.Run(t, "cpptable", cppUnlawfulAnswers, func(t *testing.T, c fixedunlawful.Case, a cppUnlawfulAnswer) string {
 		t.Parallel()
 		row := strings.TrimPrefix(c.Old, "VOLD_")
 		if "VNEW_"+row != c.New {
 			t.Fatalf("%s: the pair %s / %s does not share a row name; cppRunVersionProbe reads VOLD_<row> and VNEW_<row>", c.Name, c.Old, c.New)
 		}
-		body := cppUnlawfulBody(c.Name, c.Root, a.poison, a.check)
+		var body string
+		if c.Lawful {
+			body = cppLawfulBody(c.Name, c.Root, a.poison, a.values, c.Records)
+		} else {
+			// the verdict is printed only after every check above held
+			body = cppUnlawfulBody(c.Name, c.Root, a.poison, a.check) + "    printf( \"refused\" );\n"
+		}
 		out, err := cppRunVersionProbe(t, row, filepath.Join(corpus, c.File), body, "")
 		if err != nil {
 			t.Fatalf("%s: %v\n%s", c.Name, err, out)
 		}
+		return strings.TrimSpace(string(out))
 	})
 }

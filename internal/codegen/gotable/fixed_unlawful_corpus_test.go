@@ -2,6 +2,7 @@ package gotable
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -18,6 +19,9 @@ type goUnlawfulAnswer struct {
 	// reference dump wrote, so the Go writer's bytes are held to the corpus
 	// file: the corpus is the Go writer's as well as the C++ dump's.
 	write string
+	// values, for the LAWFUL control only, is a Go expression over back[0]
+	// that formats the loaded record as the case's Values line.
+	values string
 }
 
 var goUnlawfulAnswers = map[string]goUnlawfulAnswer{
@@ -61,25 +65,56 @@ var goUnlawfulAnswers = map[string]goUnlawfulAnswer{
 		poison: `back[i].Lead = 99; back[i].Blob[0] = 0x5A; back[i].BlobLength = 1; back[i].Trail = 88`,
 		write:  `v[r].Lead = 0xAAAAAAAA; v[r].Blob[0] = 0xF0; v[r].Blob[1] = 0xF1; v[r].BlobLength = 2; v[r].Trail = 0xBBBBBBBB`,
 	},
+	"lawful_control": {
+		poison: `back[i].Lead = 99; back[i].V = 5; back[i].Trail = 88`,
+		write:  `v[r].Lead = 0xAAAAAAAA; v[r].V = 65535; v[r].Trail = 0xBBBBBBBB`,
+		values: `fmt.Sprintf("lead=%d v=%d trail=%d", back[0].Lead, back[0].V, back[0].Trail)`,
+	},
 }
 
 // TestFixedUnlawfulCorpus is the reference leg's driver for the shared
-// unlawful-lineage corpus. Per case: the NEW build, handed the OLD layout as a
-// lineage entry, refuses the OLD file before any record, every counter zero,
-// every poisoned row back at its declared defaults, on a first load and a
-// second (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH/EMIT, §5.4; SPEC-TABLES
+// unlawful-lineage corpus. The probe writes its verdict to a file, and the
+// driver answers what the probe wrote: the LAWFUL control's loaded values, or
+// "refused" once every check below held. Per UNLAWFUL case: the NEW build,
+// handed the OLD layout as a lineage entry, refuses the OLD file before any
+// record, every counter zero, every poisoned row back at its declared
+// defaults, on a first load and a second (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH/EMIT, §5.4; SPEC-TABLES
 // §6.5). The refusal's NAME is pinned here, layout_malformed, and is never
 // compared across legs (refusal-verdict-only). And the Go writer, given the
 // values the dump wrote, writes the corpus file byte for byte.
 func TestFixedUnlawfulCorpus(t *testing.T) {
 	t.Parallel()
 	corpus := fixedCorpus(t)
-	fixedunlawful.Run(t, "gotable", goUnlawfulAnswers, func(t *testing.T, c fixedunlawful.Case, a goUnlawfulAnswer) {
+	fixedunlawful.Run(t, "gotable", goUnlawfulAnswers, func(t *testing.T, c fixedunlawful.Case, a goUnlawfulAnswer) string {
 		t.Parallel()
 		older := readSchema(t, c.Old)
 		newer := readSchema(t, c.New)
 		file := filepath.Join(corpus, c.File)
+		verdict := filepath.Join(t.TempDir(), "verdict.txt")
 		load := fmt.Sprintf(`package probe
+
+import ("fmt"; "os"; "testing")
+
+func TestLawful(t *testing.T) {
+	data, err := os.ReadFile(%[1]q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	back := make([]%[2]s, 8)
+	for i := range back { %[2]sReset(&back[i]); %[3]s }
+	plan := make([]TableFixedEntry, 4096)
+	var r TableReport
+	n := %[2]sFixedLoad(back, data, plan, &r)
+	if n < 0 || r.Err() != nil {
+		t.Fatalf("%[4]s: the LAWFUL control refused: n=%%d err=%%v", n, r.Err())
+	}
+	if err := os.WriteFile(%[5]q, []byte(fmt.Sprintf("loaded %%d: %%s", n, %[6]s)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+`, file, c.Root, a.poison, c.Name, verdict, a.values)
+		if !c.Lawful {
+			load = fmt.Sprintf(`package probe
 
 import ("errors"; "os"; "reflect"; "testing")
 
@@ -109,10 +144,18 @@ func TestUnlawful(t *testing.T) {
 			t.Fatalf("%[4]s attempt %%d: rows not at their declared defaults: %%+v", attempt, back[0])
 		}
 	}
+	if err := os.WriteFile(%[5]q, []byte("refused"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 }
-`, file, c.Root, a.poison, c.Name)
+`, file, c.Root, a.poison, c.Name, verdict)
+		}
 		if out, err := runVersionProbe(t, newer, []string{older}, load); err != nil {
 			t.Fatalf("%s: %v\n%s", c.Name, err, out)
+		}
+		got, err := os.ReadFile(verdict)
+		if err != nil {
+			t.Fatalf("%s: the probe wrote no verdict: %v", c.Name, err)
 		}
 		write := fmt.Sprintf(`package probe
 
@@ -137,5 +180,6 @@ func TestWriterIsTheCorpus(t *testing.T) {
 		if out, err := runVersionProbe(t, older, nil, write); err != nil {
 			t.Fatalf("%s writer: %v\n%s", c.Name, err, out)
 		}
+		return string(got)
 	})
 }

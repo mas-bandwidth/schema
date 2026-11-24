@@ -32,6 +32,7 @@ var luaUnlawfulAnswers = map[string]luaUnlawfulAnswer{
 	"counted_shrunk":      {poison: `r.lead, r.trail = 99, 88; r.vals = { 70, 71 }`},
 	"text_narrowed":       {poison: `r.lead, r.trail = 99, 88; r.text = "zz"`},
 	"bytes_narrowed":      {poison: `r.lead, r.trail = 99, 88; r.blob = "\x5A"`},
+	"lawful_control":      {poison: `r.lead, r.v, r.trail = 99, 5, 88`},
 }
 
 // luaUnlawfulMain is the probe: two passes, each loading the OLD file through
@@ -72,6 +73,26 @@ for pass = 1, 2 do
   assert(not ok, "pass " .. pass .. ": the plain load LOADED the UNLAWFUL entry")
   print("raised " .. tostring(err))
 end
+print("verdict refused")
+`
+
+// luaLawfulMain is the control's probe: the NEW build, handed the OLD layout,
+// must LOAD the OLD file. It loads into eight POISONED rows and prints a
+// verdict built from the values record 0 actually holds after the load.
+const luaLawfulMain = `local T = require(%[1]q)
+local I = require("inputs")
+local fresh = T.New%[2]s
+local into = {}
+for k = 1, 8 do
+  local r = fresh()
+  %[3]s
+  into[k] = r
+end
+local rep = {}
+local got = T.FixedLoad(%[2]q, I.file, nil, rep, into)
+assert(got ~= nil and rep.refused ~= 1, "the LAWFUL control refused: " .. tostring(rep.reason))
+local r = into[1]
+print(string.format("verdict loaded %%d: lead=%%d v=%%d trail=%%d", #got, r.lead, r.v, r.trail))
 `
 
 // TestLuaFixedUnlawfulCorpus is the Lua leg's driver for the shared
@@ -86,18 +107,28 @@ func TestLuaFixedUnlawfulCorpus(t *testing.T) {
 	slowtest.Gate(t, "lua (it runs the emitted fixed-form runtime)")
 	repo := filepath.Join("..", "..", "..")
 	corpus := luaFixedCorpus(t, repo)
-	fixedunlawful.Run(t, "luatable", luaUnlawfulAnswers, func(t *testing.T, c fixedunlawful.Case, a luaUnlawfulAnswer) {
+	fixedunlawful.Run(t, "luatable", luaUnlawfulAnswers, func(t *testing.T, c fixedunlawful.Case, a luaUnlawfulAnswer) string {
 		t.Parallel()
 		older := luarun.LoadUnit(t, filepath.Join(repo, "test", "tables", c.Old+".schema"))
 		newer := luarun.LoadUnit(t, filepath.Join(repo, "test", "tables", c.New+".schema"))
 		g := luaEvoGen(t, newer, luaEvoLineage(t, older, c.Root))
 		file := readFile(t, filepath.Join(corpus, c.File))
-		out := g.run(t, fmt.Sprintf(luaUnlawfulMain, g.mod, c.Root, a.poison), map[string][]byte{"file": file})
-		lines := strings.Split(out, "\n")
-		if len(lines) != 4 {
-			t.Fatalf("%s: want two passes of two lines, got %q", c.Name, out)
+		main := luaUnlawfulMain
+		if c.Lawful {
+			main = luaLawfulMain
 		}
-		for i, l := range lines {
+		out := g.run(t, fmt.Sprintf(main, g.mod, c.Root, a.poison), map[string][]byte{"file": file})
+		lines := strings.Split(out, "\n")
+		if c.Lawful {
+			if len(lines) != 1 || !strings.HasPrefix(lines[0], "verdict ") {
+				t.Fatalf("%s: want one verdict line, got %q", c.Name, out)
+			}
+			return strings.TrimPrefix(lines[0], "verdict ")
+		}
+		if len(lines) != 5 {
+			t.Fatalf("%s: want two passes of two lines and a verdict, got %q", c.Name, out)
+		}
+		for i, l := range lines[:4] {
 			want := "reason layout_malformed"
 			if i%2 == 1 {
 				want = "raised layout_malformed"
@@ -106,5 +137,6 @@ func TestLuaFixedUnlawfulCorpus(t *testing.T) {
 				t.Errorf("%s: %q, want %q (Lua's own name for an unlawful entry)", c.Name, l, want)
 			}
 		}
+		return strings.TrimPrefix(lines[4], "verdict ")
 	})
 }

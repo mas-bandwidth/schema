@@ -65,6 +65,10 @@ var unityUnlawfulAnswers = map[string]unityUnlawfulAnswer{
 		poison: "back[k].Lead = 99U; back[k].Blob.E0 = 0x5A; back[k].BlobLength = 1; back[k].Trail = 88U;",
 		check:  "back[k].Lead == 1U && back[k].BlobLength == 0 && back[k].Blob.E0 == 0 && back[k].Blob.E1 == 0 && back[k].Blob.E2 == 0 && back[k].Blob.E3 == 0 && back[k].Trail == 2U",
 	},
+	// The LAWFUL control: check is unused; the probe reports the landed values.
+	"lawful_control": {
+		poison: "back[k].Lead = 99U; back[k].V = 5U; back[k].Trail = 88U;",
+	},
 }
 
 // TestUnityFixedUnlawfulCorpus is the unity leg's driver for the shared
@@ -80,7 +84,7 @@ func TestUnityFixedUnlawfulCorpus(t *testing.T) {
 	t.Parallel()
 	repo := filepath.Join("..", "..", "..")
 	corpus := filepath.Join(repo, "build", "fixedform-corpus")
-	fixedunlawful.Run(t, "unitytable", unityUnlawfulAnswers, func(t *testing.T, c fixedunlawful.Case, a unityUnlawfulAnswer) {
+	fixedunlawful.Run(t, "unitytable", unityUnlawfulAnswers, func(t *testing.T, c fixedunlawful.Case, a unityUnlawfulAnswer) string {
 		t.Parallel()
 		data, err := os.ReadFile(filepath.Join(corpus, c.File))
 		if err != nil {
@@ -96,13 +100,24 @@ func TestUnityFixedUnlawfulCorpus(t *testing.T) {
 			t.Fatal(err)
 		}
 		probe := fmt.Sprintf(unityUnlawfulCorpusProbe, unityNamespace(newer.Package), c.Root, a.poison, a.check, c.Name)
+		if c.Lawful {
+			probe = fmt.Sprintf(unityLawfulCorpusProbe, unityNamespace(newer.Package), c.Root, a.poison, c.Name)
+		}
 		out, code, _, err := runUnityProbe(t, files, probe, map[string][]byte{"in.bin": data})
 		if err != nil {
 			t.Fatalf("%s: probe build/exec error: %v\n%s", c.Name, err, out)
 		}
-		if code != 0 || !strings.Contains(out, "ROW "+c.Name+": ok") {
+		if code != 0 {
 			t.Fatalf("%s (exit %d):\n%s", c.Name, code, out)
 		}
+		// The verdict is what the probe's own load printed, never a constant here.
+		for _, line := range strings.Split(out, "\n") {
+			if v, ok := strings.CutPrefix(strings.TrimSpace(line), "VERDICT "+c.Name+": "); ok {
+				return v
+			}
+		}
+		t.Fatalf("%s: the probe printed no verdict:\n%s", c.Name, out)
+		return ""
 	})
 }
 
@@ -143,7 +158,36 @@ static class Program
                 if (!(%[4]s)) { Console.WriteLine("ROW %[5]s: FAILED pass " + pass + ": row " + k + " is not at its declared defaults"); return 1; }
             }
         }
-        Console.WriteLine("ROW %[5]s: ok");
+        Console.WriteLine("VERDICT %[5]s: refused");
+        return 0;
+    }
+}
+`
+
+// unityLawfulCorpusProbe: %[1]s the namespace, %[2]s the root, %[3]s the
+// poison, %[4]s the case. One load over poisoned rows; it must land one record,
+// and the verdict is the values record 0 holds afterwards.
+const unityLawfulCorpusProbe = `using System;
+using System.IO;
+using %[1]s;
+using static %[1]s.Schema;
+
+static class Program
+{
+    static int Main()
+    {
+        byte[] data = File.ReadAllBytes("in.bin");
+        %[2]s[] back = new %[2]s[8];
+        for (int k = 0; k < back.Length; k++) { back[k] = Schema.New%[2]s(); }
+        for (int k = 0; k < back.Length; k++) { %[3]s }
+        TableReport r = new TableReport();
+        long n = Schema.%[2]sFixedLoad(back, data, ref r);
+        if (n < 0 || r.Refused)
+        {
+            Console.WriteLine("ROW %[4]s: FAILED: the LAWFUL control refused: n=" + n + " reason=" + TableReport.ReasonName(r.Reason));
+            return 1;
+        }
+        Console.WriteLine("VERDICT %[4]s: loaded " + n + ": lead=" + (ulong)back[0].Lead + " v=" + (ulong)back[0].V + " trail=" + (ulong)back[0].Trail);
         return 0;
     }
 }

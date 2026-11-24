@@ -2,6 +2,8 @@ package elixirtable
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedunlawful"
@@ -31,24 +33,40 @@ var elixirUnlawfulAnswers = map[string]elixirUnlawfulAnswer{
 	"counted_shrunk":      {"layout_malformed", `d.vals == []`},
 	"text_narrowed":       {"layout_malformed", `byte_size(d.text) == 0`},
 	"bytes_narrowed":      {"layout_malformed", `byte_size(d.blob) == 0`},
+	// The LAWFUL control loads: no refusal name, no defaults check. Elixir
+	// hands back a fresh list and never writes caller rows, so there is no
+	// row to poison; the verdict is the values the load landed.
+	"lawful_control": {"", ``},
 }
 
 // TestElixirFixedUnlawfulCorpus is the elixir leg's driver for the shared
-// unlawful-lineage corpus. Per case: the NEW build, handed the OLD layout as a
-// lineage entry, refuses the OLD file before any record, every counter zero,
-// no values handed back, and the reader's declared defaults standing, on a
-// first load and a second (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.4; SPEC-TABLES
-// §6.5). Elixir hands back a fresh list and never writes caller rows, so "rows
-// at their declared defaults" is a refusal carrying no values beside the
-// reader's decoded prefill. The refusal's name is pinned per case below.
+// unlawful-lineage corpus. The probe writes its verdict to a file, and the
+// driver answers what the probe wrote: the LAWFUL control's loaded values, or
+// "refused" once every check below held. Per UNLAWFUL case: the NEW build,
+// handed the OLD layout as a lineage entry, refuses the OLD file before any
+// record, every counter zero, no values handed back, and the reader's declared
+// defaults standing, on a first load and a second (docs/FIXED-FORM-ALGORITHM.md
+// §5.2, §5.4; SPEC-TABLES §6.5). Elixir hands back a fresh list and never
+// writes caller rows, so "rows at their declared defaults" is a refusal
+// carrying no values beside the reader's decoded prefill. The refusal's name
+// is pinned per case below.
 func TestElixirFixedUnlawfulCorpus(t *testing.T) {
 	t.Parallel()
 	elixirBin := lineageElixir(t)
-	fixedunlawful.Run(t, "elixirtable", elixirUnlawfulAnswers, func(t *testing.T, c fixedunlawful.Case, a elixirUnlawfulAnswer) {
+	fixedunlawful.Run(t, "elixirtable", elixirUnlawfulAnswers, func(t *testing.T, c fixedunlawful.Case, a elixirUnlawfulAnswer) string {
 		t.Parallel()
 		file := lineageCorpus(t, c.File)
-		snake := ir.RustSnake(c.Root)
-		body := fmt.Sprintf(`  data = File.read!(file())
+		verdict := filepath.Join(t.TempDir(), "verdict.txt")
+		var body string
+		if c.Lawful {
+			body = fmt.Sprintf(`  data = File.read!(file())
+  {tag, values, report} = load(data)
+  check(tag == :ok and length(values) > 0, "%[1]s: the LAWFUL control refused: #{inspect({tag, values})} #{inspect(report)}")
+  [v | _] = values
+  File.write!(%[2]s, "loaded #{length(values)}: lead=#{v.lead} v=#{v.v} trail=#{v.trail}")`, c.Name, elixirString(verdict))
+		} else {
+			snake := ir.RustSnake(c.Root)
+			body = fmt.Sprintf(`  data = File.read!(file())
   for pass <- [1, 2] do
     {tag, why, report} = load(data)
     check(tag == :error and why == :%[2]s,
@@ -59,10 +77,17 @@ func TestElixirFixedUnlawfulCorpus(t *testing.T) {
   end
   {d, _c, _m} = T.%[3]s_fixed_decode(prefill(), 0, false)
   check(d.lead == 1 and d.trail == 2 and (%[4]s),
-    "%[1]s: the reader's declared defaults moved: #{inspect(d)}")`, c.Name, a.refusal, snake, a.defaults)
+    "%[1]s: the reader's declared defaults moved: #{inspect(d)}")
+  if Process.get(:failed) == nil, do: File.write!(%[5]s, "refused")`, c.Name, a.refusal, snake, a.defaults, elixirString(verdict))
+		}
 		out, err := runVersionProbe(t, elixirBin, c.New, []string{c.Old}, 0, file, body)
 		if err != nil {
 			t.Fatalf("%s: %v\n%s", c.Name, err, out)
 		}
+		got, err := os.ReadFile(verdict)
+		if err != nil {
+			t.Fatalf("%s: the probe wrote no verdict: %v", c.Name, err)
+		}
+		return string(got)
 	})
 }

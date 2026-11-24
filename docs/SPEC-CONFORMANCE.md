@@ -748,14 +748,21 @@ not move. The §5.4 table row names the whole set. §5.1 refuses every one of
 these at commit, so a lawful lineage never reaches them; the load refusal is
 for a handed-in or hostile entry, and it holds in every build on every leg.
 
-**One shared corpus, defined once** (`internal/fixedunlawful`): ten cases,
-`unknown_census`, `unknown_census_many`, `kind_moved` and the seven narrowing
-rows `arm_removed`, `variant_removed`, `key_removed`, `array_shrunk`,
-`counted_shrunk`, `text_narrowed`, `bytes_narrowed`
+**One shared corpus, defined once** (`internal/fixedunlawful`): ten
+unlawful cases, `unknown_census`, `unknown_census_many`, `kind_moved` and the
+seven narrowing rows `arm_removed`, `variant_removed`, `key_removed`,
+`array_shrunk`, `counted_shrunk`, `text_narrowed`, `bytes_narrowed`
 ([FIXED-FORM-VERSIONING-TESTS.md](FIXED-FORM-VERSIONING-TESTS.md)). Each OLD
-file holds only values the NEW reader could still name or hold, so a leg that
-drops, remaps, truncates or checks only the live length loads it and fails;
-only a refusal passes. Every leg in `fixedunlawful.Legs` answers every case
+file is one that a leg which drops, remaps, truncates or checks only the live
+length would LOAD, and so fail; only a refusal passes. Most hold only values
+the NEW reader could still name or hold (arm `gamma`, variant `Gold`, a
+count of 2, a two-byte text or blob). Two do not: `key_removed` also stores
+`Silver = 22` at the key the NEW reader lacks, and `array_shrunk` stores
+`43`, `44` past the NEW `[2]`, the values such a leg silently drops. One
+LAWFUL control, `lawful_control` (the `uint_widen` pair, `old_uint_widen.bin`),
+must LOAD on every leg with its values checked. Every driver answers each case
+with a verdict read off its own load, `refused` or `loaded <n>: <values>`, and
+`fixedunlawful.Run` judges it, so a driver that never loads fails the control. Every leg in `fixedunlawful.Legs` answers every case
 through `fixedunlawful.Run`, which refuses a missing answer and a stray one by
 name, and `TestEveryLegAnswers` refuses a leg with no driver. The verdict is
 compared (refuses, counters zero, every poisoned row at its declared defaults,

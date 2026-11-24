@@ -19,11 +19,21 @@
 // names. Each leg pins its own name (layout_malformed, or Dart's
 // layout_damaged) in its own tests.
 //
-// Every case is designed so that a leg which LOADS it fails the verdict: the
-// OLD file holds only values the NEW reader could still name or hold (an arm
-// it keeps, a variant it keeps, a count and a text that fit), so a leg that
-// drops what it lacks, remaps by id or checks only the live length loads the
-// file, and only a refusal passes.
+// Every case is designed so that a leg which LOADS it fails the verdict: a
+// leg that drops what it lacks, remaps by id, truncates to its own bound or
+// checks only the live length would load the OLD file. Some files hold only
+// values the NEW reader could still name or hold (arm gamma, variant Gold, a
+// count of 2, a two-byte text or blob); key_removed also stores Silver = 22,
+// a key the NEW reader lacks, and array_shrunk stores 43 and 44 past the NEW
+// [2], which exactly such a leg would drop on the floor. Only a refusal
+// passes.
+//
+// One case is LAWFUL, the control (Lawful set): a widening every leg must
+// LOAD, values checked. A driver answers each case with a verdict string,
+// Refused or Loaded(n, values), and Run judges it against Case.Want. A driver
+// that never loads, answering "refused" for every case without reading a
+// byte, fails the control: refusing is not evidence, loading the right
+// values is.
 //
 // Every leg in Legs holds a driver, DriverFile, in its codegen package, and
 // the driver answers through Run, which refuses a case without an answer and
@@ -32,6 +42,7 @@
 package fixedunlawful
 
 import (
+	"fmt"
 	"slices"
 	"sort"
 	"strings"
@@ -47,8 +58,44 @@ type Case struct {
 	Root string // the fixed root table both sides declare
 	// Records is how many records File holds.
 	Records int
-	// Change says, in a line, what the NEW side did that §5.1 refuses.
+	// Change says, in a line, what the NEW side did that §5.1 refuses (or,
+	// for the control, the lawful widening it made).
 	Change string
+	// Lawful marks the control: a lawful lineage entry every leg must LOAD.
+	Lawful bool
+	// Values is the control's loaded first record, as a driver reports it:
+	// the root's fields in declaration order, "name=decimal", space separated.
+	Values string
+}
+
+// Refused is a driver's verdict for a load that refused before any record.
+const Refused = "refused"
+
+// Loaded is a driver's verdict for a load that landed n records, the first
+// holding values ("lead=1 v=2 trail=3": the root's fields in declaration
+// order, each a decimal).
+func Loaded(n int, values string) string {
+	return fmt.Sprintf("loaded %d: %s", n, values)
+}
+
+// Want is the one lawful verdict for c on every leg.
+func (c Case) Want() string {
+	if c.Lawful {
+		return Loaded(c.Records, c.Values)
+	}
+	return Refused
+}
+
+// Judge is "" when got is c's lawful verdict, and otherwise the sentence
+// that says why not.
+func Judge(c Case, got string) string {
+	if got == c.Want() {
+		return ""
+	}
+	if c.Lawful {
+		return fmt.Sprintf("fixedunlawful: case %s is the LAWFUL control and must load: answered %q, want %q (a driver that never loads cannot pass)", c.Name, got, c.Want())
+	}
+	return fmt.Sprintf("fixedunlawful: case %s is UNLAWFUL and must refuse: answered %q, want %q", c.Name, got, c.Want())
 }
 
 // Cases is the shared list, in the order the docs table lists them.
@@ -73,6 +120,9 @@ var Cases = []Case{
 		Change: "string(8) -> string(4); the file's text is \"ab\""},
 	{Name: "bytes_narrowed", Old: "VOLD_bytes_narrowed", New: "VNEW_bytes_narrowed", File: "old_bytes_narrowed.bin", Root: "BytesNarrowed", Records: 1,
 		Change: "bytes(8) -> bytes(4); the file's blob is two bytes"},
+	{Name: "lawful_control", Old: "VOLD_uint_widen", New: "VNEW_uint_widen", File: "old_uint_widen.bin", Root: "UintWiden", Records: 1,
+		Change: "v uint16 -> uint32: a LAWFUL widening, the control every leg must load",
+		Lawful: true, Values: "lead=2863311530 v=65535 trail=3149642683"},
 }
 
 // Legs is every codegen package that reads a fixed-form lineage and so owes
@@ -129,15 +179,24 @@ func Unanswered[A any](leg string, answers map[string]A) string {
 // Run is the harness. answers maps a case's Name to the leg's answer for it
 // (whatever the leg needs: a poison and a defaults check in its language,
 // say). Run refuses, by name, a case the leg has no answer for and an answer
-// naming no case, then runs each case as a subtest.
-func Run[A any](t *testing.T, leg string, answers map[string]A, run func(t *testing.T, c Case, a A)) {
+// naming no case, then runs each case as a subtest. run returns the leg's
+// verdict, Refused or Loaded(n, values), read off what the leg's own load
+// did; Run judges it against c.Want, so the LAWFUL control fails a driver
+// that never loads.
+func Run[A any](t *testing.T, leg string, answers map[string]A, run func(t *testing.T, c Case, a A) string) {
 	t.Helper()
 	if why := Unanswered(leg, answers); why != "" {
 		t.Fatal(why)
 	}
 	for _, c := range Cases {
 		t.Run(c.Name, func(t *testing.T) {
-			run(t, c, answers[c.Name])
+			got := run(t, c, answers[c.Name])
+			if t.Failed() {
+				return
+			}
+			if why := Judge(c, got); why != "" {
+				t.Fatalf("leg %s: %s", leg, why)
+			}
 		})
 	}
 }

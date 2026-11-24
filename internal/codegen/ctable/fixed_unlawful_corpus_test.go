@@ -15,6 +15,7 @@ package ctable
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedunlawful"
@@ -26,6 +27,9 @@ type cUnlawfulAnswer struct {
 	// poison sets back[k] of the NEW type to values that are not its declared
 	// defaults, so a load that leaves a row alone is seen.
 	poison string
+	// values, for the LAWFUL control only, is the printf argument list (after
+	// the format `lead=%u v=%u trail=%u`) that reads the landed record 0.
+	values string
 	// check is true of back[k] when it holds the declared defaults of the
 	// VNEW schema (lead = 1, trail = 2, every unlisted field its type's
 	// default). The probe also compares the whole row to a fresh reset.
@@ -35,6 +39,10 @@ type cUnlawfulAnswer struct {
 const cUnlawfulBrackets = `back[k].lead == 1u && back[k].trail == 2u`
 
 var cUnlawfulAnswers = map[string]cUnlawfulAnswer{
+	"lawful_control": {
+		poison: `back[k].lead = 99u; back[k].v = 5u; back[k].trail = 88u;`,
+		values: `(unsigned long) back[0].lead, (unsigned long) back[0].v, (unsigned long) back[0].trail`,
+	},
 	"unknown_census":      {poison: cCensusPoison, check: cCensusCheck},
 	"unknown_census_many": {poison: cCensusPoison, check: cCensusCheck},
 	"kind_moved": {
@@ -103,21 +111,37 @@ func cUnlawfulCorpusBody(row, load, poison, check string) string {
                 { printf( "%[1]s pass %%d: refused, but not layout_malformed: reason=%%d refuse_reason=%%d\n", pass, r.reason, r.refuse_reason ); return 1; }
         }
     }
+    printf( "refused\n" );
 `, row, load, poison, check)
+}
+
+// cLawfulControlBody is the LAWFUL control's probe body: the NEW build must
+// LOAD the OLD file, one record, and the verdict is printed from the values
+// the load landed in record 0 (rows poisoned first, so an untouched row shows).
+func cLawfulControlBody(row string, records int, values string) string {
+	return fmt.Sprintf(`
+    if ( n != %[2]d || r.refused ) { printf( "%[1]s: the LAWFUL control refused or miscounted: n=%%lld refused=%%d\n", (long long) n, r.refused ); return 1; }
+    printf( "loaded %%lld: lead=%%lu v=%%lu trail=%%lu\n", (long long) n, %[3]s );
+`, row, records, values)
 }
 
 func TestCFixedUnlawfulCorpus(t *testing.T) {
 	corpus := cFixedCorpus(t)
-	fixedunlawful.Run(t, "ctable", cUnlawfulAnswers, func(t *testing.T, c fixedunlawful.Case, a cUnlawfulAnswer) {
+	fixedunlawful.Run(t, "ctable", cUnlawfulAnswers, func(t *testing.T, c fixedunlawful.Case, a cUnlawfulAnswer) string {
 		t.Parallel()
 		newer := cReadSchema(t, c.New)
 		older := cReadSchema(t, c.Old)
 		load := ir.RustSnake(c.Root) + "_fixed_load"
 		body := cUnlawfulCorpusBody(c.Name, load, a.poison, a.check)
+		if c.Lawful {
+			body = cLawfulControlBody(c.Name, c.Records, a.values)
+		}
 		out, err := cRunVersionProbeRoot(t, newer, []string{older}, 0, c.Root,
 			filepath.Join(corpus, c.File), body, cUnlawfulPoison(a.poison))
 		if err != nil {
 			t.Fatalf("%s: %v\n%s", c.Name, err, out)
 		}
+		// the verdict is what the probe printed, never a constant here.
+		return strings.TrimSpace(string(out))
 	})
 }

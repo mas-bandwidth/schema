@@ -1,6 +1,7 @@
 package goosetable
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -20,6 +21,9 @@ type gooseUnlawfulAnswer struct {
 	// defaults maps a Goose expression over row 0 to the value it prints
 	// when the row holds its declared defaults.
 	defaults map[string]string
+	// values, for the LAWFUL control only, lists the three Goose expressions
+	// over row 0 the verdict is built from, in the case's Values order.
+	values []string
 }
 
 func gooseUnlawfulDefaults(extra map[string]string) gooseUnlawfulAnswer {
@@ -36,6 +40,7 @@ var gooseUnlawfulAnswers = map[string]gooseUnlawfulAnswer{
 	"kind_moved":          gooseUnlawfulDefaults(map[string]string{"(if values[0].V == 0.0 { 1 } else { 0 })": "1"}),
 	"arm_removed":         gooseUnlawfulDefaults(map[string]string{"values[0].Pick.Type": "0"}),
 	"variant_removed":     gooseUnlawfulDefaults(nil),
+	"lawful_control":      {values: []string{"values[0].Lead", "values[0].V", "values[0].Trail"}},
 	"key_removed":         gooseUnlawfulDefaults(map[string]string{"values[0].Slots[0]": "0", "values[0].Slots[1]": "0"}),
 	"array_shrunk":        gooseUnlawfulDefaults(map[string]string{"values[0].Vals[0]": "0", "values[0].Vals[1]": "0"}),
 	"counted_shrunk":      gooseUnlawfulDefaults(map[string]string{"values[0].ValsCount": "0", "values[0].Vals[0]": "0"}),
@@ -55,13 +60,31 @@ var gooseUnlawfulAnswers = map[string]gooseUnlawfulAnswer{
 func TestGooseFixedUnlawfulCorpus(t *testing.T) {
 	t.Parallel()
 	corpus := fixedCorpus(t)
-	fixedunlawful.Run(t, "goosetable", gooseUnlawfulAnswers, func(t *testing.T, c fixedunlawful.Case, a gooseUnlawfulAnswer) {
+	fixedunlawful.Run(t, "goosetable", gooseUnlawfulAnswers, func(t *testing.T, c fixedunlawful.Case, a gooseUnlawfulAnswer) string {
 		t.Parallel()
 		older := evolutionLoad(t, "test/tables/"+c.Old+".schema")
 		newer := evolutionLoad(t, "test/tables/"+c.New+".schema")
 		data := gooseCorpusFile(t, corpus, c.File)
 		if got := gooseFixedRecords(t, data, older, c.Root); got != c.Records {
 			t.Fatalf("%s: %s holds %d records under the OLD entry, the corpus says %d", c.Name, c.File, got, c.Records)
+		}
+		if c.Lawful {
+			// THE LAWFUL CONTROL: the NEW build, handed the OLD layout, LOADS
+			// the file. The rows are poisoned first (every leaf 0x5A), so a
+			// load that leaves a row alone is seen, and the verdict is built
+			// from the three values the probe PRINTED off row 0 after the load.
+			got := gooseVersionProbe(t, gooseVersionCase{reader: newer, older: []*ir.Unit{older}, root: c.Root,
+				capacity: c.Records, poison: true, data: data, print: a.values})
+			got.file = c.Name
+			got.reads(t, c.Records)
+			if got.clamped != 0 || got.unknown != 0 || got.kindMismatch != 0 { // widened is 1: the widening is counted
+				t.Fatalf("%s: the lawful control moved a counter it owes zero: %s", c.Name, got.raw)
+			}
+			if len(got.printed) != len(a.values) {
+				t.Fatalf("%s: %d values printed for %d asked: %s", c.Name, len(got.printed), len(a.values), got.raw)
+			}
+			vals := fmt.Sprintf("lead=%s v=%s trail=%s", strings.TrimSpace(got.printed[0]), strings.TrimSpace(got.printed[1]), strings.TrimSpace(got.printed[2]))
+			return fixedunlawful.Loaded(got.n, vals)
 		}
 		var exprs []string
 		for e := range a.defaults {
@@ -90,5 +113,6 @@ func TestGooseFixedUnlawfulCorpus(t *testing.T) {
 				t.Fatalf("%s: after the second refusal %s is %s, its declared default is %s", c.Name, e, v, a.defaults[e])
 			}
 		}
+		return fixedunlawful.Refused
 	})
 }

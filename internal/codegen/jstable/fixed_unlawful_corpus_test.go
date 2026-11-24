@@ -1,7 +1,9 @@
 package jstable
 
 import (
+	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/fixedunlawful"
@@ -19,6 +21,9 @@ type jsUnlawfulAnswer struct {
 	// keep their storage under Init (SPEC §4.8), so only the tag is held.
 	atDefaults string
 }
+
+// jsVerdictPrefix marks the line a probe prints for its verdict.
+const jsVerdictPrefix = "VERDICT "
 
 var jsUnlawfulAnswers = map[string]jsUnlawfulAnswer{
 	"unknown_census": {
@@ -61,6 +66,40 @@ var jsUnlawfulAnswers = map[string]jsUnlawfulAnswer{
 		poison:     `back[k].lead = 99; back[k].blob[0] = 0x5A; back[k].blobLength = 1; back[k].trail = 88;`,
 		atDefaults: `back[k].lead === 1 && back[k].blobLength === 0 && back[k].blob.length === 4 && back[k].blob.every((b) => b === 0) && back[k].trail === 2`,
 	},
+	// The LAWFUL control: rows poisoned, the OLD file loaded, the landed values
+	// printed. lead and trail are uint32, v is the widened uint16 -> uint32.
+	"lawful_control": {
+		poison: `back[k].lead = 99; back[k].v = 5; back[k].trail = 88;`,
+	},
+}
+
+// jsLawfulProbe is the control's probe body: poison, load the OLD file the NEW
+// build was handed as a lineage entry, and print the verdict from what landed
+// in record 0. A load that left a row alone prints the poison.
+func jsLawfulProbe(file, row, poison string) string {
+	return fmt.Sprintf(`
+const data = readFileSync(%[1]q);
+const back = []; for (let k = 0; k < 8; k++) { back.push(new T()); InitT(back[k]); }
+const plan = TNewPlan(4096, 4096);
+for (let k = 0; k < back.length; k++) { %[3]s }
+plan.image.fill(0x5A);
+const r = new TableFixedReport();
+const n = TLoad(back, back.length, data, data.length, plan, r);
+if (n < 1) { fail(%[2]q + ": the LAWFUL control did not load: n=" + n + " " + reason(r)); }
+else { console.log(%[4]q + "loaded " + n + ": lead=" + back[0].lead + " v=" + back[0].v + " trail=" + back[0].trail); }
+`, file, row, poison, jsVerdictPrefix)
+}
+
+// jsVerdict reads the verdict line the probe printed.
+func jsVerdict(t *testing.T, name string, out []byte) string {
+	t.Helper()
+	for _, line := range strings.Split(string(out), "\n") {
+		if v, ok := strings.CutPrefix(line, jsVerdictPrefix); ok {
+			return strings.TrimSpace(v)
+		}
+	}
+	t.Fatalf("%s: the probe printed no verdict:\n%s", name, out)
+	return ""
 }
 
 // TestJSFixedUnlawfulCorpus is the JavaScript leg's driver for the shared
@@ -75,14 +114,24 @@ func TestJSFixedUnlawfulCorpus(t *testing.T) {
 	t.Parallel()
 	corpus := jsFixedCorpus(t)
 	node := jsNode(t)
-	fixedunlawful.Run(t, "jstable", jsUnlawfulAnswers, func(t *testing.T, c fixedunlawful.Case, a jsUnlawfulAnswer) {
+	fixedunlawful.Run(t, "jstable", jsUnlawfulAnswers, func(t *testing.T, c fixedunlawful.Case, a jsUnlawfulAnswer) string {
 		t.Parallel()
 		older := jsReadSchema(t, c.Old)
 		newer := jsReadSchema(t, c.New)
-		src := jsUnlawfulProbe(filepath.Join(corpus, c.File), c.Name, a.poison, a.atDefaults)
+		file := filepath.Join(corpus, c.File)
+		var src string
+		if c.Lawful {
+			src = jsLawfulProbe(file, c.Name, a.poison)
+		} else {
+			// The verdict is printed only after every check held (a failed
+			// check bumps failures first).
+			src = jsUnlawfulProbe(file, c.Name, a.poison, a.atDefaults) +
+				"if (failures === 0) { console.log(" + fmt.Sprintf("%q", jsVerdictPrefix) + " + \"refused\"); }\n"
+		}
 		out, err := jsRunVersionProbe(t, node, newer, []string{older}, 0, c.Root, src)
 		if err != nil {
 			t.Fatalf("NEW-READS-OLD %s (%s): %v\n%s", c.Name, c.Change, err, out)
 		}
+		return jsVerdict(t, c.Name, out)
 	})
 }

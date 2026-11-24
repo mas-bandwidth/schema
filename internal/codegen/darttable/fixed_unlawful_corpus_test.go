@@ -19,6 +19,9 @@ type dartUnlawfulAnswer struct {
 	// holds its declared default (read off the VNEW schema: lead = 1,
 	// trail = 2, every unlisted field its type's default).
 	defaults string
+	// values, for the LAWFUL control only, is a Dart expression over
+	// values[0] that formats the loaded record as the case's Values line.
+	values string
 }
 
 var dartUnlawfulAnswers = map[string]dartUnlawfulAnswer{
@@ -58,6 +61,10 @@ var dartUnlawfulAnswers = map[string]dartUnlawfulAnswer{
 		poison:   `v.lead = 99; v.text[0] = 0x7a; v.text[1] = 0x7a; v.textLength = 2; v.trail = 88;`,
 		defaults: `v.lead == 1 && v.textLength == 0 && v.text.every((e) => e == 0) && v.trail == 2`,
 	},
+	"lawful_control": {
+		poison: `v.lead = 99; v.v = 5; v.trail = 88;`,
+		values: `"lead=${values[0].lead} v=${values[0].v} trail=${values[0].trail}"`,
+	},
 	"bytes_narrowed": {
 		poison:   `v.lead = 99; v.blob[0] = 0x5A; v.blobLength = 1; v.trail = 88;`,
 		defaults: `v.lead == 1 && v.blobLength == 0 && v.blob.every((e) => e == 0) && v.trail == 2`,
@@ -65,13 +72,17 @@ var dartUnlawfulAnswers = map[string]dartUnlawfulAnswer{
 }
 
 // TestDartFixedUnlawfulCorpus is the Dart leg's driver for the shared
-// unlawful-lineage corpus. Per case: the NEW build, handed the OLD layout as a
-// lineage entry, refuses the OLD file before any record lands, every counter
-// zero, every poisoned row back at its declared defaults (both by the answer's
-// own check and by fresh(), the probe's whole-value comparison), on a first
-// load and a second through the same plan (docs/FIXED-FORM-ALGORITHM.md §5.2
-// MATCH/EMIT, §5.4, §5.9 #30; SPEC-TABLES §6.5; the Go reference's
-// TestFixedUnlawfulCorpus).
+// unlawful-lineage corpus. The probe prints its verdict on a line of its own
+// ("VERDICT: ..."), and the driver answers what the probe printed: the LAWFUL
+// control's loaded values, or "refused" once every check below held. Per
+// UNLAWFUL case: the NEW build, handed the OLD layout as a lineage entry,
+// refuses the OLD file before any record lands, every counter zero, every
+// poisoned row back at its declared defaults (both by the answer's own check
+// and by fresh(), the probe's whole-value comparison), on a first load and a
+// second through the same plan (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH/EMIT,
+// §5.4, §5.9 #30; SPEC-TABLES §6.5; the Go reference's
+// TestFixedUnlawfulCorpus). The LAWFUL control loads, and its verdict is the
+// values the load landed in record 0.
 //
 // The verdict is the shared one (refusal-verdict-only). Separately, and as
 // this leg's own assertion, the refusal's NAME is pinned: Dart answers an
@@ -82,7 +93,7 @@ var dartUnlawfulAnswers = map[string]dartUnlawfulAnswer{
 func TestDartFixedUnlawfulCorpus(t *testing.T) {
 	corpus := fixedCorpus(t)
 	dartBin := dartBinary(t)
-	fixedunlawful.Run(t, "darttable", dartUnlawfulAnswers, func(t *testing.T, c fixedunlawful.Case, a dartUnlawfulAnswer) {
+	fixedunlawful.Run(t, "darttable", dartUnlawfulAnswers, func(t *testing.T, c fixedunlawful.Case, a dartUnlawfulAnswer) string {
 		t.Parallel()
 		body := strings.NewReplacer("POISON", a.poison, "DEFAULTS", a.defaults, "CASE", c.Name).Replace(`  final data = File(FILE).readAsBytesSync();
   for (var pass = 0; pass < 2; pass++) {
@@ -104,10 +115,33 @@ func TestDartFixedUnlawfulCorpus(t *testing.T) {
       check(fresh(v), 'CASE load $pass: row $k is not a fresh value after the refusal');
     }
   }
+  if (exitCode == 0) {
+    stdout.writeln('VERDICT: refused');
+  }
 `)
+		if c.Lawful {
+			body = strings.NewReplacer("POISON", a.poison, "VALUES", a.values, "CASE", c.Name).Replace(`  final data = File(FILE).readAsBytesSync();
+  for (final v in values) {
+    POISON
+  }
+  report.reset();
+  final n = LOAD(values, values.length, data, data.length, plan, report);
+  check(n >= 0 && report.refused == 0, 'CASE: the LAWFUL control refused: n=$n ${why(report)}');
+  if (exitCode == 0) {
+    stdout.writeln('VERDICT: loaded $n: ' + VALUES);
+  }
+`)
+		}
 		out, err := runVersionProbe(t, dartBin, c.New, []string{c.Old}, 0, filepath.Join(corpus, c.File), body)
 		if err != nil {
 			t.Fatalf("%s: %v\n%s", c.Name, err, out)
 		}
+		for line := range strings.SplitSeq(out, "\n") {
+			if verdict, ok := strings.CutPrefix(strings.TrimSpace(line), "VERDICT: "); ok {
+				return verdict
+			}
+		}
+		t.Fatalf("%s: the probe printed no verdict:\n%s", c.Name, out)
+		return ""
 	})
 }

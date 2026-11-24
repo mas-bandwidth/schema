@@ -61,7 +61,7 @@ func TestEveryCaseIsInTheCorpus(t *testing.T) {
 		if !strings.Contains(dump, `"`+c.File+`"`) {
 			t.Errorf("case %s: fixedform_dump.cpp writes no %s", c.Name, c.File)
 		}
-		if strings.Contains(dump, `"new_`+strings.TrimPrefix(c.File, "old_")+`"`) {
+		if !c.Lawful && strings.Contains(dump, `"new_`+strings.TrimPrefix(c.File, "old_")+`"`) {
 			t.Errorf("case %s: an unlawful pair's NEW side is never dumped", c.Name)
 		}
 		if !strings.Contains(docs, "`"+c.File+"`") {
@@ -100,5 +100,41 @@ func TestUnansweredRefuses(t *testing.T) {
 	}
 	if why := Unanswered("nosuchtable", whole); !strings.Contains(why, "not in fixedunlawful.Legs") {
 		t.Fatalf("an unlisted leg was not refused: %q", why)
+	}
+}
+
+// TestJudgeRefusesAHollowDriver is the control's own red: a driver that
+// answers Refused without loading fails the LAWFUL control, a driver that
+// answers nothing fails every case, a wrong value fails the control, and a
+// load of an UNLAWFUL case fails it. The right verdicts pass.
+func TestJudgeRefusesAHollowDriver(t *testing.T) {
+	t.Parallel()
+	controls := 0
+	for _, c := range Cases {
+		if why := Judge(c, c.Want()); why != "" {
+			t.Errorf("case %s: its own Want was refused: %s", c.Name, why)
+		}
+		if why := Judge(c, ""); why == "" {
+			t.Errorf("case %s: an empty verdict passed", c.Name)
+		}
+		if !c.Lawful {
+			if why := Judge(c, Loaded(c.Records, "lead=1 trail=2")); why == "" {
+				t.Errorf("case %s: an UNLAWFUL case that loaded passed", c.Name)
+			}
+			continue
+		}
+		controls++
+		if why := Judge(c, Refused); !strings.Contains(why, "never loads cannot pass") {
+			t.Errorf("case %s: a hollow driver answering refused passed the control: %q", c.Name, why)
+		}
+		if why := Judge(c, Loaded(c.Records, strings.Replace(c.Values, "v=65535", "v=0", 1))); why == "" {
+			t.Errorf("case %s: a load with the wrong value passed the control", c.Name)
+		}
+		if c.Values == "" || c.Records < 1 {
+			t.Errorf("case %s: the control names no values", c.Name)
+		}
+	}
+	if controls != 1 {
+		t.Errorf("the corpus holds %d LAWFUL controls, want exactly 1", controls)
 	}
 }
