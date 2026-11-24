@@ -430,6 +430,12 @@ func (d *fixedDecoder) payload(b []byte, fv *tabletext.Field) string {
 			return reason // a slot past the count is dead
 		}
 		fv.Count = int(count)
+		// THE SLOTS PAST A COUNT AFTER ANY LOAD (docs/SPEC-TABLES.md §3.4): every
+		// slot past the live count holds what a fresh value holds there, never what
+		// the instance held before the read.
+		for i := fv.Count; i < len(fv.Elems); i++ {
+			fv.Elems[i] = d.m.ElementZero(f)
+		}
 		for i := 0; i < fv.Count; i++ {
 			if reason := d.element(b[ir.TableFixedCountBytes+int64(i)*elem:], f, &fv.Elems[i], true); reason != "" {
 				return reason

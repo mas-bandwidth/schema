@@ -263,6 +263,12 @@ func (d *lineageDecoder) payload(w *fixedNode, b []byte, fv *tabletext.Field) st
 			}
 			n = int64(count)
 			fv.Count = int(count)
+			// THE SLOTS PAST A COUNT AFTER ANY LOAD (docs/SPEC-TABLES.md §3.4): every
+			// slot past the live count, the reader's widened slots included, holds
+			// what a fresh value holds there, never what the instance held before.
+			for i := fv.Count; i < len(fv.Elems); i++ {
+				fv.Elems[i] = d.m.ElementZero(f)
+			}
 		} else if n > f.ArrayBound {
 			// a fixed array that SHRANK: more elements than the reader has
 			// slots for refuses, as a count past the bound does (§4)
