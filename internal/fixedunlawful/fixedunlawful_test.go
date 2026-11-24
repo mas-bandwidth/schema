@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 )
 
 func repoFile(t *testing.T, rel string) string {
@@ -69,6 +71,51 @@ func TestEveryCaseIsInTheCorpus(t *testing.T) {
 		}
 		if c.Records < 1 {
 			t.Errorf("case %s: a corpus file holds at least one record", c.Name)
+		}
+	}
+	controlValuesAreTheManifest(t)
+}
+
+// controlValuesAreTheManifest holds the LAWFUL control's Values, a Go
+// constant every leg's verdict is judged against, to the reference dump's
+// own manifest line for its file: "values=r0.lead=…,r0.v=…,r0.trail=…" is
+// "lead=… v=… trail=…". A Values that drifts from the file is refused here,
+// not discovered as fourteen legs failing at once.
+func controlValuesAreTheManifest(t *testing.T) {
+	t.Helper()
+	path := filepath.Join("..", "..", "build", "fixedform-corpus", "manifest.txt")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if slowtest.CorpusRequired() {
+			t.Fatalf("SCHEMA_REQUIRE_CORPUS is set (or CI runs the slow half) and the reference's corpus is not built: %v", err)
+		}
+		t.Skip("the reference's corpus is not built: make tables-fixedform-corpus")
+	}
+	for _, c := range Cases {
+		if !c.Lawful {
+			continue
+		}
+		var line string
+		for l := range strings.SplitSeq(string(data), "\n") {
+			if strings.HasPrefix(l, "file="+c.File+" ") {
+				line = l
+			}
+		}
+		if line == "" {
+			t.Errorf("control %s: the manifest has no line for %s", c.Name, c.File)
+			continue
+		}
+		_, vals, ok := strings.Cut(line, " values=")
+		if !ok || c.Records != 1 {
+			t.Errorf("control %s: the manifest line names no values, or the control is not one record: %s", c.Name, line)
+			continue
+		}
+		var parts []string
+		for f := range strings.SplitSeq(vals, ",") {
+			parts = append(parts, strings.TrimPrefix(f, "r0."))
+		}
+		if want := strings.Join(parts, " "); c.Values != want {
+			t.Errorf("control %s: Values %q is not the manifest's %q (%s)", c.Name, c.Values, want, c.File)
 		}
 	}
 }
