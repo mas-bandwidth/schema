@@ -24,6 +24,11 @@ func TestMain(m *testing.M) {
 	if mode := os.Getenv("SCHEMA_HARNESS_FAKE_DRIVER"); mode != "" {
 		os.Exit(fakeDriver(mode, os.Args[1:]))
 	}
+	// THE TEST BINARY AS A FAKE WIRE LEG (wirefuzz_absent_test.go): it answers
+	// the roster and leaves.
+	if os.Getenv("SCHEMA_HARNESS_FAKE_WIRE_LEG") != "" {
+		os.Exit(fakeWireLeg(os.Args[1:]))
+	}
 	root, err := treeRoot()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
