@@ -48,6 +48,45 @@ func TestDartRetainingRosterAllRoots(t *testing.T) {
 	t.Logf("all %d retaining roots advertised, %d seeds, including populated Root and ArrayRoot", len(roots), len(seeds))
 }
 
+// THE PLAIN ARM'S ROSTER, held whole as the retaining one is: every root the
+// corpus seeds (fixed and variable classes alike) is advertised, so a seed
+// the plain arm leaves absent is a red here rather than a count in a summary
+// line nobody gates (tblvaluedefaults FixedDefaults and packetunions ShapeMsg
+// were absent until the driver bound their fixed codecs, 2026-11-24).
+func TestDartPlainRosterAllRoots(t *testing.T) {
+	driver := os.Getenv("SCHEMA_DART_ROSTER_DRIVER")
+	if driver == "" {
+		t.Skip("run make tables-dart-wire-fuzz to build the native driver")
+	}
+	t.Chdir("../../..")
+	manifest, err := ReadManifest(defaultManifest, "testdata/conformance/tables/json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seeds, roots, _, skipped, err := buildWireFuzzRoster(manifest, wireFuzzOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if skipped != 0 {
+		t.Fatalf("the plain arm skipped %d seeds: it has no seed outside the arm", skipped)
+	}
+	leg, err := startWireLeg(driver+" wire-fuzz", roots)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer leg.kill()
+	missing := []string{}
+	for i, root := range roots {
+		if !leg.known[i] {
+			missing = append(missing, root.unit+"/"+root.root)
+		}
+	}
+	if len(missing) > 0 {
+		t.Fatalf("plain codecs absent: %s", strings.Join(missing, ", "))
+	}
+	t.Logf("all %d plain roots advertised, %d seeds", len(roots), len(seeds))
+}
+
 // These pinned inputs distinguish the builder profile from region decoding
 // and prove that retained union frames survive the native adapter.
 func TestDartBuilderRefusalAndRetentionVectors(t *testing.T) {
