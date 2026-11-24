@@ -32,7 +32,7 @@ local surface = args[1]
 local GENERATED = "build/conformance-luau"
 
 local SURFACES = {
-	"wire", "message", "message-prior", "report", "framing", "retain", "retain-save", "json-read", "json-write", "json-hostile",
+	"wire", "message", "message-prior", "report", "framing", "retain", "retain-save", "retain-refusal", "json-read", "json-write", "json-hostile",
 	"cook", "cook-write", "cook-foreign", "block", "block-foreign", "block-dump", "forgery",
 	"cook-forgery", "cook-reason", "block-reason",
 	"write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json",
@@ -503,6 +503,56 @@ local function surfaceRetain(lines: { { string } }, saves: boolean)
 							unknown, kindMismatch, widened, clamped, duplicate)
 							.. buffer.tostring(json))
 					end
+				end
+			end
+		end
+	end
+end
+
+-- ---- RETAIN-REFUSAL (test/conformance/README.md) ---------------------------
+--
+-- ONE store through LoadRetain of the first wire, SaveRetain, LoadRetain of
+-- the refused wire, and SaveRetain of the first value again. This runtime's
+-- LoadRetain hands the caller the store it filled rather than filling one the
+-- caller owns, so the store the refused read hands back is the one the second
+-- save goes through. The verdicts and what the second save did go in <case>,
+-- the first save in <case>.before, the second in <case>.wire.
+local function surfaceRetainRefusal(lines: { { string } })
+	local capacityBytes = 1048576
+	local fullIds = 131072
+	for _, f in lines do
+		if f[1] == "retain-refusal" then
+			-- retain-refusal <case> <unit> <root> <first wire> <refused wire>
+			local u = unit(f[3])
+			if u == nil or rootOf(u, f[4]) == nil then
+				say(f[2], nil)
+			else
+				local r = report()
+				local root, store = u.retain.LoadRetain(f[4], file(f[5]), r, capacityBytes, fullIds)
+				if root == nil or r.malformed or r.refused ~= 0 then
+					sayText(f[2], "refused\n")
+				else
+					local before, why = u.retain.SaveRetain(f[4], root, store, report())
+					if before == nil then
+						error(f[2] .. ": the first save through the store refused (" .. tostring(why and why.name) .. ")")
+					end
+					say(f[2] .. ".before", before)
+					local refused = report()
+					local other, handed = u.retain.LoadRetain(f[4], file(f[6]), refused, capacityBytes, fullIds)
+					local answer = "read\n"
+					if other == nil or refused.malformed or refused.refused ~= 0 then
+						answer ..= "refused\n"
+					else
+						answer ..= "read\n"
+					end
+					local after = u.retain.SaveRetain(f[4], root, handed, report())
+					if after == nil then
+						answer ..= "save-refused\n"
+					else
+						say(f[2] .. ".wire", after)
+						answer ..= "saved\n"
+					end
+					sayText(f[2], answer)
 				end
 			end
 		end
@@ -1720,6 +1770,8 @@ elseif surface == "retain" then
 	surfaceRetain(lines, false)
 elseif surface == "retain-save" then
 	surfaceRetain(lines, true)
+elseif surface == "retain-refusal" then
+	surfaceRetainRefusal(lines)
 elseif surface == "cook-write" then
 	surfaceCookWrite(lines)
 elseif surface == "message" then

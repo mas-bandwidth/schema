@@ -5493,6 +5493,63 @@ int surfaceRetain(String outDir, bool saves) {
   return 0;
 }
 
+
+// ---- retain-refusal (test/conformance/README.md): ONE retention store through
+// the retaining read of the first wire, the retaining save, the retaining read
+// of the refused wire into the same store, and the retaining save of the first
+// value again. The verdicts and what the second save did go in <case>, the
+// first save in <case>.before, the second in <case>.wire.
+int _answerRetainRefusal(String outDir, String name, List<int> before, bool secondRefused, List<int>? after) {
+  File('$outDir/$name.before').writeAsBytesSync(before);
+  var answer = 'read\n${secondRefused ? 'refused' : 'read'}\n';
+  if (after == null) {
+    answer += 'save-refused\n';
+  } else {
+    File('$outDir/$name.wire').writeAsBytesSync(after);
+    answer += 'saved\n';
+  }
+  File('$outDir/$name').writeAsStringSync(answer);
+  return 0;
+}
+
+int surfaceRetainRefusal(String outDir) {
+  for (final f in lines) {
+    if (f[0] != 'retain-refusal') continue;
+    final first = File(f[4]).readAsBytesSync();
+    final second = File(f[5]).readAsBytesSync();
+    if (f[2] == 'tblrt1' && f[3] == 'Node') {
+      final store = tblrt1.TableRetain(_retainRoomy, List<int>.filled(_retainRoomy ~/ 8, 0));
+      final report = tblrt1.TableWireReport();
+      final root = tblrt1.nodeWireLoadRetain(first, store, report);
+      if (report.refused) {
+        File('$outDir/${f[1]}').writeAsStringSync('refused\n');
+        continue;
+      }
+      final before = tblrt1.nodeWireSaveRetain(root, store, tblrt1.TableWireReport());
+      final refused = tblrt1.TableWireReport();
+      tblrt1.nodeWireLoadRetain(second, store, refused);
+      final after = tblrt1.nodeWireMeasureRetain(root, store) < 0 ? null : tblrt1.nodeWireSaveRetain(root, store, tblrt1.TableWireReport());
+      _answerRetainRefusal(outDir, f[1], before, refused.refused, after);
+    } else if (f[2] == 'tblvarevo1' && f[3] == 'EvoDoc') {
+      final store = tblvarevo1.TableRetain(_retainRoomy, List<int>.filled(_retainRoomy ~/ 8, 0));
+      final report = tblvarevo1.TableWireReport();
+      final root = tblvarevo1.evoDocWireLoadRetain(first, store, report);
+      if (report.refused) {
+        File('$outDir/${f[1]}').writeAsStringSync('refused\n');
+        continue;
+      }
+      final before = tblvarevo1.evoDocWireSaveRetain(root, store, tblvarevo1.TableWireReport());
+      final refused = tblvarevo1.TableWireReport();
+      tblvarevo1.evoDocWireLoadRetain(second, store, refused);
+      final after = tblvarevo1.evoDocWireMeasureRetain(root, store) < 0 ? null : tblvarevo1.evoDocWireSaveRetain(root, store, tblvarevo1.TableWireReport());
+      _answerRetainRefusal(outDir, f[1], before, refused.refused, after);
+    } else {
+      stderr.writeln('driver: retain-refusal ${f[1]} names ${f[2]} ${f[3]}');
+      return 1;
+    }
+  }
+  return 0;
+}
 int _retainVarEvo1(List<String> f, String outDir, bool saves) {
   final wire = File(f[4]).readAsBytesSync();
   final ids = List<int>.filled(f[6] == 'full' ? _retainRoomy ~/ 8 : int.parse(f[6]), 0);
@@ -6324,7 +6381,7 @@ const String surfaces =
     // block-reason name each forgery's first failing clause (§7, §19.2). The
     // wire fuzzer's roots are another card's.
     ''
-    'wire\nmessage\nmessage-prior\nretain\nretain-save\njson-read\njson-write\njson-hostile\nreport\nframing\n'
+    'wire\nmessage\nmessage-prior\nretain\nretain-save\nretain-refusal\njson-read\njson-write\njson-hostile\nreport\nframing\n'
     'cook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\n'
     'forgery\ncook-forgery\ncook-reason\nblock-reason\n'
     'write-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n'
@@ -6907,6 +6964,8 @@ int run(List<String> args) {
       return surfaceRetain(out, false);
     case 'retain-save':
       return surfaceRetain(out, true);
+    case 'retain-refusal':
+      return surfaceRetainRefusal(out);
     case 'json-read':
       return surfaceJsonRead(out);
     case 'json-write':

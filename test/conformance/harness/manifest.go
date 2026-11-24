@@ -458,6 +458,9 @@ type Manifest struct {
 	Announces      []AnnounceCase
 	ReadIntos      []ReadInto
 	JSONWriteIntos []JSONWriteInto
+	// RetainRefusals are the retained-state-after-refusal sequences
+	// (retainrefusal.go).
+	RetainRefusals []RetainRefusal
 }
 
 // WriteRefusal is one row of the `write-refusal` surface (docs/SPEC.md §5.1):
@@ -967,6 +970,12 @@ func ReadManifest(path, jsonDir string) (m *Manifest, err error) {
 				return nil, err
 			}
 			m.ReadIntos = append(m.ReadIntos, r)
+		case "retain-refusal":
+			r, err := parseRetainRefusal(f, where)
+			if err != nil {
+				return nil, err
+			}
+			m.RetainRefusals = append(m.RetainRefusals, r)
 		case "json-write-into":
 			if len(f) != 3 {
 				return nil, fmt.Errorf("%s: json-write-into takes case, instance", where)

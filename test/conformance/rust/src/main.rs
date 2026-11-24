@@ -2028,6 +2028,50 @@ fn surface_retain(manifest: &Manifest, out: &str, saves: bool) {
     }
 }
 
+
+// THE RETAIN-REFUSAL SURFACE (test/conformance/README.md): ONE retention store
+// through the retaining read of the first wire, the retaining save, the
+// retaining read of the refused wire into the same store, and the retaining
+// save of the first value again. The verdicts and what the second save did go
+// in <case>, the first save in <case>.before, the second in <case>.wire.
+fn surface_retain_refusal(manifest: &Manifest, out: &str) {
+    macro_rules! retain_sequence {
+        ($krate:ident, $load_retain:ident, $save_retain:ident, $f:expr) => {{
+            use $krate::{TableRetain, TableReport, $load_retain, $save_retain};
+            let first = slurp(&$f[4]);
+            let second = slurp(&$f[5]);
+            let mut store = TableRetain { bytes: Vec::with_capacity(1 << 20), ids: Vec::with_capacity(1 << 17), nodes: Default::default() };
+            let mut report = TableReport::default();
+            let value = match $load_retain(&first, &mut store, &mut report) {
+                Some(value) if !report.damaged && !report.refused => value,
+                _ => {
+                    spill(out, &$f[1], b"refused\n");
+                    continue;
+                }
+            };
+            let mut save = TableReport::default();
+            let before = $save_retain(&value, &mut store, &mut save);
+            spill(out, &format!("{}.before", $f[1]), &before);
+            let mut refused = TableReport::default();
+            let second_refused = match $load_retain(&second, &mut store, &mut refused) {
+                Some(_) => refused.damaged || refused.refused,
+                None => true,
+            };
+            let mut again = TableReport::default();
+            let after = $save_retain(&value, &mut store, &mut again);
+            spill(out, &format!("{}.wire", $f[1]), &after);
+            let answer: &[u8] = if second_refused { b"read\nrefused\nsaved\n" } else { b"read\nread\nsaved\n" };
+            spill(out, &$f[1], answer);
+        }};
+    }
+    for f in manifest.of_kind("retain-refusal") {
+        match (f[2].as_str(), f[3].as_str()) {
+            ("tblrt1", "Node") => retain_sequence!(tblrt1, node_load_retain, node_save_retain, f),
+            ("tblvarevo1", "EvoDoc") => retain_sequence!(tblvarevo1, evo_doc_load_retain, evo_doc_save_retain, f),
+            _ => spill_absent(out, &f[1]),
+        }
+    }
+}
 fn surface_json_read(manifest: &Manifest, out: &str) {
     for f in manifest.of_kind("instance") {
         if no_text(f) {
@@ -3613,7 +3657,7 @@ fn main() {
             // case ABSENT, one by one; the message surface rides the message form's
             // batch for the fixed roots of backenddemo, vocabdemo and vocab9demo
             // (§3.3); the retaining file rows read through tblrt1 (§6.6).
-            "wire\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write\nmessage\nmessage-prior\nblock-reason\ncook-reason\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nannounce\nread-into\njson-write-into\nunit shapes"
+            "wire\nreport\nframing\nretain\nretain-save\nretain-refusal\njson-read\njson-write\njson-hostile\ncook\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-write\nmessage\nmessage-prior\nblock-reason\ncook-reason\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nannounce\nread-into\njson-write-into\nunit shapes"
         );
         return;
     }
@@ -3628,6 +3672,7 @@ fn main() {
         "framing" => surface_framing(&manifest, out),
         "retain" => surface_retain(&manifest, out, false),
         "retain-save" => surface_retain(&manifest, out, true),
+        "retain-refusal" => surface_retain_refusal(&manifest, out),
         "json-read" => surface_json_read(&manifest, out),
         "json-write" => surface_json_write(&manifest, out),
         "json-hostile" => surface_json_hostile(&manifest, out),

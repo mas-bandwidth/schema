@@ -80,6 +80,7 @@ my %kinds = (
 	"framing"       => ["framing"],
 	"retain"        => ["retain"],
 	"retain-save"   => ["retain"],
+	"retain-refusal" => ["retain-refusal"],
 	"message"       => ["connection", "message", "message-batch"],
 	"message-prior" => ["prior-connection", "prior-message"],
 	"json-hostile"  => ["json-hostile"],

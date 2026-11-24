@@ -716,6 +716,8 @@ func main() {
 		run = surfaceRetain
 	case "retain-save":
 		run = surfaceRetainSave
+	case "retain-refusal":
+		run = surfaceRetainRefusal
 	case "message":
 		run = surfaceMessage
 	case "message-prior":
