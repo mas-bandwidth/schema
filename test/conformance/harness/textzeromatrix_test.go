@@ -50,4 +50,18 @@ func TestTextZeroMatrixRows(t *testing.T) {
 	if rows != 27 {
 		t.Fatalf("the matrix is 9 forms x 3 positions, pinned %d rows", rows)
 	}
+	// THE ZERO THE READ ONLY SKIPS (§16.3, skipped-value-is-validated): in an
+	// unknown key's own name, in a string in an unknown key's array, and in an
+	// object key inside an unknown key's object. Each refuses, and its \u0001
+	// control reads.
+	for _, place := range []string{"key-name", "list", "object-key"} {
+		zero := findHostile(t, m, "str-zero-skip-"+place)
+		if zero.Unit != "tabledemo" || zero.Root != "RootConfig" || !zero.Refused {
+			t.Errorf("%s: want tabledemo RootConfig refused, got %s %s %s", zero.Name, zero.Unit, zero.Root, zero.Verdict())
+		}
+		ctl := findHostile(t, m, "str-zero-ctl-skip-"+place)
+		if ctl.Unit != "tabledemo" || ctl.Root != "RootConfig" || ctl.Refused {
+			t.Errorf("%s: want tabledemo RootConfig read, got %s %s %s", ctl.Name, ctl.Unit, ctl.Root, ctl.Verdict())
+		}
+	}
 }

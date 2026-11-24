@@ -869,6 +869,21 @@ json-hostile str-zero-ctl-i-end       tabledemo        PackConfig testdata/confo
 json-hostile str-zero-ctl-u-front     featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-ctl-u-front read
 json-hostile str-zero-ctl-u-middle    featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-ctl-u-middle read
 json-hostile str-zero-ctl-u-end       featurewitnesses Root       testdata/conformance/tables/json-hostile/str-zero-ctl-u-end read
+# THE ZERO THE READ ONLY SKIPS, beyond a value (§16.3: "A string the read only
+# SKIPS — the value of an unknown key, an object key, whether it names a field
+# or none — ... that decodes to U+0000 refuses the read"; docs/rulings.json
+# skipped-value-is-validated). str-zero-escape-unknown-key holds the zero in an
+# unknown key's string value; these hold it in the unknown key's own NAME, in
+# a string inside an unknown key's array, and in an object key nested inside an
+# unknown key's object. Every one refuses for every port, and each has its
+# \u0001 control, which reads clean (the unknown key is skipped, the value is
+# RootConfig's defaults).
+json-hostile str-zero-skip-key-name         tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-zero-skip-key-name refused
+json-hostile str-zero-skip-list             tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-zero-skip-list refused
+json-hostile str-zero-skip-object-key       tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-zero-skip-object-key refused
+json-hostile str-zero-ctl-skip-key-name     tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-zero-ctl-skip-key-name read
+json-hostile str-zero-ctl-skip-list         tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-zero-ctl-skip-list read
+json-hostile str-zero-ctl-skip-object-key   tabledemo  RootConfig  testdata/conformance/tables/json-hostile/str-zero-ctl-skip-object-key read
 json-hostile union-table-arm-unknown       messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-unknown read
 json-hostile union-table-arm-two-keys      messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-two-keys refused
 json-hostile union-table-arm-wrong-shape   messagedemo ToolMessage testdata/conformance/tables/json-hostile/union-table-arm-wrong-shape refused
