@@ -1,0 +1,54 @@
+# .github/slow-rows.txt — the per-pull-request parts of ci-full's emitter
+# rows, read by tools/slowrows for ci-fast's go-test-slow job.
+#
+#   parts <row> <n>
+#       ci-full.yml's go-test row <row> (unit-codegen, unit-codegen-<lang>-<k>,
+#       unit-elixir-<k>) runs on a pull request as n jobs. Each part lists the
+#       tests the row's commands select, deals them round the n parts in name
+#       order and runs its own by name, so every selected test runs in exactly
+#       one part. A row with no line runs whole, as ci-full runs it. The nightly
+#       row is unchanged: a nightly has no limit, a pull request job has two
+#       minutes (the owner, 2026-11-15), and a row that does not fit is cut
+#       here, never given longer.
+#
+# MEASURED 2026-11-23 from the nightly ci-full run 45130315968 on main (fleet
+# runners, every row in parallel, so the fleet was loaded as a shared-code pull
+# request loads it): each row's go test step time. A row whose step passed
+# 85 s gets n = ceil(step / 75), no more than the tests it selects, so a part
+# leaves room for the job's ~30 s of checkout, runtimes, oracle and verify. A
+# row whose time sits in one test (unit-codegen-lua-2, unit-codegen-python-6)
+# cannot be cut by parts and has no line. Re-measure from a go-test-slow run
+# when a part passes the cap, and change n here.
+parts unit-codegen-c-1 3  # nightly go test step 179s, 92 tests
+parts unit-codegen-c-2 2  # nightly go test step 145s, 42 tests
+parts unit-codegen-cpp-1 2  # nightly go test step 87s, 2 tests
+parts unit-codegen-cpp-2 2  # nightly go test step 142s, 74 tests
+parts unit-codegen-cs-1 5  # nightly go test step 308s, 75 tests
+parts unit-codegen-cs-2 2  # nightly go test step 106s, 46 tests
+parts unit-codegen-dart-1 3  # nightly go test step 181s, 132 tests
+parts unit-codegen-dart-3 3  # nightly go test step 193s, 87 tests
+parts unit-codegen-go-3 3  # nightly go test step 186s, 88 tests
+parts unit-codegen-go-4 2  # nightly go test step 113s, 107 tests
+parts unit-codegen-go-5 4  # nightly go test step 296s, 59 tests
+parts unit-codegen-goose-2 4  # nightly go test step 271s, 10 tests
+parts unit-codegen-goose-5 2  # nightly go test step 109s, 49 tests
+parts unit-codegen-java-1 2  # nightly go test step 88s, 29 tests
+parts unit-codegen-java-2 2  # nightly go test step 96s, 37 tests
+parts unit-codegen-java-4 3  # nightly go test step 187s, 50 tests
+parts unit-codegen-lobster-2 4  # nightly go test step 277s, 197 tests
+parts unit-codegen-luau-1 3  # nightly go test step 200s, 18 tests
+parts unit-codegen-luau-2 2  # nightly go test step 106s, 264 tests
+parts unit-codegen-python-1 2  # nightly go test step 87s, 33 tests
+parts unit-codegen-python-10 2  # nightly go test step 93s, 86 tests
+parts unit-codegen-python-14 2  # nightly go test step 94s, 36 tests
+parts unit-codegen-python-16 2  # nightly go test step 91s, 36 tests
+parts unit-codegen-python-8 3  # nightly go test step 217s, 215 tests
+parts unit-codegen-python-9 2  # nightly go test step 125s, 50 tests
+parts unit-codegen-ruby-3 4  # nightly go test step 235s, 56 tests
+parts unit-codegen-rust-3 3  # nightly go test step 159s, 65 tests
+parts unit-codegen-rust-4 3  # nightly go test step 189s, 98 tests
+parts unit-codegen-squirrel-1 3  # nightly go test step 156s, 15 tests
+parts unit-codegen-squirrel-2 2  # nightly go test step 100s, 203 tests
+parts unit-elixir-12 6  # nightly go test step 401s, 59 tests
+parts unit-elixir-15 2  # nightly go test step 128s, 72 tests
+parts unit-elixir-4 3  # nightly go test step 175s, 15 tests

@@ -237,6 +237,7 @@ var catalog = []Entry{
 	e("tools/roadmap", "ROADMAP.md table honesty", "go test ./tools/roadmap", "go test ./tools/roadmap"),
 	e("tools/sabotage", "negative-control sabotages", "go test ./tools/negativecontrols", "go run ./tools/sabotage"),
 	e("tools/slowgatescan", "SCHEMA_SLOW recipe scan", "make slow-gate-scan", "make slow-gate-scan"),
+	e("tools/slowrows", "ci-fast go-test-slow: ci-full emitter rows per PR", "go test ./tools/slowrows", "go run ./tools/slowrows select ./internal/codegen/luatable"),
 	e("tools/tlcrun", "TLC runner held to tla/RUNS.tsv", "go test ./tools/tlcrun", "bash tla/run-tlc.sh"),
 	e("tools/treelock", "generated-tree lock", "go test ./tools/treelock", "go test ./tools/treelock"),
 	e("tools/vacuoustests", "vacuous-test analyzer command", "go test ./internal/vacuous", "go run ./tools/vacuoustests -all"),

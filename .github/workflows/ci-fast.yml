@@ -240,6 +240,8 @@ jobs:
       dart_corpus_account: ${{ steps.pick.outputs.dart_corpus_account }}
       cpp_corpus_account: ${{ steps.pick.outputs.cpp_corpus_account }}
       rows: ${{ steps.rows.outputs.rows }}
+      # the emitter packages' SCHEMA_SLOW rows (go-test-slow, tools/slowrows)
+      slow_rows: ${{ steps.slow.outputs.slow_rows }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -267,9 +269,13 @@ jobs:
           set -euo pipefail
           # a push diffs against the tip it replaced; a new ref (all-zero
           # before) or a before sha this clone lacks gets the broad selection
+          # range names the diff for the slow step's pin-line read; empty when
+          # the selection fell back to broad (files="ir/" selects every row)
+          range=""
           if [ -n "$BEFORE" ]; then
             if [ "${BEFORE//0/}" != "" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
               files=$(git diff --name-only "$BEFORE" HEAD)
+              range="$BEFORE HEAD"
             else
               echo "::notice::the push has no usable before sha ($BEFORE) — running the broad selection"
               files="ir/"
@@ -277,14 +283,17 @@ jobs:
           else
             git fetch --quiet origin "$BASE"
             files=$(git diff --name-only "origin/$BASE...HEAD")
+            range="origin/$BASE...HEAD"
           fi
           if [ -z "$files" ]; then
             echo "::notice::the diff is empty against origin/$BASE — running the broad selection"
             files="ir/"
+            range=""
           fi
           # the rows step reads the diff too: a changed file a package embeds
           # (go:embed) seeds the dependents expansion from its owner
           printf '%s\n' "$files" > "$RUNNER_TEMP/diff-files.txt"
+          printf '%s\n' "$range" > "$RUNNER_TEMP/diff-range.txt"
           echo "--- files in the diff"
           echo "$files"
 
@@ -825,6 +834,44 @@ jobs:
           echo "rows=$rows" >> "$GITHUB_OUTPUT"
           echo "packages=$(cat "$RUNNER_TEMP/selected-packages.txt")" >> "$GITHUB_OUTPUT"
           echo "* go test selection (packages, embed owners, dependents): \`$(cat "$RUNNER_TEMP/selected-packages.txt")\`" >> "$GITHUB_STEP_SUMMARY"
+
+      # THE EMITTER PACKAGES' SLOW ROWS (go-test-slow, 2026-11-23). The go test
+      # rows above run without SCHEMA_SLOW, so every test that executes
+      # generated code skips in them: elixirtable 117 pass / 298 skip, luatable
+      # 23 / 1414, gotable 285 / 475, and a pull request that broke generated
+      # Elixir, Lua or Go was green until the nightly (elixirtable carried 20
+      # failures on main that no pull request saw). tools/slowrows reads
+      # ci-full.yml's own emitter rows (unit-codegen, unit-codegen-<lang>-<n>,
+      # unit-elixir-<n>) and selects every row that tests a package of the
+      # finalized go test selection above, dependents included, so a change to
+      # anything an emitter builds on runs that emitter's rows. A selected
+      # emitter package with tests and no row is red here, by name.
+      #
+      # SHARED CODE RUNS EVERY ROW: ir/ and compiler/ (what every emitter is
+      # driven by), go.mod, SIBLINGS and a changed SERIALIZE pin line (the
+      # runtimes every emitter's generated code links), and tools/slowrows
+      # itself (the runner of every row).
+      - name: the emitter packages' slow rows
+        id: slow
+        run: |
+          set -euo pipefail
+          all=""
+          if grep -qE '^(ir/|compiler/|go\.mod$|SIBLINGS$|tools/slowrows/)' "$RUNNER_TEMP/diff-files.txt"; then
+            all=-all
+          fi
+          range=$(cat "$RUNNER_TEMP/diff-range.txt")
+          if [ -n "$range" ] && [ -z "$all" ]; then
+            # shellcheck disable=SC2086
+            pin_lines=$(git diff $range -- Makefile SIBLINGS .github/workflows/ci-fast.yml .github/workflows/ci-full.yml)
+            if grep -qE '^[-+][^-+].*SERIALIZE[A-Z_]*_(PIN|TAG|COMMIT)' <<<"$pin_lines"; then
+              all=-all
+            fi
+          fi
+          # shellcheck disable=SC2086
+          slow_rows=$(go run ./tools/slowrows select $all "$(cat "$RUNNER_TEMP/selected-packages.txt")")
+          echo "$slow_rows"
+          echo "slow_rows=$slow_rows" >> "$GITHUB_OUTPUT"
+          echo "* emitter slow rows (go-test-slow${all:+, every row}): $(jq -r 'length' <<<"$slow_rows") \`$(jq -r '[.[].row] | join(" ")' <<<"$slow_rows")\`" >> "$GITHUB_STEP_SUMMARY"
 
   # THE CHEAP LINTS, the ones that answer in seconds and catch the mistake a
   # human would otherwise find by reading. modernize runs here too (issue
@@ -2145,7 +2192,7 @@ jobs:
   # per-commit jobs; artifacts are run-scoped and bound to checkout + bytes.
   go-fixed-corpus:
     needs: plan
-    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && contains(needs.plan.outputs.rows, '"make":"tables-go-fixedform"')
+    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && (contains(needs.plan.outputs.rows, '"make":"tables-go-fixedform"') || needs.plan.outputs.slow_rows != '[]')
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
     defaults:
@@ -2417,6 +2464,131 @@ jobs:
           fi
           go run ./tools/gotestreport -slowest 0 $require -skips .github/skip-ledger.txt \
             -provides "$provides" "$PGROUP_GO_TEST_JSON"
+
+  # THE EMITTER PACKAGES' SCHEMA_SLOW TESTS, PER PULL REQUEST (2026-11-23).
+  # go-test-touched runs without SCHEMA_SLOW, so every emitter test that runs
+  # generated code skipped on every pull request and ran only in the nightly
+  # ci-full go-test rows: 7,136 skipped leaf tests across internal/, ir/ and
+  # cmd/, and elixirtable sat on main with 20 failures no pull request saw.
+  # This job runs those same rows, ci-full.yml's unit-codegen,
+  # unit-codegen-<lang>-<n> and unit-elixir-<n>, for the packages the plan's
+  # slow step selected: one matrix job per row, each inside the fleet's
+  # two-minute cap. The shard lists are ci-full.yml's, read by tools/slowrows
+  # (no second copy). A row a nightly runs longer than a pull request job may
+  # run is cut into parts here (.github/slow-rows.txt, `parts <row> <n>`: the
+  # row's selected tests dealt round n jobs by name, each run exactly once),
+  # and never given a longer limit.
+  #
+  # Each row installs what ci-full installs for it: the sibling runtimes, the
+  # C++ fixed-form byte oracle (go-fixed-corpus's artifact, verified against
+  # this checkout), and the row's interpreter pin. The tool is BUILT, then
+  # run: `go run` puts GOROOT/bin first on its child's PATH, which would step
+  # over tools/pgroup's go shim and leave the row's go test unrecorded.
+  #
+  # A ROW HOLDS ITS TEST COUNT. `slowrows verify` lists the tests each of the
+  # row's commands selects (`go test -list`, its -run and -skip) and reads
+  # the row's go test -json records: every selected test reported, and every
+  # command selected and passed at least one, or the row is red. The skip
+  # ledger then refuses a slow-gate skip (this job sets SCHEMA_SLOW) and a
+  # skip for any toolchain the row installs.
+  go-test-slow:
+    needs: [plan, go-fixed-corpus]
+    if: startsWith(github.head_ref, 'sprint/') == false && (always() && !cancelled() && needs.plan.result == 'success' && needs.go-fixed-corpus.result == 'success' && needs.plan.outputs.slow_rows != '[]' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    name: go-test-slow (${{ matrix.name }})
+    runs-on: [self-hosted, Linux, X64, fleet, schema]
+    timeout-minutes: 2
+    env:
+      # as ci-full's go-test: node and tsc fail, never skip, when absent
+      SCHEMA_REQUIRE_NODE: '1'
+      SCHEMA_REQUIRE_TSC: '1'
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.slow_rows) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
+
+      - name: Check out the C++, C, C#, Go, Rust and JavaScript serialize runtimes (pinned releases)
+        run: |
+          set -euo pipefail
+          cd ..
+          # removed and re-cloned at the pinned tag every run, as go-test-touched
+          rm -rf serialize serialize.c serialize.cs serialize.go serialize.rs serialize.js
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG"    https://github.com/mas-bandwidth/serialize.git    serialize
+          git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG"  https://github.com/mas-bandwidth/serialize.c.git  serialize.c
+          git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go
+          git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
+          git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js
+
+      - name: where this job records its go test events
+        run: |
+          rm -rf "$RUNNER_TEMP/go-test-json"
+          echo "PGROUP_GO_TEST_JSON=$RUNNER_TEMP/go-test-json" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+
+      - uses: ./.github/actions/dist-pins
+        if: matrix.pins != ''
+        with:
+          pins: ${{ matrix.pins }}
+      - name: install the Squirrel pin
+        if: matrix.squirrel == 'yes'
+        run: make dist-squirrel
+      - uses: ./.github/actions/moo
+        if: matrix.moo == 'yes'
+      - uses: ./.github/actions/python
+        if: matrix.python == 'yes'
+      - uses: ./.github/actions/ruby
+        if: matrix.ruby == 'yes'
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: go-fixed-corpus-${{ github.run_id }}-${{ github.sha }}
+          path: build
+      - name: the fixed reference belongs to this checkout
+        run: sh tools/go-ci-corpus.sh verify
+      - name: the Python conformance corpus
+        if: matrix.python == 'yes'
+        run: make build/conformance-python
+
+      - name: build the row runner
+        run: go build -o "$RUNNER_TEMP/slowrows" ./tools/slowrows
+
+      - name: go test the row, SCHEMA_SLOW=1
+        id: tests
+        env:
+          ROW: ${{ matrix.row }}
+          PART: ${{ matrix.part }}
+        run: |
+          "$RUNNER_TEMP/slowrows" run -row "$ROW" -part "$PART"
+
+      - name: the row holds its test count
+        if: always() && steps.tests.outcome != 'skipped'
+        env:
+          ROW: ${{ matrix.row }}
+          PART: ${{ matrix.part }}
+        run: |
+          "$RUNNER_TEMP/slowrows" verify -row "$ROW" -part "$PART" "$PGROUP_GO_TEST_JSON"
+
+      - name: the skip ledger — every skip this row's go test recorded, by reason
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          require=""
+          if [ "$JOB_STATUS" = success ]; then require=-require-record; fi
+          go run ./tools/gotestreport -slowest 0 $require -skips .github/skip-ledger.txt \
+            -provides "platform tool:make tool:git tool:sh short slow sibling corpus tool:node" "$PGROUP_GO_TEST_JSON"
 
   # THE TOUCHED LEG'S TWO GATES: the fixed form's bytes and §5's versioning
   # rows, one matrix row per leg so nine legs cost nine parallel jobs rather
@@ -2986,7 +3158,7 @@ jobs:
   # ci-policy, lint-fast, vet, block-gate) may never skip. `verdict` is the
   # check to require on main.
   verdict:
-    needs: [fork-pull-request, plan, lint-fast, ci-policy, vet, golangci-lint-fast, generated-current, lang-clean, lang-lint, verify-leg, verify-elixir-conformance, verify-dart-conformance, input-family, input-family-dart-conformance, build-cpp-conformance-account, input-family-cpp-conformance, block-gate, go-fixed-corpus, go-test-touched, leg-gate, leg-gate-lobster, leg-gate-rust, leg-gate-squirrel, leg-gate-cpp, newleg-scaffold, nightly-fast, pins]
+    needs: [fork-pull-request, plan, lint-fast, ci-policy, vet, golangci-lint-fast, generated-current, lang-clean, lang-lint, verify-leg, verify-elixir-conformance, verify-dart-conformance, input-family, input-family-dart-conformance, build-cpp-conformance-account, input-family-cpp-conformance, block-gate, go-fixed-corpus, go-test-touched, go-test-slow, leg-gate, leg-gate-lobster, leg-gate-rust, leg-gate-squirrel, leg-gate-cpp, newleg-scaffold, nightly-fast, pins]
     if: startsWith(github.head_ref, 'sprint/') == false && (always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # jq over the needs context: seconds
@@ -3019,8 +3191,9 @@ jobs:
               verify-dart-conformance|input-family-dart-conformance) [ "$(out dart_corpus_account)" != true ] && ! grep -qF '"dart"' <<<"$(out verify_legs)" ;;
               build-cpp-conformance-account|input-family-cpp-conformance) [ "$(out cpp_corpus_account)" != true ] ;;
               input-family) [ "$(out input_rows)" = '[]' ] ;;
-              go-fixed-corpus) ! grep -qF '"make":"tables-go-fixedform"' <<<"$(out rows)" ;;
+              go-fixed-corpus) ! grep -qF '"make":"tables-go-fixedform"' <<<"$(out rows)" && [ "$(out slow_rows)" = '[]' ] ;;
               go-test-touched) [ -z "$(out packages)" ] ;;
+              go-test-slow) [ "$(out slow_rows)" = '[]' ] ;;
               newleg-scaffold) [ "$(out newleg)" = no ] ;;
               pins) [ "$(out pins)" != yes ] ;;
               leg-gate) [ "$EVENT" != workflow_dispatch ] || [ "$(out legs)" = '[]' ] ;;

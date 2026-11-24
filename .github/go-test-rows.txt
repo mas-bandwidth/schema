@@ -193,4 +193,16 @@ split ./compiler ^Test[A-L]
 # the otherwise small harness row.
 split ./test/conformance/harness ^TestRustDriverAnswersWriteRefusal$
 split ./test/conformance/harness ^TestOriginalImplementationUsesAllRequiredConstructs$
+# The harness complement did not fit: on PR #4863 (job 138189174698) its
+# serial tests ran 106 s and the run was cancelled at 122 s with all 122
+# parallel tests still paused. Measured alone on hetzner1 (2026-11-24, whole
+# package 320 s, top-level elapsed): the two rows above 143 s and 79 s, the
+# rest 96 s, of which TestSharedFixturesCanonical 23 s, TestW* 15 s,
+# Test[R-V]* 17 s, Test[C-F]* 17 s, Test[G-J]* 14 s, complement 11 s. CI ran
+# about twice the bench time, so each row below holds under 50 s there.
+split ./test/conformance/harness ^TestSharedFixturesCanonical$
+split ./test/conformance/harness ^TestW
+split ./test/conformance/harness ^Test[R-V]
+split ./test/conformance/harness ^Test[C-F]
+split ./test/conformance/harness ^Test[G-J]
 split ./internal/goldens ^TestGeneratedTextNamesNoMachine$

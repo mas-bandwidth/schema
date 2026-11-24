@@ -607,6 +607,7 @@ type ciEvent struct {
 	PlanDartCorpus string   // needs.plan.outputs.dart_corpus_account
 	PlanCppCorpus  string   // needs.plan.outputs.cpp_corpus_account
 	PlanRows       string   // needs.plan.outputs.rows
+	PlanSlowRows   string   // needs.plan.outputs.slow_rows, [] when omitted
 	PlanResult     string   // needs.plan.result, success when omitted
 	GoCorpusResult string   // needs.go-fixed-corpus.result, success when omitted
 	PRPins         string   // needs.pr-select.outputs.pins (ci-full.yml)
@@ -998,6 +999,11 @@ func resolveCIToken(tok string, ev ciEvent) (string, error) {
 			if pkg == "./internal/codegen/gotable" || pkg == "./..." {
 				return `[{"make":"tables-go-fixedform"}]`, nil
 			}
+		}
+		return "[]", nil
+	case "needs.plan.outputs.slow_rows":
+		if ev.PlanSlowRows != "" {
+			return ev.PlanSlowRows, nil
 		}
 		return "[]", nil
 	case "needs.plan.outputs.packages":
@@ -1400,6 +1406,8 @@ func checkWorkflowPolicy(wfs map[string]string) []string {
 		PlanVerifyLegs: `["dart","elixir"]`,
 		PlanDartCorpus: "true",
 		PlanCppCorpus:  "true",
+		// gotable's SCHEMA_SLOW rows, as tools/slowrows selects them
+		PlanSlowRows: `[{"name":"unit-codegen-go-3","row":"unit-codegen-go-3","part":""}]`,
 	}
 	for _, sh := range shJobs {
 		if !workflowTriggersOn(wfs[sh.Workflow], dispatchEv) {
@@ -1454,6 +1462,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:ci-policy",
 		"ci-fast.yml:generated-current",
 		"ci-fast.yml:go-fixed-corpus",
+		"ci-fast.yml:go-test-slow",
 		"ci-fast.yml:go-test-touched",
 		"ci-fast.yml:golangci-lint-fast",
 		"ci-fast.yml:input-family",
