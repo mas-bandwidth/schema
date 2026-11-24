@@ -459,7 +459,9 @@ func t04R20(t *testing.T) {
 	}
 	// A REMOVED WRITER FIELD makes the entry UNLAWFUL, refused and never counted
 	// (§5.4, §5.9 #30); a deprecated field keeps its slot and its name.
-	t04Has(t, fixedRuntime, "if (!named) {\n        plan.unlawful = true;", "R20 an unnamed writer field makes the entry unlawful")
+	t04Has(t, fixedRuntime, "if (!childrenNamed(plan, ti, mi)) {\n      plan.unlawful = true;", "R20 an unnamed writer field makes the entry unlawful")
+	t04Has(t, fixedRuntime, "if (theirN > myN) {\n          plan.unlawful = true;", "R20 a shrunk array makes the entry unlawful, never min(their_n, my_n)")
+	t04Has(t, fixedRuntime, "if (theirSize > mySize) {\n          plan.unlawful = true;", "R20 narrowed text makes the entry unlawful, never min(me.size, te.size)")
 	t04Has(t, fixedRuntime, "census && i == 0,", "R20 once per FIELD per endpoint, not per element")
 	t04Has(t, text, "report.unknown += censusUnknown;", "R20 the census lands once, after the loop")
 	// A NARROWER INTEGER OR FLOAT: widened exactly, and counted.
