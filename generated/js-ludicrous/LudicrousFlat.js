@@ -64,6 +64,9 @@ export function WriteFixedProbeFlat(view, value) {
   if (!globalThis.Number.isInteger(value.ticks) || value.ticks < 0 || value.ticks > 1000000) {
     return -1;
   }
+  if (value.samples == null || value.samples.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+    return -1;
+  }
   v = (((value.ticks) & 0xfffff)) >>> 0;
   view.setUint32(8, (lo | (v << 30)) >>> 0, true);
   lo = v >>> 2;
@@ -237,6 +240,9 @@ export function WriteUnsignedProbeFlat(view, value) {
   v = SC.getUint32(4, true) & 0x1f;
   lo = (lo | (v << 25)) >>> 0;
   if (!globalThis.Number.isInteger(value.ticks) || value.ticks < 0 || value.ticks > 1000000) {
+    return -1;
+  }
+  if (value.samples == null || value.samples.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
     return -1;
   }
   v = (((value.ticks) & 0xfffff)) >>> 0;
@@ -696,6 +702,9 @@ export function WriteLudicrousStateFlat(view, value) {
   view.setUint32(8, (lo | (v << 27)) >>> 0, true);
   lo = 0;
   if (!globalThis.Number.isInteger(value.probe.ticks) || value.probe.ticks < 0 || value.probe.ticks > 1000000) {
+    return -1;
+  }
+  if (value.probe.samples == null || value.probe.samples.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
     return -1;
   }
   lo = (((value.probe.ticks) & 0xfffff));

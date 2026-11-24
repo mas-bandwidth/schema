@@ -10,6 +10,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -25,6 +26,7 @@ func TestRustFixedRootTextAndCook(t *testing.T) {
 		t.Fatal(err)
 	}
 	rustMakeMu.Lock()
+	testinputs.Build(t, "test/conformance/rust")
 	build := testproc.Command(t, "make", "build/conformance-rust")
 	build.Dir = root
 	out, err := build.CombinedOutput()

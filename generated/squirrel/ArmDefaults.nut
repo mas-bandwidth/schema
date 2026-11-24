@@ -66,6 +66,7 @@ _M.WriteDefaultArm <- function(stream, value) {
   for (local _i = 0; _i < value.EntriesCount; _i++) {
     if (!_Wire_.WriteProbeConfig(stream, value.Entries[_i])) return false;
   }
+  if (typeof value.Marker != "integer" || value.Marker < 0 || value.Marker > 7) return false; // SPEC §5.1 row 1
   _h.value = value.Marker;
   if (!stream.serializeInt(_h, 0, 7)) return false;
   return true;

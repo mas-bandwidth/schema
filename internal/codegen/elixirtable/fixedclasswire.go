@@ -1033,17 +1033,28 @@ const fixedClassHelperTail = `
     end
   end
 
+  # A VALUE OF THE WRONG KIND (docs/SPEC-CONFORMANCE.md DW-TABLE-SHAPE) is
+  # refused by the ArgumentError the fixed save answers as invalid_value, never
+  # read as another kind: a record is a map (nil, its defaults), a list a
+  # proper list, a bool true or false.
   defp fixed_class_value_from_table(f, value) do
     case Map.get(f, :t) do
       :table ->
-        if is_map(value),
-          do: fixed_class_from_table(Map.fetch!(f, :elem), value),
-          else: fixed_class_from_table(Map.fetch!(f, :elem), %{})
+        cond do
+          is_map(value) -> fixed_class_from_table(Map.fetch!(f, :elem), value)
+          value == nil -> fixed_class_from_table(Map.fetch!(f, :elem), %{})
+          true -> raise(ArgumentError, "expected a record for #{f.name}")
+        end
 
       :list ->
-        if is_list(value),
+        if fixed_class_proper_list?(value),
           do: fixed_class_list_from_table(f, value),
           else: raise(ArgumentError, "expected list for #{f.name}")
+
+      :bool ->
+        if is_boolean(value),
+          do: value,
+          else: raise(ArgumentError, "expected true or false for #{f.name}")
 
       :union ->
         fixed_class_union_from_table(f, value)
@@ -1059,6 +1070,10 @@ const fixedClassHelperTail = `
     end
   end
 
+  defp fixed_class_proper_list?([]), do: true
+  defp fixed_class_proper_list?([_ | rest]), do: fixed_class_proper_list?(rest)
+  defp fixed_class_proper_list?(_), do: false
+
   defp fixed_class_list_from_table(f, value) do
     Enum.map(value, fn e -> fixed_class_elem_from_table(f, e) end)
   end
@@ -1068,8 +1083,11 @@ const fixedClassHelperTail = `
       Map.get(f, :elem_kind) == 13 and is_map(value) ->
         fixed_class_from_table(Map.fetch!(f, :elem), value)
 
-      Map.get(f, :elem_kind) == 13 ->
+      Map.get(f, :elem_kind) == 13 and value == nil ->
         fixed_class_from_table(Map.fetch!(f, :elem), %{})
+
+      Map.get(f, :elem_kind) == 13 ->
+        raise(ArgumentError, "expected a record element for #{f.name}")
 
       Map.get(f, :elem_kind) == 15 ->
         fixed_class_union_from_table(f, value)

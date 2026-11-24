@@ -24,6 +24,11 @@ on:
     branches: [main]
   pull_request:
     branches: [main, fixed-table-form]
+    # Only a pull request that touches what this test reads: this file, the
+    # allowlist in cla.yml, the script, and the shell wrapper (go run
+    # ./tools/pgroup, with go.mod). Every other pull request would re-check main's
+    # tip and hold a scarce schema runner for nothing. Not a required check.
+    paths: ['.github/workflows/caa-self-test.yml', '.github/workflows/cla.yml', '.github/caa-self-test.py', 'tools/pgroup/**', 'go.mod', 'go.sum']
   workflow_dispatch:
 
 permissions:

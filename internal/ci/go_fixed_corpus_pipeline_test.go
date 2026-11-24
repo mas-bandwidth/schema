@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
 func TestGoFixedCorpusArtifactRejectsWrongSourceOrBytes(t *testing.T) {
@@ -90,6 +92,7 @@ func TestGoFixedCorpusArtifactRejectsWrongSourceOrBytes(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			testinputs.Files(t, "tools/go-ci-corpus.sh")
 			cmd := exec.Command("sh", filepath.Join(root, "tools/go-ci-corpus.sh"), "verify", dir)
 			cmd.Dir = checkout
 			out, err := cmd.CombinedOutput()
