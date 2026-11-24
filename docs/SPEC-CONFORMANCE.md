@@ -708,7 +708,7 @@ stays `kind_mismatch` (ruling R2).
 
 The tests, one per leg and row: `TestFixedVersioningUnknownCensus`,
 `TestFixedVersioningUnknownCensusManyRecords` and `TestFixedVersioningKindMoved`
-in `internal/codegen/{cpptable,ctable,cstable,javatable,rusttable,darttable,elixirtable}`;
+in `internal/codegen/{gotable,cpptable,ctable,cstable,javatable,rusttable,darttable,elixirtable}`;
 `TestJSFixedVersioningUnknownCensus` and `TestJSFixedVersioningKindMoved` in
 `jstable`; `TestLuauFixedVersioningUnknownCensus` and
 `TestLuauFixedVersioningKindMoved` in `luautable`;
