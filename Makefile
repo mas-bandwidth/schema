@@ -8676,4 +8676,12 @@ tables-wire-fuzz: tables-wire-fuzz-regressions
 wire-fuzz-roster-negative-control:
 	python3 test/conformance/wire_fuzz_complete_test.py
 
+# The python tooling tests, one second together: every *_test.py outside the
+# vendored trees runs here per pull request (ci-fast ci-policy, `rest`), so a
+# red nightly-readiness contract is seen on the change that reddens it.
+.PHONY: python-tooling-tests
+python-tooling-tests:
+	PYTHONDONTWRITEBYTECODE=1 python3 -I test/conformance/nightly_readiness_test.py
+	PYTHONDONTWRITEBYTECODE=1 python3 -I test/conformance/wire_fuzz_complete_test.py
+
 tables-wire-fuzz-negative-control tables-c-wire-fuzz-negative-control tables-js-wire-fuzz-negative-control: wire-fuzz-roster-negative-control
