@@ -1257,6 +1257,7 @@ func (g *fixedGen) emitDecodePayload(f *ir.Field, base string, at int64, val, in
 		// live count, never the slack behind it. Identity copies the whole
 		// array into the image; this loop is the pass both paths share.
 		g.emitDecodeLoop(f, base, at+fixedCountBytes, val+"."+name+"Count", val+"."+name, ind)
+		g.emitDecodeSlack(f, val+"."+name+"Count", val+"."+name, ind)
 	case f.Type.Kind == ir.TString:
 		// Content validity over the used units was checked before any write to
 		// value in emitCheckStruct (§4.5 fix 11, §5.3).
@@ -1293,6 +1294,26 @@ func (g *fixedGen) emitDecodeCount(ind, dst, at string, least, bound int64, refu
 	g.pf("%s  if (n < %d || n > %d) { report.refused = %s; return; }\n", ind, least, bound, refusal)
 	g.pf("%s  %s = n;\n", ind, dst)
 	g.pf("%s}\n", ind)
+}
+
+// emitDecodeSlack resets every slot of a counted array PAST its live count to
+// what a fresh value holds there (docs/SPEC-TABLES.md §3.4, THE SLOTS PAST A
+// COUNT AFTER ANY LOAD, LAWFUL OR REFUSED): a table element through its own
+// Init, a union element back to no arm, a scalar slot filled with the element
+// default. The slots are dead, so nothing of them is read from the record, and
+// a load's result never depends on what the caller's value held before. It
+// runs in this projection, the one pass both the identity door and the
+// lineage plans end in, and at every depth: a counted array inside a live
+// element, a live union arm or a present optional reaches here through the
+// same payload emitter. Storage is restored in place, never replaced.
+func (g *fixedGen) emitDecodeSlack(f *ir.Field, count, expr, ind string) {
+	if cls := fixedElementClass(f.Type); cls != "" {
+		iv := g.loopVar()
+		g.pf("%sfor (let %s = %s; %s < %d; %s++) { %s }\n",
+			ind, iv, count, iv, f.ArrayBound, iv, g.compositeReset(f.Type, expr+"["+iv+"]"))
+		return
+	}
+	g.pf("%s%s.fill(%s, %s, %d);\n", ind, expr, fixedElementZero(f), count, f.ArrayBound)
 }
 
 func (g *fixedGen) emitDecodeLoop(f *ir.Field, base string, at int64, count, expr, ind string) {
