@@ -172,7 +172,7 @@ defmodule Bench.WrapFixed do
   # THE CURRENT ONE LAST (§5.2). A file is matched on its header's hash
   # against these and on NOTHING ELSE; the layout it carries is COMPARED with
   # the bytes the lock recorded and never parsed. A hash no entry holds is
-  # `:layout_newer` — ship the reader. The four members are §5.9 #19's, in
+  # `:layout_unknown` (§5.3 step 5). The four members are §5.9 #19's, in
   # its order, with the byte length riding BESIDE the bytes.
   @fixed_table_known {
     %{
@@ -186,7 +186,7 @@ defmodule Bench.WrapFixed do
 
   # THE FLOOR: 1 + the highest RETIRED index, 0 when none is (§5.2). Below it
   # a layout this build once served is retired and the answer is
-  # `:layout_unsupported` — upgrade the client — rather than `:layout_newer`.
+  # `:layout_unsupported` — upgrade the client — rather than `:layout_unknown`.
   @fixed_table_floor 0
 
   # THE RETIRED HASHES and the operator's own sentence for each, which is what

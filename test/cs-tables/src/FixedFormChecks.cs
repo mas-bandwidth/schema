@@ -28,7 +28,7 @@ static partial class Program
         // SKIPPED BY NAME, NOT DELETED (§5.6, §5.9 #23). Both cases are ENTIRELY
         // a forward/compiled read across two generations with no lineage between
         // them — V2 reading a V1 file, P3 reading a P1 file — which §5 retires: the
-        // answer is layout_newer, by name, before a plan exists. THE COVERAGE MOVES
+        // answer is layout_unknown, by name, before a plan exists. THE COVERAGE MOVES
         // TO THE LINEAGE HARNESS: every row they assert (a variant inserted mid-list,
         // an arm inserted mid-list, a renamed field, a keyed slot that slid, an
         // optional added) is a row of §5.7 with its own two columns, read against
@@ -167,7 +167,7 @@ static partial class Program
         // SKIPPED BY NAME, NOT DELETED (§5.6, §5.9 #23). The rest of this case is
         // the PLAN PATH ACROSS TWO GENERATIONS — FX2 reading an FX1 file and FX1
         // reading an FX2 one — which §5 retires: with no lineage between the two
-        // builds each file is layout_newer, correctly, and the compiled read those
+        // builds each file is layout_unknown, correctly, and the compiled read those
         // rows assert cannot be reached from a bare pair of generated units at all.
         // THE COVERAGE MOVES TO THE LINEAGE HARNESS, where the newer unit is handed
         // the older unit's locked entry and the row owes both of §5.7's columns.
@@ -375,7 +375,7 @@ static partial class Program
         // verb is a printed line). Every row of TestFixedNegativeControlForwardRead
         // asks FX1 to read an FX2 FILE — a FORWARD read, which is the whole of what
         // §5 retires: FX2's hash is in no lineage entry of this build, so the answer
-        // is layout_newer BEFORE a plan exists and the conditions those rows assert
+        // is layout_unknown BEFORE a plan exists and the conditions those rows assert
         // can no longer be reached from here. THE COVERAGE IS OWED BY THE LINEAGE
         // HARNESS, where the reader is handed FX1's lineage and each of these is a
         // row with its own two columns. The function stays in the tree and stays

@@ -1177,7 +1177,7 @@ test-go: tables-go-release-negative-control tables-go-clean-negative-control
 # `make test-go` where `go run ./bench/paired` does not. The VERSIONING half is
 # NOT held here and no longer held by TestFixedFormPlanPath, which §5.6 of
 # docs/FIXED-FORM-ALGORITHM.md retired by name (it skips itself: under the new
-# law the FX1/FX2 files come back `layout_newer`). It is held by the LINEAGE
+# law the FX1/FX2 files come back `layout_unknown`). It is held by the LINEAGE
 # harness in internal/codegen/gotable/fixedversioning_test.go, and the target
 # that runs it is `tables-go-versioning`, immediately below.
 build/schema_tables_bench_go_matched: generated/bench/paired/go/.stamp bench/tables/go/table_main.go bench/tables/go/shape_matched.go bench/paired/go/go.mod
@@ -1200,7 +1200,7 @@ test-go: tables-go-versioning
 # byte oracle out of build/fixedform-corpus — `old_<row>.bin`, `new_<row>.bin`
 # and the floor, hash and lineage-merge files — and holds each row's two read
 # columns: NEW-READS-OLD lands every old value with §5.4's counters, and
-# OLD-REFUSES-NEW answers `layout_newer` before any record, on the file's hash
+# OLD-REFUSES-NEW answers `layout_unknown` before any record, on the file's hash
 # alone (§5.3).
 #
 # THIS TARGET EXISTS BECAUSE `go test ./...` ASSERTS NOTHING HERE. The suite's

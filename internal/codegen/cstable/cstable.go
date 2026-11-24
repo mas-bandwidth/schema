@@ -708,7 +708,7 @@ public sealed class TableReport
     public ulong BuildVersionRemote, BuildVersionOwn;
     // LayoutHash is THE FILE'S hash, and it is LAST on the report (§5.9 #15) —
     // a member at the end rather than a field inserted among the counters,
-    // because the report is a type callers already hold. layout_newer reports
+    // because the report is a type callers already hold. layout_unknown reports
     // it "AND NOTHING ELSE" (§5.3); layout_unsupported reports it too (§5.9
     // #7), the operator's other answer. Zero on every other path.
     public ulong LayoutHash;

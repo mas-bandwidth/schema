@@ -844,7 +844,7 @@ tables-java-fixedform: build/java-fixedform/.stamp build/fixedform-corpus/.stamp
 # and the floor, hash and lineage-merge files — generates ONE JAVA PROBE PER ROW
 # PER COLUMN (§5.9 #18) beside this leg's own generator, compiles it with this
 # leg's `javac` and runs it: NEW-READS-OLD lands every old value with §5.4's
-# counters, and OLD-REFUSES-NEW answers `layout_newer` before any record, on the
+# counters, and OLD-REFUSES-NEW answers `layout_unknown` before any record, on the
 # file's hash alone (§5.3).
 #
 # THIS TARGET EXISTS BECAUSE `go test ./...` ASSERTS NOTHING HERE. The harness
@@ -996,9 +996,9 @@ tables-java-variable-class:
 # green, which is the failure the Go and Rust legs' own controls are for.
 #
 # WHAT IT SABOTAGES is §5.3's one verdict: a file whose hash matches no entry of
-# the lock's lineage is refused BY THE NAME `layoutNewer`, carrying the hash, and
-# that name is the entire answer — it is what tells an operator to ship a newer
-# reader instead of suspecting the bytes. The overlay puts `noLayout` there, the
+# the lock's lineage is refused BY THE NAME `layoutUnknown`, carrying the hash, and
+# that name is the entire answer: a hash this build's lineage does not hold
+# (§5.3 step 5), not a damaged file. The overlay puts `noLayout` there, the
 # name for a file with no layout at all. Every counter still reads refused, so
 # only a suite that checks the NAME can see it, and this control requires the
 # suite to go red and to say which name it wanted.
@@ -1024,10 +1024,10 @@ tables-java-versioning-negative-control: tables-fixedform-corpus
 		echo "NEGATIVE CONTROL FAILED: the wrong name for a file outside the lineage left §5 green"; \
 		tail -20 $(JAVA_VERSIONING_SABOTAGE)/log; exit 1; \
 	fi
-	@grep -q "want a refusal named layoutNewer" $(JAVA_VERSIONING_SABOTAGE)/log || \
+	@grep -q "want a refusal named layoutUnknown" $(JAVA_VERSIONING_SABOTAGE)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: §5 went red, but not on the refusal name this control is for"; \
 		  tail -20 $(JAVA_VERSIONING_SABOTAGE)/log; exit 1; }
-	@grep -m1 "want a refusal named layoutNewer" $(JAVA_VERSIONING_SABOTAGE)/log
+	@grep -m1 "want a refusal named layoutUnknown" $(JAVA_VERSIONING_SABOTAGE)/log
 	@echo 'negative control: the wrong refusal name for a file outside the lineage reds the Java versioning gate'
 
 # THE KEYED ACCESSOR, Java side (docs/SPEC-TABLES.md §2.4, docs/PORTING.md M5).

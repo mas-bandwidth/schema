@@ -220,15 +220,14 @@ pub enum TableFixedReason {
     PlanTooLarge,
     /// more records than the caller has room for: nothing is decoded
     BatchTooLarge,
-    /// A HASH THE LINEAGE DOES NOT HOLD (§5.3 step 5). The file was written by
-    /// a build AHEAD OF THIS ONE: a fixed table reads BACKWARD and never
-    /// forward, so there is nothing to try and no layout to walk. The report
-    /// carries THE FILE'S HASH AND NOTHING ELSE (bill §12.4) — ship the reader.
+    /// RETIRED (§5.3 step 5, decided 2026-11-03): nothing in the lineage
+    /// proves a hash newer, so no read answers it. It keeps its place so no
+    /// other variant moves; a hash in no lineage entry is LayoutUnknown.
     LayoutNewer,
     /// A HASH THE LINEAGE HOLDS, BELOW THE FLOOR (§5.3 step 6). The operator
     /// RETIRED that layout, with the lock's own --retire edit, and the entry
     /// stays in the lineage forever so this answer can stay distinct from
-    /// LayoutNewer: the hash is reported here too (§5.9 #7) — upgrade the
+    /// LayoutUnknown: the hash is reported here too (§5.9 #7) — upgrade the
     /// client.
     LayoutUnsupported,
     /// bytes that are not a layout at all, and — under a KNOWN hash — a LIE
@@ -269,6 +268,11 @@ pub enum TableFixedReason {
     /// A WRITER'S OPTIONAL READ INTO A READER'S BARE FIELD (rulings 2026-11-22, R2):
     /// the reader cannot hold an absent value, so the lineage refuses by name.
     KindMismatch,
+    /// A HASH THE LINEAGE DOES NOT HOLD (§5.3 step 5's answer, in every leg).
+    /// A fixed table reads BACKWARD and never forward, so there is nothing to
+    /// try and no layout to walk. The report carries THE FILE'S HASH AND
+    /// NOTHING ELSE (bill §12.4). Appended, so no variant above moves.
+    LayoutUnknown,
 }
 
 impl TableFixedReason {
@@ -297,6 +301,7 @@ impl TableFixedReason {
             Self::IntegrityMismatch => "integrity_mismatch",
             Self::OutOfRange => "out_of_range",
             Self::KindMismatch => "kind_mismatch",
+            Self::LayoutUnknown => "layout_unknown",
         }
     }
 }
@@ -329,7 +334,7 @@ pub struct TableFixedReport {
     /// <Owner>.<field>; "" on every other read.
     pub non_finite_float: &'static str,
     /// THE FILE'S OWN HASH, on the two layout refusals that report it
-    /// (§5.3's condition table, §5.9 #7): `layout_newer` carries it and
+    /// (§5.3's condition table, §5.9 #7): `layout_unknown` carries it and
     /// nothing else, and `layout_unsupported` carries it too, because the
     /// operator choosing between "ship the reader" and "upgrade the client"
     /// needs the number in both answers.
@@ -362,7 +367,7 @@ impl TableFixedReport {
     }
 
     /// A LAYOUT REFUSAL, which reports THE FILE'S HASH beside the name: the
-    /// hash is the only thing `layout_newer` carries (bill §12.4) and
+    /// hash is the only thing `layout_unknown` carries (bill §12.4) and
     /// `layout_unsupported` carries it too (§5.9 #7).
     pub fn refuse_layout<T>(&mut self, reason: TableFixedReason, hash: u64) -> Option<T> {
         let out = self.refuse(reason);

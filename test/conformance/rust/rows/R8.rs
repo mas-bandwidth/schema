@@ -1,11 +1,11 @@
 // test/conformance/rust/rows/R8.rs — rust/R8
 //
 // LAW (docs/FIXED-FORM-ALGORITHM.md:887):
-//   | the hash is in no lineage entry | layout_newer | the file's hash, and nothing else |
+//   | the hash is in no lineage entry | layout_unknown | the file's hash, and nothing else |
 //
 // This test constructs a minimal fixed-form file whose layout hash
 // is NOT in the build's lineage, opens it, and asserts that the
-// refusal is layout_newer carrying the file's hash and nothing else.
+// refusal is layout_unknown carrying the file's hash and nothing else.
 //
 // The fixed-form structure (docs/SPEC-TABLES.md §3.4):
 //   [0]      form byte = 3
@@ -26,7 +26,7 @@ pub enum TableFixedReason {
     BlockMalformed,
     PlanTooLarge,
     BatchTooLarge,
-    LayoutNewer,
+    LayoutUnknown,
     LayoutUnsupported,
     LayoutMalformed,
     LayoutCountMismatch,
@@ -53,7 +53,7 @@ pub fn name(&self) -> &'static str {
             Self::BlockMalformed => "block_malformed",
             Self::PlanTooLarge => "plan_too_large",
             Self::BatchTooLarge => "batch_too_large",
-            Self::LayoutNewer => "layout_newer",
+            Self::LayoutUnknown => "layout_unknown",
             Self::LayoutUnsupported => "layout_unsupported",
             Self::LayoutMalformed => "layout_malformed",
             Self::LayoutCountMismatch => "layout_count_mismatch",
@@ -196,12 +196,12 @@ fn test_hash_in_no_lineage_entry() {
             }
             None => {
                 // THE FILE'S HASH, AND NOTHING ELSE
-                report.refuse_layout(TableFixedReason::LayoutNewer, hash)
+                report.refuse_layout(TableFixedReason::LayoutUnknown, hash)
             }
         }
     };
 
-    // Assert: refused with layout_newer
+    // Assert: refused with layout_unknown
     assert!(
         result.is_none(),
         "a hash in no lineage entry must return None (refused)"
@@ -212,13 +212,13 @@ fn test_hash_in_no_lineage_entry() {
     );
     assert_eq!(
         report.reason.name(),
-        "layout_newer",
-        "refusal reason must be layout_newer, got {}",
+        "layout_unknown",
+        "refusal reason must be layout_unknown, got {}",
         report.reason.name()
     );
     assert_eq!(
         report.layout_hash, hash,
-        "layout_newer must report the file's hash (0x{hash:016x})"
+        "layout_unknown must report the file's hash (0x{hash:016x})"
     );
     // AND NOTHING ELSE: no counters moved, malformed false
     assert_eq!(report.unknown, 0, "no unknown counter moved");
@@ -232,7 +232,7 @@ fn test_hash_in_no_lineage_entry() {
 
 fn main() {
     test_hash_in_no_lineage_entry();
-    println!("PASS: rust/R8 — a hash in no lineage entry refuses layout_newer with the file's hash and nothing else");
+    println!("PASS: rust/R8 — a hash in no lineage entry refuses layout_unknown with the file's hash and nothing else");
 }
 
 #[cfg(test)]

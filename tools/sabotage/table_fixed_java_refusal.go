@@ -3,7 +3,7 @@
 //
 // A FILE OUTSIDE THE LINEAGE is the one verdict §5.3 settles before any record
 // is touched: LOAD matches the file's hash against the lock's entries and, when
-// nothing matches, refuses by the name `layoutNewer` carrying that hash — the
+// nothing matches, refuses by the name `layoutUnknown` carrying that hash — the
 // one answer that tells the operator to ship the reader rather than to suspect
 // the bytes. The name is the whole of the answer, so a leg that refuses by some
 // other name has lost the gate's only output while refusing just as loudly.
@@ -23,7 +23,7 @@ package main
 
 func init() {
 	sabotages["fixed-form-java-refusal-name"] = []edit{{
-		old: "if (pick < 0) { report.refuseHash(TableFixed.Reason.layoutNewer, fileHash); return -1; }",
+		old: "if (pick < 0) { report.refuseHash(TableFixed.Reason.layoutUnknown, fileHash); return -1; }",
 		new: "if (pick < 0) { report.refuseHash(TableFixed.Reason.noLayout, fileHash); return -1; } // SABOTAGED: the wrong name for a file outside the lineage",
 	}}
 }

@@ -3,7 +3,7 @@
 
    LAW (docs/FIXED-FORM-ALGORITHM.md §5.2 §5.3):
      "if i < R.floor: RETIRED. The hash stays KNOWN, so a file carrying it is
-      named layout_unsupported and never layout_newer; its PLAN IS NEVER BUILT"
+      named layout_unsupported and never layout_unknown; its PLAN IS NEVER BUILT"
 
    R32 tests this path in isolation: given a wire blob whose header hash
    matches a KNOWN lineage entry, but the entry sits BELOW the floor (is
@@ -59,7 +59,7 @@ typedef struct {
 
 /* refusal reasons (SPEC-TABLES.md §3.4 / §5.3 condition table) */
 enum {
-    SCHEMA_TABLE_LAYOUT_NEWER         = 2,
+    SCHEMA_TABLE_LAYOUT_UNKNOWN         = 2,
     SCHEMA_TABLE_LAYOUT_MALFORMED     = 3,
     SCHEMA_TABLE_NO_LAYOUT            = 12,
     SCHEMA_TABLE_LAYOUT_UNSUPPORTED   = 19,
@@ -125,7 +125,7 @@ static void refuse_hash( TableReport * r, int reason_code, uint64_t file_hash )
    PRODUCTION CALL SITE (generated C, e.g. build/tables-generated-c/v1/V1Table.c):
 
      pick = table_fixed_select( v1_fixed_known, v1_fixed_known_count, hash );
-     if ( pick < 0 ) { return table_fixed_refuse_hash( report, SCHEMA_TABLE_LAYOUT_NEWER, hash ); }
+     if ( pick < 0 ) { return table_fixed_refuse_hash( report, SCHEMA_TABLE_LAYOUT_UNKNOWN, hash ); }
      if ( pick < v1_fixed_floor ) { return table_fixed_refuse_hash( report, SCHEMA_TABLE_LAYOUT_UNSUPPORTED, hash ); }
 
    R32 verifies THIS exact two-line decision tree: SELECT then COMPARE WITH FLOOR.
@@ -138,12 +138,12 @@ static int64_t load_retired_check( uint64_t file_hash, TableReport * report )
     /* steps 5+6 — SELECT BY HASH, THEN THE FLOOR. Both report THE FILE'S hash. */
     pick = select_by_hash( LINEAGE, LINEAGE_COUNT, file_hash );
     if ( pick < 0 ) {
-        refuse_hash( report, SCHEMA_TABLE_LAYOUT_NEWER, file_hash );
+        refuse_hash( report, SCHEMA_TABLE_LAYOUT_UNKNOWN, file_hash );
         return -1;
     }
     /* --- THE RETIREMENT GATE (R32's focus) ---
        §5.2: "if i < R.floor: RETIRED. The hash stays KNOWN, so a file
-       carrying it is named layout_unsupported and never layout_newer."
+       carrying it is named layout_unsupported and never layout_unknown."
 
        This is the exact comparison the generated code emits verbatim.
        If this line were missing, a retired hash would fall through to
@@ -247,7 +247,7 @@ static int test_2_idempotent( void )
 }
 
 /* ===========================================================================
-   TEST 3 — NEGATIVE CONTROL: hash NOT in lineage → layout_newer
+   TEST 3 — NEGATIVE CONTROL: hash NOT in lineage → layout_unknown
    =========================================================================== */
 
 static int test_3_not_in_lineage( void )
@@ -262,9 +262,9 @@ static int test_3_not_in_lineage( void )
         fprintf( stderr, "test3: expected refusal for unknown hash\n" );
         return FAIL;
     }
-    if ( report.reason != SCHEMA_TABLE_LAYOUT_NEWER ) {
-        fprintf( stderr, "test3: reason=%d, expected %d (layout_newer)\n",
-                 report.reason, SCHEMA_TABLE_LAYOUT_NEWER );
+    if ( report.reason != SCHEMA_TABLE_LAYOUT_UNKNOWN ) {
+        fprintf( stderr, "test3: reason=%d, expected %d (layout_unknown)\n",
+                 report.reason, SCHEMA_TABLE_LAYOUT_UNKNOWN );
         return FAIL;
     }
     return OK;
@@ -293,10 +293,10 @@ int main( void )
     }
 
     if ( test_3_not_in_lineage() != OK ) {
-        printf( "FAIL: hash not in lineage did not get layout_newer\n" );
+        printf( "FAIL: hash not in lineage did not get layout_unknown\n" );
         failed++;
     } else {
-        printf( "PASS: hash not in lineage refused layout_newer\n" );
+        printf( "PASS: hash not in lineage refused layout_unknown\n" );
     }
 
     if ( failed == 0 ) {

@@ -22,7 +22,7 @@
    bytes for that hash (line 3629-3631). A byte that differs sets refused=1,
    reason=SCHEMA_TBLK1_TABLE_LAYOUT_MALFORMED, and returns -1 with no destination
    byte touched — and on the CONTRAST branch a hash no entry of the lineage
-   holds is SCHEMA_TBLK1_TABLE_LAYOUT_NEWER, with `layout_hash` carrying the file's
+   holds is SCHEMA_TBLK1_TABLE_LAYOUT_UNKNOWN, with `layout_hash` carrying the file's
    hash (§5.9 #7).
 
    THE VECTOR IS BUILT FROM THE LAW AND THE BUILD'S OWN FACTS — no corpus file.
@@ -127,10 +127,10 @@ int main( void )
     }
 
     /* THE CONTRAST — a hash no lineage entry names, over the lock's OWN
-       layout bytes. §5.3 step 5 refuses this with SCHEMA_TBLK1_TABLE_LAYOUT_NEWER
+       layout bytes. §5.3 step 5 refuses this with SCHEMA_TBLK1_TABLE_LAYOUT_UNKNOWN
        and `layout_hash` carries the FILE'S hash (§5.9 #7). The held-hash
        lie above is layout_malformed for a DIFFERENCE in the bytes; this is
-       layout_newer for an UNKNOWN hash — the operator's two distinct
+       layout_unknown for an UNKNOWN hash — the operator's two distinct
        answers, and the contrast is what makes F12 discriminating. */
     memcpy( other, clean, (size_t) total_bytes );
     tblk1_table_fixed_put64( other + TBLK1_K_TABLE_FIXED_HASH_AT, unknown_hash );
@@ -142,16 +142,16 @@ int main( void )
     check( n == -1, "F12 CONTRAST: an unknown hash refuses" );
     check( report.refused && !report.refuse_reason,
            "F12 CONTRAST: the refusal is a refusal by name, not damage" );
-    check( report.reason == SCHEMA_TBLK1_TABLE_LAYOUT_NEWER,
+    check( report.reason == SCHEMA_TBLK1_TABLE_LAYOUT_UNKNOWN,
            "F12 CONTRAST: an unknown hash names a different refusal" );
     check( report.layout_hash == unknown_hash,
-           "F12 CONTRAST: layout_newer reports the file's hash" );
+           "F12 CONTRAST: layout_unknown reports the file's hash" );
 
     if ( failures )
     {
         printf( "c/F12: RED\n" );
         return 1;
     }
-    printf( "c/F12: GREEN — a second layout for a held hash refuses layout_malformed by name; an unknown hash refuses layout_newer\n" );
+    printf( "c/F12: GREEN — a second layout for a held hash refuses layout_malformed by name; an unknown hash refuses layout_unknown\n" );
     return 0;
 }
