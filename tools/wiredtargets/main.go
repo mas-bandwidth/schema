@@ -13,7 +13,9 @@
 // WHAT COUNTS AS A ROOT (the places CI names a make target):
 //
 //   - every `make ...` command line in .github/workflows/*.yml and in
-//     .github/actions/*/action.yml, with a `${{ matrix.<key> }}` expanded to
+//     .github/actions/*/action.yml that something other than a manual
+//     dispatch runs (comments, dispatch-only jobs and dispatch-only workflows
+//     are not wiring: scheduled.go), with a `${{ matrix.<key> }}` expanded to
 //     every literal value that key takes in any workflow matrix (`leg` also
 //     takes every leg of internal/inputfamilies.Legs, since the leg matrices
 //     are computed by the plan job), and any other `${{ ... }}` or shell
@@ -21,8 +23,11 @@
 //   - the run field of every .github/nightly-fast-rows.txt row (ci-fast.yml
 //     runs them per pull request) and every .github/nightly-gates.txt row
 //     (certify.yml runs them every night);
-//   - every target named in make/negative-controls.json and
-//     make/negative-controls.d/*.json, which the negative-control jobs run.
+//   - every target in a `targets` list of make/negative-controls.json and
+//     make/negative-controls.d/*.json, which the negative-control jobs run
+//     (never one in `excluded`, the list of controls they do not run);
+//   - the `targets` of every test/conformance/<lang>/ci.json, the matrix of
+//     leg.yml, which certify.yml calls every night.
 //
 // WHAT IS REACHED from a root: its prerequisites, and every target a recipe
 // line hands to $(MAKE) (or to tools/gatecontrol, which runs make for it),
@@ -427,22 +432,6 @@ func rootsFromShell(text string, matrix map[string][]string, db database, names 
 	return out
 }
 
-// jsonStrings is every string anywhere in a JSON document.
-func jsonStrings(v any, out *[]string) {
-	switch x := v.(type) {
-	case string:
-		*out = append(*out, x)
-	case []any:
-		for _, e := range x {
-			jsonStrings(e, out)
-		}
-	case map[string]any:
-		for _, e := range x {
-			jsonStrings(e, out)
-		}
-	}
-}
-
 type ledgerEntry struct {
 	target, reason string
 	line           int
@@ -481,6 +470,8 @@ type sources struct {
 	nightlyRows   string   // .github/nightly-fast-rows.txt
 	nightlyGates  string   // .github/nightly-gates.txt
 	controls      []string // negative-control JSON documents
+	legJSON       []string // test/conformance/<lang>/ci.json, the leg.yml matrix
+	legJSONNames  []string
 	controlNames  []string
 }
 
@@ -512,6 +503,16 @@ func readSources(root string) (sources, error) {
 		return s, err
 	}
 	s.nightlyGates = string(b)
+	legFiles, _ := filepath.Glob(filepath.Join(root, "test", "conformance", "*", "ci.json")) // errdiscard: Glob fails only on a malformed pattern, and this is a constant
+	for _, f := range legFiles {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			return s, err
+		}
+		s.legJSON = append(s.legJSON, string(b))
+		rel, _ := filepath.Rel(root, f) // errdiscard: f is root joined with a relative path, so Rel cannot fail
+		s.legJSONNames = append(s.legJSONNames, rel)
+	}
 	files, _ := filepath.Glob(filepath.Join(root, "make", "negative-controls.d", "*.json")) // errdiscard: Glob fails only on a malformed pattern, and this is a constant
 	files = append([]string{filepath.Join(root, "make", "negative-controls.json")}, files...)
 	for _, f := range files {
@@ -541,7 +542,13 @@ func check(db database, src sources, ledger []ledgerEntry) (result, error) {
 		names = append(names, n)
 	}
 	sort.Strings(names)
-	matrix := matrixValues(src.workflows)
+	// only what runs: comments, and dispatch-only jobs and workflows, are
+	// not wiring (scheduled.go)
+	workflows := make([]string, len(src.workflows))
+	for i, w := range src.workflows {
+		workflows[i] = scheduledText(stripComments(w))
+	}
+	matrix := matrixValues(workflows)
 	type root struct{ target, source string }
 	var roots []root
 	addRoots := func(source string, ts []string) {
@@ -549,7 +556,7 @@ func check(db database, src sources, ledger []ledgerEntry) (result, error) {
 			roots = append(roots, root{t, source})
 		}
 	}
-	for i, w := range src.workflows {
+	for i, w := range workflows {
 		addRoots(src.workflowNames[i], rootsFromShell(w, matrix, db, names))
 		// the input-family planner's rows: every reader leg's run target
 		if strings.Contains(w, "./tools/inputfamilies select") {
@@ -585,7 +592,7 @@ func check(db database, src sources, ledger []ledgerEntry) (result, error) {
 			}
 			f := strings.Split(line, " | ")
 			if len(f) == 4 {
-				addRoots(reg.name+" row "+strings.TrimSpace(f[0]), rootsFromShell(f[3], matrix, db, names))
+				addRoots(reg.name+" row "+strings.TrimSpace(f[0]), rootsFromShell(cutTrailingComment(f[3]), matrix, db, names))
 			}
 		}
 	}
@@ -595,10 +602,23 @@ func check(db database, src sources, ledger []ledgerEntry) (result, error) {
 			return result{}, fmt.Errorf("a negative-control manifest is not JSON: %w", err)
 		}
 		var strs []string
-		jsonStrings(v, &strs)
+		controlTargets(v, &strs)
 		for _, s := range strs {
 			if _, ok := db.rules[s]; ok {
 				addRoots(src.controlNames[i], []string{s})
+			}
+		}
+	}
+	for i, c := range src.legJSON {
+		var v struct {
+			Targets string `json:"targets"`
+		}
+		if err := json.Unmarshal([]byte(c), &v); err != nil {
+			return result{}, fmt.Errorf("%s is not JSON: %w", src.legJSONNames[i], err)
+		}
+		for _, t := range strings.Fields(v.Targets) {
+			if _, ok := db.rules[t]; ok {
+				addRoots(src.legJSONNames[i]+" (leg.yml, which certify.yml calls)", []string{t})
 			}
 		}
 	}

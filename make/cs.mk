@@ -293,7 +293,7 @@ tables-cook-open-cs: build-cs-cook build/schema_test_cook build/cook-open/.stamp
 	$(COOK_CS) refuse Scene ../../build/cook-open/Scene-be.cook
 	$(COOK_CS) time Scene ../../build/cook-open/1mb.cook ../../build/cook-open/100mb.cook
 
-# THE GIGABYTE ARM, by hand (§7.5).
+# THE GIGABYTE ARM (§7.5), nightly (certify.yml nightly-gates row cook-1gb-cs).
 .PHONY: tables-cook-open-cs-1gb
 tables-cook-open-cs-1gb: build-cs-cook build/cook-open/.stamp
 	go build -o build/cookgen ./test/cookgen

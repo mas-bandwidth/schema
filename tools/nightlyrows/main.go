@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -20,37 +21,51 @@ import (
 )
 
 func main() {
-	registry := flag.String("rows", nightlyrows.RegistryPath, "the registry")
-	filesPath := flag.String("files", "", "a file naming the changed paths, one per line (required)")
-	legs := flag.String("legs", "", "the legs the diff touched, space-separated")
-	broad := flag.String("broad", "", "yes or no: the plan broad rule (required)")
-	all := flag.Bool("all", false, "print every row of the registry; -files, -legs and -broad are refused")
-	flag.Parse()
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+}
+
+// run is the command: its exit status, the matrix on stdout, every refusal
+// named on stderr.
+func run(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("nightlyrows", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	registry := fs.String("rows", nightlyrows.RegistryPath, "the registry")
+	filesPath := fs.String("files", "", "a file naming the changed paths, one per line (required)")
+	legs := fs.String("legs", "", "the legs the diff touched, space-separated")
+	broad := fs.String("broad", "", "yes or no: the plan broad rule (required)")
+	all := fs.Bool("all", false, "print every row of the registry; -files, -legs and -broad are refused")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if fs.NArg() != 0 {
+		fmt.Fprintf(stderr, "nightlyrows: unexpected arguments %q\n", fs.Args())
+		return 2
+	}
 	if *all && (*filesPath != "" || *legs != "" || *broad != "") {
-		fmt.Fprintln(os.Stderr, "nightlyrows: -all takes every row; -files, -legs and -broad select some, so they are refused with it")
-		os.Exit(2)
+		fmt.Fprintln(stderr, "nightlyrows: -all takes every row; -files, -legs and -broad select some, so they are refused with it")
+		return 2
 	}
 	if !*all && (*filesPath == "" || (*broad != "yes" && *broad != "no")) {
-		fmt.Fprintln(os.Stderr, "nightlyrows: -files and -broad yes|no are required (or -all)")
-		os.Exit(2)
+		fmt.Fprintln(stderr, "nightlyrows: -files and -broad yes|no are required (or -all)")
+		return 2
 	}
 	f, err := os.Open(*registry)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "nightlyrows:", err)
-		os.Exit(1)
+		fmt.Fprintln(stderr, "nightlyrows:", err)
+		return 1
 	}
 	rows, err := nightlyrows.Parse(f)
 	_ = f.Close()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "nightlyrows:", err)
-		os.Exit(1)
+		fmt.Fprintf(stderr, "nightlyrows: %s: %v\n", *registry, err)
+		return 1
 	}
 	selected := rows
 	if !*all {
 		raw, err := os.ReadFile(*filesPath)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "nightlyrows:", err)
-			os.Exit(1)
+			fmt.Fprintln(stderr, "nightlyrows:", err)
+			return 1
 		}
 		var files []string
 		for l := range strings.SplitSeq(string(raw), "\n") {
@@ -71,8 +86,9 @@ func main() {
 	}
 	b, err := json.Marshal(picked)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "nightlyrows:", err)
-		os.Exit(1)
+		fmt.Fprintln(stderr, "nightlyrows:", err)
+		return 1
 	}
-	fmt.Println(string(b))
+	fmt.Fprintln(stdout, string(b))
+	return 0
 }

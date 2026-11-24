@@ -136,3 +136,79 @@ func TestAMatrixWordExpandsToItsValues(t *testing.T) {
 		t.Errorf("roots = %v", got)
 	}
 }
+
+// THE THREE ESCAPES (the cold read of 2026-11-24): each names the by-hand
+// gate where nothing runs it on a schedule, and each must leave it unwired.
+func TestOnlyScheduledWiringCounts(t *testing.T) {
+	t.Parallel()
+	escapes := map[string]func(*sources){
+		"a workflow comment": func(s *sources) {
+			s.workflows = append(s.workflows, "on:\n  schedule:\n    - cron: '1 1 * * *'\njobs:\n  a:\n    steps:\n      # the old way was: make tables-x-byhand\n      - run: make tables-x-wf # then make tables-x-byhand\n")
+			s.workflowNames = append(s.workflowNames, "comment.yml")
+		},
+		"a dispatch-only job": func(s *sources) {
+			s.workflows = append(s.workflows, "on:\n  push:\n  workflow_dispatch:\njobs:\n  a:\n    if: startsWith(github.head_ref, 'x') == false && (github.event_name == 'workflow_dispatch')\n    steps:\n      - run: make tables-x-byhand\n")
+			s.workflowNames = append(s.workflowNames, "dispatch-job.yml")
+		},
+		"a dispatch-only workflow": func(s *sources) {
+			s.workflows = append(s.workflows, "on:\n  workflow_dispatch:\n    inputs:\n      v:\n        type: string\njobs:\n  a:\n    steps:\n      - run: make tables-x-byhand\n")
+			s.workflowNames = append(s.workflowNames, "dispatch.yml")
+		},
+		"an excluded control": func(s *sources) {
+			s.controls = append(s.controls, `{"groups":[],"excluded":[{"target":"tables-x-byhand","reason":"runs elsewhere"}]}`)
+			s.controlNames = append(s.controlNames, "make/negative-controls.d/x.json")
+		},
+	}
+	for name, plant := range escapes {
+		src := fixtureSources()
+		plant(&src)
+		res := fixtureCheck(t, src, nil)
+		if !slices.Equal(res.unwired, []string{"tables-x-byhand"}) {
+			t.Errorf("%s counted as wiring: unwired = %v, want [tables-x-byhand]", name, res.unwired)
+		}
+	}
+}
+
+// What does run is still counted: a job that a push OR a dispatch starts, a
+// control in a group's targets, and a leg's ci.json targets.
+func TestScheduledWiringStillCounts(t *testing.T) {
+	t.Parallel()
+	wirings := map[string]func(*sources){
+		"a push-or-dispatch job": func(s *sources) {
+			s.workflows = append(s.workflows, "on:\n  push:\n  workflow_dispatch:\njobs:\n  a:\n    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'\n    steps:\n      - run: make tables-x-byhand\n")
+			s.workflowNames = append(s.workflowNames, "push.yml")
+		},
+		"a grouped control": func(s *sources) {
+			s.controls = append(s.controls, `{"group":"g2","targets":["tables-x-byhand"]}`)
+			s.controlNames = append(s.controlNames, "make/negative-controls.d/x.json")
+		},
+		"a leg's ci.json": func(s *sources) {
+			s.legJSON = append(s.legJSON, `{"targets": "build/x tables-x-byhand", "runtime": "x"}`)
+			s.legJSONNames = append(s.legJSONNames, "test/conformance/x/ci.json")
+		},
+	}
+	for name, wire := range wirings {
+		src := fixtureSources()
+		wire(&src)
+		res := fixtureCheck(t, src, nil)
+		if len(res.unwired) != 0 {
+			t.Errorf("%s did not count: unwired = %v", name, res.unwired)
+		}
+	}
+}
+
+func TestCutTrailingComment(t *testing.T) {
+	t.Parallel()
+	for in, want := range map[string]string{
+		"make a # make b":          "make a ",
+		`echo "x # y" && make a`:   `echo "x # y" && make a`,
+		`echo 'a # b' # make c`:    `echo 'a # b' `,
+		"n=$# ; m=${#v}; url=a#b":  "n=$# ; m=${#v}; url=a#b",
+		`echo \# make b`:           `echo \# make b`,
+		"      - run: make a\t# b": "      - run: make a\t",
+	} {
+		if got := cutTrailingComment(in); got != want {
+			t.Errorf("cutTrailingComment(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

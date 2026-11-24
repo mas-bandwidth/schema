@@ -27,6 +27,14 @@
 # nightly only). certify.yml's negative-controls-nightly runs all 144, one job
 # per gate, from the gate-controls-<gate> groups.
 #
+# EVERY CONTROL NAMES ITS PLANTED CASE (-want, which tools/gatecontrol
+# requires): a leg that goes red for another reason, a missing interpreter or
+# a build that breaks after the plant, fails its control. The planted names:
+# bitphase and packet trade each phase's first valid vector with a hostile
+# one (valid_p<k>_v0.bin, hostile_<align|reserved>_p<k>.bin), canonical
+# breaks the wire every write is held to (FAILED: wire <tag>), tablegen every
+# case's expected answer (FAILED: tg<n>:<case>).
+#
 # THIS FILE SORTS AFTER make/verify-widen-18.mk on purpose: the Makefile
 # includes make/*.mk in name order, and the rules below are made at parse time
 # from VERIFY_ALL_18_LEGS, which that file defines.
@@ -40,13 +48,13 @@ GATECONTROL = go run ./tools/gatecontrol
 define verify_gate_control_rules
 .PHONY: $(foreach g,$(VERIFY_GATE_CONTROLS),verify-$(g)-negative-control-$(1))
 verify-bitphase-negative-control-$(1):
-	$$(GATECONTROL) -leg $(1) -plant bitphase -target verify-bitphase-$(1) -refuse 'BITPHASE_OK $(1) '
+	$$(GATECONTROL) -leg $(1) -plant bitphase -target verify-bitphase-$(1) -want 'FAILED: .*(valid_p[0-9]+_v0|hostile_align_p[0-9]+)\.bin' -refuse 'BITPHASE_OK $(1) '
 verify-sabotage-packet-negative-control-$(1):
-	$$(GATECONTROL) -leg $(1) -plant packet -target verify-bitphase-$(1) -refuse 'BITPHASE_OK $(1) '
+	$$(GATECONTROL) -leg $(1) -plant packet -target verify-bitphase-$(1) -want 'FAILED: .*(valid_p[0-9]+_v0|hostile_reserved_p[0-9]+)\.bin' -refuse 'BITPHASE_OK $(1) '
 verify-canonical-negative-control-$(1):
-	$$(GATECONTROL) -leg $(1) -plant canonical -target verify-canonical-$(1) -refuse 'CANONICAL_OK $(1) '
+	$$(GATECONTROL) -leg $(1) -plant canonical -target verify-canonical-$(1) -want 'FAILED: wire ' -refuse 'CANONICAL_OK $(1) '
 verify-tablegen-negative-control-$(1):
-	$$(GATECONTROL) -leg $(1) -plant tablegen -target verify-tablegen-$(1) -refuse 'TABLEGEN_OK $(1) '
+	$$(GATECONTROL) -leg $(1) -plant tablegen -target verify-tablegen-$(1) -want 'FAILED: tg[0-9]+:' -refuse 'TABLEGEN_OK $(1) '
 verify-message-fuzz-negative-control-$(1):
 	$$(GATECONTROL) -leg $(1) -plant message-fuzz -target _verify-$(1)-fuzz-message -want 'message-fuzz DIVERGENCE'
 verify-sabotage-fixed-negative-control-$(1):

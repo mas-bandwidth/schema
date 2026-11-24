@@ -28,9 +28,6 @@ schema-go-generated-golangci-lint-gate-ratchet-regenerate | by-hand: authoring, 
 shape-gate | by-hand: alias; ci-full runs `go run ./bench/tools/shapegate` directly, not through make
 slow-gate-coverage | by-hand: the whole-tree audit; ci-full.yml runs it as slow-gate-coverage-codegen shards
 tables-c | by-hand: the whole C leg for a person; CI runs its parts as their own jobs and rows
-tables-cook-open-1gb | by-hand: 1 GB scale run, too heavy for CI runners
-tables-cook-open-cs-1gb | by-hand: 1 GB scale run, too heavy for CI runners
-tables-cook-scale-1gb | by-hand: 1 GB scale run, too heavy for CI runners
 tables-cpp-clean-census | by-hand: census report, not a gate
 tables-cs-leg-debug-core | by-hand: one section of tables-cs-leg-debug, which ci-full.yml cs-tables (debug) runs whole
 tables-cs-leg-debug-evolution | by-hand: one section of tables-cs-leg-debug, which ci-full.yml cs-tables (debug) runs whole
@@ -48,3 +45,6 @@ tables-goose-integrity-crc-diagnostic | by-hand: diagnostic replay of a CRC muta
 tables-java-format-census | by-hand: census report, not a gate
 wire-fuzz-release-table | by-hand: authoring, regenerates the wire-fuzz release table
 wire-fuzz-release-targets | by-hand: authoring, prints the wire-fuzz release targets
+moo-wire-fuzz | by-hand: the moo fuzz differential's tests by name, with a seed; test-moo (a go test of ./internal/codegen/moo) runs the same tests in CI
+packet-arm-defaults-negative-controls | by-hand: a loop over $(ARM_NC_TARGETS), each of which is in a make/negative-controls.json group
+wire-fuzz-release | by-hand: a dry run that prints the release gate's flags and runs no gate

@@ -3,7 +3,7 @@
 // negative control of that gate on that leg (make/widen-18-gate-controls.mk).
 //
 //	go run ./tools/gatecontrol -leg go -plant tablegen -target verify-tablegen-go \
-//	    -refuse 'TABLEGEN_OK go ' [-want REGEXP] [-log FILE]
+//	    -want 'FAILED: tg[0-9]+:' [-refuse 'TABLEGEN_OK go '] [-log FILE]
 //
 // It runs `make <target>` with SCHEMA_GATE_PLANT=<plant> in the environment.
 // The harnesses read that variable and make their oracle wrong (bitphase,
@@ -16,7 +16,9 @@
 //     compares nothing for this leg);
 //   - the log says PLANTED <plant> (a red that came before the plant was
 //     applied proves nothing about it);
-//   - -want, when given, matches the log (the red is the planted case's own);
+//   - -want, which is required, matches the log: the red is the planted
+//     case's own, named by the leg, so a red for any other reason (the
+//     interpreter missing, a build broken after the plant) fails the control;
 //   - -refuse, when given, does not match (the leg did not report a pass).
 //
 // The whole log is written to -log (default build/gate-controls/<plant>-<leg>.log)
@@ -54,12 +56,12 @@ func main() {
 	leg := flag.String("leg", "", "the leg")
 	plant := flag.String("plant", "", "the SCHEMA_GATE_PLANT class")
 	target := flag.String("target", "", "the make target that runs the gate on the leg")
-	wantFlag := flag.String("want", "", "a regular expression the red log must match")
+	wantFlag := flag.String("want", "", "a regular expression naming the planted case, which the red log must match (required)")
 	refuseFlag := flag.String("refuse", "", "a regular expression the red log must not match")
 	logFlag := flag.String("log", "", "where the run's log is written")
 	flag.Parse()
-	if *leg == "" || *plant == "" || *target == "" || flag.NArg() != 0 {
-		fmt.Fprintln(os.Stderr, "gatecontrol: -leg, -plant and -target are required, and nothing else")
+	if *leg == "" || *plant == "" || *target == "" || *wantFlag == "" || flag.NArg() != 0 {
+		fmt.Fprintln(os.Stderr, "gatecontrol: -leg, -plant, -target and -want are required, and nothing else: without -want a red for any other reason (a missing interpreter, a broken build) would pass the control")
 		os.Exit(2)
 	}
 	var want, refuse *regexp.Regexp
@@ -99,7 +101,7 @@ func main() {
 		os.Exit(1)
 	}
 	for line := range strings.SplitSeq(out.String(), "\n") {
-		if strings.HasPrefix(line, "PLANTED ") || (want != nil && want.MatchString(line)) {
+		if want.MatchString(line) {
 			fmt.Println("  " + strings.TrimSpace(line))
 			break
 		}

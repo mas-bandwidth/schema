@@ -864,9 +864,10 @@
       "name": "base-c-format",
       "when": "pull-request",
       "clang_format": "pin",
-      "why": "the C format gate's drift control (docs/PORTING.md J4): one K&R struct brace planted in the C packet emitter under an overlay, the examples corpus generated with it, and tables-c-clean's engine (make/checks/c-clean-format.sh) must go red naming Types.h. It needs the pinned clang-format, which this row alone installs.",
+      "why": "the C and C++ format gates' drift controls (docs/PORTING.md J4): one K&R struct brace planted in the C, then the C++, packet emitter under an overlay, the examples corpus generated with it, and tables-c-clean's and tables-cpp-format's engines (make/checks/c-clean-format.sh, make/checks/cpp-clean-format.sh) must go red naming Types.h. Both need the pinned clang-format, which this row alone installs. The C++ control ran only in ci-fast.yml's dispatch-only leg-gate-cpp until 2026-11-24, which no night starts.",
       "targets": [
-        "tables-c-format-negative-control"
+        "tables-c-format-negative-control",
+        "tables-cpp-format-negative-control"
       ]
     },
     {
@@ -3632,10 +3633,6 @@
     {
       "target": "packet-end-moo-negative-control",
       "reason": "the moo leg's one-packet end-check control (make/moo-packet.mk, SPEC \u00a75 'Read termination'): the emitted public read's end call is dropped, so trailing data and non-zero final-byte padding must both fail by name. It is a prerequisite of test-moo, which certify.yml's make test reaches through TEST_LEGS on the runners that build the moo pin (.github/actions/moo). This leg's matrix has no moo toolchain row yet: the group that carries one is the moo port's layer 7 (docs/PORT-MOO.md, THE LAYERS), which moves this control into it."
-    },
-    {
-      "target": "tables-cpp-format-negative-control",
-      "reason": "the C++ format gate's drift control (docs/PORTING.md J4): the emitter writes one struct brace K&R and tables-cpp-format's engine must go red naming Types.h. It needs the pinned clang-format (make/c.mk CLANG_FORMAT_PIN), which the base rows do not install, so it refuses by name where the pin does not resolve and runs in the leg that does: ci-fast.yml's `fixed form and versioning rows` step for the cpp leg, beside tables-cpp-clean itself, as the Java drift control rides test-java."
     },
     {
       "target": "roadmap-check-negative-control",

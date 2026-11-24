@@ -33,3 +33,21 @@ func TestVerdictNamesEveryWayAControlFails(t *testing.T) {
 		}
 	}
 }
+
+// The reviewer's plant (2026-11-24): node swapped for /bin/false. The plant is
+// applied, the leg dies before it compares anything, and the run is red; the
+// bitphase control must fail, because no line names a planted vector.
+func TestARedThatComparedNothingFailsTheControl(t *testing.T) {
+	t.Parallel()
+	red := errors.New("exit status 2")
+	want := regexp.MustCompile(`FAILED: .*(valid_p[0-9]+_v0|hostile_align_p[0-9]+)\.bin`)
+	refuse := regexp.MustCompile(`BITPHASE_OK js `)
+	dead := "PLANTED bitphase: 4 valid and hostile vectors traded bytes (valid_p0_v0.bin<->hostile_align_p0.bin); every leg must now go red\njs checked: exit status 1\n"
+	if got := verdict("bitphase", red, []byte(dead), want, refuse); !strings.Contains(got, "not on the planted case") {
+		t.Errorf("a leg that died before comparing passed its control: verdict %q", got)
+	}
+	caught := dead + "FAILED: stream read valid_p0_v0.bin\n"
+	if got := verdict("bitphase", red, []byte(caught), want, refuse); got != "" {
+		t.Errorf("a leg red on its planted vector failed its control: %q", got)
+	}
+}

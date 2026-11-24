@@ -47,6 +47,9 @@ compiler-claims-moo | moo | - | make tables-moo-compiler-claims
 checked-cook-go | go | - | make tables-go-checked-cook fuzz-generated-readers-go
 analyze-dart | dart | - | make schema-dart-generated-strict-analyze-gate-tables schema-dart-nightly-fuzz-analyze DART=dart
 gems-lock-ruby | ruby | - | make ruby-gems-lock-controls
+cook-1gb | cpp | - | make tables-cook-scale-1gb tables-cook-open-1gb
+cook-1gb-cs | cs | - | make tables-cook-open-cs-1gb
+check | - | - | make check
 json-fuzz | all | - | make conformance-json-fuzz-nightly
 proof | all | - | make proof
 
