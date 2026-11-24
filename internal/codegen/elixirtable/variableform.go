@@ -3823,10 +3823,12 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp validate_record(desc, value) do
     Enum.each(desc.fields, fn f ->
       if field_active?(f, desc, value) do
+        name = f.name
+
         v =
-          case Map.get(value, f.name) do
-            nil -> if Map.has_key?(value, f.name), do: nil, else: field_default(f)
-            present -> present
+          case value do
+            %{^name => present} -> present
+            _ -> field_default(f)
           end
 
         if Map.get(f, :text_list, false), do: validate_text_list(f, v)
