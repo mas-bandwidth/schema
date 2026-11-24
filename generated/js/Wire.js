@@ -422,7 +422,7 @@ export function WriteProbeSample(stream, value) {
     }
   }
   NUMBER_SCRATCH.value = value.orientation;
-  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -180.0, 180.0, 0.01)) {
+  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -180.0, 180.0, 0.009999999776482582)) {
     return false;
   }
   if (!globalThis.Number.isInteger(value.rawDelta) || value.rawDelta < -2147483648 || value.rawDelta > 2147483647) { // a bare integer must fit its width
@@ -493,7 +493,7 @@ export function ReadProbeSample(stream, value, nested) {
     return false;
   }
   value.active = BOOL_SCRATCH.value;
-  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -180.0, 180.0, 0.01)) {
+  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -180.0, 180.0, 0.009999999776482582)) {
     return false;
   }
   value.orientation = NUMBER_SCRATCH.value;
@@ -1377,7 +1377,7 @@ export function WriteTestData(stream, value) {
     }
   }
   NUMBER_SCRATCH.value = value.compressedFloatValue;
-  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 10.0, 0.01)) {
+  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 10.0, 0.009999999776482582)) {
     return false;
   }
   if (typeof value.doubleValue !== "number" || !globalThis.Number.isFinite(value.doubleValue)) {
@@ -1511,7 +1511,7 @@ export function ReadTestData(stream, value, nested) {
     return false;
   }
   value.floatValue = NUMBER_SCRATCH.value;
-  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 10.0, 0.01)) {
+  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 10.0, 0.009999999776482582)) {
     return false;
   }
   value.compressedFloatValue = NUMBER_SCRATCH.value;
@@ -1603,7 +1603,7 @@ export function WriteCompressedProbe(stream, value) {
     }
   }
   NUMBER_SCRATCH.value = value.boundary;
-  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 10.0, 0.01)) {
+  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 10.0, 0.009999999776482582)) {
     return false;
   }
   {
@@ -1613,18 +1613,18 @@ export function WriteCompressedProbe(stream, value) {
     }
   }
   NUMBER_SCRATCH.value = value.offset;
-  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -5.0, 5.0, 0.001)) {
+  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -5.0, 5.0, 0.0010000000474974513)) {
     return false;
   }
   return true;
 }
 
 export function ReadCompressedProbe(stream, value, nested) {
-  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 10.0, 0.01)) {
+  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, 0.0, 10.0, 0.009999999776482582)) {
     return false;
   }
   value.boundary = NUMBER_SCRATCH.value;
-  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -5.0, 5.0, 0.001)) {
+  if (!stream.serializeCompressedFloat(NUMBER_SCRATCH, -5.0, 5.0, 0.0010000000474974513)) {
     return false;
   }
   value.offset = NUMBER_SCRATCH.value;

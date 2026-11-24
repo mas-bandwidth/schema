@@ -30,6 +30,7 @@ def apply(value, op, arg)
     value.pick.small.v = Integer(arg)
   when "huge" then value.huge = Integer(arg)
   when "fx" then value.fx = Integer(arg) # fixed(16, 16) storage is the raw scaled integer
+  when "ufx" then value.ufx = Integer(arg) # ufixed(32, 32) storage is the raw scaled integer
   else raise ArgumentError, "unknown op #{op}"
   end
 end

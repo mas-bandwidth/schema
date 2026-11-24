@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum textTotalPast
+{ Zfirst, Zsecond, Zthird }
+
+enum textUtf8
+{ Zfirst, Zsecond, Zthird }
+
+enum textZero
+{ Zfirst, Zsecond, Zthird }
+
+enum text_boundary
+{ Zfirst, Zsecond, Zthird }
+
+enum text_elem_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum text_elem_used
+{ Zfirst, Zsecond, Zthird }
+
+enum text_flags_registry
+{ Zfirst, Zsecond, Zthird }
+
+enum text_holds_zero
+{ Zfirst, Zsecond, Zthird }
+
+enum text_key
+{ Zfirst, Zsecond, Zthird }
+
+enum text_len
+{ Zfirst, Zsecond, Zthird }
+
+enum text_length
+{ Zfirst, Zsecond, Zthird }
+
+enum text_list
+{ Zfirst, Zsecond, Zthird }
+
+enum text_list_elem
+{ Zfirst, Zsecond, Zthird }
+
+enum text_list_facts
+{ Zfirst, Zsecond, Zthird }
+
+enum text_list_over_bound
+{ Zfirst, Zsecond, Zthird }
+
+enum text_list_shape
+{ Zfirst, Zsecond, Zthird }
+
+enum text_list_value
+{ Zfirst, Zsecond, Zthird }
+
+enum text_max_alloc
+{ Zfirst, Zsecond, Zthird }
+
+enum text_max_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum text_max_nodes
+{ Zfirst, Zsecond, Zthird }
+
+enum text_max_tokens
+{ Zfirst, Zsecond, Zthird }
+
+enum text_optional
+{ Zfirst, Zsecond, Zthird }
+
+enum text_start
+{ Zfirst, Zsecond, Zthird }
+
+enum text_total
+{ Zfirst, Zsecond, Zthird }
+
+enum text_unit
+{ Zfirst, Zsecond, Zthird }
+
+enum text_valid
+{ Zfirst, Zsecond, Zthird }
+
+enum text_value
+{ Zfirst, Zsecond, Zthird }
+
+enum textbuf
+{ Zfirst, Zsecond, Zthird }
+
+enum texts
+{ Zfirst, Zsecond, Zthird }
+
+enum textual
+{ Zfirst, Zsecond, Zthird }
+
+enum textvf
+{ Zfirst, Zsecond, Zthird }
+
+enum than
+{ Zfirst, Zsecond, Zthird }
+
+enum that
+{ Zfirst, Zsecond, Zthird }
+
+enum the
+{ Zfirst, Zsecond, Zthird }
+
+enum theirArm
+{ Zfirst, Zsecond, Zthird }
+
+enum theirArmCount
+{ Zfirst, Zsecond, Zthird }
+
+enum theirArmSize
+{ Zfirst, Zsecond, Zthird }
+
+enum theirArms
+{ Zfirst, Zsecond, Zthird }
+
+enum theirAt
+{ Zfirst, Zsecond, Zthird }
+
+enum theirBase
+{ Zfirst, Zsecond, Zthird }
+
+enum theirBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum theirChild
+{ Zfirst, Zsecond, Zthird }
+
+enum theirChildren
+{ Zfirst, Zsecond, Zthird }
+
+enum theirElem
+{ Zfirst, Zsecond, Zthird }
+
+enum theirElemAt
+{ Zfirst, Zsecond, Zthird }
+
+enum theirElemSize
+{ Zfirst, Zsecond, Zthird }
+
+enum theirKeyChildren
+{ Zfirst, Zsecond, Zthird }
+
+enum theirKeys
+{ Zfirst, Zsecond, Zthird }
+
+enum theirKids
+{ Zfirst, Zsecond, Zthird }
+
+enum theirKind
+{ Zfirst, Zsecond, Zthird }
+
+enum theirN
+{ Zfirst, Zsecond, Zthird }
+
+enum theirOff
+{ Zfirst, Zsecond, Zthird }
+
+enum theirSize
+{ Zfirst, Zsecond, Zthird }
+
+enum theirTag
+{ Zfirst, Zsecond, Zthird }
+
+enum theirVariants
+{ Zfirst, Zsecond, Zthird }
+
+enum theirWidest
+{ Zfirst, Zsecond, Zthird }
+
+enum their_id
+{ Zfirst, Zsecond, Zthird }
+
+enum theirs
+{ Zfirst, Zsecond, Zthird }
+
+enum them
+{ Zfirst, Zsecond, Zthird }
+
+enum there
+{ Zfirst, Zsecond, Zthird }
+
+enum they
+{ Zfirst, Zsecond, Zthird }
+
+enum third
+{ Zfirst, Zsecond, Zthird }
+
+enum through
+{ Zfirst, Zsecond, Zthird }
+
+enum ti
+{ Zfirst, Zsecond, Zthird }
+
+enum tid
+{ Zfirst, Zsecond, Zthird }
+
+enum tie
+{ Zfirst, Zsecond, Zthird }
+
+enum tier
+{ Zfirst, Zsecond, Zthird }
+
+enum tiers
+{ Zfirst, Zsecond, Zthird }
+
+enum timestamp
+{ Zfirst, Zsecond, Zthird }
+
+enum timestampParse
+{ Zfirst, Zsecond, Zthird }
+
+enum timestampText
+{ Zfirst, Zsecond, Zthird }
+
+enum timestampValue
+{ Zfirst, Zsecond, Zthird }
+
+enum timestamp_ns
+{ Zfirst, Zsecond, Zthird }
+
+enum tkey
+{ Zfirst, Zsecond, Zthird }
+
+enum tl
+{ Zfirst, Zsecond, Zthird }
+
+enum tlen
+{ Zfirst, Zsecond, Zthird }
+
+enum tmp
+{ Zfirst, Zsecond, Zthird }
+
+enum tmp8
+{ Zfirst, Zsecond, Zthird }
+
+enum tname
+{ Zfirst, Zsecond, Zthird }
+
+enum to
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    textTotalPast Inner
+    textUtf8 Inner
+    textZero Inner
+    text_boundary Inner
+    text_elem_bytes Inner
+    text_elem_used Inner
+    text_flags_registry Inner
+    text_holds_zero Inner
+    text_key Inner
+    text_len Inner
+}
+
+table NameTypes0
+{
+    one0  textTotalPast
+    many0 [..4]textTotalPast
+    one1  textUtf8
+    many1 [..4]textUtf8
+    one2  textZero
+    many2 [..4]textZero
+    one3  text_boundary
+    many3 [..4]text_boundary
+    one4  text_elem_bytes
+    many4 [..4]text_elem_bytes
+    one5  text_elem_used
+    many5 [..4]text_elem_used
+    one6  text_flags_registry
+    many6 [..4]text_flags_registry
+    one7  text_holds_zero
+    many7 [..4]text_holds_zero
+    one8  text_key
+    many8 [..4]text_key
+    one9  text_len
+    many9 [..4]text_len
+}
+
+table NameFields0
+{
+    textTotalPast uint32
+    textUtf8 uint32
+    textZero uint32
+    text_boundary uint32
+    text_elem_bytes uint32
+    text_elem_used uint32
+    text_flags_registry uint32
+    text_holds_zero uint32
+    text_key uint32
+    text_len uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    text_length Inner
+    text_list Inner
+    text_list_elem Inner
+    text_list_facts Inner
+    text_list_over_bound Inner
+    text_list_shape Inner
+    text_list_value Inner
+    text_max_alloc Inner
+    text_max_bytes Inner
+    text_max_nodes Inner
+}
+
+table NameTypes1
+{
+    one0  text_length
+    many0 [..4]text_length
+    one1  text_list
+    many1 [..4]text_list
+    one2  text_list_elem
+    many2 [..4]text_list_elem
+    one3  text_list_facts
+    many3 [..4]text_list_facts
+    one4  text_list_over_bound
+    many4 [..4]text_list_over_bound
+    one5  text_list_shape
+    many5 [..4]text_list_shape
+    one6  text_list_value
+    many6 [..4]text_list_value
+    one7  text_max_alloc
+    many7 [..4]text_max_alloc
+    one8  text_max_bytes
+    many8 [..4]text_max_bytes
+    one9  text_max_nodes
+    many9 [..4]text_max_nodes
+}
+
+table NameFields1
+{
+    text_length uint32
+    text_list uint32
+    text_list_elem uint32
+    text_list_facts uint32
+    text_list_over_bound uint32
+    text_list_shape uint32
+    text_list_value uint32
+    text_max_alloc uint32
+    text_max_bytes uint32
+    text_max_nodes uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    text_max_tokens Inner
+    text_optional Inner
+    text_start Inner
+    text_total Inner
+    text_unit Inner
+    text_valid Inner
+    text_value Inner
+    textbuf Inner
+    texts Inner
+    textual Inner
+}
+
+table NameTypes2
+{
+    one0  text_max_tokens
+    many0 [..4]text_max_tokens
+    one1  text_optional
+    many1 [..4]text_optional
+    one2  text_start
+    many2 [..4]text_start
+    one3  text_total
+    many3 [..4]text_total
+    one4  text_unit
+    many4 [..4]text_unit
+    one5  text_valid
+    many5 [..4]text_valid
+    one6  text_value
+    many6 [..4]text_value
+    one7  textbuf
+    many7 [..4]textbuf
+    one8  texts
+    many8 [..4]texts
+    one9  textual
+    many9 [..4]textual
+}
+
+table NameFields2
+{
+    text_max_tokens uint32
+    text_optional uint32
+    text_start uint32
+    text_total uint32
+    text_unit uint32
+    text_valid uint32
+    text_value uint32
+    textbuf uint32
+    texts uint32
+    textual uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    textvf Inner
+    than Inner
+    that Inner
+    the Inner
+    theirArm Inner
+    theirArmCount Inner
+    theirArmSize Inner
+    theirArms Inner
+    theirAt Inner
+    theirBase Inner
+}
+
+table NameTypes3
+{
+    one0  textvf
+    many0 [..4]textvf
+    one1  than
+    many1 [..4]than
+    one2  that
+    many2 [..4]that
+    one3  the
+    many3 [..4]the
+    one4  theirArm
+    many4 [..4]theirArm
+    one5  theirArmCount
+    many5 [..4]theirArmCount
+    one6  theirArmSize
+    many6 [..4]theirArmSize
+    one7  theirArms
+    many7 [..4]theirArms
+    one8  theirAt
+    many8 [..4]theirAt
+    one9  theirBase
+    many9 [..4]theirBase
+}
+
+table NameFields3
+{
+    textvf uint32
+    than uint32
+    that uint32
+    the uint32
+    theirArm uint32
+    theirArmCount uint32
+    theirArmSize uint32
+    theirArms uint32
+    theirAt uint32
+    theirBase uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    theirBytes Inner
+    theirChild Inner
+    theirChildren Inner
+    theirElem Inner
+    theirElemAt Inner
+    theirElemSize Inner
+    theirKeyChildren Inner
+    theirKeys Inner
+    theirKids Inner
+    theirKind Inner
+}
+
+table NameTypes4
+{
+    one0  theirBytes
+    many0 [..4]theirBytes
+    one1  theirChild
+    many1 [..4]theirChild
+    one2  theirChildren
+    many2 [..4]theirChildren
+    one3  theirElem
+    many3 [..4]theirElem
+    one4  theirElemAt
+    many4 [..4]theirElemAt
+    one5  theirElemSize
+    many5 [..4]theirElemSize
+    one6  theirKeyChildren
+    many6 [..4]theirKeyChildren
+    one7  theirKeys
+    many7 [..4]theirKeys
+    one8  theirKids
+    many8 [..4]theirKids
+    one9  theirKind
+    many9 [..4]theirKind
+}
+
+table NameFields4
+{
+    theirBytes uint32
+    theirChild uint32
+    theirChildren uint32
+    theirElem uint32
+    theirElemAt uint32
+    theirElemSize uint32
+    theirKeyChildren uint32
+    theirKeys uint32
+    theirKids uint32
+    theirKind uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    theirN Inner
+    theirOff Inner
+    theirSize Inner
+    theirTag Inner
+    theirVariants Inner
+    theirWidest Inner
+    their_id Inner
+    theirs Inner
+    them Inner
+    there Inner
+}
+
+table NameTypes5
+{
+    one0  theirN
+    many0 [..4]theirN
+    one1  theirOff
+    many1 [..4]theirOff
+    one2  theirSize
+    many2 [..4]theirSize
+    one3  theirTag
+    many3 [..4]theirTag
+    one4  theirVariants
+    many4 [..4]theirVariants
+    one5  theirWidest
+    many5 [..4]theirWidest
+    one6  their_id
+    many6 [..4]their_id
+    one7  theirs
+    many7 [..4]theirs
+    one8  them
+    many8 [..4]them
+    one9  there
+    many9 [..4]there
+}
+
+table NameFields5
+{
+    theirN uint32
+    theirOff uint32
+    theirSize uint32
+    theirTag uint32
+    theirVariants uint32
+    theirWidest uint32
+    their_id uint32
+    theirs uint32
+    them uint32
+    there uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    they Inner
+    third Inner
+    through Inner
+    ti Inner
+    tid Inner
+    tie Inner
+    tier Inner
+    tiers Inner
+    timestamp Inner
+    timestampParse Inner
+}
+
+table NameTypes6
+{
+    one0  they
+    many0 [..4]they
+    one1  third
+    many1 [..4]third
+    one2  through
+    many2 [..4]through
+    one3  ti
+    many3 [..4]ti
+    one4  tid
+    many4 [..4]tid
+    one5  tie
+    many5 [..4]tie
+    one6  tier
+    many6 [..4]tier
+    one7  tiers
+    many7 [..4]tiers
+    one8  timestamp
+    many8 [..4]timestamp
+    one9  timestampParse
+    many9 [..4]timestampParse
+}
+
+table NameFields6
+{
+    they uint32
+    third uint32
+    through uint32
+    ti uint32
+    tid uint32
+    tie uint32
+    tier uint32
+    tiers uint32
+    timestamp uint32
+    timestampParse uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    timestampText Inner
+    timestampValue Inner
+    timestamp_ns Inner
+    tkey Inner
+    tl Inner
+    tlen Inner
+    tmp Inner
+    tmp8 Inner
+    tname Inner
+    to Inner
+}
+
+table NameTypes7
+{
+    one0  timestampText
+    many0 [..4]timestampText
+    one1  timestampValue
+    many1 [..4]timestampValue
+    one2  timestamp_ns
+    many2 [..4]timestamp_ns
+    one3  tkey
+    many3 [..4]tkey
+    one4  tl
+    many4 [..4]tl
+    one5  tlen
+    many5 [..4]tlen
+    one6  tmp
+    many6 [..4]tmp
+    one7  tmp8
+    many7 [..4]tmp8
+    one8  tname
+    many8 [..4]tname
+    one9  to
+    many9 [..4]to
+}
+
+table NameFields7
+{
+    timestampText uint32
+    timestampValue uint32
+    timestamp_ns uint32
+    tkey uint32
+    tl uint32
+    tlen uint32
+    tmp uint32
+    tmp8 uint32
+    tname uint32
+    to uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

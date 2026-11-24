@@ -31,6 +31,9 @@
 #   fx <n>              the fixed(16, 16) field `fx` (min -10, max 10) as its RAW
 #                       scaled integer, n = value * 65536 (655360 is 10.0); a leg
 #                       that holds the field in whole units holds n / 65536
+#   ufx <n>             the ufixed(32, 32) field `ufx` (min 1, max 4e9) as its RAW scaled
+#                       integer, n = value * 2^32; the top raw bound 17179869184000000000
+#                       is past int64, so a leg holding it compares in the unsigned domain
 scalar_high            refused scalar 11
 scalar_low             refused scalar -1
 scalar_at_max          wrote   scalar 10
@@ -70,3 +73,8 @@ int128_at_min          wrote   huge -10
 fixed_raw_high         refused fx 655361
 fixed_raw_low          refused fx -655361
 fixed_raw_at_max       wrote   fx 655360
+fixed_raw_at_min       wrote   fx -655360
+ufixed_high            refused ufx 17179869184000000001
+ufixed_low             refused ufx 4294967295
+ufixed_at_max          wrote   ufx 17179869184000000000
+ufixed_at_min          wrote   ufx 4294967296

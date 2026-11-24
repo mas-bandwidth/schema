@@ -153,6 +153,9 @@ func leafFiniteCondition(f *ir.Field) string {
 func (g *tableGen) emitCollectTyped(st *ir.Struct) {
 	name := st.Name
 	g.pf("public static bool %sCollectTyped(%s v, ref TableWire.Ids ids)\n{\n", name, name)
+	// A NULL RECORD IS A VALUE OF THE WRONG KIND (DW-TABLE-SHAPE): a debug
+	// assert, as every write check on this leg is (docs/SPEC.md §5.1)
+	g.pf("    System.Diagnostics.Debug.Assert((object)v != null, \"a null %s is written\");\n", name)
 	if needsFieldsArray(st) {
 		g.pf("    TableFieldInfo[] fields = %sTableType().Fields;\n", name)
 	}
@@ -887,6 +890,9 @@ public static partial class TableWire
     }
     static bool Empty(object value, TableTypeInfo type)
     {
+        // a null record is never "at its default": it is a value of the wrong
+        // kind (DW-TABLE-SHAPE), a debug assert (docs/SPEC.md §5.1)
+        System.Diagnostics.Debug.Assert(value != null, "a null record is written");
         foreach (TableFieldInfo f in type.Fields) { if (Rides(value, f)) { return false; } }
         return true;
     }
@@ -981,6 +987,9 @@ public static partial class TableWire
     }
     static bool Collect(object value, TableTypeInfo type, ref Ids ids)
     {
+        // a null record, list element or arm payload is a value of the wrong
+        // kind (DW-TABLE-SHAPE): a debug assert (docs/SPEC.md §5.1)
+        System.Diagnostics.Debug.Assert(value != null, "a null record is written");
         foreach (TableFieldInfo f in type.Fields)
         {
             if (f.WireGuard != null && !f.WireGuard(value)) { continue; }
@@ -1244,6 +1253,9 @@ public static partial class TableWire
     }
     public static long Save(object value, TableTypeInfo type, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
     {
+        // a null root is a value of the wrong kind (DW-TABLE-SHAPE): a debug
+        // assert (docs/SPEC.md §5.1)
+        System.Diagnostics.Debug.Assert(value != null, "a null root is written");
         // Preserve first-use vocabulary order; the index only accelerates
         // references during the repeated collect, measure and write walks.
         // Bound extra stack use for large schemas; their existing linear

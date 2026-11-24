@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum clamped
+{ Zfirst, Zsecond, Zthird }
+
+enum clamps
+{ Zfirst, Zsecond, Zthird }
+
+enum clash
+{ Zfirst, Zsecond, Zthird }
+
+enum clean
+{ Zfirst, Zsecond, Zthird }
+
+enum clear_fields
+{ Zfirst, Zsecond, Zthird }
+
+enum clear_moved
+{ Zfirst, Zsecond, Zthird }
+
+enum clippy
+{ Zfirst, Zsecond, Zthird }
+
+enum closed
+{ Zfirst, Zsecond, Zthird }
+
+enum closed_kind
+{ Zfirst, Zsecond, Zthird }
+
+enum closing
+{ Zfirst, Zsecond, Zthird }
+
+enum cls
+{ Zfirst, Zsecond, Zthird }
+
+enum cls2
+{ Zfirst, Zsecond, Zthird }
+
+enum cls_name
+{ Zfirst, Zsecond, Zthird }
+
+enum cls_obj
+{ Zfirst, Zsecond, Zthird }
+
+enum cmp
+{ Zfirst, Zsecond, Zthird }
+
+enum cmp128
+{ Zfirst, Zsecond, Zthird }
+
+enum cmp16
+{ Zfirst, Zsecond, Zthird }
+
+enum cmp64
+{ Zfirst, Zsecond, Zthird }
+
+enum cmpS
+{ Zfirst, Zsecond, Zthird }
+
+enum cmpSigned
+{ Zfirst, Zsecond, Zthird }
+
+enum cmpU
+{ Zfirst, Zsecond, Zthird }
+
+enum cmpUnsigned
+{ Zfirst, Zsecond, Zthird }
+
+enum cmp_gt
+{ Zfirst, Zsecond, Zthird }
+
+enum cmp_lt
+{ Zfirst, Zsecond, Zthird }
+
+enum cmp_u64
+{ Zfirst, Zsecond, Zthird }
+
+enum cn
+{ Zfirst, Zsecond, Zthird }
+
+enum cnt
+{ Zfirst, Zsecond, Zthird }
+
+enum coalesced
+{ Zfirst, Zsecond, Zthird }
+
+enum code
+{ Zfirst, Zsecond, Zthird }
+
+enum code_point
+{ Zfirst, Zsecond, Zthird }
+
+enum codec
+{ Zfirst, Zsecond, Zthird }
+
+enum codecs
+{ Zfirst, Zsecond, Zthird }
+
+enum codes
+{ Zfirst, Zsecond, Zthird }
+
+enum cok
+{ Zfirst, Zsecond, Zthird }
+
+enum col
+{ Zfirst, Zsecond, Zthird }
+
+enum collect
+{ Zfirst, Zsecond, Zthird }
+
+enum collect_fn
+{ Zfirst, Zsecond, Zthird }
+
+enum collection_cap
+{ Zfirst, Zsecond, Zthird }
+
+enum color
+{ Zfirst, Zsecond, Zthird }
+
+enum cols
+{ Zfirst, Zsecond, Zthird }
+
+enum column
+{ Zfirst, Zsecond, Zthird }
+
+enum columns
+{ Zfirst, Zsecond, Zthird }
+
+enum comma
+{ Zfirst, Zsecond, Zthird }
+
+enum comment
+{ Zfirst, Zsecond, Zthird }
+
+enum commentText
+{ Zfirst, Zsecond, Zthird }
+
+enum commentTextHolds
+{ Zfirst, Zsecond, Zthird }
+
+enum comments
+{ Zfirst, Zsecond, Zthird }
+
+enum common
+{ Zfirst, Zsecond, Zthird }
+
+enum compAt
+{ Zfirst, Zsecond, Zthird }
+
+enum companion
+{ Zfirst, Zsecond, Zthird }
+
+enum compare
+{ Zfirst, Zsecond, Zthird }
+
+enum compare128
+{ Zfirst, Zsecond, Zthird }
+
+enum compareSigned
+{ Zfirst, Zsecond, Zthird }
+
+enum compare_map_keys
+{ Zfirst, Zsecond, Zthird }
+
+enum compatKinds
+{ Zfirst, Zsecond, Zthird }
+
+enum compat_old
+{ Zfirst, Zsecond, Zthird }
+
+enum compilePlan
+{ Zfirst, Zsecond, Zthird }
+
+enum compileStruct
+{ Zfirst, Zsecond, Zthird }
+
+enum compileValue
+{ Zfirst, Zsecond, Zthird }
+
+enum compiled_guarded
+{ Zfirst, Zsecond, Zthird }
+
+enum compiles
+{ Zfirst, Zsecond, Zthird }
+
+enum complete
+{ Zfirst, Zsecond, Zthird }
+
+enum compressed
+{ Zfirst, Zsecond, Zthird }
+
+enum compressedFloatParams
+{ Zfirst, Zsecond, Zthird }
+
+enum compressedMethod
+{ Zfirst, Zsecond, Zthird }
+
+enum compressedValue
+{ Zfirst, Zsecond, Zthird }
+
+enum cond
+{ Zfirst, Zsecond, Zthird }
+
+enum cond_ivar
+{ Zfirst, Zsecond, Zthird }
+
+enum cond_name
+{ Zfirst, Zsecond, Zthird }
+
+enum condition
+{ Zfirst, Zsecond, Zthird }
+
+enum conds
+{ Zfirst, Zsecond, Zthird }
+
+enum conjoin
+{ Zfirst, Zsecond, Zthird }
+
+enum constant
+{ Zfirst, Zsecond, Zthird }
+
+enum constants
+{ Zfirst, Zsecond, Zthird }
+
+enum constantsValid
+{ Zfirst, Zsecond, Zthird }
+
+enum consts
+{ Zfirst, Zsecond, Zthird }
+
+enum consumed
+{ Zfirst, Zsecond, Zthird }
+
+enum consumer
+{ Zfirst, Zsecond, Zthird }
+
+enum cont_idx
+{ Zfirst, Zsecond, Zthird }
+
+enum container
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    clamped Inner
+    clamps Inner
+    clash Inner
+    clean Inner
+    clear_fields Inner
+    clear_moved Inner
+    clippy Inner
+    closed Inner
+    closed_kind Inner
+    closing Inner
+}
+
+table NameTypes0
+{
+    one0  clamped
+    many0 [..4]clamped
+    one1  clamps
+    many1 [..4]clamps
+    one2  clash
+    many2 [..4]clash
+    one3  clean
+    many3 [..4]clean
+    one4  clear_fields
+    many4 [..4]clear_fields
+    one5  clear_moved
+    many5 [..4]clear_moved
+    one6  clippy
+    many6 [..4]clippy
+    one7  closed
+    many7 [..4]closed
+    one8  closed_kind
+    many8 [..4]closed_kind
+    one9  closing
+    many9 [..4]closing
+}
+
+table NameFields0
+{
+    clamped uint32
+    clamps uint32
+    clash uint32
+    clean uint32
+    clear_fields uint32
+    clear_moved uint32
+    clippy uint32
+    closed uint32
+    closed_kind uint32
+    closing uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    cls Inner
+    cls2 Inner
+    cls_name Inner
+    cls_obj Inner
+    cmp Inner
+    cmp128 Inner
+    cmp16 Inner
+    cmp64 Inner
+    cmpS Inner
+    cmpSigned Inner
+}
+
+table NameTypes1
+{
+    one0  cls
+    many0 [..4]cls
+    one1  cls2
+    many1 [..4]cls2
+    one2  cls_name
+    many2 [..4]cls_name
+    one3  cls_obj
+    many3 [..4]cls_obj
+    one4  cmp
+    many4 [..4]cmp
+    one5  cmp128
+    many5 [..4]cmp128
+    one6  cmp16
+    many6 [..4]cmp16
+    one7  cmp64
+    many7 [..4]cmp64
+    one8  cmpS
+    many8 [..4]cmpS
+    one9  cmpSigned
+    many9 [..4]cmpSigned
+}
+
+table NameFields1
+{
+    cls uint32
+    cls2 uint32
+    cls_name uint32
+    cls_obj uint32
+    cmp uint32
+    cmp128 uint32
+    cmp16 uint32
+    cmp64 uint32
+    cmpS uint32
+    cmpSigned uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    cmpU Inner
+    cmpUnsigned Inner
+    cmp_gt Inner
+    cmp_lt Inner
+    cmp_u64 Inner
+    cn Inner
+    cnt Inner
+    coalesced Inner
+    code Inner
+    code_point Inner
+}
+
+table NameTypes2
+{
+    one0  cmpU
+    many0 [..4]cmpU
+    one1  cmpUnsigned
+    many1 [..4]cmpUnsigned
+    one2  cmp_gt
+    many2 [..4]cmp_gt
+    one3  cmp_lt
+    many3 [..4]cmp_lt
+    one4  cmp_u64
+    many4 [..4]cmp_u64
+    one5  cn
+    many5 [..4]cn
+    one6  cnt
+    many6 [..4]cnt
+    one7  coalesced
+    many7 [..4]coalesced
+    one8  code
+    many8 [..4]code
+    one9  code_point
+    many9 [..4]code_point
+}
+
+table NameFields2
+{
+    cmpU uint32
+    cmpUnsigned uint32
+    cmp_gt uint32
+    cmp_lt uint32
+    cmp_u64 uint32
+    cn uint32
+    cnt uint32
+    coalesced uint32
+    code uint32
+    code_point uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    codec Inner
+    codecs Inner
+    codes Inner
+    cok Inner
+    col Inner
+    collect Inner
+    collect_fn Inner
+    collection_cap Inner
+    color Inner
+    cols Inner
+}
+
+table NameTypes3
+{
+    one0  codec
+    many0 [..4]codec
+    one1  codecs
+    many1 [..4]codecs
+    one2  codes
+    many2 [..4]codes
+    one3  cok
+    many3 [..4]cok
+    one4  col
+    many4 [..4]col
+    one5  collect
+    many5 [..4]collect
+    one6  collect_fn
+    many6 [..4]collect_fn
+    one7  collection_cap
+    many7 [..4]collection_cap
+    one8  color
+    many8 [..4]color
+    one9  cols
+    many9 [..4]cols
+}
+
+table NameFields3
+{
+    codec uint32
+    codecs uint32
+    codes uint32
+    cok uint32
+    col uint32
+    collect uint32
+    collect_fn uint32
+    collection_cap uint32
+    color uint32
+    cols uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    column Inner
+    columns Inner
+    comma Inner
+    comment Inner
+    commentText Inner
+    commentTextHolds Inner
+    comments Inner
+    common Inner
+    compAt Inner
+    companion Inner
+}
+
+table NameTypes4
+{
+    one0  column
+    many0 [..4]column
+    one1  columns
+    many1 [..4]columns
+    one2  comma
+    many2 [..4]comma
+    one3  comment
+    many3 [..4]comment
+    one4  commentText
+    many4 [..4]commentText
+    one5  commentTextHolds
+    many5 [..4]commentTextHolds
+    one6  comments
+    many6 [..4]comments
+    one7  common
+    many7 [..4]common
+    one8  compAt
+    many8 [..4]compAt
+    one9  companion
+    many9 [..4]companion
+}
+
+table NameFields4
+{
+    column uint32
+    columns uint32
+    comma uint32
+    comment uint32
+    commentText uint32
+    commentTextHolds uint32
+    comments uint32
+    common uint32
+    compAt uint32
+    companion uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    compare Inner
+    compare128 Inner
+    compareSigned Inner
+    compare_map_keys Inner
+    compatKinds Inner
+    compat_old Inner
+    compilePlan Inner
+    compileStruct Inner
+    compileValue Inner
+    compiled_guarded Inner
+}
+
+table NameTypes5
+{
+    one0  compare
+    many0 [..4]compare
+    one1  compare128
+    many1 [..4]compare128
+    one2  compareSigned
+    many2 [..4]compareSigned
+    one3  compare_map_keys
+    many3 [..4]compare_map_keys
+    one4  compatKinds
+    many4 [..4]compatKinds
+    one5  compat_old
+    many5 [..4]compat_old
+    one6  compilePlan
+    many6 [..4]compilePlan
+    one7  compileStruct
+    many7 [..4]compileStruct
+    one8  compileValue
+    many8 [..4]compileValue
+    one9  compiled_guarded
+    many9 [..4]compiled_guarded
+}
+
+table NameFields5
+{
+    compare uint32
+    compare128 uint32
+    compareSigned uint32
+    compare_map_keys uint32
+    compatKinds uint32
+    compat_old uint32
+    compilePlan uint32
+    compileStruct uint32
+    compileValue uint32
+    compiled_guarded uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    compiles Inner
+    complete Inner
+    compressed Inner
+    compressedFloatParams Inner
+    compressedMethod Inner
+    compressedValue Inner
+    cond Inner
+    cond_ivar Inner
+    cond_name Inner
+    condition Inner
+}
+
+table NameTypes6
+{
+    one0  compiles
+    many0 [..4]compiles
+    one1  complete
+    many1 [..4]complete
+    one2  compressed
+    many2 [..4]compressed
+    one3  compressedFloatParams
+    many3 [..4]compressedFloatParams
+    one4  compressedMethod
+    many4 [..4]compressedMethod
+    one5  compressedValue
+    many5 [..4]compressedValue
+    one6  cond
+    many6 [..4]cond
+    one7  cond_ivar
+    many7 [..4]cond_ivar
+    one8  cond_name
+    many8 [..4]cond_name
+    one9  condition
+    many9 [..4]condition
+}
+
+table NameFields6
+{
+    compiles uint32
+    complete uint32
+    compressed uint32
+    compressedFloatParams uint32
+    compressedMethod uint32
+    compressedValue uint32
+    cond uint32
+    cond_ivar uint32
+    cond_name uint32
+    condition uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    conds Inner
+    conjoin Inner
+    constant Inner
+    constants Inner
+    constantsValid Inner
+    consts Inner
+    consumed Inner
+    consumer Inner
+    cont_idx Inner
+    container Inner
+}
+
+table NameTypes7
+{
+    one0  conds
+    many0 [..4]conds
+    one1  conjoin
+    many1 [..4]conjoin
+    one2  constant
+    many2 [..4]constant
+    one3  constants
+    many3 [..4]constants
+    one4  constantsValid
+    many4 [..4]constantsValid
+    one5  consts
+    many5 [..4]consts
+    one6  consumed
+    many6 [..4]consumed
+    one7  consumer
+    many7 [..4]consumer
+    one8  cont_idx
+    many8 [..4]cont_idx
+    one9  container
+    many9 [..4]container
+}
+
+table NameFields7
+{
+    conds uint32
+    conjoin uint32
+    constant uint32
+    constants uint32
+    constantsValid uint32
+    consts uint32
+    consumed uint32
+    consumer uint32
+    cont_idx uint32
+    container uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

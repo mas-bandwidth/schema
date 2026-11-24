@@ -518,11 +518,23 @@ class Contracts(unittest.TestCase):
         # verdict-pipe controls.
         python_outer={name for name in outer if "python" in name}
         ruby_outer={name for name in outer if "ruby" in name}
-        self.assertEqual(outer-goose_outer-moo_outer-python_outer-ruby_outer,{"tables-view","tables-fixed-twin","tables-lists"})
+        cpp_outer=outer-goose_outer-moo_outer-python_outer-ruby_outer
+        self.assertEqual(cpp_outer,{"tables-view","tables-fixed-twin","tables-lists"})
+        # and the C++ external gates' runner uncaps every go test line those
+        # recipes hold: a reviewed replacement names each one.
+        runner=FakeRunner(ROOT,"cpp")
+        m.run_external(runner,"cpp")
+        reviewed=json.loads((runner.out/"Makefile.uncapped.json").read_text())["replacements"]
+        runner.temporary.cleanup()
+        for name in sorted(cpp_outer):
+            for line in blocks[name]:
+                if m.re.search(r"\bgo test\b",line):
+                    self.assertTrue(any(before in line for before in reviewed),
+                                    f"{name}: outer go test not uncapped by run_external: {line.strip()}")
         # The exact count of outer Go calls per C++ target: the readiness run
         # uncaps exactly three call sites (run_external), so a further call
         # added to a listed recipe would run capped and must turn this red.
-        self.assertEqual({name:outer_calls(name) for name in outer-goose_outer-moo_outer-python_outer-ruby_outer},
+        self.assertEqual({name:outer_calls(name) for name in cpp_outer},
                          {"tables-view":1,"tables-fixed-twin":1,"tables-lists":1})
         self.assertEqual(moo_outer,set(m.FIXED_GATES["moo"].split()))
         self.assertEqual(goose_outer,set(m.FIXED_GATES["goose"].split()))

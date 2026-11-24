@@ -1033,6 +1033,7 @@ end
 
 -- type ProbeArray (SPEC §6.1: the wire order is the declared order)
 function _M.WriteProbeArray(stream, v)
+  if type(v.Samples) ~= "table" or #v.Samples ~= 2 then return false end -- a [N]T holds exactly N values (SPEC §5.1)
   for _i = 1, 2 do
     if not _M.WriteProbeSample(stream, v.Samples[_i]) then return false end
   end
@@ -1148,6 +1149,8 @@ function _M.WriteTestData(stream, v)
   -- the offset from min
   if not stream:serializeBits64({ value = v.Int64Range - -1000000000000 }, 41) then return false end
   if not stream:serializeAlign() then return false end -- SPEC §4.3
+  -- a [N]T holds exactly N values (SPEC §5.1)
+  if type(v.FixedBytes) ~= "table" or #v.FixedBytes ~= 17 then return false end
   for _i = 1, 17 do
     -- the declared width (SPEC §5.1 row 11)
     if math.type(v.FixedBytes[_i]) ~= "integer" or v.FixedBytes[_i] < 0 or v.FixedBytes[_i] > 255 then return false end

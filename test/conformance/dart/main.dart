@@ -6329,7 +6329,7 @@ const String surfaces =
     'cook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\n'
     'forgery\ncook-forgery\ncook-reason\nblock-reason\n'
     'write-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n'
-    'write-refusal-cook\nwrite-refusal-block\nannounce\nread-into\njson-write-into\n'
+    'write-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\n'
     'unit shapes\n';
 
 void main(List<String> args) {
@@ -7045,6 +7045,7 @@ int run(List<String> args) {
     case 'write-refusal-fixed':
     case 'write-refusal-message':
     case 'write-refusal-json':
+    case 'write-refusal-shape':
       return surfaceWriteRefusal(out, surface);
     case 'write-refusal-cook':
       return surfaceWriteRefusalCook(out);
@@ -7507,8 +7508,11 @@ void _mutateSimStateWire(scalardemo.SimState w, String path, String vkind, Strin
   }
 }
 
-int surfaceWriteRefusal(String outDir, String surface) {
-  for (final f in kind(surface)) {
+// `rows` is the surface whose rows are answered: write-refusal-shape's lawful
+// twins are written as write-refusal writes them.
+int surfaceWriteRefusal(String outDir, String rows) {
+  final surface = rows == 'write-refusal-shape' ? 'write-refusal' : rows;
+  for (final f in kind(rows)) {
     final name = f[1];
     var unit = f[2];
     final root = f[3];
@@ -7516,6 +7520,14 @@ int surfaceWriteRefusal(String outDir, String surface) {
     final path = f[5];
     final vkind = f[6];
     final text = f[7];
+    // A VALUE OF THE WRONG KIND (`write-refusal-shape` kind `shape`,
+    // DW-TABLE-SHAPE) is one Dart's sound types cannot hold: every field,
+    // element, arm payload and root is its declared non-nullable type. The
+    // analyzer refuses it before any writer runs.
+    if (vkind == 'shape') {
+      File('$outDir/$name').writeAsStringSync('unrepresentable\n');
+      continue;
+    }
     if (surface == 'write-refusal-message') {
       List<String>? conn;
       for (final c in kind('connection')) {

@@ -215,8 +215,12 @@ func emitWriteScalar(m *Module, b *strings.Builder, val string, f *ir.Field, ind
 			t.IntBits, t.FracBits, IntLiteral(f.IntMin), IntLiteral(f.IntMax)), " -- the Q format's raw offset (SPEC §4.3)")
 	case ir.TFloat32:
 		if f.HasFloatRange {
+			// the range is held at the float32 ends, spelled as their float64
+			// values: Lua reads the decimal 0.3 as the double 0.3, below
+			// float32(0.3), and refused the declared max itself (SPEC §4.3,
+			// "A FLOAT LITERAL IS A float64 FIRST"; test/verify-bitphase f32lit.go)
 			fmt.Fprintf(b, "%sif type(%s) ~= \"number\" or %s ~= %s or %s < %s or %s > %s then return false end -- compressed-float range (SPEC §5.1 row 10)\n",
-				indent, val, val, val, val, FloatLiteral(f.FMin), val, FloatLiteral(f.FMax))
+				indent, val, val, val, val, FloatLiteral(float64(float32(f.FMin))), val, FloatLiteral(float64(float32(f.FMax))))
 			call(fmt.Sprintf("stream:serializeCompressedFloat({ value = %s }, %s, %s, %s)", val,
 				FloatLiteral(f.FMin), FloatLiteral(f.FMax), FloatLiteral(f.Resolution)), " -- the step index (SPEC §4.3)")
 		} else {

@@ -697,9 +697,13 @@ build/tables-generated-dart-framing/countedmin/.stamp: bin/schema $(DART_COUNTED
 	./bin/schema generate --lang dart --out build/tables-generated-dart-framing/countedmin $(DART_COUNTED_MIN_VARIABLE)
 	@touch $@
 
+# Dart is an ASSERT LEG: its write checks are debug asserts (an unpaired
+# surrogate, a zero byte, a range), and an assert leg answers the
+# write-refusal and json-write-refusal rows from a build where the check is
+# active (test/conformance/harness/run.go). The AOT driver is that build.
 build/conformance-dart: build/tables-generated-dart/.stamp $(CARDS_DART_STAMP) build/tables-generated-dart-framing/countedmin/.stamp test/conformance/dart/main.dart
 	@mkdir -p build
-	$(DART) compile exe -o $@ test/conformance/dart/main.dart >/dev/null
+	$(DART) compile exe --enable-asserts -o $@ test/conformance/dart/main.dart >/dev/null
 
 # Every unit build/conformance-dart reads, into any build root, from any
 # compiler: the corpus list above, the cards unit and the CountedMin framing
