@@ -861,9 +861,10 @@ func formatFloat(v float64) string {
 }
 
 // formatFloat32 renders a float32-precision literal: the shortest form that
-// parses to exactly float32(v) — as a JS double it holds that float32 value
-// exactly (f32 ⊂ f64), and the runtime frounds its parameters, so the wire
-// widths agree with ir.CompressedFloatBits in every target.
+// a float32 parser reads as exactly float32(v). JavaScript reads it as a
+// double, which is float32(v) only when the decimal is exact (-3.3 is not);
+// the stream runtime frounds its parameters, so the stream tier is exact, and
+// a literal the generated code computes with is flat.go's f32lit.
 func formatFloat32(v float64) string {
 	s := strconv.FormatFloat(v, 'g', -1, 32)
 	if !strings.ContainsAny(s, ".eE") {
