@@ -1225,8 +1225,12 @@ end
 -- D.copy_into replaces dst's keys in place with src's (FL-03 read-into reset).
 function D.copy_into(dst, src)
   if type(dst) ~= "table" or type(src) ~= "table" or dst == src then return end
-  for k in pairs(dst) do dst[k] = nil end
-  for k, v in pairs(src) do dst[k] = v end
+  for k in pairs(dst) do
+    dst[k] = nil
+  end
+  for k, v in pairs(src) do
+    dst[k] = v
+  end
 end
 
 return D

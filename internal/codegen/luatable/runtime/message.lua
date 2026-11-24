@@ -1264,9 +1264,7 @@ local function write_scalar(W, d, v)
     local width, base = int_bits(d)
     if s == "flags" then
       width, base = d.bits, 0
-      if math.type(v) ~= "integer" or v < 0 or (width < 64 and math.ult((1 << width) - 1, v)) then
-        return false
-      end
+      if math.type(v) ~= "integer" or v < 0 or (width < 64 and math.ult((1 << width) - 1, v)) then return false end
     end
     W:put(v - base, width)
   elseif s == "wide" then
@@ -1970,7 +1968,8 @@ function M.loadMessages(T, root, vocab, data, report, _strict, into)
   local out = load_messages_impl(T, root, vocab, data, report)
   if into ~= nil then
     local new = T["New" .. root]
-    local refused = out == nil or #out == 0
+    local refused = out == nil
+      or #out == 0
       or (
         report ~= nil
         and (report.damaged or (report.refused or 0) ~= 0 or (report.reason ~= nil and report.reason ~= ""))
@@ -1986,7 +1985,9 @@ function M.loadMessages(T, root, vocab, data, report, _strict, into)
       if into[i] == nil then into[i] = new() end
       D.copy_into(into[i], out[i])
     end
-    for i = n + 1, #into do into[i] = nil end
+    for i = n + 1, #into do
+      into[i] = nil
+    end
     return into
   end
   return out

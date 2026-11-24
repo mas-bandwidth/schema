@@ -392,30 +392,27 @@ func emitFixedForm(m *Module) error {
 				m.Printf("  -- RETIRED: %s\n", e.Reason)
 			}
 			ranges, rangeParts := fixedWriterRangesParts(st, e, hash)
-			tail := fmt.Sprintf("}), record = %d%s },", e.Record, ranges)
-			if len(e.Layout) > 1024 || len(tail) > lua.MaxLineLength {
-				m.Printf("  {\n    hash = %s,\n    layout = table.concat({\n", idLit(e.Wire))
-				for i := 0; i < len(e.Layout); i += 20 {
-					end := min(i+20, len(e.Layout))
-					m.Printf("      %s,\n", chunkedLuaByteString(e.Layout[i:end]))
-				}
-				m.Printf("    }),\n    record = %d,\n", e.Record)
-				if len(rangeParts) > 0 {
-					one := "ranges = { " + strings.Join(rangeParts, ", ") + " }"
-					if 4+len(one)+1 <= lua.MaxLineLength {
-						m.Printf("    %s,\n", one)
-					} else {
-						m.Printf("    ranges = {\n")
-						for _, rp := range rangeParts {
-							m.Printf("      %s,\n", rp)
-						}
-						m.Printf("    },\n")
-					}
-				}
-				m.Printf("  },\n")
-			} else {
-				m.Printf("  { hash = %s, layout = %s, record = %d%s },\n", idLit(e.Wire), chunkedLuaByteString(e.Layout), e.Record, ranges)
+			layout := chunkedLuaByteString(e.Layout)
+			compact := fmt.Sprintf("  { hash = %s, layout = %s, record = %d%s },", idLit(e.Wire), layout, e.Record, ranges)
+			if !strings.Contains(layout, "\n") && len(compact) <= lua.MaxLineLength {
+				m.Printf("%s\n", compact)
+				continue
 			}
+			m.Printf("  {\n    hash = %s,\n", idLit(e.Wire))
+			m.Printf("    layout = %s,\n    record = %d,\n", strings.ReplaceAll(layout, "\n", "\n    "), e.Record)
+			if len(rangeParts) > 0 {
+				one := "ranges = { " + strings.Join(rangeParts, ", ") + " }"
+				if 4+len(one)+1 <= lua.MaxLineLength {
+					m.Printf("    %s,\n", one)
+				} else {
+					m.Printf("    ranges = {\n")
+					for _, rp := range rangeParts {
+						m.Printf("      %s,\n", rp)
+					}
+					m.Printf("    },\n")
+				}
+			}
+			m.Printf("  },\n")
 		}
 		m.Printf("}\n")
 		m.Printf("_M.Fixed[%q].floor = %d\n", st.Name, floor)
