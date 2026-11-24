@@ -853,13 +853,13 @@ tables-elixir-alloc-pin: build/conformance-elixir-manifest/manifest.txt
 # THE AUDIT'S NEGATIVE CONTROL, and it is what makes the audit an instrument
 # rather than a number: the EMITTER is sabotaged (variableform.go, through
 # ELIXIR_SABOTAGED_BUILD) so every generated load also builds sixteen refc
-# binaries and a thousand-cell list and frees them at once, and every pinned
+# binaries and a ten-thousand-cell list and frees them at once, and every pinned
 # case must go over its budget on the heap-word column AND on the binary-call
 # column — each counted on its own from the audit's output, so a column that
 # lost its teeth is found on its own. A gate that cannot go red is not a gate.
 CONFORMANCE_NEGATIVE_ELIXIR_ALLOC := build/elixir-alloc-negative
-ELIXIR_ALLOC_SED := -e 's|^  def load(table, data) when is_binary(data), do: variable_read(table, data)$$|  def load(table, data) when is_binary(data), do: (_ = Enum.map(1..16, fn _ -> :binary.copy(<<0>>, 65) end) ++ List.duplicate(0, 1000); variable_read(table, data))|' \
-	-e 's|runtime = withFixedClassWire(u, ns, runtime)|runtime = strings.ReplaceAll(withFixedClassWire(u, ns, runtime), "  defp fixed_class_report(report) do", "  defp fixed_class_report(report) do _ = Enum.map(1..16, fn _ -> :binary.copy(<<0>>, 65) end) ++ List.duplicate(0, 1000);")|'
+ELIXIR_ALLOC_SED := -e 's|^  def load(table, data) when is_binary(data), do: variable_read(table, data)$$|  def load(table, data) when is_binary(data), do: (_ = Enum.map(1..16, fn _ -> :binary.copy(<<0>>, 65) end) ++ List.duplicate(0, 10000); variable_read(table, data))|' \
+	-e 's|runtime = withFixedClassWire(u, ns, runtime)|runtime = strings.ReplaceAll(withFixedClassWire(u, ns, runtime), "  defp fixed_class_report(report) do", "  defp fixed_class_report(report) do _ = Enum.map(1..16, fn _ -> :binary.copy(<<0>>, 65) end) ++ List.duplicate(0, 10000);")|'
 
 .PHONY: tables-elixir-alloc-negative-control
 tables-elixir-alloc-negative-control: build/conformance-elixir-manifest/manifest.txt
@@ -867,7 +867,7 @@ tables-elixir-alloc-negative-control: build/conformance-elixir-manifest/manifest
 	@if ELIXIR_TABLES_EBIN=$(CURDIR)/$(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC)/ebin $(ELIXIR) test/elixir-alloc/main.exs \
 			build/conformance-elixir-manifest/manifest.txt $(ELIXIR_PIN_OTP) $(ELIXIR_PIN_ELIXIR) audit $(ELIXIR_ALLOC_BUDGET) \
 			> $(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC)/log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: the audit passed with sixteen refc binaries and a thousand-cell list added to every generated load"; \
+		echo "NEGATIVE CONTROL FAILED: the audit passed with sixteen refc binaries and a ten-thousand-cell list added to every generated load"; \
 		cat $(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC)/log; exit 1; fi
 	@cases=$$(grep -c '^[a-z]' $(ELIXIR_ALLOC_BUDGET)); \
 	over=$$(grep 'over its pinned budget' $(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC)/log); \
@@ -876,7 +876,7 @@ tables-elixir-alloc-negative-control: build/conformance-elixir-manifest/manifest
 		{ echo "NEGATIVE CONTROL FAILED: the heap words column did not red every one of the $$cases pinned cases"; cat $(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC)/log; exit 1; }; \
 	[ "$$(echo "$$over" | grep -c 'binary calls')" -eq "$$cases" ] || \
 		{ echo "NEGATIVE CONTROL FAILED: the binary calls column did not red every one of the $$cases pinned cases"; cat $(CONFORMANCE_NEGATIVE_ELIXIR_ALLOC)/log; exit 1; }; \
-	echo "elixir alloc negative control: sixteen refc binaries and a thousand-cell list per generated load red the heap words and binary calls columns of all $$cases pinned cases"
+	echo "elixir alloc negative control: sixteen refc binaries and a ten-thousand-cell list per generated load red the heap words and binary calls columns of all $$cases pinned cases"
 
 # THE AUDIT'S RUNTIME CONTROL, as tables-elixir-runtime-pin-negative-control is
 # the pin's: the audit run with a pin nothing is running must refuse, name the
