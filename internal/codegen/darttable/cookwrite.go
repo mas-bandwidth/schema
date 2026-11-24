@@ -266,13 +266,14 @@ func (g *cookGen) cookEnumAssert(f *ir.Field, expr, ind string) {
 	if !ok {
 		return
 	}
-	cond := fmt.Sprintf("%s >= 0 && %s <= %d", expr, expr, len(e.Variants))
+	var cond strings.Builder
+	fmt.Fprintf(&cond, "%s >= 0 && %s <= %d", expr, expr, len(e.Variants))
 	for i := range e.Variants {
 		if i < len(e.VariantDeprecated) && e.VariantDeprecated[i] {
-			cond += fmt.Sprintf(" && %s != %d", expr, i+1)
+			fmt.Fprintf(&cond, " && %s != %d", expr, i+1)
 		}
 	}
-	g.cookAssert(ind, cond)
+	g.cookAssert(ind, cond.String())
 }
 
 // cookRefuseUnless writes `if (!<cond>) return <ret>;` the way dart format

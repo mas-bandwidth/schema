@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/mas-bandwidth/schema/v2/ir"
 	"slices"
+	"strings"
 )
 
 // Cooks are canonical artifacts. Native record padding and byte order never
@@ -415,11 +416,12 @@ func (g *tableGen) emitCookVariableRoot(st *ir.Struct) {
 // one marked `| deprecated` (docs/SPEC.md §5.1 row 5; docs/SPEC-TABLES.md
 // §2.15, §7.6).
 func cookEnumRefused(e *ir.Enum, src string) string {
-	cond := fmt.Sprintf("(uint64_t)(%s) > %d", src, len(e.Variants))
+	var cond strings.Builder
+	fmt.Fprintf(&cond, "(uint64_t)(%s) > %d", src, len(e.Variants))
 	for i := range e.Variants {
 		if i < len(e.VariantDeprecated) && e.VariantDeprecated[i] {
-			cond += fmt.Sprintf(" || (uint64_t)(%s) == %d", src, i+1)
+			fmt.Fprintf(&cond, " || (uint64_t)(%s) == %d", src, i+1)
 		}
 	}
-	return cond
+	return cond.String()
 }
