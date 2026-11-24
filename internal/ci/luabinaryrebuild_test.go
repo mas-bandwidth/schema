@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
 // rebuildEpoch is the fixed test clock: 1000.0 seconds, never the wall clock.
@@ -195,6 +197,7 @@ func (tree *luaRebuildTree) touch(t *testing.T, rel string, when time.Time) {
 // runMakeIn runs make in dir with --no-print-directory and returns its output.
 func runMakeIn(t *testing.T, dir string, args ...string) (string, error) {
 	t.Helper()
+	testinputs.Make(t)
 	cmd := exec.Command("make", append([]string{"--no-print-directory"}, args...)...)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()

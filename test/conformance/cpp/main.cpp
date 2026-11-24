@@ -2368,7 +2368,8 @@ static int write_refusal_write( const std::string & surface, const std::string &
     scratch.assign( (size_t) 1 << 20, 0 );
     const int64_t capacity = (int64_t) scratch.size();
     int64_t wrote = -1;
-    if ( surface == "write-refusal" ) wrote = codec->save( value, scratch.data(), capacity );
+    // the shape rows' lawful twins are written as write-refusal writes them
+    if ( surface == "write-refusal" || surface == "write-refusal-shape" ) wrote = codec->save( value, scratch.data(), capacity );
     else if ( surface == "write-refusal-fixed" )
     {
         if ( !write_refusal_fixed_save( root, value, scratch.data(), capacity, wrote ) ) return kNoSetterExit;
@@ -2444,6 +2445,10 @@ static int surface_write_refusal( const std::string & surface, const std::string
         if ( child == 0 )
         {
             alarm( kWrefChildSeconds );
+            // A VALUE OF THE WRONG KIND (`write-refusal-shape` kind `shape`,
+            // DW-TABLE-SHAPE) is one C++'s types cannot hold: the compiler
+            // refuses it before any writer runs
+            if ( surface == "write-refusal-shape" && f[6] == "shape" ) _exit( kUnrepresentableExit );
             if ( var_codec != NULL )
             {
                 std::vector<uint8_t> region;
@@ -2456,7 +2461,7 @@ static int surface_write_refusal( const std::string & surface, const std::string
                 const void * mval = cval;
                 const int quiet = open( "/dev/null", O_WRONLY );
                 if ( quiet >= 0 ) dup2( quiet, 2 );
-                if ( surface == "write-refusal" )
+                if ( surface == "write-refusal" || surface == "write-refusal-shape" )
                 {
                     scratch.assign( (size_t) 1 << 20, 0 );
                     const int64_t sz = var_codec->measure( mval );
@@ -2753,7 +2758,145 @@ struct ReadIntoCodec
         }                                                                                                           \
     }
 
+// THE RETAINING LOAD's row (README, "The `retain` form"): ONE report, which
+// the driver PRE-FILLS with every member set, through NodeLoadRetain of the
+// lawful file, the damaged one and the lawful one again. After each lawful
+// load the report must equal, MEMBER BY MEMBER, the report the same load
+// leaves in a fresh report (docs/SPEC-TABLES.md §6.5: every read zeroes a
+// supplied report in full as its first act, the retain family included).
+// Every member of TableReport is public, so the pre-fill sets each directly.
+static const char * retain_into_step( bool ok, bool refused )
+{
+    if ( ok && !refused ) return "read\n";
+    if ( !ok && refused ) return "refused\n";
+    return ok ? "read-with-refused-report\n" : "refused-with-clean-report\n";
+}
+
+static bool retain_into_load( const std::vector<uint8_t> & wire, tblrt1::TableReport & report )
+{
+    int64_t need = tblrt1::NodeLoadMeasure( wire.data(), (int64_t) wire.size() );
+    if ( need < 0 ) need = 0;
+    std::vector<uint8_t> raw( (size_t) need + 64, 0 );
+    uint8_t * region = raw.data() + ( ( 64 - ( (uintptr_t) raw.data() & 63 ) ) & 63 );
+    std::vector<uint8_t> bytes( (size_t) kRetainRoomy, 0 );
+    std::vector<tblrt1::TableRetain::Id> ids( (size_t) ( kRetainRoomy / 8 ) );
+    tblrt1::TableRetain retain;
+    retain.bytes = bytes.data();
+    retain.capacity = kRetainRoomy;
+    retain.ids = ids.data();
+    retain.id_capacity = (int32_t) ids.size();
+    return tblrt1::NodeLoadRetain( region, need, wire.data(), (int64_t) wire.size(), &retain, &report ) != NULL;
+}
+
+template <typename R>
+static std::string retain_into_compare( const R & r, const R & fresh )
+{
+    std::string kept;
+    char line[512];
+#define RETAIN_INTO_MEMBER( m )                                                                                   \
+    if ( r.m != fresh.m )                                                                                         \
+    {                                                                                                             \
+        snprintf( line, sizeof( line ), "kept " #m " %lld want %lld\n", (long long) r.m, (long long) fresh.m );    \
+        kept += line;                                                                                             \
+    }
+    RETAIN_INTO_MEMBER( unknown )
+    RETAIN_INTO_MEMBER( widened )
+    RETAIN_INTO_MEMBER( missing_required )
+    RETAIN_INTO_MEMBER( damaged )
+    RETAIN_INTO_MEMBER( refused )
+    RETAIN_INTO_MEMBER( reason.value )
+    RETAIN_INTO_MEMBER( damage_reason )
+    RETAIN_INTO_MEMBER( retained )
+    RETAIN_INTO_MEMBER( retain_lost )
+    RETAIN_INTO_MEMBER( refuse_reason )
+    RETAIN_INTO_MEMBER( non_finite_floats )
+    RETAIN_INTO_MEMBER( build_version_remote )
+    RETAIN_INTO_MEMBER( build_version_own )
+    RETAIN_INTO_MEMBER( layout_hash )
+#undef RETAIN_INTO_MEMBER
+    if ( strcmp( r.missing_required_fields, fresh.missing_required_fields ) != 0 )
+    {
+        kept += std::string( "kept missing_required_fields \"" ) + r.missing_required_fields + "\" want \"" +
+                fresh.missing_required_fields + "\"\n";
+    }
+    return kept.empty() ? "zeroed\n" : kept;
+}
+
+// THE ZEROING PROTOCOL shared by the `retain` and `region` forms: a fresh
+// report from the lawful load, then ONE pre-filled report through the lawful
+// load, the damaged one and the lawful one again, compared after each lawful
+// load. Every member of TableReport is public, so the pre-fill sets each one.
+template <typename R, typename RR, typename Load>
+static int read_into_zeroing( const char * what, const std::vector<uint8_t> & lawful, const std::vector<uint8_t> & damaged,
+                              std::string & answer, Load load )
+{
+    R fresh;
+    if ( !load( lawful, fresh ) || fresh.refused )
+    {
+        fprintf( stderr, "driver: read-into: the lawful %s load refused into a fresh report\n", what );
+        return 2;
+    }
+    R report;
+    report.unknown = 7;
+    report.widened = 7;
+    report.missing_required = 7;
+    snprintf( report.missing_required_fields, sizeof( report.missing_required_fields ), "stale" );
+    report.damaged = true;
+    report.refused = true;
+    report.reason = RR::malformed;
+    report.damage_reason = RR::integrity_mismatch;
+    report.retained = 7;
+    report.retain_lost = 7;
+    report.refuse_reason = RR::malformed;
+    report.non_finite_floats = 7;
+    report.build_version_remote = 7;
+    report.build_version_own = 7;
+    report.layout_hash = 7;
+    auto step = [&]( const std::vector<uint8_t> & in ) {
+        try
+        {
+            const bool ok = load( in, report );
+            answer += retain_into_step( ok, read_into_refused( report ) );
+        }
+        catch ( ... )
+        {
+            answer += "threw\n";
+        }
+    };
+    step( lawful );
+    answer += retain_into_compare( report, fresh );
+    step( damaged );
+    step( lawful );
+    answer += retain_into_compare( report, fresh );
+    return 0;
+}
+
+static int read_into_retain( const std::string & form, const std::vector<uint8_t> & lawful, const std::vector<uint8_t> & damaged,
+                             int64_t count, const std::vector<uint8_t> &, std::string & answer )
+{
+    if ( form != "retain" || count != 1 ) return 1;
+    return read_into_zeroing<tblrt1::TableReport, tblrt1::TableRefuseReason>( "retaining", lawful, damaged, answer, retain_into_load );
+}
+
+// THE PLAIN REGION READ (README, "The `region` form"): surfaces::CountedLoad
+// into a 64-aligned region of its measured size, under the protocol above.
+static bool region_into_load( const std::vector<uint8_t> & wire, surfaces::TableReport & report )
+{
+    int64_t need = surfaces::CountedLoadMeasure( wire.data(), (int64_t) wire.size() );
+    if ( need < 0 ) need = 0;
+    std::vector<uint8_t> raw( (size_t) need + 64, 0 );
+    uint8_t * region = raw.data() + ( ( 64 - ( (uintptr_t) raw.data() & 63 ) ) & 63 );
+    return surfaces::CountedLoad( region, need, wire.data(), (int64_t) wire.size(), &report ) != NULL;
+}
+
+static int read_into_region( const std::vector<uint8_t> & lawful, const std::vector<uint8_t> & damaged, int64_t count, std::string & answer )
+{
+    if ( count != 1 ) return 1;
+    return read_into_zeroing<surfaces::TableReport, surfaces::TableRefuseReason>( "region", lawful, damaged, answer, region_into_load );
+}
+
 static const ReadIntoCodec read_into_codecs[] = {
+    { "tblrt1", "Node", read_into_retain },
     READINTO_VAR( "tblsurf", surfaces, Counted ),
     READINTO_FIXED( "tblsurf", surfaces, Narrow ),
     READINTO_FIXED( "backenddemo", backenddemo, StorePurchase ),
@@ -2776,6 +2919,19 @@ static int surface_read_into( const std::string & out )
             if ( !spill( out, f[1], none, strlen( none ) ) ) return 1;
             continue;
         }
+        if ( f[4] == "retain-fixed" )
+        {
+            // NO CALL TO HOLD (docs/SPEC-TABLES.md §6.6): C++ refuses
+            // <Root>LoadRetain on a FIXED-class root at COMPILE time. The
+            // generator declares it as a variadic function template whose
+            // body is a static_assert that always fails
+            // (internal/codegen/cpptable/retain.go:1686, emitRetainRefusals),
+            // so surfaces::NarrowLoadRetain( ... ) does not compile and no
+            // call can be handed a report
+            const char * none = "unrepresentable\n";
+            if ( !spill( out, f[1], none, strlen( none ) ) ) return 1;
+            continue;
+        }
         const ReadIntoCodec * rc = NULL;
         for ( size_t j = 0; j < sizeof( read_into_codecs ) / sizeof( read_into_codecs[0] ); j++ )
         {
@@ -2790,7 +2946,11 @@ static int surface_read_into( const std::string & out )
         const long long count = strtoll( f[7].c_str(), &end, 10 );
         if ( end == NULL || *end != 0 || count < 1 ) { fprintf( stderr, "driver: read-into %s: %s is no count\n", f[1].c_str(), f[7].c_str() ); return 1; }
         std::string answer;
-        const int ran = rc->run( f[4], lawful, damaged, (int64_t) count, announcement, answer );
+        // the `region` form is the plain region read, which the builder codec
+        // above does not make: tblsurf.Counted's is answered here
+        const int ran = f[4] == "region" && f[2] == "tblsurf" && f[3] == "Counted"
+                            ? read_into_region( lawful, damaged, (int64_t) count, answer )
+                            : rc->run( f[4], lawful, damaged, (int64_t) count, announcement, answer );
         if ( ran == 1 ) { fprintf( stderr, "driver: read-into %s: no %s form for %s.%s\n", f[1].c_str(), f[4].c_str(), f[2].c_str(), f[3].c_str() ); return 1; }
         if ( ran == 2 ) { fprintf( stderr, "driver: read-into %s: unanswered\n", f[1].c_str() ); continue; }
         if ( !spill( out, f[1], answer.data(), answer.size() ) ) return 1;
@@ -2864,7 +3024,7 @@ int main( int argc, char ** argv )
     if ( surface == "list" )
     {
         printf( "wire\nmessage\nmessage-prior\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook-write\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n"
-                "write-refusal-cook\nwrite-refusal-block\nannounce\nread-into\njson-write-into\n" );
+                "write-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\n" );
         // the opt-in units this leg answers (MANIFEST.txt `opt-in`)
         printf( "unit shapes\n" );
         return 0;
@@ -2894,7 +3054,8 @@ int main( int argc, char ** argv )
     if ( surface == "forgery" ) return surface_forgery( out );
     if ( surface == "block-reason" ) return surface_block_reason( out );
     if ( surface == "write-refusal" || surface == "write-refusal-fixed" || surface == "write-refusal-message" ||
-         surface == "write-refusal-json" || surface == "write-refusal-cook" || surface == "write-refusal-block" )
+         surface == "write-refusal-json" || surface == "write-refusal-cook" || surface == "write-refusal-block" ||
+         surface == "write-refusal-shape" )
     {
         return surface_write_refusal( surface, out );
     }

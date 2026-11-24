@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/provesran"
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
 // TestConformanceLegsRebuildFromTheirInputs pins each conformance leg's
@@ -185,6 +186,7 @@ func makeGraph(t *testing.T, root string, replace map[string]string) map[string]
 	}
 	// -q runs no recipe; the target names nothing, so make stops after it
 	// has printed the database
+	testinputs.Make(t)
 	cmd := exec.Command("make", "--no-print-directory", "-f", makefile, "-p", "-q", "conformance-leg-inputs-no-such-target")
 	cmd.Dir = root
 	out := makeQueryOutput(t, cmd)

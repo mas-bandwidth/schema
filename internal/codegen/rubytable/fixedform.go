@@ -19,6 +19,17 @@ import (
 
 type fixedLiteral string
 
+// fixedLiteralChunk is the most elements one array literal of the fixed-form
+// data holds; a longer array is written as arrays of that size joined by +.
+//
+// THE ARRAY IS THE COST. RuboCop's Style/HashAsLastArrayItem walks every
+// element of an array once for each hash in it, so an array of n hashes costs n
+// squared. A fixed table of 4095 fields is written out four times in its
+// _fixed_data.rb, and that one cop took 41 s on that one file, which killed the
+// strict-ruby nightly-fast job at its time cap (main run 45330307461). At 32
+// elements to a literal the same cop, on the same values, takes 0.4 s.
+const fixedLiteralChunk = 32
+
 // GenerateLineage generates the ordinary classes and the fixed-form plans from
 // caller-supplied locked layouts. No generated reader parses a file's layout.
 func GenerateLineage(u *ir.Unit, lineage map[string][]FixedLineageEntry) (map[string][]byte, error) {
@@ -42,11 +53,17 @@ func fixedRubyLiteralOf(v any) string {
 		if len(x) == 0 {
 			return "_s_fixed_arr"
 		}
-		a := make([]string, len(x))
-		for i, v := range x {
-			a[i] = fixedRubyLiteralOf(v)
+		// at most fixedLiteralChunk elements to an array literal, joined by +
+		// (the same array): see fixedLiteralChunk
+		var chunks []string
+		for lo := 0; lo < len(x); lo += fixedLiteralChunk {
+			a := make([]string, 0, fixedLiteralChunk)
+			for _, v := range x[lo:min(lo+fixedLiteralChunk, len(x))] {
+				a = append(a, fixedRubyLiteralOf(v))
+			}
+			chunks = append(chunks, "["+strings.Join(a, ", ")+"]")
 		}
-		return "[" + strings.Join(a, ", ") + "]"
+		return strings.Join(chunks, " + ")
 	case map[string]any:
 		if len(x) == 0 {
 			return "_s_fixed_hash"

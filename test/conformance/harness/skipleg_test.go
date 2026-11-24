@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
 // TestSkippedLegIsNotAConformancePrerequisite is the skip gate on the
@@ -32,6 +33,7 @@ func TestSkippedLegIsNotAConformancePrerequisite(t *testing.T) {
 
 	conformance := func(skip string) []string {
 		t.Helper()
+		testinputs.Make(t)
 		mk := exec.Command("make", "-s", "registry")
 		mk.Dir = root
 		env := []string{}

@@ -30,6 +30,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/compiler"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -149,6 +150,7 @@ func mooFuzzHost(t *testing.T) string {
 			mooHostPath = host
 			return
 		}
+		testinputs.Build(t)
 		cmd := testproc.Command(t, "make", "build/moofuzzhost/moofuzzhost")
 		cmd.Dir = root
 		if out, err := cmd.CombinedOutput(); err != nil {

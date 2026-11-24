@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
 const (
@@ -48,10 +50,8 @@ func runHook(t *testing.T, dir, remote, line string) (int, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Read the hook here so the go test cache sees it as an input and reruns when it changes.
-	if _, err := os.ReadFile(hook); err != nil {
-		t.Fatal(err)
-	}
+	// the go test cache sees the hook as an input and reruns when it changes
+	testinputs.Files(t, hook)
 	cmd := exec.Command("bash", hook, remote, "ignored-url")
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
