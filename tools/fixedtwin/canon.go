@@ -399,6 +399,7 @@ func normalizeSyntax(s string) string {
 		{"inline int TableFixedKnownKind", "inline bool TableFixedKnownKind"},
 		{"inline int TableFixedParseLayout", "inline bool TableFixedParseLayout"},
 		{"inline int TableFixedRefuseScan", "inline bool TableFixedRefuseScan"},
+		{"inline int TableFixedChildrenNamed", "inline bool TableFixedChildrenNamed"},
 		{"const TableFixedEntry * p", "const TableFixedEntry REF p"},
 		{"const TableFixedEntry & p", "const TableFixedEntry REF p"},
 		{"const TableFixedEntry * e", "const TableFixedEntry REF e"},
@@ -492,6 +493,7 @@ func normalizeSyntax(s string) string {
 		"inline bool TableFixedKnownKind",
 		"inline bool TableFixedParseLayout",
 		"inline bool TableFixedRefuseScan",
+		"inline bool TableFixedChildrenNamed",
 	} {
 		s = rewriteReturnsInFunc(s, fn)
 	}

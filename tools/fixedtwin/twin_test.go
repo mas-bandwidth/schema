@@ -378,3 +378,65 @@ func TestOpenDisagreementsAreNamed(t *testing.T) {
 		t.Fatalf("an unrelated leftover was named as an open disagreement: %q", got)
 	}
 }
+
+// C spells the lineage predicate table_fixed_children_named as an int with
+// return 0 / return 1; C++ spells it bool with false / true. That is the same
+// int-for-bool spelling the map already carries for the other predicates, not
+// a fourth named remaining. The map rewrites the spelling only: an inverted
+// answer on either leg still reds.
+const childrenNamedC = `
+static SCHEMA_UNUSED int table_fixed_children_named( const TableFixedLayoutView * theirs, int32_t ti,
+    const TableFixedLayoutView * mine, int32_t mi )
+{
+    const TableFixedLayoutEntry te = table_fixed_entry_at( theirs, ti );
+    int32_t tc_at = ti + 1;
+    uint32_t j;
+    for ( j = 0; j < te.children && tc_at < theirs->count; ++j )
+    {
+        int named = 0;
+        if ( table_fixed_entry_at( mine, mi + 1 ).id == table_fixed_entry_at( theirs, tc_at ).id ) { named = 1; }
+        if ( !named ) { return 0; }
+        tc_at += table_fixed_subtree( theirs, tc_at );
+    }
+    return 1;
+}
+`
+
+const childrenNamedCpp = `
+inline bool TableFixedChildrenNamed( const TableFixedLayoutView & theirs, int32_t ti,
+    const TableFixedLayoutView & mine, int32_t mi )
+{
+    const TableFixedLayoutEntry te = TableFixedEntryAt( theirs, ti );
+    int32_t tc_at = ti + 1;
+    for ( uint32_t j = 0; j < te.children && tc_at < theirs.count; ++j )
+    {
+        bool named = false;
+        if ( TableFixedEntryAt( mine, mi + 1 ).id == TableFixedEntryAt( theirs, tc_at ).id ) { named = true; }
+        if ( !named ) { return false; }
+        tc_at += TableFixedSubtree( theirs, tc_at );
+    }
+    return true;
+}
+`
+
+func TestChildrenNamedBoolSpellingAgrees(t *testing.T) {
+	left := diffLines("fixture", canonicalize(childrenNamedC), canonicalize(childrenNamedCpp))
+	if len(left) != 0 {
+		t.Fatalf("children-named int/bool spelling should be empty after the map:\n%s", strings.Join(left, "\n"))
+	}
+}
+
+func TestChildrenNamedInvertedAnswerReds(t *testing.T) {
+	for _, fault := range []struct{ name, from, to string }{
+		{"the C leg answers 1 for an unnamed child", "if ( !named ) { return 0; }", "if ( !named ) { return 1; }"},
+		{"the C leg answers 0 when every child is named", "    return 1;\n}", "    return 0;\n}"},
+	} {
+		planted := strings.Replace(childrenNamedC, fault.from, fault.to, 1)
+		if planted == childrenNamedC {
+			t.Fatalf("%s: the plant patched nothing", fault.name)
+		}
+		if left := diffLines("fixture", canonicalize(planted), canonicalize(childrenNamedCpp)); len(left) == 0 {
+			t.Errorf("%s: the twin map swallowed an inverted predicate", fault.name)
+		}
+	}
+}

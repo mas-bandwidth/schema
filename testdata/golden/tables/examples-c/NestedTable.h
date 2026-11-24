@@ -3007,7 +3007,7 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_match_children( tabledemo_table_
 {
     const tabledemo_table_fixed_layout_entry_t te = tabledemo_table_fixed_entry_at( theirs, ti );
     const tabledemo_table_fixed_layout_entry_t me = tabledemo_table_fixed_entry_at( mine, mi );
-    int32_t my_child = mi + 1;
+    int32_t my_child;
     /* THE LOOP INDICES ARE DECLARED AHEAD OF THEIR LOOPS, which is this
        backend's shape everywhere and not a C99 limitation: a redeclaration
        inside the inner loop would shadow these two and trip -Wshadow. */
@@ -3018,6 +3018,7 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_match_children( tabledemo_table_
         c->unlawful = 1;
         return;
     }
+    my_child = mi + 1;
     for ( k = 0; k < me.children && my_child < mine->count; ++k )
     {
         const tabledemo_table_fixed_layout_entry_t mc = tabledemo_table_fixed_entry_at( mine, my_child );
@@ -3334,15 +3335,16 @@ static SCHEMA_UNUSED void tabledemo_table_fixed_compile_entry( tabledemo_table_f
             }
             case 30: /* an enum: the ordinal is the layout's position, so it remaps */
             {
-                if ( ( guard != SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD ) != c->want_guarded ) { break; }
                 /* A REMOVED VARIANT IS UNLAWFUL (§5.1 "variant removed"), on the
                    grown-width widen path and the same-width remap alike: never
-                   remap by id and let the lost variant land None. */
+                   remap by id and let the lost variant land None. Decided before
+                   the pass gate so either pass sees it, as the C++ twin does. */
                 if ( !tabledemo_table_fixed_children_named( theirs, ti, mine, mi ) )
                 {
                     c->unlawful = 1;
                     break;
                 }
+                if ( ( guard != SCHEMA_TABLEDEMO_TABLE_FIXED_NO_GUARD ) != c->want_guarded ) { break; }
                 if ( te.size < me.size )
                 {
                     tabledemo_table_fixed_entry_t e = tabledemo_table_fixed_entry_zero();
