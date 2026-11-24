@@ -449,7 +449,6 @@ function FixedTableFixedLoadWalk(values, capacity, bytes, byteLength, plan, repo
   }
   if (plan === null) { report.refused = TableFixedRefusal.PlanTooLarge; return -1; }
   let entries = FixedTableFixedIdentity, entryCount = 1, remap = null;
-  let censusUnknown = 0, censusKind = 0;
   const recordBytes = known.recordBytes;
   const lane = FixedTableFixedLineagePlans[pick];
   if (lane !== null) {
@@ -459,9 +458,6 @@ function FixedTableFixedLoadWalk(values, capacity, bytes, byteLength, plan, repo
     // a plan that does not fit refuses BY NAME.
     if (lane.count > plan.capacity) { report.refused = TableFixedRefusal.PlanTooLarge; return -1; }
     entries = lane.entries; entryCount = lane.count; remap = lane.remap;
-    // THE CENSUS IS ONCE PER ENDPOINT and never per record (§5.4); it lands
-    // after the loop, on a read that RETURNS — REFUSE moves no counter.
-    censusUnknown = lane.unknown; censusKind = lane.mismatch;
   }
   // THE HEADER NAMES THE LAYOUT ONCE. Identity memcmps the file's layout
   // against this build's; digest is not on the wire, so the header hash is
@@ -527,13 +523,11 @@ function FixedTableFixedLoadWalk(values, capacity, bytes, byteLength, plan, repo
     at += recordBytes;
   }
   }
-  // THE COMPILE CENSUS AND THE LOOP'S COUNTERS LAND ONCE, AFTER THE LOOP, on
-  // a read that returns (§5.3, §5.9 #6). On a LAWFUL lineage unknown and
-  // mismatch land zero, always (§5.9 #30).
+  // THE LOOP'S COUNTERS LAND ONCE, AFTER THE LOOP, on a read that returns
+  // (§5.3, §5.9 #6). There is no compile census: an unlawful lineage entry
+  // refused above by name and laid no plan (§5.4, §5.9 #30).
   report.oor += stage.oor;
   report.widened += stage.widened;
-  report.unknown += censusUnknown;
-  report.mismatch += censusKind;
   return n;
 }
 
