@@ -34,7 +34,8 @@ fn process(line: const u8[:]) {
         return;
     }
     let ratio = fields[4] == "RatioEndpoint";
-    if !ratio && fields[4] != "CFloat" {
+    let pair = fields[4] == "RatioPair";
+    if !ratio && !pair && fields[4] != "CFloat" {
         fail(fields[0], "unknown type");
         return;
     }
@@ -45,10 +46,14 @@ fn process(line: const u8[:]) {
     let value = serialize_f32_from_bits(bits);
     var v = cfloat::CFloat { X: value };
     var rv = cfloat::RatioEndpoint { Ratio: value };
+    // a RatioPair writes the value into both fields
+    var pv = cfloat::RatioPair { First: value, Second: value };
     var wbuf: u8[64] = [0; 64];
     var w = serialize_write_stream_init(wbuf);
     var refusal = SERIALIZE_ERROR_NONE;
-    if ratio {
+    if pair {
+        refusal = cfloat::WriteRatioPair(w, pv);
+    } else if ratio {
         refusal = cfloat::WriteRatioEndpoint(w, rv);
     } else {
         refusal = cfloat::WriteCFloat(w, v);
@@ -78,7 +83,13 @@ fn process(line: const u8[:]) {
             var r = serialize_read_stream_init_padded(rbuf, wbuf[0..n]);
             var got: u32 = 0;
             var read = false;
-            if ratio {
+            if pair {
+                // reads back only when the two fields agree
+                var out = cfloat::RatioPair { .. };
+                read = cfloat::ReadRatioPair(r, out);
+                got = serialize_f32_bits(out.First);
+                if serialize_f32_bits(out.Second) != got { read = false; }
+            } else if ratio {
                 var out = cfloat::RatioEndpoint { .. };
                 read = cfloat::ReadRatioEndpoint(r, out);
                 got = serialize_f32_bits(out.Ratio);

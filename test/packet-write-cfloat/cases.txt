@@ -1,7 +1,8 @@
 # The packet Write of a compressed float (PacketCFloat.schema), SPEC.md §5.1
 # row 10 and PACKET-WIRE-ALGORITHM.md §2.5. A case writes CFloat.x (min = 0.0,
 # max = 10.0, resolution = 0.01) unless it names `type RatioEndpoint`, which
-# writes RatioEndpoint.ratio (min = 0.0, max = 1.0, resolution = 0.01).
+# writes RatioEndpoint.ratio (min = 0.0, max = 1.0, resolution = 0.01), or
+# `type RatioPair`, which writes the value to both of RatioPair's fields.
 #
 # "refused" means: by the debug build's assert in an assert leg (C, C++, C#,
 # Rust, Java, Dart), and by the writer's refusal in every build in an
@@ -12,7 +13,7 @@
 # names the value a read returns when it differs from the one written.
 #
 # One case per line: <name> <value> <verdict> [reads-back <value>]
-# [type RatioEndpoint wire <hex> bits <n>]. `wire` is the written case's
+# [type RatioEndpoint|RatioPair wire <hex> bits <n>]. `wire` is the written case's
 # complete bytes after the flush: exactly that many bytes, equal to <hex>.
 # `bits` is the number of bits the write emits before the flush pads the
 # last byte: a writer that spends one bit too many writes the same bytes,
@@ -34,3 +35,10 @@ negative-zero             -0.0           written reads-back +0.0
 # bits and one zero padding bit.
 ratio-at-min              0.0            written type RatioEndpoint wire 00 bits 7
 ratio-at-max              1.0            written type RatioEndpoint wire 64 bits 7
+
+# Step index 100 twice, the second field starting at bit 7: 0x64 | 0x64 << 7
+# is 0x3264, low byte first. A writer whose ratio width drifts from seven
+# bits moves the second field, so the bytes change even in a leg whose
+# writer returns bytes and cannot report its bit count (Dart, Elixir, the
+# JavaScript flat tier).
+pair-at-max               1.0            written type RatioPair wire 6432 bits 14

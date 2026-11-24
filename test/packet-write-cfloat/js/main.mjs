@@ -36,7 +36,7 @@ function parseValue(text) {
 }
 
 // One case per line: <name> <value> <verdict> [reads-back <value>]
-// [type RatioEndpoint wire <hex> bits <n>]; the modifiers come in pairs.
+// [type RatioEndpoint|RatioPair wire <hex> bits <n>]; the modifiers come in pairs.
 function readCases() {
   const cases = [];
   for (const raw of readFileSync(casesURL, "utf8").split("\n")) {
@@ -47,10 +47,11 @@ function readCases() {
       throw new Error(`cases.txt: ${f[0]}: verdict "${f[2]}" is neither written nor refused`);
     }
     if (f.length % 2 !== 1) throw new Error(`cases.txt: ${f[0]}: a modifier has no operand`);
-    const c = { name: f[0], value: parseValue(f[1]), written: f[2] === "written", readsBack: undefined, ratio: false, wire: undefined, bits: undefined };
+    const c = { name: f[0], value: parseValue(f[1]), written: f[2] === "written", readsBack: undefined, ratio: false, pair: false, wire: undefined, bits: undefined };
     for (let i = 3; i + 1 < f.length; i += 2) {
       if (f[i] === "reads-back") c.readsBack = parseValue(f[i + 1]);
       else if (f[i] === "type" && f[i + 1] === "RatioEndpoint") c.ratio = true;
+      else if (f[i] === "type" && f[i + 1] === "RatioPair") c.pair = true;
       else if (f[i] === "wire") c.wire = f[i + 1].toLowerCase();
       else if (f[i] === "bits" && /^[0-9]+$/.test(f[i + 1])) c.bits = Number(f[i + 1]);
       else throw new Error(`cases.txt: ${f[0]}: unknown modifier ${f[i]} ${f[i + 1]}`);
@@ -71,9 +72,19 @@ function sameNumber(actual, expected) {
   return actual === expected && Object.is(actual, -0) === Object.is(expected, -0);
 }
 
+// A RatioPair's two fields must read back alike; NaN fails the comparison.
+function pairValue(output) {
+  return sameNumber(output.first, output.second) ? output.first : NaN;
+}
+
 function writeRuntime(c) {
   const stream = new WriteStream(new Uint8Array(64));
-  if (c.ratio) {
+  if (c.pair) {
+    const input = new runtime.RatioPair();
+    input.first = c.value;
+    input.second = c.value;
+    if (!runtime.WriteRatioPair(stream, input)) return null;
+  } else if (c.ratio) {
     const input = new runtime.RatioEndpoint();
     input.ratio = c.value;
     if (!runtime.WriteRatioEndpoint(stream, input)) return null;
@@ -90,6 +101,11 @@ function writeRuntime(c) {
 
 function readRuntime(c, wire) {
   const stream = new ReadStream(wire.bytes);
+  if (c.pair) {
+    const output = new runtime.RatioPair();
+    if (!runtime.ReadRatioPair(stream, output)) return null;
+    return pairValue(output);
+  }
   if (c.ratio) {
     const output = new runtime.RatioEndpoint();
     if (!runtime.ReadRatioEndpoint(stream, output)) return null;
@@ -102,7 +118,11 @@ function readRuntime(c, wire) {
 
 function writeFlat(c) {
   const view = new DataView(new ArrayBuffer(64));
-  const size = c.ratio ? flat.WriteRatioEndpointFlat(view, { ratio: c.value }) : flat.WriteCFloatFlat(view, { x: c.value });
+  const size = c.pair
+    ? flat.WriteRatioPairFlat(view, { first: c.value, second: c.value })
+    : c.ratio
+      ? flat.WriteRatioEndpointFlat(view, { ratio: c.value })
+      : flat.WriteCFloatFlat(view, { x: c.value });
   if (size < 0) return null;
   return { bytes: new Uint8Array(view.buffer.slice(0, size)), bits: size * 8 };
 }
@@ -110,6 +130,11 @@ function writeFlat(c) {
 function readFlat(c, wire) {
   const buffer = new Uint8Array(wire.bytes.length + flat.FlatReadSlack);
   buffer.set(wire.bytes);
+  if (c.pair) {
+    const output = new runtime.RatioPair();
+    if (!flat.ReadRatioPairFlat(new DataView(buffer.buffer), wire.bits, output)) return null;
+    return pairValue(output);
+  }
   if (c.ratio) {
     const output = new runtime.RatioEndpoint();
     if (!flat.ReadRatioEndpointFlat(new DataView(buffer.buffer), wire.bits, output)) return null;
@@ -137,7 +162,7 @@ for (const c of cases) {
 // is held to the declared width (the generated <T>MaxBits) and its bytes
 // must read back through exactly that many bits.
 function runCase(c) {
-  const maxBits = c.ratio ? runtime.RatioEndpointMaxBits : runtime.CFloatMaxBits;
+  const maxBits = c.pair ? runtime.RatioPairMaxBits : c.ratio ? runtime.RatioEndpointMaxBits : runtime.CFloatMaxBits;
   for (const tier of tiers) {
     let wire;
     try {

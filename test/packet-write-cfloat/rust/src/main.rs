@@ -1,4 +1,4 @@
-use packetcfloat::{self as c, CFloat, RatioEndpoint};
+use packetcfloat::{self as c, CFloat, RatioEndpoint, RatioPair};
 use serialize::{ReadStream, Stream, WriteStream};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
@@ -41,15 +41,18 @@ fn main() {
         let name = fields[0];
         let input = value(fields[1]);
         let wanted = fields[2];
-        // [reads-back <v>] [type RatioEndpoint] [wire <hex>] [bits <n>], in pairs
+        // [reads-back <v>] [type RatioEndpoint|RatioPair] [wire <hex>] [bits <n>], in pairs
         let mut expected = input;
         let mut ratio = false;
+        // a RatioPair writes the value to both fields
+        let mut is_pair = false;
         let mut wire: Option<String> = None;
         let mut want_bits: Option<usize> = None;
         for pair in fields[3..].chunks(2) {
             match (pair[0], pair[1]) {
                 ("reads-back", v) => expected = value(v),
                 ("type", "RatioEndpoint") => ratio = true,
+                ("type", "RatioPair") => is_pair = true,
                 ("wire", h) => wire = Some(h.to_ascii_lowercase()),
                 ("bits", n) => match n.parse() {
                     Ok(n) => want_bits = Some(n),
@@ -63,7 +66,15 @@ fn main() {
         let attempt = catch_unwind(AssertUnwindSafe(|| {
             let mut bytes = [0u8; 64];
             let mut ws = WriteStream::new(&mut bytes);
-            if ratio {
+            if is_pair {
+                c::write_ratio_pair(
+                    &mut ws,
+                    &RatioPair {
+                        first: input,
+                        second: input,
+                    },
+                )?;
+            } else if ratio {
                 c::write_ratio_endpoint(&mut ws, &RatioEndpoint { ratio: input })?;
             } else {
                 c::write_c_float(&mut ws, &CFloat { x: input })?;
@@ -87,7 +98,10 @@ fn main() {
         }
         if let Some(want) = want_bits {
             if bits as usize != want {
-                fail(name, format!("wrote {bits} bits before the flush, want {want}"));
+                fail(
+                    name,
+                    format!("wrote {bits} bits before the flush, want {want}"),
+                );
             }
         }
         if let Some(want) = &wire {
@@ -98,7 +112,20 @@ fn main() {
         let mut padded = vec![0; (data.len() + 3) & !3];
         padded[..data.len()].copy_from_slice(&data);
         let mut rs = ReadStream::new(&padded, data.len());
-        let got = if ratio {
+        let got = if is_pair {
+            let mut output = RatioPair::default();
+            c::read_ratio_pair(&mut rs, &mut output).expect("read back");
+            if output.first.to_bits() != output.second.to_bits() {
+                fail(
+                    name,
+                    format!(
+                        "the second field read back {}, the first {}",
+                        output.second, output.first
+                    ),
+                );
+            }
+            output.first
+        } else if ratio {
             let mut output = RatioEndpoint::default();
             c::read_ratio_endpoint(&mut rs, &mut output).expect("read back");
             output.ratio
@@ -115,7 +142,10 @@ fn main() {
         // whole byte.
         let bits = bits.div_ceil(8) * 8;
         if rs.bits_processed() != bits {
-            fail(name, format!("consumed {} bits, wrote {bits}", rs.bits_processed()));
+            fail(
+                name,
+                format!("consumed {} bits, wrote {bits}", rs.bits_processed()),
+            );
         }
         println!("case {name} ok");
     }
@@ -124,7 +154,10 @@ fn main() {
     if ran == 0 {
         eprintln!("FAILED: no cases in {cases}");
     }
-    println!("packet write compressed float Rust: ran {ran}, failed {}", u32::from(ran == 0));
+    println!(
+        "packet write compressed float Rust: ran {ran}, failed {}",
+        u32::from(ran == 0)
+    );
     if ran == 0 {
         std::process::exit(1);
     }

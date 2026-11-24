@@ -84,9 +84,10 @@ public final class Main {
                 fail(name + ": unknown verdict " + field[2]);
                 continue;
             }
-            // [reads-back <v>] [type RatioEndpoint] [wire <hex>] [bits <n>], in pairs
+            // [reads-back <v>] [type RatioEndpoint|RatioPair] [wire <hex>] [bits <n>], in pairs
             float expect = value;
             boolean ratio = false;
+            boolean pair = false; // both fields of a RatioPair take the value
             String wire = null;
             int wantBits = -1;
             boolean malformed = field.length % 2 != 1;
@@ -96,7 +97,8 @@ public final class Main {
                         expect = parseValue(field[i + 1]);
                         break;
                     case "type":
-                        ratio = field[i + 1].equals("RatioEndpoint");
+                        pair = field[i + 1].equals("RatioPair");
+                        ratio = pair || field[i + 1].equals("RatioEndpoint");
                         malformed |= !ratio;
                         break;
                     case "wire":
@@ -122,13 +124,19 @@ public final class Main {
             in.x = value;
             PacketCFloat.RatioEndpoint ratioIn = new PacketCFloat.RatioEndpoint();
             ratioIn.ratio = value;
-            byte[] data = new byte[ratio ? PacketCFloat.RATIO_ENDPOINT_MAX_BYTES : PacketCFloat.C_FLOAT_MAX_BYTES];
+            PacketCFloat.RatioPair pairIn = new PacketCFloat.RatioPair();
+            pairIn.first = value;
+            pairIn.second = value;
+            byte[] data = new byte[pair ? PacketCFloat.RATIO_PAIR_MAX_BYTES
+                    : ratio ? PacketCFloat.RATIO_ENDPOINT_MAX_BYTES : PacketCFloat.C_FLOAT_MAX_BYTES];
             boolean threw = false;
             int bits = 0;
             try {
-                bits = ratio
-                        ? PacketCFloat.writeRatioEndpointBits(ratioIn, data, 0)
-                        : PacketCFloat.writeCFloatBits(in, data, 0);
+                bits = pair
+                        ? PacketCFloat.writeRatioPairBits(pairIn, data, 0)
+                        : ratio
+                                ? PacketCFloat.writeRatioEndpointBits(ratioIn, data, 0)
+                                : PacketCFloat.writeCFloatBits(in, data, 0);
             } catch (AssertionError error) {
                 threw = true;
             }
@@ -160,7 +168,18 @@ public final class Main {
                 }
             }
             float back;
-            if (ratio) {
+            if (pair) {
+                PacketCFloat.RatioPair out = new PacketCFloat.RatioPair();
+                if (!PacketCFloat.readRatioPair(out, data, bits)) {
+                    fail(name + ": the write did not read back");
+                    continue;
+                }
+                if (Float.floatToRawIntBits(out.first) != Float.floatToRawIntBits(out.second)) {
+                    fail(name + ": the second field read back " + out.second + ", the first " + out.first);
+                    continue;
+                }
+                back = out.first;
+            } else if (ratio) {
                 PacketCFloat.RatioEndpoint out = new PacketCFloat.RatioEndpoint();
                 if (!PacketCFloat.readRatioEndpoint(out, data, bits)) {
                     fail(name + ": the write did not read back");

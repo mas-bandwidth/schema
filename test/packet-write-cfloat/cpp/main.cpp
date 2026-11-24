@@ -50,7 +50,8 @@ struct Case
     bool refused = false;
     bool has_reads_back = false;
     float reads_back = 0.0f;
-    bool ratio = false;
+    bool ratio = false; // a RatioEndpoint, or with pair a RatioPair
+    bool pair = false;  // both fields of a RatioPair take the value
     bool has_wire = false;
     std::vector<uint8_t> wire;
     int64_t bits = -1;
@@ -137,8 +138,9 @@ bool read_cases( const char * path, std::vector<Case> & cases )
             }
             else if ( token[i] == "type" )
             {
-                if ( token[i + 1] != "RatioEndpoint" ) return false;
+                if ( token[i + 1] != "RatioEndpoint" && token[i + 1] != "RatioPair" ) return false;
                 c.ratio = true;
+                c.pair = token[i + 1] == "RatioPair";
             }
             else if ( token[i] == "wire" )
             {
@@ -171,10 +173,15 @@ int run_case( const Case & c )
     value.x = c.value;
     cfloat::RatioEndpoint ratio;
     ratio.ratio = c.value;
+    cfloat::RatioPair pair;
+    pair.first = c.value;
+    pair.second = c.value;
 
     alignas( 8 ) uint8_t buffer[64] = {};
     serialize::WriteStream stream( buffer, sizeof( buffer ) );
-    const bool written = c.ratio ? cfloat::WriteRatioEndpoint( stream, ratio ) : cfloat::WriteCFloat( stream, value );
+    const bool written = c.pair ? cfloat::WriteRatioPair( stream, pair )
+        : c.ratio               ? cfloat::WriteRatioEndpoint( stream, ratio )
+                                : cfloat::WriteCFloat( stream, value );
     if ( !written ) _exit( kWriteFailedExit );
     if ( c.refused ) _exit( kWroteExit );
 
@@ -188,7 +195,14 @@ int run_case( const Case & c )
 
     float got = 0.0f;
     serialize::ReadStream reader( buffer, bytes );
-    if ( c.ratio )
+    if ( c.pair )
+    {
+        cfloat::RatioPair readback;
+        if ( !cfloat::ReadRatioPair( reader, readback ) ) _exit( kReadFailedExit );
+        if ( float_bits( readback.first ) != float_bits( readback.second ) ) _exit( kReadMismatchExit );
+        got = readback.first;
+    }
+    else if ( c.ratio )
     {
         cfloat::RatioEndpoint readback;
         if ( !cfloat::ReadRatioEndpoint( reader, readback ) ) _exit( kReadFailedExit );

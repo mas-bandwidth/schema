@@ -1,9 +1,10 @@
 // main.lobster is the probe the Lobster packet Write compressed-float range
 // gate runs (test/packet-write-cfloat/cases.txt, SPEC §5.1 row 10): one case
 // per run, because a refusal ends the process. It takes the case's float32 bit
-// pattern and the type to write (CFloat or RatioEndpoint), and prints the
-// bits a read returns, the written bytes in hex, and the number of bits the
-// write emitted before the flush.
+// pattern and the type to write (CFloat, RatioEndpoint or RatioPair), and
+// prints the bits a read returns, the written bytes in hex, and the number of
+// bits the write emitted before the flush. A RatioPair writes the value into
+// both fields and reads back only when the two agree.
 import .PacketCFloat
 import .serialize
 
@@ -34,6 +35,24 @@ else:
                 print("FAILED: the read refused " + reader.refusal_name())
             else:
                 print("wrote " + number_to_string(serialize_float32_bits(back.Ratio), 16, 8) + " wire " + wire_hex(wire) + " bits " + string(bits_written))
+    elif args[1] == "RatioPair":
+        let value = cfloat.NewRatioPair()
+        value.First = serialize_float32_from_bits(bits)
+        value.Second = serialize_float32_from_bits(bits)
+        if not cfloat.WriteRatioPair(stream, value):
+            print("FAILED: the write refused")
+        else:
+            let bits_written = stream.bits_processed()
+            stream.flush()
+            let wire = substring(stream.buffer, 0, stream.bytes_processed())
+            let reader = serialize_read_stream_padded(wire)
+            let back = cfloat.NewRatioPair()
+            if not cfloat.ReadRatioPair(reader, back):
+                print("FAILED: the read refused " + reader.refusal_name())
+            elif serialize_float32_bits(back.First) != serialize_float32_bits(back.Second):
+                print("FAILED: the two fields read back differently")
+            else:
+                print("wrote " + number_to_string(serialize_float32_bits(back.First), 16, 8) + " wire " + wire_hex(wire) + " bits " + string(bits_written))
     else:
         let value = cfloat.NewCFloat()
         value.X = serialize_float32_from_bits(bits)

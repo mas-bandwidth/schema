@@ -3,8 +3,8 @@
 //
 // One tab-separated line per case: name, verdict, the value's float32 bits,
 // the expected read-back's float32 bits (both little-endian hex), the type
-// written (CFloat or RatioEndpoint), the expected wire in hex ("-" when
-// the case pins none), and the bits the write emits before the flush as one
+// written (CFloat, RatioEndpoint or RatioPair), the expected wire in hex
+// ("-" when the case pins none), and the bits the write emits before the flush as one
 // byte of hex ("-" when the case pins none).
 package main
 
@@ -49,7 +49,7 @@ func main() {
 			case "reads-back":
 				want = parse32(fields[i+1])
 			case "type":
-				if fields[i+1] != "RatioEndpoint" {
+				if fields[i+1] != "RatioEndpoint" && fields[i+1] != "RatioPair" {
 					fatal("unknown type in case: %q", scanner.Text())
 				}
 				typ = fields[i+1]
