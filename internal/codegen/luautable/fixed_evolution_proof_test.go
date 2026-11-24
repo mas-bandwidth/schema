@@ -267,10 +267,14 @@ func TestLuauFixedEvolutionNumericWidening(t *testing.T) {
 
 // TestLuauFixedEvolutionReports is reports (E9, R16, R18): the fixed runtime
 // carries no repeated-key counter; a full-width range that cannot be broken
-// reads 256 records with nothing refused; and the unknown census over an older
-// writer's dropped nested field is counted once per declared field, the same
-// on a second load (the counters are each read's own). The negative control
-// drops the census.
+// reads 256 records with nothing refused; and there is NO COMPILE CENSUS
+// (docs/FIXED-FORM-ALGORITHM.md §5.4, §5.9 #30): VNEW_unknown_census, a
+// deliberately UNLAWFUL lineage entry (Item.drop removed), refuses
+// layout_malformed over its three records, twice through one report whose
+// counters were poisoned first, with every counter at zero, nothing landed,
+// and every row handed in back at its declared defaults (SPEC-TABLES §6.5).
+// The negative control drops the unlawful-entry refusal and requires the
+// three records to land.
 func TestLuauFixedEvolutionReports(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "the pinned Luau interpreter")
@@ -291,25 +295,37 @@ func TestLuauFixedEvolutionReports(t *testing.T) {
 	newer := luauCutCorpus(t, "VNEW_unknown_census")
 	old := luauCutGen(t, older, nil).save(t, "Census", "for i = 1, 3 do local v = T.NewCensus(); v.Lead = i; v.Items[1].A = 10 * i; v.Items[1].Drop = 99; values[i] = v end")
 	census := func(g *luauCutUnit) string {
-		return strings.Join(strings.Fields(g.run(t, luauCutPrelude+`for _ = 1, 2 do
-	local rep: any = {}
-	local v = F.read(T.CensusDescriptor, fixedOf("Census"), I.file, rep)
-	if v == nil then
-		print("refused " .. tostring(rep.reason))
-	else
-		print(string.format("%d %d %d %d", #v, rep.widened, rep.unknown, v[3].Items[1].A))
+		return strings.Join(strings.Fields(g.run(t, luauCutPrelude+`local rep: any = { unknown = 9, kindMismatch = 9, widened = 9 }
+local function num(x: any): number
+	if typeof(x) == "integer" then return integer.tonumber(x) end
+	return x
+end
+local into = {}
+for i = 1, 3 do
+	into[i] = T.NewCensus()
+end
+for _ = 1, 2 do
+	for i = 1, 3 do
+		into[i].Lead, into[i].Trail, into[i].Items[1].A = 99, 88, 7
 	end
+	local v = F.readInto(T.CensusDescriptor, fixedOf("Census"), I.file, rep, into)
+	local defaults = true
+	for i = 1, 3 do
+		local r = into[i]
+		if not (num(r.Lead) == 1 and num(r.Trail) == 2 and num(r.Items[1].A) == 0 and num(r.Items[4].A) == 0) then defaults = false end
+	end
+	print(if v == nil then "nil" else tostring(#v), tostring(rep.reason), rep.unknown, rep.kindMismatch, rep.widened, tostring(defaults))
 end
 `, map[string][]byte{"file": old})), " ")
 	}
 	lineage := luauCutLineage(t, older, "Census")
-	if got := census(luauCutGen(t, newer, lineage)); got != "3 0 1 30 3 0 1 30" {
-		t.Errorf("R16: the census over three records, loaded twice: %q", got)
+	if got := census(luauCutGen(t, newer, lineage)); got != "nil layout_malformed 0 0 0 true nil layout_malformed 0 0 0 true" {
+		t.Errorf("R16: the unlawful entry over three records, loaded twice: %q", got)
 	}
 	gc := luauCutGen(t, newer, lineage)
-	gc.plant(t, "if rById[wc.id] == nil then c.unknown += 1 end", "")
-	if got := census(gc); got == "3 0 1 30 3 0 1 30" {
-		t.Errorf("the negative control: the dropped census still counts")
+	gc.plant(t, "\t\tif u.name ~= nil then\n", "\t\tif false then\n")
+	if got := census(gc); strings.Contains(got, "layout_malformed") || !strings.HasPrefix(got, "3 nil") {
+		t.Errorf("the negative control: without the unlawful-entry refusal the three records do not land: %q", got)
 	}
 }
 

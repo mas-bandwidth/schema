@@ -1,42 +1,59 @@
 package luautable_test
 
 import (
-	"strconv"
+	"fmt"
 	"testing"
 )
 
-// §5.8 row 11, `unknown_census`: the NEW build (Item.drop removed) reads
-// old_unknown_census.bin through a HANDED-IN lineage entry — the pair is
-// deliberately unlawful, §5.1 refuses the removal, so the probe hands the
-// older layout to GenerateLineage directly. `unknown` is asserted EXACTLY 1:
-// Item.drop is ONE field of ONE endpoint, and a leg that counts once per
-// element of items[4] lands 4. A second read owes the same census.
+// §5.8 row 11, `unknown_census`: the NEW build (Item.drop removed) is handed
+// the OLD writer's layout as a lineage entry (GenerateLineage directly). §5.1
+// refuses a removal, so a lawful older writer never carries a field the reader
+// lacks: the entry is UNLAWFUL, no plan is laid for it and the load refuses
+// `layout_malformed` with every counter at zero — `unknown` included, because
+// there is no compile census (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH, §5.4,
+// §5.9 #30). After the refusal every row handed in is back at its declared
+// defaults (SPEC-TABLES §6.5), and a second load refuses the same way.
 func TestLuauFixedVersioningUnknownCensus(t *testing.T) {
 	t.Parallel()
 	corpus := luauFixedCorpus(t)
 	luauVersionProbe(t, "VNEW_unknown_census", []string{"VOLD_unknown_census"}, 0,
-		map[string][]byte{"file": luauCorpusFile(t, corpus, "old_unknown_census.bin")}, luauCensusBody(1))
+		map[string][]byte{"file": luauCorpusFile(t, corpus, "old_unknown_census.bin")}, luauCensusBody())
 }
 
-// luauCensusBody reads the file twice and asserts the census once per peer
-// and the landed `a` of each record's four items (10 + 10k + i).
-func luauCensusBody(records int) string {
-	return `local want = ` + strconv.Itoa(records) + `
+// luauCensusBody is the unlawful-entry body for the Census root: poisoned
+// rows, lead=1 trail=2 and every items[i].a=0 after each refusal.
+func luauCensusBody() string {
+	return luauUnlawfulBody("Census",
+		`r.Lead, r.Trail = 99, 88; for i = 1, 4 do r.Items[i].A = 5 + i end`,
+		`num(r.Lead) == 1 and num(r.Trail) == 2 and num(r.Items[1].A) == 0 and num(r.Items[4].A) == 0`)
+}
+
+// luauUnlawfulBody is the probe body every unlawful-entry row shares: two
+// loads, each through the plain strict read and through readInto over rows
+// POISONED first, and each refuses `layout_malformed` by name, hands back
+// nothing, moves no counter (the report's own counters are poisoned too) and
+// leaves every row handed in at its declared defaults. `poison` sets non-default
+// values on the row `r`; `check` is true when `r` is at its declared defaults.
+func luauUnlawfulBody(root, poison, check string) string {
+	return fmt.Sprintf(`local into = {}
+for k = 1, 8 do into[k] = T.New%[1]s() end
 for pass = 1, 2 do
-	local report: any = {}
-	local values = LOAD("file", report)
-	check(values ~= nil and #values == want, "the newer reader did not read the older writer's records: " .. why(report))
-	if values == nil then return end
-	check(report.reason == nil, "a clean NEW-READS-OLD is not a refusal: " .. why(report))
-	check(report.kindMismatch == 0 and report.widened == 0, "counters that must not move did: " .. why(report))
-	check(report.unknown == 1, "read " .. pass .. ": unknown == " .. report.unknown .. ", want 1: Item.drop is ONE field of ONE endpoint, never one per element or per record")
-	for r = 1, want do
-		local v = values[r]
-		check(num(v.Lead) == 1 and num(v.Trail) == 2, "record " .. r .. ": the bracketing fields moved")
-		for i = 1, 4 do
-			check(num(v.Items[i].A) == 10 * r + i - 1, "record " .. r .. " items[" .. i .. "].a == " .. tostring(v.Items[i].A))
-		end
+	local report: any = { unknown = 9, kindMismatch = 9, widened = 9 }
+	check(LOAD("file", report) == nil, "pass " .. pass .. ": the unlawful entry LOADED: " .. why(report))
+	check(report.reason == "layout_malformed", "pass " .. pass .. ": not refused layout_malformed: " .. why(report))
+	check(report.unknown == 0 and report.kindMismatch == 0 and report.widened == 0, "pass " .. pass .. ": a refusal moved a counter: " .. why(report))
+	for k = 1, 8 do
+		local r = into[k]
+		%[2]s
+	end
+	local rep: any = { unknown = 9, kindMismatch = 9, widened = 9 }
+	check(F.readInto(T.%[1]sDescriptor, fixed, inputs.file, rep, into) == nil, "pass " .. pass .. ": readInto handed back rows: " .. why(rep))
+	check(rep.reason == "layout_malformed", "pass " .. pass .. ": readInto not refused layout_malformed: " .. why(rep))
+	check(rep.unknown == 0 and rep.kindMismatch == 0 and rep.widened == 0, "pass " .. pass .. ": readInto moved a counter: " .. why(rep))
+	for k = 1, 8 do
+		local r = into[k]
+		check(%[3]s, "pass " .. pass .. ": row " .. k .. " is not at its declared defaults")
 	end
 end
-`
+`, root, poison, check)
 }
