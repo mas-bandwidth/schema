@@ -134,11 +134,19 @@ through their plain load. The tool's engine now writes and reads form `3` at an
 admitted fixed root; the conformance corpus's historical form-1 fixed-root
 files are now `previous_form` refusal rows that owe `refused`, and its
 fixed-root positives are form `3`. **The `framing` battery is no exception**:
-its form-`1` vectors name the fixed `tblr1 Cfg`, and its surface reads each one
-through the VARIABLE TWIN of that declaration — the same declaration with its
-class variable, which is a variable root and reads form `1` — then answers the
-fixed root's text and form-`3` write-back (test/conformance/README.md, The
-surfaces; Go's `tblr1CfgVariableLoad`). One answer per surface: `report` reads
+its form-`1` vectors name the fixed `tblr1 Cfg`, `listdemo Bounded` and
+`tabledemo CountedMin`, and its surface reads EVERY form-`1` vector at ANY
+declared fixed root through the VARIABLE TWIN of that declaration, never at the
+fixed root and never at one root alone: read at the fixed root, a lawful row
+(`twin_listdemo_bounded_empty`, an empty bounded list; `sp_count_min_at` and
+`twin_count_min_at_form1`, a counted array at its `Min`, §2.3) answers
+`previous_form` like every other, and a damaged one is refused for the wrong
+reason. The twin — the same declaration with its class variable, which is a
+variable root and reads form `1` — reads each vector, and the surface then
+answers the fixed root's text and form-`3` write-back (test/conformance/README.md,
+The surfaces; Go's `tblr1CfgVariableLoad`, `listdemoBoundedVariableLoad` and
+`tabledemoCountedMinVariableLoad`; the Lua strict-load battery's
+`luaFramingAnswers`). One answer per surface: `report` reads
 at the fixed root and refuses, `framing` reads at the variable twin and reads. A
 declared fixed table past one of §3.4's bounds (a union in a regional unit, a
 record over 65536 bytes, depth past the walk bound, or the leaf cap) carries
