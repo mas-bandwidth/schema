@@ -279,6 +279,11 @@ func walkCases(m *Manifest, add func(surface, name, unit, root string) error) er
 			}
 		}
 	}
+	for _, rr := range m.RetainRefusals {
+		if err := add("retain-refusal", rr.Name, rr.Unit, rr.Root); err != nil {
+			return err
+		}
+	}
 	for _, h := range m.Hostiles {
 		if err := add("json-hostile", h.Name, h.Unit, h.Root); err != nil {
 			return err
@@ -429,7 +434,7 @@ func coverageRows(langs []string, results map[string]map[string]*result, want ma
 					cr.Named++
 				case outcomeClaimedAbsent:
 					cr.AbsentClaimed++
-				case outcomeAbsent, outcomeUncredited:
+				case outcomeAbsent, outcomeUncredited, outcomeOwed:
 					// a refusal-only row (discriminate.go) is work left, as
 					// an absence is: never answered
 					cr.NotCarried++

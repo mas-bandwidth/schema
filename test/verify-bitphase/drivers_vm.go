@@ -107,6 +107,7 @@ for (const line of lines) {
   count++;
 }
 
+@MAIN_ONLY@
 // 3. The compressed-float decode case (cfdecode.go), on both tiers
 {
   const cbits = new DataView(new ArrayBuffer(8));
@@ -169,6 +170,7 @@ for (const line of lines) {
   writeFlat("write-min", @F32LIT_MIN@);
   writeFlat("write-max", @F32LIT_MAX@);
 }
+@END_MAIN_ONLY@
 console.log("BITPHASE_OK js " + count);
 `
 	probe := filepath.Join(workDir, "main.mjs")
@@ -217,6 +219,7 @@ for line in (d / "manifest.tsv").read_text().splitlines():
         if accepted:
             raise AssertionError(f"FAILED: accepted {fname}")
     count += 1
+@MAIN_ONLY@
 cf_out = []
 for i in range(@CFDECODE_STEPS@ + 1):
     cf = bp.CfDecode.read(bytes([i & 0xFF, i >> 8]))
@@ -240,6 +243,7 @@ f32lit_line("default-d", fl.d)
 f32lit_line("default-e", fl.e)
 f32lit_write("write-min", @F32LIT_MIN@)
 f32lit_write("write-max", @F32LIT_MAX@)
+@END_MAIN_ONLY@
 print(f"BITPHASE_OK python {count}")
 `
 	probe := filepath.Join(workDir, "main.py")
@@ -283,6 +287,7 @@ File.readlines(File.join(dir, "manifest.tsv"), chomp: true).each do |line|
   end
   count += 1
 end
+@MAIN_ONLY@
 cf_out = (0..@CFDECODE_STEPS@).map do |i|
   cf = Bitphase::CfDecode.read([i & 0xff, i >> 8].pack("C*"))
   "CFDECODE ruby #{i} #{[cf.c].pack('G').unpack1('H*')}"
@@ -309,6 +314,7 @@ f32lit_line("default-d", fl.d)
 f32lit_line("default-e", fl.e)
 f32lit_write("write-min", @F32LIT_MIN@)
 f32lit_write("write-max", @F32LIT_MAX@)
+@END_MAIN_ONLY@
 puts "BITPHASE_OK ruby #{count}"
 `
 	probe := filepath.Join(workDir, "main.rb")
@@ -367,6 +373,7 @@ for line in io.lines(dir .. "/manifest.tsv") do
     count = count + 1
   end
 end
+@MAIN_ONLY@
 local cf = BP.NewCfDecode()
 local cf_out = {}
 for i = 0, @CFDECODE_STEPS@ do
@@ -397,6 +404,7 @@ f32lit_line("default-d", fl.D)
 f32lit_line("default-e", fl.E)
 f32lit_write("write-min", @F32LIT_MIN@)
 f32lit_write("write-max", @F32LIT_MAX@)
+@END_MAIN_ONLY@
 print("BITPHASE_OK lua " .. tostring(count))
 `
 	probe := filepath.Join(workDir, "main.lua")
@@ -501,6 +509,7 @@ for _, c in ipairs(V.cases) do
 	end
 	count += 1
 end
+@MAIN_ONLY@
 local cf = BP.NewCfDecode()
 local cfOut = {}
 for i = 0, @CFDECODE_STEPS@ do
@@ -539,6 +548,7 @@ f32litLine("default-d", fl.D)
 f32litLine("default-e", fl.E)
 f32litWrite("write-min", @F32LIT_MIN@)
 f32litWrite("write-max", @F32LIT_MAX@)
+@END_MAIN_ONLY@
 print("BITPHASE_OK luau " .. tostring(count))
 `
 	if err := os.WriteFile(filepath.Join(genDir, "probe.luau"), []byte(withCfDecodeSteps(src)), 0o644); err != nil {
@@ -617,6 +627,7 @@ for i = 1, #V.cases do
 	end
 	count = count + 1
 end
+@MAIN_ONLY@
 local cf = BP.NewCfDecode()
 local cfOut = {}
 for i = 0, @CFDECODE_STEPS@ do
@@ -654,6 +665,7 @@ f32litLine("default-d", fl.D)
 f32litLine("default-e", fl.E)
 f32litWrite("write-min", @F32LIT_MIN_BITS@)
 f32litWrite("write-max", @F32LIT_MAX_BITS@)
+@END_MAIN_ONLY@
 print("BITPHASE_OK moo " .. tostring(count))
 `
 	if err := os.WriteFile(filepath.Join(genDir, "probe.moo"), []byte(withCfDecodeSteps(src)), 0o644); err != nil {
@@ -722,6 +734,7 @@ foreach (c in cases) {
   }
   count++;
 }
+@MAIN_ONLY@
 local cf = BP.CfDecode();
 for (local i = 0; i <= @CFDECODE_STEPS@; i++) {
   local cb = blob(0);
@@ -764,6 +777,7 @@ f32lit_line("default-d", fl.D);
 f32lit_line("default-e", fl.E);
 f32lit_write("write-min", @F32LIT_MIN@);
 f32lit_write("write-max", @F32LIT_MAX@);
+@END_MAIN_ONLY@
 print("BITPHASE_OK squirrel " + count + "\n");
 `)
 	probe := filepath.Join(workDir, "probe.nut")
@@ -801,6 +815,7 @@ fn load_bin(fname: const u8[:], out: u8[>..]&) {
     out.clear();
     check(read_file(str(%q, "/", fname), out), fname);
 }
+@MAIN_ONLY@
 // the float32 literal case (f32lit.go)
 fn f32lit_line(probe: const u8[:], x: f32) {
     let digits = "0123456789abcdef";
@@ -831,6 +846,7 @@ fn f32lit_write(probe: const u8[:], x: f32) {
         f32lit_line(probe, back.E);
     }
 }
+@END_MAIN_ONLY@
 fn main() {
     var raw: u8[>..] = [];
     var pbuf: u8[512] = [0; 512];
@@ -868,7 +884,8 @@ fn main() {
 `, c.File, c.Type, c.Type, c.File)
 		}
 	}
-	b.WriteString(`    {
+	b.WriteString(`@MAIN_ONLY@
+    {
         var cf = bitphase::NewCfDecode();
         var cb: u8[>..] = [];
         var line: u8[>..] = [];
@@ -899,6 +916,7 @@ fn main() {
         f32lit_write("write-min", (@F32LIT_MIN@));
         f32lit_write("write-max", @F32LIT_MAX@);
     }
+@END_MAIN_ONLY@
 `)
 	fmt.Fprintf(&b, "    print(str(\"BITPHASE_OK goose \", %d, \"\\n\"));\n}\n", len(cases))
 	srcFile := filepath.Join(genDir, "probe.goose")
@@ -964,7 +982,8 @@ let r_Phase63 = bitphase.NewPhase63()
 `, c.File, c.Type, c.Type, c.File)
 		}
 	}
-	b.WriteString(`let cf = bitphase.NewCfDecode()
+	b.WriteString(`@MAIN_ONLY@
+let cf = bitphase.NewCfDecode()
 let cf_digits = "0123456789abcdef"
 for(@CFDECODE_STEPS@ + 1) i:
     let cb = schema_rt.zeros(2)
@@ -1004,6 +1023,7 @@ f32lit_line("default-d", fl.D)
 f32lit_line("default-e", fl.E)
 f32lit_write("write-min", @F32LIT_MIN@)
 f32lit_write("write-max", @F32LIT_MAX@)
+@END_MAIN_ONLY@
 `)
 	fmt.Fprintf(&b, "print(\"BITPHASE_OK lobster %d\")\n", len(cases))
 	probe := filepath.Join(genDir, "probe.lobster")

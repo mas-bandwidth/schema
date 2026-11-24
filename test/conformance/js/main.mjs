@@ -1455,6 +1455,41 @@ async function surfaceRetain(lines, outDir, saves) {
   }
 }
 
+
+// THE RETAIN-REFUSAL SURFACE (test/conformance/README.md): ONE retention store
+// through LoadRetain of the first wire, SaveRetain, LoadRetain of the refused
+// wire into the same store, and SaveRetain of the first value again. The
+// verdicts and what the second save did go in <case>, the first save in
+// <case>.before, the second in <case>.wire.
+async function surfaceRetainRefusal(lines, outDir) {
+  for (const f of lines) {
+    if (f[0] !== "retain-refusal") { continue; }
+    // retain-refusal <case> <unit> <root> <first wire> <refused wire>
+    const codec = await retainCodec(f[2], f[3]);
+    if (codec === null) {
+      writeFileSync(join(outDir, f[1] + ".absent"), "");
+      continue;
+    }
+    const first = new Uint8Array(readFileSync(f[4]));
+    const second = new Uint8Array(readFileSync(f[5]));
+    const store = new codec.m.TableVariableRetain(new Uint8Array(1 << 20), new Array(1 << 17));
+    const root = readOf((w, r) => codec.loadRetain(w, store, r), first, new codec.m.TableVariableReport());
+    if (root === null) { writeFileSync(join(outDir, f[1]), "refused\n"); continue; }
+    const before = codec.saveRetain(root, store, new codec.m.TableVariableReport());
+    if (before === null) { fail(f[1] + ": the first save through the store refused"); }
+    writeFileSync(join(outDir, f[1] + ".before"), before);
+    let answer = "read\n";
+    answer += readOf((w, r) => codec.loadRetain(w, store, r), second, new codec.m.TableVariableReport()) === null ? "refused\n" : "read\n";
+    const after = codec.measureRetain(root, store) < 0 ? null : codec.saveRetain(root, store, new codec.m.TableVariableReport());
+    if (after === null) {
+      answer += "save-refused\n";
+    } else {
+      writeFileSync(join(outDir, f[1] + ".wire"), after);
+      answer += "saved\n";
+    }
+    writeFileSync(join(outDir, f[1]), answer);
+  }
+}
 // ---- main
 
 const args = process.argv.slice(2);
@@ -1786,7 +1821,7 @@ if (surface === "list") {
   // counts rather than reading as a feature the leg lacks. The retain surfaces
   // answer every row whose unit this leg generates, and name the reason beside
   // a row it cannot reach.
-  process.stdout.write("wire\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\nmessage\nmessage-prior\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\n");
+  process.stdout.write("wire\nreport\nframing\nretain\nretain-save\nretain-refusal\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\ncook-reason\nblock-reason\nmessage\nmessage-prior\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\n");
   // the opt-in units this leg answers (MANIFEST.txt `opt-in`)
   process.stdout.write("unit shapes\n");
   process.exit(0);
@@ -1806,6 +1841,7 @@ switch (surface) {
   case "framing": await surfaceFraming(lines, outDir); break;
   case "retain": await surfaceRetain(lines, outDir, false); break;
   case "retain-save": await surfaceRetain(lines, outDir, true); break;
+  case "retain-refusal": await surfaceRetainRefusal(lines, outDir); break;
   case "json-read": await surfaceJsonRead(lines, outDir); break;
   case "json-write": await surfaceJsonWrite(lines, outDir); break;
   case "json-hostile": await surfaceJsonHostile(lines, outDir); break;

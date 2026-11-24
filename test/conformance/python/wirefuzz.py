@@ -1,14 +1,29 @@
 """The generated Python table codecs on the conformance verdict pipe."""
 
+import faulthandler
 import importlib.util
 import os
 import struct
 import sys
+import time
 
 GENERATED = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else "build/conformance-python")
 stdin = sys.stdin.buffer
 stdout = sys.stdout.buffer
 units = {}
+
+# A STALL NAMES WHERE IT STOPPED: the harness waits 30 s for a reply
+# (test/conformance/harness/wirefuzz.go, replyDeadline), then kills the leg
+# and prints its stderr. faulthandler's watchdog writes every thread's stack to
+# stderr once no mutant has started for WATCHDOG_SECONDS, so that failure says
+# where the leg sat: inside a read or a save, writing a reply, or waiting for a
+# frame. Re-arming costs about 60 us, so a mutant re-arms only when REARM_SECONDS
+# have passed since the last arm (one clock read otherwise); a mutant stuck from
+# its start therefore dumps 19 to 20 s in, inside the harness's 30 s. A gap of
+# 20 s between frames dumps the wait itself; the harness shows stderr only on a
+# failure.
+WATCHDOG_SECONDS = 20
+REARM_SECONDS = 1
 
 
 def exact(size):
@@ -71,6 +86,7 @@ def main():
         roster.append((module, cls, form, retain))
     stdout.write(bytes(int(cls is not None) for _, cls, _, _ in roster))
     stdout.flush()
+    armed_at = -REARM_SECONDS
     while True:
         header = stdin.read(8)
         if not header:
@@ -78,6 +94,10 @@ def main():
         if len(header) != 8:
             raise EOFError("truncated mutant header")
         index, size = struct.unpack("<II", header)
+        now = time.monotonic()
+        if now - armed_at >= REARM_SECONDS:
+            faulthandler.dump_traceback_later(WATCHDOG_SECONDS, exit=False, file=sys.stderr)
+            armed_at = now
         data = exact(size)
         module, cls, form, retain = roster[index]
         if cls is None:
