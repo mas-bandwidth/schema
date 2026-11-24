@@ -19,6 +19,19 @@ public final class Main {
         failed++;
     }
 
+    // The case being run and the failures before it: answer() prints its
+    // "case <name> ok|FAILED: ..." line, the answer tools/casegate reads.
+    static String pending;
+    static int pendingFailed;
+
+    static void answer() {
+        if (pending != null) {
+            System.out.println(
+                    "case " + pending + (failed == pendingFailed ? " ok" : " FAILED: see the FAILED line above"));
+        }
+        pending = null;
+    }
+
     static float parseValue(String token) {
         switch (token) {
             case "NaN":
@@ -62,16 +75,20 @@ public final class Main {
             }
             cases++;
             String name = field[0];
+            answer();
+            pending = name;
+            pendingFailed = failed;
             float value = parseValue(field[1]);
             boolean wantRefused = field[2].equals("refused");
             if (!wantRefused && !field[2].equals("written")) {
                 fail(name + ": unknown verdict " + field[2]);
                 continue;
             }
-            // [reads-back <v>] [type RatioEndpoint] [wire <hex>], in pairs
+            // [reads-back <v>] [type RatioEndpoint] [wire <hex>] [bits <n>], in pairs
             float expect = value;
             boolean ratio = false;
             String wire = null;
+            int wantBits = -1;
             boolean malformed = field.length % 2 != 1;
             for (int i = 3; i + 1 < field.length; i += 2) {
                 switch (field[i]) {
@@ -84,6 +101,14 @@ public final class Main {
                         break;
                     case "wire":
                         wire = field[i + 1].toLowerCase(java.util.Locale.ROOT);
+                        break;
+                    case "bits":
+                        try {
+                            wantBits = Integer.parseInt(field[i + 1]);
+                            malformed |= wantBits < 0;
+                        } catch (NumberFormatException error) {
+                            malformed = true;
+                        }
                         break;
                     default:
                         malformed = true;
@@ -117,6 +142,11 @@ public final class Main {
             }
             if (threw) {
                 fail(name + ": a lawful compressed float was refused");
+                continue;
+            }
+            // the bits the write emitted, before any padding to a byte
+            if (wantBits >= 0 && bits != wantBits) {
+                fail(name + ": wrote " + bits + " bits, want " + wantBits);
                 continue;
             }
             if (wire != null) {
@@ -155,13 +185,15 @@ public final class Main {
             }
             written++;
         }
+        answer();
         if (cases == 0) {
             fail("no cases");
         }
+        // a summary; tools/casegate holds every case of the file to an answer
+        System.out.println("packet-write-cfloat Java (" + refused + " refused, " + written + " written): ran "
+                + cases + ", failed " + failed);
         if (failed != 0) {
             System.exit(1);
         }
-        System.out.println(
-                "packet-write-cfloat Java: " + refused + " refused, " + written + " written");
     }
 }

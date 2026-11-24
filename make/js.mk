@@ -1946,9 +1946,9 @@ build/packet-write-cfloat/js/.stamp: bin/schema test/packet-write-cfloat/PacketC
 	@touch $@
 
 .PHONY: packet-write-cfloat-js packet-write-cfloat-js-negative-control
-packet-write-cfloat-js: build/mustrun build/packet-write-cfloat/js/.stamp
-	$(MUSTRUN) -name packet-write-cfloat-js -count 12 -- $(NODE) test/packet-write-cfloat/js/main.mjs test/packet-write-cfloat/cases.txt build/packet-write-cfloat/js
-	NODE_ENV=production $(MUSTRUN) -name packet-write-cfloat-js-production -count 12 -- $(NODE) test/packet-write-cfloat/js/main.mjs test/packet-write-cfloat/cases.txt build/packet-write-cfloat/js
+packet-write-cfloat-js: build/casegate build/packet-write-cfloat/js/.stamp
+	$(call packet_write_cfloat_gate,js,packet-write-cfloat-js) $(NODE) test/packet-write-cfloat/js/main.mjs test/packet-write-cfloat/cases.txt build/packet-write-cfloat/js
+	NODE_ENV=production $(call packet_write_cfloat_gate,js,packet-write-cfloat-js-production) $(NODE) test/packet-write-cfloat/js/main.mjs test/packet-write-cfloat/cases.txt build/packet-write-cfloat/js
 
 packet-write-cfloat-js-negative-control: packet-write-cfloat-js
 	@mkdir -p build/packet-write-cfloat/js-negative-flat

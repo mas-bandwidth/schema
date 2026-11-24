@@ -16,16 +16,19 @@ fn fail(name: const u8[:], detail: const u8[:]) {
 
 fn process(line: const u8[:]) {
     let fields = split(line, '\t');
-    if fields.len != 6 {
-        fail("input", "expected six tab-separated fields");
+    if fields.len != 7 {
+        fail("input", "expected seven tab-separated fields");
         return;
     }
     var inputBits: u8[>..] = [];
     var expectedBits: u8[>..] = [];
     var wantWire: u8[>..] = [];
+    var wantBits: u8[>..] = [];
     hex_decode(fields[2], inputBits);
     hex_decode(fields[3], expectedBits);
     hex_decode(fields[5], wantWire);
+    // the bits the write emits before the flush, one byte; empty when unpinned
+    hex_decode(fields[6], wantBits);
     if inputBits.len != 4 || expectedBits.len != 4 {
         fail(fields[0], "expected four bytes of float32 bits");
         return;
@@ -57,6 +60,8 @@ fn process(line: const u8[:]) {
     } else if fields[1] == "written" {
         if refusal != SERIALIZE_ERROR_NONE {
             fail(fields[0], "writer refused a lawful value");
+        } else if wantBits.len != 0 && serialize_bits_processed(w) != (wantBits[0] as! i64) {
+            fail(fields[0], "the write emitted other than the case's bits before the flush");
         } else {
             serialize_flush(w);
             let n = serialize_bytes_processed(w);
@@ -96,11 +101,16 @@ fn process(line: const u8[:]) {
 fn main() {
     var line: u8[>..] = [];
     while read_line(line) {
+        let before = failures;
         process(line);
+        // the case's answer tools/casegate reads (the FAILED line says why)
+        let name = split(line, '\t')[0];
+        if failures == before { print("case ", name, " ok"); }
+        else { print("case ", name, " FAILED: see the FAILED line above"); }
         line.clear();
     }
     if cases == 0 { fail("input", "the shared case list was empty"); }
-    // The last stdout line is the count tools/mustrun reads.
+    // A summary; tools/casegate holds every case of the file to an answer.
     print("packet compressed float Goose: ran ", cases, ", failed ", failures);
     if failed { exit(1); }
 }

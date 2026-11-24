@@ -40,6 +40,7 @@ enum
     kReadMismatchExit = 13,
     kBadCaseExit = 14,
     kWireMismatchExit = 15,
+    kBitsMismatchExit = 16,
 };
 
 struct Case
@@ -52,6 +53,7 @@ struct Case
     bool ratio = false;
     bool has_wire = false;
     std::vector<uint8_t> wire;
+    int64_t bits = -1;
 };
 
 bool parse_hex( const std::string & text, std::vector<uint8_t> & out )
@@ -143,6 +145,13 @@ bool read_cases( const char * path, std::vector<Case> & cases )
                 if ( !parse_hex( token[i + 1], c.wire ) ) return false;
                 c.has_wire = true;
             }
+            else if ( token[i] == "bits" )
+            {
+                char * end = nullptr;
+                const long bits = std::strtol( token[i + 1].c_str(), &end, 10 );
+                if ( end == token[i + 1].c_str() || *end != '\0' || bits < 0 ) return false;
+                c.bits = bits;
+            }
             else
             {
                 return false;
@@ -169,6 +178,8 @@ int run_case( const Case & c )
     if ( !written ) _exit( kWriteFailedExit );
     if ( c.refused ) _exit( kWroteExit );
 
+    // the bits the write emitted, before the flush pads the last byte
+    if ( c.bits >= 0 && stream.GetBitsProcessed() != c.bits ) _exit( kBitsMismatchExit );
     stream.Flush();
     const int64_t bytes = stream.GetBytesProcessed();
     if ( bytes <= 0 || bytes > int64_t( sizeof( buffer ) ) ) _exit( kReadFailedExit );
@@ -212,8 +223,10 @@ int main( int argc, char ** argv )
     }
 
     int failures = 0;
+    int ran = 0;
     for ( const Case & c : cases )
     {
+        ++ran;
         std::fflush( stdout );
         std::fflush( stderr );
         const pid_t child = fork();
@@ -231,12 +244,54 @@ int main( int argc, char ** argv )
         }
         const bool aborted = WIFSIGNALED( status ) && WTERMSIG( status ) == SIGABRT;
         const bool wrote = WIFEXITED( status ) && WEXITSTATUS( status ) == kWroteExit;
-        if ( c.refused )
-        {
-            if ( aborted ) continue;
-            if ( wrote )
+        const int failures_before = failures;
+        // the verdict, then the case's answer tools/casegate reads (the
+        // FAILED line on stderr says why)
+        [&] {
+            if ( c.refused )
             {
-                std::fprintf( stderr, "FAILED: %s: write was not refused (debug assert)\n", c.name.c_str() );
+                if ( aborted ) return;
+                if ( wrote )
+                {
+                    std::fprintf( stderr, "FAILED: %s: write was not refused (debug assert)\n", c.name.c_str() );
+                    ++failures;
+                }
+                else
+                {
+                    std::fprintf( stderr, "FAILED: %s: child ended with status 0x%x\n", c.name.c_str(), status );
+                    ++failures;
+                }
+                return;
+            }
+            if ( wrote ) return;
+            if ( aborted )
+            {
+                std::fprintf( stderr, "FAILED: %s: lawful write was refused (debug assert)\n", c.name.c_str() );
+                ++failures;
+            }
+            else if ( WIFEXITED( status ) && WEXITSTATUS( status ) == kReadMismatchExit )
+            {
+                std::fprintf( stderr, "FAILED: %s: read-back is not the quantized value\n", c.name.c_str() );
+                ++failures;
+            }
+            else if ( WIFEXITED( status ) && WEXITSTATUS( status ) == kWireMismatchExit )
+            {
+                std::fprintf( stderr, "FAILED: %s: the written bytes are not the case's wire\n", c.name.c_str() );
+                ++failures;
+            }
+            else if ( WIFEXITED( status ) && WEXITSTATUS( status ) == kBitsMismatchExit )
+            {
+                std::fprintf( stderr, "FAILED: %s: the write emitted other than the case's %lld bits before the flush\n", c.name.c_str(), (long long) c.bits );
+                ++failures;
+            }
+            else if ( WIFEXITED( status ) && WEXITSTATUS( status ) == kWriteFailedExit )
+            {
+                std::fprintf( stderr, "FAILED: %s: write returned false\n", c.name.c_str() );
+                ++failures;
+            }
+            else if ( WIFEXITED( status ) && WEXITSTATUS( status ) == kReadFailedExit )
+            {
+                std::fprintf( stderr, "FAILED: %s: read-back failed\n", c.name.c_str() );
                 ++failures;
             }
             else
@@ -244,46 +299,12 @@ int main( int argc, char ** argv )
                 std::fprintf( stderr, "FAILED: %s: child ended with status 0x%x\n", c.name.c_str(), status );
                 ++failures;
             }
-            continue;
-        }
-        if ( wrote ) continue;
-        if ( aborted )
-        {
-            std::fprintf( stderr, "FAILED: %s: lawful write was refused (debug assert)\n", c.name.c_str() );
-            ++failures;
-        }
-        else if ( WIFEXITED( status ) && WEXITSTATUS( status ) == kReadMismatchExit )
-        {
-            std::fprintf( stderr, "FAILED: %s: read-back is not the quantized value\n", c.name.c_str() );
-            ++failures;
-        }
-        else if ( WIFEXITED( status ) && WEXITSTATUS( status ) == kWireMismatchExit )
-        {
-            std::fprintf( stderr, "FAILED: %s: the written bytes are not the case's wire\n", c.name.c_str() );
-            ++failures;
-        }
-        else if ( WIFEXITED( status ) && WEXITSTATUS( status ) == kWriteFailedExit )
-        {
-            std::fprintf( stderr, "FAILED: %s: write returned false\n", c.name.c_str() );
-            ++failures;
-        }
-        else if ( WIFEXITED( status ) && WEXITSTATUS( status ) == kReadFailedExit )
-        {
-            std::fprintf( stderr, "FAILED: %s: read-back failed\n", c.name.c_str() );
-            ++failures;
-        }
-        else
-        {
-            std::fprintf( stderr, "FAILED: %s: child ended with status 0x%x\n", c.name.c_str(), status );
-            ++failures;
-        }
+        }();
+        std::printf( "case %s %s\n", c.name.c_str(), failures == failures_before ? "ok" : "FAILED: see the FAILED line above" );
     }
 
-    if ( failures != 0 )
-    {
-        std::fprintf( stderr, "FAILED: %d compressed-float packet case(s)\n", failures );
-        return 1;
-    }
-    std::printf( "packet-write-cfloat-cpp: %zu cases passed\n", cases.size() );
-    return 0;
+    if ( failures != 0 ) std::fprintf( stderr, "FAILED: %d compressed-float packet case(s)\n", failures );
+    // a summary; tools/casegate holds every case of the file to an answer
+    std::printf( "packet-write-cfloat C++: ran %d, failed %d\n", ran, failures );
+    return failures != 0 ? 1 : 0;
 }

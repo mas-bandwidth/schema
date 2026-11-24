@@ -2380,8 +2380,8 @@ build/packet-write-cfloat/c-test: build/packet-write-cfloat/c/.stamp test/packet
 		test/packet-write-cfloat/c/main.c $(SERIALIZE_C)/serialize.c -o $@ -lm
 
 .PHONY: packet-write-cfloat-c packet-write-cfloat-c-negative-control
-packet-write-cfloat-c: build/packet-write-cfloat/c-test
-	./build/packet-write-cfloat/c-test test/packet-write-cfloat/cases.txt
+packet-write-cfloat-c: build/packet-write-cfloat/c-test build/casegate
+	$(call packet_write_cfloat_gate,c,packet-write-cfloat-c) ./build/packet-write-cfloat/c-test test/packet-write-cfloat/cases.txt
 
 packet-write-cfloat-c-negative-control: packet-write-cfloat-c
 	@mkdir -p build/packet-write-cfloat/c-negative

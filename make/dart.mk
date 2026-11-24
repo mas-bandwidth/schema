@@ -2023,12 +2023,12 @@ build/packet-write-cfloat/dart/.stamp: bin/schema test/packet-write-cfloat/Packe
 	@touch $@
 
 .PHONY: packet-write-cfloat-dart packet-write-cfloat-dart-negative-control
-packet-write-cfloat-dart: build/mustrun build/packet-write-cfloat/dart/.stamp
+packet-write-cfloat-dart: build/casegate build/packet-write-cfloat/dart/.stamp
 	$(DART) analyze build/packet-write-cfloat/dart test/packet-write-cfloat/dart
 	$(DART) format --set-exit-if-changed --output=none build/packet-write-cfloat/dart test/packet-write-cfloat/dart
-	$(MUSTRUN) -name packet-write-cfloat-dart -count 12 -- $(DART) --enable-asserts test/packet-write-cfloat/dart/main.dart test/packet-write-cfloat/cases.txt
+	$(call packet_write_cfloat_gate,dart,packet-write-cfloat-dart) $(DART) --enable-asserts test/packet-write-cfloat/dart/main.dart test/packet-write-cfloat/cases.txt
 	$(DART) compile exe -o build/packet-write-cfloat/dart/checker test/packet-write-cfloat/dart/main.dart >/dev/null
-	$(MUSTRUN) -name packet-write-cfloat-dart-aot -count 12 -- ./build/packet-write-cfloat/dart/checker test/packet-write-cfloat/cases.txt
+	$(call packet_write_cfloat_gate,dart,packet-write-cfloat-dart-aot) ./build/packet-write-cfloat/dart/checker test/packet-write-cfloat/cases.txt
 
 packet-write-cfloat-dart-negative-control: packet-write-cfloat-dart
 	@rm -rf build/packet-write-cfloat/dart-negative && mkdir -p build/packet-write-cfloat/dart-negative
@@ -2045,7 +2045,7 @@ packet-write-cfloat-dart-negative-control: packet-write-cfloat-dart
 		{ echo 'NEGATIVE CONTROL FAILED: below-min was not the failure'; cat build/packet-write-cfloat/dart-negative/log; exit 1; }
 	@grep -Fq 'FAILED: packet-write-cfloat largest-finite-float32: off-range value was written' build/packet-write-cfloat/dart-negative/log || \
 		{ echo 'NEGATIVE CONTROL FAILED: largest-finite-float32 was not the failure'; cat build/packet-write-cfloat/dart-negative/log; exit 1; }
-	@if grep -F 'FAILED: ' build/packet-write-cfloat/dart-negative/log | grep -Fv \
+	@if grep '^FAILED: ' build/packet-write-cfloat/dart-negative/log | grep -Fv \
 		-e 'FAILED: packet-write-cfloat above-max: off-range value was written' \
 		-e 'FAILED: packet-write-cfloat below-min: off-range value was written' \
 		-e 'FAILED: packet-write-cfloat largest-finite-float32: off-range value was written' >/dev/null; then \

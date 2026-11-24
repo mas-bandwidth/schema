@@ -36,7 +36,7 @@ function parseValue(text) {
 }
 
 // One case per line: <name> <value> <verdict> [reads-back <value>]
-// [type RatioEndpoint wire <hex>]; the modifiers come in pairs.
+// [type RatioEndpoint wire <hex> bits <n>]; the modifiers come in pairs.
 function readCases() {
   const cases = [];
   for (const raw of readFileSync(casesURL, "utf8").split("\n")) {
@@ -47,11 +47,12 @@ function readCases() {
       throw new Error(`cases.txt: ${f[0]}: verdict "${f[2]}" is neither written nor refused`);
     }
     if (f.length % 2 !== 1) throw new Error(`cases.txt: ${f[0]}: a modifier has no operand`);
-    const c = { name: f[0], value: parseValue(f[1]), written: f[2] === "written", readsBack: undefined, ratio: false, wire: undefined };
+    const c = { name: f[0], value: parseValue(f[1]), written: f[2] === "written", readsBack: undefined, ratio: false, wire: undefined, bits: undefined };
     for (let i = 3; i + 1 < f.length; i += 2) {
       if (f[i] === "reads-back") c.readsBack = parseValue(f[i + 1]);
       else if (f[i] === "type" && f[i + 1] === "RatioEndpoint") c.ratio = true;
       else if (f[i] === "wire") c.wire = f[i + 1].toLowerCase();
+      else if (f[i] === "bits" && /^[0-9]+$/.test(f[i + 1])) c.bits = Number(f[i + 1]);
       else throw new Error(`cases.txt: ${f[0]}: unknown modifier ${f[i]} ${f[i + 1]}`);
     }
     cases.push(c);
@@ -81,8 +82,10 @@ function writeRuntime(c) {
     input.x = c.value;
     if (!runtime.WriteCFloat(stream, input)) return null;
   }
+  // the bits the write emitted, before the flush pads the last byte
+  const bits = stream.bitsProcessed();
   stream.flush();
-  return { bytes: stream.data().slice(), bits: stream.bitsProcessed() };
+  return { bytes: stream.data().slice(), bits };
 }
 
 function readRuntime(c, wire) {
@@ -124,6 +127,17 @@ const tiers = [
 
 const cases = readCases();
 for (const c of cases) {
+  const failuresBefore = failures;
+  runCase(c);
+  // the case's answer tools/casegate reads (the FAILED lines on stderr say why)
+  console.log(`case ${c.name} ${failures === failuresBefore ? "ok" : "FAILED: see the FAILED lines above"}`);
+}
+
+// The flat writer returns bytes, not bits: for a case that pins its bits it
+// is held to the declared width (the generated <T>MaxBits) and its bytes
+// must read back through exactly that many bits.
+function runCase(c) {
+  const maxBits = c.ratio ? runtime.RatioEndpointMaxBits : runtime.CFloatMaxBits;
   for (const tier of tiers) {
     let wire;
     try {
@@ -144,6 +158,18 @@ for (const c of cases) {
       fail(`${tier.name} ${c.name}: wrote ${hex(wire.bytes)}, want ${c.wire}`);
       continue;
     }
+    if (c.bits !== undefined) {
+      if (tier.name === "flat") {
+        if (maxBits !== c.bits) {
+          fail(`${tier.name} ${c.name}: the declared width is ${maxBits} bits, want ${c.bits}`);
+          continue;
+        }
+        wire = { bytes: wire.bytes, bits: c.bits };
+      } else if (wire.bits !== c.bits) {
+        fail(`${tier.name} ${c.name}: wrote ${wire.bits} bits before the flush, want ${c.bits}`);
+        continue;
+      }
+    }
     let got;
     try {
       got = tier.read(c, wire);
@@ -160,7 +186,6 @@ for (const c of cases) {
   }
 }
 
-// One unit per shared case: tools/mustrun holds the count to the one the recipe
-// registers, so an emptied or shortened cases.txt is red.
+// A summary; tools/casegate holds every case of the file to an answer.
 console.log(`packet write compressed float JavaScript, ${mode} build: ran ${cases.length}, failed ${failures}`);
 if (failures !== 0 || cases.length === 0) process.exit(1);

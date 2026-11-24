@@ -9,6 +9,6 @@ build/packet-write-cfloat/unity/.stamp: bin/schema test/packet-write-cfloat/Pack
 	@touch $@
 
 .PHONY: packet-write-cfloat-unity
-packet-write-cfloat-unity: toolchain-unity build/packet-write-cfloat/unity/.stamp build/mustrun
+packet-write-cfloat-unity: toolchain-unity build/packet-write-cfloat/unity/.stamp build/casegate
 	$(DOTNET) build test/packet-write-cfloat/unity/packet-write-cfloat-unity.csproj -c Debug -o build/packet-write-cfloat/unity-debug --nologo -v quiet
-	$(MUSTRUN) -name packet-write-cfloat-unity -count 12 -- $(DOTNET) build/packet-write-cfloat/unity-debug/packet-write-cfloat-unity.dll test/packet-write-cfloat/cases.txt
+	$(call packet_write_cfloat_gate,unity,packet-write-cfloat-unity) $(DOTNET) build/packet-write-cfloat/unity-debug/packet-write-cfloat-unity.dll test/packet-write-cfloat/cases.txt

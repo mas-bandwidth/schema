@@ -5,8 +5,10 @@
 // Go is an every-build leg: a refused value is an error from the writer in
 // every build. A written case writes, reads back to its quantized value (or
 // the case's reads-back value), and, when the case pins a wire, writes
-// exactly those bytes. Each failure prints "FAILED: <case>: <detail>"; the
-// last stdout line is the count tools/mustrun reads.
+// exactly those bytes and, when it pins bits, emits exactly that many bits
+// before the flush. Each case answers "case <name> ok" or "case <name>
+// FAILED: <detail>" on stdout, the line tools/casegate reads; the last line
+// is a summary.
 package main
 
 import (
@@ -25,9 +27,28 @@ import (
 
 var failures int
 
+// pending is the case being run; answer prints its line, with the first
+// failure's detail.
+var pending, why string
+
 func fail(name, format string, args ...any) {
-	fmt.Fprintf(os.Stderr, "FAILED: %s: %s\n", name, fmt.Sprintf(format, args...))
+	detail := fmt.Sprintf(format, args...)
+	fmt.Fprintf(os.Stderr, "FAILED: %s: %s\n", name, detail)
 	failures++
+	if why == "" {
+		why = detail
+	}
+}
+
+func answer() {
+	if pending != "" {
+		if why == "" {
+			fmt.Printf("case %s ok\n", pending)
+		} else {
+			fmt.Printf("case %s FAILED: %s\n", pending, why)
+		}
+	}
+	pending, why = "", ""
 }
 
 func value(text string) (float32, error) {
@@ -35,8 +56,9 @@ func value(text string) (float32, error) {
 	return float32(v), err
 }
 
-// write writes one case's value as a CFloat, or as a RatioEndpoint.
-func write(ratio bool, x float32) ([]byte, error) {
+// write writes one case's value as a CFloat, or as a RatioEndpoint, and
+// says how many bits the write emitted before the flush.
+func write(ratio bool, x float32) ([]byte, int64, error) {
 	w := serialize.NewWriteStream(make([]byte, 64))
 	var err error
 	if ratio {
@@ -45,10 +67,11 @@ func write(ratio bool, x float32) ([]byte, error) {
 		err = cfloat.WriteCFloat(w, &cfloat.CFloat{X: x})
 	}
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
+	bits := w.BitsProcessed()
 	w.Flush()
-	return append([]byte(nil), w.Data()...), nil
+	return append([]byte(nil), w.Data()...), bits, nil
 }
 
 func read(ratio bool, wire []byte) (float32, error) {
@@ -83,6 +106,8 @@ func main() {
 		}
 		ran++
 		name := fields[0]
+		answer()
+		pending = name
 		if len(fields) < 3 || len(fields)%2 != 1 || (fields[2] != "refused" && fields[2] != "written") {
 			fail(name, "malformed case %q", scanner.Text())
 			continue
@@ -92,8 +117,9 @@ func main() {
 			fail(name, "value %q: %v", fields[1], err)
 			continue
 		}
-		// [reads-back <v>] [type RatioEndpoint] [wire <hex>], in pairs
+		// [reads-back <v>] [type RatioEndpoint] [wire <hex>] [bits <n>], in pairs
 		want, ratio, wantWire, malformed := x, false, "", false
+		wantBits := int64(-1)
 		for i := 3; i+1 < len(fields); i += 2 {
 			switch {
 			case fields[i] == "reads-back":
@@ -104,6 +130,10 @@ func main() {
 				ratio = true
 			case fields[i] == "wire":
 				wantWire = strings.ToLower(fields[i+1])
+			case fields[i] == "bits":
+				if wantBits, err = strconv.ParseInt(fields[i+1], 10, 64); err != nil || wantBits < 0 {
+					malformed = true
+				}
 			default:
 				malformed = true
 			}
@@ -112,7 +142,7 @@ func main() {
 			fail(name, "malformed modifier in %q", scanner.Text())
 			continue
 		}
-		wire, err := write(ratio, x)
+		wire, bits, err := write(ratio, x)
 		if fields[2] == "refused" {
 			if err == nil {
 				fail(name, "the writer accepted a value the range refuses (%x)", wire)
@@ -121,6 +151,10 @@ func main() {
 		}
 		if err != nil {
 			fail(name, "the writer refused a lawful value: %v", err)
+			continue
+		}
+		if wantBits >= 0 && bits != wantBits {
+			fail(name, "wrote %d bits before the flush, want %d", bits, wantBits)
 			continue
 		}
 		if wantWire != "" && hex.EncodeToString(wire) != wantWire {
@@ -136,6 +170,7 @@ func main() {
 			fail(name, "read back %v, want %v", got, want)
 		}
 	}
+	answer()
 	if err := scanner.Err(); err != nil {
 		fail("cases", "read: %v", err)
 	}

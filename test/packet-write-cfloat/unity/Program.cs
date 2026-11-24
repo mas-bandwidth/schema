@@ -37,6 +37,20 @@ internal static class Program
         }
     }
 
+    // The case being run and the failures before it: Answer() prints its
+    // "case <name> ok|FAILED: ..." line, the answer tools/casegate reads.
+    private static string pending;
+    private static int pendingFailed;
+
+    private static void Answer()
+    {
+        if (pending != null)
+        {
+            Console.WriteLine("case " + pending + (failed == pendingFailed ? " ok" : " FAILED: see the FAILED line above"));
+        }
+        pending = null;
+    }
+
     private static float Parse(string text)
     {
         switch (text)
@@ -61,9 +75,11 @@ internal static class Program
     }
 
     // Writes one case; returns null when the writer refused (its assert fired
-    // or it returned false).
-    private static byte[] Write(float value, bool ratio)
+    // or it returned false). bits is what the write emitted before the flush
+    // pads the last byte.
+    private static byte[] Write(float value, bool ratio, out long bits)
     {
+        bits = -1;
         WriteStream stream = new WriteStream(new byte[64]);
         try
         {
@@ -79,6 +95,7 @@ internal static class Program
                 wrote = Schema.WriteCFloat(stream, ref c);
             }
             if (!wrote || !stream.Ok) return null;
+            bits = stream.BitsProcessed;
             stream.Flush();
         }
         catch (AssertionTrapped)
@@ -114,6 +131,9 @@ internal static class Program
             string line = raw.Trim();
             if (line.Length == 0 || line.StartsWith("#", StringComparison.Ordinal)) continue;
             ran++;
+            Answer();
+            pending = line.Split((char[])null, StringSplitOptions.RemoveEmptyEntries)[0];
+            pendingFailed = failed;
             string[] fields = line.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
             if (fields.Length < 3 || fields.Length % 2 != 1 || (fields[2] != "refused" && fields[2] != "written"))
             {
@@ -122,15 +142,17 @@ internal static class Program
             }
             string name = fields[0];
             float value = Parse(fields[1]);
-            // [reads-back <v>] [type RatioEndpoint] [wire <hex>], in pairs
+            // [reads-back <v>] [type RatioEndpoint] [wire <hex>] [bits <n>], in pairs
             bool ratio = false;
             string wireHex = null;
+            long wantBits = -1;
             bool malformed = false;
             for (int i = 3; i + 1 < fields.Length; i += 2)
             {
                 if (fields[i] == "reads-back") { }
                 else if (fields[i] == "type" && fields[i + 1] == "RatioEndpoint") ratio = true;
                 else if (fields[i] == "wire") wireHex = fields[i + 1].ToLowerInvariant();
+                else if (fields[i] == "bits") malformed |= !long.TryParse(fields[i + 1], NumberStyles.None, CultureInfo.InvariantCulture, out wantBits);
                 else malformed = true;
             }
             if (malformed)
@@ -138,7 +160,7 @@ internal static class Program
                 Check(false, "case line '" + line + "' has a malformed modifier");
                 continue;
             }
-            byte[] wire = Write(value, ratio);
+            byte[] wire = Write(value, ratio, out long bits);
             if (fields[2] == "refused")
             {
                 Check(wire == null, name + " refused");
@@ -148,6 +170,10 @@ internal static class Program
             {
                 Check(false, name + " written");
                 continue;
+            }
+            if (wantBits >= 0)
+            {
+                Check(bits == wantBits, name + " wrote " + bits + " bits before the flush, want " + wantBits);
             }
             if (wireHex != null)
             {
@@ -162,6 +188,7 @@ internal static class Program
             Check(BitConverter.SingleToUInt32Bits(got) == BitConverter.SingleToUInt32Bits(Quantized(value, ratio)),
                 name + " reads back its quantized value");
         }
+        Answer();
         Check(ran > 0, "the shared cases in " + args[0] + " name at least one case");
         Console.WriteLine("packet-write-cfloat Unity C#: ran " + ran + ", failed " + failed);
         return failed == 0 ? 0 : 1;

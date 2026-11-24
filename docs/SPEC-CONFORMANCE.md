@@ -528,10 +528,15 @@ The `ratio-at-min` and `ratio-at-max` rows of the shared
 [cases](../test/packet-write-cfloat/cases.txt) pin the seven-bit step indices 0 and
 100 and their zero-padded packet bytes `00` and `64`. Every leg's
 `packet-write-cfloat-<leg>` writes each endpoint through its generated packet
-writer, checks the exact byte, and reads back the original value. A leg that
-cannot answer a case owes it by an exact line in
-[`owed.txt`](../test/packet-write-cfloat/owed.txt); `internal/inputfamilies`
-fails on a leg that neither answers nor owes a case, and on a stale line.
+writer, checks the exact byte and that the write emitted exactly seven bits
+before the flush (`bits 7`: an eight-bit writer pads to the same byte), and
+reads back the original value. Legs whose writer returns bytes rather than a
+stream (Dart, Elixir, the JavaScript flat tier) hold the declared width,
+the generated `<T>MaxBits`, to the seven bits and read the bytes back
+through exactly seven bits. Each case gets one `case <name> ok` answer
+per leg, which `tools/casegate` checks against the case file. A leg that
+cannot answer a case owes it with an exact line in
+[`owed.txt`](../test/packet-write-cfloat/owed.txt).
 
 
 ### Accepted variable-table write bounds

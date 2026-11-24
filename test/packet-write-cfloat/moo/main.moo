@@ -19,16 +19,19 @@ for line in string.gmatch(buffer.tostring(inputs.cases), "[^\n]+") do
  local name, text, verdict = fields[1], fields[2], fields[3]
  if name and string.sub(name, 1, 1) ~= "#" then
   cases += 1
-  -- [reads-back <v>] [type RatioEndpoint] [wire <hex>], in pairs
+  local failedBefore = failed
+  -- [reads-back <v>] [type RatioEndpoint] [wire <hex>] [bits <n>], in pairs
   local backText = ""
   local ratio = false
   local wantWire = ""
+  local wantBits = -1
   local malformed = #fields < 3 or #fields % 2 ~= 1
   local i = 4
   while i < #fields do
    if fields[i] == "reads-back" then backText = fields[i + 1]
    elseif fields[i] == "type" and fields[i + 1] == "RatioEndpoint" then ratio = true
    elseif fields[i] == "wire" then wantWire = string.lower(fields[i + 1])
+   elseif fields[i] == "bits" and string.match(fields[i + 1], "^%d+$") then wantBits = tonumber(fields[i + 1]) :: number
    else malformed = true end
    i += 2
   end
@@ -53,6 +56,8 @@ for line in string.gmatch(buffer.tostring(inputs.cases), "[^\n]+") do
    print("FAILED: " .. name .. ": write verdict")
    failed += 1
   elseif verdict == "written" and ok then
+   -- the bits the write emitted, before the flush pads the last byte
+   local bits = stream:bitsProcessed()
    stream:flush()
    local wire = stream:data()
    local success
@@ -68,7 +73,10 @@ for line in string.gmatch(buffer.tostring(inputs.cases), "[^\n]+") do
    local expected = if backText ~= "" then tonumber(backText) :: number else n
    local expectedBits = buffer.create(4)
    buffer.writef32(expectedBits, 0, expected)
-   if wantWire ~= "" and hex(wire) ~= wantWire then
+   if wantBits >= 0 and bits ~= wantBits then
+    print("FAILED: " .. name .. ": wrote " .. tostring(bits) .. " bits before the flush, want " .. tostring(wantBits))
+    failed += 1
+   elseif wantWire ~= "" and hex(wire) ~= wantWire then
     print("FAILED: " .. name .. ": wrote " .. hex(wire) .. ", want " .. wantWire)
     failed += 1
    elseif not success or buffer.readu32(b, 0) ~= buffer.readu32(expectedBits, 0) then
@@ -76,9 +84,11 @@ for line in string.gmatch(buffer.tostring(inputs.cases), "[^\n]+") do
     failed += 1
    end
   end
+  -- the case's answer tools/casegate reads (the FAILED line says why)
+  print("case " .. name .. (if failed == failedBefore then " ok" else " FAILED: see the FAILED line above"))
  end
 end
--- The count tools/mustrun reads. An empty case list is a failure (it used to
--- print "all cases passed" and exit 0).
+-- A summary; tools/casegate holds every case of the file to an answer. An
+-- empty case list is a failure.
 print(string.format("packet cfloat moo: ran %d, failed %d", cases, failed))
 if failed > 0 or cases == 0 then error(string.format("packet cfloat moo: %d failures over %d cases", failed, cases), 0) end

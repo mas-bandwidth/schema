@@ -47,6 +47,20 @@ static class Program
         }
     }
 
+    // The case being run and the failures before it: Answer() prints its
+    // "case <name> ok|FAILED: ..." line, the answer tools/casegate reads.
+    static string? pending;
+    static int pendingFailed;
+
+    static void Answer()
+    {
+        if (pending != null)
+        {
+            Console.WriteLine("case " + pending + (failed == pendingFailed ? " ok" : " FAILED: see the FAILED line above"));
+        }
+        pending = null;
+    }
+
     static bool AssertFires(Action action)
     {
         TraceListener[] saved = new TraceListener[Trace.Listeners.Count];
@@ -88,10 +102,11 @@ static class Program
         return asserted || !wrote;
     }
 
-    static bool Written(float value, bool ratio, out float readBack, out byte[] wire)
+    static bool Written(float value, bool ratio, out float readBack, out byte[] wire, out long bits)
     {
         readBack = 0.0f;
         wire = Array.Empty<byte>();
+        bits = -1;
         WriteStream stream = new WriteStream(new byte[64]);
         bool wrote = false;
         bool asserted = AssertFires(() => { wrote = WriteOne(stream, value, ratio); });
@@ -99,6 +114,8 @@ static class Program
         {
             return false;
         }
+        // the bits the write emitted, before the flush pads the last byte
+        bits = stream.BitsProcessed;
         stream.Flush();
         if (!stream.Ok)
         {
@@ -171,6 +188,9 @@ static class Program
                 continue;
             }
             ran++;
+            Answer();
+            pending = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)[0];
+            pendingFailed = failed;
             string[] fields = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
             if (fields.Length < 3)
             {
@@ -182,6 +202,7 @@ static class Program
             string verdict = fields[2];
             bool ratio = false;
             string? wireHex = null;
+            long wantBits = -1;
             bool malformed = fields.Length % 2 != 1;
             for (int i = 3; i + 1 < fields.Length; i += 2)
             {
@@ -190,6 +211,7 @@ static class Program
                     case "reads-back": break;
                     case "type": ratio = fields[i + 1] == "RatioEndpoint"; malformed |= !ratio; break;
                     case "wire": wireHex = fields[i + 1].ToLowerInvariant(); break;
+                    case "bits": malformed |= !long.TryParse(fields[i + 1], NumberStyles.None, CultureInfo.InvariantCulture, out wantBits); break;
                     default: malformed = true; break;
                 }
             }
@@ -209,10 +231,14 @@ static class Program
                 continue;
             }
             written++;
-            if (!Written(value, ratio, out float got, out byte[] wire))
+            if (!Written(value, ratio, out float got, out byte[] wire, out long bits))
             {
                 Check(false, name + " written");
                 continue;
+            }
+            if (wantBits >= 0)
+            {
+                Check(bits == wantBits, name + " wrote " + bits + " bits before the flush, want " + wantBits);
             }
             if (wireHex != null)
             {
@@ -221,8 +247,8 @@ static class Program
             float want = Quantized(value, ratio);
             Check(Bits(got) == Bits(want), name + " reads back its quantized value");
         }
-        // the count line build/mustrun holds to the registered count: a case
-        // file that lost its rows runs nothing and is red
+        Answer();
+        // a summary; tools/casegate holds every case of the file to an answer
         Check(ran > 0, "the shared cases in " + cases + " name at least one case");
         Console.WriteLine("packet-write-cfloat C# (" + written + " lawful cases read back quantized): ran " + ran + ", failed " + failed);
         return failed == 0 ? 0 : 1;

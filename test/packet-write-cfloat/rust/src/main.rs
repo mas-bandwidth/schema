@@ -15,6 +15,15 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
+// A failed case: its FAILED line on stderr, its answer on stdout (the line
+// tools/casegate reads), and the run ends; casegate names every case after
+// it as unanswered.
+fn fail(name: &str, why: String) -> ! {
+    eprintln!("FAILED: {name} {why}");
+    println!("case {name} FAILED: {why}");
+    std::process::exit(1);
+}
+
 fn main() {
     let cases = std::env::args().nth(1).expect("shared cases path");
     std::panic::set_hook(Box::new(|_| {}));
@@ -32,19 +41,21 @@ fn main() {
         let name = fields[0];
         let input = value(fields[1]);
         let wanted = fields[2];
-        // [reads-back <v>] [type RatioEndpoint] [wire <hex>], in pairs
+        // [reads-back <v>] [type RatioEndpoint] [wire <hex>] [bits <n>], in pairs
         let mut expected = input;
         let mut ratio = false;
         let mut wire: Option<String> = None;
+        let mut want_bits: Option<usize> = None;
         for pair in fields[3..].chunks(2) {
             match (pair[0], pair[1]) {
                 ("reads-back", v) => expected = value(v),
                 ("type", "RatioEndpoint") => ratio = true,
                 ("wire", h) => wire = Some(h.to_ascii_lowercase()),
-                _ => {
-                    eprintln!("FAILED: {name}: malformed modifier in {line:?}");
-                    std::process::exit(1);
-                }
+                ("bits", n) => match n.parse() {
+                    Ok(n) => want_bits = Some(n),
+                    Err(_) => fail(name, format!("malformed bits in {line:?}")),
+                },
+                _ => fail(name, format!("malformed modifier in {line:?}")),
             }
         }
         let old_hook = std::panic::take_hook();
@@ -64,24 +75,24 @@ fn main() {
         std::panic::set_hook(old_hook);
         let (data, bits) = match attempt {
             Ok(Ok(pair)) => pair,
-            Err(_) if wanted == "refused" => continue,
-            Ok(Err(error)) => {
-                eprintln!("FAILED: {name} unexpectedly refused: {error:?}");
-                std::process::exit(1);
+            Err(_) if wanted == "refused" => {
+                println!("case {name} ok");
+                continue;
             }
-            Err(_) => {
-                eprintln!("FAILED: {name} unexpectedly panicked");
-                std::process::exit(1);
-            }
+            Ok(Err(error)) => fail(name, format!("unexpectedly refused: {error:?}")),
+            Err(_) => fail(name, "unexpectedly panicked".to_string()),
         };
         if wanted != "written" {
-            eprintln!("FAILED: {name} was written but must be refused");
-            std::process::exit(1);
+            fail(name, "was written but must be refused".to_string());
+        }
+        if let Some(want) = want_bits {
+            if bits as usize != want {
+                fail(name, format!("wrote {bits} bits before the flush, want {want}"));
+            }
         }
         if let Some(want) = &wire {
             if hex(&data) != *want {
-                eprintln!("FAILED: {name} wrote {}, want {want}", hex(&data));
-                std::process::exit(1);
+                fail(name, format!("wrote {}, want {want}", hex(&data)));
             }
         }
         let mut padded = vec![0; (data.len() + 3) & !3];
@@ -97,20 +108,19 @@ fn main() {
             output.x
         };
         if got.to_bits() != expected.to_bits() {
-            eprintln!("FAILED: {name} read back {got}, expected {expected}");
-            std::process::exit(1);
+            fail(name, format!("read back {got}, expected {expected}"));
         }
         // The public read ends the packet (SPEC §5): it consumes the final
         // byte's unused bits, so it stops at the written bits rounded up to a
         // whole byte.
         let bits = bits.div_ceil(8) * 8;
         if rs.bits_processed() != bits {
-            eprintln!("FAILED: {name} consumed {} bits, wrote {bits}", rs.bits_processed());
-            std::process::exit(1);
+            fail(name, format!("consumed {} bits, wrote {bits}", rs.bits_processed()));
         }
+        println!("case {name} ok");
     }
-    // the count line build/mustrun holds to the registered count: a case file
-    // that lost its rows runs nothing and is red (every failure above exits)
+    // a summary; tools/casegate holds every case of the file to an answer
+    // (every failure above exits)
     if ran == 0 {
         eprintln!("FAILED: no cases in {cases}");
     }

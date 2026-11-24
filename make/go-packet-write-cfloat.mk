@@ -10,7 +10,7 @@ build/packet-write-cfloat/go/.stamp: bin/schema test/packet-write-cfloat/PacketC
 	@touch $@
 
 .PHONY: packet-write-cfloat-go
-packet-write-cfloat-go: build/packet-write-cfloat/go/.stamp build/mustrun
-	cd test/packet-write-cfloat/go && $(CURDIR)/$(MUSTRUN) -name packet-write-cfloat-go -count 12 -- go run . ../cases.txt
+packet-write-cfloat-go: build/packet-write-cfloat/go/.stamp build/casegate
+	cd test/packet-write-cfloat/go && $(call packet_write_cfloat_gate,go,packet-write-cfloat-go) go run . ../cases.txt
 
 test-go: packet-write-cfloat-go

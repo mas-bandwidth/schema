@@ -22,6 +22,21 @@ void check(bool ok, String what) {
   }
 }
 
+// The case being run and the failures before it: answer() prints its
+// "case <name> ok|FAILED: ..." line, the answer tools/casegate reads.
+String? pending;
+var pendingFailed = 0;
+
+void answer() {
+  final name = pending;
+  if (name != null) {
+    print(
+      'case $name ${failed == pendingFailed ? 'ok' : 'FAILED: see the FAILED line above'}',
+    );
+  }
+  pending = null;
+}
+
 final bool assertsEnabled = () {
   var on = false;
   assert(on = true);
@@ -52,6 +67,9 @@ void main(List<String> args) {
     ran++;
     final fields = text.split(RegExp(r'\s+'));
     final name = fields[0];
+    answer();
+    pending = name;
+    pendingFailed = failed;
     final x = parseValue(fields[1]);
     if (fields[2] != 'written' && fields[2] != 'refused') {
       throw StateError(
@@ -59,10 +77,11 @@ void main(List<String> args) {
       );
     }
     final refused = fields[2] == 'refused';
-    // [reads-back <v>] [type RatioEndpoint] [wire <hex>], in pairs
+    // [reads-back <v>] [type RatioEndpoint] [wire <hex>] [bits <n>], in pairs
     var readsBack = x;
     var ratio = false;
     String? wireHex;
+    int? wantBits;
     if (fields.length % 2 != 1) {
       throw StateError('cases: $name: a modifier has no operand');
     }
@@ -77,6 +96,11 @@ void main(List<String> args) {
           ratio = true;
         case 'wire':
           wireHex = fields[i + 1].toLowerCase();
+        case 'bits':
+          wantBits = int.tryParse(fields[i + 1]);
+          if (wantBits == null || wantBits < 0) {
+            throw StateError('cases: $name: bits ${fields[i + 1]}');
+          }
         default:
           throw StateError('cases: $name: unknown modifier ${fields[i]}');
       }
@@ -119,11 +143,27 @@ void main(List<String> args) {
         'packet-write-cfloat $name: wrote $got, want $wireHex',
       );
     }
+    // The writer returns bytes, not bits: a case that pins its bits holds
+    // the declared width (the generated <t>MaxBits) to them, and the bytes
+    // must read back through exactly that many bits.
+    var readBits = written * 8;
+    if (wantBits != null) {
+      final maxBits = ratio ? ratioEndpointMaxBits : cFloatMaxBits;
+      check(
+        maxBits == wantBits,
+        'packet-write-cfloat $name: the declared width is $maxBits bits, want $wantBits',
+      );
+      check(
+        written == (wantBits + 7) >> 3,
+        'packet-write-cfloat $name: wrote $written bytes for $wantBits bits',
+      );
+      readBits = wantBits;
+    }
     final back = CFloat();
     final ratioBack = RatioEndpoint();
     final read = ratio
-        ? readRatioEndpoint(ratioBack, view, written * 8)
-        : readCFloat(back, view, written * 8);
+        ? readRatioEndpoint(ratioBack, view, readBits)
+        : readCFloat(back, view, readBits);
     check(read, 'packet-write-cfloat $name: the writer bytes read back');
     if (read) {
       final got = ratio ? ratioBack.ratio : back.x;
@@ -131,9 +171,9 @@ void main(List<String> args) {
     }
   }
 
-  // One unit per shared case: tools/mustrun holds the count to the one the
-  // recipe registers, so an emptied or shortened cases.txt is red. (An AOT
-  // build still walks every case; a refused case has no assert to observe.)
+  answer();
+  // A summary; tools/casegate holds every case of the file to an answer. (An
+  // AOT build still walks every case; a refused case has no assert to observe.)
   print('packet-write-cfloat Dart: ran $ran, failed $failed');
   if (failed != 0 || ran == 0) {
     exit(1);

@@ -2,7 +2,8 @@
 // gate runs (test/packet-write-cfloat/cases.txt, SPEC §5.1 row 10): one case
 // per run, because a refusal ends the process. It takes the case's float32 bit
 // pattern and the type to write (CFloat or RatioEndpoint), and prints the
-// bits a read returns and the written bytes in hex.
+// bits a read returns, the written bytes in hex, and the number of bits the
+// write emitted before the flush.
 import .PacketCFloat
 import .serialize
 
@@ -24,6 +25,7 @@ else:
         if not cfloat.WriteRatioEndpoint(stream, value):
             print("FAILED: the write refused")
         else:
+            let bits_written = stream.bits_processed()
             stream.flush()
             let wire = substring(stream.buffer, 0, stream.bytes_processed())
             let reader = serialize_read_stream_padded(wire)
@@ -31,13 +33,14 @@ else:
             if not cfloat.ReadRatioEndpoint(reader, back):
                 print("FAILED: the read refused " + reader.refusal_name())
             else:
-                print("wrote " + number_to_string(serialize_float32_bits(back.Ratio), 16, 8) + " wire " + wire_hex(wire))
+                print("wrote " + number_to_string(serialize_float32_bits(back.Ratio), 16, 8) + " wire " + wire_hex(wire) + " bits " + string(bits_written))
     else:
         let value = cfloat.NewCFloat()
         value.X = serialize_float32_from_bits(bits)
         if not cfloat.WriteCFloat(stream, value):
             print("FAILED: the write refused")
         else:
+            let bits_written = stream.bits_processed()
             stream.flush()
             let wire = substring(stream.buffer, 0, stream.bytes_processed())
             let reader = serialize_read_stream_padded(wire)
@@ -45,4 +48,4 @@ else:
             if not cfloat.ReadCFloat(reader, back):
                 print("FAILED: the read refused " + reader.refusal_name())
             else:
-                print("wrote " + number_to_string(serialize_float32_bits(back.X), 16, 8) + " wire " + wire_hex(wire))
+                print("wrote " + number_to_string(serialize_float32_bits(back.X), 16, 8) + " wire " + wire_hex(wire) + " bits " + string(bits_written))

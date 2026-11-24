@@ -12,8 +12,11 @@
 # names the value a read returns when it differs from the one written.
 #
 # One case per line: <name> <value> <verdict> [reads-back <value>]
-# [type RatioEndpoint wire <hex>]. `wire` is the written case's complete
-# bytes after the flush: exactly that many bytes, equal to <hex>.
+# [type RatioEndpoint wire <hex> bits <n>]. `wire` is the written case's
+# complete bytes after the flush: exactly that many bytes, equal to <hex>.
+# `bits` is the number of bits the write emits before the flush pads the
+# last byte: a writer that spends one bit too many writes the same bytes,
+# and only this count tells it apart.
 # The largest finite float32 is 0x7f7fffff.
 
 nan                       NaN            refused
@@ -29,5 +32,5 @@ negative-zero             -0.0           written reads-back +0.0
 
 # The closed endpoints of RatioEndpoint: step indices 0 and 100 in seven value
 # bits and one zero padding bit.
-ratio-at-min              0.0            written type RatioEndpoint wire 00
-ratio-at-max              1.0            written type RatioEndpoint wire 64
+ratio-at-min              0.0            written type RatioEndpoint wire 00 bits 7
+ratio-at-max              1.0            written type RatioEndpoint wire 64 bits 7

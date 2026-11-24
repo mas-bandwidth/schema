@@ -7,8 +7,10 @@ usage: main.py <generated dir> <cases.txt>
 Python is an every-build leg: a refused value raises InvalidValue from the
 writer in every build. A written case writes, reads back to its quantized
 value (or the case's reads-back value), and, when the case pins a wire,
-writes exactly those bytes. Each failure prints "FAILED: <case>: <detail>";
-the last stdout line is the count tools/mustrun reads.
+writes exactly those bytes and, when it pins bits, emits exactly that many
+bits before the flush. Each failure prints "FAILED: <case>: <detail>" on
+stderr; each case answers "case <name> ok|FAILED: <detail>" on stdout, the
+line tools/casegate reads.
 """
 
 import struct
@@ -17,15 +19,27 @@ import sys
 sys.path.insert(0, sys.argv[1])
 
 from cfloat import CFloat, InvalidValue, RatioEndpoint, Refused  # noqa: E402
+from cfloat._schema.serialize import WriteStream  # noqa: E402
 
 failures = 0
 ran = 0
+pending: str | None = None
+why: str | None = None
 
 
 def fail(name: str, detail: str) -> None:
-    global failures
+    global failures, why
     sys.stderr.write(f"FAILED: {name}: {detail}\n")
     failures += 1
+    if why is None:
+        why = detail
+
+
+def answer() -> None:
+    global pending, why
+    if pending is not None:
+        print(f"case {pending} ok" if why is None else f"case {pending} FAILED: {why}")
+    pending, why = None, None
 
 
 def value(text: str) -> float:
@@ -58,20 +72,34 @@ def read(ratio: bool, wire: bytes) -> float:
     return float(CFloat.read(wire).x)
 
 
+def bits_written(record: CFloat | RatioEndpoint) -> int:
+    """The bits the write emits before the flush pads the last byte.
+
+    write() returns bytes, so this runs the same generated _s_write that
+    write() runs, into a stream it can ask.
+    """
+    stream = WriteStream(8)
+    record._s_write(stream)
+    return int(stream.bits_processed())
+
+
 with open(sys.argv[2], encoding="utf-8") as cases:
     for raw in cases:
         fields = raw.split()
         if not fields or fields[0].startswith("#"):
             continue
         ran += 1
+        answer()
+        pending = fields[0]
         if len(fields) < 3 or len(fields) % 2 != 1 or fields[2] not in ("refused", "written"):
             fail(fields[0], f"malformed case {raw.strip()!r}")
             continue
         name, x, verdict = fields[0], value(fields[1]), fields[2]
-        # [reads-back <v>] [type RatioEndpoint] [wire <hex>], in pairs
+        # [reads-back <v>] [type RatioEndpoint] [wire <hex>] [bits <n>], in pairs
         want = x
         ratio = False
         wire_hex = None
+        want_bits = None
         malformed = False
         for key, operand in zip(fields[3::2], fields[4::2]):
             if key == "reads-back":
@@ -80,6 +108,8 @@ with open(sys.argv[2], encoding="utf-8") as cases:
                 ratio = True
             elif key == "wire":
                 wire_hex = operand.lower()
+            elif key == "bits" and operand.isdigit():
+                want_bits = int(operand)
             else:
                 malformed = True
         if malformed:
@@ -97,6 +127,9 @@ with open(sys.argv[2], encoding="utf-8") as cases:
         if verdict == "refused":
             fail(name, f"the writer accepted a value the range refuses ({wire.hex()})")
             continue
+        if want_bits is not None and (got_bits := bits_written(make(ratio, x))) != want_bits:
+            fail(name, f"wrote {got_bits} bits before the flush, want {want_bits}")
+            continue
         if wire_hex is not None and wire.hex() != wire_hex:
             fail(name, f"wrote {wire.hex()}, want {wire_hex}")
             continue
@@ -108,6 +141,7 @@ with open(sys.argv[2], encoding="utf-8") as cases:
         if bits32(got) != bits32(want):
             fail(name, f"read back {got!r}, want {want!r}")
 
+answer()
 print(f"packet-write-cfloat Python: ran {ran}, failed {failures}")
 if failures or ran == 0:
     sys.exit(1)

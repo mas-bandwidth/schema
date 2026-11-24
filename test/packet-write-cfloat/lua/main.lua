@@ -41,17 +41,20 @@ for line in file:lines() do
   end
   if #fields > 0 then
     count = count + 1
+    local failuresBefore = failures
     local name, valueText, verdict = fields[1], fields[2], fields[3]
     local value = number(valueText)
     local expected = value
     local kind = kinds.CFloat
     local wantWire = nil
+    local wantBits = nil
     local malformed = #fields % 2 ~= 1
     for i = 4, #fields - 1, 2 do
       local key, operand = fields[i], fields[i + 1]
       if key == "reads-back" then expected = number(operand)
       elseif key == "type" and kinds[operand] ~= nil then kind = kinds[operand]
       elseif key == "wire" then wantWire = operand:lower()
+      elseif key == "bits" and operand:match("^%d+$") then wantBits = tonumber(operand)
       else malformed = true end
     end
     local stream = serialize.WriteStream.new(32)
@@ -72,6 +75,11 @@ for line in file:lines() do
       elseif result ~= true then
         fail(name, "writer returned " .. tostring(result) .. ", want true")
       else
+        -- the bits the write emitted, before the flush pads the last byte
+        local bits = stream:bitsProcessed()
+        if wantBits ~= nil and bits ~= wantBits then
+          fail(name, "wrote " .. tostring(bits) .. " bits before the flush, want " .. tostring(wantBits))
+        end
         stream:flush()
         local wire = stream:data()
         if wantWire ~= nil and hex(wire) ~= wantWire then
@@ -94,12 +102,14 @@ for line in file:lines() do
     else
       fail(name, "unknown verdict " .. tostring(verdict))
     end
+    -- the case's answer tools/casegate reads (the FAILED line says why)
+    print("case " .. name .. (failures == failuresBefore and " ok" or " FAILED: see the FAILED line above"))
   end
 end
 file:close()
 
--- The last stdout line is the count tools/mustrun reads. An empty cases.txt
--- is a failure: before this line it printed "OK ... 0 cases" and exited 0.
+-- A summary; tools/casegate holds every case of the file to an answer. An
+-- empty cases.txt is a failure.
 print(string.format("packet-write-cfloat Lua: ran %d, failed %d", count, failures))
 if failures ~= 0 or count == 0 then
   io.stderr:write(string.format("packet-write-cfloat Lua: %d of %d cases FAILED\n", failures, count))

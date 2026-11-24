@@ -3,8 +3,9 @@
 //
 // One tab-separated line per case: name, verdict, the value's float32 bits,
 // the expected read-back's float32 bits (both little-endian hex), the type
-// written (CFloat or RatioEndpoint), and the expected wire in hex ("-" when
-// the case pins none).
+// written (CFloat or RatioEndpoint), the expected wire in hex ("-" when
+// the case pins none), and the bits the write emits before the flush as one
+// byte of hex ("-" when the case pins none).
 package main
 
 import (
@@ -42,6 +43,7 @@ func main() {
 		want := value
 		typ := "CFloat"
 		wire := "-"
+		bits := "-"
 		for i := 3; i+1 < len(fields); i += 2 {
 			switch fields[i] {
 			case "reads-back":
@@ -57,11 +59,17 @@ func main() {
 					fatal("malformed wire in case: %q", scanner.Text())
 				}
 				wire = hex.EncodeToString(b)
+			case "bits":
+				n, err := strconv.ParseUint(fields[i+1], 10, 8)
+				if err != nil {
+					fatal("malformed bits in case: %q", scanner.Text())
+				}
+				bits = fmt.Sprintf("%02x", n)
 			default:
 				fatal("unknown modifier in case: %q", scanner.Text())
 			}
 		}
-		fmt.Printf("%s\t%s\t%s\t%s\t%s\t%s\n", fields[0], fields[2], bitsHex(value), bitsHex(want), typ, wire)
+		fmt.Printf("%s\t%s\t%s\t%s\t%s\t%s\t%s\n", fields[0], fields[2], bitsHex(value), bitsHex(want), typ, wire, bits)
 		count++
 	}
 	if err := scanner.Err(); err != nil {

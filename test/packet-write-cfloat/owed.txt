@@ -1,5 +1,8 @@
-# The exact-set ledger of test/packet-write-cfloat/cases.txt (2026-11-24):
-# one "<leg> <case> owed: <cause>" line for each case a leg does not answer.
-# internal/inputfamilies.Check refuses a leg with no packet-write-cfloat-<leg>
-# target and no line for a case, and a line for a leg whose target runs the
-# family. Every one of the 18 legs answers every case today: no line is owed.
+# The exact-set ledger of test/packet-write-cfloat/cases.txt (2026-11-24),
+# in the format of tools/casegate: one "<leg> <case> owed: <cause>" line for
+# each case a leg does not answer yet, or "<leg> all owed: <cause>" for a leg
+# with no packet-write-cfloat-<leg> target. tools/casegate refuses a line for
+# a case the leg answers ok; internal/inputfamilies.Check refuses a line
+# whose leg is not a leg or whose case the case file lacks, a line there
+# twice, and a leg with neither a target nor an `all owed` line. Every one
+# of the 18 legs answers every case today: no line is owed.

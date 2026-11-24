@@ -33,17 +33,21 @@ defmodule PacketWriteCFloatTest do
   end
 
   # The modifiers after the verdict, in pairs: reads-back <v>, type
-  # RatioEndpoint, wire <hex>.
+  # RatioEndpoint, wire <hex>, bits <n>.
   def modifiers(text, rest) do
     rest
     |> Enum.chunk_every(2)
-    |> Enum.reduce({:ok, %{want: value(text), type: :c_float, wire: nil}}, fn
+    |> Enum.reduce({:ok, %{want: value(text), type: :c_float, wire: nil, bits: nil}}, fn
       ["reads-back", v], {:ok, m} -> {:ok, %{m | want: value(v)}}
       ["type", "RatioEndpoint"], {:ok, m} -> {:ok, %{m | type: :ratio}}
       ["wire", hex], {:ok, m} -> {:ok, %{m | wire: String.downcase(hex)}}
+      ["bits", n], {:ok, m} -> bits_modifier(Integer.parse(n), m)
       other, _ -> {:error, other}
     end)
   end
+
+  defp bits_modifier({n, ""}, m) when n >= 0, do: {:ok, %{m | bits: n}}
+  defp bits_modifier(other, _m), do: {:error, other}
 
   def write(:c_float, value), do: W.write_c_float(%C{x: value})
   def write(:ratio, value), do: W.write_ratio_endpoint(%R{ratio: value})
@@ -51,15 +55,21 @@ defmodule PacketWriteCFloatTest do
   def write!(:c_float, value), do: W.write_c_float!(%C{x: value})
   def write!(:ratio, value), do: W.write_ratio_endpoint!(%R{ratio: value})
 
-  def read_back(:c_float, wire) do
-    case W.read_c_float(wire, bit_size(wire)) do
+  # The writer returns a binary, not bits: a case that pins its bits holds
+  # the declared width (the generated <t>_max_bits/0) to them, and the
+  # bytes must read back through exactly that many bits.
+  def max_bits(:c_float), do: W.c_float_max_bits()
+  def max_bits(:ratio), do: W.ratio_endpoint_max_bits()
+
+  def read_back(:c_float, wire, bits) do
+    case W.read_c_float(wire, bits || bit_size(wire)) do
       {:ok, value} -> {:ok, value.x}
       other -> other
     end
   end
 
-  def read_back(:ratio, wire) do
-    case W.read_ratio_endpoint(wire, bit_size(wire)) do
+  def read_back(:ratio, wire, bits) do
+    case W.read_ratio_endpoint(wire, bits || bit_size(wire)) do
       {:ok, value} -> {:ok, value.ratio}
       other -> other
     end
@@ -90,11 +100,18 @@ defmodule PacketWriteCFloatTest do
   def written(name, value, m) do
     want = m.want
 
+    if m.bits != nil do
+      check(
+        max_bits(m.type) == m.bits,
+        "#{name}: the declared width is #{max_bits(m.type)} bits, want #{m.bits}"
+      )
+    end
+
     case write(m.type, value) do
       {:ok, wire} ->
         check_wire(name, "verdict", wire, m.wire)
 
-        case read_back(m.type, wire) do
+        case read_back(m.type, wire, m.bits) do
           {:ok, got} ->
             check(got == want, "#{name}: read back #{inspect(got)}, want #{inspect(want)}")
 
@@ -110,7 +127,7 @@ defmodule PacketWriteCFloatTest do
       wire = write!(m.type, value)
       check_wire(name, "bang", wire, m.wire)
 
-      case read_back(m.type, wire) do
+      case read_back(m.type, wire, m.bits) do
         {:ok, got} ->
           check(got == want, "#{name}: bang read back #{inspect(got)}, want #{inspect(want)}")
 
@@ -126,6 +143,9 @@ defmodule PacketWriteCFloatTest do
     list = cases(path)
 
     for fields <- list do
+      failed_before = Process.get(:failed, 0)
+      name = List.first(fields)
+
       case fields do
         [name, text, verdict | rest] when verdict in ["refused", "written"] ->
           case modifiers(text, rest) do
@@ -137,10 +157,17 @@ defmodule PacketWriteCFloatTest do
         other ->
           fail("malformed case line: #{inspect(other)}")
       end
+
+      # the case's answer tools/casegate reads (the FAILED line above says why)
+      answer =
+        if Process.get(:failed, 0) == failed_before,
+          do: "ok",
+          else: "FAILED: see the FAILED line above"
+
+      IO.puts("case #{name} #{answer}")
     end
 
-    # One unit per shared case: tools/mustrun holds the count to the one the
-    # recipe registers, so an emptied or shortened cases.txt is red.
+    # A summary; tools/casegate holds every case of the file to an answer.
     ran = length(list)
     failed = Process.get(:failed, 0)
     IO.puts("packet-write-cfloat Elixir: ran #{ran}, failed #{failed}")
