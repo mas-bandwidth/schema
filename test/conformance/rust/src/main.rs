@@ -3132,6 +3132,23 @@ fn wref_fixed_case(f: &[String], data: &[u8]) -> &'static str {
                 Mutation::Unrepresentable => "unrepresentable\n",
             }
         }
+        // THE DEPRECATED VARIANT (docs/SPEC-TABLES.md §2.15 WRITE): the Row
+        // holds the ordinal as plain storage, so the generated FixedSave's own
+        // debug assert is the refusal; the driver adds no check of its own.
+        ("tabledemo", "Moods") => {
+            let mut row = wref_fixed_row!(tabledemo, moods_fixed_load, MoodsRow, case, wire, data);
+            match wref_moods_row(&mut row, path, kind, value) {
+                Mutation::Done => wref_fixed_save(row, |_| {}, tabledemo::moods_fixed_measure, tabledemo::moods_fixed_save),
+                Mutation::Unrepresentable => "unrepresentable\n",
+            }
+        }
+        ("tabledemo", "MoodField") => {
+            let mut row = wref_fixed_row!(tabledemo, mood_field_fixed_load, MoodFieldRow, case, wire, data);
+            match wref_mood_field_row(&mut row, path, kind, value) {
+                Mutation::Done => wref_fixed_save(row, |_| {}, tabledemo::mood_field_fixed_measure, tabledemo::mood_field_fixed_save),
+                Mutation::Unrepresentable => "unrepresentable\n",
+            }
+        }
         ("tabledemo", "CountedMin") => {
             let mut row = wref_fixed_row!(tabledemo, counted_min_fixed_load, CountedMinRow, case, wire, data);
             if (path, kind) != ("few", "count") {

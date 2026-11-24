@@ -545,6 +545,16 @@ func (e *fixedEmit) checkElem(ind int, f *ir.Field, pl place) {
 		for _, b := range scalarBounds(f) {
 			e.p(ind, "if %s { return false; }", b.over(pl.val))
 		}
+		// SPEC-TABLES §2.15 WRITE: a deprecated variant is never written; the
+		// fixed save refuses it in every build, as the JSON writer does. Only
+		// the write holds this: a read lands it (§2.15 READ), never refuses it.
+		if r, ok := f.Type.Ref.(*ir.Enum); ok && f.Type.Kind == ir.TNamed {
+			for i := range r.Variants {
+				if i < len(r.VariantDeprecated) && r.VariantDeprecated[i] {
+					e.p(ind, "if (%s as u64) == %d { return false; } // %s is deprecated (§2.15)", pl.val, i+1, r.Variants[i])
+				}
+			}
+		}
 	case kF32:
 		e.p(ind, "if (schema_rt::fixed_f32_bits(%s) & 0x7f800000) == 0x7f800000 { return false; }", pl.val)
 		if lo, hi, ok := floatBounds(f); ok {
