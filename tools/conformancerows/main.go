@@ -26,7 +26,8 @@
 // a person splitting a run by hand; every row is in exactly one shard.
 //
 // -rows "F4 F10 F12" runs only the rows named (each must be a row file of the
-// leg, or the run is refused), against the same ledger and the same cause
+// leg, or the run is refused; -rows with a -shard other than 0/1 is refused,
+// since a shard would drop some of them silently), against the same ledger and the same cause
 // match: this is a per-PR verify target's narrow run (make/conformance-rows.mk,
 // CONFORMANCE_ROWS_PR_<leg>). -gen DIR reads the leg's generated units from
 // DIR, a tree holding only the units those rows read, in place of the leg's
@@ -190,6 +191,11 @@ func run(o opts) error {
 	i, n, err := parseShard(shard)
 	if err != nil {
 		return err
+	}
+	// -rows names the rows that must run; a shard of them would run some
+	// and drop the rest without a word, so the two never go together.
+	if o.rows != "" && n != 1 {
+		return fmt.Errorf("-rows with -shard %s: every row -rows names must run, and a shard drops the rest of them; give one or the other", shard)
 	}
 	if jobs < 1 {
 		jobs = 1

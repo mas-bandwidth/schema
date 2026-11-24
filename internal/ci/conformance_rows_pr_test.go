@@ -21,7 +21,9 @@ import (
 //   - CONFORMANCE_ROWS_PR_<leg> names every one of its rows;
 //   - conformance-rows-pr-<leg> runs tools/conformancerows for that leg with
 //     -rows "$(CONFORMANCE_ROWS_PR_<leg>)", so the rows run against the
-//     leg's ledger and its cause match, and nothing else picks the rows.
+//     leg's ledger and its cause match, and nothing else picks the rows: the
+//     recipe passes no -shard and the list holds row names only (a shard
+//     would drop rows silently; the runner refuses -rows with one too).
 //
 // The reversed witness puts each breach into a copy of the make files and
 // holds that each one is named.
@@ -80,6 +82,11 @@ func conformanceRowsPRErrors(t *testing.T, db []byte) []string {
 		if !ok {
 			errs = append(errs, fmt.Sprintf("CONFORMANCE_ROWS_PR_%s is not set: the %s rows %s would run on no pull request", p.leg, p.leg, strings.Join(p.rows, " ")))
 		}
+		for _, f := range have {
+			if strings.HasPrefix(f, "-") {
+				errs = append(errs, fmt.Sprintf("CONFORMANCE_ROWS_PR_%s holds %q, which is not a row name: the list must name rows and nothing else", p.leg, f))
+			}
+		}
 		for _, r := range p.rows {
 			if ok && !slices.Contains(have, r) {
 				errs = append(errs, fmt.Sprintf("CONFORMANCE_ROWS_PR_%s drops %s/%s: %s would no longer run it per-PR", p.leg, p.leg, r, p.target))
@@ -89,6 +96,9 @@ func conformanceRowsPRErrors(t *testing.T, db []byte) []string {
 		want := fmt.Sprintf(`./build/conformancerows -leg %s -rows "$(CONFORMANCE_ROWS_PR_%s)"`, p.leg, p.leg)
 		if !ok || !strings.Contains(recipe, want) {
 			errs = append(errs, fmt.Sprintf("%s does not run `%s`: its rows would not run as the list names them, against the %s ledger", rowsTarget, want, p.leg))
+		}
+		if strings.Contains(recipe, "-shard") {
+			errs = append(errs, fmt.Sprintf("%s passes -shard: a shard would drop some of the %s rows %s without a word", rowsTarget, p.leg, strings.Join(p.rows, " ")))
 		}
 	}
 	return errs
@@ -137,6 +147,10 @@ func TestConformanceRowsPRRunPerPRNegativeControl(t *testing.T) {
 			"CONFORMANCE_ROWS_PR_c drops c/F12"},
 		{"rows not passed", "make/conformance-rows.mk", ` -rows "$$(CONFORMANCE_ROWS_PR_$(1))"`, "",
 			`conformance-rows-pr-java does not run`},
+		{"recipe passes a shard", "make/conformance-rows.mk", ` -rows "$$(CONFORMANCE_ROWS_PR_$(1))"`, ` -shard 1/2 -rows "$$(CONFORMANCE_ROWS_PR_$(1))"`,
+			"conformance-rows-pr-c passes -shard"},
+		{"list carries a shard", "make/conformance-rows.mk", "CONFORMANCE_ROWS_PR_c    := F4 F10 F12", "CONFORMANCE_ROWS_PR_c    := -shard 1/2 F4 F10 F12",
+			`CONFORMANCE_ROWS_PR_c holds "-shard"`},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			errs := conformanceRowsPRErrors(t, makeDatabase(t, root, plant(c.file, c.from, c.to)))

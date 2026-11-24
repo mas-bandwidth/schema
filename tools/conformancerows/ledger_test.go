@@ -225,6 +225,13 @@ func TestNarrowRunKeepsTheLedgerAndTheCauseMatch(t *testing.T) {
 	if err := run(o); err != nil {
 		t.Fatalf("a narrow run judged a row it did not run: %v", err)
 	}
+	// -rows with a shard is refused: shard 1/2 of A and C would run C alone,
+	// pass, and drop A without a word.
+	o.rows, o.shard = "A,C", "1/2"
+	if err := run(o); err == nil || !strings.Contains(err.Error(), "-rows with -shard 1/2") {
+		t.Fatalf("-rows with -shard 1/2 ran: %v", err)
+	}
+	o.shard = "0/1"
 	// A name with no row file is refused before anything runs.
 	o.rows = "A,Z"
 	if err := run(o); err == nil || !strings.Contains(err.Error(), "Z (no row file)") {
