@@ -112,7 +112,7 @@ func wireFuzzCorpusInputs(t *testing.T, root string) []string {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, line := range strings.Split(string(data), "\n") {
+		for line := range strings.SplitSeq(string(data), "\n") {
 			f := strings.Fields(line)
 			if len(f) == 0 || strings.HasPrefix(f[0], "#") {
 				continue
