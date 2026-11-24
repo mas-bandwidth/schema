@@ -714,25 +714,15 @@ func t03C8(t *testing.T) {
 // TestFixedVersioningRows' NEW-READS-OLD column (assertValuesLand: an added
 // field its declared default, a widened integer or float exact, the shorter
 // array's and string's slack the template's zeros, an older enum's ordinals
-// the reader's) and TestFixedVersioningUnknownCensus' ("a deprecated field is
-// dropped and counted once under unknown per plan": unknown == 1, once per
-// field per endpoint). This subtest holds the deprecated-field clause's exact
-// count on the many-records file, which is the row's own divergence.
+// the reader's) and TestFixedVersioningUnknownCensus'. The removed-field clause
+// is no longer "dropped and counted once under unknown": a writer field the
+// reader names nowhere makes the lineage entry UNLAWFUL (FIXED-FORM-ALGORITHM
+// §5.2 MATCH, §5.4, §5.9 #30). This subtest holds that on the many-records
+// file: every load refuses layoutMalformed, unknown and widened stay zero,
+// and every poisoned row is back at its declared defaults, three loads over.
 func t03R20(t *testing.T) {
-	manyFile := t03CorpusFile(t, "many_unknown_census.bin")
-	_, classes := buildRow(t, t.TempDir(), "unknown_census", []sideSpec{
-		{key: "reads", schema: "VNEW_unknown_census.schema", older: []string{"VOLD_unknown_census.schema"}},
-	})
-	got := runProbe(t, classes, "Probe_reads", manyFile)
-	if got.n < 2 {
-		t.Fatalf("R20: many_unknown_census.bin carries the row's records: n=%d", got.n)
-	}
-	if got.unknown != 1 {
-		t.Errorf("R20: unknown = %d, want exactly 1: a deprecated field is dropped and counted ONCE per plan, never per record (§21.2, §5.9 #30)", got.unknown)
-	}
-	if got.widened != 0 || got.damaged || got.refused {
-		t.Errorf("R20: the census read moved something else: %+v", got)
-	}
+	manyFile := javaUnlawfulRequired(t, "many_unknown_census.bin")
+	javaUnlawfulRun(t, "unknown_census", manyFile, javaUnlawfulCensusPoison, javaUnlawfulCensusDefaults)
 }
 
 // t03R21: R21 under the finite rule of 2026-10-27 (docs/SPEC-TABLES.md §3.3,
