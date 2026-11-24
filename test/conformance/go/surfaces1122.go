@@ -288,6 +288,39 @@ func readIntoRetainRow(lawful, damaged []byte) ([]byte, error) {
 	return append(answer, zeroed(&r)+"\n"...), nil
 }
 
+// readIntoRegionRow answers a `region` row: the plain region read
+// (<Root>Load(region, wire, report)) under readIntoRetainRow's protocol.
+func readIntoRegionRow(lawful, damaged []byte) ([]byte, error) {
+	load := func(wire []byte, r *tblsurf.TableReport) bool {
+		n := tblsurf.CountedLoadMeasure(wire)
+		if n < 0 {
+			n = 0
+		}
+		raw := make([]byte, n+63)
+		off := (-uintptr(unsafe.Pointer(&raw[0]))) & 63
+		return tblsurf.CountedLoad(raw[off:off+uintptr(n)], wire, r) != nil
+	}
+	var fresh tblsurf.TableReport
+	if !load(lawful, &fresh) || fresh.Refused() {
+		return nil, fmt.Errorf("ri_region: the lawful region load refused into a fresh report (%v)", fresh.Err())
+	}
+	zeroed := func(r *tblsurf.TableReport) string {
+		if reflect.DeepEqual(*r, fresh) {
+			return "zeroed"
+		}
+		return fmt.Sprintf("kept %+v want %+v", *r, fresh)
+	}
+	r := tblsurf.TableReport{
+		Retained: 7, RetainLost: 7, Widened: 7, Unknown: 7,
+		Verdict: tblsurf.TableOpenDamaged, Reason: "stale", Refusal: tblsurf.TableRefuseMalformed, Field: "stale",
+		BuildVersionRemote: 7, BuildVersionOwn: 7, FixedRaised: true, LayoutHash: 7,
+	}
+	answer := []byte(readStep(func() (bool, bool) { return load(lawful, &r), r.Refused() }) + "\n" + zeroed(&r) + "\n")
+	answer = append(answer, readStep(func() (bool, bool) { return load(damaged, &r), r.Refused() })+"\n"...)
+	answer = append(answer, readStep(func() (bool, bool) { return load(lawful, &r), r.Refused() })+"\n"...)
+	return append(answer, zeroed(&r)+"\n"...), nil
+}
+
 type readIntoKey struct{ unit, root, form string }
 
 // readIntoRows is each row's read through the generated runtime. The Go
@@ -358,6 +391,16 @@ var readIntoRows = map[readIntoKey]func(lawful, damaged []byte, count int, annou
 	},
 	{"tblrt1", "Node", "retain"}: func(lawful, damaged []byte, _ int, _ []byte) ([]byte, error) {
 		return readIntoRetainRow(lawful, damaged)
+	},
+	{"tblsurf", "Counted", "region"}: func(lawful, damaged []byte, _ int, _ []byte) ([]byte, error) {
+		return readIntoRegionRow(lawful, damaged)
+	},
+	// Go refuses LoadRetain on a fixed-class root at COMPILE time:
+	// tblsurf.NarrowLoadRetain is a string constant naming the refusal
+	// (SPEC-TABLES §6.6), so no call can be written to hand it a report
+	{"tblsurf", "Narrow", "retain-fixed"}: func([]byte, []byte, int, []byte) ([]byte, error) {
+		_ = tblsurf.NarrowLoadRetain + ""
+		return []byte("unrepresentable\n"), nil
 	},
 	{"backenddemo", "StorePurchase", "message"}: func(lawful, damaged []byte, count int, announcement []byte) ([]byte, error) {
 		v := new(backenddemo.TableVocabulary)

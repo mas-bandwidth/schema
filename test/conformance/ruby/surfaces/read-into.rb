@@ -38,15 +38,32 @@ def self.run(manifest, outdir)
       RubyConformance.write_bytes(outdir, case_name, out.b)
       next
     end
-    if form == 'retain'
+    if form == 'retain-fixed'
+      # `retain-fixed`: load_retain on a FIXED-class root. The generated entry
+      # raises Refused('unsupported_kind') UNCONDITIONALLY, before it touches a
+      # report or the input (internal/codegen/rubytable/rubytable.go, the
+      # fixed-class load_retain stub "load_retain is unavailable for a
+      # fixed-class root"), the dynamic form of a compile-time refusal.
+      begin
+        cls.load_retain(''.b, nil, pkg::LoadReport.new)
+      rescue pkg::Refused
+        RubyConformance.write_bytes(outdir, case_name, "unrepresentable\n".b)
+        next
+      end
+      raise "#{case_name}: the fixed-root load_retain did not refuse"
+    end
+    if %w[retain region].include?(form)
       # `retain` (README, "The `retain` form"): the retaining load into ONE
       # PRE-FILLED report must leave what the same load leaves in a FRESH
       # report (SPEC-TABLES 6.5: every read zeroes a supplied report, the
       # retain family included). Every field this report has is settable.
       fields = %i[unknown widened retained retain_lost refused reason]
       retaining = lambda do |path, rep|
+        data = RubyConformance.read_bytes(path)
+        next cls.load(data, rep) if form == 'region'
+
         store = pkg::TableRetain.new("\x00".b * (1 << 20), "\x00".b * (24 * (1 << 17)))
-        cls.load_retain(RubyConformance.read_bytes(path), store, rep)
+        cls.load_retain(data, store, rep)
       end
       fresh = pkg::LoadReport.new
       retaining.call(lawful, fresh)

@@ -163,7 +163,11 @@ json-write-into <case> <instance>
   `message` (`<unit>` a connection key), `fixed-nocap` (damaged `-`, the
   count the answer) or `retain` (the retaining load, `LoadRetain`, §6.6, into
   a report the driver pre-filled; the answer is
-  `read\nzeroed\nrefused\nread\nzeroed\n`, test/conformance/README.md). The answer owed is `read-into/<case>.txt`, which `make
+  `read\nzeroed\nrefused\nread\nzeroed\n`, test/conformance/README.md),
+  `region` (the plain region `Load` under the same protocol and answer) or
+  `retain-fixed` (damaged `-`: `LoadRetain` on a fixed-class root into a
+  pre-filled report, owing `refused\nzeroed\n`, or `unrepresentable\n` where
+  the refusal is at compile time). The answer owed is `read-into/<case>.txt`, which `make
   conformance-generate` writes from the engine; the derived line withholds a
   `fixed-nocap` count and adds the connection's announcement file for a
   `message` row.

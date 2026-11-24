@@ -1019,6 +1019,17 @@ static int surface_read_into( const char * out )
             if ( !spill( out, f->field[1], "unrepresentable\n", strlen( "unrepresentable\n" ) ) ) { return 1; }
             continue;
         }
+        if ( strcmp( f->field[4], "retain-fixed" ) == 0 )
+        {
+            /* NO CALL TO MAKE (docs/SPEC-TABLES.md §6.6): C refuses
+               <root>_load_retain on a FIXED-class root at COMPILE time. The
+               generator defines it as a C99 macro whose expansion is a
+               negative-width bit-field (internal/codegen/ctable/retain_graph.go
+               :129, emitRetainRefusals), so surfaces_narrow_load_retain(...)
+               does not compile and no call can be handed a report */
+            if ( !spill( out, f->field[1], "unrepresentable\n", strlen( "unrepresentable\n" ) ) ) { return 1; }
+            continue;
+        }
         /* THE RETAINING LOAD's row names tblrt1, the `retain` surface's unit
            (retain.c), which carries no announcement and so no 1122 entry */
         retaining = strcmp( f->field[2], "tblrt1" ) == 0;

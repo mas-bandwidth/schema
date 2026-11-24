@@ -2776,6 +2776,15 @@ read-into ri_fixed_5000 tblsurf      Narrow        fixed-nocap testdata/conforma
 # damaged retaining load refuses into it and the lawful one zeroes it again.
 read-into ri_retain     tblrt1       Node          retain      testdata/wire/tables/retain_rt2.bin                           testdata/conformance/tables/read-into/retain_rt2_cut.bin         1
 
+# THE PLAIN LOAD ZEROES A PRE-FILLED REPORT TOO (SPEC-TABLES §6.5): the same
+# protocol through the plain <Root>Load of a variable root, the REGION read
+# where the leg has one. And LoadRetain on a FIXED-class root is refused by
+# name (§6.6): a runtime refusal refuses through a report it zeroed first, so
+# the report equals a fresh one's; a compile-time refusal answers
+# unrepresentable.
+read-into ri_region       tblsurf    Counted       region       testdata/conformance/tables/wire/surf_counted_full.bin      testdata/conformance/tables/read-into/counted_cut.bin            1
+read-into ri_retain_fixed tblsurf    Narrow        retain-fixed testdata/conformance/tables/wire/surf_narrow_full.bin       -                                                                1
+
 # FL-14, FL-15 (SPEC-TABLES §16.1): the text writer in a comma-decimal process
 # locale, into a caller buffer longer than the text, writes the instance's
 # own text and nothing past it.

@@ -1555,16 +1555,34 @@ local function surfaceReadInto(all, outdir)
       else
         writeBytes(outdir .. "/" .. name, "read\n" .. #out .. "\n")
       end
-    elseif form == "retain" then
+    elseif form == "retain-fixed" then
+      -- LoadRetain of a FIXED-class root: the runtime raises a named error
+      -- unconditionally, before it touches the report or the input
+      -- (internal/codegen/luatable/runtime/retain.lua fixed_refusal), the
+      -- dynamic leg's compile-time refusal, so the answer is unrepresentable.
+      local report = newReport()
+      local ok, err = pcall(u.retain.LoadRetain, u.T, root, mustRead(lawful), retainStore(ROOMY, math.floor(ROOMY / 8)), report)
+      if ok or not tostring(err):find("retention requires a variable root", 1, true) then
+        fail(name .. ": LoadRetain of a fixed root did not raise the named refusal")
+      end
+      writeBytes(outdir .. "/" .. name, "unrepresentable\n")
+    elseif form == "retain" or form == "region" then
       -- THE `retain` FORM (test/conformance/README.md): ONE report, PRE-FILLED
       -- (every counter, the refusal set, the reason and every flag the Lua
       -- report can carry), then the retaining load of <lawful>, <damaged>,
       -- <lawful> again. After each lawful load every field of the report must
       -- equal the field the same load leaves in a FRESH report (§6.5).
       local lawfulBytes, damagedBytes = mustRead(lawful), mustRead(damaged)
+      -- `region`: the PLAIN Load of the variable root (Lua has no region
+      -- read, so the plain value Load is the read), not LoadRetain.
       local function load(bytes, report)
         local store = retainStore(ROOMY, math.floor(ROOMY / 8))
-        local ok, got = pcall(u.retain.LoadRetain, u.T, root, bytes, store, report)
+        local ok, got
+        if form == "region" then
+          ok, got = pcall(u.load.Load, u.T, root, bytes, report)
+        else
+          ok, got = pcall(u.retain.LoadRetain, u.T, root, bytes, store, report)
+        end
         if not ok then return "threw\n" end
         local reason = report.reason
         if got == nil or (reason ~= nil and reason ~= "") or (report.refused or 0) ~= 0 or report.damaged then

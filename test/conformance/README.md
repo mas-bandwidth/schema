@@ -435,7 +435,22 @@ an answer the runtime did not give.
   `<damaged>` into the same report (one line), read `<lawful>` once more (one
   line) and compare again (one line). The owed answer is
   `read\nzeroed\nrefused\nread\nzeroed\n`: §6.5 zeroes a supplied report in
-  full on every read path, the retain family included.
+  full on every read path, the retain family included. The `region` form
+  (count 1) is the same protocol and the same owed answer through the PLAIN
+  `<Root>Load` of a variable root: the region read (`Load(region, wire,
+  report)`) where the leg has one, and the leg's plain value `Load` where it
+  has no region read. The `retain-fixed` form (damaged `-`, count 1) calls
+  `<Root>LoadRetain` on a FIXED-class root, which §6.6 refuses by name, with
+  a pre-filled report and a roomy retention buffer, and answers the step line
+  and then `zeroed` (or a line naming the field that differs) against the
+  same call into a fresh report; the owed answer is `refused\nzeroed\n`. A
+  leg whose fixed-root `LoadRetain` is refused at COMPILE time (a named
+  constant, macro, template or missing method, so no call can be written)
+  answers `unrepresentable\n`, which the harness credits on this form; so
+  does a dynamic leg whose generated fixed-root entry point raises a named
+  error UNCONDITIONALLY, before it touches the report or the input (that
+  language's nearest form of a compile-time refusal). A leg whose call takes
+  the report and refuses through it owes `refused\nzeroed\n`.
 - **`json-write-into <case> <unit> <root> <wire>`**. The harness hands the
   driver `SCHEMA_COMMA_LOCALE` (`de_DE.UTF-8`, compiled into a `LOCPATH` the
   harness also sets where the host has none). The driver makes it the

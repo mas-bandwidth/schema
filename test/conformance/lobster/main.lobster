@@ -919,6 +919,13 @@ def ri_report_diff(r:schema_rt.LoadReport, want:schema_rt.LoadReport) -> string:
         return "zeroed\n"
     return "kept" + d + "\n"
 
+// ri_report_read is one read of the report forms (`retain`, `region`,
+// `retain-fixed`) of `data` as `root` into `rep`: true when it read
+def ri_report_read(form:string, root:string, data:string, rep:schema_rt.LoadReport) -> bool:
+    if form == "region":
+        return schema_rt.load(root, data, rep) != nil
+    return schema_rt.load_retain(root, data, schema_rt.Retain { capacity: 1 << 20, id_capacity: 1 << 17 }, rep) != nil
+
 // READ INTO THE CALLER'S VALUES (test/conformance/README.md, `read-into`;
 // SPEC-TABLES §6.5, §3.4). A line is `read-into <case> <unit> <root> <form>
 // <lawful> <damaged> <count> <announcement>`: ONE report and <count> values
@@ -945,16 +952,22 @@ def surface_read_into(text:string):
                 else:
                     let ok = schema_rt.load_into(held, fixture(step), rep)
                     out += ri_verdict(ok, schema_rt.strict_reason(rep))
-        elif form == "retain":
-            // the RETAINING load (load_retain, SPEC-TABLES §6.6) into ONE
-            // report the driver PRE-FILLED, compared field by field after
-            // each lawful load with the report the same load leaves in a
-            // FRESH report (§6.5: every read zeroes a supplied report in
-            // full, the retain family included). Every LoadReport field is
-            // public, so the pre-fill sets each one directly; each load
-            // uses its own fresh Retain.
+        elif form == "retain" or form == "region" or form == "retain-fixed":
+            // ONE report the driver PRE-FILLED, compared field by field
+            // after each lawful read with the report the same read leaves
+            // in a FRESH report (§6.5: every read zeroes a supplied report
+            // in full, on every read path). `retain` is the RETAINING load
+            // (load_retain, §6.6) of a variable root; `region` is the plain
+            // load (Lobster has no region read: its plain Load is the value
+            // load, schema_rt.load); `retain-fixed` is load_retain of a
+            // FIXED-class root, which takes the report and refuses through
+            // it (fixed_class_no_retention), so it owes `refused` and
+            // `zeroed`, with no damaged read. Every LoadReport field is
+            // public, so the pre-fill sets each one directly; each retaining
+            // load uses its own fresh Retain.
             let fresh = schema_rt.LoadReport {}
-            assert schema_rt.load_retain(root, fixture(f[5]), schema_rt.Retain { capacity: 1 << 20, id_capacity: 1 << 17 }, fresh)
+            let fresh_read = ri_report_read(form, root, fixture(f[5]), fresh)
+            assert fresh_read == (form != "retain-fixed")
             let rep = schema_rt.LoadReport {}
             rep.unknown = 7
             rep.kind_mismatch = 7
@@ -971,9 +984,10 @@ def surface_read_into(text:string):
             rep.reason = "stale"
             rep.stopped = true
             rep.damaged = true
-            for([f[5], f[6], f[5]]) step, i:
-                let rec = schema_rt.load_retain(root, fixture(step), schema_rt.Retain { capacity: 1 << 20, id_capacity: 1 << 17 }, rep)
-                out += ri_verdict(rec != nil, schema_rt.strict_reason(rep))
+            let rsteps = if form == "retain-fixed": [f[5]] else: [f[5], f[6], f[5]]
+            for(rsteps) step, i:
+                let ok = ri_report_read(form, root, fixture(step), rep)
+                out += ri_verdict(ok, schema_rt.strict_reason(rep))
                 if i != 1:
                     out += ri_report_diff(rep, fresh)
         elif form == "json":

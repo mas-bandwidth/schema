@@ -426,10 +426,39 @@ static partial class Program
                 System.Runtime.InteropServices.NativeMemory.Free(store.Bytes); System.Runtime.InteropServices.NativeMemory.Free(store.Ids);
             }
         }
-        FieldInfo[] fields = typeof(Tblrt1.TableReport).GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-        var fresh = new Tblrt1.TableReport();
-        if (!Load(lawful, fresh) || fresh.Refused || fresh.Damaged) { throw new InvalidOperationException("ri_retain: the lawful retaining load refused into a fresh report"); }
-        string Zeroed(Tblrt1.TableReport r)
+        return ReadIntoZeroRow<Tblrt1.TableReport>("ri_retain", Load, r => r.Refused || r.Damaged, lawful, damaged);
+    }
+
+    // A `region` row (test/conformance/README.md, "The `region` form"): the
+    // ri_retain protocol through the PLAIN region read
+    // (CountedLoad(region, capacity, wire, report)), each load into its own
+    // fresh region.
+    static unsafe byte[] ReadIntoRegionRow(byte[] lawful, byte[] damaged)
+    {
+        bool Load(byte[] wire, Surfaces.TableReport report)
+        {
+            long need = Surfaces.Schema.CountedLoadMeasure(wire);
+            if (need < 0) { need = 0; }
+            byte* region = (byte*)System.Runtime.InteropServices.NativeMemory.AlignedAlloc((nuint)Math.Max(need, 1), 64);
+            try { return Surfaces.Schema.CountedLoad((IntPtr)region, need, wire, report) != null; }
+            finally { System.Runtime.InteropServices.NativeMemory.AlignedFree(region); }
+        }
+        return ReadIntoZeroRow<Surfaces.TableReport>("ri_region", Load, r => r.Refused || r.Damaged, lawful, damaged);
+    }
+
+    // The shared protocol of the `retain` and `region` rows: ONE report the
+    // driver PRE-FILLED (every instance field, the internal ones too, set to
+    // a non-default value by reflection, and checked to be so), the lawful
+    // load, `zeroed` or a line naming the kept fields against the report the
+    // same load leaves in a FRESH report, the damaged load, the lawful load
+    // again and the comparison again (§6.5: every read zeroes a supplied
+    // report in full).
+    static byte[] ReadIntoZeroRow<TRep>(string name, Func<byte[], TRep, bool> load, Func<TRep, bool> refused, byte[] lawful, byte[] damaged) where TRep : class, new()
+    {
+        FieldInfo[] fields = typeof(TRep).GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+        var fresh = new TRep();
+        if (!load(lawful, fresh) || refused(fresh)) { throw new InvalidOperationException(name + ": the lawful load refused into a fresh report"); }
+        string Zeroed(TRep r)
         {
             var kept = new List<string>();
             foreach (FieldInfo fi in fields)
@@ -438,24 +467,28 @@ static partial class Program
             }
             return kept.Count == 0 ? "zeroed" : "kept " + string.Join(", ", kept);
         }
-        // Every field pre-filled to a non-default value, the internal ones too
-        // (the driver sees the generated unit's internals).
-        var report = new Tblrt1.TableReport
-        {
-            Unknown = 7, Widened = 7, Retained = 7, RetainLost = 7, Refused = true, Reason = "stale",
-            NonFiniteFloat = "stale", NonFiniteReason = "stale", Verdict = Tblrt1.Schema.TableWire.Verdict.Damaged,
-            Damaged = true, KindChanged = 7, BuildVersionRemote = 7, BuildVersionOwn = 7, LayoutHash = 7,
-        };
+        var report = new TRep();
+        var blank = new TRep();
         foreach (FieldInfo fi in fields)
         {
-            if (Equals(fi.GetValue(report), fi.GetValue(new Tblrt1.TableReport()))) { throw new InvalidOperationException("ri_retain: the pre-fill leaves " + fi.Name + " at its default"); }
+            Type t = fi.FieldType;
+            if (t == typeof(int)) { fi.SetValue(report, 7); }
+            else if (t == typeof(long)) { fi.SetValue(report, 7L); }
+            else if (t == typeof(ulong)) { fi.SetValue(report, 7UL); }
+            else if (t == typeof(bool)) { fi.SetValue(report, true); }
+            else if (t == typeof(string)) { fi.SetValue(report, "stale"); }
+            else if (t.IsEnum)
+            {
+                foreach (object v in Enum.GetValues(t)) { if (!Equals(v, fi.GetValue(blank))) { fi.SetValue(report, v); break; } }
+            }
+            if (Equals(fi.GetValue(report), fi.GetValue(blank))) { throw new InvalidOperationException(name + ": the pre-fill leaves " + fi.Name + " at its default"); }
         }
         var answer = new MemoryStream();
         void Line(string text) { byte[] b = System.Text.Encoding.ASCII.GetBytes(text + "\n"); answer.Write(b, 0, b.Length); }
         void Step(byte[] bytes)
         {
             string line;
-            try { line = Load(bytes, report) && !report.Refused && !report.Damaged ? "read" : "refused"; }
+            try { line = load(bytes, report) && !refused(report) ? "read" : "refused"; }
             catch (Exception e) { line = "threw " + e.GetType().Name; }
             Line(line);
         }
@@ -486,6 +519,23 @@ static partial class Program
             {
                 if (f[2] != "tblrt1" || f[3] != "Node") { Console.Error.WriteLine("driver: read-into " + f[1] + ": no retain read registered for " + f[2] + " " + f[3]); return 1; }
                 File.WriteAllBytes(answer, ReadIntoRetainRow(File.ReadAllBytes(f[5]), File.ReadAllBytes(f[6])));
+                continue;
+            }
+            if (form == "region")
+            {
+                if (f[2] != "tblsurf" || f[3] != "Counted") { Console.Error.WriteLine("driver: read-into " + f[1] + ": no region read registered for " + f[2] + " " + f[3]); return 1; }
+                File.WriteAllBytes(answer, ReadIntoRegionRow(File.ReadAllBytes(f[5]), File.ReadAllBytes(f[6])));
+                continue;
+            }
+            if (form == "retain-fixed")
+            {
+                // A COMPILE-time refusal: the C# generator emits a fixed-class
+                // root's LoadRetain as [Obsolete(..., true)]
+                // (internal/codegen/cstable/retain.go:94, "FIXED-class root:
+                // retain-unknown requires a variable region ... (SPEC-TABLES
+                // section 6.6)"), so a call to Surfaces.Schema.NarrowLoadRetain
+                // is error CS0619 and no call can hand it a report.
+                File.WriteAllText(answer, "unrepresentable\n");
                 continue;
             }
             Codec codec = Find(f[2], f[3]);

@@ -1319,6 +1319,82 @@ defmodule Driver do
     first <> first_compare <> second <> third <> compare.(report)
   end
 
+  # THE REGION FORM (test/conformance/README.md; SPEC-TABLES §6.5): the retain
+  # protocol through the PLAIN load. The Elixir plain load has no region read
+  # and takes no report: it builds its own report and returns it, so there is
+  # nothing to pre-fill and the returned report is a fresh one by construction.
+  # The row still compares each lawful load's returned report with the first
+  # fresh one, and threads the damaged load between them.
+  defp read_into(unit, root, "region", lawful, damaged, _count, _announcement) do
+    mod = table_module(unit) || raise "read-into: unit #{unit} has no Table module"
+
+    load = fn path ->
+      try do
+        case mod.load(root, File.read!(path)) do
+          {:ok, _value, report} -> {"read\n", report}
+          {:error, _reason, report} -> {"refused\n", report}
+        end
+      rescue
+        _ -> {"threw\n", nil}
+      end
+    end
+
+    {fresh_line, fresh} = load.(lawful)
+
+    if fresh_line != "read\n" do
+      raise "ri_region: the lawful load did not read (#{fresh_line})"
+    end
+
+    compare = fn report ->
+      if report == fresh,
+        do: "zeroed\n",
+        else: "kept #{inspect(report)} want #{inspect(fresh)}\n"
+    end
+
+    {first, report} = load.(lawful)
+    first_compare = compare.(report)
+    {second, _} = load.(damaged)
+    {third, report} = load.(lawful)
+    first <> first_compare <> second <> third <> compare.(report)
+  end
+
+  # THE RETAIN-FIXED FORM (SPEC-TABLES §6.6 refuses a retaining load of a
+  # fixed-class root by name). load_retain on a fixed root is a runtime clause
+  # that takes the report and refuses through it (retainroots.go), so the row
+  # is answered, not `unrepresentable`: the refusal line, then whether the
+  # returned report equals the one the same call returns into a fresh report.
+  defp read_into(unit, root, "retain-fixed", lawful, _damaged, _count, _announcement) do
+    mod = table_module(unit) || raise "read-into: unit #{unit} has no Table module"
+    data = File.read!(lawful)
+    retain = %{records: [], used: 0, cap: 1_048_576, ids: [], id_cap: 131_072}
+    zero = %{unknown: 0, widened: 0, retained: 0, retain_lost: 0, reason: "", missing_required: 0}
+
+    stale = %{
+      unknown: 7,
+      widened: 7,
+      retained: 7,
+      retain_lost: 7,
+      reason: "stale",
+      missing_required: 7,
+      blob_shared: 7
+    }
+
+    line = fn
+      {:ok, _, _, _} -> "read\n"
+      {:error, _, _, _} -> "refused\n"
+    end
+
+    {:error, _, fresh, _} = mod.load_retain(root, data, retain, zero)
+    result = mod.load_retain(root, data, retain, stale)
+    {:error, _, report, _} = result
+
+    line.(result) <>
+      if(report == fresh,
+        do: "zeroed\n",
+        else: "kept #{inspect(report)} want #{inspect(fresh)}\n"
+      )
+  end
+
   defp read_into(unit, root, form, lawful, damaged, count, announcement) do
     n = String.to_integer(count)
     table = table_module(unit) || raise "read-into: unit #{unit} has no Table module"
