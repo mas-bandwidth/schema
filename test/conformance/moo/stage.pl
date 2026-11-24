@@ -98,6 +98,7 @@ my %kinds = (
 	"write-refusal-json" => ["write-refusal-json"],
 	"write-refusal-cook" => ["write-refusal-cook"],
 	"write-refusal-block" => ["write-refusal-block"],
+	"write-refusal-shape" => ["write-refusal-shape"],
 	"announce" => ["announce"],
 	"read-into" => ["read-into"],
 	"json-write-into" => ["json-write-into"],

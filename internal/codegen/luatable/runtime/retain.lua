@@ -1499,9 +1499,19 @@ end
 -- it on its own refusals, and a refusal the capture walk finds afterwards resets
 -- it here.
 function S.LoadRetain(T, name, bytes, retain, report, into)
+  -- EVERY READ ZEROES A SUPPLIED REPORT IN FULL as its first act (§6.5, the
+  -- retain family included): every key goes, so no counter, reason or detail
+  -- the caller's report held survives, even when the root name is unknown and
+  -- the read answers nil. The one thing before it is the fixed-root refusal,
+  -- which raises by name before the report is touched (§6.6). The counters the
+  -- retaining load adds (retained, retain_lost) start at zero here and then
+  -- ACCUMULATE through the capture; SaveRetain adds to what this load left (§6.6).
   local desc = T.Tables[name]
+  if desc ~= nil and not desc.variable then fixed_refusal(name) end
+  if report ~= nil then
+    for k in pairs(report) do report[k] = nil end
+  end
   if desc == nil then return nil end
-  if not desc.variable then fixed_refusal(name) end
   if retain ~= nil then
     retain.list = {}
     retain.used = 0

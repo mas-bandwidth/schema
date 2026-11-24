@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/mas-bandwidth/schema/v2/internal/provesran"
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
 // echoIntoGrep is a condition decided by a pipeline whose left side can die of
@@ -232,6 +233,7 @@ func TestFastPlanLargeDiff(t *testing.T) {
 	}
 	run := func(wf string) string {
 		t.Helper()
+		testinputs.Files(t, ".github/workflows/ci-fast.yml", ".github/workflows/ci-full.yml")
 		cmd := exec.Command("bash", "-euo", "pipefail", "-c", fastPlanSelector(t, wf, `printf '%s|%s|%s' "$broad" "$packages" "$codegen_touched"`))
 		cmd.Env = append(scriptEnv(os.Environ()), "PLAN_FILES="+planFiles)
 		cmd.Dir = root

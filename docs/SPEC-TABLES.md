@@ -9953,6 +9953,15 @@ one-byte over-read into a finding attributed to the mutant that caused it.
 long one, and that target is picked up by the certification workflow the way
 every `tables-<lang>-release` target is.
 
+**AN ARM CLAIMS A ROOT ONLY WHEN THE LEG HOLDS THAT ARM'S READ FOR IT.** A leg
+answers the roster with a `1` for a root only when it can read that root the
+way the arm reads it: under `--builder`, through the generated builder. A root
+the leg holds no builder read for is answered `0`, which the harness counts and
+names as absent, and is never handed to some other read that cannot say whether
+the builder completed: a C# builder arm that did exactly that threw on the
+first mutant of `shapes.Bounds` (a truncation to nothing) where the engine
+refuses the load by name.
+
 **Two negative controls stand behind it**, because a fuzzer that has never gone
 red proves nothing about the reader it points at, and each removes ONE check
 from the EMITTER — through `go build -overlay`, so no tracked file moves —
