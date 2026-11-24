@@ -488,7 +488,7 @@ go red. Rust names the union tag as not representable.
 
 The every-build scripting legs (JavaScript, Python, Ruby, Elixir, Lua, Luau,
 Squirrel, MOO, Goose, Lobster) share one schema and one row list,
-`test/conformance/write-refusal-packet/` (`PacketWriteRefusal.schema`,
+`test/conformance/write-refusal-packet/` (`RefusalPacket.schema`,
 `rows.txt`, and `wrpacket.Check`). Each leg's directory holds a
 `writerefusalpacket_test.go` and its own probe: the test generates the unit,
 runs the probe over `rows.txt` (one `<row> refused|wrote` line each, a refusal

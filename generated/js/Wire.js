@@ -904,6 +904,9 @@ export function ZeroProbeArray(value) {
 }
 
 export function WriteProbeArray(stream, value) {
+  if (value.samples == null || value.samples.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+    return false;
+  }
   for (let i = 0; i < 2; i++) {
     if (!WriteProbeSample(stream, value.samples[i])) {
       return false;
