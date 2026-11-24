@@ -2289,14 +2289,24 @@ fn wire_check(data: const u8[:], at: i64, end: i64, ids_at: i64, ids_n: i64, ann
 // load_with is the one load both entry points share: load_table, and
 // load_table_retain (wire_retain.goose) with retention on.
 // load_with is load_run under the caller's stores' promise: a refused load
-// (-1) leaves the value and node tables the length they had, as <T>ToLoaded
-// restores them (value_bridge.go), never holding its partial entries.
+// (-1) leaves the value and node tables exactly as the caller handed them,
+// every length and every entry, as <T>ToLoaded restores its stores
+// (value_bridge.go) and never holding the load's partial entries. The value
+// table only grows during a load, so its length restores it; the node table
+// is indexed by the file's node numbering and reused from index 0
+// (load_run, scan_nodes), so the caller's entries are kept aside and put back.
 fn load_with(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal[>..]&, nodes: LoadNode[>..]&, report: LoadReport&, store: RetainStore&, retaining: bool) -> i64 {
     report = LoadReport { .. };
     let slots = vals.len;
     let held = nodes.len;
+    var kept: LoadNode[>..] = [];
+    for k in held { kept.push(nodes[k]); }
     let rec = load_run(unit, root, data, vals, nodes, report, store, retaining);
-    if rec < 0 { vals.resize(slots); nodes.resize(held); }
+    if rec < 0 {
+        vals.resize(slots);
+        nodes.resize(held);
+        for k in held { nodes[k] = kept[k]; }
+    }
     return rec;
 }
 

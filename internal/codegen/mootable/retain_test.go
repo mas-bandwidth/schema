@@ -161,6 +161,12 @@ func goRetain(t *testing.T, u *ir.Unit, rootName string, wire []byte, capacity, 
 	keep := &tablewire.Retain{Capacity: capacity, IdCapacity: ids}
 	var rep tabletext.Report
 	ok, err := tablewire.DecodeRetain(m, inst, wire, keep, &rep)
+	if err != nil && !tablewire.Refused(err) && !tablewire.ReadRefusal(err) {
+		// an error that is not a refusal (a form, fixed or message refusal,
+		// or a named read refusal such as wire_damaged) is the engine
+		// failing, never a verdict: a refused row must not pass on it
+		t.Fatalf("the Go engine failed, not refused: %v", err)
+	}
 	if err != nil || rep.Refused || !ok {
 		return retainOut{}
 	}
