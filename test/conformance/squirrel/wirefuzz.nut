@@ -23,11 +23,14 @@
 // BUFFERS).
 //
 // THE ROSTER this leg answers 1 for is the form-1 FILE roots of the units the
-// target generates, with retention off. A form-2 (message) entry is driven
-// through LoadMessages/SaveMessages, which this leg does not carry, and the
-// Squirrel port has no retention (docs/SPEC-TABLES.md §6.6): both answer 0, as
-// does a root of a unit the target refuses (build/conformance-squirrel/
-// REFUSED.txt), so the harness never sends them a mutant.
+// target generates, with retention off, and in the plain arm the form-2
+// (message) entries of their FIXED-class roots. A message mutant is a batch,
+// driven through LoadMessages, MeasureMessages and SaveMessages against the
+// unit's OWN announcement, read once through the same AnnounceRead a receiver
+// uses (test/conformance/README.md, "The FORM selects the read path"). A
+// message root in the builder arm, a root of a unit the target refuses
+// (build/conformance-squirrel/REFUSED.txt) and the retention arm answer 0, so
+// the harness never sends them a mutant.
 //
 // TWO ARMS, ONE DRIVER (make/squirrel-fuzz.mk). The Squirrel load builds
 // class instances and has no caller region to size (docs/PORT-SQUIRREL.md,
@@ -54,6 +57,7 @@ local input = ::stdin;
 local out = ::stdout;
 
 local FORM_VARIABLE = 1;
+local FORM_MESSAGE = 2;
 local builder = vargv.len() >= 1 && vargv[0] == "builder";
 
 // read exactly n bytes, or null at the end of the stream. A pipe has no
@@ -196,6 +200,23 @@ local openUnit = function(key) {
   return opened;
 };
 
+// THE UNIT'S OWN VOCABULARY, announced to itself once and held for the run:
+// the vocabulary is a pure function of the build version, so the leg holds the
+// table the harness's oracle holds. A unit whose own announcement is refused
+// is a broken target, and the throw says so.
+local vocabularyOf = function(u, key) {
+  if ("vocabulary" in u) return u.vocabulary;
+  local size = u.T.AnnounceMeasure();
+  local bytes = blob(size);
+  if (u.T.Announce(bytes) != size) throw "wirefuzz.nut: " + key + ": Announce did not write its measure";
+  bytes.seek(0);
+  local v = {};
+  local ar = {};
+  if (!u.T.AnnounceRead(v, bytes, ar)) throw "wirefuzz.nut: " + key + ": its own announcement was refused";
+  u.vocabulary <- v;
+  return v;
+};
+
 // THE ROSTER (test/conformance/README.md): u32 count, then per root the unit
 // key, the root's name, the FORM and RETAIN; one byte per entry in reply.
 local head = take(4);
@@ -221,6 +242,16 @@ for (local i = 0; i < count; i++) {
       if (u != false && (root in u.T.Descriptors) && u.T.Descriptors[root].variable && ((root + "LoadRetain") in u.T)) {
         codec = { u = u, root = root, d = u.T.Descriptors[root], retain = true };
       }
+    }
+  } else if (form == FORM_MESSAGE && retain == 0 && !builder) {
+    local u = openUnit(unit);
+    if (u != false && (root in u.T.Descriptors) && u.T.Descriptors[root].fixed &&
+        ((root + "LoadMessages") in u.T) && ("AnnounceRead" in u.T)) {
+      // the storage is the form's batch maximum: a wire may carry up to that
+      // many bodies, and LoadMessages refuses a batch past the caller's room
+      local storage = array(u.T.TableMessageBatchMax);
+      for (local j = 0; j < storage.len(); j++) storage[j] = u.T[root]();
+      codec = { u = u, root = root, retain = false, message = true, storage = storage, vocabulary = vocabularyOf(u, unit) };
     }
   }
   roster[i] = codec;
@@ -249,7 +280,26 @@ for (;;) {
   local loaded = false;
   local strictRefused = false;
   local saved = null;
-  if (c.retain) {
+  local refused = false;
+  if ("message" in c) {
+    // THE STRICT BATCH READ (§3.3): the whole batch or no body, and every
+    // accepted body saved, in order. A refusal names itself: damage is
+    // bodyDamaged, any other refusal is refused, and nothing is saved.
+    local n = c.u.T[c.root + "LoadMessages"](c.storage, c.vocabulary, wire, report);
+    report.bodyDamaged = ("bodyDamaged" in report) && report.bodyDamaged;
+    refused = (("refused" in report) && report.refused) || n < 1;
+    if (report.bodyDamaged) refused = true;
+    loaded = !refused;
+    strictRefused = refused;
+    if (loaded) {
+      local values = c.storage.slice(0, n);
+      local size = c.u.T[c.root + "MeasureMessages"](values, {});
+      if (size >= 0) {
+        local outBuf = blob(size);
+        if (c.u.T[c.root + "SaveMessages"](values, outBuf, {}) == size) saved = outBuf;
+      }
+    }
+  } else if (c.retain) {
     local store = { capacity = 64 * wire.len() + 4096, idCapacity = 1 << 17 };
     local v = c.u.T[c.root + "LoadRetain"](wire, store, report);
     loaded = v != null && !report.bodyDamaged && !report.refused;
