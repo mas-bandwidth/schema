@@ -829,7 +829,7 @@ make tables-wire-fuzz                      the C++ reference, plain and sanitize
 make tables-wire-fuzz-negative-control     both controls: a check removed, the fuzzer red
 make tables-wire-fuzz-retain               the same mutants through the RETAINING paths
 make tables-wire-fuzz-retain-negative-control   its own pair, one control per engine
-./build/conformance-harness wire-fuzz --driver <cmd> [--seed S] [--n N]
+./build/conformance-harness wire-fuzz --leg <leg> --driver <cmd> [--seed S] [--n N]
 ./build/conformance-harness wire-fuzz --driver <cmd> --replay <file> --unit <key> --root <table>
 ```
 
@@ -1058,7 +1058,7 @@ Named, with the reason, so a port knows what it is not being asked for:
   twin) and the cook's. A fuzzer is a search, not a case, and the finds it
   produces land here as forgery rows — `block_offset_overflow` is one.
 
-The optional `wire-fuzz --builder` arm uses mutable file readers over variable
+The optional wire-fuzz `--builder` arm uses mutable file readers over variable
 file roots. `--mixed-builder` preserves the full roster and uses the mutable
 oracle only for variable file roots, keeping fixed and message roots. These
 profiles share the same acceptance and exact write-back comparison. `--builder`

@@ -192,7 +192,11 @@ func runFakeWireFuzz(t *testing.T, m *Manifest, opts wireFuzzOptions, absent ...
 	}
 	failed := filepath.Join(t.TempDir(), "failed.bin")
 	t.Setenv("SCHEMA_HARNESS_FAKE_WIRE_LEG", "1")
-	opts.driver = strings.Join(append([]string{exe}, absent...), " ")
+	prog := exe
+	if opts.driver != "" {
+		prog = opts.driver // a driver the test names, the fake leg under it
+	}
+	opts.driver = strings.Join(append([]string{prog}, absent...), " ")
 	opts.vectors = ""
 	opts.seed, opts.n, opts.failed = 1, 1, failed
 	return wireFuzz(m, opts)
@@ -270,6 +274,20 @@ func TestWireFuzzSplitRootAnsweredByBuilderArm(t *testing.T) {
 	}
 }
 
+// fakeGooseLeg is the test binary under the Goose leg's name, wirefuzz.
+func fakeGooseLeg(t *testing.T) string {
+	t.Helper()
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	leg := filepath.Join(t.TempDir(), "wirefuzz")
+	if err := os.Symlink(exe, leg); err != nil {
+		t.Fatal(err)
+	}
+	return leg
+}
+
 // A ONE-UNIT RUN (--unit without --replay) asks about its unit alone and
 // holds only that unit's ledger lines.
 func TestWireFuzzUnitScopedRoster(t *testing.T) {
@@ -316,9 +334,23 @@ func TestWireFuzzUnitOnlyOnOneUnitLegs(t *testing.T) {
 		t.Fatalf("a one-unit leg without --unit was not refused: %v", err)
 	}
 
-	// the one-unit leg with its unit: past the leg checks and the roster
-	// check (its unit answers every root), stopped by the fake leg's pipe
-	err = runFakeWireFuzz(t, m, wireFuzzOptions{leg: "goose-unit", ledgerDir: dir, unit: "listdemo"}, "shapes.Bounds")
+	// goose-unit is the Goose leg's name, tied to its driver: the reader's
+	// plant, the Go driver under --leg goose-unit --unit tblp1, is refused,
+	// and so is the Goose leg over another unit than --unit
+	err = runFakeWireFuzz(t, m, wireFuzzOptions{leg: "goose-unit", ledgerDir: dir, unit: "tblp1", driver: "build/conformance-go wire-fuzz"})
+	if err == nil || !strings.Contains(err.Error(), "--leg goose-unit runs the Goose unit leg") {
+		t.Fatalf("the Go driver ran under --leg goose-unit: %v", err)
+	}
+	goose := fakeGooseLeg(t)
+	err = runFakeWireFuzz(t, m, wireFuzzOptions{leg: "goose-unit", ledgerDir: dir, unit: "listdemo", driver: goose + " tblp1"})
+	if err == nil || !strings.Contains(err.Error(), "--leg goose-unit runs the Goose unit leg") {
+		t.Fatalf("the Goose leg of another unit ran under --unit listdemo: %v", err)
+	}
+
+	// the one-unit leg with its unit and its driver: past the leg checks and
+	// the roster check (its unit answers every root), stopped by the fake
+	// leg's pipe
+	err = runFakeWireFuzz(t, m, wireFuzzOptions{leg: "goose-unit", ledgerDir: dir, unit: "listdemo", driver: goose + " listdemo"}, "shapes.Bounds")
 	if err == nil {
 		t.Fatal("the fake leg closed its pipe, yet the run passed")
 	}

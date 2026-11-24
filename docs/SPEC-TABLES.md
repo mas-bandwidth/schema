@@ -9786,7 +9786,8 @@ set: a root absent and not listed is red even when another listed root comes
 off in the same change, and a listed root the leg now answers is red until its
 line is removed. The harness finds the ledger, never the caller: a whole-roster
 run names its leg (`--leg`), the arm is the run's own profile (`plain`, `builder`
-or `retain`), and a run with no leg is refused. A one-unit leg (`goose-unit`, a driver per unit)
+or `retain`), and a run with no leg is refused. A one-unit leg (`goose-unit`, the Goose leg built per unit, whose driver the
+harness requires to be that leg over the same unit)
 names its unit (`--unit` without `--replay`) and is asked about that unit's
 roots alone; no other leg takes `--unit`, so no whole-roster run leaves part of
 the roster unasked, and a unit a one-unit sweep drops (one that fails to

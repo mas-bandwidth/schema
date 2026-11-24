@@ -276,10 +276,10 @@ func plantGenerated(t *testing.T, path, anchor, repl string) {
 func runLobsterWireFuzz(t *testing.T, root, harness, host, units, mode string, extra []string) (string, error) {
 	t.Helper()
 	leaks := filepath.Join(root, "test", "conformance", "lobster", "wirefuzz-known-leaks.txt")
-	args := []string{"wire-fuzz"}
+	// the leg is named on every run; a replay reads no ledger
+	args := []string{"wire-fuzz", "--leg", "lobster-fixture"}
 	if !slices.Contains(extra, "--replay") {
-		args = append(args, "--leg", "lobster-fixture",
-			"--manifest", lobsterFixtureManifest(t, root, units), "--vectors", "")
+		args = append(args, "--manifest", lobsterFixtureManifest(t, root, units), "--vectors", "")
 	}
 	var driver string
 	switch mode {

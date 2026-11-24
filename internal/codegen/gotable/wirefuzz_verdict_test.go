@@ -621,12 +621,12 @@ func writeGoWireFuzzManifest(t *testing.T, units map[string]bool, instances map[
 func runGoWireFuzzVerdictPipe(t *testing.T, root, harnessBin, driverBin, manifest string, retain, builder bool, n int) (string, error) {
 	t.Helper()
 	failed := filepath.Join(t.TempDir(), "failed.bin")
-	subcmd := "wire-fuzz"
+	driver := driverBin + " wire-fuzz"
 	var args []string
 	args = append(args, "wire-fuzz", "--leg", "go-fixture")
 	if builder {
 		args = append(args, "--builder")
-		subcmd = "wire-fuzz-builder"
+		driver = driverBin + " wire-fuzz-builder"
 	}
 	if retain {
 		args = append(args, "--retain")
@@ -634,7 +634,7 @@ func runGoWireFuzzVerdictPipe(t *testing.T, root, harnessBin, driverBin, manifes
 	args = append(args,
 		"--manifest", manifest,
 		"--vectors", "",
-		"--driver", fmt.Sprintf("%s %s", driverBin, subcmd),
+		"--driver", driver,
 		"--seed", "1",
 		"--n", fmt.Sprintf("%d", n),
 		"--failed", failed,

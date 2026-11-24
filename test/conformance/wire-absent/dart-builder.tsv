@@ -1,7 +1,7 @@
 # dart-builder: the roots the Dart builder-arm wire-fuzz run (make/dart.mk
 # tables-dart-wire-fuzz, --builder) answers absent, matched as an exact set
 # (test/conformance/harness/wirefuzz_absent.go, docs/SPEC-CONFORMANCE.md W-ROSTER).
-# Measured on intel at ef4717a4a1 (the base) plus this guard: 9 seeds over 4 roots. Delete a line in the
+# Measured on intel at main 2d352b7dd8 plus this guard: 9 seeds over 4 roots. Delete a line in the
 # change that adds its root to the driver, and the file with its last line.
 shapes.Bounds	owed: the Dart driver has no mutable codec for this root (4 seeds)
 tblsurf.Chain	owed: the Dart driver has no mutable codec for this root (2 seeds)

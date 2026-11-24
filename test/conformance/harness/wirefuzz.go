@@ -929,7 +929,7 @@ func wireFuzz(m *Manifest, opts wireFuzzOptions) error {
 		if !legName.MatchString(opts.leg) {
 			return fmt.Errorf("wire-fuzz: --leg %q is not lowercase words joined by '-'", opts.leg)
 		}
-		if err := checkOneUnitLeg(opts.leg, opts.unit); err != nil {
+		if err := checkOneUnitLeg(opts.leg, opts.unit, opts.driver); err != nil {
 			return err
 		}
 		ledgerPath = absentLedgerPath(ledgerDir, opts.leg, wireArm(opts))

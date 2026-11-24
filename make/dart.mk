@@ -1801,7 +1801,7 @@ test-dart: tables-dart-usage tables-dart-usage-negative-control
 # Save the value cannot honour (a cycle, a blob two slots name) is the
 # StateError the driver answers as a refusal. The default N and SEED are the
 # Makefile's. The driver also binds LoadRetain/SaveRetain for every root
-# (wire-fuzz --builder --retain, docs/SPEC-TABLES.md §6.6). Dart's mutable
+# (the wire-fuzz arm with --builder --retain, docs/SPEC-TABLES.md §6.6). Dart's mutable
 # file reader uses the builder oracle; region sizing remains independently
 # checked by native extent tests.
 # THE PER-COMMIT SMOKE COUNT (card green-fit-fuzz-smoke): ci-full.yml's

@@ -1,7 +1,7 @@
 # cs-region-plain: the roots the C# region-arm wire-fuzz driver (schemaconformance.dll
 # wire-fuzz-region, make/cs.mk tables-cs-region-fuzz) answers absent, matched as an
 # exact set (test/conformance/harness/wirefuzz_absent.go, docs/SPEC-CONFORMANCE.md
-# W-ROSTER). Measured on intel at ef4717a4a1 (the base) plus this guard: 330 seeds over 54 roots. Delete a
+# W-ROSTER). Measured on intel at main 2d352b7dd8 plus this guard: 330 seeds over 54 roots. Delete a
 # line in the change that adds its root to the region driver, and the file with
 # its last line.
 backenddemo.LoginRequest	owed: the C# region driver has no region codec for this root (5 seeds)

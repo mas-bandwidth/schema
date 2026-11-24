@@ -188,7 +188,7 @@ const mixed91317 = "01010e051e03020304050e12090203000000000000000400000000000000
 //   - mixed91317 itself: the second `hits` occurrence replaces the first
 //     whole, so the record kept under the first occurrence's damaged arm goes
 //     with it and nothing is lost: retained=4 retain_lost=0. The generated
-//     Go leg (build/conformance-go wire-fuzz --retain) answers the same. The
+//     Go leg (build/conformance-go wire-fuzz, retaining arm) answers the same. The
 //     Go oracle answers retain_lost=1 only because it keys an arm body by its
 //     cell's address and the list's append moved the cell, so the discard
 //     never finds it; that is the oracle's defect (internal/tablewire

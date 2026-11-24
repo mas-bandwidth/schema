@@ -2023,7 +2023,7 @@ tables-java-node-index-negative-control: tables-java-wire-fuzz
 	$(JAVAC) --release 17 -nowarn -d $(JAVA_NODE_INDEX_SABOTAGE)/classes \
 		$(JAVA_NODE_INDEX_SABOTAGE)/generated/*/*.java test/conformance/java/src/Driver.java test/conformance/java/src/TablesWireFuzz.java
 	@for arm in "" --retain; do \
-		if ./build/conformance-harness wire-fuzz $$arm \
+		if ./build/conformance-harness wire-fuzz --leg java $$arm \
 				--driver "$(JAVA) -cp $(CURDIR)/$(JAVA_NODE_INDEX_SABOTAGE)/classes TablesWireFuzz" \
 				--replay testdata/wire/tables/fuzz-vectors/pointer_index_past_table.bin --unit graphdemo --root Scene \
 				--failed $(JAVA_NODE_INDEX_SABOTAGE)/failed.bin > $(JAVA_NODE_INDEX_SABOTAGE)/log 2>&1; then \

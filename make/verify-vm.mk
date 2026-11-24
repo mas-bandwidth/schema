@@ -649,8 +649,8 @@ verify-sabotage-retain-negative-control: verify-toolchain-js build/conformance-h
 	@grep -q 'wire .*pass' build/verify-sabotage-nc/retain/retain.log && grep -q 'js / retain-save: retain_round_trip' build/verify-sabotage-nc/retain/retain.log || \
 		{ echo "NEGATIVE CONTROL FAILED: expected wire pass + retain-save FAIL:" >&2; cat build/verify-sabotage-nc/retain/retain.log >&2; exit 1; }
 	@if SCHEMA_JS_GENERATED=build/verify-sabotage-nc/retain/conformance-js NODE="$(NODE)" ./build/conformance-harness-vm wire-fuzz --leg js --retain $(WFR_FLAGS_js) --driver "$(WFR_DRIVER_js)" --seed 1 --n 20 --max-mutants 250 --failed build/verify-sabotage-nc/retain/fuzz.bin > build/verify-sabotage-nc/retain/fuzz.log 2>&1; then \
-		echo "NEGATIVE CONTROL FAILED: sabotaged JS retain-unknown loader passed wire-fuzz --retain" >&2; exit 1; fi
-	@echo "verify-sabotage-retain-negative-control: silent retain-unknown drop left wire green and failed both retain-save and wire-fuzz --retain"
+		echo "NEGATIVE CONTROL FAILED: sabotaged JS retain-unknown loader passed the wire-fuzz retain arm" >&2; exit 1; fi
+	@echo "verify-sabotage-retain-negative-control: silent retain-unknown drop left wire green and failed both retain-save and the wire-fuzz retain arm"
 
 verify-sabotage-negative-control: \
 	verify-sabotage-packet-negative-control \

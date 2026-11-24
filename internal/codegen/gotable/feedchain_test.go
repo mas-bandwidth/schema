@@ -11,7 +11,7 @@ import (
 )
 
 // feedChainMutant is a FILE-form (form byte 1) mutant of the wire-fuzz corpus
-// seed stream_chain: `conformance-harness wire-fuzz --seed 24845619678 --n
+// seed stream_chain: `conformance-harness wire-fuzz --leg go --seed 24845619678 --n
 // 500000`, random pass #116063. It is damaged.
 const feedChainMutant = "01010803000000020f030d0a040e02040e04110306010105110200060c1602070a040e03060102051103000707040e03060103000a040e03060102051103000700c03a5cb5072eb7082652b3285633d4d8228e3c877681830f054aa33067555b8528f025a0ba6c31e5ffffffffffffffff82e051f9dc6843cf0700000000000000"
 

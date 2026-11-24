@@ -64,9 +64,23 @@ var oneUnitLegs = map[string]string{
 	"goose-unit": "goose",
 }
 
-// checkOneUnitLeg refuses --unit on a leg that is not a one-unit leg, and a
+// oneUnitDriver is the driver each one-unit leg must run: the Goose leg is
+// one program per unit, `<dir>/wirefuzz <unit> <arm>`
+// (make/goose-wirefuzz-build.sh), so goose-unit's driver is that program over
+// the same unit. A Go or any other whole-roster driver under goose-unit's
+// name would be asked about one unit alone and escape the roster check.
+func oneUnitDriver(leg, unit, driver string) error {
+	w := strings.Fields(driver)
+	if len(w) < 2 || filepath.Base(w[0]) != "wirefuzz" || w[1] != unit {
+		return fmt.Errorf("wire-fuzz: --leg %s runs the Goose unit leg, `<dir>/wirefuzz %s <arm>`, as its driver; %q is not it (docs/SPEC-CONFORMANCE.md W-ROSTER)", leg, unit, driver)
+	}
+	return nil
+}
+
+// checkOneUnitLeg refuses --unit on a leg that is not a one-unit leg, a
+// one-unit leg whose driver is not its own (oneUnitDriver), and a
 // one-unit leg without --unit.
-func checkOneUnitLeg(leg, unit string) error {
+func checkOneUnitLeg(leg, unit, driver string) error {
 	whole, one := oneUnitLegs[leg]
 	switch {
 	case unit != "" && !one:
@@ -78,6 +92,8 @@ func checkOneUnitLeg(leg, unit string) error {
 		return fmt.Errorf("wire-fuzz: --unit %s scopes the run to one unit and leaves the rest of the roster unasked; only a one-unit leg (%s) takes it, and --leg %s is not one (docs/SPEC-CONFORMANCE.md W-ROSTER)", unit, strings.Join(names, ", "), leg)
 	case unit == "" && one:
 		return fmt.Errorf("wire-fuzz: --leg %s is a one-unit leg (its whole-roster run is --leg %s) and needs --unit", leg, whole)
+	case one:
+		return oneUnitDriver(leg, unit, driver)
 	}
 	return nil
 }
