@@ -123,6 +123,56 @@ return function(ctx: any): { [string]: Surface }
 				ctx.say(name, if not ok then "threw\n" elseif out == nil then "refused\n" else "read\n" .. tostring(#out) .. "\n")
 				continue
 			end
+			if form == "retain" then
+				-- THE RETAINING LOAD (table_retain's LoadRetain, SPEC-TABLES
+				-- §6.6) into ONE report the driver PRE-FILLED: every field
+				-- the report at rest carries (table_load's reset) is a plain
+				-- table field, so each is set directly. After each lawful load
+				-- the report is compared, key by key in both directions, with
+				-- the report the same load leaves in a FRESH report (§6.5:
+				-- every read zeroes a supplied report in full, the retain
+				-- family included). Every load has its own roomy store.
+				local R: any = ctx.module(key, "table_retain")
+				local L: any = ctx.module(key, "table_load")
+				if R == nil then error("driver: " .. name .. ": the unit emits no table_retain", 0) end
+				local function retainOnce(path: string, report: any): string
+					local ok, got = pcall(R.LoadRetain, root, ctx.inputs(path), report, R.newStore(1048576, 131072))
+					if not ok then return "threw\n" end
+					if got == nil or refusedBy(report) then return "refused\n" end
+					return "read\n"
+				end
+				local fresh = L.newReport()
+				if retainOnce(lawful, fresh) ~= "read\n" then
+					error("driver: " .. name .. ": the lawful retaining load refused into a fresh report", 0)
+				end
+				local function zeroed(report: any): string
+					local differs = {}
+					for k, v in report do
+						if fresh[k] ~= v then differs[#differs + 1] = tostring(k) end
+					end
+					for k, v in fresh do
+						if report[k] == nil and v ~= nil then differs[#differs + 1] = tostring(k) end
+					end
+					if #differs == 0 then return "zeroed\n" end
+					table.sort(differs)
+					return "kept " .. table.concat(differs, " ") .. "\n"
+				end
+				local report: any = {
+					bodyDamaged = true, damaged = true, retained = 7, retainLost = 7, refused = 7,
+					unknown = 7, kindChanged = 7, outOfRange = 7, widened = 7, repeatedKey = 7,
+					missingRequired = 7, nonFinite = 7, blobShared = 7,
+					missingName = "stale", nonFiniteField = "stale", reason = "stale", field = "stale",
+					unknownField = "stale", repeatedField = "stale",
+				}
+				local parts = {}
+				parts[#parts + 1] = retainOnce(lawful, report)
+				parts[#parts + 1] = zeroed(report)
+				parts[#parts + 1] = retainOnce(damaged, report)
+				parts[#parts + 1] = retainOnce(lawful, report)
+				parts[#parts + 1] = zeroed(report)
+				ctx.say(name, table.concat(parts))
+				continue
+			end
 			local n = tonumber(count)
 			if n == nil or n < 1 then error("driver: " .. name .. ": " .. tostring(count) .. " is not a count", 0) end
 			local values: { any } = {}

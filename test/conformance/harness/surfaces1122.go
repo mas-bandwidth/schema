@@ -13,7 +13,12 @@
 //     (FL-02), a refusal leaves every value the call was handed at its declared
 //     defaults (FL-03), and the read refuses through its report and never by
 //     throwing (FL-29). Its `fixed-nocap` form loads a fixed file with no
-//     stated capacity and owes the file's own record count (FL-17).
+//     stated capacity and owes the file's own record count (FL-17). Its
+//     `retain` form hands the RETAINING load (`LoadRetain`, §6.6) a report the
+//     driver PRE-FILLED (every counter nonzero, the refusal set) and owes a
+//     report equal, field by field, to the one the same read leaves in a fresh
+//     report: §6.5 zeroes a supplied report in full on every read path, the
+//     retain family included.
 //   - `json-write-into` runs the text writer in a comma-decimal process
 //     locale (FL-14) into a caller buffer larger than the text, whose bytes
 //     past the text must be untouched (FL-15).
@@ -144,6 +149,8 @@ func (a AnnounceCase) want() ([]byte, error) {
 // values the call is handed: 1 for `variable` and `json`, the lawful file's
 // records or bodies for `fixed` and `message`; for `fixed-nocap` it is the
 // answer, the record count the load returns, and the driver is not told it.
+// Form `retain` is the retaining load (`<Root>LoadRetain`, §6.6) of a variable
+// root, handed one value; its answer is in FORMAT.md and README.md.
 type ReadInto struct {
 	Name         string
 	Unit         string
@@ -157,7 +164,13 @@ type ReadInto struct {
 // Golden is the answer the row owes.
 func (r ReadInto) Golden() string { return ReadIntoDir + "/" + r.Name + ".txt" }
 
-var readIntoForms = map[string]bool{"variable": true, "fixed": true, "message": true, "json": true, "fixed-nocap": true}
+var readIntoForms = map[string]bool{"variable": true, "fixed": true, "message": true, "json": true, "fixed-nocap": true, "retain": true}
+
+// readIntoRetainAnswer is what a `retain` row owes (docs/SPEC-TABLES.md §6.5,
+// §6.6): the lawful retaining read on a PRE-FILLED report reads and leaves the
+// report a fresh read leaves (`zeroed`), the damaged read refuses into the same
+// report, and the lawful read again reads and leaves it `zeroed` once more.
+const readIntoRetainAnswer = "read\nzeroed\nrefused\nread\nzeroed\n"
 
 func parseReadInto(f []string, where string) (ReadInto, error) {
 	if len(f) != 8 {
@@ -165,7 +178,7 @@ func parseReadInto(f []string, where string) (ReadInto, error) {
 	}
 	r := ReadInto{Name: f[1], Unit: f[2], Root: f[3], Form: f[4], Lawful: f[5], RefusedInput: f[6]}
 	if !readIntoForms[r.Form] {
-		return r, fmt.Errorf("%s: %q is not a read-into form (variable, fixed, message, json, fixed-nocap)", where, r.Form)
+		return r, fmt.Errorf("%s: %q is not a read-into form (variable, fixed, message, json, fixed-nocap, retain)", where, r.Form)
 	}
 	n, err := strconv.Atoi(f[7])
 	if err != nil || n < 1 {
@@ -175,7 +188,7 @@ func parseReadInto(f []string, where string) (ReadInto, error) {
 	if (r.Form == "fixed-nocap") != (r.RefusedInput == "-") {
 		return r, fmt.Errorf("%s: a fixed-nocap row, and only it, takes damaged -", where)
 	}
-	if (r.Form == "variable" || r.Form == "json") && n != 1 {
+	if (r.Form == "variable" || r.Form == "json" || r.Form == "retain") && n != 1 {
 		return r, fmt.Errorf("%s: a %s read is handed one value", where, r.Form)
 	}
 	return r, nil
@@ -338,9 +351,10 @@ func generate1122(u *units, m *Manifest) error {
 		if r.Form == "fixed-nocap" {
 			answer = fmt.Appendf(nil, "read\n%d\n", r.Count)
 		} else {
-			if r.Form == "variable" {
+			if r.Form == "variable" || r.Form == "retain" {
 				// the engine reads the variable form; the row's two verdicts
-				// are checked here, the other forms by the reference leg
+				// are checked here, the other forms by the reference leg (a
+				// retaining load refuses exactly what Load refuses, §6.6)
 				for _, c := range []struct {
 					path  string
 					reads bool
@@ -354,6 +368,13 @@ func generate1122(u *units, m *Manifest) error {
 						return fmt.Errorf("read-into %s: the engine's read of %s is %v, the row needs %v", r.Name, c.path, ok, c.reads)
 					}
 				}
+			}
+			if r.Form == "retain" {
+				if err := writeFileAtomic(r.Golden(), []byte(readIntoRetainAnswer)); err != nil {
+					return err
+				}
+				fmt.Printf("conformance: %-22s read-into %s\n", r.Name, r.Form)
+				continue
 			}
 			defaults, err := model.Write(model.New(root))
 			if err != nil {

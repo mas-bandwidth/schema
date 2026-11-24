@@ -29,6 +29,7 @@ import { toVar } from "./fixed.mjs";
 // (ToJson) and the view (the fixed bridge's descriptors).
 const units = {
   tblsurf: { home: "surfaces/SurfacesTable.js", table: "surfaces/SurfacesTable.js", variable: "surfaces/SurfacesVariable.js", view: "surfaces/SurfacesView.js" },
+  tblrt1: { variable: "rt1/Tblrt1Variable.js" },
   tblann4096: { home: "announce4096/Announce4096Table.js" },
   tblann4097: { home: "announce4097/Announce4097Table.js" },
   messagedemo: { home: "messages/MessagedemoTable.js" },
@@ -113,6 +114,42 @@ export async function surfaceReadInto(lines, outDir, load) {
   for (const f of lines) {
     if (f[0] !== "read-into") { continue; }
     const [, name, unitName, root, form, lawful, damaged, countText, announcement] = f;
+    if (form === "retain") {
+      // `retain` (README, "The `retain` form"): the retaining load into ONE
+      // PRE-FILLED report must leave what the same load leaves in a FRESH
+      // report (SPEC-TABLES 6.5: every read zeroes a supplied report, the
+      // retain family included). The report is compared whole: every own
+      // property, whatever the class holds.
+      const variable = await load(unitOf(unitName, "variable", name).variable);
+      const loadRetain = need(variable, root + "LoadRetain", name);
+      const retaining = (path, report) => {
+        const store = new variable.TableVariableRetain(new Uint8Array(1 << 20), new Array(1 << 17));
+        return loadRetain(new Uint8Array(readFileSync(path)), store, report);
+      };
+      const state = (r) => JSON.stringify(Object.keys(r).sort().map((k) => [k, r[k]]));
+      const fresh = new variable.TableVariableReport();
+      if (retaining(lawful, fresh) === null || fresh.refused || fresh.damaged) {
+        throw new Error(name + ": the lawful retaining load refused into a fresh report");
+      }
+      const report = new variable.TableVariableReport();
+      for (const k of Object.keys(report)) {
+        const v = report[k];
+        report[k] = typeof v === "number" ? 7 : typeof v === "boolean" ? true : typeof v === "string" ? "stale" : v;
+      }
+      const zeroed = () => state(report) === state(fresh) ? "zeroed\n" : "kept " + state(report) + " want " + state(fresh) + "\n";
+      const step = (path) => {
+        try {
+          const v = retaining(path, report);
+          return v !== null && v !== undefined && !report.refused && !report.damaged ? "read\n" : "refused\n";
+        } catch (e) {
+          process.stderr.write(name + ": the read of " + path + " threw: " + (e && e.stack ? e.stack : String(e)) + "\n");
+          return "threw\n";
+        }
+      };
+      const out = step(lawful) + zeroed() + step(damaged) + step(lawful) + zeroed();
+      writeFileSync(join(outDir, name), out);
+      continue;
+    }
     if (form === "variable" || form === "json") {
       const u = unitOf(unitName, "variable", name);
       const variable = await load(u.variable);
