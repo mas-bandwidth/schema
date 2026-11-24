@@ -3,6 +3,7 @@
 //
 //	inputfamilies select -changed FILE [-all] [-pr]
 //	inputfamilies check
+//	inputfamilies readers -changed FILE
 //
 // select reads the changed paths (one per line) and prints, for
 // $GITHUB_OUTPUT, the families they touch, one row per reader leg of each
@@ -46,6 +47,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		}
 		_, _ = fmt.Fprintf(stdout, "inputfamilies: %d families, every input present, every driver runs\n", len(inputfamilies.Families))
 		return 0
+	case "readers":
+		return legReaders(args[1:], stdout, stderr)
 	case "select":
 		fs := flag.NewFlagSet("select", flag.ContinueOnError)
 		fs.SetOutput(stderr)

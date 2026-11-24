@@ -288,6 +288,23 @@ jobs:
           echo "--- files in the diff"
           echo "$files"
 
+          # THE LEGS' OWN READS (tools/inputfamilies readers, 2026-11-24). A
+          # leg's make targets read files outside every path rule below
+          # (test/conformance/framing/gate, case-outcomes/, tools/mustrun,
+          # make/conformance-rows.mk), and a change to one selected no leg: the
+          # verdict read every skipped row as green. The readers are derived from
+          # make's own database, the legs whose targets name the path through
+          # every target they depend on and every script their recipes run, and
+          # from the verify-leg job's steps (tools/pgroup, tools/gotestreport),
+          # never a hand list. Each reader leg is selected below exactly as if
+          # its own files changed. TestFastPlanSelectsTheLegsThatReadAPath.
+          readers_out=$(go run ./tools/inputfamilies readers -changed "$RUNNER_TEMP/diff-files.txt")
+          if ! grep -q '^reader_legs=' <<<"$readers_out"; then
+            echo "::error::tools/inputfamilies readers printed no reader_legs line"
+            exit 1
+          fi
+          reader_legs=$(sed -n 's/^reader_legs=//p' <<<"$readers_out")
+
           # THE BROAD RULE. These paths can change what EVERY leg emits or what
           # every package compiles, so a diff that touches one of them gets the
           # whole of both selections. The direction of the error is deliberate:
@@ -385,6 +402,8 @@ jobs:
           done <<EOF
           $files
           EOF
+          # the legs whose make targets read a changed path (THE LEGS' OWN READS)
+          for l in ${reader_legs:-}; do add_leg "$l"; done
           touched_legs=$legs
           if [ "$broad" = yes ]; then
             legs="cpp go c rust js cs java dart elixir goose lobster luau squirrel"
@@ -559,6 +578,18 @@ jobs:
             if grep -qE '^(compiler/|ir/|internal/check/|internal/parser/|internal/codegen/)' <<<"$files"; then
               case " $packages " in *" ./internal/fuzz "*) ;; *) packages="$packages ./internal/fuzz" ;; esac
             fi
+            # A PACKAGE'S OWN TESTDATA. A file under <pkg>/testdata/ is read by
+            # <pkg>'s tests and by nothing else the go tool sees, so a diff to it
+            # selects <pkg> (tools/gotestreport/testdata/records/...). The sweep of
+            # TestFastPlanSelectsTheLegsThatReadAPath found 116 such files under
+            # tools/ that selected nothing.
+            td_dirs=$(awk '/\/testdata\// { d = $0; sub(/\/testdata\/.*/, "", d); if (!(d in seen)) { seen[d] = 1; print d } }' <<<"$files")
+            for d in $td_dirs; do
+              ls "$d"/*.go >/dev/null 2>&1 || continue
+              case "/$d/" in */testdata/*) continue ;; esac
+              m=$d; while [ "$m" != . ]; do [ -f "$m/go.mod" ] && continue 2; case "$m" in */*) m=${m%/*} ;; *) m=. ;; esac; done
+              case " $packages " in *" ./$d "*) ;; *) packages="$packages ./$d" ;; esac
+            done
             # THE WORKFLOW & READINESS AUDITORS. Packages outside ./internal/ci
             # (which ci-policy always runs) whose fast unit tests assert
             # invariants on .github/workflows/*.yml, .github/actions/*, or
@@ -1079,8 +1110,30 @@ jobs:
         with:
           go-version: '1.26'
           cache: false
+      # THE SKIP LEDGER'S RECORD for the agents map's go test below
+      - name: where this job records its go test events
+        run: |
+          rm -rf "$RUNNER_TEMP/go-test-json"
+          echo "PGROUP_GO_TEST_JSON=$RUNNER_TEMP/go-test-json" >> "$GITHUB_ENV"
       - name: go vet
         run: go vet ./...
+      # THE AGENTS MAP (tools/agentsmap, 2026-11-24). Its test is red when a
+      # new top-level directory, or a new internal/ or tools/ package, has no
+      # row in tools/agentsmap/catalog.go. No path rule selected it, so #4914,
+      # #4904 and #4919 would each have turned main red. It takes about a
+      # second, so every pull request runs it here, whatever it touches.
+      - name: every directory has its agents map row
+        run: go test -count=1 -timeout=60s ./tools/agentsmap
+      - name: the skip ledger — every skip this job's go test recorded, by reason
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          set -euo pipefail
+          require=""
+          if [ "$JOB_STATUS" = success ]; then require=-require-record; fi
+          go run ./tools/gotestreport -slowest 0 $require -skips .github/skip-ledger.txt \
+            -provides "short platform tool:make tool:git tool:sh" "$PGROUP_GO_TEST_JSON"
 
   # FAST GOLANGCI-LINT OVER TOUCHED GO PACKAGES (~4-10 s on fleet runners).
   # Catches gocritic / staticcheck / errcheck / unused issues in touched Go
