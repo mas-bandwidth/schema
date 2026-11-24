@@ -334,7 +334,7 @@ defmodule Driver do
   # the accelerators' surfaces beside the variable form's: wire, json-read,
   # json-write, json-hostile and report ride the <Unit>.Table codec, the rest
   # the block and cook readers
-  @surfaces ~w(wire message message-prior retain retain-save json-read json-write json-hostile report framing cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason write-refusal write-refusal-fixed write-refusal-message write-refusal-json write-refusal-cook write-refusal-block announce read-into json-write-into)
+  @surfaces ~w(wire message message-prior retain retain-save json-read json-write json-hostile report framing cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason write-refusal write-refusal-fixed write-refusal-message write-refusal-json write-refusal-cook write-refusal-block write-refusal-shape announce read-into json-write-into)
 
   def main([manifest, "list"]) do
     _ = manifest
@@ -906,6 +906,57 @@ defmodule Driver do
 
         write(outdir, name, answer <> "\n")
       end
+    end)
+  end
+
+  # THE SHAPE ROWS (`write-refusal-shape`; docs/SPEC-CONFORMANCE.md
+  # DW-TABLE-SHAPE): a value of the WRONG KIND where the path names, written by
+  # the root's own writer, which must refuse it by its answer. A lawful twin
+  # (any other kind) is set as `write-refusal` sets it. Here an exception is
+  # answered `raised` (red against either verdict) and named on stderr, rather
+  # than ending the case in a driver error: a writer that crashes on a value of
+  # the wrong kind is the failure these rows exist to find. The refusal the
+  # codec's contract spells (codec_refusal?/2) is still `refused`.
+  defp run("write-refusal-shape", rows, outdir) do
+    each_case("write-refusal-shape", rows(rows, "write-refusal-shape"), fn
+      [name, unit, root, wire, path, kind, text | _] ->
+        mod = codec(unit, root)
+
+        if mod == nil do
+          write_absent(outdir, name)
+        else
+          ns = namespace(unit_package(unit))
+
+          value =
+            case mod.load(root, File.read!(wire)) do
+              {:ok, value, _report} -> value
+              other -> raise "the codec did not load the row's instance: #{inspect(other)}"
+            end
+
+          set =
+            if kind == "shape" do
+              WriteRefusal.shape(value, path, text)
+            else
+              WriteRefusal.set(%{mod: mod, ns: ns, descs: mod.descriptors()}, root, value, path, kind, text)
+            end
+
+          answer =
+            case set do
+              :unrepresentable ->
+                "unrepresentable"
+
+              {:ok, changed} ->
+                try do
+                  write_refusal_answer("write-refusal", mod, ns, root, changed, false)
+                rescue
+                  e ->
+                    IO.puts(:stderr, "#{name}: the writer raised: #{Exception.format(:error, e, __STACKTRACE__)}")
+                    "raised"
+                end
+            end
+
+          write(outdir, name, answer <> "\n")
+        end
     end)
   end
 
@@ -1938,6 +1989,92 @@ defmodule WriteRefusal do
   def set(ctx, root, value, path, kind, text) do
     set_in(ctx, Map.fetch!(ctx.descs, root), value, String.split(path, "."), kind, text)
   end
+
+  # ---- the shape rows (write-refusal-shape) ----
+  #
+  # shape/3 puts the token's value of the wrong kind where the path names:
+  # `int` 1, `float` 1.5, `numtext` "1.5", `text` "x", `bool` true, `null` nil,
+  # `map` %{}, `seq` [1] and `improper` the improper list [1 | 2]. `.` is the
+  # whole value. A path ending `f[i]` makes the list f its first i elements as
+  # loaded, then the value; one ending in an arm's name, under a union's
+  # {arm, payload}, selects that arm with the value as its payload. A map in a
+  # record's place, or a list in a list's, is a value of the right kind here
+  # (an Elixir record is a map, an array a list) and is `unrepresentable`; so
+  # is nil in a record field's or a record arm's place, which the writers read
+  # as the record at its defaults (a list element has no such spelling).
+  def shape({root_map, nodes}, path, token) when is_map(root_map) and path != "." do
+    case shape(root_map, path, token) do
+      {:ok, changed} -> {:ok, {changed, nodes}}
+      other -> other
+    end
+  end
+
+  def shape(_value, ".", token), do: {:ok, shape_token(token)}
+
+  def shape(value, path, token) do
+    x = shape_token(token)
+
+    try do
+      {:ok, shape_in(value, String.split(path, "."), x)}
+    catch
+      :unrepresentable -> :unrepresentable
+    end
+  end
+
+  defp shape_token("int"), do: 1
+  defp shape_token("float"), do: 1.5
+  defp shape_token("numtext"), do: "1.5"
+  defp shape_token("text"), do: "x"
+  defp shape_token("bool"), do: true
+  defp shape_token("null"), do: nil
+  defp shape_token("map"), do: %{}
+  defp shape_token("seq"), do: [1]
+  defp shape_token("improper"), do: [1 | 2]
+
+  defp shape_in(owner, [seg | rest], x) when is_map(owner) do
+    {name, index} = segment(seg)
+
+    unless Map.has_key?(owner, name),
+      do: raise("write-refusal-shape: #{inspect(seg)} names no field of the value")
+
+    current = Map.fetch!(owner, name)
+
+    new =
+      cond do
+        index != nil and rest == [] ->
+          shape_fits!(Enum.at(current, index), x)
+          Enum.take(current, index) ++ [x]
+
+        index != nil ->
+          List.replace_at(current, index, shape_in(Enum.at(current, index), rest, x))
+
+        rest == [] ->
+          shape_fits!(current, x)
+          # nil in a record's place is that record at its defaults, the Elixir
+          # writers' own spelling of it
+          if is_map(current) and x == nil, do: throw(:unrepresentable)
+          x
+
+        true ->
+          shape_in(current, rest, x)
+      end
+
+    Map.put(owner, name, new)
+  end
+
+  # an arm under a union: {arm, payload} with the arm selected
+  defp shape_in({arm, payload}, [arm_name], x) when is_binary(arm) do
+    if arm == arm_name, do: shape_fits!(payload, x)
+    if arm == arm_name and is_map(payload) and x == nil, do: throw(:unrepresentable)
+    {arm_name, x}
+  end
+
+  defp shape_in(owner, segs, _x),
+    do: raise("write-refusal-shape: #{Enum.join(segs, ".")} names no value under #{inspect(owner)}")
+
+  defp shape_fits!(current, x) when is_map(current) and is_map(x), do: throw(:unrepresentable)
+  defp shape_fits!(current, x) when is_list(current) and is_list(x) and x == [1], do: throw(:unrepresentable)
+  defp shape_fits!(_current, _x), do: :ok
 
   def set_message(ctx, root, body, path, kind, text) do
     set_body(ctx, Map.fetch!(ctx.descs, root), body, String.split(path, "."), kind, text)

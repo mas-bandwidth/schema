@@ -2817,7 +2817,8 @@ static int write_refusal_write( const std::string & surface, const std::string &
     scratch.assign( (size_t) 1 << 20, 0 );
     const int64_t capacity = (int64_t) scratch.size();
     int64_t wrote = -1;
-    if ( surface == "write-refusal" ) wrote = codec->save( value, scratch.data(), capacity );
+    // the shape rows' lawful twins are written as write-refusal writes them
+    if ( surface == "write-refusal" || surface == "write-refusal-shape" ) wrote = codec->save( value, scratch.data(), capacity );
     else if ( surface == "write-refusal-fixed" )
     {
         if ( !write_refusal_fixed_save( root, value, scratch.data(), capacity, wrote ) ) return kNoSetterExit;
@@ -2893,6 +2894,10 @@ static int surface_write_refusal( const std::string & surface, const std::string
         if ( child == 0 )
         {
             alarm( kWrefChildSeconds );
+            // A VALUE OF THE WRONG KIND (`write-refusal-shape` kind `shape`,
+            // DW-TABLE-SHAPE) is one C++'s types cannot hold: the compiler
+            // refuses it before any writer runs
+            if ( surface == "write-refusal-shape" && f[6] == "shape" ) _exit( kUnrepresentableExit );
             if ( var_codec != NULL )
             {
                 std::vector<uint8_t> region;
@@ -2905,7 +2910,7 @@ static int surface_write_refusal( const std::string & surface, const std::string
                 const void * mval = cval;
                 const int quiet = open( "/dev/null", O_WRONLY );
                 if ( quiet >= 0 ) dup2( quiet, 2 );
-                if ( surface == "write-refusal" )
+                if ( surface == "write-refusal" || surface == "write-refusal-shape" )
                 {
                     scratch.assign( (size_t) 1 << 20, 0 );
                     const int64_t sz = var_codec->measure( mval );
@@ -3422,7 +3427,7 @@ int main( int argc, char ** argv )
     if ( surface == "list" )
     {
         printf( "wire\nmessage\nmessage-prior\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook-write\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n"
-                "write-refusal-cook\nwrite-refusal-block\nannounce\nread-into\njson-write-into\n" );
+                "write-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\n" );
         // the opt-in units this leg answers (MANIFEST.txt `opt-in`)
         printf( "unit shapes\n" );
         return 0;
@@ -3452,7 +3457,8 @@ int main( int argc, char ** argv )
     if ( surface == "forgery" ) return surface_forgery( out );
     if ( surface == "block-reason" ) return surface_block_reason( out );
     if ( surface == "write-refusal" || surface == "write-refusal-fixed" || surface == "write-refusal-message" ||
-         surface == "write-refusal-json" || surface == "write-refusal-cook" || surface == "write-refusal-block" )
+         surface == "write-refusal-json" || surface == "write-refusal-cook" || surface == "write-refusal-block" ||
+         surface == "write-refusal-shape" )
     {
         return surface_write_refusal( surface, out );
     }

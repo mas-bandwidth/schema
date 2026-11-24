@@ -91,6 +91,7 @@ var conformanceSurface = map[string]bool{
 	"cook-forgery":          true,
 	"write-refusal":         true,
 	"write-refusal-fixed":   true,
+	"write-refusal-shape":   true,
 	"write-refusal-message": true,
 	"write-refusal-json":    true,
 	"cook-reason":           true,

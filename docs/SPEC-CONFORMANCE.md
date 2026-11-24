@@ -113,7 +113,7 @@ The tables surfaces are `wire`, `message`, `report`, `framing`, `retain`,
 `cook-write`, `cook-foreign`, `block`, `block-foreign`, `block-dump`,
 `forgery`, `cook-forgery`, `write-refusal`, `write-refusal-fixed`,
 `write-refusal-message`, `write-refusal-json`, `write-refusal-cook`,
-`write-refusal-block`, `announce`, `read-into` and `json-write-into`. The cards surfaces are
+`write-refusal-block`, `write-refusal-shape`, `announce`, `read-into` and `json-write-into`. The cards surfaces are
 `load`, `save`, `render`, `parse`, `bounds`, `upgrade`, `edit`, `taskhash`
 and `view`. `test/conformance/README.md` states what each one asks.
 
@@ -155,6 +155,7 @@ the refusal (`MANIFEST.txt`, "THE 2026-11-22 SURFACES"):
 | SF-05, SF-06: a fixed table past the size ceiling is checked by `SaveMessages` | `write-refusal-message` | `smref_big_*` |
 | FL-28, SF-29, SF-37: the cook refuses a cycle, a count outside `[Min, bound]`, a NaN or an infinity | `write-refusal-cook` | `cref_*` |
 | SF-31: the block builder refuses a count or a used length past its maximum | `write-refusal-block` | `bref_*` |
+| DW-TABLE-SHAPE: a table writer in a refuse-every-build leg (Go, JS, Elixir, Lua, Luau, Squirrel, moo, Goose) refuses a value of the wrong kind by name in every build — an integer, a string or null as a record, a union, an arm's payload or an array element; a string as a float (float32 included); an integer or null as a bool; a bare map or table as a union; an improper list as an array; anything but the root's record as the whole value — never crashing, raising or coercing it; each group has a lawful twin; the assert legs answer the twins and `unrepresentable` | `write-refusal-shape` (`shape`) | `shref_*` |
 | FL-38, FL-36, FL-18: 4096 entries announced, 4097 refused; strict mode; a send with no announcement | `announce` | `ann_*` |
 | FL-02, FL-03, FL-17, FL-29: a read zeroes its report, a refusal leaves the caller's values at their defaults, an omitted fixed capacity is the file's own, a read never throws | `read-into` | `ri_*` |
 | SPEC-TABLES §6.5: the retaining load zeroes a PRE-FILLED report in full, every counter and the refusal ([below](#retaining-loads-zero-a-reused-report)) | `read-into` (`retain`) | `ri_retain` |

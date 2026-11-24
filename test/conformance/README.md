@@ -295,6 +295,7 @@ One process per surface, so a runtime starts once rather than once per case.
 | `write-refusal-json` | `write-refusal-json` | the same through the text writer | the verdict in the manifest |
 | `write-refusal-cook` | `write-refusal-cook` | the same through the cook writer (`CookMeasure` then `Cook`, little-endian) | the verdict in the manifest |
 | `write-refusal-block` | `write-refusal-block` | the same through the block builder, which builds the root's block from the value | the verdict in the manifest |
+| `write-refusal-shape` | `write-refusal-shape` | the same through the root's own form's writer, with a value of the WRONG KIND (kind `shape`) where the path names; a raise is answered `raised` | `refused`, with a lawful twin per group (DW-TABLE-SHAPE) |
 | `announce` | `announce` | the unit's announcement writer, a strict or lenient announcement read, or a `SaveMessages` with no announcement in hand (below) | the engine's bytes, or the verdict in the manifest |
 | `read-into` | `read-into` | one report and one set of caller values through a lawful read, a refused read and the lawful read again (below) | `read-into/<case>.txt`, from the engine |
 | `json-write-into` | `json-write-into` | the text writer in a comma-decimal process locale, into a caller buffer longer than the text (below) | `json/<instance>.json` |
@@ -377,6 +378,17 @@ an answer the runtime did not give.
   through the leg's block builder (the counts and used lengths it is handed
   are the value's); `wrote` when the block is built. A count or a used length
   past its maximum is refused by name in every build (SF-31).
+- **`write-refusal-shape`** puts a value of the wrong kind where the row's
+  path names (an integer as a record, a union or an array element; a string
+  as a float; null as a bool; a bare map as a union; an improper list as an
+  array; a number as the whole value) and writes it through the root's own
+  form's writer. Every refuse-every-build leg (Go, JS, Elixir, Lua, Luau,
+  Squirrel, moo, Goose) answers every row, and the harness refuses a missing
+  answer from one of them; a leg whose types cannot hold the value answers
+  `unrepresentable`. The writer refuses by its answer, never by raising: a
+  raised error is answered `raised` and is red (DW-TABLE-SHAPE). The assert
+  legs, whose writers hold these values with debug asserts only, answer the
+  lawful twins and `unrepresentable` for the shape rows.
 - **`announce <case> <unit> <root> <mode> <input>`** (the verdict withheld).
   `write` (root and input `-`): the unit's announcement writer
   (`AnnounceMeasure` then `Announce`); the answer is the announcement's bytes,

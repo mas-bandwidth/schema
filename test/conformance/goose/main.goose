@@ -904,10 +904,19 @@ fn wref_loaded_run(surf: const u8[:], root_name: const u8[:], wire: const u8[:],
     return "wrote\n";
 }
 
-fn surface_wref_all(lines: const u8[:][:], unit: const u8[:], surf: const u8[:]) {
+fn surface_wref_all(lines: const u8[:][:], unit: const u8[:], shape_surf: const u8[:]) {
+    // THE SHAPE ROWS (`write-refusal-shape`, DW-TABLE-SHAPE): a value of the
+    // wrong kind is one Goose's types cannot hold, so kind `shape` answers
+    // `unrepresentable`; the lawful twins are written as write-refusal writes
+    // them
+    let surf = if shape_surf == "write-refusal-shape" { "write-refusal" } else { shape_surf };
     for line in lines {
         let f = words(line);
-        if f.len < 8 || f[0] != surf { continue; }
+        if f.len < 8 || f[0] != shape_surf { continue; }
+        if f[2] == unit && f[6] == "shape" {
+            answer(f[1], "unrepresentable\n");
+            continue;
+        }
         var ann: u8[>..] = [];
         if surf == "write-refusal-message" {
             var conn: i64 = -1;
@@ -1233,7 +1242,7 @@ fn main() {
         exit(1);
     }
     if argv[1] == "list" {
-        write_stdout("wire\nmessage\nmessage-prior\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nannounce\nread-into\njson-write-into\nunit shapes\n");
+        write_stdout("wire\nmessage\nmessage-prior\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\nunit shapes\n");
         return;
     }
     if argv.len != 4 {
@@ -1261,7 +1270,7 @@ fn main() {
     if argv[1] == "announce" { surface_announce(lines, unit); return; }
     if argv[1] == "read-into" { surface_read_into(lines, unit); return; }
     if argv[1] == "json-write-into" { surface_json_write_into(lines, unit); return; }
-    if argv[1] == "write-refusal" || argv[1] == "write-refusal-fixed" || argv[1] == "write-refusal-message" || argv[1] == "write-refusal-json" || argv[1] == "write-refusal-cook" || argv[1] == "write-refusal-block" {
+    if argv[1] == "write-refusal" || argv[1] == "write-refusal-fixed" || argv[1] == "write-refusal-message" || argv[1] == "write-refusal-json" || argv[1] == "write-refusal-cook" || argv[1] == "write-refusal-block" || argv[1] == "write-refusal-shape" {
         surface_wref_all(lines, unit, argv[1]);
         return;
     }
