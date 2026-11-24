@@ -87,7 +87,7 @@ func TestUnityFixedUnlawfulCorpus(t *testing.T) {
 			if slowtest.CorpusRequired() {
 				t.Fatalf("the fixed-form corpus has no %s: %v (run make tables-fixedform-corpus)", c.File, err)
 			}
-			t.Skipf("the fixed-form corpus has no %s (make tables-fixedform-corpus): %v", c.File, err)
+			t.Skipf("the reference corpus is not built (make tables-fixedform-corpus): no %s: %v", c.File, err)
 		}
 		older := fixedproof.LoadRepoUnit(t, repo, "test/tables/"+c.Old+".schema")
 		newer := fixedproof.LoadRepoUnit(t, repo, "test/tables/"+c.New+".schema")
