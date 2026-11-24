@@ -736,10 +736,13 @@ def _write_table(value: Any, depth: int, counts: dict[int, int], labels: dict[in
 
 
 def _render(field: FieldDesc, item: Any, depth: int, counts: dict[int, int], labels: dict[int, int]) -> str:
-    # the write cap counts table values only (SPEC-TABLES W2): an empty array, map,
-    # union or flags value nests nothing and is written at any depth
+    # the write cap counts every container the read does (SPEC-TABLES §16.14 W2):
+    # a table value, and an array or text list, a map, an enum-keyed array's
+    # object and a union's object, an empty [] or {} included
     if depth > 128 and field.codec in ("pointer", "table") and not (field.codec == "pointer" and item is None):
         raise InvalidValue(field.name, "nested past the depth cap")
+    if depth > 128 and field.codec in ("array", "pointer_array", "union_array", "map", "keyed", "union"):
+        raise InvalidValue(field.name, "a container nested past the depth cap")
     if field.codec == "optional":
         return "null" if item is None else _render(_inner(field), item, depth, counts, labels)
     if field.codec in ("pointer", "table"):

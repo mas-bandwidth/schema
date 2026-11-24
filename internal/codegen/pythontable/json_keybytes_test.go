@@ -57,56 +57,61 @@ print('ok')
 	}
 }
 
-// The write's depth cap counts table values only (docs/SPEC-TABLES.md W2): an
-// empty array, map, union or flags value at layout depth 129 nests nothing and
-// is written; a table at 129 is refused.
-func TestPythonJsonWriteDepthCountsTablesOnly(t *testing.T) {
+// The write's depth cap counts every container the read does
+// (docs/SPEC-TABLES.md §16.14 W2): a chain of 127 links puts each node's empty
+// array, map or None union at depth 128 and writes; 128 links put it at depth
+// 129, which the read refuses, so the write refuses it too, empty [] and {}
+// included. Each container is its own unit, so each refusal is that
+// container's own.
+func TestPythonJsonWriteDepthCountsEveryContainer(t *testing.T) {
 	t.Parallel()
-	const schema = `package jsonwdepth
-flags Caps {
-    Read
-    Write
-}
-union Pick {
-    n int32
-    s string(8)
-}
-table Node {
+	for _, tc := range []struct{ name, field, text string }{
+		{"array", "items []int32", `"items": []`},
+		{"map", "m map[string(8)]int32", `"m": {}`},
+		{"union", "pick Pick", `"pick": {}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			union := ""
+			if tc.name == "union" {
+				union = "union Pick {\n    n int32\n    s string(8)\n}\n"
+			}
+			schema := "package jsonwdepth\n" + union + `table Node {
     link *Node
-    items []int32
-    m map[string(8)]int32
-    caps Caps
-    pick Pick
+    ` + tc.field + `
 }`
-	files, err := Generate(loadUnit(t, schema))
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir := t.TempDir()
-	writeTree(t, dir, files)
-	probe := pyrun.ImportPrelude + `from jsonwdepth import Node, InvalidValue
+			files, err := Generate(loadUnit(t, schema))
+			if err != nil {
+				t.Fatal(err)
+			}
+			dir := t.TempDir()
+			writeTree(t, dir, files)
+			probe := pyrun.ImportPrelude + `from jsonwdepth import Node, InvalidValue
 head = Node()
 cur = head
-for _ in range(128):
+for _ in range(127):
     nxt = Node()
     cur.link = nxt
     cur = nxt
 out = head.to_json()
-assert '"items": []' in out
+assert '` + tc.text + `' in out, 'the container at depth 128 was not written'
+assert Node.from_json(out).to_json() == out
 cur.link = Node()
 try:
     head.to_json()
 except InvalidValue:
     pass
 else:
-    raise AssertionError('a table at depth 129 was written')
+    raise AssertionError('a ` + tc.name + ` at depth 129 was written')
 print('ok')
 `
-	inputs := map[string][]byte{"main.py": []byte(probe)}
-	if got := string(pyrun.Run(t, dir, "main.py", inputs)); got != "ok\n" {
-		t.Fatalf("current: %q", got)
-	}
-	if got := string(pyrun.RunFloor(t, dir, "main.py", inputs)); got != "ok\n" {
-		t.Fatalf("floor: %q", got)
+			inputs := map[string][]byte{"main.py": []byte(probe)}
+			if got := string(pyrun.Run(t, dir, "main.py", inputs)); got != "ok\n" {
+				t.Fatalf("current: %q", got)
+			}
+			if got := string(pyrun.RunFloor(t, dir, "main.py", inputs)); got != "ok\n" {
+				t.Fatalf("floor: %q", got)
+			}
+		})
 	}
 }
