@@ -25,6 +25,7 @@ var identMap = []token{
 	{"SCHEMA_TABLE_LAYOUT_MALFORMED", "layout_malformed"},
 	{"SCHEMA_TABLE_LAYOUT_UNSUPPORTED", "layout_unsupported"},
 	{"SCHEMA_TABLE_LAYOUT_NEWER", "layout_newer"},
+	{"SCHEMA_TABLE_LAYOUT_UNKNOWN", "layout_unknown"},
 	{"SCHEMA_TABLE_VOCABULARY_TOO_LARGE", "vocabulary_too_large"},
 	{"SCHEMA_TABLE_SECOND_ANNOUNCEMENT", "second_announcement"},
 	{"SCHEMA_TABLE_MESSAGE_FORM_AS_FILE", "message_form_as_file"},

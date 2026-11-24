@@ -29,9 +29,9 @@
        `layout_newer`; §5.3 step 5 now answers `layout_unknown` in every leg
        and `layout_newer` is RETIRED (docs/FIXED-FORM-ALGORITHM.md "STEP 5's
        ANSWER IS layout_unknown, IN EVERY LEG", decided 2026-11-03; SPEC-TABLES
-       §21.3). The C reason enum carries no layout_unknown, so this row holds
-       the reader to the law it can name: refused, layout_hash = the file's
-       hash, and the reason is NEITHER the retired layout_newer NOR
+       §21.3). The row holds the reader to it by name: refused, reason
+       SCHEMA_TABLE_LAYOUT_UNKNOWN, layout_hash = the file's hash, landing
+       nothing — and so NEITHER the retired layout_newer NOR
        layout_unsupported (the two operator answers stay distinct). */
 
 #include <stdint.h>
@@ -134,9 +134,10 @@ int main( void )
     n1 = read_file( bytes, &value, &r1 );
     check( n1 == -1 && r1.refused && r1.layout_hash == stranger && at_reset( &value ),
            "R32 CONTRAST: a hash outside the lineage is refused, reporting the file's hash, landing nothing" );
-    printf( "  stranger hash: reason %d (layout_newer %d, layout_unsupported %d)\n", r1.reason,
-            (int) SCHEMA_TBLFIXEDEVO_TABLE_LAYOUT_NEWER, (int) SCHEMA_TBLFIXEDEVO_TABLE_LAYOUT_UNSUPPORTED );
-    check( r1.reason != SCHEMA_TBLFIXEDEVO_TABLE_LAYOUT_NEWER && r1.reason != SCHEMA_TBLFIXEDEVO_TABLE_LAYOUT_UNSUPPORTED,
+    printf( "  stranger hash: reason %d (layout_unknown %d, layout_newer %d, layout_unsupported %d)\n", r1.reason,
+            (int) SCHEMA_TBLFIXEDEVO_TABLE_LAYOUT_UNKNOWN, (int) SCHEMA_TBLFIXEDEVO_TABLE_LAYOUT_NEWER,
+            (int) SCHEMA_TBLFIXEDEVO_TABLE_LAYOUT_UNSUPPORTED );
+    check( r1.reason == SCHEMA_TBLFIXEDEVO_TABLE_LAYOUT_UNKNOWN,
            "R32 CONTRAST: the refusal is layout_unknown (§5.3 step 5), never the retired layout_newer" );
 
     printf( "%s\n", failed ? "R32: RED" : "R32: GREEN" );

@@ -15,11 +15,12 @@
 // docs/FIXED-FORM-ALGORITHM.md:888 (condition table):
 //   the hash is in the lineage, below the floor | layout_unsupported | the file's hash
 //
-// docs/FIXED-FORM-ALGORITHM.md:552-553:
+// docs/FIXED-FORM-ALGORITHM.md:791-793:
 //   The floor is one number and the lineage is one array, so "retired" is an
 //   index cut and the operator's two answers stay distinct: below the floor is
 //   layout_unsupported (upgrade the client), outside the lineage is
-//   layout_newer (ship the reader).
+//   layout_unknown (a hash this build's lineage does not hold; §5.3 step 5,
+//   SPEC-TABLES §21.3: layout_newer is retired and no read answers it).
 //
 // This test uses FE_ROOT (tblfe1), whose lineage has ONE entry (this build's
 // own layout) and floor = 0.  With floor = 0 the emitter omits the floor
@@ -27,7 +28,7 @@
 //   1. the FLOOR constant is 0 — "0 when none"
 //   2. the lineage structure — one entry, not retired
 //   3. a file at the floor reads
-//   4. a file with a hash outside the lineage is refused layout_newer, NOT
+//   4. a file with a hash outside the lineage is refused layout_unknown, NOT
 //      layout_unsupported — proving the two refusals are distinct
 //
 // The negative control changes FLOOR from 0 to 1 in the generated code; the
@@ -123,7 +124,7 @@ fn r3_floor_law() {
         "the union arm's payload lands",
     );
 
-    // ---- PART 3: hash outside lineage is layout_newer, NOT layout_unsupported
+    // ---- PART 3: hash outside lineage is layout_unknown, NOT layout_unsupported
 
     let stranger_hash = 0xDEAD_BEEF_CAFE_F00Du64;
     file[TABLE_FIXED_HASH_AT..TABLE_FIXED_HASH_AT + 8]
@@ -137,12 +138,12 @@ fn r3_floor_law() {
 
     check(n2.is_none(), "a stranger's hash is refused");
     check(
-        report2.reason.name() == "layout_newer",
-        "outside the lineage is layout_newer, NOT layout_unsupported",
+        report2.reason.name() == "layout_unknown",
+        "outside the lineage is layout_unknown (§5.3 step 5), NOT layout_unsupported",
     );
     check(
         report2.layout_hash == stranger_hash,
-        "layout_newer carries THE FILE'S hash",
+        "layout_unknown carries THE FILE'S hash",
     );
     check(
         !report2.damaged,
