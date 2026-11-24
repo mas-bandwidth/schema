@@ -69,7 +69,7 @@ func TestWriteRefusalPacketSurface(t *testing.T) {
 }
 
 // writeRefusalPacketProbe runs every case of the shared cases.txt (its path
-// in WRITE_REFUSAL_CASES) through the generated packet writer. A case the
+// in PACKET_REFUSAL_CASES_FILE) through the generated packet writer. A case the
 // file names that the probe has no setter for fails, and so does a setter the
 // file does not name. A panic is never a refusal: it is caught per case and
 // fails that case by name.
@@ -149,7 +149,7 @@ func fmtAny(r any) string {
 }
 
 func TestWriteRefusalPacketRows(t *testing.T) {
-	data, err := os.ReadFile(os.Getenv("WRITE_REFUSAL_CASES"))
+	data, err := os.ReadFile(os.Getenv("PACKET_REFUSAL_CASES_FILE"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -226,7 +226,7 @@ func runWriteRefusalPacket(t *testing.T) {
 	}
 	cmd := exec.Command("go", "test", "-count=1", ".")
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "WRITE_REFUSAL_CASES="+cases)
+	cmd.Env = append(os.Environ(), "PACKET_REFUSAL_CASES_FILE="+cases)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("the generated packet writer failed its probe: %v\n%s", err, out)
 	}
