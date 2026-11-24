@@ -2139,11 +2139,30 @@ func messageScalarBounds(f *ir.Field, expr string) []string {
 		if fl, ok := f.Type.Ref.(*ir.Flags); ok && fl.WireBits < 64 {
 			return []string{fmt.Sprintf("(%s >>> %d) == 0L", expr, fl.WireBits)}
 		}
+		// §2.15 WRITE: a deprecated variant is never written. The body's
+		// switch refuses an ordinal past the variants in every build; this is
+		// the one the switch would otherwise write.
+		if en, ok := f.Type.Ref.(*ir.Enum); ok {
+			if cond := enumNotDeprecated(en, expr); cond != "" {
+				return []string{cond}
+			}
+		}
 		return nil
 	}
+	// ROW 10: a finite ranged or compressed float off its range, held at the
+	// reader's own ends (the float32 nearest each end for a float32), so the
+	// quantizer never clamps a caller's value silently onto an end. A NaN or an
+	// infinity is ROW 7's (docs/SPEC-TABLES.md §3.3), refused in EVERY build by
+	// the writer's non_finite_float pass and answered -1: this debug assert
+	// lets it through to that refusal, or an -ea build throws where a release
+	// build refuses (the fixed form's twin, fixedform.go, holds the same guard).
 	if (f.Type.Kind == ir.TFloat32 || f.Type.Kind == ir.TFloat64) && f.HasFloatRange {
 		lo, hi, _ := fixedFloatRange(f)
-		return []string{fmt.Sprintf("%s >= %s && %s <= %s", expr, lo, expr, hi)}
+		finite := "java.lang.Float.isFinite"
+		if f.Type.Kind == ir.TFloat64 {
+			finite = "java.lang.Double.isFinite"
+		}
+		return []string{fmt.Sprintf("!%s(%s) || (%s >= %s && %s <= %s)", finite, expr, expr, lo, expr, hi)}
 	}
 	switch f.Type.Kind {
 	case ir.TInt, ir.TFixed, ir.TBits:
