@@ -1947,10 +1947,18 @@
     {
       "name": "dart-conformance-2-c",
       "when": "pull-request",
-      "why": "slice 3 of 4 of dart-conformance-2, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on vision (a shared 64-thread bench, three threads reserved, load average about 210), 2026-11-24: tables-dart-wire-fuzz-negative-control 163 s, dart-chunk-queue-negative-control 20 s. The 42 s this row used to give was the wire control failing to build: its generate lists missed units main.dart imports (countedmin, prior, shapes, surfaces and others), so the driver never compiled; test/conformance/dart/negative-control now links those from build/conformance-dart.",
+      "why": "slice 3 of 4 of dart-conformance-2, which ran as one job past the per-commit two-minute rule and was killed (split 2026-11-10). Control time on vision (a shared 64-thread bench, three threads reserved, load average about 210), 2026-11-24: dart-chunk-queue-negative-control 20 s. Its twin tables-dart-wire-fuzz-negative-control moved to the nightly row dart-wire-nightly the same day.",
       "targets": [
-        "tables-dart-wire-fuzz-negative-control",
         "dart-chunk-queue-negative-control"
+      ],
+      "dart": "3.13.2"
+    },
+    {
+      "name": "dart-wire-nightly",
+      "when": "nightly",
+      "why": "the Dart wire negative control (test/conformance/dart/negative-control wire): the wire emitter's widened count is sabotaged and the wire fuzzer must go red on the report comparison. It moved here from the pull-request row dart-conformance-2-c on 2026-11-24. It ran 163 s on vision (a shared 64-thread bench, three threads reserved, load average about 210), past the 2-minute per-commit cap, against 20 s for dart-chunk-queue-negative-control, the row's other control. The time is the full unit link, not the check: the control regenerates the sabotaged units, links every other unit from build/conformance-dart and AOT-compiles the whole of main.dart before the fuzzer runs. Before 2026-11-24 the row's 42 s was this control failing to build, because its generate lists missed units main.dart imports; it now builds and detects. Returning it per PR is owed in docs/roadmap.sexp, review-owed/ci-tools/dart-wire-control-per-pr.",
+      "targets": [
+        "tables-dart-wire-fuzz-negative-control"
       ],
       "dart": "3.13.2"
     },
