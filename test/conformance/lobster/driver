@@ -172,6 +172,7 @@ pairs() {
 	s == "message-prior" && $1 == "prior-message" { print prior[$3], $2 }
 	s == "message" && $1 == "message-batch" { print conn[$3], $2 }
 	(s == "retain" || s == "retain-save") && $1 == "retain" { print $3, $2 }
+	s == "retain-refusal" && $1 == "retain-refusal" { print $3, $2 }
 	s == "cook-write" && $1 == "cook-write" { print inst[$2], $2; print inst[$2], $2 "-be" }
 	s == "forgery" && $1 == "forgery" && $3 == "block" { print subj("block", $4), $2 }
 	s == "cook-forgery" && $1 == "forgery" && $3 == "cook" { print subj("cook", $4), $2 }

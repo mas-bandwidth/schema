@@ -36,7 +36,7 @@ import (
 // and the Go reader's landed cells and report, or its refusal, are what the
 // Luau load must answer. A wire no conforming writer emits is the Go writer's
 // bytes for a finite twin with the float bytes replaced by the pattern.
-const floatSpecialSchema = `package fs
+const floatSpecialSchema = `package floatspecial
 
 table Var
 {

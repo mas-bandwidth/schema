@@ -59,7 +59,7 @@ func fixedScalarType(t ir.FieldType) string {
 	case ir.TNamed:
 		switch t.Ref.(type) {
 		case *ir.Enum:
-			return t.Name // the packet emitter's extension type over int
+			return dartEnumRef(t.Name) // the packet emitter's extension type over int
 		case *ir.Flags:
 			return "int" // masks, uint64 storage, as the packet classes hold it
 		}
@@ -455,9 +455,9 @@ func (g *fixedGen) fixedZeroFor(f *ir.Field) string {
 		if e, ok := t.Ref.(*ir.Enum); ok {
 			g.need(t.Name)
 			if f.HasDefault && f.DefVariant != "" {
-				return t.Name + "." + dartName(e.VariantWireNameOf(f.DefVariant))
+				return dartEnumRef(t.Name) + "." + dartName(e.VariantWireNameOf(f.DefVariant))
 			}
-			return t.Name + ".none"
+			return dartEnumRef(t.Name) + ".none"
 		}
 		if _, ok := t.Ref.(*ir.Flags); ok {
 			if f.HasDefault && f.DefInt != nil {
@@ -1053,7 +1053,7 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 			return
 		case *ir.Enum:
 			g.need(r.Name)
-			g.loadTag(ind, expr, fixedOff(base, at), int64(r.StorageBits/8), r.Name)
+			g.loadTag(ind, expr, fixedOff(base, at), int64(r.StorageBits/8), dartEnumRef(r.Name))
 			// AN ORDINAL PAST THE LAST VARIANT REFUSES THE READ out_of_range
 			// (§3.4, docs/plans/strict-only.md): the ordinal is the variant's
 			// POSITION IN THE LAYOUT, from 1, and the layout lists this
@@ -1065,7 +1065,7 @@ func (g *fixedGen) emitDecodeElement(f *ir.Field, base string, at int64, expr, i
 			// so both plans refuse the same forged ordinal.
 			if n := len(r.Variants); n > 0 {
 				g.pf("%sif (%s > %d) {\n", ind, expr, n)
-				g.pf("%s  %s = %s.none;\n", ind, expr, r.Name)
+				g.pf("%s  %s = %s.none;\n", ind, expr, dartEnumRef(r.Name))
 				g.pf("%s  report.refused = TableFixedRefusal.outOfRange;\n", ind)
 				g.pf("%s}\n", ind)
 			}

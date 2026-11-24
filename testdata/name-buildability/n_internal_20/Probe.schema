@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum decodeText
+{ Zfirst, Zsecond, Zthird }
+
+enum decode_old_table
+{ Zfirst, Zsecond, Zthird }
+
+enum decode_old_value
+{ Zfirst, Zsecond, Zthird }
+
+enum decode_table
+{ Zfirst, Zsecond, Zthird }
+
+enum decode_value
+{ Zfirst, Zsecond, Zthird }
+
+enum decode_wire_text
+{ Zfirst, Zsecond, Zthird }
+
+enum decoded
+{ Zfirst, Zsecond, Zthird }
+
+enum decodedLen
+{ Zfirst, Zsecond, Zthird }
+
+enum decodedLength
+{ Zfirst, Zsecond, Zthird }
+
+enum decoded_bits
+{ Zfirst, Zsecond, Zthird }
+
+enum decoded_f
+{ Zfirst, Zsecond, Zthird }
+
+enum decoded_f_2
+{ Zfirst, Zsecond, Zthird }
+
+enum decoded_number
+{ Zfirst, Zsecond, Zthird }
+
+enum decoded_v
+{ Zfirst, Zsecond, Zthird }
+
+enum decoded_wide
+{ Zfirst, Zsecond, Zthird }
+
+enum decoration
+{ Zfirst, Zsecond, Zthird }
+
+enum deeper
+{ Zfirst, Zsecond, Zthird }
+
+enum defBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum defRef
+{ Zfirst, Zsecond, Zthird }
+
+enum defScratch
+{ Zfirst, Zsecond, Zthird }
+
+enum defTo16
+{ Zfirst, Zsecond, Zthird }
+
+enum def_id
+{ Zfirst, Zsecond, Zthird }
+
+enum def_val
+{ Zfirst, Zsecond, Zthird }
+
+enum defaultValue
+{ Zfirst, Zsecond, Zthird }
+
+enum default_builder
+{ Zfirst, Zsecond, Zthird }
+
+enum default_factory
+{ Zfirst, Zsecond, Zthird }
+
+enum default_probe
+{ Zfirst, Zsecond, Zthird }
+
+enum default_writer
+{ Zfirst, Zsecond, Zthird }
+
+enum defaults
+{ Zfirst, Zsecond, Zthird }
+
+enum defect
+{ Zfirst, Zsecond, Zthird }
+
+enum defined
+{ Zfirst, Zsecond, Zthird }
+
+enum defined_label
+{ Zfirst, Zsecond, Zthird }
+
+enum defining
+{ Zfirst, Zsecond, Zthird }
+
+enum definition
+{ Zfirst, Zsecond, Zthird }
+
+enum defs
+{ Zfirst, Zsecond, Zthird }
+
+enum degree
+{ Zfirst, Zsecond, Zthird }
+
+enum delimited
+{ Zfirst, Zsecond, Zthird }
+
+enum delta
+{ Zfirst, Zsecond, Zthird }
+
+enum delta32
+{ Zfirst, Zsecond, Zthird }
+
+enum den
+{ Zfirst, Zsecond, Zthird }
+
+enum denom
+{ Zfirst, Zsecond, Zthird }
+
+enum dep
+{ Zfirst, Zsecond, Zthird }
+
+enum depBefore
+{ Zfirst, Zsecond, Zthird }
+
+enum depSlot
+{ Zfirst, Zsecond, Zthird }
+
+enum deprecated
+{ Zfirst, Zsecond, Zthird }
+
+enum deprecatedField
+{ Zfirst, Zsecond, Zthird }
+
+enum deprecatedValue
+{ Zfirst, Zsecond, Zthird }
+
+enum deprecated_in
+{ Zfirst, Zsecond, Zthird }
+
+enum deprecated_names
+{ Zfirst, Zsecond, Zthird }
+
+enum depth
+{ Zfirst, Zsecond, Zthird }
+
+enum depthLimit
+{ Zfirst, Zsecond, Zthird }
+
+enum depthNow
+{ Zfirst, Zsecond, Zthird }
+
+enum dequantize
+{ Zfirst, Zsecond, Zthird }
+
+enum dequantizeF32
+{ Zfirst, Zsecond, Zthird }
+
+enum derivation
+{ Zfirst, Zsecond, Zthird }
+
+enum derive
+{ Zfirst, Zsecond, Zthird }
+
+enum derives
+{ Zfirst, Zsecond, Zthird }
+
+enum desc
+{ Zfirst, Zsecond, Zthird }
+
+enum desc_for
+{ Zfirst, Zsecond, Zthird }
+
+enum descend
+{ Zfirst, Zsecond, Zthird }
+
+enum descriptor_
+{ Zfirst, Zsecond, Zthird }
+
+enum descriptors
+{ Zfirst, Zsecond, Zthird }
+
+enum descs
+{ Zfirst, Zsecond, Zthird }
+
+enum desired
+{ Zfirst, Zsecond, Zthird }
+
+enum dest
+{ Zfirst, Zsecond, Zthird }
+
+enum destSize
+{ Zfirst, Zsecond, Zthird }
+
+enum dest_capacity
+{ Zfirst, Zsecond, Zthird }
+
+enum destination
+{ Zfirst, Zsecond, Zthird }
+
+enum detail
+{ Zfirst, Zsecond, Zthird }
+
+enum dflt
+{ Zfirst, Zsecond, Zthird }
+
+enum dg
+{ Zfirst, Zsecond, Zthird }
+
+enum diagnostics
+{ Zfirst, Zsecond, Zthird }
+
+enum diff
+{ Zfirst, Zsecond, Zthird }
+
+enum difference
+{ Zfirst, Zsecond, Zthird }
+
+enum dig
+{ Zfirst, Zsecond, Zthird }
+
+enum digit
+{ Zfirst, Zsecond, Zthird }
+
+enum digitAt
+{ Zfirst, Zsecond, Zthird }
+
+enum digits
+{ Zfirst, Zsecond, Zthird }
+
+enum digits_less
+{ Zfirst, Zsecond, Zthird }
+
+enum digs
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    decodeText Inner
+    decode_old_table Inner
+    decode_old_value Inner
+    decode_table Inner
+    decode_value Inner
+    decode_wire_text Inner
+    decoded Inner
+    decodedLen Inner
+    decodedLength Inner
+    decoded_bits Inner
+}
+
+table NameTypes0
+{
+    one0  decodeText
+    many0 [..4]decodeText
+    one1  decode_old_table
+    many1 [..4]decode_old_table
+    one2  decode_old_value
+    many2 [..4]decode_old_value
+    one3  decode_table
+    many3 [..4]decode_table
+    one4  decode_value
+    many4 [..4]decode_value
+    one5  decode_wire_text
+    many5 [..4]decode_wire_text
+    one6  decoded
+    many6 [..4]decoded
+    one7  decodedLen
+    many7 [..4]decodedLen
+    one8  decodedLength
+    many8 [..4]decodedLength
+    one9  decoded_bits
+    many9 [..4]decoded_bits
+}
+
+table NameFields0
+{
+    decodeText uint32
+    decode_old_table uint32
+    decode_old_value uint32
+    decode_table uint32
+    decode_value uint32
+    decode_wire_text uint32
+    decoded uint32
+    decodedLen uint32
+    decodedLength uint32
+    decoded_bits uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    decoded_f Inner
+    decoded_f_2 Inner
+    decoded_number Inner
+    decoded_v Inner
+    decoded_wide Inner
+    decoration Inner
+    deeper Inner
+    defBytes Inner
+    defRef Inner
+    defScratch Inner
+}
+
+table NameTypes1
+{
+    one0  decoded_f
+    many0 [..4]decoded_f
+    one1  decoded_f_2
+    many1 [..4]decoded_f_2
+    one2  decoded_number
+    many2 [..4]decoded_number
+    one3  decoded_v
+    many3 [..4]decoded_v
+    one4  decoded_wide
+    many4 [..4]decoded_wide
+    one5  decoration
+    many5 [..4]decoration
+    one6  deeper
+    many6 [..4]deeper
+    one7  defBytes
+    many7 [..4]defBytes
+    one8  defRef
+    many8 [..4]defRef
+    one9  defScratch
+    many9 [..4]defScratch
+}
+
+table NameFields1
+{
+    decoded_f uint32
+    decoded_f_2 uint32
+    decoded_number uint32
+    decoded_v uint32
+    decoded_wide uint32
+    decoration uint32
+    deeper uint32
+    defBytes uint32
+    defRef uint32
+    defScratch uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    defTo16 Inner
+    def_id Inner
+    def_val Inner
+    defaultValue Inner
+    default_builder Inner
+    default_factory Inner
+    default_probe Inner
+    default_writer Inner
+    defaults Inner
+    defect Inner
+}
+
+table NameTypes2
+{
+    one0  defTo16
+    many0 [..4]defTo16
+    one1  def_id
+    many1 [..4]def_id
+    one2  def_val
+    many2 [..4]def_val
+    one3  defaultValue
+    many3 [..4]defaultValue
+    one4  default_builder
+    many4 [..4]default_builder
+    one5  default_factory
+    many5 [..4]default_factory
+    one6  default_probe
+    many6 [..4]default_probe
+    one7  default_writer
+    many7 [..4]default_writer
+    one8  defaults
+    many8 [..4]defaults
+    one9  defect
+    many9 [..4]defect
+}
+
+table NameFields2
+{
+    defTo16 uint32
+    def_id uint32
+    def_val uint32
+    defaultValue uint32
+    default_builder uint32
+    default_factory uint32
+    default_probe uint32
+    default_writer uint32
+    defaults uint32
+    defect uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    defined Inner
+    defined_label Inner
+    defining Inner
+    definition Inner
+    defs Inner
+    degree Inner
+    delimited Inner
+    delta Inner
+    delta32 Inner
+    den Inner
+}
+
+table NameTypes3
+{
+    one0  defined
+    many0 [..4]defined
+    one1  defined_label
+    many1 [..4]defined_label
+    one2  defining
+    many2 [..4]defining
+    one3  definition
+    many3 [..4]definition
+    one4  defs
+    many4 [..4]defs
+    one5  degree
+    many5 [..4]degree
+    one6  delimited
+    many6 [..4]delimited
+    one7  delta
+    many7 [..4]delta
+    one8  delta32
+    many8 [..4]delta32
+    one9  den
+    many9 [..4]den
+}
+
+table NameFields3
+{
+    defined uint32
+    defined_label uint32
+    defining uint32
+    definition uint32
+    defs uint32
+    degree uint32
+    delimited uint32
+    delta uint32
+    delta32 uint32
+    den uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    denom Inner
+    dep Inner
+    depBefore Inner
+    depSlot Inner
+    deprecated Inner
+    deprecatedField Inner
+    deprecatedValue Inner
+    deprecated_in Inner
+    deprecated_names Inner
+    depth Inner
+}
+
+table NameTypes4
+{
+    one0  denom
+    many0 [..4]denom
+    one1  dep
+    many1 [..4]dep
+    one2  depBefore
+    many2 [..4]depBefore
+    one3  depSlot
+    many3 [..4]depSlot
+    one4  deprecated
+    many4 [..4]deprecated
+    one5  deprecatedField
+    many5 [..4]deprecatedField
+    one6  deprecatedValue
+    many6 [..4]deprecatedValue
+    one7  deprecated_in
+    many7 [..4]deprecated_in
+    one8  deprecated_names
+    many8 [..4]deprecated_names
+    one9  depth
+    many9 [..4]depth
+}
+
+table NameFields4
+{
+    denom uint32
+    dep uint32
+    depBefore uint32
+    depSlot uint32
+    deprecated uint32
+    deprecatedField uint32
+    deprecatedValue uint32
+    deprecated_in uint32
+    deprecated_names uint32
+    depth uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    depthLimit Inner
+    depthNow Inner
+    dequantize Inner
+    dequantizeF32 Inner
+    derivation Inner
+    derive Inner
+    derives Inner
+    desc Inner
+    desc_for Inner
+    descend Inner
+}
+
+table NameTypes5
+{
+    one0  depthLimit
+    many0 [..4]depthLimit
+    one1  depthNow
+    many1 [..4]depthNow
+    one2  dequantize
+    many2 [..4]dequantize
+    one3  dequantizeF32
+    many3 [..4]dequantizeF32
+    one4  derivation
+    many4 [..4]derivation
+    one5  derive
+    many5 [..4]derive
+    one6  derives
+    many6 [..4]derives
+    one7  desc
+    many7 [..4]desc
+    one8  desc_for
+    many8 [..4]desc_for
+    one9  descend
+    many9 [..4]descend
+}
+
+table NameFields5
+{
+    depthLimit uint32
+    depthNow uint32
+    dequantize uint32
+    dequantizeF32 uint32
+    derivation uint32
+    derive uint32
+    derives uint32
+    desc uint32
+    desc_for uint32
+    descend uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    descriptor_ Inner
+    descriptors Inner
+    descs Inner
+    desired Inner
+    dest Inner
+    destSize Inner
+    dest_capacity Inner
+    destination Inner
+    detail Inner
+    dflt Inner
+}
+
+table NameTypes6
+{
+    one0  descriptor_
+    many0 [..4]descriptor_
+    one1  descriptors
+    many1 [..4]descriptors
+    one2  descs
+    many2 [..4]descs
+    one3  desired
+    many3 [..4]desired
+    one4  dest
+    many4 [..4]dest
+    one5  destSize
+    many5 [..4]destSize
+    one6  dest_capacity
+    many6 [..4]dest_capacity
+    one7  destination
+    many7 [..4]destination
+    one8  detail
+    many8 [..4]detail
+    one9  dflt
+    many9 [..4]dflt
+}
+
+table NameFields6
+{
+    descriptor_ uint32
+    descriptors uint32
+    descs uint32
+    desired uint32
+    dest uint32
+    destSize uint32
+    dest_capacity uint32
+    destination uint32
+    detail uint32
+    dflt uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    dg Inner
+    diagnostics Inner
+    diff Inner
+    difference Inner
+    dig Inner
+    digit Inner
+    digitAt Inner
+    digits Inner
+    digits_less Inner
+    digs Inner
+}
+
+table NameTypes7
+{
+    one0  dg
+    many0 [..4]dg
+    one1  diagnostics
+    many1 [..4]diagnostics
+    one2  diff
+    many2 [..4]diff
+    one3  difference
+    many3 [..4]difference
+    one4  dig
+    many4 [..4]dig
+    one5  digit
+    many5 [..4]digit
+    one6  digitAt
+    many6 [..4]digitAt
+    one7  digits
+    many7 [..4]digits
+    one8  digits_less
+    many8 [..4]digits_less
+    one9  digs
+    many9 [..4]digs
+}
+
+table NameFields7
+{
+    dg uint32
+    diagnostics uint32
+    diff uint32
+    difference uint32
+    dig uint32
+    digit uint32
+    digitAt uint32
+    digits uint32
+    digits_less uint32
+    digs uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

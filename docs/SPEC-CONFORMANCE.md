@@ -52,6 +52,11 @@ conformance:
   contents. When the plain field widens to optional, the newer reader
   observes the elided field as absent. The cross-version report cases are
   `p1_empty_as_p3` and `p3_empty_as_p1`.
+- **The packet align-arrays family**: the rows of
+  [`alignarrays.go`](../test/verify-bitphase/alignarrays.go) over
+  [`align-arrays/BitPhase.schema`](../test/verify-bitphase/align-arrays/BitPhase.schema),
+  run on every leg by `make verify-bitphase-<lang>`
+  ([align padding inside arrays](#align-padding-inside-array-elements)).
 - **The cards corpus**: `tables/cards/conformance/` (`MANIFEST.txt`,
   `FORMAT.md`, `cases/`, `expected/`).
 - **The harness and driver contract**: `test/conformance/` (the harness in
@@ -109,7 +114,7 @@ generate both roots from [the shared declaration](../test/tables/ValueDefaults.s
 
 A surface is one question put to every case of the corpus that applies to it.
 The tables surfaces are `wire`, `message`, `report`, `framing`, `retain`,
-`retain-save`, `json-read`, `json-write`, `json-hostile`, `cook`,
+`retain-save`, `retain-refusal`, `json-read`, `json-write`, `json-hostile`, `cook`,
 `cook-write`, `cook-foreign`, `block`, `block-foreign`, `block-dump`,
 `forgery`, `cook-forgery`, `write-refusal`, `write-refusal-fixed`,
 `write-refusal-message`, `write-refusal-json`, `write-refusal-cook`,
@@ -407,11 +412,13 @@ per-port check where no shared case exercises it.
 | FL-27 | non-canonical base64 refuses (SPEC-TABLES §16.8, §16.2) | `base64-padding-*`, `base64-unpadded`, `sp-b64-escaped-noncanonical` (#4688) |
 | FL-12 | the read depth cap counts every container (SPEC-TABLES §16.2) | `rr-depth-*`, `sp-skip-depth-129`, `sp-skip-depth-130` (#4706, #4688); a flags array or text list nested at the depth limit still needs a shared row |
 | FL-31 | names some target cannot build are refused at check (SPEC.md §4.6) | `internal/check/buildable_names_test.go` (#4691), [JavaScript read-into names](#javascript-read-into-names) |
+| FL-31 (generator names) | a name a generator declares as a local, parameter or loop variable builds as an enum, a table field and a union arm in every target (SPEC.md §4.6, Generator-name safety) | `testdata/name-buildability` rows `n_internal_01` to `n_internal_91`, built by the name-buildability nightly (`tools/namebuild`), the pairs not yet built owed in `testdata/name-buildability/owed.txt` (an exact set, `TestJudgeHoldsTheLedgerExact`) (#4947) |
 | FL-33, FL-34, FL-35 | R2, R5, R9 (SPEC-TABLES §3.4 (the presence entry)) | `internal/ci` `TestRulingsR2R5R9PortRows`, `TestFixedLineageOptionalIntoBareRefusesKindMismatch` (#4680) |
 | SF-17 | `SaveMessages` checks row 10 and never moves an off-range float onto an endpoint (SPEC.md §5.1 row 10) | `smref_big_ratio_high`, `smref_big_ratio_max` (#4808 source registrations) |
 | SF-18, SF-19 | the message form refuses a flags value above its declared width and never masks it (SPEC.md §5.1 row 9; SPEC-TABLES §3.3) | `smref_big_mask_max`, `smref_big_mask_wide`, `smref_mask_named`, `smref_mask_unnamed` (#4808 source registrations) |
 | SF-20 | a writer refuses a `[N]T` or `[E]T` whose length is not N and never cuts or pads it (SPEC.md §5.1) | `sref_fixed_long`, `sref_fixed_ok`, `sref_fixed_short`, `sref_keyed_long`, `sref_keyed_ok`, `sref_keyed_short`, `sfref_fixed_long`, `sfref_fixed_ok`, `sfref_fixed_short`, `sfref_keyed_long`, `sfref_keyed_ok`, `sfref_keyed_short`, `sjref_fixed_long`, `sjref_fixed_ok`, `sjref_fixed_short`, `sjref_keyed_long`, `sjref_keyed_ok`, `sjref_keyed_short`, `smref_fixed_long`, `smref_fixed_ok`, `smref_fixed_short`, `smref_keyed_long`, `smref_keyed_ok`, `smref_keyed_short`, `cref_fixed_long`, `cref_fixed_ok` (#4808 source registrations) |
 | SF-20 (packet) | the packet `Write` refuses a `[N]T` handed more or fewer than N values and never writes the first N of a longer one (SPEC.md §5.1); every every-build leg and Lobster's debug build refuse it by the leg's own mechanism, and a leg whose `[N]T` storage is a native `T[N]` (Goose) names the two count rows unrepresentable. A new port's packet writer checks the length before its element loop | `write-refusal-packet`: `fixed_long`, `fixed_short`, `fixed_exact` |
+| SF-20 (packet, byte container) | the `[N]T` length check accepts the container the leg's own constructor makes for a lawful `[N]T`: a leg that holds `[N]uint8` in a byte buffer (Squirrel's `blob`) checks that buffer's length, and a fresh `[N]uint8` writes (SPEC.md §5.1). Squirrel's check named only `array` and refused every lawful `[N]uint8`, which broke the `bench_mixed` round trip (`loadout [4]uint8`) | `write-refusal-packet`: the schema's `octets [4]uint8` field rides every `wrote` row on every leg; `bench-squirrel-gate` (`bench_mixed` variant round trip) |
 | Squirrel packet row 1 | the Squirrel packet `Write` refuses a value off its range with `false` on every kind but an `int32` or `int64` field, whose runtime trap is the refusal: an `int16` fixed-array element, counted-array element or arm payload, an `int128` and a `fixed(16, 16)` raw value (SPEC.md §5.1, the Squirrel line) | `write-refusal-packet`: `fixed_elem_high`, `list_elem_low`, `arm_payload_high`, `int128_high`, `int128_low`, `fixed_raw_high`, `fixed_raw_low`, each with its `_at_` twin |
 | SF-25, SF-26 | `Cook` and `CookMeasure` hold the write contract that `Save` holds; a deprecated enum variant is refused on write (SPEC-TABLES §7.6, §2.15) | `cref_count_at_max`, `cref_count_at_min`, `cref_count_below_min`, `cref_count_over`, `cref_cycle`, `cref_shared_ok`, `cref_finite_ok`, `cref_infinite`, `cref_non_finite` (#4808 source registrations) |
 | SF-22, SF-28 | a variable save and a text (JSON) writer refuse a counted array below its `Min`, and a list field holding a non-list (SPEC.md §5.1 row 3 and "A writer refuses in EVERY form") | `sref_count_at_min`, `sref_count_below_min`, `sref_count_not_list`, `sjref_count_at_min`, `sjref_count_below_min`, `sjref_count_not_list` (#4808 source registrations) |
@@ -832,6 +839,27 @@ raises a named error unconditionally before it touches the report, owes
 | SPEC-TABLES §6.5: the plain region `Load` zeroes a supplied report in full | `ri_region` | red before its fix on C# (`NativeLoadRegion` cleared three fields and restored `Damaged`), Lua (kept the count refusal, the out-of-range field and the retain counters), Luau and Squirrel (kept the retain counters; Squirrel also the shared-blob count). Green with no fix: C, C++, Go, Java, Dart, JavaScript, Rust, Python, Ruby, C# (unity), Elixir, Lobster, Goose, moo |
 | SPEC-TABLES §6.5, §6.6: a fixed-root `LoadRetain` refuses through a report it zeroed first | `ri_retain_fixed` | red before its fix on Goose and moo (refused, every other field kept), Elixir (handed back the caller's report), Squirrel (kept the shared-blob count) and Luau (READ the fixed root instead of refusing it, §6.6). `refused` then `zeroed` with no fix: Java, JavaScript, Rust, Lobster. `unrepresentable` (compile-time, or an unconditional named raise): C, C++, C# (modern and unity), Go, Dart, Python, Ruby, Lua |
 | SPEC-TABLES §6.5: `LoadRetain` of an UNKNOWN root name zeroes a supplied report before it answers nil (the fixed-root refusal alone comes first, §6.6) | Lua unit test `TestLuaLoadRetainUnknownRootZeroesReport` (no shared case: a root name the unit lacks is not a wire case) | red before its fix on Lua (the unknown-root `return nil` came before the zeroing, so the old report survived untouched). Not checked on the other legs |
+
+### Align padding inside array elements
+
+The align-arrays family of `verify-bitphase` holds every leg's packet writer
+to SPEC §4.3's align rule inside arrays and unions: an element that carries an
+align (a string's or bytes' own, here) pads with zero bits whatever the
+element before it wrote, and its first field carries only its own bits. The
+rows are built bit by bit from the wire model in
+[`alignarrays.go`](../test/verify-bitphase/alignarrays.go) over
+[`align-arrays/BitPhase.schema`](../test/verify-bitphase/align-arrays/BitPhase.schema),
+never by a leg. A valid row is read and written back, and the written bytes
+must equal the row's; a refuse row is a valid row with one align padding bit
+set inside an element, or the bytes the broken writer produced, and every
+reader refuses it. `make verify-bitphase-<lang>` runs the family on every leg
+after the main corpus (`./build/verify-bitphase-bin --lang <lang> --family
+align-arrays`), and `verify-bitphase-align-negative-control` removes the Elixir
+fix and requires the family to fail.
+
+| rule | case | the leg it was red on before its fix |
+|---|---|---|
+| SPEC §4.3: an align inside an array element emits zero bits, and the next element's first field carries only its own bits | `aa_phase63_valid_ab-e-acute` (`[..3]Named`, `Named { s string(7) }`, `["ab", "é"]`: wire `0a 61 62 02 c3 a9`), `aa_emptyzero_valid_a-empty` (`[2]Named`, `["a", ""]`: `01 61 00`), `aa_phase31_valid_nested` (`[..2]Wrap`, `Wrap { inner [..2]Named; z bits(1) }`: `2a 61 62 00 0b 63 01`), `aa_phase33_valid_two` (`[..2]Big`, `Big { w uint64; s string(3) }`: `fe ff ff ff ff ff ff ff 0b 61 62 01 00 00 00 00 00 00 80 00`), and the rest of the family's 23 valid and 13 refuse rows | red before its fix on Elixir (the write loop handed the next element the scratch bits an align, or a flush that ended on a byte, had already spent: it wrote `0a 61 62 0a c3 a9`, `01 61 01`, `2a 61 62 2a 2b 63 2b`, a second `w` of `0x800000000000000b`, and corrupted the next `Octet` length; the coverage audit of 2026-11-24, F1). Green with no fix: C, C++, C# (modern and unity), Go, Rust, Java, Dart, JavaScript, Python, Ruby, Lua, Luau, Squirrel, moo, Goose, Lobster |
 
 ### The compressed-float decode adds min as a float32
 

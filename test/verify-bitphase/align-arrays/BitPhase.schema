@@ -1,0 +1,119 @@
+// align-arrays/BitPhase.schema — the align-arrays case family of
+// verify-bitphase: arrays and unions whose element carries an align (a
+// string or bytes), so every element after the first starts from the bits
+// the one before it left. A writer owes zero align padding and an untouched
+// next length (SPEC §4.3, §4.7). The family reuses the verifier's ten type
+// names so all 18 drivers answer it unchanged; the rows are in
+// test/verify-bitphase/alignarrays.go.
+
+package bitphase
+
+type Named
+{
+    s string(7)
+}
+
+type Blob
+{
+    b bytes(3)
+    f bool
+}
+
+type Tail
+{
+    s string(3)
+    k bits(5)
+}
+
+// an element that ends on a byte after its align
+type Octet
+{
+    s string(3)
+    k uint8
+}
+
+type Wrap
+{
+    inner [..2]Named
+    z bits(1)
+}
+
+type Big
+{
+    w uint64
+    s string(3)
+}
+
+type Ring
+{
+    r bits(3)
+}
+
+type Slab
+{
+    s string(2)
+}
+
+union U
+{
+    n Named
+    t Tail
+    v
+}
+
+union Shape
+{
+    ring Ring
+    slab Slab
+}
+
+// a fixed array of an align-bearing type
+type EmptyZero
+{
+    pair [2]Named
+}
+
+type Phase0
+{
+    list [..3]Blob
+}
+
+type Phase1
+{
+    list [..2]Tail
+    oct  [..3]Octet
+}
+
+type Phase7
+{
+    us [..3]U
+}
+
+// an align-bearing array inside an array element
+type Phase31
+{
+    outer [..2]Wrap
+}
+
+type Phase32
+{
+    x bits(5)
+    list [..2]Named
+    y bits(7)
+}
+
+type Phase33
+{
+    a [..2]Big
+}
+
+type Phase56
+{
+    k [3]Shape
+}
+
+// a counted array of strings (the audit's first repro)
+type Phase63
+{
+    list [..3]Named
+}
