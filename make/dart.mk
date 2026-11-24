@@ -682,9 +682,13 @@ build/tables-generated-dart-framing/countedmin/.stamp: bin/schema make/dart.mk t
 	./bin/schema generate --lang dart --out build/tables-generated-dart-framing/countedmin build/tables-dart-counted-min-variable/CountedMin.schema
 	@touch $@
 
+# Dart is an ASSERT LEG: its write checks are debug asserts (an unpaired
+# surrogate, a zero byte, a range), and an assert leg answers the
+# write-refusal and json-write-refusal rows from a build where the check is
+# active (test/conformance/harness/run.go). The AOT driver is that build.
 build/conformance-dart: build/tables-generated-dart/.stamp $(CARDS_DART_STAMP) build/tables-generated-dart-framing/countedmin/.stamp test/conformance/dart/main.dart
 	@mkdir -p build
-	$(DART) compile exe -o $@ test/conformance/dart/main.dart >/dev/null
+	$(DART) compile exe --enable-asserts -o $@ test/conformance/dart/main.dart >/dev/null
 
 # THE FORM-1 COOK WRITER'S NEGATIVE CONTROL (docs/SPEC-TABLES.md §2.6, §3, §7.6):
 # the cook-write rows of messagedemo (an ARRAY OF UNIONS at three depths) and
