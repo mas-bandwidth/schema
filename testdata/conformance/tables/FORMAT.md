@@ -147,8 +147,10 @@ json-write-into <case> <instance>
 - **`read-into`** hands one report and `<count>` caller values to a read of
   `<lawful>`, a read of `<damaged>` and a read of `<lawful>` again
   (docs/SPEC-TABLES.md §6.5). `<form>` is `variable`, `json`, `fixed`,
-  `message` (`<unit>` a connection key) or `fixed-nocap` (damaged `-`, the
-  count the answer). The answer owed is `read-into/<case>.txt`, which `make
+  `message` (`<unit>` a connection key), `fixed-nocap` (damaged `-`, the
+  count the answer) or `retain` (the retaining load, `LoadRetain`, §6.6, into
+  a report the driver pre-filled; the answer is
+  `read\nzeroed\nrefused\nread\nzeroed\n`, test/conformance/README.md). The answer owed is `read-into/<case>.txt`, which `make
   conformance-generate` writes from the engine; the derived line withholds a
   `fixed-nocap` count and adds the connection's announcement file for a
   `message` row.
