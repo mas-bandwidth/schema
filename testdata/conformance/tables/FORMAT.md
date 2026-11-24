@@ -58,7 +58,7 @@ refusal      <forgery> <reason>
 write-refusal <case> <unit> <root> <wire> <path> <kind> <value> <verdict>
 write-refusal-fixed, write-refusal-message, write-refusal-json: the same columns
 json-write-refusal <case> <unit> <root> <wire file> <damage>
-write-refusal-cook, write-refusal-block: the write-refusal columns
+write-refusal-cook, write-refusal-block, write-refusal-shape: the write-refusal columns
 announce     <case> <unit> <root> <mode> <input> <verdict>
 read-into    <case> <unit> <root> <form> <lawful> <damaged> <count>
 json-write-into <case> <instance>
@@ -135,7 +135,20 @@ json-write-into <case> <instance>
   at path `<value>` points at. `float` also takes a decimal number. A
   `<wire>` of `-` is the root's fresh value. `write-refusal-cook` writes
   through the cook writer and `write-refusal-block` through the block
-  builder.
+  builder. **`write-refusal-shape`** (docs/SPEC-CONFORMANCE.md
+  DW-TABLE-SHAPE) writes through the root's own form's writer, as
+  `write-refusal` does, and adds one kind: `shape`, whose `<value>` is a
+  token naming a value of the WRONG KIND for the place `<path>` names —
+  `int`, `float`, `numtext` (the text "1.5"), `text`, `bool`, `null`, `map`
+  (an empty map or object), `seq` (a one-element list) or `improper` (an
+  improper list) — and whose verdict is always `refused`. A `<path>` of `.`
+  is the whole value; one ending `f[i]` makes the array `f` its first `i`
+  elements as loaded, then the value; one ending in an arm's name selects
+  that arm with the value as its payload. The writer must refuse by its
+  answer: a raised error, an exception or a crash is red against either
+  verdict. A leg whose types cannot hold the token (a static leg, or a
+  dynamic one where the token is that place's own spelling) answers
+  `unrepresentable`. Every group carries a lawful twin of an ordinary kind.
 - **`announce`** asks a unit's announcement writer and reader
   (docs/SPEC-TABLES.md §3.3). `<mode>` `write` (root, input `-`; `wrote`,
   owing `announce/<case>.bin`, or `refused`); `strict` and `lenient` (root
@@ -147,8 +160,14 @@ json-write-into <case> <instance>
 - **`read-into`** hands one report and `<count>` caller values to a read of
   `<lawful>`, a read of `<damaged>` and a read of `<lawful>` again
   (docs/SPEC-TABLES.md §6.5). `<form>` is `variable`, `json`, `fixed`,
-  `message` (`<unit>` a connection key) or `fixed-nocap` (damaged `-`, the
-  count the answer). The answer owed is `read-into/<case>.txt`, which `make
+  `message` (`<unit>` a connection key), `fixed-nocap` (damaged `-`, the
+  count the answer) or `retain` (the retaining load, `LoadRetain`, §6.6, into
+  a report the driver pre-filled; the answer is
+  `read\nzeroed\nrefused\nread\nzeroed\n`, test/conformance/README.md),
+  `region` (the plain region `Load` under the same protocol and answer) or
+  `retain-fixed` (damaged `-`: `LoadRetain` on a fixed-class root into a
+  pre-filled report, owing `refused\nzeroed\n`, or `unrepresentable\n` where
+  the refusal is at compile time). The answer owed is `read-into/<case>.txt`, which `make
   conformance-generate` writes from the engine; the derived line withholds a
   `fixed-nocap` count and adds the connection's announcement file for a
   `message` row.

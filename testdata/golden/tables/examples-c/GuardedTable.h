@@ -12643,7 +12643,8 @@ static SCHEMA_UNUSED const tabledemo_patrol_t * tabledemo_patrol_load_retain( ui
     int refused_before, reason_before;
     int32_t non_finite_before;
     if ( report == NULL ) report = &ignored;
-    refused_before = report->refused;
+    memset( report, 0, sizeof( *report ) );
+    refused_before = 0;
     reason_before = report->reason;
     non_finite_before = report->non_finite_floats;
     report->refused = 0;

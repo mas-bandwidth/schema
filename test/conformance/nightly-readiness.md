@@ -200,8 +200,9 @@ runs may use N=0; they never stand in for the six positive release runs.
   not a missing codec.
 - No process wrapper here has an elapsed-time limit. Go suites use
   `-timeout=0`; finite corpus sizes and existing protocol/negative-control
-  deadlines retain their meanings. Exactly two outer Go calls in the C++
-  external targets (UnitView listing and fixed-twin) run through a private
+  deadlines retain their meanings. Exactly three outer Go calls in the C++
+  external targets (UnitView listing, fixed-twin and the tables-lists
+  map-holding cook read) run through a private
   Makefile copy whose only changes are `-timeout=0`/uncached execution.
   Exact source anchors and before/after hashes are recorded. An anchor change
   fails closed. Other package-only legacy targets are replaced by the full

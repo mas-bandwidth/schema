@@ -11671,8 +11671,9 @@ inline void MoodFieldReset( MoodField & value )
 inline void MinArmFixReset( MinArmFix & value )
 {
     memset( value.pick.few.value, 0, sizeof( value.pick.few.value ) );
-    value.pick.few.value_count = 0;
+    value.pick.few.value_count = 2;
     value.pick.other = 0;
+    value.pick.few.value_count = 2; // the arm's birth count, after the overlapping arms' resets (§4.6)
     value.pick.type = MinPickType::None;
 }
 

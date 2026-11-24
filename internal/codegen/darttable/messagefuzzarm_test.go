@@ -10,6 +10,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -50,6 +51,7 @@ func TestMessageFuzzArmHonoursLoadResultDart(t *testing.T) {
 		t.Helper()
 		dartMakeMu.Lock()
 		defer dartMakeMu.Unlock()
+		testinputs.Build(t, "test/conformance/dart")
 		cmd := testproc.Command(t, "make", append(append([]string{"-C", root}, vars...), target)...)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("make %s: %v\n%s", target, err, out)

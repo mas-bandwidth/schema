@@ -31,6 +31,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -79,6 +80,7 @@ func goEnsureGeneratedTables(t *testing.T, root string) {
 	_ = os.RemoveAll(filepath.Join(root, "build", "tables-generated-go"))
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
+	testinputs.Build(t, "test/conformance/go")
 	cmd := testproc.CommandContext(t, ctx, "make", "build/conformance-go")
 	cmd.Dir = root
 	if out, err := cmd.CombinedOutput(); err != nil {
