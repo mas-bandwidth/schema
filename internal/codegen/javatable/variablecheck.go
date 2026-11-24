@@ -220,6 +220,10 @@ func writeVariableValueCheck(b *strings.Builder, f *ir.Field, expr, name, ind st
 		case *ir.Enum:
 			// ROW 5: an ordinal inside the variant set (0 is the unset value)
 			fmt.Fprintf(b, "%sassert %s >= 0 && %s <= %d : %q;\n", ind, expr, expr, len(ref.Variants), name)
+			// §2.15 WRITE: a deprecated variant is never written
+			if cond := enumNotDeprecated(ref, expr); cond != "" {
+				fmt.Fprintf(b, "%sassert %s : %q;\n", ind, cond, name+": a deprecated variant is never written")
+			}
 		case *ir.Flags:
 			// A FLAGS MASK HOLDS TO ITS WIDTH W (docs/SPEC-TABLES.md §4, A TABLE LOAD
 			// HOLDS A MASK TO ITS WIDTH): a save never writes a bit its own read refuses
