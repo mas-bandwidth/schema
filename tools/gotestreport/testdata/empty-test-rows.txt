@@ -1,0 +1,4 @@
+# The empty-row ledger the record corpus (records_test.go) reads: the skip-only
+# controls are rows that pass no test by design. The tree's own ledger is
+# .github/empty-test-rows.txt.
+empty ledgertest-skip-only the skip-reading controls record one skipped test and nothing else

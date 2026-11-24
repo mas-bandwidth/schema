@@ -1,6 +1,7 @@
 # F-176 control: TestEarlierLog logs "probing for cargo", then skips for
 # SCHEMA_SLOW. The last entry is the reason: an ordinary slow skip, accepted.
-args: -require-record -provides tool:rust
+args: -require-record -provides tool:rust -row ledgertest-skip-only -empty-rows testdata/empty-test-rows.txt
 exit: 0
 want: skip ledger: 1 skip(s)
 want: 1  slow
+want: DECLARED EMPTY  row "ledgertest-skip-only" passed no test

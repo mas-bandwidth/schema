@@ -316,75 +316,26 @@ jobs:
             broad=yes
           fi
 
-          # THE LEGS. One line per leg: the codegen packages that emit it, the
-          # generated tree it owns, its own test directory and its make include.
-          # A leg whose paths are untouched does not run here; ci-full.yml runs
-          # every leg on the merge regardless.
+          # THE LEGS, DERIVED (internal/legpaths, 2026-11-24). Which legs a
+          # changed path belongs to is read from one source, never a hand
+          # `case` per leg: the tree's per-leg conventions (codegen packages,
+          # generated trees, test, bench and card directories), every file
+          # under make/ whose name carries the leg as a word (make files, check
+          # scripts, the negative-control records), and every file, directory
+          # or glob those make files' recipes and prerequisites name. The hand
+          # rules here missed 184 (leg, path) pairs on main cda257ce8c
+          # (make/schema-<leg>-*.mk, make/negative-controls.d, tools/moofuzzhost,
+          # tools/luaufuzzhost): each changed what a leg runs and selected
+          # nothing. internal/legpaths TestEveryFileALegReadsSelectsTheLeg holds
+          # every path a leg's make files read to that leg. A leg whose paths
+          # are untouched does not run here; ci-full.yml runs every leg nightly.
+          # (an assignment, so a failed run fails the step: a `for` over a
+          # failed substitution would loop over nothing and select no leg)
+          derived_legs=$(go run ./tools/legpaths -changed - <<<"$files")
           legs=""
-          add_leg() { case " $legs " in *" $1 "*) ;; *) legs="$legs $1" ;; esac; }
-          while read -r f; do
-            [ -n "$f" ] || continue
-            case "$f" in
-              internal/codegen/gotable/*|internal/codegen/golang/*|generated/go/*|test/go-tables/*|test/conformance/go/*|make/go.mk|make/go-*.mk) add_leg go ;;
-            esac
-            case "$f" in
-              internal/codegen/ctable/*|internal/codegen/cfmt/*|internal/codegen/c/*|generated/c/*|test/c-tables/*|make/c.mk|make/c-*.mk|make/checks/c-clean-*|tools/sabotage/c_clean.go) add_leg c ;;
-            esac
-            case "$f" in
-              internal/codegen/cpptable/*|internal/codegen/cpp/*|generated/cpp/*|generated/bench/cpp/*|generated/bench/tables/cpp/*|generated/bench/paired/cpp/*|test/cpp-tables/*|test/tables/*.cpp|test/tables/*.h|make/cpp.mk|make/cpp-*.mk|make/cpp-*-allow.txt|make/checks/cpp-clean-*|.clang-format) add_leg cpp ;;
-            esac
-            case "$f" in
-              internal/codegen/rusttable/*|internal/codegen/rust/*|generated/rust/*|test/rust-fixedform/*|make/rust.mk|make/rust-*.mk) add_leg rust ;;
-            esac
-            case "$f" in
-              internal/codegen/jstable/*|internal/codegen/js/*|generated/js/*|test/js-tables/*|make/js.mk|make/js-*.mk) add_leg js ;;
-            esac
-            case "$f" in
-              internal/codegen/cstable/*|internal/codegen/csharp/*|generated/cs/*|test/cs-tables/*|make/cs.mk|make/cs-*.mk) add_leg cs ;;
-            esac
-            case "$f" in
-              internal/codegen/javatable/*|internal/codegen/java/*|generated/java/*|test/java-tables/*|test/java-fixedform/*|make/java.mk|make/java-*.mk) add_leg java ;;
-            esac
-            case "$f" in
-              internal/codegen/darttable/*|internal/codegen/dart/*|generated/dart/*|test/dart-tables/*|make/dart.mk|make/dart-*.mk|make/conformance-handoff.py) add_leg dart ;;
-            esac
-            case "$f" in
-              internal/codegen/elixirtable/*|internal/codegen/elixir/*|generated/elixir/*|test/elixir-tables/*|test/elixir-fixedform/*|make/elixir.mk|make/elixir-*.mk|make/elixir-handoff.py) add_leg elixir ;;
-            esac
-            case "$f" in
-              internal/codegen/luautable/*|internal/codegen/luau/*|test/conformance/luau/*|make/luau.mk|make/luau-*.mk|bench/luau/*|bench/tables/luau/*) add_leg luau ;;
-              internal/codegen/lobstertable/*|internal/codegen/lobster/*|test/conformance/lobster/*|make/lobster*.mk|make/schema-lobster-*.mk|bench/lobster/*|bench/tables/lobster/*) add_leg lobster ;;
-              internal/codegen/goosetable/*|internal/codegen/goose/*|test/conformance/goose/*|test/goose/*|test/goose-ludicrous/*|test/goose-hostile/*|test/packet-*/goose/*|make/goose.mk|make/goose-*) add_leg goose ;;
-              # the Squirrel row is the card leg (make/squirrel-cards.mk): the
-              # facade, its driver and the runtime the generated unit carries
-              internal/codegen/squirreltable/*|internal/codegen/squirrel/*|tables/cards/squirrel/*|make/squirrel.mk|make/squirrel-cards.mk) add_leg squirrel ;;
-            esac
-            # Per-language optimization paths across all 18 ports (keeping the
-            # cs row above intact for TestCIFullPRSelectMatchesTheFastPlan).
-            case "$f" in
-              internal/codegen/ccommon/*) add_leg cpp; add_leg c ;;
-              generated/cpp-*/*|bench/cpp/*|bench/tables/cpp/*|tables/cards/cpp/*|test/cpp/*|test/conformance/cpp/*|test/packet-*/cpp/*) add_leg cpp ;;
-              generated/c-*/*|generated/bench/c/*|generated/bench/tables/c/*|generated/bench/paired/c/*|bench/c/*|bench/tables/c/*|tables/cards/c/*|test/c/*|test/c-*/*|test/conformance/c/*|test/packet-*/c/*) add_leg c ;;
-              generated/cs-*/*|generated/bench/cs/*|generated/bench/tables/cs/*|generated/bench/paired/cs/*|bench/cs/*|bench/tables/cs/*|tables/cards/cs/*|test/cs/*|test/cs-*/*|test/conformance/cs/*|test/packet-*/cs/*) add_leg cs ;;
-              internal/codegen/unitytable/*|internal/codegen/unity/*|generated/unity/*|generated/unity-*/*|generated/bench/unity/*|generated/bench/tables/unity/*|bench/unity/*|bench/tables/unity/*|tables/cards/unity/*|test/unity/*|test/unity-*/*|test/conformance/unity/*|test/packet-*/unity/*|make/unity.mk|make/unity-*.mk) add_leg unity ;;
-              generated/go-*/*|generated/bench/go/*|generated/bench/tables/go/*|generated/bench/paired/go/*|bench/go/*|bench/tables/go/*|tables/cards/go/*|test/go/*|test/go-*/*|test/packet-*/go/*) add_leg go ;;
-              generated/rust-*/*|generated/bench/rust/*|generated/bench/rust-*/*|generated/bench/paired/rust/*|bench/rust/*|bench/tables/rust/*|tables/cards/rust/*|test/rust/*|test/rust-*/*|test/conformance/rust/*|test/packet-*/rust/*) add_leg rust ;;
-              generated/java-*/*|generated/bench/java/*|generated/bench/tables/java/*|generated/bench/paired/java/*|bench/java/*|bench/tables/java/*|tables/cards/java/*|test/java/*|test/java-*/*|test/conformance/java/*|test/packet-*/java/*) add_leg java ;;
-              generated/js-*/*|generated/bench/js/*|generated/bench/tables/js/*|generated/bench/paired/js/*|bench/js/*|bench/tables/js/*|tables/cards/js/*|test/js/*|test/js-*/*|test/conformance/js/*|test/packet-*/js/*) add_leg js ;;
-              generated/dart-*/*|generated/bench/dart/*|generated/bench/tables/dart/*|generated/bench/paired/dart/*|bench/dart/*|bench/tables/dart/*|tables/cards/dart/*|test/dart/*|test/dart-*/*|test/conformance/dart/*|test/packet-*/dart/*) add_leg dart ;;
-              generated/elixir-*/*|generated/bench/elixir/*|generated/bench/tables/elixir/*|generated/bench/paired/elixir/*|bench/elixir/*|bench/tables/elixir/*|tables/cards/elixir/*|test/elixir/*|test/elixir-*/*|test/conformance/elixir/*|test/packet-*/elixir/*) add_leg elixir ;;
-              generated/goose/*|generated/goose-*/*|generated/bench/goose/*|generated/bench/tables/goose/*|bench/goose/*|bench/tables/goose/*|tables/cards/goose/*) add_leg goose ;;
-              generated/luau/*|generated/luau-*/*|generated/bench/luau/*|generated/bench/tables/luau/*|tables/cards/luau/*|test/luau/*|test/luau-*/*|test/packet-*/luau/*) add_leg luau ;;
-              internal/codegen/luatable/*|internal/codegen/lua/*|generated/lua/*|generated/lua-*/*|generated/bench/lua/*|generated/bench/tables/lua/*|bench/lua/*|bench/tables/lua/*|tables/cards/lua/*|test/lua/*|test/lua-*/*|test/conformance/lua/*|test/packet-*/lua/*|make/lua.mk|make/lua-*.mk) add_leg lua ;;
-              generated/squirrel/*|generated/squirrel-*/*|generated/bench/squirrel/*|generated/bench/tables/squirrel/*|bench/squirrel/*|bench/tables/squirrel/*|test/squirrel/*|test/squirrel-*/*|test/conformance/squirrel/*|test/packet-*/squirrel/*|make/squirrel-*.mk) add_leg squirrel ;;
-              internal/codegen/mootable/*|internal/codegen/moo/*|generated/moo/*|generated/moo-*/*|generated/bench/moo/*|generated/bench/tables/moo/*|bench/moo/*|bench/tables/moo/*|tables/cards/moo/*|test/moo/*|test/moo-*/*|test/conformance/moo/*|test/packet-*/moo/*|make/moo.mk|make/moo-*.mk) add_leg moo ;;
-              generated/lobster/*|generated/lobster-*/*|generated/bench/lobster/*|generated/bench/tables/lobster/*|tables/cards/lobster/*|test/lobster/*|test/lobster-*/*|test/packet-*/lobster/*) add_leg lobster ;;
-              internal/codegen/pythontable/*|internal/codegen/python/*|third_party/serialize.py/*|generated/python/*|generated/python-*/*|generated/bench/python/*|generated/bench/tables/python/*|bench/python/*|bench/tables/python/*|tables/cards/python/*|test/python/*|test/python-*/*|test/conformance/python/*|test/packet-*/python/*|make/python.mk|make/python-*.mk) add_leg python ;;
-              internal/codegen/rubytable/*|internal/codegen/ruby/*|third_party/serialize.rb/*|generated/ruby/*|generated/ruby-*/*|generated/bench/ruby/*|generated/bench/tables/ruby/*|bench/ruby/*|bench/tables/ruby/*|tables/cards/ruby/*|test/ruby/*|test/ruby-*/*|test/conformance/ruby/*|test/packet-*/ruby/*|make/ruby.mk|make/ruby-*.mk) add_leg ruby ;;
-            esac
-          done <<EOF
-          $files
-          EOF
+          for leg in $derived_legs; do
+            legs="$legs $leg"
+          done
           touched_legs=$legs
           if [ "$broad" = yes ]; then
             legs="cpp go c rust js cs java dart elixir goose lobster luau squirrel"

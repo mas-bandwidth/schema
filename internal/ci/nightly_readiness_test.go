@@ -19,7 +19,7 @@ func TestNightlyReadinessCannotPublishPassAfterFailure(t *testing.T) {
 	}
 	for _, tc := range []struct{ name, lang, dir string }{
 		{"the C++ original-nine readiness gate", "cpp", "reference-report"},
-		{"the original-nine runtime readiness gate", "dart", "report"},
+		{"the runtime readiness gate", "dart", "report"},
 	} {
 		t.Run(tc.lang, func(t *testing.T) {
 			text := string(raw)
@@ -60,6 +60,16 @@ func TestNightlyReadinessCannotPublishPassAfterFailure(t *testing.T) {
 				body += fmt.Sprintf("sys.exit(%d)\n", run.status)
 				if err := os.WriteFile(entry, []byte(body), 0700); err != nil {
 					t.Fatal(err)
+				}
+				// the exemption lookup the step runs first, with the real ledger
+				for _, name := range []string{"test/conformance/nightly-exemption", "test/conformance/nightly-exemptions.txt"} {
+					data, err := os.ReadFile(filepath.Join(repoRoot(t), name))
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err := os.WriteFile(filepath.Join(dir, name), data, 0600); err != nil {
+						t.Fatal(err)
+					}
 				}
 				bin := filepath.Join(dir, "bin")
 				if err := os.Mkdir(bin, 0700); err != nil {
