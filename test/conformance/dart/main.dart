@@ -6824,6 +6824,44 @@ _FuzzRoot? fuzzRoot(String unit, String root) {
       return _FuzzRoot(
           _plainCodec(cooktorture.TableWireReport.new, cooktorture.tortureCookWireMeasure, cooktorture.tortureCookWireLoad, cooktorture.tortureCookWireSave),
           retain: _retainCodec(cooktorture.TableRetain.new, cooktorture.TableWireReport.new, cooktorture.tortureCookWireMeasure, cooktorture.tortureCookWireLoadRetain, cooktorture.tortureCookWireSaveRetain));
+    case 'shapes Bounds':
+      return _FuzzRoot(
+          _plainCodec(shapes.TableWireReport.new, shapes.boundsWireMeasure, shapes.boundsWireLoad, shapes.boundsWireSave),
+          retain: _retainCodec(shapes.TableRetain.new, shapes.TableWireReport.new, shapes.boundsWireMeasure, shapes.boundsWireLoadRetain, shapes.boundsWireSaveRetain));
+    case 'shapes FixedBounds':
+      return _FuzzRoot(
+          _fixedFuzzCodec(shapes_fixed.FixedBounds.new, shapes_fixed.fixedBoundsFixedNewPlan, shapes_fixed.TableFixedReport.new, shapes_fixed.fixedBoundsFixedLoad, shapes_fixed.fixedBoundsFixedMeasure, shapes_fixed.fixedBoundsFixedSave));
+    case 'tblsurf Chain':
+      return _FuzzRoot(
+          _plainCodec(surfw.TableWireReport.new, surfw.chainWireMeasure, surfw.chainWireLoad, surfw.chainWireSave),
+          retain: _retainCodec(surfw.TableRetain.new, surfw.TableWireReport.new, surfw.chainWireMeasure, surfw.chainWireLoadRetain, surfw.chainWireSaveRetain));
+    case 'tblsurf Holder':
+      return _FuzzRoot(
+          _plainCodec(surfw.TableWireReport.new, surfw.holderWireMeasure, surfw.holderWireLoad, surfw.holderWireSave),
+          retain: _retainCodec(surfw.TableRetain.new, surfw.TableWireReport.new, surfw.holderWireMeasure, surfw.holderWireLoadRetain, surfw.holderWireSaveRetain));
+    case 'tblsurf Counted':
+      return _FuzzRoot(
+          _plainCodec(surfw.TableWireReport.new, surfw.countedWireMeasure, surfw.countedWireLoad, surfw.countedWireSave),
+          retain: _retainCodec(surfw.TableRetain.new, surfw.TableWireReport.new, surfw.countedWireMeasure, surfw.countedWireLoadRetain, surfw.countedWireSaveRetain));
+    case 'tblsurf Narrow':
+      return _FuzzRoot(
+          _fixedFuzzCodec(surff.Narrow.new, surff.narrowFixedNewPlan, surff.TableFixedReport.new, surff.narrowFixedLoad, surff.narrowFixedMeasure, surff.narrowFixedSave));
+    case 'tblsurf Wide':
+      return _FuzzRoot(
+          _fixedFuzzCodec(surff.Wide.new, surff.wideFixedNewPlan, surff.TableFixedReport.new, surff.wideFixedLoad, surff.wideFixedMeasure, surff.wideFixedSave));
+    case 'tblsurf Arrays':
+      return _FuzzRoot(
+          _fixedFuzzCodec(surff.Arrays.new, surff.arraysFixedNewPlan, surff.TableFixedReport.new, surff.arraysFixedLoad, surff.arraysFixedMeasure, surff.arraysFixedSave));
+    // THE ROOTS LANDED SINCE (tblvaluedefaults, packetunions): variable-class
+    // file roots the retaining arm reads, as every leg must (TestDartRetainingRosterAllRoots).
+    case 'tblvaluedefaults VarDefaults':
+      return _FuzzRoot(
+          _plainCodec(tblvaluedefaults.TableWireReport.new, tblvaluedefaults.varDefaultsWireMeasure, tblvaluedefaults.varDefaultsWireLoad, tblvaluedefaults.varDefaultsWireSave),
+          retain: _retainCodec(tblvaluedefaults.TableRetain.new, tblvaluedefaults.TableWireReport.new, tblvaluedefaults.varDefaultsWireMeasure, tblvaluedefaults.varDefaultsWireLoadRetain, tblvaluedefaults.varDefaultsWireSaveRetain));
+    case 'packetunions ShapeDoc':
+      return _FuzzRoot(
+          _plainCodec(tblpacketunions.TableWireReport.new, tblpacketunions.shapeDocWireMeasure, tblpacketunions.shapeDocWireLoad, tblpacketunions.shapeDocWireSave),
+          retain: _retainCodec(tblpacketunions.TableRetain.new, tblpacketunions.TableWireReport.new, tblpacketunions.shapeDocWireMeasure, tblpacketunions.shapeDocWireLoadRetain, tblpacketunions.shapeDocWireSaveRetain));
     case 'cooktorturewide TortureWideCook':
       return _FuzzRoot(
           _plainCodec(cooktorturewide.TableWireReport.new, cooktorturewide.tortureWideCookWireMeasure, cooktorturewide.tortureWideCookWireLoad, cooktorturewide.tortureWideCookWireSave),
