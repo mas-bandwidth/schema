@@ -126,7 +126,8 @@ func TestFastPlanSharedCorpusSelectsEveryLeg(t *testing.T) {
 // main-module packages they import that no leg owns, and the make templates
 // that define verify-<leg>-<gate>. The packages are derived from `go list
 // -deps` of those programs under every schema_leg_* tag their files name, and
-// the templates from the make files that define `_verify-$(1)-`, so a new
+// the templates from the make files with a verify-$(1) rule header (a make
+// file that only calls those targets, a negative control, is not one), so a new
 // import or template no leg owns is red here, never a stale hand list. A
 // package a leg owns (its add_leg rule selects it) keeps per-leg selection.
 // A test-only harness change selects nothing: it changes no leg's answer.
@@ -196,19 +197,21 @@ func TestFastPlanSharedVerifyCodeSelectsEveryLeg(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// a rule header: verify-$(1)-<gate>: or _verify-$(1)-<gate>:
+	verifyRuleRe := regexp.MustCompile(`(?m)^_?verify-\$\(1\)[^:\s]*:`)
 	var templates []string
 	for _, mk := range mks {
 		b, err := os.ReadFile(mk)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if strings.Contains(string(b), "_verify-$(1)-") {
+		if verifyRuleRe.MatchString(string(b)) {
 			rel, _ := filepath.Rel(root, mk)
 			templates = append(templates, filepath.ToSlash(rel))
 		}
 	}
 	if len(templates) == 0 {
-		t.Fatal("no make file defines a _verify-$(1)- template")
+		t.Fatal("no make file defines a verify-$(1) rule")
 	}
 
 	type tc struct{ name, files string }
