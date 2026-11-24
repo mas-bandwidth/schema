@@ -1109,13 +1109,18 @@ const fixedClassHelperTail = `
     item = Map.fetch!(f, :item)
 
     Enum.map(Map.fetch!(f, :key_names), fn name ->
-      atom = String.to_atom(fixed_class_snake(name))
-
       raw =
-        cond do
-          Map.has_key?(value, name) -> Map.get(value, name)
-          Map.has_key?(value, atom) -> Map.get(value, atom)
-          true -> raise ArgumentError, "missing keyed slot #{name}"
+        case Map.fetch(value, name) do
+          {:ok, slot} ->
+            slot
+
+          :error ->
+            atom = String.to_atom(fixed_class_snake(name))
+
+            case Map.fetch(value, atom) do
+              {:ok, slot} -> slot
+              :error -> raise ArgumentError, "missing keyed slot #{name}"
+            end
         end
 
       fixed_class_value_from_table(item, raw)
