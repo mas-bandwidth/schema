@@ -1421,6 +1421,9 @@ namespace Blockhome
                 }
                 if (IsFlags(f))
                 {
+                    // a flags value is an array of names, a container the read counts,
+                    // an empty [] included (docs/SPEC-TABLES.md 16.14 W2)
+                    if (depth > MaxDepth) { return false; }
                     ulong bits = f.GetRaw(owner, index);
                     if (bits == 0)
                     {
