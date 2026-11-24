@@ -95,6 +95,8 @@
 #include "VarEvo3Table.h"
 #include "CookTortureTable.h"
 #include "CookTortureWideTable.h"
+#include "ShapesTable.h"
+#include "SurfacesTable.h"
 
 struct Reply
 {
@@ -451,6 +453,15 @@ static const Codec codecs[] = {
     FIXED( "tabledemo", tabledemo, ArchiveConfig ),
     FIXED( "tabledemo", tabledemo, KeyedConfig ),
     FIXED( "tabledemo", tabledemo, PackConfig ),
+    FIXED( "tabledemo", tabledemo, CountedMin ),
+    FIXED( "tabledemo", tabledemo, Moods ),
+    FIXED( "tabledemo", tabledemo, MoodField ),
+    FIXED( "tabledemo", tabledemo, MinArmFix ),
+    FIXED( "tabledemo", tabledemo, MinPlainFix ),
+    FIXED( "shapes", shapes, FixedBounds ),
+    FIXED( "tblsurf", surfaces, Narrow ),
+    FIXED( "tblsurf", surfaces, Wide ),
+    FIXED( "tblsurf", surfaces, Arrays ),
     FIXED( "tblv1", tblv1, Cfg ),
     FIXED( "tblv2", tblv2, Cfg ),
     FIXED( "tblp1", tblp1, Chain ),
@@ -521,6 +532,10 @@ static const Codec codecs[] = {
     VARIABLE( "tblvarevo3", tblvarevo3, EvoDoc ),
     VARIABLE( "cooktorture", cooktorture, TortureCook ),
     VARIABLE( "cooktorturewide", cooktorturewide, TortureWideCook ),
+    VARIABLE( "shapes", shapes, Bounds ),
+    VARIABLE( "tblsurf", surfaces, Chain ),
+    VARIABLE( "tblsurf", surfaces, Holder ),
+    VARIABLE( "tblsurf", surfaces, Counted ),
     // and the same roots under the MESSAGE form (docs/SPEC-TABLES.md §3.3),
     // one entry per message the corpus pins
     MESSAGE( "backenddemo", backenddemo, LoginRequest ),
@@ -595,6 +610,10 @@ static const Codec codecs[] = {
     RETAIN( "tblvarevo3", tblvarevo3, EvoDoc ),
     RETAIN( "cooktorture", cooktorture, TortureCook ),
     RETAIN( "cooktorturewide", cooktorturewide, TortureWideCook ),
+    RETAIN( "shapes", shapes, Bounds ),
+    RETAIN( "tblsurf", surfaces, Chain ),
+    RETAIN( "tblsurf", surfaces, Holder ),
+    RETAIN( "tblsurf", surfaces, Counted ),
 };
 
 // The file-form dispatch and refusal transport are exercised independently of
