@@ -2103,3 +2103,22 @@ packet-write-refusal-dart-negative-control: packet-write-refusal-dart
 	@echo 'packet write refusal Dart negative control: with no upper-bound assert scalar_high is written and nothing else goes red'
 
 test-dart: packet-write-refusal-dart packet-write-refusal-dart-negative-control
+
+# A DEPRECATED VARIANT IS NEVER WRITTEN, Dart block builder (docs/SPEC-TABLES.md
+# §2.15 WRITE): under --enable-asserts <root>BlockBuild throws on `Old` and
+# writes `Fierce` and `Calm`, scalar and element (the Mood, Moods and MoodField
+# of tables/examples). No corpus row reaches this writer, so this leg test is
+# the gate, and it must run to its own PASS.
+.PHONY: tables-dart-deprecated-block-write
+tables-dart-deprecated-block-write:
+	@mkdir -p build/dart-deprecated-block
+	@SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 DART=$(DART) \
+		go test ./internal/codegen/darttable/ -count=1 -timeout 600s -v -run '^TestDartBlockBuildRefusesDeprecatedVariant$$' \
+		> build/dart-deprecated-block/log 2>&1 || { grep -E -- '--- FAIL|_test.go:' build/dart-deprecated-block/log | head -40; exit 1; }
+	@if grep -q -- '--- SKIP' build/dart-deprecated-block/log; then \
+		echo "tables-dart-deprecated-block-write: a test SKIPPED under SCHEMA_REQUIRE_CORPUS=1"; grep -- '--- SKIP' build/dart-deprecated-block/log; exit 1; \
+	fi
+	@grep -q -- '--- PASS: TestDartBlockBuildRefusesDeprecatedVariant ' build/dart-deprecated-block/log || \
+		{ echo "tables-dart-deprecated-block-write: TestDartBlockBuildRefusesDeprecatedVariant did not run to a PASS"; tail -20 build/dart-deprecated-block/log; exit 1; }
+	@echo 'tables Dart: the block builder refuses a deprecated variant and writes the live ones (§2.15)'
+test-dart: tables-dart-deprecated-block-write
