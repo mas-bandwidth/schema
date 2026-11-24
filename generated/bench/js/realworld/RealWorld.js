@@ -435,6 +435,9 @@ export function ZeroRealPacket(value) {
 }
 
 export function WriteRealPacket(stream, value) {
+  if (value === null || typeof value !== "object") {
+    return false; // a record or union value is an object (SPEC §5.1)
+  }
   if (!globalThis.Number.isInteger(value.f001Int) || value.f001Int < -805495 || value.f001Int > 805495) {
     return false;
   }
@@ -457,6 +460,9 @@ export function WriteRealPacket(stream, value) {
     return false;
   }
   {
+    if (typeof value.f004Cf32 !== "number") {
+      return false; // a float is a Number (SPEC §5.1)
+    }
     const x = globalThis.Math.fround(value.f004Cf32);
     if (!globalThis.Number.isFinite(x) || x < 0.0 || x > 2000.0) {
       return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
@@ -514,6 +520,9 @@ export function WriteRealPacket(stream, value) {
   NUMBER_SCRATCH.value = value.f011Bits;
   if (!stream.serializeBits(NUMBER_SCRATCH, 10)) {
     return false;
+  }
+  if (typeof value.f012Bool !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
   }
   BOOL_SCRATCH.value = value.f012Bool;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
@@ -620,6 +629,9 @@ export function WriteRealPacket(stream, value) {
     return false;
   }
   {
+    if (typeof value.f027Cf32 !== "number") {
+      return false; // a float is a Number (SPEC §5.1)
+    }
     const x = globalThis.Math.fround(value.f027Cf32);
     if (!globalThis.Number.isFinite(x) || x < -2.0 || x > 2.0) {
       return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
@@ -692,9 +704,15 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 3)) {
     return false;
   }
+  if (typeof value.f037Bool !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
+  }
   BOOL_SCRATCH.value = value.f037Bool;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
+  }
+  if (typeof value.f038Bool !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
   }
   BOOL_SCRATCH.value = value.f038Bool;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
@@ -727,6 +745,9 @@ export function WriteRealPacket(stream, value) {
   NUMBER_SCRATCH.value = value.f042Bits;
   if (!stream.serializeBits(NUMBER_SCRATCH, 30)) {
     return false;
+  }
+  if (typeof value.f043Bool !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
   }
   BOOL_SCRATCH.value = value.f043Bool;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
@@ -776,11 +797,17 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeFixed(NUMBER_SCRATCH, 2, 14, 0, 3)) {
     return false;
   }
+  if (typeof value.f050Bool !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
+  }
   BOOL_SCRATCH.value = value.f050Bool;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
     return false;
   }
   if (value.f050Bool) {
+    if (typeof value.f051Bool !== "boolean") {
+      return false; // a bool is a boolean (SPEC §5.1)
+    }
     BOOL_SCRATCH.value = value.f051Bool;
     if (!stream.serializeBool(BOOL_SCRATCH)) {
       return false;
@@ -806,6 +833,9 @@ export function WriteRealPacket(stream, value) {
     if (!stream.serializeBits(NUMBER_SCRATCH, 7)) {
       return false;
     }
+  }
+  if (typeof value.f055Bool !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
   }
   BOOL_SCRATCH.value = value.f055Bool;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
@@ -847,6 +877,9 @@ export function WriteRealPacket(stream, value) {
     return false;
   }
   {
+    if (typeof value.f061Cf32 !== "number") {
+      return false; // a float is a Number (SPEC §5.1)
+    }
     const x = globalThis.Math.fround(value.f061Cf32);
     if (!globalThis.Number.isFinite(x) || x < -90.0 || x > 90.0) {
       return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
@@ -878,6 +911,9 @@ export function WriteRealPacket(stream, value) {
     return false;
   }
   {
+    if (typeof value.f065Cf32 !== "number") {
+      return false; // a float is a Number (SPEC §5.1)
+    }
     const x = globalThis.Math.fround(value.f065Cf32);
     if (!globalThis.Number.isFinite(x) || x < 0.0 || x > 30.0) {
       return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
@@ -895,6 +931,9 @@ export function WriteRealPacket(stream, value) {
     return false;
   }
   {
+    if (typeof value.f067Cf32 !== "number") {
+      return false; // a float is a Number (SPEC §5.1)
+    }
     const x = globalThis.Math.fround(value.f067Cf32);
     if (!globalThis.Number.isFinite(x) || x < -100.0 || x > 100.0) {
       return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
@@ -905,6 +944,9 @@ export function WriteRealPacket(stream, value) {
     return false;
   }
   {
+    if (typeof value.f068Cf32 !== "number") {
+      return false; // a float is a Number (SPEC §5.1)
+    }
     const x = globalThis.Math.fround(value.f068Cf32);
     if (!globalThis.Number.isFinite(x) || x < 0.0 || x > 2000.0) {
       return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
@@ -929,6 +971,9 @@ export function WriteRealPacket(stream, value) {
     return false;
   }
   {
+    if (typeof value.f071Cf32 !== "number") {
+      return false; // a float is a Number (SPEC §5.1)
+    }
     const x = globalThis.Math.fround(value.f071Cf32);
     if (!globalThis.Number.isFinite(x) || x < 0.0 || x > 10.0) {
       return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
@@ -939,6 +984,9 @@ export function WriteRealPacket(stream, value) {
     return false;
   }
   {
+    if (typeof value.f072Cf32 !== "number") {
+      return false; // a float is a Number (SPEC §5.1)
+    }
     const x = globalThis.Math.fround(value.f072Cf32);
     if (!globalThis.Number.isFinite(x) || x < 0.0 || x > 100.0) {
       return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
@@ -954,6 +1002,9 @@ export function WriteRealPacket(stream, value) {
   NUMBER_SCRATCH.value = ((value.f073Int >>> 0) - (-4 >>> 0)) >>> 0;
   if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
     return false;
+  }
+  if (typeof value.f074Bool !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
   }
   BOOL_SCRATCH.value = value.f074Bool;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
@@ -995,6 +1046,9 @@ export function WriteRealPacket(stream, value) {
     if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
       return false;
     }
+  }
+  if (typeof value.f080Bool !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
   }
   BOOL_SCRATCH.value = value.f080Bool;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
@@ -1070,6 +1124,9 @@ export function WriteRealPacket(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
   }
+  if (typeof value.f091Flags !== "bigint") {
+    return false; // a flags value is a BigInt (SPEC §5.1)
+  }
   {
     const flagsValue = globalThis.BigInt.asUintN(64, value.f091Flags);
     if (flagsValue >= 1n << 5n) { // a mask bit above the wire width cannot ride
@@ -1079,6 +1136,9 @@ export function WriteRealPacket(stream, value) {
     if (!stream.serializeBits(NUMBER_SCRATCH, 5)) {
       return false;
     }
+  }
+  if (typeof value.f092Bool !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
   }
   BOOL_SCRATCH.value = value.f092Bool;
   if (!stream.serializeBool(BOOL_SCRATCH)) {
@@ -1090,6 +1150,9 @@ export function WriteRealPacket(stream, value) {
   BIGINT_SCRATCH.value = value.f093Bits;
   if (!stream.serializeBits64(BIGINT_SCRATCH, 64)) {
     return false;
+  }
+  if (typeof value.f094Bool !== "boolean") {
+    return false; // a bool is a boolean (SPEC §5.1)
   }
   BOOL_SCRATCH.value = value.f094Bool;
   if (!stream.serializeBool(BOOL_SCRATCH)) {

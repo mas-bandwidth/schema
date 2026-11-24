@@ -27,7 +27,7 @@ func TestJsFlatWriteRefusesNonFiniteFloats(t *testing.T) {
 	for _, name := range []string{"WriteProbeFlat", "WritePackedFlat"} {
 		write := emittedFunction(t, flat, name)
 		for _, want := range []string{
-			"if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) {",
+			"if (typeof x !== \"number\" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) {",
 			"if (!globalThis.Number.isFinite(value.f64)) {",
 			"return -1;",
 		} {
