@@ -186,8 +186,15 @@ func TestFormsCookClosureAcrossFilesElixir(t *testing.T) {
 
 func TestFormsAllSubsetsElixir(t *testing.T) {
 	slowtest.Gate(t, "Elixir all eight declared form subsets")
-	for mask := range 8 {
-		t.Run(fmt.Sprint(mask), func(t *testing.T) {
+	for _, choice := range []struct {
+		name string
+		mask int
+	}{
+		{"0", 0}, {"1", 1}, {"2", 2}, {"3", 3}, {"4", 4}, {"5", 5}, {"6", 6}, {"7", 7},
+		{"default", 7},
+	} {
+		t.Run(choice.name, func(t *testing.T) {
+			mask := choice.mask
 			t.Parallel()
 			forms := []string{"wire"}
 			for i, name := range []string{"json", "cook", "block"} {
@@ -195,7 +202,11 @@ func TestFormsAllSubsetsElixir(t *testing.T) {
 					forms = append(forms, name)
 				}
 			}
-			u := unitFrom(t, fmt.Sprintf("package probe\nfixed table Root | forms=%q { n int32 }", strings.Join(forms, ",")))
+			decl := fmt.Sprintf("fixed table Root | forms=%q { n int32 }", strings.Join(forms, ","))
+			if choice.name == "default" {
+				decl = "fixed table Root { n int32 }"
+			}
+			u := unitFrom(t, "package probe\n"+decl)
 			m := tabletext.NewModel(u)
 			v := m.New(u.Tables["Root"])
 			v.Fields[0].Cell.I = 7
@@ -240,6 +251,20 @@ Probe.check(Probe.ProbeCook.root_node_n(handle.region,0)==7,"cooked value")
 			if mask&4 != 0 {
 				probe.WriteString(`{:ok,block}=Probe.ProbeBlock.block_begin_root(%{})
 {:ok,_}=Probe.ProbeBlock.block_open_root(block)
+`)
+			}
+			if choice.name == "default" {
+				probe.WriteString(`alias Probe.TableMessage,as: M
+{:ok,vocab}=M.for_root(M.new(),"Root")
+bodies=[[{1,value["n"]}]]
+{:ok,size}=M.measure_messages(vocab,bodies)
+{:ok,batch}=M.save_messages(vocab,bodies)
+{:ok,^bodies}=M.load_messages(vocab,batch)
+Probe.check(byte_size(batch)==size,"message measure matches save")
+`)
+			} else {
+				probe.WriteString(`alias Probe.TableMessage,as: M
+{:error,:unknown_root}=M.for_root(M.new(),"Root")
 `)
 			}
 			probe.WriteString(`for path<-Path.wildcard("*.ex") do

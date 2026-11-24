@@ -93,6 +93,14 @@ func messageformModule(u *ir.Unit, ns string) []byte {
 	// like every other (docs/SPEC-TABLES.md §3; the engine's checkAnnouncement)
 	runtime := insertOnce(messageRuntimeBody, "  # A table carrying one id twice is the whole wire malformed (§3).\n", firstUseSource())
 	batch := messageBatchRuntimeBody
+	// With no enabled message roots, own_vocab only returns errors. Keep
+	// its error selection without emitting an unreachable success pattern.
+	if len(messageRoots(u)) == 0 {
+		for _, verb := range []string{"measure", "save"} {
+			success := fmt.Sprintf("    with {:ok, own} <- own_vocab(root), do: %s_messages(own, values)", verb)
+			batch = strings.Replace(batch, success, "    own_vocab(root)", 1)
+		}
+	}
 	if !unions {
 		batch = strings.Replace(batch, messageArmSubUnion, "", 1)
 		batch = strings.Replace(batch, messageArmRawUnion, "", 1)
