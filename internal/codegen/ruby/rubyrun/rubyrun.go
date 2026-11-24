@@ -269,6 +269,6 @@ func RuboCopAll(t testing.TB, dir string, paths ...string) (string, error) {
 	if rerr != nil {
 		t.Fatal(rerr)
 	}
-	args := append([]string{"--config", filepath.Join(root, "internal", "codegen", "ruby", "rubocop.yml")}, paths...)
+	args := append([]string{"--config", filepath.Join(root, "internal", "codegen", "ruby", "rubocop.yml"), "--parallel"}, paths...)
 	return runTool(t, dir, RuboCop(t), args...)
 }
