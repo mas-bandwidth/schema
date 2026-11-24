@@ -1027,7 +1027,7 @@ _M.WriteTestData <- function(stream, value) {
   _h.value = value.Int64Range;
   if (!stream.serializeInt64(_h, -1000000000000, 1000000000000)) return false;
   if (!stream.serializeAlign()) return false;
-  if (typeof value.FixedBytes != "array" || value.FixedBytes.len() != 17) return false; // a [N]T holds exactly N values (SPEC §5.1)
+  if (typeof value.FixedBytes != "blob" || value.FixedBytes.len() != 17) return false; // a [N]T holds exactly N values (SPEC §5.1)
   for (local _i = 0; _i < 17; _i++) {
     if (typeof value.FixedBytes[_i] != "integer" || value.FixedBytes[_i] < 0 || value.FixedBytes[_i] > 255) return false;
     _h.value = value.FixedBytes[_i];
