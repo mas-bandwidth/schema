@@ -696,6 +696,33 @@ SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -v \
   -run 'Test(Go|Python)FixedLoadCapacityWitness'
 ```
 
+
+### Block forgery fuzzer seed projections
+
+The block forgery fuzzer ([SPEC-TABLES §19.5](SPEC-TABLES.md)) mutates seed
+blocks that the generated C++ builder writes, and every leg's fuzzer starts
+from those seeds (`build/block-fuzz/<unit>_v<N>.bin`). A seed is a valid
+block, so its builder writes every projection field inside its declared
+bound before it calls `BlockBytes`. `BlockBytes` refuses a used length past
+its maximum in every build (SF-31), so a seed whose `bytes(N)` length was
+left at the storage fill is refused, and the seed step fails by naming the
+unit and the count vector.
+
+| Unit | Count vector | `rows` | `blob_length` |
+|---|---|---|---|
+| `padded` | 0 | 0 | 0 |
+| `padded` | 1 | 1 | 4 |
+| `padded` | 2 | 7 | 8 |
+| `padded` | 3 | 64 (the maximum) | 12 (the bound) |
+
+Each row must build, and its `BlockBytes` must return the used extent.
+`make build/block-fuzz/.stamp` writes the seeds. It fails on
+`padded could not build a valid block for count vector 0` if the
+`blob_length` write is removed from `padded_seed_block`
+(test/tables/block_fuzz_main.cpp). Every fuzzer that reads the seeds
+(`tables-block-fuzz`, `tables-rust-fuzz`, `tables-rust-fuzz-miri` and the
+two block-fuzz negative controls) depends on that step.
+
 ### Fields an older fixed writer does not supply
 
 After a lawful [§3.4 fixed-form](SPEC-TABLES.md#34-the-fixed-form-a-record-of-values-under-a-layout)
