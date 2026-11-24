@@ -126,15 +126,25 @@ $(foreach leg,$(VERIFY_COMPILED_LEGS),$(eval $(call verify_compiled_fuzz_rules,$
 # ---- cpp ----
 
 .PHONY: _verify-cpp-conformance _verify-cpp-bench
-_verify-cpp-conformance: build/conformance-harness build/conformance-cpp build/schema_test_cook build/schema_test build/schema_test_ludicrous packet-defaults-cpp packet-void-cpp table-base64-cpp build/packet-text/cpp/driver build/packet-text/harness conformance-rows-cpp build/schema_test_tables
-	./build/schema_test
-	./build/schema_test_tables
-	./build/schema_test_ludicrous
+#
+# THE PER-PR UNIT DRIVERS HOLD THE NIGHTLY COUNT. Each primary unit driver runs
+# under tools/mustrun with the same registered count its nightly recipe holds
+# (the *_CHECKS variables beside those recipes), so a build that stops running
+# checks (a disabled assert, a skipped block) is red here and not only at
+# night. Dart's and Go's per-PR forms already did this.
+_verify-cpp-conformance: build/mustrun build/conformance-harness build/conformance-cpp build/schema_test_cook build/schema_test build/schema_test_ludicrous packet-defaults-cpp packet-void-cpp table-base64-cpp build/packet-text/cpp/driver build/packet-text/harness conformance-rows-cpp build/schema_test_tables
+	$(MUSTRUN) -name schema_test -count $(CPP_MAIN_CHECKS) -- ./build/schema_test
+	$(MUSTRUN) -name schema_test_tables -count $(CPP_TABLES_CHECKS) -- ./build/schema_test_tables
+	$(MUSTRUN) -name schema_test_ludicrous -count $(CPP_LUDICROUS_CHECKS) -- ./build/schema_test_ludicrous
 	./build/packet-text/harness ./build/packet-text/cpp/driver
 	@rm -rf build/verify/conformance-cpp && mkdir -p build/verify/conformance-cpp $(VERIFY_RESULTS_DIR)
 	./build/conformance-harness run --only cpp --claims --work build/verify/conformance-cpp --results $(VERIFY_RESULTS_DIR)/cpp.json
 
-_verify-cpp-bench: bin/schema generated/bench/cpp/.stamp generated/bench/tables/cpp/.stamp tables-cpp-bench-gate cards-cpp-conformance tables-view packet-end-cpp packet-write-cfloat-cpp packet-write-text-cpp
+# THE WRITE-REFUSAL BATTERY (test/packet-write-refusal, docs/SPEC.md §5.1) runs
+# per PR in every leg that has a driver for it, as Rust's always did: the
+# packet-write-refusal-<leg> prerequisite of each _verify-<leg>-bench. Its
+# negative control stays nightly (test-<leg>).
+_verify-cpp-bench: bin/schema generated/bench/cpp/.stamp generated/bench/tables/cpp/.stamp tables-cpp-bench-gate cards-cpp-conformance tables-view packet-end-cpp packet-write-cfloat-cpp packet-write-text-cpp packet-write-refusal-cpp
 	@mkdir -p build/verify build/bench && rm -f build/verify/bench-cpp.csv
 	bench/run.sh --quick --bare --only cpp --out build/verify/bench-cpp.csv
 	@test -s build/verify/bench-cpp.csv
@@ -142,13 +152,13 @@ _verify-cpp-bench: bin/schema generated/bench/cpp/.stamp generated/bench/tables/
 # ---- c ----
 
 .PHONY: _verify-c-conformance _verify-c-bench
-_verify-c-conformance: build/conformance-harness build/conformance-c build/schema_test_c build/schema_test_c_ludicrous packet-defaults-c packet-utf8-c packet-void-c table-base64-c conformance-rows-c
-	cd test/c && ../../build/schema_test_c
-	cd test/c-ludicrous && ../../build/schema_test_c_ludicrous
+_verify-c-conformance: build/mustrun build/conformance-harness build/conformance-c build/schema_test_c build/schema_test_c_ludicrous packet-defaults-c packet-utf8-c packet-void-c table-base64-c conformance-rows-c
+	cd test/c && "$(CURDIR)/$(MUSTRUN)" -name schema_test_c -count $(C_MAIN_CHECKS) -- ../../build/schema_test_c
+	cd test/c-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name schema_test_c_ludicrous -count $(C_LUDICROUS_CHECKS) -- ../../build/schema_test_c_ludicrous
 	@rm -rf build/verify/conformance-c && mkdir -p build/verify/conformance-c $(VERIFY_RESULTS_DIR)
 	./build/conformance-harness run --only c --claims --work build/verify/conformance-c --results $(VERIFY_RESULTS_DIR)/c.json
 
-_verify-c-bench: bin/schema generated/bench/c/.stamp generated/bench/tables/c/.stamp tables-c-bench-gate cards-c-conformance packet-end-c packet-write-cfloat-c packet-write-text-c
+_verify-c-bench: bin/schema generated/bench/c/.stamp generated/bench/tables/c/.stamp tables-c-bench-gate cards-c-conformance packet-end-c packet-write-cfloat-c packet-write-text-c packet-write-refusal-c
 	@mkdir -p build/verify build/bench && rm -f build/verify/bench-c.csv
 	bench/run.sh --quick --bare --only c --out build/verify/bench-c.csv
 	@test -s build/verify/bench-c.csv
@@ -156,11 +166,20 @@ _verify-c-bench: bin/schema generated/bench/c/.stamp generated/bench/tables/c/.s
 # ---- cs ----
 
 .PHONY: _verify-cs-conformance _verify-cs-bench
-_verify-cs-conformance: toolchain-cs build/conformance-harness build-conformance-cs build-cs-cook generated/cs/.stamp generated/cs-ludicrous/.stamp
+# test/cs runs in BOTH configurations, as nightly's test-cs does: the Debug run
+# is the one whose `#if DEBUG` checks prove the writer's Debug.Asserts fire, the
+# Release run the one that proves they are gone and the corpus still writes.
+# The two share test/cs/obj, so they run one after the other.
+# C#'s write-refusal battery is a prerequisite HERE, not of _verify-cs-bench
+# like the other legs': its project build runs beside build-conformance-cs's
+# under -j, where the bench row (111 s on a loaded runner, run 45322780223)
+# had no margin for it.
+_verify-cs-conformance: build/mustrun toolchain-cs build/conformance-harness build-conformance-cs build-cs-cook generated/cs/.stamp generated/cs-ludicrous/.stamp packet-write-refusal-cs
 	@rm -rf build/verify/conformance-cs && mkdir -p build/verify/conformance-cs $(VERIFY_RESULTS_DIR)
 	@set -e; \
-		(cd test/cs && $(DOTNET) run -c Release --nologo) & p1=$$!; \
-		(cd test/cs-ludicrous && $(DOTNET) run --nologo) & p2=$$!; \
+		(cd test/cs && "$(CURDIR)/$(MUSTRUN)" -name test-cs-debug -count $(CS_DEBUG_CHECKS) -- $(DOTNET) run --nologo && \
+			"$(CURDIR)/$(MUSTRUN)" -name test-cs-release -count $(CS_RELEASE_CHECKS) -- $(DOTNET) run -c Release --nologo) & p1=$$!; \
+		(cd test/cs-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-cs-ludicrous -count $(CS_LUDICROUS_CHECKS) -- $(DOTNET) run --nologo) & p2=$$!; \
 		./build/conformance-harness run --only cs --claims --work build/verify/conformance-cs --results $(VERIFY_RESULTS_DIR)/cs.json & p3=$$!; \
 		wait $$p1; wait $$p2; wait $$p3
 
@@ -207,11 +226,13 @@ _verify-go-bench: bin/schema generated/bench/go/.stamp generated/bench/tables/go
 # ---- rust ----
 
 .PHONY: _verify-rust-conformance _verify-rust-bench
-_verify-rust-conformance: build/conformance-harness build/conformance-rust generated/rust/.stamp generated/rust-ludicrous/.stamp packet-utf8-rust conformance-rows-rust
+_verify-rust-conformance: build/mustrun build/conformance-harness build/conformance-rust generated/rust/.stamp generated/rust-ludicrous/.stamp packet-utf8-rust conformance-rows-rust
 	@rm -rf build/verify/conformance-rust && mkdir -p build/verify/conformance-rust $(VERIFY_RESULTS_DIR)
 	@set -e; \
-		(cd test/rust && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release) & p1=$$!; \
-		(cd test/rust-ludicrous && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet && PATH="$(RUSTUP_BIN):$$PATH" cargo run --quiet --release) & p2=$$!; \
+		(cd test/rust && PATH="$(RUSTUP_BIN):$$PATH" "$(CURDIR)/$(MUSTRUN)" -name test-rust-debug -count $(RUST_DEBUG_CHECKS) -- cargo run --quiet && \
+			PATH="$(RUSTUP_BIN):$$PATH" "$(CURDIR)/$(MUSTRUN)" -name test-rust-release -count $(RUST_RELEASE_CHECKS) -- cargo run --quiet --release) & p1=$$!; \
+		(cd test/rust-ludicrous && PATH="$(RUSTUP_BIN):$$PATH" "$(CURDIR)/$(MUSTRUN)" -name test-rust-ludicrous-debug -count $(RUST_LUDICROUS_DEBUG_CHECKS) -- cargo run --quiet && \
+			PATH="$(RUSTUP_BIN):$$PATH" "$(CURDIR)/$(MUSTRUN)" -name test-rust-ludicrous-release -count $(RUST_LUDICROUS_RELEASE_CHECKS) -- cargo run --quiet --release) & p2=$$!; \
 		./build/conformance-harness run --only rust --claims --work build/verify/conformance-rust --results $(VERIFY_RESULTS_DIR)/rust.json & p3=$$!; \
 		wait $$p1; wait $$p2; wait $$p3
 
@@ -235,14 +256,14 @@ _verify-rust-bench: bin/schema generated/bench/rust/.stamp generated/bench/paire
 # ---- java ----
 
 .PHONY: _verify-java-conformance _verify-java-packet-main-ea _verify-java-packet-main _verify-java-packet-ludicrous _verify-java-bench
-_verify-java-packet-main-ea: toolchain-java build/java-test/.stamp
-	cd test/java && $(JAVA) -ea -cp ../../build/java-test Main
+_verify-java-packet-main-ea: build/mustrun toolchain-java build/java-test/.stamp
+	cd test/java && "$(CURDIR)/$(MUSTRUN)" -name test-java-ea -count $(JAVA_EA_CHECKS) -- $(JAVA) -ea -cp ../../build/java-test Main
 
-_verify-java-packet-main: toolchain-java build/java-test/.stamp
-	cd test/java && $(JAVA) -cp ../../build/java-test Main
+_verify-java-packet-main: build/mustrun toolchain-java build/java-test/.stamp
+	cd test/java && "$(CURDIR)/$(MUSTRUN)" -name test-java -count $(JAVA_CHECKS) -- $(JAVA) -cp ../../build/java-test Main
 
-_verify-java-packet-ludicrous: toolchain-java build/java-test-ludicrous/.stamp
-	cd test/java-ludicrous && $(JAVA) -ea -cp ../../build/java-test-ludicrous Main
+_verify-java-packet-ludicrous: build/mustrun toolchain-java build/java-test-ludicrous/.stamp
+	cd test/java-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-java-ludicrous-ea -count $(JAVA_LUDICROUS_EA_CHECKS) -- $(JAVA) -ea -cp ../../build/java-test-ludicrous Main
 
 _verify-java-conformance: toolchain-java build/conformance-harness build-conformance-java _verify-java-packet-main-ea _verify-java-packet-main _verify-java-packet-ludicrous packet-defaults-java packet-utf8-java packet-finite-java conformance-rows-java
 	@rm -rf build/verify/conformance-java && mkdir -p build/verify/conformance-java $(VERIFY_RESULTS_DIR)
@@ -260,7 +281,7 @@ _verify-java-bench-quick: toolchain-java generated/bench/java/.stamp
 _verify-java-bench-paired: toolchain-java bin/schema
 	JAVA="$(JAVA)" JAVAC="$(JAVAC)" go run ./bench/paired -mode gate -langs java
 
-_verify-java-bench: toolchain-java bin/schema generated/bench/java/.stamp cards-java-conformance tables-java-view packet-end-java packet-write-cfloat-java packet-write-text-java _verify-java-bench-quick _verify-java-bench-paired
+_verify-java-bench: toolchain-java bin/schema generated/bench/java/.stamp cards-java-conformance tables-java-view packet-end-java packet-write-cfloat-java packet-write-text-java packet-write-refusal-java _verify-java-bench-quick _verify-java-bench-paired
 	@test -s build/verify/bench-java.csv
 
 # ---- dart ----
@@ -274,7 +295,7 @@ _verify-dart-conformance: build/conformance-harness build/conformance-dart _veri
 	@rm -rf build/verify/conformance-dart && mkdir -p build/verify/conformance-dart $(VERIFY_RESULTS_DIR)
 	DART="$(DART)" ./build/conformance-harness run --only dart --claims --work build/verify/conformance-dart --results $(VERIFY_RESULTS_DIR)/dart.json
 
-_verify-dart-bench: toolchain-dart bin/schema generated/bench/dart/.stamp generated/bench/tables/dart/.stamp tables-dart-bench-gate cards-dart-conformance tables-dart-view packet-end-dart packet-write-cfloat-dart packet-write-text-dart packet-write-bareint-dart
+_verify-dart-bench: toolchain-dart bin/schema generated/bench/dart/.stamp generated/bench/tables/dart/.stamp tables-dart-bench-gate cards-dart-conformance tables-dart-view packet-end-dart packet-write-cfloat-dart packet-write-text-dart packet-write-bareint-dart packet-write-refusal-dart
 	@mkdir -p build/verify build/bench && rm -f build/verify/bench-dart.csv
 	DART="$(DART)" bench/run.sh --quick --bare --only dart --out build/verify/bench-dart.csv
 	@test -s build/verify/bench-dart.csv

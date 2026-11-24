@@ -119,6 +119,22 @@ func TestOptVerifyCoversEveryPort(t *testing.T) {
 		"packet-write-cfloat-rust",
 		"packet-write-text-rust",
 		"packet-write-refusal-rust",
+		// the write-refusal battery per PR in every leg with a driver, and
+		// the C# Debug run whose #if DEBUG checks prove the asserts fire
+		"packet-write-refusal-cpp",
+		"packet-write-refusal-c\n",
+		"packet-write-refusal-cs",
+		"packet-write-refusal-java",
+		"packet-write-refusal-dart",
+		"-name test-cs-debug -count $(CS_DEBUG_CHECKS)",
+		// the per-PR unit drivers held to nightly's registered counts
+		"-count $(CPP_MAIN_CHECKS)",
+		"-count $(C_MAIN_CHECKS)",
+		"-count $(CS_RELEASE_CHECKS)",
+		"-count $(RUST_DEBUG_CHECKS)",
+		"-count $(RUST_RELEASE_CHECKS)",
+		"-count $(JAVA_EA_CHECKS)",
+		"-count $(DART_MAIN_CHECKS)",
 		"tables-rust-view",
 		"tables-view",
 		"tables-c-view",

@@ -1245,6 +1245,14 @@ tables-cs-fixedform-arm-negative-control: bin/schema
 # control, the cook-open gates on the C# side, the bench units' compile gates
 # (a unit that generates but does not compile is issue #80's lesson), and the
 # packet tests.
+# The registered counts of the primary packet harnesses (test/cs in Debug and
+# Release, test/cs-ludicrous in Debug): tools/mustrun holds each "ran N" to
+# the number here, in this nightly recipe and in the per-PR one
+# (_verify-cs-conformance in make/verify-compiled.mk). The Debug run is the
+# one whose `#if DEBUG` checks prove the writer's Debug.Asserts fire.
+CS_DEBUG_CHECKS     := 966
+CS_RELEASE_CHECKS   := 968
+CS_LUDICROUS_CHECKS := 56
 .PHONY: test-cs
 test-cs: build/mustrun toolchain-cs build/tables-generated-cs/.stamp generated/bench/tables/cs/.stamp generated/bench/paired/cs/.stamp generated/cs/.stamp generated/cs-ludicrous/.stamp generated/bench/cs/.stamp
 	$(MAKE) tables-cs-json-walk
@@ -1272,9 +1280,9 @@ test-cs: build/mustrun toolchain-cs build/tables-generated-cs/.stamp generated/b
 	$(DOTNET) build bench/tables/cs -c Release --nologo -v quiet
 	$(DOTNET) build bench/paired/cs -c Release --nologo -v quiet -property:UseSharedCompilation=false "-property:SerializeCsRoot=$(abspath $(SERIALIZE_CS))"
 	cd bench/cs && $(DOTNET) build -c Release --nologo -v quiet
-	cd test/cs && ../../$(MUSTRUN) -name test-cs-debug -count 966 -- $(DOTNET) run
-	cd test/cs && ../../$(MUSTRUN) -name test-cs-release -count 968 -- $(DOTNET) run -c Release
-	cd test/cs-ludicrous && ../../$(MUSTRUN) -name test-cs-ludicrous -count 56 -- $(DOTNET) run
+	cd test/cs && ../../$(MUSTRUN) -name test-cs-debug -count $(CS_DEBUG_CHECKS) -- $(DOTNET) run
+	cd test/cs && ../../$(MUSTRUN) -name test-cs-release -count $(CS_RELEASE_CHECKS) -- $(DOTNET) run -c Release
+	cd test/cs-ludicrous && ../../$(MUSTRUN) -name test-cs-ludicrous -count $(CS_LUDICROUS_CHECKS) -- $(DOTNET) run
 
 TEST_LEGS         += test-cs
 TOOLCHAIN_LEGS    += cs

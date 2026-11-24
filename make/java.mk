@@ -2179,6 +2179,13 @@ conformance-negative-control-java-walk: build/conformance-harness
 # three planted controls are `make tables-java-release`, because `make test`
 # has no budget for them (see that target). Then the packet tests, with and
 # without -ea.
+# The registered counts of those harnesses: tools/mustrun holds each "ran N"
+# to the number here, in this nightly recipe and in the per-PR one
+# (_verify-java-packet-* in make/verify-compiled.mk).
+JAVA_EA_CHECKS           := 866
+JAVA_CHECKS              := 860
+JAVA_LUDICROUS_EA_CHECKS := 48
+JAVA_LUDICROUS_CHECKS    := 47
 .PHONY: test-java
 test-java: build/mustrun toolchain-java generated/java/.stamp generated/java-ludicrous/.stamp generated/bench/java/.stamp build/java-test/.stamp build/java-test-ludicrous/.stamp build/java-bench/.stamp
 	$(MAKE) tables-java-compile
@@ -2197,10 +2204,10 @@ test-java: build/mustrun toolchain-java generated/java/.stamp generated/java-lud
 	$(MAKE) tables-java-message-batch
 	# THE VARIABLE CLASS against the committed reference bytes (docs/SPEC-TABLES.md §2, §3, §16)
 	$(MAKE) tables-java-variable-class
-	cd test/java && ../../$(MUSTRUN) -name test-java-ea -count 866 -- $(JAVA) -ea -cp ../../build/java-test Main
-	cd test/java && ../../$(MUSTRUN) -name test-java -count 860 -- $(JAVA) -cp ../../build/java-test Main
-	cd test/java-ludicrous && ../../$(MUSTRUN) -name test-java-ludicrous-ea -count 48 -- $(JAVA) -ea -cp ../../build/java-test-ludicrous Main
-	cd test/java-ludicrous && ../../$(MUSTRUN) -name test-java-ludicrous -count 47 -- $(JAVA) -cp ../../build/java-test-ludicrous Main
+	cd test/java && ../../$(MUSTRUN) -name test-java-ea -count $(JAVA_EA_CHECKS) -- $(JAVA) -ea -cp ../../build/java-test Main
+	cd test/java && ../../$(MUSTRUN) -name test-java -count $(JAVA_CHECKS) -- $(JAVA) -cp ../../build/java-test Main
+	cd test/java-ludicrous && ../../$(MUSTRUN) -name test-java-ludicrous-ea -count $(JAVA_LUDICROUS_EA_CHECKS) -- $(JAVA) -ea -cp ../../build/java-test-ludicrous Main
+	cd test/java-ludicrous && ../../$(MUSTRUN) -name test-java-ludicrous -count $(JAVA_LUDICROUS_CHECKS) -- $(JAVA) -cp ../../build/java-test-ludicrous Main
 
 TEST_LEGS          += test-java
 TOOLCHAIN_LEGS     += java

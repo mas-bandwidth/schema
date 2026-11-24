@@ -1609,6 +1609,14 @@ tables-c-versioning: tables-fixedform-corpus
 	SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/ctable/ -count=1
 	@echo 'tables C corpus: ctable checks the C++ reference bytes, including §5 and fixed roadmap framing'
 
+# The registered counts of the primary packet harnesses (test/c, test/c-ludicrous):
+# each prints "ran N, failed M" and tools/mustrun holds N to the number here,
+# in this nightly recipe and in the per-PR one (_verify-c-conformance in
+# make/verify-compiled.mk), so both tiers hold the same number. A commit that
+# adds or removes a check changes it here, once.
+C_MAIN_CHECKS      := 840
+C_LUDICROUS_CHECKS := 39
+
 .PHONY: test-c test-c-recipe
 test-c: build/schema_test_c build/schema_test_c_asan build/schema_test_c_ludicrous build/schema_test_bench_c build/conformance-harness build/conformance-c build/conformance-c-asan build/schema_test_c_fuzz build/schema_test_c_soak build/schema_test_c_variable build/schema_test_c_variable_asan
 	$(MAKE) test-c-recipe
@@ -1636,9 +1644,9 @@ test-c-recipe: build/mustrun build/schema_test_c build/schema_test_c_asan build/
 	./build/conformance-harness run --drivers test/conformance/c/drivers-asan.txt --work build/conformance-c-asan-work
 	$(MAKE) conformance-negative-control-c
 	$(MAKE) conformance-negative-control-c-foreign
-	cd test/c && ../../$(MUSTRUN) -name schema_test_c -count 840 -- ../../build/schema_test_c
-	cd test/c && ../../$(MUSTRUN) -name schema_test_c_asan -count 840 -- ../../build/schema_test_c_asan
-	cd test/c-ludicrous && ../../$(MUSTRUN) -name schema_test_c_ludicrous -count 39 -- ../../build/schema_test_c_ludicrous
+	cd test/c && ../../$(MUSTRUN) -name schema_test_c -count $(C_MAIN_CHECKS) -- ../../build/schema_test_c
+	cd test/c && ../../$(MUSTRUN) -name schema_test_c_asan -count $(C_MAIN_CHECKS) -- ../../build/schema_test_c_asan
+	cd test/c-ludicrous && ../../$(MUSTRUN) -name schema_test_c_ludicrous -count $(C_LUDICROUS_CHECKS) -- ../../build/schema_test_c_ludicrous
 	$(MUSTRUN) -name schema_test_bench_c -count 35 -- ./build/schema_test_bench_c
 
 TEST_LEGS         += test-c
