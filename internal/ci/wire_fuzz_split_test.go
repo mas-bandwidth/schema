@@ -32,6 +32,14 @@ func TestWireFuzzSplitIsDerivedFromTheRoster(t *testing.T) {
 		sqPlain     = "wire-fuzz: seed 1, 315 seeds over 87 roots, 205 seeds absent (roots the leg has no codec for), 1 enumerated + 2 random = 3 mutants, 0 divergences, 1.0 s, 3 mutants/s\n"
 		sqPlainHole = "wire-fuzz: seed 1, 293 seeds over 87 roots, 227 ledgered seeds absent (test/conformance/wire-absent/squirrel-plain.tsv), 1 enumerated + 2 random = 3 mutants, 0 divergences, 1.0 s, 3 mutants/s\n"
 		noSummary   = "harness: FAILED after 3 mutants: the leg died on the mutant (EOF)\n"
+		// arms that answered nothing: every relation holds between zeros
+		plainZero      = "wire-fuzz: seed 1, 0 seeds over 87 roots, 0 enumerated + 0 random = 0 mutants, 0 divergences, 0.1 s, 0 mutants/s\n"
+		armZero        = "wire-fuzz-builder: seed 1, 0 seeds over 38 roots, 0 enumerated + 0 random = 0 mutants, 0 divergences, 0.1 s, 0 mutants/s\n"
+		builderZero520 = "wire-fuzz-builder: seed 1, 0 seeds over 38 roots, 520 seeds outside the arm, 0 enumerated + 0 random = 0 mutants, 0 divergences, 0.1 s, 0 mutants/s\n"
+		// a plain arm that counts seeds outside it, and a builder arm whose
+		// outside count is not the plain arm's answered count
+		plainOutside = "wire-fuzz: seed 1, 515 seeds over 87 roots, 5 seeds outside the arm, 1 enumerated + 2 random = 3 mutants, 0 divergences, 1.0 s, 3 mutants/s\n"
+		builderOff   = "wire-fuzz-builder: seed 1, 205 seeds over 38 roots, 300 seeds outside the arm, 1 enumerated + 2 random = 3 mutants, 0 divergences, 1.0 s, 3 mutants/s\n"
 	)
 	for _, c := range []struct {
 		name, mode string
@@ -51,6 +59,14 @@ func TestWireFuzzSplitIsDerivedFromTheRoster(t *testing.T) {
 		{"complement: seeds in neither arm", "complement", []string{sqPlainHole, builderAll}, false, "leaves 227 seeds absent where the builder arm (arm1.log) answers 205"},
 		{"complement: a root drops out of the builder arm", "complement", []string{sqPlain, builderHole}, false, "leaves 2 seeds absent: the builder arm answers every root of its roster"},
 		{"complement: a plain arm with no summary proved nothing", "complement", []string{noSummary, builderAll}, false, "plain.log carries no wire-fuzz summary line"},
+		{"complete: a plain arm of 0 seeds and an arm of 0 (0/0)", "complete", []string{plainZero, armZero}, false, "plain.log answers 0 seeds"},
+		{"complete: a one-arm leg of 0 seeds", "complete", []string{plainZero}, false, "plain.log answers 0 seeds"},
+		{"complete: an arm of 0 seeds with the corpus outside it", "complete", []string{plainAll, builderZero520}, false, "arm1.log answers 0 seeds"},
+		{"complete: the plain arm counts seeds outside it", "complete", []string{plainOutside, builderAll}, false, "the plain arm (plain.log) counts 5 seeds outside it"},
+		{"complement: both arms of 0 seeds (0/0)", "complement", []string{plainZero, armZero}, false, "plain.log answers 0 seeds"},
+		{"complement: a builder arm of 0 seeds with the corpus outside it", "complement", []string{plainAll, builderZero520}, false, "arm1.log answers 0 seeds"},
+		{"complement: the builder arm's outside is not the plain arm's seeds", "complement", []string{sqPlain, builderOff}, false, "the builder arm (arm1.log) counts 300 seeds outside it where the plain arm (plain.log) answers 315"},
+		{"complement: the plain arm counts seeds outside it", "complement", []string{plainOutside, builderAll}, false, "the plain arm (plain.log) counts 5 seeds outside it"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()

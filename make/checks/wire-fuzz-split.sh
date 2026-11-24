@@ -28,7 +28,9 @@
 #
 # A root that drops out of an arm, or out of both, moves one side of a relation
 # and the recipe goes red naming the arm and both numbers. A log with no
-# summary line is red: a run that said nothing proved nothing.
+# summary line is red: a run that said nothing proved nothing. So is an arm
+# that answers 0 seeds: every relation above holds between zeros, so a leg
+# that answered nothing would pass all of them.
 set -eu
 
 usage() {
@@ -45,7 +47,8 @@ split() {
 		echo "$recipe: $1 is missing: the arm's run left no log" >&2
 		exit 1
 	fi
-	line=$(grep -E '^wire-fuzz[a-z-]*( retain)?: seed [0-9]+, [0-9]+ seeds over [0-9]+ roots' "$1" | tail -1 || true)
+	# the pipeline's status is tail's, so a log with no match leaves line empty
+	line=$(grep -E '^wire-fuzz[a-z-]*( retain)?: seed [0-9]+, [0-9]+ seeds over [0-9]+ roots' "$1" | tail -1)
 	if [ -z "$line" ]; then
 		echo "$recipe: $1 carries no wire-fuzz summary line: the run proved nothing" >&2
 		exit 1
@@ -55,6 +58,10 @@ split() {
 	outside=$(printf '%s\n' "$line" | sed -nE 's/.*, ([0-9]+) seeds outside the arm.*/\1/p')
 	absent=${absent:-0}
 	outside=${outside:-0}
+	if [ "$seeds" -eq 0 ]; then
+		echo "$recipe: $1 answers 0 seeds: an arm that fuzzed nothing proved nothing" >&2
+		exit 1
+	fi
 }
 
 split "$plain"
