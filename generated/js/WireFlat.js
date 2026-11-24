@@ -318,6 +318,9 @@ export function WriteProbeSampleFlat(view, value) {
     return -1;
   }
   lo = ((value.active ? 1 : 0));
+  if (typeof value.orientation !== "number") { // a float is a Number
+    return -1;
+  }
   x = globalThis.Math.fround(value.orientation);
   if (!globalThis.Number.isFinite(x)) {
     return -1;
@@ -1596,6 +1599,9 @@ export function WriteProbeArrayFlat(view, value) {
       sb -= 32;
       lo = sb === 0 ? 0 : v >>> (1 - sb);
     }
+    if (typeof e0.orientation !== "number") { // a float is a Number
+      return -1;
+    }
     x = globalThis.Math.fround(e0.orientation);
     if (!globalThis.Number.isFinite(x)) {
       return -1;
@@ -2482,6 +2488,9 @@ export function WriteProbeReportFlat(view, value) {
   v = SC.getUint32(4, true);
   view.setUint32(4, (lo | (v << 16)) >>> 0, true);
   lo = v >>> 16;
+  if (typeof value.flags !== "bigint") { // a flags value is a BigInt
+    return -1;
+  }
   if (globalThis.BigInt.asUintN(64, value.flags) >= 256n) { // a mask bit above the wire width cannot ride
     return -1;
   }
@@ -2691,7 +2700,7 @@ export function WriteTestDataFlat(view, value) {
     }
   }
   x = value.floatValue;
-  if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
+  if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
     return -1;
   }
   SC.setFloat32(0, x, true);
@@ -2703,6 +2712,9 @@ export function WriteTestDataFlat(view, value) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (32 - sb);
+  }
+  if (typeof value.compressedFloatValue !== "number") { // a float is a Number
+    return -1;
   }
   x = globalThis.Math.fround(value.compressedFloatValue);
   if (!globalThis.Number.isFinite(x)) {
@@ -3452,6 +3464,9 @@ export function WriteCompressedProbeFlat(view, value) {
   if (value === null || typeof value !== "object") { // a record or union value is an object (SPEC §5.1)
     return -1;
   }
+  if (typeof value.boundary !== "number") { // a float is a Number
+    return -1;
+  }
   x = globalThis.Math.fround(value.boundary);
   if (!globalThis.Number.isFinite(x)) {
     return -1;
@@ -3464,6 +3479,9 @@ export function WriteCompressedProbeFlat(view, value) {
   v = globalThis.Math.floor(globalThis.Math.fround(globalThis.Math.fround(n * 1000.0) + 0.5));
   if (v > 1000) { v = 1000; }
   lo = v;
+  if (typeof value.offset !== "number") { // a float is a Number
+    return -1;
+  }
   x = globalThis.Math.fround(value.offset);
   if (!globalThis.Number.isFinite(x)) {
     return -1;

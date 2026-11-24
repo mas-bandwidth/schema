@@ -655,6 +655,10 @@ func (g *gen) emitWriteScalar(f *ir.Field, name, ind string) {
 			// the holder copy is the write-through temp: the runtime's wire
 			// quantization cannot write back into the input
 			g.pf("%s{\n", ind)
+			// the Number type test rides first: Math.fround converts null,
+			// a boolean or a numeric string to a number rather than refusing
+			// it (SPEC §5.1)
+			g.pf("%s  if (typeof %s !== \"number\") {\n%s    return false; // a float is a Number (SPEC §5.1)\n%s  }\n", ind, name, ind, ind)
 			g.pf("%s  const x = globalThis.Math.fround(%s);\n", ind, name)
 			g.pf("%s  if (!globalThis.Number.isFinite(x) || x < %s || x > %s) {\n",
 				ind, formatFloat32(f.FMin), formatFloat32(f.FMax))
@@ -1039,8 +1043,12 @@ func (g *gen) emitReadFlags(name string, wireBits int, ind string) {
 // raw bit calls mask, so this refusal is generated (nothing latches; bool
 // is the verdict). BigInt.asUintN(64, ...) first is the exact translation
 // of C#'s ulong storage domain: a negative misuse value reinterprets to its
-// huge two's-complement pattern and the guard refuses it.
+// huge two's-complement pattern and the guard refuses it. The BigInt type
+// test rides first, in every build (SPEC §5.1): BigInt.asUintN throws a
+// TypeError on a Number, null or undefined, and converts a numeric string
+// such as "1" rather than refusing it.
 func (g *gen) emitWriteFlagsValue(name string, wireBits int, ind string) {
+	g.pf("%sif (typeof %s !== \"bigint\") {\n%s  return false; // a flags value is a BigInt (SPEC §5.1)\n%s}\n", ind, name, ind, ind)
 	g.pf("%s{\n%s  const flagsValue = globalThis.BigInt.asUintN(64, %s);\n", ind, ind, name)
 	if wireBits < 64 {
 		g.pf("%s  if (flagsValue >= 1n << %dn) { // a mask bit above the wire width cannot ride\n", ind, wireBits)

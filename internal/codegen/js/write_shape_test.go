@@ -15,13 +15,19 @@ import (
 // writeShapeSchema declares one field of every kind whose JavaScript value
 // has a shape the writer must check before it reads the value: records (a
 // field, an element, an arm payload), unions, arrays, a bool, a string and
-// bytes.
+// bytes; and the kinds whose JavaScript storage a coercing call would
+// convert rather than refuse: flags (a BigInt, narrow and wide wire), a bare
+// float32, a float64 and a compressed float32.
 const writeShapeSchema = `package wshape
 
 type Arm
 {
     n int32 | min = -5, max = 5
 }
+
+flags Mode { A, B, C }
+
+flags Wide | max = 40 { W }
 
 union Pick
 {
@@ -39,6 +45,11 @@ type ShapeProbe
     us   [..2]Pick
     s    string(4)
     y    bytes(4)
+    m    Mode
+    w    Wide
+    f    float32
+    d    float64
+    c    float32 | min = -10, max = 10, resolution = 0.5
 }
 `
 
@@ -86,6 +97,22 @@ row("bool_integer", (v) => { v.ok = 1; });
 row("string_null", (v) => { v.s = null; v.sLength = 1; });
 row("bytes_array", (v) => { v.y = [1, 2]; v.yLength = 2; });
 row("bytes_short", (v) => { v.y = new Uint8Array(1); v.yLength = 2; });
+row("flags_number", (v) => { v.m = 1; });
+row("flags_null", (v) => { v.m = null; });
+row("flags_undefined", (v) => { v.m = undefined; });
+row("flags_string", (v) => { v.m = "1"; });
+row("wide_flags_number", (v) => { v.w = 1; });
+row("wide_flags_string", (v) => { v.w = "1"; });
+row("float32_null", (v) => { v.f = null; });
+row("float32_true", (v) => { v.f = true; });
+row("float32_string", (v) => { v.f = "2.5"; });
+row("float32_array", (v) => { v.f = [3]; });
+row("float64_null", (v) => { v.d = null; });
+row("float64_string", (v) => { v.d = "2.5"; });
+row("cfloat_null", (v) => { v.c = null; });
+row("cfloat_true", (v) => { v.c = true; });
+row("cfloat_string", (v) => { v.c = "2.5"; });
+row("cfloat_array", (v) => { v.c = [3]; });
 {
   const [r, f] = verdicts(null);
   console.log("runtime value_is_null=" + r);
@@ -162,8 +189,8 @@ func TestJsWriteRefusesEveryValueShape(t *testing.T) {
 					t.Errorf("%s %s: %q, want %s", mode, k, v, want)
 				}
 			}
-			if len(lines) != 30 {
-				t.Fatalf("%s: the probe printed %d lines, want 30:\n%s", mode, len(lines), b)
+			if len(lines) != 62 {
+				t.Fatalf("%s: the probe printed %d lines, want 62:\n%s", mode, len(lines), b)
 			}
 		})
 	}

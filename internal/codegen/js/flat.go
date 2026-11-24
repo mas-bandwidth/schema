@@ -1122,7 +1122,10 @@ func (g *fgen) emitWriteScalar(f *ir.Field, name, ind string) {
 func (g *fgen) emitWriteF32(name, ind string) {
 	g.chunkFlush(ind)
 	g.pf("%sx = %s;\n", ind, name)
-	g.guard("!globalThis.Number.isFinite(globalThis.Math.fround(x))", " // a bare float must be finite", ind)
+	// the Number type test rides first: Math.fround converts null, a
+	// boolean, a numeric string or a one-element array to a number rather
+	// than refusing it (SPEC §5.1)
+	g.guard("typeof x !== \"number\" || !globalThis.Number.isFinite(globalThis.Math.fround(x))", " // a bare float is a finite Number", ind)
 	g.pf("%sSC.setFloat32(0, x, true);\n", ind)
 	g.pf("%sv = SC.getUint32(0, true);\n", ind)
 	g.mergeW(32, ind)
@@ -1144,6 +1147,9 @@ func (g *fgen) emitWriteCompressedFloat(f *ir.Field, name, ind string) {
 	maxF := float32(f.FMax)
 	deltaF := maxF - minF
 	mivF := float32(maxInt)
+	// the Number type test rides first: Math.fround converts null, a boolean
+	// or a numeric string to a number rather than refusing it (SPEC §5.1)
+	g.guard(fmt.Sprintf("typeof %s !== \"number\"", name), " // a float is a Number", ind)
 	g.pf("%sx = globalThis.Math.fround(%s);\n", ind, name)
 	g.guard("!globalThis.Number.isFinite(x)", "", ind)
 	g.guard(fmt.Sprintf("x < %s || x > %s", f32lit(float64(minF)), f32lit(float64(maxF))), "", ind)
@@ -1348,6 +1354,10 @@ func (g *fgen) emitWriteEnum(ref *ir.Enum, name, ind string) {
 
 func (g *fgen) emitWriteFlags(ref *ir.Flags, name, ind string) {
 	wb := int64(ref.WireBits)
+	// the BigInt type test rides first, in every build (SPEC §5.1):
+	// BigInt.asUintN and setBigUint64 throw a TypeError on a Number, null or
+	// undefined, and asUintN converts a numeric string such as "1"
+	g.guard(fmt.Sprintf("typeof %s !== \"bigint\"", name), " // a flags value is a BigInt", ind)
 	if wb < 64 {
 		lim := new(big.Int).Lsh(big.NewInt(1), uint(wb))
 		g.guard(fmt.Sprintf("globalThis.BigInt.asUintN(64, %s) >= %sn", name, lim.String()),

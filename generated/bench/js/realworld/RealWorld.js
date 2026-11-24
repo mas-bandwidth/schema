@@ -460,6 +460,9 @@ export function WriteRealPacket(stream, value) {
     return false;
   }
   {
+    if (typeof value.f004Cf32 !== "number") {
+      return false; // a float is a Number (SPEC §5.1)
+    }
     const x = globalThis.Math.fround(value.f004Cf32);
     if (!globalThis.Number.isFinite(x) || x < 0.0 || x > 2000.0) {
       return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
@@ -626,6 +629,9 @@ export function WriteRealPacket(stream, value) {
     return false;
   }
   {
+    if (typeof value.f027Cf32 !== "number") {
+      return false; // a float is a Number (SPEC §5.1)
+    }
     const x = globalThis.Math.fround(value.f027Cf32);
     if (!globalThis.Number.isFinite(x) || x < -2.0 || x > 2.0) {
       return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
@@ -871,6 +877,9 @@ export function WriteRealPacket(stream, value) {
     return false;
   }
   {
+    if (typeof value.f061Cf32 !== "number") {
+      return false; // a float is a Number (SPEC §5.1)
+    }
     const x = globalThis.Math.fround(value.f061Cf32);
     if (!globalThis.Number.isFinite(x) || x < -90.0 || x > 90.0) {
       return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
@@ -902,6 +911,9 @@ export function WriteRealPacket(stream, value) {
     return false;
   }
   {
+    if (typeof value.f065Cf32 !== "number") {
+      return false; // a float is a Number (SPEC §5.1)
+    }
     const x = globalThis.Math.fround(value.f065Cf32);
     if (!globalThis.Number.isFinite(x) || x < 0.0 || x > 30.0) {
       return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
@@ -919,6 +931,9 @@ export function WriteRealPacket(stream, value) {
     return false;
   }
   {
+    if (typeof value.f067Cf32 !== "number") {
+      return false; // a float is a Number (SPEC §5.1)
+    }
     const x = globalThis.Math.fround(value.f067Cf32);
     if (!globalThis.Number.isFinite(x) || x < -100.0 || x > 100.0) {
       return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
@@ -929,6 +944,9 @@ export function WriteRealPacket(stream, value) {
     return false;
   }
   {
+    if (typeof value.f068Cf32 !== "number") {
+      return false; // a float is a Number (SPEC §5.1)
+    }
     const x = globalThis.Math.fround(value.f068Cf32);
     if (!globalThis.Number.isFinite(x) || x < 0.0 || x > 2000.0) {
       return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
@@ -953,6 +971,9 @@ export function WriteRealPacket(stream, value) {
     return false;
   }
   {
+    if (typeof value.f071Cf32 !== "number") {
+      return false; // a float is a Number (SPEC §5.1)
+    }
     const x = globalThis.Math.fround(value.f071Cf32);
     if (!globalThis.Number.isFinite(x) || x < 0.0 || x > 10.0) {
       return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
@@ -963,6 +984,9 @@ export function WriteRealPacket(stream, value) {
     return false;
   }
   {
+    if (typeof value.f072Cf32 !== "number") {
+      return false; // a float is a Number (SPEC §5.1)
+    }
     const x = globalThis.Math.fround(value.f072Cf32);
     if (!globalThis.Number.isFinite(x) || x < 0.0 || x > 100.0) {
       return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
@@ -1099,6 +1123,9 @@ export function WriteRealPacket(stream, value) {
   NUMBER_SCRATCH.value = value.f090Uint;
   if (!stream.serializeBits(NUMBER_SCRATCH, 8)) {
     return false;
+  }
+  if (typeof value.f091Flags !== "bigint") {
+    return false; // a flags value is a BigInt (SPEC §5.1)
   }
   {
     const flagsValue = globalThis.BigInt.asUintN(64, value.f091Flags);

@@ -123,7 +123,7 @@ export function WriteBenchPacketFlat(view, value) {
   }
   lo = (lo | (((value.bits23 & 0x7fffff) | ((value.flag ? 1 : 0) << 23)) << 1)) >>> 0;
   x = value.x;
-  if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
+  if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
     return -1;
   }
   SC.setFloat32(0, x, true);
@@ -131,7 +131,7 @@ export function WriteBenchPacketFlat(view, value) {
   view.setUint32(8, (lo | (v << 25)) >>> 0, true);
   lo = v >>> 7;
   x = value.y;
-  if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
+  if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
     return -1;
   }
   SC.setFloat32(0, x, true);
@@ -139,7 +139,7 @@ export function WriteBenchPacketFlat(view, value) {
   view.setUint32(12, (lo | (v << 25)) >>> 0, true);
   lo = v >>> 7;
   x = value.z;
-  if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
+  if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
     return -1;
   }
   SC.setFloat32(0, x, true);
@@ -742,6 +742,9 @@ export function WriteMixedEntityFlat(view, value) {
   view.setUint32(8, (lo | (v << 23)) >>> 0, true);
   lo = v >>> 9;
   if (!globalThis.Number.isInteger(value.weapon) || value.weapon < 0 || value.weapon > 15) { // headroom above the wire range cannot ride
+    return -1;
+  }
+  if (typeof value.damage !== "bigint") { // a flags value is a BigInt
     return -1;
   }
   if (globalThis.BigInt.asUintN(64, value.damage) >= 256n) { // a mask bit above the wire width cannot ride
@@ -1542,6 +1545,9 @@ export function WriteBenchMixedFlat(view, value) {
     if (!globalThis.Number.isInteger(e0.weapon) || e0.weapon < 0 || e0.weapon > 15) { // headroom above the wire range cannot ride
       return -1;
     }
+    if (typeof e0.damage !== "bigint") { // a flags value is a BigInt
+      return -1;
+    }
     if (globalThis.BigInt.asUintN(64, e0.damage) >= 256n) { // a mask bit above the wire width cannot ride
       return -1;
     }
@@ -1816,6 +1822,9 @@ export function WriteBenchMixedFlat(view, value) {
       }
     }
   }
+  if (typeof value.aimX !== "number") { // a float is a Number
+    return -1;
+  }
   x = globalThis.Math.fround(value.aimX);
   if (!globalThis.Number.isFinite(x)) {
     return -1;
@@ -1835,6 +1844,9 @@ export function WriteBenchMixedFlat(view, value) {
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (8 - sb);
   }
+  if (typeof value.aimY !== "number") { // a float is a Number
+    return -1;
+  }
   x = globalThis.Math.fround(value.aimY);
   if (!globalThis.Number.isFinite(x)) {
     return -1;
@@ -1853,6 +1865,9 @@ export function WriteBenchMixedFlat(view, value) {
     wi += 4;
     sb -= 32;
     lo = sb === 0 ? 0 : v >>> (8 - sb);
+  }
+  if (typeof value.aimZ !== "number") { // a float is a Number
+    return -1;
   }
   x = globalThis.Math.fround(value.aimZ);
   if (!globalThis.Number.isFinite(x)) {
@@ -1874,7 +1889,7 @@ export function WriteBenchMixedFlat(view, value) {
     lo = sb === 0 ? 0 : v >>> (8 - sb);
   }
   x = value.recoil;
-  if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
+  if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
     return -1;
   }
   SC.setFloat32(0, x, true);

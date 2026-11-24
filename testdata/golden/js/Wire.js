@@ -428,6 +428,9 @@ export function WriteProbeSample(stream, value) {
     return false;
   }
   {
+    if (typeof value.orientation !== "number") {
+      return false; // a float is a Number (SPEC §5.1)
+    }
     const x = globalThis.Math.fround(value.orientation);
     if (!globalThis.Number.isFinite(x) || x < -180.0 || x > 180.0) {
       return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
@@ -1239,6 +1242,9 @@ export function WriteProbeReport(stream, value) {
   if (!WriteProbeHeader(stream, value.header)) {
     return false;
   }
+  if (typeof value.flags !== "bigint") {
+    return false; // a flags value is a BigInt (SPEC §5.1)
+  }
   {
     const flagsValue = globalThis.BigInt.asUintN(64, value.flags);
     if (flagsValue >= 1n << 8n) { // a mask bit above the wire width cannot ride
@@ -1437,6 +1443,9 @@ export function WriteTestData(stream, value) {
     return false;
   }
   {
+    if (typeof value.compressedFloatValue !== "number") {
+      return false; // a float is a Number (SPEC §5.1)
+    }
     const x = globalThis.Math.fround(value.compressedFloatValue);
     if (!globalThis.Number.isFinite(x) || x < 0.0 || x > 10.0) {
       return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
@@ -1669,6 +1678,9 @@ export function WriteCompressedProbe(stream, value) {
     return false; // a record or union value is an object (SPEC §5.1)
   }
   {
+    if (typeof value.boundary !== "number") {
+      return false; // a float is a Number (SPEC §5.1)
+    }
     const x = globalThis.Math.fround(value.boundary);
     if (!globalThis.Number.isFinite(x) || x < 0.0 || x > 10.0) {
       return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
@@ -1679,6 +1691,9 @@ export function WriteCompressedProbe(stream, value) {
     return false;
   }
   {
+    if (typeof value.offset !== "number") {
+      return false; // a float is a Number (SPEC §5.1)
+    }
     const x = globalThis.Math.fround(value.offset);
     if (!globalThis.Number.isFinite(x) || x < -5.0 || x > 5.0) {
       return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)

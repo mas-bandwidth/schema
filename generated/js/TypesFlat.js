@@ -1083,35 +1083,35 @@ export function WriteInputFlat(view, value) {
     return -1;
   }
   x = value.stickX;
-  if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
+  if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
     return -1;
   }
   SC.setFloat32(0, x, true);
   v = SC.getUint32(0, true);
   view.setUint32(0, v, true);
   x = value.stickY;
-  if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
+  if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
     return -1;
   }
   SC.setFloat32(0, x, true);
   v = SC.getUint32(0, true);
   view.setUint32(4, v, true);
   x = value.throttle;
-  if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
+  if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
     return -1;
   }
   SC.setFloat32(0, x, true);
   v = SC.getUint32(0, true);
   view.setUint32(8, v, true);
   x = value.yaw;
-  if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
+  if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
     return -1;
   }
   SC.setFloat32(0, x, true);
   v = SC.getUint32(0, true);
   view.setUint32(12, v, true);
   x = value.pitch;
-  if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
+  if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
     return -1;
   }
   SC.setFloat32(0, x, true);
@@ -1374,7 +1374,7 @@ export function WriteInputPacketFlat(view, value) {
       return -1;
     }
     x = e0.stickX;
-    if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
+    if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
       return -1;
     }
     SC.setFloat32(0, x, true);
@@ -1388,7 +1388,7 @@ export function WriteInputPacketFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
     x = e0.stickY;
-    if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
+    if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
       return -1;
     }
     SC.setFloat32(0, x, true);
@@ -1402,7 +1402,7 @@ export function WriteInputPacketFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
     x = e0.throttle;
-    if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
+    if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
       return -1;
     }
     SC.setFloat32(0, x, true);
@@ -1416,7 +1416,7 @@ export function WriteInputPacketFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
     x = e0.yaw;
-    if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
+    if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
       return -1;
     }
     SC.setFloat32(0, x, true);
@@ -1430,7 +1430,7 @@ export function WriteInputPacketFlat(view, value) {
       lo = sb === 0 ? 0 : v >>> (32 - sb);
     }
     x = e0.pitch;
-    if (!globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float must be finite
+    if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number
       return -1;
     }
     SC.setFloat32(0, x, true);
@@ -1876,6 +1876,9 @@ export function WriteShipCreateFlat(view, value) {
   wi = 24;
   sb = 4;
   if (value.hasFlags) {
+    if (typeof value.flags !== "bigint") { // a flags value is a BigInt
+      return -1;
+    }
     if (globalThis.BigInt.asUintN(64, value.flags) >= 16n) { // a mask bit above the wire width cannot ride
       return -1;
     }

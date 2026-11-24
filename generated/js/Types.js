@@ -950,6 +950,9 @@ export function WriteShipCreate(stream, value) {
     return false;
   }
   if (value.hasFlags) {
+    if (typeof value.flags !== "bigint") {
+      return false; // a flags value is a BigInt (SPEC §5.1)
+    }
     {
       const flagsValue = globalThis.BigInt.asUintN(64, value.flags);
       if (flagsValue >= 1n << 4n) { // a mask bit above the wire width cannot ride

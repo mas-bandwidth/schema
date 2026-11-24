@@ -858,6 +858,9 @@ export function WriteMixedEntity(stream, value) {
   if (!stream.serializeBits(NUMBER_SCRATCH, 4)) {
     return false;
   }
+  if (typeof value.damage !== "bigint") {
+    return false; // a flags value is a BigInt (SPEC §5.1)
+  }
   {
     const flagsValue = globalThis.BigInt.asUintN(64, value.damage);
     if (flagsValue >= 1n << 8n) { // a mask bit above the wire width cannot ride
@@ -1574,6 +1577,9 @@ export function WriteBenchMixed(stream, value) {
     return false;
   }
   {
+    if (typeof value.aimX !== "number") {
+      return false; // a float is a Number (SPEC §5.1)
+    }
     const x = globalThis.Math.fround(value.aimX);
     if (!globalThis.Number.isFinite(x) || x < -1.0 || x > 1.0) {
       return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
@@ -1584,6 +1590,9 @@ export function WriteBenchMixed(stream, value) {
     return false;
   }
   {
+    if (typeof value.aimY !== "number") {
+      return false; // a float is a Number (SPEC §5.1)
+    }
     const x = globalThis.Math.fround(value.aimY);
     if (!globalThis.Number.isFinite(x) || x < -1.0 || x > 1.0) {
       return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
@@ -1594,6 +1603,9 @@ export function WriteBenchMixed(stream, value) {
     return false;
   }
   {
+    if (typeof value.aimZ !== "number") {
+      return false; // a float is a Number (SPEC §5.1)
+    }
     const x = globalThis.Math.fround(value.aimZ);
     if (!globalThis.Number.isFinite(x) || x < -1.0 || x > 1.0) {
       return false; // a compressed float off its range is refused before quantizing (SPEC §5.1)
