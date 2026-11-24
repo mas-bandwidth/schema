@@ -173,6 +173,7 @@ namespace Tabledemo
 
         public static bool TeamConfigCollectTyped(TeamConfig v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null TeamConfig is written");
             TableFieldInfo[] fields = TeamConfigTableType().Fields;
             if (v.SpawnCount != 4 && !ids.Add(0xceec99e2d65db674ul)) return false;
             if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
@@ -272,6 +273,7 @@ namespace Tabledemo
 
         public static bool GunnerConfigCollectTyped(GunnerConfig v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null GunnerConfig is written");
             System.Diagnostics.Debug.Assert(float.IsFinite(v.Reaction));
             if (BitConverter.SingleToUInt32Bits(v.Reaction) != 0x3e4ccccdu && !ids.Add(0xb75aa3662201646aul)) return false;
             if (v.Tracking != false && !ids.Add(0xa6bf719a4602b0bcul)) return false;
@@ -373,6 +375,7 @@ namespace Tabledemo
 
         public static bool TurretConfigCollectTyped(TurretConfig v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null TurretConfig is written");
             TableFieldInfo[] fields = TurretConfigTableType().Fields;
             System.Diagnostics.Debug.Assert(float.IsFinite(v.Damage));
             if (BitConverter.SingleToUInt32Bits(v.Damage) != 0x41200000u && !ids.Add(0x7f6308be8ab37fc0ul)) return false;
@@ -485,6 +488,7 @@ namespace Tabledemo
 
         public static bool HullConfigCollectTyped(HullConfig v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null HullConfig is written");
             TableFieldInfo[] fields = HullConfigTableType().Fields;
             System.Diagnostics.Debug.Assert(float.IsFinite(v.Health));
             if (BitConverter.SingleToUInt32Bits(v.Health) != 0x42c80000u && !ids.Add(0x7f69d4b5288ba9cful)) return false;
@@ -600,6 +604,7 @@ namespace Tabledemo
 
         public static bool KeyedConfigCollectTyped(KeyedConfig v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null KeyedConfig is written");
             TableFieldInfo[] fields = KeyedConfigTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
@@ -701,6 +706,7 @@ namespace Tabledemo
 
         public static bool ScoreBoardCollectTyped(ScoreBoard v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null ScoreBoard is written");
             TableFieldInfo[] fields = ScoreBoardTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             return true;
@@ -1131,6 +1137,7 @@ namespace Tabledemo
         // which is also what zero-fills every byte of declared slack.
         public static void TeamConfigFixedWriteBody(Span<byte> b, TeamConfig value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null TeamConfig is written");
             if (value == null) return;
             BinaryPrimitives.WriteInt32LittleEndian(b, (int)value.SpawnCount);
             int len_banner = value.Banner != null ? value.BannerLength : 0;
@@ -1143,6 +1150,7 @@ namespace Tabledemo
         // which is also what zero-fills every byte of declared slack.
         public static void GunnerConfigFixedWriteBody(Span<byte> b, GunnerConfig value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null GunnerConfig is written");
             if (value == null) return;
             BinaryPrimitives.WriteSingleLittleEndian(b, value.Reaction);
             b.Slice(4)[0] = (byte)(value.Tracking ? 1 : 0);
@@ -1152,6 +1160,7 @@ namespace Tabledemo
         // which is also what zero-fills every byte of declared slack.
         public static void TurretConfigFixedWriteBody(Span<byte> b, TurretConfig value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null TurretConfig is written");
             if (value == null) return;
             BinaryPrimitives.WriteSingleLittleEndian(b, value.Damage);
             BinaryPrimitives.WriteSingleLittleEndian(b.Slice(4), value.Cooldown);
@@ -1166,6 +1175,7 @@ namespace Tabledemo
         // which is also what zero-fills every byte of declared slack.
         public static void HullConfigFixedWriteBody(Span<byte> b, HullConfig value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null HullConfig is written");
             if (value == null) return;
             BinaryPrimitives.WriteSingleLittleEndian(b, value.Health);
             BinaryPrimitives.WriteSingleLittleEndian(b.Slice(4), value.Mass);
@@ -1182,6 +1192,7 @@ namespace Tabledemo
         // which is also what zero-fills every byte of declared slack.
         public static void ScoreBoardFixedWriteBody(Span<byte> b, ScoreBoard value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null ScoreBoard is written");
             if (value == null) return;
             if (value.PerTeam != null) { TableFixedWire.WriteLittle<int>(value.PerTeam.AsSpan(0, global::System.Math.Min(value.PerTeam.Length, 3)), b); }
         }
@@ -1190,6 +1201,7 @@ namespace Tabledemo
         // which is also what zero-fills every byte of declared slack.
         public static void KeyedConfigFixedWriteBody(Span<byte> b, KeyedConfig value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null KeyedConfig is written");
             if (value == null) return;
             if (value.Teams.Slots != null)
             {

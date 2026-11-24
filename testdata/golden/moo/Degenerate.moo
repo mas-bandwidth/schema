@@ -159,6 +159,9 @@ function M.WriteSpanF64(stream: any, value: SpanF64): boolean
 	if type(value.Values) ~= "table" then -- the array's table storage
 		return false
 	end
+	if #value.Values ~= 2 then -- a [N]T holds exactly N values (SPEC §5.1)
+		return false
+	end
 	for i = 1, 2 do
 		if not serialize.Uint64.is(value.Values[i]) or bit32.band(value.Values[i][2], 0x7FF00000) == 0x7FF00000 then -- a float64 is its finite binary64 pattern, a Uint64 (SPEC §4.3)
 			return false
@@ -236,6 +239,9 @@ end
 -- WriteSpanU64 writes the type wire (SPEC §4.3, §6.1: the declared order).
 function M.WriteSpanU64(stream: any, value: SpanU64): boolean
 	if type(value.Values) ~= "table" then -- the array's table storage
+		return false
+	end
+	if #value.Values ~= 2 then -- a [N]T holds exactly N values (SPEC §5.1)
 		return false
 	end
 	for i = 1, 2 do
@@ -317,6 +323,9 @@ function M.WriteSpanI64(stream: any, value: SpanI64): boolean
 	if type(value.Values) ~= "table" then -- the array's table storage
 		return false
 	end
+	if #value.Values ~= 2 then -- a [N]T holds exactly N values (SPEC §5.1)
+		return false
+	end
 	for i = 1, 2 do
 		if not isWide(serialize.Int64, value.Values[i]) then
 			return false
@@ -396,6 +405,9 @@ function M.WriteSpanOne(stream: any, value: SpanOne): boolean
 	if type(value.Values) ~= "table" then -- the array's table storage
 		return false
 	end
+	if #value.Values ~= 1 then -- a [N]T holds exactly N values (SPEC §5.1)
+		return false
+	end
 	for i = 1, 1 do
 		if not isWide(serialize.Uint64, value.Values[i]) then
 			return false
@@ -473,6 +485,9 @@ end
 -- WriteSpanChunk writes the type wire (SPEC §4.3, §6.1: the declared order).
 function M.WriteSpanChunk(stream: any, value: SpanChunk): boolean
 	if type(value.Values) ~= "table" then -- the array's table storage
+		return false
+	end
+	if #value.Values ~= 4 then -- a [N]T holds exactly N values (SPEC §5.1)
 		return false
 	end
 	for i = 1, 4 do
@@ -556,6 +571,9 @@ end
 -- WriteSpanTail writes the type wire (SPEC §4.3, §6.1: the declared order).
 function M.WriteSpanTail(stream: any, value: SpanTail): boolean
 	if type(value.Values) ~= "table" then -- the array's table storage
+		return false
+	end
+	if #value.Values ~= 2 then -- a [N]T holds exactly N values (SPEC §5.1)
 		return false
 	end
 	for i = 1, 2 do
@@ -656,6 +674,9 @@ function M.WriteSpanTwice(stream: any, value: SpanTwice): boolean
 	if type(value.A) ~= "table" then -- the array's table storage
 		return false
 	end
+	if #value.A ~= 2 then -- a [N]T holds exactly N values (SPEC §5.1)
+		return false
+	end
 	for i = 1, 2 do
 		if not serialize.Uint64.is(value.A[i]) or bit32.band(value.A[i][2], 0x7FF00000) == 0x7FF00000 then -- a float64 is its finite binary64 pattern, a Uint64 (SPEC §4.3)
 			return false
@@ -666,6 +687,9 @@ function M.WriteSpanTwice(stream: any, value: SpanTwice): boolean
 		end
 	end
 	if type(value.B) ~= "table" then -- the array's table storage
+		return false
+	end
+	if #value.B ~= 2 then -- a [N]T holds exactly N values (SPEC §5.1)
 		return false
 	end
 	for i = 1, 2 do
