@@ -605,6 +605,8 @@ static partial class Program
             Tabledemo.Schema.MoodsFromJson, Tabledemo.Schema.MoodsToJsonMeasure, Tabledemo.Schema.MoodsToJson),
         Demo<Tabledemo.MoodField>("MoodField", Tabledemo.Schema.MoodFieldLoad, Tabledemo.Schema.MoodFieldMeasure, Tabledemo.Schema.MoodFieldSave,
             Tabledemo.Schema.MoodFieldFromJson, Tabledemo.Schema.MoodFieldToJsonMeasure, Tabledemo.Schema.MoodFieldToJson),
+        Demo<Tabledemo.VarMoods>("VarMoods", Tabledemo.Schema.VarMoodsLoad, Tabledemo.Schema.VarMoodsMeasure, Tabledemo.Schema.VarMoodsSave,
+            Tabledemo.Schema.VarMoodsFromJson, Tabledemo.Schema.VarMoodsToJsonMeasure, Tabledemo.Schema.VarMoodsToJson),
         Demo<Tabledemo.MinArmFix>("MinArmFix", Tabledemo.Schema.MinArmFixLoad, Tabledemo.Schema.MinArmFixMeasure, Tabledemo.Schema.MinArmFixSave,
             Tabledemo.Schema.MinArmFixFromJson, Tabledemo.Schema.MinArmFixToJsonMeasure, Tabledemo.Schema.MinArmFixToJson),
         Demo<Tabledemo.MinPlainFix>("MinPlainFix", Tabledemo.Schema.MinPlainFixLoad, Tabledemo.Schema.MinPlainFixMeasure, Tabledemo.Schema.MinPlainFixSave,
