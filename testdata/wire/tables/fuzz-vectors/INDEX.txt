@@ -437,11 +437,14 @@ text_ill_formed_repeat_reads_default backenddemo StorePurchase testdata/wire/tab
 # Certify run 45147273969. 51 bytes, sha256 228fe1e666bdbb2e...a10ff3.
 widenbound_arm_slack_i8 messagedemo ToolEnvelope testdata/wire/tables/fuzz-vectors/widenbound_arm_slack_i8.bin
 
-# A FLAGS BIT AT OR ABOVE THE READER'S WIDTH IS DAMAGE (docs/SPEC.md §5.1 row 9;
-# docs/SPEC-TABLES.md §3, §4). The seed is fixedevo_v2_as_v3: the v2 wire of
+# A FLAGS BIT AT OR ABOVE THE READER'S WIDTH IS DAMAGE (R17 (flags) in
+# docs/SPEC-CONFORMANCE.md, shared case r17_fixed_flags_past_width, the fixed
+# form of the rule; docs/SPEC-TABLES.md §4, §3.3 and docs/SPEC.md §4.2). The seed is fixedevo_v2_as_v3: the v2 wire of
 # test/tables/fixedevo (testdata/conformance/tables/wire/fixedevo_v2.bin) read
 # by the v3 declaration. The mutant sets a bit in def_flags (EvoFlags) that the
 # reader's declared width does not hold; the reader refuses it, as the oracle
 # does, and never masks it away. The Rust reader accepted it until #4843.
+# EvoRoot is a fixed root, so the retain arm does not cover it: retain on a fixed
+# root is outside the retain arm.
 # 828 bytes, sha256 8ce13da2f0bd8e56...deb03065.
 fixedevo_flags_bit_past_width tblfixedevo EvoRoot testdata/wire/tables/fuzz-vectors/fixedevo_flags_bit_past_width.bin

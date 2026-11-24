@@ -36,7 +36,9 @@
 # tblvaluedefaults.FixedDefaults 2, and 1 each to backenddemo.StorePurchase,
 # tabledemo.ArchiveConfig, tabledemo.KeyedConfig, tbla2.Root, tblk1.Root,
 # tblk2.Root and tblscalars2.SimState.
-SQUIRREL_WIRE_FUZZ_OUTSIDE_SEEDS := 321
+# The #4954 vectors add one (the fixed root tblfixedevo.EvoRoot is outside the
+# builder arm): 322 on the combined head, measured.
+SQUIRREL_WIRE_FUZZ_OUTSIDE_SEEDS := 322
 
 .PHONY: tables-squirrel-wire-fuzz
 tables-squirrel-wire-fuzz: build/conformance-harness build/conformance-squirrel toolchain-squirrel
