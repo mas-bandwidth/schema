@@ -1458,7 +1458,23 @@ public final class Driver {
                     jsonValue = variable.fromFixed(fixedValue);
                     value = jsonValue;
                 }
-                if (!mutateWriteRefusal(value, path, kind, text)) {
+                if (kind.equals("shape")) {
+                    // A VALUE OF THE WRONG KIND (DW-TABLE-SHAPE): Java's types
+                    // hold one such value, null in a reference place; it is
+                    // put there and written, so the answer is the writer's
+                    // own. Every other one the compiler refuses first.
+                    if (!text.equals("null")) {
+                        spill(out, name, "unrepresentable\n");
+                        continue;
+                    }
+                    if (path.equals(".")) {
+                        value = null;
+                        fixedValue = null;
+                    } else if (!writeRefusalShapeNull(value, path)) {
+                        spill(out, name, "unrepresentable\n");
+                        continue;
+                    }
+                } else if (!mutateWriteRefusal(value, path, kind, text)) {
                     spill(out, name, "unrepresentable\n");
                     continue;
                 }
@@ -1466,6 +1482,9 @@ public final class Driver {
                 try {
                     switch (surface) {
                         case "write-refusal":
+                        case "write-refusal-shape":
+                            // the shape rows' lawful twins are written as
+                            // write-refusal writes them
                             // THE ROOT'S OWN FORM'S WRITER: a declared fixed
                             // root is written by the fixed form, a variable
                             // root by its variable save.
@@ -1579,6 +1598,54 @@ public final class Driver {
             }
         }
         return false;
+    }
+
+    // writeRefusalShapeNull puts null where a `write-refusal-shape` row's path
+    // names, when that place's type is a reference: a non-final field of a
+    // class type, an element of an array or List of a class type (a boxed
+    // Integer included). false: the place is a primitive, or a final field,
+    // which Java cannot set to null, and the row is `unrepresentable`.
+    private static boolean writeRefusalShapeNull(Object value, String path) throws ReflectiveOperationException {
+        String[] segments = path.split("\\.");
+        Object current = value;
+        for (int i = 0; i < segments.length - 1; i++) {
+            WriteRefusalSegment segment = WriteRefusalSegment.parse(segments[i]);
+            Object next = writeRefusalField(current.getClass(), segment.name).get(current);
+            current = segment.indexed ? writeRefusalElement(next, segment.index) : next;
+        }
+        WriteRefusalSegment last = WriteRefusalSegment.parse(segments[segments.length - 1]);
+        java.lang.reflect.Field field = writeRefusalField(current.getClass(), last.name);
+        if (!last.indexed) {
+            if (field.getType().isPrimitive() || java.lang.reflect.Modifier.isFinal(field.getModifiers())) {
+                return false;
+            }
+            field.set(current, null);
+            return true;
+        }
+        Object container = field.get(current);
+        if (container != null && container.getClass().isArray()) {
+            if (container.getClass().getComponentType().isPrimitive()) {
+                return false;
+            }
+            // `f[i]` is the array's first i elements as loaded, then the value
+            java.lang.reflect.Array.set(container, last.index, null);
+            java.lang.reflect.Field count = writeRefusalFieldOrNull(current.getClass(), last.name + "_count");
+            if (count != null && count.getType() == int.class) {
+                count.setInt(current, last.index + 1);
+            }
+            return true;
+        }
+        if (container instanceof java.util.List<?> rawList) {
+            @SuppressWarnings("unchecked")
+            java.util.List<Object> list = (java.util.List<Object>) rawList;
+            if (list.size() < last.index) {
+                throw new IllegalArgumentException(path + ": the list holds " + list.size() + " element(s) as loaded");
+            }
+            list.subList(last.index, list.size()).clear();
+            list.add(null);
+            return true;
+        }
+        throw new IllegalArgumentException(path + " names no element place");
     }
 
     private static boolean mutateWriteRefusal(Object value, String path, String kind, String text)
@@ -3099,6 +3166,132 @@ public final class Driver {
         return 0;
     }
 
+    // readIntoRetainRow answers a `retain` row (test/conformance/README.md): the
+    // retaining load (NodeRetain.loadRetain, SPEC-TABLES section 6.6) into ONE
+    // report the driver PRE-FILLED, then the damaged load and the lawful load
+    // again into that report. After each lawful load the report must equal,
+    // field by field, what the same load leaves in a FRESH report (section 6.5:
+    // every read zeroes a supplied report in full, the retain family included).
+    // Every public field is filled directly; the package-private node table
+    // state is not reachable from here and is not part of the contract.
+    private static String retainReportDiff(Object r, Object fresh) {
+        StringBuilder diff = new StringBuilder();
+        try {
+            for (java.lang.reflect.Field f : r.getClass().getFields()) {
+                if (java.lang.reflect.Modifier.isStatic(f.getModifiers())) { continue; }
+                Object have = f.get(r);
+                Object want = f.get(fresh);
+                if (!java.util.Objects.equals(have, want)) { diff.append(" " + f.getName() + "=" + have + " want " + want); }
+            }
+        } catch (IllegalAccessException e) {
+            return "threw " + e;
+        }
+        return diff.length() == 0 ? "zeroed" : "kept" + diff;
+    }
+
+    private static String readIntoRetainStep(byte[] wire, tblrt1.TableVariable.Report r) {
+        try {
+            tblrt1.TableRetain store = new tblrt1.TableRetain(RETAIN_BYTES, RETAIN_IDS);
+            tblrt1.NodeVariable.Value root = tblrt1.NodeRetain.loadRetain(wire, store, r);
+            return root != null && !r.refused && !r.damaged ? "read\n" : "refused\n";
+        } catch (RuntimeException | Error thrown) {
+            return "threw\n";
+        }
+    }
+
+    private static String readIntoRetainRow(String unit, String root, String lawful, String damaged) throws IOException {
+        if (!unit.equals("tblrt1") || !root.equals("Node")) {
+            return "unrepresentable: no retaining codec for " + unit + " " + root + "\n";
+        }
+        byte[] good = Files.readAllBytes(Paths.get(lawful));
+        byte[] bad = Files.readAllBytes(Paths.get(damaged));
+        tblrt1.TableVariable.Report fresh = new tblrt1.TableVariable.Report();
+        readIntoRetainStep(good, fresh);
+        tblrt1.TableVariable.Report r = new tblrt1.TableVariable.Report();
+        r.unknown = 7; r.widened = 7; r.retained = 7; r.retainLost = 7; r.missingRequired = 7;
+        r.damaged = true; r.refused = true; r.reason = "stale";
+        StringBuilder answer = new StringBuilder();
+        answer.append(readIntoRetainStep(good, r));
+        answer.append(retainReportDiff(r, fresh)).append("\n");
+        answer.append(readIntoRetainStep(bad, r));
+        answer.append(readIntoRetainStep(good, r));
+        answer.append(retainReportDiff(r, fresh)).append("\n");
+        return answer.toString();
+    }
+
+    // pre-fill every public int/boolean/String field of a report with a stale value
+    private static void retainPrefill(Object r) throws ReflectiveOperationException {
+        for (java.lang.reflect.Field f : r.getClass().getFields()) {
+            if (java.lang.reflect.Modifier.isStatic(f.getModifiers()) || java.lang.reflect.Modifier.isFinal(f.getModifiers())) { continue; }
+            if (f.getType() == int.class) { f.setInt(r, 7); }
+            else if (f.getType() == long.class) { f.setLong(r, 7); }
+            else if (f.getType() == boolean.class) { f.setBoolean(r, true); }
+            else if (f.getType() == String.class) { f.set(r, "stale"); }
+        }
+    }
+
+    // readIntoPlainRow is the `region` form: the protocol of the retain row through the plain
+    // Counted load (Java has no region read; the value Load stands in).
+    private static String readIntoPlainRow(String unit, String root, String lawful, String damaged) throws IOException {
+        if (!unit.equals("tblsurf") || !root.equals("Counted")) {
+            return "unrepresentable: no plain codec for " + unit + " " + root + "\n";
+        }
+        byte[] good = Files.readAllBytes(Paths.get(lawful));
+        byte[] bad = Files.readAllBytes(Paths.get(damaged));
+        try {
+            surfaces.TableVariable.Report fresh = new surfaces.TableVariable.Report();
+            surfaces.CountedVariable.load(good, fresh);
+            surfaces.TableVariable.Report r = new surfaces.TableVariable.Report();
+            retainPrefill(r);
+            StringBuilder answer = new StringBuilder();
+            answer.append(plainStep(good, r));
+            answer.append(retainReportDiff(r, fresh)).append("\n");
+            answer.append(plainStep(bad, r));
+            answer.append(plainStep(good, r));
+            answer.append(retainReportDiff(r, fresh)).append("\n");
+            return answer.toString();
+        } catch (ReflectiveOperationException e) {
+            return "threw " + e + "\n";
+        }
+    }
+
+    private static String plainStep(byte[] wire, surfaces.TableVariable.Report r) {
+        try {
+            surfaces.CountedVariable.Value v = surfaces.CountedVariable.load(wire, r);
+            return v != null && !r.refused && !r.damaged ? "read\n" : "refused\n";
+        } catch (RuntimeException | Error thrown) {
+            return "threw\n";
+        }
+    }
+
+    // readIntoRetainFixedRow is the `retain-fixed` form: NarrowRetain.loadRetain on a
+    // fixed-class root takes the report and refuses through it (section 6.6).
+    private static String readIntoRetainFixedRow(String unit, String root, String lawful) throws IOException {
+        if (!unit.equals("tblsurf") || !root.equals("Narrow")) {
+            return "unrepresentable: no retaining codec for " + unit + " " + root + "\n";
+        }
+        byte[] good = Files.readAllBytes(Paths.get(lawful));
+        try {
+            surfaces.TableVariable.Report fresh = new surfaces.TableVariable.Report();
+            fixedRetainStep(good, fresh);
+            surfaces.TableVariable.Report r = new surfaces.TableVariable.Report();
+            retainPrefill(r);
+            return fixedRetainStep(good, r) + retainReportDiff(r, fresh) + "\n";
+        } catch (ReflectiveOperationException e) {
+            return "threw " + e + "\n";
+        }
+    }
+
+    private static String fixedRetainStep(byte[] wire, surfaces.TableVariable.Report r) {
+        try {
+            surfaces.TableRetain store = new surfaces.TableRetain(RETAIN_BYTES, RETAIN_IDS);
+            surfaces.NarrowVariable.Value v = surfaces.NarrowRetain.loadRetain(wire, store, r);
+            return v != null && !r.refused && !r.damaged ? "read\n" : "refused\n";
+        } catch (RuntimeException | Error thrown) {
+            return "threw\n";
+        }
+    }
+
     // READ INTO THE CALLER'S VALUES (read-into): one report and one set of
     // values through a lawful read, a refused read and the lawful read again.
     private static int surfaceReadInto(String out) throws IOException {
@@ -3121,6 +3314,16 @@ public final class Driver {
                     case "fixed":
                     case "message":
                         break;
+                    case "retain":
+                        spill(out, name, readIntoRetainRow(unit, root, lawful, damaged));
+                        continue;
+                    case "region":
+                        // Java has no region read: the plain value Load of the variable root
+                        spill(out, name, readIntoPlainRow(unit, root, lawful, damaged));
+                        continue;
+                    case "retain-fixed":
+                        spill(out, name, readIntoRetainFixedRow(unit, root, lawful));
+                        continue;
                     default:
                         return failInt(name + ": unknown read-into form " + form);
                 }
@@ -3262,7 +3465,7 @@ public final class Driver {
                     + "block\nblock-foreign\n"
                     + "block-dump\nforgery\ncook\ncook-write\ncook-foreign\ncook-forgery\n"
                     + "write-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n"
-                    + "write-refusal-cook\nwrite-refusal-block\nannounce\nread-into\njson-write-into\n"
+                    + "write-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\n"
                     + "unit shapes\n");
             return 0;
         }
@@ -3293,6 +3496,7 @@ public final class Driver {
             case "cook-foreign": return surfaceCookForeign(out);
             case "cook-forgery": return surfaceCookForgery(out);
             case "write-refusal": return surfaceWriteRefusal(out, surface);
+            case "write-refusal-shape": return surfaceWriteRefusal(out, surface);
             case "write-refusal-fixed": return surfaceWriteRefusal(out, surface);
             case "write-refusal-message": return surfaceWriteRefusal(out, surface);
             case "write-refusal-json": return surfaceWriteRefusal(out, surface);

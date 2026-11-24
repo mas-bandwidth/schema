@@ -32,6 +32,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -217,6 +218,7 @@ func cppConformanceMake(t *testing.T, root string, args ...string) {
 	t.Helper()
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
+	testinputs.Build(t, "test/conformance/cpp", "test/conformance/harness")
 	cmd := testproc.CommandContext(t, ctx, "make", append([]string{"-j" + strconv.Itoa(runtime.GOMAXPROCS(0))}, args...)...)
 	cmd.Dir = root
 	if out, err := cmd.CombinedOutput(); err != nil {

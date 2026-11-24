@@ -84,6 +84,7 @@ _M.WriteW13 <- function(stream, value) {
   _h.value = value.ItemsCount;
   if (!stream.serializeBits(_h, 4)) return false;
   for (local _i = 0; _i < value.ItemsCount; _i++) {
+    if (typeof value.Items[_i] != "integer" || value.Items[_i] < 0 || value.Items[_i] > 8191) return false; // SPEC §5.1 row 1
     _h.value = value.Items[_i];
     if (!stream.serializeInt(_h, 0, 8191)) return false;
   }
@@ -128,6 +129,7 @@ _M.WriteW17 <- function(stream, value) {
   _h.value = value.ItemsCount;
   if (!stream.serializeBits(_h, 4)) return false;
   for (local _i = 0; _i < value.ItemsCount; _i++) {
+    if (typeof value.Items[_i] != "integer" || value.Items[_i] < 0 || value.Items[_i] > 131071) return false; // SPEC §5.1 row 1
     _h.value = value.Items[_i];
     if (!stream.serializeInt(_h, 0, 131071)) return false;
   }
@@ -172,6 +174,7 @@ _M.WriteW26 <- function(stream, value) {
   _h.value = value.ItemsCount;
   if (!stream.serializeBits(_h, 3)) return false;
   for (local _i = 0; _i < value.ItemsCount; _i++) {
+    if (typeof value.Items[_i] != "integer" || value.Items[_i] < 0 || value.Items[_i] > 67108863) return false; // SPEC §5.1 row 1
     _h.value = value.Items[_i];
     if (!stream.serializeInt(_h, 0, 67108863)) return false;
   }
@@ -216,6 +219,7 @@ _M.WriteW1 <- function(stream, value) {
   _h.value = value.ItemsCount;
   if (!stream.serializeBits(_h, 5)) return false;
   for (local _i = 0; _i < value.ItemsCount; _i++) {
+    if (typeof value.Items[_i] != "integer" || value.Items[_i] < 0 || value.Items[_i] > 1) return false; // SPEC §5.1 row 1
     _h.value = value.Items[_i];
     if (!stream.serializeInt(_h, 0, 1)) return false;
   }
@@ -260,6 +264,7 @@ _M.WriteW52 <- function(stream, value) {
   _h.value = value.ItemsCount;
   if (!stream.serializeBits(_h, 2)) return false;
   for (local _i = 0; _i < value.ItemsCount; _i++) {
+    if (typeof value.Items[_i] != "integer" || value.Items[_i] < 0 || value.Items[_i] > 4503599627370495) return false; // SPEC §5.1 row 1
     _h.value = value.Items[_i];
     if (!stream.serializeInt64(_h, 0, 4503599627370495)) return false;
   }
@@ -304,6 +309,7 @@ _M.WriteW50 <- function(stream, value) {
   _h.value = value.ItemsCount;
   if (!stream.serializeBits(_h, 2)) return false;
   for (local _i = 0; _i < value.ItemsCount; _i++) {
+    if (typeof value.Items[_i] != "integer" || value.Items[_i] < 0 || value.Items[_i] > 1125899906842623) return false; // SPEC §5.1 row 1
     _h.value = value.Items[_i];
     if (!stream.serializeInt64(_h, 0, 1125899906842623)) return false;
   }
@@ -340,7 +346,9 @@ _M.ReadF13 <- function(stream, value) {
 
 // WriteF13 writes value in declared order; false on a refused value.
 _M.WriteF13 <- function(stream, value) {
+  if (typeof value.Items != "array" || value.Items.len() != 7) return false; // a [N]T holds exactly N values (SPEC §5.1)
   for (local _i = 0; _i < 7; _i++) {
+    if (typeof value.Items[_i] != "integer" || value.Items[_i] < 0 || value.Items[_i] > 8191) return false; // SPEC §5.1 row 1
     _h.value = value.Items[_i];
     if (!stream.serializeInt(_h, 0, 8191)) return false;
   }
@@ -502,6 +510,7 @@ _M.ReadArrEleven <- function(stream, value) {
 
 // WriteArrEleven writes value in declared order; false on a refused value.
 _M.WriteArrEleven <- function(stream, value) {
+  if (typeof value.Items != "array" || value.Items.len() != 9) return false; // a [N]T holds exactly N values (SPEC §5.1)
   for (local _i = 0; _i < 9; _i++) {
     if (!_M.WriteEleven(stream, value.Items[_i])) return false;
   }

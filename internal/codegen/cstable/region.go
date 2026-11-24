@@ -664,19 +664,29 @@ const tableRegionSource = `
     // only data. The caller keeps both allocations stable during this call.
     public static unsafe IntPtr LoadRegion(TableTypeInfo type, IntPtr region, long capacity, ReadOnlySpan<byte> bytes, TableReport report)
     {
+        // EVERY READ ZEROES A SUPPLIED REPORT IN FULL AS ITS FIRST ACT
+        // (docs/SPEC-TABLES.md §6.5): the same Zero the value Load runs,
+        // before any byte is judged or any capacity is checked.
+        if (report == null) { throw new ArgumentNullException(nameof(report)); }
+        report.Zero();
         long total = LoadMeasurePartsWalk(type, bytes, out long dataBytes, out long attributionBytes, out string reason, out bool wireNonFinite);
         if (total >= 0 && capacity < total) { return IntPtr.Zero; }
         return NativeLoadRegion(type, region, dataBytes, (IntPtr)((byte*)region + dataBytes), attributionBytes, bytes, report, total, dataBytes, reason, wireNonFinite);
     }
     public static unsafe IntPtr LoadRegion(TableTypeInfo type, IntPtr region, long capacity, IntPtr attribution, long attributionCapacity, ReadOnlySpan<byte> bytes, TableReport report)
     {
+        // EVERY READ ZEROES A SUPPLIED REPORT IN FULL AS ITS FIRST ACT
+        // (docs/SPEC-TABLES.md §6.5): the same Zero the value Load runs,
+        // before any byte is judged or any capacity is checked.
+        if (report == null) { throw new ArgumentNullException(nameof(report)); }
+        report.Zero();
         long total = LoadMeasurePartsWalk(type, bytes, out long dataBytes, out _, out string reason, out bool wireNonFinite);
         return NativeLoadRegion(type, region, capacity, attribution, attributionCapacity, bytes, report, total, dataBytes, reason, wireNonFinite);
     }
     static unsafe IntPtr NativeLoadRegion(TableTypeInfo type, IntPtr region, long capacity, IntPtr attribution, long attributionCapacity, ReadOnlySpan<byte> bytes, TableReport report, long total, long dataBytes, string reason, bool wireNonFinite)
     {
         if (report == null) { throw new ArgumentNullException(nameof(report)); }
-        report.Refused = false; report.Reason = null; report.NonFiniteFloat = null;
+        report.Zero();
         if (total < 0)
         {
             if (reason == "integrity_mismatch") { IntegrityDamage(report); return IntPtr.Zero; }

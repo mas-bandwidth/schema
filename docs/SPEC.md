@@ -2743,7 +2743,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: 1–8 every build
 
-  - packet `Write`: 1–8 every build, on the flat and the per-field path alike; 10 not yet held; 11 unrepresentable (the storage is `intN`/`uintN`)
+  - packet `Write`: 1–8 and 10 every build, on the flat and the per-field path alike, returning `serialize.ErrValueOutOfRange` and never panicking (row 1 covers a ranged `int128` and a `fixed`/`ufixed` raw value, refused before the runtime call); 11 unrepresentable (the storage is `intN`/`uintN`)
 
 - **JavaScript**
 
@@ -2751,7 +2751,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: 1–9 every build (9: a `flags` value that is negative or holds a bit at or above its declared width, `invalid_value`); a `[N]T` or enum-keyed array whose length is not exactly `N` is refused, never cut at `N`
 
-  - packet `Write`: the flat tier 1–7 every build, whatever `NODE_ENV` says; 8, 10 and 11 every build on the flat and the runtime tier
+  - packet `Write`: the flat tier 1–7 every build, whatever `NODE_ENV` says; 8, 10 and 11 every build on the flat and the runtime tier; a `[N]T` whose length is not exactly `N` is refused on both tiers, never cut at `N` (SF-20, held by `write-refusal-packet` `fixed_long` and `fixed_short`)
 
 - **Elixir**
 
@@ -2767,7 +2767,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: 1–8 every build
 
-  - packet `Write`: 1–6, 8, 10 and 11 every build; 7 raises
+  - packet `Write`: 1–6, 8, 10 and 11 every build; 7 raises; a `[N]T` whose length is not exactly `N` is refused, never cut at `N` (SF-20)
 
 - **Luau**
 
@@ -2775,7 +2775,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: no value encoder: it carries encoded bodies
 
-  - packet `Write`: 1–6, 8 and 10 every build; 7 raises; 11 every build, held by `packet-write-bareint-luau`
+  - packet `Write`: 1–6, 8 and 10 every build; 7 raises; 11 every build, held by `packet-write-bareint-luau`; a `[N]T` whose length is not exactly `N` is refused, never cut at `N` (SF-20)
 
 - **Squirrel**
 
@@ -2783,7 +2783,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: 1–8 every build
 
-  - packet `Write`: 2–6 every build; 1 every build, raising for `int32` and `int64`; 7 raises; 11 every build, held by `packet-write-bareint-squirrel` (a negative `uint64` is the same 64 bits as one in the width, docs/PORT-SQUIRREL.md); 8 and 10 every build, refusing with `false`
+  - packet `Write`: 2–6 every build; 1 every build, raising for an `int32` or `int64` field (the runtime's write-misuse trap) and refusing with `false` for every other kind, wherever it rides (an `int16` element or arm payload, an `int128`, a `fixed` raw value); a `[N]T` whose length is not exactly `N` refused with `false`, never cut at `N` (SF-20); 7 raises; 11 every build, held by `packet-write-bareint-squirrel` (a negative `uint64` is the same 64 bits as one in the width, docs/PORT-SQUIRREL.md); 8 and 10 every build, refusing with `false`
 
 - **MOO**
 
@@ -2791,7 +2791,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: 1–8 every build
 
-  - packet `Write`: 1–8 and 10 every build; 11 every build, held by `packet-write-bareint-moo`
+  - packet `Write`: 1–8 and 10 every build; 11 every build, held by `packet-write-bareint-moo`; a `[N]T` whose length is not exactly `N` is refused, never cut at `N` (SF-20)
 
 - **Goose**
 
@@ -2799,7 +2799,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: 1–9 every build (9: a `flags` bit at or above its declared width, `MsgRefuseInvalidValue`)
 
-  - packet `Write`: 1–8 and 10 every build, each returning a `SERIALIZE_ERROR_*` kind (value out of range, invalid UTF-8 or embedded NUL), not `SaveRefuseInvalidValue`, which is the file save's name; 11 unrepresentable (the storage is `iN`/`uN`)
+  - packet `Write`: 1–8 and 10 every build, each returning a `SERIALIZE_ERROR_*` kind (value out of range, invalid UTF-8 or embedded NUL), not `SaveRefuseInvalidValue`, which is the file save's name; 11 unrepresentable (the storage is `iN`/`uN`); a `[N]T` of another length unrepresentable (the storage is a `T[N]`)
 
 - **Lobster**
 
@@ -2807,7 +2807,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: 1–8 and 10 every build
 
-  - packet `Write`: 1 and 3–6 and 10 debug (a Lobster `assert`, removed by `--runtime-no-asserts`); 2 (`bits(N)`) traps in every build, in the runtime (`serialize: value must fit in bits`), because the emitter writes no assert for it; 11 debug (signed narrow) and every build (unsigned narrow), held by `packet-write-bareint-lobster`; 7 traps
+  - packet `Write`: 1 and 3–6 and 10 debug (a Lobster `assert`, removed by `--runtime-no-asserts`), a `[N]T` whose length is not exactly `N` included (SF-20); 2 (`bits(N)`) traps in every build, in the runtime (`serialize: value must fit in bits`), because the emitter writes no assert for it; 11 debug (signed narrow) and every build (unsigned narrow), held by `packet-write-bareint-lobster`; 7 traps
 
 - **Python**
 
@@ -2831,8 +2831,10 @@ field and saving it. `write-refusal` saves through the variable-form `Save`,
 through the text writer. The fifth, `write-refusal-packet`, holds the packet
 `Write` on a generated type carrying one field per row: a ranged scalar, a
 `bits(7)` past its width, an enum ordinal, a union tag, a counted array's
-count, a `string`'s length and content, and a constant or reserved-range
-field's only lawful value. The Go leg runs it as `TestWriteRefusalPacket` in
+count, a `string`'s length and content, a constant or reserved-range
+field's only lawful value, a `[3]int16` handed four values and two, a ranged
+`int16` as a fixed-array element, a counted-array element and a union arm's
+payload, an `int128` and a `fixed(16, 16)` raw value. The Go leg runs it as `TestWriteRefusalPacket` in
 test/conformance/harness, with a negative control that changes the emitter's
 upper-bound comparison and requires the boundary row to go red. The every-build
 scripting legs answer the same rows from test/conformance/write-refusal-packet

@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -58,10 +59,5 @@ func TestEveryDerivedLineKindIsRead(t *testing.T) {
 
 // surfaceRun reports whether s is in the harness's surfaces list.
 func surfaceRun(s string) bool {
-	for _, x := range surfaces {
-		if x == s {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(surfaces, s)
 }

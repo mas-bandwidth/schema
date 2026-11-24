@@ -446,6 +446,54 @@ namespace SchemaUnityConformance
             }
         }
 
+        // A VALUE OF THE WRONG KIND (`write-refusal-shape` kind `shape`,
+        // DW-TABLE-SHAPE). Unity C#'s types hold one such value and no other:
+        // null, in a place whose type is a class (here the class root). It is
+        // put there and the row is written, so the answer is the writer's own.
+        // Every other token, and null in a value-type place (a struct record,
+        // arm payload or element, a scalar), is one the compiler refuses
+        // before any writer runs: false, `unrepresentable`.
+        private static bool WriteRefusalShape(object root, string path, string token, out object written)
+        {
+            written = root;
+            if (token != "null") { return false; }
+            if (path == ".")
+            {
+                if (root.GetType().IsValueType) { return false; }
+                written = null;
+                return true;
+            }
+            string[] segments = path.Split('.');
+            object holder = root;
+            // a struct on the way is a boxed copy: a null set beyond it would
+            // not reach the root, so such a place is said, never set
+            bool viaStruct = root.GetType().IsValueType;
+            for (int i = 0; ; i++)
+            {
+                string seg = segments[i];
+                int bracket = seg.IndexOf('[');
+                string member = PascalName(bracket >= 0 ? seg.Substring(0, bracket) : seg);
+                FieldInfo f = holder.GetType().GetField(member, BindingFlags.Public | BindingFlags.Instance);
+                if (f == null) { throw new InvalidOperationException("write-refusal-shape: missing field " + member + " on " + holder.GetType().FullName); }
+                bool last = i == segments.Length - 1;
+                object container = f.GetValue(holder);
+                int idx = bracket >= 0 ? int.Parse(seg.Substring(bracket + 1, seg.IndexOf(']') - bracket - 1), CultureInfo.InvariantCulture) : -1;
+                PropertyInfo item = bracket >= 0 && !(container is Array) ? container.GetType().GetProperty("Item") : null;
+                if (bracket >= 0 && !(container is Array) && item == null) { throw new InvalidOperationException("write-refusal-shape: " + seg + " indexes a " + container.GetType().FullName); }
+                if (last)
+                {
+                    Type place = bracket < 0 ? f.FieldType : container is Array a ? a.GetType().GetElementType() : item.PropertyType;
+                    if (place.IsValueType) { return false; }
+                    if (viaStruct || !(container is Array) && bracket >= 0) { throw new InvalidOperationException("write-refusal-shape: " + path + " is a class place inside a struct"); }
+                    if (bracket >= 0) { ((Array)container).SetValue(null, idx); return true; }
+                    f.SetValue(holder, null);
+                    return true;
+                }
+                holder = bracket < 0 ? container : container is Array arr ? arr.GetValue(idx) : item.GetValue(container, new object[] { idx });
+                viaStruct |= holder.GetType().IsValueType;
+            }
+        }
+
         private static bool WriteRefusalSet(ICodec codec, byte[] wire, object value, string path, string kind, string text)
         {
             if (kind == "point") { return MutatePoint(value, path, text); }
@@ -512,7 +560,16 @@ namespace SchemaUnityConformance
                     return 1;
                 }
                 string verdict;
-                if (!WriteRefusalSet(codec, wire, value, f[5], f[6], f[7]))
+                if (f[6] == "shape")
+                {
+                    if (!WriteRefusalShape(value, f[5], f[7], out object shaped)) { verdict = "unrepresentable"; }
+                    else
+                    {
+                        byte[] buffer = new byte[1 << 20];
+                        verdict = WriteRefusalBinaryVerdict(() => codec.VariableSave(shaped, buffer));
+                    }
+                }
+                else if (!WriteRefusalSet(codec, wire, value, f[5], f[6], f[7]))
                 {
                     verdict = "unrepresentable";
                 }
