@@ -87,13 +87,17 @@ func absentRootName(r *wireRoot) string {
 }
 
 // readAbsentLedger returns the roots the ledger holds, each with its reason.
+// A close that fails is reported with the read's own error, never dropped.
 func readAbsentLedger(path string) (map[string]string, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("wire-fuzz: the absent-root ledger: %w", err)
 	}
-	defer f.Close()
-	return parseAbsentLedger(f, path)
+	held, parseErr := parseAbsentLedger(f, path)
+	if closeErr := f.Close(); closeErr != nil {
+		return nil, errors.Join(parseErr, fmt.Errorf("wire-fuzz: closing the absent-root ledger %s: %w", path, closeErr))
+	}
+	return held, parseErr
 }
 
 // parseAbsentLedger is readAbsentLedger over an open ledger. A malformed
