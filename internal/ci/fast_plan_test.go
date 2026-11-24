@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
 // selectorOutput returns the selector's own verdict from the combined output.
@@ -69,6 +71,7 @@ func TestFastPlanSelectsTableFixtures(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel() // each case is its own bash over a read-only script
+			testinputs.Files(t, ".github/workflows/ci-fast.yml")
 			cmd := exec.Command("bash", "-euo", "pipefail", "-c", script.String())
 			cmd.Env = append(scriptEnv(os.Environ()), "files="+tc.files)
 			out, err := cmd.CombinedOutput()
@@ -235,6 +238,7 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel() // each case is its own bash over a read-only script
+			testinputs.Files(t, ".github/workflows/ci-fast.yml")
 			cmd := exec.Command("bash", "-euo", "pipefail", "-c", script.String())
 			cmd.Env = append(scriptEnv(os.Environ()), "files="+tc.files)
 			cmd.Dir = repoRoot(t)
@@ -322,6 +326,7 @@ func TestFastPlanSelectsLanguageLints(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel() // each case is its own bash over a read-only script
+			testinputs.Files(t, ".github/workflows/ci-fast.yml")
 			cmd := exec.Command("bash", "-euo", "pipefail", "-c", script.String())
 			cmd.Env = append(scriptEnv(os.Environ()), "files="+tc.files)
 			cmd.Dir = repoRoot(t)
@@ -378,6 +383,7 @@ func TestFastPlanSelectsCodegenAndLanguageCleanGates(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel() // each case is its own bash over a read-only script
+			testinputs.Files(t, ".github/workflows/ci-fast.yml")
 			cmd := exec.Command("bash", "-euo", "pipefail", "-c", script.String())
 			cmd.Env = append(scriptEnv(os.Environ()), "files="+tc.files)
 			cmd.Dir = repoRoot(t)

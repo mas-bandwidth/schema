@@ -397,7 +397,9 @@ class Runner:
         self.results = []
         self.native_passes = set()
         self.lang = lang
-        self.env = dict(os.environ, SCHEMA_SLOW="1", SCHEMA_REQUIRE_CORPUS="1")
+        # SCHEMA_REQUIRE_CASEFOLD: a folding-volume test fails, never skips,
+        # when SCHEMA_CASEFOLD_DIR names no case-folding directory.
+        self.env = dict(os.environ, SCHEMA_SLOW="1", SCHEMA_REQUIRE_CORPUS="1", SCHEMA_REQUIRE_CASEFOLD="1")
         # Never update a reference pin or accept cache/no-test overrides here.
         for key in tuple(self.env):
             if key in ("MAKEFLAGS", "MFLAGS", "GNUMAKEFLAGS", "MAKEOVERRIDES", "MAKEFILES", "SCHEMA_SKIP_LEGS") or key.startswith("SCHEMA_UPDATE_"):
@@ -888,7 +890,7 @@ def run_external(runner, lang):
     if lang != "cpp":
         runner.make("external-table-gates", FIXED_GATES[lang])
         return
-    # Exactly two outer Go test invocations in the already mapped C++ make
+    # Exactly three outer Go test invocations in the already mapped C++ make
     # recipes. Keep all native generation, compiler flags, controls and shell
     # ordering unchanged; no blanket go wrapper or timeout substitution.
     original = (runner.root / "Makefile").read_text()
@@ -897,6 +899,8 @@ def run_external(runner, lang):
         "SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view go test -timeout=0 -count=1 ./internal/viewlisting -run TestUnitViewListingMatchesTheIR",
         "go test ./tools/fixedtwin -count=1":
         "go test -timeout=0 ./tools/fixedtwin -count=1",
+        "SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -run '^TestCookCheckReadsTheReferencesMapHoldingCook$$' ./internal/tablecook/":
+        "SCHEMA_REQUIRE_CORPUS=1 go test -timeout=0 -count=1 -run '^TestCookCheckReadsTheReferencesMapHoldingCook$$' ./internal/tablecook/",
     }
     amended = original
     for before, after in replacements.items():

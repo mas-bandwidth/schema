@@ -161,6 +161,8 @@ int conformance_write_refusal_case( int surface, const ConformanceCodec * codec,
                                     const char * root, const char * path, const char * kind, const char * text );
 
 int conformance_retain(const uint8_t * wire,int64_t bytes,int short_buffer,int64_t id_capacity,int * counters,uint8_t ** output,int64_t * output_bytes,char ** text,int64_t * text_bytes);
+/* the `read-into` row (tblrt1, Node, retain), retain.c: 0 answered, 2 unanswered */
+int conformance_read_into_retain(const uint8_t * lawful,int64_t lawful_bytes,const uint8_t * damaged,int64_t damaged_bytes,ConformanceText * answer);
 int conformance_retain_varevo1(const uint8_t * wire,int64_t bytes,int short_buffer,int64_t id_capacity,int * counters,uint8_t ** output,int64_t * output_bytes,char ** text,int64_t * text_bytes);
 int conformance_retain_varevo2(const uint8_t * wire,int64_t bytes,int short_buffer,int64_t id_capacity,int * counters,uint8_t ** output,int64_t * output_bytes,char ** text,int64_t * text_bytes);
 int conformance_torture_block_open_ex(void * data,int64_t bytes,int * reason,const uint8_t ** out_base,const void ** out_type);
@@ -325,6 +327,7 @@ const ConformanceUnit1122 * conformance_unit1122_tblann4096( void );
 const ConformanceUnit1122 * conformance_unit1122_tblann4097( void );
 const ConformanceUnit1122 * conformance_unit1122_messagedemo( void );
 const ConformanceUnit1122 * conformance_unit1122_backenddemo( void );
+const ConformanceUnit1122 * conformance_unit1122_tblfixedevo( void );
 const ConformanceCodec * conformance_codecs_tblsurf( int * count );
 
 #endif /* SCHEMA_CONFORMANCE_DRIVER_H */

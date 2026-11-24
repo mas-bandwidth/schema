@@ -24,6 +24,7 @@ func TestChildExitStatusAndLockRelease(t *testing.T) {
 			lock := filepath.Join(t.TempDir(), "lock")
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
+			// testinputs:none — runs an inline script; reads no repository file
 			cmd := exec.CommandContext(ctx, bin, "-lock", lock, "sh", "-c", tc.command)
 			out, err := cmd.CombinedOutput()
 			if ctx.Err() != nil {
@@ -33,6 +34,7 @@ func TestChildExitStatusAndLockRelease(t *testing.T) {
 				t.Fatalf("want exit %d, state %v, error %v, output %s", tc.want, cmd.ProcessState, err, out)
 			}
 			// Every terminal path must leave the same lock usable by the next command.
+			// testinputs:none — runs `exit 0`; reads no file
 			next := exec.CommandContext(ctx, bin, "-lock", lock, "sh", "-c", "exit 0")
 			if out, err := next.CombinedOutput(); err != nil {
 				t.Fatalf("lock was not reusable after child exit: %v: %s", err, out)

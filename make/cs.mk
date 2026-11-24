@@ -971,8 +971,20 @@ tables-cs-wire-fuzz-dead-bytes-negative-control:
 	DOTNET="$(DOTNET)" SCHEMA_REQUIRE_CORPUS=1 go test ./internal/codegen/cstable/ -count=1 -run '^TestCSharpFixedDeadBytesAreZeroNegativeControl$$'
 test-cs: tables-cs-wire-fuzz-dead-bytes tables-cs-wire-fuzz-dead-bytes-negative-control
 
+# THE BUILDER ARM ANSWERS EVERY ROOT OF ITS ROSTER. The driver claims a root
+# only when it holds a builder binding (BindBuilder), so a root without one is
+# answered absent by name; an absent seed here is a root the builder read was
+# never fuzzed on, and the recipe goes red naming the count instead of fuzzing
+# less. (A claimed root with no binding used to throw "builder codec did not
+# report completion" on its first mutant, a truncated shapes.Bounds.)
 tables-cs-builder-fuzz: build-conformance-cs build/conformance-harness
-	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz-builder" --seed $(SEED) --n $(N) --builder --failed build/wire-fuzz/failed-builder-cs.bin
+	@mkdir -p build/wire-fuzz
+	./build/conformance-harness wire-fuzz --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz-builder" --seed $(SEED) --n $(N) --builder --failed build/wire-fuzz/failed-builder-cs.bin \
+		> build/wire-fuzz/cs-builder.log 2>&1; status=$$?; cat build/wire-fuzz/cs-builder.log; test $$status -eq 0
+	@grep -qE '^wire-fuzz-builder: seed [0-9]+, [1-9][0-9]* seeds over' build/wire-fuzz/cs-builder.log || { \
+		echo "tables-cs-builder-fuzz: the builder arm printed no summary: the run proved nothing"; exit 1; }
+	@if grep -qE 'seeds absent' build/wire-fuzz/cs-builder.log; then \
+		echo "tables-cs-builder-fuzz: the builder arm left seeds absent (a root with no builder binding): $$(grep -oE '[0-9]+ (ledgered )?seeds absent' build/wire-fuzz/cs-builder.log)"; exit 1; fi
 
 tables-cs-retain-fuzz: build-conformance-cs build/conformance-harness
 	./build/conformance-harness wire-fuzz --retain --driver "$(DOTNET) test/conformance/cs/bin/Debug/net10.0/schemaconformance.dll wire-fuzz" --seed $(SEED) --n $(N) --failed build/wire-fuzz/failed-retain-cs.bin

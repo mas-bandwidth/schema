@@ -8238,6 +8238,12 @@ int surfaceReadInto(String outDir) {
     final form = f[4];
     final lawful = File(f[5]).readAsBytesSync();
     switch (form) {
+      case 'retain-fixed':
+        // A COMPILE-TIME REFUSAL: narrowWireLoadRetain on a fixed-class root is a
+        // `const String` naming the refusal (internal/codegen/darttable/retainwire.go,
+        // the FixedDeclared arm of emitRetainMembers), so no call can be written.
+        File('$outDir/$name').writeAsStringSync('unrepresentable\n');
+        continue;
       case 'fixed-nocap':
         // NO CALL TO HOLD: <root>FixedLoad always takes a capacity
         File('$outDir/$name').writeAsStringSync('unrepresentable\n');
@@ -8278,6 +8284,21 @@ int surfaceReadInto(String outDir) {
           answer.write(surfw.narrowToJson(w));
         }
         answer.write(_readIntoLine(() => read(lawful)));
+      case 'fixed tblfixedevo EvoRoot':
+        // a lawful v1 record read through the lineage into the values the v3
+        // record filled (docs/SPEC-TABLES.md §3.4)
+        final values = List<tblfixedevo_fixed.EvoRoot>.generate(count, (_) => tblfixedevo_fixed.EvoRoot());
+        final report = tblfixedevo_fixed.TableFixedReport();
+        final plan = fixedevo_fixed.evoRootFixedNewPlan();
+        bool read(Uint8List b) => fixedevo_fixed.evoRootFixedLoad(values, count, b, b.length, plan, report) >= 0 && report.refused == 0;
+        answer.write(_readIntoLine(() => read(lawful)));
+        answer.write(_readIntoLine(() => read(damaged)));
+        for (final v in values) {
+          final w = tblfixedevo.EvoRoot();
+          _f2w_fixedevo_EvoRoot(v, w);
+          answer.write(tblfixedevo.evoRootToJson(w));
+        }
+        answer.write(_readIntoLine(() => read(lawful)));
       case 'message backenddemo StorePurchase':
         final vocab = backenddemo_fixed.TableVocabulary(entries: _entries(() => backenddemo_fixed.TableMessageEntry(0, 0)));
         final announced = backenddemo_fixed.TableReport();
@@ -8296,6 +8317,85 @@ int surfaceReadInto(String outDir) {
           answer.write(backenddemo.storePurchaseToJson(w));
         }
         answer.write(_readIntoLine(() => read(lawful)));
+      case 'region tblsurf Counted':
+        // the plain read of a variable root (countedWireLoad), into ONE
+        // pre-filled report; each lawful load must leave it equal to a fresh
+        // report's (SPEC-TABLES section 6.5). The private _countRefused is not
+        // reachable here.
+        String regionDiff(surfw.TableWireReport r, surfw.TableWireReport fresh) {
+          final d = StringBuffer();
+          if (r.unknown != fresh.unknown) d.write(' unknown=${r.unknown} want ${fresh.unknown}');
+          if (r.widened != fresh.widened) d.write(' widened=${r.widened} want ${fresh.widened}');
+          if (r.integrityMismatch != fresh.integrityMismatch) d.write(' integrityMismatch=${r.integrityMismatch}');
+          if (r.refused != fresh.refused) d.write(' refused=${r.refused} want ${fresh.refused}');
+          if (r.refusal != fresh.refusal) d.write(' refusal=${r.refusal} want ${fresh.refusal}');
+          if (r.missingFields != fresh.missingFields) d.write(' missingFields=${r.missingFields} want ${fresh.missingFields}');
+          if (r.retained != fresh.retained) d.write(' retained=${r.retained} want ${fresh.retained}');
+          if (r.retainLost != fresh.retainLost) d.write(' retainLost=${r.retainLost} want ${fresh.retainLost}');
+          if (r.nonFiniteFloat != fresh.nonFiniteFloat) d.write(' nonFiniteFloat=${r.nonFiniteFloat} want ${fresh.nonFiniteFloat}');
+          return d.isEmpty ? 'zeroed' : 'kept$d';
+        }
+        bool regionRead(Uint8List b, surfw.TableWireReport r) {
+          surfw.countedWireLoad(b, r);
+          return !r.refused;
+        }
+        final fresh = surfw.TableWireReport();
+        regionRead(lawful, fresh);
+        final report = surfw.TableWireReport()
+          ..unknown = 7
+          ..widened = 7
+          ..integrityMismatch = true
+          ..refused = true
+          ..refusal = 'stale'
+          ..missingFields = 'stale'
+          ..retained = 7
+          ..retainLost = 7
+          ..nonFiniteFloat = 'stale';
+        answer.write(_readIntoLine(() => regionRead(lawful, report)));
+        answer.write('${regionDiff(report, fresh)}\n');
+        answer.write(_readIntoLine(() => regionRead(damaged, report)));
+        answer.write(_readIntoLine(() => regionRead(lawful, report)));
+        answer.write('${regionDiff(report, fresh)}\n');
+      case 'retain tblrt1 Node':
+        // the retaining load (nodeWireLoadRetain, SPEC-TABLES section 6.6) into
+        // ONE report pre-filled in every public field; each lawful load must
+        // leave it equal to what the same load leaves in a FRESH report
+        // (section 6.5). The private _countRefused is not reachable here.
+        String retainDiff(tblrt1.TableWireReport r, tblrt1.TableWireReport fresh) {
+          final d = StringBuffer();
+          if (r.unknown != fresh.unknown) d.write(' unknown=${r.unknown} want ${fresh.unknown}');
+          if (r.widened != fresh.widened) d.write(' widened=${r.widened} want ${fresh.widened}');
+          if (r.integrityMismatch != fresh.integrityMismatch) d.write(' integrityMismatch=${r.integrityMismatch}');
+          if (r.refused != fresh.refused) d.write(' refused=${r.refused} want ${fresh.refused}');
+          if (r.refusal != fresh.refusal) d.write(' refusal=${r.refusal} want ${fresh.refusal}');
+          if (r.missingFields != fresh.missingFields) d.write(' missingFields=${r.missingFields} want ${fresh.missingFields}');
+          if (r.retained != fresh.retained) d.write(' retained=${r.retained} want ${fresh.retained}');
+          if (r.retainLost != fresh.retainLost) d.write(' retainLost=${r.retainLost} want ${fresh.retainLost}');
+          if (r.nonFiniteFloat != fresh.nonFiniteFloat) d.write(' nonFiniteFloat=${r.nonFiniteFloat} want ${fresh.nonFiniteFloat}');
+          return d.isEmpty ? 'zeroed' : 'kept$d';
+        }
+        bool retainRead(Uint8List b, tblrt1.TableWireReport r) {
+          final store = tblrt1.TableRetain(_retainRoomy, List<int>.filled(_retainRoomy ~/ 8, 0));
+          tblrt1.nodeWireLoadRetain(b, store, r);
+          return !r.refused;
+        }
+        final fresh = tblrt1.TableWireReport();
+        retainRead(lawful, fresh);
+        final report = tblrt1.TableWireReport()
+          ..unknown = 7
+          ..widened = 7
+          ..integrityMismatch = true
+          ..refused = true
+          ..refusal = 'stale'
+          ..missingFields = 'stale'
+          ..retained = 7
+          ..retainLost = 7
+          ..nonFiniteFloat = 'stale';
+        answer.write(_readIntoLine(() => retainRead(lawful, report)));
+        answer.write('${retainDiff(report, fresh)}\n');
+        answer.write(_readIntoLine(() => retainRead(damaged, report)));
+        answer.write(_readIntoLine(() => retainRead(lawful, report)));
+        answer.write('${retainDiff(report, fresh)}\n');
       default:
         stderr.writeln('read-into $name: no reader for $form $unit.$root');
         return 1;
