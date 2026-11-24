@@ -6005,14 +6005,17 @@ tables-cpp-retain-refusal-negative-control:
 	@grep -m1 "retention store kept" $(TABLES_CPP_RETAIN_REFUSAL_NEGATIVE_CONTROL_DIR)/log
 	@echo "negative control: removing the reset turns TestRefusedLoadsHandBackNothingCPP RED"
 
-# A REFUSED FIXED BATCH KEEPS NOTHING (docs/SPEC-TABLES.md §4, §6.5): the control
-# removes the no_layout reset from a COPY of fixedform.go, so record 0 of a
-# batch refused at record 1 stays decoded.
+# A REFUSED FIXED BATCH KEEPS NOTHING (docs/SPEC-TABLES.md §4, §6.5; ruling R4): the
+# control removes the ALL-ROWS reset of <T>FixedLoadWalk (the line that follows the
+# walk's lambda, `walked < 0`) from a COPY of fixedform.go. A batch refused at
+# record 1 through RecFixedLoadWalk over four poisoned rows then hands rows past
+# the walk back still poisoned. (The old target, the per-record `j < k` reset, is
+# redundant under R4 and no longer bit: removing it left the gate green.)
 TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR := build/tables-cpp-fixed-refusal-negative-control
 .PHONY: tables-cpp-fixed-refusal-negative-control
 tables-cpp-fixed-refusal-negative-control:
 	@rm -rf $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR) && mkdir -p $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)
-	@sed -e 's|for ( int64_t j = 0; j < k; ++j ) { %sReset( values\[j\] ); }|for ( int64_t j = 0; j < 0; ++j ) { %sReset( values[j] ); } // NEGATIVE CONTROL: the reset is gone|' \
+	@sed -e '/walked < 0/s|{ %sReset( values\[k\] ); }|{ (void) sizeof( %s ); /* NEGATIVE CONTROL: the all-rows reset is gone */ }|' \
 		internal/codegen/cpptable/fixedform.go > $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/copy.go.txt
 	@cmp -s internal/codegen/cpptable/fixedform.go $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/copy.go.txt && \
 		{ echo "NEGATIVE CONTROL: the sabotage patched nothing"; exit 1; } || true
@@ -6023,11 +6026,11 @@ tables-cpp-fixed-refusal-negative-control:
 		echo "NEGATIVE CONTROL FAILED: the reset is gone and TestFixedRefusalHandsBackNothingCPP stayed green"; \
 		cat $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/log; exit 1; \
 	fi
-	@grep -q "fixed: no_layout left record 0 usable" $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/log || \
+	@grep -q "fixed: FixedLoadWalk no_layout left row" $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/log || \
 		{ echo "NEGATIVE CONTROL FAILED: the gate went red for some other reason"; \
 		  cat $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/log; exit 1; }
-	@grep -m1 "left record 0" $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/log
-	@echo "negative control: removing the reset turns TestFixedRefusalHandsBackNothingCPP RED"
+	@grep -m1 "FixedLoadWalk no_layout left row" $(TABLES_CPP_FIXED_REFUSAL_NEGATIVE_CONTROL_DIR)/log
+	@echo "negative control: removing the all-rows reset turns TestFixedRefusalHandsBackNothingCPP RED"
 
 # BYTES INSIDE AN ENVELOPE ARE SKIPPED (docs/SPEC-TABLES.md §3, the append
 # rule): the standing control for the pinned vector nested_arm_trailing. The
