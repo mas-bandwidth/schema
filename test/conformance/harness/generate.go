@@ -293,7 +293,7 @@ func generate(m *Manifest, jsonDir, reportsPath string) error {
 	if err := generate1122(u, m); err != nil {
 		return err
 	}
-	if err := generateRetainRefusals(u, m); err != nil {
+	if err := generateRetainRefusals(u, m, jsonDir); err != nil {
 		return err
 	}
 

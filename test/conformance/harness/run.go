@@ -1539,7 +1539,7 @@ func scoreAnswer(lang, surface, out string, e expectation, inst Instance, r *res
 		return
 	}
 	if surface == "retain-refusal" {
-		scoreRetainRefusal(answer, e, r)
+		scoreRetainRefusal(lang, answer, e, r)
 		return
 	}
 	if e.batch != nil {
