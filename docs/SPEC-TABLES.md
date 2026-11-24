@@ -6968,7 +6968,15 @@ a fact of the announcement, not of a body. A widening is not a mismatch (§4). *
 meets such an entry in a batch instead** — the reference's `AnnounceRead` holds no
 root, so it meets the entry at the field or arm that names it — **REFUSES THE
 WHOLE BATCH `kind_mismatch`**: the count is `0` and every body holds its declared
-defaults. It never skips the entry, counts it and delivers the batch. **A field whose
+defaults. It never skips the entry, counts it and delivers the batch. **THE
+ANNOUNCED KIND OF AN ARRAY OR AN ENUM-KEYED ARRAY INCLUDES ITS ELEMENT KIND**
+(§3, "An array's ELEMENT KIND is part of its identity"), at a field and at an
+arm alike: an announced kind that agrees over an element kind that does not is
+the same mismatch and refuses the whole batch `kind_mismatch`, an `int32`
+element read as `uint8`, a record element read as `uint8`, in a counted, a
+fixed and an enum-keyed array. Only a positional array's element kind widens
+(§4, THE ONE WIDENING RULE: `uint8` elements read as `uint16`); an
+enum-keyed array's element kind that moves is a mismatch. **A field whose
 announced kind AGREES and whose announced RANGE differs decodes**, and refuses
 `out_of_range` where the value falls outside this reader's bound, which is §4's
 rule for a range change on the variable form and is why the shapes carry ranges

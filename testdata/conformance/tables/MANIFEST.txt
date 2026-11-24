@@ -1766,79 +1766,93 @@ message-drift varevo_msg_v3_to_v1_batch tblvarevo1 varevo3_conn EvoMsg testdata/
 # (docs/rulings.json `refusal-verdict-only`).
 unit tblprior test/tables/prior/PriorNarrow.schema
 # a ranged int32
-message-prior prior_scalar_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"scalar":40} read
-message-prior prior_scalar_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"scalar":75} refused
+message-prior prior_scalar_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"scalar":40} read
+message-prior prior_scalar_past   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"scalar":75} refused
 # a ranged uint8
-message-prior prior_small_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"small":40} read
-message-prior prior_small_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"small":75} refused
+message-prior prior_small_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"small":40} read
+message-prior prior_small_past   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"small":75} refused
 # a ranged int64
-message-prior prior_wide_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"wide":"40"} read
-message-prior prior_wide_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"wide":"75"} refused
+message-prior prior_wide_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"wide":"40"} read
+message-prior prior_wide_past   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"wide":"75"} refused
 # bits(7) read as bits(5)
-message-prior prior_mask_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"mask":25} read
-message-prior prior_mask_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"mask":75} refused
+message-prior prior_mask_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"mask":25} read
+message-prior prior_mask_past   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"mask":75} refused
 # a fixed array element
-message-prior prior_pair_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"pair":[40,10]} read
-message-prior prior_pair_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"pair":[75,10]} refused
+message-prior prior_pair_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"pair":[40,10]} read
+message-prior prior_pair_past   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"pair":[75,10]} refused
 # a counted array element
-message-prior prior_list_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"list":[40,10]} read
-message-prior prior_list_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"list":[10,75]} refused
+message-prior prior_list_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"list":[40,10]} read
+message-prior prior_list_past   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"list":[10,75]} refused
 # an enum-keyed array element
-message-prior prior_keyed_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"keyed":{"X":40,"Y":10}} read
-message-prior prior_keyed_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"keyed":{"X":10,"Y":75}} refused
+message-prior prior_keyed_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"keyed":{"X":40,"Y":10}} read
+message-prior prior_keyed_past   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"keyed":{"X":10,"Y":75}} refused
 # a union arm scalar payload
-message-prior prior_arm_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"arm":{"amount":40}} read
-message-prior prior_arm_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"arm":{"amount":75}} refused
+message-prior prior_arm_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"arm":{"amount":40}} read
+message-prior prior_arm_past   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"arm":{"amount":75}} refused
 # a union arm record payload
-message-prior prior_arm_record_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"arm":{"inner":{"level":40}}} read
-message-prior prior_arm_record_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"arm":{"inner":{"level":75}}} refused
+message-prior prior_arm_record_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"arm":{"inner":{"level":40}}} read
+message-prior prior_arm_record_past   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"arm":{"inner":{"level":75}}} refused
 # a nested record field
-message-prior prior_nested_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"nested":{"level":40}} read
-message-prior prior_nested_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"nested":{"level":75}} refused
+message-prior prior_nested_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"nested":{"level":40}} read
+message-prior prior_nested_past   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"nested":{"level":75}} refused
 # a field of a nested table in an array
-message-prior prior_cells_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"cells":[{"depth":40},{"depth":10}]} read
-message-prior prior_cells_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"cells":[{"depth":10},{"depth":75}]} refused
+message-prior prior_cells_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"cells":[{"depth":40},{"depth":10}]} read
+message-prior prior_cells_past   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"cells":[{"depth":10},{"depth":75}]} refused
 # a quantized float
-message-prior prior_quant_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"quant":40.5} read
-message-prior prior_quant_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"quant":75.5} refused
+message-prior prior_quant_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"quant":40.5} read
+message-prior prior_quant_past   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"quant":75.5} refused
 # a ranged fixed-point value
-message-prior prior_fx_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"fx":40.5} read
-message-prior prior_fx_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"fx":75.5} refused
+message-prior prior_fx_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"fx":40.5} read
+message-prior prior_fx_past   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"fx":75.5} refused
 # a batch of two bodies (the writer value is a JSON array of them): when the
 # second carries a value past the reader's range the WHOLE batch refuses, the
 # lawful first body included, and no body is delivered
-message-prior prior_batch_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c [{"mask":25},{"mask":30}] read
-message-prior prior_batch_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c [{"mask":25},{"mask":75}] refused
+message-prior prior_batch_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad [{"mask":25},{"mask":30}] read
+message-prior prior_batch_past   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad [{"mask":25},{"mask":75}] refused
 # A KIND THAT MOVED (§3.3, §4): the writer's int32 is the reader's int16 and
 # string(16), which the announcement shows and every reader refuses, never
 # defaulting the field and counting it; and the reader's
 # int64, the lawful widening, which every reader reads.
-message-prior prior_narrowed_kind   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"narrowed":40} refused
-message-prior prior_retyped_kind    tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"retyped":40} refused
-message-prior prior_widened_inside  tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"widened":40} read
+message-prior prior_narrowed_kind   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"narrowed":40} refused
+message-prior prior_retyped_kind    tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"retyped":40} refused
+message-prior prior_widened_inside  tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"widened":40} read
 # R14 (2026-11-22): A FIELD WHOSE TYPE CHANGED REFUSES THE WHOLE LOAD
 # kind_mismatch, because it is not a widening (docs/SPEC-TABLES.md §4, THE ONE
 # WIDENING RULE). Each refusal has its lawful twin beside it: the writer's
 # int64 read as the reader's string(16) refuses, and an int64 read as int64
 # reads; the writer's int64 read as the reader's timestamp refuses, and a
 # timestamp read as a timestamp reads.
-message-prior prior_restring_kind      tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"restring":"40"} refused
-message-prior prior_kept64_inside      tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"kept64":"40"} read
-message-prior prior_stamp_kind         tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"stamp":"1762086896123456789"} refused
-message-prior prior_stamped_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"stamped":"2025-11-02T12:34:56.123456789Z"} read
+message-prior prior_restring_kind      tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"restring":"40"} refused
+message-prior prior_kept64_inside      tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"kept64":"40"} read
+message-prior prior_stamp_kind         tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"stamp":"1762086896123456789"} refused
+message-prior prior_stamped_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"stamped":"2025-11-02T12:34:56.123456789Z"} read
 # R15 (2026-11-22): A RANGED ANNOUNCEMENT IS HELD PER VALUE (§3.3). The writer
 # announces uint8 | min = 200, max = 250: base 200 in six bits, whose top
 # offsets pass 255, and that announcement is lawful. The base is held at the
 # announcement and each value on the body: 230 lies inside the reader's
 # min = 200, max = 240 and reads; 245 lies outside it and refuses.
-message-prior prior_band_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"band":230} read
-message-prior prior_band_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"band":245} refused
+message-prior prior_band_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"band":230} read
+message-prior prior_band_past   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"band":245} refused
 # R17 (2026-11-22): a flags mask with a bit at or above the reader's W refuses the
 # WHOLE batch out_of_range (docs/SPEC-TABLES.md §4, A TABLE LOAD HOLDS A MASK TO
 # ITS WIDTH). The writer's Perms is { Read, Write, Exec } and the reader's is
 # { Read, Write }: Read and Write reads, Read and Exec refuses.
-message-prior prior_flags_inside tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"perms":["Read","Write"]} read
-message-prior prior_flags_past   tblprior Prior test/tables/prior/PriorWide.schema 0xf6c6299b9fb2216c {"perms":["Read","Exec"]} refused
+message-prior prior_flags_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"perms":["Read","Write"]} read
+message-prior prior_flags_past   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"perms":["Read","Exec"]} refused
+# AN ARRAY ELEMENT KIND THAT MOVED (docs/SPEC-TABLES.md §3.3, §4: "An array's
+# ELEMENT KIND is part of its identity"): the announced kind agrees (14 or 16)
+# and the ELEMENT kind does not, which refuses the WHOLE batch kind_mismatch
+# exactly as a moved field kind does. The writer's int32 elements against the
+# reader's uint8 in a counted array, a fixed array and an enum-keyed array;
+# its Cell records (element kind 13) against the reader's uint8; and a union
+# arm's int32 elements against the reader's uint8. The lawful twin is the
+# element widening, the writer's uint8 elements read as the reader's uint16.
+message-prior prior_elems_kind       tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"elems":[1,2]} refused
+message-prior prior_elempair_kind    tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"elempair":[1,2]} refused
+message-prior prior_elemkeyed_kind   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"elemkeyed":{"X":1,"Y":2}} refused
+message-prior prior_elemcells_kind   tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"elemcells":[{"depth":1}]} refused
+message-prior prior_armelems_kind    tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"arm":{"vals":[1,2]}} refused
+message-prior prior_elemgrown_inside tblprior Prior test/tables/prior/PriorWide.schema 0x001f3dda65fedbad {"elemgrown":[1,2]} read
 
 # R14 (2026-11-22) ON THE FILE FORM: a field whose TYPE changed refuses the
 # WHOLE load kind_mismatch, never defaulted and counted (docs/SPEC-TABLES.md
