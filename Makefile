@@ -5357,7 +5357,15 @@ CONFORMANCE_INCLUDES := -Ibuild/tables-generated/maps -Ibuild/tables-generated/l
 	-Ibuild/tables-generated/block -Ibuild/tables-generated/pointers \
 	-Ibuild/tables-generated/p2 -Ibuild/tables-generated/messages -Ibuild/tables-generated/stream \
 	-Ibuild/tables-generated/m1 -Ibuild/tables-generated/m2 -Ibuild/tables-generated/a1 -Ibuild/tables-generated/a2 -Ibuild/tables-generated/g1 -Ibuild/tables-generated/k1 -Ibuild/tables-generated/k2 -Ibuild/tables-generated/w1 -Ibuild/tables-generated/w2 -Ibuild/tables-generated/r1 -Ibuild/tables-generated/r2 -Ibuild/tables-generated/blobs -Itest/tables -Ibuild/tables-generated/scalars -Ibuild/tables-generated/scalars2 -Ibuild/tables-generated/fixedevo -Ibuild/tables-generated/varevo1 -Ibuild/tables-generated/varevo2 -Ibuild/tables-generated/varevo3 -Ibuild/tables-generated/prior -Ibuild/tables-generated/cooktorture -Ibuild/tables-generated/cooktorturewide -Ibuild/tables-generated/shapes -Ibuild/tables-generated/backend -Ibuild/tables-generated/vocab -Ibuild/tables-generated/vocab9 -Ibuild/tables-generated/arms -Ibuild/tables-generated/rt1 -Ibuild/tables-generated/features -Ibuild/tables-generated/surfaces -Ibuild/tables-generated/ann -Ibuild/tables-generated/valuedefaults -Ibuild/tables-generated/packetunions -I$(SERIALIZE)
-CONFORMANCE_SOURCES = $(wildcard build/tables-generated/maps/*Table.cpp) $(wildcard build/tables-generated/lists/*Table.cpp) $(wildcard build/tables-generated/widelist/*Table.cpp) build/tables-generated/examples/TablesTable.cpp \
+# The collection tables are named from the SCHEMAS that generate them
+# (tables/<dir>/<Name>.schema -> build/tables-generated/<dir>/<Name>Table.cpp),
+# never by globbing the generated directories. A glob of generated files is
+# evaluated before the stamp has written them (a fresh checkout read an empty
+# listing, F6) and, worse, silently drops a table that is missing after
+# generation. Named from the schemas, a missing Table.cpp is a prerequisite
+# make cannot build, and the link fails loudly naming it.
+CONFORMANCE_COLLECTION_SOURCES = $(foreach s,$(SCHEMAS_TABLES_MAPS),build/tables-generated/maps/$(basename $(notdir $(s)))Table.cpp) 	$(foreach s,$(SCHEMAS_TABLES_LISTS),build/tables-generated/lists/$(basename $(notdir $(s)))Table.cpp) 	$(foreach s,$(SCHEMAS_TABLES_WIDELIST),build/tables-generated/widelist/$(basename $(notdir $(s)))Table.cpp)
+CONFORMANCE_SOURCES = $(CONFORMANCE_COLLECTION_SOURCES) build/tables-generated/examples/TablesTable.cpp \
 	build/tables-generated/w1/W1Table.cpp build/tables-generated/w2/W2Table.cpp \
 	build/tables-generated/valuedefaults/ValueDefaultsTable.cpp \
 	build/tables-generated/r1/R1Table.cpp build/tables-generated/r2/R2Table.cpp \
@@ -5394,12 +5402,19 @@ build/conformance-harness: $(wildcard test/conformance/harness/*.go) $(GO_SOURCE
 # first of them (run 43570208757). Each source is now its own object, compiled
 # under make's own -j, and the negative control links the same objects to its
 # planted main.cpp, so the table sources are compiled once. The objects are
-# named only inside recipes, to a sub-make, because CONFORMANCE_SOURCES globs
-# files the stamp writes: anything that expands it when the Makefile is parsed
-# runs before the stamp on a clean tree, and make then keeps the empty
-# directory listing it read for the rest of the run, so the link would miss
-# the maps, lists and widelist tables.
+# named only inside recipes, to a sub-make, because the sources are
+# files the stamp writes. They are now named from the schemas
+# (CONFORMANCE_COLLECTION_SOURCES), not globbed, so expanding them at parse
+# time is safe, and a table the stamp failed to write is a prerequisite make
+# cannot build: the sub-make fails naming it.
 CONFORMANCE_OBJECTS = $(patsubst build/tables-generated/%.cpp,build/conformance-cpp-objs/%.o,$(CONFORMANCE_SOURCES))
+
+# Every source the stamp must have written has an explicit rule that checks it
+# is there. Without one, a Table.cpp deleted after generation leaves its stale
+# object 'up to date' (make finds no rule for the object, the object exists)
+# and the driver links a table that is no longer generated.
+$(CONFORMANCE_SOURCES): build/tables-generated/.stamp
+	@test -f $@ || { echo "conformance-cpp: generated source $@ is missing: build/tables-generated/.stamp did not write it" >&2; exit 1; }
 
 # the serialize runtime is a sibling checkout read through -I: a header edited
 # there must rebuild the objects that include it

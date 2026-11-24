@@ -24,6 +24,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -390,34 +391,35 @@ func cBlobKindSaved(t *testing.T, output string) []cBlobKindWire {
 // root's pointer closure carries an edge of that kind, so the bytes id is
 // dropped from a root whose closure holds only `*string`.
 func cBlobKindPlantRootClosure(files map[string][]byte, root string) error {
+	// The generated C is laid out by cfmt, so the function and its case are
+	// found by their C tokens under any whitespace (cCodePattern), and each
+	// must occur exactly once: one node_declared for the root across the
+	// emitted headers, and one reserved bytes case inside it.
 	needle := "_" + strings.ToLower(root) + "_node_declared_(uint64_t id)"
-	bytesCase := fmt.Sprintf("        case UINT64_C(0x%016x):\n", ir.BytesWireTypeId)
+	fnRe := regexp.MustCompile(`static\s+SCHEMA_UNUSED\s+int\s+\w*` + cCodePattern(needle) + `\s*\{(?s:.*?)\n\}\n`)
+	bytesCase := regexp.MustCompile(cCodePattern(fmt.Sprintf("case UINT64_C(0x%016x):", ir.BytesWireTypeId)))
+	count, at := 0, ""
 	for name, data := range files {
 		if !strings.HasSuffix(name, "Table.h") {
 			continue
 		}
-		header := string(data)
-		at := strings.Index(header, needle)
-		if at < 0 {
-			continue
+		if n := len(fnRe.FindAllIndex(data, -1)); n > 0 {
+			count += n
+			at = name
 		}
-		fnStart := strings.LastIndex(header[:at], "static SCHEMA_UNUSED int ")
-		if fnStart < 0 {
-			return fmt.Errorf("the planted rule found no declaration of %s", needle)
-		}
-		fnEnd := strings.Index(header[at:], "\n}\n")
-		if fnEnd < 0 {
-			return fmt.Errorf("the planted rule found no end of %s", needle)
-		}
-		fnEnd += at + len("\n}\n")
-		fn := header[fnStart:fnEnd]
-		if !strings.Contains(fn, bytesCase) {
-			return fmt.Errorf("the planted rule found no reserved bytes id in %s", needle)
-		}
-		files[name] = []byte(header[:fnStart] + strings.Replace(fn, bytesCase, "", 1) + header[fnEnd:])
-		return nil
 	}
-	return fmt.Errorf("the planted rule found no generated header declaring %s", needle)
+	if count != 1 {
+		return fmt.Errorf("the planted rule found %d generated headers declaring %s, not exactly one", count, needle)
+	}
+	header := files[at]
+	loc := fnRe.FindIndex(header)
+	fn := header[loc[0]:loc[1]]
+	if n := len(bytesCase.FindAllIndex(fn, -1)); n != 1 {
+		return fmt.Errorf("the planted rule found %d reserved bytes ids in %s, not exactly one", n, needle)
+	}
+	planted := bytesCase.ReplaceAllLiteral(fn, nil)
+	files[at] = append(append(append([]byte{}, header[:loc[0]]...), planted...), header[loc[1]:]...)
+	return nil
 }
 
 // runCBlobKindProbe generates the unit and runs a C probe over it. `edit` may

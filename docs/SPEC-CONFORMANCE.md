@@ -157,7 +157,7 @@ the refusal (`MANIFEST.txt`, "THE 2026-11-22 SURFACES"):
 | SF-31: the block builder refuses a count or a used length past its maximum | `write-refusal-block` | `bref_*` |
 | DW-TABLE-SHAPE: a table writer in a refuse-every-build leg (Go, JS, Elixir, Lua, Luau, Squirrel, moo, Goose) refuses a value of the wrong kind by name in every build — an integer, a string or null as a record, a union, an arm's payload or an array element; a string as a float (float32 included); an integer or null as a bool; a bare map or table as a union; an improper list as an array; anything but the root's record as the whole value — never crashing, raising or coercing it; each group has a lawful twin; the assert legs answer the twins and `unrepresentable` | `write-refusal-shape` (`shape`) | `shref_*` |
 | FL-38, FL-36, FL-18: 4096 entries announced, 4097 refused; strict mode; a send with no announcement | `announce` | `ann_*` |
-| FL-02, FL-03, FL-17, FL-29: a read zeroes its report, a refusal leaves the caller's values at their defaults, an omitted fixed capacity is the file's own, a read never throws | `read-into` | `ri_*` |
+| FL-02, FL-03, FL-17, FL-29: a read zeroes its report, a refusal leaves the caller's values at their defaults, an omitted fixed capacity is the file's own, a read never throws; a lawful fixed read through the lineage leaves every field the writer did not supply at its declared default ([fields an older fixed writer does not supply](#fields-an-older-fixed-writer-does-not-supply)) | `read-into` | `ri_*`, `ri_fixed_lineage` |
 | SPEC-TABLES §6.5: the retaining load zeroes a PRE-FILLED report in full, every counter and the refusal ([below](#retaining-loads-zero-a-reused-report)) | `read-into` (`retain`) | `ri_retain` |
 | SPEC-TABLES §6.5, §6.6: the plain region `Load` and a fixed-root `LoadRetain` zero a PRE-FILLED report ([below](#the-plain-region-load-and-a-fixed-root-retaining-load-zero-the-report-too)) | `read-into` (`region`, `retain-fixed`) | `ri_region`, `ri_retain_fixed` |
 | FL-14, FL-15: float text ignores the process locale; a caller-buffer writer writes nothing past its text | `json-write-into` | `jwi_*` |
@@ -372,6 +372,7 @@ per-port check where no shared case exercises it.
 | GAP-7 | An ordinary read refusal is `refused\n`, including a wire-refused row and a message row with no message wire. An empty `.absent` declares absence (ruling R13; test/conformance/README.md); gaps Sw4, OC6, ObjC3, Zig8, Hs12 | `TestWireRefusedSpelledRefusedScoresPass`; `blob_shared`, `blob_shared_string` (#4706) |
 | GAP-8 | The json-write absence marker is `<case>.json.absent` (README); gaps Sw12, Hs13 | `TestJsonWriteAbsentMarkerIsTheAnswerNamePlusAbsent` (#4706) |
 | GAP-9 | `make conformance-port` fails on any absence (§5); a port declares its gated keys by answering absent (README); gaps Zig3, OC14 | `TestCompleteRunRefusesEveryAbsence` (#4706) |
+| dart-plain-roster-whole | the Dart driver advertises every root the plain wire-fuzz arm names, fixed class and variable alike; a seed the plain arm leaves absent fails the gate rather than standing as a count in its summary line (SPEC-TABLES.md §4.2) | `TestDartPlainRosterAllRoots` in `tables-dart-wire-fuzz` (#4949) |
 | GAP-10 | First use counts every reference, skipped bytes included (SPEC-TABLES §3); gaps Sw5 | `framing skipped_ids_first_use`, `skipped_ids_out_of_order` (#4706) |
 | GAP-11 | A `tag` edit: `0` None, `n` the `n`-th arm; path steps through maps, keyed arrays and arms; `count` on an empty array takes the element default; `wide:`/`units` retired (FORMAT.md); gaps Sw6, Sw7, OC10, OC15, Zig10, Zig11, Zig12, Zig17 | `wref_`/`fref_`/`mref_`/`jref_union_tag_none`; the `write-refusal` rows' map, keyed and arm paths (#4706) |
 | GAP-12 | The definitions digest, pinned: leaf kinds (enum `7`), roles, row order, one-sided fill, `was` ids (FIXED-FORM-ALGORITHM §5.2; SPEC-TABLES §21); gaps Sw8, OC4, Zig15 | `testdata/conformance/fixed-digest/vector.txt` (`TestFixedDefinitionsDigestVector`) (#4706) |
@@ -410,6 +411,8 @@ per-port check where no shared case exercises it.
 | SF-17 | `SaveMessages` checks row 10 and never moves an off-range float onto an endpoint (SPEC.md §5.1 row 10) | `smref_big_ratio_high`, `smref_big_ratio_max` (#4808 source registrations) |
 | SF-18, SF-19 | the message form refuses a flags value above its declared width and never masks it (SPEC.md §5.1 row 9; SPEC-TABLES §3.3) | `smref_big_mask_max`, `smref_big_mask_wide`, `smref_mask_named`, `smref_mask_unnamed` (#4808 source registrations) |
 | SF-20 | a writer refuses a `[N]T` or `[E]T` whose length is not N and never cuts or pads it (SPEC.md §5.1) | `sref_fixed_long`, `sref_fixed_ok`, `sref_fixed_short`, `sref_keyed_long`, `sref_keyed_ok`, `sref_keyed_short`, `sfref_fixed_long`, `sfref_fixed_ok`, `sfref_fixed_short`, `sfref_keyed_long`, `sfref_keyed_ok`, `sfref_keyed_short`, `sjref_fixed_long`, `sjref_fixed_ok`, `sjref_fixed_short`, `sjref_keyed_long`, `sjref_keyed_ok`, `sjref_keyed_short`, `smref_fixed_long`, `smref_fixed_ok`, `smref_fixed_short`, `smref_keyed_long`, `smref_keyed_ok`, `smref_keyed_short`, `cref_fixed_long`, `cref_fixed_ok` (#4808 source registrations) |
+| SF-20 (packet) | the packet `Write` refuses a `[N]T` handed more or fewer than N values and never writes the first N of a longer one (SPEC.md §5.1); every every-build leg and Lobster's debug build refuse it by the leg's own mechanism, and a leg whose `[N]T` storage is a native `T[N]` (Goose) names the two count rows unrepresentable. A new port's packet writer checks the length before its element loop | `write-refusal-packet`: `fixed_long`, `fixed_short`, `fixed_exact` |
+| Squirrel packet row 1 | the Squirrel packet `Write` refuses a value off its range with `false` on every kind but an `int32` or `int64` field, whose runtime trap is the refusal: an `int16` fixed-array element, counted-array element or arm payload, an `int128` and a `fixed(16, 16)` raw value (SPEC.md §5.1, the Squirrel line) | `write-refusal-packet`: `fixed_elem_high`, `list_elem_low`, `arm_payload_high`, `int128_high`, `int128_low`, `fixed_raw_high`, `fixed_raw_low`, each with its `_at_` twin |
 | SF-25, SF-26 | `Cook` and `CookMeasure` hold the write contract that `Save` holds; a deprecated enum variant is refused on write (SPEC-TABLES §7.6, §2.15) | `cref_count_at_max`, `cref_count_at_min`, `cref_count_below_min`, `cref_count_over`, `cref_cycle`, `cref_shared_ok`, `cref_finite_ok`, `cref_infinite`, `cref_non_finite` (#4808 source registrations) |
 | SF-22, SF-28 | a variable save and a text (JSON) writer refuse a counted array below its `Min`, and a list field holding a non-list (SPEC.md §5.1 row 3 and "A writer refuses in EVERY form") | `sref_count_at_min`, `sref_count_below_min`, `sref_count_not_list`, `sjref_count_at_min`, `sjref_count_below_min`, `sjref_count_not_list` (#4808 source registrations) |
 | SF-23 | `SaveMessages` holds a value to the rule of the declaration it is written under, not to the looser rule of a same-named field elsewhere (SPEC-TABLES §3.3) | `smref_narrow_hp_5`, `smref_narrow_hp_6`, `smref_wide_hp_10`, `smref_wide_hp_11` (#4808 source registrations) |
@@ -730,6 +733,87 @@ SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 ELIXIR=elixir DART=$(command -v dart) \
   -run 'Test(JS|Luau)?FixedVersioning(UnknownCensus|KindMoved)|TestUnityFixedUnlawfulLineage|TestFixedVersioningUnlawfulEntryRefuses'
 ```
 
+### Fields an older fixed writer does not supply
+
+After a lawful [§3.4 fixed-form](SPEC-TABLES.md#34-the-fixed-form-a-record-of-values-under-a-layout)
+read through the lineage, every field the writer's layout does not carry holds
+its declared default, at every depth, whatever the caller's value held before
+the read (SPEC-TABLES §3.4, "THE PREFILL IS WHAT ANSWERS 'ABSENT FIELD'";
+§6.5). A value reused across reads is held to the same answer as a fresh one.
+This is the rule that slots past a count already follow, applied to fields.
+
+The shared case is `ri_fixed_lineage` on the `read-into` surface
+([manifest](../testdata/conformance/tables/MANIFEST.txt)). The unit is
+`tblfixedevo` (`EvoRoot`, lineage v0..v3 in `test/tables/fixedevo`). The
+driver reads [the v3 record](../testdata/conformance/tables/wire/fixedevo_v3_full.bin)
+into one value, capacity 1. That record sets every field off its default,
+nested ones included: leaf `bonus` 17, leaf `tag` `"🚀ok"`, `sub_opt.note`
+`"present"`, and `extra_opt` present. The driver then reads the lawful
+[v1 record](../testdata/conformance/tables/wire/fixedevo_v1.bin) into the
+same value. The v1 layout has none of those fields, nor `def_scalar`,
+`def_str`, `i128_keep`, `u128_keep`, `def_bytes` or `def_flags`, and its
+`fixed_arr` is `[2]` where the reader's is `[4]`. Both reads answer `read`.
+The value's text after the second read must equal
+[the expected answer](../testdata/conformance/tables/read-into/ri_fixed_lineage.txt),
+which is what a fresh value read from v1 holds. Examples: leaf `bonus` 9,
+`tag` `"leaf"`, `note` `"sub"`, `fixed_arr[2..3]` 0, and `extra_opt` absent.
+Any value left over from the v3 read fails the case. The manifest row ends
+in `lawful-second`, which states that the second file is lawful; `generate`
+fails when the engine's verdict on that file differs from the mark, either
+way, so a damaged file the engine reads by accident never becomes a lawful
+row. The answer is
+generated by the Go engine reading v1 into a fresh value.
+
+| Leg | Before the fix | Fix |
+|---|---|---|
+| Go engine (`internal/tablewire`) | top-level absent fields kept the caller's values | `decodeFixedLineage` clears the destination before the lineage decode |
+| C# | a `[N]T` slot an older writer lands shorter kept the caller's elements past the writer's N | the slot lands whole: `TableFixedWire.ReadLittle` and the byte-span setters zero past what the writer sent |
+| Squirrel | held: every record decodes into a fresh row, then lands whole | none |
+| C, C++, Dart, Elixir, Go, Goose, Java, JavaScript, Lobster, Lua, Luau, moo, Python, Ruby, Rust, Unity | held | none |
+
+Each fix goes red when its bug is planted back:
+
+- Remove the engine's clear: `TestFixedLineageReusedInstanceHoldsDefaults`
+  in `internal/tablewire` fails (`extra` 77 against 5).
+- Drop the clear in `TableFixedWire.ReadLittle`: the `cs` leg fails `ri_fixed_lineage`
+  (`fixed_arr[2..3]` hold 1 and 9223372036854775807 against 0 and 0).
+- Make Squirrel decode into the caller's row (`local v = out[k]`): the
+  `squirrel` leg fails `ri_fixed_lineage` (`bonus` 17, `tag` `"🚀ok"`,
+  `note` `"present"` against 9, `"leaf"`, `"sub"`).
+- Point the marked row at a damaged file (`fixedevo_v1_dep_corrupt.bin`), or
+  drop the mark from `ri_fixed_lineage`: `conformance-harness generate`
+  fails, naming the engine's verdict and the row's intent.
+  `TestReadIntoLawfulSecondIsStatedNeverInferred` holds the mark to a
+  `fixed` row handed one value.
+
+Run one leg with:
+
+```sh
+make build/conformance-harness
+./build/conformance-harness run --only <leg> --surfaces read-into
+```
+
+### A cook below a counted minimum stops the C debug build
+
+Declare `fixed table Holder { few [2..4]uint32 }`, and separately
+`union MinPick { few [2..4]uint32  other int32 }` under
+`fixed table Holder { pick MinPick }`. Reset a `Holder`, select the counted
+array (for the union, construct the `few` arm and set its tag), and set its
+count to 1, below the minimum A = 2 (SPEC §4.2, ruling R10). Cook it.
+
+C refuses a write its declaration does not admit through a debug assert
+(SPEC §5.1; the ruling `write-refusal`). A debug build of the C cook must
+therefore abort on the count assert. Returning 0 from the cook in a debug
+build fails this case: the debug build would report a failed cook where the
+rule requires the assert. A build with `NDEBUG` has no write-side check to
+honour, and its answer to this input is not judged here. The case failed on
+the C leg when the cook tested the count range and returned 0 before its
+debug assert. Run it with a C compiler available:
+
+```sh
+SCHEMA_SLOW=1 go test -count=1 -v ./internal/codegen/ctable -run '^TestCCountedMinimumHolds$'
+```
+
 ### Retaining loads zero a reused report
 
 [SPEC-TABLES §6.5](SPEC-TABLES.md#65-the-two-load-paths-and-the-one-read)
@@ -777,3 +861,30 @@ raises a named error unconditionally before it touches the report, owes
 | SPEC-TABLES §6.5: the plain region `Load` zeroes a supplied report in full | `ri_region` | red before its fix on C# (`NativeLoadRegion` cleared three fields and restored `Damaged`), Lua (kept the count refusal, the out-of-range field and the retain counters), Luau and Squirrel (kept the retain counters; Squirrel also the shared-blob count). Green with no fix: C, C++, Go, Java, Dart, JavaScript, Rust, Python, Ruby, C# (unity), Elixir, Lobster, Goose, moo |
 | SPEC-TABLES §6.5, §6.6: a fixed-root `LoadRetain` refuses through a report it zeroed first | `ri_retain_fixed` | red before its fix on Goose and moo (refused, every other field kept), Elixir (handed back the caller's report), Squirrel (kept the shared-blob count) and Luau (READ the fixed root instead of refusing it, §6.6). `refused` then `zeroed` with no fix: Java, JavaScript, Rust, Lobster. `unrepresentable` (compile-time, or an unconditional named raise): C, C++, C# (modern and unity), Go, Dart, Python, Ruby, Lua |
 | SPEC-TABLES §6.5: `LoadRetain` of an UNKNOWN root name zeroes a supplied report before it answers nil (the fixed-root refusal alone comes first, §6.6) | Lua unit test `TestLuaLoadRetainUnknownRootZeroesReport` (no shared case: a root name the unit lacks is not a wire case) | red before its fix on Lua (the unknown-root `return nil` came before the zeroing, so the old report survived untouched). Not checked on the other legs |
+
+### The compressed-float decode adds min as a float32
+
+[`CfDecode`](../test/verify-bitphase/BitPhase.schema) declares
+`c float32 | min = -3.3, max = 7.7, resolution = 0.001`: 11,000 steps in 14
+bits. Its min is not a float32. SPEC.md §4.6's normative decode,
+`q := f32(index) / f32(count)`, `p := q * delta`, `x := p + min`, adds
+`float32(-3.3)`, which is `-3.299999952316284`. A reader that adds the double
+`-3.3` instead reads 2,535 of the 11,001 indices one bit off, index 2 first:
+float32 `0xc053126f` where the decode gives `0xc053126e`.
+
+Every leg of `make verify-bitphase-<lang>` reads `CfDecode` at every index,
+from the two bytes `[i & 0xff, i >> 8]`, on every tier it carries (JavaScript
+on both its stream and its flat tier; Rust in its debug and its release
+build), and prints `CFDECODE <tier> <index> <bits>`, where `<bits>` is 16 hex
+digits of the value's float64 bits or, for moo, which holds a float32 as its
+binary32 pattern, 8 hex digits of that pattern. The harness
+([`cfdecode.go`](../test/verify-bitphase/cfdecode.go)) computes the decode in
+float32 itself and holds every answer to it bit for bit. A tier that leaves an
+index unanswered, answers one twice or out of range, or prints a line outside
+that grammar fails by name. `verify-bitphase-negative-control` plants the
+defect back in the JavaScript flat tier and owes exactly the 2,535-index
+failure on that tier, with the stream tier still green.
+
+| rule | case | the leg it was red on before its fix |
+|---|---|---|
+| SPEC §4.6: the decode is float32 throughout, and min is the declaration's float32 | `CfDecode`, `verify-bitphase-<lang>` | red before its fix on JavaScript (flat tier; the stream tier's runtime frounds its parameters), Dart and Elixir: each generator folded min, and its other float32 literals, as the float32's shortest decimal (`-3.3`), which the language reads as a different double. All three read the same 2,535 indices off. Green with no fix: C, C++, C# (modern and unity), Go, Rust (debug and release), Java, Python, Ruby, Lua, Luau, Squirrel, moo, Goose, Lobster |

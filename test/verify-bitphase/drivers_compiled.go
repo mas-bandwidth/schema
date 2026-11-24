@@ -88,12 +88,22 @@ int main( int argc, char ** argv ) {
         count++;
     }
     fclose( mf );
+    bitphase_cf_decode_t cf; memset( &cf, 0, sizeof( cf ) );
+    for ( int i = 0; i <= @CFDECODE_STEPS@; i++ ) {
+        uint8_t cbuf[32]; memset( cbuf, 0, sizeof( cbuf ) );
+        cbuf[0] = (uint8_t)( i & 0xff ); cbuf[1] = (uint8_t)( i >> 8 );
+        serialize_read_stream_t crs;
+        serialize_read_stream_init( &crs, cbuf, 2 );
+        if ( !bitphase_read_cf_decode( &crs, &cf ) ) { fprintf( stderr, "FAILED: cfdecode read %d\n", i ); return 1; }
+        double d = (double)cf.c; uint64_t u; memcpy( &u, &d, 8 );
+        printf( "CFDECODE c %d %016llx\n", i, (unsigned long long)u );
+    }
     printf( "BITPHASE_OK c %d\n", count );
     return 0;
 }
 `
 	mainC := filepath.Join(workDir, "main.c")
-	if err := os.WriteFile(mainC, []byte(cSrc), 0o644); err != nil {
+	if err := os.WriteFile(mainC, []byte(withCfDecodeSteps(cSrc)), 0o644); err != nil {
 		return err
 	}
 	binPath := filepath.Join(workDir, "runner")
@@ -107,7 +117,7 @@ int main( int argc, char ** argv ) {
 }
 
 func csProgramSource(langTag string) string {
-	return fmt.Sprintf(`using System;
+	return withCfDecodeSteps(fmt.Sprintf(`using System;
 using System.IO;
 using Serialize;
 using B = Bitphase;
@@ -163,11 +173,21 @@ static class Program
             }
             count++;
         }
-        Console.WriteLine("BITPHASE_OK %s " + count);
+        B.CfDecode cf = default;
+        System.Text.StringBuilder cfOut = new System.Text.StringBuilder();
+        for (int i = 0; i <= @CFDECODE_STEPS@; i++)
+        {
+            ReadStream crs = new ReadStream(new byte[] { (byte)(i & 0xff), (byte)(i >> 8) });
+            if (!B.Schema.ReadCfDecode(crs, ref cf) || !crs.Ok) throw new Exception("FAILED: cfdecode read " + i);
+            cfOut.Append("CFDECODE %[1]s ").Append(i).Append(' ')
+                .Append(BitConverter.DoubleToInt64Bits((double)cf.C).ToString("x16")).Append('\n');
+        }
+        Console.Write(cfOut.ToString());
+        Console.WriteLine("BITPHASE_OK %[1]s " + count);
         return 0;
     }
 }
-`, langTag)
+`, langTag))
 }
 
 func verifyCS(repoRoot, schemaBin, corpusDir, workDir string) error {
@@ -283,6 +303,7 @@ func verifyGo(repoRoot, schemaBin, corpusDir, workDir string) error {
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -365,10 +386,19 @@ func main() {
 		}
 		count++
 	}
+	var cf bp.CfDecode
+	var cfOut strings.Builder
+	for i := 0; i <= @CFDECODE_STEPS@; i++ {
+		if err := bp.ReadCfDecode(serialize.NewReadStream([]byte{byte(i), byte(i >> 8)}), &cf); err != nil {
+			panic(fmt.Sprintf("FAILED: cfdecode read %d: %v", i, err))
+		}
+		fmt.Fprintf(&cfOut, "CFDECODE go %d %016x\n", i, math.Float64bits(float64(cf.C)))
+	}
+	fmt.Print(cfOut.String())
 	fmt.Printf("BITPHASE_OK go %d\n", count)
 }
 `
-	if err := os.WriteFile(filepath.Join(appDir, "main.go"), []byte(goSrc), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(appDir, "main.go"), []byte(withCfDecodeSteps(goSrc)), 0o644); err != nil {
 		return err
 	}
 	out, err := runChecked(appDir, nil, "go", "run", ".", corpusDir)
@@ -465,18 +495,34 @@ fn main() {
         }
         count += 1;
     }
+    let mut cf = bp::CfDecode::default();
+    let mut cf_out = String::new();
+    for i in 0..=@CFDECODE_STEPS@usize {
+        let mut cbuf = [0u8; 18];
+        cbuf[0] = (i & 0xff) as u8;
+        cbuf[1] = (i >> 8) as u8;
+        let mut crs = ReadStream::new(&cbuf, 2);
+        if bp::read_cf_decode(&mut crs, &mut cf).is_err() {
+            panic!("FAILED: cfdecode read {}", i);
+        }
+        cf_out.push_str(&format!("CFDECODE rust {} {:016x}\n", i, (cf.c as f64).to_bits()));
+    }
+    print!("{}", cf_out);
     println!("BITPHASE_OK rust {}", count);
 }
 `
-	if err := os.WriteFile(filepath.Join(appDir, "src", "main.rs"), []byte(rsSrc), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(appDir, "src", "main.rs"), []byte(withCfDecodeSteps(rsSrc)), 0o644); err != nil {
 		return err
 	}
 	var extraEnv []string
 	if rb := os.Getenv("RUSTUP_BIN"); rb != "" {
 		extraEnv = append(extraEnv, "PATH="+rb+":"+os.Getenv("PATH"))
 	}
-	if out, err := runChecked(appDir, extraEnv, "cargo", "run", "--quiet", "--", corpusDir); err != nil {
-		return fmt.Errorf("rust debug: %w\n%s", err, out)
+	// the debug build answers the roster and the decode case too: it is a
+	// build of its own, and Rust's debug and release float code can differ
+	dout, derr := runChecked(appDir, extraEnv, "cargo", "run", "--quiet", "--", corpusDir)
+	if err := requireToken(dout, derr, "rust"); err != nil {
+		return fmt.Errorf("rust debug: %w", err)
 	}
 	out, err := runChecked(appDir, extraEnv, "cargo", "run", "--quiet", "--release", "--", corpusDir)
 	return requireToken(out, err, "rust")
@@ -544,12 +590,21 @@ public final class Main {
             }
             count++;
         }
+        BitPhase.CfDecode cf = new BitPhase.CfDecode();
+        StringBuilder cfOut = new StringBuilder();
+        for (int i = 0; i <= @CFDECODE_STEPS@; i++) {
+            byte[] cb = new byte[] { (byte) (i & 0xff), (byte) (i >> 8) };
+            if (!BitPhase.readCfDecode(cf, cb, 16)) throw new RuntimeException("FAILED: cfdecode read " + i);
+            cfOut.append("CFDECODE java ").append(i).append(' ')
+                .append(String.format("%016x", Double.doubleToRawLongBits((double) cf.c))).append('\n');
+        }
+        System.out.print(cfOut);
         System.out.println("BITPHASE_OK java " + count);
     }
 }
 `
 	mainJava := filepath.Join(workDir, "Main.java")
-	if err := os.WriteFile(mainJava, []byte(javaSrc), 0o644); err != nil {
+	if err := os.WriteFile(mainJava, []byte(withCfDecodeSteps(javaSrc)), 0o644); err != nil {
 		return err
 	}
 	classesDir := filepath.Join(workDir, "classes")
@@ -654,11 +709,27 @@ void main(List<String> args) {
     }
     count++;
   }
+  final cf = bp.CfDecode();
+  final cbits = ByteData(8);
+  final cfOut = StringBuffer();
+  for (var i = 0; i <= @CFDECODE_STEPS@; i++) {
+    final cpad = Uint8List(24);
+    cpad[0] = i & 0xff;
+    cpad[1] = i >> 8;
+    if (!bp.readCfDecode(cf, ByteData.sublistView(cpad), 16)) {
+      throw StateError('FAILED: cfdecode read $i');
+    }
+    cbits.setFloat64(0, cf.c);
+    final hi = cbits.getUint32(0).toRadixString(16).padLeft(8, '0');
+    final lo = cbits.getUint32(4).toRadixString(16).padLeft(8, '0');
+    cfOut.writeln('CFDECODE dart $i $hi$lo');
+  }
+  stdout.write(cfOut.toString());
   print('BITPHASE_OK dart $count');
 }
 `
 	mainDart := filepath.Join(workDir, "main.dart")
-	if err := os.WriteFile(mainDart, []byte(dartSrc), 0o644); err != nil {
+	if err := os.WriteFile(mainDart, []byte(withCfDecodeSteps(dartSrc)), 0o644); err != nil {
 		return err
 	}
 	dartBin := resolveTool(repoRoot, "DART", "dist/dart-sdk-3.13.2/bin/dart", "dart")
@@ -722,6 +793,15 @@ defmodule BitPhaseRunner do
         acc + 1
       end)
 
+    cf_out =
+      for i <- 0..@CFDECODE_STEPS@ do
+        case BP.read_cf_decode(<<i::little-16>>, 16) do
+          {:ok, cf} -> "CFDECODE elixir #{i} #{Base.encode16(<<cf.c::float-64>>, case: :lower)}\n"
+          :error -> raise "FAILED: cfdecode read #{i}"
+        end
+      end
+
+    IO.write(cf_out)
     IO.puts("BITPHASE_OK elixir #{count}")
   end
 end
@@ -730,7 +810,7 @@ end
 BitPhaseRunner.run(dir)
 `
 	mainExs := filepath.Join(workDir, "main.exs")
-	if err := os.WriteFile(mainExs, []byte(exSrc), 0o644); err != nil {
+	if err := os.WriteFile(mainExs, []byte(withCfDecodeSteps(exSrc)), 0o644); err != nil {
 		return err
 	}
 	var extraEnv []string

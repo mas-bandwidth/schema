@@ -1175,7 +1175,7 @@ namespace Tabledemo
             new TableFixedSlot<GunnerSettings>(setRaw: (t, v) => t.Reaction = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Reaction = (float)d, reset: (t) => { t.Reaction = 0.2f; }),
             new TableFixedSlot<GunnerSettings>(setRaw: (t, v) => t.Tracking = v != 0, reset: (t) => { t.Tracking = false; }),
             new TableFixedSlot<GunnerSettings>(setRaw: (t, v) => t.CallsignLength = (int)v, reset: (t) => { t.CallsignLength = 0; }),
-            new TableFixedSlot<GunnerSettings>(setBytes: (t, b, l) => { if (t.Callsign != null) b.Slice(0, global::System.Math.Min(b.Length, t.Callsign.Length)).CopyTo(t.Callsign); }, reset: (t) => { if (t.Callsign != null) { Array.Clear(t.Callsign, 0, t.Callsign.Length); } }),
+            new TableFixedSlot<GunnerSettings>(setBytes: (t, b, l) => { if (t.Callsign != null) { int c = global::System.Math.Min(b.Length, t.Callsign.Length); b.Slice(0, c).CopyTo(t.Callsign); t.Callsign.AsSpan(c).Clear(); } }, reset: (t) => { if (t.Callsign != null) { Array.Clear(t.Callsign, 0, t.Callsign.Length); } }),
         };
 
         private static void GunnerSettingsFixedSetRaw(GunnerSettings t, uint slot, ulong v, TableReport rep)
@@ -1210,7 +1210,7 @@ namespace Tabledemo
         {
             switch (slot)
             {
-                case 3: { if (t.Callsign != null) b.Slice(0, global::System.Math.Min(b.Length, t.Callsign.Length)).CopyTo(t.Callsign); } break;
+                case 3: { if (t.Callsign != null) { int c = global::System.Math.Min(b.Length, t.Callsign.Length); b.Slice(0, c).CopyTo(t.Callsign); t.Callsign.AsSpan(c).Clear(); } } break;
                 default: break;
             }
         }
@@ -1811,7 +1811,7 @@ namespace Tabledemo
 
         public static readonly TableFixedSlot<ShipEntry>[] ShipEntryFixedSlots = new TableFixedSlot<ShipEntry>[] {
             new TableFixedSlot<ShipEntry>(setRaw: (t, v) => t.DisplayNameLength = (int)v, reset: (t) => { t.DisplayNameLength = 0; }),
-            new TableFixedSlot<ShipEntry>(setBytes: (t, b, l) => { if (t.DisplayName != null) b.Slice(0, global::System.Math.Min(b.Length, t.DisplayName.Length)).CopyTo(t.DisplayName); }, reset: (t) => { if (t.DisplayName != null) { Array.Clear(t.DisplayName, 0, t.DisplayName.Length); } }),
+            new TableFixedSlot<ShipEntry>(setBytes: (t, b, l) => { if (t.DisplayName != null) { int c = global::System.Math.Min(b.Length, t.DisplayName.Length); b.Slice(0, c).CopyTo(t.DisplayName); t.DisplayName.AsSpan(c).Clear(); } }, reset: (t) => { if (t.DisplayName != null) { Array.Clear(t.DisplayName, 0, t.DisplayName.Length); } }),
             new TableFixedSlot<ShipEntry>(setRaw: (t, v) => t.Health = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Health = (float)d, reset: (t) => { t.Health = 100.0f; }),
             new TableFixedSlot<ShipEntry>(setRaw: (t, v) => t.Mass = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Mass = (float)d, reset: (t) => { t.Mass = 1.0f; }),
             new TableFixedSlot<ShipEntry>(setRaw: (t, v) => t.HardpointsCount = (int)v, reset: (t) => { t.HardpointsCount = 0; }),
@@ -1820,7 +1820,7 @@ namespace Tabledemo
             new TableFixedSlot<ShipEntry>(setRaw: (t, v) => t.Gunner.Reaction = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Gunner.Reaction = (float)d, reset: (t) => { t.Gunner.Reaction = 0.2f; }),
             new TableFixedSlot<ShipEntry>(setRaw: (t, v) => t.Gunner.Tracking = v != 0, reset: (t) => { t.Gunner.Tracking = false; }),
             new TableFixedSlot<ShipEntry>(setRaw: (t, v) => t.Gunner.CallsignLength = (int)v, reset: (t) => { t.Gunner.CallsignLength = 0; }),
-            new TableFixedSlot<ShipEntry>(setBytes: (t, b, l) => { if (t.Gunner.Callsign != null) b.Slice(0, global::System.Math.Min(b.Length, t.Gunner.Callsign.Length)).CopyTo(t.Gunner.Callsign); }, reset: (t) => { if (t.Gunner.Callsign != null) { Array.Clear(t.Gunner.Callsign, 0, t.Gunner.Callsign.Length); } }),
+            new TableFixedSlot<ShipEntry>(setBytes: (t, b, l) => { if (t.Gunner.Callsign != null) { int c = global::System.Math.Min(b.Length, t.Gunner.Callsign.Length); b.Slice(0, c).CopyTo(t.Gunner.Callsign); t.Gunner.Callsign.AsSpan(c).Clear(); } }, reset: (t) => { if (t.Gunner.Callsign != null) { Array.Clear(t.Gunner.Callsign, 0, t.Gunner.Callsign.Length); } }),
         };
 
         private static void ShipEntryFixedSetRaw(ShipEntry t, uint slot, ulong v, TableReport rep)
@@ -1862,9 +1862,9 @@ namespace Tabledemo
         {
             switch (slot)
             {
-                case 1: { if (t.DisplayName != null) b.Slice(0, global::System.Math.Min(b.Length, t.DisplayName.Length)).CopyTo(t.DisplayName); } break;
+                case 1: { if (t.DisplayName != null) { int c = global::System.Math.Min(b.Length, t.DisplayName.Length); b.Slice(0, c).CopyTo(t.DisplayName); t.DisplayName.AsSpan(c).Clear(); } } break;
                 case 5: { if (t.Hardpoints != null) TableFixedWire.ReadLittle<int>(b.Slice(0, global::System.Math.Min(b.Length, t.Hardpoints.Length * 4)), t.Hardpoints); } break;
-                case 10: { if (t.Gunner.Callsign != null) b.Slice(0, global::System.Math.Min(b.Length, t.Gunner.Callsign.Length)).CopyTo(t.Gunner.Callsign); } break;
+                case 10: { if (t.Gunner.Callsign != null) { int c = global::System.Math.Min(b.Length, t.Gunner.Callsign.Length); b.Slice(0, c).CopyTo(t.Gunner.Callsign); t.Gunner.Callsign.AsSpan(c).Clear(); } } break;
                 default: break;
             }
         }
@@ -2490,7 +2490,7 @@ namespace Tabledemo
             new TableFixedSlot<GlobalSettings>(setRaw: (t, v) => t.TickRate = unchecked((uint)v), reset: (t) => { t.TickRate = 60; }),
             new TableFixedSlot<GlobalSettings>(setRawReport: (t, v, rep) => { t.Difficulty = (Difficulty)v; }, reset: (t) => { t.Difficulty = global::Tabledemo.Difficulty.Normal; }),
             new TableFixedSlot<GlobalSettings>(setRaw: (t, v) => t.BuildNoteLength = (int)v, reset: (t) => { t.BuildNoteLength = 0; }),
-            new TableFixedSlot<GlobalSettings>(setBytes: (t, b, l) => { if (t.BuildNote != null) b.Slice(0, global::System.Math.Min(b.Length, t.BuildNote.Length)).CopyTo(t.BuildNote); }, reset: (t) => { if (t.BuildNote != null) { Array.Clear(t.BuildNote, 0, t.BuildNote.Length); } }),
+            new TableFixedSlot<GlobalSettings>(setBytes: (t, b, l) => { if (t.BuildNote != null) { int c = global::System.Math.Min(b.Length, t.BuildNote.Length); b.Slice(0, c).CopyTo(t.BuildNote); t.BuildNote.AsSpan(c).Clear(); } }, reset: (t) => { if (t.BuildNote != null) { Array.Clear(t.BuildNote, 0, t.BuildNote.Length); } }),
             new TableFixedSlot<GlobalSettings>(setBytes: (t, b, l) => { if (t.SpawnDelays != null) TableFixedWire.ReadLittle<float>(b.Slice(0, global::System.Math.Min(b.Length, t.SpawnDelays.Length * 4)), t.SpawnDelays); }, reset: (t) => { if (t.SpawnDelays != null) Array.Clear(t.SpawnDelays, 0, t.SpawnDelays.Length); }),
         };
 
@@ -2525,7 +2525,7 @@ namespace Tabledemo
         {
             switch (slot)
             {
-                case 3: { if (t.BuildNote != null) b.Slice(0, global::System.Math.Min(b.Length, t.BuildNote.Length)).CopyTo(t.BuildNote); } break;
+                case 3: { if (t.BuildNote != null) { int c = global::System.Math.Min(b.Length, t.BuildNote.Length); b.Slice(0, c).CopyTo(t.BuildNote); t.BuildNote.AsSpan(c).Clear(); } } break;
                 case 4: { if (t.SpawnDelays != null) TableFixedWire.ReadLittle<float>(b.Slice(0, global::System.Math.Min(b.Length, t.SpawnDelays.Length * 4)), t.SpawnDelays); } break;
                 default: break;
             }
@@ -3241,10 +3241,10 @@ namespace Tabledemo
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Settings.TickRate = unchecked((uint)v), reset: (t) => { t.Settings.TickRate = 60; }),
             new TableFixedSlot<PackConfig>(setRawReport: (t, v, rep) => { t.Settings.Difficulty = (Difficulty)v; }, reset: (t) => { t.Settings.Difficulty = global::Tabledemo.Difficulty.Normal; }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Settings.BuildNoteLength = (int)v, reset: (t) => { t.Settings.BuildNoteLength = 0; }),
-            new TableFixedSlot<PackConfig>(setBytes: (t, b, l) => { if (t.Settings.BuildNote != null) b.Slice(0, global::System.Math.Min(b.Length, t.Settings.BuildNote.Length)).CopyTo(t.Settings.BuildNote); }, reset: (t) => { if (t.Settings.BuildNote != null) { Array.Clear(t.Settings.BuildNote, 0, t.Settings.BuildNote.Length); } }),
+            new TableFixedSlot<PackConfig>(setBytes: (t, b, l) => { if (t.Settings.BuildNote != null) { int c = global::System.Math.Min(b.Length, t.Settings.BuildNote.Length); b.Slice(0, c).CopyTo(t.Settings.BuildNote); t.Settings.BuildNote.AsSpan(c).Clear(); } }, reset: (t) => { if (t.Settings.BuildNote != null) { Array.Clear(t.Settings.BuildNote, 0, t.Settings.BuildNote.Length); } }),
             new TableFixedSlot<PackConfig>(setBytes: (t, b, l) => { if (t.Settings.SpawnDelays != null) TableFixedWire.ReadLittle<float>(b.Slice(0, global::System.Math.Min(b.Length, t.Settings.SpawnDelays.Length * 4)), t.Settings.SpawnDelays); }, reset: (t) => { if (t.Settings.SpawnDelays != null) Array.Clear(t.Settings.SpawnDelays, 0, t.Settings.SpawnDelays.Length); }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Ships.Slots[0].DisplayNameLength = (int)v, reset: (t) => { t.Ships.Slots[0].DisplayNameLength = 0; }),
-            new TableFixedSlot<PackConfig>(setBytes: (t, b, l) => { if (t.Ships.Slots[0].DisplayName != null) b.Slice(0, global::System.Math.Min(b.Length, t.Ships.Slots[0].DisplayName.Length)).CopyTo(t.Ships.Slots[0].DisplayName); }, reset: (t) => { if (t.Ships.Slots[0].DisplayName != null) { Array.Clear(t.Ships.Slots[0].DisplayName, 0, t.Ships.Slots[0].DisplayName.Length); } }),
+            new TableFixedSlot<PackConfig>(setBytes: (t, b, l) => { if (t.Ships.Slots[0].DisplayName != null) { int c = global::System.Math.Min(b.Length, t.Ships.Slots[0].DisplayName.Length); b.Slice(0, c).CopyTo(t.Ships.Slots[0].DisplayName); t.Ships.Slots[0].DisplayName.AsSpan(c).Clear(); } }, reset: (t) => { if (t.Ships.Slots[0].DisplayName != null) { Array.Clear(t.Ships.Slots[0].DisplayName, 0, t.Ships.Slots[0].DisplayName.Length); } }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Ships.Slots[0].Health = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Ships.Slots[0].Health = (float)d, reset: (t) => { t.Ships.Slots[0].Health = 100.0f; }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Ships.Slots[0].Mass = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Ships.Slots[0].Mass = (float)d, reset: (t) => { t.Ships.Slots[0].Mass = 1.0f; }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Ships.Slots[0].HardpointsCount = (int)v, reset: (t) => { t.Ships.Slots[0].HardpointsCount = 0; }),
@@ -3253,9 +3253,9 @@ namespace Tabledemo
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Ships.Slots[0].Gunner.Reaction = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Ships.Slots[0].Gunner.Reaction = (float)d, reset: (t) => { t.Ships.Slots[0].Gunner.Reaction = 0.2f; }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Ships.Slots[0].Gunner.Tracking = v != 0, reset: (t) => { t.Ships.Slots[0].Gunner.Tracking = false; }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Ships.Slots[0].Gunner.CallsignLength = (int)v, reset: (t) => { t.Ships.Slots[0].Gunner.CallsignLength = 0; }),
-            new TableFixedSlot<PackConfig>(setBytes: (t, b, l) => { if (t.Ships.Slots[0].Gunner.Callsign != null) b.Slice(0, global::System.Math.Min(b.Length, t.Ships.Slots[0].Gunner.Callsign.Length)).CopyTo(t.Ships.Slots[0].Gunner.Callsign); }, reset: (t) => { if (t.Ships.Slots[0].Gunner.Callsign != null) { Array.Clear(t.Ships.Slots[0].Gunner.Callsign, 0, t.Ships.Slots[0].Gunner.Callsign.Length); } }),
+            new TableFixedSlot<PackConfig>(setBytes: (t, b, l) => { if (t.Ships.Slots[0].Gunner.Callsign != null) { int c = global::System.Math.Min(b.Length, t.Ships.Slots[0].Gunner.Callsign.Length); b.Slice(0, c).CopyTo(t.Ships.Slots[0].Gunner.Callsign); t.Ships.Slots[0].Gunner.Callsign.AsSpan(c).Clear(); } }, reset: (t) => { if (t.Ships.Slots[0].Gunner.Callsign != null) { Array.Clear(t.Ships.Slots[0].Gunner.Callsign, 0, t.Ships.Slots[0].Gunner.Callsign.Length); } }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Ships.Slots[1].DisplayNameLength = (int)v, reset: (t) => { t.Ships.Slots[1].DisplayNameLength = 0; }),
-            new TableFixedSlot<PackConfig>(setBytes: (t, b, l) => { if (t.Ships.Slots[1].DisplayName != null) b.Slice(0, global::System.Math.Min(b.Length, t.Ships.Slots[1].DisplayName.Length)).CopyTo(t.Ships.Slots[1].DisplayName); }, reset: (t) => { if (t.Ships.Slots[1].DisplayName != null) { Array.Clear(t.Ships.Slots[1].DisplayName, 0, t.Ships.Slots[1].DisplayName.Length); } }),
+            new TableFixedSlot<PackConfig>(setBytes: (t, b, l) => { if (t.Ships.Slots[1].DisplayName != null) { int c = global::System.Math.Min(b.Length, t.Ships.Slots[1].DisplayName.Length); b.Slice(0, c).CopyTo(t.Ships.Slots[1].DisplayName); t.Ships.Slots[1].DisplayName.AsSpan(c).Clear(); } }, reset: (t) => { if (t.Ships.Slots[1].DisplayName != null) { Array.Clear(t.Ships.Slots[1].DisplayName, 0, t.Ships.Slots[1].DisplayName.Length); } }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Ships.Slots[1].Health = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Ships.Slots[1].Health = (float)d, reset: (t) => { t.Ships.Slots[1].Health = 100.0f; }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Ships.Slots[1].Mass = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Ships.Slots[1].Mass = (float)d, reset: (t) => { t.Ships.Slots[1].Mass = 1.0f; }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Ships.Slots[1].HardpointsCount = (int)v, reset: (t) => { t.Ships.Slots[1].HardpointsCount = 0; }),
@@ -3264,9 +3264,9 @@ namespace Tabledemo
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Ships.Slots[1].Gunner.Reaction = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Ships.Slots[1].Gunner.Reaction = (float)d, reset: (t) => { t.Ships.Slots[1].Gunner.Reaction = 0.2f; }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Ships.Slots[1].Gunner.Tracking = v != 0, reset: (t) => { t.Ships.Slots[1].Gunner.Tracking = false; }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Ships.Slots[1].Gunner.CallsignLength = (int)v, reset: (t) => { t.Ships.Slots[1].Gunner.CallsignLength = 0; }),
-            new TableFixedSlot<PackConfig>(setBytes: (t, b, l) => { if (t.Ships.Slots[1].Gunner.Callsign != null) b.Slice(0, global::System.Math.Min(b.Length, t.Ships.Slots[1].Gunner.Callsign.Length)).CopyTo(t.Ships.Slots[1].Gunner.Callsign); }, reset: (t) => { if (t.Ships.Slots[1].Gunner.Callsign != null) { Array.Clear(t.Ships.Slots[1].Gunner.Callsign, 0, t.Ships.Slots[1].Gunner.Callsign.Length); } }),
+            new TableFixedSlot<PackConfig>(setBytes: (t, b, l) => { if (t.Ships.Slots[1].Gunner.Callsign != null) { int c = global::System.Math.Min(b.Length, t.Ships.Slots[1].Gunner.Callsign.Length); b.Slice(0, c).CopyTo(t.Ships.Slots[1].Gunner.Callsign); t.Ships.Slots[1].Gunner.Callsign.AsSpan(c).Clear(); } }, reset: (t) => { if (t.Ships.Slots[1].Gunner.Callsign != null) { Array.Clear(t.Ships.Slots[1].Gunner.Callsign, 0, t.Ships.Slots[1].Gunner.Callsign.Length); } }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Ships.Slots[2].DisplayNameLength = (int)v, reset: (t) => { t.Ships.Slots[2].DisplayNameLength = 0; }),
-            new TableFixedSlot<PackConfig>(setBytes: (t, b, l) => { if (t.Ships.Slots[2].DisplayName != null) b.Slice(0, global::System.Math.Min(b.Length, t.Ships.Slots[2].DisplayName.Length)).CopyTo(t.Ships.Slots[2].DisplayName); }, reset: (t) => { if (t.Ships.Slots[2].DisplayName != null) { Array.Clear(t.Ships.Slots[2].DisplayName, 0, t.Ships.Slots[2].DisplayName.Length); } }),
+            new TableFixedSlot<PackConfig>(setBytes: (t, b, l) => { if (t.Ships.Slots[2].DisplayName != null) { int c = global::System.Math.Min(b.Length, t.Ships.Slots[2].DisplayName.Length); b.Slice(0, c).CopyTo(t.Ships.Slots[2].DisplayName); t.Ships.Slots[2].DisplayName.AsSpan(c).Clear(); } }, reset: (t) => { if (t.Ships.Slots[2].DisplayName != null) { Array.Clear(t.Ships.Slots[2].DisplayName, 0, t.Ships.Slots[2].DisplayName.Length); } }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Ships.Slots[2].Health = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Ships.Slots[2].Health = (float)d, reset: (t) => { t.Ships.Slots[2].Health = 100.0f; }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Ships.Slots[2].Mass = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Ships.Slots[2].Mass = (float)d, reset: (t) => { t.Ships.Slots[2].Mass = 1.0f; }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Ships.Slots[2].HardpointsCount = (int)v, reset: (t) => { t.Ships.Slots[2].HardpointsCount = 0; }),
@@ -3275,13 +3275,13 @@ namespace Tabledemo
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Ships.Slots[2].Gunner.Reaction = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Ships.Slots[2].Gunner.Reaction = (float)d, reset: (t) => { t.Ships.Slots[2].Gunner.Reaction = 0.2f; }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Ships.Slots[2].Gunner.Tracking = v != 0, reset: (t) => { t.Ships.Slots[2].Gunner.Tracking = false; }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Ships.Slots[2].Gunner.CallsignLength = (int)v, reset: (t) => { t.Ships.Slots[2].Gunner.CallsignLength = 0; }),
-            new TableFixedSlot<PackConfig>(setBytes: (t, b, l) => { if (t.Ships.Slots[2].Gunner.Callsign != null) b.Slice(0, global::System.Math.Min(b.Length, t.Ships.Slots[2].Gunner.Callsign.Length)).CopyTo(t.Ships.Slots[2].Gunner.Callsign); }, reset: (t) => { if (t.Ships.Slots[2].Gunner.Callsign != null) { Array.Clear(t.Ships.Slots[2].Gunner.Callsign, 0, t.Ships.Slots[2].Gunner.Callsign.Length); } }),
+            new TableFixedSlot<PackConfig>(setBytes: (t, b, l) => { if (t.Ships.Slots[2].Gunner.Callsign != null) { int c = global::System.Math.Min(b.Length, t.Ships.Slots[2].Gunner.Callsign.Length); b.Slice(0, c).CopyTo(t.Ships.Slots[2].Gunner.Callsign); t.Ships.Slots[2].Gunner.Callsign.AsSpan(c).Clear(); } }, reset: (t) => { if (t.Ships.Slots[2].Gunner.Callsign != null) { Array.Clear(t.Ships.Slots[2].Gunner.Callsign, 0, t.Ships.Slots[2].Gunner.Callsign.Length); } }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Thresholds.Slots[0] = unchecked((int)v), reset: (t) => { t.Thresholds.Slots[0] = 0; }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Thresholds.Slots[1] = unchecked((int)v), reset: (t) => { t.Thresholds.Slots[1] = 0; }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Thresholds.Slots[2] = unchecked((int)v), reset: (t) => { t.Thresholds.Slots[2] = 0; }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.ReservesCount = (int)v, reset: (t) => { t.ReservesCount = 0; }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Reserves[0].DisplayNameLength = (int)v, reset: (t) => { t.Reserves[0].DisplayNameLength = 0; }),
-            new TableFixedSlot<PackConfig>(setBytes: (t, b, l) => { if (t.Reserves[0].DisplayName != null) b.Slice(0, global::System.Math.Min(b.Length, t.Reserves[0].DisplayName.Length)).CopyTo(t.Reserves[0].DisplayName); }, reset: (t) => { if (t.Reserves[0].DisplayName != null) { Array.Clear(t.Reserves[0].DisplayName, 0, t.Reserves[0].DisplayName.Length); } }),
+            new TableFixedSlot<PackConfig>(setBytes: (t, b, l) => { if (t.Reserves[0].DisplayName != null) { int c = global::System.Math.Min(b.Length, t.Reserves[0].DisplayName.Length); b.Slice(0, c).CopyTo(t.Reserves[0].DisplayName); t.Reserves[0].DisplayName.AsSpan(c).Clear(); } }, reset: (t) => { if (t.Reserves[0].DisplayName != null) { Array.Clear(t.Reserves[0].DisplayName, 0, t.Reserves[0].DisplayName.Length); } }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Reserves[0].Health = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Reserves[0].Health = (float)d, reset: (t) => { t.Reserves[0].Health = 100.0f; }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Reserves[0].Mass = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Reserves[0].Mass = (float)d, reset: (t) => { t.Reserves[0].Mass = 1.0f; }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Reserves[0].HardpointsCount = (int)v, reset: (t) => { t.Reserves[0].HardpointsCount = 0; }),
@@ -3290,9 +3290,9 @@ namespace Tabledemo
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Reserves[0].Gunner.Reaction = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Reserves[0].Gunner.Reaction = (float)d, reset: (t) => { t.Reserves[0].Gunner.Reaction = 0.2f; }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Reserves[0].Gunner.Tracking = v != 0, reset: (t) => { t.Reserves[0].Gunner.Tracking = false; }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Reserves[0].Gunner.CallsignLength = (int)v, reset: (t) => { t.Reserves[0].Gunner.CallsignLength = 0; }),
-            new TableFixedSlot<PackConfig>(setBytes: (t, b, l) => { if (t.Reserves[0].Gunner.Callsign != null) b.Slice(0, global::System.Math.Min(b.Length, t.Reserves[0].Gunner.Callsign.Length)).CopyTo(t.Reserves[0].Gunner.Callsign); }, reset: (t) => { if (t.Reserves[0].Gunner.Callsign != null) { Array.Clear(t.Reserves[0].Gunner.Callsign, 0, t.Reserves[0].Gunner.Callsign.Length); } }),
+            new TableFixedSlot<PackConfig>(setBytes: (t, b, l) => { if (t.Reserves[0].Gunner.Callsign != null) { int c = global::System.Math.Min(b.Length, t.Reserves[0].Gunner.Callsign.Length); b.Slice(0, c).CopyTo(t.Reserves[0].Gunner.Callsign); t.Reserves[0].Gunner.Callsign.AsSpan(c).Clear(); } }, reset: (t) => { if (t.Reserves[0].Gunner.Callsign != null) { Array.Clear(t.Reserves[0].Gunner.Callsign, 0, t.Reserves[0].Gunner.Callsign.Length); } }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Reserves[1].DisplayNameLength = (int)v, reset: (t) => { t.Reserves[1].DisplayNameLength = 0; }),
-            new TableFixedSlot<PackConfig>(setBytes: (t, b, l) => { if (t.Reserves[1].DisplayName != null) b.Slice(0, global::System.Math.Min(b.Length, t.Reserves[1].DisplayName.Length)).CopyTo(t.Reserves[1].DisplayName); }, reset: (t) => { if (t.Reserves[1].DisplayName != null) { Array.Clear(t.Reserves[1].DisplayName, 0, t.Reserves[1].DisplayName.Length); } }),
+            new TableFixedSlot<PackConfig>(setBytes: (t, b, l) => { if (t.Reserves[1].DisplayName != null) { int c = global::System.Math.Min(b.Length, t.Reserves[1].DisplayName.Length); b.Slice(0, c).CopyTo(t.Reserves[1].DisplayName); t.Reserves[1].DisplayName.AsSpan(c).Clear(); } }, reset: (t) => { if (t.Reserves[1].DisplayName != null) { Array.Clear(t.Reserves[1].DisplayName, 0, t.Reserves[1].DisplayName.Length); } }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Reserves[1].Health = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Reserves[1].Health = (float)d, reset: (t) => { t.Reserves[1].Health = 100.0f; }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Reserves[1].Mass = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Reserves[1].Mass = (float)d, reset: (t) => { t.Reserves[1].Mass = 1.0f; }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Reserves[1].HardpointsCount = (int)v, reset: (t) => { t.Reserves[1].HardpointsCount = 0; }),
@@ -3301,9 +3301,9 @@ namespace Tabledemo
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Reserves[1].Gunner.Reaction = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Reserves[1].Gunner.Reaction = (float)d, reset: (t) => { t.Reserves[1].Gunner.Reaction = 0.2f; }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Reserves[1].Gunner.Tracking = v != 0, reset: (t) => { t.Reserves[1].Gunner.Tracking = false; }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Reserves[1].Gunner.CallsignLength = (int)v, reset: (t) => { t.Reserves[1].Gunner.CallsignLength = 0; }),
-            new TableFixedSlot<PackConfig>(setBytes: (t, b, l) => { if (t.Reserves[1].Gunner.Callsign != null) b.Slice(0, global::System.Math.Min(b.Length, t.Reserves[1].Gunner.Callsign.Length)).CopyTo(t.Reserves[1].Gunner.Callsign); }, reset: (t) => { if (t.Reserves[1].Gunner.Callsign != null) { Array.Clear(t.Reserves[1].Gunner.Callsign, 0, t.Reserves[1].Gunner.Callsign.Length); } }),
+            new TableFixedSlot<PackConfig>(setBytes: (t, b, l) => { if (t.Reserves[1].Gunner.Callsign != null) { int c = global::System.Math.Min(b.Length, t.Reserves[1].Gunner.Callsign.Length); b.Slice(0, c).CopyTo(t.Reserves[1].Gunner.Callsign); t.Reserves[1].Gunner.Callsign.AsSpan(c).Clear(); } }, reset: (t) => { if (t.Reserves[1].Gunner.Callsign != null) { Array.Clear(t.Reserves[1].Gunner.Callsign, 0, t.Reserves[1].Gunner.Callsign.Length); } }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Reserves[2].DisplayNameLength = (int)v, reset: (t) => { t.Reserves[2].DisplayNameLength = 0; }),
-            new TableFixedSlot<PackConfig>(setBytes: (t, b, l) => { if (t.Reserves[2].DisplayName != null) b.Slice(0, global::System.Math.Min(b.Length, t.Reserves[2].DisplayName.Length)).CopyTo(t.Reserves[2].DisplayName); }, reset: (t) => { if (t.Reserves[2].DisplayName != null) { Array.Clear(t.Reserves[2].DisplayName, 0, t.Reserves[2].DisplayName.Length); } }),
+            new TableFixedSlot<PackConfig>(setBytes: (t, b, l) => { if (t.Reserves[2].DisplayName != null) { int c = global::System.Math.Min(b.Length, t.Reserves[2].DisplayName.Length); b.Slice(0, c).CopyTo(t.Reserves[2].DisplayName); t.Reserves[2].DisplayName.AsSpan(c).Clear(); } }, reset: (t) => { if (t.Reserves[2].DisplayName != null) { Array.Clear(t.Reserves[2].DisplayName, 0, t.Reserves[2].DisplayName.Length); } }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Reserves[2].Health = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Reserves[2].Health = (float)d, reset: (t) => { t.Reserves[2].Health = 100.0f; }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Reserves[2].Mass = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Reserves[2].Mass = (float)d, reset: (t) => { t.Reserves[2].Mass = 1.0f; }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Reserves[2].HardpointsCount = (int)v, reset: (t) => { t.Reserves[2].HardpointsCount = 0; }),
@@ -3312,7 +3312,7 @@ namespace Tabledemo
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Reserves[2].Gunner.Reaction = BitConverter.UInt32BitsToSingle((uint)v), setDouble: (t, d) => t.Reserves[2].Gunner.Reaction = (float)d, reset: (t) => { t.Reserves[2].Gunner.Reaction = 0.2f; }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Reserves[2].Gunner.Tracking = v != 0, reset: (t) => { t.Reserves[2].Gunner.Tracking = false; }),
             new TableFixedSlot<PackConfig>(setRaw: (t, v) => t.Reserves[2].Gunner.CallsignLength = (int)v, reset: (t) => { t.Reserves[2].Gunner.CallsignLength = 0; }),
-            new TableFixedSlot<PackConfig>(setBytes: (t, b, l) => { if (t.Reserves[2].Gunner.Callsign != null) b.Slice(0, global::System.Math.Min(b.Length, t.Reserves[2].Gunner.Callsign.Length)).CopyTo(t.Reserves[2].Gunner.Callsign); }, reset: (t) => { if (t.Reserves[2].Gunner.Callsign != null) { Array.Clear(t.Reserves[2].Gunner.Callsign, 0, t.Reserves[2].Gunner.Callsign.Length); } }),
+            new TableFixedSlot<PackConfig>(setBytes: (t, b, l) => { if (t.Reserves[2].Gunner.Callsign != null) { int c = global::System.Math.Min(b.Length, t.Reserves[2].Gunner.Callsign.Length); b.Slice(0, c).CopyTo(t.Reserves[2].Gunner.Callsign); t.Reserves[2].Gunner.Callsign.AsSpan(c).Clear(); } }, reset: (t) => { if (t.Reserves[2].Gunner.Callsign != null) { Array.Clear(t.Reserves[2].Gunner.Callsign, 0, t.Reserves[2].Gunner.Callsign.Length); } }),
         };
 
         private static void PackConfigFixedSetRaw(PackConfig t, uint slot, ulong v, TableReport rep)
@@ -3417,26 +3417,26 @@ namespace Tabledemo
         {
             switch (slot)
             {
-                case 4: { if (t.Settings.BuildNote != null) b.Slice(0, global::System.Math.Min(b.Length, t.Settings.BuildNote.Length)).CopyTo(t.Settings.BuildNote); } break;
+                case 4: { if (t.Settings.BuildNote != null) { int c = global::System.Math.Min(b.Length, t.Settings.BuildNote.Length); b.Slice(0, c).CopyTo(t.Settings.BuildNote); t.Settings.BuildNote.AsSpan(c).Clear(); } } break;
                 case 5: { if (t.Settings.SpawnDelays != null) TableFixedWire.ReadLittle<float>(b.Slice(0, global::System.Math.Min(b.Length, t.Settings.SpawnDelays.Length * 4)), t.Settings.SpawnDelays); } break;
-                case 7: { if (t.Ships.Slots[0].DisplayName != null) b.Slice(0, global::System.Math.Min(b.Length, t.Ships.Slots[0].DisplayName.Length)).CopyTo(t.Ships.Slots[0].DisplayName); } break;
+                case 7: { if (t.Ships.Slots[0].DisplayName != null) { int c = global::System.Math.Min(b.Length, t.Ships.Slots[0].DisplayName.Length); b.Slice(0, c).CopyTo(t.Ships.Slots[0].DisplayName); t.Ships.Slots[0].DisplayName.AsSpan(c).Clear(); } } break;
                 case 11: { if (t.Ships.Slots[0].Hardpoints != null) TableFixedWire.ReadLittle<int>(b.Slice(0, global::System.Math.Min(b.Length, t.Ships.Slots[0].Hardpoints.Length * 4)), t.Ships.Slots[0].Hardpoints); } break;
-                case 16: { if (t.Ships.Slots[0].Gunner.Callsign != null) b.Slice(0, global::System.Math.Min(b.Length, t.Ships.Slots[0].Gunner.Callsign.Length)).CopyTo(t.Ships.Slots[0].Gunner.Callsign); } break;
-                case 18: { if (t.Ships.Slots[1].DisplayName != null) b.Slice(0, global::System.Math.Min(b.Length, t.Ships.Slots[1].DisplayName.Length)).CopyTo(t.Ships.Slots[1].DisplayName); } break;
+                case 16: { if (t.Ships.Slots[0].Gunner.Callsign != null) { int c = global::System.Math.Min(b.Length, t.Ships.Slots[0].Gunner.Callsign.Length); b.Slice(0, c).CopyTo(t.Ships.Slots[0].Gunner.Callsign); t.Ships.Slots[0].Gunner.Callsign.AsSpan(c).Clear(); } } break;
+                case 18: { if (t.Ships.Slots[1].DisplayName != null) { int c = global::System.Math.Min(b.Length, t.Ships.Slots[1].DisplayName.Length); b.Slice(0, c).CopyTo(t.Ships.Slots[1].DisplayName); t.Ships.Slots[1].DisplayName.AsSpan(c).Clear(); } } break;
                 case 22: { if (t.Ships.Slots[1].Hardpoints != null) TableFixedWire.ReadLittle<int>(b.Slice(0, global::System.Math.Min(b.Length, t.Ships.Slots[1].Hardpoints.Length * 4)), t.Ships.Slots[1].Hardpoints); } break;
-                case 27: { if (t.Ships.Slots[1].Gunner.Callsign != null) b.Slice(0, global::System.Math.Min(b.Length, t.Ships.Slots[1].Gunner.Callsign.Length)).CopyTo(t.Ships.Slots[1].Gunner.Callsign); } break;
-                case 29: { if (t.Ships.Slots[2].DisplayName != null) b.Slice(0, global::System.Math.Min(b.Length, t.Ships.Slots[2].DisplayName.Length)).CopyTo(t.Ships.Slots[2].DisplayName); } break;
+                case 27: { if (t.Ships.Slots[1].Gunner.Callsign != null) { int c = global::System.Math.Min(b.Length, t.Ships.Slots[1].Gunner.Callsign.Length); b.Slice(0, c).CopyTo(t.Ships.Slots[1].Gunner.Callsign); t.Ships.Slots[1].Gunner.Callsign.AsSpan(c).Clear(); } } break;
+                case 29: { if (t.Ships.Slots[2].DisplayName != null) { int c = global::System.Math.Min(b.Length, t.Ships.Slots[2].DisplayName.Length); b.Slice(0, c).CopyTo(t.Ships.Slots[2].DisplayName); t.Ships.Slots[2].DisplayName.AsSpan(c).Clear(); } } break;
                 case 33: { if (t.Ships.Slots[2].Hardpoints != null) TableFixedWire.ReadLittle<int>(b.Slice(0, global::System.Math.Min(b.Length, t.Ships.Slots[2].Hardpoints.Length * 4)), t.Ships.Slots[2].Hardpoints); } break;
-                case 38: { if (t.Ships.Slots[2].Gunner.Callsign != null) b.Slice(0, global::System.Math.Min(b.Length, t.Ships.Slots[2].Gunner.Callsign.Length)).CopyTo(t.Ships.Slots[2].Gunner.Callsign); } break;
-                case 44: { if (t.Reserves[0].DisplayName != null) b.Slice(0, global::System.Math.Min(b.Length, t.Reserves[0].DisplayName.Length)).CopyTo(t.Reserves[0].DisplayName); } break;
+                case 38: { if (t.Ships.Slots[2].Gunner.Callsign != null) { int c = global::System.Math.Min(b.Length, t.Ships.Slots[2].Gunner.Callsign.Length); b.Slice(0, c).CopyTo(t.Ships.Slots[2].Gunner.Callsign); t.Ships.Slots[2].Gunner.Callsign.AsSpan(c).Clear(); } } break;
+                case 44: { if (t.Reserves[0].DisplayName != null) { int c = global::System.Math.Min(b.Length, t.Reserves[0].DisplayName.Length); b.Slice(0, c).CopyTo(t.Reserves[0].DisplayName); t.Reserves[0].DisplayName.AsSpan(c).Clear(); } } break;
                 case 48: { if (t.Reserves[0].Hardpoints != null) TableFixedWire.ReadLittle<int>(b.Slice(0, global::System.Math.Min(b.Length, t.Reserves[0].Hardpoints.Length * 4)), t.Reserves[0].Hardpoints); } break;
-                case 53: { if (t.Reserves[0].Gunner.Callsign != null) b.Slice(0, global::System.Math.Min(b.Length, t.Reserves[0].Gunner.Callsign.Length)).CopyTo(t.Reserves[0].Gunner.Callsign); } break;
-                case 55: { if (t.Reserves[1].DisplayName != null) b.Slice(0, global::System.Math.Min(b.Length, t.Reserves[1].DisplayName.Length)).CopyTo(t.Reserves[1].DisplayName); } break;
+                case 53: { if (t.Reserves[0].Gunner.Callsign != null) { int c = global::System.Math.Min(b.Length, t.Reserves[0].Gunner.Callsign.Length); b.Slice(0, c).CopyTo(t.Reserves[0].Gunner.Callsign); t.Reserves[0].Gunner.Callsign.AsSpan(c).Clear(); } } break;
+                case 55: { if (t.Reserves[1].DisplayName != null) { int c = global::System.Math.Min(b.Length, t.Reserves[1].DisplayName.Length); b.Slice(0, c).CopyTo(t.Reserves[1].DisplayName); t.Reserves[1].DisplayName.AsSpan(c).Clear(); } } break;
                 case 59: { if (t.Reserves[1].Hardpoints != null) TableFixedWire.ReadLittle<int>(b.Slice(0, global::System.Math.Min(b.Length, t.Reserves[1].Hardpoints.Length * 4)), t.Reserves[1].Hardpoints); } break;
-                case 64: { if (t.Reserves[1].Gunner.Callsign != null) b.Slice(0, global::System.Math.Min(b.Length, t.Reserves[1].Gunner.Callsign.Length)).CopyTo(t.Reserves[1].Gunner.Callsign); } break;
-                case 66: { if (t.Reserves[2].DisplayName != null) b.Slice(0, global::System.Math.Min(b.Length, t.Reserves[2].DisplayName.Length)).CopyTo(t.Reserves[2].DisplayName); } break;
+                case 64: { if (t.Reserves[1].Gunner.Callsign != null) { int c = global::System.Math.Min(b.Length, t.Reserves[1].Gunner.Callsign.Length); b.Slice(0, c).CopyTo(t.Reserves[1].Gunner.Callsign); t.Reserves[1].Gunner.Callsign.AsSpan(c).Clear(); } } break;
+                case 66: { if (t.Reserves[2].DisplayName != null) { int c = global::System.Math.Min(b.Length, t.Reserves[2].DisplayName.Length); b.Slice(0, c).CopyTo(t.Reserves[2].DisplayName); t.Reserves[2].DisplayName.AsSpan(c).Clear(); } } break;
                 case 70: { if (t.Reserves[2].Hardpoints != null) TableFixedWire.ReadLittle<int>(b.Slice(0, global::System.Math.Min(b.Length, t.Reserves[2].Hardpoints.Length * 4)), t.Reserves[2].Hardpoints); } break;
-                case 75: { if (t.Reserves[2].Gunner.Callsign != null) b.Slice(0, global::System.Math.Min(b.Length, t.Reserves[2].Gunner.Callsign.Length)).CopyTo(t.Reserves[2].Gunner.Callsign); } break;
+                case 75: { if (t.Reserves[2].Gunner.Callsign != null) { int c = global::System.Math.Min(b.Length, t.Reserves[2].Gunner.Callsign.Length); b.Slice(0, c).CopyTo(t.Reserves[2].Gunner.Callsign); t.Reserves[2].Gunner.Callsign.AsSpan(c).Clear(); } } break;
                 default: break;
             }
         }

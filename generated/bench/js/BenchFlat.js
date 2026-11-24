@@ -152,6 +152,9 @@ export function WriteBenchPacketFlat(view, value) {
   lo = v >>> 7;
   view.setUint32(28, lo, true);
   lo = 0;
+  if (value.blob == null || value.blob.length !== 17) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+    return -1;
+  }
   wi = 32;
   for (let i0 = 0; i0 < 17; i0++) {
     if (!globalThis.Number.isInteger(value.blob[i0]) || value.blob[i0] < 0 || value.blob[i0] > 255) { // a bare integer must fit its width
@@ -1611,6 +1614,9 @@ export function WriteBenchMixedFlat(view, value) {
       }
       break;
     }
+  }
+  if (value.loadout == null || value.loadout.length !== 4) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+    return -1;
   }
   for (let i0 = 0; i0 < 4; i0++) {
     if (!globalThis.Number.isInteger(value.loadout[i0]) || value.loadout[i0] < 0 || value.loadout[i0] > 255) { // a bare integer must fit its width

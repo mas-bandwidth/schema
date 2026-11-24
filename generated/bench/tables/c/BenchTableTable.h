@@ -20623,8 +20623,8 @@ static SCHEMA_UNUSED int schema_benchtable_table_mixed_body_pack_( struct bencht
     benchtable_table_cook_put( at + 48, (uint64_t) value->frame_tick, 8, order );
     if ( !benchtable_table_bits_finite32( benchtable_table_stored_float_bits( value->server_time ) ) ) { return 0; }
     benchtable_table_cook_put( at + 56, benchtable_table_stored_float_bits( value->server_time ), 4, order );
-    if ( value->entities_count < 1 || value->entities_count > 8 ) { return 0; }
     schema_assert( 1 <= value->entities_count && value->entities_count <= 8 );
+    if ( value->entities_count < 1 || value->entities_count > 8 ) { return 0; }
     {
         int32_t cook_i1;
         for ( cook_i1 = 0; cook_i1 < value->entities_count && cook_i1 < 8; cook_i1++ )

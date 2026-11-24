@@ -6605,6 +6605,12 @@ namespace Blockhome
                 int n = global::System.Math.Min(src.Length / width, dst.Length);
                 MemoryMarshal.Cast<byte, T>(src.Slice(0, n * width)).CopyTo(dst); /* byte order: swapped below on a big-endian host */
                 if (!BitConverter.IsLittleEndian) { ReverseEach(MemoryMarshal.AsBytes(dst.Slice(0, n)), width); }
+                // THE SLOT LANDS WHOLE (docs/SPEC-TABLES.md §3.4, THE PREFILL IS WHAT
+                // ANSWERS "ABSENT FIELD"; §6.5): an older writer's shorter [N]T marks
+                // the slot landed, so the hole list never resets it. The reader's
+                // elements past the writer's N therefore take their default here, and
+                // never keep the caller's old values.
+                dst.Slice(n).Clear();
             }
             public static void WriteLittle<T>(ReadOnlySpan<T> src, Span<byte> dst) where T : unmanaged
             {
