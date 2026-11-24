@@ -847,6 +847,17 @@ static int surface_write_refusal( const char * out, const char * surface, int wr
         if ( strcmp( f->field[0], surface ) != 0 ) { continue; }
         /* <surface> <case> <unit> <root> <wire> <path> <kind> <value> */
         if ( f->count < 8 ) { fprintf( stderr, "driver: short %s line\n", surface ); return 1; }
+        /* A VALUE OF THE WRONG KIND (`write-refusal-shape` kind `shape`,
+           DW-TABLE-SHAPE) is one C's types cannot hold: a field, an element
+           and an arm payload are stored by value in their declared C type, and
+           the whole value is the root struct, of which the writer's pointer
+           argument is the calling convention (as in C++). The compiler refuses
+           it before any writer runs. */
+        if ( strcmp( surface, "write-refusal-shape" ) == 0 && strcmp( f->field[6], "shape" ) == 0 )
+        {
+            if ( !spill( out, f->field[1], "unrepresentable\n", 16 ) ) { return 1; }
+            continue;
+        }
         unit = f->field[2];
         if ( writer == CONFORMANCE_WRITE_MESSAGE )
         {
@@ -1138,7 +1149,7 @@ int main( int argc, char ** argv )
     surface = argv[2];
     if ( strcmp( surface, "list" ) == 0 )
     {
-        printf( "wire\nmessage\nmessage-prior\nretain\nretain-save\nreport\nframing\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-reason\nblock-reason\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nannounce\nread-into\njson-write-into\nunit shapes\n" );
+        printf( "wire\nmessage\nmessage-prior\nretain\nretain-save\nreport\nframing\njson-read\njson-write\njson-hostile\ncook\ncook-write\ncook-reason\nblock-reason\ncook-foreign\nblock\nblock-foreign\nblock-dump\nforgery\ncook-forgery\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\nunit shapes\n" );
         return 0;
     }
     if ( argc < 4 )
@@ -1173,6 +1184,8 @@ int main( int argc, char ** argv )
     if ( strcmp( surface, "write-refusal-json" ) == 0 ) { return surface_write_refusal( out, surface, CONFORMANCE_WRITE_JSON ); }
     if ( strcmp( surface, "write-refusal-cook" ) == 0 ) { return surface_write_refusal( out, surface, CONFORMANCE_WRITE_COOK ); }
     if ( strcmp( surface, "write-refusal-block" ) == 0 ) { return surface_write_refusal( out, surface, CONFORMANCE_WRITE_BLOCK ); }
+    /* the shape rows' lawful twins are written as write-refusal writes them */
+    if ( strcmp( surface, "write-refusal-shape" ) == 0 ) { return surface_write_refusal( out, surface, CONFORMANCE_WRITE_VARIABLE ); }
     if ( strcmp( surface, "announce" ) == 0 ) { return surface_announce( out ); }
     if ( strcmp( surface, "read-into" ) == 0 ) { return surface_read_into( out ); }
     if ( strcmp( surface, "json-write-into" ) == 0 ) { return surface_json_write_into( out ); }

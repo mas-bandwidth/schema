@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum armNode
+{ Zfirst, Zsecond, Zthird }
+
+enum armOf
+{ Zfirst, Zsecond, Zthird }
+
+enum armOffset
+{ Zfirst, Zsecond, Zthird }
+
+enum armPath
+{ Zfirst, Zsecond, Zthird }
+
+enum armRead
+{ Zfirst, Zsecond, Zthird }
+
+enum armRef
+{ Zfirst, Zsecond, Zthird }
+
+enum armSize
+{ Zfirst, Zsecond, Zthird }
+
+enum armTag
+{ Zfirst, Zsecond, Zthird }
+
+enum armVal
+{ Zfirst, Zsecond, Zthird }
+
+enum armWrite
+{ Zfirst, Zsecond, Zthird }
+
+enum armZero
+{ Zfirst, Zsecond, Zthird }
+
+enum arm_body
+{ Zfirst, Zsecond, Zthird }
+
+enum arm_count
+{ Zfirst, Zsecond, Zthird }
+
+enum arm_depth
+{ Zfirst, Zsecond, Zthird }
+
+enum arm_entry
+{ Zfirst, Zsecond, Zthird }
+
+enum arm_exact
+{ Zfirst, Zsecond, Zthird }
+
+enum arm_is_pointer
+{ Zfirst, Zsecond, Zthird }
+
+enum arm_layout
+{ Zfirst, Zsecond, Zthird }
+
+enum arm_len
+{ Zfirst, Zsecond, Zthird }
+
+enum arm_names
+{ Zfirst, Zsecond, Zthird }
+
+enum arm_ok
+{ Zfirst, Zsecond, Zthird }
+
+enum arm_payload
+{ Zfirst, Zsecond, Zthird }
+
+enum arm_payloadu
+{ Zfirst, Zsecond, Zthird }
+
+enum arm_placed
+{ Zfirst, Zsecond, Zthird }
+
+enum arm_r
+{ Zfirst, Zsecond, Zthird }
+
+enum arm_refu
+{ Zfirst, Zsecond, Zthird }
+
+enum arm_slot
+{ Zfirst, Zsecond, Zthird }
+
+enum arm_src_ref
+{ Zfirst, Zsecond, Zthird }
+
+enum arm_sz
+{ Zfirst, Zsecond, Zthird }
+
+enum arm_value
+{ Zfirst, Zsecond, Zthird }
+
+enum arms
+{ Zfirst, Zsecond, Zthird }
+
+enum arr
+{ Zfirst, Zsecond, Zthird }
+
+enum arrEnd
+{ Zfirst, Zsecond, Zthird }
+
+enum arr_ord
+{ Zfirst, Zsecond, Zthird }
+
+enum array1
+{ Zfirst, Zsecond, Zthird }
+
+enum arrayAt
+{ Zfirst, Zsecond, Zthird }
+
+enum arrayBorn
+{ Zfirst, Zsecond, Zthird }
+
+enum arrayBound
+{ Zfirst, Zsecond, Zthird }
+
+enum arrayElemKindClosed
+{ Zfirst, Zsecond, Zthird }
+
+enum arrayElementKindAllowed
+{ Zfirst, Zsecond, Zthird }
+
+enum arrayName
+{ Zfirst, Zsecond, Zthird }
+
+enum arrayOffCount
+{ Zfirst, Zsecond, Zthird }
+
+enum arrayRides
+{ Zfirst, Zsecond, Zthird }
+
+enum array_body
+{ Zfirst, Zsecond, Zthird }
+
+enum array_elem_kind_allowed
+{ Zfirst, Zsecond, Zthird }
+
+enum array_elements
+{ Zfirst, Zsecond, Zthird }
+
+enum array_extent
+{ Zfirst, Zsecond, Zthird }
+
+enum array_fn
+{ Zfirst, Zsecond, Zthird }
+
+enum array_kind
+{ Zfirst, Zsecond, Zthird }
+
+enum array_min
+{ Zfirst, Zsecond, Zthird }
+
+enum array_mode
+{ Zfirst, Zsecond, Zthird }
+
+enum array_ordinal
+{ Zfirst, Zsecond, Zthird }
+
+enum array_reader
+{ Zfirst, Zsecond, Zthird }
+
+enum array_root
+{ Zfirst, Zsecond, Zthird }
+
+enum array_shape
+{ Zfirst, Zsecond, Zthird }
+
+enum arrays
+{ Zfirst, Zsecond, Zthird }
+
+enum arrived
+{ Zfirst, Zsecond, Zthird }
+
+enum asBits
+{ Zfirst, Zsecond, Zthird }
+
+enum asF32
+{ Zfirst, Zsecond, Zthird }
+
+enum asInt
+{ Zfirst, Zsecond, Zthird }
+
+enum as_number
+{ Zfirst, Zsecond, Zthird }
+
+enum ascending
+{ Zfirst, Zsecond, Zthird }
+
+enum aslots
+{ Zfirst, Zsecond, Zthird }
+
+enum assemble
+{ Zfirst, Zsecond, Zthird }
+
+enum assembled
+{ Zfirst, Zsecond, Zthird }
+
+enum assertElem
+{ Zfirst, Zsecond, Zthird }
+
+enum assumed
+{ Zfirst, Zsecond, Zthird }
+
+enum astr
+{ Zfirst, Zsecond, Zthird }
+
+enum asub
+{ Zfirst, Zsecond, Zthird }
+
+enum at
+{ Zfirst, Zsecond, Zthird }
+
+enum at0
+{ Zfirst, Zsecond, Zthird }
+
+enum at2
+{ Zfirst, Zsecond, Zthird }
+
+enum atDef
+{ Zfirst, Zsecond, Zthird }
+
+enum atDefault
+{ Zfirst, Zsecond, Zthird }
+
+enum atField
+{ Zfirst, Zsecond, Zthird }
+
+enum at_map
+{ Zfirst, Zsecond, Zthird }
+
+enum atable
+{ Zfirst, Zsecond, Zthird }
+
+enum ate
+{ Zfirst, Zsecond, Zthird }
+
+enum atm2
+{ Zfirst, Zsecond, Zthird }
+
+enum atom
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    armNode Inner
+    armOf Inner
+    armOffset Inner
+    armPath Inner
+    armRead Inner
+    armRef Inner
+    armSize Inner
+    armTag Inner
+    armVal Inner
+    armWrite Inner
+}
+
+table NameTypes0
+{
+    one0  armNode
+    many0 [..4]armNode
+    one1  armOf
+    many1 [..4]armOf
+    one2  armOffset
+    many2 [..4]armOffset
+    one3  armPath
+    many3 [..4]armPath
+    one4  armRead
+    many4 [..4]armRead
+    one5  armRef
+    many5 [..4]armRef
+    one6  armSize
+    many6 [..4]armSize
+    one7  armTag
+    many7 [..4]armTag
+    one8  armVal
+    many8 [..4]armVal
+    one9  armWrite
+    many9 [..4]armWrite
+}
+
+table NameFields0
+{
+    armNode uint32
+    armOf uint32
+    armOffset uint32
+    armPath uint32
+    armRead uint32
+    armRef uint32
+    armSize uint32
+    armTag uint32
+    armVal uint32
+    armWrite uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    armZero Inner
+    arm_body Inner
+    arm_count Inner
+    arm_depth Inner
+    arm_entry Inner
+    arm_exact Inner
+    arm_is_pointer Inner
+    arm_layout Inner
+    arm_len Inner
+    arm_names Inner
+}
+
+table NameTypes1
+{
+    one0  armZero
+    many0 [..4]armZero
+    one1  arm_body
+    many1 [..4]arm_body
+    one2  arm_count
+    many2 [..4]arm_count
+    one3  arm_depth
+    many3 [..4]arm_depth
+    one4  arm_entry
+    many4 [..4]arm_entry
+    one5  arm_exact
+    many5 [..4]arm_exact
+    one6  arm_is_pointer
+    many6 [..4]arm_is_pointer
+    one7  arm_layout
+    many7 [..4]arm_layout
+    one8  arm_len
+    many8 [..4]arm_len
+    one9  arm_names
+    many9 [..4]arm_names
+}
+
+table NameFields1
+{
+    armZero uint32
+    arm_body uint32
+    arm_count uint32
+    arm_depth uint32
+    arm_entry uint32
+    arm_exact uint32
+    arm_is_pointer uint32
+    arm_layout uint32
+    arm_len uint32
+    arm_names uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    arm_ok Inner
+    arm_payload Inner
+    arm_payloadu Inner
+    arm_placed Inner
+    arm_r Inner
+    arm_refu Inner
+    arm_slot Inner
+    arm_src_ref Inner
+    arm_sz Inner
+    arm_value Inner
+}
+
+table NameTypes2
+{
+    one0  arm_ok
+    many0 [..4]arm_ok
+    one1  arm_payload
+    many1 [..4]arm_payload
+    one2  arm_payloadu
+    many2 [..4]arm_payloadu
+    one3  arm_placed
+    many3 [..4]arm_placed
+    one4  arm_r
+    many4 [..4]arm_r
+    one5  arm_refu
+    many5 [..4]arm_refu
+    one6  arm_slot
+    many6 [..4]arm_slot
+    one7  arm_src_ref
+    many7 [..4]arm_src_ref
+    one8  arm_sz
+    many8 [..4]arm_sz
+    one9  arm_value
+    many9 [..4]arm_value
+}
+
+table NameFields2
+{
+    arm_ok uint32
+    arm_payload uint32
+    arm_payloadu uint32
+    arm_placed uint32
+    arm_r uint32
+    arm_refu uint32
+    arm_slot uint32
+    arm_src_ref uint32
+    arm_sz uint32
+    arm_value uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    arms Inner
+    arr Inner
+    arrEnd Inner
+    arr_ord Inner
+    array1 Inner
+    arrayAt Inner
+    arrayBorn Inner
+    arrayBound Inner
+    arrayElemKindClosed Inner
+    arrayElementKindAllowed Inner
+}
+
+table NameTypes3
+{
+    one0  arms
+    many0 [..4]arms
+    one1  arr
+    many1 [..4]arr
+    one2  arrEnd
+    many2 [..4]arrEnd
+    one3  arr_ord
+    many3 [..4]arr_ord
+    one4  array1
+    many4 [..4]array1
+    one5  arrayAt
+    many5 [..4]arrayAt
+    one6  arrayBorn
+    many6 [..4]arrayBorn
+    one7  arrayBound
+    many7 [..4]arrayBound
+    one8  arrayElemKindClosed
+    many8 [..4]arrayElemKindClosed
+    one9  arrayElementKindAllowed
+    many9 [..4]arrayElementKindAllowed
+}
+
+table NameFields3
+{
+    arms uint32
+    arr uint32
+    arrEnd uint32
+    arr_ord uint32
+    array1 uint32
+    arrayAt uint32
+    arrayBorn uint32
+    arrayBound uint32
+    arrayElemKindClosed uint32
+    arrayElementKindAllowed uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    arrayName Inner
+    arrayOffCount Inner
+    arrayRides Inner
+    array_body Inner
+    array_elem_kind_allowed Inner
+    array_elements Inner
+    array_extent Inner
+    array_fn Inner
+    array_kind Inner
+    array_min Inner
+}
+
+table NameTypes4
+{
+    one0  arrayName
+    many0 [..4]arrayName
+    one1  arrayOffCount
+    many1 [..4]arrayOffCount
+    one2  arrayRides
+    many2 [..4]arrayRides
+    one3  array_body
+    many3 [..4]array_body
+    one4  array_elem_kind_allowed
+    many4 [..4]array_elem_kind_allowed
+    one5  array_elements
+    many5 [..4]array_elements
+    one6  array_extent
+    many6 [..4]array_extent
+    one7  array_fn
+    many7 [..4]array_fn
+    one8  array_kind
+    many8 [..4]array_kind
+    one9  array_min
+    many9 [..4]array_min
+}
+
+table NameFields4
+{
+    arrayName uint32
+    arrayOffCount uint32
+    arrayRides uint32
+    array_body uint32
+    array_elem_kind_allowed uint32
+    array_elements uint32
+    array_extent uint32
+    array_fn uint32
+    array_kind uint32
+    array_min uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    array_mode Inner
+    array_ordinal Inner
+    array_reader Inner
+    array_root Inner
+    array_shape Inner
+    arrays Inner
+    arrived Inner
+    asBits Inner
+    asF32 Inner
+    asInt Inner
+}
+
+table NameTypes5
+{
+    one0  array_mode
+    many0 [..4]array_mode
+    one1  array_ordinal
+    many1 [..4]array_ordinal
+    one2  array_reader
+    many2 [..4]array_reader
+    one3  array_root
+    many3 [..4]array_root
+    one4  array_shape
+    many4 [..4]array_shape
+    one5  arrays
+    many5 [..4]arrays
+    one6  arrived
+    many6 [..4]arrived
+    one7  asBits
+    many7 [..4]asBits
+    one8  asF32
+    many8 [..4]asF32
+    one9  asInt
+    many9 [..4]asInt
+}
+
+table NameFields5
+{
+    array_mode uint32
+    array_ordinal uint32
+    array_reader uint32
+    array_root uint32
+    array_shape uint32
+    arrays uint32
+    arrived uint32
+    asBits uint32
+    asF32 uint32
+    asInt uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    as_number Inner
+    ascending Inner
+    aslots Inner
+    assemble Inner
+    assembled Inner
+    assertElem Inner
+    assumed Inner
+    astr Inner
+    asub Inner
+    at Inner
+}
+
+table NameTypes6
+{
+    one0  as_number
+    many0 [..4]as_number
+    one1  ascending
+    many1 [..4]ascending
+    one2  aslots
+    many2 [..4]aslots
+    one3  assemble
+    many3 [..4]assemble
+    one4  assembled
+    many4 [..4]assembled
+    one5  assertElem
+    many5 [..4]assertElem
+    one6  assumed
+    many6 [..4]assumed
+    one7  astr
+    many7 [..4]astr
+    one8  asub
+    many8 [..4]asub
+    one9  at
+    many9 [..4]at
+}
+
+table NameFields6
+{
+    as_number uint32
+    ascending uint32
+    aslots uint32
+    assemble uint32
+    assembled uint32
+    assertElem uint32
+    assumed uint32
+    astr uint32
+    asub uint32
+    at uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    at0 Inner
+    at2 Inner
+    atDef Inner
+    atDefault Inner
+    atField Inner
+    at_map Inner
+    atable Inner
+    ate Inner
+    atm2 Inner
+    atom Inner
+}
+
+table NameTypes7
+{
+    one0  at0
+    many0 [..4]at0
+    one1  at2
+    many1 [..4]at2
+    one2  atDef
+    many2 [..4]atDef
+    one3  atDefault
+    many3 [..4]atDefault
+    one4  atField
+    many4 [..4]atField
+    one5  at_map
+    many5 [..4]at_map
+    one6  atable
+    many6 [..4]atable
+    one7  ate
+    many7 [..4]ate
+    one8  atm2
+    many8 [..4]atm2
+    one9  atom
+    many9 [..4]atom
+}
+
+table NameFields7
+{
+    at0 uint32
+    at2 uint32
+    atDef uint32
+    atDefault uint32
+    atField uint32
+    at_map uint32
+    atable uint32
+    ate uint32
+    atm2 uint32
+    atom uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

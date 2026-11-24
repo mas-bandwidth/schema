@@ -44,7 +44,10 @@ private_driver() {
     # a kernel, not an AOT exe: the same program on the Dart VM, compiled in
     # a fifth of the time, which keeps this control inside the job budget
     "$dart" compile kernel -o "$target/driver.dill" "$main" > "$target/compile.log" 2>&1 || { cat "$target/compile.log"; exit 1; }
-    printf '#!/bin/sh\nexec "%s" "%s" "$@"\n' "$(command -v "$dart")" "$root/$target/driver.dill" > "$target/driver"
+    # --enable-asserts: Dart's write checks are debug asserts, and the copy
+    # answers the write-refusal rows from a build where they are active, as
+    # build/conformance-dart does (make/dart.mk)
+    printf '#!/bin/sh\nexec "%s" --enable-asserts "%s" "$@"\n' "$(command -v "$dart")" "$root/$target/driver.dill" > "$target/driver"
     chmod +x "$target/driver"
     binary="$root/$target/driver"
 }
@@ -63,9 +66,18 @@ if [ "$mode" = reader ]; then
     exit 0
 fi
 
+# the wrapper narrows the surfaces to the three text ones and keeps every
+# unit line the real driver's list names, as the JavaScript gate's wrapper
+# does: an opt-in unit left out of the list is handed to no leg and scored
+# ABSENT, which a ticked leg fails. A list with no unit line fails the
+# wrapper's list, so the harness says so.
 cat > "$out/driver" <<WRAP
 #!/bin/sh
-if [ "\$2" = list ]; then printf '%s\n' json-read json-write json-hostile; exit 0; fi
+if [ "\$2" = list ]; then
+    printf '%s\n' json-read json-write json-hostile
+    "$binary" "\$1" list | grep '^unit '
+    exit
+fi
 exec "$binary" "\$@"
 WRAP
 chmod +x "$out/driver"
@@ -73,7 +85,11 @@ printf 'dart %s/%s/driver\n' "$root" "$out" > "$out/drivers"
 rc=0
 build/conformance-harness run --claims --surfaces json-read,json-write,json-hostile --drivers "$out/drivers" --work "$out/work" --results "$out/results.json" > "$out/log" 2>&1 || rc=$?
 if [ "$mode" = replacement ]; then
-    if grep '^  dart / ' "$out/log" | grep -v 'dart / json-hostile: str-illformed-at-bound:'; then
+    # The rows the replacement decoder owns: str-illformed-at-bound, and the
+    # 2026-11-22 regression rows whose ill-formed bytes sit inside a comment
+    # (rr-comment-illformed-utf8 a 0xFF, rr-comment-lone-surrogate an encoded
+    # surrogate), which a strict boundary refuses and a replacing one reads.
+    if grep '^  dart / ' "$out/log" | grep -Ev 'dart / json-hostile: (str-illformed-at-bound|rr-comment-illformed-utf8|rr-comment-lone-surrogate):'; then
         cat "$out/log"; echo 'replacement decoding changed an unrelated row' >&2; exit 1
     fi
     grep -Eq '^json-read +pass ' "$out/log"

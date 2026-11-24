@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum oor_count
+{ Zfirst, Zsecond, Zthird }
+
+enum oor_field
+{ Zfirst, Zsecond, Zthird }
+
+enum oor_flag
+{ Zfirst, Zsecond, Zthird }
+
+enum oor_len
+{ Zfirst, Zsecond, Zthird }
+
+enum oor_name
+{ Zfirst, Zsecond, Zthird }
+
+enum oor_out
+{ Zfirst, Zsecond, Zthird }
+
+enum op
+{ Zfirst, Zsecond, Zthird }
+
+enum opConst
+{ Zfirst, Zsecond, Zthird }
+
+enum opCopy
+{ Zfirst, Zsecond, Zthird }
+
+enum opCount
+{ Zfirst, Zsecond, Zthird }
+
+enum opDead
+{ Zfirst, Zsecond, Zthird }
+
+enum opOrdinal
+{ Zfirst, Zsecond, Zthird }
+
+enum opText
+{ Zfirst, Zsecond, Zthird }
+
+enum opWiden
+{ Zfirst, Zsecond, Zthird }
+
+enum opWidenF
+{ Zfirst, Zsecond, Zthird }
+
+enum op_reach
+{ Zfirst, Zsecond, Zthird }
+
+enum open_header
+{ Zfirst, Zsecond, Zthird }
+
+enum open_ids
+{ Zfirst, Zsecond, Zthird }
+
+enum open_key
+{ Zfirst, Zsecond, Zthird }
+
+enum opened
+{ Zfirst, Zsecond, Zthird }
+
+enum ops
+{ Zfirst, Zsecond, Zthird }
+
+enum opt
+{ Zfirst, Zsecond, Zthird }
+
+enum optional
+{ Zfirst, Zsecond, Zthird }
+
+enum optionalIntoBare
+{ Zfirst, Zsecond, Zthird }
+
+enum options
+{ Zfirst, Zsecond, Zthird }
+
+enum opts
+{ Zfirst, Zsecond, Zthird }
+
+enum oracle
+{ Zfirst, Zsecond, Zthird }
+
+enum order
+{ Zfirst, Zsecond, Zthird }
+
+enum order_by_name
+{ Zfirst, Zsecond, Zthird }
+
+enum order_e
+{ Zfirst, Zsecond, Zthird }
+
+enum order_of
+{ Zfirst, Zsecond, Zthird }
+
+enum order_tags
+{ Zfirst, Zsecond, Zthird }
+
+enum ordered
+{ Zfirst, Zsecond, Zthird }
+
+enum orders
+{ Zfirst, Zsecond, Zthird }
+
+enum ordinal
+{ Zfirst, Zsecond, Zthird }
+
+enum ordinalAt
+{ Zfirst, Zsecond, Zthird }
+
+enum ordinalOf
+{ Zfirst, Zsecond, Zthird }
+
+enum ordinalSlots
+{ Zfirst, Zsecond, Zthird }
+
+enum ordinalWidth
+{ Zfirst, Zsecond, Zthird }
+
+enum ordinals
+{ Zfirst, Zsecond, Zthird }
+
+enum ordinary
+{ Zfirst, Zsecond, Zthird }
+
+enum ords
+{ Zfirst, Zsecond, Zthird }
+
+enum oref
+{ Zfirst, Zsecond, Zthird }
+
+enum orig
+{ Zfirst, Zsecond, Zthird }
+
+enum origin
+{ Zfirst, Zsecond, Zthird }
+
+enum original
+{ Zfirst, Zsecond, Zthird }
+
+enum originalJson
+{ Zfirst, Zsecond, Zthird }
+
+enum orphans
+{ Zfirst, Zsecond, Zthird }
+
+enum os
+{ Zfirst, Zsecond, Zthird }
+
+enum other
+{ Zfirst, Zsecond, Zthird }
+
+enum other_end
+{ Zfirst, Zsecond, Zthird }
+
+enum other_len
+{ Zfirst, Zsecond, Zthird }
+
+enum other_magic
+{ Zfirst, Zsecond, Zthird }
+
+enum other_start
+{ Zfirst, Zsecond, Zthird }
+
+enum otherwise
+{ Zfirst, Zsecond, Zthird }
+
+enum ou
+{ Zfirst, Zsecond, Zthird }
+
+enum outAppend
+{ Zfirst, Zsecond, Zthird }
+
+enum outEntry
+{ Zfirst, Zsecond, Zthird }
+
+enum outIndex
+{ Zfirst, Zsecond, Zthird }
+
+enum outNodes
+{ Zfirst, Zsecond, Zthird }
+
+enum outOf
+{ Zfirst, Zsecond, Zthird }
+
+enum outOfLine
+{ Zfirst, Zsecond, Zthird }
+
+enum outOfRange
+{ Zfirst, Zsecond, Zthird }
+
+enum outRaw
+{ Zfirst, Zsecond, Zthird }
+
+enum outStart
+{ Zfirst, Zsecond, Zthird }
+
+enum outU64
+{ Zfirst, Zsecond, Zthird }
+
+enum outU8
+{ Zfirst, Zsecond, Zthird }
+
+enum out_
+{ Zfirst, Zsecond, Zthird }
+
+enum out_at
+{ Zfirst, Zsecond, Zthird }
+
+enum out_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum out_content
+{ Zfirst, Zsecond, Zthird }
+
+enum out_count
+{ Zfirst, Zsecond, Zthird }
+
+enum out_framed
+{ Zfirst, Zsecond, Zthird }
+
+enum out_leb
+{ Zfirst, Zsecond, Zthird }
+
+enum out_len
+{ Zfirst, Zsecond, Zthird }
+
+enum out_link
+{ Zfirst, Zsecond, Zthird }
+
+enum out_payload
+{ Zfirst, Zsecond, Zthird }
+
+enum out_ref
+{ Zfirst, Zsecond, Zthird }
+
+enum out_string
+{ Zfirst, Zsecond, Zthird }
+
+enum outer
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    oor_count Inner
+    oor_field Inner
+    oor_flag Inner
+    oor_len Inner
+    oor_name Inner
+    oor_out Inner
+    op Inner
+    opConst Inner
+    opCopy Inner
+    opCount Inner
+}
+
+table NameTypes0
+{
+    one0  oor_count
+    many0 [..4]oor_count
+    one1  oor_field
+    many1 [..4]oor_field
+    one2  oor_flag
+    many2 [..4]oor_flag
+    one3  oor_len
+    many3 [..4]oor_len
+    one4  oor_name
+    many4 [..4]oor_name
+    one5  oor_out
+    many5 [..4]oor_out
+    one6  op
+    many6 [..4]op
+    one7  opConst
+    many7 [..4]opConst
+    one8  opCopy
+    many8 [..4]opCopy
+    one9  opCount
+    many9 [..4]opCount
+}
+
+table NameFields0
+{
+    oor_count uint32
+    oor_field uint32
+    oor_flag uint32
+    oor_len uint32
+    oor_name uint32
+    oor_out uint32
+    op uint32
+    opConst uint32
+    opCopy uint32
+    opCount uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    opDead Inner
+    opOrdinal Inner
+    opText Inner
+    opWiden Inner
+    opWidenF Inner
+    op_reach Inner
+    open_header Inner
+    open_ids Inner
+    open_key Inner
+    opened Inner
+}
+
+table NameTypes1
+{
+    one0  opDead
+    many0 [..4]opDead
+    one1  opOrdinal
+    many1 [..4]opOrdinal
+    one2  opText
+    many2 [..4]opText
+    one3  opWiden
+    many3 [..4]opWiden
+    one4  opWidenF
+    many4 [..4]opWidenF
+    one5  op_reach
+    many5 [..4]op_reach
+    one6  open_header
+    many6 [..4]open_header
+    one7  open_ids
+    many7 [..4]open_ids
+    one8  open_key
+    many8 [..4]open_key
+    one9  opened
+    many9 [..4]opened
+}
+
+table NameFields1
+{
+    opDead uint32
+    opOrdinal uint32
+    opText uint32
+    opWiden uint32
+    opWidenF uint32
+    op_reach uint32
+    open_header uint32
+    open_ids uint32
+    open_key uint32
+    opened uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    ops Inner
+    opt Inner
+    optional Inner
+    optionalIntoBare Inner
+    options Inner
+    opts Inner
+    oracle Inner
+    order Inner
+    order_by_name Inner
+    order_e Inner
+}
+
+table NameTypes2
+{
+    one0  ops
+    many0 [..4]ops
+    one1  opt
+    many1 [..4]opt
+    one2  optional
+    many2 [..4]optional
+    one3  optionalIntoBare
+    many3 [..4]optionalIntoBare
+    one4  options
+    many4 [..4]options
+    one5  opts
+    many5 [..4]opts
+    one6  oracle
+    many6 [..4]oracle
+    one7  order
+    many7 [..4]order
+    one8  order_by_name
+    many8 [..4]order_by_name
+    one9  order_e
+    many9 [..4]order_e
+}
+
+table NameFields2
+{
+    ops uint32
+    opt uint32
+    optional uint32
+    optionalIntoBare uint32
+    options uint32
+    opts uint32
+    oracle uint32
+    order uint32
+    order_by_name uint32
+    order_e uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    order_of Inner
+    order_tags Inner
+    ordered Inner
+    orders Inner
+    ordinal Inner
+    ordinalAt Inner
+    ordinalOf Inner
+    ordinalSlots Inner
+    ordinalWidth Inner
+    ordinals Inner
+}
+
+table NameTypes3
+{
+    one0  order_of
+    many0 [..4]order_of
+    one1  order_tags
+    many1 [..4]order_tags
+    one2  ordered
+    many2 [..4]ordered
+    one3  orders
+    many3 [..4]orders
+    one4  ordinal
+    many4 [..4]ordinal
+    one5  ordinalAt
+    many5 [..4]ordinalAt
+    one6  ordinalOf
+    many6 [..4]ordinalOf
+    one7  ordinalSlots
+    many7 [..4]ordinalSlots
+    one8  ordinalWidth
+    many8 [..4]ordinalWidth
+    one9  ordinals
+    many9 [..4]ordinals
+}
+
+table NameFields3
+{
+    order_of uint32
+    order_tags uint32
+    ordered uint32
+    orders uint32
+    ordinal uint32
+    ordinalAt uint32
+    ordinalOf uint32
+    ordinalSlots uint32
+    ordinalWidth uint32
+    ordinals uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    ordinary Inner
+    ords Inner
+    oref Inner
+    orig Inner
+    origin Inner
+    original Inner
+    originalJson Inner
+    orphans Inner
+    os Inner
+    other Inner
+}
+
+table NameTypes4
+{
+    one0  ordinary
+    many0 [..4]ordinary
+    one1  ords
+    many1 [..4]ords
+    one2  oref
+    many2 [..4]oref
+    one3  orig
+    many3 [..4]orig
+    one4  origin
+    many4 [..4]origin
+    one5  original
+    many5 [..4]original
+    one6  originalJson
+    many6 [..4]originalJson
+    one7  orphans
+    many7 [..4]orphans
+    one8  os
+    many8 [..4]os
+    one9  other
+    many9 [..4]other
+}
+
+table NameFields4
+{
+    ordinary uint32
+    ords uint32
+    oref uint32
+    orig uint32
+    origin uint32
+    original uint32
+    originalJson uint32
+    orphans uint32
+    os uint32
+    other uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    other_end Inner
+    other_len Inner
+    other_magic Inner
+    other_start Inner
+    otherwise Inner
+    ou Inner
+    outAppend Inner
+    outEntry Inner
+    outIndex Inner
+    outNodes Inner
+}
+
+table NameTypes5
+{
+    one0  other_end
+    many0 [..4]other_end
+    one1  other_len
+    many1 [..4]other_len
+    one2  other_magic
+    many2 [..4]other_magic
+    one3  other_start
+    many3 [..4]other_start
+    one4  otherwise
+    many4 [..4]otherwise
+    one5  ou
+    many5 [..4]ou
+    one6  outAppend
+    many6 [..4]outAppend
+    one7  outEntry
+    many7 [..4]outEntry
+    one8  outIndex
+    many8 [..4]outIndex
+    one9  outNodes
+    many9 [..4]outNodes
+}
+
+table NameFields5
+{
+    other_end uint32
+    other_len uint32
+    other_magic uint32
+    other_start uint32
+    otherwise uint32
+    ou uint32
+    outAppend uint32
+    outEntry uint32
+    outIndex uint32
+    outNodes uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    outOf Inner
+    outOfLine Inner
+    outOfRange Inner
+    outRaw Inner
+    outStart Inner
+    outU64 Inner
+    outU8 Inner
+    out_ Inner
+    out_at Inner
+    out_bytes Inner
+}
+
+table NameTypes6
+{
+    one0  outOf
+    many0 [..4]outOf
+    one1  outOfLine
+    many1 [..4]outOfLine
+    one2  outOfRange
+    many2 [..4]outOfRange
+    one3  outRaw
+    many3 [..4]outRaw
+    one4  outStart
+    many4 [..4]outStart
+    one5  outU64
+    many5 [..4]outU64
+    one6  outU8
+    many6 [..4]outU8
+    one7  out_
+    many7 [..4]out_
+    one8  out_at
+    many8 [..4]out_at
+    one9  out_bytes
+    many9 [..4]out_bytes
+}
+
+table NameFields6
+{
+    outOf uint32
+    outOfLine uint32
+    outOfRange uint32
+    outRaw uint32
+    outStart uint32
+    outU64 uint32
+    outU8 uint32
+    out_ uint32
+    out_at uint32
+    out_bytes uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    out_content Inner
+    out_count Inner
+    out_framed Inner
+    out_leb Inner
+    out_len Inner
+    out_link Inner
+    out_payload Inner
+    out_ref Inner
+    out_string Inner
+    outer Inner
+}
+
+table NameTypes7
+{
+    one0  out_content
+    many0 [..4]out_content
+    one1  out_count
+    many1 [..4]out_count
+    one2  out_framed
+    many2 [..4]out_framed
+    one3  out_leb
+    many3 [..4]out_leb
+    one4  out_len
+    many4 [..4]out_len
+    one5  out_link
+    many5 [..4]out_link
+    one6  out_payload
+    many6 [..4]out_payload
+    one7  out_ref
+    many7 [..4]out_ref
+    one8  out_string
+    many8 [..4]out_string
+    one9  outer
+    many9 [..4]outer
+}
+
+table NameFields7
+{
+    out_content uint32
+    out_count uint32
+    out_framed uint32
+    out_leb uint32
+    out_len uint32
+    out_link uint32
+    out_payload uint32
+    out_ref uint32
+    out_string uint32
+    outer uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

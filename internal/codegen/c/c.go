@@ -255,6 +255,13 @@ func (g *gen) emitConst(d *ir.Const) {
 
 func (g *gen) constValue(d *ir.Const) string {
 	if d.IsFloat {
+		// a float32 constant is float32(d.Float), f-suffixed: the plain
+		// decimal 0.1 is a C double, which is not float32(0.1), and a #define
+		// carries no type to round it (SPEC §4.3, "A FLOAT LITERAL IS A
+		// float64 FIRST"; test/verify-bitphase f32lit.go)
+		if d.Storage == "float32" {
+			return formatFloat32(float32(d.Float))
+		}
 		return formatFloat(d.Float)
 	}
 	if d.Int == nil {

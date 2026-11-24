@@ -947,6 +947,7 @@ def WriteProbeConfig(s·:serialize_write_stream, v·:ProbeConfig) -> bool:
 // WriteProbeArray writes v in wire order (SPEC §6.1). Write misuse the runtime
 // sees traps in every run; the schema's own contracts are asserts.
 def WriteProbeArray(s·:serialize_write_stream, v·:ProbeArray) -> bool:
+    assert length(v·.Samples) == 2 // a [N]T holds exactly N values (SPEC §5.1)
     for(2) _i·:
         WriteProbeSample(s·, v·.Samples[_i·])
     WriteProbeConfig(s·, v·.Config)

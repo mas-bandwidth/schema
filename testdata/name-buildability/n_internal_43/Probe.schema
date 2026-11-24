@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum measureInt64
+{ Zfirst, Zsecond, Zthird }
+
+enum measureReset
+{ Zfirst, Zsecond, Zthird }
+
+enum measure_field
+{ Zfirst, Zsecond, Zthird }
+
+enum measure_parts
+{ Zfirst, Zsecond, Zthird }
+
+enum measure_record
+{ Zfirst, Zsecond, Zthird }
+
+enum measure_trailer
+{ Zfirst, Zsecond, Zthird }
+
+enum measure_unbounded_text
+{ Zfirst, Zsecond, Zthird }
+
+enum measure_union
+{ Zfirst, Zsecond, Zthird }
+
+enum measured
+{ Zfirst, Zsecond, Zthird }
+
+enum measuring
+{ Zfirst, Zsecond, Zthird }
+
+enum mee
+{ Zfirst, Zsecond, Zthird }
+
+enum mel
+{ Zfirst, Zsecond, Zthird }
+
+enum memo
+{ Zfirst, Zsecond, Zthird }
+
+enum memory
+{ Zfirst, Zsecond, Zthird }
+
+enum messageElides
+{ Zfirst, Zsecond, Zthird }
+
+enum messageFieldDefault
+{ Zfirst, Zsecond, Zthird }
+
+enum messageForm
+{ Zfirst, Zsecond, Zthird }
+
+enum messageFormAsFile
+{ Zfirst, Zsecond, Zthird }
+
+enum messageNarrowF32
+{ Zfirst, Zsecond, Zthird }
+
+enum messageRangeFloat
+{ Zfirst, Zsecond, Zthird }
+
+enum messageRoot
+{ Zfirst, Zsecond, Zthird }
+
+enum messageRoundShift
+{ Zfirst, Zsecond, Zthird }
+
+enum messageTextOk
+{ Zfirst, Zsecond, Zthird }
+
+enum message_batch_max
+{ Zfirst, Zsecond, Zthird }
+
+enum message_facts
+{ Zfirst, Zsecond, Zthird }
+
+enum message_skip_depth
+{ Zfirst, Zsecond, Zthird }
+
+enum message_vocabulary_id
+{ Zfirst, Zsecond, Zthird }
+
+enum message_vocabulary_max_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum meta
+{ Zfirst, Zsecond, Zthird }
+
+enum methods
+{ Zfirst, Zsecond, Zthird }
+
+enum mhi
+{ Zfirst, Zsecond, Zthird }
+
+enum mi
+{ Zfirst, Zsecond, Zthird }
+
+enum mid
+{ Zfirst, Zsecond, Zthird }
+
+enum min0
+{ Zfirst, Zsecond, Zthird }
+
+enum min32
+{ Zfirst, Zsecond, Zthird }
+
+enum min64
+{ Zfirst, Zsecond, Zthird }
+
+enum minCount
+{ Zfirst, Zsecond, Zthird }
+
+enum minRep
+{ Zfirst, Zsecond, Zthird }
+
+enum minS
+{ Zfirst, Zsecond, Zthird }
+
+enum minU
+{ Zfirst, Zsecond, Zthird }
+
+enum minV
+{ Zfirst, Zsecond, Zthird }
+
+enum min_body
+{ Zfirst, Zsecond, Zthird }
+
+enum min_bound
+{ Zfirst, Zsecond, Zthird }
+
+enum min_c
+{ Zfirst, Zsecond, Zthird }
+
+enum min_i64
+{ Zfirst, Zsecond, Zthird }
+
+enum min_len
+{ Zfirst, Zsecond, Zthird }
+
+enum min_n
+{ Zfirst, Zsecond, Zthird }
+
+enum min_nanos
+{ Zfirst, Zsecond, Zthird }
+
+enum min_second
+{ Zfirst, Zsecond, Zthird }
+
+enum min_storage
+{ Zfirst, Zsecond, Zthird }
+
+enum mine
+{ Zfirst, Zsecond, Zthird }
+
+enum mineElem
+{ Zfirst, Zsecond, Zthird }
+
+enum mineEntry
+{ Zfirst, Zsecond, Zthird }
+
+enum minimum
+{ Zfirst, Zsecond, Zthird }
+
+enum minus
+{ Zfirst, Zsecond, Zthird }
+
+enum minute
+{ Zfirst, Zsecond, Zthird }
+
+enum minutes
+{ Zfirst, Zsecond, Zthird }
+
+enum mismatch
+{ Zfirst, Zsecond, Zthird }
+
+enum mismatchBefore
+{ Zfirst, Zsecond, Zthird }
+
+enum mismatchFrom
+{ Zfirst, Zsecond, Zthird }
+
+enum mismatches
+{ Zfirst, Zsecond, Zthird }
+
+enum missing
+{ Zfirst, Zsecond, Zthird }
+
+enum missingBefore
+{ Zfirst, Zsecond, Zthird }
+
+enum missingFields
+{ Zfirst, Zsecond, Zthird }
+
+enum missingReq
+{ Zfirst, Zsecond, Zthird }
+
+enum missing_required_fields
+{ Zfirst, Zsecond, Zthird }
+
+enum misuse
+{ Zfirst, Zsecond, Zthird }
+
+enum mk
+{ Zfirst, Zsecond, Zthird }
+
+enum mkey
+{ Zfirst, Zsecond, Zthird }
+
+enum mlo
+{ Zfirst, Zsecond, Zthird }
+
+enum mm
+{ Zfirst, Zsecond, Zthird }
+
+enum mn
+{ Zfirst, Zsecond, Zthird }
+
+enum mnb
+{ Zfirst, Zsecond, Zthird }
+
+enum mo
+{ Zfirst, Zsecond, Zthird }
+
+enum mode
+{ Zfirst, Zsecond, Zthird }
+
+enum modname
+{ Zfirst, Zsecond, Zthird }
+
+enum month
+{ Zfirst, Zsecond, Zthird }
+
+enum monthDays
+{ Zfirst, Zsecond, Zthird }
+
+enum monthOfYear
+{ Zfirst, Zsecond, Zthird }
+
+enum more
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    measureInt64 Inner
+    measureReset Inner
+    measure_field Inner
+    measure_parts Inner
+    measure_record Inner
+    measure_trailer Inner
+    measure_unbounded_text Inner
+    measure_union Inner
+    measured Inner
+    measuring Inner
+}
+
+table NameTypes0
+{
+    one0  measureInt64
+    many0 [..4]measureInt64
+    one1  measureReset
+    many1 [..4]measureReset
+    one2  measure_field
+    many2 [..4]measure_field
+    one3  measure_parts
+    many3 [..4]measure_parts
+    one4  measure_record
+    many4 [..4]measure_record
+    one5  measure_trailer
+    many5 [..4]measure_trailer
+    one6  measure_unbounded_text
+    many6 [..4]measure_unbounded_text
+    one7  measure_union
+    many7 [..4]measure_union
+    one8  measured
+    many8 [..4]measured
+    one9  measuring
+    many9 [..4]measuring
+}
+
+table NameFields0
+{
+    measureInt64 uint32
+    measureReset uint32
+    measure_field uint32
+    measure_parts uint32
+    measure_record uint32
+    measure_trailer uint32
+    measure_unbounded_text uint32
+    measure_union uint32
+    measured uint32
+    measuring uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    mee Inner
+    mel Inner
+    memo Inner
+    memory Inner
+    messageElides Inner
+    messageFieldDefault Inner
+    messageForm Inner
+    messageFormAsFile Inner
+    messageNarrowF32 Inner
+    messageRangeFloat Inner
+}
+
+table NameTypes1
+{
+    one0  mee
+    many0 [..4]mee
+    one1  mel
+    many1 [..4]mel
+    one2  memo
+    many2 [..4]memo
+    one3  memory
+    many3 [..4]memory
+    one4  messageElides
+    many4 [..4]messageElides
+    one5  messageFieldDefault
+    many5 [..4]messageFieldDefault
+    one6  messageForm
+    many6 [..4]messageForm
+    one7  messageFormAsFile
+    many7 [..4]messageFormAsFile
+    one8  messageNarrowF32
+    many8 [..4]messageNarrowF32
+    one9  messageRangeFloat
+    many9 [..4]messageRangeFloat
+}
+
+table NameFields1
+{
+    mee uint32
+    mel uint32
+    memo uint32
+    memory uint32
+    messageElides uint32
+    messageFieldDefault uint32
+    messageForm uint32
+    messageFormAsFile uint32
+    messageNarrowF32 uint32
+    messageRangeFloat uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    messageRoot Inner
+    messageRoundShift Inner
+    messageTextOk Inner
+    message_batch_max Inner
+    message_facts Inner
+    message_skip_depth Inner
+    message_vocabulary_id Inner
+    message_vocabulary_max_bytes Inner
+    meta Inner
+    methods Inner
+}
+
+table NameTypes2
+{
+    one0  messageRoot
+    many0 [..4]messageRoot
+    one1  messageRoundShift
+    many1 [..4]messageRoundShift
+    one2  messageTextOk
+    many2 [..4]messageTextOk
+    one3  message_batch_max
+    many3 [..4]message_batch_max
+    one4  message_facts
+    many4 [..4]message_facts
+    one5  message_skip_depth
+    many5 [..4]message_skip_depth
+    one6  message_vocabulary_id
+    many6 [..4]message_vocabulary_id
+    one7  message_vocabulary_max_bytes
+    many7 [..4]message_vocabulary_max_bytes
+    one8  meta
+    many8 [..4]meta
+    one9  methods
+    many9 [..4]methods
+}
+
+table NameFields2
+{
+    messageRoot uint32
+    messageRoundShift uint32
+    messageTextOk uint32
+    message_batch_max uint32
+    message_facts uint32
+    message_skip_depth uint32
+    message_vocabulary_id uint32
+    message_vocabulary_max_bytes uint32
+    meta uint32
+    methods uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    mhi Inner
+    mi Inner
+    mid Inner
+    min0 Inner
+    min32 Inner
+    min64 Inner
+    minCount Inner
+    minRep Inner
+    minS Inner
+    minU Inner
+}
+
+table NameTypes3
+{
+    one0  mhi
+    many0 [..4]mhi
+    one1  mi
+    many1 [..4]mi
+    one2  mid
+    many2 [..4]mid
+    one3  min0
+    many3 [..4]min0
+    one4  min32
+    many4 [..4]min32
+    one5  min64
+    many5 [..4]min64
+    one6  minCount
+    many6 [..4]minCount
+    one7  minRep
+    many7 [..4]minRep
+    one8  minS
+    many8 [..4]minS
+    one9  minU
+    many9 [..4]minU
+}
+
+table NameFields3
+{
+    mhi uint32
+    mi uint32
+    mid uint32
+    min0 uint32
+    min32 uint32
+    min64 uint32
+    minCount uint32
+    minRep uint32
+    minS uint32
+    minU uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    minV Inner
+    min_body Inner
+    min_bound Inner
+    min_c Inner
+    min_i64 Inner
+    min_len Inner
+    min_n Inner
+    min_nanos Inner
+    min_second Inner
+    min_storage Inner
+}
+
+table NameTypes4
+{
+    one0  minV
+    many0 [..4]minV
+    one1  min_body
+    many1 [..4]min_body
+    one2  min_bound
+    many2 [..4]min_bound
+    one3  min_c
+    many3 [..4]min_c
+    one4  min_i64
+    many4 [..4]min_i64
+    one5  min_len
+    many5 [..4]min_len
+    one6  min_n
+    many6 [..4]min_n
+    one7  min_nanos
+    many7 [..4]min_nanos
+    one8  min_second
+    many8 [..4]min_second
+    one9  min_storage
+    many9 [..4]min_storage
+}
+
+table NameFields4
+{
+    minV uint32
+    min_body uint32
+    min_bound uint32
+    min_c uint32
+    min_i64 uint32
+    min_len uint32
+    min_n uint32
+    min_nanos uint32
+    min_second uint32
+    min_storage uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    mine Inner
+    mineElem Inner
+    mineEntry Inner
+    minimum Inner
+    minus Inner
+    minute Inner
+    minutes Inner
+    mismatch Inner
+    mismatchBefore Inner
+    mismatchFrom Inner
+}
+
+table NameTypes5
+{
+    one0  mine
+    many0 [..4]mine
+    one1  mineElem
+    many1 [..4]mineElem
+    one2  mineEntry
+    many2 [..4]mineEntry
+    one3  minimum
+    many3 [..4]minimum
+    one4  minus
+    many4 [..4]minus
+    one5  minute
+    many5 [..4]minute
+    one6  minutes
+    many6 [..4]minutes
+    one7  mismatch
+    many7 [..4]mismatch
+    one8  mismatchBefore
+    many8 [..4]mismatchBefore
+    one9  mismatchFrom
+    many9 [..4]mismatchFrom
+}
+
+table NameFields5
+{
+    mine uint32
+    mineElem uint32
+    mineEntry uint32
+    minimum uint32
+    minus uint32
+    minute uint32
+    minutes uint32
+    mismatch uint32
+    mismatchBefore uint32
+    mismatchFrom uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    mismatches Inner
+    missing Inner
+    missingBefore Inner
+    missingFields Inner
+    missingReq Inner
+    missing_required_fields Inner
+    misuse Inner
+    mk Inner
+    mkey Inner
+    mlo Inner
+}
+
+table NameTypes6
+{
+    one0  mismatches
+    many0 [..4]mismatches
+    one1  missing
+    many1 [..4]missing
+    one2  missingBefore
+    many2 [..4]missingBefore
+    one3  missingFields
+    many3 [..4]missingFields
+    one4  missingReq
+    many4 [..4]missingReq
+    one5  missing_required_fields
+    many5 [..4]missing_required_fields
+    one6  misuse
+    many6 [..4]misuse
+    one7  mk
+    many7 [..4]mk
+    one8  mkey
+    many8 [..4]mkey
+    one9  mlo
+    many9 [..4]mlo
+}
+
+table NameFields6
+{
+    mismatches uint32
+    missing uint32
+    missingBefore uint32
+    missingFields uint32
+    missingReq uint32
+    missing_required_fields uint32
+    misuse uint32
+    mk uint32
+    mkey uint32
+    mlo uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    mm Inner
+    mn Inner
+    mnb Inner
+    mo Inner
+    mode Inner
+    modname Inner
+    month Inner
+    monthDays Inner
+    monthOfYear Inner
+    more Inner
+}
+
+table NameTypes7
+{
+    one0  mm
+    many0 [..4]mm
+    one1  mn
+    many1 [..4]mn
+    one2  mnb
+    many2 [..4]mnb
+    one3  mo
+    many3 [..4]mo
+    one4  mode
+    many4 [..4]mode
+    one5  modname
+    many5 [..4]modname
+    one6  month
+    many6 [..4]month
+    one7  monthDays
+    many7 [..4]monthDays
+    one8  monthOfYear
+    many8 [..4]monthOfYear
+    one9  more
+    many9 [..4]more
+}
+
+table NameFields7
+{
+    mm uint32
+    mn uint32
+    mnb uint32
+    mo uint32
+    mode uint32
+    modname uint32
+    month uint32
+    monthDays uint32
+    monthOfYear uint32
+    more uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

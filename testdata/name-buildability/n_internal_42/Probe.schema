@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum mapKeyNumber
+{ Zfirst, Zsecond, Zthird }
+
+enum mapKeyOrder
+{ Zfirst, Zsecond, Zthird }
+
+enum mapKeyScan
+{ Zfirst, Zsecond, Zthird }
+
+enum mapKeyText
+{ Zfirst, Zsecond, Zthird }
+
+enum mapName
+{ Zfirst, Zsecond, Zthird }
+
+enum mapWidened
+{ Zfirst, Zsecond, Zthird }
+
+enum mapWriteOrder
+{ Zfirst, Zsecond, Zthird }
+
+enum map_body
+{ Zfirst, Zsecond, Zthird }
+
+enum map_entry
+{ Zfirst, Zsecond, Zthird }
+
+enum map_entry_order
+{ Zfirst, Zsecond, Zthird }
+
+enum map_int_key
+{ Zfirst, Zsecond, Zthird }
+
+enum map_key_id
+{ Zfirst, Zsecond, Zthird }
+
+enum map_len
+{ Zfirst, Zsecond, Zthird }
+
+enum map_order
+{ Zfirst, Zsecond, Zthird }
+
+enum map_shape
+{ Zfirst, Zsecond, Zthird }
+
+enum map_slot
+{ Zfirst, Zsecond, Zthird }
+
+enum map_val
+{ Zfirst, Zsecond, Zthird }
+
+enum map_value_id
+{ Zfirst, Zsecond, Zthird }
+
+enum mapped
+{ Zfirst, Zsecond, Zthird }
+
+enum mapping
+{ Zfirst, Zsecond, Zthird }
+
+enum maps
+{ Zfirst, Zsecond, Zthird }
+
+enum mark
+{ Zfirst, Zsecond, Zthird }
+
+enum mark_array
+{ Zfirst, Zsecond, Zthird }
+
+enum mark_document
+{ Zfirst, Zsecond, Zthird }
+
+enum mark_field
+{ Zfirst, Zsecond, Zthird }
+
+enum mark_map
+{ Zfirst, Zsecond, Zthird }
+
+enum mark_record
+{ Zfirst, Zsecond, Zthird }
+
+enum mark_union
+{ Zfirst, Zsecond, Zthird }
+
+enum mark_value
+{ Zfirst, Zsecond, Zthird }
+
+enum marked
+{ Zfirst, Zsecond, Zthird }
+
+enum marker
+{ Zfirst, Zsecond, Zthird }
+
+enum marks
+{ Zfirst, Zsecond, Zthird }
+
+enum mask
+{ Zfirst, Zsecond, Zthird }
+
+enum match_children
+{ Zfirst, Zsecond, Zthird }
+
+enum match_kw
+{ Zfirst, Zsecond, Zthird }
+
+enum matched
+{ Zfirst, Zsecond, Zthird }
+
+enum matches
+{ Zfirst, Zsecond, Zthird }
+
+enum math_ceil
+{ Zfirst, Zsecond, Zthird }
+
+enum math_floor
+{ Zfirst, Zsecond, Zthird }
+
+enum math_tointeger
+{ Zfirst, Zsecond, Zthird }
+
+enum math_type
+{ Zfirst, Zsecond, Zthird }
+
+enum maxAlign
+{ Zfirst, Zsecond, Zthird }
+
+enum maxBits
+{ Zfirst, Zsecond, Zthird }
+
+enum maxBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum maxDay
+{ Zfirst, Zsecond, Zthird }
+
+enum maxDepth
+{ Zfirst, Zsecond, Zthird }
+
+enum maxEntries
+{ Zfirst, Zsecond, Zthird }
+
+enum maxInt
+{ Zfirst, Zsecond, Zthird }
+
+enum maxIntegerValue
+{ Zfirst, Zsecond, Zthird }
+
+enum maxLength
+{ Zfirst, Zsecond, Zthird }
+
+enum maxLimbs
+{ Zfirst, Zsecond, Zthird }
+
+enum maxPlanEntries
+{ Zfirst, Zsecond, Zthird }
+
+enum maxRecordBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum maxRep
+{ Zfirst, Zsecond, Zthird }
+
+enum maxS
+{ Zfirst, Zsecond, Zthird }
+
+enum maxSize
+{ Zfirst, Zsecond, Zthird }
+
+enum maxU
+{ Zfirst, Zsecond, Zthird }
+
+enum maxV
+{ Zfirst, Zsecond, Zthird }
+
+enum max_allocation
+{ Zfirst, Zsecond, Zthird }
+
+enum max_b
+{ Zfirst, Zsecond, Zthird }
+
+enum max_count
+{ Zfirst, Zsecond, Zthird }
+
+enum max_i64
+{ Zfirst, Zsecond, Zthird }
+
+enum max_key
+{ Zfirst, Zsecond, Zthird }
+
+enum max_nanos
+{ Zfirst, Zsecond, Zthird }
+
+enum max_nodes
+{ Zfirst, Zsecond, Zthird }
+
+enum max_second
+{ Zfirst, Zsecond, Zthird }
+
+enum max_storage
+{ Zfirst, Zsecond, Zthird }
+
+enum max_tokens
+{ Zfirst, Zsecond, Zthird }
+
+enum maximum
+{ Zfirst, Zsecond, Zthird }
+
+enum maxinteger
+{ Zfirst, Zsecond, Zthird }
+
+enum mb
+{ Zfirst, Zsecond, Zthird }
+
+enum mc
+{ Zfirst, Zsecond, Zthird }
+
+enum mcAt
+{ Zfirst, Zsecond, Zthird }
+
+enum mdays
+{ Zfirst, Zsecond, Zthird }
+
+enum me
+{ Zfirst, Zsecond, Zthird }
+
+enum measureErr
+{ Zfirst, Zsecond, Zthird }
+
+enum measureFixed128
+{ Zfirst, Zsecond, Zthird }
+
+enum measureFixed64
+{ Zfirst, Zsecond, Zthird }
+
+enum measureInt
+{ Zfirst, Zsecond, Zthird }
+
+enum measureInt128
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    mapKeyNumber Inner
+    mapKeyOrder Inner
+    mapKeyScan Inner
+    mapKeyText Inner
+    mapName Inner
+    mapWidened Inner
+    mapWriteOrder Inner
+    map_body Inner
+    map_entry Inner
+    map_entry_order Inner
+}
+
+table NameTypes0
+{
+    one0  mapKeyNumber
+    many0 [..4]mapKeyNumber
+    one1  mapKeyOrder
+    many1 [..4]mapKeyOrder
+    one2  mapKeyScan
+    many2 [..4]mapKeyScan
+    one3  mapKeyText
+    many3 [..4]mapKeyText
+    one4  mapName
+    many4 [..4]mapName
+    one5  mapWidened
+    many5 [..4]mapWidened
+    one6  mapWriteOrder
+    many6 [..4]mapWriteOrder
+    one7  map_body
+    many7 [..4]map_body
+    one8  map_entry
+    many8 [..4]map_entry
+    one9  map_entry_order
+    many9 [..4]map_entry_order
+}
+
+table NameFields0
+{
+    mapKeyNumber uint32
+    mapKeyOrder uint32
+    mapKeyScan uint32
+    mapKeyText uint32
+    mapName uint32
+    mapWidened uint32
+    mapWriteOrder uint32
+    map_body uint32
+    map_entry uint32
+    map_entry_order uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    map_int_key Inner
+    map_key_id Inner
+    map_len Inner
+    map_order Inner
+    map_shape Inner
+    map_slot Inner
+    map_val Inner
+    map_value_id Inner
+    mapped Inner
+    mapping Inner
+}
+
+table NameTypes1
+{
+    one0  map_int_key
+    many0 [..4]map_int_key
+    one1  map_key_id
+    many1 [..4]map_key_id
+    one2  map_len
+    many2 [..4]map_len
+    one3  map_order
+    many3 [..4]map_order
+    one4  map_shape
+    many4 [..4]map_shape
+    one5  map_slot
+    many5 [..4]map_slot
+    one6  map_val
+    many6 [..4]map_val
+    one7  map_value_id
+    many7 [..4]map_value_id
+    one8  mapped
+    many8 [..4]mapped
+    one9  mapping
+    many9 [..4]mapping
+}
+
+table NameFields1
+{
+    map_int_key uint32
+    map_key_id uint32
+    map_len uint32
+    map_order uint32
+    map_shape uint32
+    map_slot uint32
+    map_val uint32
+    map_value_id uint32
+    mapped uint32
+    mapping uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    maps Inner
+    mark Inner
+    mark_array Inner
+    mark_document Inner
+    mark_field Inner
+    mark_map Inner
+    mark_record Inner
+    mark_union Inner
+    mark_value Inner
+    marked Inner
+}
+
+table NameTypes2
+{
+    one0  maps
+    many0 [..4]maps
+    one1  mark
+    many1 [..4]mark
+    one2  mark_array
+    many2 [..4]mark_array
+    one3  mark_document
+    many3 [..4]mark_document
+    one4  mark_field
+    many4 [..4]mark_field
+    one5  mark_map
+    many5 [..4]mark_map
+    one6  mark_record
+    many6 [..4]mark_record
+    one7  mark_union
+    many7 [..4]mark_union
+    one8  mark_value
+    many8 [..4]mark_value
+    one9  marked
+    many9 [..4]marked
+}
+
+table NameFields2
+{
+    maps uint32
+    mark uint32
+    mark_array uint32
+    mark_document uint32
+    mark_field uint32
+    mark_map uint32
+    mark_record uint32
+    mark_union uint32
+    mark_value uint32
+    marked uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    marker Inner
+    marks Inner
+    mask Inner
+    match_children Inner
+    match_kw Inner
+    matched Inner
+    matches Inner
+    math_ceil Inner
+    math_floor Inner
+    math_tointeger Inner
+}
+
+table NameTypes3
+{
+    one0  marker
+    many0 [..4]marker
+    one1  marks
+    many1 [..4]marks
+    one2  mask
+    many2 [..4]mask
+    one3  match_children
+    many3 [..4]match_children
+    one4  match_kw
+    many4 [..4]match_kw
+    one5  matched
+    many5 [..4]matched
+    one6  matches
+    many6 [..4]matches
+    one7  math_ceil
+    many7 [..4]math_ceil
+    one8  math_floor
+    many8 [..4]math_floor
+    one9  math_tointeger
+    many9 [..4]math_tointeger
+}
+
+table NameFields3
+{
+    marker uint32
+    marks uint32
+    mask uint32
+    match_children uint32
+    match_kw uint32
+    matched uint32
+    matches uint32
+    math_ceil uint32
+    math_floor uint32
+    math_tointeger uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    math_type Inner
+    maxAlign Inner
+    maxBits Inner
+    maxBytes Inner
+    maxDay Inner
+    maxDepth Inner
+    maxEntries Inner
+    maxInt Inner
+    maxIntegerValue Inner
+    maxLength Inner
+}
+
+table NameTypes4
+{
+    one0  math_type
+    many0 [..4]math_type
+    one1  maxAlign
+    many1 [..4]maxAlign
+    one2  maxBits
+    many2 [..4]maxBits
+    one3  maxBytes
+    many3 [..4]maxBytes
+    one4  maxDay
+    many4 [..4]maxDay
+    one5  maxDepth
+    many5 [..4]maxDepth
+    one6  maxEntries
+    many6 [..4]maxEntries
+    one7  maxInt
+    many7 [..4]maxInt
+    one8  maxIntegerValue
+    many8 [..4]maxIntegerValue
+    one9  maxLength
+    many9 [..4]maxLength
+}
+
+table NameFields4
+{
+    math_type uint32
+    maxAlign uint32
+    maxBits uint32
+    maxBytes uint32
+    maxDay uint32
+    maxDepth uint32
+    maxEntries uint32
+    maxInt uint32
+    maxIntegerValue uint32
+    maxLength uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    maxLimbs Inner
+    maxPlanEntries Inner
+    maxRecordBytes Inner
+    maxRep Inner
+    maxS Inner
+    maxSize Inner
+    maxU Inner
+    maxV Inner
+    max_allocation Inner
+    max_b Inner
+}
+
+table NameTypes5
+{
+    one0  maxLimbs
+    many0 [..4]maxLimbs
+    one1  maxPlanEntries
+    many1 [..4]maxPlanEntries
+    one2  maxRecordBytes
+    many2 [..4]maxRecordBytes
+    one3  maxRep
+    many3 [..4]maxRep
+    one4  maxS
+    many4 [..4]maxS
+    one5  maxSize
+    many5 [..4]maxSize
+    one6  maxU
+    many6 [..4]maxU
+    one7  maxV
+    many7 [..4]maxV
+    one8  max_allocation
+    many8 [..4]max_allocation
+    one9  max_b
+    many9 [..4]max_b
+}
+
+table NameFields5
+{
+    maxLimbs uint32
+    maxPlanEntries uint32
+    maxRecordBytes uint32
+    maxRep uint32
+    maxS uint32
+    maxSize uint32
+    maxU uint32
+    maxV uint32
+    max_allocation uint32
+    max_b uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    max_count Inner
+    max_i64 Inner
+    max_key Inner
+    max_nanos Inner
+    max_nodes Inner
+    max_second Inner
+    max_storage Inner
+    max_tokens Inner
+    maximum Inner
+    maxinteger Inner
+}
+
+table NameTypes6
+{
+    one0  max_count
+    many0 [..4]max_count
+    one1  max_i64
+    many1 [..4]max_i64
+    one2  max_key
+    many2 [..4]max_key
+    one3  max_nanos
+    many3 [..4]max_nanos
+    one4  max_nodes
+    many4 [..4]max_nodes
+    one5  max_second
+    many5 [..4]max_second
+    one6  max_storage
+    many6 [..4]max_storage
+    one7  max_tokens
+    many7 [..4]max_tokens
+    one8  maximum
+    many8 [..4]maximum
+    one9  maxinteger
+    many9 [..4]maxinteger
+}
+
+table NameFields6
+{
+    max_count uint32
+    max_i64 uint32
+    max_key uint32
+    max_nanos uint32
+    max_nodes uint32
+    max_second uint32
+    max_storage uint32
+    max_tokens uint32
+    maximum uint32
+    maxinteger uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    mb Inner
+    mc Inner
+    mcAt Inner
+    mdays Inner
+    me Inner
+    measureErr Inner
+    measureFixed128 Inner
+    measureFixed64 Inner
+    measureInt Inner
+    measureInt128 Inner
+}
+
+table NameTypes7
+{
+    one0  mb
+    many0 [..4]mb
+    one1  mc
+    many1 [..4]mc
+    one2  mcAt
+    many2 [..4]mcAt
+    one3  mdays
+    many3 [..4]mdays
+    one4  me
+    many4 [..4]me
+    one5  measureErr
+    many5 [..4]measureErr
+    one6  measureFixed128
+    many6 [..4]measureFixed128
+    one7  measureFixed64
+    many7 [..4]measureFixed64
+    one8  measureInt
+    many8 [..4]measureInt
+    one9  measureInt128
+    many9 [..4]measureInt128
+}
+
+table NameFields7
+{
+    mb uint32
+    mc uint32
+    mcAt uint32
+    mdays uint32
+    me uint32
+    measureErr uint32
+    measureFixed128 uint32
+    measureFixed64 uint32
+    measureInt uint32
+    measureInt128 uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum proxied
+{ Zfirst, Zsecond, Zthird }
+
+enum proxy
+{ Zfirst, Zsecond, Zthird }
+
+enum ps
+{ Zfirst, Zsecond, Zthird }
+
+enum ptail
+{ Zfirst, Zsecond, Zthird }
+
+enum ptr
+{ Zfirst, Zsecond, Zthird }
+
+enum publicCompressedFloatParams
+{ Zfirst, Zsecond, Zthird }
+
+enum pure
+{ Zfirst, Zsecond, Zthird }
+
+enum push
+{ Zfirst, Zsecond, Zthird }
+
+enum pushDeadArm
+{ Zfirst, Zsecond, Zthird }
+
+enum push_edge
+{ Zfirst, Zsecond, Zthird }
+
+enum put
+{ Zfirst, Zsecond, Zthird }
+
+enum put128
+{ Zfirst, Zsecond, Zthird }
+
+enum put32
+{ Zfirst, Zsecond, Zthird }
+
+enum put64
+{ Zfirst, Zsecond, Zthird }
+
+enum putBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum putField
+{ Zfirst, Zsecond, Zthird }
+
+enum putFixedU
+{ Zfirst, Zsecond, Zthird }
+
+enum putLimbs
+{ Zfirst, Zsecond, Zthird }
+
+enum putNum64
+{ Zfirst, Zsecond, Zthird }
+
+enum putRaw
+{ Zfirst, Zsecond, Zthird }
+
+enum putU64
+{ Zfirst, Zsecond, Zthird }
+
+enum putUN
+{ Zfirst, Zsecond, Zthird }
+
+enum putWords
+{ Zfirst, Zsecond, Zthird }
+
+enum put_aligned_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum put_copy
+{ Zfirst, Zsecond, Zthird }
+
+enum put_f32
+{ Zfirst, Zsecond, Zthird }
+
+enum put_f64
+{ Zfirst, Zsecond, Zthird }
+
+enum put_float
+{ Zfirst, Zsecond, Zthird }
+
+enum put_le
+{ Zfirst, Zsecond, Zthird }
+
+enum put_leb
+{ Zfirst, Zsecond, Zthird }
+
+enum put_uint
+{ Zfirst, Zsecond, Zthird }
+
+enum put_view
+{ Zfirst, Zsecond, Zthird }
+
+enum put_wide
+{ Zfirst, Zsecond, Zthird }
+
+enum pv
+{ Zfirst, Zsecond, Zthird }
+
+enum pw
+{ Zfirst, Zsecond, Zthird }
+
+enum q
+{ Zfirst, Zsecond, Zthird }
+
+enum qCount
+{ Zfirst, Zsecond, Zthird }
+
+enum qDelta
+{ Zfirst, Zsecond, Zthird }
+
+enum qMin
+{ Zfirst, Zsecond, Zthird }
+
+enum qd
+{ Zfirst, Zsecond, Zthird }
+
+enum qh
+{ Zfirst, Zsecond, Zthird }
+
+enum qidx
+{ Zfirst, Zsecond, Zthird }
+
+enum ql
+{ Zfirst, Zsecond, Zthird }
+
+enum qm
+{ Zfirst, Zsecond, Zthird }
+
+enum qm3
+{ Zfirst, Zsecond, Zthird }
+
+enum qmax
+{ Zfirst, Zsecond, Zthird }
+
+enum qok
+{ Zfirst, Zsecond, Zthird }
+
+enum qr
+{ Zfirst, Zsecond, Zthird }
+
+enum qres
+{ Zfirst, Zsecond, Zthird }
+
+enum quad
+{ Zfirst, Zsecond, Zthird }
+
+enum quant
+{ Zfirst, Zsecond, Zthird }
+
+enum quant_facts
+{ Zfirst, Zsecond, Zthird }
+
+enum quantization
+{ Zfirst, Zsecond, Zthird }
+
+enum quantize
+{ Zfirst, Zsecond, Zthird }
+
+enum quantizeF32
+{ Zfirst, Zsecond, Zthird }
+
+enum quantized
+{ Zfirst, Zsecond, Zthird }
+
+enum quarter
+{ Zfirst, Zsecond, Zthird }
+
+enum quiet
+{ Zfirst, Zsecond, Zthird }
+
+enum quo
+{ Zfirst, Zsecond, Zthird }
+
+enum quote
+{ Zfirst, Zsecond, Zthird }
+
+enum quoted
+{ Zfirst, Zsecond, Zthird }
+
+enum quotient
+{ Zfirst, Zsecond, Zthird }
+
+enum r
+{ Zfirst, Zsecond, Zthird }
+
+enum r1
+{ Zfirst, Zsecond, Zthird }
+
+enum r2
+{ Zfirst, Zsecond, Zthird }
+
+enum r3
+{ Zfirst, Zsecond, Zthird }
+
+enum r4
+{ Zfirst, Zsecond, Zthird }
+
+enum rById
+{ Zfirst, Zsecond, Zthird }
+
+enum rLeb
+{ Zfirst, Zsecond, Zthird }
+
+enum rU8
+{ Zfirst, Zsecond, Zthird }
+
+enum r_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum r_f32
+{ Zfirst, Zsecond, Zthird }
+
+enum r_f64
+{ Zfirst, Zsecond, Zthird }
+
+enum r_i16
+{ Zfirst, Zsecond, Zthird }
+
+enum r_i32
+{ Zfirst, Zsecond, Zthird }
+
+enum r_i64
+{ Zfirst, Zsecond, Zthird }
+
+enum r_i8
+{ Zfirst, Zsecond, Zthird }
+
+enum r_int128
+{ Zfirst, Zsecond, Zthird }
+
+enum r_lhs
+{ Zfirst, Zsecond, Zthird }
+
+enum r_rhs
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    proxied Inner
+    proxy Inner
+    ps Inner
+    ptail Inner
+    ptr Inner
+    publicCompressedFloatParams Inner
+    pure Inner
+    push Inner
+    pushDeadArm Inner
+    push_edge Inner
+}
+
+table NameTypes0
+{
+    one0  proxied
+    many0 [..4]proxied
+    one1  proxy
+    many1 [..4]proxy
+    one2  ps
+    many2 [..4]ps
+    one3  ptail
+    many3 [..4]ptail
+    one4  ptr
+    many4 [..4]ptr
+    one5  publicCompressedFloatParams
+    many5 [..4]publicCompressedFloatParams
+    one6  pure
+    many6 [..4]pure
+    one7  push
+    many7 [..4]push
+    one8  pushDeadArm
+    many8 [..4]pushDeadArm
+    one9  push_edge
+    many9 [..4]push_edge
+}
+
+table NameFields0
+{
+    proxied uint32
+    proxy uint32
+    ps uint32
+    ptail uint32
+    ptr uint32
+    publicCompressedFloatParams uint32
+    pure uint32
+    push uint32
+    pushDeadArm uint32
+    push_edge uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    put Inner
+    put128 Inner
+    put32 Inner
+    put64 Inner
+    putBytes Inner
+    putField Inner
+    putFixedU Inner
+    putLimbs Inner
+    putNum64 Inner
+    putRaw Inner
+}
+
+table NameTypes1
+{
+    one0  put
+    many0 [..4]put
+    one1  put128
+    many1 [..4]put128
+    one2  put32
+    many2 [..4]put32
+    one3  put64
+    many3 [..4]put64
+    one4  putBytes
+    many4 [..4]putBytes
+    one5  putField
+    many5 [..4]putField
+    one6  putFixedU
+    many6 [..4]putFixedU
+    one7  putLimbs
+    many7 [..4]putLimbs
+    one8  putNum64
+    many8 [..4]putNum64
+    one9  putRaw
+    many9 [..4]putRaw
+}
+
+table NameFields1
+{
+    put uint32
+    put128 uint32
+    put32 uint32
+    put64 uint32
+    putBytes uint32
+    putField uint32
+    putFixedU uint32
+    putLimbs uint32
+    putNum64 uint32
+    putRaw uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    putU64 Inner
+    putUN Inner
+    putWords Inner
+    put_aligned_bytes Inner
+    put_copy Inner
+    put_f32 Inner
+    put_f64 Inner
+    put_float Inner
+    put_le Inner
+    put_leb Inner
+}
+
+table NameTypes2
+{
+    one0  putU64
+    many0 [..4]putU64
+    one1  putUN
+    many1 [..4]putUN
+    one2  putWords
+    many2 [..4]putWords
+    one3  put_aligned_bytes
+    many3 [..4]put_aligned_bytes
+    one4  put_copy
+    many4 [..4]put_copy
+    one5  put_f32
+    many5 [..4]put_f32
+    one6  put_f64
+    many6 [..4]put_f64
+    one7  put_float
+    many7 [..4]put_float
+    one8  put_le
+    many8 [..4]put_le
+    one9  put_leb
+    many9 [..4]put_leb
+}
+
+table NameFields2
+{
+    putU64 uint32
+    putUN uint32
+    putWords uint32
+    put_aligned_bytes uint32
+    put_copy uint32
+    put_f32 uint32
+    put_f64 uint32
+    put_float uint32
+    put_le uint32
+    put_leb uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    put_uint Inner
+    put_view Inner
+    put_wide Inner
+    pv Inner
+    pw Inner
+    q Inner
+    qCount Inner
+    qDelta Inner
+    qMin Inner
+    qd Inner
+}
+
+table NameTypes3
+{
+    one0  put_uint
+    many0 [..4]put_uint
+    one1  put_view
+    many1 [..4]put_view
+    one2  put_wide
+    many2 [..4]put_wide
+    one3  pv
+    many3 [..4]pv
+    one4  pw
+    many4 [..4]pw
+    one5  q
+    many5 [..4]q
+    one6  qCount
+    many6 [..4]qCount
+    one7  qDelta
+    many7 [..4]qDelta
+    one8  qMin
+    many8 [..4]qMin
+    one9  qd
+    many9 [..4]qd
+}
+
+table NameFields3
+{
+    put_uint uint32
+    put_view uint32
+    put_wide uint32
+    pv uint32
+    pw uint32
+    q uint32
+    qCount uint32
+    qDelta uint32
+    qMin uint32
+    qd uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    qh Inner
+    qidx Inner
+    ql Inner
+    qm Inner
+    qm3 Inner
+    qmax Inner
+    qok Inner
+    qr Inner
+    qres Inner
+    quad Inner
+}
+
+table NameTypes4
+{
+    one0  qh
+    many0 [..4]qh
+    one1  qidx
+    many1 [..4]qidx
+    one2  ql
+    many2 [..4]ql
+    one3  qm
+    many3 [..4]qm
+    one4  qm3
+    many4 [..4]qm3
+    one5  qmax
+    many5 [..4]qmax
+    one6  qok
+    many6 [..4]qok
+    one7  qr
+    many7 [..4]qr
+    one8  qres
+    many8 [..4]qres
+    one9  quad
+    many9 [..4]quad
+}
+
+table NameFields4
+{
+    qh uint32
+    qidx uint32
+    ql uint32
+    qm uint32
+    qm3 uint32
+    qmax uint32
+    qok uint32
+    qr uint32
+    qres uint32
+    quad uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    quant Inner
+    quant_facts Inner
+    quantization Inner
+    quantize Inner
+    quantizeF32 Inner
+    quantized Inner
+    quarter Inner
+    quiet Inner
+    quo Inner
+    quote Inner
+}
+
+table NameTypes5
+{
+    one0  quant
+    many0 [..4]quant
+    one1  quant_facts
+    many1 [..4]quant_facts
+    one2  quantization
+    many2 [..4]quantization
+    one3  quantize
+    many3 [..4]quantize
+    one4  quantizeF32
+    many4 [..4]quantizeF32
+    one5  quantized
+    many5 [..4]quantized
+    one6  quarter
+    many6 [..4]quarter
+    one7  quiet
+    many7 [..4]quiet
+    one8  quo
+    many8 [..4]quo
+    one9  quote
+    many9 [..4]quote
+}
+
+table NameFields5
+{
+    quant uint32
+    quant_facts uint32
+    quantization uint32
+    quantize uint32
+    quantizeF32 uint32
+    quantized uint32
+    quarter uint32
+    quiet uint32
+    quo uint32
+    quote uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    quoted Inner
+    quotient Inner
+    r Inner
+    r1 Inner
+    r2 Inner
+    r3 Inner
+    r4 Inner
+    rById Inner
+    rLeb Inner
+    rU8 Inner
+}
+
+table NameTypes6
+{
+    one0  quoted
+    many0 [..4]quoted
+    one1  quotient
+    many1 [..4]quotient
+    one2  r
+    many2 [..4]r
+    one3  r1
+    many3 [..4]r1
+    one4  r2
+    many4 [..4]r2
+    one5  r3
+    many5 [..4]r3
+    one6  r4
+    many6 [..4]r4
+    one7  rById
+    many7 [..4]rById
+    one8  rLeb
+    many8 [..4]rLeb
+    one9  rU8
+    many9 [..4]rU8
+}
+
+table NameFields6
+{
+    quoted uint32
+    quotient uint32
+    r uint32
+    r1 uint32
+    r2 uint32
+    r3 uint32
+    r4 uint32
+    rById uint32
+    rLeb uint32
+    rU8 uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    r_bytes Inner
+    r_f32 Inner
+    r_f64 Inner
+    r_i16 Inner
+    r_i32 Inner
+    r_i64 Inner
+    r_i8 Inner
+    r_int128 Inner
+    r_lhs Inner
+    r_rhs Inner
+}
+
+table NameTypes7
+{
+    one0  r_bytes
+    many0 [..4]r_bytes
+    one1  r_f32
+    many1 [..4]r_f32
+    one2  r_f64
+    many2 [..4]r_f64
+    one3  r_i16
+    many3 [..4]r_i16
+    one4  r_i32
+    many4 [..4]r_i32
+    one5  r_i64
+    many5 [..4]r_i64
+    one6  r_i8
+    many6 [..4]r_i8
+    one7  r_int128
+    many7 [..4]r_int128
+    one8  r_lhs
+    many8 [..4]r_lhs
+    one9  r_rhs
+    many9 [..4]r_rhs
+}
+
+table NameFields7
+{
+    r_bytes uint32
+    r_f32 uint32
+    r_f64 uint32
+    r_i16 uint32
+    r_i32 uint32
+    r_i64 uint32
+    r_i8 uint32
+    r_int128 uint32
+    r_lhs uint32
+    r_rhs uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}
