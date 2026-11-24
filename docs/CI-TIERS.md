@@ -90,6 +90,21 @@ Nightly times are the newest completed scheduled run of each workflow on the fle
 | `leg.yml` | not-a-gate | | reusable (workflow_call); certify.yml calls it |
 | `release.yml` | not-a-gate | | cuts a release |
 
+## Negative controls: which tier runs each
+
+A negative control's tier is its group's `when` in
+[`make/negative-controls.json`](../make/negative-controls.json) (entries in
+`make/negative-controls.d`); `tools/negativecontrols`
+(`TestEveryDefinedControlIsInThePlan`) fails for a control the makefiles define
+and no group carries. The packet-void controls (`test/packet-void`):
+
+| Control | Group | Tier | Why |
+|---|---|---|---|
+| `packet-void-c-read-negative-control`, `packet-void-c-write-negative-control`, `packet-void-cpp-read-negative-control`, `packet-void-cpp-write-negative-control` | `base-packet-3` | pull request | host C and C++ compilers only |
+| `packet-void-python-negative-control` | `python-packet-core` | pull request | one SCHEMA_SLOW go test under the pinned interpreters |
+| `packet-void-lobster-negative-control` | `lobster-cards` | pull request | one go test over the pinned Lobster toolchain, beside `packet-end-lobster-negative-control`; 4 s with its positive run on mini-m5 (2026-11-24) |
+| `packet-void-ruby-negative-control` | `ruby-packet` | nightly | a cache miss builds both CRubies from source |
+
 ## The strict Ruby gate's fast form
 
 `make schema-ruby-generated-strict-gate-fast` (rows `strict-ruby` to `strict-ruby-6`)
