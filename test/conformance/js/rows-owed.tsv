@@ -3,11 +3,7 @@
 # here is red, and a row named here that passes is red until its line goes.
 # Measured at main 0fd0920029 on vision, 2026-11-24. "does not build" is a row
 # written against an older generated API; "fails" is a row that runs and is red.
-C3	owed: fails: FAIL - C3 IDENTITY: a forged name length past the cap is a clamp and not a refusal — the record still reads
-C9	owed: fails: FAIL: report.oor is exactly 1 (got 0)
 E6	owed: fails: placeholder that checks nothing: the row prints "PASS: E6 skeleton loaded" and exits 0 with no failure path (no non-zero exit, throw or assert), so the runner holds it red
-F4	owed: fails: FAIL F4 boundary: exactly 20+L bytes is NOT truncated — zero records, no refusal (n=-1, refused=0)
-P4	owed: fails: FAIL P4 wrong plan yields non-zero Flags at CameraId bytes
 R16	owed: fails: FAIL: count negative: clamped >= 1 (u32 > bound 4)
 R25	owed: fails: TypeError: Cannot read properties of undefined (reading 'fill')
 W13	owed: fails: FAIL FixedTableFixedHashLo: got 614323680, expected 2124077328
