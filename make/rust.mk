@@ -81,7 +81,7 @@ generated/rust/.stamp: bin/schema $(SCHEMAS)
 # build/): `cargo +nightly` resolves only through a rustup proxy, and the
 # fleet's cargo is not one, so the gate runs the pinned toolchain's own bin.
 #
-# IT RUNS NIGHTLY (ci-full.yml job rust-miri, 2026-11-24; until then it was a
+# IT RUNS NIGHTLY (certify.yml nightly-gates row miri-rust, 2026-11-24; until then it was a
 # by-hand gate no workflow ran): 51,940 mutants at the defaults measured 478 s
 # on arm64 macOS, which is not a per-push cost. What rides every push is the
 # NATIVE leg (tables-rust-fuzz), 409,746 mutants in 4.5 s at N=100000.

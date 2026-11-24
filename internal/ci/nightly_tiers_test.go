@@ -206,40 +206,47 @@ func TestNightlyFastRowsNameDefinedTargets(t *testing.T) {
 		}
 	}
 	mk := makeText.String()
-	f, err := os.Open(filepath.Join(root, filepath.FromSlash(nightlyrows.RegistryPath)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	rows, err := nightlyrows.Parse(f)
-	_ = f.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	legs := map[string]bool{"-": true}
-	for l := range strings.FieldsSeq("c cpp cs unity rust js java dart elixir go lua luau lobster moo python ruby squirrel goose") {
-		legs[l] = true
-	}
-	for _, r := range rows {
-		if !legs[r.Leg] {
-			t.Errorf("%s:%d: row %q names leg %q, which the nightly-fast job does not set up", nightlyrows.RegistryPath, r.Line, r.Name, r.Leg)
+	// .github/nightly-gates.txt is certify.yml's nightly-gates job, which
+	// reads the same fields and also sets up every toolchain for leg "all".
+	for _, reg := range []struct {
+		path  string
+		extra string
+	}{{nightlyrows.RegistryPath, ""}, {".github/nightly-gates.txt", "all"}} {
+		f, err := os.Open(filepath.Join(root, filepath.FromSlash(reg.path)))
+		if err != nil {
+			t.Fatal(err)
 		}
-		fields := strings.Fields(r.Run)
-		if len(fields) < 2 || fields[0] != "make" {
-			t.Errorf("%s:%d: row %q runs %q; a row runs one make command", nightlyrows.RegistryPath, r.Line, r.Name, r.Run)
-			continue
+		rows, err := nightlyrows.Parse(f)
+		_ = f.Close()
+		if err != nil {
+			t.Fatalf("%s: %v", reg.path, err)
 		}
-		targets := 0
-		for _, a := range fields[1:] {
-			if !makeTargetWord.MatchString(a) {
+		legs := map[string]bool{"-": true}
+		for l := range strings.FieldsSeq("c cpp cs unity rust js java dart elixir go lua luau lobster moo python ruby squirrel goose " + reg.extra) {
+			legs[l] = true
+		}
+		for _, r := range rows {
+			if !legs[r.Leg] {
+				t.Errorf("%s:%d: row %q names leg %q, which its job does not set up", reg.path, r.Line, r.Name, r.Leg)
+			}
+			fields := strings.Fields(r.Run)
+			if len(fields) < 2 || fields[0] != "make" {
+				t.Errorf("%s:%d: row %q runs %q; a row runs one make command", reg.path, r.Line, r.Name, r.Run)
 				continue
 			}
-			targets++
-			if !regexp.MustCompile("(?m)^" + regexp.QuoteMeta(a) + ":").MatchString(mk) {
-				t.Errorf("%s:%d: row %q runs make target %q, which no rule in Makefile or make/ defines", nightlyrows.RegistryPath, r.Line, r.Name, a)
+			targets := 0
+			for _, a := range fields[1:] {
+				if !makeTargetWord.MatchString(a) {
+					continue
+				}
+				targets++
+				if !regexp.MustCompile("(?m)^" + regexp.QuoteMeta(a) + ":").MatchString(mk) {
+					t.Errorf("%s:%d: row %q runs make target %q, which no rule in Makefile or make/ defines", reg.path, r.Line, r.Name, a)
+				}
 			}
-		}
-		if targets == 0 {
-			t.Errorf("%s:%d: row %q names no make target", nightlyrows.RegistryPath, r.Line, r.Name)
+			if targets == 0 {
+				t.Errorf("%s:%d: row %q names no make target", reg.path, r.Line, r.Name)
+			}
 		}
 	}
 }

@@ -3655,42 +3655,6 @@ jobs:
       - name: refuse hand-coded shape measurement
         run: go run ./bench/tools/shapegate
 
-  # THE RUST FUZZ ORACLE UNDER MIRI (make/rust.mk tables-rust-fuzz-miri): the
-  # enumerated mutants interpreted, so a refused mutant that read outside the
-  # extent on its way to refusing is undefined behaviour Miri names. It was a
-  # by-hand gate no workflow ran (2026-11-24); 478 s on arm64 is not a
-  # per-commit cost, so it rides the night with the rest of this file. The
-  # pinned nightly is installed by the target into build/, job-local.
-  rust-miri:
-    # Runs on a pull request only when it carries the `full-ci` label; on a
-    # merge, the nightly and a dispatch it always runs. The expression is
-    # repeated per job because a job-level `if:` cannot read `env`.
-    if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && contains(github.event.pull_request.labels.*.name, 'full-ci'))
-    runs-on: [self-hosted, Linux, X64, fleet, schema]
-    defaults:
-      run:
-        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Check out the Rust runtime (pinned release)
-        run: |
-          set -euo pipefail
-          cd ..
-          rm -rf serialize.rs
-          git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
-      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
-        if: runner.environment == 'github-hosted'
-        with:
-          go-version: '1.26'
-          cache: false
-      - name: the Rust fuzz oracle under Miri
-        run: |
-          set -euo pipefail
-          if [ -f /opt/nova/sdk/env.sh ]; then
-            . /opt/nova/sdk/env.sh
-          fi
-          make tables-rust-fuzz-miri RUSTUP_BIN="$(dirname "$(command -v rustup)")"
-
   # The C/C++ reference lock (owner ruling 2026-08-31, issue #170): while
   # bench/LOCK exists, a change touching any locked prefix refuses. The lift is
   # a pull request whose whole diff is bench/LOCK itself — visible by
@@ -4136,7 +4100,7 @@ jobs:
   # internal/ci/nightly_test.go holds `needs` to every other job here.
   verdict:
     if: always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    needs: [go-test, leg-tagged, pr-select, generated, pins, conformance-matrix, conformance, proof, cs-fuzz, js-fuzz, dart-fuzz, cs-tables, unity, big-endian, lint, vuln, windows, msvc, shape-gate, rust-miri, cpp-lock, negative-controls-matrix, negative-controls]
+    needs: [go-test, leg-tagged, pr-select, generated, pins, conformance-matrix, conformance, proof, cs-fuzz, js-fuzz, dart-fuzz, cs-tables, unity, big-endian, lint, vuln, windows, msvc, shape-gate, cpp-lock, negative-controls-matrix, negative-controls]
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     defaults:
       run:

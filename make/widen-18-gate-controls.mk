@@ -20,18 +20,12 @@
 #   verify-<gate>-negative-control-every-leg
 #                                          one gate, all 18 legs (nightly,
 #                                          make/negative-controls.json)
-#   verify-gate-control-rotating           one gate (GATE=), ONE leg chosen by
-#                                          the CI run number (ci-fast.yml
-#                                          nightly-fast rows controls-<gate>)
 #
-# WHY ONE ROTATING LEG PER PULL REQUEST. Each control runs its leg's whole gate
-# target, and the verify-leg rows that run those targets are already at the
-# two-minute cap on seven legs (run 45319600111: c, cpp, rust and java fuzz
-# and c and cpp conformance cancelled at 128-132 s). Eight gates by 18 legs is
-# 144 jobs; on every broad pull request that is the queue problem of
-# 2026-11-15 again. So a pull request that touches a shared harness runs each
-# gate's control on one leg, a different leg each run (GITHUB_RUN_NUMBER mod
-# 18), and the night runs all 144.
+# NIGHTLY ONLY. Each control runs its leg's whole gate target; two of them
+# (tablegen on go, canonical on python) took 5m35s on a bench. That is not
+# light, so no pull request runs them (the owner's rule, 2026-11-15: heavy is
+# nightly only). certify.yml's negative-controls-nightly runs all 144, one job
+# per gate, from the gate-controls-<gate> groups.
 #
 # THIS FILE SORTS AFTER make/verify-widen-18.mk on purpose: the Makefile
 # includes make/*.mk in name order, and the rules below are made at parse time
@@ -77,16 +71,3 @@ verify-sabotage-packet-negative-control-every-leg: $(foreach L,$(VERIFY_ALL_18_L
 verify-sabotage-fixed-negative-control-every-leg: $(foreach L,$(VERIFY_ALL_18_LEGS),verify-sabotage-fixed-negative-control-$(L))
 verify-sabotage-variable-negative-control-every-leg: $(foreach L,$(VERIFY_ALL_18_LEGS),verify-sabotage-variable-negative-control-$(L))
 verify-sabotage-retain-negative-control-every-leg: $(foreach L,$(VERIFY_ALL_18_LEGS),verify-sabotage-retain-negative-control-$(L))
-
-# ONE leg's control of the gate GATE names, the leg chosen by
-# GITHUB_RUN_NUMBER (or ROTATE_SEED) mod 18. Neither set is a refusal, never a
-# silent default leg.
-.PHONY: verify-gate-control-rotating
-verify-gate-control-rotating:
-	@test -n "$(GATE)" || { echo "verify-gate-control-rotating: name the gate, GATE=<$(VERIFY_GATE_CONTROLS)>"; exit 1; }
-	@case " $(VERIFY_GATE_CONTROLS) " in *" $(GATE) "*) ;; *) echo "verify-gate-control-rotating: GATE=$(GATE) is none of $(VERIFY_GATE_CONTROLS)"; exit 1 ;; esac
-	@seed="$${ROTATE_SEED:-$${GITHUB_RUN_NUMBER:-}}"; \
-	test -n "$$seed" || { echo "verify-gate-control-rotating: neither ROTATE_SEED nor GITHUB_RUN_NUMBER is set: no leg to rotate to"; exit 1; }; \
-	set -- $(VERIFY_ALL_18_LEGS); i=$$(( seed % $$# + 1 )); eval leg=\$${$$i}; \
-	echo "verify-gate-control-rotating: $(GATE) on leg $$leg (run $$seed, leg $$i of $$#)"; \
-	$(MAKE) --no-print-directory verify-$(GATE)-negative-control-$$leg

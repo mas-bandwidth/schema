@@ -7,8 +7,8 @@ import (
 )
 
 // fixtureDB is a small `make -p` database: a gate a workflow runs, one a
-// nightly-fast row runs, one a negative-control group runs, one reached only
-// through a sub-make, one through tools/makeshard and one through
+// nightly-fast row runs, one a nightly gate row runs, one a negative-control
+// group runs, one reached only through a sub-make and one through
 // tools/gatecontrol, an alias of reached gates, a by-hand gate in the ledger,
 // and a non-test build target.
 const fixtureDB = `# Variables
@@ -29,13 +29,8 @@ tables-x-parent:
 tables-x-sub:
 	go test ./sub
 
-tables-x-aggregate: tables-x-shardgate
-
-tables-x-shardgate:
-	go test ./shard
-
-tables-x-sharded:
-	go run ./tools/makeshard -shard "$(SHARD)" tables-x-aggregate
+tables-x-night:
+	go test ./night
 
 tables-x-planted:
 	go run ./tools/gatecontrol -leg x -plant p -target tables-x-plantgate
@@ -56,9 +51,10 @@ build/x:
 
 func fixtureSources() sources {
 	return sources{
-		workflows:     []string{"jobs:\n  a:\n    steps:\n      - run: make tables-x-wf tables-x-parent tables-x-sharded tables-x-planted\n"},
+		workflows:     []string{"jobs:\n  a:\n    steps:\n      - run: make tables-x-wf tables-x-parent tables-x-planted\n"},
 		workflowNames: []string{".github/workflows/fixture.yml"},
 		nightlyRows:   "# rows\nrow | - | ^x/ | make tables-x-row\n",
+		nightlyGates:  "# gates\nnight | - | - | make tables-x-night\n",
 		controls:      []string{`{"groups":[{"name":"g","when":"nightly","targets":["tables-x-nc-negative-control"]}]}`},
 		controlNames:  []string{"make/negative-controls.json"},
 	}
@@ -77,12 +73,11 @@ func fixtureCheck(t *testing.T, src sources, ledger []ledgerEntry) result {
 	return res
 }
 
-// Every root kind reaches its gate, sub-makes and the two make-running tools
-// included, the alias is covered, and the by-hand gate is the one unwired.
+// Every root kind reaches its gate, sub-makes and tools/gatecontrol included, the alias is covered, and the by-hand gate is the one unwired.
 func TestEveryRootKindReachesItsGate(t *testing.T) {
 	t.Parallel()
 	res := fixtureCheck(t, fixtureSources(), nil)
-	for _, want := range []string{"tables-x-wf", "tables-x-row", "tables-x-nc-negative-control", "tables-x-sub", "tables-x-shardgate", "tables-x-plantgate", "build/x"} {
+	for _, want := range []string{"tables-x-wf", "tables-x-row", "tables-x-nc-negative-control", "tables-x-sub", "tables-x-night", "tables-x-plantgate", "build/x"} {
 		if !res.reached[want] {
 			t.Errorf("%s is not reached", want)
 		}

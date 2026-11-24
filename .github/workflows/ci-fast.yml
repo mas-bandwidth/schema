@@ -33,11 +33,10 @@ name: CI fast
 #     target two minutes wall: the cheap lints, the block zero-cost gate,
 #     `go test` of the packages the diff touches, and the generated-code lints
 #     of the languages it touches (lang-lint). The fixed-form and versioning
-#     gates of the LEGS the diff touches run on every push and pull request
-#     too (2026-11-24): nightly-fast rows fixedform-<leg> and
-#     versioning-<leg>[-k], cut by construction to fit two minutes, and the
-#     leg-gate-lobster, -rust, -squirrel and -cpp jobs. Until then they ran
-#     only on `gh workflow run`, so per commit they ran never.
+#     gates of the LEGS the diff touches (leg-gate and its lobster, rust,
+#     squirrel and cpp rows) run here only on `gh workflow run ci-fast.yml
+#     --ref <branch>`: they do not fit two minutes, so a push or a pull request
+#     skips them, and every leg's two gates run in ci-full.yml nightly.
 #   * THE PER-LANGUAGE HEAVY WORKFLOWS (the hostile corpora, the fuzz replays,
 #     the resource bounds, the Squirrel and Lua differentials) do not start on
 #     a pull request at all (Glenn 2026-11-15: "Let us be efficient first, then
@@ -80,7 +79,7 @@ name: CI fast
 # names, exactly as on a fleet host; the sibling runtimes are cloned at the
 # SERIALIZE*_TAG pins below.
 #
-# THE LEG MATRIX STAYS ON OUR OWN HARDWARE. The per-leg rows are the fan-out:
+# THE LEG MATRIX STAYS ON OUR OWN HARDWARE. `leg-gate` is the nine-way fan-out:
 # every row pays its own SDK and a sibling clone, and the warm pool is what
 # makes it a two-minute lane at all. Its runners are the fleet's repository
 # runners (rowan-tools fleet/runners.tsv, the `schema` set:
@@ -921,9 +920,10 @@ jobs:
         run: go run ./tools/errdiscard
       # NOTHING LEFT OUT (2026-11-24): every make target named like a test,
       # gate or control is reached from a workflow, a nightly-fast row, a
-      # negative-control group or a planner, or is named with its reason in
-      # .github/unwired-targets.txt; tools/wiredtargets refuses the rest by
-      # name, and refuses a ledger line that excuses nothing.
+      # nightly gate (.github/nightly-gates.txt), a negative-control group or
+      # a planner, or is named with its reason in .github/unwired-targets.txt;
+      # tools/wiredtargets refuses the rest by name, and refuses a ledger line
+      # that excuses nothing. About 4 s.
       - name: every test and control target is wired
         run: go run ./tools/wiredtargets
 
@@ -1137,7 +1137,7 @@ jobs:
 
   # TOUCHED-LANGUAGE EMITTED-CODE CLEAN / CLIPPY / ZERO-COST / ACCESSOR GATES.
   # Covers the fast emitted-code checks that previously ran only in Certify or
-  # the dispatch-only leg-gate this file used to carry:
+  # dispatch-only leg-gate:
   #   c      — tables-c-zero-cost + tables-c-clean
   #   elixir — tables-elixir-offsets (row elixir-offsets) +
   #            tables-elixir-accessor-descriptor-agreement-shard-K
@@ -1389,14 +1389,6 @@ jobs:
             cs|unity)         git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs ;;
             js)               git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js ;;
             go|lobster|moo)   git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go ;;
-            # a row of no one leg (the rotating gate controls) may land on any
-            # leg, so it gets every sibling a leg's gate builds against
-            -)
-              git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG"  https://github.com/mas-bandwidth/serialize.c.git  serialize.c
-              git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs
-              git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs
-              git clone --quiet --depth 1 --branch "$SERIALIZE_JS_TAG" https://github.com/mas-bandwidth/serialize.js.git serialize.js
-              git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go ;;
           esac
 
       # hosted fallbacks only: a fleet runner has every toolchain on its PATH
@@ -1441,26 +1433,9 @@ jobs:
           sudo apt-get install -y --no-install-recommends libopengl0 libglx0
       # the pinned interpreters, from the runner's store as the other jobs do
       - uses: ./.github/actions/dist-pins
-        if: matrix.leg == 'lua' || matrix.leg == 'luau' || matrix.leg == 'lobster' || matrix.leg == 'goose'
+        if: matrix.leg == 'lua' || matrix.leg == 'luau' || matrix.leg == 'lobster'
         with:
           pins: ${{ matrix.leg }}
-      # THE C FORMAT GATE's formatter (row clean-c), pinned: clang-format from
-      # PyPI at make/c.mk's CLANG_FORMAT_PIN, in a venv under the runner's temp
-      # (the same install leg-gate-cpp's clean part does)
-      - name: the pinned clang-format (row clean-c)
-        if: matrix.name == 'clean-c'
-        run: |
-          set -euo pipefail
-          pin="$(sed -n 's/^CLANG_FORMAT_PIN *?= *//p' make/c.mk)"
-          if python3 -m venv "$RUNNER_TEMP/clang-format" >/dev/null 2>&1; then
-            "$RUNNER_TEMP/clang-format/bin/pip" install --quiet "clang-format==$pin"
-          else
-            rm -rf "$RUNNER_TEMP/clang-format"
-            python3 -m venv --without-pip "$RUNNER_TEMP/clang-format"
-            python3 -m pip --python "$RUNNER_TEMP/clang-format/bin/python3" install --quiet "clang-format==$pin"
-          fi
-          echo "CLANG_FORMAT=$RUNNER_TEMP/clang-format/bin/clang-format" >> "$GITHUB_ENV"
-          "$RUNNER_TEMP/clang-format/bin/clang-format" --version
       - uses: ./.github/actions/python
         if: matrix.leg == 'python'
       - uses: ./.github/actions/ruby
@@ -2451,14 +2426,202 @@ jobs:
           go run ./tools/gotestreport -slowest 0 $require -skips .github/skip-ledger.txt \
             -provides "$provides" "$PGROUP_GO_TEST_JSON"
 
-  # THE TOUCHED LEG'S TWO GATES, the fixed form's bytes and §5's versioning
-  # rows, are nightly-fast rows (.github/nightly-fast-rows.txt, "THE FIXED FORM
-  # AND VERSIONING GATES"): the leg-gate matrix that held them ran only on
-  # workflow_dispatch, because one row per leg did not fit two minutes. The
-  # parts below are the rest of the old matrix, each a job that fits, and run
-  # on every push and same-repository pull request that selects their leg.
+  # THE TOUCHED LEG'S TWO GATES: the fixed form's bytes and §5's versioning
+  # rows, one matrix row per leg so nine legs cost nine parallel jobs rather
+  # than nine serial minutes. A leg gate is 5-30 s of work once its toolchain
+  # is up; the rest is the floor named at the top of this file.
+  #
+  # BOTH GATES, per §5.9 #11 — a leg that proved its bytes and not its
+  # versioning rows has proved half of what it owes. The Java leg has no
+  # versioning target yet and the C++ reference IS the oracle, so those two
+  # rows run what exists; ci-full.yml is unchanged for both.
+  #
+  # ON DISPATCH ONLY. These rows do not fit the two-minute cap (lobster 547 s
+  # and goose 387 s at worst, measured below), so a push or a pull request
+  # skips them (`github.event_name == 'workflow_dispatch'`), and a pull request
+  # has not proved its leg's two gates when this lane is green. They run here on
+  # `gh workflow run ci-fast.yml --ref <branch>`, and for every leg in
+  # ci-full.yml's nightly.
+  #
   # SCHEMA_REQUIRE_CORPUS=1 is inside every one of these make targets: a corpus
-  # that failed to build is a failure, never a quiet skip.
+  # that failed to build is a failure here, never a quiet skip.
+  leg-gate:
+    needs: plan
+    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.legs != '[]' && github.event_name == 'workflow_dispatch')
+    name: fixed form + versioning (${{ matrix.leg }})
+    runs-on: [ self-hosted, Linux, X64, fleet, schema ]
+    # measured over 40 green runs: lobster 547 s and goose 387 s at worst, against a
+    # 10-minute cap that left a green row at 91%
+    timeout-minutes: 2
+    defaults:
+      run:
+        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
+    strategy:
+      fail-fast: false
+      matrix:
+        leg: ${{ fromJSON(needs.plan.outputs.legs) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/merge-main
+
+      # THE C++ REFERENCE IS EVERY LEG'S ORACLE: build/fixedform-corpus is dumped
+      # by ../serialize, so every row clones it. The leg's own sibling runtime
+      # comes with it where the probes link one.
+      - name: Check out the sibling runtimes this leg needs (pinned releases)
+        run: |
+          set -euo pipefail
+          cd ..
+          # A self-hosted runner's workspace PARENT persists between runs, so a
+          # previous run's clones are still sitting here. They are removed and
+          # re-cloned at the pinned tag every time, never reused: the sibling
+          # pins are part of what a green means.
+          rm -rf serialize serialize.go serialize.c serialize.rs serialize.cs serialize.js
+          git clone --quiet --depth 1 --branch "$SERIALIZE_TAG" https://github.com/mas-bandwidth/serialize.git serialize
+          case "${{ matrix.leg }}" in
+            go)   git clone --quiet --depth 1 --branch "$SERIALIZE_GO_TAG" https://github.com/mas-bandwidth/serialize.go.git serialize.go ;;
+            c)    git clone --quiet --depth 1 --branch "$SERIALIZE_C_TAG"  https://github.com/mas-bandwidth/serialize.c.git  serialize.c ;;
+            rust) git clone --quiet --depth 1 --branch "$SERIALIZE_RS_TAG" https://github.com/mas-bandwidth/serialize.rs.git serialize.rs ;;
+            cs)   git clone --quiet --depth 1 --branch "$SERIALIZE_CS_TAG" https://github.com/mas-bandwidth/serialize.cs.git serialize.cs ;;
+          esac
+
+      # the runner's own pinned go already satisfies go.mod; hosted fallback only
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        if: runner.environment == 'github-hosted'
+        with:
+          go-version: '1.26'
+          cache: false
+
+      - name: where this runner keeps the Go build cache
+        if: runner.environment == 'github-hosted'
+        shell: bash
+        run: |
+          echo "GO_BUILD_CACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+          echo "GO_CACHE_ID=$(go env GOVERSION)-$(go env GOARCH)" >> "$GITHUB_ENV"
+
+      # On a self-hosted runner the build cache is the runner dir's own and already warm: there
+      # is nothing to restore, and no stale entry can forge a green.
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        if: runner.environment == 'github-hosted'
+        with:
+          path: ${{ env.GO_BUILD_CACHE }}
+          key: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-${{ hashFiles('**/*.go', 'go.mod') }}
+          restore-keys: go-build-${{ runner.os }}-${{ env.GO_CACHE_ID }}-
+
+      # The leg's own toolchain, and only the leg's: a row that is not C# does
+      # not wait for the .NET SDK. The pins are the ones ci-full.yml carries.
+      - name: read the .NET SDK pin
+        if: matrix.leg == 'cs'
+        run: echo "DOTNET_SDK_PIN=$(cat .github/dotnet-version)" >> "$GITHUB_ENV"
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        if: matrix.leg == 'cs' && runner.environment == 'github-hosted'
+        with:
+          dotnet-version: ${{ env.DOTNET_SDK_PIN }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: matrix.leg == 'js' && runner.environment == 'github-hosted'
+        with:
+          # the version test/conformance/js/ci.json names
+          node-version: '26'
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # the stable BRANCH head — the SHA freezes the action, not the compiler: rustup resolves stable at run time
+        with:
+          components: clippy, rustfmt
+        if: matrix.leg == 'rust' && runner.environment == 'github-hosted'
+      - uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
+        if: matrix.leg == 'dart' && runner.environment == 'github-hosted'
+        with:
+          sdk: 3.13.2
+      - uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        if: matrix.leg == 'java' && runner.environment == 'github-hosted'
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: erlef/setup-beam@54075bcc5e249e4758d363f27d099f55d843f124 # v1.24.1
+        if: matrix.leg == 'elixir' && runner.environment == 'github-hosted'
+        with:
+          otp-version: '27'
+          elixir-version: '1.18'
+
+      # THE LOBSTER PIN (make/lobster.mk's dist-lobster: the release archive,
+      # its sha256 refused before it is unpacked, into dist/lobster-<version>/).
+      # A hosted fallback adds the two GL libraries the release binary links.
+      - name: the pinned Lobster (Lobster leg)
+        if: matrix.leg == 'lobster'
+        run: |
+          set -euo pipefail
+          if [ "$RUNNER_ENVIRONMENT" = github-hosted ]; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends libopengl0 libglx0
+          fi
+          make dist-lobster
+
+      # THE C AND C++ FORMAT GATES' formatter, pinned: clang-format from PyPI at
+      # the version make/c.mk's CLANG_FORMAT_PIN names, in a venv under the
+      # runner's temp so a self-hosted runner keeps nothing between runs.
+      # A host without the python3-venv package (ensurepip absent) gets the
+      # same venv with the system pip installing into it.
+      - name: the pinned clang-format (C leg)
+        if: matrix.leg == 'c'
+        run: |
+          set -euo pipefail
+          pin="$(sed -n 's/^CLANG_FORMAT_PIN *?= *//p' make/c.mk)"
+          if python3 -m venv "$RUNNER_TEMP/clang-format" >/dev/null 2>&1; then
+            "$RUNNER_TEMP/clang-format/bin/pip" install --quiet "clang-format==$pin"
+          else
+            rm -rf "$RUNNER_TEMP/clang-format"
+            python3 -m venv --without-pip "$RUNNER_TEMP/clang-format"
+            python3 -m pip --python "$RUNNER_TEMP/clang-format/bin/python3" install --quiet "clang-format==$pin"
+          fi
+          echo "CLANG_FORMAT=$RUNNER_TEMP/clang-format/bin/clang-format" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/clang-format/bin/clang-format" --version
+
+      # C# runs Debug here; full CI keeps both Debug and Release.
+      # THE TWO GATES. The target names are the tree's own — the same ones
+      # `make test` and ci-full.yml run — so a leg that renames a gate renames
+      # it in one place and this row follows.
+      - name: the ${{ matrix.leg }} leg's fixed form and versioning rows
+        run: |
+          set -euo pipefail
+          case "${{ matrix.leg }}" in
+            # the plain half here; the sanitized half and the clean gates
+            # are leg-gate-cpp's parts below
+            cpp)    make -j"$(nproc)" tables-fixedform-plain ;;
+            go)     make tables-go-fixed-form tables-go-versioning ;;
+            c)      make tables-c-fixedform tables-c-versioning
+                    make tables-c-clean tables-c-format-negative-control SCHEMA_REQUIRE_CLANG_FORMAT=1 CLANG_FORMAT="$CLANG_FORMAT" ;;
+            # the fixed form and the framing-text versioning rows, which drive
+            # tables-rust-fixedform again on the build it just made; the probe
+            # workspace's half is leg-gate-rust below
+            rust)   make tables-rust-fixedform tables-rust-versioning-t12 RUSTUP_BIN="$(dirname "$(command -v cargo)")" ;;
+            js)     make tables-js-fixed-form tables-js-versioning NODE=node ;;
+            cs)     make tables-cs-leg-debug tables-cs-versioning ;;
+            java)   make tables-java-fixedform JAVA=java JAVAC=javac ;;
+            dart)   make tables-dart-fixed-form tables-dart-versioning DART=dart ;;
+            elixir) make tables-elixir-fixed-form tables-elixir-versioning \
+                      ELIXIR_BIN="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")" ;;
+            luau)   make dist-luau
+                    make tables-luau-fixed-form tables-luau-versioning
+                    make bench-luau-gate ;;
+            # the Goose leg's fixed form against the reference's bytes (make/goose.mk)
+            # and its versioning rows (make/goose-versioning.mk), under the pinned compiler
+            goose)  make dist-goose test-goose tables-goose-versioning tables-goose-message-form ;;
+            # the strict gate compiles every generated unit with zero
+            # warnings; the bench legs' gate runs both runners over their
+            # corpus, no clock. test-lobster, which holds the fixed form to the
+            # reference's byte oracle beside both packages' suites, runs in
+            # the leg-gate-lobster rows below.
+            lobster) make tables-lobster-clean bench-lobster-gate ;;
+            # the Squirrel card leg under the pinned interpreter
+            # (make/squirrel-cards.mk). This row is dist-squirrel plus the
+            # facade's unit tests. The card corpus and the three negative
+            # controls are leg-gate-squirrel, one part each: the combined
+            # step measured 132 s wall on run 42599413205 (job 129101577381),
+            # past the two-minute per-commit cap. Each part pays dist-squirrel
+            # because a job starts from a clean workspace.
+            # row-seconds test 93
+            squirrel) make dist-squirrel
+                      make cards-squirrel-test ;;
+            *)      echo "::error::no fixed-form gate is registered for leg '${{ matrix.leg }}' — add it here and in ci-full.yml"; exit 1 ;;
+          esac
+
   # THE LOBSTER LEG'S test-lobster, IN ROWS. As one leg-gate row the Lobster
   # leg ran 128-913 s (40 runs, 2026-11-08; 462 s on amd-2, where the four
   # conformance controls were 131 s, the wire-fuzz trio 100 s, the forgery
@@ -2481,7 +2644,7 @@ jobs:
   # pull request labelled full-ci.
   leg-gate-lobster:
     needs: plan
-    if: startsWith(github.head_ref, 'sprint/') == false && (contains(needs.plan.outputs.legs, '"lobster"') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    if: startsWith(github.head_ref, 'sprint/') == false && (contains(needs.plan.outputs.legs, '"lobster"') && github.event_name == 'workflow_dispatch')
     name: fixed form + versioning (lobster ${{ matrix.part }})
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     # the fleet's per-commit cap is two minutes; this bound only frees a hung
@@ -2563,13 +2726,13 @@ jobs:
   # the Rust leg ran the C++ oracle's build (16 s), tables-rust-fixedform in
   # debug and release (26 s) and both halves of tables-rust-versioning one
   # after another, and the fleet killed it at two minutes with the versioning
-  # half a minute in (run 43608353108). The nightly-fast rows fixedform-rust and versioning-rust keep the fixed
+  # half a minute in (run 43608353108). The leg-gate rust arm keeps the fixed
   # form and tables-rust-versioning-t12; this job is the other half,
   # tables-rust-versioning-probes: the probe workspace's one cargo build and
   # run, in parallel with it.
   leg-gate-rust:
     needs: plan
-    if: startsWith(github.head_ref, 'sprint/') == false && (contains(needs.plan.outputs.legs, '"rust"') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    if: startsWith(github.head_ref, 'sprint/') == false && (contains(needs.plan.outputs.legs, '"rust"') && github.event_name == 'workflow_dispatch')
     name: fixed form + versioning (rust probes)
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     # the fleet's per-commit cap is two minutes; this bound only frees a hung
@@ -2608,17 +2771,16 @@ jobs:
           set -euo pipefail
           make tables-rust-versioning-probes RUSTUP_BIN="$(dirname "$(command -v cargo)")"
 
-  # THE SQUIRREL CARD LEG, IN ROWS. The nightly-fast row cards-squirrel keeps
+  # THE SQUIRREL CARD LEG, IN ROWS. The leg-gate squirrel arm keeps
   # dist-squirrel and cards-squirrel-test (row-seconds test 93). These two
   # parts are the rest of that step, each its own job:
   #   conformance — cards-squirrel-conformance
   #   negative    — the three card negative controls
-  # row-seconds test 93
   # row-seconds conformance 103
   # row-seconds negative 104
   leg-gate-squirrel:
     needs: plan
-    if: startsWith(github.head_ref, 'sprint/') == false && (contains(needs.plan.outputs.legs, '"squirrel"') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    if: startsWith(github.head_ref, 'sprint/') == false && (contains(needs.plan.outputs.legs, '"squirrel"') && github.event_name == 'workflow_dispatch')
     name: fixed form + versioning (squirrel ${{ matrix.part }})
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     # the fleet's per-commit cap is two minutes; this bound only frees a hung
@@ -2669,7 +2831,7 @@ jobs:
   # THE C++ LEG, IN PARTS. As one leg-gate row the C++ reference built both
   # halves of tables-fixedform one translation unit after another, ran them,
   # and then ran the clean, format and warnings gates, and the fleet killed it
-  # at two minutes. The nightly-fast row fixedform-cpp keeps the plain half; these parts are
+  # at two minutes. The leg-gate cpp arm keeps the plain half; these parts are
   # the rest, each its own job:
   #   asan  — tables-fixedform-asan, the sanitized twins of the same three
   #           binaries over the same corpus
@@ -2677,7 +2839,7 @@ jobs:
   #           with the pinned clang-format
   leg-gate-cpp:
     needs: plan
-    if: startsWith(github.head_ref, 'sprint/') == false && (contains(needs.plan.outputs.legs, '"cpp"') && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
+    if: startsWith(github.head_ref, 'sprint/') == false && (contains(needs.plan.outputs.legs, '"cpp"') && github.event_name == 'workflow_dispatch')
     name: fixed form + versioning (cpp ${{ matrix.part }})
     runs-on: [ self-hosted, Linux, X64, fleet, schema ]
     # the fleet's per-commit cap is two minutes; this bound only frees a hung
@@ -2710,7 +2872,7 @@ jobs:
           go-version: '1.26'
           cache: false
 
-      # the same pinned clang-format the nightly-fast row clean-c installs
+      # the same pinned clang-format the leg-gate C row installs
       - name: the pinned clang-format (clean part)
         if: matrix.part == 'clean'
         run: |
@@ -2832,7 +2994,7 @@ jobs:
   # ci-policy, lint-fast, vet, block-gate) may never skip. `verdict` is the
   # check to require on main.
   verdict:
-    needs: [fork-pull-request, plan, lint-fast, ci-policy, vet, golangci-lint-fast, generated-current, lang-clean, lang-lint, verify-leg, verify-elixir-conformance, verify-dart-conformance, input-family, input-family-dart-conformance, build-cpp-conformance-account, input-family-cpp-conformance, block-gate, go-fixed-corpus, go-test-touched, leg-gate-lobster, leg-gate-rust, leg-gate-squirrel, leg-gate-cpp, newleg-scaffold, nightly-fast, pins]
+    needs: [fork-pull-request, plan, lint-fast, ci-policy, vet, golangci-lint-fast, generated-current, lang-clean, lang-lint, verify-leg, verify-elixir-conformance, verify-dart-conformance, input-family, input-family-dart-conformance, build-cpp-conformance-account, input-family-cpp-conformance, block-gate, go-fixed-corpus, go-test-touched, leg-gate, leg-gate-lobster, leg-gate-rust, leg-gate-squirrel, leg-gate-cpp, newleg-scaffold, nightly-fast, pins]
     if: startsWith(github.head_ref, 'sprint/') == false && (always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # jq over the needs context: seconds
@@ -2869,8 +3031,9 @@ jobs:
               go-test-touched) [ -z "$(out packages)" ] ;;
               newleg-scaffold) [ "$(out newleg)" = no ] ;;
               pins) [ "$(out pins)" != yes ] ;;
+              leg-gate) [ "$EVENT" != workflow_dispatch ] || [ "$(out legs)" = '[]' ] ;;
               leg-gate-lobster|leg-gate-rust|leg-gate-squirrel|leg-gate-cpp)
-                ! grep -qF "\"${1#leg-gate-}\"" <<<"$(out legs)" ;;
+                [ "$EVENT" != workflow_dispatch ] || ! grep -qF "\"${1#leg-gate-}\"" <<<"$(out legs)" ;;
               *) return 1 ;;
             esac
           }

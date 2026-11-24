@@ -1,0 +1,56 @@
+# THE NIGHTLY GATES (2026-11-24). Heavy gates run nightly only; pull requests
+# carry only light, path-selected checks. certify.yml's nightly-gates job runs
+# every row here, one job each, with no time cap, on the schedule certify
+# already has (`go run ./tools/nightlyrows -all -rows .github/nightly-gates.txt`).
+# Each leg's fixed form and versioning used to run only through ci-fast.yml's
+# leg-gate jobs, which start on workflow_dispatch alone, so on most nights
+# nothing ran them. The dispatch path stays as it was; these rows are the
+# nightly run. The other rows are gates that no workflow reached before
+# (tools/wiredtargets; .github/unwired-targets.txt keeps the by-hand ones).
+#
+# Same fields as .github/nightly-fast-rows.txt (internal/nightlyrows parses
+# both), separated by " | ":
+#   name   the matrix row
+#   leg    the toolchain the job puts on the runner ("all" for every one)
+#   paths  not read here: every row runs every night ("-")
+#   run    the shell line, from the repository root, with the pinned siblings
+#          at ../serialize* (the job clones them all)
+
+# every leg's fixed form and versioning, as ci-fast.yml's leg-gate jobs name them
+fixedform-cpp | cpp | - | make -j"$(nproc)" tables-fixedform-plain tables-fixedform-asan
+fixedform-go | go | - | make tables-go-fixed-form tables-go-versioning
+fixedform-c | c | - | make tables-c-fixedform tables-c-versioning
+fixedform-rust | rust | - | make tables-rust-fixedform tables-rust-versioning-t12 tables-rust-versioning-probes RUSTUP_BIN="$(dirname "$(command -v cargo)")"
+fixedform-js | js | - | make tables-js-fixed-form tables-js-versioning NODE=node
+fixedform-cs | cs | - | make tables-cs-leg-debug tables-cs-versioning
+fixedform-java | java | - | make tables-java-fixedform tables-java-versioning JAVA=java JAVAC=javac
+fixedform-dart | dart | - | make tables-dart-fixed-form tables-dart-versioning DART=dart
+fixedform-elixir | elixir | - | make tables-elixir-fixed-form tables-elixir-versioning ELIXIR_BIN="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")"
+fixedform-luau | luau | - | make dist-luau tables-luau-fixed-form tables-luau-versioning bench-luau-gate
+fixedform-goose | goose | - | make dist-goose tables-goose-fixedform test-goose tables-goose-versioning tables-goose-message-form
+fixedform-lobster | lobster | - | make dist-lobster tables-lobster-clean bench-lobster-gate tables-lobster-view
+fixedform-squirrel | squirrel | - | make dist-squirrel cards-squirrel-test cards-squirrel-conformance cards-squirrel-conformance-negative-control cards-squirrel-conformance-upgrade-negative-control cards-squirrel-conformance-hash-negative-control
+fixedform-unity | unity | - | make unity-fixed
+fixedform-moo | moo | - | make tables-moo-fixed tables-moo-message-form
+fixedform-python | python | - | make python-fixed-form python-fixed-form-proof
+fixedform-ruby | ruby | - | make ruby-fixed-form
+
+# the gates no workflow ran before (2026-11-24, tools/wiredtargets)
+miri-rust | rust | - | make tables-rust-fuzz-miri RUSTUP_BIN="$(dirname "$(command -v rustup)")"
+roadmap-cs | cs | - | make tables-cs-fixed-roadmap tables-cs-fixed-t13
+block-gate2 | cs | - | make tables-block-gate2
+roadmap-java | java | - | make tables-java-fixed-roadmap tables-java-package JAVA=java JAVAC=javac
+integrity-goose | goose | - | make dist-goose tables-goose-integrity tables-goose-retain-fuzz tables-goose-retain-fuzz-driver
+damage-discard-lobster | lobster | - | make dist-lobster tables-lobster-damage-discard
+damage-discard-squirrel | squirrel | - | make dist-squirrel tables-squirrel-damage-discard tables-squirrel-text-differential
+compiler-claims-moo | moo | - | make tables-moo-compiler-claims
+checked-cook-go | go | - | make tables-go-checked-cook fuzz-generated-readers-go
+analyze-dart | dart | - | make schema-dart-generated-strict-analyze-gate-tables schema-dart-nightly-fuzz-analyze DART=dart
+gems-lock-ruby | ruby | - | make ruby-gems-lock-controls
+json-fuzz | all | - | make conformance-json-fuzz-nightly
+proof | all | - | make proof
+
+# the hostile-input corpora too heavy or too red for a pull request: go took
+# 106 s on a bench (not light), goose 21 s but red on main (owed)
+hostile-go | go | - | make schema-go-runs-hostile-corpus
+hostile-goose | goose | - | make dist-goose schema-goose-runs-hostile-corpus

@@ -59,20 +59,14 @@ func TestSquirrelCardRowsFitTheCap(t *testing.T) {
 		}
 	}
 
-	// the test part is the nightly-fast row cards-squirrel (its leg-gate arm
-	// until 2026-11-24, when the dispatch-only matrix became rows)
-	reg, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "nightly-fast-rows.txt"))
-	if err != nil {
-		t.Fatal(err)
+	const marker = "squirrel) make dist-squirrel"
+	i := strings.Index(text, marker)
+	if i < 0 {
+		t.Fatal("ci-fast.yml has no squirrel fixed-form arm")
 	}
-	arm := ""
-	for line := range strings.SplitSeq(string(reg), "\n") {
-		if strings.HasPrefix(line, "cards-squirrel | ") {
-			arm = line
-		}
-	}
-	if arm == "" {
-		t.Fatal(".github/nightly-fast-rows.txt has no cards-squirrel row")
+	arm := text[i:]
+	if end := strings.Index(arm, ";;"); end >= 0 {
+		arm = arm[:end]
 	}
 	negatives := []string{
 		"cards-squirrel-conformance-negative-control",
@@ -89,7 +83,7 @@ func TestSquirrelCardRowsFitTheCap(t *testing.T) {
 		}
 	}
 	if inArm == len(negatives) {
-		t.Error("the cards-squirrel row still runs all three card negative controls in one row")
+		t.Error("the leg-gate squirrel arm still runs all three card negative controls in one row")
 	}
 	if !strings.Contains(text, "leg-gate-squirrel:") {
 		t.Error("ci-fast.yml has no leg-gate-squirrel job for the split rows")

@@ -27,8 +27,6 @@
 hostile-c | c | (^|/)schema[-_]c[-_]runs[-_]hostile|^internal/ci/hostilecorpus/ | make schema-c-runs-hostile-corpus SERIALIZE_C=../serialize.c
 hostile-cpp | cpp | (^|/)schema[-_]cpp[-_]runs[-_]hostile|^internal/ci/hostilecorpus/ | make schema-cpp-runs-hostile-corpus SERIALIZE=../serialize
 hostile-cs | cs | (^|/)schema[-_]cs[-_]runs[-_]hostile|^internal/ci/hostilecorpus/ | make schema-cs-runs-hostile-corpus SERIALIZE_CS=../serialize.cs
-hostile-goose | goose | (^|/)schema[-_]goose[-_]runs[-_]hostile|^internal/ci/hostilecorpus/|^make/goose-fuzz\.mk$ | make schema-goose-runs-hostile-corpus
-hostile-go | go | (^|/)schema[-_]go[-_]runs[-_]hostile|^internal/ci/hostilecorpus/|^make/hostile-ledger\.mk$ | make schema-go-runs-hostile-corpus
 hostile-dart | dart | (^|/)schema[-_]dart[-_]runs[-_]hostile|^internal/ci/hostilecorpus/ | make schema-dart-runs-hostile-corpus DART=dart
 hostile-elixir | elixir | (^|/)schema[-_]elixir[-_]runs[-_]hostile|^internal/ci/hostilecorpus/ | make schema-elixir-runs-hostile-corpus ELIXIR=elixir ELIXIRC=elixirc
 hostile-java | java | (^|/)schema[-_]java[-_]runs[-_]hostile|^internal/ci/hostilecorpus/ | make schema-java-runs-hostile-corpus JAVA=java JAVAC=javac
@@ -70,82 +68,3 @@ lobster-fixed-proof | lobster | (^|/)lobster[-_]fixed[-_]proof | make -j4 lobste
 appendix-java-announcement-budgets | java | ^docs/SPEC-CONFORMANCE\.md$|^tables/(backend|blobs)/ | make appendix-java-announcement-budgets
 appendix-go-fixed | go | ^docs/SPEC-CONFORMANCE\.md$|^test/(fixed-empty-batch/|go-tables/optional_array_resize_test\.gotext$)|^testdata/(wire/fixed-empty-batch/|conformance/(feature-witnesses/(fixed-load-capacity|declared-deprecated-enum)/|table-write-bounds/)) | make -j4 appendix-go-fixed table-optional-array-resize-go
 appendix-python-fixed | python | ^docs/SPEC-CONFORMANCE\.md$|^test/fixed-empty-batch/|^testdata/(wire/fixed-empty-batch/|conformance/feature-witnesses/fixed-load-capacity/) | make appendix-python-fixed
-
-# THE FIXED FORM AND VERSIONING GATES, every leg (2026-11-24). They were
-# ci-fast.yml's leg-gate matrix, which ran only on workflow_dispatch: per
-# commit they ran never, and the nightly was the only place a leg's fixed form
-# or its §5 versioning rows went red. Now a row each, selected by the leg like
-# every row here. A gate that does not fit two minutes as one job is cut by
-# construction, never by a hand list: versioning-<leg>-k runs shard k of the
-# gate's own tests (make/go-test-shard.mk, tools/gotestshard), and an
-# aggregate's rows run shard k of what make prints for it (tools/makeshard;
-# -each holds one gate per row and is red when a gate is added without one).
-# The C++ leg's sanitized half and its clean gates, the Rust probes, the
-# Squirrel card parts and test-lobster stay the leg-gate-* jobs. Lua has no
-# fixed-form or versioning gate to run (owed: docs/CI-TIERS.md).
-fixedform-cpp | cpp | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/ | make -j"$(nproc)" tables-fixedform-plain
-fixedform-go | go | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/ | make tables-go-fixed-form
-versioning-go | go | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/ | make tables-go-versioning
-fixedform-c | c | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/ | make tables-c-fixedform
-versioning-c-1 | c | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/|^make/go-test-shard\.mk$|^tools/gotestshard/ | make tables-c-versioning GO_TEST_SHARD=1/5
-versioning-c-2 | c | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/|^make/go-test-shard\.mk$|^tools/gotestshard/ | make tables-c-versioning GO_TEST_SHARD=2/5
-versioning-c-3 | c | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/|^make/go-test-shard\.mk$|^tools/gotestshard/ | make tables-c-versioning GO_TEST_SHARD=3/5
-versioning-c-4 | c | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/|^make/go-test-shard\.mk$|^tools/gotestshard/ | make tables-c-versioning GO_TEST_SHARD=4/5
-versioning-c-5 | c | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/|^make/go-test-shard\.mk$|^tools/gotestshard/ | make tables-c-versioning GO_TEST_SHARD=5/5
-clean-c | c | ^make/c-format-allow\.txt$|^\.clang-format$ | make tables-c-clean tables-c-format-negative-control SCHEMA_REQUIRE_CLANG_FORMAT=1 CLANG_FORMAT="$CLANG_FORMAT"
-fixedform-rust | rust | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/ | make tables-rust-fixedform RUSTUP_BIN="$(dirname "$(command -v cargo)")"
-versioning-rust | rust | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/ | make tables-rust-versioning-t12 RUSTUP_BIN="$(dirname "$(command -v cargo)")"
-fixedform-js | js | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/ | make tables-js-fixed-form tables-js-versioning NODE=node
-fixedform-cs | cs | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/ | make tables-cs-leg-debug
-versioning-cs-1 | cs | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/|^make/go-test-shard\.mk$|^tools/gotestshard/ | make tables-cs-versioning GO_TEST_SHARD=1/4 DOTNET=dotnet
-versioning-cs-2 | cs | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/|^make/go-test-shard\.mk$|^tools/gotestshard/ | make tables-cs-versioning GO_TEST_SHARD=2/4 DOTNET=dotnet
-versioning-cs-3 | cs | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/|^make/go-test-shard\.mk$|^tools/gotestshard/ | make tables-cs-versioning GO_TEST_SHARD=3/4 DOTNET=dotnet
-versioning-cs-4 | cs | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/|^make/go-test-shard\.mk$|^tools/gotestshard/ | make tables-cs-versioning GO_TEST_SHARD=4/4 DOTNET=dotnet
-fixedform-java | java | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/ | make tables-java-fixedform JAVA=java JAVAC=javac
-versioning-java-1 | java | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/|^make/go-test-shard\.mk$|^tools/gotestshard/ | make tables-java-versioning GO_TEST_SHARD=1/2 JAVA=java JAVAC=javac
-versioning-java-2 | java | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/|^make/go-test-shard\.mk$|^tools/gotestshard/ | make tables-java-versioning GO_TEST_SHARD=2/2 JAVA=java JAVAC=javac
-fixedform-dart | dart | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/ | make tables-dart-fixed-form tables-dart-versioning DART=dart
-fixedform-elixir | elixir | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/ | make tables-elixir-fixed-form tables-elixir-versioning ELIXIR_BIN="$(command -v elixir)" ERL_BIN="$(dirname "$(command -v erl)")"
-fixedform-luau | luau | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/ | make tables-luau-fixed-form tables-luau-versioning
-bench-luau | luau | ^bench/luau/ | make bench-luau-gate
-fixedform-goose | goose | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/ | make tables-goose-fixedform
-versioning-goose | goose | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/ | make tables-goose-versioning tables-goose-message-form
-test-goose-1 | goose | ^make/goose|^tools/makeshard/|^make/go-test-shard\.mk$ | make test-goose-shard SHARD=1/6
-test-goose-2 | goose | ^make/goose|^tools/makeshard/|^make/go-test-shard\.mk$ | make test-goose-shard SHARD=2/6
-test-goose-3 | goose | ^make/goose|^tools/makeshard/|^make/go-test-shard\.mk$ | make test-goose-shard SHARD=3/6
-test-goose-4 | goose | ^make/goose|^tools/makeshard/|^make/go-test-shard\.mk$ | make test-goose-shard SHARD=4/6
-test-goose-5 | goose | ^make/goose|^tools/makeshard/|^make/go-test-shard\.mk$ | make test-goose-shard SHARD=5/6
-test-goose-6 | goose | ^make/goose|^tools/makeshard/|^make/go-test-shard\.mk$ | make test-goose-shard SHARD=6/6
-bench-lobster | lobster | ^bench/lobster/ | make bench-lobster-gate
-view-lobster | lobster | ^internal/codegen/lobstertable/ | make tables-lobster-view
-cards-squirrel | squirrel | ^tables/cards/squirrel/ | make dist-squirrel cards-squirrel-test
-fixedform-unity | unity | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/ | make unity-fixed
-fixedform-moo | moo | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/ | make tables-moo-fixed
-message-form-moo | moo | ^internal/codegen/mootable/ | make tables-moo-message-form
-fixedform-python | python | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/ | make python-fixed-form
-fixedform-python-proof-1 | python | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/|^tools/makeshard/|^make/go-test-shard\.mk$ | make python-fixed-form-proof-shard SHARD=1/3
-fixedform-python-proof-2 | python | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/|^tools/makeshard/|^make/go-test-shard\.mk$ | make python-fixed-form-proof-shard SHARD=2/3
-fixedform-python-proof-3 | python | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/|^tools/makeshard/|^make/go-test-shard\.mk$ | make python-fixed-form-proof-shard SHARD=3/3
-fixedform-ruby-1 | ruby | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/|^tools/makeshard/|^make/go-test-shard\.mk$ | make ruby-fixed-form-shard SHARD=1/8
-fixedform-ruby-2 | ruby | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/|^tools/makeshard/|^make/go-test-shard\.mk$ | make ruby-fixed-form-shard SHARD=2/8
-fixedform-ruby-3 | ruby | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/|^tools/makeshard/|^make/go-test-shard\.mk$ | make ruby-fixed-form-shard SHARD=3/8
-fixedform-ruby-4 | ruby | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/|^tools/makeshard/|^make/go-test-shard\.mk$ | make ruby-fixed-form-shard SHARD=4/8
-fixedform-ruby-5 | ruby | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/|^tools/makeshard/|^make/go-test-shard\.mk$ | make ruby-fixed-form-shard SHARD=5/8
-fixedform-ruby-6 | ruby | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/|^tools/makeshard/|^make/go-test-shard\.mk$ | make ruby-fixed-form-shard SHARD=6/8
-fixedform-ruby-7 | ruby | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/|^tools/makeshard/|^make/go-test-shard\.mk$ | make ruby-fixed-form-shard SHARD=7/8
-fixedform-ruby-8 | ruby | ^docs/FIXED-FORM-(ALGORITHM|VERSIONING-TESTS)\.md$|^test/fixedform/|^tools/makeshard/|^make/go-test-shard\.mk$ | make ruby-fixed-form-shard SHARD=8/8
-
-# THE SHARED GATES' NEGATIVE CONTROLS, ONE ROTATING LEG (2026-11-24;
-# make/widen-18-gate-controls.mk). Each gate's control plants its oracle wrong
-# and requires a leg's own gate red; the night runs all 18 legs
-# (make/negative-controls.json gate-controls-<gate>), and a diff to a shared
-# harness runs each gate on one leg, GITHUB_RUN_NUMBER mod 18, a different leg
-# each run. 144 jobs per pull request would be the queue of 2026-11-15 again.
-controls-bitphase | - | ^test/(verify-(bitphase|canonical|tablegen)|conformance/harness)/|^make/(widen-18-gate-controls|verify-widen-18|verify-vm|verify-compiled)\.mk$|^tools/gatecontrol/ | make verify-gate-control-rotating GATE=bitphase
-controls-canonical | - | ^test/(verify-(bitphase|canonical|tablegen)|conformance/harness)/|^make/(widen-18-gate-controls|verify-widen-18|verify-vm|verify-compiled)\.mk$|^tools/gatecontrol/ | make verify-gate-control-rotating GATE=canonical
-controls-tablegen | - | ^test/(verify-(bitphase|canonical|tablegen)|conformance/harness)/|^make/(widen-18-gate-controls|verify-widen-18|verify-vm|verify-compiled)\.mk$|^tools/gatecontrol/ | make verify-gate-control-rotating GATE=tablegen
-controls-message-fuzz | - | ^test/(verify-(bitphase|canonical|tablegen)|conformance/harness)/|^make/(widen-18-gate-controls|verify-widen-18|verify-vm|verify-compiled)\.mk$|^tools/gatecontrol/ | make verify-gate-control-rotating GATE=message-fuzz
-controls-sabotage-packet | - | ^test/(verify-(bitphase|canonical|tablegen)|conformance/harness)/|^make/(widen-18-gate-controls|verify-widen-18|verify-vm|verify-compiled)\.mk$|^tools/gatecontrol/ | make verify-gate-control-rotating GATE=sabotage-packet
-controls-sabotage-fixed | - | ^test/(verify-(bitphase|canonical|tablegen)|conformance/harness)/|^make/(widen-18-gate-controls|verify-widen-18|verify-vm|verify-compiled)\.mk$|^tools/gatecontrol/ | make verify-gate-control-rotating GATE=sabotage-fixed
-controls-sabotage-variable | - | ^test/(verify-(bitphase|canonical|tablegen)|conformance/harness)/|^make/(widen-18-gate-controls|verify-widen-18|verify-vm|verify-compiled)\.mk$|^tools/gatecontrol/ | make verify-gate-control-rotating GATE=sabotage-variable
-controls-sabotage-retain | - | ^test/(verify-(bitphase|canonical|tablegen)|conformance/harness)/|^make/(widen-18-gate-controls|verify-widen-18|verify-vm|verify-compiled)\.mk$|^tools/gatecontrol/ | make verify-gate-control-rotating GATE=sabotage-retain

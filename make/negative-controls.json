@@ -3461,64 +3461,72 @@
     },
     {
       "name": "gate-controls-bitphase",
+      "dart": "3.13.2", "dotnet": "pin", "elixir": "1.20.4", "otp": "29.0.5", "java": "21", "lobster": "v2026.8", "lua": "5.4.8", "luau": "0.741", "moo": "pin", "node": "26", "python": "pin", "ruby": "pin", "rust": "stable", "squirrel": "3.2",
       "when": "nightly",
-      "why": "the bitphase shared gate's negative control on EVERY leg (make/widen-18-gate-controls.mk, 2026-11-24): the oracle is planted wrong through SCHEMA_GATE_PLANT and each of the 18 legs' own gate target must go red on the plant. 18 gate runs, each its leg's whole gate target, so the night runs them; a pull request touching a shared harness runs one rotating leg (ci-fast.yml nightly-fast row controls-bitphase).",
+      "why": "the bitphase shared gate's negative control on EVERY leg (make/widen-18-gate-controls.mk, 2026-11-24): the oracle is planted wrong through SCHEMA_GATE_PLANT and each of the 18 legs' own gate target must go red on the plant. 18 gate runs, each its leg's whole gate target, so the night runs them; no pull request runs them (heavy is nightly only).",
       "targets": [
         "verify-bitphase-negative-control-every-leg"
       ]
     },
     {
       "name": "gate-controls-canonical",
+      "dart": "3.13.2", "dotnet": "pin", "elixir": "1.20.4", "otp": "29.0.5", "java": "21", "lobster": "v2026.8", "lua": "5.4.8", "luau": "0.741", "moo": "pin", "node": "26", "python": "pin", "ruby": "pin", "rust": "stable", "squirrel": "3.2",
       "when": "nightly",
-      "why": "the canonical shared gate's negative control on EVERY leg (make/widen-18-gate-controls.mk, 2026-11-24): the oracle is planted wrong through SCHEMA_GATE_PLANT and each of the 18 legs' own gate target must go red on the plant. 18 gate runs, each its leg's whole gate target, so the night runs them; a pull request touching a shared harness runs one rotating leg (ci-fast.yml nightly-fast row controls-canonical).",
+      "why": "the canonical shared gate's negative control on EVERY leg (make/widen-18-gate-controls.mk, 2026-11-24): the oracle is planted wrong through SCHEMA_GATE_PLANT and each of the 18 legs' own gate target must go red on the plant. 18 gate runs, each its leg's whole gate target, so the night runs them; no pull request runs them (heavy is nightly only).",
       "targets": [
         "verify-canonical-negative-control-every-leg"
       ]
     },
     {
       "name": "gate-controls-tablegen",
+      "dart": "3.13.2", "dotnet": "pin", "elixir": "1.20.4", "otp": "29.0.5", "java": "21", "lobster": "v2026.8", "lua": "5.4.8", "luau": "0.741", "moo": "pin", "node": "26", "python": "pin", "ruby": "pin", "rust": "stable", "squirrel": "3.2",
       "when": "nightly",
-      "why": "the tablegen shared gate's negative control on EVERY leg (make/widen-18-gate-controls.mk, 2026-11-24): the oracle is planted wrong through SCHEMA_GATE_PLANT and each of the 18 legs' own gate target must go red on the plant. 18 gate runs, each its leg's whole gate target, so the night runs them; a pull request touching a shared harness runs one rotating leg (ci-fast.yml nightly-fast row controls-tablegen).",
+      "why": "the tablegen shared gate's negative control on EVERY leg (make/widen-18-gate-controls.mk, 2026-11-24): the oracle is planted wrong through SCHEMA_GATE_PLANT and each of the 18 legs' own gate target must go red on the plant. 18 gate runs, each its leg's whole gate target, so the night runs them; no pull request runs them (heavy is nightly only).",
       "targets": [
         "verify-tablegen-negative-control-every-leg"
       ]
     },
     {
       "name": "gate-controls-message-fuzz",
+      "dart": "3.13.2", "dotnet": "pin", "elixir": "1.20.4", "otp": "29.0.5", "java": "21", "lobster": "v2026.8", "lua": "5.4.8", "luau": "0.741", "moo": "pin", "node": "26", "python": "pin", "ruby": "pin", "rust": "stable", "squirrel": "3.2",
       "when": "nightly",
-      "why": "the message-fuzz shared gate's negative control on EVERY leg (make/widen-18-gate-controls.mk, 2026-11-24): the oracle is planted wrong through SCHEMA_GATE_PLANT and each of the 18 legs' own gate target must go red on the plant. 18 gate runs, each its leg's whole gate target, so the night runs them; a pull request touching a shared harness runs one rotating leg (ci-fast.yml nightly-fast row controls-message-fuzz).",
+      "why": "the message-fuzz shared gate's negative control on EVERY leg (make/widen-18-gate-controls.mk, 2026-11-24): the oracle is planted wrong through SCHEMA_GATE_PLANT and each of the 18 legs' own gate target must go red on the plant. 18 gate runs, each its leg's whole gate target, so the night runs them; no pull request runs them (heavy is nightly only).",
       "targets": [
         "verify-message-fuzz-negative-control-every-leg"
       ]
     },
     {
       "name": "gate-controls-sabotage-packet",
+      "dart": "3.13.2", "dotnet": "pin", "elixir": "1.20.4", "otp": "29.0.5", "java": "21", "lobster": "v2026.8", "lua": "5.4.8", "luau": "0.741", "moo": "pin", "node": "26", "python": "pin", "ruby": "pin", "rust": "stable", "squirrel": "3.2",
       "when": "nightly",
-      "why": "the sabotage-packet shared gate's negative control on EVERY leg (make/widen-18-gate-controls.mk, 2026-11-24): the oracle is planted wrong through SCHEMA_GATE_PLANT and each of the 18 legs' own gate target must go red on the plant. 18 gate runs, each its leg's whole gate target, so the night runs them; a pull request touching a shared harness runs one rotating leg (ci-fast.yml nightly-fast row controls-sabotage-packet).",
+      "why": "the sabotage-packet shared gate's negative control on EVERY leg (make/widen-18-gate-controls.mk, 2026-11-24): the oracle is planted wrong through SCHEMA_GATE_PLANT and each of the 18 legs' own gate target must go red on the plant. 18 gate runs, each its leg's whole gate target, so the night runs them; no pull request runs them (heavy is nightly only).",
       "targets": [
         "verify-sabotage-packet-negative-control-every-leg"
       ]
     },
     {
       "name": "gate-controls-sabotage-fixed",
+      "dart": "3.13.2", "dotnet": "pin", "elixir": "1.20.4", "otp": "29.0.5", "java": "21", "lobster": "v2026.8", "lua": "5.4.8", "luau": "0.741", "moo": "pin", "node": "26", "python": "pin", "ruby": "pin", "rust": "stable", "squirrel": "3.2",
       "when": "nightly",
-      "why": "the sabotage-fixed shared gate's negative control on EVERY leg (make/widen-18-gate-controls.mk, 2026-11-24): the oracle is planted wrong through SCHEMA_GATE_PLANT and each of the 18 legs' own gate target must go red on the plant. 18 gate runs, each its leg's whole gate target, so the night runs them; a pull request touching a shared harness runs one rotating leg (ci-fast.yml nightly-fast row controls-sabotage-fixed).",
+      "why": "the sabotage-fixed shared gate's negative control on EVERY leg (make/widen-18-gate-controls.mk, 2026-11-24): the oracle is planted wrong through SCHEMA_GATE_PLANT and each of the 18 legs' own gate target must go red on the plant. 18 gate runs, each its leg's whole gate target, so the night runs them; no pull request runs them (heavy is nightly only).",
       "targets": [
         "verify-sabotage-fixed-negative-control-every-leg"
       ]
     },
     {
       "name": "gate-controls-sabotage-variable",
+      "dart": "3.13.2", "dotnet": "pin", "elixir": "1.20.4", "otp": "29.0.5", "java": "21", "lobster": "v2026.8", "lua": "5.4.8", "luau": "0.741", "moo": "pin", "node": "26", "python": "pin", "ruby": "pin", "rust": "stable", "squirrel": "3.2",
       "when": "nightly",
-      "why": "the sabotage-variable shared gate's negative control on EVERY leg (make/widen-18-gate-controls.mk, 2026-11-24): the oracle is planted wrong through SCHEMA_GATE_PLANT and each of the 18 legs' own gate target must go red on the plant. 18 gate runs, each its leg's whole gate target, so the night runs them; a pull request touching a shared harness runs one rotating leg (ci-fast.yml nightly-fast row controls-sabotage-variable).",
+      "why": "the sabotage-variable shared gate's negative control on EVERY leg (make/widen-18-gate-controls.mk, 2026-11-24): the oracle is planted wrong through SCHEMA_GATE_PLANT and each of the 18 legs' own gate target must go red on the plant. 18 gate runs, each its leg's whole gate target, so the night runs them; no pull request runs them (heavy is nightly only).",
       "targets": [
         "verify-sabotage-variable-negative-control-every-leg"
       ]
     },
     {
       "name": "gate-controls-sabotage-retain",
+      "dart": "3.13.2", "dotnet": "pin", "elixir": "1.20.4", "otp": "29.0.5", "java": "21", "lobster": "v2026.8", "lua": "5.4.8", "luau": "0.741", "moo": "pin", "node": "26", "python": "pin", "ruby": "pin", "rust": "stable", "squirrel": "3.2",
       "when": "nightly",
-      "why": "the sabotage-retain shared gate's negative control on EVERY leg (make/widen-18-gate-controls.mk, 2026-11-24): the oracle is planted wrong through SCHEMA_GATE_PLANT and each of the 18 legs' own gate target must go red on the plant. 18 gate runs, each its leg's whole gate target, so the night runs them; a pull request touching a shared harness runs one rotating leg (ci-fast.yml nightly-fast row controls-sabotage-retain).",
+      "why": "the sabotage-retain shared gate's negative control on EVERY leg (make/widen-18-gate-controls.mk, 2026-11-24): the oracle is planted wrong through SCHEMA_GATE_PLANT and each of the 18 legs' own gate target must go red on the plant. 18 gate runs, each its leg's whole gate target, so the night runs them; no pull request runs them (heavy is nightly only).",
       "targets": [
         "verify-sabotage-retain-negative-control-every-leg"
       ]

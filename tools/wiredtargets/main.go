@@ -18,13 +18,15 @@
 //     takes every leg of internal/inputfamilies.Legs, since the leg matrices
 //     are computed by the plan job), and any other `${{ ... }}` or shell
 //     variable inside a word matched as a wildcard over one target name;
-//   - the run field of every .github/nightly-fast-rows.txt row;
+//   - the run field of every .github/nightly-fast-rows.txt row (ci-fast.yml
+//     runs them per pull request) and every .github/nightly-gates.txt row
+//     (certify.yml runs them every night);
 //   - every target named in make/negative-controls.json and
 //     make/negative-controls.d/*.json, which the negative-control jobs run.
 //
 // WHAT IS REACHED from a root: its prerequisites, and every target a recipe
-// line hands to $(MAKE) (or to tools/makeshard or tools/gatecontrol, which run
-// make for it), after the recipe's plain $(VAR) references are expanded from
+// line hands to $(MAKE) (or to tools/gatecontrol, which runs make for it),
+// after the recipe's plain $(VAR) references are expanded from
 // make's own variable table — transitively. A workflow that runs the
 // input-family planner (tools/inputfamilies select) or the release planner
 // (tools/releasetargets) reaches every target those plan.
@@ -253,10 +255,8 @@ func stripSubstitutions(s string) string {
 	return b.String()
 }
 
-// recipeTargets is every target a recipe hands to $(MAKE), or to one of the
-// two tools that run make on a recipe's behalf: tools/makeshard runs the
-// prerequisites of the aggregate its line names last, and tools/gatecontrol
-// runs the target after its -target flag.
+// recipeTargets is every target a recipe hands to $(MAKE), or to
+// tools/gatecontrol, which runs the target after its -target flag.
 func (db database) recipeTargets(r *rule) []string {
 	var out []string
 	add := func(w string) {
@@ -271,11 +271,8 @@ func (db database) recipeTargets(r *rule) []string {
 				add(w)
 			}
 		}
-		words := strings.Fields(line)
-		if strings.Contains(line, "tools/makeshard") && len(words) > 0 {
-			add(strings.Trim(words[len(words)-1], `"'`))
-		}
 		if strings.Contains(line, "tools/gatecontrol") {
+			words := strings.Fields(line)
 			for i, w := range words {
 				if w == "-target" && i+1 < len(words) {
 					add(strings.Trim(words[i+1], `"'`))
@@ -481,7 +478,8 @@ func readLedger(path string) ([]ledgerEntry, error) {
 type sources struct {
 	workflows     []string // workflow and composite action texts
 	workflowNames []string
-	nightlyRows   string
+	nightlyRows   string   // .github/nightly-fast-rows.txt
+	nightlyGates  string   // .github/nightly-gates.txt
 	controls      []string // negative-control JSON documents
 	controlNames  []string
 }
@@ -509,6 +507,11 @@ func readSources(root string) (sources, error) {
 		return s, err
 	}
 	s.nightlyRows = string(b)
+	b, err = os.ReadFile(filepath.Join(root, ".github", "nightly-gates.txt"))
+	if err != nil {
+		return s, err
+	}
+	s.nightlyGates = string(b)
 	files, _ := filepath.Glob(filepath.Join(root, "make", "negative-controls.d", "*.json")) // errdiscard: Glob fails only on a malformed pattern, and this is a constant
 	files = append([]string{filepath.Join(root, "make", "negative-controls.json")}, files...)
 	for _, f := range files {
@@ -572,13 +575,18 @@ func check(db database, src sources, ledger []ledgerEntry) (result, error) {
 			}
 		}
 	}
-	for line := range strings.SplitSeq(src.nightlyRows, "\n") {
-		if strings.HasPrefix(strings.TrimSpace(line), "#") {
-			continue
-		}
-		f := strings.Split(line, " | ")
-		if len(f) == 4 {
-			addRoots(".github/nightly-fast-rows.txt row "+strings.TrimSpace(f[0]), rootsFromShell(f[3], matrix, db, names))
+	for _, reg := range []struct{ name, text string }{
+		{".github/nightly-fast-rows.txt", src.nightlyRows},
+		{".github/nightly-gates.txt", src.nightlyGates},
+	} {
+		for line := range strings.SplitSeq(reg.text, "\n") {
+			if strings.HasPrefix(strings.TrimSpace(line), "#") {
+				continue
+			}
+			f := strings.Split(line, " | ")
+			if len(f) == 4 {
+				addRoots(reg.name+" row "+strings.TrimSpace(f[0]), rootsFromShell(f[3], matrix, db, names))
+			}
 		}
 	}
 	for i, c := range src.controls {
@@ -743,7 +751,7 @@ func main() {
 		return
 	}
 	for _, n := range res.unwired {
-		fmt.Printf("UNWIRED %s: a test or control target no workflow, nightly-fast row or negative-control group reaches; wire it into CI, or ledger it in %s with the reason it runs by hand\n", n, *ledgerFile)
+		fmt.Printf("UNWIRED %s: a test or control target no workflow, nightly-fast row, nightly gate or negative-control group reaches; wire it into CI (heavy: a .github/nightly-gates.txt row), or ledger it in %s with the reason it runs by hand\n", n, *ledgerFile)
 	}
 	for _, s := range res.stale {
 		fmt.Printf("STALE LEDGER %s %s\n", *ledgerFile, s)
@@ -758,5 +766,5 @@ func main() {
 			n++
 		}
 	}
-	fmt.Printf("wiredtargets: every test-like target is reached by CI (%d reached, %d ledgered by-hand or owed in .github/unwired-targets.txt)\n", n, res.ledgered)
+	fmt.Printf("wiredtargets: every test-like target is reached by CI (%d reached, %d ledgered by-hand in .github/unwired-targets.txt)\n", n, res.ledgered)
 }

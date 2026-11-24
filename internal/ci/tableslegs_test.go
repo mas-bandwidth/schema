@@ -3,7 +3,6 @@ package ci
 import (
 	"os"
 	"path/filepath"
-	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -127,11 +126,6 @@ func TestEveryNamedTableLegRunsOnItsPullRequests(t *testing.T) {
 	}
 
 	makeText := makeSourceText(t, root)
-	rowsData, err := os.ReadFile(filepath.Join(root, ".github", "nightly-fast-rows.txt"))
-	if err != nil {
-		t.Fatalf("the nightly-fast row registry ci-fast.yml runs per pull request: %v", err)
-	}
-	rowsText := string(rowsData)
 
 	for _, leg := range legs {
 		// Clause 1 — COVERAGE. Some line of a pull-request workflow, read
@@ -148,17 +142,6 @@ func TestEveryNamedTableLegRunsOnItsPullRequests(t *testing.T) {
 			}
 			if covered {
 				break
-			}
-		}
-		// ci-fast.yml's nightly-fast job runs each row of
-		// .github/nightly-fast-rows.txt on the pull requests that select
-		// it, so a row's run command is pull-request code too (2026-11-24).
-		if !covered && slices.Contains(prWorkflows, "ci-fast.yml") {
-			for _, l := range lines("nightly-fast-rows.txt", rowsText) {
-				if f := strings.Split(l.text, " | "); len(f) == 4 && strings.Contains(f[3], leg.leg) {
-					covered = true
-					break
-				}
 			}
 		}
 		if !covered {
