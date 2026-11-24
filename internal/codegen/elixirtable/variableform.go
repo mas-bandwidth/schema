@@ -3737,7 +3737,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
           else: {term, true}
 
       parent = Enum.find(desc.fields, &(&1.name == name))
-      parent != nil and record_value(value, parent) == want
+      parent != nil and Map.get(value, name, parent.default) == want
     end)
   end
 
