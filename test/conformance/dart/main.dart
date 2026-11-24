@@ -5495,6 +5495,63 @@ int surfaceRetain(String outDir, bool saves) {
   return 0;
 }
 
+
+// ---- retain-refusal (test/conformance/README.md): ONE retention store through
+// the retaining read of the first wire, the retaining save, the retaining read
+// of the refused wire into the same store, and the retaining save of the first
+// value again. The verdicts and what the second save did go in <case>, the
+// first save in <case>.before, the second in <case>.wire.
+int _answerRetainRefusal(String outDir, String name, List<int> before, bool secondRefused, List<int>? after) {
+  File('$outDir/$name.before').writeAsBytesSync(before);
+  var answer = 'read\n${secondRefused ? 'refused' : 'read'}\n';
+  if (after == null) {
+    answer += 'save-refused\n';
+  } else {
+    File('$outDir/$name.wire').writeAsBytesSync(after);
+    answer += 'saved\n';
+  }
+  File('$outDir/$name').writeAsStringSync(answer);
+  return 0;
+}
+
+int surfaceRetainRefusal(String outDir) {
+  for (final f in lines) {
+    if (f[0] != 'retain-refusal') continue;
+    final first = File(f[4]).readAsBytesSync();
+    final second = File(f[5]).readAsBytesSync();
+    if (f[2] == 'tblrt1' && f[3] == 'Node') {
+      final store = tblrt1.TableRetain(_retainRoomy, List<int>.filled(_retainRoomy ~/ 8, 0));
+      final report = tblrt1.TableWireReport();
+      final root = tblrt1.nodeWireLoadRetain(first, store, report);
+      if (report.refused) {
+        File('$outDir/${f[1]}').writeAsStringSync('refused\n');
+        continue;
+      }
+      final before = tblrt1.nodeWireSaveRetain(root, store, tblrt1.TableWireReport());
+      final refused = tblrt1.TableWireReport();
+      tblrt1.nodeWireLoadRetain(second, store, refused);
+      final after = tblrt1.nodeWireMeasureRetain(root, store) < 0 ? null : tblrt1.nodeWireSaveRetain(root, store, tblrt1.TableWireReport());
+      _answerRetainRefusal(outDir, f[1], before, refused.refused, after);
+    } else if (f[2] == 'tblvarevo1' && f[3] == 'EvoDoc') {
+      final store = tblvarevo1.TableRetain(_retainRoomy, List<int>.filled(_retainRoomy ~/ 8, 0));
+      final report = tblvarevo1.TableWireReport();
+      final root = tblvarevo1.evoDocWireLoadRetain(first, store, report);
+      if (report.refused) {
+        File('$outDir/${f[1]}').writeAsStringSync('refused\n');
+        continue;
+      }
+      final before = tblvarevo1.evoDocWireSaveRetain(root, store, tblvarevo1.TableWireReport());
+      final refused = tblvarevo1.TableWireReport();
+      tblvarevo1.evoDocWireLoadRetain(second, store, refused);
+      final after = tblvarevo1.evoDocWireMeasureRetain(root, store) < 0 ? null : tblvarevo1.evoDocWireSaveRetain(root, store, tblvarevo1.TableWireReport());
+      _answerRetainRefusal(outDir, f[1], before, refused.refused, after);
+    } else {
+      stderr.writeln('driver: retain-refusal ${f[1]} names ${f[2]} ${f[3]}');
+      return 1;
+    }
+  }
+  return 0;
+}
 int _retainVarEvo1(List<String> f, String outDir, bool saves) {
   final wire = File(f[4]).readAsBytesSync();
   final ids = List<int>.filled(f[6] == 'full' ? _retainRoomy ~/ 8 : int.parse(f[6]), 0);
@@ -6326,7 +6383,7 @@ const String surfaces =
     // block-reason name each forgery's first failing clause (§7, §19.2). The
     // wire fuzzer's roots are another card's.
     ''
-    'wire\nmessage\nmessage-prior\nretain\nretain-save\njson-read\njson-write\njson-hostile\nreport\nframing\n'
+    'wire\nmessage\nmessage-prior\nretain\nretain-save\nretain-refusal\njson-read\njson-write\njson-hostile\nreport\nframing\n'
     'cook\ncook-write\ncook-foreign\nblock\nblock-foreign\nblock-dump\n'
     'forgery\ncook-forgery\ncook-reason\nblock-reason\n'
     'write-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n'
@@ -7024,6 +7081,8 @@ int run(List<String> args) {
       return surfaceRetain(out, false);
     case 'retain-save':
       return surfaceRetain(out, true);
+    case 'retain-refusal':
+      return surfaceRetainRefusal(out);
     case 'json-read':
       return surfaceJsonRead(out);
     case 'json-write':
@@ -7701,6 +7760,50 @@ int surfaceWriteRefusal(String outDir, String rows) {
           final n = tables_fixed.loadoutConfigFixedMeasure(1);
           final out = Uint8List(n);
           return tables_fixed.loadoutConfigFixedSave(<tabledemo_fixed.LoadoutConfig>[fx], 1, out) == n ? 0 : -1;
+        });
+      }
+    } else if ('$unit $root' == 'tabledemo Moods') {
+      // §2.15 WRITE: a deprecated variant is never written, as an element
+      final fx = _fixedLoadOne(wire, tabledemo_fixed.Moods.new, tables_fixed.moodsFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.moodsFixedLoad);
+      if (fx == null) return 1;
+      if ('$path $vkind' != 'row[0] ordinal') return 1;
+      if (surface == 'write-refusal') {
+        final w = tabledemo.Moods();
+        _f2w_examples_Moods(fx, w);
+        if (w.row.isEmpty) return 1;
+        w.row[0] = (int.parse(text) as dynamic);
+        answer = _catchWrite(() {
+          tabledemo.moodsWireSave(w);
+          return 0;
+        });
+      } else {
+        if (fx.rowCount == 0) return 1;
+        fx.row[0] = int.parse(text);
+        answer = _catchWrite(() {
+          final n = tables_fixed.moodsFixedMeasure(1);
+          final out = Uint8List(n);
+          return tables_fixed.moodsFixedSave(<tabledemo_fixed.Moods>[fx], 1, out) == n ? 0 : -1;
+        });
+      }
+    } else if ('$unit $root' == 'tabledemo MoodField') {
+      // §2.15 WRITE: a deprecated variant is never written, as a scalar
+      final fx = _fixedLoadOne(wire, tabledemo_fixed.MoodField.new, tables_fixed.moodFieldFixedNewPlan, tabledemo_fixed.TableFixedReport.new, (rep) => rep.refused != 0, tables_fixed.moodFieldFixedLoad);
+      if (fx == null) return 1;
+      if ('$path $vkind' != 'mood ordinal') return 1;
+      if (surface == 'write-refusal') {
+        final w = tabledemo.MoodField();
+        _f2w_examples_MoodField(fx, w);
+        w.mood = (int.parse(text) as dynamic);
+        answer = _catchWrite(() {
+          tabledemo.moodFieldWireSave(w);
+          return 0;
+        });
+      } else {
+        fx.mood = (int.parse(text) as dynamic);
+        answer = _catchWrite(() {
+          final n = tables_fixed.moodFieldFixedMeasure(1);
+          final out = Uint8List(n);
+          return tables_fixed.moodFieldFixedSave(<tabledemo_fixed.MoodField>[fx], 1, out) == n ? 0 : -1;
         });
       }
     } else if ('$unit $root' == 'tabledemo CountedMin') {

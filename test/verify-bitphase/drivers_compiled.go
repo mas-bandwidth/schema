@@ -52,6 +52,7 @@ static uint8_t * read_all( const char * path, size_t * out_len ) {
         } \
     }
 
+@MAIN_ONLY@
 /* the float32 literal case (f32lit.go): the float64 bits of a float32 */
 static void f32lit_line( const char * probe, float x ) {
     double d = (double)x; uint64_t u; memcpy( &u, &d, 8 );
@@ -71,6 +72,7 @@ static void f32lit_write( const char * probe, float x ) {
     if ( !bitphase_read_f32_lit( &rs, &back ) ) { fprintf( stderr, "FAILED: f32lit read %s\n", probe ); exit( 1 ); }
     f32lit_line( probe, back.e );
 }
+@END_MAIN_ONLY@
 
 int main( int argc, char ** argv ) {
     if ( argc != 2 ) return 2;
@@ -108,6 +110,7 @@ int main( int argc, char ** argv ) {
         count++;
     }
     fclose( mf );
+@MAIN_ONLY@
     bitphase_cf_decode_t cf; memset( &cf, 0, sizeof( cf ) );
     for ( int i = 0; i <= @CFDECODE_STEPS@; i++ ) {
         uint8_t cbuf[32]; memset( cbuf, 0, sizeof( cbuf ) );
@@ -129,6 +132,7 @@ int main( int argc, char ** argv ) {
         f32lit_write( "write-min", @F32LIT_MIN@f );
         f32lit_write( "write-max", @F32LIT_MAX@f );
     }
+@END_MAIN_ONLY@
     printf( "BITPHASE_OK c %d\n", count );
     return 0;
 }
@@ -204,6 +208,7 @@ static class Program
             }
             count++;
         }
+@MAIN_ONLY@
         B.CfDecode cf = default;
         System.Text.StringBuilder cfOut = new System.Text.StringBuilder();
         for (int i = 0; i <= @CFDECODE_STEPS@; i++)
@@ -222,10 +227,12 @@ static class Program
         F32LitLine("default-e", fl.E);
         F32LitWrite("write-min", @F32LIT_MIN@f);
         F32LitWrite("write-max", @F32LIT_MAX@f);
+@END_MAIN_ONLY@
         Console.WriteLine("BITPHASE_OK %[1]s " + count);
         return 0;
     }
 
+@MAIN_ONLY@
     static void F32LitLine(string probe, double x)
     {
         Console.WriteLine("F32LIT %[1]s " + probe + " " + BitConverter.DoubleToInt64Bits(x).ToString("x16"));
@@ -248,6 +255,7 @@ static class Program
         if (!B.Schema.ReadF32Lit(rs, ref back) || !rs.Ok) throw new Exception("FAILED: f32lit read " + probe);
         F32LitLine(probe, back.E);
     }
+@END_MAIN_ONLY@
 }
 `, langTag))
 }
@@ -365,7 +373,9 @@ func verifyGo(repoRoot, schemaBin, corpusDir, workDir string) error {
 import (
 	"bytes"
 	"fmt"
+@MAIN_ONLY@
 	"math"
+@END_MAIN_ONLY@
 	"os"
 	"path/filepath"
 	"strings"
@@ -448,6 +458,7 @@ func main() {
 		}
 		count++
 	}
+@MAIN_ONLY@
 	var cf bp.CfDecode
 	var cfOut strings.Builder
 	for i := 0; i <= @CFDECODE_STEPS@; i++ {
@@ -464,9 +475,11 @@ func main() {
 	f32litLine("default-e", float64(fl.E))
 	f32litWrite("write-min", @F32LIT_MIN@)
 	f32litWrite("write-max", @F32LIT_MAX@)
+@END_MAIN_ONLY@
 	fmt.Printf("BITPHASE_OK go %d\n", count)
 }
 
+@MAIN_ONLY@
 func f32litLine(probe string, x float64) {
 	fmt.Printf("F32LIT go %s %016x\n", probe, math.Float64bits(x))
 }
@@ -486,6 +499,7 @@ func f32litWrite(probe string, x float32) {
 	}
 	f32litLine(probe, float64(back.E))
 }
+@END_MAIN_ONLY@
 `
 	if err := os.WriteFile(filepath.Join(appDir, "main.go"), []byte(withCfDecodeSteps(goSrc)), 0o644); err != nil {
 		return err
@@ -584,6 +598,7 @@ fn main() {
         }
         count += 1;
     }
+@MAIN_ONLY@
     let mut cf = bp::CfDecode::default();
     let mut cf_out = String::new();
     for i in 0..=@CFDECODE_STEPS@usize {
@@ -604,9 +619,11 @@ fn main() {
     f32lit_line("default-e", fl.e);
     f32lit_write("write-min", @F32LIT_MIN@_f32);
     f32lit_write("write-max", @F32LIT_MAX@_f32);
+@END_MAIN_ONLY@
     println!("BITPHASE_OK rust {}", count);
 }
 
+@MAIN_ONLY@
 fn f32lit_line(probe: &str, x: f32) {
     println!("F32LIT rust {} {:016x}", probe, (x as f64).to_bits());
 }
@@ -633,6 +650,7 @@ fn f32lit_write(probe: &str, x: f32) {
     }
     f32lit_line(probe, back.e);
 }
+@END_MAIN_ONLY@
 `
 	if err := os.WriteFile(filepath.Join(appDir, "src", "main.rs"), []byte(withCfDecodeSteps(rsSrc)), 0o644); err != nil {
 		return err
@@ -713,6 +731,7 @@ public final class Main {
             }
             count++;
         }
+@MAIN_ONLY@
         BitPhase.CfDecode cf = new BitPhase.CfDecode();
         StringBuilder cfOut = new StringBuilder();
         for (int i = 0; i <= @CFDECODE_STEPS@; i++) {
@@ -729,9 +748,11 @@ public final class Main {
         f32litLine("default-e", fl.e);
         f32litWrite("write-min", @F32LIT_MIN@f);
         f32litWrite("write-max", @F32LIT_MAX@f);
+@END_MAIN_ONLY@
         System.out.println("BITPHASE_OK java " + count);
     }
 
+@MAIN_ONLY@
     static void f32litLine(String probe, double x) {
         System.out.println("F32LIT java " + probe + " " + String.format("%016x", Double.doubleToRawLongBits(x)));
     }
@@ -754,6 +775,7 @@ public final class Main {
         if (!BitPhase.readF32Lit(back, wbuf, wn * 8)) throw new RuntimeException("FAILED: f32lit read " + probe);
         f32litLine(probe, back.e);
     }
+@END_MAIN_ONLY@
 }
 `
 	mainJava := filepath.Join(workDir, "Main.java")
@@ -862,6 +884,7 @@ void main(List<String> args) {
     }
     count++;
   }
+@MAIN_ONLY@
   final cf = bp.CfDecode();
   final cbits = ByteData(8);
   final cfOut = StringBuffer();
@@ -885,9 +908,11 @@ void main(List<String> args) {
   f32litLine('default-e', fl.e);
   f32litWrite('write-min', @F32LIT_MIN@);
   f32litWrite('write-max', @F32LIT_MAX@);
+@END_MAIN_ONLY@
   print('BITPHASE_OK dart $count');
 }
 
+@MAIN_ONLY@
 void f32litLine(String probe, double x) {
   final b = ByteData(8);
   b.setFloat64(0, x);
@@ -916,6 +941,7 @@ void f32litWrite(String probe, double x) {
   }
   f32litLine(probe, back.e);
 }
+@END_MAIN_ONLY@
 `
 	mainDart := filepath.Join(workDir, "main.dart")
 	if err := os.WriteFile(mainDart, []byte(withCfDecodeSteps(dartSrc)), 0o644); err != nil {
@@ -982,6 +1008,7 @@ defmodule BitPhaseRunner do
         acc + 1
       end)
 
+@MAIN_ONLY@
     cf_out =
       for i <- 0..@CFDECODE_STEPS@ do
         case BP.read_cf_decode(<<i::little-16>>, 16) do
@@ -998,9 +1025,11 @@ defmodule BitPhaseRunner do
     f32lit_line("default-e", fl.e)
     f32lit_write("write-min", @F32LIT_MIN@)
     f32lit_write("write-max", @F32LIT_MAX@)
+@END_MAIN_ONLY@
     IO.puts("BITPHASE_OK elixir #{count}")
   end
 
+@MAIN_ONLY@
   def f32lit_line(probe, x) do
     IO.puts("F32LIT elixir #{probe} #{Base.encode16(<<x::float-64>>, case: :lower)}")
   end
@@ -1017,6 +1046,7 @@ defmodule BitPhaseRunner do
         IO.puts("F32LIT elixir #{probe} refused")
     end
   end
+@END_MAIN_ONLY@
 end
 
 [dir] = System.argv()

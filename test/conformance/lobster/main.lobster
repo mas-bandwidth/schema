@@ -41,7 +41,7 @@ import .conformance_hooks
 // surfaces: the cook writer and the block builder held to it, the
 // announcement, the read into caller values, and the text written under a
 // comma-decimal locale (test/conformance/README.md)
-let surfaces = ["wire", "message", "message-prior", "report", "framing", "retain", "retain-save", "cook", "cook-write", "cook-foreign",
+let surfaces = ["wire", "message", "message-prior", "report", "framing", "retain", "retain-save", "retain-refusal", "cook", "cook-write", "cook-foreign",
     "block", "block-foreign", "block-dump", "forgery", "cook-forgery", "cook-reason", "block-reason",
     "json-read", "json-write", "json-hostile",
     "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json",
@@ -450,6 +450,35 @@ def surface_retain(text:string, saves:bool):
             let js, why = schema_rt.json_write(rec)
             assert why == ""
             say(f[1], "read\n" + js)
+
+// RETAIN-REFUSAL (test/conformance/README.md): ONE roomy store through
+// load_retain of the first wire, save_retain, load_retain of the refused wire
+// into the same store, and save_retain of the first value again. The verdicts
+// and what the second save did go in <case>, the first save in <case>.before,
+// the second in <case>.wire. A line is
+// `retain-refusal <case> <unit> <root> <first wire> <refused wire>`.
+def surface_retain_refusal(text:string):
+    for(rows(text, "retain-refusal")) f:
+        let retain = schema_rt.Retain { capacity: 1 << 20, id_capacity: 1 << 17 }
+        let rep = schema_rt.LoadReport {}
+        let rec = schema_rt.load_retain(f[3], fixture(f[4]), retain, rep)
+        if not rec:
+            say(f[1], "refused\n")
+        else:
+            let before_rep = schema_rt.LoadReport {}
+            let before = schema_rt.save_retain(rec, retain, before_rep)
+            assert not before_rep.refused
+            say(f[1] + ".before", before)
+            let other = schema_rt.load_retain(f[3], fixture(f[5]), retain, schema_rt.LoadReport {})
+            var answer = "read\n" + (if other: "read\n" else: "refused\n")
+            let after_rep = schema_rt.LoadReport {}
+            let after = schema_rt.save_retain(rec, retain, after_rep)
+            if after_rep.refused:
+                answer += "save-refused\n"
+            else:
+                say(f[1] + ".wire", after)
+                answer += "saved\n"
+            say(f[1], answer)
 // the JSON surfaces (docs/SPEC-TABLES.md §16): an instance line whose sixth
 // word is `no-text` has no text and is not asked (§16.7)
 def has_text(f:[string]) -> bool:
@@ -1087,6 +1116,8 @@ else:
         surface_retain(text, false)
     elif surface == "retain-save":
         surface_retain(text, true)
+    elif surface == "retain-refusal":
+        surface_retain_refusal(text)
     elif surface == "cook":
         surface_cook(text)
     elif surface == "cook-write":

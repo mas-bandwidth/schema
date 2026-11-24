@@ -47,6 +47,7 @@ const (
 const cfDecodeStepsToken = "@CFDECODE_STEPS@"
 
 func withCfDecodeSteps(src string) string {
+	src = mainOnlySteps(src, !familyRun)
 	return withF32LitTokens(strings.ReplaceAll(src, cfDecodeStepsToken, strconv.Itoa(cfDecodeSteps)))
 }
 
