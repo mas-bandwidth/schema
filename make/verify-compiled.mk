@@ -292,8 +292,11 @@ _verify-elixir-packet-ludicrous: build/mustrun toolchain-elixir generated/elixir
 VERIFY_ELIXIR_BUILD = $(if $(ELIXIR_AGREEMENT_ARTIFACTS),build-conformance-elixir-from-shards,build-conformance-elixir)
 VERIFY_ELIXIR_EBIN = $(if $(ELIXIR_AGREEMENT_ARTIFACTS),$(ELIXIR_HANDOFF_EBIN),build/elixir-tables-ebin)
 
+# The harness runs independent surfaces in parallel. Each Elixir surface
+# starts its own VM and processes its cases sequentially.
 _verify-elixir-conformance: build/conformance-harness $(VERIFY_ELIXIR_BUILD) _verify-elixir-packet-main _verify-elixir-packet-ludicrous packet-defaults-elixir packet-utf8-elixir packet-finite-elixir
 	@rm -rf build/verify/conformance-elixir && mkdir -p build/verify/conformance-elixir $(VERIFY_RESULTS_DIR)
+	$(ELIXIR_BOUNDED_VM) \
 	BEAM_PATH="$(BEAM_PATH)" ELIXIR_TABLES_EBIN="$(CURDIR)/$(VERIFY_ELIXIR_EBIN)" ./build/conformance-harness run --only elixir --claims --work build/verify/conformance-elixir --results $(VERIFY_RESULTS_DIR)/elixir.json
 
 _verify-elixir-bench: toolchain-elixir bin/schema generated/bench/elixir/.stamp generated/bench/tables/elixir/.stamp tables-elixir-bench-gate cards-elixir-conformance tables-elixir-view packet-end-elixir packet-write-cfloat-elixir packet-write-text-elixir packet-write-bareint-elixir

@@ -21,6 +21,8 @@ BEAM_PATH ?= $(CURDIR)/dist/otp-29.0.5/bin:$(CURDIR)/dist/elixir-1.20.4/bin
 ELIXIR    ?= PATH="$(BEAM_PATH):$$PATH" elixir
 MIX       ?= PATH="$(BEAM_PATH):$$PATH" mix
 ELIXIRC   ?= PATH="$(BEAM_PATH):$$PATH" elixirc
+# Bound each VM when the corpus build or runner already runs several VMs in parallel.
+ELIXIR_BOUNDED_VM = ELIXIR_ERL_OPTIONS="$${ELIXIR_ERL_OPTIONS:+$$ELIXIR_ERL_OPTIONS }+S 2:2"
 # The strict compile every clean gate uses. Elixir 1.20.4 on OTP 29 accepts
 # `--warnings-as-errors` but exits 0 even when warnings are printed (the
 # diagnostics go out through the logger, not the compiler's warning counter), so
@@ -174,7 +176,7 @@ build/elixir-tables-ebin/.stamp: build/tables-generated-elixir/.stamp test/confo
 	@if ! cpus=$$(nproc 2>/dev/null); then if ! cpus=$$(sysctl -n hw.ncpu 2>/dev/null); then cpus=4; fi; fi; \
 	jobs=$$(( cpus / 2 )); if [ "$$jobs" -lt 2 ]; then jobs=2; fi; \
 	printf '%s\n' $(ELIXIR_TABLE_UNIT_NAMES) __driver_impl__ | \
-		ELIXIR_ERL_OPTIONS="$${ELIXIR_ERL_OPTIONS:+$$ELIXIR_ERL_OPTIONS }+S 2:2" \
+		$(ELIXIR_BOUNDED_VM) \
 		xargs -P "$$jobs" -n 1 sh -c 'if [ "$$1" = "__driver_impl__" ]; then $(ELIXIRC_STRICT) -o build/elixir-tables-ebin test/conformance/elixir/driver_impl.ex || exit 255; else $(ELIXIRC_STRICT) -o build/elixir-tables-ebin build/tables-generated-elixir/"$$1"/*.ex || exit 255; fi' _
 	@touch $@
 
