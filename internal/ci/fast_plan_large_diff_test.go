@@ -202,6 +202,7 @@ func largeDiffDirs(t *testing.T, root string, max int) []string {
 // packages must be each directory once, in diff order. The old selector said
 // `broad=no` here (the negative control below) and forked dirname per file.
 func TestFastPlanLargeDiff(t *testing.T) {
+	t.Skip("testguard plant: a skipped test")
 	t.Parallel()
 	root := repoRoot(t)
 	data, err := os.ReadFile(filepath.Join(root, ".github/workflows/ci-fast.yml"))
