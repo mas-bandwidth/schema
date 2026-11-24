@@ -1014,15 +1014,9 @@ fn in_bound(v: const probe::Host&) -> bool {
     return true;
 }
 
-// the declared defaults: small 5, no marks, note absent, tail 7.
+// at_defaults: a Host as its declared defaults leave it (Small 5, Tail 7, the rest zero).
 fn at_defaults(v: const probe::Host&) -> bool {
-    if v.Small != 5 || v.MarksCount != 0 || v.NotePresent || v.Note != 0 || v.Tail != 7 { return false; }
-    var i: i64 = 0;
-    while i < 4 {
-        if v.Marks[i] != 0 { return false; }
-        i += 1;
-    }
-    return true;
+    return v.Small == 5 && v.Tail == 7 && v.MarksCount == 0 && v.Marks[0] == 0 && v.Marks[1] == 0 && v.Marks[2] == 0 && v.Marks[3] == 0 && v.Note == 0 && !v.NotePresent;
 }
 
 fn main() {
@@ -1090,9 +1084,9 @@ fn main() {
     print("control2 ", raw_unclamped, " ", raw_v.Small == 1000 && clamped_n == 1);
 
     // Multi-record batch: a bad hash on the LAST record refuses no_layout, and
-    // EVERY row handed in holds its declared defaults, record 0 included: the
-    // caller's 777s survive in neither (SPEC-TABLES.md §6.5, THE CALLER'S
-    // VALUES AFTER A REFUSAL; R4).
+    // after the refusal EVERY row handed in holds its declared defaults, record 0
+    // included (docs/SPEC-TABLES.md §6.5, THE CALLER'S VALUES AFTER A REFUSAL):
+    // nothing landed, and the caller's 777s are gone too.
     var two: u8[>..] = [];
     let saved2 = probe::HostFixedSave([v, v], two);
     two[two.len - probe::HostFixedRecordBytes] ^= 0x01;

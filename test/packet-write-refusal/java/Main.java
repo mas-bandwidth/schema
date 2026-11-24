@@ -2,6 +2,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.Set;
+import packetwriterefusal.Int128;
 import packetwriterefusal.RefusalPacket;
 import packetwriterefusal.RefusalPacket.Grade;
 import packetwriterefusal.RefusalPacket.PacketWriteRefusal;
@@ -57,6 +58,19 @@ public final class Main {
             case "flags_wide" -> v.perks = 1L << 3;
             case "flags_wide_high" -> v.perks = 1L << 40;
             case "flags_at_max" -> v.perks = 7;
+            case "int128_high" -> v.wide = new Int128(5L, 0x6bc75e2d63100001L);
+            case "int128_low" -> v.wide = Int128.fromLong(-11L);
+            case "int128_at_max" -> v.wide = new Int128(5L, 0x6bc75e2d63100000L);
+            case "int128_at_min" -> v.wide = Int128.fromLong(-10L);
+            case "fixed_high" -> v.fx = 655361;
+            case "fixed_low" -> v.fx = -655361;
+            case "fixed_at_max" -> v.fx = 655360;
+            case "fixed_at_min" -> v.fx = -655360;
+            // a ufixed(32, 32) raw value is a uint64 bit pattern in a Java long
+            case "ufixed_high" -> v.ufx = 0xee6b280000000001L;
+            case "ufixed_low" -> v.ufx = 0xffffffffL;
+            case "ufixed_at_max" -> v.ufx = 0xee6b280000000000L;
+            case "ufixed_at_min" -> v.ufx = 0x100000000L;
             default -> {
                 return false;
             }
@@ -109,7 +123,8 @@ public final class Main {
         }
         for (String known : new String[] {"scalar_high", "bits_wide", "enum_high", "union_tag_high", "count_high",
                 "text_long", "text_illformed", "text_zero", "const_wrong", "reserved_wrong", "flags_wide",
-                "flags_wide_high"}) {
+                "flags_wide_high",
+                "int128_high", "int128_low", "fixed_high", "fixed_low", "ufixed_high", "ufixed_low"}) {
             if (!listed.contains(known)) {
                 fail(known + ": missing from cases.txt");
             }

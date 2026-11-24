@@ -63,6 +63,18 @@ fn build(name: &str) -> Option<(PacketWriteRefusal, &'static str)> {
         "flags_wide" => { v.perks = 1 << 3; "perks" }
         "flags_wide_high" => { v.perks = 1 << 40; "perks" }
         "flags_at_max" => { v.perks = PERK_SHIELD | PERK_BOOST | PERK_CLOAK; "perks" }
+        "int128_high" => { v.wide = 100_000_000_000_000_000_001; "wide" }
+        "int128_low" => { v.wide = -11; "wide" }
+        "int128_at_max" => { v.wide = 100_000_000_000_000_000_000; "wide" }
+        "int128_at_min" => { v.wide = -10; "wide" }
+        "fixed_high" => { v.fx = 655_361; "fx" }
+        "fixed_low" => { v.fx = -655_361; "fx" }
+        "fixed_at_max" => { v.fx = 655_360; "fx" }
+        "fixed_at_min" => { v.fx = -655_360; "fx" }
+        "ufixed_high" => { v.ufx = 0xee6b_2800_0000_0001; "ufx" }
+        "ufixed_low" => { v.ufx = 0xffff_ffff; "ufx" }
+        "ufixed_at_max" => { v.ufx = 0xee6b_2800_0000_0000; "ufx" }
+        "ufixed_at_min" => { v.ufx = 0x1_0000_0000; "ufx" }
         _ => return None,
     };
     let _ = Laser::default();
@@ -83,6 +95,7 @@ fn write_read(value: &PacketWriteRefusal) -> Result<(), String> {
     if decoded.scalar != value.scalar || decoded.narrow != value.narrow || decoded.grade != value.grade
         || decoded.window_count != value.window_count || decoded.text_length != value.text_length
         || decoded.shot != value.shot || decoded.perks != value.perks
+        || decoded.wide != value.wide || decoded.fx != value.fx || decoded.ufx != value.ufx
     {
         return Err("read back a different value".into());
     }

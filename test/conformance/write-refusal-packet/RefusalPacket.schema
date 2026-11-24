@@ -59,6 +59,7 @@ type PacketWriteRefusal
     pick           Pick
     huge           int128 | min = -10, max = 100000000000000000000
     fx             fixed(16, 16) | min = -10, max = 10
+    ufx            ufixed(32, 32) = 1 | min = 1, max = 4000000000
     const(0xAB, 8)
     reserved(5)
 }

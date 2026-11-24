@@ -2,8 +2,9 @@
 # Every row starts from the type's default value and changes ONE field.
 # refused: a debug assert in an assert leg; written: the lawful twin at the
 # same boundary, which the writer must accept (a leg that refused everything
-# fails half the battery). The Go leg holds the same rows in
-# test/conformance/harness/writerefusalpacket_test.go.
+# fails half the battery). The Go leg answers this file too, from
+# test/conformance/harness/writerefusalpacket_test.go, where a refusal is
+# serialize.ErrValueOutOfRange and a panic fails the case.
 #
 # scalar:   int32 | min = 0, max = 10     narrow: bits(7)      grade: enum of 3
 # window:   [2..8]uint32 (WindowCount)     text:   string(8)    shot: union of 2 arms
@@ -15,6 +16,14 @@
 # text_illformed: byte ff   text_zero: byte 00   const_wrong: 6   reserved_wrong: 1
 # flags_wide: mask 1 << 3   flags_wide_high: mask 1 << 40, a bit a 32-bit cast
 # drops, so the writer's own check is the only guard   flags_at_max: mask 7
+#
+# wide:  int128 | min = -10, max = 10^20 (past 64 bits)
+# fx:    fixed(16, 16) | min = -10, max = 10, raw = units << 16 (raw 655360 is 10)
+# ufx:   ufixed(32, 32) = 1 | min = 1, max = 4e9, raw = units << 32 (the top raw
+#        bound, 0xee6b280000000000, is past int64: an unsigned-domain compare)
+# int128_high: 10^20 + 1   int128_low: -11
+# fixed_high: raw 655361   fixed_low: raw -655361   (one raw step off the bound)
+# ufixed_high: raw 0xee6b280000000001   ufixed_low: raw 0xffffffff
 scalar_high | refused
 scalar_low | refused
 scalar_at_max | wrote
@@ -40,3 +49,15 @@ reserved_at | wrote
 flags_wide | refused
 flags_wide_high | refused
 flags_at_max | wrote
+int128_high | refused
+int128_low | refused
+int128_at_max | wrote
+int128_at_min | wrote
+fixed_high | refused
+fixed_low | refused
+fixed_at_max | wrote
+fixed_at_min | wrote
+ufixed_high | refused
+ufixed_low | refused
+ufixed_at_max | wrote
+ufixed_at_min | wrote

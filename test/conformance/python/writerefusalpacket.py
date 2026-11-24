@@ -48,6 +48,8 @@ def apply(v, op, arg):
         v.huge = int(arg)
     elif op == "fx":
         v.fx = int(arg)  # fixed(16, 16) storage is the raw scaled integer
+    elif op == "ufx":
+        v.ufx = int(arg)  # ufixed(32, 32) storage is the raw scaled integer
     else:
         raise SystemExit("unknown op " + op)
 

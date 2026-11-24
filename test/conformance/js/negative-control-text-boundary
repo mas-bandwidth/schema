@@ -9,12 +9,17 @@ out=build/js-text-boundary/$mode
 source=test/conformance/js/main.mjs
 rm -rf "$out"
 mkdir -p "$out"
-# a driver copy imports the fixed-root bridge, the write-refusal surfaces and
-# the message-load verdict (messageverdict.mjs) from beside it
-cp test/conformance/js/fixed.mjs "$out/fixed.mjs"
-cp test/conformance/js/writerefusal.mjs "$out/writerefusal.mjs"
-cp test/conformance/js/messageverdict.mjs "$out/messageverdict.mjs"
-cp test/conformance/js/surfaces1122.mjs "$out/surfaces1122.mjs"
+# a driver copy imports its sibling modules (the fixed-root bridge, the
+# write-refusal surfaces, the message-load verdict, the 2026-11-22 surfaces)
+# from beside it: copy every one, so a module main.mjs gains is never missing
+# from the copy (surfaces1122.mjs was, from f259a7aa3a)
+copy_siblings() {
+    for m in test/conformance/js/*.mjs; do
+        case "$m" in */main.mjs|*.test.mjs) continue ;; esac
+        cp "$m" "$1/"
+    done
+}
+copy_siblings "$out"
 main="$root/$source"
 if [ "$mode" = replacement ]; then
     anchor='const jsonUTF8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });'
@@ -24,6 +29,11 @@ if [ "$mode" = replacement ]; then
     if cmp -s "$source" "$out/main.mjs"; then echo 'negative control changed nothing' >&2; exit 1; fi
     main="$root/$out/main.mjs"
 fi
+# the wrapper narrows the surfaces to the three text ones and keeps every
+# `unit <key>` line the real driver's list names: an opt-in unit (MANIFEST.txt
+# `opt-in`, test/conformance/harness/optin.go) left out of the list is handed
+# to no leg and scored ABSENT, which a ticked leg fails (the shapes rows did).
+# A list with no unit line fails the wrapper's list, so the harness says so.
 cat > "$out/driver" <<WRAP
 #!/bin/sh
 if [ "\$2" = list ]; then
@@ -82,13 +92,11 @@ printf 'json-hostile illformed-in-bound tabledemo RootConfig %s/inbound/text ref
 "${NODE:-node}" "$main" "$out/inbound/manifest" json-hostile "$out/inbound/replaced"
 [ "$(head -n 1 "$out/inbound/strict/illformed-in-bound")" = refused ] || { echo 'the strict boundary read an ill-formed byte' >&2; exit 1; }
 [ "$(head -n 1 "$out/inbound/replaced/illformed-in-bound")" = read ] || { echo 'negative control left replacement decoding refusing the in-bound row' >&2; exit 1; }
-# The rows replacement decoding may move are the corpus's ill-formed UTF-8
-# inputs, which only this byte boundary sees: str-illformed-at-bound (refused
-# either way, above) and the two regression rows whose ill-formed bytes sit in
-# a comment (0xFF; ED A0 80, a surrogate spelled in UTF-8). A replacing
-# boundary hands the reader U+FFFD there, which a comment skips, so each of
-# those two MUST go red here; any other row is unrelated.
-if grep '^  js / ' "$out/log" | grep -Ev 'js / json-hostile: (str-illformed-at-bound|rr-comment-illformed-utf8|rr-comment-lone-surrogate):'; then
+# The rows a replacing decoder may read are the ones whose input holds an
+# ill-formed UTF-8 byte sequence: str-illformed-at-bound, and the two 2026-11-22
+# regression rows (380afe3aa7) that put one inside a comment (0xFF, and the
+# encoded lone surrogate ED A0 80). Any other row it changes is a failure.
+if grep '^  js / ' "$out/log" | grep -vE 'js / json-hostile: (str-illformed-at-bound|rr-comment-illformed-utf8|rr-comment-lone-surrogate):'; then
     cat "$out/log"; echo 'replacement decoding changed an unrelated row' >&2; exit 1
 fi
 for row in rr-comment-illformed-utf8 rr-comment-lone-surrogate; do

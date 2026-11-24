@@ -8,6 +8,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import '../../../build/packet-write-refusal/dart/gen/Int128.dart' show Int128;
 import '../../../build/packet-write-refusal/dart/gen/RefusalPacket.dart';
 
 int failures = 0;
@@ -54,6 +55,19 @@ final Map<String, Setter> setters = {
   'flags_wide': (v) => v.perks = 1 << 3,
   'flags_wide_high': (v) => v.perks = 1 << 40,
   'flags_at_max': (v) => v.perks = perkShield | perkBoost | perkCloak,
+  'int128_high': (v) => v.wide = const Int128(5, 0x6bc75e2d63100001),
+  'int128_low': (v) => v.wide = Int128.fromInt(-11),
+  'int128_at_max': (v) => v.wide = const Int128(5, 0x6bc75e2d63100000),
+  'int128_at_min': (v) => v.wide = Int128.fromInt(-10),
+  'fixed_high': (v) => v.fx = 655361,
+  'fixed_low': (v) => v.fx = -655361,
+  'fixed_at_max': (v) => v.fx = 655360,
+  'fixed_at_min': (v) => v.fx = -655360,
+  // a ufixed(32, 32) raw value is a uint64 bit pattern in a Dart int
+  'ufixed_high': (v) => v.ufx = 0xee6b280000000001,
+  'ufixed_low': (v) => v.ufx = 0xffffffff,
+  'ufixed_at_max': (v) => v.ufx = 0xee6b280000000000,
+  'ufixed_at_min': (v) => v.ufx = 0x100000000,
 };
 
 // Cases the leg cannot build. Dart's enum and union tag are extension types

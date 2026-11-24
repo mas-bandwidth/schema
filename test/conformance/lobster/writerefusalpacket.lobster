@@ -106,6 +106,8 @@ elif op == "huge":
     v.Huge = dec128(arg)
 elif op == "fx":
     v.Fx = int_arg() // fixed(16, 16) storage is the raw scaled integer
+elif op == "ufx":
+    v.Ufx = dec128(arg).lo // ufixed(32, 32) raw value as a uint64 bit pattern: the low lane
 else:
     print("probe: unknown op " + op)
     assert false

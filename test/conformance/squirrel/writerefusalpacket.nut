@@ -86,6 +86,7 @@ local apply = function(v, op, arg) {
     case "pick_small": v.Pick.Type = P.PickType.Small; v.Pick.Small.V = arg.tointeger(); break;
     case "huge": v.Huge = dec128(arg); break;
     case "fx": v.Fx = arg.tointeger(); break; // fixed(16, 16) storage is the raw integer
+    case "ufx": v.Ufx = dec128(arg)[0]; break; // ufixed(32, 32) raw value as a uint64 bit pattern: the low lane
     default: throw "rows: unknown op " + op;
   }
 };
