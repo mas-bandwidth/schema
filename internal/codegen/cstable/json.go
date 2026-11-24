@@ -686,7 +686,9 @@ public static class TableJson
         if (f.Kind == 17) { return WritePointer(ref o, owner, f, index, depth); }
         if (f.Arms != null)
         {
-            // a union is an object with ONE key, the arm's name; None is {}
+            // a union is an object with ONE key, the arm's name; None is {}, and
+            // either is a container the depth cap counts (docs/SPEC-TABLES.md 16.14 W2)
+            if (depth > MaxDepth) { return false; }
             object union = f.GetChild(owner, index);
             ulong tag = f.Arms.GetTag(union);
             if (tag == 0)
@@ -828,7 +830,9 @@ public static class TableJson
             // one entry per SLOT, keyed by the variant that owns it, so
             // inserting a variant next season moves nothing in the text either.
             // Slot i holds the key i + 1: nothing is stored for None, so
-            // nothing is written for it.
+            // nothing is written for it. The object, an empty {} included, is
+            // a container the depth cap counts (docs/SPEC-TABLES.md 16.14 W2).
+            if (depth > MaxDepth) { return false; }
             o.Put((byte)'{');
             bool first = true;
             for (int slot = 0; slot < f.ArrayBound; slot++)
@@ -851,6 +855,9 @@ public static class TableJson
         }
         if (f.IsArray)
         {
+            // an array or a text list, an empty [] included, is a container
+            // the depth cap counts, as the read counts it (docs/SPEC-TABLES.md 16.14 W2)
+            if (depth > MaxDepth) { return false; }
             int count = Count(value, f);
             if (count == 0)
             {
