@@ -64,6 +64,7 @@ struct LoadReport {
     refused: bool,
     blob_shared: i64,
     count_refused: bool,
+    missing_required: bool, // §2.3: a `| required` field was absent on the wire
     non_finite: bool,  // §3.3: a NaN or an infinity refused the read
     retained: i64,     // §6.6: the unknown fields whose bytes were kept
     retain_lost: i64,  // §6.6: every unknown the load or save could not keep
@@ -90,6 +91,7 @@ let LoadRefuseBlobShared: i64 = 24;
 let LoadRefusePreviousForm: i64 = 25;
 let LoadRefuseNewerForm: i64 = 26;
 let LoadRefuseMessageFormAsFile: i64 = 27;
+let LoadRefuseMissingRequired: i64 = 28;
 
 // load_refusal_name is a refusal's name, the string the engine's error gives.
 fn load_refusal_name(code: i64) -> const u8[:] {
@@ -106,6 +108,7 @@ fn load_refusal_name(code: i64) -> const u8[:] {
         LoadRefusePreviousForm => "previous_form",
         LoadRefuseNewerForm => "newer_form",
         LoadRefuseMessageFormAsFile => "message_form_as_file",
+        LoadRefuseMissingRequired => "missing_required",
         _ => "",
     };
 }
@@ -134,6 +137,7 @@ fn load_error(report: const LoadReport&, root: i64) -> i64 {
     if report.blob_shared > 0 { return LoadRefuseBlobShared; }
     if report.oor > 0 { return LoadRefuseOutOfRange; }
     if report.mismatch > 0 { return LoadRefuseKindMismatch; }
+    if report.missing_required { return LoadRefuseMissingRequired; }
     if root < 0 || report.stopped { return LoadRefuseWireDamaged; }
     return LoadRefuseOk;
 }
@@ -751,12 +755,42 @@ fn resolve(c: LoadCtx&, v: i64, d: FieldDesc, index: u64) {
 // body_at decodes one table body (docs/SPEC-TABLES.md §3, §4) into record
 // `rec` of table `tab`. nested: a reserved node id here is malformed (§3.1).
 // entry: the body is a map entry, whose key widening the map counts (§2.8).
+fn wl_guard(c: const LoadCtx&, tab: i64, rec: i64, i: i64) -> bool {
+    if c.unit.guards.len == 0 { return true; }
+    let name = c.unit.tables[tab].name;
+    let first = c.vals[rec].first;
+    for g in c.unit.guards {
+        if g.ordinal != i || g.owner != name { continue; }
+        let cond = c.unit.tables[tab].fields[g.cond];
+        let s = first + g.cond;
+        let b = if c.vals[s].state == ValAbsent { cond.has_def && cond.def_b } else { c.vals[s].bits.lo != 0 };
+        if b != g.want { return false; }
+    }
+    return true;
+}
+
+fn wl_required(c: LoadCtx&, tab: i64, rec: i64, seen: const u64[8]&) -> bool {
+    let n = c.unit.tables[tab].fields.len;
+    var i: i64 = 0;
+    while i < n {
+        let d = c.unit.tables[tab].fields[i];
+        let named = i < 512 && (seen[i >> 6] & ((1 as u64) << ((i & 63) as! u64))) != 0;
+        if d.required && !named && wl_guard(c, tab, rec, i) {
+            c.report.missing_required = true;
+            return false;
+        }
+        i += 1;
+    }
+    return true;
+}
+
 recursive fn body_at(c: LoadCtx&, r: Rd&, tab: i64, rec: i64, nested: bool, entry: bool) -> bool {
+    var seen: u64[8] = [0; 8];
     loop {
         if c.report.count_refused { return false; }
         let ref, ok = leb(c, r);
         if !ok { c.report.body_damaged = true; return false; }
-        if ref == 0 { return true; } // the body ends at its own zero reference
+        if ref == 0 { return wl_required(c, tab, rec, seen); } // the body ends at its own zero reference
         let id, named = idof(c, ref);
         if !named { c.report.body_damaged = true; return false; }
         if !has(r, 1) { c.report.body_damaged = true; return false; }
@@ -783,6 +817,7 @@ recursive fn body_at(c: LoadCtx&, r: Rd&, tab: i64, rec: i64, nested: bool, entr
             if c.retaining { capture(c, rec, id, kind, from, r.off); }
             continue;
         }
+        if i < 512 { seen[i >> 6] |= (1 as u64) << ((i & 63) as! u64); }
         let d = c.unit.tables[tab].fields[i];
         let slot = c.vals[rec].first + i;
         let want = field_kind(d);
