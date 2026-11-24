@@ -10,59 +10,73 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
-// §5.8 row 11, unknown_census: the NEW reader (Item.drop REMOVED) reads the OLD
-// writer's lawful old_unknown_census.bin through the handed-in lineage entry.
-// Four elements each carry a and the removed drop, but drop is ONE field of ONE
-// endpoint (Item), so the compile census counts it ONCE: unknown == 1, and a leg
-// that counts once per ELEMENT lands 4 and passes a >= 1 read. The check
-// asserts == 1 exactly, never >= 1.
+// §5.8 row 11, unknown_census: the NEW reader (Item.drop REMOVED) is handed the
+// OLD writer's layout as a lineage entry. §5.1 refuses a removal, so a lawful
+// older writer never carries a field the reader lacks: the entry is UNLAWFUL,
+// COMPILE lays no plan for it and the load refuses layout_malformed with every
+// counter at zero — unknown included, because there is no compile census
+// (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH, §5.4, §5.9 #30). Item.drop sits in
+// every element of a [4]Item, so the rule is held in an array of tables, not
+// only at the root. After the refusal every row handed in — poisoned first — is
+// back at its declared defaults (SPEC-TABLES §6.5, ruling R4), and a second load
+// refuses the same way.
 
-func TestFixedVersioningUnknownCensus(t *testing.T) {
+// rustUnlawfulProbe is the probe every unlawful-entry row shares. It loads
+// `file` through a NEW build of `reader` with the `older` units' entries handed
+// in as its lineage, TWICE, each time over rows `poison` set to non-default
+// values, and asserts each load refuses layout_malformed, is not damage, moves
+// no counter, and leaves every row handed in where `check` (a Rust boolean over
+// `v`, one row) says its declared defaults are.
+func rustUnlawfulProbe(t *testing.T, row, file, reader, older, poison, check string) {
+	t.Helper()
 	slowtest.Gate(t, "an external toolchain")
 
 	corpus := versionCorpus(t)
+	path := filepath.Join(corpus, file)
+	// THE CORPUS IS HERE, SO THIS ROW'S FILE MUST BE: a corpus built before the
+	// row was added is a stale oracle, and a probe that cannot read its file
+	// fails by name rather than reporting the row as run.
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("%s: the reference's %s is not in the built corpus (rebuild it: make tables-fixedform-corpus): %v", row, file, err)
+	}
 
+	fnName := "v_" + row + "_unlawful_entry_refuses"
 	tests := fmt.Sprintf(`
-/// §5.8 row 11, unknown_census: the NEW reader (Item.drop removed) reads the OLD
-/// writer's lawful old_unknown_census.bin through the handed-in lineage entry.
-/// Four elements each carry a and the removed drop, but drop is ONE field of ONE
-/// endpoint (Item), so the compile census counts it ONCE: unknown == 1, and a leg
-/// that counts once per ELEMENT would land 4 and pass a >= 1 read.
+/// The UNLAWFUL lineage entry (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH and EMIT,
+/// §5.4, §5.9 #30): no plan is laid, nothing is counted, and every load of a
+/// file under that hash refuses layout_malformed with every row handed in at
+/// its declared defaults (SPEC-TABLES §6.5, ruling R4) — the second load too.
 #[test]
-fn v_unknown_census_new_reads_old() {
-    let data = std::fs::read(%q).expect("the reference's old_unknown_census.bin");
+fn %[1]s() {
+    let data = std::fs::read(%[2]q).expect("the reference's %[3]s");
     let mut values = vec![ROWTYPE::default(); 8];
     let mut plan = vec![TableFixedEntry::default(); 4096];
     let mut remap = vec![0u16; 4096];
-    let mut report = TableFixedReport::default();
-    let n = LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report);
-    let n = n.unwrap_or_else(|| panic!(
-        "the newer reader REFUSED the older writer's file: {} {:?}", report.reason.name(), report
-    ));
-    assert_eq!(n, 1, "the unknown_census file carries one record, not {n}");
-    assert!(
-        !report.refused && report.reason == TableFixedReason::None,
-        "a clean NEW-READS-OLD is not a refusal: {:?}", report
-    );
-    assert!(!report.damaged, "a clean backward read is not damage: {:?}", report);
-    assert_eq!(
-        report.unknown, 1,
-        "unknown == {}, want 1: Item.drop is ONE field of ONE endpoint, not one per element", report.unknown
-    );
-    assert!(
-        report.widened == 0,
-        "counters moved on a clean backward read: {:?}", report
-    );
-    assert_eq!(values[0].lead, 1, "the lead bracket moved: lead={}", values[0].lead);
-    assert_eq!(values[0].trail, 2, "the trail bracket moved: trail={}", values[0].trail);
-    assert!(
-        values[0].items[0].a == 10 && values[0].items[1].a == 11
-            && values[0].items[2].a == 12 && values[0].items[3].a == 13,
-        "the four a values did not land: {} {} {} {}",
-        values[0].items[0].a, values[0].items[1].a, values[0].items[2].a, values[0].items[3].a
-    );
+    for pass in 0..2 {
+        // THE ROWS ARE POISONED, NOT RESET: a refusal that left them alone
+        // would pass a check against a fresh default.
+        for v in values.iter_mut() {
+            %[4]s
+        }
+        let mut report = TableFixedReport::default();
+        let n = LOADFN(&mut values, &data, &mut plan, &mut remap, &mut report);
+        assert!(n.is_none(), "%[5]s pass {pass}: the unlawful entry LOADED {:?} records: {:?}", n, report);
+        assert!(report.refused, "%[5]s pass {pass}: a refusal by name sets refused: {:?}", report);
+        assert_eq!(
+            report.reason.name(), "layout_malformed",
+            "%[5]s pass {pass}: the refusal is layout_malformed: {:?}", report
+        );
+        assert!(!report.damaged, "%[5]s pass {pass}: a refusal by name is not damage: {:?}", report);
+        assert!(
+            report.unknown == 0 && report.widened == 0,
+            "%[5]s pass {pass}: a refusal moved a counter: unknown={} widened={}", report.unknown, report.widened
+        );
+        for (k, v) in values.iter().enumerate() {
+            assert!(%[6]s, "%[5]s pass {pass}: row {k} is not at its declared defaults");
+        }
+    }
 }
-`, filepath.Join(corpus, "old_unknown_census.bin"))
+`, fnName, path, file, poison, row, check)
 
 	repo, err := filepath.Abs("../../..")
 	if err != nil {
@@ -77,19 +91,32 @@ fn v_unknown_census_new_reads_old() {
 	}
 
 	root := t.TempDir()
+	name := "probe_" + row
 	versionWriteCrate(t, root, serialize, versionProbe{
-		name:   "probe_unknown_census",
-		reader: "VNEW_unknown_census",
-		older:  []string{"VOLD_unknown_census"},
+		name:   name,
+		reader: reader,
+		older:  []string{older},
 		src:    versionProbeSource(tests),
 	})
 
 	cmd := testproc.Command(t, "cargo", "test")
-	cmd.Dir = filepath.Join(root, "probe_unknown_census")
+	cmd.Dir = filepath.Join(root, name)
 	cmd.Env = append(os.Environ(), "CARGO_TARGET_DIR="+filepath.Join(repo, "build", "rust-versioning-target"))
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("unknown_census: %v\n%s", err, out)
+		t.Fatalf("%s: %v\n%s", row, err, out)
 	}
-	versionAssert(t, string(out), "v_unknown_census_new_reads_old")
+	versionAssert(t, string(out), fnName)
+}
+
+// The Census rows' poison and declared defaults: lead = 1, trail = 2, and each
+// Item.a its zero default.
+const (
+	censusPoison = `v.lead = 99; v.trail = 88; for i in 0..4 { v.items[i].a = 5 + i as i32; }`
+	censusCheck  = `v.lead == 1 && v.trail == 2 && v.items.iter().all(|it| it.a == 0)`
+)
+
+func TestFixedVersioningUnknownCensus(t *testing.T) {
+	rustUnlawfulProbe(t, "unknown_census", "old_unknown_census.bin",
+		"VNEW_unknown_census", "VOLD_unknown_census", censusPoison, censusCheck)
 }
