@@ -1,0 +1,72 @@
+# nova-testguard (github.com/mas-bandwidth/nova-tools, cmd/nova-testguard): what the
+# per-PR testguard job in .github/workflows/ci-fast.yml holds its results to.
+# Fields are separated by tabs. Run it by hand from the repository root:
+#   go test -json $(cat test/testguard/fast-packages.txt) > build/testguard.json
+#   nova-testguard check --config test/testguard.tsv build/testguard.json
+#
+# No skip and no gap is ledgered here: each line added is a decision with its reason.
+
+# Every package of the fast set (test/testguard/fast-packages.txt) runs tests.
+suite	github.com/mas-bandwidth/schema/v2/internal/atomicfile
+suite	github.com/mas-bandwidth/schema/v2/internal/ci/hostilecorpus
+suite	github.com/mas-bandwidth/schema/v2/internal/errdiscard
+suite	github.com/mas-bandwidth/schema/v2/internal/execref
+suite	github.com/mas-bandwidth/schema/v2/internal/fixedproof
+suite	github.com/mas-bandwidth/schema/v2/internal/fixedvector
+suite	github.com/mas-bandwidth/schema/v2/internal/format
+suite	github.com/mas-bandwidth/schema/v2/internal/githooks
+suite	github.com/mas-bandwidth/schema/v2/internal/goname
+suite	github.com/mas-bandwidth/schema/v2/internal/inputfamilies
+suite	github.com/mas-bandwidth/schema/v2/internal/languages
+suite	github.com/mas-bandwidth/schema/v2/internal/memceiling
+suite	github.com/mas-bandwidth/schema/v2/internal/modulemove
+suite	github.com/mas-bandwidth/schema/v2/internal/modulemove/pincorpus
+suite	github.com/mas-bandwidth/schema/v2/internal/nightlyrows
+suite	github.com/mas-bandwidth/schema/v2/internal/parser
+suite	github.com/mas-bandwidth/schema/v2/internal/pathid
+suite	github.com/mas-bandwidth/schema/v2/internal/provesran
+suite	github.com/mas-bandwidth/schema/v2/internal/publicapi
+suite	github.com/mas-bandwidth/schema/v2/internal/rfc3339
+suite	github.com/mas-bandwidth/schema/v2/internal/runmatch
+suite	github.com/mas-bandwidth/schema/v2/internal/scanner
+suite	github.com/mas-bandwidth/schema/v2/internal/skipledger
+suite	github.com/mas-bandwidth/schema/v2/internal/slowtest
+suite	github.com/mas-bandwidth/schema/v2/internal/tablecook
+suite	github.com/mas-bandwidth/schema/v2/internal/tablenames
+suite	github.com/mas-bandwidth/schema/v2/internal/testproc
+suite	github.com/mas-bandwidth/schema/v2/internal/vacuous
+suite	github.com/mas-bandwidth/schema/v2/internal/version
+suite	github.com/mas-bandwidth/schema/v2/internal/viewlisting
+suite	github.com/mas-bandwidth/schema/v2/tools/agentsmap
+suite	github.com/mas-bandwidth/schema/v2/tools/cellmerge
+suite	github.com/mas-bandwidth/schema/v2/tools/gotestreport
+suite	github.com/mas-bandwidth/schema/v2/tools/gotestrows
+suite	github.com/mas-bandwidth/schema/v2/tools/gotestrun
+suite	github.com/mas-bandwidth/schema/v2/tools/hostilecorpusexec
+suite	github.com/mas-bandwidth/schema/v2/tools/hostileledger
+suite	github.com/mas-bandwidth/schema/v2/tools/inputaccount
+suite	github.com/mas-bandwidth/schema/v2/tools/matrix
+suite	github.com/mas-bandwidth/schema/v2/tools/mustrun
+suite	github.com/mas-bandwidth/schema/v2/tools/namebuild
+suite	github.com/mas-bandwidth/schema/v2/tools/negativecontrols
+suite	github.com/mas-bandwidth/schema/v2/tools/pgroup
+suite	github.com/mas-bandwidth/schema/v2/tools/releasebin
+suite	github.com/mas-bandwidth/schema/v2/tools/releasediff
+suite	github.com/mas-bandwidth/schema/v2/tools/releasetag
+suite	github.com/mas-bandwidth/schema/v2/tools/releasetargets
+suite	github.com/mas-bandwidth/schema/v2/tools/tlcrun
+suite	github.com/mas-bandwidth/schema/v2/tools/treelock
+suite	github.com/mas-bandwidth/schema/v2/tools/wirefuzzrelease
+
+# Every fixed-form corpus root, against every port's table backend.
+cover	fixed-corpus	rows	run	sh test/testguard/fixed-corpus.sh rows
+cover	fixed-corpus	columns	run	sh test/testguard/fixed-corpus.sh columns
+cover	fixed-corpus	pairs	run	sh test/testguard/fixed-corpus.sh pairs
+
+# Parity: every shared test family, against every leg.
+cover	parity	rows	run	sh test/testguard/parity.sh rows
+cover	parity	columns	run	sh test/testguard/parity.sh columns
+cover	parity	pairs	run	sh test/testguard/parity.sh pairs
+
+# One empty file per test that runs: test/testguard/baseline/SUITE/TEST.
+baseline	test/testguard/baseline
