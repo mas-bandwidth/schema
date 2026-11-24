@@ -1,0 +1,4 @@
+building...
+expected: 40 cases
+ran 40, failed 0
+harness: segfault before first case
