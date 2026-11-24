@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
 // fastSelectorScript returns ci-fast.yml plan's selector, from its
@@ -84,6 +86,8 @@ func legpathsFailsEnv(t *testing.T) []string {
 // from a loud one.
 func TestALegpathsFailureFailsTheSelector(t *testing.T) {
 	t.Parallel()
+	// the selectors are ci-fast.yml's and ci-full.yml's, and each runs tools/legpaths
+	testinputs.Files(t, ".github/workflows/ci-fast.yml", ".github/workflows/ci-full.yml", "tools/legpaths")
 	const call = `derived_legs=$(go run ./tools/legpaths -changed - <<<"$files")`
 	for _, sel := range []struct{ name, script string }{
 		{"ci-fast.yml plan", fastSelectorScript(t)},

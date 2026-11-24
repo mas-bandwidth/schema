@@ -9,6 +9,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `cellmerge/` | three-way PORTING.md row merge for diff3 hunks | `go test ./tools/cellmerge` | `go run ./tools/cellmerge docs/PORTING.md` |
 | `errdiscard/` | refuses an error dropped in cmd/ or tools/ with no reason | `go test ./internal/errdiscard` | `make errdiscard` |
 | `fixedtwin/` | fixed-form twin | `go test ./tools/fixedtwin` | `go test ./tools/fixedtwin` |
+| `gatecontrol/` | one shared gate on one leg with its oracle planted wrong: the gate's negative control | `go test ./tools/gatecontrol` | `go run ./tools/gatecontrol -leg go -plant tablegen -target verify-tablegen-go -want 'FAILED: tg[0-9]+:'` |
 | `gotestreport/` | go test -json row report and skip ledger | `go test ./tools/gotestreport` | `go run ./tools/gotestreport -skips .github/skip-ledger.txt build/go-test-json` |
 | `gotestrows/` | ci-fast go-test matrix rows | `go test ./tools/gotestrows` | `go run ./tools/gotestrows ./...` |
 | `gotestrun/` | go test wrapper: refuses a run in which no test ran or passed | `go test ./tools/gotestrun` | `make test-run PKG=./pkg RUN='^TestX$'` |
@@ -38,4 +39,5 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `treelock/` | generated-tree lock | `go test ./tools/treelock` | `go test ./tools/treelock` |
 | `vacuoustests/` | vacuous-test analyzer command | `go test ./internal/vacuous` | `go run ./tools/vacuoustests -all` |
 | `vuln/` | govulncheck wrapper | `make vuln-selftest` | `make vuln-selftest` |
+| `wiredtargets/` | refuses a test-like make target no CI workflow reaches | `go test ./tools/wiredtargets` | `go run ./tools/wiredtargets` |
 | `wirefuzzrelease/` | release-tier wire-fuzz gate scorer | `go test ./tools/wirefuzzrelease` | `go run ./tools/wirefuzzrelease` |

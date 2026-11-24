@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
 // TestWireFuzzSplitIsDerivedFromTheRoster holds make/checks/wire-fuzz-split.sh,
@@ -19,6 +21,8 @@ import (
 func TestWireFuzzSplitIsDerivedFromTheRoster(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
+	// every subtest runs make/checks/wire-fuzz-split.sh under sh
+	testinputs.Files(t, "make/checks/wire-fuzz-split.sh")
 	const (
 		plainAll     = "wire-fuzz: seed 1, 520 seeds over 87 roots, 401392 enumerated + 200 random = 401592 mutants, 0 divergences, 517.4 s, 776 mutants/s\n"
 		plainGrown   = "wire-fuzz: seed 1, 540 seeds over 88 roots, 401392 enumerated + 200 random = 401592 mutants, 0 divergences, 517.4 s, 776 mutants/s\n"
