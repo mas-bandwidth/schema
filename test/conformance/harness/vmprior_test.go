@@ -77,6 +77,7 @@ func standIn(t *testing.T, dir, name, body string) string {
 
 func runPriorDriver(t *testing.T, dir, leg, manifest, out string, env ...string) {
 	t.Helper()
+	// testinputs:none — runs the copy of the leg's driver that priorTree read through os, which go test records
 	cmd := exec.Command("sh", filepath.Join("test", "conformance", leg, "driver"), manifest, "message-prior", out)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), env...)

@@ -68,3 +68,38 @@ end
 		t.Fatalf("a refused load into a caller's value:\nwant %q\ngot  %q", want, got)
 	}
 }
+
+// TestLuaLoadRetainUnknownRootZeroesReport holds SPEC-TABLES §6.5 on the one
+// path that answers nil before any wire is read: LoadRetain of a root name the
+// unit does not have. Every read zeroes a supplied report in full as its first
+// act, so a report pre-filled with a refusal, counters and a detail comes back
+// empty, and the call answers nil. With the zeroing moved back after the
+// unknown-root return, the caller\x27s old report survives untouched.
+func TestLuaLoadRetainUnknownRootZeroesReport(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "loadinto.schema")
+	if err := os.WriteFile(path, []byte(luaLoadIntoRefusalSchema), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	unit := luarun.LoadUnit(t, path)
+	files, err := Generate(unit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, stderr, err := try(t, files, `local T = require("`+ModuleName(unit)+`")
+local retain = require("retain")
+local report = { damaged = true, refused = 3, unknown = 2, retained = 5, retainLost = 1, reason = "count_over_extent_cap", outOfRangeField = "a" }
+local store = { list = { 1 }, used = 1 }
+local got = retain.LoadRetain(T, "NoSuchRoot", "x", store, report)
+local keys = 0
+for _ in pairs(report) do keys = keys + 1 end
+print(tostring(got) .. " " .. keys .. " " .. tostring(report.damaged) .. " " .. tostring(report.reason))
+`, nil)
+	if err != nil {
+		t.Fatalf("probe: %v\n%s\n%s", err, out, stderr)
+	}
+	if got, want := strings.TrimSpace(out), "nil 0 nil nil"; got != want {
+		t.Fatalf("LoadRetain of an unknown root left the report: want %q, got %q", want, got)
+	}
+}

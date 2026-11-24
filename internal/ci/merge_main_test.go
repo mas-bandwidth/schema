@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
 // THE LANE MERGE (footgun 2026-11-22). A pull request into a lane
@@ -89,6 +91,7 @@ func mergeMainCheckout(t *testing.T, origin string) string {
 func runMergeMain(t *testing.T, dir, event, base string) (string, error) {
 	t.Helper()
 	script := filepath.Join(repoRoot(t), ".github", "actions", "merge-main", "merge-main.sh")
+	testinputs.Files(t, script)
 	cmd := exec.Command("bash", script)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1",

@@ -16,6 +16,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/nameemit"
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -47,6 +48,7 @@ func TestNameCorpusBuildsElixir(t *testing.T) {
 				t.Fatal(err)
 			}
 			names := nameemit.Write(t, files, dir, ".ex")
+			testinputs.Files(t, gate)
 			cmd := testproc.Command(t, "sh", append([]string{gate, elixircBin, "-o", ebin}, names...)...)
 			cmd.Dir, cmd.Env = dir, env
 			out, err := cmd.CombinedOutput()

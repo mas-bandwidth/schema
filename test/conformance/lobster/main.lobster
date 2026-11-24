@@ -895,6 +895,37 @@ def ri_text(rec:schema_rt.Record) -> string:
         return "unwritable " + why + "\n"
     return js
 
+// ri_report_diff is `zeroed` when every field of the report r equals the
+// field of want, the report the same read leaves in a fresh report, and
+// otherwise one line naming each field that differs (the `retain` form)
+def ri_report_diff(r:schema_rt.LoadReport, want:schema_rt.LoadReport) -> string:
+    var d = ""
+    if r.unknown != want.unknown: d += " unknown"
+    if r.kind_mismatch != want.kind_mismatch: d += " kind_mismatch"
+    if r.widened != want.widened: d += " widened"
+    if r.clamped != want.clamped: d += " clamped"
+    if r.duplicate != want.duplicate: d += " duplicate"
+    if r.malformed != want.malformed: d += " malformed"
+    if r.blob_shared != want.blob_shared: d += " blob_shared"
+    if r.missing_required != want.missing_required: d += " missing_required"
+    if r.non_finite_float != want.non_finite_float: d += " non_finite_float"
+    if r.retained != want.retained: d += " retained"
+    if r.retain_lost != want.retain_lost: d += " retain_lost"
+    if r.refused != want.refused: d += " refused"
+    if r.reason != want.reason: d += " reason"
+    if r.stopped != want.stopped: d += " stopped"
+    if r.damaged != want.damaged: d += " damaged"
+    if d == "":
+        return "zeroed\n"
+    return "kept" + d + "\n"
+
+// ri_report_read is one read of the report forms (`retain`, `region`,
+// `retain-fixed`) of `data` as `root` into `rep`: true when it read
+def ri_report_read(form:string, root:string, data:string, rep:schema_rt.LoadReport) -> bool:
+    if form == "region":
+        return schema_rt.load(root, data, rep) != nil
+    return schema_rt.load_retain(root, data, schema_rt.Retain { capacity: 1 << 20, id_capacity: 1 << 17 }, rep) != nil
+
 // READ INTO THE CALLER'S VALUES (test/conformance/README.md, `read-into`;
 // SPEC-TABLES §6.5, §3.4). A line is `read-into <case> <unit> <root> <form>
 // <lawful> <damaged> <count> <announcement>`: ONE report and <count> values
@@ -921,6 +952,44 @@ def surface_read_into(text:string):
                 else:
                     let ok = schema_rt.load_into(held, fixture(step), rep)
                     out += ri_verdict(ok, schema_rt.strict_reason(rep))
+        elif form == "retain" or form == "region" or form == "retain-fixed":
+            // ONE report the driver PRE-FILLED, compared field by field
+            // after each lawful read with the report the same read leaves
+            // in a FRESH report (§6.5: every read zeroes a supplied report
+            // in full, on every read path). `retain` is the RETAINING load
+            // (load_retain, §6.6) of a variable root; `region` is the plain
+            // load (Lobster has no region read: its plain Load is the value
+            // load, schema_rt.load); `retain-fixed` is load_retain of a
+            // FIXED-class root, which takes the report and refuses through
+            // it (fixed_class_no_retention), so it owes `refused` and
+            // `zeroed`, with no damaged read. Every LoadReport field is
+            // public, so the pre-fill sets each one directly; each retaining
+            // load uses its own fresh Retain.
+            let fresh = schema_rt.LoadReport {}
+            let fresh_read = ri_report_read(form, root, fixture(f[5]), fresh)
+            assert fresh_read == (form != "retain-fixed")
+            let rep = schema_rt.LoadReport {}
+            rep.unknown = 7
+            rep.kind_mismatch = 7
+            rep.widened = 7
+            rep.clamped = 7
+            rep.duplicate = 7
+            rep.malformed = true
+            rep.blob_shared = 7
+            rep.missing_required = 7
+            rep.non_finite_float = "stale"
+            rep.retained = 7
+            rep.retain_lost = 7
+            rep.refused = true
+            rep.reason = "stale"
+            rep.stopped = true
+            rep.damaged = true
+            let rsteps = if form == "retain-fixed": [f[5]] else: [f[5], f[6], f[5]]
+            for(rsteps) step, i:
+                let ok = ri_report_read(form, root, fixture(step), rep)
+                out += ri_verdict(ok, schema_rt.strict_reason(rep))
+                if i != 1:
+                    out += ri_report_diff(rep, fresh)
         elif form == "json":
             // FromJson into the caller value: json_read_into
             let rep = schema_rt.LoadReport {}

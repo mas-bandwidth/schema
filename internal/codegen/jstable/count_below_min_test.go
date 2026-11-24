@@ -41,7 +41,11 @@ func TestJsCountBelowMinRefused(t *testing.T) {
 	}
 	vhome := runtimeHome(vr) + "Variable.js"
 	rt := string(vfiles[vhome])
-	if !strings.Contains(rt, "} else if (count < (fd.min || 0)) {") {
+	if !strings.Contains(rt, `if (!fd.list && !fd.fixed && fd.min > 0 && count < fd.min) {
+      report.refused = 1;
+      if (!report.reason) { report.reason = "count_over_bound: " + fd.n; }
+      return false;
+    }`) {
 		t.Errorf("the variable read must refuse a count below the declared Min")
 	}
 	if !strings.Contains(runtimeFunction(t, rt, "TableVariableTextArray"), `if (fd.min > 0 && placed < fd.min) {
@@ -135,8 +139,8 @@ function vsave(items) { const p = new vw.Probe(); p.items = items; return vw.Pro
 {
   const r = new vr.TableVariableReport();
   const x = vr.ProbeLoad(vsave([77]), r);
-  // a count below Min refuses count_over_bound by name and counts nothing
-  // (docs/SPEC-TABLES.md §22.2: a reader meeting a count below Min refuses count_over_bound in EVERY form)
+  // SPEC.md: a count below A refuses count_over_bound, naming the field; it is
+  // never counted as out of range (oor) and never answered as damage
   if (x !== null || r.refused !== 1 || r.reason !== "count_over_bound: items" || r.oor !== 0 || r.damaged || r.mismatch !== 0) { fail("variable read of count 1 under [2..4]: " + (x === null ? "refused" : JSON.stringify(x.items)) + " " + JSON.stringify(r)); }
   const r2 = new vr.TableVariableReport();
   const y = vr.ProbeLoad(vsave([77, 78]), r2);
