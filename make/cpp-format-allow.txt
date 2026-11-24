@@ -319,6 +319,9 @@ build/tables-generated/vnum/VNEW_hostile_boolTable.h
 build/tables-generated/vnum/VNEW_int_widenBlock.h
 build/tables-generated/vnum/VNEW_int_widenTable.cpp
 build/tables-generated/vnum/VNEW_int_widenTable.h
+build/tables-generated/vnum/VNEW_kind_movedBlock.h
+build/tables-generated/vnum/VNEW_kind_movedTable.cpp
+build/tables-generated/vnum/VNEW_kind_movedTable.h
 build/tables-generated/vnum/VNEW_lineage_mergeBlock.h
 build/tables-generated/vnum/VNEW_lineage_mergeTable.cpp
 build/tables-generated/vnum/VNEW_lineage_mergeTable.h
@@ -379,6 +382,9 @@ build/tables-generated/vnum/VOLD_hostile_boolTable.h
 build/tables-generated/vnum/VOLD_int_widenBlock.h
 build/tables-generated/vnum/VOLD_int_widenTable.cpp
 build/tables-generated/vnum/VOLD_int_widenTable.h
+build/tables-generated/vnum/VOLD_kind_movedBlock.h
+build/tables-generated/vnum/VOLD_kind_movedTable.cpp
+build/tables-generated/vnum/VOLD_kind_movedTable.h
 build/tables-generated/vnum/VOLD_lineage_mergeBlock.h
 build/tables-generated/vnum/VOLD_lineage_mergeTable.cpp
 build/tables-generated/vnum/VOLD_lineage_mergeTable.h
