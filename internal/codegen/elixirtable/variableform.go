@@ -177,7 +177,7 @@ func generateVariableForm(u *ir.Unit, ns string) map[string][]byte {
   @field_defaults for {_name, desc} <- @tables,
                       f <- desc.fields,
                       into: %{},
-                      do: {f.id, default_builder.(default_builder, {:field, f})}
+                      do: {f, default_builder.(default_builder, {:field, f})}
 
 `)
 	var unions strings.Builder
@@ -4071,7 +4071,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     Map.fetch!(@defaults_by_table, desc.name)
   end
 
-  defp field_default(f), do: Map.fetch!(@field_defaults, f.id)
+  defp field_default(f), do: Map.fetch!(@field_defaults, f)
 
   # Missing slots keep their element default in both binary and text forms.
   defp element_default(%{elem_kind: 13, elem: name}), do: defaults(Map.fetch!(@tables, name))
