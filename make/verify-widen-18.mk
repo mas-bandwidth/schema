@@ -2,9 +2,11 @@
 # and Canonical-Write Input Permutations (Pillar #5), wired into
 # `_verify-<lang>-bench` across all 9 compiled legs and all 9 VM legs.
 #
-#   make verify-bitphase-<lang>              66 vectors across bit phases 0,1,7,31,32,33,56,63 + EmptyZero
+#   make verify-bitphase-<lang>              66 vectors across bit phases 0,1,7,31,32,33,56,63 + EmptyZero,
+#                                            and CfDecode read at all 11,001 indices (SPEC §4.6's decode)
 #   make verify-canonical-<lang>             6 permutations (3 JSON + 3 native) of unsorted maps & distinct equal blobs
-#   make verify-bitphase-negative-control    sabotage unaligned JS 32-bit read shift -> fails bitphase immediately
+#   make verify-bitphase-negative-control    sabotage unaligned JS 32-bit read shift -> fails bitphase immediately;
+#                                            sabotage the JS flat tier's float32 literals -> fails the decode case
 #   make verify-canonical-negative-control   sabotage JS map entry sort -> fails canonical immediately
 
 VERIFY_ALL_18_LEGS := cpp c cs unity go rust java dart elixir js python ruby lua luau squirrel moo goose lobster
@@ -186,6 +188,17 @@ verify-bitphase-negative-control: verify-toolchain-js build/verify-bitphase-bin 
 	@grep -q 'FAILED:' build/verify-bitphase-nc/run.log || \
 		{ echo "NEGATIVE CONTROL FAILED: unexpected bitphase failure log:" >&2; cat build/verify-bitphase-nc/run.log >&2; exit 1; }
 	@echo "verify-bitphase-negative-control: unaligned bit-shift sabotage caught immediately by verify-bitphase"
+	@mkdir -p build/verify-bitphase-nc/cfdecode
+	go run ./tools/sabotage -name verify-bitphase-cfdecode-js-flat -out build/verify-bitphase-nc/cfdecode/flat.gotext internal/codegen/js/flat.go
+	@printf '{"Replace":{"%s/internal/codegen/js/flat.go":"%s/build/verify-bitphase-nc/cfdecode/flat.gotext"}}\n' "$(CURDIR)" "$(CURDIR)" > build/verify-bitphase-nc/cfdecode/overlay.json
+	go build -overlay=build/verify-bitphase-nc/cfdecode/overlay.json -o build/verify-bitphase-nc/cfdecode/schema ./cmd/schema
+	@if NODE="$(NODE)" ./build/verify-bitphase-bin --lang js --schema ./build/verify-bitphase-nc/cfdecode/schema --work build/verify-bitphase-nc/cfdecode/work --corpus build/verify-bitphase/corpus > build/verify-bitphase-nc/cfdecode/run.log 2>&1; then \
+		echo "NEGATIVE CONTROL FAILED: the flat tier's double min passed the compressed-float decode case" >&2; exit 1; fi
+	@grep -Fq 'tier flat decodes 2535 of 11001 indices off SPEC §4.6' build/verify-bitphase-nc/cfdecode/run.log || \
+		{ echo "NEGATIVE CONTROL FAILED: unexpected cfdecode failure log:" >&2; cat build/verify-bitphase-nc/cfdecode/run.log >&2; exit 1; }
+	@if grep -Fq 'tier stream' build/verify-bitphase-nc/cfdecode/run.log; then \
+		echo "NEGATIVE CONTROL FAILED: the flat-tier sabotage moved the stream tier:" >&2; cat build/verify-bitphase-nc/cfdecode/run.log >&2; exit 1; fi
+	@echo "verify-bitphase-negative-control: the flat tier's double min reds the compressed-float decode case at 2,535 indices, the stream tier stays green"
 
 # Sabotages map entry sorting in internal/codegen/jstable/variablearms.go and
 # proves verify-canonical-js fails immediately on unsorted input permutations.

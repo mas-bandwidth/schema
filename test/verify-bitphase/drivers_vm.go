@@ -106,15 +106,38 @@ for (const line of lines) {
   }
   count++;
 }
+
+// 3. The compressed-float decode case (cfdecode.go), on both tiers
+{
+  const cbits = new DataView(new ArrayBuffer(8));
+  const hex = (x) => {
+    cbits.setFloat64(0, x);
+    return cbits.getUint32(0).toString(16).padStart(8, "0") + cbits.getUint32(4).toString(16).padStart(8, "0");
+  };
+  const cfStream = new BP.CfDecode();
+  const cfFlat = new BP.CfDecode();
+  const cfOut = [];
+  for (let i = 0; i <= @CFDECODE_STEPS@; i++) {
+    const cb = new Uint8Array([i & 0xff, i >> 8]);
+    if (!BP.ReadCfDecode(new ReadStream(cb), cfStream)) throw new Error("FAILED: cfdecode stream read " + i);
+    cfOut.push("CFDECODE stream " + i + " " + hex(cfStream.c));
+    const cpad = new Uint8Array(2 + BPF.FlatReadSlack);
+    cpad.set(cb);
+    if (!BPF.ReadCfDecodeFlat(new DataView(cpad.buffer), 16, cfFlat)) throw new Error("FAILED: cfdecode flat read " + i);
+    cfOut.push("CFDECODE flat " + i + " " + hex(cfFlat.c));
+  }
+  console.log(cfOut.join("\n"));
+}
 console.log("BITPHASE_OK js " + count);
 `
 	probe := filepath.Join(workDir, "main.mjs")
-	if err := os.WriteFile(probe, []byte(jsSrc), 0o644); err != nil {
+	if err := os.WriteFile(probe, []byte(withCfDecodeSteps(jsSrc)), 0o644); err != nil {
 		return err
 	}
 	node := resolveTool(repoRoot, "NODE", "dist/node-v25.4.0/bin/node", "node")
-	if out, err := runChecked(workDir, nil, node, probe, corpusDir); err != nil {
-		return fmt.Errorf("js checked: %w\n%s", err, out)
+	cout, cerr := runChecked(workDir, nil, node, probe, corpusDir)
+	if err := requireToken(cout, cerr, "js"); err != nil {
+		return fmt.Errorf("js checked: %w", err)
 	}
 	out, err := runChecked(workDir, []string{"NODE_ENV=production"}, node, probe, corpusDir)
 	return requireToken(out, err, "js")
@@ -125,7 +148,7 @@ func verifyPython(repoRoot, schemaBin, corpusDir, workDir string) error {
 	if err := generateBitPhase(repoRoot, schemaBin, "", "python", genDir); err != nil {
 		return err
 	}
-	pySrc := `import pathlib, sys
+	pySrc := `import pathlib, struct, sys
 sys.path.insert(0, "./gen")
 import bitphase as bp
 
@@ -153,10 +176,15 @@ for line in (d / "manifest.tsv").read_text().splitlines():
         if accepted:
             raise AssertionError(f"FAILED: accepted {fname}")
     count += 1
+cf_out = []
+for i in range(@CFDECODE_STEPS@ + 1):
+    cf = bp.CfDecode.read(bytes([i & 0xFF, i >> 8]))
+    cf_out.append(f"CFDECODE python {i} {struct.pack('>d', cf.c).hex()}")
+print("\n".join(cf_out))
 print(f"BITPHASE_OK python {count}")
 `
 	probe := filepath.Join(workDir, "main.py")
-	if err := os.WriteFile(probe, []byte(pySrc), 0o644); err != nil {
+	if err := os.WriteFile(probe, []byte(withCfDecodeSteps(pySrc)), 0o644); err != nil {
 		return err
 	}
 	py := resolvePythonTool(repoRoot)
@@ -196,10 +224,15 @@ File.readlines(File.join(dir, "manifest.tsv"), chomp: true).each do |line|
   end
   count += 1
 end
+cf_out = (0..@CFDECODE_STEPS@).map do |i|
+  cf = Bitphase::CfDecode.read([i & 0xff, i >> 8].pack("C*"))
+  "CFDECODE ruby #{i} #{[cf.c].pack('G').unpack1('H*')}"
+end
+puts cf_out.join("\n")
 puts "BITPHASE_OK ruby #{count}"
 `
 	probe := filepath.Join(workDir, "main.rb")
-	if err := os.WriteFile(probe, []byte(rbSrc), 0o644); err != nil {
+	if err := os.WriteFile(probe, []byte(withCfDecodeSteps(rbSrc)), 0o644); err != nil {
 		return err
 	}
 	rb := resolveRubyTool(repoRoot)
@@ -254,10 +287,19 @@ for line in io.lines(dir .. "/manifest.tsv") do
     count = count + 1
   end
 end
+local cf = BP.NewCfDecode()
+local cf_out = {}
+for i = 0, @CFDECODE_STEPS@ do
+  local rs = serialize.ReadStream.new(string.char(i & 0xff, i >> 8))
+  assert(BP.ReadCfDecode(rs, cf), "FAILED: cfdecode read " .. i)
+  local hex = string.pack(">d", cf.C):gsub(".", function(c) return string.format("%02x", c:byte()) end)
+  cf_out[#cf_out + 1] = "CFDECODE lua " .. i .. " " .. hex
+end
+print(table.concat(cf_out, "\n"))
 print("BITPHASE_OK lua " .. tostring(count))
 `
 	probe := filepath.Join(workDir, "main.lua")
-	if err := os.WriteFile(probe, []byte(luaSrc), 0o644); err != nil {
+	if err := os.WriteFile(probe, []byte(withCfDecodeSteps(luaSrc)), 0o644); err != nil {
 		return err
 	}
 	luaBin := resolveGlobTool(repoRoot, "LUA", "dist/lua-*/bin/lua", "lua")
@@ -358,9 +400,23 @@ for _, c in ipairs(V.cases) do
 	end
 	count += 1
 end
+local cf = BP.NewCfDecode()
+local cfOut = {}
+for i = 0, @CFDECODE_STEPS@ do
+	local cb = buffer.create(2)
+	buffer.writeu8(cb, 0, i % 256)
+	buffer.writeu8(cb, 1, i // 256)
+	if not BP.ReadCfDecode(serialize.ReadStream.new(cb), cf) then error("FAILED: cfdecode read " .. i) end
+	local d = buffer.create(8)
+	buffer.writef64(d, 0, cf.C)
+	local h = ""
+	for k = 7, 0, -1 do h = h .. string.format("%02x", buffer.readu8(d, k)) end
+	table.insert(cfOut, "CFDECODE luau " .. tostring(i) .. " " .. h)
+end
+print(table.concat(cfOut, "\n"))
 print("BITPHASE_OK luau " .. tostring(count))
 `
-	if err := os.WriteFile(filepath.Join(genDir, "probe.luau"), []byte(src), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(genDir, "probe.luau"), []byte(withCfDecodeSteps(src)), 0o644); err != nil {
 		return err
 	}
 	luauBin := resolveGlobTool(repoRoot, "LUAU", "dist/luau-*/luau", "luau")
@@ -436,9 +492,23 @@ for i = 1, #V.cases do
 	end
 	count = count + 1
 end
+local cf = BP.NewCfDecode()
+local cfOut = {}
+for i = 0, @CFDECODE_STEPS@ do
+	local cb = buffer.create(2)
+	buffer.writeu8(cb, 0, i % 256)
+	buffer.writeu8(cb, 1, i // 256)
+	if not BP.ReadCfDecode(serialize.ReadStream.new(cb), cf) then error("FAILED: cfdecode read " .. i) end
+	-- a moo float32 is its binary32 pattern (docs/PORT-MOO.md): the answer is
+	-- those 32 bits, 8 hex digits
+	local h = ""
+	for k = 3, 0, -1 do h = h .. string.format("%02x", bit32.band(bit32.rshift(cf.C, 8 * k), 255)) end
+	table.insert(cfOut, "CFDECODE moo " .. tostring(i) .. " " .. h)
+end
+print(table.concat(cfOut, "\n"))
 print("BITPHASE_OK moo " .. tostring(count))
 `
-	if err := os.WriteFile(filepath.Join(genDir, "probe.moo"), []byte(src), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(genDir, "probe.moo"), []byte(withCfDecodeSteps(src)), 0o644); err != nil {
 		return err
 	}
 	mooBin := resolveGlobTool(repoRoot, "MOO", "dist/moo-*/moo", "moo")
@@ -504,10 +574,23 @@ foreach (c in cases) {
   }
   count++;
 }
+local cf = BP.CfDecode();
+for (local i = 0; i <= @CFDECODE_STEPS@; i++) {
+  local cb = blob(0);
+  cb.writen(i & 0xff, 'b');
+  cb.writen(i >> 8, 'b');
+  cb.seek(0);
+  check(BP.ReadCfDecode(serialize.ReadStream(cb), cf), "cfdecode read " + i);
+  local d = blob(0);
+  d.writen(cf.C, 'd');
+  local h = "";
+  for (local k = 7; k >= 0; k--) h += format("%02x", d[k] & 0xff);
+  print("CFDECODE squirrel " + i + " " + h + "\n");
+}
 print("BITPHASE_OK squirrel " + count + "\n");
 `)
 	probe := filepath.Join(workDir, "probe.nut")
-	if err := os.WriteFile(probe, []byte(b.String()), 0o644); err != nil {
+	if err := os.WriteFile(probe, []byte(withCfDecodeSteps(b.String())), 0o644); err != nil {
 		return err
 	}
 	sqBin := resolveGlobTool(repoRoot, "SQUIRREL", "dist/squirrel-*/bin/sq", "sq")
@@ -578,10 +661,34 @@ fn main() {
 `, c.File, c.Type, c.Type, c.File)
 		}
 	}
+	b.WriteString(`    {
+        var cf = bitphase::NewCfDecode();
+        var cb: u8[>..] = [];
+        var line: u8[>..] = [];
+        let digits = "0123456789abcdef";
+        var i: i64 = 0;
+        while i <= @CFDECODE_STEPS@ {
+            cb.clear();
+            cb.push((i & 255) as u8);
+            cb.push((i >> 8) as u8);
+            var rs = serialize_read_stream_init_padded(pbuf, cb);
+            check(bitphase::ReadCfDecode(rs, cf), "cfdecode read");
+            let bits = serialize_f64_bits(cf.C as f64);
+            line.clear();
+            var k: i64 = 60;
+            while k >= 0 {
+                line.push(digits[((bits >> (k as u64)) & 15) as i64]);
+                k -= 4;
+            }
+            print(str("CFDECODE goose ", i, " ", line, "\n"));
+            i += 1;
+        }
+    }
+`)
 	fmt.Fprintf(&b, "    print(str(\"BITPHASE_OK goose \", %d, \"\\n\"));\n}\n", len(cases))
 	srcFile := filepath.Join(genDir, "probe.goose")
 	exeFile := filepath.Join(genDir, "probe_bin")
-	if err := os.WriteFile(srcFile, []byte(b.String()), 0o644); err != nil {
+	if err := os.WriteFile(srcFile, []byte(withCfDecodeSteps(b.String())), 0o644); err != nil {
 		return err
 	}
 	gooseBin := resolveGlobTool(repoRoot, "GOOSE", "dist/goose-*/goose", resolveGlobTool(repoRoot, "GOOSE", "dist/goose-*/bin/goose", "goose"))
@@ -642,9 +749,24 @@ let r_Phase63 = bitphase.NewPhase63()
 `, c.File, c.Type, c.Type, c.File)
 		}
 	}
+	b.WriteString(`let cf = bitphase.NewCfDecode()
+let cf_digits = "0123456789abcdef"
+for(@CFDECODE_STEPS@ + 1) i:
+    let cb = schema_rt.zeros(2)
+    write_int8_le(cb, 0, i % 256)
+    write_int8_le(cb, 1, i / 256)
+    check(bitphase.ReadCfDecode(serialize_read_stream_padded(cb), cf), "cfdecode read " + string(i))
+    let d = schema_rt.zeros(8)
+    write_float64_le(d, 0, cf.C)
+    var h = ""
+    for(8) k:
+        let by = read_uint8_le(d, 7 - k)
+        h += substring(cf_digits, by / 16, 1) + substring(cf_digits, by % 16, 1)
+    print("CFDECODE lobster " + string(i) + " " + h)
+`)
 	fmt.Fprintf(&b, "print(\"BITPHASE_OK lobster %d\")\n", len(cases))
 	probe := filepath.Join(genDir, "probe.lobster")
-	if err := os.WriteFile(probe, []byte(b.String()), 0o644); err != nil {
+	if err := os.WriteFile(probe, []byte(withCfDecodeSteps(b.String())), 0o644); err != nil {
 		return err
 	}
 	lobsterBin := resolveGlobTool(repoRoot, "LOBSTER", "dist/lobster-*/bin/lobster", "lobster")

@@ -2768,6 +2768,19 @@ read-into ri_json       tblsurf      Counted       json        testdata/conforma
 read-into ri_fixed      tblsurf      Narrow        fixed       testdata/conformance/tables/read-into/narrow_3.fixed        testdata/conformance/tables/read-into/narrow_3_damaged.fixed     3
 read-into ri_message    backend_conn StorePurchase message     testdata/conformance/tables/message-batch/batch_delivered.bin testdata/conformance/tables/message-batch/batch_range_in_second.bin 2
 read-into ri_fixed_5000 tblsurf      Narrow        fixed-nocap testdata/conformance/tables/read-into/narrow_5000.fixed     -                                                                5000
+# A FIELD THE WRITER DID NOT SUPPLY HOLDS ITS DECLARED DEFAULT AFTER A LOAD,
+# never what the caller's value held before (SPEC-TABLES §3.4, THE PREFILL IS
+# WHAT ANSWERS "ABSENT FIELD"; §6.5). The first read lands v3's full record,
+# every nested element off its default (nested_chain's leaf bonus 17 and tag
+# "🚀ok", sub_opt's note "present", extra_opt present). The second read is a
+# LAWFUL v1 record, read through the lineage, whose layout carries none of
+# those fields, into the SAME value: every one of them holds its declared
+# default (bonus 9, tag "leaf", note "sub", extra_opt absent), exactly as a
+# fresh value read from v1 holds them. The engine writes the answer from its
+# own read of v1 into a fresh value. The trailing lawful-second states that
+# the second file is lawful; generate fails if the engine refuses it, and an
+# unmarked fixed row fails if the engine reads its damaged file.
+read-into ri_fixed_lineage tblfixedevo EvoRoot   fixed       testdata/conformance/tables/wire/fixedevo_v3_full.bin       testdata/conformance/tables/wire/fixedevo_v1.bin                 1 lawful-second
 
 # THE RETAIN FAMILY ZEROES ITS REPORT TOO (SPEC-TABLES §6.5, §6.6): the
 # retaining load is handed a report the driver PRE-FILLED (every counter
