@@ -1542,6 +1542,10 @@ func (g *tableGen) emitFixedWriteBody(st *ir.Struct) {
 	g.pf("// %s's stores. The template — the hash, then zeros — is memcpy'd first,\n", name)
 	g.pf("// which is also what zero-fills every byte of declared slack.\n")
 	g.pf("public static void %sFixedWriteBody(Span<byte> b, %s value)\n{\n", name, name)
+	// A null record handed to the writer is a value of the wrong kind
+	// (DW-TABLE-SHAPE): a debug assert, as every write contract on this leg
+	// is (docs/SPEC.md §5.1). A release build writes the record's zeros.
+	g.pf("    System.Diagnostics.Debug.Assert(value != null, \"a null %s is written\");\n", name)
 	g.pf("    if (value == null) return;\n")
 	off := int64(0)
 	for _, f := range st.Fields {
