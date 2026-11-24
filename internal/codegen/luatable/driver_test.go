@@ -49,6 +49,7 @@ func TestLuaDriverListsItsSurfaces(t *testing.T) {
 			t.Errorf("the lua driver's list names no `unit %s`: that opt-in unit's rows count absent on the leg", key)
 		}
 	}
+	conformanceSurface := readmeSurfaces(t, root)
 	seen := map[string]bool{}
 	for _, s := range lines {
 		if seen[s] {
@@ -68,33 +69,55 @@ func TestLuaDriverListsItsSurfaces(t *testing.T) {
 	}
 }
 
-// conformanceSurface is every surface test/conformance/README.md names (its
-// "The surfaces" table).
-var conformanceSurface = map[string]bool{
-	"wire":                  true,
-	"message":               true,
-	"message-prior":         true,
-	"report":                true,
-	"framing":               true,
-	"retain":                true,
-	"retain-save":           true,
-	"json-read":             true,
-	"json-write":            true,
-	"json-hostile":          true,
-	"cook":                  true,
-	"cook-write":            true,
-	"cook-foreign":          true,
-	"block":                 true,
-	"block-foreign":         true,
-	"block-dump":            true,
-	"forgery":               true,
-	"cook-forgery":          true,
-	"write-refusal":         true,
-	"write-refusal-fixed":   true,
-	"write-refusal-message": true,
-	"write-refusal-json":    true,
-	"cook-reason":           true,
-	"block-reason":          true,
+// readmeSurfaces is every surface test/conformance/README.md names: the first
+// column of its "The surfaces" table, read from the file on every run so this
+// test can never hold the driver to a hand copy that has fallen behind the
+// README (it did: the Wave 3 surfaces of f259a7aa3a). The harness holds the
+// same table to its own surfaces list (test/conformance/harness
+// readme_surfaces_test.go), so README, harness and driver agree.
+func readmeSurfaces(t *testing.T, root string) map[string]bool {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(root, "test", "conformance", "README.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return parseReadmeSurfaces(t, string(data))
+}
+
+// parseReadmeSurfaces reads the first column of the "## The surfaces" table
+// out of the README text, failing t when the section or its table is missing
+// or a row has no name.
+func parseReadmeSurfaces(t *testing.T, readme string) map[string]bool {
+	t.Helper()
+	_, section, ok := strings.Cut(readme, "\n## The surfaces\n")
+	if !ok {
+		t.Fatal(`test/conformance/README.md has no "## The surfaces" section`)
+	}
+	if next := strings.Index(section, "\n## "); next >= 0 {
+		section = section[:next]
+	}
+	out := map[string]bool{}
+	inBody := false
+	for line := range strings.SplitSeq(section, "\n") {
+		if !strings.HasPrefix(line, "|") {
+			continue
+		}
+		if !inBody {
+			// the column names, then the |---| rule
+			inBody = strings.HasPrefix(line, "|---")
+			continue
+		}
+		cell, _, _ := strings.Cut(strings.TrimPrefix(line, "|"), "|")
+		name := strings.Trim(strings.TrimSpace(cell), "`")
+		if name == "" {
+			t.Fatalf("the surfaces table in test/conformance/README.md has a row with no surface name: %q", line)
+		}
+		out[name] = true
+	}
+	if len(out) == 0 {
+		t.Fatal("the surfaces table in test/conformance/README.md names no surface")
+	}
+	return out
 }
 
 // repoRoot walks up from the test's working directory to the repository root.
