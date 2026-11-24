@@ -2,25 +2,28 @@
 // digest computed at the hash site from the schema; a runtime never derives
 // a hash from layout bytes it holds.
 //
-// docs/SPEC-TABLES.md:16471 — "The layout hash is the version — fnv1a64 over
-// the layout bytes AND THEN over that digest (§3.4, the bill §13) — and nothing
-// on the wire carries a number; the digest does not ride the wire either, the
-// hash being what binds it."
-//
-// docs/FIXED-FORM-ALGORITHM.md:55-58 — "The hash is h := 0xcbf29ce484222325;
-// for each byte v: h ^= v; h *= 0x100000001b3 over the layout's bytes as
-// written, the 4-byte count included, and then over the DEFINITIONS DIGEST
-// (§5.2) — the facts a range, a bits(N), a fixed(I,F) split or a flags bit
-// count states and the layout's sizes do not, which never ride the wire. A
-// legacy empty digest leaves the hash the layout's alone; prospective v2 roots
-// always include their identity prefix (§5.2)."
+// docs/SPEC-TABLES.md §3.4, THE HASH, EXACTLY and THE DEFINITIONS DIGEST
+// (current scheme): "for each byte b of the layout bytes and then of the
+// digest bytes, h = (h XOR b) * 0x100000001b3 mod 2^64" — and "A current
+// writer's digest is NEVER empty: it opens with a 26-byte prefix even when the
+// closure has no rows, so a current hash is never a hash of the layout bytes
+// alone". The digest is the prefix, then ROWS `tag u8, path length u32, path,
+// payload length u32, payload`; a path is 13-byte segments `role u8, kind u32,
+// id u64`; a ranged integer emits row R: leaf kind u32, signed u8, fractional
+// bits u32, then min and max as CANONICAL INTEGERS (sign u8, magnitude length
+// u32, minimal big-endian magnitude, empty for zero). The digest never rides
+// the wire. (docs/FIXED-FORM-ALGORITHM.md §5.2 states the same scheme.)
 //
 // WHAT THIS ASSERTS:
-//   1. For a table with no digest-relevant definitions (PaddedRow: no ranges,
-//      no flags, no bits, no fixed), fnv1a64(layout ++ v2 prefix) == stored hash,
-//      proving the digest is the v2 identity prefix alone (§5.2).
-//   2. For a table with a range (Meta: build int32 | min=0, max=1000),
-//      fnv1a64(layout ++ v2 prefix) != stored hash, proving the digest was folded in.
+//   1. PaddedRow (no ranges, flags, bits, fixed splits, counted minima or
+//      float ranges) has the prefix and no rows, so its hash is EXACTLY
+//      fnv1a64(layout ++ prefix) — and is NOT fnv1a64(layout) alone.
+//   2. Meta (build int32 = 1 | min = 0, max = 1000; tag string(8)) has the
+//      prefix and ONE row, R at path [t,13,Meta][f,4,build], built here byte
+//      by byte from the spec's rules with the ids read from Meta's own layout
+//      entries; its hash is EXACTLY fnv1a64(layout ++ prefix ++ that row).
+//      (tables/pointers/schema.lock records the same digest for Meta's
+//      current lineage entry, wire 0x20036da1d607e22e.)
 //   3. The hash values are compile-time const declarations — handed constants,
 //      not computed at runtime from layout bytes.
 //
@@ -80,8 +83,10 @@ final List<int> v2Prefix = <int>[0x00, ...'schema-fixed-definitions'.codeUnits, 
 
 List<int> withV2Prefix(List<int> layout) => <int>[...layout, ...v2Prefix];
 
+List<int> u32(int v) => <int>[v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >> 24) & 0xff];
+
 void main() {
-  // ---- LAW: an empty digest leaves the hash the layout's alone (§5.2) ----
+  // ---- LAW: a root with no digest rows hashes layout ++ prefix (§3.4) ----
   //
   // PaddedRow has no ranges, no flags, no bits(N), no fixed(I,F), no reader
   // limits — its definitions digest is the v2 prefix alone, so the hash is
@@ -94,16 +99,44 @@ void main() {
     '== 0x${(paddedRowFixedHash & 0xFFFFFFFFFFFFFFFF).toRadixString(16).padLeft(16, '0')})',
   );
 
-  // ---- LAW: the digest is folded in after the layout bytes (§5.2) ----
+  check(
+    fnv1a64(paddedRowFixedLayout) != paddedRowFixedHash,
+    'R4: a current hash is never the layout bytes alone — fnv1a64(layout) != PaddedRow hash',
+  );
+
+  // ---- LAW: the digest's rows follow the prefix, exactly as §3.4 lays them ----
   //
-  // Meta has a range (build int32 | min=0, max=1000), so its digest is
-  // non-empty. The hash must differ from fnv1a64(layout ++ v2 prefix).
+  // Meta's one row, from the spec: tag 'R'; path = root segment (role 't',
+  // kind 13, the root's id = layout entry 0's id) + field segment (role 'f',
+  // leaf kind 4 = i32, build's id = layout entry 1's id); payload = leaf kind
+  // 4, signed 1, fractional bits 0, min 0 (sign 0, length 0), max 1000 (sign
+  // 0, length 2, 0x03 0xe8).
+  final rootId = metaFixedLayout.sublist(4, 12); // entry 0 at 4: id is +0..8
+  final buildId = metaFixedLayout.sublist(4 + 17, 4 + 17 + 8); // entry 1
+  final path = <int>[
+    0x74, ...u32(13), ...rootId,
+    0x66, ...u32(4), ...buildId,
+  ];
+  final payload = <int>[
+    ...u32(4), 1, ...u32(0),
+    0, ...u32(0),
+    0, ...u32(2), 0x03, 0xe8,
+  ];
+  final metaDigest = <int>[
+    ...v2Prefix,
+    0x52, ...u32(path.length), ...path, ...u32(payload.length), ...payload,
+  ];
+  final metaSpec = fnv1a64(<int>[...metaFixedLayout, ...metaDigest]);
+  check(
+    metaSpec == metaFixedHash,
+    'R4: Meta hash == fnv1a64(layout ++ prefix ++ R row built from §3.4) '
+    '(0x${(metaSpec & 0xFFFFFFFFFFFFFFFF).toRadixString(16).padLeft(16, '0')} '
+    '== 0x${(metaFixedHash & 0xFFFFFFFFFFFFFFFF).toRadixString(16).padLeft(16, '0')})',
+  );
   final metaLayoutOnly = fnv1a64(withV2Prefix(metaFixedLayout));
   check(
     metaLayoutOnly != metaFixedHash,
-    'R4: Meta has a range — fnv1a64(layout ++ v2 prefix) != stored hash '
-    '(digest folded in; 0x${(metaLayoutOnly & 0xFFFFFFFFFFFFFFFF).toRadixString(16).padLeft(16, '0')} '
-    '!= 0x${(metaFixedHash & 0xFFFFFFFFFFFFFFFF).toRadixString(16).padLeft(16, '0')})',
+    'R4: Meta has a range — fnv1a64(layout ++ prefix alone) != stored hash',
   );
 
   // ---- LAW: a runtime never derives a hash from layout bytes it holds ----
