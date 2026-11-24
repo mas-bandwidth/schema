@@ -381,23 +381,18 @@ func (g *fixedGen) emitWriteElement(f *ir.Field, base string, at int64, expr, in
 // must hold to its declaration before the first byte (docs/SPEC.md §5.1 rows
 // 1-8): a ranged or bits-bounded scalar, an enum ordinal, a union tag, a
 // counted array's count, a text's used length and content, and a nested record.
-// A plain bool carries none of those rows and, being a JavaScript boolean in
-// its own slot, has no storage type to refuse either.
+// It covers every field: a plain bool too, held to a JavaScript boolean, so 1
+// or null in a bool's place is refused, never written as its truthiness
+// (docs/SPEC-CONFORMANCE.md DW-TABLE-SHAPE).
 func fixedFieldNeedsValueCheck(f *ir.Field) bool {
-	if f == nil {
-		return false
-	}
-	if f.KeyEnum != "" || f.Array != ir.ArrayNone {
-		return true
-	}
-	return f.Type.Kind != ir.TBool
+	return f != nil
 }
 
 // fixedStructNeedsValueCheck is the question <T>FixedCheckBody asks of a
-// record before it is emitted: false when every field is a plain bool, so the
-// zero-cost rule leaves the body out.
+// record before it is emitted: every record has one, an empty record too,
+// since its value is still held to an object.
 func fixedStructNeedsValueCheck(st *ir.Struct) bool {
-	return st != nil && slices.ContainsFunc(st.Fields, fixedFieldNeedsValueCheck)
+	return st != nil
 }
 
 // emitCheckBody emits <T>FixedCheckBody( value ), THE WRITER'S PREFLIGHT
@@ -414,6 +409,9 @@ func (g *fixedGen) emitCheckBody(st *ir.Struct) {
 	g.pf("// %s's writer preflight: every value the declaration does not admit is\n", st.Name)
 	g.pf("// refused before a byte is written (docs/SPEC.md §5.1 rows 1-8).\n")
 	g.pf("export function %sFixedCheckBody(value) {\n", st.Name)
+	// the record itself is an object: null, a number or a string in its place is
+	// refused, never read (docs/SPEC-CONFORMANCE.md DW-TABLE-SHAPE)
+	g.pf("  if (value === null || typeof value !== \"object\") { return false; }\n")
 	for _, f := range st.Fields {
 		if !fixedFieldNeedsValueCheck(f) {
 			continue
@@ -545,6 +543,7 @@ func (g *fixedGen) emitCheckValueElement(f *ir.Field, expr, ind string) {
 	}
 	switch f.Type.Kind {
 	case ir.TBool:
+		g.pf("%sif (typeof %s !== \"boolean\") { return false; }\n", ind, expr)
 		return
 	case ir.TFloat32:
 		g.pf("%sif (typeof %s !== \"number\" || !globalThis.Number.isFinite(globalThis.Math.fround(%s))) { return false; }\n",

@@ -19,6 +19,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -119,6 +120,7 @@ func cStrictCorpus(t *testing.T) string {
 		return cached
 	}
 	cStrictCorpusOnce.Do(func() {
+		testinputs.Build(t)
 		cmd := testproc.Command(t, "make", "-C", "../../..", "tables-fixedform-corpus")
 		out, err := cmd.CombinedOutput()
 		if err != nil {

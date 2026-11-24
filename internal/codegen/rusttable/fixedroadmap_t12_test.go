@@ -30,6 +30,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -405,6 +406,7 @@ func t12FixedFormRun(t *testing.T, corpus string) string {
 			return
 		}
 		rustMakeMu.Lock()
+		testinputs.Build(t, "test/conformance/rust")
 		cmd := testproc.Command(t, "make", "-C", repo, "tables-rust-fixedform")
 		cmd.Env = os.Environ()
 		out, err := cmd.CombinedOutput()

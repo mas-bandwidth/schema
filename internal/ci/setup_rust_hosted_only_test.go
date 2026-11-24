@@ -236,6 +236,7 @@ fi
 PATH="$RUSTUP_BIN:$PATH" cargo check
 `
 	runProbe := func(targetLibdir string) string {
+		// testinputs:none — runs the script constant above; reads no repository file
 		cmd := exec.Command("sh", "-eu", "-c", script)
 		cmd.Env = append(os.Environ(),
 			"RUSTUP_BIN="+sdkBin,
