@@ -2420,6 +2420,9 @@ inline bool TableJsonWriteScalar( TableJsonOut & out, const void * storage, cons
     }
     if ( TableJsonIsFlags( f ) )
     {
+        // a flags value is an array of names, a container the read counts,
+        // [] included, so the write refuses it past the cap (§16.14 W2)
+        if ( depth > kTableJsonMaxDepth ) { return false; }
         uint64_t bits = TableJsonGetRaw( storage, f->elem_size );
         if ( bits == 0 )
         {
