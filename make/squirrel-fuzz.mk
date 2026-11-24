@@ -22,7 +22,16 @@
 # drops out of the leg, or out of both arms, goes red instead of fuzzing less.
 # The registered absent count this replaced (185) was stale: the plain arm
 # left 227 absent on the corpus of 2026-11-24.
-SQUIRREL_WIRE_FUZZ_OUTSIDE_SEEDS := 219
+#
+# The outside count is every seed that is not a variable FILE root: the fixed
+# file roots and the message seeds, which the harness skips in --builder by
+# class. The corpus holds 520 seeds: the builder arm answers 205 (the 38
+# variable roots in the ledger) and counts the other 315 outside, which are the
+# 315 the plain arm answers (its "N seeds over" is the live count, absent
+# excluded). The 219 this replaced was measured on 2026-11-21, when the corpus
+# held 384 seeds and the builder arm answered 165; the corpus grew and the
+# count was not re-measured.
+SQUIRREL_WIRE_FUZZ_OUTSIDE_SEEDS := 315
 
 .PHONY: tables-squirrel-wire-fuzz
 tables-squirrel-wire-fuzz: build/conformance-harness build/conformance-squirrel toolchain-squirrel
