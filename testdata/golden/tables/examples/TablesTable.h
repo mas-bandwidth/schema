@@ -19163,6 +19163,7 @@ inline int64_t MoodsMeasureBody( TableIds & ids, const Moods & value )
         for ( int32_t elem_i = 0; elem_i < value.row_count; elem_i++ )
         {
             uint64_t elem_ref = 0;
+            schema_assert( value.row[elem_i] != Mood::Old ); // a deprecated variant is never written, debug only (SPEC-TABLES §2.15)
             if ( !TableEnumRef( ids, value.row[elem_i], elem_ref ) ) { return -1; } // no variant names this value
             body_row += TableLebBytes( elem_ref );
         }
@@ -19192,6 +19193,7 @@ TABLEDEMO_TABLE_INLINE bool MoodsSaveBody( TableWriter & w, TableIds & ids, cons
         for ( int32_t elem_i = 0; elem_i < value.row_count; elem_i++ )
         {
             uint64_t elem_ref = 0;
+            schema_assert( value.row[elem_i] != Mood::Old ); // a deprecated variant is never written, debug only (SPEC-TABLES §2.15)
             if ( !TableEnumRef( ids, value.row[elem_i], elem_ref ) ) { return false; } // no variant names this value
             body_row += TableLebBytes( elem_ref );
         }
@@ -19203,6 +19205,7 @@ TABLEDEMO_TABLE_INLINE bool MoodsSaveBody( TableWriter & w, TableIds & ids, cons
         {
             {
                 uint64_t element_ref = 0;
+                schema_assert( value.row[elem_i] != Mood::Old ); // a deprecated variant is never written, debug only (SPEC-TABLES §2.15)
                 if ( !TableEnumRef( ids, value.row[elem_i], element_ref ) ) { return false; }
                 w.putleb( element_ref );
             }
@@ -19770,6 +19773,7 @@ inline int64_t MoodFieldMeasureBody( TableIds & ids, const MoodField & value )
     if ( value.mood != Mood::Fierce )
     {
         if ( !TableEnumNamed( value.mood ) ) { return -1; } // no variant names this value
+        schema_assert( value.mood != Mood::Old ); // a deprecated variant is never written, debug only (SPEC-TABLES §2.15)
         const uint64_t ref_mood = ids.ref_at( 9, 0x0d5cfaa2c43877beull );
         uint64_t variant_mood = 0;
         if ( !TableEnumRef( ids, value.mood, variant_mood ) ) { return -1; }
@@ -19794,6 +19798,7 @@ TABLEDEMO_TABLE_INLINE bool MoodFieldSaveBody( TableWriter & w, TableIds & ids, 
     if ( value.mood != Mood::Fierce )
     {
         if ( !TableEnumNamed( value.mood ) ) { return false; }
+        schema_assert( value.mood != Mood::Old ); // a deprecated variant is never written, debug only (SPEC-TABLES §2.15)
         const uint64_t ref_mood = ids.ref_at( 9, 0x0d5cfaa2c43877beull );
         uint64_t variant_mood = 0;
         if ( !TableEnumRef( ids, value.mood, variant_mood ) ) { return false; }
@@ -24496,6 +24501,7 @@ inline bool MoodsFixedWriteAdmits( const Moods & value )
     int bad = 0;
     for ( int64_t i = 0; i < ( value.row_count >= 0 && value.row_count <= 4 ? (int64_t) value.row_count : 0 ); ++i )
     {
+        bad |= (int) !( value.row[i] != Mood::Old ); // a deprecated variant is never written (SPEC-TABLES §2.15)
         bad |= (int) ( (uint64_t) value.row[i] > 3u );
     }
     return bad == 0;
@@ -24529,6 +24535,7 @@ inline bool MoodFieldFixedWriteAdmits( const MoodField & value )
 {
     (void) value;
     int bad = 0;
+    bad |= (int) !( value.mood != Mood::Old ); // a deprecated variant is never written (SPEC-TABLES §2.15)
     bad |= (int) ( (uint64_t) value.mood > 3u );
     return bad == 0;
 }
@@ -34074,6 +34081,7 @@ inline int64_t MoodsMeasureBodyRetain( TableRetainIds & ids, const Moods & value
         for ( int32_t elem_i = 0; elem_i < value.row_count; elem_i++ )
         {
             uint64_t elem_ref = 0;
+            schema_assert( value.row[elem_i] != Mood::Old ); // a deprecated variant is never written, debug only (SPEC-TABLES §2.15)
             if ( !TableEnumRef( ids, value.row[elem_i], elem_ref ) ) { return -1; } // no variant names this value
             body_row += TableLebBytes( elem_ref );
         }
@@ -34094,6 +34102,7 @@ TABLEDEMO_TABLE_INLINE bool MoodsSaveBodyRetain( TableWriter & w, TableRetainIds
         for ( int32_t elem_i = 0; elem_i < value.row_count; elem_i++ )
         {
             uint64_t elem_ref = 0;
+            schema_assert( value.row[elem_i] != Mood::Old ); // a deprecated variant is never written, debug only (SPEC-TABLES §2.15)
             if ( !TableEnumRef( ids, value.row[elem_i], elem_ref ) ) { return false; } // no variant names this value
             body_row += TableLebBytes( elem_ref );
         }
@@ -34105,6 +34114,7 @@ TABLEDEMO_TABLE_INLINE bool MoodsSaveBodyRetain( TableWriter & w, TableRetainIds
         {
             {
                 uint64_t element_ref = 0;
+                schema_assert( value.row[elem_i] != Mood::Old ); // a deprecated variant is never written, debug only (SPEC-TABLES §2.15)
                 if ( !TableEnumRef( ids, value.row[elem_i], element_ref ) ) { return false; }
                 w.putleb( element_ref );
             }
@@ -34272,6 +34282,7 @@ inline int64_t MoodFieldMeasureBodyRetain( TableRetainIds & ids, const MoodField
     if ( value.mood != Mood::Fierce )
     {
         if ( !TableEnumNamed( value.mood ) ) { return -1; } // no variant names this value
+        schema_assert( value.mood != Mood::Old ); // a deprecated variant is never written, debug only (SPEC-TABLES §2.15)
         const uint64_t ref_mood = ids.ref_at( 9, 0x0d5cfaa2c43877beull );
         uint64_t variant_mood = 0;
         if ( !TableEnumRef( ids, value.mood, variant_mood ) ) { return -1; }
@@ -34287,6 +34298,7 @@ TABLEDEMO_TABLE_INLINE bool MoodFieldSaveBodyRetain( TableWriter & w, TableRetai
     if ( value.mood != Mood::Fierce )
     {
         if ( !TableEnumNamed( value.mood ) ) { return false; }
+        schema_assert( value.mood != Mood::Old ); // a deprecated variant is never written, debug only (SPEC-TABLES §2.15)
         const uint64_t ref_mood = ids.ref_at( 9, 0x0d5cfaa2c43877beull );
         uint64_t variant_mood = 0;
         if ( !TableEnumRef( ids, value.mood, variant_mood ) ) { return false; }

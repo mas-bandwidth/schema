@@ -2523,6 +2523,8 @@ static bool write_refusal_fixed_save( const std::string & root, const void * val
     if ( root == "CountedMin" ) { wrote = tabledemo::CountedMinFixedSave( (const tabledemo::CountedMin *) value, 1, buffer, capacity ); return true; }
     if ( root == "RootConfig" ) { wrote = tabledemo::RootConfigFixedSave( (const tabledemo::RootConfig *) value, 1, buffer, capacity ); return true; }
     if ( root == "LoadoutConfig" ) { wrote = tabledemo::LoadoutConfigFixedSave( (const tabledemo::LoadoutConfig *) value, 1, buffer, capacity ); return true; }
+    if ( root == "Moods" ) { wrote = tabledemo::MoodsFixedSave( (const tabledemo::Moods *) value, 1, buffer, capacity ); return true; }
+    if ( root == "MoodField" ) { wrote = tabledemo::MoodFieldFixedSave( (const tabledemo::MoodField *) value, 1, buffer, capacity ); return true; }
     if ( root == "SimState" ) { wrote = scalardemo::SimStateFixedSave( (const scalardemo::SimState *) value, 1, buffer, capacity ); return true; }
     if ( root == "TortureFixedWref" ) { wrote = cooktorture::TortureFixedWrefFixedSave( (const cooktorture::TortureFixedWref *) value, 1, buffer, capacity ); return true; }
     if ( root == "FixedBounds" ) { wrote = shapes::FixedBoundsFixedSave( (const shapes::FixedBounds *) value, 1, buffer, capacity ); return true; }
