@@ -242,29 +242,42 @@ func TestFixedVersioningOldRefusesNew(t *testing.T) {
   check(n >= 1, 'a row that moved no layout byte must READ both ways: n=$n ${why(report)}');
   check(report.refused == 0, 'an equal hash is not a version: ${why(report)}');`
 			} else {
-				body = `  final data = File(FILE).readAsBytesSync();
+				// THE ROWS ARE POISONED FIRST with the writer values of this
+				// reader's OWN file (old_<row>.bin, read on the identity
+				// plan), so a refusal that leaves the rows untouched cannot
+				// pass as one that reset them: after ANY refusal every row
+				// handed in holds its DECLARED DEFAULTS (SPEC-TABLES §6.5),
+				// and a second load refuses the same way.
+				body = fmt.Sprintf(`  final own = File(%q).readAsBytesSync();
+  final data = File(FILE).readAsBytesSync();
   final want = ByteData.sublistView(data).getUint64(8, Endian.little);
-  final n = LOAD(values, values.length, data, data.length, plan, report);
-  check(n == -1, 'the older reader did not refuse the newer writer file: n=$n');
-  check(
-    name(report.refused) == 'layout_newer',
-    'a hash in no lineage entry owes layout_newer, not ${name(report.refused)}',
-  );
-  check(
-    report.layoutHash == want,
-    'layout_newer reports THE FILE hash: got ${report.layoutHash}, want $want',
-  );
-  check(
-    report.widened == 0 && report.unknown == 0,
-    'REFUSE is total: no counter moves: ${why(report)}',
-  );
-  // THE DESTINATION IS STILL EVERY FIELD OF A FRESH VALUE, compared as VALUES
-  // and never as a struct's slack (§5.9 #17): the poison is laid through the
-  // record image, which is the byte view this leg has.
-  check(
-    fresh(values[0]),
-    'REFUSE wrote destination values',
-  );`
+  for (var pass = 0; pass < 2; pass++) {
+    final p = LOAD(values, values.length, own, own.length, plan, report);
+    check(p >= 1 && report.refused == 0 && !fresh(values[0]),
+        'load $pass: the poison did not land (own file): p=$p ${why(report)}');
+    final n = LOAD(values, values.length, data, data.length, plan, report);
+    check(n == -1, 'load $pass: the older reader did not refuse the newer writer file: n=$n');
+    check(
+      name(report.refused) == 'layout_newer',
+      'load $pass: a hash in no lineage entry owes layout_newer, not ${name(report.refused)}',
+    );
+    check(
+      report.layoutHash == want,
+      'load $pass: layout_newer reports THE FILE hash: got ${report.layoutHash}, want $want',
+    );
+    check(
+      report.widened == 0 && report.unknown == 0,
+      'load $pass: REFUSE is total: no counter moves: ${why(report)}',
+    );
+    // EVERY ROW HANDED IN IS BACK AT ITS DECLARED DEFAULTS, compared as
+    // VALUES and never as a struct's slack (§5.9 #17).
+    for (var k = 0; k < values.length; k++) {
+      check(
+        fresh(values[k]),
+        'load $pass: row $k is off its declared defaults after the refusal',
+      );
+    }
+  }`, filepath.Join(corpus, "old_"+r.row+".bin"))
 			}
 			out, err := runVersionProbe(t, dartBin, "VOLD_"+r.row, nil, 0,
 				filepath.Join(corpus, "new_"+r.row+".bin"), body)
