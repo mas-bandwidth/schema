@@ -1894,11 +1894,32 @@ All compile errors with positions:
   and no other declaration's, so `foo_bar` beside `FooBar` is refused; a
   Python package is no standard-library module and no declaration a
   builtin; in both, no field or arm starts with `__` or the helper prefix
-  `_s_` or spells a member the generated class defines; a Goose namespace is
-  no reserved one) and the C and C++ wire-header name
+  `_s_` or spells a member the generated class defines; for Goose, the
+  target's whole generate, so every name two writers of the one Goose
+  namespace both declare (`_fleetFields` for a table `fleet` beside an enum
+  `_fleetFields`) and every refusal by name it makes are the checker's, and a
+  Goose namespace is no reserved one; for both C# targets, no declaration
+  named `unmanaged`, the constraint keyword the generated
+  `where T : unmanaged` spells, which a type of that name in the unit's
+  namespace would replace; for Lobster, no declaration named like a Lobster
+  keyword or the float literals `nan` and `infinity`, which its lexer never
+  reads as an identifier) and the C and C++ wire-header name
   (`<Base>Wire.h`, so `Other.schema` beside `OtherWire.schema` collides), and
   refuses for every target, naming the target, a unit one of them refuses,
-  so those names are refused at check rather than at generate.
+  so those names are refused at check rather than at generate. Every refusal
+  by name a target makes at generate is one of these, or one of the rules
+  above: the name-buildability nightly generates every accepted row of
+  testdata/name-buildability in every target
+  (compiler, `TestEveryAcceptedCorpusRowGeneratesEverywhere`), and the
+  fast lane holds that each emitter-rule row is refused at generate once the
+  rules are taken away (`TestEmitterNameRulesAreTheOnlyGuard`). Where an
+  emitter can keep two generated names apart it does, and nothing is refused: C gives every type
+  the suffix `_t`, even a name already ending in `_t`, so `placed` and
+  `placed_t` are `<pkg>_placed_t` and `<pkg>_placed_t_t`; the Goose view
+  names a vocabulary's rows `_<name>VocabularyRows`, a suffix no other Goose
+  name ends in, so an enum `fooView` beside `foo` builds; the Elixir file
+  module steps aside to `<Base>File` when a declaration lowers to its name
+  (an enum `other` beside `Other.schema`).
 
 ### 4.7 Strings and byte blocks — byte strings, one shape
 
