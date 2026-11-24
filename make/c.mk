@@ -1118,14 +1118,17 @@ tables-c-json-label-negative-control:
 # M19, the C map's sorted entry array: the save's ascending order (the heap sort
 # of table_sequence_order) is removed, so entries ride in insertion order.
 # TestCTableWireMaps inserts its keys out of order and must save the engine's
-# bytes.
-C_MAP_SORT_SED := s|    for(i=(int64_t)value->count/2;i>0;i--) {|    for(i=0;i>0;i--) { /* SABOTAGED: insertion order */|;s|    for(i=(int64_t)value->count-1;i>0;i--) {|    for(i=0;i>0;i--) { /* SABOTAGED: insertion order */|
+# bytes. The order's own ascending self-check is disarmed with the sort: left
+# armed, it refuses the unsorted order and the save fails on its length, red on
+# the wrong CHECK, before the bytes are ever compared.
+C_MAP_SORT_SED := s|    for(i=(int64_t)value->count/2;i>0;i--) {|    for(i=0;i>0;i--) { /* SABOTAGED: insertion order */|;s|    for(i=(int64_t)value->count-1;i>0;i--) {|    for(i=0;i>0;i--) { /* SABOTAGED: insertion order */|;s|if(compare(order->entries\[i-1\],order->entries\[i\])>=0)|if(0) /* SABOTAGED: self-check disarmed */|
 C_MAP_SORT_RED := !memcmp(wire,expected,sizeof(expected))
 .PHONY: tables-c-map-sort-negative-control
 tables-c-map-sort-negative-control:
 	@rm -rf build/c-map-sort-nc && mkdir -p build/c-map-sort-nc
 	@sed -e '$(C_MAP_SORT_SED)' internal/codegen/ctable/sequence.go > build/c-map-sort-nc/emitter.go.txt
-	@grep -q 'SABOTAGED: insertion order' build/c-map-sort-nc/emitter.go.txt || \
+	@test "$$(grep -c 'SABOTAGED: insertion order' build/c-map-sort-nc/emitter.go.txt)" = 2 && \
+		grep -q 'SABOTAGED: self-check disarmed' build/c-map-sort-nc/emitter.go.txt || \
 		{ echo "NEGATIVE CONTROL FAILED: the sabotage patched nothing"; exit 1; }
 	@printf '{"Replace":{"%s/internal/codegen/ctable/sequence.go":"%s/build/c-map-sort-nc/emitter.go.txt"}}\n' \
 		"$(CURDIR)" "$(CURDIR)" > build/c-map-sort-nc/overlay.json
