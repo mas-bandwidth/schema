@@ -5,6 +5,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -75,15 +76,18 @@ func runChecked(dir string, extraEnv []string, name string, args ...string) (str
 	return out.String(), err
 }
 
+// requireToken holds a driver's run to the roster's token, to the
+// compressed-float decode case (cfdecode.go) and to the float32 literal case
+// (f32lit.go): every leg answers all three.
 func requireToken(out string, err error, lang string) error {
 	want := fmt.Sprintf("BITPHASE_OK %s %d", lang, len(activeRoster()))
 	if err != nil {
-		return fmt.Errorf("%s failed (%w):\n%s", lang, err, out)
+		return fmt.Errorf("%s failed (%w):\n%s", lang, err, stripCfDecode(out))
 	}
 	if strings.Contains(out, "FAILED:") || !strings.Contains(out, want) {
-		return fmt.Errorf("%s did not print %q:\n%s", lang, want, out)
+		return fmt.Errorf("%s did not print %q:\n%s", lang, want, stripCfDecode(out))
 	}
-	return nil
+	return errors.Join(checkCfDecode(lang, out), checkF32Lit(lang, out))
 }
 
 func ensureCorpus(repoRoot, schemaBin, corpusDir, oracleBin string) ([]manifestCase, map[string][]byte, error) {
@@ -102,6 +106,8 @@ func ensureCorpus(repoRoot, schemaBin, corpusDir, oracleBin string) ([]manifestC
 	cxx := envOr("CXX", "c++")
 	oracleSrc := filepath.Join(repoRoot, "test", "verify-bitphase", "cpp", "oracle.cpp")
 	if out, err := runChecked(repoRoot, nil, cxx, "-std=c++17", "-O2", "-Wall", "-Wextra", "-Werror", "-ffp-contract=off",
+		fmt.Sprintf("-DCFDECODE_STEPS=%d", cfDecodeSteps),
+		"-DF32LIT_MIN="+f32LitDecimal(f32LitMin)+"f", "-DF32LIT_MAX="+f32LitDecimal(f32LitMax)+"f",
 		"-I"+serDir, "-I"+cppGen, oracleSrc, "-o", oracleBin); err != nil {
 		return nil, nil, fmt.Errorf("compile oracle.cpp: %w\n%s", err, out)
 	}

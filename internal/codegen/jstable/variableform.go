@@ -825,9 +825,17 @@ func enumDefault(f *ir.Field) string {
 	return "null"
 }
 
+// floatDefault is a float field's declared default as a JavaScript literal.
+// A float32's default is float32(DefFloat), spelled as its float64 value: the
+// decimal of the declaration ("0.7") is the double 0.7 to JavaScript, which
+// the constructor stored and an absent field read back where the declaration
+// names float32(0.7) (SPEC §4.3, "A FLOAT LITERAL IS A float64 FIRST").
 func floatDefault(f *ir.Field) string {
 	if !f.HasDefault {
 		return "0"
+	}
+	if f.Type.Kind == ir.TFloat32 {
+		return jsFloat(float64(float32(f.DefFloat)))
 	}
 	return jsFloat(f.DefFloat)
 }
