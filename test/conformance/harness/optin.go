@@ -73,6 +73,8 @@ var derivedRows = map[string]derivedRow{
 	"write-refusal":         {ref: refUnit, col: 2, cases: ownName},
 	"write-refusal-fixed":   {ref: refUnit, col: 2, cases: ownName},
 	"write-refusal-json":    {ref: refUnit, col: 2, cases: ownName},
+	"write-refusal-cook":    {ref: refUnit, col: 2, cases: ownName},
+	"write-refusal-block":   {ref: refUnit, col: 2, cases: ownName},
 	"retain":                {ref: refUnit, col: 2, cases: sameName("retain", "retain-save")},
 	"report":                {ref: refUnit, col: 2, cases: ownName},
 	"framing":               {ref: refUnit, col: 2, cases: ownName},
@@ -82,7 +84,13 @@ var derivedRows = map[string]derivedRow{
 	"cook-write": {ref: refInstance, col: 1, cases: func(f []string) []caseKey {
 		return []caseKey{{"cook-write", f[1]}, {"cook-write", f[1] + "-be"}}
 	}},
-	"forgery": {ref: refNone},
+	// announce, read-into and json-write-into rows carry the unit they read in
+	// the third column, the unit walkCases (claims.go) gives the case; a
+	// message read-into is derived with its connection's unit (surfaces1122.go)
+	"announce":        {ref: refUnit, col: 2, cases: ownName},
+	"read-into":       {ref: refUnit, col: 2, cases: ownName},
+	"json-write-into": {ref: refUnit, col: 2, cases: ownName},
+	"forgery":         {ref: refNone},
 }
 
 // derivedLine reads one line of a derived manifest: its fields and its kind,
