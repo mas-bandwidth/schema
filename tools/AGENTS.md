@@ -7,6 +7,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `agentsmap/` | AGENTS.md generator and drift guard | `go test ./tools/agentsmap` | `make map` |
 | `casegate/` | runs a leg driver and refuses an unanswered shared-corpus case | `go test ./tools/casegate` | `go test ./tools/casegate` |
 | `cellmerge/` | three-way PORTING.md row merge for diff3 hunks | `go test ./tools/cellmerge` | `go run ./tools/cellmerge docs/PORTING.md` |
+| `conformancerows/` | runs every conformance row file of a leg against its rows-owed.tsv ledger | `go test ./tools/conformancerows` | `make conformance-rows-LEG` |
 | `errdiscard/` | refuses an error dropped in cmd/ or tools/ with no reason | `go test ./internal/errdiscard` | `make errdiscard` |
 | `fixedtwin/` | fixed-form twin | `go test ./tools/fixedtwin` | `go test ./tools/fixedtwin` |
 | `gatecontrol/` | one shared gate on one leg with its oracle planted wrong: the gate's negative control | `go test ./tools/gatecontrol` | `go run ./tools/gatecontrol -leg go -plant tablegen -target verify-tablegen-go -want 'FAILED: tg[0-9]+:'` |
@@ -32,6 +33,7 @@ Do not edit. `make map` regenerates this file. Root: [AGENTS.md](../AGENTS.md). 
 | `releasediff/` | previous-release differential (#463) | `make release-differential-negative-control` | `make release-differential` |
 | `releasetag/` | promotion and release tags | `go test ./tools/releasetag` | `make release` |
 | `releasetargets/` | certify release-gates planner from make's database | `go test ./tools/releasetargets` | `go run ./tools/releasetargets -fixtures tools/releasetargets/testdata/f066` |
+| `retiredskips/` | holds a fixed-form gate's printed §5.6 skips to test/conformance/fixed-retired.json as an exact set | `go test ./tools/retiredskips` | `build/retiredskips -leg LEG -- cmd` |
 | `roadmap/` | ROADMAP.md table honesty | `go test ./tools/roadmap` | `go test ./tools/roadmap` |
 | `sabotage/` | negative-control sabotages | `go test ./tools/negativecontrols` | `go run ./tools/sabotage` |
 | `slowgatescan/` | SCHEMA_SLOW recipe scan | `make slow-gate-scan` | `make slow-gate-scan` |

@@ -95,7 +95,7 @@ _verify-$(1)-fuzz-json: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
 _verify-$(1)-fuzz-message: build/conformance-harness $$(VERIFY_FUZZ_DEPS_$(1))
 	@mkdir -p build/verify
 	DOTNET="$$(DOTNET)" JAVA="$$(JAVA)" BEAM_PATH="$$(BEAM_PATH)" $$(WFR_ENV_$(1)) \
-		./build/conformance-harness message-fuzz --only $(1) \
+		./build/conformance-harness message-fuzz --only $(1) $$(call MESSAGE_ABSENT,$(1)) \
 		--seed $$(VERIFY_FUZZ_SEED) --n $$(VERIFY_MESSAGE_FUZZ_N) \
 		--failed build/verify/message-fuzz-$(1)
 
@@ -132,7 +132,7 @@ $(foreach leg,$(VERIFY_COMPILED_LEGS),$(eval $(call verify_compiled_fuzz_rules,$
 # (the *_CHECKS variables beside those recipes), so a build that stops running
 # checks (a disabled assert, a skipped block) is red here and not only at
 # night. Dart's and Go's per-PR forms already did this.
-_verify-cpp-conformance: build/mustrun build/conformance-harness build/conformance-cpp build/schema_test_cook build/schema_test build/schema_test_ludicrous packet-defaults-cpp packet-void-cpp table-base64-cpp build/packet-text/cpp/driver build/packet-text/harness conformance-rows-cpp build/schema_test_tables
+_verify-cpp-conformance: build/mustrun build/conformance-harness build/conformance-cpp build/schema_test_cook build/schema_test build/schema_test_ludicrous packet-defaults-cpp packet-void-cpp table-base64-cpp build/packet-text/cpp/driver build/packet-text/harness conformance-rows-pr-cpp build/schema_test_tables
 	$(MUSTRUN) -name schema_test -count $(CPP_MAIN_CHECKS) -- ./build/schema_test
 	$(MUSTRUN) -name schema_test_tables -count $(CPP_TABLES_CHECKS) -- ./build/schema_test_tables
 	$(MUSTRUN) -name schema_test_ludicrous -count $(CPP_LUDICROUS_CHECKS) -- ./build/schema_test_ludicrous
@@ -152,7 +152,7 @@ _verify-cpp-bench: bin/schema generated/bench/cpp/.stamp generated/bench/tables/
 # ---- c ----
 
 .PHONY: _verify-c-conformance _verify-c-bench
-_verify-c-conformance: build/mustrun build/conformance-harness build/conformance-c build/schema_test_c build/schema_test_c_ludicrous packet-defaults-c packet-utf8-c packet-void-c table-base64-c conformance-rows-c
+_verify-c-conformance: build/mustrun build/conformance-harness build/conformance-c build/schema_test_c build/schema_test_c_ludicrous packet-defaults-c packet-utf8-c packet-void-c table-base64-c conformance-rows-pr-c
 	cd test/c && "$(CURDIR)/$(MUSTRUN)" -name schema_test_c -count $(C_MAIN_CHECKS) -- ../../build/schema_test_c
 	cd test/c-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name schema_test_c_ludicrous -count $(C_LUDICROUS_CHECKS) -- ../../build/schema_test_c_ludicrous
 	@rm -rf build/verify/conformance-c && mkdir -p build/verify/conformance-c $(VERIFY_RESULTS_DIR)
@@ -226,7 +226,7 @@ _verify-go-bench: bin/schema generated/bench/go/.stamp generated/bench/tables/go
 # ---- rust ----
 
 .PHONY: _verify-rust-conformance _verify-rust-bench
-_verify-rust-conformance: build/mustrun build/conformance-harness build/conformance-rust generated/rust/.stamp generated/rust-ludicrous/.stamp packet-utf8-rust conformance-rows-rust
+_verify-rust-conformance: build/mustrun build/conformance-harness build/conformance-rust generated/rust/.stamp generated/rust-ludicrous/.stamp packet-utf8-rust conformance-rows-pr-rust
 	@rm -rf build/verify/conformance-rust && mkdir -p build/verify/conformance-rust $(VERIFY_RESULTS_DIR)
 	@set -e; \
 		(cd test/rust && PATH="$(RUSTUP_BIN):$$PATH" "$(CURDIR)/$(MUSTRUN)" -name test-rust-debug -count $(RUST_DEBUG_CHECKS) -- cargo run --quiet && \
@@ -265,7 +265,7 @@ _verify-java-packet-main: build/mustrun toolchain-java build/java-test/.stamp
 _verify-java-packet-ludicrous: build/mustrun toolchain-java build/java-test-ludicrous/.stamp
 	cd test/java-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-java-ludicrous-ea -count $(JAVA_LUDICROUS_EA_CHECKS) -- $(JAVA) -ea -cp ../../build/java-test-ludicrous Main
 
-_verify-java-conformance: toolchain-java build/conformance-harness build-conformance-java _verify-java-packet-main-ea _verify-java-packet-main _verify-java-packet-ludicrous packet-defaults-java packet-utf8-java packet-finite-java conformance-rows-java
+_verify-java-conformance: toolchain-java build/conformance-harness build-conformance-java _verify-java-packet-main-ea _verify-java-packet-main _verify-java-packet-ludicrous packet-defaults-java packet-utf8-java packet-finite-java conformance-rows-pr-java
 	@rm -rf build/verify/conformance-java && mkdir -p build/verify/conformance-java $(VERIFY_RESULTS_DIR)
 	JAVA="$(JAVA)" JAVAC="$(JAVAC)" ./build/conformance-harness run --only java --claims --work build/verify/conformance-java --results $(VERIFY_RESULTS_DIR)/java.json
 
@@ -287,7 +287,7 @@ _verify-java-bench: toolchain-java bin/schema generated/bench/java/.stamp cards-
 # ---- dart ----
 
 .PHONY: _verify-dart-conformance _verify-dart-packets _verify-dart-bench
-_verify-dart-packets: build/mustrun toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp packet-defaults-dart packet-utf8-dart packet-finite-dart conformance-rows-dart
+_verify-dart-packets: build/mustrun toolchain-dart generated/dart/.stamp generated/dart-ludicrous/.stamp packet-defaults-dart packet-utf8-dart packet-finite-dart conformance-rows-pr-dart
 	cd test/dart && "$(CURDIR)/$(MUSTRUN)" -name test-dart-main -count $(DART_MAIN_CHECKS) -- $(DART) --enable-asserts main.dart
 	cd test/dart-ludicrous && "$(CURDIR)/$(MUSTRUN)" -name test-dart-ludicrous -count $(DART_LUDICROUS_CHECKS) -- $(DART) --enable-asserts main.dart
 

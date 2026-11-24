@@ -1405,13 +1405,13 @@ build/elixir-fixedform/.stamp: bin/schema $(ELIXIR_FIXED_SCHEMAS) make/elixir.mk
 	@touch $@
 
 .PHONY: tables-elixir-fixed-form
-tables-elixir-fixed-form: build/elixir-fixedform/.stamp build/fixedform-corpus/.stamp
+tables-elixir-fixed-form: build/retiredskips build/elixir-fixedform/.stamp build/fixedform-corpus/.stamp
 	# The fixed modules and FixedRuntime.ex are the emitters' raw output;
 	# this holds both, and the hand-written driver,
 	# to Elixir 1.20.4.
 	$(MIX) format --check-formatted build/elixir-fixedform/gen/*/*Fixed.ex \
 		build/elixir-fixedform/gen/*/FixedRuntime.ex test/elixir-fixedform/main.exs
-	$(ELIXIR) -pa build/elixir-fixedform/ebin test/elixir-fixedform/main.exs build/fixedform-corpus
+	./build/retiredskips -leg elixir -- sh -c '$(ELIXIR) -pa build/elixir-fixedform/ebin test/elixir-fixedform/main.exs build/fixedform-corpus'
 
 # THE PAIRED CORPUS (docs/SPEC-TABLES.md §3.4): the bench's own sixty-four
 # logical records on the PACKET wire and on this one. The C++ reference writes

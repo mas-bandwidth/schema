@@ -303,7 +303,7 @@ _verify-js-fuzz: verify-toolchain-js build/conformance-harness-vm build/tables-g
 .PHONY: _verify-js-fuzz-message
 _verify-js-fuzz-message: verify-toolchain-js build/conformance-harness-vm build/tables-generated-js/.stamp cards-js-generate
 	@mkdir -p build/verify
-	NODE="$(NODE)" ./build/conformance-harness-vm message-fuzz --only js \
+	NODE="$(NODE)" ./build/conformance-harness-vm message-fuzz --only js $(call MESSAGE_ABSENT,js) \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_MESSAGE_FUZZ_N) \
 		--failed build/verify/message-fuzz-js
 
@@ -335,7 +335,7 @@ _verify-python-fuzz: verify-toolchain-python build/conformance-harness-vm build/
 .PHONY: _verify-python-fuzz-message
 _verify-python-fuzz-message: verify-toolchain-python build/conformance-harness-vm build/conformance-python
 	@mkdir -p build/verify
-	PYTHON="$(PYTHON)" ./build/conformance-harness-vm message-fuzz --only python \
+	PYTHON="$(PYTHON)" ./build/conformance-harness-vm message-fuzz --only python $(call MESSAGE_ABSENT,python) \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_MESSAGE_FUZZ_N) \
 		--failed build/verify/message-fuzz-python
 
@@ -367,7 +367,7 @@ _verify-ruby-fuzz: verify-toolchain-ruby build/conformance-harness-vm build/conf
 .PHONY: _verify-ruby-fuzz-message
 _verify-ruby-fuzz-message: verify-toolchain-ruby build/conformance-harness-vm build/conformance-ruby
 	@mkdir -p build/verify
-	RUBY="$(RUBY)" ./build/conformance-harness-vm message-fuzz --only ruby \
+	RUBY="$(RUBY)" ./build/conformance-harness-vm message-fuzz --only ruby $(call MESSAGE_ABSENT,ruby) \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_MESSAGE_FUZZ_N) \
 		--failed build/verify/message-fuzz-ruby
 
@@ -399,7 +399,7 @@ _verify-lua-fuzz: verify-toolchain-lua build/conformance-harness-vm build/confor
 .PHONY: _verify-lua-fuzz-message
 _verify-lua-fuzz-message: verify-toolchain-lua build/conformance-harness-vm build/conformance-lua
 	@mkdir -p build/verify
-	LUA="$(LUA)" ./build/conformance-harness-vm message-fuzz --only lua \
+	LUA="$(LUA)" ./build/conformance-harness-vm message-fuzz --only lua $(call MESSAGE_ABSENT,lua) \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_MESSAGE_FUZZ_N) \
 		--failed build/verify/message-fuzz-lua
 
@@ -431,7 +431,7 @@ _verify-luau-fuzz: verify-toolchain-luau build/conformance-harness-vm build/conf
 .PHONY: _verify-luau-fuzz-message
 _verify-luau-fuzz-message: verify-toolchain-luau build/conformance-harness-vm build/conformance-luau build/luau-driver/units.luau build/luaufuzzhost/luaufuzzhost
 	@mkdir -p build/verify
-	$(WFR_ENV_luau) LUAU="$(LUAU)" ./build/conformance-harness-vm message-fuzz --only luau \
+	$(WFR_ENV_luau) LUAU="$(LUAU)" ./build/conformance-harness-vm message-fuzz --only luau $(call MESSAGE_ABSENT,luau) \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_MESSAGE_FUZZ_N) \
 		--failed build/verify/message-fuzz-luau
 
@@ -468,7 +468,7 @@ _verify-squirrel-fuzz: verify-toolchain-squirrel build/conformance-harness-vm bu
 .PHONY: _verify-squirrel-fuzz-message
 _verify-squirrel-fuzz-message: verify-toolchain-squirrel build/conformance-harness-vm build/conformance-squirrel
 	@mkdir -p build/verify
-	SQ="$(SQ)" ./build/conformance-harness-vm message-fuzz --only squirrel \
+	SQ="$(SQ)" ./build/conformance-harness-vm message-fuzz --only squirrel $(call MESSAGE_ABSENT,squirrel) \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_MESSAGE_FUZZ_N) \
 		--failed build/verify/message-fuzz-squirrel
 
@@ -501,7 +501,7 @@ _verify-moo-fuzz: verify-toolchain-moo build/conformance-harness-vm build/confor
 .PHONY: _verify-moo-fuzz-message
 _verify-moo-fuzz-message: verify-toolchain-moo build/conformance-harness-vm build/conformance-moo
 	@mkdir -p build/verify
-	$(WFR_ENV_moo) MOO="$(MOO)" ./build/conformance-harness-vm message-fuzz --only moo \
+	$(WFR_ENV_moo) MOO="$(MOO)" ./build/conformance-harness-vm message-fuzz --only moo $(call MESSAGE_ABSENT,moo) \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_MESSAGE_FUZZ_N) \
 		--failed build/verify/message-fuzz-moo
 
@@ -568,7 +568,7 @@ _verify-goose-fuzz-json: $(GOOSE_FUZZ_BASE)
 _verify-goose-fuzz-message: $(GOOSE_FUZZ_BASE) build/goose-wirefuzz-legs/.verify-stamp
 	@mkdir -p build/verify
 	GOOSE="$(GOOSE)" GOOSE_DISPATCH="./$(GOOSE_DISPATCH)" GOOSE_MESSAGEFUZZ_LEGS="$(GOOSE_LEGS_DIR)/legs" \
-		./build/conformance-harness-vm message-fuzz --only goose \
+		./build/conformance-harness-vm message-fuzz --only goose $(call MESSAGE_ABSENT,goose) \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_MESSAGE_FUZZ_N) \
 		--failed build/verify/message-fuzz-goose
 
@@ -600,7 +600,7 @@ _verify-lobster-fuzz: verify-toolchain-lobster build/conformance-harness-vm buil
 .PHONY: _verify-lobster-fuzz-message
 _verify-lobster-fuzz-message: verify-toolchain-lobster build/conformance-harness-vm build/conformance-lobster build/lobster-wirefuzzhost
 	@mkdir -p build/verify
-	LOBSTER="$(LOBSTER)" ./build/conformance-harness-vm message-fuzz --only lobster \
+	LOBSTER="$(LOBSTER)" ./build/conformance-harness-vm message-fuzz --only lobster $(call MESSAGE_ABSENT,lobster) \
 		--seed $(VERIFY_FUZZ_SEED) --n $(VERIFY_MESSAGE_FUZZ_N) \
 		--failed build/verify/message-fuzz-lobster
 

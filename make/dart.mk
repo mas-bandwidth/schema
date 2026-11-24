@@ -876,8 +876,16 @@ build/dart-fixed/.stamp: bin/schema bench/corpus/Bench.schema bench/corpus/Fixed
 	@$(DART) format build/dart-fixed >/dev/null
 	@touch $@
 
+# HB, the unit test/conformance/dart/rows/C12.dart imports
+# (build/hb-dart/HBFixed.dart): make/conformance-rows.mk builds it for the
+# Dart rows.
+build/hb-dart/.stamp: bin/schema test/tables/HB.schema make/dart.mk
+	@rm -rf build/hb-dart
+	./bin/schema generate --lang dart --out build/hb-dart test/tables/HB.schema
+	@touch $@
+
 .PHONY: tables-dart-fixed-form
-tables-dart-fixed-form: build/dart-fixed/.stamp build/fixedform-corpus/.stamp build/fixedform-bench-corpus/.stamp
+tables-dart-fixed-form: build/retiredskips build/dart-fixed/.stamp build/fixedform-corpus/.stamp build/fixedform-bench-corpus/.stamp
 	$(DART) analyze --no-fatal-warnings build/dart-fixed test/dart-tables/fixedform.dart
 	$(DART) format --set-exit-if-changed --output=none test/dart-tables/fixedform.dart
 	@for f in build/dart-fixed/*/*Fixed.dart; do \
@@ -885,10 +893,10 @@ tables-dart-fixed-form: build/dart-fixed/.stamp build/fixedform-corpus/.stamp bu
 			{ echo "dart format drift in $$f"; exit 1; }; \
 	done
 	@echo "tables Dart fixed form: every generated library is format-canonical"
-	$(DART) --enable-asserts test/dart-tables/fixedform.dart build/fixedform-corpus build/fixedform-bench-corpus
+	./build/retiredskips -leg dart -- $(DART) --enable-asserts test/dart-tables/fixedform.dart build/fixedform-corpus build/fixedform-bench-corpus
 	@mkdir -p build
 	$(DART) compile exe -o build/dart_fixedform test/dart-tables/fixedform.dart >/dev/null
-	./build/dart_fixedform build/fixedform-corpus build/fixedform-bench-corpus
+	./build/retiredskips -leg dart -- ./build/dart_fixedform build/fixedform-corpus build/fixedform-bench-corpus
 
 # ITS NEGATIVE CONTROL: move ONE byte of the write template and the leg must go
 # red against the reference's corpus. Without this the byte comparison could be
