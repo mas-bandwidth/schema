@@ -9,6 +9,7 @@ import (
 
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -113,6 +114,7 @@ func TestCSharpCardsStrictReport(t *testing.T) {
 	}
 	ctx, cancel := slowtest.ProbeContext(t)
 	defer cancel()
+	testinputs.Build(t, "tables/cards/cs")
 	cmd := testproc.CommandContext(t, ctx, "make", "cards-cs-test", "cards-cs-conformance")
 	cmd.Dir = root
 	if out, err := cmd.CombinedOutput(); err != nil {

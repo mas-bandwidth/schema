@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
 // EVERY COMPILER BINARY MAKE BUILDS REBUILDS ON WHAT IT EMBEDS. A make target
@@ -114,6 +116,7 @@ func TestEveryCompilerTargetRebuildsOnWhatItEmbeds(t *testing.T) {
 	if len(embeds) < 20 || !slices.Contains(embeds, "internal/codegen/squirrel/serialize/serialize.nut") {
 		t.Fatalf("go list named %d embedded files, without the squirrel serializer: this gate would pass over an empty set", len(embeds))
 	}
+	testinputs.Make(t)
 	mk := exec.Command("make", "-pq", "--no-print-directory", "build/schema-squirrel")
 	mk.Dir = root
 	db := makeQueryOutput(t, mk) // -q exits non-zero when out of date; the database is printed either way

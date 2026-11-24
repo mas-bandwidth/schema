@@ -24,6 +24,7 @@ var knownSurfaces = map[string]bool{
 	"forgery": true, "cook-forgery": true,
 	"write-refusal":         true,
 	"write-refusal-fixed":   true,
+	"write-refusal-shape":   true,
 	"write-refusal-message": true,
 	"write-refusal-json":    true,
 	"cook-reason":           true, "block-reason": true,

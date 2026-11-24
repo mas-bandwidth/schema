@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 )
 
 // TestReleasePublishesOnlyTheCurrentBuild is F-246's regression (the reviewer,
@@ -66,6 +68,7 @@ func TestReleasePublishesOnlyTheCurrentBuild(t *testing.T) {
 				}
 			}
 			published := filepath.Join(work, "published")
+			testinputs.Files(t, ".github/workflows/release.yml")
 			cmd := exec.Command("bash", "-c", script)
 			cmd.Dir = work
 			cmd.Env = append(os.Environ(), "VERSION=v0.0.0", "RUNNER_TEMP="+work,
