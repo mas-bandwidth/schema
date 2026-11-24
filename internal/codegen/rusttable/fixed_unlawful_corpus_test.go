@@ -79,9 +79,7 @@ var rustUnlawfulAnswers = map[string]rustUnlawfulAnswer{
 // cargo target dir (build/rust-versioning-target), whose lock would serialize
 // them anyway.
 func TestRustFixedUnlawfulCorpus(t *testing.T) {
-	fixedunlawful.Run(t, "rusttable", rustUnlawfulAnswers, func(t *testing.T, c fixedunlawful.Case, a rustUnlawfulAnswer) string {
-		return rustCorpusVerdict(t, c, a)
-	})
+	fixedunlawful.Run(t, "rusttable", rustUnlawfulAnswers, rustCorpusVerdict)
 }
 
 // rustCorpusVerdict builds and runs the Rust probe for one case and returns
