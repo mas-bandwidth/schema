@@ -221,9 +221,11 @@ void refused(String label,Uint8List wire,int unknown) {
    check(r.refused && r.reason=='count_over_extent_cap','$label named refusal retain=$retain');
    check(r.reason!='wire_damaged','$label fabricated damage does not survive the read retain=$retain');
    check(defaults(v),'$label partial destination retain=$retain');
-   check(r.unknown==3+unknown && r.widened==5 &&
-     r.retainLost==9 &&
-     r.retained==8+(retain?unknown:0),'$label event history retain=$retain');
+   // Every read zeroes the report it is handed, the retaining read too
+   // (docs/SPEC-TABLES.md 6.5, FL-02): no seeded counter survives the read.
+   check(r.unknown==unknown && r.widened==0 &&
+     r.retainLost==0 &&
+     r.retained==(retain?unknown:0),'$label event history retain=$retain');
    check(store.used==0 && store.idUsed==0 && store.records.isEmpty,'$label retained state');
    if(!priorDamage) {
     final good=retain?w.rootWireLoadRetain(VALID,store,r):w.rootWireLoad(VALID,r);

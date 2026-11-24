@@ -586,6 +586,11 @@ func (g *wireGen) emitRetainMembers(st *ir.Struct) {
 	bytesBlob, strBlob := ir.PointerReachableBlobs(st)
 
 	g.pf("%s %sWireLoadRetain(Uint8List data, TableRetain retain, TableWireReport report) {\n", n, d)
+	// EVERY READ ZEROES THE REPORT IT IS HANDED as its first act, the retain
+	// family too (docs/SPEC-TABLES.md §6.5, FL-02): unknown, widened and the
+	// retain counters never add up across calls. The save that follows
+	// accumulates into it (§6.6, THE REPORT ACCUMULATES ACROSS THE PAIR).
+	g.pf("\treport.unknown = 0;\n\treport.widened = 0;\n\treport.retained = 0;\n\treport.retainLost = 0;\n")
 	g.pf("\tretain.reset();\n")
 	g.pf("\tfinal v = %s();\n", n)
 	g.pf("\tif (report.integrityMismatch) { report.refusal = ''; report.refused = false; }\n\treport.integrityMismatch = false;\n")

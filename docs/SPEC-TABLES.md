@@ -11077,7 +11077,10 @@ and it is the same buffer across all three by construction.
   was dropped. A surface that let a caller retain, save, and never find out
   would be a promise it could not check, so the report is required here where
   it is optional everywhere else (USAGE.md).
-- **THE REPORT ACCUMULATES ACROSS THE PAIR.** The caller zeroes one report
+- **THE REPORT ACCUMULATES ACROSS THE PAIR.** `LoadRetain` is a read, so it
+  zeroes the report it is handed in full as its first act (§6.5), every
+  counter included, and never adds to a count an earlier call left there;
+  `SaveRetain` adds to it. The caller zeroes one report
   before `LoadRetain` and reads it after `SaveRetain`, and `retain_lost` at the
   end is the sum of what the load could not keep and what the save could not
   place. That is the number the safety check wants, and it is why the check is
