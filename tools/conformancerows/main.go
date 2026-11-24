@@ -64,17 +64,20 @@ type recipe struct {
 	prepare func(c *ctx, rows []string) error
 	// row builds and runs one row; the error is the row's failure.
 	row func(c *ctx, row string) error
+	// canFail, on a scripted leg, reports whether a row's source has a way
+	// to fail; a row that passes without one is red (failpath.go).
+	canFail func(src string) bool
 }
 
 var recipes = map[string]recipe{
 	"c":      {ext: ".c", env: []string{"CC", "SERIALIZE_C"}, row: rowC},
 	"cpp":    {ext: ".cpp", env: []string{"CXX", "SERIALIZE"}, row: rowCpp},
-	"cs":     {ext: "", env: []string{"DOTNET"}, row: rowCs},
-	"dart":   {ext: ".dart", env: []string{"DART"}, row: rowDart},
-	"elixir": {ext: ".exs", env: []string{"ELIXIR"}, row: rowElixir},
-	"java":   {ext: ".java", env: []string{"JAVA"}, row: rowJava},
-	"js":     {ext: ".mjs", env: []string{"NODE"}, row: rowJs},
-	"rust":   {ext: ".rs", env: []string{"CARGO"}, prepare: prepareRust, row: rowRust},
+	"cs":     {ext: "", env: []string{"DOTNET", "SERIALIZE_CS"}, row: rowCs},
+	"dart":   {ext: ".dart", env: []string{"DART"}, row: rowDart, canFail: canFailDart},
+	"elixir": {ext: ".exs", env: []string{"ELIXIR"}, row: rowElixir, canFail: canFailElixir},
+	"java":   {ext: ".java", env: []string{"JAVA", "JAVAC"}, prepare: prepareJava, row: rowJava, canFail: canFailJava},
+	"js":     {ext: ".mjs", env: []string{"NODE"}, row: rowJs, canFail: canFailJs},
+	"rust":   {ext: ".rs", env: []string{"CARGO", "SCHEMA"}, prepare: prepareRust, row: rowRust},
 }
 
 // ctx is one run's shared state.
@@ -86,9 +89,29 @@ type ctx struct {
 	mu      sync.Mutex
 	pre     map[string]error  // failures recorded by prepare
 	exe     map[string]string // Rust: row -> built test executable
+	javaCP  map[string]string // Java: row -> the classpath of the units it names
 }
 
 func (c *ctx) rowPath(row, ext string) string { return filepath.Join(c.rowsDir, row+ext) }
+
+// rowSource is the row's source text: its file, or for a C# row every file
+// of its directory. An unreadable row reads as empty.
+func (c *ctx) rowSource(rc recipe, row string) string {
+	if rc.ext != "" {
+		data, _ := os.ReadFile(c.rowPath(row, rc.ext))
+		return string(data)
+	}
+	var b strings.Builder
+	ents, _ := os.ReadDir(filepath.Join(c.rowsDir, row))
+	for _, e := range ents {
+		if !e.IsDir() {
+			data, _ := os.ReadFile(filepath.Join(c.rowsDir, row, e.Name()))
+			b.Write(data)
+			b.WriteByte('\n')
+		}
+	}
+	return b.String()
+}
 
 func run(root, leg, shard string, jobs int, measured string) error {
 	rc, ok := recipes[leg]
@@ -136,6 +159,16 @@ func run(root, leg, shard string, jobs int, measured string) error {
 	if err := os.MkdirAll(c.work, 0o755); err != nil {
 		return err
 	}
+	// A ledger line must say what failed (cause.go): a banner or a line of
+	// the row's own source is refused, in every shard.
+	var refused []string
+	for _, row := range all {
+		if why, ok := ledger[row]; ok {
+			if err := checkCause(row, why, c.rowSource(rc, row)); err != nil {
+				refused = append(refused, err.Error())
+			}
+		}
+	}
 	if rc.prepare != nil {
 		if err := rc.prepare(c, ran); err != nil {
 			return err
@@ -143,6 +176,7 @@ func run(root, leg, shard string, jobs int, measured string) error {
 	}
 	failed := map[string]bool{}
 	reasons := map[string]string{}
+	causes := map[string]string{}
 	var mu sync.Mutex
 	sem := make(chan struct{}, jobs)
 	var wg sync.WaitGroup
@@ -152,15 +186,33 @@ func run(root, leg, shard string, jobs int, measured string) error {
 		go func(row string) {
 			defer wg.Done()
 			defer func() { <-sem }()
+			src := c.rowSource(rc, row)
 			rerr := c.pre[row]
-			if rerr == nil {
+			built := rerr == nil
+			if built {
 				rerr = rc.row(c, row)
+			}
+			why := ""
+			switch {
+			case rerr != nil:
+				log := rerr.Error()
+				if data, lerr := os.ReadFile(filepath.Join(c.work, row+".log")); built && lerr == nil && len(data) > 0 {
+					log = string(data)
+				}
+				why = cause(c.root, src, log)
+			case rc.canFail != nil && !rc.canFail(src):
+				// A scripted row that exits 0 and has no way to exit
+				// otherwise checked nothing: it is the scripted legs'
+				// twin of a Rust test binary that ran no test.
+				why = canFailNote
+				rerr = fmt.Errorf("%s", why)
 			}
 			mu.Lock()
 			defer mu.Unlock()
 			if rerr != nil {
 				failed[row] = true
 				reasons[row] = rerr.Error()
+				causes[row] = why
 			}
 		}(row)
 	}
@@ -174,9 +226,9 @@ func run(root, leg, shard string, jobs int, measured string) error {
 			fmt.Printf("PASS %s/%s\n", leg, row)
 		case failed[row] && isOwed:
 			owed++
-			fmt.Printf("OWED %s/%s — %s (still red: %s)\n", leg, row, ledger[row], cause(c.root, reasons[row]))
+			fmt.Printf("OWED %s/%s — %s (still red: %s)\n", leg, row, ledger[row], causes[row])
 		case failed[row]:
-			fmt.Printf("FAIL %s/%s\n%s\n", leg, row, indent(reasons[row]))
+			fmt.Printf("FAIL %s/%s — %s\n%s\n", leg, row, causes[row], indent(reasons[row]))
 		default:
 			fmt.Printf("PASSES-BUT-OWED %s/%s — %s\n", leg, row, ledger[row])
 		}
@@ -187,14 +239,23 @@ func run(root, leg, shard string, jobs int, measured string) error {
 		var b strings.Builder
 		for _, row := range ran {
 			if failed[row] {
-				fmt.Fprintf(&b, "%s\towed: %s\n", row, cause(c.root, reasons[row]))
+				fmt.Fprintf(&b, "%s\towed: %s\n", row, causes[row])
 			}
 		}
 		if err := os.WriteFile(measured, []byte(b.String()), 0o644); err != nil {
 			return err
 		}
 	}
-	return verdict(all, ran, failed, ledger, ledgerPath)
+	verr := verdict(all, ran, failed, ledger, ledgerPath)
+	if len(refused) > 0 {
+		sort.Strings(refused)
+		msg := fmt.Sprintf("%s: %d ledger lines name no failure:\n  %s", ledgerPath, len(refused), strings.Join(refused, "\n  "))
+		if verr != nil {
+			msg += "\n" + verr.Error()
+		}
+		return errors.New(msg)
+	}
+	return verr
 }
 
 func parseShard(s string) (int, int, error) {
@@ -225,49 +286,6 @@ func listRows(dir, ext string) ([]string, error) {
 	}
 	sort.Strings(rows)
 	return rows, nil
-}
-
-// cause is a failure's one-line reason, as a ledger line states it: whether
-// the row built, and the first line of its output that names an error or a
-// failed assertion, with the checkout's path taken off.
-func cause(root, reason string) string {
-	kind := "fails"
-	if strings.HasPrefix(reason, "does not build:") {
-		kind = "does not build"
-	}
-	lines := strings.Split(reason, "\n")
-	pick := ""
-	// A build failure names its compiler's first error line; a run names its
-	// first failed assertion or crash before any other line saying "error".
-	order := [][]string{{"fail", "panicked", "exception", "red:"}, {"error"}}
-	if kind == "does not build" {
-		order = [][]string{{"error"}, {"fail"}}
-	}
-	for _, words := range order {
-		for _, l := range lines[1:] {
-			low := strings.ToLower(l)
-			for _, w := range words {
-				if pick == "" && strings.Contains(low, w) && !strings.HasPrefix(strings.TrimSpace(low), "= note") {
-					pick = l
-				}
-			}
-		}
-		if pick != "" {
-			break
-		}
-	}
-	if pick == "" && len(lines) > 1 {
-		pick = lines[len(lines)-1]
-	}
-	if pick == "" {
-		pick = lines[0]
-	}
-	pick = strings.ReplaceAll(pick, root+"/", "")
-	pick = strings.Join(strings.Fields(pick), " ")
-	if len(pick) > 160 {
-		pick = pick[:160] + "..."
-	}
-	return kind + ": " + pick
 }
 
 func firstLine(s string) string {

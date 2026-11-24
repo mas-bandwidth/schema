@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -274,13 +275,114 @@ func rowDart(c *ctx, row string) error {
 	return c.runShell(row, dart+" --enable-asserts run", c.rowPath(row, ".dart"))
 }
 
+// ---- Java: the packages a row names are the generated units it runs on ----
+
+var (
+	javaPackageRe = regexp.MustCompile(`(?m)^\s*package\s+([a-z][a-z0-9_]*)\s*;`)
+	javaRefRe     = regexp.MustCompile(`\b([a-z][a-z0-9_]*)\.(?:[A-Z*])`)
+)
+
+// prepareJava reads the generated Java tree's units (each directory under
+// build/tables-generated-java and the one package its files declare), finds
+// the packages each row of the shard names, and compiles each named unit
+// once, on its own, into build/conformance-rows/java/units/<unit>. A row's
+// classpath is the units it names and nothing else, so a row runs on any
+// generated unit without a hand list of what the leg's driver compiles. A
+// unit that does not compile is the build failure of every row naming it.
+func prepareJava(c *ctx, rows []string) error {
+	javac, err := env("JAVAC")
+	if err != nil {
+		return err
+	}
+	genDir := filepath.Join(c.root, "build", "tables-generated-java")
+	ents, err := os.ReadDir(genDir)
+	if err != nil {
+		return fmt.Errorf("the generated tree build/tables-generated-java is missing: %w", err)
+	}
+	unitOf := map[string]string{} // package -> unit directory (the first by name)
+	for _, e := range ents {
+		if !e.IsDir() {
+			continue
+		}
+		files, _ := filepath.Glob(filepath.Join(genDir, e.Name(), "*.java"))
+		if len(files) == 0 {
+			continue
+		}
+		text, rerr := os.ReadFile(files[0])
+		if rerr != nil {
+			return rerr
+		}
+		if m := javaPackageRe.FindSubmatch(text); m != nil {
+			if _, held := unitOf[string(m[1])]; !held {
+				unitOf[string(m[1])] = e.Name()
+			}
+		}
+	}
+	c.javaCP = map[string]string{}
+	need := map[string][]string{} // unit -> rows naming it
+	for _, row := range rows {
+		text, rerr := os.ReadFile(c.rowPath(row, ".java"))
+		if rerr != nil {
+			return rerr
+		}
+		var cp []string
+		seen := map[string]bool{}
+		for _, m := range javaRefRe.FindAllStringSubmatch(string(text), -1) {
+			if u, ok := unitOf[m[1]]; ok && !seen[u] {
+				seen[u] = true
+				cp = append(cp, filepath.Join(c.work, "units", u))
+				need[u] = append(need[u], row)
+			}
+		}
+		sort.Strings(cp)
+		c.javaCP[row] = strings.Join(cp, string(os.PathListSeparator))
+	}
+	var units []string
+	for u := range need {
+		units = append(units, u)
+	}
+	sort.Strings(units)
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, runtime.NumCPU())
+	var mu sync.Mutex
+	for _, u := range units {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(u string) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			out := filepath.Join(c.work, "units", u)
+			srcs, _ := filepath.Glob(filepath.Join(genDir, u, "*.java"))
+			line := "rm -rf " + strconv.Quote(out) + " && mkdir -p " + strconv.Quote(out) + " && " + javac + " --release 17 -nowarn -d " + strconv.Quote(out)
+			for _, s := range srcs {
+				line += " " + strconv.Quote(s)
+			}
+			cmd := exec.Command("sh", "-c", line)
+			cmd.Dir = c.root
+			if b, cerr := cmd.CombinedOutput(); cerr != nil {
+				mu.Lock()
+				for _, row := range need[u] {
+					c.pre[row] = fmt.Errorf("does not build: the generated unit build/tables-generated-java/%s it names: %v\n%s", u, cerr, tail(string(b), 30))
+				}
+				mu.Unlock()
+			}
+		}(u)
+	}
+	wg.Wait()
+	return nil
+}
+
 func rowJava(c *ctx, row string) error {
 	c.resetLog(row)
 	java, err := env("JAVA")
 	if err != nil {
 		return err
 	}
-	return c.runShell(row, java+" -ea -cp build/conformance-java", c.rowPath(row, ".java"))
+	cp := c.javaCP[row]
+	if cp == "" {
+		cp = "."
+	}
+	return c.runShell(row, java+" -ea -cp "+strconv.Quote(cp), c.rowPath(row, ".java"))
 }
 
 func rowJs(c *ctx, row string) error {
@@ -307,8 +409,15 @@ func rowCs(c *ctx, row string) error {
 	if err != nil {
 		return err
 	}
+	runtime, err := env("SERIALIZE_CS")
+	if err != nil {
+		return err
+	}
+	// The rows directory's Directory.Build.targets compiles the serialize.cs
+	// runtime beside a row's generated units when it is given, as every
+	// other C# build of generated tables does (make/cs.mk SERIALIZE_CS).
 	project := filepath.Join(c.rowsDir, row)
-	if err := c.runShell(row, dotnet+" build --nologo -v q", project); err != nil {
+	if err := c.runShell(row, dotnet+" build --nologo -v q -p:SerializeCsSrc="+strconv.Quote(filepath.Join(runtime, "src")), project); err != nil {
 		return fmt.Errorf("does not build: %w", err)
 	}
 	return c.runShell(row, dotnet+" run --no-build --project", project)
@@ -365,6 +474,9 @@ func prepareRust(c *ctx, rows []string) error {
 	}
 	for name := range local {
 		delete(deps, name)
+	}
+	if err := c.rustPathUnits(rows, genDir, crates); err != nil {
+		return err
 	}
 	probe := filepath.Join(c.work, "probe")
 	if err := os.MkdirAll(filepath.Join(probe, "src"), 0o755); err != nil {
@@ -440,6 +552,68 @@ func prepareRust(c *ctx, rows []string) error {
 			why = fmt.Sprintf("cargo: %v\n%s", buildErr, tail(stderr.String(), 30))
 		}
 		c.pre[row] = fmt.Errorf("does not build:\n%s", why)
+	}
+	return nil
+}
+
+var rustPathRe = regexp.MustCompile(`(?m)^\s*#\[path\s*=\s*"([^"]+)"\]`)
+
+// rustPathUnits generates what a row's #[path] names under
+// build/tables-generated-rust when the tree's crates do not hold it. A row
+// may include one schema's generated files flat, as a local module
+// (#[path = ".../build/tables-generated-rust/v1/fixed_runtime.rs"], or
+// .../vnew_cfloat_res_refine/build_version.rs), from a directory that is
+// not one of the tree's crates (those keep their files under src/). The
+// directory's schema is test/tables/<D>.schema with the name's first word
+// upper-cased (v1 is V1.schema, vnew_cfloat_res_refine is
+// VNEW_cfloat_res_refine.schema), generated flat into that directory once
+// per run. A path with no such schema stays missing, and the row's build
+// says so by name.
+func (c *ctx) rustPathUnits(rows []string, genDir string, crates map[string]bool) error {
+	schema, err := env("SCHEMA")
+	if err != nil {
+		return err
+	}
+	done := map[string]bool{}
+	for _, row := range rows {
+		src := c.rowPath(row, ".rs")
+		text, rerr := os.ReadFile(src)
+		if rerr != nil {
+			return rerr
+		}
+		for _, m := range rustPathRe.FindAllStringSubmatch(string(text), -1) {
+			p := filepath.Clean(filepath.Join(filepath.Dir(src), m[1]))
+			rel, rerr := filepath.Rel(genDir, p)
+			if rerr != nil || strings.HasPrefix(rel, "..") || !strings.Contains(rel, string(filepath.Separator)) {
+				continue
+			}
+			dir := strings.SplitN(rel, string(filepath.Separator), 2)[0]
+			if crates[dir] || done[dir] {
+				continue
+			}
+			if _, serr := os.Stat(p); serr == nil {
+				continue
+			}
+			done[dir] = true
+			word, rest, _ := strings.Cut(dir, "_")
+			name := strings.ToUpper(word)
+			if rest != "" {
+				name += "_" + rest
+			}
+			schemaPath := filepath.Join(c.root, "test", "tables", name+".schema")
+			if _, serr := os.Stat(schemaPath); serr != nil {
+				continue
+			}
+			out := filepath.Join(genDir, dir)
+			if err := os.RemoveAll(out); err != nil {
+				return err
+			}
+			cmd := exec.Command(schema, "generate", "--lang", "rust", "--out", out, schemaPath)
+			cmd.Dir = c.root
+			if b, gerr := cmd.CombinedOutput(); gerr != nil {
+				return fmt.Errorf("generating %s for the rows' #[path] includes: %v\n%s", out, gerr, tail(string(b), 20))
+			}
+		}
 	}
 	return nil
 }

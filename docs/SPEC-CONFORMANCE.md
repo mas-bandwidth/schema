@@ -154,7 +154,14 @@ OWES) and is repeated here as the rule for the suite:
   directory. A row the leg cannot answer yet is named, with its cause, in
   `test/conformance/<leg>/rows-owed.tsv`; an owed row still runs, a failing
   row the ledger does not name is red, and a ledgered row that passes is red
-  until its line is removed.
+  until its line is removed. A ledger line's cause is the failure itself,
+  read off the row's log (the compiler's error, the exception and its
+  message, the failed check): a banner around it ("error: compilation
+  failed", "Unhandled exception:", "N passed, M failed") or a line of the
+  row's own source is refused. A scripted row (Dart, Java, JavaScript,
+  Elixir) with no way to fail (no non-zero exit, throw, raise or assert)
+  checked nothing and is red when it exits 0, the twin of a Rust row whose
+  test binary ran no test.
 - **Every §5.6 fixed-form retirement is ledgered.** The fixed-form gates of the
   native legs print a `SKIP`/`RETIRED` line for each test retired by
   FIXED-FORM-ALGORITHM.md §5.6; `tools/retiredskips` holds the printed set to
