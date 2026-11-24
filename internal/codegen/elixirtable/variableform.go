@@ -2733,7 +2733,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   # A positional fixed array updates its received prefix; an enum-keyed
   # occurrence updates only the slots it names. Other fields replace normally.
   defp put_wire_field(value, %{t: :list, fixed_array: n} = f, incoming) do
-    prior = Map.get(value, f.name) || List.duplicate(json_element_default(f), n)
+    prior = Map.get(value, f.name) || List.duplicate(element_default(f), n)
     Map.put(value, f.name, incoming ++ Enum.drop(prior, length(incoming)))
   end
 
@@ -3223,7 +3223,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     v =
       cond do
         is_integer(n) and is_list(v) and length(v) < n ->
-          v ++ List.duplicate(json_element_default(a), n - length(v))
+          v ++ List.duplicate(element_default(a), n - length(v))
 
         Map.get(a, :t) == :keyed and is_map(v) ->
           Map.merge(keyed_defaults(a), v)
@@ -4006,13 +4006,22 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp field_default(%{t: :table, elem: name}), do: defaults(Map.fetch!(@tables, name))
 
   defp field_default(%{t: :list, fixed_array: n} = f),
-    do: List.duplicate(json_element_default(f), n)
+    do: List.duplicate(element_default(f), n)
 
   defp field_default(%{t: :list, min_count: m} = f) when m > 0,
-    do: List.duplicate(json_element_default(f), m)
+    do: List.duplicate(element_default(f), m)
 
   defp field_default(%{t: :keyed} = f), do: keyed_defaults(f)
   defp field_default(f), do: Map.get(f, :default)
+
+  # Missing slots keep their element default in both binary and text forms.
+  defp element_default(%{elem_kind: 13, elem: name}), do: defaults(Map.fetch!(@tables, name))
+  defp element_default(%{elem_default: value}), do: value
+  defp element_default(%{elem_kind: kind}) when kind in [15, 17, 30], do: nil
+  defp element_default(%{elem_kind: 12}), do: ""
+  defp element_default(%{elem_kind: 1}), do: false
+  defp element_default(%{elem_kind: kind}) when kind in [10, 11], do: 0.0
+  defp element_default(_f), do: 0
 
   defp keyed_defaults(f) do
     def_val =
@@ -5829,7 +5838,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
             case json_read_list_elem(f, e, report) do
               {:skip, report} ->
                 json_skip_value(e)
-                {[json_element_default(f) | acc], placed + 1, report}
+                {[element_default(f) | acc], placed + 1, report}
 
               {v, report} ->
                 {[v | acc], placed + 1, report}
@@ -5845,7 +5854,7 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
     list =
       case Map.get(f, :fixed_array) do
         n when is_integer(n) and length(list) < n ->
-          list ++ List.duplicate(json_element_default(f), n - length(list))
+          list ++ List.duplicate(element_default(f), n - length(list))
 
         _ ->
           list
@@ -5916,15 +5925,6 @@ const variableRuntimeSource = `  # ---- the write side (docs/SPEC-TABLES.md §3)
   defp json_present_default(%{t: :bool}), do: false
   defp json_present_default(%{t: :float}), do: 0.0
   defp json_present_default(_f), do: 0
-
-  # Array elements are positional: a rejected element keeps its default slot.
-  defp json_element_default(%{elem_kind: 13, elem: name}), do: defaults(Map.fetch!(@tables, name))
-  defp json_element_default(%{elem_default: value}), do: value
-  defp json_element_default(%{elem_kind: kind}) when kind in [15, 17, 30], do: nil
-  defp json_element_default(%{elem_kind: 12}), do: ""
-  defp json_element_default(%{elem_kind: 1}), do: false
-  defp json_element_default(%{elem_kind: kind}) when kind in [10, 11], do: 0.0
-  defp json_element_default(_f), do: 0
 
   # json_text_zero is the one rule for a zero in text (docs/SPEC-TABLES.md
   # §16.2, "A ZERO IN TEXT TAKES ONE RULE IN EVERY FORM: NO READ STORES IT"):
