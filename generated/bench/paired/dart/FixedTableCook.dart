@@ -1452,6 +1452,7 @@ final class FixedTableCookWire {
     if (out != null) {
       out.setInt32(at + 36, value.health, order);
     }
+    assert(value.weapon >= 0 && value.weapon <= 15);
     if (out != null) {
       out.setUint8(at + 40, value.weapon);
     }

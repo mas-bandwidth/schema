@@ -245,9 +245,34 @@ func (g *cookGen) emitCookFixedScalar(f *ir.Field, expr, at string, width int64,
 		// is touched.
 		g.cookRefuseUnless(ind, expr+".isFinite", "false")
 	}
+	g.cookEnumAssert(f, expr, ind)
 	g.pf("%sif (out != null) {\n", ind)
 	g.emitCookScalarStore(f, expr, at, width, ind+"  ")
 	g.pf("%s}\n", ind)
+}
+
+// cookEnumAssert writes an ENUM slot's value check (docs/SPEC.md §5.1 row 5;
+// docs/SPEC-TABLES.md §2.15, §7.6): an ordinal past the variant set, or a
+// variant declared deprecated, is refused in measure and write alike, before
+// its slot is touched. Dart is an assert leg (the ruling `write-refusal`,
+// docs/rulings.json): the check is an `assert`, live under --enable-asserts,
+// and a release build carries no write-side check. Not an enum, it writes
+// nothing.
+func (g *cookGen) cookEnumAssert(f *ir.Field, expr, ind string) {
+	if f.Type.Kind != ir.TNamed || f.Type.Pointer {
+		return
+	}
+	e, ok := f.Type.Ref.(*ir.Enum)
+	if !ok {
+		return
+	}
+	cond := fmt.Sprintf("%s >= 0 && %s <= %d", expr, expr, len(e.Variants))
+	for i := range e.Variants {
+		if i < len(e.VariantDeprecated) && e.VariantDeprecated[i] {
+			cond += fmt.Sprintf(" && %s != %d", expr, i+1)
+		}
+	}
+	g.cookAssert(ind, cond)
 }
 
 // cookRefuseUnless writes `if (!<cond>) return <ret>;` the way dart format
@@ -961,6 +986,7 @@ func (g *cookGen) emitCookExtentHolder(f *ir.Field, val, addr, ind string, write
 			// measure and write refuse a NaN or an infinity alike
 			g.cookRefuseUnless(in+"  ", e+".isFinite", "-1")
 		}
+		g.cookEnumAssert(&elem, e, in+"  ")
 		g.pf("%s  if (out != null) {\n", in)
 		g.emitCookScalarStore(&elem, e, at, size, in+"    ")
 		g.pf("%s  }\n", in)

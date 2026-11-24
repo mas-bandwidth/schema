@@ -12877,8 +12877,18 @@ contract (SPEC §5.1) runs before a byte is placed. A loaded value whose live
 count lies below its array's `Min` or above its bound, or whose length is
 negative, is REFUSED (`Cook` writes nothing, `CookMeasure` answers `-1`); it is
 never clamped to the bound and written. A NaN or an infinity in a plain float
-is refused (row 7), as the save refuses it. A leg whose measure and write
-share one body refuses in both.
+is refused (row 7), as the save refuses it. An enum slot holding an ordinal
+past its variant set (row 5) or a deprecated variant (§2.15) is refused
+(`cref_enum_*`, `cref_var_enum_*`) by the write rule of SPEC §5.1. A leg that
+refuses in every build (Go, JavaScript, Elixir, Lua, Luau, Squirrel, MOO,
+Goose) refuses it in every build. An assert leg
+refuses it by its debug assert only, and its release build carries no
+write-side check: C and C++ by `schema_assert`, Rust by `debug_assert!` (a
+native Rust enum cannot hold an ordinal past its set at all), Java by `assert`
+under `-ea`, C# and Unity by `Debug.Assert`, and Dart by `assert` under
+`--enable-asserts`. An assert leg's refusal is not promised before the first
+byte: the C and C++ fixed cooks clear the output before the slot's assert can
+fire. A leg whose measure and write share one body refuses in both.
 
 **A BUILD CAN WRITE A COOK, AND THE BYTES ARE THE TOOL'S.** `schema cook` is
 the reference and stays it: a generated writer is held to the tool's output

@@ -5342,7 +5342,7 @@ export const TableCookWrite = (() => {
         {k:"int",n:"vel_y",at:28,w:4,sg:1},
         {k:"int",n:"vel_z",at:32,w:4,sg:1},
         {k:"int",n:"health",at:36,w:4,sg:1},
-        {k:"venum",n:"weapon",at:40,w:1,max:15,vs:["Fists","Pistol","Shotgun","Rifle","Sniper","Smg","Rocket","Grenade","Plasma","Railgun","Flamer","Mine","Turret","Drone","Repair"]},
+        {k:"venum",n:"weapon",at:40,w:1,max:15,vs:["Fists","Pistol","Shotgun","Rifle","Sniper","Smg","Rocket","Grenade","Plasma","Railgun","Flamer","Mine","Turret","Drone","Repair"],dp:[]},
         {k:"int",n:"damage",at:48,w:8,sg:0},
         {k:"bool",n:"moving",at:56},
         {k:"bool",n:"firing",at:57},
@@ -5528,7 +5528,7 @@ export const TableCookWrite = (() => {
       case "int":
         return putWidth(view, at, fd.w, value, fd.sg === 1, le);
       case "enum":
-        if (!globalThis.Number.isInteger(value) || value < 0 || value > fd.max) { return false; }
+        if (!globalThis.Number.isInteger(value) || value < 0 || value > fd.max || fd.dp.includes(value)) { return false; }
         return putWidth(view, at, fd.w, value, false, le);
       case "venum": {
         let ord = 0;
@@ -5537,7 +5537,7 @@ export const TableCookWrite = (() => {
           if (i < 0) { return false; }
           ord = i + 1;
         }
-        if (ord > fd.max) { return false; }
+        if (ord > fd.max || fd.dp.includes(ord)) { return false; }
         return putWidth(view, at, fd.w, ord, false, le);
       }
       case "rec":
