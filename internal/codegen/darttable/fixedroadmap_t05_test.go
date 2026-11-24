@@ -237,7 +237,7 @@ fixed table T
 	t05Has(t, src, "report.reset();", "R19 the report starts at zero")
 	// AN UNNAMED WRITER FIELD IS UNLAWFUL, REFUSED AND NEVER COUNTED (§5.4,
 	// §5.9 #30): the compile marks the plan and the lane refuses layoutDamaged.
-	t05Has(t, t05Runtime(), "if (!named) {\n        plan.unlawful = true;\n      }",
+	t05Has(t, t05Runtime(), "if (!childrenNamed(plan, ti, mi)) {\n      plan.unlawful = true;\n      return;\n    }",
 		"R19 an UNNAMED writer field makes the entry unlawful")
 	t05No(t, t05Runtime(), "report.unknown++", "R19 no writer field is counted under unknown")
 	// THE CENSUS LANDS ONCE, AFTER THE LOOP, and comes from the plan's own

@@ -216,10 +216,11 @@ func TestLuaFixedEvolutionNumericWidening(t *testing.T) {
 
 // TestLuaFixedEvolutionReports is reports (E9, R16, R18): the fixed runtime
 // carries no repeated-key counter; a full-width range that cannot be broken
-// reads 256 records with nothing refused; and the unknown census over an older
-// writer's dropped nested field is counted once per declared field, the same
-// on a second load (the counters are each read's own). The negative control
-// drops the census.
+// reads 256 records with nothing refused; and an older writer's dropped nested
+// field is no census: the handed-in entry is UNLAWFUL (§5.1 refuses a removal),
+// so three records refuse layout_malformed before any lands, with nothing
+// counted, the same on a second load (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.4,
+// §5.9 #30). The negative control drops the refusal.
 func TestLuaFixedEvolutionReports(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "lua (it runs the emitted fixed-form runtime)")
@@ -244,19 +245,21 @@ func TestLuaFixedEvolutionReports(t *testing.T) {
 		return strings.Join(strings.Fields(g.run(t, fmt.Sprintf(`local T = require(%q)
 local I = require("inputs")
 for _ = 1, 2 do
-  local v, _, _, w, u = T.FixedLoad("Census", I.file)
-  io.write(#v, " ", w, " ", u, " ", v[3].items[1].a, " ")
+  local rep = { unknown = 9, widened = 9 }
+  local v = T.FixedLoad("Census", I.file, nil, rep)
+  io.write(v == nil and "nil" or #v, " ", tostring(rep.reason), " ", rep.unknown, " ", rep.widened, " ")
 end
 `, g.mod), map[string][]byte{"file": old})), " ")
 	}
+	const refused = "nil layout_malformed 0 0 nil layout_malformed 0 0"
 	lineage := luaEvoLineage(t, older, "Census")
-	if got := census(luaEvoGen(t, newer, lineage)); got != "3 0 1 30 3 0 1 30" {
-		t.Errorf("R16: the census over three records, loaded twice: %q", got)
+	if got := census(luaEvoGen(t, newer, lineage)); got != refused {
+		t.Errorf("R16: the unlawful entry over three records, loaded twice: %q, want %q", got, refused)
 	}
 	gc := luaEvoGen(t, newer, lineage)
-	gc.plant(t, "      entry.unknown = census_value(", "      entry.unknown = 0 * census_value(")
-	if got := census(gc); got == "3 0 1 30 3 0 1 30" {
-		t.Errorf("the negative control: the dropped census still counts")
+	gc.plant(t, "    if entry.unlawful then error(entry.unlawful, 0) end\n", "")
+	if got := census(gc); got == refused {
+		t.Errorf("the negative control: the dropped refusal still refuses")
 	}
 }
 

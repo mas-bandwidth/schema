@@ -1,0 +1,21 @@
+// VNEW_bytes_narrowed.schema — NEW: blob bytes(4), the capacity narrowed
+//
+// One of the fixed form's UNLAWFUL lineage rows (docs/FIXED-FORM-VERSIONING-TESTS.md,
+// internal/fixedunlawful). The OLD and the NEW file of this pair differ by
+// EXACTLY bytes(8) -> bytes(4). `lead` and `trail` bracket the row's field.
+//
+// THIS PAIR IS DELIBERATELY UNLAWFUL: SPEC §5.1 refuses a narrowed capacity ("bound narrowed"). The file's blob is
+// two bytes, which fit this reader, so a leg that checks only the used length
+// LOADS it.
+// So this NEW side is generated and never dumped. The NEW reader must refuse old_bytes_narrowed.bin
+// `layout_malformed` and write nothing (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.4,
+// §5.9 #30). Do not "fix" it.
+
+package vnew_bytes_narrowed
+
+fixed table BytesNarrowed
+{
+    lead  uint32 = 1
+    blob  bytes(4)
+    trail uint32 = 2
+}

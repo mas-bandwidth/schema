@@ -1,0 +1,33 @@
+// VOLD_arm_removed.schema — OLD: Pick {alpha, beta, gamma}
+//
+// One of the fixed form's UNLAWFUL lineage rows (docs/FIXED-FORM-VERSIONING-TESTS.md,
+// internal/fixedunlawful). The OLD and the NEW file of this pair differ by
+// EXACTLY Pick {alpha, beta, gamma} -> {alpha, gamma}. `lead` and `trail` bracket the row's field.
+//
+// THIS PAIR IS DELIBERATELY UNLAWFUL: SPEC §5.1 refuses a removed arm ("arm removed"). The file takes arm gamma,
+// which this reader still names, so a leg that matches arms by id and drops the
+// one it lacks LOADS it.
+// So the lineage entry is handed in by the probe and never read
+// from a lock. The NEW reader must refuse old_arm_removed.bin
+// `layout_malformed` and write nothing (docs/FIXED-FORM-ALGORITHM.md §5.2, §5.4,
+// §5.9 #30). Do not "fix" it.
+
+package vold_arm_removed
+
+type Alpha { m int32 = 0 }
+type Beta  { n int32 = 0 }
+type Gamma { p int32 = 0 }
+
+union Pick
+{
+    alpha Alpha
+    beta  Beta
+    gamma Gamma
+}
+
+fixed table ArmRemoved
+{
+    lead  uint32 = 1
+    pick  Pick
+    trail uint32 = 2
+}

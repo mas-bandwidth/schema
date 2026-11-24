@@ -149,8 +149,25 @@ func t04R20(t *testing.T) {
 	// A writer field this reader names nowhere is not dropped and counted: the
 	// lineage entry is UNLAWFUL, no plan is laid, and the entry's lane refuses
 	// layout_malformed (§5.2 MATCH, §5.4, §5.9 #30). There is no compile census.
-	t04Has(t, n, "if (!named) { c.Unlawful = 1; return; }",
+	t04Has(t, n, "if (!ChildrenNamed(theirs, ti, mine, mi)) { c.Unlawful = 1; return; }",
 		"R20 a writer field this reader names nowhere makes the entry unlawful")
+	// The same rule, ported from the Go reference, for every other way an older
+	// writer is not a lawful widening of this reader (§5.1, §5.4): a removed
+	// arm, variant or key, a shrunk array (fixed or counted), narrowed bytes or
+	// text. Each lays no plan; none is clipped, remapped to None or dropped.
+	for site, what := range map[string]string{
+		"if (!ChildrenNamed(theirs, ti + 1, mine, mi + 1)) { c.Unlawful = 1; break; }":                              "a removed enum key",
+		"if (tee.Size != 0 && mee.Size != 0 && te.Size / tee.Size > me.Size / mee.Size) { c.Unlawful = 1; break; }": "a keyed array with more slots than mine",
+		"if (their_n > my_n) { c.Unlawful = 1; break; }":                                                            "a shrunk array",
+	} {
+		t04Has(t, n, site, "R20 "+what+" makes the entry unlawful")
+	}
+	if c := strings.Count(n, "if (te.Size > me.Size) { c.Unlawful = 1; break; }"); c != 2 {
+		t.Errorf("R20 narrowed text and narrowed bytes make the entry unlawful at %d sites, want 2", c)
+	}
+	if c := strings.Count(n, "if (!ChildrenNamed(theirs, ti, mine, mi)) { c.Unlawful = 1; break; }"); c != 2 {
+		t.Errorf("R20 a removed arm and a removed variant make the entry unlawful at %d sites, want 2", c)
+	}
 	t04Has(t, n, "if (made == -4) { lane.Why = \"layout_malformed\"; break; }",
 		"R20 an unlawful entry's lane refuses layout_malformed")
 	if strings.Contains(n, "c.Report.Unknown++") || strings.Contains(n, "lane.Unknown") {

@@ -513,48 +513,134 @@ end
 
 local decode_old_value
 
--- THE UNKNOWN CENSUS (docs/SPEC-TABLES.md §4, §6.5): a field an older writer
--- carried that this reader does not declare is skipped and counted unknown,
--- once per declared field however many records or elements carry it. It is
--- a property of the (writer layout, reader) pair, so F.prepare counts it once
--- per known entry and the read only returns it.
-local function census_value(T, d, node)
-  if d == nil or node == nil then return 0 end
-  local s = d.shape
-  if s == "table" then
-    local desc = T.Tables[d.target]
-    if desc == nil or node.kind ~= 13 then return 0 end
-    local byId = {}
+-- THE LADDER (docs/FIXED-FORM-ALGORITHM.md §5.1; Go's tableFixedWidens): a
+-- writer kind widens into a reader kind only up its own rung, signed 2..5,
+-- unsigned 6..9, the fixed(I,F) rungs 20..24 and 25..29, and f32 into f64.
+-- Never across signedness, never into or out of the 128-bit kinds.
+local function ladder(from, to)
+  if from >= 6 and from <= 9 and to >= 6 and to <= 9 then return to > from end
+  if from >= 2 and from <= 5 and to >= 2 and to <= 5 then return to > from end
+  if from >= 20 and from <= 24 and to >= 20 and to <= 24 then return to > from end
+  if from >= 25 and from <= 29 and to >= 25 and to <= 29 then return to > from end
+  return from == 10 and to == 11
+end
+
+-- A LAWFUL OLDER WRITER NAMES ONLY FIELDS, ARMS, VARIANTS AND KEYS THIS READER
+-- RETAINS (§5.1 refuses a removal; deprecation keeps the slot and its name):
+-- every child of the writer's node is named among the reader's (Go's
+-- tableFixedChildrenNamed).
+local function children_named(w, r)
+  local named = {}
+  for _, c in ipairs(r.children) do named[c.id] = true end
+  for _, c in ipairs(w.children) do
+    if not named[c.id] then return false end
+  end
+  return true
+end
+
+local lawful_pair
+
+-- UNLAWFUL (docs/FIXED-FORM-ALGORITHM.md §5.2 MATCH and EMIT, §5.4, §5.9 #30):
+-- the writer's layout tree walked beside the READER's own, as Go's
+-- tableFixedCompile walks them. A writer field the reader names nowhere, a
+-- removed union arm, a removed enum variant or keyed key, a kind moved off
+-- every ladder, a shrunk array ([N] or [..N], bytes(N) among them) or a
+-- narrowed string(N) makes the handed-in lineage entry UNLAWFUL: no plan is
+-- laid, nothing is counted and read past, and a file under its hash refuses
+-- by the name returned here before any record lands. The writer's ?T into
+-- this reader's bare T is `kind_mismatch` (ruling R2); every other unlawful
+-- pair is `layout_malformed`. nil is a lawful pair. desc is this reader's
+-- table descriptor (nil where the walk has none); it names only the array
+-- head, which the tree does not carry.
+local function lawful_table(T, desc, w, r)
+  if not children_named(w, r) then return "layout_malformed" end
+  local wById = {}
+  for _, c in ipairs(w.children) do wById[c.id] = c end
+  local dById = {}
+  if desc ~= nil then
     for _, f in ipairs(desc.fields) do
-      if f.id ~= nil then byId[f.id] = f end
+      if f.id ~= nil then dById[f.id] = f end
     end
-    local n = 0
-    for _, child in ipairs(node.children) do
-      local f = child.id ~= nil and byId[child.id] or nil
-      if f == nil then
-        n = n + 1
-      elseif f.optional and child.kind == 35 then
-        n = n + census_value(T, f, child.children[1])
-      else
-        n = n + census_value(T, f, child)
+  end
+  for _, rc in ipairs(r.children) do
+    local wc = wById[rc.id]
+    if wc ~= nil then
+      local why = lawful_pair(T, dById[rc.id], wc, rc)
+      if why ~= nil then return why end
+    end
+  end
+  return nil
+end
+
+lawful_pair = function(T, d, w, r)
+  if w.kind ~= r.kind and r.kind ~= 35 then
+    if ladder(w.kind, r.kind) then return nil end
+    if w.kind == 35 then return "kind_mismatch" end
+    return "layout_malformed"
+  end
+  -- T INTO ?T: the reader wrapped a value the writer carried bare, and the
+  -- payload is held to the writer's own entry (§5.2 EMIT, bill §12.8)
+  if r.kind == 35 and w.kind ~= 35 then return lawful_pair(T, d, w, r.children[1]) end
+  local k = r.kind
+  if k == 35 then
+    return lawful_pair(T, d, w.children[1], r.children[1])
+  elseif k == 13 then
+    local desc = d ~= nil and d.shape == "table" and T.Tables[d.target] or nil
+    return lawful_table(T, desc, w, r)
+  elseif k == 14 then
+    -- [N], [..N] and bytes(N): the writer's element count past the reader's
+    -- is a shrunk bound (§5.1 "bound narrowed"), refused even when the live
+    -- count would fit
+    local we, re = w.children[1], r.children[1]
+    if we == nil or re == nil then return "layout_malformed" end
+    local head = 0
+    if d ~= nil and (d.shape == "bytes" or (d.shape == "array" and not d.fixed and not d.keyed)) then head = 4 end
+    if w.size < head then return "layout_record_too_large" end
+    local theirN = we.size > 0 and (w.size - head) // we.size or 0
+    local myN = re.size > 0 and (r.size - head) // re.size or 0
+    if theirN > myN then return "layout_malformed" end
+    return lawful_pair(T, d ~= nil and d.elem or nil, we, re)
+  elseif k == 16 then
+    -- [Enum]T: every writer key named by the reader's enum, and no more
+    -- writer slots than the reader holds
+    local wk, rk, we, re = w.children[1], r.children[1], w.children[2], r.children[2]
+    if wk == nil or rk == nil or we == nil or re == nil then return "layout_malformed" end
+    if not children_named(wk, rk) then return "layout_malformed" end
+    local theirN = we.size > 0 and w.size // we.size or 0
+    local myN = re.size > 0 and r.size // re.size or 0
+    if theirN > myN then return "layout_malformed" end
+    return lawful_pair(T, d ~= nil and d.elem or nil, we, re)
+  elseif k == 15 then
+    -- a removed arm is unlawful even when the file never takes it
+    if not children_named(w, r) then return "layout_malformed" end
+    local un = d ~= nil and d.shape == "union" and T.Unions[d.target] or nil
+    for i, ra in ipairs(r.children) do
+      for _, wa in ipairs(w.children) do
+        if wa.id == ra.id then
+          local arm = un ~= nil and un.arms[i] or nil
+          local why = lawful_pair(T, arm ~= nil and arm.field or nil, wa, ra)
+          if why ~= nil then return why end
+          break
+        end
       end
     end
-    return n
-  elseif s == "array" then
-    local elem = node.kind == 16 and node.children[2] or node.children[1]
-    return census_value(T, d.elem, elem)
-  elseif s == "union" then
-    local un = T.Unions[d.target]
-    if un == nil or node.kind ~= 15 then return 0 end
-    local n = 0
-    for k, armNode in ipairs(node.children) do
-      local arm = un.arms[k]
-      if arm ~= nil and arm.field ~= nil then n = n + census_value(T, arm.field, armNode) end
-    end
-    return n
+    return nil
+  elseif k == 30 then
+    -- a removed variant is unlawful on the grown-width widen and the
+    -- same-width remap alike
+    if not children_named(w, r) then return "layout_malformed" end
+    return nil
+  elseif k == 12 then
+    -- a narrowed string(N) is unlawful even when the used length would fit
+    if w.size > r.size then return "layout_malformed" end
+    return nil
   end
-  return 0
+  -- a same-kind leaf grown within eight bytes is a ZERO widen; any other
+  -- width moved is a narrowed span
+  if w.size ~= r.size and not (w.size < r.size and r.size <= 8) then return "layout_malformed" end
+  return nil
 end
+
 
 local function compat_old(d, node)
   if d == nil or node == nil then return false end
@@ -941,6 +1027,9 @@ local function load_impl(T, name, buf, strict, cap)
     if #layout ~= #entry.layout or layout ~= entry.layout then error("layout_malformed", 0) end
     if not entry.tree then error("layout_malformed", 0) end
     if entry.tree.refusal then error(entry.tree.refusal, 0) end
+    -- AN UNLAWFUL ENTRY LAYS NO PLAN (§5.4, §5.9 #30): it refuses by name
+    -- before any record is read, and nothing is counted
+    if entry.unlawful then error(entry.unlawful, 0) end
     layout = entry.layout
   end
   local rootSize = entry ~= nil and entry.tree.size or string.unpack("<I4", layout, 5 + 9)
@@ -964,7 +1053,6 @@ local function load_impl(T, name, buf, strict, cap)
   if nRec == 0 and cap == 1 then error("truncated", 0) end
   if nRec > cap then error("batch_too_large", 0) end
   local rep = (entry ~= nil and entry.hash ~= fixed.hash) and { widened = 0 } or nil
-  local unknown = rep ~= nil and entry.unknown or 0
   local out = {}
   for k = 1, nRec do
     local at = 21 + layoutLen + (k - 1) * recSize
@@ -980,11 +1068,14 @@ local function load_impl(T, name, buf, strict, cap)
     end
     out[k] = v
   end
-  return out, hash, layout, rep and rep.widened or 0, unknown
+  -- the fixed form has no unknown census (§5.4, §5.9 #30): a lawful entry
+  -- names nothing this reader lacks, so the unknown count is always 0
+  return out, hash, layout, rep and rep.widened or 0, 0
 end
 
 -- F.load is a whole file's read: the records, the layout hash and bytes,
--- and the widened and unknown counts.
+-- and the widened and unknown counts (unknown is always 0: an unlawful
+-- lineage entry refuses rather than being counted).
 function F.load(T, name, buf, strict, cap, report, into)
   if report ~= nil then
     report.damaged = false
@@ -1075,11 +1166,19 @@ function F.prepare(T)
       .. pack_uint(#fixed.layout, 4)
       .. fixed.layout
     fixed.hashPrefix = pack_uint(fixed.hash, 8)
+    -- EACH OLDER ENTRY'S LAWFULNESS IS A PROPERTY OF THE (WRITER LAYOUT,
+    -- READER) PAIR, decided here once per known entry: entry.unlawful is the
+    -- name a file under its hash refuses, or false (lawful_table)
+    local own = layout_tree(fixed.layout)
     for _, entry in ipairs(fixed.known or {}) do
       entry.tree = layout_tree(entry.layout) or false
-      entry.unknown = 0
-      if entry.tree and not entry.tree.refusal then
-        entry.unknown = census_value(T, { shape = "table", target = fixed.table }, entry.tree)
+      entry.unlawful = false
+      if entry.hash ~= fixed.hash and entry.tree and not entry.tree.refusal then
+        if not own or own.refusal then
+          entry.unlawful = own and own.refusal or "layout_malformed"
+        else
+          entry.unlawful = lawful_table(T, desc, entry.tree, own) or false
+        end
       end
     end
   end

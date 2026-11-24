@@ -145,8 +145,12 @@ func t04R20(t *testing.T) {
 	n := t04Norm(src)
 	t04Has(t, n, "for (let i = 0; i < z; i++) { image[o + i] = TFixedPrefill[o + i]; }",
 		"R20 the declared default lands where the plan writes no byte")
-	t04Has(t, n, "if (!named) { plan.unlawful = true; return; }",
+	t04Has(t, n, "if (!named) { return false; }",
+		"R20 a field, arm, variant or key of theirs the reader cannot name is found by one walk")
+	t04Has(t, n, "if (!TableFixedChildrenNamed(theirs, ti, mine, mi)) { plan.unlawful = true; return; }",
 		"R20 a field of theirs the reader cannot name makes the entry unlawful")
+	t04Has(t, n, "if (theirN > myN) { plan.unlawful = true; return; }",
+		"R20 a narrowed array bound makes the entry unlawful, never min(their_n, my_n)")
 	t04Has(t, n, "lane.why = TableFixedRefusal.LayoutMalformed;",
 		"R20 an unlawful entry's lane refuses layout_malformed by name")
 	t04Lacks(t, n, "if (!named) { report.unknown++; }",
