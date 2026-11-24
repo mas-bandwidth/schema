@@ -7,7 +7,7 @@
 # run, never a refusal.
 import sys
 
-from packetrefusal import InvalidValue, PacketWriteRefusal
+from packetrefusal import InvalidValue, PacketWriteRefusal, PickType
 
 
 def apply(v, op, arg):
@@ -35,6 +35,19 @@ def apply(v, op, arg):
         v.reserved_zero = int(arg)
     elif op == "perks":
         v.perks = int(arg)
+    elif op == "trio_len":
+        v.trio = [0] * int(arg)
+    elif op == "trio_elem":
+        v.trio[0] = int(arg)
+    elif op == "ints_elem":
+        v.ints = [int(arg)]
+    elif op == "pick_small":
+        v.pick.type = PickType.Small
+        v.pick.small.v = int(arg)
+    elif op == "huge":
+        v.huge = int(arg)
+    elif op == "fx":
+        v.fx = int(arg)  # fixed(16, 16) storage is the raw scaled integer
     else:
         raise SystemExit("unknown op " + op)
 

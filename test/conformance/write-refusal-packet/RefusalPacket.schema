@@ -32,6 +32,17 @@ union Shot
     missile Missile
 }
 
+// a ranged int16 that rides only as a union arm's payload (SPEC.md §5.1 row 1)
+type Small
+{
+    v int16 | min = -5, max = 5
+}
+
+union Pick
+{
+    small Small
+}
+
 type PacketWriteRefusal
 {
     scalar         int32   | min = 0, max = 10
@@ -43,6 +54,11 @@ type PacketWriteRefusal
     fixed_constant int32 = 5 | min = 5, max = 5
     reserved_zero  int32 = 0 | min = 0, max = 0
     perks          Perk
+    trio           [3]int16 | min = -5, max = 5
+    ints           [..3]int16 | min = -5, max = 5
+    pick           Pick
+    huge           int128 | min = -10, max = 100000000000000000000
+    fx             fixed(16, 16) | min = -10, max = 10
     const(0xAB, 8)
     reserved(5)
 }

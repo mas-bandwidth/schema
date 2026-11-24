@@ -34,6 +34,33 @@ def bytes_of(text:string) -> string:
         i += 2
     return out
 
+// dec128 is a decimal argument as the int128 storage: the two's complement
+// halves, each a wrapping 64-bit int. acc = acc * 10 + d runs on 32-bit limbs
+// of lo so the carry into hi is exact.
+def dec128(text:string) -> schema_rt.Int128:
+    var neg = false
+    var i = 0
+    if length(text) > 0 and text[0] == '-':
+        neg = true
+        i = 1
+    assert i < length(text)
+    var lo = 0
+    var hi = 0
+    while i < length(text):
+        let d = text[i] - '0'
+        assert d >= 0 and d <= 9
+        let p0 = (lo & 0xffffffff) * 10 + d
+        let p1 = ((lo >> 32) & 0xffffffff) * 10 + (p0 >> 32)
+        lo = (p0 & 0xffffffff) | ((p1 & 0xffffffff) << 32)
+        hi = hi * 10 + (p1 >> 32)
+        i += 1
+    if neg:
+        lo = ~lo + 1
+        hi = ~hi
+        if lo == 0:
+            hi += 1
+    return schema_rt.Int128 { lo: lo, hi: hi }
+
 let v = packetrefusal.NewPacketWriteRefusal()
 if op == "scalar":
     v.Scalar = int_arg()
@@ -63,6 +90,22 @@ elif op == "reserved_zero":
     v.ReservedZero = int_arg()
 elif op == "perks":
     v.Perks = int_arg()
+elif op == "trio_len":
+    let t:[int] = []
+    for(int_arg()): push(t, 0)
+    v.Trio = t
+elif op == "trio_elem":
+    v.Trio[0] = int_arg()
+elif op == "ints_elem":
+    v.Ints[0] = int_arg()
+    v.IntsCount = 1
+elif op == "pick_small":
+    v.Pick.Type = packetrefusal.PickType(1) // the arm `small`
+    v.Pick.Small.V = int_arg()
+elif op == "huge":
+    v.Huge = dec128(arg)
+elif op == "fx":
+    v.Fx = int_arg() // fixed(16, 16) storage is the raw scaled integer
 else:
     print("probe: unknown op " + op)
     assert false

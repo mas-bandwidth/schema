@@ -44,6 +44,21 @@ local function apply(v: any, op: string, arg: string)
 		v.ReservedZero = n
 	elseif op == "perks" then
 		v.Perks = n
+	elseif op == "trio_len" then
+		v.Trio = table.create(n :: number, 0)
+	elseif op == "trio_elem" then
+		v.Trio[1] = n
+	elseif op == "ints_elem" then
+		v.Ints[1] = n
+		v.IntsCount = 1
+	elseif op == "pick_small" then
+		v.Pick.Type = P.PickType.Small
+		v.Pick.Small.V = n
+	elseif op == "huge" then
+		v.Huge = serialize.Int128.parse(arg)
+	elseif op == "fx" then
+		-- moo holds a fixed field in whole units (its own Q48.16), not the raw integer
+		v.Fx = (n :: number) / 65536
 	else
 		error("write-refusal-packet moo: unknown op " .. op)
 	end

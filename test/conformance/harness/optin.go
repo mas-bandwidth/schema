@@ -75,6 +75,7 @@ var derivedRows = map[string]derivedRow{
 	"write-refusal-json":    {ref: refUnit, col: 2, cases: ownName},
 	"write-refusal-cook":    {ref: refUnit, col: 2, cases: ownName},
 	"write-refusal-block":   {ref: refUnit, col: 2, cases: ownName},
+	"write-refusal-shape":   {ref: refUnit, col: 2, cases: ownName},
 	"retain":                {ref: refUnit, col: 2, cases: sameName("retain", "retain-save")},
 	"report":                {ref: refUnit, col: 2, cases: ownName},
 	"framing":               {ref: refUnit, col: 2, cases: ownName},

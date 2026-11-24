@@ -313,6 +313,22 @@ local edgesOf;
 local shapeEdges;
 local armEdges;
 
+// THE SHAPE OF THE VALUE (docs/SPEC.md §5.1; docs/SPEC-CONFORMANCE.md
+// DW-TABLE-SHAPE). The numbering walk reaches every record, union, array and
+// map the save writes, before the first byte, so it is where a value of the
+// wrong kind is caught: a record that is no instance of its table's class, a
+// union that is no instance of its union's class, an array that is no array,
+// a map that is no array of its entry class. The walk records the first
+// such place in shapeFault and stops descending there; number() answers the
+// refusal by name. Scalar leaves are judged where they are written (writePrim,
+// textOk, bytesValue). null is no record and no array: a by-value record and
+// an array are always held (the constructor builds them), while a null union
+// is None, as the fixed form writes it.
+local shapeFault = { where = null };
+local shapeIs = function(T, name, v) {
+  return typeof v == "instance" && v instanceof T[name];
+};
+
 shapeEdges = function(T, d, val, out, holder = null, key = null, every = false) {
   if (d.shape == "ptr") {
     if (val != null) out.append({ kind = "t", d = tableDesc(T, d.table), v = val });
@@ -336,6 +352,8 @@ shapeEdges = function(T, d, val, out, holder = null, key = null, every = false) 
     // ascending by key (docs/SPEC-TABLES.md §2.8, §3.1)
     local kd = d.mapkey;
     local vd = d.mapvalue;
+    if (typeof val != "array") { shapeFault.where = d.name; return; }
+    foreach (ent in val) if (!shapeIs(T, d.entry, ent)) { shapeFault.where = d.name; return; }
     foreach (i in mapWriteOrder(val, kd)) {
       local ent = val[i];
       shapeEdges(T, kd, ent[kd.member], out, ent, kd.member, every);
@@ -345,6 +363,7 @@ shapeEdges = function(T, d, val, out, holder = null, key = null, every = false) 
   }
   if (d.shape == "arr") {
     local e = d.elem;
+    if (typeof val != "array" && typeof val != "blob") { shapeFault.where = d.name; return; }
     local n = val.len();
     if (e.shape == "ptr") {
       local td = tableDesc(T, e.table);
@@ -369,18 +388,21 @@ shapeEdges = function(T, d, val, out, holder = null, key = null, every = false) 
 // With every set, a field under a FALSE guard is walked too: the load stored
 // it, and the cycle check (_M.cyclic) counts every slot the load stored.
 edgesOf = function(T, c, v, out, every = false) {
+  if (!shapeIs(T, c.name, v)) { shapeFault.where = c.name; return; }
   foreach (fd in c.fields) {
     if (!every && !guardHolds(fd, v)) continue;
     if (fd.optional && !v[fd.member + "Present"]) continue;
     local val = v[fd.member];
-    if (fd.shape == "tab" && val == null) continue;
-    if (fd.shape == "arr" && val == null) continue;
+    if (fd.shape == "tab" && val == null) { shapeFault.where = c.name + "." + fd.name; return; }
+    if (fd.shape == "arr" && val == null) { shapeFault.where = c.name + "." + fd.name; return; }
     shapeEdges(T, fd, val, out, v, fd.member, every);
+    if (shapeFault.where != null) return;
   }
 };
 
 armEdges = function(T, u, inst, out, every = false) {
   if (inst == null) return;
+  if (!shapeIs(T, u.name, inst) || (inst.Type != null && typeof inst.Type != "integer")) { shapeFault.where = u.name; return; }
   local t = inst.Type;
   if (t == null || t == 0) return;
   local arm = null;
@@ -392,6 +414,13 @@ armEdges = function(T, u, inst, out, every = false) {
 };
 
 local number = function(T, c, root, cook = false) {
+  shapeFault.where = null;
+  // the root is a record like any other: a value that is no instance of its
+  // class is refused before it is used as a key
+  if (!shapeIs(T, c.name, root)) {
+    _M.SaveReason <- "invalid_value: " + c.name + " is not an instance of " + c.name;
+    return null;
+  }
   local nodes = [];
   // ONE LOOKUP PER EDGE: `at` maps a record (Squirrel hashes an instance by
   // identity) to its entry, its node index and whether the walk still has it
@@ -408,6 +437,10 @@ local number = function(T, c, root, cook = false) {
   };
   push(root, c);
   while (stack.len() > 0) {
+    if (shapeFault.where != null) {
+      _M.SaveReason <- "invalid_value: " + shapeFault.where + " holds a value of the wrong kind";
+      return null;
+    }
     local top = stack[stack.len() - 1];
     if (top.i >= top.edges.len()) { at.t[top.v].open = false; stack.pop(); continue; }
     local e = top.edges[top.i];
@@ -757,7 +790,8 @@ local bornTablesElide = function(body, n) {
 // then the payload kind, its length and the payload; a payload-free arm
 // rides as kind 32 with length 0.
 writeUnionValue = function(T, u, inst, w, ids, at, root) {
-  local t = inst.Type;
+  // a null union is None, as the fixed form and the numbering hold it
+  local t = inst == null ? null : inst.Type;
   if (t == null || t == 0) { wleb(w, 0); return true; }
   local arm = null;
   foreach (a in u.arms) { if (a.tag == t) { arm = a; break; } }
@@ -893,7 +927,7 @@ writeValue = function(T, d, val, w, ids, at, root, framed, holder = null, key = 
     return true;
   }
   if (shape == "union") {
-    if (!always && (val.Type == null || val.Type == 0)) return true;
+    if (!always && (val == null || val.Type == null || val.Type == 0)) return true;
     wleb(w, idsRef(ids, d.id)); wu8(w, 15);
     return writeUnionValue(T, unionDesc(T, d.table), val, w, ids, at, root);
   }

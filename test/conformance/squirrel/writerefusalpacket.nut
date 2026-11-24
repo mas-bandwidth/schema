@@ -33,6 +33,30 @@ local nibble = function(c) {
   throw "rows: bad hex digit " + c;
 };
 
+// dec128 is a decimal argument as the int128 storage [lo, hi]: the two's
+// complement halves, each a wrapping 64-bit integer. acc = acc * 10 + d runs
+// on 32-bit limbs of lo so the carry into hi is exact.
+local dec128 = function(s) {
+  local neg = s.len() > 0 && s[0] == '-';
+  local i = neg ? 1 : 0;
+  if (i >= s.len()) throw "rows: " + s + " is not a decimal integer";
+  local lo = 0, hi = 0;
+  for (; i < s.len(); i++) {
+    local c = s[i];
+    if (c < '0' || c > '9') throw "rows: " + s + " is not a decimal integer";
+    local p0 = (lo & 0xffffffff) * 10 + (c - '0');
+    local p1 = (lo >>> 32) * 10 + (p0 >>> 32);
+    lo = (p0 & 0xffffffff) | ((p1 & 0xffffffff) << 32);
+    hi = hi * 10 + (p1 >>> 32);
+  }
+  if (neg) {
+    lo = ~lo + 1;
+    hi = ~hi;
+    if (lo == 0) hi = hi + 1;
+  }
+  return [lo, hi];
+};
+
 // apply makes the row's one change to a fresh, lawful value.
 local apply = function(v, op, arg) {
   switch (op) {
@@ -56,6 +80,12 @@ local apply = function(v, op, arg) {
     case "fixed_constant": v.FixedConstant = arg.tointeger(); break;
     case "reserved_zero": v.ReservedZero = arg.tointeger(); break;
     case "perks": v.Perks = arg.tointeger(); break;
+    case "trio_len": v.Trio = array(arg.tointeger(), 0); break;
+    case "trio_elem": v.Trio[0] = arg.tointeger(); break;
+    case "ints_elem": v.Ints[0] = arg.tointeger(); v.IntsCount = 1; break;
+    case "pick_small": v.Pick.Type = P.PickType.Small; v.Pick.Small.V = arg.tointeger(); break;
+    case "huge": v.Huge = dec128(arg); break;
+    case "fx": v.Fx = arg.tointeger(); break; // fixed(16, 16) storage is the raw integer
     default: throw "rows: unknown op " + op;
   }
 };

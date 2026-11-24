@@ -52,6 +52,12 @@ function apply(value, op, arg) {
     case "fixed_constant": value.fixedConstant = n; break;
     case "reserved_zero": value.reservedZero = n; break;
     case "perks": value.perks = BigInt(arg); break; // a flags mask is BigInt (uint64) storage
+    case "trio_len": value.trio = new Array(n).fill(0); break;
+    case "trio_elem": value.trio[0] = n; break;
+    case "ints_elem": value.ints[0] = n; value.intsCount = 1; break;
+    case "pick_small": value.pick.type = runtime.PickType.Small; value.pick.small.v = n; break;
+    case "huge": value.huge = BigInt(arg); break; // int128 storage is a BigInt
+    case "fx": value.fx = n; break; // fixed(16, 16) storage is the raw Number
     default: throw new Error("unknown op " + JSON.stringify(op));
   }
 }
