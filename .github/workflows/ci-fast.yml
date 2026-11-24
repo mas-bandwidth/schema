@@ -620,8 +620,16 @@ jobs:
           # and the verdict called the skip green because the plan had selected
           # nothing. A skip is green only when no leg reads the change. The
           # rows run in parallel, each inside its own two minutes.
+          #
+          # THE SHARED CONFORMANCE CORPUS (testdata/conformance/tables/, the
+          # inputs of tools/inputfamilies' conformance-corpus family) is read
+          # by every leg's verify-<leg>-conformance (`conformance-harness run
+          # --only <leg> --claims`), so a change to it is a shared edit too.
+          # PR 4908 changed MANIFEST.txt and selected only the legs whose code
+          # it touched: no cpp verify row, and verify-leg (elixir, conformance)
+          # skipped. TestFastPlanSharedCorpusSelectsEveryLeg.
           shared_broad=no
-          if [ "$all" = yes ] || grep -qE '^(ir/|compiler/|tables/|Makefile$|go\.mod$|docs/FIXED-FORM-|test/tables/.*\.schema$|\.github/workflows/ci-fast\.yml$)' <<<"$files"; then
+          if [ "$all" = yes ] || grep -qE '^(ir/|compiler/|tables/|testdata/conformance/tables/|Makefile$|go\.mod$|docs/FIXED-FORM-|test/tables/.*\.schema$|\.github/workflows/ci-fast\.yml$)' <<<"$files"; then
             shared_broad=yes
           fi
           if [ "$shared_broad" = yes ]; then
