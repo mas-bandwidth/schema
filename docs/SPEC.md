@@ -1864,8 +1864,26 @@ All compile errors with positions:
   `math`, `slices`, `strconv`, `sync`, `time`, `utf8`), Luau's and moo's
   `buffer` library, C#'s `Debug` and `InlineBuffer<N>` (`InlineBuffer4`,
   any length N), the 128-bit support classes `Int128` and
-  `UInt128` (Dart, Java), and Elixir's support module `PacketRuntime`. A
+  `UInt128` (Dart, Java), Dart's built-in identifiers, which can name no
+  class or extension type (`abstract`, `as`, `covariant`, `deferred`,
+  `dynamic`, `export`, `extension`, `external`, `factory`, `Function`, `get`,
+  `implements`, `import`, `interface`, `late`, `library`, `mixin`,
+  `operator`, `part`, `required`, `set`, `static`, `typedef`), and Elixir's
+  support module `PacketRuntime`. A
   reserved word or a claimed name above takes its own diagnostic instead.
+- **Generator-name safety:** the names generated code declares for itself
+  inside its functions (locals, parameters, loop variables: `v`, `r`, `w`,
+  `kind`, `len`, `at`, `vid`, ...) never hide a schema name, so a name the
+  checker accepts may be any of them, as an enum, a field or a union arm, and
+  is never refused for it. An emitter spells a schema name where no local of
+  its own can reach it (the Dart table libraries spell an enum whose name
+  starts lowercase through the import prefix `$enums`, which no schema
+  identifier can spell) or names its locals so none can equal one (the Dart
+  `enumName<E>` parameter is `$value` for an enum named `value`).
+  The proof is the corpus rows `n_internal_*` of
+  testdata/name-buildability: every such name the table emitters of all 18
+  targets declare, each used as an enum, a table field and a union arm, and
+  the nightly builds every row in every target.
 - **Emitter name rules:** the checker also runs the rules a target's
   emitter holds itself (for Ruby and Python, the emitter's whole name check
   under every surface a generate can select: a Ruby declaration's constant,

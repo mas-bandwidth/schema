@@ -486,13 +486,25 @@ func (g *gen) emitTagEnum(name string, members, docs []string, max int64, commen
 	// whichever enum it is. Nothing on the read or write path calls it.
 	g.bpf("// enumName%s: debug/log/tooling name for any %s wire value —\n", name, name)
 	g.bpf("// out-of-set values (wire-legal up to the declared max) name as '???'\n")
-	g.bpf("String enumName%s(int value) {\n", name)
-	g.bpf("  switch (value) {\n")
+	param := enumNameParam(name)
+	g.bpf("String enumName%s(int %s) {\n", name, param)
+	g.bpf("  switch (%s) {\n", param)
 	g.bpf("    case %s.none:\n      return 'None';\n", name)
 	for _, m := range members {
 		g.bpf("    case %s.%s:\n      return '%s';\n", name, dartName(m), m)
 	}
 	g.bpf("    default:\n      return '???';\n  }\n}\n\n")
+}
+
+// enumNameParam is the parameter enumName<E> takes: value, unless the enum
+// itself is named value, when the parameter would hide the type its switch
+// cases spell (SPEC §4.6, Generator-name safety); then $value, which no
+// schema identifier can spell (SPEC §4.1).
+func enumNameParam(enum string) string {
+	if enum == "value" {
+		return "$value"
+	}
+	return "value"
 }
 
 // emitEnumType opens an enum's (or a union tag's) extension type. It is
@@ -521,8 +533,9 @@ func (g *gen) emitEnum(d *ir.Enum) {
 
 	g.bpf("// enumName%s: debug/log/tooling name for any %s wire value —\n", d.Name, d.Name)
 	g.bpf("// out-of-set values (wire-legal up to the declared max) name as '???'\n")
-	g.bpf("String enumName%s(int value) {\n", d.Name)
-	g.bpf("  switch (value) {\n")
+	param := enumNameParam(d.Name)
+	g.bpf("String enumName%s(int %s) {\n", d.Name, param)
+	g.bpf("  switch (%s) {\n", param)
 	g.bpf("    case %s.none:\n      return 'None';\n", d.Name)
 	for _, v := range d.Variants {
 		g.bpf("    case %s.%s:\n      return '%s';\n", d.Name, dartName(v), v)
