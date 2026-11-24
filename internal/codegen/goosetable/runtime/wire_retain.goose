@@ -468,8 +468,11 @@ fn retain_tail(c: SaveCtx&, rec: i64) {
 // stores and keeps what this build cannot name. A fixed-class root carries no
 // retention (§6.6): it is refused (-1, report.refused). At a declared fixed
 // table past the record ceiling, which has no file form (§1, §3.4), a form-1
-// file is refused by name, previous_form, as load_table refuses it.
+// file is refused by name, previous_form, as load_table refuses it. Its
+// first act zeroes the caller's report in full, as load_with does, so the
+// fixed-class refusal leaves nothing a previous read put there (§6.5).
 fn load_table_retain(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal[>..]&, nodes: LoadNode[>..]&, report: LoadReport&, store: RetainStore&) -> i64 {
+    report = LoadReport { .. };
     store.used = 0;
     store.bytes.clear();
     store.recs.clear();

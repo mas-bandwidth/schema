@@ -824,15 +824,19 @@ def run_external(runner, lang):
     if lang != "cpp":
         runner.make("external-table-gates", FIXED_GATES[lang])
         return
-    # Exactly two outer Go test invocations in the already mapped C++ make
+    # Exactly three outer Go test invocations in the already mapped C++ make
     # recipes. Keep all native generation, compiler flags, controls and shell
     # ordering unchanged; no blanket go wrapper or timeout substitution.
+    # tables-lists' is the map-holding cook read (73202e2fca): it reads
+    # build/lists-cooks/army.cook where that recipe writes it.
     original = (runner.root / "Makefile").read_text()
     replacements = {
         "SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view go test ./internal/viewlisting -run TestUnitViewListingMatchesTheIR":
         "SCHEMA_VIEW_LISTING_DIR=$$PWD/build/view go test -timeout=0 -count=1 ./internal/viewlisting -run TestUnitViewListingMatchesTheIR",
         "go test ./tools/fixedtwin -count=1":
         "go test -timeout=0 ./tools/fixedtwin -count=1",
+        "SCHEMA_REQUIRE_CORPUS=1 go test -count=1 -run '^TestCookCheckReadsTheReferencesMapHoldingCook$$' ./internal/tablecook/":
+        "SCHEMA_REQUIRE_CORPUS=1 go test -timeout=0 -count=1 -run '^TestCookCheckReadsTheReferencesMapHoldingCook$$' ./internal/tablecook/",
     }
     amended = original
     for before, after in replacements.items():

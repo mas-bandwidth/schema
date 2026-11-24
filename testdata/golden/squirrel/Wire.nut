@@ -213,6 +213,7 @@ _M.WriteProbeBits <- function(stream, value) {
   if (typeof value.Wide != "integer") return false;
   _h.value = value.Wide;
   if (!stream.serializeBits64(_h, 64)) return false;
+  if (typeof value.Sensor != "integer" || value.Sensor < 0 || value.Sensor > 4294967295) return false; // SPEC §5.1 row 1
   _h.value = value.Sensor;
   if (!stream.serializeInt64(_h, 0, 4294967295)) return false;
   if (typeof value.Nonce != "integer") return false;
@@ -408,6 +409,7 @@ _M.ReadProbeSlab <- function(stream, value) {
 
 // WriteProbeSlab writes value in declared order; false on a refused value.
 _M.WriteProbeSlab <- function(stream, value) {
+  if (typeof value.Width != "integer" || value.Width < 0 || value.Width > 100) return false; // SPEC §5.1 row 1
   _h.value = value.Width;
   if (!stream.serializeInt(_h, 0, 100)) return false;
   if (typeof value.Height != "integer" || value.Height < 0 || value.Height > 255) return false;
@@ -623,6 +625,7 @@ _M.ReadProbeArray <- function(stream, value) {
 
 // WriteProbeArray writes value in declared order; false on a refused value.
 _M.WriteProbeArray <- function(stream, value) {
+  if (typeof value.Samples != "array" || value.Samples.len() != 2) return false; // a [N]T holds exactly N values (SPEC §5.1)
   for (local _i = 0; _i < 2; _i++) {
     if (!_M.WriteProbeSample(stream, value.Samples[_i])) return false;
   }
@@ -701,10 +704,13 @@ _M.WriteTest <- function(stream, value) {
   if (typeof value.TestA != "integer" || value.TestA < 0 || value.TestA > 65535) return false;
   _h.value = value.TestA;
   if (!stream.serializeBits(_h, 16)) return false;
+  if (typeof value.TestB != "integer" || value.TestB < 0 || value.TestB > 1000) return false; // SPEC §5.1 row 1
   _h.value = value.TestB;
   if (!stream.serializeInt(_h, 0, 1000)) return false;
+  if (typeof value.TestC != "integer" || value.TestC < 0 || value.TestC > 1000) return false; // SPEC §5.1 row 1
   _h.value = value.TestC;
   if (!stream.serializeInt(_h, 0, 1000)) return false;
+  if (typeof value.TestD != "integer" || value.TestD < 0 || value.TestD > 1000) return false; // SPEC §5.1 row 1
   _h.value = value.TestD;
   if (!stream.serializeInt(_h, 0, 1000)) return false;
   return true;
@@ -1021,6 +1027,7 @@ _M.WriteTestData <- function(stream, value) {
   _h.value = value.Int64Range;
   if (!stream.serializeInt64(_h, -1000000000000, 1000000000000)) return false;
   if (!stream.serializeAlign()) return false;
+  if (typeof value.FixedBytes != "blob" || value.FixedBytes.len() != 17) return false; // a [N]T holds exactly N values (SPEC §5.1)
   for (local _i = 0; _i < 17; _i++) {
     if (typeof value.FixedBytes[_i] != "integer" || value.FixedBytes[_i] < 0 || value.FixedBytes[_i] > 255) return false;
     _h.value = value.FixedBytes[_i];

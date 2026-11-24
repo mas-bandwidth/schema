@@ -363,13 +363,18 @@ RUST_TABLE_BENCH_SCHEMAS := bench/corpus/Bench.schema bench/corpus/FixedTable.sc
 
 build/tables-generated-rust/.stamp: bin/schema $(SCHEMAS_TABLES) $(SCHEMAS_TABLES_POINTERS) $(SCHEMAS_TABLES_BLOBS) $(SCHEMAS_TABLES_MAPS) $(SCHEMAS_TABLES_LISTS) $(SCHEMAS_TABLES_MESSAGES) $(SCHEMAS_TABLES_BACKEND) $(SCHEMAS_TABLES_VOCAB) $(SCHEMAS_TABLES_VOCAB9) $(SCHEMAS_TABLES_SCALARS) test/tables/Scalars2.schema $(SCHEMAS_TABLES_BLOCK) test/tables/V1.schema test/tables/V2.schema test/tables/P1.schema test/tables/P2.schema test/tables/P3.schema test/tables/JsonKeys.schema test/tables/M1.schema test/tables/M2.schema test/tables/A2.schema test/tables/K1.schema test/tables/K2.schema test/tables/FX1.schema test/tables/FX2.schema test/tables/FE1.schema test/tables/FE2.schema test/tables/FU1.schema test/tables/FU2.schema test/tables/W1.schema test/tables/W2.schema test/tables/R1.schema test/tables/R2.schema test/tables/G1.schema test/tables/shapes/Shapes.schema test/tables/prior/PriorNarrow.schema $(RUST_TABLE_BENCH_SCHEMAS) test/tables/surfaces/Surfaces.schema test/tables/announce4096/Announce.schema test/tables/announce4097/Announce.schema test/tables/packetunions/PacketUnions.schema
 	@mkdir -p build/tables-generated-rust
-	@for unit in $(RUST_TABLE_UNITS); do \
+	@# Each unit is its own crate directory, so the units generate in parallel:
+	@# serial, this loop was ~35 s of the 2-minute input-family
+	@# (conformance-corpus, rust) job (run 45423487593). A failed unit fails
+	@# the stamp: `wait` returns its status under set -e.
+	@set -e; pids=""; for unit in $(RUST_TABLE_UNITS); do \
 		name=$${unit%%:*}; path=$${unit#*:}; \
-		rm -rf build/tables-generated-rust/$$name/src; \
-		./bin/schema generate --lang rust --out build/tables-generated-rust/$$name/src $$path || exit 1; \
+		{ rm -rf build/tables-generated-rust/$$name/src && \
+		./bin/schema generate --lang rust --out build/tables-generated-rust/$$name/src $$path && \
 		printf '[package]\nname = "%s"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../$(SERIALIZE_RS)" }\n' $$name \
-			> build/tables-generated-rust/$$name/Cargo.toml; \
-	done
+			> build/tables-generated-rust/$$name/Cargo.toml; } & pids="$$pids $$!"; \
+	done; \
+	for pid in $$pids; do wait $$pid; done
 	@rm -rf build/tables-generated-rust/benchfixed/src
 	./bin/schema generate --lang rust --out build/tables-generated-rust/benchfixed/src $(RUST_TABLE_BENCH_SCHEMAS)
 	@printf '[package]\nname = "benchfixed"\nversion = "0.0.0"\nedition = "2024"\n\n[features]\ndefault = ["block", "cook"]\nblock = []\ncook = []\n\n[dependencies]\nserialize = { package = "serialize-official", path = "../../../$(SERIALIZE_RS)" }\n' \
@@ -1899,6 +1904,32 @@ tables-rust-message-storage-assert-negative-control:
 	@echo "negative control: a message writer without its storage debug_assert! turns TestMessageStorageDebugAssertRust RED"
 
 test-rust: tables-rust-message-storage-assert
+
+# THE MESSAGE WRITER NEVER WRITES A DEPRECATED VARIANT (docs/SPEC-TABLES.md
+# §2.15 WRITE), Rust's leg: a fixed table's Row holds an enum ordinal as plain
+# u8, so the message batch could be handed Old. Rust is an assert leg
+# (docs/SPEC.md §5.1): the refusal is a debug_assert!. The probe builds the
+# message batch in its debug profile and wants Old refused (element and
+# scalar, measure and save) and Calm and Fierce written and read back.
+# TestRustDeprecatedVariantMessageNegativeControl removes each generated assert
+# in turn and requires exactly that refusal red. SCHEMA_REQUIRE_CORPUS=1 turns
+# the rustc skip into a failure, and a SKIP in the log fails the target.
+.PHONY: tables-rust-deprecated-message-write
+tables-rust-deprecated-message-write:
+	@mkdir -p build/rust-deprecated-message
+	@PATH="$$PATH:$(RUSTUP_BIN)" SCHEMA_SLOW=1 SCHEMA_REQUIRE_CORPUS=1 \
+		go test ./internal/codegen/rusttable/ -count=1 -timeout 600s -v -run '^TestRustDeprecatedVariantMessage(NeverWritten|NegativeControl)$$' \
+		> build/rust-deprecated-message/log 2>&1 || { grep -E -- '--- FAIL|_test.go:' build/rust-deprecated-message/log | head -40; exit 1; }
+	@if grep -q -- '--- SKIP' build/rust-deprecated-message/log; then \
+		echo "tables-rust-deprecated-message-write: a test SKIPPED under SCHEMA_REQUIRE_CORPUS=1"; grep -- '--- SKIP' build/rust-deprecated-message/log; exit 1; \
+	fi
+	@grep -q -- '--- PASS: TestRustDeprecatedVariantMessageNeverWritten ' build/rust-deprecated-message/log || \
+		{ echo "tables-rust-deprecated-message-write: TestRustDeprecatedVariantMessageNeverWritten did not run to a PASS"; tail -20 build/rust-deprecated-message/log; exit 1; }
+	@grep -q -- '--- PASS: TestRustDeprecatedVariantMessageNegativeControl ' build/rust-deprecated-message/log || \
+		{ echo "tables-rust-deprecated-message-write: TestRustDeprecatedVariantMessageNegativeControl did not run to a PASS"; tail -20 build/rust-deprecated-message/log; exit 1; }
+	@grep 'negative control: with the' build/rust-deprecated-message/log
+	@echo 'tables Rust: the message writer refuses a deprecated variant in a debug build and writes the live ones (§2.15)'
+test-rust: tables-rust-deprecated-message-write
 
 # THE RUST LEG's WRITE-REFUSAL NEGATIVE CONTROLS (docs/SPEC.md §5.1): one
 # check is removed from a copy of the generated crates, the conformance driver

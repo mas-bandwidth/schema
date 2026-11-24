@@ -3,9 +3,6 @@ package pythontable
 import (
 	"encoding/binary"
 	"hash/crc32"
-	"maps"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -22,11 +19,10 @@ import (
 // accepted, so a refused file left an earlier load's captures (its used and
 // id_used counts, its loaded root) in the store.
 //
-// The committed corpus cases are the framing rows
-// testdata/wire/tables/framing/frame_form_three_at_variable_root.bin (a
-// fixed-form header at the variable root graphdemo ListNode) and
-// node_count_disagrees.bin (body damage), beside node_clean.bin, their
-// accepted twin on the same root.
+// The shared cases are the conformance `retain-refusal` rows
+// (testdata/conformance/tables/MANIFEST.txt): one store through a retaining
+// read, a save, a refused read (form byte 3, two bytes, no bytes, the message
+// form, damage mid-body) and a second save, answered by every leg.
 
 // TestPythonRetainResetsBeforeOpen is the fast half: the
 // emitted load_retain empties the store before the integrity check and the
@@ -67,48 +63,15 @@ func TestPythonRetainResetsBeforeOpen(t *testing.T) {
 	}
 }
 
-// TestPythonRetainRefusalEmptiesTheStore is the run-time proof, on
-// both pinned interpreters: a store an earlier load left a capture in is
-// handed back empty by every refused retaining load, and an accepted load of
-// the clean twin is the control.
+// TestPythonRetainRefusalEmptiesTheStore is the run-time proof of the one
+// refusal the shared corpus cannot carry, on both pinned interpreters: a
+// failed integrity check (no conformance unit declares `integrity`). The
+// frame, short, empty, form-two and body refusals are the conformance
+// `retain-refusal` rows every leg answers (testdata/conformance/tables/
+// MANIFEST.txt, test/conformance/python/surfaces/retain-refusal.py).
 func TestPythonRetainRefusalEmptiesTheStore(t *testing.T) {
 	t.Parallel()
 	slowtest.Gate(t, "both pinned Python interpreters")
-	root := filepath.Join("..", "..", "..")
-	graph, err := Generate(loadUnitPaths(t, filepath.Join(root, "tables", "pointers")))
-	if err != nil {
-		t.Fatal(err)
-	}
-	inputs := map[string][]byte{}
-	for _, name := range []string{"frame_form_three_at_variable_root", "node_count_disagrees", "node_clean"} {
-		data, err := os.ReadFile(filepath.Join(root, "testdata", "wire", "tables", "framing", name+".bin"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		inputs[name] = data
-	}
-	graphScript := pyrun.ImportPrelude + `from graphdemo import ListNode, TableRetain, Refused
-def seeded():
-    keep=TableRetain(bytearray(4096),bytearray(24*16))
-    keep.used=7; keep.id_used=1; keep.loaded_root='an earlier load'
-    return keep
-def empty(keep):
-    return (keep.used,keep.id_used,keep.loaded_root)==(0,0,None)
-def read(name):
-    with open(name,'rb') as f: return f.read()
-cases=[(name,read(name)) for name in ('frame_form_three_at_variable_root','node_count_disagrees')]
-cases+=[('form_two',bytes([2,0])+bytes(8)),('empty',b''),('short',bytes([1,0]))]
-for name,wire in cases:
-    keep=seeded()
-    try: ListNode.load_retain(wire,keep)
-    except Refused: pass
-    else: raise AssertionError(name+': the retaining load accepted')
-    assert empty(keep),(name,keep.used,keep.id_used,keep.loaded_root)
-keep=seeded()
-value=ListNode.load_retain(read('node_clean'),keep)
-assert keep.used==0 and keep.id_used==0 and keep.loaded_root is value,(keep.used,keep.id_used)
-print('retain-refusal')
-`
 	const crcSchema = "package probe\ntable Root | integrity = \"crc32c\" { n int32 }\n"
 	crc, err := Generate(loadUnit(t, crcSchema))
 	if err != nil {
@@ -131,22 +94,11 @@ assert (keep.used,keep.id_used,keep.loaded_root)==(0,0,None),(keep.used,keep.id_
 print('retain-refusal')
 `
 	for _, pin := range []string{pyrun.Interpreter(t), pyrun.Floor(t)} {
-		for _, run := range []struct {
-			files  map[string][]byte
-			script string
-			inputs map[string][]byte
-		}{
-			{graph, graphScript, inputs},
-			{crc, crcScript, map[string][]byte{"wire": sealed}},
-		} {
-			dir := t.TempDir()
-			writeTree(t, dir, run.files)
-			in := map[string][]byte{"main.py": []byte(run.script)}
-			maps.Copy(in, run.inputs)
-			out, stderr, err := pyrun.Try(t, pin, dir, "main.py", in)
-			if err != nil || strings.TrimSpace(out) != "retain-refusal" {
-				t.Fatalf("%s: a refused retaining load left the store as it was: %v\n%s\n%s", pin, err, out, stderr)
-			}
+		dir := t.TempDir()
+		writeTree(t, dir, crc)
+		out, stderr, err := pyrun.Try(t, pin, dir, "main.py", map[string][]byte{"main.py": []byte(crcScript), "wire": sealed})
+		if err != nil || strings.TrimSpace(out) != "retain-refusal" {
+			t.Fatalf("%s: a refused retaining load left the store as it was: %v\n%s\n%s", pin, err, out, stderr)
 		}
 	}
 }

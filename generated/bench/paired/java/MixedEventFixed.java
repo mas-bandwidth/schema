@@ -59,6 +59,7 @@ public final class MixedEventFixed {
      * the whole of it.
      */
     public static void writeBody(byte[] b, int at, Value v) {
+        assert v != null : "a null record is written";
         assert checkWrite(v);
         TableFixed.put8(b, at + 0, v.type);
         switch (v.type) {

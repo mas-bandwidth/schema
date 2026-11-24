@@ -252,6 +252,8 @@ function TableVariableElemIsDefault(e, x) {
 
 function TableVariableUnionEdges(u, val, out, everyGuard) {
   if (val === null) { return; }
+  // a union is { arm, value }: anything else is refused, never read (DW-TABLE-SHAPE)
+  if (typeof val !== "object") { out.push({ invalid: true }); return; }
   const arm = u.byName.get(val.arm);
   if (arm === undefined || arm.void) { return; }
   if (arm.body) { TableVariableEdges(arm.c, val.value, out, everyGuard); return; }
@@ -290,6 +292,7 @@ function TableVariableWritePresent(fd, w, ids, nodes, v, retain, path) {
       TableVariableWriteInt(w, fd.kw, val);
       return true;
     case "float":
+      if (typeof val !== "number") { return false; }
       if (!TableVariableFiniteFloat(fd.f32, val)) { return TableVariableRefuseNonFinite(); }
       TableVariableHeader(w, ids, fd, fd.k);
       return TableVariableWriteFloat(w, fd, val);

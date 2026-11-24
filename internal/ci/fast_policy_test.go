@@ -79,6 +79,7 @@ func TestCIFastPolicyResultGate(t *testing.T) {
   exit 1
 fi`
 	for _, result := range []string{"success", "failure", "skipped", "cancelled", ""} {
+		// testinputs:none — runs the script constant above; reads no file
 		cmd := exec.Command("bash", "-e", "-c", script)
 		cmd.Env = append(os.Environ(), "POLICY_RESULT="+result)
 		err := cmd.Run()

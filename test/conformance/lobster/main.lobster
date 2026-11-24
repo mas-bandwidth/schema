@@ -41,11 +41,11 @@ import .conformance_hooks
 // surfaces: the cook writer and the block builder held to it, the
 // announcement, the read into caller values, and the text written under a
 // comma-decimal locale (test/conformance/README.md)
-let surfaces = ["wire", "message", "message-prior", "report", "framing", "retain", "retain-save", "cook", "cook-write", "cook-foreign",
+let surfaces = ["wire", "message", "message-prior", "report", "framing", "retain", "retain-save", "retain-refusal", "cook", "cook-write", "cook-foreign",
     "block", "block-foreign", "block-dump", "forgery", "cook-forgery", "cook-reason", "block-reason",
     "json-read", "json-write", "json-hostile",
     "write-refusal", "write-refusal-fixed", "write-refusal-message", "write-refusal-json",
-    "write-refusal-cook", "write-refusal-block", "announce", "read-into", "json-write-into"]
+    "write-refusal-cook", "write-refusal-block", "write-refusal-shape", "announce", "read-into", "json-write-into"]
 
 // The line that opens the answers. lobster prints its compiler warnings and
 // errors on stdout, beside the answers; the driver sends everything before this
@@ -450,6 +450,35 @@ def surface_retain(text:string, saves:bool):
             let js, why = schema_rt.json_write(rec)
             assert why == ""
             say(f[1], "read\n" + js)
+
+// RETAIN-REFUSAL (test/conformance/README.md): ONE roomy store through
+// load_retain of the first wire, save_retain, load_retain of the refused wire
+// into the same store, and save_retain of the first value again. The verdicts
+// and what the second save did go in <case>, the first save in <case>.before,
+// the second in <case>.wire. A line is
+// `retain-refusal <case> <unit> <root> <first wire> <refused wire>`.
+def surface_retain_refusal(text:string):
+    for(rows(text, "retain-refusal")) f:
+        let retain = schema_rt.Retain { capacity: 1 << 20, id_capacity: 1 << 17 }
+        let rep = schema_rt.LoadReport {}
+        let rec = schema_rt.load_retain(f[3], fixture(f[4]), retain, rep)
+        if not rec:
+            say(f[1], "refused\n")
+        else:
+            let before_rep = schema_rt.LoadReport {}
+            let before = schema_rt.save_retain(rec, retain, before_rep)
+            assert not before_rep.refused
+            say(f[1] + ".before", before)
+            let other = schema_rt.load_retain(f[3], fixture(f[5]), retain, schema_rt.LoadReport {})
+            var answer = "read\n" + (if other: "read\n" else: "refused\n")
+            let after_rep = schema_rt.LoadReport {}
+            let after = schema_rt.save_retain(rec, retain, after_rep)
+            if after_rep.refused:
+                answer += "save-refused\n"
+            else:
+                say(f[1] + ".wire", after)
+                answer += "saved\n"
+            say(f[1], answer)
 // the JSON surfaces (docs/SPEC-TABLES.md §16): an instance line whose sixth
 // word is `no-text` has no text and is not asked (§16.7)
 def has_text(f:[string]) -> bool:
@@ -791,6 +820,14 @@ def wr_value_of(f:[string]) -> schema_rt.Record:
 
 def surface_write_refusal(text:string, kind:string):
     for(wr_rows(text, kind)) f:
+        // A VALUE OF THE WRONG KIND (`write-refusal-shape` kind `shape`,
+        // DW-TABLE-SHAPE) is one Lobster's types cannot hold: each generated
+        // field, element, arm payload and root is its declared type, none of
+        // them nillable. The compiler refuses it before any writer runs. The
+        // lawful twins are written as write-refusal writes them.
+        if kind == "write-refusal-shape" and f[6] == "shape":
+            say(f[1], "unrepresentable\n")
+            continue
         let rec = wr_value_of(f)
         if not wr_set(rec, f[5], f[6], f[7]):
             say(f[1], "unrepresentable\n")
@@ -895,6 +932,37 @@ def ri_text(rec:schema_rt.Record) -> string:
         return "unwritable " + why + "\n"
     return js
 
+// ri_report_diff is `zeroed` when every field of the report r equals the
+// field of want, the report the same read leaves in a fresh report, and
+// otherwise one line naming each field that differs (the `retain` form)
+def ri_report_diff(r:schema_rt.LoadReport, want:schema_rt.LoadReport) -> string:
+    var d = ""
+    if r.unknown != want.unknown: d += " unknown"
+    if r.kind_mismatch != want.kind_mismatch: d += " kind_mismatch"
+    if r.widened != want.widened: d += " widened"
+    if r.clamped != want.clamped: d += " clamped"
+    if r.duplicate != want.duplicate: d += " duplicate"
+    if r.malformed != want.malformed: d += " malformed"
+    if r.blob_shared != want.blob_shared: d += " blob_shared"
+    if r.missing_required != want.missing_required: d += " missing_required"
+    if r.non_finite_float != want.non_finite_float: d += " non_finite_float"
+    if r.retained != want.retained: d += " retained"
+    if r.retain_lost != want.retain_lost: d += " retain_lost"
+    if r.refused != want.refused: d += " refused"
+    if r.reason != want.reason: d += " reason"
+    if r.stopped != want.stopped: d += " stopped"
+    if r.damaged != want.damaged: d += " damaged"
+    if d == "":
+        return "zeroed\n"
+    return "kept" + d + "\n"
+
+// ri_report_read is one read of the report forms (`retain`, `region`,
+// `retain-fixed`) of `data` as `root` into `rep`: true when it read
+def ri_report_read(form:string, root:string, data:string, rep:schema_rt.LoadReport) -> bool:
+    if form == "region":
+        return schema_rt.load(root, data, rep) != nil
+    return schema_rt.load_retain(root, data, schema_rt.Retain { capacity: 1 << 20, id_capacity: 1 << 17 }, rep) != nil
+
 // READ INTO THE CALLER'S VALUES (test/conformance/README.md, `read-into`;
 // SPEC-TABLES §6.5, §3.4). A line is `read-into <case> <unit> <root> <form>
 // <lawful> <damaged> <count> <announcement>`: ONE report and <count> values
@@ -921,6 +989,44 @@ def surface_read_into(text:string):
                 else:
                     let ok = schema_rt.load_into(held, fixture(step), rep)
                     out += ri_verdict(ok, schema_rt.strict_reason(rep))
+        elif form == "retain" or form == "region" or form == "retain-fixed":
+            // ONE report the driver PRE-FILLED, compared field by field
+            // after each lawful read with the report the same read leaves
+            // in a FRESH report (§6.5: every read zeroes a supplied report
+            // in full, on every read path). `retain` is the RETAINING load
+            // (load_retain, §6.6) of a variable root; `region` is the plain
+            // load (Lobster has no region read: its plain Load is the value
+            // load, schema_rt.load); `retain-fixed` is load_retain of a
+            // FIXED-class root, which takes the report and refuses through
+            // it (fixed_class_no_retention), so it owes `refused` and
+            // `zeroed`, with no damaged read. Every LoadReport field is
+            // public, so the pre-fill sets each one directly; each retaining
+            // load uses its own fresh Retain.
+            let fresh = schema_rt.LoadReport {}
+            let fresh_read = ri_report_read(form, root, fixture(f[5]), fresh)
+            assert fresh_read == (form != "retain-fixed")
+            let rep = schema_rt.LoadReport {}
+            rep.unknown = 7
+            rep.kind_mismatch = 7
+            rep.widened = 7
+            rep.clamped = 7
+            rep.duplicate = 7
+            rep.malformed = true
+            rep.blob_shared = 7
+            rep.missing_required = 7
+            rep.non_finite_float = "stale"
+            rep.retained = 7
+            rep.retain_lost = 7
+            rep.refused = true
+            rep.reason = "stale"
+            rep.stopped = true
+            rep.damaged = true
+            let rsteps = if form == "retain-fixed": [f[5]] else: [f[5], f[6], f[5]]
+            for(rsteps) step, i:
+                let ok = ri_report_read(form, root, fixture(step), rep)
+                out += ri_verdict(ok, schema_rt.strict_reason(rep))
+                if i != 1:
+                    out += ri_report_diff(rep, fresh)
         elif form == "json":
             // FromJson into the caller value: json_read_into
             let rep = schema_rt.LoadReport {}
@@ -1010,6 +1116,8 @@ else:
         surface_retain(text, false)
     elif surface == "retain-save":
         surface_retain(text, true)
+    elif surface == "retain-refusal":
+        surface_retain_refusal(text)
     elif surface == "cook":
         surface_cook(text)
     elif surface == "cook-write":

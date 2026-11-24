@@ -90,6 +90,9 @@ export function ZeroSpanF64(value) {
 }
 
 export function WriteSpanF64(stream, value) {
+  if (value.values == null || value.values.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+    return false;
+  }
   for (let i = 0; i < 2; i++) {
     if (typeof value.values[i] !== "number" || !globalThis.Number.isFinite(value.values[i])) {
       return false; // a bare float must be finite (SPEC §4.3, §5.1)
@@ -135,6 +138,9 @@ export function ZeroSpanU64(value) {
 }
 
 export function WriteSpanU64(stream, value) {
+  if (value.values == null || value.values.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+    return false;
+  }
   for (let i = 0; i < 2; i++) {
     if (typeof value.values[i] !== "bigint" || value.values[i] < 0n || value.values[i] > 18446744073709551615n) { // a bare integer must fit its width
       return false;
@@ -180,6 +186,9 @@ export function ZeroSpanI64(value) {
 }
 
 export function WriteSpanI64(stream, value) {
+  if (value.values == null || value.values.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+    return false;
+  }
   for (let i = 0; i < 2; i++) {
     if (typeof value.values[i] !== "bigint" || value.values[i] < -9223372036854775808n || value.values[i] > 9223372036854775807n) { // a bare integer must fit its width
       return false;
@@ -225,6 +234,9 @@ export function ZeroSpanOne(value) {
 }
 
 export function WriteSpanOne(stream, value) {
+  if (value.values == null || value.values.length !== 1) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+    return false;
+  }
   for (let i = 0; i < 1; i++) {
     if (typeof value.values[i] !== "bigint" || value.values[i] < 0n || value.values[i] > 18446744073709551615n) { // a bare integer must fit its width
       return false;
@@ -270,6 +282,9 @@ export function ZeroSpanChunk(value) {
 }
 
 export function WriteSpanChunk(stream, value) {
+  if (value.values == null || value.values.length !== 4) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+    return false;
+  }
   for (let i = 0; i < 4; i++) {
     if (!globalThis.Number.isInteger(value.values[i]) || value.values[i] < 0 || value.values[i] > 65535) { // a bare integer must fit its width
       return false;
@@ -318,6 +333,9 @@ export function ZeroSpanTail(value) {
 }
 
 export function WriteSpanTail(stream, value) {
+  if (value.values == null || value.values.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+    return false;
+  }
   for (let i = 0; i < 2; i++) {
     if (typeof value.values[i] !== "number" || !globalThis.Number.isFinite(value.values[i])) {
       return false; // a bare float must be finite (SPEC §4.3, §5.1)
@@ -377,6 +395,9 @@ export function ZeroSpanTwice(value) {
 }
 
 export function WriteSpanTwice(stream, value) {
+  if (value.a == null || value.a.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+    return false;
+  }
   for (let i = 0; i < 2; i++) {
     if (typeof value.a[i] !== "number" || !globalThis.Number.isFinite(value.a[i])) {
       return false; // a bare float must be finite (SPEC §4.3, §5.1)
@@ -385,6 +406,9 @@ export function WriteSpanTwice(stream, value) {
     if (!stream.serializeDouble(NUMBER_SCRATCH)) {
       return false;
     }
+  }
+  if (value.b == null || value.b.length !== 2) { // a [N]T holds exactly N values (SPEC 5.1, SF-20)
+    return false;
   }
   for (let i = 0; i < 2; i++) {
     if (typeof value.b[i] !== "number" || !globalThis.Number.isFinite(value.b[i])) {

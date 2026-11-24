@@ -83,6 +83,7 @@ _M.ReadSpanF64 <- function(stream, value) {
 
 // WriteSpanF64 writes value in declared order; false on a refused value.
 _M.WriteSpanF64 <- function(stream, value) {
+  if (typeof value.Values != "array" || value.Values.len() != 2) return false; // a [N]T holds exactly N values (SPEC §5.1)
   for (local _i = 0; _i < 2; _i++) {
     _h.value = value.Values[_i];
     if (!stream.serializeDouble(_h)) return false;
@@ -120,6 +121,7 @@ _M.ReadSpanU64 <- function(stream, value) {
 
 // WriteSpanU64 writes value in declared order; false on a refused value.
 _M.WriteSpanU64 <- function(stream, value) {
+  if (typeof value.Values != "array" || value.Values.len() != 2) return false; // a [N]T holds exactly N values (SPEC §5.1)
   for (local _i = 0; _i < 2; _i++) {
     if (typeof value.Values[_i] != "integer") return false;
     _h.value = value.Values[_i];
@@ -158,6 +160,7 @@ _M.ReadSpanI64 <- function(stream, value) {
 
 // WriteSpanI64 writes value in declared order; false on a refused value.
 _M.WriteSpanI64 <- function(stream, value) {
+  if (typeof value.Values != "array" || value.Values.len() != 2) return false; // a [N]T holds exactly N values (SPEC §5.1)
   for (local _i = 0; _i < 2; _i++) {
     if (typeof value.Values[_i] != "integer") return false;
     _h.value = value.Values[_i];
@@ -196,6 +199,7 @@ _M.ReadSpanOne <- function(stream, value) {
 
 // WriteSpanOne writes value in declared order; false on a refused value.
 _M.WriteSpanOne <- function(stream, value) {
+  if (typeof value.Values != "array" || value.Values.len() != 1) return false; // a [N]T holds exactly N values (SPEC §5.1)
   for (local _i = 0; _i < 1; _i++) {
     if (typeof value.Values[_i] != "integer") return false;
     _h.value = value.Values[_i];
@@ -234,6 +238,7 @@ _M.ReadSpanChunk <- function(stream, value) {
 
 // WriteSpanChunk writes value in declared order; false on a refused value.
 _M.WriteSpanChunk <- function(stream, value) {
+  if (typeof value.Values != "array" || value.Values.len() != 4) return false; // a [N]T holds exactly N values (SPEC §5.1)
   for (local _i = 0; _i < 4; _i++) {
     if (typeof value.Values[_i] != "integer" || value.Values[_i] < 0 || value.Values[_i] > 65535) return false;
     _h.value = value.Values[_i];
@@ -276,6 +281,7 @@ _M.ReadSpanTail <- function(stream, value) {
 
 // WriteSpanTail writes value in declared order; false on a refused value.
 _M.WriteSpanTail <- function(stream, value) {
+  if (typeof value.Values != "array" || value.Values.len() != 2) return false; // a [N]T holds exactly N values (SPEC §5.1)
   for (local _i = 0; _i < 2; _i++) {
     _h.value = value.Values[_i];
     if (!stream.serializeDouble(_h)) return false;
@@ -322,10 +328,12 @@ _M.ReadSpanTwice <- function(stream, value) {
 
 // WriteSpanTwice writes value in declared order; false on a refused value.
 _M.WriteSpanTwice <- function(stream, value) {
+  if (typeof value.A != "array" || value.A.len() != 2) return false; // a [N]T holds exactly N values (SPEC §5.1)
   for (local _i = 0; _i < 2; _i++) {
     _h.value = value.A[_i];
     if (!stream.serializeDouble(_h)) return false;
   }
+  if (typeof value.B != "array" || value.B.len() != 2) return false; // a [N]T holds exactly N values (SPEC §5.1)
   for (local _i = 0; _i < 2; _i++) {
     _h.value = value.B[_i];
     if (!stream.serializeDouble(_h)) return false;

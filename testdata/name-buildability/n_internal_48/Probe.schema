@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum o
+{ Zfirst, Zsecond, Zthird }
+
+enum oSigned
+{ Zfirst, Zsecond, Zthird }
+
+enum o_byte
+{ Zfirst, Zsecond, Zthird }
+
+enum o_copy
+{ Zfirst, Zsecond, Zthird }
+
+enum o_id
+{ Zfirst, Zsecond, Zthird }
+
+enum o_leb
+{ Zfirst, Zsecond, Zthird }
+
+enum o_mark
+{ Zfirst, Zsecond, Zthird }
+
+enum o_patch
+{ Zfirst, Zsecond, Zthird }
+
+enum o_raw
+{ Zfirst, Zsecond, Zthird }
+
+enum o_u32
+{ Zfirst, Zsecond, Zthird }
+
+enum o_u64
+{ Zfirst, Zsecond, Zthird }
+
+enum o_u8
+{ Zfirst, Zsecond, Zthird }
+
+enum oa
+{ Zfirst, Zsecond, Zthird }
+
+enum oaref
+{ Zfirst, Zsecond, Zthird }
+
+enum ob
+{ Zfirst, Zsecond, Zthird }
+
+enum obj
+{ Zfirst, Zsecond, Zthird }
+
+enum obj_class
+{ Zfirst, Zsecond, Zthird }
+
+enum obj_id
+{ Zfirst, Zsecond, Zthird }
+
+enum objectMisuse
+{ Zfirst, Zsecond, Zthird }
+
+enum occupies
+{ Zfirst, Zsecond, Zthird }
+
+enum occurrence
+{ Zfirst, Zsecond, Zthird }
+
+enum occurrences
+{ Zfirst, Zsecond, Zthird }
+
+enum octets
+{ Zfirst, Zsecond, Zthird }
+
+enum odd
+{ Zfirst, Zsecond, Zthird }
+
+enum oe
+{ Zfirst, Zsecond, Zthird }
+
+enum oeElem
+{ Zfirst, Zsecond, Zthird }
+
+enum of
+{ Zfirst, Zsecond, Zthird }
+
+enum off
+{ Zfirst, Zsecond, Zthird }
+
+enum offHi
+{ Zfirst, Zsecond, Zthird }
+
+enum offLo
+{ Zfirst, Zsecond, Zthird }
+
+enum offs
+{ Zfirst, Zsecond, Zthird }
+
+enum offset
+{ Zfirst, Zsecond, Zthird }
+
+enum offsetHour
+{ Zfirst, Zsecond, Zthird }
+
+enum offsetMinute
+{ Zfirst, Zsecond, Zthird }
+
+enum offsetOf
+{ Zfirst, Zsecond, Zthird }
+
+enum offsetOfOffset
+{ Zfirst, Zsecond, Zthird }
+
+enum offsetSec
+{ Zfirst, Zsecond, Zthird }
+
+enum offset_sign
+{ Zfirst, Zsecond, Zthird }
+
+enum offsets
+{ Zfirst, Zsecond, Zthird }
+
+enum oh
+{ Zfirst, Zsecond, Zthird }
+
+enum oh0
+{ Zfirst, Zsecond, Zthird }
+
+enum oh_ok
+{ Zfirst, Zsecond, Zthird }
+
+enum oi
+{ Zfirst, Zsecond, Zthird }
+
+enum ok1
+{ Zfirst, Zsecond, Zthird }
+
+enum ok2
+{ Zfirst, Zsecond, Zthird }
+
+enum ok3
+{ Zfirst, Zsecond, Zthird }
+
+enum ok4
+{ Zfirst, Zsecond, Zthird }
+
+enum ok5
+{ Zfirst, Zsecond, Zthird }
+
+enum okU
+{ Zfirst, Zsecond, Zthird }
+
+enum ok_num
+{ Zfirst, Zsecond, Zthird }
+
+enum okind
+{ Zfirst, Zsecond, Zthird }
+
+enum okref
+{ Zfirst, Zsecond, Zthird }
+
+enum old
+{ Zfirst, Zsecond, Zthird }
+
+enum oldF
+{ Zfirst, Zsecond, Zthird }
+
+enum oldH
+{ Zfirst, Zsecond, Zthird }
+
+enum oldIndex
+{ Zfirst, Zsecond, Zthird }
+
+enum oldMap
+{ Zfirst, Zsecond, Zthird }
+
+enum oldMemory
+{ Zfirst, Zsecond, Zthird }
+
+enum oldN
+{ Zfirst, Zsecond, Zthird }
+
+enum oldNode
+{ Zfirst, Zsecond, Zthird }
+
+enum oldNodes
+{ Zfirst, Zsecond, Zthird }
+
+enum oldOwners
+{ Zfirst, Zsecond, Zthird }
+
+enum old_keys
+{ Zfirst, Zsecond, Zthird }
+
+enum old_slots
+{ Zfirst, Zsecond, Zthird }
+
+enum old_used
+{ Zfirst, Zsecond, Zthird }
+
+enum old_v
+{ Zfirst, Zsecond, Zthird }
+
+enum older
+{ Zfirst, Zsecond, Zthird }
+
+enum om
+{ Zfirst, Zsecond, Zthird }
+
+enum om0
+{ Zfirst, Zsecond, Zthird }
+
+enum om_ok
+{ Zfirst, Zsecond, Zthird }
+
+enum on
+{ Zfirst, Zsecond, Zthird }
+
+enum once
+{ Zfirst, Zsecond, Zthird }
+
+enum one
+{ Zfirst, Zsecond, Zthird }
+
+enum one_field
+{ Zfirst, Zsecond, Zthird }
+
+enum ones
+{ Zfirst, Zsecond, Zthird }
+
+enum only
+{ Zfirst, Zsecond, Zthird }
+
+enum onstack
+{ Zfirst, Zsecond, Zthird }
+
+enum oo
+{ Zfirst, Zsecond, Zthird }
+
+enum ook
+{ Zfirst, Zsecond, Zthird }
+
+enum oor
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    o Inner
+    oSigned Inner
+    o_byte Inner
+    o_copy Inner
+    o_id Inner
+    o_leb Inner
+    o_mark Inner
+    o_patch Inner
+    o_raw Inner
+    o_u32 Inner
+}
+
+table NameTypes0
+{
+    one0  o
+    many0 [..4]o
+    one1  oSigned
+    many1 [..4]oSigned
+    one2  o_byte
+    many2 [..4]o_byte
+    one3  o_copy
+    many3 [..4]o_copy
+    one4  o_id
+    many4 [..4]o_id
+    one5  o_leb
+    many5 [..4]o_leb
+    one6  o_mark
+    many6 [..4]o_mark
+    one7  o_patch
+    many7 [..4]o_patch
+    one8  o_raw
+    many8 [..4]o_raw
+    one9  o_u32
+    many9 [..4]o_u32
+}
+
+table NameFields0
+{
+    o uint32
+    oSigned uint32
+    o_byte uint32
+    o_copy uint32
+    o_id uint32
+    o_leb uint32
+    o_mark uint32
+    o_patch uint32
+    o_raw uint32
+    o_u32 uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    o_u64 Inner
+    o_u8 Inner
+    oa Inner
+    oaref Inner
+    ob Inner
+    obj Inner
+    obj_class Inner
+    obj_id Inner
+    objectMisuse Inner
+    occupies Inner
+}
+
+table NameTypes1
+{
+    one0  o_u64
+    many0 [..4]o_u64
+    one1  o_u8
+    many1 [..4]o_u8
+    one2  oa
+    many2 [..4]oa
+    one3  oaref
+    many3 [..4]oaref
+    one4  ob
+    many4 [..4]ob
+    one5  obj
+    many5 [..4]obj
+    one6  obj_class
+    many6 [..4]obj_class
+    one7  obj_id
+    many7 [..4]obj_id
+    one8  objectMisuse
+    many8 [..4]objectMisuse
+    one9  occupies
+    many9 [..4]occupies
+}
+
+table NameFields1
+{
+    o_u64 uint32
+    o_u8 uint32
+    oa uint32
+    oaref uint32
+    ob uint32
+    obj uint32
+    obj_class uint32
+    obj_id uint32
+    objectMisuse uint32
+    occupies uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    occurrence Inner
+    occurrences Inner
+    octets Inner
+    odd Inner
+    oe Inner
+    oeElem Inner
+    of Inner
+    off Inner
+    offHi Inner
+    offLo Inner
+}
+
+table NameTypes2
+{
+    one0  occurrence
+    many0 [..4]occurrence
+    one1  occurrences
+    many1 [..4]occurrences
+    one2  octets
+    many2 [..4]octets
+    one3  odd
+    many3 [..4]odd
+    one4  oe
+    many4 [..4]oe
+    one5  oeElem
+    many5 [..4]oeElem
+    one6  of
+    many6 [..4]of
+    one7  off
+    many7 [..4]off
+    one8  offHi
+    many8 [..4]offHi
+    one9  offLo
+    many9 [..4]offLo
+}
+
+table NameFields2
+{
+    occurrence uint32
+    occurrences uint32
+    octets uint32
+    odd uint32
+    oe uint32
+    oeElem uint32
+    of uint32
+    off uint32
+    offHi uint32
+    offLo uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    offs Inner
+    offset Inner
+    offsetHour Inner
+    offsetMinute Inner
+    offsetOf Inner
+    offsetOfOffset Inner
+    offsetSec Inner
+    offset_sign Inner
+    offsets Inner
+    oh Inner
+}
+
+table NameTypes3
+{
+    one0  offs
+    many0 [..4]offs
+    one1  offset
+    many1 [..4]offset
+    one2  offsetHour
+    many2 [..4]offsetHour
+    one3  offsetMinute
+    many3 [..4]offsetMinute
+    one4  offsetOf
+    many4 [..4]offsetOf
+    one5  offsetOfOffset
+    many5 [..4]offsetOfOffset
+    one6  offsetSec
+    many6 [..4]offsetSec
+    one7  offset_sign
+    many7 [..4]offset_sign
+    one8  offsets
+    many8 [..4]offsets
+    one9  oh
+    many9 [..4]oh
+}
+
+table NameFields3
+{
+    offs uint32
+    offset uint32
+    offsetHour uint32
+    offsetMinute uint32
+    offsetOf uint32
+    offsetOfOffset uint32
+    offsetSec uint32
+    offset_sign uint32
+    offsets uint32
+    oh uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    oh0 Inner
+    oh_ok Inner
+    oi Inner
+    ok1 Inner
+    ok2 Inner
+    ok3 Inner
+    ok4 Inner
+    ok5 Inner
+    okU Inner
+    ok_num Inner
+}
+
+table NameTypes4
+{
+    one0  oh0
+    many0 [..4]oh0
+    one1  oh_ok
+    many1 [..4]oh_ok
+    one2  oi
+    many2 [..4]oi
+    one3  ok1
+    many3 [..4]ok1
+    one4  ok2
+    many4 [..4]ok2
+    one5  ok3
+    many5 [..4]ok3
+    one6  ok4
+    many6 [..4]ok4
+    one7  ok5
+    many7 [..4]ok5
+    one8  okU
+    many8 [..4]okU
+    one9  ok_num
+    many9 [..4]ok_num
+}
+
+table NameFields4
+{
+    oh0 uint32
+    oh_ok uint32
+    oi uint32
+    ok1 uint32
+    ok2 uint32
+    ok3 uint32
+    ok4 uint32
+    ok5 uint32
+    okU uint32
+    ok_num uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    okind Inner
+    okref Inner
+    old Inner
+    oldF Inner
+    oldH Inner
+    oldIndex Inner
+    oldMap Inner
+    oldMemory Inner
+    oldN Inner
+    oldNode Inner
+}
+
+table NameTypes5
+{
+    one0  okind
+    many0 [..4]okind
+    one1  okref
+    many1 [..4]okref
+    one2  old
+    many2 [..4]old
+    one3  oldF
+    many3 [..4]oldF
+    one4  oldH
+    many4 [..4]oldH
+    one5  oldIndex
+    many5 [..4]oldIndex
+    one6  oldMap
+    many6 [..4]oldMap
+    one7  oldMemory
+    many7 [..4]oldMemory
+    one8  oldN
+    many8 [..4]oldN
+    one9  oldNode
+    many9 [..4]oldNode
+}
+
+table NameFields5
+{
+    okind uint32
+    okref uint32
+    old uint32
+    oldF uint32
+    oldH uint32
+    oldIndex uint32
+    oldMap uint32
+    oldMemory uint32
+    oldN uint32
+    oldNode uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    oldNodes Inner
+    oldOwners Inner
+    old_keys Inner
+    old_slots Inner
+    old_used Inner
+    old_v Inner
+    older Inner
+    om Inner
+    om0 Inner
+    om_ok Inner
+}
+
+table NameTypes6
+{
+    one0  oldNodes
+    many0 [..4]oldNodes
+    one1  oldOwners
+    many1 [..4]oldOwners
+    one2  old_keys
+    many2 [..4]old_keys
+    one3  old_slots
+    many3 [..4]old_slots
+    one4  old_used
+    many4 [..4]old_used
+    one5  old_v
+    many5 [..4]old_v
+    one6  older
+    many6 [..4]older
+    one7  om
+    many7 [..4]om
+    one8  om0
+    many8 [..4]om0
+    one9  om_ok
+    many9 [..4]om_ok
+}
+
+table NameFields6
+{
+    oldNodes uint32
+    oldOwners uint32
+    old_keys uint32
+    old_slots uint32
+    old_used uint32
+    old_v uint32
+    older uint32
+    om uint32
+    om0 uint32
+    om_ok uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    on Inner
+    once Inner
+    one Inner
+    one_field Inner
+    ones Inner
+    only Inner
+    onstack Inner
+    oo Inner
+    ook Inner
+    oor Inner
+}
+
+table NameTypes7
+{
+    one0  on
+    many0 [..4]on
+    one1  once
+    many1 [..4]once
+    one2  one
+    many2 [..4]one
+    one3  one_field
+    many3 [..4]one_field
+    one4  ones
+    many4 [..4]ones
+    one5  only
+    many5 [..4]only
+    one6  onstack
+    many6 [..4]onstack
+    one7  oo
+    many7 [..4]oo
+    one8  ook
+    many8 [..4]ook
+    one9  oor
+    many9 [..4]oor
+}
+
+table NameFields7
+{
+    on uint32
+    once uint32
+    one uint32
+    one_field uint32
+    ones uint32
+    only uint32
+    onstack uint32
+    oo uint32
+    ook uint32
+    oor uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

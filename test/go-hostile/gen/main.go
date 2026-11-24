@@ -146,7 +146,9 @@ func generate(compiler, corpus, out, runtime string) error {
 			if c.Carrier == "announce_entries" {
 				n = 1
 			}
-			fmt.Fprintf(&dispatch, "v:=%s.TableVocabulary{Entries:make([]%s.TableMessageEntry,%d)}\n", a, a, n)
+			// Init states the conforming 64 KiB byte bound: a zero bound refuses
+			// every nonempty vocabulary and never means the default (R9).
+			fmt.Fprintf(&dispatch, "var v %s.TableVocabulary\nv.Init(make([]%s.TableMessageEntry,%d))\n", a, a, n)
 			if c.Carrier == "announce_bytes" {
 				dispatch.WriteString("v.MaxBytes=8\n")
 			}
@@ -158,7 +160,7 @@ func generate(compiler, corpus, out, runtime string) error {
 		case "message", "message_novocab":
 			fmt.Fprintf(&dispatch, "var vocabulary *%s.TableVocabulary\n", a)
 			if c.Carrier == "message" {
-				fmt.Fprintf(&dispatch, "vocabulary=&%s.TableVocabulary{Entries:make([]%s.TableMessageEntry,4096)}\nannouncement:=make([]byte,%s.AnnounceMeasure());%s.Announce(announcement)\nif !%s.AnnounceRead(vocabulary,announcement,&r){return \"error: own announcement refused\"}\n", a, a, a, a, a)
+				fmt.Fprintf(&dispatch, "vocabulary=new(%s.TableVocabulary)\nvocabulary.Init(make([]%s.TableMessageEntry,4096))\nannouncement:=make([]byte,%s.AnnounceMeasure());%s.Announce(announcement)\nif !%s.AnnounceRead(vocabulary,announcement,&r){return \"error: own announcement refused\"}\n", a, a, a, a, a)
 			}
 			fmt.Fprintf(&dispatch, "values:=make([]%s.%s,1)\nn,ok:=%s.%sLoadMessages(values,vocabulary,data,&r)\nif reason:=wireRefusal(ok,&r);reason!=\"\"{return reason}\nif n!=1{return \"refuse damaged\"};v:=&values[0]\n", a, t, a, t)
 			emitDigest(&dispatch, a, t)

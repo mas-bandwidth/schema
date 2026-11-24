@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum content
+{ Zfirst, Zsecond, Zthird }
+
+enum contentLen
+{ Zfirst, Zsecond, Zthird }
+
+enum context
+{ Zfirst, Zsecond, Zthird }
+
+enum continuations
+{ Zfirst, Zsecond, Zthird }
+
+enum controlEscape
+{ Zfirst, Zsecond, Zthird }
+
+enum conv
+{ Zfirst, Zsecond, Zthird }
+
+enum conv_from_lua
+{ Zfirst, Zsecond, Zthird }
+
+enum conv_to_lua
+{ Zfirst, Zsecond, Zthird }
+
+enum convenience
+{ Zfirst, Zsecond, Zthird }
+
+enum cookRecordItem
+{ Zfirst, Zsecond, Zthird }
+
+enum cookRecordLeaf
+{ Zfirst, Zsecond, Zthird }
+
+enum cookRecordNode
+{ Zfirst, Zsecond, Zthird }
+
+enum cookRecordRoot
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_align
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_byte_order_big
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_byte_order_little
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_directory_entry
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_extent1
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_extent1_array
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_extent1_i
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_extent1_in
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_extent1_slot
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_extent1_unreached
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_extent1_unreached_at
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_extent2
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_extent2_array
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_extent2_i
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_extent2_in
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_extent2_slot
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_extent3
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_extent3_array
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_extent3_i
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_extent3_in
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_extent3_slot
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_extent4_slot
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_extent5
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_extent5_array
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_extent5_i
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_extent5_in
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_extent5_slot
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_extent6_slot
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_extent7_slot
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_header_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_i1
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_i2
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_i3
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_magic
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_magic_swapped
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_off
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_tables
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_text
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_type_id
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_unions
+{ Zfirst, Zsecond, Zthird }
+
+enum cook_width
+{ Zfirst, Zsecond, Zthird }
+
+enum copyBits
+{ Zfirst, Zsecond, Zthird }
+
+enum copy_out
+{ Zfirst, Zsecond, Zthird }
+
+enum core_from
+{ Zfirst, Zsecond, Zthird }
+
+enum core_to
+{ Zfirst, Zsecond, Zthird }
+
+enum correctly
+{ Zfirst, Zsecond, Zthird }
+
+enum cost
+{ Zfirst, Zsecond, Zthird }
+
+enum count
+{ Zfirst, Zsecond, Zthird }
+
+enum count32
+{ Zfirst, Zsecond, Zthird }
+
+enum count64
+{ Zfirst, Zsecond, Zthird }
+
+enum countAt
+{ Zfirst, Zsecond, Zthird }
+
+enum countBits
+{ Zfirst, Zsecond, Zthird }
+
+enum countBlob
+{ Zfirst, Zsecond, Zthird }
+
+enum countField
+{ Zfirst, Zsecond, Zthird }
+
+enum countFields
+{ Zfirst, Zsecond, Zthird }
+
+enum countInstance
+{ Zfirst, Zsecond, Zthird }
+
+enum countNode
+{ Zfirst, Zsecond, Zthird }
+
+enum countOf
+{ Zfirst, Zsecond, Zthird }
+
+enum countOffset
+{ Zfirst, Zsecond, Zthird }
+
+enum countOverBound
+{ Zfirst, Zsecond, Zthird }
+
+enum countValue
+{ Zfirst, Zsecond, Zthird }
+
+enum countWire
+{ Zfirst, Zsecond, Zthird }
+
+enum count_dst
+{ Zfirst, Zsecond, Zthird }
+
+enum count_json_graph
+{ Zfirst, Zsecond, Zthird }
+
+enum count_json_value
+{ Zfirst, Zsecond, Zthird }
+
+enum count_lost
+{ Zfirst, Zsecond, Zthird }
+
+enum count_mark
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    content Inner
+    contentLen Inner
+    context Inner
+    continuations Inner
+    controlEscape Inner
+    conv Inner
+    conv_from_lua Inner
+    conv_to_lua Inner
+    convenience Inner
+    cookRecordItem Inner
+}
+
+table NameTypes0
+{
+    one0  content
+    many0 [..4]content
+    one1  contentLen
+    many1 [..4]contentLen
+    one2  context
+    many2 [..4]context
+    one3  continuations
+    many3 [..4]continuations
+    one4  controlEscape
+    many4 [..4]controlEscape
+    one5  conv
+    many5 [..4]conv
+    one6  conv_from_lua
+    many6 [..4]conv_from_lua
+    one7  conv_to_lua
+    many7 [..4]conv_to_lua
+    one8  convenience
+    many8 [..4]convenience
+    one9  cookRecordItem
+    many9 [..4]cookRecordItem
+}
+
+table NameFields0
+{
+    content uint32
+    contentLen uint32
+    context uint32
+    continuations uint32
+    controlEscape uint32
+    conv uint32
+    conv_from_lua uint32
+    conv_to_lua uint32
+    convenience uint32
+    cookRecordItem uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    cookRecordLeaf Inner
+    cookRecordNode Inner
+    cookRecordRoot Inner
+    cook_align Inner
+    cook_byte_order_big Inner
+    cook_byte_order_little Inner
+    cook_directory_entry Inner
+    cook_extent1 Inner
+    cook_extent1_array Inner
+    cook_extent1_i Inner
+}
+
+table NameTypes1
+{
+    one0  cookRecordLeaf
+    many0 [..4]cookRecordLeaf
+    one1  cookRecordNode
+    many1 [..4]cookRecordNode
+    one2  cookRecordRoot
+    many2 [..4]cookRecordRoot
+    one3  cook_align
+    many3 [..4]cook_align
+    one4  cook_byte_order_big
+    many4 [..4]cook_byte_order_big
+    one5  cook_byte_order_little
+    many5 [..4]cook_byte_order_little
+    one6  cook_directory_entry
+    many6 [..4]cook_directory_entry
+    one7  cook_extent1
+    many7 [..4]cook_extent1
+    one8  cook_extent1_array
+    many8 [..4]cook_extent1_array
+    one9  cook_extent1_i
+    many9 [..4]cook_extent1_i
+}
+
+table NameFields1
+{
+    cookRecordLeaf uint32
+    cookRecordNode uint32
+    cookRecordRoot uint32
+    cook_align uint32
+    cook_byte_order_big uint32
+    cook_byte_order_little uint32
+    cook_directory_entry uint32
+    cook_extent1 uint32
+    cook_extent1_array uint32
+    cook_extent1_i uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    cook_extent1_in Inner
+    cook_extent1_slot Inner
+    cook_extent1_unreached Inner
+    cook_extent1_unreached_at Inner
+    cook_extent2 Inner
+    cook_extent2_array Inner
+    cook_extent2_i Inner
+    cook_extent2_in Inner
+    cook_extent2_slot Inner
+    cook_extent3 Inner
+}
+
+table NameTypes2
+{
+    one0  cook_extent1_in
+    many0 [..4]cook_extent1_in
+    one1  cook_extent1_slot
+    many1 [..4]cook_extent1_slot
+    one2  cook_extent1_unreached
+    many2 [..4]cook_extent1_unreached
+    one3  cook_extent1_unreached_at
+    many3 [..4]cook_extent1_unreached_at
+    one4  cook_extent2
+    many4 [..4]cook_extent2
+    one5  cook_extent2_array
+    many5 [..4]cook_extent2_array
+    one6  cook_extent2_i
+    many6 [..4]cook_extent2_i
+    one7  cook_extent2_in
+    many7 [..4]cook_extent2_in
+    one8  cook_extent2_slot
+    many8 [..4]cook_extent2_slot
+    one9  cook_extent3
+    many9 [..4]cook_extent3
+}
+
+table NameFields2
+{
+    cook_extent1_in uint32
+    cook_extent1_slot uint32
+    cook_extent1_unreached uint32
+    cook_extent1_unreached_at uint32
+    cook_extent2 uint32
+    cook_extent2_array uint32
+    cook_extent2_i uint32
+    cook_extent2_in uint32
+    cook_extent2_slot uint32
+    cook_extent3 uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    cook_extent3_array Inner
+    cook_extent3_i Inner
+    cook_extent3_in Inner
+    cook_extent3_slot Inner
+    cook_extent4_slot Inner
+    cook_extent5 Inner
+    cook_extent5_array Inner
+    cook_extent5_i Inner
+    cook_extent5_in Inner
+    cook_extent5_slot Inner
+}
+
+table NameTypes3
+{
+    one0  cook_extent3_array
+    many0 [..4]cook_extent3_array
+    one1  cook_extent3_i
+    many1 [..4]cook_extent3_i
+    one2  cook_extent3_in
+    many2 [..4]cook_extent3_in
+    one3  cook_extent3_slot
+    many3 [..4]cook_extent3_slot
+    one4  cook_extent4_slot
+    many4 [..4]cook_extent4_slot
+    one5  cook_extent5
+    many5 [..4]cook_extent5
+    one6  cook_extent5_array
+    many6 [..4]cook_extent5_array
+    one7  cook_extent5_i
+    many7 [..4]cook_extent5_i
+    one8  cook_extent5_in
+    many8 [..4]cook_extent5_in
+    one9  cook_extent5_slot
+    many9 [..4]cook_extent5_slot
+}
+
+table NameFields3
+{
+    cook_extent3_array uint32
+    cook_extent3_i uint32
+    cook_extent3_in uint32
+    cook_extent3_slot uint32
+    cook_extent4_slot uint32
+    cook_extent5 uint32
+    cook_extent5_array uint32
+    cook_extent5_i uint32
+    cook_extent5_in uint32
+    cook_extent5_slot uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    cook_extent6_slot Inner
+    cook_extent7_slot Inner
+    cook_header_bytes Inner
+    cook_i1 Inner
+    cook_i2 Inner
+    cook_i3 Inner
+    cook_magic Inner
+    cook_magic_swapped Inner
+    cook_off Inner
+    cook_tables Inner
+}
+
+table NameTypes4
+{
+    one0  cook_extent6_slot
+    many0 [..4]cook_extent6_slot
+    one1  cook_extent7_slot
+    many1 [..4]cook_extent7_slot
+    one2  cook_header_bytes
+    many2 [..4]cook_header_bytes
+    one3  cook_i1
+    many3 [..4]cook_i1
+    one4  cook_i2
+    many4 [..4]cook_i2
+    one5  cook_i3
+    many5 [..4]cook_i3
+    one6  cook_magic
+    many6 [..4]cook_magic
+    one7  cook_magic_swapped
+    many7 [..4]cook_magic_swapped
+    one8  cook_off
+    many8 [..4]cook_off
+    one9  cook_tables
+    many9 [..4]cook_tables
+}
+
+table NameFields4
+{
+    cook_extent6_slot uint32
+    cook_extent7_slot uint32
+    cook_header_bytes uint32
+    cook_i1 uint32
+    cook_i2 uint32
+    cook_i3 uint32
+    cook_magic uint32
+    cook_magic_swapped uint32
+    cook_off uint32
+    cook_tables uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    cook_text Inner
+    cook_type_id Inner
+    cook_unions Inner
+    cook_width Inner
+    copyBits Inner
+    copy_out Inner
+    core_from Inner
+    core_to Inner
+    correctly Inner
+    cost Inner
+}
+
+table NameTypes5
+{
+    one0  cook_text
+    many0 [..4]cook_text
+    one1  cook_type_id
+    many1 [..4]cook_type_id
+    one2  cook_unions
+    many2 [..4]cook_unions
+    one3  cook_width
+    many3 [..4]cook_width
+    one4  copyBits
+    many4 [..4]copyBits
+    one5  copy_out
+    many5 [..4]copy_out
+    one6  core_from
+    many6 [..4]core_from
+    one7  core_to
+    many7 [..4]core_to
+    one8  correctly
+    many8 [..4]correctly
+    one9  cost
+    many9 [..4]cost
+}
+
+table NameFields5
+{
+    cook_text uint32
+    cook_type_id uint32
+    cook_unions uint32
+    cook_width uint32
+    copyBits uint32
+    copy_out uint32
+    core_from uint32
+    core_to uint32
+    correctly uint32
+    cost uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    count Inner
+    count32 Inner
+    count64 Inner
+    countAt Inner
+    countBits Inner
+    countBlob Inner
+    countField Inner
+    countFields Inner
+    countInstance Inner
+    countNode Inner
+}
+
+table NameTypes6
+{
+    one0  count
+    many0 [..4]count
+    one1  count32
+    many1 [..4]count32
+    one2  count64
+    many2 [..4]count64
+    one3  countAt
+    many3 [..4]countAt
+    one4  countBits
+    many4 [..4]countBits
+    one5  countBlob
+    many5 [..4]countBlob
+    one6  countField
+    many6 [..4]countField
+    one7  countFields
+    many7 [..4]countFields
+    one8  countInstance
+    many8 [..4]countInstance
+    one9  countNode
+    many9 [..4]countNode
+}
+
+table NameFields6
+{
+    count uint32
+    count32 uint32
+    count64 uint32
+    countAt uint32
+    countBits uint32
+    countBlob uint32
+    countField uint32
+    countFields uint32
+    countInstance uint32
+    countNode uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    countOf Inner
+    countOffset Inner
+    countOverBound Inner
+    countValue Inner
+    countWire Inner
+    count_dst Inner
+    count_json_graph Inner
+    count_json_value Inner
+    count_lost Inner
+    count_mark Inner
+}
+
+table NameTypes7
+{
+    one0  countOf
+    many0 [..4]countOf
+    one1  countOffset
+    many1 [..4]countOffset
+    one2  countOverBound
+    many2 [..4]countOverBound
+    one3  countValue
+    many3 [..4]countValue
+    one4  countWire
+    many4 [..4]countWire
+    one5  count_dst
+    many5 [..4]count_dst
+    one6  count_json_graph
+    many6 [..4]count_json_graph
+    one7  count_json_value
+    many7 [..4]count_json_value
+    one8  count_lost
+    many8 [..4]count_lost
+    one9  count_mark
+    many9 [..4]count_mark
+}
+
+table NameFields7
+{
+    countOf uint32
+    countOffset uint32
+    countOverBound uint32
+    countValue uint32
+    countWire uint32
+    count_dst uint32
+    count_json_graph uint32
+    count_json_value uint32
+    count_lost uint32
+    count_mark uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

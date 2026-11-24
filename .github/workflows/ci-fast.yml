@@ -1048,6 +1048,14 @@ jobs:
         if: matrix.shard == 'rest'
         run: bash -n bench/run.sh
 
+      # THE PYTHON TOOLING TESTS (nightly_readiness_test.py, wire_fuzz_complete_test.py):
+      # no job ran the first, so main went red unseen. About a second. The
+      # guard in internal/ci (python_tests_run_test.go) fails a *_test.py that
+      # no target runs.
+      - name: python tooling tests
+        if: matrix.shard == 'rest'
+        run: make python-tooling-tests
+
       # A SKIP NAMES A REASON, AND THIS JOB COUNTS ITS SKIPS. The policy gates
       # shell out to make and git, which every runner of this job has: a gate
       # that skipped for want of either checked nothing, and is red here. So
@@ -1062,6 +1070,22 @@ jobs:
           if [ "$JOB_STATUS" = success ]; then require=-require-record; fi
           go run ./tools/gotestreport -slowest 0 $require -skips .github/skip-ledger.txt \
             -provides "short platform tool:make tool:git tool:sh" "$PGROUP_GO_TEST_JSON"
+
+      # EVERY TEST THAT RAN ON MAIN STILL RUNS (tools/testguard). The same
+      # record, held to test/testguard/ci-policy-<shard>.tsv: every skip is in
+      # its ledger by test, the row's packages each ran a test, and every test
+      # in test/testguard/ci-policy-<shard>/ (one empty file per test) ran,
+      # with none running unlisted. A change that adds or removes a test adds
+      # or deletes its file. Where it meets the step above: both read skips
+      # (that step by reason, this one by test) and both refuse a record of
+      # nothing; the baseline is this step's alone.
+      - name: testguard — every test that ran on main still runs
+        if: always()
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          go run ./tools/testguard check --config "test/testguard/ci-policy-$SHARD.tsv" "$PGROUP_GO_TEST_JSON"/*.jsonl
 
   # GO VET, a job of its own beside lint-fast: in one job with modernize the
   # two whole-tree type-checks ran one after the other, and vet alone took
