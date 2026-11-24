@@ -841,3 +841,38 @@ failure on that tier, with the stream tier still green.
 | rule | case | the leg it was red on before its fix |
 |---|---|---|
 | SPEC §4.6: the decode is float32 throughout, and min is the declaration's float32 | `CfDecode`, `verify-bitphase-<lang>` | red before its fix on JavaScript (flat tier; the stream tier's runtime frounds its parameters), Dart and Elixir: each generator folded min, and its other float32 literals, as the float32's shortest decimal (`-3.3`), which the language reads as a different double. All three read the same 2,535 indices off. Green with no fix: C, C++, C# (modern and unity), Go, Rust (debug and release), Java, Python, Ruby, Lua, Luau, Squirrel, moo, Goose, Lobster |
+
+### A float32 constant, default and range end is the float32, in every target
+
+SPEC.md §4.3 rounds a float literal to float64 first and, for a `float32`
+constant, default or range end, once more to float32: `0.1` declares
+`float32(0.1)`, which is `0.10000000149011612`, and `-0.3` declares
+`-0.30000001192092896`. A target whose float literals are doubles reads the
+float32's shortest decimal, `0.1`, as the double `0.1`, which is no float32.
+The compressed-float decode above was one instance of that; these are the rest.
+Both ends of a range such as `[-0.3, 0.3]` lie outside their decimals
+(`float32(0.3)` is above the double `0.3`), so a write guard held at the
+decimal refuses the declared ends themselves.
+
+[`F32Const` and `F32Lit`](../test/verify-bitphase/BitPhase.schema) declare
+`const F32Const float32 = 0.1` and
+`d float32 = 0.1`, `e float32 = -0.3 | min = -0.3, max = 0.3, resolution = 0.001`.
+Every leg of `make verify-bitphase-<lang>`, on every tier it carries, prints
+`F32LIT <tier> <probe> <answer>` for five probes: the constant, a fresh
+value's `d` and `e`, and `e` written at `float32(-0.3)` and at `float32(0.3)`
+and read back. An answer is 16 hex digits of the value's float64 bits (8 of the
+binary32 pattern for moo), or `refused`. The harness
+([`f32lit.go`](../test/verify-bitphase/f32lit.go)) computes every answer
+itself, including each end's write and read in float32, and holds each tier
+to it bit for bit; a probe left out, answered twice or answered for a tier the
+leg does not carry fails by name. `verify-bitphase-negative-control` plants the
+shortest decimals back in the JavaScript stream tier's literals and owes the
+constant and defaults red on both tiers and both stream-tier writes refused,
+with the flat tier's writes and the decode case green.
+
+| rule | case | the leg it was red on before its fix |
+|---|---|---|
+| SPEC §4.3: a `float32` constant is the float32 of its declaration | `F32Lit` `const`, `verify-bitphase-<lang>` | red before its fix on JavaScript (both tiers read the module's constant), Dart and Elixir, which spelled it as the float32's shortest decimal, and C, whose `#define` of that decimal is a C double. Green with no fix: C++, C# (modern and unity), Go, Rust (debug and release), Java, Python, Ruby, Lua, Luau, Squirrel, moo, Goose, Lobster |
+| SPEC §4.3, §5: a `float32` field's default is the float32 of its declaration | `F32Lit` `default-d`, `default-e`, `verify-bitphase-<lang>` | red before its fix on JavaScript (both tiers construct through the module), Dart and Elixir. Green with no fix: C (the decimal assigned to a `float` rounds there), C++, C# (modern and unity), Go, Rust, Java, Python, Ruby, Lua, Luau, Squirrel, moo, Goose, Lobster |
+| SPEC §4.3, §5.1 row 10: a compressed float's write takes both float32 ends | `F32Lit` `write-min`, `write-max`, `verify-bitphase-<lang>` | red before its fix on the JavaScript stream tier, Lua and Luau, whose write guards compared against the decimals and refused both ends. Green with no fix: the JavaScript flat tier, Dart and Elixir (their guards were spelled as float32 by #4991), C, C++, C# (modern and unity), Go, Rust, Java, Python, Ruby, Squirrel, moo, Goose, Lobster |
+| SPEC §4.3: a table field's `float32` default is the float32 of its declaration | Go unit test `TestJsTableFloat32DefaultIsItsFloat32` (`internal/codegen/jstable`; no shared case: every table surface, the text form included, rounds a value through float32 before it spells or stores it, so the double default differs only in memory) | red before its fix on JavaScript tables (the constructor and the descriptor's `def`, which an absent field reads back, held the double `0.7`). The other table generators spell a float32 default as its float32 already |
