@@ -235,6 +235,13 @@ var platformNames = func() map[string]string {
 	put("the buffer library the generated code calls unqualified (Luau, moo)", "buffer")
 	put("System.Diagnostics.Debug, which the generated C# calls unqualified (C#)", "Debug")
 	put("the 128-bit support library the Dart and Java emitters write beside a 128-bit unit (Dart, Java)", "Int128", "UInt128")
+	// Dart's built-in identifiers may name a member or a local but never a
+	// type (the Dart spec's builtInIdentifier production), and every
+	// declaration is a Dart class or extension type
+	put("a Dart built-in identifier, which can name no class or extension type (Dart)",
+		"abstract", "as", "covariant", "deferred", "dynamic", "export", "extension", "external", "factory", "Function",
+		"get", "implements", "import", "interface", "late", "library", "mixin", "operator", "part", "required",
+		"set", "static", "typedef")
 	put("the support module the Elixir emitter writes beside the unit, Package.PacketRuntime (Elixir)", "PacketRuntime")
 	return m
 }()

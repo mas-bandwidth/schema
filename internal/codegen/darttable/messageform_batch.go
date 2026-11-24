@@ -1205,7 +1205,7 @@ func (g *fixedModule) emitMessageReadEnum(f *ir.Field, e *ir.Enum, expr, ind str
 	g.pf("%s  if (r.bits.failed) { r.report.Damage(); return false; }\n", ind)
 	g.gen.need(e.Name)
 	depDef := g.gen.fixedZeroFor(f)
-	g.pf("%s  if (ref == 0) { %s = %s.none; } else {\n", ind, expr, e.Name)
+	g.pf("%s  if (ref == 0) { %s = %s.none; } else {\n", ind, expr, dartEnumRef(e.Name))
 	g.pf("%s    if (ref > r.vocabulary.count) { r.report.Damage(); return false; }\n", ind)
 	g.pf("%s    final named = r.vocabulary.entries[ref - 1];\n", ind)
 	g.pf("%s    if (tableMessageReservedId(named.id) || named.kind != 0) { r.report.Damage(); return false; }\n", ind)
@@ -1216,9 +1216,9 @@ func (g *fixedModule) emitMessageReadEnum(f *ir.Field, e *ir.Enum, expr, ind str
 			g.pf("%s      case %s: %s = %s; r.substituted++; break;\n", ind, dartU64Literal(id), expr, depDef)
 			continue
 		}
-		g.pf("%s      case %s: %s = %s.%s; break;\n", ind, dartU64Literal(id), expr, e.Name, dartName(v))
+		g.pf("%s      case %s: %s = %s.%s; break;\n", ind, dartU64Literal(id), expr, dartEnumRef(e.Name), dartName(v))
 	}
-	g.pf("%s      default: %s = %s.none; r.report.unknown++; break;\n", ind, expr, e.Name)
+	g.pf("%s      default: %s = %s.none; r.report.unknown++; break;\n", ind, expr, dartEnumRef(e.Name))
 	g.pf("%s    }\n%s  }\n%s}\n", ind, ind, ind)
 }
 

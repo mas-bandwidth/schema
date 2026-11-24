@@ -530,14 +530,14 @@ union Action {
     value int32
     done
 }
-union Signal {
+union Beacon {
     first
     last
 }
 fixed table Rec {
     lead int32
     action Action
-    signal Signal
+    signal Beacon
     tail int32
 }
 `

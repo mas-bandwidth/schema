@@ -619,8 +619,94 @@ namespace SchemaUnityConformance
 
             public object Fresh() { return MakeFresh(); }
 
+            // A `retain` row (test/conformance/README.md, "The `retain` form"):
+            // the retaining load (<Root>LoadRetain, SPEC-TABLES §6.6) into ONE
+            // report the driver PRE-FILLED (every field of the report struct
+            // set to a non-default value), then the damaged load and the
+            // lawful load again into that report. After each lawful load the
+            // report must equal, field by field, the report the same load
+            // leaves in a FRESH report (§6.5: every read zeroes a supplied
+            // report in full, the retain family included). Each load has its
+            // own fresh value and retention store.
+            //
+            // A `region` row ("The `region` form") is the same protocol through
+            // the PLAIN <Root>Load: the Unity backend has no region read, so it
+            // is the value Load (ref value, bytes, ref report), each load into
+            // its own fresh value.
+            private byte[] ReadIntoZeroed(byte[] lawful, byte[] damaged, bool retain)
+            {
+                if (retain && loadRetain == null) { throw new InvalidOperationException("read-into: " + Unit + "." + Root + " has no LoadRetain"); }
+                if (!retain && varLoad == null) { throw new InvalidOperationException("read-into: " + Unit + "." + Root + " has no variable Load"); }
+                bool Load(byte[] wire, ref TRep report)
+                {
+                    T value = MakeFresh();
+                    return retain ? loadRetain(ref value, wire, MakeRetain(1 << 20, 1 << 17), ref report) : varLoad(ref value, wire, ref report);
+                }
+                FieldInfo[] fields = typeof(TRep).GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                TRep fresh = default;
+                if (!Load(lawful, ref fresh) || (bool)fRefused.GetValue(fresh) || (fDamaged != null && (bool)fDamaged.GetValue(fresh)))
+                { throw new InvalidOperationException("ri_retain: the lawful retaining load refused into a fresh report"); }
+                object boxedFresh = fresh;
+                string Zeroed(TRep r)
+                {
+                    object boxed = r;
+                    var kept = new List<string>();
+                    foreach (FieldInfo fi in fields)
+                    {
+                        if (!Equals(fi.GetValue(boxed), fi.GetValue(boxedFresh))) { kept.Add(fi.Name + "=" + fi.GetValue(boxed) + " want " + fi.GetValue(boxedFresh)); }
+                    }
+                    return kept.Count == 0 ? "zeroed" : "kept " + string.Join(", ", kept);
+                }
+                object fill = default(TRep);
+                foreach (FieldInfo fi in fields)
+                {
+                    Type t = fi.FieldType;
+                    if (t == typeof(int)) { fi.SetValue(fill, 7); }
+                    else if (t == typeof(long)) { fi.SetValue(fill, 7L); }
+                    else if (t == typeof(ulong)) { fi.SetValue(fill, 7UL); }
+                    else if (t == typeof(bool)) { fi.SetValue(fill, true); }
+                    else if (t == typeof(string)) { fi.SetValue(fill, "stale"); }
+                    else { throw new InvalidOperationException("ri_retain: the driver cannot pre-fill report field " + fi.Name + " of " + t.Name); }
+                }
+                TRep report = (TRep)fill;
+                var answer = new MemoryStream();
+                void Line(string text) { byte[] b = Encoding.ASCII.GetBytes(text + "\n"); answer.Write(b, 0, b.Length); }
+                void Step(byte[] bytes)
+                {
+                    string line;
+                    try
+                    {
+                        bool ok = Load(bytes, ref report);
+                        object boxed = report;
+                        bool refused = (bool)fRefused.GetValue(boxed) || (fDamaged != null && (bool)fDamaged.GetValue(boxed));
+                        line = ok && !refused ? "read" : "refused";
+                    }
+                    catch (Exception e) { line = "threw " + e.GetType().Name; }
+                    Line(line);
+                }
+                Step(lawful);
+                Line(Zeroed(report));
+                Step(damaged);
+                Step(lawful);
+                Line(Zeroed(report));
+                return answer.ToArray();
+            }
+
             public byte[] ReadInto(string form, byte[] lawful, byte[] damaged, int count, byte[] announcement)
             {
+                if (form == "retain") { return ReadIntoZeroed(lawful, damaged, true); }
+                if (form == "region") { return ReadIntoZeroed(lawful, damaged, false); }
+                if (form == "retain-fixed")
+                {
+                    // NO SUCH METHOD: the Unity generator emits <Root>LoadRetain
+                    // only for a variable-class root
+                    // (internal/codegen/unitytable/surfaces.go:49-51, `if variable
+                    // { emitRetainSurfaces(...) }`), so the fixed-class
+                    // tblsurf.Narrow has no LoadRetain to hand a report to
+                    // (SPEC-TABLES §6.6 refuses it at compile time).
+                    if (loadRetain != null) { throw new InvalidOperationException("read-into: " + Unit + "." + Root + " has a LoadRetain; the retain-fixed row owes its call"); }
+                    return Encoding.ASCII.GetBytes("unrepresentable\n");
+                }
                 switch (form)
                 {
                     case "variable": if (varLoad == null) { throw new InvalidOperationException("read-into: " + Unit + "." + Root + " has no variable Load"); } break;
@@ -1405,7 +1491,7 @@ namespace SchemaUnityConformance
             "block\nblock-foreign\nblock-dump\n" +
             "forgery\ncook-forgery\n" +
             "write-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n" +
-            "write-refusal-cook\nwrite-refusal-block\nannounce\nread-into\njson-write-into\nunit shapes\n";
+            "write-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\nunit shapes\n";
 
         private static int Main(string[] args)
         {
@@ -1460,6 +1546,7 @@ namespace SchemaUnityConformance
                 case "write-refusal-cook":
                 case "write-refusal-block":
                 case "write-refusal-json":
+                case "write-refusal-shape":
                     return SurfaceWriteRefusal(outDir, surface);
                 case "announce": return SurfaceAnnounce(outDir);
                 case "read-into": return SurfaceReadInto(outDir);

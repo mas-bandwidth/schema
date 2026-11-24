@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum limbs
+{ Zfirst, Zsecond, Zthird }
+
+enum limbsOf
+{ Zfirst, Zsecond, Zthird }
+
+enum limit
+{ Zfirst, Zsecond, Zthird }
+
+enum limits
+{ Zfirst, Zsecond, Zthird }
+
+enum limits_of
+{ Zfirst, Zsecond, Zthird }
+
+enum line
+{ Zfirst, Zsecond, Zthird }
+
+enum lineBreak
+{ Zfirst, Zsecond, Zthird }
+
+enum lineage
+{ Zfirst, Zsecond, Zthird }
+
+enum lineage_at
+{ Zfirst, Zsecond, Zthird }
+
+enum lineage_union
+{ Zfirst, Zsecond, Zthird }
+
+enum linear
+{ Zfirst, Zsecond, Zthird }
+
+enum lines
+{ Zfirst, Zsecond, Zthird }
+
+enum link
+{ Zfirst, Zsecond, Zthird }
+
+enum links
+{ Zfirst, Zsecond, Zthird }
+
+enum listMark
+{ Zfirst, Zsecond, Zthird }
+
+enum list_body
+{ Zfirst, Zsecond, Zthird }
+
+enum list_end_values
+{ Zfirst, Zsecond, Zthird }
+
+enum list_len
+{ Zfirst, Zsecond, Zthird }
+
+enum listed
+{ Zfirst, Zsecond, Zthird }
+
+enum listing
+{ Zfirst, Zsecond, Zthird }
+
+enum literal
+{ Zfirst, Zsecond, Zthird }
+
+enum little
+{ Zfirst, Zsecond, Zthird }
+
+enum live
+{ Zfirst, Zsecond, Zthird }
+
+enum liveCount
+{ Zfirst, Zsecond, Zthird }
+
+enum liveEnd
+{ Zfirst, Zsecond, Zthird }
+
+enum live_of
+{ Zfirst, Zsecond, Zthird }
+
+enum lk
+{ Zfirst, Zsecond, Zthird }
+
+enum llo
+{ Zfirst, Zsecond, Zthird }
+
+enum lm
+{ Zfirst, Zsecond, Zthird }
+
+enum ln
+{ Zfirst, Zsecond, Zthird }
+
+enum lo
+{ Zfirst, Zsecond, Zthird }
+
+enum lo1
+{ Zfirst, Zsecond, Zthird }
+
+enum lo16
+{ Zfirst, Zsecond, Zthird }
+
+enum lo2
+{ Zfirst, Zsecond, Zthird }
+
+enum loDigit
+{ Zfirst, Zsecond, Zthird }
+
+enum loHi
+{ Zfirst, Zsecond, Zthird }
+
+enum loLo
+{ Zfirst, Zsecond, Zthird }
+
+enum loNeg
+{ Zfirst, Zsecond, Zthird }
+
+enum lo_b_hi
+{ Zfirst, Zsecond, Zthird }
+
+enum lo_lane
+{ Zfirst, Zsecond, Zthird }
+
+enum lo_magnitude
+{ Zfirst, Zsecond, Zthird }
+
+enum lo_raw
+{ Zfirst, Zsecond, Zthird }
+
+enum loadAll
+{ Zfirst, Zsecond, Zthird }
+
+enum loadDiscard
+{ Zfirst, Zsecond, Zthird }
+
+enum loadFixDKeyCompare
+{ Zfirst, Zsecond, Zthird }
+
+enum loadFixDKeyFits
+{ Zfirst, Zsecond, Zthird }
+
+enum loadFixDKeyValue
+{ Zfirst, Zsecond, Zthird }
+
+enum loadFixDScanKey
+{ Zfirst, Zsecond, Zthird }
+
+enum loadFixed
+{ Zfirst, Zsecond, Zthird }
+
+enum loadHeader
+{ Zfirst, Zsecond, Zthird }
+
+enum loadMessagesWalk
+{ Zfirst, Zsecond, Zthird }
+
+enum loadOpened
+{ Zfirst, Zsecond, Zthird }
+
+enum loadScratch
+{ Zfirst, Zsecond, Zthird }
+
+enum load_arm
+{ Zfirst, Zsecond, Zthird }
+
+enum load_array
+{ Zfirst, Zsecond, Zthird }
+
+enum load_element
+{ Zfirst, Zsecond, Zthird }
+
+enum load_enum
+{ Zfirst, Zsecond, Zthird }
+
+enum load_fields
+{ Zfirst, Zsecond, Zthird }
+
+enum load_impl
+{ Zfirst, Zsecond, Zthird }
+
+enum load_item
+{ Zfirst, Zsecond, Zthird }
+
+enum load_map
+{ Zfirst, Zsecond, Zthird }
+
+enum load_messages_impl
+{ Zfirst, Zsecond, Zthird }
+
+enum load_one
+{ Zfirst, Zsecond, Zthird }
+
+enum load_payload
+{ Zfirst, Zsecond, Zthird }
+
+enum load_refusal_name
+{ Zfirst, Zsecond, Zthird }
+
+enum load_registry
+{ Zfirst, Zsecond, Zthird }
+
+enum load_union
+{ Zfirst, Zsecond, Zthird }
+
+enum load_variable
+{ Zfirst, Zsecond, Zthird }
+
+enum loaded
+{ Zfirst, Zsecond, Zthird }
+
+enum loadedGraph
+{ Zfirst, Zsecond, Zthird }
+
+enum loaded_root
+{ Zfirst, Zsecond, Zthird }
+
+enum loader
+{ Zfirst, Zsecond, Zthird }
+
+enum loader_of
+{ Zfirst, Zsecond, Zthird }
+
+enum locked
+{ Zfirst, Zsecond, Zthird }
+
+enum lof
+{ Zfirst, Zsecond, Zthird }
+
+enum logical
+{ Zfirst, Zsecond, Zthird }
+
+enum lok
+{ Zfirst, Zsecond, Zthird }
+
+enum lom3
+{ Zfirst, Zsecond, Zthird }
+
+enum lom6
+{ Zfirst, Zsecond, Zthird }
+
+enum longer
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    limbs Inner
+    limbsOf Inner
+    limit Inner
+    limits Inner
+    limits_of Inner
+    line Inner
+    lineBreak Inner
+    lineage Inner
+    lineage_at Inner
+    lineage_union Inner
+}
+
+table NameTypes0
+{
+    one0  limbs
+    many0 [..4]limbs
+    one1  limbsOf
+    many1 [..4]limbsOf
+    one2  limit
+    many2 [..4]limit
+    one3  limits
+    many3 [..4]limits
+    one4  limits_of
+    many4 [..4]limits_of
+    one5  line
+    many5 [..4]line
+    one6  lineBreak
+    many6 [..4]lineBreak
+    one7  lineage
+    many7 [..4]lineage
+    one8  lineage_at
+    many8 [..4]lineage_at
+    one9  lineage_union
+    many9 [..4]lineage_union
+}
+
+table NameFields0
+{
+    limbs uint32
+    limbsOf uint32
+    limit uint32
+    limits uint32
+    limits_of uint32
+    line uint32
+    lineBreak uint32
+    lineage uint32
+    lineage_at uint32
+    lineage_union uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    linear Inner
+    lines Inner
+    link Inner
+    links Inner
+    listMark Inner
+    list_body Inner
+    list_end_values Inner
+    list_len Inner
+    listed Inner
+    listing Inner
+}
+
+table NameTypes1
+{
+    one0  linear
+    many0 [..4]linear
+    one1  lines
+    many1 [..4]lines
+    one2  link
+    many2 [..4]link
+    one3  links
+    many3 [..4]links
+    one4  listMark
+    many4 [..4]listMark
+    one5  list_body
+    many5 [..4]list_body
+    one6  list_end_values
+    many6 [..4]list_end_values
+    one7  list_len
+    many7 [..4]list_len
+    one8  listed
+    many8 [..4]listed
+    one9  listing
+    many9 [..4]listing
+}
+
+table NameFields1
+{
+    linear uint32
+    lines uint32
+    link uint32
+    links uint32
+    listMark uint32
+    list_body uint32
+    list_end_values uint32
+    list_len uint32
+    listed uint32
+    listing uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    literal Inner
+    little Inner
+    live Inner
+    liveCount Inner
+    liveEnd Inner
+    live_of Inner
+    lk Inner
+    llo Inner
+    lm Inner
+    ln Inner
+}
+
+table NameTypes2
+{
+    one0  literal
+    many0 [..4]literal
+    one1  little
+    many1 [..4]little
+    one2  live
+    many2 [..4]live
+    one3  liveCount
+    many3 [..4]liveCount
+    one4  liveEnd
+    many4 [..4]liveEnd
+    one5  live_of
+    many5 [..4]live_of
+    one6  lk
+    many6 [..4]lk
+    one7  llo
+    many7 [..4]llo
+    one8  lm
+    many8 [..4]lm
+    one9  ln
+    many9 [..4]ln
+}
+
+table NameFields2
+{
+    literal uint32
+    little uint32
+    live uint32
+    liveCount uint32
+    liveEnd uint32
+    live_of uint32
+    lk uint32
+    llo uint32
+    lm uint32
+    ln uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    lo Inner
+    lo1 Inner
+    lo16 Inner
+    lo2 Inner
+    loDigit Inner
+    loHi Inner
+    loLo Inner
+    loNeg Inner
+    lo_b_hi Inner
+    lo_lane Inner
+}
+
+table NameTypes3
+{
+    one0  lo
+    many0 [..4]lo
+    one1  lo1
+    many1 [..4]lo1
+    one2  lo16
+    many2 [..4]lo16
+    one3  lo2
+    many3 [..4]lo2
+    one4  loDigit
+    many4 [..4]loDigit
+    one5  loHi
+    many5 [..4]loHi
+    one6  loLo
+    many6 [..4]loLo
+    one7  loNeg
+    many7 [..4]loNeg
+    one8  lo_b_hi
+    many8 [..4]lo_b_hi
+    one9  lo_lane
+    many9 [..4]lo_lane
+}
+
+table NameFields3
+{
+    lo uint32
+    lo1 uint32
+    lo16 uint32
+    lo2 uint32
+    loDigit uint32
+    loHi uint32
+    loLo uint32
+    loNeg uint32
+    lo_b_hi uint32
+    lo_lane uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    lo_magnitude Inner
+    lo_raw Inner
+    loadAll Inner
+    loadDiscard Inner
+    loadFixDKeyCompare Inner
+    loadFixDKeyFits Inner
+    loadFixDKeyValue Inner
+    loadFixDScanKey Inner
+    loadFixed Inner
+    loadHeader Inner
+}
+
+table NameTypes4
+{
+    one0  lo_magnitude
+    many0 [..4]lo_magnitude
+    one1  lo_raw
+    many1 [..4]lo_raw
+    one2  loadAll
+    many2 [..4]loadAll
+    one3  loadDiscard
+    many3 [..4]loadDiscard
+    one4  loadFixDKeyCompare
+    many4 [..4]loadFixDKeyCompare
+    one5  loadFixDKeyFits
+    many5 [..4]loadFixDKeyFits
+    one6  loadFixDKeyValue
+    many6 [..4]loadFixDKeyValue
+    one7  loadFixDScanKey
+    many7 [..4]loadFixDScanKey
+    one8  loadFixed
+    many8 [..4]loadFixed
+    one9  loadHeader
+    many9 [..4]loadHeader
+}
+
+table NameFields4
+{
+    lo_magnitude uint32
+    lo_raw uint32
+    loadAll uint32
+    loadDiscard uint32
+    loadFixDKeyCompare uint32
+    loadFixDKeyFits uint32
+    loadFixDKeyValue uint32
+    loadFixDScanKey uint32
+    loadFixed uint32
+    loadHeader uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    loadMessagesWalk Inner
+    loadOpened Inner
+    loadScratch Inner
+    load_arm Inner
+    load_array Inner
+    load_element Inner
+    load_enum Inner
+    load_fields Inner
+    load_impl Inner
+    load_item Inner
+}
+
+table NameTypes5
+{
+    one0  loadMessagesWalk
+    many0 [..4]loadMessagesWalk
+    one1  loadOpened
+    many1 [..4]loadOpened
+    one2  loadScratch
+    many2 [..4]loadScratch
+    one3  load_arm
+    many3 [..4]load_arm
+    one4  load_array
+    many4 [..4]load_array
+    one5  load_element
+    many5 [..4]load_element
+    one6  load_enum
+    many6 [..4]load_enum
+    one7  load_fields
+    many7 [..4]load_fields
+    one8  load_impl
+    many8 [..4]load_impl
+    one9  load_item
+    many9 [..4]load_item
+}
+
+table NameFields5
+{
+    loadMessagesWalk uint32
+    loadOpened uint32
+    loadScratch uint32
+    load_arm uint32
+    load_array uint32
+    load_element uint32
+    load_enum uint32
+    load_fields uint32
+    load_impl uint32
+    load_item uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    load_map Inner
+    load_messages_impl Inner
+    load_one Inner
+    load_payload Inner
+    load_refusal_name Inner
+    load_registry Inner
+    load_union Inner
+    load_variable Inner
+    loaded Inner
+    loadedGraph Inner
+}
+
+table NameTypes6
+{
+    one0  load_map
+    many0 [..4]load_map
+    one1  load_messages_impl
+    many1 [..4]load_messages_impl
+    one2  load_one
+    many2 [..4]load_one
+    one3  load_payload
+    many3 [..4]load_payload
+    one4  load_refusal_name
+    many4 [..4]load_refusal_name
+    one5  load_registry
+    many5 [..4]load_registry
+    one6  load_union
+    many6 [..4]load_union
+    one7  load_variable
+    many7 [..4]load_variable
+    one8  loaded
+    many8 [..4]loaded
+    one9  loadedGraph
+    many9 [..4]loadedGraph
+}
+
+table NameFields6
+{
+    load_map uint32
+    load_messages_impl uint32
+    load_one uint32
+    load_payload uint32
+    load_refusal_name uint32
+    load_registry uint32
+    load_union uint32
+    load_variable uint32
+    loaded uint32
+    loadedGraph uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    loaded_root Inner
+    loader Inner
+    loader_of Inner
+    locked Inner
+    lof Inner
+    logical Inner
+    lok Inner
+    lom3 Inner
+    lom6 Inner
+    longer Inner
+}
+
+table NameTypes7
+{
+    one0  loaded_root
+    many0 [..4]loaded_root
+    one1  loader
+    many1 [..4]loader
+    one2  loader_of
+    many2 [..4]loader_of
+    one3  locked
+    many3 [..4]locked
+    one4  lof
+    many4 [..4]lof
+    one5  logical
+    many5 [..4]logical
+    one6  lok
+    many6 [..4]lok
+    one7  lom3
+    many7 [..4]lom3
+    one8  lom6
+    many8 [..4]lom6
+    one9  longer
+    many9 [..4]longer
+}
+
+table NameFields7
+{
+    loaded_root uint32
+    loader uint32
+    loader_of uint32
+    locked uint32
+    lof uint32
+    logical uint32
+    lok uint32
+    lom3 uint32
+    lom6 uint32
+    longer uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

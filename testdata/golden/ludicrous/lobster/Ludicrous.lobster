@@ -397,6 +397,7 @@ def WriteFixedProbe(s·:serialize_write_stream, v·:FixedProbe) -> bool:
     s·.serialize_fixed64(v·.Position, 48, 16, -30000, 30000) // the Q format's raw offset (SPEC §4.3)
     s·.serialize_fixed128(serialize_int128 { lo: v·.Reach.lo, hi: v·.Reach.hi }, 112, 16, -1000000, 1000000) // the Q format's raw offset (SPEC §4.3)
     s·.serialize_fixed32(v·.Ticks, 32, 0, 0, 1000000) // the Q format's raw offset (SPEC §4.3)
+    assert length(v·.Samples) == 2 // a [N]T holds exactly N values (SPEC §5.1)
     for(2) _i·:
         s·.serialize_fixed32(v·.Samples[_i·], 16, 16, -8, 8) // the Q format's raw offset (SPEC §4.3)
     return true
@@ -408,6 +409,7 @@ def WriteUnsignedProbe(s·:serialize_write_stream, v·:UnsignedProbe) -> bool:
     s·.serialize_fixed128(serialize_int128 { lo: v·.Span, hi: 0 }, 112, 16, 0, 281474976710655) // the Q format's raw offset, unsigned (SPEC §4.3)
     s·.serialize_fixed128(serialize_int128 { lo: v·.Reach.lo, hi: v·.Reach.hi }, 112, 16, 0, 2000000) // the Q format's raw offset (SPEC §4.3)
     s·.serialize_fixed32(v·.Ticks, 32, 0, 0, 1000000) // the Q format's raw offset (SPEC §4.3)
+    assert length(v·.Samples) == 2 // a [N]T holds exactly N values (SPEC §5.1)
     for(2) _i·:
         s·.serialize_fixed32(v·.Samples[_i·], 16, 16, 0, 16) // the Q format's raw offset (SPEC §4.3)
     assert v·.Locked == 196608 // the degenerate range's one raw value (SPEC §4.6)
