@@ -319,11 +319,14 @@ func (v *viewGen) vocabulary(b *strings.Builder, name string, max, bits, payload
 	if payloadOffset != 0 {
 		fmt.Fprintf(b, " payload_offset = %d,", payloadOffset)
 	}
-	fmt.Fprintf(b, " %s,\n\t\t\tvariants = {\n", annotation(doc, tags))
+	// the variant list is asserted to its declared type, { ViewVariant }:
+	// moo-analyze gives up on a large unannotated literal ("Code is too
+	// complex to typecheck"; tblann4096's 4095 variants)
+	fmt.Fprintf(b, " %s,\n\t\t\tvariants = ({\n", annotation(doc, tags))
 	for _, r := range rows {
 		fmt.Fprintf(b, "\t\t\t\t%s,\n", r)
 	}
-	b.WriteString("\t\t\t},\n\t\t},\n")
+	b.WriteString("\t\t\t} :: { ViewVariant }),\n\t\t},\n")
 }
 
 // variant is one ViewVariant row.

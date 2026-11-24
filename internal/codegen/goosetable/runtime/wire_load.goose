@@ -2293,10 +2293,10 @@ fn wire_check(data: const u8[:], at: i64, end: i64, ids_at: i64, ids_n: i64, ann
 // restores them (value_bridge.go), never holding its partial entries.
 fn load_with(unit: LoadUnit, root: const u8[:], data: const u8[:], vals: LoadVal[>..]&, nodes: LoadNode[>..]&, report: LoadReport&, store: RetainStore&, retaining: bool) -> i64 {
     report = LoadReport { .. };
-    vals.clear();
-    nodes.clear();
+    let slots = vals.len;
+    let held = nodes.len;
     let rec = load_run(unit, root, data, vals, nodes, report, store, retaining);
-    if rec < 0 { vals.clear(); nodes.clear(); }
+    if rec < 0 { vals.resize(slots); nodes.resize(held); }
     return rec;
 }
 

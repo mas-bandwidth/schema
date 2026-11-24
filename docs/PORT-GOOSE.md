@@ -419,6 +419,11 @@ lowercase hex lines.**
   declared defaults for absent fields. It returns false for a missing root
   or a different root type. Neither conversion parses JSON or wire bytes:
   `FromJson`/`ToJson` and the shared `load_table`/`save_table` own those forms.
+  `load_table` and `load_table_retain` keep the same stores promise as
+  `ToLoaded`: a load appends to the caller's value and node tables, and a
+  refused load returns -1 with both tables restored to the length they had,
+  so the stores hold nothing of the refused read and every entry the caller
+  placed before the call is still there (FL-03; `refused_stores_test.go`).
   The conformance driver's `json-read` and `json-write` surfaces compare both
   paths with committed fixtures.
 - **The variable class of the text form** (pointer graphs and `&node`,
