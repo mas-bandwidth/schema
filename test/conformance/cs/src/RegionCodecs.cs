@@ -86,6 +86,32 @@ static partial class Program
             };
         }
         {
+            Codec c=Find("packetunions","ShapeDoc");
+            c.Region = true; c.PartialLoad=(bytes,report)=>
+            {
+                long need=Tblpacketunions.Schema.ShapeDocLoadMeasure(bytes);
+                if(need<0)
+                {
+                    var inner=new Tblpacketunions.TableReport();
+                    regionLoaded=Tblpacketunions.Schema.ShapeDocLoad(IntPtr.Zero,0,bytes,inner)!=null;
+                    Fill(report,Copy(inner));
+                    return new Tblpacketunions.ShapeDoc();
+                }
+                byte* data=(byte*)NativeMemory.AlignedAlloc(checked((nuint)(need+64)),64);
+                try
+                {
+                    new Span<byte>(data+need,64).Fill(0xa5);
+                    var inner=new Tblpacketunions.TableReport();
+                    var root=Tblpacketunions.Schema.ShapeDocLoad((IntPtr)data,need,bytes,inner);
+                    regionLoaded=root!=null;
+                    for(int i=0;i<64;i++) { if(data[need+i]!=0xa5) { throw new InvalidOperationException("native load overran its measured region"); } }
+                    Fill(report,Copy(inner));
+                    return root==null?new Tblpacketunions.ShapeDoc():Tblpacketunions.Schema.ShapeDocLoadBuilder((IntPtr)data);
+                }
+                finally { NativeMemory.AlignedFree(data); }
+            };
+        }
+        {
             Codec c=Find("cooktorture","TortureCook");
             c.Region = true; c.PartialLoad=(bytes,report)=>
             {

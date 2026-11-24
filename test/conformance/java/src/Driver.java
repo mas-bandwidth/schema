@@ -998,6 +998,7 @@ public final class Driver {
             case "tblsurf": return "surfaces";
             case "tblann4096": return "announce4096";
             case "tblann4097": return "announce4097";
+            case "packetunions": return "tblpacketunions";
             default: return unit;
         }
     }
