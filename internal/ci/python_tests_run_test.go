@@ -93,6 +93,45 @@ func readAll(t *testing.T, pattern string) map[string]string {
 	return out
 }
 
+// skipPythonWalkDir says whether the walk for *_test.py files leaves a
+// directory out. rel is slash-separated and relative to the repo root. The
+// root dist/ is ignored by git and filled by make (make/goose.mk unpacks the
+// Goose toolchain there, with its own test scripts); a self-hosted runner keeps
+// it between jobs, so walking it made this test red on whichever runner had
+// run a Goose job before.
+func skipPythonWalkDir(rel string) bool {
+	if rel == "dist" {
+		return true
+	}
+	switch filepath.Base(rel) {
+	case ".git", "build", "node_modules", "third_party":
+		return true
+	}
+	return false
+}
+
+func TestSkipPythonWalkDir(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		rel  string
+		skip bool
+	}{
+		{"dist", true},
+		{".git", true},
+		{"build", true},
+		{"tools/x/node_modules", true},
+		{"third_party", true},
+		{"tools", false},
+		{"tools/dist", false},
+		{"lang/python", false},
+		{".", false},
+	} {
+		if got := skipPythonWalkDir(tc.rel); got != tc.skip {
+			t.Errorf("skipPythonWalkDir(%q) = %v, want %v", tc.rel, got, tc.skip)
+		}
+	}
+}
+
 func TestEveryPythonTestFileIsRunByACITarget(t *testing.T) {
 	t.Parallel()
 	root := repoRoot(t)
@@ -102,8 +141,11 @@ func TestEveryPythonTestFileIsRunByACITarget(t *testing.T) {
 			return err
 		}
 		if d.IsDir() {
-			switch d.Name() {
-			case ".git", "build", "node_modules", "third_party":
+			rel, relErr := filepath.Rel(root, path)
+			if relErr != nil {
+				return relErr
+			}
+			if skipPythonWalkDir(filepath.ToSlash(rel)) {
 				return filepath.SkipDir
 			}
 			return nil
