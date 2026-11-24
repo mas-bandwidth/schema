@@ -65,9 +65,16 @@ func javaUnlawfulRequired(t *testing.T, name string) string {
 // poisoned one is NOT.
 func javaUnlawfulRun(t *testing.T, row, file, poison, defaults string) {
 	t.Helper()
+	javaUnlawfulRunPair(t, row, "VOLD_"+row, "VNEW_"+row, file, poison, defaults)
+}
+
+// javaUnlawfulRunPair is javaUnlawfulRun for a pair named outright: older and
+// newer are the OLD and NEW schemas' base names under test/tables.
+func javaUnlawfulRunPair(t *testing.T, row, older, newer, file, poison, defaults string) {
+	t.Helper()
 	dir := t.TempDir()
 	builds, classes := buildRow(t, dir, row, []sideSpec{
-		{key: "reads", schema: "VNEW_" + row + ".schema", older: []string{"VOLD_" + row + ".schema"}},
+		{key: "reads", schema: newer + ".schema", older: []string{older + ".schema"}},
 	})
 	b := builds["reads"]
 
