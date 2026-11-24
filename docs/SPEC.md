@@ -2743,7 +2743,7 @@ Each leg's `FixedSave`, `SaveMessages` and packet `Write` (rows 1–8, 10 and 11
 
   - `SaveMessages`: 1–8 every build
 
-  - packet `Write`: 1–8 every build, on the flat and the per-field path alike; 10 not yet held; 11 unrepresentable (the storage is `intN`/`uintN`)
+  - packet `Write`: 1–8 and 10 every build, on the flat and the per-field path alike, returning `serialize.ErrValueOutOfRange` and never panicking (row 1 covers a ranged `int128` and a `fixed`/`ufixed` raw value, refused before the runtime call); 11 unrepresentable (the storage is `intN`/`uintN`)
 
 - **JavaScript**
 

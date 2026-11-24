@@ -57,6 +57,9 @@ local function apply(v: any, op: string, arg: string)
 	elseif op == "fx" then
 		-- moo holds a fixed field in whole units (its own Q48.16), not the raw integer
 		v.Fx = (n :: number) / 65536
+	elseif op == "ufx" then
+		-- moo holds a ufixed(32, 32) field as its raw value, a serialize.Uint64
+		v.Ufx = serialize.Uint64.parse(arg)
 	else
 		error("write-refusal-packet moo: unknown op " .. op)
 	end
