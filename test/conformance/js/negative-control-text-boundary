@@ -24,6 +24,11 @@ if [ "$mode" = replacement ]; then
     if cmp -s "$source" "$out/main.mjs"; then echo 'negative control changed nothing' >&2; exit 1; fi
     main="$root/$out/main.mjs"
 fi
+# the wrapper narrows the surfaces to the three text ones and keeps every
+# `unit <key>` line the real driver's list names: an opt-in unit (MANIFEST.txt
+# `opt-in`, test/conformance/harness/optin.go) left out of the list is handed
+# to no leg and scored ABSENT, which a ticked leg fails (the shapes rows did).
+# A list with no unit line fails the wrapper's list, so the harness says so.
 cat > "$out/driver" <<WRAP
 #!/bin/sh
 if [ "\$2" = list ]; then

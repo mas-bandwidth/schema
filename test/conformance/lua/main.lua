@@ -35,8 +35,8 @@ local GENERATED = os.getenv("LUA_CONFORMANCE_GENERATED") or "build/conformance-l
 local SURFACE_ORDER = {
   "wire", "message", "message-prior", "report", "framing", "retain", "retain-save", "retain-refusal", "json-read",
   "json-write", "json-hostile", "cook", "cook-write", "cook-foreign", "block",
-  "block-foreign", "block-dump", "forgery", "cook-forgery", "cook-reason",
-  "block-reason", "write-refusal", "write-refusal-fixed",
+  "block-foreign", "block-dump", "forgery", "cook-forgery",
+  "write-refusal", "write-refusal-fixed",
   "write-refusal-message", "write-refusal-json", "write-refusal-cook",
   "write-refusal-block", "announce", "read-into", "json-write-into",
 }
@@ -933,25 +933,21 @@ local function surfaceCookForeign(all, outdir)
   end
 end
 
--- the two forgery batteries (FORMAT.md, `forgery`): the verdict, or the
--- reason the generated reader names beside its nil — the TableRefuseReason
--- value name of the FIRST failing clause, or `ok` (§6.5, §7, §19.2). This
--- driver places bytes and prints what it is told, and judges nothing.
-local function surfaceForgery(all, outdir, forgeryKind, reasons)
+-- the two forgery batteries (FORMAT.md, `forgery`): the verdict (§6.5, §7,
+-- §19.2). This driver places bytes and prints what it is told, and judges
+-- nothing. The reason surfaces (cook-reason, block-reason) are retired: the
+-- harness does not run them (test/conformance/harness/run.go retiredSurfaces).
+local function surfaceForgery(all, outdir, forgeryKind)
   for _, f in ipairs(kind(all, "forgery")) do
     if f[3] == forgeryKind then
       local bytes, lead = forged(f)
-      local h, why
+      local h
       if forgeryKind == "cook" then
-        h, why = cookOpen(all, f[4], bytes, lead)
+        h = cookOpen(all, f[4], bytes, lead)
       else
-        h, why = blockOpen(all, f[4], bytes, lead)
+        h = blockOpen(all, f[4], bytes, lead)
       end
-      if reasons then
-        writeBytes(outdir .. "/" .. f[2], (h ~= nil and "ok" or tostring(why)) .. "\n")
-      else
-        writeBytes(outdir .. "/" .. f[2], verdict(h))
-      end
+      writeBytes(outdir .. "/" .. f[2], verdict(h))
     end
   end
 end
@@ -1601,10 +1597,8 @@ elseif surface == "cook-foreign" then surfaceCookForeign(all, outdir)
 elseif surface == "block" then surfaceBlock(all, outdir, identity)
 elseif surface == "block-foreign" then surfaceBlock(all, outdir, foreign)
 elseif surface == "block-dump" then surfaceBlockDump(all, outdir)
-elseif surface == "forgery" then surfaceForgery(all, outdir, "block", false)
-elseif surface == "cook-forgery" then surfaceForgery(all, outdir, "cook", false)
-elseif surface == "cook-reason" then surfaceForgery(all, outdir, "cook", true)
-elseif surface == "block-reason" then surfaceForgery(all, outdir, "block", true)
+elseif surface == "forgery" then surfaceForgery(all, outdir, "block")
+elseif surface == "cook-forgery" then surfaceForgery(all, outdir, "cook")
 elseif surface:find("^write%-refusal") then surfaceWriteRefusal(all, outdir, surface)
 elseif surface == "announce" then surfaceAnnounce(all, outdir)
 elseif surface == "read-into" then surfaceReadInto(all, outdir)
