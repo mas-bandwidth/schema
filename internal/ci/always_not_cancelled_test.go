@@ -17,7 +17,7 @@ func alwaysWithoutNotCancelled(cond string) bool {
 	return strings.Contains(cond, "always()") && !strings.Contains(cond, "!cancelled()")
 }
 
-func TestZPlantNoJobRunsAfterItsRunIsCancelled(t *testing.T) {
+func TestNoJobRunsAfterItsRunIsCancelled(t *testing.T) {
 	t.Parallel()
 
 	if !alwaysWithoutNotCancelled("always() && (github.event_name != 'pull_request')") {
