@@ -1104,6 +1104,106 @@ static partial class Program
             }
             finally { NativeMemory.AlignedFree(region); }
         };
+        Find("shapes","Bounds").Retain=wire=>
+        {
+            long need=Shapes.Schema.BoundsLoadMeasure(wire);
+            byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)(Math.Max(0,need)+64),64);
+            try
+            {
+                new Span<byte>(region+Math.Max(0,need),64).Fill(0xa5);
+                var retain=new Shapes.TableRetain { Bytes=scratch.Bytes,Capacity=1<<20,Ids=(Shapes.TableRetain.Id*)scratch.Ids,IdCapacity=1<<17 };
+                var report=new Shapes.TableReport();
+                var root=Shapes.Schema.BoundsLoadRetain((IntPtr)region,need,wire,ref retain,report);
+                var answer=new RetainAnswer { Need=need,Loaded=root!=null };
+                if(root!=null)
+                {
+                    long size=Shapes.Schema.BoundsMeasureRetain((IntPtr)root,ref retain);
+                    if(size>=0)
+                    {
+                        answer.Saved=new byte[checked((int)size)];
+                        answer.Written=Shapes.Schema.BoundsSaveRetain((IntPtr)root,ref retain,answer.Saved,report);
+                    }
+                }
+                for(int i=0;i<64;i++) { if(region[Math.Max(0,need)+i]!=0xa5) { throw new InvalidOperationException("Retaining load overran its measured region"); } }
+                answer.Report=Copy(report); answer.Kept=report.Retained; answer.Lost=report.RetainLost; return answer;
+            }
+            finally { NativeMemory.AlignedFree(region); }
+        };
+        Find("tblsurf","Chain").Retain=wire=>
+        {
+            long need=Surfaces.Schema.ChainLoadMeasure(wire);
+            byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)(Math.Max(0,need)+64),64);
+            try
+            {
+                new Span<byte>(region+Math.Max(0,need),64).Fill(0xa5);
+                var retain=new Surfaces.TableRetain { Bytes=scratch.Bytes,Capacity=1<<20,Ids=(Surfaces.TableRetain.Id*)scratch.Ids,IdCapacity=1<<17 };
+                var report=new Surfaces.TableReport();
+                var root=Surfaces.Schema.ChainLoadRetain((IntPtr)region,need,wire,ref retain,report);
+                var answer=new RetainAnswer { Need=need,Loaded=root!=null };
+                if(root!=null)
+                {
+                    long size=Surfaces.Schema.ChainMeasureRetain((IntPtr)root,ref retain);
+                    if(size>=0)
+                    {
+                        answer.Saved=new byte[checked((int)size)];
+                        answer.Written=Surfaces.Schema.ChainSaveRetain((IntPtr)root,ref retain,answer.Saved,report);
+                    }
+                }
+                for(int i=0;i<64;i++) { if(region[Math.Max(0,need)+i]!=0xa5) { throw new InvalidOperationException("Retaining load overran its measured region"); } }
+                answer.Report=Copy(report); answer.Kept=report.Retained; answer.Lost=report.RetainLost; return answer;
+            }
+            finally { NativeMemory.AlignedFree(region); }
+        };
+        Find("tblsurf","Counted").Retain=wire=>
+        {
+            long need=Surfaces.Schema.CountedLoadMeasure(wire);
+            byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)(Math.Max(0,need)+64),64);
+            try
+            {
+                new Span<byte>(region+Math.Max(0,need),64).Fill(0xa5);
+                var retain=new Surfaces.TableRetain { Bytes=scratch.Bytes,Capacity=1<<20,Ids=(Surfaces.TableRetain.Id*)scratch.Ids,IdCapacity=1<<17 };
+                var report=new Surfaces.TableReport();
+                var root=Surfaces.Schema.CountedLoadRetain((IntPtr)region,need,wire,ref retain,report);
+                var answer=new RetainAnswer { Need=need,Loaded=root!=null };
+                if(root!=null)
+                {
+                    long size=Surfaces.Schema.CountedMeasureRetain((IntPtr)root,ref retain);
+                    if(size>=0)
+                    {
+                        answer.Saved=new byte[checked((int)size)];
+                        answer.Written=Surfaces.Schema.CountedSaveRetain((IntPtr)root,ref retain,answer.Saved,report);
+                    }
+                }
+                for(int i=0;i<64;i++) { if(region[Math.Max(0,need)+i]!=0xa5) { throw new InvalidOperationException("Retaining load overran its measured region"); } }
+                answer.Report=Copy(report); answer.Kept=report.Retained; answer.Lost=report.RetainLost; return answer;
+            }
+            finally { NativeMemory.AlignedFree(region); }
+        };
+        Find("tblsurf","Holder").Retain=wire=>
+        {
+            long need=Surfaces.Schema.HolderLoadMeasure(wire);
+            byte* region=(byte*)NativeMemory.AlignedAlloc((nuint)(Math.Max(0,need)+64),64);
+            try
+            {
+                new Span<byte>(region+Math.Max(0,need),64).Fill(0xa5);
+                var retain=new Surfaces.TableRetain { Bytes=scratch.Bytes,Capacity=1<<20,Ids=(Surfaces.TableRetain.Id*)scratch.Ids,IdCapacity=1<<17 };
+                var report=new Surfaces.TableReport();
+                var root=Surfaces.Schema.HolderLoadRetain((IntPtr)region,need,wire,ref retain,report);
+                var answer=new RetainAnswer { Need=need,Loaded=root!=null };
+                if(root!=null)
+                {
+                    long size=Surfaces.Schema.HolderMeasureRetain((IntPtr)root,ref retain);
+                    if(size>=0)
+                    {
+                        answer.Saved=new byte[checked((int)size)];
+                        answer.Written=Surfaces.Schema.HolderSaveRetain((IntPtr)root,ref retain,answer.Saved,report);
+                    }
+                }
+                for(int i=0;i<64;i++) { if(region[Math.Max(0,need)+i]!=0xa5) { throw new InvalidOperationException("Retaining load overran its measured region"); } }
+                answer.Report=Copy(report); answer.Kept=report.Retained; answer.Lost=report.RetainLost; return answer;
+            }
+            finally { NativeMemory.AlignedFree(region); }
+        };
     }
     static unsafe int SurfaceRetain(string outDir,bool saved)
     {
