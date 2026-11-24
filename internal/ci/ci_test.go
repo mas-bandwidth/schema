@@ -604,23 +604,23 @@ func TestTheFixedFormHarnessesRunPerPullRequest(t *testing.T) {
 // ciEvent models a GitHub Actions trigger context for static workflow admission
 // and branch-routing tests. Never execute untrusted fork code to test policy.
 type ciEvent struct {
-	Name           string   // "pull_request", "push", "schedule", "workflow_dispatch"
-	Branch         string   // target branch for push, or base_ref for pull_request
-	HeadRef        string   // head_ref for pull_request
-	Repo           string   // github.repository, e.g. "mas-bandwidth/schema"
-	HeadRepo       string   // github.event.pull_request.head.repo.full_name
-	Labels         []string // pull_request labels
-	PlanPkgs       string   // needs.plan.outputs.packages
-	PlanLegs       string   // needs.plan.outputs.legs
-	PlanVerifyLegs string   // needs.plan.outputs.verify_legs
-	PlanDartCorpus string   // needs.plan.outputs.dart_corpus_account
-	PlanCppCorpus  string   // needs.plan.outputs.cpp_corpus_account
-	PlanElixirCorpus string // needs.plan.outputs.elixir_corpus_account
-	PlanRows       string   // needs.plan.outputs.rows
-	PlanResult     string   // needs.plan.result, success when omitted
-	GoCorpusResult string   // needs.go-fixed-corpus.result, success when omitted
-	PRPins         string   // needs.pr-select.outputs.pins (ci-full.yml)
-	PRCS           string   // needs.pr-select.outputs.cs (ci-full.yml)
+	Name             string   // "pull_request", "push", "schedule", "workflow_dispatch"
+	Branch           string   // target branch for push, or base_ref for pull_request
+	HeadRef          string   // head_ref for pull_request
+	Repo             string   // github.repository, e.g. "mas-bandwidth/schema"
+	HeadRepo         string   // github.event.pull_request.head.repo.full_name
+	Labels           []string // pull_request labels
+	PlanPkgs         string   // needs.plan.outputs.packages
+	PlanLegs         string   // needs.plan.outputs.legs
+	PlanVerifyLegs   string   // needs.plan.outputs.verify_legs
+	PlanDartCorpus   string   // needs.plan.outputs.dart_corpus_account
+	PlanCppCorpus    string   // needs.plan.outputs.cpp_corpus_account
+	PlanElixirCorpus string   // needs.plan.outputs.elixir_corpus_account
+	PlanRows         string   // needs.plan.outputs.rows
+	PlanResult       string   // needs.plan.result, success when omitted
+	GoCorpusResult   string   // needs.go-fixed-corpus.result, success when omitted
+	PRPins           string   // needs.pr-select.outputs.pins (ci-full.yml)
+	PRCS             string   // needs.pr-select.outputs.cs (ci-full.yml)
 	// PlanOutputs, when set, answers needs.plan.outputs.<name> for every
 	// name it holds, ahead of the fields above (TestNoFastJobSkipsOnAMainPush)
 	PlanOutputs map[string]string
