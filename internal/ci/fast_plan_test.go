@@ -41,26 +41,7 @@ func scriptEnv(environ []string) []string {
 // Exercise the workflow's actual selector: a green plan that selects no
 // harness must not silently skip a changed C++ fixed-table regression test.
 func TestFastPlanSelectsTableFixtures(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join(repoRoot(t), ".github/workflows/ci-fast.yml"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, tail, ok := strings.Cut(string(data), "          # THE BROAD RULE.")
-	if !ok {
-		t.Fatal("fast workflow broad selector not found")
-	}
-	selector, _, ok := strings.Cut(tail, "          # THE PACKAGES.")
-	if !ok {
-		t.Fatal("fast workflow package boundary not found")
-	}
-	// Remove the remainder of the first comment line and YAML indentation.
-	_, selector, _ = strings.Cut(selector, "\n")
-	var script strings.Builder
-	for line := range strings.SplitSeq(selector, "\n") {
-		script.WriteString(strings.TrimPrefix(line, "          "))
-		script.WriteByte('\n')
-	}
-	script.WriteString(`printf '%s|%s' "$broad" "$legs"`)
+	script := fastSelectorScript(t)
 	for _, tc := range []struct{ name, files, want string }{
 		{"cpp witness", "test/tables/versioning_numbers.cpp", "no| cpp"},
 		{"cpp header", "test/tables/floatnan.h", "no| cpp"},
@@ -69,8 +50,9 @@ func TestFastPlanSelectsTableFixtures(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel() // each case is its own bash over a read-only script
-			cmd := exec.Command("bash", "-euo", "pipefail", "-c", script.String())
+			cmd := exec.Command("bash", "-euo", "pipefail", "-c", script)
 			cmd.Env = append(scriptEnv(os.Environ()), "files="+tc.files)
+			cmd.Dir = repoRoot(t) // the selector runs tools/legpaths from the root
 			out, err := cmd.CombinedOutput()
 			if err != nil {
 				t.Fatalf("selector: %v: %s", err, out)
@@ -204,10 +186,11 @@ func TestFastPlanCoversStreamToDevAndSelectsRelevantWork(t *testing.T) {
 			want:  `no|./internal/codegen/lobstertable ./internal/codegen/lobster ./internal/goldens ./internal/fuzz|["lobster"]`,
 		},
 		{
-			// a golden alone selects no leg, and still re-checks the goldens
+			// a golden re-checks the goldens, and selects the leg whose make
+			// files read it (make/java.mk: internal/legpaths)
 			name:  "golden only",
 			files: "testdata/golden/java/Types.java",
-			want:  `no|./internal/goldens|[]`,
+			want:  `no|./internal/codegen/javatable ./internal/goldens|["java"]`,
 		},
 		{
 			// an emitter alone re-checks the goldens it writes
@@ -282,7 +265,7 @@ func TestFastPlanSelectsLanguageLints(t *testing.T) {
 		{"go leg", "internal/codegen/gotable/wire.go", `["go"]|./internal/codegen/gotable ./internal/goldens ./internal/fuzz`},
 		{"lua runtime, no .go file", "internal/codegen/luatable/runtime/wire.lua", `["lua"]|./internal/codegen/lua ./internal/codegen/luatable ./internal/goldens ./internal/fuzz`},
 		{"lua make file", "make/lua.mk", `["lua"]|./internal/recipescan ./internal/codegen/lua ./internal/codegen/luatable`},
-		{"dart lens make file", "make/schema-dart-generated-strict-analyze-gate.mk", `["dart"]|./internal/recipescan`},
+		{"dart lens make file", "make/schema-dart-generated-strict-analyze-gate.mk", `["dart"]|./internal/recipescan ./internal/codegen/darttable`},
 		{"docs only", "docs/TUTORIAL.md", `[]|./internal/docgate ./internal/tablepack ./compiler`},
 		// the compiler's own page-text tests read pages the docgate rule does
 		// not name: a nested page and the rulings file
@@ -296,7 +279,9 @@ func TestFastPlanSelectsLanguageLints(t *testing.T) {
 		// the shared packet corpora are every lens's input
 		{"packet examples", "examples/Types.schema", `["dart","go","lua"]|./internal/goldens`},
 		{"128-bit examples", "examples128/Ludicrous.schema", `["dart","go","lua"]|./internal/goldens`},
-		{"bench corpus", "bench/corpus/Bench.schema", `["dart","go","lua"]|`},
+		// the bench corpus is read by the legs' bench make files, so it selects
+		// those legs and their table packages (internal/legpaths)
+		{"bench corpus", "bench/corpus/Bench.schema", `["dart","go","lua"]|./internal/codegen/ctable ./internal/codegen/gotable ./internal/codegen/rusttable ./internal/codegen/jstable ./internal/codegen/cstable ./internal/codegen/javatable ./internal/codegen/darttable ./internal/codegen/elixirtable ./internal/codegen/luautable ./internal/codegen/lobster ./internal/codegen/lobstertable ./internal/codegen/python ./internal/codegen/pythontable ./internal/codegen/ruby ./internal/codegen/rubytable`},
 		{"guard unit", "test/guard/second.schema", `["dart","go","lua"]|`},
 		{"guard non-schema", "test/guard/README.md", `[]|`},
 		// a runtime-only (non-Go) diff runs its language's two unit packages

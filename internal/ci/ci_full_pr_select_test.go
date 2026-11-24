@@ -97,21 +97,14 @@ func TestCIFullPRSelectMatchesTheFastPlan(t *testing.T) {
 	if want := strings.Replace(fb[1], `ci-fast\.yml`, `ci-full\.yml`, 1); ub[1] != want {
 		t.Errorf("ci-full.yml pr-select's shared roots\n  %s\ndiffer from ci-fast.yml plan's (this file in place of that one)\n  %s", ub[1], want)
 	}
-	csCase := regexp.MustCompile(`(?m)^\s+(internal/codegen/cstable/[^)]*)\) add_leg cs ;;`).FindStringSubmatch(fast)
-	if csCase == nil {
-		t.Fatal("ci-fast.yml plan's cs row was not found")
-	}
-	var want []string
-	for p := range strings.SplitSeq(csCase[1], "|") {
-		p = strings.TrimSuffix(p, "*")
-		p = strings.ReplaceAll(p, ".", `\.`)
-		p = strings.ReplaceAll(p, "*", "[^/]*") // an inner glob star
-		if !strings.HasSuffix(p, "/") {
-			p += "$"
+	// the C# paths: both selectors read the one derived source
+	const derive = `derived_legs=$(go run ./tools/legpaths -changed - <<<"$files")`
+	for name, text := range map[string]string{"ci-fast.yml": fast, "ci-full.yml": full} {
+		if !strings.Contains(text, derive) {
+			t.Errorf("%s does not select legs through tools/legpaths (%s)", name, derive)
 		}
-		want = append(want, p)
 	}
-	if !strings.Contains(full, "'^("+strings.Join(want, "|")+")'") {
-		t.Errorf("ci-full.yml pr-select's C# paths are not ci-fast.yml plan's cs row %q (want the alternation %q)", csCase[1], strings.Join(want, "|"))
+	if !strings.Contains(full, `[[ " $derived_legs " == *" cs "* ]]`) {
+		t.Errorf("ci-full.yml pr-select does not read the cs leg from tools/legpaths")
 	}
 }

@@ -20,7 +20,10 @@
 // says so and is not an error: a row whose steps ran no `go test` has nothing
 // to report. With -require-record it is red, and so is a record file that
 // holds no go test event (empty, or the budget line alone): a recorder that
-// started and recorded no run is never read as "no failures, no skips".
+// started and recorded no run is never read as "no failures, no skips". A
+// row whose go test ran and passed no test (every test skipped, or none
+// matched) is red too, unless -row names a row the -empty-rows ledger
+// declares empty (emptyrows.go).
 package main
 
 import (
@@ -209,8 +212,9 @@ func (r *report) name(k key, multi map[string]bool) string {
 
 // findings is what the report says and whether the row is red because of it.
 type findings struct {
-	text string
-	red  bool
+	text   string
+	red    bool
+	passed int // tests whose latest run passed (emptyRow reads it)
 }
 
 func (r *report) findings(slowest int) findings {
@@ -293,7 +297,7 @@ func (r *report) findings(slowest int) findings {
 			}
 		}
 	}
-	return findings{text: b.String(), red: red}
+	return findings{text: b.String(), red: red, passed: pass}
 }
 
 func main() {
@@ -346,11 +350,13 @@ func run(args []string, stdout, stderr io.Writer, summary string) int {
 	skips := fs.String("skips", "", "the skip ledger (.github/skip-ledger.txt): every skip is read against it, and a skip with no reason, a reason no line names, or a reason this lane satisfies is red")
 	provides := fs.String("provides", "", "with -skips: the ledger classes this lane satisfies, space-separated (a lane with elixir installed provides tool:elixir)")
 	requireRecord := fs.Bool("require-record", false, "a row with no go test record is red, and so is a record file that holds no go test event (a lane whose step always runs go test)")
+	row := fs.String("row", "", "with -empty-rows: this row's name, as the empty-row ledger names it")
+	emptyRows := fs.String("empty-rows", "", "the empty-row ledger (.github/empty-test-rows.txt): a row it names may record go test runs with no test passed")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	if fs.NArg() == 0 {
-		_, _ = fmt.Fprintln(stderr, "usage: gotestreport [-budget 10m] [-slowest 15] [-skips <ledger> [-provides \"<class>...\"]] [-require-record] <dir>...")
+		_, _ = fmt.Fprintln(stderr, "usage: gotestreport [-budget 10m] [-slowest 15] [-skips <ledger> [-provides \"<class>...\"]] [-require-record] [-row <name> -empty-rows <ledger>] <dir>...")
 		return 2
 	}
 	var led *ledger
@@ -369,6 +375,19 @@ func run(args []string, stdout, stderr io.Writer, summary string) int {
 	} else if *provides != "" {
 		_, _ = fmt.Fprintln(stderr, "gotestreport: -provides needs -skips")
 		return 2
+	}
+	var declared *emptyRow
+	if (*row == "") != (*emptyRows == "") {
+		_, _ = fmt.Fprintln(stderr, "gotestreport: -row and -empty-rows go together")
+		return 2
+	}
+	if *emptyRows != "" {
+		rows, err := readEmptyRows(*emptyRows)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "gotestreport: %v\n", err)
+			return 2
+		}
+		declared = rows[*row]
 	}
 	r := newReport()
 	files := 0
@@ -425,6 +444,9 @@ func run(args []string, stdout, stderr io.Writer, summary string) int {
 		f.text += sf.text
 		f.red = f.red || sf.red
 	}
+	ef := zeroPassFindings(f.passed, *row, *emptyRows, declared)
+	f.text += ef.text
+	f.red = f.red || ef.red
 	_, _ = fmt.Fprint(stdout, f.text)
 	if summary != "" {
 		// a summary the step was told to write and did not is a report

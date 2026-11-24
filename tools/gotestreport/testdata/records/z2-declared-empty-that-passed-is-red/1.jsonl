@@ -1,0 +1,9 @@
+{"Action":"budget","Budget":"10m"}
+{"Time":"2026-11-21T21:10:44.607086166+01:00","Action":"start","Package":"example.org/ledgertest"}
+{"Time":"2026-11-21T21:10:44.608519793+01:00","Action":"run","Package":"example.org/ledgertest","Test":"TestPasses"}
+{"Time":"2026-11-21T21:10:44.608530102+01:00","Action":"output","Package":"example.org/ledgertest","Test":"TestPasses","Output":"=== RUN   TestPasses\n"}
+{"Time":"2026-11-21T21:10:44.608560199+01:00","Action":"output","Package":"example.org/ledgertest","Test":"TestPasses","Output":"--- PASS: TestPasses (0.00s)\n"}
+{"Time":"2026-11-21T21:10:44.608564006+01:00","Action":"pass","Package":"example.org/ledgertest","Test":"TestPasses","Elapsed":0}
+{"Time":"2026-11-21T21:10:44.608568735+01:00","Action":"output","Package":"example.org/ledgertest","Output":"PASS\n"}
+{"Time":"2026-11-21T21:10:44.608742941+01:00","Action":"output","Package":"example.org/ledgertest","Output":"ok  \texample.org/ledgertest\t0.001s\n"}
+{"Time":"2026-11-21T21:10:44.608766836+01:00","Action":"pass","Package":"example.org/ledgertest","Elapsed":0.002}

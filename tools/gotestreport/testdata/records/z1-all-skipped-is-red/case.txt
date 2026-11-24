@@ -1,0 +1,9 @@
+# A row whose go test ran and passed nothing: its one test skipped for an
+# accepted reason (slow, which this lane does not provide), so every skip is
+# ledgered and the run exits 0. It checked nothing, and no row declares it
+# empty: red by name. f176-control-probe-then-slow-skip is the same record
+# under its declaration.
+args: -require-record -provides tool:rust
+exit: 1
+want: 1 test(s): 0 passed, 0 failed, 1 skipped
+want: NO TEST PASSED  this row's go test ran and no test passed

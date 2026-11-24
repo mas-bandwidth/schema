@@ -67,3 +67,10 @@ lobster-fixed-proof | lobster | (^|/)lobster[-_]fixed[-_]proof | make -j4 lobste
 appendix-java-announcement-budgets | java | ^docs/SPEC-CONFORMANCE\.md$|^tables/(backend|blobs)/ | make appendix-java-announcement-budgets
 appendix-go-fixed | go | ^docs/SPEC-CONFORMANCE\.md$|^test/(fixed-empty-batch/|go-tables/optional_array_resize_test\.gotext$)|^testdata/(wire/fixed-empty-batch/|conformance/(feature-witnesses/(fixed-load-capacity|declared-deprecated-enum)/|table-write-bounds/)) | make -j4 appendix-go-fixed table-optional-array-resize-go
 appendix-python-fixed | python | ^docs/SPEC-CONFORMANCE\.md$|^test/fixed-empty-batch/|^testdata/(wire/fixed-empty-batch/|conformance/feature-witnesses/fixed-load-capacity/) | make appendix-python-fixed
+
+# what no leg row reaches: the conformance harness's leg-tagged files compile
+# in no untagged check (ci-full.yml's leg-tagged job, make/harness-leg-tags.mk),
+# and the staged Python bit layer's own suite runs only under
+# make/python-serialize.mk (python-ci-serialize)
+harness-leg-tags | - | ^test/conformance/harness/ | make harness-leg-tags-vet
+serialize-py | python | ^third_party/serialize\.py/ | make python-serialize-test

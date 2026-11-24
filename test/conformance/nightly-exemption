@@ -1,0 +1,20 @@
+#!/bin/sh
+# nightly-exemption <gate> <lang>: whether a nightly-conformance.yml per-port
+# gate is exempt for a port (test/conformance/nightly-exemptions.txt).
+#   exit 0  exempt: the reason is printed
+#   exit 1  not exempt: the gate runs
+#   exit 2  the ledger is missing or a line of it is malformed
+set -eu
+gate=${1:?gate}
+lang=${2:?lang}
+ledger=test/conformance/nightly-exemptions.txt
+if [ ! -f "$ledger" ]; then
+    echo "nightly-exemption: $ledger is missing" >&2
+    exit 2
+fi
+awk -v g="$gate" -v l="$lang" '
+    /^[ \t]*(#|$)/ { next }
+    NF < 3 { printf "nightly-exemption: %s:%d: want <gate> <lang> <reason>\n", FILENAME, NR > "/dev/stderr"; bad = 1; exit }
+    $1 == g && $2 == l { $1 = ""; $2 = ""; sub(/^ +/, ""); print; hit = 1 }
+    END { if (bad) exit 2; exit hit ? 0 : 1 }
+' "$ledger"

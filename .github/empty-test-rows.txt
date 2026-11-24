@@ -1,0 +1,14 @@
+# .github/empty-test-rows.txt — THE EMPTY-ROW LEDGER: every CI row that may
+# record go test runs in which no test passed.
+#
+#   empty <row> <reason>
+#
+# A row whose go test ran and passed nothing (every test skipped, or no test
+# matched) exits 0 and checked nothing. tools/gotestreport refuses it by name
+# (NO TEST PASSED) unless the row is declared here and the step names it:
+#
+#   go run ./tools/gotestreport ... -row <row> -empty-rows .github/empty-test-rows.txt <dir>
+#
+# A declared row that passes a test is red too (STALE EMPTY): delete its line.
+# Adding a line here never makes a test run; it says, in the open, which row
+# checks nothing by go test and why. Today no row does.

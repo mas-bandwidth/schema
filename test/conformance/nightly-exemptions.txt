@@ -1,0 +1,22 @@
+# test/conformance/nightly-exemptions.txt — the ports a nightly-conformance.yml
+# per-port gate does not run for, each named with why.
+#
+#   <gate> <lang> <reason>
+#
+# The port job's BOM entry step (gate `bom-entry`, test/conformance/bom-entry)
+# and readiness step (gate `readiness`, test/conformance/nightly-readiness)
+# run for EVERY port in the registry (test/conformance/<lang>/ci.json). A port
+# a gate does not cover yet is listed here: its step runs, prints this line as
+# a notice and exits 0, so the run says by name what it did not check, where
+# a step `if:` used to show `skipped` under a green job.
+#
+# internal/ci TestNightlyPortGatesRunOrNameAnExemption holds the file to the
+# registry and to the gates' own language lists: every port is covered by
+# the gate or listed here, never both, and every line names a gate and a
+# port that exist. Covering a port in the gate means deleting its line.
+
+readiness lobster nightly-readiness has no acceptance plan for this leg (its LANGUAGES list)
+readiness lua nightly-readiness has no acceptance plan for this leg (its LANGUAGES list)
+readiness luau nightly-readiness has no acceptance plan for this leg (its LANGUAGES list)
+readiness squirrel nightly-readiness has no acceptance plan for this leg (its LANGUAGES list)
+readiness unity nightly-readiness has no acceptance plan for this leg (its LANGUAGES list)

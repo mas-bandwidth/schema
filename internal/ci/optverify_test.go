@@ -5,12 +5,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"sort"
 	"strings"
 	"testing"
 
+	"github.com/mas-bandwidth/schema/v2/internal/inputfamilies"
 	"github.com/mas-bandwidth/schema/v2/internal/provesran"
 )
 
@@ -199,14 +199,15 @@ func TestOptVerifyFastWorkflowSelector(t *testing.T) {
 		t.Fatal("ci-fast.yml verify-leg missing gate: [conformance, bench, fuzz, tablegen] matrix")
 	}
 
-	addLegRe := regexp.MustCompile(`\badd_leg\s+([a-z0-9]+)\b`)
-	seen := map[string]bool{}
-	for _, m := range addLegRe.FindAllStringSubmatch(wf, -1) {
-		seen[m[1]] = true
+	// every language's paths come from internal/legpaths, whose leg list is
+	// inputfamilies.Legs (internal/legpaths TestTheNamedPathsSelectTheirLeg
+	// selects one path per leg)
+	if !strings.Contains(wf, "go run ./tools/legpaths -changed - <<<\"$files\"") {
+		t.Error(".github/workflows/ci-fast.yml plan does not select legs through tools/legpaths")
 	}
 	for _, lang := range allOptVerifyLangs {
-		if !seen[lang] {
-			t.Errorf(".github/workflows/ci-fast.yml has no `add_leg %s` selector rule", lang)
+		if !slices.Contains(inputfamilies.Legs, lang) {
+			t.Errorf("%s is not in inputfamilies.Legs, the leg list tools/legpaths selects from", lang)
 		}
 	}
 

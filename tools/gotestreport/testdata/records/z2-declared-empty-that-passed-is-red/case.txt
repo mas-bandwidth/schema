@@ -1,0 +1,7 @@
+# A row the empty-row ledger declares empty passed a test: the declaration is
+# stale, and a stale line would cover the row the day it goes quiet. Red.
+# f177-control-a-run is the same record with no declaration, green.
+args: -require-record -provides tool:rust -row ledgertest-skip-only -empty-rows testdata/empty-test-rows.txt
+exit: 1
+want: 1 test(s): 1 passed
+want: STALE EMPTY     row "ledgertest-skip-only" passed 1 test(s)
