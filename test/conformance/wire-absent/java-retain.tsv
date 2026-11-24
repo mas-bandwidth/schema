@@ -3,6 +3,3 @@
 # 7 seeds over 4 roots. Delete a line in the change that
 # adds its root to the driver, and the file with its last line.
 packetunions.ShapeDoc	owed: wire-seed-roots-java (2 seeds)
-tblsurf.Chain	owed: wire-seed-roots-java (2 seeds)
-tblsurf.Counted	owed: wire-seed-roots-java (1 seeds)
-tblsurf.Holder	owed: wire-seed-roots-java (2 seeds)

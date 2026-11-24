@@ -39,14 +39,11 @@ public final class TablesWireFuzz {
     private static final int BATCH_CAP = 256;
 
     // The manifest names a unit by its key; the classes live under the unit's
-    // schema package (the conformance Driver's variableUnitPackage).
+    // schema package. The map is the conformance Driver's own, read rather
+    // than copied: a copy here missed tblsurf (package surfaces), and its
+    // roots went absent (W-ROSTER, docs/SPEC-CONFORMANCE.md).
     private static String unitPackage(String unit) {
-        switch (unit) {
-            case "scalars": return "scalardemo";
-            case "widelist": return "widelistdemo";
-            case "tblscalars2": return "scalardemo2";
-            default: return unit;
-        }
+        return Driver.variableUnitPackage(unit);
     }
 
     /** The outcome of one mutant, in the reply's order. */
