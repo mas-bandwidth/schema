@@ -4700,7 +4700,10 @@ lawful variant. Every leg answers the shared rows `wref_enum_deprecated`,
 `write-refusal` and `write-refusal-fixed` surfaces. A leg whose driver saves a
 FIXED root through its fixed form on both surfaces holds its variable save to
 the rule by its own test (`TestJsDeprecatedVariantNeverWritten`), since the
-shared rows reach that writer only through a variable root.
+shared rows reach that writer only through a variable root. The block builder
+holds the rule too (an assert leg in its debug build): Dart's
+(`TestDartBlockBuildRefusesDeprecatedVariant`), as Rust's message writer does
+(`TestRustDeprecatedVariantMessageNeverWritten`).
 
 **COMPILE TIME.** A field default or a `const` that names a deprecated variant
 is refused by name. An enum-keyed array such as `[Enum]int32` whose enum has
