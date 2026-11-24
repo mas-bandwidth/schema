@@ -3,7 +3,3 @@
 # 11 seeds over 5 roots. Delete a line in the change that
 # adds its root to the driver, and the file with its last line.
 packetunions.ShapeDoc	owed: wire-seed-roots-go (2 seeds)
-shapes.Bounds	owed: wire-seed-roots-go (4 seeds)
-tblsurf.Chain	owed: wire-seed-roots-go (2 seeds)
-tblsurf.Counted	owed: wire-seed-roots-go (1 seeds)
-tblsurf.Holder	owed: wire-seed-roots-go (2 seeds)
