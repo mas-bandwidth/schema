@@ -43,7 +43,7 @@ func (f fakeEOFDriver) run(stdin []byte) (wireEOFRun, error) {
 		return fail("no roster")
 	}
 	for i := uint32(0); i < count; i++ {
-		for k := 0; k < 2; k++ {
+		for range 2 {
 			var n uint16
 			if err := binary.Read(in, binary.LittleEndian, &n); err != nil {
 				return fail("roster cut")
