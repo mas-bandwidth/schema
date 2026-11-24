@@ -75,7 +75,7 @@ func cfDecodeTiers(lang string) []string {
 // driver said rather than 11,001 lines per tier.
 func stripCfDecode(out string) string {
 	var keep []string
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		if !strings.HasPrefix(line, "CFDECODE") {
 			keep = append(keep, line)
 		}
