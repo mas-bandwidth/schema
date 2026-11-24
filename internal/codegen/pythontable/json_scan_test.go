@@ -1126,7 +1126,7 @@ func TestPythonJsonConformanceDriver(t *testing.T) {
 	}
 	dir := t.TempDir()
 	writeTree(t, filepath.Join(dir, "unit"), files)
-	for _, name := range []string{"_common.py", "_json_common.py", "json-read.py", "json-write.py", "json-hostile.py", "report.py", "write-refusal.py", "write-refusal-json.py"} {
+	for _, name := range []string{"_common.py", "_json_common.py", "_mutate.py", "json-read.py", "json-write.py", "json-hostile.py", "report.py", "write-refusal.py", "write-refusal-json.py"} {
 		data, err := os.ReadFile(filepath.Join("..", "..", "..", "test", "conformance", "python", "surfaces", name))
 		if err != nil {
 			t.Fatal(err)
@@ -1179,12 +1179,10 @@ assert _json_common.write_wire(LargeFixed, LargeFixed()) == wire
 cls = _common.root_class('unit', 'Root')
 field = next(field for field in cls.descriptor.fields if field.name == 'live')
 field.codec = 'unsupported'
-try:
-    importlib.import_module('json-hostile').run('manifest', 'out')
-except ValueError as error:
-    assert error.reason == 'unsupported'
-else:
-    raise AssertionError('unsupported runtime was counted as a refusal')
+# a codec the runtime cannot answer is a DRIVER ERROR: the case is named and no
+# answer is written, never a refusal (_common.answering)
+importlib.import_module('json-hostile').run('manifest', 'out')
+assert _common.DRIVER_ERRORS == ['hostilecase'], 'unsupported runtime was counted as a refusal'
 print('ok')
 `
 	inputs := map[string][]byte{"main.py": []byte(probe)}
@@ -2002,7 +2000,7 @@ int main() {
 		t.Fatal(err)
 	}
 	bin := filepath.Join(dir, "probe")
-	args := append([]string{"-std=c++17", "-O1", "-I" + dir, "-I" + serialize, path}, sources...)
+	args := append([]string{"-std=c++17", "-O1", "-Dschema_assert(x)=((void)0)", "-I" + dir, "-I" + serialize, path}, sources...)
 	args = append(args, "-o", bin)
 	if output, err := testproc.Command(t, "c++", args...).CombinedOutput(); err != nil {
 		t.Fatalf("C++ compile: %v\n%s", err, output)
