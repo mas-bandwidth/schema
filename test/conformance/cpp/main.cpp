@@ -3232,7 +3232,8 @@ static bool retain_into_load( const std::vector<uint8_t> & wire, tblrt1::TableRe
     return tblrt1::NodeLoadRetain( region, need, wire.data(), (int64_t) wire.size(), &retain, &report ) != NULL;
 }
 
-static std::string retain_into_compare( const tblrt1::TableReport & r, const tblrt1::TableReport & fresh )
+template <typename R>
+static std::string retain_into_compare( const R & r, const R & fresh )
 {
     std::string kept;
     char line[512];
@@ -3265,28 +3266,32 @@ static std::string retain_into_compare( const tblrt1::TableReport & r, const tbl
     return kept.empty() ? "zeroed\n" : kept;
 }
 
-static int read_into_retain( const std::string & form, const std::vector<uint8_t> & lawful, const std::vector<uint8_t> & damaged,
-                             int64_t count, const std::vector<uint8_t> &, std::string & answer )
+// THE ZEROING PROTOCOL shared by the `retain` and `region` forms: a fresh
+// report from the lawful load, then ONE pre-filled report through the lawful
+// load, the damaged one and the lawful one again, compared after each lawful
+// load. Every member of TableReport is public, so the pre-fill sets each one.
+template <typename R, typename RR, typename Load>
+static int read_into_zeroing( const char * what, const std::vector<uint8_t> & lawful, const std::vector<uint8_t> & damaged,
+                              std::string & answer, Load load )
 {
-    if ( form != "retain" || count != 1 ) return 1;
-    tblrt1::TableReport fresh;
-    if ( !retain_into_load( lawful, fresh ) || fresh.refused )
+    R fresh;
+    if ( !load( lawful, fresh ) || fresh.refused )
     {
-        fprintf( stderr, "driver: read-into: the lawful retaining load refused into a fresh report\n" );
+        fprintf( stderr, "driver: read-into: the lawful %s load refused into a fresh report\n", what );
         return 2;
     }
-    tblrt1::TableReport report;
+    R report;
     report.unknown = 7;
     report.widened = 7;
     report.missing_required = 7;
     snprintf( report.missing_required_fields, sizeof( report.missing_required_fields ), "stale" );
     report.damaged = true;
     report.refused = true;
-    report.reason = tblrt1::TableMessageReason( tblrt1::TableRefuseReason::malformed );
-    report.damage_reason = tblrt1::TableRefuseReason::integrity_mismatch;
+    report.reason = RR::malformed;
+    report.damage_reason = RR::integrity_mismatch;
     report.retained = 7;
     report.retain_lost = 7;
-    report.refuse_reason = tblrt1::TableRefuseReason::malformed;
+    report.refuse_reason = RR::malformed;
     report.non_finite_floats = 7;
     report.build_version_remote = 7;
     report.build_version_own = 7;
@@ -3294,7 +3299,7 @@ static int read_into_retain( const std::string & form, const std::vector<uint8_t
     auto step = [&]( const std::vector<uint8_t> & in ) {
         try
         {
-            const bool ok = retain_into_load( in, report );
+            const bool ok = load( in, report );
             answer += retain_into_step( ok, read_into_refused( report ) );
         }
         catch ( ... )
@@ -3308,6 +3313,30 @@ static int read_into_retain( const std::string & form, const std::vector<uint8_t
     step( lawful );
     answer += retain_into_compare( report, fresh );
     return 0;
+}
+
+static int read_into_retain( const std::string & form, const std::vector<uint8_t> & lawful, const std::vector<uint8_t> & damaged,
+                             int64_t count, const std::vector<uint8_t> &, std::string & answer )
+{
+    if ( form != "retain" || count != 1 ) return 1;
+    return read_into_zeroing<tblrt1::TableReport, tblrt1::TableRefuseReason>( "retaining", lawful, damaged, answer, retain_into_load );
+}
+
+// THE PLAIN REGION READ (README, "The `region` form"): surfaces::CountedLoad
+// into a 64-aligned region of its measured size, under the protocol above.
+static bool region_into_load( const std::vector<uint8_t> & wire, surfaces::TableReport & report )
+{
+    int64_t need = surfaces::CountedLoadMeasure( wire.data(), (int64_t) wire.size() );
+    if ( need < 0 ) need = 0;
+    std::vector<uint8_t> raw( (size_t) need + 64, 0 );
+    uint8_t * region = raw.data() + ( ( 64 - ( (uintptr_t) raw.data() & 63 ) ) & 63 );
+    return surfaces::CountedLoad( region, need, wire.data(), (int64_t) wire.size(), &report ) != NULL;
+}
+
+static int read_into_region( const std::vector<uint8_t> & lawful, const std::vector<uint8_t> & damaged, int64_t count, std::string & answer )
+{
+    if ( count != 1 ) return 1;
+    return read_into_zeroing<surfaces::TableReport, surfaces::TableRefuseReason>( "region", lawful, damaged, answer, region_into_load );
 }
 
 static const ReadIntoCodec read_into_codecs[] = {
@@ -3334,6 +3363,19 @@ static int surface_read_into( const std::string & out )
             if ( !spill( out, f[1], none, strlen( none ) ) ) return 1;
             continue;
         }
+        if ( f[4] == "retain-fixed" )
+        {
+            // NO CALL TO HOLD (docs/SPEC-TABLES.md §6.6): C++ refuses
+            // <Root>LoadRetain on a FIXED-class root at COMPILE time. The
+            // generator declares it as a variadic function template whose
+            // body is a static_assert that always fails
+            // (internal/codegen/cpptable/retain.go:1686, emitRetainRefusals),
+            // so surfaces::NarrowLoadRetain( ... ) does not compile and no
+            // call can be handed a report
+            const char * none = "unrepresentable\n";
+            if ( !spill( out, f[1], none, strlen( none ) ) ) return 1;
+            continue;
+        }
         const ReadIntoCodec * rc = NULL;
         for ( size_t j = 0; j < sizeof( read_into_codecs ) / sizeof( read_into_codecs[0] ); j++ )
         {
@@ -3348,7 +3390,11 @@ static int surface_read_into( const std::string & out )
         const long long count = strtoll( f[7].c_str(), &end, 10 );
         if ( end == NULL || *end != 0 || count < 1 ) { fprintf( stderr, "driver: read-into %s: %s is no count\n", f[1].c_str(), f[7].c_str() ); return 1; }
         std::string answer;
-        const int ran = rc->run( f[4], lawful, damaged, (int64_t) count, announcement, answer );
+        // the `region` form is the plain region read, which the builder codec
+        // above does not make: tblsurf.Counted's is answered here
+        const int ran = f[4] == "region" && f[2] == "tblsurf" && f[3] == "Counted"
+                            ? read_into_region( lawful, damaged, (int64_t) count, answer )
+                            : rc->run( f[4], lawful, damaged, (int64_t) count, announcement, answer );
         if ( ran == 1 ) { fprintf( stderr, "driver: read-into %s: no %s form for %s.%s\n", f[1].c_str(), f[4].c_str(), f[2].c_str(), f[3].c_str() ); return 1; }
         if ( ran == 2 ) { fprintf( stderr, "driver: read-into %s: unanswered\n", f[1].c_str() ); continue; }
         if ( !spill( out, f[1], answer.data(), answer.size() ) ) return 1;
