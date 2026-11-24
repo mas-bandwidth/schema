@@ -159,7 +159,10 @@ func emitWriteField(g *Gen, val string, f *ir.Field, indent string) {
 	if isByteElem(f.Type) {
 		g.Pf("%sif type(%s) ~= \"buffer\" or buffer.len(%s) ~= %s then return false end\n", indent, val, val, bound)
 	} else {
-		g.Pf("%sif type(%s) ~= \"table\" then return false end\n", indent, val)
+		// a [N]T holds exactly N values: any other count is refused, never
+		// cut or padded to N (SPEC §5.1, SF-20)
+		g.Pf("%sif type(%s) ~= \"table\" or #%s ~= %s then return false end -- a [N]T holds exactly N values (SPEC §5.1)\n",
+			indent, val, val, bound)
 	}
 	g.Pf("%sfor _i = 1, %s do\n", indent, bound)
 	emitWriteElem(g, val, f, indent+"  ")

@@ -9,7 +9,7 @@
 // which prints the rule and exits 70 in every build
 // (internal/codegen/lobster/write.go, THE CHECK MODEL). Either ends the
 // program, so the probe runs once per row and a refusal is read here: an
-// assert that fails INSIDE the generated PacketWriteRefusal.lobster, or the
+// assert that fails INSIDE the generated RefusalPacket.lobster, or the
 // runtime's `serialize: ` trap. Anything else (an assert in the probe, an
 // index out of range, a writer that answers false) is no answer at all, and
 // wrpacket.Check fails the row.
@@ -36,7 +36,7 @@ const root = "../../.."
 
 // generatedAssert is the VM's line for an assert that failed in the generated
 // writer: the file it names is the generated unit, never the probe.
-var generatedAssert = regexp.MustCompile(`^VM error \(PacketWriteRefusal\.lobster:[0-9]+\): assertion failed: `)
+var generatedAssert = regexp.MustCompile(`^VM error \(RefusalPacket\.lobster:[0-9]+\): assertion failed: `)
 
 // TestWriteRefusalPacketLobster runs the surface, then a negative control that
 // moves the emitter's upper-bound assert from <= to < and requires the

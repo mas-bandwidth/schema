@@ -164,7 +164,7 @@ func runWriteRefusalPacket(t *testing.T) {
 
 	c := compiler.New()
 	dir := t.TempDir()
-	schema := filepath.Join(dir, "PacketWriteRefusal.schema")
+	schema := filepath.Join(dir, "RefusalPacket.schema")
 	if err := os.WriteFile(schema, []byte(writeRefusalPacketSchema), 0o600); err != nil {
 		t.Fatal(err)
 	}

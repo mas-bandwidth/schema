@@ -253,6 +253,46 @@ glue() {
 				echo "    }"
 			fi
 		done
+		# A FIXED ROOT WITH NO GENERATED ToJson (a fixed-point field, as
+		# tblfixedevo's EvoRoot) still has text: json-write prints it through
+		# the value bridge (_<Root>FixedWrite, fixed_body_to_loaded, then
+		# json_save_table), and read-into prints through that same bridge. The
+		# read is the one conformance_load uses: <Root>FixedEvolveLoad where the
+		# root has a lineage, so an older writer's record reads (ri_fixed_lineage).
+		for r in $(sed -n 's/^fn \([A-Za-z0-9_]*\)FixedLoad(.*/\1/p' "$1"/*Table.goose); do
+			if printf '%s\n' $tojson | grep -qx "$r"; then continue; fi
+			echo "    if form == \"fixed\" && root == \"$r\" {"
+			echo "        var values: $ns::$r[>..] = [];"
+			echo "        for _ in count { values.push($ns::$r { .. }); }"
+			if grep -q "^fn ${r}FixedEvolveLoad(" "$1"/*Table.goose; then
+				echo "        var rep = schema_rt::FixedEvolveReport { .. };"
+				echo "        for step in 3 {"
+				echo "            let n = $ns::${r}FixedEvolveLoad(values[0..count], if step == 1 { damaged } else { lawful }, rep);"
+				echo "            conformance_ri_verdict(out, n >= 0 && !rep.damaged && rep.reason == 0 && rep.oor == 0);"
+			else
+				echo "        var rep = schema_rt::FixedReport { .. };"
+				echo "        for step in 3 {"
+				echo "            let n = $ns::${r}FixedLoad(values[0..count], if step == 1 { damaged } else { lawful }, rep);"
+				echo "            conformance_ri_verdict(out, n >= 0 && !rep.damaged && rep.reason == 0);"
+			fi
+			echo "            if step == 1 {"
+			echo "                for k in count {"
+			echo "                    var body: u8[>..] = [];"
+			echo "                    $ns::_${r}FixedWrite(body, values[k]);"
+			echo "                    var data: u8[>..] = [];"
+			echo "                    var vals: schema_rt::LoadVal[>..] = [];"
+			echo "                    var nodes: schema_rt::LoadNode[>..] = [];"
+			echo "                    let at = fixed_body_to_loaded(conformance_unit(), \"$r\", body, data, vals);"
+			echo "                    if at < 0 { return -2; }"
+			echo "                    var t: u8[>..] = [];"
+			echo "                    if schema_rt::json_save_table($ns::TableUnit, $ns::TextUnit, \"$r\", data, vals, nodes, at, t) < 0 { return -2; }"
+			echo "                    out.append(t);"
+			echo "                }"
+			echo "            }"
+			echo "        }"
+			echo "        return 0;"
+			echo "    }"
+		done
 		echo "    return -1;"
 		echo "}"
 		NS="$ns" perl - "$1"/*.goose <<'EOF_WREF_PERL'
