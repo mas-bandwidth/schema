@@ -96,10 +96,11 @@ endef
 
 # THE ARMS' SPLIT IS REGISTERED (measured on the committed corpus; the counts
 # do not depend on --n). The plain arm answers every seed and prints no
-# absence; the builder and retain arms each count 219 seeds outside the arm.
+# absence; the builder and retain arms each count 315 seeds outside the arm
+# (re-measured 2026-11-24: the corpus is 520 seeds, the arms hold 205 of them over 38 roots).
 # A root that drops out of the leg moves one of these and the recipe goes red
 # instead of fuzzing less.
-LOBSTER_WIRE_FUZZ_OUTSIDE_SEEDS := 219
+LOBSTER_WIRE_FUZZ_OUTSIDE_SEEDS := 315
 
 .PHONY: tables-lobster-wire-fuzz tables-lobster-wire-fuzz-negative-control tables-lobster-release
 tables-lobster-wire-fuzz: lobster-dist-present build/conformance-harness build/conformance-lobster build/lobster-wirefuzzhost $(LOBSTER_WIRE_FUZZ_ILL_TEXT)
