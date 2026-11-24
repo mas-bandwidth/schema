@@ -84,7 +84,7 @@ Nightly times are the newest completed scheduled run of each workflow on the fle
 | `lobster-fixed-proof-qualification.yml` | fast | `lobster-fixed-proof` | the four fixed-proof gates against the live C++ corpus: 63 s nightly (run 44994152761), 50 s cold on amd-2 |
 | `tla-nightly.yml` | covered | `ci-policy` | TestTLARunsHashEveryModelAndConfig: a model, config or EXTENDed module that changes without its TLC run recorded again is red on the pull request; TLC itself (148 s) runs nightly |
 | `nightly-conformance.yml` | covered | `verify-leg` | verify-leg runs each touched leg's conformance with --claims. Only the night sees a diff that touches more than four legs or the shared roots (verify-leg then selects no rows), and the cpp-writes job (1333 s) |
-| `ci-full.yml` | covered | `go-test-touched`, `verify-leg`, `lang-clean`, `lang-lint`, `generated-current`, `block-gate`, `vet`, `golangci-lint-fast`, `lint-fast`, `nightly-fast`, `appendix-java-announcement-budgets`, `appendix-go-fixed`, `appendix-python-fixed` | ci-fast is ci-full selected by path. Only the night sees windows, msvc, big-endian, the negative-controls matrix, pins and vuln: none has a two-minute form |
+| `ci-full.yml` | covered | `go-test-touched`, `verify-leg`, `lang-clean`, `lang-lint`, `generated-current`, `block-gate`, `golangci-lint-fast`, `lint-fast`, `nightly-fast`, `appendix-java-announcement-budgets`, `appendix-go-fixed`, `appendix-python-fixed` | ci-fast is ci-full selected by path; govet runs per pull request inside `golangci-lint-fast` over the touched packages, and the whole-module `go vet` (unit-vet) runs here. Only the night sees windows, msvc, big-endian, the negative-controls matrix, pins and vuln: none has a two-minute form |
 | `python-leg-nightly.yml` | covered | `verify-leg`, `hostile-python`, `bounds-python` | test-python on macOS (2041 s) is nightly; the Linux rows run per Python diff |
 | `python-leg.yml` | covered | `verify-leg`, `hostile-python`, `bounds-python` | the dispatch form of the above |
 | `leg.yml` | not-a-gate | | reusable (workflow_call); certify.yml calls it |
@@ -96,7 +96,9 @@ Nightly times are the newest completed scheduled run of each workflow on the fle
 same 57 generated units as the nightly gate:
 
 - each unit loads under `ruby -w` on both pins with an empty stderr;
-- **one** RuboCop process lints every unit;
+- RuboCop lints every unit, each file once, in up to eight concurrent
+  processes (`rubyrun.RuboCopShards`), and the gate checks every process verdict
+  and that the processes together inspected exactly the queued files;
 - the RuboCop and `ruby -w` planted controls run with it.
 
 Every unit carries the same runtime under its own module name, so a runtime file

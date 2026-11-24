@@ -1034,28 +1034,12 @@ jobs:
           go run ./tools/gotestreport -slowest 0 $require -skips .github/skip-ledger.txt \
             -provides "short platform tool:make tool:git tool:sh" "$PGROUP_GO_TEST_JSON"
 
-  # GO VET, a job of its own beside lint-fast: in one job with modernize the
-  # two whole-tree type-checks ran one after the other, and vet alone took
-  # 110 s on a loaded runner (run 43756632584), so modernize was cancelled at
-  # the two-minute cap. Side by side each has the cap to itself.
-  vet:
-    if: startsWith(github.head_ref, 'sprint/') == false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-    runs-on: [self-hosted, Linux, X64, fleet, schema]
-    timeout-minutes: 2
-    defaults:
-      run:
-        shell: go run ./tools/pgroup -- bash -e -o pipefail {0}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: ./.github/actions/merge-main
-      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
-        if: runner.environment == 'github-hosted'
-        with:
-          go-version: '1.26'
-          cache: false
-      - name: go vet
-        run: go vet ./...
-
+  # NO WHOLE-MODULE GO VET HERE (2026-11-24). golangci-lint-fast runs govet
+  # (.golangci.yml: default: standard) over the touched packages, so a
+  # separate `go vet ./...` type-checked the whole tree on every pull request
+  # to repeat it, and was cancelled at the two-minute cap on loaded runners
+  # (vision-6, run 45314325769: 114 s). The whole-module vet runs in
+  # ci-full.yml (unit-vet) and certify.yml.
   # FAST GOLANGCI-LINT OVER TOUCHED GO PACKAGES (~4-10 s on fleet runners).
   # Catches gocritic / staticcheck / errcheck / unused issues in touched Go
   # packages right on the PR instead of waiting for ci-full.yml's lint job.
@@ -3051,10 +3035,10 @@ jobs:
   # never from a hand list) and fails on any result but success, except a job
   # the plan selected nothing for: a skip is green only where this script names
   # the plan output that made it, and the gates that always run (plan,
-  # ci-policy, lint-fast, vet, block-gate) may never skip. `verdict` is the
+  # ci-policy, lint-fast, block-gate) may never skip. `verdict` is the
   # check to require on main.
   verdict:
-    needs: [fork-pull-request, plan, lint-fast, ci-policy, vet, golangci-lint-fast, generated-current, lang-clean, lang-lint, verify-leg, verify-elixir-conformance, verify-dart-conformance, verify-dart-fuzz, input-family, input-family-dart-conformance, build-cpp-conformance-account, input-family-cpp-conformance, block-gate, go-fixed-corpus, go-test-touched, leg-gate, leg-gate-lobster, leg-gate-rust, leg-gate-squirrel, leg-gate-cpp, newleg-scaffold, nightly-fast, pins]
+    needs: [fork-pull-request, plan, lint-fast, ci-policy, golangci-lint-fast, generated-current, lang-clean, lang-lint, verify-leg, verify-elixir-conformance, verify-dart-conformance, verify-dart-fuzz, input-family, input-family-dart-conformance, build-cpp-conformance-account, input-family-cpp-conformance, block-gate, go-fixed-corpus, go-test-touched, leg-gate, leg-gate-lobster, leg-gate-rust, leg-gate-squirrel, leg-gate-cpp, newleg-scaffold, nightly-fast, pins]
     if: startsWith(github.head_ref, 'sprint/') == false && (always() && !cancelled() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     # jq over the needs context: seconds
