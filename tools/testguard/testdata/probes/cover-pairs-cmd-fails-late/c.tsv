@@ -1,0 +1,5 @@
+suite	s
+baseline	bl
+cover	t	rows	file	rows.txt
+cover	t	columns	file	cols.txt
+cover	t	pairs	run	printf 'r1\tc1\n'; false | cat
