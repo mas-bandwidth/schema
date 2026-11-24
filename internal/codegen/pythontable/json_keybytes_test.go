@@ -59,24 +59,28 @@ print('ok')
 
 // The write's depth cap counts every container the read does
 // (docs/SPEC-TABLES.md §16.14 W2): a chain of 127 links puts each node's empty
-// array, map or None union at depth 128 and writes; 128 links put it at depth
-// 129, which the read refuses, so the write refuses it too, empty [] and {}
-// included. Each container is its own unit, so each refusal is that
-// container's own.
+// array, map, None union or empty flags value at depth 128 and writes; 128
+// links put it at depth 129, which the read refuses, so the write refuses it
+// too, empty [] and {} included. Each container is its own unit, so each
+// refusal is that container's own.
 func TestPythonJsonWriteDepthCountsEveryContainer(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct{ name, field, text string }{
 		{"array", "items []int32", `"items": []`},
 		{"map", "m map[string(8)]int32", `"m": {}`},
 		{"union", "pick Pick", `"pick": {}`},
+		{"flags", "marks Mark", `"marks": []`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			union := ""
+			decl := ""
 			if tc.name == "union" {
-				union = "union Pick {\n    n int32\n    s string(8)\n}\n"
+				decl = "union Pick {\n    n int32\n    s string(8)\n}\n"
 			}
-			schema := "package jsonwdepth\n" + union + `table Node {
+			if tc.name == "flags" {
+				decl = "flags Mark {\n    Hot\n    Cold\n}\n"
+			}
+			schema := "package jsonwdepth\n" + decl + `table Node {
     link *Node
     ` + tc.field + `
 }`

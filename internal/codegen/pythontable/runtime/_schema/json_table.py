@@ -798,6 +798,10 @@ def _render(field: FieldDesc, item: Any, depth: int, counts: dict[int, int], lab
         part = "null" if arm.field is None else _render(arm.field, getattr(item, arm.name), depth + 1, counts, labels)
         return "{\n" + "  " * (depth + 1) + _quote(arm.name) + ": " + part + "\n" + "  " * depth + "}"
     if field.json_flags:
+        # a flags value is an array of names, a container the read counts, an
+        # empty [] included (SPEC-TABLES §16.14 W2)
+        if depth > 128:
+            raise InvalidValue(field.name, "a container nested past the depth cap")
         if type(item) is not int or item < 0 or item >> len(field.json_variants):
             raise InvalidValue(field.name, "flags name no variant")
         parts = ["  " * (depth + 1) + _quote(name) for index, name in enumerate(field.json_variants) if item & (1 << index)]
