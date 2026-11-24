@@ -24,7 +24,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
-// the Mood, Moods and MoodField of tables/examples/Tables.schema
+// the Mood, Moods and MoodField of tables/examples/Tables.schema.
 const deprecatedBlockSchema = `package probe
 enum Mood { Calm
  Old | deprecated

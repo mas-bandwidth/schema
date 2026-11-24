@@ -116,7 +116,7 @@ fn main() {
 
 var deprecatedMessageLines = []string{"REFUSE element", "REFUSE scalar", "WRITE live", "WRITE fierce"}
 
-// the generated asserts the negative control removes, one per refusal line
+// the generated asserts the negative control removes, one per refusal line.
 var deprecatedMessageAsserts = map[string]string{
 	"REFUSE element": "debug_assert!(value.row[i] != 2, ",
 	"REFUSE scalar":  "debug_assert!(value.mood != 2, ",
