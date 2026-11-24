@@ -1095,15 +1095,19 @@ fn ri_report_diff(r: schema_rt::LoadReport&, want: schema_rt::LoadReport&, out: 
     out.push(10);
 }
 
-// read_into_retain: THE RETAIN FORM's read-into row (test/conformance/README.md,
-// `read-into`): the RETAINING load (schema_rt::load_table_retain, §6.6) into
-// ONE report the driver PRE-FILLED (every LoadReport field is public, so each
-// is set directly): <lawful>, compared with the report the same load leaves
-// in a FRESH report, then <damaged>, then <lawful> again and compared again
-// (§6.5: every read zeroes a supplied report in full, the retain family
-// included). Step 0 is the fresh load; every load has its own fresh stores
-// and a roomy retention buffer.
-fn read_into_retain(root: const u8[:], lawful: const u8[:], damaged: const u8[:], out: u8[>..]&) -> i64 {
+// read_into_report: THE REPORT FORMS' read-into rows (test/conformance/README.md,
+// `read-into`): ONE report the driver PRE-FILLED (every LoadReport field is
+// public, so each is set directly), read with <lawful> and compared with the
+// report the same read leaves in a FRESH report, then <damaged>, then
+// <lawful> again and compared again (§6.5: every read zeroes a supplied
+// report in full, on every read path). `retain` is the RETAINING load
+// (schema_rt::load_table_retain, §6.6) of a variable root; `region` is the
+// plain load (schema_rt::load_table: the Goose leg has no region read);
+// `retain-fixed` is load_table_retain of a FIXED-class root, which takes the
+// report and refuses through it, so it owes `refused` and `zeroed` with no
+// damaged read. Step 0 is the fresh read; every read has its own fresh
+// stores and a roomy retention buffer.
+fn read_into_report(form: const u8[:], root: const u8[:], lawful: const u8[:], damaged: const u8[:], out: u8[>..]&) -> i64 {
     let u = conformance_unit();
     if schema_rt::value_table(u, root) < 0 { return -1; }
     // the root name in a local of its own: Goose refuses this call on a name
@@ -1128,7 +1132,9 @@ fn read_into_retain(root: const u8[:], lawful: const u8[:], damaged: const u8[:]
     report.stopped = true;
     report.damaged = true;
     report.reason = schema_rt::LoadRefuseMalformed;
-    for step in 4 {
+    let fixed = form == "retain-fixed";
+    let last = if fixed { 2 } else { 4 };
+    for step in last {
         var input: u8[>..] = [];
         if step == 2 { input.append(damaged); } else { input.append(lawful); }
         var vals: schema_rt::LoadVal[>..] = [];
@@ -1138,10 +1144,13 @@ fn read_into_retain(root: const u8[:], lawful: const u8[:], damaged: const u8[:]
         var rids: u64[>..<] = [];
         var store = schema_rt::RetainStore { capacity: -1, id_capacity: -1, used: 0, bytes: rbytes, recs: rrecs, ids: rids };
         if step == 0 {
-            let r = schema_rt::load_table_retain(u, name, input, vals, nodes, fresh, store);
-            if r < 0 || fresh.refused || schema_rt::load_error(fresh, r) != schema_rt::LoadRefuseOk { return -2; }
+            var r: i64 = -1;
+            if form == "region" { r = schema_rt::load_table(u, name, input, vals, nodes, fresh); } else { r = schema_rt::load_table_retain(u, name, input, vals, nodes, fresh, store); }
+            let read = r >= 0 && !fresh.refused && schema_rt::load_error(fresh, r) == schema_rt::LoadRefuseOk;
+            if read == fixed { return -2; }
         } else {
-            let r = schema_rt::load_table_retain(u, name, input, vals, nodes, report, store);
+            var r: i64 = -1;
+            if form == "region" { r = schema_rt::load_table(u, name, input, vals, nodes, report); } else { r = schema_rt::load_table_retain(u, name, input, vals, nodes, report, store); }
             conformance_ri_verdict(out, r >= 0 && !report.refused && schema_rt::load_error(report, r) == schema_rt::LoadRefuseOk);
             if step != 2 { ri_report_diff(report, fresh, out); }
         }
@@ -1167,7 +1176,7 @@ fn surface_read_into(lines: const u8[:][:], unit: const u8[:]) {
         var lawful: u8[>..] = [];
         load_file(f[5], lawful);
         var damaged: u8[>..] = [];
-        load_file(f[6], damaged);
+        if f[6] != "-" { load_file(f[6], damaged); }
         let count, cok = parse_int(f[7]);
         if !cok || count < 1 { write_stderr(str("driver: ", f[1], ": count ", f[7], "\n")); exit(1); }
         var ann: u8[>..] = [];
@@ -1176,8 +1185,8 @@ fn surface_read_into(lines: const u8[:][:], unit: const u8[:]) {
         var r: i64 = -1;
         if f[4] == "variable" {
             r = read_into_variable(f[3], lawful, damaged, out);
-        } else if f[4] == "retain" {
-            r = read_into_retain(f[3], lawful, damaged, out);
+        } else if f[4] == "retain" || f[4] == "region" || f[4] == "retain-fixed" {
+            r = read_into_report(f[4], f[3], lawful, damaged, out);
         } else {
             r = conformance_read_into(f[3], f[4], lawful, damaged, count, ann, out);
         }
