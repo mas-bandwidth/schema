@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum body_tags
+{ Zfirst, Zsecond, Zthird }
+
+enum body_val
+{ Zfirst, Zsecond, Zthird }
+
+enum body_value
+{ Zfirst, Zsecond, Zthird }
+
+enum body_values
+{ Zfirst, Zsecond, Zthird }
+
+enum body_writer
+{ Zfirst, Zsecond, Zthird }
+
+enum body_xs
+{ Zfirst, Zsecond, Zthird }
+
+enum bok
+{ Zfirst, Zsecond, Zthird }
+
+enum boolByte
+{ Zfirst, Zsecond, Zthird }
+
+enum boolRaw
+{ Zfirst, Zsecond, Zthird }
+
+enum bool_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum bool_of
+{ Zfirst, Zsecond, Zthird }
+
+enum bor
+{ Zfirst, Zsecond, Zthird }
+
+enum born
+{ Zfirst, Zsecond, Zthird }
+
+enum bornElem
+{ Zfirst, Zsecond, Zthird }
+
+enum bornElides
+{ Zfirst, Zsecond, Zthird }
+
+enum bornOwnElem
+{ Zfirst, Zsecond, Zthird }
+
+enum bornTablesElide
+{ Zfirst, Zsecond, Zthird }
+
+enum born_element
+{ Zfirst, Zsecond, Zthird }
+
+enum born_tables
+{ Zfirst, Zsecond, Zthird }
+
+enum borrow
+{ Zfirst, Zsecond, Zthird }
+
+enum borrowHi
+{ Zfirst, Zsecond, Zthird }
+
+enum borrowLo
+{ Zfirst, Zsecond, Zthird }
+
+enum bottom
+{ Zfirst, Zsecond, Zthird }
+
+enum bound
+{ Zfirst, Zsecond, Zthird }
+
+enum boundOf
+{ Zfirst, Zsecond, Zthird }
+
+enum bound_lanes
+{ Zfirst, Zsecond, Zthird }
+
+enum bound_m
+{ Zfirst, Zsecond, Zthird }
+
+enum bound_shift
+{ Zfirst, Zsecond, Zthird }
+
+enum bound_value
+{ Zfirst, Zsecond, Zthird }
+
+enum boundary
+{ Zfirst, Zsecond, Zthird }
+
+enum bounded
+{ Zfirst, Zsecond, Zthird }
+
+enum bounds
+{ Zfirst, Zsecond, Zthird }
+
+enum bp
+{ Zfirst, Zsecond, Zthird }
+
+enum br
+{ Zfirst, Zsecond, Zthird }
+
+enum branch
+{ Zfirst, Zsecond, Zthird }
+
+enum bref
+{ Zfirst, Zsecond, Zthird }
+
+enum broken
+{ Zfirst, Zsecond, Zthird }
+
+enum bs
+{ Zfirst, Zsecond, Zthird }
+
+enum bseen
+{ Zfirst, Zsecond, Zthird }
+
+enum bstr
+{ Zfirst, Zsecond, Zthird }
+
+enum bt
+{ Zfirst, Zsecond, Zthird }
+
+enum bucket
+{ Zfirst, Zsecond, Zthird }
+
+enum buf
+{ Zfirst, Zsecond, Zthird }
+
+enum bufEnd
+{ Zfirst, Zsecond, Zthird }
+
+enum bufferSize
+{ Zfirst, Zsecond, Zthird }
+
+enum bufferSizeArg
+{ Zfirst, Zsecond, Zthird }
+
+enum bufferSizeMisuse
+{ Zfirst, Zsecond, Zthird }
+
+enum bufsize
+{ Zfirst, Zsecond, Zthird }
+
+enum bug
+{ Zfirst, Zsecond, Zthird }
+
+enum build
+{ Zfirst, Zsecond, Zthird }
+
+enum buildVersion
+{ Zfirst, Zsecond, Zthird }
+
+enum buildVersionOwn
+{ Zfirst, Zsecond, Zthird }
+
+enum buildVersionRemote
+{ Zfirst, Zsecond, Zthird }
+
+enum buildVersionValue
+{ Zfirst, Zsecond, Zthird }
+
+enum buildVersionWireId
+{ Zfirst, Zsecond, Zthird }
+
+enum build_version_id
+{ Zfirst, Zsecond, Zthird }
+
+enum builder
+{ Zfirst, Zsecond, Zthird }
+
+enum built
+{ Zfirst, Zsecond, Zthird }
+
+enum bulk
+{ Zfirst, Zsecond, Zthird }
+
+enum bumped
+{ Zfirst, Zsecond, Zthird }
+
+enum but
+{ Zfirst, Zsecond, Zthird }
+
+enum bv
+{ Zfirst, Zsecond, Zthird }
+
+enum bver
+{ Zfirst, Zsecond, Zthird }
+
+enum bw
+{ Zfirst, Zsecond, Zthird }
+
+enum bwAlign
+{ Zfirst, Zsecond, Zthird }
+
+enum bwPut
+{ Zfirst, Zsecond, Zthird }
+
+enum bwPut16
+{ Zfirst, Zsecond, Zthird }
+
+enum bxor
+{ Zfirst, Zsecond, Zthird }
+
+enum by
+{ Zfirst, Zsecond, Zthird }
+
+enum byEntry
+{ Zfirst, Zsecond, Zthird }
+
+enum byId
+{ Zfirst, Zsecond, Zthird }
+
+enum byKey
+{ Zfirst, Zsecond, Zthird }
+
+enum byName
+{ Zfirst, Zsecond, Zthird }
+
+enum byNameStride
+{ Zfirst, Zsecond, Zthird }
+
+enum byType
+{ Zfirst, Zsecond, Zthird }
+
+enum by_offset
+{ Zfirst, Zsecond, Zthird }
+
+enum by_start
+{ Zfirst, Zsecond, Zthird }
+
+enum by_tag
+{ Zfirst, Zsecond, Zthird }
+
+enum byteAt
+{ Zfirst, Zsecond, Zthird }
+
+enum byteCapacity
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    body_tags Inner
+    body_val Inner
+    body_value Inner
+    body_values Inner
+    body_writer Inner
+    body_xs Inner
+    bok Inner
+    boolByte Inner
+    boolRaw Inner
+    bool_bytes Inner
+}
+
+table NameTypes0
+{
+    one0  body_tags
+    many0 [..4]body_tags
+    one1  body_val
+    many1 [..4]body_val
+    one2  body_value
+    many2 [..4]body_value
+    one3  body_values
+    many3 [..4]body_values
+    one4  body_writer
+    many4 [..4]body_writer
+    one5  body_xs
+    many5 [..4]body_xs
+    one6  bok
+    many6 [..4]bok
+    one7  boolByte
+    many7 [..4]boolByte
+    one8  boolRaw
+    many8 [..4]boolRaw
+    one9  bool_bytes
+    many9 [..4]bool_bytes
+}
+
+table NameFields0
+{
+    body_tags uint32
+    body_val uint32
+    body_value uint32
+    body_values uint32
+    body_writer uint32
+    body_xs uint32
+    bok uint32
+    boolByte uint32
+    boolRaw uint32
+    bool_bytes uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    bool_of Inner
+    bor Inner
+    born Inner
+    bornElem Inner
+    bornElides Inner
+    bornOwnElem Inner
+    bornTablesElide Inner
+    born_element Inner
+    born_tables Inner
+    borrow Inner
+}
+
+table NameTypes1
+{
+    one0  bool_of
+    many0 [..4]bool_of
+    one1  bor
+    many1 [..4]bor
+    one2  born
+    many2 [..4]born
+    one3  bornElem
+    many3 [..4]bornElem
+    one4  bornElides
+    many4 [..4]bornElides
+    one5  bornOwnElem
+    many5 [..4]bornOwnElem
+    one6  bornTablesElide
+    many6 [..4]bornTablesElide
+    one7  born_element
+    many7 [..4]born_element
+    one8  born_tables
+    many8 [..4]born_tables
+    one9  borrow
+    many9 [..4]borrow
+}
+
+table NameFields1
+{
+    bool_of uint32
+    bor uint32
+    born uint32
+    bornElem uint32
+    bornElides uint32
+    bornOwnElem uint32
+    bornTablesElide uint32
+    born_element uint32
+    born_tables uint32
+    borrow uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    borrowHi Inner
+    borrowLo Inner
+    bottom Inner
+    bound Inner
+    boundOf Inner
+    bound_lanes Inner
+    bound_m Inner
+    bound_shift Inner
+    bound_value Inner
+    boundary Inner
+}
+
+table NameTypes2
+{
+    one0  borrowHi
+    many0 [..4]borrowHi
+    one1  borrowLo
+    many1 [..4]borrowLo
+    one2  bottom
+    many2 [..4]bottom
+    one3  bound
+    many3 [..4]bound
+    one4  boundOf
+    many4 [..4]boundOf
+    one5  bound_lanes
+    many5 [..4]bound_lanes
+    one6  bound_m
+    many6 [..4]bound_m
+    one7  bound_shift
+    many7 [..4]bound_shift
+    one8  bound_value
+    many8 [..4]bound_value
+    one9  boundary
+    many9 [..4]boundary
+}
+
+table NameFields2
+{
+    borrowHi uint32
+    borrowLo uint32
+    bottom uint32
+    bound uint32
+    boundOf uint32
+    bound_lanes uint32
+    bound_m uint32
+    bound_shift uint32
+    bound_value uint32
+    boundary uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    bounded Inner
+    bounds Inner
+    bp Inner
+    br Inner
+    branch Inner
+    bref Inner
+    broken Inner
+    bs Inner
+    bseen Inner
+    bstr Inner
+}
+
+table NameTypes3
+{
+    one0  bounded
+    many0 [..4]bounded
+    one1  bounds
+    many1 [..4]bounds
+    one2  bp
+    many2 [..4]bp
+    one3  br
+    many3 [..4]br
+    one4  branch
+    many4 [..4]branch
+    one5  bref
+    many5 [..4]bref
+    one6  broken
+    many6 [..4]broken
+    one7  bs
+    many7 [..4]bs
+    one8  bseen
+    many8 [..4]bseen
+    one9  bstr
+    many9 [..4]bstr
+}
+
+table NameFields3
+{
+    bounded uint32
+    bounds uint32
+    bp uint32
+    br uint32
+    branch uint32
+    bref uint32
+    broken uint32
+    bs uint32
+    bseen uint32
+    bstr uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    bt Inner
+    bucket Inner
+    buf Inner
+    bufEnd Inner
+    bufferSize Inner
+    bufferSizeArg Inner
+    bufferSizeMisuse Inner
+    bufsize Inner
+    bug Inner
+    build Inner
+}
+
+table NameTypes4
+{
+    one0  bt
+    many0 [..4]bt
+    one1  bucket
+    many1 [..4]bucket
+    one2  buf
+    many2 [..4]buf
+    one3  bufEnd
+    many3 [..4]bufEnd
+    one4  bufferSize
+    many4 [..4]bufferSize
+    one5  bufferSizeArg
+    many5 [..4]bufferSizeArg
+    one6  bufferSizeMisuse
+    many6 [..4]bufferSizeMisuse
+    one7  bufsize
+    many7 [..4]bufsize
+    one8  bug
+    many8 [..4]bug
+    one9  build
+    many9 [..4]build
+}
+
+table NameFields4
+{
+    bt uint32
+    bucket uint32
+    buf uint32
+    bufEnd uint32
+    bufferSize uint32
+    bufferSizeArg uint32
+    bufferSizeMisuse uint32
+    bufsize uint32
+    bug uint32
+    build uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    buildVersion Inner
+    buildVersionOwn Inner
+    buildVersionRemote Inner
+    buildVersionValue Inner
+    buildVersionWireId Inner
+    build_version_id Inner
+    builder Inner
+    built Inner
+    bulk Inner
+    bumped Inner
+}
+
+table NameTypes5
+{
+    one0  buildVersion
+    many0 [..4]buildVersion
+    one1  buildVersionOwn
+    many1 [..4]buildVersionOwn
+    one2  buildVersionRemote
+    many2 [..4]buildVersionRemote
+    one3  buildVersionValue
+    many3 [..4]buildVersionValue
+    one4  buildVersionWireId
+    many4 [..4]buildVersionWireId
+    one5  build_version_id
+    many5 [..4]build_version_id
+    one6  builder
+    many6 [..4]builder
+    one7  built
+    many7 [..4]built
+    one8  bulk
+    many8 [..4]bulk
+    one9  bumped
+    many9 [..4]bumped
+}
+
+table NameFields5
+{
+    buildVersion uint32
+    buildVersionOwn uint32
+    buildVersionRemote uint32
+    buildVersionValue uint32
+    buildVersionWireId uint32
+    build_version_id uint32
+    builder uint32
+    built uint32
+    bulk uint32
+    bumped uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    but Inner
+    bv Inner
+    bver Inner
+    bw Inner
+    bwAlign Inner
+    bwPut Inner
+    bwPut16 Inner
+    bxor Inner
+    by Inner
+    byEntry Inner
+}
+
+table NameTypes6
+{
+    one0  but
+    many0 [..4]but
+    one1  bv
+    many1 [..4]bv
+    one2  bver
+    many2 [..4]bver
+    one3  bw
+    many3 [..4]bw
+    one4  bwAlign
+    many4 [..4]bwAlign
+    one5  bwPut
+    many5 [..4]bwPut
+    one6  bwPut16
+    many6 [..4]bwPut16
+    one7  bxor
+    many7 [..4]bxor
+    one8  by
+    many8 [..4]by
+    one9  byEntry
+    many9 [..4]byEntry
+}
+
+table NameFields6
+{
+    but uint32
+    bv uint32
+    bver uint32
+    bw uint32
+    bwAlign uint32
+    bwPut uint32
+    bwPut16 uint32
+    bxor uint32
+    by uint32
+    byEntry uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    byId Inner
+    byKey Inner
+    byName Inner
+    byNameStride Inner
+    byType Inner
+    by_offset Inner
+    by_start Inner
+    by_tag Inner
+    byteAt Inner
+    byteCapacity Inner
+}
+
+table NameTypes7
+{
+    one0  byId
+    many0 [..4]byId
+    one1  byKey
+    many1 [..4]byKey
+    one2  byName
+    many2 [..4]byName
+    one3  byNameStride
+    many3 [..4]byNameStride
+    one4  byType
+    many4 [..4]byType
+    one5  by_offset
+    many5 [..4]by_offset
+    one6  by_start
+    many6 [..4]by_start
+    one7  by_tag
+    many7 [..4]by_tag
+    one8  byteAt
+    many8 [..4]byteAt
+    one9  byteCapacity
+    many9 [..4]byteCapacity
+}
+
+table NameFields7
+{
+    byId uint32
+    byKey uint32
+    byName uint32
+    byNameStride uint32
+    byType uint32
+    by_offset uint32
+    by_start uint32
+    by_tag uint32
+    byteAt uint32
+    byteCapacity uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

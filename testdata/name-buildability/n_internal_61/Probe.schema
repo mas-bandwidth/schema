@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum refuseValue
+{ Zfirst, Zsecond, Zthird }
+
+enum refuse_batch
+{ Zfirst, Zsecond, Zthird }
+
+enum refuse_into
+{ Zfirst, Zsecond, Zthird }
+
+enum refuse_out_of_range
+{ Zfirst, Zsecond, Zthird }
+
+enum refuse_reason
+{ Zfirst, Zsecond, Zthird }
+
+enum refused_layout
+{ Zfirst, Zsecond, Zthird }
+
+enum refused_report
+{ Zfirst, Zsecond, Zthird }
+
+enum refused_root
+{ Zfirst, Zsecond, Zthird }
+
+enum refuses
+{ Zfirst, Zsecond, Zthird }
+
+enum refusing
+{ Zfirst, Zsecond, Zthird }
+
+enum reg
+{ Zfirst, Zsecond, Zthird }
+
+enum region
+{ Zfirst, Zsecond, Zthird }
+
+enum regionAlign
+{ Zfirst, Zsecond, Zthird }
+
+enum regionAlignment
+{ Zfirst, Zsecond, Zthird }
+
+enum regionBase
+{ Zfirst, Zsecond, Zthird }
+
+enum regionEnd
+{ Zfirst, Zsecond, Zthird }
+
+enum regionLength
+{ Zfirst, Zsecond, Zthird }
+
+enum region_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum registered
+{ Zfirst, Zsecond, Zthird }
+
+enum reinterpret
+{ Zfirst, Zsecond, Zthird }
+
+enum rejectReadOnly
+{ Zfirst, Zsecond, Zthird }
+
+enum rejected
+{ Zfirst, Zsecond, Zthird }
+
+enum relative
+{ Zfirst, Zsecond, Zthird }
+
+enum release
+{ Zfirst, Zsecond, Zthird }
+
+enum releaseWire
+{ Zfirst, Zsecond, Zthird }
+
+enum releasing
+{ Zfirst, Zsecond, Zthird }
+
+enum rem
+{ Zfirst, Zsecond, Zthird }
+
+enum rem_arm
+{ Zfirst, Zsecond, Zthird }
+
+enum rem_bits
+{ Zfirst, Zsecond, Zthird }
+
+enum rem_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum remain
+{ Zfirst, Zsecond, Zthird }
+
+enum remainder
+{ Zfirst, Zsecond, Zthird }
+
+enum remainderBits
+{ Zfirst, Zsecond, Zthird }
+
+enum remaining
+{ Zfirst, Zsecond, Zthird }
+
+enum remap
+{ Zfirst, Zsecond, Zthird }
+
+enum remapAt
+{ Zfirst, Zsecond, Zthird }
+
+enum remapCapacity
+{ Zfirst, Zsecond, Zthird }
+
+enum remapScratch
+{ Zfirst, Zsecond, Zthird }
+
+enum remapUsed
+{ Zfirst, Zsecond, Zthird }
+
+enum remote
+{ Zfirst, Zsecond, Zthird }
+
+enum removed
+{ Zfirst, Zsecond, Zthird }
+
+enum render_json_value
+{ Zfirst, Zsecond, Zthird }
+
+enum rendered
+{ Zfirst, Zsecond, Zthird }
+
+enum rendered_text
+{ Zfirst, Zsecond, Zthird }
+
+enum renew
+{ Zfirst, Zsecond, Zthird }
+
+enum rented
+{ Zfirst, Zsecond, Zthird }
+
+enum rentedElems
+{ Zfirst, Zsecond, Zthird }
+
+enum rentedPayloads
+{ Zfirst, Zsecond, Zthird }
+
+enum rep
+{ Zfirst, Zsecond, Zthird }
+
+enum repeated
+{ Zfirst, Zsecond, Zthird }
+
+enum repl
+{ Zfirst, Zsecond, Zthird }
+
+enum replacement
+{ Zfirst, Zsecond, Zthird }
+
+enum replacements
+{ Zfirst, Zsecond, Zthird }
+
+enum report
+{ Zfirst, Zsecond, Zthird }
+
+enum req
+{ Zfirst, Zsecond, Zthird }
+
+enum reqMatch
+{ Zfirst, Zsecond, Zthird }
+
+enum reqSeen0
+{ Zfirst, Zsecond, Zthird }
+
+enum reqSeen1
+{ Zfirst, Zsecond, Zthird }
+
+enum reqSeen_2
+{ Zfirst, Zsecond, Zthird }
+
+enum reqSeen_3
+{ Zfirst, Zsecond, Zthird }
+
+enum require
+{ Zfirst, Zsecond, Zthird }
+
+enum requireFamily
+{ Zfirst, Zsecond, Zthird }
+
+enum require_seen
+{ Zfirst, Zsecond, Zthird }
+
+enum requiredSeen
+{ Zfirst, Zsecond, Zthird }
+
+enum res
+{ Zfirst, Zsecond, Zthird }
+
+enum res0
+{ Zfirst, Zsecond, Zthird }
+
+enum res1
+{ Zfirst, Zsecond, Zthird }
+
+enum res_flags
+{ Zfirst, Zsecond, Zthird }
+
+enum res_sub
+{ Zfirst, Zsecond, Zthird }
+
+enum res_take
+{ Zfirst, Zsecond, Zthird }
+
+enum res_u32
+{ Zfirst, Zsecond, Zthird }
+
+enum res_u64
+{ Zfirst, Zsecond, Zthird }
+
+enum reserve
+{ Zfirst, Zsecond, Zthird }
+
+enum reserved0
+{ Zfirst, Zsecond, Zthird }
+
+enum reserved1
+{ Zfirst, Zsecond, Zthird }
+
+enum reservedId
+{ Zfirst, Zsecond, Zthird }
+
+enum reserved_at
+{ Zfirst, Zsecond, Zthird }
+
+enum resetField
+{ Zfirst, Zsecond, Zthird }
+
+enum resetPlaced
+{ Zfirst, Zsecond, Zthird }
+
+enum resetReport
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    refuseValue Inner
+    refuse_batch Inner
+    refuse_into Inner
+    refuse_out_of_range Inner
+    refuse_reason Inner
+    refused_layout Inner
+    refused_report Inner
+    refused_root Inner
+    refuses Inner
+    refusing Inner
+}
+
+table NameTypes0
+{
+    one0  refuseValue
+    many0 [..4]refuseValue
+    one1  refuse_batch
+    many1 [..4]refuse_batch
+    one2  refuse_into
+    many2 [..4]refuse_into
+    one3  refuse_out_of_range
+    many3 [..4]refuse_out_of_range
+    one4  refuse_reason
+    many4 [..4]refuse_reason
+    one5  refused_layout
+    many5 [..4]refused_layout
+    one6  refused_report
+    many6 [..4]refused_report
+    one7  refused_root
+    many7 [..4]refused_root
+    one8  refuses
+    many8 [..4]refuses
+    one9  refusing
+    many9 [..4]refusing
+}
+
+table NameFields0
+{
+    refuseValue uint32
+    refuse_batch uint32
+    refuse_into uint32
+    refuse_out_of_range uint32
+    refuse_reason uint32
+    refused_layout uint32
+    refused_report uint32
+    refused_root uint32
+    refuses uint32
+    refusing uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    reg Inner
+    region Inner
+    regionAlign Inner
+    regionAlignment Inner
+    regionBase Inner
+    regionEnd Inner
+    regionLength Inner
+    region_bytes Inner
+    registered Inner
+    reinterpret Inner
+}
+
+table NameTypes1
+{
+    one0  reg
+    many0 [..4]reg
+    one1  region
+    many1 [..4]region
+    one2  regionAlign
+    many2 [..4]regionAlign
+    one3  regionAlignment
+    many3 [..4]regionAlignment
+    one4  regionBase
+    many4 [..4]regionBase
+    one5  regionEnd
+    many5 [..4]regionEnd
+    one6  regionLength
+    many6 [..4]regionLength
+    one7  region_bytes
+    many7 [..4]region_bytes
+    one8  registered
+    many8 [..4]registered
+    one9  reinterpret
+    many9 [..4]reinterpret
+}
+
+table NameFields1
+{
+    reg uint32
+    region uint32
+    regionAlign uint32
+    regionAlignment uint32
+    regionBase uint32
+    regionEnd uint32
+    regionLength uint32
+    region_bytes uint32
+    registered uint32
+    reinterpret uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    rejectReadOnly Inner
+    rejected Inner
+    relative Inner
+    release Inner
+    releaseWire Inner
+    releasing Inner
+    rem Inner
+    rem_arm Inner
+    rem_bits Inner
+    rem_bytes Inner
+}
+
+table NameTypes2
+{
+    one0  rejectReadOnly
+    many0 [..4]rejectReadOnly
+    one1  rejected
+    many1 [..4]rejected
+    one2  relative
+    many2 [..4]relative
+    one3  release
+    many3 [..4]release
+    one4  releaseWire
+    many4 [..4]releaseWire
+    one5  releasing
+    many5 [..4]releasing
+    one6  rem
+    many6 [..4]rem
+    one7  rem_arm
+    many7 [..4]rem_arm
+    one8  rem_bits
+    many8 [..4]rem_bits
+    one9  rem_bytes
+    many9 [..4]rem_bytes
+}
+
+table NameFields2
+{
+    rejectReadOnly uint32
+    rejected uint32
+    relative uint32
+    release uint32
+    releaseWire uint32
+    releasing uint32
+    rem uint32
+    rem_arm uint32
+    rem_bits uint32
+    rem_bytes uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    remain Inner
+    remainder Inner
+    remainderBits Inner
+    remaining Inner
+    remap Inner
+    remapAt Inner
+    remapCapacity Inner
+    remapScratch Inner
+    remapUsed Inner
+    remote Inner
+}
+
+table NameTypes3
+{
+    one0  remain
+    many0 [..4]remain
+    one1  remainder
+    many1 [..4]remainder
+    one2  remainderBits
+    many2 [..4]remainderBits
+    one3  remaining
+    many3 [..4]remaining
+    one4  remap
+    many4 [..4]remap
+    one5  remapAt
+    many5 [..4]remapAt
+    one6  remapCapacity
+    many6 [..4]remapCapacity
+    one7  remapScratch
+    many7 [..4]remapScratch
+    one8  remapUsed
+    many8 [..4]remapUsed
+    one9  remote
+    many9 [..4]remote
+}
+
+table NameFields3
+{
+    remain uint32
+    remainder uint32
+    remainderBits uint32
+    remaining uint32
+    remap uint32
+    remapAt uint32
+    remapCapacity uint32
+    remapScratch uint32
+    remapUsed uint32
+    remote uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    removed Inner
+    render_json_value Inner
+    rendered Inner
+    rendered_text Inner
+    renew Inner
+    rented Inner
+    rentedElems Inner
+    rentedPayloads Inner
+    rep Inner
+    repeated Inner
+}
+
+table NameTypes4
+{
+    one0  removed
+    many0 [..4]removed
+    one1  render_json_value
+    many1 [..4]render_json_value
+    one2  rendered
+    many2 [..4]rendered
+    one3  rendered_text
+    many3 [..4]rendered_text
+    one4  renew
+    many4 [..4]renew
+    one5  rented
+    many5 [..4]rented
+    one6  rentedElems
+    many6 [..4]rentedElems
+    one7  rentedPayloads
+    many7 [..4]rentedPayloads
+    one8  rep
+    many8 [..4]rep
+    one9  repeated
+    many9 [..4]repeated
+}
+
+table NameFields4
+{
+    removed uint32
+    render_json_value uint32
+    rendered uint32
+    rendered_text uint32
+    renew uint32
+    rented uint32
+    rentedElems uint32
+    rentedPayloads uint32
+    rep uint32
+    repeated uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    repl Inner
+    replacement Inner
+    replacements Inner
+    report Inner
+    req Inner
+    reqMatch Inner
+    reqSeen0 Inner
+    reqSeen1 Inner
+    reqSeen_2 Inner
+    reqSeen_3 Inner
+}
+
+table NameTypes5
+{
+    one0  repl
+    many0 [..4]repl
+    one1  replacement
+    many1 [..4]replacement
+    one2  replacements
+    many2 [..4]replacements
+    one3  report
+    many3 [..4]report
+    one4  req
+    many4 [..4]req
+    one5  reqMatch
+    many5 [..4]reqMatch
+    one6  reqSeen0
+    many6 [..4]reqSeen0
+    one7  reqSeen1
+    many7 [..4]reqSeen1
+    one8  reqSeen_2
+    many8 [..4]reqSeen_2
+    one9  reqSeen_3
+    many9 [..4]reqSeen_3
+}
+
+table NameFields5
+{
+    repl uint32
+    replacement uint32
+    replacements uint32
+    report uint32
+    req uint32
+    reqMatch uint32
+    reqSeen0 uint32
+    reqSeen1 uint32
+    reqSeen_2 uint32
+    reqSeen_3 uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    require Inner
+    requireFamily Inner
+    require_seen Inner
+    requiredSeen Inner
+    res Inner
+    res0 Inner
+    res1 Inner
+    res_flags Inner
+    res_sub Inner
+    res_take Inner
+}
+
+table NameTypes6
+{
+    one0  require
+    many0 [..4]require
+    one1  requireFamily
+    many1 [..4]requireFamily
+    one2  require_seen
+    many2 [..4]require_seen
+    one3  requiredSeen
+    many3 [..4]requiredSeen
+    one4  res
+    many4 [..4]res
+    one5  res0
+    many5 [..4]res0
+    one6  res1
+    many6 [..4]res1
+    one7  res_flags
+    many7 [..4]res_flags
+    one8  res_sub
+    many8 [..4]res_sub
+    one9  res_take
+    many9 [..4]res_take
+}
+
+table NameFields6
+{
+    require uint32
+    requireFamily uint32
+    require_seen uint32
+    requiredSeen uint32
+    res uint32
+    res0 uint32
+    res1 uint32
+    res_flags uint32
+    res_sub uint32
+    res_take uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    res_u32 Inner
+    res_u64 Inner
+    reserve Inner
+    reserved0 Inner
+    reserved1 Inner
+    reservedId Inner
+    reserved_at Inner
+    resetField Inner
+    resetPlaced Inner
+    resetReport Inner
+}
+
+table NameTypes7
+{
+    one0  res_u32
+    many0 [..4]res_u32
+    one1  res_u64
+    many1 [..4]res_u64
+    one2  reserve
+    many2 [..4]reserve
+    one3  reserved0
+    many3 [..4]reserved0
+    one4  reserved1
+    many4 [..4]reserved1
+    one5  reservedId
+    many5 [..4]reservedId
+    one6  reserved_at
+    many6 [..4]reserved_at
+    one7  resetField
+    many7 [..4]resetField
+    one8  resetPlaced
+    many8 [..4]resetPlaced
+    one9  resetReport
+    many9 [..4]resetReport
+}
+
+table NameFields7
+{
+    res_u32 uint32
+    res_u64 uint32
+    reserve uint32
+    reserved0 uint32
+    reserved1 uint32
+    reservedId uint32
+    reserved_at uint32
+    resetField uint32
+    resetPlaced uint32
+    resetReport uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

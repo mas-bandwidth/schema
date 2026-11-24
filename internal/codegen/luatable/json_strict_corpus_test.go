@@ -281,7 +281,7 @@ func runLuaStrictCorpus(t *testing.T, patch func([]byte) ([]byte, error)) error 
 	// skipped unknown object: read through the strict J.FromJson.
 	dir := t.TempDir()
 	schemaPath := filepath.Join(dir, "N.schema")
-	if err := os.WriteFile(schemaPath, []byte(`package n
+	if err := os.WriteFile(schemaPath, []byte(`package jsonnulls
 union Payload
 {
     data *bytes

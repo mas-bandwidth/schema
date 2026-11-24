@@ -412,6 +412,7 @@ namespace Blockdemo
 
         public static bool RenderFrameCollectTyped(RenderFrame v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null RenderFrame is written");
             TableFieldInfo[] fields = RenderFrameTableType().Fields;
             if (v.Version != 0 && !ids.Add(0xbb62c62c9808ea37ul)) return false;
             if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
@@ -701,6 +702,7 @@ namespace Blockdemo
 
         public static bool RenderCameraCollectTyped(RenderCamera v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null RenderCamera is written");
             TableFieldInfo[] fields = RenderCameraTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
@@ -836,6 +838,7 @@ namespace Blockdemo
 
         public static bool RenderShipCollectTyped(RenderShip v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null RenderShip is written");
             TableFieldInfo[] fields = RenderShipTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
@@ -992,6 +995,7 @@ namespace Blockdemo
 
         public static bool RenderTurretCollectTyped(RenderTurret v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null RenderTurret is written");
             TableFieldInfo[] fields = RenderTurretTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             if (v.Flags != 0 && !ids.Add(0x17a3a1a985f75aecul)) return false;
@@ -1141,6 +1145,7 @@ namespace Blockdemo
 
         public static bool RenderMissileCollectTyped(RenderMissile v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null RenderMissile is written");
             TableFieldInfo[] fields = RenderMissileTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
@@ -1270,6 +1275,7 @@ namespace Blockdemo
 
         public static bool RenderDynamicPropCollectTyped(RenderDynamicProp v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null RenderDynamicProp is written");
             TableFieldInfo[] fields = RenderDynamicPropTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
@@ -1399,6 +1405,7 @@ namespace Blockdemo
 
         public static bool RenderStaticPropCollectTyped(RenderStaticProp v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null RenderStaticProp is written");
             TableFieldInfo[] fields = RenderStaticPropTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
@@ -1530,6 +1537,7 @@ namespace Blockdemo
 
         public static bool RenderCosmeticPropCollectTyped(RenderCosmeticProp v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null RenderCosmeticProp is written");
             TableFieldInfo[] fields = RenderCosmeticPropTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
@@ -1666,6 +1674,7 @@ namespace Blockdemo
 
         public static bool RenderLaserCollectTyped(RenderLaser v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null RenderLaser is written");
             TableFieldInfo[] fields = RenderLaserTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
@@ -1789,6 +1798,7 @@ namespace Blockdemo
 
         public static bool RenderExplosionCollectTyped(RenderExplosion v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null RenderExplosion is written");
             TableFieldInfo[] fields = RenderExplosionTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
@@ -1915,6 +1925,7 @@ namespace Blockdemo
 
         public static bool RenderVector3CollectTyped(RenderVector3 v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null RenderVector3 is written");
             System.Diagnostics.Debug.Assert(double.IsFinite(v.X));
             if (BitConverter.DoubleToUInt64Bits(v.X) != 0x0000000000000000ul && !ids.Add(0xaf63f54c86021707ul)) return false;
             System.Diagnostics.Debug.Assert(double.IsFinite(v.Y));
@@ -2025,6 +2036,7 @@ namespace Blockdemo
 
         public static bool RenderQuaternionCollectTyped(RenderQuaternion v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null RenderQuaternion is written");
             System.Diagnostics.Debug.Assert(double.IsFinite(v.X));
             if (BitConverter.DoubleToUInt64Bits(v.X) != 0x0000000000000000ul && !ids.Add(0xaf63f54c86021707ul)) return false;
             System.Diagnostics.Debug.Assert(double.IsFinite(v.Y));
@@ -2868,6 +2880,7 @@ namespace Blockdemo
         // which is also what zero-fills every byte of declared slack.
         public static void RenderVector3FixedWriteBody(Span<byte> b, RenderVector3 value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null RenderVector3 is written");
             if (value == null) return;
             BinaryPrimitives.WriteDoubleLittleEndian(b, value.X);
             BinaryPrimitives.WriteDoubleLittleEndian(b.Slice(8), value.Y);
@@ -2878,6 +2891,7 @@ namespace Blockdemo
         // which is also what zero-fills every byte of declared slack.
         public static void RenderQuaternionFixedWriteBody(Span<byte> b, RenderQuaternion value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null RenderQuaternion is written");
             if (value == null) return;
             BinaryPrimitives.WriteDoubleLittleEndian(b, value.X);
             BinaryPrimitives.WriteDoubleLittleEndian(b.Slice(8), value.Y);
@@ -2889,6 +2903,7 @@ namespace Blockdemo
         // which is also what zero-fills every byte of declared slack.
         public static void RenderCameraFixedWriteBody(Span<byte> b, RenderCamera value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null RenderCamera is written");
             if (value == null) return;
             RenderVector3FixedWriteBody(b, value.Position);
             RenderQuaternionFixedWriteBody(b.Slice(24), value.Rotation);
@@ -2902,6 +2917,7 @@ namespace Blockdemo
         // which is also what zero-fills every byte of declared slack.
         public static void RenderShipFixedWriteBody(Span<byte> b, RenderShip value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null RenderShip is written");
             if (value == null) return;
             RenderVector3FixedWriteBody(b, value.Position);
             RenderQuaternionFixedWriteBody(b.Slice(24), value.Rotation);
@@ -2920,6 +2936,7 @@ namespace Blockdemo
         // which is also what zero-fills every byte of declared slack.
         public static void RenderTurretFixedWriteBody(Span<byte> b, RenderTurret value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null RenderTurret is written");
             if (value == null) return;
             RenderQuaternionFixedWriteBody(b, value.Rotation);
             BinaryPrimitives.WriteInt64LittleEndian(b.Slice(32), unchecked((long)value.Flags));
@@ -2936,6 +2953,7 @@ namespace Blockdemo
         // which is also what zero-fills every byte of declared slack.
         public static void RenderMissileFixedWriteBody(Span<byte> b, RenderMissile value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null RenderMissile is written");
             if (value == null) return;
             RenderVector3FixedWriteBody(b, value.Position);
             RenderQuaternionFixedWriteBody(b.Slice(24), value.Rotation);
@@ -2950,6 +2968,7 @@ namespace Blockdemo
         // which is also what zero-fills every byte of declared slack.
         public static void RenderDynamicPropFixedWriteBody(Span<byte> b, RenderDynamicProp value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null RenderDynamicProp is written");
             if (value == null) return;
             RenderVector3FixedWriteBody(b, value.Position);
             RenderQuaternionFixedWriteBody(b.Slice(24), value.Rotation);
@@ -2964,6 +2983,7 @@ namespace Blockdemo
         // which is also what zero-fills every byte of declared slack.
         public static void RenderStaticPropFixedWriteBody(Span<byte> b, RenderStaticProp value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null RenderStaticProp is written");
             if (value == null) return;
             RenderVector3FixedWriteBody(b, value.Position);
             RenderQuaternionFixedWriteBody(b.Slice(24), value.Rotation);
@@ -2978,6 +2998,7 @@ namespace Blockdemo
         // which is also what zero-fills every byte of declared slack.
         public static void RenderCosmeticPropFixedWriteBody(Span<byte> b, RenderCosmeticProp value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null RenderCosmeticProp is written");
             if (value == null) return;
             RenderVector3FixedWriteBody(b, value.Position);
             RenderQuaternionFixedWriteBody(b.Slice(24), value.Rotation);
@@ -2993,6 +3014,7 @@ namespace Blockdemo
         // which is also what zero-fills every byte of declared slack.
         public static void RenderLaserFixedWriteBody(Span<byte> b, RenderLaser value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null RenderLaser is written");
             if (value == null) return;
             RenderVector3FixedWriteBody(b, value.Start);
             RenderVector3FixedWriteBody(b.Slice(24), value.Finish);
@@ -3006,6 +3028,7 @@ namespace Blockdemo
         // which is also what zero-fills every byte of declared slack.
         public static void RenderExplosionFixedWriteBody(Span<byte> b, RenderExplosion value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null RenderExplosion is written");
             if (value == null) return;
             RenderVector3FixedWriteBody(b, value.Position);
             RenderQuaternionFixedWriteBody(b.Slice(24), value.Rotation);

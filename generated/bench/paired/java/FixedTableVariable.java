@@ -436,6 +436,7 @@ public final class FixedTableVariable {
     // without -ea the writer trusts its caller. It reaches every table the
     // value points to, each once, so a cycle ends it.
     static boolean checkWrite(Value v) {
+        assert v != null : "FixedTable: a null value is written";
         TableVariable.WriteCheck walk = new TableVariable.WriteCheck();
         walk.point(v);
         for (java.lang.Object o = walk.next(); o != null; o = walk.next()) {
@@ -478,6 +479,7 @@ public final class FixedTableVariable {
         if (v == null) {
             return true;
         }
+        assert v.value != null : "FixedTable.value";
         assert BenchMixedVariable.checkWrite(v.value, walk);
         return true;
     }

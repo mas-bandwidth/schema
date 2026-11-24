@@ -17195,8 +17195,8 @@ static SCHEMA_UNUSED int schema_bench_bench_mixed_body_pack_( struct bench_table
     bench_table_cook_put( at + 40, (uint64_t) value->world_time, 8, order );
     bench_table_cook_put( at + 48, (uint64_t) value->frame_tick, 8, order );
     bench_table_cook_put( at + 56, (uint64_t) value->server_time, 4, order );
-    if ( value->entities_count < 1 || value->entities_count > 8 ) { return 0; }
     schema_assert( 1 <= value->entities_count && value->entities_count <= 8 );
+    if ( value->entities_count < 1 || value->entities_count > 8 ) { return 0; }
     {
         int32_t cook_i1;
         for ( cook_i1 = 0; cook_i1 < value->entities_count && cook_i1 < 8; cook_i1++ )

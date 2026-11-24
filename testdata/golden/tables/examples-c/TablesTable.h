@@ -41294,8 +41294,8 @@ static SCHEMA_UNUSED int schema_tabledemo_counted_min_body_pack_( struct tablede
     (void) at;
     (void) value;
     (void) order;
-    if ( value->few_count < 2 || value->few_count > 5 ) { return 0; }
     schema_assert( 2 <= value->few_count && value->few_count <= 5 );
+    if ( value->few_count < 2 || value->few_count > 5 ) { return 0; }
     {
         int32_t cook_i1;
         for ( cook_i1 = 0; cook_i1 < value->few_count && cook_i1 < 5; cook_i1++ )
@@ -41434,8 +41434,8 @@ static SCHEMA_UNUSED int schema_tabledemo_min_arm_fix_body_pack_( struct tablede
     {
         case TABLEDEMO_MIN_PICK_TYPE_FEW:
         {
-            if ( value->pick.as.few.value_count < 2 || value->pick.as.few.value_count > 4 ) { return 0; }
             schema_assert( 2 <= value->pick.as.few.value_count && value->pick.as.few.value_count <= 4 );
+            if ( value->pick.as.few.value_count < 2 || value->pick.as.few.value_count > 4 ) { return 0; }
             {
                 int32_t cook_i1;
                 for ( cook_i1 = 0; cook_i1 < value->pick.as.few.value_count && cook_i1 < 4; cook_i1++ )
@@ -41481,8 +41481,8 @@ static SCHEMA_UNUSED int schema_tabledemo_min_plain_fix_body_pack_( struct table
     (void) at;
     (void) value;
     (void) order;
-    if ( value->few_count < 2 || value->few_count > 4 ) { return 0; }
     schema_assert( 2 <= value->few_count && value->few_count <= 4 );
+    if ( value->few_count < 2 || value->few_count > 4 ) { return 0; }
     {
         int32_t cook_i1;
         for ( cook_i1 = 0; cook_i1 < value->few_count && cook_i1 < 4; cook_i1++ )
