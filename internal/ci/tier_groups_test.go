@@ -499,13 +499,13 @@ func TestEveryPerPRGroupRunsOnEveryPullRequest(t *testing.T) {
 	}
 	m := maps.Clone(wfs)
 	m["ci-fast.yml"] = strings.Replace(m["ci-fast.yml"], yamlJobs(m["ci-fast.yml"])["verify-leg"], "", 1)
-	verifyIf := "    if: (needs.plan.outputs.verify_legs != '[]'"
+	verifyIf := "    if: ((needs.plan.outputs.all == 'yes' || needs.plan.outputs.verify_legs != '[]')"
 	for _, c := range []struct {
 		name string
 		wfs  map[string]string
 	}{
 		{"a group dropped from ci-fast.yml", m},
-		{"the sprint/ skip put back on a group", plant(verifyIf, "    if: startsWith(github.head_ref, 'sprint/') == false && (needs.plan.outputs.verify_legs != '[]'")},
+		{"the sprint/ skip put back on a group", plant(verifyIf, "    if: startsWith(github.head_ref, 'sprint/') == false && ((needs.plan.outputs.all == 'yes' || needs.plan.outputs.verify_legs != '[]')")},
 		{"a group given three minutes", plant("  vet:\n", "  vet:\n    timeout-minutes: 3\n")},
 	} {
 		if len(perPRGroupErrors(c.wfs, doc)) == 0 {

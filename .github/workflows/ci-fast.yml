@@ -168,11 +168,12 @@ on:
     branches: [main]
   # every pull request, whatever its base: sprint landings target sprint/<stream> branches, not main
   pull_request:
-  # A DISPATCH DIFFS AGAINST MAIN and, by default, runs every per-PR job
-  # (`all`, as a push to main does). `gh workflow run ci-fast.yml --ref <branch>
-  # -f all=false` selects by the diff against main instead, as a pull request
-  # does. Nothing here reads dev (internal/ci TestFastPlanDiffsAgainstMain).
   workflow_dispatch:
+    # A DISPATCH DIFFS AGAINST MAIN and, by default, runs every per-PR job
+    # (`all`, as a push to main does). `gh workflow run ci-fast.yml --ref
+    # <branch> -f all=false` selects by the diff against main instead, as a
+    # pull request does. Nothing here reads dev (internal/ci
+    # TestFastPlanDiffsAgainstMain).
     inputs:
       all:
         description: run every per-PR job (true), or select by the diff against main (false)
@@ -364,11 +365,13 @@ jobs:
           # internal/ci TestEveryTreePathMapsToAJob runs this map over every
           # file under make/, test/, internal/codegen/ and tools/.
           # the rules, each the one a block below greps: a .go file (THE
-          # PACKAGES); a recipe or script (THE RECIPES); the broad rule, the
+          # PACKAGES); a file under a testdata/ directory (its package's
+          # tests, gotestrows -changed-files); a recipe or script (THE
+          # RECIPES); the broad rule, the
           # goldens, the pages, the fuzz corpora, the workflow auditors, the
           # shared corpora, the generated tree, the pins and the clean gates;
           # and the input families' roots (tools/inputfamilies)
-          path_rules='\.go$|(^|/)(Makefile|GNUmakefile|[^/]*[.]mk|[^/]*[.]sh)$|^[.]github/(workflows|actions)/|^(make|tools|bench)/([^/]+/)*[^/.]+$|^(ir/|compiler/|tables/|generated/|go\.mod$|docs/|README\.md$|skills/|examples/|examples128/|bench/corpus/|testdata/|internal/codegen/|internal/check/|internal/parser/|internal/goldens/|internal/docgate/|internal/tablepack/|internal/ci/hostilecorpus/corpus/|test/tables/|test/conformance/|test/packet-[a-z-]+/|test/goldens/|test/guard/.*\.schema$|test/generated-tree/|test/elixir-tables/|eslint\.config\.mjs$|\.clang-format$)|\.schema$'
+          path_rules='\.go$|(^|/)testdata/|(^|/)(Makefile|GNUmakefile|[^/]*[.]mk|[^/]*[.]sh)$|^[.]github/(workflows|actions)/|^(make|tools|bench)/([^/]+/)*[^/.]+$|^(ir/|compiler/|tables/|generated/|go\.mod$|docs/|README\.md$|skills/|examples/|examples128/|bench/corpus/|testdata/|internal/codegen/|internal/check/|internal/parser/|internal/goldens/|internal/docgate/|internal/tablepack/|internal/ci/hostilecorpus/corpus/|test/tables/|test/conformance/|test/packet-[a-z-]+/|test/goldens/|test/guard/.*\.schema$|test/generated-tree/|test/elixir-tables/|eslint\.config\.mjs$|\.clang-format$)|\.schema$'
           no_leg=""
           make_shared=no
           while read -r f; do
@@ -806,7 +809,11 @@ jobs:
           # names a changed input join the go test selection the same way (a
           # root testdata/ directory is invisible to the go tool). On a push to
           # main every family's every reader runs.
-          if [ "$all" = yes ] || [ "$make_shared" = yes ]; then
+          # (a shared make file changed: every leg reads it, so every family's
+          # every reader runs too)
+          if [ "$all" = yes ]; then
+            go run ./tools/inputfamilies select -pr -all -changed "$RUNNER_TEMP/diff-files.txt" > "$RUNNER_TEMP/input-families.txt"
+          elif [ "$make_shared" = yes ]; then
             go run ./tools/inputfamilies select -pr -all -changed "$RUNNER_TEMP/diff-files.txt" > "$RUNNER_TEMP/input-families.txt"
           else
             go run ./tools/inputfamilies select -pr -changed "$RUNNER_TEMP/diff-files.txt" > "$RUNNER_TEMP/input-families.txt"
@@ -1862,7 +1869,7 @@ jobs:
   verify-goose-fuzz:
     needs: plan
     if: ((needs.plan.outputs.all == 'yes' || contains(needs.plan.outputs.verify_legs, '"goose"')) && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository))
-    name: verify-leg (goose, fuzz ${{ matrix.part }}/2)
+    name: verify-leg (goose, fuzz ${{ matrix.half }}/2)
     runs-on: [self-hosted, Linux, X64, fleet, schema]
     timeout-minutes: 2
     defaults:
@@ -1871,7 +1878,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        part: [1, 2]
+        half: [1, 2]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/merge-main
@@ -1892,13 +1899,13 @@ jobs:
       - uses: ./.github/actions/dist-pins
         with:
           pins: goose
-      - name: make verify-goose-fuzz-part-${{ matrix.part }}
+      - name: make verify-goose-fuzz-part-${{ matrix.half }}
         run: |
           set -euo pipefail
           if [ -f /opt/nova/sdk/env.sh ]; then
             . /opt/nova/sdk/env.sh
           fi
-          make "verify-goose-fuzz-part-${{ matrix.part }}"
+          make "verify-goose-fuzz-part-${{ matrix.half }}"
       - name: the skip ledger — every skip this row's go test recorded, by reason
         if: always()
         run: |
@@ -3084,15 +3091,13 @@ jobs:
           out() { jq -r --arg k "$1" '.plan.outputs[$k] // ""' <<<"$NEEDS"; }
           # a skip is green only for the job whose selection came out empty
           may_skip() {
-            case "$1" in
-              fork-pull-request) return 0 ;;
-            esac
             # EVERY PER-PR JOB RUNS on a push to main and on a dispatch with
             # all (the plan's all output): no skip but the fork guard's
-            if [ "$(out all)" = yes ]; then
+            if [ "$1" != fork-pull-request ] && [ "$(out all)" = yes ]; then
               return 1
             fi
             case "$1" in
+              fork-pull-request) return 0 ;;
               golangci-lint-fast) [ "$(out lint_rows)" = '[]' ] ;;
               verify-goose-fuzz) ! grep -qF '"goose"' <<<"$(out verify_legs)" ;;
               input-family-merge) [ "$(out corpus_shards)" = '[]' ] ;;

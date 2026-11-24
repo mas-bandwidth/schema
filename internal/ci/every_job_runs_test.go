@@ -195,7 +195,7 @@ func runOmissionLog(t *testing.T, block, all, unmapped string) (string, bool) {
 	if err := os.WriteFile(filepath.Join(tmp, "unmapped-files.txt"), []byte(unmapped), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// the block reads only its environment and the unmapped-files list
+	// testinputs:none — the block reads only its environment and a temp file
 	cmd := exec.Command("bash", "-euo", "pipefail", "-c", block)
 	cmd.Dir = tmp
 	cmd.Env = append(scriptEnv(os.Environ()), "RUNNER_TEMP="+tmp, "ALL="+all,
@@ -344,10 +344,10 @@ func TestFastPlanDiffsAgainstMain(t *testing.T) {
 		if !strings.Contains(plan, "\n          BASE: main\n") {
 			bad = append(bad, "the plan's BASE is not main")
 		}
-		if regexp.MustCompile(`'dev'|origin/dev|\bdev\b\.\.\.`).MatchString(plan) {
+		if regexp.MustCompile(`(?m)^[ \t]*[^#\s][^\n]*('dev'|origin/dev|\bdev\.\.\.)`).MatchString(plan) {
 			bad = append(bad, "the plan reads dev")
 		}
-		if !regexp.MustCompile(`(?m)^  workflow_dispatch:\n    inputs:\n      all:\n        description: [^\n]+\n        type: boolean\n        default: true\n`).MatchString(wf) {
+		if !regexp.MustCompile(`(?m)^  workflow_dispatch:\n(?:    #[^\n]*\n)*    inputs:\n      all:\n        description: [^\n]+\n        type: boolean\n        default: true\n`).MatchString(wf) {
 			bad = append(bad, "the dispatch has no boolean input all defaulting to true")
 		}
 		if !strings.Contains(plan, `if [ "${EVENT:-}" = workflow_dispatch ] && [ "${DISPATCH_ALL:-}" != false ]; then`) {

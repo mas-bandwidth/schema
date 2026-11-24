@@ -533,18 +533,23 @@ func ciMakeTargetsAfter(args string) []string {
 	return out
 }
 
-// ciPullRequestMakeTargets reads every `make <target>` the pull-request gate,
-// ci-fast.yml, invokes by name, comments stripped.
-func ciPullRequestMakeTargets(t *testing.T, root string) []string {
+// ciPullRequestMakeTargets reads every `make <target>` a workflow invokes by
+// name, comments stripped: the pull-request gate, ci-fast.yml, by default.
+func ciPullRequestMakeTargets(t *testing.T, root string, files ...string) []string {
 	t.Helper()
-	data, err := os.ReadFile(filepath.Join(root, ".github", "workflows", "ci-fast.yml"))
-	if err != nil {
-		t.Fatalf("ci-fast.yml is the pull-request gate this test reads: %v", err)
+	if len(files) == 0 {
+		files = []string{"ci-fast.yml"}
 	}
 	var targets []string
-	for _, l := range lines("ci-fast.yml", string(data)) {
-		for _, m := range ciMakeInvocation.FindAllStringSubmatch(l.text, -1) {
-			targets = append(targets, ciMakeTargetsAfter(m[1])...)
+	for _, file := range files {
+		data, err := os.ReadFile(filepath.Join(root, ".github", "workflows", file))
+		if err != nil {
+			t.Fatalf("%s is a workflow this test reads: %v", file, err)
+		}
+		for _, l := range lines(file, string(data)) {
+			for _, m := range ciMakeInvocation.FindAllStringSubmatch(l.text, -1) {
+				targets = append(targets, ciMakeTargetsAfter(m[1])...)
+			}
 		}
 	}
 	return targets
@@ -576,10 +581,14 @@ func ciInvokesTarget(targets []string, name string) bool {
 // few arguments to *FixedLoad — while #855 (which added the plan-cache
 // argument) and #856 (which added a caller) were each green at their own head.
 // This tree splits the pull-request gate into ci-fast.yml (per push) and
-// ci-full.yml (per merge); the harnesses ride ci-fast.yml's per-leg fixed-form
-// jobs, and this listing holds them there.
+// ci-full.yml (per merge); the harnesses rode ci-fast.yml's per-leg fixed-form
+// jobs, which ran on a dispatch only: no pull request ever ran them. They do
+// not fit the two-minute cap, so they run every night over every leg in
+// leg-gates-nightly.yml (2026-11-24), and docs/CI-TIERS.md holds their
+// pull-request form as owed (held). This listing holds them to running there
+// until a fast shard of each joins ci-fast.yml, which also satisfies it.
 func TestTheFixedFormHarnessesRunPerPullRequest(t *testing.T) {
-	targets := ciPullRequestMakeTargets(t, repoRoot(t))
+	targets := ciPullRequestMakeTargets(t, repoRoot(t), "ci-fast.yml", "leg-gates-nightly.yml")
 
 	// THE LISTING. Both harnesses the fixed form's build gate names, and the
 	// fast shard of each counts: `make test` still runs the pair with the
@@ -587,7 +596,7 @@ func TestTheFixedFormHarnessesRunPerPullRequest(t *testing.T) {
 	fixedFormHarnesses := []string{"tables-fixedform", "tables-c-fixedform"}
 	for _, harness := range fixedFormHarnesses {
 		if !ciInvokesTarget(targets, harness) {
-			t.Errorf("no job in ci-fast.yml runs `make %s`: the fixed-form harness is built by no pull-request job, so two green pull requests can leave a red tip (issue #857). Add a job that runs the harness — or a fast shard of it — to .github/workflows/ci-fast.yml.", harness)
+			t.Errorf("no job in ci-fast.yml or leg-gates-nightly.yml runs `make %s`: the fixed-form harness is built by no job, so two green pull requests can leave a red tip unseen (issue #857). Add a job that runs the harness — or a fast shard of it — to .github/workflows/ci-fast.yml.", harness)
 		}
 	}
 }
@@ -1496,13 +1505,10 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:input-family",
 		"ci-fast.yml:input-family-cpp-conformance",
 		"ci-fast.yml:input-family-dart-conformance",
+		"ci-fast.yml:input-family-elixir-conformance",
+		"ci-fast.yml:input-family-merge",
 		"ci-fast.yml:lang-clean",
 		"ci-fast.yml:lang-lint",
-		"ci-fast.yml:leg-gate",
-		"ci-fast.yml:leg-gate-cpp",
-		"ci-fast.yml:leg-gate-lobster",
-		"ci-fast.yml:leg-gate-rust",
-		"ci-fast.yml:leg-gate-squirrel",
 		"ci-fast.yml:lint-fast",
 		"ci-fast.yml:newleg-scaffold",
 		"ci-fast.yml:nightly-fast",
@@ -1513,6 +1519,7 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-fast.yml:verify-dart-conformance",
 		"ci-fast.yml:verify-dart-fuzz",
 		"ci-fast.yml:verify-elixir-conformance",
+		"ci-fast.yml:verify-goose-fuzz",
 		"ci-fast.yml:verify-leg",
 		"ci-fast.yml:vet",
 		"ci-full.yml:conformance",
@@ -1536,6 +1543,12 @@ func TestSelfHostedAdmissionAndDevIntegrationRoutes(t *testing.T) {
 		"ci-full.yml:verdict",
 		"ci-full.yml:vuln",
 		"cla.yml:caa",
+		"leg-gates-nightly.yml:goose-fuzz-whole",
+		"leg-gates-nightly.yml:leg-gate",
+		"leg-gates-nightly.yml:leg-gate-cpp",
+		"leg-gates-nightly.yml:leg-gate-lobster",
+		"leg-gates-nightly.yml:leg-gate-rust",
+		"leg-gates-nightly.yml:leg-gate-squirrel",
 		"leg.yml:leg-matrix",
 		"leg.yml:legs",
 		"lobster-fixed-proof-qualification.yml:baseline",

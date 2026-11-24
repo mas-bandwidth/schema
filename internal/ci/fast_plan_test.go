@@ -286,7 +286,8 @@ func TestFastPlanSelectsLanguageLints(t *testing.T) {
 		{"go leg", "internal/codegen/gotable/wire.go", `["go"]|./internal/codegen/gotable ./internal/goldens ./internal/fuzz`},
 		{"lua runtime, no .go file", "internal/codegen/luatable/runtime/wire.lua", `["lua"]|./internal/codegen/lua ./internal/codegen/luatable ./internal/goldens ./internal/fuzz`},
 		{"lua make file", "make/lua.mk", `["lua"]|./internal/recipescan ./internal/codegen/lua ./internal/codegen/luatable`},
-		{"dart lens make file", "make/schema-dart-generated-strict-analyze-gate.mk", `["dart"]|./internal/recipescan`},
+		// a make file named for a language selects that leg (THE PATH MAP, 2026-11-24)
+		{"dart lens make file", "make/schema-dart-generated-strict-analyze-gate.mk", `["dart"]|./internal/recipescan ./internal/codegen/darttable`},
 		{"docs only", "docs/TUTORIAL.md", `[]|./internal/docgate ./internal/tablepack ./compiler`},
 		// the compiler's own page-text tests read pages the docgate rule does
 		// not name: a nested page and the rulings file

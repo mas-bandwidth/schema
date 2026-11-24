@@ -141,7 +141,7 @@ func gooseErrs(t *testing.T, mk, wf string) []string {
 			errs = append(errs, "no part takes "+slice)
 		}
 	}
-	if !strings.Contains(wf, "        part: [1, 2]\n") || !strings.Contains(wf, `make "verify-goose-fuzz-part-${{ matrix.part }}"`) {
+	if !strings.Contains(wf, "        half: [1, 2]\n") || !strings.Contains(wf, `make "verify-goose-fuzz-part-${{ matrix.half }}"`) {
 		errs = append(errs, "ci-fast.yml verify-goose-fuzz does not run both parts")
 	}
 	return errs
