@@ -207,6 +207,13 @@ var genericDirs = map[string]bool{"testdata": true, "wire": true, "tables": true
 // the directory's own quoted name (filepath.Join("testdata", "wire", "x")),
 // and the file's name.
 func mentions(p string) []string {
+	// A DOCUMENT a Go tool reads (docs/PORTING.md, read by tools/matrix
+	// proof) is named in hundreds of comments and its directory in more, so
+	// its readers are the files that spell its whole path as a string
+	// literal: the spelling os.ReadFile takes, never a citation.
+	if strings.HasPrefix(p, "docs/") {
+		return []string{`"` + p + `"`}
+	}
 	dir, base := path.Split(p)
 	dir = strings.TrimSuffix(dir, "/")
 	var out []string
@@ -224,12 +231,13 @@ func mentions(p string) []string {
 
 // isInput reports whether a changed path is a test input whose Go readers
 // the plan must find: a non-Go file under a root testdata/ or test/
-// directory, or under the shared hostile corpus.
+// directory, under the shared hostile corpus, or under docs/ (a document a
+// gate reads: a docs/PORTING.md-only diff once ran no ./tools/matrix test).
 func isInput(p string) bool {
 	if strings.HasSuffix(p, ".go") {
 		return false
 	}
-	return strings.HasPrefix(p, "testdata/") || strings.HasPrefix(p, "test/") || strings.HasPrefix(p, "internal/ci/hostilecorpus/")
+	return strings.HasPrefix(p, "testdata/") || strings.HasPrefix(p, "test/") || strings.HasPrefix(p, "internal/ci/hostilecorpus/") || strings.HasPrefix(p, "docs/")
 }
 
 // GoReaders is every main-module package (./dir) with a .go file naming one

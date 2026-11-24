@@ -236,3 +236,22 @@ func TestAcceptedBoundsSelectOnlyTheirGoReaders(t *testing.T) {
 		})
 	}
 }
+
+// A docs/PORTING.md-only diff selects ./tools/matrix, whose proof reads the
+// register's language columns (TestTheCommittedProofCarriesEveryPortingColumn):
+// a document is read where its whole path is a string literal, never where a
+// comment cites it.
+func TestADocumentSelectsTheGoPackageThatReadsIt(t *testing.T) {
+	t.Parallel()
+	s := Select(repoTree(t), []string{"docs/PORTING.md"}, false, true)
+	if !slices.Contains(s.Packages, "./tools/matrix") {
+		t.Errorf("a docs/PORTING.md-only diff selects %v, not ./tools/matrix", s.Packages)
+	}
+	tr := Tree{Targets: map[string]bool{}, GoFiles: map[string]string{
+		"tools/r/r.go":    `const doc = "docs/X.md"`,
+		"internal/c/c.go": "// the rule in docs/X.md says so",
+	}}
+	if got := Select(tr, []string{"docs/X.md"}, false, true).Packages; !slices.Equal(got, []string{"./tools/r"}) {
+		t.Errorf("packages = %v, want only the literal reader ./tools/r", got)
+	}
+}

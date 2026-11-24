@@ -2614,10 +2614,14 @@ jobs:
       # is `gh run download <run> -n proof-snapshot` and a commit, never a
       # snapshot rebuilt from another run's or a partial set of results.
       - name: the proof snapshot these results compute
+        id: snapshot
         if: always()
         run: go run ./tools/matrix proof -results build/conformance/legs -write
+      # only a snapshot this run wrote: after a failed write the checkout
+      # still holds the COMMITTED proof.json, which must never be published
+      # under a name that says it was computed
       - name: keep the proof snapshot
-        if: always()
+        if: always() && steps.snapshot.outcome == 'success'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: proof-snapshot
