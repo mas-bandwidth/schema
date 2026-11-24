@@ -493,7 +493,7 @@ reference still owes the rest (§5.8 row 4).
   (fixes 5, 9 and 14, as ruled 2026-11-03). This pass is the ONLY place a tag or an ordinal is checked, and it
   refuses on either plan. There is no `| max = K` headroom on
   this wire: a variant is identified by the hash of its name, so a value with no name has no meaning here, and the
-  compiler refuses a headroom enum the moment a table reaches it (Glenn, 2026-09-10: dead text, not a rule).
+  compiler refuses a headroom enum the moment a table reaches it (Glenn, 2026-09-10: dead text, not a rule). **A leg that holds a tag in the run instead (the JavaScript `const` op's None entry) holds it the same way: the check comes first and the None lands only after it passes.** JavaScript, 2026-11-24: the `const` op stored its None before testing the writer's tag and refused after, so a refused run had written one destination byte; it now tests first (held by `test/conformance/js/rows/R16.mjs`; SPEC-CONFORMANCE.md §7).
 
 ## 5. Evolution: the fixed table reads backward, never forward
 

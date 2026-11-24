@@ -580,10 +580,13 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
       }
       case TableFixedOpConst: {
         const v = e[b + TableFixedLaneAux];
-        for (let k = 0; k < size; k++) { dst[d + k] = (v >>> (8 * k)) & 0xff; }
         // A None CONST WITH meta = THE WRITER'S ARM COUNT: a tag past
         // that set refuses out_of_range (§4.6), exactly as the identity plan's
-        // bounds pass refuses the same forged bytes. The source read is bounded
+        // bounds pass refuses the same forged bytes — and, like every refusal of
+        // §4.5 and §4.6, BEFORE ANY DESTINATION BYTE IS WRITTEN, so the check
+        // runs first and the None lands only after it passes (the const stored
+        // its value first until 2026-11-24; test/conformance/js/rows/R16.mjs).
+        // The source read is bounded
         // here rather than at the push: TableFixedPush on this leg takes no
         // record bound at all, so the entry that reads a record byte carries
         // its own.
@@ -597,6 +600,7 @@ export function TableFixedRun(plan, entryCount, src, srcView, srcAt, dst, dstVie
           // refuses BY NAME, never a silent oor count.
           if (raw > arms) { report.refused = TableFixedRefusal.OutOfRange; return; }
         }
+        for (let k = 0; k < size; k++) { dst[d + k] = (v >>> (8 * k)) & 0xff; }
         break;
       }
       case TableFixedOpDeadAbsent: {
