@@ -2672,6 +2672,24 @@ packet-end-java-negative-control: packet-end-java
 
 test-java: packet-end-java packet-end-java-negative-control
 
+# THE PACKET-VOID LEG (SPEC §4.8; make/checks/packet-void.mk): payload-free
+# union arms cost exactly their tag bits. The driver answers every case of
+# testdata/wire/packet-void/cases.txt through tools/casegate, with -ea (the
+# writer's contract asserts live) and without.
+build/packet-void/java/.stamp: bin/schema test/packet-void/Void.schema make/java.mk
+	@rm -rf build/packet-void/java/gen build/packet-void/java/classes
+	./bin/schema generate --lang java --out build/packet-void/java/gen $(PACKET_VOID_SCHEMA)
+	@touch $@
+
+.PHONY: packet-void-java
+packet-void-java: build/casegate build/packet-void/java/.stamp
+	@mkdir -p build/packet-void/java/classes
+	$(JAVAC) --release 17 -Xlint:all -Werror -d build/packet-void/java/classes build/packet-void/java/gen/*.java test/packet-void/java/Main.java
+	$(call packet_void_gate,java) $(JAVA) -ea -cp build/packet-void/java/classes Main $(PACKET_VOID_PINS)
+	$(call packet_void_gate,java) $(JAVA) -cp build/packet-void/java/classes Main $(PACKET_VOID_PINS)
+
+test-java: packet-void-java
+
 # Declaration-free transport IDs: run the legal and noncanonical vectors
 # through both public load paths, then plant a bypass of the order check.
 .PHONY: tables-java-transport-id tables-java-transport-id-negative-control

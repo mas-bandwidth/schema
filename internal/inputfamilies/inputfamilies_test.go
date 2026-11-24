@@ -136,6 +136,34 @@ func TestDerivationOnAHandTree(t *testing.T) {
 	}
 }
 
+// A shared-corpus family refuses a leg with no target and no whole-leg owed
+// line, a whole-leg owed line for a leg that has a target, and a missing
+// ledger.
+func TestSharedCorpusRefusesALegWithNoTargetAndNoLedgerLine(t *testing.T) {
+	t.Parallel()
+	f := Family{Name: "pins", Target: "pins-{leg}", Owed: "testdata/pins/owed.txt"}
+	has := map[string]bool{}
+	for _, l := range Legs {
+		has[l] = l != "moo" && l != "lobster"
+	}
+	tr := Tree{Ledgers: map[string]string{"testdata/pins/owed.txt": "# head\nlobster all owed: no union API\nlua all owed: stale\nlua x owed: one case\n"}}
+	bad := strings.Join(checkOwed(f, tr, has), "\n")
+	for _, want := range []string{
+		"leg moo has no pins-moo target and no `moo all owed: <cause>` line",
+		"leg lua defines pins-lua and testdata/pins/owed.txt still says `lua all owed`",
+	} {
+		if !strings.Contains(bad, want) {
+			t.Errorf("checkOwed did not say %q:\n%s", want, bad)
+		}
+	}
+	if strings.Contains(bad, "lobster") {
+		t.Errorf("checkOwed refused lobster, which its ledger line owes:\n%s", bad)
+	}
+	if bad := checkOwed(f, Tree{}, has); len(bad) != 1 || !strings.Contains(bad[0], "is missing") {
+		t.Errorf("a missing ledger: %v", bad)
+	}
+}
+
 func TestAccountFilesForLegResolvesPerLegSchemasAndExclusions(t *testing.T) {
 	t.Parallel()
 	tr := repoTree(t)
@@ -162,8 +190,8 @@ func TestAccountFilesForLegResolvesPerLegSchemasAndExclusions(t *testing.T) {
 		{"packet-finite", "dart", "test/packet-finite/dart/Finite.schema"},
 		{"packet-finite", "squirrel", "test/packet-finite/squirrel/Finite.schema"},
 		{"packet-void", "cpp", "test/packet-void/Void.schema"},
-		{"packet-void", "python", "test/packet-void/python/Python.schema"},
-		{"packet-void", "ruby", "test/packet-void/ruby/Ruby.schema"},
+		{"packet-void", "python", "test/packet-void/Void.schema"},
+		{"packet-void", "ruby", "test/packet-void/Void.schema"},
 		{"packet-write-text", "rust", "test/packet-write-text/Text.schema"},
 		{"packet-write-text", "cpp", "test/packet-write-text/cpp/TextPacketCases.schema"},
 		{"packet-write-text", "c", "test/packet-write-text/c/Text.schema"},

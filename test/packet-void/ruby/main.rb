@@ -1,153 +1,108 @@
 # frozen_string_literal: true
 
-# The Ruby half of test/packet-void (SPEC §4.8).
-require File.expand_path("packetvoidruby", ARGV.fetch(0))
+# The Ruby leg of test/packet-void (SPEC §4.8): answers every case of
+# testdata/wire/packet-void/cases.txt, one "case <name> ok|FAILED: <why>"
+# line each, for tools/casegate (and internal/casegate in the Go tests). The
+# pins are the Go oracle's bytes, never this writer's.
+#
+#   ruby main.rb <generated directory> <testdata/wire/packet-void>
+require File.expand_path("packetvoid", ARGV.fetch(0))
 
-def fail_void(msg)
-  $stderr.write("FAILED: #{msg}\n")
-  exit 1
+PINS = ARGV.fetch(1)
+
+TYPES = {
+  "Mixed" => Packetvoid::Mixed,
+  "Tags" => Packetvoid::Tags,
+  "Single" => Packetvoid::Single,
+  "Empty" => Packetvoid::Empty,
+  "Frame" => Packetvoid::Frame,
+  "Batch" => Packetvoid::Batch
+}.freeze
+
+def mixed(tag)
+  value = Packetvoid::Mixed.new
+  value.type = tag
+  value
 end
 
-def read_goldens(path)
-  out = {}
-  File.readlines(path).each do |line|
-    line = line.sub(/#.*/, "").strip
-    next if line.empty?
-    name, hex = line.split
-    out[name] = (hex == "-" || hex == "--") ? "".b : [hex].pack("H*")
-  end
-  out
-end
-
+# The value of each accept case, by name; nil for a name this driver does not
+# know, which is FAILED and never written with another case's value.
 def build_case(name)
   case name
-  when "mixed-none"
-    [Packetvoidruby::Mixed.new, Packetvoidruby::Mixed, 2]
-  when "mixed-ping"
-    v = Packetvoidruby::Mixed.new
-    v.type = Packetvoidruby::MixedType::Ping
-    [v, Packetvoidruby::Mixed, 2]
-  when "mixed-pong"
-    v = Packetvoidruby::Mixed.new
-    v.type = Packetvoidruby::MixedType::Pong
-    [v, Packetvoidruby::Mixed, 2]
-  when "mixed-payload"
-    v = Packetvoidruby::Mixed.new
-    v.type = Packetvoidruby::MixedType::Payload
-    [v, Packetvoidruby::Mixed, 19]
+  when "mixed-none" then mixed(Packetvoid::MixedType::None)
+  when "mixed-ping" then mixed(Packetvoid::MixedType::Ping)
+  when "mixed-payload" then mixed(Packetvoid::MixedType::Payload)
+  when "tags-none", "tags-ping", "tags-pong"
+    v = Packetvoid::Tags.new
+    v.type = { "tags-none" => Packetvoid::TagsType::None, "tags-ping" => Packetvoid::TagsType::Ping,
+               "tags-pong" => Packetvoid::TagsType::Pong }.fetch(name)
+    v
+  when "single-none", "single-ack"
+    v = Packetvoid::Single.new
+    v.type = name == "single-ack" ? Packetvoid::SingleType::Ack : Packetvoid::SingleType::None
+    v
+  when "empty-none" then Packetvoid::Empty.new
   when "frame-ping"
-    v = Packetvoidruby::Frame.new
-    v.lead = true
-    v.choice.type = Packetvoidruby::MixedType::Ping
-    v.tail = true
-    [v, Packetvoidruby::Frame, 4]
-  when "tags-none"
-    [Packetvoidruby::Tags.new, Packetvoidruby::Tags, 2]
-  when "tags-pong"
-    v = Packetvoidruby::Tags.new
-    v.type = Packetvoidruby::TagsType::Pong
-    [v, Packetvoidruby::Tags, 2]
-  when "single-ack"
-    v = Packetvoidruby::Single.new
-    v.type = Packetvoidruby::SingleType::Ack
-    [v, Packetvoidruby::Single, 1]
-  when "empty-none"
-    [Packetvoidruby::Empty.new, Packetvoidruby::Empty, 0]
-  else
-    fail_void("unknown golden #{name}")
+    v = Packetvoid::Frame.new
+    v.lead = 5
+    v.choice = mixed(Packetvoid::MixedType::Ping)
+    v.tail = 6
+    v
+  when "batch-empty", "batch-ping", "batch-ping-payload"
+    v = Packetvoid::Batch.new
+    v.values = { "batch-empty" => [], "batch-ping" => [mixed(Packetvoid::MixedType::Ping)],
+                 "batch-ping-payload" => [mixed(Packetvoid::MixedType::Ping), mixed(Packetvoid::MixedType::Payload)] }.fetch(name)
+    v
   end
 end
 
-def expect_invalid(label, value)
-  value.write
-  fail_void("write #{label} was accepted")
-rescue Packetvoidruby::InvalidValue
-  nil
-end
+def answer(name, type_name, verdict, bits)
+  klass = TYPES[type_name]
+  return "unknown type #{type_name}" if klass.nil?
 
-def expect_refused(label, klass, data)
-  klass.read(data)
-  fail_void("read #{label} was accepted")
-rescue Packetvoidruby::Refused
-  nil
-end
+  pin = File.binread(File.join(PINS, "#{name}.bin"))
+  if verdict == "refuse"
+    begin
+      klass.read(pin)
+    rescue Packetvoid::Refused
+      return nil
+    end
+    return "read accepted"
+  end
+  return "verdict #{verdict}" unless verdict == "accept"
 
-if Packetvoidruby::MixedType::None != 0 || Packetvoidruby::MixedType::Ping != 1 ||
-   Packetvoidruby::MixedType::Payload != 2 || Packetvoidruby::MixedType::Pong != 3 ||
-   Packetvoidruby::MixedType::Max != 3
-  fail_void("MixedType tag numbers")
-end
-if Packetvoidruby::MixedType::NAMES != { 0 => "None", 1 => "ping", 2 => "payload", 3 => "pong" } ||
-   !Packetvoidruby::MixedType::NAMES.frozen?
-  fail_void("MixedType name table")
-end
-if Packetvoidruby::TagsType::Max != 2 || Packetvoidruby::TagsType::Pong != 2 ||
-   Packetvoidruby::SingleType::Max != 1 || Packetvoidruby::SingleType::Ack != 1 ||
-   Packetvoidruby::EmptyType::Max != 0
-  fail_void("payload-free tag extents")
-end
+  value = build_case(name)
+  return "unknown accept case" if value.nil?
+  return "case type #{type_name}, the driver builds another" unless value.instance_of?(klass)
 
-fresh = Packetvoidruby::Mixed.new
-fail_void("union construction") unless fresh.type == Packetvoidruby::MixedType::None && fresh.payload.instance_of?(Packetvoidruby::Payload)
-fail_void("payload arm declared defaults") unless fresh.payload.count == -1 && fresh.payload.marker.equal?(true)
-fail_void("union field construction") unless Packetvoidruby::Frame.new.choice.type == Packetvoidruby::MixedType::None
-
-goldens_path = File.join(__dir__, "goldens.txt")
-goldens = read_goldens(goldens_path)
-# The goldens file must name exactly the cases build_case knows: an emptied or
-# shortened file would otherwise run fewer cases, or none, and still print ok.
-known = %w[mixed-none mixed-ping mixed-pong mixed-payload frame-ping tags-none tags-pong single-ack empty-none]
-fail_void("goldens.txt names #{goldens.keys.sort.inspect}, want #{known.sort.inspect}") if goldens.keys.sort != known.sort
-goldens.each do |name, wire|
-  value, klass, want_bits = build_case(name)
   got = value.write
-  fail_void("write #{name}: got #{got.unpack1("H*")} want #{wire.unpack1("H*")}") if got != wire
-  back, bits = klass.read_bits(wire)
-  fail_void("read_bits #{name}: got #{bits} bits, want #{want_bits}") if bits != want_bits
-  fail_void("read #{name} value differs: #{back.inspect}") if back != value
-  fail_void("read #{name} write-back differs") if back.write != wire
-  if name.start_with?("mixed-")
-    payload = back.payload
-    fail_void("mixed arm defaults after #{name}") unless payload.instance_of?(Packetvoidruby::Payload) && payload.count == -1 && payload.marker.equal?(true)
+  return "write #{got.unpack1("H*")}, pin #{pin.unpack1("H*")}" if got != pin
+
+  begin
+    back, read_bits = klass.read_bits(pin)
+  rescue Packetvoid::Refused => e
+    return "read refused: #{e.message}"
   end
+  return "read has #{read_bits} bits, want #{bits}" if read_bits != Integer(bits, 10)
+  return "read value differs: #{back.inspect}" if back != value
+  return "write what was read differs" if back.write != pin
+
+  begin
+    klass.read(pin)
+  rescue Packetvoid::Refused => e
+    return "one-packet read refused: #{e.message}"
+  end
+  nil
 end
 
-selected = Packetvoidruby::Mixed.read("\x01".b)
-fail_void("payload defaults after void selection") unless selected.type == Packetvoidruby::MixedType::Ping && selected.payload.count == -1 && selected.payload.marker.equal?(true)
+File.readlines(File.join(PINS, "cases.txt")).each do |line|
+  fields = line.split
+  next if fields.empty? || fields[0].start_with?("#")
 
-bad = Packetvoidruby::Mixed.new
-bad.type = 4
-expect_invalid("mixed-tag-4", bad)
-bad = Packetvoidruby::Mixed.new
-bad.type = -1
-expect_invalid("mixed-tag-negative", bad)
-bad = Packetvoidruby::Mixed.new
-bad.type = true
-expect_invalid("mixed-tag-bool", bad)
-bad = Packetvoidruby::Mixed.new
-bad.type = Packetvoidruby::MixedType::Payload
-bad.payload = 1
-expect_invalid("mixed-payload-type", bad)
-bad = Packetvoidruby::Mixed.new
-bad.type = Packetvoidruby::MixedType::Payload
-bad.payload.count = 40_000
-expect_invalid("mixed-payload-range", bad)
-bad = Packetvoidruby::Mixed.new
-bad.type = Packetvoidruby::MixedType::Payload
-bad.payload.marker = 1
-expect_invalid("mixed-payload-bool", bad)
-bad = Packetvoidruby::Tags.new
-bad.type = 3
-expect_invalid("tags-tag-3", bad)
-bad = Packetvoidruby::Empty.new
-bad.type = 1
-expect_invalid("empty-tag", bad)
-
-expect_refused("mixed-empty", Packetvoidruby::Mixed, "".b)
-expect_refused("mixed-short-payload", Packetvoidruby::Mixed, [0xfe, 0xff].pack("C*"))
-expect_refused("frame-empty", Packetvoidruby::Frame, "".b)
-expect_refused("tags-tag-3", Packetvoidruby::Tags, "\x03".b)
-expect_refused("single-empty", Packetvoidruby::Single, "".b)
-
-fail_void("empty union wire") unless Packetvoidruby::Empty.new.write == "".b && Packetvoidruby::Empty.read("".b) == Packetvoidruby::Empty.new
-puts "ok"
+  if fields.length < 4
+    puts "case #{fields[0]} FAILED: a case line needs <name> <type> <verdict> <bits>"
+    next
+  end
+  why = answer(fields[0], fields[1], fields[2], fields[3])
+  puts(why ? "case #{fields[0]} FAILED: #{why}" : "case #{fields[0]} ok")
+end

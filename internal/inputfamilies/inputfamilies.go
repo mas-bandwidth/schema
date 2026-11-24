@@ -52,6 +52,10 @@ type Family struct {
 	// Named is a reader whose run has another name than Target (leg ->
 	// target). Check refuses an entry whose target is not defined.
 	Named map[string]string
+	// Owed is a shared-corpus family's owed ledger (tools/casegate): every
+	// leg must define Target or have a `<leg> all owed: <cause>` line there,
+	// and a leg with both is refused (the ledger is an exact set).
+	Owed string
 	// PR: the rows run in the pull-request tier. A family whose per-leg run
 	// is a heavy workflow the owner moved off pull requests (2026-11-15) is
 	// selected on a push to main and nightly only, and says so.
@@ -76,9 +80,10 @@ var Families = []Family{
 		Named:   map[string]string{"squirrel": "packet-finite-squirrel-negative-control"},
 		Drivers: `^test/packet-finite/([a-z]+)/`},
 	{Name: "packet-void", PR: true,
-		Inputs:  []string{"test/packet-void/*"},
+		Inputs:  []string{"testdata/wire/packet-void/", "test/packet-void/*", "make/checks/packet-void.mk"},
 		Target:  "packet-void-{leg}",
-		Drivers: `^test/packet-void/(?:([a-z]+)/|(c|cpp)_main\.c(?:pp)?$)`},
+		Drivers: `^test/packet-void/([a-z]+)/`,
+		Owed:    "testdata/wire/packet-void/owed.txt"},
 	{Name: "packet-write-bareint", PR: true,
 		Inputs:  []string{"test/packet-write-bareint/*"},
 		Target:  "packet-write-bareint-{leg}",
@@ -121,6 +126,8 @@ type Tree struct {
 	Targets map[string]bool
 	// GoFiles maps each main-module .go file to its contents.
 	GoFiles map[string]string
+	// Ledgers maps each family's Owed path to its contents.
+	Ledgers map[string]string
 }
 
 // Matches reports whether path p is one of the family's inputs.
@@ -352,7 +359,41 @@ func Check(t Tree) []string {
 				bad = append(bad, fmt.Sprintf("%s: leg %s has a driver but no %s target: a reader that never runs", f.Name, l, sub(f.Target, l)))
 			}
 		}
+		if f.Owed != "" {
+			bad = append(bad, checkOwed(f, t, has)...)
+		}
 	}
+	return bad
+}
+
+var allOwed = regexp.MustCompile(`(?m)^(\S+) all owed: \S`)
+
+// checkOwed refuses a shared-corpus leg with no target and no whole-leg owed
+// line, and a whole-leg owed line for a leg that has a target.
+func checkOwed(f Family, t Tree, has map[string]bool) []string {
+	text, ok := t.Ledgers[f.Owed]
+	if !ok {
+		return []string{fmt.Sprintf("%s: owed ledger %s is missing", f.Name, f.Owed)}
+	}
+	owed := map[string]bool{}
+	for _, m := range allOwed.FindAllStringSubmatch(text, -1) {
+		owed[m[1]] = true
+	}
+	var bad []string
+	for l := range owed {
+		if !isLeg(l) {
+			bad = append(bad, fmt.Sprintf("%s: %s names %s all owed, and %s is not a leg", f.Name, f.Owed, l, l))
+		}
+	}
+	for _, l := range Legs {
+		switch {
+		case !has[l] && !owed[l]:
+			bad = append(bad, fmt.Sprintf("%s: leg %s has no %s target and no `%s all owed: <cause>` line in %s: a leg that answers no case", f.Name, l, sub(f.Target, l), l, f.Owed))
+		case has[l] && owed[l]:
+			bad = append(bad, fmt.Sprintf("%s: leg %s defines %s and %s still says `%s all owed`: remove the line", f.Name, l, f.target(l), f.Owed, l))
+		}
+	}
+	sort.Strings(bad)
 	return bad
 }
 
@@ -364,7 +405,7 @@ var skipDir = map[string]bool{".git": true, "build": true, "node_modules": true,
 
 // Load reads the tree rooted at root.
 func Load(root string) (Tree, error) {
-	t := Tree{Targets: map[string]bool{}, GoFiles: map[string]string{}}
+	t := Tree{Targets: map[string]bool{}, GoFiles: map[string]string{}, Ledgers: map[string]string{}}
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -398,7 +439,21 @@ func Load(root string) (Tree, error) {
 		return nil
 	})
 	sort.Strings(t.Files)
-	return t, err
+	if err != nil {
+		return t, err
+	}
+	for _, f := range Families {
+		if f.Owed == "" {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(f.Owed)))
+		if err == nil {
+			t.Ledgers[f.Owed] = string(b)
+		} else if !os.IsNotExist(err) {
+			return t, err
+		}
+	}
+	return t, nil
 }
 
 // mainModule reports whether a .go file belongs to the root module: not

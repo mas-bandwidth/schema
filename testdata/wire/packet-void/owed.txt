@@ -1,0 +1,5 @@
+# THE PACKET-VOID OWED LEDGER (tools/casegate). One line per case a leg does
+# not answer yet, `<leg> <case> owed: <cause>`, or `<leg> all owed: <cause>`
+# for a leg with no packet-void driver. An exact set: a line for a case the
+# leg answers ok is red until it is removed, and a leg or case with no line
+# that does not answer is red.

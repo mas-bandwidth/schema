@@ -1,71 +1,16 @@
 # Payload-free packet union arms
 
-`make packet-void-cpp packet-void-c` checks SPEC §4.8 in C++ and C. This is
-packet wire coverage for #503; the older payload-free table conformance rows
-exercise a different encoding.
+SPEC §4.8 packet wire coverage for #503: one schema, `Void.schema`, and one
+driver per leg, `<leg>/`, each answering every case of the shared case file
+`testdata/wire/packet-void/cases.txt` (its README says where the pins come
+from). `make packet-void-<leg>` runs a leg; python, ruby and lobster also run
+it inside their Go tests. The mixed union declares its void arm first.
 
-The reader inputs below are literal constants, calculated from the spec.
-They are never produced by the writer under test and have no golden updater.
-The writer must independently match both their bytes and exact bit counts.
-Bit fields are packed least-significant-bit first without alignment here.
-
-| Value | Calculation | Byte | Bits |
-|---|---|---|---|
-| Mixed None | tag 0 | `00` | 2 |
-| Mixed Ping | tag 1 | `01` | 2 |
-| Mixed Payload, no entries, marker 5 | `2 + (0 << 2) + (5 << 4)` | `52` | 7 |
-| Frame, lead 5, Ping, tail 6 | `5 + (1 << 3) + (6 << 5)` | `CD` | 8 |
-| Batch, one Ping | `1 + (1 << 2)` | `05` | 4 |
-| Tags Pong, all arms void | tag 2 | `02` | 2 |
-| Single Ack | tag 1 | `01` | 1 |
-| Empty None, no declared arms | no bits | none | 0 |
-
-The mixed union deliberately declares its void arm first. The harnesses also
-check tag counts/debug names, maximum bit sizes, fresh payload defaults on
-repeated selection, invalid tags and missing tag input. They never inspect
-inactive C/C++ payload storage. Runtime buffers have the required aligned,
-padded allocations while the logical input lengths remain exact.
-
-Four named `tools/sabotage` controls add one bit to a void arm on just the
-write or read path in one carrier. Each compiler and consumer must build,
-the unaffected direction must pass, and the altered direction must fail on
-its exact tag-bit-count assertion. A failed read or wrong tag exits before
-that assertion. The controls are dependencies of `make test` (C++) and
-`make test-c` (C), together with the positive checks.
-
-The positive reads are strict: tag 0 (None) and a selected payload-free arm
-each cost exactly the tag bits, and a selected payload reconstructs its
-declared defaults before decoding. The controls plant the extra bit on a
-payload-free arm, so a reader or writer that spends payload bits on an arm
-without one fails the exact bit-count assertion by name; no count is relaxed
-for a runtime that reads or writes more.
-
-## Python
-
-`make packet-void-python` checks the same SPEC §4.8 rules through the Python
-packet core, under both pinned interpreters and mypy --strict.
-`python/Python.schema` keeps the union shapes of `Void.schema` but uses only
-the kinds the Python core carries today: its bit fields and arrays belong to
-later cards, so `Frame` uses one-bit bools around its tag and the `Batch` row
-is absent. `python/main.py` reads and writes `python/goldens.txt`, whose bytes
-are calculated here and never produced by the writer under test:
-
-| Value | Calculation | Byte |
-|---|---|---|
-| Mixed None | tag 0 | `00` |
-| Mixed Ping | tag 1 | `01` |
-| Mixed Pong | tag 3 | `03` |
-| Mixed Payload, count -1, marker true | `2 + (0xFFFF << 2) + (1 << 18)` | `FE FF 07` |
-| Frame, lead true, Ping, tail true | `1 + (1 << 1) + (1 << 3)` | `0B` |
-| Tags None | tag 0 | `00` |
-| Tags Pong, all arms void | tag 2 | `02` |
-| Single Ack | tag 1 | `01` |
-| Empty None, no declared arms | no bits | none |
-
-The reads also refuse `Tags` tag 3 (`03`), its one unused tag value; `Mixed`
-has no unused tag, so its `04` input is tag 0 with a set bit past the value
-and is refused as trailing input.
-
-`TestPythonPacketUnionsNegativeControl` plants one extra set bit on the
-writer's payload-free arms in a copy of the generated code, and the probe must
-go red by name; the target is registered in `make/negative-controls.json`.
+The C and C++ drivers take `read` or `write` to run one direction. Four named
+`tools/sabotage` controls (`make packet-void-{c,cpp}-{read,write}-negative-control`)
+add one bit to a void arm on just the write or the read path: the other
+direction must answer every case ok, and the altered one must answer
+`case mixed-ping FAILED: <direction> has 3 bits, want 2`. Python and Ruby
+plant the same extra bit in a copy of their generated code
+(`TestPythonPacketUnionsNegativeControl`, `TestRubyPacketVoidNegativeControl`),
+and Lobster in `TestLobsterPacketVoidNegativeControls`.
