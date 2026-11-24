@@ -40,9 +40,16 @@
  *       codec (R22.5 through R22.8).
  *
  * The vector is the corpus's own committed instance of this very closure,
- * testdata/conformance/tables/MANIFEST.txt:88 — instance v1_cfg, tblv1 Cfg,
- * testdata/wire/tables/v1_cfg.bin, 271 bytes — the same wire the driver's
- * `wire` surface loads; no byte is derived here. The fill round trips
+ * testdata/conformance/tables/MANIFEST.txt:103 — instance v1_cfg, tblv1 Cfg,
+ * testdata/conformance/tables/wire/v1_cfg.bin, the FORM-3 file — the same
+ * wire the driver's `wire` surface loads, through the same reader
+ * (test/conformance/c/unit.h SCHEMA_CONFORMANCE_FILE_FIXED: <base>_fixed_load
+ * and <base>_fixed_save); no byte is derived here. Cfg is a FIXED root, so the
+ * instance this row first read (testdata/wire/tables/v1_cfg.bin, the 271-byte
+ * form-1 file) is the historical form, and its corpus row is now
+ * previous_form_v1_cfg (MANIFEST.txt:1468; docs/rulings.json
+ * fixed-root-refuses-form1): clauses 5 and 6 read the form-3 instance, and
+ * clause 5 also holds the fixed reader to refusing the form-1 file. The fill round trips
  * hand-fill every closure member non-default, both arms of the union, every
  * bounded array at its exact declared bound.
  *
@@ -66,10 +73,10 @@
    constant expression, so these probes compile only if every closure size is
    one — which a self-reaching by-value closure could never give (a struct
    cannot contain itself by value and be defined at all). */
-typedef char r22_cfg_size_is_constant[ sizeof( Cfg ) ];
-typedef char r22_cell_size_is_constant[ sizeof( Cell ) ];
-typedef char r22_inner_size_is_constant[ sizeof( Inner ) ];
-typedef char r22_effect_size_is_constant[ sizeof( Effect ) ];
+typedef char r22_cfg_size_is_constant[ sizeof( tblv1_cfg_t ) ];
+typedef char r22_cell_size_is_constant[ sizeof( tblv1_cell_t ) ];
+typedef char r22_inner_size_is_constant[ sizeof( tblv1_inner_t ) ];
+typedef char r22_effect_size_is_constant[ sizeof( tblv1_effect_t ) ];
 
 static int r22_failures = 0;
 
@@ -114,67 +121,67 @@ static uint8_t * r22_slurp( const char * path, size_t * bytes )
 
 /* every closure member non-default, every bounded array at its exact
    declared bound; `arm` selects which arm of the union rides */
-static void r22_fill( Cfg * value, int arm )
+static void r22_fill( tblv1_cfg_t * value, int arm )
 {
     int i;
     memset( value, 0, sizeof( *value ) ); /* zeroes padding, so the round-trip memcmp is honest */
-    cfg_reset( value );
+    tblv1_cfg_reset( value );
     value->a = 1000; /* | min = 0, max = 1000 */
     value->b = -0.5f;
-    value->mode = MODE_ALPHA;
+    value->mode = TBLV1_MODE_ALPHA;
     memcpy( value->name, "closure", 7 );
     value->name_length = 7;
     value->inner.factor = 9.75f;
     for ( i = 0; i < 8; i++ ) { value->items[i] = 100 + i; } /* | min = 0, max = 255 */
     value->items_count = 8;
-    value->grade = GRADE_GOLD;
-    for ( i = 0; i < 4; i++ ) { value->grades[i] = ( i % 2 ) ? GRADE_GOLD : GRADE_BRONZE; }
+    value->grade = TBLV1_GRADE_GOLD;
+    for ( i = 0; i < 4; i++ ) { value->grades[i] = ( i % 2 ) ? TBLV1_GRADE_GOLD : TBLV1_GRADE_BRONZE; }
     value->grades_count = 4;
-    value->podium[0] = GRADE_BRONZE;
-    value->podium[1] = GRADE_NONE;
-    value->podium[2] = GRADE_GOLD;
-    for ( i = 0; i < MAX_SLOTS; i++ ) { value->slots[i] = 10 * ( i + 1 ); }
-    value->slots_count = MAX_SLOTS;
-    for ( i = 0; i < TALLY_SLOTS; i++ ) { value->tally[i] = 7 + i; }
-    for ( i = 0; i < LEDGER_SLOTS; i++ ) { value->ledger[i] = 70 + i; }
-    value->effect.type = arm ? EFFECT_TYPE_WARD : EFFECT_TYPE_BOOST;
+    value->podium[0] = TBLV1_GRADE_BRONZE;
+    value->podium[1] = TBLV1_GRADE_NONE;
+    value->podium[2] = TBLV1_GRADE_GOLD;
+    for ( i = 0; i < TBLV1_MAX_SLOTS; i++ ) { value->slots[i] = 10 * ( i + 1 ); }
+    value->slots_count = TBLV1_MAX_SLOTS;
+    for ( i = 0; i < TBLV1_TALLY_SLOTS; i++ ) { value->tally[i] = 7 + i; }
+    for ( i = 0; i < TBLV1_LEDGER_SLOTS; i++ ) { value->ledger[i] = 70 + i; }
+    value->effect.type = arm ? TBLV1_EFFECT_TYPE_WARD : TBLV1_EFFECT_TYPE_BOOST;
     if ( arm ) { value->effect.as.ward.charge = 3.5f; }
     else       { value->effect.as.boost.power = 77; }
-    for ( i = 0; i < SLOT_MAX; i++ )
+    for ( i = 0; i < TBLV1_SLOT_MAX; i++ )
     {
         value->bank[i].power = 100 + i; /* | min = 0, max = 1000 */
         value->bank[i].label[0] = (char) ( 'A' + i );
         value->bank[i].label[1] = 0;
         value->bank[i].label_length = 1;
     }
-    for ( i = 0; i < SLOT_MAX; i++ ) { value->tokens[i] = 40 + i; }
-    for ( i = 0; i < SLOT_MAX; i++ ) { value->ranks[i] = ( i % 2 ) ? GRADE_GOLD : GRADE_BRONZE; }
+    for ( i = 0; i < TBLV1_SLOT_MAX; i++ ) { value->tokens[i] = 40 + i; }
+    for ( i = 0; i < TBLV1_SLOT_MAX; i++ ) { value->ranks[i] = ( i % 2 ) ? TBLV1_GRADE_GOLD : TBLV1_GRADE_BRONZE; }
     value->extra.factor = -1.25f;
     value->extra_present = 1;
     value->tier = -5;
     value->tier_present = 1;
-    value->mark = GRADE_BRONZE;
+    value->mark = TBLV1_GRADE_BRONZE;
     value->mark_present = 1;
 }
 
 /* the full round trip through the table's own codec: measure, save, load
    into a zeroed twin, and the two closures must agree byte for byte */
-static int r22_roundtrip( const Cfg * from, Cfg * into )
+static int r22_roundtrip( const tblv1_cfg_t * from, tblv1_cfg_t * into )
 {
-    int64_t need = cfg_measure( from );
+    int64_t need = tblv1_cfg_measure( from );
     uint8_t * buffer;
-    TableReport report;
+    tblv1_table_report_t report;
     int64_t wrote;
     int ok;
     if ( need <= 0 ) { return 0; }
     buffer = (uint8_t *) malloc( (size_t) need );
     if ( buffer == NULL ) { return 0; }
-    wrote = cfg_save( from, buffer, need );
+    wrote = tblv1_cfg_save( from, buffer, need );
     if ( wrote != need ) { free( buffer ); return 0; }
     memset( into, 0, sizeof( *into ) );
-    cfg_reset( into );
+    tblv1_cfg_reset( into );
     memset( &report, 0, sizeof( report ) );
-    ok = cfg_load( into, buffer, wrote, &report )
+    ok = tblv1_cfg_load( into, buffer, wrote, &report )
         && report.unknown == 0
         && report.widened == 0 && !report.refused;
     free( buffer );
@@ -184,9 +191,9 @@ static int r22_roundtrip( const Cfg * from, Cfg * into )
 
 int main( void )
 {
-    Cfg cfg;
-    Cfg twin;
-    TableReport report;
+    tblv1_cfg_t cfg;
+    tblv1_cfg_t twin;
+    tblv1_table_report_t report;
     uint8_t * golden;
     size_t golden_bytes = 0;
     int64_t need;
@@ -198,28 +205,28 @@ int main( void )
        schema's declared extents: const MaxSlots = 6, TallySlots = 3,
        LedgerSlots = 3; enum Mode { Alpha, Beta }, Grade { Bronze, Gold },
        Slot { Alpha, Beta, Gamma, Delta }. */
-    r22_check( MAX_SLOTS == 6 && TALLY_SLOTS == 3 && LEDGER_SLOTS == 3
-        && MODE_MAX == 2
-        && GRADE_MAX == 2
-        && SLOT_MAX == 4,
+    r22_check( TBLV1_MAX_SLOTS == 6 && TBLV1_TALLY_SLOTS == 3 && TBLV1_LEDGER_SLOTS == 3
+        && TBLV1_MODE_MAX == 2
+        && TBLV1_GRADE_MAX == 2
+        && TBLV1_SLOT_MAX == 4,
         "1: the constants and enum extents the closure names are the schema's "
         "own (6, 3, 3; Mode 2, Grade 2, Slot 4)" );
 
     memset( &cfg, 0, sizeof( cfg ) );
-    cfg_reset( &cfg );
+    tblv1_cfg_reset( &cfg );
 
     /* R22.2 — the compile-refusal clause's face in the emitted storage: no
        unbounded array exists in the closure, and every array member carries
        the schema's own declared bound. */
     r22_check( sizeof( cfg.items ) == 8 * sizeof( int32_t )
-        && sizeof( cfg.slots ) == (size_t) MAX_SLOTS * sizeof( int32_t )
-        && sizeof( cfg.tally ) == (size_t) TALLY_SLOTS * sizeof( int32_t )
-        && sizeof( cfg.ledger ) == (size_t) LEDGER_SLOTS * sizeof( int32_t )
-        && sizeof( cfg.grades ) == 4 * sizeof( Grade )
-        && sizeof( cfg.podium ) == 3 * sizeof( Grade )
-        && sizeof( cfg.bank ) == (size_t) SLOT_MAX * sizeof( Cell )
-        && sizeof( cfg.tokens ) == (size_t) SLOT_MAX * sizeof( int32_t )
-        && sizeof( cfg.ranks ) == (size_t) SLOT_MAX * sizeof( Grade )
+        && sizeof( cfg.slots ) == (size_t) TBLV1_MAX_SLOTS * sizeof( int32_t )
+        && sizeof( cfg.tally ) == (size_t) TBLV1_TALLY_SLOTS * sizeof( int32_t )
+        && sizeof( cfg.ledger ) == (size_t) TBLV1_LEDGER_SLOTS * sizeof( int32_t )
+        && sizeof( cfg.grades ) == 4 * sizeof( tblv1_grade_t )
+        && sizeof( cfg.podium ) == 3 * sizeof( tblv1_grade_t )
+        && sizeof( cfg.bank ) == (size_t) TBLV1_SLOT_MAX * sizeof( tblv1_cell_t )
+        && sizeof( cfg.tokens ) == (size_t) TBLV1_SLOT_MAX * sizeof( int32_t )
+        && sizeof( cfg.ranks ) == (size_t) TBLV1_SLOT_MAX * sizeof( tblv1_grade_t )
         && sizeof( cfg.bank[0].label ) == 8 + 1,
         "2: every array in the closure is bounded by its schema-declared "
         "bound (8, 6, 3, 3, 4, 3, Slot's 4, string(8))" );
@@ -247,8 +254,8 @@ int main( void )
     /* R22.4 — the closure is physically part of T's own size: the embedded
        members' sum fits inside sizeof(Cfg). A pointer in any of their
        places would shrink the struct below the sum. */
-    r22_check( sizeof( Cfg ) >= (size_t) SLOT_MAX * sizeof( Cell )
-        + 2 * sizeof( Inner ) + sizeof( Effect )
+    r22_check( sizeof( tblv1_cfg_t ) >= (size_t) TBLV1_SLOT_MAX * sizeof( tblv1_cell_t )
+        + 2 * sizeof( tblv1_inner_t ) + sizeof( tblv1_effect_t )
         + sizeof( cfg.items ) + sizeof( cfg.slots ) + sizeof( cfg.tally )
         + sizeof( cfg.ledger ) + sizeof( cfg.grades ) + sizeof( cfg.podium )
         + sizeof( cfg.tokens ) + sizeof( cfg.ranks ),
@@ -257,33 +264,59 @@ int main( void )
     /* R22.5 and R22.6 — the corpus instance of this closure, loaded through
        the same generated reader the driver's wire surface uses and re-saved
        to the golden's own bytes. */
-    golden = r22_slurp( "testdata/wire/tables/v1_cfg.bin", &golden_bytes );
+    golden = r22_slurp( "testdata/conformance/tables/wire/v1_cfg.bin", &golden_bytes );
     if ( golden == NULL )
     {
         r22_check( 0, "5: the corpus instance of the whole closure loads clean "
-            "through cfg_load (cannot read testdata/wire/tables/v1_cfg.bin)" );
+            "through cfg_fixed_load (cannot read testdata/conformance/tables/wire/v1_cfg.bin)" );
         r22_check( 0, "6: the loaded closure re-saves to the golden's own bytes "
             "(golden unreadable)" );
     }
     else
     {
+        static tblv1_table_fixed_entry_t plan[4096];
+        int64_t n;
         memset( &cfg, 0, sizeof( cfg ) );
-        cfg_reset( &cfg );
+        tblv1_cfg_reset( &cfg );
         memset( &report, 0, sizeof( report ) );
-        loaded = cfg_load( &cfg, golden, (int64_t) golden_bytes, &report );
+        n = tblv1_cfg_fixed_load( &cfg, 1, golden, (int64_t) golden_bytes, plan,
+                                  (int32_t) ( sizeof( plan ) / sizeof( plan[0] ) ), NULL, &report );
+        loaded = n == 1;
+        /* the old "no mismatch, clamp, duplicate" is "not refused" under the
+           strict read (strict-only-read: each is a refusal of the whole load) */
         r22_check( loaded && report.unknown == 0
-            && report.widened == 0 && !report.refused,
+            && report.widened == 0 && !report.refused
+            && report.refuse_reason == SCHEMA_TBLV1_TABLE_REFUSE_OK,
             "5: the corpus instance of the whole closure loads clean through "
-            "cfg_load (no unknown, mismatch, clamp, duplicate, widen, refusal)" );
+            "cfg_fixed_load (no unknown, widen, refusal or damage)" );
 
-        need = cfg_measure( &cfg );
+        need = tblv1_cfg_fixed_measure( 1 );
         buffer = (uint8_t *) malloc( need > 0 ? (size_t) need : 1 );
-        wrote = need > 0 ? cfg_save( &cfg, buffer, need ) : -1;
+        wrote = need > 0 && buffer != NULL ? tblv1_cfg_fixed_save( &cfg, 1, buffer, need ) : -1;
         r22_check( need > 0 && wrote == need && (size_t) wrote == golden_bytes
             && memcmp( buffer, golden, golden_bytes ) == 0,
-            "6: the loaded closure re-saves to the golden's own 271 bytes, "
+            "6: the loaded closure re-saves to the golden's own bytes, "
             "measure and save agreeing" );
         free( buffer );
+        free( golden );
+    }
+    golden = r22_slurp( "testdata/wire/tables/v1_cfg.bin", &golden_bytes );
+    if ( golden == NULL )
+    {
+        r22_check( 0, "5: the historical form-1 v1_cfg.bin is refused previous_form "
+            "(cannot read testdata/wire/tables/v1_cfg.bin)" );
+    }
+    else
+    {
+        static tblv1_table_fixed_entry_t plan1[4096];
+        int64_t n;
+        tblv1_cfg_reset( &cfg );
+        memset( &report, 0, sizeof( report ) );
+        n = tblv1_cfg_fixed_load( &cfg, 1, golden, (int64_t) golden_bytes, plan1,
+                                  (int32_t) ( sizeof( plan1 ) / sizeof( plan1[0] ) ), NULL, &report );
+        r22_check( n == -1 && report.refused && report.reason == SCHEMA_TBLV1_TABLE_PREVIOUS_FORM,
+            "5: the historical form-1 v1_cfg.bin is refused previous_form at the "
+            "fixed root (fixed-root-refuses-form1, MANIFEST previous_form_v1_cfg)" );
         free( golden );
     }
 

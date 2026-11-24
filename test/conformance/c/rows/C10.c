@@ -73,24 +73,24 @@ static void check( int ok, const char * what, int64_t got )
 int main( void )
 {
     static uint8_t bronze[512], gold[512], top[512];
-    Root values[1];
-    TableReport report;
-    TableFixedEntry plan[4096];
+    tblk1_root_t values[1];
+    tblk1_table_report_t report;
+    tblk1_table_fixed_entry_t plan[4096];
     int64_t bronze_len, gold_len, top_len, n, i;
     int64_t ordinal_at = -1;
 
     /* --- the base records, written by this build's own fixed-form writer --- */
 
-    root_reset( &values[0] );
-    values[0].grade = GRADE_BRONZE;
+    tblk1_root_reset( &values[0] );
+    values[0].grade = TBLK1_GRADE_BRONZE;
     values[0].raw = 7;
-    bronze_len = root_fixed_save( values, 1, bronze, (int64_t) sizeof( bronze ) );
+    bronze_len = tblk1_root_fixed_save( values, 1, bronze, (int64_t) sizeof( bronze ) );
     check( bronze_len > 0, "root_fixed_save wrote the Bronze record", bronze_len );
 
-    root_reset( &values[0] );
-    values[0].grade = GRADE_GOLD;
+    tblk1_root_reset( &values[0] );
+    values[0].grade = TBLK1_GRADE_GOLD;
     values[0].raw = 7;
-    gold_len = root_fixed_save( values, 1, gold, (int64_t) sizeof( gold ) );
+    gold_len = tblk1_root_fixed_save( values, 1, gold, (int64_t) sizeof( gold ) );
     check( gold_len == bronze_len, "the two records are the same length", gold_len );
 
     /* --- the locator: exactly one byte moves, and it is the ordinal --- */
@@ -106,17 +106,17 @@ int main( void )
     check( ordinal_at >= 0, "the locator found the ordinal byte", ordinal_at );
     if ( ordinal_at >= 0 )
     {
-        check( bronze[ordinal_at] == GRADE_BRONZE && gold[ordinal_at] == GRADE_GOLD,
+        check( bronze[ordinal_at] == TBLK1_GRADE_BRONZE && gold[ordinal_at] == TBLK1_GRADE_GOLD,
                "that byte holds the ordinal (1 in Bronze, 3 in Gold)", gold[ordinal_at] );
     }
 
     /* --- control: the clean record reads back exactly, no counter moved --- */
 
     memset( &report, 0, sizeof( report ) );
-    root_reset( &values[0] );
-    n = root_fixed_load( values, 1, gold, gold_len, plan, (int32_t) ( sizeof( plan ) / sizeof( plan[0] ) ), NULL, &report );
+    tblk1_root_reset( &values[0] );
+    n = tblk1_root_fixed_load( values, 1, gold, gold_len, plan, (int32_t) ( sizeof( plan ) / sizeof( plan[0] ) ), NULL, &report );
     check( n == 1, "the clean file reads one record", n );
-    check( values[0].grade == GRADE_GOLD, "the clean read lands Gold", values[0].grade );
+    check( values[0].grade == TBLK1_GRADE_GOLD, "the clean read lands Gold", values[0].grade );
     check( values[0].raw == 7, "the clean read lands raw = 7", values[0].raw );
     check( !report.refused, "the clean read is not refused", report.refused );
     check( report.unknown == 0 && report.widened == 0,
@@ -124,30 +124,30 @@ int main( void )
 
     /* --- THE FORGE: the ordinal one past the WRITER's own variant count --- */
 
-    if ( ordinal_at >= 0 ) { gold[ordinal_at] = (uint8_t) ( GRADE_MAX + 1 ); } /* 4: one past the top variant */
+    if ( ordinal_at >= 0 ) { gold[ordinal_at] = (uint8_t) ( TBLK1_GRADE_MAX + 1 ); } /* 4: one past the top variant */
 
     memset( &report, 0, sizeof( report ) );
-    root_reset( &values[0] );
-    n = root_fixed_load( values, 1, gold, gold_len, plan, (int32_t) ( sizeof( plan ) / sizeof( plan[0] ) ), NULL, &report );
+    tblk1_root_reset( &values[0] );
+    n = tblk1_root_fixed_load( values, 1, gold, gold_len, plan, (int32_t) ( sizeof( plan ) / sizeof( plan[0] ) ), NULL, &report );
     check( n == -1, "the forged file refuses the whole load", n );
-    check( report.refused && report.refuse_reason == SCHEMA_TABLE_REFUSE_OUT_OF_RANGE,
+    check( report.refused && report.refuse_reason == SCHEMA_TBLK1_TABLE_REFUSE_OUT_OF_RANGE,
            "a forged ordinal refuses out of range", report.refuse_reason );
-    check( values[0].grade == GRADE_NONE, "a refusal lands no arm: the enum stays None", values[0].grade );
+    check( values[0].grade == TBLK1_GRADE_NONE, "a refusal lands no arm: the enum stays None", values[0].grade );
     check( values[0].raw == 0, "a refusal lands nothing beside the enum either", values[0].raw );
     check( report.unknown == 0 && report.widened == 0,
            "no other counter moved on the forged read", report.unknown + report.widened );
 
     /* --- THE BOUNDARY CONTROL: the TOP variant is not past it --- */
 
-    if ( ordinal_at >= 0 ) { gold[ordinal_at] = (uint8_t) GRADE_MAX; } /* 3: at the top, not past it */
+    if ( ordinal_at >= 0 ) { gold[ordinal_at] = (uint8_t) TBLK1_GRADE_MAX; } /* 3: at the top, not past it */
 
     memset( &report, 0, sizeof( report ) );
-    root_reset( &values[0] );
+    tblk1_root_reset( &values[0] );
     top_len = gold_len;
-    n = root_fixed_load( values, 1, gold, top_len, plan, (int32_t) ( sizeof( plan ) / sizeof( plan[0] ) ), NULL, &report );
+    n = tblk1_root_fixed_load( values, 1, gold, top_len, plan, (int32_t) ( sizeof( plan ) / sizeof( plan[0] ) ), NULL, &report );
     (void) top;
     check( n == 1, "the top-variant file reads one record", n );
-    check( values[0].grade == GRADE_GOLD, "the top variant reads back Gold", values[0].grade );
+    check( values[0].grade == TBLK1_GRADE_GOLD, "the top variant reads back Gold", values[0].grade );
     check( !report.refused, "the top variant is not refused", report.refused );
 
     if ( failed ) { printf( "C10: RED\n" ); return 1; }

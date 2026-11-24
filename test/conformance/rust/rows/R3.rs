@@ -150,18 +150,24 @@ fn r3_floor_law() {
     );
     check(report2.refused, "a refusal by name sets the refused flag");
     check(
+        // strict-only-read (docs/rulings.json): `mismatch` and `oor` are
+        // retired; their runtime successors are `kind_changed` and `held`
         report2.widened == 0
             && report2.unknown == 0
-            && report2.mismatch == 0
-            && report2.oor == 0,
+            && report2.kind_changed == 0
+            && report2.held == 0,
         "REFUSE is TOTAL: no counter moves",
     );
-    let fresh = FeRootRow::default();
+    // RULING R4 (the generated load's own doc: "EVERY refusal ... leaves every
+    // row handed in at its declared default"): the refused load now RESETS the
+    // row to the DECLARED defaults (test/tables/FE1.schema: grade = Silver,
+    // effect no arm, tail = 7) rather than leaving the caller's bytes as they
+    // were. FeRootRow::default() is the cooked zero form, not the declaration,
+    // so the oracle is the schema's own values; and none of the file's values
+    // (grade Bronze, tail 99, boost 42) is among them, so nothing was decoded.
     check(
-        values2[0].grade == fresh.grade
-            && values2[0].tail == fresh.tail
-            && values2[0].effect.tag() == fresh.effect.tag(),
-        "REFUSE wrote no destination bytes",
+        values2[0].grade == 2 && values2[0].tail == 7 && values2[0].effect.tag() == 0,
+        "REFUSE decoded nothing: the row holds its declared defaults (R4)",
     );
 
     assert_eq!(

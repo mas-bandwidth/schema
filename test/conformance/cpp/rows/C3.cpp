@@ -1,9 +1,11 @@
-// C3 — TEXT LENGTH CLAMP, the cpp leg's assertion of it (guard).
+// C3 — TEXT LENGTH BOUND (once the text length clamp), the cpp leg's assertion of it (guard).
 //
-// The law is docs/FIXED-FORM-ALGORITHM.md:333, §4.5's `text` scatter case:
+// The law is docs/FIXED-FORM-ALGORITHM.md:449 and :1053, §4.5's `text` scatter case:
 //
 //   cap := size;
-//   v := SLE(4, record+src) clamped into [0, cap], COUNT clamped if it fired.
+//   if v := SLE(4, record+src) < 0 or v > cap: REFUSE length_over_bound,
+//   before any destination byte is written (docs/rulings.json strict-only-read:
+//   no read clamps; the row once asserted a clamp to [0, cap]).
 //   Copy the payload, and terminate at the used length where the language
 //   stores a terminator — never for `bytes`.
 //
@@ -51,6 +53,16 @@ static void check( bool ok, const char * what )
     if ( !ok ) { failures++; }
 }
 
+// a refused load lands nothing: the generated FixedLoad leaves the row at its
+// declared defaults (R4), so neither the wire's values nor the 0xAB poison stand
+static bool untouched( const tabledemo::ProfileConfig & back )
+{
+    tabledemo::ProfileConfig fresh;
+    tabledemo::ProfileConfigReset( fresh );
+    return back.name_length == fresh.name_length && back.experience == fresh.experience
+        && back.icon_length == fresh.icon_length;
+}
+
 // ---- the narrow half: tabledemo::ProfileConfig, `name` string(32) ----------
 
 static void narrow_case()
@@ -83,9 +95,11 @@ static void narrow_case()
         std::vector<tabledemo::TableFixedEntry> plan( 1024 );
         const int64_t n = tabledemo::ProfileConfigFixedLoad(
             &back, 1, wire.data(), (int64_t) wire.size(), plan.data(), 1024, NULL, &r );
-        check( n == 1 && !r.refused && !r.malformed,
+        check( n == 1 && !r.refused && !r.damaged,
                "narrow clean: a used length at the cap reads the whole record" );
-        check( r.clamped == 0 && r.widened == 0 && r.unknown == 0 && r.kind_mismatch == 0,
+        // strict-only-read: a kind mismatch, an out-of-range value and a repeat now refuse the
+        // whole load (no counter), so the retired zero counts read as not refused, not damaged.
+        check( !r.refused && !r.damaged && r.widened == 0 && r.unknown == 0,
                "narrow clean: the cap is IN the bound — no counter moves" );
         check( back.name_length == 32 && back.name[0] == 'A' && back.name[31] == 'A',
                "narrow clean: the used length lands whole at the cap" );
@@ -95,7 +109,13 @@ static void narrow_case()
                "narrow clean: the neighbours stand" );
     }
 
-    // ONE PAST THE CAP — 33 clamps to 32, counts ONCE, and the record reads on
+    // strict-only-read: the three cases below once asserted a CLAMP (n == 1, clamped == 1,
+    // the length landed at the bound, the neighbours stood). No read clamps now: a text or
+    // bytes length outside [0, cap] refuses the whole load length_over_bound before any
+    // destination byte is written (docs/FIXED-FORM-ALGORITHM.md:449, :1053; plans/strict-only.md
+    // decisions 1-2).
+
+    // ONE PAST THE CAP — 33 refuses the whole load, nothing lands
     tabledemo::TableFixedPut32( name_word, 33 );
     {
         tabledemo::ProfileConfig back;
@@ -104,17 +124,13 @@ static void narrow_case()
         std::vector<tabledemo::TableFixedEntry> plan( 1024 );
         const int64_t n = tabledemo::ProfileConfigFixedLoad(
             &back, 1, wire.data(), (int64_t) wire.size(), plan.data(), 1024, NULL, &r );
-        check( n == 1 && !r.refused && !r.malformed && r.clamped == 1,
-               "narrow over: a length one past the cap clamps to the cap, COUNT clamped once" );
-        check( back.name_length == 32 && back.name[0] == 'A' && back.name[31] == 'A',
-               "narrow over: the clamped length lands at the cap, payload intact" );
-        check( back.name[32] == 0,
-               "narrow over: terminated at the clamped used length" );
-        check( back.experience == 777 && back.icon_length == 16,
-               "narrow over: the clamp is one field's — the rest of the record stands" );
+        check( n < 0 && r.refused && !r.damaged && r.reason == tabledemo::length_over_bound,
+               "narrow over: a length one past the cap refuses length_over_bound" );
+        check( untouched( back ),
+               "narrow over: a refused load lands nothing (declared defaults)" );
     }
 
-    // THE NEGATIVE END — -1 clamps to 0, counts ONCE, and the record reads on
+    // THE NEGATIVE END — -1 refuses the whole load, nothing lands
     tabledemo::TableFixedPut32( name_word, 0xFFFFFFFFu );
     {
         tabledemo::ProfileConfig back;
@@ -123,17 +139,15 @@ static void narrow_case()
         std::vector<tabledemo::TableFixedEntry> plan( 1024 );
         const int64_t n = tabledemo::ProfileConfigFixedLoad(
             &back, 1, wire.data(), (int64_t) wire.size(), plan.data(), 1024, NULL, &r );
-        check( n == 1 && !r.refused && !r.malformed && r.clamped == 1,
-               "narrow negative: a negative length clamps to zero, COUNT clamped once" );
-        check( back.name_length == 0 && back.name[0] == 0,
-               "narrow negative: the used length is zero and the terminator lands at index zero" );
-        check( back.experience == 777 && back.icon_length == 16,
-               "narrow negative: and the record's other fields still stand" );
+        check( n < 0 && r.refused && !r.damaged && r.reason == tabledemo::length_over_bound,
+               "narrow negative: a negative length refuses length_over_bound" );
+        check( untouched( back ),
+               "narrow negative: a refused load lands nothing (declared defaults)" );
     }
     tabledemo::TableFixedPut32( name_word, 32 ); // restore the clean word
 
-    // `bytes` — the same clamp, and NEVER a terminator: a terminating store at
-    // icon[16] would land on icon_length's first byte and zero it
+    // `bytes` — the same bound: a length past the cap refuses, and no store lands (a
+    // terminating store at icon[16] would have landed on icon_length)
     tabledemo::TableFixedPut32( icon_word, 20 );
     {
         tabledemo::ProfileConfig back;
@@ -142,9 +156,8 @@ static void narrow_case()
         std::vector<tabledemo::TableFixedEntry> plan( 1024 );
         const int64_t n = tabledemo::ProfileConfigFixedLoad(
             &back, 1, wire.data(), (int64_t) wire.size(), plan.data(), 1024, NULL, &r );
-        check( n == 1 && !r.refused && !r.malformed && r.clamped == 1
-                   && back.icon_length == 16 && back.icon[15] == 0x42 && back.name_length == 32,
-               "narrow bytes: a bytes(N) length past the cap clamps and never terminates" );
+        check( n < 0 && r.refused && !r.damaged && r.reason == tabledemo::length_over_bound && untouched( back ),
+               "narrow bytes: a bytes(N) length past the cap refuses length_over_bound, nothing lands" );
     }
 }
 
@@ -156,6 +169,6 @@ int main()
         std::printf( "C3: %d assertion(s) failed\n", failures );
         return 1;
     }
-    std::printf( "C3: text length clamp holds on the cpp leg\n" );
+    std::printf( "C3: text length bound holds on the cpp leg (refuses, never clamps)\n" );
     return 0;
 }
