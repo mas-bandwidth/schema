@@ -1370,6 +1370,9 @@ export function WriteInputPacketFlat(view, value) {
   sb = 21;
   for (let i0 = 0; i0 < value.inputsCount; i0++) {
     const e0 = value.inputs[i0];
+    if (typeof e0 === "function") { // a record or union value is an object, never a function (SPEC §5.1)
+      return -1;
+    }
     try {
       x = e0.stickX;
       if (typeof x !== "number" || !globalThis.Number.isFinite(globalThis.Math.fround(x))) { // a bare float is a finite Number

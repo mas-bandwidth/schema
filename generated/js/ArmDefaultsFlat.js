@@ -49,6 +49,9 @@ export function WriteDefaultArmFlat(view, value) {
   sb = 2;
   for (let i0 = 0; i0 < value.entriesCount; i0++) {
     const e0 = value.entries[i0];
+    if (typeof e0 === "function") { // a record or union value is an object, never a function (SPEC §5.1)
+      return -1;
+    }
     try {
       if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
         return -1;
@@ -245,6 +248,9 @@ export function WriteDefaultChoiceFlat(view, value) {
       }
       for (let i0 = 0; i0 < value.first.entriesCount; i0++) {
         const e0 = value.first.entries[i0];
+        if (typeof e0 === "function") { // a record or union value is an object, never a function (SPEC §5.1)
+          return -1;
+        }
         try {
           if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
             return -1;
@@ -312,6 +318,9 @@ export function WriteDefaultChoiceFlat(view, value) {
       }
       for (let i0 = 0; i0 < value.second.entriesCount; i0++) {
         const e0 = value.second.entries[i0];
+        if (typeof e0 === "function") { // a record or union value is an object, never a function (SPEC §5.1)
+          return -1;
+        }
         try {
           if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
             return -1;
@@ -680,6 +689,9 @@ export function WriteDefaultChoicePacketFlat(view, value) {
       }
       for (let i0 = 0; i0 < value.choice.first.entriesCount; i0++) {
         const e0 = value.choice.first.entries[i0];
+        if (typeof e0 === "function") { // a record or union value is an object, never a function (SPEC §5.1)
+          return -1;
+        }
         try {
           if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
             return -1;
@@ -747,6 +759,9 @@ export function WriteDefaultChoicePacketFlat(view, value) {
       }
       for (let i0 = 0; i0 < value.choice.second.entriesCount; i0++) {
         const e0 = value.choice.second.entries[i0];
+        if (typeof e0 === "function") { // a record or union value is an object, never a function (SPEC §5.1)
+          return -1;
+        }
         try {
           if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
             return -1;
@@ -1098,6 +1113,9 @@ export function WriteDefaultBulkArmFlat(view, value) {
   sb = 2;
   for (let i0 = 0; i0 < value.payload.entriesCount; i0++) {
     const e0 = value.payload.entries[i0];
+    if (typeof e0 === "function") { // a record or union value is an object, never a function (SPEC §5.1)
+      return -1;
+    }
     try {
       if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
         return -1;
@@ -1399,6 +1417,9 @@ export function WriteDefaultBulkChoiceFlat(view, value) {
       }
       for (let i0 = 0; i0 < value.first.payload.entriesCount; i0++) {
         const e0 = value.first.payload.entries[i0];
+        if (typeof e0 === "function") { // a record or union value is an object, never a function (SPEC §5.1)
+          return -1;
+        }
         try {
           if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
             return -1;
@@ -1507,6 +1528,9 @@ export function WriteDefaultBulkChoiceFlat(view, value) {
       }
       for (let i0 = 0; i0 < value.second.payload.entriesCount; i0++) {
         const e0 = value.second.payload.entries[i0];
+        if (typeof e0 === "function") { // a record or union value is an object, never a function (SPEC §5.1)
+          return -1;
+        }
         try {
           if (!globalThis.Number.isInteger(e0.retries) || e0.retries < -2147483648 || e0.retries > 2147483647) { // a bare integer must fit its width
             return -1;

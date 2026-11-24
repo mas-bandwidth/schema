@@ -1473,6 +1473,9 @@ export function WriteBenchMixedFlat(view, value) {
   sb = 4;
   for (let i0 = 0; i0 < value.entitiesCount; i0++) {
     const e0 = value.entities[i0];
+    if (typeof e0 === "function") { // a record or union value is an object, never a function (SPEC §5.1)
+      return -1;
+    }
     try {
       if (!globalThis.Number.isInteger(e0.entityId) || e0.entityId < 0 || e0.entityId > 4095) {
         return -1;
@@ -1607,6 +1610,9 @@ export function WriteBenchMixedFlat(view, value) {
   }
   for (let i0 = 0; i0 < value.statsCount; i0++) {
     const e0 = value.stats[i0];
+    if (typeof e0 === "function") { // a record or union value is an object, never a function (SPEC §5.1)
+      return -1;
+    }
     try {
       if (!globalThis.Number.isInteger(e0.statId) || e0.statId < 0 || e0.statId > 255) {
         return -1;

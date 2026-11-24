@@ -1833,6 +1833,9 @@ export function WriteArrUnevenFlat(view, value) {
   sb = 7;
   for (let i0 = 0; i0 < value.itemsCount; i0++) {
     const e0 = value.items[i0];
+    if (typeof e0 === "function") { // a record or union value is an object, never a function (SPEC §5.1)
+      return -1;
+    }
     try {
       if (!globalThis.Number.isInteger(e0.type) || e0.type < 0 || e0.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
         return -1;

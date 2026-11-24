@@ -917,6 +917,9 @@ export function WriteArrTri3Flat(view, value) {
   sb = 4;
   for (let i0 = 0; i0 < value.itemsCount; i0++) {
     const e0 = value.items[i0];
+    if (typeof e0 === "function") { // a record or union value is an object, never a function (SPEC §5.1)
+      return -1;
+    }
     try {
       if (!globalThis.Number.isInteger(e0.a) || e0.a < 0 || e0.a > 1) {
         return -1;
@@ -1095,6 +1098,9 @@ export function WriteArrElevenFlat(view, value) {
   }
   for (let i0 = 0; i0 < 9; i0++) {
     const e0 = value.items[i0];
+    if (typeof e0 === "function") { // a record or union value is an object, never a function (SPEC §5.1)
+      return -1;
+    }
     try {
       if (!globalThis.Number.isInteger(e0.a) || e0.a < 0 || e0.a > 7) {
         return -1;
@@ -1807,6 +1813,9 @@ export function WriteArrNestedFlat(view, value) {
   sb = 8;
   for (let i0 = 0; i0 < value.itemsCount; i0++) {
     const e0 = value.items[i0];
+    if (typeof e0 === "function") { // a record or union value is an object, never a function (SPEC §5.1)
+      return -1;
+    }
     try {
       if (!globalThis.Number.isInteger(e0.a) || e0.a < 0 || e0.a > 7) {
         return -1;

@@ -951,9 +951,17 @@ func (g *fgen) emitWriteField(f *ir.Field, path, ind string) {
 // write, an object element's own getter or Proxy trap, a storage index trap,
 // a count getter that throws in the loop condition. A nested loop's catch
 // sees its own element; when it rethrows, the outer element holding it is an
-// object, so the outer catch rethrows too. A non-null value that is not an
-// object never throws here: its first read answers undefined or an inherited
-// method, and that field's own guard refuses it.
+// object, so the outer catch rethrows too.
+//
+// A function is refused by name before the try, by `typeof e === "function"`:
+// a function, arrow or class can carry the record's field names as its own
+// properties, and then every field guard would pass it (#4936). That test
+// costs about a third of the full object guard in this loop. Any other value
+// that is not an object never throws here: a primitive carries no own
+// properties but a string's length and indices, so its first read answers
+// undefined or an inherited method, and that field's own guard refuses it;
+// elemShapeFolds keeps the full guard where that first read could answer
+// otherwise.
 func (g *fgen) emitWriteElemLoop(f *ir.Field, name, count, ind string) {
 	iv := fmt.Sprintf("i%d", g.loopDepth)
 	g.loopDepth++
@@ -1034,10 +1042,12 @@ func (g *fgen) emitWriteElem(f *ir.Field, name, iv, ind string, folded bool) {
 	g.emitWriteScalar(f, fmt.Sprintf("%s[%s]", name, iv), ind)
 }
 
-// foldedElem wraps one element's write in try; the catch refuses the element
-// by name when it is not an object, and rethrows otherwise.
+// foldedElem refuses a function element by name, then wraps the element's
+// write in try; the catch refuses the element by name when it is not an
+// object, and rethrows otherwise (emitWriteElemLoop).
 func (g *fgen) foldedElem(ev, ind string, write func(in string)) {
 	g.chunkFlush(ind)
+	g.guard(fmt.Sprintf("typeof %s === \"function\"", ev), " // a record or union value is an object, never a function (SPEC §5.1)", ind)
 	g.pf("%stry {\n", ind)
 	write(ind + "  ")
 	g.chunkFlush(ind + "  ")

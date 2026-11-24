@@ -1071,6 +1071,9 @@ export function WriteProbeColliderFlat(view, value) {
   }
   for (let i0 = 0; i0 < value.extrasCount; i0++) {
     const e0 = value.extras[i0];
+    if (typeof e0 === "function") { // a record or union value is an object, never a function (SPEC §5.1)
+      return -1;
+    }
     try {
       if (!globalThis.Number.isInteger(e0.type) || e0.type < 0 || e0.type > 2) { // the tag validates BEFORE it rides (SPEC §4.8)
         return -1;
@@ -1588,6 +1591,9 @@ export function WriteProbeArrayFlat(view, value) {
   }
   for (let i0 = 0; i0 < 2; i0++) {
     const e0 = value.samples[i0];
+    if (typeof e0 === "function") { // a record or union value is an object, never a function (SPEC §5.1)
+      return -1;
+    }
     try {
       if (typeof e0.active !== "boolean") { // a bool is a boolean (SPEC §5.1)
         return -1;

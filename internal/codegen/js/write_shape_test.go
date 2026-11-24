@@ -145,6 +145,14 @@ row("rethrow_Error_getter_then_null", (v) => { v.xsCount = 2; v.xs[0] = boom(); 
 row("rethrow_RangeError_proxy_then_null", (v) => { v.xsCount = 2; v.xs[0] = trap(); v.xs[1] = null; });
 row("rethrow_Error_union_tag_getter_then_null", (v) => { v.usCount = 2; const u = new M.Pick(); Object.defineProperty(u, "type", { get() { throw new Error("boom"); } }); v.us[0] = u; v.us[1] = null; });
 row("rethrow_Error_inner_getter_then_outer_null", (v) => { v.osCount = 2; const o = new M.Outer(); o.innerCount = 1; o.inner[0] = boom(); v.os[0] = o; v.os[1] = null; });
+// A function, arrow or class carrying the element's field names as its own
+// properties: every field guard would pass it, so only the object test
+// refuses it.
+row("elem_function_with_fields", (v) => { v.xsCount = 1; const f = function () {}; f.n = 3; v.xs[0] = f; });
+row("elem_class_static_fields", (v) => { v.xsCount = 1; v.xs[0] = class { static n = 3; }; });
+row("elem_arrow_with_fields", (v) => { v.xsCount = 1; const f = () => 0; f.n = 3; v.xs[0] = f; });
+row("union_elem_function_with_tag_and_arm", (v) => { v.usCount = 1; const f = function () {}; f.type = M.PickType.Arm; f.arm = new M.Arm(); v.us[0] = f; });
+row("nested_elem_function_with_inner", (v) => { v.osCount = 1; const f = function () {}; f.innerCount = 0; f.inner = []; v.os[0] = f; });
 // Accessors that answer differently on a second read: each tier gets its
 // own fresh value, since the accessor keeps state.
 function writeRuntime(v) {
@@ -269,8 +277,8 @@ func TestJsWriteRefusesEveryValueShape(t *testing.T) {
 					t.Errorf("%s %s: %q, want %s", mode, k, v, want)
 				}
 			}
-			if len(lines) != 90 {
-				t.Fatalf("%s: the probe printed %d lines, want 90:\n%s", mode, len(lines), b)
+			if len(lines) != 100 {
+				t.Fatalf("%s: the probe printed %d lines, want 100:\n%s", mode, len(lines), b)
 			}
 		})
 	}
