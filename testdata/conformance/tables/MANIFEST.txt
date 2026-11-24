@@ -2658,6 +2658,91 @@ write-refusal-block bref_range_ok    backenddemo StorePurchase testdata/conforma
 write-refusal-block bref_elems_long  backenddemo MatchResult   testdata/conformance/tables/wire/match_full.bin players           elems  11  refused
 write-refusal-block bref_elems_ok    backenddemo MatchResult   testdata/conformance/tables/wire/match_full.bin players           elems  10  wrote
 
+# DW-TABLE-SHAPE (docs/SPEC.md §5.1; docs/SPEC-CONFORMANCE.md): a value of the
+# WRONG KIND, put where a field, an array element, an arm payload or the whole
+# value belongs, is refused by the root's own writer with its own refusal, in
+# every build: never a raised error, and never a coercion that writes it. The
+# shape tokens are FORMAT.md's (`write-refusal-shape`). A leg whose types
+# cannot hold the value, or in which the value is the field's own lawful
+# spelling (a Lua table is a record), answers `unrepresentable`. The legs that
+# refuse in every build owe every row (run.go shapeLegs); the assert legs check
+# writes in their debug build alone and do not list the surface. TortureCook
+# is a variable root, written by Save; RootConfig a fixed one, written by its
+# fixed form. The lawful twins write the same roots through the same writers.
+write-refusal-shape shref_v_ok_int          cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin b_i32                    int   7    wrote
+write-refusal-shape shref_v_ok_float        cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_extremes.bin slice_f32[0] float 1.5 wrote
+write-refusal-shape shref_v_bool_int        cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin lead_bool                shape int      refused
+write-refusal-shape shref_v_bool_null       cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin lead_bool                shape null     refused
+write-refusal-shape shref_v_bool_text       cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin lead_bool                shape text     refused
+write-refusal-shape shref_v_int_text        cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin b_i32                    shape text     refused
+write-refusal-shape shref_v_int_float       cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin b_i32                    shape float    refused
+write-refusal-shape shref_v_int_bool        cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin b_i32                    shape bool     refused
+write-refusal-shape shref_v_int_null        cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin b_i32                    shape null     refused
+write-refusal-shape shref_v_int_map         cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin b_i32                    shape map      refused
+write-refusal-shape shref_v_float_numtext   cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin align_f64                shape numtext  refused
+write-refusal-shape shref_v_float_bool      cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin align_f64                shape bool     refused
+write-refusal-shape shref_v_float_null      cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin align_f64                shape null     refused
+write-refusal-shape shref_v_f32elem_numtext cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin slice_f32[0]             shape numtext  refused
+write-refusal-shape shref_v_union_int       cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin bounded_steps[1]         shape int      refused
+write-refusal-shape shref_v_union_text      cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin bounded_steps[1]         shape text     refused
+write-refusal-shape shref_v_union_map       cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin bounded_steps[1]         shape map      refused
+write-refusal-shape shref_v_arm_int         cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin bounded_steps[1].shift   shape int      refused
+write-refusal-shape shref_v_arm_text        cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin bounded_steps[1].shift   shape text     refused
+write-refusal-shape shref_v_arm_null        cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin bounded_steps[1].shift   shape null     refused
+write-refusal-shape shref_v_array_int       cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin arr_i32                  shape int      refused
+write-refusal-shape shref_v_array_text      cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin arr_i32                  shape text     refused
+write-refusal-shape shref_v_array_map       cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin arr_i32                  shape map      refused
+write-refusal-shape shref_v_array_improper  cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin arr_i32                  shape improper refused
+write-refusal-shape shref_v_elem_text       cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin arr_i32[0]               shape text     refused
+write-refusal-shape shref_v_elem_float      cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin arr_i32[0]               shape float    refused
+write-refusal-shape shref_v_elem_bool       cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin arr_i32[0]               shape bool     refused
+write-refusal-shape shref_v_elem_null       cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin arr_i32[0]               shape null     refused
+write-refusal-shape shref_v_list_int        cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin entries_list             shape int      refused
+write-refusal-shape shref_v_list_text       cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin entries_list             shape text     refused
+write-refusal-shape shref_v_list_improper   cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin entries_list             shape improper refused
+write-refusal-shape shref_v_record_elem_int  cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin entries_list[0]         shape int      refused
+write-refusal-shape shref_v_record_elem_text cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin entries_list[0]         shape text     refused
+write-refusal-shape shref_v_record_elem_null cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin entries_list[0]         shape null     refused
+write-refusal-shape shref_v_string_elem_int cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin str_arr[0]               shape int      refused
+write-refusal-shape shref_v_whole_int       cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin .                        shape int      refused
+write-refusal-shape shref_v_whole_text      cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin .                        shape text     refused
+write-refusal-shape shref_v_whole_null      cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin .                        shape null     refused
+write-refusal-shape shref_v_whole_bool      cooktorture TortureCook testdata/conformance/tables/wire/torture_cook_full.bin .                        shape bool     refused
+write-refusal-shape shref_f_ok_int          tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         weapons[0].penetration   int   3    wrote
+write-refusal-shape shref_f_ok_length       tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         version_note             length 4   wrote
+write-refusal-shape shref_f_ok_tag          tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         weapons[0].effect        tag   2    wrote
+write-refusal-shape shref_f_enum_text       tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         profiles[0].loadout.grade   shape text  refused
+write-refusal-shape shref_f_enum_bool       tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         profiles[0].loadout.grade   shape bool  refused
+write-refusal-shape shref_f_enum_map        tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         profiles[0].loadout.grade   shape map   refused
+write-refusal-shape shref_f_flags_text      tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         profiles[0].loadout.perks   shape text  refused
+write-refusal-shape shref_f_flags_float     tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         profiles[0].loadout.perks   shape float refused
+write-refusal-shape shref_f_flags_bool      tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         profiles[0].loadout.perks   shape bool  refused
+write-refusal-shape shref_f_string_int      tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         version_note                shape int   refused
+write-refusal-shape shref_f_string_bool     tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         version_note                shape bool  refused
+write-refusal-shape shref_f_string_map      tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         version_note                shape map   refused
+write-refusal-shape shref_f_bytes_int       tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         profiles[0].icon            shape int   refused
+write-refusal-shape shref_f_bytes_bool      tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         profiles[0].icon            shape bool  refused
+write-refusal-shape shref_f_record_int      tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         profiles[0].loadout.primary shape int   refused
+write-refusal-shape shref_f_record_text     tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         profiles[0].loadout.primary shape text  refused
+write-refusal-shape shref_f_record_null     tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         profiles[0].loadout.primary shape null  refused
+write-refusal-shape shref_f_record_map      tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         profiles[0].loadout.primary shape map   refused
+write-refusal-shape shref_f_union_int       tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         weapons[0].effect           shape int   refused
+write-refusal-shape shref_f_union_text      tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         weapons[0].effect           shape text  refused
+write-refusal-shape shref_f_union_map       tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         weapons[0].effect           shape map   refused
+write-refusal-shape shref_f_arm_int         tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         weapons[0].effect.debuff    shape int   refused
+write-refusal-shape shref_f_arm_text        tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         weapons[0].effect.debuff    shape text  refused
+write-refusal-shape shref_f_bool_int        tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         weapons[0].homing           shape int   refused
+write-refusal-shape shref_f_bool_null       tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         weapons[0].homing           shape null  refused
+write-refusal-shape shref_f_float_numtext   tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         weapons[0].damage           shape numtext refused
+write-refusal-shape shref_f_float_bool      tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         weapons[0].damage           shape bool  refused
+write-refusal-shape shref_f_array_int       tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         weapons                     shape int   refused
+write-refusal-shape shref_f_array_text      tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         weapons                     shape text  refused
+write-refusal-shape shref_f_array_improper  tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         weapons                     shape improper refused
+write-refusal-shape shref_f_elem_int        tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         weapons[0]                  shape int   refused
+write-refusal-shape shref_f_elem_text       tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         weapons[0]                  shape text  refused
+write-refusal-shape shref_f_whole_int       tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         .                           shape int   refused
+write-refusal-shape shref_f_whole_null      tabledemo   RootConfig  testdata/conformance/tables/wire/root_full.bin         .                           shape null  refused
+
 # THE ANNOUNCEMENT (SPEC-TABLES §3.3). FL-38: no writer announces more than
 # 4096 entries; 4096 is served. FL-36: strict mode refuses a peer whose build
 # version is not the unit's own, and the default (lenient) reads it; a strict
@@ -2683,6 +2768,22 @@ read-into ri_json       tblsurf      Counted       json        testdata/conforma
 read-into ri_fixed      tblsurf      Narrow        fixed       testdata/conformance/tables/read-into/narrow_3.fixed        testdata/conformance/tables/read-into/narrow_3_damaged.fixed     3
 read-into ri_message    backend_conn StorePurchase message     testdata/conformance/tables/message-batch/batch_delivered.bin testdata/conformance/tables/message-batch/batch_range_in_second.bin 2
 read-into ri_fixed_5000 tblsurf      Narrow        fixed-nocap testdata/conformance/tables/read-into/narrow_5000.fixed     -                                                                5000
+
+# THE RETAIN FAMILY ZEROES ITS REPORT TOO (SPEC-TABLES §6.5, §6.6): the
+# retaining load is handed a report the driver PRE-FILLED (every counter
+# nonzero, the refusal set), reads lawfully, and must leave the report equal,
+# field by field, to the one the same read leaves in a fresh report; then a
+# damaged retaining load refuses into it and the lawful one zeroes it again.
+read-into ri_retain     tblrt1       Node          retain      testdata/wire/tables/retain_rt2.bin                           testdata/conformance/tables/read-into/retain_rt2_cut.bin         1
+
+# THE PLAIN LOAD ZEROES A PRE-FILLED REPORT TOO (SPEC-TABLES §6.5): the same
+# protocol through the plain <Root>Load of a variable root, the REGION read
+# where the leg has one. And LoadRetain on a FIXED-class root is refused by
+# name (§6.6): a runtime refusal refuses through a report it zeroed first, so
+# the report equals a fresh one's; a compile-time refusal answers
+# unrepresentable.
+read-into ri_region       tblsurf    Counted       region       testdata/conformance/tables/wire/surf_counted_full.bin      testdata/conformance/tables/read-into/counted_cut.bin            1
+read-into ri_retain_fixed tblsurf    Narrow        retain-fixed testdata/conformance/tables/wire/surf_narrow_full.bin       -                                                                1
 
 # FL-14, FL-15 (SPEC-TABLES §16.1): the text writer in a comma-decimal process
 # locale, into a caller buffer longer than the text, writes the instance's

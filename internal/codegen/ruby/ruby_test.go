@@ -17,6 +17,7 @@ import (
 	"github.com/mas-bandwidth/schema/v2/internal/slowtest"
 	"github.com/mas-bandwidth/schema/v2/ir"
 
+	"github.com/mas-bandwidth/schema/v2/internal/testinputs"
 	"github.com/mas-bandwidth/schema/v2/internal/testproc"
 )
 
@@ -163,6 +164,7 @@ func driverSurfaceContract(t *testing.T, driver, surfacesDir, dir string) error 
 	if err := os.WriteFile(manifest, []byte("# empty manifest\n"), 0o644); err != nil {
 		return err
 	}
+	testinputs.Files(t, driver, surfacesDir)
 	list := testproc.Command(t, "sh", driver, manifest, "list")
 	list.Dir = dir
 	list.Env = append(os.Environ(), "RUBY="+rubyBin)

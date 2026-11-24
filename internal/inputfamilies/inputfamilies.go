@@ -266,10 +266,16 @@ func goReaders(t Tree, p string, readersByMention map[string][]string) []string 
 // every family's every reader; pr keeps only the families that run in the
 // pull-request tier.
 func Select(t Tree, changed []string, all, pr bool) Selection {
+	return selectFrom(Families, t, changed, all, pr)
+}
+
+// selectFrom is Select over the given families, so a test can judge a
+// hand-built set without touching the package-level Families.
+func selectFrom(families []Family, t Tree, changed []string, all, pr bool) Selection {
 	var s Selection
 	fams := map[string]bool{}
 	pkgs := map[string]bool{}
-	for _, f := range Families {
+	for _, f := range families {
 		hit := all || slices.ContainsFunc(changed, f.Matches)
 		if !hit {
 			continue
@@ -298,7 +304,7 @@ func Select(t Tree, changed []string, all, pr bool) Selection {
 		for _, r := range rs {
 			pkgs[r] = true
 		}
-		if len(rs) == 0 && strings.HasPrefix(p, "testdata/") && !inFamily(p) {
+		if len(rs) == 0 && strings.HasPrefix(p, "testdata/") && !inFamily(families, p) {
 			s.Unread = append(s.Unread, p)
 		}
 	}
@@ -309,8 +315,8 @@ func Select(t Tree, changed []string, all, pr bool) Selection {
 	return s
 }
 
-func inFamily(p string) bool {
-	for _, f := range Families {
+func inFamily(families []Family, p string) bool {
+	for _, f := range families {
 		if f.Matches(p) {
 			return true
 		}
@@ -321,8 +327,13 @@ func inFamily(p string) bool {
 // Check refuses a family whose inputs match no file, which no leg reads, or
 // with a driver whose leg has no target (a reader that never runs).
 func Check(t Tree) []string {
+	return checkFamilies(Families, t)
+}
+
+// checkFamilies is Check over the given families (see selectFrom).
+func checkFamilies(families []Family, t Tree) []string {
 	var bad []string
-	for _, f := range Families {
+	for _, f := range families {
 		for _, in := range f.Inputs {
 			n := 0
 			for _, p := range t.Files {
