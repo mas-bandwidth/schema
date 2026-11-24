@@ -1653,7 +1653,14 @@ func emitFixedFieldDecode(b *strings.Builder, u *ir.Unit, f *ir.Field, expr, buf
 		elemField.DefVariant = ""
 		emitFixedElementDecode(&loop, u, &elemField, fmt.Sprintf("%s[%s]", sp, iv), fmt.Sprintf("%s.Slice(%d + %s * %d, %d)", buf, off+4, iv, elemBytes, elemBytes), 0, depth+1, true)
 		b.WriteString(indent(indent(loop.String())))
-		b.WriteString("    }\n}\n")
+		b.WriteString("    }\n")
+		// THE SLOTS PAST THE COUNT (docs/SPEC-TABLES.md §3.4, THE SLOTS PAST A
+		// COUNT AFTER ANY LOAD): what a fresh value holds there, on every plan,
+		// at every depth; only where the element's defaults are not zero.
+		if inner := unitySlackElem(f); inner != nil {
+			fmt.Fprintf(b, "    for (int %s = cnt; %s < %d; %s++) { Init%s(ref %s[%s]); }\n", iv, iv, f.ArrayBound, iv, inner.Name, sp, iv)
+		}
+		b.WriteString("}\n")
 	default:
 		emitFixedElementDecode(b, u, f, expr, buf, off, depth, false)
 	}

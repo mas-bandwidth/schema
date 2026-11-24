@@ -624,6 +624,13 @@ func emitInitFixedField(b *strings.Builder, f *ir.Field, prefix, ind string) {
 			if count > 0 {
 				fmt.Fprintf(b, "%s%sCount = %d;\n", ind, name, count)
 			}
+			// A FRESH VALUE'S SLOTS PAST THE COUNT HOLD THE ELEMENT'S
+			// DECLARED DEFAULTS (docs/SPEC-TABLES.md §3.4, THE SLOTS PAST A
+			// COUNT AFTER ANY LOAD): the whole bound, wherever the element's
+			// defaults are not the zero form (fixedslack.go).
+			if unitySlackElem(f) != nil {
+				count = f.ArrayBound
+			}
 		}
 		if inner, ok := f.Type.Ref.(*ir.Struct); ok && f.Type.Kind == ir.TNamed && structHasInitFn(inner) && count > 0 {
 			fmt.Fprintf(b, "%s{\n%s    Span<%s> span = %s.AsSpan();\n", ind, ind, inner.Name, name)
