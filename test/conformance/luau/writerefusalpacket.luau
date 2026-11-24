@@ -87,6 +87,9 @@ local function build(op: string, arg: string): any
 		v.Huge = dec128(arg)
 	elseif op == "fx" then
 		v.Fx = tonumber(arg) -- fixed(16, 16) storage is the raw number
+	elseif op == "ufx" then
+		-- ufixed(32, 32) storage is the raw value as a uint64 bit pattern: the low lane
+		v.Ufx = dec128(arg).lo
 	else
 		error("write-refusal-packet: unknown op " .. op)
 	end

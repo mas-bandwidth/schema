@@ -1223,12 +1223,15 @@ func formatFloat(v float64) string {
 	return elixirFloat(strconv.FormatFloat(v, 'g', -1, 64))
 }
 
-// formatFloat32 renders a float32-precision literal: the shortest form that
-// a float32 parser reads as exactly float32(v). The BEAM reads it as a double,
-// which is float32(v) only when the decimal is exact (-3.3 is not): a literal
-// that float32 arithmetic consumes is f32lit's, never this one.
+// formatFloat32 renders float32(v) as an Elixir float literal: functions.go's
+// f32lit, the shortest decimal of the float64 value, which the BEAM reads as
+// exactly that float32. The float32's own shortest decimal (0.1) names
+// float32(0.1) only to a float32 parser; the BEAM reads it as the double 0.1,
+// so a float32 constant and a float32 default held a value the declaration
+// does not name (SPEC §4.3, "A FLOAT LITERAL IS A float64 FIRST";
+// test/verify-bitphase f32lit.go).
 func formatFloat32(v float64) string {
-	return elixirFloat(strconv.FormatFloat(v, 'g', -1, 32))
+	return f32lit(v)
 }
 
 // elixirFloat rewrites a Go shortest-float form into Elixir's literal

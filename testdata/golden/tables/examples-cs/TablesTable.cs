@@ -256,6 +256,7 @@ namespace Tabledemo
 
         public static bool RootConfigCollectTyped(RootConfig v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null RootConfig is written");
             TableFieldInfo[] fields = RootConfigTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
@@ -396,6 +397,7 @@ namespace Tabledemo
 
         public static bool WeaponConfigCollectTyped(WeaponConfig v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null WeaponConfig is written");
             TableFieldInfo[] fields = WeaponConfigTableType().Fields;
             System.Diagnostics.Debug.Assert(float.IsFinite(v.Damage));
             if (BitConverter.SingleToUInt32Bits(v.Damage) != 0x41a80000u && !ids.Add(0x7f6308be8ab37fc0ul)) return false;
@@ -536,6 +538,7 @@ namespace Tabledemo
 
         public static bool LoadoutConfigCollectTyped(LoadoutConfig v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null LoadoutConfig is written");
             TableFieldInfo[] fields = LoadoutConfigTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
@@ -743,6 +746,7 @@ namespace Tabledemo
 
         public static bool ProfileConfigCollectTyped(ProfileConfig v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null ProfileConfig is written");
             TableFieldInfo[] fields = ProfileConfigTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             if (!TableWire.CollectField(v, fields[1], ref ids)) return false;
@@ -912,6 +916,7 @@ namespace Tabledemo
 
         public static bool CountedMinCollectTyped(CountedMin v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null CountedMin is written");
             TableFieldInfo[] fields = CountedMinTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             return true;
@@ -1003,6 +1008,7 @@ namespace Tabledemo
 
         public static bool FloatBoundCollectTyped(FloatBound v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null FloatBound is written");
             System.Diagnostics.Debug.Assert(float.IsFinite(v.Level));
             if (v.Level != BitConverter.Int32BitsToSingle(unchecked((int)0x00000000u)) && !ids.Add(0xe8ddc90a9d7c709dul)) return false;
             return true;
@@ -1095,6 +1101,7 @@ namespace Tabledemo
 
         public static bool MoodsCollectTyped(Moods v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null Moods is written");
             TableFieldInfo[] fields = MoodsTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             return true;
@@ -1187,6 +1194,7 @@ namespace Tabledemo
 
         public static bool MoodFieldCollectTyped(MoodField v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null MoodField is written");
             TableFieldInfo[] fields = MoodFieldTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             if (v.Tail != 0 && !ids.Add(0xd94c56ef0798d723ul)) return false;
@@ -1283,6 +1291,7 @@ namespace Tabledemo
 
         public static bool MinArmFixCollectTyped(MinArmFix v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null MinArmFix is written");
             TableFieldInfo[] fields = MinArmFixTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             return true;
@@ -1373,6 +1382,7 @@ namespace Tabledemo
 
         public static bool MinPlainFixCollectTyped(MinPlainFix v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null MinPlainFix is written");
             TableFieldInfo[] fields = MinPlainFixTableType().Fields;
             if (!TableWire.CollectField(v, fields[0], ref ids)) return false;
             return true;
@@ -1465,6 +1475,7 @@ namespace Tabledemo
 
         public static bool AttachmentCollectTyped(Attachment v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null Attachment is written");
             if (v.Slot != 0 && !ids.Add(0x6a771618f6fe31d1ul)) return false;
             System.Diagnostics.Debug.Assert(float.IsFinite(v.Power));
             if (BitConverter.SingleToUInt32Bits(v.Power) != 0x3f800000u && !ids.Add(0xeef9d1358ae7b4e6ul)) return false;
@@ -1563,6 +1574,7 @@ namespace Tabledemo
 
         public static bool BuffCollectTyped(Buff v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null Buff is written");
             System.Diagnostics.Debug.Assert(float.IsFinite(v.Multiplier));
             if (BitConverter.SingleToUInt32Bits(v.Multiplier) != 0x3f800000u && !ids.Add(0x9adc623a805c87c6ul)) return false;
             return true;
@@ -1654,6 +1666,7 @@ namespace Tabledemo
 
         public static bool DebuffCollectTyped(Debuff v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null Debuff is written");
             if (v.Amount != 0 && !ids.Add(0x8113fe7ea2b16969ul)) return false;
             return true;
         }
@@ -2483,6 +2496,7 @@ namespace Tabledemo
         // which is also what zero-fills every byte of declared slack.
         public static void BuffFixedWriteBody(Span<byte> b, Buff value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null Buff is written");
             if (value == null) return;
             BinaryPrimitives.WriteSingleLittleEndian(b, value.Multiplier);
         }
@@ -2491,6 +2505,7 @@ namespace Tabledemo
         // which is also what zero-fills every byte of declared slack.
         public static void DebuffFixedWriteBody(Span<byte> b, Debuff value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null Debuff is written");
             if (value == null) return;
             BinaryPrimitives.WriteInt32LittleEndian(b, (int)value.Amount);
         }
@@ -2499,6 +2514,7 @@ namespace Tabledemo
         // which is also what zero-fills every byte of declared slack.
         public static void WeaponConfigFixedWriteBody(Span<byte> b, WeaponConfig value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null WeaponConfig is written");
             if (value == null) return;
             BinaryPrimitives.WriteSingleLittleEndian(b, value.Damage);
             BinaryPrimitives.WriteSingleLittleEndian(b.Slice(4), value.Speed);
@@ -2525,6 +2541,7 @@ namespace Tabledemo
         // which is also what zero-fills every byte of declared slack.
         public static void AttachmentFixedWriteBody(Span<byte> b, Attachment value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null Attachment is written");
             if (value == null) return;
             BinaryPrimitives.WriteInt32LittleEndian(b, (int)value.Slot);
             BinaryPrimitives.WriteSingleLittleEndian(b.Slice(4), value.Power);
@@ -2534,6 +2551,7 @@ namespace Tabledemo
         // which is also what zero-fills every byte of declared slack.
         public static void LoadoutConfigFixedWriteBody(Span<byte> b, LoadoutConfig value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null LoadoutConfig is written");
             if (value == null) return;
             b[0] = (byte)value.Grade;
             int count_grades = value.GradesCount;
@@ -2566,6 +2584,7 @@ namespace Tabledemo
         // which is also what zero-fills every byte of declared slack.
         public static void ProfileConfigFixedWriteBody(Span<byte> b, ProfileConfig value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null ProfileConfig is written");
             if (value == null) return;
             int len_name = value.Name != null ? value.NameLength : 0;
             System.Diagnostics.Debug.Assert(len_name <= 32);
@@ -2592,6 +2611,7 @@ namespace Tabledemo
         // which is also what zero-fills every byte of declared slack.
         public static void RootConfigFixedWriteBody(Span<byte> b, RootConfig value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null RootConfig is written");
             if (value == null) return;
             int len_version_note = value.VersionNote != null ? value.VersionNoteLength : 0;
             System.Diagnostics.Debug.Assert(len_version_note <= 16);
@@ -2623,6 +2643,7 @@ namespace Tabledemo
         // which is also what zero-fills every byte of declared slack.
         public static void CountedMinFixedWriteBody(Span<byte> b, CountedMin value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null CountedMin is written");
             if (value == null) return;
             int count_few = value.FewCount;
             System.Diagnostics.Debug.Assert(count_few >= 0 && count_few <= 5); // the declared count is the bound (§3.4)
@@ -2634,6 +2655,7 @@ namespace Tabledemo
         // which is also what zero-fills every byte of declared slack.
         public static void FloatBoundFixedWriteBody(Span<byte> b, FloatBound value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null FloatBound is written");
             if (value == null) return;
             BinaryPrimitives.WriteSingleLittleEndian(b, value.Level + 0.0f);
         }
@@ -2642,6 +2664,7 @@ namespace Tabledemo
         // which is also what zero-fills every byte of declared slack.
         public static void MoodsFixedWriteBody(Span<byte> b, Moods value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null Moods is written");
             if (value == null) return;
             int count_row = value.RowCount;
             System.Diagnostics.Debug.Assert(count_row >= 0 && count_row <= 4); // the declared count is the bound (§3.4)
@@ -2653,6 +2676,7 @@ namespace Tabledemo
         // which is also what zero-fills every byte of declared slack.
         public static void MoodFieldFixedWriteBody(Span<byte> b, MoodField value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null MoodField is written");
             if (value == null) return;
             System.Diagnostics.Debug.Assert(!((ulong)value.Mood == 2UL), "a deprecated enum variant is written");
             b[0] = (byte)value.Mood;
@@ -2663,6 +2687,7 @@ namespace Tabledemo
         // which is also what zero-fills every byte of declared slack.
         public static void MinArmFixFixedWriteBody(Span<byte> b, MinArmFix value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null MinArmFix is written");
             if (value == null) return;
             if (value.Pick != null)
             {
@@ -2687,6 +2712,7 @@ namespace Tabledemo
         // which is also what zero-fills every byte of declared slack.
         public static void MinPlainFixFixedWriteBody(Span<byte> b, MinPlainFix value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null MinPlainFix is written");
             if (value == null) return;
             int count_few = value.FewCount;
             System.Diagnostics.Debug.Assert(count_few >= 0 && count_few <= 4); // the declared count is the bound (§3.4)

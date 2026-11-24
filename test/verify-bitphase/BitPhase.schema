@@ -128,3 +128,18 @@ type CfDecode
 {
     c float32 | min = -3.3, max = 7.7, resolution = 0.001
 }
+
+// F32Const and F32Lit are the float32 literal case (f32lit.go). A float32 is
+// the float64 of its declaration rounded once more to float32 (SPEC.md §4.3):
+// 0.1 and 0.3 are no float32, and a target whose float literals are doubles
+// reads the decimal 0.1 as the double 0.1, not as float32(0.1). Every leg
+// prints the constant and the fresh defaults bit for bit, and writes e at
+// each float32 end, which lies outside its decimal (float32(0.3) is above the
+// double 0.3), so a write guard held at the decimal refuses it.
+const F32Const float32 = 0.1
+
+type F32Lit
+{
+    d float32 = 0.1
+    e float32 = -0.3 | min = -0.3, max = 0.3, resolution = 0.001
+}

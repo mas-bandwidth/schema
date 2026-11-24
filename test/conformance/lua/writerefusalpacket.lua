@@ -50,6 +50,8 @@ local ops = {
   pick_small = function(v, n) v.Pick.Type = G.PickType.Small; v.Pick.Small.V = n end,
   huge = function(v, dec) v.Huge = dec128(dec) end,
   fx = function(v, n) v.Fx = n end, -- fixed(16, 16) storage is the raw integer
+  -- ufixed(32, 32) storage is the raw value as a uint64 bit pattern: the low lane
+  ufx = function(v, dec) v.Ufx = dec128(dec).lo end,
 }
 
 for line in inputs.rows:gmatch("[^\n]+") do
@@ -59,7 +61,7 @@ for line in inputs.rows:gmatch("[^\n]+") do
     local name, op, arg = f[1], f[3], f[4]
     local set = assert(ops[op], "unknown op " .. op)
     local v = G.NewPacketWriteRefusal()
-    if op ~= "text_bytes" and op ~= "huge" then arg = assert(math.tointeger(tonumber(arg)), arg) end
+    if op ~= "text_bytes" and op ~= "huge" and op ~= "ufx" then arg = assert(math.tointeger(tonumber(arg)), arg) end
     set(v, arg)
     local stream = serialize.WriteStream.new(256)
     local ran, ok = pcall(G.WritePacketWriteRefusal, stream, v)
