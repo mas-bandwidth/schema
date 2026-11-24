@@ -312,7 +312,7 @@ t_Fmt_case1	builds	-	-
 t_Utf8_case1	builds	-	-
 t_Debugger	builds	-	-
 c_max_items	builds	-	a const named in lowercase: Ruby spells it MAX_ITEMS (SPEC §4.6, Ruby mapping)
-e_kind	builds	-	an enum named in lowercase: Ruby spells it Kind
+e_kind	refuse-at-check	C++	an enum named in lowercase beside a field of its own name: C++ and Dart cannot spell kind kind (SPEC §4.6)
 u_pick	builds	-	a union named in lowercase: Ruby spells it Pick, its tag module PickType
 tb_fleet	builds	-	a table named in lowercase: Ruby spells it Fleet
 tb_max_items	builds	-	tables named in snake case, one holding the other: Ruby spells them MaxItemsTable and FleetRoot
