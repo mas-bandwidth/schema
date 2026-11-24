@@ -100,6 +100,8 @@ func goSaveLoadRun(t *testing.T, plant func(goSaveLoadCase) ([]byte, bool)) []st
 			tabledemo.MoodFieldMeasure, tabledemo.MoodFieldSave, tabledemo.MoodFieldToJSONMeasure, tabledemo.MoodFieldToJSON),
 		keyedOf("Moods", tabledemo.MoodsReset, tabledemo.MoodsLoad, tabledemo.MoodsReadStrict,
 			tabledemo.MoodsMeasure, tabledemo.MoodsSave, tabledemo.MoodsToJSONMeasure, tabledemo.MoodsToJSON),
+		regionOf("VarMoods", tabledemo.VarMoodsReset, tabledemo.VarMoodsLoadMeasure, tabledemo.VarMoodsLoad, tabledemo.VarMoodsReadStrict,
+			tabledemo.VarMoodsMeasure, tabledemo.VarMoodsSave, tabledemo.VarMoodsToJSONMeasure, tabledemo.VarMoodsToJSON),
 	}) {
 		binary[tg.name] = tg
 	}
@@ -117,6 +119,35 @@ func goSaveLoadRun(t *testing.T, plant func(goSaveLoadCase) ([]byte, bool)) []st
 			tabledemo.MoodFieldSaveText, tabledemo.MoodFieldToJSONMeasure, tabledemo.MoodFieldToJSON),
 		keyedTextOf("Moods", tabledemo.MoodsReset, tabledemo.MoodsLoadText, tabledemo.MoodsFromJSON,
 			tabledemo.MoodsSaveText, tabledemo.MoodsToJSONMeasure, tabledemo.MoodsToJSON),
+		{
+			name:  "VarMoods",
+			value: func() any { v := new(tabledemo.VarMoods); tabledemo.VarMoodsReset(v); return v },
+			loadText: func(text string) (any, bool) {
+				v, err := tabledemo.VarMoodsLoadText(text, &tabledemo.TableReport{})
+				return v, v != nil && err == nil
+			},
+			fromJson: func(text []byte) (any, func(), bool) {
+				var b tabledemo.VarMoodsBuilder
+				if !b.Init() {
+					return nil, func() {}, false
+				}
+				if !tabledemo.VarMoodsFromJSON(&b, text, &tabledemo.TableReport{}) {
+					b.Shutdown()
+					return nil, func() {}, false
+				}
+				// the root holds its row in the builder's arena until Lock lays it out
+				// as one region: the plain Save reads the locked root, as the
+				// conformance driver does
+				if !b.Lock() {
+					b.Shutdown()
+					return nil, func() {}, false
+				}
+				return b.AsConst(), b.Shutdown, true
+			},
+			saveText:    func(v any) (string, error) { return tabledemo.VarMoodsSaveText(v.(*tabledemo.VarMoods)) },
+			jsonMeasure: func(v any) int64 { return tabledemo.VarMoodsToJSONMeasure(v.(*tabledemo.VarMoods)) },
+			jsonDump:    func(v any, b []byte) int64 { return tabledemo.VarMoodsToJSON(v.(*tabledemo.VarMoods), b) },
+		},
 	}) {
 		text[tg.name] = tg
 	}

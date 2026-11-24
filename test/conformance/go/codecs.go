@@ -977,6 +977,20 @@ var codecTable = []codec{
 	row("tabledemo", "Moods", tabledemo.MoodsReset, tabledemo.MoodsLoad,
 		tabledemo.MoodsMeasure, tabledemo.MoodsSave,
 		tabledemo.MoodsFromJSON, tabledemo.MoodsToJSONMeasure, tabledemo.MoodsToJSON, tabledemo.MoodsCookMeasure, tabledemo.MoodsCookFrom, snapDemo),
+	// VarMoods is variable-only (no fixed form): the §2.15 write-refusal rows
+	// reach the variable Save through it, so it rides the region load.
+	regionRow("tabledemo", "VarMoods", tabledemo.VarMoodsLoadMeasure, tabledemo.VarMoodsLoad, tabledemo.VarMoodsMeasure, tabledemo.VarMoodsSave, func(text []byte, r *tabledemo.TableReport) (*tabledemo.VarMoods, []byte, bool) {
+		var b tabledemo.VarMoodsBuilder
+		if !b.Init() {
+			return nil, nil, false
+		}
+		defer b.Shutdown()
+		ok := tabledemo.VarMoodsFromJSON(&b, text, r)
+		if !b.Lock() {
+			return nil, nil, false
+		}
+		return b.AsConst(), b.Region(), ok
+	}, tabledemo.VarMoodsToJSONMeasure, tabledemo.VarMoodsToJSON, tabledemo.VarMoodsCookMeasure, tabledemo.VarMoodsCookFrom, snapDemo),
 	row("tabledemo", "MoodField", tabledemo.MoodFieldReset, tabledemo.MoodFieldLoad,
 		tabledemo.MoodFieldMeasure, tabledemo.MoodFieldSave,
 		tabledemo.MoodFieldFromJSON, tabledemo.MoodFieldToJSONMeasure, tabledemo.MoodFieldToJSON, tabledemo.MoodFieldCookMeasure, tabledemo.MoodFieldCookFrom, snapDemo),
