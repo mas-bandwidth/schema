@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum readerKind
+{ Zfirst, Zsecond, Zthird }
+
+enum reading
+{ Zfirst, Zsecond, Zthird }
+
+enum reads
+{ Zfirst, Zsecond, Zthird }
+
+enum readsBack
+{ Zfirst, Zsecond, Zthird }
+
+enum ready
+{ Zfirst, Zsecond, Zthird }
+
+enum reason
+{ Zfirst, Zsecond, Zthird }
+
+enum reason_out
+{ Zfirst, Zsecond, Zthird }
+
+enum reasoned
+{ Zfirst, Zsecond, Zthird }
+
+enum rec
+{ Zfirst, Zsecond, Zthird }
+
+enum recBase
+{ Zfirst, Zsecond, Zthird }
+
+enum recBlob
+{ Zfirst, Zsecond, Zthird }
+
+enum recEnd
+{ Zfirst, Zsecond, Zthird }
+
+enum recName
+{ Zfirst, Zsecond, Zthird }
+
+enum recOff
+{ Zfirst, Zsecond, Zthird }
+
+enum recOffset
+{ Zfirst, Zsecond, Zthird }
+
+enum recRef
+{ Zfirst, Zsecond, Zthird }
+
+enum recSize
+{ Zfirst, Zsecond, Zthird }
+
+enum recStart
+{ Zfirst, Zsecond, Zthird }
+
+enum rec_cls
+{ Zfirst, Zsecond, Zthird }
+
+enum rec_widened
+{ Zfirst, Zsecond, Zthird }
+
+enum recognized
+{ Zfirst, Zsecond, Zthird }
+
+enum reconstructed
+{ Zfirst, Zsecond, Zthird }
+
+enum recordAt
+{ Zfirst, Zsecond, Zthird }
+
+enum recordBase
+{ Zfirst, Zsecond, Zthird }
+
+enum recordBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum recordCount
+{ Zfirst, Zsecond, Zthird }
+
+enum recordEnd
+{ Zfirst, Zsecond, Zthird }
+
+enum recordFields
+{ Zfirst, Zsecond, Zthird }
+
+enum recordIndex
+{ Zfirst, Zsecond, Zthird }
+
+enum recordItem
+{ Zfirst, Zsecond, Zthird }
+
+enum recordLeaf
+{ Zfirst, Zsecond, Zthird }
+
+enum recordMaxBytes
+{ Zfirst, Zsecond, Zthird }
+
+enum recordName
+{ Zfirst, Zsecond, Zthird }
+
+enum recordNode
+{ Zfirst, Zsecond, Zthird }
+
+enum recordOffsets
+{ Zfirst, Zsecond, Zthird }
+
+enum recordRef
+{ Zfirst, Zsecond, Zthird }
+
+enum recordSize
+{ Zfirst, Zsecond, Zthird }
+
+enum recordTooLarge
+{ Zfirst, Zsecond, Zthird }
+
+enum record_align
+{ Zfirst, Zsecond, Zthird }
+
+enum record_edges
+{ Zfirst, Zsecond, Zthird }
+
+enum record_extent_align
+{ Zfirst, Zsecond, Zthird }
+
+enum record_has_extent
+{ Zfirst, Zsecond, Zthird }
+
+enum record_layout
+{ Zfirst, Zsecond, Zthird }
+
+enum record_nonfinite
+{ Zfirst, Zsecond, Zthird }
+
+enum record_u32
+{ Zfirst, Zsecond, Zthird }
+
+enum record_u64
+{ Zfirst, Zsecond, Zthird }
+
+enum records
+{ Zfirst, Zsecond, Zthird }
+
+enum records_out
+{ Zfirst, Zsecond, Zthird }
+
+enum recs
+{ Zfirst, Zsecond, Zthird }
+
+enum ref2
+{ Zfirst, Zsecond, Zthird }
+
+enum refAt
+{ Zfirst, Zsecond, Zthird }
+
+enum refBits
+{ Zfirst, Zsecond, Zthird }
+
+enum refOfId
+{ Zfirst, Zsecond, Zthird }
+
+enum refToId
+{ Zfirst, Zsecond, Zthird }
+
+enum ref_by_name
+{ Zfirst, Zsecond, Zthird }
+
+enum ref_entry
+{ Zfirst, Zsecond, Zthird }
+
+enum ref_names
+{ Zfirst, Zsecond, Zthird }
+
+enum ref_nested
+{ Zfirst, Zsecond, Zthird }
+
+enum ref_tags
+{ Zfirst, Zsecond, Zthird }
+
+enum ref_value
+{ Zfirst, Zsecond, Zthird }
+
+enum ref_values
+{ Zfirst, Zsecond, Zthird }
+
+enum ref_xs
+{ Zfirst, Zsecond, Zthird }
+
+enum reference
+{ Zfirst, Zsecond, Zthird }
+
+enum references
+{ Zfirst, Zsecond, Zthird }
+
+enum reflection
+{ Zfirst, Zsecond, Zthird }
+
+enum refs
+{ Zfirst, Zsecond, Zthird }
+
+enum refsSeen
+{ Zfirst, Zsecond, Zthird }
+
+enum refusal
+{ Zfirst, Zsecond, Zthird }
+
+enum refusalName
+{ Zfirst, Zsecond, Zthird }
+
+enum refuse
+{ Zfirst, Zsecond, Zthird }
+
+enum refuseAnnouncement
+{ Zfirst, Zsecond, Zthird }
+
+enum refuseCount
+{ Zfirst, Zsecond, Zthird }
+
+enum refuseDeprecated
+{ Zfirst, Zsecond, Zthird }
+
+enum refuseLayout
+{ Zfirst, Zsecond, Zthird }
+
+enum refuseLoad
+{ Zfirst, Zsecond, Zthird }
+
+enum refuseNonFinite
+{ Zfirst, Zsecond, Zthird }
+
+enum refuseRead
+{ Zfirst, Zsecond, Zthird }
+
+enum refuseShared
+{ Zfirst, Zsecond, Zthird }
+
+enum refuseSharedBlob
+{ Zfirst, Zsecond, Zthird }
+
+enum refuseSharedBlobs
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    readerKind Inner
+    reading Inner
+    reads Inner
+    readsBack Inner
+    ready Inner
+    reason Inner
+    reason_out Inner
+    reasoned Inner
+    rec Inner
+    recBase Inner
+}
+
+table NameTypes0
+{
+    one0  readerKind
+    many0 [..4]readerKind
+    one1  reading
+    many1 [..4]reading
+    one2  reads
+    many2 [..4]reads
+    one3  readsBack
+    many3 [..4]readsBack
+    one4  ready
+    many4 [..4]ready
+    one5  reason
+    many5 [..4]reason
+    one6  reason_out
+    many6 [..4]reason_out
+    one7  reasoned
+    many7 [..4]reasoned
+    one8  rec
+    many8 [..4]rec
+    one9  recBase
+    many9 [..4]recBase
+}
+
+table NameFields0
+{
+    readerKind uint32
+    reading uint32
+    reads uint32
+    readsBack uint32
+    ready uint32
+    reason uint32
+    reason_out uint32
+    reasoned uint32
+    rec uint32
+    recBase uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    recBlob Inner
+    recEnd Inner
+    recName Inner
+    recOff Inner
+    recOffset Inner
+    recRef Inner
+    recSize Inner
+    recStart Inner
+    rec_cls Inner
+    rec_widened Inner
+}
+
+table NameTypes1
+{
+    one0  recBlob
+    many0 [..4]recBlob
+    one1  recEnd
+    many1 [..4]recEnd
+    one2  recName
+    many2 [..4]recName
+    one3  recOff
+    many3 [..4]recOff
+    one4  recOffset
+    many4 [..4]recOffset
+    one5  recRef
+    many5 [..4]recRef
+    one6  recSize
+    many6 [..4]recSize
+    one7  recStart
+    many7 [..4]recStart
+    one8  rec_cls
+    many8 [..4]rec_cls
+    one9  rec_widened
+    many9 [..4]rec_widened
+}
+
+table NameFields1
+{
+    recBlob uint32
+    recEnd uint32
+    recName uint32
+    recOff uint32
+    recOffset uint32
+    recRef uint32
+    recSize uint32
+    recStart uint32
+    rec_cls uint32
+    rec_widened uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    recognized Inner
+    reconstructed Inner
+    recordAt Inner
+    recordBase Inner
+    recordBytes Inner
+    recordCount Inner
+    recordEnd Inner
+    recordFields Inner
+    recordIndex Inner
+    recordItem Inner
+}
+
+table NameTypes2
+{
+    one0  recognized
+    many0 [..4]recognized
+    one1  reconstructed
+    many1 [..4]reconstructed
+    one2  recordAt
+    many2 [..4]recordAt
+    one3  recordBase
+    many3 [..4]recordBase
+    one4  recordBytes
+    many4 [..4]recordBytes
+    one5  recordCount
+    many5 [..4]recordCount
+    one6  recordEnd
+    many6 [..4]recordEnd
+    one7  recordFields
+    many7 [..4]recordFields
+    one8  recordIndex
+    many8 [..4]recordIndex
+    one9  recordItem
+    many9 [..4]recordItem
+}
+
+table NameFields2
+{
+    recognized uint32
+    reconstructed uint32
+    recordAt uint32
+    recordBase uint32
+    recordBytes uint32
+    recordCount uint32
+    recordEnd uint32
+    recordFields uint32
+    recordIndex uint32
+    recordItem uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    recordLeaf Inner
+    recordMaxBytes Inner
+    recordName Inner
+    recordNode Inner
+    recordOffsets Inner
+    recordRef Inner
+    recordSize Inner
+    recordTooLarge Inner
+    record_align Inner
+    record_edges Inner
+}
+
+table NameTypes3
+{
+    one0  recordLeaf
+    many0 [..4]recordLeaf
+    one1  recordMaxBytes
+    many1 [..4]recordMaxBytes
+    one2  recordName
+    many2 [..4]recordName
+    one3  recordNode
+    many3 [..4]recordNode
+    one4  recordOffsets
+    many4 [..4]recordOffsets
+    one5  recordRef
+    many5 [..4]recordRef
+    one6  recordSize
+    many6 [..4]recordSize
+    one7  recordTooLarge
+    many7 [..4]recordTooLarge
+    one8  record_align
+    many8 [..4]record_align
+    one9  record_edges
+    many9 [..4]record_edges
+}
+
+table NameFields3
+{
+    recordLeaf uint32
+    recordMaxBytes uint32
+    recordName uint32
+    recordNode uint32
+    recordOffsets uint32
+    recordRef uint32
+    recordSize uint32
+    recordTooLarge uint32
+    record_align uint32
+    record_edges uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    record_extent_align Inner
+    record_has_extent Inner
+    record_layout Inner
+    record_nonfinite Inner
+    record_u32 Inner
+    record_u64 Inner
+    records Inner
+    records_out Inner
+    recs Inner
+    ref2 Inner
+}
+
+table NameTypes4
+{
+    one0  record_extent_align
+    many0 [..4]record_extent_align
+    one1  record_has_extent
+    many1 [..4]record_has_extent
+    one2  record_layout
+    many2 [..4]record_layout
+    one3  record_nonfinite
+    many3 [..4]record_nonfinite
+    one4  record_u32
+    many4 [..4]record_u32
+    one5  record_u64
+    many5 [..4]record_u64
+    one6  records
+    many6 [..4]records
+    one7  records_out
+    many7 [..4]records_out
+    one8  recs
+    many8 [..4]recs
+    one9  ref2
+    many9 [..4]ref2
+}
+
+table NameFields4
+{
+    record_extent_align uint32
+    record_has_extent uint32
+    record_layout uint32
+    record_nonfinite uint32
+    record_u32 uint32
+    record_u64 uint32
+    records uint32
+    records_out uint32
+    recs uint32
+    ref2 uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    refAt Inner
+    refBits Inner
+    refOfId Inner
+    refToId Inner
+    ref_by_name Inner
+    ref_entry Inner
+    ref_names Inner
+    ref_nested Inner
+    ref_tags Inner
+    ref_value Inner
+}
+
+table NameTypes5
+{
+    one0  refAt
+    many0 [..4]refAt
+    one1  refBits
+    many1 [..4]refBits
+    one2  refOfId
+    many2 [..4]refOfId
+    one3  refToId
+    many3 [..4]refToId
+    one4  ref_by_name
+    many4 [..4]ref_by_name
+    one5  ref_entry
+    many5 [..4]ref_entry
+    one6  ref_names
+    many6 [..4]ref_names
+    one7  ref_nested
+    many7 [..4]ref_nested
+    one8  ref_tags
+    many8 [..4]ref_tags
+    one9  ref_value
+    many9 [..4]ref_value
+}
+
+table NameFields5
+{
+    refAt uint32
+    refBits uint32
+    refOfId uint32
+    refToId uint32
+    ref_by_name uint32
+    ref_entry uint32
+    ref_names uint32
+    ref_nested uint32
+    ref_tags uint32
+    ref_value uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    ref_values Inner
+    ref_xs Inner
+    reference Inner
+    references Inner
+    reflection Inner
+    refs Inner
+    refsSeen Inner
+    refusal Inner
+    refusalName Inner
+    refuse Inner
+}
+
+table NameTypes6
+{
+    one0  ref_values
+    many0 [..4]ref_values
+    one1  ref_xs
+    many1 [..4]ref_xs
+    one2  reference
+    many2 [..4]reference
+    one3  references
+    many3 [..4]references
+    one4  reflection
+    many4 [..4]reflection
+    one5  refs
+    many5 [..4]refs
+    one6  refsSeen
+    many6 [..4]refsSeen
+    one7  refusal
+    many7 [..4]refusal
+    one8  refusalName
+    many8 [..4]refusalName
+    one9  refuse
+    many9 [..4]refuse
+}
+
+table NameFields6
+{
+    ref_values uint32
+    ref_xs uint32
+    reference uint32
+    references uint32
+    reflection uint32
+    refs uint32
+    refsSeen uint32
+    refusal uint32
+    refusalName uint32
+    refuse uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    refuseAnnouncement Inner
+    refuseCount Inner
+    refuseDeprecated Inner
+    refuseLayout Inner
+    refuseLoad Inner
+    refuseNonFinite Inner
+    refuseRead Inner
+    refuseShared Inner
+    refuseSharedBlob Inner
+    refuseSharedBlobs Inner
+}
+
+table NameTypes7
+{
+    one0  refuseAnnouncement
+    many0 [..4]refuseAnnouncement
+    one1  refuseCount
+    many1 [..4]refuseCount
+    one2  refuseDeprecated
+    many2 [..4]refuseDeprecated
+    one3  refuseLayout
+    many3 [..4]refuseLayout
+    one4  refuseLoad
+    many4 [..4]refuseLoad
+    one5  refuseNonFinite
+    many5 [..4]refuseNonFinite
+    one6  refuseRead
+    many6 [..4]refuseRead
+    one7  refuseShared
+    many7 [..4]refuseShared
+    one8  refuseSharedBlob
+    many8 [..4]refuseSharedBlob
+    one9  refuseSharedBlobs
+    many9 [..4]refuseSharedBlobs
+}
+
+table NameFields7
+{
+    refuseAnnouncement uint32
+    refuseCount uint32
+    refuseDeprecated uint32
+    refuseLayout uint32
+    refuseLoad uint32
+    refuseNonFinite uint32
+    refuseRead uint32
+    refuseShared uint32
+    refuseSharedBlob uint32
+    refuseSharedBlobs uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

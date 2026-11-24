@@ -1,0 +1,689 @@
+package probe
+
+const MaxItems = 8
+
+enum Kind
+{ Alpha, Beta, Gamma }
+
+type Inner
+{
+    a       float32
+    b       float64
+    c       uint128
+    name    string(32)
+    four    [4]float32
+    counted [..MaxItems]uint16
+    kind    Kind
+}
+
+enum words_bytes
+{ Zfirst, Zsecond, Zthird }
+
+enum words_end
+{ Zfirst, Zsecond, Zthird }
+
+enum words_lo
+{ Zfirst, Zsecond, Zthird }
+
+enum words_n
+{ Zfirst, Zsecond, Zthird }
+
+enum work
+{ Zfirst, Zsecond, Zthird }
+
+enum workSize
+{ Zfirst, Zsecond, Zthird }
+
+enum work_capacity
+{ Zfirst, Zsecond, Zthird }
+
+enum work_count
+{ Zfirst, Zsecond, Zthird }
+
+enum worker
+{ Zfirst, Zsecond, Zthird }
+
+enum would
+{ Zfirst, Zsecond, Zthird }
+
+enum wr
+{ Zfirst, Zsecond, Zthird }
+
+enum wrap
+{ Zfirst, Zsecond, Zthird }
+
+enum wrapped
+{ Zfirst, Zsecond, Zthird }
+
+enum wref
+{ Zfirst, Zsecond, Zthird }
+
+enum writeArray
+{ Zfirst, Zsecond, Zthird }
+
+enum writeArrayBody
+{ Zfirst, Zsecond, Zthird }
+
+enum writeBase64
+{ Zfirst, Zsecond, Zthird }
+
+enum writeBatch
+{ Zfirst, Zsecond, Zthird }
+
+enum writeBitsRaw
+{ Zfirst, Zsecond, Zthird }
+
+enum writeBody
+{ Zfirst, Zsecond, Zthird }
+
+enum writeCommon
+{ Zfirst, Zsecond, Zthird }
+
+enum writeCount
+{ Zfirst, Zsecond, Zthird }
+
+enum writeElement
+{ Zfirst, Zsecond, Zthird }
+
+enum writeF64
+{ Zfirst, Zsecond, Zthird }
+
+enum writeField
+{ Zfirst, Zsecond, Zthird }
+
+enum writeFields
+{ Zfirst, Zsecond, Zthird }
+
+enum writeFixed128
+{ Zfirst, Zsecond, Zthird }
+
+enum writeFixed64
+{ Zfirst, Zsecond, Zthird }
+
+enum writeGroups
+{ Zfirst, Zsecond, Zthird }
+
+enum writeGroups128
+{ Zfirst, Zsecond, Zthird }
+
+enum writeInt
+{ Zfirst, Zsecond, Zthird }
+
+enum writeInt128
+{ Zfirst, Zsecond, Zthird }
+
+enum writeInt64
+{ Zfirst, Zsecond, Zthird }
+
+enum writeInteger
+{ Zfirst, Zsecond, Zthird }
+
+enum writeKeyed
+{ Zfirst, Zsecond, Zthird }
+
+enum writeLeaf
+{ Zfirst, Zsecond, Zthird }
+
+enum writeLength
+{ Zfirst, Zsecond, Zthird }
+
+enum writeMap
+{ Zfirst, Zsecond, Zthird }
+
+enum writeObject
+{ Zfirst, Zsecond, Zthird }
+
+enum writeOne
+{ Zfirst, Zsecond, Zthird }
+
+enum writeOrdinal
+{ Zfirst, Zsecond, Zthird }
+
+enum writePayload
+{ Zfirst, Zsecond, Zthird }
+
+enum writePointer
+{ Zfirst, Zsecond, Zthird }
+
+enum writePrim
+{ Zfirst, Zsecond, Zthird }
+
+enum writeRaw
+{ Zfirst, Zsecond, Zthird }
+
+enum writeRecord
+{ Zfirst, Zsecond, Zthird }
+
+enum writeRef
+{ Zfirst, Zsecond, Zthird }
+
+enum writeReset
+{ Zfirst, Zsecond, Zthird }
+
+enum writeScalar
+{ Zfirst, Zsecond, Zthird }
+
+enum writeString
+{ Zfirst, Zsecond, Zthird }
+
+enum writeStruct
+{ Zfirst, Zsecond, Zthird }
+
+enum writeText
+{ Zfirst, Zsecond, Zthird }
+
+enum writeTextArray
+{ Zfirst, Zsecond, Zthird }
+
+enum writeUint128
+{ Zfirst, Zsecond, Zthird }
+
+enum writeUnion
+{ Zfirst, Zsecond, Zthird }
+
+enum writeValue
+{ Zfirst, Zsecond, Zthird }
+
+enum writeWidth
+{ Zfirst, Zsecond, Zthird }
+
+enum write_absent
+{ Zfirst, Zsecond, Zthird }
+
+enum write_arm_header
+{ Zfirst, Zsecond, Zthird }
+
+enum write_field_value
+{ Zfirst, Zsecond, Zthird }
+
+enum write_float
+{ Zfirst, Zsecond, Zthird }
+
+enum write_json_scalar
+{ Zfirst, Zsecond, Zthird }
+
+enum write_json_table
+{ Zfirst, Zsecond, Zthird }
+
+enum write_keyed_one
+{ Zfirst, Zsecond, Zthird }
+
+enum write_table
+{ Zfirst, Zsecond, Zthird }
+
+enum write_text_list
+{ Zfirst, Zsecond, Zthird }
+
+enum write_timestamp
+{ Zfirst, Zsecond, Zthird }
+
+enum write_union_at
+{ Zfirst, Zsecond, Zthird }
+
+enum writer
+{ Zfirst, Zsecond, Zthird }
+
+enum writerBound
+{ Zfirst, Zsecond, Zthird }
+
+enum writerPack
+{ Zfirst, Zsecond, Zthird }
+
+enum writerSize
+{ Zfirst, Zsecond, Zthird }
+
+enum writes
+{ Zfirst, Zsecond, Zthird }
+
+enum writing
+{ Zfirst, Zsecond, Zthird }
+
+enum written
+{ Zfirst, Zsecond, Zthird }
+
+enum writtenAttribution
+{ Zfirst, Zsecond, Zthird }
+
+enum writtenData
+{ Zfirst, Zsecond, Zthird }
+
+enum wrong
+{ Zfirst, Zsecond, Zthird }
+
+enum wrongKind
+{ Zfirst, Zsecond, Zthird }
+
+enum wrote
+{ Zfirst, Zsecond, Zthird }
+
+union NameArms0
+{
+    words_bytes Inner
+    words_end Inner
+    words_lo Inner
+    words_n Inner
+    work Inner
+    workSize Inner
+    work_capacity Inner
+    work_count Inner
+    worker Inner
+    would Inner
+}
+
+table NameTypes0
+{
+    one0  words_bytes
+    many0 [..4]words_bytes
+    one1  words_end
+    many1 [..4]words_end
+    one2  words_lo
+    many2 [..4]words_lo
+    one3  words_n
+    many3 [..4]words_n
+    one4  work
+    many4 [..4]work
+    one5  workSize
+    many5 [..4]workSize
+    one6  work_capacity
+    many6 [..4]work_capacity
+    one7  work_count
+    many7 [..4]work_count
+    one8  worker
+    many8 [..4]worker
+    one9  would
+    many9 [..4]would
+}
+
+table NameFields0
+{
+    words_bytes uint32
+    words_end uint32
+    words_lo uint32
+    words_n uint32
+    work uint32
+    workSize uint32
+    work_capacity uint32
+    work_count uint32
+    worker uint32
+    would uint32
+    armsOfNames  NameArms0
+    typesOfNames NameTypes0
+}
+
+union NameArms1
+{
+    wr Inner
+    wrap Inner
+    wrapped Inner
+    wref Inner
+    writeArray Inner
+    writeArrayBody Inner
+    writeBase64 Inner
+    writeBatch Inner
+    writeBitsRaw Inner
+    writeBody Inner
+}
+
+table NameTypes1
+{
+    one0  wr
+    many0 [..4]wr
+    one1  wrap
+    many1 [..4]wrap
+    one2  wrapped
+    many2 [..4]wrapped
+    one3  wref
+    many3 [..4]wref
+    one4  writeArray
+    many4 [..4]writeArray
+    one5  writeArrayBody
+    many5 [..4]writeArrayBody
+    one6  writeBase64
+    many6 [..4]writeBase64
+    one7  writeBatch
+    many7 [..4]writeBatch
+    one8  writeBitsRaw
+    many8 [..4]writeBitsRaw
+    one9  writeBody
+    many9 [..4]writeBody
+}
+
+table NameFields1
+{
+    wr uint32
+    wrap uint32
+    wrapped uint32
+    wref uint32
+    writeArray uint32
+    writeArrayBody uint32
+    writeBase64 uint32
+    writeBatch uint32
+    writeBitsRaw uint32
+    writeBody uint32
+    armsOfNames  NameArms1
+    typesOfNames NameTypes1
+}
+
+union NameArms2
+{
+    writeCommon Inner
+    writeCount Inner
+    writeElement Inner
+    writeF64 Inner
+    writeField Inner
+    writeFields Inner
+    writeFixed128 Inner
+    writeFixed64 Inner
+    writeGroups Inner
+    writeGroups128 Inner
+}
+
+table NameTypes2
+{
+    one0  writeCommon
+    many0 [..4]writeCommon
+    one1  writeCount
+    many1 [..4]writeCount
+    one2  writeElement
+    many2 [..4]writeElement
+    one3  writeF64
+    many3 [..4]writeF64
+    one4  writeField
+    many4 [..4]writeField
+    one5  writeFields
+    many5 [..4]writeFields
+    one6  writeFixed128
+    many6 [..4]writeFixed128
+    one7  writeFixed64
+    many7 [..4]writeFixed64
+    one8  writeGroups
+    many8 [..4]writeGroups
+    one9  writeGroups128
+    many9 [..4]writeGroups128
+}
+
+table NameFields2
+{
+    writeCommon uint32
+    writeCount uint32
+    writeElement uint32
+    writeF64 uint32
+    writeField uint32
+    writeFields uint32
+    writeFixed128 uint32
+    writeFixed64 uint32
+    writeGroups uint32
+    writeGroups128 uint32
+    armsOfNames  NameArms2
+    typesOfNames NameTypes2
+}
+
+union NameArms3
+{
+    writeInt Inner
+    writeInt128 Inner
+    writeInt64 Inner
+    writeInteger Inner
+    writeKeyed Inner
+    writeLeaf Inner
+    writeLength Inner
+    writeMap Inner
+    writeObject Inner
+    writeOne Inner
+}
+
+table NameTypes3
+{
+    one0  writeInt
+    many0 [..4]writeInt
+    one1  writeInt128
+    many1 [..4]writeInt128
+    one2  writeInt64
+    many2 [..4]writeInt64
+    one3  writeInteger
+    many3 [..4]writeInteger
+    one4  writeKeyed
+    many4 [..4]writeKeyed
+    one5  writeLeaf
+    many5 [..4]writeLeaf
+    one6  writeLength
+    many6 [..4]writeLength
+    one7  writeMap
+    many7 [..4]writeMap
+    one8  writeObject
+    many8 [..4]writeObject
+    one9  writeOne
+    many9 [..4]writeOne
+}
+
+table NameFields3
+{
+    writeInt uint32
+    writeInt128 uint32
+    writeInt64 uint32
+    writeInteger uint32
+    writeKeyed uint32
+    writeLeaf uint32
+    writeLength uint32
+    writeMap uint32
+    writeObject uint32
+    writeOne uint32
+    armsOfNames  NameArms3
+    typesOfNames NameTypes3
+}
+
+union NameArms4
+{
+    writeOrdinal Inner
+    writePayload Inner
+    writePointer Inner
+    writePrim Inner
+    writeRaw Inner
+    writeRecord Inner
+    writeRef Inner
+    writeReset Inner
+    writeScalar Inner
+    writeString Inner
+}
+
+table NameTypes4
+{
+    one0  writeOrdinal
+    many0 [..4]writeOrdinal
+    one1  writePayload
+    many1 [..4]writePayload
+    one2  writePointer
+    many2 [..4]writePointer
+    one3  writePrim
+    many3 [..4]writePrim
+    one4  writeRaw
+    many4 [..4]writeRaw
+    one5  writeRecord
+    many5 [..4]writeRecord
+    one6  writeRef
+    many6 [..4]writeRef
+    one7  writeReset
+    many7 [..4]writeReset
+    one8  writeScalar
+    many8 [..4]writeScalar
+    one9  writeString
+    many9 [..4]writeString
+}
+
+table NameFields4
+{
+    writeOrdinal uint32
+    writePayload uint32
+    writePointer uint32
+    writePrim uint32
+    writeRaw uint32
+    writeRecord uint32
+    writeRef uint32
+    writeReset uint32
+    writeScalar uint32
+    writeString uint32
+    armsOfNames  NameArms4
+    typesOfNames NameTypes4
+}
+
+union NameArms5
+{
+    writeStruct Inner
+    writeText Inner
+    writeTextArray Inner
+    writeUint128 Inner
+    writeUnion Inner
+    writeValue Inner
+    writeWidth Inner
+    write_absent Inner
+    write_arm_header Inner
+    write_field_value Inner
+}
+
+table NameTypes5
+{
+    one0  writeStruct
+    many0 [..4]writeStruct
+    one1  writeText
+    many1 [..4]writeText
+    one2  writeTextArray
+    many2 [..4]writeTextArray
+    one3  writeUint128
+    many3 [..4]writeUint128
+    one4  writeUnion
+    many4 [..4]writeUnion
+    one5  writeValue
+    many5 [..4]writeValue
+    one6  writeWidth
+    many6 [..4]writeWidth
+    one7  write_absent
+    many7 [..4]write_absent
+    one8  write_arm_header
+    many8 [..4]write_arm_header
+    one9  write_field_value
+    many9 [..4]write_field_value
+}
+
+table NameFields5
+{
+    writeStruct uint32
+    writeText uint32
+    writeTextArray uint32
+    writeUint128 uint32
+    writeUnion uint32
+    writeValue uint32
+    writeWidth uint32
+    write_absent uint32
+    write_arm_header uint32
+    write_field_value uint32
+    armsOfNames  NameArms5
+    typesOfNames NameTypes5
+}
+
+union NameArms6
+{
+    write_float Inner
+    write_json_scalar Inner
+    write_json_table Inner
+    write_keyed_one Inner
+    write_table Inner
+    write_text_list Inner
+    write_timestamp Inner
+    write_union_at Inner
+    writer Inner
+    writerBound Inner
+}
+
+table NameTypes6
+{
+    one0  write_float
+    many0 [..4]write_float
+    one1  write_json_scalar
+    many1 [..4]write_json_scalar
+    one2  write_json_table
+    many2 [..4]write_json_table
+    one3  write_keyed_one
+    many3 [..4]write_keyed_one
+    one4  write_table
+    many4 [..4]write_table
+    one5  write_text_list
+    many5 [..4]write_text_list
+    one6  write_timestamp
+    many6 [..4]write_timestamp
+    one7  write_union_at
+    many7 [..4]write_union_at
+    one8  writer
+    many8 [..4]writer
+    one9  writerBound
+    many9 [..4]writerBound
+}
+
+table NameFields6
+{
+    write_float uint32
+    write_json_scalar uint32
+    write_json_table uint32
+    write_keyed_one uint32
+    write_table uint32
+    write_text_list uint32
+    write_timestamp uint32
+    write_union_at uint32
+    writer uint32
+    writerBound uint32
+    armsOfNames  NameArms6
+    typesOfNames NameTypes6
+}
+
+union NameArms7
+{
+    writerPack Inner
+    writerSize Inner
+    writes Inner
+    writing Inner
+    written Inner
+    writtenAttribution Inner
+    writtenData Inner
+    wrong Inner
+    wrongKind Inner
+    wrote Inner
+}
+
+table NameTypes7
+{
+    one0  writerPack
+    many0 [..4]writerPack
+    one1  writerSize
+    many1 [..4]writerSize
+    one2  writes
+    many2 [..4]writes
+    one3  writing
+    many3 [..4]writing
+    one4  written
+    many4 [..4]written
+    one5  writtenAttribution
+    many5 [..4]writtenAttribution
+    one6  writtenData
+    many6 [..4]writtenData
+    one7  wrong
+    many7 [..4]wrong
+    one8  wrongKind
+    many8 [..4]wrongKind
+    one9  wrote
+    many9 [..4]wrote
+}
+
+table NameFields7
+{
+    writerPack uint32
+    writerSize uint32
+    writes uint32
+    writing uint32
+    written uint32
+    writtenAttribution uint32
+    writtenData uint32
+    wrong uint32
+    wrongKind uint32
+    wrote uint32
+    armsOfNames  NameArms7
+    typesOfNames NameTypes7
+}

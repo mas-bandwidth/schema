@@ -60,6 +60,15 @@ fn apply(v: packetrefusal::PacketWriteRefusal&, op: const u8[:], arg: const u8[:
     if op == "huge" {
         return set_huge(v, arg);
     }
+    if op == "ufx" {
+        // ufixed(32, 32) storage is the raw value as a u64: parse it as an int128
+        // through set_huge and keep the low lane, leaving Huge as it was
+        let held = v.Huge;
+        if !set_huge(v, arg) || v.Huge.hi != 0 { return false; }
+        v.Ufx = v.Huge.lo;
+        v.Huge = held;
+        return true;
+    }
     let n, ok = parse_int(arg);
     if !ok { return false; }
     if op == "scalar" {

@@ -4072,6 +4072,9 @@ namespace Bench
                 }
                 public bool Visit(object value, TableTypeInfo type)
                 {
+                    // a null record, list element or arm payload is a value of the
+                    // wrong kind (DW-TABLE-SHAPE): a debug assert (docs/SPEC.md §5.1)
+                    System.Diagnostics.Debug.Assert(value != null, "a null record is written");
                     foreach (TableFieldInfo f in type.Fields)
                     { if (Rides(value, f) && !VisitField(value, f)) { return false; } }
                     return true;
@@ -4087,7 +4090,9 @@ namespace Bench
                         if (f.Kind == 13) { if (!Visit(f.GetChild(value, i), f.Table)) { return false; } }
                         else if (f.Kind == 15)
                         {
-                            object union = f.GetChild(value, i); ulong tag = f.Arms.GetTag(union);
+                            object union = f.GetChild(value, i);
+                            System.Diagnostics.Debug.Assert(union != null, "a null union is written");
+                            ulong tag = f.Arms.GetTag(union);
                             // a tag naming no arm is the programmer's error: a debug assert (docs/SPEC.md §5.1)
                             System.Diagnostics.Debug.Assert(tag <= (ulong)f.EnumMax);
                             if (tag != 0 && !VisitField(union, f.Arms.Arms[(int)tag].Field)) { return false; }
@@ -5610,6 +5615,9 @@ namespace Bench
             }
             static bool Empty(object value, TableTypeInfo type)
             {
+                // a null record is never "at its default": it is a value of the wrong
+                // kind (DW-TABLE-SHAPE), a debug assert (docs/SPEC.md §5.1)
+                System.Diagnostics.Debug.Assert(value != null, "a null record is written");
                 foreach (TableFieldInfo f in type.Fields) { if (Rides(value, f)) { return false; } }
                 return true;
             }
@@ -5704,6 +5712,9 @@ namespace Bench
             }
             static bool Collect(object value, TableTypeInfo type, ref Ids ids)
             {
+                // a null record, list element or arm payload is a value of the wrong
+                // kind (DW-TABLE-SHAPE): a debug assert (docs/SPEC.md §5.1)
+                System.Diagnostics.Debug.Assert(value != null, "a null record is written");
                 foreach (TableFieldInfo f in type.Fields)
                 {
                     if (f.WireGuard != null && !f.WireGuard(value)) { continue; }
@@ -5967,6 +5978,9 @@ namespace Bench
             }
             public static long Save(object value, TableTypeInfo type, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
             {
+                // a null root is a value of the wrong kind (DW-TABLE-SHAPE): a debug
+                // assert (docs/SPEC.md §5.1)
+                System.Diagnostics.Debug.Assert(value != null, "a null root is written");
                 // Preserve first-use vocabulary order; the index only accelerates
                 // references during the repeated collect, measure and write walks.
                 // Bound extra stack use for large schemas; their existing linear
@@ -8295,6 +8309,7 @@ namespace Bench
 
         public static bool MixedEntityCollectTyped(MixedEntity v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null MixedEntity is written");
             TableFieldInfo[] fields = MixedEntityTableType().Fields;
             if (v.EntityId != 0 && !ids.Add(0x23fcfd6678e36712ul)) return false;
             if (v.PosX != 0 && !ids.Add(0xcb4b37357667310eul)) return false;
@@ -8472,6 +8487,7 @@ namespace Bench
 
         public static bool MixedStatCollectTyped(MixedStat v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null MixedStat is written");
             if (v.StatId != 0 && !ids.Add(0x80ab75f0866dbf65ul)) return false;
             if (v.Delta != 0 && !ids.Add(0x52076675ec13a0c1ul)) return false;
             return true;
@@ -8572,6 +8588,7 @@ namespace Bench
 
         public static bool MixedHitEventCollectTyped(MixedHitEvent v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null MixedHitEvent is written");
             if (v.TargetId != 0 && !ids.Add(0xb7bc9ac015a25050ul)) return false;
             if (v.Damage != 0 && !ids.Add(0x7f6308be8ab37fc0ul)) return false;
             if (v.HitKind != 0 && !ids.Add(0x01fbc365b059b925ul)) return false;
@@ -8684,6 +8701,7 @@ namespace Bench
 
         public static bool MixedChatEventCollectTyped(MixedChatEvent v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null MixedChatEvent is written");
             if (v.Channel != 0 && !ids.Add(0xa5013e9ad5caeda4ul)) return false;
             if (v.Speaker != 0 && !ids.Add(0xfbf1ac4d96ebd022ul)) return false;
             return true;
@@ -8782,6 +8800,7 @@ namespace Bench
 
         public static bool MixedPickupEventCollectTyped(MixedPickupEvent v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null MixedPickupEvent is written");
             if (v.ItemId != 0 && !ids.Add(0x9e7fd06d864fbd56ul)) return false;
             if (v.Amount != 0 && !ids.Add(0x8113fe7ea2b16969ul)) return false;
             return true;
@@ -8915,6 +8934,7 @@ namespace Bench
 
         public static bool BenchMixedCollectTyped(BenchMixed v, ref TableWire.Ids ids)
         {
+            System.Diagnostics.Debug.Assert((object)v != null, "a null BenchMixed is written");
             TableFieldInfo[] fields = BenchMixedTableType().Fields;
             if (v.Sequence != 0 && !ids.Add(0xaa38aca481f528a8ul)) return false;
             if (v.AckSequence != 0 && !ids.Add(0x0dbe005c56697c3eul)) return false;
@@ -9615,6 +9635,7 @@ namespace Bench
         // which is also what zero-fills every byte of declared slack.
         public static void MixedEntityFixedWriteBody(Span<byte> b, MixedEntity value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null MixedEntity is written");
             if (value == null) return;
             BinaryPrimitives.WriteUInt32LittleEndian(b, (uint)value.EntityId);
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(4), (int)value.PosX);
@@ -9636,6 +9657,7 @@ namespace Bench
         // which is also what zero-fills every byte of declared slack.
         public static void MixedStatFixedWriteBody(Span<byte> b, MixedStat value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null MixedStat is written");
             if (value == null) return;
             BinaryPrimitives.WriteUInt32LittleEndian(b, (uint)value.StatId);
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(4), (int)value.Delta);
@@ -9645,6 +9667,7 @@ namespace Bench
         // which is also what zero-fills every byte of declared slack.
         public static void MixedHitEventFixedWriteBody(Span<byte> b, MixedHitEvent value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null MixedHitEvent is written");
             if (value == null) return;
             BinaryPrimitives.WriteUInt32LittleEndian(b, (uint)value.TargetId);
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(4), (int)value.Damage);
@@ -9656,6 +9679,7 @@ namespace Bench
         // which is also what zero-fills every byte of declared slack.
         public static void MixedChatEventFixedWriteBody(Span<byte> b, MixedChatEvent value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null MixedChatEvent is written");
             if (value == null) return;
             BinaryPrimitives.WriteInt32LittleEndian(b, (int)value.Channel);
             BinaryPrimitives.WriteUInt32LittleEndian(b.Slice(4), (uint)value.Speaker);
@@ -9665,6 +9689,7 @@ namespace Bench
         // which is also what zero-fills every byte of declared slack.
         public static void MixedPickupEventFixedWriteBody(Span<byte> b, MixedPickupEvent value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null MixedPickupEvent is written");
             if (value == null) return;
             BinaryPrimitives.WriteUInt32LittleEndian(b, (uint)value.ItemId);
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(4), (int)value.Amount);
@@ -9674,6 +9699,7 @@ namespace Bench
         // which is also what zero-fills every byte of declared slack.
         public static void BenchMixedFixedWriteBody(Span<byte> b, BenchMixed value)
         {
+            System.Diagnostics.Debug.Assert(value != null, "a null BenchMixed is written");
             if (value == null) return;
             BinaryPrimitives.WriteUInt32LittleEndian(b, (uint)value.Sequence);
             BinaryPrimitives.WriteInt32LittleEndian(b.Slice(4), (int)value.AckSequence);

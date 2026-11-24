@@ -4198,6 +4198,9 @@ namespace Blockdemo
                 }
                 public bool Visit(object value, TableTypeInfo type)
                 {
+                    // a null record, list element or arm payload is a value of the
+                    // wrong kind (DW-TABLE-SHAPE): a debug assert (docs/SPEC.md §5.1)
+                    System.Diagnostics.Debug.Assert(value != null, "a null record is written");
                     foreach (TableFieldInfo f in type.Fields)
                     { if (Rides(value, f) && !VisitField(value, f)) { return false; } }
                     return true;
@@ -4213,7 +4216,9 @@ namespace Blockdemo
                         if (f.Kind == 13) { if (!Visit(f.GetChild(value, i), f.Table)) { return false; } }
                         else if (f.Kind == 15)
                         {
-                            object union = f.GetChild(value, i); ulong tag = f.Arms.GetTag(union);
+                            object union = f.GetChild(value, i);
+                            System.Diagnostics.Debug.Assert(union != null, "a null union is written");
+                            ulong tag = f.Arms.GetTag(union);
                             // a tag naming no arm is the programmer's error: a debug assert (docs/SPEC.md §5.1)
                             System.Diagnostics.Debug.Assert(tag <= (ulong)f.EnumMax);
                             if (tag != 0 && !VisitField(union, f.Arms.Arms[(int)tag].Field)) { return false; }
@@ -5736,6 +5741,9 @@ namespace Blockdemo
             }
             static bool Empty(object value, TableTypeInfo type)
             {
+                // a null record is never "at its default": it is a value of the wrong
+                // kind (DW-TABLE-SHAPE), a debug assert (docs/SPEC.md §5.1)
+                System.Diagnostics.Debug.Assert(value != null, "a null record is written");
                 foreach (TableFieldInfo f in type.Fields) { if (Rides(value, f)) { return false; } }
                 return true;
             }
@@ -5830,6 +5838,9 @@ namespace Blockdemo
             }
             static bool Collect(object value, TableTypeInfo type, ref Ids ids)
             {
+                // a null record, list element or arm payload is a value of the wrong
+                // kind (DW-TABLE-SHAPE): a debug assert (docs/SPEC.md §5.1)
+                System.Diagnostics.Debug.Assert(value != null, "a null record is written");
                 foreach (TableFieldInfo f in type.Fields)
                 {
                     if (f.WireGuard != null && !f.WireGuard(value)) { continue; }
@@ -6093,6 +6104,9 @@ namespace Blockdemo
             }
             public static long Save(object value, TableTypeInfo type, Span<byte> buffer, Span<ulong> vocabulary, bool measure)
             {
+                // a null root is a value of the wrong kind (DW-TABLE-SHAPE): a debug
+                // assert (docs/SPEC.md §5.1)
+                System.Diagnostics.Debug.Assert(value != null, "a null root is written");
                 // Preserve first-use vocabulary order; the index only accelerates
                 // references during the repeated collect, measure and write walks.
                 // Bound extra stack use for large schemas; their existing linear

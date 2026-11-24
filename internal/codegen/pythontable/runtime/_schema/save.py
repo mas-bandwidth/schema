@@ -175,10 +175,17 @@ def measure_table(value: Any) -> int:
 
 def _check_root(value: Any) -> None:
     """Refuse a root that is not exactly a generated class: a subclass could
-    carry another descriptor or __eq__, and neither may change the bytes."""
-    cls = descriptor.by_name(value.descriptor.name)
+    carry another descriptor or __eq__, and neither may change the bytes. A
+    value of no generated class at all (None, a number, a string, a dict) is
+    refused the same way, never answered with an AttributeError
+    (DW-TABLE-SHAPE)."""
+    desc = getattr(type(value), "descriptor", None)
+    name = getattr(desc, "name", None)
+    if not isinstance(name, str):
+        raise InvalidValue("", f"not a generated table: {type(value).__name__}")
+    cls = descriptor.by_name(name)
     if cls is None or type(value) is not cls:
-        raise InvalidValue("", f"not a {value.descriptor.name}")
+        raise InvalidValue("", f"not a {name}")
 
 
 def _encode(value: Any, writer: Writer) -> int:
