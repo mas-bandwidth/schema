@@ -14,6 +14,10 @@
 // refuses at generate is a defect, and the checker runs the emitters' name
 // rules so it refuses such a name itself.
 //
+// A builds row a target cannot build yet is written in owed.txt beside
+// cases.tsv, with its true cause (owed.go): the nightly counts that job owed,
+// and fails on any other failure and on any ledgered job that passes.
+//
 // TestNameBuildability is the nightly: under SCHEMA_SLOW=1 it builds the
 // compiler, generates every builds row in every
 // target, and builds and loads each output, every child through
