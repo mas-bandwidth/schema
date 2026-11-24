@@ -1025,7 +1025,9 @@ function F.load(T, name, buf, strict, cap, report, into)
       if into[i] == nil then into[i] = new() end
       D.copy_into(into[i], out[i])
     end
-    for i = n + 1, #into do into[i] = nil end
+    for i = n + 1, #into do
+      into[i] = nil
+    end
     return into, h, l, w, u
   end
   return out, h, l, w, u
