@@ -9,6 +9,12 @@
 
 #include "BitPhaseWire.h"
 
+// the last index of the compressed-float decode case; the harness defines it
+// (main.go, from cfdecode.go's cfDecodeSteps)
+#ifndef CFDECODE_STEPS
+#error "CFDECODE_STEPS is the harness's: build oracle.cpp through verify-bitphase"
+#endif
+
 using namespace bitphase;
 
 static void die( const char * msg )
@@ -383,6 +389,20 @@ static void verify_corpus( const std::string & dir )
         count++;
     }
     if ( count != 66 ) die( "unexpected manifest count" );
+    // the compressed-float decode case (cfdecode.go): every index, one line each
+    CfDecode cf{};
+    for ( int i = 0; i <= CFDECODE_STEPS; i++ )
+    {
+        uint8_t cbuf[32] = {};
+        cbuf[0] = static_cast<uint8_t>( i & 0xff );
+        cbuf[1] = static_cast<uint8_t>( i >> 8 );
+        serialize::ReadStream crs( cbuf, 2 );
+        if ( !ReadCfDecode( crs, cf ) ) die( ( "cfdecode read " + std::to_string( i ) ).c_str() );
+        double d = cf.c;
+        uint64_t u;
+        std::memcpy( &u, &d, 8 );
+        std::printf( "CFDECODE cpp %d %016llx\n", i, static_cast<unsigned long long>( u ) );
+    }
     std::printf( "BITPHASE_OK cpp %d\n", count );
 }
 

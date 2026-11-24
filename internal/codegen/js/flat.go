@@ -56,6 +56,7 @@ import (
 	"math/big"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/mas-bandwidth/schema/v2/internal/codegen/genheader"
@@ -1120,10 +1121,19 @@ func (g *fgen) emitWriteF32(name, ind string) {
 	g.mergeW(32, ind)
 }
 
-// f32lit renders the float32 rounding of v as a JS literal (exact as a
-// double — f32 is a subset of f64).
+// f32lit renders the float32 rounding of v as a JS literal whose double IS
+// that float32 (f32 is a subset of f64): the shortest decimal of the float64
+// value. The float32's own shortest decimal is not that: "-3.3" names
+// float32(-3.3) only to a float32 parser, and a double parses it to the double
+// -3.3, so the folded decode added the declaration's min and not its float32
+// and read 2,535 of the 11,001 steps of [-3.3, 7.7] @ 0.001 one bit off
+// (SPEC §4.6, "The decode is normative"; test/verify-bitphase cfdecode.go).
 func f32lit(v float64) string {
-	return formatFloat32(float64(float32(v)))
+	s := strconv.FormatFloat(float64(float32(v)), 'g', -1, 64)
+	if !strings.ContainsAny(s, ".eE") {
+		s += ".0"
+	}
+	return s
 }
 
 // emitWriteCompressedFloat is the runtime's two-rounding float32

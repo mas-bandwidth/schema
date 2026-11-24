@@ -810,3 +810,30 @@ raises a named error unconditionally before it touches the report, owes
 | SPEC-TABLES §6.5: the plain region `Load` zeroes a supplied report in full | `ri_region` | red before its fix on C# (`NativeLoadRegion` cleared three fields and restored `Damaged`), Lua (kept the count refusal, the out-of-range field and the retain counters), Luau and Squirrel (kept the retain counters; Squirrel also the shared-blob count). Green with no fix: C, C++, Go, Java, Dart, JavaScript, Rust, Python, Ruby, C# (unity), Elixir, Lobster, Goose, moo |
 | SPEC-TABLES §6.5, §6.6: a fixed-root `LoadRetain` refuses through a report it zeroed first | `ri_retain_fixed` | red before its fix on Goose and moo (refused, every other field kept), Elixir (handed back the caller's report), Squirrel (kept the shared-blob count) and Luau (READ the fixed root instead of refusing it, §6.6). `refused` then `zeroed` with no fix: Java, JavaScript, Rust, Lobster. `unrepresentable` (compile-time, or an unconditional named raise): C, C++, C# (modern and unity), Go, Dart, Python, Ruby, Lua |
 | SPEC-TABLES §6.5: `LoadRetain` of an UNKNOWN root name zeroes a supplied report before it answers nil (the fixed-root refusal alone comes first, §6.6) | Lua unit test `TestLuaLoadRetainUnknownRootZeroesReport` (no shared case: a root name the unit lacks is not a wire case) | red before its fix on Lua (the unknown-root `return nil` came before the zeroing, so the old report survived untouched). Not checked on the other legs |
+
+### The compressed-float decode adds min as a float32
+
+[`CfDecode`](../test/verify-bitphase/BitPhase.schema) declares
+`c float32 | min = -3.3, max = 7.7, resolution = 0.001`: 11,000 steps in 14
+bits. Its min is not a float32. SPEC.md §4.6's normative decode,
+`q := f32(index) / f32(count)`, `p := q * delta`, `x := p + min`, adds
+`float32(-3.3)`, which is `-3.299999952316284`. A reader that adds the double
+`-3.3` instead reads 2,535 of the 11,001 indices one bit off, index 2 first:
+float32 `0xc053126f` where the decode gives `0xc053126e`.
+
+Every leg of `make verify-bitphase-<lang>` reads `CfDecode` at every index,
+from the two bytes `[i & 0xff, i >> 8]`, on every tier it carries (JavaScript
+on both its stream and its flat tier; Rust in its debug and its release
+build), and prints `CFDECODE <tier> <index> <bits>`, where `<bits>` is 16 hex
+digits of the value's float64 bits or, for moo, which holds a float32 as its
+binary32 pattern, 8 hex digits of that pattern. The harness
+([`cfdecode.go`](../test/verify-bitphase/cfdecode.go)) computes the decode in
+float32 itself and holds every answer to it bit for bit. A tier that leaves an
+index unanswered, answers one twice or out of range, or prints a line outside
+that grammar fails by name. `verify-bitphase-negative-control` plants the
+defect back in the JavaScript flat tier and owes exactly the 2,535-index
+failure on that tier, with the stream tier still green.
+
+| rule | case | the leg it was red on before its fix |
+|---|---|---|
+| SPEC §4.6: the decode is float32 throughout, and min is the declaration's float32 | `CfDecode`, `verify-bitphase-<lang>` | red before its fix on JavaScript (flat tier; the stream tier's runtime frounds its parameters), Dart and Elixir: each generator folded min, and its other float32 literals, as the float32's shortest decimal (`-3.3`), which the language reads as a different double. All three read the same 2,535 indices off. Green with no fix: C, C++, C# (modern and unity), Go, Rust (debug and release), Java, Python, Ruby, Lua, Luau, Squirrel, moo, Goose, Lobster |
