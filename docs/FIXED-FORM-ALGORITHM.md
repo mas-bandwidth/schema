@@ -1340,7 +1340,7 @@ lineage is oldest first with the reader's own layout LAST and `schema check` hol
 declaration, so every entry a build holds is the reader's own or older (a `retired` mark is older too, and is
 `layout_unsupported`); a hash outside it has no position in it; and the wire carries a hash and no ordinal. So
 every step-5 miss is `layout_unknown`, in every leg, with no variation (decided 2026-11-03); `layout_newer`
-keeps its ordinal and no read answers it.
+keeps its ordinal and no read answers it. **JavaScript, 2026-11-24:** the generated load answered `TableFixedRefusal.LayoutNewer` at step 5 until this date; it now answers `TableFixedRefusal.LayoutUnknown` (`"layout_unknown"`) with `layoutHash` the file's hash and nothing else, `LayoutUnknown` appended so no ordinal moves and `LayoutNewer` kept and never emitted (held by `test/conformance/js/rows/R15.mjs`; SPEC-CONFORMANCE.md §7).
 
 **`layout_unsupported` fills `layout_hash` too** — both live layout refusals report the file's hash, and what
 belongs to `layout_unknown` alone is "and nothing else" (§5.9 #7). **The field is called `layout_hash`** and it is the

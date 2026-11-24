@@ -329,7 +329,7 @@ globalThis.Object.freeze(FixedTableFixedKnown);
 // THE FLOOR is one number and the lineage is one array, so "retired" is an
 // index cut and the operator's two answers stay distinct: below it a layout
 // this build once served is layout_unsupported (upgrade the client), outside
-// the lineage is layout_newer (ship the reader).
+// the lineage is layout_unknown (§5.3 step 5).
 export const FixedTableFixedFloor = 0;
 
 // ONE PLAN PER LINEAGE ENTRY, laid down from THE LOCK'S bytes at module
@@ -431,7 +431,7 @@ function FixedTableFixedLoadWalk(values, capacity, bytes, byteLength, plan, repo
   const hashHi = ((bytes[TableFixedHashAt + 4] | (bytes[TableFixedHashAt + 5] << 8) |
                   (bytes[TableFixedHashAt + 6] << 16) | (bytes[TableFixedHashAt + 7] << 24)) >>> 0);
   const pick = TableFixedSelect(FixedTableFixedKnown, hashLo, hashHi);
-  if (pick < 0) { return TableFixedRefuseHash(report, TableFixedRefusal.LayoutNewer, hashLo, hashHi); }
+  if (pick < 0) { return TableFixedRefuseHash(report, TableFixedRefusal.LayoutUnknown, hashLo, hashHi); }
   if (pick < FixedTableFixedFloor) { return TableFixedRefuseHash(report, TableFixedRefusal.LayoutUnsupported, hashLo, hashHi); }
   const known = FixedTableFixedKnown[pick];
   if (layoutBytes !== known.layoutBytes) { report.refused = TableFixedRefusal.LayoutMalformed; return -1; }
