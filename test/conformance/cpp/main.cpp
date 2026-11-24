@@ -1280,6 +1280,107 @@ static int surface_retain_save( const std::string & out )
     return 0;
 }
 
+
+// THE RETAIN-REFUSAL SURFACE (test/conformance/README.md): ONE retention store
+// through LoadRetain of the first wire, SaveRetain, LoadRetain of the refused
+// wire into the same store (a region of its own, so the first value stays
+// whole; the first's size where LoadMeasure refuses the wire), and SaveRetain
+// of the first value again. The verdicts and what the second save did go in
+// <case>, the first save in <case>.before, the second in <case>.wire.
+struct RetainSequence
+{
+    bool first_read = false;
+    bool second_refused = false;
+    bool second_saved = false;
+    std::vector<uint8_t> before;
+    std::vector<uint8_t> after;
+};
+
+struct RetainSequenceCodec
+{
+    const char * unit;
+    const char * root;
+    bool ( *run )( const std::vector<uint8_t> & first, const std::vector<uint8_t> & second, RetainSequence & answer );
+};
+
+#define RETAINSEQUENCE( unit_key, ns, type )                                                    \
+    {                                                                                           \
+        unit_key, #type,                                                                        \
+        []( const std::vector<uint8_t> & first, const std::vector<uint8_t> & second,            \
+            RetainSequence & answer ) {                                                         \
+            std::vector<uint8_t> bytes( (size_t) kRetainRoomy, 0 );                             \
+            std::vector<ns::TableRetain::Id> ids( (size_t) ( kRetainRoomy / 8 ) );              \
+            ns::TableRetain retain;                                                             \
+            retain.bytes = bytes.data();                                                        \
+            retain.capacity = kRetainRoomy;                                                     \
+            retain.ids = ids.data();                                                            \
+            retain.id_capacity = (int32_t) ids.size();                                          \
+            int64_t need = ns::type##LoadMeasure( first.data(), (int64_t) first.size() );       \
+            if ( need < 0 ) return true;                                                        \
+            std::vector<uint8_t> region( (size_t) ( need ? need : 1 ), 0 );                    \
+            ns::TableReport load;                                                               \
+            const ns::type * root = ns::type##LoadRetain( region.data(), need, first.data(), (int64_t) first.size(), &retain, &load ); \
+            if ( root == NULL ) return true;                                                    \
+            answer.first_read = true;                                                           \
+            int64_t size = ns::type##MeasureRetain( root, &retain );                            \
+            if ( size < 0 ) return false;                                                       \
+            answer.before.assign( (size_t) size, 0 );                                           \
+            ns::TableReport save;                                                               \
+            if ( ns::type##SaveRetain( root, &retain, answer.before.data(), size, &save ) != size ) return false; \
+            int64_t other_need = ns::type##LoadMeasure( second.data(), (int64_t) second.size() ); \
+            if ( other_need < 0 ) other_need = need;                                            \
+            std::vector<uint8_t> other( (size_t) ( other_need ? other_need : 1 ), 0 );          \
+            ns::TableReport refused;                                                            \
+            answer.second_refused = ns::type##LoadRetain( other.data(), other_need, second.data(), (int64_t) second.size(), &retain, &refused ) == NULL || refused.refused || refused.damaged; \
+            size = ns::type##MeasureRetain( root, &retain );                                    \
+            if ( size < 0 ) return true;                                                        \
+            answer.after.assign( (size_t) size, 0 );                                            \
+            ns::TableReport again;                                                              \
+            answer.second_saved = ns::type##SaveRetain( root, &retain, answer.after.data(), size, &again ) == size; \
+            return true;                                                                        \
+        }                                                                                       \
+    }
+
+static const RetainSequenceCodec retain_sequence_codecs[] = {
+    RETAINSEQUENCE( "tblrt1", tblrt1, Node ),
+    RETAINSEQUENCE( "tblvarevo1", tblvarevo1, EvoDoc ),
+};
+
+static int surface_retain_refusal( const std::string & out )
+{
+    for ( size_t i = 0; i < manifest_lines.size(); i++ )
+    {
+        const std::vector<std::string> & f = manifest_lines[i].field;
+        if ( f[0] != "retain-refusal" ) continue;
+        const RetainSequenceCodec * codec = NULL;
+        for ( size_t c = 0; c < sizeof( retain_sequence_codecs ) / sizeof( retain_sequence_codecs[0] ); c++ )
+        {
+            if ( f[2] == retain_sequence_codecs[c].unit && f[3] == retain_sequence_codecs[c].root ) codec = &retain_sequence_codecs[c];
+        }
+        if ( codec == NULL ) { fprintf( stderr, "driver: no retain codec for %s.%s\n", f[2].c_str(), f[3].c_str() ); return 1; }
+        std::vector<uint8_t> first, second;
+        if ( !slurp( f[4].c_str(), first ) || !slurp( f[5].c_str(), second ) ) { fprintf( stderr, "driver: cannot read %s or %s\n", f[4].c_str(), f[5].c_str() ); return 1; }
+        RetainSequence answer;
+        if ( !codec->run( first, second, answer ) ) { fprintf( stderr, "retain-refusal %s failed\n", f[1].c_str() ); return 1; }
+        std::string text = "refused\n";
+        if ( answer.first_read )
+        {
+            if ( !spill( out, f[1] + ".before", answer.before.data(), answer.before.size() ) ) return 1;
+            text = std::string( "read\n" ) + ( answer.second_refused ? "refused\n" : "read\n" );
+            if ( answer.second_saved )
+            {
+                if ( !spill( out, f[1] + ".wire", answer.after.data(), answer.after.size() ) ) return 1;
+                text += "saved\n";
+            }
+            else
+            {
+                text += "save-refused\n";
+            }
+        }
+        if ( !spill( out, f[1], text.data(), text.size() ) ) return 1;
+    }
+    return 0;
+}
 // The §16 text of a by-value codec's value: the value half of a `report` and
 // `json-hostile` answer (test/conformance/README.md).
 static bool codec_text( const Codec * codec, void * value, std::vector<char> & text )
@@ -3473,7 +3574,7 @@ int main( int argc, char ** argv )
     const std::string surface = argv[2];
     if ( surface == "list" )
     {
-        printf( "wire\nmessage\nmessage-prior\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\ncook-write\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n"
+        printf( "wire\nmessage\nmessage-prior\nreport\nframing\nretain\nretain-save\nretain-refusal\njson-read\njson-write\njson-hostile\ncook-write\nblock\nblock-foreign\nblock-dump\nforgery\nblock-reason\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\n"
                 "write-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\n" );
         // the opt-in units this leg answers (MANIFEST.txt `opt-in`)
         printf( "unit shapes\n" );
@@ -3493,6 +3594,7 @@ int main( int argc, char ** argv )
     if ( surface == "framing" ) return surface_framing( out );
     if ( surface == "retain" ) return surface_retain( out );
     if ( surface == "retain-save" ) return surface_retain_save( out );
+    if ( surface == "retain-refusal" ) return surface_retain_refusal( out );
     if ( surface == "json-read" ) return surface_json_read( out );
     if ( surface == "json-write" ) return surface_json_write( out ) || surface_json_write_refusal( out );
     if ( surface == "json-text" ) return surface_json_text( out );

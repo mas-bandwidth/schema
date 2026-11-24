@@ -29,6 +29,8 @@
 //   retain       load with retention (§6.6), print the verdict and the
 //                complete known §16 value
 //   retain-save  the bytes that retaining save writes back
+//   retain-refusal  one store through a read, a save, a refused read and a
+//                second save: the verdicts, then the two saves
 // The message form, form 2 (docs/SPEC-TABLES.md §3.3):
 //   message      AnnounceRead the connection's announcement, LoadMessages the
 //                batch against it, SaveMessages what landed: the bytes
@@ -393,6 +395,63 @@ fn surface_retain(lines: const u8[:][:], unit: const u8[:], saved: bool) {
     }
 }
 
+
+// surface_retain_refusal: RETAIN-REFUSAL (test/conformance/README.md). ONE
+// roomy store through load_table_retain of the first wire, save_table_retain,
+// load_table_retain of the refused wire into the same store (its own data,
+// values and nodes, so the first value stays whole), and save_table_retain of
+// the first value again. The verdicts and what the second save did go in
+// <case>, the first save in <case>.before, the second in <case>.wire.
+fn surface_retain_refusal(lines: const u8[:][:], unit: const u8[:]) {
+    for line in lines {
+        let f = words(line);
+        // retain-refusal <case> <unit> <root> <first wire> <refused wire>
+        if f.len < 6 || f[0] != "retain-refusal" || f[2] != unit { continue; }
+        var data: u8[>..] = [];
+        load_file(f[4], data);
+        var vals: schema_rt::LoadVal[>..] = [];
+        var nodes: schema_rt::LoadNode[>..] = [];
+        var report = schema_rt::LoadReport { .. };
+        var rbytes: u8[>..<] = [];
+        var rrecs: schema_rt::RetainRec[>..<] = [];
+        var rids: u64[>..<] = [];
+        var store = schema_rt::RetainStore { capacity: 1048576, id_capacity: 131072, used: 0, bytes: rbytes, recs: rrecs, ids: rids };
+        let root = schema_rt::load_table_retain(conformance_unit(), f[3], data, vals, nodes, report, store);
+        if root < 0 || report.refused || schema_rt::load_error(report, root) != schema_rt::LoadRefuseOk {
+            answer(f[1], "refused\n");
+            continue;
+        }
+        var before: u8[>..<] = [];
+        var sreport = schema_rt::LoadReport { .. };
+        if schema_rt::save_table_retain(conformance_unit(), f[3], data, vals, nodes, root, store, sreport, before) != 0 {
+            write_stderr(str("driver: ", f[1], ": the first save through the store refused\n"));
+            exit(1);
+        }
+        answer(str(f[1], ".before"), before);
+        var data2: u8[>..] = [];
+        load_file(f[5], data2);
+        var vals2: schema_rt::LoadVal[>..] = [];
+        var nodes2: schema_rt::LoadNode[>..] = [];
+        var report2 = schema_rt::LoadReport { .. };
+        let root2 = schema_rt::load_table_retain(conformance_unit(), f[3], data2, vals2, nodes2, report2, store);
+        var verdict: u8[>..] = [];
+        verdict.append("read\n");
+        if root2 < 0 || report2.refused || schema_rt::load_error(report2, root2) != schema_rt::LoadRefuseOk {
+            verdict.append("refused\n");
+        } else {
+            verdict.append("read\n");
+        }
+        var after: u8[>..<] = [];
+        var areport = schema_rt::LoadReport { .. };
+        if schema_rt::save_table_retain(conformance_unit(), f[3], data, vals, nodes, root, store, areport, after) != 0 {
+            verdict.append("save-refused\n");
+        } else {
+            answer(str(f[1], ".wire"), after);
+            verdict.append("saved\n");
+        }
+        answer(f[1], verdict);
+    }
+}
 // json_strict_refused asks the glue's verdict arm (conformance_json_verdict)
 // whether the strict read refuses this text: damage, a kind mismatch or an
 // out-of-range count in its seven-field line (`u,k,w,c,d,malformed,verdict`)
@@ -1251,7 +1310,7 @@ fn main() {
         exit(1);
     }
     if argv[1] == "list" {
-        write_stdout("wire\nmessage\nmessage-prior\nreport\nframing\nretain\nretain-save\njson-read\njson-write\njson-hostile\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\nunit shapes\n");
+        write_stdout("wire\nmessage\nmessage-prior\nreport\nframing\nretain\nretain-save\nretain-refusal\njson-read\njson-write\njson-hostile\nwrite-refusal\nwrite-refusal-fixed\nwrite-refusal-message\nwrite-refusal-json\nwrite-refusal-cook\nwrite-refusal-block\nwrite-refusal-shape\nannounce\nread-into\njson-write-into\nunit shapes\n");
         return;
     }
     if argv.len != 4 {
@@ -1269,6 +1328,7 @@ fn main() {
     if argv[1] == "message-prior" { surface_message_prior(lines, unit); return; }
     if argv[1] == "retain" { surface_retain(lines, unit, false); return; }
     if argv[1] == "retain-save" { surface_retain(lines, unit, true); return; }
+    if argv[1] == "retain-refusal" { surface_retain_refusal(lines, unit); return; }
     if argv[1] == "json-read" { surface_json(lines, unit, false); return; }
     if argv[1] == "json-write" {
         surface_json(lines, unit, true);

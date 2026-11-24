@@ -334,7 +334,7 @@ defmodule Driver do
   # the accelerators' surfaces beside the variable form's: wire, json-read,
   # json-write, json-hostile and report ride the <Unit>.Table codec, the rest
   # the block and cook readers
-  @surfaces ~w(wire message message-prior retain retain-save json-read json-write json-hostile report framing cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason write-refusal write-refusal-fixed write-refusal-message write-refusal-json write-refusal-cook write-refusal-block write-refusal-shape announce read-into json-write-into)
+  @surfaces ~w(wire message message-prior retain retain-save retain-refusal json-read json-write json-hostile report framing cook cook-write cook-foreign block block-foreign block-dump forgery cook-forgery cook-reason block-reason write-refusal write-refusal-fixed write-refusal-message write-refusal-json write-refusal-cook write-refusal-block write-refusal-shape announce read-into json-write-into)
 
   def main([manifest, "list"]) do
     _ = manifest
@@ -583,6 +583,10 @@ defmodule Driver do
 
     cases = Enum.reject(rows(rows, "retain"), fn row -> saves and List.last(row) == "-" end)
     each_case(surface, cases, fn row -> retain_row(row, saves, outdir) end)
+  end
+
+  defp run("retain-refusal", rows, outdir) do
+    each_case("retain-refusal", rows(rows, "retain-refusal"), fn row -> retain_refusal_row(row, outdir) end)
   end
 
   # A text surface skips a `no-text` instance (FORMAT.md), so it reads only
@@ -1654,6 +1658,54 @@ defmodule Driver do
     end
   end
 
+
+  # ---- retain-refusal (test/conformance/README.md): ONE retention store through
+  # the retaining read of the first wire, the retaining save, the retaining read
+  # of the refused wire into the store those returned, and the retaining save of
+  # the first value through the store the refused read handed back. The
+  # verdicts and what the second save did go in <case>, the first save in
+  # <case>.before, the second in <case>.wire.
+  defp retain_refusal_row([name, unit, root, first, second | _], outdir) do
+    mod = table_module(unit)
+    roomy = 1_048_576
+    store = %{records: [], used: 0, cap: roomy, ids: [], id_cap: div(roomy, 8)}
+
+    empty = %{
+      unknown: 0,
+      widened: 0,
+      retained: 0,
+      retain_lost: 0,
+      reason: "",
+      missing_required: 0
+    }
+
+    case mod.load_retain(root, File.read!(first), store, empty) do
+      {:error, _reason, _report, _retain} ->
+        write(outdir, name, "refused\n")
+
+      {:ok, value, _report, retain} ->
+        {:ok, before, _save, retain} = mod.save_retain(root, value, retain, empty)
+        write(outdir, name <> ".before", before)
+
+        {verdict, retain} =
+          case mod.load_retain(root, File.read!(second), retain, empty) do
+            {:error, _reason, _report, after_refusal} -> {"refused\n", after_refusal}
+            {:ok, _other, _report, after_read} -> {"read\n", after_read}
+          end
+
+        saved =
+          case mod.save_retain(root, value, retain, empty) do
+            {:ok, out, _save, _retain} ->
+              write(outdir, name <> ".wire", out)
+              "saved\n"
+
+            _ ->
+              "save-refused\n"
+          end
+
+        write(outdir, name, "read\n" <> verdict <> saved)
+    end
+  end
   # cook-write (docs/SPEC-TABLES.md §7.6): load the instance, measure, refuse a
   # short buffer, then write both byte orders. A unit with no cook writer
   # writes <case>.absent rather than a wrong byte.

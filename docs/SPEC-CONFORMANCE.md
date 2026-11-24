@@ -114,7 +114,7 @@ generate both roots from [the shared declaration](../test/tables/ValueDefaults.s
 
 A surface is one question put to every case of the corpus that applies to it.
 The tables surfaces are `wire`, `message`, `report`, `framing`, `retain`,
-`retain-save`, `json-read`, `json-write`, `json-hostile`, `cook`,
+`retain-save`, `retain-refusal`, `json-read`, `json-write`, `json-hostile`, `cook`,
 `cook-write`, `cook-foreign`, `block`, `block-foreign`, `block-dump`,
 `forgery`, `cook-forgery`, `write-refusal`, `write-refusal-fixed`,
 `write-refusal-message`, `write-refusal-json`, `write-refusal-cook`,
