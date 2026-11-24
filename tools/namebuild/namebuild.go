@@ -240,6 +240,7 @@ func Build(run Runner, env Env, target string, c Case, dir string) error {
     <Nullable>annotations</Nullable>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="*.cs" />
@@ -297,7 +298,7 @@ func Build(run Runner, env Env, target string, c Case, dir string) error {
 		}
 		return stepEnv(run, dir, []string{"CARGO_TARGET_DIR=" + filepath.Join(dir, "target")}, env.Tool("CARGO", "cargo"), "build", "--quiet", "--offline")
 	case "go":
-		mod := "module probecase\n\ngo 1.23\n\nrequire github.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\nreplace github.com/mas-bandwidth/serialize.go/v2 => " + env.SerializeGo + "\n"
+		mod := "module probecase\n\ngo 1.26\n\nrequire (\n\tgithub.com/mas-bandwidth/serialize.go/v2 v2.0.0\n\tgithub.com/mas-bandwidth/schema/v2 v2.0.0\n)\n\nreplace (\n\tgithub.com/mas-bandwidth/serialize.go/v2 => " + env.SerializeGo + "\n\tgithub.com/mas-bandwidth/schema/v2 => " + env.Root + "\n)\n"
 		if err := put(dir, "go.mod", mod); err != nil {
 			return err
 		}
@@ -309,16 +310,20 @@ func Build(run Runner, env Env, target string, c Case, dir string) error {
 	case "java":
 		var sb strings.Builder
 		p, o := c.Pkg, "Other"
+		fmt.Fprintf(&sb, "import %s.%s;\n\n", p, o)
 		fmt.Fprintf(&sb, "public final class ZzMain {\n  public static void main(String[] args) {\n")
-		fmt.Fprintf(&sb, "    %s.%s.Holder h = new %s.%s.Holder();\n", p, o, p, o)
-		fmt.Fprintf(&sb, "    %s.%s.initHolder(h);\n", p, o)
-		fmt.Fprintf(&sb, "    byte[] d = new byte[%s.%s.HOLDER_MAX_BYTES];\n", p, o)
-		fmt.Fprintf(&sb, "    if (%s.%s.writeHolder(h, d) <= 0) throw new AssertionError(\"FAILED: write\");\n", p, o)
+		fmt.Fprintf(&sb, "    %s.Holder h = new %s.Holder();\n", o, o)
+		fmt.Fprintf(&sb, "    %s.initHolder(h);\n", o)
+		fmt.Fprintf(&sb, "    byte[] d = new byte[%s.HOLDER_MAX_BYTES];\n", o)
+		fmt.Fprintf(&sb, "    if (%s.writeHolder(h, d) <= 0) throw new AssertionError(\"FAILED: write\");\n", o)
 		sb.WriteString("    System.out.println(\"ok\");\n  }\n}\n")
 		if err := put(dir, "ZzMain.java", sb.String()); err != nil {
 			return err
 		}
-		args := []string{"--release", "17", "-Xlint:all", "-Werror", "-d", "classes"}
+		if err := os.MkdirAll(filepath.Join(dir, "nosrc"), 0o755); err != nil {
+			return err
+		}
+		args := []string{"--release", "17", "-Xlint:all", "-Werror", "-sourcepath", "nosrc", "-d", "classes"}
 		args = append(args, names(glob(dir, "*.java"))...)
 		if err := step(env.Tool("JAVAC", "javac"), args...); err != nil {
 			return err
